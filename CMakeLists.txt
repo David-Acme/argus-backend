@@ -12,6 +12,10 @@ find_package(Drogon CONFIG REQUIRED)
 find_package(jwt-cpp REQUIRED)
 find_package(nlohmann_json REQUIRED)
 find_package(libsodium REQUIRED)
+find_package(llama-cpp REQUIRED)
+
+# Bundled third-party libraries (git submodules under third_party/).
+add_subdirectory(third_party)
 
 file(GLOB_RECURSE CONFIG_SRC
     ${SRC_ROOT}/config/*.cc
@@ -57,8 +61,14 @@ target_link_libraries(${PROJECT_NAME}
         jwt-cpp::jwt-cpp
         nlohmann_json::nlohmann_json
         libsodium::libsodium
+        llama-cpp::llama-cpp
+        ${ARGUS_FASTTEXT_TARGET}
         ${CONAN_LIBS}
 )
+
+if(ARGUS_BUILD_INSPIREFACE AND TARGET InspireFace)
+  target_link_libraries(${PROJECT_NAME} PRIVATE InspireFace)
+endif()
 
 set_target_properties(${PROJECT_NAME} PROPERTIES
     BUILD_RPATH "$ORIGIN"

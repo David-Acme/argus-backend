@@ -136,6 +136,25 @@ configure_conan_profile() {
   log "Conan profile ready: $profile"
 }
 
+setup_submodules() {
+  log "Initialising git submodules (third_party/*)..."
+  if [ ! -d ".git" ] && [ -f ".gitmodules" ]; then
+    warn "Not a git worktree; skipping submodule init."
+    return
+  fi
+  git submodule update --init --recursive 2>&1 | sed 's/^/  /' || \
+    warn "Top-level submodule init failed (network?)."
+
+  # InspireFace pulls its own nested submodules (MNN, InspireCV, ...).
+  for d in third_party/*/; do
+    if [ -d "${d}.git" ] || git -C "$d" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+      log "Initialising nested submodules in $d"
+      git -C "$d" submodule update --init --recursive 2>&1 | sed 's/^/  /' || \
+        warn "Nested submodule init failed in $d (network?)."
+    fi
+  done
+}
+
 build_project() {
   if [ "$SKIP_BUILD" -eq 1 ]; then
     log "Installing Conan dependencies into $OUTPUT_FOLDER ($BUILD_TYPE)..."
@@ -164,6 +183,7 @@ main() {
   configure_conan_profile
   need_cmd git
   need_cmd cmake
+  setup_submodules
   build_project
   log "All done (profile: $PROFILE). Happy hacking!"
 }
