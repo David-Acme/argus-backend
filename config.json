@@ -1,0 +1,67 @@
+{
+  "listeners": [
+    {
+      "address": "0.0.0.0",
+      "port": 7024,
+      "https": false
+    }
+  ],
+  "db_clients": [
+    {
+      "name": "default",
+      "rdbms": "sqlite3",
+      "filename": "database/argus.db",
+      "is_fast": false,
+      "number_of_connections": 1,
+      "timeout": -1.0
+    }
+  ],
+  "app": {
+    "number_of_threads": 0,
+    "enable_session": false,
+    "document_root": "./",
+    "upload_path": "uploads",
+    "use_sendfile": true,
+    "use_gzip": true,
+    "use_brotli": false,
+    "static_files_cache_time": 5,
+    "idle_connection_timeout": 60,
+    "enable_server_header": true,
+    "enable_date_header": true,
+    "keepalive_requests": 0,
+    "pipelining_requests": 0,
+    "gzip_static": true,
+    "br_static": true,
+    "client_max_body_size": "60M",
+    "client_max_memory_body_size": "64K",
+    "client_max_websocket_message_size": "128K",
+    "reuse_port": false,
+    "enabled_compressed_request": false,
+    "enable_request_stream": false,
+    "handle_sig_term": true,
+    "relaunch_on_error": false
+  },
+  "plugins": [
+    {
+      "name": "drogon::plugin::PromExporter",
+      "dependencies": [],
+      "config": {
+        "path": "/metrics"
+      }
+    },
+    {
+      "name": "drogon::plugin::AccessLogger",
+      "dependencies": [],
+      "config": {
+        "use_spdlog": false,
+        "log_path": "",
+        "log_format": "",
+        "log_file": "access.log",
+        "log_size_limit": 0,
+        "use_local_time": true,
+        "log_index": 0
+      }
+    }
+  ],
+  "custom_config": {}
+}

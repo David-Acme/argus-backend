@@ -1,0 +1,51 @@
+Argus — Free Personal Use License with Business Donation Clause
+=================================================================
+
+Copyright (c) 2026 David Acme
+
+Project: Argus (https://github.com/David-Acme/argus-backend)
+Author: David Acme
+
+1. GRANT OF LICENSE
+-------------------
+This software is provided free of charge under the following terms:
+
+  a) Personal Use
+     Any individual may use, copy, modify, and run this software for
+     personal, non-commercial purposes without restriction and at no cost.
+
+  b) Commercial / Business Use
+     Any company, organization, or commercial entity that uses this
+     software — in whole or in part, directly or indirectly — for
+     commercial purposes, product development, internal tooling, or any
+     revenue-generating activity MUST make a voluntary donation to support
+     the continued development of the Argus project.
+
+      The donation amount is left to the discretion of the business based on
+      usage and value received, but a contribution is required as a condition
+      of commercial use of any Argus component.
+
+2. HOW TO SUPPORT THE PROJECT
+----------------------------
+Businesses and commercial users are kindly asked to make a donation to the
+author, David Acme, to help maintain and improve Argus. You may reach out via
+the project repository to coordinate support:
+
+    https://github.com/David-Acme/argus-backend
+
+3. NO WARRANTY
+--------------
+This software is provided "AS IS", without warranty of any kind, express or
+implied, including but not limited to the warranties of merchantability,
+fitness for a particular purpose and non-infringement. In no event shall the
+author be liable for any claim, damages or other liability, whether in an
+action of contract, tort or otherwise, arising from, out of or in connection
+with the software or the use or other dealings in the software.
+
+4. REDISTRIBUTION
+-----------------
+You may redistribute this software provided that this license, the copyright
+notice, and the author attribution (David Acme) are retained in all copies
+or substantial portions of the software.
+
+By using this software you agree to the terms above.

@@ -1,0 +1,56 @@
+BasedOnStyle: LLVM
+Language: Cpp
+
+IndentWidth: 2
+TabWidth: 2
+UseTab: Never
+ContinuationIndentWidth: 4
+
+BreakBeforeBraces: Custom
+BraceWrapping:
+  AfterFunction: true
+  AfterClass: true
+  AfterStruct: true
+  AfterEnum: true
+  AfterNamespace: true
+  BeforeElse: true
+  BeforeCatch: true
+  SplitEmptyFunction: true
+  SplitEmptyRecord: true
+  SplitEmptyNamespace: true
+
+ColumnLimit: 80
+
+SpaceBeforeParens: ControlStatements
+SpacesInParentheses: false
+SpacesInSquareBrackets: false
+SpaceInEmptyParentheses: false
+SpaceAfterCStyleCast: false
+SpaceBeforeAssignmentOperators: true
+
+AlignAfterOpenBracket: Align
+AlignOperands: true
+AlignConsecutiveAssignments: false
+AlignConsecutiveDeclarations: false
+AlignTrailingComments: true
+
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+AllowShortFunctionsOnASingleLine: Inline
+
+AlwaysBreakAfterReturnType: None
+AlwaysBreakTemplateDeclarations: Yes
+
+SortIncludes: true
+IncludeBlocks: Regroup
+
+ReflowComments: true
+
+IndentCaseLabels: true
+
+PenaltyBreakComment: 300
+PenaltyBreakString: 1000
+PenaltyBreakBeforeFirstCallParameter: 300
+
+DerivePointerAlignment: false
+PointerAlignment: Left
