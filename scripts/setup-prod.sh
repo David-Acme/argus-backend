@@ -153,6 +153,14 @@ setup_submodules() {
         warn "Nested submodule init failed in $d (network?)."
     fi
   done
+
+  # fastText lowers CMAKE_CXX_STANDARD to 17 in its CMakeLists, which triggers a
+  # CMake deprecation/override warning against our C++20 toolchain. Patch it in
+  # place (submodule is not modified in git; re-applied on every init).
+  if [ -f third_party/fastText/CMakeLists.txt ]; then
+    sed -i 's/^set(CMAKE_CXX_STANDARD 17)/set(CMAKE_CXX_STANDARD 20)/' \
+      third_party/fastText/CMakeLists.txt
+  fi
 }
 
 build_project() {

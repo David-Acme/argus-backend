@@ -13,6 +13,9 @@ find_package(jwt-cpp REQUIRED)
 find_package(nlohmann_json REQUIRED)
 find_package(libsodium REQUIRED)
 find_package(llama-cpp REQUIRED)
+find_package(OpenCV CONFIG REQUIRED)
+find_package(onnxruntime CONFIG REQUIRED)
+find_package(Eigen3 REQUIRED)
 
 # Bundled third-party libraries (git submodules under third_party/).
 add_subdirectory(third_party)
@@ -62,6 +65,9 @@ target_link_libraries(${PROJECT_NAME}
         nlohmann_json::nlohmann_json
         libsodium::libsodium
         llama-cpp::llama-cpp
+        opencv::opencv
+        onnxruntime::onnxruntime
+        Eigen3::Eigen
         ${ARGUS_FASTTEXT_TARGET}
         ${CONAN_LIBS}
 )

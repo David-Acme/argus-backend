@@ -10,10 +10,16 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/fastText/CMakeLists.txt")
   message(STATUS "Argus: integrating fastText submodule")
   set(FASTTEXT_BUILD_TEST OFF CACHE BOOL "" FORCE)
   set(FASTTEXT_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
-  # fastText's CMakeLists still requires CMake <3.5 compatibility.
+  # fastText's CMakeLists declares cmake_minimum_required(VERSION 3.5) with the
+  # deprecated single-value syntax. Bumping CMAKE_POLICY_VERSION_MINIMUM to 3.10
+  # silences the "Compatibility with CMake < 3.10" deprecation warning while
+  # keeping its old policies applied.
   set(ARGUS_FASTTEXT_POLICY ${CMAKE_POLICY_VERSION_MINIMUM})
-  set(CMAKE_POLICY_VERSION_MINIMUM 3.5)
+  set(CMAKE_POLICY_VERSION_MINIMUM 3.10)
   add_subdirectory(fastText EXCLUDE_FROM_ALL)
+  # fastText lowers CMAKE_CXX_STANDARD to 17 for its own targets; restore the
+  # project-wide C++20 setting so the rest of Argus is unaffected.
+  set(CMAKE_CXX_STANDARD 20)
   if(ARGUS_FASTTEXT_POLICY)
     set(CMAKE_POLICY_VERSION_MINIMUM ${ARGUS_FASTTEXT_POLICY})
   else()

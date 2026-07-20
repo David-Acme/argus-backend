@@ -147,25 +147,33 @@ setup_submodules() {
 
   # InspireFace pulls its own nested submodules (MNN, InspireCV, ...).
   for d in third_party/*/; do
-    if [ -d "${d}.git" ] || git -C "$d rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    if [ -d "${d}.git" ] || git -C "$d" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
       log "Initialising nested submodules in $d"
       git -C "$d" submodule update --init --recursive 2>&1 | sed 's/^/  /' || \
         warn "Nested submodule init failed in $d (network?)."
     fi
   done
+
+  # fastText lowers CMAKE_CXX_STANDARD to 17 in its CMakeLists, which triggers a
+  # CMake deprecation/override warning against our C++20 toolchain. Patch it in
+  # place (submodule is not modified in git; re-applied on every init).
+  if [ -f third_party/fastText/CMakeLists.txt ]; then
+    sed -i 's/^set(CMAKE_CXX_STANDARD 17)/set(CMAKE_CXX_STANDARD 20)/' \
+      third_party/fastText/CMakeLists.txt
+  fi
 }
 
 build_project() {
   if [ "$SKIP_BUILD" -eq 1 ]; then
     log "Installing Conan dependencies into $OUTPUT_FOLDER ($BUILD_TYPE)..."
-    conan install . --output-folder="$OUTPUT_FOLDER" -s "build_type=$BUILD_TYPE" --build=missing -o drogon/*:with_sqlite=True
+    conan install . --output-folder="$OUTPUT_FOLDER" -s "build_type=$BUILD_TYPE" --build=missing
     rm -f CMakeUserPresets.json
     log "Skipping build (--no-build / SKIP_BUILD). Done."
     return
   fi
 
   log "Installing Conan dependencies into $OUTPUT_FOLDER ($BUILD_TYPE)..."
-  conan install . --output-folder="$OUTPUT_FOLDER" -s "build_type=$BUILD_TYPE" --build=missing -o drogon/*:with_sqlite=True
+  conan install . --output-folder="$OUTPUT_FOLDER" -s "build_type=$BUILD_TYPE" --build=missing
   rm -f CMakeUserPresets.json
 
   log "Configuring with CMake preset '$CMAKE_PRESET'..."
