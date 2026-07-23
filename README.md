@@ -30,7 +30,7 @@ The system is a pipeline of decoupled modules connected by interfaces:
 ```text
 Camera
   ↓
-Vision      (capture, preprocess, YOLO detection, ONNX Runtime)
+Vision      (capture, preprocess, YOLO detection)
   ↓
 Tracking     (entities, not just boxes: id, history, velocity, zone, behavior)
   ↓
@@ -54,7 +54,7 @@ detections, so the detector/tracker can be replaced transparently.
 
 | Module            | Responsibility                                              | Key libs                          |
 |-------------------|-------------------------------------------------------------|-----------------------------------|
-| Vision            | Camera capture, preprocessing, detection                    | OpenCV, ONNX Runtime, YOLO (ONNX) |
+| Vision            | Camera capture, preprocessing, detection                    | OpenCV, YOLO                      |
 | Tracking          | Maintain `Entity` state across frames                       | Eigen (geometry/Kalman)           |
 | Face Recognition  | Crop → embedding → match                                    | InsightFace (submodule)           |
 | Behavior Analyzer | Geometry-based behavior classification                      | OpenCV, Eigen                     |
@@ -75,9 +75,7 @@ Resolved via Conan 2 (`conanfile.txt`):
 - `llama-cpp/b6565` — local LLM inference
 - `opencv/4.13.0` — computer vision (built **headless**: `with_protobuf`,
   `with_eigen`, `with_ffmpeg`, `with_wayland`, `with_gtk`, `with_vulkan` off)
-- `onnxruntime/1.24.4` — ONNX model inference (CPU by default; CUDA opt-in)
-- `eigen/5.0.1` — linear algebra (tracker / Kalman)
-- `protobuf/6.33.x` — pulled transitively by onnxruntime
+- `eigen/3.4.0` — linear algebra (tracker / Kalman)
 
 Bundled as git submodules under `third_party/` (built via `add_subdirectory`):
 

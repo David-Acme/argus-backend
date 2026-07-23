@@ -29,16 +29,13 @@
 
 ## Dependency resolution notes (Conan conflicts, learned the hard way)
 
-- `nlohmann_json` pinned to **3.11.3** — onnxruntime requires `<3.12`. (3.12.0 fails.)
+- `nlohmann_json` pinned to **3.12.0** — jwt-cpp/Drogon use this version.
 - `opencv/4.13.0` built **headless**: `with_protobuf=False`, `with_eigen=False`,
   `with_ffmpeg=False`, `with_wayland=False`, `with_gtk=False`, `with_vulkan=False`.
   Reason: the ConanCenter prebuilt opencv pulls X11/Wayland system deps
   (`libxres`, etc.) that need sudo to install; headless avoids that and is leaner.
-- `eigen/5.0.1` (onnxruntime requires `>=5.0.1`; opencv's eigen dropped via
-  `with_eigen=False`).
-- protobuf: unified via opencv `with_protobuf=False`; onnxruntime brings `6.33.x`.
-- `onnxruntime/*:with_cuda=False` by default — CPU fallback. Enable CUDA only when
-  GPU is available; never hard-require it.
+- `eigen/3.4.0` used for tracker/geometry (Kalman optional behind a flag).
+- protobuf: unified via opencv `with_protobuf=False` — no protobuf in the graph.
 - **conanfile.txt cannot resolve version conflicts** (no `override=True`/`force`).
   Conflict resolution is done by pinning versions + disabling the offending option
   in the consuming package. Keep this pattern.
@@ -78,7 +75,6 @@ RustFS for blobs. Profiles: light / balanced / advanced.
 
 ## Open questions / next steps
 
-- Implement `README.md` + `CONTEXT.md` (done this session).
 - Scaffold `vision-core` (separate lib or `src/vision-core/` — TBD when dev starts).
-- Decide YOLO model export to ONNX behind `IVisionProvider`.
+- Decide YOLO model export format behind `IVisionProvider` (ONNX / TorchScript / TFLite).
 - RustFS integration for snapshots/video/audio blobs.
