@@ -1,18 +1,20 @@
 #!/usr/bin/env bash
 #
-# Argus backend - Development / Production environment setup (Linux).
+# Argus backend - setup script (Linux).
 #
-# Automates the build with CMake presets:
+# Automates build with CMake presets. Unifies dev & prod profiles:
 #   1. Install system build dependencies (distro aware)
 #   2. Install Conan (if missing) and configure the profile for C++20
-#   3. Install Conan dependencies into build/<profile>
-#   4. Configure and build with the matching CMake preset
+#   3. Download Supertonic 3 TTS model (~415 MB)
+#   4. Install Conan dependencies into build/<profile>
+#   5. Configure and build with the matching CMake preset
 #
 # Usage:
-#   ./scripts/setup-dev.sh                 # dev profile, full build
-#   ./scripts/setup-dev.sh --profile prod  # prod profile, full build
-#   ./scripts/setup-dev.sh --no-build      # install deps only (no compile)
-#   SKIP_BUILD=1 ./scripts/setup-dev.sh
+#   ./scripts/setup.sh                     # default: dev
+#   ./scripts/setup.sh dev                 # dev profile
+#   ./scripts/setup.sh prod                # prod profile
+#   ./scripts/setup.sh dev --no-build      # install deps only (no compile)
+#   SKIP_BUILD=1 ./scripts/setup.sh prod
 #
 set -euo pipefail
 
@@ -37,26 +39,21 @@ sudo_if_needed() {
 
 PROFILE="dev"
 SKIP_BUILD=0
-PREV_ARG=""
+ARGS=()
+
 for a in "$@"; do
   case "$a" in
-    dev|prod)
-      if [ "${PREV_ARG:-}" = "--profile" ]; then PROFILE="$a"; fi
-      ;;
-    --no-build) SKIP_BUILD=1 ;;
     -h|--help)
       grep '^#' "$0" | sed 's/^#\{1,2\} //'; exit 0 ;;
-    *)
-      if [ "${PREV_ARG:-}" = "--profile" ]; then PROFILE="$a"; fi
-      ;;
+    --no-build) SKIP_BUILD=1 ;;
+    dev|prod)   PROFILE="$a" ;;
+    *)          ARGS+=("$a") ;;
   esac
-  PREV_ARG="$a"
 done
 
 case "$PROFILE" in
   dev)  BUILD_TYPE="Debug";   OUTPUT_FOLDER="build/dev";  CMAKE_PRESET="dev" ;;
   prod) BUILD_TYPE="Release"; OUTPUT_FOLDER="build/prod"; CMAKE_PRESET="prod" ;;
-  *) err "unknown profile: $PROFILE (expected dev|prod)"; exit 1 ;;
 esac
 
 log "Profile: $PROFILE  build_type: $BUILD_TYPE  output: $OUTPUT_FOLDER  preset: $CMAKE_PRESET"
@@ -145,7 +142,6 @@ setup_submodules() {
   git submodule update --init --recursive 2>&1 | sed 's/^/  /' || \
     warn "Top-level submodule init failed (network?)."
 
-  # InspireFace pulls its own nested submodules (MNN, InspireCV, ...).
   for d in third_party/*/; do
     if [ -d "${d}.git" ] || git -C "$d" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
       log "Initialising nested submodules in $d"
@@ -154,13 +150,71 @@ setup_submodules() {
     fi
   done
 
-  # fastText lowers CMAKE_CXX_STANDARD to 17 in its CMakeLists, which triggers a
-  # CMake deprecation/override warning against our C++20 toolchain. Patch it in
-  # place (submodule is not modified in git; re-applied on every init).
   if [ -f third_party/fastText/CMakeLists.txt ]; then
     sed -i 's/^set(CMAKE_CXX_STANDARD 17)/set(CMAKE_CXX_STANDARD 20)/' \
       third_party/fastText/CMakeLists.txt
   fi
+}
+
+setup_tts_model() {
+  log "Setting up Supertonic 3 TTS model..."
+
+  local ROOT
+  ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+  local MODEL_DIR="$ROOT/models/tts"
+  local ONNX_DIR="$MODEL_DIR/onnx"
+  local VOICE_DIR="$MODEL_DIR/voice_styles"
+  local TTS_DIR="$ROOT/src/shared/tts"
+  local HF_BASE="https://huggingface.co/Supertone/supertonic-3/resolve/main"
+  local GH_BASE="https://raw.githubusercontent.com/supertone-inc/supertonic/main/cpp"
+  local DL=""
+
+  if command -v curl >/dev/null 2>&1; then
+    DL="curl -sL --retry 3 -o"
+  elif command -v wget >/dev/null 2>&1; then
+    DL="wget -q --retry-connrefused --waitretry=3 -O"
+  else
+    warn "Neither curl nor wget found; skipping TTS model download."
+    return
+  fi
+
+  mkdir -p "$ONNX_DIR" "$VOICE_DIR" "$TTS_DIR"
+
+  local ONNX_FILES=(
+    duration_predictor.onnx
+    text_encoder.onnx
+    vector_estimator.onnx
+    vocoder.onnx
+    tts.json
+    unicode_indexer.json
+  )
+  local VOICE_FILES=(
+    F1.json F2.json F3.json F4.json F5.json
+    M1.json M2.json M3.json M4.json M5.json
+  )
+
+  for f in "${ONNX_FILES[@]}"; do
+    if [ ! -f "$ONNX_DIR/$f" ]; then
+      log "Downloading onnx/$f..."
+      $DL "$ONNX_DIR/$f" "$HF_BASE/onnx/$f" || warn "Failed: onnx/$f"
+    fi
+  done
+
+  for f in "${VOICE_FILES[@]}"; do
+    if [ ! -f "$VOICE_DIR/$f" ]; then
+      log "Downloading voice_styles/$f..."
+      $DL "$VOICE_DIR/$f" "$HF_BASE/voice_styles/$f" || warn "Failed: voice_styles/$f"
+    fi
+  done
+
+  for f in helper.h helper.cpp; do
+    if [ ! -f "$TTS_DIR/$f" ]; then
+      log "Downloading $f from supertonic GitHub..."
+      $DL "$TTS_DIR/$f" "$GH_BASE/$f" || warn "Failed: $f"
+    fi
+  done
+
+  log "TTS model ready (~415 MB)."
 }
 
 build_project() {
@@ -192,6 +246,7 @@ main() {
   need_cmd git
   need_cmd cmake
   setup_submodules
+  setup_tts_model
   build_project
   log "All done (profile: $PROFILE). Happy hacking!"
 }

@@ -1,45 +1,45 @@
 #include "api-response.hxx"
 
+#include <drogon/HttpTypes.h>
+
 drogon::HttpResponsePtr ApiResponse::ok(const Json::Value& data)
 {
-  auto resp = drogon::HttpResponse::newHttpResponse();
-  resp->setStatusCode(drogon::k200OK);
-  resp->setContentTypeCode(drogon::CT_APPLICATION_JSON);
-  Json::Value body;
-  body["success"] = true;
-  body["data"] = data;
-  resp->setBody(body.toStyledString());
-  return resp;
+  return json(200, &data, nullptr);
 }
 
 drogon::HttpResponsePtr ApiResponse::created(const Json::Value& data)
 {
-  auto resp = drogon::HttpResponse::newHttpResponse();
-  resp->setStatusCode(drogon::k201Created);
-  resp->setContentTypeCode(drogon::CT_APPLICATION_JSON);
-  Json::Value body;
-  body["success"] = true;
-  body["data"] = data;
-  resp->setBody(body.toStyledString());
-  return resp;
+  return json(201, &data, nullptr);
 }
 
 drogon::HttpResponsePtr ApiResponse::noContent()
 {
-  auto resp = drogon::HttpResponse::newHttpResponse();
-  resp->setStatusCode(drogon::k204NoContent);
-  return resp;
+  return json(204, nullptr, nullptr);
 }
 
-drogon::HttpResponsePtr ApiResponse::error(drogon::HttpStatusCode status,
+drogon::HttpResponsePtr ApiResponse::error(int statusCode,
+                                           const std::string& errorCode,
                                            const std::string& message)
 {
+  Json::Value err;
+  err["code"] = errorCode;
+  err["message"] = message;
+  return json(statusCode, nullptr, &err);
+}
+
+drogon::HttpResponsePtr ApiResponse::json(int status, const Json::Value* info,
+                                          const Json::Value* errors)
+{
   auto resp = drogon::HttpResponse::newHttpResponse();
-  resp->setStatusCode(status);
+  resp->setStatusCode(static_cast<drogon::HttpStatusCode>(status));
   resp->setContentTypeCode(drogon::CT_APPLICATION_JSON);
+
   Json::Value body;
-  body["success"] = false;
-  body["message"] = message;
-  resp->setBody(body.toStyledString());
+  body["status"] = status;
+  body["info"] = info ? *info : Json::Value();
+  body["errors"] = errors ? *errors : Json::Value();
+
+  auto str = body.toStyledString();
+  resp->setBody(std::move(str));
   return resp;
 }

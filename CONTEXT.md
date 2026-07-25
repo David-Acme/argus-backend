@@ -17,7 +17,10 @@
 ## Hard constraints / decisions
 
 - **C++20**, Drogon HTTP/WebSocket server. SQLite via Drogon async `DbClient`
-  (NO ORM, manual SQL). DB file `data/argus.db`, `number_of_connections: 1`.
+  (NO ORM, manual SQL). DB file `database/argus.db`, `number_of_connections: 1`.
+- **Config**: single `config.toml` file (TOML, parsed via `tomlplusplus`).
+  Replaces `.env` + `config.json`. Drogon section converted to JSON at runtime
+  and loaded via `loadConfigJson()`. `ConfigService` in `src/shared/services/config-service/`.
 - **spdlog is NOT added** — Drogon already provides logging. Do not add spdlog.
 - **Conan 2** for deps (`conanfile.txt` + `CMakePresets.json`). CMake presets:
   `dev` (Debug) and `prod` (Release), generator Ninja.
@@ -63,6 +66,66 @@
 - Build is **green**: `cmake --preset dev` + `cmake --build --preset dev -j 8`
   succeeds; server starts on `0.0.0.0:7024`.
 - fastText linked (static, `fasttext-static_pic`). InspireFace not linked (OFF).
+
+## Dev tooling: tree-sitter + MCP
+
+- **For development only** — not part of the Argus runtime. Uses tree-sitter
+  (C++ grammar) + MCP to give AI assistants structured, minimal-token context
+  while developing the project.
+- Python 3 venv at `.venv/` (gitignored) with `tree-sitter` + `tree-sitter-cpp`.
+- All source files parsed once at startup, indexed in memory (~117 symbols across
+  24 files). Queries return only the relevant AST nodes — signatures, classes,
+  methods — never raw file dumps.
+
+### MCP Server (`mcp-server.py`) — primary dev tool
+
+- Configured in `opencode.json` (auto-enabled for this project):
+  ```json
+  "mcp": {
+    "argus-context": {
+      "type": "local",
+      "command": [".venv/bin/python3", "mcp-server.py"]
+    }
+  }
+  ```
+- **Resources** (URI-addressed data):
+  - `argus://overview` — project overview (1 query)
+  - `argus://symbols` — full compact symbol index (1 query)
+  - `argus://file/{path}` — compact context for one file
+  - `argus://class/{name}` — full class/method signatures
+- **Tools** (callable by AI):
+  - `search_symbols(query, limit)` — find symbols by name
+  - `get_class_info(name)` — class details (methods, members, access)
+  - `get_function_info(name)` — function signatures across codebase
+  - `get_dependencies(path)` — include graph for a file
+  - `get_file_symbols(path)` — all symbols in a file
+  - `get_project_stats()` — code statistics
+  - `find_callers(name, limit)` — find call sites of a function
+  - `find_symbol_occurrences(name, limit)` — text-grep for symbols
+  - `read_lines(path, start_line, count)` — read specific file lines
+  - `search_comments(pattern, limit)` — search C++ comments
+  - `find_todo()` — list TODO/FIXME/HACK/TEMP markers
+  - `get_includes_tree(path, max_depth)` — recursive include deps
+- All responses return focused, minimal-token output. Token savings vs full
+  source: **~80-95%** per query.
+
+### Static context (fallback)
+
+```
+./scripts/dev-context.sh                     # stdout
+./scripts/dev-context.sh CONTEXT_SYMBOLS.md  # to file
+```
+
+Generates a one-shot Markdown symbol index (~15 KB vs ~58 KB raw source, ~75%
+smaller). Less flexible than MCP but useful for offline reference.
+
+## Application features (in-app `ContextBuilder`)
+
+- The app (**not** the dev tooling) will embed tree-sitter via C++ binding
+  (`nsumner/cpp-tree-sitter`) inside a `ContextBuilder` service.
+- This is part of the `vision-core` engine (Planned architecture below), not
+  a migration of the Python MCP server. The MCP server stays as-is for dev.
+- Same AST extraction concepts port to C++ for the app's own context needs.
 
 ## Planned architecture (not yet implemented)
 

@@ -6,8 +6,7 @@
 class ResponseException : public std::runtime_error
 {
 public:
-  explicit ResponseException(const std::string& message,
-                             int statusCode = 400)
+  explicit ResponseException(const std::string& message, int statusCode = 400)
       : std::runtime_error(message), statusCode_(statusCode)
   {
   }

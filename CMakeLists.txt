@@ -15,8 +15,9 @@ find_package(libsodium REQUIRED)
 find_package(llama-cpp REQUIRED)
 find_package(OpenCV CONFIG REQUIRED)
 find_package(Eigen3 REQUIRED)
+find_package(onnxruntime CONFIG REQUIRED)
+find_package(tomlplusplus REQUIRED)
 
-# Bundled third-party libraries (git submodules under third_party/).
 add_subdirectory(third_party)
 
 file(GLOB_RECURSE CONFIG_SRC
@@ -66,6 +67,8 @@ target_link_libraries(${PROJECT_NAME}
         llama-cpp::llama-cpp
         opencv::opencv
         Eigen3::Eigen
+        onnxruntime::onnxruntime
+        tomlplusplus::tomlplusplus
         ${ARGUS_FASTTEXT_TARGET}
         ${CONAN_LIBS}
 )
@@ -82,6 +85,12 @@ set_target_properties(${PROJECT_NAME} PROPERTIES
 add_custom_command(
     TARGET ${PROJECT_NAME} POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            ${CMAKE_SOURCE_DIR}/config.json
-            $<TARGET_FILE_DIR:${PROJECT_NAME}>/config.json
+            ${CMAKE_SOURCE_DIR}/config.toml
+            $<TARGET_FILE_DIR:${PROJECT_NAME}>/config.toml
+    COMMAND ${CMAKE_COMMAND} -E create_symlink
+            ${CMAKE_SOURCE_DIR}/models
+            $<TARGET_FILE_DIR:${PROJECT_NAME}>/models
+    COMMAND ${CMAKE_COMMAND} -E create_symlink
+            ${CMAKE_SOURCE_DIR}/database
+            $<TARGET_FILE_DIR:${PROJECT_NAME}>/database
 )

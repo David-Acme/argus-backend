@@ -3,9 +3,6 @@ build/
 cmake-build-*/
 out/
 
-# .env
-.env
-
 # CMake / Conan
 CMakeCache.txt
 CMakeFiles/
@@ -34,3 +31,12 @@ Thumbs.db
 core
 argus.db
 database/*.db
+
+# TTS models (downloaded separately)
+models/
+
+# Dev virtual environment (tree-sitter context tool)
+.venv/
+
+# Python cache
+__pycache__/

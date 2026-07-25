@@ -2,8 +2,8 @@
 #include <csignal>
 #include <drogon/drogon.h>
 #include <execinfo.h>
-#include <memory>
-#include <shared/services/app-env-context/app-env-context.hxx>
+#include <shared/services/config-service/config-service.hxx>
+#include <shared/services/tts/tts-service.hxx>
 #include <unistd.h>
 
 using namespace drogon;
@@ -32,20 +32,24 @@ static void forceShutdownHandler(int)
 
 int main()
 {
-  AppEnvContext::load(".env");
+  ConfigService::load("config.toml");
 
-  app().loadConfigFile("./config.json");
+  app().loadConfigJson(ConfigService::drogonConfig());
 
-  app().registerPostHandlingAdvice([](const HttpRequestPtr&,
-                                       const HttpResponsePtr& resp) {
-    resp->addHeader("Access-Control-Allow-Origin", "*");
-    resp->addHeader("Access-Control-Allow-Methods",
-                    "GET, POST, PATCH, PUT, DELETE, OPTIONS");
-    resp->addHeader("Access-Control-Allow-Headers",
-                    "Content-Type, Authorization, Accept, Accept-Encoding, "
-                    "Accept-Language, Origin, Referer, User-Agent, Connection, "
-                    "Cache-Control, X-Requested-With");
+  app().registerPreHandlingAdvice([](const HttpRequestPtr& req,
+                                     AdviceCallback&& cb,
+                                     AdviceChainCallback&&) {
+    if (req->method() == Options) {
+      AppConfig::handleOptions(req, std::move(cb));
+      return;
+    }
+    cb(HttpResponsePtr{});
   });
+
+  app().registerPostHandlingAdvice(
+      [](const HttpRequestPtr&, const HttpResponsePtr& resp) {
+        AppConfig::applyCors(resp);
+      });
 
   app().setExceptionHandler(AppConfig::handleException);
 
@@ -65,6 +69,16 @@ int main()
     sigaction(SIGABRT, &crashSa, nullptr);
   });
 
+  try {
+    TtsService::init();
+  }
+  catch (const std::exception& e) {
+    LOG_FATAL << "TTS initialization failed: " << e.what();
+    return 1;
+  }
+
   LOG_INFO << "Argus backend listening on 0.0.0.0:7024";
   app().run();
+
+  TtsService::shutdown();
 }
