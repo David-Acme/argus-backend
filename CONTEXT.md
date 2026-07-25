@@ -141,3 +141,48 @@ RustFS for blobs. Profiles: light / balanced / advanced.
 - Scaffold `vision-core` (separate lib or `src/vision-core/` — TBD when dev starts).
 - Decide YOLO model export format behind `IVisionProvider` (ONNX / TorchScript / TFLite).
 - RustFS integration for snapshots/video/audio blobs.
+
+## Database schema decisions
+
+### Tables
+
+- `user` — system access accounts (login, auth).
+- `person` — people known to the camera (face recognition subjects), linked to
+  FeatureHub via `feature_hub_id`.
+- `event` — detected incidents/events from cameras.
+- `person_event` — many-to-many: which persons appear in which events.
+
+### User roles
+
+- `owner` — full access: configure system, manage users, view all cameras,
+  analyze events, access chat.
+- `resident` — view live cameras and event history, no configuration.
+- `guard` — view cameras, receive alerts, mark incidents as reviewed.
+- `guest` — view live cameras only (no history, no chat).
+
+### Key columns
+
+- `user.is_active INTEGER NOT NULL DEFAULT 1` — 0 = account disabled, login
+  rejected regardless of credentials.
+- `person.feature_hub_id INTEGER UNIQUE` — the `allocId` returned by InspireFace
+  FeatureHub, linking a known face to a person record.
+- `person.first_seen_at / last_seen_at INTEGER` — Unix timestamps (UTC) for
+  tracking presence history.
+- `person.deleted_at INTEGER NULL` — soft delete (keep face data, mark as removed).
+
+### Timestamps
+
+All timestamps use `INTEGER` (Unix epoch, seconds, UTC):
+```sql
+created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
+updated_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
+deleted_at INTEGER NULL
+```
+
+### Face recognition
+
+- InspireFace FeatureHub manages embeddings internally (512 floats, cosine
+  similarity). The app does NOT store embedding vectors in its own tables.
+- The `feature_hub_id` in `person` is the only link needed.
+- InspireFace is pose-invariant: frontal, profile, tilted — all match the same
+  person automatically via cosine similarity.
