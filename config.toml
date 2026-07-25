@@ -63,6 +63,8 @@ log_index = 0
 [jwt]
 secret = "secret"
 refresh_secret = "refresh_secret"
+access_ttl_minutes = 15
+refresh_ttl_days = 30
 
 [database]
 file = "./database/argus.db"

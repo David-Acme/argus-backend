@@ -47,12 +47,14 @@ std::map<std::string, std::string> JwtService::verify(const std::string& token,
 
 std::string JwtService::generateAccess(const std::map<std::string, std::string>& claims)
 {
-  return generate(claims, ConfigService::getString("jwt.secret"), 900);
+  int64_t ttl = ConfigService::getInt("jwt.access_ttl_minutes") * 60;
+  return generate(claims, ConfigService::getString("jwt.secret"), ttl);
 }
 
 std::string JwtService::generateRefresh(const std::map<std::string, std::string>& claims)
 {
-  return generate(claims, ConfigService::getString("jwt.refresh_secret"), 604800);
+  int64_t ttl = ConfigService::getInt("jwt.refresh_ttl_days") * 86400;
+  return generate(claims, ConfigService::getString("jwt.refresh_secret"), ttl);
 }
 
 std::map<std::string, std::string> JwtService::verifyAccess(const std::string& token)
