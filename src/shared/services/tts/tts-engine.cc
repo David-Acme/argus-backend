@@ -158,15 +158,44 @@ TtsEngine::Result TtsEngine::infer(const std::vector<std::string>& textList,
                     textEncInputs.data(), textEncInputs.size(),
                     textEncOutputNames, 1);
 
-  // --- Sample noisy latent ---
-  std::vector<std::vector<std::vector<float>>> xt, latentMaskData;
-  sampleNoisyLatent(duration, xt, latentMaskData);
+  // --- Sample noisy latent (flat array for efficiency) ---
+  std::vector<std::vector<std::vector<float>>> latentMaskData;
+  std::vector<std::vector<std::vector<float>>> xt3d;
+  sampleNoisyLatent(duration, xt3d, latentMaskData);
 
-  std::vector<int64_t> latentShape = {bsz, static_cast<int64_t>(xt[0].size()),
-                                      static_cast<int64_t>(xt[0][0].size())};
-  std::vector<int64_t> latentMaskShape = {bsz, 1,
-                                          static_cast<int64_t>(
-                                              latentMaskData[0][0].size())};
+  int latentDim = static_cast<int>(xt3d[0].size());
+  int latentLen = static_cast<int>(xt3d[0][0].size());
+
+  std::vector<int64_t> latentShape = {bsz, latentDim, latentLen};
+  std::vector<int64_t> latentMaskShape = {bsz, 1, latentLen};
+
+  size_t xtTotal = bsz * latentDim * latentLen;
+  std::vector<float> xtFlat(xtTotal);
+  for (int b = 0; b < bsz; b++)
+    for (int d = 0; d < latentDim; d++)
+      for (int t = 0; t < latentLen; t++)
+        xtFlat[(b * latentDim + d) * latentLen + t] = xt3d[b][d][t];
+  xt3d.clear();
+  xt3d.shrink_to_fit();
+
+  size_t textMaskTotal = bsz * 1 * static_cast<int>(textMask[0][0].size());
+  std::vector<float> textMaskFlat(textMaskTotal);
+  {
+    size_t idx = 0;
+    for (int b = 0; b < bsz; b++)
+      for (size_t t = 0; t < textMask[0][0].size(); t++)
+        textMaskFlat[idx++] = textMask[b][0][t];
+  }
+
+  size_t latentMaskTotal = bsz * 1 * latentLen;
+  std::vector<float> latentMaskFlat(latentMaskTotal);
+  {
+    size_t idx = 0;
+    for (int b = 0; b < bsz; b++)
+      for (int t = 0; t < latentLen; t++)
+        latentMaskFlat[idx++] = latentMaskData[b][0][t];
+  }
+  latentMaskData.clear();
 
   // --- Cache text_emb for reuse across iterations ---
   auto textEmbInfo = textEncOutputs[0].GetTensorTypeAndShapeInfo();
@@ -177,35 +206,25 @@ TtsEngine::Result TtsEngine::infer(const std::vector<std::string>& textList,
 
   // --- Prepare scalar tensors ---
   std::vector<float> totalStepVec(bsz, static_cast<float>(totalStep));
-  Ort::Value totalStepTensor =
-      Ort::Value::CreateTensor<float>(memoryInfo_, totalStepVec.data(),
-                                      totalStepVec.size(),
-                                      std::vector<int64_t>{bsz}.data(), 1);
 
   // --- Iterative denoising ---
   for (int step = 0; step < totalStep; step++) {
     std::vector<float> currentStepVec(bsz, static_cast<float>(step));
 
-    // Recreate source tensors for this iteration
-    Ort::Value textMaskTensorIter =
-        arrayToTensor(memoryInfo_, textMask, textMaskShape, tensorFloats_);
-    Ort::Value latentMaskTensor = arrayToTensor(memoryInfo_, latentMaskData,
-                                                latentMaskShape, tensorFloats_);
     Ort::Value noisyLatentTensor =
-        arrayToTensor(memoryInfo_, xt, latentShape, tensorFloats_);
+        Ort::Value::CreateTensor<float>(memoryInfo_, xtFlat.data(),
+                                        xtFlat.size(), latentShape.data(),
+                                        latentShape.size());
 
-    Ort::Value styleTtlTensorIter =
-        Ort::Value::CreateTensor<float>(memoryInfo_,
-                                        const_cast<float*>(
-                                            style.ttlData().data()),
-                                        style.ttlData().size(),
-                                        style.ttlShape().data(),
-                                        style.ttlShape().size());
+    Ort::Value textMaskTensorIter =
+        Ort::Value::CreateTensor<float>(memoryInfo_, textMaskFlat.data(),
+                                        textMaskFlat.size(),
+                                        textMaskShape.data(), 3);
 
-    Ort::Value textEmbTensor =
-        Ort::Value::CreateTensor<float>(memoryInfo_, textEmbVec.data(),
-                                        textEmbVec.size(), textEmbShape.data(),
-                                        textEmbShape.size());
+    Ort::Value latentMaskTensor =
+        Ort::Value::CreateTensor<float>(memoryInfo_, latentMaskFlat.data(),
+                                        latentMaskFlat.size(),
+                                        latentMaskShape.data(), 3);
 
     Ort::Value currentStepTensor =
         Ort::Value::CreateTensor<float>(memoryInfo_, currentStepVec.data(),
@@ -226,8 +245,13 @@ TtsEngine::Result TtsEngine::infer(const std::vector<std::string>& textList,
     std::vector<Ort::Value> vectorEstInputs;
     vectorEstInputs.reserve(7);
     vectorEstInputs.push_back(std::move(noisyLatentTensor));
-    vectorEstInputs.push_back(std::move(textEmbTensor));
-    vectorEstInputs.push_back(std::move(styleTtlTensorIter));
+    vectorEstInputs.push_back(Ort::Value::CreateTensor<float>(
+        memoryInfo_, const_cast<float*>(textEmbVec.data()),
+        textEmbVec.size(), textEmbShape.data(), textEmbShape.size()));
+    vectorEstInputs.push_back(Ort::Value::CreateTensor<float>(
+        memoryInfo_, const_cast<float*>(style.ttlData().data()),
+        style.ttlData().size(), style.ttlShape().data(),
+        style.ttlShape().size()));
     vectorEstInputs.push_back(std::move(textMaskTensorIter));
     vectorEstInputs.push_back(std::move(latentMaskTensor));
     vectorEstInputs.push_back(std::move(totalStepTensorIter));
@@ -239,19 +263,15 @@ TtsEngine::Result TtsEngine::infer(const std::vector<std::string>& textList,
                         vectorEstOutputNames, 1);
 
     auto* denoisedData = vectorEstOutputs[0].GetTensorMutableData<float>();
-    size_t idx = 0;
-    for (int b = 0; b < bsz; b++) {
-      for (size_t d = 0; d < xt[b].size(); d++) {
-        for (size_t t = 0; t < xt[b][d].size(); t++) {
-          xt[b][d][t] = denoisedData[idx++];
-        }
-      }
-    }
+    for (size_t i = 0; i < xtTotal; i++)
+      xtFlat[i] = denoisedData[i];
   }
 
   // --- Vocoder ---
   Ort::Value latentTensor =
-      arrayToTensor(memoryInfo_, xt, latentShape, tensorFloats_);
+      Ort::Value::CreateTensor<float>(memoryInfo_, xtFlat.data(),
+                                      xtFlat.size(), latentShape.data(),
+                                      latentShape.size());
   const char* vocoderInputNames[] = {"latent"};
   const char* vocoderOutputNames[] = {"wav_tts"};
   std::vector<Ort::Value> vocoderInputs;

@@ -8,18 +8,21 @@ std::unique_ptr<const SherpaOnnxOfflineRecognizer,
                 void (*)(const SherpaOnnxOfflineRecognizer*)>
     SttService::recognizer_{nullptr, SherpaOnnxDestroyOfflineRecognizer};
 bool SttService::loaded_ = false;
-
 void SttService::init()
 {
   try {
     const std::string modelDir = "models/stt";
-    auto nThreads = static_cast<int32_t>(std::thread::hardware_concurrency());
+    auto nThreads = static_cast<int32_t>(4);
 
-    auto modelPath = modelDir + "/model.int8.onnx";
-    auto tokensPath = modelDir + "/tokens.txt";
+    auto encoderPath = modelDir + "/tiny-encoder.int8.onnx";
+    auto decoderPath = modelDir + "/tiny-decoder.int8.onnx";
+    auto tokensPath = modelDir + "/tiny-tokens.txt";
 
     SherpaOnnxOfflineRecognizerConfig config{};
-    config.model_config.sense_voice.model = modelPath.c_str();
+    config.model_config.whisper.encoder = encoderPath.c_str();
+    config.model_config.whisper.decoder = decoderPath.c_str();
+    config.model_config.whisper.language = "es";
+    config.model_config.whisper.task = "transcribe";
     config.model_config.tokens = tokensPath.c_str();
     config.model_config.debug = 0;
     config.model_config.provider = "cpu";
@@ -27,14 +30,15 @@ void SttService::init()
 
     auto* raw = SherpaOnnxCreateOfflineRecognizer(&config);
     if (!raw) {
-      throw std::runtime_error("failed to create recognizer from: " + modelDir);
+      throw std::runtime_error("failed to create recognizer from: " +
+                               modelDir);
     }
     recognizer_.reset(raw);
 
     loaded_ = true;
 
     LOG_INFO << "STT loaded: " << modelDir
-             << " (sense_voice, threads=" << nThreads << ")";
+             << " (whisper-tiny, es, threads=" << nThreads << ")";
   }
   catch (const std::exception& e) {
     LOG_FATAL << "STT init failed: " << e.what();

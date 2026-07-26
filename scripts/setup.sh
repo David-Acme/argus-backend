@@ -304,13 +304,13 @@ setup_vision_model() {
 }
 
 setup_stt_model() {
-  log "Setting up SenseVoice STT model..."
+  log "Setting up Whisper STT model..."
 
   local ROOT
   ROOT="$(cd "$(dirname "$0")/.." && pwd)"
   local MODEL_DIR="$ROOT/models/stt"
   local BASE_URL="https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models"
-  local TARBALL="sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2025-09-09.tar.bz2"
+  local TARBALL="sherpa-onnx-whisper-tiny.tar.bz2"
   local DL=""
 
   if command -v curl >/dev/null 2>&1; then
@@ -324,8 +324,8 @@ setup_stt_model() {
 
   mkdir -p "$MODEL_DIR"
 
-  if [ ! -f "$MODEL_DIR/model.int8.onnx" ]; then
-    log "Downloading SenseVoice int8 model (~158 MB)..."
+  if [ ! -f "$MODEL_DIR/tiny-encoder.int8.onnx" ]; then
+    log "Downloading Whisper tiny model (~111 MB)..."
     $DL "$MODEL_DIR/$TARBALL" "$BASE_URL/$TARBALL" || {
       warn "Failed: $TARBALL"
       return
@@ -336,19 +336,18 @@ setup_stt_model() {
       mkdir -p "$MODEL_DIR/tmp"
       tar -xjf "$MODEL_DIR/$TARBALL" -C "$MODEL_DIR/tmp" --strip-components=1 \
         2>/dev/null || warn "Extraction may be incomplete."
-      if [ -f "$MODEL_DIR/tmp/model.int8.onnx" ]; then
-        mv "$MODEL_DIR/tmp/model.int8.onnx" "$MODEL_DIR/"
-      fi
-      if [ -f "$MODEL_DIR/tmp/tokens.txt" ]; then
-        mv "$MODEL_DIR/tmp/tokens.txt" "$MODEL_DIR/"
-      fi
+      for f in tiny-encoder.int8.onnx tiny-decoder.int8.onnx tiny-tokens.txt; do
+        if [ -f "$MODEL_DIR/tmp/$f" ]; then
+          mv "$MODEL_DIR/tmp/$f" "$MODEL_DIR/"
+        fi
+      done
       rm -rf "$MODEL_DIR/tmp" "$MODEL_DIR/$TARBALL"
     fi
   else
     log "STT model already present."
   fi
 
-  log "STT model ready (~158 MB)."
+  log "STT model ready (~111 MB)."
 }
 
 main() {

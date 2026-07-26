@@ -1,5 +1,6 @@
 #include "llm-service.hxx"
 
+#include <cstdint>
 #include <cstring>
 #include <drogon/drogon.h>
 #include <llama.h>
@@ -18,8 +19,7 @@ void LlmService::init()
   try {
     llama_log_set(
         [](enum ggml_log_level level, const char* text, void*) {
-          if (level == GGML_LOG_LEVEL_WARN ||
-              level == GGML_LOG_LEVEL_ERROR) {
+          if (level == GGML_LOG_LEVEL_WARN || level == GGML_LOG_LEVEL_ERROR) {
             fputs(text, stderr);
           }
         },
@@ -27,10 +27,12 @@ void LlmService::init()
     llama_backend_init();
 
     const std::string modelPath = "models/llm/LFM2.5-1.2B-Instruct-Q4_K_M.gguf";
-    constexpr int64_t contextSize = 65536;
+    constexpr int64_t contextSize = 32768;
 
     llama_model_params modelParams = llama_model_default_params();
     modelParams.n_gpu_layers = 0;
+    modelParams.use_mmap = false;
+    modelParams.use_mlock = false;
 
     llama_model* rawModel =
         llama_model_load_from_file(modelPath.c_str(), modelParams);
@@ -39,13 +41,20 @@ void LlmService::init()
     }
     model_.reset(rawModel);
 
-    auto nThreads = static_cast<int32_t>(std::thread::hardware_concurrency());
+    auto nThreads = static_cast<int32_t>(4);
 
     llama_context_params ctxParams = llama_context_default_params();
     ctxParams.n_ctx = static_cast<uint32_t>(contextSize);
-    ctxParams.n_batch = 512;
+    ctxParams.n_batch = 1024;
+    ctxParams.n_ubatch = 512;
     ctxParams.n_threads = nThreads;
     ctxParams.n_threads_batch = nThreads;
+    ctxParams.flash_attn_type = LLAMA_FLASH_ATTN_TYPE_AUTO;
+    ctxParams.type_k = GGML_TYPE_Q4_0;
+    ctxParams.type_v = GGML_TYPE_Q4_0;
+    ctxParams.no_perf = true;
+    ctxParams.offload_kqv = false;
+    ctxParams.swa_full = true;
 
     llama_context* rawCtx = llama_init_from_model(model_.get(), ctxParams);
     if (!rawCtx) {
@@ -57,7 +66,7 @@ void LlmService::init()
     loaded_ = true;
 
     LOG_INFO << "LLM loaded: " << modelPath << " (ctx=" << contextSize
-             << ", threads=" << nThreads << ")";
+             << ", threads=" << nThreads << ", K=V=Q4_0)";
   }
   catch (const std::exception& e) {
     LOG_FATAL << "LLM init failed: " << e.what();
@@ -80,59 +89,193 @@ bool LlmService::isLoaded()
   return loaded_;
 }
 
-std::string LlmService::chat(const ChatRequest& req)
+std::string LlmService::buildPrompt(
+    const std::vector<ChatMessage>& messages)
+{
+  std::string prompt;
+
+  bool hasSystem = false;
+  for (const auto& msg : messages) {
+    if (msg.role == "system") {
+      hasSystem = true;
+      break;
+    }
+  }
+
+  if (!hasSystem) {
+    prompt += "<|im_start|>system\n";
+    prompt += SYSTEM_PROMPT;
+    prompt += "<|im_end|>\n";
+  }
+
+  for (const auto& msg : messages) {
+    if (msg.role == "system") {
+      prompt += "<|im_start|>system\n";
+      prompt += msg.content;
+      prompt += "<|im_end|>\n";
+    }
+    else if (msg.role == "user") {
+      prompt += "<|im_start|>user\n";
+      prompt += msg.content;
+      prompt += "<|im_end|>\n";
+    }
+    else if (msg.role == "assistant") {
+      prompt += "<|im_start|>assistant\n";
+      prompt += msg.content;
+      prompt += "<|im_end|>\n";
+    }
+  }
+
+  prompt += "<|im_start|>assistant\n";
+  return prompt;
+}
+
+void LlmService::generateStream(const std::string& formattedPrompt,
+                                float temperature, int32_t maxTokens,
+                                bool resetContext,
+                                TokenCallback onToken)
 {
   auto* ctx = context_.get();
   auto* model = model_.get();
   auto* vocab = llama_model_get_vocab(model);
 
-  int nTokens = llama_tokenize(vocab, req.prompt.c_str(),
-                               static_cast<int32_t>(req.prompt.size()), nullptr,
-                               0, true, true);
-
-  if (nTokens < 0) {
-    LOG_WARN << "LLM: tokenization failed";
-    return "";
+  if (resetContext) {
+    auto mem = llama_get_memory(ctx);
+    if (mem) {
+      llama_memory_seq_rm(mem, 0, 0, -1);
+    }
   }
 
-  std::vector<llama_token> promptTokens(static_cast<size_t>(nTokens));
-  llama_tokenize(vocab, req.prompt.c_str(),
-                 static_cast<int32_t>(req.prompt.size()), promptTokens.data(),
-                 nTokens, true, true);
+  auto promptLen = static_cast<int32_t>(formattedPrompt.size());
+  std::vector<llama_token> promptTokens(
+      static_cast<size_t>(promptLen) * 2);
 
-  auto batch = llama_batch_get_one(promptTokens.data(), nTokens);
-  if (llama_decode(ctx, batch) != 0) {
+  int nTokens =
+      llama_tokenize(vocab, formattedPrompt.c_str(), promptLen,
+                     promptTokens.data(),
+                     static_cast<int32_t>(promptTokens.size()),
+                     true, true);
+
+  if (nTokens < 0) {
+    if (nTokens == INT32_MIN) {
+      LOG_WARN << "LLM: token count overflow";
+      onToken("", true);
+      return;
+    }
+    auto needed = static_cast<size_t>(-nTokens);
+    promptTokens.resize(needed);
+    nTokens = llama_tokenize(vocab, formattedPrompt.c_str(), promptLen,
+                             promptTokens.data(),
+                             static_cast<int32_t>(needed), true, true);
+  }
+
+  if (nTokens < 0) {
+    LOG_WARN << "LLM: tokenization failed (code=" << nTokens << ")";
+    onToken("", true);
+    return;
+  }
+
+  promptTokens.resize(static_cast<size_t>(nTokens));
+
+  auto promptBatch = llama_batch_init(nTokens, 0, 1);
+  for (int32_t j = 0; j < nTokens; ++j) {
+    promptBatch.token[j] = promptTokens[j];
+    promptBatch.pos[j] = j;
+    promptBatch.n_seq_id[j] = 1;
+    promptBatch.seq_id[j][0] = 0;
+    promptBatch.logits[j] = (j == nTokens - 1) ? 1 : 0;
+  }
+  promptBatch.n_tokens = nTokens;
+
+  if (llama_decode(ctx, promptBatch) != 0) {
     LOG_WARN << "LLM: prompt decode failed";
-    return "";
+    llama_batch_free(promptBatch);
+    onToken("", true);
+    return;
+  }
+  llama_batch_free(promptBatch);
+
+  auto nVocab = llama_vocab_n_tokens(vocab);
+  if (nVocab <= 0) {
+    LOG_WARN << "LLM: invalid vocab size: " << nVocab;
+    onToken("", true);
+    return;
   }
 
   auto sparams = llama_sampler_chain_default_params();
+  sparams.no_perf = true;
   auto* smpl = llama_sampler_chain_init(sparams);
-  llama_sampler_chain_add(smpl, llama_sampler_init_temp(req.temperature));
+  if (!smpl) {
+    LOG_WARN << "LLM: failed to init sampler chain";
+    onToken("", true);
+    return;
+  }
+
+  llama_sampler_chain_add(smpl, llama_sampler_init_temp(temperature));
   llama_sampler_chain_add(smpl, llama_sampler_init_top_k(40));
-  llama_sampler_chain_add(smpl, llama_sampler_init_top_p(0.95f, 1));
+  llama_sampler_chain_add(smpl, llama_sampler_init_top_p(0.9f, 1));
+  llama_sampler_chain_add(smpl, llama_sampler_init_penalties(
+      64, 1.1f, 0.0f, 0.0f));
+  llama_sampler_chain_add(smpl, llama_sampler_init_dist(42));
 
-  std::string result;
   llama_token eosToken = llama_vocab_eos(vocab);
+  llama_token eotToken = llama_vocab_eot(vocab);
+  llama_pos pos = nTokens;
 
-  for (int32_t i = 0; i < req.maxTokens; ++i) {
+  for (int32_t i = 0; i < maxTokens; ++i) {
     llama_token newToken = llama_sampler_sample(smpl, ctx, -1);
 
-    if (newToken == eosToken)
+    if (newToken == eosToken || newToken == eotToken)
       break;
 
     char buf[256];
     int n = llama_token_to_piece(vocab, newToken, buf, sizeof(buf), 0, true);
     if (n > 0)
-      result.append(buf, n);
+      onToken(std::string(buf, n), false);
 
     llama_sampler_accept(smpl, newToken);
 
-    auto nextBatch = llama_batch_get_one(&newToken, 1);
-    if (llama_decode(ctx, nextBatch) != 0)
+    auto genBatch = llama_batch_init(1, 0, 1);
+    genBatch.token[0] = newToken;
+    genBatch.pos[0] = pos++;
+    genBatch.n_seq_id[0] = 1;
+    genBatch.seq_id[0][0] = 0;
+    genBatch.logits[0] = 1;
+    genBatch.n_tokens = 1;
+    if (llama_decode(ctx, genBatch) != 0) {
+      llama_batch_free(genBatch);
       break;
+    }
+    llama_batch_free(genBatch);
   }
 
   llama_sampler_free(smpl);
+  onToken("", true);
+}
+
+std::string LlmService::generate(const std::string& formattedPrompt,
+                                 float temperature, int32_t maxTokens,
+                                 bool resetContext)
+{
+  std::string result;
+  generateStream(formattedPrompt, temperature, maxTokens, resetContext,
+                 [&result](const std::string& token, bool done) {
+                   if (!done)
+                     result.append(token);
+                 });
   return result;
+}
+
+std::string LlmService::chat(const ChatRequest& req)
+{
+  std::string prompt = buildPrompt(req.messages);
+  return generate(prompt, req.temperature, req.maxTokens,
+                  req.resetContext);
+}
+
+void LlmService::chatStream(const ChatRequest& req, TokenCallback onToken)
+{
+  std::string prompt = buildPrompt(req.messages);
+  generateStream(prompt, req.temperature, req.maxTokens,
+                 req.resetContext, std::move(onToken));
 }

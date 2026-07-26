@@ -13,7 +13,7 @@ std::unique_ptr<TtsEngine> TtsService::engine_;
 std::unique_ptr<UnicodeProcessor> TtsService::processor_;
 std::unordered_map<std::string, std::unique_ptr<Style>> TtsService::voiceCache_;
 Ort::Env TtsService::env_{ORT_LOGGING_LEVEL_ERROR, "Argus-TTS"};
-TtsQuality TtsService::defaultQuality_{TtsQuality::Medium};
+TtsQuality TtsService::defaultQuality_{TtsQuality::Auto};
 bool TtsService::loaded_ = false;
 
 // --- Init / shutdown ---
@@ -27,9 +27,8 @@ void TtsService::init()
     Ort::SessionOptions opts;
     opts.SetExecutionMode(ExecutionMode::ORT_SEQUENTIAL);
     opts.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL);
-    opts.EnableCpuMemArena();
-    opts.EnableMemPattern();
-    opts.SetIntraOpNumThreads(std::thread::hardware_concurrency());
+    opts.SetIntraOpNumThreads(
+        static_cast<int>(std::min(std::thread::hardware_concurrency(), 4u)));
     opts.SetInterOpNumThreads(1);
 
     auto cfg = loadConfig(onnxDir);
@@ -92,8 +91,14 @@ void TtsService::synthesizeStream(const TtsRequest& req,
       (req.quality == TtsQuality::Auto) ? autoQuality(req.text) : req.quality;
   int steps = resolveSteps(quality);
 
-  auto result = engine_->synthesize(req.text, langStr, style, steps, req.speed);
-  onChunk(result.wav);
+  int maxLen = (req.lang == TtsLang::KO || req.lang == TtsLang::JA) ? 120 : 300;
+  auto textList = chunkText(req.text, maxLen);
+
+  for (const auto& chunk : textList) {
+    auto result = engine_->synthesize(chunk, langStr, style, steps, req.speed);
+    if (!result.wav.empty())
+      onChunk(result.wav);
+  }
 }
 
 // --- Voice cache ---
