@@ -22,6 +22,13 @@
   Replaces `.env` + `config.json`. Drogon section converted to JSON at runtime
   and loaded via `loadConfigJson()`. `ConfigService` in `src/shared/services/config-service/`.
 - **spdlog is NOT added** — Drogon already provides logging. Do not add spdlog.
+- **Smart pointers only** — no raw owning pointers. All service resources use
+  `std::unique_ptr` with custom deleters. `LlamaModel`, `LlamaContext`,
+  `SherpaOnnxOnlineRecognizer`, `mtmd_context` — all wrapped in smart pointers.
+  Raw pointers only for non-owning access (`.get()`).
+- **Services use hardcoded model paths** — like `TtsService::init()`, all
+  services know their model paths internally (no parameters). Paths live at
+  `models/{llm,stt,vision}/` under the project root.
 - **Conan 2** for deps (`conanfile.txt` + `CMakePresets.json`). CMake presets:
   `dev` (Debug) and `prod` (Release), generator Ninja.
 - **Git submodules** under `third_party/` for libs that change rarely and we want
@@ -66,6 +73,10 @@
 - Build is **green**: `cmake --preset dev` + `cmake --build --preset dev -j 8`
   succeeds; server starts on `0.0.0.0:7024`.
 - fastText linked (static, `fasttext-static_pic`). InspireFace not linked (OFF).
+- sherpa-onnx linked (static, `sherpa-onnx-c-api`) via git submodule. Uses
+  Conan's onnxruntime (no duplicate FetchContent download).
+- Services: TtsService, LlmService, SttService, VisionService — all follow the
+  same static `init()`/`shutdown()` pattern with internal try/catch.
 
 ## Dev tooling: tree-sitter + MCP
 

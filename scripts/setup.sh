@@ -170,9 +170,9 @@ setup_tts_model() {
   local DL=""
 
   if command -v curl >/dev/null 2>&1; then
-    DL="curl -sL --retry 3 -o"
+    DL="curl -L --retry 3 --progress-bar -o"
   elif command -v wget >/dev/null 2>&1; then
-    DL="wget -q --retry-connrefused --waitretry=3 -O"
+    DL="wget --retry-connrefused --waitretry=3 --show-progress -O"
   else
     warn "Neither curl nor wget found; skipping TTS model download."
     return
@@ -239,6 +239,118 @@ build_project() {
   log "Build complete. Run the server from: $OUTPUT_FOLDER/argus-backend"
 }
 
+setup_llm_model() {
+  log "Setting up LiquidAI LFM2.5-1.2B-Instruct model..."
+
+  local ROOT
+  ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+  local MODEL_DIR="$ROOT/models/llm"
+  local HF_BASE="https://huggingface.co/LiquidAI/LFM2.5-1.2B-Instruct-GGUF/resolve/main"
+  local DL=""
+
+  if command -v curl >/dev/null 2>&1; then
+    DL="curl -L --retry 3 --progress-bar -o"
+  elif command -v wget >/dev/null 2>&1; then
+    DL="wget --retry-connrefused --waitretry=3 --show-progress -O"
+  else
+    warn "Neither curl nor wget found; skipping LLM model download."
+    return
+  fi
+
+  mkdir -p "$MODEL_DIR"
+
+  local MODEL_FILE="LFM2.5-1.2B-Instruct-Q4_K_M.gguf"
+
+  if [ ! -f "$MODEL_DIR/$MODEL_FILE" ]; then
+    log "Downloading $MODEL_FILE (~731 MB)..."
+    $DL "$MODEL_DIR/$MODEL_FILE" "$HF_BASE/$MODEL_FILE" || warn "Failed: $MODEL_FILE"
+  else
+    log "LLM model already present."
+  fi
+
+  log "LLM model ready."
+}
+
+setup_vision_model() {
+  log "Setting up LiquidAI LFM2.5-VL-450M model..."
+
+  local ROOT
+  ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+  local MODEL_DIR="$ROOT/models/vision"
+  local HF_BASE="https://huggingface.co/LiquidAI/LFM2.5-VL-450M-GGUF/resolve/main"
+  local DL=""
+
+  if command -v curl >/dev/null 2>&1; then
+    DL="curl -L --retry 3 --progress-bar -o"
+  elif command -v wget >/dev/null 2>&1; then
+    DL="wget --retry-connrefused --waitretry=3 --show-progress -O"
+  else
+    warn "Neither curl nor wget found; skipping Vision model download."
+    return
+  fi
+
+  mkdir -p "$MODEL_DIR"
+
+  local MODEL_FILE="LFM2.5-VL-450M-Q4_K_M.gguf"
+
+  if [ ! -f "$MODEL_DIR/$MODEL_FILE" ]; then
+    log "Downloading $MODEL_FILE (~230 MB)..."
+    $DL "$MODEL_DIR/$MODEL_FILE" "$HF_BASE/$MODEL_FILE" || warn "Failed: $MODEL_FILE"
+  else
+    log "Vision model already present."
+  fi
+
+  log "Vision model ready."
+}
+
+setup_stt_model() {
+  log "Setting up SenseVoice STT model..."
+
+  local ROOT
+  ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+  local MODEL_DIR="$ROOT/models/stt"
+  local BASE_URL="https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models"
+  local TARBALL="sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2025-09-09.tar.bz2"
+  local DL=""
+
+  if command -v curl >/dev/null 2>&1; then
+    DL="curl -L --retry 3 --progress-bar -o"
+  elif command -v wget >/dev/null 2>&1; then
+    DL="wget --retry-connrefused --waitretry=3 --show-progress -O"
+  else
+    warn "Neither curl nor wget found; skipping STT model download."
+    return
+  fi
+
+  mkdir -p "$MODEL_DIR"
+
+  if [ ! -f "$MODEL_DIR/model.int8.onnx" ]; then
+    log "Downloading SenseVoice int8 model (~158 MB)..."
+    $DL "$MODEL_DIR/$TARBALL" "$BASE_URL/$TARBALL" || {
+      warn "Failed: $TARBALL"
+      return
+    }
+
+    if [ -f "$MODEL_DIR/$TARBALL" ]; then
+      log "Extracting $TARBALL..."
+      mkdir -p "$MODEL_DIR/tmp"
+      tar -xjf "$MODEL_DIR/$TARBALL" -C "$MODEL_DIR/tmp" --strip-components=1 \
+        2>/dev/null || warn "Extraction may be incomplete."
+      if [ -f "$MODEL_DIR/tmp/model.int8.onnx" ]; then
+        mv "$MODEL_DIR/tmp/model.int8.onnx" "$MODEL_DIR/"
+      fi
+      if [ -f "$MODEL_DIR/tmp/tokens.txt" ]; then
+        mv "$MODEL_DIR/tmp/tokens.txt" "$MODEL_DIR/"
+      fi
+      rm -rf "$MODEL_DIR/tmp" "$MODEL_DIR/$TARBALL"
+    fi
+  else
+    log "STT model already present."
+  fi
+
+  log "STT model ready (~158 MB)."
+}
+
 main() {
   install_system_deps
   ensure_conan
@@ -247,6 +359,9 @@ main() {
   need_cmd cmake
   setup_submodules
   setup_tts_model
+  setup_llm_model
+  setup_vision_model
+  setup_stt_model
   build_project
   log "All done (profile: $PROFILE). Happy hacking!"
 }

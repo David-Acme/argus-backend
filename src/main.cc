@@ -3,7 +3,10 @@
 #include <drogon/drogon.h>
 #include <execinfo.h>
 #include <shared/services/config-service/config-service.hxx>
+#include <shared/services/llm/llm-service.hxx>
+#include <shared/services/stt/stt-service.hxx>
 #include <shared/services/tts/tts-service.hxx>
+#include <shared/services/vision/vision-service.hxx>
 #include <unistd.h>
 
 using namespace drogon;
@@ -69,16 +72,26 @@ int main()
     sigaction(SIGABRT, &crashSa, nullptr);
   });
 
-  try {
-    TtsService::init();
-  }
-  catch (const std::exception& e) {
-    LOG_FATAL << "TTS initialization failed: " << e.what();
+  TtsService::init();
+  LlmService::init();
+  SttService::init();
+  VisionService::init();
+
+  if (!TtsService::isLoaded() || !LlmService::isLoaded() ||
+      !SttService::isLoaded() || !VisionService::isLoaded()) {
+    LOG_FATAL << "Service init failures:"
+              << " TTS=" << TtsService::isLoaded()
+              << " LLM=" << LlmService::isLoaded()
+              << " STT=" << SttService::isLoaded()
+              << " Vision=" << VisionService::isLoaded();
     return 1;
   }
 
   LOG_INFO << "Argus backend listening on 0.0.0.0:7024";
   app().run();
 
+  VisionService::shutdown();
+  SttService::shutdown();
+  LlmService::shutdown();
   TtsService::shutdown();
 }

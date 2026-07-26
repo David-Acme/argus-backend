@@ -20,7 +20,8 @@ drogon::Task<void> DbService::runScriptFile(const std::string& path)
   try {
     co_await client->execSqlCoro(sql);
     LOG_INFO << "Applied SQLite script: " << path;
-  } catch (const std::exception& e) {
+  }
+  catch (const std::exception& e) {
     LOG_WARN << "SQLite script error (" << path << "): " << e.what();
   }
 }

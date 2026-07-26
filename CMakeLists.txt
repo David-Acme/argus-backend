@@ -47,6 +47,7 @@ add_executable(${PROJECT_NAME}
 target_include_directories(${PROJECT_NAME}
     PRIVATE
         ${SRC_ROOT}
+        ${CMAKE_SOURCE_DIR}/third_party/sherpa-onnx
 )
 
 target_sources(${PROJECT_NAME}
@@ -73,8 +74,24 @@ target_link_libraries(${PROJECT_NAME}
         ${CONAN_LIBS}
 )
 
+# mtmd (multimodal vision) is shipped in llama-cpp's package but
+# isn't exposed as a CMake component; link it explicitly.
+if(llama-cpp_LIB_DIRS_DEBUG)
+  target_link_libraries(${PROJECT_NAME} PRIVATE
+      "${llama-cpp_LIB_DIRS_DEBUG}/libmtmd.a")
+elseif(llama-cpp_LIB_DIRS_RELEASE)
+  target_link_libraries(${PROJECT_NAME} PRIVATE
+      "${llama-cpp_LIB_DIRS_RELEASE}/libmtmd.a")
+else()
+  message(WARNING "mtmd not linked: llama-cpp lib dirs unknown")
+endif()
+
 if(ARGUS_BUILD_INSPIREFACE AND TARGET InspireFace)
   target_link_libraries(${PROJECT_NAME} PRIVATE InspireFace)
+endif()
+
+if(ARGUS_SHERPA_ONNX_TARGET AND TARGET ${ARGUS_SHERPA_ONNX_TARGET})
+  target_link_libraries(${PROJECT_NAME} PRIVATE ${ARGUS_SHERPA_ONNX_TARGET})
 endif()
 
 set_target_properties(${PROJECT_NAME} PROPERTIES

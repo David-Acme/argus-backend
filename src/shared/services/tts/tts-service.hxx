@@ -4,17 +4,22 @@
 
 #include <functional>
 #include <memory>
+#include <onnxruntime_cxx_api.h>
 #include <string>
 #include <unordered_map>
 #include <vector>
-
-#include <onnxruntime_cxx_api.h>
 
 class TtsEngine;
 class UnicodeProcessor;
 class Style;
 
-enum class TtsQuality { Auto, Low, Medium, High };
+enum class TtsQuality
+{
+  Auto,
+  Low,
+  Medium,
+  High
+};
 
 struct TtsRequest
 {
@@ -36,10 +41,10 @@ public:
 
   static void init();
   static void shutdown();
+  static bool isLoaded();
 
   static std::vector<float> synthesize(const TtsRequest& req);
-  static void synthesizeStream(const TtsRequest& req,
-                               TtsChunkCallback onChunk);
+  static void synthesizeStream(const TtsRequest& req, TtsChunkCallback onChunk);
   static void loadVoice(const std::string& voiceId);
 
   static void setDefaultQuality(TtsQuality q);
@@ -48,8 +53,7 @@ public:
   static int sampleRate();
   static std::vector<std::string> availableVoices();
 
-  static void writeWav(const std::string& path,
-                       const std::vector<float>& pcm,
+  static void writeWav(const std::string& path, const std::vector<float>& pcm,
                        int sampleRate = 44100);
 
   static const std::vector<std::string>& supportedLangs();
@@ -64,4 +68,5 @@ private:
   static std::unordered_map<std::string, std::unique_ptr<Style>> voiceCache_;
   static Ort::Env env_;
   static TtsQuality defaultQuality_;
+  static bool loaded_;
 };
