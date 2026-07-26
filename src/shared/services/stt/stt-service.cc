@@ -30,8 +30,7 @@ void SttService::init()
 
     auto* raw = SherpaOnnxCreateOfflineRecognizer(&config);
     if (!raw) {
-      throw std::runtime_error("failed to create recognizer from: " +
-                               modelDir);
+      throw std::runtime_error("failed to create recognizer from: " + modelDir);
     }
     recognizer_.reset(raw);
 

@@ -2,7 +2,6 @@
 drogon/1.9.13
 jwt-cpp/0.7.2
 nlohmann_json/3.11.3
-libsodium/1.0.22
 llama-cpp/b6565
 opencv/4.13.0
 onnxruntime/1.24.4

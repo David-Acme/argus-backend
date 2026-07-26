@@ -89,8 +89,7 @@ bool LlmService::isLoaded()
   return loaded_;
 }
 
-std::string LlmService::buildPrompt(
-    const std::vector<ChatMessage>& messages)
+std::string LlmService::buildPrompt(const std::vector<ChatMessage>& messages)
 {
   std::string prompt;
 
@@ -132,8 +131,7 @@ std::string LlmService::buildPrompt(
 
 void LlmService::generateStream(const std::string& formattedPrompt,
                                 float temperature, int32_t maxTokens,
-                                bool resetContext,
-                                TokenCallback onToken)
+                                bool resetContext, TokenCallback onToken)
 {
   auto* ctx = context_.get();
   auto* model = model_.get();
@@ -147,14 +145,12 @@ void LlmService::generateStream(const std::string& formattedPrompt,
   }
 
   auto promptLen = static_cast<int32_t>(formattedPrompt.size());
-  std::vector<llama_token> promptTokens(
-      static_cast<size_t>(promptLen) * 2);
+  std::vector<llama_token> promptTokens(static_cast<size_t>(promptLen) * 2);
 
   int nTokens =
       llama_tokenize(vocab, formattedPrompt.c_str(), promptLen,
                      promptTokens.data(),
-                     static_cast<int32_t>(promptTokens.size()),
-                     true, true);
+                     static_cast<int32_t>(promptTokens.size()), true, true);
 
   if (nTokens < 0) {
     if (nTokens == INT32_MIN) {
@@ -165,8 +161,8 @@ void LlmService::generateStream(const std::string& formattedPrompt,
     auto needed = static_cast<size_t>(-nTokens);
     promptTokens.resize(needed);
     nTokens = llama_tokenize(vocab, formattedPrompt.c_str(), promptLen,
-                             promptTokens.data(),
-                             static_cast<int32_t>(needed), true, true);
+                             promptTokens.data(), static_cast<int32_t>(needed),
+                             true, true);
   }
 
   if (nTokens < 0) {
@@ -214,8 +210,8 @@ void LlmService::generateStream(const std::string& formattedPrompt,
   llama_sampler_chain_add(smpl, llama_sampler_init_temp(temperature));
   llama_sampler_chain_add(smpl, llama_sampler_init_top_k(40));
   llama_sampler_chain_add(smpl, llama_sampler_init_top_p(0.9f, 1));
-  llama_sampler_chain_add(smpl, llama_sampler_init_penalties(
-      64, 1.1f, 0.0f, 0.0f));
+  llama_sampler_chain_add(smpl,
+                          llama_sampler_init_penalties(64, 1.1f, 0.0f, 0.0f));
   llama_sampler_chain_add(smpl, llama_sampler_init_dist(42));
 
   llama_token eosToken = llama_vocab_eos(vocab);
@@ -269,13 +265,12 @@ std::string LlmService::generate(const std::string& formattedPrompt,
 std::string LlmService::chat(const ChatRequest& req)
 {
   std::string prompt = buildPrompt(req.messages);
-  return generate(prompt, req.temperature, req.maxTokens,
-                  req.resetContext);
+  return generate(prompt, req.temperature, req.maxTokens, req.resetContext);
 }
 
 void LlmService::chatStream(const ChatRequest& req, TokenCallback onToken)
 {
   std::string prompt = buildPrompt(req.messages);
-  generateStream(prompt, req.temperature, req.maxTokens,
-                 req.resetContext, std::move(onToken));
+  generateStream(prompt, req.temperature, req.maxTokens, req.resetContext,
+                 std::move(onToken));
 }

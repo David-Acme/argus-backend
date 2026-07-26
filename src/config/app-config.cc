@@ -22,9 +22,24 @@ void AppConfig::handleOptions(
   callback(resp);
 }
 
-drogon::HttpResponsePtr AppConfig::get404Response()
+drogon::HttpResponsePtr AppConfig::get400Response(const std::string& message)
 {
-  return ApiResponse::error(404, "NOT_FOUND", "Path not found");
+  return ApiResponse::error(400, "BAD_REQUEST", message);
+}
+
+drogon::HttpResponsePtr AppConfig::get401Response(const std::string& message)
+{
+  return ApiResponse::error(401, "UNAUTHORIZED", message);
+}
+
+drogon::HttpResponsePtr AppConfig::get403Response(const std::string& message)
+{
+  return ApiResponse::error(403, "FORBIDDEN", message);
+}
+
+drogon::HttpResponsePtr AppConfig::get404Response(const std::string& message)
+{
+  return ApiResponse::error(404, "NOT_FOUND", message);
 }
 
 void AppConfig::handleException(

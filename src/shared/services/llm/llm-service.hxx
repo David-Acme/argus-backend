@@ -46,15 +46,15 @@ private:
                               bool resetContext);
   static void generateStream(const std::string& formattedPrompt,
                              float temperature, int32_t maxTokens,
-                             bool resetContext,
-                             TokenCallback onToken);
+                             bool resetContext, TokenCallback onToken);
 
   static std::unique_ptr<llama_model, void (*)(llama_model*)> model_;
   static std::unique_ptr<llama_context, void (*)(llama_context*)> context_;
   static int64_t contextSize_;
   static bool loaded_;
 
-  static constexpr const char* SYSTEM_PROMPT = R"SYSPROMPT(Eres Argus, un asistente de seguridad inteligente para un sistema de vigilancia local. Tus funciones son:
+  static constexpr const char* SYSTEM_PROMPT =
+      R"SYSPROMPT(Eres Argus, un asistente de seguridad inteligente para un sistema de vigilancia local. Tus funciones son:
 1. Analizar eventos de seguridad (detecciones de movimiento, personas, vehículos, sonidos anómalos).
 2. Responder preguntas sobre el estado del sistema: cámaras activas, eventos recientes, personas reconocidas.
 3. Ayudar a configurar reglas de seguridad: zonas de exclusión, horarios de vigilancia, sensibilidad de detección.

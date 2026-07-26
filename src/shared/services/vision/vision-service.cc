@@ -23,8 +23,7 @@ void VisionService::init()
   try {
     llama_log_set(
         [](enum ggml_log_level level, const char* text, void*) {
-          if (level == GGML_LOG_LEVEL_WARN ||
-              level == GGML_LOG_LEVEL_ERROR) {
+          if (level == GGML_LOG_LEVEL_WARN || level == GGML_LOG_LEVEL_ERROR) {
             fputs(text, stderr);
           }
         },
@@ -80,7 +79,7 @@ void VisionService::init()
           mtmd_init_from_file(modelPath.c_str(), model_.get(), mtmdParams);
       if (!rawMtmd) {
         LOG_WARN << "Vision: mtmd init failed with model file, "
-                     "vision will be text-only";
+                    "vision will be text-only";
         hasEncoder_ = false;
       }
       else {
@@ -92,8 +91,8 @@ void VisionService::init()
     loaded_ = true;
 
     LOG_INFO << "Vision loaded: " << modelPath << " (ctx=" << contextSize
-             << ", threads=" << nThreads << ", encoder="
-             << (hasEncoder_ ? "yes" : "no") << ")";
+             << ", threads=" << nThreads
+             << ", encoder=" << (hasEncoder_ ? "yes" : "no") << ")";
   }
   catch (const std::exception& e) {
     LOG_FATAL << "Vision init failed: " << e.what();
@@ -117,8 +116,7 @@ bool VisionService::isLoaded()
   return loaded_;
 }
 
-std::string VisionService::buildVisionPrompt(
-    const std::string& userPrompt)
+std::string VisionService::buildVisionPrompt(const std::string& userPrompt)
 {
   std::string prompt;
   prompt += "<|im_start|>system\n";
@@ -169,8 +167,8 @@ std::string VisionService::describe(const VisionRequest& req)
     mtmd::input_chunks chunks(mtmd_input_chunks_init());
     mtmd_input_text text{fullPrompt.c_str(), true, true};
 
-    int32_t tokRes = mtmd_tokenize(mctx, chunks.ptr.get(), &text,
-                                   bmPtrs.data(), bmPtrs.size());
+    int32_t tokRes = mtmd_tokenize(mctx, chunks.ptr.get(), &text, bmPtrs.data(),
+                                   bmPtrs.size());
     if (tokRes != 0) {
       LOG_WARN << "Vision: tokenization failed (code=" << tokRes << ")";
       return "";
@@ -192,8 +190,7 @@ std::string VisionService::describe(const VisionRequest& req)
         auto* tokens = mtmd_input_chunk_get_tokens_text(chunk, &nTokenOut);
         std::vector<llama_token> tokenVec(tokens, tokens + nTokenOut);
 
-        auto batch = llama_batch_init(static_cast<int32_t>(nTokenOut),
-                                      0, 1);
+        auto batch = llama_batch_init(static_cast<int32_t>(nTokenOut), 0, 1);
         for (int32_t j = 0; j < static_cast<int32_t>(nTokenOut); ++j) {
           batch.token[j] = tokenVec[j];
           batch.pos[j] = currentPos++;
@@ -211,15 +208,13 @@ std::string VisionService::describe(const VisionRequest& req)
         auto* tokens = mtmd_input_chunk_get_tokens_text(chunk, &nTokenOut);
         std::vector<llama_token> tokenVec(tokens, tokens + nTokenOut);
 
-        auto batch = llama_batch_init(static_cast<int32_t>(nTokenOut),
-                                      0, 1);
+        auto batch = llama_batch_init(static_cast<int32_t>(nTokenOut), 0, 1);
         for (int32_t j = 0; j < static_cast<int32_t>(nTokenOut); ++j) {
           batch.token[j] = tokenVec[j];
           batch.pos[j] = currentPos++;
           batch.n_seq_id[j] = 1;
           batch.seq_id[j][0] = 0;
-          batch.logits[j] =
-              (j == static_cast<int32_t>(nTokenOut) - 1) ? 1 : 0;
+          batch.logits[j] = (j == static_cast<int32_t>(nTokenOut) - 1) ? 1 : 0;
         }
         batch.n_tokens = static_cast<int32_t>(nTokenOut);
 
@@ -230,14 +225,12 @@ std::string VisionService::describe(const VisionRequest& req)
   }
   else {
     auto promptLen = static_cast<int32_t>(fullPrompt.size());
-    std::vector<llama_token> promptTokens(
-        static_cast<size_t>(promptLen) * 2);
+    std::vector<llama_token> promptTokens(static_cast<size_t>(promptLen) * 2);
 
     int nTokens =
         llama_tokenize(vocab, fullPrompt.c_str(), promptLen,
                        promptTokens.data(),
-                       static_cast<int32_t>(promptTokens.size()),
-                       true, true);
+                       static_cast<int32_t>(promptTokens.size()), true, true);
 
     if (nTokens < 0) {
       if (nTokens == INT32_MIN) {
@@ -272,8 +265,8 @@ std::string VisionService::describe(const VisionRequest& req)
   llama_sampler_chain_add(smpl, llama_sampler_init_temp(req.temperature));
   llama_sampler_chain_add(smpl, llama_sampler_init_top_k(40));
   llama_sampler_chain_add(smpl, llama_sampler_init_top_p(0.9f, 1));
-  llama_sampler_chain_add(smpl, llama_sampler_init_penalties(
-      64, 1.1f, 0.0f, 0.0f));
+  llama_sampler_chain_add(smpl,
+                          llama_sampler_init_penalties(64, 1.1f, 0.0f, 0.0f));
   llama_sampler_chain_add(smpl, llama_sampler_init_dist(42));
 
   std::string result;

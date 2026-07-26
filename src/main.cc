@@ -43,8 +43,8 @@ int main(int argc, char* argv[])
   app().loadConfigJson(ConfigService::drogonConfig());
 
   app().registerPreHandlingAdvice([](const HttpRequestPtr& req,
-                                      AdviceCallback&& cb,
-                                      AdviceChainCallback&&) {
+                                     AdviceCallback&& cb,
+                                     AdviceChainCallback&&) {
     if (req->method() == Options) {
       AppConfig::handleOptions(req, std::move(cb));
       return;

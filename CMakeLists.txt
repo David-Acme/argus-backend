@@ -11,7 +11,7 @@ set(CMAKE_PREFIX_PATH ${CMAKE_BINARY_DIR} ${CMAKE_PREFIX_PATH})
 find_package(Drogon CONFIG REQUIRED)
 find_package(jwt-cpp REQUIRED)
 find_package(nlohmann_json REQUIRED)
-find_package(libsodium REQUIRED)
+
 find_package(llama-cpp REQUIRED)
 find_package(OpenCV CONFIG REQUIRED)
 find_package(Eigen3 REQUIRED)
@@ -70,7 +70,7 @@ target_link_libraries(${PROJECT_NAME}
         Drogon::Drogon
         jwt-cpp::jwt-cpp
         nlohmann_json::nlohmann_json
-        libsodium::libsodium
+
         llama-cpp::llama-cpp
         opencv::opencv
         Eigen3::Eigen

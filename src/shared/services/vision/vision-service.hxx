@@ -42,7 +42,8 @@ private:
   static bool loaded_;
   static bool hasEncoder_;
 
-  static constexpr const char* SYSTEM_PROMPT = R"SYSPROMPT(Eres Argus Vision, un sistema de análisis visual para vigilancia de seguridad.
+  static constexpr const char* SYSTEM_PROMPT =
+      R"SYSPROMPT(Eres Argus Vision, un sistema de análisis visual para vigilancia de seguridad.
 Tu función es analizar imágenes de cámaras de seguridad y describir:
 1. Personas detectadas (cantidad, ubicación, características visibles, actividad).
 2. Vehículos (tipo, color, dirección, matrícula si es visible).

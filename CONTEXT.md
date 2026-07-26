@@ -77,6 +77,11 @@
   Conan's onnxruntime (no duplicate FetchContent download).
 - Services: TtsService, LlmService, SttService, VisionService — all follow the
   same static `init()`/`shutdown()` pattern with internal try/catch.
+- **Filters**: `DeviceFilter` → `ValidJsonFilter` → `JwtFilter` → `RoleFilter`
+  chain operational. JWT uses HS256, refresh tokens stored in `refresh_token`
+  table with device binding (`device_hash`). Roles: owner/resident/guard/guest.
+- **libsodium removed** — authentication will be face-based via InspireFace
+  (no password hashing needed).
 
 ## Dev tooling: tree-sitter + MCP
 
@@ -152,6 +157,104 @@ RustFS for blobs. Profiles: light / balanced / advanced.
 - Scaffold `vision-core` (separate lib or `src/vision-core/` — TBD when dev starts).
 - Decide YOLO model export format behind `IVisionProvider` (ONNX / TorchScript / TFLite).
 - RustFS integration for snapshots/video/audio blobs.
+
+## Coding conventions & architecture (ALWAYS follow)
+
+### Enums for constrained strings
+
+All DB columns with CHECK constraints (e.g. `role`, `severity`, `record_mode`,
+`zone_type`, `status`, `action`) MUST use a C++ `enum class` defined in
+`src/shared/enums.hxx`. Each enum has `toString()` / `fromString()` helpers.
+Never use raw `std::string` for these fields in schemas, repositories, or
+filters.
+
+**Available enums:**
+- `UserRole` — owner, resident, guard, guest
+- `EventSeverity` — info, warning, critical
+- `CameraRecordMode` — events, continuous
+- `ZoneType` — monitor, alert, exclude
+- `ReminderDetailStatus` — pending, in_progress, done, blocked
+- `UserAction` — create, update, delete
+
+**Usage in schemas:** Use the enum type directly. `Row` constructor calls
+`fromString()`. `toJson()` calls `toString()`.
+
+### Parameter structs (functions with 3+ params)
+
+ANY function with 3 or more parameters MUST use a struct defined in the
+corresponding `*-query.hxx` file (at the bottom, after the query namespace).
+This prevents breaking changes when adding new fields.
+
+**Naming convention:** `{Entity}CreateInput`, `{Entity}UpdateInput`.
+
+**Location:** Structs live in the query file (e.g. `camera-query.hxx`),
+at file scope, after the closing `}` of the query namespace.
+
+**Example:**
+```cpp
+// camera-query.hxx
+namespace camera_query { /* SQL strings */ }
+
+struct CameraCreateInput {
+  std::string name;
+  CameraRecordMode recordMode{CameraRecordMode::Events};
+  std::optional<int64_t> retentionDays;
+};
+
+// camera-repository.hxx
+drogon::Task<CameraSchema> create(const CameraCreateInput& input) const;
+```
+
+**JSON columns:** Use `Json::Value` for dynamic/metadata JSON. If the structure
+is known, define a separate schema/struct (like lynk's `RolePermissionSchema`).
+
+### Repository pattern
+
+```
+src/shared/repositories/{entity}/
+  {entity}-query.hxx      — SQL strings + param structs
+  {entity}-repository.hxx — class declaration
+  {entity}-repository.cc  — implementations
+```
+
+- Always use `using namespace {entity}_query;` in `.cc` files.
+- Use `co_await` with `DbService::client()` for DB operations.
+- Re-fetch after INSERT/UPDATE via `findById()` to get DB-generated values.
+- Soft-delete via `UPDATE ... SET deleted_at = strftime('%s', 'now')`.
+- Syncable repos implement `find/findDeleted/findLast/findLastDeleted` with
+  timestamp-range queries.
+
+### Filter chain order
+
+```
+DeviceFilter → ValidJsonFilter → JwtFilter → RoleFilter
+```
+
+- **DeviceFilter**: Extracts device fingerprint (UA+IP) → injects `DeviceContext`
+  into attributes keyed by `AppConfig::DEVICE_CTX_KEY`.
+- **JwtFilter**: Extracts token (Header/Bearer, query param, cookie), verifies
+  HS256 JWT via `JwtService::verifyAccess()`, validates `refresh_token` in DB
+  (is_valid=1, is_used=0, device_hash match), injects `JwtContext` into
+  attributes keyed by `AppConfig::JWT_CTX_KEY`.
+- **RoleFilter**: Reads `JwtContext.role` (UserRole enum), checks against
+  declarative `kRoleAccess` map in `role-filter.cc`. Owner = full access.
+  No imperative if/else chains — just add entries to the map.
+
+### Centralized response/attribute keys
+
+All response helpers and attribute keys live in `src/config/app-config.{hxx,cc}`:
+
+| Symbol | Purpose |
+|--------|---------|
+| `AppConfig::JWT_CTX_KEY` | `"jwt_ctx"` attribute key |
+| `AppConfig::DEVICE_CTX_KEY` | `"device_ctx"` attribute key |
+| `AppConfig::get401Response(msg?)` | Unauthorized response |
+| `AppConfig::get403Response(msg?)` | Forbidden response |
+| `AppConfig::get404Response(msg?)` | Not found response |
+
+All three response methods accept an optional `message` parameter (defaults to
+a generic message). Never call `ApiResponse::error()` directly from filters
+or controllers — always use `AppConfig`.
 
 ## Database schema decisions
 

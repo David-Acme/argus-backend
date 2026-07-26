@@ -245,13 +245,18 @@ TtsEngine::Result TtsEngine::infer(const std::vector<std::string>& textList,
     std::vector<Ort::Value> vectorEstInputs;
     vectorEstInputs.reserve(7);
     vectorEstInputs.push_back(std::move(noisyLatentTensor));
-    vectorEstInputs.push_back(Ort::Value::CreateTensor<float>(
-        memoryInfo_, const_cast<float*>(textEmbVec.data()),
-        textEmbVec.size(), textEmbShape.data(), textEmbShape.size()));
-    vectorEstInputs.push_back(Ort::Value::CreateTensor<float>(
-        memoryInfo_, const_cast<float*>(style.ttlData().data()),
-        style.ttlData().size(), style.ttlShape().data(),
-        style.ttlShape().size()));
+    vectorEstInputs.push_back(
+        Ort::Value::CreateTensor<float>(memoryInfo_,
+                                        const_cast<float*>(textEmbVec.data()),
+                                        textEmbVec.size(), textEmbShape.data(),
+                                        textEmbShape.size()));
+    vectorEstInputs.push_back(
+        Ort::Value::CreateTensor<float>(memoryInfo_,
+                                        const_cast<float*>(
+                                            style.ttlData().data()),
+                                        style.ttlData().size(),
+                                        style.ttlShape().data(),
+                                        style.ttlShape().size()));
     vectorEstInputs.push_back(std::move(textMaskTensorIter));
     vectorEstInputs.push_back(std::move(latentMaskTensor));
     vectorEstInputs.push_back(std::move(totalStepTensorIter));
@@ -269,9 +274,8 @@ TtsEngine::Result TtsEngine::infer(const std::vector<std::string>& textList,
 
   // --- Vocoder ---
   Ort::Value latentTensor =
-      Ort::Value::CreateTensor<float>(memoryInfo_, xtFlat.data(),
-                                      xtFlat.size(), latentShape.data(),
-                                      latentShape.size());
+      Ort::Value::CreateTensor<float>(memoryInfo_, xtFlat.data(), xtFlat.size(),
+                                      latentShape.data(), latentShape.size());
   const char* vocoderInputNames[] = {"latent"};
   const char* vocoderOutputNames[] = {"wav_tts"};
   std::vector<Ort::Value> vocoderInputs;
