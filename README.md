@@ -1,107 +1,157 @@
 # Argus Backend
 
-**Argus** is a 100% local, modular and decoupled artificial-intelligence platform
-for the home. Its starting point is an intelligent guard (computer-vision based
-security), but it is designed to grow into a full local virtual assistant.
-
-> Everything is processed locally. Cloud is only used for connectivity when the
-> user is away from the LAN; it never processes data.
+**Argus** is a 100% local, modular AI platform for the home — intelligent security
+guard + virtual assistant. Everything runs on-device: face recognition, speech-to-text,
+text-to-speech, LLM chat, and vision understanding. No cloud processing, ever.
 
 - **Language:** C++20
-- **HTTP / WebSocket framework:** [Drogon](https://github.com/drogonframework/drogon)
-- **Database:** SQLite (via Drogon's native async `DbClient`, no ORM, manual SQL)
-- **Package manager:** Conan 2 (`conanfile.txt` + `CMakePresets.json`)
+- **Framework:** [Drogon](https://github.com/drogonframework/drogon) HTTP/WebSocket
+- **Database:** SQLite (async `DbClient`, no ORM)
+- **Package manager:** Conan 2 + CMake presets
 
 ## Philosophy
 
-- **Local first, private by default.** No video, images, audio or conversations
-  leave the user's hardware unencrypted.
-- **Rules before LLM.** Every event first goes through the rule engine. The LLM
-  is invoked only when rules cannot resolve the situation. This keeps latency low,
-  resource usage minimal and the system stable.
-- **Provider abstraction.** Every capability is behind an interface
-  (`ILLMProvider`, `IVisionProvider`, `IFaceProvider`, `ISTTProvider`,
-  `ITTSProvider`, ...), so any model can be swapped without touching the rest.
+- **Local first, private by default.** No video, audio, or conversations leave your hardware.
+- **Rules before LLM.** Events hit the rule engine first; the LLM is only invoked when rules
+  can't resolve the situation. This keeps latency low and resource usage minimal.
+- **Modular.** Every capability lives behind a clean interface so models can be swapped
+  without touching business logic.
 
-## Architecture
+## Features (implemented)
 
-The system is a pipeline of decoupled modules connected by interfaces:
+| Feature | Engine | Latency |
+|---------|--------|---------|
+| **Face login** (multipart) | ncnn RetinaFace + MobileFaceNet + HNSW | ~220ms |
+| **JWT auth** + refresh rotation | HS256, dual secrets, device-bound | <1ms |
+| **LLM chat** | llama.cpp (LFM2.5-1.2B-Instruct, 4-bit) | streaming |
+| **Vision analysis** | llama.cpp (LFM2.5-VL-450M) | ~5s/image |
+| **Speech-to-text** | sherpa-onnx (Whisper tiny, Spanish) | streaming |
+| **Text-to-speech** | Supertonic 3 (ONNX, 10 voices) | streaming |
+| **Validation DSL** | 31 built-in validation rules | compile-time |
 
-```text
-Camera
-  ↓
-Vision      (capture, preprocess, YOLO detection)
-  ↓
-Tracking     (entities, not just boxes: id, history, velocity, zone, behavior)
-  ↓
-Behavior     (geometry-based: loitering, approaching, following, ...)
-  ↓
-Rules        (condition → action, no AI needed)
-  ↓
-Context      (builds a concise textual summary for the model)
-  ↓
-AI           (LLM orchestrator + tool calling)
-  ↓
-Automation   (lights, doors, IoT, automations — independent of the LLM)
+## Quick start
+
+```bash
+./scripts/setup.sh prod     # install deps + build release
+./build/prod/argus-backend  # start server on :7024
 ```
 
-The central abstraction is the **Entity**: a live object with state (track id,
-face id, class, first/last seen, zone, velocity, direction, history, current
-behavior, metadata). The whole backend works with `Entity`, never with raw
-detections, so the detector/tracker can be replaced transparently.
+```bash
+# Login with your face (multipart/form-data)
+curl -X POST http://localhost:7024/auth/login \
+  -F "image=@your-face.jpg"
 
-## Module map
+# Use the token
+curl http://localhost:7024/auth/status \
+  -H "Authorization: Bearer <access_token>"
+```
 
-| Module            | Responsibility                                              | Key libs                          |
-|-------------------|-------------------------------------------------------------|-----------------------------------|
-| Vision            | Camera capture, preprocessing, detection                    | OpenCV, YOLO                      |
-| Tracking          | Maintain `Entity` state across frames                       | Eigen (geometry/Kalman)           |
-| Face Recognition  | Crop → embedding → match                                    | InsightFace (submodule)           |
-| Behavior Analyzer | Geometry-based behavior classification                      | OpenCV, Eigen                     |
-| Rule Engine       | Event → condition → action                                  | (own IP)                          |
-| Context Builder   | Summarise state into LLM-ready text                         | nlohmann_json                     |
-| LLM               | Conversation, reasoning, tool calling                       | llama.cpp                         |
-| Automation Engine | Control devices / automations                               | (own IP)                          |
-| Memory            | SQLite (users, events, config, history, embeddings)         | Drogon `DbClient`                 |
-| Blob storage      | Images / video / audio                                      | RustFS (planned)                  |
+## Auth flow
+
+```
+POST /auth/login (multipart image)
+  → FaceService.identify() → FaceDB.search() → person → user
+  → JWT (sub=userId, iss=argus, no role) + refresh token rotation
+  → 200 { accessToken, refreshToken, userId, name, role, personId }
+```
+
+- **Tokens**: HS256, dual secrets. Access = 15min, Refresh = 30 days.
+- **Replay protection**: Refresh tokens are single-use (`is_used=1` after rotation).
+- **Device binding**: Tokens bound to User-Agent + IP hash.
+- **Logout**: Invalidates all refresh tokens for the user.
+- **Filters**: `DeviceFilter → ValidJsonFilter → JwtFilter → RoleFilter`
+
+## Validation DSL
+
+```cpp
+START_VALIDATION(MyDto, dto)
+IS_NOT_EMPTY(name)
+IS_EMAIL(email)
+IS_IN(role, "admin", "user", "guest")
+MIN_LENGTH(password, 8)
+BETWEEN(age, 18, 120)
+END_VALIDATION()
+```
+
+31 rules available: strings (email, uuid, url, hex, slug, base64, alpha, alnum),
+numeric (positive, non-negative, min, max, between), arrays (not-empty, min/max elements),
+cross-field (equals), timestamps, booleans, custom lambdas. See `src/shared/validation/`.
 
 ## Tech stack
 
-Resolved via Conan 2 (`conanfile.txt`):
+### Conan packages
+- `drogon/1.9.13` — HTTP/WebSocket + logging
+- `jwt-cpp/0.7.2` + `nlohmann_json/3.11.3` — JWT auth
+- `llama-cpp/b6565` — LLM + Vision inference
+- `opencv/4.13.0` (headless) — face image decoding
+- `onnxruntime/1.24.4` — STT inference (sherpa-onnx)
+- `tomlplusplus/3.3.0` — config
+- `eigen/5.0.1` — linear algebra
 
-- `drogon/1.9.13` — HTTP/WebSocket server (+ built-in logging, used instead of spdlog)
-- `jwt-cpp/0.7.2` + `nlohmann_json/3.11.3` — auth / JSON
-- `libsodium/1.0.22` — crypto
-- `llama-cpp/b6565` — local LLM inference
-- `opencv/4.13.0` — computer vision (built **headless**: `with_protobuf`,
-  `with_eigen`, `with_ffmpeg`, `with_wayland`, `with_gtk`, `with_vulkan` off)
-- `eigen/3.4.0` — linear algebra (tracker / Kalman)
+### Third-party (git submodules)
+- **ncnn** — high-performance neural net inference (face detection + recognition), Vulkan GPU
+- **hnswlib** — approximate nearest neighbor search (face embedding index)
+- **sherpa-onnx** — streaming speech-to-text (Whisper tiny via ONNX Runtime)
+- **fastText** — text classification / intent detection
 
-Bundled as git submodules under `third_party/` (built via `add_subdirectory`):
+## Project structure
 
-- `fastText` — text classification / intent detection (target `fasttext-static_pic`)
-- `inspireface` (HyperInspire/InspireFace) — face recognition SDK, **opt-in** via
-  `ARGUS_BUILD_INSPIREFACE=ON` (needs MNN/InspireCV cloned manually + model packs)
+```
+src/
+├── config/              Centralized responses, CORS, exception handler
+├── feature/api/auth/    Auth controllers, services, DTOs
+├── filter/
+│   ├── device/          Device fingerprint (UA + IP hash)
+│   ├── jwt/             JWT verification + DB validation
+│   ├── role/            Role-based access control (declarative map)
+│   └── valid-json/      JSON body validation middleware
+├── shared/
+│   ├── enums.hxx        All enum types + toString/fromString
+│   ├── contracts/       Syncable, SyncFilter base classes
+│   ├── exceptions/      ResponseException
+│   ├── repositories/    Data access layer (raw SQL, no ORM)
+│   ├── schemas/         DB row → C++ struct mapping
+│   ├── services/
+│   │   ├── face/        Face detection (ncnn) + FaceDB (HNSW index)
+│   │   ├── jwt/         JWT sign/verify (HS256, instance class)
+│   │   ├── llm/         LLM inference (llama.cpp)
+│   │   ├── vision/      Vision model inference (llama.cpp)
+│   │   ├── stt/         Speech-to-text (whisper, sherpa-onnx)
+│   │   ├── tts/         Text-to-speech (Supertonic 3, ONNX)
+│   │   ├── sqlite/      DbClient access
+│   │   └── config-service/  TOML config reader
+│   ├── validation/      Validation DSL (rules + macros + validator)
+│   └── wrapper/api-response/  Standardized JSON response format
+└── main.cc
+```
 
 ## Build
 
 ```bash
-./scripts/setup-dev.sh            # dev profile, full build
-./scripts/setup-prod.sh           # prod profile, full build
-SKIP_BUILD=1 ./scripts/setup-dev.sh   # install deps only
+# Development (Debug)
+cmake --preset dev
+cmake --build --preset dev -j 8
+
+# Production (Release)
+cmake --preset prod
+cmake --build --preset prod -j 8
+
+# Full setup (installs deps + builds)
+./scripts/setup.sh dev
+./scripts/setup.sh prod
 ```
 
-The server listens on `0.0.0.0:7024`. Database file: `data/argus.db`
-(outside `build/`, gitignored).
+Server listens on `0.0.0.0:7024`. Database at `database/argus.db`.
+Models under `models/{face,llm,vision,stt,tts}/`.
 
-### Enabling InspireFace
+## Conventions
 
-```bash
-cmake -S . -B build/dev -DARGUS_BUILD_INSPIREFACE=ON
-# then clone MNN + InspireCV into third_party/inspireface/3rdparty/ and download models
-```
-
-## License
-
-See [LICENSE](./LICENSE). Note: InsightFace/InspireFace **model packs** are
-research/non-commercial only; commercial use requires a license from insightface.ai.
+- **C++20**, `.hxx` / `.cc` extensions
+- **Enums** for all constrained DB columns (no raw strings)
+- **DTOs** self-validate using DSL macros
+- **Controllers** ultra-thin (4-8 lines per endpoint)
+- **Dependency injection** — all services/repos as private `_` suffix members
+- **No ORM** — raw SQL via `DbService::client()->execSqlCoro()`
+- **No spdlog** — built-in Drogon logging
+- **No static service methods** — instance classes with default constructors
+- **Smart pointers only** — no raw owning pointers
