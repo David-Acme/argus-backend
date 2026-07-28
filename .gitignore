@@ -31,6 +31,8 @@ Thumbs.db
 core
 argus.db
 database/*.db
+database/*.db-wal
+database/*.db-shm
 
 # TTS models (downloaded separately)
 models/

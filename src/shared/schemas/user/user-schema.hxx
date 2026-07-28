@@ -11,7 +11,6 @@
 struct UserSchema
 {
   int64_t id{0};
-  int64_t featureHubId{0};
   std::string name;
   std::string lastName;
   UserRole role{UserRole::Guest};

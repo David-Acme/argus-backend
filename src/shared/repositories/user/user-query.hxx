@@ -12,6 +12,11 @@ namespace user_query
 inline constexpr std::string_view FIND_BY_ID =
     "SELECT * FROM user WHERE id = ? AND deleted_at IS NULL";
 
+inline constexpr std::string_view FIND_ALL =
+    "SELECT * FROM user "
+    "WHERE deleted_at IS NULL "
+    "ORDER BY created_at ASC LIMIT 200";
+
 inline constexpr std::string_view FIND =
     "SELECT * FROM user "
     "WHERE deleted_at IS NULL AND created_at >= ? AND created_at <= ? "
@@ -32,11 +37,6 @@ inline constexpr std::string_view FIND_DELETED_FROM =
     "WHERE deleted_at IS NOT NULL AND deleted_at >= ? "
     "ORDER BY deleted_at ASC LIMIT 200";
 
-inline constexpr std::string_view FIND_ALL =
-    "SELECT * FROM user "
-    "WHERE deleted_at IS NULL "
-    "ORDER BY created_at ASC LIMIT 200";
-
 inline constexpr std::string_view FIND_DELETED_ALL =
     "SELECT * FROM user "
     "WHERE deleted_at IS NOT NULL "
@@ -53,8 +53,8 @@ inline constexpr std::string_view FIND_LAST_DELETED =
     "ORDER BY deleted_at DESC LIMIT 1";
 
 inline constexpr std::string_view INSERT =
-    "INSERT INTO user (feature_hub_id, name, last_name, role, is_active) "
-    "VALUES (?, ?, ?, ?, ?)";
+    "INSERT INTO user (name, last_name, role, is_active) "
+    "VALUES (?, ?, ?, ?)";
 
 inline constexpr std::string_view UPDATE =
     "UPDATE user SET name = ?, last_name = ?, role = ?, is_active = ?, "
@@ -70,7 +70,6 @@ inline constexpr std::string_view REMOVE =
 
 struct UserCreateInput
 {
-  int64_t featureHubId{0};
   std::string name;
   std::string lastName;
   UserRole role{UserRole::Guest};
@@ -83,4 +82,3 @@ struct UserUpdateInput
   UserRole role{UserRole::Guest};
   bool isActive{true};
 };
-

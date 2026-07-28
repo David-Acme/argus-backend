@@ -1,12 +1,21 @@
 #include "jwt-service.hxx"
 
 #include <chrono>
+#include <drogon/drogon.h>
 #include <jwt-cpp/traits/nlohmann-json/defaults.h>
 #include <shared/services/config-service/config-service.hxx>
 
+JwtService::JwtService()
+    : accessSecret_(ConfigService::getString("jwt.secret")),
+      refreshSecret_(ConfigService::getString("jwt.refresh_secret")),
+      accessTtlSeconds_(ConfigService::getInt("jwt.access_ttl_minutes") * 60),
+      refreshTtlSeconds_(ConfigService::getInt("jwt.refresh_ttl_days") * 86400)
+{
+}
+
 std::string
 JwtService::generate(const std::map<std::string, std::string>& claims,
-                     const std::string& secret, int64_t expiresInSeconds)
+                     const std::string& secret, int64_t expiresInSeconds) const
 {
   auto builder = jwt::create()
                      .set_issuer("argus")
@@ -20,52 +29,56 @@ JwtService::generate(const std::map<std::string, std::string>& claims,
 
   return builder.sign(jwt::algorithm::hs256{secret});
 }
-
-std::map<std::string, std::string> JwtService::verify(const std::string& token,
-                                                      const std::string& secret)
+std::map<std::string, std::string>
+JwtService::verify(const std::string& token,
+                   const std::string& secret) const
 {
-  auto decoded = jwt::decode(token);
+  try {
+    auto decoded = jwt::decode(token);
 
-  auto verifier = jwt::verify().allow_algorithm(jwt::algorithm::hs256{secret});
-  verifier.verify(decoded);
+    auto verifier =
+        jwt::verify().allow_algorithm(jwt::algorithm::hs256{secret});
+    verifier.verify(decoded);
 
-  std::map<std::string, std::string> result;
-  auto payload = decoded.get_payload_json();
+    std::map<std::string, std::string> result;
+    auto payload = decoded.get_payload_json();
 
-  for (const auto& [key, val] : payload) {
-    if (val.is_string()) {
-      result[key] = val.get<std::string>();
+    for (const auto& [key, val] : payload) {
+      if (val.is_string()) {
+        result[key] = val.get<std::string>();
+      }
+      else if (val.is_number_integer()) {
+        result[key] = std::to_string(val.get<int64_t>());
+      }
     }
-    else if (val.is_number_integer()) {
-      result[key] = std::to_string(val.get<int64_t>());
-    }
+
+    return result;
   }
-
-  return result;
+  catch (const std::exception& ex) {
+    LOG_WARN << "JWT verification failed: " << ex.what();
+    return {};
+  }
+}
+std::string JwtService::generateAccess(
+    const std::map<std::string, std::string>& claims) const
+{
+  return generate(claims, accessSecret_, accessTtlSeconds_);
 }
 
-std::string
-JwtService::generateAccess(const std::map<std::string, std::string>& claims)
+std::string JwtService::generateRefresh(
+    const std::map<std::string, std::string>& claims) const
 {
-  int64_t ttl = ConfigService::getInt("jwt.access_ttl_minutes") * 60;
-  return generate(claims, ConfigService::getString("jwt.secret"), ttl);
-}
-
-std::string
-JwtService::generateRefresh(const std::map<std::string, std::string>& claims)
-{
-  int64_t ttl = ConfigService::getInt("jwt.refresh_ttl_days") * 86400;
-  return generate(claims, ConfigService::getString("jwt.refresh_secret"), ttl);
-}
-
-std::map<std::string, std::string>
-JwtService::verifyAccess(const std::string& token)
-{
-  return verify(token, ConfigService::getString("jwt.secret"));
+  return generate(claims, refreshSecret_, refreshTtlSeconds_);
 }
 
 std::map<std::string, std::string>
-JwtService::verifyRefresh(const std::string& token)
+JwtService::verifyAccess(const std::string& token) const
 {
-  return verify(token, ConfigService::getString("jwt.refresh_secret"));
+  return verify(token, accessSecret_);
+}
+
+std::map<std::string, std::string>
+JwtService::verifyRefresh(const std::string& token) const
+{
+  return verify(token, refreshSecret_);
 }

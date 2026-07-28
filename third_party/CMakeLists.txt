@@ -41,39 +41,32 @@ else()
 endif()
 
 # ---------------------------------------------------------------------------
-# InspireFace (face recognition SDK)
+# sherpa-onnx (streaming STT — Zipformer / SenseVoice via ONNX Runtime)
 # ---------------------------------------------------------------------------
-# NOTE: InspireFace is heavy and pulls its own deps (MNN, InspireCV) which are
-# NOT git submodules -- they must be cloned manually into
-# third_party/inspireface/3rdparty/{MNN,InspireCV} (see that repo's README).
-# It is therefore opt-in via ARGUS_BUILD_INSPIREFACE to keep the default build
-# green and fast. Enable it (and provision deps + models) when needed.
-option(ARGUS_BUILD_INSPIREFACE "Build the InspireFace face-recognition SDK" OFF)
 
-if(ARGUS_BUILD_INSPIREFACE)
-  if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/inspireface/CMakeLists.txt")
-    message(STATUS "Argus: integrating InspireFace submodule")
-    set(ISF_BUILD_WITH_TEST OFF CACHE BOOL "" FORCE)
-    set(ISF_BUILD_WITH_SAMPLE OFF CACHE BOOL "" FORCE)
-    set(ISF_NEVER_USE_OPENCV ON CACHE BOOL "" FORCE)
-    set(ISF_ENABLE_RKNN OFF CACHE BOOL "" FORCE)
-    set(ISF_ENABLE_RGA OFF CACHE BOOL "" FORCE)
-    add_subdirectory(inspireface EXCLUDE_FROM_ALL)
-    if(TARGET InspireFace)
-      target_include_directories(InspireFace INTERFACE
-          ${CMAKE_CURRENT_SOURCE_DIR}/inspireface/cpp
-          ${CMAKE_CURRENT_SOURCE_DIR}/inspireface/cpp/inspireface/include)
-      message(STATUS "Argus: InspireFace target -> InspireFace")
-    endif()
-  else()
-    message(WARNING "Argus: InspireFace submodule not found at third_party/inspireface")
+# ---------------------------------------------------------------------------
+# ncnn (high-performance neural network inference — face detection/recognition)
+# ---------------------------------------------------------------------------
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/ncnn/CMakeLists.txt")
+  message(STATUS "Argus: integrating ncnn submodule")
+  set(NCNN_BUILD_BENCHMARK OFF CACHE BOOL "" FORCE)
+  set(NCNN_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+  set(NCNN_BUILD_TOOLS OFF CACHE BOOL "" FORCE)
+  set(NCNN_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+  set(NCNN_OPENMP ON CACHE BOOL "" FORCE)
+  set(NCNN_AVX2 ON CACHE BOOL "" FORCE)
+  set(NCNN_VULKAN ON CACHE BOOL "" FORCE)
+  set(NCNN_ENABLE_PIC ON CACHE BOOL "" FORCE)
+  add_subdirectory(ncnn EXCLUDE_FROM_ALL)
+  if(TARGET ncnn)
+    set(ARGUS_NCNN_TARGET ncnn)
+    message(STATUS "Argus: ncnn target -> ncnn")
+    set(ARGUS_NCNN_TARGET ncnn PARENT_SCOPE)
   endif()
 else()
-  message(STATUS "Argus: InspireFace integration disabled (set ARGUS_BUILD_INSPIREFACE=ON to enable)")
+  message(WARNING "Argus: ncnn submodule not found at third_party/ncnn")
 endif()
 
-# ---------------------------------------------------------------------------
-# sherpa-onnx (streaming STT — Zipformer / SenseVoice via ONNX Runtime)
 # ---------------------------------------------------------------------------
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/sherpa-onnx/CMakeLists.txt")
   message(STATUS "Argus: integrating sherpa-onnx submodule")

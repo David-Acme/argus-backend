@@ -10,7 +10,7 @@
 struct PersonSchema
 {
   int64_t id{0};
-  int64_t featureHubId{0};
+  std::optional<int64_t> userId;
   std::string name;
   std::string alias;
   std::string observation;

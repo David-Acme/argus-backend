@@ -2,9 +2,6 @@
 
 #include <config/app-config.hxx>
 #include <filter/device/device-filter.hxx>
-#include <shared/repositories/refresh-token/refresh-token-repository.hxx>
-#include <shared/repositories/user/user-repository.hxx>
-#include <shared/services/jwt/jwt-service.hxx>
 #include <trantor/utils/Logger.h>
 
 drogon::Task<drogon::HttpResponsePtr>
@@ -15,11 +12,8 @@ JwtFilter::doFilter(const drogon::HttpRequestPtr& req)
     co_return AppConfig::get401Response("Missing authorization token");
   }
 
-  std::map<std::string, std::string> claims;
-  try {
-    claims = JwtService::verifyAccess(token);
-  } catch (const std::exception& ex) {
-    LOG_WARN << "JWT verification failed: " << ex.what();
+  const auto claims = jwtService_.verifyAccess(token);
+  if (claims.empty()) {
     co_return AppConfig::get401Response();
   }
 
@@ -29,7 +23,7 @@ JwtFilter::doFilter(const drogon::HttpRequestPtr& req)
   }
 
   const int64_t userId = std::stoll(subIt->second);
-  const auto user = co_await UserRepository().findById(userId);
+  const auto user = co_await userRepository_.findById(userId);
   if (!user) {
     co_return AppConfig::get401Response();
   }
@@ -42,8 +36,8 @@ JwtFilter::doFilter(const drogon::HttpRequestPtr& req)
     const auto& devCtx =
         req->getAttributes()->get<DeviceContext>(AppConfig::DEVICE_CTX_KEY);
     const auto rt =
-        co_await RefreshTokenRepository().findByAccessToken(userId, token);
-    if (!rt || !rt->isValid || rt->isUsed) {
+        co_await refreshTokenRepository_.findByAccessToken(userId, token);
+    if (!rt) {
       co_return AppConfig::get401Response();
     }
     if (rt->deviceHash != devCtx.deviceHash) {
@@ -54,7 +48,6 @@ JwtFilter::doFilter(const drogon::HttpRequestPtr& req)
 
   JwtContext ctx;
   ctx.userId = user->id;
-  ctx.featureHubId = user->featureHubId;
   ctx.name = user->name + " " + user->lastName;
   ctx.role = user->role;
   ctx.isActive = user->isActive;
@@ -63,8 +56,7 @@ JwtFilter::doFilter(const drogon::HttpRequestPtr& req)
   co_return drogon::HttpResponsePtr{};
 }
 
-std::string JwtFilter::extractToken(
-    const drogon::HttpRequestPtr& req) const
+std::string JwtFilter::extractToken(const drogon::HttpRequestPtr& req) const
 {
   const auto auth = req->getHeader("Authorization");
   if (!auth.empty()) {

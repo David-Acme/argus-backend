@@ -3,7 +3,6 @@
 UserSchema::UserSchema(const drogon::orm::Row& row)
 {
   id = static_cast<int64_t>(row["id"].as<long long>());
-  featureHubId = static_cast<int64_t>(row["feature_hub_id"].as<long long>());
   name = row["name"].as<std::string>();
   lastName = row["last_name"].as<std::string>();
   role = userRoleFromString(row["role"].as<std::string>());
@@ -19,7 +18,6 @@ Json::Value UserSchema::toJson() const
 {
   Json::Value json;
   json["id"] = id;
-  json["featureHubId"] = featureHubId;
   json["name"] = name;
   json["lastName"] = lastName;
   json["role"] = userRoleToString(role);

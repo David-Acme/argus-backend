@@ -3,7 +3,8 @@
 PersonSchema::PersonSchema(const drogon::orm::Row& row)
 {
   id = static_cast<int64_t>(row["id"].as<long long>());
-  featureHubId = static_cast<int64_t>(row["feature_hub_id"].as<long long>());
+  if (!row["user_id"].isNull())
+    userId = static_cast<int64_t>(row["user_id"].as<long long>());
   name = row["name"].as<std::string>();
   alias = row["alias"].as<std::string>();
   observation = row["observation"].as<std::string>();
@@ -20,7 +21,7 @@ Json::Value PersonSchema::toJson() const
 {
   Json::Value json;
   json["id"] = id;
-  json["featureHubId"] = featureHubId;
+  json["userId"] = userId ? Json::Int64(*userId) : Json::nullValue;
   json["name"] = name;
   json["alias"] = alias;
   json["observation"] = observation;

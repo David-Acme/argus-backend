@@ -9,8 +9,7 @@ UserRepository::findById(int64_t id) const
 {
   auto client = DbService::client();
   const auto result =
-      co_await client->execSqlCoro(
-FIND_BY_ID.data(), id);
+      co_await client->execSqlCoro(FIND_BY_ID.data(), id);
 
   if (result.empty())
     co_return std::nullopt;
@@ -23,13 +22,11 @@ UserRepository::create(const UserCreateInput& input) const
 {
   auto client = DbService::client();
   const auto result = co_await client->execSqlCoro(
-      
-INSERT.data(), input.featureHubId, input.name,
-      input.lastName, userRoleToString(input.role), 1);
+      INSERT.data(), input.name, input.lastName,
+      userRoleToString(input.role), 1);
 
   UserSchema schema;
   schema.id = result.insertId();
-  schema.featureHubId = input.featureHubId;
   schema.name = input.name;
   schema.lastName = input.lastName;
   schema.role = input.role;
@@ -42,8 +39,7 @@ drogon::Task<UserSchema>
 UserRepository::update(int64_t id, const UserUpdateInput& input) const
 {
   auto client = DbService::client();
-  co_await client->execSqlCoro(
-UPDATE.data(), input.name,
+  co_await client->execSqlCoro(UPDATE.data(), input.name,
                                input.lastName,
                                userRoleToString(input.role),
                                input.isActive ? 1 : 0, id);
@@ -61,8 +57,7 @@ drogon::Task<bool> UserRepository::remove(int64_t id) const
 {
   auto client = DbService::client();
   const auto result =
-      co_await client->execSqlCoro(
-REMOVE.data(), id);
+      co_await client->execSqlCoro(REMOVE.data(), id);
   co_return result.affectedRows() > 0;
 }
 
@@ -74,13 +69,11 @@ UserRepository::find(const SyncFilter& filter) const
   auto result = [&]() -> drogon::Task<drogon::orm::Result> {
     if (filter.startTime && filter.endTime) {
       co_return co_await client->execSqlCoro(
-          
-FIND.data(), *filter.startTime, *filter.endTime);
+          FIND.data(), *filter.startTime, *filter.endTime);
     }
     if (filter.startTime) {
       co_return co_await client->execSqlCoro(
-          
-FIND_FROM.data(), *filter.startTime);
+          FIND_FROM.data(), *filter.startTime);
     }
     co_return co_await client->execSqlCoro(FIND_ALL.data());
   }();
@@ -99,14 +92,11 @@ UserRepository::findDeleted(const SyncFilter& filter) const
   auto result = [&]() -> drogon::Task<drogon::orm::Result> {
     if (filter.startTime && filter.endTime) {
       co_return co_await client->execSqlCoro(
-          
-FIND_DELETED.data(), *filter.startTime,
-          *filter.endTime);
+          FIND_DELETED.data(), *filter.startTime, *filter.endTime);
     }
     if (filter.startTime) {
       co_return co_await client->execSqlCoro(
-          
-FIND_DELETED_FROM.data(), *filter.startTime);
+          FIND_DELETED_FROM.data(), *filter.startTime);
     }
     co_return co_await client->execSqlCoro(FIND_DELETED_ALL.data());
   }();
@@ -122,8 +112,7 @@ UserRepository::findLast() const
 {
   auto client = DbService::client();
   const auto result =
-      co_await client->execSqlCoro(
-FIND_LAST.data());
+      co_await client->execSqlCoro(FIND_LAST.data());
 
   if (result.empty())
     co_return std::nullopt;
@@ -136,8 +125,7 @@ UserRepository::findLastDeleted() const
 {
   auto client = DbService::client();
   const auto result =
-      co_await client->execSqlCoro(
-FIND_LAST_DELETED.data());
+      co_await client->execSqlCoro(FIND_LAST_DELETED.data());
 
   if (result.empty())
     co_return std::nullopt;

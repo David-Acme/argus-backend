@@ -13,14 +13,17 @@ PersonRepository::findById(int64_t id) const
   co_return PersonSchema(result.front());
 }
 
-drogon::Task<std::optional<PersonSchema>>
-PersonRepository::findByFeatureHub(int64_t featureHubId) const
+drogon::Task<std::vector<PersonSchema>>
+PersonRepository::findByUser(int64_t userId) const
 {
   auto client = DbService::client();
-  const auto result = co_await client->execSqlCoro(
-      FIND_BY_FEATURE_HUB.data(), featureHubId);
-  if (result.empty()) co_return std::nullopt;
-  co_return PersonSchema(result.front());
+  const auto result =
+      co_await client->execSqlCoro(FIND_BY_USER.data(), userId);
+
+  std::vector<PersonSchema> data;
+  for (const auto& row : result)
+    data.push_back(PersonSchema(row));
+  co_return data;
 }
 
 drogon::Task<PersonSchema>
@@ -28,8 +31,9 @@ PersonRepository::create(const PersonCreateInput& input) const
 {
   auto client = DbService::client();
   const auto result = co_await client->execSqlCoro(
-      INSERT.data(), input.featureHubId, input.name, input.alias,
-      input.observation, 0, 0);
+      INSERT.data(),
+      input.userId ? *input.userId : std::optional<int64_t>{},
+      input.name, input.alias, input.observation);
 
   auto created = co_await findById(result.insertId());
   if (!created) {
@@ -53,6 +57,15 @@ PersonRepository::update(int64_t id,
     co_return {};
   }
   co_return *updated;
+}
+
+drogon::Task<bool> PersonRepository::linkUser(int64_t id,
+                                               int64_t userId) const
+{
+  auto client = DbService::client();
+  const auto result =
+      co_await client->execSqlCoro(UPDATE_USER.data(), userId, id);
+  co_return result.affectedRows() > 0;
 }
 
 drogon::Task<bool> PersonRepository::remove(int64_t id) const

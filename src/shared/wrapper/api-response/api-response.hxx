@@ -15,6 +15,9 @@ public:
                                        const std::string& errorCode,
                                        const std::string& message);
 
+  static drogon::HttpResponsePtr
+  validationError(const Json::Value& fieldErrors);
+
 private:
   static drogon::HttpResponsePtr json(int status, const Json::Value* info,
                                       const Json::Value* errors);

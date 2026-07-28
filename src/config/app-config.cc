@@ -1,5 +1,7 @@
 #include "app-config.hxx"
 
+#include <shared/exceptions/response-exception.hxx>
+#include <shared/validation/validator.hxx>
 #include <shared/wrapper/api-response/api-response.hxx>
 
 void AppConfig::applyCors(const drogon::HttpResponsePtr& resp)
@@ -46,5 +48,22 @@ void AppConfig::handleException(
     const std::exception& e, const drogon::HttpRequestPtr&,
     std::function<void(const drogon::HttpResponsePtr&)>&& respCallback)
 {
+  if (const auto* ve = dynamic_cast<const ValidationException*>(&e)) {
+    Json::Value errors;
+    for (const auto& [field, msgs] : ve->errors()) {
+      Json::Value arr(Json::arrayValue);
+      for (const auto& m : msgs)
+        arr.append(m);
+      errors[field] = arr;
+    }
+    respCallback(ApiResponse::validationError(errors));
+    return;
+  }
+
+  if (const auto* re = dynamic_cast<const ResponseException*>(&e)) {
+    respCallback(ApiResponse::error(re->statusCode(), "ERROR", re->what()));
+    return;
+  }
+
   respCallback(ApiResponse::error(500, "INTERNAL_ERROR", e.what()));
 }

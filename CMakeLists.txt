@@ -52,7 +52,10 @@ add_executable(${PROJECT_NAME}
 target_include_directories(${PROJECT_NAME}
     PRIVATE
         ${SRC_ROOT}
+        ${CMAKE_SOURCE_DIR}/third_party
         ${CMAKE_SOURCE_DIR}/third_party/sherpa-onnx
+        ${CMAKE_SOURCE_DIR}/third_party/ncnn/src
+        ${CMAKE_BINARY_DIR}/third_party/ncnn/src
 )
 
 target_sources(${PROJECT_NAME}
@@ -77,6 +80,8 @@ target_link_libraries(${PROJECT_NAME}
         onnxruntime::onnxruntime
         tomlplusplus::tomlplusplus
         ${ARGUS_FASTTEXT_TARGET}
+        ${ARGUS_NCNN_TARGET}
+        ${ARGUS_SHERPA_ONNX_TARGET}
         ${CONAN_LIBS}
 )
 

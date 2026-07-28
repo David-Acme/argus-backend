@@ -3,6 +3,8 @@
 #include <drogon/drogon.h>
 #include <execinfo.h>
 #include <shared/services/config-service/config-service.hxx>
+#include <shared/services/face/face-db.hxx>
+#include <shared/services/face/face-service.hxx>
 #include <shared/services/llm/llm-service.hxx>
 #include <shared/services/stt/stt-service.hxx>
 #include <shared/services/tts/tts-service.hxx>
@@ -73,12 +75,15 @@ int main(int argc, char* argv[])
     crashSa.sa_flags = 0;
     sigaction(SIGSEGV, &crashSa, nullptr);
     sigaction(SIGABRT, &crashSa, nullptr);
+
+    FaceDB::loadFromDb();
   });
 
   TtsService::init();
   LlmService::init();
   SttService::init();
   VisionService::init();
+  FaceService::init();
 
   if (!TtsService::isLoaded() || !LlmService::isLoaded() ||
       !SttService::isLoaded() || !VisionService::isLoaded()) {
@@ -90,6 +95,11 @@ int main(int argc, char* argv[])
     return 1;
   }
 
+  if (!FaceService::isLoaded()) {
+    LOG_WARN << "FaceService not loaded — face recognition disabled. "
+             << "Run scripts/setup.sh to download models.";
+  }
+
   LOG_INFO << "Argus backend listening on 0.0.0.0:7024";
   app().run();
 
@@ -97,4 +107,5 @@ int main(int argc, char* argv[])
   SttService::shutdown();
   LlmService::shutdown();
   TtsService::shutdown();
+  FaceService::shutdown();
 }

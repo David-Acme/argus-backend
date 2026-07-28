@@ -7,22 +7,28 @@
 class JwtService
 {
 public:
-  JwtService() = delete;
-  ~JwtService() = delete;
+  JwtService();
+  ~JwtService() = default;
 
-  static std::string generate(const std::map<std::string, std::string>& claims,
-                              const std::string& secret,
-                              int64_t expiresInSeconds = 3600);
+  std::string generate(const std::map<std::string, std::string>& claims,
+                       const std::string& secret,
+                       int64_t expiresInSeconds = 3600) const;
 
-  static std::map<std::string, std::string> verify(const std::string& token,
-                                                   const std::string& secret);
+  std::map<std::string, std::string> verify(const std::string& token,
+                                            const std::string& secret) const;
 
-  static std::string
-  generateAccess(const std::map<std::string, std::string>& claims);
-  static std::string
-  generateRefresh(const std::map<std::string, std::string>& claims);
-  static std::map<std::string, std::string>
-  verifyAccess(const std::string& token);
-  static std::map<std::string, std::string>
-  verifyRefresh(const std::string& token);
+  std::string
+  generateAccess(const std::map<std::string, std::string>& claims) const;
+  std::string
+  generateRefresh(const std::map<std::string, std::string>& claims) const;
+  std::map<std::string, std::string>
+  verifyAccess(const std::string& token) const;
+  std::map<std::string, std::string>
+  verifyRefresh(const std::string& token) const;
+
+private:
+  std::string accessSecret_;
+  std::string refreshSecret_;
+  int64_t accessTtlSeconds_;
+  int64_t refreshTtlSeconds_;
 };

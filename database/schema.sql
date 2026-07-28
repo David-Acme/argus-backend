@@ -16,7 +16,6 @@ PRAGMA journal_size_limit = 67108864;
 
 CREATE TABLE IF NOT EXISTS user (
     id             INTEGER NOT NULL  PRIMARY KEY AUTOINCREMENT,
-    feature_hub_id INTEGER NOT NULL  UNIQUE,
     name           TEXT    NOT NULL,
     last_name      TEXT    NOT NULL,
     role           TEXT    NOT NULL  CHECK (role IN ('owner', 'resident', 'guard', 'guest')),
@@ -28,7 +27,7 @@ CREATE TABLE IF NOT EXISTS user (
 
 CREATE TABLE IF NOT EXISTS person (
     id             INTEGER NOT NULL  PRIMARY KEY AUTOINCREMENT,
-    feature_hub_id INTEGER NOT NULL  UNIQUE,
+    user_id        INTEGER           REFERENCES user(id) ON DELETE SET NULL,
     name           TEXT    NOT NULL  DEFAULT '',
     alias          TEXT    NOT NULL  DEFAULT '',
     observation    TEXT    NOT NULL  DEFAULT '',
@@ -118,6 +117,17 @@ CREATE TABLE IF NOT EXISTS refresh_token (
     is_used       INTEGER NOT NULL  DEFAULT 0  CHECK (is_used  IN (0, 1)),
     expires_at    INTEGER NOT NULL,
     created_at    INTEGER NOT NULL  DEFAULT (strftime('%s', 'now'))
+);
+
+-- ── Face Recognition ─────────────────────────────────────────────────────────
+
+CREATE TABLE IF NOT EXISTS face_embedding (
+    id          INTEGER NOT NULL  PRIMARY KEY AUTOINCREMENT,
+    person_id   INTEGER NOT NULL  REFERENCES person(id) ON DELETE CASCADE,
+    embedding   BLOB    NOT NULL,
+    angle_label TEXT    NOT NULL  DEFAULT 'frontal',
+    quality     REAL    NOT NULL  DEFAULT 1.0,
+    created_at  INTEGER NOT NULL  DEFAULT (strftime('%s', 'now'))
 );
 
 -- ── Cameras & Recording ─────────────────────────────────────────────────────
@@ -240,6 +250,9 @@ CREATE INDEX IF NOT EXISTS idx_zone_camera_id   ON zone (camera_id);
 CREATE INDEX IF NOT EXISTS idx_zone_created_at  ON zone (created_at);
 CREATE INDEX IF NOT EXISTS idx_zone_deleted_at  ON zone (deleted_at);
 
+-- face_embedding
+CREATE INDEX IF NOT EXISTS idx_face_embedding_person ON face_embedding (person_id);
+
 -- user
 CREATE INDEX IF NOT EXISTS idx_user_created_at  ON user (created_at);
 CREATE INDEX IF NOT EXISTS idx_user_deleted_at  ON user (deleted_at);
@@ -257,4 +270,4 @@ CREATE INDEX IF NOT EXISTS idx_audit_log_created  ON audit_log (created_at);
 -- user_action_log
 CREATE INDEX IF NOT EXISTS idx_user_action_log_user    ON user_action_log (user_id);
 CREATE INDEX IF NOT EXISTS idx_user_action_log_record  ON user_action_log (record_id, table_name);
-CREATE INDEX IF NOT EXISTS idx_user_action_log_created ON user_action_log (created_at);
+CREATE INDEX IF NOT EXISTS idx_user_a  ction_log_created ON user_action_log (created_at);
