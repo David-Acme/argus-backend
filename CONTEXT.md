@@ -79,6 +79,14 @@ without GPU), so every AI service auto-tunes its resources at runtime:
 - **LLM**: `n_threads=lightThreads` + `n_threads_batch=batchThreads` (measured
   +54% prefill on long prompts), warmup decode at init, `use_mmap=true`,
   generation batch reused (no alloc per token), static mutex around context.
+  **All tunables live in `config.toml` `[llm]`** (`context_size`, `max_tokens`,
+  `temperature`, `threads`/`batch_threads` with 0 = auto ThreadBudget,
+  `n_batch`/`n_ubatch`) so a stronger host can be tuned without code changes.
+  `context_size` defaulted 128000 → 32768 (Ollama parity): -300MB KV cache
+  RAM, faster decode as context grows; fine for short security-analysis turns.
+  `ChatRequest.maxTokens`/`temperature` use 0/-1 sentinels → configured
+  defaults. System prompt is English (keeps precision) and asks for 2-3 line
+  concise answers.
 - **Vision**: REPLACED with **SmolVLM2-500M-Video-Instruct (ONNX int8, 0.5B)** —
   `HuggingFaceTB/SmolVLM2-500M-Video-Instruct`: 3 sessions (SigLIP vision
   encoder base patch-16/512 → 64 image tokens, merged Llama3 decoder with
@@ -94,6 +102,9 @@ without GPU), so every AI service auto-tunes its resources at runtime:
   (VQA + captioning) and beats Florence-2 on quality while being faster and
   lighter on CPU. NOTE: `vision.image_size` is now fixed at 512 by the model;
   the encoder runs in ~0.5s and decode ~24ms/token on the reference machine.
+  **Tunables in `config.toml` `[vision]`**: `max_tokens` (default 64, caption
+  is 1-3 sentences) and `threads` (0 = auto). ORT sessions use
+  `spin_duration_us=1000` + `spin_backoff_max=8` (ORT #28096 recommended).
 - **STT/TTS**: adaptive intra-op threads, static mutexes (recognizer, engine,
   voice cache) — thread-safe for concurrent requests.
 - **Face**: `identifyMutex_` (global serialization) replaced by a
@@ -123,8 +134,6 @@ without GPU), so every AI service auto-tunes its resources at runtime:
   LFM2.5-1.2B.
 - **ncnn Vulkan**: kept ON — the reference machine has an AMD iGPU (RADV
   RENOIR) that ncnn uses via Vulkan; machines without GPU fall back to CPU.
-- **Bench tool**: `./argus-backend --bench` measures LLM/VL/STT/TTS
-  (init time, per-run latency, RAM via VmRSS).
 
 ## Uniform API response format
 

@@ -20,8 +20,11 @@ struct ChatMessage
 struct ChatRequest
 {
   std::vector<ChatMessage> messages;
-  int32_t maxTokens{512};
-  float temperature{0.3f};
+  // 0 = use the configured default (llm.max_tokens).
+  int32_t maxTokens{0};
+  // < 0 = use the configured default (llm.temperature).
+  float temperature{-1.0f};
+  // True clears the KV cache before generating (isolated analysis calls).
   bool resetContext{true};
 };
 
@@ -59,16 +62,18 @@ private:
   static std::unique_ptr<llama_model, void (*)(llama_model*)> model_;
   static std::unique_ptr<llama_context, void (*)(llama_context*)> context_;
   static int64_t contextSize_;
+  static int32_t defaultMaxTokens_;
+  static float defaultTemperature_;
   static bool loaded_;
   static std::mutex mutex_;
 
   static constexpr const char* SYSTEM_PROMPT =
-      R"SYSPROMPT(Eres Argus, un asistente de seguridad inteligente para un sistema de vigilancia local. Tus funciones son:
-1. Analizar eventos de seguridad (detecciones de movimiento, personas, vehículos, sonidos anómalos).
-2. Responder preguntas sobre el estado del sistema: cámaras activas, eventos recientes, personas reconocidas.
-3. Ayudar a configurar reglas de seguridad: zonas de exclusión, horarios de vigilancia, sensibilidad de detección.
-4. Explicar alertas de seguridad en lenguaje claro y accionable.
-5. NO tienes acceso a la nube — todo el procesamiento es local.
+      R"SYSPROMPT(You are Argus, an intelligent security assistant for a local surveillance system. Your tasks are:
+1. Analyze security events (motion, person, vehicle, or anomalous sound detections).
+2. Answer questions about the system state: active cameras, recent events, recognized people.
+3. Help configure security rules: exclusion zones, watch schedules, detection sensitivity.
+4. Explain security alerts in clear, actionable language.
+5. You have NO cloud access - all processing is local.
 
-Sé conciso, preciso y prioriza la seguridad. Cuando no sepas algo, dilo directamente. Responde siempre en el mismo idioma en que te hablen.)SYSPROMPT";
+Be concise and natural: max 2-3 lines for simple questions, and only expand a little when the question requires it. Be direct, precise, and prioritize safety. Always answer in the same language the user speaks.)SYSPROMPT";
 };

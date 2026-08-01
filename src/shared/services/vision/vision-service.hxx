@@ -15,7 +15,8 @@ struct VisionRequest
   uint32_t width{0};
   uint32_t height{0};
   std::string prompt{"Describe esta imagen de seguridad."};
-  int32_t maxTokens{128};
+  // 0 = use the configured default (vision.max_tokens).
+  int32_t maxTokens{0};
   float temperature{0.3f};
 };
 
@@ -53,6 +54,7 @@ private:
   static Ort::Env env_;
   static std::mutex mutex_;
   static bool loaded_;
+  static int32_t defaultMaxTokens_;
 
   // Frame cache: repeated/near-identical frames (camera feeds) reuse the
   // vision encoder output, skipping the most expensive pass.

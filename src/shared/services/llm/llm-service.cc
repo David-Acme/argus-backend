@@ -4,6 +4,7 @@
 #include <cstring>
 #include <drogon/drogon.h>
 #include <llama.h>
+#include <shared/services/config-service/config-service.hxx>
 #include <shared/wrapper/blocking-task/blocking-task.hxx>
 #include <shared/wrapper/thread-budget/thread-budget.hxx>
 #include <thread>
@@ -14,6 +15,8 @@ std::unique_ptr<llama_model, void (*)(llama_model*)>
 std::unique_ptr<llama_context, void (*)(llama_context*)>
     LlmService::context_{nullptr, llama_free};
 int64_t LlmService::contextSize_ = 0;
+int32_t LlmService::defaultMaxTokens_ = 96;
+float LlmService::defaultTemperature_ = 0.3F;
 bool LlmService::loaded_ = false;
 std::mutex LlmService::mutex_;
 
@@ -29,7 +32,9 @@ void LlmService::init()
         nullptr);
 
     const std::string modelPath = "models/llm/LFM2.5-1.2B-Instruct-Q4_K_M.gguf";
-    constexpr int64_t contextSize = 128000;
+    const int64_t contextSize =
+        std::clamp<int64_t>(ConfigService::getInt("llm.context_size"), 4096,
+                            128000);
 
     llama_model_params modelParams = llama_model_default_params();
     modelParams.n_gpu_layers = 0;
@@ -44,11 +49,17 @@ void LlmService::init()
 
     auto nThreads = ThreadBudget::lightThreads();
     auto nThreadsBatch = ThreadBudget::batchThreads();
+    if (const int cfg = ConfigService::getInt("llm.threads"); cfg > 0)
+      nThreads = cfg;
+    if (const int cfg = ConfigService::getInt("llm.batch_threads"); cfg > 0)
+      nThreadsBatch = cfg;
 
     llama_context_params ctxParams = llama_context_default_params();
     ctxParams.n_ctx = static_cast<uint32_t>(contextSize);
-    ctxParams.n_batch = 1024;
-    ctxParams.n_ubatch = 512;
+    ctxParams.n_batch =
+        std::max(256, ConfigService::getInt("llm.n_batch"));
+    ctxParams.n_ubatch =
+        std::max(256, ConfigService::getInt("llm.n_ubatch"));
     ctxParams.n_threads = nThreads;
     ctxParams.n_threads_batch = nThreadsBatch;
     ctxParams.flash_attn_type = LLAMA_FLASH_ATTN_TYPE_AUTO;
@@ -67,6 +78,10 @@ void LlmService::init()
     warmup();
 
     contextSize_ = contextSize;
+    defaultMaxTokens_ =
+        std::clamp<int32_t>(ConfigService::getInt("llm.max_tokens"), 16, 4096);
+    defaultTemperature_ = static_cast<float>(
+        std::clamp(ConfigService::getDouble("llm.temperature"), 0.0, 2.0));
     loaded_ = true;
 
     LOG_INFO << "LLM loaded: " << modelPath << " (ctx=" << contextSize
@@ -290,13 +305,19 @@ std::string LlmService::generate(const std::string& formattedPrompt,
 std::string LlmService::chat(const ChatRequest& req)
 {
   std::string prompt = buildPrompt(req.messages);
-  return generate(prompt, req.temperature, req.maxTokens, req.resetContext);
+  const int32_t maxTokens = req.maxTokens > 0 ? req.maxTokens : defaultMaxTokens_;
+  const float temp = req.temperature >= 0.0F ? req.temperature
+                                             : defaultTemperature_;
+  return generate(prompt, temp, maxTokens, req.resetContext);
 }
 
 void LlmService::chatStream(const ChatRequest& req, TokenCallback onToken)
 {
   std::string prompt = buildPrompt(req.messages);
-  generateStream(prompt, req.temperature, req.maxTokens, req.resetContext,
+  const int32_t maxTokens = req.maxTokens > 0 ? req.maxTokens : defaultMaxTokens_;
+  const float temp = req.temperature >= 0.0F ? req.temperature
+                                             : defaultTemperature_;
+  generateStream(prompt, temp, maxTokens, req.resetContext,
                  std::move(onToken));
 }
 
@@ -316,7 +337,11 @@ drogon::Task<void> LlmService::chatStreamAsync(const ChatRequest& req,
           [callback, token, done]() { callback(token, done); });
     };
     std::string prompt = buildPrompt(req.messages);
-    generateStream(prompt, req.temperature, req.maxTokens, req.resetContext,
+    const int32_t maxTokens =
+        req.maxTokens > 0 ? req.maxTokens : defaultMaxTokens_;
+    const float temp = req.temperature >= 0.0F ? req.temperature
+                                               : defaultTemperature_;
+    generateStream(prompt, temp, maxTokens, req.resetContext,
                    std::move(wrapped));
   });
   co_return;

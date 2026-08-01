@@ -124,6 +124,7 @@ std::unique_ptr<Ort::Session> VisionService::embedTokens_;
 Ort::Env VisionService::env_{ORT_LOGGING_LEVEL_ERROR, "Argus-Vision"};
 std::mutex VisionService::mutex_;
 bool VisionService::loaded_ = false;
+int32_t VisionService::defaultMaxTokens_ = 64;
 VisionService::FrameCache VisionService::cacheA_;
 VisionService::FrameCache VisionService::cacheB_;
 int VisionService::lastCacheSlot_ = 0;
@@ -170,8 +171,13 @@ void VisionService::init()
     auto opts = Ort::SessionOptions{};
     opts.SetExecutionMode(ExecutionMode::ORT_SEQUENTIAL);
     opts.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL);
-    opts.SetIntraOpNumThreads(ThreadBudget::computeThreads());
+    int intraThreads = ThreadBudget::computeThreads();
+    if (const int cfg = ConfigService::getInt("vision.threads"); cfg > 0)
+      intraThreads = cfg;
+    opts.SetIntraOpNumThreads(intraThreads);
     opts.SetInterOpNumThreads(1);
+    opts.AddConfigEntry("session.intra_op.spin_duration_us", "1000");
+    opts.AddConfigEntry("session.intra_op.spin_backoff_max", "8");
 
     visionEncoder_ = std::make_unique<Ort::Session>(
         env_, kVisionEncoderPath.c_str(), opts);
@@ -203,8 +209,10 @@ void VisionService::init()
     }
 
     loaded_ = true;
+    defaultMaxTokens_ =
+        std::clamp<int32_t>(ConfigService::getInt("vision.max_tokens"), 8, 512);
     LOG_INFO << "Vision loaded: SmolVLM2-500M-Video-Instruct (ONNX int8, threads="
-             << ThreadBudget::computeThreads() << ")";
+             << intraThreads << ")";
   }
   catch (const std::exception& e) {
     LOG_FATAL << "Vision init failed: " << e.what();
@@ -294,6 +302,9 @@ std::string VisionService::describe(const VisionRequest& req)
   }
 
   std::lock_guard<std::mutex> lock(mutex_);
+
+  const int32_t maxTokens =
+      req.maxTokens > 0 ? req.maxTokens : defaultMaxTokens_;
 
   try {
     auto pixels = preprocess(req.imageRgb.data(),
@@ -553,7 +564,7 @@ std::string VisionService::describe(const VisionRequest& req)
     }
 
     int64_t step = promptLen;
-    for (int32_t i = 1; i < req.maxTokens; ++i) {
+    for (int32_t i = 1; i < maxTokens; ++i) {
       auto outs = runDecoderStep(generated.back(), step);
       ++step;
       const int64_t best = pickBest(outs);

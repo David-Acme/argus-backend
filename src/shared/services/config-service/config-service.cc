@@ -82,6 +82,11 @@ bool ConfigService::getBool(const std::string& keyPath)
   return getValue<bool>(keyPath, false);
 }
 
+double ConfigService::getDouble(const std::string& keyPath)
+{
+  return getValue<double>(keyPath, 0.0);
+}
+
 Json::Value ConfigService::drogonConfig()
 {
   if (!gConfig)
