@@ -68,7 +68,7 @@ void benchLlm(int runs)
 
 void benchVision(int runs)
 {
-  std::cout << "\n== VL (Florence-2-base-ft, ONNX int8) ==\n";
+  std::cout << "\n== VL (SmolVLM2-500M-Video-Instruct, ONNX int8) ==\n";
   VisionRequest req;
   req.prompt =
       "Describe brevemente lo que ves en esta imagen de seguridad.";

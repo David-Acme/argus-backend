@@ -18,43 +18,27 @@ using nlohmann::json;
 namespace
 {
 
-constexpr int kDefaultImageSize = 768;
-constexpr int64_t kEosId = 2;
-constexpr int64_t kPadId = 1;
-constexpr int64_t kUnkId = 3;
-constexpr int kNumLayers = 6;
-constexpr int kNumHeads = 12;
+constexpr int kImageSize = 512;
+constexpr int64_t kEosId = 49279;
+constexpr int64_t kImageTokenId = 49190;
+constexpr int64_t kFakeAroundId = 49189;
+constexpr int64_t kGlobalImgId = 49152;
+constexpr int kNumImageTokens = 64;
+constexpr int kNumLayers = 32;
+constexpr int kNumKvHeads = 5;
 constexpr int kHeadDim = 64;
-constexpr int kEmbedDim = 768;
-constexpr int kNoRepeatNgram = 3;
-constexpr int kNumOutputs = 25;
+constexpr int kEmbedDim = 960;
+constexpr int kNumDecoderOutputs = 1 + 2 * kNumLayers;
 
-const std::string kModelDir = "models/vision/florence";
+const std::string kModelDir = "models/vision/smolvlm";
 const std::string kVisionEncoderPath = kModelDir + "/vision_encoder_int8.onnx";
-const std::string kEncoderPath = kModelDir + "/encoder_model_int8.onnx";
 const std::string kDecoderMergedPath =
     kModelDir + "/decoder_model_merged_int8.onnx";
 const std::string kEmbedTokensPath = kModelDir + "/embed_tokens_int8.onnx";
 const std::string kTokenizerPath = kModelDir + "/tokenizer.json";
 
-const float kMean[3] = {0.485F, 0.456F, 0.406F};
-const float kStd[3] = {0.229F, 0.224F, 0.225F};
-
-const char* kDecoderOutputNames[kNumOutputs] = {
-    "logits",
-    "present.0.decoder.key",   "present.0.decoder.value",
-    "present.0.encoder.key",   "present.0.encoder.value",
-    "present.1.decoder.key",   "present.1.decoder.value",
-    "present.1.encoder.key",   "present.1.encoder.value",
-    "present.2.decoder.key",   "present.2.decoder.value",
-    "present.2.encoder.key",   "present.2.encoder.value",
-    "present.3.decoder.key",   "present.3.decoder.value",
-    "present.3.encoder.key",   "present.3.encoder.value",
-    "present.4.decoder.key",   "present.4.decoder.value",
-    "present.4.encoder.key",   "present.4.encoder.value",
-    "present.5.decoder.key",   "present.5.decoder.value",
-    "present.5.encoder.key",   "present.5.encoder.value",
-};
+const float kMean[3] = {0.5F, 0.5F, 0.5F};
+const float kStd[3] = {0.5F, 0.5F, 0.5F};
 
 Ort::MemoryInfo& cpuMem()
 {
@@ -135,26 +119,48 @@ std::string byteDecode(const std::string& token)
 } // namespace
 
 std::unique_ptr<Ort::Session> VisionService::visionEncoder_;
-std::unique_ptr<Ort::Session> VisionService::encoder_;
 std::unique_ptr<Ort::Session> VisionService::decoderMerged_;
 std::unique_ptr<Ort::Session> VisionService::embedTokens_;
 Ort::Env VisionService::env_{ORT_LOGGING_LEVEL_ERROR, "Argus-Vision"};
 std::mutex VisionService::mutex_;
 bool VisionService::loaded_ = false;
-int VisionService::imageSize_ = kDefaultImageSize;
 VisionService::FrameCache VisionService::cacheA_;
 VisionService::FrameCache VisionService::cacheB_;
 int VisionService::lastCacheSlot_ = 0;
 std::vector<std::string> VisionService::idToToken_;
 std::unordered_set<int64_t> VisionService::specialIds_;
 
-const std::vector<int64_t>& VisionService::taskIds()
+const std::vector<int64_t>& VisionService::promptIds()
 {
-  // "<MORE_DETAILED_CAPTION>" -> "Describe with a paragraph what is shown in
-  // the image." (byte-level BPE ids, <s> prefix + </s> suffix).
-  static const std::vector<int64_t> ids = {0, 47066, 21700, 19, 10, 17818,
-                                           99, 16,    2343,  11, 5,  2274,
-                                           4,  2};
+  // SmolVLM2 chat template with one expanded <image> block and a fixed
+  // captioning instruction:
+  //   <|im_start|>User:<image>Can you describe this image?
+  //   <end_of_utterance>\nAssistant:
+  // Tokenized with the model's GPT-2 byte-level BPE tokenizer (ids verified
+  // against transformers; the 64 <image> slots are filled at runtime by the
+  // vision encoder features via inputs_merger).
+  static const std::vector<int64_t> ids = {
+      1,      11126,  42,     kFakeAroundId, kGlobalImgId,
+      // 64 x <image>
+      kImageTokenId, kImageTokenId, kImageTokenId, kImageTokenId,
+      kImageTokenId, kImageTokenId, kImageTokenId, kImageTokenId,
+      kImageTokenId, kImageTokenId, kImageTokenId, kImageTokenId,
+      kImageTokenId, kImageTokenId, kImageTokenId, kImageTokenId,
+      kImageTokenId, kImageTokenId, kImageTokenId, kImageTokenId,
+      kImageTokenId, kImageTokenId, kImageTokenId, kImageTokenId,
+      kImageTokenId, kImageTokenId, kImageTokenId, kImageTokenId,
+      kImageTokenId, kImageTokenId, kImageTokenId, kImageTokenId,
+      kImageTokenId, kImageTokenId, kImageTokenId, kImageTokenId,
+      kImageTokenId, kImageTokenId, kImageTokenId, kImageTokenId,
+      kImageTokenId, kImageTokenId, kImageTokenId, kImageTokenId,
+      kImageTokenId, kImageTokenId, kImageTokenId, kImageTokenId,
+      kImageTokenId, kImageTokenId, kImageTokenId, kImageTokenId,
+      kImageTokenId, kImageTokenId, kImageTokenId, kImageTokenId,
+      kImageTokenId, kImageTokenId, kImageTokenId, kImageTokenId,
+      kImageTokenId, kImageTokenId, kImageTokenId, kImageTokenId,
+      kFakeAroundId, 7306, 346, 5125, 451, 2443, 47, 49279,
+      198, 9519, 9531, 42,
+  };
   return ids;
 }
 
@@ -167,21 +173,12 @@ void VisionService::init()
     opts.SetIntraOpNumThreads(ThreadBudget::computeThreads());
     opts.SetInterOpNumThreads(1);
 
-    // The vision encoder is the heaviest pass (DaViT over 24x24 patches);
-    // give it the full batch thread budget.
-    auto visionOpts = Ort::SessionOptions{};
-    visionOpts.SetExecutionMode(ExecutionMode::ORT_SEQUENTIAL);
-    visionOpts.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL);
-    visionOpts.SetIntraOpNumThreads(ThreadBudget::computeThreads());
-    visionOpts.SetInterOpNumThreads(1);
-
-    visionEncoder_ =
-        std::make_unique<Ort::Session>(env_, kVisionEncoderPath.c_str(), visionOpts);
-    encoder_ = std::make_unique<Ort::Session>(env_, kEncoderPath.c_str(), opts);
+    visionEncoder_ = std::make_unique<Ort::Session>(
+        env_, kVisionEncoderPath.c_str(), opts);
     decoderMerged_ = std::make_unique<Ort::Session>(
         env_, kDecoderMergedPath.c_str(), opts);
-    embedTokens_ =
-        std::make_unique<Ort::Session>(env_, kEmbedTokensPath.c_str(), opts);
+    embedTokens_ = std::make_unique<Ort::Session>(
+        env_, kEmbedTokensPath.c_str(), opts);
 
     std::ifstream tokFile(kTokenizerPath);
     if (!tokFile.is_open())
@@ -189,7 +186,8 @@ void VisionService::init()
     json tok;
     tokFile >> tok;
 
-    idToToken_.assign(51289, "");
+    const size_t vocabSize = 49280;
+    idToToken_.assign(vocabSize, "");
     for (auto it = tok.at("model").at("vocab").begin();
          it != tok.at("model").at("vocab").end(); ++it) {
       const int64_t id = it.value().get<int64_t>();
@@ -204,14 +202,9 @@ void VisionService::init()
       specialIds_.insert(id);
     }
 
-    imageSize_ = ConfigService::getInt("vision.image_size");
-    if (imageSize_ < 384 || imageSize_ > 1024)
-      imageSize_ = kDefaultImageSize;
-
     loaded_ = true;
-    LOG_INFO << "Vision loaded: Florence-2-base-ft (ONNX int8, threads="
-             << ThreadBudget::computeThreads()
-             << ", image_size=" << imageSize_ << ")";
+    LOG_INFO << "Vision loaded: SmolVLM2-500M-Video-Instruct (ONNX int8, threads="
+             << ThreadBudget::computeThreads() << ")";
   }
   catch (const std::exception& e) {
     LOG_FATAL << "Vision init failed: " << e.what();
@@ -223,7 +216,6 @@ void VisionService::shutdown()
 {
   embedTokens_.reset();
   decoderMerged_.reset();
-  encoder_.reset();
   visionEncoder_.reset();
   idToToken_.clear();
   specialIds_.clear();
@@ -241,18 +233,18 @@ std::vector<float> VisionService::preprocess(const unsigned char* rgb,
 {
   cv::Mat src(height, width, CV_8UC3, const_cast<unsigned char*>(rgb));
   cv::Mat resized;
-  cv::resize(src, resized, cv::Size(imageSize_, imageSize_), 0, 0,
-             cv::INTER_CUBIC);
+  cv::resize(src, resized, cv::Size(kImageSize, kImageSize), 0, 0,
+             cv::INTER_LANCZOS4);
 
-  std::vector<float> pixels(static_cast<size_t>(3) * imageSize_ * imageSize_);
+  std::vector<float> pixels(static_cast<size_t>(3) * kImageSize * kImageSize);
   const float scale = 1.0F / 255.0F;
   size_t idx = 0;
   for (int c = 0; c < 3; ++c) {
     const float mean = kMean[c];
     const float invStd = 1.0F / kStd[c];
-    for (int y = 0; y < imageSize_; ++y) {
+    for (int y = 0; y < kImageSize; ++y) {
       const uint8_t* row = resized.ptr<uint8_t>(y);
-      for (int x = 0; x < imageSize_; ++x)
+      for (int x = 0; x < kImageSize; ++x)
         pixels[idx++] = (row[x * 3 + c] * scale - mean) * invStd;
     }
   }
@@ -280,7 +272,7 @@ std::vector<std::string> VisionService::decodeTokens(
 {
   std::vector<std::string> words;
   for (int64_t id : ids) {
-    if (id < kPadId || id == kEosId || id == kUnkId)
+    if (id == kEosId || id == 0)
       continue;
     if (id < 0 || id >= static_cast<int64_t>(idToToken_.size()))
       continue;
@@ -316,9 +308,7 @@ std::string VisionService::describe(const VisionRequest& req)
       hash ^= bytes[i];
       hash *= 1099511628211ULL;
     }
-    const int64_t numImageTokens =
-        static_cast<int64_t>(imageSize_ / 32) *
-            static_cast<int64_t>(imageSize_ / 32) + 1;
+
     std::vector<float> imageFeatures;
     FrameCache* hit = nullptr;
     if (cacheA_.hash == hash && cacheA_.numTokens > 0) {
@@ -331,15 +321,29 @@ std::string VisionService::describe(const VisionRequest& req)
       imageFeatures = hit->features;
     }
     else {
-      const char* visionIn[] = {"pixel_values"};
+      const char* visionIn[] = {"pixel_values", "pixel_attention_mask"};
       const char* visionOut[] = {"image_features"};
-      const std::vector<int64_t> pixelShape = {1, 3, imageSize_,
-                                               imageSize_};
-      auto pixelValue = Ort::Value::CreateTensor<float>(
+      const std::vector<int64_t> pixelShape = {1, 1, 3, kImageSize,
+                                               kImageSize};
+      const std::vector<int64_t> maskShape = {1, 1, kImageSize, kImageSize};
+      auto maskData =
+          std::make_unique<bool[]>(static_cast<size_t>(kImageSize) *
+                                   kImageSize);
+      std::fill(maskData.get(), maskData.get() +
+                                    static_cast<size_t>(kImageSize) *
+                                        kImageSize,
+                true);
+      std::vector<Ort::Value> visionFeeds;
+      visionFeeds.push_back(Ort::Value::CreateTensor<float>(
           cpuMem(), pixels.data(), pixels.size(), pixelShape.data(),
-          pixelShape.size());
+          pixelShape.size()));
+      visionFeeds.push_back(Ort::Value::CreateTensor<bool>(
+          cpuMem(), maskData.get(),
+          static_cast<size_t>(kImageSize) * kImageSize, maskShape.data(),
+          maskShape.size()));
       auto visionOuts = visionEncoder_->Run(Ort::RunOptions{}, visionIn,
-                                            &pixelValue, 1, visionOut, 1);
+                                            visionFeeds.data(),
+                                            visionFeeds.size(), visionOut, 1);
       const auto imageShape =
           visionOuts[0].GetTensorTypeAndShapeInfo().GetShape();
       const int64_t actualTokens = imageShape[1];
@@ -355,172 +359,125 @@ std::string VisionService::describe(const VisionRequest& req)
       lastCacheSlot_ = lastCacheSlot_ == 1 ? 2 : 1;
     }
 
-    const auto& taskIds = VisionService::taskIds();
-    std::vector<int64_t> taskIdVec(taskIds.begin(), taskIds.end());
-    const std::vector<int64_t> taskShape = {
-        1, static_cast<int64_t>(taskIdVec.size())};
-    auto taskInput = Ort::Value::CreateTensor<int64_t>(
-        cpuMem(), taskIdVec.data(), taskIdVec.size(), taskShape.data(),
-        taskShape.size());
+    // Prefill: build the prompt embeddings and inject the image features into
+    // the <image> token rows.
+    const auto& prompt = promptIds();
+    const std::vector<int64_t> promptShape = {
+        1, static_cast<int64_t>(prompt.size())};
+    auto promptInput = Ort::Value::CreateTensor<int64_t>(
+        cpuMem(), const_cast<int64_t*>(prompt.data()), prompt.size(),
+        promptShape.data(), promptShape.size());
     const char* embedIn[] = {"input_ids"};
     const char* embedOut[] = {"inputs_embeds"};
     auto textOuts = embedTokens_->Run(Ort::RunOptions{}, embedIn,
-                                      &taskInput, 1, embedOut, 1);
+                                      &promptInput, 1, embedOut, 1);
 
-    const int64_t textLen = static_cast<int64_t>(taskIdVec.size());
+    const int64_t promptLen = static_cast<int64_t>(prompt.size());
     std::vector<float> textEmbeds(
         textOuts[0].GetTensorData<float>(),
         textOuts[0].GetTensorData<float>() +
-            static_cast<size_t>(textLen) * kEmbedDim);
+            static_cast<size_t>(promptLen) * kEmbedDim);
 
-    std::vector<float> encEmbeds(
-        static_cast<size_t>(numImageTokens + textLen) * kEmbedDim);
-    std::memcpy(encEmbeds.data(), imageFeatures.data(),
-                static_cast<size_t>(numImageTokens) * kEmbedDim *
+    // Row index where the 64 <image> tokens start (after the 3-token BOS
+    // prefix + fake/global markers).
+    const int64_t imageStart = 5;
+    std::vector<float> encEmbeds(textEmbeds);
+    std::memcpy(encEmbeds.data() + imageStart * kEmbedDim,
+                imageFeatures.data(),
+                static_cast<size_t>(kNumImageTokens) * kEmbedDim *
                     sizeof(float));
-    std::memcpy(encEmbeds.data() + numImageTokens * kEmbedDim,
-                textEmbeds.data(),
-                static_cast<size_t>(textLen) * kEmbedDim * sizeof(float));
 
-    const int64_t encLen = numImageTokens + textLen;
-    std::vector<int64_t> encAttnData(static_cast<size_t>(encLen), 1);
-    const std::vector<int64_t> attnShape = {1, encLen};
-    auto encAttn = Ort::Value::CreateTensor<int64_t>(
-        cpuMem(), encAttnData.data(), encAttnData.size(), attnShape.data(),
-        attnShape.size());
-    const std::vector<int64_t> encEmbShape = {1, encLen, kEmbedDim};
-    auto encEmbedsValue = Ort::Value::CreateTensor<float>(
-        cpuMem(), encEmbeds.data(), encEmbeds.size(), encEmbShape.data(),
-        encEmbShape.size());
+    const int64_t totalLen = promptLen;
+    std::vector<int64_t> attnData(static_cast<size_t>(totalLen), 1);
+    const std::vector<int64_t> attnShape = {1, totalLen};
+    std::vector<int64_t> posData(static_cast<size_t>(totalLen));
+    for (int64_t i = 0; i < totalLen; ++i)
+      posData[static_cast<size_t>(i)] = i;
+    const std::vector<int64_t> posShape = {1, totalLen};
+    const std::vector<int64_t> embShape = {1, totalLen, kEmbedDim};
 
-    const char* encIn[] = {"inputs_embeds", "attention_mask"};
-    const char* encOut[] = {"last_hidden_state"};
-    auto encOuts = encoder_->Run(Ort::RunOptions{}, encIn,
-                                 &encEmbedsValue, 2, encOut, 1);
+    // First decoder run: empty KV cache.
+    static const std::vector<float> kEmptyPast(1, 0.0F);
+    const std::vector<int64_t> emptyPastShape = {1, kNumKvHeads, 0, kHeadDim};
+    std::vector<Ort::Value> feeds;
+    std::vector<std::string> names;
+    feeds.push_back(Ort::Value::CreateTensor<float>(
+        cpuMem(), encEmbeds.data(), encEmbeds.size(), embShape.data(),
+        embShape.size()));
+    names.emplace_back("inputs_embeds");
+    feeds.push_back(Ort::Value::CreateTensor<int64_t>(
+        cpuMem(), attnData.data(), attnData.size(), attnShape.data(),
+        attnShape.size()));
+    names.emplace_back("attention_mask");
+    feeds.push_back(Ort::Value::CreateTensor<int64_t>(
+        cpuMem(), posData.data(), posData.size(), posShape.data(),
+        posShape.size()));
+    names.emplace_back("position_ids");
 
-    std::vector<float> encHidden(
-        encOuts[0].GetTensorData<float>(),
-        encOuts[0].GetTensorData<float>() +
-            static_cast<size_t>(encLen) * kEmbedDim);
+    const char* decoderOutputNames[kNumDecoderOutputs];
+    decoderOutputNames[0] = "logits";
+    for (int l = 0; l < kNumLayers; ++l) {
+      static std::vector<std::string> namesStorage(2 * kNumLayers);
+      namesStorage[static_cast<size_t>(2 * l)] =
+          "present." + std::to_string(l) + ".key";
+      namesStorage[static_cast<size_t>(2 * l + 1)] =
+          "present." + std::to_string(l) + ".value";
+      decoderOutputNames[1 + 2 * l] = namesStorage[static_cast<size_t>(2 * l)].c_str();
+      decoderOutputNames[2 + 2 * l] =
+          namesStorage[static_cast<size_t>(2 * l + 1)].c_str();
+    }
 
-    std::vector<int64_t> generated;
-    std::vector<std::vector<float>> pastDecK(kNumLayers), pastDecV(kNumLayers);
-    std::vector<std::vector<float>> pastEncK(kNumLayers), pastEncV(kNumLayers);
-    int64_t pastLen = 0;
-
-    auto banNgrams = [&](int64_t candidate) {
-      if (generated.size() < static_cast<size_t>(kNoRepeatNgram - 1))
-        return false;
-      const int64_t g1 = generated[generated.size() - 2];
-      const int64_t g2 = generated.back();
-      for (size_t i = 0; i + kNoRepeatNgram <= generated.size(); ++i) {
-        if (generated[i] == g1 && generated[i + 1] == g2 &&
-            generated[i + 2] == candidate)
-          return true;
+    // past_key_values inputs (empty on first step).
+    for (int l = 0; l < kNumLayers; ++l) {
+      for (int kv = 0; kv < 2; ++kv) {
+        names.push_back("past_key_values." + std::to_string(l) + "." +
+                        (kv == 0 ? "key" : "value"));
+        feeds.push_back(Ort::Value::CreateTensor<float>(
+            cpuMem(), const_cast<float*>(kEmptyPast.data()), kEmptyPast.size(),
+            emptyPastShape.data(), emptyPastShape.size()));
       }
-      return false;
-    };
+    }
 
-    auto runDecoder = [&](int64_t token,
-                          bool useCache) -> std::vector<Ort::Value> {
-      auto decEmbeds = embed(token);
-      std::vector<Ort::Value> feeds;
-      std::vector<std::string> names;
+    std::vector<const char*> inputNames;
+    inputNames.reserve(names.size());
+    for (const auto& n : names)
+      inputNames.push_back(n.c_str());
 
-      const std::vector<int64_t> decEmbShape = {1, 1, kEmbedDim};
-      feeds.push_back(Ort::Value::CreateTensor<float>(
-          cpuMem(), decEmbeds.data(), decEmbeds.size(), decEmbShape.data(),
-          decEmbShape.size()));
-      names.emplace_back("inputs_embeds");
+    auto firstOuts = decoderMerged_->Run(
+        Ort::RunOptions{}, inputNames.data(), feeds.data(), feeds.size(),
+        decoderOutputNames, kNumDecoderOutputs);
 
-      feeds.push_back(Ort::Value::CreateTensor<int64_t>(
-          cpuMem(), encAttnData.data(), encAttnData.size(), attnShape.data(),
-          attnShape.size()));
-      names.emplace_back("encoder_attention_mask");
-
-      const std::vector<int64_t> encHidShape = {1, encLen, kEmbedDim};
-      feeds.push_back(Ort::Value::CreateTensor<float>(
-          cpuMem(), encHidden.data(), encHidden.size(), encHidShape.data(),
-          encHidShape.size()));
-      names.emplace_back("encoder_hidden_states");
-
-      for (int l = 0; l < kNumLayers; ++l) {
-        // All 24 past inputs are required on every step; the first step
-        // passes empty caches (the If branch ignores them).
-        static const std::vector<float> kEmptyPast(1, 0.0F);
-        const auto* decK =
-            useCache ? &pastDecK[static_cast<size_t>(l)] : &kEmptyPast;
-        const auto* decV =
-            useCache ? &pastDecV[static_cast<size_t>(l)] : &kEmptyPast;
-        const auto* encK =
-            useCache ? &pastEncK[static_cast<size_t>(l)] : &kEmptyPast;
-        const auto* encV =
-            useCache ? &pastEncV[static_cast<size_t>(l)] : &kEmptyPast;
-        const int64_t decLen = useCache ? pastLen : 0;
-        const int64_t encLenPast = useCache ? encLen : 0;
-        const std::vector<int64_t> decPastShape = {1, kNumHeads, decLen,
-                                                   kHeadDim};
-        const std::vector<int64_t> encPastShape = {1, kNumHeads, encLenPast,
-                                                   kHeadDim};
-        feeds.push_back(Ort::Value::CreateTensor<float>(
-            cpuMem(), const_cast<float*>(decK->data()), decK->size(),
-            decPastShape.data(), decPastShape.size()));
-        names.push_back("past_key_values." + std::to_string(l) +
-                        ".decoder.key");
-        feeds.push_back(Ort::Value::CreateTensor<float>(
-            cpuMem(), const_cast<float*>(decV->data()), decV->size(),
-            decPastShape.data(), decPastShape.size()));
-        names.push_back("past_key_values." + std::to_string(l) +
-                        ".decoder.value");
-        feeds.push_back(Ort::Value::CreateTensor<float>(
-            cpuMem(), const_cast<float*>(encK->data()), encK->size(),
-            encPastShape.data(), encPastShape.size()));
-        names.push_back("past_key_values." + std::to_string(l) +
-                        ".encoder.key");
-        feeds.push_back(Ort::Value::CreateTensor<float>(
-            cpuMem(), const_cast<float*>(encV->data()), encV->size(),
-            encPastShape.data(), encPastShape.size()));
-        names.push_back("past_key_values." + std::to_string(l) +
-                        ".encoder.value");
-      }
-
-      bool useCacheFlag = useCache;
-      const std::vector<int64_t> cacheShape = {1};
-      feeds.push_back(Ort::Value::CreateTensor<bool>(
-          cpuMem(), &useCacheFlag, 1, cacheShape.data(), cacheShape.size()));
-      names.emplace_back("use_cache_branch");
-
-      std::vector<const char*> inputNames;
-      inputNames.reserve(names.size());
-      for (const auto& n : names)
-        inputNames.push_back(n.c_str());
-
-      return decoderMerged_->Run(Ort::RunOptions{}, inputNames.data(),
-                                 feeds.data(), feeds.size(),
-                                 kDecoderOutputNames, kNumOutputs);
-    };
-
-    auto copyPast = [](const std::vector<Ort::Value>& outs, int outIdx,
-                       std::vector<float>& dst) {
-      const auto sh =
-          outs[static_cast<size_t>(outIdx)].GetTensorTypeAndShapeInfo()
-              .GetShape();
+    // Keep KV cache as a growing vector of floats per layer.
+    std::vector<std::vector<float>> pastKeys(kNumLayers), pastValues(kNumLayers);
+    std::vector<int64_t> pastShapes(static_cast<size_t>(2 * kNumLayers), 0);
+    auto copyPast = [&](const std::vector<Ort::Value>& outs, int outIdx, int l,
+                        bool key) {
+      auto& dst = key ? pastKeys[static_cast<size_t>(l)]
+                      : pastValues[static_cast<size_t>(l)];
+      const auto sh = outs[static_cast<size_t>(outIdx)]
+                          .GetTensorTypeAndShapeInfo()
+                          .GetShape();
       dst.assign(outs[static_cast<size_t>(outIdx)].GetTensorData<float>(),
                  outs[static_cast<size_t>(outIdx)].GetTensorData<float>() +
                      static_cast<size_t>(sh[0] * sh[1] * sh[2] * sh[3]));
+      pastShapes[static_cast<size_t>(2 * l + (key ? 0 : 1))] = sh[2];
     };
+    for (int l = 0; l < kNumLayers; ++l) {
+      copyPast(firstOuts, 1 + 2 * l, l, true);
+      copyPast(firstOuts, 2 + 2 * l, l, false);
+    }
 
+    // Greedy decode.
     auto pickBest = [&](const std::vector<Ort::Value>& outs) {
       const auto logitsShape = outs[0].GetTensorTypeAndShapeInfo().GetShape();
       const int64_t vocab = logitsShape[2];
-      const auto* logitsBegin = outs[0].GetTensorData<float>();
-      std::vector<float> logitsRow(logitsBegin,
-                                   logitsBegin + static_cast<size_t>(vocab));
+      const int64_t lastPos = logitsShape[1] - 1;
+      const auto* logitsBase = outs[0].GetTensorData<float>();
+      const auto* logitsRow =
+          logitsBase + static_cast<size_t>(lastPos) * vocab;
       int64_t best = 0;
       float bestScore = -1e30F;
       for (int64_t v = 0; v < vocab; ++v) {
-        if (banNgrams(v))
-          continue;
         const float s = logitsRow[static_cast<size_t>(v)];
         if (s > bestScore) {
           bestScore = s;
@@ -530,30 +487,76 @@ std::string VisionService::describe(const VisionRequest& req)
       return best;
     };
 
-    // First decoder step: no cache, encoder past is produced here.
-    {
-      auto outs = runDecoder(kEosId, false);
-      const int64_t best = pickBest(outs);
+    std::vector<int64_t> generated;
+    std::vector<int64_t> attnDataRunning(static_cast<size_t>(totalLen), 1);
+    int64_t curLen = totalLen;
+    auto runDecoderStep = [&](int64_t token, int64_t step) {
+      auto emb = embed(token);
+      const std::vector<int64_t> emb1Shape = {1, 1, kEmbedDim};
+      const std::vector<int64_t> attn1Shape = {1, curLen + 1};
+      const std::vector<int64_t> pos1Shape = {1, 1};
+      attnDataRunning.push_back(1);
+      std::vector<int64_t> pos1 = {step};
+
+      std::vector<Ort::Value> feeds2;
+      std::vector<std::string> names2;
+      feeds2.push_back(Ort::Value::CreateTensor<float>(
+          cpuMem(), emb.data(), emb.size(), emb1Shape.data(), emb1Shape.size()));
+      names2.emplace_back("inputs_embeds");
+      feeds2.push_back(Ort::Value::CreateTensor<int64_t>(
+          cpuMem(), attnDataRunning.data(), attnDataRunning.size(),
+          attn1Shape.data(), attn1Shape.size()));
+      names2.emplace_back("attention_mask");
+      feeds2.push_back(Ort::Value::CreateTensor<int64_t>(
+          cpuMem(), pos1.data(), pos1.size(), pos1Shape.data(),
+          pos1Shape.size()));
+      names2.emplace_back("position_ids");
+
       for (int l = 0; l < kNumLayers; ++l) {
-        copyPast(outs, 1 + l * 4, pastDecK[static_cast<size_t>(l)]);
-        copyPast(outs, 2 + l * 4, pastDecV[static_cast<size_t>(l)]);
-        copyPast(outs, 3 + l * 4, pastEncK[static_cast<size_t>(l)]);
-        copyPast(outs, 4 + l * 4, pastEncV[static_cast<size_t>(l)]);
+        const int64_t pastLen = pastShapes[static_cast<size_t>(2 * l)];
+        const std::vector<int64_t> pastShape = {1, kNumKvHeads, pastLen,
+                                                kHeadDim};
+        feeds2.push_back(Ort::Value::CreateTensor<float>(
+            cpuMem(), pastKeys[static_cast<size_t>(l)].data(),
+            pastKeys[static_cast<size_t>(l)].size(), pastShape.data(),
+            pastShape.size()));
+        names2.emplace_back("past_key_values." + std::to_string(l) + ".key");
+        feeds2.push_back(Ort::Value::CreateTensor<float>(
+            cpuMem(), pastValues[static_cast<size_t>(l)].data(),
+            pastValues[static_cast<size_t>(l)].size(), pastShape.data(),
+            pastShape.size()));
+        names2.emplace_back("past_key_values." + std::to_string(l) + ".value");
       }
-      pastLen = 1;
+
+      std::vector<const char*> inputNames2;
+      inputNames2.reserve(names2.size());
+      for (const auto& n : names2)
+        inputNames2.push_back(n.c_str());
+
+      auto outs = decoderMerged_->Run(
+          Ort::RunOptions{}, inputNames2.data(), feeds2.data(), feeds2.size(),
+          decoderOutputNames, kNumDecoderOutputs);
+      for (int l = 0; l < kNumLayers; ++l) {
+        copyPast(outs, 1 + 2 * l, l, true);
+        copyPast(outs, 2 + 2 * l, l, false);
+      }
+      ++curLen;
+      return outs;
+    };
+
+    // First generated token comes from the prefill logits (last position).
+    {
+      const int64_t best = pickBest(firstOuts);
       if (best == kEosId)
         return "";
       generated.push_back(best);
     }
 
-    for (int32_t step = 1; step < req.maxTokens; ++step) {
-      auto outs = runDecoder(generated.back(), true);
+    int64_t step = promptLen;
+    for (int32_t i = 1; i < req.maxTokens; ++i) {
+      auto outs = runDecoderStep(generated.back(), step);
+      ++step;
       const int64_t best = pickBest(outs);
-      for (int l = 0; l < kNumLayers; ++l) {
-        copyPast(outs, 1 + l * 4, pastDecK[static_cast<size_t>(l)]);
-        copyPast(outs, 2 + l * 4, pastDecV[static_cast<size_t>(l)]);
-      }
-      ++pastLen;
       if (best == kEosId)
         break;
       generated.push_back(best);

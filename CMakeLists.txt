@@ -16,25 +16,9 @@ find_package(OpenCV CONFIG REQUIRED)
 find_package(Eigen3 REQUIRED)
 find_package(onnxruntime CONFIG REQUIRED)
 find_package(tomlplusplus REQUIRED)
+find_package(llama-cpp CONFIG REQUIRED)
 
 add_subdirectory(third_party)
-
-# llama.cpp (LLM inference) is vendored as a git submodule pinned to a
-# release with the LFM2.5-1.2B architecture support.
-set(LLAMA_ALL_WARNINGS OFF CACHE BOOL "" FORCE)
-set(LLAMA_BUILD_COMMON OFF CACHE BOOL "" FORCE)
-set(LLAMA_BUILD_TESTS OFF CACHE BOOL "" FORCE)
-set(LLAMA_BUILD_TOOLS OFF CACHE BOOL "" FORCE)
-set(LLAMA_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
-set(LLAMA_BUILD_SERVER OFF CACHE BOOL "" FORCE)
-set(LLAMA_BUILD_APP OFF CACHE BOOL "" FORCE)
-set(LLAMA_CURL OFF CACHE BOOL "" FORCE)
-set(GGML_NATIVE ON CACHE BOOL "" FORCE)
-set(GGML_LLAMAFILE ON CACHE BOOL "" FORCE)
-set(GGML_CPU_REPACK ON CACHE BOOL "" FORCE)
-set(GGML_OPENMP ON CACHE BOOL "" FORCE)
-add_subdirectory(third_party/llama.cpp EXCLUDE_FROM_ALL)
-set(CMAKE_CXX_STANDARD 20)
 
 file(GLOB_RECURSE CONFIG_SRC
     ${SRC_ROOT}/config/*.cc
@@ -95,7 +79,7 @@ target_link_libraries(${PROJECT_NAME}
         jwt-cpp::jwt-cpp
         nlohmann_json::nlohmann_json
 
-        llama
+        llama-cpp::llama-cpp
         opencv::opencv
         Eigen3::Eigen
         onnxruntime::onnxruntime

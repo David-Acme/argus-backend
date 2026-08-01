@@ -77,11 +77,11 @@ nms_threshold = 0.4
 ef_search = 100
 top_k = 5
 
-# ── Vision (Florence-2) ──────────────────────────────────────────────
+# ── Vision (SmolVLM2-500M) ──────────────────────────────────────────
 [vision]
-# Input resolution for the image encoder. 768 = full quality (default);
-# lower values (512/640) trade detail for speed on weak CPUs.
-image_size = 768
+# Input resolution is fixed at 512x512 by the SigLIP vision encoder
+# (64 image tokens per frame). Kept for forward-compatibility.
+image_size = 512
 
 [storage.s3]
 endpoint = ""

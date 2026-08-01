@@ -247,10 +247,10 @@ Streaming variants marshal callbacks into the loop via `queueInLoop`.
 
 `LlmService`, `SttService`, `TtsService` own one shared inference context
 each: access is serialized with a static `std::mutex` (LLM also reuses a
-single `llama_batch` per generation loop). `VisionService` runs Florence-2
+single `llama_batch` per generation loop). `VisionService` runs SmolVLM2
 (ONNX) behind the same mutex pattern. The vision encoder output is cached
 per image hash (frame cache) so repeated camera frames skip the most
-expensive pass; `vision.image_size` (default 768) trades detail for speed.
+expensive pass; input resolution is fixed at 512 by the SigLIP encoder.
 
 ### 14. JSON columns
 
@@ -263,14 +263,16 @@ expensive pass; `vision.image_size` (default 768) trades detail for speed.
 - `nlohmann_json/3.11.3` (pinned for jwt-cpp)
 - `tomlplusplus/3.3.0` for config
 - `opencv/4.13.0` (headless, for scaled face image decoding)
-- `onnxruntime/1.24.4` (STT/TTS via sherpa-onnx)
-- **llama.cpp is a vendored git submodule** (`third_party/llama.cpp`, pinned to
-  release `b10216`) — NOT a Conan dependency. It powers the LLM only.
-- **Vision runs Florence-2-base-ft (ONNX int8)** from
-  `onnx-community/Florence-2-base-ft`: 4 sessions (vision encoder, encoder,
-  merged decoder, token embeddings) + `tokenizer.json`, downloaded by
-  `scripts/setup.sh` into `models/vision/florence/`. Task prompt is
-  `<MORE_DETAILED_CAPTION>` → English detailed caption.
+- `onnxruntime/1.24.4` (STT/TTS via sherpa-onnx, Vision via SmolVLM2)
+- **llama-cpp/b6565 via Conan** (latest stable on Conan Center) — powers the
+  LLM only. Target: `llama-cpp::llama-cpp`. API note: b6565 uses
+  `use_mmap`/`use_mlock` (no `load_mode`). Not a submodule.
+- **Vision runs SmolVLM2-500M-Video-Instruct (ONNX int8)** from
+  `HuggingFaceTB/SmolVLM2-500M-Video-Instruct`: 3 sessions (SigLIP vision
+  encoder 512px → 64 image tokens, merged decoder with fp32 KV cache, token
+  embeddings) + `tokenizer.json`, downloaded by `scripts/setup.sh` into
+  `models/vision/smolvlm/`. ChatML prompt with expanded `<image>` block,
+  fixed captioning instruction (pre-tokenized ids).
 - **NO spdlog** — use Drogon's built-in logging (`LOG_INFO`, `LOG_WARN`, `LOG_FATAL`)
 - **NO libsodium** — auth is face-based
 - **NO ORM** — raw SQL via `DbService::client()->execSqlCoro()`

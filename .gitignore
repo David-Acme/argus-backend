@@ -40,9 +40,6 @@ uploads/
 # TTS models (downloaded separately)
 models/
 
-# Dev virtual environment (tree-sitter context tool)
-.venv/
-
 # Python cache
 __pycache__/
 .cache/

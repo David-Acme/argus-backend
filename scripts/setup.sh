@@ -272,12 +272,12 @@ setup_llm_model() {
 }
 
 setup_vision_model() {
-  log "Setting up Florence-2 vision model (ONNX int8)..."
+  log "Setting up SmolVLM2-500M vision model (ONNX int8)..."
 
   local ROOT
   ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-  local MODEL_DIR="$ROOT/models/vision/florence"
-  local HF_BASE="https://huggingface.co/onnx-community/Florence-2-base-ft/resolve/main"
+  local MODEL_DIR="$ROOT/models/vision/smolvlm"
+  local HF_BASE="https://huggingface.co/HuggingFaceTB/SmolVLM2-500M-Video-Instruct/resolve/main"
   local DL=""
 
   if command -v curl >/dev/null 2>&1; then
@@ -291,12 +291,12 @@ setup_vision_model() {
 
   mkdir -p "$MODEL_DIR"
 
-  # Florence-2-base-ft (0.23B, int8): vision encoder + encoder + merged
-  # decoder + token embeddings + tokenizer. ~280 MB total, runs on CPU.
+  # SmolVLM2-500M-Video-Instruct (0.5B, int8): vision encoder (SigLIP base
+  # 512px, 64 tokens/image), merged Llama3 decoder with fp32 KV cache, token
+  # embeddings + GPT-2 byte-level BPE tokenizer. ~490 MB total, runs on CPU.
   local FILES=(
-    decoder_model_merged_int8.onnx
-    encoder_model_int8.onnx
     vision_encoder_int8.onnx
+    decoder_model_merged_int8.onnx
     embed_tokens_int8.onnx
     tokenizer.json
   )
@@ -313,7 +313,7 @@ setup_vision_model() {
     fi
   done
 
-  log "Vision model ready (~280 MB)."
+  log "Vision model ready (~490 MB)."
 }
 
 setup_stt_model() {

@@ -36,9 +36,10 @@ public:
   static bool isLoaded();
 
 private:
-  // Florence-2 captioning task prompts, tokenized with the model's
-  // byte-level BPE tokenizer (ids include <s> / </s> special tokens).
-  static const std::vector<int64_t>& taskIds();
+  // SmolVLM2 chat template prefix with a single image placeholder expanded to
+  // <fake_token_around_image><global-img><image>x64<fake_token_around_image>
+  // plus the "Can you describe this image?" instruction (pre-tokenized ids).
+  static const std::vector<int64_t>& promptIds();
 
   static std::vector<float> preprocess(const unsigned char* rgb, int width,
                                        int height);
@@ -47,13 +48,11 @@ private:
   decodeTokens(const std::vector<int64_t>& ids);
 
   static std::unique_ptr<Ort::Session> visionEncoder_;
-  static std::unique_ptr<Ort::Session> encoder_;
   static std::unique_ptr<Ort::Session> decoderMerged_;
   static std::unique_ptr<Ort::Session> embedTokens_;
   static Ort::Env env_;
   static std::mutex mutex_;
   static bool loaded_;
-  static int imageSize_;
 
   // Frame cache: repeated/near-identical frames (camera feeds) reuse the
   // vision encoder output, skipping the most expensive pass.
@@ -69,6 +68,6 @@ private:
 
   // id -> token string, for detokenizing generated ids.
   static std::vector<std::string> idToToken_;
-  // ids of special task tokens (skipped when decoding captions).
+  // ids of special tokens (skipped when decoding captions).
   static std::unordered_set<int64_t> specialIds_;
 };

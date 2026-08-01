@@ -33,7 +33,7 @@ void LlmService::init()
 
     llama_model_params modelParams = llama_model_default_params();
     modelParams.n_gpu_layers = 0;
-    modelParams.load_mode = LLAMA_LOAD_MODE_MMAP;
+    modelParams.use_mmap = true;
 
     llama_model* rawModel =
         llama_model_load_from_file(modelPath.c_str(), modelParams);

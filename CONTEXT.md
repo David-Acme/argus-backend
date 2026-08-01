@@ -57,8 +57,8 @@
 |---------|--------|-------|------|
 | `FaceService` | ncnn (Vulkan) | RetinaFace + MobileFaceNet | `models/face/` |
 | `FaceDB` | HNSWlib | In-memory 128-dim index | Loaded from SQLite at startup |
-| `LlmService` | llama.cpp | LFM2.5-1.2B-Instruct-Q4_K_M | `models/llm/` |
-| `VisionService` | Florence-2 (ONNX int8) | Florence-2-base-ft | `models/vision/florence/` |
+| `LlmService` | llama.cpp (Conan) | LFM2.5-1.2B-Instruct-Q4_K_M | `models/llm/` |
+| `VisionService` | SmolVLM2 (ONNX int8) | SmolVLM2-500M-Video-Instruct | `models/vision/smolvlm/` |
 | `SttService` | sherpa-onnx | Whisper tiny | `models/stt/` |
 | `TtsService` | Supertonic 3 | ONNX models | `models/tts/` |
 | `JwtService` | jwt-cpp | HS256, instance class | — |
@@ -79,20 +79,21 @@ without GPU), so every AI service auto-tunes its resources at runtime:
 - **LLM**: `n_threads=lightThreads` + `n_threads_batch=batchThreads` (measured
   +54% prefill on long prompts), warmup decode at init, `use_mmap=true`,
   generation batch reused (no alloc per token), static mutex around context.
-- **Vision**: REPLACED with **Florence-2-base-ft (ONNX int8, 0.23B)** —
-  `onnx-community/Florence-2-base-ft`: 4 sessions (vision encoder, encoder,
-  merged decoder with cache branch, token embeddings) + byte-level BPE
-  tokenizer. Task `<MORE_DETAILED_CAPTION>` ("Describe with a paragraph what
-  is shown in the image.") → English caption for the main LLM. Greedy decode
-  with `no_repeat_ngram=3`; generation matches transformers.js (decoder
-  starts at token 2, `use_cache_branch` selects the cache path, empty caches
-  on the first step). Frame cache: the vision encoder output is cached per
-  image hash (2 slots) — repeated camera frames skip the 2.2s encoder pass
-  (measured: 2.6s cold → 0.45s on cache hit on the reference machine).
-  `vision.image_size` (768 default, 512/640 opt-in) trades detail for speed.
-  NOTE: the encoder is GEMM-bound (12 fp32 channel-attention MatMuls); 768px
-  is required for detailed captions (512/640 degrade them); q4/q4f16 encoder
-  variants are slower or break ORT graph fusion — keep int8.
+- **Vision**: REPLACED with **SmolVLM2-500M-Video-Instruct (ONNX int8, 0.5B)** —
+  `HuggingFaceTB/SmolVLM2-500M-Video-Instruct`: 3 sessions (SigLIP vision
+  encoder base patch-16/512 → 64 image tokens, merged Llama3 decoder with
+  fp32 KV cache, token embeddings) + GPT-2 byte-level BPE tokenizer. ChatML
+  prompt `<|im_start|>User:<image>Can you describe this image?
+  <end_of_utterance>\nAssistant:` with the `<image>` block expanded to
+  `<fake_token_around_image><global-img><image>x64<fake_token_around_image>`;
+  the 64 image rows are filled at runtime with the encoder features
+  (inputs_merger pattern). Greedy decode; prefill runs the whole prompt in
+  one pass, then iterative decode with growing attention_mask/position_ids.
+  Frame cache: the vision encoder output is cached per image hash (2 slots) —
+  repeated camera frames skip the ~0.5s encoder pass. The 500M is a full VLM
+  (VQA + captioning) and beats Florence-2 on quality while being faster and
+  lighter on CPU. NOTE: `vision.image_size` is now fixed at 512 by the model;
+  the encoder runs in ~0.5s and decode ~24ms/token on the reference machine.
 - **STT/TTS**: adaptive intra-op threads, static mutexes (recognizer, engine,
   voice cache) — thread-safe for concurrent requests.
 - **Face**: `identifyMutex_` (global serialization) replaced by a
@@ -113,11 +114,13 @@ without GPU), so every AI service auto-tunes its resources at runtime:
 - **HTTP**: `client_max_memory_body_size` 64K→16M (no multipart spooling to
   disk for images). Release build: `-march=native` + `-flto=auto` on the app
   target only; `-Wall -Wextra` always on, third-party includes SYSTEM.
-- **llama.cpp vendored**: `third_party/llama.cpp` submodule pinned to release
-  `b10216` (shallow in `.gitmodules`), built via `add_subdirectory` with the
-  `llama` target only (LLM). Conan `llama-cpp` removed; mtmd is no longer
-  built (vision moved to ONNX). API notes for b10216: `llama_model_params.
-  use_mmap/use_mlock` → `load_mode` (`LLAMA_LOAD_MODE_MMAP`).
+- **llama.cpp via Conan**: `llama-cpp/b6565` in `conanfile.txt` (latest stable
+  on Conan Center, 2025-09). Third-party submodule removed (was pinned to
+  b10216 for the LLM; mtmd is no longer built — vision moved to ONNX).
+  API notes for b6565: `llama_model_params` uses `use_mmap`/`use_mlock`
+  booleans (the newer `load_mode`/`LLAMA_LOAD_MODE_MMAP` from b10216 does not
+  exist yet). Target: `llama-cpp::llama-cpp`. Supports the LFM2 arch used by
+  LFM2.5-1.2B.
 - **ncnn Vulkan**: kept ON — the reference machine has an AMD iGPU (RADV
   RENOIR) that ncnn uses via Vulkan; machines without GPU fall back to CPU.
 - **Bench tool**: `./argus-backend --bench` measures LLM/VL/STT/TTS
