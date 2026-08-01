@@ -1,6 +1,7 @@
 #pragma once
 
 #include "event-query.hxx"
+
 #include <drogon/utils/coroutine.h>
 #include <optional>
 #include <shared/schemas/event/event-schema.hxx>

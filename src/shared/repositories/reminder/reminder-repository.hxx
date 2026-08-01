@@ -1,6 +1,7 @@
 #pragma once
 
 #include "reminder-query.hxx"
+
 #include <drogon/utils/coroutine.h>
 #include <json/value.h>
 #include <optional>
@@ -17,8 +18,7 @@ public:
   drogon::Task<std::optional<ReminderSchema>> findById(int64_t id) const;
   drogon::Task<std::vector<ReminderSchema>>
   findByTargetUser(int64_t targetUserId) const;
-  drogon::Task<ReminderSchema>
-  create(const ReminderCreateInput& input) const;
+  drogon::Task<ReminderSchema> create(const ReminderCreateInput& input) const;
   drogon::Task<ReminderSchema> update(int64_t id,
                                       const ReminderUpdateInput& input) const;
   drogon::Task<bool> remove(int64_t id) const;

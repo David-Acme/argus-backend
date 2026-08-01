@@ -1,6 +1,8 @@
 #include "stt-service.hxx"
 
 #include <drogon/drogon.h>
+#include <shared/wrapper/blocking-task/blocking-task.hxx>
+#include <shared/wrapper/thread-budget/thread-budget.hxx>
 #include <sherpa-onnx/c-api/c-api.h>
 #include <thread>
 
@@ -8,11 +10,13 @@ std::unique_ptr<const SherpaOnnxOfflineRecognizer,
                 void (*)(const SherpaOnnxOfflineRecognizer*)>
     SttService::recognizer_{nullptr, SherpaOnnxDestroyOfflineRecognizer};
 bool SttService::loaded_ = false;
+std::mutex SttService::mutex_;
+
 void SttService::init()
 {
   try {
     const std::string modelDir = "models/stt";
-    auto nThreads = static_cast<int32_t>(4);
+    auto nThreads = ThreadBudget::computeThreads();
 
     auto encoderPath = modelDir + "/tiny-encoder.int8.onnx";
     auto decoderPath = modelDir + "/tiny-decoder.int8.onnx";
@@ -61,6 +65,8 @@ bool SttService::isLoaded()
 std::string SttService::transcribe(const std::vector<float>& audioSamples,
                                    int32_t sampleRate)
 {
+  std::lock_guard<std::mutex> lock(mutex_);
+
   auto* recognizer = recognizer_.get();
 
   std::unique_ptr<const SherpaOnnxOfflineStream,
@@ -87,4 +93,14 @@ std::string SttService::transcribe(const std::vector<float>& audioSamples,
   SherpaOnnxDestroyOfflineRecognizerResult(r);
 
   return result;
+}
+
+drogon::Task<std::string>
+SttService::transcribeAsync(const std::vector<float>& audioSamples,
+                            int32_t sampleRate)
+{
+  co_return co_await BlockingTask<std::string>(
+      [audioSamples, sampleRate]() {
+        return SttService::transcribe(audioSamples, sampleRate);
+      });
 }

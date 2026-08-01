@@ -1,6 +1,7 @@
 #pragma once
 
 #include "camera-stream-query.hxx"
+
 #include <drogon/utils/coroutine.h>
 #include <json/value.h>
 #include <optional>
@@ -14,8 +15,7 @@ public:
   CameraStreamRepository() = default;
   ~CameraStreamRepository() override = default;
 
-  drogon::Task<std::optional<CameraStreamSchema>>
-  findById(int64_t id) const;
+  drogon::Task<std::optional<CameraStreamSchema>> findById(int64_t id) const;
   drogon::Task<std::vector<CameraStreamSchema>>
   findByCamera(int64_t cameraId) const;
   drogon::Task<CameraStreamSchema>

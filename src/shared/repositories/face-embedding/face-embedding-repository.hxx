@@ -1,6 +1,7 @@
 #pragma once
 
 #include "face-embedding-query.hxx"
+
 #include <cstdint>
 #include <drogon/utils/coroutine.h>
 #include <optional>
@@ -13,8 +14,7 @@ public:
   FaceEmbeddingRepository() = default;
   ~FaceEmbeddingRepository() = default;
 
-  drogon::Task<std::optional<FaceEmbeddingSchema>>
-  findById(int64_t id) const;
+  drogon::Task<std::optional<FaceEmbeddingSchema>> findById(int64_t id) const;
 
   drogon::Task<std::vector<FaceEmbeddingSchema>>
   findByPerson(int64_t personId) const;

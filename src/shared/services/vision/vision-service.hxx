@@ -1,7 +1,9 @@
 #pragma once
 
 #include <cstdint>
+#include <drogon/utils/coroutine.h>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -30,6 +32,9 @@ public:
 
   static std::string describe(const VisionRequest& req);
 
+  // Coroutine variant: runs inference off the event loop.
+  static drogon::Task<std::string> describeAsync(const VisionRequest& req);
+
   static bool isLoaded();
 
 private:
@@ -41,6 +46,7 @@ private:
   static int64_t contextSize_;
   static bool loaded_;
   static bool hasEncoder_;
+  static std::mutex mutex_;
 
   static constexpr const char* SYSTEM_PROMPT =
       R"SYSPROMPT(Eres Argus Vision, un sistema de análisis visual para vigilancia de seguridad.

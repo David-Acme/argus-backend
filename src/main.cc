@@ -1,111 +1,178 @@
-#include <config/app-config.hxx>
-#include <csignal>
-#include <drogon/drogon.h>
-#include <execinfo.h>
-#include <shared/services/config-service/config-service.hxx>
-#include <shared/services/face/face-db.hxx>
-#include <shared/services/face/face-service.hxx>
+#include <config/application.hxx>
+
+#include <chrono>
+#include <cmath>
+#include <cstdlib>
+#include <fstream>
+#include <iostream>
+#include <llama.h>
+#include <sstream>
 #include <shared/services/llm/llm-service.hxx>
 #include <shared/services/stt/stt-service.hxx>
 #include <shared/services/tts/tts-service.hxx>
 #include <shared/services/vision/vision-service.hxx>
-#include <unistd.h>
+#include <string>
+#include <vector>
 
-using namespace drogon;
-
-static void crashHandler(int sig)
+namespace
 {
-  void* array[32];
-  int size = backtrace(array, 32);
-  LOG_FATAL << "======= CRASH (signal " << sig << ") BACKTRACE =======";
-  backtrace_symbols_fd(array, size, STDERR_FILENO);
-  _exit(128 + sig);
+
+using Clock = std::chrono::steady_clock;
+
+long vmRssKb()
+{
+  std::ifstream status("/proc/self/status");
+  std::string line;
+  while (std::getline(status, line)) {
+    if (line.rfind("VmRSS:", 0) == 0) {
+      std::istringstream ss(line.substr(6));
+      long kb = 0;
+      ss >> kb;
+      return kb;
+    }
+  }
+  return -1;
 }
 
-static void forceShutdownHandler(int)
+double msSince(Clock::time_point t0)
 {
-  static int sigCount = 0;
-  sigCount++;
+  return std::chrono::duration_cast<std::chrono::microseconds>(Clock::now() -
+                                                               t0)
+             .count() /
+         1000.0;
+}
 
-  if (sigCount == 1) {
-    drogon::app().quit();
-    return;
+void benchLlm(int runs)
+{
+  std::cout << "\n== LLM (LFM2.5-1.2B, Q4_K_M) ==\n";
+  std::string body;
+  for (int i = 0; i < 6; ++i)
+    body += "Argus es un sistema de seguridad local que procesa todo en el "
+            "equipo sin usar la nube. Detecta personas, vehículos y objetos "
+            "anómalos usando visión por computadora, y responde preguntas "
+            "sobre eventos recientes con un asistente integrado. ";
+  ChatRequest req;
+  req.messages.push_back({"user", body});
+  req.maxTokens = 96;
+  req.temperature = 0.3f;
+
+  for (int r = 0; r < runs; ++r) {
+    req.resetContext = true;
+    auto t0 = Clock::now();
+    auto out = LlmService::chat(req);
+    std::cout << "  run " << r + 1 << ": total=" << msSince(t0)
+              << "ms out_chars=" << out.size() << "\n";
+  }
+}
+
+void benchVision(int runs)
+{
+  std::cout << "\n== VL (LFM2.5-VL-450M, text-only path) ==\n";
+  VisionRequest req;
+  req.imageRgb.assign(16 * 16 * 3, 0);
+  req.width = 16;
+  req.height = 16;
+  req.maxTokens = 64;
+
+  for (int r = 0; r < runs; ++r) {
+    auto t0 = Clock::now();
+    auto out = VisionService::describe(req);
+    std::cout << "  run " << r + 1 << ": total=" << msSince(t0)
+              << "ms out_chars=" << out.size() << "\n";
+  }
+}
+
+void benchStt(int runs)
+{
+  std::cout << "\n== STT (Whisper tiny int8, es) ==\n";
+  constexpr int kRate = 16000;
+  constexpr double kSeconds = 5.0;
+  std::vector<float> audio(static_cast<size_t>(kRate * kSeconds));
+  for (size_t i = 0; i < audio.size(); ++i) {
+    double t = static_cast<double>(i) / kRate;
+    audio[i] = 0.2F * static_cast<float>(
+                          std::sin(2.0 * M_PI * (300.0 + 700.0 * t) * t));
   }
 
-  _exit(128 + SIGINT);
+  for (int r = 0; r < runs; ++r) {
+    auto t0 = Clock::now();
+    auto text = SttService::transcribe(audio, kRate);
+    double el = msSince(t0);
+    std::cout << "  run " << r + 1 << ": total=" << el << "ms (audio="
+              << kSeconds << "s, RTF=" << el / 1000.0 / kSeconds
+              << ", text='" << text.substr(0, 40) << "')\n";
+  }
 }
+
+void benchTts(int runs)
+{
+  std::cout << "\n== TTS (Supertonic 3, quality=Low) ==\n";
+  TtsRequest req;
+  req.text =
+      "Hola, esta es una prueba de síntesis de voz para medir el rendimiento "
+      "del sistema en este equipo.";
+  req.quality = TtsQuality::Low;
+
+  for (int r = 0; r < runs; ++r) {
+    auto t0 = Clock::now();
+    auto wav = TtsService::synthesize(req);
+    std::cout << "  run " << r + 1 << ": total=" << msSince(t0)
+              << "ms wav_samples=" << wav.size() << "\n";
+  }
+}
+
+int runBench()
+{
+  std::cout << "=== Argus AI benchmark ===\n";
+  long rss0 = vmRssKb();
+  std::cout << "base RSS: " << rss0 << " KB\n";
+
+  llama_backend_init();
+
+  auto t0 = Clock::now();
+  LlmService::init();
+  std::cout << "LLM init: " << msSince(t0) << "ms | RSS: " << vmRssKb()
+            << " KB (+" << vmRssKb() - rss0 << ")\n";
+
+  t0 = Clock::now();
+  VisionService::init();
+  std::cout << "Vision init: " << msSince(t0) << "ms | RSS: " << vmRssKb()
+            << " KB (+" << vmRssKb() - rss0 << ")\n";
+
+  t0 = Clock::now();
+  SttService::init();
+  std::cout << "STT init: " << msSince(t0) << "ms | RSS: " << vmRssKb()
+            << " KB (+" << vmRssKb() - rss0 << ")\n";
+
+  t0 = Clock::now();
+  TtsService::init();
+  std::cout << "TTS init: " << msSince(t0) << "ms | RSS: " << vmRssKb()
+            << " KB (+" << vmRssKb() - rss0 << ")\n";
+
+  const int runs = 3;
+  benchLlm(runs);
+  benchVision(runs);
+  benchStt(runs);
+  benchTts(runs);
+
+  std::cout << "\npeak RSS: " << vmRssKb() << " KB (+" << vmRssKb() - rss0
+            << ")\n";
+
+  TtsService::shutdown();
+  SttService::shutdown();
+  VisionService::shutdown();
+  LlmService::shutdown();
+  llama_backend_free();
+  return 0;
+}
+
+} // namespace
 
 int main(int argc, char* argv[])
 {
-  (void)argc;
-  (void)argv;
+  if (argc > 1 && std::string(argv[1]) == "--bench")
+    return runBench();
 
-  ConfigService::load("config.toml");
-
-  app().loadConfigJson(ConfigService::drogonConfig());
-
-  app().registerPreHandlingAdvice([](const HttpRequestPtr& req,
-                                     AdviceCallback&& cb,
-                                     AdviceChainCallback&&) {
-    if (req->method() == Options) {
-      AppConfig::handleOptions(req, std::move(cb));
-      return;
-    }
-    cb(HttpResponsePtr{});
-  });
-
-  app().registerPostHandlingAdvice(
-      [](const HttpRequestPtr&, const HttpResponsePtr& resp) {
-        AppConfig::applyCors(resp);
-      });
-
-  app().setExceptionHandler(AppConfig::handleException);
-
-  app().registerBeginningAdvice([]() {
-    struct sigaction sa{};
-    sa.sa_handler = forceShutdownHandler;
-    sigemptyset(&sa.sa_mask);
-    sa.sa_flags = 0;
-    sigaction(SIGINT, &sa, nullptr);
-    sigaction(SIGTERM, &sa, nullptr);
-
-    struct sigaction crashSa{};
-    crashSa.sa_handler = crashHandler;
-    sigemptyset(&crashSa.sa_mask);
-    crashSa.sa_flags = 0;
-    sigaction(SIGSEGV, &crashSa, nullptr);
-    sigaction(SIGABRT, &crashSa, nullptr);
-
-    FaceDB::loadFromDb();
-  });
-
-  TtsService::init();
-  LlmService::init();
-  SttService::init();
-  VisionService::init();
-  FaceService::init();
-
-  if (!TtsService::isLoaded() || !LlmService::isLoaded() ||
-      !SttService::isLoaded() || !VisionService::isLoaded()) {
-    LOG_FATAL << "Service init failures:"
-              << " TTS=" << TtsService::isLoaded()
-              << " LLM=" << LlmService::isLoaded()
-              << " STT=" << SttService::isLoaded()
-              << " Vision=" << VisionService::isLoaded();
-    return 1;
-  }
-
-  if (!FaceService::isLoaded()) {
-    LOG_WARN << "FaceService not loaded — face recognition disabled. "
-             << "Run scripts/setup.sh to download models.";
-  }
-
-  LOG_INFO << "Argus backend listening on 0.0.0.0:7024";
-  app().run();
-
-  VisionService::shutdown();
-  SttService::shutdown();
-  LlmService::shutdown();
-  TtsService::shutdown();
-  FaceService::shutdown();
+  Application app;
+  return app.run();
 }

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "person-query.hxx"
+
 #include <drogon/utils/coroutine.h>
 #include <optional>
 #include <shared/schemas/person/person-schema.hxx>

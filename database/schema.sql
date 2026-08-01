@@ -270,4 +270,4 @@ CREATE INDEX IF NOT EXISTS idx_audit_log_created  ON audit_log (created_at);
 -- user_action_log
 CREATE INDEX IF NOT EXISTS idx_user_action_log_user    ON user_action_log (user_id);
 CREATE INDEX IF NOT EXISTS idx_user_action_log_record  ON user_action_log (record_id, table_name);
-CREATE INDEX IF NOT EXISTS idx_user_a  ction_log_created ON user_action_log (created_at);
+CREATE INDEX IF NOT EXISTS idx_user_action_log_created ON user_action_log (created_at);

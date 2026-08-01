@@ -26,22 +26,27 @@ void AppConfig::handleOptions(
 
 drogon::HttpResponsePtr AppConfig::get400Response(const std::string& message)
 {
-  return ApiResponse::error(400, "BAD_REQUEST", message);
+  return ApiResponse::error(400, ERROR_CODE_BAD_REQUEST, message);
 }
 
 drogon::HttpResponsePtr AppConfig::get401Response(const std::string& message)
 {
-  return ApiResponse::error(401, "UNAUTHORIZED", message);
+  return ApiResponse::error(401, ERROR_CODE_UNAUTHORIZED, message);
 }
 
 drogon::HttpResponsePtr AppConfig::get403Response(const std::string& message)
 {
-  return ApiResponse::error(403, "FORBIDDEN", message);
+  return ApiResponse::error(403, ERROR_CODE_FORBIDDEN, message);
 }
 
 drogon::HttpResponsePtr AppConfig::get404Response(const std::string& message)
 {
-  return ApiResponse::error(404, "NOT_FOUND", message);
+  return ApiResponse::error(404, ERROR_CODE_NOT_FOUND, message);
+}
+
+drogon::HttpResponsePtr AppConfig::get405Response(const std::string& message)
+{
+  return ApiResponse::error(405, ERROR_CODE_METHOD_NOT_ALLOWED, message);
 }
 
 void AppConfig::handleException(
@@ -61,7 +66,8 @@ void AppConfig::handleException(
   }
 
   if (const auto* re = dynamic_cast<const ResponseException*>(&e)) {
-    respCallback(ApiResponse::error(re->statusCode(), "ERROR", re->what()));
+    respCallback(
+        ApiResponse::error(re->statusCode(), re->errorCode(), re->what()));
     return;
   }
 

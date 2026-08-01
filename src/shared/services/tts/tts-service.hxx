@@ -2,8 +2,11 @@
 
 #include "onnx-utils.hxx"
 
+#include <cstdint>
+#include <drogon/utils/coroutine.h>
 #include <functional>
 #include <memory>
+#include <mutex>
 #include <onnxruntime_cxx_api.h>
 #include <string>
 #include <unordered_map>
@@ -45,6 +48,12 @@ public:
 
   static std::vector<float> synthesize(const TtsRequest& req);
   static void synthesizeStream(const TtsRequest& req, TtsChunkCallback onChunk);
+
+  // Coroutine variants: run synthesis off the event loop.
+  static drogon::Task<std::vector<float>>
+  synthesizeAsync(const TtsRequest& req);
+  static drogon::Task<void> synthesizeStreamAsync(const TtsRequest& req,
+                                                  TtsChunkCallback onChunk);
   static void loadVoice(const std::string& voiceId);
 
   static void setDefaultQuality(TtsQuality q);
@@ -69,4 +78,6 @@ private:
   static Ort::Env env_;
   static TtsQuality defaultQuality_;
   static bool loaded_;
+  static std::mutex synthMutex_;
+  static std::mutex voiceMutex_;
 };

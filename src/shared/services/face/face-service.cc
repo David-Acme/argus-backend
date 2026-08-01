@@ -2,24 +2,29 @@
 
 #include <algorithm>
 #include <allocator.h>
-#include <chrono>
 #include <cmath>
 #include <cstring>
 #include <drogon/drogon.h>
 #include <gpu.h>
+#include <memory>
 #include <net.h>
 #include <opencv2/imgcodecs.hpp>
+#include <opencv2/imgproc.hpp>
 #include <pipelinecache.h>
 #include <shared/services/face/face-db.hxx>
+#include <shared/wrapper/blocking-task/blocking-task.hxx>
+#include <shared/wrapper/thread-budget/thread-budget.hxx>
+#define STB_IMAGE_IMPLEMENTATION
+#include <stb_image.h>
 #include <thread>
 #include <vector>
 
 std::unique_ptr<FaceService::Impl> FaceService::impl_;
+std::counting_semaphore<8> FaceService::concurrency_{0};
 
 bool FaceService::Impl::init(const std::string& modelDir)
 {
-  int cpuCount = std::thread::hardware_concurrency();
-  int threads = std::max(1, cpuCount / 2);
+  int threads = ThreadBudget::computeThreads();
 
   auto* vkdev = ncnn::get_gpu_device(0);
   if (vkdev) {
@@ -90,6 +95,7 @@ void FaceService::init()
   }
 
   FaceDB::init();
+  concurrency_.release(ThreadBudget::inferenceSlots());
   LOG_INFO << "FaceService initialized";
 }
 
@@ -168,16 +174,13 @@ FaceService::extract(const uint8_t* imageData, int width, int height)
   if (!impl_)
     return std::nullopt;
 
-  auto t0 = std::chrono::steady_clock::now();
-
   constexpr int kTarget = 640;
   const float invScaleX = static_cast<float>(width) / kTarget;
   const float invScaleY = static_cast<float>(height) / kTarget;
 
   ncnn::Mat detIn =
-      ncnn::Mat::from_pixels_resize(imageData, ncnn::Mat::PIXEL_BGR2RGB, width,
+      ncnn::Mat::from_pixels_resize(imageData, ncnn::Mat::PIXEL_RGB, width,
                                     height, kTarget, kTarget);
-  detIn.substract_mean_normalize(nullptr, nullptr);
 
   ncnn::Extractor detEx = impl_->detector->create_extractor();
   detEx.input("data", detIn);
@@ -195,8 +198,6 @@ FaceService::extract(const uint8_t* imageData, int width, int height)
   detEx.extract("face_rpn_cls_prob_reshape_stride8", cls8);
   detEx.extract("face_rpn_bbox_pred_stride8", bbox8);
   detEx.extract("face_rpn_landmark_pred_stride8", lm8);
-
-  auto tDet = std::chrono::steady_clock::now();
 
   std::vector<FaceBox> allBoxes;
 
@@ -247,30 +248,13 @@ FaceService::extract(const uint8_t* imageData, int width, int height)
 
   const auto& fb = kept[bestIdx];
 
-  // Affine transform via similarity
   const float refPts[10] = {30.2946F, 51.6963F, 65.5318F, 51.5014F, 48.0252F,
                             71.7366F, 33.5493F, 92.3655F, 62.7299F, 92.2041F};
-  float sCx = 0, sCy = 0, rCx = 0, rCy = 0;
-  for (int i = 0; i < 5; ++i) {
-    sCx += fb.lm[i * 2];
-    sCy += fb.lm[i * 2 + 1];
-    rCx += refPts[i * 2];
-    rCy += refPts[i * 2 + 1];
-  }
-  sCx /= 5;
-  sCy /= 5;
-  rCx /= 5;
-  rCy /= 5;
-  float sD = 0, rD = 0;
-  for (int i = 0; i < 5; ++i) {
-    float dx = fb.lm[i * 2] - sCx, dy = fb.lm[i * 2 + 1] - sCy;
-    sD += std::sqrt(dx * dx + dy * dy);
-    dx = refPts[i * 2] - rCx;
-    dy = refPts[i * 2 + 1] - rCy;
-    rD += std::sqrt(dx * dx + dy * dy);
-  }
-  float s = rD / (sD + 1e-6F);
-  float M[6] = {s, 0, rCx - s * sCx, 0, s, rCy - s * sCy};
+
+  float tm[6];
+  float tmInv[6];
+  ncnn::get_affine_transform(fb.lm, refPts, 5, tm);
+  ncnn::invert_affine_transform(tm, tmInv);
 
   int roiX = std::clamp(static_cast<int>(fb.x1), 0, width - 1);
   int roiY = std::clamp(static_cast<int>(fb.y1), 0, height - 1);
@@ -278,57 +262,109 @@ FaceService::extract(const uint8_t* imageData, int width, int height)
   int roiH = std::clamp(static_cast<int>(fb.y2 - fb.y1 + 1), 1, height - roiY);
 
   ncnn::Mat src =
-      ncnn::Mat::from_pixels_roi(imageData, ncnn::Mat::PIXEL_BGR2RGB, width,
-                                 height, roiX, roiY, roiW, roiH);
+      ncnn::Mat::from_pixels_roi(imageData, ncnn::Mat::PIXEL_RGB, width, height,
+                                 roiX, roiY, roiW, roiH);
 
-  ncnn::Mat warped(112, 112, 3);
-  for (int y = 0; y < 112; ++y) {
-    for (int x = 0; x < 112; ++x) {
-      float sx = (x - M[2]) / M[0], sy = (y - M[5]) / M[4];
-      int ix = std::clamp(static_cast<int>(sx), 0, src.w - 1);
-      int iy = std::clamp(static_cast<int>(sy), 0, src.h - 1);
-      warped.channel(0)[y * 112 + x] = src.channel(0)[iy * src.w + ix];
-      warped.channel(1)[y * 112 + x] = src.channel(1)[iy * src.w + ix];
-      warped.channel(2)[y * 112 + x] = src.channel(2)[iy * src.w + ix];
-    }
+  ncnn::Mat warped;
+  warped.create(112, 112, 3, static_cast<size_t>(1),
+                static_cast<ncnn::Allocator*>(nullptr));
+  ncnn::warpaffine_bilinear_c3(static_cast<const unsigned char*>(src.data),
+                               src.w, src.h,
+                               static_cast<unsigned char*>(warped.data), 112,
+                               112, tmInv);
+
+  ncnn::Mat aligned;
+  aligned.create(112, 112, 3, static_cast<size_t>(4),
+                 static_cast<ncnn::Allocator*>(nullptr));
+  for (int c = 0; c < 3; ++c) {
+    const unsigned char* s = warped.channel(c);
+    float* d = aligned.channel(c);
+    for (int i = 0; i < 112 * 112; ++i)
+      d[i] = s[i];
   }
 
-  const float means[3] = {127.5F, 127.5F, 127.5F};
-  const float norms[3] = {1.0F / 127.5F, 1.0F / 127.5F, 1.0F / 127.5F};
-  warped.substract_mean_normalize(means, norms);
-
   ncnn::Extractor recEx = impl_->recognizer->create_extractor();
-  recEx.input("data", warped);
+  recEx.input("data", aligned);
 
   ncnn::Mat emb;
   recEx.extract("fc1", emb);
 
-  auto tRec = std::chrono::steady_clock::now();
-
   int dim = emb.w * emb.h * emb.c;
   auto result = FaceResult{normalize(emb.channel(0), dim), fb.score};
-
-  auto msDet =
-      std::chrono::duration_cast<std::chrono::milliseconds>(tDet - t0).count();
-  auto msRec =
-      std::chrono::duration_cast<std::chrono::milliseconds>(tRec - tDet)
-          .count();
-  auto msTotal =
-      std::chrono::duration_cast<std::chrono::milliseconds>(tRec - t0).count();
-  LOG_INFO << "FaceService: detect=" << msDet << "ms rec=" << msRec
-           << "ms total=" << msTotal << "ms";
 
   return result;
 }
 
-std::optional<int64_t> FaceService::identify(const std::string& imageBytes)
+namespace
 {
-  std::vector<uint8_t> buf(imageBytes.begin(), imageBytes.end());
-  cv::Mat raw = cv::imdecode(buf, cv::IMREAD_COLOR);
-  if (raw.empty())
+
+constexpr int kScaledDecodeThreshold = 2048;
+constexpr int kScaledDecodeDeepThreshold = 4096;
+
+std::vector<uint8_t> decodeToRgb(const std::string& imageBytes, int& width,
+                                 int& height)
+{
+  int origW = 0;
+  int origH = 0;
+  int channels = 0;
+  stbi_info_from_memory(reinterpret_cast<const stbi_uc*>(imageBytes.data()),
+                        static_cast<int>(imageBytes.size()), &origW, &origH,
+                        &channels);
+
+  const int maxSide = std::max(origW, origH);
+
+  if (maxSide > kScaledDecodeThreshold) {
+    int flags = cv::IMREAD_COLOR;
+    if (maxSide > kScaledDecodeDeepThreshold)
+      flags = cv::IMREAD_REDUCED_COLOR_4;
+    else
+      flags = cv::IMREAD_REDUCED_COLOR_2;
+
+    cv::Mat bgr = cv::imdecode(
+        cv::Mat(1, static_cast<int>(imageBytes.size()), CV_8UC1,
+                const_cast<char*>(imageBytes.data())),
+        flags);
+    if (bgr.empty())
+      return {};
+
+    cv::Mat rgb;
+    cv::cvtColor(bgr, rgb, cv::COLOR_BGR2RGB);
+    width = rgb.cols;
+    height = rgb.rows;
+    return std::vector<uint8_t>(rgb.data, rgb.data + rgb.total() * 3);
+  }
+
+  std::unique_ptr<stbi_uc, decltype(&stbi_image_free)> decoded(
+      stbi_load_from_memory(reinterpret_cast<const stbi_uc*>(
+                                imageBytes.data()),
+                            static_cast<int>(imageBytes.size()), &width,
+                            &height, &channels, 3),
+      &stbi_image_free);
+  if (!decoded)
+    return {};
+
+  return std::vector<uint8_t>(decoded.get(), decoded.get() +
+                                                 static_cast<size_t>(width) *
+                                                     height * 3);
+}
+
+} // namespace
+
+std::optional<int64_t> FaceService::identify(std::string imageBytes)
+{
+  concurrency_.acquire();
+  struct SlotGuard
+  {
+    ~SlotGuard() { FaceService::concurrency_.release(); }
+  } slotGuard;
+
+  int width = 0;
+  int height = 0;
+  auto rgb = decodeToRgb(imageBytes, width, height);
+  if (rgb.empty())
     return std::nullopt;
 
-  auto faceResult = extract(raw.data, raw.cols, raw.rows);
+  auto faceResult = extract(rgb.data(), width, height);
   if (!faceResult)
     return std::nullopt;
 
@@ -340,4 +376,13 @@ std::optional<int64_t> FaceService::identify(const std::string& imageBytes)
            << " confidence=" << match->second;
 
   return match->first;
+}
+
+drogon::Task<std::optional<int64_t>>
+FaceService::identifyAsync(std::string imageBytes)
+{
+  co_return co_await BlockingTask<std::optional<int64_t>>(
+      [image = std::move(imageBytes)]() mutable {
+        return FaceService::identify(std::move(image));
+      });
 }

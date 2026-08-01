@@ -1,6 +1,10 @@
 #include "reminder-repository.hxx"
+
 #include <ctime>
 #include <shared/services/sqlite/db-service.hxx>
+#include <string>
+#include <string_view>
+#include <vector>
 
 using namespace reminder_query;
 
@@ -8,9 +12,9 @@ drogon::Task<std::optional<ReminderSchema>>
 ReminderRepository::findById(int64_t id) const
 {
   auto client = DbService::client();
-  const auto result =
-      co_await client->execSqlCoro(FIND_BY_ID.data(), id);
-  if (result.empty()) co_return std::nullopt;
+  const auto result = co_await client->execSqlCoro(FIND_BY_ID.data(), id);
+  if (result.empty())
+    co_return std::nullopt;
   co_return ReminderSchema(result.front());
 }
 
@@ -31,13 +35,15 @@ drogon::Task<ReminderSchema>
 ReminderRepository::create(const ReminderCreateInput& input) const
 {
   auto client = DbService::client();
-  const auto result = co_await client->execSqlCoro(
-      INSERT.data(),
-      input.createdBy ? *input.createdBy : std::optional<int64_t>{},
-      input.targetUserId, input.title, input.description,
-      input.scheduledAt,
-      input.recurrenceRule ? *input.recurrenceRule
-                          : std::optional<std::string>{});
+  const auto result =
+      co_await client->execSqlCoro(INSERT.data(),
+                                   input.createdBy ? *input.createdBy
+                                                   : std::optional<int64_t>{},
+                                   input.targetUserId, input.title,
+                                   input.description, input.scheduledAt,
+                                   input.recurrenceRule
+                                       ? *input.recurrenceRule
+                                       : std::optional<std::string>{});
 
   ReminderSchema schema;
   schema.id = result.insertId();
@@ -53,18 +59,57 @@ ReminderRepository::create(const ReminderCreateInput& input) const
 }
 
 drogon::Task<ReminderSchema>
-ReminderRepository::update(int64_t id,
-                           const ReminderUpdateInput& input) const
+ReminderRepository::update(int64_t id, const ReminderUpdateInput& input) const
 {
   auto client = DbService::client();
-  co_await client->execSqlCoro(
-      UPDATE.data(), input.title, input.description, input.scheduledAt,
-      input.recurrenceRule ? *input.recurrenceRule
-                          : std::optional<std::string>{},
-      input.isCompleted ? 1 : 0,
-      input.completedAt ? *input.completedAt
-                        : std::optional<int64_t>{},
-      id);
+  std::string sql = UPDATE_PREFIX.data();
+  std::vector<std::string> args;
+
+  auto addString = [&](std::string_view column,
+                       const std::optional<std::string>& value) {
+    if (!value)
+      return;
+    if (!args.empty())
+      sql += ", ";
+    sql += column;
+    args.push_back(*value);
+  };
+
+  addString(UPDATE_COL_TITLE, input.title);
+  addString(UPDATE_COL_DESCRIPTION, input.description);
+  if (input.scheduledAt) {
+    if (!args.empty())
+      sql += ", ";
+    sql += UPDATE_COL_SCHEDULED_AT;
+    args.push_back(std::to_string(*input.scheduledAt));
+  }
+  addString(UPDATE_COL_RECURRENCE_RULE, input.recurrenceRule);
+  if (input.isCompleted) {
+    if (!args.empty())
+      sql += ", ";
+    sql += UPDATE_COL_IS_COMPLETED;
+    args.push_back(*input.isCompleted ? "1" : "0");
+  }
+  if (input.completedAt) {
+    if (!args.empty())
+      sql += ", ";
+    sql += UPDATE_COL_COMPLETED_AT;
+    args.push_back(std::to_string(*input.completedAt));
+  }
+
+  if (args.empty()) {
+    auto existing = co_await findById(id);
+    if (!existing) {
+      LOG_WARN << "Reminder not found for update";
+      co_return {};
+    }
+    co_return *existing;
+  }
+
+  sql += UPDATE_SUFFIX.data();
+  args.push_back(std::to_string(id));
+  const auto& argsRef = args;
+  co_await client->execSqlCoro(sql, argsRef);
 
   auto updated = co_await findById(id);
   if (!updated) {
@@ -107,8 +152,9 @@ ReminderRepository::findDeleted(const SyncFilter& filter) const
   auto client = DbService::client();
   auto result = [&]() -> drogon::Task<drogon::orm::Result> {
     if (filter.startTime && filter.endTime)
-      co_return co_await client->execSqlCoro(
-          FIND_DELETED.data(), *filter.startTime, *filter.endTime);
+      co_return co_await client->execSqlCoro(FIND_DELETED.data(),
+                                             *filter.startTime,
+                                             *filter.endTime);
     if (filter.startTime)
       co_return co_await client->execSqlCoro(FIND_DELETED_FROM.data(),
                                              *filter.startTime);
@@ -121,12 +167,12 @@ ReminderRepository::findDeleted(const SyncFilter& filter) const
   co_return data;
 }
 
-drogon::Task<std::optional<Json::Value>>
-ReminderRepository::findLast() const
+drogon::Task<std::optional<Json::Value>> ReminderRepository::findLast() const
 {
   auto client = DbService::client();
   const auto result = co_await client->execSqlCoro(FIND_LAST.data());
-  if (result.empty()) co_return std::nullopt;
+  if (result.empty())
+    co_return std::nullopt;
   co_return ReminderSchema(result.front()).toJson();
 }
 
@@ -134,8 +180,8 @@ drogon::Task<std::optional<Json::Value>>
 ReminderRepository::findLastDeleted() const
 {
   auto client = DbService::client();
-  const auto result =
-      co_await client->execSqlCoro(FIND_LAST_DELETED.data());
-  if (result.empty()) co_return std::nullopt;
+  const auto result = co_await client->execSqlCoro(FIND_LAST_DELETED.data());
+  if (result.empty())
+    co_return std::nullopt;
   co_return ReminderSchema(result.front()).toJson();
 }

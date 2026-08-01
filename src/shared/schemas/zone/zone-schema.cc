@@ -27,7 +27,7 @@ Json::Value ZoneSchema::toJson() const
   json["color"] = color;
   json["isEnabled"] = isEnabled;
   json["createdAt"] = Json::Int64(createdAt);
-  json["updatedAt"] = updatedAt ? Json::Int64(*updatedAt) : Json::nullValue;
-  json["deletedAt"] = deletedAt ? Json::Int64(*deletedAt) : Json::nullValue;
+  json["updatedAt"] = updatedAt ? Json::Value(Json::Int64(*updatedAt)) : Json::Value();
+  json["deletedAt"] = deletedAt ? Json::Value(Json::Int64(*deletedAt)) : Json::Value();
   return json;
 }

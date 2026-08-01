@@ -2,8 +2,8 @@
 
 #include <config/app-config.hxx>
 #include <filter/jwt/jwt-filter.hxx>
-#include <shared/enums.hxx>
 #include <set>
+#include <shared/enums.hxx>
 #include <string_view>
 #include <unordered_map>
 #include <vector>
@@ -17,8 +17,7 @@ struct RoleAccessRule
   std::set<drogon::HttpMethod> methods;
 };
 
-using RoleAccessMap =
-    std::unordered_map<UserRole, std::vector<RoleAccessRule>>;
+using RoleAccessMap = std::unordered_map<UserRole, std::vector<RoleAccessRule>>;
 
 const RoleAccessMap kRoleAccess = {
     {UserRole::Resident,
@@ -35,21 +34,21 @@ const RoleAccessMap kRoleAccess = {
       {"/person", {drogon::Get}},
       {"/zone", {drogon::Get}},
       {"/auth", {drogon::Get}}}},
-    {UserRole::Guest,
-     {{"/camera", {drogon::Get}}, {"/auth", {drogon::Get}}}},
+    {UserRole::Guest, {{"/camera", {drogon::Get}}, {"/auth", {drogon::Get}}}},
 };
 
 bool isAllowed(UserRole role, drogon::HttpMethod method,
                const std::string& path)
 {
-  if (role == UserRole::Owner) return true;
+  if (role == UserRole::Owner)
+    return true;
 
   const auto it = kRoleAccess.find(role);
-  if (it == kRoleAccess.end()) return false;
+  if (it == kRoleAccess.end())
+    return false;
 
   for (const auto& rule : it->second) {
-    if (path.starts_with(rule.prefix) &&
-        rule.methods.contains(method))
+    if (path.starts_with(rule.prefix) && rule.methods.contains(method))
       return true;
   }
 

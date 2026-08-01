@@ -60,10 +60,16 @@ inline constexpr std::string_view INSERT =
     "scheduled_at, recurrence_rule) "
     "VALUES (?, ?, ?, ?, ?, ?)";
 
-inline constexpr std::string_view UPDATE =
-    "UPDATE reminder SET title = ?, description = ?, scheduled_at = ?, "
-    "recurrence_rule = ?, is_completed = ?, completed_at = ?, "
-    "updated_at = strftime('%s', 'now') "
+inline constexpr std::string_view UPDATE_PREFIX = "UPDATE reminder SET ";
+inline constexpr std::string_view UPDATE_COL_TITLE = "title = ?";
+inline constexpr std::string_view UPDATE_COL_DESCRIPTION = "description = ?";
+inline constexpr std::string_view UPDATE_COL_SCHEDULED_AT = "scheduled_at = ?";
+inline constexpr std::string_view UPDATE_COL_RECURRENCE_RULE =
+    "recurrence_rule = ?";
+inline constexpr std::string_view UPDATE_COL_IS_COMPLETED = "is_completed = ?";
+inline constexpr std::string_view UPDATE_COL_COMPLETED_AT = "completed_at = ?";
+inline constexpr std::string_view UPDATE_SUFFIX =
+    ", updated_at = strftime('%s', 'now') "
     "WHERE id = ? AND deleted_at IS NULL";
 
 inline constexpr std::string_view REMOVE =
@@ -85,11 +91,10 @@ struct ReminderCreateInput
 
 struct ReminderUpdateInput
 {
-  std::string title;
-  std::string description;
-  int64_t scheduledAt{0};
+  std::optional<std::string> title;
+  std::optional<std::string> description;
+  std::optional<int64_t> scheduledAt;
   std::optional<std::string> recurrenceRule;
-  bool isCompleted{false};
+  std::optional<bool> isCompleted;
   std::optional<int64_t> completedAt;
 };
-

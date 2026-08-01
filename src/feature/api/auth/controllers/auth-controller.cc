@@ -23,10 +23,8 @@ AuthController::login(drogon::HttpRequestPtr req)
 
   const auto result =
       co_await service_.login(body, dev.deviceHash, dev.userAgent);
-  if (!result)
-    co_return AppConfig::get401Response("Face not recognized");
 
-  co_return ApiResponse::ok(result->toJson());
+  co_return ApiResponse::ok(result.toJson());
 }
 
 drogon::Task<drogon::HttpResponsePtr>
@@ -52,10 +50,8 @@ AuthController::refreshToken(drogon::HttpRequestPtr req)
       req->getAttributes()->get<DeviceContext>(AppConfig::DEVICE_CTX_KEY);
 
   const auto result = co_await service_.refreshToken(body, dev.deviceHash);
-  if (!result)
-    co_return AppConfig::get401Response("Invalid or expired refresh token");
 
-  co_return ApiResponse::ok(result->toJson());
+  co_return ApiResponse::ok(result.toJson());
 }
 
 drogon::Task<drogon::HttpResponsePtr>

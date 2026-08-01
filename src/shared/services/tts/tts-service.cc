@@ -6,6 +6,8 @@
 #include "unicode-processor.hxx"
 
 #include <drogon/drogon.h>
+#include <shared/wrapper/blocking-task/blocking-task.hxx>
+#include <shared/wrapper/thread-budget/thread-budget.hxx>
 #include <thread>
 
 // --- Static members ---
@@ -15,6 +17,8 @@ std::unordered_map<std::string, std::unique_ptr<Style>> TtsService::voiceCache_;
 Ort::Env TtsService::env_{ORT_LOGGING_LEVEL_ERROR, "Argus-TTS"};
 TtsQuality TtsService::defaultQuality_{TtsQuality::Auto};
 bool TtsService::loaded_ = false;
+std::mutex TtsService::synthMutex_;
+std::mutex TtsService::voiceMutex_;
 
 // --- Init / shutdown ---
 
@@ -27,8 +31,7 @@ void TtsService::init()
     Ort::SessionOptions opts;
     opts.SetExecutionMode(ExecutionMode::ORT_SEQUENTIAL);
     opts.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL);
-    opts.SetIntraOpNumThreads(
-        static_cast<int>(std::min(std::thread::hardware_concurrency(), 4u)));
+    opts.SetIntraOpNumThreads(ThreadBudget::computeThreads());
     opts.SetInterOpNumThreads(1);
 
     auto cfg = loadConfig(onnxDir);
@@ -75,6 +78,8 @@ std::vector<float> TtsService::synthesize(const TtsRequest& req)
   TtsQuality quality =
       (req.quality == TtsQuality::Auto) ? autoQuality(req.text) : req.quality;
   int steps = resolveSteps(quality);
+
+  std::lock_guard<std::mutex> lock(synthMutex_);
   auto result = engine_->synthesize(req.text, langStr, style, steps, req.speed);
   return result.wav;
 }
@@ -94,6 +99,7 @@ void TtsService::synthesizeStream(const TtsRequest& req,
   int maxLen = (req.lang == TtsLang::KO || req.lang == TtsLang::JA) ? 120 : 300;
   auto textList = chunkText(req.text, maxLen);
 
+  std::lock_guard<std::mutex> lock(synthMutex_);
   for (const auto& chunk : textList) {
     auto result = engine_->synthesize(chunk, langStr, style, steps, req.speed);
     if (!result.wav.empty())
@@ -101,11 +107,33 @@ void TtsService::synthesizeStream(const TtsRequest& req,
   }
 }
 
+drogon::Task<std::vector<float>>
+TtsService::synthesizeAsync(const TtsRequest& req)
+{
+  co_return co_await BlockingTask<std::vector<float>>(
+      [req]() { return TtsService::synthesize(req); });
+}
+
+drogon::Task<void> TtsService::synthesizeStreamAsync(const TtsRequest& req,
+                                                     TtsChunkCallback onChunk)
+{
+  co_await BlockingTask<void>([req, onChunk = std::move(onChunk)]() mutable {
+    auto wrapped = [callback = std::move(onChunk)](
+                       const std::vector<float>& chunkPcm) {
+      drogon::app().getLoop()->queueInLoop(
+          [callback, chunkPcm]() { callback(chunkPcm); });
+    };
+    TtsService::synthesizeStream(req, std::move(wrapped));
+  });
+  co_return;
+}
+
 // --- Voice cache ---
 
 void TtsService::loadVoice(const std::string& voiceId)
 {
   std::string path = "models/tts/voice_styles/" + voiceId + ".json";
+  std::lock_guard<std::mutex> lock(voiceMutex_);
   voiceCache_[voiceId] = loadVoiceStyle(path);
 }
 
@@ -193,13 +221,18 @@ TtsQuality TtsService::autoQuality(const std::string& text)
 
 const Style& TtsService::resolveVoice(const std::string& voiceId)
 {
-  auto it = voiceCache_.find(voiceId);
-  if (it != voiceCache_.end()) {
-    return *it->second;
+  {
+    std::lock_guard<std::mutex> lock(voiceMutex_);
+    auto it = voiceCache_.find(voiceId);
+    if (it != voiceCache_.end()) {
+      return *it->second;
+    }
   }
 
   std::string path = "models/tts/voice_styles/" + voiceId + ".json";
   auto style = loadVoiceStyle(path);
+
+  std::lock_guard<std::mutex> lock(voiceMutex_);
   auto [inserted, _] = voiceCache_.emplace(voiceId, std::move(style));
   return *inserted->second;
 }

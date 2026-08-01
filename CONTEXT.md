@@ -17,7 +17,8 @@
 ## Hard constraints / decisions
 
 - **C++20**, Drogon HTTP/WebSocket server. SQLite via Drogon async `DbClient`
-  (NO ORM, manual SQL). DB file `database/argus.db`, `number_of_connections: 1`.
+  (NO ORM, manual SQL). DB file `database/argus.db`, `number_of_connections: 4`
+  (pragmas reapplied at every boot via `DbService::applyPragmas()`).
 - **Config**: single `config.toml` file (TOML, parsed via `tomlplusplus`).
   Replaces `.env` + `config.json`. Drogon section converted to JSON at runtime
   and loaded via `loadConfigJson()`. `ConfigService` in `src/shared/services/config-service/`.
@@ -64,24 +65,78 @@
 | `ConfigService` | tomlplusplus | TOML config reader | `config.toml` |
 | `DbService` | Drogon DbClient | SQLite async client | `database/argus.db` |
 
+## Performance & portability batch (2026-08)
+
+The same binary must perform well on ANY machine (2 cores → 64 cores, with or
+without GPU), so every AI service auto-tunes its resources at runtime:
+
+- **`ThreadBudget`** (`src/shared/wrapper/thread-budget/`) — single source of
+  truth for adaptive thread counts: `computeThreads` (half hw, 2-16),
+  `batchThreads` (half hw, 4-16), `heavyThreads` (3/4 hw, 2-12),
+  `lightThreads` (quarter hw, 2-8), `inferenceSlots` (hw/8, 1-4). Applied to:
+  ncnn face nets, llama.cpp LLM/Vision (decode vs prefill split), ORT
+  intra-op (TTS), sherpa-onnx (STT). NO hardcoded thread counts anywhere.
+- **LLM**: `n_threads=lightThreads` + `n_threads_batch=batchThreads` (measured
+  +54% prefill on long prompts), warmup decode at init, `use_mmap=true`,
+  generation batch reused (no alloc per token), static mutex around context.
+- **Vision**: encoder gate FIXED — `llama_model_has_encoder()` is false for
+  `lfm2` arch, so mtmd is now initialized unconditionally; images are fed as
+  real embeddings via `batch.embd` with mrope positions and non-causal
+  attention. Generation positions fixed (continue from prompt end).
+  KNOWN LIMITATION: the current `LFM2.5-VL-450M` GGUF contains NO vision
+  tensors (text-only conversion) → mtmd fails at init and the service
+  degrades to text-only with a warning. A proper VL GGUF (with vision tower)
+  is picked up automatically.
+- **STT/TTS**: adaptive intra-op threads, static mutexes (recognizer, engine,
+  voice cache) — thread-safe for concurrent requests.
+- **Face**: `identifyMutex_` (global serialization) replaced by a
+  `std::counting_semaphore` with `inferenceSlots()` permits — concurrent
+  logins scale with cores. Decode is adaptive: `stbi_info` probe → images
+  >2048px decode scaled via OpenCV `IMREAD_REDUCED_COLOR_2/4` (libjpeg IDCT
+  scaling), small images keep stb full decode. Login buffer moved (no copies).
+- **Coroutines**: `BlockingTask` gained a `void` specialization; every AI
+  service exposes `*Async` coroutine variants (`chatAsync`, `chatStreamAsync`,
+  `describeAsync`, `transcribeAsync`, `synthesizeAsync`,
+  `synthesizeStreamAsync`) that wrap the sync method off the event loop and
+  marshal streaming callbacks into the loop via `queueInLoop`.
+- **Startup**: services initialize IN PARALLEL (plain `std::thread` + `join`,
+  no futures) — full stack loads in ~1s on the reference machine.
+- **SQLite**: `applyPragmas()` runs at EVERY boot (WAL, synchronous=NORMAL,
+  busy_timeout, mmap 256MB, foreign_keys, temp_store) — previously pragmas
+  only applied on fresh DBs and regressed after each restart; connections 1→4.
+- **HTTP**: `client_max_memory_body_size` 64K→16M (no multipart spooling to
+  disk for images). Release build: `-march=native` + `-flto=auto` on the app
+  target only; `-Wall -Wextra` always on, third-party includes SYSTEM.
+- **ncnn Vulkan**: kept ON — the reference machine has an AMD iGPU (RADV
+  RENOIR) that ncnn uses via Vulkan; machines without GPU fall back to CPU.
+
+## Uniform API response format
+
+Every endpoint returns `{ status, info, errors }`. Errors always
+`errors: { code, message }` with `info: null`; success has `errors: null`.
+Codes: `BAD_REQUEST`, `UNAUTHORIZED`, `FORBIDDEN`, `NOT_FOUND`,
+`METHOD_NOT_ALLOWED`, `VALIDATION_ERROR` (422 adds `fields`). All error
+responses go through `AppConfig::get{4xx}Response()`; `errorCode` was added
+to `ResponseException` so services emit the same codes as the filters.
+A Drogon custom error handler wraps built-in 404/405 in the same envelope.
+
 ## Face recognition architecture (ncnn, not InspireFace)
 
-- **Detector**: RetinaFace (ncnn, Vulkan GPU) — ~50ms, detects faces + 5-point landmarks
-- **Recognizer**: MobileFaceNet 128-dim (ncnn, CPU) — ~170ms, computes face embedding
+- **Detector**: RetinaFace (ncnn, Vulkan when available) — detects faces + 5-point landmarks
+- **Recognizer**: MobileFaceNet 128-dim (ncnn) — computes face embedding
 - **Index**: FaceDB (HNSWlib inner-product, 128-dim) — sub-millisecond nearest-neighbor search
 - **Threshold**: 80% minimum confidence (`dist < 0.20` in inner-product space)
 - **Persist**: FaceEmbedding repository stores embeddings as hex-encoded BLOBs in SQLite
 - **Cold start**: FaceDB loads embeddings from database at startup via `loadFromDb()`
 - **Pipeline cache**: Vulkan SPIR-V shaders cached to `models/face/face.ncnn.vkcache`
-- **Total latency**: ~220ms (decode 2ms + detect 50ms + recognize 170ms + search 0ms)
 - **Optimizations applied**:
   - ncnnoptimize: fused ~60 conv+BN layers, fp16 weight storage
-  - Vulkan on detector, fp16 packed arithmetic on both nets
-  - `from_pixels_roi` for GPU-optimized face crop
-  - PIXEL_BGR2RGB inline conversion (eliminates separate cvtColor)
+  - Vulkan on detector when a GPU exists (AMD iGPU RENOIR works; CPU fallback otherwise)
+  - `from_pixels_roi` for optimized face crop + `PIXEL_BGR2RGB` inline conversion
   - PipelineCache + VkBlobAllocator/VkStagingAllocator for GPU memory efficiency
-- **Recognizer CPU fallback**: MobileFaceNet uses models with some layers that ncnn
-  doesn't accelerate on Vulkan (documented ncnn issue #6858). Detector runs fully on GPU.
+  - Bounded concurrency (`counting_semaphore`, `inferenceSlots()` permits)
+  - Adaptive scaled decode: images >2048px decoded 1/2-1/4 via OpenCV
+    (`IMREAD_REDUCED_COLOR_2/4`), smaller keep stb full decode
 
 ## Auth system
 
@@ -94,8 +149,12 @@
 - **Token extraction**: Authorization Bearer / query param `?token=` / cookie
 - **Logout**: invalidates all refresh tokens for user (`is_valid=0`)
 - **Roles**: Owner (full), Resident (CRUD resources), Guard (read only), Guest (cameras + auth)
-- **Error handling**: centralized via `AppConfig::get401/403/400/404Response()`
-  Validation exceptions caught globally by `AppConfig::handleException()` → 422 JSON
+- **Error handling**: centralized via `AppConfig::get400/401/403/404/405Response()`
+  — uniform envelope `{status, info, errors:{code,message}}` for ALL responses
+  (404/405 included via Drogon custom error handler). `ResponseException` carries
+  an `errorCode` string; error codes live in `AppConfig::ERROR_CODE_*`.
+  Validation exceptions caught globally by `AppConfig::handleException()` → 422
+  with `code: VALIDATION_ERROR` + `fields`.
 
 ## Validation DSL
 

@@ -4,6 +4,8 @@
 #include <cstring>
 #include <drogon/drogon.h>
 #include <llama.h>
+#include <shared/wrapper/blocking-task/blocking-task.hxx>
+#include <shared/wrapper/thread-budget/thread-budget.hxx>
 #include <thread>
 #include <vector>
 
@@ -13,6 +15,7 @@ std::unique_ptr<llama_context, void (*)(llama_context*)>
     LlmService::context_{nullptr, llama_free};
 int64_t LlmService::contextSize_ = 0;
 bool LlmService::loaded_ = false;
+std::mutex LlmService::mutex_;
 
 void LlmService::init()
 {
@@ -24,14 +27,13 @@ void LlmService::init()
           }
         },
         nullptr);
-    llama_backend_init();
 
     const std::string modelPath = "models/llm/LFM2.5-1.2B-Instruct-Q4_K_M.gguf";
     constexpr int64_t contextSize = 32768;
 
     llama_model_params modelParams = llama_model_default_params();
     modelParams.n_gpu_layers = 0;
-    modelParams.use_mmap = false;
+    modelParams.use_mmap = true;
     modelParams.use_mlock = false;
 
     llama_model* rawModel =
@@ -41,14 +43,15 @@ void LlmService::init()
     }
     model_.reset(rawModel);
 
-    auto nThreads = static_cast<int32_t>(4);
+    auto nThreads = ThreadBudget::lightThreads();
+    auto nThreadsBatch = ThreadBudget::batchThreads();
 
     llama_context_params ctxParams = llama_context_default_params();
     ctxParams.n_ctx = static_cast<uint32_t>(contextSize);
     ctxParams.n_batch = 1024;
     ctxParams.n_ubatch = 512;
     ctxParams.n_threads = nThreads;
-    ctxParams.n_threads_batch = nThreads;
+    ctxParams.n_threads_batch = nThreadsBatch;
     ctxParams.flash_attn_type = LLAMA_FLASH_ATTN_TYPE_AUTO;
     ctxParams.type_k = GGML_TYPE_Q4_0;
     ctxParams.type_v = GGML_TYPE_Q4_0;
@@ -62,11 +65,14 @@ void LlmService::init()
     }
     context_.reset(rawCtx);
 
+    warmup();
+
     contextSize_ = contextSize;
     loaded_ = true;
 
     LOG_INFO << "LLM loaded: " << modelPath << " (ctx=" << contextSize
-             << ", threads=" << nThreads << ", K=V=Q4_0)";
+             << ", threads=" << nThreads << ", batch_threads=" << nThreadsBatch
+             << ", K=V=Q4_0)";
   }
   catch (const std::exception& e) {
     LOG_FATAL << "LLM init failed: " << e.what();
@@ -79,7 +85,6 @@ void LlmService::shutdown()
   context_.reset();
   model_.reset();
   loaded_ = false;
-  llama_backend_free();
 
   LOG_INFO << "LLM shutdown";
 }
@@ -87,6 +92,27 @@ void LlmService::shutdown()
 bool LlmService::isLoaded()
 {
   return loaded_;
+}
+
+void LlmService::warmup()
+{
+  auto* ctx = context_.get();
+  auto* vocab = llama_model_get_vocab(model_.get());
+
+  constexpr const char* text =
+      "Hola, esto es una prueba de calentamiento del modelo.";
+  const int len = static_cast<int>(std::strlen(text));
+  std::vector<llama_token> tokens(static_cast<size_t>(len) * 2);
+
+  int n = llama_tokenize(vocab, text, len, tokens.data(),
+                         static_cast<int32_t>(tokens.size()), true, true);
+  if (n < 0)
+    return;
+  tokens.resize(static_cast<size_t>(n));
+
+  auto batch = llama_batch_get_one(tokens.data(), n);
+  llama_decode(ctx, batch);
+  llama_memory_seq_rm(llama_get_memory(ctx), 0, 0, -1);
 }
 
 std::string LlmService::buildPrompt(const std::vector<ChatMessage>& messages)
@@ -133,6 +159,8 @@ void LlmService::generateStream(const std::string& formattedPrompt,
                                 float temperature, int32_t maxTokens,
                                 bool resetContext, TokenCallback onToken)
 {
+  std::lock_guard<std::mutex> lock(mutex_);
+
   auto* ctx = context_.get();
   auto* model = model_.get();
   auto* vocab = llama_model_get_vocab(model);
@@ -218,6 +246,7 @@ void LlmService::generateStream(const std::string& formattedPrompt,
   llama_token eotToken = llama_vocab_eot(vocab);
   llama_pos pos = nTokens;
 
+  auto genBatch = llama_batch_init(1, 0, 1);
   for (int32_t i = 0; i < maxTokens; ++i) {
     llama_token newToken = llama_sampler_sample(smpl, ctx, -1);
 
@@ -231,19 +260,16 @@ void LlmService::generateStream(const std::string& formattedPrompt,
 
     llama_sampler_accept(smpl, newToken);
 
-    auto genBatch = llama_batch_init(1, 0, 1);
     genBatch.token[0] = newToken;
     genBatch.pos[0] = pos++;
     genBatch.n_seq_id[0] = 1;
     genBatch.seq_id[0][0] = 0;
     genBatch.logits[0] = 1;
     genBatch.n_tokens = 1;
-    if (llama_decode(ctx, genBatch) != 0) {
-      llama_batch_free(genBatch);
+    if (llama_decode(ctx, genBatch) != 0)
       break;
-    }
-    llama_batch_free(genBatch);
   }
+  llama_batch_free(genBatch);
 
   llama_sampler_free(smpl);
   onToken("", true);
@@ -273,4 +299,26 @@ void LlmService::chatStream(const ChatRequest& req, TokenCallback onToken)
   std::string prompt = buildPrompt(req.messages);
   generateStream(prompt, req.temperature, req.maxTokens, req.resetContext,
                  std::move(onToken));
+}
+
+drogon::Task<std::string> LlmService::chatAsync(const ChatRequest& req)
+{
+  co_return co_await BlockingTask<std::string>(
+      [req]() { return LlmService::chat(req); });
+}
+
+drogon::Task<void> LlmService::chatStreamAsync(const ChatRequest& req,
+                                               TokenCallback onToken)
+{
+  co_await BlockingTask<void>([req, onToken = std::move(onToken)]() mutable {
+    auto wrapped = [callback = std::move(onToken)](const std::string& token,
+                                                   bool done) {
+      drogon::app().getLoop()->queueInLoop(
+          [callback, token, done]() { callback(token, done); });
+    };
+    std::string prompt = buildPrompt(req.messages);
+    generateStream(prompt, req.temperature, req.maxTokens, req.resetContext,
+                   std::move(wrapped));
+  });
+  co_return;
 }

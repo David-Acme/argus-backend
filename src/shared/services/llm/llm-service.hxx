@@ -1,8 +1,10 @@
 #pragma once
 
 #include <cstdint>
+#include <drogon/utils/coroutine.h>
 #include <functional>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -37,9 +39,15 @@ public:
   static std::string chat(const ChatRequest& req);
   static void chatStream(const ChatRequest& req, TokenCallback onToken);
 
+  // Coroutine variants: run inference off the event loop.
+  static drogon::Task<std::string> chatAsync(const ChatRequest& req);
+  static drogon::Task<void> chatStreamAsync(const ChatRequest& req,
+                                            TokenCallback onToken);
+
   static bool isLoaded();
 
 private:
+  static void warmup();
   static std::string buildPrompt(const std::vector<ChatMessage>& messages);
   static std::string generate(const std::string& formattedPrompt,
                               float temperature, int32_t maxTokens,
@@ -52,6 +60,7 @@ private:
   static std::unique_ptr<llama_context, void (*)(llama_context*)> context_;
   static int64_t contextSize_;
   static bool loaded_;
+  static std::mutex mutex_;
 
   static constexpr const char* SYSTEM_PROMPT =
       R"SYSPROMPT(Eres Argus, un asistente de seguridad inteligente para un sistema de vigilancia local. Tus funciones son:

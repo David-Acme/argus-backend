@@ -1,8 +1,10 @@
 #pragma once
 
 #include <cstdint>
+#include <drogon/utils/coroutine.h>
 #include <memory>
 #include <optional>
+#include <semaphore>
 #include <string>
 #include <vector>
 
@@ -33,9 +35,15 @@ public:
   static std::optional<FaceResult> extract(const uint8_t* rgbData, int width,
                                            int height);
 
-  static std::optional<int64_t> identify(const std::string& imageBytes);
+  static std::optional<int64_t> identify(std::string imageBytes);
+
+  // Coroutine variant: runs inference off the event loop.
+  static drogon::Task<std::optional<int64_t>>
+  identifyAsync(std::string imageBytes);
 
 private:
+  static std::counting_semaphore<8> concurrency_;
+
   struct Impl
   {
     std::unique_ptr<ncnn::VkBlobAllocator> blobAllocator;

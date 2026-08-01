@@ -56,9 +56,13 @@ inline constexpr std::string_view INSERT =
     "INSERT INTO user (name, last_name, role, is_active) "
     "VALUES (?, ?, ?, ?)";
 
-inline constexpr std::string_view UPDATE =
-    "UPDATE user SET name = ?, last_name = ?, role = ?, is_active = ?, "
-    "updated_at = strftime('%s', 'now') "
+inline constexpr std::string_view UPDATE_PREFIX = "UPDATE user SET ";
+inline constexpr std::string_view UPDATE_COL_NAME = "name = ?";
+inline constexpr std::string_view UPDATE_COL_LAST_NAME = "last_name = ?";
+inline constexpr std::string_view UPDATE_COL_ROLE = "role = ?";
+inline constexpr std::string_view UPDATE_COL_IS_ACTIVE = "is_active = ?";
+inline constexpr std::string_view UPDATE_SUFFIX =
+    ", updated_at = strftime('%s', 'now') "
     "WHERE id = ? AND deleted_at IS NULL";
 
 inline constexpr std::string_view REMOVE =
@@ -77,8 +81,8 @@ struct UserCreateInput
 
 struct UserUpdateInput
 {
-  std::string name;
-  std::string lastName;
-  UserRole role{UserRole::Guest};
-  bool isActive{true};
+  std::optional<std::string> name;
+  std::optional<std::string> lastName;
+  std::optional<UserRole> role;
+  std::optional<bool> isActive;
 };

@@ -1,5 +1,6 @@
 #pragma once
 #include <cstdint>
+#include <optional>
 #include <shared/enums.hxx>
 #include <string>
 #include <string_view>
@@ -37,9 +38,14 @@ inline constexpr std::string_view FIND_LAST_DELETED =
 inline constexpr std::string_view INSERT =
     "INSERT INTO zone (camera_id, name, points, zone_type, color, is_enabled) "
     "VALUES (?, ?, ?, ?, ?, ?)";
-inline constexpr std::string_view UPDATE =
-    "UPDATE zone SET name = ?, points = ?, zone_type = ?, color = ?, "
-    "is_enabled = ?, updated_at = strftime('%s', 'now') "
+inline constexpr std::string_view UPDATE_PREFIX = "UPDATE zone SET ";
+inline constexpr std::string_view UPDATE_COL_NAME = "name = ?";
+inline constexpr std::string_view UPDATE_COL_POINTS = "points = ?";
+inline constexpr std::string_view UPDATE_COL_ZONE_TYPE = "zone_type = ?";
+inline constexpr std::string_view UPDATE_COL_COLOR = "color = ?";
+inline constexpr std::string_view UPDATE_COL_IS_ENABLED = "is_enabled = ?";
+inline constexpr std::string_view UPDATE_SUFFIX =
+    ", updated_at = strftime('%s', 'now') "
     "WHERE id = ? AND deleted_at IS NULL";
 inline constexpr std::string_view REMOVE =
     "UPDATE zone SET deleted_at = strftime('%s', 'now'), "
@@ -58,10 +64,9 @@ struct ZoneCreateInput
 
 struct ZoneUpdateInput
 {
-  std::string name;
-  std::string points;
-  ZoneType zoneType{ZoneType::Monitor};
-  std::string color;
-  bool isEnabled{true};
+  std::optional<std::string> name;
+  std::optional<std::string> points;
+  std::optional<ZoneType> zoneType;
+  std::optional<std::string> color;
+  std::optional<bool> isEnabled;
 };
-

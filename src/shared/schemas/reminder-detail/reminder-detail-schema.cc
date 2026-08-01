@@ -7,8 +7,7 @@ ReminderDetailSchema::ReminderDetailSchema(const drogon::orm::Row& row)
   if (!row["created_by"].isNull())
     createdBy = static_cast<int64_t>(row["created_by"].as<long long>());
   content = row["content"].as<std::string>();
-  status =
-      reminderDetailStatusFromString(row["status"].as<std::string>());
+  status = reminderDetailStatusFromString(row["status"].as<std::string>());
   filePaths = row["file_paths"].as<std::string>();
   createdAt = static_cast<int64_t>(row["created_at"].as<long long>());
   if (!row["updated_at"].isNull())
@@ -22,13 +21,12 @@ Json::Value ReminderDetailSchema::toJson() const
   Json::Value json;
   json["id"] = id;
   json["reminderId"] = reminderId;
-  json["createdBy"] =
-      createdBy ? Json::Int64(*createdBy) : Json::nullValue;
+  json["createdBy"] = createdBy ? Json::Value(Json::Int64(*createdBy)) : Json::Value();
   json["content"] = content;
   json["status"] = reminderDetailStatusToString(status);
   json["filePaths"] = filePaths;
   json["createdAt"] = Json::Int64(createdAt);
-  json["updatedAt"] = updatedAt ? Json::Int64(*updatedAt) : Json::nullValue;
-  json["deletedAt"] = deletedAt ? Json::Int64(*deletedAt) : Json::nullValue;
+  json["updatedAt"] = updatedAt ? Json::Value(Json::Int64(*updatedAt)) : Json::Value();
+  json["deletedAt"] = deletedAt ? Json::Value(Json::Int64(*deletedAt)) : Json::Value();
   return json;
 }

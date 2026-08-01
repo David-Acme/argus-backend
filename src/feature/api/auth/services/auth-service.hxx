@@ -6,7 +6,6 @@
 #include <feature/api/auth/dtos/refresh-token-dto.hxx>
 #include <feature/api/auth/dtos/response-login-dto.hxx>
 #include <feature/api/auth/dtos/response-refresh-token-dto.hxx>
-#include <optional>
 #include <shared/repositories/person/person-repository.hxx>
 #include <shared/repositories/refresh-token/refresh-token-repository.hxx>
 #include <shared/repositories/user/user-repository.hxx>
@@ -19,11 +18,11 @@ public:
   AuthService() = default;
   ~AuthService() = default;
 
-  drogon::Task<std::optional<ResponseLoginDto>>
-  login(const LoginDto& body, const std::string& deviceHash,
+  drogon::Task<ResponseLoginDto>
+  login(LoginDto body, const std::string& deviceHash,
         const std::string& userAgent) const;
 
-  drogon::Task<std::optional<ResponseRefreshTokenDto>>
+  drogon::Task<ResponseRefreshTokenDto>
   refreshToken(const RefreshTokenDto& body,
                const std::string& deviceHash) const;
 

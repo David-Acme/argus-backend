@@ -1,4 +1,6 @@
 #include "face-embedding-repository.hxx"
+
+#include <ctime>
 #include <shared/services/sqlite/db-service.hxx>
 
 using namespace face_embedding_query;
@@ -7,9 +9,9 @@ drogon::Task<std::optional<FaceEmbeddingSchema>>
 FaceEmbeddingRepository::findById(int64_t id) const
 {
   auto client = DbService::client();
-  const auto result =
-      co_await client->execSqlCoro(FIND_BY_ID.data(), id);
-  if (result.empty()) co_return std::nullopt;
+  const auto result = co_await client->execSqlCoro(FIND_BY_ID.data(), id);
+  if (result.empty())
+    co_return std::nullopt;
   co_return FaceEmbeddingSchema(result.front());
 }
 
@@ -32,16 +34,19 @@ drogon::Task<FaceEmbeddingSchema>
 FaceEmbeddingRepository::create(const FaceEmbeddingCreateInput& input) const
 {
   auto client = DbService::client();
-  const auto result = co_await client->execSqlCoro(
-      INSERT.data(), input.personId, input.embedding,
-      input.angleLabel, input.quality);
+  const auto result =
+      co_await client->execSqlCoro(INSERT.data(), input.personId,
+                                   input.embedding, input.angleLabel,
+                                   input.quality);
 
-  auto created = co_await findById(result.insertId());
-  if (!created) {
-    LOG_WARN << "FaceEmbedding not found after insert";
-    co_return {};
-  }
-  co_return *created;
+  FaceEmbeddingSchema schema;
+  schema.id = result.insertId();
+  schema.personId = input.personId;
+  schema.embedding = input.embedding;
+  schema.angleLabel = input.angleLabel;
+  schema.quality = input.quality;
+  schema.createdAt = std::time(nullptr);
+  co_return schema;
 }
 
 drogon::Task<bool>
@@ -57,8 +62,7 @@ drogon::Task<std::vector<FaceEmbeddingSchema>>
 FaceEmbeddingRepository::findAll() const
 {
   auto client = DbService::client();
-  const auto result =
-      co_await client->execSqlCoro(FIND_ALL.data());
+  const auto result = co_await client->execSqlCoro(FIND_ALL.data());
 
   std::vector<FaceEmbeddingSchema> embeddings;
   embeddings.reserve(result.size());

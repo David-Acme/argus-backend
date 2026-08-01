@@ -1,5 +1,10 @@
 #include "zone-repository.hxx"
+
+#include <ctime>
 #include <shared/services/sqlite/db-service.hxx>
+#include <string>
+#include <string_view>
+#include <vector>
 
 using namespace zone_query;
 
@@ -8,7 +13,8 @@ ZoneRepository::findById(int64_t id) const
 {
   auto client = DbService::client();
   const auto result = co_await client->execSqlCoro(FIND_BY_ID.data(), id);
-  if (result.empty()) co_return std::nullopt;
+  if (result.empty())
+    co_return std::nullopt;
   co_return ZoneSchema(result.front());
 }
 
@@ -29,26 +35,70 @@ drogon::Task<ZoneSchema>
 ZoneRepository::create(const ZoneCreateInput& input) const
 {
   auto client = DbService::client();
-  const auto result = co_await client->execSqlCoro(
-      INSERT.data(), input.cameraId, input.name, input.points,
-      zoneTypeToString(input.zoneType), input.color,
-      input.isEnabled ? 1 : 0);
+  const auto result =
+      co_await client->execSqlCoro(INSERT.data(), input.cameraId, input.name,
+                                   input.points,
+                                   zoneTypeToString(input.zoneType),
+                                   input.color, input.isEnabled ? 1 : 0);
 
-  auto created = co_await findById(result.insertId());
-  if (!created) {
-    LOG_WARN << "Zone not found after insert";
-    co_return {};
-  }
-  co_return *created;
+  ZoneSchema schema;
+  schema.id = result.insertId();
+  schema.cameraId = input.cameraId;
+  schema.name = input.name;
+  schema.points = input.points;
+  schema.zoneType = input.zoneType;
+  schema.color = input.color;
+  schema.isEnabled = input.isEnabled;
+  schema.createdAt = std::time(nullptr);
+  co_return schema;
 }
 
 drogon::Task<ZoneSchema>
 ZoneRepository::update(int64_t id, const ZoneUpdateInput& input) const
 {
   auto client = DbService::client();
-  co_await client->execSqlCoro(UPDATE.data(), input.name, input.points,
-                               zoneTypeToString(input.zoneType), input.color,
-                               input.isEnabled ? 1 : 0, id);
+  std::string sql = UPDATE_PREFIX.data();
+  std::vector<std::string> args;
+
+  auto addString = [&](std::string_view column,
+                       const std::optional<std::string>& value) {
+    if (!value)
+      return;
+    if (!args.empty())
+      sql += ", ";
+    sql += column;
+    args.push_back(*value);
+  };
+
+  addString(UPDATE_COL_NAME, input.name);
+  addString(UPDATE_COL_POINTS, input.points);
+  if (input.zoneType) {
+    if (!args.empty())
+      sql += ", ";
+    sql += UPDATE_COL_ZONE_TYPE;
+    args.push_back(zoneTypeToString(*input.zoneType));
+  }
+  addString(UPDATE_COL_COLOR, input.color);
+  if (input.isEnabled) {
+    if (!args.empty())
+      sql += ", ";
+    sql += UPDATE_COL_IS_ENABLED;
+    args.push_back(*input.isEnabled ? "1" : "0");
+  }
+
+  if (args.empty()) {
+    auto existing = co_await findById(id);
+    if (!existing) {
+      LOG_WARN << "Zone not found for update";
+      co_return {};
+    }
+    co_return *existing;
+  }
+
+  sql += UPDATE_SUFFIX.data();
+  args.push_back(std::to_string(id));
+  const auto& argsRef = args;
+  co_await client->execSqlCoro(sql, argsRef);
 
   auto updated = co_await findById(id);
   if (!updated) {
@@ -91,8 +141,9 @@ ZoneRepository::findDeleted(const SyncFilter& filter) const
   auto client = DbService::client();
   auto result = [&]() -> drogon::Task<drogon::orm::Result> {
     if (filter.startTime && filter.endTime)
-      co_return co_await client->execSqlCoro(
-          FIND_DELETED.data(), *filter.startTime, *filter.endTime);
+      co_return co_await client->execSqlCoro(FIND_DELETED.data(),
+                                             *filter.startTime,
+                                             *filter.endTime);
     if (filter.startTime)
       co_return co_await client->execSqlCoro(FIND_DELETED_FROM.data(),
                                              *filter.startTime);
@@ -105,21 +156,20 @@ ZoneRepository::findDeleted(const SyncFilter& filter) const
   co_return data;
 }
 
-drogon::Task<std::optional<Json::Value>>
-ZoneRepository::findLast() const
+drogon::Task<std::optional<Json::Value>> ZoneRepository::findLast() const
 {
   auto client = DbService::client();
   const auto result = co_await client->execSqlCoro(FIND_LAST.data());
-  if (result.empty()) co_return std::nullopt;
+  if (result.empty())
+    co_return std::nullopt;
   co_return ZoneSchema(result.front()).toJson();
 }
 
-drogon::Task<std::optional<Json::Value>>
-ZoneRepository::findLastDeleted() const
+drogon::Task<std::optional<Json::Value>> ZoneRepository::findLastDeleted() const
 {
   auto client = DbService::client();
-  const auto result =
-      co_await client->execSqlCoro(FIND_LAST_DELETED.data());
-  if (result.empty()) co_return std::nullopt;
+  const auto result = co_await client->execSqlCoro(FIND_LAST_DELETED.data());
+  if (result.empty())
+    co_return std::nullopt;
   co_return ZoneSchema(result.front()).toJson();
 }

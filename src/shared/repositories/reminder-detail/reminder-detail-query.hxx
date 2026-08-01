@@ -40,9 +40,13 @@ inline constexpr std::string_view FIND_LAST_DELETED =
 inline constexpr std::string_view INSERT =
     "INSERT INTO reminder_detail (reminder_id, created_by, content, status, "
     "file_paths) VALUES (?, ?, ?, ?, ?)";
-inline constexpr std::string_view UPDATE =
-    "UPDATE reminder_detail SET content = ?, status = ?, file_paths = ?, "
-    "updated_at = strftime('%s', 'now') WHERE id = ? AND deleted_at IS NULL";
+inline constexpr std::string_view UPDATE_PREFIX = "UPDATE reminder_detail SET ";
+inline constexpr std::string_view UPDATE_COL_CONTENT = "content = ?";
+inline constexpr std::string_view UPDATE_COL_STATUS = "status = ?";
+inline constexpr std::string_view UPDATE_COL_FILE_PATHS = "file_paths = ?";
+inline constexpr std::string_view UPDATE_SUFFIX =
+    ", updated_at = strftime('%s', 'now') "
+    "WHERE id = ? AND deleted_at IS NULL";
 inline constexpr std::string_view REMOVE =
     "UPDATE reminder_detail SET deleted_at = strftime('%s', 'now'), "
     "updated_at = strftime('%s', 'now') WHERE id = ? AND deleted_at IS NULL";
@@ -59,8 +63,7 @@ struct ReminderDetailCreateInput
 
 struct ReminderDetailUpdateInput
 {
-  std::string content;
-  ReminderDetailStatus status{ReminderDetailStatus::Pending};
-  std::string filePaths;
+  std::optional<std::string> content;
+  std::optional<ReminderDetailStatus> status;
+  std::optional<std::string> filePaths;
 };
-

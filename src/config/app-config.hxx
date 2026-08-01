@@ -21,6 +21,8 @@ public:
   get403Response(const std::string& message = "Access denied");
   static drogon::HttpResponsePtr
   get404Response(const std::string& message = "Path not found");
+  static drogon::HttpResponsePtr
+  get405Response(const std::string& message = "Method not allowed");
 
   static void handleException(
       const std::exception& e, const drogon::HttpRequestPtr& req,
@@ -28,4 +30,11 @@ public:
 
   static inline const std::string JWT_CTX_KEY{"jwt_ctx"};
   static inline const std::string DEVICE_CTX_KEY{"device_ctx"};
+
+  static inline const std::string ERROR_CODE_BAD_REQUEST{"BAD_REQUEST"};
+  static inline const std::string ERROR_CODE_UNAUTHORIZED{"UNAUTHORIZED"};
+  static inline const std::string ERROR_CODE_FORBIDDEN{"FORBIDDEN"};
+  static inline const std::string ERROR_CODE_NOT_FOUND{"NOT_FOUND"};
+  static inline const std::string ERROR_CODE_METHOD_NOT_ALLOWED{
+      "METHOD_NOT_ALLOWED"};
 };

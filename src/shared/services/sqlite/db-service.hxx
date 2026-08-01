@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <drogon/drogon.h>
 #include <drogon/orm/DbClient.h>
 #include <string>
@@ -12,6 +13,7 @@ public:
     return drogon::app().getDbClient();
   }
 
-  // Run a DDL/SQL file (e.g. database/schema.sql) at startup.
-  static drogon::Task<void> runScriptFile(const std::string& path);
+  static bool runScriptFile(const std::string& path);
+  static bool migrate(int64_t targetVersion);
+  static void applyPragmas();
 };

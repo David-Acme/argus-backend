@@ -24,15 +24,15 @@ Json::Value ContextNoteSchema::toJson() const
 {
   Json::Value json;
   json["id"] = id;
-  json["createdBy"] = createdBy ? Json::Int64(*createdBy) : Json::nullValue;
+  json["createdBy"] = createdBy ? Json::Value(Json::Int64(*createdBy)) : Json::Value();
   json["title"] = title;
   json["content"] = content;
   json["tags"] = tags;
-  json["validFrom"] = validFrom ? Json::Int64(*validFrom) : Json::nullValue;
-  json["validUntil"] = validUntil ? Json::Int64(*validUntil) : Json::nullValue;
+  json["validFrom"] = validFrom ? Json::Value(Json::Int64(*validFrom)) : Json::Value();
+  json["validUntil"] = validUntil ? Json::Value(Json::Int64(*validUntil)) : Json::Value();
   json["isActive"] = isActive;
   json["createdAt"] = Json::Int64(createdAt);
-  json["updatedAt"] = updatedAt ? Json::Int64(*updatedAt) : Json::nullValue;
-  json["deletedAt"] = deletedAt ? Json::Int64(*deletedAt) : Json::nullValue;
+  json["updatedAt"] = updatedAt ? Json::Value(Json::Int64(*updatedAt)) : Json::Value();
+  json["deletedAt"] = deletedAt ? Json::Value(Json::Int64(*deletedAt)) : Json::Value();
   return json;
 }

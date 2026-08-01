@@ -1,5 +1,6 @@
 #pragma once
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <string_view>
 
@@ -36,10 +37,16 @@ inline constexpr std::string_view FIND_LAST_DELETED =
 inline constexpr std::string_view INSERT =
     "INSERT INTO camera_stream (camera_id, label, url, resolution, fps, codec, "
     "is_primary, is_enabled) VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
-inline constexpr std::string_view UPDATE =
-    "UPDATE camera_stream SET label = ?, url = ?, resolution = ?, fps = ?, "
-    "codec = ?, is_primary = ?, is_enabled = ?, updated_at = strftime('%s', "
-    "'now') "
+inline constexpr std::string_view UPDATE_PREFIX = "UPDATE camera_stream SET ";
+inline constexpr std::string_view UPDATE_COL_LABEL = "label = ?";
+inline constexpr std::string_view UPDATE_COL_URL = "url = ?";
+inline constexpr std::string_view UPDATE_COL_RESOLUTION = "resolution = ?";
+inline constexpr std::string_view UPDATE_COL_FPS = "fps = ?";
+inline constexpr std::string_view UPDATE_COL_CODEC = "codec = ?";
+inline constexpr std::string_view UPDATE_COL_IS_PRIMARY = "is_primary = ?";
+inline constexpr std::string_view UPDATE_COL_IS_ENABLED = "is_enabled = ?";
+inline constexpr std::string_view UPDATE_SUFFIX =
+    ", updated_at = strftime('%s', 'now') "
     "WHERE id = ? AND deleted_at IS NULL";
 inline constexpr std::string_view REMOVE =
     "UPDATE camera_stream SET deleted_at = strftime('%s', 'now'), "
@@ -60,12 +67,11 @@ struct CameraStreamCreateInput
 
 struct CameraStreamUpdateInput
 {
-  std::string label;
-  std::string url;
-  std::string resolution;
-  int32_t fps{0};
-  std::string codec;
-  bool isPrimary{true};
-  bool isEnabled{true};
+  std::optional<std::string> label;
+  std::optional<std::string> url;
+  std::optional<std::string> resolution;
+  std::optional<int32_t> fps;
+  std::optional<std::string> codec;
+  std::optional<bool> isPrimary;
+  std::optional<bool> isEnabled;
 };
-

@@ -30,8 +30,7 @@ JwtService::generate(const std::map<std::string, std::string>& claims,
   return builder.sign(jwt::algorithm::hs256{secret});
 }
 std::map<std::string, std::string>
-JwtService::verify(const std::string& token,
-                   const std::string& secret) const
+JwtService::verify(const std::string& token, const std::string& secret) const
 {
   try {
     auto decoded = jwt::decode(token);

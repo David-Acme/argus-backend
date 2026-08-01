@@ -43,7 +43,11 @@ src/shared/repositories/{entity}/
 ```
 
 - `using namespace {entity}_query;` ALWAYS in `.cc` files.
-- Re-fetch after INSERT/UPDATE via `findById()`.
+- `create()` builds the schema from the input + `insertId()` (NO extra query).
+- `update()` is PATCH semantics: `{Entity}UpdateInput` fields are
+  `std::optional`, the SET clause is built dynamically from the provided
+  fields (fragments `UPDATE_COL_*` in the query file), then re-fetched via
+  `findById()`.
 - Soft-delete: `UPDATE ... SET deleted_at = strftime('%s', 'now')`.
 - Syncable repos implement `find/findDeleted/findLast/findLastDeleted`.
 
@@ -174,7 +178,7 @@ Available macros: `IS_NOT_EMPTY`, `IS_NOT_EMPTY_OPTIONAL`, `IS_EMAIL`, `IS_UUID`
 `HAS_NO_SPACES`, `MATCHES_REGEX`, `MIN_LENGTH`, `MAX_LENGTH`, `MIN_LENGTH_OPTIONAL`,
 `MAX_LENGTH_OPTIONAL`, `IS_POSITIVE`, `IS_NON_NEGATIVE`, `MIN_INT`, `MAX_INT`,
 `BETWEEN`, `EQUALS_FIELD`, `ARRAY_NOT_EMPTY`, `MIN_ELEMENTS`, `MAX_ELEMENTS`,
-`IS_VALID_TIMESTAMP`, `IS_POSITIVE_TIMESTAMP`, `IS_BOOLEAN`, `CUSTOM_LAMBDA`.
+`IS_VALID_TIMESTAMP`, `IS_POSITIVE_TIMESTAMP`, `CUSTOM_LAMBDA`.
 
 When validation fails, `END_VALIDATION()` throws `ValidationException(errors, 422)`.
 The global `AppConfig::handleException()` catches it and returns a 422 JSON response.
@@ -205,6 +209,7 @@ Never: `if (!json)`, `if (!attrs->find(JWT_CTX_KEY))`, manual field extraction, 
 **FaceService** — single entry point for face operations:
 - `extract(rgbData, width, height)` → `FaceResult` (embedding + confidence)
 - `identify(imageBytes)` → `optional<int64_t>` personId
+- `identifyAsync(imageBytes)` → coroutine variant (runs off the event loop)
 
 **FaceDB** — HNSW index for high-performance embedding search:
 - `search(embedding)` → `optional<pair<int64_t, float>>` (personId, confidence)
@@ -213,6 +218,40 @@ Never: `if (!json)`, `if (!attrs->find(JWT_CTX_KEY))`, manual field extraction, 
 
 **FaceEmbedding repository** — persists embeddings to SQLite (hex-encoded BLOB).
 Loaded at startup via `FaceDB::loadFromDb()`.
+
+Concurrency: `identify()` is bounded by a `std::counting_semaphore`
+(`inferenceSlots()` slots, sized from the host CPU). Never replace it with a
+global mutex. Image decoding is adaptive: `stbi_info` probes dimensions, large
+images (>2048px) are decoded scaled via OpenCV (`IMREAD_REDUCED_COLOR_2/4`).
+
+### 13b. Adaptive threading (ThreadBudget)
+
+NEVER hardcode thread counts. All AI services size their thread pools from
+`src/shared/wrapper/thread-budget/thread-budget.hxx`:
+`computeThreads()`, `batchThreads()`, `heavyThreads()`, `lightThreads()`,
+`inferenceSlots()`. This keeps the same build fast on 2-core laptops and
+64-core servers. Example: LLM uses `lightThreads()` for token decode and
+`batchThreads()` for prompt prefill.
+
+### 13c. Coroutines for heavy AI calls
+
+Every AI service exposes a sync method (`chat`, `describe`, `transcribe`,
+`synthesize`) AND a coroutine variant (`chatAsync`, `describeAsync`,
+`transcribeAsync`, `synthesizeAsync`) that wraps the sync one in
+`BlockingTask` (see `src/shared/wrapper/blocking-task/blocking-task.hxx`,
+which has a `void` specialization). Controllers/services on the event loop
+MUST `co_await` the Async variant — never call the sync method directly.
+Streaming variants marshal callbacks into the loop via `queueInLoop`.
+
+### 13d. Shared LLM/Vision context safety
+
+`LlmService`, `VisionService`, `SttService`, `TtsService` own one shared
+inference context each: access is serialized with a static `std::mutex`
+(LLM/Vision also reuse a single `llama_batch` per generation loop). The
+Vision encoder (mtmd) is initialized UNCONDITIONALLY at startup (do not gate
+on `llama_model_has_encoder()` — it only reports true for T5 archs) and
+image embeddings are fed via `batch.embd` with mrope positions; image decode
+uses non-causal attention when `mtmd_decode_use_non_causal()` says so.
 
 ### 14. JSON columns
 
@@ -224,17 +263,29 @@ Loaded at startup via `FaceDB::loadFromDb()`.
 - `jwt-cpp/0.7.2` via Conan (HS256)
 - `nlohmann_json/3.11.3` (pinned for jwt-cpp)
 - `tomlplusplus/3.3.0` for config
-- `opencv/4.13.0` (headless, for face image decoding)
-- `llama-cpp/b6565` (LLM + Vision inference)
-- `onnxruntime/1.24.4` (STT via sherpa-onnx)
+- `opencv/4.13.0` (headless, for scaled face image decoding)
+- `llama-cpp/b6565` (LLM + Vision inference, incl. mtmd)
+- `onnxruntime/1.24.4` (STT/TTS via sherpa-onnx)
 - **NO spdlog** — use Drogon's built-in logging (`LOG_INFO`, `LOG_WARN`, `LOG_FATAL`)
 - **NO libsodium** — auth is face-based
 - **NO ORM** — raw SQL via `DbService::client()->execSqlCoro()`
+- **NO std::future** — use plain `std::thread` + `join` (e.g. ServiceRegistry parallel init)
 
 ### 16. Smart pointers
 
 No raw owning pointers. Services use `std::unique_ptr` with custom deleters.
 Raw pointers only for non-owning access (`.get()`).
+
+### 17. Startup & database hygiene
+
+- Services are initialized IN PARALLEL by `ServiceRegistry` (threads + join).
+- `DbService::applyPragmas()` runs at every boot (WAL, synchronous=NORMAL,
+  busy_timeout, mmap, foreign_keys) — pragmas are per-connection and do NOT
+  survive a restart otherwise.
+- SQLite uses 4 connections (`config.toml`) — the JwtFilter issues 2 queries
+  per authenticated request.
+- Release builds are machine-tuned: `-march=native` + `-flto=auto` on the app
+  target only. `-Wall -Wextra` are always on; third-party includes are SYSTEM.
 
 ## Build Commands
 
@@ -280,6 +331,8 @@ Before any commit, verify: `cmake --build --preset dev -j 8` passes with
 | `src/shared/services/tts/` | Text-to-speech (Supertonic 3) |
 | `src/shared/services/sqlite/` | DB client access (`DbService::client()`) |
 | `src/shared/wrapper/api-response/` | Standardized API response builder |
+| `src/shared/wrapper/blocking-task/` | Coroutine awaiter for off-loop heavy work |
+| `src/shared/wrapper/thread-budget/` | Adaptive thread sizing for AI services |
 | `database/schema.sql` | DDL applied at startup |
 | `config.toml` | Application + JWT config |
 | `CONTEXT.md` | Full project history and decisions |

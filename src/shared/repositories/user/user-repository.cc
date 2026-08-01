@@ -1,6 +1,10 @@
 #include "user-repository.hxx"
+
 #include <ctime>
 #include <shared/services/sqlite/db-service.hxx>
+#include <string>
+#include <string_view>
+#include <vector>
 
 using namespace user_query;
 
@@ -8,8 +12,7 @@ drogon::Task<std::optional<UserSchema>>
 UserRepository::findById(int64_t id) const
 {
   auto client = DbService::client();
-  const auto result =
-      co_await client->execSqlCoro(FIND_BY_ID.data(), id);
+  const auto result = co_await client->execSqlCoro(FIND_BY_ID.data(), id);
 
   if (result.empty())
     co_return std::nullopt;
@@ -21,9 +24,9 @@ drogon::Task<UserSchema>
 UserRepository::create(const UserCreateInput& input) const
 {
   auto client = DbService::client();
-  const auto result = co_await client->execSqlCoro(
-      INSERT.data(), input.name, input.lastName,
-      userRoleToString(input.role), 1);
+  const auto result =
+      co_await client->execSqlCoro(INSERT.data(), input.name, input.lastName,
+                                   userRoleToString(input.role), 1);
 
   UserSchema schema;
   schema.id = result.insertId();
@@ -31,7 +34,7 @@ UserRepository::create(const UserCreateInput& input) const
   schema.lastName = input.lastName;
   schema.role = input.role;
   schema.isActive = true;
-  schema.createdAt = result.insertId() ? std::time(nullptr) : 0;
+  schema.createdAt = std::time(nullptr);
   co_return schema;
 }
 
@@ -39,10 +42,47 @@ drogon::Task<UserSchema>
 UserRepository::update(int64_t id, const UserUpdateInput& input) const
 {
   auto client = DbService::client();
-  co_await client->execSqlCoro(UPDATE.data(), input.name,
-                               input.lastName,
-                               userRoleToString(input.role),
-                               input.isActive ? 1 : 0, id);
+  std::string sql = UPDATE_PREFIX.data();
+  std::vector<std::string> args;
+
+  auto addString = [&](std::string_view column,
+                       const std::optional<std::string>& value) {
+    if (!value)
+      return;
+    if (!args.empty())
+      sql += ", ";
+    sql += column;
+    args.push_back(*value);
+  };
+
+  addString(UPDATE_COL_NAME, input.name);
+  addString(UPDATE_COL_LAST_NAME, input.lastName);
+  if (input.role) {
+    if (!args.empty())
+      sql += ", ";
+    sql += UPDATE_COL_ROLE;
+    args.push_back(userRoleToString(*input.role));
+  }
+  if (input.isActive) {
+    if (!args.empty())
+      sql += ", ";
+    sql += UPDATE_COL_IS_ACTIVE;
+    args.push_back(*input.isActive ? "1" : "0");
+  }
+
+  if (args.empty()) {
+    auto existing = co_await findById(id);
+    if (!existing) {
+      LOG_WARN << "User not found for update";
+      co_return {};
+    }
+    co_return *existing;
+  }
+
+  sql += UPDATE_SUFFIX.data();
+  args.push_back(std::to_string(id));
+  const auto& argsRef = args;
+  co_await client->execSqlCoro(sql, argsRef);
 
   auto updated = co_await findById(id);
   if (!updated) {
@@ -56,8 +96,7 @@ UserRepository::update(int64_t id, const UserUpdateInput& input) const
 drogon::Task<bool> UserRepository::remove(int64_t id) const
 {
   auto client = DbService::client();
-  const auto result =
-      co_await client->execSqlCoro(REMOVE.data(), id);
+  const auto result = co_await client->execSqlCoro(REMOVE.data(), id);
   co_return result.affectedRows() > 0;
 }
 
@@ -68,12 +107,12 @@ UserRepository::find(const SyncFilter& filter) const
 
   auto result = [&]() -> drogon::Task<drogon::orm::Result> {
     if (filter.startTime && filter.endTime) {
-      co_return co_await client->execSqlCoro(
-          FIND.data(), *filter.startTime, *filter.endTime);
+      co_return co_await client->execSqlCoro(FIND.data(), *filter.startTime,
+                                             *filter.endTime);
     }
     if (filter.startTime) {
-      co_return co_await client->execSqlCoro(
-          FIND_FROM.data(), *filter.startTime);
+      co_return co_await client->execSqlCoro(FIND_FROM.data(),
+                                             *filter.startTime);
     }
     co_return co_await client->execSqlCoro(FIND_ALL.data());
   }();
@@ -91,12 +130,13 @@ UserRepository::findDeleted(const SyncFilter& filter) const
 
   auto result = [&]() -> drogon::Task<drogon::orm::Result> {
     if (filter.startTime && filter.endTime) {
-      co_return co_await client->execSqlCoro(
-          FIND_DELETED.data(), *filter.startTime, *filter.endTime);
+      co_return co_await client->execSqlCoro(FIND_DELETED.data(),
+                                             *filter.startTime,
+                                             *filter.endTime);
     }
     if (filter.startTime) {
-      co_return co_await client->execSqlCoro(
-          FIND_DELETED_FROM.data(), *filter.startTime);
+      co_return co_await client->execSqlCoro(FIND_DELETED_FROM.data(),
+                                             *filter.startTime);
     }
     co_return co_await client->execSqlCoro(FIND_DELETED_ALL.data());
   }();
@@ -107,12 +147,10 @@ UserRepository::findDeleted(const SyncFilter& filter) const
   co_return data;
 }
 
-drogon::Task<std::optional<Json::Value>>
-UserRepository::findLast() const
+drogon::Task<std::optional<Json::Value>> UserRepository::findLast() const
 {
   auto client = DbService::client();
-  const auto result =
-      co_await client->execSqlCoro(FIND_LAST.data());
+  const auto result = co_await client->execSqlCoro(FIND_LAST.data());
 
   if (result.empty())
     co_return std::nullopt;
@@ -120,12 +158,10 @@ UserRepository::findLast() const
   co_return UserSchema(result.front()).toJson();
 }
 
-drogon::Task<std::optional<Json::Value>>
-UserRepository::findLastDeleted() const
+drogon::Task<std::optional<Json::Value>> UserRepository::findLastDeleted() const
 {
   auto client = DbService::client();
-  const auto result =
-      co_await client->execSqlCoro(FIND_LAST_DELETED.data());
+  const auto result = co_await client->execSqlCoro(FIND_LAST_DELETED.data());
 
   if (result.empty())
     co_return std::nullopt;

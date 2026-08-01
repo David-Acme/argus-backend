@@ -18,8 +18,7 @@ inline constexpr std::string_view INSERT =
 inline constexpr std::string_view DELETE_BY_PERSON =
     "DELETE FROM face_embedding WHERE person_id = ?";
 
-inline constexpr std::string_view FIND_ALL =
-    "SELECT * FROM face_embedding";
+inline constexpr std::string_view FIND_ALL = "SELECT * FROM face_embedding";
 } // namespace face_embedding_query
 
 struct FaceEmbeddingCreateInput

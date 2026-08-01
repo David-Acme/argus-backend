@@ -10,7 +10,7 @@ name = "default"
 rdbms = "sqlite3"
 filename = "database/argus.db"
 is_fast = false
-number_of_connections = 1
+number_of_connections = 4
 timeout = -1.0
 
 [drogon.app]
@@ -30,7 +30,7 @@ pipelining_requests = 0
 gzip_static = true
 br_static = true
 client_max_body_size = "60M"
-client_max_memory_body_size = "64K"
+client_max_memory_body_size = "16M"
 client_max_websocket_message_size = "128K"
 reuse_port = false
 enabled_compressed_request = false
@@ -68,6 +68,14 @@ refresh_ttl_days = 30
 
 [database]
 file = "./database/argus.db"
+
+# ── Face recognition ──────────────────────────────────────────────────
+[face]
+detect_target = 640
+score_threshold = 0.5
+nms_threshold = 0.4
+ef_search = 100
+top_k = 5
 
 [storage.s3]
 endpoint = ""

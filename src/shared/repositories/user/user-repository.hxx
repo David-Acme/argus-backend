@@ -1,6 +1,7 @@
 #pragma once
 
 #include "user-query.hxx"
+
 #include <drogon/utils/coroutine.h>
 #include <json/value.h>
 #include <optional>

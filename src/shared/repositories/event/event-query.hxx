@@ -42,4 +42,3 @@ struct EventLinkPersonInput
   int64_t personId{0};
   double confidence{0.0};
 };
-

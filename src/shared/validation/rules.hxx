@@ -6,10 +6,9 @@
 #include <initializer_list>
 #include <optional>
 #include <regex>
+#include <shared/validation/validator.hxx>
 #include <string>
 #include <vector>
-
-#include <shared/validation/validator.hxx>
 
 // ---- FieldAccessors ----
 
@@ -34,13 +33,6 @@ struct IntFieldAccessor
   std::function<int64_t(const DtoType&)> get;
 };
 
-template <typename DtoType>
-struct BoolFieldAccessor
-{
-  std::string name;
-  std::function<bool(const DtoType&)> get;
-};
-
 template <typename DtoType, typename ElementType>
 struct ArrayFieldAccessor
 {
@@ -54,10 +46,7 @@ template <typename DtoType>
 class IsNotEmptyRule : public Validator<DtoType>::IRule
 {
 public:
-  explicit IsNotEmptyRule(FieldAccessor<DtoType> f)
-      : accessor_(std::move(f))
-  {
-  }
+  explicit IsNotEmptyRule(FieldAccessor<DtoType> f) : accessor_(std::move(f)) {}
   std::string field() const override { return accessor_.name; }
   std::optional<std::string> validate(const DtoType& obj) const override
   {
@@ -97,15 +86,13 @@ template <typename DtoType>
 class IsAlphaRule : public Validator<DtoType>::IRule
 {
 public:
-  explicit IsAlphaRule(FieldAccessor<DtoType> f)
-      : accessor_(std::move(f))
-  {
-  }
+  explicit IsAlphaRule(FieldAccessor<DtoType> f) : accessor_(std::move(f)) {}
   std::string field() const override { return accessor_.name; }
   std::optional<std::string> validate(const DtoType& obj) const override
   {
     const auto& v = accessor_.get(obj);
-    if (v.empty()) return std::nullopt;
+    if (v.empty())
+      return std::nullopt;
     static const std::regex re(R"(^[a-zA-Z]+$)");
     if (!std::regex_match(v, re))
       return accessor_.name + " must contain only letters";
@@ -120,15 +107,13 @@ template <typename DtoType>
 class IsAlnumRule : public Validator<DtoType>::IRule
 {
 public:
-  explicit IsAlnumRule(FieldAccessor<DtoType> f)
-      : accessor_(std::move(f))
-  {
-  }
+  explicit IsAlnumRule(FieldAccessor<DtoType> f) : accessor_(std::move(f)) {}
   std::string field() const override { return accessor_.name; }
   std::optional<std::string> validate(const DtoType& obj) const override
   {
     const auto& v = accessor_.get(obj);
-    if (v.empty()) return std::nullopt;
+    if (v.empty())
+      return std::nullopt;
     static const std::regex re(R"(^[a-zA-Z0-9]+$)");
     if (!std::regex_match(v, re))
       return accessor_.name + " must contain only letters and digits";
@@ -143,16 +128,14 @@ template <typename DtoType>
 class HasNoSpacesRule : public Validator<DtoType>::IRule
 {
 public:
-  explicit HasNoSpacesRule(FieldAccessor<DtoType> f)
-      : accessor_(std::move(f))
+  explicit HasNoSpacesRule(FieldAccessor<DtoType> f) : accessor_(std::move(f))
   {
   }
   std::string field() const override { return accessor_.name; }
   std::optional<std::string> validate(const DtoType& obj) const override
   {
     const auto& v = accessor_.get(obj);
-    if (v.find(' ') != std::string::npos ||
-        v.find('\t') != std::string::npos)
+    if (v.find(' ') != std::string::npos || v.find('\t') != std::string::npos)
       return accessor_.name + " must not contain spaces";
     return std::nullopt;
   }
@@ -167,15 +150,13 @@ template <typename DtoType>
 class IsEmailRule : public Validator<DtoType>::IRule
 {
 public:
-  explicit IsEmailRule(FieldAccessor<DtoType> f)
-      : accessor_(std::move(f))
-  {
-  }
+  explicit IsEmailRule(FieldAccessor<DtoType> f) : accessor_(std::move(f)) {}
   std::string field() const override { return accessor_.name; }
   std::optional<std::string> validate(const DtoType& obj) const override
   {
     const auto& v = accessor_.get(obj);
-    if (v.empty()) return std::nullopt;
+    if (v.empty())
+      return std::nullopt;
     static const std::regex re(R"(^[^\s@]+@[^\s@]+\.[^\s@]+$)");
     if (!std::regex_match(v, re))
       return accessor_.name + " must be a valid email";
@@ -190,15 +171,13 @@ template <typename DtoType>
 class IsUuidRule : public Validator<DtoType>::IRule
 {
 public:
-  explicit IsUuidRule(FieldAccessor<DtoType> f)
-      : accessor_(std::move(f))
-  {
-  }
+  explicit IsUuidRule(FieldAccessor<DtoType> f) : accessor_(std::move(f)) {}
   std::string field() const override { return accessor_.name; }
   std::optional<std::string> validate(const DtoType& obj) const override
   {
     const auto& v = accessor_.get(obj);
-    if (v.empty()) return std::nullopt;
+    if (v.empty())
+      return std::nullopt;
     static const std::regex re(
         R"(^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$)");
     if (!std::regex_match(v, re))
@@ -214,15 +193,13 @@ template <typename DtoType>
 class IsUrlRule : public Validator<DtoType>::IRule
 {
 public:
-  explicit IsUrlRule(FieldAccessor<DtoType> f)
-      : accessor_(std::move(f))
-  {
-  }
+  explicit IsUrlRule(FieldAccessor<DtoType> f) : accessor_(std::move(f)) {}
   std::string field() const override { return accessor_.name; }
   std::optional<std::string> validate(const DtoType& obj) const override
   {
     const auto& v = accessor_.get(obj);
-    if (v.empty()) return std::nullopt;
+    if (v.empty())
+      return std::nullopt;
     static const std::regex re(R"(^https?://.+\..+)");
     if (!std::regex_match(v, re))
       return accessor_.name + " must be a valid URL";
@@ -237,15 +214,13 @@ template <typename DtoType>
 class IsHexRule : public Validator<DtoType>::IRule
 {
 public:
-  explicit IsHexRule(FieldAccessor<DtoType> f)
-      : accessor_(std::move(f))
-  {
-  }
+  explicit IsHexRule(FieldAccessor<DtoType> f) : accessor_(std::move(f)) {}
   std::string field() const override { return accessor_.name; }
   std::optional<std::string> validate(const DtoType& obj) const override
   {
     const auto& v = accessor_.get(obj);
-    if (v.empty()) return std::nullopt;
+    if (v.empty())
+      return std::nullopt;
     if (v.size() % 2 != 0 || !std::all_of(v.begin(), v.end(), [](char c) {
           return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') ||
                  (c >= 'A' && c <= 'F');
@@ -262,15 +237,13 @@ template <typename DtoType>
 class IsSlugRule : public Validator<DtoType>::IRule
 {
 public:
-  explicit IsSlugRule(FieldAccessor<DtoType> f)
-      : accessor_(std::move(f))
-  {
-  }
+  explicit IsSlugRule(FieldAccessor<DtoType> f) : accessor_(std::move(f)) {}
   std::string field() const override { return accessor_.name; }
   std::optional<std::string> validate(const DtoType& obj) const override
   {
     const auto& v = accessor_.get(obj);
-    if (v.empty()) return std::nullopt;
+    if (v.empty())
+      return std::nullopt;
     static const std::regex re(R"(^[a-z0-9]+(?:-[a-z0-9]+)*$)");
     if (!std::regex_match(v, re))
       return accessor_.name + " must be a valid slug";
@@ -285,15 +258,13 @@ template <typename DtoType>
 class IsBase64Rule : public Validator<DtoType>::IRule
 {
 public:
-  explicit IsBase64Rule(FieldAccessor<DtoType> f)
-      : accessor_(std::move(f))
-  {
-  }
+  explicit IsBase64Rule(FieldAccessor<DtoType> f) : accessor_(std::move(f)) {}
   std::string field() const override { return accessor_.name; }
   std::optional<std::string> validate(const DtoType& obj) const override
   {
     const auto& v = accessor_.get(obj);
-    if (v.empty()) return std::nullopt;
+    if (v.empty())
+      return std::nullopt;
     if (v.size() % 4 != 0)
       return accessor_.name + " must be a valid base64 string";
     static const std::regex re(R"(^[A-Za-z0-9+/]*={0,2}$)");
@@ -320,7 +291,8 @@ public:
   std::optional<std::string> validate(const DtoType& obj) const override
   {
     const auto& v = accessor_.get(obj);
-    if (v.empty()) return std::nullopt;
+    if (v.empty())
+      return std::nullopt;
     const std::regex re(pattern_);
     if (!std::regex_match(v, re))
       return accessor_.name + " " + message_;
@@ -651,9 +623,7 @@ template <typename DtoType>
 class IsValidTimestampRule : public Validator<DtoType>::IRule
 {
 public:
-  IsValidTimestampRule(IntFieldAccessor<DtoType> f) : accessor_(std::move(f))
-  {
-  }
+  IsValidTimestampRule(IntFieldAccessor<DtoType> f) : accessor_(std::move(f)) {}
   std::string field() const override { return accessor_.name; }
   std::optional<std::string> validate(const DtoType& obj) const override
   {
@@ -670,8 +640,7 @@ template <typename DtoType>
 class IsPositiveTimestampRule : public Validator<DtoType>::IRule
 {
 public:
-  IsPositiveTimestampRule(IntFieldAccessor<DtoType> f)
-      : accessor_(std::move(f))
+  IsPositiveTimestampRule(IntFieldAccessor<DtoType> f) : accessor_(std::move(f))
   {
   }
   std::string field() const override { return accessor_.name; }
@@ -684,26 +653,6 @@ public:
 
 private:
   IntFieldAccessor<DtoType> accessor_;
-};
-
-// ---- Boolean rules ----
-
-template <typename DtoType>
-class IsBooleanRule : public Validator<DtoType>::IRule
-{
-public:
-  explicit IsBooleanRule(BoolFieldAccessor<DtoType> f)
-      : accessor_(std::move(f))
-  {
-  }
-  std::string field() const override { return accessor_.name; }
-  std::optional<std::string> validate(const DtoType&) const override
-  {
-    return std::nullopt;
-  }
-
-private:
-  BoolFieldAccessor<DtoType> accessor_;
 };
 
 // ---- Custom rules ----

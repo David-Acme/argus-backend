@@ -54,15 +54,20 @@ obligations of the AGPL-3.0 (for example, integrating it into a
 proprietary product without disclosing source code), you MUST obtain
 a commercial license from the author.
 
-  Commercial purposes requiring a commercial license include, but are
-  not limited to:
+  A commercial license is required ONLY when Argus is distributed or
+  made available to third parties as part of a commercial offering.
+  It is not required for internal use. Commercial redistribution
+  includes, but is not limited to:
 
-    • Integrating Argus into a product or service you sell
-    • Using Argus internally within a for-profit organization
-    • Offering Argus as a hosted or managed service (SaaS)
+    • Selling, reselling, or white-labeling Argus
+    • Offering Argus as a hosted or managed service (SaaS) to third parties
     • Embedding Argus in proprietary hardware or software
     • Distribution of Argus as part of a commercial product
-    • Any revenue-generating activity involving Argus
+
+  Internal use within your own organization — including for-profit
+  companies using Argus internally for their own operations — is free
+  under the AGPL-3.0 (Option A). Only redistribution to third parties
+  requires a commercial license.
 
   To obtain a commercial license, contact the author:
     https://github.com/David-Acme/argus-backend
@@ -72,12 +77,14 @@ a commercial license from the author.
   copyright law and may result in legal action, including claims for
   damages and injunctive relief.
 
-3. PERSONAL / NON-COMMERCIAL USE
-─────────────────────────────────
+3. FREE USE — PERSONAL & INTERNAL
+──────────────────────────────────
 
-Individuals using this software strictly for personal, non-commercial,
-non-revenue-generating purposes may do so freely under the AGPL-3.0
-(Option A) without needing to contact the author.
+Personal use, and internal use within your own organization (including
+for-profit businesses running Argus for their own operations), is free
+under the AGPL-3.0 (Option A) without needing to contact the author.
+A commercial license is required only when Argus is redistributed or
+sold to third parties, as described in Section 2.
 
 4. ATTRIBUTION
 ───────────────

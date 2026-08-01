@@ -1,6 +1,7 @@
 #pragma once
 
 #include "context-note-query.hxx"
+
 #include <drogon/utils/coroutine.h>
 #include <optional>
 #include <shared/schemas/context-note/context-note-schema.hxx>
@@ -12,8 +13,7 @@ public:
   ContextNoteRepository() = default;
   ~ContextNoteRepository() = default;
 
-  drogon::Task<std::optional<ContextNoteSchema>>
-  findById(int64_t id) const;
+  drogon::Task<std::optional<ContextNoteSchema>> findById(int64_t id) const;
   drogon::Task<std::vector<ContextNoteSchema>> findActive() const;
   drogon::Task<ContextNoteSchema>
   create(const ContextNoteCreateInput& input) const;

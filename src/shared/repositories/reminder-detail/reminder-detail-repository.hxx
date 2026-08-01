@@ -1,6 +1,7 @@
 #pragma once
 
 #include "reminder-detail-query.hxx"
+
 #include <drogon/utils/coroutine.h>
 #include <json/value.h>
 #include <optional>
@@ -14,8 +15,7 @@ public:
   ReminderDetailRepository() = default;
   ~ReminderDetailRepository() override = default;
 
-  drogon::Task<std::optional<ReminderDetailSchema>>
-  findById(int64_t id) const;
+  drogon::Task<std::optional<ReminderDetailSchema>> findById(int64_t id) const;
   drogon::Task<std::vector<ReminderDetailSchema>>
   findByReminder(int64_t reminderId) const;
   drogon::Task<ReminderDetailSchema>

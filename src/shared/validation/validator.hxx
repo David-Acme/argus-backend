@@ -41,8 +41,7 @@ public:
   template <typename Rule, typename... Args>
   void add(Args&&... args)
   {
-    rules_.push_back(
-        std::make_unique<Rule>(std::forward<Args>(args)...));
+    rules_.push_back(std::make_unique<Rule>(std::forward<Args>(args)...));
   }
 
   void validateOrThrow(const DtoType& obj) const

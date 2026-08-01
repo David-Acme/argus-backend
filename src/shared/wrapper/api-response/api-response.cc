@@ -31,6 +31,7 @@ drogon::HttpResponsePtr
 ApiResponse::validationError(const Json::Value& fieldErrors)
 {
   Json::Value err;
+  err["code"] = "VALIDATION_ERROR";
   err["message"] = "Validation failed";
   err["fields"] = fieldErrors;
   return json(422, nullptr, &err);

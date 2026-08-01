@@ -4,7 +4,7 @@
 guard + virtual assistant. Everything runs on-device: face recognition, speech-to-text,
 text-to-speech, LLM chat, and vision understanding. No cloud processing, ever.
 
-- **Language:** C++20
+- **Language:** C++20 (coroutines for async flow)
 - **Framework:** [Drogon](https://github.com/drogonframework/drogon) HTTP/WebSocket
 - **Database:** SQLite (async `DbClient`, no ORM)
 - **Package manager:** Conan 2 + CMake presets
@@ -17,17 +17,22 @@ text-to-speech, LLM chat, and vision understanding. No cloud processing, ever.
 - **Modular.** Every capability lives behind a clean interface so models can be swapped
   without touching business logic.
 
-## Features (implemented)
+## Features
 
-| Feature | Engine | Latency |
-|---------|--------|---------|
-| **Face login** (multipart) | ncnn RetinaFace + MobileFaceNet + HNSW | ~220ms |
-| **JWT auth** + refresh rotation | HS256, dual secrets, device-bound | <1ms |
-| **LLM chat** | llama.cpp (LFM2.5-1.2B-Instruct, 4-bit) | streaming |
-| **Vision analysis** | llama.cpp (LFM2.5-VL-450M) | ~5s/image |
-| **Speech-to-text** | sherpa-onnx (Whisper tiny, Spanish) | streaming |
-| **Text-to-speech** | Supertonic 3 (ONNX, 10 voices) | streaming |
-| **Validation DSL** | 31 built-in validation rules | compile-time |
+| Feature | Engine |
+|---------|--------|
+| **Face login** (multipart) | ncnn RetinaFace + MobileFaceNet + HNSW |
+| **JWT auth** + refresh rotation | HS256, dual secrets, device-bound |
+| **LLM chat** (sync + streaming) | llama.cpp (LFM2.5-1.2B-Instruct, 4-bit) |
+| **Vision analysis** | llama.cpp (LFM2.5-VL-450M) |
+| **Speech-to-text** | sherpa-onnx (Whisper tiny, Spanish) |
+| **Text-to-speech** | Supertonic 3 (ONNX, 10 voices) |
+| **Validation DSL** | 31 built-in validation rules |
+
+All AI services run fully off the event loop (C++20 coroutines) and auto-tune
+their thread usage to the host CPU, so the same build performs well on anything
+from a 2-core laptop to a 64-core server. Vulkan is used automatically when a
+compatible GPU is available.
 
 ## Quick start
 
@@ -46,6 +51,22 @@ curl http://localhost:7024/auth/status \
   -H "Authorization: Bearer <access_token>"
 ```
 
+## API response format
+
+Every endpoint returns the same envelope:
+
+```json
+{
+  "status": 200,
+  "info": { },
+  "errors": null
+}
+```
+
+Errors always use `errors: { "code": "...", "message": "..." }` with the matching
+HTTP status (`BAD_REQUEST`, `UNAUTHORIZED`, `FORBIDDEN`, `NOT_FOUND`,
+`METHOD_NOT_ALLOWED`, `VALIDATION_ERROR`).
+
 ## Auth flow
 
 ```
@@ -61,44 +82,28 @@ POST /auth/login (multipart image)
 - **Logout**: Invalidates all refresh tokens for the user.
 - **Filters**: `DeviceFilter → ValidJsonFilter → JwtFilter → RoleFilter`
 
-## Validation DSL
-
-```cpp
-START_VALIDATION(MyDto, dto)
-IS_NOT_EMPTY(name)
-IS_EMAIL(email)
-IS_IN(role, "admin", "user", "guest")
-MIN_LENGTH(password, 8)
-BETWEEN(age, 18, 120)
-END_VALIDATION()
-```
-
-31 rules available: strings (email, uuid, url, hex, slug, base64, alpha, alnum),
-numeric (positive, non-negative, min, max, between), arrays (not-empty, min/max elements),
-cross-field (equals), timestamps, booleans, custom lambdas. See `src/shared/validation/`.
-
 ## Tech stack
 
 ### Conan packages
 - `drogon/1.9.13` — HTTP/WebSocket + logging
 - `jwt-cpp/0.7.2` + `nlohmann_json/3.11.3` — JWT auth
-- `llama-cpp/b6565` — LLM + Vision inference
-- `opencv/4.13.0` (headless) — face image decoding
-- `onnxruntime/1.24.4` — STT inference (sherpa-onnx)
+- `llama-cpp/b6565` — LLM + Vision inference (incl. mtmd multimodal)
+- `opencv/4.13.0` (headless) — scaled face image decoding
+- `onnxruntime/1.24.4` — STT/TTS inference (sherpa-onnx)
 - `tomlplusplus/3.3.0` — config
 - `eigen/5.0.1` — linear algebra
 
 ### Third-party (git submodules)
-- **ncnn** — high-performance neural net inference (face detection + recognition), Vulkan GPU
+- **ncnn** — neural net inference (face detection + recognition), Vulkan when available
 - **hnswlib** — approximate nearest neighbor search (face embedding index)
-- **sherpa-onnx** — streaming speech-to-text (Whisper tiny via ONNX Runtime)
+- **sherpa-onnx** — speech-to-text (Whisper tiny via ONNX Runtime)
 - **fastText** — text classification / intent detection
 
 ## Project structure
 
 ```
 src/
-├── config/              Centralized responses, CORS, exception handler
+├── config/              Kernel: responses, CORS, exception handler, service registry
 ├── feature/api/auth/    Auth controllers, services, DTOs
 ├── filter/
 │   ├── device/          Device fingerprint (UA + IP hash)
@@ -115,13 +120,13 @@ src/
 │   │   ├── face/        Face detection (ncnn) + FaceDB (HNSW index)
 │   │   ├── jwt/         JWT sign/verify (HS256, instance class)
 │   │   ├── llm/         LLM inference (llama.cpp)
-│   │   ├── vision/      Vision model inference (llama.cpp)
+│   │   ├── vision/      Vision model inference (llama.cpp + mtmd)
 │   │   ├── stt/         Speech-to-text (whisper, sherpa-onnx)
 │   │   ├── tts/         Text-to-speech (Supertonic 3, ONNX)
 │   │   ├── sqlite/      DbClient access
 │   │   └── config-service/  TOML config reader
 │   ├── validation/      Validation DSL (rules + macros + validator)
-│   └── wrapper/api-response/  Standardized JSON response format
+│   └── wrapper/         api-response, blocking-task, thread-budget
 └── main.cc
 ```
 
@@ -132,7 +137,7 @@ src/
 cmake --preset dev
 cmake --build --preset dev -j 8
 
-# Production (Release)
+# Production (Release) — auto-tuned to the build machine (-march=native, LTO)
 cmake --preset prod
 cmake --build --preset prod -j 8
 
@@ -147,11 +152,11 @@ Models under `models/{face,llm,vision,stt,tts}/`.
 ## Conventions
 
 - **C++20**, `.hxx` / `.cc` extensions
+- **Coroutines** for any flow that touches the event loop (`BlockingTask` awaiter)
 - **Enums** for all constrained DB columns (no raw strings)
 - **DTOs** self-validate using DSL macros
 - **Controllers** ultra-thin (4-8 lines per endpoint)
 - **Dependency injection** — all services/repos as private `_` suffix members
 - **No ORM** — raw SQL via `DbService::client()->execSqlCoro()`
 - **No spdlog** — built-in Drogon logging
-- **No static service methods** — instance classes with default constructors
 - **Smart pointers only** — no raw owning pointers

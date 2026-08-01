@@ -26,6 +26,9 @@ public:
   std::map<std::string, std::string>
   verifyRefresh(const std::string& token) const;
 
+  int64_t refreshTtlSeconds() const { return refreshTtlSeconds_; }
+  int64_t accessTtlSeconds() const { return accessTtlSeconds_; }
+
 private:
   std::string accessSecret_;
   std::string refreshSecret_;

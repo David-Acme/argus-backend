@@ -1,6 +1,7 @@
 #include "jwt-filter.hxx"
 
 #include <config/app-config.hxx>
+#include <ctime>
 #include <filter/device/device-filter.hxx>
 #include <trantor/utils/Logger.h>
 
@@ -22,7 +23,17 @@ JwtFilter::doFilter(const drogon::HttpRequestPtr& req)
     co_return AppConfig::get401Response();
   }
 
-  const int64_t userId = std::stoll(subIt->second);
+  int64_t userId = 0;
+  try {
+    userId = std::stoll(subIt->second);
+  }
+  catch (const std::exception&) {
+    co_return AppConfig::get401Response();
+  }
+  if (userId <= 0) {
+    co_return AppConfig::get401Response();
+  }
+
   const auto user = co_await userRepository_.findById(userId);
   if (!user) {
     co_return AppConfig::get401Response();
@@ -39,6 +50,10 @@ JwtFilter::doFilter(const drogon::HttpRequestPtr& req)
         co_await refreshTokenRepository_.findByAccessToken(userId, token);
     if (!rt) {
       co_return AppConfig::get401Response();
+    }
+    if (rt->expiresAt <= std::time(nullptr)) {
+      LOG_WARN << "Refresh token expired for user " << userId;
+      co_return AppConfig::get401Response("Token expired");
     }
     if (rt->deviceHash != devCtx.deviceHash) {
       LOG_WARN << "Device hash mismatch for user " << userId;

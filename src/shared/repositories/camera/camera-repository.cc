@@ -1,5 +1,10 @@
 #include "camera-repository.hxx"
+
+#include <ctime>
 #include <shared/services/sqlite/db-service.hxx>
+#include <string>
+#include <string_view>
+#include <vector>
 
 using namespace camera_query;
 
@@ -7,8 +12,7 @@ drogon::Task<std::optional<CameraSchema>>
 CameraRepository::findById(int64_t id) const
 {
   auto client = DbService::client();
-  const auto result =
-      co_await client->execSqlCoro(FIND_BY_ID.data(), id);
+  const auto result = co_await client->execSqlCoro(FIND_BY_ID.data(), id);
 
   if (result.empty())
     co_return std::nullopt;
@@ -20,34 +24,103 @@ drogon::Task<CameraSchema>
 CameraRepository::create(const CameraCreateInput& input) const
 {
   auto client = DbService::client();
-  const auto result = co_await client->execSqlCoro(
-      INSERT.data(), input.name, input.manufacturer, input.model, input.ip,
-      input.port, input.username, input.password,
-      cameraRecordModeToString(input.recordMode),
-      input.retentionDays ? *input.retentionDays
-                          : std::optional<int64_t>{},
-      input.capabilities, input.config, 1);
+  const auto result =
+      co_await client->execSqlCoro(INSERT.data(), input.name,
+                                   input.manufacturer, input.model, input.ip,
+                                   input.port, input.username, input.password,
+                                   cameraRecordModeToString(input.recordMode),
+                                   input.retentionDays
+                                       ? *input.retentionDays
+                                       : std::optional<int64_t>{},
+                                   input.capabilities, input.config, 1);
 
-  auto created = co_await findById(result.insertId());
-  if (!created) {
-    LOG_WARN << "Camera not found after insert";
-    co_return {};
-  }
-  co_return *created;
+  CameraSchema schema;
+  schema.id = result.insertId();
+  schema.name = input.name;
+  schema.manufacturer = input.manufacturer;
+  schema.model = input.model;
+  schema.ip = input.ip;
+  schema.port = input.port;
+  schema.username = input.username;
+  schema.password = input.password;
+  schema.recordMode = input.recordMode;
+  schema.retentionDays = input.retentionDays;
+  schema.capabilities = input.capabilities;
+  schema.config = input.config;
+  schema.isEnabled = true;
+  schema.createdAt = std::time(nullptr);
+  co_return schema;
 }
 
 drogon::Task<CameraSchema>
 CameraRepository::update(int64_t id, const CameraUpdateInput& input) const
 {
   auto client = DbService::client();
-  co_await client->execSqlCoro(
-      UPDATE.data(), input.name, input.manufacturer, input.model, input.ip,
-      input.port, input.username, input.password,
-      cameraRecordModeToString(input.recordMode),
-      input.retentionDays ? *input.retentionDays
-                          : std::optional<int64_t>{},
-      input.capabilities, input.config, input.isEnabled ? 1 : 0,
-      input.isOnline ? 1 : 0, id);
+  std::string sql = UPDATE_PREFIX.data();
+  std::vector<std::string> args;
+
+  auto addField = [&](std::string_view column,
+                      const std::optional<std::string>& value) {
+    if (!value)
+      return;
+    if (!args.empty())
+      sql += ", ";
+    sql += column;
+    args.push_back(*value);
+  };
+
+  addField(UPDATE_COL_NAME, input.name);
+  addField(UPDATE_COL_MANUFACTURER, input.manufacturer);
+  addField(UPDATE_COL_MODEL, input.model);
+  addField(UPDATE_COL_IP, input.ip);
+  if (input.port) {
+    if (!args.empty())
+      sql += ", ";
+    sql += UPDATE_COL_PORT;
+    args.push_back(std::to_string(*input.port));
+  }
+  addField(UPDATE_COL_USERNAME, input.username);
+  addField(UPDATE_COL_PASSWORD, input.password);
+  if (input.recordMode) {
+    if (!args.empty())
+      sql += ", ";
+    sql += UPDATE_COL_RECORD_MODE;
+    args.push_back(cameraRecordModeToString(*input.recordMode));
+  }
+  if (input.retentionDays) {
+    if (!args.empty())
+      sql += ", ";
+    sql += UPDATE_COL_RETENTION_DAYS;
+    args.push_back(std::to_string(*input.retentionDays));
+  }
+  addField(UPDATE_COL_CAPABILITIES, input.capabilities);
+  addField(UPDATE_COL_CONFIG, input.config);
+  if (input.isEnabled) {
+    if (!args.empty())
+      sql += ", ";
+    sql += UPDATE_COL_IS_ENABLED;
+    args.push_back(*input.isEnabled ? "1" : "0");
+  }
+  if (input.isOnline) {
+    if (!args.empty())
+      sql += ", ";
+    sql += UPDATE_COL_IS_ONLINE;
+    args.push_back(*input.isOnline ? "1" : "0");
+  }
+
+  if (args.empty()) {
+    auto existing = co_await findById(id);
+    if (!existing) {
+      LOG_WARN << "Camera not found for update";
+      co_return {};
+    }
+    co_return *existing;
+  }
+
+  sql += UPDATE_SUFFIX.data();
+  args.push_back(std::to_string(id));
+  const auto& argsRef = args;
+  co_await client->execSqlCoro(sql, argsRef);
 
   auto updated = co_await findById(id);
   if (!updated) {
@@ -92,8 +165,9 @@ CameraRepository::findDeleted(const SyncFilter& filter) const
 
   auto result = [&]() -> drogon::Task<drogon::orm::Result> {
     if (filter.startTime && filter.endTime)
-      co_return co_await client->execSqlCoro(
-          FIND_DELETED.data(), *filter.startTime, *filter.endTime);
+      co_return co_await client->execSqlCoro(FIND_DELETED.data(),
+                                             *filter.startTime,
+                                             *filter.endTime);
     if (filter.startTime)
       co_return co_await client->execSqlCoro(FIND_DELETED_FROM.data(),
                                              *filter.startTime);
@@ -106,12 +180,12 @@ CameraRepository::findDeleted(const SyncFilter& filter) const
   co_return data;
 }
 
-drogon::Task<std::optional<Json::Value>>
-CameraRepository::findLast() const
+drogon::Task<std::optional<Json::Value>> CameraRepository::findLast() const
 {
   auto client = DbService::client();
   const auto result = co_await client->execSqlCoro(FIND_LAST.data());
-  if (result.empty()) co_return std::nullopt;
+  if (result.empty())
+    co_return std::nullopt;
   co_return CameraSchema(result.front()).toJson();
 }
 
@@ -119,8 +193,8 @@ drogon::Task<std::optional<Json::Value>>
 CameraRepository::findLastDeleted() const
 {
   auto client = DbService::client();
-  const auto result =
-      co_await client->execSqlCoro(FIND_LAST_DELETED.data());
-  if (result.empty()) co_return std::nullopt;
+  const auto result = co_await client->execSqlCoro(FIND_LAST_DELETED.data());
+  if (result.empty())
+    co_return std::nullopt;
   co_return CameraSchema(result.front()).toJson();
 }

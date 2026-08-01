@@ -1,6 +1,7 @@
 #pragma once
 
 #include "refresh-token-query.hxx"
+
 #include <cstdint>
 #include <drogon/utils/coroutine.h>
 #include <optional>
@@ -16,8 +17,7 @@ public:
   drogon::Task<RefreshTokenSchema>
   create(const RefreshTokenCreateInput& input) const;
 
-  drogon::Task<std::optional<RefreshTokenSchema>>
-  findById(int64_t id) const;
+  drogon::Task<std::optional<RefreshTokenSchema>> findById(int64_t id) const;
 
   drogon::Task<std::optional<RefreshTokenSchema>>
   findByAccessToken(int64_t userId, const std::string& accessToken) const;

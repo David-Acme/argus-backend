@@ -52,10 +52,15 @@ add_executable(${PROJECT_NAME}
 target_include_directories(${PROJECT_NAME}
     PRIVATE
         ${SRC_ROOT}
+        ${CMAKE_BINARY_DIR}/third_party/ncnn/src
+)
+
+target_include_directories(${PROJECT_NAME}
+    SYSTEM PRIVATE
         ${CMAKE_SOURCE_DIR}/third_party
+        ${CMAKE_SOURCE_DIR}/third_party/stb
         ${CMAKE_SOURCE_DIR}/third_party/sherpa-onnx
         ${CMAKE_SOURCE_DIR}/third_party/ncnn/src
-        ${CMAKE_BINARY_DIR}/third_party/ncnn/src
 )
 
 target_sources(${PROJECT_NAME}
@@ -108,6 +113,17 @@ endif()
 set_target_properties(${PROJECT_NAME} PROPERTIES
     BUILD_RPATH "$ORIGIN"
     INSTALL_RPATH "$ORIGIN"
+)
+
+# Machine-tuned Release: -march=native is resolved at build time on the
+# deployment machine, so binaries stay optimal on any hardware.
+target_compile_options(${PROJECT_NAME} PRIVATE
+    -Wall
+    -Wextra
+    $<$<CONFIG:Release>:-O3;-march=native;-flto=auto>
+)
+target_link_options(${PROJECT_NAME} PRIVATE
+    $<$<CONFIG:Release>:-flto=auto>
 )
 
 add_custom_command(
