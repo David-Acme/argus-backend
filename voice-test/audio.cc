@@ -8,6 +8,9 @@
 #include <cstring>
 #include <iostream>
 #include <portaudio.h>
+#include <pulse/simple.h>
+#include <pulse/error.h>
+#include <string>
 #include <thread>
 
 namespace
@@ -207,51 +210,98 @@ void waitForEnter()
 bool playPcm(const std::vector<float>& pcm, int sampleRate,
              const std::atomic<bool>& isInterrupted)
 {
+  if (pcm.empty())
+    return false;
+
+  // Prefer PulseAudio/PipeWire: it plays through the system sink that screen
+  // recorders (OBS "Desktop Audio") capture. PortAudio-ALSA hw devices
+  // bypass PipeWire and would not be recorded.
+  int paErr = 0;
+  pa_sample_spec ss;
+  ss.format = PA_SAMPLE_FLOAT32LE;
+  ss.rate = sampleRate > 0 ? static_cast<uint32_t>(sampleRate) : 44100;
+  ss.channels = 1;
+  pa_simple* pa = pa_simple_new(nullptr, "Argus", PA_STREAM_PLAYBACK, nullptr,
+                                "voice", &ss, nullptr, nullptr, &paErr);
+  if (pa) {
+    const void* data = pcm.data();
+    size_t bytes = pcm.size() * sizeof(float);
+    if (pa_simple_write(pa, data, bytes, &paErr) == 0)
+      pa_simple_drain(pa, &paErr);
+    pa_simple_free(pa);
+    return true;
+  }
+
+  // No PulseAudio/PipeWire server: fall back to PortAudio output devices.
+  std::cerr << "[audio] pulse unavailable (" << pa_strerror(paErr)
+            << "), trying PortAudio\n";
   if (!gPaInitialized) {
     if (Pa_Initialize() != paNoError)
       return false;
     gPaInitialized = true;
   }
 
-  PaStreamParameters outParams{};
-  outParams.device = Pa_GetDefaultOutputDevice();
-  if (outParams.device == paNoDevice)
-    return false;
-  const PaDeviceInfo* info = Pa_GetDeviceInfo(outParams.device);
-  outParams.channelCount = 1;
-  outParams.sampleFormat = paFloat32;
-  outParams.suggestedLatency = info->defaultLowOutputLatency;
-
-  // Open the stream at the PCM's native rate (e.g. 44100 for Supertonic);
-  // PortAudio resamples to the device rate. Opening at the wrong rate
-  // changes pitch and makes the voice sound "effected".
-  const double streamRate = sampleRate > 0 ? sampleRate : info->defaultSampleRate;
-
-  PlayState st;
-  st.data = pcm.data();
-  st.frames = pcm.size();
-  st.pos = 0;
-  st.interrupted = &isInterrupted;
-
-  PaStream* stream = nullptr;
-  PaError err = Pa_OpenStream(&stream, nullptr, &outParams, streamRate,
-                              paFramesPerBufferUnspecified, paClipOff,
-                              playCallback, &st);
-  if (err != paNoError)
-    return false;
-
-  err = Pa_StartStream(stream);
-  if (err != paNoError)
-    return false;
-
-  while (Pa_IsStreamActive(stream) && !isInterrupted.load()) {
-    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  std::vector<int> candidates;
+  const int def = Pa_GetDefaultOutputDevice();
+  if (def != paNoDevice)
+    candidates.push_back(def);
+  for (int i = 0; i < Pa_GetDeviceCount(); ++i) {
+    const PaDeviceInfo* info = Pa_GetDeviceInfo(i);
+    if (info && info->maxOutputChannels > 0 && i != def)
+      candidates.push_back(i);
   }
-  if (isInterrupted.load())
-    Pa_AbortStream(stream);
-  else
-    Pa_StopStream(stream);
 
-  Pa_CloseStream(stream);
-  return true;
+  for (int device : candidates) {
+    const PaDeviceInfo* info = Pa_GetDeviceInfo(device);
+    if (!info)
+      continue;
+
+    PaStreamParameters outParams{};
+    outParams.device = device;
+    outParams.channelCount = 1;
+    outParams.sampleFormat = paFloat32;
+    outParams.suggestedLatency = info->defaultLowOutputLatency;
+
+    const double streamRate =
+        sampleRate > 0 ? sampleRate : info->defaultSampleRate;
+
+    PlayState st;
+    st.data = pcm.data();
+    st.frames = pcm.size();
+    st.pos = 0;
+    st.interrupted = &isInterrupted;
+
+    PaStream* stream = nullptr;
+    PaError err = Pa_OpenStream(&stream, nullptr, &outParams, streamRate,
+                                paFramesPerBufferUnspecified, paClipOff,
+                                playCallback, &st);
+    if (err != paNoError) {
+      std::cerr << "[audio] open output " << device << " ("
+                << (info->name ? info->name : "?")
+                << ") failed: " << Pa_GetErrorText(err) << "\n";
+      continue;
+    }
+
+    err = Pa_StartStream(stream);
+    if (err != paNoError) {
+      std::cerr << "[audio] start output " << device << " failed: "
+                << Pa_GetErrorText(err) << "\n";
+      Pa_CloseStream(stream);
+      continue;
+    }
+
+    while (Pa_IsStreamActive(stream) && !isInterrupted.load()) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    if (isInterrupted.load())
+      Pa_AbortStream(stream);
+    else
+      Pa_StopStream(stream);
+
+    Pa_CloseStream(stream);
+    return true;
+  }
+
+  std::cerr << "[audio] no output device available\n";
+  return false;
 }

@@ -43,6 +43,8 @@ target_link_libraries(argus-voice-test
         ${ARGUS_SHERPA_ONNX_TARGET}
         ${CONAN_LIBS}
         portaudio
+        pulse-simple
+        pulse
 )
 
 set_target_properties(argus-voice-test PROPERTIES
