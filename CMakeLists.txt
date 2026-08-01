@@ -12,13 +12,29 @@ find_package(Drogon CONFIG REQUIRED)
 find_package(jwt-cpp REQUIRED)
 find_package(nlohmann_json REQUIRED)
 
-find_package(llama-cpp REQUIRED)
 find_package(OpenCV CONFIG REQUIRED)
 find_package(Eigen3 REQUIRED)
 find_package(onnxruntime CONFIG REQUIRED)
 find_package(tomlplusplus REQUIRED)
 
 add_subdirectory(third_party)
+
+# llama.cpp (LLM inference) is vendored as a git submodule pinned to a
+# release with the LFM2.5-1.2B architecture support.
+set(LLAMA_ALL_WARNINGS OFF CACHE BOOL "" FORCE)
+set(LLAMA_BUILD_COMMON OFF CACHE BOOL "" FORCE)
+set(LLAMA_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(LLAMA_BUILD_TOOLS OFF CACHE BOOL "" FORCE)
+set(LLAMA_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(LLAMA_BUILD_SERVER OFF CACHE BOOL "" FORCE)
+set(LLAMA_BUILD_APP OFF CACHE BOOL "" FORCE)
+set(LLAMA_CURL OFF CACHE BOOL "" FORCE)
+set(GGML_NATIVE ON CACHE BOOL "" FORCE)
+set(GGML_LLAMAFILE ON CACHE BOOL "" FORCE)
+set(GGML_CPU_REPACK ON CACHE BOOL "" FORCE)
+set(GGML_OPENMP ON CACHE BOOL "" FORCE)
+add_subdirectory(third_party/llama.cpp EXCLUDE_FROM_ALL)
+set(CMAKE_CXX_STANDARD 20)
 
 file(GLOB_RECURSE CONFIG_SRC
     ${SRC_ROOT}/config/*.cc
@@ -79,7 +95,7 @@ target_link_libraries(${PROJECT_NAME}
         jwt-cpp::jwt-cpp
         nlohmann_json::nlohmann_json
 
-        llama-cpp::llama-cpp
+        llama
         opencv::opencv
         Eigen3::Eigen
         onnxruntime::onnxruntime
@@ -89,18 +105,6 @@ target_link_libraries(${PROJECT_NAME}
         ${ARGUS_SHERPA_ONNX_TARGET}
         ${CONAN_LIBS}
 )
-
-# mtmd (multimodal vision) is shipped in llama-cpp's package but
-# isn't exposed as a CMake component; link it explicitly.
-if(llama-cpp_LIB_DIRS_DEBUG)
-  target_link_libraries(${PROJECT_NAME} PRIVATE
-      "${llama-cpp_LIB_DIRS_DEBUG}/libmtmd.a")
-elseif(llama-cpp_LIB_DIRS_RELEASE)
-  target_link_libraries(${PROJECT_NAME} PRIVATE
-      "${llama-cpp_LIB_DIRS_RELEASE}/libmtmd.a")
-else()
-  message(WARNING "mtmd not linked: llama-cpp lib dirs unknown")
-endif()
 
 if(ARGUS_BUILD_INSPIREFACE AND TARGET InspireFace)
   target_link_libraries(${PROJECT_NAME} PRIVATE InspireFace)

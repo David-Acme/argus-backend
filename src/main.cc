@@ -11,6 +11,7 @@
 #include <shared/services/stt/stt-service.hxx>
 #include <shared/services/tts/tts-service.hxx>
 #include <shared/services/vision/vision-service.hxx>
+#include <stb_image.h>
 #include <string>
 #include <vector>
 
@@ -67,18 +68,37 @@ void benchLlm(int runs)
 
 void benchVision(int runs)
 {
-  std::cout << "\n== VL (LFM2.5-VL-450M, text-only path) ==\n";
+  std::cout << "\n== VL (Florence-2-base-ft, ONNX int8) ==\n";
   VisionRequest req;
-  req.imageRgb.assign(16 * 16 * 3, 0);
-  req.width = 16;
-  req.height = 16;
-  req.maxTokens = 64;
+  req.prompt =
+      "Describe brevemente lo que ves en esta imagen de seguridad.";
+  req.maxTokens = 96;
+
+  int w = 0;
+  int h = 0;
+  int c = 0;
+  std::unique_ptr<stbi_uc, decltype(&stbi_image_free)> img(
+      stbi_load("/home/acme/Downloads/camera-image.jpeg", &w, &h, &c, 3),
+      &stbi_image_free);
+  if (img) {
+    req.imageRgb.assign(img.get(), img.get() + static_cast<size_t>(w) * h * 3);
+    req.width = static_cast<uint32_t>(w);
+    req.height = static_cast<uint32_t>(h);
+    std::cout << "  input image: " << w << "x" << h << "\n";
+  }
+  else {
+    req.imageRgb.assign(16 * 16 * 3, 0);
+    req.width = 16;
+    req.height = 16;
+    std::cout << "  image not found, using 16x16 dummy\n";
+  }
 
   for (int r = 0; r < runs; ++r) {
     auto t0 = Clock::now();
     auto out = VisionService::describe(req);
     std::cout << "  run " << r + 1 << ": total=" << msSince(t0)
-              << "ms out_chars=" << out.size() << "\n";
+              << "ms out_chars=" << out.size() << "\n    -> "
+              << out.substr(0, 160) << "\n";
   }
 }
 

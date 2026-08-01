@@ -77,6 +77,12 @@ nms_threshold = 0.4
 ef_search = 100
 top_k = 5
 
+# ── Vision (Florence-2) ──────────────────────────────────────────────
+[vision]
+# Input resolution for the image encoder. 768 = full quality (default);
+# lower values (512/640) trade detail for speed on weak CPUs.
+image_size = 768
+
 [storage.s3]
 endpoint = ""
 access_key = ""

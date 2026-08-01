@@ -49,6 +49,8 @@ void TtsService::init()
                                     std::move(memoryInfo));
 
     loaded_ = true;
+
+    LOG_INFO << "TTS loaded: " << onnxDir;
   }
   catch (const std::exception& e) {
     LOG_FATAL << "TTS init failed: " << e.what();

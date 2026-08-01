@@ -58,7 +58,7 @@
 | `FaceService` | ncnn (Vulkan) | RetinaFace + MobileFaceNet | `models/face/` |
 | `FaceDB` | HNSWlib | In-memory 128-dim index | Loaded from SQLite at startup |
 | `LlmService` | llama.cpp | LFM2.5-1.2B-Instruct-Q4_K_M | `models/llm/` |
-| `VisionService` | llama.cpp | LFM2.5-VL-450M-Q4_K_M | `models/vision/` |
+| `VisionService` | Florence-2 (ONNX int8) | Florence-2-base-ft | `models/vision/florence/` |
 | `SttService` | sherpa-onnx | Whisper tiny | `models/stt/` |
 | `TtsService` | Supertonic 3 | ONNX models | `models/tts/` |
 | `JwtService` | jwt-cpp | HS256, instance class | — |
@@ -79,14 +79,20 @@ without GPU), so every AI service auto-tunes its resources at runtime:
 - **LLM**: `n_threads=lightThreads` + `n_threads_batch=batchThreads` (measured
   +54% prefill on long prompts), warmup decode at init, `use_mmap=true`,
   generation batch reused (no alloc per token), static mutex around context.
-- **Vision**: encoder gate FIXED — `llama_model_has_encoder()` is false for
-  `lfm2` arch, so mtmd is now initialized unconditionally; images are fed as
-  real embeddings via `batch.embd` with mrope positions and non-causal
-  attention. Generation positions fixed (continue from prompt end).
-  KNOWN LIMITATION: the current `LFM2.5-VL-450M` GGUF contains NO vision
-  tensors (text-only conversion) → mtmd fails at init and the service
-  degrades to text-only with a warning. A proper VL GGUF (with vision tower)
-  is picked up automatically.
+- **Vision**: REPLACED with **Florence-2-base-ft (ONNX int8, 0.23B)** —
+  `onnx-community/Florence-2-base-ft`: 4 sessions (vision encoder, encoder,
+  merged decoder with cache branch, token embeddings) + byte-level BPE
+  tokenizer. Task `<MORE_DETAILED_CAPTION>` ("Describe with a paragraph what
+  is shown in the image.") → English caption for the main LLM. Greedy decode
+  with `no_repeat_ngram=3`; generation matches transformers.js (decoder
+  starts at token 2, `use_cache_branch` selects the cache path, empty caches
+  on the first step). Frame cache: the vision encoder output is cached per
+  image hash (2 slots) — repeated camera frames skip the 2.2s encoder pass
+  (measured: 2.6s cold → 0.45s on cache hit on the reference machine).
+  `vision.image_size` (768 default, 512/640 opt-in) trades detail for speed.
+  NOTE: the encoder is GEMM-bound (12 fp32 channel-attention MatMuls); 768px
+  is required for detailed captions (512/640 degrade them); q4/q4f16 encoder
+  variants are slower or break ORT graph fusion — keep int8.
 - **STT/TTS**: adaptive intra-op threads, static mutexes (recognizer, engine,
   voice cache) — thread-safe for concurrent requests.
 - **Face**: `identifyMutex_` (global serialization) replaced by a
@@ -107,8 +113,15 @@ without GPU), so every AI service auto-tunes its resources at runtime:
 - **HTTP**: `client_max_memory_body_size` 64K→16M (no multipart spooling to
   disk for images). Release build: `-march=native` + `-flto=auto` on the app
   target only; `-Wall -Wextra` always on, third-party includes SYSTEM.
+- **llama.cpp vendored**: `third_party/llama.cpp` submodule pinned to release
+  `b10216` (shallow in `.gitmodules`), built via `add_subdirectory` with the
+  `llama` target only (LLM). Conan `llama-cpp` removed; mtmd is no longer
+  built (vision moved to ONNX). API notes for b10216: `llama_model_params.
+  use_mmap/use_mlock` → `load_mode` (`LLAMA_LOAD_MODE_MMAP`).
 - **ncnn Vulkan**: kept ON — the reference machine has an AMD iGPU (RADV
   RENOIR) that ncnn uses via Vulkan; machines without GPU fall back to CPU.
+- **Bench tool**: `./argus-backend --bench` measures LLM/VL/STT/TTS
+  (init time, per-run latency, RAM via VmRSS).
 
 ## Uniform API response format
 

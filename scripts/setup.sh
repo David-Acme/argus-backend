@@ -272,12 +272,12 @@ setup_llm_model() {
 }
 
 setup_vision_model() {
-  log "Setting up LiquidAI LFM2.5-VL-450M model..."
+  log "Setting up Florence-2 vision model (ONNX int8)..."
 
   local ROOT
   ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-  local MODEL_DIR="$ROOT/models/vision"
-  local HF_BASE="https://huggingface.co/LiquidAI/LFM2.5-VL-450M-GGUF/resolve/main"
+  local MODEL_DIR="$ROOT/models/vision/florence"
+  local HF_BASE="https://huggingface.co/onnx-community/Florence-2-base-ft/resolve/main"
   local DL=""
 
   if command -v curl >/dev/null 2>&1; then
@@ -291,16 +291,29 @@ setup_vision_model() {
 
   mkdir -p "$MODEL_DIR"
 
-  local MODEL_FILE="LFM2.5-VL-450M-Q4_K_M.gguf"
+  # Florence-2-base-ft (0.23B, int8): vision encoder + encoder + merged
+  # decoder + token embeddings + tokenizer. ~280 MB total, runs on CPU.
+  local FILES=(
+    decoder_model_merged_int8.onnx
+    encoder_model_int8.onnx
+    vision_encoder_int8.onnx
+    embed_tokens_int8.onnx
+    tokenizer.json
+  )
 
-  if [ ! -f "$MODEL_DIR/$MODEL_FILE" ]; then
-    log "Downloading $MODEL_FILE (~230 MB)..."
-    $DL "$MODEL_DIR/$MODEL_FILE" "$HF_BASE/$MODEL_FILE" || warn "Failed: $MODEL_FILE"
-  else
-    log "Vision model already present."
-  fi
+  for f in "${FILES[@]}"; do
+    if [ ! -f "$MODEL_DIR/$f" ]; then
+      log "Downloading $f..."
+      $DL "$MODEL_DIR/$f" "$HF_BASE/onnx/$f" || {
+        warn "Failed: $f (trying root path)"
+        $DL "$MODEL_DIR/$f" "$HF_BASE/$f" || warn "Failed: $f"
+      }
+    else
+      log "$f already present."
+    fi
+  done
 
-  log "Vision model ready."
+  log "Vision model ready (~280 MB)."
 }
 
 setup_stt_model() {

@@ -13,3 +13,7 @@
 [submodule "third_party/hnswlib"]
 	path = third_party/hnswlib
 	url = https://github.com/nmslib/hnswlib.git
+[submodule "third_party/llama.cpp"]
+	path = third_party/llama.cpp
+	url = https://github.com/ggml-org/llama.cpp.git
+	shallow = true

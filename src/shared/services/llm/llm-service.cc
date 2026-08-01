@@ -29,12 +29,11 @@ void LlmService::init()
         nullptr);
 
     const std::string modelPath = "models/llm/LFM2.5-1.2B-Instruct-Q4_K_M.gguf";
-    constexpr int64_t contextSize = 32768;
+    constexpr int64_t contextSize = 128000;
 
     llama_model_params modelParams = llama_model_default_params();
     modelParams.n_gpu_layers = 0;
-    modelParams.use_mmap = true;
-    modelParams.use_mlock = false;
+    modelParams.load_mode = LLAMA_LOAD_MODE_MMAP;
 
     llama_model* rawModel =
         llama_model_load_from_file(modelPath.c_str(), modelParams);

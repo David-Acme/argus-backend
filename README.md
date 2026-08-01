@@ -24,7 +24,7 @@ text-to-speech, LLM chat, and vision understanding. No cloud processing, ever.
 | **Face login** (multipart) | ncnn RetinaFace + MobileFaceNet + HNSW |
 | **JWT auth** + refresh rotation | HS256, dual secrets, device-bound |
 | **LLM chat** (sync + streaming) | llama.cpp (LFM2.5-1.2B-Instruct, 4-bit) |
-| **Vision analysis** | llama.cpp (LFM2.5-VL-450M) |
+| **Vision analysis** | Florence-2-base-ft (ONNX int8, 0.23B) |
 | **Speech-to-text** | sherpa-onnx (Whisper tiny, Spanish) |
 | **Text-to-speech** | Supertonic 3 (ONNX, 10 voices) |
 | **Validation DSL** | 31 built-in validation rules |
@@ -87,17 +87,26 @@ POST /auth/login (multipart image)
 ### Conan packages
 - `drogon/1.9.13` — HTTP/WebSocket + logging
 - `jwt-cpp/0.7.2` + `nlohmann_json/3.11.3` — JWT auth
-- `llama-cpp/b6565` — LLM + Vision inference (incl. mtmd multimodal)
 - `opencv/4.13.0` (headless) — scaled face image decoding
 - `onnxruntime/1.24.4` — STT/TTS inference (sherpa-onnx)
 - `tomlplusplus/3.3.0` — config
 - `eigen/5.0.1` — linear algebra
 
 ### Third-party (git submodules)
+- **llama.cpp** (b10216) — LLM inference
 - **ncnn** — neural net inference (face detection + recognition), Vulkan when available
 - **hnswlib** — approximate nearest neighbor search (face embedding index)
 - **sherpa-onnx** — speech-to-text (Whisper tiny via ONNX Runtime)
 - **fastText** — text classification / intent detection
+
+### Vision model (ONNX)
+- **Florence-2-base-ft** (0.23B, int8, MIT) from `onnx-community/Florence-2-base-ft`
+  — 4 ONNX sessions (vision encoder, encoder, merged decoder, token
+  embeddings) + byte-level BPE tokenizer, downloaded by `scripts/setup.sh`
+  into `models/vision/florence/`. Produces detailed English captions
+  (task `<MORE_DETAILED_CAPTION>`) for the main LLM. A frame cache reuses the
+  encoder output for repeated camera frames; `vision.image_size` (default
+  768) trades detail for speed on weak CPUs.
 
 ## Project structure
 
@@ -120,7 +129,7 @@ src/
 │   │   ├── face/        Face detection (ncnn) + FaceDB (HNSW index)
 │   │   ├── jwt/         JWT sign/verify (HS256, instance class)
 │   │   ├── llm/         LLM inference (llama.cpp)
-│   │   ├── vision/      Vision model inference (llama.cpp + mtmd)
+│   │   ├── vision/      Vision captioning (Florence-2, ONNX)
 │   │   ├── stt/         Speech-to-text (whisper, sherpa-onnx)
 │   │   ├── tts/         Text-to-speech (Supertonic 3, ONNX)
 │   │   ├── sqlite/      DbClient access
@@ -147,7 +156,14 @@ cmake --build --preset prod -j 8
 ```
 
 Server listens on `0.0.0.0:7024`. Database at `database/argus.db`.
-Models under `models/{face,llm,vision,stt,tts}/`.
+Models under `models/{face,llm,vision,stt,tts}/` — the vision model
+(Florence-2 ONNX int8) is downloaded automatically by `scripts/setup.sh`.
+
+## Benchmarks
+
+```bash
+./build/prod/argus-backend --bench   # LLM / VL / STT / TTS: init, latency, RAM
+```
 
 ## Conventions
 

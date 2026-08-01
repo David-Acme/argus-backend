@@ -1,97 +1,217 @@
 #include "vision-service.hxx"
 
-#include <cstdint>
+#include <algorithm>
+#include <chrono>
 #include <cstring>
+#include <cstdio>
 #include <drogon/drogon.h>
-#include <llama.h>
-#include <mtmd.h>
+#include <fstream>
+#include <nlohmann/json.hpp>
+#include <opencv2/imgproc.hpp>
+#include <shared/services/config-service/config-service.hxx>
 #include <shared/wrapper/blocking-task/blocking-task.hxx>
 #include <shared/wrapper/thread-budget/thread-budget.hxx>
-#include <thread>
 #include <vector>
 
-std::unique_ptr<llama_model, void (*)(llama_model*)>
-    VisionService::model_{nullptr, llama_model_free};
-std::unique_ptr<llama_context, void (*)(llama_context*)>
-    VisionService::context_{nullptr, llama_free};
-std::unique_ptr<mtmd_context, void (*)(mtmd_context*)>
-    VisionService::mtmd_{nullptr, mtmd_free};
-int64_t VisionService::contextSize_ = 0;
-bool VisionService::loaded_ = false;
-bool VisionService::hasEncoder_ = false;
+using nlohmann::json;
+
+namespace
+{
+
+constexpr int kDefaultImageSize = 768;
+constexpr int64_t kEosId = 2;
+constexpr int64_t kPadId = 1;
+constexpr int64_t kUnkId = 3;
+constexpr int kNumLayers = 6;
+constexpr int kNumHeads = 12;
+constexpr int kHeadDim = 64;
+constexpr int kEmbedDim = 768;
+constexpr int kNoRepeatNgram = 3;
+constexpr int kNumOutputs = 25;
+
+const std::string kModelDir = "models/vision/florence";
+const std::string kVisionEncoderPath = kModelDir + "/vision_encoder_int8.onnx";
+const std::string kEncoderPath = kModelDir + "/encoder_model_int8.onnx";
+const std::string kDecoderMergedPath =
+    kModelDir + "/decoder_model_merged_int8.onnx";
+const std::string kEmbedTokensPath = kModelDir + "/embed_tokens_int8.onnx";
+const std::string kTokenizerPath = kModelDir + "/tokenizer.json";
+
+const float kMean[3] = {0.485F, 0.456F, 0.406F};
+const float kStd[3] = {0.229F, 0.224F, 0.225F};
+
+const char* kDecoderOutputNames[kNumOutputs] = {
+    "logits",
+    "present.0.decoder.key",   "present.0.decoder.value",
+    "present.0.encoder.key",   "present.0.encoder.value",
+    "present.1.decoder.key",   "present.1.decoder.value",
+    "present.1.encoder.key",   "present.1.encoder.value",
+    "present.2.decoder.key",   "present.2.decoder.value",
+    "present.2.encoder.key",   "present.2.encoder.value",
+    "present.3.decoder.key",   "present.3.decoder.value",
+    "present.3.encoder.key",   "present.3.encoder.value",
+    "present.4.decoder.key",   "present.4.decoder.value",
+    "present.4.encoder.key",   "present.4.encoder.value",
+    "present.5.decoder.key",   "present.5.decoder.value",
+    "present.5.encoder.key",   "present.5.encoder.value",
+};
+
+Ort::MemoryInfo& cpuMem()
+{
+  static Ort::MemoryInfo info =
+      Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
+  return info;
+}
+
+// GPT-2 byte-level BPE byte decoder: unicode codepoint -> byte.
+uint8_t byteDecodeTable(uint32_t cp)
+{
+  if (cp >= 0x21 && cp <= 0x7E)
+    return static_cast<uint8_t>(cp);
+  if (cp >= 0xA1 && cp <= 0xAC)
+    return static_cast<uint8_t>(cp);
+  if (cp >= 0xAE && cp <= 0xFF)
+    return static_cast<uint8_t>(cp);
+  if (cp >= 0x100 && cp <= 0x143)
+    return static_cast<uint8_t>(cp - 0x100);
+  return 0;
+}
+
+std::string utf8Encode(uint32_t cp)
+{
+  std::string out;
+  if (cp < 0x80) {
+    out.push_back(static_cast<char>(cp));
+  }
+  else if (cp < 0x800) {
+    out.push_back(static_cast<char>(0xC0 | (cp >> 6)));
+    out.push_back(static_cast<char>(0x80 | (cp & 0x3F)));
+  }
+  else {
+    out.push_back(static_cast<char>(0xE0 | (cp >> 12)));
+    out.push_back(static_cast<char>(0x80 | ((cp >> 6) & 0x3F)));
+    out.push_back(static_cast<char>(0x80 | (cp & 0x3F)));
+  }
+  return out;
+}
+
+// Byte-level BPE detokenization: codepoints 0x100-0x143 map back to raw
+// bytes (U+0120 = space); the rest is passed through as UTF-8.
+std::string byteDecode(const std::string& token)
+{
+  std::string out;
+  size_t i = 0;
+  while (i < token.size()) {
+    const uint8_t lead = static_cast<uint8_t>(token[i]);
+    uint32_t cp = 0;
+    int extra = 0;
+    if (lead < 0x80) {
+      cp = lead;
+    }
+    else if ((lead & 0xE0) == 0xC0) {
+      cp = lead & 0x1F;
+      extra = 1;
+    }
+    else if ((lead & 0xF0) == 0xE0) {
+      cp = lead & 0x0F;
+      extra = 2;
+    }
+    else {
+      cp = lead & 0x07;
+      extra = 3;
+    }
+    for (int j = 1; j <= extra && i + j < token.size(); ++j)
+      cp = (cp << 6) | (static_cast<uint8_t>(token[i + j]) & 0x3F);
+    i += extra + 1;
+    const uint8_t b = byteDecodeTable(cp);
+    if (b != 0)
+      out.push_back(static_cast<char>(b));
+    else
+      out += utf8Encode(cp);
+  }
+  return out;
+}
+
+} // namespace
+
+std::unique_ptr<Ort::Session> VisionService::visionEncoder_;
+std::unique_ptr<Ort::Session> VisionService::encoder_;
+std::unique_ptr<Ort::Session> VisionService::decoderMerged_;
+std::unique_ptr<Ort::Session> VisionService::embedTokens_;
+Ort::Env VisionService::env_{ORT_LOGGING_LEVEL_ERROR, "Argus-Vision"};
 std::mutex VisionService::mutex_;
+bool VisionService::loaded_ = false;
+int VisionService::imageSize_ = kDefaultImageSize;
+VisionService::FrameCache VisionService::cacheA_;
+VisionService::FrameCache VisionService::cacheB_;
+int VisionService::lastCacheSlot_ = 0;
+std::vector<std::string> VisionService::idToToken_;
+std::unordered_set<int64_t> VisionService::specialIds_;
+
+const std::vector<int64_t>& VisionService::taskIds()
+{
+  // "<MORE_DETAILED_CAPTION>" -> "Describe with a paragraph what is shown in
+  // the image." (byte-level BPE ids, <s> prefix + </s> suffix).
+  static const std::vector<int64_t> ids = {0, 47066, 21700, 19, 10, 17818,
+                                           99, 16,    2343,  11, 5,  2274,
+                                           4,  2};
+  return ids;
+}
 
 void VisionService::init()
 {
   try {
-    llama_log_set(
-        [](enum ggml_log_level level, const char* text, void*) {
-          if (level == GGML_LOG_LEVEL_WARN || level == GGML_LOG_LEVEL_ERROR) {
-            fputs(text, stderr);
-          }
-        },
-        nullptr);
+    auto opts = Ort::SessionOptions{};
+    opts.SetExecutionMode(ExecutionMode::ORT_SEQUENTIAL);
+    opts.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL);
+    opts.SetIntraOpNumThreads(ThreadBudget::computeThreads());
+    opts.SetInterOpNumThreads(1);
 
-    const std::string modelPath = "models/vision/LFM2.5-VL-450M-Q4_K_M.gguf";
-    constexpr int64_t contextSize = 32768;
+    // The vision encoder is the heaviest pass (DaViT over 24x24 patches);
+    // give it the full batch thread budget.
+    auto visionOpts = Ort::SessionOptions{};
+    visionOpts.SetExecutionMode(ExecutionMode::ORT_SEQUENTIAL);
+    visionOpts.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL);
+    visionOpts.SetIntraOpNumThreads(ThreadBudget::computeThreads());
+    visionOpts.SetInterOpNumThreads(1);
 
-    llama_model_params modelParams = llama_model_default_params();
-    modelParams.n_gpu_layers = 0;
-    modelParams.use_mmap = true;
-    modelParams.use_mlock = false;
+    visionEncoder_ =
+        std::make_unique<Ort::Session>(env_, kVisionEncoderPath.c_str(), visionOpts);
+    encoder_ = std::make_unique<Ort::Session>(env_, kEncoderPath.c_str(), opts);
+    decoderMerged_ = std::make_unique<Ort::Session>(
+        env_, kDecoderMergedPath.c_str(), opts);
+    embedTokens_ =
+        std::make_unique<Ort::Session>(env_, kEmbedTokensPath.c_str(), opts);
 
-    llama_model* rawModel =
-        llama_model_load_from_file(modelPath.c_str(), modelParams);
-    if (!rawModel) {
-      throw std::runtime_error("failed to load model: " + modelPath);
+    std::ifstream tokFile(kTokenizerPath);
+    if (!tokFile.is_open())
+      throw std::runtime_error("failed to open tokenizer: " + kTokenizerPath);
+    json tok;
+    tokFile >> tok;
+
+    idToToken_.assign(51289, "");
+    for (auto it = tok.at("model").at("vocab").begin();
+         it != tok.at("model").at("vocab").end(); ++it) {
+      const int64_t id = it.value().get<int64_t>();
+      if (id >= 0 && id < static_cast<int64_t>(idToToken_.size()))
+        idToToken_[static_cast<size_t>(id)] = it.key();
     }
-    model_.reset(rawModel);
-
-    auto nThreads = ThreadBudget::heavyThreads();
-    auto nThreadsBatch = ThreadBudget::batchThreads();
-
-    llama_context_params ctxParams = llama_context_default_params();
-    ctxParams.n_ctx = static_cast<uint32_t>(contextSize);
-    ctxParams.n_batch = 1024;
-    ctxParams.n_ubatch = 512;
-    ctxParams.n_threads = nThreads;
-    ctxParams.n_threads_batch = nThreadsBatch;
-    ctxParams.flash_attn_type = LLAMA_FLASH_ATTN_TYPE_AUTO;
-    ctxParams.type_k = GGML_TYPE_Q4_0;
-    ctxParams.type_v = GGML_TYPE_Q4_0;
-    ctxParams.no_perf = true;
-    ctxParams.offload_kqv = false;
-    ctxParams.swa_full = true;
-
-    llama_context* rawCtx = llama_init_from_model(model_.get(), ctxParams);
-    if (!rawCtx) {
-      throw std::runtime_error("failed to create context");
-    }
-    context_.reset(rawCtx);
-
-    mtmd_context_params mtmdParams = mtmd_context_params_default();
-    mtmdParams.use_gpu = false;
-    mtmdParams.print_timings = false;
-    mtmdParams.n_threads = nThreadsBatch;
-    mtmdParams.verbosity = GGML_LOG_LEVEL_ERROR;
-
-    mtmd_context* rawMtmd =
-        mtmd_init_from_file(modelPath.c_str(), model_.get(), mtmdParams);
-    if (rawMtmd) {
-      mtmd_.reset(rawMtmd);
-      hasEncoder_ = true;
-    }
-    else {
-      LOG_WARN << "Vision: mtmd init failed, vision will be text-only";
-      hasEncoder_ = false;
+    for (const auto& added : tok.at("added_tokens")) {
+      const int64_t id = added.at("id").get<int64_t>();
+      if (id >= 0 && id < static_cast<int64_t>(idToToken_.size()))
+        idToToken_[static_cast<size_t>(id)] =
+            added.at("content").get<std::string>();
+      specialIds_.insert(id);
     }
 
-    contextSize_ = contextSize;
+    imageSize_ = ConfigService::getInt("vision.image_size");
+    if (imageSize_ < 384 || imageSize_ > 1024)
+      imageSize_ = kDefaultImageSize;
+
     loaded_ = true;
-
-    LOG_INFO << "Vision loaded: " << modelPath << " (ctx=" << contextSize
-             << ", threads=" << nThreads << ", batch_threads=" << nThreadsBatch
-             << ", encoder=" << (hasEncoder_ ? "yes" : "no") << ")";
+    LOG_INFO << "Vision loaded: Florence-2-base-ft (ONNX int8, threads="
+             << ThreadBudget::computeThreads()
+             << ", image_size=" << imageSize_ << ")";
   }
   catch (const std::exception& e) {
     LOG_FATAL << "Vision init failed: " << e.what();
@@ -101,11 +221,13 @@ void VisionService::init()
 
 void VisionService::shutdown()
 {
-  mtmd_.reset();
-  context_.reset();
-  model_.reset();
+  embedTokens_.reset();
+  decoderMerged_.reset();
+  encoder_.reset();
+  visionEncoder_.reset();
+  idToToken_.clear();
+  specialIds_.clear();
   loaded_ = false;
-
   LOG_INFO << "Vision shutdown";
 }
 
@@ -114,19 +236,62 @@ bool VisionService::isLoaded()
   return loaded_;
 }
 
-std::string VisionService::buildVisionPrompt(const std::string& userPrompt)
+std::vector<float> VisionService::preprocess(const unsigned char* rgb,
+                                             int width, int height)
 {
-  std::string prompt;
-  prompt += "<|im_start|>system\n";
-  prompt += SYSTEM_PROMPT;
-  prompt += "<|im_end|>\n";
-  prompt += "<|im_start|>user\n";
-  prompt += userPrompt;
-  prompt += "\n";
-  prompt += mtmd_default_marker();
-  prompt += "\n<|im_end|>\n";
-  prompt += "<|im_start|>assistant\n";
-  return prompt;
+  cv::Mat src(height, width, CV_8UC3, const_cast<unsigned char*>(rgb));
+  cv::Mat resized;
+  cv::resize(src, resized, cv::Size(imageSize_, imageSize_), 0, 0,
+             cv::INTER_CUBIC);
+
+  std::vector<float> pixels(static_cast<size_t>(3) * imageSize_ * imageSize_);
+  const float scale = 1.0F / 255.0F;
+  size_t idx = 0;
+  for (int c = 0; c < 3; ++c) {
+    const float mean = kMean[c];
+    const float invStd = 1.0F / kStd[c];
+    for (int y = 0; y < imageSize_; ++y) {
+      const uint8_t* row = resized.ptr<uint8_t>(y);
+      for (int x = 0; x < imageSize_; ++x)
+        pixels[idx++] = (row[x * 3 + c] * scale - mean) * invStd;
+    }
+  }
+  return pixels;
+}
+
+std::vector<float> VisionService::embed(int64_t token)
+{
+  int64_t ids[1] = {token};
+  const std::vector<int64_t> shape = {1, 1};
+  auto input = Ort::Value::CreateTensor<int64_t>(cpuMem(), ids, 1, shape.data(),
+                                                 shape.size());
+  const char* inputNames[] = {"input_ids"};
+  const char* outputNames[] = {"inputs_embeds"};
+  auto out = embedTokens_->Run(Ort::RunOptions{}, inputNames, &input, 1,
+                               outputNames, 1);
+  const auto outShape = out[0].GetTensorTypeAndShapeInfo().GetShape();
+  const size_t n = static_cast<size_t>(outShape[1]) * kEmbedDim;
+  const float* data = out[0].GetTensorData<float>();
+  return std::vector<float>(data, data + n);
+}
+
+std::vector<std::string> VisionService::decodeTokens(
+    const std::vector<int64_t>& ids)
+{
+  std::vector<std::string> words;
+  for (int64_t id : ids) {
+    if (id < kPadId || id == kEosId || id == kUnkId)
+      continue;
+    if (id < 0 || id >= static_cast<int64_t>(idToToken_.size()))
+      continue;
+    if (specialIds_.count(id) > 0)
+      continue;
+    const auto& token = idToToken_[static_cast<size_t>(id)];
+    if (token.empty())
+      continue;
+    words.push_back(byteDecode(token));
+  }
+  return words;
 }
 
 std::string VisionService::describe(const VisionRequest& req)
@@ -138,221 +303,271 @@ std::string VisionService::describe(const VisionRequest& req)
 
   std::lock_guard<std::mutex> lock(mutex_);
 
-  auto* model = model_.get();
-  auto* ctx = context_.get();
-  auto* vocab = llama_model_get_vocab(model);
+  try {
+    auto pixels = preprocess(req.imageRgb.data(),
+                             static_cast<int>(req.width),
+                             static_cast<int>(req.height));
 
-  auto mem = llama_get_memory(ctx);
-  if (mem) {
-    llama_memory_seq_rm(mem, 0, 0, -1);
-  }
-
-  std::string fullPrompt = buildVisionPrompt(req.prompt);
-
-  llama_pos basePos = 0;
-
-  if (hasEncoder_ && mtmd_) {
-    auto* mctx = mtmd_.get();
-
-    mtmd_bitmap* rawBitmap =
-        mtmd_bitmap_init(req.width, req.height, req.imageRgb.data());
-    if (!rawBitmap) {
-      LOG_WARN << "Vision: failed to create bitmap";
-      return "";
+    // Frame cache: identical frames skip the (expensive) vision encoder.
+    uint64_t hash = 14695981039346656037ULL;
+    const auto* bytes =
+        reinterpret_cast<const unsigned char*>(pixels.data());
+    for (size_t i = 0; i < pixels.size() * sizeof(float); ++i) {
+      hash ^= bytes[i];
+      hash *= 1099511628211ULL;
+    }
+    const int64_t numImageTokens =
+        static_cast<int64_t>(imageSize_ / 32) *
+            static_cast<int64_t>(imageSize_ / 32) + 1;
+    std::vector<float> imageFeatures;
+    FrameCache* hit = nullptr;
+    if (cacheA_.hash == hash && cacheA_.numTokens > 0) {
+      hit = &cacheA_;
+    }
+    else if (cacheB_.hash == hash && cacheB_.numTokens > 0) {
+      hit = &cacheB_;
+    }
+    if (hit) {
+      imageFeatures = hit->features;
+    }
+    else {
+      const char* visionIn[] = {"pixel_values"};
+      const char* visionOut[] = {"image_features"};
+      const std::vector<int64_t> pixelShape = {1, 3, imageSize_,
+                                               imageSize_};
+      auto pixelValue = Ort::Value::CreateTensor<float>(
+          cpuMem(), pixels.data(), pixels.size(), pixelShape.data(),
+          pixelShape.size());
+      auto visionOuts = visionEncoder_->Run(Ort::RunOptions{}, visionIn,
+                                            &pixelValue, 1, visionOut, 1);
+      const auto imageShape =
+          visionOuts[0].GetTensorTypeAndShapeInfo().GetShape();
+      const int64_t actualTokens = imageShape[1];
+      const size_t imageFeatCount =
+          static_cast<size_t>(actualTokens) * kEmbedDim;
+      imageFeatures.assign(visionOuts[0].GetTensorData<float>(),
+                           visionOuts[0].GetTensorData<float>() +
+                               imageFeatCount);
+      FrameCache* slot = lastCacheSlot_ == 1 ? &cacheA_ : &cacheB_;
+      slot->hash = hash;
+      slot->numTokens = actualTokens;
+      slot->features = imageFeatures;
+      lastCacheSlot_ = lastCacheSlot_ == 1 ? 2 : 1;
     }
 
-    mtmd::bitmap bitmap(rawBitmap);
-    mtmd::bitmaps bitmaps;
-    bitmaps.entries.push_back(std::move(bitmap));
-    auto bmPtrs = bitmaps.c_ptr();
+    const auto& taskIds = VisionService::taskIds();
+    std::vector<int64_t> taskIdVec(taskIds.begin(), taskIds.end());
+    const std::vector<int64_t> taskShape = {
+        1, static_cast<int64_t>(taskIdVec.size())};
+    auto taskInput = Ort::Value::CreateTensor<int64_t>(
+        cpuMem(), taskIdVec.data(), taskIdVec.size(), taskShape.data(),
+        taskShape.size());
+    const char* embedIn[] = {"input_ids"};
+    const char* embedOut[] = {"inputs_embeds"};
+    auto textOuts = embedTokens_->Run(Ort::RunOptions{}, embedIn,
+                                      &taskInput, 1, embedOut, 1);
 
-    mtmd::input_chunks chunks(mtmd_input_chunks_init());
-    mtmd_input_text text{fullPrompt.c_str(), true, true};
+    const int64_t textLen = static_cast<int64_t>(taskIdVec.size());
+    std::vector<float> textEmbeds(
+        textOuts[0].GetTensorData<float>(),
+        textOuts[0].GetTensorData<float>() +
+            static_cast<size_t>(textLen) * kEmbedDim);
 
-    int32_t tokRes = mtmd_tokenize(mctx, chunks.ptr.get(), &text, bmPtrs.data(),
-                                   bmPtrs.size());
-    if (tokRes != 0) {
-      LOG_WARN << "Vision: tokenization failed (code=" << tokRes << ")";
-      return "";
-    }
+    std::vector<float> encEmbeds(
+        static_cast<size_t>(numImageTokens + textLen) * kEmbedDim);
+    std::memcpy(encEmbeds.data(), imageFeatures.data(),
+                static_cast<size_t>(numImageTokens) * kEmbedDim *
+                    sizeof(float));
+    std::memcpy(encEmbeds.data() + numImageTokens * kEmbedDim,
+                textEmbeds.data(),
+                static_cast<size_t>(textLen) * kEmbedDim * sizeof(float));
 
-    llama_pos currentPos = 0;
-    const int nPosPerEmbd = mtmd_decode_use_mrope(mctx) ? 4 : 1;
-    const bool nonCausal = mtmd_decode_use_non_causal(mctx);
+    const int64_t encLen = numImageTokens + textLen;
+    std::vector<int64_t> encAttnData(static_cast<size_t>(encLen), 1);
+    const std::vector<int64_t> attnShape = {1, encLen};
+    auto encAttn = Ort::Value::CreateTensor<int64_t>(
+        cpuMem(), encAttnData.data(), encAttnData.size(), attnShape.data(),
+        attnShape.size());
+    const std::vector<int64_t> encEmbShape = {1, encLen, kEmbedDim};
+    auto encEmbedsValue = Ort::Value::CreateTensor<float>(
+        cpuMem(), encEmbeds.data(), encEmbeds.size(), encEmbShape.data(),
+        encEmbShape.size());
 
-    for (size_t i = 0; i < chunks.size(); ++i) {
-      auto* chunk = chunks[i];
-      auto chunkType = mtmd_input_chunk_get_type(chunk);
+    const char* encIn[] = {"inputs_embeds", "attention_mask"};
+    const char* encOut[] = {"last_hidden_state"};
+    auto encOuts = encoder_->Run(Ort::RunOptions{}, encIn,
+                                 &encEmbedsValue, 2, encOut, 1);
 
-      if (chunkType == MTMD_INPUT_CHUNK_TYPE_IMAGE) {
-        if (mtmd_encode_chunk(mctx, chunk) != 0) {
-          LOG_WARN << "Vision: image encode failed";
-          return "";
-        }
+    std::vector<float> encHidden(
+        encOuts[0].GetTensorData<float>(),
+        encOuts[0].GetTensorData<float>() +
+            static_cast<size_t>(encLen) * kEmbedDim);
 
-        const int32_t nTokenImg =
-            static_cast<int32_t>(mtmd_input_chunk_get_n_tokens(chunk));
-        float* embd = mtmd_get_output_embd(mctx);
-        if (!embd || nTokenImg <= 0) {
-          LOG_WARN << "Vision: image embedding unavailable";
-          return "";
-        }
+    std::vector<int64_t> generated;
+    std::vector<std::vector<float>> pastDecK(kNumLayers), pastDecV(kNumLayers);
+    std::vector<std::vector<float>> pastEncK(kNumLayers), pastEncV(kNumLayers);
+    int64_t pastLen = 0;
 
-        std::vector<llama_pos> positions(
-            static_cast<size_t>(nTokenImg) * nPosPerEmbd);
-        std::vector<int32_t> nSeqId(nTokenImg, 1);
-        std::vector<llama_seq_id> seqId(1, 0);
-        std::vector<llama_seq_id*> seqIds(nTokenImg, seqId.data());
-        std::vector<int8_t> logits(nTokenImg, 0);
-        logits[nTokenImg - 1] = 1;
-
-        if (nPosPerEmbd == 4) {
-          auto imgTokens = mtmd_input_chunk_get_tokens_image(chunk);
-          const int nx = static_cast<int>(mtmd_image_tokens_get_nx(imgTokens));
-          const int ny = static_cast<int>(mtmd_image_tokens_get_ny(imgTokens));
-          for (int y = 0; y < ny; ++y) {
-            for (int x = 0; x < nx; ++x) {
-              int j = y * nx + x;
-              positions[j] = currentPos;
-              positions[j + nTokenImg] = currentPos + y;
-              positions[j + nTokenImg * 2] = currentPos + x;
-              positions[j + nTokenImg * 3] = 0;
-            }
-          }
-        }
-        else {
-          for (int32_t j = 0; j < nTokenImg; ++j)
-            positions[j] = currentPos + j;
-        }
-
-        if (nonCausal)
-          llama_set_causal_attn(ctx, false);
-
-        llama_batch batch{nTokenImg,
-                          nullptr,
-                          embd,
-                          positions.data(),
-                          nSeqId.data(),
-                          seqIds.data(),
-                          logits.data()};
-        if (llama_decode(ctx, batch) != 0) {
-          if (nonCausal)
-            llama_set_causal_attn(ctx, true);
-          LOG_WARN << "Vision: image decode failed";
-          return "";
-        }
-
-        if (nonCausal)
-          llama_set_causal_attn(ctx, true);
-
-        currentPos += mtmd_input_chunk_get_n_pos(chunk);
+    auto banNgrams = [&](int64_t candidate) {
+      if (generated.size() < static_cast<size_t>(kNoRepeatNgram - 1))
+        return false;
+      const int64_t g1 = generated[generated.size() - 2];
+      const int64_t g2 = generated.back();
+      for (size_t i = 0; i + kNoRepeatNgram <= generated.size(); ++i) {
+        if (generated[i] == g1 && generated[i + 1] == g2 &&
+            generated[i + 2] == candidate)
+          return true;
       }
-      else {
-        size_t nTokenOut = 0;
-        auto* tokens = mtmd_input_chunk_get_tokens_text(chunk, &nTokenOut);
-        std::vector<llama_token> tokenVec(tokens, tokens + nTokenOut);
+      return false;
+    };
 
-        auto batch = llama_batch_init(static_cast<int32_t>(nTokenOut), 0, 1);
-        for (int32_t j = 0; j < static_cast<int32_t>(nTokenOut); ++j) {
-          batch.token[j] = tokenVec[j];
-          batch.pos[j] = currentPos++;
-          batch.n_seq_id[j] = 1;
-          batch.seq_id[j][0] = 0;
-          batch.logits[j] = (j == static_cast<int32_t>(nTokenOut) - 1) ? 1 : 0;
-        }
-        batch.n_tokens = static_cast<int32_t>(nTokenOut);
+    auto runDecoder = [&](int64_t token,
+                          bool useCache) -> std::vector<Ort::Value> {
+      auto decEmbeds = embed(token);
+      std::vector<Ort::Value> feeds;
+      std::vector<std::string> names;
 
-        if (llama_decode(ctx, batch) != 0) {
-          llama_batch_free(batch);
-          LOG_WARN << "Vision: text chunk decode failed";
-          return "";
-        }
-        llama_batch_free(batch);
+      const std::vector<int64_t> decEmbShape = {1, 1, kEmbedDim};
+      feeds.push_back(Ort::Value::CreateTensor<float>(
+          cpuMem(), decEmbeds.data(), decEmbeds.size(), decEmbShape.data(),
+          decEmbShape.size()));
+      names.emplace_back("inputs_embeds");
+
+      feeds.push_back(Ort::Value::CreateTensor<int64_t>(
+          cpuMem(), encAttnData.data(), encAttnData.size(), attnShape.data(),
+          attnShape.size()));
+      names.emplace_back("encoder_attention_mask");
+
+      const std::vector<int64_t> encHidShape = {1, encLen, kEmbedDim};
+      feeds.push_back(Ort::Value::CreateTensor<float>(
+          cpuMem(), encHidden.data(), encHidden.size(), encHidShape.data(),
+          encHidShape.size()));
+      names.emplace_back("encoder_hidden_states");
+
+      for (int l = 0; l < kNumLayers; ++l) {
+        // All 24 past inputs are required on every step; the first step
+        // passes empty caches (the If branch ignores them).
+        static const std::vector<float> kEmptyPast(1, 0.0F);
+        const auto* decK =
+            useCache ? &pastDecK[static_cast<size_t>(l)] : &kEmptyPast;
+        const auto* decV =
+            useCache ? &pastDecV[static_cast<size_t>(l)] : &kEmptyPast;
+        const auto* encK =
+            useCache ? &pastEncK[static_cast<size_t>(l)] : &kEmptyPast;
+        const auto* encV =
+            useCache ? &pastEncV[static_cast<size_t>(l)] : &kEmptyPast;
+        const int64_t decLen = useCache ? pastLen : 0;
+        const int64_t encLenPast = useCache ? encLen : 0;
+        const std::vector<int64_t> decPastShape = {1, kNumHeads, decLen,
+                                                   kHeadDim};
+        const std::vector<int64_t> encPastShape = {1, kNumHeads, encLenPast,
+                                                   kHeadDim};
+        feeds.push_back(Ort::Value::CreateTensor<float>(
+            cpuMem(), const_cast<float*>(decK->data()), decK->size(),
+            decPastShape.data(), decPastShape.size()));
+        names.push_back("past_key_values." + std::to_string(l) +
+                        ".decoder.key");
+        feeds.push_back(Ort::Value::CreateTensor<float>(
+            cpuMem(), const_cast<float*>(decV->data()), decV->size(),
+            decPastShape.data(), decPastShape.size()));
+        names.push_back("past_key_values." + std::to_string(l) +
+                        ".decoder.value");
+        feeds.push_back(Ort::Value::CreateTensor<float>(
+            cpuMem(), const_cast<float*>(encK->data()), encK->size(),
+            encPastShape.data(), encPastShape.size()));
+        names.push_back("past_key_values." + std::to_string(l) +
+                        ".encoder.key");
+        feeds.push_back(Ort::Value::CreateTensor<float>(
+            cpuMem(), const_cast<float*>(encV->data()), encV->size(),
+            encPastShape.data(), encPastShape.size()));
+        names.push_back("past_key_values." + std::to_string(l) +
+                        ".encoder.value");
       }
-    }
 
-    basePos = currentPos;
-  }
-  else {
-    auto promptLen = static_cast<int32_t>(fullPrompt.size());
-    std::vector<llama_token> promptTokens(static_cast<size_t>(promptLen) * 2);
+      bool useCacheFlag = useCache;
+      const std::vector<int64_t> cacheShape = {1};
+      feeds.push_back(Ort::Value::CreateTensor<bool>(
+          cpuMem(), &useCacheFlag, 1, cacheShape.data(), cacheShape.size()));
+      names.emplace_back("use_cache_branch");
 
-    int nTokens =
-        llama_tokenize(vocab, fullPrompt.c_str(), promptLen,
-                       promptTokens.data(),
-                       static_cast<int32_t>(promptTokens.size()), true, true);
+      std::vector<const char*> inputNames;
+      inputNames.reserve(names.size());
+      for (const auto& n : names)
+        inputNames.push_back(n.c_str());
 
-    if (nTokens < 0) {
-      if (nTokens == INT32_MIN) {
-        LOG_WARN << "Vision: token count overflow";
+      return decoderMerged_->Run(Ort::RunOptions{}, inputNames.data(),
+                                 feeds.data(), feeds.size(),
+                                 kDecoderOutputNames, kNumOutputs);
+    };
+
+    auto copyPast = [](const std::vector<Ort::Value>& outs, int outIdx,
+                       std::vector<float>& dst) {
+      const auto sh =
+          outs[static_cast<size_t>(outIdx)].GetTensorTypeAndShapeInfo()
+              .GetShape();
+      dst.assign(outs[static_cast<size_t>(outIdx)].GetTensorData<float>(),
+                 outs[static_cast<size_t>(outIdx)].GetTensorData<float>() +
+                     static_cast<size_t>(sh[0] * sh[1] * sh[2] * sh[3]));
+    };
+
+    auto pickBest = [&](const std::vector<Ort::Value>& outs) {
+      const auto logitsShape = outs[0].GetTensorTypeAndShapeInfo().GetShape();
+      const int64_t vocab = logitsShape[2];
+      const auto* logitsBegin = outs[0].GetTensorData<float>();
+      std::vector<float> logitsRow(logitsBegin,
+                                   logitsBegin + static_cast<size_t>(vocab));
+      int64_t best = 0;
+      float bestScore = -1e30F;
+      for (int64_t v = 0; v < vocab; ++v) {
+        if (banNgrams(v))
+          continue;
+        const float s = logitsRow[static_cast<size_t>(v)];
+        if (s > bestScore) {
+          bestScore = s;
+          best = v;
+        }
+      }
+      return best;
+    };
+
+    // First decoder step: no cache, encoder past is produced here.
+    {
+      auto outs = runDecoder(kEosId, false);
+      const int64_t best = pickBest(outs);
+      for (int l = 0; l < kNumLayers; ++l) {
+        copyPast(outs, 1 + l * 4, pastDecK[static_cast<size_t>(l)]);
+        copyPast(outs, 2 + l * 4, pastDecV[static_cast<size_t>(l)]);
+        copyPast(outs, 3 + l * 4, pastEncK[static_cast<size_t>(l)]);
+        copyPast(outs, 4 + l * 4, pastEncV[static_cast<size_t>(l)]);
+      }
+      pastLen = 1;
+      if (best == kEosId)
         return "";
+      generated.push_back(best);
+    }
+
+    for (int32_t step = 1; step < req.maxTokens; ++step) {
+      auto outs = runDecoder(generated.back(), true);
+      const int64_t best = pickBest(outs);
+      for (int l = 0; l < kNumLayers; ++l) {
+        copyPast(outs, 1 + l * 4, pastDecK[static_cast<size_t>(l)]);
+        copyPast(outs, 2 + l * 4, pastDecV[static_cast<size_t>(l)]);
       }
-      auto needed = static_cast<size_t>(-nTokens);
-      promptTokens.resize(needed);
-      nTokens = llama_tokenize(vocab, fullPrompt.c_str(), promptLen,
-                               promptTokens.data(),
-                               static_cast<int32_t>(needed), true, true);
+      ++pastLen;
+      if (best == kEosId)
+        break;
+      generated.push_back(best);
     }
 
-    if (nTokens < 0) {
-      LOG_WARN << "Vision: tokenization failed (code=" << nTokens << ")";
-      return "";
-    }
-
-    promptTokens.resize(static_cast<size_t>(nTokens));
-
-    auto batch = llama_batch_get_one(promptTokens.data(), nTokens);
-    if (llama_decode(ctx, batch) != 0) {
-      LOG_WARN << "Vision: prompt decode failed";
-      return "";
-    }
-
-    basePos = nTokens;
+    std::string caption;
+    for (const auto& word : decodeTokens(generated))
+      caption += word;
+    return caption;
   }
-
-  auto sparams = llama_sampler_chain_default_params();
-  sparams.no_perf = true;
-  auto* smpl = llama_sampler_chain_init(sparams);
-
-  llama_sampler_chain_add(smpl, llama_sampler_init_temp(req.temperature));
-  llama_sampler_chain_add(smpl, llama_sampler_init_top_k(40));
-  llama_sampler_chain_add(smpl, llama_sampler_init_top_p(0.9f, 1));
-  llama_sampler_chain_add(smpl,
-                          llama_sampler_init_penalties(64, 1.1f, 0.0f, 0.0f));
-  llama_sampler_chain_add(smpl, llama_sampler_init_dist(42));
-
-  std::string result;
-  llama_token eosToken = llama_vocab_eos(vocab);
-  llama_token eotToken = llama_vocab_eot(vocab);
-  llama_pos pos = basePos;
-
-  auto nextBatch = llama_batch_init(1, 0, 1);
-  for (int32_t i = 0; i < req.maxTokens; ++i) {
-    llama_token newToken = llama_sampler_sample(smpl, ctx, -1);
-
-    if (newToken == eosToken || newToken == eotToken)
-      break;
-
-    char buf[256];
-    int n = llama_token_to_piece(vocab, newToken, buf, sizeof(buf), 0, true);
-    if (n > 0)
-      result.append(buf, n);
-
-    llama_sampler_accept(smpl, newToken);
-
-    nextBatch.token[0] = newToken;
-    nextBatch.pos[0] = pos++;
-    nextBatch.n_seq_id[0] = 1;
-    nextBatch.seq_id[0][0] = 0;
-    nextBatch.logits[0] = 1;
-    nextBatch.n_tokens = 1;
-    if (llama_decode(ctx, nextBatch) != 0)
-      break;
+  catch (const std::exception& e) {
+    LOG_ERROR << "Vision: inference failed: " << e.what();
+    return "";
   }
-  llama_batch_free(nextBatch);
-
-  llama_sampler_free(smpl);
-  return result;
 }
 
 drogon::Task<std::string> VisionService::describeAsync(const VisionRequest& req)

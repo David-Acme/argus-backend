@@ -245,13 +245,12 @@ Streaming variants marshal callbacks into the loop via `queueInLoop`.
 
 ### 13d. Shared LLM/Vision context safety
 
-`LlmService`, `VisionService`, `SttService`, `TtsService` own one shared
-inference context each: access is serialized with a static `std::mutex`
-(LLM/Vision also reuse a single `llama_batch` per generation loop). The
-Vision encoder (mtmd) is initialized UNCONDITIONALLY at startup (do not gate
-on `llama_model_has_encoder()` — it only reports true for T5 archs) and
-image embeddings are fed via `batch.embd` with mrope positions; image decode
-uses non-causal attention when `mtmd_decode_use_non_causal()` says so.
+`LlmService`, `SttService`, `TtsService` own one shared inference context
+each: access is serialized with a static `std::mutex` (LLM also reuses a
+single `llama_batch` per generation loop). `VisionService` runs Florence-2
+(ONNX) behind the same mutex pattern. The vision encoder output is cached
+per image hash (frame cache) so repeated camera frames skip the most
+expensive pass; `vision.image_size` (default 768) trades detail for speed.
 
 ### 14. JSON columns
 
@@ -264,8 +263,14 @@ uses non-causal attention when `mtmd_decode_use_non_causal()` says so.
 - `nlohmann_json/3.11.3` (pinned for jwt-cpp)
 - `tomlplusplus/3.3.0` for config
 - `opencv/4.13.0` (headless, for scaled face image decoding)
-- `llama-cpp/b6565` (LLM + Vision inference, incl. mtmd)
 - `onnxruntime/1.24.4` (STT/TTS via sherpa-onnx)
+- **llama.cpp is a vendored git submodule** (`third_party/llama.cpp`, pinned to
+  release `b10216`) — NOT a Conan dependency. It powers the LLM only.
+- **Vision runs Florence-2-base-ft (ONNX int8)** from
+  `onnx-community/Florence-2-base-ft`: 4 sessions (vision encoder, encoder,
+  merged decoder, token embeddings) + `tokenizer.json`, downloaded by
+  `scripts/setup.sh` into `models/vision/florence/`. Task prompt is
+  `<MORE_DETAILED_CAPTION>` → English detailed caption.
 - **NO spdlog** — use Drogon's built-in logging (`LOG_INFO`, `LOG_WARN`, `LOG_FATAL`)
 - **NO libsodium** — auth is face-based
 - **NO ORM** — raw SQL via `DbService::client()->execSqlCoro()`
