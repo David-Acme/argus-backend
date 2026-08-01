@@ -164,9 +164,7 @@ setup_tts_model() {
   local MODEL_DIR="$ROOT/models/tts"
   local ONNX_DIR="$MODEL_DIR/onnx"
   local VOICE_DIR="$MODEL_DIR/voice_styles"
-  local TTS_DIR="$ROOT/src/shared/tts"
   local HF_BASE="https://huggingface.co/Supertone/supertonic-3/resolve/main"
-  local GH_BASE="https://raw.githubusercontent.com/supertone-inc/supertonic/main/cpp"
   local DL=""
 
   if command -v curl >/dev/null 2>&1; then
@@ -178,7 +176,7 @@ setup_tts_model() {
     return
   fi
 
-  mkdir -p "$ONNX_DIR" "$VOICE_DIR" "$TTS_DIR"
+  mkdir -p "$ONNX_DIR" "$VOICE_DIR"
 
   local ONNX_FILES=(
     duration_predictor.onnx
@@ -204,13 +202,6 @@ setup_tts_model() {
     if [ ! -f "$VOICE_DIR/$f" ]; then
       log "Downloading voice_styles/$f..."
       $DL "$VOICE_DIR/$f" "$HF_BASE/voice_styles/$f" || warn "Failed: voice_styles/$f"
-    fi
-  done
-
-  for f in helper.h helper.cpp; do
-    if [ ! -f "$TTS_DIR/$f" ]; then
-      log "Downloading $f from supertonic GitHub..."
-      $DL "$TTS_DIR/$f" "$GH_BASE/$f" || warn "Failed: $f"
     fi
   done
 
@@ -401,6 +392,37 @@ setup_face_model() {
   log "Face recognition models ready (~5 MB)."
 }
 
+setup_vad_model() {
+  log "Setting up Silero VAD model..."
+
+  local ROOT
+  ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+  local MODEL_DIR="$ROOT/models/vad"
+  local BASE_URL="https://github.com/snakers4/silero-vad/raw/v5.0/files"
+  local DL=""
+
+  if command -v curl >/dev/null 2>&1; then
+    DL="curl -L --retry 3 --progress-bar -o"
+  elif command -v wget >/dev/null 2>&1; then
+    DL="wget --retry-connrefused --waitretry=3 --show-progress -O"
+  else
+    warn "Neither curl nor wget found; skipping VAD model download."
+    return
+  fi
+
+  mkdir -p "$MODEL_DIR"
+
+  if [ ! -f "$MODEL_DIR/silero_vad.onnx" ]; then
+    log "Downloading silero_vad.onnx (~2.3 MB)..."
+    $DL "$MODEL_DIR/silero_vad.onnx" "$BASE_URL/silero_vad.onnx" || \
+      warn "Failed: silero_vad.onnx"
+  else
+    log "VAD model already present."
+  fi
+
+  log "VAD model ready (~2.3 MB)."
+}
+
 main() {
   install_system_deps
   ensure_conan
@@ -413,6 +435,7 @@ main() {
   setup_vision_model
   setup_stt_model
   setup_face_model
+  setup_vad_model
   build_project
   log "All done (profile: $PROFILE). Happy hacking!"
 }

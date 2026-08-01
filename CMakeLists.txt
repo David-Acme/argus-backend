@@ -19,6 +19,7 @@ find_package(tomlplusplus REQUIRED)
 find_package(llama-cpp CONFIG REQUIRED)
 
 add_subdirectory(third_party)
+add_subdirectory(voice-test)
 
 file(GLOB_RECURSE CONFIG_SRC
     ${SRC_ROOT}/config/*.cc

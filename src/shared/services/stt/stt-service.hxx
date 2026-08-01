@@ -21,6 +21,11 @@ public:
   static std::string transcribe(const std::vector<float>& audioSamples,
                                 int32_t sampleRate = 16000);
 
+  // Recreates the recognizer with a different Whisper language code
+  // (e.g. "es", "en"). Used by voice interfaces that switch language at
+  // runtime. Returns false if the language is unsupported.
+  static bool setLanguage(const std::string& lang);
+
   // Coroutine variant: runs inference off the event loop.
   static drogon::Task<std::string>
   transcribeAsync(const std::vector<float>& audioSamples,

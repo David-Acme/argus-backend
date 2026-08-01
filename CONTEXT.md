@@ -134,6 +134,20 @@ without GPU), so every AI service auto-tunes its resources at runtime:
   LFM2.5-1.2B.
 - **ncnn Vulkan**: kept ON — the reference machine has an AMD iGPU (RADV
   RENOIR) that ncnn uses via Vulkan; machines without GPU fall back to CPU.
+- **Voice test** (`voice-test/`): standalone `argus-voice-test` binary that
+  chains STT → LLM → TTS for a spoken conversation (EN/ES) to measure quality
+  and latency end-to-end. PortAudio for mic (16 kHz, software resample
+  fallback for devices without 16 kHz) and speaker (plays TTS PCM at its
+  native 44.1 kHz so pitch stays natural). Turn-taking uses **Silero VAD v5
+  (ONNX, `models/vad/silero_vad.onnx`, ~2.3MB, ~0.1ms/chunk)**: continuous
+  speech probability with hysteresis (0.5 start / 0.35 end), ~250ms min
+  speech, ~500ms silence hangover, and a 300ms pre-roll so the leading
+  phoneme is never clipped (this fixed "hola" being transcribed as garbage).
+  The LLM replies fully first, then the TTS speaks with its native chunking
+  (natural, not choppy). Ctrl+C exits cleanly (shared std::atomic<bool>).
+  `SttService::setLanguage("es"/"en")` switches Whisper at runtime; the
+  `[stt] language` config defaults it. Run: `build/prod/voice-test/
+  argus-voice-test`.
 
 ## Uniform API response format
 

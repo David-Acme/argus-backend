@@ -97,6 +97,12 @@ batch_threads = 0
 n_batch = 1024
 n_ubatch = 512
 
+# ── STT (Whisper tiny) ─────────────────────────────────────────────
+[stt]
+# Whisper language code for transcription: "es", "en" or "auto".
+# Voice interfaces can switch it at runtime via SttService::setLanguage().
+language = "es"
+
 # ── Vision (SmolVLM2-500M) ──────────────────────────────────────────
 [vision]
 # Input resolution is fixed at 512x512 by the SigLIP vision encoder
