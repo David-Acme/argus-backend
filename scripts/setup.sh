@@ -150,9 +150,24 @@ setup_submodules() {
     fi
   done
 
-  if [ -f third_party/fastText/CMakeLists.txt ]; then
-    sed -i 's/^set(CMAKE_CXX_STANDARD 17)/set(CMAKE_CXX_STANDARD 20)/' \
-      third_party/fastText/CMakeLists.txt
+  # Local build tweaks for third-party submodules. The submodules point at
+  # upstream repos (no push access), so these one-line patches are re-applied
+  # on every setup run (idempotent) to keep the build reproducible.
+  local F
+  F=third_party/fastText/CMakeLists.txt
+  if [ -f "$F" ]; then
+    sed -i 's/^set(CMAKE_CXX_STANDARD 17)/set(CMAKE_CXX_STANDARD 20)/' "$F"
+  fi
+
+  F=third_party/ncnn/CMakeLists.txt
+  if [ -f "$F" ]; then
+    sed -i 's/^\( *\)option(NCNN_BUILD_TOOLS "build tools" OFF)/\1option(NCNN_BUILD_TOOLS "build tools" ON)/' "$F"
+    sed -i 's/^\( *\)set(NCNN_BUILD_TOOLS OFF)/\1#set(NCNN_BUILD_TOOLS OFF)/' "$F"
+  fi
+
+  F=third_party/sherpa-onnx/cmake/json.cmake
+  if [ -f "$F" ]; then
+    sed -i 's|^  add_subdirectory(${json_SOURCE_DIR} ${json_BINARY_DIR} EXCLUDE_FROM_ALL)|  # disabled: nlohmann_json provided by Conan|' "$F"
   fi
 }
 
