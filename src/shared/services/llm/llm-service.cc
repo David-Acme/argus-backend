@@ -263,62 +263,12 @@ void LlmService::generateStream(const std::string& formattedPrompt,
   llama_token eotToken = llama_vocab_eot(vocab);
   llama_pos pos = nTokens;
 
-  // Qwen3 (and similar) can emit <think>...</think> reasoning blocks. They add
-  // latency and would be spoken aloud, so skip them: consume the block without
-  // forwarding it to the callback and continue generating the actual reply.
-  std::vector<llama_token> thinkStartToks(1), thinkEndToks(1);
-  int nThinkStart = llama_tokenize(vocab, "<think>", 7, thinkStartToks.data(), 1, true, true);
-  int nThinkEnd = llama_tokenize(vocab, "</think>", 8, thinkEndToks.data(), 1, true, true);
-  llama_token thinkStartTok = nThinkStart == 1 ? thinkStartToks[0] : -1;
-  llama_token thinkEndTok = nThinkEnd == 1 ? thinkEndToks[0] : -1;
-  bool inThink = false;
-
   auto genBatch = llama_batch_init(1, 0, 1);
   for (int32_t i = 0; i < maxTokens; ++i) {
     llama_token newToken = llama_sampler_sample(smpl, ctx, -1);
 
     if (newToken == eosToken || newToken == eotToken)
       break;
-
-    // Enter/exit a thinking block. Everything inside is discarded.
-    if (thinkStartTok >= 0 && newToken == thinkStartTok) {
-      inThink = true;
-      llama_sampler_accept(smpl, newToken);
-      genBatch.token[0] = newToken;
-      genBatch.pos[0] = pos++;
-      genBatch.n_seq_id[0] = 1;
-      genBatch.seq_id[0][0] = 0;
-      genBatch.logits[0] = 1;
-      genBatch.n_tokens = 1;
-      if (llama_decode(ctx, genBatch) != 0)
-        break;
-      continue;
-    }
-    if (thinkEndTok >= 0 && newToken == thinkEndTok) {
-      inThink = false;
-      llama_sampler_accept(smpl, newToken);
-      genBatch.token[0] = newToken;
-      genBatch.pos[0] = pos++;
-      genBatch.n_seq_id[0] = 1;
-      genBatch.seq_id[0][0] = 0;
-      genBatch.logits[0] = 1;
-      genBatch.n_tokens = 1;
-      if (llama_decode(ctx, genBatch) != 0)
-        break;
-      continue;
-    }
-    if (inThink) {
-      llama_sampler_accept(smpl, newToken);
-      genBatch.token[0] = newToken;
-      genBatch.pos[0] = pos++;
-      genBatch.n_seq_id[0] = 1;
-      genBatch.seq_id[0][0] = 0;
-      genBatch.logits[0] = 1;
-      genBatch.n_tokens = 1;
-      if (llama_decode(ctx, genBatch) != 0)
-        break;
-      continue;
-    }
 
     char buf[256];
     int n = llama_token_to_piece(vocab, newToken, buf, sizeof(buf), 0, true);
