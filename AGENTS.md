@@ -24,14 +24,26 @@ ReminderDetailStatus, UserAction
 
 ### 2. Parameter structs for 3+ params
 
-ANY function with 3+ parameters MUST define a struct in the corresponding
-`*-query.hxx` file, after the query namespace. Convention:
+ANY function with 3+ parameters MUST define a struct. This applies to ALL
+layers (repositories, services, controllers, filters), not only repositories.
+Prefer passing a single object over many positional arguments — easier to
+maintain and to send data.
 
 ```
 {Entity}CreateInput, {Entity}UpdateInput
 ```
 
-Never write raw multi-parameter method signatures in repository headers.
+- If the function belongs to a repository, define the struct in the
+  corresponding `*-query.hxx` file, after the query namespace.
+- If there is no `*-query.hxx`, define the struct in the class header that
+  declares the function.
+
+Never write raw multi-parameter method signatures.
+
+Construct parameter structs with C++20 **designated initializers** passed
+inline where possible: `service_.register({.userId = ctx.sub, .token = t})`.
+The compiler infers the type from the parameter; keep the fields in declared
+order and always list every member (avoids `-Wmissing-field-initializers`).
 
 ### 3. Repository structure
 
@@ -110,16 +122,23 @@ AppConfig::DEVICE_CTX_KEY = "device_ctx"
 
 ### 7. Role-based access
 
-Roles are checked by `RoleFilter` against `kRoleAccess` map in
-`role-filter.cc`. To add/modify role permissions, edit ONLY that map.
-No imperative if/else chains.
+Roles are checked centrally via `src/shared/access/role-access.hxx` (mapa
+`kTableAccess`: rol → tabla → `RolePermission`). **`RoleFilter` (HTTP) y el
+motor de sync comparten esa única fuente de verdad** — para modificar permisos,
+edita solo ese archivo. No imperativo if/else.
 
 ```
 Owner    → full access (bypasses all checks)
-Resident → GET + POST + PATCH on /camera, /zone, /reminder, /event, /person, /context-note, /auth
-Guard    → GET only on /camera, /event, /person, /zone, /auth
+Resident → CRUD on /camera, /camera-stream, /zone, /reminder, /reminder-detail,
+           /event, /person, /context-note; user = Read (NO registra usuarios);
+           audit_log/user_audit_log/notification = Read (+Update propias);
+           notification_token = Create (propias)
+Guard    → GET only on /camera, /camera-stream, /event, /person, /zone, /auth
 Guest    → GET only on /camera, /auth
 ```
+
+Helpers: `hasAccess(role, table, perm)`, `readableTables(role)`,
+`tableFromPath(path)`, `permissionForMethod(method)`, `hasHttpAccess(...)`.
 
 ### 8. JWT auth flow
 
@@ -127,7 +146,8 @@ Guest    → GET only on /camera, /auth
 2. `JwtFilter` extracts token (Header Bearer / query `?token=` / cookie), verifies HS256,
    validates `refresh_token` in DB (is_valid=1, is_used=0, device_hash match),
    injects `JwtContext` as `"jwt_ctx"` attribute
-3. `RoleFilter` reads `JwtContext.role` and checks against `kRoleAccess`
+3. `RoleFilter` reads `JwtContext.role` and checks via
+   `role_access::hasHttpAccess(role, path, method)`
 
 ### 9. JWT conventions
 
@@ -139,10 +159,13 @@ Guest    → GET only on /camera, /auth
 
 ### 10. DTO conventions
 
+JSON factories/serializers use **camelCase**: `fromJson()` (parse) and
+`toJson()` (serialize). Multipart parsing keeps `form_multipart()`.
+
 **Request DTOs** — self-validating, header + cc file:
 ```
 src/feature/api/{resource}/dtos/
-  {action}-dto.hxx     — struct + form_json() / form_multipart() factory
+  {action}-dto.hxx     — struct + fromJson() / form_multipart() factory
   {action}-dto.cc       — implementation + validation DSL
 ```
 
@@ -157,12 +180,15 @@ src/feature/api/{resource}/dtos/
 
 Naming: `ResponseLoginDto`, `ResponseRefreshTokenDto`
 
+**WS/sync DTOs** (header-only, por ejemplo `synchronized-dto.hxx`): parsean con
+`static {T} fromJson(const Json::Value&)`; se declaran en `src/feature/socket/sync/dtos/`.
+
 ### 11. Validation DSL
 
 All DTO validation uses the macro DSL in `src/shared/validation/`:
 
 ```cpp
-LoginDto LoginDto::form_json(const Json::Value& json) {
+LoginDto LoginDto::fromJson(const Json::Value& json) {
     LoginDto dto;
     dto.email = json.get("email", "").asString();
     START_VALIDATION(LoginDto, dto)
@@ -178,7 +204,8 @@ Available macros: `IS_NOT_EMPTY`, `IS_NOT_EMPTY_OPTIONAL`, `IS_EMAIL`, `IS_UUID`
 `HAS_NO_SPACES`, `MATCHES_REGEX`, `MIN_LENGTH`, `MAX_LENGTH`, `MIN_LENGTH_OPTIONAL`,
 `MAX_LENGTH_OPTIONAL`, `IS_POSITIVE`, `IS_NON_NEGATIVE`, `MIN_INT`, `MAX_INT`,
 `BETWEEN`, `EQUALS_FIELD`, `ARRAY_NOT_EMPTY`, `MIN_ELEMENTS`, `MAX_ELEMENTS`,
-`IS_VALID_TIMESTAMP`, `IS_POSITIVE_TIMESTAMP`, `CUSTOM_LAMBDA`.
+`IS_VALID_TIMESTAMP`, `IS_POSITIVE_TIMESTAMP`, `IS_POSITIVE_TIMESTAMP_OPTIONAL`,
+`IS_BOOLEAN`, `CUSTOM_LAMBDA`.
 
 When validation fails, `END_VALIDATION()` throws `ValidationException(errors, 422)`.
 The global `AppConfig::handleException()` catches it and returns a 422 JSON response.
@@ -294,6 +321,26 @@ Raw pointers only for non-owning access (`.get()`).
 - Release builds are machine-tuned: `-march=native` + `-flto=auto` on the app
   target only. `-Wall -Wextra` are always on; third-party includes are SYSTEM.
 
+### 18. WebSocket sync engine
+
+- Ruta WS: `/sync` con **solo `JwtFilter`** (sin `DeviceFilter`; el binding de
+  dispositivo queda en HTTP). Los mensajes son `{type, payload}` y las
+  respuestas usan `SocketEmitDto` `{operation, option(TableName), info}`.
+  Errores: `{type:"<type>_error", status, error}`.
+- Operaciones (`src/shared/contracts/sync-operation.hxx`): `InitialInfo=0`,
+  `Synchronize=1` (creados/eliminados, incluye `notification` por usuario),
+  `SynchronizeAuditLog=2` (diffs globales, tablas decididas por el backend
+  según rol), `SynchronizeUserAuditLog=3` (diffs por usuario, filtrado por
+  `sub`). Eventos en vivo: `Add=4`, `Delete=5`, `Log=6`.
+- Queries de sync: usar `sync_query::buildSyncQuery(filter, Q1, Q2, Q3)`
+  (función SÍNCRONA que devuelve query+args por valor) + `co_await
+  client->execSqlCoro(query, argsRef)` directo. **NUNCA** capturar referencias
+  en una coroutine lambda interna `[&]() -> Task` que suspende: el frame queda
+  en una pila reutilizada y provoca use-after-free (crash). Tampoco pasar
+  temporales a coroutines que guardan referencias: usa locals con nombre.
+- `RoomManager` es clase de instancia con estado `thread_local` a nivel de
+  archivo; ciclo de vida vía `RoomManagerServiceAdapter` (IService).
+
 ## Build Commands
 
 ```bash
@@ -323,7 +370,8 @@ Before any commit, verify: `cmake --build --preset dev -j 8` passes with
 | `src/shared/enums.hxx` | All enum types + conversion helpers |
 | `src/shared/schemas/*/` | DB row → C++ struct mapping |
 | `src/shared/repositories/*/` | Data access layer |
-| `src/shared/contracts/` | `Syncable`, `SyncFilter` base classes |
+| `src/shared/contracts/` | `Syncable`, `SyncFilter` base classes + `sync-operation.hxx` |
+| `src/shared/access/` | `RoleAccess` centralizado (rol → tabla → permisos) usado por `RoleFilter` y sync |
 | `src/shared/validation/` | Validation DSL (rules, macros, validator) |
 | `src/filter/device/` | Device fingerprint extraction |
 | `src/filter/jwt/` | JWT verification + refresh token validation |
@@ -337,6 +385,15 @@ Before any commit, verify: `cmake --build --preset dev -j 8` passes with
 | `src/shared/services/stt/` | Speech-to-text (whisper via sherpa-onnx) |
 | `src/shared/services/tts/` | Text-to-speech (Supertonic 3) |
 | `src/shared/services/sqlite/` | DB client access (`DbService::client()`) |
+| `src/shared/services/room/` | `RoomManager` local (rooms por módulo/usuario, `thread_local`) |
+| `src/shared/services/socket/` | `SocketService` (emitModule/emitUser) + `SocketEmitDto` |
+| `src/shared/services/audit-log/` | Audit global con snapshot por día + emit |
+| `src/shared/services/user-audit-log/` | Audit a nivel de usuario (syncable) |
+| `src/shared/services/notification/` | Notificaciones por usuario (`createAndEmit` + `Add`) |
+| `src/shared/services/notification-token/` | Push tokens por sesión |
+| `src/shared/utils/json-diff/` | Diff JSON + snapshot (`JsonDiff`) |
+| `src/shared/utils/json-util/` | `jsonToString`/`jsonFromString` |
+| `src/feature/socket/sync/` | `SyncSocket` + `SyncService` + `SynchronizedService` + DTOs |
 | `src/shared/wrapper/api-response/` | Standardized API response builder |
 | `src/shared/wrapper/blocking-task/` | Coroutine awaiter for off-loop heavy work |
 | `src/shared/wrapper/thread-budget/` | Adaptive thread sizing for AI services |

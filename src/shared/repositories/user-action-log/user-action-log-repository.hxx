@@ -9,9 +9,6 @@ class UserActionLogRepository
 public:
   UserActionLogRepository() = default;
 
-  drogon::Task<std::vector<UserActionLogSchema>>
-  findByUser(int64_t userId, int32_t limit = 50) const;
-  drogon::Task<std::vector<UserActionLogSchema>>
-  findByRecord(int64_t recordId, const std::string& tableName,
-               int32_t limit = 50) const;
+  drogon::Task<UserActionLogSchema>
+  create(const UserActionLogCreateInput& input) const;
 };

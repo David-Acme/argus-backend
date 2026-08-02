@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <string>
+#include <unordered_map>
 
 enum class UserRole : uint8_t
 {
@@ -171,4 +172,100 @@ inline UserAction userActionFromString(const std::string& s)
   if (s == "delete")
     return UserAction::Delete;
   return UserAction::Create;
+}
+
+enum class AuditLogPriority : uint8_t
+{
+  Low = 0,
+  Medium = 1,
+  High = 2
+};
+
+enum class TableName : uint8_t
+{
+  User = 0,
+  Person,
+  PersonEvent,
+  Event,
+  Reminder,
+  ReminderDetail,
+  ContextNote,
+  Camera,
+  CameraStream,
+  Zone,
+  AuditLog,
+  UserAuditLog,
+  Notification,
+  NotificationToken,
+  UserActionLog,
+  RefreshToken,
+  FaceEmbedding
+};
+
+inline std::string tableNameToString(TableName t)
+{
+  switch (t) {
+    case TableName::User:
+      return "user";
+    case TableName::Person:
+      return "person";
+    case TableName::PersonEvent:
+      return "person_event";
+    case TableName::Event:
+      return "event";
+    case TableName::Reminder:
+      return "reminder";
+    case TableName::ReminderDetail:
+      return "reminder_detail";
+    case TableName::ContextNote:
+      return "context_note";
+    case TableName::Camera:
+      return "camera";
+    case TableName::CameraStream:
+      return "camera_stream";
+    case TableName::Zone:
+      return "zone";
+    case TableName::AuditLog:
+      return "audit_log";
+    case TableName::UserAuditLog:
+      return "user_audit_log";
+    case TableName::Notification:
+      return "notification";
+    case TableName::NotificationToken:
+      return "notification_token";
+    case TableName::UserActionLog:
+      return "user_action_log";
+    case TableName::RefreshToken:
+      return "refresh_token";
+    case TableName::FaceEmbedding:
+      return "face_embedding";
+  }
+  return "user";
+}
+
+inline TableName tableNameFromString(const std::string& s)
+{
+  static const std::unordered_map<std::string, TableName> kMap = {
+      {"user", TableName::User},
+      {"person", TableName::Person},
+      {"person_event", TableName::PersonEvent},
+      {"event", TableName::Event},
+      {"reminder", TableName::Reminder},
+      {"reminder_detail", TableName::ReminderDetail},
+      {"context_note", TableName::ContextNote},
+      {"camera", TableName::Camera},
+      {"camera_stream", TableName::CameraStream},
+      {"zone", TableName::Zone},
+      {"audit_log", TableName::AuditLog},
+      {"user_audit_log", TableName::UserAuditLog},
+      {"notification", TableName::Notification},
+      {"notification_token", TableName::NotificationToken},
+      {"user_action_log", TableName::UserActionLog},
+      {"refresh_token", TableName::RefreshToken},
+      {"face_embedding", TableName::FaceEmbedding},
+  };
+  const auto it = kMap.find(s);
+  if (it == kMap.end())
+    return TableName::User;
+  return it->second;
 }

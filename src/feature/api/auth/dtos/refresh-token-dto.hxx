@@ -8,5 +8,5 @@ struct RefreshTokenDto
 {
   std::string refreshToken;
 
-  static RefreshTokenDto form_json(const Json::Value& json);
+  static RefreshTokenDto fromJson(const Json::Value& json);
 };

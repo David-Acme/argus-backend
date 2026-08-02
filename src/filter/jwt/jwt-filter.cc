@@ -62,7 +62,7 @@ JwtFilter::doFilter(const drogon::HttpRequestPtr& req)
   }
 
   JwtContext ctx;
-  ctx.userId = user->id;
+  ctx.sub = user->id;
   ctx.name = user->name + " " + user->lastName;
   ctx.role = user->role;
   ctx.isActive = user->isActive;

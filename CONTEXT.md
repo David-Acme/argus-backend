@@ -223,8 +223,8 @@ Never static methods for service classes. Never local/temporary repository const
 
 ## DTO conventions
 
-- **Request DTOs**: `{Action}Dto` with static factory (`form_json` / `form_multipart`)
-- **Response DTOs**: `Response{Action}Dto` with `toJson()` method
+- **Request DTOs**: `{Action}Dto` con factory `fromJson()` (camelCase) / `form_multipart()`
+- **Response DTOs**: `Response{Action}Dto` con `toJson()` (camelCase)
 - **Validation**: DTO factory validates inline via DSL macros, throws on failure
 - **Examples**: `LoginDto`, `RefreshTokenDto`, `ResponseLoginDto`, `ResponseRefreshTokenDto`
 
@@ -235,7 +235,35 @@ Never static methods for service classes. Never local/temporary repository const
 - `face_embedding` — persisted face embeddings (hex-encoded 128-dim float BLOBs)
 - `refresh_token` — JWT refresh token lifecycle (is_valid, is_used, device_hash, expires_at)
 - `camera`, `zone`, `event`, `person_event`, `reminder`, `reminder_detail`, `context_note`
-- `camera_stream`, `audit_log`, `user_action_log`, `schema_version`
+- `camera_stream`, `schema_version`
+- `audit_log` — audit global por módulo (`changes` = JSON diff de `JsonDiff`, `priority`, `create_user_id`)
+- `user_audit_log` — audit a nivel de usuario (= `audit_log` + `user_id`), sincronizable por usuario
+- `notification` — notificaciones personales por usuario (type/title/body/data/is_read)
+- `notification_token` — push tokens por sesión (`UNIQUE(user_id, device_hash)`)
+- `user_action_log` — historial server-side de acciones (write-only, NO sync)
+
+## Sync engine (WebSocket, one-way server→cliente)
+
+- **Ruta WS**: `/sync` con **solo `JwtFilter`** (sin `DeviceFilter`; el binding de
+  dispositivo queda en HTTP). Solo sincronización; notificaciones y
+  token-register van por HTTP.
+- **Operaciones** (`src/shared/contracts/sync-operation.hxx`): `InitialInfo=0` (connect, envía
+  `{id, role, isActive}` — sin lista de módulos),
+  `Synchronize=1` (datos creados/eliminados, global + nivel usuario: notification),
+  `SynchronizeAuditLog=2` (diffs globales, tablas decididas por el backend según rol),
+  `SynchronizeUserAuditLog=3` (diffs a nivel usuario, filtrado por `sub`). Eventos en vivo:
+  `Add=4`, `Delete=5`, `Log=6` (emitidos por `AuditLogService`/`NotificationService`).
+- **Respuestas WS**: `SocketEmitDto` `{operation, option(TableName), info}`; errores
+  `{type:"<type>_error", status, error}`.
+- **Entidades syncables**: `user`, `camera`, `camera_stream`, `zone`, `reminder`,
+  `reminder_detail` (implementan `Syncable`) + `notification` (dedicado por usuario).
+  Fuera del sync: `event`, `person`, `context_note`.
+- **Snapshot por día**: `AuditLogService`/`UserAuditLogService` buscan la entrada del
+  `record_id` en el día y fusionan el diff (`JsonDiff::compareChanges`).
+- **RoomManager**: instancia, estado `thread_local` a nivel de archivo; rooms de módulo
+  (`1 + TableName`) y room de usuario (`1000 + sub`); `emitUser` llega a las N sesiones activas.
+  Ciclo de vida vía `RoomManagerServiceAdapter` (IService) en `ServiceRegistry`.
+- **HTTP**: `PATCH /notification/read` y `POST /notification-token` (cadena completa de filtros).
 
 ## Coding conventions
 
@@ -247,8 +275,15 @@ Each has `toString()` / `fromString()`.
 
 ### Parameter structs (3+ params)
 
-Functions with 3+ parameters use `{Entity}CreateInput` / `{Entity}UpdateInput` structs
-in the corresponding `*-query.hxx` file.
+ANY function with 3+ parameters uses a struct (`{Entity}CreateInput` /
+`{Entity}UpdateInput`, or any descriptive name). Applies to ALL layers
+(repositories, services, controllers, filters). Struct goes in the
+corresponding `*-query.hxx` file, or in the class header when there is no
+`*-query.hxx`. Never raw multi-parameter signatures.
+
+Construct structs with C++20 **designated initializers** passed inline
+(`{.field = value, ...}`), fields in declared order, always listing every
+member to avoid `-Wmissing-field-initializers`.
 
 ### Repository pattern
 

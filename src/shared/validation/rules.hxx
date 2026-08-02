@@ -33,6 +33,20 @@ struct IntFieldAccessor
   std::function<int64_t(const DtoType&)> get;
 };
 
+template <typename DtoType>
+struct OptionalIntFieldAccessor
+{
+  std::string name;
+  std::function<const std::optional<int64_t>&(const DtoType&)> get;
+};
+
+template <typename DtoType>
+struct BoolFieldAccessor
+{
+  std::string name;
+  std::function<bool(const DtoType&)> get;
+};
+
 template <typename DtoType, typename ElementType>
 struct ArrayFieldAccessor
 {
@@ -653,6 +667,47 @@ public:
 
 private:
   IntFieldAccessor<DtoType> accessor_;
+};
+
+template <typename DtoType>
+class IsPositiveTimestampOptionalRule : public Validator<DtoType>::IRule
+{
+public:
+  IsPositiveTimestampOptionalRule(OptionalIntFieldAccessor<DtoType> f)
+      : accessor_(std::move(f))
+  {
+  }
+  std::string field() const override { return accessor_.name; }
+  std::optional<std::string> validate(const DtoType& obj) const override
+  {
+    const auto& v = accessor_.get(obj);
+    if (v.has_value() && *v <= 0)
+      return accessor_.name + " must be a positive timestamp";
+    return std::nullopt;
+  }
+
+private:
+  OptionalIntFieldAccessor<DtoType> accessor_;
+};
+
+// ---- Boolean rules ----
+
+template <typename DtoType>
+class IsBooleanRule : public Validator<DtoType>::IRule
+{
+public:
+  explicit IsBooleanRule(BoolFieldAccessor<DtoType> f) : accessor_(std::move(f))
+  {
+  }
+  std::string field() const override { return accessor_.name; }
+  std::optional<std::string> validate(const DtoType& obj) const override
+  {
+    (void)accessor_.get(obj);
+    return std::nullopt;
+  }
+
+private:
+  BoolFieldAccessor<DtoType> accessor_;
 };
 
 // ---- Custom rules ----

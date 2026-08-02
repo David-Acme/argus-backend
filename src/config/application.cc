@@ -10,6 +10,7 @@
 #include <shared/services/face/face-db.hxx>
 #include <shared/services/face/face-service.hxx>
 #include <shared/services/llm/adapter/llm-service-adapter.hxx>
+#include <shared/services/room/adapter/room-manager-service-adapter.hxx>
 #include <shared/services/sqlite/db-service.hxx>
 #include <shared/services/stt/adapter/stt-service-adapter.hxx>
 #include <shared/services/tts/adapter/tts-service-adapter.hxx>
@@ -130,6 +131,7 @@ void Application::shutdown()
 
 void Application::registerServices()
 {
+  registry_.registerService(std::make_unique<RoomManagerServiceAdapter>());
   registry_.registerService(std::make_unique<TtsServiceAdapter>());
   registry_.registerService(std::make_unique<LlmServiceAdapter>());
   registry_.registerService(std::make_unique<SttServiceAdapter>());

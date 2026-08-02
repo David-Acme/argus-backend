@@ -225,6 +225,20 @@
       IntFieldAccessor<__D>{#field,                                            \
                             [](const __D& d) -> int64_t { return d.field; }});
 
+#define IS_POSITIVE_TIMESTAMP_OPTIONAL(field)                                  \
+  __v.template add<IsPositiveTimestampOptionalRule<__D>>(                      \
+      OptionalIntFieldAccessor<__D>{                                           \
+          #field,                                                              \
+          [](const __D& d) -> const std::optional<int64_t>& {                  \
+            return d.field;                                                    \
+          }});
+
+// ---- Boolean ----
+
+#define IS_BOOLEAN(field)                                                      \
+  __v.template add<IsBooleanRule<__D>>(                                        \
+      BoolFieldAccessor<__D>{#field, [](const __D& d) -> bool { return d.field; }});
+
 // ---- Custom ----
 
 #define CUSTOM_LAMBDA(field, fn)                                               \

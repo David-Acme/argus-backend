@@ -21,8 +21,8 @@ AuthController::login(drogon::HttpRequestPtr req)
   const auto& dev =
       req->getAttributes()->get<DeviceContext>(AppConfig::DEVICE_CTX_KEY);
 
-  const auto result =
-      co_await service_.login(body, dev.deviceHash, dev.userAgent);
+  const auto result = co_await service_.login(
+      body, {.deviceHash = dev.deviceHash, .userAgent = dev.userAgent});
 
   co_return ApiResponse::ok(result.toJson());
 }
@@ -34,7 +34,7 @@ AuthController::status(drogon::HttpRequestPtr req)
       req->getAttributes()->get<JwtContext>(AppConfig::JWT_CTX_KEY);
 
   Json::Value body;
-  body["userId"] = ctx.userId;
+  body["userId"] = ctx.sub;
   body["name"] = ctx.name;
   body["role"] = userRoleToString(ctx.role);
   body["isActive"] = ctx.isActive;
@@ -45,7 +45,7 @@ AuthController::status(drogon::HttpRequestPtr req)
 drogon::Task<drogon::HttpResponsePtr>
 AuthController::refreshToken(drogon::HttpRequestPtr req)
 {
-  const auto body = RefreshTokenDto::form_json(*req->getJsonObject());
+  const auto body = RefreshTokenDto::fromJson(*req->getJsonObject());
   const auto& dev =
       req->getAttributes()->get<DeviceContext>(AppConfig::DEVICE_CTX_KEY);
 
@@ -60,6 +60,6 @@ AuthController::logout(drogon::HttpRequestPtr req)
   const auto& ctx =
       req->getAttributes()->get<JwtContext>(AppConfig::JWT_CTX_KEY);
 
-  co_await service_.logout(ctx.userId);
+  co_await service_.logout(ctx.sub);
   co_return ApiResponse::noContent();
 }

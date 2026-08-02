@@ -1,6 +1,6 @@
 #include "refresh-token-dto.hxx"
 
-RefreshTokenDto RefreshTokenDto::form_json(const Json::Value& json)
+RefreshTokenDto RefreshTokenDto::fromJson(const Json::Value& json)
 {
   RefreshTokenDto dto;
   dto.refreshToken = json.get("refreshToken", "").asString();

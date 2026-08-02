@@ -186,12 +186,48 @@ CREATE TABLE IF NOT EXISTS zone (
 
 CREATE TABLE IF NOT EXISTS audit_log (
     id              INTEGER NOT NULL  PRIMARY KEY AUTOINCREMENT,
+    create_user_id  INTEGER           REFERENCES user(id) ON DELETE SET NULL,
     record_id       INTEGER NOT NULL,
     table_name      TEXT    NOT NULL,
+    changes         TEXT    NOT NULL  DEFAULT '{}',   -- JSON diff (JsonDiff::toJson)
+    priority        INTEGER NOT NULL  DEFAULT 1  CHECK (priority IN (0, 1, 2)),
     event_timestamp INTEGER NOT NULL,
-    old_data        TEXT    NOT NULL  DEFAULT '{}',
-    new_data        TEXT    NOT NULL  DEFAULT '{}',
     created_at      INTEGER NOT NULL  DEFAULT (strftime('%s', 'now'))
+);
+
+CREATE TABLE IF NOT EXISTS user_audit_log (
+    id              INTEGER NOT NULL  PRIMARY KEY AUTOINCREMENT,
+    user_id         INTEGER NOT NULL  REFERENCES user(id) ON DELETE CASCADE,
+    record_id       INTEGER NOT NULL,
+    table_name      TEXT    NOT NULL,
+    changes         TEXT    NOT NULL  DEFAULT '{}',   -- JSON diff (JsonDiff::toJson)
+    priority        INTEGER NOT NULL  DEFAULT 1  CHECK (priority IN (0, 1, 2)),
+    event_timestamp INTEGER NOT NULL,
+    created_at      INTEGER NOT NULL  DEFAULT (strftime('%s', 'now'))
+);
+
+CREATE TABLE IF NOT EXISTS notification (
+    id         INTEGER NOT NULL  PRIMARY KEY AUTOINCREMENT,
+    user_id    INTEGER NOT NULL  REFERENCES user(id) ON DELETE CASCADE,
+    type       TEXT    NOT NULL  DEFAULT 'system',
+    title      TEXT    NOT NULL  DEFAULT '',
+    body       TEXT    NOT NULL  DEFAULT '',
+    data       TEXT    NOT NULL  DEFAULT '{}',
+    is_read    INTEGER NOT NULL  DEFAULT 0  CHECK (is_read IN (0, 1)),
+    read_at    INTEGER,
+    created_at INTEGER NOT NULL  DEFAULT (strftime('%s', 'now'))
+);
+
+CREATE TABLE IF NOT EXISTS notification_token (
+    id          INTEGER NOT NULL  PRIMARY KEY AUTOINCREMENT,
+    user_id     INTEGER NOT NULL  REFERENCES user(id) ON DELETE CASCADE,
+    device_hash TEXT    NOT NULL  DEFAULT '',
+    token       TEXT    NOT NULL,
+    platform    TEXT    NOT NULL  DEFAULT '',
+    lang        TEXT    NOT NULL  DEFAULT '',
+    is_active   INTEGER NOT NULL  DEFAULT 1  CHECK (is_active IN (0, 1)),
+    created_at  INTEGER NOT NULL  DEFAULT (strftime('%s', 'now')),
+    updated_at  INTEGER
 );
 
 CREATE TABLE IF NOT EXISTS user_action_log (
@@ -264,8 +300,19 @@ CREATE INDEX IF NOT EXISTS idx_refresh_token_refresh   ON refresh_token (refresh
 
 -- audit_log
 CREATE INDEX IF NOT EXISTS idx_audit_log_record   ON audit_log (record_id, table_name);
-CREATE INDEX IF NOT EXISTS idx_audit_log_table    ON audit_log (table_name, event_timestamp);
-CREATE INDEX IF NOT EXISTS idx_audit_log_created  ON audit_log (created_at);
+CREATE INDEX IF NOT EXISTS idx_audit_log_table_ts ON audit_log (table_name, event_timestamp);
+
+-- user_audit_log
+CREATE INDEX IF NOT EXISTS idx_user_audit_log_user_ts ON user_audit_log (user_id, event_timestamp);
+CREATE INDEX IF NOT EXISTS idx_user_audit_log_record   ON user_audit_log (record_id, table_name);
+
+-- notification
+CREATE INDEX IF NOT EXISTS idx_notification_user_created ON notification (user_id, created_at);
+
+-- notification_token
+CREATE UNIQUE INDEX IF NOT EXISTS idx_notification_token_uniq
+    ON notification_token (user_id, device_hash);
+CREATE INDEX IF NOT EXISTS idx_notification_token_user ON notification_token (user_id);
 
 -- user_action_log
 CREATE INDEX IF NOT EXISTS idx_user_action_log_user    ON user_action_log (user_id);

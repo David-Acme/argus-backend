@@ -31,6 +31,8 @@ public:
   static inline const std::string JWT_CTX_KEY{"jwt_ctx"};
   static inline const std::string DEVICE_CTX_KEY{"device_ctx"};
 
+  static inline const std::string SYNC_LIMIT{"200"};
+
   static inline const std::string ERROR_CODE_BAD_REQUEST{"BAD_REQUEST"};
   static inline const std::string ERROR_CODE_UNAUTHORIZED{"UNAUTHORIZED"};
   static inline const std::string ERROR_CODE_FORBIDDEN{"FORBIDDEN"};

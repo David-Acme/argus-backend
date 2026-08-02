@@ -1,30 +1,29 @@
 #include "user-action-log-repository.hxx"
 
 #include <shared/services/sqlite/db-service.hxx>
+#include <shared/utils/json-util/json-util.hxx>
+
 using namespace user_action_log_query;
 
-drogon::Task<std::vector<UserActionLogSchema>>
-UserActionLogRepository::findByUser(int64_t userId, int32_t limit) const
+drogon::Task<UserActionLogSchema>
+UserActionLogRepository::create(const UserActionLogCreateInput& input) const
 {
   auto client = DbService::client();
-  const auto result =
-      co_await client->execSqlCoro(FIND_BY_USER.data(), userId, limit);
-  std::vector<UserActionLogSchema> logs;
-  for (const auto& row : result)
-    logs.push_back(UserActionLogSchema(row));
-  co_return logs;
-}
+  const auto result = co_await client->execSqlCoro(
+      INSERT.data(), input.userId, input.recordId,
+      tableNameToString(input.tableName), userActionToString(input.action),
+      json_util::toString(input.oldData), json_util::toString(input.newData),
+      input.ipAddress);
 
-drogon::Task<std::vector<UserActionLogSchema>>
-UserActionLogRepository::findByRecord(int64_t recordId,
-                                      const std::string& tableName,
-                                      int32_t limit) const
-{
-  auto client = DbService::client();
-  const auto result = co_await client->execSqlCoro(FIND_BY_RECORD.data(),
-                                                   recordId, tableName, limit);
-  std::vector<UserActionLogSchema> logs;
-  for (const auto& row : result)
-    logs.push_back(UserActionLogSchema(row));
-  co_return logs;
+  UserActionLogSchema schema;
+  schema.id = result.insertId();
+  schema.userId = input.userId;
+  schema.recordId = input.recordId;
+  schema.tableName = input.tableName;
+  schema.action = input.action;
+  schema.oldData = input.oldData;
+  schema.newData = input.newData;
+  schema.ipAddress = input.ipAddress;
+  schema.createdAt = std::time(nullptr);
+  co_return schema;
 }

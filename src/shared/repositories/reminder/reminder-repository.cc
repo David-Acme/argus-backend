@@ -130,18 +130,14 @@ drogon::Task<std::vector<Json::Value>>
 ReminderRepository::find(const SyncFilter& filter) const
 {
   auto client = DbService::client();
-  auto result = [&]() -> drogon::Task<drogon::orm::Result> {
-    if (filter.startTime && filter.endTime)
-      co_return co_await client->execSqlCoro(FIND.data(), *filter.startTime,
-                                             *filter.endTime);
-    if (filter.startTime)
-      co_return co_await client->execSqlCoro(FIND_FROM.data(),
-                                             *filter.startTime);
-    co_return co_await client->execSqlCoro(FIND_ALL.data());
-  }();
+
+  const auto [query, args] =
+      sync_query::buildSyncQuery(filter, FIND, FIND_FROM, FIND_ALL);
+  const auto& argsRef = args;
+  const auto rows = co_await client->execSqlCoro(query, argsRef);
 
   std::vector<Json::Value> data;
-  for (const auto& row : co_await result)
+  for (const auto& row : rows)
     data.push_back(ReminderSchema(row).toJson());
   co_return data;
 }
@@ -150,19 +146,14 @@ drogon::Task<std::vector<Json::Value>>
 ReminderRepository::findDeleted(const SyncFilter& filter) const
 {
   auto client = DbService::client();
-  auto result = [&]() -> drogon::Task<drogon::orm::Result> {
-    if (filter.startTime && filter.endTime)
-      co_return co_await client->execSqlCoro(FIND_DELETED.data(),
-                                             *filter.startTime,
-                                             *filter.endTime);
-    if (filter.startTime)
-      co_return co_await client->execSqlCoro(FIND_DELETED_FROM.data(),
-                                             *filter.startTime);
-    co_return co_await client->execSqlCoro(FIND_DELETED_ALL.data());
-  }();
+
+  const auto [query, args] =
+      sync_query::buildSyncQuery(filter, FIND_DELETED, FIND_DELETED_FROM, FIND_DELETED_ALL);
+  const auto& argsRef = args;
+  const auto rows = co_await client->execSqlCoro(query, argsRef);
 
   std::vector<Json::Value> data;
-  for (const auto& row : co_await result)
+  for (const auto& row : rows)
     data.push_back(ReminderSchema(row).toJson());
   co_return data;
 }

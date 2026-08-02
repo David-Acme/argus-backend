@@ -7,8 +7,7 @@
 #include <shared/services/face/face-service.hxx>
 
 drogon::Task<ResponseLoginDto>
-AuthService::login(LoginDto body, const std::string& deviceHash,
-                   const std::string& userAgent) const
+AuthService::login(LoginDto body, const LoginDeviceInput& device) const
 {
   auto personId = co_await FaceService::identifyAsync(std::move(body.image));
   if (!personId)
@@ -32,8 +31,8 @@ AuthService::login(LoginDto body, const std::string& deviceHash,
   rtInput.userId = user->id;
   rtInput.accessToken = accessToken;
   rtInput.refreshToken = refreshToken;
-  rtInput.deviceHash = deviceHash;
-  rtInput.userAgent = userAgent;
+  rtInput.deviceHash = device.deviceHash;
+  rtInput.userAgent = device.userAgent;
   rtInput.expiresAt = static_cast<int64_t>(std::time(nullptr)) +
                       jwtService_.refreshTtlSeconds();
 
@@ -46,6 +45,19 @@ AuthService::login(LoginDto body, const std::string& deviceHash,
   result.name = user->name + " " + user->lastName;
   result.role = user->role;
   result.personId = *personId;
+
+  Json::Value session;
+  session["deviceHash"] = device.deviceHash;
+  session["userAgent"] = device.userAgent;
+
+  co_await userActionLogService_.record(
+      {.userId = user->id,
+       .recordId = user->id,
+       .tableName = TableName::User,
+       .action = UserAction::Create,
+       .oldData = Json::Value(),
+       .newData = session,
+       .ipAddress = ""});
 
   co_return result;
 }
@@ -113,5 +125,15 @@ AuthService::refreshToken(const RefreshTokenDto& body,
 drogon::Task<void> AuthService::logout(int64_t userId) const
 {
   co_await refreshTokenRepository_.invalidateAllUser(userId);
+
+  co_await userActionLogService_.record(
+      {.userId = userId,
+       .recordId = userId,
+       .tableName = TableName::User,
+       .action = UserAction::Delete,
+       .oldData = Json::Value(),
+       .newData = Json::Value(),
+       .ipAddress = ""});
+
   LOG_INFO << "AuthService: logged out user " << userId;
 }

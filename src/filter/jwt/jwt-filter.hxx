@@ -10,7 +10,7 @@
 
 struct JwtContext
 {
-  int64_t userId{0};
+  int64_t sub{0};
   std::string name;
   UserRole role{UserRole::Guest};
   bool isActive{false};

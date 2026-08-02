@@ -10,7 +10,14 @@
 #include <shared/repositories/refresh-token/refresh-token-repository.hxx>
 #include <shared/repositories/user/user-repository.hxx>
 #include <shared/services/jwt/jwt-service.hxx>
+#include <shared/services/user-action-log/user-action-log-service.hxx>
 #include <string>
+
+struct LoginDeviceInput
+{
+  std::string deviceHash;
+  std::string userAgent;
+};
 
 class AuthService
 {
@@ -19,8 +26,7 @@ public:
   ~AuthService() = default;
 
   drogon::Task<ResponseLoginDto>
-  login(LoginDto body, const std::string& deviceHash,
-        const std::string& userAgent) const;
+  login(LoginDto body, const LoginDeviceInput& device) const;
 
   drogon::Task<ResponseRefreshTokenDto>
   refreshToken(const RefreshTokenDto& body,
@@ -33,4 +39,5 @@ private:
   PersonRepository personRepository_;
   UserRepository userRepository_;
   RefreshTokenRepository refreshTokenRepository_;
+  UserActionLogService userActionLogService_;
 };

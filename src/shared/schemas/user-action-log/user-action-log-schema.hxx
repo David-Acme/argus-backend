@@ -12,10 +12,10 @@ struct UserActionLogSchema
   int64_t id{0};
   int64_t userId{0};
   int64_t recordId{0};
-  std::string tableName;
+  TableName tableName{TableName::User};
   UserAction action{UserAction::Create};
-  std::string oldData;
-  std::string newData;
+  Json::Value oldData;
+  Json::Value newData;
   std::string ipAddress;
   int64_t createdAt{0};
 

@@ -4,16 +4,19 @@
 #include <drogon/orm/Field.h>
 #include <drogon/orm/Row.h>
 #include <json/value.h>
+#include <optional>
+#include <shared/enums.hxx>
 #include <string>
 
 struct AuditLogSchema
 {
   int64_t id{0};
+  std::optional<int64_t> createUserId;
   int64_t recordId{0};
-  std::string tableName;
+  TableName tableName{TableName::User};
+  Json::Value changes;
+  AuditLogPriority priority{AuditLogPriority::Medium};
   int64_t eventTimestamp{0};
-  std::string oldData;
-  std::string newData;
   int64_t createdAt{0};
 
   AuditLogSchema() = default;
