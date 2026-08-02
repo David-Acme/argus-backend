@@ -16,23 +16,83 @@ std::mutex SttService::mutex_;
 namespace
 {
 
+SttEngine resolveEngine()
+{
+  const std::string e = ConfigService::getString("stt.engine");
+  if (e == "canary")
+    return SttEngine::Canary;
+  if (e == "nemo_ctc" || e == "nemo-ctc" || e == "fastconformer")
+    return SttEngine::NemoCtc;
+  if (e == "nemo_transducer" || e == "nemo-transducer" ||
+      e == "fastconformer_transducer")
+    return SttEngine::NemoTransducer;
+  if (e == "omnilingual")
+    return SttEngine::Omnilingual;
+  return SttEngine::Whisper;
+}
+
 std::unique_ptr<const SherpaOnnxOfflineRecognizer,
                 void (*)(const SherpaOnnxOfflineRecognizer*)>
 createRecognizer(const std::string& lang)
 {
   const std::string modelDir = "models/stt";
   auto nThreads = ThreadBudget::computeThreads();
-
-  auto encoderPath = modelDir + "/tiny-encoder.int8.onnx";
-  auto decoderPath = modelDir + "/tiny-decoder.int8.onnx";
-  auto tokensPath = modelDir + "/tiny-tokens.txt";
+  const SttEngine engine = resolveEngine();
 
   SherpaOnnxOfflineRecognizerConfig config{};
-  config.model_config.whisper.encoder = encoderPath.c_str();
-  config.model_config.whisper.decoder = decoderPath.c_str();
-  config.model_config.whisper.language = lang.c_str();
-  config.model_config.whisper.task = "transcribe";
-  config.model_config.tokens = tokensPath.c_str();
+
+  // Keep the resolved paths alive for the duration of this function: the
+  // recognizer copies the string contents during create, but a temporary
+  // std::string + c_str() would dangle before then.
+  std::string encPath, decPath, tokPath, modelPath, langPath;
+
+  if (engine == SttEngine::Canary) {
+    encPath = modelDir + "/canary-encoder.int8.onnx";
+    decPath = modelDir + "/canary-decoder.int8.onnx";
+    tokPath = modelDir + "/canary-tokens.txt";
+    langPath = lang;
+    config.model_config.canary.encoder = encPath.c_str();
+    config.model_config.canary.decoder = decPath.c_str();
+    config.model_config.canary.src_lang = langPath.c_str();
+    config.model_config.canary.tgt_lang = langPath.c_str();
+    config.model_config.canary.use_pnc = 1;
+    config.model_config.tokens = tokPath.c_str();
+  }
+  else if (engine == SttEngine::NemoCtc) {
+    modelPath = modelDir + "/nemo-ctc-model.int8.onnx";
+    tokPath = modelDir + "/nemo-ctc-tokens.txt";
+    config.model_config.nemo_ctc.model = modelPath.c_str();
+    config.model_config.tokens = tokPath.c_str();
+  }
+  else if (engine == SttEngine::Omnilingual) {
+    modelPath = modelDir + "/omnilingual-model.int8.onnx";
+    tokPath = modelDir + "/omnilingual-tokens.txt";
+    config.model_config.omnilingual.model = modelPath.c_str();
+    config.model_config.tokens = tokPath.c_str();
+  }
+  else if (engine == SttEngine::NemoTransducer) {
+    encPath = modelDir + "/nemo-transducer-encoder.int8.onnx";
+    decPath = modelDir + "/nemo-transducer-decoder.int8.onnx";
+    modelPath = modelDir + "/nemo-transducer-joiner.int8.onnx";
+    tokPath = modelDir + "/nemo-transducer-tokens.txt";
+    config.model_config.transducer.encoder = encPath.c_str();
+    config.model_config.transducer.decoder = decPath.c_str();
+    config.model_config.transducer.joiner = modelPath.c_str();
+    config.model_config.model_type = "nemo_transducer";
+    config.model_config.tokens = tokPath.c_str();
+  }
+  else {  // Whisper (default)
+    encPath = modelDir + "/tiny-encoder.int8.onnx";
+    decPath = modelDir + "/tiny-decoder.int8.onnx";
+    tokPath = modelDir + "/tiny-tokens.txt";
+    langPath = lang;
+    config.model_config.whisper.encoder = encPath.c_str();
+    config.model_config.whisper.decoder = decPath.c_str();
+    config.model_config.whisper.language = langPath.c_str();
+    config.model_config.whisper.task = "transcribe";
+    config.model_config.tokens = tokPath.c_str();
+  }
+
   config.model_config.debug = 0;
   config.model_config.provider = "cpu";
   config.model_config.num_threads = nThreads;
@@ -54,8 +114,27 @@ void SttService::init()
 
     loaded_ = true;
 
+    std::string engineName = "whisper";
+    switch (resolveEngine()) {
+      case SttEngine::Canary:
+        engineName = "canary";
+        break;
+      case SttEngine::NemoCtc:
+        engineName = "nemo_ctc";
+        break;
+      case SttEngine::NemoTransducer:
+        engineName = "nemo_transducer";
+        break;
+      case SttEngine::Omnilingual:
+        engineName = "omnilingual";
+        break;
+      case SttEngine::Whisper:
+        engineName = "whisper";
+        break;
+    }
+
     LOG_INFO << "STT loaded: models/stt"
-             << " (whisper-tiny, " << lang << ", threads="
+             << " (" << engineName << ", " << lang << ", threads="
              << ThreadBudget::computeThreads() << ")";
   }
   catch (const std::exception& e) {

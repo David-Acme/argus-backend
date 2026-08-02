@@ -6,6 +6,7 @@
 #include "unicode-processor.hxx"
 
 #include <drogon/drogon.h>
+#include <shared/services/config-service/config-service.hxx>
 #include <shared/wrapper/blocking-task/blocking-task.hxx>
 #include <shared/wrapper/thread-budget/thread-budget.hxx>
 #include <thread>
@@ -16,6 +17,8 @@ std::unique_ptr<UnicodeProcessor> TtsService::processor_;
 std::unordered_map<std::string, std::unique_ptr<Style>> TtsService::voiceCache_;
 Ort::Env TtsService::env_{ORT_LOGGING_LEVEL_ERROR, "Argus-TTS"};
 TtsQuality TtsService::defaultQuality_{TtsQuality::Auto};
+float TtsService::defaultSpeed_{1.0F};
+int TtsService::maxChunkLen_{300};
 bool TtsService::loaded_ = false;
 std::mutex TtsService::synthMutex_;
 std::mutex TtsService::voiceMutex_;
@@ -28,10 +31,31 @@ void TtsService::init()
     const std::string onnxDir = "models/tts/onnx";
     const std::string voicesDir = "models/tts/voice_styles";
 
+    auto nThreads = ThreadBudget::computeThreads();
+    if (const int cfg = ConfigService::getInt("tts.threads"); cfg > 0)
+      nThreads = cfg;
+
+    defaultSpeed_ = static_cast<float>(
+        std::clamp(ConfigService::getDouble("tts.speed"), 0.7, 2.0));
+    maxChunkLen_ =
+        std::clamp(ConfigService::getInt("tts.max_chunk_len"), 30, 2000);
+
+    // Default quality from config: "auto" (adaptive by text length),
+    // "low", "medium" or "high". Absent/invalid => auto.
+    const std::string q = ConfigService::getString("tts.quality");
+    if (q == "high")
+      defaultQuality_ = TtsQuality::High;
+    else if (q == "medium")
+      defaultQuality_ = TtsQuality::Medium;
+    else if (q == "low")
+      defaultQuality_ = TtsQuality::Low;
+    else
+      defaultQuality_ = TtsQuality::Auto;
+
     Ort::SessionOptions opts;
     opts.SetExecutionMode(ExecutionMode::ORT_SEQUENTIAL);
     opts.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL);
-    opts.SetIntraOpNumThreads(ThreadBudget::computeThreads());
+    opts.SetIntraOpNumThreads(nThreads);
     opts.SetInterOpNumThreads(1);
 
     auto cfg = loadConfig(onnxDir);
@@ -50,7 +74,18 @@ void TtsService::init()
 
     loaded_ = true;
 
-    LOG_INFO << "TTS loaded: " << onnxDir;
+    std::string qName = "auto";
+    switch (defaultQuality_) {
+      case TtsQuality::Low: qName = "low"; break;
+      case TtsQuality::Medium: qName = "medium"; break;
+      case TtsQuality::High: qName = "high"; break;
+      case TtsQuality::Auto: qName = "auto"; break;
+    }
+
+    LOG_INFO << "TTS loaded: " << onnxDir
+             << " (threads=" << nThreads << ", speed=" << defaultSpeed_
+             << ", quality=" << qName
+             << ", max_chunk_len=" << maxChunkLen_ << ")";
   }
   catch (const std::exception& e) {
     LOG_FATAL << "TTS init failed: " << e.what();
@@ -77,8 +112,7 @@ std::vector<float> TtsService::synthesize(const TtsRequest& req)
 {
   const auto& style = resolveVoice(req.voiceId);
   std::string langStr = langCode(req.lang);
-  TtsQuality quality =
-      (req.quality == TtsQuality::Auto) ? autoQuality(req.text) : req.quality;
+  TtsQuality quality = resolveQuality(req);
   int steps = resolveSteps(quality);
 
   std::lock_guard<std::mutex> lock(synthMutex_);
@@ -94,11 +128,11 @@ void TtsService::synthesizeStream(const TtsRequest& req,
 
   const auto& style = resolveVoice(req.voiceId);
   std::string langStr = langCode(req.lang);
-  TtsQuality quality =
-      (req.quality == TtsQuality::Auto) ? autoQuality(req.text) : req.quality;
+  TtsQuality quality = resolveQuality(req);
   int steps = resolveSteps(quality);
 
-  int maxLen = (req.lang == TtsLang::KO || req.lang == TtsLang::JA) ? 120 : 300;
+  int maxLen = (req.lang == TtsLang::KO || req.lang == TtsLang::JA) ? 120
+                                                                    : maxChunkLen_;
   auto textList = chunkText(req.text, maxLen);
 
   std::lock_guard<std::mutex> lock(synthMutex_);
@@ -161,6 +195,11 @@ TtsQuality TtsService::defaultQuality()
   return defaultQuality_;
 }
 
+float TtsService::defaultSpeed()
+{
+  return defaultSpeed_;
+}
+
 // --- Static utils ---
 
 void TtsService::writeWav(const std::string& path,
@@ -176,19 +215,31 @@ const std::vector<std::string>& TtsService::supportedLangs()
 
 // --- Private ---
 
+TtsQuality TtsService::resolveQuality(const TtsRequest& req)
+{
+  if (req.quality != TtsQuality::Auto)
+    return req.quality;
+  if (defaultQuality_ != TtsQuality::Auto)
+    return defaultQuality_;
+  return autoQuality(req.text);
+}
+
 int TtsService::resolveSteps(TtsQuality quality)
 {
+  int low = std::clamp(ConfigService::getInt("tts.steps_low"), 1, 50);
+  int medium = std::clamp(ConfigService::getInt("tts.steps_medium"), 1, 50);
+  int high = std::clamp(ConfigService::getInt("tts.steps_high"), 1, 50);
   switch (quality) {
     case TtsQuality::Low:
-      return 5;
+      return low;
     case TtsQuality::Medium:
-      return 8;
+      return medium;
     case TtsQuality::High:
-      return 10;
+      return high;
     case TtsQuality::Auto:
-      return 8;
+      return medium;
   }
-  return 8;
+  return medium;
 }
 
 TtsQuality TtsService::autoQuality(const std::string& text)

@@ -321,11 +321,11 @@ TtsEngine::Result TtsEngine::synthesize(const std::string& text,
       durCat = result.duration[0];
     }
     else {
-      int silenceLen = static_cast<int>(0.3f * sampleRate_);
-      std::vector<float> silence(silenceLen, 0.0f);
-      wavCat.insert(wavCat.end(), silence.begin(), silence.end());
+      // No artificial silence between chunks: the model already produces the
+      // natural inter-sentence pause at each chunk boundary. Adding a fixed
+      // 0.3s here stacks on top of that and creates the audible 1-2s gaps.
       wavCat.insert(wavCat.end(), result.wav.begin(), result.wav.end());
-      durCat += result.duration[0] + 0.3f;
+      durCat += result.duration[0];
     }
   }
 

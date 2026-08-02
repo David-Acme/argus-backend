@@ -59,6 +59,9 @@ public:
   static void setDefaultQuality(TtsQuality q);
   static TtsQuality defaultQuality();
 
+  // Configured base speech speed (config.toml [tts] speed).
+  static float defaultSpeed();
+
   static int sampleRate();
   static std::vector<std::string> availableVoices();
 
@@ -71,12 +74,18 @@ private:
   static int resolveSteps(TtsQuality quality);
   static const Style& resolveVoice(const std::string& voiceId);
   static TtsQuality autoQuality(const std::string& text);
+  // Resolves the effective quality: an explicit request quality wins; an
+  // "Auto" request falls back to the configured default (tts.quality), which
+  // in turn falls back to the adaptive autoQuality() by text length.
+  static TtsQuality resolveQuality(const TtsRequest& req);
 
   static std::unique_ptr<TtsEngine> engine_;
   static std::unique_ptr<UnicodeProcessor> processor_;
   static std::unordered_map<std::string, std::unique_ptr<Style>> voiceCache_;
   static Ort::Env env_;
   static TtsQuality defaultQuality_;
+  static float defaultSpeed_;
+  static int maxChunkLen_;
   static bool loaded_;
   static std::mutex synthMutex_;
   static std::mutex voiceMutex_;

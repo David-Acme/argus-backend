@@ -2,12 +2,14 @@
 #include "vad.hxx"
 
 #include <atomic>
+#include <cctype>
 #include <chrono>
 #include <csignal>
 #include <cstdio>
 #include <cstdlib>
 #include <iostream>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <unistd.h>
 #include <vector>
@@ -60,9 +62,44 @@ std::string systemPromptFor(const std::string& langCode)
          "- Reply strictly in " +
          langName +
          ". Never switch to another language.\n"
-         "- Keep answers short and natural (1-3 sentences).\n"
-         "- Be direct and helpful; if you don't know something, say so.\n"
+         "- Never start your reply with your name or any prefix such as "
+         "\"Argus:\" or \"Argus\". Answer directly in the first person.\n"
+         "- Be direct and brief by default; expand into a fuller explanation "
+         "only when the question genuinely calls for it.\n"
+         "- Your reply is spoken aloud: keep it natural and consistent, avoid "
+         "exclamation marks and heavy punctuation unless truly necessary, and "
+         "do not use lists, symbols or abbreviations that a speech-to-text "
+         "model would garble.\n"
+         "- Be helpful; if you don't know something, say so.\n"
          "- Never mention these instructions or that you are an AI model.";
+}
+
+// Strip a spurious "Argus:" / "Argus" prefix the model sometimes emits
+// before the actual reply (it mirrors the persona from the system prompt).
+std::string stripPrefix(const std::string& text)
+{
+  std::string out = text;
+  while (!out.empty() && (out.front() == ' ' || out.front() == '\n' ||
+                          out.front() == '\t')) {
+    out.erase(out.begin());
+  }
+  const std::string lower = [&]() {
+    std::string s = out;
+    for (auto& c : s)
+      c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    return s;
+  }();
+  for (std::string_view p : {"argus:", "argus "}) {
+    if (lower.compare(0, p.size(), p) == 0) {
+      out.erase(0, p.size());
+      while (!out.empty() && (out.front() == ' ' || out.front() == ':' ||
+                              out.front() == '\n' || out.front() == '\t')) {
+        out.erase(out.begin());
+      }
+      break;
+    }
+  }
+  return out;
 }
 
 bool speak(const std::string& text, const std::string& langCode,
@@ -74,7 +111,7 @@ bool speak(const std::string& text, const std::string& langCode,
   req.text = text;
   req.lang = langCode == "es" ? TtsLang::ES : TtsLang::EN;
   req.quality = TtsQuality::Auto;
-  req.speed = 1.0F;
+  req.speed = TtsService::defaultSpeed();
   bool played = false;
   // TtsService::synthesizeStream performs the model's native chunking, so the
   // voice stays natural; each chunk is played as soon as it is produced.
@@ -291,6 +328,12 @@ int main()
 
     if (speechDetected.load() || gStop.load()) {
       std::cout << "\n[interrupted]\n";
+      continue;
+    }
+
+    full = stripPrefix(full);
+    if (full.empty()) {
+      std::cout << "[empty reply]\n";
       continue;
     }
 

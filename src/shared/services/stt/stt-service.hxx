@@ -9,6 +9,16 @@
 
 struct SherpaOnnxOfflineRecognizer;
 
+// STT engine backends supported by sherpa-onnx.
+enum class SttEngine
+{
+  Whisper,        // whisper tiny/base/small (auto language)
+  Canary,         // NeMo Canary 180m flash (en+es+de+fr)
+  NemoCtc,        // NeMo FastConformer CTC (single-pass, very fast)
+  NemoTransducer, // NeMo FastConformer transducer (RNN-T, better English)
+  Omnilingual     // 1600-language CTC model
+};
+
 class SttService
 {
 public:

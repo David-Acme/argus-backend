@@ -77,29 +77,35 @@ nms_threshold = 0.4
 ef_search = 100
 top_k = 5
 
-# ── LLM (LFM2.5-1.2B) ──────────────────────────────────────────────
+# ── LLM (LFM2.5-1.2B-Instruct) ────────────────────────────────────
 [llm]
-# Context window in tokens (Ollama default: 32768). Smaller = less KV
-# cache RAM and faster decode as context grows; large enough for short
-# security Q&A turns.
+# GGUF model file (LFM Open License v1.0, see models/llm/LICENSE.lfm1.0).
+# LFM2.5-1.2B-Instruct has NO thinking/CoT mode: it replies directly and
+# decisively, with better reasoning than the 350M sibling. ~36 tok/s CPU.
+model_path = "models/llm/LFM2.5-1.2B-Instruct-Q4_K_M.gguf"
+# Context window in tokens (model supports up to 128k; 32768 = 32k).
+# Smaller = less KV cache RAM and faster decode as context grows.
 context_size = 32768
-# Default max generated tokens per reply. 96 ≈ 2-3 lines with headroom.
-max_tokens = 96
+# Default max generated tokens per reply.
+max_tokens = 256
 # Sampling temperature.
-temperature = 0.3
-# Threads for decode and prefill. 0 = auto (ThreadBudget: physical cores
-# / light for decode, half hardware for prefill). Raise if the host has
-# more cores or a stronger CPU.
+temperature = 0.7
+# Threads for decode and prefill. 0 = auto (ThreadBudget).
 threads = 0
 batch_threads = 0
-# Batch sizes (tokens). n_batch caps prompt tokens per pass, n_ubatch the
-# physical sub-batch.
+# Batch sizes (tokens).
 n_batch = 1024
 n_ubatch = 512
 
-# ── STT (Whisper tiny) ─────────────────────────────────────────────
+# ── STT (FastConformer Transducer multilingüe) ─────────────────────
 [stt]
-# Whisper language code for transcription: "es", "en" or "auto".
+# Engine: "nemo_transducer" (FastConformer RNN-T, en+de+es+fr, RTF ~0.02,
+# best speed/accuracy balance), "canary" (NeMo Canary 180m flash, same
+# accuracy, 5x slower), "whisper" (tiny/base/small, auto language),
+# "nemo_ctc" (CTC single-pass, fastest but weaker English), or
+# "omnilingual" (1600 languages). Model files live in models/stt/.
+engine = "nemo_transducer"
+# Language code: "es", "en" or "auto".
 # Voice interfaces can switch it at runtime via SttService::setLanguage().
 language = "es"
 
@@ -113,6 +119,32 @@ image_size = 512
 max_tokens = 64
 # Threads for ONNX Runtime sessions. 0 = auto (ThreadBudget physical cores).
 threads = 0
+
+# ── TTS (Supertonic 3) ─────────────────────────────────────────────
+[tts]
+# Threads for ONNX Runtime sessions. The TTS runs alone (the LLM has
+# already finished when it speaks), so it can safely use more cores than
+# the shared AI budget. 0 = auto (ThreadBudget::computeThreads()).
+threads = 0
+# Default synthesis quality: "auto" (adaptive by text length, uses the
+# steps_* tiers below), "low", "medium" or "high". On capable hardware you
+# can pin "high" for maximum quality; absent/invalid falls back to "auto".
+quality = "auto"
+# Diffusion denoising steps per quality tier. Higher = better audio,
+# slower generation; lower = faster but degraded. Auto resolves to Medium.
+steps_low = 5
+steps_medium = 8
+steps_high = 10
+# Base speech speed multiplier (0.7 slow .. 2.0 fast). 1.0 is the natural
+# speaking pace; the request can still override this per call.
+speed = 1.0
+# Max characters per synthesis chunk. The model (flow-matching, offline) keeps
+# stable quality up to ~30s of audio per forward: the duration predictor
+# saturates at ~28.5s (~350-400 chars). A typical assistant reply (150-400
+# chars) fits in ONE chunk -> no cuts, natural prosody. Chunking by sentence
+# with 0.3s joins is the official SDK behaviour and only kicks in above this.
+# No artificial silence is inserted between chunks.
+max_chunk_len = 350
 
 [storage.s3]
 endpoint = ""

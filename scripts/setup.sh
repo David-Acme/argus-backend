@@ -205,6 +205,32 @@ setup_tts_model() {
     fi
   done
 
+  # License compliance for the Open RAIL-M license (Section 4): ship the
+  # license text and an attribution/restrictions notice with the weights.
+  if [ ! -f "$MODEL_DIR/LICENSE.openrail-m" ]; then
+    log "Downloading Open RAIL-M license..."
+    $DL "$MODEL_DIR/LICENSE.openrail-m" \
+        "https://huggingface.co/Supertone/supertonic-3/raw/main/LICENSE" || \
+      warn "Failed: LICENSE.openrail-m"
+  fi
+
+  if [ ! -f "$MODEL_DIR/NOTICE" ]; then
+    cat > "$MODEL_DIR/NOTICE" <<'TTS_NOTICE_EOF'
+Supertonic 3 — Supertone
+
+Model:      Supertonic 3 (multilingual TTS, ~99M params, ONNX)
+Source:     https://huggingface.co/Supertone/supertonic-3
+Repo:       https://github.com/supertone-inc/supertonic
+License:    BigScience Open RAIL-M License — see LICENSE.openrail-m
+
+Use, modification, distribution and SaaS hosting are permitted provided
+recipients receive a copy of the license and the use-based restrictions
+(Attachment A) are carried into downstream agreements. No impersonation /
+deepfakes, no law-enforcement / justice / immigration / asylum use, no
+harmful false information. Output is owned by the user. Provided "AS IS".
+TTS_NOTICE_EOF
+  fi
+
   log "TTS model ready (~415 MB)."
 }
 
@@ -231,7 +257,8 @@ build_project() {
 }
 
 setup_llm_model() {
-  log "Setting up LiquidAI LFM2.5-1.2B-Instruct model..."
+  log "Setting up LiquidAI LFM2.5-1.2B-Instruct model (no thinking, 731 MB)..."
+  log "License: LFM Open License v1.0 (see models/llm/LICENSE.lfm1.0)"
 
   local ROOT
   ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -257,6 +284,41 @@ setup_llm_model() {
     $DL "$MODEL_DIR/$MODEL_FILE" "$HF_BASE/$MODEL_FILE" || warn "Failed: $MODEL_FILE"
   else
     log "LLM model already present."
+  fi
+
+  # License compliance for the LFM Open License v1.0: ship the license text
+  # and an attribution notice next to the model weights.
+  local LICENSE_URL="https://huggingface.co/LiquidAI/LFM2.5-1.2B-Instruct-GGUF/raw/main/LICENSE"
+  if [ ! -f "$MODEL_DIR/LICENSE.lfm1.0" ]; then
+    log "Downloading LFM Open License v1.0..."
+    $DL "$MODEL_DIR/LICENSE.lfm1.0" "$LICENSE_URL" || warn "Failed: LICENSE.lfm1.0"
+  fi
+
+  if [ ! -f "$MODEL_DIR/NOTICE" ]; then
+    cat > "$MODEL_DIR/NOTICE" <<'NOTICE_EOF'
+LFM2.5-1.2B-Instruct — Liquid AI
+
+Model:      LFM2.5-1.2B-Instruct (Q4_K_M)
+Source:     https://huggingface.co/LiquidAI/LFM2.5-1.2B-Instruct
+GGUF:       https://huggingface.co/LiquidAI/LFM2.5-1.2B-Instruct-GGUF
+License:    LFM Open License v1.0 — see LICENSE.lfm1.0 in this directory
+
+This project uses the LFM2.5-1.2B-Instruct model distributed under the
+LFM Open License v1.0 (Copyright (c) Liquid AI, Inc.).
+
+Key license terms that apply to this project:
+
+  - Use, reproduction, modification and redistribution are permitted
+    provided recipients receive a copy of the license and the
+    attribution notices are retained.
+  - Commercial use is conditioned on the licensee's annual revenue
+    not exceeding USD $10,000,000 (the "Threshold"). Qualified
+    non-profit organizations are exempt from the Threshold for
+    non-commercial or research purposes.
+  - No warranty or liability is provided; the work is provided "AS IS".
+  - This project does not claim any trademark rights in Liquid AI's
+    marks, which are used only to describe the origin of the model.
+NOTICE_EOF
   fi
 
   log "LLM model ready."
@@ -308,13 +370,14 @@ setup_vision_model() {
 }
 
 setup_stt_model() {
-  log "Setting up Whisper STT model..."
+  log "Setting up FastConformer Transducer STT model (en+de+es+fr, RTF ~0.02)..."
+  log "License: CC-BY-4.0 (NVIDIA NeMo)"
 
   local ROOT
   ROOT="$(cd "$(dirname "$0")/.." && pwd)"
   local MODEL_DIR="$ROOT/models/stt"
   local BASE_URL="https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models"
-  local TARBALL="sherpa-onnx-whisper-tiny.tar.bz2"
+  local TARBALL="sherpa-onnx-nemo-fast-conformer-transducer-en-de-es-fr-14288-int8.tar.bz2"
   local DL=""
 
   if command -v curl >/dev/null 2>&1; then
@@ -328,8 +391,8 @@ setup_stt_model() {
 
   mkdir -p "$MODEL_DIR"
 
-  if [ ! -f "$MODEL_DIR/tiny-encoder.int8.onnx" ]; then
-    log "Downloading Whisper tiny model (~111 MB)..."
+  if [ ! -f "$MODEL_DIR/nemo-transducer-encoder.int8.onnx" ]; then
+    log "Downloading $TARBALL (~107 MB)..."
     $DL "$MODEL_DIR/$TARBALL" "$BASE_URL/$TARBALL" || {
       warn "Failed: $TARBALL"
       return
@@ -338,20 +401,37 @@ setup_stt_model() {
     if [ -f "$MODEL_DIR/$TARBALL" ]; then
       log "Extracting $TARBALL..."
       mkdir -p "$MODEL_DIR/tmp"
-      tar -xjf "$MODEL_DIR/$TARBALL" -C "$MODEL_DIR/tmp" --strip-components=1 \
+      tar -xjf "$MODEL_DIR/$TARBALL" -C "$MODEL_DIR/tmp" \
         2>/dev/null || warn "Extraction may be incomplete."
-      for f in tiny-encoder.int8.onnx tiny-decoder.int8.onnx tiny-tokens.txt; do
-        if [ -f "$MODEL_DIR/tmp/$f" ]; then
-          mv "$MODEL_DIR/tmp/$f" "$MODEL_DIR/"
-        fi
-      done
+      local TMPDIR
+      TMPDIR="$(find "$MODEL_DIR/tmp" -name 'encoder.int8.onnx' -printf '%h' -quit)"
+      if [ -z "$TMPDIR" ]; then
+        TMPDIR="$MODEL_DIR/tmp"
+      fi
+      # Rename to the names SttService::createRecognizer() expects.
+      if [ -f "$TMPDIR/encoder.int8.onnx" ]; then
+        mv "$TMPDIR/encoder.int8.onnx" \
+           "$MODEL_DIR/nemo-transducer-encoder.int8.onnx"
+      fi
+      if [ -f "$TMPDIR/decoder.int8.onnx" ]; then
+        mv "$TMPDIR/decoder.int8.onnx" \
+           "$MODEL_DIR/nemo-transducer-decoder.int8.onnx"
+      fi
+      if [ -f "$TMPDIR/joiner.int8.onnx" ]; then
+        mv "$TMPDIR/joiner.int8.onnx" \
+           "$MODEL_DIR/nemo-transducer-joiner.int8.onnx"
+      fi
+      if [ -f "$TMPDIR/tokens.txt" ]; then
+        mv "$TMPDIR/tokens.txt" \
+           "$MODEL_DIR/nemo-transducer-tokens.txt"
+      fi
       rm -rf "$MODEL_DIR/tmp" "$MODEL_DIR/$TARBALL"
     fi
   else
     log "STT model already present."
   fi
 
-  log "STT model ready (~111 MB)."
+  log "STT model ready (~107 MB)."
 }
 
 setup_face_model() {
