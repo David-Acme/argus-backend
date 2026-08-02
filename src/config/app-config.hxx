@@ -23,6 +23,8 @@ public:
   get404Response(const std::string& message = "Path not found");
   static drogon::HttpResponsePtr
   get405Response(const std::string& message = "Method not allowed");
+  static drogon::HttpResponsePtr
+  get409Response(const std::string& message = "Conflict");
 
   static void handleException(
       const std::exception& e, const drogon::HttpRequestPtr& req,
@@ -39,4 +41,5 @@ public:
   static inline const std::string ERROR_CODE_NOT_FOUND{"NOT_FOUND"};
   static inline const std::string ERROR_CODE_METHOD_NOT_ALLOWED{
       "METHOD_NOT_ALLOWED"};
+  static inline const std::string ERROR_CODE_CONFLICT{"CONFLICT"};
 };

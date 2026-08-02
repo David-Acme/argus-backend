@@ -9,6 +9,23 @@
 - **C++20**, Drogon HTTP/WebSocket, SQLite (async `DbClient`, no ORM).
 - **Conan 2** + **CMake presets** (`dev` = Debug, `prod` = Release).
 
+## Project layout (whole project)
+
+- **`backend/`** (this repo) — C++20 + Drogon server: all AI on-device (face
+  auth, LLM, vision, STT/TTS), JWT dual secrets, WebSocket sync on `/sync`.
+  Listens on `0.0.0.0:7024`.
+- **`frontend/`** (sibling) — React Native mobile app (Expo SDK 57 + Expo Router
+  + Tailwind v4 via Uniwind). It is the client for this backend: face login
+  (multipart → `POST /auth/login`), JWT access/refresh rotation, notifications,
+  and the `/sync` WebSocket. **Frontend integration is not built yet** — the
+  planned `core/services/http/http.service.ts`, auth and sync layers are pending.
+- Frontend conventions live in `frontend/AGENTS.md` + `frontend/CONTEXT.md`
+  (design system, colors, component structure, platform-split services, icon
+  registry, Android dev environment).
+- The backend and frontend are the two halves of one product; changes that affect
+  API contracts (endpoints, WS operations, DTO shapes, `SyncOperation` values,
+  role permissions in `role-access.hxx`) must be coordinated with the frontend.
+
 ## MUST-FOLLOW Rules
 
 ### 1. Enums, never raw strings for constrained columns
@@ -108,6 +125,7 @@ AppConfig::get401Response("Custom message");          // custom message
 AppConfig::get403Response();
 AppConfig::get400Response("Bad request");
 AppConfig::get404Response("Path not found");
+AppConfig::get409Response("Server already paired");
 ```
 
 Never call `ApiResponse::error()` directly from filters/controllers.
@@ -289,6 +307,8 @@ expensive pass; input resolution is fixed at 512 by the SigLIP encoder.
 - `jwt-cpp/0.7.2` via Conan (HS256)
 - `nlohmann_json/3.11.3` (pinned for jwt-cpp)
 - `tomlplusplus/3.3.0` for config
+- `qr-code-generator/1.8.0` (Nayuki, QR codes for the pairing banner).
+  Target: `qr-code-generator::qrcodegencpp`, header `<qrcodegen/qrcodegen.hpp>`.
 - `opencv/4.13.0` (headless, for scaled face image decoding)
 - `onnxruntime/1.24.4` (STT/TTS via sherpa-onnx, Vision via SmolVLM2)
 - **llama-cpp/b6565 via Conan** (latest stable on Conan Center) — powers the
@@ -385,6 +405,7 @@ Before any commit, verify: `cmake --build --preset dev -j 8` passes with
 | `src/shared/services/stt/` | Speech-to-text (whisper via sherpa-onnx) |
 | `src/shared/services/tts/` | Text-to-speech (Supertonic 3) |
 | `src/shared/services/sqlite/` | DB client access (`DbService::client()`) |
+| `src/shared/services/config-service/` | `ConfigService` read + runtime writes (`setBool/...` persisten a `config.toml`, comentarios preservados) |
 | `src/shared/services/room/` | `RoomManager` local (rooms por módulo/usuario, `thread_local`) |
 | `src/shared/services/socket/` | `SocketService` (emitModule/emitUser) + `SocketEmitDto` |
 | `src/shared/services/audit-log/` | Audit global con snapshot por día + emit |

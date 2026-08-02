@@ -62,7 +62,7 @@ install_system_deps() {
   log "Detecting distribution and installing build dependencies..."
 
   local missing=0
-  for c in git cmake ninja g++ python3; do
+  for c in git cmake ninja g++ python3 openssl; do
     command -v "$c" >/dev/null 2>&1 || missing=1
   done
   if [ "$missing" -eq 0 ]; then
@@ -84,18 +84,18 @@ install_system_deps() {
 
   case "$pkg_mgr" in
     pacman)
-      sudo_if_needed pacman -Syu --needed --noconfirm git cmake ninja gcc python python-pip base-devel ;;
+      sudo_if_needed pacman -Syu --needed --noconfirm git cmake ninja gcc python python-pip openssl base-devel ;;
     apt)
       sudo_if_needed apt-get update -y
-      sudo_if_needed apt-get install -y --no-install-recommends git cmake ninja-build g++ python3 python3-pip pkg-config ca-certificates ;;
+      sudo_if_needed apt-get install -y --no-install-recommends git cmake ninja-build g++ python3 python3-pip pkg-config openssl ca-certificates ;;
     dnf)
-      sudo_if_needed dnf install -y git cmake ninja-build gcc-c++ python3 python3-pip ;;
+      sudo_if_needed dnf install -y git cmake ninja-build gcc-c++ python3 python3-pip openssl ;;
     apk)
-      sudo_if_needed apk add --no-cache git cmake ninja g++ python3 py3-pip build-base linux-headers ;;
+      sudo_if_needed apk add --no-cache git cmake ninja g++ python3 py3-pip openssl build-base linux-headers ;;
     zypper)
-      sudo_if_needed zypper install -y git cmake ninja gcc-c++ python3 python3-pip ;;
+      sudo_if_needed zypper install -y git cmake ninja gcc-c++ python3 python3-pip openssl ;;
     *)
-      warn "Unknown distribution. Ensure git cmake ninja g++ python3 pip are installed." ;;
+      warn "Unknown distribution. Ensure git cmake ninja g++ python3 pip openssl are installed." ;;
   esac
 }
 
@@ -269,6 +269,69 @@ build_project() {
   cmake --build --preset "$CMAKE_PRESET"
 
   log "Build complete. Run the server from: $OUTPUT_FOLDER/argus-backend"
+}
+
+setup_certs() {
+  log "Setting up local PKI (instance CA + server certificate)..."
+
+  local ROOT
+  ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+  local CERT_DIR="$ROOT/certs"
+
+  need_cmd openssl
+  mkdir -p "$CERT_DIR"
+
+  if [ ! -f "$CERT_DIR/ca.pem" ]; then
+    log "Generating instance CA (10 years) and server leaf (90 days)..."
+
+    # Instance CA: EC P-256 key + self-signed cert (the per-instance identity).
+    # 25 years validity, matching the long-lived root CAs Google ships in
+    # Android. The CA never rotates; only the server leaf does.
+    openssl ecparam -name prime256v1 -genkey -noout -out "$CERT_DIR/ca.key"
+    openssl req -x509 -new -key "$CERT_DIR/ca.key" -sha256 -days 9125 \
+      -subj "/CN=Argus Instance CA" -out "$CERT_DIR/ca.pem"
+
+    # Server leaf key.
+    openssl ecparam -name prime256v1 -genkey -noout -out "$CERT_DIR/server.key"
+
+    # SANs: advertised hostname, configurable mdns.name, localhost/loopback.
+    local MDNS_NAME=""
+    if [ -f "$ROOT/config.toml" ]; then
+      MDNS_NAME="$(sed -n 's/^[[:space:]]*name *= *"\([^"]*\)".*/\1/p' "$ROOT/config.toml" | head -1)"
+    fi
+    [ -z "$MDNS_NAME" ] && MDNS_NAME="Argus"
+    local SAN="DNS:argus.local,DNS:localhost,IP:127.0.0.1,IP:::1"
+    local HN="$(hostname 2>/dev/null)"
+    [ -n "$HN" ] && SAN="$SAN,DNS:$HN"
+    case "x$MDNS_NAME" in
+      x[A-Za-z0-9_-]*) SAN="$SAN,DNS:${MDNS_NAME}" ;;
+    esac
+
+    openssl req -new -key "$CERT_DIR/server.key" \
+      -subj "/CN=${MDNS_NAME}.local" -out "$CERT_DIR/server.csr"
+    openssl x509 -req -in "$CERT_DIR/server.csr" \
+      -CA "$CERT_DIR/ca.pem" -CAkey "$CERT_DIR/ca.key" -CAcreateserial \
+      -sha256 -days 90 -extfile <(printf "subjectAltName=%s" "$SAN") \
+      -out "$CERT_DIR/server.pem"
+    rm -f "$CERT_DIR/server.csr"
+
+    # Chain file: leaf + CA, so Drogon sends the full chain in the handshake.
+    cat "$CERT_DIR/ca.pem" >> "$CERT_DIR/server.pem"
+
+    chmod 600 "$CERT_DIR/ca.key" "$CERT_DIR/server.key"
+  else
+    log "PKI already present."
+  fi
+
+  # Pairing code = first 8 hex chars of the CA SHA-256 fingerprint. Both the
+  # server (CertService) and the clients derive it; it gates POST /pairing.
+  local FP
+  FP="$(openssl x509 -in "$CERT_DIR/ca.pem" -noout -fingerprint -sha256 | sed 's/.*=//; s/://g')"
+  echo "${FP:0:8}" > "$CERT_DIR/pairing.code"
+  chmod 600 "$CERT_DIR/pairing.code"
+
+  log "CA fingerprint (SHA-256): $FP"
+  log "Pairing code: ${FP:0:8}"
 }
 
 setup_llm_model() {
@@ -525,6 +588,7 @@ main() {
   need_cmd git
   need_cmd cmake
   setup_submodules
+  setup_certs
   setup_tts_model
   setup_llm_model
   setup_vision_model

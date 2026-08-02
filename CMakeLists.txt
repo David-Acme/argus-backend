@@ -16,7 +16,10 @@ find_package(OpenCV CONFIG REQUIRED)
 find_package(Eigen3 REQUIRED)
 find_package(onnxruntime CONFIG REQUIRED)
 find_package(tomlplusplus REQUIRED)
+find_package(OpenSSL REQUIRED)
 find_package(llama-cpp CONFIG REQUIRED)
+find_package(mdns CONFIG REQUIRED)
+find_package(qr-code-generator CONFIG REQUIRED)
 
 add_subdirectory(third_party)
 add_subdirectory(voice-test)
@@ -85,9 +88,13 @@ target_link_libraries(${PROJECT_NAME}
         Eigen3::Eigen
         onnxruntime::onnxruntime
         tomlplusplus::tomlplusplus
+        mdns::mdns
+        OpenSSL::SSL
+        OpenSSL::Crypto
         ${ARGUS_FASTTEXT_TARGET}
         ${ARGUS_NCNN_TARGET}
         ${ARGUS_SHERPA_ONNX_TARGET}
+        qr-code-generator::qrcodegencpp
         ${CONAN_LIBS}
 )
 
@@ -97,6 +104,16 @@ endif()
 
 if(ARGUS_SHERPA_ONNX_TARGET AND TARGET ${ARGUS_SHERPA_ONNX_TARGET})
   target_link_libraries(${PROJECT_NAME} PRIVATE ${ARGUS_SHERPA_ONNX_TARGET})
+endif()
+
+# Third-party mdns.h is header-only: treat its include dir as SYSTEM so the
+# always-on -Wall -Wextra never reports warnings from the vendored header.
+if(TARGET mdns::mdns)
+  get_target_property(_mdns_include_dirs mdns::mdns INTERFACE_INCLUDE_DIRECTORIES)
+  if(_mdns_include_dirs)
+    set_target_properties(mdns::mdns PROPERTIES
+        INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${_mdns_include_dirs}")
+  endif()
 endif()
 
 set_target_properties(${PROJECT_NAME} PROPERTIES
@@ -126,4 +143,7 @@ add_custom_command(
     COMMAND ${CMAKE_COMMAND} -E create_symlink
             ${CMAKE_SOURCE_DIR}/database
             $<TARGET_FILE_DIR:${PROJECT_NAME}>/database
+    COMMAND ${CMAKE_COMMAND} -E create_symlink
+            ${CMAKE_SOURCE_DIR}/certs
+            $<TARGET_FILE_DIR:${PROJECT_NAME}>/certs
 )

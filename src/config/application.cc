@@ -2,19 +2,25 @@
 
 #include <config/app-config.hxx>
 #include <csignal>
+#include <cctype>
 #include <drogon/drogon.h>
 #include <execinfo.h>
+#include <iostream>
 #include <llama.h>
+#include <shared/services/cert/cert-service.hxx>
 #include <shared/services/config-service/config-service.hxx>
 #include <shared/services/face/adapter/face-service-adapter.hxx>
 #include <shared/services/face/face-db.hxx>
 #include <shared/services/face/face-service.hxx>
 #include <shared/services/llm/adapter/llm-service-adapter.hxx>
+#include <shared/services/mdns/adapter/mdns-service-adapter.hxx>
+#include <shared/services/cert/adapter/cert-service-adapter.hxx>
 #include <shared/services/room/adapter/room-manager-service-adapter.hxx>
 #include <shared/services/sqlite/db-service.hxx>
 #include <shared/services/stt/adapter/stt-service-adapter.hxx>
 #include <shared/services/tts/adapter/tts-service-adapter.hxx>
 #include <shared/services/vision/adapter/vision-service-adapter.hxx>
+#include <shared/wrapper/qr/qr-render.hxx>
 #include <unistd.h>
 
 using namespace drogon;
@@ -42,6 +48,36 @@ void forceShutdownHandler(int)
   }
 
   _exit(128 + SIGINT);
+}
+
+void printPairingBanner()
+{
+  const std::string code = CertService::pairingCode();
+  if (code.empty())
+    return;
+
+  std::string host = ConfigService::getString("mdns.name");
+  if (host.empty())
+    host = "Argus";
+  for (char& c : host)
+    c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+  host += ".local";
+  const int port = ConfigService::getInt("mdns.port");
+
+  std::cout << "\n"
+            << "============================================================\n"
+            << "  ARGUS — pairing required\n"
+            << "\n"
+            << qr_render::asciiQr(code)
+            << "\n"
+            << "  Scan the QR code with the Argus app to pair this server.\n"
+            << "\n"
+            << "  Server:   https://" << host << ":" << port << "\n"
+            << "  Host:     " << host << "\n"
+            << "  Port:     " << port << "\n"
+            << "  Code:     " << code << "\n"
+            << "============================================================\n"
+            << std::flush;
 }
 
 } // namespace
@@ -76,7 +112,7 @@ int Application::run()
     return AppConfig::get404Response();
   });
 
-  app().registerBeginningAdvice([]() {
+  app().registerBeginningAdvice([this]() {
     struct sigaction sa{};
     sa.sa_handler = forceShutdownHandler;
     sigemptyset(&sa.sa_mask);
@@ -99,6 +135,9 @@ int Application::run()
     DbService::applyPragmas();
 
     FaceDB::loadFromDb();
+
+    if (!ConfigService::getBool("pairing.paired"))
+      printPairingBanner();
   });
 
   registerServices();
@@ -116,7 +155,7 @@ int Application::run()
              << "Run scripts/setup.sh to download models.";
   }
 
-  LOG_INFO << "Argus backend listening on 0.0.0.0:7024";
+  LOG_INFO << "Argus backend serving HTTPS on 0.0.0.0:7024";
   app().run();
 
   shutdown();
@@ -132,6 +171,8 @@ void Application::shutdown()
 void Application::registerServices()
 {
   registry_.registerService(std::make_unique<RoomManagerServiceAdapter>());
+  registry_.registerService(std::make_unique<CertServiceAdapter>());
+  registry_.registerService(std::make_unique<MdnsServiceAdapter>());
   registry_.registerService(std::make_unique<TtsServiceAdapter>());
   registry_.registerService(std::make_unique<LlmServiceAdapter>());
   registry_.registerService(std::make_unique<SttServiceAdapter>());

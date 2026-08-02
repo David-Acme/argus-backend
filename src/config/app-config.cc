@@ -49,6 +49,11 @@ drogon::HttpResponsePtr AppConfig::get405Response(const std::string& message)
   return ApiResponse::error(405, ERROR_CODE_METHOD_NOT_ALLOWED, message);
 }
 
+drogon::HttpResponsePtr AppConfig::get409Response(const std::string& message)
+{
+  return ApiResponse::error(409, ERROR_CODE_CONFLICT, message);
+}
+
 void AppConfig::handleException(
     const std::exception& e, const drogon::HttpRequestPtr&,
     std::function<void(const drogon::HttpResponsePtr&)>&& respCallback)

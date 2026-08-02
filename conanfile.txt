@@ -1,5 +1,6 @@
 [requires]
 drogon/1.9.13
+mdns/1.4.3
 jwt-cpp/0.7.2
 nlohmann_json/3.11.3
 opencv/4.13.0
@@ -7,6 +8,7 @@ onnxruntime/1.24.4
 llama-cpp/b6565
 eigen/5.0.1
 tomlplusplus/3.3.0
+qr-code-generator/1.8.0
 
 [options]
 drogon/*:with_sqlite=True

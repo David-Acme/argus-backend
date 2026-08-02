@@ -149,12 +149,26 @@ without GPU), so every AI service auto-tunes its resources at runtime:
   `[stt] language` config defaults it. Run: `build/prod/voice-test/
   argus-voice-test`.
 
+## Runtime config writes (ConfigService)
+
+`ConfigService` is read-only in memory, but ALSO supports runtime writes:
+`setBool/setString/setInt/setDouble(keyPath, value)`. They update the in-memory
+table AND persist the value directly to `config.toml` via a surgical line edit
+(comments/formatting preserved, other keys untouched). Guarded by a mutex;
+used for one-time flags that must survive restarts without a DB table.
+
+Example: `[pairing] paired` (in `config.toml`). `false` → the server prints the
+pairing QR banner at startup and accepts `POST /pairing`; on success the
+controller calls `ConfigService::setBool("pairing.paired", true)` (memory +
+file), so the next boot skips the banner and `POST /pairing` returns 409
+`CONFLICT` ("Server already paired").
+
 ## Uniform API response format
 
 Every endpoint returns `{ status, info, errors }`. Errors always
 `errors: { code, message }` with `info: null`; success has `errors: null`.
 Codes: `BAD_REQUEST`, `UNAUTHORIZED`, `FORBIDDEN`, `NOT_FOUND`,
-`METHOD_NOT_ALLOWED`, `VALIDATION_ERROR` (422 adds `fields`). All error
+`METHOD_NOT_ALLOWED`, `CONFLICT`, `VALIDATION_ERROR` (422 adds `fields`). All error
 responses go through `AppConfig::get{4xx}Response()`; `errorCode` was added
 to `ResponseException` so services emit the same codes as the filters.
 A Drogon custom error handler wraps built-in 404/405 in the same envelope.
@@ -188,7 +202,7 @@ A Drogon custom error handler wraps built-in 404/405 in the same envelope.
 - **Token extraction**: Authorization Bearer / query param `?token=` / cookie
 - **Logout**: invalidates all refresh tokens for user (`is_valid=0`)
 - **Roles**: Owner (full), Resident (CRUD resources), Guard (read only), Guest (cameras + auth)
-- **Error handling**: centralized via `AppConfig::get400/401/403/404/405Response()`
+- **Error handling**: centralized via `AppConfig::get400/401/403/404/405/409Response()`
   — uniform envelope `{status, info, errors:{code,message}}` for ALL responses
   (404/405 included via Drogon custom error handler). `ResponseException` carries
   an `errorCode` string; error codes live in `AppConfig::ERROR_CODE_*`.
