@@ -1,10 +1,7 @@
 #include <config/application.hxx>
 
-int main(int argc, char* argv[])
+int main()
 {
-  (void)argc;
-  (void)argv;
-
   Application app;
   return app.run();
 }
