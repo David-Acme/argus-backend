@@ -99,9 +99,37 @@ temperature = 0.7
 # Threads for decode and prefill. 0 = auto (ThreadBudget).
 threads = 0
 batch_threads = 0
-# Batch sizes (tokens).
+# Batch sizes (tokens). Prompts longer than n_batch are prefilled in chunks.
 n_batch = 1024
 n_ubatch = 512
+# KV cache precision: "f16" | "q8_0" | "q4_0". LFM2.5 is a hybrid model where
+# only 6 of 16 blocks carry attention, so quantising the cache saves very
+# little memory while degrading exactly the layers that do long-range recall.
+kv_type = "auto"
+# "auto" | "on" | "off". Quantised V cache generally requires flash attention.
+flash_attn = "auto"
+# Full-size sliding-window cache. Only needed to reuse arbitrary positions.
+swa_full = false
+# Sampling. Order applied: penalties -> top_k -> top_p -> temp -> dist.
+top_k = 20
+top_p = 0.8
+penalty_last_n = 64
+penalty_repeat = 1.10
+# Frequency penalty is subtracted as count * value; llama.h documents
+# "0.0 = disabled" and the usable range is 0.0-0.7.
+penalty_freq = 0.0
+penalty_present = 0.0
+# 0 = LLAMA_DEFAULT_SEED (varied output). Pin a value only for tests.
+seed = 0
+# "model" reads the template from the GGUF; "chatml" forces the fallback.
+chat_template = "model"
+# GPU layers to offload. -1 = decide from HardwareProfile, 0 = force CPU,
+# N = offload N layers (999 = all). Only effective if llama.cpp was built with
+# a GPU backend (Vulkan needs vulkan-headers + glslc + SPIRV-Headers).
+# Measured on the reference iGPU (Radeon Vega, RADV): full offload gives
+# +23% tok/s on short prompts, +58% on long ones, and -78% process RSS
+# because the weights live in VRAM. Auto offloads whenever Vulkan exists.
+gpu_layers = -1
 
 # ── STT (FastConformer Transducer multilingüe) ─────────────────────
 [stt]
@@ -115,16 +143,37 @@ engine = "nemo_transducer"
 # Voice interfaces can switch it at runtime via SttService::setLanguage().
 language = "es"
 
-# ── Vision (SmolVLM2-500M) ──────────────────────────────────────────
+# ── Vision (LiquidAI LFM2.5-VL-450M via llama.cpp + libmtmd) ───────
 [vision]
-# Input resolution is fixed at 512x512 by the SigLIP vision encoder
-# (64 image tokens per frame).
-image_size = 512
-# Max generated tokens for the caption. The model describes the scene in
-# 1-3 sentences, so 64 is plenty and keeps latency low.
+# GGUF language model + multimodal projector. Downloaded by scripts/setup.sh
+# (ARGUS_VLM_VARIANT=lfm25 by default). LFM Open License v1.0.
+model_path = "models/vision/lfm2vl-25/lm-Q8_0.gguf"
+mmproj_path = "models/vision/lfm2vl-25/mmproj-F16.gguf"
+# Context window. The image alone costs 80-2300 tokens depending on input size.
+context_size = 8192
+# Max generated tokens for the caption.
 max_tokens = 64
-# Threads for ONNX Runtime sessions. 0 = auto (ThreadBudget physical cores).
+# Longest side the image is downscaled to before captioning. This is THE cost
+# knob: LFM2.5-VL tiles dynamically, so the prompt grows with the input
+# (256px -> 83 tokens -> ~720ms; 1280px -> 785 tokens -> ~3.1s). The pipeline
+# feeds it a person crop, not the full frame, so 384 keeps detail and cost
+# balanced. image_max_tokens caps per-tile detail instead, and below 256 the
+# model stops reading text in the scene, so prefer this knob.
+max_input_px = 384
+# 0 = read the limit from the model metadata.
+image_max_tokens = 0
+# Default question when the caller does not supply one.
+prompt = "Can you describe this image?"
+# Captions are cached by (downscaled image, prompt) hash.
+caption_cache_slots = 8
+# Threads for llama.cpp. 0 = auto (ThreadBudget).
 threads = 0
+# GPU layers, same semantics as [llm] gpu_layers. Also drives mtmd use_gpu.
+# Measured on the reference iGPU over 3 runs each: CPU 1453/999/1040 ms vs
+# Vulkan 876/881/871 ms. Vulkan is ~16% faster on the median and, more
+# importantly, collapses the spread from 454 ms to 10 ms — captioning becomes
+# predictable, which matters more than the average for a real-time pipeline.
+gpu_layers = -1
 
 # ── TTS (Supertonic 3) ─────────────────────────────────────────────
 [tts]
@@ -137,10 +186,11 @@ threads = 0
 # can pin "high" for maximum quality; absent/invalid falls back to "auto".
 quality = "auto"
 # Diffusion denoising steps per quality tier. Higher = better audio,
-# slower generation; lower = faster but degraded. Auto resolves to Medium.
-steps_low = 5
+# slower generation; lower = faster but degraded. Auto never drops below
+# Medium, and the hardware tier caps every tier from above.
+steps_low = 6
 steps_medium = 8
-steps_high = 10
+steps_high = 12
 # Base speech speed multiplier (0.7 slow .. 2.0 fast). 1.0 is the natural
 # speaking pace; the request can still override this per call.
 speed = 1.0
@@ -151,6 +201,39 @@ speed = 1.0
 # with 0.3s joins is the official SDK behaviour and only kicks in above this.
 # No artificial silence is inserted between chunks.
 max_chunk_len = 350
+# The model pads every synthesised chunk with 260-430 ms of silence at the head
+# and 230-585 ms at the tail. Concatenating raw chunks stacked one chunk's tail
+# onto the next chunk's head: measured 565 ms at the boundary, which the ear
+# reads as "the assistant finished talking". Each chunk is now trimmed to
+# edge_silence_ms at both ends and joined with join_silence_ms.
+# Trimming the global head also makes the first word audible ~350 ms sooner,
+# which is what the barge-in budget cares about.
+edge_silence_ms = 40
+join_silence_ms = 90
+
+# ── Tapo camera local protocols ────────────────────────────────────
+# Control channel (PTZ, presets, privacy, LED, day/night, motion,
+# auto-track, detection history) speaks stok + securePassthrough over
+# HTTPS with a self-signed certificate. The talk channel (TTS out to the
+# camera speaker) speaks the proprietary 8800 protocol and needs the
+# TP-Link cloud password, not the camera account.
+[tapo]
+control_port = 443
+media_port = 8800
+connect_timeout_ms = 3000
+request_timeout_ms = 5000
+login_attempts = 2
+# "auto" probes securePassthrough first and falls back to legacy stok.
+transport = "auto"
+# Multipart body framing of the 8800 talk channel. "none" sends no
+# Content-Length (pytapo/go2rtc behaviour); "negative" sends -1;
+# "chunked" uses HTTP/1.1 chunked encoding. Settle with tapo-probe.
+talk_framing = "none"
+# Echo cancellation mode negotiated with the camera speaker.
+talk_mode = "aec"
+# Milliseconds of A-law audio per MPEG-TS part. Bounds the audio still in
+# flight when a barge-in cancels the reply.
+talk_packet_ms = 20
 
 [storage.s3]
 endpoint = ""
@@ -205,3 +288,15 @@ port = 7024
 path = "/"
 https = "true"
 wss = "true"
+
+# ── Media streaming (go2rtc as internal ingest) ────────────────────
+# go2rtc runs on loopback only and is never exposed. All client traffic goes
+# through the backend's own HTTPS port so it behaves identically on the LAN and
+# through the tunnel that will proxy to the cloud when the user is away.
+[streaming]
+go2rtc_bin = "third_party/go2rtc/go2rtc"
+go2rtc_config = "go2rtc.yaml"
+go2rtc_api = "127.0.0.1:1984"
+go2rtc_rtsp = "127.0.0.1:8554"
+# Restart attempts before the camera is marked offline instead of looping.
+max_restarts = 8
