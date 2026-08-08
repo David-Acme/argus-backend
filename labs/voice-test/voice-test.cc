@@ -11,6 +11,7 @@
 #include <deque>
 #include <iostream>
 #include <mutex>
+#include <poll.h>
 #include <string>
 #include <string_view>
 #include <thread>
@@ -20,8 +21,23 @@
 #include <shared/services/config-service/config-service.hxx>
 #include <shared/services/llm/llm-service.hxx>
 #include <shared/services/stt/stt-service.hxx>
+#include <shared/services/tapo/tapo-talk-client.hxx>
 #include <shared/services/tts/onnx-utils.hxx>
 #include <shared/services/tts/tts-service.hxx>
+#include <shared/services/vision/vision-service.hxx>
+#include <shared/wrapper/cancellation/cancellation-token.hxx>
+
+#include "camera-audio.hxx"
+
+#include <opencv2/core.hpp>
+#include <opencv2/imgcodecs.hpp>
+
+extern "C" {
+#include <libavcodec/avcodec.h>
+#include <libavformat/avformat.h>
+#include <libavutil/imgutils.h>
+#include <libswscale/swscale.h>
+}
 
 namespace
 {
@@ -32,6 +48,145 @@ int gMicIndex = 0;
 constexpr size_t kMinSentenceChars = 24;
 constexpr size_t kFirstSentenceMinChars = 0;
 constexpr int kPlaybackLatencyMs = 700;
+
+bool mentionsCamera(const std::string& text)
+{
+  std::string lower = text;
+  for (auto& c : lower)
+    c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+  return lower.find("cámara") != std::string::npos ||
+         lower.find("camara") != std::string::npos ||
+         lower.find("camera") != std::string::npos;
+}
+
+cv::Mat captureCameraFrame(const std::string& rtspUrl)
+{
+  for (int attempt = 0; attempt < 2; ++attempt) {
+    if (attempt > 0) {
+      std::cout << "[camera] reintentando captura...\n";
+      std::this_thread::sleep_for(std::chrono::seconds(1));
+    }
+
+    AVFormatContext* fmt = nullptr;
+    AVDictionary* opts = nullptr;
+    av_dict_set(&opts, "rw_timeout", "5000000", 0);
+    av_dict_set(&opts, "rtsp_transport", "tcp", 0);
+    if (avformat_open_input(&fmt, rtspUrl.c_str(), nullptr, &opts) != 0) {
+      av_dict_free(&opts);
+      continue;
+    }
+    av_dict_free(&opts);
+    if (avformat_find_stream_info(fmt, nullptr) < 0) {
+      avformat_close_input(&fmt);
+      continue;
+    }
+    const int vIdx =
+        av_find_best_stream(fmt, AVMEDIA_TYPE_VIDEO, -1, -1, nullptr, 0);
+    if (vIdx < 0) {
+      avformat_close_input(&fmt);
+      continue;
+    }
+
+    const AVCodec* codec =
+        avcodec_find_decoder(fmt->streams[vIdx]->codecpar->codec_id);
+    AVCodecContext* dec = avcodec_alloc_context3(codec);
+    if (!dec ||
+        avcodec_parameters_to_context(dec, fmt->streams[vIdx]->codecpar) < 0 ||
+        avcodec_open2(dec, codec, nullptr) < 0) {
+      if (dec)
+        avcodec_free_context(&dec);
+      avformat_close_input(&fmt);
+      continue;
+    }
+
+    AVPacket* pkt = av_packet_alloc();
+    AVFrame* frame = av_frame_alloc();
+    AVFrame* rgb = av_frame_alloc();
+    SwsContext* sws = nullptr;
+    cv::Mat result;
+    bool got = false;
+
+    while (av_read_frame(fmt, pkt) >= 0) {
+      if (pkt->stream_index == vIdx &&
+          avcodec_send_packet(dec, pkt) == 0) {
+        while (avcodec_receive_frame(dec, frame) == 0) {
+          sws = sws_getContext(frame->width, frame->height,
+                               static_cast<AVPixelFormat>(frame->format),
+                               frame->width, frame->height, AV_PIX_FMT_BGR24,
+                               SWS_BILINEAR, nullptr, nullptr, nullptr);
+          if (!sws)
+            break;
+          av_image_alloc(rgb->data, rgb->linesize, frame->width,
+                         frame->height, AV_PIX_FMT_BGR24, 32);
+          sws_scale(sws, frame->data, frame->linesize, 0, frame->height,
+                    rgb->data, rgb->linesize);
+          result = cv::Mat(frame->height, frame->width, CV_8UC3);
+          const size_t stride =
+              static_cast<size_t>(rgb->linesize[0]);
+          for (int y = 0; y < frame->height; ++y)
+            std::memcpy(result.data + y * frame->width * 3,
+                        rgb->data[0] + y * stride, stride);
+          got = true;
+          break;
+        }
+        if (got)
+          break;
+      }
+      av_packet_unref(pkt);
+    }
+
+    if (rgb->data[0])
+      av_freep(rgb->data);
+    av_frame_free(&rgb);
+    av_frame_free(&frame);
+    av_packet_free(&pkt);
+    if (sws)
+      sws_freeContext(sws);
+    avcodec_free_context(&dec);
+    avformat_close_input(&fmt);
+
+    if (got && !result.empty())
+      return result;
+  }
+  return {};
+}
+
+std::string describeCamera(const std::string& rtspUrl)
+{
+  const auto frame = captureCameraFrame(rtspUrl);
+  if (frame.empty())
+    return {};
+  return VisionService::describeMat(
+      frame, "Describe en español, en dos frases, lo que ocurre en esta "
+             "imagen de la camara.", 64);
+}
+
+int runCameraCheck(const std::string& rtspUrl)
+{
+  LlmService::init();
+  SttService::init();
+  TtsService::init();
+  VisionService::init();
+  if (!VisionService::isLoaded()) {
+    std::cerr << "VisionService no cargado.\n";
+    return 1;
+  }
+
+  std::cout << "Capturando frame de: " << rtspUrl << "\n";
+  const auto frame = captureCameraFrame(rtspUrl);
+  if (frame.empty()) {
+    std::cerr << "No se pudo capturar el frame.\n";
+    return 1;
+  }
+  std::cout << "Frame " << frame.cols << "x" << frame.rows << "\n";
+  const std::string scene = describeCamera(rtspUrl);
+  std::cout << "Descripcion: " << scene << "\n";
+  VisionService::shutdown();
+  TtsService::shutdown();
+  SttService::shutdown();
+  LlmService::shutdown();
+  return 0;
+}
 
 void onSignal(int)
 {
@@ -181,9 +336,350 @@ std::string captureTurn(Vad& vad, const std::atomic<bool>& stop)
   return text;
 }
 
+std::string rtspHost(const std::string& url)
+{
+  const size_t at = url.find('@');
+  const size_t start = at == std::string::npos ? 0 : at + 1;
+  const size_t colon = url.find(':', start);
+  const size_t slash = url.find('/', start);
+  size_t end = url.size();
+  if (colon != std::string::npos)
+    end = std::min(end, colon);
+  if (slash != std::string::npos)
+    end = std::min(end, slash);
+  return url.substr(start, end - start);
+}
+
+std::string captureTurnFromCamera(Vad& vad, const std::atomic<bool>& stop,
+                                  const std::string& rtspUrl)
+{
+  std::vector<float> inBuffer;
+  std::mutex bufMutex;
+  std::vector<float> turn;
+  CameraMic mic;
+
+  auto onFrames = [&](const std::vector<float>& frames) {
+    std::lock_guard<std::mutex> lock(bufMutex);
+    inBuffer.insert(inBuffer.end(), frames.begin(), frames.end());
+  };
+
+  if (!mic.open(rtspUrl, onFrames)) {
+    std::cerr << "[camera-mic] no se pudo abrir el audio de la camara\n";
+    return "";
+  }
+
+  std::cout << "\n[escuchando por la camara...] (Ctrl+C para salir)\n"
+            << std::flush;
+  std::string text;
+  bool done = false;
+  while (!done && !stop.load()) {
+    if (!mic.readBlock())
+      break;
+    std::vector<float> chunk;
+    {
+      std::lock_guard<std::mutex> lock(bufMutex);
+      if (inBuffer.size() >= 512) {
+        chunk.assign(inBuffer.begin(), inBuffer.begin() + 512);
+        inBuffer.erase(inBuffer.begin(), inBuffer.begin() + 512);
+      }
+    }
+    if (!chunk.empty() &&
+        vad.process(chunk.data(), static_cast<int>(chunk.size()), turn)) {
+      text = SttService::transcribe(turn, 16000);
+      done = true;
+    }
+    if (!done)
+      std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  mic.close();
+  return text;
+}
+
+bool speakToCamera(const std::string& text, const std::string& langCode,
+                   const TapoTalkConfig& cfg, const std::atomic<bool>& stop)
+{
+  if (text.empty() || stop.load())
+    return false;
+  TtsRequest req;
+  req.text = text;
+  req.lang = langCode == "es" ? TtsLang::ES : TtsLang::EN;
+  req.quality = TtsQuality::Auto;
+  req.speed = TtsService::defaultSpeed();
+  const auto pcm = TtsService::synthesize(req);
+
+  std::vector<int16_t> s16;
+  s16.reserve(pcm.size());
+  for (const auto sample : pcm) {
+    const float clamped = std::max(-1.0F, std::min(1.0F, sample));
+    s16.push_back(static_cast<int16_t>(clamped * 32767.0F));
+  }
+
+  TapoTalkClient client(cfg);
+  if (!client.open().ok) {
+    std::cerr << "[camera-talk] no se pudo abrir el canal de audio\n";
+    return false;
+  }
+  CancellationToken token;
+  const auto sent = client.send(
+      {.samples = s16, .sampleRate = TtsService::sampleRate()}, token);
+  client.close();
+  return sent.ok;
+}
+
+int runCameraSttCheck(const std::string& rtspUrl)
+{
+  SttService::init();
+  if (!SttService::isLoaded() || !SttService::setLanguage("es")) {
+    std::cerr << "STT no cargado\n";
+    return 1;
+  }
+  std::cout << "Grabando 8s del mic de la camara... (habla cerca de la camara)\n"
+            << std::flush;
+  CameraMic mic;
+  std::vector<float> all;
+  mic.open(rtspUrl, [&](const std::vector<float>& frames) {
+    all.insert(all.end(), frames.begin(), frames.end());
+  });
+  while (all.size() < 128000 && mic.readBlock()) {
+  }
+  mic.close();
+  std::cout << "capturados " << all.size() << " samples\n";
+  const std::string text = SttService::transcribe(all, 16000);
+  std::cout << "Transcripcion: [" << text << "]\n";
+  SttService::shutdown();
+  return 0;
+}
+
+int runCameraVadCheck(const std::string& rtspUrl)
+{
+  SttService::init();
+  if (!SttService::isLoaded() || !SttService::setLanguage("es")) {
+    std::cerr << "STT no cargado\n";
+    return 1;
+  }
+  std::cout << "Grabando 8s del mic de la camara... (habla cerca de la camara)\n"
+            << std::flush;
+  CameraMic mic;
+  std::vector<float> all;
+  mic.open(rtspUrl, [&](const std::vector<float>& frames) {
+    all.insert(all.end(), frames.begin(), frames.end());
+  });
+  while (all.size() < 128000 && mic.readBlock()) {
+  }
+  mic.close();
+  std::cout << "capturados " << all.size() << " samples\n";
+
+  double sum = 0.0;
+  float peak = 0.0F;
+  for (const float s : all) {
+    sum += static_cast<double>(s) * s;
+    peak = std::max(peak, std::abs(s));
+  }
+  const double rms = sum / static_cast<double>(all.size());
+  std::cout << "rms=" << rms << " peak=" << peak << "\n";
+
+  Vad vad;
+  std::vector<float> turn;
+  float maxProb = 0.0F;
+  int frames = 0;
+  int over03 = 0;
+  int over05 = 0;
+  for (size_t i = 0; i + 512 <= all.size(); i += 512) {
+    const bool done = vad.process(all.data() + i, 512, turn);
+    const float p = vad.lastProb();
+    frames++;
+    maxProb = std::max(maxProb, p);
+    if (p > 0.3F)
+      over03++;
+    if (p > 0.5F)
+      over05++;
+    if (done) {
+      std::cout << "VAD: turno de " << turn.size() << " samples\n";
+      const std::string text = SttService::transcribe(turn, 16000);
+      std::cout << "Transcripcion del turno: [" << text << "]\n";
+      vad.reset();
+    }
+  }
+  std::cout << "ventanas=" << frames << " prob>0.3: " << over03
+            << " prob>0.5: " << over05 << " probMax=" << maxProb << "\n";
+  SttService::shutdown();
+  return 0;
+}
+
+void runCameraConversation(const TapoTalkConfig& talkCfg,
+                           const std::string& camRtspSub,
+                           const std::string& camRtspMain,
+                           const std::string& langCode)
+{
+  std::atomic<bool> paused{false};
+  // Samples de audio del mic a descartar tras cada respuesta: cubre el eco
+  // del altavoz de la camara, que llega al mic con el retraso del buffer
+  // interno de la camara (no bloquea el bucle: solo se descarta).
+  std::atomic<int> discardRemaining{0};
+  constexpr int kEchoDrainSamples = 16000 * 600 / 1000;  // 600ms a 16kHz
+  std::mutex bufMutex;
+  std::vector<float> camBuf;
+
+  std::thread micThread([&] {
+    while (!gStop.load()) {
+      CameraMic mic;
+      if (!mic.open(camRtspSub, [&](const std::vector<float>& frames) {
+            if (paused.load())
+              return;  // Argus habla: descartar
+            const int remaining = discardRemaining.load();
+            if (remaining > 0) {
+              discardRemaining.store(
+                  std::max(0, remaining - static_cast<int>(frames.size())));
+              return;  // eco residual del altavoz: descartar
+            }
+            std::lock_guard<std::mutex> lock(bufMutex);
+            camBuf.insert(camBuf.end(), frames.begin(), frames.end());
+          })) {
+        std::cerr << "[camera-mic] no se pudo abrir, reintentando...\n";
+        std::this_thread::sleep_for(std::chrono::seconds(1));
+        continue;
+      }
+      while (!gStop.load() && mic.readBlock()) {
+      }
+      mic.close();
+    }
+  });
+
+  std::thread keyThread([&] {
+    pollfd pfd{};
+    pfd.fd = STDIN_FILENO;
+    pfd.events = POLLIN;
+    while (!gStop.load()) {
+      const int r = poll(&pfd, 1, 100);
+      if (r > 0 && (pfd.revents & POLLIN)) {
+        const int c = std::getchar();
+        if (c == 'p' || c == 'P') {
+          paused = !paused.load();
+          std::cout << (paused.load() ? "\n[pausado - no escucho]\n"
+                                      : "\n[escuchando...]\n")
+                    << std::flush;
+        }
+        else if (c == 'q' || c == 'Q') {
+          gStop.store(true);
+        }
+      }
+    }
+  });
+
+  ConversationState state;
+  state.lang = langCode;
+  state.history.push_back({"system", systemPromptFor(langCode)});
+
+  const std::string greeting = langCode == "es"
+                                   ? "Hola, soy Argus. Estoy escuchando por la "
+                                     "camara, puedes hablar cuando quieras."
+                                   : "Hello, I'm Argus. I am listening through "
+                                     "the camera, you can speak anytime.";
+  paused.store(true);
+  speakToCamera(greeting, langCode, talkCfg, gStop);
+  discardRemaining.store(kEchoDrainSamples);
+  paused.store(false);
+  std::cout << "\n[escuchando continuamente por la camara...] "
+               "(p=pausa, q=salir)\n"
+            << std::flush;
+
+  Vad vad;
+  auto lastTick = std::chrono::steady_clock::now();
+  while (!gStop.load()) {
+    if (paused.load()) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(100));
+      continue;
+    }
+    std::vector<float> chunk;
+    {
+      std::lock_guard<std::mutex> lock(bufMutex);
+      if (camBuf.size() >= 512) {
+        chunk.assign(camBuf.begin(), camBuf.begin() + 512);
+        camBuf.erase(camBuf.begin(), camBuf.begin() + 512);
+      }
+    }
+    if (chunk.empty()) {
+      const auto now = std::chrono::steady_clock::now();
+      if (now - lastTick >= std::chrono::seconds(3)) {
+        lastTick = now;
+        std::cout << "[vivo] buffer de audio vacio, esperando a la camara...\n"
+                  << std::flush;
+      }
+      std::this_thread::sleep_for(std::chrono::milliseconds(10));
+      continue;
+    }
+    lastTick = std::chrono::steady_clock::now();
+
+    std::vector<float> turn;
+    if (!vad.process(chunk.data(), static_cast<int>(chunk.size()), turn))
+      continue;
+
+    const std::string userText = SttService::transcribe(turn, 16000);
+    std::cout << "\n[You (camara)] " << userText << "\n";
+    vad.reset();
+
+    bool onlySpaces = true;
+    for (const char c : userText) {
+      if (std::isspace(static_cast<unsigned char>(c)) == 0) {
+        onlySpaces = false;
+        break;
+      }
+    }
+    if (onlySpaces) {
+      std::cout << "(sin voz inteligible, ignorado)\n";
+      continue;
+    }
+
+    if (userText.find("exit") != std::string::npos ||
+        userText.find("quit") != std::string::npos ||
+        userText.find("salir") != std::string::npos) {
+      std::cout << "[Argus] Hasta luego.\n";
+      break;
+    }
+
+    std::string reply = userText;
+    if (mentionsCamera(userText) && !camRtspMain.empty()) {
+      std::cout << "[camera] capturando frame...\n";
+      const std::string scene = describeCamera(camRtspMain);
+      if (!scene.empty()) {
+        std::cout << "[camera] " << scene << "\n";
+        reply = "La camara muestra: " + scene + ". " + userText;
+      }
+    }
+
+    state.history.push_back({"user", reply});
+    if (state.history.size() > 21)
+      state.history.erase(state.history.begin() + 1);
+
+    ChatRequest req;
+    req.messages = state.history;
+    req.resetContext = false;
+
+    std::string full;
+    std::cout << "[Argus] ";
+    LlmService::chatStream(req, [&](const std::string& token, bool) {
+      if (gStop.load())
+        return;
+      std::cout << token << std::flush;
+      full += token;
+    });
+    std::cout << "\n";
+    state.history.push_back({"assistant", full});
+
+    paused.store(true);
+    speakToCamera(full, langCode, talkCfg, gStop);
+    discardRemaining.store(kEchoDrainSamples);
+    paused.store(false);
+  }
+
+  gStop.store(true);
+  micThread.join();
+  keyThread.join();
+}
+
 } // namespace
 
-int main()
+int main(int argc, char** argv)
 {
   // Run from the binary's own directory so config.toml and models/ resolve
   // no matter where the command is launched from.
@@ -195,6 +691,58 @@ int main()
 
   ConfigService::load("config.toml");
 
+  const std::string camRtspSub =
+      ConfigService::getString("voice_test.camera_rtsp_sub");
+  const std::string camRtspMain =
+      ConfigService::getString("voice_test.camera_rtsp_main");
+
+  bool useCamera = false;
+  std::string cloudPass;
+  for (int i = 1; i < argc; ++i) {
+    if (std::string(argv[i]) == "--cam-check") {
+      if (camRtspSub.empty()) {
+        std::cerr << "no voice_test.camera_rtsp_sub in config.toml\n";
+        return 1;
+      }
+      return runCameraCheck(camRtspSub);
+    }
+    if (std::string(argv[i]) == "--camera-stt-check") {
+      if (camRtspSub.empty()) {
+        std::cerr << "no voice_test.camera_rtsp_sub in config.toml\n";
+        return 1;
+      }
+      return runCameraSttCheck(camRtspSub);
+    }
+    if (std::string(argv[i]) == "--vad-check") {
+      if (camRtspSub.empty()) {
+        std::cerr << "no voice_test.camera_rtsp_sub in config.toml\n";
+        return 1;
+      }
+      return runCameraVadCheck(camRtspSub);
+    }
+    if (std::string(argv[i]) == "--camera") {
+      useCamera = true;
+    }
+    else if (std::string(argv[i]) == "--cloud-pass" && i + 1 < argc) {
+      cloudPass = argv[++i];
+    }
+  }
+
+  TapoTalkConfig talkCfg;
+  if (useCamera) {
+    if (camRtspSub.empty() || cloudPass.empty()) {
+      std::cerr << "--camera requires voice_test.camera_rtsp_sub in "
+                   "config.toml and --cloud-pass <cloud password>\n";
+      return 1;
+    }
+    talkCfg.host = rtspHost(camRtspSub);
+    talkCfg.port = 8800;
+    talkCfg.username = "admin";
+    talkCfg.cloudPassword = cloudPass;
+    talkCfg.mode = "aec";
+    talkCfg.framing = TapoTalkFraming::None;
+  }
+
   std::cout << "=== Argus voice test ===\n";
 
   std::string lang;
@@ -202,25 +750,27 @@ int main()
   std::getline(std::cin, lang);
   const std::string langCode = (lang == "2") ? "es" : "en";
 
-  auto mics = listMicrophones();
-  if (mics.empty()) {
-    std::cerr << "No microphones found.\n";
-    return 1;
+  if (!useCamera) {
+    auto mics = listMicrophones();
+    if (mics.empty()) {
+      std::cerr << "No microphones found.\n";
+      return 1;
+    }
+    std::cout << "\nAvailable microphones:\n";
+    for (size_t i = 0; i < mics.size(); ++i) {
+      std::cout << "  " << i + 1 << ". " << mics[i].second << "\n";
+    }
+    std::cout << "Select microphone (default 1): ";
+    std::string micSel;
+    std::getline(std::cin, micSel);
+    int micIndex = mics[0].first;
+    if (!micSel.empty()) {
+      int n = std::atoi(micSel.c_str());
+      if (n >= 1 && n <= static_cast<int>(mics.size()))
+        micIndex = mics[static_cast<size_t>(n - 1)].first;
+    }
+    gMicIndex = micIndex;
   }
-  std::cout << "\nAvailable microphones:\n";
-  for (size_t i = 0; i < mics.size(); ++i) {
-    std::cout << "  " << i + 1 << ". " << mics[i].second << "\n";
-  }
-  std::cout << "Select microphone (default 1): ";
-  std::string micSel;
-  std::getline(std::cin, micSel);
-  int micIndex = mics[0].first;
-  if (!micSel.empty()) {
-    int n = std::atoi(micSel.c_str());
-    if (n >= 1 && n <= static_cast<int>(mics.size()))
-      micIndex = mics[static_cast<size_t>(n - 1)].first;
-  }
-  gMicIndex = micIndex;
 
   std::cout << "\nInitializing AI services...\n";
   LlmService::init();
@@ -230,6 +780,7 @@ int main()
     return 1;
   }
   TtsService::init();
+  VisionService::init();
   if (!LlmService::isLoaded() || !SttService::isLoaded() ||
       !TtsService::isLoaded()) {
     std::cerr << "Failed to init services.\n";
@@ -241,7 +792,11 @@ int main()
                                    ? "Hola, soy Argus. ¿En qué puedo ayudarte?"
                                    : "Hello, I'm Argus. How can I help you?";
   std::cout << "\n[Argus] " << greeting << "\n";
-  speak(greeting, langCode, gStop);
+  if (useCamera) {
+    runCameraConversation(talkCfg, camRtspSub, camRtspMain, langCode);
+  }
+  else {
+    speak(greeting, langCode, gStop);
 
   ConversationState state;
   state.lang = langCode;
@@ -251,7 +806,9 @@ int main()
 
   while (!gStop.load()) {
     Vad vad;
-    const std::string userText = captureTurn(vad, gStop);
+    const std::string userText =
+        useCamera ? captureTurnFromCamera(vad, gStop, camRtspSub)
+                  : captureTurn(vad, gStop);
     if (gStop.load())
       break;
     if (userText.empty()) {
@@ -267,7 +824,26 @@ int main()
       break;
     }
 
-    state.history.push_back({"user", userText});
+    std::string reply = userText;
+    if (mentionsCamera(userText) && !camRtspSub.empty()) {
+      std::cout << "[camera] capturando frame de la camara...\n";
+      const auto t0 = std::chrono::steady_clock::now();
+      const std::string scene = describeCamera(camRtspSub);
+      const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                          std::chrono::steady_clock::now() - t0)
+                          .count();
+      if (!scene.empty()) {
+        std::cout << "[camera] (" << ms << " ms) " << scene << "\n";
+        reply = "La camara " + camRtspMain + " muestra: " + scene + ". " +
+                userText;
+      }
+      else {
+        std::cout << "[camera] no disponible (" << ms
+                  << " ms), continúo sin contexto de camara.\n";
+      }
+    }
+
+    state.history.push_back({"user", reply});
     if (state.history.size() > 21) {
       state.history.erase(state.history.begin() + 1);
     }
@@ -335,7 +911,7 @@ int main()
 
     std::thread speaker([&] {
       const bool continuous =
-          openPlayback(TtsService::sampleRate(), kPlaybackLatencyMs);
+          !useCamera && openPlayback(TtsService::sampleRate(), kPlaybackLatencyMs);
       for (;;) {
         std::string sentence;
         {
@@ -353,6 +929,16 @@ int main()
           }
           sentence = std::move(sentenceQueue.front());
           sentenceQueue.pop_front();
+        }
+
+        if (useCamera) {
+          if (firstAudioMs.load() < 0)
+            firstAudioMs.store(
+                std::chrono::duration_cast<std::chrono::milliseconds>(
+                    std::chrono::steady_clock::now() - t0)
+                    .count());
+          speakToCamera(sentence, state.lang, talkCfg, speechDetected);
+          continue;
         }
 
         TtsRequest treq;
@@ -462,9 +1048,11 @@ int main()
 
     state.history.push_back({"assistant", full});
   }
+  }
 
   LlmService::shutdown();
   SttService::shutdown();
   TtsService::shutdown();
+  VisionService::shutdown();
   return 0;
 }

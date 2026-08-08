@@ -188,11 +188,19 @@ and the memory system are planned in `OPTIMIZATION_AND_MEMORY_PLAN.md`.
 ### Verified offline (no camera needed)
 
 `--ts-dump` writes 1 s of 440 Hz A-law as MPEG-TS. `ffprobe` parses PAT/PMT/PES
-and reports `stream_type=6 pid=100`; extracting the ES yields exactly 8000
-bytes. Decoding it back measures peak −8.70 dB (= 12000/32768), RMS = peak −
-3.01 dB (pure sine) and 879 zero-crossings/s (= 2 × 440 Hz). **Stream type is
-0x06, not 0x90** — determined by muxing the same audio with ffmpeg and reading
-back its PMT, since ffmpeg's output is what pytapo feeds the camera.
+and reports `pid=100`; extracting the ES yields exactly 8000 bytes. Decoding it
+back measures peak −8.70 dB (= 12000/32768), RMS = peak − 3.01 dB (pure sine)
+and 879 zero-crossings/s (= 2 × 440 Hz).
+
+**Stream type — the value flipped twice, read this before changing it again.**
+Muxing the same audio with ffmpeg and reading back its PMT gives `stream_type
+0x06` with `stream_id 0xBD` (private stream), and that was the first choice
+because ffmpeg's output is what pytapo feeds the camera. `TapoTsConfig` now
+carries `streamType 0x90` / `streamId 0xC0` instead. `0x90` is what pytapo
+itself writes, so the C225 plausibly wants it, but the change predates any
+recorded measurement against the physical camera, and the ffprobe check above
+no longer reports `stream_type=6`. Whichever value survives, record *how* it
+was confirmed here — a wrong stream type fails as silence, not as an error.
 
 ### Still unverified — needs the physical C225 (Phase 1 gate)
 
@@ -295,6 +303,99 @@ comparisons are not evidence.
 Vulkan device (integrated included) as long as the host has ≥8 GB RAM.
 `[llm] gpu_layers` and `[vision] gpu_layers` override it: `-1` auto, `0` force
 CPU, `N` offload N layers.
+
+## Real-time voice pipeline (2026-08-08)
+
+The reply used to be generated in full before the TTS started, so latency to
+first audio was *whole generation* + *first synthesis*. Two independent causes:
+`voice-test` accumulated every token and called `speak(full)` after
+`chatStream` returned, and `playPcm()` opened a new PulseAudio stream per chunk
+(`pa_simple_new` → `write` → `drain` → `free`); since `drain()` blocks until the
+last sample is audible, synthesis of chunk N+1 did not even start until N had
+finished playing. The second cause is the important one — it guarantees a gap
+between chunks no matter how well the text is split.
+
+**Splitting by tokens is not an option.** Supertonic synthesizes each chunk with
+its own intonation contour; cut mid-sentence, it applies a falling
+end-of-sentence cadence. The fix is to detect the sentence boundary
+**incrementally** over the token stream and never synthesize a fragment:
+`completeSentenceEnd(buffer, minChars)` in `tts/onnx-utils`, which reuses the
+existing `isSentenceEnd()` (abbreviation list + digit guards) and only returns a
+cut once the character *after* the punctuation has been seen.
+
+Playback is one PulseAudio stream per turn (`labs/voice-test/audio.{hxx,cc}`):
+`pa_buffer_attr.tlength` bounds how far ahead the audio runs and
+`pa_simple_write` blocking on a full buffer paces the producer with no extra
+logic. `flushPlayback()` drops what is already queued on interrupt. If
+PulseAudio is missing, `openPlayback` returns false and the old per-chunk path
+is used — bounded degradation, not a failure. Three stages: generation (the
+`chatStream` callback turns tokens into sentences), synthesis and playback (both
+on the `speaker` thread). Single consumer, so sentences are synthesized one at a
+time and in order. Constants: `kMinSentenceChars = 24`,
+`kFirstSentenceMinChars = 0`, `kPlaybackLatencyMs = 700`.
+
+**A quality regression came free with the split, and is worth remembering.**
+`autoQuality()` picks diffusion steps from the length of the text it receives.
+`speak(full)` used to get 300+ characters → 8-10 steps; a lone sentence is
+almost always <100 → 5 steps. Quality dropped system-wide, and worse, it became
+*inconsistent within one reply* (a long sentence landed on Medium, short ones on
+Low) — that timbre change mid-reply is what was perceived as the TTS
+"stuttering". Fix, keeping `auto`: `autoQuality()` never returns `Low` (floor is
+`Medium`, `High` enters at score ≥2); `steps_low` 5→6, `steps_high` 10→12; and a
+per-device ceiling `HardwareProbe::ttsStepsCap()` (Minimal 5, Low 8, Balanced
+12, High 16) that `resolveSteps()` clamps against.
+
+`ThreadBudget::ttsThreads()` = `clamp(hardwareThreads()/2, 2, 8)`. Same split as
+`computeThreads()` with a lower cap: diffusion synthesis stops scaling around 8
+threads, so on a 64-thread server a larger share would only steal cores from the
+LLM. A first attempt at `steps_medium = 10` **with** threads lowered to 6 pushed
+a short sentence from 276 to 681 ms (RTF 0.70) — exactly the sentence on the
+critical path to first audio — and was reverted. Raising quality and lowering
+threads in the same measurement hides which one caused what.
+
+Measured RTF (synthesis time ÷ audio duration; <1 means synthesis stays ahead of
+playback): short sentence 0.53, two sentences 0.35, three 0.33, long sentence
+0.21, long multi-sentence 0.28. Incremental splitting is 7/7 in
+`labs/tts-probe`, including `stable=1` (result does not depend on how the text
+arrives split — tested with 1, 3, 7 and 64-character tokens) and `lossless=1`.
+
+**Barge-in**: the microphone is closed as soon as the first audio plays,
+otherwise the VAD hears Argus through the speakers and interrupts itself. Real
+barge-in during playback needs acoustic echo cancellation (WebRTC APM or
+similar) and is not implemented.
+
+## Video distribution over the `/sync` WebSocket (2026-08-08)
+
+WHEP/WebRTC straight from go2rtc to the phone only works inside the house: a
+tunnel cannot expose a peer-to-peer port, and making it work outside would need
+TURN. Media is therefore relayed as fMP4 over the backend's own port, and the
+bytes ride the already-authenticated `/sync` WebSocket rather than a separate
+HTTP route — which also keeps the JWT out of a player URL, where it would end up
+in the tunnel's logs. Video is only sent while the client asks for it
+(subscribe on entering the screen, unsubscribe on leaving), so the socket never
+carries more than what is being watched. Both C225 streams are used without
+transcoding: `stream2` (sub, ~640×360) for the preview grid, `stream1` for the
+detail view — MJPEG at 640×360 and 25 fps is ~6 Mbps, more than H.264 at 1080p.
+
+**The finding that forces the design**: `drogon::WebSocketConnection::send()`
+returns `void`. There is no write-completion callback, no high-water mark, and
+no way to know whether the socket drained. Pushing fragments at camera pace
+grows trantor's buffer without bound against a slow client until the RAM is
+gone. The HTTP relay survives by accident because `ResponseStream::send()`
+returns `false`. **Credit-based flow control is not a refinement — it is the
+only thing preventing the OOM.**
+
+`StreamHub` keeps one upstream per (camera, quality) rather than per viewer, so
+three people watching the same camera cost one go2rtc connection, and holds it
+for a grace period after the last subscriber leaves so switching screens does
+not restart it. fMP4 starts with `ftyp+moov`; the hub caches that init segment
+per upstream, sends it to every new subscriber before anything else, and joins
+the stream at the next keyframe. Skipping either step is the classic silent
+failure of this design: the player shows a black screen and reports nothing.
+
+Binary framing, 12-byte header: `0` magic `0xA7`, `1` version, `2` type
+(1=init, 2=media, 3=audio), `3` flags (bit0 = keyframe), `4..5` subId
+big-endian, `6..7` reserved, `8..11` seq big-endian.
 
 ## Runtime config writes (ConfigService)
 

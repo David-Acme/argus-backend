@@ -9,8 +9,8 @@ struct TapoTsConfig
   uint16_t pmtPid{0x1000};
   uint16_t audioPid{0x0100};
   uint16_t programNumber{1};
-  uint8_t streamType{0x06};
-  uint8_t streamId{0xBD};
+  uint8_t streamType{0x90};
+  uint8_t streamId{0xC0};
 };
 
 struct TapoTsFrame

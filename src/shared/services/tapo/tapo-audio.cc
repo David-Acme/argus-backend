@@ -1,6 +1,7 @@
 #include "tapo-audio.hxx"
 
 #include <algorithm>
+#include <cmath>
 #include <cstring>
 #include <fstream>
 
@@ -58,23 +59,47 @@ std::vector<int16_t> resample(const TapoResampleInput& input)
   if (input.sourceRate == input.targetRate)
     return input.samples;
 
+  constexpr int kSincHalf = 32;
+  const double cutoff = 0.9 * input.targetRate * 0.5;
+  const double fc = cutoff / input.sourceRate;
   const double ratio =
       static_cast<double>(input.sourceRate) / static_cast<double>(input.targetRate);
+
+  const auto window = [](int j) {
+    const double n = static_cast<double>(j + kSincHalf);
+    const double N = static_cast<double>(2 * kSincHalf);
+    return 0.42 - 0.5 * std::cos(2.0 * M_PI * n / N) +
+           0.08 * std::cos(4.0 * M_PI * n / N);
+  };
+  const auto tap = [fc](double t) {
+    if (std::fabs(t) < 1e-12)
+      return 2.0 * fc;
+    return std::sin(2.0 * M_PI * fc * t) / (M_PI * t);
+  };
+
   const size_t count =
       static_cast<size_t>(static_cast<double>(input.samples.size()) / ratio);
-
   std::vector<int16_t> out;
   out.reserve(count);
-  for (size_t i = 0; i < count; ++i) {
-    const double position = static_cast<double>(i) * ratio;
-    const size_t index = static_cast<size_t>(position);
-    const double fraction = position - static_cast<double>(index);
-    const int16_t current = input.samples[index];
-    const int16_t next =
-        index + 1 < input.samples.size() ? input.samples[index + 1] : current;
-    const double value = static_cast<double>(current) * (1.0 - fraction) +
-                         static_cast<double>(next) * fraction;
-    out.push_back(static_cast<int16_t>(value));
+
+  double pos = kSincHalf;
+  for (size_t i = 0; i < count && pos + kSincHalf < input.samples.size();
+       ++i, pos += ratio) {
+    const size_t i0 = static_cast<size_t>(pos);
+    const double fraction = pos - static_cast<double>(i0);
+    double acc = 0.0;
+    double wsum = 0.0;
+    for (int j = -kSincHalf; j <= kSincHalf; ++j) {
+      const long idx = static_cast<long>(i0) + j;
+      if (idx < 0 || idx >= static_cast<long>(input.samples.size()))
+        continue;
+      const double weight =
+          tap(static_cast<double>(j) - fraction) * window(j);
+      acc += static_cast<double>(input.samples[static_cast<size_t>(idx)]) *
+             weight;
+      wsum += weight;
+    }
+    out.push_back(static_cast<int16_t>(wsum > 1e-9 ? acc / wsum : 0.0));
   }
   return out;
 }

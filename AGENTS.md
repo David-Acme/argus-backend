@@ -422,6 +422,7 @@ Before any commit, verify: `cmake --build --preset dev -j 8` passes with
 | `labs/tapo-probe/` | `argus-tapo-probe` — validates the camera protocols against real hardware |
 | `labs/voice-test/` | `argus-voice-test` — STT → LLM → TTS conversation loop with Silero VAD |
 | `OPTIMIZATION_AND_MEMORY_PLAN.md` | Current plan: hardware-adaptive tiers, step elimination, person memory + LLM tools |
+| `STABILITY_AND_REALTIME_PLAN.md` | Current plan: fMP4 transport fixes, stateful audio resampling, VAD calibration, promoting proven `labs/` pieces into `src/` |
 | `src/shared/services/sqlite/` | DB client access (`DbService::client()`) |
 | `src/shared/services/config-service/` | `ConfigService` read + runtime writes (`setBool/...` persisten a `config.toml`, comentarios preservados) |
 | `src/shared/services/room/` | `RoomManager` local (rooms por módulo/usuario, `thread_local`) |

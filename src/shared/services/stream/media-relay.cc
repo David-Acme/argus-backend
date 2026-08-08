@@ -9,102 +9,11 @@
 #include <netinet/tcp.h>
 #include <shared/services/config-service/config-service.hxx>
 #include <shared/services/stream/go2rtc-manager.hxx>
+#include <shared/services/stream/upstream-http.hxx>
 #include <sys/socket.h>
 #include <thread>
 #include <unistd.h>
 #include <vector>
-
-namespace
-{
-
-struct Upstream
-{
-  int fd{-1};
-  std::string headers;
-  std::string leftover;
-  bool ok{false};
-};
-
-// Minimal blocking HTTP/1.1 GET against loopback. Drogon's HttpClient buffers
-// the whole body, which is wrong for an endless media stream.
-Upstream openUpstream(const std::string& host, int port,
-                      const std::string& path, int timeoutSec)
-{
-  Upstream up;
-  up.fd = ::socket(AF_INET, SOCK_STREAM, 0);
-  if (up.fd < 0)
-    return up;
-
-  sockaddr_in addr{};
-  addr.sin_family = AF_INET;
-  addr.sin_port = htons(static_cast<uint16_t>(port));
-  if (::inet_pton(AF_INET, host.c_str(), &addr.sin_addr) != 1) {
-    ::close(up.fd);
-    up.fd = -1;
-    return up;
-  }
-
-  timeval tv{};
-  tv.tv_sec = timeoutSec;
-  ::setsockopt(up.fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
-  ::setsockopt(up.fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
-  const int one = 1;
-  ::setsockopt(up.fd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof(one));
-
-  if (::connect(up.fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) != 0) {
-    ::close(up.fd);
-    up.fd = -1;
-    return up;
-  }
-
-  const std::string req = "GET " + path +
-                          " HTTP/1.1\r\nHost: " + host +
-                          "\r\nConnection: close\r\nUser-Agent: argus\r\n\r\n";
-  if (::send(up.fd, req.data(), req.size(), 0) < 0) {
-    ::close(up.fd);
-    up.fd = -1;
-    return up;
-  }
-
-  std::string buf;
-  char tmp[4096];
-  while (buf.find("\r\n\r\n") == std::string::npos) {
-    const auto n = ::recv(up.fd, tmp, sizeof(tmp), 0);
-    if (n <= 0) {
-      ::close(up.fd);
-      up.fd = -1;
-      return up;
-    }
-    buf.append(tmp, static_cast<size_t>(n));
-    if (buf.size() > 16384)
-      break;
-  }
-
-  const auto sep = buf.find("\r\n\r\n");
-  if (sep == std::string::npos) {
-    ::close(up.fd);
-    up.fd = -1;
-    return up;
-  }
-  up.headers = buf.substr(0, sep);
-  up.leftover = buf.substr(sep + 4);
-  up.ok = up.headers.find(" 200") != std::string::npos;
-  if (!up.ok) {
-    ::close(up.fd);
-    up.fd = -1;
-  }
-  return up;
-}
-
-std::pair<std::string, int> splitHostPort(const std::string& addr)
-{
-  const auto colon = addr.find(':');
-  if (colon == std::string::npos)
-    return {addr, 80};
-  return {addr.substr(0, colon), std::atoi(addr.c_str() + colon + 1)};
-}
-
-} // namespace
 
 const char* toString(MediaFormat format)
 {
@@ -224,7 +133,7 @@ drogon::HttpResponsePtr MediaRelay::stream(int64_t cameraId, MediaFormat format)
     return resp;
   }
 
-  const auto [host, port] = splitHostPort(Go2rtcManager::apiBase().substr(7));
+  const auto [host, port] = upstream_http::splitHostPort(Go2rtcManager::apiBase().substr(7));
   const std::string path = upstreamPath(cameraId, format);
 
   const char* contentType = "video/mp4";
@@ -238,7 +147,7 @@ drogon::HttpResponsePtr MediaRelay::stream(int64_t cameraId, MediaFormat format)
         auto shared =
             std::make_shared<drogon::ResponseStreamPtr>(std::move(stream));
         std::thread([cameraId, host, port, path, shared]() {
-          Upstream up = openUpstream(host, port, path, 10);
+          upstream_http::Upstream up = upstream_http::open(host, port, path, 10);
           if (!up.ok) {
             LOG_WARN << "MediaRelay: upstream failed for cam" << cameraId;
             (*shared)->close();
@@ -298,11 +207,11 @@ drogon::HttpResponsePtr MediaRelay::snapshot(int64_t cameraId)
     return resp;
   }
 
-  const auto [host, port] = splitHostPort(Go2rtcManager::apiBase().substr(7));
+  const auto [host, port] = upstream_http::splitHostPort(Go2rtcManager::apiBase().substr(7));
   const std::string path =
       "/api/frame.jpeg?src=" + Go2rtcManager::streamName(cameraId);
 
-  Upstream up = openUpstream(host, port, path, 5);
+  upstream_http::Upstream up = upstream_http::open(host, port, path, 5);
   if (!up.ok) {
     auto resp = drogon::HttpResponse::newHttpResponse();
     resp->setStatusCode(drogon::k502BadGateway);

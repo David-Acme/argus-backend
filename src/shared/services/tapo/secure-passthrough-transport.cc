@@ -39,6 +39,50 @@ int errorCodeOf(const Json::Value& response)
   return 0;
 }
 
+std::string pytapoJson(const Json::Value& value)
+{
+  if (value.isObject()) {
+    std::string out = "{";
+    for (auto it = value.begin(); it != value.end(); ++it) {
+      if (out.size() > 1)
+        out += ", ";
+      out += "\"" + it.name() + "\": " + pytapoJson(*it);
+    }
+    out += "}";
+    return out;
+  }
+  if (value.isArray()) {
+    std::string out = "[";
+    for (const auto& element : value) {
+      if (out.size() > 1)
+        out += ", ";
+      out += pytapoJson(element);
+    }
+    out += "]";
+    return out;
+  }
+  if (value.isString()) {
+    std::string out = "\"";
+    for (const char c : value.asString()) {
+      if (c == '"')
+        out += "\\\"";
+      else if (c == '\\')
+        out += "\\\\";
+      else
+        out += c;
+    }
+    out += "\"";
+    return out;
+  }
+  if (value.isBool())
+    return value.asBool() ? "true" : "false";
+  if (value.isNull())
+    return "null";
+  if (value.isInt64() || value.isUInt64())
+    return std::to_string(value.asInt64());
+  return json_util::toString(value);
+}
+
 } // namespace
 
 SecurePassthroughTransport::SecurePassthroughTransport(TapoCredentials credentials)
@@ -141,6 +185,10 @@ bool SecurePassthroughTransport::resolveHashAlgorithm(const HandshakeData& hands
     hashedPassword_ = md5Password;
     return true;
   }
+
+  LOG_WARN << "tapo: device_confirm mismatch (sha256=" << sha256Confirm
+           << " md5=" << md5Confirm << " cnonce=" << cnonce_
+           << " nonce=" << handshake.nonce << ")";
   return false;
 }
 
@@ -192,14 +240,14 @@ TapoResult SecurePassthroughTransport::login()
   authenticated_ = true;
 
   LOG_INFO << "tapo: secure passthrough session established with "
-           << credentials_.host << " (hash=" << tapoHashAlgorithmToString(hashAlgorithm_)
-           << ")";
+           << credentials_.host << " (hash="
+           << tapoHashAlgorithmToString(hashAlgorithm_) << ")";
   return TapoResult::success(result);
 }
 
 TapoResult SecurePassthroughTransport::sendEncrypted(const Json::Value& payload)
 {
-  const std::string plain = json_util::toString(payload);
+  const std::string plain = pytapoJson(payload);
   const int64_t seq = seq_++;
 
   const auto cipher = tapo_crypto::aes128CbcEncrypt(
@@ -210,9 +258,11 @@ TapoResult SecurePassthroughTransport::sendEncrypted(const Json::Value& payload)
   Json::Value envelope(Json::objectValue);
   envelope["method"] = "securePassthrough";
   envelope["params"]["request"] = tapo_crypto::base64Encode(cipher);
+  const std::string envelopePlain = pytapoJson(envelope);
 
   const std::string tag = tapo_crypto::sha256Hex(
-      tapo_crypto::sha256Hex(hashedPassword_ + cnonce_) + plain + std::to_string(seq));
+      tapo_crypto::sha256Hex(hashedPassword_ + cnonce_) + envelopePlain +
+      std::to_string(seq));
 
   TapoHttpRequest request;
   request.endpoint = endpointOf(credentials_);
@@ -222,7 +272,7 @@ TapoResult SecurePassthroughTransport::sendEncrypted(const Json::Value& payload)
   request.headers.push_back({"Referer", "https://" + credentials_.host});
   request.headers.push_back({"Seq", std::to_string(seq)});
   request.headers.push_back({"Tapo_tag", tag});
-  request.body = json_util::toString(envelope);
+  request.body = envelopePlain;
 
   const auto response = TapoHttp::send(request);
   if (!response.ok)
@@ -234,8 +284,11 @@ TapoResult SecurePassthroughTransport::sendEncrypted(const Json::Value& payload)
     return TapoResult::failure("malformed response body");
 
   const int code = errorCodeOf(outer);
-  if (!outer["result"].isMember("response"))
+  if (!outer["result"].isMember("response")) {
+    LOG_WARN << "tapo: response without payload, outer="
+             << json_util::toString(outer) << " seq=" << seq;
     return TapoResult::failure("response without payload", code);
+  }
 
   const auto decoded = tapo_crypto::base64Decode(outer["result"]["response"].asString());
   const auto clear = tapo_crypto::aes128CbcDecrypt(
@@ -258,23 +311,26 @@ TapoResult SecurePassthroughTransport::sendEncrypted(const Json::Value& payload)
 
 TapoResult SecurePassthroughTransport::request(const Json::Value& payload)
 {
-  if (!authenticated_) {
-    const auto session = login();
-    if (!session.ok)
-      return session;
+  for (int attempt = 0; attempt < 3; ++attempt) {
+    if (!authenticated_) {
+      const auto session = login();
+      if (!session.ok)
+        return session;
+    }
+
+    auto result = sendEncrypted(payload);
+    const bool expired =
+        !result.ok &&
+        (result.errorCode == kTokenExpiredCode ||
+         result.errorCode == kGenericFailureCode ||
+         result.error == "cannot decrypt response");
+    if (!expired)
+      return result;
+
+    LOG_DEBUG << "tapo: session expired, re-authenticating (attempt "
+              << attempt + 1 << ")";
+    authenticated_ = false;
   }
 
-  auto result = sendEncrypted(payload);
-  const bool expired = !result.ok && (result.errorCode == kTokenExpiredCode ||
-                                      result.errorCode == kGenericFailureCode ||
-                                      result.error == "cannot decrypt response");
-  if (!expired)
-    return result;
-
-  LOG_DEBUG << "tapo: session expired, re-authenticating";
-  authenticated_ = false;
-  const auto session = login();
-  if (!session.ok)
-    return session;
   return sendEncrypted(payload);
 }

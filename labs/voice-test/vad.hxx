@@ -17,13 +17,13 @@ public:
   {
     int sampleRate{16000};
     // Speech probability threshold to start a turn.
-    float threshold{0.5F};
+    float threshold{0.4F};
     // Lower probability to end a turn (hysteresis, avoids jitter).
     float negThreshold{0.35F};
     // Min speech frames (32ms each) to accept a turn start.
-    int minSpeechFrames{8};
-    // Min silence frames (32ms each) to close a turn (~500ms).
-    int minSilenceFrames{16};
+    int minSpeechFrames{5};
+    // Min silence frames (32ms each) to close a turn (~256ms).
+    int minSilenceFrames{8};
     // Hard cap on a turn in frames (32ms each).
     int maxTurnFrames{750};
     // Audio (frames) kept before the detected speech start so the leading
@@ -44,6 +44,9 @@ public:
   // True while the current turn is actively capturing speech.
   bool inSpeech() const;
 
+  // Probability of the last processed window (diagnostics).
+  float lastProb() const;
+
   void reset();
 
 private:
@@ -63,4 +66,5 @@ private:
   int frameCounter_{0};
   std::vector<float> buffer_;
   std::vector<float> preRoll_;
+  float lastProb_{0.0F};
 };

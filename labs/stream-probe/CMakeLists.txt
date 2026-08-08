@@ -2,6 +2,9 @@ add_executable(argus-stream-probe
     stream-probe.cc
     ${SRC_ROOT}/shared/services/config-service/config-service.cc
     ${SRC_ROOT}/shared/services/stream/go2rtc-manager.cc
+    ${SRC_ROOT}/shared/services/stream/stream-hub.cc
+    ${SRC_ROOT}/shared/services/stream/upstream-http.cc
+    ${SRC_ROOT}/shared/services/stream/ws-frame.cc
 )
 target_include_directories(argus-stream-probe PRIVATE ${SRC_ROOT})
 target_link_libraries(argus-stream-probe PRIVATE

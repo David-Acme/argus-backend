@@ -2,6 +2,7 @@ set(VOICE_TEST_SRC
     voice-test.cc
     audio.cc
     vad.cc
+    camera-audio.cc
 )
 
 set(VOICE_SERVICE_SRC
@@ -13,6 +14,12 @@ set(VOICE_SERVICE_SRC
     ${SRC_ROOT}/shared/services/tts/onnx-utils.cc
     ${SRC_ROOT}/shared/services/tts/style.cc
     ${SRC_ROOT}/shared/services/tts/unicode-processor.cc
+    ${SRC_ROOT}/shared/services/vision/vision-service.cc
+    ${SRC_ROOT}/shared/services/tapo/tapo-audio.cc
+    ${SRC_ROOT}/shared/services/tapo/tapo-crypto.cc
+    ${SRC_ROOT}/shared/services/tapo/tapo-http.cc
+    ${SRC_ROOT}/shared/services/tapo/tapo-talk-client.cc
+    ${SRC_ROOT}/shared/services/tapo/tapo-ts-muxer.cc
     ${SRC_ROOT}/shared/wrapper/thread-budget/thread-budget.cc
     ${SRC_ROOT}/shared/wrapper/hardware-profile/hardware-profile.cc
 )
@@ -21,6 +28,10 @@ add_executable(argus-voice-test
     ${VOICE_TEST_SRC}
     ${VOICE_SERVICE_SRC}
 )
+
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(FFMPEG REQUIRED IMPORTED_TARGET
+    libavformat libavcodec libavutil libswscale)
 
 target_include_directories(argus-voice-test
     PRIVATE
@@ -42,11 +53,15 @@ target_link_libraries(argus-voice-test
         ${ARGUS_LLAMA_TARGETS}
         onnxruntime::onnxruntime
         tomlplusplus::tomlplusplus
+        opencv::opencv
         ${ARGUS_SHERPA_ONNX_TARGET}
         ${CONAN_LIBS}
         portaudio
         pulse-simple
         pulse
+        OpenSSL::SSL
+        OpenSSL::Crypto
+        PkgConfig::FFMPEG
 )
 
 set_target_properties(argus-voice-test PROPERTIES

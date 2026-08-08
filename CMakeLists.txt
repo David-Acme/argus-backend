@@ -148,4 +148,7 @@ add_custom_command(
     COMMAND ${CMAKE_COMMAND} -E create_symlink
             ${CMAKE_SOURCE_DIR}/certs
             $<TARGET_FILE_DIR:${PROJECT_NAME}>/certs
+    COMMAND ${CMAKE_COMMAND} -E create_symlink
+            ${CMAKE_SOURCE_DIR}/third_party/go2rtc
+            $<TARGET_FILE_DIR:${PROJECT_NAME}>/third_party/go2rtc
 )

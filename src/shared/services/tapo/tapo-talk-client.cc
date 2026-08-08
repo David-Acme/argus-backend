@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cctype>
 #include <chrono>
+#include <cmath>
 #include <cstdlib>
 #include <drogon/drogon.h>
 #include <shared/services/tapo/tapo-audio.hxx>
@@ -30,13 +31,70 @@ std::string between(const std::string& text, const std::string& open,
                     const std::string& close)
 {
   const size_t begin = text.find(open);
-  if (begin == std::string::npos)
-    return {};
+  if (begin == std::string::npos)    return {};
   const size_t start = begin + open.size();
   const size_t end = text.find(close, start);
   if (end == std::string::npos)
     return {};
   return text.substr(start, end - start);
+}
+
+struct Biquad
+{
+  double b0{1}, b1{0}, b2{0}, a1{0}, a2{0};
+  double z1{0}, z2{0};
+
+  void apply(std::vector<double>& samples)
+  {
+    for (auto& s : samples) {
+      const double out = b0 * s + z1;
+      z1 = b1 * s - a1 * out + z2;
+      z2 = b2 * s - a2 * out;
+      s = out;
+    }
+  }
+};
+
+std::vector<int16_t> equalizeForSpeaker(const std::vector<int16_t>& samples)
+{
+  constexpr double kFs = 8000.0;
+  std::vector<double> buf;
+  buf.reserve(samples.size());
+  for (const auto s : samples)
+    buf.push_back(s);
+
+  Biquad highPass;
+  {
+    const double w0 = 2.0 * M_PI * 150.0 / kFs;
+    const double alpha = std::sin(w0) / (2.0 * 0.707);
+    const double a0 = 1.0 + alpha;
+    highPass.b0 = (1.0 + std::cos(w0)) / 2.0 / a0;
+    highPass.b1 = -(1.0 + std::cos(w0)) / a0;
+    highPass.b2 = highPass.b0;
+    highPass.a1 = -2.0 * std::cos(w0) / a0;
+    highPass.a2 = (1.0 - alpha) / a0;
+  }
+  highPass.apply(buf);
+
+  Biquad presence;
+  {
+    const double w0 = 2.0 * M_PI * 2500.0 / kFs;
+    const double alpha = std::sin(w0) / (2.0 * 1.0);
+    const double amp = std::pow(10.0, 4.0 / 40.0);
+    const double a0 = 1.0 + alpha / amp;
+    presence.b0 = (1.0 + alpha * amp) / a0;
+    presence.b1 = (-2.0 * std::cos(w0)) / a0;
+    presence.b2 = (1.0 - alpha * amp) / a0;
+    presence.a1 = (-2.0 * std::cos(w0)) / a0;
+    presence.a2 = (1.0 - alpha / amp) / a0;
+  }
+  presence.apply(buf);
+
+  std::vector<int16_t> out;
+  out.reserve(buf.size());
+  for (const auto v : buf)
+    out.push_back(static_cast<int16_t>(std::clamp(v, -32768.0, 32767.0)));
+  return out;
 }
 
 } // namespace
@@ -263,11 +321,19 @@ TapoResult TapoTalkClient::startSession()
   sessionId_ = part.header("X-Session-Id");
   const Json::Value answer = json_util::fromString(part.body);
   if (sessionId_.empty() && answer.isObject()) {
-    const auto& talk = answer["params"]["talk"];
+    const auto& params = answer["params"];
+    const auto& talk = params["talk"];
+    const auto extract = [](const Json::Value& node) -> std::string {
+      if (node.isString())
+        return node.asString();
+      if (node.isInt64())
+        return std::to_string(node.asInt64());
+      return {};
+    };
     if (talk.isMember("session_id"))
-      sessionId_ = talk["session_id"].isString()
-                       ? talk["session_id"].asString()
-                       : std::to_string(talk["session_id"].asInt64());
+      sessionId_ = extract(talk["session_id"]);
+    else if (params.isMember("session_id"))
+      sessionId_ = extract(params["session_id"]);
   }
   if (sessionId_.empty())
     return TapoResult::failure("talk session id not returned: " + part.body);
@@ -305,7 +371,18 @@ TapoResult TapoTalkClient::send(const TapoTalkAudio& audio, const CancellationTo
   const auto mono = tapo_audio::resample({.samples = audio.samples,
                                           .sourceRate = audio.sampleRate,
                                           .targetRate = kTargetSampleRate});
-  const auto encoded = tapo_audio::encodeALaw(mono);
+  const auto equalized = equalizeForSpeaker(mono);
+  int16_t peak = 1;
+  for (const auto sample : equalized)
+    if (std::abs(sample) > peak)
+      peak = std::abs(sample);
+  const double gain = std::min(3.0, 26000.0 / peak);
+  std::vector<int16_t> gained;
+  gained.reserve(equalized.size());
+  for (const auto sample : equalized)
+    gained.push_back(static_cast<int16_t>(
+        std::clamp(static_cast<double>(sample) * gain, -32768.0, 32767.0)));
+  const auto encoded = tapo_audio::encodeALaw(gained);
   const size_t packetBytes =
       static_cast<size_t>(kTargetSampleRate * config_.packetMs / 1000);
   if (packetBytes == 0)

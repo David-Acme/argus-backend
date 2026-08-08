@@ -8,6 +8,7 @@
 #include <mtmd.h>
 #include <opencv2/imgproc.hpp>
 #include <shared/services/config-service/config-service.hxx>
+#include <shared/wrapper/ai-init/ai-init.hxx>
 #include <shared/wrapper/blocking-task/blocking-task.hxx>
 #include <shared/wrapper/hardware-profile/hardware-profile.hxx>
 #include <shared/wrapper/thread-budget/thread-budget.hxx>
@@ -72,6 +73,8 @@ size_t VisionService::cacheNext_ = 0;
 void VisionService::init()
 {
   try {
+    std::lock_guard<std::mutex> lock(ai_init::llamaMutex());
+
     if (!HardwareProbe::vlmEnabled()) {
       LOG_WARN << "Vision: disabled on tier " << toString(HardwareProbe::get().tier);
       return;

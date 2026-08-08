@@ -18,6 +18,9 @@
 #include <shared/services/room/adapter/room-manager-service-adapter.hxx>
 #include <shared/services/sqlite/db-service.hxx>
 #include <shared/services/stt/adapter/stt-service-adapter.hxx>
+#include <shared/services/stream/go2rtc-manager.hxx>
+#include <shared/services/stream/media-relay.hxx>
+#include <shared/services/stream/stream-hub.hxx>
 #include <shared/services/tts/adapter/tts-service-adapter.hxx>
 #include <shared/services/vision/adapter/vision-service-adapter.hxx>
 #include <shared/wrapper/qr/qr-render.hxx>
@@ -173,6 +176,10 @@ int Application::run()
     return 1;
   }
 
+  Go2rtcManager::init();
+  MediaRelay::init();
+  StreamHub::init();
+
   if (!FaceService::isLoaded()) {
     LOG_WARN << "FaceService not loaded — face recognition disabled. "
              << "Run scripts/setup.sh to download models.";
@@ -187,6 +194,9 @@ int Application::run()
 
 void Application::shutdown()
 {
+  StreamHub::shutdown();
+  MediaRelay::shutdown();
+  Go2rtcManager::shutdown();
   registry_.shutdownAll();
   llama_backend_free();
 }

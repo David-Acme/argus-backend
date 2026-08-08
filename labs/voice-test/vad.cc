@@ -87,6 +87,7 @@ bool Vad::process(const float* samples, int count, std::vector<float>& outTurn)
 
     float prob = 0.0F;
     runModel(window.data(), kEffectiveWindow, prob);
+    lastProb_ = prob;
 
     if (prob >= cfg_.threshold) {
       startCounter_++;
@@ -144,6 +145,11 @@ bool Vad::process(const float* samples, int count, std::vector<float>& outTurn)
 bool Vad::inSpeech() const
 {
   return speech_;
+}
+
+float Vad::lastProb() const
+{
+  return lastProb_;
 }
 
 void Vad::reset()

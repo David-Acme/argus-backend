@@ -15,6 +15,11 @@ void SyncSocket::handleNewMessage(const drogon::WebSocketConnectionPtr& conn,
                                   std::string&& message,
                                   const drogon::WebSocketMessageType& type)
 {
+  if (type == drogon::WebSocketMessageType::Binary) {
+    LOG_WARN << "SyncSocket: received " << message.size()
+             << " bytes of binary data (audio upload not wired yet)";
+    return;
+  }
   if (type != drogon::WebSocketMessageType::Text)
     return;
   if (message.size() > kMaxMessageSize)
