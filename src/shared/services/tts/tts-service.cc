@@ -8,6 +8,7 @@
 #include <drogon/drogon.h>
 #include <shared/services/config-service/config-service.hxx>
 #include <shared/wrapper/blocking-task/blocking-task.hxx>
+#include <shared/wrapper/hardware-profile/hardware-profile.hxx>
 #include <shared/wrapper/thread-budget/thread-budget.hxx>
 #include <thread>
 
@@ -31,7 +32,7 @@ void TtsService::init()
     const std::string onnxDir = "models/tts/onnx";
     const std::string voicesDir = "models/tts/voice_styles";
 
-    auto nThreads = ThreadBudget::computeThreads();
+    auto nThreads = ThreadBudget::ttsThreads();
     if (const int cfg = ConfigService::getInt("tts.threads"); cfg > 0)
       nThreads = cfg;
 
@@ -226,9 +227,10 @@ TtsQuality TtsService::resolveQuality(const TtsRequest& req)
 
 int TtsService::resolveSteps(TtsQuality quality)
 {
-  int low = std::clamp(ConfigService::getInt("tts.steps_low"), 1, 50);
-  int medium = std::clamp(ConfigService::getInt("tts.steps_medium"), 1, 50);
-  int high = std::clamp(ConfigService::getInt("tts.steps_high"), 1, 50);
+  const int cap = HardwareProbe::ttsStepsCap();
+  int low = std::clamp(ConfigService::getInt("tts.steps_low"), 1, cap);
+  int medium = std::clamp(ConfigService::getInt("tts.steps_medium"), 1, cap);
+  int high = std::clamp(ConfigService::getInt("tts.steps_high"), 1, cap);
   switch (quality) {
     case TtsQuality::Low:
       return low;
@@ -265,11 +267,9 @@ TtsQuality TtsService::autoQuality(const std::string& text)
   if (sentences > 3)
     score += 1;
 
-  if (score >= 3)
+  if (score >= 2)
     return TtsQuality::High;
-  if (score >= 1)
-    return TtsQuality::Medium;
-  return TtsQuality::Low;
+  return TtsQuality::Medium;
 }
 
 const Style& TtsService::resolveVoice(const std::string& voiceId)

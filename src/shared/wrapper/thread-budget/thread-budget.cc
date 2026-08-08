@@ -37,4 +37,9 @@ int inferenceSlots()
   return std::clamp(hardwareThreads() / 8, 1, 4);
 }
 
+int ttsThreads()
+{
+  return std::clamp(hardwareThreads() / 2, 2, 8);
+}
+
 } // namespace ThreadBudget

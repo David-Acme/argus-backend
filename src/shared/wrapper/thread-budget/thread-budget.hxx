@@ -28,4 +28,9 @@ int lightThreads();
 // Scales with hardware so small machines stay responsive.
 int inferenceSlots();
 
+// Speech synthesis threads. Same share as computeThreads() but capped lower:
+// synthesis now overlaps with token generation, and it stops scaling past
+// ~8 threads, so a bigger slice only steals cores from the LLM.
+int ttsThreads();
+
 } // namespace ThreadBudget

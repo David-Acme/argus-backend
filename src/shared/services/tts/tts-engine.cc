@@ -5,6 +5,8 @@
 #include "unicode-processor.hxx"
 
 #include <algorithm>
+#include <cmath>
+#include <shared/services/config-service/config-service.hxx>
 #include <stdexcept>
 
 TtsEngine::TtsEngine(const Config& cfg, UnicodeProcessor* processor,
@@ -19,6 +21,10 @@ TtsEngine::TtsEngine(const Config& cfg, UnicodeProcessor* processor,
 {
   sampleRate_ = cfg_.ae.sampleRate;
   baseChunkSize_ = cfg_.ae.baseChunkSize;
+  if (const int v = ConfigService::getInt("tts.edge_silence_ms"); v >= 0)
+    edgeSilenceMs_ = v;
+  if (const int v = ConfigService::getInt("tts.join_silence_ms"); v >= 0)
+    joinSilenceMs_ = v;
   chunkCompressFactor_ = cfg_.ttl.chunkCompressFactor;
   ldim_ = cfg_.ttl.latentDim;
 }
@@ -297,6 +303,45 @@ TtsEngine::Result TtsEngine::infer(const std::vector<std::string>& textList,
   return result;
 }
 
+
+namespace
+{
+
+size_t leadingSilence(const std::vector<float>& wav, float threshold)
+{
+  size_t i = 0;
+  while (i < wav.size() && std::fabs(wav[i]) < threshold)
+    ++i;
+  return i;
+}
+
+size_t trailingSilence(const std::vector<float>& wav, float threshold)
+{
+  if (wav.empty())
+    return 0;
+  size_t i = wav.size();
+  while (i > 0 && std::fabs(wav[i - 1]) < threshold)
+    --i;
+  return wav.size() - i;
+}
+
+void appendTrimmed(std::vector<float>& dst, const std::vector<float>& src,
+                   float threshold, size_t keepLead, size_t keepTail)
+{
+  const size_t lead = leadingSilence(src, threshold);
+  const size_t tail = trailingSilence(src, threshold);
+  if (lead + tail >= src.size()) {
+    dst.insert(dst.end(), src.begin(), src.end());
+    return;
+  }
+  const size_t begin = lead > keepLead ? lead - keepLead : 0;
+  const size_t end = src.size() - (tail > keepTail ? tail - keepTail : 0);
+  dst.insert(dst.end(), src.begin() + static_cast<long>(begin),
+             src.begin() + static_cast<long>(end));
+}
+
+} // namespace
+
 TtsEngine::Result TtsEngine::synthesize(const std::string& text,
                                         const std::string& lang,
                                         const Style& style, int totalStep,
@@ -310,28 +355,33 @@ TtsEngine::Result TtsEngine::synthesize(const std::string& text,
   int maxLen = (lang == "ko" || lang == "ja") ? 120 : 300;
   auto textList = chunkText(text, maxLen);
 
+  // Every chunk the model returns is padded with ~300-500 ms of silence at
+  // both ends. Concatenating raw chunks stacks one chunk's tail onto the next
+  // chunk's head, which measured 565 ms at the boundary and reads to the ear
+  // as "the assistant finished talking". Each chunk is trimmed to a small
+  // controlled margin and joined with joinSilenceMs_ instead.
+  const float threshold = 1e-3f;
+  const size_t keepEdge =
+      static_cast<size_t>(0.001f * edgeSilenceMs_ * sampleRate_);
+  const size_t joinSamples =
+      static_cast<size_t>(0.001f * joinSilenceMs_ * sampleRate_);
+
   std::vector<float> wavCat;
   float durCat = 0.0f;
 
   for (const auto& chunk : textList) {
     auto result = infer({chunk}, {lang}, style, totalStep, speed);
-
-    if (wavCat.empty()) {
-      wavCat = std::move(result.wav);
-      durCat = result.duration[0];
-    }
-    else {
-      // No artificial silence between chunks: the model already produces the
-      // natural inter-sentence pause at each chunk boundary. Adding a fixed
-      // 0.3s here stacks on top of that and creates the audible 1-2s gaps.
-      wavCat.insert(wavCat.end(), result.wav.begin(), result.wav.end());
-      durCat += result.duration[0];
-    }
+    if (!wavCat.empty() && joinSamples > 0)
+      wavCat.insert(wavCat.end(), joinSamples, 0.0f);
+    appendTrimmed(wavCat, result.wav, threshold, keepEdge, keepEdge);
+    durCat += result.duration[0];
   }
 
   Result finalResult;
   finalResult.wav = std::move(wavCat);
-  finalResult.duration = {durCat};
+  finalResult.duration = {static_cast<float>(finalResult.wav.size()) /
+                          static_cast<float>(sampleRate_)};
+  (void)durCat;
 
   return finalResult;
 }

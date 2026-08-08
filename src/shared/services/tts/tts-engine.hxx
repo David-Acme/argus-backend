@@ -57,6 +57,8 @@ private:
 
   int sampleRate_;
   int baseChunkSize_;
+  int edgeSilenceMs_{40};
+  int joinSilenceMs_{90};
   int chunkCompressFactor_;
   int ldim_;
 

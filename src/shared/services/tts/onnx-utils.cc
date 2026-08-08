@@ -4,6 +4,7 @@
 #include "unicode-processor.hxx"
 
 #include <algorithm>
+#include <cctype>
 #include <fstream>
 #include <nlohmann/json.hpp>
 #include <regex>
@@ -304,6 +305,117 @@ static std::string trim(const std::string& str)
   return str.substr(start, end - start);
 }
 
+
+namespace
+{
+
+bool isSentenceEnd(const std::string& text, size_t dot)
+{
+  const char c = text[dot];
+  if (c == '!' || c == '?')
+    return true;
+  if (c != '.')
+    return false;
+
+  if (dot + 1 < text.size() && std::isdigit(static_cast<unsigned char>(text[dot + 1])))
+    return false;
+  if (dot > 0 && std::isdigit(static_cast<unsigned char>(text[dot - 1])))
+    return false;
+
+  size_t begin = dot;
+  while (begin > 0) {
+    const auto prev = static_cast<unsigned char>(text[begin - 1]);
+    if (std::isspace(prev) || prev == '.')
+      break;
+    --begin;
+  }
+  std::string word = text.substr(begin, dot - begin);
+  for (auto& ch : word)
+    ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+
+  static const std::vector<std::string> kAbbrev = {
+      "sr",  "sra", "srta", "dr",   "dra", "ud",  "uds", "etc", "vs",
+      "ej",  "av",  "pag",  "num",  "tel", "min", "max", "aprox",
+      "mr",  "mrs", "ms",   "prof", "st",  "no",  "vol", "fig"};
+  for (const auto& a : kAbbrev)
+    if (word == a)
+      return false;
+
+  if (word.size() == 1 && std::isalpha(static_cast<unsigned char>(word[0])))
+    return false;
+
+  return true;
+}
+
+std::vector<std::string> splitSentences(const std::string& paragraph)
+{
+  std::vector<std::string> out;
+  size_t start = 0;
+  for (size_t i = 0; i < paragraph.size(); ++i) {
+    const char c = paragraph[i];
+    if (c != '.' && c != '!' && c != '?')
+      continue;
+    size_t after = i + 1;
+    while (after < paragraph.size() &&
+           (paragraph[after] == '.' || paragraph[after] == '!' ||
+            paragraph[after] == '?' || paragraph[after] == '"' ||
+            paragraph[after] == '\''))
+      ++after;
+    if (after >= paragraph.size())
+      break;
+    if (!std::isspace(static_cast<unsigned char>(paragraph[after])))
+      continue;
+    if (!isSentenceEnd(paragraph, i))
+      continue;
+    size_t next = after;
+    while (next < paragraph.size() &&
+           std::isspace(static_cast<unsigned char>(paragraph[next])))
+      ++next;
+    out.push_back(paragraph.substr(start, next - start));
+    start = next;
+    i = next - 1;
+  }
+  if (start < paragraph.size()) {
+    std::string tail = paragraph.substr(start);
+    if (!trim(tail).empty())
+      out.push_back(std::move(tail));
+  }
+  return out;
+}
+
+} // namespace
+
+size_t completeSentenceEnd(const std::string& buffer, size_t minChars)
+{
+  for (size_t i = 0; i < buffer.size(); ++i) {
+    const char c = buffer[i];
+    if (c != '.' && c != '!' && c != '?')
+      continue;
+    size_t after = i + 1;
+    while (after < buffer.size() &&
+           (buffer[after] == '.' || buffer[after] == '!' ||
+            buffer[after] == '?' || buffer[after] == '"' ||
+            buffer[after] == '\''))
+      ++after;
+    if (after >= buffer.size())
+      return 0;
+    if (!std::isspace(static_cast<unsigned char>(buffer[after])))
+      continue;
+    if (!isSentenceEnd(buffer, i))
+      continue;
+    size_t next = after;
+    while (next < buffer.size() &&
+           std::isspace(static_cast<unsigned char>(buffer[next])))
+      ++next;
+    if (next >= buffer.size())
+      return 0;
+    if (next < minChars)
+      continue;
+    return next;
+  }
+  return 0;
+}
+
 std::vector<std::string> chunkText(const std::string& text, int maxLen)
 {
   std::vector<std::string> chunks;
@@ -324,22 +436,7 @@ std::vector<std::string> chunkText(const std::string& text, int maxLen)
   }
 
   for (const auto& paragraph : paragraphs) {
-    std::sregex_token_iterator sentIter(paragraph.begin(), paragraph.end(),
-                                        sentenceRe, -1);
-    std::sregex_token_iterator sentEnd;
-
-    std::vector<std::string> sentences;
-    for (; sentIter != sentEnd; ++sentIter) {
-      std::string sentence = *sentIter;
-      if (!sentence.empty()) {
-        std::smatch match;
-        if (std::regex_search(sentIter->first, paragraph.end(), match,
-                              sentenceRe)) {
-          sentence += match.str();
-        }
-        sentences.push_back(sentence);
-      }
-    }
+    std::vector<std::string> sentences = splitSentences(paragraph);
 
     std::string currentChunk;
     for (const auto& sentence : sentences) {
