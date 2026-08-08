@@ -63,20 +63,43 @@ void printPairingBanner()
     c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
   host += ".local";
   const int port = ConfigService::getInt("mdns.port");
+  const std::string scheme = "https";
+  const std::string serviceType = ConfigService::getString("mdns.service_type");
+
+  Json::Value payload(Json::objectValue);
+  payload["host"] = host;
+  payload["port"] = port;
+  payload["scheme"] = scheme;
+  payload["code"] = code;
+  payload["instanceId"] = CertService::instanceId();
+  payload["caFingerprint"] = CertService::caFingerprint();
+  payload["serverFingerprint"] = CertService::serverFingerprint();
+  payload["serviceType"] = serviceType;
+  Json::Value txt(Json::objectValue);
+  for (const auto& [key, value] : ConfigService::getStringPairs("mdns.txt"))
+    txt[key] = value;
+  payload["txt"] = txt;
 
   std::cout << "\n"
             << "============================================================\n"
             << "  ARGUS — pairing required\n"
             << "\n"
-            << qr_render::asciiQr(code)
+            << qr_render::asciiQr(payload.toStyledString())
             << "\n"
             << "  Scan the QR code with the Argus app to pair this server.\n"
             << "\n"
-            << "  Server:   https://" << host << ":" << port << "\n"
-            << "  Host:     " << host << "\n"
-            << "  Port:     " << port << "\n"
-            << "  Code:     " << code << "\n"
-            << "============================================================\n"
+            << "  Server:    " << scheme << "://" << host << ":" << port << "\n"
+            << "  Host:      " << host << "\n"
+            << "  Port:      " << port << "\n"
+            << "  Scheme:    " << scheme << "\n"
+            << "  Code:      " << code << "\n"
+            << "  Instance:  " << CertService::instanceId() << "\n"
+            << "  CA:        " << CertService::caFingerprint() << "\n"
+            << "  Server FP: " << CertService::serverFingerprint() << "\n"
+            << "  mDNS:      " << serviceType << "\n";
+  for (const auto& [key, value] : ConfigService::getStringPairs("mdns.txt"))
+    std::cout << "             " << key << "=" << value << "\n";
+  std::cout << "============================================================\n"
             << std::flush;
 }
 
