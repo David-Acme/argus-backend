@@ -40,7 +40,10 @@
 - `nlohmann_json` pinned to **3.11.3** — jwt-cpp/Drogon use this version.
 - `opencv/4.13.0` built **headless**: `with_protobuf=False`, `with_eigen=False`,
   `with_ffmpeg=False`, `with_wayland=False`, `with_gtk=False`, `with_vulkan=False`.
-- `eigen/5.0.1` used for tracker/geometry.
+- `eigen/5.0.1` **removed** (2026-08-06): it was declared in `conanfile.txt` and
+  linked in `CMakeLists.txt` but had zero uses in `src/` or `labs/`. The tracker
+  planned in `OPTIMIZATION_AND_MEMORY_PLAN.md` uses `cv::KalmanFilter` instead,
+  so no dependency comes back.
 - **conanfile.txt cannot resolve version conflicts** (no `override=True`/`force`).
   Conflict resolution is done by pinning versions + disabling the offending option
   in the consuming package.
@@ -57,8 +60,8 @@
 |---------|--------|-------|------|
 | `FaceService` | ncnn (Vulkan) | RetinaFace + MobileFaceNet | `models/face/` |
 | `FaceDB` | HNSWlib | In-memory 128-dim index | Loaded from SQLite at startup |
-| `LlmService` | llama.cpp (Conan) | LFM2.5-1.2B-Instruct-Q4_K_M | `models/llm/` |
-| `VisionService` | SmolVLM2 (ONNX int8) | SmolVLM2-500M-Video-Instruct | `models/vision/smolvlm/` |
+| `LlmService` | llama.cpp (submodule b10305) | LFM2.5-1.2B-Instruct-Q4_K_M | `models/llm/` |
+| `VisionService` | llama.cpp + libmtmd | LFM2.5-VL-450M (Q8_0 + mmproj F16) | `models/vision/lfm2vl-25/` |
 | `SttService` | sherpa-onnx | Whisper tiny | `models/stt/` |
 | `TtsService` | Supertonic 3 | ONNX models | `models/tts/` |
 | `JwtService` | jwt-cpp | HS256, instance class | — |
@@ -134,7 +137,7 @@ without GPU), so every AI service auto-tunes its resources at runtime:
   LFM2.5-1.2B.
 - **ncnn Vulkan**: kept ON — the reference machine has an AMD iGPU (RADV
   RENOIR) that ncnn uses via Vulkan; machines without GPU fall back to CPU.
-- **Voice test** (`voice-test/`): standalone `argus-voice-test` binary that
+- **Voice test** (`labs/voice-test/`): standalone `argus-voice-test` binary that
   chains STT → LLM → TTS for a spoken conversation (EN/ES) to measure quality
   and latency end-to-end. PortAudio for mic (16 kHz, software resample
   fallback for devices without 16 kHz) and speaker (plays TTS PCM at its
@@ -146,8 +149,152 @@ without GPU), so every AI service auto-tunes its resources at runtime:
   The LLM replies fully first, then the TTS speaks with its native chunking
   (natural, not choppy). Ctrl+C exits cleanly (shared std::atomic<bool>).
   `SttService::setLanguage("es"/"en")` switches Whisper at runtime; the
-  `[stt] language` config defaults it. Run: `build/prod/voice-test/
+  `[stt] language` config defaults it. Run: `build/prod/labs/voice-test/
   argus-voice-test`.
+
+## Tapo camera integration — Phase 1 (2026-08-06)
+
+Local control and audio-out protocols for the TP-Link Tapo C225, standalone and
+validatable before any media or pipeline work exists. Media, detection, tracking
+and the memory system are planned in `OPTIMIZATION_AND_MEMORY_PLAN.md`.
+
+- **`src/shared/services/tapo/`** — the whole camera protocol surface:
+
+  | File | Role |
+  |------|------|
+  | `tapo-crypto` | MD5/SHA1/SHA256 (upper hex), AES-128-CBC + PKCS7, base64, hex, CSPRNG nonces, HTTP Digest MD5/SHA-256 builder + challenge parser |
+  | `tapo-http` | Blocking HTTP/1.1 client over a RAII `TapoConnection` (BSD socket + optional OpenSSL TLS, verify-off, `SECLEVEL=0` for the camera's self-signed cert). Non-blocking connect + `poll()` timeouts, chunked and Content-Length bodies. The talk channel reuses `TapoConnection` directly for its long-lived multipart upload |
+  | `tapo-transport.hxx` | `ITapoTransport` + `TapoResult` + `TapoCredentials`; `TapoTransportKind`/`TapoHashAlgorithm` enums with `toString`/`fromString` |
+  | `secure-passthrough-transport` | **Primary**: one login POST returns `-40413` with `nonce`+`device_confirm`; hash algorithm detected by replaying `device_confirm` with SHA256 then MD5; `digest_passwd` login → `stok` + `start_seq`; AES keys `lsk`/`ivb`; per-request `Seq` + `Tapo_tag`; re-login on `-40401`/`-1` |
+  | `legacy-stok-transport` | Fallback for old firmware: `{"hashed":true,"password":MD5(pass).upper()}` login, plaintext requests to `/stok=<stok>/ds` |
+  | `tapo-client` | Owns transport selection (`auto` probes securePassthrough then legacy), credential candidates, and a `std::mutex` that serializes every request — the camera rejects parallel control requests. `batch()` always wraps in `multipleRequest` |
+  | `tapo-api` | Typed methods with parameter structs (`TapoMoveInput`, `TapoAlarmInput`, `TapoEventFilter`, …). `getStatus()` collapses 8 reads into one `multipleRequest` and derives the camera clock offset |
+  | `tapo-audio` | Linear resample, mono downmix, G.711 A-law encoder, 16-bit WAV reader |
+  | `tapo-ts-muxer` | Audio-only MPEG-TS muxer: PAT/PMT with MPEG-2 CRC32, PES with PTS, PCR in the adaptation field, correct stuffing |
+  | `tapo-talk-client` | Port 8800 talk channel: Digest auth with password-variant probing, `Key-Exchange` nonce capture, `talk` session in `aec` mode, multipart `audio/mp2t` parts, **cancellation checked per packet** |
+
+- **`CancellationToken`** (`src/shared/wrapper/cancellation/`) — shared
+  `atomic<bool>` behind copy semantics. Phase 1 uses it in the talk send loop;
+  Phase 6 extends it to LLM/TTS/VLM/STT.
+- **`labs/tapo-probe/`** — `argus-tapo-probe`, standalone binary in the style of
+  `labs/voice-test/`. Flags: `--info`, `--creds`, `--batch`, `--presets`, `--audio`,
+  `--ptz x,y`, `--ptz-step`, `--day-night`, `--events [hours]`, `--raw '<json>'`,
+  `--talk "text"` (synthesizes with `TtsService`), `--talk-file <wav>`,
+  `--talk-framing`, `--ts-dump <file>`, `--verbose`.
+- **`[tapo]` in `config.toml`** — ports, timeouts, `login_attempts`, transport
+  preference, and the talk-channel knobs (`talk_framing`, `talk_mode`,
+  `talk_packet_ms`).
+
+### Verified offline (no camera needed)
+
+`--ts-dump` writes 1 s of 440 Hz A-law as MPEG-TS. `ffprobe` parses PAT/PMT/PES
+and reports `stream_type=6 pid=100`; extracting the ES yields exactly 8000
+bytes. Decoding it back measures peak −8.70 dB (= 12000/32768), RMS = peak −
+3.01 dB (pure sine) and 879 zero-crossings/s (= 2 × 440 Hz). **Stream type is
+0x06, not 0x90** — determined by muxing the same audio with ffmpeg and reading
+back its PMT, since ffmpeg's output is what pytapo feeds the camera.
+
+### Still unverified — needs the physical C225 (Phase 1 gate)
+
+Which credential the control channel accepts (camera account vs `admin` +
+cloud password), the exact `searchDetectionList` response shape, the 8800
+multipart body framing (`talk_framing`), and which digest password variant the
+talk channel wants. Each has a probe flag and is persisted rather than
+hardcoded, so one `tapo-probe` run against the camera settles all of them.
+
+**Key derivation — the subtle part**: `hashedKey` is NOT `hashedPassword`. It is
+`hashedKey = sha256(cnonce + hashedPassword + nonce)` — the same value that
+validates `device_confirm` — and only then
+`lsk = sha256("lsk" + cnonce + nonce + hashedKey)[:16]` (likewise `ivb`). This
+follows `pytapo/transport/pytapo/pytapo.py`, the reference implementation. An
+earlier draft of the plan collapsed the two into
+`sha256("lsk" + cnonce + nonce + hashedPassword)`, which authenticates fine and
+then fails to decrypt every response. Worth keeping documented: the failure mode
+looks like a working handshake followed by garbage payloads.
+
+## Vision: LFM2.5-VL-450M over llama.cpp + libmtmd (2026-08-08)
+
+`VisionService` no longer runs SmolVLM2 through ONNX Runtime. It runs
+**LiquidAI LFM2.5-VL-450M** (GGUF Q8_0 + mmproj F16) through llama.cpp's
+`libmtmd`, which also forced `llama.cpp` out of Conan and into
+`third_party/llama.cpp` (tag `b10305`).
+
+**Why the move happened**: `llama-cpp/b6565` is the newest recipe on Conan
+Center, and its `lfm2` projector still requires `mm.input_norm.*`, a tensor
+LFM2.5-VL dropped — `mtmd_init_from_file()` rejected the mmproj outright. The
+ONNX route was rejected too: `LiquidAI/LFM2.5-VL-450M-ONNX` exists, but the
+decoder carries heterogeneous state (10 `past_conv.N` + 12 `past_key_values`)
+and the preprocessing is `Lfm2VlImageProcessorFast` — dynamic tiling,
+`min_tiles=2`, `max_tiles=10`, thumbnail, row/col info. Reimplementing that
+tiler by hand risks silent caption degradation; mtmd already ships it tested.
+
+**Measured against the old pipeline** (Release, same machine, 48 tokens):
+
+| | SmolVLM2 ONNX | LFM2.5-VL |
+|---|---|---|
+| init | 845 ms | **236 ms** |
+| 1280×720 caption | 946 ms | 1 088 ms (at `max_input_px=384`) |
+| repeat (cache hit) | n/a | **4 ms** |
+| generation | ~46 tok/s | **78-91 tok/s** |
+| peak RSS | ~1.0 GB | **0.78 GB** |
+
+Accuracy on the same synthetic image (gradient, white square left, red circle
+right, "ARGUS" text): SmolVLM2 called it a logo with "AR in the center";
+LFM2.5-VL names the gradient, both shapes with correct sides, and reads
+"ARGUS". Targeted questions work now too — *"Is there a person? yes or no"* →
+`"No."` in 304 ms — because `VisionRequest::prompt` is finally real. The old
+implementation had a **pre-tokenized fixed prompt**, so that field was dead.
+
+**Cost is driven by input resolution, not by `image_max_tokens`.** The model
+tiles dynamically: 256 px → 83 prompt tokens → ~720 ms; 1280 px → 785 tokens →
+~3.1 s. `image_max_tokens` only trims per-tile detail, and below 256 the model
+stops reading text in the scene. `[vision] max_input_px` (default 384) is the
+knob, and it fits the pipeline design where the VLM sees a person crop rather
+than the whole frame.
+
+**Two traps worth remembering**:
+- `mtmd_input_text` has a `text_len` field. Leave it zero and the text reads as
+  empty, failing with "number of media markers in text (0)" even though the
+  marker is right there.
+- `llama_chat_apply_template()` is **not** a jinja parser (its own header says
+  so) and mangles LFM2.5's template, which uses macros. The ChatML prompt is
+  built by hand.
+
+`face-service.cc` now defines `STB_IMAGE_STATIC`: `mtmd-helper.cpp` vendors its
+own stb_image, and without that the two copies collide at link time.
+
+## Vulkan offload for LLM + VLM (2026-08-08)
+
+`third_party/llama.cpp` builds with `GGML_VULKAN=ON` whenever the Vulkan
+loader, `glslc` and **SPIRV-Headers** are all present; otherwise it degrades to
+CPU with a log line. `scripts/setup.sh` installs the three for pacman/apt/dnf.
+
+Measured on the reference AMD Radeon Vega iGPU (RADV RENOIR), full offload
+(`n_gpu_layers = 999`) vs CPU:
+
+| | LLM CPU | LLM Vulkan |
+|---|---|---|
+| process RSS at init | +1 249 MB | **+245 MB** |
+| tok/s, short prompt | 36.4 | **49.0** |
+| tok/s, ~1 200-token prompt | 27.3 | **48.0** |
+| TTFT, ~1 200-token prompt | 2 462 ms | **1 783 ms** |
+
+The RSS collapse is the weights living in VRAM rather than in the process, and
+throughput no longer degrades as the context grows (39-49 tok/s from 40 to
+5 800 tokens, versus 36 → 27 on CPU).
+
+The VLM benefits too, though the first measurement said otherwise. A single run
+per side suggested Vulkan was 20% *slower*; three runs each showed the opposite
+and explained why: **CPU 1453/999/1040 ms vs Vulkan 876/881/871 ms**. Vulkan is
+~16% faster on the median and collapses the spread from 454 ms to 10 ms. For a
+real-time pipeline the predictability matters more than the average. Lesson
+worth keeping: this machine has ~13-20% run-to-run variance, so single-run A/B
+comparisons are not evidence.
+
+`HardwareProbe::llmGpuLayers()` / `vlmGpuLayers()` therefore offload on **any**
+Vulkan device (integrated included) as long as the host has ≥8 GB RAM.
+`[llm] gpu_layers` and `[vision] gpu_layers` override it: `-1` auto, `0` force
+CPU, `N` offload N layers.
 
 ## Runtime config writes (ConfigService)
 

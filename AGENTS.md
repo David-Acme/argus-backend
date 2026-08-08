@@ -311,15 +311,27 @@ expensive pass; input resolution is fixed at 512 by the SigLIP encoder.
   Target: `qr-code-generator::qrcodegencpp`, header `<qrcodegen/qrcodegen.hpp>`.
 - `opencv/4.13.0` (headless, for scaled face image decoding)
 - `onnxruntime/1.24.4` (STT/TTS via sherpa-onnx, Vision via SmolVLM2)
-- **llama-cpp/b6565 via Conan** (latest stable on Conan Center) — powers the
-  LLM only. Target: `llama-cpp::llama-cpp`. API note: b6565 uses
-  `use_mmap`/`use_mlock` (no `load_mode`). Not a submodule.
-- **Vision runs SmolVLM2-500M-Video-Instruct (ONNX int8)** from
-  `HuggingFaceTB/SmolVLM2-500M-Video-Instruct`: 3 sessions (SigLIP vision
-  encoder 512px → 64 image tokens, merged decoder with fp32 KV cache, token
-  embeddings) + `tokenizer.json`, downloaded by `scripts/setup.sh` into
-  `models/vision/smolvlm/`. ChatML prompt with expanded `<image>` block,
-  fixed captioning instruction (pre-tokenized ids).
+- **llama.cpp as a submodule** (`third_party/llama.cpp`, tag `b10305`) — powers
+  the LLM **and** the VLM through `libmtmd`. Targets: `${ARGUS_LLAMA_TARGETS}`
+  (= `llama mtmd`). Built with `LLAMA_BUILD_MTMD=ON`, everything else OFF.
+  Vendored instead of taken from Conan because `llama-cpp/b6565` is the newest
+  recipe on Conan Center, its `lfm2` projector still requires
+  `mm.input_norm.*` (dropped by LFM2.5-VL), it ships CPU-only, and it exposes
+  no mtmd component. API notes for b10305: `llama_model_params` uses
+  `load_mode` (`LLAMA_LOAD_MODE_MMAP`), NOT `use_mmap`/`use_mlock`;
+  `llama_sampler_init_penalties()` takes `n_vocab` as its first argument;
+  `mtmd_input_text` has a `text_len` field that MUST be set.
+  `GGML_VULKAN` is enabled automatically when Vulkan + glslc + SPIRV-Headers
+  are present, otherwise the build falls back to CPU.
+- **Vision runs LiquidAI LFM2.5-VL-450M (GGUF Q8_0 + mmproj F16)** through
+  llama.cpp + `libmtmd`, downloaded by `scripts/setup.sh` into
+  `models/vision/lfm2vl-25/`. Unlike the previous SmolVLM2 ONNX pipeline it
+  takes **arbitrary prompts**, so `VisionRequest::prompt` is real. Cost is
+  driven by input resolution because the model tiles dynamically: `[vision]
+  max_input_px` (default 384) is the knob, not `image_max_tokens` (which only
+  trims per-tile detail and makes the model stop reading text below 256).
+  The prompt is built as ChatML by hand: `llama_chat_apply_template()` is NOT
+  a jinja parser and mangles LFM2.5's template.
 - **NO spdlog** — use Drogon's built-in logging (`LOG_INFO`, `LOG_WARN`, `LOG_FATAL`)
 - **NO libsodium** — auth is face-based
 - **NO ORM** — raw SQL via `DbService::client()->execSqlCoro()`
@@ -401,9 +413,15 @@ Before any commit, verify: `cmake --build --preset dev -j 8` passes with
 | `src/shared/services/jwt/` | JWT sign/verify (HS256, instance class) |
 | `src/shared/services/face/` | Face detection + recognition (ncnn) |
 | `src/shared/services/llm/` | LLM inference (llama.cpp) |
-| `src/shared/services/vision/` | Vision model inference |
+| `src/shared/services/vision/` | VLM inference: LFM2.5-VL-450M via llama.cpp + libmtmd (arbitrary prompts, caption cache) |
 | `src/shared/services/stt/` | Speech-to-text (whisper via sherpa-onnx) |
 | `src/shared/services/tts/` | Text-to-speech (Supertonic 3) |
+| `src/shared/services/tapo/` | Tapo camera local protocols: control (`stok` + `securePassthrough`, legacy fallback) and the 8800 talk channel (Digest + MPEG-TS PCMA) |
+| `src/shared/wrapper/cancellation/` | `CancellationToken` shared across streaming AI/audio paths |
+| `labs/` | Standalone binaries for prototyping and validating new capabilities against real hardware before wiring them into the backend |
+| `labs/tapo-probe/` | `argus-tapo-probe` — validates the camera protocols against real hardware |
+| `labs/voice-test/` | `argus-voice-test` — STT → LLM → TTS conversation loop with Silero VAD |
+| `OPTIMIZATION_AND_MEMORY_PLAN.md` | Current plan: hardware-adaptive tiers, step elimination, person memory + LLM tools |
 | `src/shared/services/sqlite/` | DB client access (`DbService::client()`) |
 | `src/shared/services/config-service/` | `ConfigService` read + runtime writes (`setBool/...` persisten a `config.toml`, comentarios preservados) |
 | `src/shared/services/room/` | `RoomManager` local (rooms por módulo/usuario, `thread_local`) |
