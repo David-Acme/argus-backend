@@ -10,6 +10,7 @@
 
 struct llama_model;
 struct llama_context;
+struct llama_batch;
 
 struct ChatMessage
 {
@@ -23,12 +24,20 @@ struct ChatRequest
   // 0 = use the configured default (llm.max_tokens).
   int32_t maxTokens{0};
   // < 0 = use the configured default (llm.temperature).
-  float temperature{-1.0f};
-  // True clears the KV cache before generating (isolated analysis calls).
-  bool resetContext{true};
+  float temperature{-1.0F};
+  // Forces a full KV reset. Not needed for isolation: a prompt that diverges
+  // from the cached prefix already triggers a reset automatically.
+  bool resetContext{false};
 };
 
 using TokenCallback = std::function<void(const std::string& token, bool done)>;
+
+struct LlmPrefillStats
+{
+  int32_t promptTokens{0};
+  int32_t reusedTokens{0};
+  int32_t decodedTokens{0};
+};
 
 class LlmService
 {
@@ -48,10 +57,15 @@ public:
                                             TokenCallback onToken);
 
   static bool isLoaded();
+  static LlmPrefillStats lastPrefillStats();
 
 private:
   static void warmup();
   static std::string buildPrompt(const std::vector<ChatMessage>& messages);
+  static std::string buildChatMlPrompt(const std::vector<ChatMessage>& messages);
+  static std::vector<int32_t> tokenize(const std::string& text, bool addSpecial);
+  static bool prefill(const std::vector<int32_t>& promptTokens,
+                      bool forceReset);
   static std::string generate(const std::string& formattedPrompt,
                               float temperature, int32_t maxTokens,
                               bool resetContext);
@@ -61,19 +75,22 @@ private:
 
   static std::unique_ptr<llama_model, void (*)(llama_model*)> model_;
   static std::unique_ptr<llama_context, void (*)(llama_context*)> context_;
+  static std::unique_ptr<llama_batch> promptBatch_;
+  static std::unique_ptr<llama_batch> genBatch_;
+  static std::vector<int32_t> cachedTokens_;
+  static std::string chatTemplate_;
   static int64_t contextSize_;
+  static int32_t nBatch_;
   static int32_t defaultMaxTokens_;
   static float defaultTemperature_;
+  static int32_t topK_;
+  static float topP_;
+  static int32_t penaltyLastN_;
+  static float penaltyRepeat_;
+  static float penaltyFreq_;
+  static float penaltyPresent_;
+  static uint32_t seed_;
+  static LlmPrefillStats lastStats_;
   static bool loaded_;
   static std::mutex mutex_;
-
-  static constexpr const char* SYSTEM_PROMPT =
-      R"SYSPROMPT(You are Argus, an intelligent security assistant for a local surveillance system. Your tasks are:
-1. Analyze security events (motion, person, vehicle, or anomalous sound detections).
-2. Answer questions about the system state: active cameras, recent events, recognized people.
-3. Help configure security rules: exclusion zones, watch schedules, detection sensitivity.
-4. Explain security alerts in clear, actionable language.
-5. You have NO cloud access - all processing is local.
-
-Be concise and natural: max 2-3 lines for simple questions, and only expand a little when the question requires it. Be direct, precise, and prioritize safety. Always answer in the same language the user speaks.)SYSPROMPT";
 };

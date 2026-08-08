@@ -15,6 +15,7 @@
 #include <shared/wrapper/blocking-task/blocking-task.hxx>
 #include <shared/wrapper/thread-budget/thread-budget.hxx>
 #define STB_IMAGE_IMPLEMENTATION
+#define STB_IMAGE_STATIC
 #include <stb_image.h>
 #include <thread>
 #include <vector>

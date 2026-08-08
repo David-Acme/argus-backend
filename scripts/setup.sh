@@ -84,18 +84,22 @@ install_system_deps() {
 
   case "$pkg_mgr" in
     pacman)
-      sudo_if_needed pacman -Syu --needed --noconfirm git cmake ninja gcc python python-pip openssl base-devel ;;
+      sudo_if_needed pacman -Syu --needed --noconfirm git cmake ninja gcc python python-pip openssl base-devel \
+        vulkan-headers spirv-headers shaderc vulkan-icd-loader ;;
     apt)
       sudo_if_needed apt-get update -y
-      sudo_if_needed apt-get install -y --no-install-recommends git cmake ninja-build g++ python3 python3-pip pkg-config openssl ca-certificates ;;
+      sudo_if_needed apt-get install -y --no-install-recommends git cmake ninja-build g++ python3 python3-pip pkg-config openssl ca-certificates \
+        libvulkan-dev spirv-headers glslc ;;
     dnf)
-      sudo_if_needed dnf install -y git cmake ninja-build gcc-c++ python3 python3-pip openssl ;;
+      sudo_if_needed dnf install -y git cmake ninja-build gcc-c++ python3 python3-pip openssl \
+        vulkan-headers spirv-headers glslc vulkan-loader-devel ;;
     apk)
       sudo_if_needed apk add --no-cache git cmake ninja g++ python3 py3-pip openssl build-base linux-headers ;;
     zypper)
       sudo_if_needed zypper install -y git cmake ninja gcc-c++ python3 python3-pip openssl ;;
     *)
-      warn "Unknown distribution. Ensure git cmake ninja g++ python3 pip openssl are installed." ;;
+      warn "Unknown distribution. Ensure git cmake ninja g++ python3 pip openssl are installed."
+      warn "For GPU offload also install: Vulkan headers/loader, glslc, SPIRV-Headers." ;;
   esac
 }
 
@@ -402,13 +406,58 @@ NOTICE_EOF
   log "LLM model ready."
 }
 
-setup_vision_model() {
-  log "Setting up SmolVLM2-500M vision model (ONNX int8)..."
+setup_go2rtc() {
+  local ROOT
+  ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+  local DEST="$ROOT/third_party/go2rtc"
+  local BIN="$DEST/go2rtc"
+
+  if [ -x "$BIN" ]; then
+    log "go2rtc already present ($("$BIN" -version 2>&1 | head -1))"
+    return
+  fi
+
+  local os arch asset
+  case "$(uname -s)" in
+    Linux)  os="linux" ;;
+    Darwin) os="mac" ;;
+    *) warn "go2rtc: unsupported OS $(uname -s), skipping."; return ;;
+  esac
+  case "$(uname -m)" in
+    x86_64|amd64) arch="amd64" ;;
+    aarch64|arm64) arch="arm64" ;;
+    armv7l) arch="arm" ;;
+    *) warn "go2rtc: unsupported arch $(uname -m), skipping."; return ;;
+  esac
+  asset="go2rtc_${os}_${arch}"
+
+  local DL=""
+  if command -v curl >/dev/null 2>&1; then
+    DL="curl -L --retry 3 --progress-bar -o"
+  elif command -v wget >/dev/null 2>&1; then
+    DL="wget --retry-connrefused --waitretry=3 --show-progress -O"
+  else
+    warn "Neither curl nor wget found; skipping go2rtc download."
+    return
+  fi
+
+  log "Downloading go2rtc ($asset)..."
+  mkdir -p "$DEST"
+  local URL="https://github.com/AlexxIT/go2rtc/releases/latest/download/$asset"
+  if $DL "$BIN" "$URL"; then
+    chmod +x "$BIN"
+    log "go2rtc ready: $("$BIN" -version 2>&1 | head -1)"
+  else
+    warn "Failed to download go2rtc; the camera pipeline will not start."
+    rm -f "$BIN"
+  fi
+}
+
+setup_vlm_gguf_model() {
+  local VARIANT="${ARGUS_VLM_VARIANT:-lfm25}"
 
   local ROOT
   ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-  local MODEL_DIR="$ROOT/models/vision/smolvlm"
-  local HF_BASE="https://huggingface.co/HuggingFaceTB/SmolVLM2-500M-Video-Instruct/resolve/main"
   local DL=""
 
   if command -v curl >/dev/null 2>&1; then
@@ -416,35 +465,91 @@ setup_vision_model() {
   elif command -v wget >/dev/null 2>&1; then
     DL="wget --retry-connrefused --waitretry=3 --show-progress -O"
   else
-    warn "Neither curl nor wget found; skipping Vision model download."
+    warn "Neither curl nor wget found; skipping GGUF VLM download."
     return
   fi
 
+  local MODEL_DIR HF_BASE LM_FILE MMPROJ_FILE LICENSE_URL
+
+  case "$VARIANT" in
+    lfm2)
+      MODEL_DIR="$ROOT/models/vision/lfm2vl"
+      HF_BASE="https://huggingface.co/LiquidAI/LFM2-VL-450M-GGUF/resolve/main"
+      LM_FILE="LFM2-VL-450M-Q8_0.gguf"
+      MMPROJ_FILE="mmproj-LFM2-VL-450M-F16.gguf"
+      LICENSE_URL="https://huggingface.co/LiquidAI/LFM2-VL-450M-GGUF/raw/main/LICENSE"
+      log "Setting up LiquidAI LFM2-VL-450M (GGUF Q8_0 + mmproj F16, ~547 MB)..."
+      ;;
+    lfm25)
+      MODEL_DIR="$ROOT/models/vision/lfm2vl-25"
+      HF_BASE="https://huggingface.co/LiquidAI/LFM2.5-VL-450M-GGUF/resolve/main"
+      LM_FILE="LFM2.5-VL-450M-Q8_0.gguf"
+      MMPROJ_FILE="mmproj-LFM2.5-VL-450m-F16.gguf"
+      LICENSE_URL="https://huggingface.co/LiquidAI/LFM2.5-VL-450M-GGUF/raw/main/LICENSE"
+      log "Setting up LiquidAI LFM2.5-VL-450M (GGUF Q8_0 + mmproj F16, ~568 MB)..."
+      ;;
+    none)
+      log "ARGUS_VLM_VARIANT=none, skipping GGUF VLM download."
+      return
+      ;;
+    *)
+      warn "Unknown ARGUS_VLM_VARIANT='$VARIANT' (use lfm2, lfm25 or none)."
+      return
+      ;;
+  esac
+
+  log "License: LFM Open License v1.0 (see LICENSE.lfm1.0 in $MODEL_DIR)"
   mkdir -p "$MODEL_DIR"
 
-  # SmolVLM2-500M-Video-Instruct (0.5B, int8): vision encoder (SigLIP base
-  # 512px, 64 tokens/image), merged Llama3 decoder with fp32 KV cache, token
-  # embeddings + GPT-2 byte-level BPE tokenizer. ~490 MB total, runs on CPU.
-  local FILES=(
-    vision_encoder_int8.onnx
-    decoder_model_merged_int8.onnx
-    embed_tokens_int8.onnx
-    tokenizer.json
-  )
+  if [ ! -f "$MODEL_DIR/lm-Q8_0.gguf" ]; then
+    log "Downloading $LM_FILE (~379 MB)..."
+    $DL "$MODEL_DIR/lm-Q8_0.gguf" "$HF_BASE/$LM_FILE" || warn "Failed: $LM_FILE"
+  else
+    log "VLM language model already present."
+  fi
 
-  for f in "${FILES[@]}"; do
-    if [ ! -f "$MODEL_DIR/$f" ]; then
-      log "Downloading $f..."
-      $DL "$MODEL_DIR/$f" "$HF_BASE/onnx/$f" || {
-        warn "Failed: $f (trying root path)"
-        $DL "$MODEL_DIR/$f" "$HF_BASE/$f" || warn "Failed: $f"
-      }
-    else
-      log "$f already present."
-    fi
-  done
+  if [ ! -f "$MODEL_DIR/mmproj-F16.gguf" ]; then
+    log "Downloading $MMPROJ_FILE (~190 MB)..."
+    $DL "$MODEL_DIR/mmproj-F16.gguf" "$HF_BASE/$MMPROJ_FILE" \
+      || warn "Failed: $MMPROJ_FILE"
+  else
+    log "VLM multimodal projector already present."
+  fi
 
-  log "Vision model ready (~490 MB)."
+  if [ ! -f "$MODEL_DIR/LICENSE.lfm1.0" ]; then
+    log "Downloading LFM Open License v1.0..."
+    $DL "$MODEL_DIR/LICENSE.lfm1.0" "$LICENSE_URL" || warn "Failed: LICENSE.lfm1.0"
+  fi
+
+  if [ ! -f "$MODEL_DIR/NOTICE" ]; then
+    cat > "$MODEL_DIR/NOTICE" <<NOTICE_EOF
+${LM_FILE%.gguf} — Liquid AI
+
+Model:      ${LM_FILE%.gguf} (Q8_0) + multimodal projector (F16)
+Source:     $HF_BASE
+License:    LFM Open License v1.0 — see LICENSE.lfm1.0 in this directory
+
+Runs through llama.cpp + libmtmd, sharing the runtime already loaded for the
+text LLM. Vision input is tiled at 256x256 with a scale factor of 2, giving
+64 image tokens per tile; the number of tiles (and therefore the prompt cost)
+grows with the input resolution, so callers downscale before captioning.
+
+Key license terms that apply to this project:
+
+  - Use, reproduction, modification and redistribution are permitted
+    provided recipients receive a copy of the license and the
+    attribution notices are retained.
+  - Commercial use is conditioned on the licensee's annual revenue
+    not exceeding USD \$10,000,000 (the "Threshold"). Qualified
+    non-profit organizations are exempt from the Threshold for
+    non-commercial or research purposes.
+  - No warranty or liability is provided; the work is provided "AS IS".
+  - This project does not claim any trademark rights in Liquid AI's
+    marks, which are used only to describe the origin of the model.
+NOTICE_EOF
+  fi
+
+  log "GGUF VLM ready in $MODEL_DIR"
 }
 
 setup_stt_model() {
@@ -582,6 +687,13 @@ setup_vad_model() {
 }
 
 main() {
+  # Hardware detection installs the GPU/video/audio stack for this specific
+  # host and writes scripts/.hw-profile. It asks for sudo only if something is
+  # actually missing. install_system_deps stays as the minimal fallback.
+  if [ -x "$(dirname "$0")/detect-hardware.sh" ]; then
+    "$(dirname "$0")/detect-hardware.sh" ${ARGUS_ASSUME_YES:+-y} || \
+      warn "Hardware detection failed; falling back to the base dependency set."
+  fi
   install_system_deps
   ensure_conan
   configure_conan_profile
@@ -591,7 +703,8 @@ main() {
   setup_certs
   setup_tts_model
   setup_llm_model
-  setup_vision_model
+  setup_vlm_gguf_model
+  setup_go2rtc
   setup_stt_model
   setup_face_model
   setup_vad_model

@@ -13,16 +13,19 @@ find_package(jwt-cpp REQUIRED)
 find_package(nlohmann_json REQUIRED)
 
 find_package(OpenCV CONFIG REQUIRED)
-find_package(Eigen3 REQUIRED)
 find_package(onnxruntime CONFIG REQUIRED)
 find_package(tomlplusplus REQUIRED)
 find_package(OpenSSL REQUIRED)
-find_package(llama-cpp CONFIG REQUIRED)
 find_package(mdns CONFIG REQUIRED)
 find_package(qr-code-generator CONFIG REQUIRED)
 
 add_subdirectory(third_party)
-add_subdirectory(voice-test)
+add_subdirectory(labs/voice-test)
+add_subdirectory(labs/tapo-probe)
+add_subdirectory(labs/llm-bench)
+add_subdirectory(labs/vlm-bench)
+add_subdirectory(labs/tts-probe)
+add_subdirectory(labs/stream-probe)
 
 file(GLOB_RECURSE CONFIG_SRC
     ${SRC_ROOT}/config/*.cc
@@ -83,9 +86,8 @@ target_link_libraries(${PROJECT_NAME}
         jwt-cpp::jwt-cpp
         nlohmann_json::nlohmann_json
 
-        llama-cpp::llama-cpp
+        ${ARGUS_LLAMA_TARGETS}
         opencv::opencv
-        Eigen3::Eigen
         onnxruntime::onnxruntime
         tomlplusplus::tomlplusplus
         mdns::mdns

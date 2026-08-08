@@ -1,23 +1,28 @@
 #pragma once
 
+#include <atomic>
 #include <cstdint>
+#include <deque>
 #include <drogon/utils/coroutine.h>
 #include <memory>
 #include <mutex>
-#include <onnxruntime_cxx_api.h>
+#include <opencv2/core.hpp>
 #include <string>
-#include <unordered_set>
 #include <vector>
+
+struct llama_model;
+struct llama_context;
+struct mtmd_context;
 
 struct VisionRequest
 {
   std::vector<unsigned char> imageRgb;
   uint32_t width{0};
   uint32_t height{0};
-  std::string prompt{"Describe esta imagen de seguridad."};
+  // Empty = use the configured default question.
+  std::string prompt;
   // 0 = use the configured default (vision.max_tokens).
   int32_t maxTokens{0};
-  float temperature{0.3f};
 };
 
 class VisionService
@@ -30,46 +35,44 @@ public:
   static void shutdown();
 
   static std::string describe(const VisionRequest& req);
+  static std::string describeMat(const cv::Mat& bgr,
+                                 const std::string& prompt = {},
+                                 int32_t maxTokens = 0);
 
-  // Coroutine variant: runs inference off the event loop.
+  // Coroutine variants: run inference off the event loop.
   static drogon::Task<std::string> describeAsync(const VisionRequest& req);
+  static drogon::Task<std::string> describeMatAsync(const cv::Mat& bgr,
+                                                    const std::string& prompt = {},
+                                                    int32_t maxTokens = 0);
 
+  static void cancel();
   static bool isLoaded();
 
 private:
-  // SmolVLM2 chat template prefix with a single image placeholder expanded to
-  // <fake_token_around_image><global-img><image>x64<fake_token_around_image>
-  // plus the "Can you describe this image?" instruction (pre-tokenized ids).
-  static const std::vector<int64_t>& promptIds();
+  static std::string run(const cv::Mat& src, bool srcIsBgr,
+                         const std::string& prompt, int32_t maxTokens);
+  static cv::Mat fitToBudget(const cv::Mat& src, bool srcIsBgr);
+  static const std::string* cacheLookup(uint64_t key);
+  static void cacheStore(uint64_t key, const std::string& caption);
 
-  static std::vector<float> preprocess(const unsigned char* rgb, int width,
-                                       int height);
-  static std::vector<float> embed(int64_t token);
-  static std::vector<std::string>
-  decodeTokens(const std::vector<int64_t>& ids);
+  static std::unique_ptr<llama_model, void (*)(llama_model*)> model_;
+  static std::unique_ptr<llama_context, void (*)(llama_context*)> context_;
+  static std::unique_ptr<mtmd_context, void (*)(mtmd_context*)> mtmd_;
 
-  static std::unique_ptr<Ort::Session> visionEncoder_;
-  static std::unique_ptr<Ort::Session> decoderMerged_;
-  static std::unique_ptr<Ort::Session> embedTokens_;
-  static Ort::Env env_;
   static std::mutex mutex_;
+  static std::atomic<bool> cancelled_;
   static bool loaded_;
+
   static int32_t defaultMaxTokens_;
+  static int32_t maxInputPx_;
+  static int32_t nBatch_;
+  static std::string defaultPrompt_;
 
-  // Frame cache: repeated/near-identical frames (camera feeds) reuse the
-  // vision encoder output, skipping the most expensive pass.
-  struct FrameCache
+  struct CacheEntry
   {
-    uint64_t hash{0};
-    int64_t numTokens{0};
-    std::vector<float> features;
+    uint64_t key{0};
+    std::string caption;
   };
-  static FrameCache cacheA_;
-  static FrameCache cacheB_;
-  static int lastCacheSlot_;
-
-  // id -> token string, for detokenizing generated ids.
-  static std::vector<std::string> idToToken_;
-  // ids of special tokens (skipped when decoding captions).
-  static std::unordered_set<int64_t> specialIds_;
+  static std::vector<CacheEntry> cache_;
+  static size_t cacheNext_;
 };
