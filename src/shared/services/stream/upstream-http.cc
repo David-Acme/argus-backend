@@ -1,9 +1,11 @@
 #include "upstream-http.hxx"
 
+#include <algorithm>
 #include <arpa/inet.h>
 #include <cctype>
 #include <cstdlib>
 #include <cstring>
+#include <functional>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
 #include <sys/socket.h>
@@ -88,6 +90,16 @@ std::pair<std::string, int> splitHostPort(const std::string& addr)
   return {addr.substr(0, colon), std::atoi(addr.c_str() + colon + 1)};
 }
 
+bool isChunked(const std::string& headers)
+{
+  std::string lower = headers;
+  std::transform(lower.begin(), lower.end(), lower.begin(),
+                 [](unsigned char c) {
+                   return static_cast<char>(std::tolower(c));
+                 });
+  return lower.find("transfer-encoding: chunked") != std::string::npos;
+}
+
 namespace
 {
 
@@ -107,6 +119,13 @@ uint64_t boxSize(const uint8_t* data)
            (static_cast<uint64_t>(data[14]) << 8) |
            static_cast<uint64_t>(data[15]);
   return size;
+}
+
+uint32_t readBe32(const uint8_t* data)
+{
+  return (static_cast<uint32_t>(data[0]) << 24) |
+         (static_cast<uint32_t>(data[1]) << 16) |
+         (static_cast<uint32_t>(data[2]) << 8) | static_cast<uint32_t>(data[3]);
 }
 
 size_t parseChunkSize(const std::string& line, bool& ok)
@@ -129,44 +148,78 @@ size_t parseChunkSize(const std::string& line, bool& ok)
   return static_cast<size_t>(value);
 }
 
+bool syncFromSampleFlags(uint32_t flags)
+{
+  return (flags & 0x00010000U) == 0;
+}
+
+bool moofIsKeyframe(const std::string& moof)
+{
+  bool found = false;
+  bool sync = true;
+  const auto* raw = reinterpret_cast<const uint8_t*>(moof.data());
+  const size_t total = moof.size();
+
+  std::function<void(size_t, size_t)> walk = [&](size_t begin, size_t end) {
+    size_t offset = begin;
+    while (offset + 8 <= end) {
+      const uint64_t size = (static_cast<uint64_t>(raw[offset]) << 24) |
+                            (static_cast<uint64_t>(raw[offset + 1]) << 16) |
+                            (static_cast<uint64_t>(raw[offset + 2]) << 8) |
+                            static_cast<uint64_t>(raw[offset + 3]);
+      if (size < 8 || offset + size > end)
+        return;
+      const std::string type(moof, offset + 4, 4);
+      const size_t body = offset + 8;
+      if (type == "moof" || type == "traf")
+        walk(body, offset + size);
+      else if (type == "tfhd" && body + 8 <= end) {
+        const uint32_t tf = readBe32(raw + body) & 0x00FFFFFFU;
+        size_t cursor = body + 8;
+        if (tf & 0x000001U)
+          cursor += 8;
+        if (tf & 0x000002U)
+          cursor += 4;
+        if (tf & 0x000008U)
+          cursor += 4;
+        if (tf & 0x000010U)
+          cursor += 4;
+        if ((tf & 0x000020U) && cursor + 4 <= end) {
+          sync = syncFromSampleFlags(readBe32(raw + cursor));
+          found = true;
+        }
+      }
+      else if (type == "trun" && body + 8 <= end) {
+        const uint32_t tr = readBe32(raw + body) & 0x00FFFFFFU;
+        size_t cursor = body + 8;
+        if (tr & 0x000001U)
+          cursor += 4;
+        if ((tr & 0x000004U) && cursor + 4 <= end) {
+          sync = syncFromSampleFlags(readBe32(raw + cursor));
+          found = true;
+        }
+      }
+      offset += size;
+    }
+  };
+
+  walk(0, total);
+  return found ? sync : true;
+}
+
 } // namespace
+
+Fmp4Reader::Fmp4Reader(Fmp4ReaderInput input) : chunked_(input.chunked) {}
 
 void Fmp4Reader::feed(const char* data, size_t len)
 {
   if (len == 0)
     return;
-
   if (!chunked_) {
-    size_t i = 0;
-    while (i < len && data[i] != '\n')
-      ++i;
-    if (i == len) {
-      lineBuf_.append(data, len);
-      return;
-    }
-    lineBuf_.append(data, i + 1);
-    if (lineBuf_.size() < 2 || lineBuf_[lineBuf_.size() - 2] != '\r') {
-      lineBuf_.clear();
-      pending_.append(data, len);
-      consume();
-      return;
-    }
-    bool ok = false;
-    const size_t size = parseChunkSize(lineBuf_, ok);
-    lineBuf_.clear();
-    if (!ok) {
-      pending_.append(data, len);
-      consume();
-      return;
-    }
-    if (size == 0)
-      return;
-    chunked_ = true;
-    chunkRemaining_ = size;
-    processChunked(data + i + 1, len - (i + 1));
+    pending_.append(data, len);
+    consume();
     return;
   }
-
   processChunked(data, len);
 }
 
@@ -174,51 +227,68 @@ void Fmp4Reader::processChunked(const char* data, size_t len)
 {
   size_t pos = 0;
   while (pos < len) {
-    if (chunkRemaining_ > 0) {
+    if (inChunkData_) {
       const size_t take = std::min(chunkRemaining_, len - pos);
       pending_.append(data + pos, take);
-      consume();
       chunkRemaining_ -= take;
       pos += take;
-      if (chunkRemaining_ == 0)
-        afterChunk_ = true;
+      if (chunkRemaining_ == 0) {
+        inChunkData_ = false;
+        lineBuf_.clear();
+      }
+      consume();
       continue;
     }
 
-    if (afterChunk_) {
-      const size_t need = 2;
-      if (len - pos < need)
-        return;
-      pos += need;
-      afterChunk_ = false;
+    lineBuf_ += data[pos];
+    ++pos;
+    if (lineBuf_.size() > 64) {
       lineBuf_.clear();
       continue;
     }
-
-    const char* nl =
-        static_cast<const char*>(std::memchr(data + pos, '\n', len - pos));
-    if (nl == nullptr) {
-      lineBuf_.append(data + pos, len - pos);
-      return;
-    }
-    const size_t consumed = static_cast<size_t>(nl - (data + pos)) + 1;
-    lineBuf_.append(data + pos, consumed);
-    pos += consumed;
-
-    if (!lineBuf_.empty() && lineBuf_.back() == '\n' &&
-        (lineBuf_.size() < 2 || lineBuf_[lineBuf_.size() - 2] != '\r')) {
-      lineBuf_.clear();
+    if (lineBuf_.size() < 2 || lineBuf_[lineBuf_.size() - 1] != '\n' ||
+        lineBuf_[lineBuf_.size() - 2] != '\r')
       continue;
-    }
-    bool ok = false;
-    const size_t size = parseChunkSize(lineBuf_, ok);
+
+    const std::string line = lineBuf_.substr(0, lineBuf_.size() - 2);
     lineBuf_.clear();
-    if (!ok)
-      return;
-    if (size == 0)
-      return;
+    if (line.empty())
+      continue;
+    bool ok = false;
+    const size_t size = parseChunkSize(line, ok);
+    if (!ok || size == 0)
+      continue;
     chunkRemaining_ = size;
-    afterChunk_ = false;
+    inChunkData_ = true;
+  }
+}
+
+void Fmp4Reader::emit(std::string box, const std::string& type)
+{
+  if (!initDone_) {
+    init_ += box;
+    if (type == "moov") {
+      initDone_ = true;
+      if (onInit)
+        onInit(std::move(init_));
+      init_.clear();
+    }
+    return;
+  }
+
+  if (type == "moof") {
+    fragment_ = std::move(box);
+    fragmentKeyframe_ = moofIsKeyframe(fragment_);
+    hasMoof_ = true;
+    return;
+  }
+
+  if (type == "mdat" && hasMoof_) {
+    fragment_ += box;
+    hasMoof_ = false;
+    if (onFragment)
+      onFragment(std::move(fragment_), fragmentKeyframe_);
+    fragment_.clear();
   }
 }
 
@@ -226,11 +296,13 @@ void Fmp4Reader::reset()
 {
   pending_.clear();
   init_.clear();
+  fragment_.clear();
   initDone_ = false;
+  hasMoof_ = false;
   chunked_ = false;
   lineBuf_.clear();
   chunkRemaining_ = 0;
-  afterChunk_ = false;
+  inChunkData_ = false;
 }
 
 void Fmp4Reader::consume()
@@ -246,26 +318,11 @@ void Fmp4Reader::consume()
     if (pending_.size() < size)
       return;
 
-    const char type[5] = {static_cast<char>(raw[4]), static_cast<char>(raw[5]),
-                          static_cast<char>(raw[6]), static_cast<char>(raw[7]),
-                          '\0'};
-
+    const std::string type(pending_, 4, 4);
     std::string box = pending_.substr(0, static_cast<size_t>(size));
     pending_.erase(0, static_cast<size_t>(size));
 
-    if (!initDone_) {
-      init_ += box;
-      if (std::strcmp(type, "moov") == 0) {
-        initDone_ = true;
-        if (onInit)
-          onInit(std::move(init_));
-      }
-      continue;
-    }
-
-    const bool keyframe = std::strcmp(type, "moof") == 0;
-    if (onBox)
-      onBox(std::move(box), keyframe);
+    emit(std::move(box), type);
   }
 }
 

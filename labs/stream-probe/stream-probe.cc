@@ -47,6 +47,125 @@ std::string urlEncode(const std::string& s)
   return out;
 }
 
+std::string mp4Box(const std::string& type, const std::string& payload)
+{
+  const uint32_t size = static_cast<uint32_t>(8 + payload.size());
+  std::string out;
+  out += static_cast<char>((size >> 24) & 0xFF);
+  out += static_cast<char>((size >> 16) & 0xFF);
+  out += static_cast<char>((size >> 8) & 0xFF);
+  out += static_cast<char>(size & 0xFF);
+  out += type;
+  out += payload;
+  return out;
+}
+
+std::string be32(uint32_t v)
+{
+  std::string out;
+  out += static_cast<char>((v >> 24) & 0xFF);
+  out += static_cast<char>((v >> 16) & 0xFF);
+  out += static_cast<char>((v >> 8) & 0xFF);
+  out += static_cast<char>(v & 0xFF);
+  return out;
+}
+
+std::string moofWithSync(bool sync)
+{
+  const uint32_t flags = sync ? 0x00000000U : 0x00010000U;
+  const std::string trun =
+      mp4Box("trun", be32(0x00000005) + be32(1) + be32(0) + be32(flags));
+  const std::string tfhd = mp4Box("tfhd", be32(0x00000000) + be32(1));
+  const std::string traf = mp4Box("traf", tfhd + trun);
+  return mp4Box("moof", mp4Box("mfhd", be32(0) + be32(1)) + traf);
+}
+
+std::string chunkEncode(const std::string& body, size_t chunkSize)
+{
+  std::string out;
+  char hex[32];
+  for (size_t i = 0; i < body.size(); i += chunkSize) {
+    const size_t n = std::min(chunkSize, body.size() - i);
+    std::snprintf(hex, sizeof(hex), "%zx\r\n", n);
+    out += hex;
+    out += body.substr(i, n);
+    out += "\r\n";
+  }
+  out += "0\r\n\r\n";
+  return out;
+}
+
+struct ReaderCapture
+{
+  std::string init;
+  std::vector<std::string> fragments;
+  std::vector<bool> keyframes;
+};
+
+ReaderCapture runReader(const std::string& wire, bool chunked, size_t step)
+{
+  ReaderCapture cap;
+  upstream_http::Fmp4Reader reader({.chunked = chunked});
+  reader.onInit = [&](std::string box) { cap.init = std::move(box); };
+  reader.onFragment = [&](std::string box, bool key) {
+    cap.fragments.push_back(std::move(box));
+    cap.keyframes.push_back(key);
+  };
+  for (size_t i = 0; i < wire.size(); i += step)
+    reader.feed(wire.data() + i, std::min(step, wire.size() - i));
+  return cap;
+}
+
+void fmp4ReaderCheck()
+{
+  std::printf("\n=== fmp4 reader ===\n");
+
+  const std::string init = mp4Box("ftyp", std::string(24, '\x0a')) +
+                           mp4Box("moov", std::string(600, '\r'));
+  const std::string frag1 =
+      moofWithSync(true) + mp4Box("mdat", std::string(20000, '\n'));
+  const std::string frag2 =
+      moofWithSync(false) + mp4Box("mdat", std::string(15000, '\x0d'));
+  const std::string body = init + frag1 + frag2;
+
+  check("identity: init completo", runReader(body, false, 65536).init == init,
+        true);
+  check("identity: 2 fragmentos",
+        runReader(body, false, 65536).fragments.size() == 2, true);
+  check("identity: fragmento 1 intacto",
+        runReader(body, false, 65536).fragments[0] == frag1, true);
+  check("identity: keyframe detectado",
+        runReader(body, false, 65536).keyframes[0], true);
+  check("identity: no-keyframe detectado",
+        runReader(body, false, 65536).keyframes[1], false);
+
+  for (const size_t step : {size_t(1), size_t(3), size_t(199), size_t(4096)}) {
+    const auto cap = runReader(body, false, step);
+    check("identity: estable troceando el wire",
+          cap.init == init && cap.fragments.size() == 2 &&
+              cap.fragments[0] == frag1 && cap.fragments[1] == frag2,
+          true);
+  }
+
+  const std::string wire = chunkEncode(body, 1300);
+  for (const size_t step :
+       {size_t(1), size_t(2), size_t(1299), size_t(65536)}) {
+    const auto cap = runReader(wire, true, step);
+    check("chunked: estable troceando el wire",
+          cap.init == init && cap.fragments.size() == 2 &&
+              cap.fragments[0] == frag1 && cap.fragments[1] == frag2,
+          true);
+  }
+
+  check("isChunked lee la cabecera",
+        upstream_http::isChunked(
+            "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked"),
+        true);
+  check("isChunked ignora identity",
+        upstream_http::isChunked("HTTP/1.1 200 OK\r\nContent-Type: video/mp4"),
+        false);
+}
+
 bool addGo2rtcStream(const std::string& name, const std::string& src)
 {
   const auto [host, port] =
@@ -197,6 +316,8 @@ void streamHubCheck()
 int main()
 {
   ConfigService::load("config.toml");
+
+  fmp4ReaderCheck();
 
   std::printf("=== name validation ===\n");
   check("plain name", Go2rtcManager::isSafeName("cam1"), true);

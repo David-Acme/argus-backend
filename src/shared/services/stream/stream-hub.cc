@@ -129,13 +129,14 @@ void StreamHub::runUpstream(std::shared_ptr<Upstream> up)
   tv.tv_sec = 1;
   ::setsockopt(conn.fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
 
-  upstream_http::Fmp4Reader reader;
+  upstream_http::Fmp4Reader reader(
+      {.chunked = upstream_http::isChunked(conn.headers)});
   reader.onInit = [&up](std::string box) {
     std::lock_guard<std::mutex> lock(up->mtx);
     up->init = std::move(box);
     up->hasInit = true;
   };
-  reader.onBox = [&up](std::string box, bool keyframe) {
+  reader.onFragment = [&up](std::string box, bool keyframe) {
     dispatchBox(*up, std::move(box), keyframe);
   };
   if (!conn.leftover.empty())
