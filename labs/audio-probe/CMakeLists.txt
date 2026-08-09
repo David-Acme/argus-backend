@@ -1,6 +1,7 @@
 add_executable(argus-audio-probe
     audio-probe.cc
     ${SRC_ROOT}/shared/services/config-service/config-service.cc
+    ${SRC_ROOT}/shared/services/tapo/tapo-audio.cc
     ${SRC_ROOT}/shared/services/vad/vad-service.cc
     ${SRC_ROOT}/shared/wrapper/audio/audio-resampler.cc
 )

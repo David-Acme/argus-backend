@@ -39,7 +39,7 @@ bool CameraMic::open(const std::string& rtspUrl, OnAudio onAudio)
   impl_->onAudio = std::move(onAudio);
 
   AVDictionary* opts = nullptr;
-  av_dict_set(&opts, "rw_timeout", "5000000", 0);
+  av_dict_set(&opts, "rw_timeout", "2000000", 0);
   av_dict_set(&opts, "rtsp_transport", "tcp", 0);
   if (avformat_open_input(&impl_->fmt, rtspUrl.c_str(), nullptr, &opts) != 0) {
     av_dict_free(&opts);

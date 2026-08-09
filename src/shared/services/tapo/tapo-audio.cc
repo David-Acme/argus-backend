@@ -1,6 +1,7 @@
 #include "tapo-audio.hxx"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstring>
 #include <fstream>
@@ -90,6 +91,69 @@ std::vector<uint8_t> encodeALaw(const std::vector<int16_t>& samples)
   out.reserve(samples.size());
   for (const int16_t sample : samples)
     out.push_back(alawEncodeSample(sample));
+  return out;
+}
+
+namespace
+{
+
+std::array<int16_t, 256> buildALawDecodeTable()
+{
+  std::array<int16_t, 256> table{};
+  for (int i = 0; i < 256; ++i) {
+    const uint8_t t = static_cast<uint8_t>(i) ^ 0x55;
+    const int seg = (t >> 4) & 0x07;
+    const int mant = t & 0x0F;
+    int value = 0;
+    if (seg == 0) {
+      value = (mant << 4) + 8;
+    }
+    else {
+      const int base = 1 << (seg + 7);
+      const int step = 1 << (seg + 2);
+      value = base + (mant << (seg + 3)) + step;
+    }
+    const int sample = (t & 0x80) != 0 ? -value : value;
+    table[static_cast<size_t>(i)] =
+        static_cast<int16_t>(std::clamp(sample, -32768, 32767));
+  }
+  return table;
+}
+
+std::array<int16_t, 256> buildULawDecodeTable()
+{
+  std::array<int16_t, 256> table{};
+  for (int i = 0; i < 256; ++i) {
+    const uint8_t mag = static_cast<uint8_t>(~static_cast<uint8_t>(i));
+    const int exponent = (mag >> 4) & 0x07;
+    const int mantissa = mag & 0x0F;
+    int t = (mantissa << 3) + 0x84;
+    t <<= exponent;
+    const int value = (mag & 0x80) != 0 ? 0x84 - t : t - 0x84;
+    table[static_cast<size_t>(i)] = static_cast<int16_t>(value);
+  }
+  return table;
+}
+
+} // namespace
+
+std::vector<int16_t> decodeALaw(const std::vector<uint8_t>& samples)
+{
+  static const auto table = buildALawDecodeTable();
+  std::vector<int16_t> out;
+  out.reserve(samples.size());
+  for (const uint8_t sample : samples)
+    out.push_back(table[sample]);
+  return out;
+}
+
+std::vector<int16_t> decodeULaw(const std::vector<uint8_t>& samples)
+{
+  static const auto table = buildULawDecodeTable();
+  std::vector<int16_t> out;
+  out.reserve(samples.size());
+  for (const uint8_t sample : samples)
+    out.push_back(table[sample]);
   return out;
 }
 

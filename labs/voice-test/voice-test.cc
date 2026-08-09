@@ -19,6 +19,7 @@
 #include <poll.h>
 #include <shared/services/config-service/config-service.hxx>
 #include <shared/services/llm/llm-service.hxx>
+#include <shared/services/stream/camera-audio-source.hxx>
 #include <shared/services/stream/go2rtc-manager.hxx>
 #include <shared/services/stream/media-relay.hxx>
 #include <shared/services/stt/stt-service.hxx>
@@ -447,7 +448,6 @@ int runAudioDump(const std::string& rtspUrl, const std::string& path)
 }
 
 void runCameraConversation(const TapoTalkConfig& talkCfg,
-                           const std::string& camRtspSub,
                            const std::string& langCode)
 {
   std::atomic<bool> paused{false};
@@ -461,24 +461,27 @@ void runCameraConversation(const TapoTalkConfig& talkCfg,
 
   std::thread micThread([&] {
     while (!gStop.load()) {
-      CameraMic mic;
-      if (!mic.open(camRtspSub, [&](const std::vector<float>& frames) {
-            if (paused.load())
-              return;
-            const int remaining = discardRemaining.load();
-            if (remaining > 0) {
-              discardRemaining.store(
-                  std::max(0, remaining - static_cast<int>(frames.size())));
-              return;
-            }
-            std::lock_guard<std::mutex> lock(bufMutex);
-            camBuf.push(frames.data(), frames.size());
-          })) {
-        std::cerr << "[camera-mic] no se pudo abrir, reintentando...\n";
+      CameraAudioSource mic(
+          {.cameraId = 1, .targetRate = 16000, .ringCapacity = 16000 * 30});
+      if (!mic.open()) {
+        std::cerr << "[camera-mic] no se pudo abrir el audio de la camara\n";
         std::this_thread::sleep_for(std::chrono::seconds(1));
         continue;
       }
-      while (!gStop.load() && mic.readBlock()) {
+      std::vector<float> block;
+      while (!gStop.load() && mic.read(block)) {
+        if (block.empty())
+          continue;
+        if (paused.load())
+          continue;
+        const int remaining = discardRemaining.load();
+        if (remaining > 0) {
+          discardRemaining.store(
+              std::max(0, remaining - static_cast<int>(block.size())));
+          continue;
+        }
+        std::lock_guard<std::mutex> lock(bufMutex);
+        camBuf.push(block.data(), block.size());
       }
       mic.close();
     }
@@ -751,7 +754,7 @@ int main(int argc, char** argv)
                                    : "Hello, I'm Argus. How can I help you?";
   std::cout << "\n[Argus] " << greeting << "\n";
   if (useCamera) {
-    runCameraConversation(talkCfg, camRtspSub, langCode);
+    runCameraConversation(talkCfg, langCode);
   }
   else {
     speak(greeting, langCode, gStop);

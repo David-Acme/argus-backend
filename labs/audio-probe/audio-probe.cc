@@ -6,6 +6,7 @@
 #include <cstring>
 #include <fstream>
 #include <iostream>
+#include <shared/services/tapo/tapo-audio.hxx>
 #include <shared/services/vad/vad-service.hxx>
 #include <shared/wrapper/audio/audio-resampler.hxx>
 #include <shared/wrapper/audio/sample-ring.hxx>
@@ -110,6 +111,23 @@ void ringCheck()
   ring.push(in.data(), in.size());
   ring.push(in.data(), in.size());
   check("ring acota la memoria", ring.size() <= 1024, true);
+}
+
+void g711Check()
+{
+  std::printf("\n=== g711 ===\n");
+  std::vector<int16_t> signal(4096);
+  for (size_t i = 0; i < signal.size(); ++i) {
+    const double t = static_cast<double>(i) / 8000.0;
+    signal[i] = static_cast<int16_t>(9000.0 * std::sin(2.0 * M_PI * 440.0 * t));
+  }
+  const auto alaw = tapo_audio::decodeALaw(tapo_audio::encodeALaw(signal));
+  double alawErr = 0.0;
+  for (size_t i = 0; i < signal.size(); ++i)
+    alawErr += std::abs(static_cast<double>(alaw[i]) - signal[i]);
+  const double scale = 32768.0 * static_cast<double>(signal.size());
+  check("alaw round-trip < 5%", alawErr / scale < 0.05, true);
+  check("silencio decodifica a ~0", std::abs(alaw[0]) < 64, true);
 }
 
 void vadCheck()
@@ -278,8 +296,7 @@ int main(int argc, char** argv)
     buf[n] = '\0';
     const std::string path(buf);
     const size_t slash = path.find_last_of('/');
-    if (slash != std::string::npos &&
-        chdir(path.substr(0, slash).c_str()) != 0)
+    if (slash != std::string::npos && chdir(path.substr(0, slash).c_str()) != 0)
       std::cerr << "Warning: could not chdir\n";
   }
 
@@ -300,6 +317,7 @@ int main(int argc, char** argv)
 
   resamplerCheck();
   ringCheck();
+  g711Check();
   vadCheck();
   vadGateCheck();
   std::printf("\n%s (%d fallos)\n", gFailures == 0 ? "TODO OK" : "HAY FALLOS",
