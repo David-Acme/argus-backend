@@ -1,9 +1,15 @@
+#include "vad.hxx"
+
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
+#include <iostream>
 #include <shared/wrapper/audio/audio-resampler.hxx>
 #include <shared/wrapper/audio/sample-ring.hxx>
+#include <string>
+#include <unistd.h>
 #include <vector>
 
 namespace
@@ -54,8 +60,8 @@ void resamplerCheck()
       differing++;
 
   check("streaming == una pasada", differing == 0, true);
-  check("perdida por bloques < 1%",
-        blocks.size() >= sig.size() * 2 * 99 / 100, true);
+  check("perdida por bloques < 1%", blocks.size() >= sig.size() * 2 * 99 / 100,
+        true);
 
   AudioResampler down({.sourceRate = 44100, .targetRate = 8000});
   const auto voice = tone(44100, 440.0, 3.0);
@@ -88,12 +94,59 @@ void ringCheck()
   check("ring acota la memoria", ring.size() <= 1024, true);
 }
 
+void vadCheck()
+{
+  std::printf("\n=== vad ===\n");
+  std::vector<float> speech;
+  const auto pcm = tone(16000, 220.0, 1.5);
+  for (const auto s : pcm)
+    speech.push_back(static_cast<float>(s) / 32768.0F);
+  std::vector<float> signal(16000, 0.0F);
+  signal.insert(signal.end(), speech.begin(), speech.end());
+  signal.insert(signal.end(), 16000, 0.0F);
+
+  const auto probs = [&](size_t block) {
+    Vad vad;
+    std::vector<float> turn;
+    std::vector<float> out;
+    for (size_t i = 0; i + block <= signal.size(); i += block) {
+      vad.process(signal.data() + i, static_cast<int>(block), turn);
+      out.push_back(vad.lastProb());
+    }
+    return out;
+  };
+
+  const auto a = probs(512);
+  const auto b = probs(1920);
+  size_t compared = 0;
+  size_t equal = 0;
+  for (size_t k = 0; k < b.size(); ++k) {
+    const size_t ia = ((k + 1) * 1920) / 512 - 1;
+    if (ia >= a.size())
+      break;
+    compared++;
+    if (std::fabs(a[ia] - b[k]) < 1e-4F)
+      equal++;
+  }
+  check("VAD independiente del tamano de bloque", equal == compared, true);
+}
+
 } // namespace
 
 int main()
 {
+  char buf[4096];
+  const ssize_t n = readlink("/proc/self/exe", buf, sizeof(buf) - 1);
+  if (n > 0) {
+    buf[n] = '\0';
+    const std::string path(buf);
+    const size_t slash = path.find_last_of('/');
+    if (slash != std::string::npos && chdir(path.substr(0, slash).c_str()) != 0)
+      std::cerr << "Warning: could not chdir\n";
+  }
   resamplerCheck();
   ringCheck();
+  vadCheck();
   std::printf("\n%s (%d fallos)\n", gFailures == 0 ? "TODO OK" : "HAY FALLOS",
               gFailures);
   return gFailures == 0 ? 0 : 1;
