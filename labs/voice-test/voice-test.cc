@@ -21,6 +21,7 @@
 #include <shared/services/llm/llm-service.hxx>
 #include <shared/services/stream/camera-audio-source.hxx>
 #include <shared/services/stream/go2rtc-manager.hxx>
+#include <shared/services/stream/upstream-http.hxx>
 #include <shared/services/stream/media-relay.hxx>
 #include <shared/services/stt/stt-service.hxx>
 #include <shared/services/tapo/tapo-talk-client.hxx>
@@ -448,6 +449,7 @@ int runAudioDump(const std::string& rtspUrl, const std::string& path)
 }
 
 void runCameraConversation(const TapoTalkConfig& talkCfg,
+                           const std::string& camRtspSub,
                            const std::string& langCode)
 {
   std::atomic<bool> paused{false};
@@ -461,29 +463,39 @@ void runCameraConversation(const TapoTalkConfig& talkCfg,
 
   std::thread micThread([&] {
     while (!gStop.load()) {
-      CameraAudioSource mic(
-          {.cameraId = 1, .targetRate = 16000, .ringCapacity = 16000 * 30});
-      if (!mic.open()) {
-        std::cerr << "[camera-mic] no se pudo abrir el audio de la camara\n";
+      CameraMic mic;
+      if (!mic.open(camRtspSub, [&](const std::vector<float>& frames) {
+            if (paused.load())
+              return;
+            const int remaining = discardRemaining.load();
+            if (remaining > 0) {
+              discardRemaining.store(
+                  std::max(0, remaining - static_cast<int>(frames.size())));
+              return;
+            }
+            std::lock_guard<std::mutex> lock(bufMutex);
+            camBuf.push(frames.data(), frames.size());
+          })) {
+        std::cerr << "[mic] no se pudo abrir el audio de la camara, "
+                     "reintentando en 1s\n";
         std::this_thread::sleep_for(std::chrono::seconds(1));
         continue;
       }
-      std::vector<float> block;
-      while (!gStop.load() && mic.read(block)) {
-        if (block.empty())
-          continue;
-        if (paused.load())
-          continue;
-        const int remaining = discardRemaining.load();
-        if (remaining > 0) {
-          discardRemaining.store(
-              std::max(0, remaining - static_cast<int>(block.size())));
-          continue;
-        }
-        std::lock_guard<std::mutex> lock(bufMutex);
-        camBuf.push(block.data(), block.size());
+      std::cout << "[mic] escuchando por RTSP (stream2)\n";
+      const auto started = std::chrono::steady_clock::now();
+      while (!gStop.load() && mic.readBlock()) {
       }
       mic.close();
+      if (gStop.load())
+        break;
+      const double secs =
+          std::chrono::duration_cast<std::chrono::milliseconds>(
+              std::chrono::steady_clock::now() - started)
+              .count() /
+          1000.0;
+      std::cout << "[mic] se corto tras " << secs << "s (" << mic.lastError()
+                << "); reconectando...\n";
+      std::this_thread::sleep_for(std::chrono::milliseconds(500));
     }
   });
 
@@ -519,11 +531,8 @@ void runCameraConversation(const TapoTalkConfig& talkCfg,
                                    : "Hello, I'm Argus. I am listening through "
                                      "the camera, you can speak anytime.";
   paused.store(true);
-  const int64_t sentBeforeGreeting = talkClient.sentDurationMs();
   speakToCamera(talkClient, greeting, langCode, gStop);
-  discardRemaining.store(static_cast<int>(
-      (talkClient.sentDurationMs() - sentBeforeGreeting + talkDrainMarginMs) *
-      16000 / 1000));
+  discardRemaining.store(static_cast<int>(talkDrainMarginMs * 16000 / 1000));
   paused.store(false);
   std::cout << "\n[escuchando continuamente por la camara...] "
                "(p=pausa, q=salir)\n"
@@ -535,6 +544,9 @@ void runCameraConversation(const TapoTalkConfig& talkCfg,
     camBuf.clear();
     vad.reset();
   };
+  auto lastStatus = std::chrono::steady_clock::now();
+  auto lastVoice = std::chrono::steady_clock::now();
+  auto lastChunkAt = std::chrono::steady_clock::now();
   while (!gStop.load()) {
     if (paused.load()) {
       std::this_thread::sleep_for(std::chrono::milliseconds(100));
@@ -546,14 +558,42 @@ void runCameraConversation(const TapoTalkConfig& talkCfg,
       std::lock_guard<std::mutex> lock(bufMutex);
       haveChunk = camBuf.pop(chunk.data(), chunk.size());
     }
+    const auto now = std::chrono::steady_clock::now();
     if (!haveChunk) {
+      const double silent =
+          std::chrono::duration_cast<std::chrono::milliseconds>(now -
+                                                                lastChunkAt)
+              .count() /
+          1000.0;
+      if (silent > 1.0 && now - lastStatus >= std::chrono::seconds(5)) {
+        lastStatus = now;
+        std::cout << "[mic] SIN AUDIO durante " << silent << "s\n";
+      }
       std::this_thread::sleep_for(std::chrono::milliseconds(10));
       continue;
     }
+    lastChunkAt = now;
+
+    double sum = 0.0;
+    for (const float s : chunk)
+      sum += static_cast<double>(s) * s;
+    const float rms =
+        static_cast<float>(std::sqrt(sum / static_cast<double>(chunk.size())));
 
     VadTurn turn;
-    if (!vad.process(chunk.data(), static_cast<int>(chunk.size()), turn))
+    if (!vad.process(chunk.data(), static_cast<int>(chunk.size()), turn)) {
+      if (now - lastStatus >= std::chrono::seconds(5)) {
+        lastStatus = now;
+        const double db = 20.0 * std::log10(std::max(rms, 1e-6F));
+        std::cout << "[mic] escuchando... nivel " << static_cast<int>(db)
+                  << "dB\n";
+      }
+      if (vad.inSpeech() && now - lastVoice >= std::chrono::seconds(1)) {
+        lastVoice = now;
+        std::cout << "[mic] VOZ DETECTADA\n";
+      }
       continue;
+    }
 
     const std::string userText = SttService::transcribe(turn.samples, 16000);
     std::cout << "\n[You (camara)] " << userText << "\n";
@@ -609,13 +649,8 @@ void runCameraConversation(const TapoTalkConfig& talkCfg,
     state.history.push_back({"assistant", full});
 
     resumeListening();
-    paused.store(true);
-    const int64_t sentBefore = talkClient.sentDurationMs();
     speakToCamera(talkClient, full, langCode, gStop);
-    discardRemaining.store(static_cast<int>(
-        (talkClient.sentDurationMs() - sentBefore + talkDrainMarginMs) * 16000 /
-        1000));
-    paused.store(false);
+    discardRemaining.store(static_cast<int>(talkDrainMarginMs * 16000 / 1000));
     resumeListening();
   }
 
@@ -626,9 +661,89 @@ void runCameraConversation(const TapoTalkConfig& talkCfg,
 
 } // namespace
 
-int main(int argc, char** argv)
+void logGo2rtcStreams()
 {
-  // Run from the binary's own directory so config.toml and models/ resolve
+  const auto [host, port] =
+      upstream_http::splitHostPort(Go2rtcManager::apiBase().substr(7));
+  for (int attempt = 0; attempt < 3; ++attempt) {
+    upstream_http::Upstream up =
+        upstream_http::open(host, port, "/api/streams", 5);
+    if (up.ok) {
+      std::string body = std::move(up.leftover);
+      char tmp[8192];
+      for (;;) {
+        const auto n = ::recv(up.fd, tmp, sizeof(tmp), 0);
+        if (n <= 0)
+          break;
+        body.append(tmp, static_cast<size_t>(n));
+        if (body.size() > 65536)
+          break;
+      }
+      ::close(up.fd);
+      std::cout << "[go2rtc-streams] " << body.substr(0, 4096) << "\n";
+      return;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+  }
+  std::cout << "[go2rtc-streams] no disponible tras reintentos\n";
+}
+
+void logGo2rtcProducerError()
+{
+  const auto [host, port] =
+      upstream_http::splitHostPort(Go2rtcManager::apiBase().substr(7));
+  const std::string path = "/api/streams?src=cam1&mp4=flac";
+  upstream_http::Upstream up = upstream_http::open(host, port, path, 8);
+  if (!up.ok) {
+    std::cout << "[go2rtc-probe] no disponible\n";
+    return;
+  }
+  std::string body = std::move(up.leftover);
+  char tmp[8192];
+  for (;;) {
+    const auto n = ::recv(up.fd, tmp, sizeof(tmp), 0);
+    if (n <= 0)
+      break;
+    body.append(tmp, static_cast<size_t>(n));
+    if (body.size() > 16384)
+      break;
+  }
+  ::close(up.fd);
+  std::cout << "[go2rtc-probe] " << body.substr(0, 2048) << "\n";
+}
+
+int runMicCheck(const std::string& rtspSub, int seconds)
+{
+  if (seconds <= 0)
+    seconds = 10;
+  CameraMic mic;
+  std::vector<float> all;
+  if (!mic.open(rtspSub, [&](const std::vector<float>& frames) {
+        all.insert(all.end(), frames.begin(), frames.end());
+      })) {
+    std::cerr << "[mic-check] no se pudo abrir el audio de la camara\n";
+    return 1;
+  }
+  std::cout << "[mic-check] abierto; capturando " << seconds << "s\n";
+  while (all.size() < static_cast<size_t>(seconds) * 16000 && mic.readBlock()) {
+  }
+  mic.close();
+  double sum = 0.0;
+  float peak = 0.0F;
+  for (const float s : all) {
+    sum += static_cast<double>(s) * s;
+    peak = std::max(peak, std::abs(s));
+  }
+  const double rms =
+      all.empty() ? 0.0 : std::sqrt(sum / static_cast<double>(all.size()));
+  std::cout << "[mic-check] muestras=" << all.size() << " ("
+            << all.size() / 16000.0 << "s) rms=" << rms << " peak=" << peak
+            << "\n";
+  return 0;
+}
+
+int main(int argc, char** argv)
+{  // Run from the binary's own directory so config.toml and models/ resolve
   // no matter where the command is launched from.
   if (chdir(exeDir().c_str()) != 0)
     std::cerr << "Warning: could not chdir to " << exeDir() << "\n";
@@ -646,8 +761,12 @@ int main(int argc, char** argv)
       ConfigService::getString("voice_test.camera_name");
 
   Go2rtcManager::init();
-  if (!camRtspMain.empty())
+  if (!camRtspMain.empty()) {
+    std::cout << "[go2rtc] fuente " << cameraName
+              << " = rtsp principal (solo vision, conexion lazy)\n";
     Go2rtcManager::addSource({.name = cameraName, .url = camRtspMain});
+  }
+  logGo2rtcStreams();
 
   bool useCamera = false;
   std::string cloudPass;
@@ -659,6 +778,11 @@ int main(int argc, char** argv)
       }
       Go2rtcManager::shutdown();
       return runCameraCheck();
+    }
+    if (std::string(argv[i]) == "--mic-check" && i + 1 < argc) {
+      const int result = runMicCheck(camRtspSub, std::atoi(argv[++i]));
+      Go2rtcManager::shutdown();
+      return result;
     }
     if (std::string(argv[i]) == "--camera-stt-check") {
       if (camRtspSub.empty()) {
@@ -754,7 +878,7 @@ int main(int argc, char** argv)
                                    : "Hello, I'm Argus. How can I help you?";
   std::cout << "\n[Argus] " << greeting << "\n";
   if (useCamera) {
-    runCameraConversation(talkCfg, langCode);
+    runCameraConversation(talkCfg, camRtspSub, langCode);
   }
   else {
     speak(greeting, langCode, gStop);

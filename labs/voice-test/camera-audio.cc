@@ -1,7 +1,9 @@
 #include "camera-audio.hxx"
 
 #include <algorithm>
+#include <chrono>
 #include <cstring>
+#include <shared/services/config-service/config-service.hxx>
 #include <shared/wrapper/audio/audio-resampler.hxx>
 
 extern "C" {
@@ -26,11 +28,28 @@ struct CameraMic::Impl
   std::vector<int16_t> pending8k;
   int sourceRate{8000};
   std::unique_ptr<AudioResampler> resampler;
+  std::string lastError;
+  float smoothGain{1.0F};
+  std::chrono::steady_clock::time_point lastAudioAt{};
+  std::chrono::steady_clock::time_point deadline{};
+  std::chrono::milliseconds recoverTimeout{3000};
 };
+
+int CameraMic::recoverCb(void* opaque)
+{
+  auto* impl = static_cast<Impl*>(opaque);
+  return std::chrono::steady_clock::now() > impl->deadline ? 1 : 0;
+}
 
 CameraMic::CameraMic() = default;
 
 CameraMic::~CameraMic() = default;
+
+const std::string& CameraMic::lastError() const
+{
+  static const std::string empty;
+  return impl_ ? impl_->lastError : empty;
+}
 
 bool CameraMic::open(const std::string& rtspUrl, OnAudio onAudio)
 {
@@ -38,9 +57,18 @@ bool CameraMic::open(const std::string& rtspUrl, OnAudio onAudio)
   impl_ = std::make_unique<Impl>();
   impl_->onAudio = std::move(onAudio);
 
+  const int recoverMs =
+      ConfigService::getInt("voice_test.mic_recover_timeout_ms");
+  impl_->recoverTimeout =
+      std::chrono::milliseconds(recoverMs > 0 ? recoverMs : 3000);
+  impl_->lastAudioAt = std::chrono::steady_clock::now();
+  impl_->deadline = impl_->lastAudioAt + impl_->recoverTimeout;
+
   AVDictionary* opts = nullptr;
   av_dict_set(&opts, "rw_timeout", "2000000", 0);
   av_dict_set(&opts, "rtsp_transport", "tcp", 0);
+  impl_->fmt = avformat_alloc_context();
+  impl_->fmt->interrupt_callback = {&CameraMic::recoverCb, impl_.get()};
   if (avformat_open_input(&impl_->fmt, rtspUrl.c_str(), nullptr, &opts) != 0) {
     av_dict_free(&opts);
     impl_.reset();
@@ -98,14 +126,30 @@ void CameraMic::close()
 
 bool CameraMic::readBlock()
 {
-  if (!impl_ || !impl_->fmt || !impl_->dec)
+  if (!impl_ || !impl_->fmt || !impl_->dec) {
+    impl_->lastError = "mic no abierto";
     return false;
+  }
 
+  auto noAudioSince = std::chrono::steady_clock::now();
   while (impl_->pending8k.size() < kBlock8k) {
     const int ret = av_read_frame(impl_->fmt, impl_->pkt);
-    if (ret < 0)
+    if (ret < 0) {
+      if (ret == AVERROR_EOF)
+        impl_->lastError = "fin de flujo (camara cerro la sesion)";
+      else if (ret == AVERROR(EAGAIN))
+        impl_->lastError = "timeout sin audio (2s)";
+      else
+        impl_->lastError = "error de lectura";
       return false;
+    }
     if (impl_->pkt->stream_index != impl_->audioIndex) {
+      if (std::chrono::steady_clock::now() - noAudioSince >=
+          std::chrono::milliseconds(1500)) {
+        impl_->lastError = "la camara manda solo video (sin audio)";
+        av_packet_unref(impl_->pkt);
+        return false;
+      }
       av_packet_unref(impl_->pkt);
       continue;
     }
@@ -141,6 +185,9 @@ bool CameraMic::readBlock()
         }
         impl_->pending8k.insert(impl_->pending8k.end(), chunk.begin(),
                                 chunk.end());
+        noAudioSince = std::chrono::steady_clock::now();
+        impl_->lastAudioAt = noAudioSince;
+        impl_->deadline = impl_->lastAudioAt + impl_->recoverTimeout;
       }
     }
     av_packet_unref(impl_->pkt);
@@ -155,8 +202,18 @@ bool CameraMic::readBlock()
   impl_->resampler->process(chunk.data(), chunk.size(), up);
   std::vector<float> out;
   out.reserve(up.size());
+  int16_t peak = 1;
   for (const auto sample : up)
-    out.push_back(static_cast<float>(sample) / 32768.0F);
+    peak = static_cast<int16_t>(
+        std::max(static_cast<int>(peak), std::abs(static_cast<int>(sample))));
+  const float target =
+      std::clamp(0.8F * 32768.0F / static_cast<float>(peak), 1.0F, 4.0F);
+  impl_->smoothGain =
+      0.5F * impl_->smoothGain + 0.5F * target;
+  const float gain = impl_->smoothGain;
+  for (const auto sample : up)
+    out.push_back(std::clamp(static_cast<float>(sample) * gain / 32768.0F,
+                             -1.0F, 1.0F));
   if (impl_->onAudio)
     impl_->onAudio(out);
   return true;

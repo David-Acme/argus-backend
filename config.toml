@@ -233,10 +233,13 @@ talk_framing = "none"
 # cuesta un handshake entero, así que se mantiene abierta durante la
 # conversación y sendChunk la reabre solo si falla el envío.
 talk_idle_timeout_s = 60
-# Margen sobre la duración del audio enviado antes de volver a escuchar. El
-# altavoz de la cámara sigue sonando después de que el último paquete salga
-# del backend; calibrar con labs/fixtures/camera-echo.wav.
-talk_drain_margin_ms = 400
+# Margen de audio del mic descartado tras terminar el envío al altavoz. El
+# eco se descarta DURANTE el talk (el bucle está bloqueado enviando), así que
+# aquí solo se cubre la cola de reproducción del altavoz de la cámara + el
+# retardo de captura del mic; no la duración de la frase. Calibrar con
+# labs/fixtures/camera-echo.wav: el instante en que la probabilidad del VAD
+# vuelve bajo neg_threshold tras el final del audio enviado.
+talk_drain_margin_ms = 800
 # Echo cancellation mode negotiated with the camera speaker.
 talk_mode = "aec"
 # Milliseconds of A-law audio per MPEG-TS part. Bounds the audio still in
@@ -337,6 +340,17 @@ max_turn_frames = 750
 # inicial. 10 = 320 ms.
 pre_roll_frames = 10
 # Puerta de calidad: por debajo de esto el turno se descarta sin llamar al
-# STT. Whisper inventa frases cuando le llega audio corto o casi silencioso.
-min_turn_ms = 320
-min_mean_prob = 0.55
+# STT. El STT inventa frases cuando le llega audio corto o casi silencioso.
+min_turn_ms = 240
+min_mean_prob = 0.35
+
+# ── Voice test (labs) ────────────────────────────────────────────────
+# Las credenciales de la cámara viven en config.local.toml (overlay sin
+# trackear); este bloque solo lleva tunables del lab.
+[voice_test]
+# Tope de espera sin audio del mic antes de forzar una reconexión. Sin él,
+# av_read_frame puede quedarse bloqueado cuando la cámara deja de enviar
+# (los keepalive RTCP impiden que rw_timeout dispare) y el mic queda sordo.
+# El interrupt_callback de FFmpeg aborta la lectura pasada esta deadline y el
+# bucle de reconexión reabre la sesión en segundos.
+mic_recover_timeout_ms = 3000

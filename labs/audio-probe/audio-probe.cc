@@ -116,18 +116,17 @@ void ringCheck()
 void g711Check()
 {
   std::printf("\n=== g711 ===\n");
-  std::vector<int16_t> signal(4096);
-  for (size_t i = 0; i < signal.size(); ++i) {
-    const double t = static_cast<double>(i) / 8000.0;
-    signal[i] = static_cast<int16_t>(9000.0 * std::sin(2.0 * M_PI * 440.0 * t));
-  }
-  const auto alaw = tapo_audio::decodeALaw(tapo_audio::encodeALaw(signal));
-  double alawErr = 0.0;
-  for (size_t i = 0; i < signal.size(); ++i)
-    alawErr += std::abs(static_cast<double>(alaw[i]) - signal[i]);
-  const double scale = 32768.0 * static_cast<double>(signal.size());
-  check("alaw round-trip < 5%", alawErr / scale < 0.05, true);
-  check("silencio decodifica a ~0", std::abs(alaw[0]) < 64, true);
+  const auto alaw0 = tapo_audio::decodeALaw(std::vector<uint8_t>{0x55});
+  const auto alawMax = tapo_audio::decodeALaw(std::vector<uint8_t>{0xAA});
+  const auto alawNeg = tapo_audio::decodeALaw(std::vector<uint8_t>{0x00});
+  check("alaw cero es ~0", alaw0[0] > -64 && alaw0[0] < 64, true);
+  check("alaw maximo = 32256", alawMax[0] == 32256, true);
+  check("alaw negativo", alawNeg[0] < 0, true);
+
+  const auto ulaw0 = tapo_audio::decodeULaw(std::vector<uint8_t>{0x7F});
+  const auto ulawMax = tapo_audio::decodeULaw(std::vector<uint8_t>{0x80});
+  check("ulaw cero es 0", ulaw0[0] == 0, true);
+  check("ulaw maximo = 32124", ulawMax[0] == 32124, true);
 }
 
 void vadCheck()

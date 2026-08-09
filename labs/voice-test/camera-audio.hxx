@@ -21,8 +21,10 @@ public:
   // end-of-stream, error or timeout, or when the mic is not open.
   bool readBlock();
   void close();
+  const std::string& lastError() const;
 
 private:
+  static int recoverCb(void* opaque);
   struct Impl;
   std::unique_ptr<Impl> impl_;
 };

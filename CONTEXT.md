@@ -62,7 +62,7 @@
 | `FaceDB` | HNSWlib | In-memory 128-dim index | Loaded from SQLite at startup |
 | `LlmService` | llama.cpp (submodule b10305) | LFM2.5-1.2B-Instruct-Q4_K_M | `models/llm/` |
 | `VisionService` | llama.cpp + libmtmd | LFM2.5-VL-450M (Q8_0 + mmproj F16) | `models/vision/lfm2vl-25/` |
-| `SttService` | sherpa-onnx | Whisper tiny | `models/stt/` |
+| `SttService` | sherpa-onnx | nemo_transducer (FastConformer RNN-T, es/en) | `models/stt/` |
 | `TtsService` | Supertonic 3 | ONNX models | `models/tts/` |
 | `JwtService` | jwt-cpp | HS256, instance class | — |
 | `ConfigService` | tomlplusplus | TOML config reader | `config.toml` |
@@ -132,16 +132,18 @@ without GPU), so every AI service auto-tunes its resources at runtime:
   the window), zero per-window allocations, and a turn-quality gate
   (`min_turn_ms` + `min_mean_prob`). Current tunables live in `config.toml`
   `[vad]` (threshold 0.45 / neg 0.25, 5 speech frames to open, 12 silence
-  frames to close, 320ms min turn, 0.55 min mean prob); the calibration run
+  frames to close, 240ms min turn, 0.35 min mean prob — the gate was relaxed
+  on 2026-08-09 after listening to real camera audio); the calibration run
   against recorded camera audio (Task 11) will replace these defaults with
   measured numbers. The camera path speaks through the Tapo talk channel with
   one persistent session per conversation (`sendChunk`), resamples the mic
-  with `AudioResampler` (stateful sinc), and gates the echo with
-  `sentDurationMs() + talk_drain_margin_ms` of discarded mic audio plus a VAD
+  with `AudioResampler` (stateful sinc), and gates the echo by discarding
+  `talk_drain_margin_ms` of mic audio after the talk (the echo during the talk
+  is dropped because the conversation loop is blocked sending) plus a VAD
   reset. The LLM replies fully first, then the TTS speaks with its native
   chunking (natural, not choppy). Ctrl+C exits cleanly (shared
-  `std::atomic<bool>`). `SttService::setLanguage("es"/"en")` switches Whisper
-  at runtime; the `[stt] language` config defaults it. Run:
+  `std::atomic<bool>`). `SttService::setLanguage("es"/"en")` switches the STT
+  language at runtime; the `[stt] language` config defaults it. Run:
   `build/prod/labs/voice-test/argus-voice-test --camera --cloud-pass ...`.
 
 ## Tapo camera integration — Phase 1 (2026-08-06)
@@ -188,19 +190,22 @@ and 879 zero-crossings/s (= 2 × 440 Hz).
 Muxing the same audio with ffmpeg and reading back its PMT gives `stream_type
 0x06` with `stream_id 0xBD` (private stream), and that was the first choice
 because ffmpeg's output is what pytapo feeds the camera. `TapoTsConfig` now
-carries `streamType 0x90` / `streamId 0xC0` instead. `0x90` is what pytapo
-itself writes, so the C225 plausibly wants it, but the change predates any
-recorded measurement against the physical camera, and the ffprobe check above
-no longer reports `stream_type=6`. Whichever value survives, record *how* it
-was confirmed here — a wrong stream type fails as silence, not as an error.
+carries `streamType 0x90` / `streamId 0xC0` instead. **Confirmed working on
+2026-08-09**: the talk channel plays audibly end-to-end with these values (a
+wrong stream type fails as silence, and the conversation was audible), so
+`0x90` / `0xC0` is the value the C225 accepts. Do not flip it again without a
+measurement.
 
 ### Still unverified — needs the physical C225 (Phase 1 gate)
 
-Which credential the control channel accepts (camera account vs `admin` +
-cloud password), the exact `searchDetectionList` response shape, the 8800
-multipart body framing (`talk_framing`), and which digest password variant the
-talk channel wants. Each has a probe flag and is persisted rather than
-hardcoded, so one `tapo-probe` run against the camera settles all of them.
+Resolved on 2026-08-09 via the live conversation sessions: the talk channel
+accepts the **sha256** digest password variant (log: "authenticated with
+password variant 'sha256'"), the 8800 multipart body works with
+`talk_framing = "none"`, and the TS stream type is `0x90`/`0xC0` (see above).
+Still unverified: which credential the control channel accepts (camera
+account vs `admin` + cloud password) and the exact `searchDetectionList`
+response shape. Each has a probe flag and is persisted rather than hardcoded,
+so one `tapo-probe` run against the camera settles them.
 
 **Key derivation — the subtle part**: `hashedKey` is NOT `hashedPassword`. It is
 `hashedKey = sha256(cnonce + hashedPassword + nonce)` — the same value that
@@ -351,10 +356,13 @@ playback): short sentence 0.53, two sentences 0.35, three 0.33, long sentence
 `labs/tts-probe`, including `stable=1` (result does not depend on how the text
 arrives split — tested with 1, 3, 7 and 64-character tokens) and `lossless=1`.
 
-**Barge-in**: the microphone is closed as soon as the first audio plays,
-otherwise the VAD hears Argus through the speakers and interrupts itself. Real
-barge-in during playback needs acoustic echo cancellation (WebRTC APM or
-similar) and is not implemented.
+**Barge-in**: the local-mic path listens during playback with a dedicated
+interrupter thread (its own `VadService`); when the VAD detects speech it
+stops the TTS (`speechDetected` → `stopSpeech`), so the speaker is cut in
+~sentence granularity. The camera path has no barge-in: the reply is sent in
+full over the talk channel and the mic frames during the send are cleared
+after it (the loop is blocked sending). Real acoustic echo cancellation
+(WebRTC APM or similar) is still not implemented.
 
 ## Video distribution over the `/sync` WebSocket (2026-08-08)
 
@@ -430,14 +438,21 @@ remembering:
   LSTM state is per audio stream (one VAD per conversation), but the 2.3MB
   ONNX model is loaded once in a file-static session behind a mutex — the same
   shared-context pattern as the other AI services.
-- **The talk session stays open across sentences — except it cannot.** The
-  original plan kept the 8800 session open with a silence keepalive. The C225
-  **usurps its microphone while the talk channel is open**: the RTSP substream
-  goes silent, `CameraMic` times out every ~5s and the listen loop starves.
-  `sendChunk` therefore reopens per sentence (~6ms measured) and stays closed
-  between sentences; the keepalive idea is recorded here so nobody tries it
-  again. `sentDurationMs()` still drives the echo drain as a per-sentence
-  delta.
+- **The talk session and the mic during talk.** The original plan kept the
+  8800 session open with a silence keepalive, and in that state the C225 went
+  silent on the RTSP mic while the talk channel was open (measured then;
+  `CameraMic` timed out every ~5s). The keepalive was dropped and `sendChunk`
+  now keeps the session open across sentences (opening lazily, reopening only
+  on send failure; the camera closes it after `talk_idle_timeout_s` of idle).
+  Measured 2026-08-09 with that flow, the mic **keeps delivering audio during
+  the whole talk** (dropped-frame counters showed `pausa=202752` samples in
+  one run), so no mute occurs. The perceived post-talk deafness was a
+  **double discard**: a pause over the send plus a drain of the full reply
+  duration, deafening the mic for ~2x the reply. Fixed by dropping the pause
+  (the loop is blocked in the send anyway and the accumulated echo is cleared
+  with `camBuf.clear() + vad.reset()`) and draining only
+  `talk_drain_margin_ms` of the speaker's playout tail — verified as a 100%
+  fluid conversation with ~780ms drains.
 - **The speaker AGC overflowed.** A full-scale `-32768` sample stored its
   absolute peak in `int16_t`, giving `gain = 26000 / -32768 = -0.793` and
   inverting + attenuating the whole sentence. `tapoApplySpeakerGain` computes
@@ -450,12 +465,50 @@ remembering:
   `camBuf.clear() + vad.reset()` before listening resumes, and camera frames
   come from go2rtc (`MediaRelay::snapshotBytes`) instead of a third RTSP
   session.
-- **Task 13 (camera audio through go2rtc) is blocked on a hardware check**:
-  `curl -s -o /dev/null -w '%{http_code} %{content_type}\n'
-  'http://127.0.0.1:1984/api/stream.mp4?src=cam1&audio=pcma'` with the camera
-  up. If go2rtc serves PCMA/PCM, `CameraAudioSource` is viable; otherwise the
-  plan falls back to FFmpeg in the backend. `CameraMic` (FFmpeg RTSP) remains
-  the fallback until then.
+- **Task 13 (camera audio through go2rtc) — hardware check done.** go2rtc
+  serves the camera mic as a mono 8 kHz FLAC track via
+  `/api/stream.mp4?src=cam1&mp4=flac` (verified 2026-08-09); `CameraAudioSource`
+  needs a FLAC decoder before it is viable, so `CameraMic` (FFmpeg RTSP)
+  remains the mic source for now.
+
+## Retired plans and pending verifications (2026-08-09)
+
+`STABILITY_AND_REALTIME_PLAN.md`, `OPTIMIZATION_AND_MEMORY_PLAN.md` and
+`PLAN_EXECUTION_STATE.md` were deleted on 2026-08-09: their tasks are either
+landed (see the sections above) or superseded by this file and the git history.
+References to them in `AGENTS.md`/`CONTEXT.md` are kept as history. What is
+still left to verify before the phase can be called complete:
+
+- **VAD calibration against recorded camera audio.** Record
+  `labs/fixtures/camera-quiet.wav`, `camera-speech.wav` and `camera-echo.wav`
+  with `argus-voice-test --audio-dump`; acceptance: quiet → 0 turns, speech →
+  exactly 3 turns (tune `min_silence_frames`/`min_mean_prob`), then derive
+  `talk_drain_margin_ms` from the echo fixture. The current `[vad]` values
+  (threshold 0.45 / neg 0.25, 5 open / 12 close, 240 ms min turn, 0.35 min
+  mean prob) are provisional.
+- **Camera audio through go2rtc.** Verified against the physical C225 on
+  2026-08-09: `/api/stream.mp4?src=cam1&mp4=flac` serves a mono 8 kHz FLAC
+  track — the go2rtc mp4 module ignores `video=`/`audio=` params (the
+  `mp4=flac`/`mp4=all` filter is what enables the PCM family, verified in
+  `pkg/mp4/helpers.go`) and its muxer repackages G.711 to FLAC
+  unconditionally (`pkg/mp4/consumer.go`), so `decodePcm` in
+  `CameraAudioSource` needs a FLAC decoder (libFLAC via Conan) before that
+  path is usable; `CameraMic` (FFmpeg RTSP) remains the mic until then.
+- **TS muxer stream type.** `streamType 0x90` / `streamId 0xC0` is unverified
+  against the C225; a wrong value fails as silence, not as an error. Settle
+  with `tapo-probe --ts-dump` against the physical camera and record how.
+- **LLM prefill above `n_batch`.** The chunked prefill landed in
+  `llm-service.cc`; confirm a ~2000-token prompt no longer logs
+  "prompt decode failed" (`labs/llm-bench`).
+- **Future phases (not started; decisions preserved from the plans):** the
+  detector/tracking/memory/tools work keeps: one RTSP session per camera via
+  go2rtc, all media through the backend port, the tool DSL with the native
+  `<|tool_call_start|>` token, and the LFM2.5 hybrid handling (6/16 attention
+  blocks → KV `f16`; the conv state is not position-truncatable, so prefix
+  reuse must use `llama_state_seq_get/set_data` snapshots, never `seq_rm`).
+  Open decisions: `min_track_hits` 2 vs 3, YOLO26 AGPL-3.0 vs RF-DETR-Nano,
+  face crop retention (privacy). Barge-in/AEC (WebRTC APM) remains out of
+  scope.
 
 ## Runtime config writes (ConfigService)
 

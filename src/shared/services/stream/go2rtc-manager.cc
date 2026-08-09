@@ -125,7 +125,7 @@ bool Go2rtcManager::writeConfig()
   out << "webrtc:\n";
   out << "  listen: \"\"\n";
   out << "log:\n";
-  out << "  level: warn\n";
+  out << "  level: info\n";
   out << "streams:\n";
   for (const auto& s : sources_) {
     if (!isSafeName(s.name) || !isSafeUrl(s.url))
@@ -155,10 +155,12 @@ bool Go2rtcManager::spawn()
 
   if (pid == 0) {
     ::setsid();
-    const int devnull = ::open("/dev/null", O_WRONLY);
-    if (devnull >= 0) {
-      ::dup2(devnull, STDOUT_FILENO);
-      ::close(devnull);
+    const int logFd =
+        ::open("go2rtc.log", O_WRONLY | O_CREAT | O_APPEND, 0644);
+    if (logFd >= 0) {
+      ::dup2(logFd, STDOUT_FILENO);
+      ::dup2(logFd, STDERR_FILENO);
+      ::close(logFd);
     }
     // Credentials live in the config file, never in argv: /proc/<pid>/cmdline
     // is world-readable.
@@ -227,6 +229,19 @@ bool Go2rtcManager::healthCheck()
   return ok;
 }
 
+bool Go2rtcManager::waitReady(int maxMs)
+{
+  const int stepMs = 100;
+  for (int waited = 0; waited < maxMs; waited += stepMs) {
+    if (healthCheck())
+      return true;
+    std::this_thread::sleep_for(std::chrono::milliseconds(stepMs));
+  }
+  lastError_ = "go2rtc did not become ready";
+  LOG_WARN << "Go2rtc: " << lastError_;
+  return false;
+}
+
 void Go2rtcManager::supervise()
 {
   int backoffMs = 250;
@@ -287,6 +302,7 @@ void Go2rtcManager::init()
   }
   if (!spawn())
     return;
+  waitReady(5000);
 
   std::thread(&Go2rtcManager::supervise).detach();
   LOG_INFO << "Go2rtc: supervisor running (max_restarts=" << maxRestarts_ << ")";
@@ -342,7 +358,9 @@ bool Go2rtcManager::addSource(const Go2rtcSource& source)
     return false;
   if (pid_ > 0) {
     terminate();
-    return spawn();
+    if (!spawn())
+      return false;
+    return waitReady(5000);
   }
   return true;
 }
@@ -362,7 +380,9 @@ bool Go2rtcManager::removeSource(const std::string& name)
     return false;
   if (pid_ > 0) {
     terminate();
-    return spawn();
+    if (!spawn())
+      return false;
+    return waitReady(5000);
   }
   return true;
 }

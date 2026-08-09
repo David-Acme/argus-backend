@@ -45,6 +45,7 @@ public:
   static bool isSafeUrl(const std::string& url);
 
   static bool healthCheck();
+  static bool waitReady(int maxMs);
 
 private:
   static bool writeConfig();
