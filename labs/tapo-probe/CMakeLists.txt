@@ -18,6 +18,7 @@ set(TAPO_SERVICE_SRC
     ${SRC_ROOT}/shared/services/tts/onnx-utils.cc
     ${SRC_ROOT}/shared/services/tts/style.cc
     ${SRC_ROOT}/shared/services/tts/unicode-processor.cc
+    ${SRC_ROOT}/shared/wrapper/audio/audio-resampler.cc
     ${SRC_ROOT}/shared/wrapper/thread-budget/thread-budget.cc
     ${SRC_ROOT}/shared/wrapper/hardware-profile/hardware-profile.cc
 )

@@ -1,7 +1,8 @@
 #include "camera-audio.hxx"
 
+#include <algorithm>
 #include <cstring>
-#include <shared/services/tapo/tapo-audio.hxx>
+#include <shared/wrapper/audio/audio-resampler.hxx>
 
 extern "C" {
 #include <libavcodec/avcodec.h>
@@ -24,17 +25,17 @@ struct CameraMic::Impl
   OnAudio onAudio;
   std::vector<int16_t> pending8k;
   int sourceRate{8000};
+  std::unique_ptr<AudioResampler> resampler;
 };
 
-CameraMic::~CameraMic()
-{
-  close();
-}
+CameraMic::CameraMic() = default;
+
+CameraMic::~CameraMic() = default;
 
 bool CameraMic::open(const std::string& rtspUrl, OnAudio onAudio)
 {
   close();
-  impl_ = new Impl();
+  impl_ = std::make_unique<Impl>();
   impl_->onAudio = std::move(onAudio);
 
   AVDictionary* opts = nullptr;
@@ -42,8 +43,7 @@ bool CameraMic::open(const std::string& rtspUrl, OnAudio onAudio)
   av_dict_set(&opts, "rtsp_transport", "tcp", 0);
   if (avformat_open_input(&impl_->fmt, rtspUrl.c_str(), nullptr, &opts) != 0) {
     av_dict_free(&opts);
-    delete impl_;
-    impl_ = nullptr;
+    impl_.reset();
     return false;
   }
   av_dict_free(&opts);
@@ -57,14 +57,21 @@ bool CameraMic::open(const std::string& rtspUrl, OnAudio onAudio)
     close();
     return false;
   }
-  impl_->sourceRate = impl_->fmt->streams[impl_->audioIndex]->codecpar->sample_rate;
+  impl_->sourceRate =
+      impl_->fmt->streams[impl_->audioIndex]->codecpar->sample_rate;
+  if (impl_->sourceRate <= 0)
+    impl_->sourceRate = 8000;
+  impl_->resampler = std::make_unique<AudioResampler>(
+      AudioResamplerInput{.sourceRate = impl_->sourceRate,
+                          .targetRate = kOutRate});
 
   const AVCodec* codec = avcodec_find_decoder(
       impl_->fmt->streams[impl_->audioIndex]->codecpar->codec_id);
   impl_->dec = avcodec_alloc_context3(codec);
   if (!impl_->dec ||
-      avcodec_parameters_to_context(
-          impl_->dec, impl_->fmt->streams[impl_->audioIndex]->codecpar) < 0 ||
+      avcodec_parameters_to_context(impl_->dec,
+                                    impl_->fmt->streams[impl_->audioIndex]
+                                        ->codecpar) < 0 ||
       avcodec_open2(impl_->dec, codec, nullptr) < 0) {
     close();
     return false;
@@ -86,12 +93,14 @@ void CameraMic::close()
     av_packet_free(&impl_->pkt);
   if (impl_->frame)
     av_frame_free(&impl_->frame);
-  delete impl_;
-  impl_ = nullptr;
+  impl_.reset();
 }
 
 bool CameraMic::readBlock()
 {
+  if (!impl_ || !impl_->fmt || !impl_->dec)
+    return false;
+
   while (impl_->pending8k.size() < kBlock8k) {
     const int ret = av_read_frame(impl_->fmt, impl_->pkt);
     if (ret < 0)
@@ -110,24 +119,28 @@ bool CameraMic::readBlock()
         chunk.reserve(static_cast<size_t>(samples));
         const auto format = impl_->frame->format;
         if (format == AV_SAMPLE_FMT_S16 && channels == 1) {
-          const auto* data = reinterpret_cast<const int16_t*>(impl_->frame->data[0]);
+          const auto* data =
+              reinterpret_cast<const int16_t*>(impl_->frame->data[0]);
           chunk.assign(data, data + samples);
         }
         else if (format == AV_SAMPLE_FMT_S16P) {
-          const auto* data = reinterpret_cast<const int16_t*>(impl_->frame->data[0]);
+          const auto* data =
+              reinterpret_cast<const int16_t*>(impl_->frame->data[0]);
           for (int i = 0; i < samples; ++i)
             chunk.push_back(data[i]);
         }
         else if (format == AV_SAMPLE_FMT_U8 || format == AV_SAMPLE_FMT_U8P) {
-          const auto* data = reinterpret_cast<const uint8_t*>(impl_->frame->data[0]);
+          const auto* data =
+              reinterpret_cast<const uint8_t*>(impl_->frame->data[0]);
           for (int i = 0; i < samples; ++i)
-            chunk.push_back(static_cast<int16_t>(
-                (static_cast<int>(data[i]) - 128) << 8));
+            chunk.push_back(
+                static_cast<int16_t>((static_cast<int>(data[i]) - 128) << 8));
         }
         else {
           continue;
         }
-        impl_->pending8k.insert(impl_->pending8k.end(), chunk.begin(), chunk.end());
+        impl_->pending8k.insert(impl_->pending8k.end(), chunk.begin(),
+                                chunk.end());
       }
     }
     av_packet_unref(impl_->pkt);
@@ -138,8 +151,8 @@ bool CameraMic::readBlock()
   impl_->pending8k.erase(impl_->pending8k.begin(),
                          impl_->pending8k.begin() + kBlock8k);
 
-  const auto up = tapo_audio::resample(
-      {.samples = chunk, .sourceRate = impl_->sourceRate, .targetRate = kOutRate});
+  std::vector<int16_t> up;
+  impl_->resampler->process(chunk.data(), chunk.size(), up);
   std::vector<float> out;
   out.reserve(up.size());
   for (const auto sample : up)

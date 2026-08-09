@@ -2,14 +2,17 @@
 #include "camera-audio.hxx"
 #include "vad.hxx"
 
+#include <array>
 #include <atomic>
 #include <cctype>
 #include <chrono>
 #include <condition_variable>
 #include <csignal>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <deque>
+#include <fstream>
 #include <iostream>
 #include <mutex>
 #include <opencv2/core.hpp>
@@ -24,6 +27,7 @@
 #include <shared/services/tts/onnx-utils.hxx>
 #include <shared/services/tts/tts-service.hxx>
 #include <shared/services/vision/vision-service.hxx>
+#include <shared/wrapper/audio/sample-ring.hxx>
 #include <shared/wrapper/cancellation/cancellation-token.hxx>
 #include <string>
 #include <string_view>
@@ -420,6 +424,66 @@ int runCameraVadCheck(const std::string& rtspUrl)
   return 0;
 }
 
+bool writeWav16k(const std::string& path, const std::vector<float>& samples)
+{
+  std::ofstream out(path, std::ios::binary);
+  if (!out)
+    return false;
+  constexpr int rate = 16000;
+  constexpr int channels = 1;
+  constexpr int bits = 16;
+  const uint32_t dataSize = static_cast<uint32_t>(samples.size() * 2);
+  const uint32_t riffSize = 36 + dataSize;
+  const auto put32 = [&](uint32_t v) {
+    out.put(static_cast<char>(v & 0xFF));
+    out.put(static_cast<char>((v >> 8) & 0xFF));
+    out.put(static_cast<char>((v >> 16) & 0xFF));
+    out.put(static_cast<char>((v >> 24) & 0xFF));
+  };
+  const auto put16 = [&](uint16_t v) {
+    out.put(static_cast<char>(v & 0xFF));
+    out.put(static_cast<char>((v >> 8) & 0xFF));
+  };
+  out.write("RIFF", 4);
+  put32(riffSize);
+  out.write("WAVE", 4);
+  out.write("fmt ", 4);
+  put32(16);
+  put16(1);
+  put16(channels);
+  put32(rate);
+  put32(rate * channels * bits / 8);
+  put16(channels * bits / 8);
+  put16(bits);
+  out.write("data", 4);
+  put32(dataSize);
+  for (const float s : samples) {
+    const float clamped = std::max(-1.0F, std::min(1.0F, s));
+    const int16_t sample = static_cast<int16_t>(clamped * 32767.0F);
+    put16(static_cast<uint16_t>(sample));
+  }
+  return true;
+}
+
+int runAudioDump(const std::string& rtspUrl, const std::string& path)
+{
+  std::cout << "Grabando 8s del mic de la camara...\n" << std::flush;
+  CameraMic mic;
+  std::vector<float> all;
+  mic.open(rtspUrl, [&](const std::vector<float>& frames) {
+    all.insert(all.end(), frames.begin(), frames.end());
+  });
+  while (all.size() < 128000 && mic.readBlock()) {
+  }
+  mic.close();
+  if (!writeWav16k(path, all)) {
+    std::cerr << "no se pudo escribir " << path << "\n";
+    return 1;
+  }
+  std::cout << "guardados " << all.size() << " samples en " << path << "\n";
+  return 0;
+}
+
 void runCameraConversation(const TapoTalkConfig& talkCfg,
                            const std::string& camRtspSub,
                            const std::string& langCode)
@@ -431,7 +495,7 @@ void runCameraConversation(const TapoTalkConfig& talkCfg,
   std::atomic<int> discardRemaining{0};
   constexpr int kEchoDrainSamples = 16000 * 600 / 1000; // 600ms a 16kHz
   std::mutex bufMutex;
-  std::vector<float> camBuf;
+  SampleRing camBuf(16000 * 30);
 
   std::thread micThread([&] {
     while (!gStop.load()) {
@@ -446,7 +510,7 @@ void runCameraConversation(const TapoTalkConfig& talkCfg,
               return; // eco residual del altavoz: descartar
             }
             std::lock_guard<std::mutex> lock(bufMutex);
-            camBuf.insert(camBuf.end(), frames.begin(), frames.end());
+            camBuf.push(frames.data(), frames.size());
           })) {
         std::cerr << "[camera-mic] no se pudo abrir, reintentando...\n";
         std::this_thread::sleep_for(std::chrono::seconds(1));
@@ -508,15 +572,13 @@ void runCameraConversation(const TapoTalkConfig& talkCfg,
       std::this_thread::sleep_for(std::chrono::milliseconds(100));
       continue;
     }
-    std::vector<float> chunk;
+    std::array<float, 512> chunk{};
+    bool haveChunk = false;
     {
       std::lock_guard<std::mutex> lock(bufMutex);
-      if (camBuf.size() >= 512) {
-        chunk.assign(camBuf.begin(), camBuf.begin() + 512);
-        camBuf.erase(camBuf.begin(), camBuf.begin() + 512);
-      }
+      haveChunk = camBuf.pop(chunk.data(), chunk.size());
     }
-    if (chunk.empty()) {
+    if (!haveChunk) {
       const auto now = std::chrono::steady_clock::now();
       if (now - lastTick >= std::chrono::seconds(3)) {
         lastTick = now;
@@ -647,6 +709,13 @@ int main(int argc, char** argv)
         return 1;
       }
       return runCameraVadCheck(camRtspSub);
+    }
+    if (std::string(argv[i]) == "--audio-dump" && i + 1 < argc) {
+      if (camRtspSub.empty()) {
+        std::cerr << "no voice_test.camera_rtsp_sub in config.toml\n";
+        return 1;
+      }
+      return runAudioDump(camRtspSub, argv[++i]);
     }
     if (std::string(argv[i]) == "--camera") {
       useCamera = true;

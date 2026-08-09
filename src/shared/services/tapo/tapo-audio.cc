@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cstring>
 #include <fstream>
+#include <shared/wrapper/audio/audio-resampler.hxx>
 
 namespace
 {
@@ -28,7 +29,8 @@ uint8_t alawEncodeSample(int16_t sample)
   else if (segment < 2)
     encoded = static_cast<uint8_t>(((sample >> 4) & 0x0F) | (segment << 4));
   else
-    encoded = static_cast<uint8_t>(((sample >> (segment + 3)) & 0x0F) | (segment << 4));
+    encoded = static_cast<uint8_t>(((sample >> (segment + 3)) & 0x0F) |
+                                   (segment << 4));
 
   return static_cast<uint8_t>((encoded ^ 0x55) | sign);
 }
@@ -58,53 +60,15 @@ std::vector<int16_t> resample(const TapoResampleInput& input)
     return {};
   if (input.sourceRate == input.targetRate)
     return input.samples;
-
-  constexpr int kSincHalf = 32;
-  const double cutoff = 0.9 * input.targetRate * 0.5;
-  const double fc = cutoff / input.sourceRate;
-  const double ratio =
-      static_cast<double>(input.sourceRate) / static_cast<double>(input.targetRate);
-
-  const auto window = [](int j) {
-    const double n = static_cast<double>(j + kSincHalf);
-    const double N = static_cast<double>(2 * kSincHalf);
-    return 0.42 - 0.5 * std::cos(2.0 * M_PI * n / N) +
-           0.08 * std::cos(4.0 * M_PI * n / N);
-  };
-  const auto tap = [fc](double t) {
-    if (std::fabs(t) < 1e-12)
-      return 2.0 * fc;
-    return std::sin(2.0 * M_PI * fc * t) / (M_PI * t);
-  };
-
-  const size_t count =
-      static_cast<size_t>(static_cast<double>(input.samples.size()) / ratio);
+  AudioResampler resampler(
+      {.sourceRate = input.sourceRate, .targetRate = input.targetRate});
   std::vector<int16_t> out;
-  out.reserve(count);
-
-  double pos = kSincHalf;
-  for (size_t i = 0; i < count && pos + kSincHalf < input.samples.size();
-       ++i, pos += ratio) {
-    const size_t i0 = static_cast<size_t>(pos);
-    const double fraction = pos - static_cast<double>(i0);
-    double acc = 0.0;
-    double wsum = 0.0;
-    for (int j = -kSincHalf; j <= kSincHalf; ++j) {
-      const long idx = static_cast<long>(i0) + j;
-      if (idx < 0 || idx >= static_cast<long>(input.samples.size()))
-        continue;
-      const double weight =
-          tap(static_cast<double>(j) - fraction) * window(j);
-      acc += static_cast<double>(input.samples[static_cast<size_t>(idx)]) *
-             weight;
-      wsum += weight;
-    }
-    out.push_back(static_cast<int16_t>(wsum > 1e-9 ? acc / wsum : 0.0));
-  }
+  resampler.process(input.samples.data(), input.samples.size(), out);
   return out;
 }
 
-std::vector<int16_t> downmixToMono(const std::vector<int16_t>& samples, int channels)
+std::vector<int16_t> downmixToMono(const std::vector<int16_t>& samples,
+                                   int channels)
 {
   if (channels <= 1)
     return samples;
@@ -158,7 +122,8 @@ TapoWavAudio readWav(const std::string& path)
       audio.channels = readLe16(data.data() + body + 2);
       audio.sampleRate = static_cast<int>(readLe32(data.data() + body + 4));
       bitsPerSample = readLe16(data.data() + body + 14);
-    } else if (id == "data") {
+    }
+    else if (id == "data") {
       dataOffset = body;
       dataSize = std::min(static_cast<size_t>(size), data.size() - body);
     }

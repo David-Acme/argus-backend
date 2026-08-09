@@ -23,6 +23,7 @@ set(VOICE_SERVICE_SRC
     ${SRC_ROOT}/shared/services/tapo/tapo-http.cc
     ${SRC_ROOT}/shared/services/tapo/tapo-talk-client.cc
     ${SRC_ROOT}/shared/services/tapo/tapo-ts-muxer.cc
+    ${SRC_ROOT}/shared/wrapper/audio/audio-resampler.cc
     ${SRC_ROOT}/shared/wrapper/thread-budget/thread-budget.cc
     ${SRC_ROOT}/shared/wrapper/hardware-profile/hardware-profile.cc
 )
