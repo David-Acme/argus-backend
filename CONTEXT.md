@@ -479,13 +479,24 @@ landed (see the sections above) or superseded by this file and the git history.
 References to them in `AGENTS.md`/`CONTEXT.md` are kept as history. What is
 still left to verify before the phase can be called complete:
 
-- **VAD calibration against recorded camera audio.** Record
-  `labs/fixtures/camera-quiet.wav`, `camera-speech.wav` and `camera-echo.wav`
-  with `argus-voice-test --audio-dump`; acceptance: quiet → 0 turns, speech →
-  exactly 3 turns (tune `min_silence_frames`/`min_mean_prob`), then derive
-  `talk_drain_margin_ms` from the echo fixture. The current `[vad]` values
-  (threshold 0.45 / neg 0.25, 5 open / 12 close, 240 ms min turn, 0.35 min
-  mean prob) are provisional.
+- **Validated end-to-end by the user on 2026-08-09** (live conversation over
+  the physical C225): camera vision (`describeCamera` via go2rtc snapshot —
+  Task 15's fix), talk through the camera speaker, mic listening, and the
+  LLM/STT/TTS stack — a 100% fluid conversation with no false turns. What
+  follows are the formal/optional checks.
+
+- **VAD calibration against recorded camera audio.** The live conversation
+  (2026-08-09) validated the VAD + echo gate end-to-end: 100% fluid
+  turn-taking, no false turns, ~780ms echo drains. The formal fixture
+  calibration remains optional: record `labs/fixtures/camera-quiet.wav`,
+  `camera-speech.wav` and `camera-echo.wav` with `argus-voice-test
+  --audio-dump`; acceptance: quiet → 0 turns, speech → exactly 3 turns (tune
+  `min_silence_frames`/`min_mean_prob`), then derive `talk_drain_margin_ms`
+  from the echo fixture. `argus-audio-probe --vad <wav>` reports turns and
+  `--vad-probs <wav>` prints the per-window probability timeline for the
+  threshold-crossing measurement. The current `[vad]` values (threshold 0.45 /
+  neg 0.25, 5 open / 12 close, 240 ms min turn, 0.35 min mean prob) are
+  provisional until then.
 - **Camera audio through go2rtc.** Verified against the physical C225 on
   2026-08-09: `/api/stream.mp4?src=cam1&mp4=flac` serves a mono 8 kHz FLAC
   track — the go2rtc mp4 module ignores `video=`/`audio=` params (the
@@ -498,8 +509,11 @@ still left to verify before the phase can be called complete:
   against the C225; a wrong value fails as silence, not as an error. Settle
   with `tapo-probe --ts-dump` against the physical camera and record how.
 - **LLM prefill above `n_batch`.** The chunked prefill landed in
-  `llm-service.cc`; confirm a ~2000-token prompt no longer logs
-  "prompt decode failed" (`labs/llm-bench`).
+  `llm-service.cc`; the user validated LLM, STT, TTS and the VLM on 2026-08-09
+  in the live conversation (fluid replies, instant transcription). The formal
+  check remains: `argus-llm-bench --llm` should show `ok=yes` for the
+  ~2900-token and ~5800-token rows (they failed with "prompt decode failed"
+  before the fix).
 - **Future phases (not started; decisions preserved from the plans):** the
   detector/tracking/memory/tools work keeps: one RTSP session per camera via
   go2rtc, all media through the backend port, the tool DSL with the native
@@ -509,6 +523,30 @@ still left to verify before the phase can be called complete:
   Open decisions: `min_track_hits` 2 vs 3, YOLO26 AGPL-3.0 vs RF-DETR-Nano,
   face crop retention (privacy). Barge-in/AEC (WebRTC APM) remains out of
   scope.
+
+## Conversational tuning (2026-08-09)
+
+After the user found the replies too rigid and formulaic ("feels like it
+ignores me"), three caller/config-level knobs were set (no changes inside
+`LlmService`):
+
+- **`[llm] context_size = 32768` default, up to 128000** — the knob always
+  existed in `config.toml` (clamped 4096..128000 in `llm-service.cc`; 128000
+  is the model's maximum). Default stays 32k; raising it costs ~+300 MB of f16
+  KV cache (only 6 of 16 LFM2.5 blocks carry attention) and marginally slower
+  decode as the context fills; prefill only pays for real tokens. It pays off
+  only if the history actually grows, so the real lever is
+  `[voice_test] history_messages`.
+- **`[voice_test] history_messages = 41`** — the conversation keeps 20 turns
+  (was a hardcoded 21 messages). `LlmService` prefix reuse (`resetContext =
+  false`) only stays incremental while the history head is un-pruned; pruning
+  forces a full re-prefill, which is why a larger cap plus a larger context
+  helps long conversations.
+- **`[llm] temperature = 0.85`** (was 0.7) for more varied, natural phrasing.
+- **New system prompt in `labs/voice-test`** — warm, conversational persona
+  that must engage with the user's actual words and must not reply with
+  generic offers ("how can I help you", "anything else"). The old prompt's
+  "direct and brief" guidance produced the stiff assistant register.
 
 ## Runtime config writes (ConfigService)
 

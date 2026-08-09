@@ -89,13 +89,17 @@ top_k = 5
 # LFM2.5-1.2B-Instruct has NO thinking/CoT mode: it replies directly and
 # decisively, with better reasoning than the 350M sibling. ~36 tok/s CPU.
 model_path = "models/llm/LFM2.5-1.2B-Instruct-Q4_K_M.gguf"
-# Context window in tokens (model supports up to 128k; 32768 = 32k).
-# Smaller = less KV cache RAM and faster decode as context grows.
+# Context window in tokens. Default 32768 (32k); can be raised up to 128000,
+# the model's maximum (the clamp in llm-service.cc allows 4096..128000).
+# Tradeoff of raising it: the f16 KV cache grows ~300 MB from 32k to 128k and
+# decode gets marginally slower as the context fills — only worth it when
+# [voice_test] history_messages keeps the history long enough to use it.
 context_size = 32768
 # Default max generated tokens per reply.
 max_tokens = 256
-# Sampling temperature.
-temperature = 0.7
+# Sampling temperature. Higher = more varied, natural phrasing; too high
+# degrades coherence. 0.85 tuned for the spoken conversation.
+temperature = 0.85
 # Threads for decode and prefill. 0 = auto (ThreadBudget).
 threads = 0
 batch_threads = 0
@@ -354,3 +358,9 @@ min_mean_prob = 0.35
 # El interrupt_callback de FFmpeg aborta la lectura pasada esta deadline y el
 # bucle de reconexión reabre la sesión en segundos.
 mic_recover_timeout_ms = 3000
+# Mensajes de historial que se conservan en la conversación (sin contar el
+# system prompt). Al podar por debajo se rompe el prefix reuse del LLM y cada
+# turno re-prefillea todo; 41 = 20 turnos de memoria. Si subes
+# llm.context_size hacia 128000, puedes subir también este tope para
+# conversaciones aún más largas.
+history_messages = 41

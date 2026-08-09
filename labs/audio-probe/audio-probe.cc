@@ -284,6 +284,16 @@ void vadReport(const std::string& path, const std::vector<float>& samples)
     std::printf("  turno %zu: %d ms\n", i + 1, turnMs[i]);
 }
 
+void vadProbs(const std::string& path, const std::vector<float>& samples)
+{
+  VadService vad;
+  VadTurn turn;
+  for (size_t i = 0; i + 512 <= samples.size(); i += 512) {
+    vad.process(samples.data() + i, 512, turn);
+    std::printf("%zu %.4f\n", i * 1000 / 16000, vad.lastProb());
+  }
+}
+
 } // namespace
 int main(int argc, char** argv)
 {
@@ -300,9 +310,12 @@ int main(int argc, char** argv)
   }
 
   std::string vadWav;
+  std::string probsWav;
   for (int i = 1; i < gArgc; ++i) {
     if (std::string(gArgv[i]) == "--vad" && i + 1 < gArgc)
       vadWav = gArgv[++i];
+    else if (std::string(gArgv[i]) == "--vad-probs" && i + 1 < gArgc)
+      probsWav = gArgv[++i];
   }
   if (!vadWav.empty()) {
     std::vector<float> samples;
@@ -311,6 +324,15 @@ int main(int argc, char** argv)
       return 1;
     }
     vadReport(vadWav, samples);
+    return 0;
+  }
+  if (!probsWav.empty()) {
+    std::vector<float> samples;
+    if (!readWav16k(probsWav, samples)) {
+      std::printf("no se pudo leer %s\n", probsWav.c_str());
+      return 1;
+    }
+    vadProbs(probsWav, samples);
     return 0;
   }
 
