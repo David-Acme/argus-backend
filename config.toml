@@ -300,3 +300,25 @@ go2rtc_api = "127.0.0.1:1984"
 go2rtc_rtsp = "127.0.0.1:8554"
 # Restart attempts before the camera is marked offline instead of looping.
 max_restarts = 8
+
+# ── Detección de voz (Silero VAD v5) ──────────────────────────────────
+# El micrófono de la cámara es de campo lejano y con más ruido que uno de
+# diadema, así que el umbral de arranque es bajo y quien filtra los falsos
+# positivos es la puerta de calidad de turno, no el umbral.
+[vad]
+threshold = 0.45
+neg_threshold = 0.25
+# Ventanas de 32 ms de voz para abrir un turno.
+min_speech_frames = 5
+# Ventanas de 32 ms de silencio para cerrarlo. 12 = 384 ms: por debajo de
+# 300 ms se parten las frases en español por la pausa entre sintagmas.
+min_silence_frames = 12
+# Tope duro de un turno (750 ventanas = 24 s).
+max_turn_frames = 750
+# Ventanas guardadas antes del inicio detectado para no cortar el fonema
+# inicial. 10 = 320 ms.
+pre_roll_frames = 10
+# Puerta de calidad: por debajo de esto el turno se descarta sin llamar al
+# STT. Whisper inventa frases cuando le llega audio corto o casi silencioso.
+min_turn_ms = 320
+min_mean_prob = 0.55

@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cstring>
+#include <shared/services/config-service/config-service.hxx>
 
 namespace
 {
@@ -27,6 +28,23 @@ Vad::Vad()
       sampleRateInput_{16000}, inputShape_{1, kEffectiveWindow},
       stateShape_{2, 1, 128}, srShape_{1}
 {
+  if (const double v = ConfigService::getDouble("vad.threshold"); v > 0.0)
+    cfg_.threshold = static_cast<float>(v);
+  if (const double v = ConfigService::getDouble("vad.neg_threshold"); v > 0.0)
+    cfg_.negThreshold = static_cast<float>(v);
+  if (const int v = ConfigService::getInt("vad.min_speech_frames"); v > 0)
+    cfg_.minSpeechFrames = v;
+  if (const int v = ConfigService::getInt("vad.min_silence_frames"); v > 0)
+    cfg_.minSilenceFrames = v;
+  if (const int v = ConfigService::getInt("vad.max_turn_frames"); v > 0)
+    cfg_.maxTurnFrames = v;
+  if (const int v = ConfigService::getInt("vad.pre_roll_frames"); v > 0)
+    cfg_.preRollFrames = v;
+  if (const int v = ConfigService::getInt("vad.min_turn_ms"); v > 0)
+    cfg_.minTurnMs = v;
+  if (const double v = ConfigService::getDouble("vad.min_mean_prob"); v > 0.0)
+    cfg_.minMeanProb = static_cast<float>(v);
+
   auto opts = Ort::SessionOptions{};
   opts.SetExecutionMode(ExecutionMode::ORT_SEQUENTIAL);
   opts.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL);
@@ -66,9 +84,11 @@ void Vad::runModel(float& prob)
               kStateSize * sizeof(float));
 }
 
-bool Vad::process(const float* samples, int count, std::vector<float>& outTurn)
+bool Vad::process(const float* samples, int count, VadTurn& outTurn)
 {
-  outTurn.clear();
+  outTurn.samples.clear();
+  outTurn.speechFrames = 0;
+  outTurn.meanProb = 0.0F;
   bool completed = false;
 
   pending_.push(samples, static_cast<size_t>(count));
@@ -115,19 +135,31 @@ bool Vad::process(const float* samples, int count, std::vector<float>& outTurn)
     if (speech_) {
       buffer_.insert(buffer_.end(), window_.begin() + kContextSize,
                      window_.end());
+      speechProbSum_ += prob;
       frameCounter_++;
     }
 
     if (speech_ && (silenceCounter_ >= cfg_.minSilenceFrames ||
                     frameCounter_ >= cfg_.maxTurnFrames)) {
-      outTurn = std::move(buffer_);
+      const float meanProb =
+          frameCounter_ > 0 ? speechProbSum_ / static_cast<float>(frameCounter_)
+                            : 0.0F;
+      const int speechMs = frameCounter_ * kWindowSize * 1000 / cfg_.sampleRate;
+      const bool accepted =
+          speechMs >= cfg_.minTurnMs && meanProb >= cfg_.minMeanProb;
+      if (accepted) {
+        outTurn.samples = std::move(buffer_);
+        outTurn.speechFrames = frameCounter_;
+        outTurn.meanProb = meanProb;
+        completed = true;
+      }
       buffer_.clear();
       preRoll_.clear();
       speech_ = false;
       startCounter_ = 0;
       silenceCounter_ = 0;
       frameCounter_ = 0;
-      completed = true;
+      speechProbSum_ = 0.0F;
     }
   }
   return completed;
@@ -152,6 +184,7 @@ void Vad::reset()
   startCounter_ = 0;
   silenceCounter_ = 0;
   frameCounter_ = 0;
+  speechProbSum_ = 0.0F;
   buffer_.clear();
   preRoll_.clear();
   lastProb_ = 0.0F;

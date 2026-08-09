@@ -7,18 +7,27 @@
 #include <shared/wrapper/audio/sample-ring.hxx>
 #include <vector>
 
+struct VadTurn
+{
+  std::vector<float> samples;
+  int speechFrames{0};
+  float meanProb{0.0F};
+};
+
 class Vad
 {
 public:
   struct Config
   {
     int sampleRate{16000};
-    float threshold{0.4F};
-    float negThreshold{0.35F};
+    float threshold{0.45F};
+    float negThreshold{0.25F};
     int minSpeechFrames{5};
-    int minSilenceFrames{8};
+    int minSilenceFrames{12};
     int maxTurnFrames{750};
     int preRollFrames{10};
+    int minTurnMs{320};
+    float minMeanProb{0.55F};
   };
 
   Vad();
@@ -27,7 +36,7 @@ public:
   Vad(const Vad&) = delete;
   Vad& operator=(const Vad&) = delete;
 
-  bool process(const float* samples, int count, std::vector<float>& outTurn);
+  bool process(const float* samples, int count, VadTurn& outTurn);
 
   bool inSpeech() const;
 
@@ -55,5 +64,6 @@ private:
   int startCounter_{0};
   int silenceCounter_{0};
   int frameCounter_{0};
+  float speechProbSum_{0.0F};
   float lastProb_{0.0F};
 };

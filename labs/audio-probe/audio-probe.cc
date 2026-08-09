@@ -36,6 +36,21 @@ std::vector<int16_t> tone(int rate, double hz, double seconds)
   return out;
 }
 
+std::vector<int16_t> voiceLike(int rate, double hz, double seconds)
+{
+  const int n = static_cast<int>(rate * seconds);
+  std::vector<int16_t> out(static_cast<size_t>(n));
+  for (int i = 0; i < n; ++i) {
+    const double t = static_cast<double>(i) / rate;
+    const double env = 0.5 + 0.5 * std::sin(2.0 * M_PI * 4.0 * t);
+    const double v = 0.5 * std::sin(2.0 * M_PI * hz * t) +
+                     0.3 * std::sin(2.0 * M_PI * hz * 2.0 * t) +
+                     0.15 * std::sin(2.0 * M_PI * hz * 3.0 * t);
+    out[static_cast<size_t>(i)] = static_cast<int16_t>(12000.0 * env * v);
+  }
+  return out;
+}
+
 void resamplerCheck()
 {
   std::printf("\n=== resampler ===\n");
@@ -107,7 +122,7 @@ void vadCheck()
 
   const auto probs = [&](size_t block) {
     Vad vad;
-    std::vector<float> turn;
+    VadTurn turn;
     std::vector<float> out;
     for (size_t i = 0; i + block <= signal.size(); i += block) {
       vad.process(signal.data() + i, static_cast<int>(block), turn);
@@ -131,6 +146,44 @@ void vadCheck()
   check("VAD independiente del tamano de bloque", equal == compared, true);
 }
 
+void vadGateCheck()
+{
+  std::printf("\n=== vad gate ===\n");
+
+  std::vector<float> blip(16000, 0.0F);
+  const auto pcm = tone(16000, 300.0, 0.12);
+  for (size_t i = 0; i < pcm.size(); ++i)
+    blip[8000 + i] = static_cast<float>(pcm[i]) / 32768.0F;
+  blip.insert(blip.end(), 16000, 0.0F);
+
+  Vad vad;
+  VadTurn turn;
+  bool fired = false;
+  for (size_t i = 0; i + 512 <= blip.size(); i += 512)
+    if (vad.process(blip.data() + i, 512, turn))
+      fired = true;
+  check("un blip de 120ms no genera turno", fired, false);
+
+  std::vector<float> utterance(8000, 0.0F);
+  const auto voice = voiceLike(16000, 220.0, 1.2);
+  for (const auto s : voice)
+    utterance.push_back(static_cast<float>(s) / 32768.0F);
+  utterance.insert(utterance.end(), 16000, 0.0F);
+
+  Vad vad2;
+  VadTurn turn2;
+  bool fired2 = false;
+  float meanProb = 0.0F;
+  for (size_t i = 0; i + 512 <= utterance.size(); i += 512) {
+    if (vad2.process(utterance.data() + i, 512, turn2)) {
+      fired2 = true;
+      meanProb = turn2.meanProb;
+    }
+  }
+  check("1.2s de voz si genera turno", fired2, true);
+  check("el turno reporta su probabilidad media", meanProb > 0.0F, true);
+}
+
 } // namespace
 
 int main()
@@ -147,6 +200,7 @@ int main()
   resamplerCheck();
   ringCheck();
   vadCheck();
+  vadGateCheck();
   std::printf("\n%s (%d fallos)\n", gFailures == 0 ? "TODO OK" : "HAY FALLOS",
               gFailures);
   return gFailures == 0 ? 0 : 1;

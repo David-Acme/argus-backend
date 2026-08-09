@@ -1,4 +1,5 @@
 #include "audio.hxx"
+#include "camera-audio.hxx"
 #include "vad.hxx"
 
 #include <atomic>
@@ -11,28 +12,24 @@
 #include <deque>
 #include <iostream>
 #include <mutex>
+#include <opencv2/core.hpp>
+#include <opencv2/imgcodecs.hpp>
 #include <poll.h>
-#include <string>
-#include <string_view>
-#include <thread>
-#include <unistd.h>
-#include <vector>
-
 #include <shared/services/config-service/config-service.hxx>
 #include <shared/services/llm/llm-service.hxx>
-#include <shared/services/stt/stt-service.hxx>
 #include <shared/services/stream/go2rtc-manager.hxx>
 #include <shared/services/stream/media-relay.hxx>
+#include <shared/services/stt/stt-service.hxx>
 #include <shared/services/tapo/tapo-talk-client.hxx>
 #include <shared/services/tts/onnx-utils.hxx>
 #include <shared/services/tts/tts-service.hxx>
 #include <shared/services/vision/vision-service.hxx>
 #include <shared/wrapper/cancellation/cancellation-token.hxx>
-
-#include "camera-audio.hxx"
-
-#include <opencv2/core.hpp>
-#include <opencv2/imgcodecs.hpp>
+#include <string>
+#include <string_view>
+#include <thread>
+#include <unistd.h>
+#include <vector>
 
 namespace
 {
@@ -69,8 +66,10 @@ std::string describeCamera(int64_t cameraId)
   if (frame.empty())
     return {};
   return VisionService::describeMat(
-      frame, "Describe en español, en dos frases, lo que ocurre en esta "
-             "imagen de la camara.", 64);
+      frame,
+      "Describe en español, en dos frases, lo que ocurre en esta "
+      "imagen de la camara.",
+      64);
 }
 
 int runCameraCheck()
@@ -153,8 +152,8 @@ std::string systemPromptFor(const std::string& langCode)
 std::string stripPrefix(const std::string& text)
 {
   std::string out = text;
-  while (!out.empty() && (out.front() == ' ' || out.front() == '\n' ||
-                          out.front() == '\t')) {
+  while (!out.empty() &&
+         (out.front() == ' ' || out.front() == '\n' || out.front() == '\t')) {
     out.erase(out.begin());
   }
   const std::string lower = [&]() {
@@ -212,7 +211,7 @@ std::string captureTurn(Vad& vad, const std::atomic<bool>& stop)
 {
   std::vector<float> inBuffer;
   std::mutex bufMutex;
-  std::vector<float> turn;
+  VadTurn turn;
 
   auto onFrames = [&](const std::vector<float>& frames, double) {
     std::lock_guard<std::mutex> lock(bufMutex);
@@ -238,7 +237,7 @@ std::string captureTurn(Vad& vad, const std::atomic<bool>& stop)
     }
     if (!chunk.empty() &&
         vad.process(chunk.data(), static_cast<int>(chunk.size()), turn)) {
-      text = SttService::transcribe(turn, 16000);
+      text = SttService::transcribe(turn.samples, 16000);
       done = true;
     }
     if (!done)
@@ -267,7 +266,7 @@ std::string captureTurnFromCamera(Vad& vad, const std::atomic<bool>& stop,
 {
   std::vector<float> inBuffer;
   std::mutex bufMutex;
-  std::vector<float> turn;
+  VadTurn turn;
   CameraMic mic;
 
   auto onFrames = [&](const std::vector<float>& frames) {
@@ -297,7 +296,7 @@ std::string captureTurnFromCamera(Vad& vad, const std::atomic<bool>& stop,
     }
     if (!chunk.empty() &&
         vad.process(chunk.data(), static_cast<int>(chunk.size()), turn)) {
-      text = SttService::transcribe(turn, 16000);
+      text = SttService::transcribe(turn.samples, 16000);
       done = true;
     }
     if (!done)
@@ -332,8 +331,9 @@ bool speakToCamera(const std::string& text, const std::string& langCode,
     return false;
   }
   CancellationToken token;
-  const auto sent = client.send(
-      {.samples = s16, .sampleRate = TtsService::sampleRate()}, token);
+  const auto sent =
+      client.send({.samples = s16, .sampleRate = TtsService::sampleRate()},
+                  token);
   client.close();
   return sent.ok;
 }
@@ -345,8 +345,9 @@ int runCameraSttCheck(const std::string& rtspUrl)
     std::cerr << "STT no cargado\n";
     return 1;
   }
-  std::cout << "Grabando 8s del mic de la camara... (habla cerca de la camara)\n"
-            << std::flush;
+  std::cout
+      << "Grabando 8s del mic de la camara... (habla cerca de la camara)\n"
+      << std::flush;
   CameraMic mic;
   std::vector<float> all;
   mic.open(rtspUrl, [&](const std::vector<float>& frames) {
@@ -369,8 +370,9 @@ int runCameraVadCheck(const std::string& rtspUrl)
     std::cerr << "STT no cargado\n";
     return 1;
   }
-  std::cout << "Grabando 8s del mic de la camara... (habla cerca de la camara)\n"
-            << std::flush;
+  std::cout
+      << "Grabando 8s del mic de la camara... (habla cerca de la camara)\n"
+      << std::flush;
   CameraMic mic;
   std::vector<float> all;
   mic.open(rtspUrl, [&](const std::vector<float>& frames) {
@@ -391,7 +393,7 @@ int runCameraVadCheck(const std::string& rtspUrl)
   std::cout << "rms=" << rms << " peak=" << peak << "\n";
 
   Vad vad;
-  std::vector<float> turn;
+  VadTurn turn;
   float maxProb = 0.0F;
   int frames = 0;
   int over03 = 0;
@@ -406,8 +408,8 @@ int runCameraVadCheck(const std::string& rtspUrl)
     if (p > 0.5F)
       over05++;
     if (done) {
-      std::cout << "VAD: turno de " << turn.size() << " samples\n";
-      const std::string text = SttService::transcribe(turn, 16000);
+      std::cout << "VAD: turno de " << turn.samples.size() << " samples\n";
+      const std::string text = SttService::transcribe(turn.samples, 16000);
       std::cout << "Transcripcion del turno: [" << text << "]\n";
       vad.reset();
     }
@@ -427,7 +429,7 @@ void runCameraConversation(const TapoTalkConfig& talkCfg,
   // del altavoz de la camara, que llega al mic con el retraso del buffer
   // interno de la camara (no bloquea el bucle: solo se descarta).
   std::atomic<int> discardRemaining{0};
-  constexpr int kEchoDrainSamples = 16000 * 600 / 1000;  // 600ms a 16kHz
+  constexpr int kEchoDrainSamples = 16000 * 600 / 1000; // 600ms a 16kHz
   std::mutex bufMutex;
   std::vector<float> camBuf;
 
@@ -436,12 +438,12 @@ void runCameraConversation(const TapoTalkConfig& talkCfg,
       CameraMic mic;
       if (!mic.open(camRtspSub, [&](const std::vector<float>& frames) {
             if (paused.load())
-              return;  // Argus habla: descartar
+              return; // Argus habla: descartar
             const int remaining = discardRemaining.load();
             if (remaining > 0) {
               discardRemaining.store(
                   std::max(0, remaining - static_cast<int>(frames.size())));
-              return;  // eco residual del altavoz: descartar
+              return; // eco residual del altavoz: descartar
             }
             std::lock_guard<std::mutex> lock(bufMutex);
             camBuf.insert(camBuf.end(), frames.begin(), frames.end());
@@ -526,11 +528,11 @@ void runCameraConversation(const TapoTalkConfig& talkCfg,
     }
     lastTick = std::chrono::steady_clock::now();
 
-    std::vector<float> turn;
+    VadTurn turn;
     if (!vad.process(chunk.data(), static_cast<int>(chunk.size()), turn))
       continue;
 
-    const std::string userText = SttService::transcribe(turn, 16000);
+    const std::string userText = SttService::transcribe(turn.samples, 16000);
     std::cout << "\n[You (camara)] " << userText << "\n";
     vad.reset();
 
@@ -724,255 +726,256 @@ int main(int argc, char** argv)
   else {
     speak(greeting, langCode, gStop);
 
-  ConversationState state;
-  state.lang = langCode;
-  // System prompt is the first message so the LLM replies in the selected
-  // language and keeps answers short.
-  state.history.push_back({"system", systemPromptFor(langCode)});
+    ConversationState state;
+    state.lang = langCode;
+    // System prompt is the first message so the LLM replies in the selected
+    // language and keeps answers short.
+    state.history.push_back({"system", systemPromptFor(langCode)});
 
-  while (!gStop.load()) {
-    Vad vad;
-    const std::string userText =
-        useCamera ? captureTurnFromCamera(vad, gStop, camRtspSub)
-                  : captureTurn(vad, gStop);
-    if (gStop.load())
-      break;
-    if (userText.empty()) {
-      std::cout << "[no speech detected, try again]\n";
-      continue;
-    }
-    std::cout << "\n[You] " << userText << "\n";
-
-    if (userText.find("exit") != std::string::npos ||
-        userText.find("quit") != std::string::npos ||
-        userText.find("salir") != std::string::npos) {
-      std::cout << "[Argus] Goodbye!\n";
-      break;
-    }
-
-    std::string reply = userText;
-    if (mentionsCamera(userText)) {
-      std::cout << "[camera] capturando frame de la camara...\n";
-      const auto t0 = std::chrono::steady_clock::now();
-      const std::string scene = describeCamera(1);
-      const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-                          std::chrono::steady_clock::now() - t0)
-                          .count();
-      if (!scene.empty()) {
-        std::cout << "[camera] (" << ms << " ms) " << scene << "\n";
-        reply = "La camara muestra: " + scene + ". " + userText;
-      }
-      else {
-        std::cout << "[camera] no disponible (" << ms
-                  << " ms), continúo sin contexto de camara.\n";
-      }
-    }
-
-    state.history.push_back({"user", reply});
-    if (state.history.size() > 21) {
-      state.history.erase(state.history.begin() + 1);
-    }
-
-    std::atomic<bool> stopSpeech{false};
-    std::atomic<bool> speechDetected{false};
-
-    std::thread interrupter([&] {
-      std::vector<float> inBuffer;
-      std::mutex bufMutex;
+    while (!gStop.load()) {
       Vad vad;
-      auto onFrames = [&](const std::vector<float>& frames, double) {
-        std::lock_guard<std::mutex> lock(bufMutex);
-        inBuffer.insert(inBuffer.end(), frames.begin(), frames.end());
-      };
-      if (!openMicrophone(gMicIndex, onFrames))
-        return;
-      while (!stopSpeech.load() && !gStop.load()) {
-        std::vector<float> chunk;
-        {
+      const std::string userText =
+          useCamera ? captureTurnFromCamera(vad, gStop, camRtspSub)
+                    : captureTurn(vad, gStop);
+      if (gStop.load())
+        break;
+      if (userText.empty()) {
+        std::cout << "[no speech detected, try again]\n";
+        continue;
+      }
+      std::cout << "\n[You] " << userText << "\n";
+
+      if (userText.find("exit") != std::string::npos ||
+          userText.find("quit") != std::string::npos ||
+          userText.find("salir") != std::string::npos) {
+        std::cout << "[Argus] Goodbye!\n";
+        break;
+      }
+
+      std::string reply = userText;
+      if (mentionsCamera(userText)) {
+        std::cout << "[camera] capturando frame de la camara...\n";
+        const auto t0 = std::chrono::steady_clock::now();
+        const std::string scene = describeCamera(1);
+        const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                            std::chrono::steady_clock::now() - t0)
+                            .count();
+        if (!scene.empty()) {
+          std::cout << "[camera] (" << ms << " ms) " << scene << "\n";
+          reply = "La camara muestra: " + scene + ". " + userText;
+        }
+        else {
+          std::cout << "[camera] no disponible (" << ms
+                    << " ms), continúo sin contexto de camara.\n";
+        }
+      }
+
+      state.history.push_back({"user", reply});
+      if (state.history.size() > 21) {
+        state.history.erase(state.history.begin() + 1);
+      }
+
+      std::atomic<bool> stopSpeech{false};
+      std::atomic<bool> speechDetected{false};
+
+      std::thread interrupter([&] {
+        std::vector<float> inBuffer;
+        std::mutex bufMutex;
+        Vad vad;
+        auto onFrames = [&](const std::vector<float>& frames, double) {
           std::lock_guard<std::mutex> lock(bufMutex);
-          if (inBuffer.size() >= 512) {
-            chunk.assign(inBuffer.begin(), inBuffer.begin() + 512);
-            inBuffer.erase(inBuffer.begin(), inBuffer.begin() + 512);
+          inBuffer.insert(inBuffer.end(), frames.begin(), frames.end());
+        };
+        if (!openMicrophone(gMicIndex, onFrames))
+          return;
+        while (!stopSpeech.load() && !gStop.load()) {
+          std::vector<float> chunk;
+          {
+            std::lock_guard<std::mutex> lock(bufMutex);
+            if (inBuffer.size() >= 512) {
+              chunk.assign(inBuffer.begin(), inBuffer.begin() + 512);
+              inBuffer.erase(inBuffer.begin(), inBuffer.begin() + 512);
+            }
           }
-        }
-        if (!chunk.empty()) {
-          std::vector<float> turn;
-          if (vad.process(chunk.data(), static_cast<int>(chunk.size()), turn) ||
-              vad.inSpeech()) {
-            speechDetected = true;
-            stopSpeech = true;
+          if (!chunk.empty()) {
+            VadTurn turn;
+            if (vad.process(chunk.data(), static_cast<int>(chunk.size()),
+                            turn) ||
+                vad.inSpeech()) {
+              speechDetected = true;
+              stopSpeech = true;
+            }
           }
+          if (!stopSpeech.load())
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
         }
-        if (!stopSpeech.load())
-          std::this_thread::sleep_for(std::chrono::milliseconds(10));
-      }
-      closeMicrophone();
-    });
+        closeMicrophone();
+      });
 
-    ChatRequest req;
-    req.messages = state.history;
-    req.resetContext = false;
+      ChatRequest req;
+      req.messages = state.history;
+      req.resetContext = false;
 
-    auto t0 = std::chrono::steady_clock::now();
-    bool firstToken = true;
-    std::string full;
-    std::string pending;
-    bool prefixStripped = false;
-    bool firstSentenceSent = false;
+      auto t0 = std::chrono::steady_clock::now();
+      bool firstToken = true;
+      std::string full;
+      std::string pending;
+      bool prefixStripped = false;
+      bool firstSentenceSent = false;
 
-    std::mutex sentenceMutex;
-    std::condition_variable sentenceCv;
-    std::deque<std::string> sentenceQueue;
-    bool generationDone = false;
-    std::atomic<long long> firstAudioMs{-1};
+      std::mutex sentenceMutex;
+      std::condition_variable sentenceCv;
+      std::deque<std::string> sentenceQueue;
+      bool generationDone = false;
+      std::atomic<long long> firstAudioMs{-1};
 
-    auto pushSentence = [&](std::string sentence) {
-      {
-        std::lock_guard<std::mutex> lock(sentenceMutex);
-        sentenceQueue.push_back(std::move(sentence));
-      }
-      sentenceCv.notify_one();
-    };
-
-    std::thread speaker([&] {
-      const bool continuous =
-          !useCamera && openPlayback(TtsService::sampleRate(), kPlaybackLatencyMs);
-      for (;;) {
-        std::string sentence;
+      auto pushSentence = [&](std::string sentence) {
         {
-          std::unique_lock<std::mutex> lock(sentenceMutex);
-          sentenceCv.wait(lock, [&] {
-            return !sentenceQueue.empty() || generationDone ||
-                   speechDetected.load() || gStop.load();
-          });
-          if (speechDetected.load() || gStop.load())
-            break;
-          if (sentenceQueue.empty()) {
-            if (generationDone)
+          std::lock_guard<std::mutex> lock(sentenceMutex);
+          sentenceQueue.push_back(std::move(sentence));
+        }
+        sentenceCv.notify_one();
+      };
+
+      std::thread speaker([&] {
+        const bool continuous =
+            !useCamera &&
+            openPlayback(TtsService::sampleRate(), kPlaybackLatencyMs);
+        for (;;) {
+          std::string sentence;
+          {
+            std::unique_lock<std::mutex> lock(sentenceMutex);
+            sentenceCv.wait(lock, [&] {
+              return !sentenceQueue.empty() || generationDone ||
+                     speechDetected.load() || gStop.load();
+            });
+            if (speechDetected.load() || gStop.load())
               break;
+            if (sentenceQueue.empty()) {
+              if (generationDone)
+                break;
+              continue;
+            }
+            sentence = std::move(sentenceQueue.front());
+            sentenceQueue.pop_front();
+          }
+
+          if (useCamera) {
+            if (firstAudioMs.load() < 0)
+              firstAudioMs.store(
+                  std::chrono::duration_cast<std::chrono::milliseconds>(
+                      std::chrono::steady_clock::now() - t0)
+                      .count());
+            speakToCamera(sentence, state.lang, talkCfg, speechDetected);
             continue;
           }
-          sentence = std::move(sentenceQueue.front());
-          sentenceQueue.pop_front();
+
+          TtsRequest treq;
+          treq.text = sentence;
+          treq.lang = state.lang == "es" ? TtsLang::ES : TtsLang::EN;
+          treq.quality = TtsQuality::Auto;
+          treq.speed = TtsService::defaultSpeed();
+
+          TtsService::synthesizeStream(treq, [&](const std::vector<float>&
+                                                     pcm) {
+            if (speechDetected.load() || gStop.load())
+              return;
+            if (firstAudioMs.load() < 0) {
+              firstAudioMs.store(
+                  std::chrono::duration_cast<std::chrono::milliseconds>(
+                      std::chrono::steady_clock::now() - t0)
+                      .count());
+              stopSpeech = true;
+            }
+            if (continuous)
+              writePlayback(pcm, speechDetected);
+            else
+              playPcm(pcm, TtsService::sampleRate(), speechDetected);
+          });
         }
 
-        if (useCamera) {
-          if (firstAudioMs.load() < 0)
-            firstAudioMs.store(
-                std::chrono::duration_cast<std::chrono::milliseconds>(
-                    std::chrono::steady_clock::now() - t0)
-                    .count());
-          speakToCamera(sentence, state.lang, talkCfg, speechDetected);
-          continue;
-        }
-
-        TtsRequest treq;
-        treq.text = sentence;
-        treq.lang = state.lang == "es" ? TtsLang::ES : TtsLang::EN;
-        treq.quality = TtsQuality::Auto;
-        treq.speed = TtsService::defaultSpeed();
-
-        TtsService::synthesizeStream(treq, [&](const std::vector<float>& pcm) {
+        if (continuous) {
           if (speechDetected.load() || gStop.load())
-            return;
-          if (firstAudioMs.load() < 0) {
-            firstAudioMs.store(
-                std::chrono::duration_cast<std::chrono::milliseconds>(
-                    std::chrono::steady_clock::now() - t0)
-                    .count());
-            stopSpeech = true;
-          }
-          if (continuous)
-            writePlayback(pcm, speechDetected);
+            flushPlayback();
           else
-            playPcm(pcm, TtsService::sampleRate(), speechDetected);
-        });
-      }
+            drainPlayback();
+          closePlayback();
+        }
+      });
 
-      if (continuous) {
-        if (speechDetected.load() || gStop.load())
-          flushPlayback();
-        else
-          drainPlayback();
-        closePlayback();
-      }
-    });
+      LlmService::chatStream(req, [&](const std::string& token, bool) {
+        if (gStop.load() || speechDetected.load())
+          return;
+        if (firstToken) {
+          auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                        std::chrono::steady_clock::now() - t0)
+                        .count();
+          std::cout << "\n[Argus (first token " << ms << " ms)] ";
+          firstToken = false;
+        }
+        std::cout << token << std::flush;
+        full += token;
+        pending += token;
 
-    LlmService::chatStream(
-        req,
-        [&](const std::string& token, bool) {
-          if (gStop.load() || speechDetected.load())
-            return;
-          if (firstToken) {
-            auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-                          std::chrono::steady_clock::now() - t0)
-                          .count();
-            std::cout << "\n[Argus (first token " << ms << " ms)] ";
-            firstToken = false;
-          }
-          std::cout << token << std::flush;
-          full += token;
-          pending += token;
+        if (!prefixStripped && pending.size() >= 8) {
+          pending = stripPrefix(pending);
+          prefixStripped = true;
+        }
 
-          if (!prefixStripped && pending.size() >= 8) {
-            pending = stripPrefix(pending);
-            prefixStripped = true;
-          }
+        for (;;) {
+          const size_t minChars =
+              firstSentenceSent ? kMinSentenceChars : kFirstSentenceMinChars;
+          const size_t cut = completeSentenceEnd(pending, minChars);
+          if (cut == 0)
+            break;
+          pushSentence(pending.substr(0, cut));
+          pending.erase(0, cut);
+          firstSentenceSent = true;
+        }
+      });
 
-          for (;;) {
-            const size_t minChars =
-                firstSentenceSent ? kMinSentenceChars : kFirstSentenceMinChars;
-            const size_t cut = completeSentenceEnd(pending, minChars);
-            if (cut == 0)
-              break;
-            pushSentence(pending.substr(0, cut));
-            pending.erase(0, cut);
-            firstSentenceSent = true;
-          }
-        });
-
-    auto genMs = std::chrono::duration_cast<std::chrono::milliseconds>(
-                     std::chrono::steady_clock::now() - t0)
-                     .count();
-
-    if (!prefixStripped)
-      pending = stripPrefix(pending);
-    if (!pending.empty())
-      pushSentence(pending);
-
-    {
-      std::lock_guard<std::mutex> lock(sentenceMutex);
-      generationDone = true;
-    }
-    sentenceCv.notify_one();
-
-    if (speaker.joinable())
-      speaker.join();
-
-    stopSpeech = true;
-    if (interrupter.joinable())
-      interrupter.join();
-
-    if (speechDetected.load() || gStop.load()) {
-      std::cout << "\n[interrupted]\n";
-      continue;
-    }
-
-    full = stripPrefix(full);
-    if (full.empty()) {
-      std::cout << "[empty reply]\n";
-      continue;
-    }
-
-    auto totalMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+      auto genMs = std::chrono::duration_cast<std::chrono::milliseconds>(
                        std::chrono::steady_clock::now() - t0)
                        .count();
-    std::cout << "\n[generated in " << genMs << " ms, first audio "
-              << firstAudioMs.load() << " ms, turn took " << totalMs
-              << " ms]\n";
 
-    state.history.push_back({"assistant", full});
-  }
+      if (!prefixStripped)
+        pending = stripPrefix(pending);
+      if (!pending.empty())
+        pushSentence(pending);
+
+      {
+        std::lock_guard<std::mutex> lock(sentenceMutex);
+        generationDone = true;
+      }
+      sentenceCv.notify_one();
+
+      if (speaker.joinable())
+        speaker.join();
+
+      stopSpeech = true;
+      if (interrupter.joinable())
+        interrupter.join();
+
+      if (speechDetected.load() || gStop.load()) {
+        std::cout << "\n[interrupted]\n";
+        continue;
+      }
+
+      full = stripPrefix(full);
+      if (full.empty()) {
+        std::cout << "[empty reply]\n";
+        continue;
+      }
+
+      auto totalMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+                         std::chrono::steady_clock::now() - t0)
+                         .count();
+      std::cout << "\n[generated in " << genMs << " ms, first audio "
+                << firstAudioMs.load() << " ms, turn took " << totalMs
+                << " ms]\n";
+
+      state.history.push_back({"assistant", full});
+    }
   }
 
   LlmService::shutdown();
