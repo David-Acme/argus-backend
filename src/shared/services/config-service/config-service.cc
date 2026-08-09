@@ -1,9 +1,10 @@
 #include "config-service.hxx"
 
 #include <drogon/drogon.h>
+#include <filesystem>
+#include <fstream>
 #include <json/reader.h>
 #include <json/value.h>
-#include <fstream>
 #include <mutex>
 #include <optional>
 #include <sstream>
@@ -140,6 +141,19 @@ std::string patchContent(const std::string& content, const std::string& section,
   return out.str();
 }
 
+void mergeOverlay(toml::table& base, const toml::table& overlay)
+{
+  for (auto&& [key, node] : overlay) {
+    if (const auto* overlayTable = node.as_table()) {
+      if (auto* baseTable = base[key].as_table()) {
+        mergeOverlay(*baseTable, *overlayTable);
+        continue;
+      }
+    }
+    base.insert_or_assign(key, node);
+  }
+}
+
 bool applyValue(const std::string& keyPath, const std::string& literal)
 {
   std::lock_guard lock(gConfigMutex);
@@ -187,6 +201,22 @@ void ConfigService::load(const std::string& path)
     LOG_FATAL << "Failed to parse config " << path << ": " << detail << " at "
               << filePath << ":" << src.begin.line << ":" << src.begin.column;
     throw std::runtime_error("ConfigService: failed to parse " + path);
+  }
+
+  const std::filesystem::path overlayPath =
+      std::filesystem::path(path).parent_path() / "config.local.toml";
+  if (!std::filesystem::exists(overlayPath))
+    return;
+
+  try {
+    const auto overlay = toml::parse_file(overlayPath.string());
+    std::lock_guard lock(gConfigMutex);
+    mergeOverlay(*gConfig, overlay);
+    LOG_INFO << "Configuration overlay merged from " << overlayPath.string();
+  }
+  catch (const toml::parse_error& e) {
+    LOG_WARN << "Ignoring malformed config overlay " << overlayPath.string()
+             << ": " << e.description();
   }
 }
 

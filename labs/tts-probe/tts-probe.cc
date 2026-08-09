@@ -6,10 +6,23 @@
 #include <shared/services/tts/onnx-utils.hxx>
 #include <shared/services/tts/tts-service.hxx>
 #include <string>
+#include <unistd.h>
 #include <vector>
 
 namespace
 {
+
+std::string exeDir()
+{
+  char buf[4096];
+  const ssize_t n = readlink("/proc/self/exe", buf, sizeof(buf) - 1);
+  if (n <= 0)
+    return ".";
+  buf[n] = '\0';
+  std::string path(buf);
+  const size_t slash = path.find_last_of('/');
+  return slash == std::string::npos ? "." : path.substr(0, slash);
+}
 
 struct Silence
 {
@@ -60,8 +73,7 @@ void report(const char* label, const std::vector<float>& pcm, int sr)
   std::printf("  %-34s len=%6.2fs  lead=%5.0fms  tail=%5.0fms  "
               "longest_inner_gap=%5.0fms @%.2fs\n",
               label, dur, 1000.0 * s.leadSamples / sr,
-              1000.0 * s.tailSamples / sr,
-              1000.0 * s.longestGapSamples / sr,
+              1000.0 * s.tailSamples / sr, 1000.0 * s.longestGapSamples / sr,
               static_cast<double>(s.gapStart) / sr);
 }
 
@@ -79,8 +91,7 @@ std::vector<std::string> streamSplit(const std::string& text, size_t tokenSize,
   for (size_t i = 0; i < text.size(); i += tokenSize) {
     pending += text.substr(i, tokenSize);
     for (;;) {
-      const size_t cut =
-          completeSentenceEnd(pending, firstSent ? minChars : 0);
+      const size_t cut = completeSentenceEnd(pending, firstSent ? minChars : 0);
       if (cut == 0)
         break;
       out.push_back(pending.substr(0, cut));
@@ -209,7 +220,7 @@ int main()
     report(c.label, pcm, sr);
     std::printf("  %-34s synth=%.0f ms  chars=%zu\n", "", ms,
                 std::string(c.text).size());
-    TtsService::writeWav(std::string("probe-") + std::to_string(&c - cases) +
+    TtsService::writeWav(exeDir() + "/probe-" + std::to_string(&c - cases) +
                              ".wav",
                          pcm, sr);
   }

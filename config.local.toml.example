@@ -1,0 +1,11 @@
+# Untracked overlay, merged over config.toml by ConfigService::load() when
+# this file exists next to it. Copy to config.local.toml and fill in real
+# values; config.local.toml is gitignored and never leaves this machine.
+
+# ── Voice lab camera hooks ─────────────────────────────────────────
+# The voice-test lab grabs a frame from the camera's low-res substream
+# and describes it with the VLM whenever the user asks about a camera.
+[voice_test]
+camera_rtsp_main = "rtsp://USER:PASSWORD@192.168.1.10:554/stream1"
+camera_rtsp_sub = "rtsp://USER:PASSWORD@192.168.1.10:554/stream2"
+camera_name = "cam1"
