@@ -21,6 +21,8 @@
 #include <shared/services/config-service/config-service.hxx>
 #include <shared/services/llm/llm-service.hxx>
 #include <shared/services/stt/stt-service.hxx>
+#include <shared/services/stream/go2rtc-manager.hxx>
+#include <shared/services/stream/media-relay.hxx>
 #include <shared/services/tapo/tapo-talk-client.hxx>
 #include <shared/services/tts/onnx-utils.hxx>
 #include <shared/services/tts/tts-service.hxx>
@@ -31,13 +33,6 @@
 
 #include <opencv2/core.hpp>
 #include <opencv2/imgcodecs.hpp>
-
-extern "C" {
-#include <libavcodec/avcodec.h>
-#include <libavformat/avformat.h>
-#include <libavutil/imgutils.h>
-#include <libswscale/swscale.h>
-}
 
 namespace
 {
@@ -59,101 +54,18 @@ bool mentionsCamera(const std::string& text)
          lower.find("camera") != std::string::npos;
 }
 
-cv::Mat captureCameraFrame(const std::string& rtspUrl)
+cv::Mat captureCameraFrame(int64_t cameraId)
 {
-  for (int attempt = 0; attempt < 2; ++attempt) {
-    if (attempt > 0) {
-      std::cout << "[camera] reintentando captura...\n";
-      std::this_thread::sleep_for(std::chrono::seconds(1));
-    }
-
-    AVFormatContext* fmt = nullptr;
-    AVDictionary* opts = nullptr;
-    av_dict_set(&opts, "rw_timeout", "5000000", 0);
-    av_dict_set(&opts, "rtsp_transport", "tcp", 0);
-    if (avformat_open_input(&fmt, rtspUrl.c_str(), nullptr, &opts) != 0) {
-      av_dict_free(&opts);
-      continue;
-    }
-    av_dict_free(&opts);
-    if (avformat_find_stream_info(fmt, nullptr) < 0) {
-      avformat_close_input(&fmt);
-      continue;
-    }
-    const int vIdx =
-        av_find_best_stream(fmt, AVMEDIA_TYPE_VIDEO, -1, -1, nullptr, 0);
-    if (vIdx < 0) {
-      avformat_close_input(&fmt);
-      continue;
-    }
-
-    const AVCodec* codec =
-        avcodec_find_decoder(fmt->streams[vIdx]->codecpar->codec_id);
-    AVCodecContext* dec = avcodec_alloc_context3(codec);
-    if (!dec ||
-        avcodec_parameters_to_context(dec, fmt->streams[vIdx]->codecpar) < 0 ||
-        avcodec_open2(dec, codec, nullptr) < 0) {
-      if (dec)
-        avcodec_free_context(&dec);
-      avformat_close_input(&fmt);
-      continue;
-    }
-
-    AVPacket* pkt = av_packet_alloc();
-    AVFrame* frame = av_frame_alloc();
-    AVFrame* rgb = av_frame_alloc();
-    SwsContext* sws = nullptr;
-    cv::Mat result;
-    bool got = false;
-
-    while (av_read_frame(fmt, pkt) >= 0) {
-      if (pkt->stream_index == vIdx &&
-          avcodec_send_packet(dec, pkt) == 0) {
-        while (avcodec_receive_frame(dec, frame) == 0) {
-          sws = sws_getContext(frame->width, frame->height,
-                               static_cast<AVPixelFormat>(frame->format),
-                               frame->width, frame->height, AV_PIX_FMT_BGR24,
-                               SWS_BILINEAR, nullptr, nullptr, nullptr);
-          if (!sws)
-            break;
-          av_image_alloc(rgb->data, rgb->linesize, frame->width,
-                         frame->height, AV_PIX_FMT_BGR24, 32);
-          sws_scale(sws, frame->data, frame->linesize, 0, frame->height,
-                    rgb->data, rgb->linesize);
-          result = cv::Mat(frame->height, frame->width, CV_8UC3);
-          const size_t stride =
-              static_cast<size_t>(rgb->linesize[0]);
-          for (int y = 0; y < frame->height; ++y)
-            std::memcpy(result.data + y * frame->width * 3,
-                        rgb->data[0] + y * stride, stride);
-          got = true;
-          break;
-        }
-        if (got)
-          break;
-      }
-      av_packet_unref(pkt);
-    }
-
-    if (rgb->data[0])
-      av_freep(rgb->data);
-    av_frame_free(&rgb);
-    av_frame_free(&frame);
-    av_packet_free(&pkt);
-    if (sws)
-      sws_freeContext(sws);
-    avcodec_free_context(&dec);
-    avformat_close_input(&fmt);
-
-    if (got && !result.empty())
-      return result;
-  }
-  return {};
+  const std::string jpeg = MediaRelay::snapshotBytes(cameraId);
+  if (jpeg.empty())
+    return {};
+  const std::vector<uchar> buffer(jpeg.begin(), jpeg.end());
+  return cv::imdecode(buffer, cv::IMREAD_COLOR);
 }
 
-std::string describeCamera(const std::string& rtspUrl)
+std::string describeCamera(int64_t cameraId)
 {
-  const auto frame = captureCameraFrame(rtspUrl);
+  const auto frame = captureCameraFrame(cameraId);
   if (frame.empty())
     return {};
   return VisionService::describeMat(
@@ -161,7 +73,7 @@ std::string describeCamera(const std::string& rtspUrl)
              "imagen de la camara.", 64);
 }
 
-int runCameraCheck(const std::string& rtspUrl)
+int runCameraCheck()
 {
   LlmService::init();
   SttService::init();
@@ -172,14 +84,14 @@ int runCameraCheck(const std::string& rtspUrl)
     return 1;
   }
 
-  std::cout << "Capturando frame de: " << rtspUrl << "\n";
-  const auto frame = captureCameraFrame(rtspUrl);
+  std::cout << "Capturando frame de la camara 1...\n";
+  const auto frame = captureCameraFrame(1);
   if (frame.empty()) {
     std::cerr << "No se pudo capturar el frame.\n";
     return 1;
   }
   std::cout << "Frame " << frame.cols << "x" << frame.rows << "\n";
-  const std::string scene = describeCamera(rtspUrl);
+  const std::string scene = describeCamera(1);
   std::cout << "Descripcion: " << scene << "\n";
   VisionService::shutdown();
   TtsService::shutdown();
@@ -508,7 +420,6 @@ int runCameraVadCheck(const std::string& rtspUrl)
 
 void runCameraConversation(const TapoTalkConfig& talkCfg,
                            const std::string& camRtspSub,
-                           const std::string& camRtspMain,
                            const std::string& langCode)
 {
   std::atomic<bool> paused{false};
@@ -584,6 +495,11 @@ void runCameraConversation(const TapoTalkConfig& talkCfg,
             << std::flush;
 
   Vad vad;
+  const auto resumeListening = [&] {
+    std::lock_guard<std::mutex> lock(bufMutex);
+    camBuf.clear();
+    vad.reset();
+  };
   auto lastTick = std::chrono::steady_clock::now();
   while (!gStop.load()) {
     if (paused.load()) {
@@ -638,9 +554,10 @@ void runCameraConversation(const TapoTalkConfig& talkCfg,
     }
 
     std::string reply = userText;
-    if (mentionsCamera(userText) && !camRtspMain.empty()) {
+    if (mentionsCamera(userText)) {
       std::cout << "[camera] capturando frame...\n";
-      const std::string scene = describeCamera(camRtspMain);
+      const std::string scene = describeCamera(1);
+      resumeListening();
       if (!scene.empty()) {
         std::cout << "[camera] " << scene << "\n";
         reply = "La camara muestra: " + scene + ". " + userText;
@@ -666,10 +583,12 @@ void runCameraConversation(const TapoTalkConfig& talkCfg,
     std::cout << "\n";
     state.history.push_back({"assistant", full});
 
+    resumeListening();
     paused.store(true);
     speakToCamera(full, langCode, talkCfg, gStop);
     discardRemaining.store(kEchoDrainSamples);
     paused.store(false);
+    resumeListening();
   }
 
   gStop.store(true);
@@ -695,16 +614,23 @@ int main(int argc, char** argv)
       ConfigService::getString("voice_test.camera_rtsp_sub");
   const std::string camRtspMain =
       ConfigService::getString("voice_test.camera_rtsp_main");
+  const std::string cameraName =
+      ConfigService::getString("voice_test.camera_name");
+
+  Go2rtcManager::init();
+  if (!camRtspMain.empty())
+    Go2rtcManager::addSource({.name = cameraName, .url = camRtspMain});
 
   bool useCamera = false;
   std::string cloudPass;
   for (int i = 1; i < argc; ++i) {
     if (std::string(argv[i]) == "--cam-check") {
-      if (camRtspSub.empty()) {
-        std::cerr << "no voice_test.camera_rtsp_sub in config.toml\n";
+      if (camRtspMain.empty()) {
+        std::cerr << "no voice_test.camera_rtsp_main in config.toml\n";
         return 1;
       }
-      return runCameraCheck(camRtspSub);
+      Go2rtcManager::shutdown();
+      return runCameraCheck();
     }
     if (std::string(argv[i]) == "--camera-stt-check") {
       if (camRtspSub.empty()) {
@@ -793,7 +719,7 @@ int main(int argc, char** argv)
                                    : "Hello, I'm Argus. How can I help you?";
   std::cout << "\n[Argus] " << greeting << "\n";
   if (useCamera) {
-    runCameraConversation(talkCfg, camRtspSub, camRtspMain, langCode);
+    runCameraConversation(talkCfg, camRtspSub, langCode);
   }
   else {
     speak(greeting, langCode, gStop);
@@ -825,17 +751,16 @@ int main(int argc, char** argv)
     }
 
     std::string reply = userText;
-    if (mentionsCamera(userText) && !camRtspSub.empty()) {
+    if (mentionsCamera(userText)) {
       std::cout << "[camera] capturando frame de la camara...\n";
       const auto t0 = std::chrono::steady_clock::now();
-      const std::string scene = describeCamera(camRtspSub);
+      const std::string scene = describeCamera(1);
       const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
                           std::chrono::steady_clock::now() - t0)
                           .count();
       if (!scene.empty()) {
         std::cout << "[camera] (" << ms << " ms) " << scene << "\n";
-        reply = "La camara " + camRtspMain + " muestra: " + scene + ". " +
-                userText;
+        reply = "La camara muestra: " + scene + ". " + userText;
       }
       else {
         std::cout << "[camera] no disponible (" << ms
@@ -1054,5 +979,6 @@ int main(int argc, char** argv)
   SttService::shutdown();
   TtsService::shutdown();
   VisionService::shutdown();
+  Go2rtcManager::shutdown();
   return 0;
 }

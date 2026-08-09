@@ -15,6 +15,9 @@ set(VOICE_SERVICE_SRC
     ${SRC_ROOT}/shared/services/tts/style.cc
     ${SRC_ROOT}/shared/services/tts/unicode-processor.cc
     ${SRC_ROOT}/shared/services/vision/vision-service.cc
+    ${SRC_ROOT}/shared/services/stream/go2rtc-manager.cc
+    ${SRC_ROOT}/shared/services/stream/media-relay.cc
+    ${SRC_ROOT}/shared/services/stream/upstream-http.cc
     ${SRC_ROOT}/shared/services/tapo/tapo-audio.cc
     ${SRC_ROOT}/shared/services/tapo/tapo-crypto.cc
     ${SRC_ROOT}/shared/services/tapo/tapo-http.cc

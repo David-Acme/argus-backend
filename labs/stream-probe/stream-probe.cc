@@ -1,12 +1,13 @@
 #include <arpa/inet.h>
-#include <chrono>
 #include <cctype>
+#include <chrono>
 #include <cstdio>
 #include <cstdlib>
 #include <mutex>
 #include <netinet/in.h>
 #include <shared/services/config-service/config-service.hxx>
 #include <shared/services/stream/go2rtc-manager.hxx>
+#include <shared/services/stream/media-relay.hxx>
 #include <shared/services/stream/stream-hub.hxx>
 #include <shared/services/stream/upstream-http.hxx>
 #include <shared/services/stream/ws-frame.hxx>
@@ -67,10 +68,8 @@ bool addGo2rtcStream(const std::string& name, const std::string& src)
     ::close(fd);
     return false;
   }
-  const std::string req =
-      "PUT " + path +
-      " HTTP/1.1\r\nHost: " + host +
-      "\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+  const std::string req = "PUT " + path + " HTTP/1.1\r\nHost: " + host +
+                          "\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
   ::send(fd, req.data(), req.size(), 0);
   char buf[1024];
   const ssize_t n = ::recv(fd, buf, sizeof(buf), 0);
@@ -138,6 +137,13 @@ void streamHubCheck()
 
   std::this_thread::sleep_for(std::chrono::milliseconds(2500));
 
+  const std::string jpeg = MediaRelay::snapshotBytes(1);
+  check("snapshot devuelve bytes", !jpeg.empty(), true);
+  check("snapshot es un JPEG",
+        jpeg.size() > 2 && static_cast<unsigned char>(jpeg[0]) == 0xFF &&
+            static_cast<unsigned char>(jpeg[1]) == 0xD8,
+        true);
+
   auto sink = std::make_shared<FakeSink>();
   StreamHub::SubscribeInput input;
   input.sink = sink;
@@ -196,21 +202,29 @@ int main()
   check("plain name", Go2rtcManager::isSafeName("cam1"), true);
   check("underscore/dash", Go2rtcManager::isSafeName("front_door-2"), true);
   check("empty", Go2rtcManager::isSafeName(""), false);
-  check("newline injection", Go2rtcManager::isSafeName("cam1\nstreams:"), false);
+  check("newline injection", Go2rtcManager::isSafeName("cam1\nstreams:"),
+        false);
   check("space", Go2rtcManager::isSafeName("cam 1"), false);
   check("yaml colon", Go2rtcManager::isSafeName("cam:evil"), false);
   check("path traversal", Go2rtcManager::isSafeName("../../etc"), false);
 
   std::printf("\n=== url validation ===\n");
-  check("private rtsp", Go2rtcManager::isSafeUrl("rtsp://u:p@192.168.1.50:554/stream1"), true);
+  check("private rtsp",
+        Go2rtcManager::isSafeUrl("rtsp://u:p@192.168.1.50:554/stream1"), true);
   check("private tapo", Go2rtcManager::isSafeUrl("tapo://pass@10.0.0.7"), true);
-  check("loopback", Go2rtcManager::isSafeUrl("rtsp://127.0.0.1:8554/cam1"), true);
-  check("172.16 private", Go2rtcManager::isSafeUrl("rtsp://172.16.3.4:554/s"), true);
-  check("172.32 NOT private", Go2rtcManager::isSafeUrl("rtsp://172.32.3.4:554/s"), false);
-  check("public host rejected", Go2rtcManager::isSafeUrl("rtsp://8.8.8.8:554/s"), false);
+  check("loopback", Go2rtcManager::isSafeUrl("rtsp://127.0.0.1:8554/cam1"),
+        true);
+  check("172.16 private", Go2rtcManager::isSafeUrl("rtsp://172.16.3.4:554/s"),
+        true);
+  check("172.32 NOT private",
+        Go2rtcManager::isSafeUrl("rtsp://172.32.3.4:554/s"), false);
+  check("public host rejected",
+        Go2rtcManager::isSafeUrl("rtsp://8.8.8.8:554/s"), false);
   check("bad scheme", Go2rtcManager::isSafeUrl("file:///etc/passwd"), false);
-  check("newline in url", Go2rtcManager::isSafeUrl("rtsp://192.168.1.5/a\nb: c"), false);
-  check("shell metachar", Go2rtcManager::isSafeUrl("rtsp://192.168.1.5/$(id)"), false);
+  check("newline in url",
+        Go2rtcManager::isSafeUrl("rtsp://192.168.1.5/a\nb: c"), false);
+  check("shell metachar", Go2rtcManager::isSafeUrl("rtsp://192.168.1.5/$(id)"),
+        false);
   check("backtick", Go2rtcManager::isSafeUrl("rtsp://192.168.1.5/`id`"), false);
   check("quote", Go2rtcManager::isSafeUrl("rtsp://192.168.1.5/\"x"), false);
 

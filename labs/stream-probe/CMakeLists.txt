@@ -2,6 +2,7 @@ add_executable(argus-stream-probe
     stream-probe.cc
     ${SRC_ROOT}/shared/services/config-service/config-service.cc
     ${SRC_ROOT}/shared/services/stream/go2rtc-manager.cc
+    ${SRC_ROOT}/shared/services/stream/media-relay.cc
     ${SRC_ROOT}/shared/services/stream/stream-hub.cc
     ${SRC_ROOT}/shared/services/stream/upstream-http.cc
     ${SRC_ROOT}/shared/services/stream/ws-frame.cc

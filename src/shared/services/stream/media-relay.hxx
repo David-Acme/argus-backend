@@ -45,6 +45,11 @@ public:
   static drogon::HttpResponsePtr stream(int64_t cameraId, MediaFormat format);
   static drogon::HttpResponsePtr snapshot(int64_t cameraId);
 
+  // Raw JPEG bytes of the last frame go2rtc has for the camera. Empty when
+  // go2rtc is not running or the frame cannot be fetched. No camera session
+  // is opened: go2rtc already holds the connection.
+  static std::string snapshotBytes(int64_t cameraId);
+
   static MediaRelayStats stats();
 
 private:
