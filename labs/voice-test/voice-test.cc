@@ -310,8 +310,8 @@ std::string captureTurnFromCamera(Vad& vad, const std::atomic<bool>& stop,
   return text;
 }
 
-bool speakToCamera(const std::string& text, const std::string& langCode,
-                   const TapoTalkConfig& cfg, const std::atomic<bool>& stop)
+bool speakToCamera(TapoTalkClient& client, const std::string& text,
+                   const std::string& langCode, const std::atomic<bool>& stop)
 {
   if (text.empty() || stop.load())
     return false;
@@ -329,16 +329,13 @@ bool speakToCamera(const std::string& text, const std::string& langCode,
     s16.push_back(static_cast<int16_t>(clamped * 32767.0F));
   }
 
-  TapoTalkClient client(cfg);
-  if (!client.open().ok) {
-    std::cerr << "[camera-talk] no se pudo abrir el canal de audio\n";
-    return false;
-  }
   CancellationToken token;
-  const auto sent =
-      client.send({.samples = s16, .sampleRate = TtsService::sampleRate()},
-                  token);
-  client.close();
+  const auto sent = client.sendChunk({.samples = s16,
+                                      .sampleRate = TtsService::sampleRate(),
+                                      .reopenOnFailure = true},
+                                     token);
+  if (!sent.ok)
+    std::cerr << "[camera-talk] fallo al enviar audio\n";
   return sent.ok;
 }
 
@@ -547,13 +544,14 @@ void runCameraConversation(const TapoTalkConfig& talkCfg,
   state.lang = langCode;
   state.history.push_back({"system", systemPromptFor(langCode)});
 
+  TapoTalkClient talkClient(talkCfg);
   const std::string greeting = langCode == "es"
                                    ? "Hola, soy Argus. Estoy escuchando por la "
                                      "camara, puedes hablar cuando quieras."
                                    : "Hello, I'm Argus. I am listening through "
                                      "the camera, you can speak anytime.";
   paused.store(true);
-  speakToCamera(greeting, langCode, talkCfg, gStop);
+  speakToCamera(talkClient, greeting, langCode, gStop);
   discardRemaining.store(kEchoDrainSamples);
   paused.store(false);
   std::cout << "\n[escuchando continuamente por la camara...] "
@@ -649,7 +647,7 @@ void runCameraConversation(const TapoTalkConfig& talkCfg,
 
     resumeListening();
     paused.store(true);
-    speakToCamera(full, langCode, talkCfg, gStop);
+    speakToCamera(talkClient, full, langCode, gStop);
     discardRemaining.store(kEchoDrainSamples);
     paused.store(false);
     resumeListening();
@@ -795,6 +793,7 @@ int main(int argc, char** argv)
   else {
     speak(greeting, langCode, gStop);
 
+    TapoTalkClient talkClient(talkCfg);
     ConversationState state;
     state.lang = langCode;
     // System prompt is the first message so the LLM replies in the selected
@@ -935,7 +934,7 @@ int main(int argc, char** argv)
                   std::chrono::duration_cast<std::chrono::milliseconds>(
                       std::chrono::steady_clock::now() - t0)
                       .count());
-            speakToCamera(sentence, state.lang, talkCfg, speechDetected);
+            speakToCamera(talkClient, sentence, state.lang, speechDetected);
             continue;
           }
 

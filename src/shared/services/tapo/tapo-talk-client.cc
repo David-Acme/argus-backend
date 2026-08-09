@@ -23,7 +23,9 @@ constexpr int kTablesEveryMs = 500;
 std::string lower(std::string value)
 {
   std::transform(value.begin(), value.end(), value.begin(),
-                 [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+                 [](unsigned char c) {
+                   return static_cast<char>(std::tolower(c));
+                 });
   return value;
 }
 
@@ -31,7 +33,8 @@ std::string between(const std::string& text, const std::string& open,
                     const std::string& close)
 {
   const size_t begin = text.find(open);
-  if (begin == std::string::npos)    return {};
+  if (begin == std::string::npos)
+    return {};
   const size_t start = begin + open.size();
   const size_t end = text.find(close, start);
   if (end == std::string::npos)
@@ -176,8 +179,9 @@ TapoResult TapoTalkClient::handshake(const std::string& authorization,
     return TapoResult::failure(connection_->error());
   response = TapoHttpResponse{};
   if (!TapoHttp::readResponseHead(*connection_, response))
-    return TapoResult::failure(response.error.empty() ? "no response from talk channel"
-                                                      : response.error);
+    return TapoResult::failure(response.error.empty()
+                                   ? "no response from talk channel"
+                                   : response.error);
   return TapoResult::success(Json::Value());
 }
 
@@ -194,21 +198,26 @@ TapoResult TapoTalkClient::authenticate()
     return TapoResult::success(Json::Value());
   }
   if (probe.status != 401)
-    return TapoResult::failure("unexpected talk status " + std::to_string(probe.status));
+    return TapoResult::failure("unexpected talk status " +
+                               std::to_string(probe.status));
 
-  const auto challenge = tapo_crypto::parseDigestChallenge(probe.header("WWW-Authenticate"));
+  const auto challenge =
+      tapo_crypto::parseDigestChallenge(probe.header("WWW-Authenticate"));
   if (challenge.nonce.empty())
     return TapoResult::failure("talk channel did not send a digest challenge");
 
   std::vector<std::pair<std::string, std::string>> candidates;
   if (challenge.encryptType == "3") {
-    candidates.push_back({"sha256", tapo_crypto::sha256Hex(config_.cloudPassword)});
+    candidates.push_back(
+        {"sha256", tapo_crypto::sha256Hex(config_.cloudPassword)});
     candidates.push_back({"plain", config_.cloudPassword});
     candidates.push_back({"md5", tapo_crypto::md5Hex(config_.cloudPassword)});
-  } else {
+  }
+  else {
     candidates.push_back({"plain", config_.cloudPassword});
     candidates.push_back({"md5", tapo_crypto::md5Hex(config_.cloudPassword)});
-    candidates.push_back({"sha256", tapo_crypto::sha256Hex(config_.cloudPassword)});
+    candidates.push_back(
+        {"sha256", tapo_crypto::sha256Hex(config_.cloudPassword)});
   }
 
   std::string lastError = "digest authentication rejected";
@@ -226,15 +235,18 @@ TapoResult TapoTalkClient::authenticate()
                                          .cnonce = tapo_crypto::randomHex(16),
                                          .nonceCount = 1};
     TapoHttpResponse response;
-    const auto attempt = handshake(tapo_crypto::buildDigestHeader(input), response);
+    const auto attempt =
+        handshake(tapo_crypto::buildDigestHeader(input), response);
     if (!attempt.ok) {
       lastError = attempt.error;
       continue;
     }
     if (response.status == 200) {
       passwordVariant_ = variant;
-      keyExchangeNonce_ = between(response.header("Key-Exchange"), "nonce=\"", "\"");
-      LOG_INFO << "tapo talk: authenticated with password variant '" << variant << "'";
+      keyExchangeNonce_ =
+          between(response.header("Key-Exchange"), "nonce=\"", "\"");
+      LOG_INFO << "tapo talk: authenticated with password variant '" << variant
+               << "'";
       return TapoResult::success(Json::Value());
     }
     lastError = "digest rejected (status " + std::to_string(response.status) +
@@ -287,8 +299,9 @@ bool TapoTalkClient::readPart(TapoTalkPart& part)
       continue;
     std::string value = line.substr(colon + 1);
     const size_t begin = value.find_first_not_of(" \t");
-    part.headers.push_back(
-        {line.substr(0, colon), begin == std::string::npos ? "" : value.substr(begin)});
+    part.headers.push_back({line.substr(0, colon), begin == std::string::npos
+                                                       ? ""
+                                                       : value.substr(begin)});
   }
 
   const std::string length = part.header("Content-Length");
@@ -309,7 +322,8 @@ TapoResult TapoTalkClient::startSession()
   payload["type"] = "request";
 
   const std::string body = json_util::toString(payload);
-  const std::vector<TapoHttpHeader> headers = {{"Content-Type", "application/json"},
+  const std::vector<TapoHttpHeader> headers = {{"Content-Type",
+                                                "application/json"},
                                                {"X-If-Encrypt", "0"}};
   if (!writePart(headers, body))
     return TapoResult::failure("cannot send talk session request");
@@ -338,7 +352,8 @@ TapoResult TapoTalkClient::startSession()
   if (sessionId_.empty())
     return TapoResult::failure("talk session id not returned: " + part.body);
 
-  LOG_INFO << "tapo talk: session " << sessionId_ << " opened in mode " << config_.mode;
+  LOG_INFO << "tapo talk: session " << sessionId_ << " opened in mode "
+           << config_.mode;
   return TapoResult::success(answer);
 }
 
@@ -357,11 +372,13 @@ TapoResult TapoTalkClient::open()
 
   muxer_.reset();
   pts90k_ = 0;
+  sentSamples_ = 0;
   open_ = true;
   return session;
 }
 
-TapoResult TapoTalkClient::send(const TapoTalkAudio& audio, const CancellationToken& token)
+TapoResult TapoTalkClient::send(const TapoTalkAudio& audio,
+                                const CancellationToken& token)
 {
   if (!open_ || !connection_)
     return TapoResult::failure("talk channel not open");
@@ -406,8 +423,10 @@ TapoResult TapoTalkClient::send(const TapoTalkAudio& audio, const CancellationTo
       sinceTables = 0;
     }
     payload += muxer_.frame(
-        {.payload = std::vector<uint8_t>(encoded.begin() + static_cast<long>(offset),
-                                         encoded.begin() + static_cast<long>(offset + take)),
+        {.payload =
+             std::vector<uint8_t>(encoded.begin() + static_cast<long>(offset),
+                                  encoded.begin() +
+                                      static_cast<long>(offset + take)),
          .pts90k = pts90k_});
     pts90k_ += ptsStep;
     sinceTables += config_.packetMs;
@@ -420,6 +439,7 @@ TapoResult TapoTalkClient::send(const TapoTalkAudio& audio, const CancellationTo
       return TapoResult::failure("talk channel write failed");
     }
     ++sent;
+    sentSamples_ += static_cast<int64_t>(take);
 
     if (config_.pace) {
       deadline += std::chrono::milliseconds(config_.packetMs);
@@ -431,6 +451,33 @@ TapoResult TapoTalkClient::send(const TapoTalkAudio& audio, const CancellationTo
   result["packets"] = static_cast<Json::Int64>(sent);
   result["cancelled"] = token.cancelled();
   return TapoResult::success(result);
+}
+
+TapoResult TapoTalkClient::sendChunk(const TapoTalkSendInput& input,
+                                     const CancellationToken& token)
+{
+  if (!open_) {
+    const auto opened = open();
+    if (!opened.ok)
+      return opened;
+  }
+
+  auto result =
+      send({.samples = input.samples, .sampleRate = input.sampleRate}, token);
+  if (result.ok || !input.reopenOnFailure)
+    return result;
+
+  close();
+  const auto reopened = open();
+  if (!reopened.ok)
+    return reopened;
+  return send({.samples = input.samples, .sampleRate = input.sampleRate},
+              token);
+}
+
+int64_t TapoTalkClient::sentDurationMs() const
+{
+  return sentSamples_ * 1000 / kTargetSampleRate;
 }
 
 void TapoTalkClient::close()

@@ -229,6 +229,10 @@ transport = "auto"
 # Content-Length (pytapo/go2rtc behaviour); "negative" sends -1;
 # "chunked" uses HTTP/1.1 chunked encoding. Settle with tapo-probe.
 talk_framing = "none"
+# Segundos sin audio tras los que la cámara corta la sesión de voz. Reabrirla
+# cuesta un handshake entero, así que se mantiene abierta durante la
+# conversación y sendChunk la reabre solo si falla el envío.
+talk_idle_timeout_s = 60
 # Echo cancellation mode negotiated with the camera speaker.
 talk_mode = "aec"
 # Milliseconds of A-law audio per MPEG-TS part. Bounds the audio still in

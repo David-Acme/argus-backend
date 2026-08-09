@@ -59,6 +59,13 @@ struct TapoTalkAudio
   int sampleRate{8000};
 };
 
+struct TapoTalkSendInput
+{
+  std::vector<int16_t> samples;
+  int sampleRate{8000};
+  bool reopenOnFailure{false};
+};
+
 struct TapoTalkPart
 {
   std::vector<TapoHttpHeader> headers;
@@ -78,17 +85,24 @@ public:
 
   TapoResult open();
   TapoResult send(const TapoTalkAudio& audio, const CancellationToken& token);
+  TapoResult sendChunk(const TapoTalkSendInput& input,
+                       const CancellationToken& token);
   void close();
 
   bool isOpen() const;
+  // Duration of audio actually written to the talk channel, in milliseconds.
+  // Zeroed by open().
+  int64_t sentDurationMs() const;
   Json::Value state() const;
 
 private:
   std::string requestHead(const std::string& authorization) const;
-  TapoResult handshake(const std::string& authorization, TapoHttpResponse& response);
+  TapoResult handshake(const std::string& authorization,
+                       TapoHttpResponse& response);
   TapoResult authenticate();
   TapoResult startSession();
-  bool writePart(const std::vector<TapoHttpHeader>& headers, const std::string& body);
+  bool writePart(const std::vector<TapoHttpHeader>& headers,
+                 const std::string& body);
   bool readPart(TapoTalkPart& part);
 
   TapoTalkConfig config_;
@@ -99,5 +113,6 @@ private:
   std::string keyExchangeNonce_;
   int64_t seq_{1};
   int64_t pts90k_{0};
+  int64_t sentSamples_{0};
   bool open_{false};
 };
