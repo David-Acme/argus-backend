@@ -292,10 +292,11 @@ Streaming variants marshal callbacks into the loop via `queueInLoop`.
 
 `LlmService`, `SttService`, `TtsService` own one shared inference context
 each: access is serialized with a static `std::mutex` (LLM also reuses a
-single `llama_batch` per generation loop). `VisionService` runs SmolVLM2
-(ONNX) behind the same mutex pattern. The vision encoder output is cached
-per image hash (frame cache) so repeated camera frames skip the most
-expensive pass; input resolution is fixed at 512 by the SigLIP encoder.
+single `llama_batch` per generation loop). `VisionService` runs LFM2.5-VL-450M
+through llama.cpp + `libmtmd` behind the same mutex pattern (see section 15).
+`VadService` is the exception that proves the rule: it is an **instance
+class** (one per audio stream, LSTM state per instance) whose ONNX session is
+shared file-static behind a mutex.
 
 ### 14. JSON columns
 
@@ -310,7 +311,7 @@ expensive pass; input resolution is fixed at 512 by the SigLIP encoder.
 - `qr-code-generator/1.8.0` (Nayuki, QR codes for the pairing banner).
   Target: `qr-code-generator::qrcodegencpp`, header `<qrcodegen/qrcodegen.hpp>`.
 - `opencv/4.13.0` (headless, for scaled face image decoding)
-- `onnxruntime/1.24.4` (STT/TTS via sherpa-onnx, Vision via SmolVLM2)
+- `onnxruntime/1.24.4` (STT/TTS via sherpa-onnx, VAD via Silero ONNX)
 - **llama.cpp as a submodule** (`third_party/llama.cpp`, tag `b10305`) — powers
   the LLM **and** the VLM through `libmtmd`. Targets: `${ARGUS_LLAMA_TARGETS}`
   (= `llama mtmd`). Built with `LLAMA_BUILD_MTMD=ON`, everything else OFF.
@@ -414,6 +415,9 @@ Before any commit, verify: `cmake --build --preset dev -j 8` passes with
 | `src/shared/services/face/` | Face detection + recognition (ncnn) |
 | `src/shared/services/llm/` | LLM inference (llama.cpp) |
 | `src/shared/services/vision/` | VLM inference: LFM2.5-VL-450M via llama.cpp + libmtmd (arbitrary prompts, caption cache) |
+| `src/shared/services/vad/` | `VadService` — Silero VAD v5 as an **instance** class (per-stream LSTM, shared ONNX session), with the turn-quality gate |
+| `src/shared/services/stream/` | go2rtc manager, `StreamHub` (fMP4 over `/sync`, per-connection credit window, lock order `hubMutex_ → Upstream::mtx`), `Fmp4Reader` (encoding from headers, whole fragments), `MediaRelay` (incl. `snapshotBytes`) |
+| `src/shared/wrapper/audio/` | `AudioResampler` (stateful sinc) + `SampleRing` — every block-processed audio path MUST use these, never a custom conversion |
 | `src/shared/services/stt/` | Speech-to-text (whisper via sherpa-onnx) |
 | `src/shared/services/tts/` | Text-to-speech (Supertonic 3) |
 | `src/shared/services/tapo/` | Tapo camera local protocols: control (`stok` + `securePassthrough`, legacy fallback) and the 8800 talk channel (Digest + MPEG-TS PCMA) |

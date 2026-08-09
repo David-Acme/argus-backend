@@ -90,24 +90,11 @@ without GPU), so every AI service auto-tunes its resources at runtime:
   `ChatRequest.maxTokens`/`temperature` use 0/-1 sentinels → configured
   defaults. System prompt is English (keeps precision) and asks for 2-3 line
   concise answers.
-- **Vision**: REPLACED with **SmolVLM2-500M-Video-Instruct (ONNX int8, 0.5B)** —
-  `HuggingFaceTB/SmolVLM2-500M-Video-Instruct`: 3 sessions (SigLIP vision
-  encoder base patch-16/512 → 64 image tokens, merged Llama3 decoder with
-  fp32 KV cache, token embeddings) + GPT-2 byte-level BPE tokenizer. ChatML
-  prompt `<|im_start|>User:<image>Can you describe this image?
-  <end_of_utterance>\nAssistant:` with the `<image>` block expanded to
-  `<fake_token_around_image><global-img><image>x64<fake_token_around_image>`;
-  the 64 image rows are filled at runtime with the encoder features
-  (inputs_merger pattern). Greedy decode; prefill runs the whole prompt in
-  one pass, then iterative decode with growing attention_mask/position_ids.
-  Frame cache: the vision encoder output is cached per image hash (2 slots) —
-  repeated camera frames skip the ~0.5s encoder pass. The 500M is a full VLM
-  (VQA + captioning) and beats Florence-2 on quality while being faster and
-  lighter on CPU. NOTE: `vision.image_size` is now fixed at 512 by the model;
-  the encoder runs in ~0.5s and decode ~24ms/token on the reference machine.
-  **Tunables in `config.toml` `[vision]`**: `max_tokens` (default 64, caption
-  is 1-3 sentences) and `threads` (0 = auto). ORT sessions use
-  `spin_duration_us=1000` + `spin_backoff_max=8` (ORT #28096 recommended).
+- **Vision**: superceded — see the "Vision: LFM2.5-VL-450M over llama.cpp +
+  libmtmd (2026-08-08)" section below. The SmolVLM2 ONNX pipeline it replaces
+  ran 3 ORT sessions (SigLIP encoder base patch-16/512, Llama3 decoder with
+  fp32 KV, GPT-2 BPE) with a pre-tokenized fixed prompt; `VisionRequest::prompt`
+  was dead in that design and is real now.
 - **STT/TTS**: adaptive intra-op threads, static mutexes (recognizer, engine,
   voice cache) — thread-safe for concurrent requests.
 - **Face**: `identifyMutex_` (global serialization) replaced by a
@@ -128,29 +115,34 @@ without GPU), so every AI service auto-tunes its resources at runtime:
 - **HTTP**: `client_max_memory_body_size` 64K→16M (no multipart spooling to
   disk for images). Release build: `-march=native` + `-flto=auto` on the app
   target only; `-Wall -Wextra` always on, third-party includes SYSTEM.
-- **llama.cpp via Conan**: `llama-cpp/b6565` in `conanfile.txt` (latest stable
-  on Conan Center, 2025-09). Third-party submodule removed (was pinned to
-  b10216 for the LLM; mtmd is no longer built — vision moved to ONNX).
-  API notes for b6565: `llama_model_params` uses `use_mmap`/`use_mlock`
-  booleans (the newer `load_mode`/`LLAMA_LOAD_MODE_MMAP` from b10216 does not
-  exist yet). Target: `llama-cpp::llama-cpp`. Supports the LFM2 arch used by
-  LFM2.5-1.2B.
+- **llama.cpp as a submodule**: superceded — see the "Vision:
+  LFM2.5-VL-450M over llama.cpp + libmtmd (2026-08-08)" section. The Conan
+  recipe `llama-cpp/b6565` was dropped because its `lfm2` projector still
+  requires `mm.input_norm.*`; the submodule is pinned to tag `b10305`.
 - **ncnn Vulkan**: kept ON — the reference machine has an AMD iGPU (RADV
   RENOIR) that ncnn uses via Vulkan; machines without GPU fall back to CPU.
 - **Voice test** (`labs/voice-test/`): standalone `argus-voice-test` binary that
   chains STT → LLM → TTS for a spoken conversation (EN/ES) to measure quality
   and latency end-to-end. PortAudio for mic (16 kHz, software resample
   fallback for devices without 16 kHz) and speaker (plays TTS PCM at its
-  native 44.1 kHz so pitch stays natural). Turn-taking uses **Silero VAD v5
-  (ONNX, `models/vad/silero_vad.onnx`, ~2.3MB, ~0.1ms/chunk)**: continuous
-  speech probability with hysteresis (0.5 start / 0.35 end), ~250ms min
-  speech, ~500ms silence hangover, and a 300ms pre-roll so the leading
-  phoneme is never clipped (this fixed "hola" being transcribed as garbage).
-  The LLM replies fully first, then the TTS speaks with its native chunking
-  (natural, not choppy). Ctrl+C exits cleanly (shared std::atomic<bool>).
-  `SttService::setLanguage("es"/"en")` switches Whisper at runtime; the
-  `[stt] language` config defaults it. Run: `build/prod/labs/voice-test/
-  argus-voice-test`.
+  native 44.1 kHz so pitch stays natural). Turn-taking uses **Silero VAD v5**
+  (ONNX, `models/vad/silero_vad.onnx`, ~2.3MB, ~0.1ms/chunk) through
+  `VadService` (`src/shared/services/vad/`): per-stream LSTM state, shared
+  ONNX session, block-size independent (context = the 64 samples adjacent to
+  the window), zero per-window allocations, and a turn-quality gate
+  (`min_turn_ms` + `min_mean_prob`). Current tunables live in `config.toml`
+  `[vad]` (threshold 0.45 / neg 0.25, 5 speech frames to open, 12 silence
+  frames to close, 320ms min turn, 0.55 min mean prob); the calibration run
+  against recorded camera audio (Task 11) will replace these defaults with
+  measured numbers. The camera path speaks through the Tapo talk channel with
+  one persistent session per conversation (`sendChunk`), resamples the mic
+  with `AudioResampler` (stateful sinc), and gates the echo with
+  `sentDurationMs() + talk_drain_margin_ms` of discarded mic audio plus a VAD
+  reset. The LLM replies fully first, then the TTS speaks with its native
+  chunking (natural, not choppy). Ctrl+C exits cleanly (shared
+  `std::atomic<bool>`). `SttService::setLanguage("es"/"en")` switches Whisper
+  at runtime; the `[stt] language` config defaults it. Run:
+  `build/prod/labs/voice-test/argus-voice-test --camera --cloud-pass ...`.
 
 ## Tapo camera integration — Phase 1 (2026-08-06)
 
@@ -396,6 +388,70 @@ failure of this design: the player shows a black screen and reports nothing.
 Binary framing, 12-byte header: `0` magic `0xA7`, `1` version, `2` type
 (1=init, 2=media, 3=audio), `3` flags (bit0 = keyframe), `4..5` subId
 big-endian, `6..7` reserved, `8..11` seq big-endian.
+
+## Stability & real-time batch (2026-08-08/09)
+
+Executed from `STABILITY_AND_REALTIME_PLAN.md` task by task. Findings worth
+remembering:
+
+- **The resampler needs carried state.** The old sinc (Blackman, `kSincHalf=32`)
+  restarted at `pos=kSincHalf` per call: applied to 1024-sample blocks at
+  8→16 kHz it dropped 6.25% of the audio (in=1024, expected=2048, got=1920) —
+  an ~8ms hole every 128ms and a compressed timeline. `AudioResampler`
+  (`src/shared/wrapper/audio/`) keeps `history_` (the `kSincHalf` samples the
+  kernel looks back) and the fractional `pos_` between calls, so streaming and
+  one-pass produce bit-identical samples (asserted in `labs/audio-probe`).
+  `tapo_audio::resample` delegates to it.
+- **HTTP transfer encoding is read from headers, never sniffed.** The old
+  `Fmp4Reader` guessed chunked by scanning for the first `\n` per buffer: a
+  `recv` without `0x0A` (≈46% chance for a 200-byte recv) silently dropped its
+  bytes, and a `\r`+hex-digit before the `\n` killed the whole stream forever.
+  `isChunked(headers)` decides; the chunked state machine consumes the
+  terminator byte-by-byte so CRLF splits across buffers are harmless; fragments
+  are emitted as whole `moof+mdat` boxes with the keyframe read from
+  `trun`/`tfhd` sample flags. The plan's original `moofIsKeyframe` did not
+  descend into the `moof` box and always reported keyframe — fixed in the
+  implementation.
+- **Dead upstreams leave the map.** When the reader thread exits (grace,
+  EOF, socket error) its entry stayed in `upstreams_`, so the next subscriber
+  got a valid subId on a dead upstream and no bytes arrived until a backend
+  restart. `Upstream::dead` is set by the reader thread; `getOrOpen` joins and
+  recycles it. The hub also treats non-`EAGAIN`/`EWOULDBLOCK` recv errors as
+  fatal instead of spinning at 100% CPU, and the lock order is
+  `hubMutex_ → Upstream::mtx`, never the reverse (was ABBA with
+  `activeSubscribers()`).
+- **The credit window is per connection, not per subscription.** All
+  subscriptions of one client share a TCP socket; 6 cameras at 128KB each put
+  768KB in flight on one trantor buffer with no ceiling. `ISink::tryReserve`
+  /`release` moved the window into the sink; `ack()` credits the sink.
+  Subscriptions per client are bounded (`hub_max_subs_per_client`, 429
+  `TOO_MANY_REQUESTS`).
+- **`VadService` is an instance class while the AI services are static.** The
+  LSTM state is per audio stream (one VAD per conversation), but the 2.3MB
+  ONNX model is loaded once in a file-static session behind a mutex — the same
+  shared-context pattern as the other AI services.
+- **The talk session stays open across sentences.** `TapoTalkClient::sendChunk`
+  reuses the open session (Digest + Key-Exchange + `talk` handshake) and only
+  reopens on write failure; `sentDurationMs()` reports what actually left the
+  backend. Per-sentence handshakes wasted the PTS continuity of the TS muxer.
+- **The speaker AGC overflowed.** A full-scale `-32768` sample stored its
+  absolute peak in `int16_t`, giving `gain = 26000 / -32768 = -0.793` and
+  inverting + attenuating the whole sentence. `tapoApplySpeakerGain` computes
+  the peak in `int` and clamps (verified by `argus-tapo-probe --offline`).
+- **Stale mic audio poisons the turn after blocking stages.** While the VLM
+  captures/describes and the LLM generates (seconds each), the mic keeps
+  filling the buffer; on resume the VAD fires on audio from the past (this was
+  the reported production bug: after "analiza la cámara 1", Argus answered
+  things nobody said). Every blocking stage is followed by
+  `camBuf.clear() + vad.reset()` before listening resumes, and camera frames
+  come from go2rtc (`MediaRelay::snapshotBytes`) instead of a third RTSP
+  session.
+- **Task 13 (camera audio through go2rtc) is blocked on a hardware check**:
+  `curl -s -o /dev/null -w '%{http_code} %{content_type}\n'
+  'http://127.0.0.1:1984/api/stream.mp4?src=cam1&audio=pcma'` with the camera
+  up. If go2rtc serves PCMA/PCM, `CameraAudioSource` is viable; otherwise the
+  plan falls back to FFmpeg in the backend. `CameraMic` (FFmpeg RTSP) remains
+  the fallback until then.
 
 ## Runtime config writes (ConfigService)
 
