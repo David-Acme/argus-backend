@@ -7,6 +7,19 @@
 #include <shared/wrapper/audio/sample-ring.hxx>
 #include <vector>
 
+struct VadConfig
+{
+  int sampleRate{16000};
+  float threshold{0.45F};
+  float negThreshold{0.25F};
+  int minSpeechFrames{5};
+  int minSilenceFrames{12};
+  int maxTurnFrames{750};
+  int preRollFrames{10};
+  int minTurnMs{320};
+  float minMeanProb{0.55F};
+};
+
 struct VadTurn
 {
   std::vector<float> samples;
@@ -14,27 +27,15 @@ struct VadTurn
   float meanProb{0.0F};
 };
 
-class Vad
+class VadService
 {
 public:
-  struct Config
-  {
-    int sampleRate{16000};
-    float threshold{0.45F};
-    float negThreshold{0.25F};
-    int minSpeechFrames{5};
-    int minSilenceFrames{12};
-    int maxTurnFrames{750};
-    int preRollFrames{10};
-    int minTurnMs{320};
-    float minMeanProb{0.55F};
-  };
+  VadService();
+  explicit VadService(const VadConfig& config);
+  ~VadService();
 
-  Vad();
-  ~Vad();
-
-  Vad(const Vad&) = delete;
-  Vad& operator=(const Vad&) = delete;
+  VadService(const VadService&) = delete;
+  VadService& operator=(const VadService&) = delete;
 
   bool process(const float* samples, int count, VadTurn& outTurn);
 
@@ -44,12 +45,12 @@ public:
 
   void reset();
 
+  static bool isLoaded();
+
 private:
   void runModel(float& prob);
 
-  Config cfg_;
-  Ort::Env env_;
-  std::unique_ptr<Ort::Session> session_;
+  VadConfig cfg_;
   std::vector<float> state_;
   std::vector<float> context_;
   SampleRing pending_;

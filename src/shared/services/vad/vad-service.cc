@@ -1,7 +1,8 @@
-#include "vad.hxx"
+#include "vad-service.hxx"
 
 #include <algorithm>
 #include <cstring>
+#include <mutex>
 #include <shared/services/config-service/config-service.hxx>
 
 namespace
@@ -20,11 +21,32 @@ Ort::MemoryInfo& vadMem()
   return info;
 }
 
+Ort::Session& vadSession()
+{
+  static Ort::Env env(ORT_LOGGING_LEVEL_ERROR, "Argus-Vad");
+  static Ort::Session session = [&] {
+    auto opts = Ort::SessionOptions{};
+    opts.SetExecutionMode(ExecutionMode::ORT_SEQUENTIAL);
+    opts.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL);
+    opts.SetIntraOpNumThreads(1);
+    opts.SetInterOpNumThreads(1);
+    return Ort::Session(env, kModelPath, opts);
+  }();
+  return session;
+}
+
+std::mutex& vadSessionMutex()
+{
+  static std::mutex mutex;
+  return mutex;
+}
+
 } // namespace
 
-Vad::Vad()
-    : cfg_(Config{}), env_(ORT_LOGGING_LEVEL_ERROR, "Argus-Vad"),
-      pending_(kWindowSize * 8), window_(kEffectiveWindow),
+VadService::VadService() : VadService(VadConfig{}) {}
+
+VadService::VadService(const VadConfig& config)
+    : cfg_(config), pending_(kWindowSize * 8), window_(kEffectiveWindow),
       sampleRateInput_{16000}, inputShape_{1, kEffectiveWindow},
       stateShape_{2, 1, 128}, srShape_{1}
 {
@@ -44,19 +66,23 @@ Vad::Vad()
     cfg_.minTurnMs = v;
   if (const double v = ConfigService::getDouble("vad.min_mean_prob"); v > 0.0)
     cfg_.minMeanProb = static_cast<float>(v);
-
-  auto opts = Ort::SessionOptions{};
-  opts.SetExecutionMode(ExecutionMode::ORT_SEQUENTIAL);
-  opts.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL);
-  opts.SetIntraOpNumThreads(1);
-  opts.SetInterOpNumThreads(1);
-  session_ = std::make_unique<Ort::Session>(env_, kModelPath, opts);
   reset();
 }
 
-Vad::~Vad() = default;
+VadService::~VadService() = default;
 
-void Vad::runModel(float& prob)
+bool VadService::isLoaded()
+{
+  try {
+    (void)vadSession();
+    return true;
+  }
+  catch (...) {
+    return false;
+  }
+}
+
+void VadService::runModel(float& prob)
 {
   auto input =
       Ort::Value::CreateTensor<float>(vadMem(), window_.data(), window_.size(),
@@ -77,14 +103,15 @@ void Vad::runModel(float& prob)
   const char* inNames[] = {"input", "state", "sr"};
   const char* outNames[] = {"output", "stateN"};
 
-  auto outs = session_->Run(Ort::RunOptions{}, inNames, feeds.data(),
-                            feeds.size(), outNames, 2);
+  std::lock_guard<std::mutex> lock(vadSessionMutex());
+  auto outs = vadSession().Run(Ort::RunOptions{}, inNames, feeds.data(),
+                               feeds.size(), outNames, 2);
   prob = outs[0].GetTensorMutableData<float>()[0];
   std::memcpy(state_.data(), outs[1].GetTensorMutableData<float>(),
               kStateSize * sizeof(float));
 }
 
-bool Vad::process(const float* samples, int count, VadTurn& outTurn)
+bool VadService::process(const float* samples, int count, VadTurn& outTurn)
 {
   outTurn.samples.clear();
   outTurn.speechFrames = 0;
@@ -165,17 +192,17 @@ bool Vad::process(const float* samples, int count, VadTurn& outTurn)
   return completed;
 }
 
-bool Vad::inSpeech() const
+bool VadService::inSpeech() const
 {
   return speech_;
 }
 
-float Vad::lastProb() const
+float VadService::lastProb() const
 {
   return lastProb_;
 }
 
-void Vad::reset()
+void VadService::reset()
 {
   state_.assign(kStateSize, 0.0F);
   context_.assign(kContextSize, 0.0F);

@@ -1,11 +1,10 @@
-#include "vad.hxx"
-
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <iostream>
+#include <shared/services/vad/vad-service.hxx>
 #include <shared/wrapper/audio/audio-resampler.hxx>
 #include <shared/wrapper/audio/sample-ring.hxx>
 #include <string>
@@ -121,7 +120,7 @@ void vadCheck()
   signal.insert(signal.end(), 16000, 0.0F);
 
   const auto probs = [&](size_t block) {
-    Vad vad;
+    VadService vad;
     VadTurn turn;
     std::vector<float> out;
     for (size_t i = 0; i + block <= signal.size(); i += block) {
@@ -156,7 +155,7 @@ void vadGateCheck()
     blip[8000 + i] = static_cast<float>(pcm[i]) / 32768.0F;
   blip.insert(blip.end(), 16000, 0.0F);
 
-  Vad vad;
+  VadService vad;
   VadTurn turn;
   bool fired = false;
   for (size_t i = 0; i + 512 <= blip.size(); i += 512)
@@ -170,7 +169,7 @@ void vadGateCheck()
     utterance.push_back(static_cast<float>(s) / 32768.0F);
   utterance.insert(utterance.end(), 16000, 0.0F);
 
-  Vad vad2;
+  VadService vad2;
   VadTurn turn2;
   bool fired2 = false;
   float meanProb = 0.0F;

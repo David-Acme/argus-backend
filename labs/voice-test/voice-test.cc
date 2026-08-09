@@ -1,6 +1,5 @@
 #include "audio.hxx"
 #include "camera-audio.hxx"
-#include "vad.hxx"
 
 #include <array>
 #include <atomic>
@@ -26,6 +25,7 @@
 #include <shared/services/tapo/tapo-talk-client.hxx>
 #include <shared/services/tts/onnx-utils.hxx>
 #include <shared/services/tts/tts-service.hxx>
+#include <shared/services/vad/vad-service.hxx>
 #include <shared/services/vision/vision-service.hxx>
 #include <shared/wrapper/audio/sample-ring.hxx>
 #include <shared/wrapper/cancellation/cancellation-token.hxx>
@@ -211,7 +211,7 @@ bool speak(const std::string& text, const std::string& langCode,
   return played;
 }
 
-std::string captureTurn(Vad& vad, const std::atomic<bool>& stop)
+std::string captureTurn(VadService& vad, const std::atomic<bool>& stop)
 {
   std::vector<float> inBuffer;
   std::mutex bufMutex;
@@ -358,7 +358,7 @@ int runCameraVadCheck(const std::string& rtspUrl)
   const double rms = sum / static_cast<double>(all.size());
   std::cout << "rms=" << rms << " peak=" << peak << "\n";
 
-  Vad vad;
+  VadService vad;
   VadTurn turn;
   float maxProb = 0.0F;
   int frames = 0;
@@ -520,7 +520,7 @@ void runCameraConversation(const TapoTalkConfig& talkCfg,
                "(p=pausa, q=salir)\n"
             << std::flush;
 
-  Vad vad;
+  VadService vad;
   const auto resumeListening = [&] {
     std::lock_guard<std::mutex> lock(bufMutex);
     camBuf.clear();
@@ -763,7 +763,7 @@ int main(int argc, char** argv)
     state.history.push_back({"system", systemPromptFor(langCode)});
 
     while (!gStop.load()) {
-      Vad vad;
+      VadService vad;
       const std::string userText = captureTurn(vad, gStop);
       if (gStop.load())
         break;
@@ -809,7 +809,7 @@ int main(int argc, char** argv)
       std::thread interrupter([&] {
         std::vector<float> inBuffer;
         std::mutex bufMutex;
-        Vad vad;
+        VadService vad;
         auto onFrames = [&](const std::vector<float>& frames, double) {
           std::lock_guard<std::mutex> lock(bufMutex);
           inBuffer.insert(inBuffer.end(), frames.begin(), frames.end());
