@@ -102,6 +102,20 @@ std::vector<int16_t> equalizeForSpeaker(const std::vector<int16_t>& samples)
 
 } // namespace
 
+std::vector<int16_t> tapoApplySpeakerGain(const TapoSpeakerGainInput& input)
+{
+  int peak = 1;
+  for (const auto sample : input.samples)
+    peak = std::max(peak, std::abs(static_cast<int>(sample)));
+  const double gain = std::min(input.maxGain, input.targetPeak / peak);
+  std::vector<int16_t> out;
+  out.reserve(input.samples.size());
+  for (const auto sample : input.samples)
+    out.push_back(static_cast<int16_t>(
+        std::clamp(static_cast<double>(sample) * gain, -32768.0, 32767.0)));
+  return out;
+}
+
 std::string TapoTalkPart::header(const std::string& name) const
 {
   const std::string needle = lower(name);
@@ -389,16 +403,8 @@ TapoResult TapoTalkClient::send(const TapoTalkAudio& audio,
                                           .sourceRate = audio.sampleRate,
                                           .targetRate = kTargetSampleRate});
   const auto equalized = equalizeForSpeaker(mono);
-  int16_t peak = 1;
-  for (const auto sample : equalized)
-    if (std::abs(sample) > peak)
-      peak = std::abs(sample);
-  const double gain = std::min(3.0, 26000.0 / peak);
-  std::vector<int16_t> gained;
-  gained.reserve(equalized.size());
-  for (const auto sample : equalized)
-    gained.push_back(static_cast<int16_t>(
-        std::clamp(static_cast<double>(sample) * gain, -32768.0, 32767.0)));
+  const auto gained = tapoApplySpeakerGain(
+      {.samples = equalized, .maxGain = 3.0, .targetPeak = 26000.0});
   const auto encoded = tapo_audio::encodeALaw(gained);
   const size_t packetBytes =
       static_cast<size_t>(kTargetSampleRate * config_.packetMs / 1000);

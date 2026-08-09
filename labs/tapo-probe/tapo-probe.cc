@@ -49,6 +49,7 @@ struct ProbeOptions
   bool doTalk{false};
   bool doAudioConfig{false};
   bool doPresets{false};
+  bool doOffline{false};
   bool verbose{false};
 };
 
@@ -60,27 +61,33 @@ void printUsage()
       << "Credentials\n"
       << "  --user <name>          camera account user (Tapo app > Advanced)\n"
       << "  --pass <secret>        camera account password\n"
-      << "  --cloud-user <name>    control/talk fallback user (default: admin)\n"
-      << "  --cloud-pass <secret>  TP-Link cloud password (required for --talk)\n"
+      << "  --cloud-user <name>    control/talk fallback user (default: "
+         "admin)\n"
+      << "  --cloud-pass <secret>  TP-Link cloud password (required for "
+         "--talk)\n"
       << "  --control-port <n>     default 443\n"
       << "  --media-port <n>       default 8800\n"
       << "  --transport <mode>     auto | secure_passthrough | legacy_stok\n\n"
       << "Actions\n"
       << "  --info                 get_device_info + resolved transport\n"
-      << "  --creds                report which credential/transport pair works\n"
+      << "  --creds                report which credential/transport pair "
+         "works\n"
       << "  --batch                grouped status via multipleRequest\n"
       << "  --presets              list PTZ presets\n"
-      << "  --audio                microphone/speaker config (encode_type, rate)\n"
+      << "  --audio                microphone/speaker config (encode_type, "
+         "rate)\n"
       << "  --ptz <x,y>            absolute motor move\n"
       << "  --ptz-step <angle>     relative motor step\n"
       << "  --day-night <mode>     auto | on | off\n"
       << "  --events [hours]       searchDetectionList over the last N hours\n"
       << "  --raw '<json>'         send a raw request payload\n"
-      << "  --talk \"text\"          synthesize with TTS and play on the camera\n"
+      << "  --talk \"text\"          synthesize with TTS and play on the "
+         "camera\n"
       << "  --talk-file <wav>      play a 16-bit PCM WAV on the camera\n"
       << "  --talk-framing <mode>  none | negative | chunked (default none)\n"
       << "  --ts-dump <file.ts>    write 1s of A-law tone as MPEG-TS (offline\n"
       << "                         muxer check, needs no camera)\n"
+      << "  --offline              run checks that need no camera and exit\n"
       << "  --verbose              dump full JSON responses\n";
 }
 
@@ -130,27 +137,34 @@ bool parseArgs(int argc, char** argv, ProbeOptions& options)
                          ? 0
                          : std::atoll(value.substr(comma + 1).c_str());
       options.doPtz = true;
-    } else if (flag == "--ptz-step") {
+    }
+    else if (flag == "--ptz-step") {
       options.ptzStep = std::atoll(next(i).c_str());
       options.doPtzStep = true;
-    } else if (flag == "--day-night")
+    }
+    else if (flag == "--day-night")
       options.dayNightMode = next(i);
     else if (flag == "--events") {
       options.doEvents = true;
       if (i + 1 < argc && argv[i + 1][0] != '-')
         options.eventHours = std::atoi(next(i).c_str());
-    } else if (flag == "--raw")
+    }
+    else if (flag == "--raw")
       options.rawPayload = next(i);
     else if (flag == "--talk") {
       options.talkText = next(i);
       options.doTalk = true;
-    } else if (flag == "--talk-file") {
+    }
+    else if (flag == "--talk-file") {
       options.talkFile = next(i);
       options.doTalk = true;
-    } else if (flag == "--talk-framing")
+    }
+    else if (flag == "--talk-framing")
       options.talkFraming = next(i);
     else if (flag == "--ts-dump")
       options.tsDumpPath = next(i);
+    else if (flag == "--offline")
+      options.doOffline = true;
     else if (flag == "--verbose")
       options.verbose = true;
     else {
@@ -158,7 +172,8 @@ bool parseArgs(int argc, char** argv, ProbeOptions& options)
       return false;
     }
   }
-  return !options.host.empty() || !options.tsDumpPath.empty();
+  return !options.host.empty() || !options.tsDumpPath.empty() ||
+         options.doOffline;
 }
 
 void loadDefaults(ProbeOptions& options)
@@ -223,7 +238,8 @@ std::vector<int16_t> toPcm16(const std::vector<float>& pcm)
   std::vector<int16_t> out;
   out.reserve(pcm.size());
   for (const float sample : pcm) {
-    const float clamped = sample < -1.0f ? -1.0f : (sample > 1.0f ? 1.0f : sample);
+    const float clamped =
+        sample < -1.0f ? -1.0f : (sample > 1.0f ? 1.0f : sample);
     out.push_back(static_cast<int16_t>(clamped * 32767.0f));
   }
   return out;
@@ -240,21 +256,26 @@ int runTalk(const ProbeOptions& options)
   if (!options.talkFile.empty()) {
     const auto wav = tapo_audio::readWav(options.talkFile);
     if (!wav.ok) {
-      std::cerr << "cannot read " << options.talkFile << ": " << wav.error << "\n";
+      std::cerr << "cannot read " << options.talkFile << ": " << wav.error
+                << "\n";
       return 1;
     }
     audio.samples = tapo_audio::downmixToMono(wav.samples, wav.channels);
     audio.sampleRate = wav.sampleRate;
-  } else {
+  }
+  else {
     std::cout << "synthesizing with TTS...\n";
     TtsService::init();
     if (!TtsService::isLoaded()) {
       std::cerr << "TTS service could not be initialized\n";
       return 1;
     }
-    const auto pcm = TtsService::synthesize(
-        {.text = options.talkText, .lang = TtsLang::ES, .voiceId = "M3",
-         .quality = TtsQuality::Auto, .speed = TtsService::defaultSpeed()});
+    const auto pcm =
+        TtsService::synthesize({.text = options.talkText,
+                                .lang = TtsLang::ES,
+                                .voiceId = "M3",
+                                .quality = TtsQuality::Auto,
+                                .speed = TtsService::defaultSpeed()});
     audio.samples = toPcm16(pcm);
     audio.sampleRate = TtsService::sampleRate();
   }
@@ -290,23 +311,27 @@ int runTsDump(const std::string& path)
   constexpr int kRate = 8000;
   constexpr int kPacketMs = 20;
   constexpr int kSamplesPerPacket = kRate * kPacketMs / 1000;
-
   std::vector<int16_t> tone(kRate);
   for (size_t i = 0; i < tone.size(); ++i)
     tone[i] = static_cast<int16_t>(
-        12000.0 * std::sin(2.0 * M_PI * 440.0 * static_cast<double>(i) / kRate));
+        12000.0 *
+        std::sin(2.0 * M_PI * 440.0 * static_cast<double>(i) / kRate));
   const auto encoded = tapo_audio::encodeALaw(tone);
 
   TapoTsMuxer muxer{TapoTsConfig{}};
   std::string stream;
   int64_t pts = 0;
-  for (size_t offset = 0; offset < encoded.size(); offset += kSamplesPerPacket) {
-    const size_t take = std::min<size_t>(kSamplesPerPacket, encoded.size() - offset);
+  for (size_t offset = 0; offset < encoded.size();
+       offset += kSamplesPerPacket) {
+    const size_t take =
+        std::min<size_t>(kSamplesPerPacket, encoded.size() - offset);
     if (offset == 0)
       stream += muxer.tables();
     stream += muxer.frame(
-        {.payload = std::vector<uint8_t>(encoded.begin() + static_cast<long>(offset),
-                                         encoded.begin() + static_cast<long>(offset + take)),
+        {.payload =
+             std::vector<uint8_t>(encoded.begin() + static_cast<long>(offset),
+                                  encoded.begin() +
+                                      static_cast<long>(offset + take)),
          .pts90k = pts});
     pts += 90000 * kPacketMs / 1000;
   }
@@ -335,6 +360,29 @@ int runTsDump(const std::string& path)
   return aligned && syncOk ? 0 : 1;
 }
 
+int runOffline()
+{
+  int failures = 0;
+  const auto check = [&](const char* what, bool got, bool want) {
+    const bool ok = got == want;
+    if (!ok)
+      ++failures;
+    std::printf("  [%s] %-52s got=%d want=%d\n", ok ? "OK" : "FAIL", what,
+                static_cast<int>(got), static_cast<int>(want));
+  };
+  std::printf("── offline checks ──\n");
+
+  std::vector<int16_t> fullScale(64, -32768);
+  const auto gained = tapoApplySpeakerGain(
+      {.samples = fullScale, .maxGain = 3.0, .targetPeak = 26000.0});
+  check("AGC no invierte la fase a fondo de escala", gained[0] < 0, true);
+  check("AGC no amplifica lo que ya satura", gained[0] <= -20000, true);
+
+  std::printf("  %s (%d fallos)\n", failures == 0 ? "TODO OK" : "HAY FALLOS",
+              failures);
+  return failures == 0 ? 0 : 1;
+}
+
 } // namespace
 
 int main(int argc, char** argv)
@@ -346,13 +394,15 @@ int main(int argc, char** argv)
   }
   if (!options.tsDumpPath.empty())
     return runTsDump(options.tsDumpPath);
+  if (options.doOffline)
+    return runOffline();
   loadDefaults(options);
 
-  const bool anyControlAction = options.doInfo || options.doCreds || options.doBatch ||
-                                options.doPtz || options.doPtzStep || options.doEvents ||
-                                options.doPresets || options.doAudioConfig ||
-                                !options.rawPayload.empty() ||
-                                !options.dayNightMode.empty();
+  const bool anyControlAction =
+      options.doInfo || options.doCreds || options.doBatch || options.doPtz ||
+      options.doPtzStep || options.doEvents || options.doPresets ||
+      options.doAudioConfig || !options.rawPayload.empty() ||
+      !options.dayNightMode.empty();
   if (!anyControlAction && !options.doTalk)
     options.doInfo = true;
 
@@ -413,19 +463,22 @@ int main(int argc, char** argv)
              options.verbose);
 
     if (options.doPtzStep)
-      report("motorMoveStep", api.step({.angle = options.ptzStep}), options.verbose);
+      report("motorMoveStep", api.step({.angle = options.ptzStep}),
+             options.verbose);
 
     if (!options.dayNightMode.empty())
       report("day/night", api.setDayNight({.mode = options.dayNightMode}),
              options.verbose);
 
     if (options.doEvents) {
-      const int64_t now = std::chrono::duration_cast<std::chrono::seconds>(
-                              std::chrono::system_clock::now().time_since_epoch())
-                              .count();
+      const int64_t now =
+          std::chrono::duration_cast<std::chrono::seconds>(
+              std::chrono::system_clock::now().time_since_epoch())
+              .count();
       report("searchDetectionList",
              api.searchDetectionList(
-                 {.startTime = now - static_cast<int64_t>(options.eventHours) * 3600,
+                 {.startTime =
+                      now - static_cast<int64_t>(options.eventHours) * 3600,
                   .endTime = now,
                   .startIndex = 0,
                   .endIndex = 999}),
@@ -437,7 +490,8 @@ int main(int argc, char** argv)
       if (payload.isNull()) {
         std::cerr << "--raw payload is not valid JSON\n";
         status = 1;
-      } else {
+      }
+      else {
         report("raw", api.callRaw(payload), true);
       }
     }

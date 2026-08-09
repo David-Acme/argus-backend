@@ -66,6 +66,15 @@ struct TapoTalkSendInput
   bool reopenOnFailure{false};
 };
 
+struct TapoSpeakerGainInput
+{
+  std::vector<int16_t> samples;
+  double maxGain{3.0};
+  double targetPeak{26000.0};
+};
+
+std::vector<int16_t> tapoApplySpeakerGain(const TapoSpeakerGainInput& input);
+
 struct TapoTalkPart
 {
   std::vector<TapoHttpHeader> headers;

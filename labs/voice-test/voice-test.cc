@@ -351,13 +351,20 @@ int runCameraSttCheck(const std::string& rtspUrl)
       << std::flush;
   CameraMic mic;
   std::vector<float> all;
-  mic.open(rtspUrl, [&](const std::vector<float>& frames) {
-    all.insert(all.end(), frames.begin(), frames.end());
-  });
+  if (!mic.open(rtspUrl, [&](const std::vector<float>& frames) {
+        all.insert(all.end(), frames.begin(), frames.end());
+      })) {
+    std::cerr << "[camera-mic] no se pudo abrir el audio de la camara\n";
+    return 1;
+  }
   while (all.size() < 128000 && mic.readBlock()) {
   }
   mic.close();
   std::cout << "capturados " << all.size() << " samples\n";
+  if (all.empty()) {
+    std::cerr << "sin audio de la camara\n";
+    return 1;
+  }
   const std::string text = SttService::transcribe(all, 16000);
   std::cout << "Transcripcion: [" << text << "]\n";
   SttService::shutdown();
@@ -376,9 +383,12 @@ int runCameraVadCheck(const std::string& rtspUrl)
       << std::flush;
   CameraMic mic;
   std::vector<float> all;
-  mic.open(rtspUrl, [&](const std::vector<float>& frames) {
-    all.insert(all.end(), frames.begin(), frames.end());
-  });
+  if (!mic.open(rtspUrl, [&](const std::vector<float>& frames) {
+        all.insert(all.end(), frames.begin(), frames.end());
+      })) {
+    std::cerr << "[camera-mic] no se pudo abrir el audio de la camara\n";
+    return 1;
+  }
   while (all.size() < 128000 && mic.readBlock()) {
   }
   mic.close();
