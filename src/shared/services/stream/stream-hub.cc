@@ -121,6 +121,7 @@ void StreamHub::runUpstream(std::shared_ptr<Upstream> up)
         sub->sink->onClosed("upstream_failed");
     }
     up->subs.clear();
+    up->dead.store(true, std::memory_order_release);
     return;
   }
   up->fd.store(conn.fd);
@@ -154,6 +155,11 @@ void StreamHub::runUpstream(std::shared_ptr<Upstream> up)
       break;
     if (errno == EINTR)
       continue;
+    if (errno != EAGAIN && errno != EWOULDBLOCK) {
+      LOG_WARN << "StreamHub: recv failed on " << up->name
+               << " errno=" << errno;
+      break;
+    }
 
     bool empty = false;
     {
@@ -182,6 +188,7 @@ void StreamHub::runUpstream(std::shared_ptr<Upstream> up)
       sub->sink->onClosed("upstream_closed");
   }
   up->subs.clear();
+  up->dead.store(true, std::memory_order_release);
 }
 
 void StreamHub::init()
@@ -226,8 +233,13 @@ StreamHub::getOrOpen(const SubscribeInput& input, std::string& error)
   const std::string name = upstreamName(input.cameraId, input.quality);
   std::lock_guard<std::mutex> lock(hubMutex_);
   auto it = upstreams_.find(name);
-  if (it != upstreams_.end())
-    return it->second;
+  if (it != upstreams_.end()) {
+    if (!it->second->dead.load(std::memory_order_acquire))
+      return it->second;
+    if (it->second->reader.joinable())
+      it->second->reader.join();
+    upstreams_.erase(it);
+  }
 
   auto up = std::make_shared<Upstream>();
   up->name = name;
@@ -248,23 +260,29 @@ uint16_t StreamHub::subscribe(const SubscribeInput& input, std::string& error)
     return 0;
 
   uint16_t subId = 0;
+  auto sub = std::make_shared<Subscriber>();
   {
     std::lock_guard<std::mutex> hubLock(hubMutex_);
-    subId = nextSubId_++;
-    if (nextSubId_ == 0)
-      nextSubId_ = 1;
+    for (int attempt = 0; attempt < 65535; ++attempt) {
+      subId = nextSubId_++;
+      if (nextSubId_ == 0)
+        nextSubId_ = 1;
+      if (subId != 0 && subToUpstream_.find(subId) == subToUpstream_.end())
+        break;
+      subId = 0;
+    }
+    if (subId == 0) {
+      error = "no_free_subscription_id";
+      return 0;
+    }
+    subToUpstream_[subId] = up;
   }
 
-  auto sub = std::make_shared<Subscriber>();
   sub->subId = subId;
   sub->sink = input.sink;
-
-  std::lock_guard<std::mutex> upLock(up->mtx);
-  up->subs.push_back(sub);
-
   {
-    std::lock_guard<std::mutex> hubLock(hubMutex_);
-    subToUpstream_[subId] = up;
+    std::lock_guard<std::mutex> upLock(up->mtx);
+    up->subs.push_back(sub);
   }
   return subId;
 }
@@ -335,7 +353,11 @@ void StreamHub::closeAll(const ISink* sink)
 int StreamHub::activeUpstreams()
 {
   std::lock_guard<std::mutex> lock(hubMutex_);
-  return static_cast<int>(upstreams_.size());
+  int count = 0;
+  for (const auto& [name, up] : upstreams_)
+    if (!up->dead.load(std::memory_order_acquire))
+      ++count;
+  return count;
 }
 
 int StreamHub::activeSubscribers()

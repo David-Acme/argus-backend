@@ -60,6 +60,7 @@ private:
     bool hasInit{false};
     std::atomic<int> fd{-1};
     std::atomic<bool> stopping{false};
+    std::atomic<bool> dead{false};
     std::thread reader;
   };
 

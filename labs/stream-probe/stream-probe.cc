@@ -307,6 +307,24 @@ void streamHubCheck()
 
   check("hub single upstream shared", StreamHub::activeUpstreams() == 1, true);
 
+  StreamHub::unsubscribe(subId);
+  std::this_thread::sleep_for(std::chrono::milliseconds(3500));
+  check("hub cierra el upstream sin suscriptores",
+        StreamHub::activeUpstreams() == 0, true);
+
+  auto sink2 = std::make_shared<FakeSink>();
+  StreamHub::SubscribeInput again;
+  again.sink = sink2;
+  again.cameraId = 1;
+  again.quality = "main";
+  std::string err2;
+  const uint16_t subId2 = StreamHub::subscribe(again, err2);
+  check("hub resuscribe tras la gracia", subId2 != 0, true);
+  for (int i = 0; i < 60 && !sink2->mediaSeen; ++i)
+    std::this_thread::sleep_for(std::chrono::milliseconds(250));
+  check("hub vuelve a entregar media tras la gracia", sink2->mediaSeen, true);
+  StreamHub::unsubscribe(subId2);
+
   StreamHub::shutdown();
   check("hub shutdown clears", StreamHub::activeUpstreams() == 0, true);
 }
