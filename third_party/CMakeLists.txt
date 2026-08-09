@@ -4,40 +4,21 @@
 # `make` and they are only built when something links against their targets.
 
 # ---------------------------------------------------------------------------
-# fastText (text classification / intent detection)
+# sqlite-vec (vendored, MIT/Apache-2.0) — vec0 vector search for SQLite.
+# Compiled with SQLITE_CORE so it links statically against Drogon's sqlite3
+# (it only defines vec0_*/sqlite3_vec_init symbols — no clash).
 # ---------------------------------------------------------------------------
-if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/fastText/CMakeLists.txt")
-  message(STATUS "Argus: integrating fastText submodule")
-  set(FASTTEXT_BUILD_TEST OFF CACHE BOOL "" FORCE)
-  set(FASTTEXT_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
-  # fastText's CMakeLists declares cmake_minimum_required(VERSION 3.5) with the
-  # deprecated single-value syntax. Bumping CMAKE_POLICY_VERSION_MINIMUM to 3.10
-  # silences the "Compatibility with CMake < 3.10" deprecation warning while
-  # keeping its old policies applied.
-  set(ARGUS_FASTTEXT_POLICY ${CMAKE_POLICY_VERSION_MINIMUM})
-  set(CMAKE_POLICY_VERSION_MINIMUM 3.10)
-  add_subdirectory(fastText EXCLUDE_FROM_ALL)
-  # fastText lowers CMAKE_CXX_STANDARD to 17 for its own targets; restore the
-  # project-wide C++20 setting so the rest of Argus is unaffected.
-  set(CMAKE_CXX_STANDARD 20)
-  if(ARGUS_FASTTEXT_POLICY)
-    set(CMAKE_POLICY_VERSION_MINIMUM ${ARGUS_FASTTEXT_POLICY})
-  else()
-    unset(CMAKE_POLICY_VERSION_MINIMUM)
-  endif()
-  if(TARGET fasttext-static_pic)
-    set(ARGUS_FASTTEXT_TARGET fasttext-static_pic)
-  elseif(TARGET fasttext-shared)
-    set(ARGUS_FASTTEXT_TARGET fasttext-shared)
-  endif()
-  if(ARGUS_FASTTEXT_TARGET)
-    target_include_directories(${ARGUS_FASTTEXT_TARGET} INTERFACE
-        ${CMAKE_CURRENT_SOURCE_DIR}/fastText/src)
-    message(STATUS "Argus: fastText target -> ${ARGUS_FASTTEXT_TARGET}")
-    set(ARGUS_FASTTEXT_TARGET ${ARGUS_FASTTEXT_TARGET} PARENT_SCOPE)
-  endif()
+enable_language(C)
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/sqlite-vec/sqlite-vec.c")
+  add_library(sqlite-vec STATIC sqlite-vec/sqlite-vec.c)
+  target_compile_definitions(sqlite-vec PRIVATE SQLITE_CORE SQLITE_VEC_STATIC)
+  target_include_directories(sqlite-vec PUBLIC
+      ${CMAKE_CURRENT_SOURCE_DIR}/sqlite-vec)
+  set(ARGUS_SQLITE_VEC_TARGET sqlite-vec)
+  set(ARGUS_SQLITE_VEC_TARGET sqlite-vec PARENT_SCOPE)
+  message(STATUS "Argus: sqlite-vec target -> sqlite-vec")
 else()
-  message(WARNING "Argus: fastText submodule not found at third_party/fastText")
+  message(WARNING "Argus: sqlite-vec not found at third_party/sqlite-vec")
 endif()
 
 # ---------------------------------------------------------------------------

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <mutex>
 #include <optional>
 #include <string>
 #include <utility>
@@ -13,12 +14,12 @@ public:
 
   static void init();
   static void shutdown();
-  static void insert(const float* embedding, int64_t personId);
+  static void insert(const float* embedding, int64_t personId,
+                     int64_t faceEmbeddingId);
   static std::optional<std::pair<int64_t, float>> search(const float* query);
   static void remove(int64_t personId);
-  static void loadFromDb();
   static size_t count();
 
 private:
-  static bool loaded_;
+  static std::mutex& vecMutex();
 };

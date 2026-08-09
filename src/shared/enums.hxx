@@ -174,6 +174,105 @@ inline UserAction userActionFromString(const std::string& s)
   return UserAction::Create;
 }
 
+enum class MemoryScope : uint8_t
+{
+  Global = 0,
+  User,
+  Person,
+  Device,
+  Role
+};
+
+inline std::string memoryScopeToString(MemoryScope s)
+{
+  switch (s) {
+    case MemoryScope::User:
+      return "user";
+    case MemoryScope::Person:
+      return "person";
+    case MemoryScope::Device:
+      return "device";
+    case MemoryScope::Role:
+      return "role";
+    default:
+      return "global";
+  }
+}
+
+inline MemoryScope memoryScopeFromString(const std::string& s)
+{
+  if (s == "user")
+    return MemoryScope::User;
+  if (s == "person")
+    return MemoryScope::Person;
+  if (s == "device")
+    return MemoryScope::Device;
+  if (s == "role")
+    return MemoryScope::Role;
+  return MemoryScope::Global;
+}
+
+enum class MemoryType : uint8_t
+{
+  Persona = 0,
+  Episodic,
+  Instruction,
+  System
+};
+
+inline std::string memoryTypeToString(MemoryType t)
+{
+  switch (t) {
+    case MemoryType::Episodic:
+      return "episodic";
+    case MemoryType::Instruction:
+      return "instruction";
+    case MemoryType::System:
+      return "system";
+    default:
+      return "persona";
+  }
+}
+
+inline MemoryType memoryTypeFromString(const std::string& s)
+{
+  if (s == "episodic")
+    return MemoryType::Episodic;
+  if (s == "instruction")
+    return MemoryType::Instruction;
+  if (s == "system")
+    return MemoryType::System;
+  return MemoryType::Persona;
+}
+
+enum class MemorySource : uint8_t
+{
+  Rule = 0,
+  Llm,
+  Ingest
+};
+
+inline std::string memorySourceToString(MemorySource s)
+{
+  switch (s) {
+    case MemorySource::Llm:
+      return "llm";
+    case MemorySource::Ingest:
+      return "ingest";
+    default:
+      return "rule";
+  }
+}
+
+inline MemorySource memorySourceFromString(const std::string& s)
+{
+  if (s == "llm")
+    return MemorySource::Llm;
+  if (s == "ingest")
+    return MemorySource::Ingest;
+  return MemorySource::Rule;
+}
+
 enum class AuditLogPriority : uint8_t
 {
   Low = 0,

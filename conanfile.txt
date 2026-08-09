@@ -10,6 +10,8 @@ qr-code-generator/1.8.0
 
 [options]
 drogon/*:with_sqlite=True
+# FTS5 (BM25) for the memory service — rebuilds Drogon's sqlite3 dependency.
+sqlite3/*:enable_fts5=True
 opencv/*:with_cuda=False
 opencv/*:with_protobuf=False
 opencv/*:with_eigen=False

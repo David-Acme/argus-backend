@@ -318,3 +318,48 @@ CREATE INDEX IF NOT EXISTS idx_notification_token_user ON notification_token (us
 CREATE INDEX IF NOT EXISTS idx_user_action_log_user    ON user_action_log (user_id);
 CREATE INDEX IF NOT EXISTS idx_user_action_log_record  ON user_action_log (record_id, table_name);
 CREATE INDEX IF NOT EXISTS idx_user_action_log_created ON user_action_log (created_at);
+
+-- memory (MemoryService) — scoped long-term memory + FTS5 search indexes.
+-- FTS5 is compiled into sqlite3 (conan sqlite3:enable_fts5); the vec0 tables
+-- (memory_vec, face_vec) live in VecDb (they need the sqlite-vec extension).
+CREATE TABLE IF NOT EXISTS memory_l1 (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  scope TEXT NOT NULL CHECK (scope IN ('global', 'user', 'person', 'device', 'role')),
+  ref_id INTEGER,
+  type TEXT NOT NULL CHECK (type IN ('persona', 'episodic', 'instruction', 'system')),
+  content TEXT NOT NULL,
+  priority INTEGER NOT NULL DEFAULT 50 CHECK (priority BETWEEN 0 AND 100),
+  source TEXT NOT NULL CHECK (source IN ('rule', 'llm', 'ingest')),
+  source_turn_id INTEGER,
+  hit_count INTEGER NOT NULL DEFAULT 0,
+  lang TEXT,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  deleted_at INTEGER
+);
+
+CREATE TABLE IF NOT EXISTS memory_profile (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  scope TEXT NOT NULL CHECK (scope IN ('global', 'user', 'person', 'device', 'role')),
+  ref_id INTEGER,
+  content TEXT NOT NULL,
+  updated_at INTEGER NOT NULL,
+  UNIQUE (scope, ref_id)
+);
+
+
+CREATE VIRTUAL TABLE IF NOT EXISTS memory_fts_words USING fts5(
+  content, type UNINDEXED, scope UNINDEXED, ref_id UNINDEXED,
+  tokenize = 'unicode61 remove_diacritics 2'
+);
+
+CREATE VIRTUAL TABLE IF NOT EXISTS memory_fts_grams USING fts5(
+  content, type UNINDEXED, scope UNINDEXED, ref_id UNINDEXED,
+  tokenize = 'trigram'
+);
+
+CREATE INDEX IF NOT EXISTS idx_memory_l1_scope
+    ON memory_l1 (scope, ref_id, deleted_at);
+CREATE INDEX IF NOT EXISTS idx_memory_l1_priority
+    ON memory_l1 (priority DESC);
+

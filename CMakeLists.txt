@@ -27,6 +27,7 @@ add_subdirectory(labs/llm-bench)
 add_subdirectory(labs/vlm-bench)
 add_subdirectory(labs/tts-probe)
 add_subdirectory(labs/stream-probe)
+add_subdirectory(labs/memory-probe)
 
 file(GLOB_RECURSE CONFIG_SRC
     ${SRC_ROOT}/config/*.cc
@@ -94,7 +95,7 @@ target_link_libraries(${PROJECT_NAME}
         mdns::mdns
         OpenSSL::SSL
         OpenSSL::Crypto
-        ${ARGUS_FASTTEXT_TARGET}
+        ${ARGUS_SQLITE_VEC_TARGET}
         ${ARGUS_NCNN_TARGET}
         ${ARGUS_SHERPA_ONNX_TARGET}
         qr-code-generator::qrcodegencpp

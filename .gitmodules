@@ -1,18 +1,12 @@
 [submodule "third_party/inspireface"]
 	path = third_party/inspireface
 	url = https://github.com/HyperInspire/InspireFace.git
-[submodule "third_party/fastText"]
-	path = third_party/fastText
-	url = https://github.com/facebookresearch/fastText.git
 [submodule "third_party/sherpa-onnx"]
 	path = third_party/sherpa-onnx
 	url = https://github.com/k2-fsa/sherpa-onnx.git
 [submodule "third_party/ncnn"]
 	path = third_party/ncnn
 	url = https://github.com/Tencent/ncnn.git
-[submodule "third_party/hnswlib"]
-	path = third_party/hnswlib
-	url = https://github.com/nmslib/hnswlib.git
 [submodule "third_party/llama.cpp"]
 	path = third_party/llama.cpp
 	url = https://github.com/ggml-org/llama.cpp.git

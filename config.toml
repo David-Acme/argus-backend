@@ -80,7 +80,6 @@ file = "./database/argus.db"
 detect_target = 640
 score_threshold = 0.5
 nms_threshold = 0.4
-ef_search = 100
 top_k = 5
 
 # ── LLM (LFM2.5-1.2B-Instruct) ────────────────────────────────────
@@ -364,3 +363,49 @@ mic_recover_timeout_ms = 3000
 # llm.context_size hacia 128000, puedes subir también este tope para
 # conversaciones aún más largas.
 history_messages = 41
+
+# ── Memoria de largo plazo (MemoryService) ─────────────────────────────
+# Recall híbrido: FTS5 (unicode61 + trigram) + vec0 (embeddings ONNX
+# multilingual-e5-small int8, models/memory/). Sin embeddings si falta el
+# modelo → recall solo léxico.
+[memory]
+# Presupuesto de tokens por turno: memorias recalladas (prepend al user) y
+# perfil estable (final del system prompt). Subirlos mejora el contexto a
+# costa de tokens de prefill.
+recall_max_tokens = 512
+profile_max_tokens = 256
+# Tope del recall dentro del turno de voz; si se excede, responde la capa
+# léxica y la semántica se refresca en background para el siguiente turno.
+recall_deadline_ms = 350
+# Memorias de mayor prioridad que componen el perfil estable por alcance.
+profile_top_k = 20
+# Modelo de embeddings (multilingual-e5-small int8, descargado por
+# setup.sh). Sin el modelo, el recall es solo léxico (bm25 + trigram).
+embedding_model = "models/memory/model.onnx"
+embedding_tokenizer = "models/memory/tokenizer.json"
+embedding_max_len = 512
+# Máximo de memorias inyectadas por turno tras la fusión RRF.
+recall_top_k = 8
+# Distancia Hamming máxima para considerar dos memorias duplicadas (dedup).
+dedup_hamming = 14
+# Marcador nativo del tool-call para guardar memorias en generación.
+save_trigger = "<|tool_call_start|>"
+# Marcador de cierre del tool-call.
+tool_end_trigger = "<|tool_call_end|>"
+
+# Frases-gancho por idioma para la captura explícita ("recuerda que X").
+# Clave = frase, valor = tipo de memoria. Añadir idioma = añadir tabla.
+[memory.phrases.es]
+"recuerda que" = "persona"
+"ten en cuenta que" = "persona"
+"no olvides que" = "persona"
+"apunta que" = "episodic"
+"a partir de ahora" = "instruction"
+"de ahora en adelante" = "instruction"
+
+[memory.phrases.en]
+"remember that" = "persona"
+"keep in mind that" = "persona"
+"don't forget that" = "persona"
+"note that" = "episodic"
+"from now on" = "instruction"

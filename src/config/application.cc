@@ -160,7 +160,9 @@ int Application::run()
 
     DbService::applyPragmas();
 
-    FaceDB::loadFromDb();
+    DbService::installExtensions();
+
+    FaceDB::init();
 
     if (!ConfigService::getBool("pairing.paired"))
       printPairingBanner();

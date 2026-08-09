@@ -256,13 +256,14 @@ Never: `if (!json)`, `if (!attrs->find(JWT_CTX_KEY))`, manual field extraction, 
 - `identify(imageBytes)` → `optional<int64_t>` personId
 - `identifyAsync(imageBytes)` → coroutine variant (runs off the event loop)
 
-**FaceDB** — HNSW index for high-performance embedding search:
+**FaceDB** — vec0-backed embedding search (sqlite-vec, exact cosine KNN):
 - `search(embedding)` → `optional<pair<int64_t, float>>` (personId, confidence)
-- `insert(embedding, personId)` — add to index
-- Threshold: `dist > 0.20` (80% minimum inner-product confidence)
+- `insert(embedding, personId, faceEmbeddingId)` — rowid = face_embedding.id
+- Threshold: `distance > 0.20` (80% minimum cosine confidence)
 
-**FaceEmbedding repository** — persists embeddings to SQLite (hex-encoded BLOB).
-Loaded at startup via `FaceDB::loadFromDb()`.
+**FaceEmbedding repository** — canonical persisted embeddings (synced via the
+sync engine). `face_vec` (vec0) is the search index only. No boot-time load:
+vec0 persists in the DB.
 
 Concurrency: `identify()` is bounded by a `std::counting_semaphore`
 (`inferenceSlots()` slots, sized from the host CPU). Never replace it with a
@@ -333,6 +334,19 @@ shared file-static behind a mutex.
   trims per-tile detail and makes the model stop reading text below 256).
   The prompt is built as ChatML by hand: `llama_chat_apply_template()` is NOT
   a jinja parser and mangles LFM2.5's template.
+- **sqlite-vec** (vendored in `third_party/sqlite-vec/`, MIT/Apache-2.0) — vec0
+  vector search; compiled with `SQLITE_CORE`, registered via
+  `sqlite3_auto_extension` in `DbService::installExtensions()` (must run AFTER
+  Drogon's first connection — see CONTEXT.md ordering note). FTS5 (bm25,
+  unicode61, trigram) is enabled via the conan option
+  `sqlite3/*:enable_fts5=True` (Drogon rebuilt once).
+- **MemoryService** (`src/shared/services/memory/`) — long-term memory: scoped
+  `memory_l1`, hybrid recall (FTS5 words + trigram + vec0 embeddings, RRF),
+  explicit-rule capture + inline LLM tool calls, SimHash dedup. Facade
+  `MemoryService`; DB access via `VecDb` (raw sqlite3, vec0-enabled, mutex
+  serialized). Embeddings: `multilingual-e5-small` int8 ONNX via
+  `EmbeddingService` + hand-rolled Unigram tokenizer. Full details in
+  CONTEXT.md "Long-term memory" section.
 - **NO spdlog** — use Drogon's built-in logging (`LOG_INFO`, `LOG_WARN`, `LOG_FATAL`)
 - **NO libsodium** — auth is face-based
 - **NO ORM** — raw SQL via `DbService::client()->execSqlCoro()`
@@ -412,8 +426,11 @@ Before any commit, verify: `cmake --build --preset dev -j 8` passes with
 | `src/filter/valid-json/` | JSON body validation for POST/PATCH |
 | `src/config/app-config.hxx` | Centralized responses + attribute keys |
 | `src/shared/services/jwt/` | JWT sign/verify (HS256, instance class) |
-| `src/shared/services/face/` | Face detection + recognition (ncnn) |
+| `src/shared/services/face/` | Face detection + recognition (ncnn) — FaceDB = vec0 index (sqlite-vec) |
 | `src/shared/services/llm/` | LLM inference (llama.cpp) |
+| `src/shared/services/embedding/` | `EmbeddingService` (multilingual-e5-small int8 ONNX) + `UnigramTokenizer` |
+| `src/shared/services/memory/` | `MemoryService`/`MemoryStore`/`MemoryRecall`/`RuleParser`/`ToolParser`/`SimHash` — long-term memory |
+| `src/shared/services/sqlite/` | DB client access (`DbService::client()`, extensions) + `VecDb` (vec0 connection) |
 | `src/shared/services/vision/` | VLM inference: LFM2.5-VL-450M via llama.cpp + libmtmd (arbitrary prompts, caption cache) |
 | `src/shared/services/vad/` | `VadService` — Silero VAD v5 as an **instance** class (per-stream LSTM, shared ONNX session), with the turn-quality gate |
 | `src/shared/services/stream/` | go2rtc manager, `StreamHub` (fMP4 over `/sync`, per-connection credit window, lock order `hubMutex_ → Upstream::mtx`), `Fmp4Reader` (encoding from headers, whole fragments), `MediaRelay` (incl. `snapshotBytes`) |
@@ -424,7 +441,8 @@ Before any commit, verify: `cmake --build --preset dev -j 8` passes with
 | `src/shared/wrapper/cancellation/` | `CancellationToken` shared across streaming AI/audio paths |
 | `labs/` | Standalone binaries for prototyping and validating new capabilities against real hardware before wiring them into the backend |
 | `labs/tapo-probe/` | `argus-tapo-probe` — validates the camera protocols against real hardware |
-| `labs/voice-test/` | `argus-voice-test` — STT → LLM → TTS conversation loop with Silero VAD |
+| `labs/voice-test/` | `argus-voice-test` — STT → LLM → TTS conversation loop with Silero VAD (memory via `--memory-user <id>`) |
+| `labs/memory-probe/` | `argus-memory-probe` — memory schema/capture/tool/embedding/recall checks + bench |
 | `OPTIMIZATION_AND_MEMORY_PLAN.md` | Current plan: hardware-adaptive tiers, step elimination, person memory + LLM tools |
 | `STABILITY_AND_REALTIME_PLAN.md` | Current plan: fMP4 transport fixes, stateful audio resampling, VAD calibration, promoting proven `labs/` pieces into `src/` |
 | `src/shared/services/sqlite/` | DB client access (`DbService::client()`) |

@@ -15,6 +15,16 @@ set(VOICE_SERVICE_SRC
     ${SRC_ROOT}/shared/services/tts/style.cc
     ${SRC_ROOT}/shared/services/tts/unicode-processor.cc
     ${SRC_ROOT}/shared/services/vision/vision-service.cc
+    ${SRC_ROOT}/shared/services/embedding/embedding-service.cc
+    ${SRC_ROOT}/shared/services/embedding/unigram-tokenizer.cc
+    ${SRC_ROOT}/shared/services/memory/memory-service.cc
+    ${SRC_ROOT}/shared/services/memory/memory-recall.cc
+    ${SRC_ROOT}/shared/services/memory/memory-store.cc
+    ${SRC_ROOT}/shared/services/memory/rule-parser.cc
+    ${SRC_ROOT}/shared/services/memory/tool-parser.cc
+    ${SRC_ROOT}/shared/services/memory/simhash.cc
+    ${SRC_ROOT}/shared/services/sqlite/db-service.cc
+    ${SRC_ROOT}/shared/services/sqlite/vec-db.cc
     ${SRC_ROOT}/shared/services/stream/camera-audio-source.cc
     ${SRC_ROOT}/shared/services/stream/go2rtc-manager.cc
     ${SRC_ROOT}/shared/services/stream/media-relay.cc
@@ -60,6 +70,7 @@ target_link_libraries(argus-voice-test
         tomlplusplus::tomlplusplus
         opencv::opencv
         ${ARGUS_SHERPA_ONNX_TARGET}
+        ${ARGUS_SQLITE_VEC_TARGET}
         ${CONAN_LIBS}
         portaudio
         pulse-simple

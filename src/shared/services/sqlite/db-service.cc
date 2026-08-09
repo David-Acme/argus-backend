@@ -1,5 +1,8 @@
 #include "db-service.hxx"
 
+#define SQLITE_CORE
+#include "sqlite-vec.h"
+
 #include <fstream>
 #include <sstream>
 #include <vector>
@@ -57,6 +60,18 @@ const std::vector<std::string> kPerBootPragmas = {
 };
 
 } // namespace
+
+void DbService::installExtensions()
+{
+  const int rc = sqlite3_auto_extension(
+      reinterpret_cast<void (*)(void)>(sqlite3_vec_init));
+  if (rc == SQLITE_OK) {
+    LOG_INFO << "sqlite-vec: vec0 auto-extension registered ("
+             << SQLITE_VEC_VERSION << ")";
+  } else {
+    LOG_WARN << "sqlite-vec: auto_extension registration failed rc=" << rc;
+  }
+}
 
 void DbService::applyPragmas()
 {

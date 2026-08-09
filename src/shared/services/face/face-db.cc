@@ -2,122 +2,115 @@
 
 #include <algorithm>
 #include <cmath>
-#include <cstring>
 #include <drogon/drogon.h>
-#include <hnswlib/hnswlib/hnswlib.h>
 #include <map>
-#include <memory>
-#include <mutex>
 #include <shared/services/config-service/config-service.hxx>
 #include <shared/services/sqlite/db-service.hxx>
-#include <unordered_map>
-#include <vector>
+#include <shared/services/sqlite/vec-db.hxx>
+#include <sqlite3.h>
+#include <string>
 
 namespace
 {
 
 constexpr int kEmbeddingDim = 128;
-constexpr int kHnswM = 16;
-constexpr int kHnswEfConstruction = 200;
 constexpr float kMinConfidence = 0.80F;
 
-std::unique_ptr<hnswlib::InnerProductSpace> g_space;
-std::unique_ptr<hnswlib::HierarchicalNSW<float>> g_index;
-std::mutex g_mutex;
+std::string encodeVector(const float* data, int count)
+{
+  std::string out = "[";
+  for (int i = 0; i < count; ++i) {
+    if (i > 0)
+      out += ",";
+    out += std::to_string(data[i]);
+  }
+  out += "]";
+  return out;
+}
 
-// hnswlib updates a point IN PLACE when its label already exists, so
-// personId can never be used as a label.
-size_t g_nextLabel = 0;
-size_t g_liveCount = 0;
-std::unordered_map<size_t, int64_t> g_labelToPerson;
-std::unordered_map<int64_t, std::vector<size_t>> g_personLabels;
+void bindFloatVector(sqlite3_stmt* stmt, int index, const std::string& enc)
+{
+  sqlite3_bind_text(stmt, index, enc.data(), -1, SQLITE_TRANSIENT);
+}
 
 } // namespace
 
-bool FaceDB::loaded_ = false;
+std::mutex& FaceDB::vecMutex()
+{
+  return VecDb::mutex();
+}
 
 void FaceDB::init()
 {
-  std::lock_guard<std::mutex> lock(g_mutex);
-  g_space = std::make_unique<hnswlib::InnerProductSpace>(kEmbeddingDim);
-  g_index =
-      std::make_unique<hnswlib::HierarchicalNSW<float>>(g_space.get(), 100000,
-                                                        kHnswM,
-                                                        kHnswEfConstruction);
-  g_index->setEf(ConfigService::getInt("face.ef_search"));
-  g_nextLabel = 0;
-  g_liveCount = 0;
-  g_labelToPerson.clear();
-  g_personLabels.clear();
-  loaded_ = true;
-  LOG_INFO << "FaceDB: HNSW index initialized (dim=" << kEmbeddingDim
-           << ", M=" << kHnswM
-           << ", ef=" << ConfigService::getInt("face.ef_search") << ")";
+  LOG_INFO << "FaceDB: vec0 index ready";
 }
 
-void FaceDB::shutdown()
-{
-  std::lock_guard<std::mutex> lock(g_mutex);
-  g_index.reset();
-  g_space.reset();
-  g_labelToPerson.clear();
-  g_personLabels.clear();
-  loaded_ = false;
-  LOG_INFO << "FaceDB shutdown";
-}
+void FaceDB::shutdown() {}
 
-void FaceDB::insert(const float* embedding, int64_t personId)
+void FaceDB::insert(const float* embedding, int64_t personId,
+                    int64_t faceEmbeddingId)
 {
-  std::lock_guard<std::mutex> lock(g_mutex);
-  if (!g_index)
+  std::scoped_lock lock(vecMutex());
+  sqlite3* db = VecDb::handle();
+  if (!db)
     return;
 
-  const size_t label = ++g_nextLabel;
-  g_index->addPoint(embedding, label);
-  g_labelToPerson[label] = personId;
-  g_personLabels[personId].push_back(label);
-  ++g_liveCount;
+  sqlite3_stmt* stmt = nullptr;
+  if (sqlite3_prepare_v2(
+          db,
+          "INSERT INTO face_vec (rowid, embedding, person_id, "
+          "face_embedding_id) VALUES (?, ?, ?, ?)",
+          -1, &stmt, nullptr) != SQLITE_OK) {
+    LOG_WARN << "FaceDB::insert prepare failed: " << sqlite3_errmsg(db);
+    return;
+  }
+  sqlite3_bind_int64(stmt, 1, faceEmbeddingId);
+  bindFloatVector(stmt, 2, encodeVector(embedding, kEmbeddingDim));
+  sqlite3_bind_int64(stmt, 3, personId);
+  sqlite3_bind_int64(stmt, 4, faceEmbeddingId);
+  sqlite3_step(stmt);
+  sqlite3_finalize(stmt);
 }
 
 std::optional<std::pair<int64_t, float>> FaceDB::search(const float* query)
 {
-  std::lock_guard<std::mutex> lock(g_mutex);
-  if (!g_index) {
-    LOG_WARN << "FaceDB::search: no index";
+  std::scoped_lock lock(vecMutex());
+  sqlite3* db = VecDb::handle();
+  if (!db)
     return std::nullopt;
-  }
 
   const int topK = std::max(1, ConfigService::getInt("face.top_k"));
-  auto pq = g_index->searchKnn(query, topK);
-  if (pq.empty()) {
-    LOG_WARN << "FaceDB::search: empty result";
+  sqlite3_stmt* stmt = nullptr;
+  if (sqlite3_prepare_v2(
+          db,
+          "SELECT person_id, distance FROM face_vec "
+          "WHERE embedding MATCH ? ORDER BY distance LIMIT ?",
+          -1, &stmt, nullptr) != SQLITE_OK) {
+    LOG_WARN << "FaceDB::search prepare failed: " << sqlite3_errmsg(db);
     return std::nullopt;
   }
+  bindFloatVector(stmt, 1, encodeVector(query, kEmbeddingDim));
+  sqlite3_bind_int(stmt, 2, topK);
 
-  // Best confidence per person (multiple embeddings per person may match).
   std::map<int64_t, float> bestByPerson;
-  while (!pq.empty()) {
-    auto top = pq.top();
-    pq.pop();
-    auto it = g_labelToPerson.find(static_cast<size_t>(top.second));
-    if (it == g_labelToPerson.end())
-      continue;
-    const float confidence = 1.0F - top.first;
+  while (sqlite3_step(stmt) == SQLITE_ROW) {
+    const int64_t personId = sqlite3_column_int64(stmt, 0);
+    const float confidence =
+        1.0F - static_cast<float>(sqlite3_column_double(stmt, 1));
     if (!std::isfinite(confidence))
       continue;
-    auto bIt = bestByPerson.find(it->second);
-    if (bIt == bestByPerson.end() || confidence > bIt->second)
-      bestByPerson[it->second] = confidence;
+    auto it = bestByPerson.find(personId);
+    if (it == bestByPerson.end() || confidence > it->second)
+      bestByPerson[personId] = confidence;
   }
-  if (bestByPerson.empty()) {
-    LOG_WARN << "FaceDB::search: no known labels in result";
-    return std::nullopt;
-  }
+  sqlite3_finalize(stmt);
 
-  auto winner = std::max_element(bestByPerson.begin(), bestByPerson.end(),
-                                 [](const auto& a, const auto& b) {
-                                   return a.second < b.second;
-                                 });
+  if (bestByPerson.empty())
+    return std::nullopt;
+
+  auto winner = std::max_element(
+      bestByPerson.begin(), bestByPerson.end(),
+      [](const auto& a, const auto& b) { return a.second < b.second; });
 
   if (winner->second < kMinConfidence)
     return std::nullopt;
@@ -127,73 +120,45 @@ std::optional<std::pair<int64_t, float>> FaceDB::search(const float* query)
 
 void FaceDB::remove(int64_t personId)
 {
-  std::lock_guard<std::mutex> lock(g_mutex);
-  if (!g_index)
+  auto client = DbService::client();
+  auto rows = client->execSqlSync(
+      "SELECT id FROM face_embedding WHERE person_id = ?", personId);
+
+  std::scoped_lock lock(vecMutex());
+  sqlite3* db = VecDb::handle();
+  if (!db)
     return;
 
-  auto it = g_personLabels.find(personId);
-  if (it == g_personLabels.end())
+  sqlite3_stmt* stmt = nullptr;
+  if (sqlite3_prepare_v2(db, "DELETE FROM face_vec WHERE rowid = ?", -1,
+                         &stmt, nullptr) != SQLITE_OK) {
+    LOG_WARN << "FaceDB::remove prepare failed: " << sqlite3_errmsg(db);
     return;
-
-  for (size_t label : it->second) {
-    g_index->markDelete(label);
-    g_labelToPerson.erase(label);
   }
-  g_liveCount -= it->second.size();
-  g_personLabels.erase(it);
+  for (const auto& row : rows) {
+    sqlite3_bind_int64(stmt, 1, row["id"].as<int64_t>());
+    sqlite3_step(stmt);
+    sqlite3_reset(stmt);
+  }
+  sqlite3_finalize(stmt);
 }
 
 size_t FaceDB::count()
 {
-  std::lock_guard<std::mutex> lock(g_mutex);
-  return g_liveCount;
-}
+  std::scoped_lock lock(vecMutex());
+  sqlite3* db = VecDb::handle();
+  if (!db)
+    return 0;
 
-void FaceDB::loadFromDb()
-{
-  std::lock_guard<std::mutex> lock(g_mutex);
-  if (!g_space)
-    return;
-
-  auto client = DbService::client();
-  auto result =
-      client->execSqlSync("SELECT person_id, embedding FROM face_embedding");
-
-  int loaded = 0;
-  for (const auto& row : result) {
-    int64_t personId = row["person_id"].as<int64_t>();
-    std::string hexEmb = row["embedding"].as<std::string>();
-
-    int numFloats = static_cast<int>(hexEmb.size() / 8);
-    if (numFloats != kEmbeddingDim)
-      continue;
-
-    std::vector<float> emb;
-    emb.reserve(numFloats);
-    for (int i = 0; i < numFloats; ++i) {
-      uint32_t val = 0;
-      for (int j = 0; j < 8; ++j) {
-        char c = hexEmb[i * 8 + j];
-        val <<= 4;
-        if (c >= '0' && c <= '9')
-          val |= static_cast<uint32_t>(c - '0');
-        else if (c >= 'a' && c <= 'f')
-          val |= static_cast<uint32_t>(c - 'a' + 10);
-        else if (c >= 'A' && c <= 'F')
-          val |= static_cast<uint32_t>(c - 'A' + 10);
-      }
-      float f;
-      std::memcpy(&f, &val, sizeof(f));
-      emb.push_back(f);
-    }
-
-    const size_t label = ++g_nextLabel;
-    g_index->addPoint(emb.data(), label);
-    g_labelToPerson[label] = personId;
-    g_personLabels[personId].push_back(label);
-    ++g_liveCount;
-    ++loaded;
+  sqlite3_stmt* stmt = nullptr;
+  if (sqlite3_prepare_v2(db, "SELECT COUNT(*) FROM face_vec", -1, &stmt,
+                         nullptr) != SQLITE_OK) {
+    LOG_WARN << "FaceDB::count prepare failed: " << sqlite3_errmsg(db);
+    return 0;
   }
-
-  LOG_INFO << "FaceDB: loaded " << loaded << " embeddings from storage";
+  size_t count = 0;
+  if (sqlite3_step(stmt) == SQLITE_ROW)
+    count = static_cast<size_t>(sqlite3_column_int64(stmt, 0));
+  sqlite3_finalize(stmt);
+  return count;
 }

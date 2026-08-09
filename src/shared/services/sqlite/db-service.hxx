@@ -16,4 +16,5 @@ public:
   static bool runScriptFile(const std::string& path);
   static bool migrate(int64_t targetVersion);
   static void applyPragmas();
+  static void installExtensions();
 };

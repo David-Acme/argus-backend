@@ -30,8 +30,20 @@
 - **Conan 2** for deps (`conanfile.txt` + `CMakePresets.json`). CMake presets:
   `dev` (Debug) and `prod` (Release), generator Ninja.
 - **Git submodules** under `third_party/` for libs that change rarely and we want
-  to control: `fastText`, `hnswlib`, `ncnn`, `sherpa-onnx`. Built via
-  `add_subdirectory` with `EXCLUDE_FROM_ALL`.
+  to control: `ncnn`, `sherpa-onnx`, `llama.cpp`, `inspireface`. Built via
+  `add_subdirectory` with `EXCLUDE_FROM_ALL`. `fastText` and `hnswlib` were
+  **removed on 2026-08-09**: fastText had zero uses in `src/`; hnswlib was
+  replaced by sqlite-vec for face embeddings.
+- **sqlite-vec** is vendored (single-file C extension, v0.1.10-alpha.4, MIT/
+  Apache-2.0) at `third_party/sqlite-vec/` with sqlite3 3.53.3 headers. It is
+  compiled with `SQLITE_CORE` and registered via
+  `sqlite3_auto_extension(sqlite3_vec_init)` in `DbService::installExtensions()`.
+  **Ordering constraint**: the registration must run AFTER Drogon's first
+  connection (its `std::call_once` calls `sqlite3_config(SQLITE_CONFIG_MULTITHREAD)`,
+  which returns SQLITE_MISUSE once sqlite3 is initialized — the app registers in
+  the beginning advice after `migrate()`; `VecDb` opens its own connection lazily
+  so vec0 only needs to exist from then on). FTS5 is compiled into the conan
+  sqlite3 (`sqlite3/*:enable_fts5=True` — Drogon was rebuilt once against it).
 - Convention: Conventional Commits in English. Remote `git@github.com:David-Acme/argus-backend.git`,
   branch `main`.
 
@@ -722,3 +734,77 @@ src/shared/repositories/{entity}/
 - Use `PIXEL_BGR2RGB` in ncnn `from_pixels` to avoid separate cvtColor
 - Run `ncnnoptimize` on models offline for fusion and fp16 conversion
 - Recognize that some model architectures fall back to CPU on Vulkan (ncnn limitation)
+
+## Long-term memory: MemoryService (2026-08-09)
+
+Ultra-light memory for Argus: **zero extra LLM calls, no background extraction
+pipeline, ~25ms recall**. Separation of concerns is strict: `LlmService` stays a
+context-free mediator; the caller composes memory around it.
+
+- **Scopes** (`memory_l1.scope`): `global | user | person | device | role` with
+  a nullable `ref_id`. Recall always includes `global` + the caller's `user:<id>`
+  (+ `person:<id>` when persons are in context) so Argus stays aware of
+  system-wide facts, not just per-user ones. Types: `persona | episodic |
+  instruction | system`; sources: `rule | llm | ingest` (enums in `enums.hxx`).
+- **Capture channels (no extra LLM)**:
+  1. *Explicit rules*: "recuerda que X" / "remember that X" — phrase tables are
+     data-driven in `config.toml [memory.phrases.<lang>]` (key=phrase, value=
+     type); adding a language = adding a table, no code.
+  2. *Inline tool calls*: the main LLM may emit
+     `<|tool_call_start|>save type=... priority=... content=...<|tool_call_end|>`
+     during normal generation (prompt-instructed). `ToolParser` extracts them
+     from the token stream in `voice-test` (tolerant: malformed blocks are
+     dropped, never break the conversation) and strips them from the spoken
+     text. Markers are configurable (`memory.save_trigger`,
+     `memory.tool_end_trigger`).
+  3. *Ingest*: `reminder`/`context_note` are read directly at recall time.
+- **Dedup**: SimHash 64-bit over char-3-grams (`simhash.{hxx,cc}`);
+  `MemoryStore::saveDedup` bumps priority/hit_count on a match (≤
+  `memory.dedup_hamming`) instead of inserting. `MemoryStore` is the only
+  writer (memory_l1 + both FTS tables + vec row cleanup on remove).
+- **Recall** (`memory-recall.{hxx,cc}`): three ranked lists fused with
+  **RRF(k=60)** — FTS5 `bm25()` (unicode61 words) + FTS5 trigram (substring,
+  language-agnostic) + `vec0` KNN (embeddings) — then reweighted by priority,
+  recency decay and hit_count, capped by `memory.recall_top_k` and the
+  `memory.recall_max_tokens` budget (chars≈4×tokens). Measured in
+  `labs/memory-probe --recall-bench`: **p50=25.8ms, p95=28.7ms** on the
+  reference machine (20 seeded memories, 30 recalls). Without the embedding
+  model the vector layer is skipped (degraded, lexical-only recall).
+- **Embeddings** (`embedding-service.{hxx,cc}`): `multilingual-e5-small` INT8
+  ONNX (118MB, 384-dim, 100+ languages) via ONNX Runtime (already a dependency),
+  downloaded by `scripts/setup.sh` into `models/memory/`. The tokenizer is a
+  hand-rolled **Unigram** implementation (`unigram-tokenizer.{hxx,cc}`) parsing
+  `tokenizer.json` (nlohmann_json) — verified **bit-identical token ids** to the
+  reference `tokenizers` library on Spanish/English samples, including the
+  Metaspace ▁ and `<s>...</s>` post-processing. Pooling: mean over non-pad +
+  L2 normalize. e5 prefixes: `"query: "` for recall, `"passage: "` for stored
+  content. Note: e5-small cosines on single words are compressed (~0.87 for
+  unrelated words); ranking (not absolute cosine) is what matters — validated
+  with relative checks in `--embed-check`.
+- **`VecDb`** (`sqlite/vec-db.{hxx,cc}`): the only sqlite3 connection with the
+  vec0 module. Owns `memory_vec` (float[384], `partition TEXT PARTITION KEY`
+  = `global`/`user:<id>`/`person:<id>`) and `face_vec` (float[128]); created
+  lazily on first use, all access serialized by `VecDb::mutex()` (callers take
+  the lock — `handle()` does NOT lock; non-recursive mutex).
+- **`MemoryService`** facade: `captureExplicit` (rule parse + saveDedup + vec
+  insert), `captureToolCall`, `recall` (→ `{prependText, profileText, usedIds}`),
+  `bumpHitCount`. `voice-test` integrates it: profile → system prompt at
+  conversation start (stable → prefix reuse intact), memories → prepended to the
+  user message each turn, hit_count bumped after each reply. Flag
+  `--memory-user <id>` enables it (model loads only then).
+- **FaceDB migrated from hnswlib to vec0** (2026-08-09): `face_vec` (rowid =
+  face_embedding.id, cosine KNN, best-per-person, 0.80 threshold — semantics
+  unchanged). `face_embedding` remains the canonical synced row (sync contract
+  intact). `loadFromDb()`/in-memory index/`face.ef_search` are gone (exact scan
+  is sub-ms at household scale). hnswlib submodule removed.
+- **Labs**: `argus-memory-probe` — `--schema-check` (tables + FTS5 bm25 +
+  trigram + vec0 KNN roundtrips), `--capture-test` (es/en phrase parsing),
+  `--tool-parse-test` (fragmented stream parsing), `--embed-check` (embedding
+  sanity incl. cross-lingual), `--recall-bench` (3-run latency stats), `--tokens`
+  (tokenizer debug). All green on the reference machine.
+- **Environment note**: the system CMake 4.4.0 breaks this build's generate
+  step (nested `project()` subprojects, "CMAKE_C_COMPILE_OBJECT missing").
+  CMake **3.31.6** is pinned via `uv tool install cmake==3.31.6`
+  (`~/.local/share/uv/tools/cmake/bin/cmake`) — use that binary for configure
+  and build until the subprojects are updated. `scripts/setup.sh` still installs
+  the distro cmake; the uv one is the known-good path on Arch.

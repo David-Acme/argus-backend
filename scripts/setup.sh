@@ -158,10 +158,6 @@ setup_submodules() {
   # upstream repos (no push access), so these one-line patches are re-applied
   # on every setup run (idempotent) to keep the build reproducible.
   local F
-  F=third_party/fastText/CMakeLists.txt
-  if [ -f "$F" ]; then
-    sed -i 's/^set(CMAKE_CXX_STANDARD 17)/set(CMAKE_CXX_STANDARD 20)/' "$F"
-  fi
 
   F=third_party/ncnn/CMakeLists.txt
   if [ -f "$F" ]; then
@@ -404,6 +400,68 @@ NOTICE_EOF
   fi
 
   log "LLM model ready."
+}
+
+setup_memory_model() {
+  log "Setting up multilingual-e5-small embedding model (int8, 118 MB)..."
+  log "License: MIT (see models/memory/LICENSE)"
+
+  local ROOT
+  ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+  local MODEL_DIR="$ROOT/models/memory"
+  local HF_BASE="https://huggingface.co/intfloat/multilingual-e5-small/resolve/main"
+  local DL=""
+
+  if command -v curl >/dev/null 2>&1; then
+    DL="curl -L --retry 3 --progress-bar -o"
+  elif command -v wget >/dev/null 2>&1; then
+    DL="wget --retry-connrefused --waitretry=3 --show-progress -O"
+  else
+    warn "Neither curl nor wget found; skipping memory embedding model download."
+    return
+  fi
+
+  mkdir -p "$MODEL_DIR"
+
+  if [ ! -f "$MODEL_DIR/model.onnx" ]; then
+    log "Downloading model.onnx (~118 MB)..."
+    $DL "$MODEL_DIR/model.onnx" \
+        "$HF_BASE/onnx/model_qint8_avx512_vnni.onnx" || \
+      warn "Failed: model.onnx"
+  fi
+
+  if [ ! -f "$MODEL_DIR/tokenizer.json" ]; then
+    log "Downloading tokenizer.json (~17 MB)..."
+    $DL "$MODEL_DIR/tokenizer.json" "$HF_BASE/onnx/tokenizer.json" || \
+      warn "Failed: tokenizer.json"
+  fi
+
+  if [ ! -f "$MODEL_DIR/config.json" ]; then
+    log "Downloading config.json..."
+    $DL "$MODEL_DIR/config.json" "$HF_BASE/config.json" || \
+      warn "Failed: config.json"
+  fi
+
+  if [ ! -f "$MODEL_DIR/LICENSE" ]; then
+    log "Downloading MIT license..."
+    $DL "$MODEL_DIR/LICENSE" "$HF_BASE/LICENSE" || warn "Failed: LICENSE"
+  fi
+
+  if [ ! -f "$MODEL_DIR/NOTICE" ]; then
+    cat > "$MODEL_DIR/NOTICE" <<'MEMORY_NOTICE_EOF'
+multilingual-e5-small — IntFloat / Microsoft
+
+Model:      multilingual-e5-small (118M params, 384-dim embeddings, 100+ languages)
+Source:     https://huggingface.co/intfloat/multilingual-e5-small
+License:    MIT — see LICENSE in this directory
+
+Used by the Argus MemoryService for semantic recall (hybrid BM25 + vector).
+INT8 quantized ONNX export (model_qint8_avx512_vnni.onnx), runs on any x86-64
+CPU through ONNX Runtime (no AVX-512 required). Provided "AS IS".
+MEMORY_NOTICE_EOF
+  fi
+
+  log "Memory embedding model ready."
 }
 
 setup_go2rtc() {
@@ -708,6 +766,7 @@ main() {
   setup_stt_model
   setup_face_model
   setup_vad_model
+  setup_memory_model
   build_project
   log "All done (profile: $PROFILE). Happy hacking!"
 }
