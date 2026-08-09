@@ -510,15 +510,27 @@ void runCameraConversation(const TapoTalkConfig& talkCfg,
   state.history.push_back({"system", systemPromptFor(langCode)});
 
   TapoTalkClient talkClient(talkCfg);
+  std::thread keepaliveThread([&] {
+    std::vector<int16_t> silence(800, 0);
+    CancellationToken token;
+    while (!gStop.load()) {
+      std::this_thread::sleep_for(std::chrono::seconds(5));
+      if (paused.load() || !talkClient.isOpen())
+        continue;
+      talkClient.sendChunk({.samples = silence, .sampleRate = 8000}, token);
+    }
+  });
   const std::string greeting = langCode == "es"
                                    ? "Hola, soy Argus. Estoy escuchando por la "
                                      "camara, puedes hablar cuando quieras."
                                    : "Hello, I'm Argus. I am listening through "
                                      "the camera, you can speak anytime.";
   paused.store(true);
+  const int64_t sentBeforeGreeting = talkClient.sentDurationMs();
   speakToCamera(talkClient, greeting, langCode, gStop);
   discardRemaining.store(static_cast<int>(
-      (talkClient.sentDurationMs() + talkDrainMarginMs) * 16000 / 1000));
+      (talkClient.sentDurationMs() - sentBeforeGreeting + talkDrainMarginMs) *
+      16000 / 1000));
   paused.store(false);
   std::cout << "\n[escuchando continuamente por la camara...] "
                "(p=pausa, q=salir)\n"
@@ -613,9 +625,11 @@ void runCameraConversation(const TapoTalkConfig& talkCfg,
 
     resumeListening();
     paused.store(true);
+    const int64_t sentBefore = talkClient.sentDurationMs();
     speakToCamera(talkClient, full, langCode, gStop);
     discardRemaining.store(static_cast<int>(
-        (talkClient.sentDurationMs() + talkDrainMarginMs) * 16000 / 1000));
+        (talkClient.sentDurationMs() - sentBefore + talkDrainMarginMs) * 16000 /
+        1000));
     paused.store(false);
     resumeListening();
   }
@@ -623,6 +637,7 @@ void runCameraConversation(const TapoTalkConfig& talkCfg,
   gStop.store(true);
   micThread.join();
   keyThread.join();
+  keepaliveThread.join();
 }
 
 } // namespace
