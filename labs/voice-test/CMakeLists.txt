@@ -95,4 +95,7 @@ add_custom_command(
     COMMAND ${CMAKE_COMMAND} -E create_symlink
             ${CMAKE_SOURCE_DIR}/models
             $<TARGET_FILE_DIR:argus-voice-test>/models
+    COMMAND ${CMAKE_COMMAND} -E create_symlink
+            ${CMAKE_SOURCE_DIR}/third_party
+            $<TARGET_FILE_DIR:argus-voice-test>/third_party
 )

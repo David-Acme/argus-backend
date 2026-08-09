@@ -430,10 +430,14 @@ remembering:
   LSTM state is per audio stream (one VAD per conversation), but the 2.3MB
   ONNX model is loaded once in a file-static session behind a mutex — the same
   shared-context pattern as the other AI services.
-- **The talk session stays open across sentences.** `TapoTalkClient::sendChunk`
-  reuses the open session (Digest + Key-Exchange + `talk` handshake) and only
-  reopens on write failure; `sentDurationMs()` reports what actually left the
-  backend. Per-sentence handshakes wasted the PTS continuity of the TS muxer.
+- **The talk session stays open across sentences — except it cannot.** The
+  original plan kept the 8800 session open with a silence keepalive. The C225
+  **usurps its microphone while the talk channel is open**: the RTSP substream
+  goes silent, `CameraMic` times out every ~5s and the listen loop starves.
+  `sendChunk` therefore reopens per sentence (~6ms measured) and stays closed
+  between sentences; the keepalive idea is recorded here so nobody tries it
+  again. `sentDurationMs()` still drives the echo drain as a per-sentence
+  delta.
 - **The speaker AGC overflowed.** A full-scale `-32768` sample stored its
   absolute peak in `int16_t`, giving `gain = 26000 / -32768 = -0.793` and
   inverting + attenuating the whole sentence. `tapoApplySpeakerGain` computes

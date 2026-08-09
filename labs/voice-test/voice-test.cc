@@ -510,16 +510,6 @@ void runCameraConversation(const TapoTalkConfig& talkCfg,
   state.history.push_back({"system", systemPromptFor(langCode)});
 
   TapoTalkClient talkClient(talkCfg);
-  std::thread keepaliveThread([&] {
-    std::vector<int16_t> silence(800, 0);
-    CancellationToken token;
-    while (!gStop.load()) {
-      std::this_thread::sleep_for(std::chrono::seconds(5));
-      if (paused.load() || !talkClient.isOpen())
-        continue;
-      talkClient.sendChunk({.samples = silence, .sampleRate = 8000}, token);
-    }
-  });
   const std::string greeting = langCode == "es"
                                    ? "Hola, soy Argus. Estoy escuchando por la "
                                      "camara, puedes hablar cuando quieras."
@@ -542,7 +532,6 @@ void runCameraConversation(const TapoTalkConfig& talkCfg,
     camBuf.clear();
     vad.reset();
   };
-  auto lastTick = std::chrono::steady_clock::now();
   while (!gStop.load()) {
     if (paused.load()) {
       std::this_thread::sleep_for(std::chrono::milliseconds(100));
@@ -555,16 +544,9 @@ void runCameraConversation(const TapoTalkConfig& talkCfg,
       haveChunk = camBuf.pop(chunk.data(), chunk.size());
     }
     if (!haveChunk) {
-      const auto now = std::chrono::steady_clock::now();
-      if (now - lastTick >= std::chrono::seconds(3)) {
-        lastTick = now;
-        std::cout << "[vivo] buffer de audio vacio, esperando a la camara...\n"
-                  << std::flush;
-      }
       std::this_thread::sleep_for(std::chrono::milliseconds(10));
       continue;
     }
-    lastTick = std::chrono::steady_clock::now();
 
     VadTurn turn;
     if (!vad.process(chunk.data(), static_cast<int>(chunk.size()), turn))
@@ -637,7 +619,6 @@ void runCameraConversation(const TapoTalkConfig& talkCfg,
   gStop.store(true);
   micThread.join();
   keyThread.join();
-  keepaliveThread.join();
 }
 
 } // namespace
