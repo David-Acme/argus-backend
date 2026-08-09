@@ -44,8 +44,8 @@ void StreamHub::sendFramed(const std::shared_ptr<Subscriber>& sub, uint8_t type,
   h.subId = sub->subId;
   h.seq = ++sub->seq;
   const std::string blob = ws_frame::frame(h, data, len);
-  if (!sub->sink->sendBinary(
-          reinterpret_cast<const uint8_t*>(blob.data()), blob.size())) {
+  if (!sub->sink->sendBinary(reinterpret_cast<const uint8_t*>(blob.data()),
+                             blob.size())) {
     sub->sink = nullptr;
   }
 }
@@ -188,7 +188,8 @@ void StreamHub::init()
   if (const int64_t v = ConfigService::getInt("streaming.hub_window_bytes");
       v > 0)
     windowBytes_ = v;
-  if (const int v = ConfigService::getInt("streaming.hub_chunk_bytes"); v >= 1024)
+  if (const int v = ConfigService::getInt("streaming.hub_chunk_bytes");
+      v >= 1024)
     chunkBytes_ = static_cast<size_t>(v);
   if (const int64_t v = ConfigService::getInt("streaming.hub_grace_ms"); v > 0)
     graceMs_ = v;
@@ -305,7 +306,9 @@ void StreamHub::unsubscribe(uint16_t subId)
 
   std::lock_guard<std::mutex> upLock(up->mtx);
   up->subs.erase(std::remove_if(up->subs.begin(), up->subs.end(),
-                                [&](const auto& s) { return s->subId == subId; }),
+                                [&](const auto& s) {
+                                  return s->subId == subId;
+                                }),
                  up->subs.end());
 }
 

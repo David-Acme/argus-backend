@@ -186,7 +186,8 @@ SyncService::handleMessage(const drogon::WebSocketConnectionPtr& conn,
                           AppConfig::ERROR_CODE_BAD_REQUEST);
 }
 
-void SyncService::handleDisconnect(const drogon::WebSocketConnectionPtr& conn) const
+void SyncService::handleDisconnect(
+    const drogon::WebSocketConnectionPtr& conn) const
 {
   if (auto sink = sinkFor(conn))
     StreamHub::closeAll(sink.get());

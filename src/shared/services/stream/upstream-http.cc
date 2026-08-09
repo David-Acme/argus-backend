@@ -42,8 +42,7 @@ Upstream open(const std::string& host, int port, const std::string& path,
     return up;
   }
 
-  const std::string req = "GET " + path +
-                          " HTTP/1.1\r\nHost: " + host +
+  const std::string req = "GET " + path + " HTTP/1.1\r\nHost: " + host +
                           "\r\nConnection: close\r\nUser-Agent: argus\r\n\r\n";
   if (::send(up.fd, req.data(), req.size(), 0) < 0) {
     ::close(up.fd);
@@ -114,8 +113,8 @@ size_t parseChunkSize(const std::string& line, bool& ok)
 {
   ok = false;
   size_t end = 0;
-  while (end < line.size() && (std::isxdigit(
-             static_cast<unsigned char>(line[end])))) {
+  while (end < line.size() &&
+         (std::isxdigit(static_cast<unsigned char>(line[end])))) {
     ++end;
   }
   if (end == 0)
@@ -196,8 +195,8 @@ void Fmp4Reader::processChunked(const char* data, size_t len)
       continue;
     }
 
-    const char* nl = static_cast<const char*>(
-        std::memchr(data + pos, '\n', len - pos));
+    const char* nl =
+        static_cast<const char*>(std::memchr(data + pos, '\n', len - pos));
     if (nl == nullptr) {
       lineBuf_.append(data + pos, len - pos);
       return;
@@ -247,12 +246,9 @@ void Fmp4Reader::consume()
     if (pending_.size() < size)
       return;
 
-    const char type[5] = {
-        static_cast<char>(raw[4]),
-        static_cast<char>(raw[5]),
-        static_cast<char>(raw[6]),
-        static_cast<char>(raw[7]),
-        '\0'};
+    const char type[5] = {static_cast<char>(raw[4]), static_cast<char>(raw[5]),
+                          static_cast<char>(raw[6]), static_cast<char>(raw[7]),
+                          '\0'};
 
     std::string box = pending_.substr(0, static_cast<size_t>(size));
     pending_.erase(0, static_cast<size_t>(size));

@@ -265,51 +265,6 @@ std::string rtspHost(const std::string& url)
   return url.substr(start, end - start);
 }
 
-std::string captureTurnFromCamera(Vad& vad, const std::atomic<bool>& stop,
-                                  const std::string& rtspUrl)
-{
-  std::vector<float> inBuffer;
-  std::mutex bufMutex;
-  VadTurn turn;
-  CameraMic mic;
-
-  auto onFrames = [&](const std::vector<float>& frames) {
-    std::lock_guard<std::mutex> lock(bufMutex);
-    inBuffer.insert(inBuffer.end(), frames.begin(), frames.end());
-  };
-
-  if (!mic.open(rtspUrl, onFrames)) {
-    std::cerr << "[camera-mic] no se pudo abrir el audio de la camara\n";
-    return "";
-  }
-
-  std::cout << "\n[escuchando por la camara...] (Ctrl+C para salir)\n"
-            << std::flush;
-  std::string text;
-  bool done = false;
-  while (!done && !stop.load()) {
-    if (!mic.readBlock())
-      break;
-    std::vector<float> chunk;
-    {
-      std::lock_guard<std::mutex> lock(bufMutex);
-      if (inBuffer.size() >= 512) {
-        chunk.assign(inBuffer.begin(), inBuffer.begin() + 512);
-        inBuffer.erase(inBuffer.begin(), inBuffer.begin() + 512);
-      }
-    }
-    if (!chunk.empty() &&
-        vad.process(chunk.data(), static_cast<int>(chunk.size()), turn)) {
-      text = SttService::transcribe(turn.samples, 16000);
-      done = true;
-    }
-    if (!done)
-      std::this_thread::sleep_for(std::chrono::milliseconds(10));
-  }
-  mic.close();
-  return text;
-}
-
 bool speakToCamera(TapoTalkClient& client, const std::string& text,
                    const std::string& langCode, const std::atomic<bool>& stop)
 {
@@ -496,11 +451,8 @@ void runCameraConversation(const TapoTalkConfig& talkCfg,
                            const std::string& langCode)
 {
   std::atomic<bool> paused{false};
-  // Samples de audio del mic a descartar tras cada respuesta: cubre el eco
-  // del altavoz de la camara, que llega al mic con el retraso del buffer
-  // interno de la camara (no bloquea el bucle: solo se descarta).
   std::atomic<int> discardRemaining{0};
-  constexpr int kEchoDrainSamples = 16000 * 600 / 1000; // 600ms a 16kHz
+  constexpr int kEchoDrainSamples = 16000 * 600 / 1000;
   std::mutex bufMutex;
   SampleRing camBuf(16000 * 30);
 
@@ -509,12 +461,12 @@ void runCameraConversation(const TapoTalkConfig& talkCfg,
       CameraMic mic;
       if (!mic.open(camRtspSub, [&](const std::vector<float>& frames) {
             if (paused.load())
-              return; // Argus habla: descartar
+              return;
             const int remaining = discardRemaining.load();
             if (remaining > 0) {
               discardRemaining.store(
                   std::max(0, remaining - static_cast<int>(frames.size())));
-              return; // eco residual del altavoz: descartar
+              return;
             }
             std::lock_guard<std::mutex> lock(bufMutex);
             camBuf.push(frames.data(), frames.size());
@@ -812,9 +764,7 @@ int main(int argc, char** argv)
 
     while (!gStop.load()) {
       Vad vad;
-      const std::string userText =
-          useCamera ? captureTurnFromCamera(vad, gStop, camRtspSub)
-                    : captureTurn(vad, gStop);
+      const std::string userText = captureTurn(vad, gStop);
       if (gStop.load())
         break;
       if (userText.empty()) {
@@ -917,7 +867,6 @@ int main(int argc, char** argv)
 
       std::thread speaker([&] {
         const bool continuous =
-            !useCamera &&
             openPlayback(TtsService::sampleRate(), kPlaybackLatencyMs);
         for (;;) {
           std::string sentence;
@@ -936,16 +885,6 @@ int main(int argc, char** argv)
             }
             sentence = std::move(sentenceQueue.front());
             sentenceQueue.pop_front();
-          }
-
-          if (useCamera) {
-            if (firstAudioMs.load() < 0)
-              firstAudioMs.store(
-                  std::chrono::duration_cast<std::chrono::milliseconds>(
-                      std::chrono::steady_clock::now() - t0)
-                      .count());
-            speakToCamera(talkClient, sentence, state.lang, speechDetected);
-            continue;
           }
 
           TtsRequest treq;
