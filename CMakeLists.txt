@@ -20,6 +20,7 @@ find_package(mdns CONFIG REQUIRED)
 find_package(qr-code-generator CONFIG REQUIRED)
 
 add_subdirectory(third_party)
+add_subdirectory(labs/audio-probe)
 add_subdirectory(labs/voice-test)
 add_subdirectory(labs/tapo-probe)
 add_subdirectory(labs/llm-bench)
