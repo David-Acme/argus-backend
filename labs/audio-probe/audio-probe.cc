@@ -3,6 +3,8 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
+#include <fstream>
 #include <iostream>
 #include <shared/services/vad/vad-service.hxx>
 #include <shared/wrapper/audio/audio-resampler.hxx>
@@ -15,6 +17,8 @@ namespace
 {
 
 int gFailures = 0;
+int gArgc = 0;
+char** gArgv = nullptr;
 
 void check(const char* what, bool got, bool want)
 {
@@ -183,19 +187,117 @@ void vadGateCheck()
   check("el turno reporta su probabilidad media", meanProb > 0.0F, true);
 }
 
-} // namespace
-
-int main()
+bool readWav16k(const std::string& path, std::vector<float>& out)
 {
+  std::ifstream file(path, std::ios::binary);
+  if (!file)
+    return false;
+  std::string data((std::istreambuf_iterator<char>(file)),
+                   std::istreambuf_iterator<char>());
+  if (data.size() < 44 || data.compare(0, 4, "RIFF") != 0 ||
+      data.compare(8, 4, "WAVE") != 0)
+    return false;
+  size_t cursor = 12;
+  int rate = 0;
+  int channels = 0;
+  int bits = 0;
+  size_t dataOffset = 0;
+  size_t dataSize = 0;
+  const auto le32 = [](const char* d) -> uint32_t {
+    return static_cast<uint32_t>(static_cast<unsigned char>(d[0])) |
+           (static_cast<uint32_t>(static_cast<unsigned char>(d[1])) << 8) |
+           (static_cast<uint32_t>(static_cast<unsigned char>(d[2])) << 16) |
+           (static_cast<uint32_t>(static_cast<unsigned char>(d[3])) << 24);
+  };
+  const auto le16 = [](const char* d) -> uint16_t {
+    return static_cast<uint16_t>(static_cast<unsigned char>(d[0]) |
+                                 (static_cast<unsigned char>(d[1]) << 8));
+  };
+  while (cursor + 8 <= data.size()) {
+    const std::string id = data.substr(cursor, 4);
+    const uint32_t size = le32(data.data() + cursor + 4);
+    const size_t body = cursor + 8;
+    if (id == "fmt " && body + 16 <= data.size()) {
+      channels = le16(data.data() + body + 2);
+      rate = static_cast<int>(le32(data.data() + body + 4));
+      bits = le16(data.data() + body + 14);
+    }
+    else if (id == "data") {
+      dataOffset = body;
+      dataSize = std::min(static_cast<size_t>(size), data.size() - body);
+    }
+    cursor = body + size + (size % 2);
+  }
+  if (rate != 16000 || channels != 1 || bits != 16 || dataOffset == 0)
+    return false;
+  out.clear();
+  out.reserve(dataSize / 2);
+  for (size_t i = 0; i + 1 < dataSize; i += 2) {
+    const int16_t sample =
+        static_cast<int16_t>(le16(data.data() + dataOffset + i));
+    out.push_back(static_cast<float>(sample) / 32768.0F);
+  }
+  return !out.empty();
+}
+
+void vadReport(const std::string& path, const std::vector<float>& samples)
+{
+  VadService vad;
+  VadTurn turn;
+  int windows = 0;
+  int turns = 0;
+  float maxProb = 0.0F;
+  double probSum = 0.0;
+  std::vector<int> turnMs;
+  for (size_t i = 0; i + 512 <= samples.size(); i += 512) {
+    const bool fired = vad.process(samples.data() + i, 512, turn);
+    windows++;
+    maxProb = std::max(maxProb, vad.lastProb());
+    probSum += vad.lastProb();
+    if (fired) {
+      turns++;
+      turnMs.push_back(static_cast<int>(turn.samples.size() * 1000 / 16000));
+    }
+  }
+
+  std::printf("%s: %.2fs ventanas=%d turnos=%d probMedia=%.3f probMax=%.3f\n",
+              path.c_str(), samples.size() / 16000.0, windows, turns,
+              probSum / std::max(1, windows), maxProb);
+  for (size_t i = 0; i < turnMs.size(); ++i)
+    std::printf("  turno %zu: %d ms\n", i + 1, turnMs[i]);
+}
+
+} // namespace
+int main(int argc, char** argv)
+{
+  gArgc = argc;
+  gArgv = argv;
   char buf[4096];
   const ssize_t n = readlink("/proc/self/exe", buf, sizeof(buf) - 1);
   if (n > 0) {
     buf[n] = '\0';
     const std::string path(buf);
     const size_t slash = path.find_last_of('/');
-    if (slash != std::string::npos && chdir(path.substr(0, slash).c_str()) != 0)
+    if (slash != std::string::npos &&
+        chdir(path.substr(0, slash).c_str()) != 0)
       std::cerr << "Warning: could not chdir\n";
   }
+
+  std::string vadWav;
+  for (int i = 1; i < gArgc; ++i) {
+    if (std::string(gArgv[i]) == "--vad" && i + 1 < gArgc)
+      vadWav = gArgv[++i];
+  }
+  if (!vadWav.empty()) {
+    std::vector<float> samples;
+    if (!readWav16k(vadWav, samples)) {
+      std::printf("no se pudo leer %s\n", vadWav.c_str());
+      return 1;
+    }
+    vadReport(vadWav, samples);
+    return 0;
+  }
+
   resamplerCheck();
   ringCheck();
   vadCheck();

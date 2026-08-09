@@ -233,6 +233,10 @@ talk_framing = "none"
 # cuesta un handshake entero, así que se mantiene abierta durante la
 # conversación y sendChunk la reabre solo si falla el envío.
 talk_idle_timeout_s = 60
+# Margen sobre la duración del audio enviado antes de volver a escuchar. El
+# altavoz de la cámara sigue sonando después de que el último paquete salga
+# del backend; calibrar con labs/fixtures/camera-echo.wav.
+talk_drain_margin_ms = 400
 # Echo cancellation mode negotiated with the camera speaker.
 talk_mode = "aec"
 # Milliseconds of A-law audio per MPEG-TS part. Bounds the audio still in

@@ -452,7 +452,10 @@ void runCameraConversation(const TapoTalkConfig& talkCfg,
 {
   std::atomic<bool> paused{false};
   std::atomic<int> discardRemaining{0};
-  constexpr int kEchoDrainSamples = 16000 * 600 / 1000;
+  const int64_t talkDrainMarginMs = [&] {
+    const int v = ConfigService::getInt("tapo.talk_drain_margin_ms");
+    return v > 0 ? v : 400;
+  }();
   std::mutex bufMutex;
   SampleRing camBuf(16000 * 30);
 
@@ -514,7 +517,8 @@ void runCameraConversation(const TapoTalkConfig& talkCfg,
                                      "the camera, you can speak anytime.";
   paused.store(true);
   speakToCamera(talkClient, greeting, langCode, gStop);
-  discardRemaining.store(kEchoDrainSamples);
+  discardRemaining.store(static_cast<int>(
+      (talkClient.sentDurationMs() + talkDrainMarginMs) * 16000 / 1000));
   paused.store(false);
   std::cout << "\n[escuchando continuamente por la camara...] "
                "(p=pausa, q=salir)\n"
@@ -610,7 +614,8 @@ void runCameraConversation(const TapoTalkConfig& talkCfg,
     resumeListening();
     paused.store(true);
     speakToCamera(talkClient, full, langCode, gStop);
-    discardRemaining.store(kEchoDrainSamples);
+    discardRemaining.store(static_cast<int>(
+        (talkClient.sentDurationMs() + talkDrainMarginMs) * 16000 / 1000));
     paused.store(false);
     resumeListening();
   }
