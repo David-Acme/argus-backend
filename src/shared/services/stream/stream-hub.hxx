@@ -12,12 +12,20 @@
 class StreamHub
 {
 public:
+  struct StreamClosedInput
+  {
+    uint16_t subId{0};
+    std::string reason;
+  };
+
   class ISink
   {
   public:
     virtual ~ISink() = default;
     virtual bool sendBinary(const uint8_t* data, size_t len) = 0;
-    virtual void onClosed(const std::string& reason) = 0;
+    virtual bool tryReserve(size_t bytes) = 0;
+    virtual void release(int64_t bytes) = 0;
+    virtual void onClosed(const StreamClosedInput& input) = 0;
   };
 
   struct SubscribeInput
@@ -45,7 +53,6 @@ private:
   {
     uint16_t subId{0};
     std::shared_ptr<ISink> sink;
-    int64_t bytesInFlight{0};
     bool sentInit{false};
     bool skipUntilKeyframe{true};
     uint32_t seq{0};
@@ -78,7 +85,6 @@ private:
   static std::unordered_map<uint16_t, std::shared_ptr<Upstream>> subToUpstream_;
   static uint16_t nextSubId_;
   static uint32_t nextSeq_;
-  static int64_t windowBytes_;
   static size_t chunkBytes_;
   static int64_t graceMs_;
 };

@@ -42,4 +42,8 @@ public:
   static inline const std::string ERROR_CODE_METHOD_NOT_ALLOWED{
       "METHOD_NOT_ALLOWED"};
   static inline const std::string ERROR_CODE_CONFLICT{"CONFLICT"};
+  static inline const std::string ERROR_CODE_SERVICE_UNAVAILABLE{
+      "SERVICE_UNAVAILABLE"};
+  static inline const std::string ERROR_CODE_TOO_MANY_REQUESTS{
+      "TOO_MANY_REQUESTS"};
 };

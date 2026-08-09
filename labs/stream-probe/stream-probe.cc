@@ -208,6 +208,23 @@ struct FakeSink final : StreamHub::ISink
   bool mediaSeen{false};
   bool keyframeSeen{false};
   bool closed{false};
+  int64_t window{128 * 1024};
+  int64_t inFlight{0};
+
+  bool tryReserve(size_t bytes) override
+  {
+    std::lock_guard<std::mutex> lock(mtx);
+    if (inFlight + static_cast<int64_t>(bytes) > window)
+      return false;
+    inFlight += static_cast<int64_t>(bytes);
+    return true;
+  }
+
+  void release(int64_t bytes) override
+  {
+    std::lock_guard<std::mutex> lock(mtx);
+    inFlight = std::max<int64_t>(0, inFlight - bytes);
+  }
 
   bool sendBinary(const uint8_t* data, size_t len) override
   {
@@ -227,7 +244,7 @@ struct FakeSink final : StreamHub::ISink
     return !closed;
   }
 
-  void onClosed(const std::string&) override { closed = true; }
+  void onClosed(const StreamHub::StreamClosedInput&) override { closed = true; }
 
   size_t bytes()
   {
@@ -323,6 +340,20 @@ void streamHubCheck()
   for (int i = 0; i < 60 && !sink2->mediaSeen; ++i)
     std::this_thread::sleep_for(std::chrono::milliseconds(250));
   check("hub vuelve a entregar media tras la gracia", sink2->mediaSeen, true);
+
+  StreamHub::SubscribeInput second;
+  second.sink = sink2;
+  second.cameraId = 1;
+  second.quality = "sub";
+  std::string err3;
+  const uint16_t subB = StreamHub::subscribe(second, err3);
+  check("segunda suscripcion en el mismo sink", subB != 0, true);
+  const size_t before = sink2->bytes();
+  std::this_thread::sleep_for(std::chrono::seconds(10));
+  const size_t after = sink2->bytes();
+  check("dos suscripciones comparten una sola ventana",
+        after - before < 160 * 1024, true);
+  StreamHub::unsubscribe(subB);
   StreamHub::unsubscribe(subId2);
 
   StreamHub::shutdown();

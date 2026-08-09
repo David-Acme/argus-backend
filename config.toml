@@ -304,6 +304,16 @@ go2rtc_api = "127.0.0.1:1984"
 go2rtc_rtsp = "127.0.0.1:8554"
 # Restart attempts before the camera is marked offline instead of looping.
 max_restarts = 8
+# Bytes de vídeo en vuelo permitidos por CONEXIÓN (no por suscripción): el
+# cuello es el socket TCP, que comparten todas las cámaras que mira un cliente.
+hub_window_bytes = 131072
+# Trozo máximo por mensaje binario. Acota cuánto puede monopolizar el socket
+# un solo fragmento y deja hueco al audio y al JSON de control.
+hub_chunk_bytes = 16384
+# Segundos que se mantiene abierto el upstream tras irse el último espectador.
+hub_grace_ms = 2000
+# Cámaras simultáneas por cliente. La rejilla de vista previa marca el mínimo.
+hub_max_subs_per_client = 8
 
 # ── Detección de voz (Silero VAD v5) ──────────────────────────────────
 # El micrófono de la cámara es de campo lejano y con más ruido que uno de

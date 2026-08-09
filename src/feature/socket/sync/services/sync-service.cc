@@ -1,77 +1,43 @@
 #include "sync-service.hxx"
 
+#include <algorithm>
 #include <config/app-config.hxx>
 #include <mutex>
 #include <shared/access/role-access.hxx>
 #include <shared/contracts/sync-operation.hxx>
 #include <shared/dtos/socket-emit/socket-emit-dto.hxx>
 #include <shared/exceptions/response-exception.hxx>
+#include <shared/services/config-service/config-service.hxx>
 #include <shared/services/stream/stream-hub.hxx>
 #include <unordered_map>
 
-namespace
+SyncService::SyncService()
 {
-
-class DrogonStreamSink final : public StreamHub::ISink
-{
-public:
-  explicit DrogonStreamSink(drogon::WebSocketConnectionPtr conn)
-      : conn_(std::move(conn))
-  {
-  }
-
-  void setSubId(uint16_t subId) { subId_ = subId; }
-
-  bool sendBinary(const uint8_t* data, size_t len) override
-  {
-    if (!conn_ || conn_->disconnected())
-      return false;
-    conn_->send(reinterpret_cast<const char*>(data), len,
-                drogon::WebSocketMessageType::Binary);
-    return true;
-  }
-
-  void onClosed(const std::string& reason) override
-  {
-    if (!conn_ || conn_->disconnected())
-      return;
-    Json::Value j;
-    j["type"] = "camera:closed";
-    j["payload"]["subId"] = subId_;
-    j["payload"]["reason"] = reason;
-    conn_->sendJson(j);
-  }
-
-private:
-  drogon::WebSocketConnectionPtr conn_;
-  uint16_t subId_{0};
-};
-
-std::mutex gSinksMutex;
-std::unordered_map<const void*, std::shared_ptr<DrogonStreamSink>> gSinks;
+  if (const int v = ConfigService::getInt("streaming.hub_max_subs_per_client");
+      v > 0)
+    maxSubsPerClient_ = v;
+}
 
 std::shared_ptr<DrogonStreamSink>
-sinkFor(const drogon::WebSocketConnectionPtr& conn)
+SyncService::sinkFor(const drogon::WebSocketConnectionPtr& conn) const
 {
-  std::lock_guard<std::mutex> lock(gSinksMutex);
-  const auto it = gSinks.find(conn.get());
-  return it == gSinks.end() ? nullptr : it->second;
+  std::lock_guard<std::mutex> lock(sinksMutex_);
+  const auto it = sinks_.find(conn.get());
+  return it == sinks_.end() ? nullptr : it->second;
 }
 
-void storeSink(const drogon::WebSocketConnectionPtr& conn,
-               const std::shared_ptr<DrogonStreamSink>& sink)
+void SyncService::storeSink(const drogon::WebSocketConnectionPtr& conn,
+                            const std::shared_ptr<DrogonStreamSink>& sink) const
 {
-  std::lock_guard<std::mutex> lock(gSinksMutex);
-  gSinks[conn.get()] = sink;
+  std::lock_guard<std::mutex> lock(sinksMutex_);
+  sinks_[conn.get()] = sink;
 }
 
-void dropSink(const drogon::WebSocketConnectionPtr& conn)
+void SyncService::dropSink(const drogon::WebSocketConnectionPtr& conn) const
 {
-  std::lock_guard<std::mutex> lock(gSinksMutex);
-  gSinks.erase(conn.get());
+  std::lock_guard<std::mutex> lock(sinksMutex_);
+  sinks_.erase(conn.get());
 }
-
-} // namespace
 
 drogon::Task<void>
 SyncService::handleConnect(const drogon::HttpRequestPtr& req,
@@ -142,9 +108,16 @@ SyncService::handleMessage(const drogon::WebSocketConnectionPtr& conn,
 
     auto sink = sinkFor(conn);
     if (!sink) {
-      sink = std::make_shared<DrogonStreamSink>(conn);
+      int64_t window = 128 * 1024;
+      if (const int64_t v = ConfigService::getInt("streaming.hub_window_bytes");
+          v > 0)
+        window = v;
+      sink = std::make_shared<DrogonStreamSink>(conn, window);
       storeSink(conn, sink);
     }
+    if (sink->subscriptions() >= maxSubsPerClient_)
+      throw ResponseException("Too many camera subscriptions", 429,
+                              AppConfig::ERROR_CODE_TOO_MANY_REQUESTS);
 
     StreamHub::SubscribeInput input;
     input.sink = sink;
@@ -154,8 +127,8 @@ SyncService::handleMessage(const drogon::WebSocketConnectionPtr& conn,
     const uint16_t subId = StreamHub::subscribe(input, error);
     if (subId == 0)
       throw ResponseException(error.empty() ? "subscribe_failed" : error, 503,
-                              "SERVICE_UNAVAILABLE");
-    sink->setSubId(subId);
+                              AppConfig::ERROR_CODE_SERVICE_UNAVAILABLE);
+    sink->addSubscription();
 
     Json::Value resp;
     resp["subId"] = subId;
@@ -179,6 +152,8 @@ SyncService::handleMessage(const drogon::WebSocketConnectionPtr& conn,
     const uint16_t subId =
         static_cast<uint16_t>(payload.get("subId", 0).asUInt());
     StreamHub::unsubscribe(subId);
+    if (auto sink = sinkFor(conn))
+      sink->dropSubscription();
     co_return;
   }
 

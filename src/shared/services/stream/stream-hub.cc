@@ -13,7 +13,6 @@
 
 namespace
 {
-constexpr int64_t kDefaultWindowBytes = 128 * 1024;
 constexpr size_t kDefaultChunkBytes = 16 * 1024;
 constexpr int64_t kDefaultGraceMs = 2000;
 
@@ -31,7 +30,6 @@ std::unordered_map<uint16_t, std::shared_ptr<StreamHub::Upstream>>
     StreamHub::subToUpstream_;
 uint16_t StreamHub::nextSubId_ = 1;
 uint32_t StreamHub::nextSeq_ = 0;
-int64_t StreamHub::windowBytes_ = kDefaultWindowBytes;
 size_t StreamHub::chunkBytes_ = kDefaultChunkBytes;
 int64_t StreamHub::graceMs_ = kDefaultGraceMs;
 
@@ -57,7 +55,7 @@ void StreamHub::sendBox(const std::shared_ptr<Subscriber>& sub,
   bool first = true;
   while (offset < box.size()) {
     const size_t part = std::min(chunkBytes_, box.size() - offset);
-    if (sub->bytesInFlight + static_cast<int64_t>(part) > windowBytes_) {
+    if (!sub->sink->tryReserve(part)) {
       sub->skipUntilKeyframe = true;
       return;
     }
@@ -65,7 +63,6 @@ void StreamHub::sendBox(const std::shared_ptr<Subscriber>& sub,
                reinterpret_cast<const uint8_t*>(box.data() + offset), part);
     if (!sub->sink)
       return;
-    sub->bytesInFlight += static_cast<int64_t>(part);
     offset += part;
     first = false;
   }
@@ -82,20 +79,16 @@ void StreamHub::dispatchBox(Upstream& up, std::string box, bool keyframe)
         continue;
       sub->skipUntilKeyframe = false;
       if (!sub->sentInit && up.hasInit) {
-        const int64_t initLen = static_cast<int64_t>(up.init.size());
-        if (sub->bytesInFlight + initLen <= windowBytes_) {
-          sendFramed(sub, ws_frame::kTypeInit, true,
-                     reinterpret_cast<const uint8_t*>(up.init.data()),
-                     up.init.size());
-          if (!sub->sink)
-            continue;
-          sub->sentInit = true;
-          sub->bytesInFlight += initLen;
-        }
-        else {
+        if (!sub->sink->tryReserve(up.init.size())) {
           sub->skipUntilKeyframe = true;
           continue;
         }
+        sendFramed(sub, ws_frame::kTypeInit, true,
+                   reinterpret_cast<const uint8_t*>(up.init.data()),
+                   up.init.size());
+        if (!sub->sink)
+          continue;
+        sub->sentInit = true;
       }
     }
     sendBox(sub, box, keyframe);
@@ -118,7 +111,7 @@ void StreamHub::runUpstream(std::shared_ptr<Upstream> up)
     std::lock_guard<std::mutex> lock(up->mtx);
     for (auto& sub : up->subs) {
       if (sub->sink)
-        sub->sink->onClosed("upstream_failed");
+        sub->sink->onClosed({.subId = sub->subId, .reason = "upstream_failed"});
     }
     up->subs.clear();
     up->dead.store(true, std::memory_order_release);
@@ -185,7 +178,7 @@ void StreamHub::runUpstream(std::shared_ptr<Upstream> up)
   std::lock_guard<std::mutex> lock(up->mtx);
   for (auto& sub : up->subs) {
     if (sub->sink)
-      sub->sink->onClosed("upstream_closed");
+      sub->sink->onClosed({.subId = sub->subId, .reason = "upstream_closed"});
   }
   up->subs.clear();
   up->dead.store(true, std::memory_order_release);
@@ -193,16 +186,13 @@ void StreamHub::runUpstream(std::shared_ptr<Upstream> up)
 
 void StreamHub::init()
 {
-  if (const int64_t v = ConfigService::getInt("streaming.hub_window_bytes");
-      v > 0)
-    windowBytes_ = v;
   if (const int v = ConfigService::getInt("streaming.hub_chunk_bytes");
       v >= 1024)
     chunkBytes_ = static_cast<size_t>(v);
   if (const int64_t v = ConfigService::getInt("streaming.hub_grace_ms"); v > 0)
     graceMs_ = v;
-  LOG_INFO << "StreamHub ready (window=" << windowBytes_
-           << "B chunk=" << chunkBytes_ << "B grace=" << graceMs_ << "ms)";
+  LOG_INFO << "StreamHub ready (chunk=" << chunkBytes_ << "B grace=" << graceMs_
+           << "ms)";
 }
 
 void StreamHub::shutdown()
@@ -300,15 +290,18 @@ void StreamHub::ack(uint16_t subId, int64_t bytes)
     up = it->second;
   }
 
-  std::lock_guard<std::mutex> upLock(up->mtx);
-  for (auto& sub : up->subs) {
-    if (sub->subId == subId) {
-      sub->bytesInFlight -= bytes;
-      if (sub->bytesInFlight < 0)
-        sub->bytesInFlight = 0;
-      break;
+  std::shared_ptr<ISink> sink;
+  {
+    std::lock_guard<std::mutex> upLock(up->mtx);
+    for (auto& sub : up->subs) {
+      if (sub->subId == subId) {
+        sink = sub->sink;
+        break;
+      }
     }
   }
+  if (sink)
+    sink->release(bytes);
 }
 
 void StreamHub::unsubscribe(uint16_t subId)
