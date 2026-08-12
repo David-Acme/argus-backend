@@ -128,20 +128,20 @@ void fmp4ReaderCheck()
       moofWithSync(false) + mp4Box("mdat", std::string(15000, '\x0d'));
   const std::string body = init + frag1 + frag2;
 
-  check("identity: init completo", runReader(body, false, 65536).init == init,
+  check("identity: full init", runReader(body, false, 65536).init == init,
         true);
-  check("identity: 2 fragmentos",
+  check("identity: 2 fragments",
         runReader(body, false, 65536).fragments.size() == 2, true);
-  check("identity: fragmento 1 intacto",
+  check("identity: fragment 1 intact",
         runReader(body, false, 65536).fragments[0] == frag1, true);
-  check("identity: keyframe detectado",
+  check("identity: keyframe detected",
         runReader(body, false, 65536).keyframes[0], true);
-  check("identity: no-keyframe detectado",
+  check("identity: non-keyframe detected",
         runReader(body, false, 65536).keyframes[1], false);
 
   for (const size_t step : {size_t(1), size_t(3), size_t(199), size_t(4096)}) {
     const auto cap = runReader(body, false, step);
-    check("identity: estable troceando el wire",
+    check("identity: stable when splitting the wire",
           cap.init == init && cap.fragments.size() == 2 &&
               cap.fragments[0] == frag1 && cap.fragments[1] == frag2,
           true);
@@ -151,25 +151,25 @@ void fmp4ReaderCheck()
   for (const size_t step :
        {size_t(1), size_t(2), size_t(1299), size_t(65536)}) {
     const auto cap = runReader(wire, true, step);
-    check("chunked: estable troceando el wire",
+    check("chunked: stable when splitting the wire",
           cap.init == init && cap.fragments.size() == 2 &&
               cap.fragments[0] == frag1 && cap.fragments[1] == frag2,
           true);
   }
 
-  check("isChunked lee la cabecera",
+  check("isChunked reads the header",
         upstream_http::isChunked(
             "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked"),
         true);
-  check("isChunked ignora identity",
+  check("isChunked ignores identity",
         upstream_http::isChunked("HTTP/1.1 200 OK\r\nContent-Type: video/mp4"),
         false);
 }
 
 bool addGo2rtcStream(const std::string& name, const std::string& src)
 {
-  const auto [host, port] =
-      upstream_http::splitHostPort(Go2rtcManager::apiBase().substr(7));
+  const auto [host, port] = upstream_http::splitHostPort(
+      Go2rtcManager::instance().apiBase().substr(7));
   const std::string path =
       "/api/streams?name=" + name + "&src=" + urlEncode(src);
 
@@ -273,9 +273,9 @@ void streamHubCheck()
 
   std::this_thread::sleep_for(std::chrono::milliseconds(2500));
 
-  const std::string jpeg = MediaRelay::snapshotBytes(1);
-  check("snapshot devuelve bytes", !jpeg.empty(), true);
-  check("snapshot es un JPEG",
+  const std::string jpeg = MediaRelay::instance().snapshotBytes(1);
+  check("snapshot returns bytes", !jpeg.empty(), true);
+  check("snapshot is a JPEG",
         jpeg.size() > 2 && static_cast<unsigned char>(jpeg[0]) == 0xFF &&
             static_cast<unsigned char>(jpeg[1]) == 0xD8,
         true);
@@ -286,7 +286,7 @@ void streamHubCheck()
   input.cameraId = 1;
   input.quality = "main";
   std::string err;
-  const uint16_t subId = StreamHub::subscribe(input, err);
+  const uint16_t subId = StreamHub::instance().subscribe(input, err);
   check("hub subscribe", subId != 0, true);
   if (subId == 0)
     return;
@@ -307,7 +307,7 @@ void streamHubCheck()
   const size_t w3 = sink->bytes();
   check("hub stops growing without ack", w3 - w2 < 32 * 1024, true);
 
-  StreamHub::ack(subId, static_cast<int64_t>(w3));
+  StreamHub::instance().ack(subId, static_cast<int64_t>(w3));
   const size_t base = sink->bytes();
   bool resumed = false;
   for (int i = 0; i < 24 && !resumed; ++i) {
@@ -316,18 +316,19 @@ void streamHubCheck()
   }
   check("hub resumes after ack", resumed, true);
 
-  StreamHub::unsubscribe(subId);
+  StreamHub::instance().unsubscribe(subId);
   const size_t beforeUnsub = sink->bytes();
   std::this_thread::sleep_for(std::chrono::seconds(1));
   const size_t afterUnsub = sink->bytes();
   check("hub unsubscribe stops flow", afterUnsub - beforeUnsub < 4096, true);
 
-  check("hub single upstream shared", StreamHub::activeUpstreams() == 1, true);
+  check("hub single upstream shared",
+        StreamHub::instance().activeUpstreams() == 1, true);
 
-  StreamHub::unsubscribe(subId);
+  StreamHub::instance().unsubscribe(subId);
   std::this_thread::sleep_for(std::chrono::milliseconds(3500));
-  check("hub cierra el upstream sin suscriptores",
-        StreamHub::activeUpstreams() == 0, true);
+  check("hub closes the upstream without subscribers",
+        StreamHub::instance().activeUpstreams() == 0, true);
 
   auto sink2 = std::make_shared<FakeSink>();
   StreamHub::SubscribeInput again;
@@ -335,29 +336,31 @@ void streamHubCheck()
   again.cameraId = 1;
   again.quality = "main";
   std::string err2;
-  const uint16_t subId2 = StreamHub::subscribe(again, err2);
-  check("hub resuscribe tras la gracia", subId2 != 0, true);
+  const uint16_t subId2 = StreamHub::instance().subscribe(again, err2);
+  check("hub resubscribes after the grace period", subId2 != 0, true);
   for (int i = 0; i < 60 && !sink2->mediaSeen; ++i)
     std::this_thread::sleep_for(std::chrono::milliseconds(250));
-  check("hub vuelve a entregar media tras la gracia", sink2->mediaSeen, true);
+  check("hub delivers media again after the grace period", sink2->mediaSeen,
+        true);
 
   StreamHub::SubscribeInput second;
   second.sink = sink2;
   second.cameraId = 1;
   second.quality = "sub";
   std::string err3;
-  const uint16_t subB = StreamHub::subscribe(second, err3);
-  check("segunda suscripcion en el mismo sink", subB != 0, true);
+  const uint16_t subB = StreamHub::instance().subscribe(second, err3);
+  check("second subscription on the same sink", subB != 0, true);
   const size_t before = sink2->bytes();
   std::this_thread::sleep_for(std::chrono::seconds(10));
   const size_t after = sink2->bytes();
-  check("dos suscripciones comparten una sola ventana",
-        after - before < 160 * 1024, true);
-  StreamHub::unsubscribe(subB);
-  StreamHub::unsubscribe(subId2);
+  check("two subscriptions share a single window", after - before < 160 * 1024,
+        true);
+  StreamHub::instance().unsubscribe(subB);
+  StreamHub::instance().unsubscribe(subId2);
 
-  StreamHub::shutdown();
-  check("hub shutdown clears", StreamHub::activeUpstreams() == 0, true);
+  StreamHub::instance().shutdown();
+  check("hub shutdown clears", StreamHub::instance().activeUpstreams() == 0,
+        true);
 }
 
 } // namespace
@@ -399,17 +402,17 @@ int main()
   check("quote", Go2rtcManager::isSafeUrl("rtsp://192.168.1.5/\"x"), false);
 
   std::printf("\n=== process lifecycle ===\n");
-  Go2rtcManager::init();
+  Go2rtcManager::instance().init();
   bool up = false;
   for (int i = 0; i < 40 && !up; ++i) {
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
-    up = Go2rtcManager::healthCheck();
+    up = Go2rtcManager::instance().healthCheck();
   }
-  const auto st = Go2rtcManager::status();
+  const auto st = Go2rtcManager::instance().status();
   std::printf("  running=%d healthy=%d pid=%lld restarts=%d api=%s\n",
               static_cast<int>(st.running), static_cast<int>(up),
               static_cast<long long>(st.pid), st.restarts,
-              Go2rtcManager::apiBase().c_str());
+              Go2rtcManager::instance().apiBase().c_str());
   if (!up) {
     ++failures;
     std::printf("  [FAIL] go2rtc did not become healthy: %s\n",
@@ -417,13 +420,14 @@ int main()
   }
 
   check("addSource rejects unsafe url",
-        Go2rtcManager::addSource({"cam9", "rtsp://8.8.8.8/x"}), false);
+        Go2rtcManager::instance().addSource({"cam9", "rtsp://8.8.8.8/x"}),
+        false);
 
   streamHubCheck();
 
-  Go2rtcManager::shutdown();
+  Go2rtcManager::instance().shutdown();
   std::printf("  after shutdown: running=%d\n",
-              static_cast<int>(Go2rtcManager::isRunning()));
+              static_cast<int>(Go2rtcManager::instance().isRunning()));
 
   std::printf("\n%s (%d failures)\n", failures == 0 ? "ALL PASS" : "FAILURES",
               failures);

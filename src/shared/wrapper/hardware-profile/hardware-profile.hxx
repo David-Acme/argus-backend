@@ -62,4 +62,12 @@ int ortSpinDurationUs();
 const char* llmKvType();
 int ttsStepsCap();
 
+enum class ExtractionTier : uint8_t
+{
+  Minimal = 0,
+  Light,
+  Full,
+};
+ExtractionTier extractionTier();
+
 } // namespace HardwareProbe

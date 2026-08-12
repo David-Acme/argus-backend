@@ -42,4 +42,21 @@ int ttsThreads()
   return std::clamp(hardwareThreads() / 2, 2, 8);
 }
 
+int extractionSlots()
+{
+  return std::clamp(hardwareThreads() / 8, 1, 4);
+}
+
+int extractionThreads()
+{
+  return std::clamp(hardwareThreads() / 4, 1, 4);
+}
+
+int queueWorkers(const std::string& queueName)
+{
+  if (queueName == "memory.extract")
+    return extractionSlots();
+  return 1;
+}
+
 } // namespace ThreadBudget

@@ -39,31 +39,33 @@ using TtsChunkCallback =
 class TtsService
 {
 public:
-  TtsService() = delete;
-  ~TtsService() = delete;
+  TtsService();
+  ~TtsService();
 
-  static void init();
-  static void shutdown();
-  static bool isLoaded();
+  TtsService(const TtsService&) = delete;
+  TtsService& operator=(const TtsService&) = delete;
 
-  static std::vector<float> synthesize(const TtsRequest& req);
-  static void synthesizeStream(const TtsRequest& req, TtsChunkCallback onChunk);
+  void init();
+  void shutdown();
+  bool isLoaded() const;
+
+  std::vector<float> synthesize(const TtsRequest& req);
+  void synthesizeStream(const TtsRequest& req, TtsChunkCallback onChunk);
 
   // Coroutine variants: run synthesis off the event loop.
-  static drogon::Task<std::vector<float>>
-  synthesizeAsync(const TtsRequest& req);
-  static drogon::Task<void> synthesizeStreamAsync(const TtsRequest& req,
-                                                  TtsChunkCallback onChunk);
-  static void loadVoice(const std::string& voiceId);
+  drogon::Task<std::vector<float>> synthesizeAsync(const TtsRequest& req);
+  drogon::Task<void> synthesizeStreamAsync(const TtsRequest& req,
+                                           TtsChunkCallback onChunk);
+  void loadVoice(const std::string& voiceId);
 
-  static void setDefaultQuality(TtsQuality q);
-  static TtsQuality defaultQuality();
+  void setDefaultQuality(TtsQuality q);
+  TtsQuality defaultQuality() const;
 
   // Configured base speech speed (config.toml [tts] speed).
-  static float defaultSpeed();
+  float defaultSpeed() const;
 
-  static int sampleRate();
-  static std::vector<std::string> availableVoices();
+  int sampleRate() const;
+  std::vector<std::string> availableVoices() const;
 
   static void writeWav(const std::string& path, const std::vector<float>& pcm,
                        int sampleRate = 44100);
@@ -72,21 +74,21 @@ public:
 
 private:
   static int resolveSteps(TtsQuality quality);
-  static const Style& resolveVoice(const std::string& voiceId);
+  const Style& resolveVoice(const std::string& voiceId);
   static TtsQuality autoQuality(const std::string& text);
   // Resolves the effective quality: an explicit request quality wins; an
   // "Auto" request falls back to the configured default (tts.quality), which
   // in turn falls back to the adaptive autoQuality() by text length.
-  static TtsQuality resolveQuality(const TtsRequest& req);
+  TtsQuality resolveQuality(const TtsRequest& req) const;
 
-  static std::unique_ptr<TtsEngine> engine_;
-  static std::unique_ptr<UnicodeProcessor> processor_;
-  static std::unordered_map<std::string, std::unique_ptr<Style>> voiceCache_;
-  static Ort::Env env_;
-  static TtsQuality defaultQuality_;
-  static float defaultSpeed_;
-  static int maxChunkLen_;
-  static bool loaded_;
-  static std::mutex synthMutex_;
-  static std::mutex voiceMutex_;
+  std::unique_ptr<TtsEngine> engine_;
+  std::unique_ptr<UnicodeProcessor> processor_;
+  std::unordered_map<std::string, std::unique_ptr<Style>> voiceCache_;
+  Ort::Env env_{ORT_LOGGING_LEVEL_ERROR, "Argus-TTS"};
+  TtsQuality defaultQuality_{TtsQuality::Auto};
+  float defaultSpeed_{1.0F};
+  int maxChunkLen_{300};
+  bool loaded_ = false;
+  mutable std::mutex synthMutex_;
+  mutable std::mutex voiceMutex_;
 };

@@ -4,23 +4,23 @@
 
 bool TtsServiceAdapter::initialize()
 {
-  TtsService::init();
-  return TtsService::isLoaded();
+  ttsService_.init();
+  return ttsService_.isLoaded();
 }
 
 bool TtsServiceAdapter::isLoaded() const
 {
-  return TtsService::isLoaded();
+  return ttsService_.isLoaded();
 }
 
 void TtsServiceAdapter::shutdown()
 {
-  TtsService::shutdown();
+  ttsService_.shutdown();
 }
 
 Json::Value TtsServiceAdapter::health() const
 {
   Json::Value value(Json::objectValue);
-  value["loaded"] = TtsService::isLoaded();
+  value["loaded"] = ttsService_.isLoaded();
   return value;
 }

@@ -35,18 +35,23 @@ public:
     std::string quality;
   };
 
-  StreamHub() = delete;
-  ~StreamHub() = delete;
+  StreamHub() = default;
+  ~StreamHub();
 
-  static void init();
-  static void shutdown();
+  StreamHub(const StreamHub&) = delete;
+  StreamHub& operator=(const StreamHub&) = delete;
 
-  static uint16_t subscribe(const SubscribeInput& input, std::string& error);
-  static void ack(uint16_t subId, int64_t bytes);
-  static void unsubscribe(uint16_t subId);
-  static void closeAll(const ISink* sink);
-  static int activeUpstreams();
-  static int activeSubscribers();
+  static StreamHub& instance();
+
+  void init();
+  void shutdown();
+
+  uint16_t subscribe(const SubscribeInput& input, std::string& error);
+  void ack(uint16_t subId, int64_t bytes);
+  void unsubscribe(uint16_t subId);
+  void closeAll(const ISink* sink);
+  int activeUpstreams();
+  int activeSubscribers();
 
 private:
   struct Subscriber
@@ -71,20 +76,20 @@ private:
     std::thread reader;
   };
 
-  static std::shared_ptr<Upstream> getOrOpen(const SubscribeInput& input,
-                                             std::string& error);
+  std::shared_ptr<Upstream> getOrOpen(const SubscribeInput& input,
+                                      std::string& error);
   static void sendFramed(const std::shared_ptr<Subscriber>& sub, uint8_t type,
                          bool keyframe, const uint8_t* data, size_t len);
-  static void sendBox(const std::shared_ptr<Subscriber>& sub,
-                      const std::string& box, bool keyframe);
-  static void dispatchBox(Upstream& up, std::string box, bool keyframe);
-  static void runUpstream(std::shared_ptr<Upstream> up);
+  void sendBox(const std::shared_ptr<Subscriber>& sub, const std::string& box,
+               bool keyframe);
+  void dispatchBox(Upstream& up, std::string box, bool keyframe);
+  void runUpstream(std::shared_ptr<Upstream> up);
 
-  static std::mutex hubMutex_;
-  static std::unordered_map<std::string, std::shared_ptr<Upstream>> upstreams_;
-  static std::unordered_map<uint16_t, std::shared_ptr<Upstream>> subToUpstream_;
-  static uint16_t nextSubId_;
-  static uint32_t nextSeq_;
-  static size_t chunkBytes_;
-  static int64_t graceMs_;
+  std::mutex hubMutex_;
+  std::unordered_map<std::string, std::shared_ptr<Upstream>> upstreams_;
+  std::unordered_map<uint16_t, std::shared_ptr<Upstream>> subToUpstream_;
+  uint16_t nextSubId_ = 1;
+  uint32_t nextSeq_ = 0;
+  size_t chunkBytes_ = 16 * 1024;
+  int64_t graceMs_ = 2000;
 };

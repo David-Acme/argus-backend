@@ -7,6 +7,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
+#include <memory>
 #include <shared/services/stream/go2rtc-manager.hxx>
 #include <shared/services/stream/upstream-http.hxx>
 #include <shared/services/tapo/tapo-audio.hxx>
@@ -167,9 +168,9 @@ std::vector<int16_t> decodePcm(const std::string& fourcc,
     std::vector<int16_t> out;
     out.reserve(bytes.size() / 2);
     for (size_t i = 0; i + 1 < bytes.size(); i += 2) {
-      const int16_t sample = static_cast<int16_t>(
-          static_cast<uint16_t>(bytes[i]) |
-          (static_cast<uint16_t>(bytes[i + 1]) << 8));
+      const int16_t sample =
+          static_cast<int16_t>(static_cast<uint16_t>(bytes[i]) |
+                               (static_cast<uint16_t>(bytes[i + 1]) << 8));
       out.push_back(sample);
     }
     return out;
@@ -205,11 +206,11 @@ struct CameraAudioSource::Impl
   int64_t timeouts{0};
   std::chrono::steady_clock::time_point lastReport{};
   float lastRms{0.0F};
-  FILE* dump{nullptr};
+  std::unique_ptr<FILE, int (*)(FILE*)> dump{nullptr, &std::fclose};
 };
 
 CameraAudioSource::CameraAudioSource(const CameraAudioInput& input)
-    : impl_(new Impl(input))
+    : impl_(std::make_unique<Impl>(input))
 {
 }
 
@@ -223,22 +224,25 @@ bool CameraAudioSource::open()
   close();
   impl_->lastError.clear();
 
-  const auto [host, port] =
-      upstream_http::splitHostPort(Go2rtcManager::apiBase().substr(7));
+  const auto [host, port] = upstream_http::splitHostPort(
+      Go2rtcManager::instance().apiBase().substr(7));
   const std::string src = Go2rtcManager::streamName(impl_->cameraId);
   const std::string path = "/api/stream.mp4?src=" + src + "&mp4=flac";
   upstream_http::Upstream up = upstream_http::open(host, port, path, 5);
   if (!up.ok) {
     const auto crlf = up.headers.find("\r\n");
     const std::string statusLine =
-        up.headers.substr(0, crlf == std::string::npos ? up.headers.size() : crlf);
+        up.headers.substr(0,
+                          crlf == std::string::npos ? up.headers.size() : crlf);
     impl_->lastError =
         "go2rtc: " + statusLine + " " + up.leftover.substr(0, 300);
     return false;
   }
   impl_->lastReport = std::chrono::steady_clock::now();
   if (const char* dumpPath = std::getenv("ARGUS_MIC_DUMP"))
-    impl_->dump = std::fopen(dumpPath, "wb");
+    impl_->dump =
+        std::unique_ptr<FILE, int (*)(FILE*)>(std::fopen(dumpPath, "wb"),
+                                              &std::fclose);
 
   impl_->fd = up.fd;
   impl_->reader = upstream_http::Fmp4Reader(
@@ -255,8 +259,8 @@ bool CameraAudioSource::open()
               << " rate=" << impl_->sourceRate
               << " track=" << impl_->audioTrackId << "\n";
     if (impl_->dump) {
-      std::fwrite(init.data(), 1, init.size(), impl_->dump);
-      std::fflush(impl_->dump);
+      std::fwrite(init.data(), 1, init.size(), impl_->dump.get());
+      std::fflush(impl_->dump.get());
     }
   };
   impl_->reader.onFragment = [this](std::string fragment, bool) {
@@ -267,8 +271,8 @@ bool CameraAudioSource::open()
     if (track < 0 || track != impl_->audioTrackId)
       return;
     if (impl_->dump) {
-      std::fwrite(fragment.data(), 1, fragment.size(), impl_->dump);
-      std::fflush(impl_->dump);
+      std::fwrite(fragment.data(), 1, fragment.size(), impl_->dump.get());
+      std::fflush(impl_->dump.get());
     }
     const size_t mdat = findBox(fragment, "mdat", 0, fragment.size());
     if (mdat == std::string::npos)
@@ -367,10 +371,7 @@ void CameraAudioSource::close()
   impl_->fourcc.clear();
   impl_->audioTrackId = -1;
   impl_->ring.clear();
-  if (impl_->dump) {
-    std::fclose(impl_->dump);
-    impl_->dump = nullptr;
-  }
+  impl_->dump.reset();
 }
 
 bool CameraAudioSource::isOpen() const

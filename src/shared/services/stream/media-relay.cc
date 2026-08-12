@@ -37,13 +37,16 @@ MediaFormat mediaFormatFromString(const std::string& name)
   return MediaFormat::Fmp4;
 }
 
-std::mutex MediaRelay::mutex_;
-std::unordered_map<int64_t, int> MediaRelay::viewers_;
-std::atomic<int64_t> MediaRelay::bytesRelayed_{0};
-std::atomic<int> MediaRelay::rejected_{0};
-int MediaRelay::maxViewersPerCamera_ = 4;
-int MediaRelay::maxTotalViewers_ = 8;
-size_t MediaRelay::chunkSize_ = 32768;
+MediaRelay::~MediaRelay()
+{
+  shutdown();
+}
+
+MediaRelay& MediaRelay::instance()
+{
+  static MediaRelay relay;
+  return relay;
+}
 
 void MediaRelay::init()
 {
@@ -121,7 +124,7 @@ void MediaRelay::releaseSlot(int64_t cameraId)
 
 drogon::HttpResponsePtr MediaRelay::stream(int64_t cameraId, MediaFormat format)
 {
-  if (!Go2rtcManager::isRunning()) {
+  if (!Go2rtcManager::instance().isRunning()) {
     auto resp = drogon::HttpResponse::newHttpResponse();
     resp->setStatusCode(drogon::k503ServiceUnavailable);
     return resp;
@@ -134,8 +137,8 @@ drogon::HttpResponsePtr MediaRelay::stream(int64_t cameraId, MediaFormat format)
     return resp;
   }
 
-  const auto [host, port] =
-      upstream_http::splitHostPort(Go2rtcManager::apiBase().substr(7));
+  const auto [host, port] = upstream_http::splitHostPort(
+      Go2rtcManager::instance().apiBase().substr(7));
   const std::string path = upstreamPath(cameraId, format);
 
   const char* contentType = "video/mp4";
@@ -145,16 +148,16 @@ drogon::HttpResponsePtr MediaRelay::stream(int64_t cameraId, MediaFormat format)
     contentType = "multipart/x-mixed-replace; boundary=frame";
 
   auto resp = drogon::HttpResponse::newAsyncStreamResponse(
-      [cameraId, host, port, path](drogon::ResponseStreamPtr stream) {
+      [this, cameraId, host, port, path](drogon::ResponseStreamPtr stream) {
         auto shared =
             std::make_shared<drogon::ResponseStreamPtr>(std::move(stream));
-        std::thread([cameraId, host, port, path, shared]() {
+        std::thread([this, cameraId, host, port, path, shared]() {
           upstream_http::Upstream up =
               upstream_http::open(host, port, path, 10);
           if (!up.ok) {
             LOG_WARN << "MediaRelay: upstream failed for cam" << cameraId;
             (*shared)->close();
-            MediaRelay::releaseSlot(cameraId);
+            releaseSlot(cameraId);
             return;
           }
 
@@ -162,7 +165,7 @@ drogon::HttpResponsePtr MediaRelay::stream(int64_t cameraId, MediaFormat format)
             if (!(*shared)->send(up.leftover)) {
               ::close(up.fd);
               (*shared)->close();
-              MediaRelay::releaseSlot(cameraId);
+              releaseSlot(cameraId);
               return;
             }
             bytesRelayed_.fetch_add(static_cast<int64_t>(up.leftover.size()),
@@ -190,7 +193,7 @@ drogon::HttpResponsePtr MediaRelay::stream(int64_t cameraId, MediaFormat format)
 
           ::close(up.fd);
           (*shared)->close();
-          MediaRelay::releaseSlot(cameraId);
+          releaseSlot(cameraId);
         }).detach();
       },
       true);
@@ -203,11 +206,11 @@ drogon::HttpResponsePtr MediaRelay::stream(int64_t cameraId, MediaFormat format)
 
 std::string MediaRelay::snapshotBytes(int64_t cameraId)
 {
-  if (!Go2rtcManager::isRunning())
+  if (!Go2rtcManager::instance().isRunning())
     return {};
 
-  const auto [host, port] =
-      upstream_http::splitHostPort(Go2rtcManager::apiBase().substr(7));
+  const auto [host, port] = upstream_http::splitHostPort(
+      Go2rtcManager::instance().apiBase().substr(7));
   const std::string path =
       "/api/frame.jpeg?src=" + Go2rtcManager::streamName(cameraId);
 
@@ -233,7 +236,7 @@ std::string MediaRelay::snapshotBytes(int64_t cameraId)
 
 drogon::HttpResponsePtr MediaRelay::snapshot(int64_t cameraId)
 {
-  if (!Go2rtcManager::isRunning()) {
+  if (!Go2rtcManager::instance().isRunning()) {
     auto resp = drogon::HttpResponse::newHttpResponse();
     resp->setStatusCode(drogon::k503ServiceUnavailable);
     return resp;

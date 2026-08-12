@@ -18,20 +18,24 @@
 #include <opencv2/imgcodecs.hpp>
 #include <poll.h>
 #include <shared/services/config-service/config-service.hxx>
+#include <shared/services/conversation/conversation-service.hxx>
+#include <shared/services/intent/intent-service.hxx>
 #include <shared/services/llm/llm-service.hxx>
 #include <shared/services/memory/memory-service.hxx>
 #include <shared/services/memory/tool-parser.hxx>
 #include <shared/services/sqlite/db-service.hxx>
+#include <shared/services/sqlite/vec-db.hxx>
 #include <shared/services/stream/camera-audio-source.hxx>
 #include <shared/services/stream/go2rtc-manager.hxx>
-#include <shared/services/stream/upstream-http.hxx>
 #include <shared/services/stream/media-relay.hxx>
+#include <shared/services/stream/upstream-http.hxx>
 #include <shared/services/stt/stt-service.hxx>
 #include <shared/services/tapo/tapo-talk-client.hxx>
 #include <shared/services/tts/onnx-utils.hxx>
 #include <shared/services/tts/tts-service.hxx>
 #include <shared/services/vad/vad-service.hxx>
 #include <shared/services/vision/vision-service.hxx>
+#include <shared/utils/text-norm/text-norm.hxx>
 #include <shared/wrapper/audio/sample-ring.hxx>
 #include <shared/wrapper/cancellation/cancellation-token.hxx>
 #include <string>
@@ -46,27 +50,50 @@ namespace
 volatile sig_atomic_t gSignalFlag = 0;
 std::atomic<bool> gStop{false};
 int gMicIndex = 0;
+VecDb gVecDb;
+LlmService gLlm;
+IntentService gIntent;
+SttService gStt;
+TtsService gTts;
+VisionService gVision;
+MemoryService gMemory{gVecDb, gLlm};
+ConversationService gConv(gMemory, gLlm);
 constexpr size_t kMinSentenceChars = 24;
 constexpr size_t kFirstSentenceMinChars = 0;
 constexpr int kPlaybackLatencyMs = 700;
 
-size_t conversationHistoryCap()
+float temperatureForTurn(bool hasMemories)
 {
-  const int v = ConfigService::getInt("voice_test.history_messages");
-  return static_cast<size_t>(v > 0 ? v : 21);
+  if (!hasMemories)
+    return -1.0F;
+  const double cfg = ConfigService::getDouble("llm.recall_temperature");
+  return cfg >= 0.0 ? static_cast<float>(cfg) : 0.0F;
 }
 
 void captureExplicitMemory(const std::string& userText,
-                           const std::string& langCode, int64_t userId)
+                           const std::string& langCode, int64_t userId,
+                           const std::vector<IntentHit>& intents)
 {
   if (userId < 0)
     return;
-  const int64_t id =
-      MemoryService::captureExplicit({.userId = userId,
-                                      .lang = langCode,
-                                      .text = userText});
-  if (id > 0)
-    std::cout << "[memory] guardado (id=" << id << ")\n";
+  const auto explicitCapture = gMemory.captureExplicit(
+      {.userId = userId, .lang = langCode, .text = userText});
+  if (explicitCapture.outcome == CaptureOutcome::Stored) {
+    std::cout << "[memory] saved (id=" << explicitCapture.factId << ")\n";
+    return;
+  }
+  if (explicitCapture.outcome == CaptureOutcome::Deferred) {
+    std::cout << "[memory] queued for background extraction\n";
+    return;
+  }
+  if (IntentService::fired(intents, ToolIntent::MemorySave)) {
+    gMemory.captureImplicit({
+        .userId = userId,
+        .lang = langCode,
+        .text = userText,
+    });
+    std::cout << "[memory] queued by intent\n";
+  }
 }
 
 bool mentionsCamera(const std::string& text)
@@ -79,9 +106,68 @@ bool mentionsCamera(const std::string& text)
          lower.find("camera") != std::string::npos;
 }
 
+int cameraIdFromText(const std::string& text)
+{
+  std::string lower = text_norm::stripAccents(text);
+  for (auto& c : lower)
+    c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+
+  for (const std::string& marker :
+       std::vector<std::string>{"camara", "camera"}) {
+    size_t pos = lower.find(marker);
+    while (pos != std::string::npos) {
+      size_t after = pos + marker.size();
+      while (after < lower.size() && lower[after] == ' ')
+        ++after;
+      if (after < lower.size() &&
+          std::isdigit(static_cast<unsigned char>(lower[after]))) {
+        const int n = std::atoi(lower.c_str() + static_cast<long>(after));
+        if (n >= 1 && n <= 32)
+          return n;
+      }
+      pos = lower.find(marker, pos + 1);
+    }
+  }
+
+  const std::pair<const char*, int> spelled[] = {
+      {"uno", 1},  {"dos", 2},   {"tres", 3},  {"cuatro", 4}, {"cinco", 5},
+      {"seis", 6}, {"siete", 7}, {"ocho", 8},  {"nueve", 9},  {"diez", 10},
+      {"one", 1},  {"two", 2},   {"three", 3}, {"four", 4},   {"five", 5},
+      {"six", 6},  {"seven", 7}, {"eight", 8}, {"nine", 9},   {"ten", 10},
+  };
+  for (const auto& [word, n] : spelled) {
+    if (lower.find("camara " + std::string(word)) != std::string::npos ||
+        lower.find("camera " + std::string(word)) != std::string::npos)
+      return n;
+  }
+  return 1;
+}
+
+void logIntentUsage(const std::string& label, const std::string& text)
+{
+  static std::mutex usageMutex;
+  std::lock_guard lock(usageMutex);
+  std::ofstream file(ConfigService::getString("intent.usage_log"),
+                     std::ios::app);
+  if (file.is_open())
+    file << label << '\t' << text << '\n';
+}
+
+std::vector<IntentHit> matchIntents(const std::string& text)
+{
+  if (!gIntent.isLoaded())
+    return {};
+  const auto intents = gIntent.match(text);
+  if (IntentService::fired(intents, ToolIntent::Camera))
+    logIntentUsage("camera", text);
+  else if (IntentService::fired(intents, ToolIntent::MemorySave))
+    logIntentUsage("memory_save", text);
+  return intents;
+}
+
 cv::Mat captureCameraFrame(int64_t cameraId)
 {
-  const std::string jpeg = MediaRelay::snapshotBytes(cameraId);
+  const std::string jpeg = MediaRelay::instance().snapshotBytes(cameraId);
   if (jpeg.empty())
     return {};
   const std::vector<uchar> buffer(jpeg.begin(), jpeg.end());
@@ -93,37 +179,37 @@ std::string describeCamera(int64_t cameraId)
   const auto frame = captureCameraFrame(cameraId);
   if (frame.empty())
     return {};
-  return VisionService::describeMat(
-      frame,
-      "Describe en español, en dos frases, lo que ocurre en esta "
-      "imagen de la camara.",
-      64);
+  return gVision
+      .describeMat(frame,
+                   "Describe en español, en dos frases, lo que ocurre en esta "
+                   "imagen de la camara.",
+                   64);
 }
 
 int runCameraCheck()
 {
-  LlmService::init();
-  SttService::init();
-  TtsService::init();
-  VisionService::init();
-  if (!VisionService::isLoaded()) {
-    std::cerr << "VisionService no cargado.\n";
+  gLlm.init();
+  gStt.init();
+  gTts.init();
+  gVision.init();
+  if (!gVision.isLoaded()) {
+    std::cerr << "VisionService not loaded.\n";
     return 1;
   }
 
-  std::cout << "Capturando frame de la camara 1...\n";
+  std::cout << "Capturing frame from camera 1...\n";
   const auto frame = captureCameraFrame(1);
   if (frame.empty()) {
-    std::cerr << "No se pudo capturar el frame.\n";
+    std::cerr << "Could not capture the frame.\n";
     return 1;
   }
   std::cout << "Frame " << frame.cols << "x" << frame.rows << "\n";
   const std::string scene = describeCamera(1);
-  std::cout << "Descripcion: " << scene << "\n";
-  VisionService::shutdown();
-  TtsService::shutdown();
-  SttService::shutdown();
-  LlmService::shutdown();
+  std::cout << "Description: " << scene << "\n";
+  gVision.shutdown();
+  gTts.shutdown();
+  gStt.shutdown();
+  gLlm.shutdown();
   return 0;
 }
 
@@ -145,44 +231,83 @@ std::string exeDir()
   return slash == std::string::npos ? "." : path.substr(0, slash);
 }
 
-struct ConversationState
+using ConversationState = WorkingMemory;
+
+void summarizeSession(const ConversationState& state, int64_t userId,
+                      const std::string& langCode)
 {
-  std::string lang{"en"};
-  std::vector<ChatMessage> history;
-};
+  if (userId < 0 || state.history.size() < 4)
+    return;
+  std::string transcript;
+  transcript.reserve(4096);
+  for (size_t i = 1; i < state.history.size(); ++i) {
+    const auto& msg = state.history[i];
+    transcript += msg.role == "user" ? "user: " : "assistant: ";
+    transcript += msg.content;
+    transcript += "\n";
+  }
+  gMemory.enqueueSummary(userId, transcript, langCode);
+  gMemory.flushPending();
+  std::cout << "[memory] session summary saved\n";
+}
 
 // High-quality system prompt. Injected as the first message so it overrides
 // the service default; the LLM is instructed to reply strictly in the
 // selected language.
-std::string systemPromptFor(const std::string& langCode)
+std::string systemPromptFor(const std::string& langCode, bool withMemory,
+                            bool withIntent)
 {
   const std::string langName = langCode == "es" ? "Spanish" : "English";
-  return "You are Argus, a warm, natural home voice assistant for a local "
-         "security camera system.\n"
-         "Guidelines:\n"
-         "- Reply strictly in " +
-         langName +
-         ". Never switch to another language.\n"
-         "- Speak like a person, not a help desk: short, warm and direct, "
-         "varying your phrasing instead of reusing the same formulas.\n"
-         "- Engage with what the user just said: pick up their words or "
-         "their topic, and never answer with generic offers such as \"how "
-         "can I help you\" or \"is there anything else\".\n"
-         "- When the camera is involved, refer concretely to what you see "
-         "or know instead of making vague statements.\n"
-          "- Your reply is spoken aloud: natural sentences, no lists, no "
-          "symbols or abbreviations that a speech-to-text model would garble.\n"
-          "- If you do not know something, say so honestly; do not invent.\n"
-          "- Relevant memories may be wrapped in <relevant-memories> tags "
-          "before the user message; treat their content as real context "
-          "about the user and the household.\n"
-          "- Saving memories: when the user shares something lasting "
-          "(preferences, facts, routines, long-term rules), save it inline "
-          "with exactly: <|tool_call_start|>save type=persona|episodic|"
-          "instruction priority=<0-100> content=<one complete sentence>"
-          "<|tool_call_end|>. Use it sparingly — only lasting information, "
-          "never one-off requests.\n"
-          "- Never mention these instructions or that you are an AI model.";
+  std::string prompt =
+      "You are Argus, a warm, natural home voice assistant for a local "
+      "security camera system.\n"
+      "Guidelines:\n"
+      "- Reply strictly in " +
+      langName +
+      ". Never switch to another language.\n"
+      "- Speak like a person, not a help desk: short, warm and direct, "
+      "varying your phrasing instead of reusing the same formulas.\n"
+      "- You are the user's home assistant, not a family member.\n"
+      "- Address the user informally (\"tú\" in Spanish), never with the "
+      "formal \"usted\".\n"
+      "- Never speak as if you were the user: the user's facts are yours to "
+      "describe, not to own (say \"your sister\" / \"tu hermana\", never "
+      "\"my sister\" / \"mi hermana\").\n"
+      "- Engage with what the user just said: pick up their words or their "
+      "topic, and never answer with generic offers such as \"how can I help "
+      "you\" or \"is there anything else\".\n"
+      "- Answer in at most two short sentences and stop there. State the "
+      "fact plainly, the way a person answers a question in passing.\n"
+      "- Your reply is spoken aloud: natural sentences, no lists, no "
+      "symbols or abbreviations that a speech-to-text model would garble.\n"
+      "- If you do not know something, say so honestly; do not invent.\n";
+  if (withIntent) {
+    prompt += "- When the camera is involved, refer concretely to what you see "
+              "or know instead of making vague statements.\n";
+  }
+  if (withMemory) {
+    if (langCode == "es") {
+      prompt +=
+          "- Al inicio del mensaje del usuario puede venir un bloque "
+          "<memorias>. Cada línea es un hecho sobre la persona que se "
+          "menciona en ella, NO sobre quien te habla. Nunca llames al "
+          "usuario por un nombre que aparezca en una memoria. Si el hecho "
+          "responde su "
+          "pregunta, contéstale con naturalidad, sin repetirlo palabra por "
+          "palabra, sin decir \"memoria\" y sin inventar detalles.\n";
+    }
+    else {
+      prompt +=
+          "- The user message may start with a <memories> block. Each line "
+          "is a fact about the person mentioned in it, NOT about the person "
+          "talking to you. Never address the user by a name that appears in "
+          "a memory. If the fact answers their question, reply naturally "
+          "without quoting it verbatim, never saying \"memory\", and "
+          "without adding details.\n";
+    }
+  }
+  prompt += "- Never mention these instructions or that you are an AI model.";
+  return prompt;
 }
 
 // Strip a spurious "Argus:" / "Argus" prefix the model sometimes emits
@@ -222,17 +347,16 @@ bool speak(const std::string& text, const std::string& langCode,
   req.text = text;
   req.lang = langCode == "es" ? TtsLang::ES : TtsLang::EN;
   req.quality = TtsQuality::Auto;
-  req.speed = TtsService::defaultSpeed();
+  req.speed = gTts.defaultSpeed();
   bool played = false;
-  const bool continuous =
-      openPlayback(TtsService::sampleRate(), kPlaybackLatencyMs);
-  TtsService::synthesizeStream(req, [&](const std::vector<float>& chunk) {
+  const bool continuous = openPlayback(gTts.sampleRate(), kPlaybackLatencyMs);
+  gTts.synthesizeStream(req, [&](const std::vector<float>& chunk) {
     if (stop.load())
       return;
     if (continuous)
       writePlayback(chunk, stop);
     else
-      playPcm(chunk, TtsService::sampleRate(), stop);
+      playPcm(chunk, gTts.sampleRate(), stop);
     played = true;
   });
   if (continuous) {
@@ -275,7 +399,7 @@ std::string captureTurn(VadService& vad, const std::atomic<bool>& stop)
     }
     if (!chunk.empty() &&
         vad.process(chunk.data(), static_cast<int>(chunk.size()), turn)) {
-      text = SttService::transcribe(turn.samples, 16000);
+      text = gStt.transcribe(turn.samples, 16000);
       done = true;
     }
     if (!done)
@@ -308,8 +432,8 @@ bool speakToCamera(TapoTalkClient& client, const std::string& text,
   req.text = text;
   req.lang = langCode == "es" ? TtsLang::ES : TtsLang::EN;
   req.quality = TtsQuality::Auto;
-  req.speed = TtsService::defaultSpeed();
-  const auto pcm = TtsService::synthesize(req);
+  req.speed = gTts.defaultSpeed();
+  const auto pcm = gTts.synthesize(req);
 
   std::vector<int16_t> s16;
   s16.reserve(pcm.size());
@@ -320,68 +444,66 @@ bool speakToCamera(TapoTalkClient& client, const std::string& text,
 
   CancellationToken token;
   const auto sent = client.sendChunk({.samples = s16,
-                                      .sampleRate = TtsService::sampleRate(),
+                                      .sampleRate = gTts.sampleRate(),
                                       .reopenOnFailure = true},
                                      token);
   if (!sent.ok)
-    std::cerr << "[camera-talk] fallo al enviar audio\n";
+    std::cerr << "[camera-talk] failed to send audio\n";
   return sent.ok;
 }
 
 int runCameraSttCheck(const std::string& rtspUrl)
 {
-  SttService::init();
-  if (!SttService::isLoaded() || !SttService::setLanguage("es")) {
-    std::cerr << "STT no cargado\n";
+  gStt.init();
+  if (!gStt.isLoaded() || !gStt.setLanguage("es")) {
+    std::cerr << "STT not loaded\n";
     return 1;
   }
-  std::cout
-      << "Grabando 8s del mic de la camara... (habla cerca de la camara)\n"
-      << std::flush;
+  std::cout << "Recording 8s from the camera mic... (speak near the camera)\n"
+            << std::flush;
   CameraMic mic;
   std::vector<float> all;
   if (!mic.open(rtspUrl, [&](const std::vector<float>& frames) {
         all.insert(all.end(), frames.begin(), frames.end());
       })) {
-    std::cerr << "[camera-mic] no se pudo abrir el audio de la camara\n";
+    std::cerr << "[camera-mic] could not open the camera audio\n";
     return 1;
   }
   while (all.size() < 128000 && mic.readBlock()) {
   }
   mic.close();
-  std::cout << "capturados " << all.size() << " samples\n";
+  std::cout << "captured " << all.size() << " samples\n";
   if (all.empty()) {
-    std::cerr << "sin audio de la camara\n";
+    std::cerr << "no camera audio\n";
     return 1;
   }
-  const std::string text = SttService::transcribe(all, 16000);
-  std::cout << "Transcripcion: [" << text << "]\n";
-  SttService::shutdown();
+  const std::string text = gStt.transcribe(all, 16000);
+  std::cout << "Transcription: [" << text << "]\n";
+  gStt.shutdown();
   return 0;
 }
 
 int runCameraVadCheck(const std::string& rtspUrl)
 {
-  SttService::init();
-  if (!SttService::isLoaded() || !SttService::setLanguage("es")) {
-    std::cerr << "STT no cargado\n";
+  gStt.init();
+  if (!gStt.isLoaded() || !gStt.setLanguage("es")) {
+    std::cerr << "STT not loaded\n";
     return 1;
   }
-  std::cout
-      << "Grabando 8s del mic de la camara... (habla cerca de la camara)\n"
-      << std::flush;
+  std::cout << "Recording 8s from the camera mic... (speak near the camera)\n"
+            << std::flush;
   CameraMic mic;
   std::vector<float> all;
   if (!mic.open(rtspUrl, [&](const std::vector<float>& frames) {
         all.insert(all.end(), frames.begin(), frames.end());
       })) {
-    std::cerr << "[camera-mic] no se pudo abrir el audio de la camara\n";
+    std::cerr << "[camera-mic] could not open the camera audio\n";
     return 1;
   }
   while (all.size() < 128000 && mic.readBlock()) {
   }
   mic.close();
-  std::cout << "capturados " << all.size() << " samples\n";
+  std::cout << "captured " << all.size() << " samples\n";
 
   double sum = 0.0;
   float peak = 0.0F;
@@ -408,15 +530,15 @@ int runCameraVadCheck(const std::string& rtspUrl)
     if (p > 0.5F)
       over05++;
     if (done) {
-      std::cout << "VAD: turno de " << turn.samples.size() << " samples\n";
-      const std::string text = SttService::transcribe(turn.samples, 16000);
-      std::cout << "Transcripcion del turno: [" << text << "]\n";
+      std::cout << "VAD: turn of " << turn.samples.size() << " samples\n";
+      const std::string text = gStt.transcribe(turn.samples, 16000);
+      std::cout << "Turn transcription: [" << text << "]\n";
       vad.reset();
     }
   }
-  std::cout << "ventanas=" << frames << " prob>0.3: " << over03
+  std::cout << "windows=" << frames << " prob>0.3: " << over03
             << " prob>0.5: " << over05 << " probMax=" << maxProb << "\n";
-  SttService::shutdown();
+  gStt.shutdown();
   return 0;
 }
 
@@ -463,7 +585,7 @@ bool writeWav16k(const std::string& path, const std::vector<float>& samples)
 
 int runAudioDump(const std::string& rtspUrl, const std::string& path)
 {
-  std::cout << "Grabando 8s del mic de la camara...\n" << std::flush;
+  std::cout << "Recording 8s from the camera mic...\n" << std::flush;
   CameraMic mic;
   std::vector<float> all;
   mic.open(rtspUrl, [&](const std::vector<float>& frames) {
@@ -473,17 +595,117 @@ int runAudioDump(const std::string& rtspUrl, const std::string& path)
   }
   mic.close();
   if (!writeWav16k(path, all)) {
-    std::cerr << "no se pudo escribir " << path << "\n";
+    std::cerr << "could not write " << path << "\n";
     return 1;
   }
-  std::cout << "guardados " << all.size() << " samples en " << path << "\n";
+  std::cout << "saved " << all.size() << " samples to " << path << "\n";
+  return 0;
+}
+
+int runTextChat(int64_t memoryUserId, const std::string& langCode,
+                bool enableIntent)
+{
+  gLlm.init();
+  if (memoryUserId >= 0)
+    gMemory.init();
+  if (enableIntent)
+    gIntent.init();
+  if (!gLlm.isLoaded()) {
+    std::cerr << "LLM init failed.\n";
+    return 1;
+  }
+
+  const bool withMemory = memoryUserId >= 0;
+  ConversationState state;
+  state.lang = langCode;
+  state.history.push_back(
+      {"system", systemPromptFor(langCode, withMemory, enableIntent)});
+  if (memoryUserId >= 0) {
+    const std::string profile = gMemory
+                                    .recall({.userId = memoryUserId,
+                                             .text = "",
+                                             .lang = langCode,
+                                             .personIds = {}})
+                                    .profileText;
+    if (!profile.empty())
+      state.history.front().content += "\n\n" + profile;
+  }
+
+  std::cout << "[Argus] Text chat ready (" << langCode
+            << "). Type your messages; exit to quit.\n";
+  std::string line;
+  while (std::getline(std::cin, line)) {
+    if (gStop.load() || line == "exit" || line == "quit" || line == "salir")
+      break;
+
+    const std::vector<IntentHit> intents =
+        enableIntent ? matchIntents(line) : std::vector<IntentHit>{};
+    std::string reply = line;
+    if (enableIntent && (IntentService::fired(intents, ToolIntent::Camera) ||
+                         mentionsCamera(line))) {
+      const std::string scene = describeCamera(cameraIdFromText(line));
+      if (!scene.empty()) {
+        std::cout << "[camera] " << scene << "\n";
+        reply = "La camara muestra: " + scene + ". " + line;
+      }
+    }
+
+    captureExplicitMemory(line, langCode, memoryUserId, intents);
+
+    std::string userMsg = reply;
+    bool hasMemories = false;
+    std::vector<int64_t> pendingHits;
+    if (memoryUserId >= 0) {
+      const std::string block = gConv.recallBlock(line, memoryUserId, langCode);
+      if (!block.empty()) {
+        userMsg = userMsg + "\n\n" + block;
+        hasMemories = true;
+      }
+    }
+
+    state.history.push_back({"user", userMsg});
+    gConv.trimHistory(state, memoryUserId);
+
+    ToolParser toolParser(ConfigService::getString("memory.save_trigger"),
+                          ConfigService::getString("memory.tool_end_trigger"));
+    std::vector<ToolCall> toolCalls;
+    ChatRequest req;
+    req.messages = state.history;
+    req.resetContext = false;
+    req.temperature = temperatureForTurn(hasMemories);
+
+    std::string full;
+    std::cout << "[Argus] ";
+    gLlm.chatStream(req, [&](const std::string& token, bool) {
+      if (gStop.load())
+        return;
+      const std::string cleaned = toolParser.feed(token, toolCalls);
+      std::cout << cleaned << std::flush;
+      full += cleaned;
+    });
+    toolParser.flush(toolCalls);
+    for (const auto& call : toolCalls) {
+      const auto stored = gMemory.captureToolCall(memoryUserId, langCode, call);
+      if (stored.outcome == CaptureOutcome::Stored)
+        std::cout << "\n[memory] saved (id=" << stored.factId << ")\n";
+      else
+        std::cout << "\n[memory] queued for background extraction\n";
+    }
+    std::cout << "\n";
+    gMemory.bumpHitCount(pendingHits);
+    state.history.push_back({"assistant", full});
+  }
+
+  summarizeSession(state, memoryUserId, langCode);
+  gMemory.shutdown();
+  gLlm.shutdown();
   return 0;
 }
 
 void runCameraConversation(const TapoTalkConfig& talkCfg,
                            const std::string& camRtspSub,
-                           const std::string& langCode,
-                           int64_t memoryUserId)
+                           const std::string& langCode, int64_t memoryUserId,
+                           bool enableIntent)
 {
   std::atomic<bool> paused{false};
   std::atomic<int> discardRemaining{0};
@@ -509,25 +731,24 @@ void runCameraConversation(const TapoTalkConfig& talkCfg,
             std::lock_guard<std::mutex> lock(bufMutex);
             camBuf.push(frames.data(), frames.size());
           })) {
-        std::cerr << "[mic] no se pudo abrir el audio de la camara, "
-                     "reintentando en 1s\n";
+        std::cerr << "[mic] could not open the camera audio, "
+                     "retrying in 1s\n";
         std::this_thread::sleep_for(std::chrono::seconds(1));
         continue;
       }
-      std::cout << "[mic] escuchando por RTSP (stream2)\n";
+      std::cout << "[mic] listening over RTSP (stream2)\n";
       const auto started = std::chrono::steady_clock::now();
       while (!gStop.load() && mic.readBlock()) {
       }
       mic.close();
       if (gStop.load())
         break;
-      const double secs =
-          std::chrono::duration_cast<std::chrono::milliseconds>(
-              std::chrono::steady_clock::now() - started)
-              .count() /
-          1000.0;
-      std::cout << "[mic] se corto tras " << secs << "s (" << mic.lastError()
-                << "); reconectando...\n";
+      const double secs = std::chrono::duration_cast<std::chrono::milliseconds>(
+                              std::chrono::steady_clock::now() - started)
+                              .count() /
+                          1000.0;
+      std::cout << "[mic] dropped after " << secs << "s (" << mic.lastError()
+                << "); reconnecting...\n";
       std::this_thread::sleep_for(std::chrono::milliseconds(500));
     }
   });
@@ -542,8 +763,8 @@ void runCameraConversation(const TapoTalkConfig& talkCfg,
         const int c = std::getchar();
         if (c == 'p' || c == 'P') {
           paused = !paused.load();
-          std::cout << (paused.load() ? "\n[pausado - no escucho]\n"
-                                      : "\n[escuchando...]\n")
+          std::cout << (paused.load() ? "\n[paused - not listening]\n"
+                                      : "\n[listening...]\n")
                     << std::flush;
         }
         else if (c == 'q' || c == 'Q') {
@@ -553,12 +774,18 @@ void runCameraConversation(const TapoTalkConfig& talkCfg,
     }
   });
 
+  const bool withMemory = memoryUserId >= 0;
   ConversationState state;
   state.lang = langCode;
-  state.history.push_back({"system", systemPromptFor(langCode)});
+  state.history.push_back(
+      {"system", systemPromptFor(langCode, withMemory, enableIntent)});
   if (memoryUserId >= 0) {
-    const std::string profile = MemoryService::recall(
-        {.userId = memoryUserId, .lang = langCode}).profileText;
+    const std::string profile = gMemory
+                                    .recall({.userId = memoryUserId,
+                                             .text = "",
+                                             .lang = langCode,
+                                             .personIds = {}})
+                                    .profileText;
     if (!profile.empty())
       state.history.front().content += "\n\n" + profile;
   }
@@ -573,8 +800,8 @@ void runCameraConversation(const TapoTalkConfig& talkCfg,
   speakToCamera(talkClient, greeting, langCode, gStop);
   discardRemaining.store(static_cast<int>(talkDrainMarginMs * 16000 / 1000));
   paused.store(false);
-  std::cout << "\n[escuchando continuamente por la camara...] "
-               "(p=pausa, q=salir)\n"
+  std::cout << "\n[listening continuously through the camera...] "
+               "(p=pause, q=quit)\n"
             << std::flush;
 
   VadService vad;
@@ -606,7 +833,7 @@ void runCameraConversation(const TapoTalkConfig& talkCfg,
           1000.0;
       if (silent > 1.0 && now - lastStatus >= std::chrono::seconds(5)) {
         lastStatus = now;
-        std::cout << "[mic] SIN AUDIO durante " << silent << "s\n";
+        std::cout << "[mic] NO AUDIO for " << silent << "s\n";
       }
       std::this_thread::sleep_for(std::chrono::milliseconds(10));
       continue;
@@ -624,18 +851,18 @@ void runCameraConversation(const TapoTalkConfig& talkCfg,
       if (now - lastStatus >= std::chrono::seconds(5)) {
         lastStatus = now;
         const double db = 20.0 * std::log10(std::max(rms, 1e-6F));
-        std::cout << "[mic] escuchando... nivel " << static_cast<int>(db)
+        std::cout << "[mic] listening... level " << static_cast<int>(db)
                   << "dB\n";
       }
       if (vad.inSpeech() && now - lastVoice >= std::chrono::seconds(1)) {
         lastVoice = now;
-        std::cout << "[mic] VOZ DETECTADA\n";
+        std::cout << "[mic] VOICE DETECTED\n";
       }
       continue;
     }
 
-    const std::string userText = SttService::transcribe(turn.samples, 16000);
-    std::cout << "\n[You (camara)] " << userText << "\n";
+    const std::string userText = gStt.transcribe(turn.samples, 16000);
+    std::cout << "\n[You (camera)] " << userText << "\n";
     vad.reset();
 
     bool onlySpaces = true;
@@ -646,21 +873,24 @@ void runCameraConversation(const TapoTalkConfig& talkCfg,
       }
     }
     if (onlySpaces) {
-      std::cout << "(sin voz inteligible, ignorado)\n";
+      std::cout << "(no intelligible speech, ignored)\n";
       continue;
     }
 
     if (userText.find("exit") != std::string::npos ||
         userText.find("quit") != std::string::npos ||
         userText.find("salir") != std::string::npos) {
-      std::cout << "[Argus] Hasta luego.\n";
+      std::cout << "[Argus] Goodbye.\n";
       break;
     }
 
     std::string reply = userText;
-    if (mentionsCamera(userText)) {
-      std::cout << "[camera] capturando frame...\n";
-      const std::string scene = describeCamera(1);
+    const std::vector<IntentHit> intents =
+        enableIntent ? matchIntents(userText) : std::vector<IntentHit>{};
+    if (enableIntent && (IntentService::fired(intents, ToolIntent::Camera) ||
+                         mentionsCamera(userText))) {
+      std::cout << "[camera] capturing frame...\n";
+      const std::string scene = describeCamera(cameraIdFromText(userText));
       resumeListening();
       if (!scene.empty()) {
         std::cout << "[camera] " << scene << "\n";
@@ -668,27 +898,30 @@ void runCameraConversation(const TapoTalkConfig& talkCfg,
       }
     }
 
-    captureExplicitMemory(userText, langCode, memoryUserId);
+    captureExplicitMemory(userText, langCode, memoryUserId, intents);
 
     std::string userMsg = reply;
+    bool hasMemories = false;
     std::vector<int64_t> pendingHits;
     if (memoryUserId >= 0) {
-      const auto ctx = MemoryService::recall(
-          {.userId = memoryUserId, .text = userText, .lang = langCode});
-      pendingHits = ctx.usedIds;
-      if (!ctx.prependText.empty())
-        userMsg = ctx.prependText + "\n\n" + userMsg;
+      const std::string block =
+          gConv.recallBlock(userText, memoryUserId, langCode);
+      if (!block.empty()) {
+        userMsg = userMsg + "\n\n" + block;
+        hasMemories = true;
+      }
     }
 
     state.history.push_back({"user", userMsg});
-    if (state.history.size() > conversationHistoryCap())
-      state.history.erase(state.history.begin() + 1);
+    gConv.trimHistory(state, memoryUserId);
 
     ChatRequest req;
     req.messages = state.history;
     req.resetContext = false;
+    req.temperature = temperatureForTurn(hasMemories);
 
-    const std::string toolStart = ConfigService::getString("memory.save_trigger");
+    const std::string toolStart =
+        ConfigService::getString("memory.save_trigger");
     const std::string toolEnd =
         ConfigService::getString("memory.tool_end_trigger");
     ToolParser toolParser(toolStart, toolEnd);
@@ -696,7 +929,7 @@ void runCameraConversation(const TapoTalkConfig& talkCfg,
     std::string full;
     std::vector<ToolCall> toolCalls;
     std::cout << "[Argus] ";
-    LlmService::chatStream(req, [&](const std::string& token, bool) {
+    gLlm.chatStream(req, [&](const std::string& token, bool) {
       if (gStop.load())
         return;
       const std::string cleaned = toolParser.feed(token, toolCalls);
@@ -705,13 +938,14 @@ void runCameraConversation(const TapoTalkConfig& talkCfg,
     });
     toolParser.flush(toolCalls);
     for (const auto& call : toolCalls) {
-      const int64_t id = MemoryService::captureToolCall(
-          memoryUserId, langCode, call);
-      if (id > 0)
-        std::cout << "\n[memory] guardado (id=" << id << ")\n";
+      const auto stored = gMemory.captureToolCall(memoryUserId, langCode, call);
+      if (stored.outcome == CaptureOutcome::Stored)
+        std::cout << "\n[memory] saved (id=" << stored.factId << ")\n";
+      else
+        std::cout << "\n[memory] queued for background extraction\n";
     }
     std::cout << "\n";
-    MemoryService::bumpHitCount(pendingHits);
+    gMemory.bumpHitCount(pendingHits);
     state.history.push_back({"assistant", full});
 
     resumeListening();
@@ -723,14 +957,17 @@ void runCameraConversation(const TapoTalkConfig& talkCfg,
   gStop.store(true);
   micThread.join();
   keyThread.join();
+
+  summarizeSession(state, memoryUserId, langCode);
+  gMemory.shutdown();
 }
 
 } // namespace
 
 void logGo2rtcStreams()
 {
-  const auto [host, port] =
-      upstream_http::splitHostPort(Go2rtcManager::apiBase().substr(7));
+  const auto [host, port] = upstream_http::splitHostPort(
+      Go2rtcManager::instance().apiBase().substr(7));
   for (int attempt = 0; attempt < 3; ++attempt) {
     upstream_http::Upstream up =
         upstream_http::open(host, port, "/api/streams", 5);
@@ -751,17 +988,17 @@ void logGo2rtcStreams()
     }
     std::this_thread::sleep_for(std::chrono::milliseconds(500));
   }
-  std::cout << "[go2rtc-streams] no disponible tras reintentos\n";
+  std::cout << "[go2rtc-streams] unavailable after retries\n";
 }
 
 void logGo2rtcProducerError()
 {
-  const auto [host, port] =
-      upstream_http::splitHostPort(Go2rtcManager::apiBase().substr(7));
+  const auto [host, port] = upstream_http::splitHostPort(
+      Go2rtcManager::instance().apiBase().substr(7));
   const std::string path = "/api/streams?src=cam1&mp4=flac";
   upstream_http::Upstream up = upstream_http::open(host, port, path, 8);
   if (!up.ok) {
-    std::cout << "[go2rtc-probe] no disponible\n";
+    std::cout << "[go2rtc-probe] unavailable\n";
     return;
   }
   std::string body = std::move(up.leftover);
@@ -787,10 +1024,10 @@ int runMicCheck(const std::string& rtspSub, int seconds)
   if (!mic.open(rtspSub, [&](const std::vector<float>& frames) {
         all.insert(all.end(), frames.begin(), frames.end());
       })) {
-    std::cerr << "[mic-check] no se pudo abrir el audio de la camara\n";
+    std::cerr << "[mic-check] could not open the camera audio\n";
     return 1;
   }
-  std::cout << "[mic-check] abierto; capturando " << seconds << "s\n";
+  std::cout << "[mic-check] opened; capturing " << seconds << "s\n";
   while (all.size() < static_cast<size_t>(seconds) * 16000 && mic.readBlock()) {
   }
   mic.close();
@@ -802,14 +1039,14 @@ int runMicCheck(const std::string& rtspSub, int seconds)
   }
   const double rms =
       all.empty() ? 0.0 : std::sqrt(sum / static_cast<double>(all.size()));
-  std::cout << "[mic-check] muestras=" << all.size() << " ("
+  std::cout << "[mic-check] samples=" << all.size() << " ("
             << all.size() / 16000.0 << "s) rms=" << rms << " peak=" << peak
             << "\n";
   return 0;
 }
 
 int main(int argc, char** argv)
-{  // Run from the binary's own directory so config.toml and models/ resolve
+{ // Run from the binary's own directory so config.toml and models/ resolve
   // no matter where the command is launched from.
   if (chdir(exeDir().c_str()) != 0)
     std::cerr << "Warning: could not chdir to " << exeDir() << "\n";
@@ -828,16 +1065,20 @@ int main(int argc, char** argv)
   const std::string cameraName =
       ConfigService::getString("voice_test.camera_name");
 
-  Go2rtcManager::init();
+  Go2rtcManager::instance().init();
   if (!camRtspMain.empty()) {
-    std::cout << "[go2rtc] fuente " << cameraName
-              << " = rtsp principal (solo vision, conexion lazy)\n";
-    Go2rtcManager::addSource({.name = cameraName, .url = camRtspMain});
+    std::cout << "[go2rtc] source " << cameraName
+              << " = main rtsp (vision only, lazy connection)\n";
+    Go2rtcManager::instance().addSource(
+        {.name = cameraName, .url = camRtspMain});
   }
   logGo2rtcStreams();
 
   bool useCamera = false;
+  bool textChat = false;
   int64_t memoryUserId = -1;
+  bool enableIntent = false;
+  std::string textChatLang = "es";
   std::string cloudPass;
   for (int i = 1; i < argc; ++i) {
     if (std::string(argv[i]) == "--cam-check") {
@@ -845,12 +1086,12 @@ int main(int argc, char** argv)
         std::cerr << "no voice_test.camera_rtsp_main in config.toml\n";
         return 1;
       }
-      Go2rtcManager::shutdown();
+      Go2rtcManager::instance().shutdown();
       return runCameraCheck();
     }
     if (std::string(argv[i]) == "--mic-check" && i + 1 < argc) {
       const int result = runMicCheck(camRtspSub, std::atoi(argv[++i]));
-      Go2rtcManager::shutdown();
+      Go2rtcManager::instance().shutdown();
       return result;
     }
     if (std::string(argv[i]) == "--camera-stt-check") {
@@ -877,12 +1118,26 @@ int main(int argc, char** argv)
     if (std::string(argv[i]) == "--camera") {
       useCamera = true;
     }
+    else if (std::string(argv[i]) == "--text-chat") {
+      textChat = true;
+    }
+    else if (std::string(argv[i]) == "--lang" && i + 1 < argc) {
+      textChatLang = argv[++i];
+    }
     else if (std::string(argv[i]) == "--memory-user" && i + 1 < argc) {
       memoryUserId = std::strtoll(argv[++i], nullptr, 10);
+    }
+    else if (std::string(argv[i]) == "--intent") {
+      enableIntent = true;
     }
     else if (std::string(argv[i]) == "--cloud-pass" && i + 1 < argc) {
       cloudPass = argv[++i];
     }
+  }
+
+  if (textChat) {
+    Go2rtcManager::instance().shutdown();
+    return runTextChat(memoryUserId, textChatLang, enableIntent);
   }
 
   TapoTalkConfig talkCfg;
@@ -930,43 +1185,51 @@ int main(int argc, char** argv)
   }
 
   std::cout << "\nInitializing AI services...\n";
-  LlmService::init();
-  SttService::init();
-  if (!SttService::setLanguage(langCode)) {
+  gLlm.init();
+  gStt.init();
+  if (!gStt.setLanguage(langCode)) {
     std::cerr << "Unsupported language code.\n";
     return 1;
   }
-  TtsService::init();
-  VisionService::init();
-  if (!LlmService::isLoaded() || !SttService::isLoaded() ||
-      !TtsService::isLoaded()) {
+  gTts.init();
+  gVision.init();
+  if (!gLlm.isLoaded() || !gStt.isLoaded() || !gTts.isLoaded()) {
     std::cerr << "Failed to init services.\n";
     return 1;
   }
   std::cout << "All services loaded.\n";
 
   if (memoryUserId >= 0)
-    MemoryService::init();
+    gMemory.init();
+  if (enableIntent)
+    gIntent.init();
 
   const std::string greeting = langCode == "es"
                                    ? "Hola, soy Argus. ¿En qué puedo ayudarte?"
                                    : "Hello, I'm Argus. How can I help you?";
   std::cout << "\n[Argus] " << greeting << "\n";
   if (useCamera) {
-    runCameraConversation(talkCfg, camRtspSub, langCode, memoryUserId);
+    runCameraConversation(talkCfg, camRtspSub, langCode, memoryUserId,
+                          enableIntent);
   }
   else {
     speak(greeting, langCode, gStop);
 
     TapoTalkClient talkClient(talkCfg);
+    const bool withMemory = memoryUserId >= 0;
     ConversationState state;
     state.lang = langCode;
     // System prompt is the first message so the LLM replies in the selected
     // language and keeps answers short.
-    state.history.push_back({"system", systemPromptFor(langCode)});
+    state.history.push_back(
+        {"system", systemPromptFor(langCode, withMemory, enableIntent)});
     if (memoryUserId >= 0) {
-      const std::string profile = MemoryService::recall(
-          {.userId = memoryUserId, .lang = langCode}).profileText;
+      const std::string profile = gMemory
+                                      .recall({.userId = memoryUserId,
+                                               .text = "",
+                                               .lang = langCode,
+                                               .personIds = {}})
+                                      .profileText;
       if (!profile.empty())
         state.history.front().content += "\n\n" + profile;
     }
@@ -990,10 +1253,13 @@ int main(int argc, char** argv)
       }
 
       std::string reply = userText;
-      if (mentionsCamera(userText)) {
-        std::cout << "[camera] capturando frame de la camara...\n";
+      const std::vector<IntentHit> intents =
+          enableIntent ? matchIntents(userText) : std::vector<IntentHit>{};
+      if (enableIntent && (IntentService::fired(intents, ToolIntent::Camera) ||
+                           mentionsCamera(userText))) {
+        std::cout << "[camera] capturing frame from the camera...\n";
         const auto t0 = std::chrono::steady_clock::now();
-        const std::string scene = describeCamera(1);
+        const std::string scene = describeCamera(cameraIdFromText(userText));
         const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
                             std::chrono::steady_clock::now() - t0)
                             .count();
@@ -1002,27 +1268,27 @@ int main(int argc, char** argv)
           reply = "La camara muestra: " + scene + ". " + userText;
         }
         else {
-          std::cout << "[camera] no disponible (" << ms
-                    << " ms), continúo sin contexto de camara.\n";
+          std::cout << "[camera] unavailable (" << ms
+                    << " ms), continuing without camera context.\n";
         }
       }
 
-      captureExplicitMemory(userText, langCode, memoryUserId);
+      captureExplicitMemory(userText, langCode, memoryUserId, intents);
 
       std::string userMsg = reply;
+      bool hasMemories = false;
       std::vector<int64_t> pendingHits;
       if (memoryUserId >= 0) {
-        const auto ctx = MemoryService::recall(
-            {.userId = memoryUserId, .text = userText, .lang = langCode});
-        pendingHits = ctx.usedIds;
-        if (!ctx.prependText.empty())
-          userMsg = ctx.prependText + "\n\n" + userMsg;
+        const std::string block =
+            gConv.recallBlock(userText, memoryUserId, langCode);
+        if (!block.empty()) {
+          userMsg = userMsg + "\n\n" + block;
+          hasMemories = true;
+        }
       }
 
       state.history.push_back({"user", userMsg});
-      if (state.history.size() > conversationHistoryCap()) {
-        state.history.erase(state.history.begin() + 1);
-      }
+      gConv.trimHistory(state, memoryUserId);
 
       std::atomic<bool> stopSpeech{false};
       std::atomic<bool> speechDetected{false};
@@ -1064,9 +1330,11 @@ int main(int argc, char** argv)
       ChatRequest req;
       req.messages = state.history;
       req.resetContext = false;
+      req.temperature = temperatureForTurn(hasMemories);
 
       ToolParser toolParser(ConfigService::getString("memory.save_trigger"),
-                            ConfigService::getString("memory.tool_end_trigger"));
+                            ConfigService::getString(
+                                "memory.tool_end_trigger"));
       std::vector<ToolCall> toolCalls;
 
       auto t0 = std::chrono::steady_clock::now();
@@ -1092,7 +1360,7 @@ int main(int argc, char** argv)
 
       std::thread speaker([&] {
         const bool continuous =
-            openPlayback(TtsService::sampleRate(), kPlaybackLatencyMs);
+            openPlayback(gTts.sampleRate(), kPlaybackLatencyMs);
         for (;;) {
           std::string sentence;
           {
@@ -1116,10 +1384,9 @@ int main(int argc, char** argv)
           treq.text = sentence;
           treq.lang = state.lang == "es" ? TtsLang::ES : TtsLang::EN;
           treq.quality = TtsQuality::Auto;
-          treq.speed = TtsService::defaultSpeed();
+          treq.speed = gTts.defaultSpeed();
 
-          TtsService::synthesizeStream(treq, [&](const std::vector<float>&
-                                                     pcm) {
+          gTts.synthesizeStream(treq, [&](const std::vector<float>& pcm) {
             if (speechDetected.load() || gStop.load())
               return;
             if (firstAudioMs.load() < 0) {
@@ -1132,7 +1399,7 @@ int main(int argc, char** argv)
             if (continuous)
               writePlayback(pcm, speechDetected);
             else
-              playPcm(pcm, TtsService::sampleRate(), speechDetected);
+              playPcm(pcm, gTts.sampleRate(), speechDetected);
           });
         }
 
@@ -1145,7 +1412,7 @@ int main(int argc, char** argv)
         }
       });
 
-      LlmService::chatStream(req, [&](const std::string& token, bool) {
+      gLlm.chatStream(req, [&](const std::string& token, bool) {
         if (gStop.load() || speechDetected.load())
           return;
         if (firstToken) {
@@ -1206,12 +1473,14 @@ int main(int argc, char** argv)
 
       toolParser.flush(toolCalls);
       for (const auto& call : toolCalls) {
-        const int64_t id = MemoryService::captureToolCall(
-            memoryUserId, langCode, call);
-        if (id > 0)
-          std::cout << "\n[memory] guardado (id=" << id << ")\n";
+        const auto stored =
+            gMemory.captureToolCall(memoryUserId, langCode, call);
+        if (stored.outcome == CaptureOutcome::Stored)
+          std::cout << "\n[memory] saved (id=" << stored.factId << ")\n";
+        else
+          std::cout << "\n[memory] queued for background extraction\n";
       }
-      MemoryService::bumpHitCount(pendingHits);
+      gMemory.bumpHitCount(pendingHits);
 
       full = stripPrefix(full);
       if (full.empty()) {
@@ -1228,12 +1497,15 @@ int main(int argc, char** argv)
 
       state.history.push_back({"assistant", full});
     }
+
+    summarizeSession(state, memoryUserId, langCode);
   }
 
-  LlmService::shutdown();
-  SttService::shutdown();
-  TtsService::shutdown();
-  VisionService::shutdown();
-  Go2rtcManager::shutdown();
+  gMemory.shutdown();
+  gLlm.shutdown();
+  gStt.shutdown();
+  gTts.shutdown();
+  gVision.shutdown();
+  Go2rtcManager::instance().shutdown();
   return 0;
 }

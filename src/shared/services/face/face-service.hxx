@@ -5,6 +5,7 @@
 #include <memory>
 #include <optional>
 #include <semaphore>
+#include <shared/services/face/face-db.hxx>
 #include <string>
 #include <vector>
 
@@ -19,12 +20,17 @@ class PipelineCache;
 class FaceService
 {
 public:
-  FaceService() = delete;
-  ~FaceService() = delete;
+  FaceService();
+  ~FaceService();
 
-  static void init();
-  static void shutdown();
-  static bool isLoaded();
+  FaceService(const FaceService&) = delete;
+  FaceService& operator=(const FaceService&) = delete;
+
+  static FaceService& instance();
+
+  void init();
+  void shutdown();
+  bool isLoaded() const;
 
   struct FaceResult
   {
@@ -32,17 +38,18 @@ public:
     float confidence;
   };
 
-  static std::optional<FaceResult> extract(const uint8_t* rgbData, int width,
-                                           int height);
+  std::optional<FaceResult> extract(const uint8_t* rgbData, int width,
+                                    int height);
 
-  static std::optional<int64_t> identify(std::string imageBytes);
+  std::optional<int64_t> identify(std::string imageBytes);
 
   // Coroutine variant: runs inference off the event loop.
-  static drogon::Task<std::optional<int64_t>>
-  identifyAsync(std::string imageBytes);
+  drogon::Task<std::optional<int64_t>> identifyAsync(std::string imageBytes);
+
+  FaceDB& faceDb() { return faceDb_; }
 
 private:
-  static std::counting_semaphore<8> concurrency_;
+  std::counting_semaphore<8> concurrency_{0};
 
   struct Impl
   {
@@ -54,5 +61,6 @@ private:
     bool init(const std::string& modelDir);
   };
 
-  static std::unique_ptr<Impl> impl_;
+  std::unique_ptr<Impl> impl_;
+  FaceDB faceDb_;
 };

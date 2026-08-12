@@ -3,23 +3,27 @@
 #include <cstdint>
 #include <mutex>
 #include <optional>
+#include <shared/repositories/face-embedding/face-embedding-repository.hxx>
+#include <shared/services/sqlite/vec-db.hxx>
 #include <string>
 #include <utility>
 
 class FaceDB
 {
 public:
-  FaceDB() = delete;
-  ~FaceDB() = delete;
+  explicit FaceDB(VecDb& vecDb) : vecDb_(vecDb) {}
 
-  static void init();
-  static void shutdown();
-  static void insert(const float* embedding, int64_t personId,
-                     int64_t faceEmbeddingId);
-  static std::optional<std::pair<int64_t, float>> search(const float* query);
-  static void remove(int64_t personId);
-  static size_t count();
+  void init();
+  void shutdown();
+  void insert(const float* embedding, int64_t personId,
+              int64_t faceEmbeddingId);
+  std::optional<std::pair<int64_t, float>> search(const float* query);
+  void remove(int64_t personId);
+  size_t count();
 
 private:
-  static std::mutex& vecMutex();
+  std::mutex& vecMutex();
+
+  VecDb& vecDb_;
+  FaceEmbeddingRepository repository_;
 };

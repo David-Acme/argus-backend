@@ -46,9 +46,6 @@ struct Local
       weakRefs;
 };
 
-// El estado del registry es thread_local (compartido por todas las instancias
-// de RoomManager en un mismo hilo IO). Vive a nivel de archivo para que la
-// clase siga siendo una instancia normal (testeable, inyectable).
 thread_local Local g_local;
 std::atomic<bool> g_initialized{false};
 std::vector<std::pair<trantor::EventLoop*, trantor::TimerId>> g_pruneTimers;
@@ -183,8 +180,7 @@ void RoomManager::emitLocalRoomsView(const std::vector<RoomId>& rooms,
 }
 
 void RoomManager::broadcastToLocalThreads(
-    const std::vector<RoomId>& rooms,
-    const std::shared_ptr<std::string>& msg)
+    const std::vector<RoomId>& rooms, const std::shared_ptr<std::string>& msg)
 {
   const size_t threadCount = drogon::app().getThreadNum();
   auto* currentLoop = trantor::EventLoop::getEventLoopOfCurrentThread();

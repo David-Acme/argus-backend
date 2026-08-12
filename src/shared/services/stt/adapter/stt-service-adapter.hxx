@@ -1,6 +1,7 @@
 #pragma once
 
 #include <config/service.hxx>
+#include <shared/services/stt/stt-service.hxx>
 
 class SttServiceAdapter : public IService
 {
@@ -11,4 +12,9 @@ public:
   bool isLoaded() const override;
   void shutdown() override;
   Json::Value health() const override;
+
+  SttService& service() { return sttService_; }
+
+private:
+  SttService sttService_;
 };

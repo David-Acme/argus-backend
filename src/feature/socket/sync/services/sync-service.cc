@@ -124,7 +124,7 @@ SyncService::handleMessage(const drogon::WebSocketConnectionPtr& conn,
     input.cameraId = cameraId;
     input.quality = quality;
     std::string error;
-    const uint16_t subId = StreamHub::subscribe(input, error);
+    const uint16_t subId = StreamHub::instance().subscribe(input, error);
     if (subId == 0)
       throw ResponseException(error.empty() ? "subscribe_failed" : error, 503,
                               AppConfig::ERROR_CODE_SERVICE_UNAVAILABLE);
@@ -144,14 +144,14 @@ SyncService::handleMessage(const drogon::WebSocketConnectionPtr& conn,
     const uint16_t subId =
         static_cast<uint16_t>(payload.get("subId", 0).asUInt());
     const int64_t bytes = payload.get("bytes", 0).asInt64();
-    StreamHub::ack(subId, bytes);
+    StreamHub::instance().ack(subId, bytes);
     co_return;
   }
 
   if (type == "camera:unsubscribe") {
     const uint16_t subId =
         static_cast<uint16_t>(payload.get("subId", 0).asUInt());
-    StreamHub::unsubscribe(subId);
+    StreamHub::instance().unsubscribe(subId);
     if (auto sink = sinkFor(conn))
       sink->dropSubscription();
     co_return;
@@ -165,7 +165,7 @@ void SyncService::handleDisconnect(
     const drogon::WebSocketConnectionPtr& conn) const
 {
   if (auto sink = sinkFor(conn))
-    StreamHub::closeAll(sink.get());
+    StreamHub::instance().closeAll(sink.get());
   dropSink(conn);
   roomManager_.leaveAll(conn);
   conn->clearContext();

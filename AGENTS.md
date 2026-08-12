@@ -313,6 +313,17 @@ shared file-static behind a mutex.
   Target: `qr-code-generator::qrcodegencpp`, header `<qrcodegen/qrcodegen.hpp>`.
 - `opencv/4.13.0` (headless, for scaled face image decoding)
 - `onnxruntime/1.24.4` (STT/TTS via sherpa-onnx, VAD via Silero ONNX)
+- **Kùzu — NOT a dependency.** Pinned submodules `third_party/kuzu`
+  (upstream `kuzudb/kuzu` @ `v0.11.3`) and `third_party/kuzu-vela`
+  (`Vela-Engineering/kuzu` @ `v0.12.0-vela.87bf0be`) exist ONLY as the
+  Phase 0 gate reproducer / future upgrade path — **never built by default**
+  (`EXCLUDE_FROM_ALL`; `labs/kuzu-probe` is the gate probe + crash
+  reproducer, see `COGNITIVE_MEMORY_PLAN.md` §0/§9 and
+  `labs/kuzu-probe/REPRODUCER.md`). Gate result: write+read interleaving on
+  one serialized connection fails on both (upstream: checkpoint starvation,
+  inserts 12 ms → 4–18 s under read load + `DirectedCSRIndex` asserts +
+  SIGTERM-proof hangs; fork: any second connection crashes). The memory
+  redesign's `SemanticGraph` is backed by the existing SQLite tables.
 - **llama.cpp as a submodule** (`third_party/llama.cpp`, tag `b10305`) — powers
   the LLM **and** the VLM through `libmtmd`. Targets: `${ARGUS_LLAMA_TARGETS}`
   (= `llama mtmd`). Built with `LLAMA_BUILD_MTMD=ON`, everything else OFF.
@@ -341,12 +352,25 @@ shared file-static behind a mutex.
   unicode61, trigram) is enabled via the conan option
   `sqlite3/*:enable_fts5=True` (Drogon rebuilt once).
 - **MemoryService** (`src/shared/services/memory/`) — long-term memory: scoped
-  `memory_l1`, hybrid recall (FTS5 words + trigram + vec0 embeddings, RRF),
-  explicit-rule capture + inline LLM tool calls, SimHash dedup. Facade
-  `MemoryService`; DB access via `VecDb` (raw sqlite3, vec0-enabled, mutex
-  serialized). Embeddings: `multilingual-e5-small` int8 ONNX via
-  `EmbeddingService` + hand-rolled Unigram tokenizer. Full details in
+  `memory_l1`, hybrid recall (FTS5 words + trigram + vec0 embeddings, RRF +
+  quadratic sim bonus, lexical fast path), explicit-rule capture + inline LLM
+  tool calls + implicit intent capture, background worker (embedding of
+  captures, multi-view vectors with synonym expansion, chunking of long
+  contents, vector dedup, conversation compaction with the MAIN LlmService —
+  no extra model), L3 persona profile (`memory_profile`, stale-refreshed).
+  Facade `MemoryService`; DB access via `VecDb` (raw sqlite3, vec0-enabled,
+  mutex serialized; prepared statements are RAII `SqliteStmt`).
+  Embeddings: `multilingual-e5-small` int8 ONNX via `EmbeddingService` +
+  hand-rolled Unigram tokenizer, loaded lazily on first use. Full details in
   CONTEXT.md "Long-term memory" section.
+- **fastText** (submodule `third_party/fastText`, pinned 1f12150 = v0.9.2 +
+  local C++20 patch) — supervised text classification for `IntentService`
+  (`src/shared/services/intent/`): static intent detection for implicit tool
+  activation (camera + memory_save), `loss softmax` + `none` class, trained
+  from `labs/intent-data/` with `labs/intent-probe` (`--intent-train`,
+  `--intent-quantize` → `models/intent/argus-intent.ftz`, `--intent-check`).
+  Thread-safe read-only predict (~20 µs), degraded to literal keywords when
+  the model is missing.
 - **NO spdlog** — use Drogon's built-in logging (`LOG_INFO`, `LOG_WARN`, `LOG_FATAL`)
 - **NO libsodium** — auth is face-based
 - **NO ORM** — raw SQL via `DbService::client()->execSqlCoro()`
@@ -429,7 +453,8 @@ Before any commit, verify: `cmake --build --preset dev -j 8` passes with
 | `src/shared/services/face/` | Face detection + recognition (ncnn) — FaceDB = vec0 index (sqlite-vec) |
 | `src/shared/services/llm/` | LLM inference (llama.cpp) |
 | `src/shared/services/embedding/` | `EmbeddingService` (multilingual-e5-small int8 ONNX) + `UnigramTokenizer` |
-| `src/shared/services/memory/` | `MemoryService`/`MemoryStore`/`MemoryRecall`/`RuleParser`/`ToolParser`/`SimHash` — long-term memory |
+| `src/shared/services/intent/` | `IntentService` (fastText supervised: cámara/memory_save implícitos) + adapter IService |
+| `src/shared/services/memory/` | `MemoryService`/`MemoryStore`/`MemoryRecall`/`RuleParser`/`ToolParser` — long-term memory (async worker, hybrid recall, L3 profile) |
 | `src/shared/services/sqlite/` | DB client access (`DbService::client()`, extensions) + `VecDb` (vec0 connection) |
 | `src/shared/services/vision/` | VLM inference: LFM2.5-VL-450M via llama.cpp + libmtmd (arbitrary prompts, caption cache) |
 | `src/shared/services/vad/` | `VadService` — Silero VAD v5 as an **instance** class (per-stream LSTM, shared ONNX session), with the turn-quality gate |

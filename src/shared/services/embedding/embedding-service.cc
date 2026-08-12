@@ -13,22 +13,14 @@
 namespace
 {
 
-std::mutex gMutex;
-std::unique_ptr<Ort::Env> gEnv;
-std::unique_ptr<Ort::Session> gSession;
-UnigramTokenizer gTokenizer;
-int gMaxLen = 512;
-int gDim = 384;
-bool gLoaded = false;
-
 std::vector<float> meanPool(const float* hidden, int seq, int dim,
-                            const std::vector<int32_t>& ids)
+                            const std::vector<int32_t>& ids, int32_t padId)
 {
   std::vector<float> pooled(static_cast<size_t>(dim), 0.0F);
   int count = 0;
   for (int i = 0; i < seq; ++i) {
     const bool pad = i >= static_cast<int>(ids.size()) ||
-                     ids[static_cast<size_t>(i)] == gTokenizer.padId();
+                     ids[static_cast<size_t>(i)] == padId;
     if (pad)
       continue;
     const float* row = hidden + static_cast<size_t>(i) * dim;
@@ -54,73 +46,96 @@ std::vector<float> meanPool(const float* hidden, int seq, int dim,
 
 } // namespace
 
-void EmbeddingService::init()
-{
-  std::lock_guard lock(gMutex);
-  if (gLoaded)
-    return;
+EmbeddingService::EmbeddingService() = default;
 
+EmbeddingService::~EmbeddingService()
+{
+  shutdown();
+}
+
+bool EmbeddingService::ensureLoadedLocked()
+{
+  if (loaded_)
+    return true;
+  if (initAttempted_)
+    return false;
+
+  initAttempted_ = true;
   const std::string modelPath =
       ConfigService::getString("memory.embedding_model");
   const std::string tokenizerPath =
       ConfigService::getString("memory.embedding_tokenizer");
   const int maxLen = ConfigService::getInt("memory.embedding_max_len");
   if (maxLen > 0)
-    gMaxLen = maxLen;
+    maxLen_ = maxLen;
 
-  if (!gTokenizer.load(tokenizerPath)) {
-    LOG_WARN << "EmbeddingService: tokenizer not loaded ("
-             << tokenizerPath << ")";
-    return;
+  if (!tokenizer_.load(tokenizerPath)) {
+    LOG_WARN << "EmbeddingService: tokenizer not loaded (" << tokenizerPath
+             << ")";
+    return false;
   }
 
   try {
-    gEnv = std::make_unique<Ort::Env>(ORT_LOGGING_LEVEL_ERROR, "Argus-Embed");
+    env_ = std::make_unique<Ort::Env>(ORT_LOGGING_LEVEL_ERROR, "Argus-Embed");
     auto opts = Ort::SessionOptions{};
     opts.SetIntraOpNumThreads(ThreadBudget::lightThreads());
     opts.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL);
-    gSession = std::make_unique<Ort::Session>(*gEnv, modelPath.c_str(), opts);
-    gDim = 384;
-    gLoaded = true;
-    LOG_INFO << "EmbeddingService: loaded (" << modelPath << ", dim=" << gDim
-             << ", max_len=" << gMaxLen << ")";
+    session_ = std::make_unique<Ort::Session>(*env_, modelPath.c_str(), opts);
+    dim_ = 384;
+    const int configured = ConfigService::getInt("memory.embedding_dim");
+    outDim_ = configured > 0 ? std::min(configured, dim_) : dim_;
+    loaded_ = true;
+    LOG_INFO << "EmbeddingService: loaded (" << modelPath
+             << ", model_dim=" << dim_ << ", dim=" << outDim_
+             << ", max_len=" << maxLen_ << ")";
   }
   catch (const std::exception& e) {
     LOG_WARN << "EmbeddingService: session init failed: " << e.what();
-    gSession.reset();
-    gEnv.reset();
+    session_.reset();
+    env_.reset();
   }
+  return loaded_;
+}
+
+void EmbeddingService::init()
+{
+  if (!ConfigService::getBool("memory.embedding_preload"))
+    return;
+  std::lock_guard lock(mutex_);
+  ensureLoadedLocked();
 }
 
 void EmbeddingService::shutdown()
 {
-  std::lock_guard lock(gMutex);
-  gSession.reset();
-  gEnv.reset();
-  gLoaded = false;
+  std::lock_guard lock(mutex_);
+  session_.reset();
+  env_.reset();
+  tokenizer_ = UnigramTokenizer{};
+  loaded_ = false;
+  initAttempted_ = false;
 }
 
-bool EmbeddingService::isLoaded()
+bool EmbeddingService::isLoaded() const
 {
-  std::lock_guard lock(gMutex);
-  return gLoaded;
+  std::lock_guard lock(mutex_);
+  return loaded_;
 }
 
-int EmbeddingService::dimensions()
+int EmbeddingService::dimensions() const
 {
-  std::lock_guard lock(gMutex);
-  return gDim;
+  std::lock_guard lock(mutex_);
+  return outDim_ > 0 ? outDim_ : dim_;
 }
 
-std::optional<std::vector<float>> EmbeddingService::embed(
-    const std::string& text, const std::string& prefix)
+std::optional<std::vector<float>>
+EmbeddingService::embed(const std::string& text, const std::string& prefix)
 {
-  std::lock_guard lock(gMutex);
-  if (!gLoaded || !gSession)
+  std::lock_guard lock(mutex_);
+  if (!ensureLoadedLocked())
     return std::nullopt;
 
   std::string input = prefix.empty() ? text : prefix + " " + text;
-  const auto ids = gTokenizer.encode(input, gMaxLen);
+  const auto ids = tokenizer_.encode(input, maxLen_);
   const int64_t seq = static_cast<int64_t>(ids.size());
 
   std::vector<int64_t> inputIds(ids.begin(), ids.end());
@@ -128,28 +143,22 @@ std::optional<std::vector<float>> EmbeddingService::embed(
   std::vector<int64_t> tokenTypes(ids.size(), 0);
 
   const std::array<int64_t, 2> shape{1, seq};
-  auto inIds = Ort::Value::CreateTensor<int64_t>(Ort::MemoryInfo::CreateCpu(
-                                                     OrtArenaAllocator, OrtMemTypeDefault),
-                                                 inputIds.data(),
-                                                 inputIds.size(), shape.data(),
-                                                 shape.size());
-  auto inMask = Ort::Value::CreateTensor<int64_t>(Ort::MemoryInfo::CreateCpu(
-                                                      OrtArenaAllocator, OrtMemTypeDefault),
-                                                  attentionMask.data(),
-                                                  attentionMask.size(),
-                                                  shape.data(), shape.size());
-  auto inTypes = Ort::Value::CreateTensor<int64_t>(Ort::MemoryInfo::CreateCpu(
-                                                       OrtArenaAllocator, OrtMemTypeDefault),
-                                                   tokenTypes.data(),
-                                                   tokenTypes.size(),
-                                                   shape.data(), shape.size());
+  auto inIds = Ort::Value::CreateTensor<int64_t>(
+      Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault),
+      inputIds.data(), inputIds.size(), shape.data(), shape.size());
+  auto inMask = Ort::Value::CreateTensor<int64_t>(
+      Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault),
+      attentionMask.data(), attentionMask.size(), shape.data(), shape.size());
+  auto inTypes = Ort::Value::CreateTensor<int64_t>(
+      Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault),
+      tokenTypes.data(), tokenTypes.size(), shape.data(), shape.size());
 
   const char* inputNames[] = {"input_ids", "attention_mask", "token_type_ids"};
   const char* outputNames[] = {"last_hidden_state"};
   Ort::RunOptions runOpts;
 
   try {
-    auto outputs = gSession->Run(runOpts, inputNames,
+    auto outputs = session_->Run(runOpts, inputNames,
                                  std::array<Ort::Value, 3>{std::move(inIds),
                                                            std::move(inMask),
                                                            std::move(inTypes)}
@@ -159,9 +168,12 @@ std::optional<std::vector<float>> EmbeddingService::embed(
     const auto* hidden = out.GetTensorData<float>();
     const auto outShape = out.GetTensorTypeAndShapeInfo().GetShape();
     const int64_t outSeq = outShape.size() > 1 ? outShape[1] : seq;
-    auto pooled = meanPool(hidden, static_cast<int>(outSeq), gDim, ids);
+    auto pooled = meanPool(hidden, static_cast<int>(outSeq), dim_, ids,
+                           tokenizer_.padId());
     if (pooled.empty())
       return std::nullopt;
+    if (outDim_ < dim_)
+      pooled.resize(static_cast<size_t>(outDim_));
     return pooled;
   }
   catch (const std::exception& e) {

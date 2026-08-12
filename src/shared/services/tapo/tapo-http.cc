@@ -5,6 +5,7 @@
 #include <cerrno>
 #include <cstring>
 #include <fcntl.h>
+#include <memory>
 #include <netdb.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
@@ -24,7 +25,9 @@ constexpr size_t kMaxBodyBytes = 8 * 1024 * 1024;
 std::string lower(std::string value)
 {
   std::transform(value.begin(), value.end(), value.begin(),
-                 [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+                 [](unsigned char c) {
+                   return static_cast<char>(std::tolower(c));
+                 });
   return value;
 }
 
@@ -49,8 +52,8 @@ bool waitReady(int fd, short events, int timeoutMs)
 struct TapoConnection::Impl
 {
   int fd{-1};
-  SSL_CTX* context{nullptr};
-  SSL* ssl{nullptr};
+  std::unique_ptr<SSL_CTX, void (*)(SSL_CTX*)> context{nullptr, &SSL_CTX_free};
+  std::unique_ptr<SSL, void (*)(SSL*)> ssl{nullptr, &SSL_free};
   int ioTimeoutMs{5000};
   std::string buffer;
   size_t cursor{0};
@@ -60,14 +63,8 @@ struct TapoConnection::Impl
 
   void reset()
   {
-    if (ssl) {
-      SSL_free(ssl);
-      ssl = nullptr;
-    }
-    if (context) {
-      SSL_CTX_free(context);
-      context = nullptr;
-    }
+    ssl.reset();
+    context.reset();
     if (fd >= 0) {
       ::close(fd);
       fd = -1;
@@ -86,10 +83,10 @@ struct TapoConnection::Impl
     int received = 0;
     for (;;) {
       if (ssl) {
-        received = SSL_read(ssl, chunk, static_cast<int>(sizeof(chunk)));
+        received = SSL_read(ssl.get(), chunk, static_cast<int>(sizeof(chunk)));
         if (received > 0)
           break;
-        const int reason = SSL_get_error(ssl, received);
+        const int reason = SSL_get_error(ssl.get(), received);
         if (reason == SSL_ERROR_ZERO_RETURN) {
           error = "connection closed";
           return false;
@@ -143,14 +140,17 @@ bool TapoConnection::open(const TapoEndpoint& endpoint)
   hints.ai_socktype = SOCK_STREAM;
   addrinfo* resolved = nullptr;
   const std::string port = std::to_string(endpoint.port);
-  if (::getaddrinfo(endpoint.host.c_str(), port.c_str(), &hints, &resolved) != 0) {
+  if (::getaddrinfo(endpoint.host.c_str(), port.c_str(), &hints, &resolved) !=
+      0) {
     impl_->error = "cannot resolve " + endpoint.host;
     return false;
   }
 
   int fd = -1;
-  for (addrinfo* candidate = resolved; candidate; candidate = candidate->ai_next) {
-    fd = ::socket(candidate->ai_family, candidate->ai_socktype, candidate->ai_protocol);
+  for (addrinfo* candidate = resolved; candidate;
+       candidate = candidate->ai_next) {
+    fd = ::socket(candidate->ai_family, candidate->ai_socktype,
+                  candidate->ai_protocol);
     if (fd < 0)
       continue;
     const int flags = ::fcntl(fd, F_GETFL, 0);
@@ -159,10 +159,12 @@ bool TapoConnection::open(const TapoEndpoint& endpoint)
     ::setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof(one));
     if (::connect(fd, candidate->ai_addr, candidate->ai_addrlen) == 0)
       break;
-    if (errno == EINPROGRESS && waitReady(fd, POLLOUT, endpoint.connectTimeoutMs)) {
+    if (errno == EINPROGRESS &&
+        waitReady(fd, POLLOUT, endpoint.connectTimeoutMs)) {
       int status = 0;
       socklen_t length = sizeof(status);
-      if (::getsockopt(fd, SOL_SOCKET, SO_ERROR, &status, &length) == 0 && status == 0)
+      if (::getsockopt(fd, SOL_SOCKET, SO_ERROR, &status, &length) == 0 &&
+          status == 0)
         break;
     }
     ::close(fd);
@@ -179,32 +181,32 @@ bool TapoConnection::open(const TapoEndpoint& endpoint)
   if (!endpoint.tls)
     return true;
 
-  impl_->context = SSL_CTX_new(TLS_client_method());
+  impl_->context.reset(SSL_CTX_new(TLS_client_method()));
   if (!impl_->context) {
     impl_->error = "cannot create TLS context";
     close();
     return false;
   }
-  SSL_CTX_set_verify(impl_->context, SSL_VERIFY_NONE, nullptr);
-  SSL_CTX_set_options(impl_->context, SSL_OP_ALL);
-  SSL_CTX_set_security_level(impl_->context, 0);
-  SSL_CTX_set_min_proto_version(impl_->context, TLS1_VERSION);
-  SSL_CTX_set_cipher_list(impl_->context, "ALL:@SECLEVEL=0");
+  SSL_CTX_set_verify(impl_->context.get(), SSL_VERIFY_NONE, nullptr);
+  SSL_CTX_set_options(impl_->context.get(), SSL_OP_ALL);
+  SSL_CTX_set_security_level(impl_->context.get(), 0);
+  SSL_CTX_set_min_proto_version(impl_->context.get(), TLS1_VERSION);
+  SSL_CTX_set_cipher_list(impl_->context.get(), "ALL:@SECLEVEL=0");
 
-  impl_->ssl = SSL_new(impl_->context);
+  impl_->ssl.reset(SSL_new(impl_->context.get()));
   if (!impl_->ssl) {
     impl_->error = "cannot create TLS session";
     close();
     return false;
   }
-  SSL_set_fd(impl_->ssl, fd);
-  SSL_set_tlsext_host_name(impl_->ssl, endpoint.host.c_str());
+  SSL_set_fd(impl_->ssl.get(), fd);
+  SSL_set_tlsext_host_name(impl_->ssl.get(), endpoint.host.c_str());
 
   for (;;) {
-    const int handshake = SSL_connect(impl_->ssl);
+    const int handshake = SSL_connect(impl_->ssl.get());
     if (handshake == 1)
       break;
-    const int reason = SSL_get_error(impl_->ssl, handshake);
+    const int reason = SSL_get_error(impl_->ssl.get(), handshake);
     if (reason == SSL_ERROR_WANT_READ || reason == SSL_ERROR_WANT_WRITE) {
       const short events = reason == SSL_ERROR_WANT_READ ? POLLIN : POLLOUT;
       if (waitReady(fd, events, endpoint.connectTimeoutMs))
@@ -236,10 +238,10 @@ bool TapoConnection::write(const std::string& data)
   while (sent < data.size()) {
     int written = 0;
     if (impl_->ssl) {
-      written = SSL_write(impl_->ssl, data.data() + sent,
+      written = SSL_write(impl_->ssl.get(), data.data() + sent,
                           static_cast<int>(data.size() - sent));
       if (written <= 0) {
-        const int reason = SSL_get_error(impl_->ssl, written);
+        const int reason = SSL_get_error(impl_->ssl.get(), written);
         if (reason == SSL_ERROR_WANT_READ || reason == SSL_ERROR_WANT_WRITE) {
           const short events = reason == SSL_ERROR_WANT_READ ? POLLIN : POLLOUT;
           if (!waitReady(impl_->fd, events, impl_->ioTimeoutMs)) {
@@ -251,9 +253,10 @@ bool TapoConnection::write(const std::string& data)
         impl_->error = "tls write failed";
         return false;
       }
-    } else {
-      written = static_cast<int>(
-          ::send(impl_->fd, data.data() + sent, data.size() - sent, MSG_NOSIGNAL));
+    }
+    else {
+      written = static_cast<int>(::send(impl_->fd, data.data() + sent,
+                                        data.size() - sent, MSG_NOSIGNAL));
       if (written <= 0) {
         if (errno == EINTR)
           continue;
@@ -344,7 +347,8 @@ std::string TapoHttp::buildRequestHead(const TapoHttpRequest& request)
   return head;
 }
 
-bool TapoHttp::readResponseHead(TapoConnection& connection, TapoHttpResponse& response)
+bool TapoHttp::readResponseHead(TapoConnection& connection,
+                                TapoHttpResponse& response)
 {
   std::string line;
   if (!connection.readLine(line)) {
@@ -373,12 +377,14 @@ bool TapoHttp::readResponseHead(TapoConnection& connection, TapoHttpResponse& re
     std::string value = line.substr(colon + 1);
     const size_t begin = value.find_first_not_of(" \t");
     response.headers.push_back(
-        {line.substr(0, colon), begin == std::string::npos ? "" : value.substr(begin)});
+        {line.substr(0, colon),
+         begin == std::string::npos ? "" : value.substr(begin)});
   }
   return true;
 }
 
-bool TapoHttp::readResponseBody(TapoConnection& connection, TapoHttpResponse& response)
+bool TapoHttp::readResponseBody(TapoConnection& connection,
+                                TapoHttpResponse& response)
 {
   const std::string encoding = lower(response.header("Transfer-Encoding"));
   if (encoding.find("chunked") != std::string::npos) {

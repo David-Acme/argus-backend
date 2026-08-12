@@ -1,26 +1,30 @@
 #include "application.hxx"
 
+#include <cctype>
 #include <config/app-config.hxx>
 #include <csignal>
-#include <cctype>
 #include <drogon/drogon.h>
 #include <execinfo.h>
 #include <iostream>
 #include <llama.h>
+#include <shared/services/cert/adapter/cert-service-adapter.hxx>
 #include <shared/services/cert/cert-service.hxx>
 #include <shared/services/config-service/config-service.hxx>
+#include <shared/services/extract/adapter/extraction-service-adapter.hxx>
 #include <shared/services/face/adapter/face-service-adapter.hxx>
 #include <shared/services/face/face-db.hxx>
 #include <shared/services/face/face-service.hxx>
+#include <shared/services/intent/adapter/intent-service-adapter.hxx>
 #include <shared/services/llm/adapter/llm-service-adapter.hxx>
 #include <shared/services/mdns/adapter/mdns-service-adapter.hxx>
-#include <shared/services/cert/adapter/cert-service-adapter.hxx>
+#include <shared/services/memory/adapter/memory-service-adapter.hxx>
+#include <shared/services/queue/adapter/queue-manager-service-adapter.hxx>
 #include <shared/services/room/adapter/room-manager-service-adapter.hxx>
 #include <shared/services/sqlite/db-service.hxx>
-#include <shared/services/stt/adapter/stt-service-adapter.hxx>
 #include <shared/services/stream/go2rtc-manager.hxx>
 #include <shared/services/stream/media-relay.hxx>
 #include <shared/services/stream/stream-hub.hxx>
+#include <shared/services/stt/adapter/stt-service-adapter.hxx>
 #include <shared/services/tts/adapter/tts-service-adapter.hxx>
 #include <shared/services/vision/adapter/vision-service-adapter.hxx>
 #include <shared/wrapper/qr/qr-render.hxx>
@@ -87,8 +91,7 @@ void printPairingBanner()
             << "============================================================\n"
             << "  ARGUS — pairing required\n"
             << "\n"
-            << qr_render::asciiQr(payload.toStyledString())
-            << "\n"
+            << qr_render::asciiQr(payload.toStyledString()) << "\n"
             << "  Scan the QR code with the Argus app to pair this server.\n"
             << "\n"
             << "  Server:    " << scheme << "://" << host << ":" << port << "\n"
@@ -131,12 +134,12 @@ int Application::run()
 
   app().setExceptionHandler(AppConfig::handleException);
 
-  app().setCustomErrorHandler([](drogon::HttpStatusCode code,
-                                 const drogon::HttpRequestPtr&) {
-    if (code == drogon::k405MethodNotAllowed)
-      return AppConfig::get405Response();
-    return AppConfig::get404Response();
-  });
+  app().setCustomErrorHandler(
+      [](drogon::HttpStatusCode code, const drogon::HttpRequestPtr&) {
+        if (code == drogon::k405MethodNotAllowed)
+          return AppConfig::get405Response();
+        return AppConfig::get404Response();
+      });
 
   app().registerBeginningAdvice([this]() {
     struct sigaction sa{};
@@ -162,8 +165,6 @@ int Application::run()
 
     DbService::installExtensions();
 
-    FaceDB::init();
-
     if (!ConfigService::getBool("pairing.paired"))
       printPairingBanner();
   });
@@ -178,11 +179,11 @@ int Application::run()
     return 1;
   }
 
-  Go2rtcManager::init();
-  MediaRelay::init();
-  StreamHub::init();
+  Go2rtcManager::instance().init();
+  MediaRelay::instance().init();
+  StreamHub::instance().init();
 
-  if (!FaceService::isLoaded()) {
+  if (!FaceService::instance().isLoaded()) {
     LOG_WARN << "FaceService not loaded — face recognition disabled. "
              << "Run scripts/setup.sh to download models.";
   }
@@ -196,9 +197,9 @@ int Application::run()
 
 void Application::shutdown()
 {
-  StreamHub::shutdown();
-  MediaRelay::shutdown();
-  Go2rtcManager::shutdown();
+  StreamHub::instance().shutdown();
+  MediaRelay::instance().shutdown();
+  Go2rtcManager::instance().shutdown();
   registry_.shutdownAll();
   llama_backend_free();
 }
@@ -213,4 +214,8 @@ void Application::registerServices()
   registry_.registerService(std::make_unique<SttServiceAdapter>());
   registry_.registerService(std::make_unique<VisionServiceAdapter>());
   registry_.registerService(std::make_unique<FaceServiceAdapter>());
+  registry_.registerService(std::make_unique<IntentServiceAdapter>());
+  registry_.registerService(std::make_unique<MemoryServiceAdapter>());
+  registry_.registerService(std::make_unique<QueueManagerServiceAdapter>());
+  registry_.registerService(std::make_unique<ExtractionServiceAdapter>());
 }

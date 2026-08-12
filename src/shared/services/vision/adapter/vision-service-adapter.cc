@@ -4,23 +4,23 @@
 
 bool VisionServiceAdapter::initialize()
 {
-  VisionService::init();
-  return VisionService::isLoaded();
+  visionService_.init();
+  return visionService_.isLoaded();
 }
 
 bool VisionServiceAdapter::isLoaded() const
 {
-  return VisionService::isLoaded();
+  return visionService_.isLoaded();
 }
 
 void VisionServiceAdapter::shutdown()
 {
-  VisionService::shutdown();
+  visionService_.shutdown();
 }
 
 Json::Value VisionServiceAdapter::health() const
 {
   Json::Value value(Json::objectValue);
-  value["loaded"] = VisionService::isLoaded();
+  value["loaded"] = visionService_.isLoaded();
   return value;
 }

@@ -28,7 +28,6 @@ inline const PermSet kCreateOwn{RolePermission::Create};
 inline const PermSet kFull{RolePermission::Read, RolePermission::Create,
                            RolePermission::Update, RolePermission::Delete};
 
-// Permisos por tabla (recursos). Owner tiene acceso total y no se lista aquí.
 inline const std::unordered_map<UserRole, TableAccess> kTableAccess = {
     {UserRole::Resident,
      {{TableName::Camera, kFull},
@@ -43,7 +42,8 @@ inline const std::unordered_map<UserRole, TableAccess> kTableAccess = {
       {TableName::AuditLog, kRead},
       {TableName::UserAuditLog, kRead},
       {TableName::Notification, kReadUpdate},
-      {TableName::NotificationToken, kCreateOwn}}},
+      {TableName::NotificationToken, kCreateOwn},
+      {TableName::Memory, kFull}}},
     {UserRole::Guard,
      {{TableName::Camera, kRead},
       {TableName::CameraStream, kRead},
@@ -62,8 +62,8 @@ inline const std::unordered_map<UserRole, TableAccess> kTableAccess = {
       {TableName::NotificationToken, kCreateOwn}}},
 };
 
-// Rutas de auth (no son tablas) → métodos permitidos por rol.
-inline const std::unordered_map<UserRole, std::unordered_set<drogon::HttpMethod>>
+inline const std::unordered_map<UserRole,
+                                std::unordered_set<drogon::HttpMethod>>
     kAuthAccess = {
         {UserRole::Resident, {drogon::Get, drogon::Post, drogon::Patch}},
         {UserRole::Guard, {drogon::Get}},
@@ -93,8 +93,8 @@ inline std::vector<TableName> readableTables(UserRole role)
     for (auto t = static_cast<uint8_t>(TableName::User);
          t <= static_cast<uint8_t>(TableName::FaceEmbedding); ++t) {
       const auto table = static_cast<TableName>(t);
-      if (table != TableName::RefreshToken && table != TableName::FaceEmbedding &&
-          table != TableName::PersonEvent)
+      if (table != TableName::RefreshToken &&
+          table != TableName::FaceEmbedding && table != TableName::PersonEvent)
         out.push_back(table);
     }
     return out;
@@ -127,7 +127,6 @@ inline RolePermission permissionForMethod(drogon::HttpMethod method)
   }
 }
 
-// Los prefijos más específicos deben ir primero (camera-stream antes que camera).
 inline std::optional<TableName> tableFromPath(std::string_view path)
 {
   static const std::vector<std::pair<std::string_view, TableName>> kPaths = {

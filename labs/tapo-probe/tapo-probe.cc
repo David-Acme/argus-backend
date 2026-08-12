@@ -18,6 +18,8 @@
 namespace
 {
 
+TtsService gTts;
+
 struct ProbeOptions
 {
   std::string host;
@@ -56,7 +58,7 @@ struct ProbeOptions
 void printUsage()
 {
   std::cout
-      << "argus-tapo-probe — Fase 1 validation against a real Tapo camera\n\n"
+      << "argus-tapo-probe — Phase 1 validation against a real Tapo camera\n\n"
       << "Usage: argus-tapo-probe --host <ip> [credentials] [actions]\n\n"
       << "Credentials\n"
       << "  --user <name>          camera account user (Tapo app > Advanced)\n"
@@ -265,19 +267,18 @@ int runTalk(const ProbeOptions& options)
   }
   else {
     std::cout << "synthesizing with TTS...\n";
-    TtsService::init();
-    if (!TtsService::isLoaded()) {
+    gTts.init();
+    if (!gTts.isLoaded()) {
       std::cerr << "TTS service could not be initialized\n";
       return 1;
     }
-    const auto pcm =
-        TtsService::synthesize({.text = options.talkText,
-                                .lang = TtsLang::ES,
-                                .voiceId = "M3",
-                                .quality = TtsQuality::Auto,
-                                .speed = TtsService::defaultSpeed()});
+    const auto pcm = gTts.synthesize({.text = options.talkText,
+                                      .lang = TtsLang::ES,
+                                      .voiceId = "M3",
+                                      .quality = TtsQuality::Auto,
+                                      .speed = gTts.defaultSpeed()});
     audio.samples = toPcm16(pcm);
-    audio.sampleRate = TtsService::sampleRate();
+    audio.sampleRate = gTts.sampleRate();
   }
 
   TapoTalkConfig config;
@@ -375,11 +376,12 @@ int runOffline()
   std::vector<int16_t> fullScale(64, -32768);
   const auto gained = tapoApplySpeakerGain(
       {.samples = fullScale, .maxGain = 3.0, .targetPeak = 26000.0});
-  check("AGC no invierte la fase a fondo de escala", gained[0] < 0, true);
-  check("AGC no amplifica lo que ya satura", gained[0] <= -20000, true);
+  check("AGC does not invert phase at full scale", gained[0] < 0, true);
+  check("AGC does not amplify what already saturates", gained[0] <= -20000,
+        true);
 
-  std::printf("  %s (%d fallos)\n", failures == 0 ? "TODO OK" : "HAY FALLOS",
-              failures);
+  std::printf("  %s (%d failures)\n",
+              failures == 0 ? "ALL OK" : "THERE ARE FAILURES", failures);
   return failures == 0 ? 0 : 1;
 }
 

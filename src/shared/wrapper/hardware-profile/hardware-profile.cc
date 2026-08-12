@@ -129,7 +129,8 @@ void probeVulkan(HardwareProfile& p)
   p.vulkanDiscrete = info.type() == 0;
 
   int64_t best = 0;
-  for (uint32_t h = 0; h < info.physicalDeviceMemoryProperties().memoryHeapCount; ++h) {
+  for (uint32_t h = 0;
+       h < info.physicalDeviceMemoryProperties().memoryHeapCount; ++h) {
     const auto& heap = info.physicalDeviceMemoryProperties().memoryHeaps[h];
     if ((heap.flags & VK_MEMORY_HEAP_DEVICE_LOCAL_BIT) != 0)
       best = std::max(best, static_cast<int64_t>(heap.size / (1024 * 1024)));
@@ -186,32 +187,32 @@ HardwareProfile probeAll()
 const char* toString(VideoAccel accel)
 {
   switch (accel) {
-  case VideoAccel::Vaapi:
-    return "vaapi";
-  case VideoAccel::Qsv:
-    return "qsv";
-  case VideoAccel::Nvdec:
-    return "nvdec";
-  case VideoAccel::VideoToolbox:
-    return "videotoolbox";
-  case VideoAccel::None:
-  default:
-    return "none";
+    case VideoAccel::Vaapi:
+      return "vaapi";
+    case VideoAccel::Qsv:
+      return "qsv";
+    case VideoAccel::Nvdec:
+      return "nvdec";
+    case VideoAccel::VideoToolbox:
+      return "videotoolbox";
+    case VideoAccel::None:
+    default:
+      return "none";
   }
 }
 
 const char* toString(CapabilityTier tier)
 {
   switch (tier) {
-  case CapabilityTier::Low:
-    return "low";
-  case CapabilityTier::Balanced:
-    return "balanced";
-  case CapabilityTier::High:
-    return "high";
-  case CapabilityTier::Minimal:
-  default:
-    return "minimal";
+    case CapabilityTier::Low:
+      return "low";
+    case CapabilityTier::Balanced:
+      return "balanced";
+    case CapabilityTier::High:
+      return "high";
+    case CapabilityTier::Minimal:
+    default:
+      return "minimal";
   }
 }
 
@@ -260,15 +261,15 @@ int detectorInputSize()
 int analysisFps()
 {
   switch (get().tier) {
-  case CapabilityTier::High:
-    return 12;
-  case CapabilityTier::Balanced:
-    return 8;
-  case CapabilityTier::Low:
-    return 4;
-  case CapabilityTier::Minimal:
-  default:
-    return 2;
+    case CapabilityTier::High:
+      return 12;
+    case CapabilityTier::Balanced:
+      return 8;
+    case CapabilityTier::Low:
+      return 4;
+    case CapabilityTier::Minimal:
+    default:
+      return 2;
   }
 }
 
@@ -315,16 +316,26 @@ const char* llmKvType()
 int ttsStepsCap()
 {
   switch (get().tier) {
-  case CapabilityTier::High:
-    return 16;
-  case CapabilityTier::Balanced:
-    return 12;
-  case CapabilityTier::Low:
-    return 8;
-  case CapabilityTier::Minimal:
-  default:
-    return 5;
+    case CapabilityTier::High:
+      return 16;
+    case CapabilityTier::Balanced:
+      return 12;
+    case CapabilityTier::Low:
+      return 8;
+    case CapabilityTier::Minimal:
+    default:
+      return 5;
   }
+}
+
+ExtractionTier extractionTier()
+{
+  const int ram = get().ramTotalMb;
+  if (ram >= 6144)
+    return ExtractionTier::Full;
+  if (ram >= 3072)
+    return ExtractionTier::Light;
+  return ExtractionTier::Minimal;
 }
 
 } // namespace HardwareProbe

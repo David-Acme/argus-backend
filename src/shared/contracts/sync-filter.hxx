@@ -21,9 +21,6 @@ struct SyncQueryParts
   std::vector<std::string> args;
 };
 
-// Selecciona la variante de query (rango completo / desde / todo) y arma los
-// argumentos de forma sincrónica. No es una coroutine: se ejecuta antes de
-// cualquier `co_await`, así que no hay referencias colgadas en la suspensión.
 inline SyncQueryParts buildSyncQuery(const SyncFilter& filter,
                                      std::string_view queryBoth,
                                      std::string_view queryFrom,

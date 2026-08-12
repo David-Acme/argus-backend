@@ -1,15 +1,32 @@
 #pragma once
 
+#include <memory>
 #include <mutex>
-
-struct sqlite3;
+#include <shared/repositories/vector-index/vector-index-repository.hxx>
+#include <sqlite3.h>
+#include <string>
 
 class VecDb
 {
 public:
-  VecDb() = delete;
-  ~VecDb() = delete;
+  VecDb() = default;
+  ~VecDb() = default;
 
-  static std::mutex& mutex();
-  static sqlite3* handle();
+  VecDb(const VecDb&) = delete;
+  VecDb& operator=(const VecDb&) = delete;
+
+  static VecDb& instance();
+
+  std::mutex& mutex();
+  sqlite3* handle();
+  void applySchema();
+  int embeddingDims() const;
+  bool schemaOutdated();
+  void recreateMemoryVecTable();
+  void recreateVecTables();
+
+private:
+  std::mutex mutex_;
+  std::unique_ptr<sqlite3, int (*)(sqlite3*)> db_{nullptr, &sqlite3_close};
+  VectorIndexRepository repo_;
 };

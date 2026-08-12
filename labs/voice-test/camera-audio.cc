@@ -127,7 +127,7 @@ void CameraMic::close()
 bool CameraMic::readBlock()
 {
   if (!impl_ || !impl_->fmt || !impl_->dec) {
-    impl_->lastError = "mic no abierto";
+    impl_->lastError = "mic not open";
     return false;
   }
 
@@ -136,17 +136,17 @@ bool CameraMic::readBlock()
     const int ret = av_read_frame(impl_->fmt, impl_->pkt);
     if (ret < 0) {
       if (ret == AVERROR_EOF)
-        impl_->lastError = "fin de flujo (camara cerro la sesion)";
+        impl_->lastError = "end of stream (camera closed the session)";
       else if (ret == AVERROR(EAGAIN))
-        impl_->lastError = "timeout sin audio (2s)";
+        impl_->lastError = "audio timeout (2s)";
       else
-        impl_->lastError = "error de lectura";
+        impl_->lastError = "read error";
       return false;
     }
     if (impl_->pkt->stream_index != impl_->audioIndex) {
       if (std::chrono::steady_clock::now() - noAudioSince >=
           std::chrono::milliseconds(1500)) {
-        impl_->lastError = "la camara manda solo video (sin audio)";
+        impl_->lastError = "the camera sends only video (no audio)";
         av_packet_unref(impl_->pkt);
         return false;
       }
@@ -208,12 +208,11 @@ bool CameraMic::readBlock()
         std::max(static_cast<int>(peak), std::abs(static_cast<int>(sample))));
   const float target =
       std::clamp(0.8F * 32768.0F / static_cast<float>(peak), 1.0F, 4.0F);
-  impl_->smoothGain =
-      0.5F * impl_->smoothGain + 0.5F * target;
+  impl_->smoothGain = 0.5F * impl_->smoothGain + 0.5F * target;
   const float gain = impl_->smoothGain;
   for (const auto sample : up)
-    out.push_back(std::clamp(static_cast<float>(sample) * gain / 32768.0F,
-                             -1.0F, 1.0F));
+    out.push_back(
+        std::clamp(static_cast<float>(sample) * gain / 32768.0F, -1.0F, 1.0F));
   if (impl_->onAudio)
     impl_->onAudio(out);
   return true;

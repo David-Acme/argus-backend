@@ -1,6 +1,7 @@
 #pragma once
 
 #include <config/service.hxx>
+#include <shared/services/vision/vision-service.hxx>
 
 class VisionServiceAdapter : public IService
 {
@@ -11,4 +12,9 @@ public:
   bool isLoaded() const override;
   void shutdown() override;
   Json::Value health() const override;
+
+  VisionService& service() { return visionService_; }
+
+private:
+  VisionService visionService_;
 };

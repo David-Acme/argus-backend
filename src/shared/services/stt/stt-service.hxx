@@ -22,31 +22,34 @@ enum class SttEngine
 class SttService
 {
 public:
-  SttService() = delete;
-  ~SttService() = delete;
+  SttService();
+  ~SttService();
 
-  static void init();
-  static void shutdown();
+  SttService(const SttService&) = delete;
+  SttService& operator=(const SttService&) = delete;
 
-  static std::string transcribe(const std::vector<float>& audioSamples,
-                                int32_t sampleRate = 16000);
+  void init();
+  void shutdown();
+
+  std::string transcribe(const std::vector<float>& audioSamples,
+                         int32_t sampleRate = 16000);
 
   // Recreates the recognizer with a different Whisper language code
   // (e.g. "es", "en"). Used by voice interfaces that switch language at
   // runtime. Returns false if the language is unsupported.
-  static bool setLanguage(const std::string& lang);
+  bool setLanguage(const std::string& lang);
 
   // Coroutine variant: runs inference off the event loop.
-  static drogon::Task<std::string>
+  drogon::Task<std::string>
   transcribeAsync(const std::vector<float>& audioSamples,
                   int32_t sampleRate = 16000);
 
-  static bool isLoaded();
+  bool isLoaded() const;
 
 private:
-  static std::unique_ptr<const SherpaOnnxOfflineRecognizer,
-                         void (*)(const SherpaOnnxOfflineRecognizer*)>
+  std::unique_ptr<const SherpaOnnxOfflineRecognizer,
+                  void (*)(const SherpaOnnxOfflineRecognizer*)>
       recognizer_;
-  static bool loaded_;
-  static std::mutex mutex_;
+  bool loaded_ = false;
+  mutable std::mutex mutex_;
 };

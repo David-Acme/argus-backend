@@ -28,6 +28,11 @@ add_subdirectory(labs/vlm-bench)
 add_subdirectory(labs/tts-probe)
 add_subdirectory(labs/stream-probe)
 add_subdirectory(labs/memory-probe)
+add_subdirectory(labs/intent-probe)
+add_subdirectory(labs/tool-bench)
+add_subdirectory(labs/extract-probe)
+add_subdirectory(labs/queue-probe)
+add_subdirectory(labs/kuzu-probe)
 
 file(GLOB_RECURSE CONFIG_SRC
     ${SRC_ROOT}/config/*.cc
@@ -98,6 +103,7 @@ target_link_libraries(${PROJECT_NAME}
         ${ARGUS_SQLITE_VEC_TARGET}
         ${ARGUS_NCNN_TARGET}
         ${ARGUS_SHERPA_ONNX_TARGET}
+        ${ARGUS_FASTTEXT_TARGET}
         qr-code-generator::qrcodegencpp
         ${CONAN_LIBS}
 )

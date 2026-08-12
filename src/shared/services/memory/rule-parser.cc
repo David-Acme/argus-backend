@@ -2,8 +2,7 @@
 
 #include <algorithm>
 #include <cctype>
-#include <shared/services/config-service/config-service.hxx>
-#include <string>
+#include <shared/services/memory/phrase-catalog.hxx>
 #include <utility>
 #include <vector>
 
@@ -30,46 +29,256 @@ std::string toLower(const std::string& s)
   return out;
 }
 
+bool isBoundary(char c)
+{
+  return c == ' ' || c == ',' || c == '.' || c == ';' || c == ':';
+}
+
+bool openerOk(const std::string& lowered, uint32_t begin)
+{
+  return begin == 0 || isBoundary(lowered[begin - 1]);
+}
+
+bool closerOk(const std::string& lowered, uint32_t end)
+{
+  return end >= lowered.size() || isBoundary(lowered[end]) ||
+         lowered[end] == '?';
+}
+
+size_t wordsBefore(const std::string& lowered, size_t anchorPos)
+{
+  size_t words = 0;
+  size_t i = 0;
+  while (i < anchorPos) {
+    while (i < anchorPos && (lowered[i] == ' ' || lowered[i] == ','))
+      ++i;
+    if (i >= anchorPos)
+      break;
+    ++words;
+    while (i < anchorPos && lowered[i] != ' ')
+      ++i;
+  }
+  return words;
+}
+
+bool isNearStart(const std::string& lowered, size_t anchorPos)
+{
+  return wordsBefore(lowered, anchorPos) < 5;
+}
+
+struct HitFilter
+{
+  PhraseKind kind;
+  bool requireCloser = false;
+  bool requireNearStart = false;
+};
+
+const PhraseHit* bestHit(const std::vector<PhraseHit>& hits,
+                         const std::string& lowered, const HitFilter& filter)
+{
+  const PhraseHit* best = nullptr;
+  for (const auto& hit : hits) {
+    if (hit.kind != filter.kind)
+      continue;
+    if (!openerOk(lowered, hit.begin))
+      continue;
+    if (filter.requireCloser && !closerOk(lowered, hit.end))
+      continue;
+    if (filter.requireNearStart && !isNearStart(lowered, hit.begin))
+      continue;
+    if (!best || (hit.end - hit.begin) > (best->end - best->begin))
+      best = &hit;
+  }
+  return best;
+}
+
 } // namespace
 
-std::optional<RuleParseResult> RuleParser::parse(const RuleParseInput& input)
+std::string RuleParser::stripTrailingConfirmation(std::string text,
+                                                  const std::string& lang) const
+{
+  std::vector<PhraseHit> hits;
+  for (;;) {
+    const size_t end = text.find_last_not_of(" \t\r\n");
+    if (end == std::string::npos)
+      return text;
+    text.erase(end + 1);
+
+    const std::string lowered = toLower(text);
+    catalog_.match(lowered, lang, hits);
+    size_t cut = std::string::npos;
+    for (const auto& hit : hits) {
+      if (hit.kind != PhraseKind::Confirmation || hit.end != lowered.size())
+        continue;
+      if (cut == std::string::npos || hit.begin < cut)
+        cut = hit.begin;
+    }
+    if (cut == std::string::npos)
+      return text;
+    text.erase(cut);
+  }
+}
+
+bool RuleParser::isRecallTalk(const std::string& lowered,
+                              const std::string& lang) const
+{
+  std::vector<PhraseHit> hits;
+  catalog_.match(lowered, lang, hits);
+  for (const auto& hit : hits) {
+    if (hit.kind == PhraseKind::RecallMarker)
+      return true;
+  }
+  return false;
+}
+
+bool RuleParser::isQuestion(const RuleParseInput& input) const
+{
+  if (input.text.find('?') != std::string::npos ||
+      input.text.find("\xc2\xbf") != std::string::npos)
+    return true;
+
+  const std::string lowered = toLower(input.text);
+  if (isRecallTalk(lowered, input.lang))
+    return true;
+
+  std::vector<PhraseHit> hits;
+  catalog_.match(lowered, input.lang, hits);
+  const PhraseHit* opener =
+      bestHit(hits, lowered,
+              {.kind = PhraseKind::Interrogative, .requireCloser = true});
+  return opener && wordsBefore(lowered, opener->begin) < 3;
+}
+
+std::string RuleParser::stripFillers(const RuleParseInput& input) const
 {
   std::string text = input.text;
-  auto first = text.find_first_not_of(" \t\r\n");
-  if (first == std::string::npos)
-    return std::nullopt;
-  text.erase(0, first);
+  std::vector<PhraseHit> hits;
+  for (;;) {
+    const auto first = text.find_first_not_of(" \t\r\n,.;:");
+    if (first == std::string::npos)
+      return {};
+    if (first > 0)
+      text.erase(0, first);
 
-  const std::string lowered = toLower(text);
-  const auto phrases = ConfigService::getStringPairs(
-      "memory.phrases." + (input.lang.empty() ? "es" : input.lang));
-
-  const std::string* bestPhrase = nullptr;
-  std::string bestType;
-  for (const auto& [phrase, type] : phrases) {
-    if (phrase.size() >= lowered.size())
-      continue;
-    if (lowered.compare(0, phrase.size(), phrase) != 0)
-      continue;
-    if (!bestPhrase || phrase.size() > bestPhrase->size()) {
-      bestPhrase = &phrase;
-      bestType = type;
+    const std::string lowered = toLower(text);
+    catalog_.match(lowered, input.lang, hits);
+    size_t cut = 0;
+    for (const auto& hit : hits) {
+      if (hit.kind != PhraseKind::Filler || hit.begin != 0)
+        continue;
+      if (!closerOk(lowered, hit.end))
+        continue;
+      cut = std::max(cut, static_cast<size_t>(hit.end));
     }
+    if (cut == 0)
+      return text;
+    text.erase(0, cut);
+  }
+}
+
+bool RuleParser::isFiller(const std::string& phrase,
+                          const std::string& lang) const
+{
+  const std::string lowered = toLower(phrase);
+  if (lowered.empty())
+    return true;
+  std::vector<PhraseHit> hits;
+  catalog_.match(lowered, lang, hits);
+  for (const auto& hit : hits) {
+    const bool spansAll = hit.begin == 0 && hit.end == lowered.size();
+    if (!spansAll)
+      continue;
+    if (hit.kind == PhraseKind::Filler || hit.kind == PhraseKind::Trigger ||
+        hit.kind == PhraseKind::Interrogative)
+      return true;
+  }
+  return false;
+}
+
+std::optional<std::string>
+RuleParser::contentBeforeTrigger(const std::string& text,
+                                 const std::string& lowered, uint32_t begin,
+                                 uint32_t end) const
+{
+  if (begin == 0)
+    return std::nullopt;
+  if (lowered.find_first_not_of(" \t\r\n,.;:!", end) != std::string::npos)
+    return std::nullopt;
+
+  std::string before = text.substr(0, begin);
+  while (!before.empty() && (before.back() == ' ' || before.back() == ',' ||
+                             before.back() == '.' || before.back() == ';'))
+    before.pop_back();
+  if (before.empty())
+    return std::nullopt;
+  return before;
+}
+
+std::optional<RuleParseResult>
+RuleParser::parse(const RuleParseInput& input) const
+{
+  const std::string& text = input.text;
+  const std::string lowered = toLower(text);
+
+  std::vector<PhraseHit> hits;
+  catalog_.match(lowered, input.lang, hits);
+
+  const PhraseHit* best =
+      bestHit(hits, lowered,
+              {.kind = PhraseKind::Trigger, .requireCloser = true});
+  if (!best)
+    return std::nullopt;
+
+  if (auto trailing =
+          contentBeforeTrigger(text, lowered, best->begin, best->end)) {
+    RuleParseResult result;
+    result.type = best->memoryType;
+    result.content = std::move(*trailing);
+    result.priority = priorityFor(best->memoryType);
+    return result;
   }
 
-  if (!bestPhrase)
-    return std::nullopt;
-
-  std::string content = text.substr(bestPhrase->size());
-  auto contentFirst = content.find_first_not_of(" \t\r\n");
+  std::string content = text.substr(best->end);
+  const auto contentFirst = content.find_first_not_of(" \t\r\n");
   if (contentFirst == std::string::npos)
     return std::nullopt;
   content.erase(0, contentFirst);
+  content = stripTrailingConfirmation(std::move(content), input.lang);
   if (content.empty())
     return std::nullopt;
 
-  const MemoryType type = memoryTypeFromString(bestType);
-  return RuleParseResult{.type = type,
+  return RuleParseResult{.type = best->memoryType,
                          .content = std::move(content),
-                         .priority = priorityFor(type)};
+                         .priority = priorityFor(best->memoryType)};
+}
+
+std::optional<RuleParseResult>
+RuleParser::parseStatement(const RuleParseInput& input) const
+{
+  const std::string text = stripTrailingConfirmation(input.text, input.lang);
+  if (text.size() < 15 || text.find('?') != std::string::npos)
+    return std::nullopt;
+
+  const std::string lowered = toLower(text);
+  if (isRecallTalk(lowered, input.lang))
+    return std::nullopt;
+
+  std::vector<PhraseHit> hits;
+  catalog_.match(lowered, input.lang, hits);
+
+  const PhraseHit* best =
+      bestHit(hits, lowered,
+              {.kind = PhraseKind::StatementStart, .requireNearStart = true});
+  if (!best)
+    return std::nullopt;
+
+  std::string content = text.substr(best->begin);
+  const auto first = content.find_first_not_of(" \t\r\n");
+  if (first == std::string::npos)
+    return std::nullopt;
+  content.erase(0, first);
+
+  return RuleParseResult{.type = best->memoryType,
+                         .content = std::move(content),
+                         .priority = priorityFor(best->memoryType)};
 }

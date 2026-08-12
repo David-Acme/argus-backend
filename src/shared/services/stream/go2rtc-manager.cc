@@ -1,6 +1,7 @@
 #include "go2rtc-manager.hxx"
 
 #include <algorithm>
+#include <arpa/inet.h>
 #include <cerrno>
 #include <csignal>
 #include <cstdlib>
@@ -9,9 +10,8 @@
 #include <drogon/drogon.h>
 #include <fcntl.h>
 #include <fstream>
-#include <shared/services/config-service/config-service.hxx>
-#include <arpa/inet.h>
 #include <netinet/in.h>
+#include <shared/services/config-service/config-service.hxx>
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/types.h>
@@ -46,18 +46,22 @@ bool isPrivateHost(const std::string& host)
 
 } // namespace
 
-std::vector<Go2rtcSource> Go2rtcManager::sources_;
-std::mutex Go2rtcManager::mutex_;
-std::atomic<bool> Go2rtcManager::stopping_{false};
-std::atomic<bool> Go2rtcManager::healthy_{false};
-int64_t Go2rtcManager::pid_ = 0;
-int Go2rtcManager::restarts_ = 0;
-std::string Go2rtcManager::lastError_;
-std::string Go2rtcManager::binPath_ = kDefaultBin;
-std::string Go2rtcManager::configPath_ = kDefaultConfig;
-std::string Go2rtcManager::apiAddr_ = kDefaultApi;
-std::string Go2rtcManager::rtspAddr_ = kDefaultRtsp;
-int Go2rtcManager::maxRestarts_ = 8;
+Go2rtcManager::Go2rtcManager()
+    : binPath_(kDefaultBin), configPath_(kDefaultConfig), apiAddr_(kDefaultApi),
+      rtspAddr_(kDefaultRtsp)
+{
+}
+
+Go2rtcManager::~Go2rtcManager()
+{
+  shutdown();
+}
+
+Go2rtcManager& Go2rtcManager::instance()
+{
+  static Go2rtcManager manager;
+  return manager;
+}
 
 bool Go2rtcManager::isSafeName(const std::string& name)
 {
@@ -155,8 +159,7 @@ bool Go2rtcManager::spawn()
 
   if (pid == 0) {
     ::setsid();
-    const int logFd =
-        ::open("go2rtc.log", O_WRONLY | O_CREAT | O_APPEND, 0644);
+    const int logFd = ::open("go2rtc.log", O_WRONLY | O_CREAT | O_APPEND, 0644);
     if (logFd >= 0) {
       ::dup2(logFd, STDOUT_FILENO);
       ::dup2(logFd, STDERR_FILENO);
@@ -223,8 +226,8 @@ bool Go2rtcManager::healthCheck()
   timeval tv{};
   tv.tv_sec = 1;
   ::setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
-  const bool ok = ::connect(sock, reinterpret_cast<sockaddr*>(&addr),
-                            sizeof(addr)) == 0;
+  const bool ok =
+      ::connect(sock, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) == 0;
   ::close(sock);
   return ok;
 }
@@ -282,13 +285,17 @@ void Go2rtcManager::init()
 {
   std::lock_guard<std::mutex> lock(mutex_);
 
-  if (const auto v = ConfigService::getString("streaming.go2rtc_bin"); !v.empty())
+  if (const auto v = ConfigService::getString("streaming.go2rtc_bin");
+      !v.empty())
     binPath_ = v;
-  if (const auto v = ConfigService::getString("streaming.go2rtc_config"); !v.empty())
+  if (const auto v = ConfigService::getString("streaming.go2rtc_config");
+      !v.empty())
     configPath_ = v;
-  if (const auto v = ConfigService::getString("streaming.go2rtc_api"); !v.empty())
+  if (const auto v = ConfigService::getString("streaming.go2rtc_api");
+      !v.empty())
     apiAddr_ = v;
-  if (const auto v = ConfigService::getString("streaming.go2rtc_rtsp"); !v.empty())
+  if (const auto v = ConfigService::getString("streaming.go2rtc_rtsp");
+      !v.empty())
     rtspAddr_ = v;
   if (const int v = ConfigService::getInt("streaming.max_restarts"); v > 0)
     maxRestarts_ = v;
@@ -304,8 +311,9 @@ void Go2rtcManager::init()
     return;
   waitReady(5000);
 
-  std::thread(&Go2rtcManager::supervise).detach();
-  LOG_INFO << "Go2rtc: supervisor running (max_restarts=" << maxRestarts_ << ")";
+  std::thread(&Go2rtcManager::supervise, this).detach();
+  LOG_INFO << "Go2rtc: supervisor running (max_restarts=" << maxRestarts_
+           << ")";
 }
 
 void Go2rtcManager::shutdown()

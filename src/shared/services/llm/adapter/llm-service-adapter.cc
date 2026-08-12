@@ -4,23 +4,23 @@
 
 bool LlmServiceAdapter::initialize()
 {
-  LlmService::init();
-  return LlmService::isLoaded();
+  LlmService::instance().init();
+  return LlmService::instance().isLoaded();
 }
 
 bool LlmServiceAdapter::isLoaded() const
 {
-  return LlmService::isLoaded();
+  return LlmService::instance().isLoaded();
 }
 
 void LlmServiceAdapter::shutdown()
 {
-  LlmService::shutdown();
+  LlmService::instance().shutdown();
 }
 
 Json::Value LlmServiceAdapter::health() const
 {
   Json::Value value(Json::objectValue);
-  value["loaded"] = LlmService::isLoaded();
+  value["loaded"] = LlmService::instance().isLoaded();
   return value;
 }

@@ -146,8 +146,7 @@ std::string toUpper(std::string s)
 
 std::string deriveCode(const std::string& fingerprint)
 {
-  return fingerprint.size() >= 8 ? fingerprint.substr(0, 8)
-                                 : std::string{};
+  return fingerprint.size() >= 8 ? fingerprint.substr(0, 8) : std::string{};
 }
 
 PKeyPtr generateEcKey()
@@ -155,12 +154,12 @@ PKeyPtr generateEcKey()
   EVP_PKEY_CTX* raw = EVP_PKEY_CTX_new_id(EVP_PKEY_EC, nullptr);
   if (!raw)
     return {nullptr, EVP_PKEY_free};
-  std::unique_ptr<EVP_PKEY_CTX, decltype(&EVP_PKEY_CTX_free)> ctx(
-      raw, EVP_PKEY_CTX_free);
+  std::unique_ptr<EVP_PKEY_CTX, decltype(&EVP_PKEY_CTX_free)>
+      ctx(raw, EVP_PKEY_CTX_free);
   if (EVP_PKEY_keygen_init(ctx.get()) <= 0)
     return {nullptr, EVP_PKEY_free};
-  if (EVP_PKEY_CTX_set_ec_paramgen_curve_nid(ctx.get(),
-                                             NID_X9_62_prime256v1) <= 0)
+  if (EVP_PKEY_CTX_set_ec_paramgen_curve_nid(ctx.get(), NID_X9_62_prime256v1) <=
+      0)
     return {nullptr, EVP_PKEY_free};
   EVP_PKEY* key = nullptr;
   if (EVP_PKEY_keygen(ctx.get(), &key) <= 0)
@@ -173,7 +172,7 @@ long certDaysRemaining(X509* cert)
   const ASN1_TIME* notAfter = X509_get0_notAfter(cert);
   if (!notAfter)
     return 0;
-  struct tm tm {};
+  struct tm tm{};
   if (ASN1_TIME_to_tm(notAfter, &tm) != 1)
     return 0;
   const time_t expiry = timegm(&tm);
@@ -219,11 +218,10 @@ X509Ptr buildLeaf(EVP_PKEY* leafKey, X509* caCert, EVP_PKEY* caKey,
   if (X509_set_version(cert.get(), 2) != 1)
     return {nullptr, X509_free};
 
-  BIGNUM* bn = BN_new();
+  std::unique_ptr<BIGNUM, void (*)(BIGNUM*)> bn(BN_new(), &BN_free);
   if (bn) {
-    if (BN_rand(bn, 160, BN_RAND_TOP_ANY, BN_RAND_BOTTOM_ANY) == 1)
-      BN_to_ASN1_INTEGER(bn, X509_get_serialNumber(cert.get()));
-    BN_free(bn);
+    if (BN_rand(bn.get(), 160, BN_RAND_TOP_ANY, BN_RAND_BOTTOM_ANY) == 1)
+      BN_to_ASN1_INTEGER(bn.get(), X509_get_serialNumber(cert.get()));
   }
 
   if (X509_gmtime_adj(X509_getm_notBefore(cert.get()), 0) == nullptr)
@@ -233,27 +231,27 @@ X509Ptr buildLeaf(EVP_PKEY* leafKey, X509* caCert, EVP_PKEY* caKey,
     return {nullptr, X509_free};
 
   X509_set_issuer_name(cert.get(), X509_get_subject_name(caCert));
-  X509_NAME* subject = X509_NAME_new();
+  std::unique_ptr<X509_NAME, void (*)(X509_NAME*)> subject(X509_NAME_new(),
+                                                           &X509_NAME_free);
   if (!subject)
     return {nullptr, X509_free};
-  X509_NAME_add_entry_by_txt(subject, "CN", MBSTRING_ASC,
+  X509_NAME_add_entry_by_txt(subject.get(), "CN", MBSTRING_ASC,
                              reinterpret_cast<const unsigned char*>(
                                  "Argus.local"),
                              -1, -1, 0);
-  X509_set_subject_name(cert.get(), subject);
-  X509_NAME_free(subject);
+  X509_set_subject_name(cert.get(), subject.get());
 
   if (X509_set_pubkey(cert.get(), leafKey) != 1)
     return {nullptr, X509_free};
 
   const std::string sanStr = buildSanString(sans);
   if (!sanStr.empty()) {
-    X509_EXTENSION* ext =
-        X509V3_EXT_conf_nid(nullptr, nullptr, NID_subject_alt_name,
-                            sanStr.c_str());
+    std::unique_ptr<X509_EXTENSION, void (*)(X509_EXTENSION*)>
+        ext(X509V3_EXT_conf_nid(nullptr, nullptr, NID_subject_alt_name,
+                                sanStr.c_str()),
+            &X509_EXTENSION_free);
     if (ext) {
-      X509_add_ext(cert.get(), ext, -1);
-      X509_EXTENSION_free(ext);
+      X509_add_ext(cert.get(), ext.get(), -1);
     }
   }
 
@@ -300,7 +298,8 @@ bool CertService::init()
     p.serverKey = p.dir + "/server.key";
   if (const int v = ConfigService::getInt("cert.leaf_ttl_days"); v > 0)
     p.leafTtlDays = v;
-  if (const int v = ConfigService::getInt("cert.rotation_threshold_days"); v > 0)
+  if (const int v = ConfigService::getInt("cert.rotation_threshold_days");
+      v > 0)
     p.rotationThresholdDays = v;
   if (const int v = ConfigService::getInt("cert.rotate_check_hours"); v > 0)
     p.rotateCheckHours = v;
@@ -402,8 +401,8 @@ bool CertService::rotateServerCertificate()
     return false;
   }
 
-  X509Ptr leaf = buildLeaf(leafKey.get(), ca.get(), caKey.get(),
-                           instanceSans(), gState.paths.leafTtlDays);
+  X509Ptr leaf = buildLeaf(leafKey.get(), ca.get(), caKey.get(), instanceSans(),
+                           gState.paths.leafTtlDays);
   if (!leaf) {
     LOG_ERROR << "cert rotation: failed to build leaf";
     return false;
@@ -428,8 +427,8 @@ bool CertService::rotateServerCertificate()
   gState.serverFingerprint = sha256Hex(reloaded.get());
   if (drogon::app().isRunning())
     drogon::app().reloadSSLFiles();
-  LOG_INFO << "server certificate rotated (fp "
-           << gState.serverFingerprint << ")";
+  LOG_INFO << "server certificate rotated (fp " << gState.serverFingerprint
+           << ")";
   return true;
 }
 

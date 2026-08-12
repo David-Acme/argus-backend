@@ -9,17 +9,21 @@
 drogon::Task<ResponseLoginDto>
 AuthService::login(LoginDto body, const LoginDeviceInput& device) const
 {
-  auto personId = co_await FaceService::identifyAsync(std::move(body.image));
+  auto personId =
+      co_await FaceService::instance().identifyAsync(std::move(body.image));
   if (!personId)
-    throw ResponseException("Face not recognized", 401, AppConfig::ERROR_CODE_UNAUTHORIZED);
+    throw ResponseException("Face not recognized", 401,
+                            AppConfig::ERROR_CODE_UNAUTHORIZED);
 
   auto person = co_await personRepository_.findById(*personId);
   if (!person || !person->userId)
-    throw ResponseException("Face not recognized", 401, AppConfig::ERROR_CODE_UNAUTHORIZED);
+    throw ResponseException("Face not recognized", 401,
+                            AppConfig::ERROR_CODE_UNAUTHORIZED);
 
   auto user = co_await userRepository_.findById(*person->userId);
   if (!user || !user->isActive)
-    throw ResponseException("Face not recognized", 401, AppConfig::ERROR_CODE_UNAUTHORIZED);
+    throw ResponseException("Face not recognized", 401,
+                            AppConfig::ERROR_CODE_UNAUTHORIZED);
 
   std::map<std::string, std::string> claims;
   claims["sub"] = std::to_string(user->id);
@@ -50,14 +54,13 @@ AuthService::login(LoginDto body, const LoginDeviceInput& device) const
   session["deviceHash"] = device.deviceHash;
   session["userAgent"] = device.userAgent;
 
-  co_await userActionLogService_.record(
-      {.userId = user->id,
-       .recordId = user->id,
-       .tableName = TableName::User,
-       .action = UserAction::Create,
-       .oldData = Json::Value(),
-       .newData = session,
-       .ipAddress = ""});
+  co_await userActionLogService_.record({.userId = user->id,
+                                         .recordId = user->id,
+                                         .tableName = TableName::User,
+                                         .action = UserAction::Create,
+                                         .oldData = Json::Value(),
+                                         .newData = session,
+                                         .ipAddress = ""});
 
   co_return result;
 }
@@ -126,14 +129,13 @@ drogon::Task<void> AuthService::logout(int64_t userId) const
 {
   co_await refreshTokenRepository_.invalidateAllUser(userId);
 
-  co_await userActionLogService_.record(
-      {.userId = userId,
-       .recordId = userId,
-       .tableName = TableName::User,
-       .action = UserAction::Delete,
-       .oldData = Json::Value(),
-       .newData = Json::Value(),
-       .ipAddress = ""});
+  co_await userActionLogService_.record({.userId = userId,
+                                         .recordId = userId,
+                                         .tableName = TableName::User,
+                                         .action = UserAction::Delete,
+                                         .oldData = Json::Value(),
+                                         .newData = Json::Value(),
+                                         .ipAddress = ""});
 
   LOG_INFO << "AuthService: logged out user " << userId;
 }

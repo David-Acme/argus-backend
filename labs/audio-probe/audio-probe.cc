@@ -78,21 +78,20 @@ void resamplerCheck()
     if (once[i] != blocks[i])
       differing++;
 
-  check("streaming == una pasada", differing == 0, true);
-  check("perdida por bloques < 1%", blocks.size() >= sig.size() * 2 * 99 / 100,
-        true);
+  check("streaming == single pass", differing == 0, true);
+  check("block loss < 1%", blocks.size() >= sig.size() * 2 * 99 / 100, true);
 
   AudioResampler down({.sourceRate = 44100, .targetRate = 8000});
   const auto voice = tone(44100, 440.0, 3.0);
   std::vector<int16_t> out8k;
   down.process(voice.data(), voice.size(), out8k);
-  check("44.1k->8k conserva la duracion",
+  check("44.1k->8k preserves duration",
         out8k.size() > 23800 && out8k.size() < 24100, true);
 
   AudioResampler same({.sourceRate = 16000, .targetRate = 16000});
   std::vector<int16_t> passthrough;
   same.process(sig.data(), 512, passthrough);
-  check("mismo ritmo es passthrough", passthrough.size() == 512, true);
+  check("same rate is passthrough", passthrough.size() == 512, true);
 }
 
 void ringCheck()
@@ -101,16 +100,16 @@ void ringCheck()
   SampleRing ring(1024);
   std::vector<float> in(600, 0.5F);
   ring.push(in.data(), in.size());
-  check("ring acumula", ring.size() == 600, true);
+  check("ring accumulates", ring.size() == 600, true);
 
   std::vector<float> out(512);
-  check("ring entrega un bloque", ring.pop(out.data(), 512), true);
-  check("ring descuenta lo entregado", ring.size() == 88, true);
-  check("ring no entrega de mas", ring.pop(out.data(), 512), false);
+  check("ring delivers a block", ring.pop(out.data(), 512), true);
+  check("ring accounts for what was delivered", ring.size() == 88, true);
+  check("ring does not overdeliver", ring.pop(out.data(), 512), false);
 
   ring.push(in.data(), in.size());
   ring.push(in.data(), in.size());
-  check("ring acota la memoria", ring.size() <= 1024, true);
+  check("ring bounds memory", ring.size() <= 1024, true);
 }
 
 void g711Check()
@@ -119,14 +118,14 @@ void g711Check()
   const auto alaw0 = tapo_audio::decodeALaw(std::vector<uint8_t>{0x55});
   const auto alawMax = tapo_audio::decodeALaw(std::vector<uint8_t>{0xAA});
   const auto alawNeg = tapo_audio::decodeALaw(std::vector<uint8_t>{0x00});
-  check("alaw cero es ~0", alaw0[0] > -64 && alaw0[0] < 64, true);
-  check("alaw maximo = 32256", alawMax[0] == 32256, true);
-  check("alaw negativo", alawNeg[0] < 0, true);
+  check("alaw zero is ~0", alaw0[0] > -64 && alaw0[0] < 64, true);
+  check("alaw max = 32256", alawMax[0] == 32256, true);
+  check("alaw negative", alawNeg[0] < 0, true);
 
   const auto ulaw0 = tapo_audio::decodeULaw(std::vector<uint8_t>{0x7F});
   const auto ulawMax = tapo_audio::decodeULaw(std::vector<uint8_t>{0x80});
-  check("ulaw cero es 0", ulaw0[0] == 0, true);
-  check("ulaw maximo = 32124", ulawMax[0] == 32124, true);
+  check("ulaw zero is 0", ulaw0[0] == 0, true);
+  check("ulaw max = 32124", ulawMax[0] == 32124, true);
 }
 
 void vadCheck()
@@ -163,7 +162,7 @@ void vadCheck()
     if (std::fabs(a[ia] - b[k]) < 1e-4F)
       equal++;
   }
-  check("VAD independiente del tamano de bloque", equal == compared, true);
+  check("VAD independent of block size", equal == compared, true);
 }
 
 void vadGateCheck()
@@ -182,7 +181,7 @@ void vadGateCheck()
   for (size_t i = 0; i + 512 <= blip.size(); i += 512)
     if (vad.process(blip.data() + i, 512, turn))
       fired = true;
-  check("un blip de 120ms no genera turno", fired, false);
+  check("a 120ms blip does not generate a turn", fired, false);
 
   std::vector<float> utterance(8000, 0.0F);
   const auto voice = voiceLike(16000, 220.0, 1.2);
@@ -200,8 +199,8 @@ void vadGateCheck()
       meanProb = turn2.meanProb;
     }
   }
-  check("1.2s de voz si genera turno", fired2, true);
-  check("el turno reporta su probabilidad media", meanProb > 0.0F, true);
+  check("1.2s of voice does generate a turn", fired2, true);
+  check("the turn reports its mean probability", meanProb > 0.0F, true);
 }
 
 bool readWav16k(const std::string& path, std::vector<float>& out)
@@ -277,15 +276,16 @@ void vadReport(const std::string& path, const std::vector<float>& samples)
     }
   }
 
-  std::printf("%s: %.2fs ventanas=%d turnos=%d probMedia=%.3f probMax=%.3f\n",
+  std::printf("%s: %.2fs windows=%d turns=%d meanProb=%.3f maxProb=%.3f\n",
               path.c_str(), samples.size() / 16000.0, windows, turns,
               probSum / std::max(1, windows), maxProb);
   for (size_t i = 0; i < turnMs.size(); ++i)
-    std::printf("  turno %zu: %d ms\n", i + 1, turnMs[i]);
+    std::printf("  turn %zu: %d ms\n", i + 1, turnMs[i]);
 }
 
 void vadProbs(const std::string& path, const std::vector<float>& samples)
 {
+  (void)path;
   VadService vad;
   VadTurn turn;
   for (size_t i = 0; i + 512 <= samples.size(); i += 512) {
@@ -320,7 +320,7 @@ int main(int argc, char** argv)
   if (!vadWav.empty()) {
     std::vector<float> samples;
     if (!readWav16k(vadWav, samples)) {
-      std::printf("no se pudo leer %s\n", vadWav.c_str());
+      std::printf("could not read %s\n", vadWav.c_str());
       return 1;
     }
     vadReport(vadWav, samples);
@@ -329,7 +329,7 @@ int main(int argc, char** argv)
   if (!probsWav.empty()) {
     std::vector<float> samples;
     if (!readWav16k(probsWav, samples)) {
-      std::printf("no se pudo leer %s\n", probsWav.c_str());
+      std::printf("could not read %s\n", probsWav.c_str());
       return 1;
     }
     vadProbs(probsWav, samples);
@@ -341,7 +341,7 @@ int main(int argc, char** argv)
   g711Check();
   vadCheck();
   vadGateCheck();
-  std::printf("\n%s (%d fallos)\n", gFailures == 0 ? "TODO OK" : "HAY FALLOS",
-              gFailures);
+  std::printf("\n%s (%d failures)\n",
+              gFailures == 0 ? "ALL OK" : "THERE ARE FAILURES", gFailures);
   return gFailures == 0 ? 0 : 1;
 }

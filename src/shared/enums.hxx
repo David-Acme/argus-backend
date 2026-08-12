@@ -245,6 +245,82 @@ inline MemoryType memoryTypeFromString(const std::string& s)
   return MemoryType::Persona;
 }
 
+enum class PhraseKind : uint8_t
+{
+  Trigger = 0,
+  Confirmation,
+  StatementStart,
+  RecallMarker,
+  Interrogative,
+  Filler
+};
+
+inline std::string phraseKindToString(PhraseKind k)
+{
+  switch (k) {
+    case PhraseKind::Confirmation:
+      return "confirmation";
+    case PhraseKind::StatementStart:
+      return "statement_start";
+    case PhraseKind::RecallMarker:
+      return "recall_marker";
+    case PhraseKind::Interrogative:
+      return "interrogative";
+    case PhraseKind::Filler:
+      return "filler";
+    default:
+      return "trigger";
+  }
+}
+
+inline PhraseKind phraseKindFromString(const std::string& s)
+{
+  if (s == "confirmation")
+    return PhraseKind::Confirmation;
+  if (s == "statement_start")
+    return PhraseKind::StatementStart;
+  if (s == "recall_marker")
+    return PhraseKind::RecallMarker;
+  if (s == "interrogative")
+    return PhraseKind::Interrogative;
+  if (s == "filler")
+    return PhraseKind::Filler;
+  return PhraseKind::Trigger;
+}
+
+enum class LexiconKind : uint8_t
+{
+  Predicate = 0,
+  Kinship,
+  FirstPerson,
+  Stopword
+};
+
+inline std::string lexiconKindToString(LexiconKind k)
+{
+  switch (k) {
+    case LexiconKind::Kinship:
+      return "kinship";
+    case LexiconKind::FirstPerson:
+      return "first_person";
+    case LexiconKind::Stopword:
+      return "stopword";
+    default:
+      return "predicate";
+  }
+}
+
+inline LexiconKind lexiconKindFromString(const std::string& s)
+{
+  if (s == "kinship")
+    return LexiconKind::Kinship;
+  if (s == "first_person")
+    return LexiconKind::FirstPerson;
+  if (s == "stopword")
+    return LexiconKind::Stopword;
+  return LexiconKind::Predicate;
+}
+
 enum class MemorySource : uint8_t
 {
   Rule = 0,
@@ -273,6 +349,44 @@ inline MemorySource memorySourceFromString(const std::string& s)
   return MemorySource::Rule;
 }
 
+enum class JobState : uint8_t
+{
+  Waiting = 0,
+  Active,
+  Completed,
+  Failed,
+  Delayed
+};
+
+inline std::string jobStateToString(JobState s)
+{
+  switch (s) {
+    case JobState::Active:
+      return "active";
+    case JobState::Completed:
+      return "completed";
+    case JobState::Failed:
+      return "failed";
+    case JobState::Delayed:
+      return "delayed";
+    default:
+      return "waiting";
+  }
+}
+
+inline JobState jobStateFromString(const std::string& s)
+{
+  if (s == "active")
+    return JobState::Active;
+  if (s == "completed")
+    return JobState::Completed;
+  if (s == "failed")
+    return JobState::Failed;
+  if (s == "delayed")
+    return JobState::Delayed;
+  return JobState::Waiting;
+}
+
 enum class AuditLogPriority : uint8_t
 {
   Low = 0,
@@ -298,7 +412,8 @@ enum class TableName : uint8_t
   NotificationToken,
   UserActionLog,
   RefreshToken,
-  FaceEmbedding
+  FaceEmbedding,
+  Memory
 };
 
 inline std::string tableNameToString(TableName t)
@@ -338,6 +453,8 @@ inline std::string tableNameToString(TableName t)
       return "refresh_token";
     case TableName::FaceEmbedding:
       return "face_embedding";
+    case TableName::Memory:
+      return "memory";
   }
   return "user";
 }

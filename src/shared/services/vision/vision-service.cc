@@ -17,7 +17,8 @@ namespace
 {
 
 constexpr const char* kDefaultModel = "models/vision/lfm2vl-25/lm-Q8_0.gguf";
-constexpr const char* kDefaultMmproj = "models/vision/lfm2vl-25/mmproj-F16.gguf";
+constexpr const char* kDefaultMmproj =
+    "models/vision/lfm2vl-25/mmproj-F16.gguf";
 constexpr const char* kFallbackPrompt = "Can you describe this image?";
 
 uint64_t hashBytes(const unsigned char* data, size_t len)
@@ -53,22 +54,16 @@ void mtmdDeleter(mtmd_context* ctx)
 
 } // namespace
 
-std::unique_ptr<llama_model, void (*)(llama_model*)>
-    VisionService::model_{nullptr, llama_model_free};
-std::unique_ptr<llama_context, void (*)(llama_context*)>
-    VisionService::context_{nullptr, llama_free};
-std::unique_ptr<mtmd_context, void (*)(mtmd_context*)>
-    VisionService::mtmd_{nullptr, mtmdDeleter};
+VisionService::VisionService()
+    : model_(nullptr, llama_model_free), context_(nullptr, llama_free),
+      mtmd_(nullptr, mtmdDeleter), defaultPrompt_(kFallbackPrompt)
+{
+}
 
-std::mutex VisionService::mutex_;
-std::atomic<bool> VisionService::cancelled_{false};
-bool VisionService::loaded_ = false;
-int32_t VisionService::defaultMaxTokens_ = 64;
-int32_t VisionService::maxInputPx_ = 384;
-int32_t VisionService::nBatch_ = 512;
-std::string VisionService::defaultPrompt_ = kFallbackPrompt;
-std::vector<VisionService::CacheEntry> VisionService::cache_;
-size_t VisionService::cacheNext_ = 0;
+VisionService::~VisionService()
+{
+  shutdown();
+}
 
 void VisionService::init()
 {
@@ -76,7 +71,8 @@ void VisionService::init()
     std::lock_guard<std::mutex> lock(ai_init::llamaMutex());
 
     if (!HardwareProbe::vlmEnabled()) {
-      LOG_WARN << "Vision: disabled on tier " << toString(HardwareProbe::get().tier);
+      LOG_WARN << "Vision: disabled on tier "
+               << toString(HardwareProbe::get().tier);
       return;
     }
 
@@ -99,8 +95,7 @@ void VisionService::init()
     mp.n_gpu_layers = gpuLayers;
     mp.load_mode = LLAMA_LOAD_MODE_MMAP;
 
-    llama_model* rawModel =
-        llama_model_load_from_file(modelPath.c_str(), mp);
+    llama_model* rawModel = llama_model_load_from_file(modelPath.c_str(), mp);
     if (!rawModel)
       throw std::runtime_error("failed to load VLM: " + modelPath);
     model_.reset(rawModel);
@@ -157,10 +152,10 @@ void VisionService::init()
     cacheNext_ = 0;
 
     loaded_ = true;
-    LOG_INFO << "Vision loaded: " << modelPath << " + mmproj (threads="
-             << threads << ", ctx=" << contextSize
-             << ", max_input_px=" << maxInputPx_
-             << ", gpu_layers=" << gpuLayers << ")";
+    LOG_INFO << "Vision loaded: " << modelPath
+             << " + mmproj (threads=" << threads << ", ctx=" << contextSize
+             << ", max_input_px=" << maxInputPx_ << ", gpu_layers=" << gpuLayers
+             << ")";
   }
   catch (const std::exception& e) {
     LOG_FATAL << "Vision init failed: " << e.what();
@@ -178,7 +173,7 @@ void VisionService::shutdown()
   LOG_INFO << "Vision shutdown";
 }
 
-bool VisionService::isLoaded()
+bool VisionService::isLoaded() const
 {
   return loaded_;
 }
@@ -293,24 +288,29 @@ std::string VisionService::run(const cv::Mat& src, bool srcIsBgr,
 
   auto sparams = llama_sampler_chain_default_params();
   sparams.no_perf = true;
-  auto* smpl = llama_sampler_chain_init(sparams);
+  std::unique_ptr<llama_sampler, void (*)(llama_sampler*)>
+      smpl(llama_sampler_chain_init(sparams), &llama_sampler_free);
   if (!smpl) {
     LOG_ERROR << "Vision: failed to init sampler";
     return "";
   }
-  llama_sampler_chain_add(smpl, llama_sampler_init_greedy());
+  llama_sampler_chain_add(smpl.get(), llama_sampler_init_greedy());
 
   const auto* vocab = llama_model_get_vocab(model_.get());
   const llama_token eos = llama_vocab_eos(vocab);
   const llama_token eot = llama_vocab_eot(vocab);
 
   std::string caption;
-  auto batch = llama_batch_init(1, 0, 1);
+  std::unique_ptr<llama_batch, void (*)(llama_batch*)>
+      batch(new llama_batch(llama_batch_init(1, 0, 1)), [](llama_batch* b) {
+        llama_batch_free(*b);
+        delete b;
+      });
   for (int32_t i = 0; i < maxTokens; ++i) {
     if (cancelled_.load(std::memory_order_relaxed))
       break;
 
-    const llama_token token = llama_sampler_sample(smpl, ctx, -1);
+    const llama_token token = llama_sampler_sample(smpl.get(), ctx, -1);
     if (token == eos || token == eot)
       break;
 
@@ -320,19 +320,17 @@ std::string VisionService::run(const cv::Mat& src, bool srcIsBgr,
     if (n > 0)
       caption.append(piece, static_cast<size_t>(n));
 
-    llama_sampler_accept(smpl, token);
+    llama_sampler_accept(smpl.get(), token);
 
-    batch.token[0] = token;
-    batch.pos[0] = nPast++;
-    batch.n_seq_id[0] = 1;
-    batch.seq_id[0][0] = 0;
-    batch.logits[0] = 1;
-    batch.n_tokens = 1;
-    if (llama_decode(ctx, batch) != 0)
+    batch->token[0] = token;
+    batch->pos[0] = nPast++;
+    batch->n_seq_id[0] = 1;
+    batch->seq_id[0][0] = 0;
+    batch->logits[0] = 1;
+    batch->n_tokens = 1;
+    if (llama_decode(ctx, *batch) != 0)
       break;
   }
-  llama_batch_free(batch);
-  llama_sampler_free(smpl);
 
   if (!cancelled_.load(std::memory_order_relaxed))
     cacheStore(key, caption);
@@ -359,13 +357,15 @@ std::string VisionService::describeMat(const cv::Mat& bgr,
 drogon::Task<std::string> VisionService::describeAsync(const VisionRequest& req)
 {
   co_return co_await BlockingTask<std::string>(
-      [req]() { return VisionService::describe(req); });
+      [this, req]() { return describe(req); });
 }
 
-drogon::Task<std::string> VisionService::describeMatAsync(
-    const cv::Mat& bgr, const std::string& prompt, int32_t maxTokens)
+drogon::Task<std::string>
+VisionService::describeMatAsync(const cv::Mat& bgr, const std::string& prompt,
+                                int32_t maxTokens)
 {
-  co_return co_await BlockingTask<std::string>([bgr, prompt, maxTokens]() {
-    return VisionService::describeMat(bgr, prompt, maxTokens);
-  });
+  co_return co_await BlockingTask<std::string>(
+      [this, bgr, prompt, maxTokens]() {
+        return describeMat(bgr, prompt, maxTokens);
+      });
 }

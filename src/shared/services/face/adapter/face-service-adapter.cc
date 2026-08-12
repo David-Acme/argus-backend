@@ -5,24 +5,25 @@
 
 bool FaceServiceAdapter::initialize()
 {
-  FaceService::init();
+  FaceService::instance().init();
   return true;
 }
 
 bool FaceServiceAdapter::isLoaded() const
 {
-  return FaceService::isLoaded();
+  return FaceService::instance().isLoaded();
 }
 
 void FaceServiceAdapter::shutdown()
 {
-  FaceService::shutdown();
+  FaceService::instance().shutdown();
 }
 
 Json::Value FaceServiceAdapter::health() const
 {
   Json::Value value(Json::objectValue);
-  value["loaded"] = FaceService::isLoaded();
-  value["embeddings"] = static_cast<Json::Int64>(FaceDB::count());
+  value["loaded"] = FaceService::instance().isLoaded();
+  value["embeddings"] =
+      static_cast<Json::Int64>(FaceService::instance().faceDb().count());
   return value;
 }

@@ -1,8 +1,11 @@
 #pragma once
 
+#include <cstdint>
 #include <optional>
 #include <shared/enums.hxx>
 #include <string>
+
+class PhraseCatalog;
 
 struct RuleParseInput
 {
@@ -20,8 +23,27 @@ struct RuleParseResult
 class RuleParser
 {
 public:
-  RuleParser() = delete;
-  ~RuleParser() = delete;
+  explicit RuleParser(const PhraseCatalog& catalog) : catalog_(catalog) {}
 
-  static std::optional<RuleParseResult> parse(const RuleParseInput& input);
+  std::optional<RuleParseResult> parse(const RuleParseInput& input) const;
+  std::optional<RuleParseResult>
+  parseStatement(const RuleParseInput& input) const;
+
+  bool isQuestion(const RuleParseInput& input) const;
+
+  std::string stripFillers(const RuleParseInput& input) const;
+
+  bool isFiller(const std::string& phrase, const std::string& lang) const;
+
+private:
+  std::optional<std::string> contentBeforeTrigger(const std::string& text,
+                                                  const std::string& lowered,
+                                                  uint32_t begin,
+                                                  uint32_t end) const;
+
+  std::string stripTrailingConfirmation(std::string text,
+                                        const std::string& lang) const;
+  bool isRecallTalk(const std::string& lowered, const std::string& lang) const;
+
+  const PhraseCatalog& catalog_;
 };

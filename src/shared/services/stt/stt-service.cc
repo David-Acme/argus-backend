@@ -7,12 +7,6 @@
 #include <sherpa-onnx/c-api/c-api.h>
 #include <thread>
 
-std::unique_ptr<const SherpaOnnxOfflineRecognizer,
-                void (*)(const SherpaOnnxOfflineRecognizer*)>
-    SttService::recognizer_{nullptr, SherpaOnnxDestroyOfflineRecognizer};
-bool SttService::loaded_ = false;
-std::mutex SttService::mutex_;
-
 namespace
 {
 
@@ -81,7 +75,7 @@ createRecognizer(const std::string& lang)
     config.model_config.model_type = "nemo_transducer";
     config.model_config.tokens = tokPath.c_str();
   }
-  else {  // Whisper (default)
+  else { // Whisper (default)
     encPath = modelDir + "/tiny-encoder.int8.onnx";
     decPath = modelDir + "/tiny-decoder.int8.onnx";
     tokPath = modelDir + "/tiny-tokens.txt";
@@ -103,13 +97,22 @@ createRecognizer(const std::string& lang)
 
 } // namespace
 
+SttService::SttService()
+    : recognizer_(nullptr, SherpaOnnxDestroyOfflineRecognizer)
+{
+}
+
+SttService::~SttService()
+{
+  shutdown();
+}
+
 void SttService::init()
 {
   try {
-    const std::string lang =
-        ConfigService::getString("stt.language").empty()
-            ? "es"
-            : ConfigService::getString("stt.language");
+    const std::string lang = ConfigService::getString("stt.language").empty()
+                                 ? "es"
+                                 : ConfigService::getString("stt.language");
     recognizer_ = createRecognizer(lang);
 
     loaded_ = true;
@@ -134,8 +137,8 @@ void SttService::init()
     }
 
     LOG_INFO << "STT loaded: models/stt"
-             << " (" << engineName << ", " << lang << ", threads="
-             << ThreadBudget::computeThreads() << ")";
+             << " (" << engineName << ", " << lang
+             << ", threads=" << ThreadBudget::computeThreads() << ")";
   }
   catch (const std::exception& e) {
     LOG_FATAL << "STT init failed: " << e.what();
@@ -164,7 +167,7 @@ void SttService::shutdown()
   LOG_INFO << "STT shutdown";
 }
 
-bool SttService::isLoaded()
+bool SttService::isLoaded() const
 {
   return loaded_;
 }
@@ -207,7 +210,7 @@ SttService::transcribeAsync(const std::vector<float>& audioSamples,
                             int32_t sampleRate)
 {
   co_return co_await BlockingTask<std::string>(
-      [audioSamples, sampleRate]() {
-        return SttService::transcribe(audioSamples, sampleRate);
+      [this, audioSamples, sampleRate]() {
+        return transcribe(audioSamples, sampleRate);
       });
 }

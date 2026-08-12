@@ -12,6 +12,7 @@
 #include <opencv2/imgproc.hpp>
 #include <pipelinecache.h>
 #include <shared/services/face/face-db.hxx>
+#include <shared/services/sqlite/vec-db.hxx>
 #include <shared/wrapper/blocking-task/blocking-task.hxx>
 #include <shared/wrapper/thread-budget/thread-budget.hxx>
 #define STB_IMAGE_IMPLEMENTATION
@@ -20,8 +21,18 @@
 #include <thread>
 #include <vector>
 
-std::unique_ptr<FaceService::Impl> FaceService::impl_;
-std::counting_semaphore<8> FaceService::concurrency_{0};
+FaceService::FaceService() : faceDb_(VecDb::instance()) {}
+
+FaceService::~FaceService()
+{
+  shutdown();
+}
+
+FaceService& FaceService::instance()
+{
+  static FaceService service;
+  return service;
+}
 
 bool FaceService::Impl::init(const std::string& modelDir)
 {
@@ -95,14 +106,14 @@ void FaceService::init()
     return;
   }
 
-  FaceDB::init();
+  faceDb_.init();
   concurrency_.release(ThreadBudget::inferenceSlots());
   LOG_INFO << "FaceService initialized";
 }
 
 void FaceService::shutdown()
 {
-  FaceDB::shutdown();
+  faceDb_.shutdown();
 
   if (impl_ && impl_->pipelineCache)
     impl_->pipelineCache->save_cache("models/face/face.ncnn.vkcache");
@@ -111,7 +122,7 @@ void FaceService::shutdown()
   LOG_INFO << "FaceService shutdown";
 }
 
-bool FaceService::isLoaded()
+bool FaceService::isLoaded() const
 {
   return impl_ != nullptr;
 }
@@ -321,10 +332,10 @@ std::vector<uint8_t> decodeToRgb(const std::string& imageBytes, int& width,
     else
       flags = cv::IMREAD_REDUCED_COLOR_2;
 
-    cv::Mat bgr = cv::imdecode(
-        cv::Mat(1, static_cast<int>(imageBytes.size()), CV_8UC1,
-                const_cast<char*>(imageBytes.data())),
-        flags);
+    cv::Mat bgr =
+        cv::imdecode(cv::Mat(1, static_cast<int>(imageBytes.size()), CV_8UC1,
+                             const_cast<char*>(imageBytes.data())),
+                     flags);
     if (bgr.empty())
       return {};
 
@@ -335,18 +346,18 @@ std::vector<uint8_t> decodeToRgb(const std::string& imageBytes, int& width,
     return std::vector<uint8_t>(rgb.data, rgb.data + rgb.total() * 3);
   }
 
-  std::unique_ptr<stbi_uc, decltype(&stbi_image_free)> decoded(
-      stbi_load_from_memory(reinterpret_cast<const stbi_uc*>(
-                                imageBytes.data()),
-                            static_cast<int>(imageBytes.size()), &width,
-                            &height, &channels, 3),
-      &stbi_image_free);
+  std::unique_ptr<stbi_uc, decltype(&stbi_image_free)>
+      decoded(stbi_load_from_memory(reinterpret_cast<const stbi_uc*>(
+                                        imageBytes.data()),
+                                    static_cast<int>(imageBytes.size()), &width,
+                                    &height, &channels, 3),
+              &stbi_image_free);
   if (!decoded)
     return {};
 
-  return std::vector<uint8_t>(decoded.get(), decoded.get() +
-                                                 static_cast<size_t>(width) *
-                                                     height * 3);
+  return std::vector<uint8_t>(decoded.get(),
+                              decoded.get() +
+                                  static_cast<size_t>(width) * height * 3);
 }
 
 } // namespace
@@ -356,8 +367,9 @@ std::optional<int64_t> FaceService::identify(std::string imageBytes)
   concurrency_.acquire();
   struct SlotGuard
   {
-    ~SlotGuard() { FaceService::concurrency_.release(); }
-  } slotGuard;
+    ~SlotGuard() { owner->concurrency_.release(); }
+    FaceService* owner;
+  } slotGuard{this};
 
   int width = 0;
   int height = 0;
@@ -369,7 +381,7 @@ std::optional<int64_t> FaceService::identify(std::string imageBytes)
   if (!faceResult)
     return std::nullopt;
 
-  auto match = FaceDB::search(faceResult->embedding.data());
+  auto match = faceDb_.search(faceResult->embedding.data());
   if (!match)
     return std::nullopt;
 
@@ -383,7 +395,7 @@ drogon::Task<std::optional<int64_t>>
 FaceService::identifyAsync(std::string imageBytes)
 {
   co_return co_await BlockingTask<std::optional<int64_t>>(
-      [image = std::move(imageBytes)]() mutable {
-        return FaceService::identify(std::move(image));
+      [this, image = std::move(imageBytes)]() mutable {
+        return identify(std::move(image));
       });
 }

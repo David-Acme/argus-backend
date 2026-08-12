@@ -99,6 +99,12 @@ max_tokens = 256
 # Sampling temperature. Higher = more varied, natural phrasing; too high
 # degrades coherence. 0.85 tuned for the spoken conversation.
 temperature = 0.85
+# Temperature for turns that carry a recalled-memory block. Measured with
+# argus-llm-bench --memory over 3 independent runs per setting: at 0.85 the
+# answers varied run to run and one round invented a fact (attributed
+# Rodrigo's to Marta); at 0.0 all three runs were identical with zero
+# inventions. Facts want determinism; only the chit-chat wants variety.
+recall_temperature = 0.0
 # Threads for decode and prefill. 0 = auto (ThreadBudget).
 threads = 0
 batch_threads = 0
@@ -125,7 +131,7 @@ penalty_present = 0.0
 # 0 = LLAMA_DEFAULT_SEED (varied output). Pin a value only for tests.
 seed = 0
 # "model" reads the template from the GGUF; "chatml" forces the fallback.
-chat_template = "model"
+chat_template = "chatml"
 # GPU layers to offload. -1 = decide from HardwareProfile, 0 = force CPU,
 # N = offload N layers (999 = all). Only effective if llama.cpp was built with
 # a GPU backend (Vulkan needs vulkan-headers + glslc + SPIRV-Headers).
@@ -134,7 +140,7 @@ chat_template = "model"
 # because the weights live in VRAM. Auto offloads whenever Vulkan exists.
 gpu_layers = -1
 
-# ── STT (FastConformer Transducer multilingüe) ─────────────────────
+# ── STT (FastConformer Transducer multilingual) ────────────────────────
 [stt]
 # Engine: "nemo_transducer" (FastConformer RNN-T, en+de+es+fr, RTF ~0.02,
 # best speed/accuracy balance), "canary" (NeMo Canary 180m flash, same
@@ -232,16 +238,15 @@ transport = "auto"
 # Content-Length (pytapo/go2rtc behaviour); "negative" sends -1;
 # "chunked" uses HTTP/1.1 chunked encoding. Settle with tapo-probe.
 talk_framing = "none"
-# Segundos sin audio tras los que la cámara corta la sesión de voz. Reabrirla
-# cuesta un handshake entero, así que se mantiene abierta durante la
-# conversación y sendChunk la reabre solo si falla el envío.
+# Seconds without audio after which the camera cuts the voice session. Reopening
+# it costs a full handshake, so it is kept open during the conversation and
+# sendChunk only reopens it if sending fails.
 talk_idle_timeout_s = 60
-# Margen de audio del mic descartado tras terminar el envío al altavoz. El
-# eco se descarta DURANTE el talk (el bucle está bloqueado enviando), así que
-# aquí solo se cubre la cola de reproducción del altavoz de la cámara + el
-# retardo de captura del mic; no la duración de la frase. Calibrar con
-# labs/fixtures/camera-echo.wav: el instante en que la probabilidad del VAD
-# vuelve bajo neg_threshold tras el final del audio enviado.
+# Mic audio margin discarded after finishing the send to the speaker. The echo
+# is discarded DURING the talk (the loop is blocked sending), so here only the
+# camera speaker's playback queue + the mic capture delay are covered, not the
+# phrase duration. Calibrate with labs/fixtures/camera-echo.wav: the moment the
+# VAD probability drops back below neg_threshold after the sent audio ends.
 talk_drain_margin_ms = 800
 # Echo cancellation mode negotiated with the camera speaker.
 talk_mode = "aec"
@@ -314,98 +319,192 @@ go2rtc_api = "127.0.0.1:1984"
 go2rtc_rtsp = "127.0.0.1:8554"
 # Restart attempts before the camera is marked offline instead of looping.
 max_restarts = 8
-# Bytes de vídeo en vuelo permitidos por CONEXIÓN (no por suscripción): el
-# cuello es el socket TCP, que comparten todas las cámaras que mira un cliente.
+# Video bytes in flight allowed per CONNECTION (not per subscription): the
+# bottleneck is the TCP socket, shared by all the cameras a client watches.
 hub_window_bytes = 131072
-# Trozo máximo por mensaje binario. Acota cuánto puede monopolizar el socket
-# un solo fragmento y deja hueco al audio y al JSON de control.
+# Maximum chunk per binary message. Bounds how much a single fragment can
+# monopolize the socket and leaves room for audio and control JSON.
 hub_chunk_bytes = 16384
-# Segundos que se mantiene abierto el upstream tras irse el último espectador.
+# Seconds the upstream stays open after the last viewer leaves.
 hub_grace_ms = 2000
-# Cámaras simultáneas por cliente. La rejilla de vista previa marca el mínimo.
+# Simultaneous cameras per client. The preview grid marks the minimum.
 hub_max_subs_per_client = 8
 
-# ── Detección de voz (Silero VAD v5) ──────────────────────────────────
-# El micrófono de la cámara es de campo lejano y con más ruido que uno de
-# diadema, así que el umbral de arranque es bajo y quien filtra los falsos
-# positivos es la puerta de calidad de turno, no el umbral.
+# ── Voice detection (Silero VAD v5) ─────────────────────────────────
+# The camera microphone is far-field and noisier than a headset one, so the
+# start threshold is low and the turn-quality gate filters the false
+# positives, not the threshold.
 [vad]
 threshold = 0.45
 neg_threshold = 0.25
-# Ventanas de 32 ms de voz para abrir un turno.
+# 32 ms speech windows to open a turn.
 min_speech_frames = 5
-# Ventanas de 32 ms de silencio para cerrarlo. 12 = 384 ms: por debajo de
-# 300 ms se parten las frases en español por la pausa entre sintagmas.
+# 32 ms silence windows to close it. 12 = 384 ms: below 300 ms Spanish
+# sentences get split at the pause between phrases.
 min_silence_frames = 12
-# Tope duro de un turno (750 ventanas = 24 s).
+# Hard cap of a turn (750 windows = 24 s).
 max_turn_frames = 750
-# Ventanas guardadas antes del inicio detectado para no cortar el fonema
-# inicial. 10 = 320 ms.
+# Windows saved before the detected start so the initial phoneme is not cut.
+# 10 = 320 ms.
 pre_roll_frames = 10
-# Puerta de calidad: por debajo de esto el turno se descarta sin llamar al
-# STT. El STT inventa frases cuando le llega audio corto o casi silencioso.
+# Quality gate: below this the turn is discarded without calling the STT. The
+# STT makes up phrases when it gets short or nearly silent audio.
 min_turn_ms = 240
 min_mean_prob = 0.35
 
 # ── Voice test (labs) ────────────────────────────────────────────────
-# Las credenciales de la cámara viven en config.local.toml (overlay sin
-# trackear); este bloque solo lleva tunables del lab.
+# Camera credentials live in config.local.toml (untracked overlay); this block
+# only carries lab tunables.
 [voice_test]
-# Tope de espera sin audio del mic antes de forzar una reconexión. Sin él,
-# av_read_frame puede quedarse bloqueado cuando la cámara deja de enviar
-# (los keepalive RTCP impiden que rw_timeout dispare) y el mic queda sordo.
-# El interrupt_callback de FFmpeg aborta la lectura pasada esta deadline y el
-# bucle de reconexión reabre la sesión en segundos.
+# Max wait without mic audio before forcing a reconnect. Without it,
+# av_read_frame can get stuck when the camera stops sending (RTCP keepalives
+# stop rw_timeout from firing) and the mic goes deaf. FFmpeg's
+# interrupt_callback aborts the read past this deadline and the reconnect loop
+# reopens the session in seconds.
 mic_recover_timeout_ms = 3000
-# Mensajes de historial que se conservan en la conversación (sin contar el
-# system prompt). Al podar por debajo se rompe el prefix reuse del LLM y cada
-# turno re-prefillea todo; 41 = 20 turnos de memoria. Si subes
-# llm.context_size hacia 128000, puedes subir también este tope para
-# conversaciones aún más largas.
+# History messages kept in the conversation (not counting the system prompt).
+# Pruning below this breaks the LLM's prefix reuse and every turn re-prefills
+# everything; 41 = 20 turns of memory. If you raise llm.context_size toward
+# 128000, you can also raise this cap for even longer conversations.
 history_messages = 41
 
-# ── Memoria de largo plazo (MemoryService) ─────────────────────────────
-# Recall híbrido: FTS5 (unicode61 + trigram) + vec0 (embeddings ONNX
-# multilingual-e5-small int8, models/memory/). Sin embeddings si falta el
-# modelo → recall solo léxico.
+# ── Long-term memory (MemoryService) ─────────────────────────────────────
+# Hybrid recall: FTS5 (unicode61 + trigram) + vec0 (ONNX embeddings
+# multilingual-e5-small int8, models/memory/). Lexical-only recall if the
+# model is missing.
 [memory]
-# Presupuesto de tokens por turno: memorias recalladas (prepend al user) y
-# perfil estable (final del system prompt). Subirlos mejora el contexto a
-# costa de tokens de prefill.
+# Per-turn token budget: recalled memories (prepended to the user message)
+# and the stable profile (appended to the system prompt). Raising them
+# improves context at the cost of prefill tokens.
 recall_max_tokens = 512
 profile_max_tokens = 256
-# Tope del recall dentro del turno de voz; si se excede, responde la capa
-# léxica y la semántica se refresca en background para el siguiente turno.
-recall_deadline_ms = 350
-# Memorias de mayor prioridad que componen el perfil estable por alcance.
-profile_top_k = 20
-# Modelo de embeddings (multilingual-e5-small int8, descargado por
-# setup.sh). Sin el modelo, el recall es solo léxico (bm25 + trigram).
+# Max persona facts injected at conversation start (the profile is a
+# compact selection, never a dump: a small model chokes on 8+ facts).
+profile_max_facts = 4
+# Relative relevance margin: memories scoring below this fraction of the
+# best hit are dropped (near-misses sharing only a common verb like
+# "gusta" used to be injected and misattributed).
+# Seconds before the stable profile cache (memory_profile) is rebuilt from
+# the persona-type memories (selection by priority/hit_count/recency).
+profile_stale_seconds = 300
+# Recall deadline inside a voice turn (ms, 0 = no deadline). When the turn
+# exceeds the budget, the lexical layer answers and the semantic layer is
+# reserved for the next turn (the model is already warm by then).
+recall_deadline_ms = 200
+# Embedding model (multilingual-e5-small int8, downloaded by setup.sh).
+# Loaded lazily on the first real embed (in the worker), never at server
+# boot. Without the model the recall is lexical only (bm25 + trigram) —
+# graceful degradation.
 embedding_model = "models/memory/model.onnx"
 embedding_tokenizer = "models/memory/tokenizer.json"
 embedding_max_len = 512
-# Máximo de memorias inyectadas por turno tras la fusión RRF.
-recall_top_k = 8
-# Distancia Hamming máxima para considerar dos memorias duplicadas (dedup).
-dedup_hamming = 14
-# Marcador nativo del tool-call para guardar memorias en generación.
+# Load the embedding model at boot instead of on the first embed. The lazy
+# path stalls the first turn that needs a vector (~800 ms on the reference
+# machine); preloading moves that cost to startup, where it is invisible.
+embedding_preload = true
+# Effective vector dimension stored in vec0 (post-pooling truncation, 0 =
+# model dimension, 384). Lower values speed up KNN and shrink storage.
+embedding_dim = 0
+# Max memories injected per turn.
+recall_top_k = 4
+# Lexical evidence threshold for skipping the vector layer (fast path): when
+# the FTS layers produce >= N candidates, the embedding forward is skipped
+# and recall answers in <5 ms instead of ~25-60 ms.
+lexical_min_hits = 4
+# Cosine floor for the semantic recall tier (0 = disabled). e5 compresses
+# cosines: unrelated pairs sit around 0.76, related ones at 0.85+, so 0.80
+# cuts the noise without discarding legitimate paraphrases (the old 0.84-0.90
+# gate did). The tier runs only when the entity and lexical tiers return
+# fewer than lexical_min_hits facts.
+vector_min_sim = 0.80
+# How far above the background a fact must stand to be recalled semantically.
+# e5 scores any two Spanish sentences at 0.75-0.85, so the absolute value says
+# almost nothing: "hola, ¿cómo estás?" peaks at 0.850 against a completely
+# unrelated fact, higher than "¿cuál es la clave del wifi?" at 0.862 against
+# its own. What separates them is the shape: smalltalk is equidistant from
+# everything (margin 0.013-0.031), a real question makes one fact stand out
+# (margin 0.076-0.101). 0.05 sits in that gap.
+vector_margin = 0.05
+# With fewer than two stored facts there is no background to measure, so the
+# semantic tier falls back to this stricter absolute floor. It sits high on
+# purpose: on a nearly empty store a weak neighbour is the only candidate, and
+# the model turns it into an invented link ("tu sobrino estaba asustado porque
+# el router...") instead of admitting it does not know.
+vector_strict_min_sim = 0.88
+# Facts the semantic tier may add per turn. Recall stays demand-driven: the
+# turn gets what stands out, not the whole memory.
+semantic_max_facts = 2
+# Minimum cosine similarity ("passage:") to merge a semantic duplicate
+# detected by the worker: bump priority/hit_count on the existing memory and
+# discard the newly captured one. e5 puts same-fact paraphrases around
+# 0.93-0.96 and genuinely different memories below 0.90, so 0.93 catches
+# duplicates without merging distinct facts.
+vector_dedup_sim = 0.93
+# Chunk size (chars) for long contents: above it the content is split into
+# sentences with overlap and each chunk is embedded separately (same
+# memory_id) so the tail is not truncated by the tokenizer.
+chunk_chars = 400
+# Drain timeout of the async queue when closing a session (ms). The session
+# summary runs the main LLM in the background and can take seconds.
+flush_timeout_ms = 60000
+# ── Conversation compaction (main LLM, no extra model) ──────────────────
+# When the conversation history exceeds its cap, the oldest turns are NOT
+# discarded: they are compacted in the background with the SAME LlmService
+# (dedicated prompt, reset context) and the summary is saved as episodic
+# memory (L2). If the LLM is busy generating, the worker waits up to
+# compact_wait_ms before retrying (it never steals a live turn: it only
+# runs when the LLM is idle).
+compact_wait_ms = 15000
+compact_max_tokens = 256
+# Native tool-call markers for saving memories during generation.
 save_trigger = "<|tool_call_start|>"
-# Marcador de cierre del tool-call.
+# Closing marker of the tool-call.
 tool_end_trigger = "<|tool_call_end|>"
 
-# Frases-gancho por idioma para la captura explícita ("recuerda que X").
-# Clave = frase, valor = tipo de memoria. Añadir idioma = añadir tabla.
-[memory.phrases.es]
-"recuerda que" = "persona"
-"ten en cuenta que" = "persona"
-"no olvides que" = "persona"
-"apunta que" = "episodic"
-"a partir de ahora" = "instruction"
-"de ahora en adelante" = "instruction"
+# Implicit tool intents (fastText supervised, models/intent/).
+# The model is trained and recalibrated with labs/intent-probe:
+#   argus-intent-probe --intent-train && argus-intent-probe --intent-check
+# Without the model, tools fall back to the literal trigger (mentionsCamera).
+[intent]
+# fastText model (fp32 .bin or quantized .ftz) trained with softmax + none.
+# The .ftz is the runtime (0.6 MB, p50 ~13 us); the .bin is regenerated on
+# every --intent-train and serves as reference for --intent-quantize.
+model = "models/intent/argus-intent.ftz"
+# Minimum probability (softmax) to trigger each tool. The check set leaves a
+# wide margin (positives >= 0.96, negatives <= 0.35): 0.60 prioritizes
+# precision. Recalibrate with --intent-check if intents are added.
+camera_threshold = 0.60
+memory_save_threshold = 0.60
+# Real usage log (TSV: intent\ttext) that voice-test writes when an intent
+# fires. --intent-train --include-usage merges it when retraining, so the
+# model learns from the cases the user actually sees.
+usage_log = "labs/intent-data/usage.tsv"
 
-[memory.phrases.en]
-"remember that" = "persona"
-"keep in mind that" = "persona"
-"don't forget that" = "persona"
-"note that" = "episodic"
-"from now on" = "instruction"
+
+[extract]
+# Structured memory extraction (MEMORY_EXTRACTION_PLAN.md §6). The model is
+# optional: absence degrades to the Minimal tier (lexicon only, 0 MB) and
+# never fails boot. Downloaded by scripts/setup.sh into models/extract/.
+model_path = "models/extract/NuExtract-1.5-tiny-Q4_K_M.gguf"
+# Prompt dialect of the extraction model: "v1.5" (NuExtract 1.5 family,
+# <|input|>/<|output|> markers), "v2" (NuExtract 2.0, ChatML with a
+# "# Template:" prefix) or "lfm" (LFM2-Extract family, ChatML with the schema
+# in the system turn). They are NOT interchangeable: the wrong dialect makes
+# the model echo the input instead of extracting.
+prompt_format = "v1.5"
+# auto | full | light | minimal — overrides HardwareProbe::extractionTier()
+tier = "auto"
+# -1 = HardwareProbe::llmGpuLayers() (0 unless Vulkan + >= 8 GB RAM)
+gpu_layers = -1
+# Fraction of the utterance the lexicon has to account for before its result
+# is trusted. Below it the sentence carried more than the lexicon understood
+# ("mira una cosa, el sabado viene mi hermana" matched only a fragment), so the
+# model tier decides instead. The escalation is free for the conversation:
+# extraction already runs off the turn.
+lexicon_min_coverage = 0.6
+# 0 = ThreadBudget::extractionThreads()
+threads = 0
+n_ctx = 2048
+max_tokens = 512
+# Unloads the model after this many seconds without extraction jobs.
+idle_unload_seconds = 600

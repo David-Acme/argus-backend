@@ -28,51 +28,53 @@ struct VisionRequest
 class VisionService
 {
 public:
-  VisionService() = delete;
-  ~VisionService() = delete;
+  VisionService();
+  ~VisionService();
 
-  static void init();
-  static void shutdown();
+  VisionService(const VisionService&) = delete;
+  VisionService& operator=(const VisionService&) = delete;
 
-  static std::string describe(const VisionRequest& req);
-  static std::string describeMat(const cv::Mat& bgr,
-                                 const std::string& prompt = {},
-                                 int32_t maxTokens = 0);
+  void init();
+  void shutdown();
+
+  std::string describe(const VisionRequest& req);
+  std::string describeMat(const cv::Mat& bgr, const std::string& prompt = {},
+                          int32_t maxTokens = 0);
 
   // Coroutine variants: run inference off the event loop.
-  static drogon::Task<std::string> describeAsync(const VisionRequest& req);
-  static drogon::Task<std::string> describeMatAsync(const cv::Mat& bgr,
-                                                    const std::string& prompt = {},
-                                                    int32_t maxTokens = 0);
+  drogon::Task<std::string> describeAsync(const VisionRequest& req);
+  drogon::Task<std::string> describeMatAsync(const cv::Mat& bgr,
+                                             const std::string& prompt = {},
+                                             int32_t maxTokens = 0);
 
-  static void cancel();
-  static bool isLoaded();
+  void cancel();
+  bool isLoaded() const;
 
 private:
-  static std::string run(const cv::Mat& src, bool srcIsBgr,
-                         const std::string& prompt, int32_t maxTokens);
-  static cv::Mat fitToBudget(const cv::Mat& src, bool srcIsBgr);
-  static const std::string* cacheLookup(uint64_t key);
-  static void cacheStore(uint64_t key, const std::string& caption);
+  std::string run(const cv::Mat& src, bool srcIsBgr, const std::string& prompt,
+                  int32_t maxTokens);
+  cv::Mat fitToBudget(const cv::Mat& src, bool srcIsBgr);
+  const std::string* cacheLookup(uint64_t key);
+  void cacheStore(uint64_t key, const std::string& caption);
 
-  static std::unique_ptr<llama_model, void (*)(llama_model*)> model_;
-  static std::unique_ptr<llama_context, void (*)(llama_context*)> context_;
-  static std::unique_ptr<mtmd_context, void (*)(mtmd_context*)> mtmd_;
+  std::unique_ptr<llama_model, void (*)(llama_model*)> model_;
+  std::unique_ptr<llama_context, void (*)(llama_context*)> context_;
+  std::unique_ptr<mtmd_context, void (*)(mtmd_context*)> mtmd_;
 
-  static std::mutex mutex_;
-  static std::atomic<bool> cancelled_;
-  static bool loaded_;
+  std::mutex mutex_;
+  std::atomic<bool> cancelled_{false};
+  bool loaded_ = false;
 
-  static int32_t defaultMaxTokens_;
-  static int32_t maxInputPx_;
-  static int32_t nBatch_;
-  static std::string defaultPrompt_;
+  int32_t defaultMaxTokens_ = 64;
+  int32_t maxInputPx_ = 384;
+  int32_t nBatch_ = 512;
+  std::string defaultPrompt_;
 
   struct CacheEntry
   {
     uint64_t key{0};
     std::string caption;
   };
-  static std::vector<CacheEntry> cache_;
-  static size_t cacheNext_;
+  std::vector<CacheEntry> cache_;
+  size_t cacheNext_ = 0;
 };

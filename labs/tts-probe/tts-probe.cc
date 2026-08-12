@@ -12,6 +12,8 @@
 namespace
 {
 
+TtsService gTts;
+
 std::string exeDir()
 {
   char buf[4096];
@@ -178,12 +180,12 @@ int main()
   streamingSplitCheck();
 
   ConfigService::load("config.toml");
-  TtsService::init();
-  if (!TtsService::isLoaded()) {
+  gTts.init();
+  if (!gTts.isLoaded()) {
     std::printf("TTS NOT LOADED\n");
     return 1;
   }
-  const int sr = TtsService::sampleRate();
+  const int sr = gTts.sampleRate();
   std::printf("sample_rate=%d\n\n", sr);
 
   struct Case
@@ -213,7 +215,7 @@ int main()
     TtsRequest req;
     req.text = c.text;
     const auto t0 = std::chrono::steady_clock::now();
-    auto pcm = TtsService::synthesize(req);
+    auto pcm = gTts.synthesize(req);
     const double ms = std::chrono::duration<double, std::milli>(
                           std::chrono::steady_clock::now() - t0)
                           .count();
@@ -225,7 +227,7 @@ int main()
                          pcm, sr);
   }
 
-  TtsService::shutdown();
+  gTts.shutdown();
 
   if (gFailures > 0) {
     std::printf("\n%d SPLIT FAILURE(S)\n", gFailures);

@@ -36,32 +36,37 @@ struct MediaRelayStats
 class MediaRelay
 {
 public:
-  MediaRelay() = delete;
-  ~MediaRelay() = delete;
+  MediaRelay() = default;
+  ~MediaRelay();
 
-  static void init();
-  static void shutdown();
+  MediaRelay(const MediaRelay&) = delete;
+  MediaRelay& operator=(const MediaRelay&) = delete;
 
-  static drogon::HttpResponsePtr stream(int64_t cameraId, MediaFormat format);
-  static drogon::HttpResponsePtr snapshot(int64_t cameraId);
+  static MediaRelay& instance();
+
+  void init();
+  void shutdown();
+
+  drogon::HttpResponsePtr stream(int64_t cameraId, MediaFormat format);
+  drogon::HttpResponsePtr snapshot(int64_t cameraId);
 
   // Raw JPEG bytes of the last frame go2rtc has for the camera. Empty when
   // go2rtc is not running or the frame cannot be fetched. No camera session
   // is opened: go2rtc already holds the connection.
-  static std::string snapshotBytes(int64_t cameraId);
+  std::string snapshotBytes(int64_t cameraId);
 
-  static MediaRelayStats stats();
+  MediaRelayStats stats();
 
 private:
   static std::string upstreamPath(int64_t cameraId, MediaFormat format);
-  static bool acquireSlot(int64_t cameraId);
-  static void releaseSlot(int64_t cameraId);
+  bool acquireSlot(int64_t cameraId);
+  void releaseSlot(int64_t cameraId);
 
-  static std::mutex mutex_;
-  static std::unordered_map<int64_t, int> viewers_;
-  static std::atomic<int64_t> bytesRelayed_;
-  static std::atomic<int> rejected_;
-  static int maxViewersPerCamera_;
-  static int maxTotalViewers_;
-  static size_t chunkSize_;
+  std::mutex mutex_;
+  std::unordered_map<int64_t, int> viewers_;
+  std::atomic<int64_t> bytesRelayed_{0};
+  std::atomic<int> rejected_{0};
+  int maxViewersPerCamera_ = 4;
+  int maxTotalViewers_ = 8;
+  size_t chunkSize_ = 32768;
 };

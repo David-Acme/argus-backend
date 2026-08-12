@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <string>
 
 // Adaptive thread budgets so every AI service performs well on any machine,
 // from 2-core laptops to 64-core servers, without hardcoded thread counts.
@@ -32,5 +33,11 @@ int inferenceSlots();
 // synthesis now overlaps with token generation, and it stops scaling past
 // ~8 threads, so a bigger slice only steals cores from the LLM.
 int ttsThreads();
+
+int extractionSlots();
+
+int extractionThreads();
+
+int queueWorkers(const std::string& queueName);
 
 } // namespace ThreadBudget

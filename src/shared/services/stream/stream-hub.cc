@@ -23,15 +23,16 @@ std::string upstreamName(int64_t cameraId, const std::string& quality)
 }
 } // namespace
 
-std::mutex StreamHub::hubMutex_;
-std::unordered_map<std::string, std::shared_ptr<StreamHub::Upstream>>
-    StreamHub::upstreams_;
-std::unordered_map<uint16_t, std::shared_ptr<StreamHub::Upstream>>
-    StreamHub::subToUpstream_;
-uint16_t StreamHub::nextSubId_ = 1;
-uint32_t StreamHub::nextSeq_ = 0;
-size_t StreamHub::chunkBytes_ = kDefaultChunkBytes;
-int64_t StreamHub::graceMs_ = kDefaultGraceMs;
+StreamHub::~StreamHub()
+{
+  shutdown();
+}
+
+StreamHub& StreamHub::instance()
+{
+  static StreamHub hub;
+  return hub;
+}
 
 void StreamHub::sendFramed(const std::shared_ptr<Subscriber>& sub, uint8_t type,
                            bool keyframe, const uint8_t* data, size_t len)
@@ -101,8 +102,8 @@ void StreamHub::dispatchBox(Upstream& up, std::string box, bool keyframe)
 
 void StreamHub::runUpstream(std::shared_ptr<Upstream> up)
 {
-  const auto [host, port] =
-      upstream_http::splitHostPort(Go2rtcManager::apiBase().substr(7));
+  const auto [host, port] = upstream_http::splitHostPort(
+      Go2rtcManager::instance().apiBase().substr(7));
   const std::string path = "/api/stream.mp4?src=" + up->name;
 
   upstream_http::Upstream conn = upstream_http::open(host, port, path, 10);
@@ -130,7 +131,7 @@ void StreamHub::runUpstream(std::shared_ptr<Upstream> up)
     up->init = std::move(box);
     up->hasInit = true;
   };
-  reader.onFragment = [&up](std::string box, bool keyframe) {
+  reader.onFragment = [this, &up](std::string box, bool keyframe) {
     dispatchBox(*up, std::move(box), keyframe);
   };
   if (!conn.leftover.empty())
@@ -215,7 +216,7 @@ void StreamHub::shutdown()
 std::shared_ptr<StreamHub::Upstream>
 StreamHub::getOrOpen(const SubscribeInput& input, std::string& error)
 {
-  if (!Go2rtcManager::isRunning()) {
+  if (!Go2rtcManager::instance().isRunning()) {
     error = "go2rtc_not_running";
     return nullptr;
   }
@@ -233,7 +234,7 @@ StreamHub::getOrOpen(const SubscribeInput& input, std::string& error)
 
   auto up = std::make_shared<Upstream>();
   up->name = name;
-  up->reader = std::thread(&StreamHub::runUpstream, up);
+  up->reader = std::thread(&StreamHub::runUpstream, this, up);
   upstreams_.emplace(name, up);
   return up;
 }

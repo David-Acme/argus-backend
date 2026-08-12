@@ -30,10 +30,11 @@
 - **Conan 2** for deps (`conanfile.txt` + `CMakePresets.json`). CMake presets:
   `dev` (Debug) and `prod` (Release), generator Ninja.
 - **Git submodules** under `third_party/` for libs that change rarely and we want
-  to control: `ncnn`, `sherpa-onnx`, `llama.cpp`, `inspireface`. Built via
-  `add_subdirectory` with `EXCLUDE_FROM_ALL`. `fastText` and `hnswlib` were
-  **removed on 2026-08-09**: fastText had zero uses in `src/`; hnswlib was
-  replaced by sqlite-vec for face embeddings.
+  to control: `ncnn`, `sherpa-onnx`, `llama.cpp`, `inspireface`, `fastText`
+  (pinned at 1f12150 = v0.9.2 + local C++20 patch). Built via
+  `add_subdirectory` with `EXCLUDE_FROM_ALL`. `fastText` was removed on
+  2026-08-09 (zero uses in `src/`) and **re-added the same day** as the intent
+  engine backend; `hnswlib` was replaced by sqlite-vec for face embeddings.
 - **sqlite-vec** is vendored (single-file C extension, v0.1.10-alpha.4, MIT/
   Apache-2.0) at `third_party/sqlite-vec/` with sqlite3 3.53.3 headers. It is
   compiled with `SQLITE_CORE` and registered via
@@ -735,11 +736,13 @@ src/shared/repositories/{entity}/
 - Run `ncnnoptimize` on models offline for fusion and fp16 conversion
 - Recognize that some model architectures fall back to CPU on Vulkan (ncnn limitation)
 
-## Long-term memory: MemoryService (2026-08-09)
+## Long-term memory: MemoryService (2026-08-09, reworked 2026-08-10)
 
-Ultra-light memory for Argus: **zero extra LLM calls, no background extraction
-pipeline, ~25ms recall**. Separation of concerns is strict: `LlmService` stays a
-context-free mediator; the caller composes memory around it.
+Ultra-light memory for Argus: **no extra LLM model** (conversation compaction
+reuses the MAIN LlmService), **async background pipeline** (embedding of
+captures, dedup, compaction), ~25ms recall on limited hardware. Separation of
+concerns is strict: `LlmService` stays a context-free mediator; the caller
+composes memory around it.
 
 - **Scopes** (`memory_l1.scope`): `global | user | person | device | role` with
   a nullable `ref_id`. Recall always includes `global` + the caller's `user:<id>`
@@ -747,9 +750,9 @@ context-free mediator; the caller composes memory around it.
   system-wide facts, not just per-user ones. Types: `persona | episodic |
   instruction | system`; sources: `rule | llm | ingest` (enums in `enums.hxx`).
 - **Capture channels (no extra LLM)**:
-  1. *Explicit rules*: "recuerda que X" / "remember that X" — phrase tables are
-     data-driven in `config.toml [memory.phrases.<lang>]` (key=phrase, value=
-     type); adding a language = adding a table, no code.
+  1. *Explicit rules*: "recuerda que X" / "remember that X" — the phrases are
+     rows in `memory_phrase` (kind + lang + phrase + memory type); adding a
+     language = adding rows, no code.
   2. *Inline tool calls*: the main LLM may emit
      `<|tool_call_start|>save type=... priority=... content=...<|tool_call_end|>`
      during normal generation (prompt-instructed). `ToolParser` extracts them
@@ -758,21 +761,33 @@ context-free mediator; the caller composes memory around it.
      text. Markers are configurable (`memory.save_trigger`,
      `memory.tool_end_trigger`).
   3. *Ingest*: `reminder`/`context_note` are read directly at recall time.
-- **Dedup**: SimHash 64-bit over char-3-grams (`simhash.{hxx,cc}`);
-  `MemoryStore::saveDedup` bumps priority/hit_count on a match (≤
-  `memory.dedup_hamming`) instead of inserting. `MemoryStore` is the only
-  writer (memory_l1 + both FTS tables + vec row cleanup on remove).
+- **Dedup (two nets)**: (1) synchronous lexical gate in
+  `MemoryStore::saveDedup` — normalized equality, substring, word-Jaccard
+  (bumps priority/hit_count instead of inserting); (2) **vector dedup in the
+  background worker** — when the primary embedding of a new capture finds a
+  neighbour at `memory.vector_dedup_sim` (0.93) in the same partition, the
+  worker merges (bump + remove the new row). `MemoryStore` is the only writer
+  (memory_l1 + both FTS tables + vec rows); `vacuumOrphans()` heals index
+  rows whose memory no longer exists.
 - **Recall** (`memory-recall.{hxx,cc}`): three ranked lists fused with
-  **RRF(k=60)** — FTS5 `bm25()` (unicode61 words) + FTS5 trigram (substring,
-  language-agnostic) + `vec0` KNN (embeddings) — then reweighted by priority,
-  recency decay and hit_count, capped by `memory.recall_top_k` and the
-  `memory.recall_max_tokens` budget (chars≈4×tokens). Measured in
-  `labs/memory-probe --recall-bench`: **p50=25.8ms, p95=28.7ms** on the
-  reference machine (20 seeded memories, 30 recalls). Without the embedding
-  model the vector layer is skipped (degraded, lexical-only recall).
+  **RRF** — FTS5 `bm25()` (unicode61 words) + FTS5 trigram (substring,
+  language-agnostic) + `vec0` KNN (embeddings, per content/expanded view) —
+  then reweighted by priority, recency decay and hit_count, with a quadratic
+  cosine bonus calibrated on the reference hardware (related pairs 0.83-0.90,
+  unrelated ~0.76-0.80). **Lexical fast path**: when FTS produces ≥
+  `memory.lexical_min_hits` candidates, the embedding forward is skipped
+  (most turns answer in <5ms). `memory.recall_deadline_ms` bounds the turn.
+  Capped by `memory.recall_top_k` and the `memory.recall_max_tokens` budget
+  (chars≈4×tokens). Measured in `labs/memory-probe --recall-bench`:
+  **p50≈28ms, p95≈33ms, precision 30/30 stable** (5/5 runs) on the reference
+  machine. Without the embedding model the vector layer is skipped (degraded,
+  lexical-only recall).
 - **Embeddings** (`embedding-service.{hxx,cc}`): `multilingual-e5-small` INT8
   ONNX (118MB, 384-dim, 100+ languages) via ONNX Runtime (already a dependency),
-  downloaded by `scripts/setup.sh` into `models/memory/`. The tokenizer is a
+  downloaded by `scripts/setup.sh` into `models/memory/`. **Loaded lazily** on
+  the first real embed (in the worker), never at boot; `memory.embedding_dim`
+  truncates the pooled vector (vec0 schema + `Rebuild` migration handle it).
+  The tokenizer is a
   hand-rolled **Unigram** implementation (`unigram-tokenizer.{hxx,cc}`) parsing
   `tokenizer.json` (nlohmann_json) — verified **bit-identical token ids** to the
   reference `tokenizers` library on Spanish/English samples, including the
@@ -782,16 +797,34 @@ context-free mediator; the caller composes memory around it.
   unrelated words); ranking (not absolute cosine) is what matters — validated
   with relative checks in `--embed-check`.
 - **`VecDb`** (`sqlite/vec-db.{hxx,cc}`): the only sqlite3 connection with the
-  vec0 module. Owns `memory_vec` (float[384], `partition TEXT PARTITION KEY`
-  = `global`/`user:<id>`/`person:<id>`) and `face_vec` (float[128]); created
-  lazily on first use, all access serialized by `VecDb::mutex()` (callers take
-  the lock — `handle()` does NOT lock; non-recursive mutex).
-- **`MemoryService`** facade: `captureExplicit` (rule parse + saveDedup + vec
-  insert), `captureToolCall`, `recall` (→ `{prependText, profileText, usedIds}`),
-  `bumpHitCount`. `voice-test` integrates it: profile → system prompt at
-  conversation start (stable → prefix reuse intact), memories → prepended to the
-  user message each turn, hit_count bumped after each reply. Flag
-  `--memory-user <id>` enables it (model loads only then).
+  vec0 module. Owns `memory_vec` (float[N] with `partition TEXT PARTITION KEY`
+  = `global`/`user:<id>`/`person:<id>`, `memory_id`, `view`) and `face_vec`
+  (float[128]); created lazily on first use, all access serialized by
+  `VecDb::mutex()` (callers take the lock — `handle()` does NOT lock;
+  non-recursive mutex). Schema/dims changes are detected by
+  `schemaOutdated()` → recreate `memory_vec` only (face_vec untouched) +
+  background `Rebuild`. Connection and all prepared statements are RAII
+  (`std::unique_ptr<sqlite3>` and the `SqliteStmt` wrapper in
+  `src/shared/wrapper/sqlite-stmt/`).
+- **Async worker** (in `MemoryService`): a dedicated thread + job queue
+  (condvar). Jobs: **Embed** (chunks + views + vector dedup), **Compact**
+  (conversation summary with the MAIN LlmService, `preferIdle` waits for the
+  LLM to be free so a live turn is never delayed), **Rebuild** (re-embed
+  every memory after a schema/dims migration). `flushPending()` waits for the
+  queue AND the in-flight job (`gWorking`) with `memory.flush_timeout_ms`.
+- **`MemoryService`** facade: `captureExplicit` (rule parse + saveDedup +
+  async embed), `captureToolCall`, `captureImplicit`, `recall` (→
+  `{prependText, profileText, usedIds}`), `bumpHitCount`, `enqueueSummary`
+  (session end, waits at exit), `enqueueCompaction` (mid-session, preferIdle).
+  `voice-test` integrates it: profile → system prompt at conversation start
+  (stable → prefix reuse intact), memories → prepended to the user message
+  each turn, hit_count bumped after each reply; when the history cap prunes
+  turns, `trimHistory` compacts the dropped transcript in the background
+  instead of discarding it. Flag `--memory-user <id>` enables it.
+- **L3 persona profile**: `memory_profile` is a cache of the solid persona
+  facts (type=persona, priority ≥ 60, ordered by priority/hit_count/recency),
+  rebuilt from `memory_l1` on the fly when stale (`memory.profile_stale_seconds`)
+  and upserted. Injected at conversation start — zero per-turn cost.
 - **FaceDB migrated from hnswlib to vec0** (2026-08-09): `face_vec` (rowid =
   face_embedding.id, cosine KNN, best-per-person, 0.80 threshold — semantics
   unchanged). `face_embedding` remains the canonical synced row (sync contract
@@ -800,7 +833,10 @@ context-free mediator; the caller composes memory around it.
 - **Labs**: `argus-memory-probe` — `--schema-check` (tables + FTS5 bm25 +
   trigram + vec0 KNN roundtrips), `--capture-test` (es/en phrase parsing),
   `--tool-parse-test` (fragmented stream parsing), `--embed-check` (embedding
-  sanity incl. cross-lingual), `--recall-bench` (3-run latency stats), `--tokens`
+  sanity incl. cross-lingual), `--recall-bench` (3-run latency stats),
+  `--vec-gate-test` (pure-paraphrase recall gate, incl. the synonym view),
+  `--profile-test` (L3 persona cache), `--dedup-bench` (vector merge),
+  `--sims` (query→memory cosines for threshold calibration), `--tokens`
   (tokenizer debug). All green on the reference machine.
 - **Environment note**: the system CMake 4.4.0 breaks this build's generate
   step (nested `project()` subprojects, "CMAKE_C_COMPILE_OBJECT missing").
@@ -808,3 +844,578 @@ context-free mediator; the caller composes memory around it.
   (`~/.local/share/uv/tools/cmake/bin/cmake`) — use that binary for configure
   and build until the subprojects are updated. `scripts/setup.sh` still installs
   the distro cmake; the uv one is the known-good path on Arch.
+
+## Kùzu gate (2026-08-11) — FAILED, fallback to SQLite
+
+`COGNITIVE_MEMORY_PLAN.md` Phase 0 tested both Kùzu candidates as the memory
+engine: upstream `kuzudb/kuzu` @ `v0.11.3` (final release, pinned at
+`third_party/kuzu`) and the Vela fork @ `v0.12.0-vela.87bf0be`
+(`third_party/kuzu-vela`). Both are MIT, both were built fully offline with
+`fts`/`vector` statically linked and auto-loaded, both passed the idle-store
+budgets in Release @ 5 000 facts (RSS 54 MB at open, KNN p95 13 ms,
+traversal p95 2 ms). The real access pattern — consolidation worker
+inserting while recall reads, one serialized connection (KuzuDb, VecDb
+contract) — fails on **both**:
+
+- upstream v0.11.3: inserts degrade 12 ms → 4–18 s under continuous reads
+  (checkpoint starvation), non-deterministic `DirectedCSRIndex` OOB asserts
+  (`LocalRelTable::getCSRIndex`), SIGTERM-proof hangs; interleaved
+  insert+read hangs from ~100 facts even single-threaded;
+- Vela fork: any significant activity through a second connection (read or
+  write) asserts in `DirectedCSRIndex`.
+
+Decision: Kùzu is not the memory engine. `SemanticGraph` is backed by the
+existing SQLite tables (vec0 + FTS5 + adjacency); phases 2–8 of the plan
+proceed unchanged.
+
+## LfmAdapter tool calling + Phase 7 gate (2026-08-11)
+
+Why the adapter changed (no code comments carry this): the LFM2.5 chat
+template extracted from the GGUF is ChatML with tools declared inside the
+system message as `List of tools: [...]`; it has no `<|tool_*|>` tokens.
+Hand-built prompts must never contain literal special tokens — `llama_tokenize`
+parses them with `parse_special=true` (llm-service.cc:222), so a literal
+`<|tool_call_start|>` inside the system message becomes a real special token
+in a position the model never saw trained, which suppresses generation (the
+original 0/2 was this, not the model). Raw observation (Tarea 0, bench
+`--verbose`) showed the model emits the tool call as raw JSON
+(`{"name": ..., "arguments": {...}}`) or its own Spanish-keyed shape, never
+the marker-wrapped format. The parser accepts raw JSON, pythonic
+`[name(arg="v", ...)]` and marker-wrapped blocks; tool results are appended
+as role `"tool"` messages (append-only, preserving LlmService::prefill
+prefix reuse). Gate result in plan §9 Phase 7: the 1.2B does not follow the
+declared schema (0/20 memory_save, 2/56 camera false positives) — fastText
+stays. Separate finding: labs that do not link ncnn (tool-bench) compile
+`HardwareProbe::probeVulkan` as a no-op (`__has_include(<gpu.h>)` guard,
+hardware-profile.cc:12), so their `gpu_layers=0` is a lab-target artifact;
+the product binary offloads to the RADV iGPU.
+
+## All SQLite access goes through repositories (2026-08-11)
+
+Rule: every SQLite query lives in `src/shared/repositories/`. The memory
+graph stack now follows it: `src/shared/repositories/memory-graph/`
+(`memory-graph-query.hxx` holds all SQL, `memory-graph-repository.{hxx,cc}`
+the sync data-access layer taking `sqlite3*` under the caller's store
+mutex). `SqliteGraph` became a thin connection+mutex holder delegating to
+the repository; `EntityResolver`, `GraphRecall` and the embedding worker use
+it too. Legacy exceptions (VecDb/face-db, memory-store/memory-recall)
+keep their store-local SQL until their removal.
+
+Phase 1 (2026-08-11) landed on that fallback: `semantic-graph.hxx` +
+`sqlite-graph.{hxx,cc}` (memory_entity/alias/fact/edge/episode/source +
+FTS5 + recursive-CTE hop recall, §4 schema in schema.sql), one-shot
+`migrateLegacy()` (memory_l1 → memory_fact under a legacy entity),
+`SqliteGraphServiceAdapter` + `MemoryServiceAdapter` registered at boot
+(application.cc), and MemoryService converted static → instance (worker
+state as private members; labs use a `gMemory` instance). `--graph-test`
+15/15; recall-bench 30/30; build dev 0/0. The submodules stay pinned as reproducer/upgrade path;
+`labs/kuzu-probe` (`EXCLUDE_FROM_ALL`, ~40 min compile when built
+explicitly) is the gate probe and the crash reproducer
+(`labs/kuzu-probe/REPRODUCER.md`, ready to file against Vela). The Wave A
+overhead items (4, 7, 9) landed with `--recall-bench` p50 24.4 ms / p95
+27.3 ms / 30/30 and `--intent-check` 103/103 — those remain the regression
+baselines.
+
+## MEMORY_CONTEXT_REDESIGN.md (folded 2026-08-11, Phase 5)
+
+Historical record of the SQLite-only memory measurements. Superseded by the
+graph redesign (COGNITIVE_MEMORY_PLAN.md); kept verbatim as history.
+
+## Memory & Context Redesign — how the LLM receives memory (2026-08-10)
+
+> Status: implemented · Validation in progress · No commit until the user
+> asks for it.
+
+## Why
+
+The conversation LLM (LFM2.5-1.2B-Instruct, Q4_K_M) is coherent and fast on
+its own: validated with a clean-context session (no memory, no intent) where
+the model answered naturally and in the right language. The incoherences
+("tu hermana viene los domingos a ver la televisión", "your sister, claro
+que sí", "a Rodrigo le gusta mucho el pollo") were caused by HOW the context
+was passed to it, not by the model or the embeddings:
+
+1. **English instruction blocks next to Spanish facts**: the `<relevant-memories>`
+   header with English examples ("tu hermana means the user's sister") was
+   prepended to every user message; the model echoed it ("your sister...").
+2. **Profile dump**: `memory_profile` injected ALL persona facts (priority >= 60)
+   into the system prompt; a 1.2B chokes on 8+ unrelated facts and confabulates
+   details around them ("a ver la televisión").
+3. **Common-verb noise**: queries sharing only a verb ("gusta") injected
+   unrelated memories that the model then misattributed to the wrong person.
+4. **Capture gaps**: natural phrasings ("quisiera que me hagas recordar acerca
+   de que...") neither matched the hook tables nor the intent classifier, and
+   trailing confirmations ("¿está bien?") blocked `parseStatement`.
+
+## Design decisions
+
+### 1. Clean context by default (no memory, no intent)
+
+`labs/voice-test/voice-test.cc`:
+
+- `systemPromptFor(langCode, withMemory, withIntent)` builds the prompt
+  dynamically:
+  - **Base** (always): pure conversational persona — language lock, "tú",
+    brevity, honesty, "never speak as if you were the user" (say "tu hermana",
+    never "mi hermana").
+  - **+ memory** (`--memory-user N`): one short memory instruction block in the
+    conversation's language + the `<|tool_call_start|>save...` tool instruction.
+  - **+ intent** (`--intent`): the camera instruction line.
+- Defaults: memory and intent are OFF. The user message goes raw to the LLM.
+  No captures, no camera auto-description, no recall injection.
+- Flags: `--memory-user <id>` enables memory; `--intent` enables the fastText
+  intent classifier + camera auto-description.
+- This made the A/B possible: clean model vs memory-enabled model.
+
+### 2. Minimal per-turn memory block, in the conversation's language
+
+`src/shared/services/memory/memory-recall.cc`:
+
+- The English `<relevant-memories>` header with examples was replaced by a
+  minimal block: plain lines between `<memorias>` / `</memorias>` (es) or
+  `<memories>` / `</memories>` (en). No bullets, no quotes, no instructions
+  inside the block.
+- A short anti-echo directive closes the block, in the conversation's
+  language: "Responde dirigiéndote al usuario: di 'tu hermana', nunca 'mi
+  hermana'." — placed exactly where the model tends to mirror the user's
+  first-person words.
+- The HOW is instructed ONCE in the system prompt, never repeated per turn.
+
+### 3. Selective L3 profile (never a dump)
+
+- `memory.profile_max_facts = 4`: `memory_profile` is rebuilt with LIMIT 4
+  (ordered by priority/hit_count/recency), so the system prompt receives a
+  compact selection instead of every persona fact.
+
+### 4. Relative score margin
+
+- `memory.score_margin = 0.65`: after ranking, candidates scoring below 65%
+  of the best hit are dropped. Fixes the common-verb noise ("gusta" matched
+  "a Rodrigo no le gusta el pescado" AND "me gusta el café sin azúcar",
+  and the model attributed the coffee to Rodrigo). Genuine multi-memory
+  queries (both subjects score similarly) are unaffected.
+
+### 5. Second-person conversion at injection (deterministic, code table)
+
+- Stored facts keep the user's own words ("mi hermana"); the injected block
+  is converted with `toSecondPerson()` (code table, es+en markers, word
+  boundaries, longer keys first — e.g. "yo soy" before "soy"). Tables are
+  small and disjoint, so both languages are applied regardless of input
+  language.
+- **Why not the LLM**: measured with 3 prompt styles (direct rule, few-shot
+  Input/Output, arrow completion) — LFM2.5-1.2B echoed the input verbatim
+  ("Me gusta el café sin azúcar" -> unchanged) or contaminated the output
+  with the examples ("mi hermana viene los domingos, tú también lo haces...").
+  A background LLM conversion job was implemented and reverted after these
+  measurements; the deterministic table is 100% precise on the covered
+  markers, costs 0 ms, and needs no system-prompt or config additions.
+- Applied to the recall block AND the profile (profile content is injected
+  at conversation start).
+
+### 6. Capture (data-driven, scales by adding rows)
+
+Trigger phrases and trailing confirmations started as `[memory.phrases.*]` /
+`[memory.confirmations.*]` tables in `config.toml`. They now live in the
+`memory_phrase` table — see "Memory: deferred extraction, semantic recall,
+vocabulary in SQLite" below for why and how they are matched.
+
+- "acerca de que" variants of the "recordar" hooks ("quisiera que me hagas
+  recordar acerca de que" -> persona).
+- Trailing confirmations ("¿está bien?", "¿ok?", "right?") are stripped before
+  the capture gates (question gate + content). Adding a language = adding
+  rows.
+
+`src/shared/services/memory/rule-parser.cc`:
+
+- `stripTrailingConfirmation(text, lang)`: data-driven per language, applied
+  in both `parse()` (phrase path) and `parseStatement()`.
+
+## What was tried and rejected (evidence)
+
+| Approach | Result |
+|---|---|
+| English `<relevant-memories>` header + examples per turn | Model echoed the header ("your sister, claro que sí") |
+| Profile with all persona facts | Confabulation around unrelated facts |
+| LLM second-person conversion (direct prompt) | Echoed input for "me gusta", converted only the example "mi hermana" |
+| LLM second-person conversion (few-shot Input/Output) | Echoed input verbatim |
+| LLM second-person conversion (arrow completion) | Contaminated output with the examples (merged lists) |
+| Config table `[memory.second_person.*]` | Reverted: the user asked for an LLM-based approach; it proved unreliable on the 1.2B, so a code table at injection was chosen instead |
+
+## Files touched
+
+- `labs/voice-test/voice-test.cc` — dynamic `systemPromptFor`, `--intent`
+  flag, gated IntentService/camera/memory, clean defaults.
+- `src/shared/services/memory/memory-recall.cc` — minimal `<memorias>` block,
+  anti-echo directive, `toSecondPerson()`, selective profile (LIMIT 4),
+  score margin, raw content retained.
+- `src/shared/services/memory/memory-store.cc` — dedup requires >= 2 shared
+  words; UTF-8-aware word extraction (accented words no longer split);
+  robust index cleanup; `vacuumOrphans()`, `purgeScope()`.
+- `src/shared/services/memory/memory-service.cc` — background worker (Embed /
+  Compact / Rebuild), `gWorking` flush semantics, `LlmService::isBusy()`
+  gating, `flush_timeout_ms`.
+- `src/shared/services/memory/rule-parser.cc` — `stripTrailingConfirmation`
+  (data-driven), content confirmation strip.
+- `src/shared/services/embedding/embedding-service.cc` — lazy model load,
+  `embedding_dim` truncation.
+- `src/shared/services/sqlite/vec-db.cc` — configurable dims, `view` column,
+  migration without touching `face_vec`.
+- `config.toml` — `profile_max_facts`, `score_margin`, `[memory]` tuning keys
+  (the phrase/confirmation tables moved to SQLite).
+- `labs/memory-probe/memory-probe.cc` — `--purge`, `--seed`, `--sims`,
+  `--vec-gate-test`, `--profile-test`, `--dedup-bench`; self-cleaning runs.
+- `src/shared/wrapper/sqlite-stmt/sqlite-stmt.hxx` — RAII prepared statements.
+
+## Validation
+
+- `argus-memory-probe`: 8 suites green (schema 12, capture 18, tool-parse 5,
+  embed 5, recall-bench 30/30 stable, vec-gate 3/3, profile 3, dedup 5).
+- `argus-intent-probe --intent-check`: 103/103.
+- Clean-context session (security protocol questions): 3/3 coherent replies,
+  no memory, no capture.
+- Memory-enabled battery: "¿cuándo viene mi hermana?" -> "Tu hermana viene
+  los domingos a comer"; "¿qué no le gusta a Rodrigo?" -> "Rodrigo no le
+  gusta el pescado" (no coffee misattribution); "¿qué me gusta tomar?" ->
+  "Me gusta el café sin azúcar" (user attribution correct); multi-memory
+  query returns both facts.
+- Builds dev + prod: 0 errors, 0 warnings.
+
+## How to test
+
+```bash
+cd build/prod/labs/voice-test
+./argus-voice-test                          # clean: no memory, no intent
+./argus-voice-test --memory-user 1          # memory on
+./argus-voice-test --intent                 # intent/camera on
+./argus-voice-test --memory-user 1 --intent # everything
+```
+
+## Known limitations
+
+- The 1.2B occasionally mirrors the user's first-person words in questions
+  ("¿cuándo viene mi hermana?" -> "Mi hermana viene los domingos") despite
+  the injected second-person block and the anti-echo directive. Content is
+  correct; the pronoun echo is a model-level residual.
+- Existing stored memories (captured before this work) keep their raw form;
+  purge + re-capture converts them (e.g. `argus-memory-probe --purge user 1`).
+- `score_margin` is calibrated on the reference machine's fixtures; re-check
+  with `--recall-bench` after changing it.
+
+# Memory: deferred extraction, semantic recall, vocabulary in SQLite
+
+## Why the model tier never runs on the turn
+
+`MemoryService::captureExplicit` used to run the whole extraction pipeline
+inline. When the utterance was one the lexicon could not parse, the turn paid
+for loading the 469 MB NuExtract model plus ~1.1 s of decoding — a measured
+`turn took 10726 ms`. Memory formation is not something the speaker waits for:
+the fact is for *future* conversations.
+
+So the turn now runs the deterministic tiers only (`ExtractInput::allowModel =
+false`) and returns a typed outcome:
+
+| `CaptureOutcome` | Meaning |
+| --- | --- |
+| `Stored` | The lexicon produced a fact inline (microseconds); `factId` is set |
+| `Deferred` | A capture signal fired but needs the model: queued as `MemoryJob::Kind::Extract` |
+| `Rejected` | No capture signal at all — nothing was queued |
+
+`captureImplicit` (fastText salience) is always `Deferred`: the lexicon cannot
+tell an assertion from a question, so that path always needs the model.
+`allowModel` gates only the model tier, not the extractor — gating the whole
+extractor made every utterance defer, which the 50 ms gate in
+`--schema-check` now prevents from regressing (currently 0 ms).
+
+## Why recall grew a semantic tier
+
+Recall v2 resolved entities and fell back to FTS. Embeddings were written by
+the worker and never read, so a paraphrase with no shared words could not be
+recalled: "la cena se sirve a las ocho" was invisible to "¿a qué hora
+comemos?". `GraphRecall::collectSemantic` runs a vec0 KNN when the entity and
+lexical tiers return fewer than `memory.lexical_min_hits` facts, keeping the
+embedding forward off cheap turns. Semantic hits score `priority * cosine`, so
+they rank below an equally-important lexical hit instead of displacing it, and
+`memory.vector_min_sim` (0.80) keeps unrelated neighbours out — the
+noise-query assertion in `--vec-gate-test` still injects nothing.
+
+The floor alone is not enough for smalltalk: e5 scores "hola" at 0.79,
+"gracias" at 0.82 and "buenos días" at 0.85 against a completely unrelated
+fact, overlapping the range where real paraphrases live. No threshold
+separates them, so the tier is gated structurally instead — it runs for
+questions (`?` / `¿`) and for turns of four words or more. Without this,
+"hola" answered "¡Hola! Tu hermana viene los domingos". `--vec-gate-test`
+asserts the three smalltalk turns inject nothing.
+
+## Why the capture vocabulary lives in SQLite
+
+Trigger phrases, trailing confirmations, statement anchors and recall markers
+were split across `config.toml` tables and hardcoded C arrays, and
+`RuleParser` scanned every phrase per turn with `find`. `config.toml` is
+system-level configuration, not domain vocabulary, and a linear scan gets
+slower with every phrase added.
+
+`memory_phrase` and `memory_lexicon` hold that data now, compiled into
+`PhraseAutomaton` (Aho-Corasick, p95 0.57 µs at 10k patterns, zero
+allocations per match): one pass over the turn text yields every trigger,
+confirmation, anchor and marker at once, so adding a language or a phrasing
+costs a row, not latency. `PhraseCatalog` publishes an immutable snapshot
+behind a mutex, the same shape as `EntityResolver`. The extract layer stays
+free of SQL: the memory layer loads `extract::LexiconEntry` rows and calls
+`TieredExtractor::rebuild`.
+
+`RuleParser` became an instance class over the catalog. Match positions must
+map back to the original text for slicing, so the lowercase pass is
+byte-preserving (ASCII only) — accented phrases keep their byte layout.
+
+## Validation of this round
+
+- `argus-memory-probe`: 12 suites green (capture 18, formation 24, schema 17,
+  graph-recall 7, entity 7, conflict 4, graph 15, tools 5, vec-gate 9,
+  dedup 4, tool-parse 5, embed 5).
+- `argus-extract-probe`: `--extract-test` both gates pass (tier 1 alone
+  >= 40/60), `--holdout-test` 20/20 recall with 100% subject / verbatim /
+  distinctness precision, `--nuextract-test` verbatim >= 90%,
+  `--automaton-test`, `--automaton-bench`, `--tier-bench` all pass.
+- `argus-intent-probe --intent-eval`: camera P 0.97 / R 0.98, memory_save
+  P 0.97 / R 1.00; `--intent-bench` p95 2.7 µs.
+- `argus-queue-probe`: all gates pass.
+- Builds dev + prod: 0 errors, 0 warnings.
+
+## Known limitations of this round
+
+- The deferred path means a fact captured this turn is not recallable in the
+  same turn. Tests bridge it with `flushPending()`; conversation-wise the fact
+  lands seconds later.
+- `memory_lexicon` predicates are Spanish/English surface forms; a new
+  language needs rows for all four kinds, not only predicates.
+- `--extract-probe` now needs `database/` (symlinked next to the binary);
+  without it the lexicon loads empty and every case falls to the model.
+
+# Phase 4 — the static-only services are gone
+
+Fifteen services held their state in file-scope globals and exposed only
+static methods, which `AGENTS.md` §4 forbids: a service is an object with
+`_`-suffixed members and manual DI. `MemoryStore` and `MemoryRecall` were
+deleted with the legacy store; `RuleParser` became an instance over
+`PhraseCatalog`; the remaining twelve were converted in this round.
+
+Two ownership shapes came out of it, and the distinction is what keeps the
+result honest rather than a service locator with extra steps:
+
+**Constructor injection** — for anything with exactly one parent:
+
+| Service | Owner |
+| --- | --- |
+| `EmbeddingService` | `MemoryService` |
+| `FaceDB` | `FaceService` |
+| `IntentService` | `IntentServiceAdapter` |
+| `SttService`, `TtsService`, `VisionService` | their `IService` adapters |
+| `GraphRecall`, `PhraseCatalog`, `EntityResolver` | `MemoryService` |
+
+**A single `instance()` accessor** — for the process-wide resources whose
+consumers Drogon constructs itself (controllers build their own services, so
+they cannot be handed a reference at construction):
+
+| Service | Resource |
+| --- | --- |
+| `VecDb` | the vec0 connection shared by memory and face |
+| `LlmService` | one llama model + context |
+| `FaceService` | detector/recognizer nets |
+| `Go2rtcManager` | the external go2rtc process |
+| `MediaRelay`, `StreamHub` | viewer slots and per-camera upstreams |
+
+These are still real objects with private members — the accessor only answers
+"which one", and consumers inside the DI graph still take references
+(`MemoryService{VecDb::instance(), LlmService::instance()}`), so a probe can
+pass its own instance instead. That is what `labs/memory-probe` does: it owns
+`gVecDb`, `gLlm`, `gEmbedding` and builds `MemoryService` on top of them.
+
+Recurring C++ detail worth remembering: a service whose header forward-
+declares a heavy type (`Ort::Env`, `TtsEngine`, `llama_model`) and holds it in
+a `unique_ptr` cannot have its constructor defaulted **in the header** — the
+defaulted constructor instantiates the member destructors, which needs the
+complete type. The constructor and destructor are declared in the header and
+defined in the `.cc`.
+
+## Validation of Phase 4
+
+- `argus-memory-probe`: 12 suites, 120 asserts, 0 failures.
+- `argus-extract-probe`: `--extract-test`, `--automaton-test`,
+  `--holdout-test`, `--nuextract-test` all pass.
+- `argus-intent-probe --intent-check`: 103/103.
+- `argus-queue-probe`, `argus-tts-probe` (real synthesis),
+  `argus-vision-check` (init 898 ms, describe 1513 ms, cache hit 5.5 ms):
+  all pass.
+- `argus-voice-test --text-chat --memory-user 1 --intent`: capture deferred,
+  the worker stored the fact, the next turn recalled it, greetings stay clean.
+- Builds dev + prod: 0 errors, 0 warnings.
+- `ServiceRegistry` untouched: same adapters, same registration order.
+
+# Recall on demand: what a real voice session exposed
+
+Three defects only showed up when the system was driven like a real user, not
+by fixtures.
+
+## 1. A greeting pulled the whole memory in
+
+`Hola Argos, ¿cómo estás?` answered *"Veo que estás pensando en algo sobre la
+basura"*. The structural gate (question mark or four words) is trivially
+passed by a greeting **phrased as a question**, and the cosine floor let
+everything through: recall injected all 8 stored facts.
+
+Measured against an 8-fact store:
+
+| turn | best cosine | margin over the rest |
+| --- | --- | --- |
+| ¿a qué hora se riega el jardín? | 0.889 | 0.097 |
+| ¿qué le da miedo a luis? | 0.894 | 0.101 |
+| ¿qué no le gusta a ana? | 0.901 | 0.095 |
+| ¿cuál es la clave del wifi? | 0.862 | 0.076 |
+| Hola Argos, ¿cómo estás? | 0.850 | 0.031 |
+| gracias | 0.848 | 0.027 |
+| ¿qué tal tu día? | 0.823 | 0.013 |
+
+The **absolute** value cannot separate them — a greeting (0.850) outscores a
+real question (0.862). What separates them is the shape: smalltalk is
+equidistant from everything, a real question makes one fact **stand out**. So
+the semantic tier now admits a fact only when it clears the background by
+`memory.vector_margin` (0.05), capped at `memory.semantic_max_facts` (2), and
+`recall_top_k` dropped 8 → 4.
+
+The background is a **leave-one-out** mean: measuring a candidate against a
+mean it is itself inflating tightens the gate as the store shrinks, which cost
+two legitimate paraphrases in a 3-fact store (margins 0.041/0.042 against a
+0.05 threshold; leave-one-out puts them at 0.061/0.063). With a single stored
+fact there is no background at all, so `vector_strict_min_sim` (0.86) takes
+over.
+
+Result per turn: greetings, "gracias", "¿qué tal tu día?" and "¿me puedes
+contar un chiste?" inject **nothing**; "¿qué no le gusta a Pedro?" and
+"¿cuándo trabaja mi hermana?" inject **exactly the one fact asked for**.
+
+## 2. The salience path stored the whole utterance as the fact
+
+"mira, quiero que me recuerdas acerca de que a Pedro no le gusta el pescado"
+was stored with that entire sentence as `canonical`, preamble included,
+because the salience gate uses the raw turn as its clause. The extraction was
+correct (`no le guste` / `el pescado`) — only the canonical was wrong, and it
+is what the model reads and what gets embedded.
+
+Without an explicit trigger the canonical is now rebuilt from the extracted
+slots (every one is a verbatim span, so it stays natural Spanish):
+`a pedro no le gusta el pescado`. Two related fixes: the missing real-speech
+trigger variants ("me recuerdas que", "quiero que me recuerdas acerca de
+que", the unaccented "recuerdame que", …) are rows in `memory_phrase` — which
+also moved that utterance from the model tier to the lexicon, saving it
+inline in microseconds — and `stripPunct` now trims whitespace so slots stop
+carrying a leading space.
+
+## 3. The probe suite deleted the user's real memories
+
+`--schema-check` ran `clearUserRows(1)`, and user 1 is a **real account**: a
+battery run wiped the memories captured by voice, which then looked like a
+recall bug in the next session. The probes now own reserved scratch ids
+(`kProbeUser = 990001`, `kFixtureUser = 990007`) and every partition literal
+is bound from them. New diagnostics for real data, which fixtures cannot
+reproduce: `--recall-user <id> "<query>"` (what a given user's turn injects),
+`--sim-scan "<query>"` (cosine against every stored fact, with max/mean/
+margin) and `--vec-rows <partition>` (vec0 rows plus orphan detection).
+
+Verified after the fixes: 12 suites / 130 asserts green, the real user's facts
+survive the battery, and two consecutive live sessions behave as above.
+
+# Talking like a real user: what messy speech broke
+
+The pipeline was tuned on well-formed sentences. Driven with the way people
+actually speak — fillers, self-corrections, trailing requests, imprecise
+references — it stored garbage. What a single stress session produced:
+
+| stored canonical | should have been |
+| --- | --- |
+| `argus mira, este, que` | `a mi madre no le gusta el ruido` |
+| `mira apuntalo una cosa el sabado viene mi hermana` | `el sabado viene mi hermana` |
+
+The verbatim invariants passed both: **verbatim is not the same as
+meaningful**. The fillers *are* literal spans of the utterance.
+
+Four deterministic fixes, all of them rules or rows, none of them a per-case
+table:
+
+1. **Fillers are data** (`memory_phrase`, kind `filler`): "oye", "mira",
+   "este", "bueno", "pues nada", "a ver", "es que", "una cosa", "por
+   cierto"… `RuleParser::stripFillers` removes them from the head of the
+   clause before extraction, repeatedly, using the same automaton pass as
+   everything else. New filler = new row.
+2. **Triggers can close a sentence.** "el sábado viene mi hermana,
+   **apúntalo**" is how people ask to remember something. When the trigger
+   match ends the utterance, the content is what precedes it.
+3. **A filler is never a predicate.** After extraction, a fact whose
+   predicate or subject is entirely a filler/trigger/interrogative phrase is
+   dropped — that is what stored `predicate = "mira, este,"`.
+4. **The personal "a" stays in the canonical.** Slots are verbatim spans, so
+   when the source marks the experiencer ("a mi madre no le gusta"), the
+   canonical is taken from that marker instead of concatenating slots.
+   Without it the assistant said "tu madre no le gusta el ruido".
+
+## Why the assistant invented relatives
+
+Two separate confabulations, two different causes, both in the recall block:
+
+- Quoting the facts as reported speech ("El usuario dijo: ...") made the 1.2B
+  invent a narrator for the quote: *"tu mamá me dice que Pedro no le gusta el
+  pescado"*, *"tu tío..."*. The framing asked for a speaker, so it produced
+  one.
+- Leaving the stored first person made it echo the user: *"Mi hermana trabaja
+  los sábados"*.
+
+The block now states facts flatly, rewritten to second person at injection
+(`toSecondPerson` — a closed grammatical class, not a vocabulary table), with
+one short instruction. And it rides at the **tail of the user turn**, not in
+the system prompt: with the facts up front, the 1.2B answered from the
+*previous* turn's entity ("¿qué no le gusta a Pedro?" → *"tu hermana..."*).
+Moving them after the question fixed that and, as a side effect, made the
+system prompt constant again, so the prefill prefix stays reusable.
+
+Measured on the same six turns: **4/6 → 6/6**, no echo, no invented narrator.
+
+## The empty-store trap
+
+Asked about a fact whose deferred capture had not landed yet, recall offered
+the only vector it had and the model welded them together: *"tu sobrino
+estaba asustado porque el router está en el trastero"*. With fewer than two
+facts there is no background to measure a margin against, so
+`vector_strict_min_sim` (0.88) is the only gate — it is set high on purpose:
+on a nearly empty store, a missed recall is cheaper than an invented link.
+
+## Engine verdict: NuExtract-1.5-tiny stays
+
+LFM2-1.2B-Extract was integrated, measured and reverted. On the shared
+fixture, after the subject invariant applied to both: scoping 96% vs 86% for
+the LFM, but 93% vs 100% recall and **3.0 s vs 1.2 s** per extraction — and
+in a live voice turn it fed the assistant enough noise to keep the
+confabulation going. The engine is now a config line
+(`[extract] model_path` + `prompt_format`), the class is model-agnostic
+(`ExtractionService`, dialects `v1.5 | v2 | lfm`), and the guarantees live in
+the invariants, not in the model.
+
+Two integration bugs found on the way, both of which would have poisoned any
+verdict: `parse_special = false` in the tokenizer (a ChatML model never saw
+its control tokens and echoed the input instead of extracting) and a
+`config.local.toml` that outlived the run (the "baseline" measured the other
+model).
+
+## Tier order: coverage decides, not the clock
+
+The lexicon still runs first, but its answer is provisional: if the extracted
+slots account for less than `extract.lexicon_min_coverage` (0.6) of the
+clause's words, the utterance carried more than the lexicon understood and the
+model tier decides instead. One general measure, not a list of cases.
+
+The escalation is free for the conversation because extraction already runs
+off the turn: "mira una cosa, el sábado viene mi hermana, apúntalo" is saved
+inline, while "a ver, escucha, es que el router ese lo tengo en el trastero,
+apúntalo" is deferred to the model. Both land correct.
+
+`argus-extract-probe --engine-bench [--engine <gguf>[:format]]` reproduces the
+engine comparison in one command, over the same fixture, so the next candidate
+is measured instead of argued.
