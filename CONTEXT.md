@@ -847,7 +847,7 @@ composes memory around it.
 
 ## Kùzu gate (2026-08-11) — FAILED, fallback to SQLite
 
-`COGNITIVE_MEMORY_PLAN.md` Phase 0 tested both Kùzu candidates as the memory
+Phase 0 of the graph redesign tested both Kùzu candidates as the memory
 engine: upstream `kuzudb/kuzu` @ `v0.11.3` (final release, pinned at
 `third_party/kuzu`) and the Vela fork @ `v0.12.0-vela.87bf0be`
 (`third_party/kuzu-vela`). Both are MIT, both were built fully offline with
@@ -919,7 +919,7 @@ baselines.
 ## MEMORY_CONTEXT_REDESIGN.md (folded 2026-08-11, Phase 5)
 
 Historical record of the SQLite-only memory measurements. Superseded by the
-graph redesign (COGNITIVE_MEMORY_PLAN.md); kept verbatim as history.
+graph redesign; kept verbatim as history.
 
 ## Memory & Context Redesign — how the LLM receives memory (2026-08-10)
 

@@ -482,7 +482,7 @@ usage_log = "labs/intent-data/usage.tsv"
 
 
 [extract]
-# Structured memory extraction (MEMORY_EXTRACTION_PLAN.md §6). The model is
+# Structured memory extraction. The model is
 # optional: absence degrades to the Minimal tier (lexicon only, 0 MB) and
 # never fails boot. Downloaded by scripts/setup.sh into models/extract/.
 model_path = "models/extract/NuExtract-1.5-tiny-Q4_K_M.gguf"

@@ -320,7 +320,7 @@ CREATE INDEX IF NOT EXISTS idx_user_action_log_record  ON user_action_log (recor
 CREATE INDEX IF NOT EXISTS idx_user_action_log_created ON user_action_log (created_at);
 
 -- ---------------------------------------------------------------------------
--- memory graph (SemanticGraph, COGNITIVE_MEMORY_PLAN.md §4 — relational
+-- memory graph (SemanticGraph — relational
 -- fallback after the Kùzu gate failed). Entity-anchored facts, alias frames,
 -- typed edges (about/related/supersedes/mentions/derived/rolled_up),
 -- episodic memory and provenance. Embeddings reuse memory_vec (vec0) with

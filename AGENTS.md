@@ -318,7 +318,7 @@ shared file-static behind a mutex.
   (`Vela-Engineering/kuzu` @ `v0.12.0-vela.87bf0be`) exist ONLY as the
   Phase 0 gate reproducer / future upgrade path — **never built by default**
   (`EXCLUDE_FROM_ALL`; `labs/kuzu-probe` is the gate probe + crash
-  reproducer, see `COGNITIVE_MEMORY_PLAN.md` §0/§9 and
+  reproducer, see
   `labs/kuzu-probe/REPRODUCER.md`). Gate result: write+read interleaving on
   one serialized connection fails on both (upstream: checkpoint starvation,
   inserts 12 ms → 4–18 s under read load + `DirectedCSRIndex` asserts +
