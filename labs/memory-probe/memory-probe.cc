@@ -17,6 +17,7 @@
 #include <shared/services/memory/memory-formation.hxx>
 #include <shared/services/memory/memory-service.hxx>
 #include <shared/services/memory/phrase-catalog.hxx>
+#include <shared/vocabulary/vocabulary.hxx>
 #include <shared/services/memory/rule-parser.hxx>
 #include <shared/services/memory/sqlite-graph.hxx>
 #include <shared/services/memory/tool-parser.hxx>
@@ -54,7 +55,7 @@ void check(bool ok, const std::string& what)
 struct ParserFixture
 {
   SqliteGraph graph;
-  PhraseCatalog catalog{graph};
+  PhraseCatalog catalog;
   RuleParser parser{catalog};
 
   explicit ParserFixture(const std::string& dbPath)
@@ -177,7 +178,8 @@ int schemaCheck()
   const auto deferred = gMemory.captureExplicit(
       {.userId = kProbeUser,
        .lang = "es",
-       .text = "recuerda que la red domestica tiene la clave argus2026"});
+       .text = "recuerda que el arbol del jardin se pinto de verde el año "
+               "pasado"});
   const auto deferMs = std::chrono::duration_cast<std::chrono::milliseconds>(
                            std::chrono::steady_clock::now() - deferStart)
                            .count();
@@ -1198,6 +1200,50 @@ int dedupBench()
   return fails == 0 ? 0 : 1;
 }
 
+int wipeMemory()
+{
+  ConfigService::load("config.toml");
+  DbService::installExtensions();
+  SqliteGraph graph;
+  graph.open(ConfigService::getString("database.file"));
+  graph.applySchema();
+  {
+    std::scoped_lock lock(graph.mutex());
+    sqlite3* db = graph.handle();
+    if (!db)
+      return 1;
+    static const char* kDeletes[] = {
+        "DELETE FROM memory_fact_fts",
+        "DELETE FROM memory_episode_fts",
+        "DELETE FROM memory_alias_fts",
+        "DELETE FROM memory_edge",
+        "DELETE FROM memory_fact",
+        "DELETE FROM memory_episode",
+        "DELETE FROM memory_alias",
+        "DELETE FROM memory_entity",
+        "DELETE FROM memory_source",
+        "DELETE FROM memory_procedure",
+    };
+    for (const char* sql : kDeletes) {
+      SqliteStmt stmt;
+      if (stmt.prepare(db, sql))
+        stmt.step();
+    }
+  }
+  {
+    std::scoped_lock lock(gVecDb.mutex());
+    sqlite3* db = gVecDb.handle();
+    if (db) {
+      SqliteStmt stmt;
+      if (stmt.prepare(db, "DELETE FROM memory_vec"))
+        stmt.step();
+    }
+  }
+  graph.close();
+  std::cout << "memory wiped (graph, fts, vec)\n";
+  return 0;
+}
+
 int purgeCmd(const std::string& scope, int64_t refId)
 {
   ConfigService::load("config.toml");
@@ -1371,7 +1417,8 @@ int graphRecallTest()
                            .refId = kFixtureUser,
                            .maxHops = 1,
                            .limit = 8,
-                           .addresseeEntityId = usuario});
+                           .addresseeEntityId = usuario,
+                           .activeEntityIds = {}});
   bool hermanaHit = false;
   bool tuForm = false;
   for (const auto& h : r1.hits) {
@@ -1395,7 +1442,8 @@ int graphRecallTest()
                            .refId = kFixtureUser,
                            .maxHops = 1,
                            .limit = 8,
-                           .addresseeEntityId = usuario});
+                           .addresseeEntityId = usuario,
+                           .activeEntityIds = {}});
   bool rodrigoHit = false;
   for (const auto& h : r2.hits)
     if (h.entityId == rodrigo)
@@ -1413,7 +1461,8 @@ int graphRecallTest()
                            .refId = kFixtureUser,
                            .maxHops = 1,
                            .limit = 8,
-                           .addresseeEntityId = usuario});
+                           .addresseeEntityId = usuario,
+                           .activeEntityIds = {}});
   bool userHit = false;
   for (const auto& h : r3.hits)
     if (h.entityId == usuario && h.canonical.find("cafe") != std::string::npos)
@@ -1427,7 +1476,8 @@ int graphRecallTest()
                      .refId = kFixtureUser,
                      .maxHops = 1,
                      .limit = 8,
-                     .addresseeEntityId = usuario});
+                     .addresseeEntityId = usuario,
+                     .activeEntityIds = {}});
   bool both = false;
   bool h = false;
   bool r = false;
@@ -1439,6 +1489,35 @@ int graphRecallTest()
   }
   both = h && r;
   check(both, "recall v2: multi-memory query returns both facts");
+
+  const int64_t ep = graph.recordEpisode(
+      {.kind = "compaction",
+       .summary = "el usuario arreglo el grifo del bano el lunes pasado",
+       .actor = "",
+       .occurredAt = 1000,
+       .sessionId = {},
+       .lang = "es",
+       .scope = "user",
+       .refId = kFixtureUser,
+       .salience = 0.7F,
+       .sourceId = std::nullopt,
+       .mentionEntityIds = {}});
+  const auto rEp = recall.recall({.text = "¿qué arreglamos el lunes?",
+                                  .lang = "es",
+                                  .scope = "user",
+                                  .refId = kFixtureUser,
+                                  .maxHops = 1,
+                                  .limit = 8,
+                                  .addresseeEntityId = usuario,
+                                  .activeEntityIds = {}});
+  bool episodeHit = false;
+  for (const auto& hit : rEp.hits)
+    if (hit.type == "episode" && hit.canonical.find("grifo") != std::string::npos)
+      episodeHit = true;
+  check(ep > 0 && episodeHit, "recall v2: compaction episode is recallable");
+  check(std::find(rEp.usedEpisodeIds.begin(), rEp.usedEpisodeIds.end(), ep) !=
+            rEp.usedEpisodeIds.end(),
+        "recall v2: episode id reported for hit bump");
 
   graph.close();
   std::filesystem::remove(dbPath);
@@ -1460,7 +1539,7 @@ int toolsTest()
   graph.migrateLegacy();
 
   EntityResolver resolver(graph);
-  PhraseCatalog catalog(graph);
+  PhraseCatalog catalog;
   catalog.build();
   RuleParser ruleParser(catalog);
   MemoryFormation formation(graph, resolver, ruleParser);
@@ -1537,7 +1616,8 @@ int toolsTest()
                        .refId = call.context.userId,
                        .maxHops = 1,
                        .limit = 8,
-                       .addresseeEntityId = 0});
+                       .addresseeEntityId = 0,
+                       .activeEntityIds = {}});
     if (hit.hits.empty()) {
       r.output = "empty";
       return r;
@@ -1715,7 +1795,7 @@ int formationTest()
   graph.applySchema();
 
   EntityResolver resolver(graph);
-  PhraseCatalog catalog(graph);
+  PhraseCatalog catalog;
   catalog.build();
   RuleParser ruleParser(catalog);
   MemoryFormation formation(graph, resolver, ruleParser);
@@ -2128,9 +2208,98 @@ int graphTest()
   return fails == 0 ? 0 : 1;
 }
 
+int vocabCheck()
+{
+  const auto esP = vocabulary::spanishPhrases();
+  const auto enP = vocabulary::englishPhrases();
+  const auto esL = vocabulary::spanishLexicon();
+  const auto enL = vocabulary::englishLexicon();
+
+  check(!esP.empty() && !enP.empty(), "vocabulary: both languages have phrases");
+  check(!esL.empty() && !enL.empty(), "vocabulary: both languages have lexicon");
+
+  const auto dupPhrase = [](std::span<const PhraseSeed> seeds) {
+    for (size_t i = 0; i < seeds.size(); ++i)
+      for (size_t j = i + 1; j < seeds.size(); ++j)
+        if (seeds[i].kind == seeds[j].kind && seeds[i].phrase == seeds[j].phrase)
+          return std::string(seeds[i].phrase);
+    return std::string();
+  };
+  const auto dupLexicon = [](std::span<const LexiconSeed> seeds) {
+    for (size_t i = 0; i < seeds.size(); ++i)
+      for (size_t j = i + 1; j < seeds.size(); ++j)
+        if (seeds[i].kind == seeds[j].kind && seeds[i].surface == seeds[j].surface)
+          return std::string(seeds[i].surface);
+    return std::string();
+  };
+  const auto kindsCovered = [](std::span<const PhraseSeed> seeds) {
+    for (int k = 0; k < 6; ++k) {
+      const PhraseKind kind = static_cast<PhraseKind>(k);
+      bool found = false;
+      for (const auto& s : seeds)
+        if (s.kind == kind)
+          found = true;
+      if (!found)
+        return false;
+    }
+    return true;
+  };
+  const auto kindsCount = [](std::span<const PhraseSeed> seeds) {
+    size_t count = 0;
+    for (int k = 0; k < 6; ++k) {
+      const PhraseKind kind = static_cast<PhraseKind>(k);
+      for (const auto& s : seeds)
+        if (s.kind == kind) {
+          ++count;
+          break;
+        }
+    }
+    return count;
+  };
+  const auto lexiconKinds = [](std::span<const LexiconSeed> seeds) {
+    for (int k = 0; k < 4; ++k) {
+      const LexiconKind kind = static_cast<LexiconKind>(k);
+      bool found = false;
+      for (const auto& s : seeds)
+        if (s.kind == kind)
+          found = true;
+      if (!found)
+        return false;
+    }
+    return true;
+  };
+
+  const std::string esDup = dupPhrase(esP);
+  check(esDup.empty(), "vocabulary: es phrases unique (dup: '" + esDup + "')");
+  const std::string enDup = dupPhrase(enP);
+  check(enDup.empty(), "vocabulary: en phrases unique (dup: '" + enDup + "')");
+  const std::string esLDup = dupLexicon(esL);
+  check(esLDup.empty(), "vocabulary: es lexicon unique (dup: '" + esLDup + "')");
+  const std::string enLDup = dupLexicon(enL);
+  check(enLDup.empty(), "vocabulary: en lexicon unique (dup: '" + enLDup + "')");
+  check(kindsCovered(esP), "vocabulary: all 6 phrase kinds in es");
+  check(kindsCount(enP) >= 4, "vocabulary: en covers most phrase kinds");
+  check(lexiconKinds(esL) && lexiconKinds(enL),
+        "vocabulary: all 4 lexicon kinds in both languages");
+
+  PhraseCatalog catalog;
+  catalog.build();
+  check(catalog.phraseCount() == esP.size() + enP.size(),
+        "vocabulary: automaton built " + std::to_string(catalog.phraseCount()) +
+            " entries (expected " + std::to_string(esP.size() + enP.size()) +
+            ")");
+
+  std::cout << "vocabulary: es=" << esP.size() << " phrases, en=" << enP.size()
+            << " phrases, es lexicon=" << esL.size()
+            << ", en lexicon=" << enL.size() << "\n";
+  return fails == 0 ? 0 : 1;
+}
+
 void usage()
 {
-  std::cout << "argus-memory-probe --schema-check | --capture-test | "
+  std::cout << "argus-memory-probe --wipe-memory | --vocabulary-check | "
+               "--schema-check | "
+               "--capture-test | "
                "--tool-parse-test | --embed-check | --recall-bench | "
                "--vec-gate-test | --dedup-bench | --sim \"<a>\" \"<b>\" | "
                "--purge <scope> <refId> | --seed <userId> \"<memory>\" | "
@@ -2147,6 +2316,10 @@ int main(int argc, char** argv)
   }
 
   const std::string mode = argv[1];
+  if (mode == "--vocabulary-check")
+    return vocabCheck();
+  if (mode == "--wipe-memory")
+    return wipeMemory();
   if (mode == "--capture-query" && argc > 2)
     return captureQuery(argv[2]);
   if (mode == "--tools-test")

@@ -61,6 +61,22 @@ size_t wordsBefore(const std::string& lowered, size_t anchorPos)
   return words;
 }
 
+size_t wordsAfter(const std::string& lowered, size_t anchorPos)
+{
+  size_t words = 0;
+  size_t i = anchorPos;
+  while (i < lowered.size()) {
+    while (i < lowered.size() && (lowered[i] == ' ' || lowered[i] == ','))
+      ++i;
+    if (i >= lowered.size())
+      break;
+    ++words;
+    while (i < lowered.size() && lowered[i] != ' ')
+      ++i;
+  }
+  return words;
+}
+
 bool isNearStart(const std::string& lowered, size_t anchorPos)
 {
   return wordsBefore(lowered, anchorPos) < 5;
@@ -113,9 +129,15 @@ std::string RuleParser::stripTrailingConfirmation(std::string text,
       if (cut == std::string::npos || hit.begin < cut)
         cut = hit.begin;
     }
-    if (cut == std::string::npos)
+    if (cut != std::string::npos) {
+      text.erase(cut);
+      continue;
+    }
+    // "…ok?", "…verdad?" — speech keeps the mark after the tag.
+    const size_t q = text.find_last_not_of("?¿!");
+    if (q == std::string::npos || q + 1 >= text.size())
       return text;
-    text.erase(cut);
+    text.erase(q + 1);
   }
 }
 
@@ -143,10 +165,19 @@ bool RuleParser::isQuestion(const RuleParseInput& input) const
 
   thread_local std::vector<PhraseHit> hits;
   catalog_.match(lowered, input.lang, hits);
-  const PhraseHit* opener =
-      bestHit(hits, lowered,
-              {.kind = PhraseKind::Interrogative, .requireCloser = true});
-  return opener && wordsBefore(lowered, opener->begin) < 3;
+  for (const auto& hit : hits) {
+    if (hit.kind != PhraseKind::Interrogative)
+      continue;
+    if (!openerOk(lowered, hit.begin) || !closerOk(lowered, hit.end))
+      continue;
+    if (wordsBefore(lowered, hit.begin) < 3)
+      return true;
+    const std::string_view word(lowered.data() + hit.begin,
+                                hit.end - hit.begin);
+    if (word != "que" && word != "qué" && wordsAfter(lowered, hit.end) <= 3)
+      return true;
+  }
+  return false;
 }
 
 std::string RuleParser::stripFillers(const RuleParseInput& input) const
@@ -255,8 +286,12 @@ RuleParser::parse(const RuleParseInput& input) const
 std::optional<RuleParseResult>
 RuleParser::parseStatement(const RuleParseInput& input) const
 {
+  if (input.text.find('?') != std::string::npos ||
+      input.text.find("\xc2\xbf") != std::string::npos)
+    return std::nullopt;
+
   const std::string text = stripTrailingConfirmation(input.text, input.lang);
-  if (text.size() < 15 || text.find('?') != std::string::npos)
+  if (text.size() < 15)
     return std::nullopt;
 
   const std::string lowered = toLower(text);
@@ -272,7 +307,11 @@ RuleParser::parseStatement(const RuleParseInput& input) const
   if (!best)
     return std::nullopt;
 
-  std::string content = text.substr(best->begin);
+  size_t from = best->begin;
+  if (from >= 2 && lowered.compare(from - 2, 2, "a ") == 0 &&
+      (from == 2 || lowered[from - 3] == ' ' || lowered[from - 3] == ','))
+    from -= 2;
+  std::string content = text.substr(from);
   const auto first = content.find_first_not_of(" \t\r\n");
   if (first == std::string::npos)
     return std::nullopt;

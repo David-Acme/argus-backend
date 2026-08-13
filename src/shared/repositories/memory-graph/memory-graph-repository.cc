@@ -495,6 +495,123 @@ MemoryGraphRepository::factContent(sqlite3* db, int64_t factId,
   return stmt.columnText(2);
 }
 
+std::optional<EpisodeHit>
+MemoryGraphRepository::episodeById(sqlite3* db, const EpisodeByIdInput& input)
+{
+  if (!db || input.episodeId <= 0)
+    return std::nullopt;
+  SqliteStmt stmt;
+  if (!stmt.prepare(db, FIND_EPISODE_BY_ID))
+    return std::nullopt;
+  stmt.bindInt64(1, input.episodeId);
+  stmt.bindText(2, input.scope);
+  stmt.bindInt64(3, input.refId);
+  if (stmt.step() != SQLITE_ROW)
+    return std::nullopt;
+  EpisodeHit hit;
+  hit.episodeId = stmt.columnInt64(0);
+  hit.summary = stmt.columnText(1);
+  hit.salience = static_cast<float>(stmt.columnDouble(2));
+  hit.hitCount = stmt.columnInt64(3);
+  hit.occurredAt = stmt.columnInt64(4);
+  return hit;
+}
+
+std::vector<EpisodeHit>
+MemoryGraphRepository::ftsEpisodes(sqlite3* db, const std::string& match,
+                                   const std::string& scope, int64_t refId,
+                                   int limit)
+{
+  std::vector<EpisodeHit> out;
+  if (!db || match.empty())
+    return out;
+  SqliteStmt stmt;
+  if (!stmt.prepare(db, FIND_EPISODES_FTS))
+    return out;
+  stmt.bindText(1, match);
+  stmt.bindText(2, scope);
+  stmt.bindInt64(3, refId);
+  stmt.bindInt(4, limit);
+  while (stmt.step() == SQLITE_ROW) {
+    EpisodeHit hit;
+    hit.episodeId = stmt.columnInt64(0);
+    hit.summary = stmt.columnText(1);
+    hit.salience = static_cast<float>(stmt.columnDouble(2));
+    hit.hitCount = stmt.columnInt64(3);
+    hit.occurredAt = stmt.columnInt64(4);
+    out.push_back(std::move(hit));
+  }
+  return out;
+}
+
+std::optional<std::string>
+MemoryGraphRepository::episodeContent(sqlite3* db, int64_t episodeId,
+                                      std::string& scope, int64_t& refId)
+{
+  if (!db)
+    return std::nullopt;
+  SqliteStmt stmt;
+  if (!stmt.prepare(db, FIND_EPISODE_CONTENT))
+    return std::nullopt;
+  stmt.bindInt64(1, episodeId);
+  if (stmt.step() != SQLITE_ROW)
+    return std::nullopt;
+  scope = stmt.columnText(0);
+  refId = stmt.columnInt64(1);
+  return stmt.columnText(2);
+}
+
+void MemoryGraphRepository::bumpEpisodeHits(sqlite3* db,
+                                            const std::vector<int64_t>& ids,
+                                            int64_t at)
+{
+  if (!db || ids.empty())
+    return;
+  SqliteStmt stmt;
+  if (!stmt.prepare(db, BUMP_EPISODE_HITS))
+    return;
+  for (const int64_t id : ids) {
+    stmt.bindInt64(1, at);
+    stmt.bindInt64(2, id);
+    stmt.step();
+    stmt.reset();
+  }
+}
+
+void MemoryGraphRepository::bumpFactImportance(sqlite3* db, int64_t factId,
+                                               int64_t at)
+{
+  if (!db || factId <= 0)
+    return;
+  SqliteStmt stmt;
+  if (!stmt.prepare(db, BUMP_FACT_IMPORTANCE))
+    return;
+  stmt.bindInt64(1, at);
+  stmt.bindInt64(2, factId);
+  stmt.step();
+}
+
+std::vector<ProfileFactRow>
+MemoryGraphRepository::topProfileFacts(sqlite3* db, int64_t refId, int limit)
+{
+  std::vector<ProfileFactRow> out;
+  if (!db || limit <= 0)
+    return out;
+  SqliteStmt stmt;
+  if (!stmt.prepare(db, FIND_PROFILE_FACTS))
+    return out;
+  stmt.bindText(1, "user");
+  stmt.bindInt64(2, refId);
+  stmt.bindInt(3, limit);
+  while (stmt.step() == SQLITE_ROW) {
+    ProfileFactRow row;
+    row.canonical = stmt.columnText(0);
+    row.type = stmt.columnText(1);
+    out.push_back(std::move(row));
+  }
+  return out;
+}
+
 std::vector<int64_t> MemoryGraphRepository::openFactIds(sqlite3* db)
 {
   std::vector<int64_t> out;

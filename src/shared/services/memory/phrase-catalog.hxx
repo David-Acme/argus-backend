@@ -4,13 +4,10 @@
 #include <memory>
 #include <mutex>
 #include <shared/enums.hxx>
-#include <shared/repositories/memory-phrase/memory-phrase-repository.hxx>
 #include <shared/utils/text-match/phrase-automaton.hxx>
 #include <string>
 #include <string_view>
 #include <vector>
-
-class SqliteGraph;
 
 struct PhraseHit
 {
@@ -20,10 +17,12 @@ struct PhraseHit
   uint32_t end;
 };
 
+// Aho-Corasick automaton over the static per-language vocabulary
+// (src/shared/vocabulary/). No DB dependency.
 class PhraseCatalog
 {
 public:
-  explicit PhraseCatalog(SqliteGraph& graph) : graph_(graph) {}
+  PhraseCatalog() = default;
 
   void build();
   void reload() { build(); }
@@ -47,8 +46,6 @@ private:
 
   std::shared_ptr<const Snapshot> currentSnapshot() const;
 
-  SqliteGraph& graph_;
-  MemoryPhraseRepository repo_;
   mutable std::mutex snapshotMutex_;
   std::shared_ptr<const Snapshot> snapshot_;
 };

@@ -93,6 +93,33 @@ inline constexpr const char* FIND_EPISODES_BETWEEN =
     "WHERE scope = ? AND ref_id = ? AND occurred_at BETWEEN ? AND ? "
     "ORDER BY occurred_at DESC LIMIT ?";
 
+inline constexpr const char* FIND_EPISODE_BY_ID =
+    "SELECT id, summary, salience, hit_count, occurred_at FROM memory_episode "
+    "WHERE id = ? AND scope = ? AND ref_id = ? AND rolled_up = 0";
+
+inline constexpr const char* FIND_EPISODES_FTS =
+    "SELECT e.id, e.summary, e.salience, e.hit_count, e.occurred_at "
+    "FROM memory_episode_fts JOIN memory_episode e "
+    "ON e.id = memory_episode_fts.rowid "
+    "WHERE memory_episode_fts MATCH ? AND e.scope = ? AND e.ref_id = ? "
+    "AND e.rolled_up = 0 ORDER BY bm25(memory_episode_fts) LIMIT ?";
+
+inline constexpr const char* FIND_EPISODE_CONTENT =
+    "SELECT scope, ref_id, summary FROM memory_episode WHERE id = ?";
+
+inline constexpr const char* BUMP_EPISODE_HITS =
+    "UPDATE memory_episode SET hit_count = hit_count + 1, last_recalled_at = ? "
+    "WHERE id = ?";
+
+inline constexpr const char* BUMP_FACT_IMPORTANCE =
+    "UPDATE memory_fact SET priority = MIN(priority + 5, 100), "
+    "hit_count = hit_count + 1, updated_at = ? WHERE id = ?";
+
+inline constexpr const char* FIND_PROFILE_FACTS =
+    "SELECT canonical, type FROM memory_fact "
+    "WHERE valid_to = 0 AND scope = ? AND ref_id = ? AND priority >= 70 "
+    "ORDER BY priority DESC, hit_count DESC, updated_at DESC LIMIT ?";
+
 inline constexpr const char* INSERT_SOURCE =
     "INSERT INTO memory_source (channel, turn_ref, at) VALUES (?, ?, ?)";
 
@@ -187,5 +214,27 @@ struct FactByIdInput
   int64_t factId;
   std::string scope;
   int64_t refId;
+};
+
+struct EpisodeHit
+{
+  int64_t episodeId;
+  std::string summary;
+  float salience;
+  int64_t hitCount;
+  int64_t occurredAt;
+};
+
+struct EpisodeByIdInput
+{
+  int64_t episodeId;
+  std::string scope;
+  int64_t refId;
+};
+
+struct ProfileFactRow
+{
+  std::string canonical;
+  std::string type;
 };
 

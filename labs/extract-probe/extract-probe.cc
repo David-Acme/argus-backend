@@ -11,13 +11,13 @@
 #include <llama.h>
 #include <new>
 #include <random>
-#include <shared/repositories/memory-lexicon/memory-lexicon-repository.hxx>
 #include <shared/services/config-service/config-service.hxx>
 #include <shared/services/extract/extraction-service.hxx>
 #include <shared/services/extract/lexicon-extractor.hxx>
 #include <shared/services/extract/tiered-extractor.hxx>
 #include <shared/services/memory/sqlite-graph.hxx>
 #include <shared/utils/text-match/phrase-automaton.hxx>
+#include <shared/vocabulary/vocabulary.hxx>
 #include <shared/wrapper/cancellation/cancellation-token.hxx>
 #include <shared/wrapper/hardware-profile/hardware-profile.hxx>
 #include <shared/wrapper/thread-budget/thread-budget.hxx>
@@ -30,20 +30,11 @@
 namespace
 {
 
-// The extraction vocabulary lives in SQLite (memory_lexicon): load it the
-// same way the product does instead of hardcoding a copy in the probe.
+// The extraction vocabulary is static per-language code
+// (src/shared/vocabulary/), loaded the same way the product does.
 std::vector<extract::LexiconEntry> loadLexicon()
 {
-  static SqliteGraph graph;
-  static MemoryLexiconRepository repo;
-  static bool opened = false;
-  if (!opened) {
-    graph.open(ConfigService::getString("database.file"));
-    graph.applySchema();
-    opened = true;
-  }
-  std::scoped_lock lock(graph.mutex());
-  return repo.allEntries(graph.handle());
+  return vocabulary::allLexiconEntries();
 }
 
 std::atomic<long long> gNewCount{0};

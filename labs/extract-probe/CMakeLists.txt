@@ -7,7 +7,6 @@ set(EXTRACT_PROBE_SRC
     ${SRC_ROOT}/shared/services/extract/tiered-extractor.cc
     ${SRC_ROOT}/shared/services/memory/sqlite-graph.cc
     ${SRC_ROOT}/shared/repositories/memory-graph/memory-graph-repository.cc
-    ${SRC_ROOT}/shared/repositories/memory-lexicon/memory-lexicon-repository.cc
     ${SRC_ROOT}/shared/utils/schema-runner/schema-runner.cc
     ${SRC_ROOT}/shared/utils/text-norm/text-norm.cc
     ${SRC_ROOT}/shared/utils/text-match/phrase-automaton.cc

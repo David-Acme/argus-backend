@@ -5,19 +5,79 @@
 #include <shared/services/llm/lfm-adapter.hxx>
 #include <shared/services/tools/tool-registry.hxx>
 
-std::string ConversationService::recallBlock(const std::string& text,
-                                             int64_t userId,
-                                             const std::string& lang)
+namespace
 {
-  const auto recalled = memory_.graphRecall().recall({.text = text,
-                                                      .lang = lang,
-                                                      .scope = "user",
-                                                      .refId = userId,
-                                                      .maxHops = 1,
-                                                      .limit = 8,
-                                                      .addresseeEntityId = 0});
+
+// Strips injected context (ack notes, <memorias>/<memories> blocks) from a
+// user message. Only run when the history head is already being pruned.
+std::string stripInjectedContext(std::string text)
+{
+  static constexpr std::string_view kNotes[] = {
+      "(Nota: el usuario te pidió recordar esto",
+      "(Note: the user asked you to remember this",
+  };
+  for (const auto note : kNotes) {
+    for (size_t at = text.find(note); at != std::string::npos;
+         at = text.find(note, at)) {
+      const size_t lineStart = text.rfind('\n', at);
+      const size_t lineEnd = text.find('\n', at);
+      const size_t begin = lineStart == std::string::npos ? 0 : lineStart;
+      const size_t end =
+          lineEnd == std::string::npos ? text.size() : lineEnd + 1;
+      text.erase(begin, end - begin);
+      at = begin;
+    }
+  }
+
+  static constexpr std::pair<std::string_view, std::string_view> kBlocks[] = {
+      {"<memorias>", "</memorias>"},
+      {"<memories>", "</memories>"},
+  };
+  for (const auto& [open, close] : kBlocks) {
+    for (size_t start = text.find(open); start != std::string::npos;
+         start = text.find(open, start)) {
+      const size_t body = start + open.size();
+      const size_t closeAt = text.find(close, body);
+      if (closeAt == std::string::npos)
+        break;
+      size_t end = closeAt + close.size();
+      size_t lineEnd = text.find('\n', end);
+      if (lineEnd != std::string::npos)  // trailing "use these facts" line
+        lineEnd = text.find('\n', lineEnd + 1);
+      end = lineEnd == std::string::npos ? text.size() : lineEnd + 1;
+      if (start >= 2 && text.compare(start - 2, 2, "\n\n") == 0)
+        start -= 2;
+      text.erase(start, end - start);
+    }
+  }
+  return text;
+}
+
+} // namespace
+
+std::string ConversationService::recallBlock(WorkingMemory& wm,
+                                             const std::string& text,
+                                             int64_t userId)
+{
+  if (userId >= 0 && wm.addresseeEntityId == 0)
+    wm.addresseeEntityId = memory_.resolveAddresseeEntity(wm.lang);
+
+  const int topK = ConfigService::getInt("memory.recall_top_k");
+  const auto recalled = memory_.graphRecall().recall(
+      {.text = text,
+       .lang = wm.lang,
+       .scope = "user",
+       .refId = userId,
+       .maxHops = 1,
+       .limit = topK > 0 ? topK : 4,
+       .addresseeEntityId = wm.addresseeEntityId,
+       .activeEntityIds = wm.activeEntities});
   if (!recalled.usedIds.empty())
     memory_.bumpHitCount(recalled.usedIds);
+  if (!recalled.usedEpisodeIds.empty())
+    memory_.bumpEpisodeHits(recalled.usedEpisodeIds);
+  if (!recalled.resolvedEntityIds.empty())
+    wm.activeEntities = recalled.resolvedEntityIds;
   return recalled.block;
 }
 
@@ -32,11 +92,11 @@ TurnResult ConversationService::processTurn(WorkingMemory& wm,
 
   // LISTEN -> UNDERSTAND: capture deterministically first ("recuerda que X"
   // must never wait for the model).
-  memory_.captureExplicit(
+  const CaptureResult capture = memory_.captureExplicit(
       {.userId = userId, .lang = wm.lang, .text = userText});
 
   // RETRIEVE: entity-anchored block injected into the turn.
-  const std::string block = recallBlock(userText, userId, wm.lang);
+  const std::string block = recallBlock(wm, userText, userId);
 
   // DECIDE + ACT + RESPOND: chat with the registered tools.
   ToolRegistry& registry = ToolRegistry::instance();
@@ -54,26 +114,40 @@ TurnResult ConversationService::processTurn(WorkingMemory& wm,
   // the recalled facts ride at the tail of the user turn: measured on the
   // 1.2B, facts placed before the question got answered from the previous
   // turn's entity ("¿qué no le gusta a Pedro?" -> "tu hermana...").
-  const std::string system =
-      "Eres Argus, el asistente del hogar. Responde brevemente en el idioma "
-      "del usuario.";
+  std::string system =
+      wm.lang == "en"
+          ? "You are Argus, the home assistant. Reply briefly in the user's "
+            "language, like a person, and never with generic offers."
+          : "Eres Argus, el asistente del hogar. Responde brevemente en el "
+            "idioma del usuario, como una persona, y nunca con ofertas "
+            "genéricas.";
+  if (userId >= 0) {
+    const std::string profile = memory_.profileFor(userId, wm.lang);
+    if (!profile.empty())
+      system += "\n\n" + profile;
+  }
 
   if (wm.history.empty())
     wm.history.push_back({.role = "system", .content = system});
   else
     wm.history.front().content = system;
-  wm.history.push_back(
-      {.role = "user",
-       .content = block.empty() ? userText : userText + "\n\n" + block});
+
+  std::string content = userText;
+  if (capture.outcome != CaptureOutcome::Rejected)
+    content += captureAckNote(wm.lang);
+  if (!block.empty())
+    content += "\n\n" + block;
+  wm.history.push_back({.role = "user", .content = content});
 
   const auto output = adapter.chatWithTools({.systemPrompt = system,
-                                             .tools = tools,
-                                             .role = role,
-                                             .context = {.userId = userId,
-                                                         .lang = wm.lang,
-                                                         .sessionId = {}},
-                                             .maxHops = maxToolHops},
-                                            wm.history);
+                                              .tools = tools,
+                                              .role = role,
+                                              .context = {.userId = userId,
+                                                          .lang = wm.lang,
+                                                          .sessionId = {}},
+                                              .maxHops = maxToolHops,
+                                              .temperature = -1.0F},
+                                             wm.history);
   result.reply = output.reply;
   result.toolCalls = output.executed;
   result.acted = !output.executed.empty();
@@ -108,4 +182,11 @@ void ConversationService::trimHistory(WorkingMemory& wm, int64_t userId)
                        static_cast<std::ptrdiff_t>(dropped));
   if (!transcript.empty())
     memory_.enqueueCompaction(userId, transcript, wm.lang);
+
+  // The prune already broke the prefill prefix; strip stale injected
+  // context from the surviving user messages.
+  for (auto& msg : wm.history) {
+    if (msg.role == "user")
+      msg.content = stripInjectedContext(msg.content);
+  }
 }

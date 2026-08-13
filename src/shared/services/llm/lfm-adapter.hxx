@@ -13,6 +13,8 @@ struct ToolChatInput
   UserRole role;
   tools::ToolContext context;
   int maxHops = 3;
+  // Sampling for the tool loop. -1 = LlmService default ([llm] temperature).
+  float temperature = -1.0F;
 };
 
 struct ToolChatOutput

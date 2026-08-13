@@ -1,6 +1,6 @@
 #include "phrase-catalog.hxx"
 
-#include <shared/services/memory/sqlite-graph.hxx>
+#include <shared/vocabulary/vocabulary.hxx>
 
 namespace
 {
@@ -26,20 +26,21 @@ void PhraseCatalog::build()
   auto snapshot = std::make_shared<Snapshot>();
   std::vector<text_match::PatternRef> patterns;
 
-  {
-    std::scoped_lock lock(graph_.mutex());
-    for (auto& row : repo_.allPhrases(graph_.handle())) {
-      if (row.phrase.empty())
+  const auto add = [&](std::span<const PhraseSeed> seeds, std::string_view lang) {
+    for (const auto& seed : seeds) {
+      if (seed.phrase.empty())
         continue;
       patterns.push_back(
-          {.classId = classFor(row.kind),
+          {.classId = classFor(seed.kind),
            .payloadId = static_cast<uint32_t>(snapshot->entries.size()),
-           .text = row.phrase});
-      snapshot->entries.push_back({.kind = row.kind,
-                                   .memoryType = row.memoryType,
-                                   .lang = std::move(row.lang)});
+           .text = std::string(seed.phrase)});
+      snapshot->entries.push_back({.kind = seed.kind,
+                                   .memoryType = seed.memoryType,
+                                   .lang = std::string(lang)});
     }
-  }
+  };
+  add(vocabulary::spanishPhrases(), "es");
+  add(vocabulary::englishPhrases(), "en");
 
   snapshot->automaton = text_match::PhraseAutomaton::build(patterns);
   {

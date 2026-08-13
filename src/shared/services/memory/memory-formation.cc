@@ -1,6 +1,7 @@
 #include "memory-formation.hxx"
 
 #include <drogon/drogon.h>
+#include <shared/services/extract/temporal-resolver.hxx>
 #include <shared/services/memory/rule-parser.hxx>
 #include <shared/services/memory/sqlite-graph.hxx>
 #include <shared/utils/text-norm/text-norm.hxx>
@@ -26,6 +27,81 @@ std::string factTypeFromMemoryType(const std::string& type)
   if (type == "instruction")
     return "instruction";
   return "attribute";
+}
+
+struct FoldedView
+{
+  std::string folded;
+  std::vector<size_t> boundary;  // boundary[k] = source offset of folded[k]
+};
+
+FoldedView foldClause(std::string_view source)
+{
+  static constexpr std::string_view kFrom[] = {
+      "á", "é", "í", "ó", "ú", "ü", "ñ", "à", "è", "ì", "ò", "ù",
+      "â", "ê", "î", "ô", "û", "ä", "ë", "ï", "ö", "ÿ", "ç",
+  };
+  static constexpr char kTo[] = {
+      'a', 'e', 'i', 'o', 'u', 'u', 'n', 'a', 'e', 'i', 'o', 'u',
+      'a', 'e', 'i', 'o', 'u', 'a', 'e', 'i', 'o', 'y', 'c',
+  };
+  FoldedView out;
+  out.boundary.push_back(0);
+  size_t i = 0;
+  bool pendingSpace = false;
+  while (i < source.size()) {
+    const unsigned char c = static_cast<unsigned char>(source[i]);
+    if (c == ' ' || c == '\t' || c == '\n' || c == '\r') {
+      pendingSpace = true;
+      ++i;
+      continue;
+    }
+    if (pendingSpace && !out.folded.empty()) {
+      out.folded.push_back(' ');
+      out.boundary.push_back(i);
+      pendingSpace = false;
+    }
+    pendingSpace = false;
+    bool foldedChar = false;
+    for (size_t k = 0; k < std::size(kFrom); ++k) {
+      const size_t len = kFrom[k].size();
+      if (i + len <= source.size() && source.substr(i, len) == kFrom[k]) {
+        out.folded.push_back(kTo[k]);
+        i += len;
+        out.boundary.push_back(i);
+        foldedChar = true;
+        break;
+      }
+    }
+    if (!foldedChar) {
+      out.folded.push_back(static_cast<char>(std::tolower(c)));
+      ++i;
+      out.boundary.push_back(i);
+    }
+  }
+  return out;
+}
+
+// Finds a folded needle in the view at word boundaries; returns the
+// [begin, end) byte offsets into the ORIGINAL clause.
+std::optional<std::pair<size_t, size_t>>
+findSpanInClause(const FoldedView& view, const std::string& needle)
+{
+  if (needle.empty())
+    return std::nullopt;
+  const auto atWord = [&](size_t at, size_t len) {
+    const bool leftOk = at == 0 || view.folded[at - 1] == ' ';
+    const size_t end = at + len;
+    const bool rightOk = end >= view.folded.size() || view.folded[end] == ' ';
+    return leftOk && rightOk;
+  };
+  for (size_t at = view.folded.find(needle); at != std::string::npos;
+       at = view.folded.find(needle, at + 1)) {
+    if (!atWord(at, needle.size()))
+      continue;
+    return std::pair{view.boundary[at], view.boundary[at + needle.size()]};
+  }
+  return std::nullopt;
 }
 
 } // namespace
@@ -92,6 +168,8 @@ MemoryFormation::observe(const Observation& obs,
                          const std::optional<tools::ToolCall>& toolCall)
 {
   if (obs.text.empty())
+    return std::nullopt;
+  if (obs.text.find("<memor") != std::string::npos)
     return std::nullopt;
   resolver_.build();
 
@@ -186,19 +264,52 @@ MemoryFormation::observe(const Observation& obs,
       naturalClause = clause;
     }
     else {
-      naturalClause = subjectSurface + " " + predicate;
-      if (!value.empty())
-        naturalClause += " " + value;
-      if (!extracted.empty() && !extracted.front().when.surface.empty() &&
-          value != extracted.front().when.surface)
-        naturalClause += " " + extracted.front().when.surface;
+      // Canonical from verbatim clause spans: the lexicon predicate is an
+      // internal English canonical that must never reach the model.
+      const FoldedView view = foldClause(clause);
+      const auto span = [&](const std::string& part) {
+        return findSpanInClause(view, TemporalResolver::normalize(part));
+      };
 
+      const auto subjectSpan = span(subjectSurface);
+      const auto valueSpan = span(value);
+      const auto whenSpan = [&]() -> std::optional<std::pair<size_t, size_t>> {
+        if (!extracted.empty() && !extracted.front().when.surface.empty() &&
+            value != extracted.front().when.surface)
+          return span(extracted.front().when.surface);
+        return std::nullopt;
+      }();
+
+      size_t begin = subjectSpan ? subjectSpan->first : 0;
+      size_t end = subjectSpan ? subjectSpan->second : 0;
+      if (valueSpan && valueSpan->second > end)
+        end = valueSpan->second;
+      if (whenSpan && whenSpan->second > end)
+        end = whenSpan->second;
+
+      if (end > begin)
+        naturalClause =
+            text_norm::whitespace(clause.substr(begin, end - begin));
+
+      if (naturalClause.empty()) {
+        naturalClause = subjectSurface + " " + predicate;
+        if (!value.empty())
+          naturalClause += " " + value;
+        if (!extracted.empty() && !extracted.front().when.surface.empty() &&
+            value != extracted.front().when.surface)
+          naturalClause += " " + extracted.front().when.surface;
+      }
+
+      // Keep the possessor / personal "a" when the clause carries it right
+      // before the subject ("a mi madre no le gusta el ruido").
       const std::string lowered = text_norm::whitespace(clause);
       const std::string needle = text_norm::whitespace(naturalClause);
       const size_t at = lowered.find(needle);
       if (at != std::string::npos) {
-        static constexpr std::string_view kMarkers[] = {"a ", "al ", "a mi ",
-                                                        "a tu ", "a la "};
+        static constexpr std::string_view kMarkers[] = {
+            "a mi ", "a tu ", "a la ", "mis ", "mi ", "tus ",
+            "tu ",   "sus ",  "su ",   "my ",  "your ", "his ",
+            "her ",  "the ", "al ",   "a "};
         for (const auto marker : kMarkers) {
           if (at < marker.size())
             continue;

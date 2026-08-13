@@ -291,7 +291,7 @@ ToolChatOutput LfmAdapter::chatWithTools(const ToolChatInput& input,
     req.messages.insert(req.messages.begin(),
                         ChatMessage{.role = "system", .content = system});
     req.maxTokens = 512;
-    req.temperature = 0.0F;
+    req.temperature = input.temperature;
     req.resetContext = false;
 
     const std::string reply = llm_.chat(req);

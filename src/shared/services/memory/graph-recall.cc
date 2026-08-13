@@ -33,16 +33,30 @@ std::string toSecondPerson(const std::string& text, bool es)
     const char* from;
     const char* to;
   };
-  static constexpr Shift kEs[] = {{"mi ", "tu "},
-                                  {"mis ", "tus "},
-                                  {"Mi ", "Tu "},
-                                  {"Mis ", "Tus "},
-                                  {"conmigo", "contigo"}};
+  static constexpr Shift kEs[] = {
+      {"conmigo", "contigo"}, {"mis ", "tus "},   {"mi ", "tu "},
+      {"mí ", "ti "},         {"me ", "te "},     {"yo ", "tú "},
+      {"Mi ", "Tu "},         {"Mis ", "Tus "},   {"Mí ", "Ti "},
+      {"Me ", "Te "},         {"Yo ", "Tú "},     {"mi", "tu"},
+      {"mí", "ti"},           {"me", "te"},       {"yo", "tú"}};
   static constexpr Shift kEn[] = {{"my ", "your "},
                                   {"My ", "Your "},
-                                  {"mine", "yours"}};
+                                  {"mine", "yours"},
+                                  {"me ", "you "},
+                                  {"Me ", "You "},
+                                  {"I ", "you "},
+                                  {"I", "you"},
+                                  {"me", "you"}};
   const Shift* table = es ? kEs : kEn;
   const size_t count = es ? std::size(kEs) : std::size(kEn);
+
+  const auto rightBoundary = [&](size_t after) {
+    if (after >= text.size())
+      return true;
+    const char c = text[after];
+    return c == ',' || c == '.' || c == ';' || c == ':' || c == '?' ||
+           c == '!' || c == '\n';
+  };
 
   std::string out;
   out.reserve(text.size() + 8);
@@ -54,6 +68,10 @@ std::string toSecondPerson(const std::string& text, bool es)
       for (size_t k = 0; k < count; ++k) {
         const std::string_view from(table[k].from);
         if (text.compare(i, from.size(), from) != 0)
+          continue;
+        // Bare entries ("me", "mi", "I") need a word end, or "mira"/"meme"
+        // would shift too.
+        if (from.back() != ' ' && !rightBoundary(i + from.size()))
           continue;
         out += table[k].to;
         i += from.size();
@@ -100,6 +118,32 @@ bool worthSemanticSearch(const std::string& text)
     }
   }
   return words >= 4;
+}
+
+bool mentionsAnaphora(const std::string& text)
+{
+  static constexpr const char* kEs[] = {"ella",   "eso",   "aquello", "ese",
+                                        "esa",    "esto",  "aquella", "aquel"};
+  static constexpr const char* kEn[] = {"she",  "he",   "it",  "they",
+                                        "them", "him",  "her", "that"};
+  const std::vector<std::string> tokens = text_norm::words(text, 2);
+  for (const auto& token : tokens) {
+    for (const char* p : kEs)
+      if (token == p)
+        return true;
+    for (const char* p : kEn)
+      if (token == p)
+        return true;
+  }
+  return false;
+}
+
+std::string stripTagChars(std::string text)
+{
+  text.erase(std::remove_if(text.begin(), text.end(),
+                            [](char c) { return c == '<' || c == '>'; }),
+             text.end());
+  return text;
 }
 
 } // namespace
@@ -155,6 +199,7 @@ const GraphRecall::Tuning& GraphRecall::tuning() const
         .margin = configFloat("memory.vector_margin", 0.05F),
         .floorSim = configFloat("memory.vector_min_sim", 0.80F),
         .strictSim = configFloat("memory.vector_strict_min_sim", 0.86F),
+        .smallStoreSim = configFloat("memory.vector_small_store_sim", 0.84F),
         .maxFacts = configInt("memory.semantic_max_facts", 2),
         .minHits = configInt("memory.lexical_min_hits", 4)};
   }
@@ -187,19 +232,29 @@ void GraphRecall::collectSemantic(const GraphRecallInput& input,
   }
 
   std::vector<VecNeighbour> best;
-  for (const auto& neighbour : neighbours) {
-    const float sim = 1.0F - neighbour.distance;
-    bool merged = false;
-    for (auto& kept : best) {
-      if (kept.factId != neighbour.factId)
+  size_t distinctFacts = 0;
+  {
+    std::vector<int64_t> seen;
+    for (const auto& neighbour : neighbours) {
+      if (std::find(seen.begin(), seen.end(), neighbour.factId) != seen.end())
         continue;
-      merged = true;
-      if (sim > kept.distance)
-        kept.distance = sim;
-      break;
+      seen.push_back(neighbour.factId);
+      ++distinctFacts;
     }
-    if (!merged)
-      best.push_back({.factId = neighbour.factId, .distance = sim});
+    for (const auto& neighbour : neighbours) {
+      const float sim = 1.0F - neighbour.distance;
+      bool merged = false;
+      for (auto& kept : best) {
+        if (kept.factId != neighbour.factId)
+          continue;
+        merged = true;
+        if (sim > kept.distance)
+          kept.distance = sim;
+        break;
+      }
+      if (!merged)
+        best.push_back({.factId = neighbour.factId, .distance = sim});
+    }
   }
   if (best.empty())
     return;
@@ -218,8 +273,12 @@ void GraphRecall::collectSemantic(const GraphRecallInput& input,
   const float floorSim = cfg.floorSim;
   const float strictSim = cfg.strictSim;
   const int maxFacts = cfg.maxFacts;
-  const bool haveBackground =
-      static_cast<int>(best.size()) >= kBackgroundSample;
+
+  // Small stores have no reliable background: with 1 distinct fact the
+  // absolute strict floor decides, with 2 a slightly relaxed one (the
+  // leave-one-out mean would otherwise drop both related facts).
+  const bool strictGate = distinctFacts < 3;
+  const float strictFloor = distinctFacts <= 1 ? strictSim : cfg.smallStoreSim;
 
   int taken = 0;
   for (const auto& neighbour : best) {
@@ -229,9 +288,16 @@ void GraphRecall::collectSemantic(const GraphRecallInput& input,
     const float sim = neighbour.distance;
     if (sim < floorSim)
       break;
-    const float others = (sum - sim) / static_cast<float>(best.size() - 1);
-    if (haveBackground ? (sim - others) < margin : sim < strictSim)
-      continue;
+    if (strictGate) {
+      if (sim < strictFloor)
+        continue;
+    }
+    else {
+      const float others =
+          (sum - sim) / static_cast<float>(best.size() - 1);
+      if (sim - others < margin)
+        continue;
+    }
 
     bool seen = false;
     for (const auto& existing : result.hits) {
@@ -243,30 +309,53 @@ void GraphRecall::collectSemantic(const GraphRecallInput& input,
     if (seen)
       continue;
 
-    std::optional<RecallHit> fact;
     {
-      std::scoped_lock lock(graph_.mutex());
-      fact = repo_.factById(graph_.handle(), {.factId = neighbour.factId,
-                                             .scope = input.scope,
-                                             .refId = input.refId});
+      std::optional<RecallHit> fact;
+      std::optional<EpisodeHit> episode;
+      {
+        std::scoped_lock lock(graph_.mutex());
+        fact = repo_.factById(graph_.handle(), {.factId = neighbour.factId,
+                                                .scope = input.scope,
+                                                .refId = input.refId});
+        if (!fact)
+          episode = repo_.episodeById(graph_.handle(),
+                                      {.episodeId = neighbour.factId,
+                                       .scope = input.scope,
+                                       .refId = input.refId});
+      }
+      if (fact) {
+        GraphRecallHit out;
+        out.factId = fact->factId;
+        out.entityId = fact->entityId;
+        out.predicate = fact->predicate;
+        out.value = fact->value;
+        out.canonical = fact->canonical;
+        out.type = fact->type;
+        out.priority = fact->priority;
+        out.confidence = fact->confidence;
+        out.hops = 1;
+        out.score = static_cast<float>(fact->priority) * sim;
+        out.rendered =
+            render(out.entityId, input.addresseeEntityId, out.canonical);
+        result.hits.push_back(std::move(out));
+        ++taken;
+        continue;
+      }
+      if (episode) {
+        GraphRecallHit out;
+        out.factId = 0;
+        out.entityId = 0;
+        out.canonical = episode->summary;
+        out.type = "episode";
+        out.priority = static_cast<int>(episode->salience * 100.0F);
+        out.hops = 1;
+        out.score = static_cast<float>(episode->salience * 100.0F) * sim;
+        out.rendered = episode->summary;
+        result.hits.push_back(std::move(out));
+        result.usedEpisodeIds.push_back(episode->episodeId);
+        ++taken;
+      }
     }
-    if (!fact)
-      continue;
-
-    GraphRecallHit out;
-    out.factId = fact->factId;
-    out.entityId = fact->entityId;
-    out.predicate = fact->predicate;
-    out.value = fact->value;
-    out.canonical = fact->canonical;
-    out.type = fact->type;
-    out.priority = fact->priority;
-    out.confidence = fact->confidence;
-    out.hops = 1;
-    out.score = static_cast<float>(fact->priority) * sim;
-    out.rendered = render(out.entityId, input.addresseeEntityId, out.canonical);
-    result.hits.push_back(std::move(out));
-    ++taken;
   }
 }
 
@@ -275,6 +364,15 @@ GraphRecallResult GraphRecall::recall(const GraphRecallInput& input)
   GraphRecallResult result;
   if (input.text.empty())
     return result;
+
+  const auto deadline = [&] {
+    const int ms = ConfigService::getInt("memory.recall_deadline_ms");
+    return std::chrono::steady_clock::now() +
+           std::chrono::milliseconds(ms > 0 ? ms : 200);
+  }();
+  const auto overDeadline = [&] {
+    return std::chrono::steady_clock::now() >= deadline;
+  };
 
   const auto collect = [&](int64_t entityId) {
     std::vector<RecallHit> facts;
@@ -333,6 +431,12 @@ GraphRecallResult GraphRecall::recall(const GraphRecallInput& input)
       collect(input.addresseeEntityId);
     }
   }
+  if (result.resolvedEntityIds.empty() && mentionsAnaphora(input.text) &&
+      !input.activeEntityIds.empty()) {
+    const int64_t last = input.activeEntityIds.back();
+    result.resolvedEntityIds.push_back(last);
+    collect(last);
+  }
   result.entityAnchored = !result.hits.empty();
 
   if (result.hits.empty()) {
@@ -369,8 +473,61 @@ GraphRecallResult GraphRecall::recall(const GraphRecallInput& input)
     }
   }
 
-  if (static_cast<int>(result.hits.size()) < tuning().minHits)
+  const bool underBudget =
+      static_cast<int>(result.hits.size()) < tuning().minHits;
+
+  bool weakLexical = false;
+  if (!underBudget && !result.entityAnchored && !result.hits.empty()) {
+    const auto queryWords = text_norm::wordSet(input.text, 3);
+    const auto topWords = text_norm::wordSet(result.hits.front().canonical, 3);
+    size_t shared = 0;
+    for (const auto& word : queryWords)
+      if (topWords.count(word))
+        ++shared;
+    weakLexical = shared < 2;
+  }
+
+  if ((underBudget || weakLexical) && !overDeadline())
     collectSemantic(input, result);
+
+  if (underBudget && worthSemanticSearch(input.text) && !overDeadline()) {
+    const auto tokens = text_norm::words(input.text);
+    if (!tokens.empty()) {
+      std::string match;
+      for (const auto& token : tokens) {
+        if (!match.empty())
+          match += " OR ";
+        match += "\"" + token + "\"";
+      }
+      std::vector<EpisodeHit> episodes;
+      {
+        std::scoped_lock lock(graph_.mutex());
+        episodes = repo_.ftsEpisodes(graph_.handle(), match, input.scope,
+                                     input.refId, 2);
+      }
+      for (const auto& episode : episodes) {
+        bool seen = false;
+        for (const auto& existing : result.hits)
+          if (existing.type == "episode" &&
+              existing.canonical == episode.summary)
+            seen = true;
+        if (seen)
+          continue;
+        GraphRecallHit out;
+        out.factId = 0;
+        out.entityId = 0;
+        out.canonical = episode.summary;
+        out.type = "episode";
+        out.priority = static_cast<int>(episode.salience * 100.0F);
+        out.hops = 1;
+        out.score = static_cast<float>(episode.salience * 100.0F) *
+                    (1.0F + 0.05F * static_cast<float>(episode.hitCount));
+        out.rendered = episode.summary;
+        result.hits.push_back(std::move(out));
+        result.usedEpisodeIds.push_back(episode.episodeId);
+      }
+    }
+  }
 
   if (result.hits.empty())
     return result;
@@ -382,9 +539,17 @@ GraphRecallResult GraphRecall::recall(const GraphRecallInput& input)
 
   const bool es = input.lang.empty() || input.lang == "es";
   std::string block = es ? "<memorias>\n" : "<memories>\n";
+  const int maxTokens = ConfigService::getInt("memory.recall_max_tokens");
+  const size_t budget =
+      maxTokens > 0 ? static_cast<size_t>(maxTokens * 4) : 2048;
   for (const auto& hit : result.hits) {
-    result.usedIds.push_back(hit.factId);
-    block += "- " + toSecondPerson(hit.rendered, es) + "\n";
+    const std::string line =
+        "- " + toSecondPerson(stripTagChars(hit.rendered), es) + "\n";
+    if (block.size() + line.size() > budget)
+      break;
+    block += line;
+    if (hit.factId > 0)
+      result.usedIds.push_back(hit.factId);
   }
   block += es ? "</memorias>\nUsa estos datos para responder.\n"
               : "</memories>\nUse these facts to answer.\n";

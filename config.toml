@@ -99,12 +99,11 @@ max_tokens = 256
 # Sampling temperature. Higher = more varied, natural phrasing; too high
 # degrades coherence. 0.85 tuned for the spoken conversation.
 temperature = 0.85
-# Temperature for turns that carry a recalled-memory block. Measured with
-# argus-llm-bench --memory over 3 independent runs per setting: at 0.85 the
-# answers varied run to run and one round invented a fact (attributed
-# Rodrigo's to Marta); at 0.0 all three runs were identical with zero
-# inventions. Facts want determinism; only the chit-chat wants variety.
-recall_temperature = 0.0
+# Temperature for turns that carry a recalled-memory block. Greedy 0.0 made
+# the assistant sound robotic exactly on the turns where it used memory (the
+# persona flipped between 0.85 and 0.0 turn by turn). Floor 0.5 keeps some
+# variation while still damping the misattributions measured at 0.85.
+recall_temperature = 0.5
 # Threads for decode and prefill. 0 = auto (ThreadBudget).
 threads = 0
 batch_threads = 0
@@ -431,6 +430,10 @@ vector_margin = 0.05
 # the model turns it into an invented link ("tu sobrino estaba asustado porque
 # el router...") instead of admitting it does not know.
 vector_strict_min_sim = 0.88
+# Floor used when the store holds exactly 2 distinct facts (1 keeps
+# vector_strict_min_sim): the leave-one-out mean would otherwise drop both
+# related facts, and a missed recall is cheaper than a tiny-store invention.
+vector_small_store_sim = 0.84
 # Facts the semantic tier may add per turn. Recall stays demand-driven: the
 # turn gets what stands out, not the whole memory.
 semantic_max_facts = 2

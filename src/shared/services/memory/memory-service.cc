@@ -19,6 +19,8 @@
 #include <shared/services/memory/rule-parser.hxx>
 #include <shared/services/memory/sqlite-graph.hxx>
 #include <shared/services/sqlite/vec-db.hxx>
+#include <shared/utils/text-norm/text-norm.hxx>
+#include <shared/vocabulary/vocabulary.hxx>
 #include <shared/wrapper/sqlite-stmt/sqlite-stmt.hxx>
 #include <sqlite3.h>
 #include <string>
@@ -209,7 +211,8 @@ void MemoryService::processExtract(const MemoryJob& job)
               .text = {},
               .lang = {},
               .preferIdle = false,
-              .salient = false});
+              .salient = false,
+              .episode = false});
 }
 
 void MemoryService::processCompact(const MemoryJob& job)
@@ -217,8 +220,10 @@ void MemoryService::processCompact(const MemoryJob& job)
   if (job.preferIdle) {
     const int waitMs = ConfigService::getInt("memory.compact_wait_ms");
     waitForIdle(waitMs > 0 ? waitMs : 15000);
-    if (llm_.isBusy())
-      return; // a live turn owns the LLM; retry on the next trigger
+    if (llm_.isBusy()) {
+      enqueueJob(job);
+      return;
+    }
   }
   if (!llm_.isLoaded())
     return;
@@ -259,14 +264,16 @@ void MemoryService::processCompact(const MemoryJob& job)
                 .userId = 0,
                 .text = {},
                 .lang = {},
-                .preferIdle = false});
+                .preferIdle = false,
+                .salient = false,
+                .episode = true});
 }
 
 void MemoryService::processJob(const MemoryJob& job)
 {
   switch (job.kind) {
     case MemoryJob::Kind::Embed:
-      embedAndStore(job.memoryId);
+      embedAndStore(job.memoryId, job.episode);
       break;
     case MemoryJob::Kind::Compact:
       processCompact(job);
@@ -276,6 +283,9 @@ void MemoryService::processJob(const MemoryJob& job)
       break;
     case MemoryJob::Kind::Extract:
       processExtract(job);
+      break;
+    case MemoryJob::Kind::Profile:
+      processProfile(job);
       break;
   }
 }
@@ -340,10 +350,7 @@ void MemoryService::init()
   graph_->migrateLegacy();
   vecDb_.applySchema();
   phrases_.build();
-  {
-    std::scoped_lock lock(graph_->mutex());
-    extractor_.rebuild(lexiconRepo_.allEntries(graph_->handle()));
-  }
+  extractor_.rebuild(vocabulary::allLexiconEntries());
   formation_.setExtractor(&extractor_);
   embedding_.init();
   startWorker();
@@ -354,7 +361,9 @@ void MemoryService::init()
                 .userId = 0,
                 .text = {},
                 .lang = {},
-                .preferIdle = false});
+                .preferIdle = false,
+                .salient = false,
+                .episode = false});
   }
 }
 
@@ -390,19 +399,28 @@ int64_t MemoryService::captureInline(const InlineCapture& capture)
               .text = {},
               .lang = {},
               .preferIdle = false,
-              .salient = false});
+              .salient = false,
+              .episode = false});
   return formed->factId;
 }
 
 void MemoryService::deferCapture(const InlineCapture& capture)
 {
+  {
+    std::lock_guard<std::mutex> lock(queueMutex_);
+    for (const auto& job : queue_)
+      if (job.kind == MemoryJob::Kind::Extract && job.userId == capture.userId &&
+          job.text == capture.text)
+        return;
+  }
   enqueueJob({.kind = MemoryJob::Kind::Extract,
               .memoryId = 0,
               .userId = capture.userId,
               .text = capture.text,
               .lang = capture.lang,
               .preferIdle = false,
-              .salient = capture.salient});
+              .salient = capture.salient,
+              .episode = false});
 }
 
 CaptureResult MemoryService::captureExplicit(const CaptureInput& input)
@@ -451,17 +469,20 @@ CaptureResult MemoryService::captureToolCall(int64_t userId,
 RecallContext MemoryService::recall(const RecallInput& input)
 {
   RecallContext ctx;
+  const int topK = ConfigService::getInt("memory.recall_top_k");
   const auto recalled = graphRecall_.recall({.text = input.text,
                                              .lang = input.lang,
                                              .scope = "user",
                                              .refId = input.userId,
                                              .maxHops = 1,
-                                             .limit = 8,
-                                             .addresseeEntityId = 0});
+                                             .limit = topK > 0 ? topK : 4,
+                                             .addresseeEntityId = 0,
+                                             .activeEntityIds = {}});
   if (!recalled.hits.empty()) {
     ctx.prependText = recalled.block;
     ctx.usedIds = recalled.usedIds;
   }
+  bumpEpisodeHits(recalled.usedEpisodeIds);
   return ctx;
 }
 
@@ -474,10 +495,13 @@ void MemoryService::enqueueSummary(int64_t userId,
   if (!llm_.isLoaded())
     return;
   enqueueJob({.kind = MemoryJob::Kind::Compact,
+              .memoryId = 0,
               .userId = userId,
               .text = transcript,
               .lang = lang,
-              .preferIdle = false});
+              .preferIdle = false,
+              .salient = false,
+              .episode = false});
 }
 
 void MemoryService::enqueueCompaction(int64_t userId,
@@ -489,10 +513,13 @@ void MemoryService::enqueueCompaction(int64_t userId,
   if (!llm_.isLoaded())
     return;
   enqueueJob({.kind = MemoryJob::Kind::Compact,
+              .memoryId = 0,
               .userId = userId,
               .text = transcript,
               .lang = lang,
-              .preferIdle = true});
+              .preferIdle = true,
+              .salient = false,
+              .episode = false});
 }
 
 void MemoryService::flushPending()
@@ -518,7 +545,130 @@ void MemoryService::bumpHitCount(const std::vector<int64_t>& ids)
   graph_->bumpFactHits(ids);
 }
 
-void MemoryService::embedAndStore(int64_t factId)
+void MemoryService::bumpEpisodeHits(const std::vector<int64_t>& ids)
+{
+  if (ids.empty())
+    return;
+  std::scoped_lock lock(graph_->mutex());
+  graphRepo_.bumpEpisodeHits(graph_->handle(), ids, std::time(nullptr));
+}
+
+int64_t MemoryService::resolveAddresseeEntity(const std::string& lang)
+{
+  std::scoped_lock lock(graph_->mutex());
+  const auto found = graph_->resolveEntity(
+      {.surface = "usuario", .norm = "usuario", .lang = lang});
+  return found.value_or(0);
+}
+
+std::string MemoryService::profileFor(int64_t userId, const std::string& lang)
+{
+  if (userId < 0)
+    return {};
+  {
+    std::lock_guard<std::mutex> lock(profileMutex_);
+    const int stale = ConfigService::getInt("memory.profile_stale_seconds");
+    const std::time_t maxAge =
+        stale > 0 ? static_cast<std::time_t>(stale) : 300;
+    if (profileCache_.userId == userId && profileCache_.lang == lang &&
+        profileCache_.built > 0 &&
+        std::time(nullptr) - profileCache_.built < maxAge)
+      return profileCache_.text;
+  }
+  const std::string built = buildProfile(userId, lang);
+  {
+    std::lock_guard<std::mutex> lock(profileMutex_);
+    profileCache_ = {.userId = userId,
+                     .lang = lang,
+                     .text = built,
+                     .built = std::time(nullptr)};
+  }
+  if (running_ && llm_.isLoaded()) {
+    enqueueJob({.kind = MemoryJob::Kind::Profile,
+                .memoryId = 0,
+                .userId = userId,
+                .text = {},
+                .lang = lang,
+                .preferIdle = true,
+                .salient = false,
+                .episode = false});
+  }
+  return built;
+}
+
+std::string MemoryService::buildProfile(int64_t userId, const std::string& lang)
+{
+  std::vector<ProfileFactRow> rows;
+  {
+    std::scoped_lock lock(graph_->mutex());
+    rows = graphRepo_.topProfileFacts(graph_->handle(), userId, 6);
+  }
+  if (rows.size() < 2)
+    return {};
+
+  std::vector<std::string> persona;
+  std::vector<std::string> orders;
+  for (const auto& row : rows) {
+    if (row.type == "instruction")
+      orders.push_back(row.canonical);
+    else
+      persona.push_back(row.canonical);
+  }
+  const bool es = lang.empty() || lang == "es";
+  std::string out;
+  if (!persona.empty()) {
+    out += es ? "Datos sobre el usuario:\n" : "Facts about the user:\n";
+    for (const auto& line : persona)
+      out += "- " + text_norm::whitespace(line, false) + "\n";
+  }
+  if (!orders.empty()) {
+    out += es ? "Peticiones permanentes:\n" : "Standing requests:\n";
+    for (const auto& line : orders)
+      out += "- " + text_norm::whitespace(line, false) + "\n";
+  }
+  return out;
+}
+
+void MemoryService::processProfile(const MemoryJob& job)
+{
+  const int waitMs = ConfigService::getInt("memory.compact_wait_ms");
+  waitForIdle(waitMs > 0 ? waitMs : 15000);
+  if (llm_.isBusy()) {
+    enqueueJob(job);
+    return;
+  }
+  if (!llm_.isLoaded())
+    return;
+
+  const std::string base = buildProfile(job.userId, job.lang);
+  if (base.empty())
+    return;
+  const bool es = job.lang.empty() || job.lang == "es";
+  const std::string system =
+      es ? "Convierte los datos siguientes en un perfil breve del usuario, "
+           "en segunda persona, dos o tres frases, en el mismo idioma, sin "
+           "añadir nada que no esté en los datos."
+         : "Turn the facts below into a short second-person profile of the "
+           "user, two or three sentences, same language, adding nothing "
+           "beyond the facts.";
+  const ChatRequest req{
+      .messages = {ChatMessage{.role = "system", .content = system},
+                   ChatMessage{.role = "user", .content = base}},
+      .maxTokens = 256,
+      .temperature = 0.0F,
+      .resetContext = true,
+  };
+  const std::string polished = llm_.chat(req);
+  if (polished.empty())
+    return;
+  std::lock_guard<std::mutex> lock(profileMutex_);
+  profileCache_ = {.userId = job.userId,
+                   .lang = job.lang,
+                   .text = polished,
+                   .built = std::time(nullptr)};
+}
+
+void MemoryService::embedAndStore(int64_t factId, bool episode)
 {
   if (factId <= 0)
     return;
@@ -531,7 +681,9 @@ void MemoryService::embedAndStore(int64_t factId)
     sqlite3* db = vecDb_.handle();
     if (!db)
       return;
-    const auto found = graphRepo_.factContent(db, factId, scope, refId);
+    const auto found = episode
+                           ? graphRepo_.episodeContent(db, factId, scope, refId)
+                           : graphRepo_.factContent(db, factId, scope, refId);
     if (!found)
       return;
     content = *found;
@@ -542,8 +694,8 @@ void MemoryService::embedAndStore(int64_t factId)
   const int chunkChars = ConfigService::getInt("memory.chunk_chars");
   const int maxChars = chunkChars > 0 ? chunkChars : 400;
   const auto chunks = chunkContent(content, maxChars);
-  const std::string expanded = expandForEmbedding(content);
-  const bool hasExpanded = expanded != content;
+  const std::string expanded = episode ? "" : expandForEmbedding(content);
+  const bool hasExpanded = !expanded.empty() && expanded != content;
 
   const auto primary = embedding_.embed(chunks.front(), "passage:");
   if (!primary)
@@ -557,18 +709,21 @@ void MemoryService::embedAndStore(int64_t factId)
     return;
 
   const std::string enc = memory_vec::encode(*primary);
-  const double dedupCfg = ConfigService::getDouble("memory.vector_dedup_sim");
-  const float dedupFloor =
-      dedupCfg > 0.0 ? static_cast<float>(dedupCfg) : 0.93F;
-  const float dupSim = graphRepo_.vecDedupSim(db, enc, partition, factId);
-  if (dupSim >= dedupFloor) {
-    LOG_INFO << "MemoryService: fact " << factId
-             << " merged as semantic duplicate (sim=" << dupSim
-             << ", partition=" << partition << ")";
-    return;
+  if (!episode) {
+    const double dedupCfg = ConfigService::getDouble("memory.vector_dedup_sim");
+    const float dedupFloor =
+        dedupCfg > 0.0 ? static_cast<float>(dedupCfg) : 0.93F;
+    const float dupSim = graphRepo_.vecDedupSim(db, enc, partition, factId);
+    if (dupSim >= dedupFloor) {
+      graphRepo_.bumpFactImportance(db, factId, std::time(nullptr));
+      LOG_INFO << "MemoryService: fact " << factId
+               << " merged as semantic duplicate (sim=" << dupSim
+               << ", partition=" << partition << ")";
+      return;
+    }
+    LOG_DEBUG << "MemoryService: fact " << factId
+              << " nearest neighbour sim=" << dupSim;
   }
-  LOG_DEBUG << "MemoryService: fact " << factId
-            << " nearest neighbour sim=" << dupSim;
   graphRepo_.deleteVecRows(db, factId);
 
   int view = 0;
@@ -605,7 +760,7 @@ void MemoryService::rebuildAll()
   }
   LOG_INFO << "MemoryService: rebuilding " << ids.size() << " vectors";
   for (int64_t id : ids)
-    embedAndStore(id);
+    embedAndStore(id, false);
 }
 
 void MemoryService::registerTools(ToolRegistry& registry)
@@ -743,7 +898,8 @@ tools::ToolResult MemoryService::handleRecall(const tools::ToolCall& call)
                                              .refId = call.context.userId,
                                              .maxHops = 1,
                                              .limit = 8,
-                                             .addresseeEntityId = 0});
+                                             .addresseeEntityId = 0,
+                                             .activeEntityIds = {}});
   if (recalled.hits.empty()) {
     result.output = "no hay recuerdos para esa consulta";
     return result;
@@ -753,6 +909,7 @@ tools::ToolResult MemoryService::handleRecall(const tools::ToolCall& call)
   Json::Value& ids = result.data["fact_ids"] = Json::Value(Json::arrayValue);
   for (int64_t id : recalled.usedIds)
     ids.append(static_cast<int64_t>(id));
+  bumpEpisodeHits(recalled.usedEpisodeIds);
   return result;
 }
 

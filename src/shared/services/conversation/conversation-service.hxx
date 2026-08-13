@@ -18,6 +18,7 @@ struct WorkingMemory
   std::vector<ChatMessage> history;
   std::vector<int64_t> activeEntities;
   std::vector<tools::ToolResult> lastToolResults;
+  int64_t addresseeEntityId = 0;
 };
 
 struct TurnResult
@@ -27,6 +28,17 @@ struct TurnResult
   std::vector<tools::ToolCall> toolCalls;
 };
 
+// Injected into the user turn when a capture fired so the assistant
+// acknowledges it naturally. trimHistory strips it with the recall block.
+inline std::string captureAckNote(const std::string& lang)
+{
+  return lang == "en"
+             ? "\n(Note: the user asked you to remember this. Briefly confirm "
+               "that you noted it.)"
+             : "\n(Nota: el usuario te pidió recordar esto. Confirma "
+               "brevemente que lo has apuntado.)";
+}
+
 class ConversationService
 {
 public:
@@ -35,9 +47,11 @@ public:
   {
   }
 
-  // RETRIEVE: entity-anchored recall block for the turn text.
-  std::string recallBlock(const std::string& text, int64_t userId,
-                          const std::string& lang);
+  // RETRIEVE: entity-anchored recall block for the turn text. Updates
+  // wm.activeEntities with the entities resolved this turn (anaphora source
+  // for follow-ups) and bumps hit counts.
+  std::string recallBlock(WorkingMemory& wm, const std::string& text,
+                          int64_t userId);
 
   // DECIDE + ACT + OBSERVE + RESPOND: chat with the registered tools
   // (bounded tool loop), then FORM (deterministic capture of the turn).

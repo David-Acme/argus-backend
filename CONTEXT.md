@@ -55,8 +55,7 @@
   `with_ffmpeg=False`, `with_wayland=False`, `with_gtk=False`, `with_vulkan=False`.
 - `eigen/5.0.1` **removed** (2026-08-06): it was declared in `conanfile.txt` and
   linked in `CMakeLists.txt` but had zero uses in `src/` or `labs/`. The tracker
-  planned in `OPTIMIZATION_AND_MEMORY_PLAN.md` uses `cv::KalmanFilter` instead,
-  so no dependency comes back.
+  uses `cv::KalmanFilter` instead, so no dependency comes back.
 - **conanfile.txt cannot resolve version conflicts** (no `override=True`/`force`).
   Conflict resolution is done by pinning versions + disabling the offending option
   in the consuming package.
@@ -72,7 +71,7 @@
 | Service | Engine | Model | Path |
 |---------|--------|-------|------|
 | `FaceService` | ncnn (Vulkan) | RetinaFace + MobileFaceNet | `models/face/` |
-| `FaceDB` | HNSWlib | In-memory 128-dim index | Loaded from SQLite at startup |
+| `FaceDB` | vec0 (sqlite-vec) | 128-dim cosine KNN, persisted | SQLite (`face_vec`) |
 | `LlmService` | llama.cpp (submodule b10305) | LFM2.5-1.2B-Instruct-Q4_K_M | `models/llm/` |
 | `VisionService` | llama.cpp + libmtmd | LFM2.5-VL-450M (Q8_0 + mmproj F16) | `models/vision/lfm2vl-25/` |
 | `SttService` | sherpa-onnx | nemo_transducer (FastConformer RNN-T, es/en) | `models/stt/` |
@@ -162,8 +161,8 @@ without GPU), so every AI service auto-tunes its resources at runtime:
 ## Tapo camera integration — Phase 1 (2026-08-06)
 
 Local control and audio-out protocols for the TP-Link Tapo C225, standalone and
-validatable before any media or pipeline work exists. Media, detection, tracking
-and the memory system are planned in `OPTIMIZATION_AND_MEMORY_PLAN.md`.
+validatable before any media or pipeline work exists. Media, detection and
+tracking evolved through the sections below (streaming, memory, tools).
 
 - **`src/shared/services/tapo/`** — the whole camera protocol surface:
 
@@ -486,9 +485,13 @@ remembering:
 
 ## Retired plans and pending verifications (2026-08-09)
 
-`STABILITY_AND_REALTIME_PLAN.md`, `OPTIMIZATION_AND_MEMORY_PLAN.md` and
-`PLAN_EXECUTION_STATE.md` were deleted on 2026-08-09: their tasks are either
-landed (see the sections above) or superseded by this file and the git history.
+`STABILITY_AND_REALTIME_PLAN.md`, `OPTIMIZATION_AND_MEMORY_PLAN.md`,
+`PLAN_EXECUTION_STATE.md` (2026-08-09) and later `MEMORY_HUMAN_PLAN.md`,
+`EXTRACTION_ENGINE_PLAN.md` (2026-08-13) were deleted: their tasks are either
+landed (see the sections above and below) or superseded by this file and the
+git history. The extraction-engine verdict (NuExtract-1.5-tiny stays, tier
+order = lexicon-first with coverage escalation) is recorded in the "Memory:
+deferred extraction, semantic recall, vocabulary in SQLite" section below.
 References to them in `AGENTS.md`/`CONTEXT.md` are kept as history. What is
 still left to verify before the phase can be called complete:
 
@@ -667,6 +670,10 @@ Never static methods for service classes. Never local/temporary repository const
 - `notification` — notificaciones personales por usuario (type/title/body/data/is_read)
 - `notification_token` — push tokens por sesión (`UNIQUE(user_id, device_hash)`)
 - `user_action_log` — historial server-side de acciones (write-only, NO sync)
+- `memory_entity`/`memory_alias`/`memory_fact`/`memory_edge`/`memory_episode`/
+  `memory_source`/`memory_procedure` — grafo semántico de memoria (con sus FTS5:
+  `memory_fact_fts`, `memory_episode_fts`, `memory_alias_fts`)
+- `job` — cola de trabajos del worker (estado, intentos, dedupe_key)
 
 ## Sync engine (WebSocket, one-way server→cliente)
 
@@ -737,6 +744,16 @@ src/shared/repositories/{entity}/
 - Recognize that some model architectures fall back to CPU on Vulkan (ncnn limitation)
 
 ## Long-term memory: MemoryService (2026-08-09, reworked 2026-08-10)
+
+> SUPERSEDED: this section describes the legacy `memory_l1` / `MemoryStore` /
+> `MemoryRecall` architecture (RRF, trigram, `memory_profile`), deleted in the
+> 2026-08-11 semantic-graph rework. The CURRENT architecture is the SQLite
+> semantic graph (entity/fact/edge/episode + FTS5 + vec0) documented in the
+> sections below: "Kùzu gate", "All SQLite access goes through repositories",
+> "Memory & Context Redesign", "Memory: deferred extraction, semantic recall,
+> vocabulary in SQLite", "Memory: human-feel + recall reliability round",
+> "Vocabulary moved to static constants" and "Vocabulary extension".
+> Kept verbatim as history.
 
 Ultra-light memory for Argus: **no extra LLM model** (conversation compaction
 reuses the MAIN LlmService), **async background pipeline** (embedding of
@@ -1419,3 +1436,216 @@ apúntalo" is deferred to the model. Both land correct.
 `argus-extract-probe --engine-bench [--engine <gguf>[:format]]` reproduces the
 engine comparison in one command, over the same fixture, so the next candidate
 is measured instead of argued.
+
+# Memory: human-feel + recall reliability round (2026-08-13)
+
+Driven by live user sessions ("suena robótico, a veces no recuerda") and the
+TencentDB-Agent-Memory design (plan `MEMORY_HUMAN_PLAN.md`, since deleted —
+its tasks all landed). Summary of what
+landed and what it measured:
+
+## Fase 1 — turn-level humanization
+- Sampling on memory-bearing turns was greedy (`llm.recall_temperature=0`,
+  hardcoded in `LfmAdapter` too): the persona flipped between 0.85 and 0.0
+  turn by turn. Now 0.5 configurable; `ToolChatInput.temperature` parametrized.
+- Canonicals were built from English lexicon predicates ("madre dislikes el
+  ruido"). `MemoryFormation` now slices verbatim clause spans (folded view
+  with byte map, `memory-formation.cc`) and keeps the possessor/personal "a".
+- Capture acknowledgment: a short note rides in the user turn when a capture
+  fired; the assistant now confirms naturally ("Sí, he apuntado…") and the
+  prompt tells it not to claim saves that did not happen.
+- `toSecondPerson` covers me/mí/conmigo/yo (es) and me/I (en), word-boundary
+  checked.
+- Camera preamble per language; greeting no longer a generic offer; memory
+  instructions describe the block's real position (tail of the user turn).
+- `trimHistory` strips stale injected context (ack notes + blocks) from
+  surviving user messages (only when the prune already broke prefix reuse).
+
+## Fixes the "real user" sessions exposed
+- Pre-existing bug: questions without marks ("…como tu reaccionarias") were
+  stored as facts. `isQuestion` now also fires on interrogative words with
+  <=3 trailing words (bare "que"/"qué" excluded).
+- "ok?"/"verdad?" leftovers in canonicals: `stripTrailingConfirmation` strips
+  trailing ?¿! before matching tag confirmations. New filler row "ah".
+- `parseStatement` keeps a leading "a " ("a mi madre…" stays intact).
+- Statement-start coverage: mother/father/cousins/etc, first-person likes
+  (es/en) — untriggered "a mi madre no le gusta el ruido" now captures inline.
+
+## Fase 2 — recall
+- Episodes are recallable: `memory_episode_fts` tier + vec neighbours resolve
+  via `episodeById`; `bumpEpisodeHits`; compaction re-enqueues when the LLM
+  is busy instead of dropping the job.
+- Semantic gate adapts to store size: 1 distinct fact → `vector_strict_min_sim`,
+  2 → `vector_small_store_sim` (0.84, new config key), >=3 → margin over the
+  leave-one-out mean (unchanged). Fixes both facts being dropped on small
+  stores while keeping smalltalk clean.
+- FTS fast path now checks quality: when the top FTS hit shares <2 words with
+  the query, the semantic tier still runs (was suppressed by pure hit count).
+- `recall_deadline_ms`, `recall_top_k` (limit) and `recall_max_tokens` (char
+  budget ≈4×tokens, line-truncated) are wired.
+- Anaphora: pronouns (ella/eso/she/he/…) resolve to the last entity of
+  `WorkingMemory.activeEntities`; `addresseeEntityId` is resolved per session
+  ("yo"/"me" turns anchor the user entity).
+- Extract jobs are deduplicated when an identical (user, text) job is queued
+  (the fastText false positive on questions no longer burns repeated
+  NuExtract runs; the formation question gate rejects them anyway).
+
+## Fase 3 — layered memory (Tencent-inspired, local)
+- Vector dedup now merges: the existing fact gets priority/hit_count bumped
+  instead of the new row being silently dropped.
+- Episode tier scores by salience + hit_count.
+- L3 profile: deterministic (persona/preference >= 70, cap 6 rows, second
+  person, es/en) appended to the system prompt; cached with
+  `profile_stale_seconds`; optional off-turn LLM polish (isBusy gate,
+  re-enqueue). Verified live: session 2 greets "¡Buenos días! Tu café sin
+  azúcar está bien, y tu hermana viene el sábado".
+- Anti feedback-loop: capture rejects text containing `<memor`; injected lines
+  are stripped of <> characters; the block keeps the measured imperative
+  instruction ("Usa estos datos para responder.") — the softer Tencent-style
+  disclaimer made the 1.2B echo the literal `<memorias>` tag.
+- Deadlock fixed: `render()` re-locks the graph mutex; vec resolution now
+  fetches under the lock and renders after (found via a hang in
+  `--vec-gate-test` that only appeared under the real MemoryService path).
+
+## What remains model-limited (honest)
+- The 1.2B still sometimes hallucinates answers ("¿y ella trabaja?" →
+  "Trabaja, ¿sabes?"), echoes first person occasionally, and ignores injected
+  blocks on some turns. The pipeline now delivers the right facts; phrasing
+  quality is bounded by the model.
+- `--recall-bench` "unrelated query injects nothing" and `--embed-check`
+  (ORT pure-virtual crash) fail on THIS machine even on the pre-change tree —
+  environment-specific, to revisit.
+
+Validation: dev+prod builds 0/0; 10 memory-probe suites green (vec-gate 3/3,
+recall-bench p50 23 ms 30/30 precision, formation/capture/graph-recall incl.
+new episode case); live text sessions exercised messy speech, acks, anaphora,
+profile and episode recall.
+
+# Model benchmark round: LFM2.5-8B-A1B + cross-family (2026-08-13)
+
+Criterion from the user: candidate must be CPU-optimized, real-time like the
+LFM2.5 family, and MUST NOT emit thinking (<think>) — faster replies, no
+visible reasoning. The 2.6B was excluded by decision (template hardcodes
+`<think>`, verified in its raw chat_template.jinja). Measured on the reference
+machine, Release build, CPU-only (gpu_layers=0), medians; `labs/llm-bench`
+(--llm/--memory/--fast) + an Ollama-API script for cross-family runs with
+official templates/samplers.
+
+## Results
+
+### Our pipeline (LlmService, chatml, 4 decode threads / 8 prefill)
+
+| Model | TTFT short | tok/s short | tok/s xlong | RSS | recall | attrib | no-invent | think |
+|---|---|---|---|---|---|---|---|---|
+| LFM2.5-1.2B-Instruct (baseline) | 782 ms | 19.9 | 19.1 | 1.21 GB | 7-8/8 | 8/8 | 2/2 | 0/10 |
+| LFM2.5-1.2B-Thinking | 1135 ms | — | — | 1.21 GB | 8/8 | 5/8 | 0/2 | 10/10 |
+| LFM2.5-8B-A1B Q4_K_M (chatml) | 2628 ms | 25.3 | 17.0 | 5.36 GB | 8/8 | 6/8 | 2/2 | 10/10 |
+| LFM2.5-8B-A1B (native tpl + anti-think sys) | 3419 ms | 15.5 | — | 5.36 GB | 8/8 | 6/8 | 1/2 | 10/10 |
+
+### Ollama (official templates/samplers, ~16 threads)
+
+| Model | TTFT short | tok/s | RSS | recall | attrib | no-invent | think |
+|---|---|---|---|---|---|---|---|
+| lfm2.5:1.2b (calibration) | 752 ms | 40.2 | 1.2 GB | 7/8 | 8/8 | 2/2 | 0/10 |
+| qwen3:4b | 1112 ms | 12.7 | 3.1 GB | 7/8 | 8/8 | 2/2 | 0/10 |
+| llama3.2:3b | 765 ms | 15.6 | 2.5 GB | 2/8 | 8/8 | 2/2 | 0/10 |
+| gemma3:4b | 2954 ms | 12.1 | 3.3 GB | 5/8 | 8/8 | 2/2 | 0/10 |
+
+## Conclusions
+
+- The "8B with 1.5B active" (LFM2.5-8B-A1B) is genuinely fast on CPU (MoE
+  works: 25 tok/s short, faster than the 1.2B baseline) and has the best
+  recall (8/8), but it THINKS unconditionally — chatml, native template,
+  anti-thinking system prompt, and Ollama think:false all still produce
+  <think> on 10/10 turns. The reasoning is baked into the model's
+  post-training. Per the user's criterion it is rejected; also TTFT ~2.6-3.5 s
+  vs 0.8 s baseline because every reply prepends a reasoning block, and
+  attribution drops (6/8).
+- 1.2B-Thinking data point: thinking at the same size costs +70% TTFT and
+  WORSE attribution/no-invention — confirms "thinking not needed here".
+- Out-of-family dense models are 2.5-3.3x slower than the LFM2.5-1.2B on the
+  same platform (Qwen3-4B 12.7 tok/s, Llama-3.2-3B 15.6, Gemma-3-4b 12.1 vs
+  40.2 for lfm2.5:1.2b in Ollama) and worse at the memory task (Llama 2/8,
+  Gemma 5/8; Qwen3-4B 7/8 but terse/robotic phrasing).
+- Ollama-vs-pipeline gap for the SAME model (40 vs 20 tok/s) is thread count:
+  Ollama dedicates all 16 cores; ThreadBudget deliberately reserves decode
+  threads (lightThreads = hw/4) for the other AI services. Relative
+  model-vs-model ordering holds in both platforms.
+- Verdict: keep LFM2.5-1.2B-Instruct. No candidate meets CPU real-time +
+  no-thinking + quality simultaneously.
+- Note: `labs/llm-bench` gained `--fast` (memory only, 1 round) and think-turn
+  detection; `--memory` now also runs the speed table (was an else-if bug).
+
+## Extended sweep (2026-08-13): candidates with natively disableable thinking
+
+User criterion refined: model must be CPU-optimized, real-time, and thinking
+must be DISABLEABLE NATIVELY (not prompt tricks). Tested via Ollama (official
+templates/samplers, 16 threads) + our pipeline (chatml, 4 decode threads).
+
+| Model (Ollama) | TTFT short | tok/s | recall | attrib | no-invent | think | RSS |
+|---|---|---|---|---|---|---|---|
+| lfm2.5:1.2b (champion) | 752 ms | 40.2 | 7/8 | 8/8 | 2/2 | 0/10 | 1.2 GB |
+| qwen3:1.7b | 444 ms | 20.7 | 7/8 | 8/8 | 2/2 | 0/10 | 0.3 GB |
+| qwen3:4b | 1112 ms | 12.7 | 7/8 | 8/8 | 2/2 | 0/10 | 3.1 GB |
+| qwen3:0.6b | 142 ms | 50.5 | 5/8 | 8/8 | 2/2 | 0/10 | 0.5 GB |
+| granite4:7b-a1b-h (Granite-4.0-H-Tiny, MoE 7B/1B) | 1787 ms | 21.9 | 8/8 | 8/8 | **0/2** | 0/10 | 4.4 GB |
+| granite4:1b-h | 1672 ms | 14.8 | 7/8 | 7/8 | 2/2 | 0/10 | ~1.6 GB |
+| llama3.2:3b | 765 ms | 15.6 | 2/8 | 8/8 | 2/2 | 0/10 | 2.5 GB |
+| gemma3:4b | 2954 ms | 12.1 | 5/8 | 8/8 | 2/2 | 0/10 | 3.3 GB |
+| qwen3.5:2b | — | 12.1 | 0/8 | — | — | 0/10 | — (empty replies) |
+
+Key findings:
+- Granite-4.0-H-Tiny (7B/A1B MoE) is natively non-thinking and has the best
+  recall (8/8) BUT fails the no-invention gate (0/2): answers "Sí" to
+  questions the memory cannot answer and quotes the facts verbatim —
+  unusable for a voice assistant that must say "no lo sé". Verbose, 4.4 GB.
+- Qwen3 family disables thinking NATIVELY only through its jinja template
+  (enable_thinking=False). In OUR pipeline (chatml, no jinja) qwen3:1.7b
+  thinks 10/10, recall drops to 6/8, RSS 4.7 GB, 15.9 tok/s — worse than the
+  champion in every dimension. Ollama numbers (0 think, 7/8, 444 ms TTFT)
+  do not transfer to Argus without template support in LlmService.
+- qwen3:0.6b is the speed king (50 tok/s, 142 ms TTFT) but recall 5/8.
+- The champion LFM2.5-1.2B-Instruct still wins the combined criterion
+  (quality + CPU real-time + zero thinking + 1.2 GB). No tested model
+  replaces it. Models in models/llm/bench/ kept for future re-eval.
+
+# Vocabulary moved to static constants (2026-08-13)
+
+`memory_phrase` and `memory_lexicon` (schema.sql inserts, ~470 rows) were the
+only static-data tables. Per user decision they are GONE — no migration, no
+DROP (dev: DB deleted by hand; the code never reads them anymore):
+
+- `src/shared/vocabulary/vocabulary-types.hxx` — `PhraseSeed`/`LexiconSeed`.
+- `vocabulary-es.hxx` / `vocabulary-en.hxx` — `inline constexpr std::array`
+  generated from the live DB (291 phrases: 219 es + 72 en; 179 lexicon:
+  96 es + 83 en), zero allocations at init (`std::span` accessors).
+- `vocabulary.hxx` — accessors + `allLexiconEntries()` (→ `TieredExtractor`).
+- `PhraseCatalog` no longer touches SQLite (no `SqliteGraph`/repo members);
+  `MemoryService::init()` builds phrases + lexicon from constants directly.
+- Deleted `src/shared/repositories/memory-phrase/` and `memory-lexicon/`
+  (their add/remove methods had zero callers); labs CMakeLists updated.
+- `database/schema.sql` ends at the `job` table; no phrase/lexicon DDL.
+- New probe gate: `argus-memory-probe --vocabulary-check` (duplicates, kind
+  coverage es/en, automaton count). es must cover all 6 phrase kinds; en has
+  no recall_marker rows by design (covers 5).
+- Adding a phrase/language = editing the language header, rebuilding. No DB
+  migration, no boot-time INSERTs, no WAL growth from static seeds.
+
+## Vocabulary extension (2026-08-13)
+
+Vocabulary grew from 291 → 1243 phrases (762 es / 481 en) and 179 → 870
+lexicon entries (468 es / 402 en), covering: voseo triggers ("recordá que",
+"acordate que", "apuntá que"), mamá/papá + extended kinship (in-laws,
+step-family, godparents, twins), pets, ~60 house objects, first-person
+preferences ("me encantan", "i can't stand", "i'm allergic to"), ~90 new es
+predicates (trabaja en, se levanta a las, le encanta, cumple años el, tiene
+que ir, …) and ~130 en (wakes up at, is planning to, was born in, …), en
+recall markers (previously absent: "i don't remember", "remind me what",
+"what did we talk about", …), interrogatives (adónde, how much, whose, …)
+and safe stopword sets. Zero duplicates: the dev DB's unique
+(kind, lang, phrase/surface) index + `--vocabulary-check` guarantee it.
+
+Generation pipeline: `extend-vocab.py` (INSERT OR IGNORE into the dev DB
+tables, which still exist locally) → `gen-vocab.py` → regenerates the
+headers. schema.sql was NOT touched in this round (its table declaration
+order is preserved; vocabulary lives only in src/shared/vocabulary/).

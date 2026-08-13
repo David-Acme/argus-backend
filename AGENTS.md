@@ -351,18 +351,23 @@ shared file-static behind a mutex.
   Drogon's first connection — see CONTEXT.md ordering note). FTS5 (bm25,
   unicode61, trigram) is enabled via the conan option
   `sqlite3/*:enable_fts5=True` (Drogon rebuilt once).
-- **MemoryService** (`src/shared/services/memory/`) — long-term memory: scoped
-  `memory_l1`, hybrid recall (FTS5 words + trigram + vec0 embeddings, RRF +
-  quadratic sim bonus, lexical fast path), explicit-rule capture + inline LLM
-  tool calls + implicit intent capture, background worker (embedding of
-  captures, multi-view vectors with synonym expansion, chunking of long
-  contents, vector dedup, conversation compaction with the MAIN LlmService —
-  no extra model), L3 persona profile (`memory_profile`, stale-refreshed).
-  Facade `MemoryService`; DB access via `VecDb` (raw sqlite3, vec0-enabled,
-  mutex serialized; prepared statements are RAII `SqliteStmt`).
-  Embeddings: `multilingual-e5-small` int8 ONNX via `EmbeddingService` +
-  hand-rolled Unigram tokenizer, loaded lazily on first use. Full details in
-  CONTEXT.md "Long-term memory" section.
+- **MemoryService** (`src/shared/services/memory/`) — long-term memory over a
+  SQLite semantic graph (NOT the legacy `memory_l1`): `memory_entity`/alias
+  (person frames), `memory_fact` (upsert closes the previous open fact via
+  `supersedes`), `memory_edge`, `memory_episode` (compaction/system-event
+  summaries, now recallable), `memory_procedure`. Capture: deterministic
+  `RuleParser`+`PhraseCatalog` (vocabulary is static per-language constants in
+  `src/shared/vocabulary/`, never DB tables) → `TieredExtractor` (lexicon tier
+  inline, NuExtract tier off-turn).
+  Recall (`GraphRecall`): entity-anchored (recursive CTE) → FTS5 → vec0
+  semantic tier with store-size-aware margin gates → episode tier; anaphora
+  via `WorkingMemory.activeEntities`; block injected at the TAIL of the user
+  turn. Background worker: embed (chunks+synonyms+vector dedup with
+  priority-merge), compaction with the MAIN LlmService (re-enqueues when
+  busy), L3 profile (deterministic persona/instruction selection + optional
+  off-turn LLM polish). Facade `MemoryService`; DB via `SqliteGraph`/`VecDb`
+  (mutex-serialized, prepared statements are RAII `SqliteStmt`). Embeddings:
+  `multilingual-e5-small` int8 ONNX, loaded lazily. Full details in CONTEXT.md.
 - **fastText** (submodule `third_party/fastText`, pinned 1f12150 = v0.9.2 +
   local C++20 patch) — supervised text classification for `IntentService`
   (`src/shared/services/intent/`): static intent detection for implicit tool
@@ -454,7 +459,8 @@ Before any commit, verify: `cmake --build --preset dev -j 8` passes with
 | `src/shared/services/llm/` | LLM inference (llama.cpp) |
 | `src/shared/services/embedding/` | `EmbeddingService` (multilingual-e5-small int8 ONNX) + `UnigramTokenizer` |
 | `src/shared/services/intent/` | `IntentService` (fastText supervised: cámara/memory_save implícitos) + adapter IService |
-| `src/shared/services/memory/` | `MemoryService`/`MemoryStore`/`MemoryRecall`/`RuleParser`/`ToolParser` — long-term memory (async worker, hybrid recall, L3 profile) |
+| `src/shared/services/memory/` | `MemoryService`/`SemanticGraph`(`SqliteGraph`)/`GraphRecall`/`MemoryFormation`/`RuleParser`/`PhraseCatalog`/`EntityResolver`/`ToolParser` — semantic-graph long-term memory (async worker, episode recall, L3 profile) |
+| `src/shared/vocabulary/` | Static per-language memory vocabulary (es/en): `PhraseSeed`/`LexiconSeed` constants — no DB tables |
 | `src/shared/services/sqlite/` | DB client access (`DbService::client()`, extensions) + `VecDb` (vec0 connection) |
 | `src/shared/services/vision/` | VLM inference: LFM2.5-VL-450M via llama.cpp + libmtmd (arbitrary prompts, caption cache) |
 | `src/shared/services/vad/` | `VadService` — Silero VAD v5 as an **instance** class (per-stream LSTM, shared ONNX session), with the turn-quality gate |
@@ -468,8 +474,6 @@ Before any commit, verify: `cmake --build --preset dev -j 8` passes with
 | `labs/tapo-probe/` | `argus-tapo-probe` — validates the camera protocols against real hardware |
 | `labs/voice-test/` | `argus-voice-test` — STT → LLM → TTS conversation loop with Silero VAD (memory via `--memory-user <id>`) |
 | `labs/memory-probe/` | `argus-memory-probe` — memory schema/capture/tool/embedding/recall checks + bench |
-| `OPTIMIZATION_AND_MEMORY_PLAN.md` | Current plan: hardware-adaptive tiers, step elimination, person memory + LLM tools |
-| `STABILITY_AND_REALTIME_PLAN.md` | Current plan: fMP4 transport fixes, stateful audio resampling, VAD calibration, promoting proven `labs/` pieces into `src/` |
 | `src/shared/services/sqlite/` | DB client access (`DbService::client()`) |
 | `src/shared/services/config-service/` | `ConfigService` read + runtime writes (`setBool/...` persisten a `config.toml`, comentarios preservados) |
 | `src/shared/services/room/` | `RoomManager` local (rooms por módulo/usuario, `thread_local`) |

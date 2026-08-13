@@ -22,8 +22,6 @@ set(MEMORY_PROBE_SRC
     ${SRC_ROOT}/shared/services/memory/sqlite-graph.cc
     ${SRC_ROOT}/shared/services/memory/entity-resolver.cc
     ${SRC_ROOT}/shared/services/memory/phrase-catalog.cc
-    ${SRC_ROOT}/shared/repositories/memory-phrase/memory-phrase-repository.cc
-    ${SRC_ROOT}/shared/repositories/memory-lexicon/memory-lexicon-repository.cc
     ${SRC_ROOT}/shared/services/memory/memory-formation.cc
     ${SRC_ROOT}/shared/services/memory/graph-recall.cc
     ${SRC_ROOT}/shared/repositories/memory-graph/memory-graph-repository.cc

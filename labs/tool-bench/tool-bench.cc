@@ -192,7 +192,8 @@ int main(int argc, char** argv)
                                                .context = {.userId = 7,
                                                            .lang = "es",
                                                            .sessionId = {}},
-                                               .maxHops = 1},
+                                               .maxHops = 1,
+                                               .temperature = -1.0F},
                                               history);
     latencies.push_back(static_cast<double>(nowMs() - t0));
 

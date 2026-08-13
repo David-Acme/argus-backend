@@ -54,6 +54,19 @@ public:
   std::vector<int64_t> episodesBetween(sqlite3* db, const std::string& scope,
                                        int64_t refId, int64_t from, int64_t to,
                                        int limit);
+  std::optional<EpisodeHit> episodeById(sqlite3* db,
+                                        const EpisodeByIdInput& input);
+  std::vector<EpisodeHit> ftsEpisodes(sqlite3* db, const std::string& match,
+                                      const std::string& scope, int64_t refId,
+                                      int limit);
+  std::optional<std::string> episodeContent(sqlite3* db, int64_t episodeId,
+                                            std::string& scope,
+                                            int64_t& refId);
+  void bumpEpisodeHits(sqlite3* db, const std::vector<int64_t>& ids,
+                       int64_t at);
+  void bumpFactImportance(sqlite3* db, int64_t factId, int64_t at);
+  std::vector<ProfileFactRow> topProfileFacts(sqlite3* db, int64_t refId,
+                                              int limit);
   int64_t createSource(sqlite3* db, const std::string& channel,
                        const std::string& turnRef, int64_t at);
   void bumpFactHits(sqlite3* db, const std::vector<int64_t>& factIds);

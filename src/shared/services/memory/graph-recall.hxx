@@ -20,6 +20,7 @@ struct GraphRecallInput
   int maxHops = 1;
   int limit = 8;
   int64_t addresseeEntityId = 0;
+  std::vector<int64_t> activeEntityIds;
 };
 
 struct GraphRecallHit
@@ -41,6 +42,7 @@ struct GraphRecallResult
 {
   std::vector<GraphRecallHit> hits;
   std::vector<int64_t> usedIds;
+  std::vector<int64_t> usedEpisodeIds;
   std::string block;
   std::vector<int64_t> resolvedEntityIds;
   bool entityAnchored = false;
@@ -88,6 +90,7 @@ private:
     float margin = 0.05F;
     float floorSim = 0.80F;
     float strictSim = 0.86F;
+    float smallStoreSim = 0.84F;
     int maxFacts = 2;
     int minHits = 4;
   };
