@@ -39,17 +39,16 @@ bool MemoryLexiconRepository::addEntry(sqlite3* db,
   return stmt.step() == SQLITE_DONE;
 }
 
-bool MemoryLexiconRepository::removeEntry(sqlite3* db, LexiconKind kind,
-                                          const std::string& lang,
-                                          const std::string& surface)
+bool MemoryLexiconRepository::removeEntry(sqlite3* db,
+                                         const LexiconDeleteInput& input)
 {
-  if (!db || surface.empty())
+  if (!db || input.surface.empty())
     return false;
   SqliteStmt stmt;
   if (!stmt.prepare(db, DELETE_LEXICON))
     return false;
-  stmt.bindText(1, lexiconKindToString(kind));
-  stmt.bindText(2, lang.empty() ? "es" : lang);
-  stmt.bindText(3, surface);
+  stmt.bindText(1, lexiconKindToString(input.kind));
+  stmt.bindText(2, input.lang.empty() ? "es" : input.lang);
+  stmt.bindText(3, input.surface);
   return stmt.step() == SQLITE_DONE;
 }

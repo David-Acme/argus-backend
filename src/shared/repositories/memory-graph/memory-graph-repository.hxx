@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <optional>
+#include <shared/repositories/memory-graph/memory-graph-query.hxx>
 #include <shared/services/memory/semantic-graph.hxx>
 #include <string>
 #include <vector>
@@ -43,10 +44,9 @@ public:
   std::vector<RecallHit> factsForEntity(sqlite3* db,
                                         const RecallEntityInput& input);
   std::vector<VecNeighbour> vecNeighbours(sqlite3* db,
-                                          const std::string& encoded,
-                                          const std::string& partition, int k);
-  std::optional<RecallHit> factById(sqlite3* db, int64_t factId,
-                                    const std::string& scope, int64_t refId);
+                                          const VecNeighbourInput& input);
+  std::optional<RecallHit> factById(sqlite3* db,
+                                    const FactByIdInput& input);
   std::vector<RecallHit> ftsFacts(sqlite3* db, const std::string& match,
                                   const std::string& scope, int64_t refId,
                                   int limit);

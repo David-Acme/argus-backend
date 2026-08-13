@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cstdint>
+
 #include <string>
 #include <vector>
 
@@ -172,3 +174,18 @@ inline constexpr const char* INSERT_LEGACY_FACT =
     "VALUES (?, 'legacy', ?, ?, ?, ?, 0.5, 'es', ?, ?, ?, 0, ?, ?, ?)";
 
 } // namespace memory_graph_query
+
+struct VecNeighbourInput
+{
+  std::string encoded;
+  std::string partition;
+  int k;
+};
+
+struct FactByIdInput
+{
+  int64_t factId;
+  std::string scope;
+  int64_t refId;
+};
+

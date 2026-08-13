@@ -148,6 +148,19 @@ std::string GraphRecall::render(int64_t entityId, int64_t addresseeEntityId,
   return surface + ": " + canonical;
 }
 
+const GraphRecall::Tuning& GraphRecall::tuning() const
+{
+  if (!tuning_) {
+    tuning_ = Tuning{
+        .margin = configFloat("memory.vector_margin", 0.05F),
+        .floorSim = configFloat("memory.vector_min_sim", 0.80F),
+        .strictSim = configFloat("memory.vector_strict_min_sim", 0.86F),
+        .maxFacts = configInt("memory.semantic_max_facts", 2),
+        .minHits = configInt("memory.lexical_min_hits", 4)};
+  }
+  return *tuning_;
+}
+
 void GraphRecall::collectSemantic(const GraphRecallInput& input,
                                   GraphRecallResult& result)
 {
@@ -167,9 +180,10 @@ void GraphRecall::collectSemantic(const GraphRecallInput& input,
     sqlite3* db = vecDb_.handle();
     if (!db)
       return;
-    neighbours =
-        repo_.vecNeighbours(db, encoded, partition,
-                            std::max(kBackgroundSample, input.limit * 3));
+    neighbours = repo_.vecNeighbours(
+        db, {.encoded = encoded,
+             .partition = partition,
+             .k = std::max(kBackgroundSample, input.limit * 3)});
   }
 
   std::vector<VecNeighbour> best;
@@ -199,10 +213,11 @@ void GraphRecall::collectSemantic(const GraphRecallInput& input,
   for (const auto& row : best)
     sum += row.distance;
 
-  const float margin = configFloat("memory.vector_margin", 0.05F);
-  const float floorSim = configFloat("memory.vector_min_sim", 0.80F);
-  const float strictSim = configFloat("memory.vector_strict_min_sim", 0.86F);
-  const int maxFacts = configInt("memory.semantic_max_facts", 2);
+  const Tuning& cfg = tuning();
+  const float margin = cfg.margin;
+  const float floorSim = cfg.floorSim;
+  const float strictSim = cfg.strictSim;
+  const int maxFacts = cfg.maxFacts;
   const bool haveBackground =
       static_cast<int>(best.size()) >= kBackgroundSample;
 
@@ -231,8 +246,9 @@ void GraphRecall::collectSemantic(const GraphRecallInput& input,
     std::optional<RecallHit> fact;
     {
       std::scoped_lock lock(graph_.mutex());
-      fact = repo_.factById(graph_.handle(), neighbour.factId, input.scope,
-                            input.refId);
+      fact = repo_.factById(graph_.handle(), {.factId = neighbour.factId,
+                                             .scope = input.scope,
+                                             .refId = input.refId});
     }
     if (!fact)
       continue;
@@ -353,8 +369,7 @@ GraphRecallResult GraphRecall::recall(const GraphRecallInput& input)
     }
   }
 
-  const int minHits = ConfigService::getInt("memory.lexical_min_hits");
-  if (static_cast<int>(result.hits.size()) < (minHits > 0 ? minHits : 4))
+  if (static_cast<int>(result.hits.size()) < tuning().minHits)
     collectSemantic(input, result);
 
   if (result.hits.empty())

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <optional>
 #include <shared/repositories/memory-graph/memory-graph-repository.hxx>
 #include <shared/services/embedding/embedding-service.hxx>
 #include <shared/services/memory/entity-resolver.hxx>
@@ -82,6 +83,17 @@ public:
                      const std::string& canonical) const;
 
 private:
+  struct Tuning
+  {
+    float margin = 0.05F;
+    float floorSim = 0.80F;
+    float strictSim = 0.86F;
+    int maxFacts = 2;
+    int minHits = 4;
+  };
+
+  const Tuning& tuning() const;
+
   void collectSemantic(const GraphRecallInput& input,
                        GraphRecallResult& result);
 
@@ -90,4 +102,5 @@ private:
   EmbeddingService& embedding_;
   VecDb& vecDb_;
   MemoryGraphRepository repo_;
+  mutable std::optional<Tuning> tuning_;
 };

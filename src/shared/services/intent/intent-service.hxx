@@ -1,6 +1,7 @@
 #pragma once
 
 #include <memory>
+#include <shared_mutex>
 #include <string>
 #include <vector>
 
@@ -48,6 +49,7 @@ public:
   static bool fired(const std::vector<IntentHit>& hits, ToolIntent intent);
 
 private:
+  mutable std::shared_mutex modelMutex_;
   std::unique_ptr<fasttext::FastText> model_;
   bool loaded_ = false;
 };

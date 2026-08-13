@@ -32,17 +32,37 @@ struct MdnsConfig
   std::vector<std::pair<std::string, std::string>> txt;
 };
 
-struct MdnsSocketDeleter
+class MdnsSocket
 {
-  void operator()(int* fd) const
-  {
-    if (fd && *fd >= 0)
-      mdns_socket_close(*fd);
-    delete fd;
-  }
-};
+public:
+  explicit MdnsSocket(int fd) : fd_(fd) {}
+  ~MdnsSocket() { close(); }
 
-using SocketPtr = std::unique_ptr<int, MdnsSocketDeleter>;
+  MdnsSocket(const MdnsSocket&) = delete;
+  MdnsSocket& operator=(const MdnsSocket&) = delete;
+  MdnsSocket(MdnsSocket&& other) noexcept : fd_(other.fd_) { other.fd_ = -1; }
+  MdnsSocket& operator=(MdnsSocket&& other) noexcept
+  {
+    if (this != &other) {
+      close();
+      fd_ = other.fd_;
+      other.fd_ = -1;
+    }
+    return *this;
+  }
+
+  int get() const { return fd_; }
+
+private:
+  void close()
+  {
+    if (fd_ >= 0)
+      mdns_socket_close(fd_);
+    fd_ = -1;
+  }
+
+  int fd_ = -1;
+};
 
 struct AlignedBufferDeleter
 {
@@ -120,7 +140,7 @@ struct MdnsService::Impl
   MdnsConfig config;
   std::atomic<bool> running{false};
   std::thread thread;
-  std::vector<SocketPtr> sockets;
+  std::vector<MdnsSocket> sockets;
   BufferPtr buffer;
   size_t bufferCapacity = 0;
 
@@ -378,7 +398,7 @@ void MdnsService::Impl::runLoop()
     std::vector<struct pollfd> fds;
     fds.reserve(sockets.size());
     for (const auto& sock : sockets)
-      fds.push_back({*sock, POLLIN, 0});
+      fds.push_back({sock.get(), POLLIN, 0});
 
     const int ready = ::poll(fds.data(), fds.size(), 500);
     if (ready < 0) {
@@ -391,7 +411,7 @@ void MdnsService::Impl::runLoop()
 
     for (size_t i = 0; i < sockets.size(); ++i) {
       if ((fds[i].revents & (POLLIN | POLLERR)) != 0)
-        mdns_socket_listen(*sockets[i], buffer.get(), bufferCapacity,
+        mdns_socket_listen(sockets[i].get(), buffer.get(), bufferCapacity,
                            callbackBridge, this);
     }
   }
@@ -421,7 +441,7 @@ void MdnsService::Impl::announce()
 {
   const std::vector<mdns_record_t> additional = buildAdditionalRecords();
   for (const auto& sock : sockets)
-    mdns_announce_multicast(*sock, buffer.get(), bufferCapacity, recordPtr, 0,
+    mdns_announce_multicast(sock.get(), buffer.get(), bufferCapacity, recordPtr, 0,
                             0, additional.data(), additional.size());
 }
 
@@ -429,7 +449,7 @@ void MdnsService::Impl::goodbye()
 {
   const std::vector<mdns_record_t> additional = buildAdditionalRecords();
   for (const auto& sock : sockets)
-    mdns_goodbye_multicast(*sock, buffer.get(), bufferCapacity, recordPtr, 0, 0,
+    mdns_goodbye_multicast(sock.get(), buffer.get(), bufferCapacity, recordPtr, 0, 0,
                            additional.data(), additional.size());
 }
 
@@ -461,7 +481,7 @@ bool MdnsService::initialize()
   v4.sin_port = htons(MDNS_PORT);
   const int fd4 = mdns_socket_open_ipv4(&v4);
   if (fd4 >= 0) {
-    impl_->sockets.push_back(SocketPtr(new int(fd4)));
+    impl_->sockets.emplace_back(fd4);
   }
   else {
     LOG_WARN << "mDNS: failed to open IPv4 socket (errno=" << errno << ")";
@@ -473,7 +493,7 @@ bool MdnsService::initialize()
   v6.sin6_port = htons(MDNS_PORT);
   const int fd6 = mdns_socket_open_ipv6(&v6);
   if (fd6 >= 0) {
-    impl_->sockets.push_back(SocketPtr(new int(fd6)));
+    impl_->sockets.emplace_back(fd6);
   }
   else {
     LOG_WARN << "mDNS: failed to open IPv6 socket (errno=" << errno << ")";

@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <drogon/utils/coroutine.h>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <semaphore>
 #include <shared/services/face/face-db.hxx>
@@ -50,6 +51,7 @@ public:
 
 private:
   std::counting_semaphore<8> concurrency_{0};
+  mutable std::mutex implMutex_;
 
   struct Impl
   {

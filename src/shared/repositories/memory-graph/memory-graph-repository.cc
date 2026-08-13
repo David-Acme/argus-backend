@@ -246,18 +246,18 @@ std::vector<RecallHit> MemoryGraphRepository::ftsFacts(sqlite3* db,
 }
 
 std::vector<VecNeighbour>
-MemoryGraphRepository::vecNeighbours(sqlite3* db, const std::string& encoded,
-                                     const std::string& partition, int k)
+MemoryGraphRepository::vecNeighbours(sqlite3* db,
+                                     const VecNeighbourInput& input)
 {
   std::vector<VecNeighbour> out;
-  if (!db || k <= 0)
+  if (!db || input.k <= 0)
     return out;
   SqliteStmt stmt;
   if (!stmt.prepare(db, FIND_VEC_NEIGHBOURS))
     return out;
-  stmt.bindText(1, encoded);
-  stmt.bindText(2, partition);
-  stmt.bindInt(3, k);
+  stmt.bindText(1, input.encoded);
+  stmt.bindText(2, input.partition);
+  stmt.bindInt(3, input.k);
   while (stmt.step() == SQLITE_ROW)
     out.push_back({.factId = stmt.columnInt64(0),
                    .distance = static_cast<float>(stmt.columnDouble(1))});
@@ -265,17 +265,16 @@ MemoryGraphRepository::vecNeighbours(sqlite3* db, const std::string& encoded,
 }
 
 std::optional<RecallHit>
-MemoryGraphRepository::factById(sqlite3* db, int64_t factId,
-                                const std::string& scope, int64_t refId)
+MemoryGraphRepository::factById(sqlite3* db, const FactByIdInput& input)
 {
-  if (!db || factId <= 0)
+  if (!db || input.factId <= 0)
     return std::nullopt;
   SqliteStmt stmt;
   if (!stmt.prepare(db, FIND_FACT_BY_ID))
     return std::nullopt;
-  stmt.bindInt64(1, factId);
-  stmt.bindText(2, scope);
-  stmt.bindInt64(3, refId);
+  stmt.bindInt64(1, input.factId);
+  stmt.bindText(2, input.scope);
+  stmt.bindInt64(3, input.refId);
   if (stmt.step() != SQLITE_ROW)
     return std::nullopt;
   RecallHit hit;

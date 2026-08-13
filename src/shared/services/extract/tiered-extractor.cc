@@ -93,8 +93,11 @@ bool covers(std::string_view clause, const extract::ExtractedFact& fact)
     return true;
   const size_t taken = words(fact.subject) + words(fact.predicate) +
                        words(fact.value) + words(fact.when.surface);
-  const double ratio = ConfigService::getDouble("extract.lexicon_min_coverage");
-  const double floor = ratio > 0.0 ? ratio : 0.6;
+  static const double floor = [] {
+    const double ratio =
+        ConfigService::getDouble("extract.lexicon_min_coverage");
+    return ratio > 0.0 ? ratio : 0.6;
+  }();
   return static_cast<double>(taken) / static_cast<double>(total) >= floor;
 }
 

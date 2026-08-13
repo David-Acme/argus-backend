@@ -182,6 +182,7 @@ void LlmService::init()
 
 void LlmService::shutdown()
 {
+  std::lock_guard<std::mutex> lock(mutex_);
   if (promptBatch_) {
     llama_batch_free(*promptBatch_);
     promptBatch_.reset();

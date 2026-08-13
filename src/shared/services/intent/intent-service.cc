@@ -68,6 +68,7 @@ IntentService::~IntentService()
 
 void IntentService::init()
 {
+  std::unique_lock lock(modelMutex_);
   if (loaded_)
     return;
 
@@ -96,12 +97,14 @@ void IntentService::init()
 
 void IntentService::shutdown()
 {
+  std::unique_lock lock(modelMutex_);
   model_.reset();
   loaded_ = false;
 }
 
 bool IntentService::isLoaded() const
 {
+  std::shared_lock lock(modelMutex_);
   return loaded_;
 }
 
@@ -135,6 +138,7 @@ bool IntentService::isMatchable(const std::string& text)
 std::vector<IntentHit> IntentService::match(const std::string& text) const
 {
   std::vector<IntentHit> hits;
+  std::shared_lock lock(modelMutex_);
   if (!loaded_ || text.empty() || !isMatchable(text))
     return hits;
 

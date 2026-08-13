@@ -165,6 +165,7 @@ void VisionService::init()
 
 void VisionService::shutdown()
 {
+  std::lock_guard<std::mutex> lock(mutex_);
   mtmd_.reset();
   context_.reset();
   model_.reset();
@@ -301,11 +302,15 @@ std::string VisionService::run(const cv::Mat& src, bool srcIsBgr,
   const llama_token eot = llama_vocab_eot(vocab);
 
   std::string caption;
-  std::unique_ptr<llama_batch, void (*)(llama_batch*)>
-      batch(new llama_batch(llama_batch_init(1, 0, 1)), [](llama_batch* b) {
-        llama_batch_free(*b);
-        delete b;
-      });
+  struct BatchGuard
+  {
+    llama_batch value;
+    explicit BatchGuard(llama_batch batch) : value(batch) {}
+    ~BatchGuard() { llama_batch_free(value); }
+    BatchGuard(const BatchGuard&) = delete;
+    BatchGuard& operator=(const BatchGuard&) = delete;
+  } batchGuard(llama_batch_init(1, 0, 1));
+  llama_batch& batch = batchGuard.value;
   for (int32_t i = 0; i < maxTokens; ++i) {
     if (cancelled_.load(std::memory_order_relaxed))
       break;
@@ -322,13 +327,13 @@ std::string VisionService::run(const cv::Mat& src, bool srcIsBgr,
 
     llama_sampler_accept(smpl.get(), token);
 
-    batch->token[0] = token;
-    batch->pos[0] = nPast++;
-    batch->n_seq_id[0] = 1;
-    batch->seq_id[0][0] = 0;
-    batch->logits[0] = 1;
-    batch->n_tokens = 1;
-    if (llama_decode(ctx, *batch) != 0)
+    batch.token[0] = token;
+    batch.pos[0] = nPast++;
+    batch.n_seq_id[0] = 1;
+    batch.seq_id[0][0] = 0;
+    batch.logits[0] = 1;
+    batch.n_tokens = 1;
+    if (llama_decode(ctx, batch) != 0)
       break;
   }
 

@@ -1,5 +1,7 @@
 #pragma once
 
+#include <shared/enums.hxx>
+#include <string>
 namespace memory_phrase_query
 {
 
@@ -15,3 +17,26 @@ inline constexpr const char* DELETE_PHRASE =
     "DELETE FROM memory_phrase WHERE kind = ? AND lang = ? AND phrase = ?";
 
 } // namespace memory_phrase_query
+
+struct PhraseRow
+{
+  PhraseKind kind;
+  std::string lang;
+  std::string phrase;
+  MemoryType memoryType;
+};
+
+struct PhraseWriteInput
+{
+  PhraseKind kind;
+  std::string lang;
+  std::string phrase;
+  MemoryType memoryType;
+};
+
+struct PhraseDeleteInput
+{
+  PhraseKind kind;
+  std::string lang;
+  std::string phrase;
+};

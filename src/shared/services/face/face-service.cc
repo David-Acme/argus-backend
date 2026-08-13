@@ -113,6 +113,7 @@ void FaceService::init()
 
 void FaceService::shutdown()
 {
+  std::lock_guard<std::mutex> lock(implMutex_);
   faceDb_.shutdown();
 
   if (impl_ && impl_->pipelineCache)
@@ -124,6 +125,7 @@ void FaceService::shutdown()
 
 bool FaceService::isLoaded() const
 {
+  std::lock_guard<std::mutex> lock(implMutex_);
   return impl_ != nullptr;
 }
 

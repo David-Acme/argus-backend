@@ -161,6 +161,7 @@ bool SttService::setLanguage(const std::string& lang)
 
 void SttService::shutdown()
 {
+  std::lock_guard<std::mutex> lock(mutex_);
   recognizer_.reset();
   loaded_ = false;
 

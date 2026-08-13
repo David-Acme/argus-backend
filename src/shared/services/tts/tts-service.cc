@@ -98,6 +98,7 @@ void TtsService::init()
 
 void TtsService::shutdown()
 {
+  std::lock_guard<std::mutex> lock(synthMutex_);
   engine_.reset();
   processor_.reset();
   voiceCache_.clear();
@@ -181,7 +182,8 @@ void TtsService::loadVoice(const std::string& voiceId)
 
 int TtsService::sampleRate() const
 {
-  return engine_->sampleRate();
+  std::lock_guard<std::mutex> lock(synthMutex_);
+  return engine_ ? engine_->sampleRate() : 0;
 }
 
 std::vector<std::string> TtsService::availableVoices() const

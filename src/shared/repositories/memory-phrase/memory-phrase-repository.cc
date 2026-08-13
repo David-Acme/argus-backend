@@ -38,17 +38,16 @@ bool MemoryPhraseRepository::addPhrase(sqlite3* db,
   return stmt.step() == SQLITE_DONE;
 }
 
-bool MemoryPhraseRepository::removePhrase(sqlite3* db, PhraseKind kind,
-                                          const std::string& lang,
-                                          const std::string& phrase)
+bool MemoryPhraseRepository::removePhrase(sqlite3* db,
+                                         const PhraseDeleteInput& input)
 {
-  if (!db || phrase.empty())
+  if (!db || input.phrase.empty())
     return false;
   SqliteStmt stmt;
   if (!stmt.prepare(db, DELETE_PHRASE))
     return false;
-  stmt.bindText(1, phraseKindToString(kind));
-  stmt.bindText(2, lang.empty() ? "es" : lang);
-  stmt.bindText(3, phrase);
+  stmt.bindText(1, phraseKindToString(input.kind));
+  stmt.bindText(2, input.lang.empty() ? "es" : input.lang);
+  stmt.bindText(3, input.phrase);
   return stmt.step() == SQLITE_DONE;
 }

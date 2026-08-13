@@ -97,7 +97,7 @@ const PhraseHit* bestHit(const std::vector<PhraseHit>& hits,
 std::string RuleParser::stripTrailingConfirmation(std::string text,
                                                   const std::string& lang) const
 {
-  std::vector<PhraseHit> hits;
+  thread_local std::vector<PhraseHit> hits;
   for (;;) {
     const size_t end = text.find_last_not_of(" \t\r\n");
     if (end == std::string::npos)
@@ -122,7 +122,7 @@ std::string RuleParser::stripTrailingConfirmation(std::string text,
 bool RuleParser::isRecallTalk(const std::string& lowered,
                               const std::string& lang) const
 {
-  std::vector<PhraseHit> hits;
+  thread_local std::vector<PhraseHit> hits;
   catalog_.match(lowered, lang, hits);
   for (const auto& hit : hits) {
     if (hit.kind == PhraseKind::RecallMarker)
@@ -141,7 +141,7 @@ bool RuleParser::isQuestion(const RuleParseInput& input) const
   if (isRecallTalk(lowered, input.lang))
     return true;
 
-  std::vector<PhraseHit> hits;
+  thread_local std::vector<PhraseHit> hits;
   catalog_.match(lowered, input.lang, hits);
   const PhraseHit* opener =
       bestHit(hits, lowered,
@@ -152,7 +152,7 @@ bool RuleParser::isQuestion(const RuleParseInput& input) const
 std::string RuleParser::stripFillers(const RuleParseInput& input) const
 {
   std::string text = input.text;
-  std::vector<PhraseHit> hits;
+  thread_local std::vector<PhraseHit> hits;
   for (;;) {
     const auto first = text.find_first_not_of(" \t\r\n,.;:");
     if (first == std::string::npos)
@@ -182,7 +182,7 @@ bool RuleParser::isFiller(const std::string& phrase,
   const std::string lowered = toLower(phrase);
   if (lowered.empty())
     return true;
-  std::vector<PhraseHit> hits;
+  thread_local std::vector<PhraseHit> hits;
   catalog_.match(lowered, lang, hits);
   for (const auto& hit : hits) {
     const bool spansAll = hit.begin == 0 && hit.end == lowered.size();
@@ -220,7 +220,7 @@ RuleParser::parse(const RuleParseInput& input) const
   const std::string& text = input.text;
   const std::string lowered = toLower(text);
 
-  std::vector<PhraseHit> hits;
+  thread_local std::vector<PhraseHit> hits;
   catalog_.match(lowered, input.lang, hits);
 
   const PhraseHit* best =
@@ -263,7 +263,7 @@ RuleParser::parseStatement(const RuleParseInput& input) const
   if (isRecallTalk(lowered, input.lang))
     return std::nullopt;
 
-  std::vector<PhraseHit> hits;
+  thread_local std::vector<PhraseHit> hits;
   catalog_.match(lowered, input.lang, hits);
 
   const PhraseHit* best =
