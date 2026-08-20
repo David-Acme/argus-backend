@@ -9,6 +9,7 @@ enum class ToolIntent
 {
   Camera,
   MemorySave,
+  None,
   Unknown,
 };
 
@@ -46,7 +47,10 @@ public:
   static std::string normalize(const std::string& text);
   static bool isMatchable(const std::string& text);
   static float score(const std::vector<IntentHit>& hits, ToolIntent intent);
+  // Winning class + threshold + intent.margin over the runner-up: an OVA
+  // model scores memory_save 0.95 with none at 0.98 quite happily.
   static bool fired(const std::vector<IntentHit>& hits, ToolIntent intent);
+  static float margin(const std::vector<IntentHit>& hits);
 
 private:
   mutable std::shared_mutex modelMutex_;

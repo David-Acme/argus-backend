@@ -1,9 +1,6 @@
 #include "conversation-service.hxx"
 
-#include <drogon/drogon.h>
 #include <shared/services/config-service/config-service.hxx>
-#include <shared/services/llm/lfm-adapter.hxx>
-#include <shared/services/tools/tool-registry.hxx>
 
 namespace
 {
@@ -83,8 +80,7 @@ std::string ConversationService::recallBlock(WorkingMemory& wm,
 
 TurnResult ConversationService::processTurn(WorkingMemory& wm,
                                             const std::string& userText,
-                                            int64_t userId, UserRole role,
-                                            int maxToolHops)
+                                            const ConversationTurnInput& input)
 {
   TurnResult result;
   if (userText.empty())
@@ -93,23 +89,12 @@ TurnResult ConversationService::processTurn(WorkingMemory& wm,
   // LISTEN -> UNDERSTAND: capture deterministically first ("recuerda que X"
   // must never wait for the model).
   const CaptureResult capture = memory_.captureExplicit(
-      {.userId = userId, .lang = wm.lang, .text = userText});
+      {.userId = input.userId, .lang = wm.lang, .text = userText});
+  result.capture = capture.outcome;
 
   // RETRIEVE: entity-anchored block injected into the turn.
-  const std::string block = recallBlock(wm, userText, userId);
+  const std::string block = recallBlock(wm, userText, input.userId);
 
-  // DECIDE + ACT + RESPOND: chat with the registered tools.
-  ToolRegistry& registry = ToolRegistry::instance();
-  ToolExecutor executor(registry);
-  const auto names = registry.names();
-  std::vector<const tools::ToolDescriptor*> tools;
-  tools.reserve(names.size());
-  for (const auto& name : names) {
-    if (const auto* descriptor = registry.find(name))
-      tools.push_back(descriptor);
-  }
-
-  LfmAdapter adapter(llm_);
   // The system prompt stays constant so the prefill prefix is reusable, and
   // the recalled facts ride at the tail of the user turn: measured on the
   // 1.2B, facts placed before the question got answered from the previous
@@ -117,12 +102,20 @@ TurnResult ConversationService::processTurn(WorkingMemory& wm,
   std::string system =
       wm.lang == "en"
           ? "You are Argus, the home assistant. Reply briefly in the user's "
-            "language, like a person, and never with generic offers."
+            "language, like a person, and never with generic offers. "
+            "Questions, sums, dates, times and definitions are ephemeral "
+            "conversation, not memory. Memory is managed outside you: never "
+            "emit tool calls, JSON or save blocks, and only confirm that "
+            "something was stored when the turn carries a capture note."
           : "Eres Argus, el asistente del hogar. Responde brevemente en el "
             "idioma del usuario, como una persona, y nunca con ofertas "
-            "genéricas.";
-  if (userId >= 0) {
-    const std::string profile = memory_.profileFor(userId, wm.lang);
+            "genéricas. Las preguntas, cálculos, fechas, horas y definiciones "
+            "son conversación efímera, no memoria. La memoria se administra "
+            "fuera de ti: no emitas tool calls, JSON ni bloques de guardado, "
+            "y confirma que algo quedó guardado solo si el turno trae una "
+            "nota de captura.";
+  if (input.userId >= 0) {
+    const std::string profile = memory_.profileFor(input.userId, wm.lang);
     if (!profile.empty())
       system += "\n\n" + profile;
   }
@@ -133,33 +126,19 @@ TurnResult ConversationService::processTurn(WorkingMemory& wm,
     wm.history.front().content = system;
 
   std::string content = userText;
-  if (capture.outcome != CaptureOutcome::Rejected)
-    content += captureAckNote(wm.lang);
+  content += captureAckNote(capture.outcome, wm.lang);
   if (!block.empty())
     content += "\n\n" + block;
   wm.history.push_back({.role = "user", .content = content});
 
-  const auto output = adapter.chatWithTools({.systemPrompt = system,
-                                              .tools = tools,
-                                              .role = role,
-                                              .context = {.userId = userId,
-                                                          .lang = wm.lang,
-                                                          .sessionId = {}},
-                                              .maxHops = maxToolHops,
-                                              .temperature = -1.0F},
-                                             wm.history);
-  result.reply = output.reply;
-  result.toolCalls = output.executed;
-  result.acted = !output.executed.empty();
+  const ChatRequest req{.messages = wm.history,
+                        .maxTokens = 0,
+                        .temperature = -1.0F,
+                        .resetContext = false};
+  result.reply = llm_.chat(req);
+  wm.history.push_back({.role = "assistant", .content = result.reply});
 
-  std::string chain;
-  for (const auto& call : output.executed)
-    chain += call.name + "\n";
-  if (result.acted && userId >= 0)
-    memory_.recordProcedure("chain:" + std::to_string(output.executed.size()),
-                            userText, chain);
-
-  trimHistory(wm, userId);
+  trimHistory(wm, input.userId);
   return result;
 }
 

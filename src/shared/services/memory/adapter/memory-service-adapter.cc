@@ -4,7 +4,7 @@
 
 bool MemoryServiceAdapter::initialize()
 {
-  memoryService_.init();
+  memoryService_.init({.deferStore = true});
   memoryService_.registerTools(ToolRegistry::instance());
   return true;
 }

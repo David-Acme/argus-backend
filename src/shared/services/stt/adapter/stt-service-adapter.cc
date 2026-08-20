@@ -4,23 +4,23 @@
 
 bool SttServiceAdapter::initialize()
 {
-  sttService_.init();
-  return sttService_.isLoaded();
+  SttService::instance().init();
+  return SttService::instance().isLoaded();
 }
 
 bool SttServiceAdapter::isLoaded() const
 {
-  return sttService_.isLoaded();
+  return SttService::instance().isLoaded();
 }
 
 void SttServiceAdapter::shutdown()
 {
-  sttService_.shutdown();
+  SttService::instance().shutdown();
 }
 
 Json::Value SttServiceAdapter::health() const
 {
   Json::Value value(Json::objectValue);
-  value["loaded"] = sttService_.isLoaded();
+  value["loaded"] = SttService::instance().isLoaded();
   return value;
 }

@@ -32,6 +32,8 @@ SynchronizedService::applyRange(const SyncFilter& base,
   if (range) {
     if (range->startTime)
       filter.startTime = *range->startTime;
+    if (range->startId)
+      filter.startId = *range->startId;
     if (range->endTime)
       filter.endTime = *range->endTime;
   }
@@ -52,6 +54,11 @@ drogon::Task<Json::Value> SynchronizedService::syncWithRepo(
     for (const auto& row : rows)
       arr.append(row);
     node["created"] = arr;
+    if (!rows.empty()) {
+      const auto& last = rows.back();
+      node["lastSyncDate"]["createdId"] = last.get("id", Json::Value());
+      node["lastSyncDate"]["created"] = last.get("createdAt", Json::Value());
+    }
   }
   else {
     node["created"] = Json::arrayValue;
@@ -68,6 +75,11 @@ drogon::Task<Json::Value> SynchronizedService::syncWithRepo(
       darr.append(record);
     }
     node["deleted"] = darr;
+    if (!rows.empty()) {
+      const auto& last = rows.back();
+      node["lastSyncDate"]["deletedId"] = last.get("id", Json::Value());
+      node["lastSyncDate"]["deleted"] = last.get("deletedAt", Json::Value());
+    }
   }
   else {
     node["deleted"] = Json::arrayValue;
@@ -110,6 +122,8 @@ drogon::Task<Json::Value> SynchronizedService::syncUserNotification(
     if (dto.created) {
       if (dto.created->startTime)
         filter.startTime = *dto.created->startTime;
+      if (dto.created->startId)
+        filter.startId = *dto.created->startId;
       if (dto.created->endTime)
         filter.endTime = *dto.created->endTime;
     }
@@ -118,6 +132,11 @@ drogon::Task<Json::Value> SynchronizedService::syncUserNotification(
     for (const auto& row : rows)
       arr.append(row);
     node["created"] = arr;
+    if (!rows.empty()) {
+      const auto& last = rows.back();
+      node["lastSyncDate"]["createdId"] = last.get("id", Json::Value());
+      node["lastSyncDate"]["created"] = last.get("createdAt", Json::Value());
+    }
   }
   else {
     node["created"] = Json::arrayValue;

@@ -9,5 +9,6 @@ Json::Value ResponseLoginDto::toJson() const
   json["name"] = name;
   json["role"] = userRoleToString(role);
   json["personId"] = personId;
+  json["alreadyRegistered"] = alreadyRegistered;
   return json;
 }

@@ -212,7 +212,10 @@ MemoryFormation::observe(const Observation& obs,
 
     const bool explicitTrigger = parsed.has_value() || statement.has_value();
 
-    if (!explicitTrigger &&
+    // Only a trigger is an explicit order, so only a trigger may carry a
+    // question mark. A statement matched inside a question ("cuando viene mi
+    // hermana" -> "mi hermana") is part of the question.
+    if (!parsed.has_value() &&
         ruleParser_.isQuestion({.text = obs.text, .lang = obs.lang}))
       return std::nullopt;
 

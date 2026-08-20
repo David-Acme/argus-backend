@@ -2,6 +2,9 @@ set(INTENT_PROBE_SRC
     intent-probe.cc
     ${SRC_ROOT}/shared/services/config-service/config-service.cc
     ${SRC_ROOT}/shared/services/intent/intent-service.cc
+    ${SRC_ROOT}/shared/services/memory/phrase-catalog.cc
+    ${SRC_ROOT}/shared/services/memory/rule-parser.cc
+    ${SRC_ROOT}/shared/utils/text-match/phrase-automaton.cc
     ${SRC_ROOT}/shared/utils/text-norm/text-norm.cc
     ${SRC_ROOT}/shared/wrapper/thread-budget/thread-budget.cc
 )

@@ -1,7 +1,6 @@
 #pragma once
 
 #include <config/service.hxx>
-#include <shared/services/tts/tts-service.hxx>
 
 class TtsServiceAdapter : public IService
 {
@@ -12,9 +11,4 @@ public:
   bool isLoaded() const override;
   void shutdown() override;
   Json::Value health() const override;
-
-  TtsService& service() { return ttsService_; }
-
-private:
-  TtsService ttsService_;
 };

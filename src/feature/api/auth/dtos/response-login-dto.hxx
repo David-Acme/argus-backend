@@ -13,6 +13,7 @@ struct ResponseLoginDto
   std::string name;
   UserRole role;
   int64_t personId;
+  bool alreadyRegistered = false;
 
   Json::Value toJson() const;
 };

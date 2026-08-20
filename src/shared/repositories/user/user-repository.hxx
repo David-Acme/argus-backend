@@ -20,6 +20,7 @@ public:
   drogon::Task<UserSchema> update(int64_t id,
                                   const UserUpdateInput& input) const;
   drogon::Task<bool> remove(int64_t id) const;
+  drogon::Task<bool> hasOwner() const;
 
   drogon::Task<std::vector<Json::Value>>
   find(const SyncFilter& filter) const override;

@@ -1,5 +1,8 @@
 #include "vec-db.hxx"
 
+#define SQLITE_CORE
+#include "sqlite-vec.h"
+
 #include <drogon/drogon.h>
 #include <memory>
 #include <shared/repositories/vector-index/vector-index-repository.hxx>
@@ -73,6 +76,20 @@ sqlite3* VecDb::handle()
   db_.reset(raw);
 
   sqlite3_busy_timeout(db_.get(), 5000);
+
+  // vec0 must be registered on THIS connection: services open VecDb during
+  // startup (before the beginning advice registers the auto-extension), so
+  // relying on the global auto-extension leaves `face_vec`/`memory_vec`
+  // silently unreadable.
+  char* vecErr = nullptr;
+  if (sqlite3_vec_init(db_.get(), &vecErr, nullptr) != SQLITE_OK) {
+    LOG_ERROR << "VecDb: vec0 init failed: "
+              << (vecErr ? vecErr : "unknown");
+    if (vecErr)
+      sqlite3_free(vecErr);
+    db_.reset();
+    return nullptr;
+  }
 
   if (!repo_.createTables(db_.get(), embeddingDims())) {
     LOG_ERROR << "VecDb: vec tables setup failed";

@@ -191,6 +191,14 @@ void MemoryService::waitForIdle(int waitMs)
 
 void MemoryService::processExtract(const MemoryJob& job)
 {
+  if (job.preferIdle) {
+    const int waitMs = ConfigService::getInt("memory.extract_wait_ms");
+    waitForIdle(waitMs > 0 ? waitMs : 15000);
+    if (llm_.isBusy()) {
+      enqueueJob(job);
+      return;
+    }
+  }
   const auto formed = formation_.observe({.channel = "user_turn",
                                           .text = job.text,
                                           .actor = {},
@@ -328,6 +336,12 @@ void MemoryService::stopWorker()
   {
     std::lock_guard<std::mutex> lock(queueMutex_);
     stop_ = true;
+    // The worker drains what is left before joining, so shutdown waits for
+    // it. Summaries are derived data and the main LLM makes them slow: drop
+    // them and keep the user's facts.
+    std::erase_if(queue_, [](const MemoryJob& job) {
+      return job.kind == MemoryJob::Kind::Compact;
+    });
   }
   queueCv_.notify_all();
   if (worker_.joinable())
@@ -344,15 +358,30 @@ void MemoryService::enqueueJob(MemoryJob job)
   queueCv_.notify_one();
 }
 
-void MemoryService::init()
+void MemoryService::init(const MemoryInitOptions& options)
 {
-  graph_->open(ConfigService::getString("database.file"));
-  graph_->migrateLegacy();
-  vecDb_.applySchema();
   phrases_.build();
   extractor_.rebuild(vocabulary::allLexiconEntries());
   formation_.setExtractor(&extractor_);
   embedding_.init();
+  if (options.deferStore) {
+    drogon::app().registerBeginningAdvice([this]() { openStore(); });
+    return;
+  }
+  openStore();
+}
+
+void MemoryService::openStore()
+{
+  {
+    std::lock_guard<std::mutex> lock(storeMutex_);
+    if (storeOpen_)
+      return;
+    storeOpen_ = true;
+  }
+  graph_->open(ConfigService::getString("database.file"));
+  graph_->migrateLegacy();
+  vecDb_.applySchema();
   startWorker();
   if (vecDb_.schemaOutdated()) {
     vecDb_.recreateMemoryVecTable();
@@ -369,6 +398,10 @@ void MemoryService::init()
 
 void MemoryService::shutdown()
 {
+  {
+    std::lock_guard<std::mutex> lock(storeMutex_);
+    storeOpen_ = false;
+  }
   stopWorker();
   embedding_.shutdown();
   graph_->close();
@@ -418,35 +451,55 @@ void MemoryService::deferCapture(const InlineCapture& capture)
               .userId = capture.userId,
               .text = capture.text,
               .lang = capture.lang,
-              .preferIdle = false,
+              .preferIdle = capture.preferIdle,
               .salient = capture.salient,
               .episode = false});
 }
 
 CaptureResult MemoryService::captureExplicit(const CaptureInput& input)
 {
+  const RuleParseInput parsed{.text = input.text, .lang = input.lang};
+  if (input.userId < 0 || ruleParser_.isCancellation(parsed) ||
+      ruleParser_.isVacuous(parsed))
+    return {};
+
+  // A trigger is an explicit order and may carry a question tag ("…, ¿está
+  // bien?"). A bare statement inside a question is part of the question:
+  // "cuando viene mi hermana" must not be filed as "mi hermana". Formation
+  // requires the same match for a non-salient turn, so deciding here first
+  // only avoids the wasted call.
+  if (!ruleParser_.parse(parsed)) {
+    if (ruleParser_.isQuestion(parsed) || !ruleParser_.parseStatement(parsed))
+      return {};
+  }
+
   const InlineCapture capture{.channel = "user_turn",
                               .text = input.text,
                               .lang = input.lang,
                               .userId = input.userId,
-                              .salient = false};
+                              .salient = false,
+                              .preferIdle = false};
   const int64_t id = captureInline(capture);
   if (id > 0)
     return {.outcome = CaptureOutcome::Stored, .factId = id};
-  if (!ruleParser_.parse({.text = input.text, .lang = input.lang}) &&
-      !ruleParser_.parseStatement({.text = input.text, .lang = input.lang}))
-    return {};
+
   deferCapture(capture);
   return {.outcome = CaptureOutcome::Deferred, .factId = 0};
 }
 
 CaptureResult MemoryService::captureImplicit(const CaptureInput& input)
 {
+  const RuleParseInput parsed{.text = input.text, .lang = input.lang};
+  if (input.userId < 0 || ruleParser_.isQuestion(parsed) ||
+      ruleParser_.isCancellation(parsed) || ruleParser_.isVacuous(parsed))
+    return {};
+
   deferCapture({.channel = "user_turn",
                 .text = input.text,
                 .lang = input.lang,
                 .userId = input.userId,
-                .salient = true});
+                .salient = true,
+                .preferIdle = true});
   return {.outcome = CaptureOutcome::Deferred, .factId = 0};
 }
 
@@ -458,7 +511,8 @@ CaptureResult MemoryService::captureToolCall(int64_t userId,
                               .text = call.content,
                               .lang = lang,
                               .userId = userId,
-                              .salient = true};
+                              .salient = true,
+                              .preferIdle = false};
   const int64_t id = captureInline(capture);
   if (id > 0)
     return {.outcome = CaptureOutcome::Stored, .factId = id};
@@ -486,6 +540,47 @@ RecallContext MemoryService::recall(const RecallInput& input)
   return ctx;
 }
 
+std::string MemoryService::durableTranscript(const std::string& transcript,
+                                            const std::string& lang) const
+{
+  std::string durable;
+  bool dropAnswer = false;
+  size_t lineStart = 0;
+  while (lineStart <= transcript.size()) {
+    const size_t lineEnd = transcript.find('\n', lineStart);
+    const std::string line =
+        transcript.substr(lineStart, lineEnd == std::string::npos
+                                         ? std::string::npos
+                                         : lineEnd - lineStart);
+    const bool isUser = line.rfind("user:", 0) == 0;
+    const bool isAnswer = line.rfind("assistant:", 0) == 0;
+
+    if (isUser) {
+      const RuleParseInput parsed{.text = line.substr(5), .lang = lang};
+      // A greeting strips down to nothing, so it carries no more episode
+      // material than a question does.
+      dropAnswer = ruleParser_.isQuestion(parsed) ||
+                   ruleParser_.isCancellation(parsed) ||
+                   ruleParser_.stripFillers(parsed).empty();
+      if (!dropAnswer)
+        durable += line + '\n';
+    }
+    else if (isAnswer) {
+      if (!dropAnswer)
+        durable += line + '\n';
+      dropAnswer = false;
+    }
+    else if (!line.empty()) {
+      durable += line + '\n';
+    }
+
+    if (lineEnd == std::string::npos)
+      break;
+    lineStart = lineEnd + 1;
+  }
+  return durable;
+}
+
 void MemoryService::enqueueSummary(int64_t userId,
                                    const std::string& transcript,
                                    const std::string& lang)
@@ -494,10 +589,15 @@ void MemoryService::enqueueSummary(int64_t userId,
     return;
   if (!llm_.isLoaded())
     return;
+
+  const std::string durable = durableTranscript(transcript, lang);
+  if (durable.empty())
+    return;
+
   enqueueJob({.kind = MemoryJob::Kind::Compact,
               .memoryId = 0,
               .userId = userId,
-              .text = transcript,
+              .text = durable,
               .lang = lang,
               .preferIdle = false,
               .salient = false,
@@ -512,31 +612,39 @@ void MemoryService::enqueueCompaction(int64_t userId,
     return;
   if (!llm_.isLoaded())
     return;
+
+  const std::string durable = durableTranscript(transcript, lang);
+  if (durable.empty())
+    return;
+
   enqueueJob({.kind = MemoryJob::Kind::Compact,
               .memoryId = 0,
               .userId = userId,
-              .text = transcript,
+              .text = durable,
               .lang = lang,
               .preferIdle = true,
               .salient = false,
               .episode = false});
 }
 
-void MemoryService::flushPending()
+bool MemoryService::flushPending(int timeoutMs)
 {
-  const int timeout = ConfigService::getInt("memory.flush_timeout_ms");
-  const auto deadline =
-      std::chrono::steady_clock::now() +
-      std::chrono::milliseconds(timeout > 0 ? timeout : 60000);
+  int budget = timeoutMs;
+  if (budget <= 0)
+    budget = ConfigService::getInt("memory.flush_timeout_ms");
+  if (budget <= 0)
+    budget = 60000;
+  const auto deadline = std::chrono::steady_clock::now() +
+                        std::chrono::milliseconds(budget);
   while (std::chrono::steady_clock::now() < deadline) {
     {
       std::lock_guard<std::mutex> lock(queueMutex_);
       if (queue_.empty() && !working_.load())
-        return;
+        return true;
     }
     std::this_thread::sleep_for(std::chrono::milliseconds(10));
   }
-  LOG_WARN << "MemoryService::flushPending timed out with pending jobs";
+  return false;
 }
 
 void MemoryService::bumpHitCount(const std::vector<int64_t>& ids)

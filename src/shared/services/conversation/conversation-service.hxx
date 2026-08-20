@@ -3,40 +3,52 @@
 #include <cstdint>
 #include <shared/services/llm/llm-service.hxx>
 #include <shared/services/memory/memory-service.hxx>
-#include <shared/services/tools/tool-executor.hxx>
 #include <string>
 #include <vector>
 
-// Turn state machine (COGNITIVE_MEMORY_PLAN.md §7):
-// LISTEN -> UNDERSTAND -> RETRIEVE -> DECIDE -> (RESPOND/FORM | ACT -> OBSERVE)
-// Replaces the three duplicated loops in labs/voice-test. WorkingMemory
-// (history ring, active entities, last tool results, language) is owned by
-// the caller (the conversation session).
 struct WorkingMemory
 {
   std::string lang;
   std::vector<ChatMessage> history;
   std::vector<int64_t> activeEntities;
-  std::vector<tools::ToolResult> lastToolResults;
   int64_t addresseeEntityId = 0;
 };
 
 struct TurnResult
 {
   std::string reply;
-  bool acted = false;
-  std::vector<tools::ToolCall> toolCalls;
+  CaptureOutcome capture = CaptureOutcome::Rejected;
+};
+
+struct ConversationTurnInput
+{
+  int64_t userId = 0;
 };
 
 // Injected into the user turn when a capture fired so the assistant
 // acknowledges it naturally. trimHistory strips it with the recall block.
-inline std::string captureAckNote(const std::string& lang)
+// Deferred is NOT stored: formation still gets to reject it, so the wording
+// must not promise a saved fact.
+inline std::string captureAckNote(CaptureOutcome outcome,
+                                  const std::string& lang)
 {
-  return lang == "en"
-             ? "\n(Note: the user asked you to remember this. Briefly confirm "
-               "that you noted it.)"
-             : "\n(Nota: el usuario te pidió recordar esto. Confirma "
-               "brevemente que lo has apuntado.)";
+  if (outcome == CaptureOutcome::Stored) {
+    return lang == "en"
+               ? "\n(Note: the user asked you to remember this and it is "
+                 "stored. Briefly confirm that you noted it.)"
+               : "\n(Nota: el usuario te pidió recordar esto y quedó "
+                 "guardado. Confirma brevemente que lo has apuntado.)";
+  }
+  if (outcome == CaptureOutcome::Deferred) {
+    return lang == "en"
+               ? "\n(Note: the user asked you to remember this and you are "
+                 "taking note now. Say you are noting it, in the present, "
+                 "and never that it is already saved.)"
+               : "\n(Nota: el usuario te pidió recordar esto y lo estás "
+                 "apuntando ahora. Dilo en presente, y nunca que ya quedó "
+                 "guardado.)";
+  }
+  return {};
 }
 
 class ConversationService
@@ -53,10 +65,8 @@ public:
   std::string recallBlock(WorkingMemory& wm, const std::string& text,
                           int64_t userId);
 
-  // DECIDE + ACT + OBSERVE + RESPOND: chat with the registered tools
-  // (bounded tool loop), then FORM (deterministic capture of the turn).
   TurnResult processTurn(WorkingMemory& wm, const std::string& userText,
-                         int64_t userId, UserRole role, int maxToolHops = 3);
+                         const ConversationTurnInput& input);
 
   // History ring with compaction enqueue (voice_test.history_messages cap).
   void trimHistory(WorkingMemory& wm, int64_t userId);

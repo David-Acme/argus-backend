@@ -9,6 +9,7 @@
 struct SynchronizedRangeDto
 {
   std::optional<int64_t> startTime;
+  std::optional<int64_t> startId;
   std::optional<int64_t> endTime;
 
   static SynchronizedRangeDto fromJson(const Json::Value& json)
@@ -16,6 +17,8 @@ struct SynchronizedRangeDto
     SynchronizedRangeDto dto;
     if (json.isMember("startTime") && json["startTime"].isInt64())
       dto.startTime = json["startTime"].asInt64();
+    if (json.isMember("startId") && json["startId"].isInt64())
+      dto.startId = json["startId"].asInt64();
     if (json.isMember("endTime") && !json["endTime"].isNull() &&
         json["endTime"].isInt64())
       dto.endTime = json["endTime"].asInt64();
@@ -27,7 +30,8 @@ struct SynchronizedRangeDto
                   [](const SynchronizedRangeDto& d)
                       -> std::optional<std::string> {
                     if (d.startTime && d.endTime &&
-                        *d.startTime >= *d.endTime)
+                        (*d.startTime > *d.endTime ||
+                         (*d.startTime == *d.endTime && !d.startId)))
                       return "startTime must be less than endTime";
                     return std::nullopt;
                   })

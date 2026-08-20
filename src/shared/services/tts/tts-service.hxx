@@ -45,6 +45,8 @@ public:
   TtsService(const TtsService&) = delete;
   TtsService& operator=(const TtsService&) = delete;
 
+  static TtsService& instance();
+
   void init();
   void shutdown();
   bool isLoaded() const;

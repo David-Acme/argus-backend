@@ -19,6 +19,14 @@ inline constexpr std::string_view FIND_SYNC =
 inline constexpr std::string_view FIND_SYNC_FROM =
     "SELECT * FROM notification WHERE user_id = ? "
     "AND created_at >= ? ORDER BY created_at ASC LIMIT ";
+inline constexpr std::string_view FIND_SYNC_AFTER =
+    "SELECT * FROM notification WHERE user_id = ? AND "
+    "(created_at > ? OR (created_at = ? AND id > ?)) AND created_at <= ? "
+    "ORDER BY created_at ASC, id ASC LIMIT ";
+inline constexpr std::string_view FIND_SYNC_AFTER_FROM =
+    "SELECT * FROM notification WHERE user_id = ? AND "
+    "(created_at > ? OR (created_at = ? AND id > ?)) "
+    "ORDER BY created_at ASC, id ASC LIMIT ";
 
 inline constexpr std::string_view FIND_SYNC_TO =
     "SELECT * FROM notification WHERE user_id = ? "
@@ -50,5 +58,6 @@ struct NotificationSyncFilter
 {
   int64_t userId{0};
   std::optional<int64_t> startTime;
+  std::optional<int64_t> startId;
   std::optional<int64_t> endTime;
 };

@@ -157,8 +157,40 @@ SyncService::handleMessage(const drogon::WebSocketConnectionPtr& conn,
     co_return;
   }
 
+  if (type == "voice:start") {
+    // Language comes from the registered user (`user.lang`); missing or
+    // invalid falls back to the system default inside the voice service.
+    VoiceLang lang = VoiceLang::System;
+    std::string name;
+    if (ctx.sub > 0) {
+      const auto user = co_await userRepository_.findById(ctx.sub);
+      if (user) {
+        lang = voiceLangFromString(user->lang);
+        name = user->name;
+      }
+    }
+    voiceSessionService_.start(conn, ctx.sub, lang, name);
+    co_return;
+  }
+
+  if (type == "voice:stop") {
+    voiceSessionService_.stop(conn);
+    co_return;
+  }
+
+  if (type == "voice:skip") {
+    voiceSessionService_.skip(conn);
+    co_return;
+  }
+
   throw ResponseException("Unknown message type", 400,
                           AppConfig::ERROR_CODE_BAD_REQUEST);
+}
+
+void SyncService::handleBinary(const drogon::WebSocketConnectionPtr& conn,
+                               const std::string& data) const
+{
+  voiceSessionService_.feedPcm(conn, data.data(), data.size());
 }
 
 void SyncService::handleDisconnect(
@@ -167,6 +199,7 @@ void SyncService::handleDisconnect(
   if (auto sink = sinkFor(conn))
     StreamHub::instance().closeAll(sink.get());
   dropSink(conn);
+  voiceSessionService_.stop(conn);
   roomManager_.leaveAll(conn);
   conn->clearContext();
 }

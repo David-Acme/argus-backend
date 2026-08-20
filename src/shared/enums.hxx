@@ -252,7 +252,8 @@ enum class PhraseKind : uint8_t
   StatementStart,
   RecallMarker,
   Interrogative,
-  Filler
+  Filler,
+  Cancellation
 };
 
 inline std::string phraseKindToString(PhraseKind k)
@@ -268,6 +269,8 @@ inline std::string phraseKindToString(PhraseKind k)
       return "interrogative";
     case PhraseKind::Filler:
       return "filler";
+    case PhraseKind::Cancellation:
+      return "cancellation";
     default:
       return "trigger";
   }
@@ -285,6 +288,8 @@ inline PhraseKind phraseKindFromString(const std::string& s)
     return PhraseKind::Interrogative;
   if (s == "filler")
     return PhraseKind::Filler;
+  if (s == "cancellation")
+    return PhraseKind::Cancellation;
   return PhraseKind::Trigger;
 }
 
@@ -484,4 +489,37 @@ inline TableName tableNameFromString(const std::string& s)
   if (it == kMap.end())
     return TableName::User;
   return it->second;
+}
+
+// Voice interaction languages. This is the canonical set the system can
+// speak in; extend the map when a new language is supported end to end
+// (STT + TTS + prompts). The DB stores the string code, never the enum.
+enum class VoiceLang : uint8_t
+{
+  System = 0, // resolve from config `stt.language`
+  Es,
+  En
+};
+
+inline std::string voiceLangToString(VoiceLang lang)
+{
+  switch (lang) {
+    case VoiceLang::Es:
+      return "es";
+    case VoiceLang::En:
+      return "en";
+    case VoiceLang::System:
+      return "";
+  }
+  return "";
+}
+
+inline VoiceLang voiceLangFromString(const std::string& s)
+{
+  static const std::unordered_map<std::string, VoiceLang> kMap = {
+      {"es", VoiceLang::Es},
+      {"en", VoiceLang::En},
+  };
+  const auto it = kMap.find(s);
+  return it == kMap.end() ? VoiceLang::System : it->second;
 }

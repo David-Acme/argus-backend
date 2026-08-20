@@ -132,7 +132,8 @@ ReminderRepository::find(const SyncFilter& filter) const
   auto client = DbService::client();
 
   const auto [query, args] =
-      sync_query::buildSyncQuery(filter, FIND, FIND_FROM, FIND_ALL);
+      sync_query::buildSyncQuery(filter, FIND, FIND_FROM, FIND_ALL, FIND_AFTER,
+                                 FIND_AFTER_FROM);
   const auto& argsRef = args;
   const auto rows = co_await client->execSqlCoro(query, argsRef);
 
@@ -148,7 +149,9 @@ ReminderRepository::findDeleted(const SyncFilter& filter) const
   auto client = DbService::client();
 
   const auto [query, args] =
-      sync_query::buildSyncQuery(filter, FIND_DELETED, FIND_DELETED_FROM, FIND_DELETED_ALL);
+      sync_query::buildSyncQuery(filter, FIND_DELETED, FIND_DELETED_FROM,
+                                 FIND_DELETED_ALL, FIND_DELETED_AFTER,
+                                 FIND_DELETED_AFTER_FROM);
   const auto& argsRef = args;
   const auto rows = co_await client->execSqlCoro(query, argsRef);
 

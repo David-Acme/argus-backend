@@ -3,10 +3,12 @@
 #include <drogon/WebSocketController.h>
 #include <drogon/utils/coroutine.h>
 #include <feature/socket/sync/services/synchronized-service.hxx>
+#include <feature/socket/sync/services/voice-session-service.hxx>
 #include <filter/jwt/jwt-filter.hxx>
 #include <json/value.h>
 #include <memory>
 #include <mutex>
+#include <shared/repositories/user/user-repository.hxx>
 #include <shared/services/room/room-manager.hxx>
 #include <shared/services/stream/stream-hub.hxx>
 #include <unordered_map>
@@ -90,6 +92,8 @@ public:
                 const drogon::WebSocketConnectionPtr& conn) const;
   drogon::Task<void> handleMessage(const drogon::WebSocketConnectionPtr& conn,
                                    const Json::Value& obj) const;
+  void handleBinary(const drogon::WebSocketConnectionPtr& conn,
+                    const std::string& data) const;
   void handleDisconnect(const drogon::WebSocketConnectionPtr& conn) const;
 
 private:
@@ -101,6 +105,8 @@ private:
 
   SynchronizedService synchronizedService_;
   RoomManager roomManager_;
+  mutable VoiceSessionService voiceSessionService_;
+  UserRepository userRepository_;
   int maxSubsPerClient_{8};
   mutable std::mutex sinksMutex_;
   mutable std::unordered_map<const void*, std::shared_ptr<DrogonStreamSink>>

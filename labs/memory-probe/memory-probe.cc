@@ -11,6 +11,7 @@
 #include <shared/services/embedding/embedding-service.hxx>
 #include <shared/services/embedding/unigram-tokenizer.hxx>
 #include <shared/services/extract/tiered-extractor.hxx>
+#include <shared/services/llm/lfm-adapter.hxx>
 #include <shared/services/llm/llm-service.hxx>
 #include <shared/services/memory/entity-resolver.hxx>
 #include <shared/services/memory/graph-recall.hxx>
@@ -104,13 +105,18 @@ std::string vectorJson(int count, float value)
   return out;
 }
 
-int captureQuery(const std::string& text)
+int captureQuery(const std::string& text, const std::string& lang)
 {
   ConfigService::load("config.toml");
   ParserFixture fixture(ConfigService::getString("database.file"));
-  const auto phrase = fixture.parser.parse({.text = text, .lang = "es"});
-  const auto stmt = fixture.parser.parseStatement({.text = text, .lang = "es"});
-  std::cout << "text: \"" << text << "\"\n";
+  const RuleParseInput input{.text = text, .lang = lang};
+  const auto phrase = fixture.parser.parse(input);
+  const auto stmt = fixture.parser.parseStatement(input);
+  std::cout << "text: \"" << text << "\" (lang=" << lang << ")\n";
+  std::cout << "  isQuestion():     "
+            << (fixture.parser.isQuestion(input) ? "yes" : "no") << "\n";
+  std::cout << "  isCancellation(): "
+            << (fixture.parser.isCancellation(input) ? "yes" : "no") << "\n";
   std::cout << "  parse():          "
             << (phrase ? "MATCH content=\"" + phrase->content + "\""
                        : "no match")
@@ -118,6 +124,18 @@ int captureQuery(const std::string& text)
   std::cout << "  parseStatement(): "
             << (stmt ? "MATCH content=\"" + stmt->content + "\"" : "no match")
             << "\n";
+
+  std::string lowered = text;
+  std::transform(lowered.begin(), lowered.end(), lowered.begin(),
+                 [](unsigned char c) { return std::tolower(c); });
+  std::vector<PhraseHit> hits;
+  fixture.catalog.match(lowered, lang, hits);
+  std::cout << "  hits (" << hits.size() << "):\n";
+  for (const auto& hit : hits) {
+    std::cout << "      " << phraseKindToString(hit.kind) << " ["
+              << hit.begin << "," << hit.end << ") = \""
+              << lowered.substr(hit.begin, hit.end - hit.begin) << "\"\n";
+  }
   return 0;
 }
 
@@ -263,6 +281,15 @@ int captureTest()
       {"oye argus, recuerda que la alarma suena a las 10", "es", true},
       {"hello argus, remind me that my brother comes on friday", "en", true},
       {"hey argus, my sister is allergic to shrimp", "en", true},
+      {"¿cuánto es 2 x 2?", "es", false},
+      {"Argus, cuando es 2 x 2", "es", false},
+      {"¿qué me gusta tomar?", "es", false},
+      {"qué no le gusta a Rodrigo", "es", false},
+      {"no, olvídalo", "es", false},
+      {"recuerda que mi hermana viene los domingos", "es", true},
+      {"anota que llegó el paquete", "es", true},
+      {"ten en cuenta que soy alérgico a los frutos secos", "es", true},
+      {"mi perro se llama Toby", "es", true},
   };
 
   ParserFixture fixture(ConfigService::getString("database.file"));
@@ -293,6 +320,261 @@ int captureTest()
     }
   }
 
+  return fails == 0 ? 0 : 1;
+}
+
+// Diagnostic sweep over cases no fixture covers: STT artefacts, corrections,
+// anaphora, name/vocabulary collisions, mixed language. Prints the verdict of
+// every deterministic layer so wrong answers are visible instead of implied.
+int edgeSweep()
+{
+  ConfigService::load("config.toml");
+  gMemory.init({.deferStore = true});
+
+  ParserFixture fixture(ConfigService::getString("database.file"));
+
+  struct Group
+  {
+    const char* name;
+    std::vector<std::pair<const char*, const char*>> cases; // text, lang
+  };
+
+  const std::vector<Group> groups = {
+      {"stt: no accents, no punctuation",
+       {{"recuerda que a pedro no le gusta el pescado", "es"},
+        {"cuanto es dos por dos", "es"},
+        {"que hora es", "es"},
+        {"cuando viene mi hermana", "es"},
+        {"mi hermana viene los domingos", "es"},
+        {"apunta que el gimnasio abre a las siete", "es"}}},
+      {"stt: stutter and repetition",
+       {{"recuerda recuerda que a pedro no le gusta el pescado", "es"},
+        {"eh... este... recuerda que mi hermana viene los domingos", "es"},
+        {"a a a mi madre no le gusta el ruido", "es"},
+        {"remember remember that dad is allergic to peanuts", "en"}}},
+      {"statement plus question in one turn",
+       {{"recuerda que mi hermana viene los domingos, y a que hora llega?",
+         "es"},
+        {"mi perro se llama Toby, te acuerdas de mi gato?", "es"},
+        {"apunta que llego el paquete y dime la hora", "es"}}},
+      {"correction of a previous turn",
+       {{"no, dije Pedro, no Rodrigo", "es"},
+        {"perdona, era el martes no el lunes", "es"},
+        {"no, corrige eso, mi hermana viene los sabados", "es"},
+        {"no, i meant my brother", "en"}}},
+      {"update or negation of a known fact",
+       {{"ya no le gusta el pescado a Pedro", "es"},
+        {"recuerda que ahora mi hermana viene los sabados", "es"},
+        {"a Pedro ya le gusta el pescado", "es"},
+        {"dad is no longer allergic to peanuts", "en"}}},
+      {"anaphora",
+       {{"a el no le gusta el pescado", "es"},
+        {"a ella le molesta el ruido", "es"},
+        {"recuerda que a el no le gusta el pescado", "es"},
+        {"he does not like fish", "en"}}},
+      {"several facts in one turn",
+       {{"recuerda que mi hermana viene los domingos y mi perro se llama Toby",
+         "es"},
+        {"apunta que el gimnasio abre a las siete y cierra a las diez", "es"}}},
+      {"times, dates, numbers",
+       {{"recuerda que la reunion es a las 9:30", "es"},
+        {"apunta que el pago vence el 15 de marzo", "es"},
+        {"recuerda que son 250 soles", "es"},
+        {"remember the meeting is at 9:30 am", "en"}}},
+      {"names that collide with the vocabulary",
+       {{"recuerda que Vale es mi prima", "es"},
+        {"recuerda que Argus es el nombre de mi gato", "es"},
+        {"recuerda que Ana no come pescado", "es"},
+        {"recuerda que mi vecina se llama Claro", "es"}}},
+      {"degenerate input",
+       {{"", "es"},
+        {"   ", "es"},
+        {"si", "es"},
+        {"recuerda que", "es"},
+        {"recuerda que ", "es"},
+        {"???", "es"},
+        {"ok", "es"}}},
+      {"mixed language",
+       {{"recuerda que my sister comes on sundays", "es"},
+        {"remember que a Pedro no le gusta el pescado", "en"},
+        {"mi hermana viene los domingos", "en"},
+        {"my sister comes on sundays", "es"}}},
+      {"retraction around a save",
+       {{"recuerda que a Pedro no le gusta el pescado, no, olvidalo", "es"},
+        {"olvida lo que dije de Pedro", "es"},
+        {"ya no quiero que recuerdes eso", "es"}}},
+  };
+
+  for (const auto& group : groups) {
+    std::cout << "\n== " << group.name << " ==\n";
+    for (const auto& [text, lang] : group.cases) {
+      const RuleParseInput input{.text = text, .lang = lang};
+      const auto phrase = fixture.parser.parse(input);
+      const auto stmt = fixture.parser.parseStatement(input);
+      const auto implicit = gMemory.captureImplicit(
+          {.userId = kProbeUser, .lang = lang, .text = text});
+      const char* outcome = implicit.outcome == CaptureOutcome::Rejected
+                                ? "rejected"
+                                : (implicit.outcome == CaptureOutcome::Stored
+                                       ? "STORED"
+                                       : "deferred");
+      std::cout << "  \"" << text << "\" [" << lang << "]\n"
+                << "      question=" << (fixture.parser.isQuestion(input) ? 1 : 0)
+                << " cancel=" << (fixture.parser.isCancellation(input) ? 1 : 0)
+                << " implicit=" << outcome << "\n"
+                << "      trigger=" << (phrase ? "\"" + phrase->content + "\"" : "-")
+                << "\n"
+                << "      statement=" << (stmt ? "\"" + stmt->content + "\"" : "-")
+                << "\n";
+    }
+  }
+
+  gMemory.shutdown();
+  return 0;
+}
+
+int capturePolicyTest()
+{
+  ConfigService::load("config.toml");
+  // deferStore keeps the worker and the graph out of the way: a policy
+  // decision must be observable without persisting anything.
+  gMemory.init({.deferStore = true});
+  ParserFixture fixture(ConfigService::getString("database.file"));
+
+  struct Case
+  {
+    std::string text;
+    std::string lang;
+    CaptureOutcome want;
+  };
+
+  const Case implicitCases[] = {
+      {"¿cuánto es 2 x 2?", "es", CaptureOutcome::Rejected},
+      {"Argus, cuando es 2 x 2", "es", CaptureOutcome::Rejected},
+      {"¿cuándo viene mi hermana?", "es",
+       CaptureOutcome::Rejected},
+      {"¿qué me gusta tomar?", "es", CaptureOutcome::Rejected},
+      {"qué no le gusta a Rodrigo", "es", CaptureOutcome::Rejected},
+      {"no, olvídalo", "es", CaptureOutcome::Rejected},
+      {"eh... nada, olvidalo", "es", CaptureOutcome::Rejected},
+      {"no, olvida lo que dije", "es", CaptureOutcome::Rejected},
+      {"que le pasaba a mi sobrino?", "es", CaptureOutcome::Rejected},
+      {"a que hora abre el gimnasio?", "es", CaptureOutcome::Rejected},
+      {"what time is it", "en", CaptureOutcome::Rejected},
+      {"never mind, forget it", "en", CaptureOutcome::Rejected},
+      {"tell me what dad does not like", "en", CaptureOutcome::Rejected},
+      {"", "es", CaptureOutcome::Rejected},
+      {"mi perro se llama Toby", "es", CaptureOutcome::Deferred},
+      {"a mi madre no le gusta el ruido", "es", CaptureOutcome::Deferred},
+      {"the wifi code is argus2026", "en", CaptureOutcome::Deferred},
+  };
+
+  for (const auto& c : implicitCases) {
+    const auto got = gMemory.captureImplicit(
+        {.userId = kProbeUser, .lang = c.lang, .text = c.text});
+    const bool ok = got.outcome == c.want;
+    check(ok, std::string(c.want == CaptureOutcome::Rejected ? "rejected"
+                                                             : "deferred") +
+                  ": \"" + c.text + "\"");
+    if (!ok)
+      std::cout << "      got outcome=" << static_cast<int>(got.outcome)
+                << " factId=" << got.factId << "\n";
+  }
+
+  const auto anonymous = gMemory.captureImplicit(
+      {.userId = -1, .lang = "es", .text = "mi perro se llama Toby"});
+  check(anonymous.outcome == CaptureOutcome::Rejected,
+        "no user id -> nothing is queued");
+
+  // The explicit path decides from the rules before touching the store, so
+  // every case here returns without a graph. A regression shows up as a
+  // Deferred (and, in production, as a wasted extraction job).
+  const Case explicitRejects[] = {
+      {"cuando viene mi hermana", "es", CaptureOutcome::Rejected},
+      {"cuándo viene mi hermana", "es", CaptureOutcome::Rejected},
+      {"que no le gusta a Rodrigo", "es", CaptureOutcome::Rejected},
+      {"a que hora abre el gimnasio", "es", CaptureOutcome::Rejected},
+      {"recuerda que a Pedro no le gusta el pescado, no, olvidalo", "es",
+       CaptureOutcome::Rejected},
+      {"olvida lo que dije de Pedro", "es", CaptureOutcome::Rejected},
+      {"ya no quiero que recuerdes eso", "es", CaptureOutcome::Rejected},
+      {"", "es", CaptureOutcome::Rejected},
+      {"   ", "es", CaptureOutcome::Rejected},
+      {"si", "es", CaptureOutcome::Rejected},
+      {"ok", "es", CaptureOutcome::Rejected},
+      {"recuerda que", "es", CaptureOutcome::Rejected},
+      {"recuerda que ", "es", CaptureOutcome::Rejected},
+      {"???", "es", CaptureOutcome::Rejected},
+      {"never mind", "en", CaptureOutcome::Rejected},
+      {"when does my sister come", "en", CaptureOutcome::Rejected},
+  };
+  for (const auto& c : explicitRejects) {
+    const auto got = gMemory.captureExplicit(
+        {.userId = kProbeUser, .lang = c.lang, .text = c.text});
+    const bool ok = got.outcome == c.want;
+    check(ok, "explicit rejects: \"" + c.text + "\"");
+    if (!ok)
+      std::cout << "      got outcome=" << static_cast<int>(got.outcome)
+                << " factId=" << got.factId << "\n";
+  }
+
+  // The trailing tag is noise; the same words inside the sentence are the fact.
+  struct Content
+  {
+    std::string text;
+    std::string want;
+  };
+  const Content contents[] = {
+      {"quiero que me hagas recordar que a Pedro no le gusta el pescado, está "
+       "bien?",
+       "a Pedro no le gusta el pescado"},
+      {"recuerda que mi hermana viene los domingos, vale?",
+       "mi hermana viene los domingos"},
+      {"recuerda que mi hermana viene los domingos, no?",
+       "mi hermana viene los domingos"},
+      {"recuerda que el router está bien", "el router está bien"},
+      {"recuerda que mi vecina se llama Claro", "mi vecina se llama Claro"},
+  };
+  for (const auto& c : contents) {
+    const auto parsedContent =
+        fixture.parser.parse({.text = c.text, .lang = "es"});
+    const bool ok = parsedContent && parsedContent->content == c.want;
+    check(ok, "content trimmed to \"" + c.want + "\"");
+    if (!ok)
+      std::cout << "      got \""
+                << (parsedContent ? parsedContent->content : "<no match>")
+                << "\"\n";
+  }
+
+  const std::string chatter =
+      "user: hola argus\n"
+      "assistant: hola, dime\n"
+      "user: ¿cuánto es 2 x 2?\n"
+      "assistant: cuatro\n"
+      "user: ¿qué hora es?\n"
+      "assistant: son las nueve\n"
+      "user: no, olvídalo\n"
+      "assistant: vale\n";
+  const std::string chatterDurable = gMemory.durableTranscript(chatter, "es");
+  check(chatterDurable.empty(),
+        "a session of greetings, questions, sums and a retraction leaves "
+        "nothing to summarize");
+  std::cout << "      durable(chatter)=\"" << chatterDurable << "\"\n";
+
+  const std::string mixed =
+      "user: ¿qué hora es?\n"
+      "assistant: son las nueve\n"
+      "user: recuerda que mi hermana viene los domingos\n"
+      "assistant: apuntado\n";
+  const std::string mixedDurable = gMemory.durableTranscript(mixed, "es");
+  check(mixedDurable.find("mi hermana viene los domingos") !=
+                std::string::npos &&
+            mixedDurable.find("apuntado") != std::string::npos &&
+            mixedDurable.find("hora es") == std::string::npos,
+        "a durable statement survives the transcript filter");
+  std::cout << "      durable(mixed)=\"" << mixedDurable << "\"\n";
+
+  gMemory.shutdown();
   return fails == 0 ? 0 : 1;
 }
 
@@ -337,6 +619,190 @@ int toolParseTest()
   check(calls3.empty(), "malformed tool block dropped safely");
 
   return fails == 0 ? 0 : 1;
+}
+
+// §10.6: the token cost the normal dialogue stops paying now that it never
+// announces tools to the model.
+int64_t episodeCount(int64_t userId)
+{
+  std::scoped_lock lock(gVecDb.mutex());
+  sqlite3* db = gVecDb.handle();
+  SqliteStmt stmt;
+  if (!db || !stmt.prepare(db, "SELECT COUNT(*) FROM memory_episode WHERE "
+                               "scope = 'user' AND ref_id = ?"))
+    return -1;
+  stmt.bindInt64(1, userId);
+  return stmt.step() == SQLITE_ROW ? stmt.columnInt64(0) : -1;
+}
+
+std::string newestEpisode(int64_t userId)
+{
+  std::scoped_lock lock(gVecDb.mutex());
+  sqlite3* db = gVecDb.handle();
+  SqliteStmt stmt;
+  if (!db || !stmt.prepare(db, "SELECT summary FROM memory_episode WHERE "
+                               "scope = 'user' AND ref_id = ? ORDER BY id "
+                               "DESC LIMIT 1"))
+    return {};
+  stmt.bindInt64(1, userId);
+  return stmt.step() == SQLITE_ROW ? stmt.columnText(0) : std::string{};
+}
+
+// Plan §10.4.6-7: a session of greetings, questions and sums must not become
+// an episode; a durable statement must survive into the summary.
+int compactionTest()
+{
+  ConfigService::load("config.toml");
+  DbService::installExtensions();
+
+  gLlm.init();
+  if (!gLlm.isLoaded()) {
+    std::cout << "[FAIL] LLM not loaded — cannot exercise compaction\n";
+    return 1;
+  }
+  gMemory.init();
+  clearUserRows(kProbeUser);
+
+  const std::string chatter =
+      "user: hola argus\n"
+      "assistant: hola, dime\n"
+      "user: ¿cuánto es 2 x 2?\n"
+      "assistant: cuatro\n"
+      "user: Argus, cuando es 2 x 2\n"
+      "assistant: sigue siendo cuatro\n"
+      "user: ¿qué hora es?\n"
+      "assistant: son las nueve\n"
+      "user: no, olvídalo\n"
+      "assistant: vale\n";
+  gMemory.enqueueSummary(kProbeUser, chatter, "es");
+  gMemory.flushPending();
+  const int64_t afterChatter = episodeCount(kProbeUser);
+  check(afterChatter == 0,
+        "small talk, sums and a retraction create no episode (got " +
+            std::to_string(afterChatter) + ")");
+
+  const std::string durable =
+      "user: ¿qué hora es?\n"
+      "assistant: son las nueve\n"
+      "user: recuerda que mi hermana viene los domingos\n"
+      "assistant: apuntado\n"
+      "user: ten en cuenta que soy alérgico a los frutos secos\n"
+      "assistant: lo tengo\n"
+      "user: ¿cuánto es 2 x 2?\n"
+      "assistant: cuatro\n";
+  gMemory.enqueueSummary(kProbeUser, durable, "es");
+  gMemory.flushPending();
+  const int64_t afterDurable = episodeCount(kProbeUser);
+  check(afterDurable == 1, "a durable statement produces exactly one episode "
+                           "(got " + std::to_string(afterDurable) + ")");
+
+  const std::string summary = newestEpisode(kProbeUser);
+  std::cout << "      episode summary: \"" << summary << "\"\n";
+  std::string lowered = summary;
+  std::transform(lowered.begin(), lowered.end(), lowered.begin(),
+                 [](unsigned char c) { return std::tolower(c); });
+  check(lowered.find("hermana") != std::string::npos ||
+            lowered.find("frutos") != std::string::npos ||
+            lowered.find("alérgic") != std::string::npos ||
+            lowered.find("alergi") != std::string::npos,
+        "the summary keeps the durable statement");
+  check(lowered.find("2 x 2") == std::string::npos &&
+            lowered.find("cuatro") == std::string::npos,
+        "the summary does not carry the arithmetic turn");
+
+  clearUserRows(kProbeUser);
+  gMemory.shutdown();
+  gLlm.shutdown();
+  return fails == 0 ? 0 : 1;
+}
+
+// Plan §10.6: what the normal dialogue stops paying now that the system
+// prompt no longer announces tools.
+int ttftBench(int rounds)
+{
+  ConfigService::load("config.toml");
+  gLlm.init();
+  if (!gLlm.isLoaded()) {
+    std::cout << "[FAIL] LLM not loaded\n";
+    return 1;
+  }
+  gMemory.registerTools(ToolRegistry::instance());
+
+  ToolRegistry& registry = ToolRegistry::instance();
+  std::vector<const tools::ToolDescriptor*> tools;
+  for (const auto& name : registry.names()) {
+    if (const auto* descriptor = registry.find(name))
+      tools.push_back(descriptor);
+  }
+
+  const std::string plain =
+      "Eres Argus, el asistente del hogar. Responde brevemente en el idioma "
+      "del usuario, como una persona, y nunca con ofertas genéricas.";
+  const std::string withTools =
+      plain + "\nList of tools: " + LfmAdapter::buildToolDeclarations(tools);
+  const std::string turn = "recuerda que mi hermana viene los domingos";
+
+  const auto run = [&](const std::string& system) {
+    const ChatRequest req{
+        .messages = {ChatMessage{.role = "system", .content = system},
+                     ChatMessage{.role = "user", .content = turn}},
+        .maxTokens = 24,
+        .temperature = 0.0F,
+        .resetContext = true};
+    const auto start = std::chrono::steady_clock::now();
+    long long ttft = -1;
+    gLlm.chatStream(req, [&](const std::string&, bool) {
+      if (ttft < 0)
+        ttft = std::chrono::duration_cast<std::chrono::milliseconds>(
+                   std::chrono::steady_clock::now() - start)
+                   .count();
+    });
+    return std::pair{ttft, gLlm.lastPrefillStats().promptTokens};
+  };
+
+  run(plain); // warm the weights so round 1 is not the outlier
+  std::vector<long long> withMs, withoutMs;
+  int withTok = 0, withoutTok = 0;
+  for (int i = 0; i < rounds; ++i) {
+    const auto a = run(withTools);
+    withMs.push_back(a.first);
+    withTok = a.second;
+    const auto b = run(plain);
+    withoutMs.push_back(b.first);
+    withoutTok = b.second;
+  }
+  std::sort(withMs.begin(), withMs.end());
+  std::sort(withoutMs.begin(), withoutMs.end());
+
+  std::cout << "rounds: " << rounds << "\n"
+            << "with tool schema:    prompt=" << withTok
+            << " tok  TTFT median=" << withMs[withMs.size() / 2] << " ms\n"
+            << "without tool schema: prompt=" << withoutTok
+            << " tok  TTFT median=" << withoutMs[withoutMs.size() / 2]
+            << " ms\n"
+            << "schema cost: " << (withTok - withoutTok) << " tokens, "
+            << (withMs[withMs.size() / 2] - withoutMs[withoutMs.size() / 2])
+            << " ms of prefill\n";
+  gLlm.shutdown();
+  return 0;
+}
+
+int toolSchemaCost()
+{
+  ConfigService::load("config.toml");
+  gMemory.registerTools(ToolRegistry::instance());
+
+  ToolRegistry& registry = ToolRegistry::instance();
+  std::vector<const tools::ToolDescriptor*> tools;
+  for (const auto& name : registry.names()) {
+    if (const auto* descriptor = registry.find(name))
+      tools.push_back(descriptor);
+  }
+  const std::string declarations = LfmAdapter::buildToolDeclarations(tools);
+  std::cout << "registered tools: " << tools.size() << "\n"
+            << "declaration bytes: " << declarations.size() << "\n"
+            << "declaration text:\n" << declarations << "\n";
+  return 0;
 }
 
 float cosine(const std::vector<float>& a, const std::vector<float>& b)
@@ -2232,8 +2698,9 @@ int vocabCheck()
           return std::string(seeds[i].surface);
     return std::string();
   };
+  constexpr int kPhraseKinds = 7;
   const auto kindsCovered = [](std::span<const PhraseSeed> seeds) {
-    for (int k = 0; k < 6; ++k) {
+    for (int k = 0; k < kPhraseKinds; ++k) {
       const PhraseKind kind = static_cast<PhraseKind>(k);
       bool found = false;
       for (const auto& s : seeds)
@@ -2246,7 +2713,7 @@ int vocabCheck()
   };
   const auto kindsCount = [](std::span<const PhraseSeed> seeds) {
     size_t count = 0;
-    for (int k = 0; k < 6; ++k) {
+    for (int k = 0; k < kPhraseKinds; ++k) {
       const PhraseKind kind = static_cast<PhraseKind>(k);
       for (const auto& s : seeds)
         if (s.kind == kind) {
@@ -2277,7 +2744,7 @@ int vocabCheck()
   check(esLDup.empty(), "vocabulary: es lexicon unique (dup: '" + esLDup + "')");
   const std::string enLDup = dupLexicon(enL);
   check(enLDup.empty(), "vocabulary: en lexicon unique (dup: '" + enLDup + "')");
-  check(kindsCovered(esP), "vocabulary: all 6 phrase kinds in es");
+  check(kindsCovered(esP), "vocabulary: all 7 phrase kinds in es");
   check(kindsCount(enP) >= 4, "vocabulary: en covers most phrase kinds");
   check(lexiconKinds(esL) && lexiconKinds(enL),
         "vocabulary: all 4 lexicon kinds in both languages");
@@ -2299,8 +2766,10 @@ void usage()
 {
   std::cout << "argus-memory-probe --wipe-memory | --vocabulary-check | "
                "--schema-check | "
-               "--capture-test | "
-               "--tool-parse-test | --embed-check | --recall-bench | "
+               "--capture-test | --capture-policy-test | --edge-sweep | "
+               "--tool-parse-test | --tool-schema-cost | "
+               "--compaction-test | --ttft-bench [rounds] | "
+               "--embed-check | --recall-bench | "
                "--vec-gate-test | --dedup-bench | --sim \"<a>\" \"<b>\" | "
                "--purge <scope> <refId> | --seed <userId> \"<memory>\" | "
                "--tokens <text>\n";
@@ -2321,7 +2790,7 @@ int main(int argc, char** argv)
   if (mode == "--wipe-memory")
     return wipeMemory();
   if (mode == "--capture-query" && argc > 2)
-    return captureQuery(argv[2]);
+    return captureQuery(argv[2], argc > 3 ? argv[3] : "es");
   if (mode == "--tools-test")
     return toolsTest();
   if (mode == "--graph-recall-test")
@@ -2338,8 +2807,18 @@ int main(int argc, char** argv)
     return schemaCheck();
   if (mode == "--capture-test")
     return captureTest();
+  if (mode == "--capture-policy-test")
+    return capturePolicyTest();
+  if (mode == "--edge-sweep")
+    return edgeSweep();
   if (mode == "--tool-parse-test")
     return toolParseTest();
+  if (mode == "--tool-schema-cost")
+    return toolSchemaCost();
+  if (mode == "--compaction-test")
+    return compactionTest();
+  if (mode == "--ttft-bench")
+    return ttftBench(argc >= 3 ? std::atoi(argv[2]) : 5);
   if (mode == "--embed-check")
     return embedCheck();
   if (mode == "--recall-bench")

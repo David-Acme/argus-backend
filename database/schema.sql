@@ -21,6 +21,7 @@ CREATE TABLE IF NOT EXISTS user (
     name           TEXT    NOT NULL,
     last_name      TEXT    NOT NULL,
     role           TEXT    NOT NULL  CHECK (role IN ('owner', 'resident', 'guard', 'guest')),
+    lang           TEXT    NOT NULL  DEFAULT 'es'  CHECK (lang IN ('es', 'en')),
     is_active      INTEGER NOT NULL  DEFAULT 1  CHECK (is_active IN (0, 1)),
     created_at     INTEGER NOT NULL  DEFAULT (strftime('%s', 'now')),
     updated_at     INTEGER,
@@ -117,6 +118,25 @@ CREATE TABLE IF NOT EXISTS refresh_token (
     user_agent    TEXT    NOT NULL  DEFAULT '',
     is_valid      INTEGER NOT NULL  DEFAULT 1  CHECK (is_valid IN (0, 1)),
     is_used       INTEGER NOT NULL  DEFAULT 0  CHECK (is_used  IN (0, 1)),
+    expires_at    INTEGER NOT NULL,
+    created_at    INTEGER NOT NULL  DEFAULT (strftime('%s', 'now'))
+);
+
+-- ── Tables · Cross-device login (desktop QR) ────────────────────────────────
+-- A pending challenge lets a desktop pair with the mobile owner: the desktop
+-- creates it, the mobile approves it, the desktop polls it for tokens. Tokens
+-- are bound to the desktop's device_hash so its DeviceFilter matches.
+
+CREATE TABLE IF NOT EXISTS device_login_challenge (
+    id            INTEGER NOT NULL  PRIMARY KEY AUTOINCREMENT,
+    challenge_id  TEXT    NOT NULL  UNIQUE,
+    device_hash   TEXT    NOT NULL,
+    user_agent    TEXT    NOT NULL  DEFAULT '',
+    status        TEXT    NOT NULL  DEFAULT 'pending'
+                            CHECK (status IN ('pending', 'approved', 'expired')),
+    user_id       INTEGER,
+    access_token  TEXT,
+    refresh_token TEXT,
     expires_at    INTEGER NOT NULL,
     created_at    INTEGER NOT NULL  DEFAULT (strftime('%s', 'now'))
 );
@@ -351,6 +371,34 @@ CREATE TABLE IF NOT EXISTS job (
   updated_at INTEGER NOT NULL
 );
 
+-- ── Tables · Voice sessions (historical, local-first, never synced) ─────────
+-- Voice conversations kept as server-side history. `person_id` stays NULL
+-- until the person is linked (future: Argus talks through cameras and a
+-- detected person may not have an account).
+
+CREATE TABLE IF NOT EXISTS voice_session (
+    id            INTEGER NOT NULL  PRIMARY KEY AUTOINCREMENT,
+    person_id     INTEGER           REFERENCES person(id) ON DELETE SET NULL,
+    source        TEXT    NOT NULL  DEFAULT 'app'
+                                    CHECK (source IN ('app', 'camera')),
+    title         TEXT    NOT NULL  DEFAULT '',
+    started_at    INTEGER NOT NULL,
+    ended_at      INTEGER,
+    message_count INTEGER NOT NULL  DEFAULT 0,
+    created_at    INTEGER NOT NULL  DEFAULT (strftime('%s', 'now')),
+    updated_at    INTEGER
+);
+
+CREATE TABLE IF NOT EXISTS voice_message (
+    id          INTEGER NOT NULL  PRIMARY KEY AUTOINCREMENT,
+    session_id  INTEGER NOT NULL  REFERENCES voice_session(id) ON DELETE CASCADE,
+    person_id   INTEGER           REFERENCES person(id) ON DELETE SET NULL,
+    role        TEXT    NOT NULL  CHECK (role IN ('user', 'assistant')),
+    text        TEXT    NOT NULL  DEFAULT '',
+    duration_ms INTEGER NOT NULL  DEFAULT 0,
+    created_at  INTEGER NOT NULL  DEFAULT (strftime('%s', 'now'))
+);
+
 -- ── Virtual tables · Memory FTS5 (external content) ─────────────────────────
 
 CREATE VIRTUAL TABLE IF NOT EXISTS memory_fact_fts USING fts5(
@@ -465,3 +513,12 @@ CREATE INDEX IF NOT EXISTS idx_memory_episode_scope ON memory_episode (scope, re
 -- job
 CREATE INDEX IF NOT EXISTS idx_job_pick ON job (queue, state, next_run_at, priority DESC);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_job_dedupe ON job (queue, dedupe_key) WHERE dedupe_key IS NOT NULL;
+
+-- voice_session
+CREATE INDEX IF NOT EXISTS idx_voice_session_person ON voice_session (person_id);
+CREATE INDEX IF NOT EXISTS idx_voice_session_started ON voice_session (started_at);
+
+-- voice_message
+CREATE INDEX IF NOT EXISTS idx_voice_message_session ON voice_message (session_id);
+CREATE INDEX IF NOT EXISTS idx_voice_message_person ON voice_message (person_id);
+CREATE INDEX IF NOT EXISTS idx_voice_message_created ON voice_message (created_at);

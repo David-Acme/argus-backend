@@ -2,14 +2,20 @@
 
 #include <cstdint>
 #include <drogon/utils/coroutine.h>
+#include <feature/api/auth/dtos/create-device-login-dto.hxx>
+#include <feature/api/auth/dtos/device-login-status-dto.hxx>
 #include <feature/api/auth/dtos/login-dto.hxx>
 #include <feature/api/auth/dtos/refresh-token-dto.hxx>
+#include <feature/api/auth/dtos/register-dto.hxx>
 #include <feature/api/auth/dtos/response-login-dto.hxx>
 #include <feature/api/auth/dtos/response-refresh-token-dto.hxx>
+#include <shared/repositories/device-login-challenge/device-login-challenge-repository.hxx>
+#include <shared/repositories/face-embedding/face-embedding-repository.hxx>
 #include <shared/repositories/person/person-repository.hxx>
 #include <shared/repositories/refresh-token/refresh-token-repository.hxx>
 #include <shared/repositories/user/user-repository.hxx>
 #include <shared/services/jwt/jwt-service.hxx>
+#include <shared/services/socket/socket-service.hxx>
 #include <shared/services/user-action-log/user-action-log-service.hxx>
 #include <string>
 
@@ -17,6 +23,12 @@ struct LoginDeviceInput
 {
   std::string deviceHash;
   std::string userAgent;
+};
+
+struct HasAdminResult
+{
+  bool paired;
+  bool hasAdmin;
 };
 
 class AuthService
@@ -28,16 +40,40 @@ public:
   drogon::Task<ResponseLoginDto>
   login(LoginDto body, const LoginDeviceInput& device) const;
 
+  drogon::Task<ResponseLoginDto>
+  registerUser(RegisterDto body, const LoginDeviceInput& device) const;
+
+  drogon::Task<HasAdminResult> hasAdmin() const;
+
+  drogon::Task<CreateDeviceLoginDto>
+  createDeviceLogin(const LoginDeviceInput& device) const;
+
+  drogon::Task<bool> approveDeviceLogin(const std::string& challengeId,
+                                        int64_t approvingUserId) const;
+
+  drogon::Task<DeviceLoginStatusDto>
+  pollDeviceLogin(const std::string& challengeId) const;
+
   drogon::Task<ResponseRefreshTokenDto>
   refreshToken(const RefreshTokenDto& body,
                const std::string& deviceHash) const;
 
   drogon::Task<void> logout(int64_t userId) const;
 
+  drogon::Task<void> updateMe(int64_t userId,
+                              const std::optional<std::string>& name) const;
+
 private:
+  drogon::Task<ResponseLoginDto>
+  issueSession(int64_t userId, int64_t personId, const UserSchema& user,
+               const LoginDeviceInput& device) const;
+
   JwtService jwtService_;
   PersonRepository personRepository_;
   UserRepository userRepository_;
   RefreshTokenRepository refreshTokenRepository_;
+  FaceEmbeddingRepository faceEmbeddingRepository_;
+  DeviceLoginChallengeRepository challengeRepository_;
   UserActionLogService userActionLogService_;
+  SocketService socketService_;
 };

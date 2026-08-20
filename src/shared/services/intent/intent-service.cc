@@ -32,8 +32,14 @@ double thresholdFor(ToolIntent intent)
     case ToolIntent::MemorySave:
       return ConfigService::getDouble("intent.memory_save_threshold");
     default:
-      return 0.0;
+      return 2.0;
   }
+}
+
+float marginFloor()
+{
+  const double configured = ConfigService::getDouble("intent.margin");
+  return configured > 0.0 ? static_cast<float>(configured) : 0.0F;
 }
 
 } // namespace
@@ -45,6 +51,8 @@ std::string toolIntentToString(ToolIntent intent)
       return "camera";
     case ToolIntent::MemorySave:
       return "memory_save";
+    case ToolIntent::None:
+      return "none";
     default:
       return "unknown";
   }
@@ -56,6 +64,8 @@ ToolIntent toolIntentFromString(const std::string& label)
     return ToolIntent::Camera;
   if (label == "memory_save")
     return ToolIntent::MemorySave;
+  if (label == "none")
+    return ToolIntent::None;
   return ToolIntent::Unknown;
 }
 
@@ -169,7 +179,18 @@ float IntentService::score(const std::vector<IntentHit>& hits,
   return 0.0F;
 }
 
+float IntentService::margin(const std::vector<IntentHit>& hits)
+{
+  if (hits.empty())
+    return 0.0F;
+  return hits.front().score - (hits.size() > 1 ? hits[1].score : 0.0F);
+}
+
 bool IntentService::fired(const std::vector<IntentHit>& hits, ToolIntent intent)
 {
-  return score(hits, intent) >= thresholdFor(intent);
+  if (hits.empty() || hits.front().intent != intent)
+    return false;
+  if (hits.front().score < thresholdFor(intent))
+    return false;
+  return margin(hits) >= marginFloor();
 }

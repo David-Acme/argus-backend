@@ -140,17 +140,17 @@ AppConfig::DEVICE_CTX_KEY = "device_ctx"
 
 ### 7. Role-based access
 
-Roles are checked centrally via `src/shared/access/role-access.hxx` (mapa
-`kTableAccess`: rol → tabla → `RolePermission`). **`RoleFilter` (HTTP) y el
-motor de sync comparten esa única fuente de verdad** — para modificar permisos,
-edita solo ese archivo. No imperativo if/else.
+Roles are checked centrally via `src/shared/access/role-access.hxx` (the
+`kTableAccess` map: role → table → `RolePermission`). **`RoleFilter` (HTTP) and
+the sync engine share that single source of truth** — to change a permission,
+edit only that file. Never imperative if/else.
 
 ```
 Owner    → full access (bypasses all checks)
 Resident → CRUD on /camera, /camera-stream, /zone, /reminder, /reminder-detail,
-           /event, /person, /context-note; user = Read (NO registra usuarios);
-           audit_log/user_audit_log/notification = Read (+Update propias);
-           notification_token = Create (propias)
+           /event, /person, /context-note; user = Read (does NOT register
+           users); audit_log/user_audit_log/notification = Read (+Update own);
+           notification_token = Create (own)
 Guard    → GET only on /camera, /camera-stream, /event, /person, /zone, /auth
 Guest    → GET only on /camera, /auth
 ```
@@ -399,23 +399,23 @@ Raw pointers only for non-owning access (`.get()`).
 
 ### 18. WebSocket sync engine
 
-- Ruta WS: `/sync` con **solo `JwtFilter`** (sin `DeviceFilter`; el binding de
-  dispositivo queda en HTTP). Los mensajes son `{type, payload}` y las
-  respuestas usan `SocketEmitDto` `{operation, option(TableName), info}`.
-  Errores: `{type:"<type>_error", status, error}`.
-- Operaciones (`src/shared/contracts/sync-operation.hxx`): `InitialInfo=0`,
-  `Synchronize=1` (creados/eliminados, incluye `notification` por usuario),
-  `SynchronizeAuditLog=2` (diffs globales, tablas decididas por el backend
-  según rol), `SynchronizeUserAuditLog=3` (diffs por usuario, filtrado por
-  `sub`). Eventos en vivo: `Add=4`, `Delete=5`, `Log=6`.
-- Queries de sync: usar `sync_query::buildSyncQuery(filter, Q1, Q2, Q3)`
-  (función SÍNCRONA que devuelve query+args por valor) + `co_await
-  client->execSqlCoro(query, argsRef)` directo. **NUNCA** capturar referencias
-  en una coroutine lambda interna `[&]() -> Task` que suspende: el frame queda
-  en una pila reutilizada y provoca use-after-free (crash). Tampoco pasar
-  temporales a coroutines que guardan referencias: usa locals con nombre.
-- `RoomManager` es clase de instancia con estado `thread_local` a nivel de
-  archivo; ciclo de vida vía `RoomManagerServiceAdapter` (IService).
+- WS route: `/sync` with **`JwtFilter` only** (no `DeviceFilter`; device
+  binding stays on HTTP). Messages are `{type, payload}` and responses use
+  `SocketEmitDto` `{operation, option(TableName), info}`.
+  Errors: `{type:"<type>_error", status, error}`.
+- Operations (`src/shared/contracts/sync-operation.hxx`): `InitialInfo=0`,
+  `Synchronize=1` (created/deleted, includes `notification` per user),
+  `SynchronizeAuditLog=2` (global diffs; the backend decides which tables from
+  the role), `SynchronizeUserAuditLog=3` (per-user diffs, filtered by `sub`).
+  Live events: `Add=4`, `Delete=5`, `Log=6`.
+- Sync queries: use `sync_query::buildSyncQuery(filter, Q1, Q2, Q3)` (a
+  SYNCHRONOUS function returning query+args by value) then `co_await
+  client->execSqlCoro(query, argsRef)` directly. **NEVER** capture references
+  in an inner `[&]() -> Task` coroutine lambda that suspends: the frame lands
+  on a reused stack and causes a use-after-free (crash). Do not pass
+  temporaries to coroutines that store references either — use named locals.
+- `RoomManager` is an instance class with file-level `thread_local` state; its
+  lifecycle goes through `RoomManagerServiceAdapter` (IService).
 
 ## Build Commands
 
@@ -447,7 +447,7 @@ Before any commit, verify: `cmake --build --preset dev -j 8` passes with
 | `src/shared/schemas/*/` | DB row → C++ struct mapping |
 | `src/shared/repositories/*/` | Data access layer |
 | `src/shared/contracts/` | `Syncable`, `SyncFilter` base classes + `sync-operation.hxx` |
-| `src/shared/access/` | `RoleAccess` centralizado (rol → tabla → permisos) usado por `RoleFilter` y sync |
+| `src/shared/access/` | Centralized `RoleAccess` (role → table → permissions), used by `RoleFilter` and sync |
 | `src/shared/validation/` | Validation DSL (rules, macros, validator) |
 | `src/filter/device/` | Device fingerprint extraction |
 | `src/filter/jwt/` | JWT verification + refresh token validation |

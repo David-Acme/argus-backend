@@ -28,6 +28,8 @@ public:
   SttService(const SttService&) = delete;
   SttService& operator=(const SttService&) = delete;
 
+  static SttService& instance();
+
   void init();
   void shutdown();
 

@@ -39,11 +39,28 @@ const std::vector<std::string> kMigrationStatementsV1 = {
     "DROP INDEX IF EXISTS \"idx_user_a  ction_log_created\"",
 };
 
+const std::vector<std::string> kMigrationStatementsV2 = {
+    "CREATE TABLE IF NOT EXISTS device_login_challenge ("
+    "id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,"
+    "challenge_id TEXT NOT NULL UNIQUE,"
+    "device_hash TEXT NOT NULL,"
+    "user_agent TEXT NOT NULL DEFAULT '',"
+    "status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN "
+    "('pending', 'approved', 'expired')),"
+    "user_id INTEGER,"
+    "access_token TEXT,"
+    "refresh_token TEXT,"
+    "expires_at INTEGER NOT NULL,"
+    "created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')))",
+};
+
 const std::vector<std::string>* migrationStatements(int64_t version)
 {
   switch (version) {
     case 1:
       return &kMigrationStatementsV1;
+    case 2:
+      return &kMigrationStatementsV2;
     default:
       return nullptr;
   }

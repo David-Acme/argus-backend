@@ -19,6 +19,14 @@ bool isWordChar(unsigned char c)
   return (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_';
 }
 
+// Span edges only: a UTF-8 lead/continuation byte belongs to the word, so
+// "qué"/"mamá" can match. The surrounding-byte checks stay ASCII-only, which
+// keeps '¿' and '?' as separators.
+bool isSpanEdge(unsigned char c)
+{
+  return isWordChar(c) || c >= 0x80;
+}
+
 struct ScratchNode
 {
   std::map<uint8_t, uint32_t> children;
@@ -170,8 +178,8 @@ void PhraseAutomaton::match(std::string_view text, MatchBuffer& out) const
         continue;
       if (end < size && isWordChar(static_cast<uint8_t>(text[end])))
         continue;
-      if (!isWordChar(static_cast<uint8_t>(text[begin])) ||
-          !isWordChar(static_cast<uint8_t>(text[end - 1])))
+      if (!isSpanEdge(static_cast<uint8_t>(text[begin])) ||
+          !isSpanEdge(static_cast<uint8_t>(text[end - 1])))
         continue;
       out.items.push_back({.patternIndex = patternIndex,
                            .begin = static_cast<uint32_t>(begin),

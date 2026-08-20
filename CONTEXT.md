@@ -673,30 +673,34 @@ Never static methods for service classes. Never local/temporary repository const
 - `memory_entity`/`memory_alias`/`memory_fact`/`memory_edge`/`memory_episode`/
   `memory_source`/`memory_procedure` — grafo semántico de memoria (con sus FTS5:
   `memory_fact_fts`, `memory_episode_fts`, `memory_alias_fts`)
-- `job` — cola de trabajos del worker (estado, intentos, dedupe_key)
+- `job` — worker job queue (state, attempts, dedupe_key)
 
-## Sync engine (WebSocket, one-way server→cliente)
+## Sync engine (WebSocket, one-way server→client)
 
-- **Ruta WS**: `/sync` con **solo `JwtFilter`** (sin `DeviceFilter`; el binding de
-  dispositivo queda en HTTP). Solo sincronización; notificaciones y
-  token-register van por HTTP.
-- **Operaciones** (`src/shared/contracts/sync-operation.hxx`): `InitialInfo=0` (connect, envía
-  `{id, role, isActive}` — sin lista de módulos),
-  `Synchronize=1` (datos creados/eliminados, global + nivel usuario: notification),
-  `SynchronizeAuditLog=2` (diffs globales, tablas decididas por el backend según rol),
-  `SynchronizeUserAuditLog=3` (diffs a nivel usuario, filtrado por `sub`). Eventos en vivo:
-  `Add=4`, `Delete=5`, `Log=6` (emitidos por `AuditLogService`/`NotificationService`).
-- **Respuestas WS**: `SocketEmitDto` `{operation, option(TableName), info}`; errores
-  `{type:"<type>_error", status, error}`.
-- **Entidades syncables**: `user`, `camera`, `camera_stream`, `zone`, `reminder`,
-  `reminder_detail` (implementan `Syncable`) + `notification` (dedicado por usuario).
-  Fuera del sync: `event`, `person`, `context_note`.
-- **Snapshot por día**: `AuditLogService`/`UserAuditLogService` buscan la entrada del
-  `record_id` en el día y fusionan el diff (`JsonDiff::compareChanges`).
-- **RoomManager**: instancia, estado `thread_local` a nivel de archivo; rooms de módulo
-  (`1 + TableName`) y room de usuario (`1000 + sub`); `emitUser` llega a las N sesiones activas.
-  Ciclo de vida vía `RoomManagerServiceAdapter` (IService) en `ServiceRegistry`.
-- **HTTP**: `PATCH /notification/read` y `POST /notification-token` (cadena completa de filtros).
+- **WS route**: `/sync` with **`JwtFilter` only** (no `DeviceFilter`; device
+  binding stays on HTTP). Synchronization only; notifications and
+  token-register go over HTTP.
+- **Operations** (`src/shared/contracts/sync-operation.hxx`): `InitialInfo=0` (on
+  connect, sends `{id, role, isActive}` — no module list),
+  `Synchronize=1` (created/deleted rows, global + user level: notification),
+  `SynchronizeAuditLog=2` (global diffs; the backend picks the tables from the
+  role), `SynchronizeUserAuditLog=3` (user-level diffs, filtered by `sub`).
+  Live events: `Add=4`, `Delete=5`, `Log=6` (emitted by
+  `AuditLogService`/`NotificationService`).
+- **WS responses**: `SocketEmitDto` `{operation, option(TableName), info}`;
+  errors `{type:"<type>_error", status, error}`.
+- **Syncable entities**: `user`, `camera`, `camera_stream`, `zone`, `reminder`,
+  `reminder_detail` (they implement `Syncable`) + `notification` (dedicated per
+  user). Outside sync: `event`, `person`, `context_note`.
+- **Per-day snapshot**: `AuditLogService`/`UserAuditLogService` look up the
+  `record_id` entry for the day and merge the diff
+  (`JsonDiff::compareChanges`).
+- **RoomManager**: instance class, file-level `thread_local` state; module rooms
+  (`1 + TableName`) and a user room (`1000 + sub`); `emitUser` reaches the N
+  active sessions. Lifecycle via `RoomManagerServiceAdapter` (IService) in
+  `ServiceRegistry`.
+- **HTTP**: `PATCH /notification/read` and `POST /notification-token` (full
+  filter chain).
 
 ## Coding conventions
 
@@ -1609,6 +1613,57 @@ Key findings:
   (quality + CPU real-time + zero thinking + 1.2 GB). No tested model
   replaces it. Models in models/llm/bench/ kept for future re-eval.
 
+# Model benchmark round: LFM2-8B-A1B + LFM2-2.6B-Exp (2026-08-14)
+
+New-generation LFM2 (NOT 2.5) candidates, both Q4_K_M, same fixture as the
+2026-08-13 round (10-case memory battery via `labs/llm-bench` + an Ollama-API
+script at `/tmp/opencode/ollama-bench/bench.py`), same-day baselines included.
+Both templates are pure ChatML — **the `<think>` defect of LFM2.5-8B-A1B is
+gone (0/10 both platforms, both models)**. That was the criterion that killed
+the 8B last round; it is now fixed.
+
+### Ollama (CPU, ~16 threads, defaults)
+
+| Model | TTFT | tok/s | recall | attrib | no-invent | think | RSS |
+|---|---|---|---|---|---|---|---|
+| lfm2.5:1.2b (champion, re-run) | 795 ms | 41.1 | 8/8 | 8/8 | 2/2 | 0/10 | 1.32 GB |
+| LFM2-2.6B-Exp Q4_K_M | 1832 ms | 21.3 | 8/8 | 7/8 | 1/2 | 0/10 | 1.79 GB |
+| LFM2-8B-A1B Q4_K_M | 1513 ms | 32.7 | 8/8 | 7/8 | 0/2 | 0/10 | 5.15 GB |
+
+### Pipeline Argus (llama.cpp b10305, Vulkan offload, 4 decode / 8 prefill)
+
+| Model | TTFT short | tok/s | recall | attrib | no-invent | think | RSS | echo |
+|---|---|---|---|---|---|---|---|---|
+| LFM2.5-1.2B (champion) | 287 ms | 44.0 | 7/8 | 7/8 | 2/2 | 0/10 | 0.83 GB | 0/10 |
+| LFM2-2.6B-Exp Q4_K_M | 613 ms | 19.5 | 8/8 | 8/8 | 2/2 | 0/10 | 1.68 GB | **10/10** |
+| LFM2-8B-A1B Q4_K_M | 1151 ms | 29.0 | 7/8 | 8/8 | 0/2 | 0/10 | 4.85 GB | 3-4/10 |
+
+Findings:
+- **`lfm2_moe` loads fine on llama.cpp b10305** (no bump needed), init 3.7 s
+  (8B) vs 1.6 s (1.2B) vs 2.0 s (2.6B).
+- **LFM2-2.6B-Exp**: best recall/attribution of the round (8/8, 8/8 in the
+  pipeline) and no invention there, but it **echoes the `<memorias>` block
+  verbatim on 10/10 turns** (the Ollama battery 6/10) — in a voice assistant
+  the speaker would read the injected memories aloud. It is also 2.2x slower
+  than the champion (19.5 vs 44 tok/s), 2x TTFT and +0.85 GB RSS. Rejected.
+- **LFM2-8B-A1B**: MoE works (29 tok/s beats the 2.6B dense despite 3x params)
+  but still 1.5x slower than the champion, TTFT 4x (1151 ms), RSS 4.85 GB
+  (5.8x), recall 7/8, and **no-invent 0/2 in both platforms** (invents an
+  allergy link on "¿tengo alguna alergia registrada?" and echoes the block).
+  The liquid-recommended samplers (temp 0.3/min_p 0.15/rep 1.05) fix the gate
+  but case 5 then answers with a hallucination the fixture cannot catch
+  ("a Marta le encanta el chocolate caliente") — the no-invent weakness is
+  real either way. Rejected.
+- **Verdict: champion stays LFM2.5-1.2B-Instruct.** LFM2 fixes thinking but
+  regresses speed, RSS and no-invention. GGUFs kept in `models/llm/bench/`
+  for future re-eval (Ollama tags:
+  `hf.co/LiquidAI/LFM2-8B-A1B-GGUF:Q4_K_M`,
+  `hf.co/LiquidAI/LFM2-2.6B-Exp-GGUF:Q4_K_M`).
+- Note: pipeline champion today (44 tok/s, 287 ms TTFT) beats the 2026-08-13
+  CPU-only rows (20 tok/s) because `HardwareProbe` now offloads to the RADV
+  iGPU by default (`gpu_layers=999`); same-day runs are the only valid
+  comparisons.
+
 # Vocabulary moved to static constants (2026-08-13)
 
 `memory_phrase` and `memory_lexicon` (schema.sql inserts, ~470 rows) were the
@@ -1649,3 +1704,263 @@ Generation pipeline: `extend-vocab.py` (INSERT OR IGNORE into the dev DB
 tables, which still exist locally) → `gen-vocab.py` → regenerates the
 headers. schema.sql was NOT touched in this round (its table declaration
 order is preserved; vocabulary lives only in src/shared/vocabulary/).
+
+# Normal dialogue no longer depends on tool-calling (2026-08-20)
+
+`CLAUDE_PLAN.md` asked for the conversational path to answer, recall and
+capture memory **without the model emitting tool calls**, while keeping the
+tool infrastructure available for probes and explicit routes. Alternative 5.2
+of the plan was implemented (rules + fastText hint + off-turn formation);
+5.1 (rules only) survives as the fallback whenever fastText is missing. A
+separate LLM router (5.3) and model-driven tool-calling (5.4) were rejected:
+one adds an inference per turn, the other adds ~300 tokens of schema and up
+to four generations per turn for no measured gain.
+
+## The layering that actually decides
+
+    prediction  ->  policy  ->  persistence  ->  telemetry  ->  training
+
+A prediction is not a policy. fastText is a **hint**; the deterministic
+`RuleParser` barrier inside `MemoryService` is what decides. STT output has no
+accents and no punctuation, so the classifier will keep mislabelling
+retractions and recall questions — that is expected and does not matter as
+long as nothing it mislabels reaches formation.
+
+Cascade for implicit capture:
+
+    RuleParser
+      trigger explícito           -> captureExplicit (store or defer)
+      pregunta / recall / retracto -> reject, nothing queued
+      posible declaración          -> fastText (winning class + margin)
+                                        -> captureImplicit -> idle queue
+
+## Measured (2026-08-20, same machine, no other inference running)
+
+| Metric | Before | After |
+|---|---:|---:|
+| generations per turn (normal path) | 1..4 (`maxToolHops`) | 1 |
+| tool schema in the system prompt | 993 bytes = **276 tokens** | 0 |
+| system prompt size | 338 tok | 62 tok |
+| TTFT, cold prefill (median of 7) | **1862 ms** | **565 ms** |
+| fastText false `memory_save` on the negative set | 7 | 7 (unchanged) |
+| …of those reaching memory formation | 7 | **0** |
+| real memories wrongly blocked | — | 0 |
+| implicit statements still deferred | — | 3/3 |
+| `--intent-check` at production thresholds | 103/103 | 103/103 |
+| `--intent-eval` top-1 (valid.tsv) | 0.966 | 0.966 |
+| memory-probe battery | 3 failures | 143 ok / 0 fail |
+
+`argus-memory-probe --ttft-bench 7` measured both prompts interleaved on the
+same box, same user turn, `resetContext = true`, nothing else inferring:
+the tool schema costs **276 tokens and 1297 ms of prefill (3.3x TTFT)**.
+Caveat: `resetContext = true` measures the *cold* prefill. In a live session
+the constant system prefix is KV-cached, so only the first turn pays the full
+1297 ms — but every turn paid the 276 tokens of context, and any prompt that
+diverges from the cached prefix forces the reset again. The schema also
+invited the model to emit tool calls, which cost up to three extra
+generations per turn on top of this.
+
+`argus-memory-probe --compaction-test` runs the real LFM2.5: a session of
+greetings, sums, a time question and `no, olvídalo` produces **0 episodes**,
+while a session carrying two durable statements produces exactly **1**, whose
+summary keeps `hermana`/`alérgico` and drops the arithmetic turn.
+
+Finding from that test: `durableTranscript()` first kept `user: hola argus`,
+so the small-talk session still became an episode. Greetings are now dropped
+too — a user turn that `stripFillers()` reduces to nothing carries no more
+episode material than a question does.
+
+## Two pre-existing bugs the plan's test cases exposed
+
+1. **`PhraseAutomaton` dropped every phrase with an accented edge.** The
+   span-edge check used `isWordChar` (`a-z0-9_` only), so a pattern whose
+   first or last byte is a UTF-8 lead/continuation byte never matched. 38
+   Spanish entries were dead, including the interrogatives `qué` and
+   `por qué`, the kinship terms `mamá`/`papá`, the predicate `está` and the
+   recall markers `dónde está`/`qué pasó`. Fixed with `isSpanEdge` (accepts
+   bytes >= 0x80) applied **only** to the span edges — the surrounding-byte
+   checks stay ASCII-only so `¿` and `?` keep separating words.
+2. **`isQuestion` read the `que` of `recuerda que` as interrogative.** The
+   existing `word != "que"` exemption only applied when the word had 3+ words
+   before it, so every explicit trigger was classified as a question and its
+   turn was dropped from compaction. Fixed by skipping interrogative hits
+   contained in a longer `Trigger` span.
+
+## `MemoryService::init()` and the sqlite ordering
+
+`registry_.initialize()` runs **before** `app().run()`, and drogon calls
+`sqlite3_config(SQLITE_CONFIG_MULTITHREAD)` there — it logs a FATAL if
+sqlite3 was already initialized. Deferring the store to
+`registerBeginningAdvice` fixed the server but silently broke every lab: labs
+never call `app().run()`, so the graph never opened and the worker never
+started (`--schema-check` failed 3 checks, voice-test had no memory at all).
+Now `init(const MemoryInitOptions&)` takes `deferStore`: the
+`MemoryServiceAdapter` passes `{.deferStore = true}`, labs get the store
+straight from `init()`, and `openStore()` is idempotent either way.
+
+## Capture contract
+
+- `captureExplicit` — trigger or statement recognized by rules. Unchanged.
+- `captureImplicit` — rejects invalid user, empty text, questions, recall
+  markers and retractions (new `PhraseKind::Cancellation`, 30 es + 26 en
+  seeds) **before** anything is queued, and marks the work `preferIdle` so
+  `processExtract` waits for the LLM to go quiet (`memory.extract_wait_ms`)
+  and re-enqueues instead of competing with the spoken answer.
+- `Rejected` now really means nothing was queued and nothing persisted;
+  voice-test only prints `[memory] queued by intent` after the service
+  accepts, not after the fastText prediction.
+- `durableTranscript()` (public, pure) drops transient user turns and the
+  assistant answer bound to them. Both `enqueueSummary()` and
+  `enqueueCompaction()` go through it, so a session of greetings, sums and
+  retractions produces no episode at all.
+
+## `IntentService`: winning class + margin
+
+`match()` used to discard `none` as `ToolIntent::Unknown`, so `fired()`
+compared `memory_save` against a threshold and nothing else. The shipped model
+is softmax so the hole was latent, but `--intent-train` defaulted to **ova**,
+where independent sigmoids make `memory_save 0.95` with `none 0.98` perfectly
+possible. Now `ToolIntent::None` exists, `fired()` requires the intent to be
+the winning class, clear its threshold **and** beat the runner-up by
+`intent.margin` (0.20), and the probe's default loss is softmax to match the
+shipped model. Thresholds were **not** lowered — `--intent-check` suggests
+0.35/0.40 but 0.60 stays, because precision beats recall for `memory_save`: a
+false positive contaminates future facts, a false negative is recoverable
+with an explicit trigger.
+
+## `usage.tsv` is telemetry, never labels
+
+`--intent-train --include-usage` now reads `usage-curated.tsv` and fails loudly
+if it is missing. `--curate-usage` produces it by running the same
+deterministic barrier the runtime uses, then deduplicating. On the 92 historic
+rows: **29 accepted, 11 duplicates, 52 rejected** (39 question/recall, 7 no
+durable statement, 6 retraction). Every `camera` row was rejected — they were
+all `¿dónde está mi coche?`-style recall questions the model had labelled
+camera. `train.tsv` gained 126 curated negatives (calculation, time, date,
+weather, recall, retraction, small talk, lookup) and
+`labs/intent-data/negatives.tsv` is the regression set for
+`--intent-test` / `--intent-barrier-test`.
+
+Retraining was measured and **not promoted**: the side-by-side model scored
+38/47 on the negative set against the shipped model's 39/47 and still put
+`olvidalo` at 0.99. The corpus is not the lever — the barrier is. The
+side-by-side artifacts were removed; `models/intent/argus-intent.ftz` is
+untouched.
+
+## Pending / deliberately not done
+
+- **`VoiceSessionService` is untouched.** It still has no `MemoryService` and
+  no `ConversationService`. Plan §Fase 7 lists eight open decisions first
+  (injection, per-session `WorkingMemory`, authenticated `userId`, per-session
+  language, capture notification, WebSocket cancellation, mutex/slot
+  ownership, WS tests). Integrating it is a design change, not a port of the
+  lab.
+- `ConversationService::processTurn` has **no callers yet** — voice-test still
+  runs its own loops and only uses `recallBlock`/`trimHistory`. It is correct
+  and compiled, but the lab loops are what is actually exercised.
+- The conservative `isQuestion` costs recall on unaccented implicit
+  statements: `pues nada, que a mi sobrino le da miedo la oscuridad` is read
+  as a question because of the bare `que`. Explicit triggers still capture it
+  (`parse()` matches), and the plan's stated priority is precision over
+  recall for `memory_save`, so this stands as a known trade-off rather than a
+  fix.
+- `parseStatement()` still stores patterns like `la alarma se activa a las 10`
+  automatically. Whether ambiguous statements should need confirmation is an
+  open product decision; `--capture-test` currently asserts the old behaviour.
+- `multilingual-e5-small` as a **second opinion on ambiguous cases only** (not
+  per turn) is the next step if precision needs more, before any LLM router.
+
+# Reactions: Argus reacts to the turn, without the model deciding (2026-08-20)
+
+The assistant now derives a **semantic reaction** from each turn and sends it to
+the client, which plays it on the avatar's face and lets the prosody of the
+spoken answer animate it. Two layers, deliberately orthogonal: the reaction
+picks the pose, the voice envelope gives it life. Neither knows about the other,
+so each is testable alone.
+
+## Why it is not a model
+
+The dialogue must not emit tags or JSON (see the tool-calling section above), so
+`<emotion>joy</emotion>` was never an option, and a second LLM pass would cost
+another generation per turn against a 565 ms TTFT. Every reaction instead comes
+from a signal the pipeline already produced:
+
+    prediction -> policy -> reaction
+
+`ReactionEngine::react()` is a pure function over `ReactionSignals`; resolution
+order **is** priority, so an alarm can never be buried under "thinking":
+
+| # | signal | reaction | `because` |
+|--:|---|---|---|
+| 1 | system alert | `alarmed` | `system_alert` |
+| 2 | STT failed / empty | `confused` | `stt_failed` |
+| 3 | `RuleParser::isCancellation` | `acknowledging` | `retraction` |
+| 4 | recall hits > 0 | `recognizing` | `recall_hit` |
+| 5 | capture stored | `attentive` | `capture_stored` |
+| 6 | capture queued | `attentive` | `capture_queued` |
+| 7 | camera intent | `curious` | `camera_intent` |
+| 8 | question + recall empty | `uncertain` | `recall_empty` |
+| 9 | question | `thinking` | `question` |
+| 10 | filler-only turn | `warm` | `small_talk` |
+| 11 | — | `idle` | `no_signal` |
+
+`recallHits < 0` means recall never ran, which is **not** the same as ran and
+came back empty — rule 8 only fires on a real miss. Intensity moves with the
+evidence (1 hit → 0.65, 3 hits → 0.95; an alarm is always 1.0) instead of being
+a constant per kind.
+
+Cost: the engine is a few `RuleParser` predicates over an Aho-Corasick automaton
+whose `match()` measures **p95 5.2 µs at 10 000 patterns** (`extract-probe`
+gates), ~137 KB for its own catalogue, and zero new models. It is self-contained
+precisely so the lab and the WebSocket path can both use it without dragging
+`MemoryService` in.
+
+## The wire carries meaning, not appearance
+
+    { "type": "voice:event",
+      "payload": { "reaction": "recognizing", "intensity": 0.7,
+                   "because": "recall_hit" } }
+
+The backend never names an avatar expression. `REACTION_SEMANTIC_KEY` in the
+frontend maps the reaction to a calibrated pose, so the face can be redesigned
+without touching C++ or versioning the socket. `because` is not decoration: it
+is how you find out why the face did something odd, and it is the reason this
+needs no model.
+
+## Tone rides the user turn, never the system prompt
+
+The reaction also conditions **how** Argus answers (`ReactionEngine::toneNote`).
+That note is appended to the tail of the request's last user message — not to
+the system prompt, which has to stay byte-identical for KV-cache reuse, and not
+to the stored history, where a note from three turns ago would keep steering the
+answer. Only the kinds that change the answer carry one: `idle` and `thinking`
+are silent, because `thinking` is the common case and every turn would pay
+tokens for nothing.
+
+`voice:event` is emitted **before the first token**, so the face reacts while
+the model is still generating rather than after it speaks.
+
+## Where the signals come from today
+
+| path | signals |
+|---|---|
+| `labs/voice-test` (text + voice loops) | all of them — capture outcome, recall block size, camera intent |
+| `VoiceSessionService` (production WS) | turn shape, retraction, STT failure |
+
+The WebSocket path starts with 6 of the 10 reactions on real signals.
+`recognizing`, `attentive`, `curious` and `uncertain` need `MemoryService`,
+which per Fase 7 of the plan is not wired there yet — when it lands they light
+up **without a contract change**, because the payload already carries them.
+
+## Per-frame liveliness is computed on the client, on purpose
+
+Streaming a pose per frame would be ~60 messages/second. Instead: the client
+already receives the TTS PCM and buffers the whole utterance before playing it,
+so it computes the RMS envelope once (`pcmEnvelope`, one pass over memory it
+already holds) and walks it in step with playback at ~30 Hz into a single
+reanimated shared value. The render worklet reads that value — no network, no
+model, nothing per frame beyond a read.
+
+Tests: `labs/reaction-probe --reaction-test` (23 checks) covers the full
+priority ladder in es/en, the `recallHits < 0` distinction, intensity growth,
+and which kinds may carry a tone note.

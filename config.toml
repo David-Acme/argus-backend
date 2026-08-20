@@ -15,8 +15,11 @@ ssl_conf = [["MinProtocol", "TLSv1.2"]]
 name = "default"
 rdbms = "sqlite3"
 filename = "database/argus.db"
+# Note: drogon's `is_fast` client mode exists for PostgreSQL/MySQL only;
+# SQLite clients always use the shared pool. A single connection keeps the
+# SQLite serialization cheap.
 is_fast = false
-number_of_connections = 4
+number_of_connections = 1
 timeout = -1.0
 
 [drogon.app]
@@ -287,7 +290,7 @@ rotate_check_hours = 24
 # ConfigService::setBool() writes this flag back to config.toml (in-memory +
 # direct file write, comments preserved) the first time pairing succeeds.
 [pairing]
-paired = false
+paired = true
 
 # ── mDNS/DNS-SD auto-discovery ──────────────────────────────────────────
 # Publishes the backend on the local network so clients (mobile/web/desktop)
@@ -350,6 +353,13 @@ pre_roll_frames = 10
 # STT makes up phrases when it gets short or nearly silent audio.
 min_turn_ms = 240
 min_mean_prob = 0.35
+# RNNoise noise suppression before the VAD: strips background noise so only
+# the speaker's voice opens a turn (and the STT only ever sees clean audio).
+denoise = true
+# Performance gate: batches whose RMS stays below this (≈ -49 dBFS, pure
+# silence) skip the whole RNNoise path until speech or stronger noise shows
+# up. Keeps idle CPU usage near zero while nobody is talking.
+denoise_gate_rms = 0.0035
 
 # ── Voice test (labs) ────────────────────────────────────────────────
 # Camera credentials live in config.local.toml (untracked overlay); this block
@@ -450,6 +460,10 @@ chunk_chars = 400
 # Drain timeout of the async queue when closing a session (ms). The session
 # summary runs the main LLM in the background and can take seconds.
 flush_timeout_ms = 60000
+# Budget when CLOSING an interactive session. The worker keeps draining after
+# this (it finishes its queue before exiting), so a long wait here only makes
+# Ctrl+C feel broken.
+exit_flush_ms = 4000
 # ── Conversation compaction (main LLM, no extra model) ──────────────────
 # When the conversation history exceeds its cap, the oldest turns are NOT
 # discarded: they are compacted in the background with the SAME LlmService
@@ -459,7 +473,12 @@ flush_timeout_ms = 60000
 # runs when the LLM is idle).
 compact_wait_ms = 15000
 compact_max_tokens = 256
-# Native tool-call markers for saving memories during generation.
+# Implicit captures (fastText hint, no explicit trigger) are deferred as idle
+# work: the worker waits up to extract_wait_ms for the LLM to go quiet and
+# re-enqueues instead of competing with the spoken answer.
+extract_wait_ms = 15000
+# Native tool-call markers for saving memories during generation. The normal
+# dialogue never announces tools; these stay for labs/tool-bench and probes.
 save_trigger = "<|tool_call_start|>"
 # Closing marker of the tool-call.
 tool_end_trigger = "<|tool_call_end|>"
@@ -478,6 +497,12 @@ model = "models/intent/argus-intent.ftz"
 # precision. Recalibrate with --intent-check if intents are added.
 camera_threshold = 0.60
 memory_save_threshold = 0.60
+# An intent also has to WIN over the other classes (including `none`) by this
+# margin. The threshold alone is not enough: the model is one-vs-all, so
+# memory_save 0.95 can coexist with none 0.98. STT text has no accents and no
+# punctuation, so the classifier stays a hint — precision comes from the
+# margin plus the deterministic RuleParser barrier in MemoryService.
+margin = 0.20
 # Real usage log (TSV: intent\ttext) that voice-test writes when an intent
 # fires. --intent-train --include-usage merges it when retraining, so the
 # model learns from the cases the user actually sees.

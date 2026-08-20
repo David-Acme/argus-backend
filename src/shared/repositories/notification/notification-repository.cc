@@ -41,6 +41,24 @@ drogon::Task<std::vector<Json::Value>>
 NotificationRepository::findSync(const NotificationSyncFilter& filter) const
 {
   auto client = DbService::client();
+  if (filter.startTime && filter.startId && filter.endTime) {
+    const auto result = co_await client->execSqlCoro(
+        std::string(FIND_SYNC_AFTER) + AppConfig::SYNC_LIMIT, filter.userId,
+        *filter.startTime, *filter.startTime, *filter.startId, *filter.endTime);
+    std::vector<Json::Value> data;
+    for (const auto& row : result)
+      data.push_back(NotificationSchema(row).toJson());
+    co_return data;
+  }
+  if (filter.startTime && filter.startId) {
+    const auto result = co_await client->execSqlCoro(
+        std::string(FIND_SYNC_AFTER_FROM) + AppConfig::SYNC_LIMIT, filter.userId,
+        *filter.startTime, *filter.startTime, *filter.startId);
+    std::vector<Json::Value> data;
+    for (const auto& row : result)
+      data.push_back(NotificationSchema(row).toJson());
+    co_return data;
+  }
   if (filter.startTime && filter.endTime) {
     const auto result =
         co_await client->execSqlCoro(std::string(FIND_SYNC) + AppConfig::SYNC_LIMIT, filter.userId,

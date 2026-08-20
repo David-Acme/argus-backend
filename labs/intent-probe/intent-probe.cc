@@ -9,8 +9,11 @@
 #include <fstream>
 #include <iostream>
 #include <map>
+#include <set>
 #include <shared/services/config-service/config-service.hxx>
 #include <shared/services/intent/intent-service.hxx>
+#include <shared/services/memory/phrase-catalog.hxx>
+#include <shared/services/memory/rule-parser.hxx>
 #include <shared/wrapper/thread-budget/thread-budget.hxx>
 #include <sstream>
 #include <string>
@@ -111,17 +114,206 @@ struct TrainOptions
   int maxn;
 };
 
+constexpr const char* kCuratedName = "/usage-curated.tsv";
+
+// usage.tsv is telemetry: it records what fastText PREDICTED, so it already
+// contains questions, recalls and retractions labelled memory_save. Curation
+// runs the same deterministic barrier the runtime uses (RuleParser) before a
+// line may become a training label.
+// fastText is a hint, not a policy. STT output has no accents and no
+// punctuation, so the classifier will keep mislabelling retractions and
+// recall questions; what must be zero is how many of those survive the
+// deterministic barrier and reach memory formation.
+int barrierTestImpl(const std::string& modelPath, const std::string& casesPath)
+{
+  ConfigService::load("config.toml");
+
+  fasttext::FastText model;
+  try {
+    model.loadModel(modelPath);
+  }
+  catch (const std::exception& e) {
+    std::cout << "[FAIL] load " << modelPath << ": " << e.what() << "\n";
+    return 1;
+  }
+
+  PhraseCatalog catalog;
+  catalog.build();
+  const RuleParser parser(catalog);
+
+  double threshold = ConfigService::getDouble("intent.memory_save_threshold");
+  if (threshold <= 0.0)
+    threshold = 0.6;
+
+  double marginFloor = ConfigService::getDouble("intent.margin");
+  if (marginFloor < 0.0)
+    marginFloor = 0.0;
+
+  const auto cases = readTsv(casesPath);
+  int predicted = 0, stopped = 0, leaked = 0, missed = 0, marginStopped = 0;
+  for (const auto& c : cases) {
+    const auto scores = predictScores(model, c.text);
+    const float save =
+        scores.count(kLabelMemorySave) ? scores.at(kLabelMemorySave) : 0.0F;
+    float best = 0.0F, runnerUp = 0.0F;
+    std::string winner = "none";
+    for (const auto& [label, value] : scores) {
+      if (value > best) {
+        runnerUp = best;
+        best = value;
+        winner = label;
+      }
+      else if (value > runnerUp) {
+        runnerUp = value;
+      }
+    }
+    const bool fires = save >= threshold && winner == kLabelMemorySave &&
+                       (best - runnerUp) >= marginFloor;
+    const RuleParseInput es{.text = c.text, .lang = "es"};
+    const RuleParseInput en{.text = c.text, .lang = "en"};
+    const bool blocked = parser.isQuestion(es) || parser.isCancellation(es) ||
+                         parser.isQuestion(en) || parser.isCancellation(en);
+
+    if (c.label == kLabelMemorySave) {
+      if (!fires) {
+        ++missed;
+        std::cout << "[FAIL] real memory no longer fires (" << save
+                  << ", winner=" << winner << " margin=" << (best - runnerUp)
+                  << "): \"" << c.text << "\"\n";
+      }
+      if (blocked) {
+        ++missed;
+        std::cout << "[FAIL] barrier blocked a real memory: \"" << c.text
+                  << "\"\n";
+      }
+      continue;
+    }
+    if (!fires) {
+      if (save >= threshold) {
+        ++marginStopped;
+        std::cout << "[ok] margin/winner gate stopped memory_save " << save
+                  << " (winner=" << winner << " margin=" << (best - runnerUp)
+                  << "): \"" << c.text << "\"\n";
+      }
+      continue;
+    }
+    ++predicted;
+    if (blocked) {
+      ++stopped;
+      std::cout << "[ok] fastText said memory_save (" << save
+                << ") but the barrier stopped it: \"" << c.text << "\"\n";
+    }
+    else {
+      ++leaked;
+      std::cout << "[FAIL] reaches memory formation (" << save << "): \""
+                << c.text << "\"\n";
+    }
+  }
+
+  std::cout << "\nstopped by winner/margin gate: " << marginStopped << "\n"
+            << "false memory_save predictions: " << predicted << "\n"
+            << "stopped by the barrier:        " << stopped << "\n"
+            << "reached memory formation:      " << leaked << "\n"
+            << "real memories wrongly blocked: " << missed << "\n";
+  return (leaked == 0 && missed == 0 && fails == 0) ? 0 : 1;
+}
+
+int curateUsageImpl(const std::string& dataDir)
+{
+  ConfigService::load("config.toml");
+
+  PhraseCatalog catalog;
+  catalog.build();
+  const RuleParser parser(catalog);
+
+  const auto rows = readTsv(dataDir + "/usage.tsv");
+  std::cout << "usage.tsv rows: " << rows.size() << "\n";
+  if (rows.empty())
+    return fails == 0 ? 0 : 1;
+
+  const auto rejectReason = [&](const Case& c) -> std::string {
+    if (c.label != kLabelCamera && c.label != kLabelMemorySave)
+      return "label not trainable";
+    if (!IntentService::isMatchable(c.text))
+      return "not matchable";
+    for (const char* lang : {"es", "en"}) {
+      const RuleParseInput input{.text = c.text, .lang = lang};
+      if (parser.isQuestion(input))
+        return "question or recall";
+      if (parser.isCancellation(input))
+        return "retraction";
+    }
+    if (c.label == kLabelMemorySave) {
+      const RuleParseInput es{.text = c.text, .lang = "es"};
+      const RuleParseInput en{.text = c.text, .lang = "en"};
+      const bool durable = parser.parse(es) || parser.parseStatement(es) ||
+                           parser.parse(en) || parser.parseStatement(en);
+      if (!durable)
+        return "no durable statement";
+    }
+    return {};
+  };
+
+  std::map<std::string, int> rejected;
+  std::vector<Case> accepted;
+  std::set<std::string> seen;
+  int duplicates = 0;
+  for (const auto& c : rows) {
+    const std::string reason = rejectReason(c);
+    if (!reason.empty()) {
+      ++rejected[reason];
+      std::cout << "  reject [" << reason << "] " << c.text << "\n";
+      continue;
+    }
+    const std::string key = c.label + "\t" + IntentService::normalize(c.text);
+    if (!seen.insert(key).second) {
+      ++duplicates;
+      continue;
+    }
+    accepted.push_back(c);
+  }
+
+  const std::string outPath = dataDir + kCuratedName;
+  std::ofstream out(outPath);
+  if (!out.is_open()) {
+    std::cout << "[FAIL] cannot write " << outPath << "\n";
+    return 1;
+  }
+  for (const auto& c : accepted)
+    out << c.label << "\t" << c.text << "\n";
+  out.close();
+
+  int rejectedTotal = 0;
+  for (const auto& [reason, count] : rejected)
+    rejectedTotal += count;
+
+  std::cout << "\naccepted:   " << accepted.size() << "\n"
+            << "duplicates: " << duplicates << "\n"
+            << "rejected:   " << rejectedTotal << "\n";
+  for (const auto& [reason, count] : rejected)
+    std::cout << "  " << reason << ": " << count << "\n";
+  std::cout << "written: " << outPath << "\n"
+            << "review it by hand before --intent-train --include-usage\n";
+  return fails == 0 ? 0 : 1;
+}
+
 int trainImpl(const TrainOptions& opts)
 {
   ConfigService::load("config.toml");
 
   const std::string trainPath = opts.dataDir + "/train.tsv";
-  const std::string usagePath = opts.dataDir + "/usage.tsv";
+  const std::string usagePath = opts.dataDir + kCuratedName;
   std::string input = trainPath;
 
   if (opts.includeUsage) {
+    if (!std::filesystem::exists(usagePath)) {
+      std::cout << "[FAIL] " << usagePath
+                << " not found. Raw usage.tsv is telemetry, never labels: "
+                   "run --curate-usage and review the result first.\n";
+      return 1;
+    }
     const auto usage = readTsv(usagePath);
-    std::cout << "usage samples: " << usage.size() << "\n";
+    std::cout << "curated usage samples: " << usage.size() << "\n";
     if (!usage.empty()) {
       const std::string merged = opts.dataDir + "/train.merged.tsv";
       std::ofstream out(merged);
@@ -475,11 +667,13 @@ int queryImpl(const std::string& modelPath, const std::string& text)
 void usage()
 {
   std::cout << "argus-intent-probe\n"
+            << "  --curate-usage   (usage.tsv -> usage-curated.tsv)\n"
             << "  --intent-train [--include-usage] [--epoch N] [--lr L]\n"
             << "                  [--loss softmax|ova|hs|ns]\n"
             << "  --intent-quantize <in.bin> <out.ftz>\n"
             << "  --intent-check [--model path]\n"
             << "  --intent-test <cases.tsv> [--model path]\n"
+            << "  --intent-barrier-test [cases.tsv] [--model path]\n"
             << "  --intent-eval [--model path] [valid.tsv]\n"
             << "  --intent-bench [--model path] [rounds]\n"
             << "  --intent-query <text>\n"
@@ -497,7 +691,10 @@ int main(int argc, char** argv)
   int epoch = 25;
   double lr = 0.5;
   bool includeUsage = false;
-  fasttext::loss_name loss = fasttext::loss_name::ova;
+  // softmax, not ova: the shipped model is softmax and IntentService compares
+  // the winning class against `none`. One-vs-all scores do not sum to 1, so
+  // retraining with ova silently changes what the margin gate means.
+  fasttext::loss_name loss = fasttext::loss_name::softmax;
   int dim = 50;
   int bucket = 20000;
   int minn = 3;
@@ -521,8 +718,10 @@ int main(int argc, char** argv)
         loss = fasttext::loss_name::hs;
       else if (name == "ns")
         loss = fasttext::loss_name::ns;
-      else
+      else if (name == "ova")
         loss = fasttext::loss_name::ova;
+      else
+        loss = fasttext::loss_name::softmax;
     }
     else if (arg == "--dim" && i + 1 < argc)
       dim = std::atoi(argv[++i]);
@@ -538,6 +737,8 @@ int main(int argc, char** argv)
       mode = arg;
   }
 
+  if (mode == "--curate-usage")
+    return curateUsageImpl(dataDir);
   if (mode == "--intent-train") {
     const TrainOptions opts = {
         .dataDir = dataDir,
@@ -559,6 +760,10 @@ int main(int argc, char** argv)
     return quantizeImpl(argv[2], argv[3]);
   if (mode == "--intent-check")
     return checkImpl(modelPath, dataDir);
+  if (mode == "--intent-barrier-test")
+    return barrierTestImpl(modelPath, argc >= 3 && argv[2][0] != '-'
+                                          ? argv[2]
+                                          : dataDir + "/negatives.tsv");
   if (mode == "--intent-test" && argc >= 3)
     return checkFileImpl(modelPath, argv[2]);
   if (mode == "--intent-eval") {

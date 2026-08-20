@@ -107,6 +107,12 @@ SttService::~SttService()
   shutdown();
 }
 
+SttService& SttService::instance()
+{
+  static SttService service;
+  return service;
+}
+
 void SttService::init()
 {
   try {

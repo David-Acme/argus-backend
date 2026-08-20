@@ -42,6 +42,14 @@ struct CaptureResult
   int64_t factId = 0;
 };
 
+// deferStore: open the store from drogon's beginning advice instead of
+// init(), because app().run() logs a FATAL from
+// sqlite3_config(SQLITE_CONFIG_MULTITHREAD) if sqlite3 is already up.
+struct MemoryInitOptions
+{
+  bool deferStore = false;
+};
+
 class MemoryService
 {
 public:
@@ -51,7 +59,9 @@ public:
   MemoryService(const MemoryService&) = delete;
   MemoryService& operator=(const MemoryService&) = delete;
 
-  void init();
+  void init(const MemoryInitOptions& options = {});
+  // Opens the graph/vec store and starts the worker. Idempotent.
+  void openStore();
   void shutdown();
   bool isLoaded() const;
 
@@ -65,11 +75,19 @@ public:
   int64_t resolveAddresseeEntity(const std::string& lang);
   std::string profileFor(int64_t userId, const std::string& lang);
 
+  // Drops transient user turns (questions, retractions) and the assistant
+  // answers bound to them, so a session of small talk never becomes an
+  // episode. Public because the memory probe asserts on it directly.
+  std::string durableTranscript(const std::string& transcript,
+                                const std::string& lang) const;
+
   void enqueueSummary(int64_t userId, const std::string& transcript,
                       const std::string& lang);
   void enqueueCompaction(int64_t userId, const std::string& transcript,
                          const std::string& lang);
-  void flushPending();
+  // Waits for the worker queue to drain. timeoutMs 0 = memory.flush_timeout_ms.
+  // Returns false when it gave up with work still pending.
+  bool flushPending(int timeoutMs = 0);
 
   int64_t observeSystemEvent(const std::string& channel,
                              const std::string& summary,
@@ -114,6 +132,7 @@ private:
     std::string lang;
     int64_t userId = 0;
     bool salient = false;
+    bool preferIdle = false;
   };
 
   VecDb& vecDb_;
@@ -128,6 +147,9 @@ private:
   TieredExtractor extractor_{extractModel_};
   MemoryFormation formation_{*graph_, resolver_, ruleParser_};
   GraphRecall graphRecall_{*graph_, resolver_, embedding_, vecDb_};
+
+  std::mutex storeMutex_;
+  bool storeOpen_ = false;
 
   std::thread worker_;
   std::mutex queueMutex_;

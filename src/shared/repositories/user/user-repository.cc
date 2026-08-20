@@ -26,13 +26,14 @@ UserRepository::create(const UserCreateInput& input) const
   auto client = DbService::client();
   const auto result =
       co_await client->execSqlCoro(INSERT.data(), input.name, input.lastName,
-                                   userRoleToString(input.role), 1);
+                                   userRoleToString(input.role), input.lang);
 
   UserSchema schema;
   schema.id = result.insertId();
   schema.name = input.name;
   schema.lastName = input.lastName;
   schema.role = input.role;
+  schema.lang = input.lang;
   schema.isActive = true;
   schema.createdAt = std::time(nullptr);
   co_return schema;
@@ -100,13 +101,24 @@ drogon::Task<bool> UserRepository::remove(int64_t id) const
   co_return result.affectedRows() > 0;
 }
 
+drogon::Task<bool> UserRepository::hasOwner() const
+{
+  auto client = DbService::client();
+  const auto result = co_await client->execSqlCoro(COUNT_OWNERS.data());
+  if (result.empty())
+    co_return false;
+  const auto& row = result.front();
+  co_return row[0].as<int64_t>() > 0;
+}
+
 drogon::Task<std::vector<Json::Value>>
 UserRepository::find(const SyncFilter& filter) const
 {
   auto client = DbService::client();
 
   const auto [query, args] =
-      sync_query::buildSyncQuery(filter, FIND, FIND_FROM, FIND_ALL);
+      sync_query::buildSyncQuery(filter, FIND, FIND_FROM, FIND_ALL, FIND_AFTER,
+                                  FIND_AFTER_FROM);
   const auto& argsRef = args;
   const auto rows = co_await client->execSqlCoro(query, argsRef);
 
@@ -122,7 +134,9 @@ UserRepository::findDeleted(const SyncFilter& filter) const
   auto client = DbService::client();
 
   const auto [query, args] =
-      sync_query::buildSyncQuery(filter, FIND_DELETED, FIND_DELETED_FROM, FIND_DELETED_ALL);
+      sync_query::buildSyncQuery(filter, FIND_DELETED, FIND_DELETED_FROM,
+                                 FIND_DELETED_ALL, FIND_DELETED_AFTER,
+                                 FIND_DELETED_AFTER_FROM);
   const auto& argsRef = args;
   const auto rows = co_await client->execSqlCoro(query, argsRef);
 

@@ -15,32 +15,48 @@ inline constexpr std::string_view FIND_BY_ID =
 inline constexpr std::string_view FIND_ALL =
     "SELECT * FROM user "
     "WHERE deleted_at IS NULL "
-    "ORDER BY created_at ASC LIMIT 200";
+    "ORDER BY created_at ASC, id ASC LIMIT 200";
 
 inline constexpr std::string_view FIND =
     "SELECT * FROM user "
     "WHERE deleted_at IS NULL AND created_at >= ? AND created_at <= ? "
-    "ORDER BY created_at ASC LIMIT 200";
+    "ORDER BY created_at ASC, id ASC LIMIT 200";
 
 inline constexpr std::string_view FIND_FROM =
     "SELECT * FROM user "
     "WHERE deleted_at IS NULL AND created_at >= ? "
-    "ORDER BY created_at ASC LIMIT 200";
+    "ORDER BY created_at ASC, id ASC LIMIT 200";
+inline constexpr std::string_view FIND_AFTER =
+    "SELECT * FROM user WHERE deleted_at IS NULL AND "
+    "(created_at > ? OR (created_at = ? AND id > ?)) AND created_at <= ? "
+    "ORDER BY created_at ASC, id ASC LIMIT 200";
+inline constexpr std::string_view FIND_AFTER_FROM =
+    "SELECT * FROM user WHERE deleted_at IS NULL AND "
+    "(created_at > ? OR (created_at = ? AND id > ?)) "
+    "ORDER BY created_at ASC, id ASC LIMIT 200";
 
 inline constexpr std::string_view FIND_DELETED =
     "SELECT * FROM user "
     "WHERE deleted_at IS NOT NULL AND deleted_at >= ? AND deleted_at <= ? "
-    "ORDER BY deleted_at ASC LIMIT 200";
+    "ORDER BY deleted_at ASC, id ASC LIMIT 200";
 
 inline constexpr std::string_view FIND_DELETED_FROM =
     "SELECT * FROM user "
     "WHERE deleted_at IS NOT NULL AND deleted_at >= ? "
-    "ORDER BY deleted_at ASC LIMIT 200";
+    "ORDER BY deleted_at ASC, id ASC LIMIT 200";
+inline constexpr std::string_view FIND_DELETED_AFTER =
+    "SELECT * FROM user WHERE deleted_at IS NOT NULL AND "
+    "(deleted_at > ? OR (deleted_at = ? AND id > ?)) AND deleted_at <= ? "
+    "ORDER BY deleted_at ASC, id ASC LIMIT 200";
+inline constexpr std::string_view FIND_DELETED_AFTER_FROM =
+    "SELECT * FROM user WHERE deleted_at IS NOT NULL AND "
+    "(deleted_at > ? OR (deleted_at = ? AND id > ?)) "
+    "ORDER BY deleted_at ASC, id ASC LIMIT 200";
 
 inline constexpr std::string_view FIND_DELETED_ALL =
     "SELECT * FROM user "
     "WHERE deleted_at IS NOT NULL "
-    "ORDER BY deleted_at ASC LIMIT 200";
+    "ORDER BY deleted_at ASC, id ASC LIMIT 200";
 
 inline constexpr std::string_view FIND_LAST =
     "SELECT * FROM user "
@@ -52,9 +68,13 @@ inline constexpr std::string_view FIND_LAST_DELETED =
     "WHERE deleted_at IS NOT NULL "
     "ORDER BY deleted_at DESC LIMIT 1";
 
+inline constexpr std::string_view COUNT_OWNERS =
+    "SELECT COUNT(*) FROM user "
+    "WHERE role = 'owner' AND deleted_at IS NULL";
+
 inline constexpr std::string_view INSERT =
-    "INSERT INTO user (name, last_name, role, is_active) "
-    "VALUES (?, ?, ?, ?)";
+    "INSERT INTO user (name, last_name, role, lang, is_active) "
+    "VALUES (?, ?, ?, ?, 1)";
 
 inline constexpr std::string_view UPDATE_PREFIX = "UPDATE user SET ";
 inline constexpr std::string_view UPDATE_COL_NAME = "name = ?";
@@ -77,6 +97,7 @@ struct UserCreateInput
   std::string name;
   std::string lastName;
   UserRole role{UserRole::Guest};
+  std::string lang{"es"};
 };
 
 struct UserUpdateInput

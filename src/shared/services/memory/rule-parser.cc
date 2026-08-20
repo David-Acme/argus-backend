@@ -89,6 +89,34 @@ struct HitFilter
   bool requireNearStart = false;
 };
 
+// "…el pescado, está bien" is a tag; "…el router está bien" is the fact. Only
+// a confirmation detached by punctuation may be cut, and the punctuation goes
+// with it. npos = the phrase belongs to the sentence, leave it alone.
+size_t tagCut(const std::string& lowered, uint32_t begin)
+{
+  size_t i = begin;
+  while (i > 0 && lowered[i - 1] == ' ')
+    --i;
+  if (i == 0)
+    return 0;
+  const char prev = lowered[i - 1];
+  if (prev == ',' || prev == ';' || prev == '.' || prev == ':')
+    return i - 1;
+  return std::string::npos;
+}
+
+bool insideTrigger(const std::vector<PhraseHit>& hits, const PhraseHit& word)
+{
+  for (const auto& hit : hits) {
+    if (hit.kind != PhraseKind::Trigger)
+      continue;
+    if (hit.begin <= word.begin && word.end <= hit.end &&
+        (hit.end - hit.begin) > (word.end - word.begin))
+      return true;
+  }
+  return false;
+}
+
 const PhraseHit* bestHit(const std::vector<PhraseHit>& hits,
                          const std::string& lowered, const HitFilter& filter)
 {
@@ -124,10 +152,17 @@ std::string RuleParser::stripTrailingConfirmation(std::string text,
     catalog_.match(lowered, lang, hits);
     size_t cut = std::string::npos;
     for (const auto& hit : hits) {
-      if (hit.kind != PhraseKind::Confirmation || hit.end != lowered.size())
+      // A phrase carries a single kind, so "vale" is a Filler while "bien" is
+      // a Confirmation. Detached at the tail, both are noise.
+      const bool tail = hit.kind == PhraseKind::Confirmation ||
+                        hit.kind == PhraseKind::Filler;
+      if (!tail || hit.end != lowered.size())
         continue;
-      if (cut == std::string::npos || hit.begin < cut)
-        cut = hit.begin;
+      const size_t at = tagCut(lowered, hit.begin);
+      if (at == std::string::npos)
+        continue;
+      if (cut == std::string::npos || at < cut)
+        cut = at;
     }
     if (cut != std::string::npos) {
       text.erase(cut);
@@ -170,6 +205,9 @@ bool RuleParser::isQuestion(const RuleParseInput& input) const
       continue;
     if (!openerOk(lowered, hit.begin) || !closerOk(lowered, hit.end))
       continue;
+    // The "que" of "recuerda que" is a relative pronoun, not a question.
+    if (insideTrigger(hits, hit))
+      continue;
     if (wordsBefore(lowered, hit.begin) < 3)
       return true;
     const std::string_view word(lowered.data() + hit.begin,
@@ -178,6 +216,45 @@ bool RuleParser::isQuestion(const RuleParseInput& input) const
       return true;
   }
   return false;
+}
+
+bool RuleParser::isCancellation(const RuleParseInput& input) const
+{
+  const std::string lowered = toLower(input.text);
+  thread_local std::vector<PhraseHit> hits;
+  catalog_.match(lowered, input.lang, hits);
+  const PhraseHit* best =
+      bestHit(hits, lowered,
+              {.kind = PhraseKind::Cancellation,
+               .requireCloser = true,
+               .requireNearStart = false});
+  return best != nullptr;
+}
+
+bool RuleParser::isVacuous(const RuleParseInput& input) const
+{
+  const std::string text = stripTrailingConfirmation(
+      stripFillers(input), input.lang);
+  if (text.find_first_not_of(" \t\r\n,.;:!?") == std::string::npos)
+    return true;
+  if (isFiller(text, input.lang))
+    return true;
+
+  size_t words = 0;
+  size_t chars = 0;
+  bool inWord = false;
+  for (const unsigned char c : text) {
+    if ((c & 0xC0) == 0x80)
+      continue;
+    ++chars;
+    if (c == ' ')
+      inWord = false;
+    else if (!inWord) {
+      inWord = true;
+      ++words;
+    }
+  }
+  return words < 2 || chars < 6;
 }
 
 std::string RuleParser::stripFillers(const RuleParseInput& input) const

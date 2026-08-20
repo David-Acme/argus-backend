@@ -16,8 +16,10 @@ void SyncSocket::handleNewMessage(const drogon::WebSocketConnectionPtr& conn,
                                   const drogon::WebSocketMessageType& type)
 {
   if (type == drogon::WebSocketMessageType::Binary) {
-    LOG_WARN << "SyncSocket: received " << message.size()
-             << " bytes of binary data (audio upload not wired yet)";
+    // Per-frame logging is removed: 25+ lines/s of real-time mic audio
+    // floods the log. The voice service logs the meaningful events (VAD
+    // turns, STT results, spoken sentences) instead.
+    service_.handleBinary(conn, message);
     return;
   }
   if (type != drogon::WebSocketMessageType::Text)
@@ -32,6 +34,7 @@ void SyncSocket::handleNewMessage(const drogon::WebSocketConnectionPtr& conn,
   catch (...) {
     return;
   }
+  LOG_INFO << "SyncSocket: text " << message.substr(0, 120);
 
   auto* self = this;
   drogon::async_run([self, conn, json = std::move(json)]() mutable

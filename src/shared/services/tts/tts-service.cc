@@ -21,6 +21,12 @@ TtsService::~TtsService()
   shutdown();
 }
 
+TtsService& TtsService::instance()
+{
+  static TtsService service;
+  return service;
+}
+
 void TtsService::init()
 {
   try {

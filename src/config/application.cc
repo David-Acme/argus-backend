@@ -23,6 +23,7 @@
 #include <shared/services/sqlite/db-service.hxx>
 #include <shared/services/stream/go2rtc-manager.hxx>
 #include <shared/services/stream/media-relay.hxx>
+#include <shared/utils/json-util/json-util.hxx>
 #include <shared/services/stream/stream-hub.hxx>
 #include <shared/services/stt/adapter/stt-service-adapter.hxx>
 #include <shared/services/tts/adapter/tts-service-adapter.hxx>
@@ -91,7 +92,7 @@ void printPairingBanner()
             << "============================================================\n"
             << "  ARGUS — pairing required\n"
             << "\n"
-            << qr_render::asciiQr(payload.toStyledString()) << "\n"
+            << qr_render::asciiQr(json_util::toString(payload)) << "\n"
             << "  Scan the QR code with the Argus app to pair this server.\n"
             << "\n"
             << "  Server:    " << scheme << "://" << host << ":" << port << "\n"
@@ -156,7 +157,7 @@ int Application::run()
     sigaction(SIGSEGV, &crashSa, nullptr);
     sigaction(SIGABRT, &crashSa, nullptr);
 
-    if (!DbService::migrate(1)) {
+    if (!DbService::migrate(2)) {
       LOG_FATAL << "Database migration failed — aborting startup";
       _exit(1);
     }
@@ -175,6 +176,9 @@ int Application::run()
 
   if (!registry_.initialize()) {
     LOG_FATAL << "Service initialization failed";
+    // Tear services down before freeing the llama backend: skipping this
+    // segfaulted in llama_backend_free() with the LLM context still alive.
+    registry_.shutdownAll();
     llama_backend_free();
     return 1;
   }

@@ -18,6 +18,7 @@ find_package(tomlplusplus REQUIRED)
 find_package(OpenSSL REQUIRED)
 find_package(mdns CONFIG REQUIRED)
 find_package(qr-code-generator CONFIG REQUIRED)
+find_library(RNNOISE_LIBRARY NAMES rnnoise)
 
 add_subdirectory(third_party)
 add_subdirectory(labs/audio-probe)
@@ -32,6 +33,7 @@ add_subdirectory(labs/intent-probe)
 add_subdirectory(labs/tool-bench)
 add_subdirectory(labs/extract-probe)
 add_subdirectory(labs/queue-probe)
+add_subdirectory(labs/reaction-probe)
 add_subdirectory(labs/kuzu-probe)
 
 file(GLOB_RECURSE CONFIG_SRC
@@ -107,6 +109,10 @@ target_link_libraries(${PROJECT_NAME}
         qr-code-generator::qrcodegencpp
         ${CONAN_LIBS}
 )
+
+if(RNNOISE_LIBRARY)
+  target_link_libraries(${PROJECT_NAME} PRIVATE ${RNNOISE_LIBRARY})
+endif()
 
 if(ARGUS_BUILD_INSPIREFACE AND TARGET InspireFace)
   target_link_libraries(${PROJECT_NAME} PRIVATE InspireFace)

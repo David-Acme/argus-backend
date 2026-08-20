@@ -34,19 +34,35 @@ double AudioResampler::tap(double t) const
   return std::sin(2.0 * M_PI * cutoff_ * t) / (M_PI * t);
 }
 
-int16_t AudioResampler::sampleAt(double pos) const
+int16_t AudioResampler::sampleAt(double pos)
 {
   const size_t i0 = static_cast<size_t>(pos);
   const double fraction = pos - static_cast<double>(i0);
+  // Group near-identical fractions (e.g. repeated 1/3 with ulp drift) into
+  // one table; the table is the product of tap * window for all j.
+  const int64_t key = static_cast<int64_t>(std::llround(fraction * 1e9));
+  const std::vector<double>* weights = nullptr;
+  auto it = tapCache_.find(key);
+  if (it != tapCache_.end()) {
+    weights = &it->second;
+  } else {
+    std::vector<double> computed(2 * kSincHalf + 1);
+    for (int j = -kSincHalf; j <= kSincHalf; ++j) {
+      computed[static_cast<size_t>(j + kSincHalf)] =
+          tap(static_cast<double>(j) - fraction) *
+          window_[static_cast<size_t>(j + kSincHalf)];
+    }
+    auto inserted = tapCache_.emplace(key, std::move(computed));
+    weights = &inserted.first->second;
+  }
+
   double acc = 0.0;
   double wsum = 0.0;
   for (int j = -kSincHalf; j <= kSincHalf; ++j) {
     const long idx = static_cast<long>(i0) + j;
     if (idx < 0 || idx >= static_cast<long>(history_.size()))
       continue;
-    const double weight =
-        tap(static_cast<double>(j) - fraction) *
-        window_[static_cast<size_t>(j + kSincHalf)];
+    const double weight = (*weights)[static_cast<size_t>(j + kSincHalf)];
     acc += static_cast<double>(history_[static_cast<size_t>(idx)]) * weight;
     wsum += weight;
   }

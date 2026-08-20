@@ -233,8 +233,15 @@ bool openMicrophone(int deviceIndex, AudioSampleCallback onFrames)
               << "\n";
     return false;
   }
-  std::cout << "[mic " << deviceIndex << " @ " << static_cast<int>(rate)
-            << " Hz" << (resampling ? " (resampled to 16 kHz)" : "") << "]\n";
+  // The stream is reopened every turn; announce it only when it changes.
+  static int announcedDevice = -1;
+  static int announcedRate = -1;
+  if (announcedDevice != deviceIndex || announcedRate != static_cast<int>(rate)) {
+    announcedDevice = deviceIndex;
+    announcedRate = static_cast<int>(rate);
+    std::cout << "[mic " << deviceIndex << " @ " << static_cast<int>(rate)
+              << " Hz" << (resampling ? " (resampled to 16 kHz)" : "") << "]\n";
+  }
   err = Pa_StartStream(gCaptureStream);
   if (err != paNoError) {
     std::cerr << "Failed to start capture: " << Pa_GetErrorText(err) << "\n";

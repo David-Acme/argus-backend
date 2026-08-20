@@ -31,6 +31,7 @@ set(VOICE_SERVICE_SRC
     ${SRC_ROOT}/shared/services/memory/sqlite-graph.cc
     ${SRC_ROOT}/shared/services/memory/entity-resolver.cc
     ${SRC_ROOT}/shared/services/memory/phrase-catalog.cc
+    ${SRC_ROOT}/shared/services/reaction/reaction-engine.cc
     ${SRC_ROOT}/shared/services/memory/memory-formation.cc
     ${SRC_ROOT}/shared/services/memory/graph-recall.cc
     ${SRC_ROOT}/shared/repositories/memory-graph/memory-graph-repository.cc

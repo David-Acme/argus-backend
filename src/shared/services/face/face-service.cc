@@ -401,3 +401,31 @@ FaceService::identifyAsync(std::string imageBytes)
         return identify(std::move(image));
       });
 }
+
+std::optional<FaceService::FaceResult>
+FaceService::extractImage(std::string imageBytes)
+{
+  concurrency_.acquire();
+  struct SlotGuard
+  {
+    ~SlotGuard() { owner->concurrency_.release(); }
+    FaceService* owner;
+  } slotGuard{this};
+
+  int width = 0;
+  int height = 0;
+  auto rgb = decodeToRgb(imageBytes, width, height);
+  if (rgb.empty())
+    return std::nullopt;
+
+  return extract(rgb.data(), width, height);
+}
+
+drogon::Task<std::optional<FaceService::FaceResult>>
+FaceService::extractImageAsync(std::string imageBytes)
+{
+  co_return co_await BlockingTask<std::optional<FaceService::FaceResult>>(
+      [this, image = std::move(imageBytes)]() mutable {
+        return extractImage(std::move(image));
+      });
+}

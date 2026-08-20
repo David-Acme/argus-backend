@@ -14,6 +14,7 @@ struct UserSchema
   std::string name;
   std::string lastName;
   UserRole role{UserRole::Guest};
+  std::string lang{"es"};
   bool isActive{true};
   int64_t createdAt{0};
   std::optional<int64_t> updatedAt;

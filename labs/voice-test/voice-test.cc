@@ -17,12 +17,13 @@
 #include <opencv2/core.hpp>
 #include <opencv2/imgcodecs.hpp>
 #include <poll.h>
+#include <trantor/utils/Logger.h>
 #include <shared/services/config-service/config-service.hxx>
 #include <shared/services/conversation/conversation-service.hxx>
 #include <shared/services/intent/intent-service.hxx>
 #include <shared/services/llm/llm-service.hxx>
 #include <shared/services/memory/memory-service.hxx>
-#include <shared/services/memory/tool-parser.hxx>
+#include <shared/services/reaction/reaction-engine.hxx>
 #include <shared/services/sqlite/db-service.hxx>
 #include <shared/services/sqlite/vec-db.hxx>
 #include <shared/services/stream/camera-audio-source.hxx>
@@ -58,6 +59,7 @@ TtsService gTts;
 VisionService gVision;
 MemoryService gMemory{gVecDb, gLlm};
 ConversationService gConv(gMemory, gLlm);
+ReactionEngine gReaction;
 constexpr size_t kMinSentenceChars = 24;
 constexpr size_t kFirstSentenceMinChars = 0;
 constexpr int kPlaybackLatencyMs = 700;
@@ -79,6 +81,8 @@ std::string cameraPreamble(const std::string& scene, const std::string& text,
                           : "La cámara muestra: " + scene + ". " + text;
 }
 
+void logIntentUsage(const std::string& label, const std::string& text);
+
 CaptureOutcome captureExplicitMemory(const std::string& userText,
                                      const std::string& langCode,
                                      int64_t userId,
@@ -93,18 +97,62 @@ CaptureOutcome captureExplicitMemory(const std::string& userText,
     return explicitCapture.outcome;
   }
   if (explicitCapture.outcome == CaptureOutcome::Deferred) {
-    std::cout << "[memory] queued for background extraction\n";
+    std::cout << "[memory] candidate queued (formation decides)\n";
     return explicitCapture.outcome;
   }
   if (IntentService::fired(intents, ToolIntent::MemorySave)) {
-    gMemory.captureImplicit({
+    const auto implicitCapture = gMemory.captureImplicit({
         .userId = userId,
         .lang = langCode,
         .text = userText,
     });
-    std::cout << "[memory] queued by intent\n";
+    if (implicitCapture.outcome != CaptureOutcome::Rejected) {
+      logIntentUsage("memory_save", userText);
+      std::cout << "[memory] candidate queued by intent (formation decides)\n";
+      return implicitCapture.outcome;
+    }
   }
   return CaptureOutcome::Rejected;
+}
+
+struct TurnReactionInput
+{
+  std::string userText;
+  std::string langCode;
+  CaptureOutcome captured;
+  std::string recallBlock;
+  bool recallConsulted;
+  bool cameraIntent;
+};
+
+// The lab has every signal the engine can use, so it doubles as the reference
+// for what the WebSocket path will report once MemoryService reaches it.
+std::string reactionNote(const TurnReactionInput& input)
+{
+  if (!gReaction.isLoaded())
+    return {};
+  int hits = -1;
+  if (input.recallConsulted) {
+    hits = input.recallBlock.empty()
+               ? 0
+               : static_cast<int>(std::count(input.recallBlock.begin(),
+                                             input.recallBlock.end(), '\n')) +
+                     1;
+  }
+  const Reaction reaction =
+      gReaction.react({.text = input.userText,
+                       .lang = input.langCode,
+                       .captureStored = input.captured == CaptureOutcome::Stored,
+                       .captureQueued =
+                           input.captured == CaptureOutcome::Deferred,
+                       .recallHits = hits,
+                       .cameraIntent = input.cameraIntent,
+                       .sttFailed = false,
+                       .systemAlert = false});
+  std::cout << "[reaction] " << reactionKindToString(reaction.kind) << " ("
+            << reaction.because << ", intensity " << reaction.intensity
+            << ")\n";
+  return ReactionEngine::toneNote(reaction, input.langCode);
 }
 
 bool mentionsCamera(const std::string& text)
@@ -171,8 +219,6 @@ std::vector<IntentHit> matchIntents(const std::string& text)
   const auto intents = gIntent.match(text);
   if (IntentService::fired(intents, ToolIntent::Camera))
     logIntentUsage("camera", text);
-  else if (IntentService::fired(intents, ToolIntent::MemorySave))
-    logIntentUsage("memory_save", text);
   return intents;
 }
 
@@ -258,8 +304,11 @@ void summarizeSession(const ConversationState& state, int64_t userId,
     transcript += "\n";
   }
   gMemory.enqueueSummary(userId, transcript, langCode);
-  gMemory.flushPending();
-  std::cout << "[memory] session summary saved\n";
+  const int budget = ConfigService::getInt("memory.exit_flush_ms");
+  if (gMemory.flushPending(budget > 0 ? budget : 4000))
+    std::cout << "[memory] session closed\n";
+  else
+    std::cout << "[memory] session closed (summary dropped, facts kept)\n";
 }
 
 // High-quality system prompt. Injected as the first message so it overrides
@@ -291,7 +340,13 @@ std::string systemPromptFor(const std::string& langCode, bool withMemory,
       "fact plainly, the way a person answers a question in passing.\n"
       "- Your reply is spoken aloud: natural sentences, no lists, no "
       "symbols or abbreviations that a speech-to-text model would garble.\n"
-      "- If you do not know something, say so honestly; do not invent.\n";
+      "- If you do not know something, say so honestly; do not invent.\n"
+      "- Questions, sums, dates, times, definitions, jokes and lookups are "
+      "ephemeral conversation: answer them and never treat them as memory.\n"
+      "- Memory is managed outside you. Never emit tool calls, JSON, special "
+      "tags or save blocks; just talk.\n"
+      "- The creator and master of this system is David Acme; he is also the "
+      "user who usually talks to you, so call him David when it is natural.\n";
   if (withIntent) {
     prompt += "- When the camera is involved, refer concretely to what you see "
               "or know instead of making vague statements.\n";
@@ -628,6 +683,7 @@ int runTextChat(int64_t memoryUserId, const std::string& langCode,
     gMemory.init();
   if (enableIntent)
     gIntent.init();
+  gReaction.init();
   if (!gLlm.isLoaded()) {
     std::cerr << "LLM init failed.\n";
     return 1;
@@ -668,23 +724,30 @@ int runTextChat(int64_t memoryUserId, const std::string& langCode,
 
     std::string userMsg = reply;
     if (captured != CaptureOutcome::Rejected && memoryUserId >= 0)
-      userMsg += captureAckNote(langCode);
+      userMsg += captureAckNote(captured, langCode);
     bool hasMemories = false;
     std::vector<int64_t> pendingHits;
+    std::string recalled;
     if (memoryUserId >= 0) {
-      const std::string block = gConv.recallBlock(state, line, memoryUserId);
-      if (!block.empty()) {
-        userMsg = userMsg + "\n\n" + block;
+      recalled = gConv.recallBlock(state, line, memoryUserId);
+      if (!recalled.empty()) {
+        userMsg = userMsg + "\n\n" + recalled;
         hasMemories = true;
       }
     }
 
+    userMsg += reactionNote({.userText = line,
+                             .langCode = langCode,
+                             .captured = captured,
+                             .recallBlock = recalled,
+                             .recallConsulted = memoryUserId >= 0,
+                             .cameraIntent = enableIntent &&
+                                             IntentService::fired(
+                                                 intents, ToolIntent::Camera)});
+
     state.history.push_back({"user", userMsg});
     gConv.trimHistory(state, memoryUserId);
 
-    ToolParser toolParser(ConfigService::getString("memory.save_trigger"),
-                          ConfigService::getString("memory.tool_end_trigger"));
-    std::vector<ToolCall> toolCalls;
     ChatRequest req;
     req.messages = state.history;
     req.resetContext = false;
@@ -695,18 +758,9 @@ int runTextChat(int64_t memoryUserId, const std::string& langCode,
     gLlm.chatStream(req, [&](const std::string& token, bool) {
       if (gStop.load())
         return;
-      const std::string cleaned = toolParser.feed(token, toolCalls);
-      std::cout << cleaned << std::flush;
-      full += cleaned;
+      std::cout << token << std::flush;
+      full += token;
     });
-    toolParser.flush(toolCalls);
-    for (const auto& call : toolCalls) {
-      const auto stored = gMemory.captureToolCall(memoryUserId, langCode, call);
-      if (stored.outcome == CaptureOutcome::Stored)
-        std::cout << "\n[memory] saved (id=" << stored.factId << ")\n";
-      else
-        std::cout << "\n[memory] queued for background extraction\n";
-    }
     std::cout << "\n";
     gMemory.bumpHitCount(pendingHits);
     state.history.push_back({"assistant", full});
@@ -914,7 +968,7 @@ void runCameraConversation(const TapoTalkConfig& talkCfg,
 
     std::string userMsg = reply;
     if (captured != CaptureOutcome::Rejected && memoryUserId >= 0)
-      userMsg += captureAckNote(langCode);
+      userMsg += captureAckNote(captured, langCode);
     bool hasMemories = false;
     std::vector<int64_t> pendingHits;
     if (memoryUserId >= 0) {
@@ -934,30 +988,14 @@ void runCameraConversation(const TapoTalkConfig& talkCfg,
     req.resetContext = false;
     req.temperature = temperatureForTurn(hasMemories);
 
-    const std::string toolStart =
-        ConfigService::getString("memory.save_trigger");
-    const std::string toolEnd =
-        ConfigService::getString("memory.tool_end_trigger");
-    ToolParser toolParser(toolStart, toolEnd);
-
     std::string full;
-    std::vector<ToolCall> toolCalls;
     std::cout << "[Argus] ";
     gLlm.chatStream(req, [&](const std::string& token, bool) {
       if (gStop.load())
         return;
-      const std::string cleaned = toolParser.feed(token, toolCalls);
-      std::cout << cleaned << std::flush;
-      full += cleaned;
+      std::cout << token << std::flush;
+      full += token;
     });
-    toolParser.flush(toolCalls);
-    for (const auto& call : toolCalls) {
-      const auto stored = gMemory.captureToolCall(memoryUserId, langCode, call);
-      if (stored.outcome == CaptureOutcome::Stored)
-        std::cout << "\n[memory] saved (id=" << stored.factId << ")\n";
-      else
-        std::cout << "\n[memory] queued for background extraction\n";
-    }
     std::cout << "\n";
     gMemory.bumpHitCount(pendingHits);
     state.history.push_back({"assistant", full});
@@ -1067,6 +1105,16 @@ int main(int argc, char** argv)
 
   std::signal(SIGINT, onSignal);
   std::signal(SIGTERM, onSignal);
+
+  bool verbose = false;
+  for (int i = 1; i < argc; ++i) {
+    if (std::string(argv[i]) == "--verbose")
+      verbose = true;
+  }
+  // The console is the UI here: framework INFO lines land in the middle of a
+  // turn and bury the prompt. Warnings and errors still print.
+  if (!verbose)
+    trantor::Logger::setLogLevel(trantor::Logger::kWarn);
 
   ConfigService::load("config.toml");
 
@@ -1217,6 +1265,7 @@ int main(int argc, char** argv)
     gMemory.init();
   if (enableIntent)
     gIntent.init();
+  gReaction.init();
 
   const std::string greeting = langCode == "es"
                                    ? "Hola, soy Argus, tu asistente de casa. "
@@ -1294,17 +1343,26 @@ int main(int argc, char** argv)
 
       std::string userMsg = reply;
       if (captured != CaptureOutcome::Rejected && memoryUserId >= 0)
-        userMsg += captureAckNote(langCode);
+        userMsg += captureAckNote(captured, langCode);
       bool hasMemories = false;
       std::vector<int64_t> pendingHits;
+      std::string recalled;
       if (memoryUserId >= 0) {
-        const std::string block =
-            gConv.recallBlock(state, userText, memoryUserId);
-        if (!block.empty()) {
-          userMsg = userMsg + "\n\n" + block;
+        recalled = gConv.recallBlock(state, userText, memoryUserId);
+        if (!recalled.empty()) {
+          userMsg = userMsg + "\n\n" + recalled;
           hasMemories = true;
         }
       }
+
+      userMsg += reactionNote(
+          {.userText = userText,
+           .langCode = langCode,
+           .captured = captured,
+           .recallBlock = recalled,
+           .recallConsulted = memoryUserId >= 0,
+           .cameraIntent =
+               enableIntent && IntentService::fired(intents, ToolIntent::Camera)});
 
       state.history.push_back({"user", userMsg});
       gConv.trimHistory(state, memoryUserId);
@@ -1350,11 +1408,6 @@ int main(int argc, char** argv)
       req.messages = state.history;
       req.resetContext = false;
       req.temperature = temperatureForTurn(hasMemories);
-
-      ToolParser toolParser(ConfigService::getString("memory.save_trigger"),
-                            ConfigService::getString(
-                                "memory.tool_end_trigger"));
-      std::vector<ToolCall> toolCalls;
 
       auto t0 = std::chrono::steady_clock::now();
       bool firstToken = true;
@@ -1441,10 +1494,9 @@ int main(int argc, char** argv)
           std::cout << "\n[Argus (first token " << ms << " ms)] ";
           firstToken = false;
         }
-        const std::string cleaned = toolParser.feed(token, toolCalls);
-        std::cout << cleaned << std::flush;
-        full += cleaned;
-        pending += cleaned;
+        std::cout << token << std::flush;
+        full += token;
+        pending += token;
 
         if (!prefixStripped && pending.size() >= 8) {
           pending = stripPrefix(pending);
@@ -1490,15 +1542,6 @@ int main(int argc, char** argv)
         continue;
       }
 
-      toolParser.flush(toolCalls);
-      for (const auto& call : toolCalls) {
-        const auto stored =
-            gMemory.captureToolCall(memoryUserId, langCode, call);
-        if (stored.outcome == CaptureOutcome::Stored)
-          std::cout << "\n[memory] saved (id=" << stored.factId << ")\n";
-        else
-          std::cout << "\n[memory] queued for background extraction\n";
-      }
       gMemory.bumpHitCount(pendingHits);
 
       full = stripPrefix(full);

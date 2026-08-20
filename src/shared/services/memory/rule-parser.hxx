@@ -31,6 +31,14 @@ public:
 
   bool isQuestion(const RuleParseInput& input) const;
 
+  // "no, olvídalo" / "never mind": the turn retracts itself, so nothing in
+  // it may reach memory formation.
+  bool isCancellation(const RuleParseInput& input) const;
+
+  // Carries no fact: empty, whitespace, a bare tag ("ok", "si") or a trigger
+  // with nothing after it ("recuerda que").
+  bool isVacuous(const RuleParseInput& input) const;
+
   std::string stripFillers(const RuleParseInput& input) const;
 
   bool isFiller(const std::string& phrase, const std::string& lang) const;

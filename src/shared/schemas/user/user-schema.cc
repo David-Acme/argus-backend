@@ -6,6 +6,8 @@ UserSchema::UserSchema(const drogon::orm::Row& row)
   name = row["name"].as<std::string>();
   lastName = row["last_name"].as<std::string>();
   role = userRoleFromString(row["role"].as<std::string>());
+  if (!row["lang"].isNull())
+    lang = row["lang"].as<std::string>();
   isActive = row["is_active"].as<int>() != 0;
   createdAt = static_cast<int64_t>(row["created_at"].as<long long>());
   if (!row["updated_at"].isNull())
@@ -21,6 +23,7 @@ Json::Value UserSchema::toJson() const
   json["name"] = name;
   json["lastName"] = lastName;
   json["role"] = userRoleToString(role);
+  json["lang"] = lang;
   json["isActive"] = isActive;
   json["createdAt"] = Json::Int64(createdAt);
   json["updatedAt"] = updatedAt ? Json::Value(Json::Int64(*updatedAt)) : Json::Value();
