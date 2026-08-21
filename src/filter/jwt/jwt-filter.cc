@@ -55,9 +55,16 @@ JwtFilter::doFilter(const drogon::HttpRequestPtr& req)
       LOG_WARN << "Refresh token expired for user " << userId;
       co_return AppConfig::get401Response("Token expired");
     }
+    // The session row must exist for every transport: that is what makes a
+    // logout close the sockets too. The device hash is only enforced on REST —
+    // a WebSocket upgrade can carry a different user agent than the HTTP
+    // client, and the hash is built from the agent and the address.
+    const bool isUpgrade = req->getHeader("upgrade") == "websocket";
     if (rt->deviceHash != devCtx.deviceHash) {
-      LOG_WARN << "Device hash mismatch for user " << userId;
-      co_return AppConfig::get401Response();
+      LOG_WARN << "Device hash mismatch for user " << userId
+               << (isUpgrade ? " (websocket, allowed)" : "");
+      if (!isUpgrade)
+        co_return AppConfig::get401Response();
     }
   }
 

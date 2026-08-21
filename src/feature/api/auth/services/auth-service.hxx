@@ -55,8 +55,8 @@ public:
   pollDeviceLogin(const std::string& challengeId) const;
 
   drogon::Task<ResponseRefreshTokenDto>
-  refreshToken(const RefreshTokenDto& body,
-               const std::string& deviceHash) const;
+  refreshToken(const RefreshTokenDto& body, const std::string& deviceHash,
+               const std::string& userAgent) const;
 
   drogon::Task<void> logout(int64_t userId) const;
 

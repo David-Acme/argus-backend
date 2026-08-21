@@ -15,7 +15,7 @@ public:
       const drogon::WebSocketConnectionPtr& conn) override;
 
   WS_PATH_LIST_BEGIN
-  WS_PATH_ADD("/sync", "JwtFilter");
+  WS_PATH_ADD("/sync", "DeviceFilter", "JwtFilter");
   WS_PATH_LIST_END
 
 private:

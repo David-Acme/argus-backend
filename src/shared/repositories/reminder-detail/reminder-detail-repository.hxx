@@ -28,6 +28,8 @@ public:
   find(const SyncFilter& filter) const override;
   drogon::Task<std::vector<Json::Value>>
   findDeleted(const SyncFilter& filter) const override;
-  drogon::Task<std::optional<Json::Value>> findLast() const override;
-  drogon::Task<std::optional<Json::Value>> findLastDeleted() const override;
+  drogon::Task<std::optional<Json::Value>>
+  findLast(const SyncFilter& filter) const override;
+  drogon::Task<std::optional<Json::Value>>
+  findLastDeleted(const SyncFilter& filter) const override;
 };

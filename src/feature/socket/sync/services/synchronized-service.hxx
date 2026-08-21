@@ -13,6 +13,13 @@
 #include <shared/repositories/camera/camera-repository.hxx>
 #include <shared/repositories/notification/notification-repository.hxx>
 #include <shared/repositories/reminder-detail/reminder-detail-repository.hxx>
+#include <shared/repositories/calendar-event-share/calendar-event-share-repository.hxx>
+#include <shared/repositories/calendar-event/calendar-event-repository.hxx>
+#include <shared/repositories/project-member/project-member-repository.hxx>
+#include <shared/repositories/project/project-repository.hxx>
+#include <shared/repositories/project-task/project-task-repository.hxx>
+#include <shared/repositories/event/event-repository.hxx>
+#include <shared/repositories/person/person-repository.hxx>
 #include <shared/repositories/reminder/reminder-repository.hxx>
 #include <shared/repositories/user-audit-log/user-audit-log-repository.hxx>
 #include <shared/repositories/user/user-repository.hxx>
@@ -44,6 +51,13 @@ private:
   ZoneRepository zoneRepository_;
   ReminderRepository reminderRepository_;
   ReminderDetailRepository reminderDetailRepository_;
+  CalendarEventRepository calendarEventRepository_;
+  CalendarEventShareRepository calendarEventShareRepository_;
+  ProjectRepository projectRepository_;
+  ProjectMemberRepository projectMemberRepository_;
+  ProjectTaskRepository projectTaskRepository_;
+  EventRepository eventRepository_;
+  PersonRepository personRepository_;
   NotificationRepository notificationRepository_;
   AuditLogRepository auditLogRepository_;
   UserAuditLogRepository userAuditLogRepository_;

@@ -3,14 +3,16 @@
 #include "person-query.hxx"
 
 #include <drogon/utils/coroutine.h>
+#include <json/value.h>
+#include <shared/contracts/syncable.hxx>
 #include <optional>
 #include <shared/schemas/person/person-schema.hxx>
 
-class PersonRepository
+class PersonRepository : public Syncable
 {
 public:
   PersonRepository() = default;
-  ~PersonRepository() = default;
+  ~PersonRepository() override = default;
 
   drogon::Task<std::optional<PersonSchema>> findById(int64_t id) const;
   drogon::Task<std::vector<PersonSchema>> findByUser(int64_t userId) const;
@@ -19,4 +21,13 @@ public:
                                     const PersonUpdateInput& input) const;
   drogon::Task<bool> linkUser(int64_t id, int64_t userId) const;
   drogon::Task<bool> remove(int64_t id) const;
+
+  drogon::Task<std::vector<Json::Value>>
+  find(const SyncFilter& filter) const override;
+  drogon::Task<std::vector<Json::Value>>
+  findDeleted(const SyncFilter& filter) const override;
+  drogon::Task<std::optional<Json::Value>>
+  findLast(const SyncFilter& filter) const override;
+  drogon::Task<std::optional<Json::Value>>
+  findLastDeleted(const SyncFilter& filter) const override;
 };

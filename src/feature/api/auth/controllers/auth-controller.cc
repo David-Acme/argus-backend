@@ -86,12 +86,12 @@ AuthController::createDeviceLogin(drogon::HttpRequestPtr req)
 }
 
 drogon::Task<drogon::HttpResponsePtr>
-AuthController::approveDeviceLogin(drogon::HttpRequestPtr req)
+AuthController::approveDeviceLogin(drogon::HttpRequestPtr req,
+                                   std::string challengeId)
 {
   const auto& ctx =
       req->getAttributes()->get<JwtContext>(AppConfig::JWT_CTX_KEY);
 
-  const auto challengeId = req->getParameter("challengeId");
   if (challengeId.empty())
     co_return AppConfig::get400Response("Missing challenge id");
 
@@ -103,9 +103,9 @@ AuthController::approveDeviceLogin(drogon::HttpRequestPtr req)
 }
 
 drogon::Task<drogon::HttpResponsePtr>
-AuthController::pollDeviceLogin(drogon::HttpRequestPtr req)
+AuthController::pollDeviceLogin(drogon::HttpRequestPtr,
+                                std::string challengeId)
 {
-  const auto challengeId = req->getParameter("challengeId");
   if (challengeId.empty())
     co_return AppConfig::get400Response("Missing challenge id");
 
@@ -121,7 +121,7 @@ AuthController::refreshToken(drogon::HttpRequestPtr req)
   const auto& dev =
       req->getAttributes()->get<DeviceContext>(AppConfig::DEVICE_CTX_KEY);
 
-  const auto result = co_await service_.refreshToken(body, dev.deviceHash);
+  const auto result = co_await service_.refreshToken(body, dev.deviceHash, dev.userAgent);
 
   co_return ApiResponse::ok(result.toJson());
 }

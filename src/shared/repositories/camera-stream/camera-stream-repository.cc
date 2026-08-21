@@ -161,7 +161,7 @@ CameraStreamRepository::findDeleted(const SyncFilter& filter) const
 }
 
 drogon::Task<std::optional<Json::Value>>
-CameraStreamRepository::findLast() const
+CameraStreamRepository::findLast(const SyncFilter&) const
 {
   auto client = DbService::client();
   const auto result = co_await client->execSqlCoro(FIND_LAST.data());
@@ -171,7 +171,7 @@ CameraStreamRepository::findLast() const
 }
 
 drogon::Task<std::optional<Json::Value>>
-CameraStreamRepository::findLastDeleted() const
+CameraStreamRepository::findLastDeleted(const SyncFilter&) const
 {
   auto client = DbService::client();
   const auto result = co_await client->execSqlCoro(FIND_LAST_DELETED.data());

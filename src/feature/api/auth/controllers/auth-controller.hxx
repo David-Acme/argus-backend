@@ -20,11 +20,10 @@ public:
   ADD_METHOD_TO(AuthController::createDeviceLogin, "/auth/device-login",
                 drogon::Post, "DeviceFilter");
   ADD_METHOD_TO(AuthController::approveDeviceLogin,
-                "/auth/device-login/{challengeId}/approve", drogon::Post,
-                "DeviceFilter", "JwtFilter");
-  ADD_METHOD_TO(AuthController::pollDeviceLogin,
-                "/auth/device-login/{challengeId}", drogon::Get,
-                "DeviceFilter");
+                "/auth/device-login/{1}/approve", drogon::Post, "DeviceFilter",
+                "JwtFilter");
+  ADD_METHOD_TO(AuthController::pollDeviceLogin, "/auth/device-login/{1}",
+                drogon::Get, "DeviceFilter");
   ADD_METHOD_TO(AuthController::refreshToken, "/auth/refresh-token",
                 drogon::Patch, "DeviceFilter", "ValidJsonFilter");
   ADD_METHOD_TO(AuthController::logout, "/auth/logout", drogon::Patch,
@@ -41,9 +40,9 @@ public:
   drogon::Task<drogon::HttpResponsePtr>
   createDeviceLogin(drogon::HttpRequestPtr req);
   drogon::Task<drogon::HttpResponsePtr>
-  approveDeviceLogin(drogon::HttpRequestPtr req);
+  approveDeviceLogin(drogon::HttpRequestPtr req, std::string challengeId);
   drogon::Task<drogon::HttpResponsePtr>
-  pollDeviceLogin(drogon::HttpRequestPtr req);
+  pollDeviceLogin(drogon::HttpRequestPtr req, std::string challengeId);
   drogon::Task<drogon::HttpResponsePtr>
   refreshToken(drogon::HttpRequestPtr req);
   drogon::Task<drogon::HttpResponsePtr> logout(drogon::HttpRequestPtr req);

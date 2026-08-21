@@ -37,6 +37,10 @@ inline constexpr std::string_view INVALIDATE_ALL_USER =
 inline constexpr std::string_view DELETE_EXPIRED =
     "DELETE FROM refresh_token WHERE expires_at < ?";
 
+inline constexpr std::string_view PRUNE_STALE =
+    "DELETE FROM refresh_token WHERE user_id = ? "
+    "AND (is_used = 1 OR is_valid = 0 OR expires_at <= strftime('%s', 'now'))";
+
 } // namespace refresh_token_query
 
 struct RefreshTokenCreateInput

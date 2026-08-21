@@ -35,6 +35,11 @@ inline const std::unordered_map<UserRole, TableAccess> kTableAccess = {
       {TableName::Zone, kFull},
       {TableName::Reminder, kFull},
       {TableName::ReminderDetail, kFull},
+      {TableName::CalendarEvent, kFull},
+      {TableName::CalendarEventShare, kFull},
+      {TableName::Project, kFull},
+      {TableName::ProjectMember, kFull},
+      {TableName::ProjectTask, kFull},
       {TableName::Event, kFull},
       {TableName::Person, kFull},
       {TableName::ContextNote, kFull},
@@ -90,8 +95,10 @@ inline std::vector<TableName> readableTables(UserRole role)
 {
   std::vector<TableName> out;
   if (role == UserRole::Owner) {
+    // The owner reads everything except the tables no client should ever see,
+    // so the sweep runs to the end of the enum rather than to a fixed table.
     for (auto t = static_cast<uint8_t>(TableName::User);
-         t <= static_cast<uint8_t>(TableName::FaceEmbedding); ++t) {
+         t <= static_cast<uint8_t>(kLastTableName); ++t) {
       const auto table = static_cast<TableName>(t);
       if (table != TableName::RefreshToken &&
           table != TableName::FaceEmbedding && table != TableName::PersonEvent)
@@ -135,6 +142,11 @@ inline std::optional<TableName> tableFromPath(std::string_view path)
       {"/zone", TableName::Zone},
       {"/reminder-detail", TableName::ReminderDetail},
       {"/reminder", TableName::Reminder},
+      {"/calendar-event-share", TableName::CalendarEventShare},
+      {"/calendar-event", TableName::CalendarEvent},
+      {"/project-member", TableName::ProjectMember},
+      {"/project-task", TableName::ProjectTask},
+      {"/project", TableName::Project},
       {"/context-note", TableName::ContextNote},
       {"/event", TableName::Event},
       {"/person", TableName::Person},

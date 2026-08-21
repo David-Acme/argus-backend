@@ -407,6 +407,11 @@ enum class TableName : uint8_t
   Event,
   Reminder,
   ReminderDetail,
+  CalendarEvent,
+  CalendarEventShare,
+  Project,
+  ProjectMember,
+  ProjectTask,
   ContextNote,
   Camera,
   CameraStream,
@@ -420,6 +425,12 @@ enum class TableName : uint8_t
   FaceEmbedding,
   Memory
 };
+
+/**
+ * Last value of `TableName`. Role sets that sweep the enum use it, so adding a
+ * table cannot silently fall outside a role's reach.
+ */
+inline constexpr TableName kLastTableName = TableName::Memory;
 
 inline std::string tableNameToString(TableName t)
 {
@@ -436,6 +447,16 @@ inline std::string tableNameToString(TableName t)
       return "reminder";
     case TableName::ReminderDetail:
       return "reminder_detail";
+    case TableName::CalendarEvent:
+      return "calendar_event";
+    case TableName::CalendarEventShare:
+      return "calendar_event_share";
+    case TableName::Project:
+      return "project";
+    case TableName::ProjectMember:
+      return "project_member";
+    case TableName::ProjectTask:
+      return "project_task";
     case TableName::ContextNote:
       return "context_note";
     case TableName::Camera:
@@ -473,6 +494,11 @@ inline TableName tableNameFromString(const std::string& s)
       {"event", TableName::Event},
       {"reminder", TableName::Reminder},
       {"reminder_detail", TableName::ReminderDetail},
+      {"calendar_event", TableName::CalendarEvent},
+      {"calendar_event_share", TableName::CalendarEventShare},
+      {"project", TableName::Project},
+      {"project_member", TableName::ProjectMember},
+      {"project_task", TableName::ProjectTask},
       {"context_note", TableName::ContextNote},
       {"camera", TableName::Camera},
       {"camera_stream", TableName::CameraStream},
@@ -490,6 +516,67 @@ inline TableName tableNameFromString(const std::string& s)
     return TableName::User;
   return it->second;
 }
+
+// Which integration drives a camera. The row carries it so the control layer
+// picks a driver instead of assuming a brand.
+enum class CameraDriver : uint8_t
+{
+  Tapo = 0,
+  Onvif,
+  Rtsp
+};
+
+inline std::string cameraDriverToString(CameraDriver d)
+{
+  switch (d) {
+    case CameraDriver::Onvif:
+      return "onvif";
+    case CameraDriver::Rtsp:
+      return "rtsp";
+    case CameraDriver::Tapo:
+      return "tapo";
+  }
+  return "tapo";
+}
+
+inline CameraDriver cameraDriverFromString(const std::string& s)
+{
+  if (s == "onvif")
+    return CameraDriver::Onvif;
+  if (s == "rtsp")
+    return CameraDriver::Rtsp;
+  return CameraDriver::Tapo;
+}
+
+// What a member may do with a record shared with them. `View` is the default
+// because widening access has to be a deliberate act by the owner.
+enum class ShareAccess : uint8_t
+{
+  View = 0,
+  Edit
+};
+
+inline std::string shareAccessToString(ShareAccess a)
+{
+  return a == ShareAccess::Edit ? "edit" : "view";
+}
+
+inline ShareAccess shareAccessFromString(const std::string& s)
+{
+  return s == "edit" ? ShareAccess::Edit : ShareAccess::View;
+}
+
+// Why a share could not be granted. The controller turns each case into its
+// own status, so the client can tell "no such project" from "that user cannot
+// see projects at all".
+enum class MembershipError : uint8_t
+{
+  None = 0,
+  ParentNotFound,
+  UserNotFound,
+  UserNotAllowed,
+  SelfShare
+};
 
 // Voice interaction languages. This is the canonical set the system can
 // speak in; extend the map when a new language is supported end to end

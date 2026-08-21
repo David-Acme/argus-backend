@@ -9,6 +9,10 @@ CameraSchema::CameraSchema(const drogon::orm::Row& row)
   ip = row["ip"].as<std::string>();
   port = row["port"].as<int32_t>();
   username = row["username"].as<std::string>();
+  cloudUsername = row["cloud_username"].as<std::string>();
+  cloudPassword = row["cloud_password"].as<std::string>();
+  driver = cameraDriverFromString(row["driver"].as<std::string>());
+  icon = row["icon"].as<std::string>();
   password = row["password"].as<std::string>();
   recordMode = cameraRecordModeFromString(row["record_mode"].as<std::string>());
   if (!row["retention_days"].isNull())
@@ -34,6 +38,9 @@ Json::Value CameraSchema::toJson() const
   json["ip"] = ip;
   json["port"] = port;
   json["username"] = username;
+  json["cloudUsername"] = cloudUsername;
+  json["driver"] = cameraDriverToString(driver);
+  json["icon"] = icon;
   // Camera credentials never cross the sync/API DTO boundary. The runtime
   // keeps the password in the repository schema for device connections, but
   // clients must not receive or persist it.

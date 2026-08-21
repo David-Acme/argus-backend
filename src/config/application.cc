@@ -157,7 +157,7 @@ int Application::run()
     sigaction(SIGSEGV, &crashSa, nullptr);
     sigaction(SIGABRT, &crashSa, nullptr);
 
-    if (!DbService::migrate(2)) {
+    if (!DbService::migrate(5)) {
       LOG_FATAL << "Database migration failed — aborting startup";
       _exit(1);
     }

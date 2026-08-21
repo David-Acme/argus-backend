@@ -28,4 +28,6 @@ public:
   drogon::Task<bool> invalidate(int64_t id) const;
   drogon::Task<bool> markUsed(int64_t id) const;
   drogon::Task<bool> invalidateAllUser(int64_t userId) const;
+  /** Drops rows already used, invalidated or expired for this user. */
+  drogon::Task<void> pruneStale(int64_t userId) const;
 };

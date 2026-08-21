@@ -54,6 +54,25 @@ const std::vector<std::string> kMigrationStatementsV2 = {
     "created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')))",
 };
 
+struct ColumnPatch
+{
+  std::string table;
+  std::string column;
+  std::string definition;
+};
+
+/**
+ * Columns added after a table shipped. `schema.sql` already carries them for a
+ * fresh database, so each one is only applied when introspection says it is
+ * missing — an `ALTER` cannot express that.
+ */
+const std::vector<ColumnPatch> kColumnPatches = {
+    {"camera", "cloud_username", "TEXT NOT NULL DEFAULT ''"},
+    {"camera", "cloud_password", "TEXT NOT NULL DEFAULT ''"},
+    {"camera", "driver", "TEXT NOT NULL DEFAULT 'tapo'"},
+    {"camera", "icon", "TEXT NOT NULL DEFAULT 'video'"},
+};
+
 const std::vector<std::string>* migrationStatements(int64_t version)
 {
   switch (version) {
@@ -166,6 +185,28 @@ bool DbService::migrate(int64_t targetVersion)
 
   if (!runScriptFile("database/schema.sql"))
     return false;
+
+  for (const auto& patch : kColumnPatches) {
+    try {
+      const auto columns =
+          client->execSqlSync("SELECT name FROM pragma_table_info(?)", patch.table);
+      bool present = false;
+      for (const auto& row : columns) {
+        if (row["name"].as<std::string>() == patch.column) {
+          present = true;
+          break;
+        }
+      }
+      if (!present)
+        client->execSqlSync("ALTER TABLE " + patch.table + " ADD COLUMN " +
+                            patch.column + " " + patch.definition);
+    }
+    catch (const std::exception& e) {
+      LOG_FATAL << "Column patch " << patch.table << "." << patch.column
+                << " failed: " << e.what();
+      return false;
+    }
+  }
 
   for (int64_t version = current + 1; version <= targetVersion; ++version) {
     const auto* statements = migrationStatements(version);

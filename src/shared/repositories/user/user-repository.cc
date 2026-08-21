@@ -146,7 +146,7 @@ UserRepository::findDeleted(const SyncFilter& filter) const
   co_return data;
 }
 
-drogon::Task<std::optional<Json::Value>> UserRepository::findLast() const
+drogon::Task<std::optional<Json::Value>> UserRepository::findLast(const SyncFilter&) const
 {
   auto client = DbService::client();
   const auto result = co_await client->execSqlCoro(FIND_LAST.data());
@@ -157,7 +157,7 @@ drogon::Task<std::optional<Json::Value>> UserRepository::findLast() const
   co_return UserSchema(result.front()).toJson();
 }
 
-drogon::Task<std::optional<Json::Value>> UserRepository::findLastDeleted() const
+drogon::Task<std::optional<Json::Value>> UserRepository::findLastDeleted(const SyncFilter&) const
 {
   auto client = DbService::client();
   const auto result = co_await client->execSqlCoro(FIND_LAST_DELETED.data());

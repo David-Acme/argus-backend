@@ -84,6 +84,13 @@ struct SynchronizedDto
   std::optional<SynchronizedBodyDto> zone;
   std::optional<SynchronizedBodyDto> reminder;
   std::optional<SynchronizedBodyDto> reminderDetail;
+  std::optional<SynchronizedBodyDto> calendarEvent;
+  std::optional<SynchronizedBodyDto> calendarEventShare;
+  std::optional<SynchronizedBodyDto> project;
+  std::optional<SynchronizedBodyDto> projectMember;
+  std::optional<SynchronizedBodyDto> projectTask;
+  std::optional<SynchronizedBodyDto> event;
+  std::optional<SynchronizedBodyDto> person;
   std::optional<SynchronizedBodyDto> notification;
 
   static SynchronizedDto fromJson(const Json::Value& json)
@@ -97,6 +104,13 @@ struct SynchronizedDto
         {"zone", &SynchronizedDto::zone},
         {"reminder", &SynchronizedDto::reminder},
         {"reminder_detail", &SynchronizedDto::reminderDetail},
+        {"calendar_event", &SynchronizedDto::calendarEvent},
+        {"calendar_event_share", &SynchronizedDto::calendarEventShare},
+        {"project", &SynchronizedDto::project},
+        {"project_member", &SynchronizedDto::projectMember},
+        {"project_task", &SynchronizedDto::projectTask},
+        {"event", &SynchronizedDto::event},
+        {"person", &SynchronizedDto::person},
         {"notification", &SynchronizedDto::notification},
     };
 

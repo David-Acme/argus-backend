@@ -28,6 +28,8 @@ CameraRepository::create(const CameraCreateInput& input) const
       co_await client->execSqlCoro(INSERT.data(), input.name,
                                    input.manufacturer, input.model, input.ip,
                                    input.port, input.username, input.password,
+                                   input.cloudUsername, input.cloudPassword,
+                                   cameraDriverToString(input.driver), input.icon,
                                    cameraRecordModeToString(input.recordMode),
                                    input.retentionDays
                                        ? *input.retentionDays
@@ -43,6 +45,10 @@ CameraRepository::create(const CameraCreateInput& input) const
   schema.port = input.port;
   schema.username = input.username;
   schema.password = input.password;
+  schema.cloudUsername = input.cloudUsername;
+  schema.cloudPassword = input.cloudPassword;
+  schema.driver = input.driver;
+  schema.icon = input.icon;
   schema.recordMode = input.recordMode;
   schema.retentionDays = input.retentionDays;
   schema.capabilities = input.capabilities;
@@ -81,6 +87,15 @@ CameraRepository::update(int64_t id, const CameraUpdateInput& input) const
   }
   addField(UPDATE_COL_USERNAME, input.username);
   addField(UPDATE_COL_PASSWORD, input.password);
+  addField(UPDATE_COL_CLOUD_USERNAME, input.cloudUsername);
+  addField(UPDATE_COL_CLOUD_PASSWORD, input.cloudPassword);
+  if (input.driver) {
+    if (!args.empty())
+      sql += ", ";
+    sql += UPDATE_COL_DRIVER;
+    args.push_back(cameraDriverToString(*input.driver));
+  }
+  addField(UPDATE_COL_ICON, input.icon);
   if (input.recordMode) {
     if (!args.empty())
       sql += ", ";
@@ -172,7 +187,7 @@ CameraRepository::findDeleted(const SyncFilter& filter) const
   co_return data;
 }
 
-drogon::Task<std::optional<Json::Value>> CameraRepository::findLast() const
+drogon::Task<std::optional<Json::Value>> CameraRepository::findLast(const SyncFilter&) const
 {
   auto client = DbService::client();
   const auto result = co_await client->execSqlCoro(FIND_LAST.data());
@@ -182,7 +197,7 @@ drogon::Task<std::optional<Json::Value>> CameraRepository::findLast() const
 }
 
 drogon::Task<std::optional<Json::Value>>
-CameraRepository::findLastDeleted() const
+CameraRepository::findLastDeleted(const SyncFilter&) const
 {
   auto client = DbService::client();
   const auto result = co_await client->execSqlCoro(FIND_LAST_DELETED.data());

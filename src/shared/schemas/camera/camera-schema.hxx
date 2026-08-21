@@ -18,6 +18,11 @@ struct CameraSchema
   int32_t port{554};
   std::string username;
   std::string password;
+  std::string cloudUsername;
+  /** Vendor cloud password; needed by the talk channel, never sent to a client. */
+  std::string cloudPassword;
+  CameraDriver driver{CameraDriver::Tapo};
+  std::string icon{"video"};
   CameraRecordMode recordMode{CameraRecordMode::Events};
   std::optional<int64_t> retentionDays;
   std::string capabilities;

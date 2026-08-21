@@ -96,3 +96,10 @@ RefreshTokenRepository::invalidateAllUser(int64_t userId) const
       INVALIDATE_ALL_USER.data(), userId);
   co_return result.affectedRows() > 0;
 }
+
+drogon::Task<void> RefreshTokenRepository::pruneStale(int64_t userId) const
+{
+  auto client = DbService::client();
+  co_await client->execSqlCoro(PRUNE_STALE.data(), userId);
+  co_return;
+}

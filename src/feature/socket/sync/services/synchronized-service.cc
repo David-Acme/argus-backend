@@ -4,6 +4,24 @@
 #include <shared/contracts/sync-operation.hxx>
 #include <stdexcept>
 
+namespace
+{
+/** Tables whose rows belong to one user plus the people they shared with. */
+bool isPersonalTable(TableName table)
+{
+  switch (table) {
+    case TableName::CalendarEvent:
+    case TableName::CalendarEventShare:
+    case TableName::Project:
+    case TableName::ProjectMember:
+    case TableName::ProjectTask:
+      return true;
+    default:
+      return false;
+  }
+}
+} // namespace
+
 const Syncable& SynchronizedService::repoFor(TableName table) const
 {
   switch (table) {
@@ -19,6 +37,20 @@ const Syncable& SynchronizedService::repoFor(TableName table) const
       return reminderRepository_;
     case TableName::ReminderDetail:
       return reminderDetailRepository_;
+    case TableName::CalendarEvent:
+      return calendarEventRepository_;
+    case TableName::CalendarEventShare:
+      return calendarEventShareRepository_;
+    case TableName::Project:
+      return projectRepository_;
+    case TableName::ProjectMember:
+      return projectMemberRepository_;
+    case TableName::ProjectTask:
+      return projectTaskRepository_;
+    case TableName::Event:
+      return eventRepository_;
+    case TableName::Person:
+      return personRepository_;
     default:
       throw std::invalid_argument("table is not syncable");
   }
@@ -88,7 +120,7 @@ drogon::Task<Json::Value> SynchronizedService::syncWithRepo(
   if (dto.findLastCreated || dto.findLastDeleted) {
     Json::Value last(Json::objectValue);
     if (dto.findLastCreated) {
-      const auto v = co_await repo.findLast();
+      const auto v = co_await repo.findLast(base);
       if (v) {
         if ((*v).isMember("id"))
           last["createdId"] = (*v)["id"];
@@ -97,7 +129,7 @@ drogon::Task<Json::Value> SynchronizedService::syncWithRepo(
       }
     }
     if (dto.findLastDeleted) {
-      const auto v = co_await repo.findLastDeleted();
+      const auto v = co_await repo.findLastDeleted(base);
       if (v) {
         if ((*v).isMember("id"))
           last["deletedId"] = (*v)["id"];
@@ -187,6 +219,13 @@ drogon::Task<Json::Value> SynchronizedService::sync(const SynchronizedDto& body,
       {"zone", &SynchronizedDto::zone},
       {"reminder", &SynchronizedDto::reminder},
       {"reminder_detail", &SynchronizedDto::reminderDetail},
+      {"calendar_event", &SynchronizedDto::calendarEvent},
+      {"calendar_event_share", &SynchronizedDto::calendarEventShare},
+      {"project", &SynchronizedDto::project},
+      {"project_member", &SynchronizedDto::projectMember},
+      {"project_task", &SynchronizedDto::projectTask},
+      {"event", &SynchronizedDto::event},
+      {"person", &SynchronizedDto::person},
       {"notification", &SynchronizedDto::notification},
   };
 
@@ -207,7 +246,11 @@ drogon::Task<Json::Value> SynchronizedService::sync(const SynchronizedDto& body,
     }
 
     const auto& repo = repoFor(table);
-    const SyncFilter base{};
+    // A personal table is scoped to the caller whatever their role: the role
+    // decides which tables exist for them, the scope decides which rows.
+    SyncFilter base{};
+    if (isPersonalTable(table))
+      base.userId = ctx.sub;
     out[name] =
         co_await syncWithRepo({.repo = repo, .dto = *(body.*member)}, base);
   }

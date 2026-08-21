@@ -146,7 +146,7 @@ ReminderDetailRepository::findDeleted(const SyncFilter& filter) const
 }
 
 drogon::Task<std::optional<Json::Value>>
-ReminderDetailRepository::findLast() const
+ReminderDetailRepository::findLast(const SyncFilter&) const
 {
   auto client = DbService::client();
   const auto result = co_await client->execSqlCoro(FIND_LAST.data());
@@ -156,7 +156,7 @@ ReminderDetailRepository::findLast() const
 }
 
 drogon::Task<std::optional<Json::Value>>
-ReminderDetailRepository::findLastDeleted() const
+ReminderDetailRepository::findLastDeleted(const SyncFilter&) const
 {
   auto client = DbService::client();
   const auto result = co_await client->execSqlCoro(FIND_LAST_DELETED.data());

@@ -227,7 +227,8 @@ AuthService::pollDeviceLogin(const std::string& challengeId) const
 
 drogon::Task<ResponseRefreshTokenDto>
 AuthService::refreshToken(const RefreshTokenDto& body,
-                          const std::string& deviceHash) const
+                          const std::string& deviceHash,
+                          const std::string& userAgent) const
 {
   auto claims = jwtService_.verifyRefresh(body.refreshToken);
   if (claims.empty())
@@ -260,7 +261,17 @@ AuthService::refreshToken(const RefreshTokenDto& body,
                             AppConfig::ERROR_CODE_UNAUTHORIZED);
   }
 
+  if (!existing->userAgent.empty() && !userAgent.empty() &&
+      existing->userAgent != userAgent) {
+    LOG_WARN << "AuthService: user agent mismatch on refresh for user " << userId;
+    throw ResponseException("Invalid or expired refresh token", 401,
+                            AppConfig::ERROR_CODE_UNAUTHORIZED);
+  }
+
   co_await refreshTokenRepository_.markUsed(existing->id);
+  // Used and expired rows pile up otherwise: one login per day leaves a year of
+  // dead tokens behind.
+  co_await refreshTokenRepository_.pruneStale(userId);
 
   std::map<std::string, std::string> newClaims;
   newClaims["sub"] = std::to_string(userId);

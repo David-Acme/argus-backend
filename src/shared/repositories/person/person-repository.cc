@@ -115,3 +115,56 @@ drogon::Task<bool> PersonRepository::remove(int64_t id) const
   const auto result = co_await client->execSqlCoro(REMOVE.data(), id);
   co_return result.affectedRows() > 0;
 }
+
+drogon::Task<std::vector<Json::Value>>
+PersonRepository::find(const SyncFilter& filter) const
+{
+  auto client = DbService::client();
+  const auto [query, args] =
+      sync_query::buildSyncQuery(filter, SYNC_FIND, SYNC_FIND_FROM,
+                                 SYNC_FIND_ALL, SYNC_FIND_AFTER,
+                                 SYNC_FIND_AFTER_FROM);
+  const auto& argsRef = args;
+  const auto rows = co_await client->execSqlCoro(query, argsRef);
+
+  std::vector<Json::Value> data;
+  for (const auto& row : rows)
+    data.push_back(PersonSchema(row).toJson());
+  co_return data;
+}
+
+drogon::Task<std::vector<Json::Value>>
+PersonRepository::findDeleted(const SyncFilter& filter) const
+{
+  auto client = DbService::client();
+  const auto [query, args] = sync_query::buildSyncQuery(
+      filter, SYNC_FIND_DELETED, SYNC_FIND_DELETED_FROM,
+      SYNC_FIND_DELETED_ALL, SYNC_FIND_DELETED_AFTER,
+      SYNC_FIND_DELETED_AFTER_FROM);
+  const auto& argsRef = args;
+  const auto rows = co_await client->execSqlCoro(query, argsRef);
+
+  std::vector<Json::Value> data;
+  for (const auto& row : rows)
+    data.push_back(PersonSchema(row).toJson());
+  co_return data;
+}
+
+drogon::Task<std::optional<Json::Value>> PersonRepository::findLast(const SyncFilter&) const
+{
+  auto client = DbService::client();
+  const auto result = co_await client->execSqlCoro(SYNC_FIND_LAST.data());
+  if (result.empty())
+    co_return std::nullopt;
+  co_return PersonSchema(result.front()).toJson();
+}
+
+drogon::Task<std::optional<Json::Value>> PersonRepository::findLastDeleted(const SyncFilter&) const
+{
+  auto client = DbService::client();
+  const auto result =
+      co_await client->execSqlCoro(SYNC_FIND_LAST_DELETED.data());
+  if (result.empty())
+    co_return std::nullopt;
+  co_return PersonSchema(result.front()).toJson();
+}
