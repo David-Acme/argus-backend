@@ -79,6 +79,7 @@ struct SynchronizedBodyDto
 struct SynchronizedDto
 {
   std::optional<SynchronizedBodyDto> user;
+  std::optional<SynchronizedBodyDto> userInvitation;
   std::optional<SynchronizedBodyDto> camera;
   std::optional<SynchronizedBodyDto> cameraStream;
   std::optional<SynchronizedBodyDto> zone;
@@ -99,6 +100,7 @@ struct SynchronizedDto
 
     static const std::vector<std::pair<std::string, BodyField>> kBodyFields = {
         {"user", &SynchronizedDto::user},
+        {"user_invitation", &SynchronizedDto::userInvitation},
         {"camera", &SynchronizedDto::camera},
         {"camera_stream", &SynchronizedDto::cameraStream},
         {"zone", &SynchronizedDto::zone},

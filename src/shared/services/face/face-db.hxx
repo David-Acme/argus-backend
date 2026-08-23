@@ -15,7 +15,7 @@ public:
 
   void init();
   void shutdown();
-  void insert(const float* embedding, int64_t personId,
+  bool insert(const float* embedding, int64_t personId,
               int64_t faceEmbeddingId);
   std::optional<std::pair<int64_t, float>> search(const float* query);
   void remove(int64_t personId);

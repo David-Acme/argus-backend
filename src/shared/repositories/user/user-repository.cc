@@ -8,6 +8,20 @@
 
 using namespace user_query;
 
+namespace
+{
+sync_query::SyncQueryParts scopedToUser(sync_query::SyncQueryParts parts,
+                                        const std::optional<int64_t>& userId)
+{
+  if (!userId)
+    return parts;
+  const auto orderBy = parts.query.find(" ORDER BY ");
+  parts.query.insert(orderBy, " AND id = ?");
+  parts.args.push_back(std::to_string(*userId));
+  return parts;
+}
+} // namespace
+
 drogon::Task<std::optional<UserSchema>>
 UserRepository::findById(int64_t id) const
 {
@@ -111,14 +125,42 @@ drogon::Task<bool> UserRepository::hasOwner() const
   co_return row[0].as<int64_t>() > 0;
 }
 
+drogon::Task<bool> UserRepository::hasAnyUser() const
+{
+  auto client = DbService::client();
+  const auto result = co_await client->execSqlCoro(COUNT_ANY.data());
+  co_return !result.empty() && result.front()[0].as<int64_t>() > 0;
+}
+
+drogon::Task<bool>
+UserRepository::hasOtherActiveOwner(int64_t excludedUserId) const
+{
+  auto client = DbService::client();
+  const auto result = co_await client->execSqlCoro(
+      COUNT_OTHER_ACTIVE_OWNERS.data(), excludedUserId);
+  co_return !result.empty() && result.front()[0].as<int64_t>() > 0;
+}
+
+drogon::Task<std::vector<UserSchema>> UserRepository::findAll() const
+{
+  auto client = DbService::client();
+  const auto result = co_await client->execSqlCoro(FIND_ALL.data());
+  std::vector<UserSchema> users;
+  users.reserve(result.size());
+  for (const auto& row : result)
+    users.emplace_back(row);
+  co_return users;
+}
+
 drogon::Task<std::vector<Json::Value>>
 UserRepository::find(const SyncFilter& filter) const
 {
   auto client = DbService::client();
 
-  const auto [query, args] =
+  const auto [query, args] = scopedToUser(
       sync_query::buildSyncQuery(filter, FIND, FIND_FROM, FIND_ALL, FIND_AFTER,
-                                  FIND_AFTER_FROM);
+                                 FIND_AFTER_FROM),
+      filter.userId);
   const auto& argsRef = args;
   const auto rows = co_await client->execSqlCoro(query, argsRef);
 
@@ -133,10 +175,11 @@ UserRepository::findDeleted(const SyncFilter& filter) const
 {
   auto client = DbService::client();
 
-  const auto [query, args] =
+  const auto [query, args] = scopedToUser(
       sync_query::buildSyncQuery(filter, FIND_DELETED, FIND_DELETED_FROM,
                                  FIND_DELETED_ALL, FIND_DELETED_AFTER,
-                                 FIND_DELETED_AFTER_FROM);
+                                 FIND_DELETED_AFTER_FROM),
+      filter.userId);
   const auto& argsRef = args;
   const auto rows = co_await client->execSqlCoro(query, argsRef);
 
@@ -146,10 +189,12 @@ UserRepository::findDeleted(const SyncFilter& filter) const
   co_return data;
 }
 
-drogon::Task<std::optional<Json::Value>> UserRepository::findLast(const SyncFilter&) const
+drogon::Task<std::optional<Json::Value>> UserRepository::findLast(const SyncFilter& filter) const
 {
   auto client = DbService::client();
-  const auto result = co_await client->execSqlCoro(FIND_LAST.data());
+  const auto result = filter.userId
+                          ? co_await client->execSqlCoro(FIND_LAST_FOR_USER.data(), *filter.userId)
+                          : co_await client->execSqlCoro(FIND_LAST.data());
 
   if (result.empty())
     co_return std::nullopt;
@@ -157,10 +202,12 @@ drogon::Task<std::optional<Json::Value>> UserRepository::findLast(const SyncFilt
   co_return UserSchema(result.front()).toJson();
 }
 
-drogon::Task<std::optional<Json::Value>> UserRepository::findLastDeleted(const SyncFilter&) const
+drogon::Task<std::optional<Json::Value>> UserRepository::findLastDeleted(const SyncFilter& filter) const
 {
   auto client = DbService::client();
-  const auto result = co_await client->execSqlCoro(FIND_LAST_DELETED.data());
+  const auto result = filter.userId
+                          ? co_await client->execSqlCoro(FIND_LAST_DELETED_FOR_USER.data(), *filter.userId)
+                          : co_await client->execSqlCoro(FIND_LAST_DELETED.data());
 
   if (result.empty())
     co_return std::nullopt;

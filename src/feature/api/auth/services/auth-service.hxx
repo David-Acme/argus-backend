@@ -14,6 +14,8 @@
 #include <shared/repositories/person/person-repository.hxx>
 #include <shared/repositories/refresh-token/refresh-token-repository.hxx>
 #include <shared/repositories/user/user-repository.hxx>
+#include <shared/services/storage/private-portrait-service.hxx>
+#include <shared/repositories/user-invitation/user-invitation-repository.hxx>
 #include <shared/services/jwt/jwt-service.hxx>
 #include <shared/services/socket/socket-service.hxx>
 #include <shared/services/user-action-log/user-action-log-service.hxx>
@@ -71,8 +73,10 @@ private:
   JwtService jwtService_;
   PersonRepository personRepository_;
   UserRepository userRepository_;
+  PrivatePortraitService privatePortraitService_;
   RefreshTokenRepository refreshTokenRepository_;
   FaceEmbeddingRepository faceEmbeddingRepository_;
+  UserInvitationRepository invitationRepository_;
   DeviceLoginChallengeRepository challengeRepository_;
   UserActionLogService userActionLogService_;
   SocketService socketService_;

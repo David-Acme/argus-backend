@@ -3,13 +3,42 @@
 #include <config/app-config.hxx>
 #include <ctime>
 #include <drogon/drogon.h>
+#include <drogon/orm/DbClient.h>
+#include <feature/api/invitation/services/invitation-feature-service.hxx>
+#include <future>
 #include <iomanip>
 #include <openssl/rand.h>
 #include <sstream>
+#include <string_view>
 #include <shared/contracts/sync-operation.hxx>
 #include <shared/exceptions/response-exception.hxx>
 #include <shared/services/config-service/config-service.hxx>
 #include <shared/services/face/face-service.hxx>
+#include <shared/services/sqlite/db-service.hxx>
+#include <shared/wrapper/blocking-task/blocking-task.hxx>
+
+namespace user_enrollment_query
+{
+inline constexpr std::string_view COUNT_USERS =
+    "SELECT COUNT(*) FROM user WHERE deleted_at IS NULL";
+inline constexpr std::string_view INSERT_USER =
+    "INSERT INTO user (name, last_name, role, lang, is_active) "
+    "VALUES (?, ?, ?, ?, 1)";
+inline constexpr std::string_view INSERT_PERSON =
+    "INSERT INTO person (user_id, name, alias, observation, first_seen_at, "
+    "last_seen_at) VALUES (?, ?, '', '', strftime('%s', 'now'), "
+    "strftime('%s', 'now'))";
+inline constexpr std::string_view INSERT_FACE_EMBEDDING =
+    "INSERT INTO face_embedding (person_id, embedding, angle_label, quality) "
+    "VALUES (?, ?, 'frontal', ?)";
+inline constexpr std::string_view TRY_CONSUME =
+    "UPDATE user_invitation SET redemption_count = redemption_count + 1, "
+    "updated_at = strftime('%s', 'now') WHERE token_hash = ? "
+    "AND revoked_at IS NULL AND expires_at > ? "
+    "AND redemption_count < max_redemptions";
+inline constexpr std::string_view INSERT_REDEMPTION =
+    "INSERT INTO invitation_redemption (invitation_id, user_id) VALUES (?, ?)";
+} // namespace user_enrollment_query
 
 namespace
 {
@@ -50,6 +79,7 @@ AuthService::registerUser(RegisterDto body,
     throw ResponseException("Server is not paired yet", 409,
                             AppConfig::ERROR_CODE_CONFLICT);
 
+  const auto portraitImage = body.image;
   auto face =
       co_await FaceService::instance().extractImageAsync(std::move(body.image));
   if (!face)
@@ -79,43 +109,159 @@ AuthService::registerUser(RegisterDto body,
     co_return session;
   }
 
-  if (co_await userRepository_.hasOwner())
-    throw ResponseException("An owner already exists", 409,
-                            AppConfig::ERROR_CODE_CONFLICT);
-
   // Language: from the device on register; empty/invalid → system default.
   VoiceLang lang = voiceLangFromString(body.lang);
   if (lang == VoiceLang::System) {
     lang = voiceLangFromString(ConfigService::getString("stt.language"));
   }
 
-  auto user =
-      co_await userRepository_.create({.name = body.name.empty()
-                                           ? "Administrador"
-                                           : body.name,
-                                       .lastName = "",
-                                       .role = UserRole::Owner,
-                                       .lang = voiceLangToString(lang)});
+  const bool isInitialOwner = !co_await userRepository_.hasAnyUser();
+  std::optional<UserInvitationSchema> invitation;
+  std::string invitationHash;
+  UserRole role = UserRole::Owner;
+  if (!isInitialOwner) {
+    if (body.inviteCode.empty())
+      throw ResponseException("A valid invitation is required", 403,
+                              AppConfig::ERROR_CODE_FORBIDDEN);
+    invitationHash = InvitationFeatureService::hashToken(body.inviteCode);
+    invitation = co_await invitationRepository_.findByTokenHash(invitationHash);
+    const int64_t now = std::time(nullptr);
+    if (!invitation || invitation->revokedAt || invitation->expiresAt <= now ||
+        invitation->redemptionCount >= invitation->maxRedemptions) {
+      throw ResponseException("Invitation is invalid or expired", 404,
+                              AppConfig::ERROR_CODE_NOT_FOUND);
+    }
+    role = invitation->role;
+  }
 
-  auto person = co_await personRepository_.create(
-      {.userId = user.id,
-       .name = user.name,
-       .alias = "",
-       .observation = ""});
-
-  auto embedding = std::string(
+  const auto name = body.name.empty()
+                        ? (isInitialOwner ? "Administrador" : "Usuario")
+                        : body.name;
+  const auto embedding = std::string(
       reinterpret_cast<const char*>(face->embedding.data()),
       face->embedding.size() * sizeof(float));
-  auto persisted = co_await faceEmbeddingRepository_.create(
-      {.personId = person.id,
-       .embedding = embedding,
-       .angleLabel = "frontal",
-       .quality = face->confidence});
+  const int64_t now = std::time(nullptr);
+  int64_t userId = 0;
+  int64_t personId = 0;
+  int64_t faceEmbeddingId = 0;
+  struct FaceIndexInput
+  {
+    std::vector<float> embedding;
+    int64_t personId{0};
+    int64_t faceEmbeddingId{0};
+  };
+  auto indexInput = std::make_shared<FaceIndexInput>(FaceIndexInput{
+      .embedding = face->embedding,
+  });
+  auto indexResult = std::make_shared<std::promise<bool>>();
+  auto indexFuture =
+      std::make_shared<std::future<bool>>(indexResult->get_future());
 
-  FaceService::instance().faceDb().insert(face->embedding.data(), person.id,
-                                          persisted.id);
+  {
+    auto transaction = co_await DbService::client()->newTransactionCoro(
+        drogon::orm::TransactionType::Immediate);
+    transaction->setCommitCallback(
+        [indexResult, indexInput](bool committed) {
+          if (!committed) {
+            indexResult->set_value(false);
+            return;
+          }
+          indexResult->set_value(FaceService::instance().faceDb().insert(
+              indexInput->embedding.data(), indexInput->personId,
+              indexInput->faceEmbeddingId));
+        });
+    const auto userCount =
+        co_await transaction->execSqlCoro(user_enrollment_query::COUNT_USERS.data());
 
-  co_return co_await issueSession(user.id, person.id, user, device);
+    if (isInitialOwner && !userCount.empty() &&
+        userCount.front()[0].as<int64_t>() > 0) {
+      transaction->rollback();
+      throw ResponseException("An owner already exists", 409,
+                              AppConfig::ERROR_CODE_CONFLICT);
+    }
+    if (!isInitialOwner) {
+      const auto consumed = co_await transaction->execSqlCoro(
+          user_enrollment_query::TRY_CONSUME.data(), invitationHash, now);
+      if (consumed.affectedRows() != 1) {
+        transaction->rollback();
+        throw ResponseException("Invitation is invalid or expired", 404,
+                                AppConfig::ERROR_CODE_NOT_FOUND);
+      }
+    }
+
+    const auto userResult = co_await transaction->execSqlCoro(
+        user_enrollment_query::INSERT_USER.data(), name, "",
+        userRoleToString(role), voiceLangToString(lang));
+    userId = userResult.insertId();
+
+    const auto personResult = co_await transaction->execSqlCoro(
+        user_enrollment_query::INSERT_PERSON.data(), userId, name);
+    personId = personResult.insertId();
+    indexInput->personId = personId;
+
+    const auto embeddingResult = co_await transaction->execSqlCoro(
+        user_enrollment_query::INSERT_FACE_EMBEDDING.data(), personId,
+        embedding, face->confidence);
+    faceEmbeddingId = embeddingResult.insertId();
+    indexInput->faceEmbeddingId = faceEmbeddingId;
+
+    if (invitation) {
+      co_await transaction->execSqlCoro(
+          user_enrollment_query::INSERT_REDEMPTION.data(), invitation->id,
+          userId);
+    }
+  }
+
+  const bool indexed = co_await BlockingTask<bool>(
+      [indexFuture] { return indexFuture->get(); });
+  if (!indexed)
+    throw ResponseException("Could not index enrolled face", 503,
+                            AppConfig::ERROR_CODE_SERVICE_UNAVAILABLE);
+
+  co_await privatePortraitService_.store(userId, portraitImage);
+
+  UserSchema user;
+  user.id = userId;
+  user.name = name;
+  user.lastName = "";
+  user.role = role;
+  user.lang = voiceLangToString(lang);
+  user.isActive = true;
+  user.createdAt = now;
+
+  SocketEmitDto emit;
+  emit.operation = SyncOperation::Add;
+  emit.option = TableName::User;
+  emit.obj = user.toJson();
+  socketService_.emitModule(TableName::User, emit);
+
+  if (invitation) {
+    const auto consumedInvitation =
+        co_await invitationRepository_.findById(invitation->id);
+    if (consumedInvitation) {
+      SocketEmitDto invitationEmit;
+      invitationEmit.operation = SyncOperation::Add;
+      invitationEmit.option = TableName::UserInvitation;
+      invitationEmit.obj = consumedInvitation->toJson();
+      socketService_.emitModule(TableName::UserInvitation, invitationEmit);
+
+      Json::Value enrollment(Json::objectValue);
+      enrollment["event"] = "invitation_enrollment";
+      enrollment["invitationId"] = invitation->id;
+      enrollment["userId"] = userId;
+      co_await userActionLogService_.record({
+          .userId = userId,
+          .recordId = invitation->id,
+          .tableName = TableName::UserInvitation,
+          .action = UserAction::Create,
+          .oldData = Json::Value(),
+          .newData = enrollment,
+          .ipAddress = "",
+      });
+    }
+  }
+
+  co_return co_await issueSession(userId, personId, user, device);
 }
 
 drogon::Task<HasAdminResult> AuthService::hasAdmin() const
@@ -197,7 +343,12 @@ AuthService::pollDeviceLogin(const std::string& challengeId) const
 {
   auto challenge = co_await challengeRepository_.findByChallengeId(challengeId);
   if (!challenge)
-    co_return DeviceLoginStatusDto{.status = "expired"};
+    co_return DeviceLoginStatusDto{.status = "expired",
+                                   .accessToken = "",
+                                   .refreshToken = "",
+                                   .userId = 0,
+                                   .name = "",
+                                   .role = UserRole::Guest};
 
   if (challenge->status == "approved") {
     DeviceLoginStatusDto dto;
@@ -219,10 +370,20 @@ AuthService::pollDeviceLogin(const std::string& challengeId) const
 
   if (challenge->expiresAt <= std::time(nullptr)) {
     co_await challengeRepository_.remove(challengeId);
-    co_return DeviceLoginStatusDto{.status = "expired"};
+    co_return DeviceLoginStatusDto{.status = "expired",
+                                   .accessToken = "",
+                                   .refreshToken = "",
+                                   .userId = 0,
+                                   .name = "",
+                                   .role = UserRole::Guest};
   }
 
-  co_return DeviceLoginStatusDto{.status = "pending"};
+  co_return DeviceLoginStatusDto{.status = "pending",
+                                 .accessToken = "",
+                                 .refreshToken = "",
+                                 .userId = 0,
+                                 .name = "",
+                                 .role = UserRole::Guest};
 }
 
 drogon::Task<ResponseRefreshTokenDto>

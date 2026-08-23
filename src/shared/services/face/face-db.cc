@@ -29,17 +29,27 @@ void FaceDB::init()
 
 void FaceDB::shutdown() {}
 
-void FaceDB::insert(const float* embedding, int64_t personId,
+bool FaceDB::insert(const float* embedding, int64_t personId,
                     int64_t faceEmbeddingId)
 {
   std::scoped_lock lock(vecMutex());
   sqlite3* db = vecDb_.handle();
-  if (!db)
-    return;
-  repository_.insertVec(db, {.embedding = embedding,
-                             .dims = kEmbeddingDim,
-                             .personId = personId,
-                             .faceEmbeddingId = faceEmbeddingId});
+  if (!db) {
+    LOG_ERROR << "FaceDB: vector database is unavailable while enrolling "
+              << "person " << personId;
+    return false;
+  }
+
+  const bool inserted = repository_.insertVec(
+      db, {.embedding = embedding,
+           .dims = kEmbeddingDim,
+           .personId = personId,
+           .faceEmbeddingId = faceEmbeddingId});
+  if (!inserted) {
+    LOG_ERROR << "FaceDB: could not index face embedding " << faceEmbeddingId
+              << " for person " << personId;
+  }
+  return inserted;
 }
 
 std::optional<std::pair<int64_t, float>> FaceDB::search(const float* query)

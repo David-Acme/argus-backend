@@ -40,6 +40,21 @@ void SyncService::dropSink(const drogon::WebSocketConnectionPtr& conn) const
 }
 
 drogon::Task<void>
+SyncService::refreshContext(const drogon::WebSocketConnectionPtr& conn) const
+{
+  auto& ctx = conn->getContextRef<JwtContext>();
+  const auto user = co_await userRepository_.findById(ctx.sub);
+  if (!user || !user->isActive)
+    throw ResponseException("User account is disabled", 401,
+                            AppConfig::ERROR_CODE_UNAUTHORIZED);
+
+  ctx.name = user->name + " " + user->lastName;
+  ctx.role = user->role;
+  ctx.isActive = user->isActive;
+  co_return;
+}
+
+drogon::Task<void>
 SyncService::handleConnect(const drogon::HttpRequestPtr& req,
                            const drogon::WebSocketConnectionPtr& conn) const
 {
@@ -73,6 +88,8 @@ SyncService::handleMessage(const drogon::WebSocketConnectionPtr& conn,
   if (!obj.isMember("type") || !obj["type"].isString())
     throw ResponseException("Missing message type", 400,
                             AppConfig::ERROR_CODE_BAD_REQUEST);
+
+  co_await refreshContext(conn);
 
   const std::string type = obj["type"].asString();
   const Json::Value& payload = obj["payload"];

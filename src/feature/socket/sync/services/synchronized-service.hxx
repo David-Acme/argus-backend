@@ -23,6 +23,7 @@
 #include <shared/repositories/reminder/reminder-repository.hxx>
 #include <shared/repositories/user-audit-log/user-audit-log-repository.hxx>
 #include <shared/repositories/user/user-repository.hxx>
+#include <shared/repositories/user-invitation/user-invitation-repository.hxx>
 #include <shared/repositories/zone/zone-repository.hxx>
 #include <vector>
 
@@ -46,6 +47,7 @@ public:
 
 private:
   UserRepository userRepository_;
+  UserInvitationRepository userInvitationRepository_;
   CameraRepository cameraRepository_;
   CameraStreamRepository cameraStreamRepository_;
   ZoneRepository zoneRepository_;

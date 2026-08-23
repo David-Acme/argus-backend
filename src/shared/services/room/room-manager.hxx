@@ -6,12 +6,20 @@
 #include <memory>
 #include <shared/enums.hxx>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
 using Conn = drogon::WebSocketConnectionPtr;
 using RoomId = uint64_t;
+
+struct RoleRoomReplaceInput
+{
+  int64_t userId;
+  UserRole oldRole;
+  UserRole newRole;
+};
 
 inline RoomId moduleRoom(TableName table)
 {
@@ -38,6 +46,8 @@ public:
 
   void emit(RoomId room, std::string_view msg) const;
   void emitMany(const std::vector<RoomId>& rooms, std::string_view msg) const;
+  void replaceRoleRooms(const RoleRoomReplaceInput& input) const;
+  void disconnectUser(int64_t userId, std::string_view contextMessage) const;
 
   bool isOnline(RoomId room) const;
 
@@ -46,6 +56,10 @@ private:
                                  std::string_view msg);
   static void broadcastToLocalThreads(const std::vector<RoomId>& rooms,
                                       const std::shared_ptr<std::string>& msg);
+  static void replaceLocalRoleRooms(const RoleRoomReplaceInput& input);
+  static void disconnectLocalUserRoom(
+      RoomId room, const std::shared_ptr<std::string>& contextMessage);
+  static void leaveAllLocal(drogon::WebSocketConnection* raw);
   static void pruneDeadConnection(drogon::WebSocketConnection* raw);
   static void pruneAllDeadConnections();
 };

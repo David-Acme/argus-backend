@@ -256,6 +256,16 @@ talk_mode = "aec"
 # flight when a barge-in cancels the reply.
 talk_packet_ms = 20
 
+# ── Private object storage ──────────────────────────────────────────────
+# `managed_local` is backed by the local RustFS compose service. Keep concrete
+# endpoint, region and bucket values in config.local.toml so bridge/host
+# deployments can choose their route without changing tracked configuration.
+[storage]
+mode = "managed_local"
+
+# S3-compatible credentials stay blank in tracked configuration. The local
+# bootstrap writes the endpoint, bucket, and restricted application credentials
+# to the ignored config.local.toml.
 [storage.s3]
 endpoint = ""
 access_key = ""

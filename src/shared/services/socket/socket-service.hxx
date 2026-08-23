@@ -15,6 +15,8 @@ public:
   void emitUser(int64_t userId, const SocketEmitDto& body) const;
   void emitUsers(const std::vector<int64_t>& userIds,
                  const SocketEmitDto& body) const;
+  void replaceRoleRooms(const RoleRoomReplaceInput& input) const;
+  void disconnectUser(int64_t userId, const SocketEmitDto& context) const;
 
 private:
   RoomManager roomManager_;

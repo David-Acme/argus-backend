@@ -102,6 +102,8 @@ private:
   void storeSink(const drogon::WebSocketConnectionPtr& conn,
                  const std::shared_ptr<DrogonStreamSink>& sink) const;
   void dropSink(const drogon::WebSocketConnectionPtr& conn) const;
+  drogon::Task<void>
+  refreshContext(const drogon::WebSocketConnectionPtr& conn) const;
 
   SynchronizedService synchronizedService_;
   RoomManager roomManager_;

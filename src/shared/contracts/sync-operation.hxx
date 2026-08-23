@@ -11,7 +11,8 @@ enum class SyncOperation : uint8_t
   SynchronizeUserAuditLog = 3, // sync of atomic updates AT USER LEVEL
   Add = 4,                     // live event: entity/notification created
   Delete = 5,                  // live event: entity deleted
-  Log = 6                      // live event: audit log
+  Log = 6,                     // live event: audit log
+  AuthContextChanged = 7       // live event: role/active context must refresh
 };
 
 inline std::string syncOperationToString(SyncOperation op)
@@ -31,6 +32,8 @@ inline std::string syncOperationToString(SyncOperation op)
       return "delete";
     case SyncOperation::Log:
       return "log";
+    case SyncOperation::AuthContextChanged:
+      return "auth_context_changed";
   }
   return "sync";
 }
@@ -49,5 +52,7 @@ inline SyncOperation syncOperationFromString(const std::string& s)
     return SyncOperation::Delete;
   if (s == "log")
     return SyncOperation::Log;
+  if (s == "auth_context_changed")
+    return SyncOperation::AuthContextChanged;
   return SyncOperation::Synchronize;
 }

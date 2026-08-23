@@ -10,9 +10,9 @@ using namespace face_embedding_query;
 namespace
 {
 
-void bindFloatVector(SqliteStmt& stmt, int index, const float* data, int count)
+bool bindFloatVector(SqliteStmt& stmt, int index, const float* data, int count)
 {
-  stmt.bindBlob(index, data, static_cast<size_t>(count) * sizeof(float));
+  return stmt.bindBlob(index, data, static_cast<size_t>(count) * sizeof(float));
 }
 
 } // namespace
@@ -101,13 +101,27 @@ bool FaceEmbeddingRepository::insertVec(sqlite3* db,
                                         const FaceVecInsertInput& input) const
 {
   SqliteStmt stmt;
-  if (!stmt.prepare(db, VEC_INSERT.data()))
+  if (!stmt.prepare(db, VEC_INSERT.data())) {
+    LOG_ERROR << "FaceDB: vector insert preparation failed: "
+              << sqlite3_errmsg(db);
     return false;
-  stmt.bindInt64(1, input.faceEmbeddingId);
-  bindFloatVector(stmt, 2, input.embedding, input.dims);
-  stmt.bindInt64(3, input.personId);
-  stmt.bindInt64(4, input.faceEmbeddingId);
-  return stmt.step() == SQLITE_DONE;
+  }
+
+  if (!stmt.bindInt64(1, input.faceEmbeddingId) ||
+      !bindFloatVector(stmt, 2, input.embedding, input.dims) ||
+      !stmt.bindInt64(3, input.personId) ||
+      !stmt.bindInt64(4, input.faceEmbeddingId)) {
+    LOG_ERROR << "FaceDB: vector insert binding failed: " << sqlite3_errmsg(db);
+    return false;
+  }
+
+  const int rc = stmt.step();
+  if (rc != SQLITE_DONE) {
+    LOG_ERROR << "FaceDB: vector insert failed (rc=" << rc
+              << "): " << sqlite3_errmsg(db);
+    return false;
+  }
+  return true;
 }
 
 std::vector<FaceVecHit>

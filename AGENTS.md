@@ -14,11 +14,13 @@
 - **`backend/`** (this repo) — C++20 + Drogon server: all AI on-device (face
   auth, LLM, vision, STT/TTS), JWT dual secrets, WebSocket sync on `/sync`.
   Listens on `0.0.0.0:7024`.
-- **`frontend/`** (sibling) — React Native mobile app (Expo SDK 57 + Expo Router
-  + Tailwind v4 via Uniwind). It is the client for this backend: face login
-  (multipart → `POST /auth/login`), JWT access/refresh rotation, notifications,
-  and the `/sync` WebSocket. **Frontend integration is not built yet** — the
-  planned `core/services/http/http.service.ts`, auth and sync layers are pending.
+- **`frontend/`** (sibling) — React Native app (Expo SDK 57 + Expo Router +
+  Tailwind v4 via Uniwind). Its HTTP, auth, WatermelonDB (15 tables) and
+  autonomous `/sync` layers are implemented, plus the full screen set
+  (dashboard, agenda/projects/cameras/people/users, welcome onboarding,
+  cross-device QR login, voice, avatar reactions). The app must paint
+  persisted local data first and then react to live sync; backend contract
+  changes must preserve that model.
 - Frontend conventions live in `frontend/AGENTS.md` + `frontend/CONTEXT.md`
   (design system, colors, component structure, platform-split services, icon
   registry, Android dev environment).
@@ -146,17 +148,45 @@ the sync engine share that single source of truth** — to change a permission,
 edit only that file. Never imperative if/else.
 
 ```
-Owner    → full access (bypasses all checks)
-Resident → CRUD on /camera, /camera-stream, /zone, /reminder, /reminder-detail,
-           /event, /person, /context-note; user = Read (does NOT register
-           users); audit_log/user_audit_log/notification = Read (+Update own);
-           notification_token = Create (own)
-Guard    → GET only on /camera, /camera-stream, /event, /person, /zone, /auth
-Guest    → GET only on /camera, /auth
+Owner    → full access. Receives the directory and invitation metadata.
+Resident → CRUD on home-management resources; user read is limited to their own
+           profile in both HTTP and sync projections.
+Guard    → read-only security resources plus the local people directory. They
+           never receive invitation data or portrait bytes in sync/list results.
+Guest    → read-only permitted resources; user read is limited to their own
+           profile.
 ```
 
 Helpers: `hasAccess(role, table, perm)`, `readableTables(role)`,
 `tableFromPath(path)`, `permissionForMethod(method)`, `hasHttpAccess(...)`.
+
+### 7b. People, invitations and private portraits
+
+- `user_invitation` is syncable metadata **only for Owner**. Never serialize,
+  sync, log or return its opaque invitation token/hash. `UserInvitationSchema`
+  must keep token-hash fields out of `toJson()`.
+- User data has two scopes: Owner/Guard receive the directory; Resident/Guest
+  receive only the row whose id is `JwtContext.sub`. Apply that same scope in
+  HTTP list services and `SynchronizedService`; route permission alone is not
+  enough.
+- Invitations are created by Owner with a preselected non-owner role, expiry and
+  capacity. The token is 256-bit opaque material; persist only SHA-256. Consume
+  it atomically with enrollment and redemption recording. An invitation QR that
+  the frontend closes/unmounts is revoked, so it cannot be reused from a prior
+  preview.
+- A role update is not a logout: persist first, call
+  `SocketService::replaceRoleRooms`, then emit `AuthContextChanged` with
+  `resync=true` to the user's room. Preserve the socket and user room. Only
+  account deactivation invalidates refresh tokens and disconnects the device.
+- Portrait objects are private server storage, never sync tables. Guard/Owner
+  use `/portrait-preview/{userId}` to mint a requester-bound, short-lived,
+  one-use capability and `/portrait-preview/{token}/content` to consume it.
+  Consume atomically before storage retrieval; do not expose bucket paths,
+  signed URLs, credentials, binary or token in logs. A successful view writes a
+  `UserAction::Read` audit event with safe metadata only.
+- Keep invitation creation/revoke/redemption, user creation/role/deactivation,
+  and portrait viewing in the server audit history. Do not put audit-only
+  private metadata in the sync stream.
 
 ### 8. JWT auth flow
 
@@ -397,6 +427,27 @@ Raw pointers only for non-owning access (`.get()`).
 - Release builds are machine-tuned: `-march=native` + `-flto=auto` on the app
   target only. `-Wall -Wextra` are always on; third-party includes are SYSTEM.
 
+### 17b. Local deployment and object storage
+
+- Argus remains self-hosted: the backend, database, certificates, models and
+  private files run on the user's hardware. A tunnel may route remote traffic,
+  but neither client contracts nor backend code should need to switch between
+  LAN and tunnel endpoints.
+- Native backend development is the default. `docker-compose.yml` starts only
+  RustFS + its one-shot initializer by default; the backend container is an
+  opt-in `backend` profile and must not be started incidentally while emulators
+  are active.
+- Run `scripts/bootstrap-local-stack.sh` before the storage compose profile. It
+  creates 0600 unique local RustFS/admin and app credentials, a random private
+  bucket and `config.local.toml`. Runtime secrets and that overlay are ignored
+  by Git. Never commit, print, log or send them to the frontend.
+- RustFS is published on loopback only (`127.0.0.1:9000`). The app service
+  account is bucket-scoped and least-privilege; use it through
+  `S3StorageService`, never direct ad-hoc HTTP from feature code.
+- Development uses a fresh schema when the developer explicitly resets the
+  local DB. Do not silently delete, migrate or recreate a user's database as a
+  side effect of a feature; ask/require an explicit development reset.
+
 ### 18. WebSocket sync engine
 
 - WS route: `/sync` with **`JwtFilter` only** (no `DeviceFilter`; device
@@ -469,12 +520,16 @@ Before any commit, verify: `cmake --build --preset dev -j 8` passes with
 | `src/shared/services/stt/` | Speech-to-text via sherpa-onnx (default `nemo_transducer` FastConformer RNN-T, es/en; whisper/canary/nemo_ctc/omnilingual selectable) |
 | `src/shared/services/tts/` | Text-to-speech (Supertonic 3) |
 | `src/shared/services/tapo/` | Tapo camera local protocols: control (`stok` + `securePassthrough`, legacy fallback) and the 8800 talk channel (Digest + MPEG-TS PCMA) |
+| `src/shared/services/storage/` | `S3StorageService` (RustFS S3, SigV4 en `s3-signing.hxx`) + `PrivatePortraitService` (objetos privados, lectura vía capability one-use) |
+| `src/shared/services/reaction/` | `ReactionEngine` — reacciones de turno por prioridad de señales → `voice:event` (significado, nunca nombres de expresión) |
+| `src/shared/repositories/{user-invitation,portrait-*,device-login-challenge}/` | Dominio people: invitaciones (hash-only), capabilities de retrato, retos de login cruzado |
+| `scripts/test-*.sh` | Contratos estáticos: invitation api/lifecycle/schema, portrait-preview, role-resync, face-enrollment, people-sync |
 | `src/shared/wrapper/cancellation/` | `CancellationToken` shared across streaming AI/audio paths |
 | `labs/` | Standalone binaries for prototyping and validating new capabilities against real hardware before wiring them into the backend |
 | `labs/tapo-probe/` | `argus-tapo-probe` — validates the camera protocols against real hardware |
 | `labs/voice-test/` | `argus-voice-test` — STT → LLM → TTS conversation loop with Silero VAD (memory via `--memory-user <id>`) |
 | `labs/memory-probe/` | `argus-memory-probe` — memory schema/capture/tool/embedding/recall checks + bench |
-| `src/shared/services/sqlite/` | DB client access (`DbService::client()`) |
+| `labs/reaction-probe/` | `argus-reaction-probe` — ladder completo de reacciones es/en (23 checks) |
 | `src/shared/services/config-service/` | `ConfigService` read + runtime writes (`setBool/...` persisten a `config.toml`, comentarios preservados) |
 | `src/shared/services/room/` | `RoomManager` local (rooms por módulo/usuario, `thread_local`) |
 | `src/shared/services/socket/` | `SocketService` (emitModule/emitUser) + `SocketEmitDto` |

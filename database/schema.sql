@@ -28,6 +28,100 @@ CREATE TABLE IF NOT EXISTS user (
     deleted_at     INTEGER
 );
 
+-- Invitation tokens are stored only as hashes. A QR code contains the opaque
+-- token, while this database can safely retain the invitation audit trail.
+CREATE TABLE IF NOT EXISTS user_invitation (
+    id                INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    token_hash        TEXT    NOT NULL UNIQUE,
+    role              TEXT    NOT NULL CHECK (role IN ('resident', 'guard', 'guest')),
+    max_redemptions   INTEGER NOT NULL CHECK (max_redemptions BETWEEN 1 AND 100),
+    redemption_count  INTEGER NOT NULL DEFAULT 0
+                                CHECK (redemption_count BETWEEN 0 AND max_redemptions),
+    expires_at        INTEGER NOT NULL,
+    created_by        INTEGER NOT NULL REFERENCES user(id) ON DELETE RESTRICT,
+    revoked_at        INTEGER,
+    revoked_by        INTEGER REFERENCES user(id) ON DELETE SET NULL,
+    created_at        INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
+    updated_at        INTEGER,
+    CHECK (revoked_at IS NULL OR revoked_at >= created_at)
+);
+
+-- The unique user key makes an accepted enrollment traceable to exactly one
+-- invitation. The service records this in the same transaction as enrollment.
+CREATE TABLE IF NOT EXISTS invitation_redemption (
+    id              INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    invitation_id   INTEGER NOT NULL REFERENCES user_invitation(id) ON DELETE CASCADE,
+    user_id         INTEGER NOT NULL UNIQUE REFERENCES user(id) ON DELETE RESTRICT,
+    redeemed_at     INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
+);
+
+-- S3-compatible object metadata. The actual bytes remain private in local
+-- object storage and object_key is intentionally never a syncable user field.
+CREATE TABLE IF NOT EXISTS stored_file (
+    id              INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    object_key      TEXT    NOT NULL UNIQUE,
+    sha256          TEXT    NOT NULL,
+    mime_type       TEXT    NOT NULL,
+    byte_size       INTEGER NOT NULL CHECK (byte_size > 0),
+    category        TEXT    NOT NULL CHECK (category IN ('portrait', 'attachment')),
+    created_by      INTEGER REFERENCES user(id) ON DELETE SET NULL,
+    created_at      INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
+    deleted_at      INTEGER
+);
+
+-- One row is the current private portrait for each user. Re-enrollment uses an
+-- upsert, leaving the historical object eligible for storage retention policy.
+CREATE TABLE IF NOT EXISTS user_portrait (
+    id              INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    user_id         INTEGER NOT NULL UNIQUE REFERENCES user(id) ON DELETE CASCADE,
+    file_id         INTEGER NOT NULL UNIQUE REFERENCES stored_file(id) ON DELETE RESTRICT,
+    created_at      INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
+    updated_at      INTEGER
+);
+
+-- A preview capability is opaque, short lived, and consumed exactly once.
+-- Portrait bytes are only ever served through Argus, never as an object URL.
+CREATE TABLE IF NOT EXISTS portrait_preview_capability (
+    id                  INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    token_hash          TEXT    NOT NULL UNIQUE,
+    portrait_user_id    INTEGER NOT NULL REFERENCES user(id) ON DELETE CASCADE,
+    requester_user_id   INTEGER NOT NULL REFERENCES user(id) ON DELETE CASCADE,
+    expires_at          INTEGER NOT NULL,
+    consumed_at         INTEGER,
+    created_at          INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
+);
+
+-- Guard access is opt-in and owner-auditable. A request and the resulting grant
+-- remain separate so a decision does not erase the request history.
+CREATE TABLE IF NOT EXISTS portrait_access_request (
+    id                  INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    portrait_user_id    INTEGER NOT NULL REFERENCES user(id) ON DELETE CASCADE,
+    requester_user_id   INTEGER NOT NULL REFERENCES user(id) ON DELETE CASCADE,
+    status              TEXT    NOT NULL DEFAULT 'pending'
+                                    CHECK (status IN ('pending', 'approved', 'denied', 'cancelled')),
+    resolved_by         INTEGER REFERENCES user(id) ON DELETE SET NULL,
+    resolved_at         INTEGER,
+    created_at          INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
+    updated_at          INTEGER,
+    CHECK ((status = 'pending' AND resolved_at IS NULL) OR status <> 'pending')
+);
+
+CREATE TABLE IF NOT EXISTS portrait_access_grant (
+    id                  INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    request_id          INTEGER UNIQUE REFERENCES portrait_access_request(id) ON DELETE SET NULL,
+    portrait_user_id    INTEGER NOT NULL REFERENCES user(id) ON DELETE CASCADE,
+    grantee_user_id     INTEGER NOT NULL REFERENCES user(id) ON DELETE CASCADE,
+    granted_by          INTEGER NOT NULL REFERENCES user(id) ON DELETE RESTRICT,
+    scope               TEXT    NOT NULL CHECK (scope IN ('temporary', 'permanent')),
+    expires_at          INTEGER,
+    revoked_at          INTEGER,
+    revoked_by          INTEGER REFERENCES user(id) ON DELETE SET NULL,
+    created_at          INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
+    updated_at          INTEGER,
+    CHECK ((scope = 'temporary' AND expires_at IS NOT NULL)
+           OR (scope = 'permanent' AND expires_at IS NULL))
+);
+
 CREATE TABLE IF NOT EXISTS person (
     id             INTEGER NOT NULL  PRIMARY KEY AUTOINCREMENT,
     user_id        INTEGER           REFERENCES user(id) ON DELETE SET NULL,
@@ -360,7 +454,7 @@ CREATE TABLE IF NOT EXISTS user_action_log (
     user_id    INTEGER NOT NULL  REFERENCES user(id) ON DELETE CASCADE,
     record_id  INTEGER NOT NULL,
     table_name TEXT    NOT NULL,
-    action     TEXT    NOT NULL  CHECK (action IN ('create', 'update', 'delete')),
+    action     TEXT    NOT NULL  CHECK (action IN ('create', 'read', 'update', 'delete')),
     old_data   TEXT    NOT NULL  DEFAULT '{}',
     new_data   TEXT    NOT NULL  DEFAULT '{}',
     ip_address TEXT    NOT NULL  DEFAULT '',
@@ -569,6 +663,44 @@ CREATE INDEX IF NOT EXISTS idx_face_embedding_person ON face_embedding (person_i
 -- user
 CREATE INDEX IF NOT EXISTS idx_user_created_at  ON user (created_at);
 CREATE INDEX IF NOT EXISTS idx_user_deleted_at  ON user (deleted_at);
+
+-- user_invitation
+CREATE UNIQUE INDEX IF NOT EXISTS idx_user_invitation_token_hash
+    ON user_invitation (token_hash);
+CREATE INDEX IF NOT EXISTS idx_user_invitation_active
+    ON user_invitation (expires_at, revoked_at);
+CREATE INDEX IF NOT EXISTS idx_user_invitation_creator
+    ON user_invitation (created_by, created_at DESC);
+
+-- invitation_redemption
+CREATE INDEX IF NOT EXISTS idx_invitation_redemption_invitation
+    ON invitation_redemption (invitation_id, redeemed_at DESC);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_invitation_redemption_user
+    ON invitation_redemption (user_id);
+
+-- stored_file
+CREATE UNIQUE INDEX IF NOT EXISTS idx_stored_file_object_key
+    ON stored_file (object_key);
+CREATE INDEX IF NOT EXISTS idx_stored_file_category_created
+    ON stored_file (category, created_at DESC) WHERE deleted_at IS NULL;
+
+-- user_portrait
+CREATE UNIQUE INDEX IF NOT EXISTS idx_user_portrait_user_current
+    ON user_portrait (user_id);
+CREATE INDEX IF NOT EXISTS idx_portrait_preview_capability_lookup
+    ON portrait_preview_capability (token_hash, expires_at, consumed_at);
+
+-- portrait access
+CREATE UNIQUE INDEX IF NOT EXISTS idx_portrait_access_request_pending
+    ON portrait_access_request (portrait_user_id, requester_user_id)
+    WHERE status = 'pending';
+CREATE INDEX IF NOT EXISTS idx_portrait_access_request_owner_status
+    ON portrait_access_request (portrait_user_id, status, created_at DESC);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_portrait_access_grant_active
+    ON portrait_access_grant (portrait_user_id, grantee_user_id)
+    WHERE revoked_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_portrait_access_grant_lookup
+    ON portrait_access_grant (grantee_user_id, portrait_user_id, expires_at);
 
 -- refresh_token
 CREATE INDEX IF NOT EXISTS idx_refresh_token_user_id   ON refresh_token (user_id);

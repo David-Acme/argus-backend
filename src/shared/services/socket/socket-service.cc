@@ -21,3 +21,14 @@ void SocketService::emitUsers(const std::vector<int64_t>& userIds,
     rooms.push_back(userRoom(userId));
   roomManager_.emitMany(rooms, json_util::toString(body.toJson()));
 }
+
+void SocketService::replaceRoleRooms(const RoleRoomReplaceInput& input) const
+{
+  roomManager_.replaceRoleRooms(input);
+}
+
+void SocketService::disconnectUser(int64_t userId,
+                                   const SocketEmitDto& context) const
+{
+  roomManager_.disconnectUser(userId, json_util::toString(context.toJson()));
+}

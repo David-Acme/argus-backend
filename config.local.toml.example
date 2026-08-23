@@ -1,0 +1,14 @@
+# Local storage overlay. scripts/bootstrap-local-stack.sh creates this file on
+# first use with generated application credentials. Keep it mode 0600 and do
+# not commit it: access_key/secret_key are not RustFS root credentials.
+[storage]
+mode = "managed_local"
+
+[storage.s3]
+# Native backend (and the default lightweight stack):
+endpoint = "http://127.0.0.1:9000"
+# Optional Docker backend bridge profile: http://rustfs:9000
+region = "us-east-1"
+bucket = "argus-replace-with-bootstrap-bucket-private"
+access_key = "argus-generated-application-access-key"
+secret_key = "argus-generated-application-secret-key"

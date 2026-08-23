@@ -77,8 +77,16 @@
 | `SttService` | sherpa-onnx | nemo_transducer (FastConformer RNN-T, es/en) | `models/stt/` |
 | `TtsService` | Supertonic 3 | ONNX models | `models/tts/` |
 | `JwtService` | jwt-cpp | HS256, instance class | — |
-| `ConfigService` | tomlplusplus | TOML config reader | `config.toml` |
+| `ConfigService` | tomlplusplus | TOML config reader + runtime writes | `config.toml` |
 | `DbService` | Drogon DbClient | SQLite async client | `database/argus.db` |
+| `VadService` | Silero VAD v5 (ONNX, instance class) | turn-taking con gate de calidad | `models/vad/` |
+| `EmbeddingService` | ONNX Runtime | multilingual-e5-small INT8 (lazy load) | `models/memory/` |
+| `IntentService` | fastText (submodule) | argus-intent.ftz (~20 µs predict) | `models/intent/` |
+| `MemoryService` | SQLite graph (FTS5 + vec0) | grafo semántico + recall multi-tier | `database/argus.db` |
+| `ExtractionService` | llama.cpp | NuExtract-1.5-tiny Q4_K_M (off-turn) | `[extract] model_path` |
+| `ReactionEngine` | señales puras (sin modelo) | 10 reacciones priorizadas → `voice:event` | — |
+| `StreamHub` / `MediaRelay` / `Go2rtcManager` | go2rtc | fMP4 sobre `/sync` con credit window | — |
+| `S3StorageService` / `PrivatePortraitService` | RustFS (S3) | objetos privados + capabilities one-use | loopback :9000 |
 
 ## Performance & portability batch (2026-08)
 
@@ -659,21 +667,27 @@ Never static methods for service classes. Never local/temporary repository const
 
 ## Database tables
 
-- `user` — accounts (role, is_active, soft-delete via deleted_at)
-- `person` — known people linked to users via `user_id`
-- `face_embedding` — persisted face embeddings (hex-encoded 128-dim float BLOBs)
-- `refresh_token` — JWT refresh token lifecycle (is_valid, is_used, device_hash, expires_at)
-- `camera`, `zone`, `event`, `person_event`, `reminder`, `reminder_detail`, `context_note`
-- `camera_stream`, `schema_version`
-- `audit_log` — audit global por módulo (`changes` = JSON diff de `JsonDiff`, `priority`, `create_user_id`)
-- `user_audit_log` — audit a nivel de usuario (= `audit_log` + `user_id`), sincronizable por usuario
-- `notification` — notificaciones personales por usuario (type/title/body/data/is_read)
-- `notification_token` — push tokens por sesión (`UNIQUE(user_id, device_hash)`)
-- `user_action_log` — historial server-side de acciones (write-only, NO sync)
-- `memory_entity`/`memory_alias`/`memory_fact`/`memory_edge`/`memory_episode`/
-  `memory_source`/`memory_procedure` — grafo semántico de memoria (con sus FTS5:
-  `memory_fact_fts`, `memory_episode_fts`, `memory_alias_fts`)
-- `job` — worker job queue (state, attempts, dedupe_key)
+- Home/collaboration: `user` (role, is_active, soft-delete via deleted_at),
+  `person` (linked to users via `user_id`), `person_event`, `event`,
+  `reminder`, `reminder_detail`, `context_note`, `project`, `project_member`,
+  `project_task`, `calendar_event`, `calendar_event_share`
+- Cameras: `camera`, `camera_stream`, `zone`
+- People/access: `user_invitation` (solo hash SHA-256 del token, nunca el
+  token), `invitation_redemption` (UNIQUE user_id), `stored_file`,
+  `user_portrait`, `portrait_preview_capability` (one-use), 
+  `portrait_access_request`, `portrait_access_grant`, `device_login_challenge`
+  (login cruzado por QR)
+- Auth/face: `refresh_token` (is_valid, is_used, device_hash, expires_at),
+  `face_embedding` (BLOB 128-dim float; rowid = fila vec0 `face_vec`)
+- Audit/notificaciones: `audit_log` (global, `changes` = JSON diff de
+  `JsonDiff`), `user_audit_log` (por usuario, sincronizable), `notification`,
+  `notification_token` (UNIQUE user_id+device_hash), `user_action_log`
+  (write-only, NO sync)
+- Memoria: `memory_entity`/`memory_alias`/`memory_fact`/`memory_edge`/
+  `memory_episode`/`memory_source`/`memory_procedure` — grafo semántico
+  (con sus FTS5: `memory_fact_fts`, `memory_episode_fts`, `memory_alias_fts`)
+- Ops/voz: `job` — worker job queue (state, attempts, dedupe_key),
+  `schema_version`, `voice_session`, `voice_message` (historial local de voz)
 
 ## Sync engine (WebSocket, one-way server→client)
 
@@ -689,9 +703,14 @@ Never static methods for service classes. Never local/temporary repository const
   `AuditLogService`/`NotificationService`).
 - **WS responses**: `SocketEmitDto` `{operation, option(TableName), info}`;
   errors `{type:"<type>_error", status, error}`.
-- **Syncable entities**: `user`, `camera`, `camera_stream`, `zone`, `reminder`,
-  `reminder_detail` (they implement `Syncable`) + `notification` (dedicated per
-  user). Outside sync: `event`, `person`, `context_note`.
+- **Syncable entities**: 14 repositorios implementan `Syncable` — `user`,
+  `user_invitation` (metadata solo Owner, sin token), `camera`,
+  `camera_stream`, `zone`, `reminder`, `reminder_detail`, `calendar_event`,
+  `calendar_event_share`, `project`, `project_member`, `project_task`,
+  `event`, `person` — más `notification` (dedicated per user). Fuera del
+  sync: `context_note`, las tablas de archivos privados/portraits y
+  `device_login_challenge`. El frontend replica esta superficie en
+  `SYNC_TABLE_KEYS`.
 - **Per-day snapshot**: `AuditLogService`/`UserAuditLogService` look up the
   `record_id` entry for the day and merge the diff
   (`JsonDiff::compareChanges`).
@@ -1964,3 +1983,98 @@ model, nothing per frame beyond a read.
 Tests: `labs/reaction-probe --reaction-test` (23 checks) covers the full
 priority ladder in es/en, the `recallHits < 0` distinction, intensity growth,
 and which kinds may carry a tone note.
+
+## People, access, invitations and private files (2026-08-22)
+
+The people domain is implemented as a local-first, role-scoped system. It must
+remain usable on a LAN with no third-party service; a tunnel only changes how a
+device reaches this same backend.
+
+### Role projection and real-time changes
+
+- `role-access.hxx` remains the authority for HTTP and sync permissions. It
+  maps `/user`, `/invitation` and `/portrait-preview` in addition to the
+  existing resource paths.
+- `SynchronizedService` scopes **user rows** deliberately: Owner and Guard get
+  the people directory; Resident and Guest receive only their own user row.
+  Owner alone receives `user_invitation` metadata. A permitted HTTP route still
+  applies the same scope in `UserFeatureService::list`.
+- Invitation and portrait capability records are never sync payloads. The
+  invitation metadata that is syncable excludes the token hash.
+- `SyncOperation::AuthContextChanged` (`auth_context_changed`) is emitted after
+  a role change. The sequence is: persist user →
+  `SocketService::replaceRoleRooms({ userId, oldRole, newRole })` → emit to the
+  existing user room with `resync=true`. The connection remains alive; its old
+  module rooms are replaced by the new ones. Deactivation is different: refresh
+  tokens are invalidated and `disconnectUser` closes the connection.
+- Sync uses `syncAt` (updated time when available, otherwise created time), so
+  offline devices receive user updates, revocations and redemptions when they
+  reconnect instead of relying only on a live event.
+
+### Invitation lifecycle
+
+- Persistent tables: `user_invitation` (opaque SHA-256 token hash, non-owner
+  assigned role, capacity, expiry/revoke state) and `user_invitation_redemption`
+  (one redemption per enrolled user). Repositories live in
+  `src/shared/repositories/user-invitation/`.
+- `POST /invitation` and `GET /invitation` are Owner operations;
+  `DELETE /invitation/{id}` revokes. `POST /invitation/resolve` is the
+  pre-auth pairing/enrollment resolver: it returns only role, expiry and pinned
+  Argus identity/certificate material, never the stored token.
+- `/auth/register` permits the first Owner only on an empty database. Every
+  subsequent new face enrollment requires a valid invitation and atomically
+  creates the user/person/embedding, consumes capacity and records redemption.
+  A face already known issues that person's session without consuming an invite.
+- The frontend QR preview is intentionally single-display. Closing it or
+  leaving the owner screen revokes the pending invitation; no QR token is
+  persisted or recoverable from its synced metadata.
+- User/invitation create, update, revoke, redemption and enrollment actions
+  append safe records to `user_action_log`. Never store raw QR/token/certificate
+  secrets in a log.
+
+### Portrait storage and audited verification
+
+- Face enrollment produces a private portrait object plus `stored_file` and
+  `user_portrait` metadata. These private file tables are not in `TableName` or
+  the sync surface. Clients receive neither object key nor S3 credential.
+- `PrivatePortraitService` and `S3StorageService` are the only storage facade.
+  `GET /portrait-preview/{userId}` mints a requester-bound, 60-second capability
+  for Owner/Guard; `GET /portrait-preview/{token}/content` atomically consumes
+  it before reading the private object. A failed retrieval still consumes the
+  capability, so retry requires a new explicit request.
+- The consumed image is returned as bytes encoded by the API, never as a bucket
+  URL. Successful reads append `UserAction::Read` with the safe event
+  `portrait_preview`; image content, object keys, token and credentials never
+  enter the audit log.
+
+### Local RustFS deployment
+
+- `docker-compose.yml` defaults to a loopback-only RustFS stack
+  (`127.0.0.1:9000`) plus an initializer. It is intentionally independent from
+  native backend development so active emulators do not pay its memory cost.
+- `scripts/bootstrap-local-stack.sh` generates per-installation secrets and a
+  random private bucket under ignored `docker/runtime/`, then writes the ignored
+  0600 `config.local.toml` S3 overlay. The initializer creates a bucket-scoped
+  application account; RustFS root credentials are not mounted into the backend.
+- The optional backend Docker profile runs with host UID/GID and refuses to
+  create missing bind-mount paths, avoiding root-owned development files. No
+  Docker build, pull or startup is part of normal feature validation.
+
+### Verification kept with the feature
+
+The static contract scripts live under `scripts/`:
+`test-invitation-persistence-schema.sh`, `test-invitation-api-contract.sh`,
+`test-role-resync-contract.sh`, `test-face-enrollment-transaction-contract.sh`,
+`test-people-sync-contract.sh`, `test-invitation-lifecycle-contract.sh` and
+`test-portrait-preview-contract.sh`. On 2026-08-22 all passed, as did
+`cmake --build --preset dev --target argus-backend -j 2`.
+
+## Docs resync (2026-08-23)
+
+Documentation-only pass (no code changes): the services table was extended to
+the full current set (VAD, embedding, intent, memory, extraction, reactions,
+streaming, S3/portraits); the database table list now matches `schema.sql`
+(invitations/redemption, portrait tables, device-login challenges,
+projects/calendar, job queue, voice tables); the sync surface was corrected
+to the real 14 `Syncable` repositories + `notification` (the old list
+predated projects/calendar/event/person sync).

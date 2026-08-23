@@ -59,6 +59,10 @@ go2rtc.yaml
 # Untracked local overlay merged over config.toml by ConfigService::load()
 config.local.toml
 
+# Docker local runtime: RustFS data, generated bucket name and credentials.
+# These are instance state and must be backed up outside Git.
+docker/runtime/
+
 # Artifacts written by labs/tts-probe
 probe-*.wav
 bench-results/

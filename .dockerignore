@@ -1,0 +1,17 @@
+.git
+.agents
+.cache
+.codex
+.superpowers
+.zed
+build
+bench-results
+certs
+database
+docker/runtime
+models
+uploads
+config.local.toml
+*.log
+go2rtc.yaml
+third_party/go2rtc

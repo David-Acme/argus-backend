@@ -38,6 +38,81 @@ inline UserRole userRoleFromString(const std::string& s)
   return UserRole::Guest;
 }
 
+// Private objects are never part of the sync stream. The category allows the
+// storage layer to apply a dedicated retention and access policy per object.
+enum class StoredFileCategory : uint8_t
+{
+  Portrait = 0,
+  Attachment
+};
+
+inline std::string storedFileCategoryToString(StoredFileCategory category)
+{
+  return category == StoredFileCategory::Attachment ? "attachment" : "portrait";
+}
+
+inline StoredFileCategory storedFileCategoryFromString(const std::string& value)
+{
+  return value == "attachment" ? StoredFileCategory::Attachment
+                               : StoredFileCategory::Portrait;
+}
+
+enum class PortraitAccessRequestStatus : uint8_t
+{
+  Pending = 0,
+  Approved,
+  Denied,
+  Cancelled
+};
+
+inline std::string portraitAccessRequestStatusToString(
+    PortraitAccessRequestStatus status)
+{
+  switch (status) {
+    case PortraitAccessRequestStatus::Approved:
+      return "approved";
+    case PortraitAccessRequestStatus::Denied:
+      return "denied";
+    case PortraitAccessRequestStatus::Cancelled:
+      return "cancelled";
+    case PortraitAccessRequestStatus::Pending:
+      return "pending";
+  }
+  return "pending";
+}
+
+inline PortraitAccessRequestStatus portraitAccessRequestStatusFromString(
+    const std::string& value)
+{
+  if (value == "approved")
+    return PortraitAccessRequestStatus::Approved;
+  if (value == "denied")
+    return PortraitAccessRequestStatus::Denied;
+  if (value == "cancelled")
+    return PortraitAccessRequestStatus::Cancelled;
+  return PortraitAccessRequestStatus::Pending;
+}
+
+enum class PortraitAccessGrantScope : uint8_t
+{
+  Temporary = 0,
+  Permanent
+};
+
+inline std::string portraitAccessGrantScopeToString(
+    PortraitAccessGrantScope scope)
+{
+  return scope == PortraitAccessGrantScope::Permanent ? "permanent"
+                                                      : "temporary";
+}
+
+inline PortraitAccessGrantScope portraitAccessGrantScopeFromString(
+    const std::string& value)
+{
+  return value == "permanent" ? PortraitAccessGrantScope::Permanent
+                              : PortraitAccessGrantScope::Temporary;
+}
+
 enum class EventSeverity : uint8_t
 {
   Info = 0,
@@ -149,6 +224,7 @@ inline ReminderDetailStatus reminderDetailStatusFromString(const std::string& s)
 enum class UserAction : uint8_t
 {
   Create = 0,
+  Read,
   Update,
   Delete
 };
@@ -156,6 +232,8 @@ enum class UserAction : uint8_t
 inline std::string userActionToString(UserAction a)
 {
   switch (a) {
+    case UserAction::Read:
+      return "read";
     case UserAction::Update:
       return "update";
     case UserAction::Delete:
@@ -167,6 +245,8 @@ inline std::string userActionToString(UserAction a)
 
 inline UserAction userActionFromString(const std::string& s)
 {
+  if (s == "read")
+    return UserAction::Read;
   if (s == "update")
     return UserAction::Update;
   if (s == "delete")
@@ -402,6 +482,7 @@ enum class AuditLogPriority : uint8_t
 enum class TableName : uint8_t
 {
   User = 0,
+  UserInvitation,
   Person,
   PersonEvent,
   Event,
@@ -437,6 +518,8 @@ inline std::string tableNameToString(TableName t)
   switch (t) {
     case TableName::User:
       return "user";
+    case TableName::UserInvitation:
+      return "user_invitation";
     case TableName::Person:
       return "person";
     case TableName::PersonEvent:
@@ -489,6 +572,7 @@ inline TableName tableNameFromString(const std::string& s)
 {
   static const std::unordered_map<std::string, TableName> kMap = {
       {"user", TableName::User},
+      {"user_invitation", TableName::UserInvitation},
       {"person", TableName::Person},
       {"person_event", TableName::PersonEvent},
       {"event", TableName::Event},

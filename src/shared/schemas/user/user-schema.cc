@@ -27,6 +27,7 @@ Json::Value UserSchema::toJson() const
   json["isActive"] = isActive;
   json["createdAt"] = Json::Int64(createdAt);
   json["updatedAt"] = updatedAt ? Json::Value(Json::Int64(*updatedAt)) : Json::Value();
+  json["syncAt"] = Json::Int64(updatedAt.value_or(createdAt));
   json["deletedAt"] = deletedAt ? Json::Value(Json::Int64(*deletedAt)) : Json::Value();
   return json;
 }

@@ -1,0 +1,9 @@
+# Linux-only override for the optional backend profile. It preserves mDNS and
+# camera discovery by giving the backend host networking. RustFS remains in the
+# isolated compose network and is reached through its 127.0.0.1-only mapping.
+# Docker Compose v2.24.4+ is required for !reset.
+services:
+  backend:
+    network_mode: host
+    networks: !reset []
+    ports: !reset []

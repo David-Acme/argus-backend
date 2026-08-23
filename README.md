@@ -54,6 +54,93 @@ curl http://localhost:7024/auth/status \
   -H "Authorization: Bearer <access_token>"
 ```
 
+## Local RustFS storage (optional Docker service)
+
+Native backend development remains the default. Docker does **not** start or
+build the backend unless its explicit `backend` profile is selected, so it does
+not compete with emulators or local AI workloads. RustFS is the only default
+service and is bound exclusively to `127.0.0.1:9000`; its console is disabled
+and neither the LAN nor a future tunnel can reach it. The image is pinned to
+RustFS `1.0.0-beta.12`, which includes the security patch line introduced after
+beta.11; it is not floated to `latest`.
+
+```bash
+./scripts/bootstrap-local-stack.sh
+docker compose up -d rustfs rustfs-init
+docker compose ps
+```
+
+The bootstrap is idempotent. It generates one-time RustFS root/RPC secrets, a
+private bucket name and a distinct least-privilege application access/secret
+pair. The application pair is written to `config.local.toml` with mode `0600`,
+so it is secret and must never be committed or shared. It is not a RustFS root
+credential. The bootstrap never prints credential values. `docker compose up`
+with no service selection starts only `rustfs` and the one-shot `rustfs-init`;
+it never starts the backend.
+
+`rustfs-init` is the only container that receives both root and application
+credentials. It creates/verifies an `argus-backend` service account whose inline
+policy is limited to `ListBucket` on Argus's generated bucket and
+`GetObject`/`PutObject`/`DeleteObject` under that bucket only. RustFS itself
+never receives application credentials, and the native backend reads them only
+from its local `config.local.toml` overlay.
+
+RustFS documents `_FILE` injection for root access and secret keys. Its RPC
+secret has no documented `_FILE` counterpart in the pinned release, so the
+container entrypoint reads the Docker secret file only at startup and exports
+it only to the RustFS process; the compose file never places that value in an
+environment literal.
+
+RustFS data lives in Docker volume `argus-rustfs-data`; generated instance state
+lives under ignored `docker/runtime/`. Back up both before moving a machine:
+
+```bash
+mkdir -p backups/rustfs-data
+docker run --rm -v argus-rustfs-data:/source -v "$PWD/backups/rustfs-data:/backup" \
+  alpine:3.20 tar -C /source -cf /backup/rustfs-data.tar .
+tar -C . -cf backups/argus-rustfs-instance-state.tar docker/runtime config.local.toml
+```
+
+To restore on a machine where the stack is stopped, restore `docker/runtime/`
+and `config.local.toml`, then extract `rustfs-data.tar` into an empty
+`argus-rustfs-data` volume. Keep the secrets with the data: replacing either
+one makes existing private objects inaccessible.
+
+### Optional backend image
+
+The future portable backend image is intentionally opt-in:
+
+```bash
+# Run the native setup first so these host-owned paths already exist:
+# certs/, database/, models/, uploads/, third_party/go2rtc/ and config.local.toml.
+./scripts/setup.sh prod
+mkdir -p database uploads
+
+ARGUS_UID="$(id -u)" ARGUS_GID="$(id -g)" docker compose --profile backend build backend
+ARGUS_UID="$(id -u)" ARGUS_GID="$(id -g)" docker compose --profile backend up -d
+```
+
+Its portable bridge mode reaches RustFS at `http://rustfs:9000`; set that value
+in `config.local.toml` before starting it. On Linux, host networking preserves
+mDNS and local camera discovery:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.host.yml --profile backend up -d
+```
+
+For that override, set the storage endpoint back to `http://127.0.0.1:9000`.
+It requires Docker Compose v2.24.4+ and does not attach the backend to the
+storage network. Resource caps are configurable with `RUSTFS_MEMORY_LIMIT`,
+`RUSTFS_CPU_LIMIT`, `ARGUS_BACKEND_MEMORY_LIMIT` and `ARGUS_BACKEND_CPU_LIMIT`;
+they never affect the native backend process. The optional container defaults
+to UID/GID `1000:1000`; setting `ARGUS_UID` and `ARGUS_GID` to the current host
+user avoids root-owned files in `certs/`, `database/` and `uploads/`. Those
+three mounts are writable because the backend rotates certificates and writes
+SQLite/uploads; the config overlay, models and go2rtc binary mounts are
+read-only. All backend binds use `create_host_path: false`: if native setup has
+not prepared a required path, Compose fails before Docker can create a
+root-owned directory or file.
+
 ## API response format
 
 Every endpoint returns the same envelope:

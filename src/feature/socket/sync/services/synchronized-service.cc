@@ -27,6 +27,8 @@ const Syncable& SynchronizedService::repoFor(TableName table) const
   switch (table) {
     case TableName::User:
       return userRepository_;
+    case TableName::UserInvitation:
+      return userInvitationRepository_;
     case TableName::Camera:
       return cameraRepository_;
     case TableName::CameraStream:
@@ -89,7 +91,8 @@ drogon::Task<Json::Value> SynchronizedService::syncWithRepo(
     if (!rows.empty()) {
       const auto& last = rows.back();
       node["lastSyncDate"]["createdId"] = last.get("id", Json::Value());
-      node["lastSyncDate"]["created"] = last.get("createdAt", Json::Value());
+      node["lastSyncDate"]["created"] =
+          last.get("syncAt", last.get("createdAt", Json::Value()));
     }
   }
   else {
@@ -124,7 +127,9 @@ drogon::Task<Json::Value> SynchronizedService::syncWithRepo(
       if (v) {
         if ((*v).isMember("id"))
           last["createdId"] = (*v)["id"];
-        if ((*v).isMember("createdAt"))
+        if ((*v).isMember("syncAt"))
+          last["created"] = (*v)["syncAt"];
+        else if ((*v).isMember("createdAt"))
           last["created"] = (*v)["createdAt"];
       }
     }
@@ -214,6 +219,7 @@ drogon::Task<Json::Value> SynchronizedService::sync(const SynchronizedDto& body,
   using BodyField = std::optional<SynchronizedBodyDto> SynchronizedDto::*;
   static const std::vector<std::pair<std::string, BodyField>> kBodyFields = {
       {"user", &SynchronizedDto::user},
+      {"user_invitation", &SynchronizedDto::userInvitation},
       {"camera", &SynchronizedDto::camera},
       {"camera_stream", &SynchronizedDto::cameraStream},
       {"zone", &SynchronizedDto::zone},
@@ -250,6 +256,9 @@ drogon::Task<Json::Value> SynchronizedService::sync(const SynchronizedDto& body,
     // decides which tables exist for them, the scope decides which rows.
     SyncFilter base{};
     if (isPersonalTable(table))
+      base.userId = ctx.sub;
+    if (table == TableName::User && ctx.role != UserRole::Owner &&
+        ctx.role != UserRole::Guard)
       base.userId = ctx.sub;
     out[name] =
         co_await syncWithRepo({.repo = repo, .dto = *(body.*member)}, base);
