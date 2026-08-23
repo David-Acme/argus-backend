@@ -40,9 +40,17 @@ inline constexpr std::string_view FIND_SYNC_ALL =
     "SELECT * FROM user_audit_log WHERE user_id = ? "
     "ORDER BY event_timestamp ASC LIMIT ";
 
+inline constexpr std::string_view FIND_SYNC_AFTER_ID =
+    "SELECT * FROM user_audit_log WHERE user_id = ? AND id > ? "
+    "ORDER BY id ASC LIMIT ";
+
+inline constexpr std::string_view FIND_SYNC_AFTER_ID_TO =
+    "SELECT * FROM user_audit_log WHERE user_id = ? AND id > ? AND id <= ? "
+    "ORDER BY id ASC LIMIT ";
+
 inline constexpr std::string_view FIND_LAST_SYNC =
     "SELECT * FROM user_audit_log WHERE user_id = ? "
-    "ORDER BY event_timestamp DESC LIMIT 1";
+    "ORDER BY id DESC LIMIT 1";
 } // namespace user_audit_log_query
 
 struct UserAuditLogCreateInput
@@ -58,6 +66,8 @@ struct UserAuditLogCreateInput
 struct UserAuditLogSyncFilter
 {
   int64_t userId{0};
+  std::optional<int64_t> afterId;
+  std::optional<int64_t> endId;
   std::optional<int64_t> startTime;
   std::optional<int64_t> endTime;
 };

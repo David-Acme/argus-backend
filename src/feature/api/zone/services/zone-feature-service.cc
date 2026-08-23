@@ -6,7 +6,14 @@ void ZoneFeatureService::emit(SyncOperation operation,
   SocketEmitDto body;
   body.operation = operation;
   body.option = TableName::Zone;
-  body.obj = row.toJson();
+  if (operation == SyncOperation::Delete) {
+    Json::Value tombstone;
+    tombstone["id"] = row.id;
+    body.obj = tombstone;
+  }
+  else {
+    body.obj = row.toJson();
+  }
   socketService_.emitModule(TableName::Zone, body);
 }
 
@@ -49,7 +56,13 @@ ZoneFeatureService::update(int64_t id, const UpdateZoneDto& body) const
   const auto row = co_await repository_.update(id, input);
   if (row.id == 0)
     co_return std::nullopt;
-  emit(SyncOperation::Add, row);
+  co_await syncAuditService_.publishModule({
+      .recordId = row.id,
+      .tableName = TableName::Zone,
+      .before = existing->toJson(),
+      .after = row.toJson(),
+      .actorId = std::nullopt,
+  });
   co_return row;
 }
 

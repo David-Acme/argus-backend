@@ -239,11 +239,13 @@ AuthService::registerUser(RegisterDto body,
     const auto consumedInvitation =
         co_await invitationRepository_.findById(invitation->id);
     if (consumedInvitation) {
-      SocketEmitDto invitationEmit;
-      invitationEmit.operation = SyncOperation::Add;
-      invitationEmit.option = TableName::UserInvitation;
-      invitationEmit.obj = consumedInvitation->toJson();
-      socketService_.emitModule(TableName::UserInvitation, invitationEmit);
+      co_await syncAuditService_.publishModule({
+          .recordId = consumedInvitation->id,
+          .tableName = TableName::UserInvitation,
+          .before = invitation->toJson(),
+          .after = consumedInvitation->toJson(),
+          .actorId = user.id,
+      });
 
       Json::Value enrollment(Json::objectValue);
       enrollment["event"] = "invitation_enrollment";
@@ -476,15 +478,25 @@ drogon::Task<void>
 AuthService::updateMe(int64_t userId,
                       const std::optional<std::string>& name) const
 {
+  const auto before = co_await userRepository_.findById(userId);
+  if (!before)
+    throw ResponseException("User not found", 404, AppConfig::ERROR_CODE_NOT_FOUND);
   auto user = co_await userRepository_.update(
       userId, {.name = name, .lastName = std::nullopt, .role = std::nullopt,
                .isActive = std::nullopt});
-
-  SocketEmitDto emit;
-  emit.operation = SyncOperation::Add;
-  emit.option = TableName::User;
-  emit.obj = user.toJson();
-  socketService_.emitModule(TableName::User, emit);
+  auto users = co_await userRepository_.findAll();
+  std::vector<int64_t> recipients{user.id};
+  for (const auto& recipient : users) {
+    if (recipient.role == UserRole::Owner || recipient.role == UserRole::Guard)
+      recipients.push_back(recipient.id);
+  }
+  co_await syncAuditService_.publishUsers({
+      .recordId = user.id,
+      .tableName = TableName::User,
+      .before = before->toJson(),
+      .after = user.toJson(),
+      .userIds = std::move(recipients),
+  });
 }
 
 drogon::Task<ResponseLoginDto>

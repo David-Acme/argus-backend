@@ -6,7 +6,14 @@ void CameraFeatureService::emit(SyncOperation operation,
   SocketEmitDto body;
   body.operation = operation;
   body.option = TableName::Camera;
-  body.obj = row.toJson();
+  if (operation == SyncOperation::Delete) {
+    Json::Value tombstone;
+    tombstone["id"] = row.id;
+    body.obj = tombstone;
+  }
+  else {
+    body.obj = row.toJson();
+  }
   socketService_.emitModule(TableName::Camera, body);
 }
 
@@ -64,7 +71,13 @@ CameraFeatureService::update(int64_t id, const UpdateCameraDto& body) const
   const auto row = co_await repository_.update(id, input);
   if (row.id == 0)
     co_return std::nullopt;
-  emit(SyncOperation::Add, row);
+  co_await syncAuditService_.publishModule({
+      .recordId = row.id,
+      .tableName = TableName::Camera,
+      .before = existing->toJson(),
+      .after = row.toJson(),
+      .actorId = std::nullopt,
+  });
   co_return row;
 }
 

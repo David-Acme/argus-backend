@@ -128,6 +128,8 @@ struct SynchronizedDto
 
 struct SynchronizedLogDto
 {
+  std::optional<int64_t> afterId;
+  std::optional<int64_t> endId;
   std::optional<int64_t> startTime;
   std::optional<int64_t> endTime;
   bool findLast{false};
@@ -135,6 +137,11 @@ struct SynchronizedLogDto
   static SynchronizedLogDto fromJson(const Json::Value& json)
   {
     SynchronizedLogDto dto;
+    if (json.isMember("afterId") && json["afterId"].isInt64())
+      dto.afterId = json["afterId"].asInt64();
+    if (json.isMember("endId") && !json["endId"].isNull() &&
+        json["endId"].isInt64())
+      dto.endId = json["endId"].asInt64();
     if (json.isMember("startTime") && json["startTime"].isInt64())
       dto.startTime = json["startTime"].asInt64();
     if (json.isMember("endTime") && !json["endTime"].isNull() &&
@@ -143,6 +150,7 @@ struct SynchronizedLogDto
     dto.findLast = json.get("findLast", false).asBool();
 
     START_VALIDATION(SynchronizedLogDto, dto)
+    IS_POSITIVE_TIMESTAMP_OPTIONAL(endId)
     IS_POSITIVE_TIMESTAMP_OPTIONAL(startTime)
     IS_POSITIVE_TIMESTAMP_OPTIONAL(endTime)
     IS_BOOLEAN(findLast)
@@ -152,6 +160,15 @@ struct SynchronizedLogDto
                     if (d.startTime && d.endTime &&
                         *d.startTime >= *d.endTime)
                       return "startTime must be less than endTime";
+                    return std::nullopt;
+                  })
+    CUSTOM_LAMBDA(afterId,
+                  [](const SynchronizedLogDto& d)
+                      -> std::optional<std::string> {
+                    if (d.afterId && *d.afterId < 0)
+                      return "afterId must be non-negative";
+                    if (d.afterId && d.endId && *d.afterId >= *d.endId)
+                      return "afterId must be less than endId";
                     return std::nullopt;
                   })
     END_VALIDATION()

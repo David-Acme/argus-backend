@@ -455,10 +455,31 @@ Raw pointers only for non-owning access (`.get()`).
   `SocketEmitDto` `{operation, option(TableName), info}`.
   Errors: `{type:"<type>_error", status, error}`.
 - Operations (`src/shared/contracts/sync-operation.hxx`): `InitialInfo=0`,
-  `Synchronize=1` (created/deleted, includes `notification` per user),
-  `SynchronizeAuditLog=2` (global diffs; the backend decides which tables from
-  the role), `SynchronizeUserAuditLog=3` (per-user diffs, filtered by `sub`).
-  Live events: `Add=4`, `Delete=5`, `Log=6`.
+  `Synchronize=1` (initial bootstrap plus creations/deletions; includes
+  `notification` per user), `SynchronizeAuditLog=2` (global field diffs; the
+  backend selects tables by role), `SynchronizeUserAuditLog=3` (recipient
+  field diffs, filtered by `sub`). Live events: `Add=4`, `Delete=5`, `Log=6`.
+- **Normal rows are creation-only after bootstrap**: `Synchronize` pages by
+  `created_at`; do not switch it to `updated_at`/`syncAt` to represent an
+  update. Every persisted update/revocation must instead publish a granular
+  audit change. New records are `Add`; deletion events only carry the id.
+- Audit requests use monotonic SQLite ids, not timestamps. A client asks
+  `{findLast:true}` for a `watermarkId`, then pages
+  `afterId < id <= endId` in ascending order. `afterId=0` is valid to establish
+  an empty baseline; `endId` is a positive bound. `SynchronizedService` returns
+  `nextCursorId` only after the bounded query shape is accepted.
+- `audit_log` is module/global and `user_audit_log` is recipient-scoped. Their
+  `changes` payload comes from `JsonDiff::createFlatDiff(before, after)`: only
+  changed fields with their previous/current values, never a replacement record.
+  Daily compaction merges a record's diff and inserts the compacted result as a
+  new audit row so its id advances and reconnecting clients converge.
+- `SyncAuditService` (`src/shared/services/sync-audit/`) is the feature-level
+  publishing facade. Capture `before` before a repository mutation, capture
+  `after` once it succeeds, then call `publishModule` or `publishUsers` with the
+  correct audience. Do not hand-build `Log` payloads or emit a full `Add` for an
+  update. Recipient lists must be deduplicated and must never contain a secret.
+- `PATCH /notification/read` follows the same rule: select the unread rows
+  before mutation, update only those rows, and publish their user audit diffs.
 - Sync queries: use `sync_query::buildSyncQuery(filter, Q1, Q2, Q3)` (a
   SYNCHRONOUS function returning query+args by value) then `co_await
   client->execSqlCoro(query, argsRef)` directly. **NEVER** capture references
@@ -533,9 +554,10 @@ Before any commit, verify: `cmake --build --preset dev -j 8` passes with
 | `src/shared/services/config-service/` | `ConfigService` read + runtime writes (`setBool/...` persisten a `config.toml`, comentarios preservados) |
 | `src/shared/services/room/` | `RoomManager` local (rooms por módulo/usuario, `thread_local`) |
 | `src/shared/services/socket/` | `SocketService` (emitModule/emitUser) + `SocketEmitDto` |
-| `src/shared/services/audit-log/` | Audit global con snapshot por día + emit |
-| `src/shared/services/user-audit-log/` | Audit a nivel de usuario (syncable) |
-| `src/shared/services/notification/` | Notificaciones por usuario (`createAndEmit` + `Add`) |
+| `src/shared/services/audit-log/` | Audit global: diffs por campo, compactación diaria e id monotónico para sync |
+| `src/shared/services/user-audit-log/` | Audit por destinatario: diffs por campo, compactación diaria e id monotónico para sync |
+| `src/shared/services/sync-audit/` | Fachada central para publicar diffs module/user tras mutaciones de features |
+| `src/shared/services/notification/` | Notificaciones por usuario: `Add` al crear y user-audit granular al marcar lectura |
 | `src/shared/services/notification-token/` | Push tokens por sesión |
 | `src/shared/utils/json-diff/` | Diff JSON + snapshot (`JsonDiff`) |
 | `src/shared/utils/json-util/` | `jsonToString`/`jsonFromString` |

@@ -123,7 +123,13 @@ InvitationFeatureService::revoke(int64_t invitationId, int64_t actorId) const
   if (!after)
     throw ResponseException("Invitation not found", 404,
                             AppConfig::ERROR_CODE_NOT_FOUND);
-  emitInvitation(*after);
+  co_await syncAuditService_.publishModule({
+      .recordId = after->id,
+      .tableName = TableName::UserInvitation,
+      .before = before->toJson(),
+      .after = after->toJson(),
+      .actorId = actorId,
+  });
   co_await recordInvitationAction({
       .actorId = actorId,
       .before = *before,

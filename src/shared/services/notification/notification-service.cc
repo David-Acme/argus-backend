@@ -4,6 +4,7 @@
 #include <shared/contracts/sync-operation.hxx>
 #include <shared/enums.hxx>
 #include <shared/schemas/notification/notification-schema.hxx>
+#include <shared/services/sync-audit/sync-audit-service.hxx>
 #include <trantor/utils/Logger.h>
 
 drogon::Task<void>
@@ -52,5 +53,16 @@ drogon::Task<void>
 NotificationService::markAsRead(int64_t userId,
                                 const std::vector<int64_t>& ids) const
 {
-  co_await repository_.markAsRead(userId, ids);
+  const auto changes = co_await repository_.markAsRead(userId, ids);
+  SyncAuditService syncAuditService;
+  for (const auto& change : changes) {
+    co_await syncAuditService.publishUsers({
+        .recordId = change.after.id,
+        .tableName = TableName::Notification,
+        .before = change.before.toJson(),
+        .after = change.after.toJson(),
+        .userIds = {userId},
+    });
+  }
+  co_return;
 }

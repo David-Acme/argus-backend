@@ -6,7 +6,14 @@ drogon::Task<void> ProjectFeatureService::emit(SyncOperation operation,
   SocketEmitDto body;
   body.operation = operation;
   body.option = TableName::Project;
-  body.obj = row.toJson();
+  if (operation == SyncOperation::Delete) {
+    Json::Value tombstone;
+    tombstone["id"] = row.id;
+    body.obj = tombstone;
+  }
+  else {
+    body.obj = row.toJson();
+  }
 
   auto recipients = co_await memberRepository_.memberIds(row.id);
   recipients.push_back(row.ownerId);
@@ -59,7 +66,15 @@ ProjectFeatureService::update(int64_t id, const UpdateProjectDto& body,
   });
   if (row.id == 0)
     co_return std::nullopt;
-  co_await emit(SyncOperation::Add, row);
+  auto recipients = co_await memberRepository_.memberIds(row.id);
+  recipients.push_back(row.ownerId);
+  co_await syncAuditService_.publishUsers({
+      .recordId = row.id,
+      .tableName = TableName::Project,
+      .before = existing->toJson(),
+      .after = row.toJson(),
+      .userIds = std::move(recipients),
+  });
   co_return row;
 }
 

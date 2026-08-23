@@ -5,6 +5,7 @@
 #include <shared/repositories/refresh-token/refresh-token-repository.hxx>
 #include <shared/repositories/user/user-repository.hxx>
 #include <shared/services/socket/socket-service.hxx>
+#include <shared/services/sync-audit/sync-audit-service.hxx>
 #include <shared/services/user-action-log/user-action-log-service.hxx>
 #include <vector>
 
@@ -33,7 +34,6 @@ public:
   drogon::Task<void> deactivate(int64_t targetUserId, int64_t actorId) const;
 
 private:
-  void emitUserUpdate(const UserSchema& user) const;
   void emitAuthContextChanged(const UserSchema& user) const;
   drogon::Task<void> recordChange(const UserChangeLogInput& input) const;
 
@@ -41,4 +41,5 @@ private:
   RefreshTokenRepository refreshTokenRepository_;
   UserActionLogService userActionLogService_;
   SocketService socketService_;
+  SyncAuditService syncAuditService_;
 };

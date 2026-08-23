@@ -5,6 +5,12 @@
 #include <optional>
 #include <shared/schemas/notification/notification-schema.hxx>
 
+struct NotificationReadChange
+{
+  NotificationSchema before;
+  NotificationSchema after;
+};
+
 class NotificationRepository
 {
 public:
@@ -20,6 +26,6 @@ public:
   drogon::Task<std::optional<Json::Value>>
   findLastSync(const NotificationSyncFilter& filter) const;
 
-  drogon::Task<void> markAsRead(int64_t userId,
-                                const std::vector<int64_t>& ids) const;
+  drogon::Task<std::vector<NotificationReadChange>>
+  markAsRead(int64_t userId, const std::vector<int64_t>& ids) const;
 };

@@ -61,7 +61,19 @@ UserFeatureService::update(const UserManagementUpdateInput& input) const
     emitAuthContextChanged(updated);
   }
 
-  emitUserUpdate(updated);
+  auto recipients = co_await repository_.findAll();
+  std::vector<int64_t> recipientIds{updated.id};
+  for (const auto& recipient : recipients) {
+    if (recipient.role == UserRole::Owner || recipient.role == UserRole::Guard)
+      recipientIds.push_back(recipient.id);
+  }
+  co_await syncAuditService_.publishUsers({
+      .recordId = updated.id,
+      .tableName = TableName::User,
+      .before = existing->toJson(),
+      .after = updated.toJson(),
+      .userIds = std::move(recipientIds),
+  });
   co_await recordChange({
       .actorId = input.actorId,
       .before = *existing,
@@ -98,15 +110,6 @@ UserFeatureService::deactivate(int64_t targetUserId, int64_t actorId) const
       .body = body,
   });
   co_return;
-}
-
-void UserFeatureService::emitUserUpdate(const UserSchema& user) const
-{
-  SocketEmitDto body;
-  body.operation = SyncOperation::Add;
-  body.option = TableName::User;
-  body.obj = user.toJson();
-  socketService_.emitModule(TableName::User, body);
 }
 
 void UserFeatureService::emitAuthContextChanged(const UserSchema& user) const

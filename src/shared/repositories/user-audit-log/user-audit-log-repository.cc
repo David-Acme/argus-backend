@@ -59,6 +59,23 @@ drogon::Task<std::vector<Json::Value>>
 UserAuditLogRepository::findSync(const UserAuditLogSyncFilter& filter) const
 {
   auto client = DbService::client();
+  if (filter.afterId) {
+    std::vector<Json::Value> data;
+    if (filter.endId) {
+      const auto result = co_await client->execSqlCoro(
+          std::string(FIND_SYNC_AFTER_ID_TO) + AppConfig::SYNC_LIMIT,
+          filter.userId, *filter.afterId, *filter.endId);
+      for (const auto& row : result)
+        data.push_back(UserAuditLogSchema(row).toJson());
+      co_return data;
+    }
+    const auto result = co_await client->execSqlCoro(
+        std::string(FIND_SYNC_AFTER_ID) + AppConfig::SYNC_LIMIT,
+        filter.userId, *filter.afterId);
+    for (const auto& row : result)
+      data.push_back(UserAuditLogSchema(row).toJson());
+    co_return data;
+  }
   if (filter.startTime && filter.endTime) {
     const auto result =
         co_await client->execSqlCoro(std::string(FIND_SYNC) + AppConfig::SYNC_LIMIT, filter.userId,

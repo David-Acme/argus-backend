@@ -106,12 +106,12 @@ NotificationRepository::findLastSync(const NotificationSyncFilter& filter) const
   co_return NotificationSchema(result.front()).toJson();
 }
 
-drogon::Task<void>
+drogon::Task<std::vector<NotificationReadChange>>
 NotificationRepository::markAsRead(int64_t userId,
                                    const std::vector<int64_t>& ids) const
 {
   if (ids.empty())
-    co_return;
+    co_return {};
 
   std::string placeholders;
   std::vector<std::string> args;
@@ -124,12 +124,32 @@ NotificationRepository::markAsRead(int64_t userId,
   }
   args.insert(args.begin(), std::to_string(userId));
 
-  std::string query = MARK_READ.data();
-  const auto pos = query.find("%1%");
-  if (pos != std::string::npos)
-    query.replace(pos, 3, placeholders);
+  const auto withIds = [&placeholders](std::string_view templateQuery) {
+    std::string query{templateQuery};
+    const auto position = query.find("%1%");
+    if (position != std::string::npos)
+      query.replace(position, 3, placeholders);
+    return query;
+  };
 
   auto client = DbService::client();
   const auto& argsRef = args;
-  co_await client->execSqlCoro(query, argsRef);
+  const auto rows = co_await client->execSqlCoro(withIds(FIND_UNREAD_BY_IDS), argsRef);
+  if (rows.empty())
+    co_return {};
+
+  std::vector<NotificationReadChange> changes;
+  changes.reserve(rows.size());
+  const auto readAt = static_cast<int64_t>(std::time(nullptr));
+  for (const auto& row : rows) {
+    NotificationReadChange change;
+    change.before = NotificationSchema(row);
+    change.after = change.before;
+    change.after.isRead = true;
+    change.after.readAt = readAt;
+    changes.push_back(std::move(change));
+  }
+
+  co_await client->execSqlCoro(withIds(MARK_READ), argsRef);
+  co_return changes;
 }

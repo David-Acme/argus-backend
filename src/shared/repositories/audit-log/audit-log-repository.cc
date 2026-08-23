@@ -103,7 +103,14 @@ AuditLogRepository::findSync(const AuditLogSyncFilter& filter) const
   appendTableNames(args, filter.tableNames);
 
   std::string query;
-  if (filter.startTime && filter.endTime) {
+  if (filter.afterId) {
+    query = expand(filter.endId ? FIND_SYNC_AFTER_ID_TO : FIND_SYNC_AFTER_ID,
+                   placeholders);
+    args.push_back(std::to_string(*filter.afterId));
+    if (filter.endId)
+      args.push_back(std::to_string(*filter.endId));
+  }
+  else if (filter.startTime && filter.endTime) {
     query = expand(FIND_SYNC, placeholders);
     args.push_back(std::to_string(*filter.startTime));
     args.push_back(std::to_string(*filter.endTime));

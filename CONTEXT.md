@@ -696,11 +696,10 @@ Never static methods for service classes. Never local/temporary repository const
   token-register go over HTTP.
 - **Operations** (`src/shared/contracts/sync-operation.hxx`): `InitialInfo=0` (on
   connect, sends `{id, role, isActive}` — no module list),
-  `Synchronize=1` (created/deleted rows, global + user level: notification),
-  `SynchronizeAuditLog=2` (global diffs; the backend picks the tables from the
-  role), `SynchronizeUserAuditLog=3` (user-level diffs, filtered by `sub`).
-  Live events: `Add=4`, `Delete=5`, `Log=6` (emitted by
-  `AuditLogService`/`NotificationService`).
+  `Synchronize=1` (initial projection and thereafter created/deleted rows),
+  `SynchronizeAuditLog=2` (global field diffs; the backend picks tables by
+  role), `SynchronizeUserAuditLog=3` (recipient-level field diffs, filtered by
+  `sub`). Live events: `Add=4`, `Delete=5`, `Log=6`.
 - **WS responses**: `SocketEmitDto` `{operation, option(TableName), info}`;
   errors `{type:"<type>_error", status, error}`.
 - **Syncable entities**: 14 repositorios implementan `Syncable` — `user`,
@@ -711,9 +710,26 @@ Never static methods for service classes. Never local/temporary repository const
   sync: `context_note`, las tablas de archivos privados/portraits y
   `device_login_challenge`. El frontend replica esta superficie en
   `SYNC_TABLE_KEYS`.
-- **Per-day snapshot**: `AuditLogService`/`UserAuditLogService` look up the
-  `record_id` entry for the day and merge the diff
-  (`JsonDiff::compareChanges`).
+- **Bootstrap versus updates**: the first `Synchronize` supplies a complete
+  authorized projection. Later normal sync pages use `created_at`, so they only
+  add new records; deletes remain id-only. All persisted modifications,
+  revocations and notification read state are delivered as audit diffs, never by
+  querying an `updated_at`/`syncAt` cursor.
+- **Bounded audit cursors**: audit repositories sort on their auto-increment id
+  and accept `afterId`/`endId`, returning `id > afterId AND id <= endId` in
+  ascending order. `{findLast:true}` returns `watermarkId`; `afterId=0` is valid
+  for an empty baseline and `endId` is positive. This gives clients a stable
+  interval while writes continue.
+- **Granular daily snapshots**: `AuditLogService`/`UserAuditLogService` create
+  `JsonDiff::createFlatDiff(before, after)` changes, then compact the daily
+  record/table (and recipient for user logs). The compacted snapshot is written
+  as a new row so it gets a strictly increasing id; it contains only changed
+  fields with previous/current values, not an entity replacement.
+- **Publish boundary**: feature services capture `before`/`after` around the
+  repository mutation and call `SyncAuditService::publishModule` or
+  `publishUsers`. The facade builds diffs and emits `Log`; it deduplicates user
+  recipients. Creation keeps `Add`, deletion keeps an id-only `Delete`. Do not
+  hand-build full-record `Log`/`Add` messages for an update.
 - **RoomManager**: instance class, file-level `thread_local` state; module rooms
   (`1 + TableName`) and a user room (`1000 + sub`); `emitUser` reaches the N
   active sessions. Lifecycle via `RoomManagerServiceAdapter` (IService) in
@@ -2007,9 +2023,11 @@ device reaches this same backend.
   existing user room with `resync=true`. The connection remains alive; its old
   module rooms are replaced by the new ones. Deactivation is different: refresh
   tokens are invalidated and `disconnectUser` closes the connection.
-- Sync uses `syncAt` (updated time when available, otherwise created time), so
-  offline devices receive user updates, revocations and redemptions when they
-  reconnect instead of relying only on a live event.
+- Sync bootstraps user/invitation rows once and subsequently pages new rows by
+  `created_at`. User edits, activation/role changes, invitation revocations and
+  redemption effects are published through the appropriate global or user audit
+  log, so an offline device catches up via its bounded audit cursor instead of
+  relying on a transient live event.
 
 ### Invitation lifecycle
 
@@ -2066,15 +2084,22 @@ The static contract scripts live under `scripts/`:
 `test-invitation-persistence-schema.sh`, `test-invitation-api-contract.sh`,
 `test-role-resync-contract.sh`, `test-face-enrollment-transaction-contract.sh`,
 `test-people-sync-contract.sh`, `test-invitation-lifecycle-contract.sh` and
-`test-portrait-preview-contract.sh`. On 2026-08-22 all passed, as did
-`cmake --build --preset dev --target argus-backend -j 2`.
+`test-portrait-preview-contract.sh`. The 2026-08-23 sync/audit implementation
+also built successfully with `cmake --build build/dev --target argus-backend -j 2`;
+`git diff --check` passed afterward.
 
-## Docs resync (2026-08-23)
+## Sync/audit resync (2026-08-23)
 
-Documentation-only pass (no code changes): the services table was extended to
-the full current set (VAD, embedding, intent, memory, extraction, reactions,
-streaming, S3/portraits); the database table list now matches `schema.sql`
-(invitations/redemption, portrait tables, device-login challenges,
-projects/calendar, job queue, voice tables); the sync surface was corrected
-to the real 14 `Syncable` repositories + `notification` (the old list
-predated projects/calendar/event/person sync).
+- The regular sync stream now bootstraps authorized rows, then advances only by
+  `created_at` for creations and id-only deletions. Its update channel is the
+  bounded, id-based audit stream rather than a second `updated_at` query.
+- `SynchronizedService` supports `{findLast:true}` plus
+  `afterId`/`endId` for both audit scopes. The returned watermark makes a finite
+  catch-up interval; clients advance their persisted cursor only after applying
+  each page.
+- `SyncAuditService` centralizes global/user diff publication. Feature updates
+  capture before/after data; camera/zone, calendar/projects and user/invitation
+  paths now publish only changed fields, while creates remain `Add` and deletes
+  are id-only. Notification reads use the same user-audit path.
+- Daily audit compaction retains the composed field diff and gives its replacement
+  a new monotonic id, preserving convergence for reconnecting clients.

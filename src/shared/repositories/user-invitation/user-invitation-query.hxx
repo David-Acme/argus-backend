@@ -18,28 +18,24 @@ inline constexpr std::string_view FIND_ALL =
     "SELECT * FROM user_invitation ORDER BY created_at DESC, id DESC LIMIT 200";
 
 inline constexpr std::string_view FIND_SYNC =
-    "SELECT * FROM user_invitation WHERE COALESCE(updated_at, created_at) >= ? "
-    "AND COALESCE(updated_at, created_at) <= ? "
-    "ORDER BY COALESCE(updated_at, created_at) ASC, id ASC LIMIT 200";
+    "SELECT * FROM user_invitation WHERE created_at >= ? "
+    "AND created_at <= ? ORDER BY created_at ASC, id ASC LIMIT 200";
 inline constexpr std::string_view FIND_SYNC_FROM =
-    "SELECT * FROM user_invitation WHERE COALESCE(updated_at, created_at) >= ? "
-    "ORDER BY COALESCE(updated_at, created_at) ASC, id ASC LIMIT 200";
+    "SELECT * FROM user_invitation WHERE created_at >= ? "
+    "ORDER BY created_at ASC, id ASC LIMIT 200";
 inline constexpr std::string_view FIND_SYNC_ALL =
     "SELECT * FROM user_invitation ORDER BY created_at ASC, id ASC LIMIT 200";
 inline constexpr std::string_view FIND_SYNC_AFTER =
     "SELECT * FROM user_invitation WHERE "
-    "(COALESCE(updated_at, created_at) > ? OR "
-    "(COALESCE(updated_at, created_at) = ? AND id > ?)) "
-    "AND COALESCE(updated_at, created_at) <= ? "
-    "ORDER BY COALESCE(updated_at, created_at) ASC, id ASC LIMIT 200";
+    "(created_at > ? OR (created_at = ? AND id > ?)) "
+    "AND created_at <= ? ORDER BY created_at ASC, id ASC LIMIT 200";
 inline constexpr std::string_view FIND_SYNC_AFTER_FROM =
     "SELECT * FROM user_invitation WHERE "
-    "(COALESCE(updated_at, created_at) > ? OR "
-    "(COALESCE(updated_at, created_at) = ? AND id > ?)) "
-    "ORDER BY COALESCE(updated_at, created_at) ASC, id ASC LIMIT 200";
+    "(created_at > ? OR (created_at = ? AND id > ?)) "
+    "ORDER BY created_at ASC, id ASC LIMIT 200";
 inline constexpr std::string_view FIND_SYNC_LAST =
     "SELECT * FROM user_invitation "
-    "ORDER BY COALESCE(updated_at, created_at) DESC, id DESC LIMIT 1";
+    "ORDER BY created_at DESC, id DESC LIMIT 1";
 
 inline constexpr std::string_view INSERT =
     "INSERT INTO user_invitation "

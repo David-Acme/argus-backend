@@ -8,6 +8,7 @@
 #include <shared/repositories/camera/camera-repository.hxx>
 #include <shared/schemas/camera/camera-schema.hxx>
 #include <shared/services/socket/socket-service.hxx>
+#include <shared/services/sync-audit/sync-audit-service.hxx>
 
 class CameraFeatureService
 {
@@ -24,4 +25,5 @@ private:
 
   CameraRepository repository_;
   SocketService socketService_;
+  SyncAuditService syncAuditService_;
 };

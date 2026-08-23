@@ -9,7 +9,14 @@ void CalendarEventShareFeatureService::emitMembership(SyncOperation operation,
   SocketEmitDto body;
   body.operation = operation;
   body.option = TableName::CalendarEventShare;
-  body.obj = row.toJson();
+  if (operation == SyncOperation::Delete) {
+    Json::Value tombstone;
+    tombstone["id"] = row.id;
+    body.obj = tombstone;
+  }
+  else {
+    body.obj = row.toJson();
+  }
   socketService_.emitUsers({ownerId, row.userId}, body);
 }
 
@@ -63,8 +70,13 @@ CalendarEventShareFeatureService::create(const CreateCalendarEventShareDto& body
   if (const auto existing = co_await repository_.findExisting(
           body.calendarEventId, body.userId)) {
     const auto row = co_await repository_.updateAccess(existing->id, access);
-    emitMembership(SyncOperation::Add, row, parent->ownerId);
-    co_await emitParent(SyncOperation::Add, body.calendarEventId, body.userId);
+    co_await syncAuditService_.publishUsers({
+        .recordId = row.id,
+        .tableName = TableName::CalendarEventShare,
+        .before = existing->toJson(),
+        .after = row.toJson(),
+        .userIds = {parent->ownerId, row.userId},
+    });
     co_return {.row = row};
   }
 
@@ -94,7 +106,13 @@ CalendarEventShareFeatureService::update(int64_t id, const UpdateCalendarEventSh
       id, shareAccessFromString(body.access));
   if (row.id == 0)
     co_return {.error = MembershipError::ParentNotFound};
-  emitMembership(SyncOperation::Add, row, parent->ownerId);
+  co_await syncAuditService_.publishUsers({
+      .recordId = row.id,
+      .tableName = TableName::CalendarEventShare,
+      .before = existing->toJson(),
+      .after = row.toJson(),
+      .userIds = {parent->ownerId, row.userId},
+  });
   co_return {.row = row};
 }
 

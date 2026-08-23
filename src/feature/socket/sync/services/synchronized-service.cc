@@ -91,8 +91,7 @@ drogon::Task<Json::Value> SynchronizedService::syncWithRepo(
     if (!rows.empty()) {
       const auto& last = rows.back();
       node["lastSyncDate"]["createdId"] = last.get("id", Json::Value());
-      node["lastSyncDate"]["created"] =
-          last.get("syncAt", last.get("createdAt", Json::Value()));
+      node["lastSyncDate"]["created"] = last.get("createdAt", Json::Value());
     }
   }
   else {
@@ -127,9 +126,7 @@ drogon::Task<Json::Value> SynchronizedService::syncWithRepo(
       if (v) {
         if ((*v).isMember("id"))
           last["createdId"] = (*v)["id"];
-        if ((*v).isMember("syncAt"))
-          last["created"] = (*v)["syncAt"];
-        else if ((*v).isMember("createdAt"))
+        if ((*v).isMember("createdAt"))
           last["created"] = (*v)["createdAt"];
       }
     }
@@ -276,17 +273,25 @@ SynchronizedService::syncAuditLog(const SynchronizedLogDto& body,
 {
   AuditLogSyncFilter filter;
   filter.tableNames = auditTablesForRole(ctx.role);
+  if (body.afterId)
+    filter.afterId = *body.afterId;
+  if (body.endId)
+    filter.endId = *body.endId;
   if (body.startTime)
     filter.startTime = *body.startTime;
   if (body.endTime)
     filter.endTime = *body.endTime;
 
   Json::Value out(Json::objectValue);
-  const auto rows = co_await auditLogRepository_.findSync(filter);
+  const auto rows = body.findLast && !body.afterId
+                        ? std::vector<Json::Value>{}
+                        : co_await auditLogRepository_.findSync(filter);
   Json::Value arr(Json::arrayValue);
   for (const auto& row : rows)
     arr.append(row);
   out["info"] = arr;
+  if (!rows.empty())
+    out["nextCursorId"] = rows.back().get("id", Json::Value());
 
   if (body.findLast) {
     const auto last = co_await auditLogRepository_.findLastSync(filter);
@@ -294,6 +299,7 @@ SynchronizedService::syncAuditLog(const SynchronizedLogDto& body,
     if (last) {
       record["id"] = (*last).get("id", Json::Value());
       record["lastSyncDate"] = (*last).get("eventTimestamp", Json::Value());
+      out["watermarkId"] = (*last).get("id", Json::Value());
     }
     else {
       record = Json::nullValue;
@@ -313,17 +319,25 @@ SynchronizedService::syncUserAuditLog(const SynchronizedLogDto& body,
 {
   UserAuditLogSyncFilter filter;
   filter.userId = ctx.sub;
+  if (body.afterId)
+    filter.afterId = *body.afterId;
+  if (body.endId)
+    filter.endId = *body.endId;
   if (body.startTime)
     filter.startTime = *body.startTime;
   if (body.endTime)
     filter.endTime = *body.endTime;
 
   Json::Value out(Json::objectValue);
-  const auto rows = co_await userAuditLogRepository_.findSync(filter);
+  const auto rows = body.findLast && !body.afterId
+                        ? std::vector<Json::Value>{}
+                        : co_await userAuditLogRepository_.findSync(filter);
   Json::Value arr(Json::arrayValue);
   for (const auto& row : rows)
     arr.append(row);
   out["info"] = arr;
+  if (!rows.empty())
+    out["nextCursorId"] = rows.back().get("id", Json::Value());
 
   if (body.findLast) {
     const auto last = co_await userAuditLogRepository_.findLastSync(filter);
@@ -331,6 +345,7 @@ SynchronizedService::syncUserAuditLog(const SynchronizedLogDto& body,
     if (last) {
       record["id"] = (*last).get("id", Json::Value());
       record["lastSyncDate"] = (*last).get("eventTimestamp", Json::Value());
+      out["watermarkId"] = (*last).get("id", Json::Value());
     }
     else {
       record = Json::nullValue;

@@ -9,6 +9,7 @@
 #include <shared/repositories/zone/zone-repository.hxx>
 #include <shared/schemas/zone/zone-schema.hxx>
 #include <shared/services/socket/socket-service.hxx>
+#include <shared/services/sync-audit/sync-audit-service.hxx>
 
 class ZoneFeatureService
 {
@@ -26,4 +27,5 @@ private:
   ZoneRepository repository_;
   CameraRepository cameraRepository_;
   SocketService socketService_;
+  SyncAuditService syncAuditService_;
 };

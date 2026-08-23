@@ -18,6 +18,7 @@
 #include <shared/repositories/user-invitation/user-invitation-repository.hxx>
 #include <shared/services/jwt/jwt-service.hxx>
 #include <shared/services/socket/socket-service.hxx>
+#include <shared/services/sync-audit/sync-audit-service.hxx>
 #include <shared/services/user-action-log/user-action-log-service.hxx>
 #include <string>
 
@@ -80,4 +81,5 @@ private:
   DeviceLoginChallengeRepository challengeRepository_;
   UserActionLogService userActionLogService_;
   SocketService socketService_;
+  SyncAuditService syncAuditService_;
 };

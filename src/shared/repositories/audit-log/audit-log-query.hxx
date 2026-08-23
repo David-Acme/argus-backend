@@ -40,9 +40,17 @@ inline constexpr std::string_view FIND_SYNC_ALL =
     "SELECT * FROM audit_log WHERE table_name IN (%1%) "
     "ORDER BY event_timestamp ASC LIMIT ";
 
+inline constexpr std::string_view FIND_SYNC_AFTER_ID =
+    "SELECT * FROM audit_log WHERE table_name IN (%1%) AND id > ? "
+    "ORDER BY id ASC LIMIT ";
+
+inline constexpr std::string_view FIND_SYNC_AFTER_ID_TO =
+    "SELECT * FROM audit_log WHERE table_name IN (%1%) AND id > ? AND id <= ? "
+    "ORDER BY id ASC LIMIT ";
+
 inline constexpr std::string_view FIND_LAST_SYNC =
     "SELECT * FROM audit_log WHERE table_name IN (%1%) "
-    "ORDER BY event_timestamp DESC LIMIT 1";
+    "ORDER BY id DESC LIMIT 1";
 } // namespace audit_log_query
 
 struct AuditLogCreateInput
@@ -58,6 +66,8 @@ struct AuditLogCreateInput
 struct AuditLogSyncFilter
 {
   std::vector<TableName> tableNames;
+  std::optional<int64_t> afterId;
+  std::optional<int64_t> endId;
   std::optional<int64_t> startTime;
   std::optional<int64_t> endTime;
 };

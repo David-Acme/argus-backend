@@ -42,7 +42,11 @@ inline constexpr std::string_view FIND_LAST_SYNC =
 
 inline constexpr std::string_view MARK_READ =
     "UPDATE notification SET is_read = 1, read_at = strftime('%s', 'now') "
-    "WHERE user_id = ? AND id IN (%1%)";
+    "WHERE user_id = ? AND is_read = 0 AND id IN (%1%)";
+
+inline constexpr std::string_view FIND_UNREAD_BY_IDS =
+    "SELECT * FROM notification WHERE user_id = ? AND is_read = 0 AND id IN (%1%) "
+    "ORDER BY id ASC";
 } // namespace notification_query
 
 struct NotificationCreateInput
