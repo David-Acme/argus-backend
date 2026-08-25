@@ -71,6 +71,9 @@ add_custom_command(
             ${CMAKE_SOURCE_DIR}/config.toml
             $<TARGET_FILE_DIR:argus-tapo-probe>/config.toml
     COMMAND ${CMAKE_COMMAND} -E create_symlink
+            ${CMAKE_SOURCE_DIR}/labs
+            $<TARGET_FILE_DIR:argus-tapo-probe>/labs
+    COMMAND ${CMAKE_COMMAND} -E create_symlink
             ${CMAKE_SOURCE_DIR}/models
             $<TARGET_FILE_DIR:argus-tapo-probe>/models
 )

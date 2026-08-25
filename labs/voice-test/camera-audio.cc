@@ -58,7 +58,7 @@ bool CameraMic::open(const std::string& rtspUrl, OnAudio onAudio)
   impl_->onAudio = std::move(onAudio);
 
   const int recoverMs =
-      ConfigService::getInt("voice_test.mic_recover_timeout_ms");
+      ConfigService::getInt("labs.voice_test.mic_recover_timeout_ms");
   impl_->recoverTimeout =
       std::chrono::milliseconds(recoverMs > 0 ? recoverMs : 3000);
   impl_->lastAudioAt = std::chrono::steady_clock::now();

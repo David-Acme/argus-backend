@@ -18,23 +18,29 @@ find_package(tomlplusplus REQUIRED)
 find_package(OpenSSL REQUIRED)
 find_package(mdns CONFIG REQUIRED)
 find_package(qr-code-generator CONFIG REQUIRED)
+find_path(RNNOISE_INCLUDE_DIR NAMES rnnoise.h)
 find_library(RNNOISE_LIBRARY NAMES rnnoise)
 
 add_subdirectory(third_party)
-add_subdirectory(labs/audio-probe)
-add_subdirectory(labs/voice-test)
-add_subdirectory(labs/tapo-probe)
-add_subdirectory(labs/llm-bench)
-add_subdirectory(labs/vlm-bench)
-add_subdirectory(labs/tts-probe)
-add_subdirectory(labs/stream-probe)
-add_subdirectory(labs/memory-probe)
-add_subdirectory(labs/intent-probe)
-add_subdirectory(labs/tool-bench)
-add_subdirectory(labs/extract-probe)
-add_subdirectory(labs/queue-probe)
-add_subdirectory(labs/reaction-probe)
-add_subdirectory(labs/kuzu-probe)
+
+option(ARGUS_BUILD_LABS "Build backend integration and verification labs" ON)
+
+if(ARGUS_BUILD_LABS)
+    add_subdirectory(labs/audio-probe)
+    add_subdirectory(labs/voice-test)
+    add_subdirectory(labs/tapo-probe)
+    add_subdirectory(labs/llm-bench)
+    add_subdirectory(labs/vlm-bench)
+    add_subdirectory(labs/tts-probe)
+    add_subdirectory(labs/stream-probe)
+    add_subdirectory(labs/memory-probe)
+    add_subdirectory(labs/intent-probe)
+    add_subdirectory(labs/tool-bench)
+    add_subdirectory(labs/extract-probe)
+    add_subdirectory(labs/queue-probe)
+    add_subdirectory(labs/reaction-probe)
+    add_subdirectory(labs/kuzu-probe)
+endif()
 
 file(GLOB_RECURSE CONFIG_SRC
     ${SRC_ROOT}/config/*.cc
@@ -74,6 +80,19 @@ target_include_directories(${PROJECT_NAME}
         ${CMAKE_SOURCE_DIR}/third_party/ncnn/src
 )
 
+# toml++ is header-only. Conan's generated imported target can omit its
+# include directory in a single-config Release container build, so keep the
+# generated package path explicit for every supported configuration.
+foreach(_tomlplusplus_include_var
+        tomlplusplus_INCLUDE_DIRS_RELEASE
+        tomlplusplus_INCLUDE_DIRS_DEBUG
+        tomlplusplus_INCLUDE_DIRS)
+    if(DEFINED ${_tomlplusplus_include_var})
+        target_include_directories(${PROJECT_NAME} SYSTEM PRIVATE
+            ${${_tomlplusplus_include_var}})
+    endif()
+endforeach()
+
 target_sources(${PROJECT_NAME}
     PRIVATE
         ${CONFIG_SRC}
@@ -104,8 +123,12 @@ target_link_libraries(${PROJECT_NAME}
         ${CONAN_LIBS}
 )
 
-if(RNNOISE_LIBRARY)
+if(RNNOISE_INCLUDE_DIR AND RNNOISE_LIBRARY)
+  target_compile_definitions(${PROJECT_NAME} PRIVATE ARGUS_HAS_RNNOISE=1)
+  target_include_directories(${PROJECT_NAME} SYSTEM PRIVATE ${RNNOISE_INCLUDE_DIR})
   target_link_libraries(${PROJECT_NAME} PRIVATE ${RNNOISE_LIBRARY})
+else()
+  target_compile_definitions(${PROJECT_NAME} PRIVATE ARGUS_HAS_RNNOISE=0)
 endif()
 
 if(ARGUS_BUILD_INSPIREFACE AND TARGET InspireFace)

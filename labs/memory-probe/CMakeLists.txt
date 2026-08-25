@@ -72,6 +72,9 @@ add_custom_command(
             ${CMAKE_SOURCE_DIR}/config.toml
             $<TARGET_FILE_DIR:argus-memory-probe>/config.toml
     COMMAND ${CMAKE_COMMAND} -E create_symlink
+            ${CMAKE_SOURCE_DIR}/labs
+            $<TARGET_FILE_DIR:argus-memory-probe>/labs
+    COMMAND ${CMAKE_COMMAND} -E create_symlink
             ${CMAKE_SOURCE_DIR}/database
             $<TARGET_FILE_DIR:argus-memory-probe>/database
     COMMAND ${CMAKE_COMMAND} -E create_symlink

@@ -41,6 +41,12 @@ LlmService gLlm;
 MemoryService gMemory{gVecDb, gLlm};
 EmbeddingService gEmbedding;
 
+void loadLabConfig()
+{
+  ConfigService::load("config.toml");
+  ConfigService::loadOverlay("labs/config.toml");
+}
+
 void clearUserRows(int64_t userId);
 
 constexpr int64_t kProbeUser = 990001;
@@ -107,7 +113,7 @@ std::string vectorJson(int count, float value)
 
 int captureQuery(const std::string& text, const std::string& lang)
 {
-  ConfigService::load("config.toml");
+  loadLabConfig();
   ParserFixture fixture(ConfigService::getString("database.file"));
   const RuleParseInput input{.text = text, .lang = lang};
   const auto phrase = fixture.parser.parse(input);
@@ -141,7 +147,7 @@ int captureQuery(const std::string& text, const std::string& lang)
 
 int schemaCheck()
 {
-  ConfigService::load("config.toml");
+  loadLabConfig();
   DbService::installExtensions();
 
   sqlite3* db = nullptr;
@@ -255,7 +261,7 @@ int schemaCheck()
 
 int captureTest()
 {
-  ConfigService::load("config.toml");
+  loadLabConfig();
 
   struct Sample
   {
@@ -328,7 +334,7 @@ int captureTest()
 // every deterministic layer so wrong answers are visible instead of implied.
 int edgeSweep()
 {
-  ConfigService::load("config.toml");
+  loadLabConfig();
   gMemory.init({.deferStore = true});
 
   ParserFixture fixture(ConfigService::getString("database.file"));
@@ -435,7 +441,7 @@ int edgeSweep()
 
 int capturePolicyTest()
 {
-  ConfigService::load("config.toml");
+  loadLabConfig();
   // deferStore keeps the worker and the graph out of the way: a policy
   // decision must be observable without persisting anything.
   gMemory.init({.deferStore = true});
@@ -580,9 +586,9 @@ int capturePolicyTest()
 
 int toolParseTest()
 {
-  ConfigService::load("config.toml");
-  const std::string start = ConfigService::getString("memory.save_trigger");
-  const std::string end = ConfigService::getString("memory.tool_end_trigger");
+  loadLabConfig();
+  const std::string start = ConfigService::getString("labs.memory.save_trigger");
+  const std::string end = ConfigService::getString("labs.memory.tool_end_trigger");
 
   ToolParser parser(start, end);
   std::vector<ToolCall> calls;
@@ -652,7 +658,7 @@ std::string newestEpisode(int64_t userId)
 // an episode; a durable statement must survive into the summary.
 int compactionTest()
 {
-  ConfigService::load("config.toml");
+  loadLabConfig();
   DbService::installExtensions();
 
   gLlm.init();
@@ -720,7 +726,7 @@ int compactionTest()
 // prompt no longer announces tools.
 int ttftBench(int rounds)
 {
-  ConfigService::load("config.toml");
+  loadLabConfig();
   gLlm.init();
   if (!gLlm.isLoaded()) {
     std::cout << "[FAIL] LLM not loaded\n";
@@ -789,7 +795,7 @@ int ttftBench(int rounds)
 
 int toolSchemaCost()
 {
-  ConfigService::load("config.toml");
+  loadLabConfig();
   gMemory.registerTools(ToolRegistry::instance());
 
   ToolRegistry& registry = ToolRegistry::instance();
@@ -815,7 +821,7 @@ float cosine(const std::vector<float>& a, const std::vector<float>& b)
 
 int embedCheck()
 {
-  ConfigService::load("config.toml");
+  loadLabConfig();
   gMemory.init();
   const auto warmup = gEmbedding.embed("warmup", "query:");
   if (!warmup) {
@@ -923,7 +929,7 @@ void clearUserRows(int64_t userId)
 
 int recallBench()
 {
-  ConfigService::load("config.toml");
+  loadLabConfig();
   DbService::installExtensions();
 
   sqlite3* db = nullptr;
@@ -1010,7 +1016,7 @@ int recallBench()
 
 int ftsDebug(const std::string& query)
 {
-  ConfigService::load("config.toml");
+  loadLabConfig();
   DbService::installExtensions();
   {
     std::scoped_lock lock(gVecDb.mutex());
@@ -1105,7 +1111,7 @@ int ftsDebug(const std::string& query)
 
 int recallDemo(const std::string& query)
 {
-  ConfigService::load("config.toml");
+  loadLabConfig();
   DbService::installExtensions();
   {
     std::scoped_lock lock(gVecDb.mutex());
@@ -1141,7 +1147,7 @@ int recallDemo(const std::string& query)
 
 int simPair(const std::string& left, const std::string& right)
 {
-  ConfigService::load("config.toml");
+  loadLabConfig();
   const auto a = gEmbedding.embed(left, "passage:");
   const auto b = gEmbedding.embed(right, "passage:");
   const auto q = gEmbedding.embed(left, "query:");
@@ -1156,7 +1162,7 @@ int simPair(const std::string& left, const std::string& right)
 
 int scaleTest(int count)
 {
-  ConfigService::load("config.toml");
+  loadLabConfig();
   DbService::installExtensions();
   {
     std::scoped_lock lock(gVecDb.mutex());
@@ -1313,7 +1319,7 @@ int scaleTest(int count)
 
 int vecRows(const std::string& partition)
 {
-  ConfigService::load("config.toml");
+  loadLabConfig();
   DbService::installExtensions();
   std::scoped_lock lock(gVecDb.mutex());
   sqlite3* db = gVecDb.handle();
@@ -1351,7 +1357,7 @@ int vecRows(const std::string& partition)
 
 int recallUser(int64_t userId, const std::string& query)
 {
-  ConfigService::load("config.toml");
+  loadLabConfig();
   DbService::installExtensions();
   {
     std::scoped_lock lock(gVecDb.mutex());
@@ -1373,7 +1379,7 @@ int recallUser(int64_t userId, const std::string& query)
 
 int simScan(const std::string& query)
 {
-  ConfigService::load("config.toml");
+  loadLabConfig();
   DbService::installExtensions();
   {
     std::scoped_lock lock(gVecDb.mutex());
@@ -1432,7 +1438,7 @@ int simScan(const std::string& query)
 
 int simsCheck()
 {
-  ConfigService::load("config.toml");
+  loadLabConfig();
   DbService::installExtensions();
   {
     std::scoped_lock lock(gVecDb.mutex());
@@ -1500,7 +1506,7 @@ int simsCheck()
 
 int tokenDebug(const std::string& text)
 {
-  ConfigService::load("config.toml");
+  loadLabConfig();
   UnigramTokenizer tok;
   if (!tok.load(ConfigService::getString("memory.embedding_tokenizer"))) {
     std::cout << "tokenizer load failed\n";
@@ -1519,7 +1525,7 @@ int tokenDebug(const std::string& text)
 
 int vecGateTest()
 {
-  ConfigService::load("config.toml");
+  loadLabConfig();
   DbService::installExtensions();
   {
     std::scoped_lock lock(gVecDb.mutex());
@@ -1609,7 +1615,7 @@ int vecGateTest()
 
 int dedupBench()
 {
-  ConfigService::load("config.toml");
+  loadLabConfig();
   DbService::installExtensions();
   {
     std::scoped_lock lock(gVecDb.mutex());
@@ -1668,7 +1674,7 @@ int dedupBench()
 
 int wipeMemory()
 {
-  ConfigService::load("config.toml");
+  loadLabConfig();
   DbService::installExtensions();
   SqliteGraph graph;
   graph.open(ConfigService::getString("database.file"));
@@ -1712,7 +1718,7 @@ int wipeMemory()
 
 int purgeCmd(const std::string& scope, int64_t refId)
 {
-  ConfigService::load("config.toml");
+  loadLabConfig();
   DbService::installExtensions();
   {
     std::scoped_lock lock(gVecDb.mutex());
@@ -1762,7 +1768,7 @@ int purgeCmd(const std::string& scope, int64_t refId)
 
 int seedCmd(int64_t userId, const std::string& text)
 {
-  ConfigService::load("config.toml");
+  loadLabConfig();
   DbService::installExtensions();
   {
     std::scoped_lock lock(gVecDb.mutex());
@@ -1998,7 +2004,7 @@ int toolsTest()
   std::filesystem::remove(dbPath);
   std::filesystem::remove(dbPath + "-wal");
   std::filesystem::remove(dbPath + "-shm");
-  ConfigService::load("config.toml");
+  loadLabConfig();
 
   SqliteGraph graph;
   graph.open(dbPath);
@@ -2251,7 +2257,7 @@ int entityTest()
 
 int formationTest()
 {
-  ConfigService::load("config.toml");
+  loadLabConfig();
   const std::string dbPath = "database/formation-test.db";
   std::filesystem::remove(dbPath);
   std::filesystem::remove(dbPath + "-wal");

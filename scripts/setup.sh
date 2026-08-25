@@ -9,12 +9,14 @@
 #   4. Download the LFM2.5-1.2B-Instruct QAD LLM (~696 MB)
 #   5. Install Conan dependencies into build/<profile>
 #   6. Configure and build with the matching CMake preset
+#   7. Create local system/lab configs and start RustFS in Docker
 #
 # Usage:
 #   ./scripts/setup.sh                     # default: dev
 #   ./scripts/setup.sh dev                 # dev profile
 #   ./scripts/setup.sh prod                # prod profile
 #   ./scripts/setup.sh dev --no-build      # install deps only (no compile)
+#   ./scripts/setup.sh --storage-only      # configure/start RustFS only
 #   SKIP_BUILD=1 ./scripts/setup.sh prod
 #
 set -euo pipefail
@@ -50,6 +52,7 @@ sudo_if_needed() {
 
 PROFILE="dev"
 SKIP_BUILD=0
+STORAGE_ONLY=0
 ARGS=()
 
 for a in "$@"; do
@@ -57,6 +60,7 @@ for a in "$@"; do
     -h|--help)
       grep '^#' "$0" | sed 's/^#\{1,2\} //'; exit 0 ;;
     --no-build) SKIP_BUILD=1 ;;
+    --storage-only) STORAGE_ONLY=1 ;;
     dev|prod)   PROFILE="$a" ;;
     *)          ARGS+=("$a") ;;
   esac
@@ -68,6 +72,14 @@ case "$PROFILE" in
 esac
 
 log "Profile: $PROFILE  build_type: $BUILD_TYPE  output: $OUTPUT_FOLDER  preset: $CMAKE_PRESET"
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+CONFIG="$ROOT/config.toml"
+CONFIG_TEMPLATE="$ROOT/config.toml.example"
+LABS_CONFIG="$ROOT/labs/config.toml"
+LABS_CONFIG_TEMPLATE="$ROOT/labs/config.toml.example"
+RUNTIME_DIR="$ROOT/docker/runtime"
+SECRET_DIR="$RUNTIME_DIR/secrets"
 
 install_system_deps() {
   log "Detecting distribution and installing build dependencies..."
@@ -345,35 +357,45 @@ setup_certs() {
   log "Pairing code: ${FP:0:8}"
 }
 
-ensure_toml_secret() {
-  local table="$1"
-  local key="$2"
-  local value="$3"
-  local root="$4"
-  local config="$root/config.local.toml"
-
-  umask 077
-  touch "$config"
-  chmod 600 "$config"
-
-  local existing
-  existing="$(awk -v table="$table" -v key="$key" '
+toml_value() {
+  local file="$1"
+  local table="$2"
+  local key="$3"
+  awk -v table="$table" -v key="$key" '
     /^[[:space:]]*\[/ {
       in_table = ($0 ~ "^\\[" table "\\][[:space:]]*$")
     }
     in_table && $0 ~ "^[[:space:]]*" key "[[:space:]]*=" {
       value = $0
       sub("^[[:space:]]*" key "[[:space:]]*=[[:space:]]*", "", value)
-      gsub(/["[:space:]]/, "", value)
+      sub("[[:space:]]+#.*$", "", value)
+      gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
+      if (value ~ /^".*"$/) {
+        sub(/^"/, "", value)
+        sub(/"$/, "", value)
+      }
       print value
       exit
-    }' "$config")"
-  if [ "${#existing}" -ge 32 ]; then
-    return
-  fi
+    }' "$file"
+}
+
+ensure_toml_value() {
+  local table="$1"
+  local key="$2"
+  local value="$3"
+  local config="$4"
+  local min_length="${5:-1}"
+  local max_length="${6:-0}"
 
   if ! grep -Eq "^[[:space:]]*\\[$table\\][[:space:]]*$" "$config"; then
     printf '\n[%s]\n%s = "%s"\n' "$table" "$key" "$value" >> "$config"
+    return
+  fi
+
+  local existing
+  existing="$(toml_value "$config" "$table" "$key")"
+  if [ "${#existing}" -ge "$min_length" ] &&
+     { [ "$max_length" -eq 0 ] || [ "${#existing}" -le "$max_length" ]; }; then
     return
   fi
 
@@ -405,13 +427,112 @@ ensure_toml_secret() {
   mv "$temp" "$config"
 }
 
-ensure_runtime_secrets() {
-  local root
-  root="$(cd "$(dirname "$0")/.." && pwd)"
-  ensure_toml_secret jwt secret "$(openssl rand -hex 48)" "$root"
-  ensure_toml_secret jwt refresh_secret "$(openssl rand -hex 48)" "$root"
-  ensure_toml_secret device fingerprint_secret "$(openssl rand -hex 48)" "$root"
-  log "Runtime JWT and device-fingerprint secrets are configured in config.local.toml."
+migrate_legacy_overlay() {
+  local legacy="$ROOT/config.local.toml"
+  [ -f "$legacy" ] || return 0
+
+  local spec table key value
+  for spec in \
+      "jwt secret" \
+      "jwt refresh_secret" \
+      "device fingerprint_secret" \
+      "storage mode" \
+      "storage.s3 endpoint" \
+      "storage.s3 access_key" \
+      "storage.s3 secret_key" \
+      "storage.s3 region" \
+      "storage.s3 bucket"; do
+    table="${spec% *}"
+    key="${spec##* }"
+    value="$(toml_value "$legacy" "$table" "$key")"
+    [ -n "$value" ] && ensure_toml_value "$table" "$key" "$value" "$CONFIG"
+  done
+
+  rm -f "$legacy"
+  log "Migrated the legacy config.local.toml values into config.toml."
+}
+
+ensure_secure_file() {
+  local path="$1"
+  local value="$2"
+  [ -n "$value" ] || { err "cannot write an empty secret to $path"; exit 1; }
+  if [ -L "$path" ]; then
+    err "refusing symbolic link: $path"
+    exit 1
+  fi
+  local temp
+  temp="$(mktemp "${path}.tmp.XXXXXX")"
+  printf '%s\n' "$value" > "$temp"
+  # Compose mounts local secret files without changing their ownership. The
+  # parent runtime directory remains 0700, while RustFS needs read access to
+  # the mounted file itself.
+  chmod 644 "$temp"
+  mv "$temp" "$path"
+}
+
+ensure_labs_config() {
+  [ -f "$LABS_CONFIG_TEMPLATE" ] || {
+    err "missing labs config template: $LABS_CONFIG_TEMPLATE"
+    exit 1
+  }
+  if [ ! -f "$LABS_CONFIG" ]; then
+    umask 077
+    cp "$LABS_CONFIG_TEMPLATE" "$LABS_CONFIG"
+    chmod 600 "$LABS_CONFIG"
+  fi
+}
+
+ensure_local_config() {
+  need_cmd openssl
+  [ -f "$CONFIG_TEMPLATE" ] || { err "missing config template: $CONFIG_TEMPLATE"; exit 1; }
+  if [ ! -f "$CONFIG" ]; then
+    umask 077
+    cp "$CONFIG_TEMPLATE" "$CONFIG"
+    chmod 600 "$CONFIG"
+  fi
+  migrate_legacy_overlay
+
+  ensure_toml_value jwt secret "$(openssl rand -hex 48)" "$CONFIG"
+  ensure_toml_value jwt refresh_secret "$(openssl rand -hex 48)" "$CONFIG"
+  ensure_toml_value device fingerprint_secret "$(openssl rand -hex 48)" "$CONFIG"
+  ensure_toml_value storage mode "s3" "$CONFIG"
+  ensure_toml_value storage.s3 endpoint "http://127.0.0.1:9000" "$CONFIG"
+  ensure_toml_value storage.s3 region "us-east-1" "$CONFIG"
+  ensure_toml_value storage.s3 bucket "argus-$(openssl rand -hex 10)-private" "$CONFIG"
+  ensure_toml_value storage.s3 access_key "$(openssl rand -hex 20 | tr '[:lower:]' '[:upper:]')" "$CONFIG" 40 40
+  ensure_toml_value storage.s3 secret_key "$(openssl rand -hex 20)" "$CONFIG" 40 40
+  ensure_toml_value storage.rustfs access_key "$(openssl rand -hex 20 | tr '[:lower:]' '[:upper:]')" "$CONFIG"
+  ensure_toml_value storage.rustfs secret_key "$(openssl rand -hex 48)" "$CONFIG"
+  chmod 600 "$CONFIG"
+  ensure_labs_config
+  log "System and lab configs are ready."
+}
+
+prepare_rustfs_runtime() {
+  mkdir -p "$SECRET_DIR"
+  chmod 700 "$RUNTIME_DIR" "$SECRET_DIR"
+  printf '%s\n' "$(toml_value "$CONFIG" storage.s3 bucket)" > "$RUNTIME_DIR/rustfs-bucket"
+  chmod 644 "$RUNTIME_DIR/rustfs-bucket"
+  local bucket
+  bucket="$(toml_value "$CONFIG" storage.s3 bucket)"
+  printf '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["s3:ListBucket"],"Resource":["arn:aws:s3:::%s"]},{"Effect":"Allow","Action":["s3:GetObject","s3:PutObject","s3:DeleteObject"],"Resource":["arn:aws:s3:::%s/*"]}]}\n' "$bucket" "$bucket" > "$RUNTIME_DIR/rustfs-policy.json"
+  chmod 644 "$RUNTIME_DIR/rustfs-policy.json"
+  ensure_secure_file "$SECRET_DIR/rustfs_access_key" "$(toml_value "$CONFIG" storage.rustfs access_key)"
+  ensure_secure_file "$SECRET_DIR/rustfs_secret_key" "$(toml_value "$CONFIG" storage.rustfs secret_key)"
+  ensure_secure_file "$SECRET_DIR/argus_s3_access_key" "$(toml_value "$CONFIG" storage.s3 access_key)"
+  ensure_secure_file "$SECRET_DIR/argus_s3_secret_key" "$(toml_value "$CONFIG" storage.s3 secret_key)"
+  log "RustFS runtime secrets and bucket descriptor are ready."
+}
+
+start_rustfs() {
+  need_cmd docker
+  docker compose version >/dev/null 2>&1 || {
+    err "Docker Compose v2 is required"
+    exit 1
+  }
+  prepare_rustfs_runtime
+  log "Starting RustFS and its idempotent bucket initializer..."
+  docker compose up -d rustfs rustfs-init
 }
 
 setup_llm_model() {
@@ -929,6 +1050,14 @@ setup_vad_model() {
 }
 
 main() {
+  ensure_local_config
+  start_rustfs
+
+  if [ "$STORAGE_ONLY" -eq 1 ]; then
+    log "RustFS setup complete; native backend development remains unchanged."
+    exit 0
+  fi
+
   # Hardware detection installs the GPU/video/audio stack for this specific
   # host and writes scripts/.hw-profile. It asks for sudo only if something is
   # actually missing. install_system_deps stays as the minimal fallback.
@@ -943,7 +1072,6 @@ main() {
   need_cmd cmake
   setup_submodules
   setup_certs
-  ensure_runtime_secrets
   setup_tts_model
   setup_llm_model
   setup_vlm_gguf_model

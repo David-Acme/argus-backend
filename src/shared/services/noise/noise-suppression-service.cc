@@ -2,7 +2,9 @@
 
 #include <algorithm>
 #include <cmath>
+#if ARGUS_HAS_RNNOISE
 #include <rnnoise.h>
+#endif
 
 namespace
 {
@@ -35,27 +37,33 @@ float clampS16(float v)
   return std::max(-1.0F, std::min(1.0F, v));
 }
 
+#if ARGUS_HAS_RNNOISE
 float clamp01(float v)
 {
   return std::max(0.0F, std::min(1.0F, v));
 }
+#endif
 
 } // namespace
 
 NoiseSuppressor::NoiseSuppressor()
 {
+#if ARGUS_HAS_RNNOISE
   const int frameSize = rnnoise_get_frame_size();
   state_ = (frameSize > 0) ? rnnoise_create(nullptr) : nullptr;
+#endif
   pending48_.reserve(kFrameSize * 8);
   workFrame_.resize(kFrameSize);
 }
 
 NoiseSuppressor::~NoiseSuppressor()
 {
+#if ARGUS_HAS_RNNOISE
   if (state_) {
     rnnoise_destroy(state_);
     state_ = nullptr;
   }
+#endif
 }
 
 void NoiseSuppressor::applyAgc(const std::vector<float>& in,
@@ -86,6 +94,10 @@ void NoiseSuppressor::applyAgc(const std::vector<float>& in,
 void NoiseSuppressor::process(const std::vector<float>& in,
                               std::vector<float>& out)
 {
+#if !ARGUS_HAS_RNNOISE
+  out = in;
+  return;
+#else
   out.clear();
   if (!state_ || in.empty()) {
     out = in;
@@ -159,14 +171,17 @@ void NoiseSuppressor::process(const std::vector<float>& in,
   out.reserve(workDown16_.size());
   for (const int16_t s : workDown16_)
     out.push_back(static_cast<float>(s) / 32768.0F);
+#endif
 }
 
 void NoiseSuppressor::reset()
 {
+#if ARGUS_HAS_RNNOISE
   if (state_) {
     rnnoise_destroy(state_);
     state_ = rnnoise_create(nullptr);
   }
+#endif
   upsampler_.reset();
   downsampler_.reset();
   pending48_.clear();

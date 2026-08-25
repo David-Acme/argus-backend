@@ -10,8 +10,7 @@ certs
 database
 docker/runtime
 models
-uploads
-config.local.toml
+config.toml
 *.log
 go2rtc.yaml
 third_party/go2rtc

@@ -68,7 +68,7 @@ public:
   TurnResult processTurn(WorkingMemory& wm, const std::string& userText,
                          const ConversationTurnInput& input);
 
-  // History ring with compaction enqueue (voice_test.history_messages cap).
+  // History ring with compaction enqueue.
   void trimHistory(WorkingMemory& wm, int64_t userId);
 
 private:

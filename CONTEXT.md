@@ -196,8 +196,8 @@ tracking evolved through the sections below (streaming, memory, tools).
   `--talk "text"` (synthesizes with `TtsService`), `--talk-file <wav>`,
   `--talk-framing`, `--ts-dump <file>`, `--verbose`.
 - **`[tapo]` in `config.toml`** — ports, timeouts, `login_attempts`, transport
-  preference, and the talk-channel knobs (`talk_framing`, `talk_mode`,
-  `talk_packet_ms`).
+  preference, and the backend talk-channel knobs (`talk_framing`, `talk_mode`).
+  Lab-only packet tuning lives in `labs/config.toml`.
 
 ### Verified offline (no camera needed)
 
@@ -463,7 +463,7 @@ remembering:
   silent on the RTSP mic while the talk channel was open (measured then;
   `CameraMic` timed out every ~5s). The keepalive was dropped and `sendChunk`
   now keeps the session open across sentences (opening lazily, reopening only
-  on send failure; the camera closes it after `talk_idle_timeout_s` of idle).
+  on send failure; the camera closes it after its own idle timeout.
   Measured 2026-08-09 with that flow, the mic **keeps delivering audio during
   the whole talk** (dropped-frame counters showed `pausa=202752` samples in
   one run), so no mute occurs. The perceived post-talk deafness was a
@@ -560,8 +560,8 @@ ignores me"), three caller/config-level knobs were set (no changes inside
   KV cache (only 6 of 16 LFM2.5 blocks carry attention) and marginally slower
   decode as the context fills; prefill only pays for real tokens. It pays off
   only if the history actually grows, so the real lever is
-  `[voice_test] history_messages`.
-- **`[voice_test] history_messages = 41`** — the conversation keeps 20 turns
+  `[conversation] history_messages`.
+- **`[conversation] history_messages = 41`** — the conversation keeps 20 turns
   (was a hardcoded 21 messages). `LlmService` prefix reuse (`resetContext =
   false`) only stays incremental while the history head is un-pruned; pruning
   forces a full re-prefill, which is why a larger cap plus a larger context
@@ -814,8 +814,7 @@ composes memory around it.
      during normal generation (prompt-instructed). `ToolParser` extracts them
      from the token stream in `voice-test` (tolerant: malformed blocks are
      dropped, never break the conversation) and strips them from the spoken
-     text. Markers are configurable (`memory.save_trigger`,
-     `memory.tool_end_trigger`).
+     text. Markers are configurable in `labs/config.toml`.
   3. *Ingest*: `reminder`/`context_note` are read directly at recall time.
 - **Dedup (two nets)**: (1) synchronous lexical gate in
   `MemoryStore::saveDedup` — normalized equality, substring, word-Jaccard
@@ -1457,8 +1456,8 @@ the invariants, not in the model.
 Two integration bugs found on the way, both of which would have poisoned any
 verdict: `parse_special = false` in the tokenizer (a ChatML model never saw
 its control tokens and echoed the input instead of extracting) and a
-`config.local.toml` that outlived the run (the "baseline" measured the other
-model).
+temporary lab configuration that outlived the run (the "baseline" measured
+the other model).
 
 ## Tier order: coverage decides, not the clock
 
@@ -1484,7 +1483,7 @@ its tasks all landed). Summary of what
 landed and what it measured:
 
 ## Fase 1 — turn-level humanization
-- Sampling on memory-bearing turns was greedy (`llm.recall_temperature=0`,
+- Sampling on memory-bearing turns was greedy (`labs.llm.recall_temperature=0`,
   hardcoded in `LfmAdapter` too): the persona flipped between 0.85 and 0.0
   turn by turn. Now 0.5 configurable; `ToolChatInput.temperature` parametrized.
 - Canonicals were built from English lexicon predicates ("madre dislikes el
@@ -2070,10 +2069,11 @@ device reaches this same backend.
 - `docker-compose.yml` defaults to a loopback-only RustFS stack
   (`127.0.0.1:9000`) plus an initializer. It is intentionally independent from
   native backend development so active emulators do not pay its memory cost.
-- `scripts/bootstrap-local-stack.sh` generates per-installation secrets and a
-  random private bucket under ignored `docker/runtime/`, then writes the ignored
-  0600 `config.local.toml` S3 overlay. The initializer creates a bucket-scoped
-  application account; RustFS root credentials are not mounted into the backend.
+- `scripts/setup.sh --storage-only` generates the ignored 0600 `config.toml`
+  from `config.toml.example`, derives the runtime secret files under ignored
+  `docker/runtime/`, and starts the initializer. The initializer creates a
+  bucket-scoped application account; RustFS root credentials are not mounted
+  into the backend. There is no `config.local.toml` overlay.
 - The optional backend Docker profile runs with host UID/GID and refuses to
   create missing bind-mount paths, avoiding root-owned development files. No
   Docker build, pull or startup is part of normal feature validation.

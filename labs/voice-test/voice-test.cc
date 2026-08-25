@@ -68,7 +68,7 @@ float temperatureForTurn(bool hasMemories)
 {
   if (!hasMemories)
     return -1.0F;
-  const double cfg = ConfigService::getDouble("llm.recall_temperature");
+  const double cfg = ConfigService::getDouble("labs.llm.recall_temperature");
   return cfg >= 0.0 ? static_cast<float>(cfg) : 0.5F;
 }
 
@@ -206,7 +206,7 @@ void logIntentUsage(const std::string& label, const std::string& text)
 {
   static std::mutex usageMutex;
   std::lock_guard lock(usageMutex);
-  std::ofstream file(ConfigService::getString("intent.usage_log"),
+  std::ofstream file(ConfigService::getString("labs.intent.usage_log"),
                      std::ios::app);
   if (file.is_open())
     file << label << '\t' << text << '\n';
@@ -304,7 +304,7 @@ void summarizeSession(const ConversationState& state, int64_t userId,
     transcript += "\n";
   }
   gMemory.enqueueSummary(userId, transcript, langCode);
-  const int budget = ConfigService::getInt("memory.exit_flush_ms");
+  const int budget = ConfigService::getInt("labs.memory.exit_flush_ms");
   if (gMemory.flushPending(budget > 0 ? budget : 4000))
     std::cout << "[memory] session closed\n";
   else
@@ -780,7 +780,7 @@ void runCameraConversation(const TapoTalkConfig& talkCfg,
   std::atomic<bool> paused{false};
   std::atomic<int> discardRemaining{0};
   const int64_t talkDrainMarginMs = [&] {
-    const int v = ConfigService::getInt("tapo.talk_drain_margin_ms");
+    const int v = ConfigService::getInt("labs.tapo.talk_drain_margin_ms");
     return v > 0 ? v : 400;
   }();
   std::mutex bufMutex;
@@ -1117,15 +1117,16 @@ int main(int argc, char** argv)
     trantor::Logger::setLogLevel(trantor::Logger::kWarn);
 
   ConfigService::load("config.toml");
+  ConfigService::loadOverlay("labs/config.toml");
 
   DbService::installExtensions();
 
   const std::string camRtspSub =
-      ConfigService::getString("voice_test.camera_rtsp_sub");
+      ConfigService::getString("labs.voice_test.camera_rtsp_sub");
   const std::string camRtspMain =
-      ConfigService::getString("voice_test.camera_rtsp_main");
+      ConfigService::getString("labs.voice_test.camera_rtsp_main");
   const std::string cameraName =
-      ConfigService::getString("voice_test.camera_name");
+      ConfigService::getString("labs.voice_test.camera_name");
 
   Go2rtcManager::instance().init();
   if (!camRtspMain.empty()) {
@@ -1145,7 +1146,7 @@ int main(int argc, char** argv)
   for (int i = 1; i < argc; ++i) {
     if (std::string(argv[i]) == "--cam-check") {
       if (camRtspMain.empty()) {
-        std::cerr << "no voice_test.camera_rtsp_main in config.toml\n";
+        std::cerr << "no labs.voice_test.camera_rtsp_main in labs/config.toml\n";
         return 1;
       }
       Go2rtcManager::instance().shutdown();
@@ -1158,21 +1159,21 @@ int main(int argc, char** argv)
     }
     if (std::string(argv[i]) == "--camera-stt-check") {
       if (camRtspSub.empty()) {
-        std::cerr << "no voice_test.camera_rtsp_sub in config.toml\n";
+        std::cerr << "no labs.voice_test.camera_rtsp_sub in labs/config.toml\n";
         return 1;
       }
       return runCameraSttCheck(camRtspSub);
     }
     if (std::string(argv[i]) == "--vad-check") {
       if (camRtspSub.empty()) {
-        std::cerr << "no voice_test.camera_rtsp_sub in config.toml\n";
+        std::cerr << "no labs.voice_test.camera_rtsp_sub in labs/config.toml\n";
         return 1;
       }
       return runCameraVadCheck(camRtspSub);
     }
     if (std::string(argv[i]) == "--audio-dump" && i + 1 < argc) {
       if (camRtspSub.empty()) {
-        std::cerr << "no voice_test.camera_rtsp_sub in config.toml\n";
+        std::cerr << "no labs.voice_test.camera_rtsp_sub in labs/config.toml\n";
         return 1;
       }
       return runAudioDump(camRtspSub, argv[++i]);
@@ -1205,8 +1206,8 @@ int main(int argc, char** argv)
   TapoTalkConfig talkCfg;
   if (useCamera) {
     if (camRtspSub.empty() || cloudPass.empty()) {
-      std::cerr << "--camera requires voice_test.camera_rtsp_sub in "
-                   "config.toml and --cloud-pass <cloud password>\n";
+      std::cerr << "--camera requires labs.voice_test.camera_rtsp_sub in "
+                   "labs/config.toml and --cloud-pass <cloud password>\n";
       return 1;
     }
     talkCfg.host = rtspHost(camRtspSub);

@@ -97,12 +97,13 @@ int main(int argc, char** argv)
   gIntent.init();
   gLlm.init();
   if (!gLlm.isLoaded()) {
-    std::cout << "[skip] LLM model not loaded (llm.model="
-              << ConfigService::getString("llm.model") << ")\n";
+    std::cout << "[skip] LLM model not loaded (llm.model_path="
+              << ConfigService::getString("llm.model_path") << ")\n";
     gIntent.shutdown();
     return 0;
   }
-  std::cout << "[ok] LLM loaded (" << ConfigService::getString("llm.model")
+  std::cout << "[ok] LLM loaded ("
+            << ConfigService::getString("llm.model_path")
             << ") gpu_layers=" << ConfigService::getInt("llm.gpu_layers")
             << "\n";
 

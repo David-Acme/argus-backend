@@ -1,7 +1,11 @@
 #pragma once
 
 #include <cstdint>
+#if ARGUS_HAS_RNNOISE
 #include <rnnoise.h>
+#else
+struct DenoiseState;
+#endif
 #include <shared/wrapper/audio/audio-resampler.hxx>
 #include <vector>
 

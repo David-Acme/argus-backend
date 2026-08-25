@@ -46,7 +46,7 @@ std::string randomKeyPart()
 
 S3Config loadConfig()
 {
-  if (ConfigService::getString("storage.mode") != "managed_local")
+  if (ConfigService::getString("storage.mode") != "s3")
     throw std::runtime_error("Private object storage is disabled");
 
   S3Config config{

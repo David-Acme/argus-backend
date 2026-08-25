@@ -181,6 +181,7 @@ bool parseArgs(int argc, char** argv, ProbeOptions& options)
 void loadDefaults(ProbeOptions& options)
 {
   ConfigService::load("config.toml");
+  ConfigService::loadOverlay("labs/config.toml");
   const int controlPort = ConfigService::getInt("tapo.control_port");
   const int mediaPort = ConfigService::getInt("tapo.media_port");
   const std::string transport = ConfigService::getString("tapo.transport");
@@ -197,7 +198,7 @@ void loadDefaults(ProbeOptions& options)
   const std::string mode = ConfigService::getString("tapo.talk_mode");
   if (!mode.empty())
     options.talkMode = mode;
-  const int packetMs = ConfigService::getInt("tapo.talk_packet_ms");
+  const int packetMs = ConfigService::getInt("labs.tapo.talk_packet_ms");
   if (packetMs > 0)
     options.talkPacketMs = packetMs;
 }

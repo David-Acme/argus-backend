@@ -13,6 +13,7 @@ class ConfigService
 {
 public:
   static void load(const std::string& path);
+  static void loadOverlay(const std::string& path);
 
   static std::string getString(const std::string& keyPath);
   static int getInt(const std::string& keyPath);

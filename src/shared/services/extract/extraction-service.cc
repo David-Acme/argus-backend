@@ -1,7 +1,6 @@
 #include "extraction-service.hxx"
 
 #include <algorithm>
-#include <chrono>
 #include <drogon/drogon.h>
 #include <llama.h>
 #include <shared/services/config-service/config-service.hxx>
@@ -108,7 +107,6 @@ void ExtractionService::ContextSlot::llamaSamplerFree(llama_sampler* s)
   if (s)
     llama_sampler_free(s);
 }
-
 
 ExtractPromptFormat extractPromptFormatFromString(const std::string& raw)
 {

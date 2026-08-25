@@ -23,6 +23,8 @@
 #include <shared/wrapper/thread-budget/thread-budget.hxx>
 #include <string>
 #include <string_view>
+#include <stdexcept>
+#include <unistd.h>
 #include <unordered_set>
 #include <utility>
 #include <vector>
@@ -38,6 +40,20 @@ std::vector<extract::LexiconEntry> loadLexicon()
 }
 
 std::atomic<long long> gNewCount{0};
+std::string gTemporaryConfigPath;
+
+void removeTemporaryConfig()
+{
+  if (!gTemporaryConfigPath.empty())
+    std::remove(gTemporaryConfigPath.c_str());
+}
+
+void loadConfig(bool useTemporaryOverride)
+{
+  ConfigService::load(useTemporaryOverride && !gTemporaryConfigPath.empty()
+                          ? gTemporaryConfigPath
+                          : "config.toml");
+}
 
 void* rawAlloc(std::size_t n)
 {
@@ -507,7 +523,7 @@ int runAutomatonBench(unsigned seed)
 
 } // namespace
 
-void writeModelOverlay(const char* modelPath, const char* format);
+void writeModelConfig(const char* modelPath, const char* format);
 
 struct llama_model;
 struct llama_vocab;
@@ -518,8 +534,8 @@ int runGrammarIsolate(const char* modelOverride, const char* formatOverride)
   setvbuf(stdout, nullptr, _IONBF, 0);
   std::printf("\n== grammar-isolate ==\n");
   if (modelOverride && *modelOverride)
-    writeModelOverlay(modelOverride, formatOverride);
-  ConfigService::load("config.toml");
+    writeModelConfig(modelOverride, formatOverride);
+  loadConfig(modelOverride && *modelOverride);
 
   const std::string modelPath = ConfigService::getString("extract.model_path");
   llama_model_params mparams = llama_model_default_params();
@@ -710,8 +726,8 @@ int runGrammarSmoke(const char* modelOverride, const char* formatOverride)
   setvbuf(stdout, nullptr, _IONBF, 0);
   std::printf("\n== grammar-smoke ==\n");
   if (modelOverride && *modelOverride)
-    writeModelOverlay(modelOverride, formatOverride);
-  ConfigService::load("config.toml");
+    writeModelConfig(modelOverride, formatOverride);
+  loadConfig(modelOverride && *modelOverride);
   ExtractionService service;
   if (!service.ensureLoaded()) {
     std::printf("  model not loaded\n");
@@ -759,20 +775,29 @@ int runGrammarSmoke(const char* modelOverride, const char* formatOverride)
   return failures;
 }
 
-// The overlay must not outlive the run: a leftover config.local.toml silently
-// overrides config.toml, so the next run without --model measures the previous
-// model and reports it as the baseline.
-void writeModelOverlay(const char* modelPath, const char* format)
+void writeModelConfig(const char* modelPath, const char* format)
 {
-  std::ofstream overlay("config.local.toml");
-  overlay << "[extract]\nmodel_path = \"" << modelPath << "\"\n";
+  if (!gTemporaryConfigPath.empty())
+    std::remove(gTemporaryConfigPath.c_str());
+  gTemporaryConfigPath =
+      "/tmp/argus-extract-probe-config-" +
+      std::to_string(static_cast<long long>(getpid())) + ".toml";
+
+  std::ifstream base("config.toml");
+  if (!base.is_open())
+    throw std::runtime_error("unable to open config.toml");
+  std::ofstream overlay(gTemporaryConfigPath, std::ios::trunc);
+  if (!overlay.is_open())
+    throw std::runtime_error("unable to create temporary config");
+  overlay << base.rdbuf() << "\n[extract]\nmodel_path = \"" << modelPath
+          << "\"\n";
   if (format && *format)
     overlay << "prompt_format = \"" << format << "\"\n";
   overlay.close();
   static bool armed = false;
   if (!armed) {
     armed = true;
-    std::atexit([] { std::remove("config.local.toml"); });
+    std::atexit(removeTemporaryConfig);
   }
 }
 
@@ -780,8 +805,8 @@ int runNuextractTest(const char* modelOverride, const char* formatOverride)
 {
   std::printf("\n== nuextract-test ==\n");
   if (modelOverride && *modelOverride)
-    writeModelOverlay(modelOverride, formatOverride);
-  ConfigService::load("config.toml");
+    writeModelConfig(modelOverride, formatOverride);
+  loadConfig(modelOverride && *modelOverride);
   const char* kTemplate =
       "{\"facts\": [{\"subject\": \"\", \"action\": \"\", \"object\": \"\", "
       "\"time\": \"\"}]}";
@@ -1033,8 +1058,8 @@ EngineScore scoreEngine(const EngineSpec& engine)
   EngineScore score;
   score.label = engine.path.empty() ? "config.toml" : engine.path;
   if (!engine.path.empty())
-    writeModelOverlay(engine.path.c_str(), engine.format.c_str());
-  ConfigService::load("config.toml");
+    writeModelConfig(engine.path.c_str(), engine.format.c_str());
+  loadConfig(!engine.path.empty());
 
   ExtractionService model;
   TieredExtractor tiered(model);
@@ -1097,8 +1122,8 @@ int runHoldoutTest(const char* modelOverride, const char* formatOverride)
 {
   std::printf("\n== holdout-test (verbs absent from the lexicon) ==\n");
   if (modelOverride && *modelOverride)
-    writeModelOverlay(modelOverride, formatOverride);
-  ConfigService::load("config.toml");
+    writeModelConfig(modelOverride, formatOverride);
+  loadConfig(modelOverride && *modelOverride);
 
   const auto& cases = kHoldoutCases;
 
@@ -1195,8 +1220,8 @@ int runExtractText(const char* text, const char* modelOverride,
 {
   std::printf("\n== extract-text ==\n");
   if (modelOverride && *modelOverride)
-    writeModelOverlay(modelOverride, formatOverride);
-  ConfigService::load("config.toml");
+    writeModelConfig(modelOverride, formatOverride);
+  loadConfig(modelOverride && *modelOverride);
 
   ExtractionService model;
   const bool loaded = model.ensureLoaded();
@@ -1239,7 +1264,7 @@ int runExtractText(const char* text, const char* modelOverride,
 int runExtractTest()
 {
   std::printf("\n== extract-test ==\n");
-  ConfigService::load("config.toml");
+  loadConfig(false);
 
   struct Case
   {
@@ -1449,7 +1474,6 @@ void operator delete[](void* p, std::size_t) noexcept
 
 int main(int argc, char** argv)
 {
-  std::remove("config.local.toml");
   unsigned seed = 42;
   bool doTest = false;
   bool doBench = false;

@@ -11,7 +11,9 @@
 #include <shared/services/config-service/config-service.hxx>
 #include <shared/services/llm/llm-service.hxx>
 #include <shared/services/vision/vision-service.hxx>
+#include <stdexcept>
 #include <string>
+#include <unistd.h>
 #include <vector>
 
 namespace
@@ -75,6 +77,32 @@ struct GenStats
 };
 
 float gMemTemp = -1.0F;
+std::string gTemporaryConfigPath;
+
+void removeTemporaryConfig()
+{
+  if (!gTemporaryConfigPath.empty())
+    std::remove(gTemporaryConfigPath.c_str());
+}
+
+std::string writeTemporaryConfig(const std::string& section,
+                                 const std::string& key,
+                                 const std::string& value)
+{
+  std::ifstream base("config.toml");
+  if (!base.is_open())
+    throw std::runtime_error("unable to open config.toml");
+
+  const std::string path = "/tmp/argus-llm-bench-config-" +
+                           std::to_string(static_cast<long long>(getpid())) +
+                           ".toml";
+  std::ofstream out(path, std::ios::trunc);
+  if (!out.is_open())
+    throw std::runtime_error("unable to create temporary config");
+  out << base.rdbuf() << "\n[" << section << "]\n" << key << " = \""
+      << value << "\"\n";
+  return path;
+}
 
 GenStats runLlm(const std::string& systemPrompt, const std::string& userText,
                 int maxTokens)
@@ -421,7 +449,6 @@ int main(int argc, char** argv)
   bool doLlm = false;
   bool doVlm = false;
   bool doMemory = false;
-  bool overlayWritten = false;
   bool fast = false;
   int memRounds = 1;
   for (int i = 1; i < argc; ++i) {
@@ -438,9 +465,8 @@ int main(int argc, char** argv)
       doLlm = true;
     }
     else if (std::strcmp(argv[i], "--model") == 0 && i + 1 < argc) {
-      std::ofstream overlay("config.local.toml");
-      overlay << "[llm]\nmodel_path = \"" << argv[++i] << "\"\n";
-      overlayWritten = true;
+      gTemporaryConfigPath =
+          writeTemporaryConfig("llm", "model_path", argv[++i]);
     }
     else if (std::strcmp(argv[i], "--rounds") == 0 && i + 1 < argc) {
       memRounds = std::atoi(argv[++i]);
@@ -451,7 +477,8 @@ int main(int argc, char** argv)
   if (!doLlm && !doVlm && !doMemory)
     doLlm = doVlm = true;
 
-  ConfigService::load("config.toml");
+  ConfigService::load(gTemporaryConfigPath.empty() ? "config.toml"
+                                                   : gTemporaryConfigPath);
 
   const int64_t rss0 = currentRssKb();
 
@@ -469,8 +496,8 @@ int main(int argc, char** argv)
                 static_cast<long long>(currentRssKb() - rss1));
   }
 
-  if (overlayWritten)
-    std::atexit([] { std::remove("config.local.toml"); });
+  if (!gTemporaryConfigPath.empty())
+    std::atexit(removeTemporaryConfig);
 
   if (doMemory)
     for (int r = 0; r < memRounds; ++r)

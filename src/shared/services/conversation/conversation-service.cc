@@ -144,7 +144,7 @@ TurnResult ConversationService::processTurn(WorkingMemory& wm,
 
 void ConversationService::trimHistory(WorkingMemory& wm, int64_t userId)
 {
-  const int cap = ConfigService::getInt("voice_test.history_messages");
+  const int cap = ConfigService::getInt("conversation.history_messages");
   const size_t limit = cap > 0 ? static_cast<size_t>(cap) : 21;
   if (wm.history.size() <= limit || userId < 0)
     return;

@@ -1,0 +1,242 @@
+# Argus local configuration. scripts/setup.sh fills instance secrets.
+
+[[drogon.listeners]]
+address = "0.0.0.0"
+port = 7024
+https = true
+cert = "certs/server.pem"
+key = "certs/server.key"
+ssl_conf = [["MinProtocol", "TLSv1.2"]]
+
+[[drogon.db_clients]]
+name = "default"
+rdbms = "sqlite3"
+filename = "database/argus.db"
+is_fast = false
+number_of_connections = 1
+timeout = -1.0
+
+[drogon.app]
+number_of_threads = 0
+enable_session = false
+document_root = "./"
+use_sendfile = true
+use_gzip = true
+use_brotli = false
+static_files_cache_time = 5
+idle_connection_timeout = 60
+enable_server_header = true
+enable_date_header = true
+keepalive_requests = 0
+pipelining_requests = 0
+gzip_static = true
+br_static = true
+client_max_body_size = "60M"
+client_max_memory_body_size = "16M"
+client_max_websocket_message_size = "128K"
+reuse_port = false
+enabled_compressed_request = false
+enable_request_stream = false
+handle_sig_term = true
+relaunch_on_error = false
+
+[[drogon.plugins]]
+name = "drogon::plugin::PromExporter"
+dependencies = []
+[drogon.plugins.config]
+path = "/metrics"
+
+[[drogon.plugins]]
+name = "drogon::plugin::AccessLogger"
+dependencies = []
+[drogon.plugins.config]
+use_spdlog = false
+log_path = ""
+log_format = ""
+log_file = "access.log"
+log_size_limit = 0
+use_local_time = true
+log_index = 0
+
+[jwt]
+secret = ""
+refresh_secret = ""
+access_ttl_minutes = 15
+refresh_ttl_days = 30
+
+[device]
+fingerprint_secret = ""
+trust_forwarded_for = false
+trusted_proxy_ips = ""
+
+[database]
+file = "./database/argus.db"
+
+[conversation]
+history_messages = 41
+
+[face]
+top_k = 5
+
+[llm]
+model_path = "models/llm/LFM2.5-1.2B-Instruct-QAD-Q4_0.gguf"
+context_size = 32768
+max_tokens = 256
+temperature = 0.85
+threads = 0
+batch_threads = 0
+n_batch = 1024
+n_ubatch = 512
+kv_type = "auto"
+flash_attn = "auto"
+swa_full = false
+top_k = 20
+top_p = 0.8
+penalty_last_n = 64
+penalty_repeat = 1.10
+penalty_freq = 0.0
+penalty_present = 0.0
+seed = 0
+chat_template = "chatml"
+gpu_layers = -1
+
+[stt]
+engine = "nemo_transducer"
+language = "es"
+
+[vision]
+model_path = "models/vision/lfm2vl-25/lm-Q8_0.gguf"
+mmproj_path = "models/vision/lfm2vl-25/mmproj-F16.gguf"
+context_size = 8192
+max_tokens = 64
+max_input_px = 384
+image_max_tokens = 0
+prompt = "Can you describe this image?"
+caption_cache_slots = 8
+threads = 0
+gpu_layers = -1
+
+[tts]
+threads = 0
+quality = "auto"
+steps_low = 6
+steps_medium = 8
+steps_high = 12
+speed = 1.0
+max_chunk_len = 350
+edge_silence_ms = 40
+join_silence_ms = 90
+
+[tapo]
+control_port = 443
+media_port = 8800
+connect_timeout_ms = 3000
+request_timeout_ms = 5000
+login_attempts = 2
+transport = "auto"
+talk_framing = "none"
+talk_mode = "aec"
+
+[storage]
+mode = "s3"
+
+[storage.s3]
+endpoint = ""
+access_key = ""
+secret_key = ""
+region = ""
+bucket = ""
+
+[storage.rustfs]
+access_key = ""
+secret_key = ""
+
+[cert]
+dir = "certs"
+ca_cert = "certs/ca.pem"
+ca_key = "certs/ca.key"
+server_cert = "certs/server.pem"
+server_key = "certs/server.key"
+leaf_ttl_days = 90
+rotation_threshold_days = 30
+rotate_check_hours = 24
+
+[pairing]
+paired = false
+
+[mdns]
+enabled = true
+name = "Argus"
+service_type = "_argus._tcp"
+port = 7024
+
+[mdns.txt]
+path = "/"
+https = "true"
+wss = "true"
+
+[streaming]
+go2rtc_bin = "third_party/go2rtc/go2rtc"
+go2rtc_config = "go2rtc.yaml"
+go2rtc_api = "127.0.0.1:1984"
+go2rtc_rtsp = "127.0.0.1:8554"
+max_restarts = 8
+hub_window_bytes = 131072
+hub_chunk_bytes = 16384
+hub_grace_ms = 2000
+hub_max_subs_per_client = 8
+max_viewers_per_camera = 4
+max_total_viewers = 8
+relay_chunk_bytes = 32768
+
+[vad]
+threshold = 0.45
+neg_threshold = 0.25
+min_speech_frames = 5
+min_silence_frames = 12
+max_turn_frames = 750
+pre_roll_frames = 10
+min_turn_ms = 240
+min_mean_prob = 0.35
+denoise = true
+denoise_gate_rms = 0.0035
+
+[memory]
+recall_max_tokens = 512
+profile_max_tokens = 256
+profile_max_facts = 4
+profile_stale_seconds = 300
+recall_deadline_ms = 200
+embedding_model = "models/memory/model.onnx"
+embedding_tokenizer = "models/memory/tokenizer.json"
+embedding_max_len = 512
+embedding_preload = true
+embedding_dim = 0
+recall_top_k = 4
+lexical_min_hits = 4
+vector_min_sim = 0.80
+vector_margin = 0.05
+vector_strict_min_sim = 0.88
+vector_small_store_sim = 0.84
+semantic_max_facts = 2
+vector_dedup_sim = 0.93
+chunk_chars = 400
+flush_timeout_ms = 60000
+compact_wait_ms = 15000
+compact_max_tokens = 256
+extract_wait_ms = 15000
+
+[intent]
+model = "models/intent/argus-intent.ftz"
+camera_threshold = 0.60
+memory_save_threshold = 0.60
+margin = 0.20
+
+[extract]
+model_path = "models/extract/NuExtract-1.5-tiny-Q4_K_M.gguf"
+prompt_format = "v1.5"
+gpu_layers = -1
+lexicon_min_coverage = 0.6
+threads = 0
+n_ctx = 2048
+max_tokens = 512

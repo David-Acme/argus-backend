@@ -1,30 +1,26 @@
 name: argus-local
 
-# Default local stack: RustFS only. The backend is intentionally behind the
-# `backend` profile so native development and emulators do not consume extra
-# RAM. Run `docker compose --profile backend up --build` only when validating
-# the future containerised backend.
+# Native backend development is the default. RustFS is the only default
+# container; the backend service is opt-in for a production-style deployment.
 services:
   rustfs:
     image: rustfs/rustfs:1.0.0-beta.12
-    entrypoint: ["/bin/sh", "/opt/argus/rustfs-entrypoint.sh"]
     environment:
       RUSTFS_ADDRESS: "0.0.0.0:9000"
       RUSTFS_CONSOLE_ENABLE: "false"
       RUSTFS_ACCESS_KEY_FILE: /run/secrets/rustfs_access_key
       RUSTFS_SECRET_KEY_FILE: /run/secrets/rustfs_secret_key
-      RUSTFS_RPC_SECRET_FILE_PATH: /run/secrets/rustfs_rpc_secret
     ports:
       - "127.0.0.1:${RUSTFS_API_PORT:-9000}:9000"
     volumes:
       - rustfs-data:/data
-      - ./docker/rustfs-entrypoint.sh:/opt/argus/rustfs-entrypoint.sh:ro
     secrets:
       - rustfs_access_key
       - rustfs_secret_key
-      - rustfs_rpc_secret
     networks:
-      - storage-internal
+      storage-internal:
+        aliases:
+          - rustfs
     healthcheck:
       test: ["CMD-SHELL", "curl --fail --silent http://127.0.0.1:9000/health/ready >/dev/null"]
       interval: 5s
@@ -38,14 +34,17 @@ services:
 
   rustfs-init:
     image: rustfs/rc:v0.1.31
-    entrypoint: ["/bin/sh", "/opt/argus/rustfs-init.sh"]
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - >-
+        bucket="$$(tr -d '\r\n' < "$${RUSTFS_BUCKET_FILE}")"; test -n "$${bucket}"; access_key="$$(tr -d '\r\n' < /run/secrets/rustfs_access_key)"; secret_key="$$(tr -d '\r\n' < /run/secrets/rustfs_secret_key)"; app_access_key="$$(tr -d '\r\n' < /run/secrets/argus_s3_access_key)"; app_secret_key="$$(tr -d '\r\n' < /run/secrets/argus_s3_secret_key)"; /usr/bin/rc alias set argus "$${RUSTFS_ENDPOINT}" "$${access_key}" "$${secret_key}" --region "$${RUSTFS_REGION}" --bucket-lookup path >/dev/null; /usr/bin/rc bucket create "argus/$${bucket}" --ignore-existing >/dev/null; if /usr/bin/rc admin service-account info argus "$${app_access_key}" >/dev/null 2>&1; then /usr/bin/rc admin service-account update argus "$${app_access_key}" --secret-key "$${app_secret_key}" --name argus-backend --description "Argus private object storage" --policy /run/argus/rustfs-policy.json >/dev/null; else /usr/bin/rc admin service-account create argus "$${app_access_key}" "$${app_secret_key}" --name argus-backend --description "Argus private object storage" --policy /run/argus/rustfs-policy.json >/dev/null; fi; /usr/bin/rc admin service-account info argus "$${app_access_key}" >/dev/null; echo 'RustFS private bucket and application service account are ready.'
     environment:
       RUSTFS_ENDPOINT: http://rustfs:9000
       RUSTFS_REGION: "${RUSTFS_REGION:-us-east-1}"
       RUSTFS_BUCKET_FILE: /run/argus/rustfs-bucket
     volumes:
-      - ./docker/rustfs-init.sh:/opt/argus/rustfs-init.sh:ro
       - ./docker/runtime/rustfs-bucket:/run/argus/rustfs-bucket:ro
+      - ./docker/runtime/rustfs-policy.json:/run/argus/rustfs-policy.json:ro
     secrets:
       - rustfs_access_key
       - rustfs_secret_key
@@ -66,20 +65,18 @@ services:
       args:
         ARGUS_UID: "${ARGUS_UID:-1000}"
         ARGUS_GID: "${ARGUS_GID:-1000}"
-    environment:
-      ARGUS_STORAGE_TRANSPORT: bridge
     user: "${ARGUS_UID:-1000}:${ARGUS_GID:-1000}"
-    ports:
-      - "${ARGUS_HTTP_PORT:-7024}:7024"
+    network_mode: host
     volumes:
       - type: bind
         source: ./certs
         target: /opt/argus/certs
+        read_only: true
         bind:
           create_host_path: false
       - type: bind
-        source: ./config.local.toml
-        target: /opt/argus/config.local.toml
+        source: ./config.toml
+        target: /opt/argus/config.toml
         read_only: true
         bind:
           create_host_path: false
@@ -100,17 +97,9 @@ services:
         read_only: true
         bind:
           create_host_path: false
-      - type: bind
-        source: ./uploads
-        target: /opt/argus/uploads
-        bind:
-          create_host_path: false
     depends_on:
       rustfs-init:
         condition: service_completed_successfully
-    networks:
-      - app
-      - storage-internal
     mem_limit: "${ARGUS_BACKEND_MEMORY_LIMIT:-6g}"
     cpus: "${ARGUS_BACKEND_CPU_LIMIT:-4.00}"
     pids_limit: 1024
@@ -121,8 +110,6 @@ secrets:
     file: ./docker/runtime/secrets/rustfs_access_key
   rustfs_secret_key:
     file: ./docker/runtime/secrets/rustfs_secret_key
-  rustfs_rpc_secret:
-    file: ./docker/runtime/secrets/rustfs_rpc_secret
   argus_s3_access_key:
     file: ./docker/runtime/secrets/argus_s3_access_key
   argus_s3_secret_key:
@@ -133,8 +120,5 @@ volumes:
     name: argus-rustfs-data
 
 networks:
-  app:
-    name: argus-app
   storage-internal:
     name: argus-storage-internal
-    internal: true

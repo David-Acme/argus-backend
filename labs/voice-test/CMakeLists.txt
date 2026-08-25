@@ -122,10 +122,6 @@ add_custom_command(
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
             ${CMAKE_SOURCE_DIR}/config.toml
             $<TARGET_FILE_DIR:argus-voice-test>/config.toml
-    COMMAND ${CMAKE_COMMAND}
-            -DSRC=${CMAKE_SOURCE_DIR}/config.local.toml
-            -DDST=$<TARGET_FILE_DIR:argus-voice-test>/config.local.toml
-            -P ${CMAKE_SOURCE_DIR}/cmake/copy-if-exists.cmake
     COMMAND ${CMAKE_COMMAND} -E create_symlink
             ${CMAKE_SOURCE_DIR}/models
             $<TARGET_FILE_DIR:argus-voice-test>/models

@@ -38,6 +38,6 @@ Criterio de aceptación:
   demasiado alto (frases fusionadas).
 - `camera-echo`: buscar el instante en que la probabilidad de voz vuelve por
   debajo de `vad.neg_threshold` tras el final del audio enviado; ese retardo
-  redondeado hacia arriba es `tapo.talk_drain_margin_ms`.
+  redondeado hacia arriba es `labs.tapo.talk_drain_margin_ms`.
 
 Anotar los números obtenidos en `CONTEXT.md`.

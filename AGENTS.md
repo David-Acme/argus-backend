@@ -452,13 +452,18 @@ Raw pointers only for non-owning access (`.get()`).
   RustFS + its one-shot initializer by default; the backend container is an
   opt-in `backend` profile and must not be started incidentally while emulators
   are active.
-- Run `scripts/bootstrap-local-stack.sh` before the storage compose profile. It
-  creates 0600 unique local RustFS/admin and app credentials, a random private
-  bucket and `config.local.toml`. Runtime secrets and that overlay are ignored
-  by Git. Never commit, print, log or send them to the frontend.
+- Run `scripts/setup.sh --storage-only` to create the per-installation 0600
+  `config.toml` from `config.toml.example`, generate RustFS/app credentials,
+  create the ignored lab overlay from `labs/config.toml.example`, and start
+  the storage compose services. There is no `config.local.toml` overlay or
+  RustFS-specific setup script. Never commit, print, log or send these
+  credentials to the frontend.
 - RustFS is published on loopback only (`127.0.0.1:9000`). The app service
   account is bucket-scoped and least-privilege; use it through
   `S3StorageService`, never direct ad-hoc HTTP from feature code.
+- The backend container is only for production-style deployment and runs as a
+  separate Compose service under the `backend` profile. Native development
+  remains the default.
 - Development uses a fresh schema when the developer explicitly resets the
   local DB. Do not silently delete, migrate or recreate a user's database as a
   side effect of a feature; ask/require an explicit development reset.
@@ -581,5 +586,6 @@ Before any commit, verify: `cmake --build --preset dev -j 8` passes with
 | `src/shared/wrapper/blocking-task/` | Coroutine awaiter for off-loop heavy work |
 | `src/shared/wrapper/thread-budget/` | Adaptive thread sizing for AI services |
 | `database/schema.sql` | DDL applied at startup |
-| `config.toml` | Application + JWT config |
+| `config.toml` | System application + JWT config |
+| `labs/config.toml` | Ignored lab-only overlay |
 | `CONTEXT.md` | Full project history and decisions |

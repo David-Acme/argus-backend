@@ -1,7 +1,6 @@
 #include "config-service.hxx"
 
 #include <drogon/drogon.h>
-#include <filesystem>
 #include <fstream>
 #include <json/reader.h>
 #include <json/value.h>
@@ -10,13 +9,15 @@
 #include <sstream>
 #include <stdexcept>
 #include <string>
-#include <toml++/toml.hpp>
+#include <toml++/toml.h>
+#include <type_traits>
 #include <vector>
 
 namespace
 {
 
 std::optional<toml::table> gConfig;
+std::optional<toml::table> gOverlay;
 std::string gConfigPath;
 std::mutex gConfigMutex;
 
@@ -25,17 +26,27 @@ const toml::node* resolvePath(const std::string& keyPath)
   if (!gConfig)
     return nullptr;
 
-  const toml::node* current = &*gConfig;
   std::stringstream ss(keyPath);
   std::string segment;
+  if (!std::getline(ss, segment, '.'))
+    return nullptr;
+
+  const toml::table* root = &*gConfig;
+  if (gOverlay && gOverlay->contains(segment))
+    root = &*gOverlay;
+
+  auto it = root->find(segment);
+  if (it == root->end())
+    return nullptr;
+  const toml::node* current = &it->second;
+
   while (std::getline(ss, segment, '.')) {
     if (!current->is_table())
       return nullptr;
-    auto& tbl = *current->as_table();
-    auto it = tbl.find(segment);
-    if (it == tbl.end())
+    auto child = current->as_table()->find(segment);
+    if (child == current->as_table()->end())
       return nullptr;
-    current = &it->second;
+    current = &child->second;
   }
   return current;
 }
@@ -141,19 +152,6 @@ std::string patchContent(const std::string& content, const std::string& section,
   return out.str();
 }
 
-void mergeOverlay(toml::table& base, const toml::table& overlay)
-{
-  for (auto&& [key, node] : overlay) {
-    if (const auto* overlayTable = node.as_table()) {
-      if (auto* baseTable = base[key].as_table()) {
-        mergeOverlay(*baseTable, *overlayTable);
-        continue;
-      }
-    }
-    base.insert_or_assign(key, node);
-  }
-}
-
 bool applyValue(const std::string& keyPath, const std::string& literal)
 {
   std::lock_guard lock(gConfigMutex);
@@ -190,6 +188,7 @@ void ConfigService::load(const std::string& path)
   try {
     std::lock_guard lock(gConfigMutex);
     gConfig = toml::parse_file(path);
+    gOverlay.reset();
     gConfigPath = path;
     LOG_INFO << "Configuration loaded from " << path;
   }
@@ -203,20 +202,27 @@ void ConfigService::load(const std::string& path)
     throw std::runtime_error("ConfigService: failed to parse " + path);
   }
 
-  const std::filesystem::path overlayPath =
-      std::filesystem::path(path).parent_path() / "config.local.toml";
-  if (!std::filesystem::exists(overlayPath))
-    return;
+}
 
+void ConfigService::loadOverlay(const std::string& path)
+{
   try {
-    const auto overlay = toml::parse_file(overlayPath.string());
     std::lock_guard lock(gConfigMutex);
-    mergeOverlay(*gConfig, overlay);
-    LOG_INFO << "Configuration overlay merged from " << overlayPath.string();
+    if (!gConfig)
+      throw std::runtime_error("ConfigService: load a base config first");
+    gOverlay = toml::parse_file(path);
+    LOG_INFO << "Configuration overlay loaded from " << path;
   }
   catch (const toml::parse_error& e) {
-    LOG_WARN << "Ignoring malformed config overlay " << overlayPath.string()
-             << ": " << e.description();
+    auto& src = e.source();
+    std::string detail{e.description()};
+    std::string filePath =
+        src.path ? std::string{*src.path} : std::string("(unknown)");
+    LOG_FATAL << "Failed to parse config overlay " << path << ": " << detail
+              << " at " << filePath << ":" << src.begin.line << ":"
+              << src.begin.column;
+    throw std::runtime_error("ConfigService: failed to parse overlay " +
+                             path);
   }
 }
 
