@@ -329,6 +329,21 @@ through llama.cpp + `libmtmd` behind the same mutex pattern (see section 15).
 class** (one per audio stream, LSTM state per instance) whose ONNX session is
 shared file-static behind a mutex.
 
+### 13e. Main LLM artifact
+
+- The active conversation model is Liquid AI
+  `LFM2.5-1.2B-Instruct-QAD-Q4_0.gguf` under `models/llm/`. It is loaded by
+  `LlmService` through `[llm].model_path`; the same path is the compiled
+  fallback in `llm-service.cc`.
+- `scripts/setup.sh` downloads the artifact only when missing, writes to a
+  temporary `.part` file, verifies SHA-256
+  `bb741ebb106d543e9de114b843a3d3d73d51c74b5801e69da2abde821a0cb3e1`, and
+  atomically moves it into place. A mismatched existing file is replaced.
+- Model weights are runtime artifacts and remain ignored by Git. Do not add a
+  GGUF to the repository or silently change the active filename without also
+  updating `config.toml`, the service fallback, `scripts/setup.sh`, the model
+  notice and the relevant project context.
+
 ### 14. JSON columns
 
 - Unknown/dynamic structure → `Json::Value`
@@ -450,8 +465,8 @@ Raw pointers only for non-owning access (`.get()`).
 
 ### 18. WebSocket sync engine
 
-- WS route: `/sync` with **`JwtFilter` only** (no `DeviceFilter`; device
-  binding stays on HTTP). Messages are `{type, payload}` and responses use
+- WS route: `/sync` with **`DeviceFilter` + `JwtFilter`** so device binding is
+  enforced on every authenticated transport. Messages are `{type, payload}` and responses use
   `SocketEmitDto` `{operation, option(TableName), info}`.
   Errors: `{type:"<type>_error", status, error}`.
 - Operations (`src/shared/contracts/sync-operation.hxx`): `InitialInfo=0`,
@@ -462,7 +477,8 @@ Raw pointers only for non-owning access (`.get()`).
 - **Normal rows are creation-only after bootstrap**: `Synchronize` pages by
   `created_at`; do not switch it to `updated_at`/`syncAt` to represent an
   update. Every persisted update/revocation must instead publish a granular
-  audit change. New records are `Add`; deletion events only carry the id.
+  audit change. New records are `Add` with the complete current row; deletion
+  events carry only `id` and `deletedAt`.
 - Audit requests use monotonic SQLite ids, not timestamps. A client asks
   `{findLast:true}` for a `watermarkId`, then pages
   `afterId < id <= endId` in ascending order. `afterId=0` is valid to establish
@@ -544,7 +560,6 @@ Before any commit, verify: `cmake --build --preset dev -j 8` passes with
 | `src/shared/services/storage/` | `S3StorageService` (RustFS S3, SigV4 en `s3-signing.hxx`) + `PrivatePortraitService` (objetos privados, lectura vía capability one-use) |
 | `src/shared/services/reaction/` | `ReactionEngine` — reacciones de turno por prioridad de señales → `voice:event` (significado, nunca nombres de expresión) |
 | `src/shared/repositories/{user-invitation,portrait-*,device-login-challenge}/` | Dominio people: invitaciones (hash-only), capabilities de retrato, retos de login cruzado |
-| `scripts/test-*.sh` | Contratos estáticos: invitation api/lifecycle/schema, portrait-preview, role-resync, face-enrollment, people-sync |
 | `src/shared/wrapper/cancellation/` | `CancellationToken` shared across streaming AI/audio paths |
 | `labs/` | Standalone binaries for prototyping and validating new capabilities against real hardware before wiring them into the backend |
 | `labs/tapo-probe/` | `argus-tapo-probe` — validates the camera protocols against real hardware |

@@ -3,7 +3,17 @@
 #include <chrono>
 #include <drogon/drogon.h>
 #include <jwt-cpp/traits/nlohmann-json/defaults.h>
+#include <stdexcept>
 #include <shared/services/config-service/config-service.hxx>
+
+namespace
+{
+bool isWeakSecret(const std::string& secret)
+{
+  return secret.size() < 32 || secret == "secret" ||
+         secret == "refresh_secret" || secret == "change-me";
+}
+} // namespace
 
 JwtService::JwtService()
     : accessSecret_(ConfigService::getString("jwt.secret")),
@@ -11,6 +21,9 @@ JwtService::JwtService()
       accessTtlSeconds_(ConfigService::getInt("jwt.access_ttl_minutes") * 60),
       refreshTtlSeconds_(ConfigService::getInt("jwt.refresh_ttl_days") * 86400)
 {
+  if (isWeakSecret(accessSecret_) || isWeakSecret(refreshSecret_))
+    throw std::runtime_error(
+        "JWT secrets must be configured with at least 32 non-default characters");
 }
 
 std::string
@@ -35,8 +48,9 @@ JwtService::verify(const std::string& token, const std::string& secret) const
   try {
     auto decoded = jwt::decode(token);
 
-    auto verifier =
-        jwt::verify().allow_algorithm(jwt::algorithm::hs256{secret});
+    auto verifier = jwt::verify()
+                        .allow_algorithm(jwt::algorithm::hs256{secret})
+                        .with_issuer("argus");
     verifier.verify(decoded);
 
     std::map<std::string, std::string> result;

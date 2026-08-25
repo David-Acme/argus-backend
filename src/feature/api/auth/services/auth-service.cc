@@ -54,9 +54,10 @@ AuthService::login(LoginDto body, const LoginDeviceInput& device) const
 {
   auto personId =
       co_await FaceService::instance().identifyAsync(std::move(body.image));
-  if (!personId)
+  if (!personId) {
     throw ResponseException("Face not recognized", 401,
                             AppConfig::ERROR_CODE_UNAUTHORIZED);
+  }
 
   auto person = co_await personRepository_.findById(*personId);
   if (!person || !person->userId)
@@ -82,9 +83,10 @@ AuthService::registerUser(RegisterDto body,
   const auto portraitImage = body.image;
   auto face =
       co_await FaceService::instance().extractImageAsync(std::move(body.image));
-  if (!face)
-    throw ResponseException("Face not detected", 422,
+  if (!face) {
+    throw ResponseException("Face could not be extracted", 422,
                             AppConfig::ERROR_CODE_BAD_REQUEST);
+  }
 
   auto existing =
       FaceService::instance().faceDb().search(face->embedding.data());
@@ -431,7 +433,9 @@ AuthService::refreshToken(const RefreshTokenDto& body,
                             AppConfig::ERROR_CODE_UNAUTHORIZED);
   }
 
-  co_await refreshTokenRepository_.markUsed(existing->id);
+  if (!co_await refreshTokenRepository_.markUsed(existing->id))
+    throw ResponseException("Invalid or expired refresh token", 401,
+                            AppConfig::ERROR_CODE_UNAUTHORIZED);
   // Used and expired rows pile up otherwise: one login per day leaves a year of
   // dead tokens behind.
   co_await refreshTokenRepository_.pruneStale(userId);
@@ -462,6 +466,16 @@ AuthService::refreshToken(const RefreshTokenDto& body,
 drogon::Task<void> AuthService::logout(int64_t userId) const
 {
   co_await refreshTokenRepository_.invalidateAllUser(userId);
+
+  const auto user = co_await userRepository_.findById(userId);
+  SocketEmitDto context;
+  context.operation = SyncOperation::AuthContextChanged;
+  context.option = TableName::User;
+  context.obj = user ? user->toJson() : Json::Value(Json::objectValue);
+  context.obj["id"] = userId;
+  context.obj["isActive"] = false;
+  context.obj["resync"] = false;
+  socketService_.disconnectUser(userId, context);
 
   co_await userActionLogService_.record({.userId = userId,
                                          .recordId = userId,

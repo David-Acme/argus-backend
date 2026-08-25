@@ -72,7 +72,7 @@
 |---------|--------|-------|------|
 | `FaceService` | ncnn (Vulkan) | RetinaFace + MobileFaceNet | `models/face/` |
 | `FaceDB` | vec0 (sqlite-vec) | 128-dim cosine KNN, persisted | SQLite (`face_vec`) |
-| `LlmService` | llama.cpp (submodule b10305) | LFM2.5-1.2B-Instruct-Q4_K_M | `models/llm/` |
+| `LlmService` | llama.cpp (submodule b10305) | LFM2.5-1.2B-Instruct QAD Q4_0 | `models/llm/` |
 | `VisionService` | llama.cpp + libmtmd | LFM2.5-VL-450M (Q8_0 + mmproj F16) | `models/vision/lfm2vl-25/` |
 | `SttService` | sherpa-onnx | nemo_transducer (FastConformer RNN-T, es/en) | `models/stt/` |
 | `TtsService` | Supertonic 3 | ONNX models | `models/tts/` |
@@ -712,7 +712,7 @@ Never static methods for service classes. Never local/temporary repository const
   `SYNC_TABLE_KEYS`.
 - **Bootstrap versus updates**: the first `Synchronize` supplies a complete
   authorized projection. Later normal sync pages use `created_at`, so they only
-  add new records; deletes remain id-only. All persisted modifications,
+  add new records; deletes carry only `id` and `deletedAt`. All persisted modifications,
   revocations and notification read state are delivered as audit diffs, never by
   querying an `updated_at`/`syncAt` cursor.
 - **Bounded audit cursors**: audit repositories sort on their auto-increment id
@@ -2080,13 +2080,11 @@ device reaches this same backend.
 
 ### Verification kept with the feature
 
-The static contract scripts live under `scripts/`:
-`test-invitation-persistence-schema.sh`, `test-invitation-api-contract.sh`,
-`test-role-resync-contract.sh`, `test-face-enrollment-transaction-contract.sh`,
-`test-people-sync-contract.sh`, `test-invitation-lifecycle-contract.sh` and
-`test-portrait-preview-contract.sh`. The 2026-08-23 sync/audit implementation
-also built successfully with `cmake --build build/dev --target argus-backend -j 2`;
-`git diff --check` passed afterward.
+The backend keeps only operational scripts under `scripts/`; feature checks
+are performed through the configured build and manual integration flows. The
+2026-08-23 sync/audit implementation also built successfully with
+`cmake --build build/dev --target argus-backend -j 2`; `git diff --check` passed
+afterward.
 
 ## Sync/audit resync (2026-08-23)
 
@@ -2103,3 +2101,19 @@ also built successfully with `cmake --build build/dev --target argus-backend -j 
   are id-only. Notification reads use the same user-audit path.
 - Daily audit compaction retains the composed field diff and gives its replacement
   a new monotonic id, preserving convergence for reconnecting clients.
+
+## Main LLM artifact update (2026-08-23)
+
+The active conversation model is now
+`LFM2.5-1.2B-Instruct-QAD-Q4_0.gguf` from
+[LiquidAI/LFM2.5-1.2B-Instruct-GGUF](https://huggingface.co/LiquidAI/LFM2.5-1.2B-Instruct-GGUF/blob/main/LFM2.5-1.2B-Instruct-QAD-Q4_0.gguf).
+The file is 696 MB and its pinned SHA-256 is
+`bb741ebb106d543e9de114b843a3d3d73d51c74b5801e69da2abde821a0cb3e1`.
+
+- `config.toml` and the `LlmService` fallback point to the QAD Q4_0 filename.
+- `scripts/setup.sh` downloads it to a `.part` file, verifies the checksum and
+  moves it into `models/llm/` only after verification. Existing mismatched
+  files are replaced; valid files are reused without another download.
+- The model keeps the existing llama.cpp runtime, ChatML prompt path and
+  LFM Open License 1.0. The repository does not claim a quality improvement
+  without a new benchmark; the model swap is tracked as an artifact change.

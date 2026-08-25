@@ -70,10 +70,15 @@ log_index = 0
 # ── Application settings ──────────────────────────────────────────────────
 
 [jwt]
-secret = "secret"
-refresh_secret = "refresh_secret"
+secret = ""
+refresh_secret = ""
 access_ttl_minutes = 15
 refresh_ttl_days = 30
+
+[device]
+fingerprint_secret = ""
+trust_forwarded_for = false
+trusted_proxy_ips = ""
 
 [database]
 file = "./database/argus.db"
@@ -85,12 +90,12 @@ score_threshold = 0.5
 nms_threshold = 0.4
 top_k = 5
 
-# ── LLM (LFM2.5-1.2B-Instruct) ────────────────────────────────────
+# ── LLM (LFM2.5-1.2B-Instruct QAD) ────────────────────────────────
 [llm]
 # GGUF model file (LFM Open License v1.0, see models/llm/LICENSE.lfm1.0).
 # LFM2.5-1.2B-Instruct has NO thinking/CoT mode: it replies directly and
 # decisively, with better reasoning than the 350M sibling. ~36 tok/s CPU.
-model_path = "models/llm/LFM2.5-1.2B-Instruct-Q4_K_M.gguf"
+model_path = "models/llm/LFM2.5-1.2B-Instruct-QAD-Q4_0.gguf"
 # Context window in tokens. Default 32768 (32k); can be raised up to 128000,
 # the model's maximum (the clamp in llm-service.cc allows 4096..128000).
 # Tradeoff of raising it: the f16 KV cache grows ~300 MB from 32k to 128k and
@@ -300,7 +305,7 @@ rotate_check_hours = 24
 # ConfigService::setBool() writes this flag back to config.toml (in-memory +
 # direct file write, comments preserved) the first time pairing succeeds.
 [pairing]
-paired = true
+paired = false
 
 # ── mDNS/DNS-SD auto-discovery ──────────────────────────────────────────
 # Publishes the backend on the local network so clients (mobile/web/desktop)

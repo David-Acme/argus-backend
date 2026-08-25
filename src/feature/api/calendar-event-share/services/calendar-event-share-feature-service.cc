@@ -1,5 +1,6 @@
 #include "calendar-event-share-feature-service.hxx"
 
+#include <ctime>
 #include <shared/access/role-access.hxx>
 
 void CalendarEventShareFeatureService::emitMembership(SyncOperation operation,
@@ -12,6 +13,7 @@ void CalendarEventShareFeatureService::emitMembership(SyncOperation operation,
   if (operation == SyncOperation::Delete) {
     Json::Value tombstone;
     tombstone["id"] = row.id;
+    tombstone["deletedAt"] = row.deletedAt.value_or(std::time(nullptr));
     body.obj = tombstone;
   }
   else {
@@ -37,6 +39,7 @@ drogon::Task<void> CalendarEventShareFeatureService::emitParent(SyncOperation op
     // record is not actually deleted, so no timestamp is invented for it.
     Json::Value tombstone;
     tombstone["id"] = parent->id;
+    tombstone["deletedAt"] = static_cast<Json::Int64>(std::time(nullptr));
     body.obj = tombstone;
   }
   else {

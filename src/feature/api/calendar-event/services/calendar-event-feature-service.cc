@@ -1,5 +1,7 @@
 #include "calendar-event-feature-service.hxx"
 
+#include <ctime>
+
 drogon::Task<void>
 CalendarEventFeatureService::emit(SyncOperation operation,
                                  const CalendarEventSchema& row) const
@@ -10,6 +12,7 @@ CalendarEventFeatureService::emit(SyncOperation operation,
   if (operation == SyncOperation::Delete) {
     Json::Value tombstone;
     tombstone["id"] = row.id;
+    tombstone["deletedAt"] = row.deletedAt.value_or(std::time(nullptr));
     body.obj = tombstone;
   }
   else {

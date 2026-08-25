@@ -56,11 +56,6 @@ file(GLOB_RECURSE SHARED_SRC
     ${SRC_ROOT}/shared/**/*.cc
 )
 
-file(GLOB_RECURSE TEST_SRC
-    ${SRC_ROOT}/test/*.cc
-    ${SRC_ROOT}/test/**/*.cc
-)
-
 add_executable(${PROJECT_NAME}
     ${SRC_ROOT}/main.cc
 )
@@ -86,7 +81,6 @@ target_sources(${PROJECT_NAME}
         ${FILTER_SRC}
         ${SHARED_SRC}
         ${SOCKET_SRC}
-        ${TEST_SRC}
 )
 
 target_link_libraries(${PROJECT_NAME}

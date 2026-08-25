@@ -1,5 +1,7 @@
 #include "project-feature-service.hxx"
 
+#include <ctime>
+
 drogon::Task<void> ProjectFeatureService::emit(SyncOperation operation,
                                               const ProjectSchema& row) const
 {
@@ -9,6 +11,7 @@ drogon::Task<void> ProjectFeatureService::emit(SyncOperation operation,
   if (operation == SyncOperation::Delete) {
     Json::Value tombstone;
     tombstone["id"] = row.id;
+    tombstone["deletedAt"] = row.deletedAt.value_or(std::time(nullptr));
     body.obj = tombstone;
   }
   else {

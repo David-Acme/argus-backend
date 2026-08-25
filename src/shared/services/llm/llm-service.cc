@@ -76,7 +76,7 @@ void LlmService::init()
 
     const std::string modelPath =
         ConfigService::getString("llm.model_path").empty()
-            ? "models/llm/LFM2.5-1.2B-Instruct-Q4_K_M.gguf"
+            ? "models/llm/LFM2.5-1.2B-Instruct-QAD-Q4_0.gguf"
             : ConfigService::getString("llm.model_path");
     const int64_t contextSize =
         std::clamp<int64_t>(ConfigService::getInt("llm.context_size"), 4096,

@@ -1,5 +1,7 @@
 #include "project-task-feature-service.hxx"
 
+#include <ctime>
+
 drogon::Task<bool> ProjectTaskFeatureService::canWorkOn(int64_t projectId,
                                                        int64_t actorId) const
 {
@@ -26,6 +28,7 @@ ProjectTaskFeatureService::emit(SyncOperation operation,
   if (operation == SyncOperation::Delete) {
     Json::Value tombstone;
     tombstone["id"] = row.id;
+    tombstone["deletedAt"] = row.deletedAt.value_or(std::time(nullptr));
     body.obj = tombstone;
   }
   else {

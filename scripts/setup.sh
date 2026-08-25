@@ -5,9 +5,10 @@
 # Automates build with CMake presets. Unifies dev & prod profiles:
 #   1. Install system build dependencies (distro aware)
 #   2. Install Conan (if missing) and configure the profile for C++20
-#   3. Download Supertonic 3 TTS model (~415 MB)
-#   4. Install Conan dependencies into build/<profile>
-#   5. Configure and build with the matching CMake preset
+#   3. Download the Supertonic 3 TTS model (~415 MB)
+#   4. Download the LFM2.5-1.2B-Instruct QAD LLM (~696 MB)
+#   5. Install Conan dependencies into build/<profile>
+#   6. Configure and build with the matching CMake preset
 #
 # Usage:
 #   ./scripts/setup.sh                     # default: dev
@@ -26,6 +27,16 @@ need_cmd() {
   if ! command -v "$1" >/dev/null 2>&1; then
     err "required command not found: $1"
     exit 1
+  fi
+}
+
+sha256_file() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$1" | awk '{print $1}'
+  elif command -v shasum >/dev/null 2>&1; then
+    shasum -a 256 "$1" | awk '{print $1}'
+  else
+    return 1
   fi
 }
 
@@ -334,8 +345,77 @@ setup_certs() {
   log "Pairing code: ${FP:0:8}"
 }
 
+ensure_toml_secret() {
+  local table="$1"
+  local key="$2"
+  local value="$3"
+  local root="$4"
+  local config="$root/config.local.toml"
+
+  umask 077
+  touch "$config"
+  chmod 600 "$config"
+
+  local existing
+  existing="$(awk -v table="$table" -v key="$key" '
+    /^[[:space:]]*\[/ {
+      in_table = ($0 ~ "^\\[" table "\\][[:space:]]*$")
+    }
+    in_table && $0 ~ "^[[:space:]]*" key "[[:space:]]*=" {
+      value = $0
+      sub("^[[:space:]]*" key "[[:space:]]*=[[:space:]]*", "", value)
+      gsub(/["[:space:]]/, "", value)
+      print value
+      exit
+    }' "$config")"
+  if [ "${#existing}" -ge 32 ]; then
+    return
+  fi
+
+  if ! grep -Eq "^[[:space:]]*\\[$table\\][[:space:]]*$" "$config"; then
+    printf '\n[%s]\n%s = "%s"\n' "$table" "$key" "$value" >> "$config"
+    return
+  fi
+
+  local temp
+  temp="$(mktemp "${config}.tmp.XXXXXX")"
+  awk -v table="$table" -v key="$key" -v value="$value" '
+    function emit() {
+      if (in_table && !found) {
+        print key " = \"" value "\""
+        found = 1
+      }
+    }
+    /^[[:space:]]*\[/ {
+      emit()
+      in_table = ($0 ~ "^\\[" table "\\][[:space:]]*$")
+      found = 0
+      print
+      next
+    }
+    in_table && $0 ~ "^[[:space:]]*" key "[[:space:]]*=" {
+      print key " = \"" value "\""
+      found = 1
+      next
+    }
+    { print }
+    END { emit() }
+  ' "$config" > "$temp"
+  chmod 600 "$temp"
+  mv "$temp" "$config"
+}
+
+ensure_runtime_secrets() {
+  local root
+  root="$(cd "$(dirname "$0")/.." && pwd)"
+  ensure_toml_secret jwt secret "$(openssl rand -hex 48)" "$root"
+  ensure_toml_secret jwt refresh_secret "$(openssl rand -hex 48)" "$root"
+  ensure_toml_secret device fingerprint_secret "$(openssl rand -hex 48)" "$root"
+  log "Runtime JWT and device-fingerprint secrets are configured in config.local.toml."
+}
+
 setup_llm_model() {
-  log "Setting up LiquidAI LFM2.5-1.2B-Instruct model (no thinking, 731 MB)..."
+  log "Setting up LiquidAI LFM2.5-1.2B-Instruct QAD model (no thinking, 696 MB)..."
   log "License: LFM Open License v1.0 (see models/llm/LICENSE.lfm1.0)"
 
   local ROOT
@@ -345,7 +425,7 @@ setup_llm_model() {
   local DL=""
 
   if command -v curl >/dev/null 2>&1; then
-    DL="curl -L --retry 3 --progress-bar -o"
+    DL="curl -fL --retry 3 --progress-bar -o"
   elif command -v wget >/dev/null 2>&1; then
     DL="wget --retry-connrefused --waitretry=3 --show-progress -O"
   else
@@ -353,15 +433,46 @@ setup_llm_model() {
     return
   fi
 
+  if ! command -v sha256sum >/dev/null 2>&1 &&
+     ! command -v shasum >/dev/null 2>&1; then
+    warn "Neither sha256sum nor shasum found; skipping LLM model download."
+    return
+  fi
+
   mkdir -p "$MODEL_DIR"
 
-  local MODEL_FILE="LFM2.5-1.2B-Instruct-Q4_K_M.gguf"
+  local MODEL_FILE="LFM2.5-1.2B-Instruct-QAD-Q4_0.gguf"
+  local MODEL_SHA256="bb741ebb106d543e9de114b843a3d3d73d51c74b5801e69da2abde821a0cb3e1"
+  local MODEL_PATH="$MODEL_DIR/$MODEL_FILE"
+  local MODEL_TMP="$MODEL_PATH.part"
+  local MODEL_ACTUAL_SHA256=""
 
-  if [ ! -f "$MODEL_DIR/$MODEL_FILE" ]; then
-    log "Downloading $MODEL_FILE (~731 MB)..."
-    $DL "$MODEL_DIR/$MODEL_FILE" "$HF_BASE/$MODEL_FILE" || warn "Failed: $MODEL_FILE"
-  else
-    log "LLM model already present."
+  if [ -f "$MODEL_PATH" ]; then
+    MODEL_ACTUAL_SHA256="$(sha256_file "$MODEL_PATH")"
+    if [ "$MODEL_ACTUAL_SHA256" = "$MODEL_SHA256" ]; then
+      log "LLM model already present and checksum verified."
+    else
+      warn "Existing LLM model checksum mismatch; replacing it."
+      rm -f "$MODEL_PATH"
+    fi
+  fi
+
+  if [ ! -f "$MODEL_PATH" ]; then
+    rm -f "$MODEL_TMP"
+    log "Downloading $MODEL_FILE (~696 MB)..."
+    if $DL "$MODEL_TMP" "$HF_BASE/$MODEL_FILE"; then
+      MODEL_ACTUAL_SHA256="$(sha256_file "$MODEL_TMP")"
+      if [ "$MODEL_ACTUAL_SHA256" = "$MODEL_SHA256" ]; then
+        mv "$MODEL_TMP" "$MODEL_PATH"
+        log "LLM model checksum verified."
+      else
+        rm -f "$MODEL_TMP"
+        warn "Checksum mismatch for $MODEL_FILE (expected $MODEL_SHA256, got $MODEL_ACTUAL_SHA256)."
+      fi
+    else
+      rm -f "$MODEL_TMP"
+      warn "Failed: $MODEL_FILE"
+    fi
   fi
 
   # License compliance for the LFM Open License v1.0: ship the license text
@@ -372,13 +483,16 @@ setup_llm_model() {
     $DL "$MODEL_DIR/LICENSE.lfm1.0" "$LICENSE_URL" || warn "Failed: LICENSE.lfm1.0"
   fi
 
-  if [ ! -f "$MODEL_DIR/NOTICE" ]; then
+  if [ ! -f "$MODEL_DIR/NOTICE" ] ||
+     ! grep -Fq "LFM2.5-1.2B-Instruct-QAD-Q4_0.gguf" "$MODEL_DIR/NOTICE"; then
     cat > "$MODEL_DIR/NOTICE" <<'NOTICE_EOF'
-LFM2.5-1.2B-Instruct — Liquid AI
+LFM2.5-1.2B-Instruct QAD — Liquid AI
 
-Model:      LFM2.5-1.2B-Instruct (Q4_K_M)
+Model:      LFM2.5-1.2B-Instruct (QAD Q4_0)
 Source:     https://huggingface.co/LiquidAI/LFM2.5-1.2B-Instruct
 GGUF:       https://huggingface.co/LiquidAI/LFM2.5-1.2B-Instruct-GGUF
+File:       LFM2.5-1.2B-Instruct-QAD-Q4_0.gguf
+SHA-256:    bb741ebb106d543e9de114b843a3d3d73d51c74b5801e69da2abde821a0cb3e1
 License:    LFM Open License v1.0 — see LICENSE.lfm1.0 in this directory
 
 This project uses the LFM2.5-1.2B-Instruct model distributed under the
@@ -399,7 +513,11 @@ Key license terms that apply to this project:
 NOTICE_EOF
   fi
 
-  log "LLM model ready."
+  if [ -f "$MODEL_PATH" ]; then
+    log "LLM model ready."
+  else
+    warn "LLM model is not available; the backend will fail to load its configured model."
+  fi
 }
 
 setup_memory_model() {
@@ -825,6 +943,7 @@ main() {
   need_cmd cmake
   setup_submodules
   setup_certs
+  ensure_runtime_secrets
   setup_tts_model
   setup_llm_model
   setup_vlm_gguf_model

@@ -1,5 +1,7 @@
 #include "camera-feature-service.hxx"
 
+#include <ctime>
+
 void CameraFeatureService::emit(SyncOperation operation,
                                 const CameraSchema& row) const
 {
@@ -9,6 +11,7 @@ void CameraFeatureService::emit(SyncOperation operation,
   if (operation == SyncOperation::Delete) {
     Json::Value tombstone;
     tombstone["id"] = row.id;
+    tombstone["deletedAt"] = row.deletedAt.value_or(std::time(nullptr));
     body.obj = tombstone;
   }
   else {

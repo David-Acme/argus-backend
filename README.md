@@ -24,7 +24,7 @@ your devices in sync with the server. No cloud processing, ever.
 |---------|--------|
 | **Face login** (multipart) | ncnn RetinaFace + MobileFaceNet + HNSW |
 | **JWT auth** + refresh rotation | HS256, dual secrets, device-bound |
-| **LLM chat** (sync + streaming) | llama.cpp via Conan (LFM2.5-1.2B-Instruct, 4-bit) |
+| **LLM chat** (sync + streaming) | llama.cpp via Conan (LFM2.5-1.2B-Instruct QAD Q4_0) |
 | **Vision analysis** | SmolVLM2-500M-Video-Instruct (ONNX int8, 0.5B) |
 | **Speech-to-text** | sherpa-onnx (FastConformer RNN-T, Spanish) |
 | **Text-to-speech** | Supertonic 3 (ONNX) |
@@ -77,6 +77,11 @@ so it is secret and must never be committed or shared. It is not a RustFS root
 credential. The bootstrap never prints credential values. `docker compose up`
 with no service selection starts only `rustfs` and the one-shot `rustfs-init`;
 it never starts the backend.
+
+`scripts/setup.sh` also creates strong per-installation JWT and device
+fingerprint secrets in the same ignored overlay. The checked-in `config.toml`
+intentionally contains empty JWT secrets; the backend refuses to start until
+the local overlay supplies them.
 
 `rustfs-init` is the only container that receives both root and application
 credentials. It creates/verifies an `argus-backend` service account whose inline
@@ -174,8 +179,8 @@ POST /auth/login (multipart image)
 
 ## WebSocket sync (`/sync`)
 
-One-way server→client synchronization, protected by `JwtFilter` only (device
-binding stays on HTTP). Messages are `{ type, payload }`; responses use the
+One-way server→client synchronization, protected by `DeviceFilter` and
+`JwtFilter` on the same route. Messages are `{ type, payload }`; responses use the
 `SocketEmitDto` envelope `{ operation, option(TableName), info }`. Errors are
 `{ type: "<type>_error", status, error }`.
 
@@ -231,7 +236,7 @@ of user actions lives in `user_action_log` (write-only, not synced).
 - `jwt-cpp/0.7.2` + `nlohmann_json/3.11.3` — JWT auth
 - `opencv/4.13.0` (headless) — scaled face image decoding
 - `onnxruntime/1.24.4` — STT/TTS/vision inference
-- `llama-cpp/b6565` — LLM inference (LFM2.5-1.2B-Instruct)
+- `llama-cpp/b6565` — LLM inference (LFM2.5-1.2B-Instruct QAD)
 - `tomlplusplus/3.3.0` — config
 - `eigen/5.0.1` — linear algebra
 
@@ -322,8 +327,10 @@ cmake --build --preset prod -j 8
 ```
 
 Server listens on `0.0.0.0:7024`. Database at `database/argus.db`.
-Models under `models/{face,llm,vision,stt,tts}/` — vision (SmolVLM2 ONNX int8)
-and STT are downloaded automatically by `scripts/setup.sh`.
+Models under `models/{face,llm,vision,stt,tts}/` are runtime artifacts. The
+LFM2.5-1.2B-Instruct QAD GGUF, vision model and STT assets are downloaded
+automatically by `scripts/setup.sh`; model checksums are verified before the
+files become active.
 
 ## Benchmarks
 

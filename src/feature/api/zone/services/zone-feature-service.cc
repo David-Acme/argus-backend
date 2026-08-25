@@ -1,5 +1,7 @@
 #include "zone-feature-service.hxx"
 
+#include <ctime>
+
 void ZoneFeatureService::emit(SyncOperation operation,
                               const ZoneSchema& row) const
 {
@@ -9,6 +11,7 @@ void ZoneFeatureService::emit(SyncOperation operation,
   if (operation == SyncOperation::Delete) {
     Json::Value tombstone;
     tombstone["id"] = row.id;
+    tombstone["deletedAt"] = row.deletedAt.value_or(std::time(nullptr));
     body.obj = tombstone;
   }
   else {

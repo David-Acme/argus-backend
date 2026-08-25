@@ -1,9 +1,7 @@
 #include "service-registry.hxx"
 
-#include <algorithm>
-#include <atomic>
 #include <drogon/drogon.h>
-#include <thread>
+#include <unordered_map>
 #include <vector>
 
 void ServiceRegistry::registerService(std::unique_ptr<IService> service)
@@ -13,35 +11,66 @@ void ServiceRegistry::registerService(std::unique_ptr<IService> service)
 
 bool ServiceRegistry::initialize()
 {
-  for (const auto& service : services_) {
-    for (const auto& dep : service->dependencies()) {
-      const auto found =
-          std::find_if(services_.begin(), services_.end(),
-                       [&](const auto& s) { return s->name() == dep; });
-      if (found == services_.end())
-        LOG_WARN << "Service " << service->name() << " depends on missing "
-                 << dep;
+  std::unordered_map<std::string, size_t> indexes;
+  indexes.reserve(services_.size());
+  for (size_t i = 0; i < services_.size(); ++i) {
+    if (!indexes.emplace(services_[i]->name(), i).second) {
+      LOG_ERROR << "Duplicate service registration: " << services_[i]->name();
+      return false;
     }
   }
 
-  std::atomic<bool> ok{true};
-  std::vector<std::thread> threads;
-  threads.reserve(services_.size());
+  std::vector<bool> initialized(services_.size(), false);
   for (const auto& service : services_) {
-    LOG_INFO << "Initializing service: " << service->name() << " v"
-             << service->version();
-    threads.emplace_back([&ok, &service] {
+    for (const auto& dep : service->dependencies()) {
+      if (!indexes.contains(dep)) {
+        LOG_ERROR << "Service " << service->name()
+                  << " depends on missing " << dep;
+        return false;
+      }
+    }
+  }
+
+  // Initialize in dependency order. Services acquire shared resources during
+  // initialize(), so concurrent startup makes dependency declarations
+  // advisory and introduces races between DB, queue, and socket services.
+  size_t initializedCount = 0;
+  while (initializedCount < services_.size()) {
+    bool progressed = false;
+    for (size_t i = 0; i < services_.size(); ++i) {
+      if (initialized[i])
+        continue;
+
+      bool dependenciesReady = true;
+      for (const auto& dep : services_[i]->dependencies()) {
+        if (!initialized[indexes.at(dep)]) {
+          dependenciesReady = false;
+          break;
+        }
+      }
+      if (!dependenciesReady)
+        continue;
+
+      const auto& service = services_[i];
+      LOG_INFO << "Initializing service: " << service->name() << " v"
+               << service->version();
       if (!service->initialize()) {
         LOG_FATAL << "Service " << service->name()
                   << " failed to initialize";
-        ok.store(false);
+        return false;
       }
-    });
+      initialized[i] = true;
+      ++initializedCount;
+      progressed = true;
+    }
+
+    if (!progressed) {
+      LOG_ERROR << "Service dependency cycle detected";
+      return false;
+    }
   }
 
-  for (auto& thread : threads)
-    thread.join();
-  return ok.load();
+  return true;
 }
 
 void ServiceRegistry::shutdownAll()

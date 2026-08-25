@@ -28,7 +28,8 @@ inline constexpr std::string_view INVALIDATE =
     "UPDATE refresh_token SET is_valid = 0 WHERE id = ?";
 
 inline constexpr std::string_view MARK_USED =
-    "UPDATE refresh_token SET is_used = 1 WHERE id = ?";
+    "UPDATE refresh_token SET is_used = 1 "
+    "WHERE id = ? AND is_valid = 1 AND is_used = 0";
 
 inline constexpr std::string_view INVALIDATE_ALL_USER =
     "UPDATE refresh_token SET is_valid = 0 "
