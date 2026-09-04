@@ -26,9 +26,12 @@ legacy backend keeps running untouched on its own listener.
   `[identity] db` (default `database/identity.db`), injected both as the
   Drogon default client and as the `database.file` runtime override so
   `VecDb`/face-db write face embeddings there too. At boot the gateway
-  applies F1-3a's `identity-schema.sql` (`[identity] schema`) and aborts if
-  it fails; it never touches `argus.db` and never runs the backend
-  migrations.
+  applies F1-3a's `identity-schema.sql` (`[identity] schema`) — the 7
+  identity tables plus the audit/portrait substrate the identity write paths
+  touch (`audit_log`, `user_audit_log`, `user_action_log`, `user_portrait`,
+  `stored_file`, `portrait_preview_capability`), all copied verbatim from
+  `database/schema.sql` — and aborts if it fails; it never touches `argus.db`
+  and never runs the backend migrations.
 - **NATS event bus client**: connects to the shared event bus (`[nats]` in
   config) so later phases can fan sync-change events without touching the
   legacy backend. Connecting is optional: with no `nats.url` configured the

@@ -1,7 +1,8 @@
 -- ─────────────────────────────────────────────────────────────────────────────
 -- Argus gateway  ·  Identity schema (identity.db)
--- The 7 identity tables, copied verbatim from database/schema.sql (source of
--- truth). Applied by tools/migrate-identity and by the gateway.
+-- The 7 identity tables plus the audit and portrait substrate they write to,
+-- all copied verbatim from database/schema.sql (source of truth). Applied by
+-- tools/migrate-identity and by the gateway.
 -- Structure: pragmas → table creation → indexes (grouped by table).
 -- ─────────────────────────────────────────────────────────────────────────────
 
@@ -107,6 +108,72 @@ CREATE TABLE IF NOT EXISTS invitation_redemption (
     redeemed_at     INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
 );
 
+-- ── Tables · Audit and portrait substrate ────────────────────────────────────
+
+CREATE TABLE IF NOT EXISTS stored_file (
+    id              INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    object_key      TEXT    NOT NULL UNIQUE,
+    sha256          TEXT    NOT NULL,
+    mime_type       TEXT    NOT NULL,
+    byte_size       INTEGER NOT NULL CHECK (byte_size > 0),
+    category        TEXT    NOT NULL CHECK (category IN ('portrait', 'attachment')),
+    created_by      INTEGER REFERENCES user(id) ON DELETE SET NULL,
+    created_at      INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
+    deleted_at      INTEGER
+);
+
+CREATE TABLE IF NOT EXISTS user_portrait (
+    id              INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    user_id         INTEGER NOT NULL UNIQUE REFERENCES user(id) ON DELETE CASCADE,
+    file_id         INTEGER NOT NULL UNIQUE REFERENCES stored_file(id) ON DELETE RESTRICT,
+    created_at      INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
+    updated_at      INTEGER
+);
+
+CREATE TABLE IF NOT EXISTS portrait_preview_capability (
+    id                  INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    token_hash          TEXT    NOT NULL UNIQUE,
+    portrait_user_id    INTEGER NOT NULL REFERENCES user(id) ON DELETE CASCADE,
+    requester_user_id   INTEGER NOT NULL REFERENCES user(id) ON DELETE CASCADE,
+    expires_at          INTEGER NOT NULL,
+    consumed_at         INTEGER,
+    created_at          INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
+);
+
+CREATE TABLE IF NOT EXISTS audit_log (
+    id              INTEGER NOT NULL  PRIMARY KEY AUTOINCREMENT,
+    create_user_id  INTEGER           REFERENCES user(id) ON DELETE SET NULL,
+    record_id       INTEGER NOT NULL,
+    table_name      TEXT    NOT NULL,
+    changes         TEXT    NOT NULL  DEFAULT '{}',   -- JSON diff (JsonDiff::toJson)
+    priority        INTEGER NOT NULL  DEFAULT 1  CHECK (priority IN (0, 1, 2)),
+    event_timestamp INTEGER NOT NULL,
+    created_at      INTEGER NOT NULL  DEFAULT (strftime('%s', 'now'))
+);
+
+CREATE TABLE IF NOT EXISTS user_audit_log (
+    id              INTEGER NOT NULL  PRIMARY KEY AUTOINCREMENT,
+    user_id         INTEGER NOT NULL  REFERENCES user(id) ON DELETE CASCADE,
+    record_id       INTEGER NOT NULL,
+    table_name      TEXT    NOT NULL,
+    changes         TEXT    NOT NULL  DEFAULT '{}',   -- JSON diff (JsonDiff::toJson)
+    priority        INTEGER NOT NULL  DEFAULT 1  CHECK (priority IN (0, 1, 2)),
+    event_timestamp INTEGER NOT NULL,
+    created_at      INTEGER NOT NULL  DEFAULT (strftime('%s', 'now'))
+);
+
+CREATE TABLE IF NOT EXISTS user_action_log (
+    id         INTEGER NOT NULL  PRIMARY KEY AUTOINCREMENT,
+    user_id    INTEGER NOT NULL  REFERENCES user(id) ON DELETE CASCADE,
+    record_id  INTEGER NOT NULL,
+    table_name TEXT    NOT NULL,
+    action     TEXT    NOT NULL  CHECK (action IN ('create', 'read', 'update', 'delete')),
+    old_data   TEXT    NOT NULL  DEFAULT '{}',
+    new_data   TEXT    NOT NULL  DEFAULT '{}',
+    ip_address TEXT    NOT NULL  DEFAULT '',
+    created_at INTEGER NOT NULL  DEFAULT (strftime('%s', 'now'))
+);
+
 -- ── Indexes ──────────────────────────────────────────────────────────────────
 
 -- face_embedding
@@ -134,3 +201,25 @@ CREATE INDEX IF NOT EXISTS idx_invitation_redemption_invitation
     ON invitation_redemption (invitation_id, redeemed_at DESC);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_invitation_redemption_user
     ON invitation_redemption (user_id);
+
+-- stored_file
+CREATE UNIQUE INDEX IF NOT EXISTS idx_stored_file_object_key
+    ON stored_file (object_key);
+CREATE INDEX IF NOT EXISTS idx_stored_file_category_created
+    ON stored_file (category, created_at DESC) WHERE deleted_at IS NULL;
+
+-- user_portrait
+CREATE UNIQUE INDEX IF NOT EXISTS idx_user_portrait_user_current
+    ON user_portrait (user_id);
+
+-- portrait_preview_capability
+CREATE INDEX IF NOT EXISTS idx_portrait_preview_capability_lookup
+    ON portrait_preview_capability (token_hash, expires_at, consumed_at);
+
+-- audit_log
+CREATE INDEX IF NOT EXISTS idx_audit_log_record   ON audit_log (record_id, table_name);
+CREATE INDEX IF NOT EXISTS idx_audit_log_table_ts ON audit_log (table_name, event_timestamp);
+
+-- user_audit_log
+CREATE INDEX IF NOT EXISTS idx_user_audit_log_user_ts ON user_audit_log (user_id, event_timestamp);
+CREATE INDEX IF NOT EXISTS idx_user_audit_log_record   ON user_audit_log (record_id, table_name);
