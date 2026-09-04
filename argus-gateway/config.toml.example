@@ -1,16 +1,61 @@
 # argus-gateway configuration. Copy to config.toml (gitignored) to run.
+# Cutover shape (F1-5): the gateway owns the public TLS 7024 listener (the
+# same instance certificates the legacy uses) and proxies every non-native
+# route to the legacy backend on its internal plain-HTTP listener.
 
 [gateway]
 host = "0.0.0.0"
-# Placeholder until F1-4 moves the listener ownership; matches the legacy
-# backend port for now.
+# Public listener the mobile app has always connected to.
 port = 7024
+# Plain-HTTP listener option for local tests (tls off, no cert files).
+plain = false
+# Passed to OpenSSL as [MinProtocol, value] on the TLS listener.
+min_protocol = "TLSv1.2"
+
+# Mirror of the legacy [drogon.app] block; the listeners, db_clients and
+# plugins are built by the gateway itself (see argus-gateway/src/main.cc).
+[drogon.app]
+number_of_threads = 0
+enable_session = false
+document_root = "./"
+use_sendfile = true
+use_gzip = true
+use_brotli = false
+static_files_cache_time = 5
+idle_connection_timeout = 60
+enable_server_header = true
+enable_date_header = true
+keepalive_requests = 0
+pipelining_requests = 0
+gzip_static = true
+br_static = true
+client_max_body_size = "60M"
+client_max_memory_body_size = "16M"
+client_max_websocket_message_size = "128K"
+reuse_port = false
+enabled_compressed_request = false
+enable_request_stream = false
+handle_sig_term = true
+relaunch_on_error = false
 
 [nats]
 # Empty disables the event bus; health never depends on NATS being up.
 url = ""
 reconnect_wait_ms = 2000
 max_reconnects = 60
+
+# Same instance secrets as the legacy backend: both binaries verify (and the
+# gateway mints) the app's tokens.
+[jwt]
+secret = ""
+refresh_secret = ""
+access_ttl_minutes = 15
+refresh_ttl_days = 30
+
+# Same instance secret as the legacy: the device hash must stay identical on
+# both sides of the proxy.
+[device]
+fingerprint_secret = ""
 
 [identity]
 # Own database of the gateway identity domain (F1-3): all identity routes
@@ -19,12 +64,40 @@ db = "database/identity.db"
 schema = "database/identity-schema.sql"
 
 [legacy]
-# Internal /sync of the legacy backend, used to relay camera:* and voice:*
-# frames with the client's own credentials. Empty disables the relay; relayed
-# media then answers the standard 503 error envelope.
-sync_url = ""
-# Legacy database the gateway reads the sync tables from, opened mode=ro.
+# Internal /sync of the legacy backend (the cutover internal listener, plain
+# HTTP on loopback), used to relay camera:* and voice:* frames with the
+# client's own credentials. Empty disables the relay.
+sync_url = "ws://127.0.0.1:7025/sync"
+# Internal HTTP upstream of the legacy backend for proxied routes (Ruling I
+# exclusion table: everything the gateway does not serve itself). Empty
+# disables the reverse proxy.
+proxy_url = "http://127.0.0.1:7025"
+# Legacy database the gateway reads the non-identity sync tables from,
+# opened mode=ro.
 db = "database/argus.db"
+
+# Same cert paths as the legacy (transitional shared directory): the app's
+# pinned CA is byte-identical, and CertService runs here with the same keys.
+[cert]
+dir = "certs"
+ca_cert = "certs/ca.pem"
+ca_key = "certs/ca.key"
+server_cert = "certs/server.pem"
+server_key = "certs/server.key"
+leaf_ttl_days = 90
+rotation_threshold_days = 30
+rotate_check_hours = 24
+
+[mdns]
+enabled = true
+name = "Argus"
+service_type = "_argus._tcp"
+port = 7024
+
+[mdns.txt]
+path = "/"
+https = "true"
+wss = "true"
 
 [face]
 # Facial login models (models/face, from scripts/setup.sh). Disabled (or an

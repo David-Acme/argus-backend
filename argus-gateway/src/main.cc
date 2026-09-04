@@ -2,12 +2,16 @@
 #include <drogon/drogon.h>
 #include <identity/identity-config.hxx>
 #include <identity/identity-registrar.hxx>
+#include <proxy/proxy-config.hxx>
+#include <proxy/reverse-proxy.hxx>
+#include <server/listener-config.hxx>
 #include <config/app-config.hxx>
 #include <json/value.h>
 #include <memory>
 #include <shared/services/cert/cert-service.hxx>
 #include <shared/services/config-service/config-service.hxx>
 #include <shared/services/face/face-service.hxx>
+#include <shared/services/mdns/mdns-service.hxx>
 #include <shared/services/room/room-manager.hxx>
 #include <shared/services/sqlite/db-service.hxx>
 #include <shared/wrapper/nats/nats-bus.hxx>
@@ -18,12 +22,15 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <stdexcept>
 #include <string>
 
 namespace
 {
 
-Json::Value drogonConfig(const IdentityDbConfig& identityDb)
+Json::Value drogonConfig(const IdentityDbConfig& identityDb,
+                         const ListenerConfig& listener,
+                         const ProxyConfig& proxy)
 {
   Json::Value config = ConfigService::drogonConfig();
   if (config.isNull())
@@ -39,7 +46,62 @@ Json::Value drogonConfig(const IdentityDbConfig& identityDb)
   client["timeout"] = -1.0;
   clients.append(client);
   config["db_clients"] = clients;
+
+  config["listeners"] = listenerJson(listener);
+
+  if (!proxy.upstreamUrl.empty()) {
+    Json::Value plugins(Json::arrayValue);
+    Json::Value proxyPlugin(Json::objectValue);
+    proxyPlugin["name"] = "gateway_proxy::SimpleReverseProxy";
+    proxyPlugin["dependencies"] = Json::Value(Json::arrayValue);
+    Json::Value proxyConfig(Json::objectValue);
+    Json::Value backends(Json::arrayValue);
+    backends.append(proxy.upstreamUrl);
+    proxyConfig["backends"] = backends;
+    Json::Value exclusions(Json::arrayValue);
+    for (const auto& prefix : proxy.exclusions)
+      exclusions.append(prefix);
+    proxyConfig["exclusions"] = exclusions;
+    proxyConfig["pipelining"] = 16;
+    proxyConfig["connection_factor"] = 1;
+    proxyPlugin["config"] = proxyConfig;
+    plugins.append(proxyPlugin);
+    config["plugins"] = plugins;
+  }
+
   return config;
+}
+
+// Ruling I: the proxy never forwards a gateway-native path. Every route the
+// gateway registered must be covered by the exclusion set — checked here so
+// an unlisted future route fails fast instead of being served by both sides.
+void requireExclusionCoverage(const ProxyConfig& proxy)
+{
+  for (const auto& handlerInfo : drogon::app().getHandlersInfo()) {
+    const auto& pattern = std::get<0>(handlerInfo);
+    if (pattern.empty() || pattern.front() != '/')
+      continue;
+    if (!isGatewayNativePath(pattern, proxy.exclusions)) {
+      throw std::runtime_error("Route " + pattern
+                               + " is not in the proxy exclusion set");
+    }
+  }
+}
+
+void logRouting(const ProxyConfig& proxy, const ListenerConfig& listener)
+{
+  LOG_INFO << "Listening on " << listener.host << ":" << listener.port
+           << (listener.tls ? " (TLS" : " (plain")
+           << ", cert " << listener.certPath << ")";
+  if (proxy.upstreamUrl.empty()) {
+    LOG_INFO << "Reverse proxy disabled: the gateway serves its routes only";
+    return;
+  }
+  LOG_INFO << "Reverse proxy -> " << proxy.upstreamUrl
+           << " (excluded, gateway-native:";
+  for (const auto& prefix : proxy.exclusions)
+    LOG_INFO << "  " << prefix;
+  LOG_INFO << ")";
 }
 
 } // namespace
@@ -57,8 +119,6 @@ int main()
   // and VecDb (face-db) both read the config-driven path below.
   ConfigService::setRuntimeString("database.file", identityDb.dbPath);
 
-  drogon::app().loadConfigJson(drogonConfig(identityDb));
-
   drogon::app().registerController(std::make_shared<HealthController>());
   const IdentityRegistrationStats identity =
       registerIdentitySurface();
@@ -73,6 +133,13 @@ int main()
            << (legacySync.syncUrl.empty()
                    ? " (relay disabled)"
                    : "; relay -> " + legacySync.syncUrl);
+
+  const ListenerConfig listener = ListenerConfig::resolve();
+  const ProxyConfig proxy = ProxyConfig::resolve();
+  requireExclusionCoverage(proxy);
+  logRouting(proxy, listener);
+
+  drogon::app().loadConfigJson(drogonConfig(identityDb, listener, proxy));
 
   drogon::app().registerPreRoutingAdvice(
       [](const drogon::HttpRequestPtr& req,
@@ -119,8 +186,11 @@ int main()
   RoomManager roomManagerLifecycle;
   roomManagerLifecycle.init();
 
+  std::unique_ptr<MdnsService> mdnsService;
+
   drogon::app().registerBeginningAdvice([&identityDb = identityDb,
-                                         &legacySync = legacySync]() {
+                                         &legacySync = legacySync,
+                                         &mdnsService]() {
     DbService::installExtensions();
 
     if (std::filesystem::exists(legacySync.dbPath)) {
@@ -160,15 +230,15 @@ int main()
 
     if (!CertService::init())
       LOG_WARN << "PKI not loaded — pairing disabled";
+
+    // Same service name, type and TXT records the app discovers on the
+    // legacy: identical [mdns] config keys, same certs directory.
+    mdnsService = std::make_unique<MdnsService>();
+    if (!mdnsService->initialize())
+      LOG_WARN << "mDNS advertising failed";
   });
 
-  const int port = ConfigService::getInt("gateway.port");
-  std::string host = ConfigService::getString("gateway.host");
-  if (host.empty())
-    host = "0.0.0.0";
-
   drogon::app()
-      .addListener(host, static_cast<uint16_t>(port > 0 ? port : 7024))
       .setThreadNum(0)
       .run();
   return 0;

@@ -49,6 +49,9 @@ add_library(gateway-core STATIC
     ${GATEWAY_SRC_ROOT}/controllers/health-controller.cc
     ${GATEWAY_SRC_ROOT}/identity/identity-config.cc
     ${GATEWAY_SRC_ROOT}/identity/identity-registrar.cc
+    ${GATEWAY_SRC_ROOT}/proxy/proxy-config.cc
+    ${GATEWAY_SRC_ROOT}/proxy/reverse-proxy.cc
+    ${GATEWAY_SRC_ROOT}/server/listener-config.cc
     ${GATEWAY_SRC_ROOT}/sync/sync-fan-out.cc
     ${GATEWAY_SRC_ROOT}/sync/sync-registrar.cc
     ${GATEWAY_SRC_ROOT}/sync/sync-relay.cc
@@ -62,7 +65,11 @@ target_compile_options(gateway-core PRIVATE -Wall -Wextra)
 
 add_executable(argus-gateway ${GATEWAY_SRC_ROOT}/main.cc)
 
-target_link_libraries(argus-gateway PRIVATE gateway-core)
+# Whole-archive: the vendored proxy plugin self-registers through a template
+# static initializer that nothing references by name, so a plain static-lib
+# link would drop the registration object.
+target_link_libraries(argus-gateway PRIVATE
+    $<LINK_LIBRARY:WHOLE_ARCHIVE,gateway-core>)
 
 target_compile_options(argus-gateway PRIVATE -Wall -Wextra)
 

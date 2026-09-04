@@ -4,6 +4,8 @@
 #include <controllers/health-controller.hxx>
 #include <identity/identity-config.hxx>
 #include <identity/identity-registrar.hxx>
+#include <proxy/proxy-config.hxx>
+#include <server/listener-config.hxx>
 #include <shared/services/config-service/config-service.hxx>
 #include <shared/services/room/room-manager.hxx>
 #include <shared/services/socket/sync-change.hxx>
@@ -416,4 +418,130 @@ TEST_CASE("sync surface registers the socket with the relay forwarder")
 
   CHECK(stats.controllers == 1);
   CHECK(stats.filters == 2);
+}
+
+TEST_CASE("listener config resolves the cutover TLS listener by default")
+{
+  const char* path = "gateway-test-config-listener.toml";
+  {
+    std::ofstream file(path);
+    file << "[gateway]\n"
+         << "port = 7024\n"
+         << "\n"
+         << "[cert]\n"
+         << "server_cert = \"certs/server.pem\"\n"
+         << "server_key = \"certs/server.key\"\n";
+  }
+
+  ConfigService::load(path);
+  const ListenerConfig config = ListenerConfig::resolve();
+  const Json::Value listeners = listenerJson(config);
+
+  CHECK(config.host == "0.0.0.0");
+  CHECK(config.port == 7024);
+  CHECK(config.tls);
+  CHECK(config.certPath == "certs/server.pem");
+  CHECK(config.keyPath == "certs/server.key");
+  CHECK(config.minTlsProtocol == "TLSv1.2");
+  CHECK(listeners.size() == 1);
+  CHECK(listeners[0]["address"] == "0.0.0.0");
+  CHECK(listeners[0]["port"].asInt() == 7024);
+  CHECK(listeners[0]["https"].asBool() == true);
+  CHECK(listeners[0]["cert"] == "certs/server.pem");
+  CHECK(listeners[0]["key"] == "certs/server.key");
+  REQUIRE(listeners[0]["ssl_conf"].size() == 1);
+  CHECK(listeners[0]["ssl_conf"][0][0] == "MinProtocol");
+  CHECK(listeners[0]["ssl_conf"][0][1] == "TLSv1.2");
+
+  std::remove(path);
+}
+
+TEST_CASE("plain listener option serves local tests without TLS")
+{
+  const char* path = "gateway-test-config-plain.toml";
+  {
+    std::ofstream file(path);
+    file << "[gateway]\n"
+         << "host = \"127.0.0.1\"\n"
+         << "port = 7044\n"
+         << "plain = true\n";
+  }
+
+  ConfigService::load(path);
+  const ListenerConfig config = ListenerConfig::resolve();
+  const Json::Value listeners = listenerJson(config);
+
+  CHECK_FALSE(config.tls);
+  CHECK(listeners[0]["https"].asBool() == false);
+  CHECK_FALSE(listeners[0].isMember("cert"));
+  CHECK_FALSE(listeners[0].isMember("ssl_conf"));
+
+  std::remove(path);
+}
+
+TEST_CASE("proxy config resolves the internal upstream and native paths")
+{
+  const char* path = "gateway-test-config-proxy.toml";
+  {
+    std::ofstream file(path);
+    file << "[legacy]\n"
+         << "proxy_url = \"http://127.0.0.1:7025\"\n";
+  }
+
+  ConfigService::load(path);
+  const ProxyConfig config = ProxyConfig::resolve();
+
+  CHECK(config.upstreamUrl == "http://127.0.0.1:7025");
+  REQUIRE(config.exclusions.size() == 7);
+  const std::vector<std::string> expected = {
+      "/auth", "/invitation", "/pairing", "/portrait-preview",
+      "/user", "/sync", "/health",
+  };
+  CHECK(config.exclusions == expected);
+
+  ProxyConfig disabled;
+  CHECK(disabled.upstreamUrl.empty());
+
+  std::remove(path);
+}
+
+TEST_CASE("native path match keeps segment boundaries")
+{
+  const std::vector<std::string> exclusions = {"/user", "/sync"};
+
+  CHECK(isGatewayNativePath("/user", exclusions));
+  CHECK(isGatewayNativePath("/user/1", exclusions));
+  CHECK(isGatewayNativePath("/sync", exclusions));
+  CHECK_FALSE(isGatewayNativePath("/userx", exclusions));
+  CHECK_FALSE(isGatewayNativePath("/camera", exclusions));
+  CHECK_FALSE(isGatewayNativePath("/camera/1/status", exclusions));
+}
+
+TEST_CASE("proxy exclusion set covers every registered gateway route")
+{
+  const char* path = "gateway-test-config-coverage.toml";
+  {
+    std::ofstream file(path);
+    file << "[jwt]\n"
+         << "secret = \"0123456789abcdef0123456789abcdef0123456789\"\n"
+         << "refresh_secret = \"fedcba9876543210fedcba9876543210fedcba98\"\n";
+  }
+
+  ConfigService::load(path);
+  std::remove(path);
+
+  drogon::app().registerController(std::make_shared<HealthController>());
+  registerIdentitySurface();
+  registerSyncSurface(nullptr);
+
+  const ProxyConfig proxy = ProxyConfig::resolve();
+  REQUIRE_FALSE(proxy.exclusions.empty());
+
+  for (const auto& handlerInfo : drogon::app().getHandlersInfo()) {
+    const auto& pattern = std::get<0>(handlerInfo);
+    if (pattern.empty() || pattern.front() != '/')
+      continue;
+    CHECK_MESSAGE(isGatewayNativePath(pattern, proxy.exclusions),
+                  pattern);
+  }
 }
