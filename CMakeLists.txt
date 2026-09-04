@@ -70,6 +70,10 @@ endforeach()
 
 target_compile_options(argus_common PRIVATE -Wall -Wextra)
 
+enable_testing()
+
+add_subdirectory(${SRC_ROOT}/test/unit ${CMAKE_BINARY_DIR}/test/unit)
+
 option(ARGUS_BUILD_LABS "Build backend integration and verification labs" ON)
 
 if(ARGUS_BUILD_LABS)
