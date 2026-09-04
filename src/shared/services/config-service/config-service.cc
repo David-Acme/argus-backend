@@ -4,6 +4,7 @@
 #include <fstream>
 #include <json/reader.h>
 #include <json/value.h>
+#include <map>
 #include <mutex>
 #include <optional>
 #include <sstream>
@@ -20,6 +21,7 @@ std::optional<toml::table> gConfig;
 std::optional<toml::table> gOverlay;
 std::string gConfigPath;
 std::mutex gConfigMutex;
+std::map<std::string, std::string> gRuntimeOverrides;
 
 const toml::node* resolvePath(const std::string& keyPath)
 {
@@ -52,9 +54,29 @@ const toml::node* resolvePath(const std::string& keyPath)
 }
 
 template <typename T>
+T parseRuntimeOverride(const std::string& raw)
+{
+  if constexpr (std::is_same_v<T, std::string>) {
+    return raw;
+  }
+  else if constexpr (std::is_same_v<T, bool>) {
+    return raw == "true" || raw == "1";
+  }
+  else if constexpr (std::is_same_v<T, double>) {
+    return std::stod(raw);
+  }
+  else {
+    return static_cast<T>(std::stoll(raw));
+  }
+}
+
+template <typename T>
 T getValue(const std::string& keyPath, T defaultVal)
 {
   std::lock_guard lock(gConfigMutex);
+  if (const auto it = gRuntimeOverrides.find(keyPath);
+      it != gRuntimeOverrides.end())
+    return parseRuntimeOverride<T>(it->second);
   const auto* node = resolvePath(keyPath);
   if (!node)
     return defaultVal;
@@ -224,6 +246,13 @@ void ConfigService::loadOverlay(const std::string& path)
     throw std::runtime_error("ConfigService: failed to parse overlay " +
                              path);
   }
+}
+
+void ConfigService::setRuntimeString(const std::string& keyPath,
+                                     const std::string& value)
+{
+  std::lock_guard lock(gConfigMutex);
+  gRuntimeOverrides[keyPath] = value;
 }
 
 std::string ConfigService::getString(const std::string& keyPath)

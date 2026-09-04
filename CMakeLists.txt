@@ -25,6 +25,7 @@ find_library(RNNOISE_LIBRARY NAMES rnnoise)
 add_subdirectory(third_party)
 
 add_subdirectory(src/shared)
+add_subdirectory(src/identity)
 
 enable_testing()
 
@@ -79,6 +80,24 @@ file(GLOB_RECURSE SHARED_SRC
     ${SRC_ROOT}/shared/**/*.cc
 )
 
+file(GLOB_RECURSE IDENTITY_API_SRC
+    ${SRC_ROOT}/feature/api/auth/*.cc
+    ${SRC_ROOT}/feature/api/invitation/*.cc
+    ${SRC_ROOT}/feature/api/pairing/*.cc
+    ${SRC_ROOT}/feature/api/user/*.cc
+)
+
+list(REMOVE_ITEM API_SRC ${IDENTITY_API_SRC})
+list(REMOVE_ITEM FILTER_SRC
+    ${SRC_ROOT}/filter/device/device-filter.cc
+    ${SRC_ROOT}/filter/jwt/jwt-filter.cc
+    ${SRC_ROOT}/filter/role/role-filter.cc
+    ${SRC_ROOT}/filter/valid-json/valid-json-filter.cc
+)
+list(REMOVE_ITEM CONFIG_SRC
+    ${SRC_ROOT}/config/app-config.cc
+)
+
 list(REMOVE_ITEM SHARED_SRC
     ${SRC_ROOT}/shared/wrapper/api-response/api-response.cc
     ${SRC_ROOT}/shared/wrapper/thread-budget/thread-budget.cc
@@ -86,6 +105,48 @@ list(REMOVE_ITEM SHARED_SRC
     ${SRC_ROOT}/shared/wrapper/nats/nats-bus.cc
     ${SRC_ROOT}/shared/services/config-service/config-service.cc
     ${SRC_ROOT}/shared/utils/schema-runner/schema-runner.cc
+    ${SRC_ROOT}/shared/dtos/socket-emit/socket-emit-dto.cc
+    ${SRC_ROOT}/shared/repositories/audit-log/audit-log-repository.cc
+    ${SRC_ROOT}/shared/repositories/device-login-challenge/device-login-challenge-repository.cc
+    ${SRC_ROOT}/shared/repositories/face-embedding/face-embedding-repository.cc
+    ${SRC_ROOT}/shared/repositories/person/person-repository.cc
+    ${SRC_ROOT}/shared/repositories/portrait-preview-capability/portrait-preview-capability-repository.cc
+    ${SRC_ROOT}/shared/repositories/refresh-token/refresh-token-repository.cc
+    ${SRC_ROOT}/shared/repositories/stored-file/stored-file-repository.cc
+    ${SRC_ROOT}/shared/repositories/user-action-log/user-action-log-repository.cc
+    ${SRC_ROOT}/shared/repositories/user-audit-log/user-audit-log-repository.cc
+    ${SRC_ROOT}/shared/repositories/user-invitation/user-invitation-repository.cc
+    ${SRC_ROOT}/shared/repositories/user-portrait/user-portrait-repository.cc
+    ${SRC_ROOT}/shared/repositories/user/user-repository.cc
+    ${SRC_ROOT}/shared/repositories/vector-index/vector-index-repository.cc
+    ${SRC_ROOT}/shared/schemas/audit-log/audit-log-schema.cc
+    ${SRC_ROOT}/shared/schemas/device-login-challenge/device-login-challenge-schema.cc
+    ${SRC_ROOT}/shared/schemas/face-embedding/face-embedding-schema.cc
+    ${SRC_ROOT}/shared/schemas/person/person-schema.cc
+    ${SRC_ROOT}/shared/schemas/portrait-preview-capability/portrait-preview-capability-schema.cc
+    ${SRC_ROOT}/shared/schemas/refresh-token/refresh-token-schema.cc
+    ${SRC_ROOT}/shared/schemas/stored-file/stored-file-schema.cc
+    ${SRC_ROOT}/shared/schemas/user-action-log/user-action-log-schema.cc
+    ${SRC_ROOT}/shared/schemas/user-audit-log/user-audit-log-schema.cc
+    ${SRC_ROOT}/shared/schemas/user-invitation/user-invitation-schema.cc
+    ${SRC_ROOT}/shared/schemas/user-portrait/user-portrait-schema.cc
+    ${SRC_ROOT}/shared/schemas/user/user-schema.cc
+    ${SRC_ROOT}/shared/services/audit-log/audit-log-service.cc
+    ${SRC_ROOT}/shared/services/cert/cert-service.cc
+    ${SRC_ROOT}/shared/services/face/face-db.cc
+    ${SRC_ROOT}/shared/services/face/face-service.cc
+    ${SRC_ROOT}/shared/services/jwt/jwt-service.cc
+    ${SRC_ROOT}/shared/services/mdns/mdns-service.cc
+    ${SRC_ROOT}/shared/services/room/room-manager.cc
+    ${SRC_ROOT}/shared/services/socket/socket-service.cc
+    ${SRC_ROOT}/shared/services/sqlite/db-service.cc
+    ${SRC_ROOT}/shared/services/sqlite/vec-db.cc
+    ${SRC_ROOT}/shared/services/storage/private-portrait-service.cc
+    ${SRC_ROOT}/shared/services/storage/s3-storage-service.cc
+    ${SRC_ROOT}/shared/services/sync-audit/sync-audit-service.cc
+    ${SRC_ROOT}/shared/services/user-action-log/user-action-log-service.cc
+    ${SRC_ROOT}/shared/services/user-audit-log/user-audit-log-service.cc
+    ${SRC_ROOT}/shared/utils/json-diff/json-diff.cc
 )
 
 add_executable(${PROJECT_NAME}
@@ -130,6 +191,7 @@ target_sources(${PROJECT_NAME}
 
 target_link_libraries(${PROJECT_NAME}
     PRIVATE
+        argus_identity
         argus_common
         Drogon::Drogon
         jwt-cpp::jwt-cpp

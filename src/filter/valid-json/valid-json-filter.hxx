@@ -3,7 +3,7 @@
 #include <drogon/HttpFilter.h>
 #include <drogon/utils/coroutine.h>
 
-class ValidJsonFilter : public drogon::HttpCoroFilter<ValidJsonFilter>
+class ValidJsonFilter : public drogon::HttpCoroFilter<ValidJsonFilter, false>
 {
 public:
   drogon::Task<drogon::HttpResponsePtr>

@@ -5,8 +5,18 @@
 #include <csignal>
 #include <drogon/drogon.h>
 #include <execinfo.h>
+#include <feature/api/auth/controllers/auth-controller.hxx>
+#include <feature/api/invitation/controllers/invitation-controller.hxx>
+#include <feature/api/pairing/controllers/pairing-controller.hxx>
+#include <feature/api/user/controllers/portrait-preview-controller.hxx>
+#include <feature/api/user/controllers/user-controller.hxx>
+#include <filter/device/device-filter.hxx>
+#include <filter/jwt/jwt-filter.hxx>
+#include <filter/role/role-filter.hxx>
+#include <filter/valid-json/valid-json-filter.hxx>
 #include <iostream>
 #include <llama.h>
+#include <memory>
 #include <shared/services/cert/adapter/cert-service-adapter.hxx>
 #include <shared/services/cert/cert-service.hxx>
 #include <shared/services/config-service/config-service.hxx>
@@ -56,6 +66,20 @@ void forceShutdownHandler(int)
   }
 
   _exit(128 + SIGINT);
+}
+
+void registerIdentitySurface()
+{
+  app().registerFilter(std::make_shared<DeviceFilter>());
+  app().registerFilter(std::make_shared<ValidJsonFilter>());
+  app().registerFilter(std::make_shared<JwtFilter>());
+  app().registerFilter(std::make_shared<RoleFilter>());
+
+  app().registerController(std::make_shared<AuthController>());
+  app().registerController(std::make_shared<InvitationController>());
+  app().registerController(std::make_shared<PairingController>());
+  app().registerController(std::make_shared<UserController>());
+  app().registerController(std::make_shared<PortraitPreviewController>());
 }
 
 void printPairingBanner()
@@ -117,6 +141,8 @@ int Application::run()
   ConfigService::load("config.toml");
 
   app().loadConfigJson(ConfigService::drogonConfig());
+
+  registerIdentitySurface();
 
   app().registerPreRoutingAdvice([](const HttpRequestPtr& req,
                                     AdviceCallback&& cb,

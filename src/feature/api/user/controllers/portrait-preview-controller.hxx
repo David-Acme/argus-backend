@@ -7,7 +7,7 @@
 #include <feature/api/user/services/portrait-preview-service.hxx>
 
 class PortraitPreviewController
-    : public drogon::HttpController<PortraitPreviewController>
+    : public drogon::HttpController<PortraitPreviewController, false>
 {
 public:
   METHOD_LIST_BEGIN

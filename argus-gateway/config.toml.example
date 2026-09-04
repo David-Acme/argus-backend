@@ -11,3 +11,14 @@ port = 7024
 url = ""
 reconnect_wait_ms = 2000
 max_reconnects = 60
+
+[identity]
+# Own database of the gateway identity domain (F1-3): all identity routes
+# read this SQLite file, never the backend's argus.db.
+db = "database/identity.db"
+schema = "database/identity-schema.sql"
+
+[face]
+# Facial login models (models/face, from scripts/setup.sh). Disabled (or an
+# absent section) boots the gateway without face models.
+enabled = true

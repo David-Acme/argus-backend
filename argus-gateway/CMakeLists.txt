@@ -7,24 +7,51 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 set(GATEWAY_SRC_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
-if(NOT TARGET argus_common)
-    # Standalone build: reuse the root project's argus_common sources.
+if(NOT TARGET argus_identity)
+    # Standalone build: reuse the root project's argus_common, argus_identity
+    # and third-party sources so the gateway links the same objects as the
+    # root-tree build.
     find_package(Drogon CONFIG REQUIRED)
     find_package(cnats CONFIG REQUIRED)
     find_package(tomlplusplus REQUIRED)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../src/shared
                      ${CMAKE_BINARY_DIR}/argus-common)
+
+    enable_language(C)
+    add_library(sqlite-vec STATIC
+                ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/sqlite-vec/sqlite-vec.c)
+    target_compile_definitions(sqlite-vec PRIVATE SQLITE_CORE SQLITE_VEC_STATIC)
+    target_include_directories(sqlite-vec PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/sqlite-vec)
+    set(ARGUS_SQLITE_VEC_TARGET sqlite-vec)
+
+    set(NCNN_BUILD_BENCHMARK OFF CACHE BOOL "" FORCE)
+    set(NCNN_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+    set(NCNN_BUILD_TOOLS OFF CACHE BOOL "" FORCE)
+    set(NCNN_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+    set(NCNN_OPENMP ON CACHE BOOL "" FORCE)
+    set(NCNN_AVX2 ON CACHE BOOL "" FORCE)
+    set(NCNN_VULKAN ON CACHE BOOL "" FORCE)
+    set(NCNN_ENABLE_PIC ON CACHE BOOL "" FORCE)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../third_party/ncnn
+                     ${CMAKE_BINARY_DIR}/third_party/ncnn EXCLUDE_FROM_ALL)
+    set(ARGUS_NCNN_TARGET ncnn)
+
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../src/identity
+                     ${CMAKE_BINARY_DIR}/argus-identity)
 endif()
 
 find_package(doctest REQUIRED)
 
 add_library(gateway-core STATIC
     ${GATEWAY_SRC_ROOT}/controllers/health-controller.cc
+    ${GATEWAY_SRC_ROOT}/identity/identity-config.cc
+    ${GATEWAY_SRC_ROOT}/identity/identity-registrar.cc
 )
 
 target_include_directories(gateway-core PUBLIC ${GATEWAY_SRC_ROOT})
 
-target_link_libraries(gateway-core PUBLIC argus_common)
+target_link_libraries(gateway-core PUBLIC argus_identity)
 
 target_compile_options(gateway-core PRIVATE -Wall -Wextra)
 

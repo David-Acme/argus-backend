@@ -16,7 +16,7 @@ struct JwtContext
   bool isActive{false};
 };
 
-class JwtFilter : public drogon::HttpCoroFilter<JwtFilter>
+class JwtFilter : public drogon::HttpCoroFilter<JwtFilter, false>
 {
 public:
   drogon::Task<drogon::HttpResponsePtr>

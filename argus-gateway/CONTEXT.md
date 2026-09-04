@@ -10,17 +10,35 @@ legacy backend keeps running untouched on its own listener.
 
 ## What it owns
 
-- **Health**: `GET /health`, no auth, `{status: "ok", info: {service,
-  uptimeSeconds}}`. Health never depends on NATS being reachable. The
-  `{status: "ok"}` envelope is a scaffold-time placeholder taken from the
-  task brief: F1-3 MUST align `/health` and every new gateway route to the
-  standard `ApiResponse` envelope `{status: <int>, info, errors}`.
+- **Health**: `GET /health`, no auth, standard `ApiResponse` envelope
+  `{status: 200 (int), info: {service, uptimeSeconds}, errors: null}`
+  (F1-2 ruling; never depends on NATS being reachable).
+- **Identity domain (F1-3)**: the identity HTTP surface (`/auth/*`,
+  `/pairing`, `/invitation/*`, `/user`, `/portrait-preview/*`) served from
+  the `argus_identity` static library — the exact sources the legacy backend
+  links, so routes, filter chains (`DeviceFilter → ValidJsonFilter →
+  JwtFilter → RoleFilter`) and DTO validation are identical by construction.
+  Controllers are `HttpController<T, false>` registered explicitly in
+  `src/identity/identity-registrar.cc`; the backend does the same explicit
+  registration in `Application::run()` (static-lib auto-creation is dropped
+  by the linker).
+- **identity.db**: the identity domain reads ONE database resolved from
+  `[identity] db` (default `database/identity.db`), injected both as the
+  Drogon default client and as the `database.file` runtime override so
+  `VecDb`/face-db write face embeddings there too. At boot the gateway
+  applies F1-3a's `identity-schema.sql` (`[identity] schema`) and aborts if
+  it fails; it never touches `argus.db` and never runs the backend
+  migrations.
 - **NATS event bus client**: connects to the shared event bus (`[nats]` in
   config) so later phases can fan sync-change events without touching the
   legacy backend. Connecting is optional: with no `nats.url` configured the
   gateway logs and continues.
-- F1-3 will add the identity domain here; F1-4 will move the `/sync` listener
-  ownership here. No domain routes, filters, or DB clients yet.
+- **FaceService**: config-gated on `[face] enabled` (absent section or
+  `false` boots without face models). Enabled with models present it loads
+  like the backend; with models missing it degrades to a warn and facial
+  login stays disabled. It never touches alarm/siren paths (none exist in
+  the identity surface).
+- F1-4 will move the `/sync` listener ownership here.
 
 ## What proxies to legacy
 
@@ -38,17 +56,17 @@ backend port until F1-4 settles ownership.
   `argus-gateway` + `gateway-test`), or with `--target`.
 - `argus_common` was moved into `src/shared/CMakeLists.txt` (same target,
   same sources, same flags) so both the root project and the gateway consume
-  one definition without duplicating the source list.
-- The gateway also builds standalone: it reuses `../src/shared` via
-  `add_subdirectory` and its own `conanfile.txt` (Drogon 1.9.13, cnats
-  3.13.0, tomlplusplus 3.3.0, doctest 2.4.12 — same versions as the root,
-  same Drogon/sqlite3 options for Conan cache reuse). Its tests register into
-  ctest only in the standalone tree, keeping the root ctest at its 7 backend
-  suites.
-- Dependency weight note: when linked from the root project the gateway
-  inherits `argus_common`'s public ncnn dependency (for hardware-profile);
-  standalone builds do not pull ncnn at all. The gateway itself needs only
-  Drogon + argus_common.
+  one definition without duplicating the source list. `argus_identity`
+  (F1-3) follows the same pattern in `src/identity/CMakeLists.txt`.
+- The gateway also builds standalone: it reuses `../src/shared`,
+  `../src/identity`, `../third_party/sqlite-vec` and `../third_party/ncnn`
+  via `add_subdirectory`, and its own `conanfile.txt` (Drogon 1.9.13, cnats
+  3.13.0, tomlplusplus 3.3.0, doctest 2.4.12, jwt-cpp 0.7.2,
+  nlohmann_json 3.11.3, mdns 1.4.3, opencv 4.13.0 — same versions as the
+  root, same Drogon/sqlite3 options for Conan cache reuse; re-run
+  `conan install` after pulling: the identity deps were added in F1-3).
+  Its tests register into ctest only in the standalone tree, keeping the
+  root ctest at its 7 backend suites.
 - Canonical build shape: `cmake --build --preset gateway` (root tree) is the
   canonical way to produce deployable gateway binaries. The standalone tree
   compiles `argus_common` WITHOUT ncnn, so HardwareProfile-derived behavior

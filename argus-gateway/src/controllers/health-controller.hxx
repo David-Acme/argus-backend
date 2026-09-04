@@ -14,7 +14,7 @@ public:
   ADD_METHOD_TO(HealthController::health, "/health", drogon::Get);
   METHOD_LIST_END
 
-  static Json::Value envelope(double uptimeSeconds);
+  static Json::Value info(double uptimeSeconds);
 
   drogon::Task<drogon::HttpResponsePtr> health(drogon::HttpRequestPtr req);
 };
