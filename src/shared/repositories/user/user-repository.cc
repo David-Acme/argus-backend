@@ -155,7 +155,7 @@ drogon::Task<std::vector<UserSchema>> UserRepository::findAll() const
 drogon::Task<std::vector<Json::Value>>
 UserRepository::find(const SyncFilter& filter) const
 {
-  auto client = DbService::client();
+  auto client = DbService::readOnlyClient();
 
   const auto [query, args] = scopedToUser(
       sync_query::buildSyncQuery(filter, FIND, FIND_FROM, FIND_ALL, FIND_AFTER,
@@ -173,7 +173,7 @@ UserRepository::find(const SyncFilter& filter) const
 drogon::Task<std::vector<Json::Value>>
 UserRepository::findDeleted(const SyncFilter& filter) const
 {
-  auto client = DbService::client();
+  auto client = DbService::readOnlyClient();
 
   const auto [query, args] = scopedToUser(
       sync_query::buildSyncQuery(filter, FIND_DELETED, FIND_DELETED_FROM,
@@ -191,7 +191,7 @@ UserRepository::findDeleted(const SyncFilter& filter) const
 
 drogon::Task<std::optional<Json::Value>> UserRepository::findLast(const SyncFilter& filter) const
 {
-  auto client = DbService::client();
+  auto client = DbService::readOnlyClient();
 
   if (filter.userId) {
     const int64_t userId = *filter.userId;
@@ -211,7 +211,7 @@ drogon::Task<std::optional<Json::Value>> UserRepository::findLast(const SyncFilt
 
 drogon::Task<std::optional<Json::Value>> UserRepository::findLastDeleted(const SyncFilter& filter) const
 {
-  auto client = DbService::client();
+  auto client = DbService::readOnlyClient();
 
   if (filter.userId) {
     const int64_t userId = *filter.userId;

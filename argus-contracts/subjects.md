@@ -53,3 +53,18 @@ The payload is a JSON object mirroring the existing `SocketEmitDto` used on
   name, e.g. `camera`, `notification`).
 - `info` — the row/diff payload exactly as the gateway would emit it to
   WebSocket clients; the gateway does not transform it.
+
+### Routing metadata (additive, F1-4)
+
+The publisher adds routing keys the gateway consumes and never re-emits; the
+`{operation, option, info}` triple itself stays byte-identical to the
+`SocketEmitDto` the legacy `SocketService` emits on `/sync`. Published by the
+legacy backend only — the gateway is subscriber-only and must not publish
+(it would double-deliver its own fan-out).
+
+| Key        | Present on                | Meaning |
+|------------|---------------------------|---------|
+| `users`    | user-scoped emits         | user ids of the user rooms to emit to. An explicit (possibly empty) array means "user rooms only, never fall back to the module room of `option`". Absent means the module room of `option`. |
+| `action`   | room-control events       | Absent (or `"emit"`) is a plain emit. `"disconnect"` closes the user's sockets and emits `info` as the context message. `"replace_role_rooms"` re-computes the module rooms of `user`. |
+| `user`     | `disconnect`, `replace_role_rooms` | the user id the action applies to. |
+| `old_role` / `new_role` | `replace_role_rooms` | `UserRole` string values (`owner`, `resident`, `guard`, `guest`). |

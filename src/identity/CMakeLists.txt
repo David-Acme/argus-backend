@@ -41,7 +41,6 @@ set(ARGUS_IDENTITY_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/../filter/jwt/jwt-filter.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/../filter/role/role-filter.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/../filter/valid-json/valid-json-filter.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/../shared/dtos/socket-emit/socket-emit-dto.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/../shared/repositories/audit-log/audit-log-repository.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/../shared/repositories/device-login-challenge/device-login-challenge-repository.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/../shared/repositories/face-embedding/face-embedding-repository.cc

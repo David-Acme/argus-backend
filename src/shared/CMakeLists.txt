@@ -22,6 +22,8 @@ set(ARGUS_COMMON_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/services/config-service/config-service.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/services/config-service/config-service.hxx
     ${CMAKE_CURRENT_SOURCE_DIR}/utils/schema-runner/schema-runner.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/dtos/socket-emit/socket-emit-dto.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/dtos/socket-emit/socket-emit-dto.hxx
     ${CMAKE_CURRENT_SOURCE_DIR}/utils/schema-runner/schema-runner.hxx
 )
 

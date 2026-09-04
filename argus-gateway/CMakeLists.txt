@@ -39,6 +39,8 @@ if(NOT TARGET argus_identity)
 
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../src/identity
                      ${CMAKE_BINARY_DIR}/argus-identity)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../src/sync
+                     ${CMAKE_BINARY_DIR}/argus-sync)
 endif()
 
 find_package(doctest REQUIRED)
@@ -47,11 +49,14 @@ add_library(gateway-core STATIC
     ${GATEWAY_SRC_ROOT}/controllers/health-controller.cc
     ${GATEWAY_SRC_ROOT}/identity/identity-config.cc
     ${GATEWAY_SRC_ROOT}/identity/identity-registrar.cc
+    ${GATEWAY_SRC_ROOT}/sync/sync-fan-out.cc
+    ${GATEWAY_SRC_ROOT}/sync/sync-registrar.cc
+    ${GATEWAY_SRC_ROOT}/sync/sync-relay.cc
 )
 
 target_include_directories(gateway-core PUBLIC ${GATEWAY_SRC_ROOT})
 
-target_link_libraries(gateway-core PUBLIC argus_identity)
+target_link_libraries(gateway-core PUBLIC argus_identity argus_sync)
 
 target_compile_options(gateway-core PRIVATE -Wall -Wextra)
 

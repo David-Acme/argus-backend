@@ -7,6 +7,7 @@ set(UNIT_TESTS
     thread-budget-test
     validation-dsl-test
     nats-wrapper-test
+    sync-change-test
     identity-migration-test
 )
 

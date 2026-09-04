@@ -26,6 +26,7 @@ add_subdirectory(third_party)
 
 add_subdirectory(src/shared)
 add_subdirectory(src/identity)
+add_subdirectory(src/sync)
 
 enable_testing()
 
@@ -68,10 +69,6 @@ file(GLOB_RECURSE API_SRC
     ${SRC_ROOT}/feature/api/**/*.cc
 )
 
-file(GLOB_RECURSE SOCKET_SRC
-    ${SRC_ROOT}/feature/socket/**/*.cc
-)
-
 file(GLOB_RECURSE FILTER_SRC
     ${SRC_ROOT}/filter/**/*.cc
 )
@@ -106,6 +103,31 @@ list(REMOVE_ITEM SHARED_SRC
     ${SRC_ROOT}/shared/services/config-service/config-service.cc
     ${SRC_ROOT}/shared/utils/schema-runner/schema-runner.cc
     ${SRC_ROOT}/shared/dtos/socket-emit/socket-emit-dto.cc
+    ${SRC_ROOT}/shared/repositories/camera/camera-repository.cc
+    ${SRC_ROOT}/shared/repositories/camera-stream/camera-stream-repository.cc
+    ${SRC_ROOT}/shared/repositories/zone/zone-repository.cc
+    ${SRC_ROOT}/shared/repositories/reminder/reminder-repository.cc
+    ${SRC_ROOT}/shared/repositories/reminder-detail/reminder-detail-repository.cc
+    ${SRC_ROOT}/shared/repositories/calendar-event/calendar-event-repository.cc
+    ${SRC_ROOT}/shared/repositories/calendar-event-share/calendar-event-share-repository.cc
+    ${SRC_ROOT}/shared/repositories/project/project-repository.cc
+    ${SRC_ROOT}/shared/repositories/project-member/project-member-repository.cc
+    ${SRC_ROOT}/shared/repositories/project-task/project-task-repository.cc
+    ${SRC_ROOT}/shared/repositories/event/event-repository.cc
+    ${SRC_ROOT}/shared/repositories/notification/notification-repository.cc
+    ${SRC_ROOT}/shared/schemas/camera/camera-schema.cc
+    ${SRC_ROOT}/shared/schemas/camera-stream/camera-stream-schema.cc
+    ${SRC_ROOT}/shared/schemas/zone/zone-schema.cc
+    ${SRC_ROOT}/shared/schemas/reminder/reminder-schema.cc
+    ${SRC_ROOT}/shared/schemas/reminder-detail/reminder-detail-schema.cc
+    ${SRC_ROOT}/shared/schemas/calendar-event/calendar-event-schema.cc
+    ${SRC_ROOT}/shared/schemas/calendar-event-share/calendar-event-share-schema.cc
+    ${SRC_ROOT}/shared/schemas/project/project-schema.cc
+    ${SRC_ROOT}/shared/schemas/project-member/project-member-schema.cc
+    ${SRC_ROOT}/shared/schemas/project-task/project-task-schema.cc
+    ${SRC_ROOT}/shared/schemas/event/event-schema.cc
+    ${SRC_ROOT}/shared/schemas/person-event/person-event-schema.cc
+    ${SRC_ROOT}/shared/schemas/notification/notification-schema.cc
     ${SRC_ROOT}/shared/repositories/audit-log/audit-log-repository.cc
     ${SRC_ROOT}/shared/repositories/device-login-challenge/device-login-challenge-repository.cc
     ${SRC_ROOT}/shared/repositories/face-embedding/face-embedding-repository.cc
@@ -186,12 +208,13 @@ target_sources(${PROJECT_NAME}
         ${API_SRC}
         ${FILTER_SRC}
         ${SHARED_SRC}
-        ${SOCKET_SRC}
 )
 
 target_link_libraries(${PROJECT_NAME}
     PRIVATE
         argus_identity
+        argus_sync
+        argus_sync_media
         argus_common
         Drogon::Drogon
         jwt-cpp::jwt-cpp

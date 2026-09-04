@@ -40,7 +40,7 @@ NotificationRepository::createMany(
 drogon::Task<std::vector<Json::Value>>
 NotificationRepository::findSync(const NotificationSyncFilter& filter) const
 {
-  auto client = DbService::client();
+  auto client = DbService::readOnlyClient();
   if (filter.startTime && filter.startId && filter.endTime) {
     const auto result = co_await client->execSqlCoro(
         std::string(FIND_SYNC_AFTER) + AppConfig::SYNC_LIMIT, filter.userId,
@@ -98,7 +98,7 @@ NotificationRepository::findSync(const NotificationSyncFilter& filter) const
 drogon::Task<std::optional<Json::Value>>
 NotificationRepository::findLastSync(const NotificationSyncFilter& filter) const
 {
-  auto client = DbService::client();
+  auto client = DbService::readOnlyClient();
   const auto result =
       co_await client->execSqlCoro(FIND_LAST_SYNC.data(), filter.userId);
   if (result.empty())

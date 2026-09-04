@@ -9,6 +9,16 @@
 
 namespace
 {
+// Read-only client of the sync domain, installed by the host at boot.
+drogon::orm::DbClientPtr& g_readOnlyClient()
+{
+  static drogon::orm::DbClientPtr client;
+  return client;
+}
+} // namespace
+
+namespace
+{
 
 std::vector<std::string> splitStatements(const std::string& script)
 {
@@ -96,6 +106,24 @@ const std::vector<std::string> kPerBootPragmas = {
 };
 
 } // namespace
+
+void DbService::setReadOnlyClient(drogon::orm::DbClientPtr client)
+{
+  g_readOnlyClient() = std::move(client);
+}
+
+drogon::orm::DbClientPtr DbService::readOnlyClient()
+{
+  // Installed at boot, before any IO thread exists: no synchronization.
+  if (auto client = g_readOnlyClient())
+    return client;
+  return client();
+}
+
+void DbService::enableUriFilenames()
+{
+  sqlite3_config(SQLITE_CONFIG_URI, 1);
+}
 
 void DbService::installExtensions()
 {

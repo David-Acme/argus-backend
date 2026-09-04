@@ -8,11 +8,16 @@
 #include <shared/services/cert/cert-service.hxx>
 #include <shared/services/config-service/config-service.hxx>
 #include <shared/services/face/face-service.hxx>
+#include <shared/services/room/room-manager.hxx>
 #include <shared/services/sqlite/db-service.hxx>
 #include <shared/wrapper/nats/nats-bus.hxx>
+#include <sync/sync-fan-out.hxx>
+#include <sync/sync-registrar.hxx>
+#include <sync/sync-relay.hxx>
 #include <unistd.h>
 
 #include <cstdint>
+#include <filesystem>
 #include <string>
 
 namespace
@@ -41,6 +46,10 @@ Json::Value drogonConfig(const IdentityDbConfig& identityDb)
 
 int main()
 {
+  // SQLite URI filenames must be configured before the first sqlite3_open
+  // opens the read-only legacy database below.
+  DbService::enableUriFilenames();
+
   ConfigService::load("config.toml");
 
   const IdentityDbConfig identityDb = IdentityConfig::resolveDb();
@@ -55,6 +64,15 @@ int main()
       registerIdentitySurface();
   LOG_INFO << "Identity surface registered: " << identity.controllers
            << " controllers, " << identity.filters << " filters";
+
+  const LegacySyncConfig legacySync = LegacySyncConfig::resolve();
+  const SyncRegistrationStats sync = registerSyncSurface(
+      std::make_shared<LegacySyncRelay>(legacySync));
+  LOG_INFO << "Sync surface registered: " << sync.controllers << " controller, "
+           << sync.filters << " filters"
+           << (legacySync.syncUrl.empty()
+                   ? " (relay disabled)"
+                   : "; relay -> " + legacySync.syncUrl);
 
   drogon::app().registerPreRoutingAdvice(
       [](const drogon::HttpRequestPtr& req,
@@ -87,15 +105,42 @@ int main()
     LOG_INFO << "NATS not configured; event bus disabled";
   } else {
     natsBus = std::make_unique<NatsBus>();
-    if (natsBus->connect())
+    if (natsBus->connect()) {
       LOG_INFO << "NATS event bus connected to " << natsBus->options().url;
+      sync_fan_out::subscribeSyncFanOut(*natsBus);
+    }
     else
       LOG_WARN << "NATS unavailable at " << natsUrl
                << "; continuing without it";
   }
 
-  drogon::app().registerBeginningAdvice([&identityDb = identityDb]() {
+  // Prune timers for the sync socket's rooms (the gateway serves /sync
+  // natively; the backend reaches the same state through its registry).
+  RoomManager roomManagerLifecycle;
+  roomManagerLifecycle.init();
+
+  drogon::app().registerBeginningAdvice([&identityDb = identityDb,
+                                         &legacySync = legacySync]() {
     DbService::installExtensions();
+
+    if (std::filesystem::exists(legacySync.dbPath)) {
+      // Sync tables read the legacy argus.db read-only; identity keeps its
+      // own writable default client above.
+      const auto readOnly = drogon::orm::DbClient::newSqlite3Client(
+          "filename=file:" + legacySync.dbPath + "?mode=ro", 1);
+      try {
+        readOnly->execSqlSync("PRAGMA busy_timeout = 5000");
+      }
+      catch (const std::exception& e) {
+        LOG_WARN << "Read-only database pragma error: " << e.what();
+      }
+      DbService::setReadOnlyClient(readOnly);
+      LOG_INFO << "Legacy database opened read-only: " << legacySync.dbPath;
+    }
+    else {
+      LOG_WARN << "Legacy database not found: " << legacySync.dbPath
+               << "; sync reads fall back to the default client";
+    }
 
     if (!DbService::runScriptFile(identityDb.schemaPath)) {
       LOG_FATAL << "Identity database schema failed to apply — aborting startup";

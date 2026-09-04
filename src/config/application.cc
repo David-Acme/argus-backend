@@ -10,6 +10,8 @@
 #include <feature/api/pairing/controllers/pairing-controller.hxx>
 #include <feature/api/user/controllers/portrait-preview-controller.hxx>
 #include <feature/api/user/controllers/user-controller.hxx>
+#include <feature/socket/sync/media/sync-media-service.hxx>
+#include <feature/socket/sync/socket/sync-socket.hxx>
 #include <filter/device/device-filter.hxx>
 #include <filter/jwt/jwt-filter.hxx>
 #include <filter/role/role-filter.hxx>
@@ -30,6 +32,7 @@
 #include <shared/services/memory/adapter/memory-service-adapter.hxx>
 #include <shared/services/queue/adapter/queue-manager-service-adapter.hxx>
 #include <shared/services/room/adapter/room-manager-service-adapter.hxx>
+#include <shared/services/socket/socket-service.hxx>
 #include <shared/services/sqlite/db-service.hxx>
 #include <shared/services/stream/go2rtc-manager.hxx>
 #include <shared/services/stream/media-relay.hxx>
@@ -39,6 +42,7 @@
 #include <shared/services/tts/adapter/tts-service-adapter.hxx>
 #include <shared/services/vision/adapter/vision-service-adapter.hxx>
 #include <shared/wrapper/qr/qr-render.hxx>
+#include <shared/wrapper/nats/nats-bus.hxx>
 #include <unistd.h>
 
 using namespace drogon;
@@ -80,6 +84,10 @@ void registerIdentitySurface()
   app().registerController(std::make_shared<PairingController>());
   app().registerController(std::make_shared<UserController>());
   app().registerController(std::make_shared<PortraitPreviewController>());
+
+  const auto syncSocket = std::make_shared<SyncSocket>();
+  syncSocket->setForwarder(std::make_shared<SyncMediaService>());
+  app().registerController(syncSocket);
 }
 
 void printPairingBanner()
@@ -134,6 +142,23 @@ void printPairingBanner()
             << std::flush;
 }
 
+void installEventBus()
+{
+  if (ConfigService::getString("nats.url").empty()) {
+    LOG_INFO << "NATS not configured; sync-change fan-out disabled";
+    return;
+  }
+
+  const auto bus = std::make_shared<NatsBus>();
+  if (!bus->connect()) {
+    LOG_WARN << "NATS unavailable at " << bus->options().url
+             << "; continuing without sync-change fan-out";
+    return;
+  }
+  SocketService::setEventBus(bus);
+  LOG_INFO << "NATS event bus connected to " << bus->options().url;
+}
+
 } // namespace
 
 int Application::run()
@@ -143,6 +168,8 @@ int Application::run()
   app().loadConfigJson(ConfigService::drogonConfig());
 
   registerIdentitySurface();
+
+  installEventBus();
 
   app().registerPreRoutingAdvice([](const HttpRequestPtr& req,
                                     AdviceCallback&& cb,

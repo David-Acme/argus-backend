@@ -1,9 +1,11 @@
 #pragma once
 
 #include <drogon/WebSocketController.h>
+#include <feature/socket/sync/socket/sync-forwarder.hxx>
 #include <feature/socket/sync/services/sync-service.hxx>
+#include <memory>
 
-class SyncSocket : public drogon::WebSocketController<SyncSocket>
+class SyncSocket : public drogon::WebSocketController<SyncSocket, false>
 {
 public:
   void handleNewMessage(const drogon::WebSocketConnectionPtr& conn,
@@ -13,6 +15,8 @@ public:
                            const drogon::WebSocketConnectionPtr& conn) override;
   void handleConnectionClosed(
       const drogon::WebSocketConnectionPtr& conn) override;
+
+  void setForwarder(std::shared_ptr<SyncForwarder> forwarder);
 
   WS_PATH_LIST_BEGIN
   WS_PATH_ADD("/sync", "DeviceFilter", "JwtFilter");

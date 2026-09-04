@@ -45,10 +45,27 @@ legacy backend keeps running untouched on its own listener.
 
 ## What proxies to legacy
 
-Nothing yet. During the migration the gateway will front the legacy backend
-for the domains it already owns and proxy the remaining paths; the listener
-port `7024` in `config.toml.example` is a placeholder matching the legacy
-backend port until F1-4 settles ownership.
+- **`/sync` relay (F1-4)**: the gateway owns the `/sync` WebSocket end to end.
+  It serves the sync protocol natively (`sync`, `sync_audit_log`,
+  `sync_user_audit_log`, identity rooms, `initial_info`) from
+  `argus_sync` reading the legacy `argus.db` through a read-only SQLite
+  connection (`file:...?mode=ro`, enabled process-wide by
+  `DbService::enableUriFilenames()`; `[legacy] db`, default
+  `database/argus.db`), and relays every `camera:*`/`voice:*` frame (text and
+  binary) byte-transparently to the legacy's internal `/sync`
+  (`[legacy] sync_url`, empty disables the relay) as the client itself — same
+  `Authorization` header, `User-Agent` and `X-Forwarded-For`, so the legacy
+  device-hash filter still binds the session (the legacy needs
+  `[device] trust_forwarded_for = true` with the gateway as trusted proxy).
+  Legacy frames coming back are filtered to the relayed protocol only
+  (`camera:*` / `voice:*` types); module emits and `initial_info` of the relay
+  session are dropped — the gateway emits those itself.
+- **Sync-change fan-out**: subscribes the tail-only wildcard
+  `argus.*.v1.change` and re-emits through the same `RoomManager` rooms
+  (`moduleRoom`, `userRoom`, `replaceRoleRooms`, `disconnectUser`) exactly as
+  the legacy `SocketService` would, marshalled into the Drogon loop. It never
+  publishes — only the legacy installs the event bus
+  (`SocketService::setEventBus`). Payload contract: `argus-contracts/subjects.md`.
 
 ## Build wiring (decisions)
 

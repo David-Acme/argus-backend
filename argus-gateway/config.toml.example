@@ -18,6 +18,14 @@ max_reconnects = 60
 db = "database/identity.db"
 schema = "database/identity-schema.sql"
 
+[legacy]
+# Internal /sync of the legacy backend, used to relay camera:* and voice:*
+# frames with the client's own credentials. Empty disables the relay; relayed
+# media then answers the standard 503 error envelope.
+sync_url = ""
+# Legacy database the gateway reads the sync tables from, opened mode=ro.
+db = "database/argus.db"
+
 [face]
 # Facial login models (models/face, from scripts/setup.sh). Disabled (or an
 # absent section) boots the gateway without face models.
