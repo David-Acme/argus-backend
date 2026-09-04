@@ -28,12 +28,6 @@ struct LoginDeviceInput
   std::string userAgent;
 };
 
-struct HasAdminResult
-{
-  bool paired;
-  bool hasAdmin;
-};
-
 class AuthService
 {
 public:
@@ -45,8 +39,6 @@ public:
 
   drogon::Task<ResponseLoginDto>
   registerUser(RegisterDto body, const LoginDeviceInput& device) const;
-
-  drogon::Task<HasAdminResult> hasAdmin() const;
 
   drogon::Task<CreateDeviceLoginDto>
   createDeviceLogin(const LoginDeviceInput& device) const;

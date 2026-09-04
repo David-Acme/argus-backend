@@ -14,7 +14,6 @@ public:
                 "DeviceFilter");
   ADD_METHOD_TO(AuthController::registerUser, "/auth/register", drogon::Post,
                 "DeviceFilter");
-  ADD_METHOD_TO(AuthController::hasAdmin, "/auth/has-admin", drogon::Get);
   ADD_METHOD_TO(AuthController::status, "/auth/status", drogon::Get,
                 "DeviceFilter", "JwtFilter");
   ADD_METHOD_TO(AuthController::createDeviceLogin, "/auth/device-login",
@@ -35,7 +34,6 @@ public:
   drogon::Task<drogon::HttpResponsePtr> login(drogon::HttpRequestPtr req);
   drogon::Task<drogon::HttpResponsePtr>
   registerUser(drogon::HttpRequestPtr req);
-  drogon::Task<drogon::HttpResponsePtr> hasAdmin(drogon::HttpRequestPtr req);
   drogon::Task<drogon::HttpResponsePtr> status(drogon::HttpRequestPtr req);
   drogon::Task<drogon::HttpResponsePtr>
   createDeviceLogin(drogon::HttpRequestPtr req);

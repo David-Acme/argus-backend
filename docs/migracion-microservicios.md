@@ -86,9 +86,9 @@ funcionando sin actualizarse. Esa es la definición operativa de retrocompatibil
     `/auth/status`, device-login (QR, TTL 120 s), `/auth/refresh-token`
     (single-use, replay protection), `/auth/logout` (invalida + desconecta sockets WS del
     usuario), `/auth/me`. **`/auth/has-admin` se elimina** (decisión del usuario: el frontend
-    nunca la consume — el frontend arranca por el certificado, no por esta ruta; la lógica
-    interna `AuthService::hasAdmin`/`userRepository.hasOwner()` se queda porque el bootstrap de
-    `/auth/register` la usa).
+    nunca la consume — el frontend arranca por el certificado, no por esta ruta; el
+    handler de controlador y `AuthService::hasAdmin` desaparecen con ella — el bootstrap de
+    `/auth/register` ya hace su propio chequeo de owner dentro de la transacción).
   - **camera** (3): `POST/PATCH/DELETE /camera[/{id}]` — **no existe `GET /camera`**: la lista
     se lee por el WS `/sync`.
   - **camera-control** (7): `/camera/{id}/status|presets|ptz|preset|settings|capabilities|talk`.
@@ -666,8 +666,9 @@ servicio que lo usa (o vía RPC a base). `person` sigue vivo en base; `face_embe
 
 49 rutas HTTP vía `ADD_METHOD_TO` (grep verificado) + 1 WS (`/sync`, `sync-socket.hxx:18`).
 Abreviaturas: **D**=DeviceFilter · **V**=ValidJsonFilter · **J**=JwtFilter · **R**=RoleFilter ·
-**DVR** completa = D+V+J+R. `/auth/has-admin` **se elimina** del código (decisión del usuario);
-la lógica interna (`AuthService::hasAdmin`) se conserva para el bootstrap de `/auth/register`.
+**DVR** completa = D+V+J+R. `/auth/has-admin` **se elimina** del código (decisión del usuario),
+incluido su handler y `AuthService::hasAdmin` — el bootstrap de `/auth/register` usa su propio
+chequeo transaccional de owner.
 
 **auth (9)**
 | Método | Path | Filtros | Handler |

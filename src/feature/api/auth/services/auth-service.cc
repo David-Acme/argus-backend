@@ -268,14 +268,6 @@ AuthService::registerUser(RegisterDto body,
   co_return co_await issueSession(userId, personId, user, device);
 }
 
-drogon::Task<HasAdminResult> AuthService::hasAdmin() const
-{
-  co_return HasAdminResult{
-      .paired = ConfigService::getBool("pairing.paired"),
-      .hasAdmin = co_await userRepository_.hasOwner(),
-  };
-}
-
 drogon::Task<CreateDeviceLoginDto>
 AuthService::createDeviceLogin(const LoginDeviceInput& device) const
 {

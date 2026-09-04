@@ -47,18 +47,6 @@ AuthController::registerUser(drogon::HttpRequestPtr req)
 }
 
 drogon::Task<drogon::HttpResponsePtr>
-AuthController::hasAdmin(drogon::HttpRequestPtr /*req*/)
-{
-  const auto result = co_await service_.hasAdmin();
-
-  Json::Value body;
-  body["paired"] = result.paired;
-  body["hasAdmin"] = result.hasAdmin;
-
-  co_return ApiResponse::ok(body);
-}
-
-drogon::Task<drogon::HttpResponsePtr>
 AuthController::status(drogon::HttpRequestPtr req)
 {
   const auto& ctx =
