@@ -2355,9 +2355,10 @@ auth outcome of the no-token run, same conclusion as F1-4).
   writes — display data in legacy domains may go stale. The redirected
   `UserRepository::findById` callers, adjudicated: jwt-filter, sync-service,
   sync-media-service, project-member/share target checks and the repository's
-  post-update re-reads are read-only row checks whose JWT-authenticated
-  callers guarantee the row exists in identity.db (the token was minted from
-  it); auth-service, user-feature-service and portrait-preview-service are
+  post-update re-reads are read-only row checks, and identity.db is the
+  authoritative user store post-cutover (F1-3 migration plus all
+  post-cutover identity writes), so the row a check looks for exists there;
+  auth-service, user-feature-service and portrait-preview-service are
   gateway-native post-cutover, so on the legacy they are only reachable by a
   direct internal-listener call the app cannot make. The `person` table has
   no such redirect: legacy sync reads of `person` see stale/empty rows (e.g.
