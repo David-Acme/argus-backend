@@ -192,10 +192,19 @@ UserRepository::findDeleted(const SyncFilter& filter) const
 drogon::Task<std::optional<Json::Value>> UserRepository::findLast(const SyncFilter& filter) const
 {
   auto client = DbService::client();
-  const auto result = filter.userId
-                          ? co_await client->execSqlCoro(FIND_LAST_FOR_USER.data(), *filter.userId)
-                          : co_await client->execSqlCoro(FIND_LAST.data());
 
+  // The dereference stays inside the taken branch: the ternary-with-co_await
+  // form dereferences `filter.userId` before testing the condition.
+  if (filter.userId) {
+    const int64_t userId = *filter.userId;
+    const auto result =
+        co_await client->execSqlCoro(FIND_LAST_FOR_USER.data(), userId);
+    if (result.empty())
+      co_return std::nullopt;
+    co_return UserSchema(result.front()).toJson();
+  }
+
+  const auto result = co_await client->execSqlCoro(FIND_LAST.data());
   if (result.empty())
     co_return std::nullopt;
 
@@ -205,10 +214,17 @@ drogon::Task<std::optional<Json::Value>> UserRepository::findLast(const SyncFilt
 drogon::Task<std::optional<Json::Value>> UserRepository::findLastDeleted(const SyncFilter& filter) const
 {
   auto client = DbService::client();
-  const auto result = filter.userId
-                          ? co_await client->execSqlCoro(FIND_LAST_DELETED_FOR_USER.data(), *filter.userId)
-                          : co_await client->execSqlCoro(FIND_LAST_DELETED.data());
 
+  if (filter.userId) {
+    const int64_t userId = *filter.userId;
+    const auto result =
+        co_await client->execSqlCoro(FIND_LAST_DELETED_FOR_USER.data(), userId);
+    if (result.empty())
+      co_return std::nullopt;
+    co_return UserSchema(result.front()).toJson();
+  }
+
+  const auto result = co_await client->execSqlCoro(FIND_LAST_DELETED.data());
   if (result.empty())
     co_return std::nullopt;
 
