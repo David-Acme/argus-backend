@@ -16,9 +16,13 @@
 #include <shared/wrapper/hardware-profile/hardware-profile.hxx>
 #include <shared/wrapper/blocking-task/blocking-task.hxx>
 #include <shared/wrapper/thread-budget/thread-budget.hxx>
+// Vendored stb_image.h (ncnn's copy) defines unused API functions.
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-function"
 #define STB_IMAGE_IMPLEMENTATION
 #define STB_IMAGE_STATIC
 #include <stb_image.h>
+#pragma GCC diagnostic pop
 #include <thread>
 #include <vector>
 
