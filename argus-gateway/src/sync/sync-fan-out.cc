@@ -54,36 +54,51 @@ std::optional<Event> parseEvent(const Json::Value& json)
   return event;
 }
 
+FanOutPlan planEvent(const Event& event)
+{
+  FanOutPlan plan;
+  if (event.user) {
+    plan.userId = *event.user;
+    if (event.oldRole) {
+      plan.kind = FanOutPlan::Kind::ReplaceRoleRooms;
+      plan.replaceInput = {*event.user, *event.oldRole, *event.newRole};
+      return plan;
+    }
+    plan.kind = FanOutPlan::Kind::Disconnect;
+    return plan;
+  }
+  if (event.users) {
+    plan.kind = FanOutPlan::Kind::UserEmit;
+    plan.rooms.reserve(event.users->size());
+    for (const auto userId : *event.users)
+      plan.rooms.push_back(userRoom(userId));
+    return plan;
+  }
+  plan.kind = FanOutPlan::Kind::ModuleEmit;
+  plan.room = moduleRoom(event.emit.option);
+  return plan;
+}
+
 void dispatchEvent(const Event& event)
 {
-  if (event.user) {
-    if (event.oldRole) {
-      RoleRoomReplaceInput input;
-      input.userId = *event.user;
-      input.oldRole = *event.oldRole;
-      input.newRole = *event.newRole;
-      RoomManager manager;
-      manager.replaceRoleRooms(input);
-      return;
-    }
-    RoomManager manager;
-    manager.disconnectUser(*event.user,
-                           json_util::toString(event.emit.toJson()));
-    return;
-  }
-
+  const FanOutPlan plan = planEvent(event);
   RoomManager manager;
-  if (event.users) {
-    std::vector<RoomId> rooms;
-    rooms.reserve(event.users->size());
-    for (const auto userId : *event.users)
-      rooms.push_back(userRoom(userId));
-    if (!rooms.empty())
-      manager.emitMany(rooms, json_util::toString(event.emit.toJson()));
+  const auto message = json_util::toString(event.emit.toJson());
+  switch (plan.kind) {
+  case FanOutPlan::Kind::ReplaceRoleRooms:
+    manager.replaceRoleRooms(plan.replaceInput);
+    return;
+  case FanOutPlan::Kind::Disconnect:
+    manager.disconnectUser(plan.userId, message);
+    return;
+  case FanOutPlan::Kind::UserEmit:
+    if (!plan.rooms.empty())
+      manager.emitMany(plan.rooms, message);
+    return;
+  case FanOutPlan::Kind::ModuleEmit:
+    manager.emit(plan.room, message);
     return;
   }
-  manager.emit(moduleRoom(event.emit.option),
-               json_util::toString(event.emit.toJson()));
 }
 
 void subscribeSyncFanOut(NatsBus& bus)

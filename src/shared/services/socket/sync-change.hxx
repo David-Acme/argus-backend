@@ -60,7 +60,13 @@ inline Json::Value disconnectPayload(const SocketEmitDto& context,
 
 inline Json::Value roleRoomsPayload(const RoleRoomReplaceInput& input)
 {
-  Json::Value payload(Json::objectValue);
+  // Room-control events carry the AuthContextChanged user triple as envelope
+  // metadata: the gateway performs the room action and re-emits nothing.
+  SocketEmitDto body;
+  body.operation = SyncOperation::AuthContextChanged;
+  body.option = TableName::User;
+  body.obj["id"] = static_cast<Json::Int64>(input.userId);
+  Json::Value payload = body.toJson();
   payload[kActionField] = kActionReplaceRoleRooms;
   payload[kUserField] = static_cast<Json::Int64>(input.userId);
   payload[kOldRoleField] = userRoleToString(input.oldRole);

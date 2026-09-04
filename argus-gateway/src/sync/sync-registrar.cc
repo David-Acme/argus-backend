@@ -5,17 +5,25 @@
 #include <feature/socket/sync/socket/sync-socket.hxx>
 #include <filter/device/device-filter.hxx>
 #include <filter/jwt/jwt-filter.hxx>
+#include <algorithm>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 namespace
 {
+// Real evidence that the filter's object code is linked: DrObject-derived
+// classes static-register into the class map (getAllClassName) when their
+// translation unit is linked. getSingleInstance would fabricate the instance
+// instead.
 template <typename T>
-void requireFilter()
+void requireLinkedFilter()
 {
-  if (!drogon::DrClassMap::getSingleInstance<T>())
+  const auto names = drogon::DrClassMap::getAllClassName();
+  if (std::find(names.begin(), names.end(), T::classTypeName()) ==
+      names.end())
     throw std::runtime_error(std::string(T::classTypeName())
-                             + " is not registered");
+                             + " is not linked into this binary");
 }
 } // namespace
 
@@ -37,11 +45,9 @@ SyncRegistrationStats registerSyncSurface(
   if (!registered)
     throw std::runtime_error("WebsocketController: SyncSocket"
                              " has no routes registered");
-  if (!drogon::DrClassMap::getSingleInstance<SyncSocket>())
-    throw std::runtime_error("SyncSocket is not registered");
 
-  requireFilter<DeviceFilter>();
-  requireFilter<JwtFilter>();
+  requireLinkedFilter<DeviceFilter>();
+  requireLinkedFilter<JwtFilter>();
 
   return {.controllers = 1, .filters = 2};
 }

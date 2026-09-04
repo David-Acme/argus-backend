@@ -60,7 +60,11 @@ TEST_CASE("disconnect and role-room payloads carry the room-control action")
   input.oldRole = UserRole::Resident;
   input.newRole = UserRole::Guest;
   const Json::Value roleRooms = sync_change::roleRoomsPayload(input);
+  // Room-control events carry the envelope triple the gateway parser requires.
   CHECK(roleRooms["action"] == "replace_role_rooms");
+  CHECK(roleRooms["operation"] == 7);
+  CHECK(roleRooms["option"] == "user");
+  CHECK(roleRooms["info"]["id"] == 42);
   CHECK(roleRooms["user"] == 42);
   CHECK(roleRooms["old_role"] == "resident");
   CHECK(roleRooms["new_role"] == "guest");

@@ -26,8 +26,10 @@ struct LegacySyncConfig
 bool relayAllowedText(std::string_view type);
 
 // Per-client byte-transparent relay to the legacy /sync socket. Each session
-// connects with the client's own credentials and is only touched from the
-// event loop of its client connection.
+// connects with the client's own credentials (token and User-Agent; the
+// X-Forwarded-For is synthesized from the observed TCP peer address) and is
+// only touched from the event loop of its client connection. Binary frames
+// past the pending-frame cap are dropped while the legacy session connects.
 class LegacySyncRelay final : public SyncForwarder
 {
 public:

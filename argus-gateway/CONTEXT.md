@@ -54,9 +54,15 @@ legacy backend keeps running untouched on its own listener.
   `database/argus.db`), and relays every `camera:*`/`voice:*` frame (text and
   binary) byte-transparently to the legacy's internal `/sync`
   (`[legacy] sync_url`, empty disables the relay) as the client itself — same
-  `Authorization` header, `User-Agent` and `X-Forwarded-For`, so the legacy
-  device-hash filter still binds the session (the legacy needs
-  `[device] trust_forwarded_for = true` with the gateway as trusted proxy).
+  `Authorization` header and `User-Agent`, so the legacy device-hash filter
+  still binds the session. The relay never forwards a client-supplied
+  `X-Forwarded-For`: it synthesizes it from the observed TCP peer address of
+  the client connection (the gateway is the only one that sees the client;
+  the device hash is `HMAC(User-Agent|IP)`), and the legacy needs
+  `[device] trust_forwarded_for = true` with the gateway as trusted proxy.
+  While the legacy session is still connecting, frames are buffered up to a
+  256-frame cap; binary frames past the cap are dropped (transient PCM,
+  stale on replay), text overflow answers the standard 503 envelope.
   Legacy frames coming back are filtered to the relayed protocol only
   (`camera:*` / `voice:*` types); module emits and `initial_info` of the relay
   session are dropped — the gateway emits those itself.

@@ -9,6 +9,14 @@
 
 #include <utility>
 
+namespace
+{
+// Frames buffered while the legacy session is still connecting. Binary frames
+// past the cap are dropped instead of queued: they are transient PCM of the
+// moment, stale on replay.
+constexpr size_t kPendingLimit = 256;
+} // namespace
+
 struct LegacySyncRelay::Session
 {
   std::string token;
@@ -48,7 +56,10 @@ void LegacySyncRelay::onConnect(const drogon::HttpRequestPtr& req,
   auto session = std::make_shared<Session>();
   session->token = JwtFilter::extractToken(req);
   session->userAgent = req->getHeader("User-Agent");
-  session->forwardedFor = req->getHeader("X-Forwarded-For");
+  // Never trust a client-supplied X-Forwarded-For: the gateway is the only
+  // one that sees the client, so the header is replaced with the observed TCP
+  // peer address (the legacy device hash is HMAC(User-Agent|IP)).
+  session->forwardedFor = conn->peerAddr().toIp();
 
   std::lock_guard<std::mutex> lock(sessionsMutex_);
   sessions_[conn.get()] = std::move(session);
@@ -102,7 +113,7 @@ drogon::Task<bool> LegacySyncRelay::forwardText(
     co_return true;
   }
 
-  if (session->pending.size() >= 256) {
+  if (session->pending.size() >= kPendingLimit) {
     session->failed = true;
     throw ResponseException("Legacy sync queue overflow", 503,
                             AppConfig::ERROR_CODE_SERVICE_UNAVAILABLE);
@@ -131,6 +142,8 @@ void LegacySyncRelay::forwardBinary(const drogon::WebSocketConnectionPtr& conn,
                           drogon::WebSocketMessageType::Binary);
     return;
   }
+  if (session->pending.size() >= kPendingLimit)
+    return;
   session->pending.push_back(Frame{data, true});
 }
 
@@ -200,8 +213,8 @@ LegacySyncRelay::openSession(const drogon::WebSocketConnectionPtr& conn,
   req->addHeader("Authorization", "Bearer " + session->token);
   if (!session->userAgent.empty())
     req->addHeader("User-Agent", session->userAgent);
-  if (!session->forwardedFor.empty())
-    req->addHeader("X-Forwarded-For", session->forwardedFor);
+  // Synthesized, never the client's value (see onConnect).
+  req->addHeader("X-Forwarded-For", session->forwardedFor);
 
   try {
     const auto resp = co_await client->connectToServerCoro(req);

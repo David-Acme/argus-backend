@@ -57,14 +57,16 @@ The payload is a JSON object mirroring the existing `SocketEmitDto` used on
 ### Routing metadata (additive, F1-4)
 
 The publisher adds routing keys the gateway consumes and never re-emits; the
-`{operation, option, info}` triple itself stays byte-identical to the
-`SocketEmitDto` the legacy `SocketService` emits on `/sync`. Published by the
-legacy backend only — the gateway is subscriber-only and must not publish
+`{operation, option, info}` triple of a plain emit stays byte-identical to the
+`SocketEmitDto` the legacy `SocketService` emits on `/sync`. Room-control
+events carry an `AuthContextChanged`/`user` triple as envelope metadata only —
+the gateway performs the room action and re-emits nothing for it. Published by
+the legacy backend only — the gateway is subscriber-only and must not publish
 (it would double-deliver its own fan-out).
 
 | Key        | Present on                | Meaning |
 |------------|---------------------------|---------|
 | `users`    | user-scoped emits         | user ids of the user rooms to emit to. An explicit (possibly empty) array means "user rooms only, never fall back to the module room of `option`". Absent means the module room of `option`. |
-| `action`   | room-control events       | Absent (or `"emit"`) is a plain emit. `"disconnect"` closes the user's sockets and emits `info` as the context message. `"replace_role_rooms"` re-computes the module rooms of `user`. |
+| `action`   | room-control events       | Absent (or `"emit"`) is a plain emit. `"disconnect"` closes the user's sockets and emits `info` as the context message. `"replace_role_rooms"` re-computes the module rooms of `user` (the triple is envelope metadata, never re-emitted). |
 | `user`     | `disconnect`, `replace_role_rooms` | the user id the action applies to. |
 | `old_role` / `new_role` | `replace_role_rooms` | `UserRole` string values (`owner`, `resident`, `guard`, `guest`). |

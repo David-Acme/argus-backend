@@ -6,6 +6,7 @@
 #include <identity/identity-registrar.hxx>
 #include <shared/services/config-service/config-service.hxx>
 #include <shared/services/room/room-manager.hxx>
+#include <shared/services/socket/sync-change.hxx>
 #include <shared/services/sqlite/db-service.hxx>
 #include <shared/utils/json-util/json-util.hxx>
 #include <shared/wrapper/api-response/api-response.hxx>
@@ -256,10 +257,17 @@ TEST_CASE("fan-out parses the sync-change wire contract")
   REQUIRE(disconnection);
   CHECK(disconnection->user == 7);
 
-  const Json::Value roleRooms = json_util::fromString(
-      R"({"operation":7,"option":"user","info":{},"action":"replace_role_rooms","user":7,"old_role":"resident","new_role":"guest"})");
-  const auto replacement = sync_fan_out::parseEvent(roleRooms);
+  // The room-control action must round-trip the payload the legacy actually
+  // publishes, not a hand-written shape.
+  RoleRoomReplaceInput input;
+  input.userId = 7;
+  input.oldRole = UserRole::Resident;
+  input.newRole = UserRole::Guest;
+  const auto replacement = sync_fan_out::parseEvent(
+      sync_change::roleRoomsPayload(input));
   REQUIRE(replacement);
+  CHECK(replacement->emit.operation == SyncOperation::AuthContextChanged);
+  CHECK(replacement->emit.option == TableName::User);
   CHECK(replacement->user == 7);
   CHECK(replacement->oldRole == UserRole::Resident);
   CHECK(replacement->newRole == UserRole::Guest);
@@ -269,6 +277,71 @@ TEST_CASE("fan-out parses the sync-change wire contract")
   CHECK_FALSE(sync_fan_out::parseEvent(json_util::fromString("null")));
   CHECK_FALSE(sync_fan_out::parseEvent(
       json_util::fromString(R"({"action":"disconnect","operation":7,"option":"user","info":{}})")));
+}
+
+TEST_CASE("fan-out routing table matches the legacy SocketService mapping")
+{
+  const auto emit = [](SyncOperation operation, TableName table) {
+    SocketEmitDto body;
+    body.operation = operation;
+    body.option = table;
+    body.obj["id"] = 7;
+    return body;
+  };
+
+  // Absent users: the module room of the table.
+  const auto module =
+      sync_fan_out::parseEvent(sync_change::emitPayload(emit(SyncOperation::Add,
+                                                             TableName::Camera)));
+  REQUIRE(module);
+  const sync_fan_out::FanOutPlan modulePlan = sync_fan_out::planEvent(*module);
+  CHECK(modulePlan.kind == sync_fan_out::FanOutPlan::Kind::ModuleEmit);
+  CHECK(modulePlan.room == moduleRoom(TableName::Camera));
+  CHECK(modulePlan.rooms.empty());
+
+  // Explicit users: the user rooms of the ids, never the module room.
+  const auto scoped =
+      sync_fan_out::parseEvent(sync_change::userEmitPayload(
+          emit(SyncOperation::Add, TableName::Notification), {42, 43}));
+  REQUIRE(scoped);
+  const sync_fan_out::FanOutPlan scopedPlan = sync_fan_out::planEvent(*scoped);
+  CHECK(scopedPlan.kind == sync_fan_out::FanOutPlan::Kind::UserEmit);
+  REQUIRE(scopedPlan.rooms.size() == 2);
+  CHECK(scopedPlan.rooms[0] == userRoom(42));
+  CHECK(scopedPlan.rooms[1] == userRoom(43));
+
+  // Explicit empty users: user emit with no rooms, no module-room fallback.
+  const auto unscoped =
+      sync_fan_out::parseEvent(sync_change::userEmitPayload(
+          emit(SyncOperation::Add, TableName::Notification), {}));
+  REQUIRE(unscoped);
+  const sync_fan_out::FanOutPlan unscopedPlan = sync_fan_out::planEvent(*unscoped);
+  CHECK(unscopedPlan.kind == sync_fan_out::FanOutPlan::Kind::UserEmit);
+  CHECK(unscopedPlan.rooms.empty());
+
+  // Room-control actions take precedence over the emit fields; the
+  // disconnect input is the user id, the role-rooms input is the same
+  // RoleRoomReplaceInput the legacy replaceRoleRooms consumes.
+  const auto disconnection =
+      sync_fan_out::parseEvent(sync_change::disconnectPayload(
+          emit(SyncOperation::AuthContextChanged, TableName::User), 42));
+  REQUIRE(disconnection);
+  const sync_fan_out::FanOutPlan disconnectPlan = sync_fan_out::planEvent(*disconnection);
+  CHECK(disconnectPlan.kind == sync_fan_out::FanOutPlan::Kind::Disconnect);
+  CHECK(disconnectPlan.userId == 42);
+
+  RoleRoomReplaceInput input;
+  input.userId = 42;
+  input.oldRole = UserRole::Resident;
+  input.newRole = UserRole::Guest;
+  const auto replacement =
+      sync_fan_out::parseEvent(sync_change::roleRoomsPayload(input));
+  REQUIRE(replacement);
+  const sync_fan_out::FanOutPlan replacePlan = sync_fan_out::planEvent(*replacement);
+  CHECK(replacePlan.kind == sync_fan_out::FanOutPlan::Kind::ReplaceRoleRooms);
+  CHECK(replacePlan.replaceInput.userId == 42);
+  CHECK(replacePlan.replaceInput.oldRole == UserRole::Resident);
+  CHECK(replacePlan.replaceInput.newRole == UserRole::Guest);
 }
 
 TEST_CASE("fan-out re-emits the exact legacy wire triple")
