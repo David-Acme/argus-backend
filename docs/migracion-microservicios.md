@@ -402,7 +402,7 @@ Reglas de composición (decisión del usuario):
   "why" viaja con el código, las reglas de agente también).
 - **Infra por necesidad, no por uniformidad**: `argus-camera` necesita S3 (RustFS) para sus
   artefactos; los demás solo consumen lo que su dominio pide. La infra se declara en el compose
-  de `argus-deploy`, no en cada repo.
+  de `argus-deploy`, no en cada servicio.
 - **Reutilización en `argus-common`** (validación de DTOs/DSL, envelope, role-access, enums,
   ConfigService…) para no redundar código que ya existe.
 - **`argus-auth` (package, nuevo)**: un package simple que encapsula TODO el ciclo de
@@ -410,9 +410,10 @@ Reglas de composición (decisión del usuario):
   §3.7), validación y helpers — para que gateway y servicios mantengan la lógica de auth
   sencilla, escalable y mantenible en un solo lugar. Depende de `argus-common`.
 - **`argus-tunnel` se contempla desde el inicio pero como CLIENTE** (decisión del usuario: el
-  túnel solo está en idea). El repo define el contrato del cliente (conexión al relay, canal de
+  túnel solo está en idea). El folder `argus-contracts` define el contrato del cliente
+  (conexión al relay, canal de
   push) y su integración en compose; el relay propio es implementación futura.
-- **Tests separados por tipo en cada repo**: `test/unit/`, `test/e2e/` y cobertura; e2e
+- **Tests separados por tipo en cada servicio**: `test/unit/`, `test/e2e/` y cobertura; e2e
   ejercita el contrato por HTTP/gRPC. Cada cosa con sus tests especializados y sus tests
   principales.
 - **Convención de nombres de tests (decisión del usuario, cambia la de AGENTS.md actual
@@ -420,7 +421,7 @@ Reglas de composición (decisión del usuario):
   (antes `user-service_test.cc`). El resto de la declaración de archivos sigue el patrón que ya
   se trabaja (`.hxx` headers, `.cc` fuentes, kebab-case), sin variantes nuevas.
 
-| Repo | Contiene | Deps propias (conanfile) |
+| Servicio | Contiene | Deps propias (conanfile) |
 |---|---|---|
 | `argus-contracts` | Todos los `.proto` (`argus.<dominio>.v1`), schemas de manifiestos package/plugin, fixtures de frames `/sync`, `buf` + CI de breaking | buf, protoc |
 | `argus-common` | ConfigService, ThreadBudget, HardwareProbe, BlockingTask, CancellationToken, schema-runner, envelope `ApiResponse`, `role-access`, enums, validation, logging | toml++, nlohmann_json, jwt-cpp |

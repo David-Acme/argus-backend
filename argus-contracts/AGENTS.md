@@ -7,9 +7,10 @@
 
 - **argus-contracts** — the source of truth for Argus wire contracts: protobuf
   v1 skeletons, capability/package manifests and frozen sync wire values.
-- Sibling repo of `backend/` (C++20 + Drogon) and `frontend/` (React Native).
-  Services and the mobile app coordinate against THIS repo, never against a
-  service's local copy.
+- Top-level folder of the Argus monorepo (rooted at `backend/`), versioned via
+  repo tags (`contracts-v*`), not an independent repo. Services (C++20 + Drogon)
+  and the mobile app (`frontend/` React Native) coordinate against THIS folder,
+  never against a service's local copy.
 - English only: file contents, comments, commit messages.
 
 ## Frozen contract policy

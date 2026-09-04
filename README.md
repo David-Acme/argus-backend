@@ -16,7 +16,7 @@ in this single repository; all agent rules, code and comments are in English.
 
 Future services are top-level folders **siblings of `src/`**:
 
-- `argus-gateway/` (Fase 1), `argus-camera/` (Fase 2), and so on.
+- `argus-gateway/` (Phase 1), `argus-camera/` (Phase 2), and so on.
 
 Each service keeps its own `CMakeLists.txt`, `conanfile`, `database/`,
 `CONTEXT.md`, `AGENTS.md`, `tests/` and `labs/`, builds its own artifacts and
