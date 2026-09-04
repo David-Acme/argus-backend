@@ -2287,10 +2287,9 @@ gateway. The foundation is `NatsBus` (`src/shared/wrapper/nats/`) over cnats
 (`argus.<domain>.v1.<event>`; the concrete `/sync` subject is
 `argus.sync.v1.change` with the `SocketEmitDto` payload shape
 `{operation, option, info}`, and the gateway subscribes with the frozen
-wildcard `argus.>.v1.change` — note that this wildcard uses NATS multi-token
-semantics loosely; if a real server ever rejects a mid-subject `>`, the gateway
-falls back to `argus.*.v1.change`, but the frozen name stays the one in
-subjects.md).
+wildcard `argus.*.v1.change` — tail-only `>` was ruled out because a
+mid-subject `>` needs nats-server 2.10+, so the convention keeps every
+subject valid on any server version).
 
 `NatsBus` keeps no owning raw pointers: cnats handles (`natsConnection`,
 `natsOptions`, `natsSubscription`) sit behind `std::unique_ptr` with custom

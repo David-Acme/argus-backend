@@ -38,13 +38,13 @@ TEST_CASE("publish subjects accept plain dotted tokens only")
   CHECK_FALSE(isValidSubject("argus.*.v1.change", SubjectKind::Publish));
 }
 
-TEST_CASE("subscribe subjects allow NATS wildcards")
+TEST_CASE("subscribe subjects allow NATS wildcards with > tail-only")
 {
-  CHECK(isValidSubject("argus.>.v1.change", SubjectKind::Subscribe));
   CHECK(isValidSubject("argus.*.v1.change", SubjectKind::Subscribe));
   CHECK(isValidSubject(">", SubjectKind::Subscribe));
   CHECK(isValidSubject("argus.>", SubjectKind::Subscribe));
 
+  CHECK_FALSE(isValidSubject("argus.>.v1.change", SubjectKind::Subscribe));
   CHECK_FALSE(isValidSubject("argus.v1.*.change", SubjectKind::Publish));
 }
 
@@ -52,7 +52,7 @@ TEST_CASE("frozen sync subjects keep their contract spelling")
 {
   CHECK(std::string(nats_subject::kSyncChange) == "argus.sync.v1.change");
   CHECK(std::string(nats_subject::kSyncChangeWildcard) ==
-        "argus.>.v1.change");
+        "argus.*.v1.change");
   CHECK(isValidSubject(nats_subject::kSyncChange, SubjectKind::Publish));
   CHECK(isValidSubject(nats_subject::kSyncChangeWildcard,
                        SubjectKind::Subscribe));

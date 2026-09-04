@@ -8,7 +8,7 @@ namespace nats_subject
 {
 
 inline constexpr const char* kSyncChange = "argus.sync.v1.change";
-inline constexpr const char* kSyncChangeWildcard = "argus.>.v1.change";
+inline constexpr const char* kSyncChangeWildcard = "argus.*.v1.change";
 
 enum class SubjectKind
 {
@@ -36,6 +36,10 @@ inline bool isValidSubject(std::string_view subject, SubjectKind kind)
 
     if (kind == SubjectKind::Publish &&
         (isStarWildcard || isGreaterWildcard))
+      return false;
+    // ">" matches one or more trailing tokens and is only valid as the last
+    // token; this stays valid across every nats-server version.
+    if (isGreaterWildcard && dot != std::string::npos)
       return false;
 
     if (!isStarWildcard && !isGreaterWildcard) {

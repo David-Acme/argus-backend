@@ -49,9 +49,12 @@ public:
 
   // Idempotent: releases every handler, unsubscribes and closes the
   // connection. A later connect() starts a fresh lifecycle.
+  // Uses natsSubscription_Unsubscribe (not natsSubscription_Drain), which is
+  // the only one of the two safe to call from a message callback.
   void drain();
 
   bool isConnected() const;
+  // Unynchronized; call from the thread that owns the bus lifecycle.
   const Options& options() const { return options_; }
 
 private:

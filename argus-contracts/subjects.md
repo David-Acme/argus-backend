@@ -25,8 +25,10 @@ argus.<domain>.v1.<event>
 |------------------------|----------------------|----------|----------------------------------------------|
 | `argus.sync.v1.change` | every mutating service | gateway  | a persisted change that must reach `/sync` |
 
-The gateway subscribes with the wildcard `argus.>.v1.change`, so later domains
-can add their own `argus.<domain>.v1.change` subject without a gateway change.
+The gateway subscribes with the wildcard `argus.*.v1.change` — universally
+valid across nats-server versions, while a mid-subject `>` requires nats-server
+2.10+ — so later domains can add their own `argus.<domain>.v1.change` subject
+without a gateway change.
 
 ## Payload of `argus.sync.v1.change`
 

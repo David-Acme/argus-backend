@@ -90,15 +90,17 @@ void NatsBus::onMessage(natsConnection* connection, natsSubscription* sub,
   {
     std::lock_guard lock(bus->mutex_);
     const auto it = bus->active_.find(sub);
-    if (it == bus->active_.end())
-      return;
-    handler = it->second.handler;
+    if (it != bus->active_.end())
+      handler = it->second.handler;
   }
 
   const char* data = natsMsg_GetData(msg);
   const int length = natsMsg_GetDataLength(msg);
-  if (data != nullptr && length >= 0)
+  if (handler && data != nullptr && length >= 0)
     handler(std::string_view(data, static_cast<size_t>(length)));
+
+  // The dispatcher hands the callback ownership of the message.
+  natsMsg_Destroy(msg);
 }
 
 bool NatsBus::connect(const Options& options)
@@ -257,6 +259,8 @@ bool NatsBus::unsubscribe(uint64_t id)
 void NatsBus::drain()
 {
   std::vector<SubscriptionPtr> subs;
+  ConnectionPtr connection;
+  OptionsPtr options;
   {
     std::lock_guard lock(mutex_);
     if (drained_)
@@ -269,17 +273,16 @@ void NatsBus::drain()
       subs.push_back(std::move(active.raw));
     active_.clear();
     activeIndex_.clear();
+    connection = std::move(connection_);
+    options = std::move(connectionOptions_);
   }
 
   for (auto& sub : subs)
     natsSubscription_Unsubscribe(sub.get());
   subs.clear();
 
-  if (connection_ != nullptr) {
-    natsConnection_DrainTimeout(connection_.get(), kDrainTimeoutMs);
-    connection_.reset();
-  }
-  connectionOptions_.reset();
+  if (connection != nullptr)
+    natsConnection_DrainTimeout(connection.get(), kDrainTimeoutMs);
 }
 
 bool NatsBus::isConnected() const
