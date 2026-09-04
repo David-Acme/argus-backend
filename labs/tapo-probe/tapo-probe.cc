@@ -466,7 +466,7 @@ int main(int argc, char** argv)
              options.verbose);
 
     if (options.doPtzStep)
-      report("motorMoveStep", api.step({.angle = options.ptzStep}),
+      report("relativeMove", api.step({.direction = options.ptzStep}),
              options.verbose);
 
     if (!options.dayNightMode.empty())

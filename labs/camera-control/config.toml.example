@@ -1,0 +1,41 @@
+# Standalone camera lab. It does not use JWT or the production API; face
+# detection is the one feature that opens the local SQLite database directly.
+
+[lab]
+host = "127.0.0.1"
+port = 7090
+web_root = "labs/camera-control/web"
+
+[camera]
+host = ""
+username = ""
+password = ""
+cloud_username = "admin"
+cloud_password = ""
+control_port = 443
+media_port = 8800
+transport = "auto"
+connect_timeout_ms = 3000
+request_timeout_ms = 5000
+login_attempts = 2
+talk_mode = "aec"
+talk_framing = "none"
+talk_packet_ms = 20
+
+[detection]
+provider = "native"
+fallback = "local"
+record_mode = "events"
+dwell_seconds = 10
+zones_json = "[]"
+
+[operator]
+lease_seconds = 120
+
+[faces]
+enabled = false
+min_score = 0.6
+capture_cooldown_ms = 2000
+target_fps = 5
+identify = true
+source = "labcam"

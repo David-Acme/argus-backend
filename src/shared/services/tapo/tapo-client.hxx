@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <shared/services/tapo/tapo-transport.hxx>
 #include <string>
 #include <vector>
@@ -57,7 +58,11 @@ public:
 private:
   std::unique_ptr<ITapoTransport> makeTransport(TapoTransportKind kind,
                                                 const TapoCredentialCandidate& candidate);
-  TapoResult tryCandidate(const TapoCredentialCandidate& candidate);
+  TapoResult tryCandidate(const TapoCredentialCandidate& candidate,
+                          std::optional<TapoTransportKind> excludedKind);
+  TapoResult connectLocked(std::optional<TapoTransportKind> excludedKind);
+  static bool isRecoverableFailure(const TapoResult& result);
+  static bool isSafeToRetry(const Json::Value& request);
 
   TapoClientConfig config_;
   mutable std::mutex mutex_;

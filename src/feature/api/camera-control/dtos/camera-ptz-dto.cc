@@ -12,11 +12,14 @@ CameraPtzDto CameraPtzDto::fromJson(const Json::Value& json)
 
   START_VALIDATION(CameraPtzDto, dto)
   CUSTOM_LAMBDA(angle, [](const CameraPtzDto& d) -> std::optional<std::string> {
-    if (d.angle)
+    if (!d.angle || (*d.angle >= 0 && *d.angle < 360))
       return std::nullopt;
-    if (d.x && d.y)
+    return "direction must be between 0 and 359";
+  })
+  CUSTOM_LAMBDA(x, [](const CameraPtzDto& d) -> std::optional<std::string> {
+    if (d.angle || (d.x && d.y))
       return std::nullopt;
-    return "send an angle for a step, or x and y for an absolute move";
+    return "send a protocol direction, or x and y for an absolute move";
   })
   END_VALIDATION()
   return dto;

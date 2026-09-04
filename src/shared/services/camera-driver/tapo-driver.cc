@@ -84,7 +84,7 @@ DriverResult TapoDriver::move(const DriverMoveInput& input)
   if (const auto ready = ensureConnected(); !ready.ok)
     return ready;
   if (input.angle)
-    return toDriverResult(api_->step({.angle = *input.angle}));
+    return toDriverResult(api_->step({.direction = *input.angle}));
   return toDriverResult(
       api_->move({.x = input.x.value_or(0), .y = input.y.value_or(0)}));
 }
@@ -123,10 +123,12 @@ DriverResult TapoDriver::settings(const DriverSettingsInput& input)
         {.enabled = input.motion.value_or(true), .sensitivity = input.motionSensitivity}));
   if (input.autoTrack)
     apply(api_->setAutoTrack({.enabled = *input.autoTrack}));
-  if (input.alarm || input.alarmVolume)
-    apply(api_->setAlarm({.enabled = input.alarm.value_or(true),
-                          .durationSeconds = std::nullopt,
-                          .volume = input.alarmVolume}));
+  if (input.alarmVolume)
+    apply(api_->setAlarmVolume(*input.alarmVolume <= 33   ? "low"
+                               : *input.alarmVolume <= 66 ? "normal"
+                                                          : "high"));
+  if (input.alarm)
+    apply(api_->setAlarm({.enabled = *input.alarm}));
 
   if (last.ok)
     last.data = api_->getStatus().toJson();

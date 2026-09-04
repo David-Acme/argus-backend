@@ -40,6 +40,7 @@ if(ARGUS_BUILD_LABS)
     add_subdirectory(labs/queue-probe)
     add_subdirectory(labs/reaction-probe)
     add_subdirectory(labs/kuzu-probe)
+    add_subdirectory(labs/camera-control)
 endif()
 
 file(GLOB_RECURSE CONFIG_SRC

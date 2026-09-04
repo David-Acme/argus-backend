@@ -24,7 +24,7 @@ struct DriverMoveInput
 {
   std::optional<int64_t> x;
   std::optional<int64_t> y;
-  /** Relative step in degrees; wins over x/y when present. */
+  /** Tapo protocol direction in degrees; wins over x/y when present. */
   std::optional<int64_t> angle;
 };
 

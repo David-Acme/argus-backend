@@ -152,6 +152,25 @@ TapoResult TapoApi::getPresets()
   return call("getPresetConfig", nameList("preset", {"preset"}));
 }
 
+TapoResult TapoApi::getMotorCapability()
+{
+  auto result = call("get", nameList("motor", {"capability"}));
+  if (!result.ok)
+    return result;
+
+  const auto& responses = result.data["result"]["responses"];
+  if (responses.isArray() && !responses.empty()) {
+    const auto& response = responses[0];
+    const int errorCode = response.get("error_code", 0).asInt();
+    if (errorCode != 0) {
+      result.ok = false;
+      result.errorCode = errorCode;
+      result.error = "device returned error";
+    }
+  }
+  return result;
+}
+
 TapoResult TapoApi::move(const TapoMoveInput& input)
 {
   Json::Value params(Json::objectValue);
@@ -162,9 +181,12 @@ TapoResult TapoApi::move(const TapoMoveInput& input)
 
 TapoResult TapoApi::step(const TapoStepInput& input)
 {
+  if (input.direction < 0 || input.direction >= 360)
+    return TapoResult::failure("relative direction must be between 0 and 359");
+
   Json::Value params(Json::objectValue);
-  params["motor"]["movestep"]["direction"] = std::to_string(input.angle);
-  return call("motorMoveStep", params);
+  params["motor"]["movestep"]["direction"] = std::to_string(input.direction);
+  return call("relativeMove", params);
 }
 
 TapoResult TapoApi::gotoPreset(const TapoPresetInput& input)
@@ -189,6 +211,20 @@ TapoResult TapoApi::deletePreset(const TapoPresetInput& input)
   Json::Value params(Json::objectValue);
   params["preset"]["remove_preset"]["id"] = ids;
   return call("deletePreset", params);
+}
+
+TapoResult TapoApi::calibrateMotor()
+{
+  Json::Value params(Json::objectValue);
+  params["motor"]["manual_cali"] = "";
+  return call("manualCalibrate", params);
+}
+
+TapoResult TapoApi::stopMotor()
+{
+  Json::Value params(Json::objectValue);
+  params["motor"]["stop"] = "";
+  return call("stopMove", params);
 }
 
 TapoResult TapoApi::setPrivacy(const TapoPrivacyInput& input)
@@ -229,16 +265,55 @@ TapoResult TapoApi::setAutoTrack(const TapoAutoTrackInput& input)
   return call("setTargetTrackConfig", params);
 }
 
+TapoResult TapoApi::updateAlarmTable(
+    const std::function<void(Json::Value&)>& mutate)
+{
+  Json::Value names(Json::arrayValue);
+  names.append("chn1_msg_alarm_info");
+  Json::Value getParams;
+  getParams["msg_alarm"]["name"] = names;
+  const auto current = call("getLastAlarmInfo", getParams);
+  if (!current.ok)
+    return current;
+  const auto& readResponses = current.data["result"]["responses"];
+  if (!readResponses.isArray() || readResponses.empty() ||
+      readResponses[readResponses.size() - 1]["error_code"].asInt() != 0)
+    return TapoResult::failure("the camera rejected reading the alarm table");
+  Json::Value table =
+      readResponses[readResponses.size() - 1]["result"]["msg_alarm"]
+          ["chn1_msg_alarm_info"];
+  if (!table.isObject())
+    return TapoResult::failure("the camera did not return the alarm table");
+  mutate(table);
+  Json::Value setParams;
+  setParams["msg_alarm"]["chn1_msg_alarm_info"] = std::move(table);
+  const auto written = call("setAlertConfig", setParams);
+  if (!written.ok)
+    return written;
+  const auto& writeResponses = written.data["result"]["responses"];
+  if (writeResponses.isArray() && !writeResponses.empty()) {
+    const int code =
+        writeResponses[writeResponses.size() - 1]["error_code"].asInt();
+    if (code != 0)
+      return TapoResult::failure(
+          "the camera rejected the alarm configuration (error " +
+          std::to_string(code) + ")");
+  }
+  return written;
+}
+
 TapoResult TapoApi::setAlarm(const TapoAlarmInput& input)
 {
-  Json::Value params(Json::objectValue);
-  params["msg_alarm"]["manual_msg_alarm"]["action"] = input.enabled ? "start" : "stop";
-  if (input.durationSeconds)
-    params["msg_alarm"]["manual_msg_alarm"]["duration"] =
-        std::to_string(*input.durationSeconds);
-  if (input.volume)
-    params["msg_alarm"]["manual_msg_alarm"]["volume"] = std::to_string(*input.volume);
-  return call("setAlertConfig", params);
+  return updateAlarmTable([&](Json::Value& table) {
+    table["enabled"] = input.enabled ? "on" : "off";
+  });
+}
+
+TapoResult TapoApi::setAlarmVolume(const std::string& level)
+{
+  return updateAlarmTable([&](Json::Value& table) {
+    table["alarm_volume"] = level;
+  });
 }
 
 TapoResult TapoApi::searchDetectionList(const TapoEventFilter& filter)

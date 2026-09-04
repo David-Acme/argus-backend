@@ -13,6 +13,7 @@
 #include <pipelinecache.h>
 #include <shared/services/face/face-db.hxx>
 #include <shared/services/sqlite/vec-db.hxx>
+#include <shared/wrapper/hardware-profile/hardware-profile.hxx>
 #include <shared/wrapper/blocking-task/blocking-task.hxx>
 #include <shared/wrapper/thread-budget/thread-budget.hxx>
 #define STB_IMAGE_IMPLEMENTATION
@@ -38,7 +39,8 @@ bool FaceService::Impl::init(const std::string& modelDir)
 {
   int threads = ThreadBudget::computeThreads();
 
-  auto* vkdev = ncnn::get_gpu_device(0);
+  auto* vkdev = HardwareProbe::get().vulkanDiscrete ? ncnn::get_gpu_device(0)
+                                                    : nullptr;
   if (vkdev) {
     blobAllocator = std::make_unique<ncnn::VkBlobAllocator>(vkdev);
     stagingAllocator = std::make_unique<ncnn::VkStagingAllocator>(vkdev);
@@ -49,7 +51,7 @@ bool FaceService::Impl::init(const std::string& modelDir)
   detector = std::make_unique<ncnn::Net>();
   detector->opt.use_packing_layout = true;
   detector->opt.num_threads = threads;
-  detector->opt.use_vulkan_compute = true;
+  detector->opt.use_vulkan_compute = vkdev != nullptr;
   detector->opt.use_fp16_packed = true;
   detector->opt.use_fp16_storage = true;
   detector->opt.use_fp16_arithmetic = true;
@@ -71,7 +73,7 @@ bool FaceService::Impl::init(const std::string& modelDir)
   recognizer = std::make_unique<ncnn::Net>();
   recognizer->opt.use_packing_layout = true;
   recognizer->opt.num_threads = threads;
-  recognizer->opt.use_vulkan_compute = true;
+  recognizer->opt.use_vulkan_compute = vkdev != nullptr;
   recognizer->opt.use_fp16_packed = true;
   recognizer->opt.use_fp16_storage = true;
   recognizer->opt.use_fp16_arithmetic = true;
@@ -91,7 +93,8 @@ bool FaceService::Impl::init(const std::string& modelDir)
   }
 
   LOG_INFO << "FaceService: models loaded (threads=" << threads << ")"
-           << " detector=vulkan recognizer=vulkan"
+           << " detector=" << (vkdev ? "vulkan" : "cpu")
+           << " recognizer=" << (vkdev ? "vulkan" : "cpu")
            << " fp16=" << (detector->opt.use_fp16_storage ? "on" : "off");
   return true;
 }
@@ -142,14 +145,7 @@ static std::vector<float> normalize(const float* v, int n)
   return out;
 }
 
-struct FaceBox
-{
-  float x1, y1, x2, y2;
-  float score;
-  float lm[10];
-};
-
-static float iou(const FaceBox& a, const FaceBox& b)
+static float iou(const FaceService::FaceBox& a, const FaceService::FaceBox& b)
 {
   float ix1 = std::max(a.x1, b.x1);
   float iy1 = std::max(a.y1, b.y1);
@@ -163,12 +159,14 @@ static float iou(const FaceBox& a, const FaceBox& b)
   return ia / (ua + 1e-6F);
 }
 
-static std::vector<FaceBox> nms(std::vector<FaceBox> boxes, float thresh)
+static std::vector<FaceService::FaceBox>
+nms(std::vector<FaceService::FaceBox> boxes, float thresh)
 {
-  std::sort(boxes.begin(), boxes.end(), [](const FaceBox& a, const FaceBox& b) {
-    return a.score > b.score;
-  });
-  std::vector<FaceBox> out;
+  std::sort(boxes.begin(), boxes.end(),
+            [](const FaceService::FaceBox& a, const FaceService::FaceBox& b) {
+              return a.score > b.score;
+            });
+  std::vector<FaceService::FaceBox> out;
   std::vector<bool> suppressed(boxes.size(), false);
   for (size_t i = 0; i < boxes.size(); ++i) {
     if (suppressed[i])
@@ -182,12 +180,10 @@ static std::vector<FaceBox> nms(std::vector<FaceBox> boxes, float thresh)
   return out;
 }
 
-std::optional<FaceService::FaceResult>
-FaceService::extract(const uint8_t* imageData, int width, int height)
+std::vector<FaceService::FaceBox>
+FaceService::runDetector(Impl& impl, const uint8_t* imageData, int width,
+                         int height)
 {
-  if (!impl_)
-    return std::nullopt;
-
   constexpr int kTarget = 640;
   const float invScaleX = static_cast<float>(width) / kTarget;
   const float invScaleY = static_cast<float>(height) / kTarget;
@@ -196,7 +192,7 @@ FaceService::extract(const uint8_t* imageData, int width, int height)
       ncnn::Mat::from_pixels_resize(imageData, ncnn::Mat::PIXEL_RGB, width,
                                     height, kTarget, kTarget);
 
-  ncnn::Extractor detEx = impl_->detector->create_extractor();
+  ncnn::Extractor detEx = impl.detector->create_extractor();
   detEx.input("data", detIn);
 
   ncnn::Mat cls32, bbox32, lm32;
@@ -216,51 +212,70 @@ FaceService::extract(const uint8_t* imageData, int width, int height)
   std::vector<FaceBox> allBoxes;
 
   auto processScale = [&](const ncnn::Mat& cls, const ncnn::Mat& bbox,
-                          const ncnn::Mat& lm, int stride, float scoreThresh) {
-    for (int r = 0; r < cls.h; ++r) {
-      for (int c = 0; c < cls.w; ++c) {
-        float score = cls.channel(0)[r * cls.w + c];
-        if (score < scoreThresh)
-          continue;
-        float cx = (c + 0.5F) * stride;
-        float cy = (r + 0.5F) * stride;
-        const float* dp = bbox.channel(0);
-        int off = (r * bbox.w + c) * 4;
-        float x1 = cx + dp[off] * stride;
-        float y1 = cy + dp[off + 1] * stride;
-        float x2 = cx + dp[off + 2] * stride + 1;
-        float y2 = cy + dp[off + 3] * stride + 1;
-        FaceBox fb;
-        fb.x1 = x1 * invScaleX;
-        fb.y1 = y1 * invScaleY;
-        fb.x2 = x2 * invScaleX;
-        fb.y2 = y2 * invScaleY;
-        fb.score = score;
-        const float* lp = lm.channel(0);
-        int lmOff = (r * lm.w + c) * 10;
-        for (int k = 0; k < 5; ++k) {
-          fb.lm[k * 2] = (cx + lp[lmOff + k * 2] * stride) * invScaleX;
-          fb.lm[k * 2 + 1] = (cy + lp[lmOff + k * 2 + 1] * stride) * invScaleY;
+                          const ncnn::Mat& lm, int stride, float scale0,
+                          float scale1, float scoreThresh) {
+    for (int a = 0; a < 2; ++a) {
+      const float anchorSize = 16.0F * (a == 0 ? scale0 : scale1);
+      for (int r = 0; r < cls.h; ++r) {
+        for (int c = 0; c < cls.w; ++c) {
+          float score = cls.channel(2 + a)[r * cls.w + c];
+          if (score < scoreThresh)
+            continue;
+          const float acx = 8.0F + c * stride;
+          const float acy = 8.0F + r * stride;
+          const float dx = bbox.channel(a * 4).row(r)[c];
+          const float dy = bbox.channel(a * 4 + 1).row(r)[c];
+          const float dw = bbox.channel(a * 4 + 2).row(r)[c];
+          const float dh = bbox.channel(a * 4 + 3).row(r)[c];
+          const float pbCx = acx + anchorSize * dx;
+          const float pbCy = acy + anchorSize * dy;
+          const float pbW = anchorSize * std::exp(dw);
+          const float pbH = anchorSize * std::exp(dh);
+          FaceBox fb;
+          fb.x1 = (pbCx - pbW * 0.5F) * invScaleX;
+          fb.y1 = (pbCy - pbH * 0.5F) * invScaleY;
+          fb.x2 = (pbCx + pbW * 0.5F) * invScaleX;
+          fb.y2 = (pbCy + pbH * 0.5F) * invScaleY;
+          fb.score = score;
+          for (int k = 0; k < 5; ++k) {
+            fb.lm[k * 2] = (acx + (anchorSize + 1) *
+                                      lm.channel(a * 10 + k * 2).row(r)[c]) *
+                           invScaleX;
+            fb.lm[k * 2 + 1] = (acy + (anchorSize + 1) *
+                                            lm.channel(a * 10 + k * 2 + 1)
+                                                .row(r)[c]) *
+                               invScaleY;
+          }
+          allBoxes.push_back(fb);
         }
-        allBoxes.push_back(fb);
       }
     }
   };
 
-  processScale(cls32, bbox32, lm32, 32, 0.5F);
-  processScale(cls16, bbox16, lm16, 16, 0.5F);
-  processScale(cls8, bbox8, lm8, 8, 0.5F);
+  processScale(cls32, bbox32, lm32, 32, 32.0F, 16.0F, 0.5F);
+  processScale(cls16, bbox16, lm16, 16, 8.0F, 4.0F, 0.5F);
+  processScale(cls8, bbox8, lm8, 8, 2.0F, 1.0F, 0.5F);
 
   auto kept = nms(allBoxes, 0.4F);
-  if (kept.empty())
+  return kept;
+}
+
+std::vector<FaceService::FaceBox>
+FaceService::detectAll(const uint8_t* imageData, int width, int height)
+{
+  std::lock_guard<std::mutex> lock(implMutex_);
+  if (!impl_)
+    return {};
+  return runDetector(*impl_, imageData, width, height);
+}
+
+std::optional<FaceService::FaceResult>
+FaceService::extractFace(const uint8_t* imageData, int width, int height,
+                         const FaceBox& fb)
+{
+  std::lock_guard<std::mutex> lock(implMutex_);
+  if (!impl_)
     return std::nullopt;
-
-  int bestIdx = 0;
-  for (size_t i = 1; i < kept.size(); ++i)
-    if (kept[i].score > kept[bestIdx].score)
-      bestIdx = static_cast<int>(i);
-
-  const auto& fb = kept[bestIdx];
 
   const float refPts[10] = {30.2946F, 51.6963F, 65.5318F, 51.5014F, 48.0252F,
                             71.7366F, 33.5493F, 92.3655F, 62.7299F, 92.2041F};
@@ -307,6 +322,27 @@ FaceService::extract(const uint8_t* imageData, int width, int height)
   auto result = FaceResult{normalize(emb.channel(0), dim), fb.score};
 
   return result;
+}
+
+std::optional<FaceService::FaceResult>
+FaceService::extract(const uint8_t* imageData, int width, int height)
+{
+  std::vector<FaceBox> kept;
+  {
+    std::lock_guard<std::mutex> lock(implMutex_);
+    if (!impl_)
+      return std::nullopt;
+    kept = runDetector(*impl_, imageData, width, height);
+  }
+  if (kept.empty())
+    return std::nullopt;
+
+  int bestIdx = 0;
+  for (size_t i = 1; i < kept.size(); ++i)
+    if (kept[i].score > kept[bestIdx].score)
+      bestIdx = static_cast<int>(i);
+
+  return extractFace(imageData, width, height, kept[bestIdx]);
 }
 
 namespace

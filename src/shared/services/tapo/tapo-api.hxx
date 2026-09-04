@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <functional>
 #include <json/value.h>
 #include <optional>
 #include <shared/services/tapo/tapo-client.hxx>
@@ -15,7 +16,8 @@ struct TapoMoveInput
 
 struct TapoStepInput
 {
-  int64_t angle{0};
+  /** Protocol direction in degrees, not the distance moved. */
+  int64_t direction{0};
 };
 
 struct TapoPresetInput
@@ -53,8 +55,6 @@ struct TapoAutoTrackInput
 struct TapoAlarmInput
 {
   bool enabled{true};
-  std::optional<int> durationSeconds;
-  std::optional<int> volume;
 };
 
 struct TapoEventFilter
@@ -100,6 +100,7 @@ public:
   TapoResult getSdCardStatus();
   TapoResult getAudioConfig();
   TapoResult getPresets();
+  TapoResult getMotorCapability();
   TapoStatusBatch getStatus();
 
   TapoResult move(const TapoMoveInput& input);
@@ -107,6 +108,8 @@ public:
   TapoResult gotoPreset(const TapoPresetInput& input);
   TapoResult savePreset(const TapoPresetInput& input);
   TapoResult deletePreset(const TapoPresetInput& input);
+  TapoResult calibrateMotor();
+  TapoResult stopMotor();
 
   TapoResult setPrivacy(const TapoPrivacyInput& input);
   TapoResult setLed(const TapoLedInput& input);
@@ -114,6 +117,7 @@ public:
   TapoResult setMotion(const TapoMotionInput& input);
   TapoResult setAutoTrack(const TapoAutoTrackInput& input);
   TapoResult setAlarm(const TapoAlarmInput& input);
+  TapoResult setAlarmVolume(const std::string& level);
 
   TapoResult searchDetectionList(const TapoEventFilter& filter);
 
@@ -122,5 +126,8 @@ public:
   TapoResult callRaw(const Json::Value& payload);
 
 private:
+  TapoResult updateAlarmTable(
+      const std::function<void(Json::Value&)>& mutate);
+
   TapoClient client_;
 };

@@ -39,6 +39,18 @@ public:
     float confidence;
   };
 
+  struct FaceBox
+  {
+    float x1, y1, x2, y2;
+    float score;
+    float lm[10];
+  };
+
+  std::vector<FaceBox> detectAll(const uint8_t* rgbData, int width, int height);
+
+  std::optional<FaceResult> extractFace(const uint8_t* rgbData, int width,
+                                        int height, const FaceBox& box);
+
   std::optional<FaceResult> extract(const uint8_t* rgbData, int width,
                                     int height);
 
@@ -67,6 +79,10 @@ private:
     std::unique_ptr<ncnn::Net> recognizer;
     bool init(const std::string& modelDir);
   };
+
+  static std::vector<FaceBox> runDetector(Impl& impl,
+                                          const uint8_t* rgbData, int width,
+                                          int height);
 
   std::unique_ptr<Impl> impl_;
   FaceDB faceDb_;

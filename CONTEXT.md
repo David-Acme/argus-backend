@@ -2117,3 +2117,124 @@ The file is 696 MB and its pinned SHA-256 is
 - The model keeps the existing llama.cpp runtime, ChatML prompt path and
   LFM Open License 1.0. The repository does not claim a quality improvement
   without a new benchmark; the model swap is tracked as an artifact change.
+
+## Camera lab real-time face detection (2026-09-02)
+
+`labs/camera-control` gained a live face-detection overlay that reuses the
+production face stack end to end: `FaceService` (ncnn RetinaFace + ArcFace)
+plus `FaceDB`/sqlite-vec for identification against enrolled people. There is
+no YOLO anywhere in the project; the detector is RetinaFace.
+
+### FaceService refactor (production code)
+
+- `extract()` used to compute all candidate boxes internally and throw away
+  every one but the best. The detector pass now lives in a private
+  `runDetector()`, exposed as `detectAll(rgb, w, h)` and
+  `extractFace(rgb, w, h, box)`; `extract()` is `runDetector` + best box +
+  `extractFace`, so behavior is unchanged and nothing is duplicated.
+- While fixing the lab it turned out the RetinaFace decode itself was wrong:
+  the score was read from channel 0 of
+  `face_rpn_cls_prob_reshape_strideN`, which is the **background** probability
+  of anchor 0 (the blob has 4 channels: [bg0, bg1, face0, face1]). With the
+  correct channel (`2 + a`) plus the official Tencent/ncnn center-size decode
+  (center = anchor center + anchor_size * delta, size = anchor_size *
+  exp(delta), landmarks scaled by anchor_size + 1), the detector finally
+  produces real boxes. Before this fix the whole face pipeline had silently
+  never worked: zero persons, zero embeddings in the database.
+
+### Lab detection engine
+
+- Frames come from a persistent `ffmpeg` subprocess piping rawvideo BGR
+  (`-vf fps=<target>,scale=1280:720`) from the go2rtc RTSP relay on port 8555,
+  not from `GET /api/frame.jpeg`. One frame.jpeg request takes 0.7–2 s, which
+  capped the loop at ~1 fps; the pipe delivers exact 1280×720×3-byte frames at
+  the configured `target_fps`. If the pipe dies the loop reopens it after
+  500 ms.
+- The tick loop detects at `target_fps`, normalizes boxes to 0..1 and pushes
+  them over the WebSocket `/api/detections/ws`; `GET /api/detections` is the
+  HTTP snapshot with capture history, and the frontend falls back to polling
+  if the socket fails.
+- Captures gate on `min_score`, a `capture_cooldown_ms` cooldown and IoU < 0.55
+  against the previous capture, so one visit produces one crop, not a burst.
+  The crop is a JPEG data-URI on the tick/capture payloads.
+- Identification runs `extractFace` on the best box and `FaceDB::search`
+  (cosine, gate 0.80) only when `[faces] identify` is on and embeddings exist.
+- Enrollment is a single sqlite transaction (person → face_embedding) followed
+  by the vec0 insert whose rowid equals `face_embedding.id`, so HTTP snapshots
+  and vec searches can never disagree about what exists.
+
+### Config and hardware
+
+- The lab section is `[faces]`, not `[detection]`: that section already means
+  motion detection. `LabConfig::save()` writes a fixed TOML template, so
+  `[faces]` exists in `load`/`toJson`/`save` or a save would wipe it. The UI
+  toggle persists `enabled` back to config.toml so the engine restarts on the
+  next lab launch.
+- Vulkan is gated on `HardwareProbe::get().vulkanDiscrete`: ncnn classifies
+  the RADV RENOIR iGPU as non-discrete, and on it Vulkan inference measured
+  1228 ms/frame versus 78 ms on CPU (15× slower), so integrated GPUs run CPU
+  threads while discrete GPUs keep the Vulkan path.
+
+## Camera lab talk + alarm fixes (2026-09-03)
+
+Both features were wired end to end in the lab but never actually worked
+against the C225. Two independent root causes:
+
+### Talk: digest username on the media port
+
+`TapoTalkClient` was given the TP-Link cloud account name (`david.acme26`) as
+the digest username for port 8800 and the camera answered 401 to every
+password variant (plain, md5, sha256). The only implementation that ever
+worked, `labs/voice-test`, hardcodes `username = "admin"` with the cloud
+password; the camera's media digest expects that user. The lab now sends
+`admin`. Production `TapoDriver::speak()` still falls back to the cloud
+account name and is very likely broken the same way — it was left unchanged
+only in the sense that nobody has exercised it; align it when the talk path
+is wired into the backend feature.
+
+### Alarm: only one write path exists on this firmware
+
+The C225 rejects every plausible alternative — each was probed against the
+live device:
+
+- `{"method":"do","params":{"msg_alarm":{"manual_msg_alarm":{"action":…}}}}`
+  (pytapo `startManualAlarm`) → **-40210 "Function not supported"**. There is
+  no manual one-shot siren request on this firmware, so an alarm button can
+  only arm/disarm, not fire the siren on demand.
+- `set` on `msg_alarm.chn1_msg_alarm_info` (partial or full mirror) → -40210.
+- `setAlertConfig` + `manual_msg_alarm` → -40101 (not part of the schema).
+
+The only accepted write is `setAlertConfig` with the **full**
+`msg_alarm.chn1_msg_alarm_info` table, obtained via read-modify-write: read
+with `getLastAlarmInfo` (`{"msg_alarm":{"name":["chn1_msg_alarm_info"]}}`,
+unwrap `result.responses[0].result.msg_alarm.chn1_msg_alarm_info`), mutate one
+field, write back the whole table with `setAlertConfig`. Verified inner
+`error_code: 0` for `enabled` on/off and for every volume level. On the C225
+that table is:
+
+```
+alarm_duration = "0",  alarm_mode = ["light","sound"],  alarm_type = "0",
+alarm_volume = "high",  enabled = "off",
+light_alarm_enabled = "on",  light_type = "1",  sound_alarm_enabled = "on"
+```
+
+`alarm_volume` is a text level ("low"/"normal"/"high"), not a number — "80"
+and "medium"/"mid"/"mute" all answer -40101; only low/normal/high are in the
+vocabulary. `TapoApi::updateAlarmTable` implements the mirror and both
+`setAlarm` (enabled) and `setAlarmVolume` (alarm_volume) go through it.
+Numeric inputs (1–100, both in the lab HTTP API and in `TapoDriver`) map to
+those levels at the boundary. `getAlertConfig` with empty params answers OK
+but returns an empty result on this firmware; the useful getter is
+`getLastAlarmInfo`. The response envelope reports `error_code: 0` even when
+the inner per-response `error_code` is -40101/-40210, so both the lab and
+`updateAlarmTable` unwrap `result.responses[].error_code` before reporting
+success.
+
+### Zones: camera frame behind the polygon canvas
+
+`POST /api/zones` had no visual reference — the canvas drew on a dark
+background, so risk polygons were blind guesses. The lab now exposes
+`GET /api/snapshot` (JPEG from the detection engine's last frame, falling
+back to a one-shot `ffmpeg` grab from the go2rtc relay) and the zone canvas
+draws that frame as its background with an "Actualizar imagen" refresh
+button, so polygons are traced over the real scene the detector sees.
