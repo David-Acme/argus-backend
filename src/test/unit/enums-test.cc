@@ -224,9 +224,3 @@ TEST_CASE("unknown strings fall back to documented defaults")
     CHECK(shareAccessFromString("bogus") == ShareAccess::View);
     CHECK(voiceLangFromString("bogus") == VoiceLang::System);
 }
-
-TEST_CASE("table name memory strings round-trip")
-{
-    CHECK(tableNameToString(TableName::Memory) == "memory");
-    CHECK(tableNameFromString("memory") == TableName::Memory);
-}

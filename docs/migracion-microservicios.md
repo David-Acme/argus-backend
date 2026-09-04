@@ -89,6 +89,9 @@ funcionando sin actualizarse. Esa es la definición operativa de retrocompatibil
     nunca la consume — el frontend arranca por el certificado, no por esta ruta; el
     handler de controlador y `AuthService::hasAdmin` desaparecen con ella — el bootstrap de
     `/auth/register` ya hace su propio chequeo de owner dentro de la transacción).
+    Segundo cambio de wire deliberado de la Phase 0: `tableNameFromString("memory")` ahora
+    mapea a `TableName::Memory` (antes caía en el fallback `TableName::User`) — corrección de
+    un input previamente degenerado, sancionada en el migration ledger.
   - **camera** (3): `POST/PATCH/DELETE /camera[/{id}]` — **no existe `GET /camera`**: la lista
     se lee por el WS `/sync`.
   - **camera-control** (7): `/camera/{id}/status|presets|ptz|preset|settings|capabilities|talk`.
