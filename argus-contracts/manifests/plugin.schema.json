@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://argus.local/schemas/plugin.schema.json",
+  "title": "Argus plugin manifest",
+  "description": "manifest.json of a plugin: declarative views, requested permissions and required capabilities. The manifest is ed25519-signed and the signature verified before install; the resolver reuses already-installed capabilities.",
+  "type": "object",
+  "required": ["id", "apiVersion", "views", "permissions", "requires", "signature"],
+  "additionalProperties": false,
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*$"
+    },
+    "apiVersion": {
+      "type": "string",
+      "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-[0-9A-Za-z.-]+)?$"
+    },
+    "views": {
+      "type": "array",
+      "description": "Declarative views the plugin contributes.",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["name", "kind"],
+        "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string" },
+          "kind": { "type": "string", "enum": ["dashboard", "list", "detail", "form"] },
+          "route": { "type": "string" },
+          "components": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
+    "permissions": {
+      "type": "array",
+      "description": "Tables and capabilities the plugin may reach.",
+      "items": {
+        "type": "object",
+        "required": ["scope"],
+        "additionalProperties": false,
+        "properties": {
+          "scope": { "type": "string", "enum": ["table", "capability", "transport"] },
+          "name": { "type": "string" },
+          "actions": { "type": "array", "items": { "type": "string", "enum": ["create", "read", "update", "delete"] } }
+        }
+      }
+    },
+    "requires": {
+      "type": "object",
+      "description": "Capability name -> accepted version range (e.g. llm: ^1.2).",
+      "additionalProperties": { "type": "string" }
+    },
+    "signature": {
+      "type": "object",
+      "description": "ed25519 signature over the canonical manifest bytes.",
+      "required": ["scheme", "public_key", "value"],
+      "additionalProperties": false,
+      "properties": {
+        "scheme": { "type": "string", "const": "ed25519" },
+        "public_key": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "value": { "type": "string", "pattern": "^[0-9a-f]{128}$" }
+      }
+    }
+  }
+}

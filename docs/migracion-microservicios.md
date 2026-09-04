@@ -385,16 +385,21 @@ usuario: la IP sale del deviceHash):**
                         + NATS JetStream · RustFS (S3)
 ```
 
-### 4.1 Repositorios (uno por servicio; cada uno compila lo suyo, pero todo vive como una sola aplicación)
+### 4.1 Repositorios (monorepo único; cada servicio compila lo suyo, pero todo vive como una sola aplicación)
 
 Reglas de composición (decisión del usuario):
 
-- **Un repo por servicio** con su propio `CMakeLists.txt`, `CMakePresets.json`, `conanfile.txt`,
-  `database/schema.sql`, `config/` y `labs/` — compila independiente, se despliega como
+- **Un único monorepo** (la raíz del repo actual del backend). Cada servicio vive como una
+  carpeta `argus-*` hermana de `src/` (`argus-gateway/`, `argus-camera/`, …), con su propio
+  `CMakeLists.txt`, `CMakePresets.json`, `conanfile.txt`, `database/schema.sql`, `config/` y
+  `labs/` — compila independiente, produce sus propios artefactos de build y se despliega como
   contenedor propio, **pero todo junto opera como una sola aplicación** (un gateway, un
   contrato, una UI).
-- **Cada repo lleva su `CONTEXT.md` y su `AGENTS.md`, ambos en inglés** (el "why" viaja con el
-  código, las reglas de agente también).
+- **Versionado interno por tags del repo**: `contracts-v*` para `argus-contracts/` y
+  `service-v*` para cada carpeta de servicio. La CI filtra por ruta (`paths`) para compilar y
+  testear solo lo que cambió.
+- **Cada carpeta de servicio lleva su `CONTEXT.md` y su `AGENTS.md`, ambos en inglés** (el
+  "why" viaja con el código, las reglas de agente también).
 - **Infra por necesidad, no por uniformidad**: `argus-camera` necesita S3 (RustFS) para sus
   artefactos; los demás solo consumen lo que su dominio pide. La infra se declara en el compose
   de `argus-deploy`, no en cada repo.

@@ -1,0 +1,18 @@
+syntax = "proto3";
+
+package argus.ai.v1;
+
+import "argus/common/v1/base.proto";
+
+option cc_enable_arenas = true;
+
+// Mirrors VisionService::describe (VLM caption over a camera frame).
+service VisionService {
+  rpc Describe(DescribeRequest) returns (argus.common.v1.Envelope);
+}
+
+message DescribeRequest {
+  bytes image_jpeg = 1;
+  string prompt = 2;
+  string camera_id = 3;
+}

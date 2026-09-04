@@ -1,0 +1,47 @@
+syntax = "proto3";
+
+package argus.notification.v1;
+
+import "argus/common/v1/base.proto";
+
+option cc_enable_arenas = true;
+
+// Notification row as delivered through the sync stream (TableName::notification).
+message Notification {
+  string id = 1;
+  string user_id = 2;
+  string title = 3;
+  string body = 4;
+  string severity = 5; // info | warning | critical
+  bool read = 6;
+  int64 created_at = 7;
+}
+
+// Push token registered by a device (TableName::notification_token).
+message NotificationToken {
+  string id = 1;
+  string user_id = 2;
+  string token = 3;
+  string platform = 4;
+  int64 created_at = 5;
+}
+
+// Mirrors the current /notification/read and /notification-token endpoints.
+service NotificationService {
+  rpc MarkAsRead(MarkAsReadRequest) returns (argus.common.v1.Envelope);
+}
+
+service NotificationTokenService {
+  rpc RegisterToken(RegisterTokenRequest) returns (argus.common.v1.Envelope);
+}
+
+message MarkAsReadRequest {
+  argus.common.v1.RequestContext context = 1;
+  repeated string ids = 2;
+}
+
+message RegisterTokenRequest {
+  argus.common.v1.RequestContext context = 1;
+  string token = 2;
+  string platform = 3;
+}

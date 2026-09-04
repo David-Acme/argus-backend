@@ -1,0 +1,45 @@
+syntax = "proto3";
+
+package argus.memory.v1;
+
+import "argus/common/v1/base.proto";
+
+option cc_enable_arenas = true;
+
+// Memory row as delivered through the sync stream (TableName::memory).
+message Memory {
+  string id = 1;
+  string scope = 2;   // global | user | person | device | role
+  string type = 3;    // persona | episodic | instruction | system
+  string source = 4;  // rule | llm | ingest
+  string content = 5;
+  string subject_id = 6;
+  int64 created_at = 7;
+}
+
+// Skeleton for the memory CRUD + recall surface.
+service MemoryService {
+  rpc PutMemory(PutMemoryRequest) returns (argus.common.v1.Envelope);
+  rpc DeleteMemory(DeleteMemoryRequest) returns (argus.common.v1.Envelope);
+  rpc Recall(RecallRequest) returns (argus.common.v1.Envelope);
+}
+
+message PutMemoryRequest {
+  argus.common.v1.RequestContext context = 1;
+  string scope = 2;
+  string type = 3;
+  string source = 4;
+  string content = 5;
+  string subject_id = 6;
+}
+
+message DeleteMemoryRequest {
+  argus.common.v1.RequestContext context = 1;
+  string id = 2;
+}
+
+message RecallRequest {
+  argus.common.v1.RequestContext context = 1;
+  string query = 2;
+  uint32 limit = 3;
+}

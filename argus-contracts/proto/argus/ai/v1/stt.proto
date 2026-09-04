@@ -1,0 +1,21 @@
+syntax = "proto3";
+
+package argus.ai.v1;
+
+import "argus/common/v1/base.proto";
+
+option cc_enable_arenas = true;
+
+// Mirrors SttService::transcribe: call sites pass one complete 16 kHz sample buffer.
+service SttService {
+  rpc Transcribe(TranscribeRequest) returns (argus.common.v1.Envelope);
+}
+
+message TranscribeRequest {
+  bytes audio = 1; // 16 kHz mono PCM int16
+  string lang = 2; // "es" | "en" | "" (resolve from config stt.language)
+}
+
+message TranscribeResponse {
+  string text = 1;
+}

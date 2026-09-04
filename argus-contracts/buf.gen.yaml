@@ -1,0 +1,6 @@
+version: v2
+plugins:
+  - local: protoc-gen-cpp
+    out: gen/cpp
+    opt:
+      - paths=source_relative

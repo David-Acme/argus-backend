@@ -1,0 +1,37 @@
+syntax = "proto3";
+
+package argus.camera.v1;
+
+import "argus/common/v1/base.proto";
+
+option cc_enable_arenas = true;
+
+// One chunk of the fragmented-MP4 relay (init segment first, then media segments).
+message StreamChunk {
+  bytes data = 1;
+  bool init = 2; // true for the fMP4 init segment
+  bool keyframe = 3;
+  uint64 sequence = 4;
+  int64 timestamp_us = 5;
+}
+
+// Live audio back-channel to the camera speaker.
+message TalkAudio {
+  bytes pcm = 1; // 8 kHz PCM int16 (PCMA-compatible)
+}
+
+// Mirrors the current camera:subscribe WebSocket frame relay (StreamHub).
+service StreamService {
+  rpc Subscribe(SubscribeRequest) returns (stream StreamChunk);
+}
+
+message SubscribeRequest {
+  argus.common.v1.RequestContext context = 1;
+  string camera_id = 2;
+  bool audio = 3;
+}
+
+// Bidirectional audio back-channel; unary send plus a control stream.
+service TalkService {
+  rpc SendTalk(TalkAudio) returns (argus.common.v1.Envelope);
+}

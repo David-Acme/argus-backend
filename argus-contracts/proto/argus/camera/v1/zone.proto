@@ -1,0 +1,42 @@
+syntax = "proto3";
+
+package argus.camera.v1;
+
+import "argus/common/v1/base.proto";
+
+option cc_enable_arenas = true;
+
+// Zone row matching the current /zone CRUD endpoints.
+message Zone {
+  string id = 1;
+  string camera_id = 2;
+  string name = 3;
+  string type = 4; // monitor | alert | exclude
+  string polygon = 5; // JSON point list
+  int64 created_at = 6;
+}
+
+service ZoneService {
+  rpc CreateZone(CreateZoneRequest) returns (argus.common.v1.Envelope);
+  rpc UpdateZone(UpdateZoneRequest) returns (argus.common.v1.Envelope);
+  rpc DeleteZone(DeleteZoneRequest) returns (argus.common.v1.Envelope);
+}
+
+message CreateZoneRequest {
+  argus.common.v1.RequestContext context = 1;
+  string camera_id = 2;
+  string type = 3;
+  string polygon = 4;
+}
+
+message UpdateZoneRequest {
+  argus.common.v1.RequestContext context = 1;
+  string id = 2;
+  optional string type = 3;
+  optional string polygon = 4;
+}
+
+message DeleteZoneRequest {
+  argus.common.v1.RequestContext context = 1;
+  string id = 2;
+}

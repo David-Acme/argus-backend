@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://argus.local/schemas/package.schema.json",
+  "title": "Argus capability package manifest",
+  "description": "Typed per-capability manifest: model files, accepted models and defaults. No database involved; consumers declare a version range per capability (e.g. llm: ^1.2).",
+  "type": "object",
+  "required": ["id", "apiVersion", "capabilities"],
+  "additionalProperties": false,
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*$"
+    },
+    "apiVersion": {
+      "type": "string",
+      "description": "SemVer of the package itself.",
+      "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-[0-9A-Za-z.-]+)?$"
+    },
+    "capabilities": {
+      "type": "object",
+      "description": "Capability name -> capability manifest.",
+      "additionalProperties": { "$ref": "#/$defs/capability" }
+    }
+  },
+  "$defs": {
+    "capability": {
+      "type": "object",
+      "description": "One installable capability, e.g. llm, vlm, tts, stt, vision.",
+      "required": ["version"],
+      "additionalProperties": false,
+      "properties": {
+        "version": {
+          "type": "string",
+          "description": "SemVer consumers may pin against with a range.",
+          "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-[0-9A-Za-z.-]+)?$"
+        },
+        "model_path": {
+          "type": "string",
+          "description": "Install-relative path of the primary model artifact."
+        },
+        "accepted_models": {
+          "type": "array",
+          "description": "Hardware-tier accepted model artifact names (CUDA > Vulkan > CPU).",
+          "items": { "type": "string" }
+        },
+        "defaults": {
+          "type": "object",
+          "description": "Capability-scoped default parameters.",
+          "additionalProperties": true
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,107 @@
+syntax = "proto3";
+
+package argus.productivity.v1;
+
+import "argus/common/v1/base.proto";
+
+option cc_enable_arenas = true;
+
+// Project, ProjectMember and ProjectTask rows matching the current /project* endpoints.
+message Project {
+  string id = 1;
+  string name = 2;
+  string color = 3;
+  int64 created_at = 4;
+}
+
+message ProjectMember {
+  string id = 1;
+  string project_id = 2;
+  string user_id = 3;
+  string access = 4; // view | edit
+  int64 created_at = 5;
+}
+
+message ProjectTask {
+  string id = 1;
+  string project_id = 2;
+  string title = 3;
+  string status = 4; // pending | in_progress | done | blocked
+  int64 due_at = 5;
+  int64 created_at = 6;
+}
+
+service ProjectService {
+  rpc CreateProject(CreateProjectRequest) returns (argus.common.v1.Envelope);
+  rpc UpdateProject(UpdateProjectRequest) returns (argus.common.v1.Envelope);
+  rpc DeleteProject(DeleteProjectRequest) returns (argus.common.v1.Envelope);
+}
+
+service ProjectMemberService {
+  rpc CreateMember(CreateMemberRequest) returns (argus.common.v1.Envelope);
+  rpc UpdateMember(UpdateMemberRequest) returns (argus.common.v1.Envelope);
+  rpc DeleteMember(DeleteMemberRequest) returns (argus.common.v1.Envelope);
+}
+
+service ProjectTaskService {
+  rpc CreateTask(CreateTaskRequest) returns (argus.common.v1.Envelope);
+  rpc UpdateTask(UpdateTaskRequest) returns (argus.common.v1.Envelope);
+  rpc DeleteTask(DeleteTaskRequest) returns (argus.common.v1.Envelope);
+}
+
+message CreateProjectRequest {
+  argus.common.v1.RequestContext context = 1;
+  string name = 2;
+  string color = 3;
+}
+
+message UpdateProjectRequest {
+  argus.common.v1.RequestContext context = 1;
+  string id = 2;
+  optional string name = 3;
+  optional string color = 4;
+}
+
+message DeleteProjectRequest {
+  argus.common.v1.RequestContext context = 1;
+  string id = 2;
+}
+
+message CreateMemberRequest {
+  argus.common.v1.RequestContext context = 1;
+  string project_id = 2;
+  string user_id = 3;
+  string access = 4;
+}
+
+message UpdateMemberRequest {
+  argus.common.v1.RequestContext context = 1;
+  string id = 2;
+  optional string access = 3;
+}
+
+message DeleteMemberRequest {
+  argus.common.v1.RequestContext context = 1;
+  string id = 2;
+}
+
+message CreateTaskRequest {
+  argus.common.v1.RequestContext context = 1;
+  string project_id = 2;
+  string title = 3;
+  string status = 4;
+  optional int64 due_at = 5;
+}
+
+message UpdateTaskRequest {
+  argus.common.v1.RequestContext context = 1;
+  string id = 2;
+  optional string title = 3;
+  optional string status = 4;
+  optional int64 due_at = 5;
+}
+
+message DeleteTaskRequest {
+  argus.common.v1.RequestContext context = 1;
+  string id = 2;
+}

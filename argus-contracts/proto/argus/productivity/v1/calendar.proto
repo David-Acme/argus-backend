@@ -1,0 +1,81 @@
+syntax = "proto3";
+
+package argus.productivity.v1;
+
+import "argus/common/v1/base.proto";
+
+option cc_enable_arenas = true;
+
+// CalendarEvent row matching the current /calendar-event endpoints.
+message CalendarEvent {
+  string id = 1;
+  string title = 2;
+  int64 start_at = 3;
+  int64 end_at = 4;
+  bool all_day = 5;
+  string notes = 6;
+  int64 created_at = 7;
+}
+
+// CalendarEventShare row matching the current /calendar-event-share endpoints.
+message CalendarEventShare {
+  string id = 1;
+  string event_id = 2;
+  string user_id = 3;
+  string access = 4; // view | edit
+  int64 created_at = 5;
+}
+
+service CalendarEventService {
+  rpc CreateEvent(CreateEventRequest) returns (argus.common.v1.Envelope);
+  rpc UpdateEvent(UpdateEventRequest) returns (argus.common.v1.Envelope);
+  rpc DeleteEvent(DeleteEventRequest) returns (argus.common.v1.Envelope);
+}
+
+service CalendarEventShareService {
+  rpc CreateShare(CreateShareRequest) returns (argus.common.v1.Envelope);
+  rpc UpdateShare(UpdateShareRequest) returns (argus.common.v1.Envelope);
+  rpc DeleteShare(DeleteShareRequest) returns (argus.common.v1.Envelope);
+}
+
+message CreateEventRequest {
+  argus.common.v1.RequestContext context = 1;
+  string title = 2;
+  int64 start_at = 3;
+  int64 end_at = 4;
+  bool all_day = 5;
+  string notes = 6;
+}
+
+message UpdateEventRequest {
+  argus.common.v1.RequestContext context = 1;
+  string id = 2;
+  optional string title = 3;
+  optional int64 start_at = 4;
+  optional int64 end_at = 5;
+  optional bool all_day = 6;
+  optional string notes = 7;
+}
+
+message DeleteEventRequest {
+  argus.common.v1.RequestContext context = 1;
+  string id = 2;
+}
+
+message CreateShareRequest {
+  argus.common.v1.RequestContext context = 1;
+  string event_id = 2;
+  string user_id = 3;
+  string access = 4;
+}
+
+message UpdateShareRequest {
+  argus.common.v1.RequestContext context = 1;
+  string id = 2;
+  optional string access = 3;
+}
+
+message DeleteShareRequest {
+  argus.common.v1.RequestContext context = 1;
+  string id = 2;
+}

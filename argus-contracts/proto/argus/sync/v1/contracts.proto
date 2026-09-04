@@ -1,0 +1,70 @@
+syntax = "proto3";
+
+package argus.sync.v1;
+
+option cc_enable_arenas = true;
+
+// Frozen operation codes: SyncOperation 0-7 from src/shared/contracts/sync-operation.hxx.
+// New operations may only use numbers >= 8.
+enum SyncOperation {
+  option allow_alias = true;
+
+  SYNC_OPERATION_UNSPECIFIED = 0;
+  SYNC_OPERATION_INITIAL_INFO = 0;         // InitialInfo = 0, current user info (on connect)
+  SYNC_OPERATION_SYNCHRONIZE = 1;          // Synchronize = 1, sync of created/deleted data (global + user level)
+  SYNC_OPERATION_SYNCHRONIZE_AUDIT_LOG = 2;    // SynchronizeAuditLog = 2, sync of GLOBAL atomic updates
+  SYNC_OPERATION_SYNCHRONIZE_USER_AUDIT_LOG = 3; // SynchronizeUserAuditLog = 3, atomic updates AT USER LEVEL
+  SYNC_OPERATION_ADD = 4;                  // Add = 4, live event: entity/notification created
+  SYNC_OPERATION_DELETE = 5;               // Delete = 5, live event: entity deleted
+  SYNC_OPERATION_LOG = 6;                  // Log = 6, live event: audit log
+  SYNC_OPERATION_AUTH_CONTEXT_CHANGED = 7; // AuthContextChanged = 7, role/active context must refresh
+}
+
+// Frozen table ids: TableName 0-23 from src/shared/enums.hxx (backend HEAD 5970173).
+enum TableName {
+  option allow_alias = true;
+
+  TABLE_NAME_UNSPECIFIED = 0;
+  TABLE_NAME_USER = 0;                 // User = 0
+  TABLE_NAME_USER_INVITATION = 1;      // UserInvitation = 1
+  TABLE_NAME_PERSON = 2;               // Person = 2
+  TABLE_NAME_PERSON_EVENT = 3;         // PersonEvent = 3
+  TABLE_NAME_EVENT = 4;                // Event = 4
+  TABLE_NAME_REMINDER = 5;             // Reminder = 5
+  TABLE_NAME_REMINDER_DETAIL = 6;      // ReminderDetail = 6
+  TABLE_NAME_CALENDAR_EVENT = 7;       // CalendarEvent = 7
+  TABLE_NAME_CALENDAR_EVENT_SHARE = 8; // CalendarEventShare = 8
+  TABLE_NAME_PROJECT = 9;              // Project = 9
+  TABLE_NAME_PROJECT_MEMBER = 10;      // ProjectMember = 10
+  TABLE_NAME_PROJECT_TASK = 11;        // ProjectTask = 11
+  TABLE_NAME_CONTEXT_NOTE = 12;        // ContextNote = 12
+  TABLE_NAME_CAMERA = 13;              // Camera = 13
+  TABLE_NAME_CAMERA_STREAM = 14;       // CameraStream = 14
+  TABLE_NAME_ZONE = 15;                // Zone = 15
+  TABLE_NAME_AUDIT_LOG = 16;           // AuditLog = 16
+  TABLE_NAME_USER_AUDIT_LOG = 17;      // UserAuditLog = 17
+  TABLE_NAME_NOTIFICATION = 18;        // Notification = 18
+  TABLE_NAME_NOTIFICATION_TOKEN = 19;  // NotificationToken = 19
+  TABLE_NAME_USER_ACTION_LOG = 20;     // UserActionLog = 20
+  TABLE_NAME_REFRESH_TOKEN = 21;       // RefreshToken = 21
+  TABLE_NAME_FACE_EMBEDDING = 22;      // FaceEmbedding = 22
+  TABLE_NAME_MEMORY = 23;              // Memory = 23
+}
+
+// Frozen page size: AppConfig::SYNC_LIMIT = "200".
+message SyncPage {
+  uint32 limit = 1; // always 200
+}
+
+// Live sync frame: one operation over one table.
+message SyncFrame {
+  SyncOperation operation = 1;
+  TableName table = 2;
+  string info = 3; // JSON payload, camelCase, matching the current WS envelope
+}
+
+// Watermark request for audit paging (afterId < id <= endId, monotonic ids).
+message AuditCursor {
+  uint64 after_id = 1;
+  uint64 end_id = 2;
+}
