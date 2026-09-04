@@ -25,6 +25,7 @@ JWT=""
 UA="argus-probe/1.0"
 IMAGE="/tmp/face-test.jpg"
 MUTATIONS=0
+PROXIED=0
 LABEL="probe"
 
 while [[ $# -gt 0 ]]; do
@@ -35,6 +36,7 @@ while [[ $# -gt 0 ]]; do
     --ua) UA="$2"; shift 2 ;;
     --image) IMAGE="$2"; shift 2 ;;
     --mutations) MUTATIONS=1; shift ;;
+    --proxied) PROXIED=1; shift ;;
     --label) LABEL="$2"; shift 2 ;;
     *) echo "unknown option: $1" >&2; exit 2 ;;
   esac
@@ -122,6 +124,28 @@ probe 21 GET  /invitation
 probe 22 GET  /no-such-route
 probe 23 PATCH /user
 probe 24 OPTIONS /user
+
+# ── Proxied matrix: legacy-owned routes only (F1-5 cutover). ────────────────
+# Stateless probes so two runs (through the gateway and direct against the
+# legacy) diff to zero; gateway-native paths are never sent here because
+# Ruling I forbids the proxy from serving them.
+if [[ "$PROXIED" == "1" ]]; then
+  probe 50 GET /camera/1/status "${AUTH[@]}"
+  probe 51 GET /camera/999/status "${AUTH[@]}"
+  probe 52 GET /camera/0/status "${AUTH[@]}"
+  probe 53 GET /camera/1/presets "${AUTH[@]}"
+  probe 54 POST /camera -H 'Content-Type: application/json' -d '{}'
+  probe 55 POST /zone -H 'Content-Type: application/json' -d '{}'
+  probe 56 PATCH /camera/999/settings "${AUTH[@]}" -H 'Content-Type: application/json' -d '{}'
+  probe 57 DELETE /zone/999 "${AUTH[@]}"
+  probe 58 POST /calendar-event -H 'Content-Type: application/json' -d '{}'
+  probe 59 POST /notification/read -H 'Content-Type: application/json' -d '{}'
+  # Multipart fidelity through the proxy: the same multipart body must reach
+  # the legacy unchanged (identical error envelope direct vs proxied).
+  probe 60 POST /camera -F "part=@$IMAGE;type=image/jpeg"
+  probe 61 OPTIONS /camera
+  probe 62 GET /no-such-route
+fi
 
 if [[ "$MUTATIONS" != "1" ]]; then
   echo "done (unauthenticated matrix only)"

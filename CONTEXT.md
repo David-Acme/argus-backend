@@ -2306,3 +2306,56 @@ releases every handler before closing. Config keys: `[nats] url`,
 (`nats://127.0.0.1:4222`, 2000, 60). The optional live test needs a local
 nats-server exported as `ARGUS_TEST_NATS_URL`; without it the suite prints SKIP
 and exits 0, mirroring the golden-sync pattern.
+
+## Fase 1 cutover — gateway public listener, legacy internal (F1-5, 2026-09-04)
+
+The strangler cutover is in place: the argus-gateway takes the public TLS 7024
+listener (the same instance CA the app pins, same `[cert]`/`[mdns]` keys) and
+proxies everything it does not own to the legacy backend on an internal plain
+listener (`[[drogon.listeners]] port 7025` — config-gated, zero legacy code
+moved). The backend code change this phase is additive only (Ruling H below);
+the A/B probe matrix
+(`argus-gateway/tools/probe-identity-matrix.sh`, unauthenticated runs) re-run
+against the booted modified backend is byte-identical to the committed
+captures (01–09, 11, 20–24; the JWT-authenticated captures differ only in the
+auth outcome of the no-token run, same conclusion as F1-4).
+
+- **Ruling G — sync reads of identity-owned tables hit `DbService::client()`.**
+  The syncable identity-owned set was verified from the code: `user`,
+  `person`, `user_invitation` (the SynchronizedService repo list vs the
+  identity schema). Their sync read methods (`find`, `findDeleted`,
+  `findLast`, `findLastDeleted` in user/person/user-invitation repositories)
+  moved from `readOnlyClient()` back to `client()`: on the gateway
+  `client()` is identity.db (fresh rows), on the backend
+  `readOnlyClient()` falls back to `client()` (same argus.db — byte-identical).
+  Non-identity sync tables keep the read-only argus.db path.
+- **Ruling H — legacy auth reads validate against identity.db (transitional).**
+  `DbService::identityClient()`/`setIdentityClient()` (additive named
+  read-only client; falls back to `client()` when not installed) is used by
+  exactly two read sites: `UserRepository::findById` and
+  `RefreshTokenRepository::findByAccessToken` — the two lookups the legacy
+  `JwtFilter` performs per request. `Application::run()` opens
+  `[identity] db` (`file:...?mode=ro`) when the key is configured; without it
+  (pre-cutover) nothing changes. This is what lets the legacy accept
+  gateway-minted tokens on proxied requests (proven live: gateway-minted JWT
+  accepted by the legacy `JwtFilter` through the reverse proxy and directly).
+- **Divergence ledger (intentional, later phase):**
+  (1) non-auth legacy reads of `user`/`person` still read argus.db, which
+  post-cutover no longer receives identity writes — display data in legacy
+  domains may go stale (e.g. the relay's `voice:start` greets by the name it
+  reads, which is `findById` → identity client, while any other legacy code
+  reading the `user` sync methods sees stale/empty rows);
+  (2) the legacy keeps its identity controllers and its `/sync` endpoint in
+  the binary (Ruling J — the `/sync` endpoint is the relay target and the
+  proxy never forwards gateway-native paths; the binary strip is a
+  later-phase task);
+  (3) header ORDER of the CORS block differs between gateway-served
+  (gateway post-handling order) and direct-legacy responses; the header set
+  and values are identical, and no client behavior depends on order.
+- **Cutover runtime shape** (verified in the two-process acceptance run):
+  gateway `config.toml.example` now documents `[gateway]`
+  (host/port/plain/min_protocol), `[identity]`, `[legacy]`
+  (`sync_url` re-targeted to the internal listener, `proxy_url`, `db`), and
+  shares the SAME `certs/` directory as the legacy (Ruling K); the backend
+  `config.toml.example` documents the transitional `[identity] db` key.
+  mDNS stays gateway-only in the cutover config (legacy `mdns.enabled=false`).

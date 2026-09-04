@@ -108,3 +108,58 @@ legacy backend keeps running untouched on its own listener.
   yields 404s; explicit registration avoids it.
 - Run from a directory containing `config.toml` (copy
   `config.toml.example`); `config.toml` is gitignored.
+
+## Cutover (F1-5): public TLS listener + reverse proxy to the legacy
+
+The gateway takes the public listener the app has always connected to and
+proxies everything else to the legacy backend on its internal plain listener
+(config-gated port, e.g. 7025). The app keeps working without any update.
+
+- **Listener**: `ListenerConfig::resolve()` reads `[gateway] host` (default
+  `0.0.0.0`), `port` (7024), `plain` (TLS unless `true` — local-test option),
+  `min_protocol` (TLSv1.2 → `[[listeners]] ssl_conf [["MinProtocol", ...]]`)
+  and `[cert] server_cert/server_key`; `main.cc` injects the built
+  `[[listeners]]` array into `loadConfigJson()` (no static `addListener`).
+- **Reverse proxy**: `gateway_proxy::SimpleReverseProxy` (official Drogon
+  example vendored into `src/proxy/`, `setPassThrough(true)` both directions —
+  headers and multipart bodies are never mutated) registered as the plugin
+  `gateway_proxy::SimpleReverseProxy` with `backends: [legacy.proxy_url]`.
+  Two additive behaviors over the official pattern: path exclusions
+  (`gatewayNativePaths()`, segment-boundary match) pass through to the normal
+  routing chain, and the proxy synthesizes `X-Forwarded-For` from the observed
+  TCP peer address (dropping any client-supplied value) so the legacy device
+  hash still binds the real client — same rule the `/sync` relay applies.
+  **Link lesson**: the plugin self-registers through a `DrObject<T>` template
+  static that nothing references by name, so the `gateway-core` static lib
+  must be linked `WHOLE_ARCHIVE` into the executable or Drogon logs
+  "Plugin ... undefined!" and every proxied request 404s.
+- **Proxy exclusion table (Ruling I — who serves what)**: gateway-native and
+  therefore NEVER proxied: `/auth/*` (identity), `/pairing`, `/invitation/*`,
+  `/user`, `/portrait-preview/*`, `/sync` (native WS + relay), `/health`.
+  Everything else (legacy-owned: `/camera/*`, `/zone/*`, `/notification/*`,
+  `/calendar-event*`, `/project*`, and any unknown path) is forwarded verbatim to the legacy. Coverage is enforced
+  at boot (`requireExclusionCoverage`): every registered gateway route must
+  be inside the exclusion set or startup aborts. No path is served by both
+  sides (verified live: `/health` → gateway envelope through the gateway,
+  legacy 404 envelope direct; `/no-such-route` → legacy envelope through the
+  proxy).
+- **TLS trust chain (Ruling K)**: the gateway points at the SAME `certs/`
+  directory as the legacy (transitional shared path) and runs
+  `CertService::init()` + `MdnsService` with the same `[cert]`/`[mdns]` keys
+  as the legacy; verified live with the shared CA (`openssl s_client`
+  verify OK, `issuer=CN=Argus Instance CA`). In the cutover runtime mDNS is
+  advertised by the gateway only (legacy `mdns.enabled=false`).
+- **Legacy config requirements (documented, config-only)**: internal plain
+  listener, `[identity] db` (Ruling H read-only identity client for the
+  legacy auth reads), `[device] trust_forwarded_for = true` so the proxied
+  `/sync` relay and reverse-proxy X-Forwarded-For are trusted (the gateway is
+  a 127.0.0.1 peer and always trusted).
+- **Acceptance evidence**: two-process run (gateway TLS 7024 + legacy
+  internal 7025) — proxied matrix byte-identical to direct-legacy captures
+  (statuses and bodies; only CORS header order differs), 404-vs-502
+  `CAMERA_UNREACHABLE` distinction preserved through the proxy, gateway-minted
+  JWT accepted by the legacy `JwtFilter` (Ruling H), golden-sync e2e PASS
+  pointed at the gateway (bootstrap, audit pages, `camera:subscribe` →
+  `camera:ready` + binary frame through the relay), voice relay
+  `voice:start` → PCM → `voice:assistant`/`voice:done` live. Full matrix in
+  `.superpowers/sdd/migracion-microservicios/task-f1-5-report.md`.
