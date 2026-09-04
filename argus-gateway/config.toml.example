@@ -64,9 +64,17 @@ db = "database/identity.db"
 schema = "database/identity-schema.sql"
 
 [legacy]
-# Internal /sync of the legacy backend (the cutover internal listener, plain
-# HTTP on loopback), used to relay camera:* and voice:* frames with the
-# client's own credentials. Empty disables the relay.
+# The internal listener both URLs point at lives in the legacy's own
+# config.toml:
+#   [[drogon.listeners]]
+#   address = "127.0.0.1"  # MUST be loopback: the legacy trusts
+#                          # X-Forwarded-For for the device hash
+#                          # ([device] trust_forwarded_for = true), so a
+#                          # routable internal bind is spoofable from the LAN
+#   port = 7025
+#   https = false
+# Internal /sync of the legacy backend, used to relay camera:* and voice:*
+# frames with the client's own credentials. Empty disables the relay.
 sync_url = "ws://127.0.0.1:7025/sync"
 # Internal HTTP upstream of the legacy backend for proxied routes (Ruling I
 # exclusion table: everything the gateway does not serve itself). Empty

@@ -1,0 +1,14 @@
+HTTP-STATUS 404
+content-type: application/json; charset=utf-8
+access-control-allow-headers: Content-Type, Authorization, Accept
+access-control-allow-methods: GET, POST, PATCH, PUT, DELETE, OPTIONS
+access-control-allow-origin: *
+-- body
+{
+ "errors": {
+  "code": "NOT_FOUND",
+  "message": "Invitation not found"
+ },
+ "info": null,
+ "status": 404
+}

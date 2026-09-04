@@ -1,0 +1,14 @@
+HTTP-STATUS 404
+access-control-allow-origin: *
+access-control-allow-methods: GET, POST, PATCH, PUT, DELETE, OPTIONS
+access-control-allow-headers: Content-Type, Authorization, Accept
+content-type: application/json; charset=utf-8
+-- body
+{
+ "errors": {
+  "code": "NOT_FOUND",
+  "message": "Camera not found"
+ },
+ "info": null,
+ "status": 404
+}

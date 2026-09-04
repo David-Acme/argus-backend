@@ -1,5 +1,7 @@
 #include "reverse-proxy.hxx"
 
+#include <shared/wrapper/api-response/api-response.hxx>
+
 using namespace drogon;
 using namespace gateway_proxy;
 
@@ -117,9 +119,10 @@ void SimpleReverseProxy::preRouting(const HttpRequestPtr &req,
             }
             else
             {
-                auto errResp = HttpResponse::newHttpResponse();
-                errResp->setStatusCode(k500InternalServerError);
-                callback(errResp);
+                // Deviation from the vendored example: a bare 500 would break
+                // the {status, info, errors} wire contract the app parses.
+                callback(ApiResponse::error(
+                    500, "INTERNAL_ERROR", "Legacy backend is unreachable"));
             }
         });
 }

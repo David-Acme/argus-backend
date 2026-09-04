@@ -1,0 +1,28 @@
+auth ok; the rotated ARGUS_TEST_REFRESH_TOKEN must be reused by the next recording run
+ws connected: https://127.0.0.1:7024/sync
+  < initial_info
+  > sync
+  < sync
+  > sync_audit_log
+  < sync_audit_log
+  > sync_audit_log
+  < sync_audit_log
+  > sync_user_audit_log
+  < sync_user_audit_log
+  > sync_user_audit_log
+  < sync_user_audit_log
+  > camera:subscribe
+  < camera:ready
+  < camera:closed
+  > __golden_probe__
+  < __golden_probe___error
+verify against /home/acme/Desktop/argus/backend/src/test/fixtures/sync
+  OK initial-info (1 frame(s))
+  OK sync-bootstrap (1 frame(s))
+  OK sync-audit-log-watermark (1 frame(s))
+  OK sync-audit-log-page (1 frame(s))
+  OK sync-user-audit-log-watermark (1 frame(s))
+  OK sync-user-audit-log-page (1 frame(s))
+  OK camera-subscribe (2 frame(s))
+  OK unknown-type-error (1 frame(s))
+PASS: golden /sync contract matches fixtures

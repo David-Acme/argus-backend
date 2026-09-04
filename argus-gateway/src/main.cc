@@ -141,11 +141,14 @@ int main()
 
   drogon::app().loadConfigJson(drogonConfig(identityDb, listener, proxy));
 
+  // CORS preflight is answered only for gateway-native paths; OPTIONS on
+  // proxied paths is forwarded to the legacy like any other request.
   drogon::app().registerPreRoutingAdvice(
-      [](const drogon::HttpRequestPtr& req,
-         drogon::AdviceCallback&& cb,
-         drogon::AdviceChainCallback&& chain) {
-        if (req->method() == drogon::Options) {
+      [&proxy](const drogon::HttpRequestPtr& req,
+               drogon::AdviceCallback&& cb,
+               drogon::AdviceChainCallback&& chain) {
+        if (req->method() == drogon::Options
+            && isGatewayNativePath(req->path(), proxy.exclusions)) {
           AppConfig::handleOptions(req, std::move(cb));
           return;
         }

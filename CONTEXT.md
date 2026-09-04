@@ -2329,22 +2329,39 @@ auth outcome of the no-token run, same conclusion as F1-4).
   `client()` is identity.db (fresh rows), on the backend
   `readOnlyClient()` falls back to `client()` (same argus.db — byte-identical).
   Non-identity sync tables keep the read-only argus.db path.
-- **Ruling H — legacy auth reads validate against identity.db (transitional).**
+- **Ruling H — legacy user-row reads resolve to identity.db when configured
+  (transitional).**
   `DbService::identityClient()`/`setIdentityClient()` (additive named
   read-only client; falls back to `client()` when not installed) is used by
   exactly two read sites: `UserRepository::findById` and
-  `RefreshTokenRepository::findByAccessToken` — the two lookups the legacy
-  `JwtFilter` performs per request. `Application::run()` opens
+  `RefreshTokenRepository::findByAccessToken`. `UserRepository::findById` is
+  the shared user-row lookup, so the redirect rides every caller of it, not
+  only the JWT filter: auth-service (register/login, device approve, facial
+  challenge, refresh/me), jwt-filter (the per-request auth read),
+  sync-service and sync-media-service (socket context + voice greeting),
+  user-feature-service and portrait-preview-service (gateway-native `/user`
+  routes), project-member-feature-service and calendar-event-share-feature-
+  service (target-user existence checks on proxied routes), and
+  user-repository's own post-update re-reads. `Application::run()` opens
   `[identity] db` (`file:...?mode=ro`) when the key is configured; without it
   (pre-cutover) nothing changes. This is what lets the legacy accept
   gateway-minted tokens on proxied requests (proven live: gateway-minted JWT
-  accepted by the legacy `JwtFilter` through the reverse proxy and directly).
+  accepted by the legacy `JwtFilter` through the reverse proxy and directly)
+  and what keeps proxied project-member/share target checks from rejecting
+  gateway-only users against stale argus.db rows.
 - **Divergence ledger (intentional, later phase):**
-  (1) non-auth legacy reads of `user`/`person` still read argus.db, which
-  post-cutover no longer receives identity writes — display data in legacy
-  domains may go stale (e.g. the relay's `voice:start` greets by the name it
-  reads, which is `findById` → identity client, while any other legacy code
-  reading the `user` sync methods sees stale/empty rows);
+  (1) post-cutover, legacy reads of `user`/`person` rows outside the
+  Ruling H redirect still read argus.db, which no longer receives identity
+  writes — display data in legacy domains may go stale. The redirected
+  `UserRepository::findById` callers, adjudicated: jwt-filter, sync-service,
+  sync-media-service, project-member/share target checks and the repository's
+  post-update re-reads are read-only row checks whose JWT-authenticated
+  callers guarantee the row exists in identity.db (the token was minted from
+  it); auth-service, user-feature-service and portrait-preview-service are
+  gateway-native post-cutover, so on the legacy they are only reachable by a
+  direct internal-listener call the app cannot make. The `person` table has
+  no such redirect: legacy sync reads of `person` see stale/empty rows (e.g.
+  register-side person lookups no longer run on the legacy);
   (2) the legacy keeps its identity controllers and its `/sync` endpoint in
   the binary (Ruling J — the `/sync` endpoint is the relay target and the
   proxy never forwards gateway-native paths; the binary strip is a

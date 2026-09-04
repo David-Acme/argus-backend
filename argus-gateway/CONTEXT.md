@@ -150,10 +150,16 @@ proxies everything else to the legacy backend on its internal plain listener
   verify OK, `issuer=CN=Argus Instance CA`). In the cutover runtime mDNS is
   advertised by the gateway only (legacy `mdns.enabled=false`).
 - **Legacy config requirements (documented, config-only)**: internal plain
-  listener, `[identity] db` (Ruling H read-only identity client for the
-  legacy auth reads), `[device] trust_forwarded_for = true` so the proxied
-  `/sync` relay and reverse-proxy X-Forwarded-For are trusted (the gateway is
-  a 127.0.0.1 peer and always trusted).
+  listener (loopback bind only — the legacy trusts X-Forwarded-For for the
+  device hash, so a routable internal bind is spoofable), `[identity] db`
+  (Ruling H read-only identity client: legacy `UserRepository::findById` and
+  `RefreshTokenRepository::findByAccessToken` resolve to identity.db when the
+  key is configured — this covers the JWT filter's per-request reads AND the
+  proxied project-member/calendar-event-share target-user checks, which is
+  why gateway-only users are not rejected against stale argus.db),
+  `[device] trust_forwarded_for = true` so the proxied `/sync` relay and
+  reverse-proxy X-Forwarded-For are trusted (the gateway is a 127.0.0.1 peer
+  and always trusted).
 - **Acceptance evidence**: two-process run (gateway TLS 7024 + legacy
   internal 7025) — proxied matrix byte-identical to direct-legacy captures
   (statuses and bodies; only CORS header order differs), 404-vs-502

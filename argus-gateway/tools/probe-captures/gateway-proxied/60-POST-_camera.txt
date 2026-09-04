@@ -1,0 +1,11 @@
+HTTP-STATUS 400
+content-type: application/json; charset=utf-8
+-- body
+{
+ "errors": {
+  "code": "BAD_REQUEST",
+  "message": "Invalid JSON body"
+ },
+ "info": null,
+ "status": 400
+}
