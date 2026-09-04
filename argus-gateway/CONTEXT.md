@@ -11,7 +11,10 @@ legacy backend keeps running untouched on its own listener.
 ## What it owns
 
 - **Health**: `GET /health`, no auth, `{status: "ok", info: {service,
-  uptimeSeconds}}`. Health never depends on NATS being reachable.
+  uptimeSeconds}}`. Health never depends on NATS being reachable. The
+  `{status: "ok"}` envelope is a scaffold-time placeholder taken from the
+  task brief: F1-3 MUST align `/health` and every new gateway route to the
+  standard `ApiResponse` envelope `{status: <int>, info, errors}`.
 - **NATS event bus client**: connects to the shared event bus (`[nats]` in
   config) so later phases can fan sync-change events without touching the
   legacy backend. Connecting is optional: with no `nats.url` configured the
@@ -46,5 +49,18 @@ backend port until F1-4 settles ownership.
   inherits `argus_common`'s public ncnn dependency (for hardware-profile);
   standalone builds do not pull ncnn at all. The gateway itself needs only
   Drogon + argus_common.
+- Canonical build shape: `cmake --build --preset gateway` (root tree) is the
+  canonical way to produce deployable gateway binaries. The standalone tree
+  compiles `argus_common` WITHOUT ncnn, so HardwareProfile-derived behavior
+  (`CapabilityTier`, the vulkan fields, `deriveTier` in
+  `src/shared/wrapper/hardware-profile/hardware-profile.cc`) differs between
+  the two shapes; the first gateway consumer of HardwareProfile must know
+  this and must not ship binaries from the standalone tree.
+- Controller registration: gateway controllers MUST be declared as
+  `HttpController<T, false>` and registered explicitly in `main.cc` with
+  `app().registerController(std::make_shared<T>())` before `run()`. Drogon's
+  automatic registration is dropped by the linker for controllers whose
+  object code lives in a static library (`gateway-core`), which silently
+  yields 404s; explicit registration avoids it.
 - Run from a directory containing `config.toml` (copy
   `config.toml.example`); `config.toml` is gitignored.
