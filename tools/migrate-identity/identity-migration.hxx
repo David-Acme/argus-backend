@@ -6,11 +6,15 @@
 
 struct sqlite3;
 
+#ifndef ARGUS_IDENTITY_SCHEMA_PATH
+#define ARGUS_IDENTITY_SCHEMA_PATH "database/identity-schema.sql"
+#endif
+
 struct IdentityMigrationOptions
 {
   std::string sourcePath;
   std::string targetPath;
-  std::string schemaPath = "database/identity-schema.sql";
+  std::string schemaPath = ARGUS_IDENTITY_SCHEMA_PATH;
 };
 
 struct IdentityTableReport

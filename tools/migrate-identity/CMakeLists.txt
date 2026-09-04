@@ -1,5 +1,6 @@
-# Identity database migration tool (argus.db -> identity.db). Built on demand,
-# never as part of the default backend build.
+# Identity database migration tool (argus.db -> identity.db). The library
+# builds only as a dependency of identity-migration-test; the CLI executable
+# is excluded from the default backend build.
 
 add_library(identity-migration STATIC
     identity-migration.cc
@@ -9,6 +10,10 @@ target_include_directories(identity-migration
     PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}
         ${SRC_ROOT}
+)
+
+target_compile_definitions(identity-migration PUBLIC
+    ARGUS_IDENTITY_SCHEMA_PATH="${CMAKE_SOURCE_DIR}/database/identity-schema.sql"
 )
 
 target_link_libraries(identity-migration

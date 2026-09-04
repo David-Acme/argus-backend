@@ -190,6 +190,47 @@ TEST_CASE("verification detects a tampered target")
                 verification.error);
 }
 
+TEST_CASE("migration refuses when source and target are the same file")
+{
+  const auto fixture = makeFixture();
+  {
+    const auto source = openFile(fixture.sourcePath);
+    const auto schema = applyIdentitySchema(
+        {.db = source.get(), .schemaPath = ARGUS_IDENTITY_SCHEMA_PATH});
+    REQUIRE_MESSAGE(schema.ok, schema.error);
+    seedSource(source.get());
+  }
+
+  const auto sizeBefore = std::filesystem::file_size(fixture.sourcePath);
+  const auto report = migrateIdentity({.sourcePath = fixture.sourcePath,
+                                       .targetPath = fixture.sourcePath,
+                                       .schemaPath = ARGUS_IDENTITY_SCHEMA_PATH});
+  CHECK_FALSE(report.ok);
+  CHECK_MESSAGE(report.error.find("same file") != std::string::npos,
+                report.error);
+  CHECK(std::filesystem::file_size(fixture.sourcePath) == sizeBefore);
+
+  const auto source = openFile(fixture.sourcePath);
+  CHECK(countOf(source.get(), "user") == 2);
+}
+
+TEST_CASE("migration refuses a source without the identity tables")
+{
+  const auto fixture = makeFixture();
+  {
+    const auto source = openFile(fixture.sourcePath);
+    exec(source.get(), "CREATE TABLE unrelated (id INTEGER PRIMARY KEY)");
+  }
+
+  const auto report = migrateIdentity({.sourcePath = fixture.sourcePath,
+                                       .targetPath = fixture.targetPath,
+                                       .schemaPath = ARGUS_IDENTITY_SCHEMA_PATH});
+  CHECK_FALSE(report.ok);
+  CHECK_MESSAGE(report.error.find("identity table") != std::string::npos,
+                report.error);
+  CHECK_FALSE(std::filesystem::exists(fixture.targetPath));
+}
+
 TEST_CASE("migration fails when the source database is missing")
 {
   const auto fixture = makeFixture();
@@ -198,4 +239,5 @@ TEST_CASE("migration fails when the source database is missing")
                                        .schemaPath = ARGUS_IDENTITY_SCHEMA_PATH});
   CHECK_FALSE(report.ok);
   CHECK_FALSE(report.error.empty());
+  CHECK_FALSE(std::filesystem::exists(fixture.targetPath));
 }

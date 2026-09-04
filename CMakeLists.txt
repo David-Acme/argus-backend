@@ -35,8 +35,8 @@ add_subdirectory(${SRC_ROOT}/test/e2e ${CMAKE_BINARY_DIR}/test/e2e)
 # backend build.
 add_subdirectory(argus-gateway EXCLUDE_FROM_ALL)
 
-# Data migration tools: built on demand, never as part of the default backend
-# build.
+# Data migration tools: the CLI is built on demand, never as part of the
+# default backend build.
 add_subdirectory(tools/migrate-identity EXCLUDE_FROM_ALL)
 
 option(ARGUS_BUILD_LABS "Build backend integration and verification labs" ON)

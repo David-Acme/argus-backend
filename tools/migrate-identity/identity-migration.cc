@@ -241,6 +241,55 @@ bool copyIdentityTables(sqlite3* db, std::string& error)
   return true;
 }
 
+IdentityResult validateDistinctPaths(const std::string& sourcePath,
+                                     const std::string& targetPath)
+{
+  IdentityResult result;
+  std::error_code ec;
+  auto source = std::filesystem::weakly_canonical(sourcePath, ec);
+  if (ec)
+    source = std::filesystem::path(sourcePath).lexically_normal();
+  auto target = std::filesystem::weakly_canonical(targetPath, ec);
+  if (ec)
+    target = std::filesystem::path(targetPath).lexically_normal();
+  if (source == target) {
+    result.error = "source and target are the same file: " + sourcePath;
+    return result;
+  }
+  result.ok = true;
+  return result;
+}
+
+IdentityResult validateSource(const std::string& sourcePath)
+{
+  IdentityResult result;
+  std::error_code ec;
+  if (!std::filesystem::is_regular_file(sourcePath, ec)) {
+    result.error = "source database not found: " + sourcePath;
+    return result;
+  }
+  const auto source = openHandle(sourcePath, SQLITE_OPEN_READONLY);
+  if (!source.ok) {
+    result.error = "cannot open source read-only: " + source.error;
+    return result;
+  }
+  for (const auto& table : kIdentityTables) {
+    SqliteStmt stmt;
+    const std::string sql = "SELECT 1 FROM sqlite_master WHERE type = 'table' "
+                            "AND name = '" + table + "'";
+    if (!stmt.prepare(source.db.get(), sql.c_str())) {
+      result.error = sqlite3_errmsg(source.db.get());
+      return result;
+    }
+    if (stmt.step() != SQLITE_ROW) {
+      result.error = "source database is missing identity table: " + table;
+      return result;
+    }
+  }
+  result.ok = true;
+  return result;
+}
+
 } // namespace
 
 IdentityResult applyIdentitySchema(const IdentitySchemaInput& input)
@@ -339,6 +388,25 @@ IdentityMigrationReport migrateIdentity(const IdentityMigrationOptions& options)
   if (options.sourcePath.empty() || options.targetPath.empty()
       || options.schemaPath.empty()) {
     report.error = "source, target and schema paths are required";
+    return report;
+  }
+
+  const auto distinct =
+      validateDistinctPaths(options.sourcePath, options.targetPath);
+  if (!distinct.ok) {
+    report.error = distinct.error;
+    return report;
+  }
+
+  const auto sourceCheck = validateSource(options.sourcePath);
+  if (!sourceCheck.ok) {
+    report.error = sourceCheck.error;
+    return report;
+  }
+
+  std::error_code schemaEc;
+  if (!std::filesystem::is_regular_file(options.schemaPath, schemaEc)) {
+    report.error = "schema file not found: " + options.schemaPath;
     return report;
   }
 

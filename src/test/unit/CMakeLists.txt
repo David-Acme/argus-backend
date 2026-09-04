@@ -22,10 +22,6 @@ endforeach()
 
 target_link_libraries(identity-migration-test PRIVATE identity-migration)
 
-target_compile_definitions(identity-migration-test PRIVATE
-    ARGUS_IDENTITY_SCHEMA_PATH="${CMAKE_SOURCE_DIR}/database/identity-schema.sql"
-)
-
 get_target_property(DOCTEST_INCLUDE_DIRS doctest::doctest
                     INTERFACE_INCLUDE_DIRECTORIES)
 if(DOCTEST_INCLUDE_DIRS)
