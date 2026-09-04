@@ -1,0 +1,429 @@
+{
+  "frames" : 
+  [
+    {
+      "json" : 
+      {
+        "info" : 
+        {
+          "calendar_event" : 
+          {
+            "created" : 
+            [
+              {
+                "color" : "",
+                "createdAt" : 0,
+                "createdBy" : 0,
+                "deletedAt" : null,
+                "description" : "Fixture row",
+                "endsAt" : null,
+                "id" : 0,
+                "isAllDay" : false,
+                "location" : "",
+                "ownerId" : 0,
+                "projectId" : null,
+                "recurrenceRule" : null,
+                "startsAt" : 0,
+                "title" : "Golden event",
+                "updatedAt" : null
+              }
+            ],
+            "deleted" : [],
+            "lastSyncDate" : 
+            {
+              "created" : 0,
+              "createdId" : 0
+            }
+          },
+          "calendar_event_share" : 
+          {
+            "created" : [],
+            "deleted" : [],
+            "lastSyncDate" : {}
+          },
+          "camera" : 
+          {
+            "created" : 
+            [
+              {
+                "capabilities" : "[]",
+                "cloudUsername" : "",
+                "config" : "{}",
+                "createdAt" : 0,
+                "deletedAt" : null,
+                "driver" : "tapo",
+                "icon" : "video",
+                "id" : 0,
+                "ip" : "127.0.0.1",
+                "isEnabled" : true,
+                "isOnline" : false,
+                "manufacturer" : "tapo",
+                "model" : "C200",
+                "name" : "Golden Cam",
+                "port" : 1,
+                "recordMode" : "events",
+                "retentionDays" : 7,
+                "updatedAt" : null,
+                "username" : "admin"
+              }
+            ],
+            "deleted" : [],
+            "lastSyncDate" : 
+            {
+              "created" : 0,
+              "createdId" : 0
+            }
+          },
+          "camera_stream" : 
+          {
+            "created" : [],
+            "deleted" : [],
+            "lastSyncDate" : {}
+          },
+          "event" : 
+          {
+            "created" : 
+            [
+              {
+                "createdAt" : 0,
+                "deletedAt" : null,
+                "details" : "{}",
+                "eventType" : "motion",
+                "id" : 0,
+                "occurredAt" : 0,
+                "severity" : "info",
+                "source" : "golden",
+                "summary" : "Fixture event",
+                "updatedAt" : null
+              }
+            ],
+            "deleted" : [],
+            "lastSyncDate" : 
+            {
+              "created" : 0,
+              "createdId" : 0
+            }
+          },
+          "notification" : 
+          {
+            "created" : 
+            [
+              {
+                "body" : "Fixture row",
+                "createdAt" : 0,
+                "data" : {},
+                "id" : 0,
+                "isRead" : false,
+                "readAt" : null,
+                "title" : "Golden notification",
+                "type" : "system",
+                "userId" : 0
+              }
+            ],
+            "deleted" : [],
+            "lastSyncDate" : 
+            {
+              "created" : 0,
+              "createdId" : 0
+            }
+          },
+          "person" : 
+          {
+            "created" : 
+            [
+              {
+                "alias" : "Rec",
+                "createdAt" : 0,
+                "deletedAt" : null,
+                "firstSeenAt" : 0,
+                "id" : 0,
+                "lastSeenAt" : 0,
+                "name" : "Golden",
+                "observation" : "",
+                "updatedAt" : null,
+                "userId" : 0
+              }
+            ],
+            "deleted" : [],
+            "lastSyncDate" : 
+            {
+              "created" : 0,
+              "createdId" : 0
+            }
+          },
+          "project" : 
+          {
+            "created" : 
+            [
+              {
+                "color" : "",
+                "createdAt" : 0,
+                "deletedAt" : null,
+                "description" : "Fixture row",
+                "id" : 0,
+                "name" : "Golden project",
+                "ownerId" : 0,
+                "startsAt" : null,
+                "status" : "active",
+                "targetAt" : null,
+                "updatedAt" : null
+              }
+            ],
+            "deleted" : [],
+            "lastSyncDate" : 
+            {
+              "created" : 0,
+              "createdId" : 0
+            }
+          },
+          "project_member" : 
+          {
+            "created" : 
+            [
+              {
+                "access" : "edit",
+                "createdAt" : 0,
+                "deletedAt" : null,
+                "id" : 0,
+                "projectId" : 0,
+                "updatedAt" : null,
+                "userId" : 0
+              }
+            ],
+            "deleted" : [],
+            "lastSyncDate" : 
+            {
+              "created" : 0,
+              "createdId" : 0
+            }
+          },
+          "project_task" : 
+          {
+            "created" : 
+            [
+              {
+                "assigneeId" : 0,
+                "createdAt" : 0,
+                "createdBy" : 0,
+                "deletedAt" : null,
+                "dueAt" : null,
+                "id" : 0,
+                "priority" : "low",
+                "projectId" : 0,
+                "sortOrder" : 0.0,
+                "status" : "todo",
+                "title" : "Golden task",
+                "updatedAt" : null
+              }
+            ],
+            "deleted" : [],
+            "lastSyncDate" : 
+            {
+              "created" : 0,
+              "createdId" : 0
+            }
+          },
+          "reminder" : 
+          {
+            "created" : 
+            [
+              {
+                "completedAt" : null,
+                "createdAt" : 0,
+                "createdBy" : 0,
+                "deletedAt" : null,
+                "description" : "Fixture row",
+                "id" : 0,
+                "isCompleted" : false,
+                "recurrenceRule" : null,
+                "scheduledAt" : 0,
+                "targetUserId" : 0,
+                "title" : "Golden reminder",
+                "updatedAt" : null
+              }
+            ],
+            "deleted" : [],
+            "lastSyncDate" : 
+            {
+              "created" : 0,
+              "createdId" : 0
+            }
+          },
+          "reminder_detail" : 
+          {
+            "created" : [],
+            "deleted" : [],
+            "lastSyncDate" : {}
+          },
+          "user" : 
+          {
+            "created" : 
+            [
+              {
+                "createdAt" : 0,
+                "deletedAt" : null,
+                "id" : 0,
+                "isActive" : true,
+                "lang" : "en",
+                "lastName" : "Recorder",
+                "name" : "Golden",
+                "role" : "owner",
+                "syncAt" : 0,
+                "updatedAt" : null
+              }
+            ],
+            "deleted" : [],
+            "lastSyncDate" : 
+            {
+              "created" : 0,
+              "createdId" : 0
+            }
+          },
+          "user_invitation" : 
+          {
+            "created" : [],
+            "deleted" : [],
+            "lastSyncDate" : {}
+          },
+          "zone" : 
+          {
+            "created" : 
+            [
+              {
+                "cameraId" : 0,
+                "color" : "#00FF00",
+                "createdAt" : 0,
+                "deletedAt" : null,
+                "id" : 0,
+                "isEnabled" : true,
+                "name" : "Golden Zone",
+                "points" : "[]",
+                "updatedAt" : null,
+                "zoneType" : "monitor"
+              }
+            ],
+            "deleted" : [],
+            "lastSyncDate" : 
+            {
+              "created" : 0,
+              "createdId" : 0
+            }
+          }
+        },
+        "operation" : 1,
+        "option" : "user"
+      },
+      "kind" : "text"
+    }
+  ],
+  "request" : 
+  {
+    "payload" : 
+    {
+      "calendar_event" : 
+      {
+        "findLastCreated" : true,
+        "findLastDeleted" : true,
+        "requiredCreate" : true,
+        "requiredDeleted" : true
+      },
+      "calendar_event_share" : 
+      {
+        "findLastCreated" : true,
+        "findLastDeleted" : true,
+        "requiredCreate" : true,
+        "requiredDeleted" : true
+      },
+      "camera" : 
+      {
+        "findLastCreated" : true,
+        "findLastDeleted" : true,
+        "requiredCreate" : true,
+        "requiredDeleted" : true
+      },
+      "camera_stream" : 
+      {
+        "findLastCreated" : true,
+        "findLastDeleted" : true,
+        "requiredCreate" : true,
+        "requiredDeleted" : true
+      },
+      "event" : 
+      {
+        "findLastCreated" : true,
+        "findLastDeleted" : true,
+        "requiredCreate" : true,
+        "requiredDeleted" : true
+      },
+      "notification" : 
+      {
+        "findLastCreated" : true,
+        "requiredCreate" : true
+      },
+      "person" : 
+      {
+        "findLastCreated" : true,
+        "findLastDeleted" : true,
+        "requiredCreate" : true,
+        "requiredDeleted" : true
+      },
+      "project" : 
+      {
+        "findLastCreated" : true,
+        "findLastDeleted" : true,
+        "requiredCreate" : true,
+        "requiredDeleted" : true
+      },
+      "project_member" : 
+      {
+        "findLastCreated" : true,
+        "findLastDeleted" : true,
+        "requiredCreate" : true,
+        "requiredDeleted" : true
+      },
+      "project_task" : 
+      {
+        "findLastCreated" : true,
+        "findLastDeleted" : true,
+        "requiredCreate" : true,
+        "requiredDeleted" : true
+      },
+      "reminder" : 
+      {
+        "findLastCreated" : true,
+        "findLastDeleted" : true,
+        "requiredCreate" : true,
+        "requiredDeleted" : true
+      },
+      "reminder_detail" : 
+      {
+        "findLastCreated" : true,
+        "findLastDeleted" : true,
+        "requiredCreate" : true,
+        "requiredDeleted" : true
+      },
+      "user" : 
+      {
+        "findLastCreated" : true,
+        "findLastDeleted" : true,
+        "requiredCreate" : true,
+        "requiredDeleted" : true
+      },
+      "user_invitation" : 
+      {
+        "findLastCreated" : true,
+        "findLastDeleted" : true,
+        "requiredCreate" : true,
+        "requiredDeleted" : true
+      },
+      "zone" : 
+      {
+        "findLastCreated" : true,
+        "findLastDeleted" : true,
+        "requiredCreate" : true,
+        "requiredDeleted" : true
+      }
+    },
+    "type" : "sync"
+  }
+}

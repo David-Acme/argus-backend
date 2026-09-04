@@ -1,0 +1,13 @@
+{
+  "frames" : 
+  [
+    {
+      "byteLength" : 118,
+      "kind" : "text",
+      "messageType" : "sync_audit_log",
+      "raw" : "{\"info\":{\"info\":[],\"lastSyncRecord\":{\"id\":1,\"lastSyncDate\":1788526933},\"watermarkId\":1},\"operation\":2,\"option\":\"user\"}",
+      "sha256" : "daf80f30a18e09592034e2df71a54772b225852aca56bbd36454651b0b5facba"
+    }
+  ],
+  "request" : "{\"type\":\"sync_audit_log\",\"payload\":{\"findLast\":true}}"
+}

@@ -1,0 +1,26 @@
+{
+  "frames" : 
+  [
+    {
+      "json" : 
+      {
+        "payload" : 
+        {
+          "mime" : "video/mp4",
+          "subId" : 0
+        },
+        "type" : "camera:ready"
+      },
+      "kind" : "text"
+    }
+  ],
+  "request" : 
+  {
+    "payload" : 
+    {
+      "cameraId" : 0,
+      "quality" : "main"
+    },
+    "type" : "camera:subscribe"
+  }
+}

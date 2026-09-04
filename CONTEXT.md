@@ -2238,3 +2238,41 @@ background, so risk polygons were blind guesses. The lab now exposes
 back to a one-shot `ffmpeg` grab from the go2rtc relay) and the zone canvas
 draws that frame as its background with an "Actualizar imagen" refresh
 button, so polygons are traced over the real scene the detector sees.
+
+## Golden /sync frames and first-bootstrap crash fix (2026-09-04)
+
+The migration freezes the `/sync` WS contract with golden frames recorded by
+`src/test/e2e/golden-sync-test.cc` (plain `main()`, Drogon WebSocketClient +
+HttpClient; no doctest). Without `ARGUS_TEST_REFRESH_TOKEN` or a reachable
+backend it prints SKIP and exits 0, so CI stays green. With a session it
+rotates the token over the real `PATCH /auth/refresh-token` (Drogon's
+HttpClient stamps its own default user agent over the request header, so the
+recorder calls `setUserAgent` — the refresh endpoint rejects UA mismatches),
+plays the frontend bootstrap (all 15 tables, audit watermark + page for both
+scopes, `camera:subscribe` → `camera:ready`/`camera:closed`,
+unknown-type error probe) and records every frame into
+`src/test/fixtures/sync/` (`<scenario>.json` normalized + `.raw.json` +
+`manifest.json` with sha256/byteLength/hex256). A later run verifies the new
+session against the fixtures structurally: ids, timestamps and secret-ish
+values are masked (rules live in the manifest), binary frames compare as kind
+only.
+
+Recording procedure (local): copy `build/dev/database/argus.db` + certs into a
+sandbox dir, write a test `config.toml` there (test JWT/fingerprint secrets,
+`pairing.paired=true`, mdns off), symlink `models/`, seed one owner user +
+`refresh_token` row (device hash = HMAC-SHA256 of `UA|127.0.0.1` with
+`device.fingerprint_secret`), run the `argus-backend` binary with the sandbox
+as cwd, then run the recorder with `ARGUS_TEST_BASE_URL` +
+`ARGUS_TEST_REFRESH_TOKEN`. The real production DB/config are never touched.
+
+The recorder found a Phase 0 blocker: `UserRepository::findLast` /
+`findLastDeleted` used `filter.userId ? co_await ...(*filter.userId) : ...`.
+GCC's coroutine lowering of a conditional operator with `co_await` branches
+dereferences the optional in the resumed state before testing the condition
+(confirmed in the disassembly: `optional::operator*` runs unconditionally in
+state 2, the condition test happens later in state 6), so every Owner
+bootstrap with `findLastCreated` on the `user` table (not a personal table →
+`userId` disengaged) aborted the process with the
+`optional::_M_is_engaged` assert. Both functions now keep the dereference
+inside the taken branch. The same ternary-with-co_await shape must not be
+reintroduced anywhere.

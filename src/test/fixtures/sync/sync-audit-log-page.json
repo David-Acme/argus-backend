@@ -1,0 +1,46 @@
+{
+  "frames" : 
+  [
+    {
+      "json" : 
+      {
+        "info" : 
+        {
+          "info" : 
+          [
+            {
+              "changes" : 
+              {
+                "name" : 
+                {
+                  "current" : "Golden Zone",
+                  "previous" : "Old Zone"
+                }
+              },
+              "createUserId" : 0,
+              "createdAt" : 0,
+              "eventTimestamp" : 0,
+              "id" : 0,
+              "priority" : 1,
+              "recordId" : 0,
+              "tableName" : "zone"
+            }
+          ],
+          "nextCursorId" : 0
+        },
+        "operation" : 2,
+        "option" : "user"
+      },
+      "kind" : "text"
+    }
+  ],
+  "request" : 
+  {
+    "payload" : 
+    {
+      "afterId" : 0,
+      "endId" : 0
+    },
+    "type" : "sync_audit_log"
+  }
+}

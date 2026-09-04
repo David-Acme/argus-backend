@@ -1,0 +1,20 @@
+{
+  "frames" : 
+  [
+    {
+      "json" : 
+      {
+        "info" : 
+        {
+          "id" : 0,
+          "isActive" : true,
+          "role" : "owner"
+        },
+        "operation" : 0,
+        "option" : "user"
+      },
+      "kind" : "text"
+    }
+  ],
+  "request" : {}
+}

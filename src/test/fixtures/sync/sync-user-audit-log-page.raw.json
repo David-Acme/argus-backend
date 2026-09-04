@@ -1,0 +1,13 @@
+{
+  "frames" : 
+  [
+    {
+      "byteLength" : 262,
+      "kind" : "text",
+      "messageType" : "sync_user_audit_log",
+      "raw" : "{\"info\":{\"info\":[{\"changes\":{\"title\":{\"current\":\"Golden reminder\",\"previous\":\"Old reminder\"}},\"createdAt\":1788526933,\"eventTimestamp\":1788526933,\"id\":1,\"priority\":1,\"recordId\":1,\"tableName\":\"reminder\",\"userId\":1}],\"nextCursorId\":1},\"operation\":3,\"option\":\"user\"}",
+      "sha256" : "21e78fee7011be58bb7887c60993acf92e38912f01fe496c25ba2ffd0783d1f1"
+    }
+  ],
+  "request" : "{\"type\":\"sync_user_audit_log\",\"payload\":{\"afterId\":0,\"endId\":1}}"
+}

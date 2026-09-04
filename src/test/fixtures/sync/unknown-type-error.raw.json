@@ -1,0 +1,13 @@
+{
+  "frames" : 
+  [
+    {
+      "byteLength" : 77,
+      "kind" : "text",
+      "messageType" : "__golden_probe___error",
+      "raw" : "{\"error\":\"Unknown message type\",\"status\":400,\"type\":\"__golden_probe___error\"}",
+      "sha256" : "ae9ed41cb87231346afa6250dd5447394ba066d050bd9cea2514931f025ba7b9"
+    }
+  ],
+  "request" : "{\"type\":\"__golden_probe__\",\"payload\":{}}"
+}

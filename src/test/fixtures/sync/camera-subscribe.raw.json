@@ -1,0 +1,13 @@
+{
+  "frames" : 
+  [
+    {
+      "byteLength" : 64,
+      "kind" : "text",
+      "messageType" : "camera:ready",
+      "raw" : "{\"payload\":{\"mime\":\"video/mp4\",\"subId\":1},\"type\":\"camera:ready\"}",
+      "sha256" : "dec3d2fe6539a280ea2a35d67ba1f89ff6d976e9726e4a9fe91a7d0187f98f2c"
+    }
+  ],
+  "request" : "{\"type\":\"camera:subscribe\",\"payload\":{\"cameraId\":1,\"quality\":\"main\"}}"
+}

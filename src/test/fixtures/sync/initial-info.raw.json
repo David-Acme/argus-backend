@@ -1,0 +1,13 @@
+{
+  "frames" : 
+  [
+    {
+      "byteLength" : 78,
+      "kind" : "text",
+      "messageType" : "initial_info",
+      "raw" : "{\"info\":{\"id\":1,\"isActive\":true,\"role\":\"owner\"},\"operation\":0,\"option\":\"user\"}",
+      "sha256" : "c0542f8436b70d73473a6e49622b7ae4a694407f1151ab6186efff41c9c29f64"
+    }
+  ],
+  "request" : ""
+}

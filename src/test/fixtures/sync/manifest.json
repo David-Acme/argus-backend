@@ -1,0 +1,161 @@
+{
+  "baseUrl" : "https://127.0.0.1:7024",
+  "frames" : 
+  [
+    {
+      "byteLength" : 78,
+      "direction" : "in",
+      "fixture" : "initial-info.json",
+      "index" : 0,
+      "kind" : "text",
+      "messageType" : "initial_info",
+      "scenario" : "initial-info",
+      "sha256" : "c0542f8436b70d73473a6e49622b7ae4a694407f1151ab6186efff41c9c29f64"
+    },
+    {
+      "byteLength" : 1576,
+      "direction" : "out",
+      "fixture" : "sync-bootstrap.json",
+      "index" : 1,
+      "kind" : "text",
+      "messageType" : "sync",
+      "sha256" : "7a91dcd83d6ca8e2ddc54bf70e27edd386c8b2f6c69ef5255946628be5ab395e"
+    },
+    {
+      "byteLength" : 3454,
+      "direction" : "in",
+      "fixture" : "sync-bootstrap.json",
+      "index" : 2,
+      "kind" : "text",
+      "messageType" : "sync",
+      "scenario" : "sync-bootstrap",
+      "sha256" : "c8aef5f737b5cf88365f4b19e19b9e74a9e737d1b048b1b8dd2653795aef7b77"
+    },
+    {
+      "byteLength" : 53,
+      "direction" : "out",
+      "fixture" : "sync-audit-log-watermark.json",
+      "index" : 3,
+      "kind" : "text",
+      "messageType" : "sync_audit_log",
+      "sha256" : "d0f664de9ed11b341be698ade0a5932567cfd46a1595537a80a7b12040292c10"
+    },
+    {
+      "byteLength" : 118,
+      "direction" : "in",
+      "fixture" : "sync-audit-log-watermark.json",
+      "index" : 4,
+      "kind" : "text",
+      "messageType" : "sync_audit_log",
+      "scenario" : "sync-audit-log-watermark",
+      "sha256" : "daf80f30a18e09592034e2df71a54772b225852aca56bbd36454651b0b5facba"
+    },
+    {
+      "byteLength" : 59,
+      "direction" : "out",
+      "fixture" : "sync-audit-log-page.json",
+      "index" : 5,
+      "kind" : "text",
+      "messageType" : "sync_audit_log",
+      "sha256" : "0e0b10941824d103514ce4a91ec0448c32522815d158fc25672dea11a36197da"
+    },
+    {
+      "byteLength" : 255,
+      "direction" : "in",
+      "fixture" : "sync-audit-log-page.json",
+      "index" : 6,
+      "kind" : "text",
+      "messageType" : "sync_audit_log",
+      "scenario" : "sync-audit-log-page",
+      "sha256" : "478d2f0dcc162fa406ed01732c3387438098eed2df8c7417f910c0b5de777950"
+    },
+    {
+      "byteLength" : 58,
+      "direction" : "out",
+      "fixture" : "sync-user-audit-log-watermark.json",
+      "index" : 7,
+      "kind" : "text",
+      "messageType" : "sync_user_audit_log",
+      "sha256" : "14a6552e2ef80ed14b157e0ea3c27a5d1de13051aac6dcca3c18876023790d80"
+    },
+    {
+      "byteLength" : 118,
+      "direction" : "in",
+      "fixture" : "sync-user-audit-log-watermark.json",
+      "index" : 8,
+      "kind" : "text",
+      "messageType" : "sync_user_audit_log",
+      "scenario" : "sync-user-audit-log-watermark",
+      "sha256" : "1263fb26bc4f843c81ef9ffcec15ee22e53e078ee290adc849c7f3a9293da6b8"
+    },
+    {
+      "byteLength" : 64,
+      "direction" : "out",
+      "fixture" : "sync-user-audit-log-page.json",
+      "index" : 9,
+      "kind" : "text",
+      "messageType" : "sync_user_audit_log",
+      "sha256" : "f7c1cf0aaf7a54486717ceb2280975ca2610885624bbbe21ed6a059b154bf76b"
+    },
+    {
+      "byteLength" : 262,
+      "direction" : "in",
+      "fixture" : "sync-user-audit-log-page.json",
+      "index" : 10,
+      "kind" : "text",
+      "messageType" : "sync_user_audit_log",
+      "scenario" : "sync-user-audit-log-page",
+      "sha256" : "21e78fee7011be58bb7887c60993acf92e38912f01fe496c25ba2ffd0783d1f1"
+    },
+    {
+      "byteLength" : 69,
+      "direction" : "out",
+      "fixture" : "camera-subscribe.json",
+      "index" : 11,
+      "kind" : "text",
+      "messageType" : "camera:subscribe",
+      "sha256" : "9bcf1ed44aff54716368f3bdb22f83b817d107f468d685d749578f1ec899d6ec"
+    },
+    {
+      "byteLength" : 64,
+      "direction" : "in",
+      "fixture" : "camera-subscribe.json",
+      "index" : 12,
+      "kind" : "text",
+      "messageType" : "camera:ready",
+      "scenario" : "camera-subscribe",
+      "sha256" : "dec3d2fe6539a280ea2a35d67ba1f89ff6d976e9726e4a9fe91a7d0187f98f2c"
+    },
+    {
+      "byteLength" : 40,
+      "direction" : "out",
+      "fixture" : "unknown-type-error.json",
+      "index" : 13,
+      "kind" : "text",
+      "messageType" : "__golden_probe__",
+      "sha256" : "ff87ec05283f7403dca535162081870dc2f79f849381af40dc8c25ce2d501525"
+    },
+    {
+      "byteLength" : 77,
+      "direction" : "in",
+      "fixture" : "unknown-type-error.json",
+      "index" : 14,
+      "kind" : "text",
+      "messageType" : "__golden_probe___error",
+      "scenario" : "unknown-type-error",
+      "sha256" : "ae9ed41cb87231346afa6250dd5447394ba066d050bd9cea2514931f025ba7b9"
+    }
+  ],
+  "generator" : "golden-sync-test",
+  "normalization" : 
+  {
+    "binaryFrames" : "normalized files record kind only; raw files record byteLength, sha256 and the first 256 bytes hex; the first 64 KiB of a binary frame is also stored as .bin",
+    "cameraClosedFrames" : "camera:closed is emitted by the go2rtc relay on its own retry schedule, so its arrival is timing-dependent; it is kept in the raw fixtures but excluded from the normalized comparison",
+    "description" : "Fixtures compare structurally: per-boot-varying values are masked in the normalized .json files; the .raw.json files keep the session as received.",
+    "maskedIds" : "key == id/sub/subId, key ending in 'Id' or 'By' (integer) -> 0",
+    "maskedSecrets" : "key containing token/hash/secret/nonce/password/credential (string) -> '<masked>'",
+    "maskedTimestamps" : "key ending in 'At'/'_at'/'Date', containing 'timestamp', or exactly 'created'/'deleted' (integer) -> 0"
+  },
+  "recordedAtUtc" : "2026-09-04T13:08:24Z",
+  "userAgent" : "argus-golden-recorder/1.0"
+}

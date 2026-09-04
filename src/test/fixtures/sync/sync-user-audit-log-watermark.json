@@ -1,0 +1,31 @@
+{
+  "frames" : 
+  [
+    {
+      "json" : 
+      {
+        "info" : 
+        {
+          "info" : [],
+          "lastSyncRecord" : 
+          {
+            "id" : 0,
+            "lastSyncDate" : 0
+          },
+          "watermarkId" : 0
+        },
+        "operation" : 3,
+        "option" : "user"
+      },
+      "kind" : "text"
+    }
+  ],
+  "request" : 
+  {
+    "payload" : 
+    {
+      "findLast" : true
+    },
+    "type" : "sync_user_audit_log"
+  }
+}

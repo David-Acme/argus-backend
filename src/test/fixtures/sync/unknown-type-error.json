@@ -1,0 +1,19 @@
+{
+  "frames" : 
+  [
+    {
+      "json" : 
+      {
+        "error" : "Unknown message type",
+        "status" : 400,
+        "type" : "__golden_probe___error"
+      },
+      "kind" : "text"
+    }
+  ],
+  "request" : 
+  {
+    "payload" : {},
+    "type" : "__golden_probe__"
+  }
+}

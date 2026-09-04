@@ -73,6 +73,7 @@ target_compile_options(argus_common PRIVATE -Wall -Wextra)
 enable_testing()
 
 add_subdirectory(${SRC_ROOT}/test/unit ${CMAKE_BINARY_DIR}/test/unit)
+add_subdirectory(${SRC_ROOT}/test/e2e ${CMAKE_BINARY_DIR}/test/e2e)
 
 option(ARGUS_BUILD_LABS "Build backend integration and verification labs" ON)
 

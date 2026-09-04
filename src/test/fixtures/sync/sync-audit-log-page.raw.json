@@ -1,0 +1,13 @@
+{
+  "frames" : 
+  [
+    {
+      "byteLength" : 255,
+      "kind" : "text",
+      "messageType" : "sync_audit_log",
+      "raw" : "{\"info\":{\"info\":[{\"changes\":{\"name\":{\"current\":\"Golden Zone\",\"previous\":\"Old Zone\"}},\"createUserId\":1,\"createdAt\":1788526933,\"eventTimestamp\":1788526933,\"id\":1,\"priority\":1,\"recordId\":1,\"tableName\":\"zone\"}],\"nextCursorId\":1},\"operation\":2,\"option\":\"user\"}",
+      "sha256" : "478d2f0dcc162fa406ed01732c3387438098eed2df8c7417f910c0b5de777950"
+    }
+  ],
+  "request" : "{\"type\":\"sync_audit_log\",\"payload\":{\"afterId\":0,\"endId\":1}}"
+}
