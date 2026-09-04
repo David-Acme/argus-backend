@@ -283,9 +283,11 @@ SynchronizedService::syncAuditLog(const SynchronizedLogDto& body,
     filter.endTime = *body.endTime;
 
   Json::Value out(Json::objectValue);
-  const auto rows = body.findLast && !body.afterId
-                        ? std::vector<Json::Value>{}
-                        : co_await auditLogRepository_.findSync(filter);
+  std::vector<Json::Value> rows;
+  if (body.findLast && !body.afterId)
+    rows = std::vector<Json::Value>{};
+  else
+    rows = co_await auditLogRepository_.findSync(filter);
   Json::Value arr(Json::arrayValue);
   for (const auto& row : rows)
     arr.append(row);
@@ -329,9 +331,11 @@ SynchronizedService::syncUserAuditLog(const SynchronizedLogDto& body,
     filter.endTime = *body.endTime;
 
   Json::Value out(Json::objectValue);
-  const auto rows = body.findLast && !body.afterId
-                        ? std::vector<Json::Value>{}
-                        : co_await userAuditLogRepository_.findSync(filter);
+  std::vector<Json::Value> rows;
+  if (body.findLast && !body.afterId)
+    rows = std::vector<Json::Value>{};
+  else
+    rows = co_await userAuditLogRepository_.findSync(filter);
   Json::Value arr(Json::arrayValue);
   for (const auto& row : rows)
     arr.append(row);

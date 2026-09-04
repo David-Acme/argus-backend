@@ -27,6 +27,7 @@
 #include <iostream>
 #include <mutex>
 #include <optional>
+#include <set>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -41,6 +42,11 @@ constexpr size_t kBinaryKeepBytes = 64 * 1024;
 constexpr size_t kHexPreviewBytes = 256;
 
 const std::string kRecorderUserAgent = "argus-golden-recorder/1.0";
+
+// Compiled in by CMake; the fallback keeps manual compiles working.
+#ifndef ARGUS_TEST_SYNC_FIXTURES_DIR
+#define ARGUS_TEST_SYNC_FIXTURES_DIR "src/test/fixtures/sync"
+#endif
 
 struct Frame
 {
@@ -417,7 +423,7 @@ int main(int argc, char* argv[])
   const std::string baseUrl = envValue("ARGUS_TEST_BASE_URL",
                                        "https://127.0.0.1:7024");
   const std::string fixturesDir =
-      envValue("ARGUS_TEST_FIXTURES_DIR", "src/test/fixtures/sync");
+      envValue("ARGUS_TEST_FIXTURES_DIR", ARGUS_TEST_SYNC_FIXTURES_DIR);
   const std::string refreshToken = envValue("ARGUS_TEST_REFRESH_TOKEN");
 
   if (refreshToken.empty()) {
@@ -721,6 +727,37 @@ int main(int argc, char* argv[])
     bool ok = true;
     for (const auto& scenario : scenarios)
       ok = verifyScenario(fixturesDir, scenario) && ok;
+
+    // A scenario that times out captures zero frames and is dropped, so the
+    // committed manifest list closes the gap: every committed scenario must
+    // have been captured in this session.
+    const Json::Value manifest = readJsonFile(manifestPath);
+    if (!manifest.isObject()) {
+      std::cout << "  MISMATCH manifest: cannot read " << manifestPath << "\n";
+      ok = false;
+    }
+    std::set<std::string> committed;
+    if (manifest.isObject() && manifest["frames"].isArray()) {
+      for (const auto& entry : manifest["frames"]) {
+        if (entry.isObject() && entry.isMember("fixture") &&
+            entry["fixture"].isString())
+          committed.insert(entry["fixture"].asString());
+      }
+    }
+    for (const auto& fixture : committed) {
+      if (!endsWith(fixture, ".json"))
+        continue;
+      const std::string name = fixture.substr(0, fixture.size() - 5);
+      const auto captured = std::find_if(
+          scenarios.begin(), scenarios.end(),
+          [&name](const Scenario& scenario) { return scenario.name == name; });
+      if (captured == scenarios.end() || captured->frames.empty()) {
+        std::cout << "  MISMATCH " << name
+                  << ": committed scenario captured no frames this session\n";
+        ok = false;
+      }
+    }
+
     if (!ok) {
       std::cout << "FAIL: golden /sync contract drifted from fixtures\n";
       return 1;

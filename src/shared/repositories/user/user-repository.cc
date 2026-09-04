@@ -193,8 +193,6 @@ drogon::Task<std::optional<Json::Value>> UserRepository::findLast(const SyncFilt
 {
   auto client = DbService::client();
 
-  // The dereference stays inside the taken branch: the ternary-with-co_await
-  // form dereferences `filter.userId` before testing the condition.
   if (filter.userId) {
     const int64_t userId = *filter.userId;
     const auto result =
