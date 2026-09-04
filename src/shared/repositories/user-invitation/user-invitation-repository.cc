@@ -88,7 +88,7 @@ UserInvitationRepository::recordRedemption(
 drogon::Task<std::vector<Json::Value>>
 UserInvitationRepository::find(const SyncFilter& filter) const
 {
-  auto client = DbService::readOnlyClient();
+  auto client = DbService::client();
   const auto [query, args] = sync_query::buildSyncQuery(
       filter, FIND_SYNC, FIND_SYNC_FROM, FIND_SYNC_ALL, FIND_SYNC_AFTER,
       FIND_SYNC_AFTER_FROM);
@@ -110,7 +110,7 @@ UserInvitationRepository::findDeleted(const SyncFilter&) const
 drogon::Task<std::optional<Json::Value>>
 UserInvitationRepository::findLast(const SyncFilter&) const
 {
-  auto client = DbService::readOnlyClient();
+  auto client = DbService::client();
   const auto rows = co_await client->execSqlCoro(FIND_SYNC_LAST.data());
   if (rows.empty())
     co_return std::nullopt;

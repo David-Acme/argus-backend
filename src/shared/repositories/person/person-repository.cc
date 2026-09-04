@@ -119,7 +119,7 @@ drogon::Task<bool> PersonRepository::remove(int64_t id) const
 drogon::Task<std::vector<Json::Value>>
 PersonRepository::find(const SyncFilter& filter) const
 {
-  auto client = DbService::readOnlyClient();
+  auto client = DbService::client();
   const auto [query, args] =
       sync_query::buildSyncQuery(filter, SYNC_FIND, SYNC_FIND_FROM,
                                  SYNC_FIND_ALL, SYNC_FIND_AFTER,
@@ -136,7 +136,7 @@ PersonRepository::find(const SyncFilter& filter) const
 drogon::Task<std::vector<Json::Value>>
 PersonRepository::findDeleted(const SyncFilter& filter) const
 {
-  auto client = DbService::readOnlyClient();
+  auto client = DbService::client();
   const auto [query, args] = sync_query::buildSyncQuery(
       filter, SYNC_FIND_DELETED, SYNC_FIND_DELETED_FROM,
       SYNC_FIND_DELETED_ALL, SYNC_FIND_DELETED_AFTER,
@@ -152,7 +152,7 @@ PersonRepository::findDeleted(const SyncFilter& filter) const
 
 drogon::Task<std::optional<Json::Value>> PersonRepository::findLast(const SyncFilter&) const
 {
-  auto client = DbService::readOnlyClient();
+  auto client = DbService::client();
   const auto result = co_await client->execSqlCoro(SYNC_FIND_LAST.data());
   if (result.empty())
     co_return std::nullopt;
@@ -161,7 +161,7 @@ drogon::Task<std::optional<Json::Value>> PersonRepository::findLast(const SyncFi
 
 drogon::Task<std::optional<Json::Value>> PersonRepository::findLastDeleted(const SyncFilter&) const
 {
-  auto client = DbService::readOnlyClient();
+  auto client = DbService::client();
   const auto result =
       co_await client->execSqlCoro(SYNC_FIND_LAST_DELETED.data());
   if (result.empty())

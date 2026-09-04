@@ -27,6 +27,16 @@ public:
   // called once at boot, before app().run() creates any IO thread.
   static void setReadOnlyClient(drogon::orm::DbClientPtr client);
 
+  // Client of the identity database used by the auth reads (JwtFilter's
+  // refresh-token and user lookups). Hosts that never install one fall back
+  // to the default client, so the legacy behavior stays byte-identical when
+  // the config key is absent.
+  static drogon::orm::DbClientPtr identityClient();
+
+  // Installs the named identity client. Must be called once at boot, before
+  // app().run() creates any IO thread.
+  static void setIdentityClient(drogon::orm::DbClientPtr client);
+
   // Enables SQLite URI filenames (`file:...?mode=ro`) process-wide. A no-op
   // once SQLite is initialized; must run before the first sqlite3_open.
   static void enableUriFilenames();

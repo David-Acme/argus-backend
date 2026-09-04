@@ -15,6 +15,13 @@ drogon::orm::DbClientPtr& g_readOnlyClient()
   static drogon::orm::DbClientPtr client;
   return client;
 }
+
+// Identity client of the auth reads, installed by the host at boot.
+drogon::orm::DbClientPtr& g_identityClient()
+{
+  static drogon::orm::DbClientPtr client;
+  return client;
+}
 } // namespace
 
 namespace
@@ -116,6 +123,19 @@ drogon::orm::DbClientPtr DbService::readOnlyClient()
 {
   // Installed at boot, before any IO thread exists: no synchronization.
   if (auto client = g_readOnlyClient())
+    return client;
+  return client();
+}
+
+void DbService::setIdentityClient(drogon::orm::DbClientPtr client)
+{
+  g_identityClient() = std::move(client);
+}
+
+drogon::orm::DbClientPtr DbService::identityClient()
+{
+  // Installed at boot, before any IO thread exists: no synchronization.
+  if (auto client = g_identityClient())
     return client;
   return client();
 }

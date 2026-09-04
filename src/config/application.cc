@@ -159,11 +159,39 @@ void installEventBus()
   LOG_INFO << "NATS event bus connected to " << bus->options().url;
 }
 
+void installIdentityClient()
+{
+  // Transitional cutover read (F1-5): with [identity] db configured the
+  // legacy JwtFilter validates refresh tokens and user rows against the
+  // gateway-minted identity database instead of argus.db. Without the key
+  // the fallback to the default client keeps the pre-cutover behavior
+  // byte-identical. URI filenames must be enabled before the first
+  // sqlite3_open, so this runs before loadConfigJson.
+  const auto path = ConfigService::getString("identity.db");
+  if (path.empty())
+    return;
+
+  DbService::enableUriFilenames();
+  try {
+    const auto identity = drogon::orm::DbClient::newSqlite3Client(
+        "filename=file:" + path + "?mode=ro", 1);
+    identity->execSqlSync("PRAGMA busy_timeout = 5000");
+    DbService::setIdentityClient(identity);
+    LOG_INFO << "Identity database opened read-only: " << path;
+  }
+  catch (const std::exception& e) {
+    LOG_WARN << "Identity database open failed (" << e.what()
+             << "); auth reads fall back to the default client";
+  }
+}
+
 } // namespace
 
 int Application::run()
 {
   ConfigService::load("config.toml");
+
+  installIdentityClient();
 
   app().loadConfigJson(ConfigService::drogonConfig());
 

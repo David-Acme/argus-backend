@@ -23,6 +23,14 @@ endforeach()
 
 target_link_libraries(identity-migration-test PRIVATE identity-migration)
 
+add_executable(identity-client-test identity-client-test.cc
+    ${SRC_ROOT}/shared/services/sqlite/db-service.cc)
+
+target_link_libraries(identity-client-test PRIVATE argus_common Drogon::Drogon
+    sqlite-vec doctest::doctest)
+
+add_test(NAME identity-client-test COMMAND identity-client-test)
+
 get_target_property(DOCTEST_INCLUDE_DIRS doctest::doctest
                     INTERFACE_INCLUDE_DIRECTORIES)
 if(DOCTEST_INCLUDE_DIRS)
