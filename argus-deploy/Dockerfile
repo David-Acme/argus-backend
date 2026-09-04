@@ -43,7 +43,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /opt/argus
 COPY --from=build /opt/argus/build/prod/argus-backend /opt/argus/argus-backend
 COPY --from=build /opt/argus/build/prod/argus-gateway /opt/argus/argus-gateway
-COPY --from=build /opt/argus/build/prod/argus-migrate-identity /opt/argus/argus-migrate-identity
+COPY --from=build /opt/argus/build/prod/tools/migrate-identity/argus-migrate-identity /opt/argus/argus-migrate-identity
 COPY config.toml.example /opt/argus/config.toml
 
 RUN groupadd --gid "$ARGUS_GID" argus \
