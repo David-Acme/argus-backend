@@ -1,0 +1,94 @@
+# argus-deploy gateway configuration. Copy to config.gateway.toml (gitignored)
+# next to this file and fill the instance secrets; the compose file bind-mounts
+# it as the gateway's config.toml.
+# Cutover shape (F1-5): the gateway owns the public TLS 7024 listener (the same
+# instance certificates the legacy uses) and proxies every non-native route to
+# the legacy backend on its internal plain-HTTP listener. The container runs
+# host-networked (transitional Ruling O exception), so 127.0.0.1 reaches both
+# the legacy listener and the published nats/rustfs ports.
+
+[gateway]
+host = "0.0.0.0"
+# Public listener the mobile app has always connected to.
+port = 7024
+plain = false
+min_protocol = "TLSv1.2"
+
+[drogon.app]
+number_of_threads = 0
+enable_session = false
+document_root = "./"
+use_sendfile = true
+use_gzip = true
+use_brotli = false
+static_files_cache_time = 5
+idle_connection_timeout = 60
+enable_server_header = true
+enable_date_header = true
+keepalive_requests = 0
+pipelining_requests = 0
+gzip_static = true
+br_static = true
+client_max_body_size = "60M"
+client_max_memory_body_size = "16M"
+client_max_websocket_message_size = "128K"
+reuse_port = false
+enabled_compressed_request = false
+enable_request_stream = false
+handle_sig_term = true
+relaunch_on_error = false
+
+[nats]
+# Published by the compose stack on host loopback (NATS_CLIENT_PORT).
+url = "nats://127.0.0.1:4222"
+reconnect_wait_ms = 2000
+max_reconnects = 60
+
+# Same instance secrets as the legacy backend: both binaries verify (and the
+# gateway mints) the app's tokens.
+[jwt]
+secret = ""
+refresh_secret = ""
+access_ttl_minutes = 15
+refresh_ttl_days = 30
+
+# Same instance secret as the legacy: the device hash must stay identical on
+# both sides of the proxy.
+[device]
+fingerprint_secret = ""
+
+[identity]
+db = "database/identity.db"
+schema = "database/identity-schema.sql"
+
+[legacy]
+sync_url = "ws://127.0.0.1:7025/sync"
+proxy_url = "http://127.0.0.1:7025"
+db = "database/argus.db"
+
+# Same cert paths as the legacy (transitional shared directory): the app's
+# pinned CA is byte-identical, and CertService runs here with the same keys.
+[cert]
+dir = "certs"
+ca_cert = "certs/ca.pem"
+ca_key = "certs/ca.key"
+server_cert = "certs/server.pem"
+server_key = "certs/server.key"
+leaf_ttl_days = 90
+rotation_threshold_days = 30
+rotate_check_hours = 24
+
+# The gateway advertises mDNS in the cutover runtime; the legacy disables it.
+[mdns]
+enabled = true
+name = "Argus"
+service_type = "_argus._tcp"
+port = 7024
+
+[mdns.txt]
+path = "/"
+https = "true"
+wss = "true"
+
+[face]
+enabled = true
