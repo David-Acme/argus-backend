@@ -18,11 +18,9 @@ foreach(TEST_NAME IN LISTS UNIT_TESTS)
     add_test(NAME ${TEST_NAME} COMMAND ${TEST_NAME})
 endforeach()
 
-if(TARGET doctest::doctest)
-    get_target_property(DOCTEST_INCLUDE_DIRS doctest::doctest
-                        INTERFACE_INCLUDE_DIRECTORIES)
-    if(DOCTEST_INCLUDE_DIRS)
-        set_target_properties(doctest::doctest PROPERTIES
-            INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${DOCTEST_INCLUDE_DIRS}")
-    endif()
+get_target_property(DOCTEST_INCLUDE_DIRS doctest::doctest
+                    INTERFACE_INCLUDE_DIRECTORIES)
+if(DOCTEST_INCLUDE_DIRS)
+    set_target_properties(doctest::doctest PROPERTIES
+        INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${DOCTEST_INCLUDE_DIRS}")
 endif()

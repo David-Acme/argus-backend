@@ -54,18 +54,18 @@ ProjectMemberFeatureService::create(const CreateProjectMemberDto& body, int64_t 
 {
   const auto parent = co_await parentRepository_.findById(body.projectId);
   if (!parent || parent->ownerId != actorId)
-    co_return {.error = MembershipError::ParentNotFound};
+    co_return {.error = MembershipError::ParentNotFound, .row = std::nullopt};
   if (body.userId == parent->ownerId)
-    co_return {.error = MembershipError::SelfShare};
+    co_return {.error = MembershipError::SelfShare, .row = std::nullopt};
 
   const auto target = co_await userRepository_.findById(body.userId);
   if (!target || !target->isActive)
-    co_return {.error = MembershipError::UserNotFound};
+    co_return {.error = MembershipError::UserNotFound, .row = std::nullopt};
   // Sharing with someone whose role cannot read the table would be a silent
   // no-op: the row would never reach their device.
   if (!role_access::hasAccess(target->role, TableName::Project,
                               RolePermission::Read))
-    co_return {.error = MembershipError::UserNotAllowed};
+    co_return {.error = MembershipError::UserNotAllowed, .row = std::nullopt};
 
   const auto access = shareAccessFromString(body.access);
   // Re-sharing with the same person changes the level instead of colliding
@@ -99,16 +99,16 @@ ProjectMemberFeatureService::update(int64_t id, const UpdateProjectMemberDto& bo
 {
   const auto existing = co_await repository_.findById(id);
   if (!existing)
-    co_return {.error = MembershipError::ParentNotFound};
+    co_return {.error = MembershipError::ParentNotFound, .row = std::nullopt};
 
   const auto parent = co_await parentRepository_.findById(existing->projectId);
   if (!parent || parent->ownerId != actorId)
-    co_return {.error = MembershipError::ParentNotFound};
+    co_return {.error = MembershipError::ParentNotFound, .row = std::nullopt};
 
   const auto row = co_await repository_.updateAccess(
       id, shareAccessFromString(body.access));
   if (row.id == 0)
-    co_return {.error = MembershipError::ParentNotFound};
+    co_return {.error = MembershipError::ParentNotFound, .row = std::nullopt};
   co_await syncAuditService_.publishUsers({
       .recordId = row.id,
       .tableName = TableName::ProjectMember,

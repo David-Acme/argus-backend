@@ -594,6 +594,7 @@ inline TableName tableNameFromString(const std::string& s)
       {"user_action_log", TableName::UserActionLog},
       {"refresh_token", TableName::RefreshToken},
       {"face_embedding", TableName::FaceEmbedding},
+      {"memory", TableName::Memory},
   };
   const auto it = kMap.find(s);
   if (it == kMap.end())

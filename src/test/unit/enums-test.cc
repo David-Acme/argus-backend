@@ -180,6 +180,7 @@ TEST_CASE("table name strings round-trip")
         TableName::UserAuditLog,    TableName::Notification,
         TableName::NotificationToken, TableName::UserActionLog,
         TableName::RefreshToken,    TableName::FaceEmbedding,
+        TableName::Memory,
     };
     const std::vector<std::string> names = {
         "user",               "user_invitation",     "person",
@@ -189,7 +190,7 @@ TEST_CASE("table name strings round-trip")
         "camera",             "camera_stream",       "zone",
         "audit_log",          "user_audit_log",      "notification",
         "notification_token", "user_action_log",     "refresh_token",
-        "face_embedding",
+        "face_embedding",     "memory",
     };
     checkRoundTrip(values, names, tableNameToString, tableNameFromString);
 
@@ -224,7 +225,8 @@ TEST_CASE("unknown strings fall back to documented defaults")
     CHECK(voiceLangFromString("bogus") == VoiceLang::System);
 }
 
-TEST_CASE("table name fromString drops the memory entry")
+TEST_CASE("table name memory strings round-trip")
 {
-    CHECK(tableNameFromString("memory") == TableName::User);
+    CHECK(tableNameToString(TableName::Memory) == "memory");
+    CHECK(tableNameFromString("memory") == TableName::Memory);
 }

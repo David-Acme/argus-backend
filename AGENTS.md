@@ -529,7 +529,7 @@ Before any commit, verify: `cmake --build --preset dev -j 8` passes with
 
 - Headers: `.hxx`
 - Sources: `.cc`
-- Tests: `*_test.cc`
+- Tests: `*-test.cc` (e.g. `user-service-test.cc`)
 - No `.h` or `.cpp` extensions.
 
 ## Key Files Reference
