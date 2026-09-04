@@ -6,6 +6,7 @@ set(UNIT_TESTS
     role-access-test
     thread-budget-test
     validation-dsl-test
+    nats-wrapper-test
 )
 
 foreach(TEST_NAME IN LISTS UNIT_TESTS)

@@ -2276,3 +2276,34 @@ bootstrap with `findLastCreated` on the `user` table (not a personal table →
 `optional::_M_is_engaged` assert. Both functions now keep the dereference
 inside the taken branch. The same ternary-with-co_await shape must not be
 reintroduced anywhere.
+
+## NATS event bus foundation (2026-09-04)
+
+Fase 1 of the migration starts here: the gateway will own `/sync`, and every
+other service publishes persisted-change events to NATS instead of calling the
+gateway. The foundation is `NatsBus` (`src/shared/wrapper/nats/`) over cnats
+(`cnats/3.13.0` via Conan; its `nats_static` target is linked PUBLIC into
+`argus_common`). The frozen subject naming lives in `argus-contracts/subjects.md`
+(`argus.<domain>.v1.<event>`; the concrete `/sync` subject is
+`argus.sync.v1.change` with the `SocketEmitDto` payload shape
+`{operation, option, info}`, and the gateway subscribes with the frozen
+wildcard `argus.>.v1.change` — note that this wildcard uses NATS multi-token
+semantics loosely; if a real server ever rejects a mid-subject `>`, the gateway
+falls back to `argus.*.v1.change`, but the frozen name stays the one in
+subjects.md).
+
+`NatsBus` keeps no owning raw pointers: cnats handles (`natsConnection`,
+`natsOptions`, `natsSubscription`) sit behind `std::unique_ptr` with custom
+deleters, and the C-library callback resolves its handler through a map keyed
+by the subscription handle. Subscriptions registered before `connect()` stay
+pending and activate once the connection is up, because `ServiceRegistry`
+initializes services in parallel before the bus is guaranteed to be connected.
+`connect()` blocks until the first connection result (it must be reached via
+`BlockingTask` from coroutines, never on a Drogon IO thread), while
+`publish()`/`subscribe()` are cheap; handlers run on cnats worker threads and
+must marshal into the loop for UI/sync work. `drain()` is idempotent and
+releases every handler before closing. Config keys: `[nats] url`,
+`reconnect_wait_ms`, `max_reconnects`, all optional
+(`nats://127.0.0.1:4222`, 2000, 60). The optional live test needs a local
+nats-server exported as `ARGUS_TEST_NATS_URL`; without it the suite prints SKIP
+and exits 0, mirroring the golden-sync pattern.

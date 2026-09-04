@@ -18,6 +18,7 @@ find_package(tomlplusplus REQUIRED)
 find_package(OpenSSL REQUIRED)
 find_package(mdns CONFIG REQUIRED)
 find_package(qr-code-generator CONFIG REQUIRED)
+find_package(cnats CONFIG REQUIRED)
 find_path(RNNOISE_INCLUDE_DIR NAMES rnnoise.h)
 find_library(RNNOISE_LIBRARY NAMES rnnoise)
 
@@ -38,6 +39,9 @@ set(ARGUS_COMMON_SOURCES
     ${SRC_ROOT}/shared/wrapper/cancellation/cancellation-token.hxx
     ${SRC_ROOT}/shared/wrapper/hardware-profile/hardware-profile.cc
     ${SRC_ROOT}/shared/wrapper/hardware-profile/hardware-profile.hxx
+    ${SRC_ROOT}/shared/wrapper/nats/nats-bus.cc
+    ${SRC_ROOT}/shared/wrapper/nats/nats-bus.hxx
+    ${SRC_ROOT}/shared/wrapper/nats/nats-subject.hxx
     ${SRC_ROOT}/shared/services/config-service/config-service.cc
     ${SRC_ROOT}/shared/services/config-service/config-service.hxx
     ${SRC_ROOT}/shared/utils/schema-runner/schema-runner.cc
@@ -52,6 +56,7 @@ target_link_libraries(argus_common
     PUBLIC
         Drogon::Drogon
         tomlplusplus::tomlplusplus
+        cnats::nats_static
 )
 
 if(ARGUS_NCNN_TARGET AND TARGET ${ARGUS_NCNN_TARGET})
@@ -119,6 +124,7 @@ list(REMOVE_ITEM SHARED_SRC
     ${SRC_ROOT}/shared/wrapper/api-response/api-response.cc
     ${SRC_ROOT}/shared/wrapper/thread-budget/thread-budget.cc
     ${SRC_ROOT}/shared/wrapper/hardware-profile/hardware-profile.cc
+    ${SRC_ROOT}/shared/wrapper/nats/nats-bus.cc
     ${SRC_ROOT}/shared/services/config-service/config-service.cc
     ${SRC_ROOT}/shared/utils/schema-runner/schema-runner.cc
 )
