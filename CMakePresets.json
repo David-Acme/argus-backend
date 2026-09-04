@@ -29,6 +29,10 @@
   ],
   "buildPresets": [
     { "name": "dev", "configurePreset": "dev", "jobs": 8 },
-    { "name": "prod", "configurePreset": "prod", "jobs": 8 }
+    { "name": "prod", "configurePreset": "prod", "jobs": 8 },
+    { "name": "gateway", "configurePreset": "dev", "jobs": 8,
+      "targets": ["argus-gateway", "gateway-test"] },
+    { "name": "gateway-prod", "configurePreset": "prod", "jobs": 8,
+      "targets": ["argus-gateway", "gateway-test"] }
   ]
 }

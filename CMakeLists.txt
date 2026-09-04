@@ -24,61 +24,16 @@ find_library(RNNOISE_LIBRARY NAMES rnnoise)
 
 add_subdirectory(third_party)
 
-set(ARGUS_COMMON_SOURCES
-    ${SRC_ROOT}/shared/enums.hxx
-    ${SRC_ROOT}/shared/access/role-access.hxx
-    ${SRC_ROOT}/shared/validation/rules.hxx
-    ${SRC_ROOT}/shared/validation/validation_dsl.hxx
-    ${SRC_ROOT}/shared/validation/validator.hxx
-    ${SRC_ROOT}/shared/exceptions/response-exception.hxx
-    ${SRC_ROOT}/shared/wrapper/api-response/api-response.cc
-    ${SRC_ROOT}/shared/wrapper/api-response/api-response.hxx
-    ${SRC_ROOT}/shared/wrapper/thread-budget/thread-budget.cc
-    ${SRC_ROOT}/shared/wrapper/thread-budget/thread-budget.hxx
-    ${SRC_ROOT}/shared/wrapper/blocking-task/blocking-task.hxx
-    ${SRC_ROOT}/shared/wrapper/cancellation/cancellation-token.hxx
-    ${SRC_ROOT}/shared/wrapper/hardware-profile/hardware-profile.cc
-    ${SRC_ROOT}/shared/wrapper/hardware-profile/hardware-profile.hxx
-    ${SRC_ROOT}/shared/wrapper/nats/nats-bus.cc
-    ${SRC_ROOT}/shared/wrapper/nats/nats-bus.hxx
-    ${SRC_ROOT}/shared/wrapper/nats/nats-subject.hxx
-    ${SRC_ROOT}/shared/services/config-service/config-service.cc
-    ${SRC_ROOT}/shared/services/config-service/config-service.hxx
-    ${SRC_ROOT}/shared/utils/schema-runner/schema-runner.cc
-    ${SRC_ROOT}/shared/utils/schema-runner/schema-runner.hxx
-)
-
-add_library(argus_common STATIC ${ARGUS_COMMON_SOURCES})
-
-target_include_directories(argus_common PUBLIC ${SRC_ROOT})
-
-target_link_libraries(argus_common
-    PUBLIC
-        Drogon::Drogon
-        tomlplusplus::tomlplusplus
-        cnats::nats_static
-)
-
-if(ARGUS_NCNN_TARGET AND TARGET ${ARGUS_NCNN_TARGET})
-    target_link_libraries(argus_common PUBLIC ${ARGUS_NCNN_TARGET})
-endif()
-
-foreach(_tomlplusplus_include_var
-        tomlplusplus_INCLUDE_DIRS_RELEASE
-        tomlplusplus_INCLUDE_DIRS_DEBUG
-        tomlplusplus_INCLUDE_DIRS)
-    if(DEFINED ${_tomlplusplus_include_var})
-        target_include_directories(argus_common SYSTEM PUBLIC
-            ${${_tomlplusplus_include_var}})
-    endif()
-endforeach()
-
-target_compile_options(argus_common PRIVATE -Wall -Wextra)
+add_subdirectory(src/shared)
 
 enable_testing()
 
 add_subdirectory(${SRC_ROOT}/test/unit ${CMAKE_BINARY_DIR}/test/unit)
 add_subdirectory(${SRC_ROOT}/test/e2e ${CMAKE_BINARY_DIR}/test/e2e)
+
+# argus-gateway service: built on demand, never as part of the default
+# backend build.
+add_subdirectory(argus-gateway EXCLUDE_FROM_ALL)
 
 option(ARGUS_BUILD_LABS "Build backend integration and verification labs" ON)
 

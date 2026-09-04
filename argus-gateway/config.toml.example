@@ -1,0 +1,13 @@
+# argus-gateway configuration. Copy to config.toml (gitignored) to run.
+
+[gateway]
+host = "0.0.0.0"
+# Placeholder until F1-4 moves the listener ownership; matches the legacy
+# backend port for now.
+port = 7024
+
+[nats]
+# Empty disables the event bus; health never depends on NATS being up.
+url = ""
+reconnect_wait_ms = 2000
+max_reconnects = 60
