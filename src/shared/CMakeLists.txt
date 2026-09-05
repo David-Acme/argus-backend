@@ -43,8 +43,8 @@ if(ARGUS_NCNN_TARGET AND TARGET ${ARGUS_NCNN_TARGET})
     target_link_libraries(argus_common PUBLIC ${ARGUS_NCNN_TARGET})
 endif()
 
-# schema-runner compiles sqlite3.h directly; the conan sqlite3 target comes
-# with Drogon's dependency graph (SQLite::SQLite3 from CMakeDeps).
+# schema-runner compiles sqlite3.h directly; sqlite3 is a direct conan
+# require (a transitive-only entry generates empty include dirs).
 if(TARGET SQLite::SQLite3)
     target_link_libraries(argus_common PUBLIC SQLite::SQLite3)
 endif()
