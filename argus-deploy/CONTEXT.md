@@ -118,19 +118,21 @@ argus-camera opens identity.db read-only only after the gateway's boot schema
 apply has created it (same bounded wait). Neither service waits on the other's
 health, so there is no cycle. A fresh `up -d` without camera-init therefore
 works end to end: argus-camera creates camera.db, the gateway picks it up
-within seconds, camera CRUD through the gateway serves live rows, and
-`camera-init` afterwards migrates the pre-existing argus.db camera rows on
-top. The gateway applies `identity-schema.sql` at boot and
+within seconds and camera CRUD through the gateway serves live rows — but
+argus-camera's boot apply then makes camera.db live data, so `camera-init`
+can no longer migrate the pre-existing argus.db camera rows (it no-ops on any
+schema-current target before reading the source). An installation that wants
+the legacy camera rows migrated must run `docker compose --profile camera-init
+run --rm camera-init` BEFORE the first boot, while camera.db does not exist
+yet. The gateway applies `identity-schema.sql` at boot and
 aborts if it fails, so a fresh install creates `identity.db` without the init
 profile; argus-camera applies `camera-schema.sql` at boot the same way, so a
 fresh install creates camera.db without `camera-init`. On an existing
 installation run `docker compose --profile identity-init run --rm
 identity-init` (idempotent, guards intact: refuses same-path, requires the 7
-source tables, skips cleanly when `argus.db` does not exist yet) and/or
-`--profile camera-init run --rm camera-init` (idempotent no-op on a
-schema-current camera.db; refuses a stale-shaped target). Do not run either
-init tool while the services hold its target database open — stop the stack
-first.
+source tables, skips cleanly when `argus.db` does not exist yet). Do not run
+either init tool while the services hold its target database open — stop the
+stack first.
 
 ## Healthchecks
 
