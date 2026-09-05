@@ -11,6 +11,8 @@ database
 docker/runtime
 models
 config.toml
+argus-deploy/config.gateway.toml
+argus-deploy/config.legacy.toml
 *.log
 go2rtc.yaml
 third_party/go2rtc
