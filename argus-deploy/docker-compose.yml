@@ -22,7 +22,7 @@ services:
     image: argus-cutover:local
     user: "${ARGUS_UID:-1000}:${ARGUS_GID:-1000}"
     network_mode: host
-    command: ["/opt/argus/argus-gateway"]
+    entrypoint: ["/opt/argus/argus-gateway"]
     volumes:
       - type: bind
         source: ./config.gateway.toml
@@ -63,7 +63,7 @@ services:
     pull_policy: never
     user: "${ARGUS_UID:-1000}:${ARGUS_GID:-1000}"
     network_mode: host
-    command: ["/opt/argus/argus-backend"]
+    entrypoint: ["/opt/argus/argus-backend"]
     volumes:
       - type: bind
         source: ./config.legacy.toml
