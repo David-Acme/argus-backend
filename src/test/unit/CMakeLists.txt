@@ -12,6 +12,7 @@ set(UNIT_TESTS
     camera-schema-test
     camera-migration-test
     camera-config-test
+    camera-controller-test
 )
 
 foreach(TEST_NAME IN LISTS UNIT_TESTS)
@@ -31,8 +32,9 @@ target_link_libraries(camera-schema-test PRIVATE camera-migration)
 target_link_libraries(camera-migration-test PRIVATE camera-migration)
 
 # camera-core (argus-camera service plumbing) is pulled into the default
-# backend build only by camera-config-test.
+# backend build only by camera-config-test and camera-controller-test.
 target_link_libraries(camera-config-test PRIVATE camera-core)
+target_link_libraries(camera-controller-test PRIVATE camera-core)
 
 add_executable(identity-client-test identity-client-test.cc
     ${SRC_ROOT}/shared/services/sqlite/db-service.cc)
