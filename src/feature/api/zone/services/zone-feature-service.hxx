@@ -5,11 +5,10 @@
 #include <feature/api/zone/dtos/create-zone-dto.hxx>
 #include <feature/api/zone/dtos/update-zone-dto.hxx>
 #include <optional>
+#include <shared/contracts/camera-change-sink.hxx>
 #include <shared/repositories/camera/camera-repository.hxx>
 #include <shared/repositories/zone/zone-repository.hxx>
 #include <shared/schemas/zone/zone-schema.hxx>
-#include <shared/services/socket/socket-service.hxx>
-#include <shared/services/sync-audit/sync-audit-service.hxx>
 
 class ZoneFeatureService
 {
@@ -26,6 +25,4 @@ private:
 
   ZoneRepository repository_;
   CameraRepository cameraRepository_;
-  SocketService socketService_;
-  SyncAuditService syncAuditService_;
 };

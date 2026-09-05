@@ -5,10 +5,9 @@
 #include <feature/api/camera/dtos/create-camera-dto.hxx>
 #include <feature/api/camera/dtos/update-camera-dto.hxx>
 #include <optional>
+#include <shared/contracts/camera-change-sink.hxx>
 #include <shared/repositories/camera/camera-repository.hxx>
 #include <shared/schemas/camera/camera-schema.hxx>
-#include <shared/services/socket/socket-service.hxx>
-#include <shared/services/sync-audit/sync-audit-service.hxx>
 
 class CameraFeatureService
 {
@@ -24,6 +23,4 @@ private:
   void emit(SyncOperation operation, const CameraSchema& row) const;
 
   CameraRepository repository_;
-  SocketService socketService_;
-  SyncAuditService syncAuditService_;
 };

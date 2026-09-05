@@ -79,6 +79,15 @@ file = "./database/argus.db"
 # [identity]
 # db = ""
 
+# Transitional cutover key (F2-2): camera database attached read-write for the
+# legacy camera-domain reads and writes (camera, camera_stream, zone) once
+# argus-camera owns the domain. Point it at the same file the gateway and
+# argus-camera open; the legacy never runs DDL on it. Empty keeps the
+# pre-cutover behavior (camera reads and writes use the default argus.db
+# client) and keeps go2rtc here.
+# [camera]
+# db = ""
+
 [conversation]
 history_messages = 41
 

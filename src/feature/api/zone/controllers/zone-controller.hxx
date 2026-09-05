@@ -6,7 +6,7 @@
 #include <drogon/utils/coroutine.h>
 #include <feature/api/zone/services/zone-feature-service.hxx>
 
-class ZoneController : public drogon::HttpController<ZoneController>
+class ZoneController : public drogon::HttpController<ZoneController, false>
 {
 public:
   METHOD_LIST_BEGIN

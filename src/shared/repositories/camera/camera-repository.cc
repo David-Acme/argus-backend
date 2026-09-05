@@ -11,7 +11,7 @@ using namespace camera_query;
 drogon::Task<std::optional<CameraSchema>>
 CameraRepository::findById(int64_t id) const
 {
-  auto client = DbService::client();
+  auto client = DbService::cameraClient();
   const auto result = co_await client->execSqlCoro(FIND_BY_ID.data(), id);
 
   if (result.empty())
@@ -23,7 +23,7 @@ CameraRepository::findById(int64_t id) const
 drogon::Task<CameraSchema>
 CameraRepository::create(const CameraCreateInput& input) const
 {
-  auto client = DbService::client();
+  auto client = DbService::cameraClient();
   const auto result =
       co_await client->execSqlCoro(INSERT.data(), input.name,
                                    input.manufacturer, input.model, input.ip,
@@ -61,7 +61,7 @@ CameraRepository::create(const CameraCreateInput& input) const
 drogon::Task<CameraSchema>
 CameraRepository::update(int64_t id, const CameraUpdateInput& input) const
 {
-  auto client = DbService::client();
+  auto client = DbService::cameraClient();
   std::string sql = UPDATE_PREFIX.data();
   std::vector<std::string> args;
 
@@ -147,7 +147,7 @@ CameraRepository::update(int64_t id, const CameraUpdateInput& input) const
 
 drogon::Task<bool> CameraRepository::remove(int64_t id) const
 {
-  auto client = DbService::client();
+  auto client = DbService::cameraClient();
   const auto result = co_await client->execSqlCoro(REMOVE.data(), id);
   co_return result.affectedRows() > 0;
 }
@@ -155,7 +155,7 @@ drogon::Task<bool> CameraRepository::remove(int64_t id) const
 drogon::Task<std::vector<Json::Value>>
 CameraRepository::find(const SyncFilter& filter) const
 {
-  auto client = DbService::readOnlyClient();
+  auto client = DbService::cameraClient();
 
   const auto [query, args] =
       sync_query::buildSyncQuery(filter, FIND, FIND_FROM, FIND_ALL, FIND_AFTER,
@@ -172,7 +172,7 @@ CameraRepository::find(const SyncFilter& filter) const
 drogon::Task<std::vector<Json::Value>>
 CameraRepository::findDeleted(const SyncFilter& filter) const
 {
-  auto client = DbService::readOnlyClient();
+  auto client = DbService::cameraClient();
 
   const auto [query, args] =
       sync_query::buildSyncQuery(filter, FIND_DELETED, FIND_DELETED_FROM,
@@ -189,7 +189,7 @@ CameraRepository::findDeleted(const SyncFilter& filter) const
 
 drogon::Task<std::optional<Json::Value>> CameraRepository::findLast(const SyncFilter&) const
 {
-  auto client = DbService::readOnlyClient();
+  auto client = DbService::cameraClient();
   const auto result = co_await client->execSqlCoro(FIND_LAST.data());
   if (result.empty())
     co_return std::nullopt;
@@ -199,7 +199,7 @@ drogon::Task<std::optional<Json::Value>> CameraRepository::findLast(const SyncFi
 drogon::Task<std::optional<Json::Value>>
 CameraRepository::findLastDeleted(const SyncFilter&) const
 {
-  auto client = DbService::readOnlyClient();
+  auto client = DbService::cameraClient();
   const auto result = co_await client->execSqlCoro(FIND_LAST_DELETED.data());
   if (result.empty())
     co_return std::nullopt;

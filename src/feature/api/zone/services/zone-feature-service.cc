@@ -1,6 +1,7 @@
 #include "zone-feature-service.hxx"
 
 #include <ctime>
+#include <trantor/utils/Logger.h>
 
 void ZoneFeatureService::emit(SyncOperation operation,
                               const ZoneSchema& row) const
@@ -17,7 +18,12 @@ void ZoneFeatureService::emit(SyncOperation operation,
   else {
     body.obj = row.toJson();
   }
-  socketService_.emitModule(TableName::Zone, body);
+  const auto* sink = camera_change::getSink();
+  if (!sink) {
+    LOG_WARN << "camera change sink not installed; drop zone emit";
+    return;
+  }
+  sink->emitModule(TableName::Zone, body);
 }
 
 drogon::Task<std::optional<ZoneSchema>>
@@ -59,13 +65,19 @@ ZoneFeatureService::update(int64_t id, const UpdateZoneDto& body) const
   const auto row = co_await repository_.update(id, input);
   if (row.id == 0)
     co_return std::nullopt;
-  co_await syncAuditService_.publishModule({
-      .recordId = row.id,
-      .tableName = TableName::Zone,
-      .before = existing->toJson(),
-      .after = row.toJson(),
-      .actorId = std::nullopt,
-  });
+  const auto* sink = camera_change::getSink();
+  if (!sink) {
+    LOG_WARN << "camera change sink not installed; drop zone audit";
+  }
+  else {
+    co_await sink->publishAudit({
+        .recordId = row.id,
+        .tableName = TableName::Zone,
+        .before = existing->toJson(),
+        .after = row.toJson(),
+        .actorId = std::nullopt,
+    });
+  }
   co_return row;
 }
 

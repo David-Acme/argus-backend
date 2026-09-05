@@ -1,6 +1,7 @@
 #include "camera-feature-service.hxx"
 
 #include <ctime>
+#include <trantor/utils/Logger.h>
 
 void CameraFeatureService::emit(SyncOperation operation,
                                 const CameraSchema& row) const
@@ -17,7 +18,12 @@ void CameraFeatureService::emit(SyncOperation operation,
   else {
     body.obj = row.toJson();
   }
-  socketService_.emitModule(TableName::Camera, body);
+  const auto* sink = camera_change::getSink();
+  if (!sink) {
+    LOG_WARN << "camera change sink not installed; drop camera emit";
+    return;
+  }
+  sink->emitModule(TableName::Camera, body);
 }
 
 drogon::Task<CameraSchema>
@@ -74,13 +80,19 @@ CameraFeatureService::update(int64_t id, const UpdateCameraDto& body) const
   const auto row = co_await repository_.update(id, input);
   if (row.id == 0)
     co_return std::nullopt;
-  co_await syncAuditService_.publishModule({
-      .recordId = row.id,
-      .tableName = TableName::Camera,
-      .before = existing->toJson(),
-      .after = row.toJson(),
-      .actorId = std::nullopt,
-  });
+  const auto* sink = camera_change::getSink();
+  if (!sink) {
+    LOG_WARN << "camera change sink not installed; drop camera audit";
+  }
+  else {
+    co_await sink->publishAudit({
+        .recordId = row.id,
+        .tableName = TableName::Camera,
+        .before = existing->toJson(),
+        .after = row.toJson(),
+        .actorId = std::nullopt,
+    });
+  }
   co_return row;
 }
 

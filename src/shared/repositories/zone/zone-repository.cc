@@ -11,7 +11,7 @@ using namespace zone_query;
 drogon::Task<std::optional<ZoneSchema>>
 ZoneRepository::findById(int64_t id) const
 {
-  auto client = DbService::client();
+  auto client = DbService::cameraClient();
   const auto result = co_await client->execSqlCoro(FIND_BY_ID.data(), id);
   if (result.empty())
     co_return std::nullopt;
@@ -21,7 +21,7 @@ ZoneRepository::findById(int64_t id) const
 drogon::Task<std::vector<ZoneSchema>>
 ZoneRepository::findByCamera(int64_t cameraId) const
 {
-  auto client = DbService::client();
+  auto client = DbService::cameraClient();
   const auto result =
       co_await client->execSqlCoro(FIND_BY_CAMERA.data(), cameraId);
 
@@ -34,7 +34,7 @@ ZoneRepository::findByCamera(int64_t cameraId) const
 drogon::Task<ZoneSchema>
 ZoneRepository::create(const ZoneCreateInput& input) const
 {
-  auto client = DbService::client();
+  auto client = DbService::cameraClient();
   const auto result =
       co_await client->execSqlCoro(INSERT.data(), input.cameraId, input.name,
                                    input.points,
@@ -56,7 +56,7 @@ ZoneRepository::create(const ZoneCreateInput& input) const
 drogon::Task<ZoneSchema>
 ZoneRepository::update(int64_t id, const ZoneUpdateInput& input) const
 {
-  auto client = DbService::client();
+  auto client = DbService::cameraClient();
   std::string sql = UPDATE_PREFIX.data();
   std::vector<std::string> args;
 
@@ -110,7 +110,7 @@ ZoneRepository::update(int64_t id, const ZoneUpdateInput& input) const
 
 drogon::Task<bool> ZoneRepository::remove(int64_t id) const
 {
-  auto client = DbService::client();
+  auto client = DbService::cameraClient();
   const auto result = co_await client->execSqlCoro(REMOVE.data(), id);
   co_return result.affectedRows() > 0;
 }
@@ -118,7 +118,7 @@ drogon::Task<bool> ZoneRepository::remove(int64_t id) const
 drogon::Task<std::vector<Json::Value>>
 ZoneRepository::find(const SyncFilter& filter) const
 {
-  auto client = DbService::readOnlyClient();
+  auto client = DbService::cameraClient();
 
   const auto [query, args] =
       sync_query::buildSyncQuery(filter, FIND, FIND_FROM, FIND_ALL, FIND_AFTER,
@@ -135,7 +135,7 @@ ZoneRepository::find(const SyncFilter& filter) const
 drogon::Task<std::vector<Json::Value>>
 ZoneRepository::findDeleted(const SyncFilter& filter) const
 {
-  auto client = DbService::readOnlyClient();
+  auto client = DbService::cameraClient();
 
   const auto [query, args] =
       sync_query::buildSyncQuery(filter, FIND_DELETED, FIND_DELETED_FROM,
@@ -152,7 +152,7 @@ ZoneRepository::findDeleted(const SyncFilter& filter) const
 
 drogon::Task<std::optional<Json::Value>> ZoneRepository::findLast(const SyncFilter&) const
 {
-  auto client = DbService::readOnlyClient();
+  auto client = DbService::cameraClient();
   const auto result = co_await client->execSqlCoro(FIND_LAST.data());
   if (result.empty())
     co_return std::nullopt;
@@ -161,7 +161,7 @@ drogon::Task<std::optional<Json::Value>> ZoneRepository::findLast(const SyncFilt
 
 drogon::Task<std::optional<Json::Value>> ZoneRepository::findLastDeleted(const SyncFilter&) const
 {
-  auto client = DbService::readOnlyClient();
+  auto client = DbService::cameraClient();
   const auto result = co_await client->execSqlCoro(FIND_LAST_DELETED.data());
   if (result.empty())
     co_return std::nullopt;

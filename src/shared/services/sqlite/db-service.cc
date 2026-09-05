@@ -22,6 +22,13 @@ drogon::orm::DbClientPtr& g_identityClient()
   static drogon::orm::DbClientPtr client;
   return client;
 }
+
+// Camera-domain client (Rulings X/Z), installed by the host at boot.
+drogon::orm::DbClientPtr& g_cameraClient()
+{
+  static drogon::orm::DbClientPtr client;
+  return client;
+}
 } // namespace
 
 namespace
@@ -136,6 +143,19 @@ drogon::orm::DbClientPtr DbService::identityClient()
 {
   // Installed at boot, before any IO thread exists: no synchronization.
   if (auto client = g_identityClient())
+    return client;
+  return client();
+}
+
+void DbService::setCameraClient(drogon::orm::DbClientPtr client)
+{
+  g_cameraClient() = std::move(client);
+}
+
+drogon::orm::DbClientPtr DbService::cameraClient()
+{
+  // Installed at boot, before any IO thread exists: no synchronization.
+  if (auto client = g_cameraClient())
     return client;
   return client();
 }
