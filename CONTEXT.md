@@ -2387,3 +2387,58 @@ auth outcome of the no-token run, same conclusion as F1-4).
   shares the SAME `certs/` directory as the legacy (Ruling K); the backend
   `config.toml.example` documents the transitional `[identity] db` key.
   mDNS stays gateway-only in the cutover config (legacy `mdns.enabled=false`).
+
+## Fase 2 step 2 — camera cutover (F2-2, 2026-09-05)
+
+The camera domain (camera, camera_stream, zone) now lives in `camera.db`
+(migrated by `tools/migrate-camera`, Ruling V) and is owned by the
+`argus-camera` service. The app sees zero wire changes: the gateway relays
+the camera CRUD and the camera media legs, and the legacy keeps serving the
+camera-control routes against camera.db.
+
+- **Ruling X — legacy camera-row access resolves to camera.db.**
+  `DbService::cameraClient()`/`setCameraClient()` is a named client slot
+  (falls back to `client()` when unset — pre-cutover no-op). The
+  camera/camera_stream/zone repositories read through it, so the legacy
+  camera-control routes (`/camera/{id}/ptz|preset|settings|status|presets|
+  capabilities|talk`, still legacy this phase) resolve rows created
+  post-cutover by argus-camera. `Application::run()` opens `[camera] db`
+  read-write (WAL + busy_timeout 5000 pragmas, never DDL) when configured;
+  argus-camera opens the same file read-write the same way. Both binaries
+  keep the camera code (no strip). The frozen argus.db camera tables stay
+  as-is (Ruling V, nothing deleted).
+- **CameraChangeSink seam.** The camera/zone feature services emit through
+  `camera_change::getSink()` (`src/shared/contracts/camera-change-sink.hxx`).
+  The legacy binds `SocketCameraChangeSink` (SocketService rooms +
+  SyncAuditService audit insert — the pre-cutover path); argus-camera binds
+  `NatsCameraChangeSink`. Legacy `SocketService::publishChange` publishes
+  every emit, camera included, to `argus.sync.v1.change` as before; the
+  gateway subscribes the wildcard `argus.*.v1.change` and routes by concrete
+  subject.
+- **Ruling Y — camera audit diffs persist at the gateway.** argus-camera does
+  not persist audit rows locally. Updates emit a `CameraAuditEvent`
+  (`kind: audit` discriminator, exact SyncAuditService diff shape) over
+  `argus.camera.v1.change`; the gateway inserts it verbatim into its audit
+  substrate (identity.db `audit_log`, Ruling S read path) BEFORE fanning the
+  DB-assigned row out as a `Log` sync event, so online replay and the offline
+  audit cursor see the same order. Creates/deletes emit only `Add`/`Delete`
+  change events (no audit row) — identical to the legacy path, since the same
+  shared feature services run in both binaries. `create_user_id` is null on
+  camera-produced rows (the camera domain cannot attribute the caller).
+- **Ruling Z — gateway /sync camera reads hit camera.db.** The gateway opens
+  `[camera] db` mode=ro as the named camera client and the
+  camera/camera_stream/zone sync reads (bootstrap, diff pages, delete scans,
+  cursors) resolve to it; TableName 0-23, SyncOperation 0-7, SYNC_LIMIT=200
+  and the created_at+rowid cursors are untouched.
+- **Media re-target.** The gateway `/sync` relay is composite now: `voice:*`
+  legs still relay to the legacy (talk is TTS-load-bearing there until
+  Fase 4); `camera:*` legs relay to argus-camera, which owns go2rtc
+  (Go2rtcManager fork/exec) and StreamHub fMP4 (`0xA7` frame magic). The
+  legacy keeps MediaRelay/CameraAudioSource in the binary but they are
+  unreferenced in the cutover config — ledgered, do not strip yet.
+- **Proxy routing split.** `SimpleReverseProxy` gained a route table
+  (`[camera] proxy_url` backend): prefix `/camera` and `/zone` with max 2
+  segments forward to argus-camera; deeper camera-control paths and every
+  other path fall through to the legacy backends. No path is served by both
+  sides (the legacy `/camera`/`/zone` CRUD controllers stay in the binary —
+  strip is a later-phase task).

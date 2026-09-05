@@ -173,3 +173,29 @@ proxies everything else to the legacy backend on its internal plain listener
   `camera:ready` + binary frame through the relay), voice relay
   `voice:start` → PCM → `voice:assistant`/`voice:done` live. Full matrix in
   `.superpowers/sdd/migracion-microservicios/task-f1-5-report.md`.
+
+## Camera cutover (F2-2): routing table, composite relay, camera funnel
+
+- **Proxy route table**: `SimpleReverseProxy` reads `[camera] proxy_url` and
+  builds route targets (`prefixes`, `maxSegments`, `backend`); resolution
+  (`segmentPrefixMatch`/`segmentCount`/`matchRoute`) is public for the test
+  suite. `/camera` and `/zone` with at most 2 segments go to argus-camera;
+  `/camera/{id}/ptz|preset|settings|status|presets|capabilities|talk` and
+  everything else fall through to the legacy. Default backends unchanged.
+- **Composite `/sync` relay**: `SyncRelay` holds one upstream per protocol
+  family — `voice:*` frames relay to the legacy (`[legacy] sync_url`), the
+  seven `camera:*` frame types relay to argus-camera (`[camera] sync_url`,
+  empty keys keep the old single-legacy behavior). Same client credentials
+  and XFF rule on both legs.
+- **Camera change funnel (`camera_fan_out`)**: the NATS subscription is the
+  wildcard `argus.*.v1.change`; the concrete subject routes the payload —
+  `argus.camera.v1.change` goes to `camera_fan_out::handleCameraChange`,
+  anything else to the sync fan-out parser. An audit-kind payload
+  (`CameraAuditEvent`, Ruling Y) is inserted into identity.db `audit_log`
+  via `AuditLogService::create` first, then the DB-assigned row is fanned out
+  as a `Log` event; a plain change payload fans out directly. The funnel
+  handler runs on the Drogon IO loop (RoomManager is thread-local).
+- **Named camera client (Ruling Z)**: `[camera] db` opens mode=ro as the
+  named camera client (`DbService::setCameraClient`); camera/camera_stream/
+  zone sync reads resolve to it, legacy non-camera tables keep the read-only
+  argus.db client, identity tables stay on the default client.
