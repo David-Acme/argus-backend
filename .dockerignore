@@ -13,6 +13,7 @@ models
 config.toml
 argus-deploy/config.gateway.toml
 argus-deploy/config.legacy.toml
+argus-deploy/config.camera.toml
 *.log
 go2rtc.yaml
 third_party/go2rtc

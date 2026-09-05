@@ -1,17 +1,23 @@
 name: argus-cutover
 
-# Cutover stack (Fase 1): gateway (public TLS 7024) + legacy (internal 7025) +
-# nats + rustfs, with the identity migration init tool and the opt-in RADV
-# vulkan-probe validation service. The root docker-compose.yml stays the dev
-# tooling; this file is the deployment stack.
+# Cutover stack (Fase 2): gateway (public TLS 7024) + legacy (internal 7025) +
+# argus-camera (internal, 7026) + nats + rustfs, with the identity and camera
+# migration init tools and the opt-in RADV vulkan-probe validation service.
+# The root docker-compose.yml stays the dev tooling; this file is the
+# deployment stack.
 #
 # Transitional network shape (Ruling O exception): the legacy keeps host
 # networking for go2rtc/RTSP/mDNS camera discovery and the Tapo 8800 LAN talk
 # listener, and only binds 127.0.0.1:7025 (it trusts X-Forwarded-For from
 # loopback peers only), so the gateway is also host-networked to reach it as
-# 127.0.0.1. Only the gateway binds a public port. nats and rustfs live on the
-# internal bridge network, published on host loopback for the two
-# host-networked services.
+# 127.0.0.1. Only the gateway binds a public port. argus-camera runs on the
+# internal bridge network and publishes ONLY its 7026 listener on host
+# loopback for the host-networked gateway; its go2rtc (1984/8554) stays inside
+# the container (Ruling AH). The docker-proxy peer address the camera sees is
+# the internal network's gateway IP, so the camera config must list it in
+# device.trusted_proxy_ips (transitional until the internal identity headers
+# replace the forwarded-for trust). nats and rustfs live on the internal
+# bridge network, published on host loopback for the host-networked services.
 
 services:
   gateway:
@@ -39,10 +45,11 @@ services:
         bind:
           create_host_path: false
       - type: bind
-        source: ../database
+        source: ${ARGUS_DATA_DIR:-../database}
         target: /opt/argus/database
         bind:
           create_host_path: false
+      - camera-db:/opt/argus/camera
       - type: bind
         source: ../models
         target: /opt/argus/models
@@ -80,10 +87,11 @@ services:
         bind:
           create_host_path: false
       - type: bind
-        source: ../database
+        source: ${ARGUS_DATA_DIR:-../database}
         target: /opt/argus/database
         bind:
           create_host_path: false
+      - camera-db:/opt/argus/camera
       - type: bind
         source: ../models
         target: /opt/argus/models
@@ -110,6 +118,65 @@ services:
     mem_limit: "${ARGUS_BACKEND_MEMORY_LIMIT:-6g}"
     cpus: "${ARGUS_BACKEND_CPU_LIMIT:-4.00}"
     pids_limit: 1024
+    restart: unless-stopped
+
+  # Camera-domain service (Fase 2 cutover, Rulings X/Y/Z): owns camera.db, the
+  # /camera+/zone CRUD surface, the camera:* sync frames and the go2rtc it
+  # spawns itself (Ruling AH). Internal network only; the gateway reaches it
+  # through the single loopback-published 7026 listener. /dev/dri engages the
+  # RADV detector (Ruling AI): a host without /dev/dri must drop this device
+  # line via a compose override — the detector then degrades to CPU in-binary.
+  argus-camera:
+    image: argus-cutover:local
+    pull_policy: never
+    user: "${ARGUS_UID:-1000}:${ARGUS_GID:-1000}"
+    networks:
+      internal:
+        aliases:
+          - argus-camera
+    ports:
+      - "127.0.0.1:${CAMERA_PORT:-7026}:7026"
+    devices:
+      - /dev/dri:/dev/dri
+    entrypoint: ["/opt/argus/argus-camera"]
+    volumes:
+      - type: bind
+        source: ./config.camera.toml
+        target: /opt/argus/config.toml
+        read_only: true
+        bind:
+          create_host_path: false
+      - camera-db:/opt/argus/camera
+      - camera-stream:/opt/argus/stream
+      - type: bind
+        source: ${ARGUS_DATA_DIR:-../database}
+        target: /opt/argus/database
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ../models
+        target: /opt/argus/models
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ../third_party/go2rtc
+        target: /opt/argus/third_party/go2rtc
+        read_only: true
+        bind:
+          create_host_path: false
+    depends_on:
+      nats:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://127.0.0.1:7026/health >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    mem_limit: "${ARGUS_CAMERA_MEMORY_LIMIT:-2g}"
+    cpus: "${ARGUS_CAMERA_CPU_LIMIT:-2.00}"
+    pids_limit: 512
     restart: unless-stopped
 
   nats:
@@ -197,10 +264,33 @@ services:
         if [ -f /opt/argus/database/argus.db ]; then /opt/argus/argus-migrate-identity --source /opt/argus/database/argus.db --target /opt/argus/database/identity.db --schema /opt/argus/database/identity-schema.sql; else echo 'No argus.db yet; the gateway creates identity.db at boot.'; fi
     volumes:
       - type: bind
-        source: ../database
+        source: ${ARGUS_DATA_DIR:-../database}
         target: /opt/argus/database
         bind:
           create_host_path: false
+    restart: "no"
+
+  # Camera migration init (Ruling AG): opt-in one-shot tool copying the camera
+  # tables from argus.db onto the camera.db volume. Idempotent no-op on a
+  # schema-current target; run it with the stack stopped so the tool does not
+  # race argus-camera on camera.db.
+  camera-init:
+    profiles: ["camera-init"]
+    image: argus-cutover:local
+    pull_policy: never
+    user: "${ARGUS_UID:-1000}:${ARGUS_GID:-1000}"
+    network_mode: none
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - >-
+        if [ -f /opt/argus/database/argus.db ]; then /opt/argus/argus-migrate-camera --source /opt/argus/database/argus.db --target /opt/argus/camera/camera.db --schema /opt/argus/database/camera-schema.sql; else echo 'No argus.db yet; argus-camera applies the camera schema at boot.'; fi
+    volumes:
+      - type: bind
+        source: ${ARGUS_DATA_DIR:-../database}
+        target: /opt/argus/database
+        bind:
+          create_host_path: false
+      - camera-db:/opt/argus/camera
     restart: "no"
 
   # RADV validation probe (Fase 2 gate): runs argus-vulkan-probe against the
@@ -231,6 +321,10 @@ secrets:
 volumes:
   rustfs-data:
     name: argus-cutover-rustfs-data
+  camera-db:
+    name: argus-cutover-camera-db
+  camera-stream:
+    name: argus-cutover-camera-stream
 
 networks:
   internal:
