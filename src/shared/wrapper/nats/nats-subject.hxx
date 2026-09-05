@@ -10,6 +10,11 @@ namespace nats_subject
 inline constexpr const char* kSyncChange = "argus.sync.v1.change";
 inline constexpr const char* kSyncChangeWildcard = "argus.*.v1.change";
 
+// Camera-domain changes funnel from argus-camera over their own subject so the
+// gateway can distinguish an audit event it must persist first from a plain
+// legacy fan-out event (F2-2).
+inline constexpr const char* kCameraChange = "argus.camera.v1.change";
+
 enum class SubjectKind
 {
   Publish,

@@ -73,13 +73,14 @@ TEST_CASE("handler registration without a server stays pending")
 
   std::atomic<int> calls{0};
   const auto first =
-      bus.subscribe(nats_subject::kSyncChange, [&calls](std::string_view) {
-        ++calls;
-      });
+      bus.subscribe(
+          nats_subject::kSyncChange,
+          [&calls](std::string_view, std::string_view) { ++calls; });
   CHECK(first.has_value());
 
-  const auto second = bus.subscribe("argus.*.v1.change",
-                                    [](std::string_view) {});
+  const auto second =
+      bus.subscribe("argus.*.v1.change",
+                    [](std::string_view, std::string_view) {});
   CHECK(second.has_value());
   CHECK(*second != *first);
 
@@ -91,7 +92,8 @@ TEST_CASE("handler registration without a server stays pending")
   CHECK_FALSE(bus.isConnected());
 
   const auto afterDrain =
-      bus.subscribe(nats_subject::kSyncChange, [](std::string_view) {});
+      bus.subscribe(
+          nats_subject::kSyncChange, [](std::string_view, std::string_view) {});
   CHECK_FALSE(afterDrain.has_value());
 
   bus.drain();
@@ -133,14 +135,16 @@ TEST_CASE("live roundtrip against a running nats-server")
   std::atomic<int> calls{0};
   std::string received;
   const auto id = bus.subscribe(
-      nats_subject::kSyncChange, [&](std::string_view payload) {
+      nats_subject::kSyncChange,
+      [&](std::string_view, std::string_view payload) {
         received = std::string(payload);
         ++calls;
       });
   REQUIRE(id.has_value());
 
   const auto wildcard = bus.subscribe(
-      nats_subject::kSyncChangeWildcard, [](std::string_view) {});
+      nats_subject::kSyncChangeWildcard,
+      [](std::string_view, std::string_view) {});
   CHECK(wildcard.has_value());
 
   Json::Value payload;

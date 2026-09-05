@@ -24,6 +24,7 @@ argus.<domain>.v1.<event>
 | Subject                | Publisher            | Consumer | Purpose                                      |
 |------------------------|----------------------|----------|----------------------------------------------|
 | `argus.sync.v1.change` | every mutating service | gateway  | a persisted change that must reach `/sync` |
+| `argus.camera.v1.change` | argus-camera (F2-2) | gateway  | a camera-domain persisted change (same payload as `argus.sync.v1.change`) |
 
 The gateway subscribes with the wildcard `argus.*.v1.change` — universally
 valid across nats-server versions, while a mid-subject `>` requires nats-server

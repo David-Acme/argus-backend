@@ -18,7 +18,10 @@
 class NatsBus
 {
 public:
-  using MessageHandler = std::function<void(std::string_view)>;
+  // Delivers the subscribed subject (the concrete one a wildcard matched)
+  // plus the payload, so one wildcard subscription can route by subject.
+  using MessageHandler =
+      std::function<void(std::string_view subject, std::string_view payload)>;
 
   struct Options
   {

@@ -97,7 +97,8 @@ void NatsBus::onMessage(natsConnection* connection, natsSubscription* sub,
   const char* data = natsMsg_GetData(msg);
   const int length = natsMsg_GetDataLength(msg);
   if (handler && data != nullptr && length >= 0)
-    handler(std::string_view(data, static_cast<size_t>(length)));
+    handler(natsMsg_GetSubject(msg),
+            std::string_view(data, static_cast<size_t>(length)));
 
   // The dispatcher hands the callback ownership of the message.
   natsMsg_Destroy(msg);

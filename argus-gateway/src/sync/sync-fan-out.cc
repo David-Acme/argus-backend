@@ -104,7 +104,8 @@ void dispatchEvent(const Event& event)
 void subscribeSyncFanOut(NatsBus& bus)
 {
   bus.subscribe(
-      nats_subject::kSyncChangeWildcard, [](std::string_view message) {
+      nats_subject::kSyncChangeWildcard,
+      [](std::string_view, std::string_view message) {
         // cnats dispatcher thread: marshal the whole handler into the
         // Drogon loop before touching room state.
         drogon::app().getIOLoop(0)->runInLoop(
