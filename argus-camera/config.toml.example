@@ -99,3 +99,33 @@ trusted_proxy_ips = ""
 # empty falls back to the default camera.db client (auth reads fail).
 # [identity]
 # db = "database/identity.db"
+
+# Objects capacity (F2-3): the YOLO26n detector behind the IObjectDetector
+# seam. With enabled = false or a missing model everything downstream stays
+# inert. The class table must match the model's class count on the raw
+# one2one export (row length = 4 + class count), so the full COCO-80 default
+# is what the yolo26n export expects.
+[objects]
+enabled = false
+model = "models/objects"
+input_size = 640
+conf = 0.45
+max_fps_inference = 2.0
+use_vulkan = true
+# classes = "person,bicycle,car,..." (COCO-80 default when empty)
+
+# Operator behavior (F2-3): aggregation, cooldowns, zones and schedule.
+# Camera-side budget only (Ruling AD); the gateway keeps the notification
+# budget and silent hours in its own [notifications] section. The operator is
+# read-only toward hardware (Ruling AF): it publishes
+# argus.camera.v1.object_detected to NATS and never sends camera commands.
+[operator]
+aggregation_window_ms = 5000
+cooldown_ms = 30000
+night_start = 22
+night_end = 6
+presence_escalation_frames = 3
+overlay = false
+overlay_dir = "bench-results/operator-overlay"
+# ignored_classes = "bird,cat"
+# zones = '[{"cameraId":1,"kind":"alert","name":"door","points":[[0.0,0.0],[1.0,0.0],[1.0,1.0]]}]'

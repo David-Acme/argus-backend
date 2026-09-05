@@ -1,0 +1,24 @@
+Argus camera service — third-party notices
+==========================================
+
+YOLO26 object detector (ncnn model artifacts)
+---------------------------------------------
+The object detection capacity of this service runs Ultralytics YOLO26 model
+artifacts (`yolo26n.param` / `yolo26n.bin`, exported from `yolo26n.pt`).
+
+Ultralytics YOLO26 is licensed under AGPL-3.0:
+  Source:     https://github.com/ultralytics/ultralytics
+  Weights:    https://huggingface.co/Ultralytics/YOLO26
+  License:    https://github.com/ultralytics/ultralytics/blob/main/LICENSE
+              (GNU Affero General Public License v3.0)
+
+This service does not distribute Ultralytics source code or weights; the
+artifacts are downloaded and exported on the user's own installation by
+`scripts/setup.sh camera`. For commercial (non-AGPL) distribution, replace
+the model artifacts behind the `IObjectDetector` seam (for example RF-DETR
+Nano) without touching the service code.
+
+NCNN
+----
+Tencent ncnn (BSD 3-Clause) is used for model inference:
+  https://github.com/Tencent/ncnn

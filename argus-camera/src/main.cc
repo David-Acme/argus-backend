@@ -11,6 +11,12 @@
 #include <filter/jwt/jwt-filter.hxx>
 #include <filter/role/role-filter.hxx>
 #include <filter/valid-json/valid-json-filter.hxx>
+#include <objects/ncnn-object-detector.hxx>
+#include <operator/camera-operator-service.hxx>
+#include <operator/go2rtc-frame-source.hxx>
+#include <operator/known-person-matcher.hxx>
+#include <operator/nats-object-event-sink.hxx>
+#include <operator/operator-config.hxx>
 #include <server/listener-config.hxx>
 #include <shared/services/config-service/config-service.hxx>
 #include <shared/services/room/room-manager.hxx>
@@ -75,6 +81,20 @@ void installIdentityClient()
   }
 }
 
+// Long-lived operator collaborators: static lifetime so the per-camera
+// coroutines can hold non-owning pointers for the whole process.
+Go2rtcFrameSource& frameSource()
+{
+  static Go2rtcFrameSource source;
+  return source;
+}
+
+NatsObjectEventSink& objectEventSink(const std::shared_ptr<NatsBus>& bus)
+{
+  static NatsObjectEventSink sink(bus);
+  return sink;
+}
+
 } // namespace
 
 int main()
@@ -129,27 +149,68 @@ int main()
   // camera feature services drop their change events with a warning, which
   // keeps a NATS-less camera service bootable for contract tests.
   std::shared_ptr<NatsCameraChangeSink> changeSink;
+  std::shared_ptr<NatsBus> natsBus;
   const std::string natsUrl = ConfigService::getString("nats.url");
   if (natsUrl.empty()) {
     LOG_INFO << "NATS not configured; camera change funnel disabled";
   }
   else {
-    auto bus = std::make_shared<NatsBus>();
-    if (bus->connect()) {
-      LOG_INFO << "NATS event bus connected to " << bus->options().url;
-      changeSink = std::make_shared<NatsCameraChangeSink>(std::move(bus));
+    natsBus = std::make_shared<NatsBus>();
+    if (natsBus->connect()) {
+      LOG_INFO << "NATS event bus connected to " << natsBus->options().url;
+      changeSink = std::make_shared<NatsCameraChangeSink>(natsBus);
       camera_change::setSink(changeSink.get());
+      NatsObjectEventSink::ensureStream(natsUrl);
     }
     else {
+      natsBus.reset();
       LOG_WARN << "NATS unavailable at " << natsUrl
                << "; camera change funnel disabled";
     }
   }
 
+  // The objects capacity (F2-3): the detector is the only AI linkage in this
+  // service; without a model or with [objects] disabled everything downstream
+  // stays inert. The operator is read-only toward hardware (Ruling AF): its
+  // only action is publishing argus.camera.v1.object_detected.
+  const ObjectsConfig objectsConfig = operator_config::resolveObjects();
+  std::unique_ptr<ObjectDetectorService> detector;
+  std::unique_ptr<CameraOperatorService> operatorService;
+  if (objectsConfig.enabled) {
+    ObjectDetectorOptions detectorOptions;
+    detectorOptions.modelDir = objectsConfig.model;
+    detectorOptions.classes = objectsConfig.classes;
+    detectorOptions.inputSize = objectsConfig.inputSize;
+    detectorOptions.confidence = objectsConfig.confidence;
+    detectorOptions.useVulkan = objectsConfig.useVulkan;
+    detector = std::make_unique<ObjectDetectorService>(detectorOptions);
+    detector->init();
+    if (detector->isLoaded()) {
+      LOG_INFO << "Object detector backend: " << detector->backend();
+      static NoKnownPersonMatcher noKnownPersonMatcher;
+      CameraOperatorService::Inputs inputs;
+      inputs.dependencies.detector = detector.get();
+      inputs.dependencies.source = &frameSource();
+      inputs.dependencies.sink = natsBus
+                                     ? static_cast<IObjectEventSink*>(
+                                           &objectEventSink(natsBus))
+                                     : nullptr;
+      if (!inputs.dependencies.sink)
+        LOG_WARN << "NATS unavailable; object_detected events dropped";
+      inputs.dependencies.matcher = &noKnownPersonMatcher;
+      inputs.objects = objectsConfig;
+      inputs.operator_ = operator_config::resolveOperator();
+      operatorService = std::make_unique<CameraOperatorService>(inputs);
+    }
+  }
+  else {
+    LOG_INFO << "Object detection disabled by configuration";
+  }
+
   RoomManager roomManagerLifecycle;
   roomManagerLifecycle.init();
 
-  drogon::app().registerBeginningAdvice([&cameraDb]() {
+  drogon::app().registerBeginningAdvice([&cameraDb, &operatorService]() {
     DbService::installExtensions();
 
     if (!DbService::runScriptFile(cameraDb.schemaPath)) {
@@ -161,12 +222,17 @@ int main()
 
     Go2rtcManager::instance().init();
     StreamHub::instance().init();
+
+    if (operatorService)
+      operatorService->start();
   });
 
   drogon::app()
       .setThreadNum(0)
       .run();
 
+  if (operatorService)
+    operatorService->stop();
   StreamHub::instance().shutdown();
   Go2rtcManager::instance().shutdown();
   roomManagerLifecycle.shutdown();

@@ -15,6 +15,11 @@ inline constexpr const char* kSyncChangeWildcard = "argus.*.v1.change";
 // legacy fan-out event (F2-2).
 inline constexpr const char* kCameraChange = "argus.camera.v1.change";
 
+// Object-detection events from the argus-camera operator (F2-3); consumed by
+// the gateway's notification budget, never re-emitted to /sync.
+inline constexpr const char* kCameraObjectDetected =
+    "argus.camera.v1.object_detected";
+
 enum class SubjectKind
 {
   Publish,

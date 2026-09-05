@@ -47,12 +47,23 @@ endif()
 
 find_package(doctest REQUIRED)
 
+# ncnn is THE objects capacity of this service (F2-3): the detector is the
+# only AI linkage here — no face/llm/vlm/tts/stt/vad code is compiled.
+set(NCNN_SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/ncnn/src)
+
 add_library(camera-core STATIC
     ${CAMERA_SRC_ROOT}/controllers/health-controller.cc
     ${CAMERA_SRC_ROOT}/controllers/camera-media-service.cc
     ${CAMERA_SRC_ROOT}/camera/camera-config.cc
     ${CAMERA_SRC_ROOT}/camera/nats-camera-change-sink.cc
     ${CAMERA_SRC_ROOT}/server/listener-config.cc
+    ${CAMERA_SRC_ROOT}/objects/ncnn-object-detector.cc
+    ${CAMERA_SRC_ROOT}/operator/camera-operator-service.cc
+    ${CAMERA_SRC_ROOT}/operator/event-intelligence.cc
+    ${CAMERA_SRC_ROOT}/operator/go2rtc-frame-source.cc
+    ${CAMERA_SRC_ROOT}/operator/nats-object-event-sink.cc
+    ${CAMERA_SRC_ROOT}/operator/object-event.cc
+    ${CAMERA_SRC_ROOT}/operator/operator-config.cc
     # Boot plumbing the service shares with the backend: the centralized
     # response config (envelope/CORS/404/405) and the SQLite layer (DbService
     # with the named identity client slot).
@@ -75,11 +86,15 @@ add_library(camera-core STATIC
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/shared/services/stream/ws-frame.cc
 )
 
+target_include_directories(camera-core SYSTEM PUBLIC
+    ${NCNN_SRC_DIR}
+    ${CMAKE_BINARY_DIR}/third_party/ncnn/src)
+
 target_include_directories(camera-core PUBLIC
     ${CAMERA_SRC_ROOT}
     ${CMAKE_CURRENT_SOURCE_DIR}/../src)
 
-target_link_libraries(camera-core PUBLIC argus_sync sqlite-vec)
+target_link_libraries(camera-core PUBLIC argus_sync sqlite-vec opencv::opencv ${ARGUS_NCNN_TARGET})
 
 target_compile_options(camera-core PRIVATE -Wall -Wextra)
 
