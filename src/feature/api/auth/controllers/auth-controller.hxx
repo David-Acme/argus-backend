@@ -6,7 +6,7 @@
 #include <drogon/utils/coroutine.h>
 #include <feature/api/auth/services/auth-service.hxx>
 
-class AuthController : public drogon::HttpController<AuthController>
+class AuthController : public drogon::HttpController<AuthController, false>
 {
 public:
   METHOD_LIST_BEGIN

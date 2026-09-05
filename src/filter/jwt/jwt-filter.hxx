@@ -16,14 +16,15 @@ struct JwtContext
   bool isActive{false};
 };
 
-class JwtFilter : public drogon::HttpCoroFilter<JwtFilter>
+class JwtFilter : public drogon::HttpCoroFilter<JwtFilter, false>
 {
 public:
   drogon::Task<drogon::HttpResponsePtr>
   doFilter(const drogon::HttpRequestPtr& req) override;
 
-private:
-  std::string extractToken(const drogon::HttpRequestPtr& req) const;
+  // Token extraction order shared with the /sync relay: header, then `token`
+  // query parameter, then cookie.
+  static std::string extractToken(const drogon::HttpRequestPtr& req);
 
   JwtService jwtService_;
   UserRepository userRepository_;

@@ -5,7 +5,7 @@
 #include <drogon/HttpResponse.h>
 #include <drogon/utils/coroutine.h>
 
-class PairingController : public drogon::HttpController<PairingController>
+class PairingController : public drogon::HttpController<PairingController, false>
 {
 public:
   METHOD_LIST_BEGIN

@@ -57,6 +57,10 @@ go2rtc.yaml
 config.toml
 labs/config.toml
 
+# argus-deploy per-installation runtime configs (instance secrets).
+argus-deploy/config.gateway.toml
+argus-deploy/config.legacy.toml
+
 # Docker local runtime: RustFS data, generated bucket name and credentials.
 # These are instance state and must be backed up outside Git.
 docker/runtime/

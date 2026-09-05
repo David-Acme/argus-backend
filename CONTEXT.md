@@ -2276,3 +2276,114 @@ bootstrap with `findLastCreated` on the `user` table (not a personal table →
 `optional::_M_is_engaged` assert. Both functions now keep the dereference
 inside the taken branch. The same ternary-with-co_await shape must not be
 reintroduced anywhere.
+
+## NATS event bus foundation (2026-09-04)
+
+Fase 1 of the migration starts here: the gateway will own `/sync`, and every
+other service publishes persisted-change events to NATS instead of calling the
+gateway. The foundation is `NatsBus` (`src/shared/wrapper/nats/`) over cnats
+(`cnats/3.13.0` via Conan; its `nats_static` target is linked PUBLIC into
+`argus_common`). The frozen subject naming lives in `argus-contracts/subjects.md`
+(`argus.<domain>.v1.<event>`; the concrete `/sync` subject is
+`argus.sync.v1.change` with the `SocketEmitDto` payload shape
+`{operation, option, info}`, and the gateway subscribes with the frozen
+wildcard `argus.*.v1.change` — tail-only `>` was ruled out because a
+mid-subject `>` needs nats-server 2.10+, so the convention keeps every
+subject valid on any server version).
+
+`NatsBus` keeps no owning raw pointers: cnats handles (`natsConnection`,
+`natsOptions`, `natsSubscription`) sit behind `std::unique_ptr` with custom
+deleters, and the C-library callback resolves its handler through a map keyed
+by the subscription handle. Subscriptions registered before `connect()` stay
+pending and activate once the connection is up, because `ServiceRegistry`
+initializes services in parallel before the bus is guaranteed to be connected.
+`connect()` blocks until the first connection result (it must be reached via
+`BlockingTask` from coroutines, never on a Drogon IO thread), while
+`publish()`/`subscribe()` are cheap; handlers run on cnats worker threads and
+must marshal into the loop for UI/sync work. `drain()` is idempotent and
+releases every handler before closing. Config keys: `[nats] url`,
+`reconnect_wait_ms`, `max_reconnects`, all optional
+(`nats://127.0.0.1:4222`, 2000, 60). The optional live test needs a local
+nats-server exported as `ARGUS_TEST_NATS_URL`; without it the suite prints SKIP
+and exits 0, mirroring the golden-sync pattern.
+
+## Fase 1 cutover — gateway public listener, legacy internal (F1-5, 2026-09-04)
+
+The strangler cutover is in place: the argus-gateway takes the public TLS 7024
+listener (the same instance CA the app pins, same `[cert]`/`[mdns]` keys) and
+proxies everything it does not own to the legacy backend on an internal plain
+listener (`[[drogon.listeners]] port 7025` — config-gated, zero legacy code
+moved). The backend code change this phase is additive only (Ruling H below);
+the A/B probe matrix
+(`argus-gateway/tools/probe-identity-matrix.sh`, unauthenticated runs) re-run
+against the booted modified backend is byte-identical to the committed
+captures (01–09, 11, 20–24; the JWT-authenticated captures differ only in the
+auth outcome of the no-token run, same conclusion as F1-4).
+
+- **Ruling G — sync reads of identity-owned tables hit `DbService::client()`.**
+  The syncable identity-owned set was verified from the code: `user`,
+  `person`, `user_invitation` (the SynchronizedService repo list vs the
+  identity schema). Their sync read methods (`find`, `findDeleted`,
+  `findLast`, `findLastDeleted` in user/person/user-invitation repositories)
+  moved from `readOnlyClient()` back to `client()`: on the gateway
+  `client()` is identity.db (fresh rows), on the backend
+  `readOnlyClient()` falls back to `client()` (same argus.db — byte-identical).
+  Non-identity sync tables keep the read-only argus.db path.
+- **Ruling S — audit sync reads follow the audit writes (F1-7 adjudication of
+  the audit's MAJOR 1).**
+  The app's offline audit-cursor pages (`sync_audit_log`/`sync_user_audit_log`
+  message types over `/sync`, backed by the `audit_log`/`user_audit_log`
+  tables) joined the Ruling G set: `AuditLogRepository`/`UserAuditLogRepository`
+  `findSync`/`findLastSync` moved from `readOnlyClient()` to `client()` with
+  the same mechanism (backend no-op via fallback; gateway resolves them to
+  identity.db). Without this the gateway wrote identity-scope audit into
+  identity.db while those pages replayed from argus.db read-only, so the app's
+  audit view froze at the cutover. The audit.db split stays a Fase-2 item.
+- **Ruling H — legacy user-row reads resolve to identity.db when configured
+  (transitional).**
+  `DbService::identityClient()`/`setIdentityClient()` (additive named
+  read-only client; falls back to `client()` when not installed) is used by
+  exactly two read sites: `UserRepository::findById` and
+  `RefreshTokenRepository::findByAccessToken`. `UserRepository::findById` is
+  the shared user-row lookup, so the redirect rides every caller of it, not
+  only the JWT filter: auth-service (register/login, device approve, facial
+  challenge, refresh/me), jwt-filter (the per-request auth read),
+  sync-service and sync-media-service (socket context + voice greeting),
+  user-feature-service and portrait-preview-service (gateway-native `/user`
+  routes), project-member-feature-service and calendar-event-share-feature-
+  service (target-user existence checks on proxied routes), and
+  user-repository's own post-update re-reads. `Application::run()` opens
+  `[identity] db` (`file:...?mode=ro`) when the key is configured; without it
+  (pre-cutover) nothing changes. This is what lets the legacy accept
+  gateway-minted tokens on proxied requests (proven live: gateway-minted JWT
+  accepted by the legacy `JwtFilter` through the reverse proxy and directly)
+  and what keeps proxied project-member/share target checks from rejecting
+  gateway-only users against stale argus.db rows.
+- **Divergence ledger (intentional, later phase):**
+  (1) post-cutover, legacy reads of `user`/`person` rows outside the
+  Ruling H redirect still read argus.db, which no longer receives identity
+  writes — display data in legacy domains may go stale. The redirected
+  `UserRepository::findById` callers, adjudicated: jwt-filter, sync-service,
+  sync-media-service, project-member/share target checks and the repository's
+  post-update re-reads are read-only row checks, and identity.db is the
+  authoritative user store post-cutover (F1-3 migration plus all
+  post-cutover identity writes), so the row a check looks for exists there;
+  auth-service, user-feature-service and portrait-preview-service are
+  gateway-native post-cutover, so on the legacy they are only reachable by a
+  direct internal-listener call the app cannot make. The `person` table has
+  no such redirect: legacy sync reads of `person` see stale/empty rows (e.g.
+  register-side person lookups no longer run on the legacy);
+  (2) the legacy keeps its identity controllers and its `/sync` endpoint in
+  the binary (Ruling J — the `/sync` endpoint is the relay target and the
+  proxy never forwards gateway-native paths; the binary strip is a
+  later-phase task);
+  (3) header ORDER of the CORS block differs between gateway-served
+  (gateway post-handling order) and direct-legacy responses; the header set
+  and values are identical, and no client behavior depends on order.
+- **Cutover runtime shape** (verified in the two-process acceptance run):
+  gateway `config.toml.example` now documents `[gateway]`
+  (host/port/plain/min_protocol), `[identity]`, `[legacy]`
+  (`sync_url` re-targeted to the internal listener, `proxy_url`, `db`), and
+  shares the SAME `certs/` directory as the legacy (Ruling K); the backend
+  `config.toml.example` documents the transitional `[identity] db` key.
+  mDNS stays gateway-only in the cutover config (legacy `mdns.enabled=false`).

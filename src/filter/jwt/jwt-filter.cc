@@ -74,7 +74,7 @@ JwtFilter::doFilter(const drogon::HttpRequestPtr& req)
   co_return drogon::HttpResponsePtr{};
 }
 
-std::string JwtFilter::extractToken(const drogon::HttpRequestPtr& req) const
+std::string JwtFilter::extractToken(const drogon::HttpRequestPtr& req)
 {
   const auto auth = req->getHeader("Authorization");
   if (!auth.empty()) {

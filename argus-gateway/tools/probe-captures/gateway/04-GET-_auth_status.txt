@@ -1,0 +1,11 @@
+HTTP-STATUS 401
+content-type: application/json; charset=utf-8
+-- body
+{
+ "errors": {
+  "code": "UNAUTHORIZED",
+  "message": "Missing authorization token"
+ },
+ "info": null,
+ "status": 401
+}

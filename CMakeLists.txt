@@ -18,62 +18,28 @@ find_package(tomlplusplus REQUIRED)
 find_package(OpenSSL REQUIRED)
 find_package(mdns CONFIG REQUIRED)
 find_package(qr-code-generator CONFIG REQUIRED)
+find_package(cnats CONFIG REQUIRED)
 find_path(RNNOISE_INCLUDE_DIR NAMES rnnoise.h)
 find_library(RNNOISE_LIBRARY NAMES rnnoise)
 
 add_subdirectory(third_party)
 
-set(ARGUS_COMMON_SOURCES
-    ${SRC_ROOT}/shared/enums.hxx
-    ${SRC_ROOT}/shared/access/role-access.hxx
-    ${SRC_ROOT}/shared/validation/rules.hxx
-    ${SRC_ROOT}/shared/validation/validation_dsl.hxx
-    ${SRC_ROOT}/shared/validation/validator.hxx
-    ${SRC_ROOT}/shared/exceptions/response-exception.hxx
-    ${SRC_ROOT}/shared/wrapper/api-response/api-response.cc
-    ${SRC_ROOT}/shared/wrapper/api-response/api-response.hxx
-    ${SRC_ROOT}/shared/wrapper/thread-budget/thread-budget.cc
-    ${SRC_ROOT}/shared/wrapper/thread-budget/thread-budget.hxx
-    ${SRC_ROOT}/shared/wrapper/blocking-task/blocking-task.hxx
-    ${SRC_ROOT}/shared/wrapper/cancellation/cancellation-token.hxx
-    ${SRC_ROOT}/shared/wrapper/hardware-profile/hardware-profile.cc
-    ${SRC_ROOT}/shared/wrapper/hardware-profile/hardware-profile.hxx
-    ${SRC_ROOT}/shared/services/config-service/config-service.cc
-    ${SRC_ROOT}/shared/services/config-service/config-service.hxx
-    ${SRC_ROOT}/shared/utils/schema-runner/schema-runner.cc
-    ${SRC_ROOT}/shared/utils/schema-runner/schema-runner.hxx
-)
-
-add_library(argus_common STATIC ${ARGUS_COMMON_SOURCES})
-
-target_include_directories(argus_common PUBLIC ${SRC_ROOT})
-
-target_link_libraries(argus_common
-    PUBLIC
-        Drogon::Drogon
-        tomlplusplus::tomlplusplus
-)
-
-if(ARGUS_NCNN_TARGET AND TARGET ${ARGUS_NCNN_TARGET})
-    target_link_libraries(argus_common PUBLIC ${ARGUS_NCNN_TARGET})
-endif()
-
-foreach(_tomlplusplus_include_var
-        tomlplusplus_INCLUDE_DIRS_RELEASE
-        tomlplusplus_INCLUDE_DIRS_DEBUG
-        tomlplusplus_INCLUDE_DIRS)
-    if(DEFINED ${_tomlplusplus_include_var})
-        target_include_directories(argus_common SYSTEM PUBLIC
-            ${${_tomlplusplus_include_var}})
-    endif()
-endforeach()
-
-target_compile_options(argus_common PRIVATE -Wall -Wextra)
+add_subdirectory(src/shared)
+add_subdirectory(src/identity)
+add_subdirectory(src/sync)
 
 enable_testing()
 
 add_subdirectory(${SRC_ROOT}/test/unit ${CMAKE_BINARY_DIR}/test/unit)
 add_subdirectory(${SRC_ROOT}/test/e2e ${CMAKE_BINARY_DIR}/test/e2e)
+
+# argus-gateway service: built on demand, never as part of the default
+# backend build.
+add_subdirectory(argus-gateway EXCLUDE_FROM_ALL)
+
+# Data migration tools: the CLI is built on demand, never as part of the
+# default backend build.
+add_subdirectory(tools/migrate-identity EXCLUDE_FROM_ALL)
 
 option(ARGUS_BUILD_LABS "Build backend integration and verification labs" ON)
 
@@ -103,10 +69,6 @@ file(GLOB_RECURSE API_SRC
     ${SRC_ROOT}/feature/api/**/*.cc
 )
 
-file(GLOB_RECURSE SOCKET_SRC
-    ${SRC_ROOT}/feature/socket/**/*.cc
-)
-
 file(GLOB_RECURSE FILTER_SRC
     ${SRC_ROOT}/filter/**/*.cc
 )
@@ -115,12 +77,98 @@ file(GLOB_RECURSE SHARED_SRC
     ${SRC_ROOT}/shared/**/*.cc
 )
 
+file(GLOB_RECURSE IDENTITY_API_SRC
+    ${SRC_ROOT}/feature/api/auth/*.cc
+    ${SRC_ROOT}/feature/api/invitation/*.cc
+    ${SRC_ROOT}/feature/api/pairing/*.cc
+    ${SRC_ROOT}/feature/api/user/*.cc
+)
+
+list(REMOVE_ITEM API_SRC ${IDENTITY_API_SRC})
+list(REMOVE_ITEM FILTER_SRC
+    ${SRC_ROOT}/filter/device/device-filter.cc
+    ${SRC_ROOT}/filter/jwt/jwt-filter.cc
+    ${SRC_ROOT}/filter/role/role-filter.cc
+    ${SRC_ROOT}/filter/valid-json/valid-json-filter.cc
+)
+list(REMOVE_ITEM CONFIG_SRC
+    ${SRC_ROOT}/config/app-config.cc
+)
+
 list(REMOVE_ITEM SHARED_SRC
     ${SRC_ROOT}/shared/wrapper/api-response/api-response.cc
     ${SRC_ROOT}/shared/wrapper/thread-budget/thread-budget.cc
     ${SRC_ROOT}/shared/wrapper/hardware-profile/hardware-profile.cc
+    ${SRC_ROOT}/shared/wrapper/nats/nats-bus.cc
     ${SRC_ROOT}/shared/services/config-service/config-service.cc
     ${SRC_ROOT}/shared/utils/schema-runner/schema-runner.cc
+    ${SRC_ROOT}/shared/dtos/socket-emit/socket-emit-dto.cc
+    ${SRC_ROOT}/shared/repositories/camera/camera-repository.cc
+    ${SRC_ROOT}/shared/repositories/camera-stream/camera-stream-repository.cc
+    ${SRC_ROOT}/shared/repositories/zone/zone-repository.cc
+    ${SRC_ROOT}/shared/repositories/reminder/reminder-repository.cc
+    ${SRC_ROOT}/shared/repositories/reminder-detail/reminder-detail-repository.cc
+    ${SRC_ROOT}/shared/repositories/calendar-event/calendar-event-repository.cc
+    ${SRC_ROOT}/shared/repositories/calendar-event-share/calendar-event-share-repository.cc
+    ${SRC_ROOT}/shared/repositories/project/project-repository.cc
+    ${SRC_ROOT}/shared/repositories/project-member/project-member-repository.cc
+    ${SRC_ROOT}/shared/repositories/project-task/project-task-repository.cc
+    ${SRC_ROOT}/shared/repositories/event/event-repository.cc
+    ${SRC_ROOT}/shared/repositories/notification/notification-repository.cc
+    ${SRC_ROOT}/shared/schemas/camera/camera-schema.cc
+    ${SRC_ROOT}/shared/schemas/camera-stream/camera-stream-schema.cc
+    ${SRC_ROOT}/shared/schemas/zone/zone-schema.cc
+    ${SRC_ROOT}/shared/schemas/reminder/reminder-schema.cc
+    ${SRC_ROOT}/shared/schemas/reminder-detail/reminder-detail-schema.cc
+    ${SRC_ROOT}/shared/schemas/calendar-event/calendar-event-schema.cc
+    ${SRC_ROOT}/shared/schemas/calendar-event-share/calendar-event-share-schema.cc
+    ${SRC_ROOT}/shared/schemas/project/project-schema.cc
+    ${SRC_ROOT}/shared/schemas/project-member/project-member-schema.cc
+    ${SRC_ROOT}/shared/schemas/project-task/project-task-schema.cc
+    ${SRC_ROOT}/shared/schemas/event/event-schema.cc
+    ${SRC_ROOT}/shared/schemas/person-event/person-event-schema.cc
+    ${SRC_ROOT}/shared/schemas/notification/notification-schema.cc
+    ${SRC_ROOT}/shared/repositories/audit-log/audit-log-repository.cc
+    ${SRC_ROOT}/shared/repositories/device-login-challenge/device-login-challenge-repository.cc
+    ${SRC_ROOT}/shared/repositories/face-embedding/face-embedding-repository.cc
+    ${SRC_ROOT}/shared/repositories/person/person-repository.cc
+    ${SRC_ROOT}/shared/repositories/portrait-preview-capability/portrait-preview-capability-repository.cc
+    ${SRC_ROOT}/shared/repositories/refresh-token/refresh-token-repository.cc
+    ${SRC_ROOT}/shared/repositories/stored-file/stored-file-repository.cc
+    ${SRC_ROOT}/shared/repositories/user-action-log/user-action-log-repository.cc
+    ${SRC_ROOT}/shared/repositories/user-audit-log/user-audit-log-repository.cc
+    ${SRC_ROOT}/shared/repositories/user-invitation/user-invitation-repository.cc
+    ${SRC_ROOT}/shared/repositories/user-portrait/user-portrait-repository.cc
+    ${SRC_ROOT}/shared/repositories/user/user-repository.cc
+    ${SRC_ROOT}/shared/repositories/vector-index/vector-index-repository.cc
+    ${SRC_ROOT}/shared/schemas/audit-log/audit-log-schema.cc
+    ${SRC_ROOT}/shared/schemas/device-login-challenge/device-login-challenge-schema.cc
+    ${SRC_ROOT}/shared/schemas/face-embedding/face-embedding-schema.cc
+    ${SRC_ROOT}/shared/schemas/person/person-schema.cc
+    ${SRC_ROOT}/shared/schemas/portrait-preview-capability/portrait-preview-capability-schema.cc
+    ${SRC_ROOT}/shared/schemas/refresh-token/refresh-token-schema.cc
+    ${SRC_ROOT}/shared/schemas/stored-file/stored-file-schema.cc
+    ${SRC_ROOT}/shared/schemas/user-action-log/user-action-log-schema.cc
+    ${SRC_ROOT}/shared/schemas/user-audit-log/user-audit-log-schema.cc
+    ${SRC_ROOT}/shared/schemas/user-invitation/user-invitation-schema.cc
+    ${SRC_ROOT}/shared/schemas/user-portrait/user-portrait-schema.cc
+    ${SRC_ROOT}/shared/schemas/user/user-schema.cc
+    ${SRC_ROOT}/shared/services/audit-log/audit-log-service.cc
+    ${SRC_ROOT}/shared/services/cert/cert-service.cc
+    ${SRC_ROOT}/shared/services/face/face-db.cc
+    ${SRC_ROOT}/shared/services/face/face-service.cc
+    ${SRC_ROOT}/shared/services/jwt/jwt-service.cc
+    ${SRC_ROOT}/shared/services/mdns/mdns-service.cc
+    ${SRC_ROOT}/shared/services/room/room-manager.cc
+    ${SRC_ROOT}/shared/services/socket/socket-service.cc
+    ${SRC_ROOT}/shared/services/sqlite/db-service.cc
+    ${SRC_ROOT}/shared/services/sqlite/vec-db.cc
+    ${SRC_ROOT}/shared/services/storage/private-portrait-service.cc
+    ${SRC_ROOT}/shared/services/storage/s3-storage-service.cc
+    ${SRC_ROOT}/shared/services/sync-audit/sync-audit-service.cc
+    ${SRC_ROOT}/shared/services/user-action-log/user-action-log-service.cc
+    ${SRC_ROOT}/shared/services/user-audit-log/user-audit-log-service.cc
+    ${SRC_ROOT}/shared/utils/json-diff/json-diff.cc
 )
 
 add_executable(${PROJECT_NAME}
@@ -160,11 +208,13 @@ target_sources(${PROJECT_NAME}
         ${API_SRC}
         ${FILTER_SRC}
         ${SHARED_SRC}
-        ${SOCKET_SRC}
 )
 
 target_link_libraries(${PROJECT_NAME}
     PRIVATE
+        argus_identity
+        argus_sync
+        argus_sync_media
         argus_common
         Drogon::Drogon
         jwt-cpp::jwt-cpp

@@ -98,7 +98,7 @@ drogon::Task<bool> CalendarEventShareRepository::remove(int64_t id) const
 drogon::Task<std::vector<Json::Value>>
 CalendarEventShareRepository::find(const SyncFilter& filter) const
 {
-  auto client = DbService::client();
+  auto client = DbService::readOnlyClient();
   const auto [query, args] = sync_query::withUser(
       sync_query::buildSyncQuery(filter, FIND, FIND_FROM, FIND_ALL, FIND_AFTER,
                                  FIND_AFTER_FROM),
@@ -115,7 +115,7 @@ CalendarEventShareRepository::find(const SyncFilter& filter) const
 drogon::Task<std::vector<Json::Value>>
 CalendarEventShareRepository::findDeleted(const SyncFilter& filter) const
 {
-  auto client = DbService::client();
+  auto client = DbService::readOnlyClient();
   const auto [query, args] = sync_query::withUser(
       sync_query::buildSyncQuery(filter, FIND_DELETED, FIND_DELETED_FROM,
                                  FIND_DELETED_ALL, FIND_DELETED_AFTER,
@@ -133,7 +133,7 @@ CalendarEventShareRepository::findDeleted(const SyncFilter& filter) const
 drogon::Task<std::optional<Json::Value>>
 CalendarEventShareRepository::findLast(const SyncFilter& filter) const
 {
-  auto client = DbService::client();
+  auto client = DbService::readOnlyClient();
   const auto userId = filter.userId.value_or(0);
   const auto result =
       co_await client->execSqlCoro(FIND_LAST.data(), userId, userId);
@@ -145,7 +145,7 @@ CalendarEventShareRepository::findLast(const SyncFilter& filter) const
 drogon::Task<std::optional<Json::Value>>
 CalendarEventShareRepository::findLastDeleted(const SyncFilter& filter) const
 {
-  auto client = DbService::client();
+  auto client = DbService::readOnlyClient();
   const auto userId = filter.userId.value_or(0);
   const auto result =
       co_await client->execSqlCoro(FIND_LAST_DELETED.data(), userId, userId);

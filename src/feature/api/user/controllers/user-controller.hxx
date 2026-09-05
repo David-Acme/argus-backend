@@ -6,7 +6,7 @@
 #include <drogon/utils/coroutine.h>
 #include <feature/api/user/services/user-feature-service.hxx>
 
-class UserController : public drogon::HttpController<UserController>
+class UserController : public drogon::HttpController<UserController, false>
 {
 public:
   METHOD_LIST_BEGIN

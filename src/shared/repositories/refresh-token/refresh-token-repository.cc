@@ -45,7 +45,7 @@ drogon::Task<std::optional<RefreshTokenSchema>>
 RefreshTokenRepository::findByAccessToken(int64_t userId,
                                           const std::string& accessToken) const
 {
-  auto client = DbService::client();
+  auto client = DbService::identityClient();
   const auto result = co_await client->execSqlCoro(
 
       FIND_BY_ACCESS_TOKEN.data(), userId, accessToken);

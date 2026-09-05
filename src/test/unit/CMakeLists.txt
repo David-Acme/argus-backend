@@ -6,6 +6,9 @@ set(UNIT_TESTS
     role-access-test
     thread-budget-test
     validation-dsl-test
+    nats-wrapper-test
+    sync-change-test
+    identity-migration-test
 )
 
 foreach(TEST_NAME IN LISTS UNIT_TESTS)
@@ -17,6 +20,16 @@ foreach(TEST_NAME IN LISTS UNIT_TESTS)
 
     add_test(NAME ${TEST_NAME} COMMAND ${TEST_NAME})
 endforeach()
+
+target_link_libraries(identity-migration-test PRIVATE identity-migration)
+
+add_executable(identity-client-test identity-client-test.cc
+    ${SRC_ROOT}/shared/services/sqlite/db-service.cc)
+
+target_link_libraries(identity-client-test PRIVATE argus_common Drogon::Drogon
+    sqlite-vec doctest::doctest)
+
+add_test(NAME identity-client-test COMMAND identity-client-test)
 
 get_target_property(DOCTEST_INCLUDE_DIRS doctest::doctest
                     INTERFACE_INCLUDE_DIRECTORIES)

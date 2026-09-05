@@ -11,7 +11,7 @@ struct DeviceContext
   std::string ip;
 };
 
-class DeviceFilter : public drogon::HttpCoroFilter<DeviceFilter>
+class DeviceFilter : public drogon::HttpCoroFilter<DeviceFilter, false>
 {
 public:
   drogon::Task<drogon::HttpResponsePtr>

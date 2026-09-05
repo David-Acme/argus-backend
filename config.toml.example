@@ -72,6 +72,13 @@ trusted_proxy_ips = ""
 [database]
 file = "./database/argus.db"
 
+# Transitional cutover key (F1-5): identity database opened read-only for the
+# legacy JwtFilter's refresh-token and user lookups, so proxied authenticated
+# requests validate against the gateway-minted identity rows. Empty keeps the
+# pre-cutover behavior (auth reads use the default argus.db client).
+# [identity]
+# db = ""
+
 [conversation]
 history_messages = 41
 
@@ -240,3 +247,8 @@ lexicon_min_coverage = 0.6
 threads = 0
 n_ctx = 2048
 max_tokens = 512
+
+[nats]
+url = "nats://127.0.0.1:4222"
+reconnect_wait_ms = 2000
+max_reconnects = 60

@@ -4,7 +4,7 @@
 #include <drogon/utils/coroutine.h>
 #include <string>
 
-class RoleFilter : public drogon::HttpCoroFilter<RoleFilter>
+class RoleFilter : public drogon::HttpCoroFilter<RoleFilter, false>
 {
 public:
   drogon::Task<drogon::HttpResponsePtr>

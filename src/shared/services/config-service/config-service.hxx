@@ -15,6 +15,12 @@ public:
   static void load(const std::string& path);
   static void loadOverlay(const std::string& path);
 
+  // In-memory-only override consulted by every getter (a process-wide value
+  // set at boot, e.g. a service redirecting the shared SQLite path); never
+  // persisted back to the config file.
+  static void setRuntimeString(const std::string& keyPath,
+                               const std::string& value);
+
   static std::string getString(const std::string& keyPath);
   static int getInt(const std::string& keyPath);
   static bool getBool(const std::string& keyPath);

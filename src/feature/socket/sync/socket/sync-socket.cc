@@ -37,10 +37,11 @@ void SyncSocket::handleNewMessage(const drogon::WebSocketConnectionPtr& conn,
   LOG_INFO << "SyncSocket: text " << message.substr(0, 120);
 
   auto* self = this;
-  drogon::async_run([self, conn, json = std::move(json)]() mutable
+  drogon::async_run([self, conn, json = std::move(json),
+                     raw = std::move(message)]() mutable
                     -> drogon::Task<> {
     try {
-      co_await self->service_.handleMessage(conn, json);
+      co_await self->service_.handleMessage(conn, json, raw);
     }
     catch (const ValidationException& ex) {
       Json::Value errResp;
@@ -84,4 +85,9 @@ void SyncSocket::handleConnectionClosed(
     const drogon::WebSocketConnectionPtr& conn)
 {
   service_.handleDisconnect(conn);
+}
+
+void SyncSocket::setForwarder(std::shared_ptr<SyncForwarder> forwarder)
+{
+  service_.setForwarder(std::move(forwarder));
 }

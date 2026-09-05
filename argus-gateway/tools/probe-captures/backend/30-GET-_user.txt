@@ -1,0 +1,24 @@
+HTTP-STATUS 200
+content-type: application/json; charset=utf-8
+access-control-allow-headers: Content-Type, Authorization, Accept
+access-control-allow-methods: GET, POST, PATCH, PUT, DELETE, OPTIONS
+access-control-allow-origin: *
+-- body
+{
+ "errors": null,
+ "info": [
+  {
+   "createdAt": "<timestamp>",
+   "deletedAt": null,
+   "id": 1,
+   "isActive": true,
+   "lang": "es",
+   "lastName": "Lovelace",
+   "name": "Ada",
+   "role": "owner",
+   "syncAt": "<timestamp>",
+   "updatedAt": "<timestamp>"
+  }
+ ],
+ "status": 200
+}

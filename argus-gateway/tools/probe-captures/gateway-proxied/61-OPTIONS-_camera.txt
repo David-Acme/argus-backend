@@ -1,0 +1,7 @@
+HTTP-STATUS 200
+access-control-allow-origin: *
+access-control-allow-methods: GET, POST, PATCH, PUT, DELETE, OPTIONS
+access-control-allow-headers: Content-Type, Authorization, Accept
+content-type: text/html; charset=utf-8
+-- body
+

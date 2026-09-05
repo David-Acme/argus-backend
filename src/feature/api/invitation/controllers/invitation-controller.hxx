@@ -6,7 +6,7 @@
 #include <drogon/utils/coroutine.h>
 #include <feature/api/invitation/services/invitation-feature-service.hxx>
 
-class InvitationController : public drogon::HttpController<InvitationController>
+class InvitationController : public drogon::HttpController<InvitationController, false>
 {
 public:
   METHOD_LIST_BEGIN

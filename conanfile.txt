@@ -1,5 +1,6 @@
 [requires]
 drogon/1.9.13
+sqlite3/[>=3.45.0 <4]
 mdns/1.4.3
 jwt-cpp/0.7.2
 nlohmann_json/3.11.3
@@ -7,6 +8,7 @@ opencv/4.13.0
 onnxruntime/1.24.4
 tomlplusplus/3.3.0
 qr-code-generator/1.8.0
+cnats/3.13.0
 doctest/2.4.12
 
 [options]

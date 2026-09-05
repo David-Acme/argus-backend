@@ -1,0 +1,14 @@
+HTTP-STATUS 502
+access-control-allow-origin: *
+access-control-allow-methods: GET, POST, PATCH, PUT, DELETE, OPTIONS
+access-control-allow-headers: Content-Type, Authorization, Accept
+content-type: application/json; charset=utf-8
+-- body
+{
+ "errors": {
+  "code": "CAMERA_UNREACHABLE",
+  "message": "no credentials configured"
+ },
+ "info": null,
+ "status": 502
+}

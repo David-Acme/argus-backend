@@ -25,7 +25,7 @@ sync_query::SyncQueryParts scopedToUser(sync_query::SyncQueryParts parts,
 drogon::Task<std::optional<UserSchema>>
 UserRepository::findById(int64_t id) const
 {
-  auto client = DbService::client();
+  auto client = DbService::identityClient();
   const auto result = co_await client->execSqlCoro(FIND_BY_ID.data(), id);
 
   if (result.empty())

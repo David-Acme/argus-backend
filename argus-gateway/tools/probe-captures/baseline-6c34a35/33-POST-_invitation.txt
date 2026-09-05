@@ -1,0 +1,21 @@
+HTTP-STATUS 200
+content-type: application/json; charset=utf-8
+access-control-allow-headers: Content-Type, Authorization, Accept
+access-control-allow-methods: GET, POST, PATCH, PUT, DELETE, OPTIONS
+access-control-allow-origin: *
+-- body
+{
+ "errors": null,
+ "info": {
+  "createdAt": "<timestamp>",
+  "createdBy": 1,
+  "expiresAt": "<timestamp>",
+  "id": 1,
+  "maxRedemptions": 2,
+  "redemptionCount": 0,
+  "revokedAt": "<timestamp>",
+  "role": "guest",
+  "token": "<redacted>"
+ },
+ "status": 200
+}
