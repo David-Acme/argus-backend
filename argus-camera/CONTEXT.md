@@ -64,3 +64,10 @@ preset, own `camera.db`.
 - **What stays away**: no camera-control routes (ptz/preset/settings/status/
   presets/capabilities/talk stay on the legacy — Ruling X), no voice path,
   no alarm-triggering code, no AI symbols.
+
+## Build wiring (decisions)
+
+- The canonical camera-service builds are the ROOT presets
+  (`cmake --build --preset camera` / `--preset camera-prod`): they reuse the
+  root Conan cache. The standalone `argus-camera/` build directory goes stale
+  on new `conanfile.txt` requires until `conan install` is re-run there.
