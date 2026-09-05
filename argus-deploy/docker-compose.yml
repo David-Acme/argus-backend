@@ -168,6 +168,8 @@ services:
     depends_on:
       nats:
         condition: service_healthy
+      gateway:
+        condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "curl -fs http://127.0.0.1:7026/health >/dev/null"]
       interval: 10s
