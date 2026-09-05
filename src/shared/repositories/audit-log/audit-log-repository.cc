@@ -96,7 +96,7 @@ AuditLogRepository::findSync(const AuditLogSyncFilter& filter) const
   if (filter.tableNames.empty())
     co_return {};
 
-  auto client = DbService::readOnlyClient();
+  auto client = DbService::client();
   const std::string placeholders = buildInPlaceholders(filter.tableNames.size());
 
   std::vector<std::string> args;
@@ -143,7 +143,7 @@ AuditLogRepository::findLastSync(const AuditLogSyncFilter& filter) const
   if (filter.tableNames.empty())
     co_return std::nullopt;
 
-  auto client = DbService::readOnlyClient();
+  auto client = DbService::client();
   const std::string placeholders = buildInPlaceholders(filter.tableNames.size());
 
   std::vector<std::string> args;

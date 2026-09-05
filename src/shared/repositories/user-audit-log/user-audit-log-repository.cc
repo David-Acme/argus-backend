@@ -58,7 +58,7 @@ drogon::Task<void> UserAuditLogRepository::remove(int64_t id) const
 drogon::Task<std::vector<Json::Value>>
 UserAuditLogRepository::findSync(const UserAuditLogSyncFilter& filter) const
 {
-  auto client = DbService::readOnlyClient();
+  auto client = DbService::client();
   if (filter.afterId) {
     std::vector<Json::Value> data;
     if (filter.endId) {
@@ -115,7 +115,7 @@ UserAuditLogRepository::findSync(const UserAuditLogSyncFilter& filter) const
 drogon::Task<std::optional<Json::Value>>
 UserAuditLogRepository::findLastSync(const UserAuditLogSyncFilter& filter) const
 {
-  auto client = DbService::readOnlyClient();
+  auto client = DbService::client();
   const auto result =
       co_await client->execSqlCoro(FIND_LAST_SYNC.data(), filter.userId);
   if (result.empty())

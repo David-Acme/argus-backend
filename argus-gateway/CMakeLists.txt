@@ -81,6 +81,16 @@ target_link_libraries(gateway-test PRIVATE gateway-core doctest::doctest)
 
 target_compile_options(gateway-test PRIVATE -Wall -Wextra)
 
+add_executable(audit-sync-read-test
+               ${CMAKE_CURRENT_SOURCE_DIR}/tests/audit-sync-read-test.cc)
+
+target_include_directories(audit-sync-read-test PRIVATE ${GATEWAY_SRC_ROOT})
+
+target_link_libraries(audit-sync-read-test PRIVATE gateway-core
+                                                   doctest::doctest)
+
+target_compile_options(audit-sync-read-test PRIVATE -Wall -Wextra)
+
 get_target_property(DOCTEST_INCLUDE_DIRS doctest::doctest
                     INTERFACE_INCLUDE_DIRECTORIES)
 if(DOCTEST_INCLUDE_DIRS)
@@ -93,4 +103,5 @@ endif()
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     enable_testing()
     add_test(NAME gateway-test COMMAND gateway-test)
+    add_test(NAME audit-sync-read-test COMMAND audit-sync-read-test)
 endif()
