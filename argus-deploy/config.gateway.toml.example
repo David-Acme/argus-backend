@@ -66,6 +66,12 @@ sync_url = "ws://127.0.0.1:7025/sync"
 proxy_url = "http://127.0.0.1:7025"
 db = "database/argus.db"
 
+[camera]
+# F2-2 cutover: argus-camera owns the camera domain (Rulings X/Y/Z).
+sync_url = "ws://127.0.0.1:7026/sync"
+proxy_url = "http://127.0.0.1:7026"
+db = "database/camera.db"
+
 # Same cert paths as the legacy (transitional shared directory): the app's
 # pinned CA is byte-identical, and CertService runs here with the same keys.
 [cert]

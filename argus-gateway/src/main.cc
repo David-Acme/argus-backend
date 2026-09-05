@@ -15,7 +15,7 @@
 #include <shared/services/room/room-manager.hxx>
 #include <shared/services/sqlite/db-service.hxx>
 #include <shared/wrapper/nats/nats-bus.hxx>
-#include <sync/sync-fan-out.hxx>
+#include <sync/camera-fan-out.hxx>
 #include <sync/sync-registrar.hxx>
 #include <sync/sync-relay.hxx>
 #include <unistd.h>
@@ -62,6 +62,22 @@ Json::Value drogonConfig(const IdentityDbConfig& identityDb,
     for (const auto& prefix : proxy.exclusions)
       exclusions.append(prefix);
     proxyConfig["exclusions"] = exclusions;
+    if (!proxy.cameraProxyUrl.empty()) {
+      // Ruling X routing split: the two-segment /camera and /zone CRUD goes
+      // to argus-camera; the deeper control paths (/camera/{id}/ptz, preset,
+      // settings, status, presets, capabilities, talk) miss the segment cap
+      // and fall through to the legacy backend.
+      Json::Value routes(Json::arrayValue);
+      Json::Value cameraRoute(Json::objectValue);
+      Json::Value prefixes(Json::arrayValue);
+      prefixes.append("/camera");
+      prefixes.append("/zone");
+      cameraRoute["prefixes"] = prefixes;
+      cameraRoute["max_segments"] = 2;
+      cameraRoute["backend"] = proxy.cameraProxyUrl;
+      routes.append(cameraRoute);
+      proxyConfig["routes"] = routes;
+    }
     proxyConfig["pipelining"] = 16;
     proxyConfig["connection_factor"] = 1;
     proxyPlugin["config"] = proxyConfig;
@@ -126,13 +142,28 @@ int main()
            << " controllers, " << identity.filters << " filters";
 
   const LegacySyncConfig legacySync = LegacySyncConfig::resolve();
-  const SyncRegistrationStats sync = registerSyncSurface(
-      std::make_shared<LegacySyncRelay>(legacySync));
+  const CameraSyncConfig cameraSync = CameraSyncConfig::resolve();
+  // F2-2 relay split: camera:* frames relay to argus-camera, voice:* and raw
+  // binary stay with the legacy (talk is TTS-load-bearing there until
+  // Fase 4). A missing leg collapses to a single relay.
+  std::shared_ptr<SyncForwarder> relay;
+  if (!cameraSync.syncUrl.empty()) {
+    relay = std::make_shared<CompositeSyncRelay>(
+        std::make_shared<LegacySyncRelay>(cameraSync.syncUrl),
+        std::make_shared<LegacySyncRelay>(legacySync.syncUrl));
+  }
+  else {
+    relay = std::make_shared<LegacySyncRelay>(legacySync);
+  }
+  const SyncRegistrationStats sync = registerSyncSurface(relay);
   LOG_INFO << "Sync surface registered: " << sync.controllers << " controller, "
            << sync.filters << " filters"
            << (legacySync.syncUrl.empty()
                    ? " (relay disabled)"
-                   : "; relay -> " + legacySync.syncUrl);
+                   : "; voice relay -> " + legacySync.syncUrl)
+           << (cameraSync.syncUrl.empty()
+                   ? ""
+                   : "; camera relay -> " + cameraSync.syncUrl);
 
   const ListenerConfig listener = ListenerConfig::resolve();
   const ProxyConfig proxy = ProxyConfig::resolve();
@@ -177,7 +208,7 @@ int main()
     natsBus = std::make_unique<NatsBus>();
     if (natsBus->connect()) {
       LOG_INFO << "NATS event bus connected to " << natsBus->options().url;
-      sync_fan_out::subscribeSyncFanOut(*natsBus);
+      camera_fan_out::subscribeChangeFanOut(*natsBus);
     }
     else
       LOG_WARN << "NATS unavailable at " << natsUrl
@@ -213,6 +244,28 @@ int main()
     else {
       LOG_WARN << "Legacy database not found: " << legacySync.dbPath
                << "; sync reads fall back to the default client";
+    }
+
+    // Rulings Z/X: camera, camera_stream and zone reads resolve to the
+    // camera database argus-camera owns. Cross-process SQLite rules apply on
+    // both sides: WAL plus busy_timeout; the gateway opens it read-only and
+    // never writes.
+    const std::string cameraDbPath = ConfigService::getString("camera.db");
+    if (!cameraDbPath.empty() && std::filesystem::exists(cameraDbPath)) {
+      const auto cameraDb = drogon::orm::DbClient::newSqlite3Client(
+          "filename=file:" + cameraDbPath + "?mode=ro", 1);
+      try {
+        cameraDb->execSqlSync("PRAGMA busy_timeout = 5000");
+      }
+      catch (const std::exception& e) {
+        LOG_WARN << "Camera database pragma error: " << e.what();
+      }
+      DbService::setCameraClient(cameraDb);
+      LOG_INFO << "Camera database opened read-only: " << cameraDbPath;
+    }
+    else if (!cameraDbPath.empty()) {
+      LOG_WARN << "Camera database not found: " << cameraDbPath
+               << "; camera reads fall back to the default client";
     }
 
     if (!DbService::runScriptFile(identityDb.schemaPath)) {

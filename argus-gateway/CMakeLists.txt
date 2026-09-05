@@ -52,6 +52,7 @@ add_library(gateway-core STATIC
     ${GATEWAY_SRC_ROOT}/proxy/proxy-config.cc
     ${GATEWAY_SRC_ROOT}/proxy/reverse-proxy.cc
     ${GATEWAY_SRC_ROOT}/server/listener-config.cc
+    ${GATEWAY_SRC_ROOT}/sync/camera-fan-out.cc
     ${GATEWAY_SRC_ROOT}/sync/sync-fan-out.cc
     ${GATEWAY_SRC_ROOT}/sync/sync-registrar.cc
     ${GATEWAY_SRC_ROOT}/sync/sync-relay.cc

@@ -5,7 +5,6 @@
 #include <shared/services/room/room-manager.hxx>
 #include <shared/services/socket/sync-change.hxx>
 #include <shared/utils/json-util/json-util.hxx>
-#include <shared/wrapper/nats/nats-bus.hxx>
 #include <shared/wrapper/nats/nats-subject.hxx>
 #include <trantor/utils/Logger.h>
 
@@ -99,25 +98,5 @@ void dispatchEvent(const Event& event)
     manager.emit(plan.room, message);
     return;
   }
-}
-
-void subscribeSyncFanOut(NatsBus& bus)
-{
-  bus.subscribe(
-      nats_subject::kSyncChangeWildcard,
-      [](std::string_view, std::string_view message) {
-        // cnats dispatcher thread: marshal the whole handler into the
-        // Drogon loop before touching room state.
-        drogon::app().getIOLoop(0)->runInLoop(
-            [payload = std::string(message)]() {
-              const Json::Value json = json_util::fromString(payload);
-              const auto event = parseEvent(json);
-              if (!event) {
-                LOG_WARN << "Sync fan-out: dropped malformed change event";
-                return;
-              }
-              dispatchEvent(*event);
-            });
-      });
 }
 } // namespace sync_fan_out

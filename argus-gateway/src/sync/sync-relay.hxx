@@ -20,10 +20,22 @@ struct LegacySyncConfig
   static LegacySyncConfig resolve();
 };
 
+// Internal /sync of argus-camera; empty disables the camera relay leg.
+struct CameraSyncConfig
+{
+  std::string syncUrl;
+
+  static CameraSyncConfig resolve();
+};
+
 // Every legacy-emitted text frame the client must still receive; module and
 // sync emits of the relay session are dropped (the gateway serves those
 // natively).
 bool relayAllowedText(std::string_view type);
+
+// Relay-leg split of the F2-2 cutover: camera:* frames belong to the
+// argus-camera leg, everything else the relay forwards to the legacy.
+bool relayLegIsCamera(std::string_view type);
 
 // Per-client byte-transparent relay to the legacy /sync socket. Each session
 // connects with the client's own credentials (token and User-Agent; the
@@ -34,6 +46,7 @@ class LegacySyncRelay final : public SyncForwarder
 {
 public:
   explicit LegacySyncRelay(LegacySyncConfig config);
+  explicit LegacySyncRelay(std::string syncUrl);
 
   void onConnect(const drogon::HttpRequestPtr& req,
                  const drogon::WebSocketConnectionPtr& conn) override;
@@ -60,4 +73,28 @@ private:
   const LegacySyncConfig config_;
   mutable std::mutex sessionsMutex_;
   std::unordered_map<const void*, std::shared_ptr<Session>> sessions_;
+};
+
+// Per-client relay split of the F2-2 cutover: camera:* frames go to the
+// argus-camera leg, voice:* frames and raw binary stay with the legacy leg
+// (talk is TTS-load-bearing there until Fase 4). One leg per direction
+// prefix; both legs keep their own per-client sessions.
+class CompositeSyncRelay final : public SyncForwarder
+{
+public:
+  CompositeSyncRelay(std::shared_ptr<SyncForwarder> cameraLeg,
+                     std::shared_ptr<SyncForwarder> voiceLeg);
+
+  void onConnect(const drogon::HttpRequestPtr& req,
+                 const drogon::WebSocketConnectionPtr& conn) override;
+  drogon::Task<bool> forwardText(const drogon::WebSocketConnectionPtr& conn,
+                                 const Json::Value& message,
+                                 std::string_view raw) override;
+  void forwardBinary(const drogon::WebSocketConnectionPtr& conn,
+                     const std::string& data) override;
+  void onClose(const drogon::WebSocketConnectionPtr& conn) override;
+
+private:
+  std::shared_ptr<SyncForwarder> cameraLeg_;
+  std::shared_ptr<SyncForwarder> voiceLeg_;
 };

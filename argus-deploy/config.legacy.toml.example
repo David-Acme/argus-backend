@@ -87,6 +87,12 @@ file = "./database/argus.db"
 [identity]
 db = "database/identity.db"
 
+# Transitional cutover key (F2-2, Ruling X): camera database attached
+# read-write once argus-camera owns the domain; the legacy never runs DDL on
+# it. Commented out keeps the pre-cutover behavior.
+# [camera]
+# db = "database/camera.db"
+
 [conversation]
 history_messages = 41
 

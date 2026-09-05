@@ -45,9 +45,26 @@ bool relayAllowedText(std::string_view type)
   return type.rfind("camera:", 0) == 0 || type.rfind("voice:", 0) == 0;
 }
 
+bool relayLegIsCamera(std::string_view type)
+{
+  return type.rfind("camera:", 0) == 0;
+}
+
 LegacySyncRelay::LegacySyncRelay(LegacySyncConfig config)
     : config_(std::move(config))
 {
+}
+
+LegacySyncRelay::LegacySyncRelay(std::string syncUrl)
+    : config_(LegacySyncConfig{.syncUrl = std::move(syncUrl), .dbPath = {}})
+{
+}
+
+CameraSyncConfig CameraSyncConfig::resolve()
+{
+  CameraSyncConfig config;
+  config.syncUrl = ConfigService::getString("camera.sync_url");
+  return config;
 }
 
 void LegacySyncRelay::onConnect(const drogon::HttpRequestPtr& req,
@@ -241,4 +258,38 @@ LegacySyncRelay::openSession(const drogon::WebSocketConnectionPtr& conn,
                                        : drogon::WebSocketMessageType::Text);
   }
   session->pending.clear();
+}
+
+CompositeSyncRelay::CompositeSyncRelay(std::shared_ptr<SyncForwarder> cameraLeg,
+                                       std::shared_ptr<SyncForwarder> voiceLeg)
+    : cameraLeg_(std::move(cameraLeg)), voiceLeg_(std::move(voiceLeg))
+{
+}
+
+void CompositeSyncRelay::onConnect(const drogon::HttpRequestPtr& req,
+                                   const drogon::WebSocketConnectionPtr& conn)
+{
+  cameraLeg_->onConnect(req, conn);
+  voiceLeg_->onConnect(req, conn);
+}
+
+drogon::Task<bool> CompositeSyncRelay::forwardText(
+    const drogon::WebSocketConnectionPtr& conn, const Json::Value& message,
+    std::string_view raw)
+{
+  if (relayLegIsCamera(message["type"].asString()))
+    co_return co_await cameraLeg_->forwardText(conn, message, raw);
+  co_return co_await voiceLeg_->forwardText(conn, message, raw);
+}
+
+void CompositeSyncRelay::forwardBinary(
+    const drogon::WebSocketConnectionPtr& conn, const std::string& data)
+{
+  voiceLeg_->forwardBinary(conn, data);
+}
+
+void CompositeSyncRelay::onClose(const drogon::WebSocketConnectionPtr& conn)
+{
+  cameraLeg_->onClose(conn);
+  voiceLeg_->onClose(conn);
 }
