@@ -30,10 +30,16 @@ so a container with `/dev/dri` can drive the GPU) on top of
 `argus-vulkan-probe` (Fase 2 Vulkan gate): it reuses ncnn's own Vulkan init
 and exits 0 only when `vkCreateInstance` plus at least one physical device
 work; otherwise the detector stays on its Vulkan→CPU fallback. Run it with
-`docker compose --profile vulkan-probe run --rm vulkan-probe` (mounts
-`/dev/dri` and adds the container user to the `video`/`render` device
-groups) or plain `docker run --rm --device /dev/dri --group-add video
---group-add render argus-cutover:local /opt/argus/argus-vulkan-probe`.
+`docker compose --profile vulkan-probe run --rm vulkan-probe`, which mounts
+`/dev/dri` only — no `group_add` — and worked on this host (the device
+cgroup plus the host's device ACLs let `--user 1000:1000` reach both nodes;
+`renderD128` is 0666 and `card1` carries an ACL). Plain-docker equivalent,
+also verified here: `docker run --rm --device /dev/dri --user 1000:1000
+--entrypoint /opt/argus/argus-vulkan-probe argus-cutover:local`. On hosts
+with restrictive `/dev/dri` ACLs add the HOST `video`/`render` GIDs
+numerically via `group_add: [<gid>, <gid>]` — Docker resolves group NAMES
+against the host group file, so `--group-add video --group-add render`
+fails on hosts whose names differ (observed: "unable to find group render").
 
 ## Network shape (Ruling O, transitional exception)
 
