@@ -93,6 +93,16 @@ target_link_libraries(audit-sync-read-test PRIVATE gateway-core
 
 target_compile_options(audit-sync-read-test PRIVATE -Wall -Wextra)
 
+add_executable(camera-notifier-test
+               ${CMAKE_CURRENT_SOURCE_DIR}/tests/camera-notifier-test.cc)
+
+target_include_directories(camera-notifier-test PRIVATE ${GATEWAY_SRC_ROOT})
+
+target_link_libraries(camera-notifier-test PRIVATE gateway-core
+                                                   doctest::doctest)
+
+target_compile_options(camera-notifier-test PRIVATE -Wall -Wextra)
+
 get_target_property(DOCTEST_INCLUDE_DIRS doctest::doctest
                     INTERFACE_INCLUDE_DIRECTORIES)
 if(DOCTEST_INCLUDE_DIRS)
@@ -106,4 +116,5 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     enable_testing()
     add_test(NAME gateway-test COMMAND gateway-test)
     add_test(NAME audit-sync-read-test COMMAND audit-sync-read-test)
+    add_test(NAME camera-notifier-test COMMAND camera-notifier-test)
 endif()

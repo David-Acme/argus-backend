@@ -234,6 +234,15 @@ void CameraOperatorService::processFrame(int64_t cameraId,
       }
     }
     for (const auto& object : objects) {
+      // Dedupe by class inside one window (Ruling AD aggregation).
+      const bool alreadyPending =
+          std::any_of(state.pending->objects.begin(),
+                      state.pending->objects.end(),
+                      [&](const DetectedEventObject& entry) {
+                        return entry.name == object.name;
+                      });
+      if (alreadyPending)
+        continue;
       DetectedEventObject entry;
       entry.name = object.name;
       entry.confidence = object.confidence;

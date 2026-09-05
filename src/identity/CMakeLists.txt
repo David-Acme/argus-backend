@@ -72,7 +72,6 @@ set(ARGUS_IDENTITY_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/../shared/services/face/face-service.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/../shared/services/jwt/jwt-service.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/../shared/services/mdns/mdns-service.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/../shared/services/notification/notification-service.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/../shared/services/room/room-manager.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/../shared/services/socket/socket-service.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/../shared/services/sqlite/db-service.cc

@@ -34,6 +34,7 @@ set(ARGUS_SYNC_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/../shared/schemas/event/event-schema.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/../shared/schemas/person-event/person-event-schema.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/../shared/schemas/notification/notification-schema.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/../shared/services/notification/notification-service.cc
 )
 
 add_library(argus_sync STATIC ${ARGUS_SYNC_SOURCES})
