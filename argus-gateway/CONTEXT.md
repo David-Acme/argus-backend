@@ -199,3 +199,23 @@ proxies everything else to the legacy backend on its internal plain listener
   named camera client (`DbService::setCameraClient`); camera/camera_stream/
   zone sync reads resolve to it, legacy non-camera tables keep the read-only
   argus.db client, identity tables stay on the default client.
+
+## Camera object_detected consumer (F2-3): budget, silent hours, digest
+
+- **`camera_notifier`** subscribes `argus.camera.v1.object_detected` (F2-3)
+  next to the camera change fan-out. Events marshal from the cnats
+  dispatcher into the Drogon IO loop before touching policy or database —
+  same discipline as the change funnel.
+- **This subject is NOT a sync change**: payloads never reach `/sync`; the
+  consumer turns them into `notification` rows via the existing
+  NotificationService (type `camera`) for active owner/guard users only.
+- **NotificationService compiles into argus_sync** (moved from the legacy
+  target list): its repository/schema live there and it links argus_identity
+  for SocketService — the gateway gets it through the argus_sync
+  dependency it already had.
+- **Ruling AD budget**: 6 notifications per camera per rolling hour
+  (`[notifications] budget_per_hour`), silent local-hour window
+  (`silent_start`/`silent_end`, both -1 off, wrapping supported). Suppressed
+  events count per class; a cumulative digest flushes every minute once the
+  window or the silent window closes. Event payloads are data, never
+  commands — no notification path can arm or trigger any audible device.

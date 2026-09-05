@@ -71,3 +71,40 @@ preset, own `camera.db`.
   (`cmake --build --preset camera` / `--preset camera-prod`): they reuse the
   root Conan cache. The standalone `argus-camera/` build directory goes stale
   on new `conanfile.txt` requires until `conan install` is re-run there.
+
+## Object detection (F2-3): detector, operator, event intelligence
+
+- **The ncnn exception**: this service links ncnn (Vulkan) for the YOLO26n
+  detector ONLY. No face/llm/vlm/tts/stt/vad code or symbols are compiled in
+  (verified with `nm -C`); YOLO26n is AGPL-3.0, so `IObjectDetector` is the
+  only seam and `argus-camera/NOTICE` carries the attribution — swap the
+  model artifact (e.g. RF-DETR-Nano) without touching the service.
+- **Export shape reality**: the Ultralytics `format="ncnn"` export falls back
+  to the one2many head; the raw end-to-end export (patched postprocess +
+  PNNX, `scripts/export-yolo26-ncnn-e2e.py`) gives `(1, 8400, 4+nc)` XYXY
+  with no TopK in the graph. The detector reads blob names via ncnn's
+  `input_names()/output_names()`, detects the output shape at runtime and
+  decodes only row_length 6 (e2e+TopK) or 4+nc (raw one2one + C++ TopK).
+- **Vulkan selection differs from FaceService on purpose**: the detector
+  takes HardwareProbe's `vulkan` flag (any device, integrated included) and
+  degrades to CPU per instance on runtime failure; FaceService gates on
+  `vulkanDiscrete`.
+- **Frames come from go2rtc** (`/api/frame.jpeg?src=cam<id>` via
+  Go2rtcFrameSource, resolved per grab because Go2rtcManager resolves its
+  address only at init) — never from a device driver (Ruling AB). The Tapo
+  `ICameraDriver` detection walker is deferred to Fase 4.
+- **Identity is deferred behind `IKnownPersonMatcher`** (default
+  `NoKnownPersonMatcher`): rules 3-8 keep their own severity; the real
+  matcher arrives in Fase 4 with the identity domain.
+- **Ruling AF is absolute**: the operator never touches hardware. The only
+  output channel is `IObjectEventSink` → `NatsObjectEventSink` publishing
+  `argus.camera.v1.object_detected` (JetStream stream `ARGUS_CAMERA`, 7d
+  file retention, best-effort ensure; core NATS publish works without it).
+- **Budget split (Ruling AD)**: camera side = aggregation window +
+  per camera+class cooldown + `max_fps_inference`; gateway side =
+  notification budget/silent hours/digest (see argus-gateway CONTEXT.md).
+- The labs (`argus-camera/labs/`) build on demand via the camera presets
+  (`--target argus-object-bench` / `argus-camera-probe`), EXCLUDE_FROM_ALL.
+- Model artifacts (`models/objects/`) come from `scripts/setup.sh camera`:
+  yolo26n.pt sha256-pinned download + local raw e2e NCNN export; without the
+  artifacts the detector boots disabled — never a fake success.
