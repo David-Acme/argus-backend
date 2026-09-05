@@ -281,12 +281,22 @@ services:
         target: /opt/argus/database
         bind:
           create_host_path: false
+      # The schema SQL ships with the repo, not with every provisioned data
+      # dir — bind it into the data-dir path so --schema always resolves.
+      - type: bind
+        source: ../database/identity-schema.sql
+        target: /opt/argus/database/identity-schema.sql
+        read_only: true
+        bind:
+          create_host_path: false
     restart: "no"
 
   # Camera migration init (Ruling AG): opt-in one-shot tool copying the camera
   # tables from argus.db onto the camera.db volume. Idempotent no-op on a
   # schema-current target; run it with the stack stopped so the tool does not
-  # race argus-camera on camera.db.
+  # race argus-camera on camera.db, and BEFORE the first boot (once
+  # argus-camera has applied the camera schema the target is live data and
+  # the tool refuses to resurrect argus.db rows over it).
   camera-init:
     profiles: ["camera-init"]
     image: argus-cutover:local
@@ -301,6 +311,14 @@ services:
       - type: bind
         source: ${ARGUS_DATA_DIR:-../database}
         target: /opt/argus/database
+        bind:
+          create_host_path: false
+      # Same repo-shipped schema bind as identity-init: a provisioned data
+      # dir without the SQL would fail "schema file not found".
+      - type: bind
+        source: ../database/camera-schema.sql
+        target: /opt/argus/database/camera-schema.sql
+        read_only: true
         bind:
           create_host_path: false
       - camera-db:/opt/argus/camera

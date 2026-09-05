@@ -222,7 +222,7 @@ void SimpleReverseProxy::forward(const HttpRequestPtr &req,
                 // Deviation from the vendored example: a bare 500 would break
                 // the {status, info, errors} wire contract the app parses.
                 callback(ApiResponse::error(
-                    500, "INTERNAL_ERROR", "Backend is unreachable"));
+                    500, "INTERNAL_ERROR", "Legacy backend is unreachable"));
             }
         });
 }

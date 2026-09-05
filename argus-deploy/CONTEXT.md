@@ -124,7 +124,12 @@ can no longer migrate the pre-existing argus.db camera rows (it no-ops on any
 schema-current target before reading the source). An installation that wants
 the legacy camera rows migrated must run `docker compose --profile camera-init
 run --rm camera-init` BEFORE the first boot, while camera.db does not exist
-yet. The gateway applies `identity-schema.sql` at boot and
+yet. The init tools resolve `--schema` INSIDE the data-dir bind, so both init
+services bind the repo-shipped `database/identity-schema.sql` /
+`database/camera-schema.sql` read-only over that path — a data dir provisioned
+without the schema SQLs still works (the default `../database` deployment dir
+already carries them; the single-file binds are no-ops there). The gateway
+applies `identity-schema.sql` at boot and
 aborts if it fails, so a fresh install creates `identity.db` without the init
 profile; argus-camera applies `camera-schema.sql` at boot the same way, so a
 fresh install creates camera.db without `camera-init`. On an existing
@@ -133,6 +138,13 @@ identity-init` (idempotent, guards intact: refuses same-path, requires the 7
 source tables, skips cleanly when `argus.db` does not exist yet). Do not run
 either init tool while the services hold its target database open — stop the
 stack first.
+
+For acceptance runs, `scripts/seed-golden.py` seeds the golden /sync verify
+state into a scratch COPY of the databases (Golden Cam / Golden Zone rows,
+`calendar_event.ends_at` NULL, `project_task.assignee_id` 1, the identity
+golden rows and a recorder refresh session minted from the config secrets —
+secrets are read at runtime, never printed; the refresh token lands in a
+0600 file). Run it with the stack stopped, before camera-init.
 
 ## Healthchecks
 
