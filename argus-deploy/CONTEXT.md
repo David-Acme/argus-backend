@@ -10,8 +10,11 @@ traps live here.
 Conan 2.21.0 toolchain as `docker/Dockerfile`, a single `conan install` at
 Release, then `cmake --build --preset prod` (backend, all targets,
 `ARGUS_BUILD_LABS=OFF`) plus `--target argus-gateway argus-migrate-identity`.
-All three binaries land in `/opt/argus`; the service picks its binary via
-`command:` and the image `ENTRYPOINT` stays `argus-backend`. One conan
+All three binaries land in `/opt/argus`; the service picks its binary via an
+`entrypoint:` override (Docker composes `command:` as ARGUMENTS to the image
+`ENTRYPOINT`, so a `command:` "override" here would execute
+`/opt/argus/argus-backend /opt/argus/argus-gateway` — the trap 242ffd3
+fixed). One conan
 dependency set serves both binaries (the root `conanfile.txt` already carries
 cnats, mdns and everything the gateway needs when built from the root tree).
 
@@ -30,7 +33,9 @@ runtime set.
   mDNS advertised here only.
 - **legacy** — `network_mode: host`, mirroring the root compose's opt-in
   `backend` service: go2rtc (1984/8554), RTSP and mDNS camera discovery need
-  the host. It binds **127.0.0.1:7025 only** (its config listener is loopback).
+  the host, and the Tapo talk channel (`media_port = 8800`) listens on the
+  LAN for cameras. It binds **127.0.0.1:7025 only** (its config listener is
+  loopback).
 - The legacy trusts `X-Forwarded-For` **only from loopback peers** (and
   `device.trusted_proxy_ips`), so the gateway must reach it as 127.0.0.1 —
   a bridge-networked gateway cannot reach a host loopback bind. That is why
@@ -50,7 +55,7 @@ runtime set.
 | Service | Image | Notes |
 |---|---|---|
 | gateway | built (`argus-cutover:local`) | TLS 7024, `/health` healthcheck |
-| legacy | same image, `command:` override | plain 127.0.0.1:7025 |
+| legacy | same image, `entrypoint:` override | plain 127.0.0.1:7025 |
 | nats | `nats:2.11.14-alpine` | exact tag pin; core NATS (no JetStream in Fase 1) |
 | rustfs / rustfs-init | copied verbatim from the root compose | only bind paths, volume/network names differ (`argus-cutover-*`) |
 | identity-init | same image | `profiles: [identity-init]`, runs `argus-migrate-identity` |
@@ -101,5 +106,6 @@ it while the services hold `identity.db` open — stop the stack first.
 | 4222 | 127.0.0.1 | nats client |
 | 8222 | 127.0.0.1 | nats monitor |
 | 9000 | 127.0.0.1 | rustfs S3 |
-| 1984 / 8554 | 127.0.0.1 | go2rtc (spawned by the legacy; `[streaming]` keys) |
+| 1984 / 8554 | 127.0.0.1 | go2rtc spawned by the gateway (manager defaults, loopback) |
+| 11984 / 18554 | 127.0.0.1 | go2rtc spawned by the legacy (`[streaming]` keys) |
 | 8800 | host | Tapo talk channel (camera-side) |
