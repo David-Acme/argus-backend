@@ -59,8 +59,5 @@ if(DOCTEST_INCLUDE_DIRS)
         INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${DOCTEST_INCLUDE_DIRS}")
 endif()
 
-# Test registration is standalone-only so the root project's ctest stays at
-# its suite count (the camera suites run from src/test/unit instead).
-if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
-    enable_testing()
-endif()
+# The camera suites (schema, migration, config) run from src/test/unit so the
+# root ctest covers them without a standalone conan gate.

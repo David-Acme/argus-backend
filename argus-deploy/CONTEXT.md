@@ -10,7 +10,7 @@ traps live here.
 Conan 2.21.0 toolchain as `docker/Dockerfile`, a single `conan install` at
 Release, then `cmake --build --preset prod` (backend, all targets,
 `ARGUS_BUILD_LABS=OFF`) plus `--target argus-gateway argus-migrate-identity`.
-All three binaries land in `/opt/argus`; the service picks its binary via an
+All binaries land in `/opt/argus`; the service picks its binary via an
 `entrypoint:` override (Docker composes `command:` as ARGUMENTS to the image
 `ENTRYPOINT`, so a `command:` "override" here would execute
 `/opt/argus/argus-backend /opt/argus/argus-gateway` — the trap 242ffd3
@@ -23,9 +23,17 @@ runs the stack — the self-hosted model — or the binary may SIGILL elsewhere.
 `-flto=auto` + many translation units make the build heavy; expect a long
 first build (the conan cache is a buildkit cache mount, so rebuilds are fast).
 
-Runtime image adds `curl` (gateway `/health` healthcheck) and
-`netcat-openbsd` (legacy TCP healthcheck) on top of `docker/Dockerfile`'s
-runtime set.
+Runtime image adds `curl` (gateway `/health` healthcheck),
+`netcat-openbsd` (legacy TCP healthcheck) and `mesa-vulkan-drivers` (RADV,
+so a container with `/dev/dri` can drive the GPU) on top of
+`docker/Dockerfile`'s runtime set. The image also carries
+`argus-vulkan-probe` (Fase 2 Vulkan gate): it reuses ncnn's own Vulkan init
+and exits 0 only when `vkCreateInstance` plus at least one physical device
+work; otherwise the detector stays on its Vulkan→CPU fallback. Run it with
+`docker compose --profile vulkan-probe run --rm vulkan-probe` (mounts
+`/dev/dri` and adds the container user to the `video`/`render` device
+groups) or plain `docker run --rm --device /dev/dri --group-add video
+--group-add render argus-cutover:local /opt/argus/argus-vulkan-probe`.
 
 ## Network shape (Ruling O, transitional exception)
 
@@ -59,6 +67,7 @@ runtime set.
 | nats | `nats:2.11.14-alpine` | exact tag pin; core NATS (no JetStream in Fase 1) |
 | rustfs / rustfs-init | copied verbatim from the root compose | only bind paths, volume/network names differ (`argus-cutover-*`) |
 | identity-init | same image | `profiles: [identity-init]`, runs `argus-migrate-identity` |
+| vulkan-probe | same image | `profiles: [vulkan-probe]`, runs `argus-vulkan-probe` with `/dev/dri` |
 
 Ordering: the legacy waits for the gateway (`service_started`, which also
 guarantees the image is built) and for `rustfs-init` completion. The gateway

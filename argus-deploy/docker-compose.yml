@@ -1,8 +1,9 @@
 name: argus-cutover
 
 # Cutover stack (Fase 1): gateway (public TLS 7024) + legacy (internal 7025) +
-# nats + rustfs, with the identity migration init tool. The root
-# docker-compose.yml stays the dev tooling; this file is the deployment stack.
+# nats + rustfs, with the identity migration init tool and the opt-in RADV
+# vulkan-probe validation service. The root docker-compose.yml stays the dev
+# tooling; this file is the deployment stack.
 #
 # Transitional network shape (Ruling O exception): the legacy keeps host
 # networking for go2rtc/RTSP/mDNS camera discovery and the Tapo 8800 LAN talk
@@ -200,6 +201,21 @@ services:
         target: /opt/argus/database
         bind:
           create_host_path: false
+    restart: "no"
+
+  # RADV validation probe (Fase 2 gate): runs argus-vulkan-probe against the
+  # host GPU with /dev/dri mounted. Opt-in because a host without /dev/dri
+  # fails the device attach. Hosts with restrictive device ACLs may need to
+  # add their host video/render group gid via group_add.
+  vulkan-probe:
+    profiles: ["vulkan-probe"]
+    image: argus-cutover:local
+    pull_policy: never
+    user: "${ARGUS_UID:-1000}:${ARGUS_GID:-1000}"
+    network_mode: none
+    entrypoint: ["/opt/argus/argus-vulkan-probe"]
+    devices:
+      - /dev/dri:/dev/dri
     restart: "no"
 
 secrets:

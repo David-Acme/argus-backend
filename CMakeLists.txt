@@ -46,6 +46,9 @@ add_subdirectory(argus-camera EXCLUDE_FROM_ALL)
 add_subdirectory(tools/migrate-identity EXCLUDE_FROM_ALL)
 add_subdirectory(tools/migrate-camera EXCLUDE_FROM_ALL)
 
+# Vulkan-in-container RADV probe: built on demand (target argus-vulkan-probe).
+add_subdirectory(tools/vulkan-probe EXCLUDE_FROM_ALL)
+
 option(ARGUS_BUILD_LABS "Build backend integration and verification labs" ON)
 
 if(ARGUS_BUILD_LABS)
