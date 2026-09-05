@@ -1,6 +1,6 @@
 #include "camera-migration.hxx"
 
-#include <toml++/toml.hpp>
+#include <toml++/toml.h>
 
 #include <algorithm>
 #include <filesystem>
