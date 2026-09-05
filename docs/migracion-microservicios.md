@@ -750,10 +750,18 @@ camera-operator/` existe **vacío**; no hay `yolo26n.param/bin` en `models/`, no
 ### B.1 ObjectDetectorService (ncnn)
 
 - YOLO26n **end-to-end**: entrada letterbox (padding gris **114**) a la resolución nativa del
-  modelo; salida directa `(N,300,6)` = `[cx, cy, w, h, score, cls]` — **sin NMS ni post-proceso
-  de anclas** (`nms=False` en el export).
+  modelo. Corrección verificada en la implementación (F2-3): el export NCNN estándar de
+  Ultralytics (`YOLO(...).export(format="ncnn")`) **no produce el grafo end-to-end** — cae al
+  head one2many `(N, nc+4, 8400)` con NMS en C++. El export **e2e raw** se obtiene parcheando el
+  `postprocess` del head one2one a identidad y exportando vía PNNX
+  (`scripts/export-yolo26-ncnn-e2e.py`): salida `(1, anchors, 4+nc)` en **XYXY**, sin TopK en el
+  grafo; el TopK (conf + maxDet) lo aplica el C++ en runtime.
+- El detector **detecta la forma de salida en runtime**: acepta `row_length == 6`
+  (`[x1, y1, x2, y2, score, cls]`, e2e con TopK en grafo) o `row_length == 4+nc` (raw one2one +
+  TopK en C++) y **se niega a decodificar cualquier otra** con log claro — nunca interpreta
+  un tensor de forma equivocada.
 - Los blob names de entrada/salida se **leen del `.param`** en runtime (no hardcodeados: varían
-  según el export).
+  según el export; en el export e2e raw son `in0`/`out0`).
 - **Fallback Vulkan→CPU por instancia** si la GPU falla en runtime (el detector degrada, el
   servicio no muere).
 - Semáforo de inicialización **liberado solo cuando el init es exitoso** — patrón que corrige el
@@ -761,8 +769,12 @@ camera-operator/` existe **vacío**; no hay `yolo26n.param/bin` en `models/`, no
   todos los logins siguientes).
 - Config (sección nueva `[objects]` en `config/camera.toml`): `model` (ruta), `classes`,
   `input_size`, `conf`, `enabled`, `max_fps_inference`.
-- Instalador: `setup.sh camera` descarga `yolo26n.param` + `yolo26n.bin` con sha256 y
-  `.part`+rename atómico (misma disciplina que los demás modelos — `setup_object_model`).
+- Instalador: `setup.sh camera` descarga `yolo26n.pt` con sha256 y `.part`+rename atómico y
+  **exporta los artefactos NCNN localmente** (nunca los descarga: dependen del export); sin
+  python+ultralytics+torch+pnnx imprime el comando manual exacto y el detector arranca
+  deshabilitado — nunca simula éxito.
+- Fuentes: https://docs.ultralytics.com/guides/end2end-detection,
+  https://github.com/skygazer42/yolo26-NCNN, https://huggingface.co/Ultralytics/YOLO26.
 
 ### B.2 CameraOperatorService
 
@@ -770,7 +782,9 @@ camera-operator/` existe **vacío**; no hay `yolo26n.param/bin` en `models/`, no
   inferencia) va a `BlockingTask` — nunca bloquea el loop.
 - `ICameraDriver::events`: los drivers reportan eventos; para el cliente Tapo el walker de la
   lista de detección es **tolerante a forma** (el SDK puede cambiar el shape del payload
-  `searchDetectionList`) con fallback `getLastAlarmInfo` cuando el push falla.
+  `searchDetectionList`) con fallback `getLastAlarmInfo` cuando el push falla. **Diferido a
+  Fase 4** (Ruling AB): los frames de F2-3 salen de la superficie media propia (go2rtc
+  `/api/frame.jpeg`), no del driver; el walker se implementa con el driver Tapo.
 - **El operador es read-only respecto al hardware**: jamás llama `setAlarm`, sirena ni ningún
   comando audible. La sirena se prueba **personalmente por el usuario** — ninguna ruta de código
   (operador, EventIntelligence ni notificaciones) debe dispararla. Única acción: publicar a
@@ -793,7 +807,9 @@ camera-operator/` existe **vacío**; no hay `yolo26n.param/bin` en `models/`, no
 | 9 | `ignored_class` | descarta |
 
 - **Identidad primero**: si el crop pasa por FaceService (persona conocida), `known_person`
-  domina la severidad de las reglas 3–8.
+  domina la severidad de las reglas 3–8. En F2-3 va detrás del seam `IKnownPersonMatcher`
+  (implementación por defecto: sin match — las reglas 3–8 conservan su severidad); el matcher
+  real llega en Fase 4 con la identidad.
 - Agregación: ventana de agregación por cámara; **cooldown por cámara+clase**;
   **presupuesto de notificación 6/hora** con digest acumulativo cuando se excede;
   **horas de silencio** configurables.
