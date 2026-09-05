@@ -1,0 +1,77 @@
+# argus-camera configuration. Copy to config.toml (gitignored) to run.
+# Camera-domain keys only (Fase 2 pilot): no AI sections. The camera tables
+# live in this service's own camera.db; argus.db is never touched here.
+
+[server]
+# Internal plain-HTTP listener. Loopback by default: the gateway is the only
+# public listener, and from the F2-2 cutover it routes /camera* and /zone here.
+host = "127.0.0.1"
+port = 7026
+
+# Mirror of the legacy [drogon.app] block; the listener and db_clients are
+# built by the service itself (see argus-camera/src/main.cc).
+[drogon.app]
+number_of_threads = 0
+enable_session = false
+document_root = "./"
+use_sendfile = true
+use_gzip = true
+use_brotli = false
+static_files_cache_time = 5
+idle_connection_timeout = 60
+enable_server_header = true
+enable_date_header = true
+keepalive_requests = 0
+pipelining_requests = 0
+gzip_static = true
+br_static = true
+client_max_body_size = "60M"
+client_max_memory_body_size = "16M"
+client_max_websocket_message_size = "128K"
+reuse_port = false
+enabled_compressed_request = false
+enable_request_stream = false
+handle_sig_term = true
+relaunch_on_error = false
+
+[camera]
+# Own database of the camera domain (camera, camera_stream, zone), applied at
+# boot from the schema below. tools/migrate-camera fills it from argus.db
+# against the same config key.
+db = "database/camera.db"
+schema = "database/camera-schema.sql"
+
+# Tapo local protocols (control + 8800 talk channel). Values mirror the
+# legacy [tapo] block; the Fase-2 drivers read these keys.
+[tapo]
+control_port = 443
+media_port = 8800
+connect_timeout_ms = 3000
+request_timeout_ms = 5000
+login_attempts = 2
+transport = "auto"
+talk_framing = "none"
+talk_mode = "aec"
+
+# go2rtc lifecycle and the stream hub/relay windows. Values mirror the
+# legacy [streaming] block; until the F2-2 cutover the legacy still owns
+# every running stream.
+[streaming]
+go2rtc_bin = "third_party/go2rtc/go2rtc"
+go2rtc_config = "go2rtc.yaml"
+go2rtc_api = "127.0.0.1:1984"
+go2rtc_rtsp = "127.0.0.1:8554"
+max_restarts = 8
+hub_window_bytes = 131072
+hub_chunk_bytes = 16384
+hub_grace_ms = 2000
+hub_max_subs_per_client = 8
+max_viewers_per_camera = 4
+max_total_viewers = 8
+relay_chunk_bytes = 32768
+
+# Optional (F2-2 placeholder): identity database opened read-only for the
+# caller validation the camera routes will need after the cutover. Empty
+# keeps the boot identity-free.
+# [identity]
+# db = "database/identity.db"

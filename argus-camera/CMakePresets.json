@@ -1,0 +1,24 @@
+{
+  "version": 3,
+  "configurePresets": [
+    {
+      "name": "dev",
+      "generator": "Ninja",
+      "binaryDir": "build/dev",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_TOOLCHAIN_FILE": "build/dev/build/Debug/generators/conan_toolchain.cmake",
+        "CMAKE_CXX_STANDARD": "20",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "CMAKE_PREFIX_PATH": "build/dev/build/Debug/generators"
+      },
+      "description": "argus-camera Debug build with Conan 2"
+    }
+  ],
+  "buildPresets": [
+    { "name": "dev", "configurePreset": "dev", "jobs": 8 }
+  ],
+  "testPresets": [
+    { "name": "dev", "configurePreset": "dev" }
+  ]
+}

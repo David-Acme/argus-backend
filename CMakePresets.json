@@ -33,6 +33,10 @@
     { "name": "gateway", "configurePreset": "dev", "jobs": 8,
       "targets": ["argus-gateway", "gateway-test"] },
     { "name": "gateway-prod", "configurePreset": "prod", "jobs": 8,
-      "targets": ["argus-gateway", "gateway-test"] }
+      "targets": ["argus-gateway", "gateway-test"] },
+    { "name": "camera", "configurePreset": "dev", "jobs": 8,
+      "targets": ["argus-camera"] },
+    { "name": "camera-prod", "configurePreset": "prod", "jobs": 8,
+      "targets": ["argus-camera"] }
   ]
 }
