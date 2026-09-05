@@ -8,14 +8,22 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 set(CAMERA_SRC_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
 if(NOT TARGET argus_common)
-    # Standalone build: reuse the root project's argus_common and third-party
-    # sqlite-vec so the camera service links the same objects as the root-tree
-    # build.
+    # Standalone build: reuse the root project's libraries and third-party
+    # sqlite-vec so the camera service links the same objects as the
+    # root-tree build.
     find_package(Drogon CONFIG REQUIRED)
     find_package(cnats CONFIG REQUIRED)
     find_package(tomlplusplus REQUIRED)
+    find_package(jwt-cpp REQUIRED)
+    find_package(nlohmann_json REQUIRED)
+    find_package(OpenCV CONFIG REQUIRED)
+    find_package(mdns REQUIRED)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../src/shared
                      ${CMAKE_BINARY_DIR}/argus-common)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../src/identity
+                     ${CMAKE_BINARY_DIR}/argus-identity)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../src/sync
+                     ${CMAKE_BINARY_DIR}/argus-sync)
 
     enable_language(C)
     add_library(sqlite-vec STATIC
@@ -23,26 +31,55 @@ if(NOT TARGET argus_common)
     target_compile_definitions(sqlite-vec PRIVATE SQLITE_CORE SQLITE_VEC_STATIC)
     target_include_directories(sqlite-vec PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/sqlite-vec)
+    set(ARGUS_SQLITE_VEC_TARGET sqlite-vec)
+
+    set(NCNN_BUILD_BENCHMARK OFF CACHE BOOL "" FORCE)
+    set(NCNN_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+    set(NCNN_BUILD_TOOLS OFF CACHE BOOL "" FORCE)
+    set(NCNN_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+    set(NCNN_OPENMP ON CACHE BOOL "" FORCE)
+    set(NCNN_AVX2 ON CACHE BOOL "" FORCE)
+    set(NCNN_ENABLE_PIC ON CACHE BOOL "" FORCE)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../third_party/ncnn
+                     ${CMAKE_BINARY_DIR}/third_party/ncnn EXCLUDE_FROM_ALL)
+    set(ARGUS_NCNN_TARGET ncnn)
 endif()
 
 find_package(doctest REQUIRED)
 
 add_library(camera-core STATIC
     ${CAMERA_SRC_ROOT}/controllers/health-controller.cc
+    ${CAMERA_SRC_ROOT}/controllers/camera-media-service.cc
     ${CAMERA_SRC_ROOT}/camera/camera-config.cc
+    ${CAMERA_SRC_ROOT}/camera/nats-camera-change-sink.cc
     ${CAMERA_SRC_ROOT}/server/listener-config.cc
     # Boot plumbing the service shares with the backend: the centralized
     # response config (envelope/CORS/404/405) and the SQLite layer (DbService
     # with the named identity client slot).
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/config/app-config.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/shared/services/sqlite/db-service.cc
+    # Camera-domain CRUD compiled from the shared tree so the legacy binary
+    # and this service serve byte-identical contracts.
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/feature/api/camera/controllers/camera-controller.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/feature/api/camera/dtos/create-camera-dto.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/feature/api/camera/dtos/update-camera-dto.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/feature/api/camera/services/camera-feature-service.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/feature/api/zone/controllers/zone-controller.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/feature/api/zone/dtos/create-zone-dto.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/feature/api/zone/dtos/update-zone-dto.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/feature/api/zone/services/zone-feature-service.cc
+    # Stream lifecycle: go2rtc supervision and the fMP4 StreamHub relay.
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/shared/services/stream/go2rtc-manager.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/shared/services/stream/stream-hub.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/shared/services/stream/upstream-http.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/shared/services/stream/ws-frame.cc
 )
 
 target_include_directories(camera-core PUBLIC
     ${CAMERA_SRC_ROOT}
     ${CMAKE_CURRENT_SOURCE_DIR}/../src)
 
-target_link_libraries(camera-core PUBLIC argus_common sqlite-vec)
+target_link_libraries(camera-core PUBLIC argus_sync sqlite-vec)
 
 target_compile_options(camera-core PRIVATE -Wall -Wextra)
 

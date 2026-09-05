@@ -18,6 +18,7 @@ SyncAuditService::publishModule(const SyncAuditModuleInput& input) const
       .tableName = input.tableName,
       .changes = changes,
       .createUserId = input.actorId,
+      .eventTimestamp = std::nullopt,
   });
   co_return;
 }

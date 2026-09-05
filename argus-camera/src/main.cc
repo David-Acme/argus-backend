@@ -1,10 +1,23 @@
 #include <camera/camera-config.hxx>
+#include <camera/nats-camera-change-sink.hxx>
 #include <config/app-config.hxx>
+#include <controllers/camera-media-service.hxx>
 #include <controllers/health-controller.hxx>
 #include <drogon/drogon.h>
+#include <feature/api/camera/controllers/camera-controller.hxx>
+#include <feature/api/zone/controllers/zone-controller.hxx>
+#include <feature/socket/sync/socket/sync-socket.hxx>
+#include <filter/device/device-filter.hxx>
+#include <filter/jwt/jwt-filter.hxx>
+#include <filter/role/role-filter.hxx>
+#include <filter/valid-json/valid-json-filter.hxx>
 #include <server/listener-config.hxx>
 #include <shared/services/config-service/config-service.hxx>
+#include <shared/services/room/room-manager.hxx>
 #include <shared/services/sqlite/db-service.hxx>
+#include <shared/services/stream/go2rtc-manager.hxx>
+#include <shared/services/stream/stream-hub.hxx>
+#include <shared/wrapper/nats/nats-bus.hxx>
 #include <unistd.h>
 
 #include <json/value.h>
@@ -78,6 +91,20 @@ int main()
   const ListenerConfig listener = ListenerConfig::resolve();
 
   drogon::app().registerController(std::make_shared<HealthController>());
+  // The camera and zone controllers live in the shared static library, so
+  // their AutoCreation registration is linker-dropped there; the legacy
+  // registers the same classes explicitly.
+  drogon::app().registerController(std::make_shared<CameraController>());
+  drogon::app().registerController(std::make_shared<ZoneController>());
+
+  drogon::app().registerFilter(std::make_shared<DeviceFilter>());
+  drogon::app().registerFilter(std::make_shared<ValidJsonFilter>());
+  drogon::app().registerFilter(std::make_shared<JwtFilter>());
+  drogon::app().registerFilter(std::make_shared<RoleFilter>());
+
+  const auto syncSocket = std::make_shared<SyncSocket>();
+  syncSocket->setForwarder(std::make_shared<CameraMediaService>());
+  drogon::app().registerController(syncSocket);
 
   drogon::app().loadConfigJson(drogonConfig(cameraDb, listener));
 
@@ -98,6 +125,30 @@ int main()
   LOG_INFO << "Listening on " << listener.host << ":" << listener.port
            << " (plain); camera database " << cameraDb.dbPath;
 
+  // The camera-domain change funnel (Ruling Y): without NATS configured the
+  // camera feature services drop their change events with a warning, which
+  // keeps a NATS-less camera service bootable for contract tests.
+  std::shared_ptr<NatsCameraChangeSink> changeSink;
+  const std::string natsUrl = ConfigService::getString("nats.url");
+  if (natsUrl.empty()) {
+    LOG_INFO << "NATS not configured; camera change funnel disabled";
+  }
+  else {
+    auto bus = std::make_shared<NatsBus>();
+    if (bus->connect()) {
+      LOG_INFO << "NATS event bus connected to " << bus->options().url;
+      changeSink = std::make_shared<NatsCameraChangeSink>(std::move(bus));
+      camera_change::setSink(changeSink.get());
+    }
+    else {
+      LOG_WARN << "NATS unavailable at " << natsUrl
+               << "; camera change funnel disabled";
+    }
+  }
+
+  RoomManager roomManagerLifecycle;
+  roomManagerLifecycle.init();
+
   drogon::app().registerBeginningAdvice([&cameraDb]() {
     DbService::installExtensions();
 
@@ -107,10 +158,17 @@ int main()
     }
 
     DbService::applyPragmas();
+
+    Go2rtcManager::instance().init();
+    StreamHub::instance().init();
   });
 
   drogon::app()
       .setThreadNum(0)
       .run();
+
+  StreamHub::instance().shutdown();
+  Go2rtcManager::instance().shutdown();
+  roomManagerLifecycle.shutdown();
   return 0;
 }
