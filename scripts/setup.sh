@@ -17,6 +17,7 @@
 #   ./scripts/setup.sh prod                # prod profile
 #   ./scripts/setup.sh dev --no-build      # install deps only (no compile)
 #   ./scripts/setup.sh --storage-only      # configure/start RustFS only
+#   ./scripts/setup.sh camera              # YOLO26n detector model only
 #   SKIP_BUILD=1 ./scripts/setup.sh prod
 #
 set -euo pipefail
@@ -53,6 +54,7 @@ sudo_if_needed() {
 PROFILE="dev"
 SKIP_BUILD=0
 STORAGE_ONLY=0
+CAMERA_ONLY=0
 ARGS=()
 
 for a in "$@"; do
@@ -61,6 +63,7 @@ for a in "$@"; do
       grep '^#' "$0" | sed 's/^#\{1,2\} //'; exit 0 ;;
     --no-build) SKIP_BUILD=1 ;;
     --storage-only) STORAGE_ONLY=1 ;;
+    camera)     CAMERA_ONLY=1 ;;
     dev|prod)   PROFILE="$a" ;;
     *)          ARGS+=("$a") ;;
   esac
@@ -1049,7 +1052,114 @@ setup_vad_model() {
   log "VAD model ready (~2.3 MB)."
 }
 
+setup_camera_model() {
+  log "Setting up YOLO26n object-detection model (AGPL-3.0, see argus-camera/NOTICE)..."
+  local ROOT
+  ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+  local MODEL_DIR="$ROOT/models/objects"
+  local HF_BASE="https://huggingface.co/Ultralytics/YOLO26/resolve/main"
+  local DL=""
+
+  if command -v curl >/dev/null 2>&1; then
+    DL="curl -fL --retry 3 --progress-bar -o"
+  elif command -v wget >/dev/null 2>&1; then
+    DL="wget --retry-connrefused --waitretry=3 --show-progress -O"
+  else
+    warn "Neither curl nor wget found; skipping YOLO26n download."
+  fi
+
+  if ! command -v sha256sum >/dev/null 2>&1 &&
+     ! command -v shasum >/dev/null 2>&1; then
+    warn "Neither sha256sum nor shasum found; skipping YOLO26n download."
+  fi
+
+  mkdir -p "$MODEL_DIR"
+
+  local PT_FILE="yolo26n.pt"
+  local PT_SHA256="9b09cc8bf347f0fc8a5f7657480587f25db09b34bf33b0652110fb03a8ad4fef"
+  local PT_PATH="$MODEL_DIR/$PT_FILE"
+  local PT_TMP="$PT_PATH.part"
+  local PT_ACTUAL_SHA256=""
+
+  if [ -n "$DL" ] &&
+     { [ ! -f "$PT_PATH" ] ||
+       [ "$(sha256_file "$PT_PATH" 2>/dev/null)" != "$PT_SHA256" ]; }; then
+    rm -f "$PT_PATH"
+    rm -f "$PT_TMP"
+    log "Downloading $PT_FILE (~5.3 MB)..."
+    if $DL "$PT_TMP" "$HF_BASE/$PT_FILE"; then
+      PT_ACTUAL_SHA256="$(sha256_file "$PT_TMP")"
+      if [ "$PT_ACTUAL_SHA256" = "$PT_SHA256" ]; then
+        mv "$PT_TMP" "$PT_PATH"
+        log "YOLO26n checksum verified."
+      else
+        rm -f "$PT_TMP"
+        warn "Checksum mismatch for $PT_FILE (expected $PT_SHA256, got $PT_ACTUAL_SHA256)."
+      fi
+    else
+      rm -f "$PT_TMP"
+      warn "Failed: $PT_FILE"
+    fi
+  elif [ -f "$PT_PATH" ]; then
+    log "YOLO26n weights already present and checksum verified."
+  fi
+
+  if [ -f "$MODEL_DIR/yolo26n.param" ] && [ -f "$MODEL_DIR/yolo26n.bin" ]; then
+    log "NCNN detector artifacts already present."
+    return
+  fi
+
+  if [ ! -f "$PT_PATH" ]; then
+    warn "yolo26n.pt unavailable; the detector starts disabled until the model exists."
+    return
+  fi
+
+  # The raw end-to-end NCNN artifacts are exported locally, never downloaded:
+  # the one2one head keeps the raw XYXY output the C++ postprocess decodes.
+  local PY=""
+  if command -v python3 >/dev/null 2>&1; then
+    PY="python3"
+  elif command -v python >/dev/null 2>&1; then
+    PY="python"
+  fi
+  if [ -z "$PY" ]; then
+    warn "No python3/python found; export the NCNN artifacts manually:"
+    warn "  pip install ultralytics torch pnnx"
+    warn "  python3 scripts/export-yolo26-ncnn-e2e.py --weights models/objects/yolo26n.pt --imgsz 640"
+    warn "  mv yolo26n_ncnn_e2e_raw_model/model.ncnn.param models/objects/yolo26n.param"
+    warn "  mv yolo26n_ncnn_e2e_raw_model/model.ncnn.bin models/objects/yolo26n.bin"
+    return
+  fi
+  if ! $PY -c "import ultralytics, torch, pnnx" >/dev/null 2>&1; then
+    warn "python lacks ultralytics+torch+pnnx; export the NCNN artifacts manually:"
+    warn "  pip install ultralytics torch pnnx"
+    warn "  python3 scripts/export-yolo26-ncnn-e2e.py --weights models/objects/yolo26n.pt --imgsz 640"
+    warn "  mv yolo26n_ncnn_e2e_raw_model/model.ncnn.param models/objects/yolo26n.param"
+    warn "  mv yolo26n_ncnn_e2e_raw_model/model.ncnn.bin models/objects/yolo26n.bin"
+    return
+  fi
+
+  log "Exporting raw end-to-end NCNN artifacts (one2one head, XYXY)..."
+  rm -rf "$MODEL_DIR/.export-tmp"
+  if $PY "$ROOT/scripts/export-yolo26-ncnn-e2e.py" \
+      --weights "$PT_PATH" --imgsz 640 --out-dir "$MODEL_DIR/.export-tmp"; then
+    mv "$MODEL_DIR/.export-tmp/model.ncnn.param" "$MODEL_DIR/yolo26n.param"
+    mv "$MODEL_DIR/.export-tmp/model.ncnn.bin" "$MODEL_DIR/yolo26n.bin"
+    rm -rf "$MODEL_DIR/.export-tmp"
+    log "Detector model ready: $MODEL_DIR/yolo26n.param + yolo26n.bin"
+  else
+    rm -rf "$MODEL_DIR/.export-tmp"
+    warn "Export failed; the detector starts disabled. Retry with:"
+    warn "  python3 scripts/export-yolo26-ncnn-e2e.py --weights models/objects/yolo26n.pt --imgsz 640"
+  fi
+}
+
 main() {
+  if [ "$CAMERA_ONLY" -eq 1 ]; then
+    setup_camera_model
+    exit 0
+  fi
+
   ensure_local_config
   start_rustfs
 
@@ -1081,6 +1191,7 @@ main() {
   setup_vad_model
   setup_extract_model
   setup_memory_model
+  setup_camera_model
   build_project
   log "All done (profile: $PROFILE). Happy hacking!"
 }

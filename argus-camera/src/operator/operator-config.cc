@@ -5,12 +5,10 @@
 
 #include <json/value.h>
 
-namespace
-{
 // The class table must match the model's output width on the raw one2one
 // export (row length = 4 + class count), so the full COCO-80 table is the
 // default and the config key overrides it wholesale.
-std::vector<std::string> defaultClasses()
+std::vector<std::string> operator_config::defaultClasses()
 {
   return {"person", "bicycle", "car", "motorcycle", "airplane", "bus", "train",
           "truck", "boat", "traffic light", "fire hydrant", "stop sign",
@@ -27,6 +25,8 @@ std::vector<std::string> defaultClasses()
           "scissors", "teddy bear", "hair drier", "toothbrush"};
 }
 
+namespace
+{
 std::vector<std::string> splitCsv(const std::string& value)
 {
   std::vector<std::string> items;

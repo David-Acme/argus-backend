@@ -91,22 +91,18 @@ struct ObjectDetectorService::Impl
       return false;
     }
 
-    // Blob names are read from the .param, never hardcoded: input blobs have
-    // no producer, output blobs have no consumer.
-    inputBlob.clear();
-    outputBlob.clear();
-    for (const auto& blob : net->blobs()) {
-      if (blob.producer == -1 && inputBlob.empty())
-        inputBlob = blob.name;
-      if (blob.consumer == -1)
-        outputBlob = blob.name;
-    }
-    if (inputBlob.empty() || outputBlob.empty()) {
+    // Blob names are read from the .param, never hardcoded: ncnn resolves
+    // the Input layers' tops as inputs and unconsumed blobs as outputs.
+    const auto& inputNames = net->input_names();
+    const auto& outputNames = net->output_names();
+    if (inputNames.empty() || outputNames.empty()) {
       LOG_ERROR << "ObjectDetector: could not resolve input/output blob names"
                    " from " << paramPath;
       net.reset();
       return false;
     }
+    inputBlob = inputNames.front();
+    outputBlob = outputNames.front();
     return true;
   }
 };

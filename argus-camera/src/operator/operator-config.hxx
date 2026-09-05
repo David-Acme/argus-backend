@@ -38,4 +38,8 @@ namespace operator_config
 {
 ObjectsConfig resolveObjects();
 OperatorConfig resolveOperator();
+
+// COCO-80, the default class table (row length = 4 + class count must match
+// the model's output width).
+std::vector<std::string> defaultClasses();
 } // namespace operator_config
