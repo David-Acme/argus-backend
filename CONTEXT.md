@@ -2329,6 +2329,16 @@ auth outcome of the no-token run, same conclusion as F1-4).
   `client()` is identity.db (fresh rows), on the backend
   `readOnlyClient()` falls back to `client()` (same argus.db — byte-identical).
   Non-identity sync tables keep the read-only argus.db path.
+- **Ruling S — audit sync reads follow the audit writes (F1-7 adjudication of
+  the audit's MAJOR 1).**
+  The app's offline audit-cursor pages (`sync_audit_log`/`sync_user_audit_log`
+  message types over `/sync`, backed by the `audit_log`/`user_audit_log`
+  tables) joined the Ruling G set: `AuditLogRepository`/`UserAuditLogRepository`
+  `findSync`/`findLastSync` moved from `readOnlyClient()` to `client()` with
+  the same mechanism (backend no-op via fallback; gateway resolves them to
+  identity.db). Without this the gateway wrote identity-scope audit into
+  identity.db while those pages replayed from argus.db read-only, so the app's
+  audit view froze at the cutover. The audit.db split stays a Fase-2 item.
 - **Ruling H — legacy user-row reads resolve to identity.db when configured
   (transitional).**
   `DbService::identityClient()`/`setIdentityClient()` (additive named

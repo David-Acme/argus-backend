@@ -48,10 +48,14 @@ legacy backend keeps running untouched on its own listener.
 - **`/sync` relay (F1-4)**: the gateway owns the `/sync` WebSocket end to end.
   It serves the sync protocol natively (`sync`, `sync_audit_log`,
   `sync_user_audit_log`, identity rooms, `initial_info`) from
-  `argus_sync` reading the legacy `argus.db` through a read-only SQLite
-  connection (`file:...?mode=ro`, enabled process-wide by
-  `DbService::enableUriFilenames()`; `[legacy] db`, default
-  `database/argus.db`), and relays every `camera:*`/`voice:*` frame (text and
+  `argus_sync`: the non-identity sync tables read the legacy `argus.db`
+  through a read-only SQLite connection (`file:...?mode=ro`, enabled
+  process-wide by `DbService::enableUriFilenames()`; `[legacy] db`, default
+  `database/argus.db`) — Ruling G's identity-owned tables (`user`, `person`,
+  `user_invitation`) and Ruling S's audit pages (`sync_audit_log`/
+  `sync_user_audit_log` over the identity.db `audit_log`/`user_audit_log`
+  tables) read the default client instead, so post-cutover rows replay to the
+  app. It relays every `camera:*`/`voice:*` frame (text and
   binary) byte-transparently to the legacy's internal `/sync`
   (`[legacy] sync_url`, empty disables the relay) as the client itself — same
   `Authorization` header and `User-Agent`, so the legacy device-hash filter
