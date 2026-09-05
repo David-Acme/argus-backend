@@ -35,7 +35,10 @@ public:
   std::vector<int64_t> trackedCameras() const;
 
   // A one-line cumulative digest for the suppressed events, taken only when
-  // the hour rolled over or the silent window ended; resets the counters.
+  // the hour rolled over or the silent window ended — never during silent
+  // hours (the counts carry until the next active window); resets the
+  // counters. The roll inside shouldNotify marks the digest due instead of
+  // clearing it, so no event arriving around the roll can lose the digest.
   std::string takeDigest(int64_t cameraId, int64_t nowMs);
 
   static bool inSilentHours(const Config& config, int hour);
@@ -45,6 +48,9 @@ private:
   {
     int64_t windowStartMs{0};
     int notified{0};
+    // Set when the window rolled with suppressed counts still pending, so
+    // the digest survives the roll until takeDigest flushes it.
+    bool digestDue{false};
     std::map<std::string, int> suppressedByClass;
   };
 

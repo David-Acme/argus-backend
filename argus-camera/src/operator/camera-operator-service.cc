@@ -265,8 +265,8 @@ void CameraOperatorService::publishPending(int64_t cameraId,
   auto event = *state.pending;
   state.pending.reset();
 
-  // Per camera+class cooldown (Ruling AD). A class still cooling down
-  // suppresses the whole window; the next window carries the counts.
+  // Per camera+class cooldown (Ruling AD): a class still cooling down drops
+  // the whole window; the next window starts fresh, nothing is carried over.
   for (const auto& object : event.objects) {
     const auto last = state.lastEmitByClass.find(object.name);
     if (last != state.lastEmitByClass.end() &&

@@ -58,7 +58,10 @@ public:
 
 private:
   // Keeps the net, the blob names read from the .param and the Vulkan
-  // allocators alive; rebuilt in place when an instance falls back to CPU.
+  // allocators alive; replaced (not mutated) when an instance falls back
+  // to CPU, so in-flight snapshots keep the old net. implMutex_ guards
+  // only that swap — inference runs on a shared snapshot, so per-camera
+  // inference overlaps (bounded by the semaphore below).
   struct Impl;
 
   // Letterbox geometry: scale + padding mapping model boxes to frame pixels.
@@ -76,8 +79,13 @@ private:
                                           const LetterboxPlan& plan, int width,
                                           int height) const;
 
+  // Loads a fresh net (never mutates a live one: in-flight snapshots keep
+  // running on the old instance while a reload swaps the shared pointer).
+  static std::shared_ptr<Impl> loadImpl(const std::string& modelDir,
+                                        bool useVulkan);
+
   ObjectDetectorOptions options_;
   mutable std::mutex implMutex_;
   std::counting_semaphore<16> slots_{0};
-  std::unique_ptr<Impl> impl_;
+  std::shared_ptr<Impl> impl_;
 };

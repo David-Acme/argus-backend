@@ -205,7 +205,10 @@ proxies everything else to the legacy backend on its internal plain listener
 - **`camera_notifier`** subscribes `argus.camera.v1.object_detected` (F2-3)
   next to the camera change fan-out. Events marshal from the cnats
   dispatcher into the Drogon IO loop before touching policy or database —
-  same discipline as the change funnel.
+  same discipline as the change funnel. The subscription is an ephemeral
+  core-NATS consumer: no replay after a gateway restart, so events published
+  while it is down are lost (the JetStream stream retains them for
+  inspection only).
 - **This subject is NOT a sync change**: payloads never reach `/sync`; the
   consumer turns them into `notification` rows via the existing
   NotificationService (type `camera`) for active owner/guard users only.

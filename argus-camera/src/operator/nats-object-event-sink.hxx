@@ -8,8 +8,10 @@
 class NatsBus;
 
 // Publishes object_detected events over NATS. Ensures (best-effort, once)
-// the JetStream stream that retains the subject so offline gateway restarts
-// keep the notification budget honest.
+// the JetStream stream that retains the subject server-side for later
+// inspection only — the gateway's subscription is an ephemeral core-NATS
+// consumer, so events published while it is down are not replayed on
+// restart.
 class NatsObjectEventSink final : public IObjectEventSink
 {
 public:

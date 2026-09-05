@@ -100,6 +100,9 @@ preset, own `camera.db`.
   output channel is `IObjectEventSink` → `NatsObjectEventSink` publishing
   `argus.camera.v1.object_detected` (JetStream stream `ARGUS_CAMERA`, 7d
   file retention, best-effort ensure; core NATS publish works without it).
+  The retention is server-side inspection only: the gateway subscribes
+  ephemerally over core NATS, so events published while it is down are not
+  replayed after a restart.
 - **Budget split (Ruling AD)**: camera side = aggregation window +
   per camera+class cooldown + `max_fps_inference`; gateway side =
   notification budget/silent hours/digest (see argus-gateway CONTEXT.md).

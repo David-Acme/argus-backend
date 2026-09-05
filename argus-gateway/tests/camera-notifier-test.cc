@@ -142,6 +142,47 @@ TEST_CASE("a digest flushes when the silent window ends")
   CHECK(digest.find("1 person") != std::string::npos);
 }
 
+TEST_CASE("a pending digest survives the hour-roll race")
+{
+  CameraNotificationPolicy policy({6, -1, -1});
+  const int64_t start = atLocalHour(12);
+
+  CHECK(policy.shouldNotify(1, start));
+  policy.countSuppressed(1, "person");
+  policy.countSuppressed(1, "car");
+
+  // An event arriving right after the roll must not erase the digest.
+  CHECK(policy.shouldNotify(1, start + 3600000));
+  const std::string digest = policy.takeDigest(1, start + 3600001);
+  CHECK(digest.find("2 events suppressed") != std::string::npos);
+  CHECK(digest.find("1 person") != std::string::npos);
+  CHECK(digest.find("1 car") != std::string::npos);
+
+  // The digest is taken once; a second read finds nothing.
+  CHECK(policy.takeDigest(1, start + 3600002).empty());
+}
+
+TEST_CASE("counts suppressed inside silent hours carry until the window ends")
+{
+  CameraNotificationPolicy policy({6, 22, 6});
+  const int64_t night = atLocalHour(23);
+
+  CHECK_FALSE(policy.shouldNotify(1, night));
+  policy.countSuppressed(1, "person");
+
+  // The budget hour rolls inside the silent window; the digest must not
+  // go out at night and the counts carry.
+  CHECK_FALSE(policy.shouldNotify(1, atLocalHour(0, 5, 16)));
+  policy.countSuppressed(1, "car");
+  CHECK(policy.takeDigest(1, atLocalHour(1, 0, 16)).empty());
+
+  // Morning after the silent window [22, 6) closed: everything flushes.
+  const std::string digest = policy.takeDigest(1, atLocalHour(6, 0, 16));
+  CHECK(digest.find("2 events suppressed") != std::string::npos);
+  CHECK(digest.find("1 person") != std::string::npos);
+  CHECK(digest.find("1 car") != std::string::npos);
+}
+
 TEST_CASE("the consumer applies the budget and creates camera notifications")
 {
   std::remove(kIdentityDb);

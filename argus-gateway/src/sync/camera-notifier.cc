@@ -66,9 +66,12 @@ bool CameraNotificationPolicy::shouldNotify(int64_t cameraId, int64_t nowMs)
 {
   auto& state = windows_[cameraId];
   if (state.windowStartMs == 0 || nowMs - state.windowStartMs >= kHourMs) {
+    // The roll marks a pending digest due instead of clearing the counts:
+    // takeDigest flushes and resets, so nothing is lost around the roll.
+    if (state.windowStartMs != 0 && !state.suppressedByClass.empty())
+      state.digestDue = true;
     state.windowStartMs = nowMs;
     state.notified = 0;
-    state.suppressedByClass.clear();
   }
 
   if (inSilentHours(config_, hourOfDay(nowMs)))
@@ -105,11 +108,16 @@ std::string CameraNotificationPolicy::takeDigest(int64_t cameraId,
     return {};
 
   auto& state = it->second;
+  // Never deliver inside silent hours: the counts carry into the next
+  // active window and flush when the silent window ends.
+  if (inSilentHours(config_, hourOfDay(nowMs)))
+    return {};
+
   const bool silentOver =
-      !inSilentHours(config_, hourOfDay(nowMs)) &&
       inSilentHours(config_, hourOfDay(nowMs - 1));
   const bool hourRolled =
-      state.windowStartMs != 0 && nowMs - state.windowStartMs >= kHourMs;
+      state.digestDue ||
+      (state.windowStartMs != 0 && nowMs - state.windowStartMs >= kHourMs);
   if (!silentOver && !hourRolled)
     return {};
 
@@ -121,6 +129,7 @@ std::string CameraNotificationPolicy::takeDigest(int64_t cameraId,
                objectClass;
   }
   state.suppressedByClass.clear();
+  state.digestDue = false;
   return std::to_string(total) + " events suppressed (" + summary + ")";
 }
 

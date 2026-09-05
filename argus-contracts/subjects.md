@@ -81,7 +81,10 @@ persisted change: the gateway's `camera-notifier` consumes it, applies the
 notification budget and turns it into `notification` rows — it never reaches
 `/sync`. The subject is retained on the JetStream stream `ARGUS_CAMERA`
 (7 days, file storage) together with `argus.camera.v1.change`; stream creation
-is best-effort (core NATS publish works without it).
+is best-effort (core NATS publish works without it). That retention is
+server-side only: the gateway's consumer is an ephemeral core-NATS subscriber,
+so events published while the gateway is down are not replayed when it
+restarts — the stream exists for later inspection, not for redelivery.
 
 ```json
 {

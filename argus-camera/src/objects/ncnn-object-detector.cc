@@ -66,46 +66,47 @@ struct ObjectDetectorService::Impl
   std::string inputBlob;
   std::string outputBlob;
   bool vulkan{false};
-  // Accepted runtime shape; a rejected shape is logged once per process.
+  // Accepted runtime shape; a rejected shape is logged once per load.
   bool shapeAccepted{false};
   size_t acceptedRowLength{0};
-
-  bool reload(bool useVulkan)
-  {
-    vulkan = useVulkan;
-    net = std::make_unique<ncnn::Net>();
-    net->opt.use_packing_layout = true;
-    net->opt.num_threads = ThreadBudget::computeThreads();
-    net->opt.use_vulkan_compute = useVulkan;
-    net->opt.use_fp16_packed = true;
-    net->opt.use_fp16_storage = true;
-    net->opt.use_fp16_arithmetic = true;
-
-    const std::string paramPath = modelDir + "/yolo26n.param";
-    const std::string binPath = modelDir + "/yolo26n.bin";
-    if (net->load_param(paramPath.c_str()) != 0 ||
-        net->load_model(binPath.c_str()) != 0) {
-      LOG_ERROR << "ObjectDetector: failed to load " << paramPath << " or "
-                << binPath;
-      net.reset();
-      return false;
-    }
-
-    // Blob names are read from the .param, never hardcoded: ncnn resolves
-    // the Input layers' tops as inputs and unconsumed blobs as outputs.
-    const auto& inputNames = net->input_names();
-    const auto& outputNames = net->output_names();
-    if (inputNames.empty() || outputNames.empty()) {
-      LOG_ERROR << "ObjectDetector: could not resolve input/output blob names"
-                   " from " << paramPath;
-      net.reset();
-      return false;
-    }
-    inputBlob = inputNames.front();
-    outputBlob = outputNames.front();
-    return true;
-  }
 };
+
+std::shared_ptr<ObjectDetectorService::Impl>
+ObjectDetectorService::loadImpl(const std::string& modelDir, bool useVulkan)
+{
+  auto impl = std::make_shared<Impl>();
+  impl->modelDir = modelDir;
+  impl->vulkan = useVulkan;
+  impl->net = std::make_unique<ncnn::Net>();
+  impl->net->opt.use_packing_layout = true;
+  impl->net->opt.num_threads = ThreadBudget::computeThreads();
+  impl->net->opt.use_vulkan_compute = useVulkan;
+  impl->net->opt.use_fp16_packed = true;
+  impl->net->opt.use_fp16_storage = true;
+  impl->net->opt.use_fp16_arithmetic = true;
+
+  const std::string paramPath = modelDir + "/yolo26n.param";
+  const std::string binPath = modelDir + "/yolo26n.bin";
+  if (impl->net->load_param(paramPath.c_str()) != 0 ||
+      impl->net->load_model(binPath.c_str()) != 0) {
+    LOG_ERROR << "ObjectDetector: failed to load " << paramPath << " or "
+              << binPath;
+    return nullptr;
+  }
+
+  // Blob names are read from the .param, never hardcoded: ncnn resolves
+  // the Input layers' tops as inputs and unconsumed blobs as outputs.
+  const auto& inputNames = impl->net->input_names();
+  const auto& outputNames = impl->net->output_names();
+  if (inputNames.empty() || outputNames.empty()) {
+    LOG_ERROR << "ObjectDetector: could not resolve input/output blob names"
+                 " from " << paramPath;
+    return nullptr;
+  }
+  impl->inputBlob = inputNames.front();
+  impl->outputBlob = outputNames.front();
+  return impl;
+}
 
 ObjectDetectorService::ObjectDetectorService(ObjectDetectorOptions options)
     : options_(std::move(options))
@@ -120,12 +121,8 @@ ObjectDetectorService::~ObjectDetectorService()
 
 void ObjectDetectorService::init()
 {
-  std::lock_guard<std::mutex> lock(implMutex_);
-
-  auto impl = std::make_unique<Impl>();
-  impl->modelDir = options_.modelDir;
-
-  if (!impl->reload(vulkanAvailable(options_))) {
+  auto impl = loadImpl(options_.modelDir, vulkanAvailable(options_));
+  if (!impl) {
     LOG_WARN << "ObjectDetector: model unavailable at " << options_.modelDir
              << "; detection disabled";
     return;
@@ -137,7 +134,10 @@ void ObjectDetectorService::init()
            << " input_size=" << options_.inputSize
            << " classes=" << options_.classes.size();
 
-  impl_ = std::move(impl);
+  {
+    std::lock_guard<std::mutex> lock(implMutex_);
+    impl_ = std::move(impl);
+  }
   // FaceService deadlock pattern fixed here: the inference slots are
   // released only after a successful load, so a failed init leaves the
   // service disabled instead of blocking every caller forever.
@@ -172,17 +172,29 @@ std::vector<DetectedObject> ObjectDetectorService::detect(const uint8_t* rgb,
     ~SlotRelease() { slots.release(); }
   } guard{slots_};
 
-  std::lock_guard<std::mutex> lock(implMutex_);
-  if (!impl_)
+  // The mutex guards only the snapshot grab; the inference itself runs on
+  // the shared snapshot so concurrent cameras do not serialize.
+  std::shared_ptr<Impl> impl;
+  {
+    std::lock_guard<std::mutex> lock(implMutex_);
+    impl = impl_;
+  }
+  if (!impl)
     return {};
 
-  auto result = runNet(*impl_, rgb, width, height);
-  if (!result && impl_->vulkan) {
+  auto result = runNet(*impl, rgb, width, height);
+  if (!result && impl->vulkan) {
     // Vulkan failure on this instance: degrade to CPU and retry once.
     LOG_WARN << "ObjectDetector: vulkan inference failed; falling back to CPU"
                 " on this instance";
-    if (impl_->reload(false))
-      result = runNet(*impl_, rgb, width, height);
+    if (auto reloaded = loadImpl(impl->modelDir, false)) {
+      {
+        std::lock_guard<std::mutex> lock(implMutex_);
+        impl_ = reloaded;
+      }
+      impl = std::move(reloaded);
+      result = runNet(*impl, rgb, width, height);
+    }
   }
   if (!result)
     return {};
