@@ -12,6 +12,8 @@
 #include <shared/services/sqlite/db-service.hxx>
 #include <shared/utils/json-util/json-util.hxx>
 #include <shared/wrapper/api-response/api-response.hxx>
+#include <proxy/reverse-proxy.hxx>
+#include <sync/camera-fan-out.hxx>
 #include <sync/sync-fan-out.hxx>
 #include <sync/sync-registrar.hxx>
 #include <sync/sync-relay.hxx>
@@ -503,6 +505,128 @@ TEST_CASE("proxy config resolves the internal upstream and native paths")
   CHECK(disabled.upstreamUrl.empty());
 
   std::remove(path);
+}
+
+TEST_CASE("proxy config routes the camera CRUD to argus-camera")
+{
+  const char* path = "gateway-test-config-camera-proxy.toml";
+  {
+    std::ofstream file(path);
+    file << "[legacy]\n"
+         << "proxy_url = \"http://127.0.0.1:7025\"\n"
+         << "[camera]\n"
+         << "proxy_url = \"http://127.0.0.1:7026\"\n";
+  }
+
+  ConfigService::load(path);
+  const ProxyConfig config = ProxyConfig::resolve();
+
+  CHECK(config.upstreamUrl == "http://127.0.0.1:7025");
+  CHECK(config.cameraProxyUrl == "http://127.0.0.1:7026");
+
+  // Without the [camera] section the camera routes stay on the legacy.
+  {
+    std::ofstream file(path);
+    file << "[legacy]\n"
+         << "proxy_url = \"http://127.0.0.1:7025\"\n";
+  }
+
+  ConfigService::load(path);
+  const ProxyConfig legacyOnly = ProxyConfig::resolve();
+  CHECK(legacyOnly.cameraProxyUrl.empty());
+
+  std::remove(path);
+}
+
+TEST_CASE("camera relay config resolves the sync target")
+{
+  const char* path = "gateway-test-config-camera-sync.toml";
+  {
+    std::ofstream file(path);
+    file << "[camera]\n"
+         << "sync_url = \"ws://127.0.0.1:7026/sync\"\n";
+  }
+
+  ConfigService::load(path);
+  const CameraSyncConfig config = CameraSyncConfig::resolve();
+  CHECK(config.syncUrl == "ws://127.0.0.1:7026/sync");
+
+  {
+    std::ofstream file(path);
+    file << "[legacy]\n"
+         << "proxy_url = \"http://127.0.0.1:7025\"\n";
+  }
+
+  ConfigService::load(path);
+  const CameraSyncConfig fallback = CameraSyncConfig::resolve();
+  CHECK(fallback.syncUrl.empty());
+
+  std::remove(path);
+}
+
+TEST_CASE("relay leg routing sends camera frames to argus-camera")
+{
+  CHECK(relayLegIsCamera("camera:subscribe"));
+  CHECK(relayLegIsCamera("camera:ready"));
+  CHECK(relayLegIsCamera("camera:closed"));
+  CHECK(relayLegIsCamera("camera:ack"));
+  CHECK_FALSE(relayLegIsCamera("camera"));
+  CHECK_FALSE(relayLegIsCamera("cameraX"));
+  CHECK_FALSE(relayLegIsCamera("voice:transcribe"));
+
+  // Every camera frame type the legacy emits routes to the camera leg.
+  for (const char* type :
+       {"camera:subscribe", "camera:ready", "camera:closed", "camera:ack",
+        "camera:subscribe_error", "camera:ack_error",
+        "camera:unsubscribe_error"})
+    CHECK(relayLegIsCamera(type));
+}
+
+TEST_CASE("route table sends two-segment CRUD to the camera backend")
+{
+  gateway_proxy::SimpleReverseProxy proxy;
+  Json::Value config;
+  Json::Value backends(Json::arrayValue);
+  backends.append("http://127.0.0.1:7025");
+  config["backends"] = backends;
+  Json::Value routes(Json::arrayValue);
+  Json::Value cameraRoute(Json::objectValue);
+  Json::Value prefixes(Json::arrayValue);
+  prefixes.append("/camera");
+  prefixes.append("/zone");
+  cameraRoute["prefixes"] = prefixes;
+  cameraRoute["max_segments"] = 2;
+  cameraRoute["backend"] = "http://127.0.0.1:7026";
+  routes.append(cameraRoute);
+  config["routes"] = routes;
+
+  // initAndStart registers the pre-routing advice; a plugin instance is
+  // started once per process, so this case runs alone here.
+  proxy.initAndStart(config);
+
+  CHECK(proxy.matchRoute("/camera") == 0);
+  CHECK(proxy.matchRoute("/camera/1") == 0);
+  CHECK(proxy.matchRoute("/zone") == 0);
+  CHECK(proxy.matchRoute("/zone/3") == 0);
+
+  // The deeper control paths miss the segment cap and stay with the legacy.
+  CHECK(proxy.matchRoute("/camera/1/ptz") == -1);
+  CHECK(proxy.matchRoute("/camera/1/preset") == -1);
+  CHECK(proxy.matchRoute("/camera/1/settings") == -1);
+  CHECK(proxy.matchRoute("/camera/1/settings/x") == -1);
+  CHECK(proxy.matchRoute("/camera/1/status") == -1);
+  CHECK(proxy.matchRoute("/camera/1/presets") == -1);
+  CHECK(proxy.matchRoute("/camera/1/capabilities") == -1);
+  CHECK(proxy.matchRoute("/camera/1/talk") == -1);
+  CHECK(proxy.matchRoute("/cameras/1") == -1);
+  CHECK(proxy.matchRoute("/user/1") == -1);
+
+  CHECK(gateway_proxy::SimpleReverseProxy::segmentCount("/camera") == 1);
+  CHECK(gateway_proxy::SimpleReverseProxy::segmentCount("/camera/1") == 2);
+  CHECK(gateway_proxy::SimpleReverseProxy::segmentCount("/camera/1/ptz") == 3);
+  CHECK(gateway_proxy::SimpleReverseProxy::segmentCount("/camera/1//x") == 3);
+
+  proxy.shutdown();
 }
 
 TEST_CASE("native path match keeps segment boundaries")
