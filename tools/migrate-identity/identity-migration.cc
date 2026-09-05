@@ -435,7 +435,11 @@ IdentityMigrationReport migrateIdentity(const IdentityMigrationOptions& options)
     return report;
   }
 
-  const auto uri = "file:" + options.sourcePath + "?mode=ro";
+  std::string sourcePath = options.sourcePath;
+  for (size_t at = sourcePath.find('\''); at != std::string::npos;
+       at = sourcePath.find('\'', at + 2))
+    sourcePath.replace(at, 1, "''");
+  const auto uri = "file:" + sourcePath + "?mode=ro";
   const auto attach =
       execStatement({.db = target.db.get(),
                      .sql = "ATTACH DATABASE '" + uri + "' AS src"});

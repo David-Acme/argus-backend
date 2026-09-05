@@ -190,6 +190,26 @@ TEST_CASE("migration refuses a non-schema-current existing target")
   exec(target.get(), "SELECT * FROM unrelated");
 }
 
+TEST_CASE("migration refuses an existing target with a stale column shape")
+{
+  const auto fixture = makeFixture();
+  {
+    const auto target = openFile(fixture.targetPath);
+    // All three camera tables exist but camera lacks the schema's columns.
+    exec(target.get(), "CREATE TABLE camera (id INTEGER PRIMARY KEY)");
+    exec(target.get(), "CREATE TABLE camera_stream (id INTEGER PRIMARY KEY)");
+    exec(target.get(), "CREATE TABLE zone (id INTEGER PRIMARY KEY)");
+  }
+
+  const auto report = migrateSeeded(fixture);
+  CHECK_FALSE(report.ok);
+  CHECK_MESSAGE(report.error.find("column shape") != std::string::npos,
+                report.error);
+
+  const auto target = openFile(fixture.targetPath);
+  CHECK(countOf(target.get(), "camera") == 0);
+}
+
 TEST_CASE("verification detects a tampered target")
 {
   const auto fixture = makeFixture();

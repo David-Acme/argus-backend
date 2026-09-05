@@ -322,6 +322,33 @@ CameraMigrationReport noOpReport(sqlite3* target)
   return report;
 }
 
+// In-memory schema reference used to compare the column shape of an existing
+// target against camera-schema.sql.
+CameraHandleResult schemaReference(const std::string& schemaPath)
+{
+  auto reference = openHandle(":memory:", SQLITE_OPEN_READWRITE);
+  if (!reference.ok)
+    return reference;
+  const auto schema =
+      applyCameraSchema({.db = reference.db.get(), .schemaPath = schemaPath});
+  if (!schema.ok) {
+    reference.ok = false;
+    reference.error = schema.error;
+    return reference;
+  }
+  return reference;
+}
+
+void replaceAll(std::string& text, const std::string& from,
+                const std::string& to)
+{
+  size_t at = 0;
+  while ((at = text.find(from, at)) != std::string::npos) {
+    text.replace(at, from.size(), to);
+    at += to.size();
+  }
+}
+
 CameraMigrationReport verifyForeignKeyIntegrity(sqlite3* target)
 {
   CameraMigrationReport report;
@@ -446,11 +473,23 @@ CameraMigrationReport migrateCamera(const CameraMigrationOptions& options)
     return report;
   }
 
+  std::error_code schemaEc;
+  if (!std::filesystem::is_regular_file(options.schemaPath, schemaEc)) {
+    report.error = "schema file not found: " + options.schemaPath;
+    return report;
+  }
+
   std::error_code targetEc;
   if (std::filesystem::is_regular_file(options.targetPath, targetEc)) {
     const auto existing = openHandle(options.targetPath, SQLITE_OPEN_READWRITE);
     if (!existing.ok) {
       report.error = "cannot open existing target: " + existing.error;
+      return report;
+    }
+    const auto busy = execStatement(
+        {.db = existing.db.get(), .sql = "PRAGMA busy_timeout = 5000"});
+    if (!busy.ok) {
+      report.error = "cannot set busy_timeout: " + busy.error;
       return report;
     }
     std::string missing;
@@ -460,18 +499,38 @@ CameraMigrationReport migrateCamera(const CameraMigrationOptions& options)
                      + "); remove it and re-run the migration";
       return report;
     }
+    const auto reference = schemaReference(options.schemaPath);
+    if (!reference.ok) {
+      report.error = reference.error;
+      return report;
+    }
+    for (const auto& table : kCameraTables) {
+      std::string existingError;
+      const auto existingColumns = columnNames(
+          {.db = existing.db.get(), .schema = "main", .table = table},
+          existingError);
+      std::string referenceError;
+      const auto referenceColumns = columnNames(
+          {.db = reference.db.get(), .schema = "main", .table = table},
+          referenceError);
+      if (!existingColumns || !referenceColumns) {
+        report.error = existingError.empty() ? referenceError : existingError;
+        return report;
+      }
+      if (*existingColumns != *referenceColumns) {
+        report.error = "target camera.db exists but is not schema-current "
+                       "(column shape of " + table
+                       + " differs from " + options.schemaPath
+                       + "); remove it and re-run the migration";
+        return report;
+      }
+    }
     return noOpReport(existing.db.get());
   }
 
   const auto sourceCheck = validateSource(options.sourcePath);
   if (!sourceCheck.ok) {
     report.error = sourceCheck.error;
-    return report;
-  }
-
-  std::error_code schemaEc;
-  if (!std::filesystem::is_regular_file(options.schemaPath, schemaEc)) {
-    report.error = "schema file not found: " + options.schemaPath;
     return report;
   }
 
@@ -500,7 +559,9 @@ CameraMigrationReport migrateCamera(const CameraMigrationOptions& options)
     return report;
   }
 
-  const auto uri = "file:" + options.sourcePath + "?mode=ro";
+  std::string sourcePath = options.sourcePath;
+  replaceAll(sourcePath, "'", "''");
+  const auto uri = "file:" + sourcePath + "?mode=ro";
   const auto attach =
       execStatement({.db = target.db.get(),
                      .sql = "ATTACH DATABASE '" + uri + "' AS src"});

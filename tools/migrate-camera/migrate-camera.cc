@@ -2,6 +2,7 @@
 
 #include <toml++/toml.hpp>
 
+#include <algorithm>
 #include <filesystem>
 #include <iostream>
 #include <string>
@@ -9,18 +10,41 @@
 namespace
 {
 
-std::string cameraDbFromConfig(const std::string& configPath)
+struct ConfigDbResult
 {
+  bool ok = false;
+  std::string value;
+  std::string error;
+};
+
+ConfigDbResult cameraDbFromConfig(const std::string& configPath)
+{
+  ConfigDbResult result;
   std::error_code ec;
-  if (!std::filesystem::is_regular_file(configPath, ec))
-    return {};
+  if (!std::filesystem::is_regular_file(configPath, ec)) {
+    result.error = "config file not found: " + configPath;
+    return result;
+  }
   try {
     const auto table = toml::parse_file(configPath);
-    return table["camera"]["db"].value_or(std::string());
+    const auto* camera = table["camera"].as_table();
+    if (!camera || !camera->contains("db")) {
+      result.error = "config file has no [camera] db key: " + configPath;
+      return result;
+    }
+    result.value = camera->at("db").value_or(std::string());
+    if (result.value.empty()) {
+      result.error = "config file has an empty [camera] db key: " + configPath;
+      return result;
+    }
   }
-  catch (const toml::parse_error&) {
-    return {};
+  catch (const toml::parse_error& error) {
+    result.error = "cannot parse config file " + configPath + ": "
+                   + std::string(error.description());
+    return result;
   }
+  result.ok = true;
+  return result;
 }
 
 } // namespace
@@ -54,8 +78,15 @@ int main(int argc, char** argv)
     }
   }
 
-  if (options.targetPath.empty() && !configPath.empty())
-    options.targetPath = cameraDbFromConfig(configPath);
+  if (options.targetPath.empty() && !configPath.empty()) {
+    const auto db = cameraDbFromConfig(configPath);
+    if (!db.ok) {
+      std::cerr << "camera migration FAILED: --config error: " << db.error
+                << '\n';
+      return 2;
+    }
+    options.targetPath = db.value;
+  }
 
   const auto report = migrateCamera(options);
   for (const auto& table : report.tables) {
@@ -73,6 +104,15 @@ int main(int argc, char** argv)
     return 1;
   }
   if (report.noop) {
+    const bool empty =
+        std::all_of(report.tables.begin(), report.tables.end(),
+                    [](const CameraTableReport& entry) {
+                      return entry.targetRows == 0;
+                    });
+    if (empty)
+      std::cerr << "warning: camera.db holds the schema but no rows were ever "
+                   "copied; if this is unexpected, remove it and re-run the "
+                   "migration\n";
     std::cout << "camera.db is already schema-current; nothing copied\n";
     return 0;
   }
