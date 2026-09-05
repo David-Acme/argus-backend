@@ -16,6 +16,7 @@
 #include <shared/services/sqlite/db-service.hxx>
 #include <shared/wrapper/nats/nats-bus.hxx>
 #include <sync/camera-fan-out.hxx>
+#include <sync/camera-notifier.hxx>
 #include <sync/sync-registrar.hxx>
 #include <sync/sync-relay.hxx>
 #include <unistd.h>
@@ -209,6 +210,7 @@ int main()
     if (natsBus->connect()) {
       LOG_INFO << "NATS event bus connected to " << natsBus->options().url;
       camera_fan_out::subscribeChangeFanOut(*natsBus);
+      camera_notifier::subscribeObjectDetected(*natsBus);
     }
     else
       LOG_WARN << "NATS unavailable at " << natsUrl

@@ -120,3 +120,15 @@ wss = "true"
 # Facial login models (models/face, from scripts/setup.sh). Disabled (or an
 # absent section) boots the gateway without face models.
 enabled = true
+
+[notifications]
+# Camera object_detected consumer (F2-3, Ruling AD): at most budget_per_hour
+# notifications per camera on a rolling hour; anything past it is counted and
+# summarized in a cumulative digest flushed every minute after the window or
+# the silent window closes.
+budget_per_hour = 6
+# Local-hour window [silent_start, silent_end) that suppresses notifications
+# (events are still digested). Both -1, or equal values, disable it; wrapping
+# (23 -> 7) is supported.
+silent_start = -1
+silent_end = -1

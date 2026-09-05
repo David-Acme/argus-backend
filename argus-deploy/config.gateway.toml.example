@@ -98,3 +98,10 @@ wss = "true"
 
 [face]
 enabled = true
+
+[notifications]
+# Camera object_detected budget (Ruling AD): 6 per camera per rolling hour,
+# cumulative digest for the excess, silent hours off by default.
+budget_per_hour = 6
+silent_start = -1
+silent_end = -1
