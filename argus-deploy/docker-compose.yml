@@ -56,6 +56,12 @@ services:
         read_only: true
         bind:
           create_host_path: false
+    # The NatsBus connects once at boot with no retry: without this gate a
+    # lost boot race silently drops every fan-out subscription (all green
+    # healthchecks, zero events consumed).
+    depends_on:
+      nats:
+        condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "curl -kfs https://127.0.0.1:7024/health >/dev/null"]
       interval: 10s
@@ -125,7 +131,9 @@ services:
   # spawns itself (Ruling AH). Internal network only; the gateway reaches it
   # through the single loopback-published 7026 listener. /dev/dri engages the
   # RADV detector (Ruling AI): a host without /dev/dri must drop this device
-  # line via a compose override — the detector then degrades to CPU in-binary.
+  # line via a compose override — `devices: !override []` (a plain `[]` merge
+  # silently keeps the device) — and the detector then degrades to CPU
+  # in-binary.
   argus-camera:
     image: argus-cutover:local
     pull_policy: never
@@ -165,10 +173,13 @@ services:
         read_only: true
         bind:
           create_host_path: false
+    # The gateway opens camera.db read-only at boot once argus-camera's schema
+    # apply has created it (bounded wait inside the gateway, see its main);
+    # identity.db is created by the gateway at ITS boot, and argus-camera
+    # waits bounded for it the same way — so both services boot in parallel
+    # after nats with no circular health dependency.
     depends_on:
       nats:
-        condition: service_healthy
-      gateway:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "curl -fs http://127.0.0.1:7026/health >/dev/null"]
@@ -297,8 +308,10 @@ services:
 
   # RADV validation probe (Fase 2 gate): runs argus-vulkan-probe against the
   # host GPU with /dev/dri mounted. Opt-in because a host without /dev/dri
-  # fails the device attach. Hosts with restrictive device ACLs may need to
-  # add their host video/render group gid via group_add.
+  # fails the device attach (or drops it with `devices: !override []`, which
+  # then exercises the same llvmpipe degradation argus-camera would see).
+  # Hosts with restrictive device ACLs may need to add their host
+  # video/render group gid via group_add.
   vulkan-probe:
     profiles: ["vulkan-probe"]
     image: argus-cutover:local

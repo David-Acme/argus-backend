@@ -47,6 +47,10 @@ with restrictive `/dev/dri` ACLs add the HOST `video`/`render` GIDs
 numerically via `group_add: [<gid>, <gid>]` — Docker resolves group NAMES
 against the host group file, so `--group-add video --group-add render`
 fails on hosts whose names differ (observed: "unable to find group render").
+A GPU-less host drops the device from argus-camera (and, if the probe is run
+there, vulkan-probe) with a compose override carrying `devices: !override []`
+— a plain `[]` merge silently KEEPS the device — and the detector degrades to
+CPU in-binary.
 
 Model artifacts (GGUF, ncnn blobs) are NOT baked in: `models/` is
 dockerignored out of the build context and bind-mounted read-only; provision
@@ -101,9 +105,22 @@ with `scripts/setup.sh` / `scripts/setup.sh camera` on the host.
 | camera-init | same image | `profiles: [camera-init]`, runs `argus-migrate-camera` against the camera.db volume |
 | vulkan-probe | same image | `profiles: [vulkan-probe]`, runs `argus-vulkan-probe` with `/dev/dri` |
 
-Ordering: the legacy waits for the gateway (`service_started`, which also
-guarantees the image is built) and for `rustfs-init` completion. argus-camera
-waits for nats only. The gateway applies `identity-schema.sql` at boot and
+Ordering: `nats` goes healthy first and both the gateway and argus-camera wait
+for `nats: service_healthy` — the gateway's NatsBus connects once at boot with
+no retry, so a lost boot race would leave every fan-out subscription silently
+dead while all healthchecks stay green. The legacy waits for the gateway
+(`service_started`, which also guarantees the image is built) and for
+`rustfs-init` completion. The gateway and argus-camera then boot in parallel
+and resolve their database handoff inside each process: the gateway opens
+camera.db read-only only after argus-camera's boot schema apply has created it
+(waiting bounded, 30s, before falling back to the default client), and
+argus-camera opens identity.db read-only only after the gateway's boot schema
+apply has created it (same bounded wait). Neither service waits on the other's
+health, so there is no cycle. A fresh `up -d` without camera-init therefore
+works end to end: argus-camera creates camera.db, the gateway picks it up
+within seconds, camera CRUD through the gateway serves live rows, and
+`camera-init` afterwards migrates the pre-existing argus.db camera rows on
+top. The gateway applies `identity-schema.sql` at boot and
 aborts if it fails, so a fresh install creates `identity.db` without the init
 profile; argus-camera applies `camera-schema.sql` at boot the same way, so a
 fresh install creates camera.db without `camera-init`. On an existing

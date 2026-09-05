@@ -7,7 +7,9 @@
 #include <server/listener-config.hxx>
 #include <config/app-config.hxx>
 #include <json/value.h>
+#include <chrono>
 #include <memory>
+#include <thread>
 #include <shared/services/cert/cert-service.hxx>
 #include <shared/services/config-service/config-service.hxx>
 #include <shared/services/face/face-service.hxx>
@@ -251,8 +253,17 @@ int main()
     // Rulings Z/X: camera, camera_stream and zone reads resolve to the
     // camera database argus-camera owns. Cross-process SQLite rules apply on
     // both sides: WAL plus busy_timeout; the gateway opens it read-only and
-    // never writes.
+    // never writes. argus-camera applies the camera schema on its own boot,
+    // which on a fresh install may land after ours, so wait bounded for the
+    // file instead of pinning the fallback client for the whole process.
     const std::string cameraDbPath = ConfigService::getString("camera.db");
+    if (!cameraDbPath.empty() && !std::filesystem::exists(cameraDbPath)) {
+      LOG_INFO << "Camera database not present yet: " << cameraDbPath
+               << "; waiting up to 30s for the argus-camera boot apply";
+      for (int ms = 0; ms < 30000 && !std::filesystem::exists(cameraDbPath);
+           ms += 250)
+        std::this_thread::sleep_for(std::chrono::milliseconds(250));
+    }
     if (!cameraDbPath.empty() && std::filesystem::exists(cameraDbPath)) {
       const auto cameraDb = drogon::orm::DbClient::newSqlite3Client(
           "filename=file:" + cameraDbPath + "?mode=ro", 1);

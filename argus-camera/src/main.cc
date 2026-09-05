@@ -27,9 +27,12 @@
 #include <unistd.h>
 
 #include <json/value.h>
+#include <chrono>
+#include <filesystem>
 #include <memory>
 #include <stdexcept>
 #include <string>
+#include <thread>
 
 namespace
 {
@@ -66,6 +69,11 @@ void installIdentityClient()
   const auto path = ConfigService::getString("identity.db");
   if (path.empty())
     return;
+
+  // The gateway creates identity.db at its own boot, which on a fresh
+  // install may land after ours; wait bounded before opening it read-only.
+  for (int ms = 0; ms < 30000 && !std::filesystem::exists(path); ms += 250)
+    std::this_thread::sleep_for(std::chrono::milliseconds(250));
 
   DbService::enableUriFilenames();
   try {

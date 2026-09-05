@@ -61,6 +61,13 @@ preset, own `camera.db`.
 - **Identity reads**: `[identity] db` opens mode=ro as the named identity
   client (`DbService::setIdentityClient` slot); absent key boots
   identity-free.
+- **OPTIONS divergence attribution (F2-4 review)**: unlike the legacy
+  (`src/config/application.cc` pre-routing advice answers every OPTIONS with
+  `AppConfig::handleOptions` before routing), argus-camera registers only the
+  post-handling CORS advice, so `OPTIONS /camera` 404s here where the legacy
+  answers 200. The gateway proxy forwards OPTIONS fine (F1-5 scoped its own
+  pre-routing advice to gateway-native paths); the divergence lives in this
+  service. App-safe as shipped: the native client sends no preflight.
 - **What stays away**: no camera-control routes (ptz/preset/settings/status/
   presets/capabilities/talk stay on the legacy — Ruling X), no voice path,
   no alarm-triggering code, no AI symbols.
