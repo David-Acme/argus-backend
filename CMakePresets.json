@@ -31,12 +31,16 @@
     { "name": "dev", "configurePreset": "dev", "jobs": 8 },
     { "name": "prod", "configurePreset": "prod", "jobs": 8 },
     { "name": "gateway", "configurePreset": "dev", "jobs": 8,
-      "targets": ["argus-gateway", "gateway-test"] },
+      "targets": ["argus-gateway", "gateway-test", "audit-sync-read-test",
+                  "camera-notifier-test"] },
     { "name": "gateway-prod", "configurePreset": "prod", "jobs": 8,
-      "targets": ["argus-gateway", "gateway-test"] },
+      "targets": ["argus-gateway", "gateway-test", "audit-sync-read-test",
+                  "camera-notifier-test"] },
     { "name": "camera", "configurePreset": "dev", "jobs": 8,
-      "targets": ["argus-camera"] },
+      "targets": ["argus-camera", "event-intelligence-test",
+                  "camera-operator-test"] },
     { "name": "camera-prod", "configurePreset": "prod", "jobs": 8,
-      "targets": ["argus-camera"] }
+      "targets": ["argus-camera", "event-intelligence-test",
+                  "camera-operator-test"] }
   ]
 }
