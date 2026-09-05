@@ -48,12 +48,6 @@ services:
         read_only: true
         bind:
           create_host_path: false
-      - type: bind
-        source: ../third_party/go2rtc
-        target: /opt/argus/third_party/go2rtc
-        read_only: true
-        bind:
-          create_host_path: false
     healthcheck:
       test: ["CMD-SHELL", "curl -kfs https://127.0.0.1:7024/health >/dev/null"]
       interval: 10s

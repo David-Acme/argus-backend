@@ -87,6 +87,7 @@ it while the services hold `identity.db` open — stop the stack first.
   rustfs-init creates from the docker secrets), plus region/bucket.
 - Docker secrets stay the existing `docker/runtime/secrets/*` files: nothing
   new, nothing baked into images.
+- The gateway links no go2rtc code, so it neither mounts nor spawns go2rtc.
 - The legacy's go2rtc config is no bind: `Go2rtcManager` writes `go2rtc.yaml`
   itself (chmod 600, camera credentials) from `[streaming]` keys into the
   container workdir; only the `third_party/go2rtc` binary is bind-mounted
@@ -106,6 +107,5 @@ it while the services hold `identity.db` open — stop the stack first.
 | 4222 | 127.0.0.1 | nats client |
 | 8222 | 127.0.0.1 | nats monitor |
 | 9000 | 127.0.0.1 | rustfs S3 |
-| 1984 / 8554 | 127.0.0.1 | go2rtc spawned by the gateway (manager defaults, loopback) |
-| 11984 / 18554 | 127.0.0.1 | go2rtc spawned by the legacy (`[streaming]` keys) |
+| 1984 / 8554 | 127.0.0.1 | go2rtc spawned by the legacy (manager defaults; `[streaming]` keys override) |
 | 8800 | host | Tapo talk channel (camera-side) |
