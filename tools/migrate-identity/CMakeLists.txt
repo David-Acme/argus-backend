@@ -21,6 +21,10 @@ target_link_libraries(identity-migration
         Drogon::Drogon
 )
 
+if(TARGET SQLite::SQLite3)
+    target_link_libraries(identity-migration PUBLIC SQLite::SQLite3)
+endif()
+
 target_compile_options(identity-migration PRIVATE -Wall -Wextra)
 
 add_executable(argus-migrate-identity EXCLUDE_FROM_ALL migrate-identity.cc)
