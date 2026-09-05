@@ -25,6 +25,7 @@ argus.<domain>.v1.<event>
 |------------------------|----------------------|----------|----------------------------------------------|
 | `argus.sync.v1.change` | every mutating service | gateway  | a persisted change that must reach `/sync` |
 | `argus.camera.v1.change` | argus-camera (F2-2) | gateway  | a camera-domain persisted change (same payload as `argus.sync.v1.change`) |
+| `argus.camera.v1.object_detected` | argus-camera (F2-3) | gateway  | an evaluated detection event (not a persisted change; never re-emitted to `/sync`) |
 
 The gateway subscribes with the wildcard `argus.*.v1.change` — universally
 valid across nats-server versions, while a mid-subject `>` requires nats-server
@@ -71,3 +72,42 @@ the legacy backend only — the gateway is subscriber-only and must not publish
 | `action`   | room-control events       | Absent (or `"emit"`) is a plain emit. `"disconnect"` closes the user's sockets and emits `info` as the context message. `"replace_role_rooms"` re-computes the module rooms of `user` (the triple is envelope metadata, never re-emitted). |
 | `user`     | `disconnect`, `replace_role_rooms` | the user id the action applies to. |
 | `old_role` / `new_role` | `replace_role_rooms` | `UserRole` string values (`owner`, `resident`, `guard`, `guest`). |
+
+## Payload of `argus.camera.v1.object_detected` (F2-3)
+
+Published by argus-camera's operator after `EventIntelligence` evaluates the
+detections of one aggregation window. Unlike the change subjects it is not a
+persisted change: the gateway's `camera-notifier` consumes it, applies the
+notification budget and turns it into `notification` rows — it never reaches
+`/sync`. The subject is retained on the JetStream stream `ARGUS_CAMERA`
+(7 days, file storage) together with `argus.camera.v1.change`; stream creation
+is best-effort (core NATS publish works without it).
+
+```json
+{
+  "cameraId": 1,
+  "cameraName": "Front door",
+  "rule": "person_in_alert_zone",
+  "severity": "critical",
+  "escalated": false,
+  "knownPersonId": 7,
+  "detectedAt": 1735689600123,
+  "frame": { "width": 1920, "height": 1080 },
+  "objects": [
+    { "class": "person", "confidence": 0.91, "bbox": { "x": 120, "y": 40, "w": 300, "h": 800 } }
+  ]
+}
+```
+
+- `rule` — one of the EventIntelligence rules: `known_person`,
+  `person_in_alert_zone`, `person_in_monitor_zone`, `person_night`,
+  `person_day`, `vehicle_arrival`, `vehicle_night` (or
+  `presence_escalating` when presence repeats instead of a vehicle).
+- `severity` — `critical`, `warning` or `info`; the gateway notification
+  carries it verbatim in the body.
+- `knownPersonId` — present only when the `known_person` rule matched (Fase 4
+  fills the real matcher; until then it never appears).
+- `objects` — every detection of the window that survived the rules; bbox is
+  frame pixels, top-left origin.
+- The gateway tolerates unknown extra keys and unknown rule/severity values
+  (it treats them as data, never as commands).
