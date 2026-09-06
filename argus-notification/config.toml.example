@@ -60,10 +60,13 @@ fingerprint_secret = ""
 trust_forwarded_for = true
 trusted_proxy_ips = ""
 
-# No [identity] key: the notification feature surface (markAsRead,
-# registerToken) validates nothing against identity.db — the JWT and device
-# filters cover authorization, and notification rows reference user ids
-# without cross-database reads.
+# The JWT filter resolves the caller's user row (and the bound refresh-token
+# session) in identity.db; without this key the boot stays identity-free and
+# authenticated requests fail their user lookup. Same install as
+# argus-productivity (Ruling AM).
+[identity]
+db = "database/identity.db"
+
 [nats]
 # The change funnel toward the gateway (Rulings AQ/AR): change emits and
 # user audit diffs publish over argus.notification.v1.change. Empty disables the

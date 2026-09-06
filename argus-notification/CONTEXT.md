@@ -43,10 +43,11 @@ binary, own CMake preset, own `notification.db`.
   service does not own (Ruling AO moves the diffs to NATS emission + gateway
   persistence at the cutover). Out-of-contract direct hits before F3-2 fail
   there; the cutover task replaces the emission.
-- **No identity client**: unlike argus-productivity (Ruling AM), the
-  notification feature surface reads nothing from identity.db, so this
-  binary installs no identity client at all — `[identity]` config is not
-  read.
+- **Identity client (F3-2)**: the JWT filter resolves the caller's user row
+  (and the bound refresh-token session) in identity.db, so the boot installs
+  the named identity client read-only (same install as argus-productivity,
+  Ruling AM) from the `[identity] db` key; without it the fallback to the
+  default notification.db client would 401 every authenticated request.
 - **`GET /health`**: standard `ApiResponse` envelope
   `{status: 200 (int), info: {service: argus-notification, uptimeSeconds},
   errors: null}`; never depends on any downstream service.
