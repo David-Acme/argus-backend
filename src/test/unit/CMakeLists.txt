@@ -131,6 +131,7 @@ if(TARGET argus_sync_media)
         ${SRC_ROOT}/shared/services/stt/stt-service.cc
         ${SRC_ROOT}/shared/services/stt/remote/stt-remote.cc
         ${SRC_ROOT}/shared/services/llm/llm-service.cc
+        ${SRC_ROOT}/shared/services/llm/remote/llm-remote.cc
         ${SRC_ROOT}/shared/services/tts/tts-service.cc
         ${SRC_ROOT}/shared/services/tts/tts-engine.cc
         ${SRC_ROOT}/shared/services/tts/onnx-utils.cc
@@ -173,6 +174,19 @@ if(TARGET argus_sync_media)
     target_compile_options(voice-stt-remote-test PRIVATE -Wall -Wextra)
 
     add_test(NAME voice-stt-remote-test COMMAND voice-stt-remote-test)
+
+    # The LLM cutover suite (F4-5, Ruling BU): the voice session streams its
+    # replies through the argus-llm internal wire (RemoteVoiceLlm) against
+    # the in-process fake server, degrading silently when it is down.
+    add_executable(voice-llm-remote-test voice-llm-remote-test.cc
+        ${VOICE_ENGINE_SOURCES})
+
+    target_link_libraries(voice-llm-remote-test PRIVATE argus_sync_media
+        doctest::doctest)
+
+    target_compile_options(voice-llm-remote-test PRIVATE -Wall -Wextra)
+
+    add_test(NAME voice-llm-remote-test COMMAND voice-llm-remote-test)
 endif()
 
 # The argus-stt wire contract (F4-3, Ruling BL): the real engine serves the
@@ -288,6 +302,29 @@ target_link_libraries(vlm-wire-test PRIVATE argus_common
 target_compile_options(vlm-wire-test PRIVATE -Wall -Wextra)
 
 add_test(NAME vlm-wire-test COMMAND vlm-wire-test)
+
+# The argus-llm wire contract (F4-5, Rulings BT/BS): the real engine serves
+# the chat/stream/config legs from the shared models tree, with the sentinel
+# framing and the KV-cache counters asserted over the wire.
+add_executable(llm-wire-test llm-wire-test.cc
+    ${SRC_ROOT}/config/app-config.cc
+    ${CMAKE_SOURCE_DIR}/argus-llm/src/controllers/health-controller.cc
+    ${CMAKE_SOURCE_DIR}/argus-llm/src/controllers/llm-controller.cc
+    ${CMAKE_SOURCE_DIR}/argus-llm/src/llm/chat-dto.cc
+    ${SRC_ROOT}/shared/services/llm/llm-service.cc)
+
+target_include_directories(llm-wire-test PRIVATE
+    ${CMAKE_SOURCE_DIR}/argus-llm/src)
+
+target_compile_definitions(llm-wire-test PRIVATE
+    ARGUS_TEST_LLM_MODELS_DIR="${CMAKE_SOURCE_DIR}/models/llm")
+
+target_link_libraries(llm-wire-test PRIVATE argus_common
+    ${ARGUS_LLAMA_TARGETS} doctest::doctest)
+
+target_compile_options(llm-wire-test PRIVATE -Wall -Wextra)
+
+add_test(NAME llm-wire-test COMMAND llm-wire-test)
 
 # The remote vision adapter (F4-4, Ruling BQ): the JPEG encode, the
 # same-keyed caption cache and the error paths against the in-process fake

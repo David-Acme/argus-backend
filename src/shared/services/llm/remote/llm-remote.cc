@@ -214,8 +214,10 @@ Head parseHead(const std::string& wire)
       break;
     const auto colon = wire.find(':', cursor);
     if (colon != std::string::npos && colon < eol) {
-      const std::string name = trim(wire.substr(cursor, colon - cursor));
+      std::string name = trim(wire.substr(cursor, colon - cursor));
       std::string value = trim(wire.substr(colon + 1, eol - colon - 1));
+      for (auto& c : name)
+        c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
       for (auto& c : value)
         c = static_cast<char>(
             std::tolower(static_cast<unsigned char>(c)));
