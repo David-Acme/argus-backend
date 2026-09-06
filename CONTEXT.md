@@ -2587,3 +2587,54 @@ camera-control routes against camera.db.
 - `labs/vlm-bench/service-check` gained `--http <url>`: drives the
   running argus-vlm describe wire with the synthetic bench frame (no local
   engine in the path); without the flag the in-engine probe is unchanged.
+
+## Fase 4 step 5 — LLM extracted to argus-llm (F4-5, 2026-09-06)
+
+- **argus-llm is the seventh microservice**: the text-generation capacity at
+  `:7032`, loopback bind, llama.cpp only (NO mtmd — the binary must stay
+  vision-free; `nm -C` scan for mtmd/onnx/ncnn/whisper = 0). It mirrors the
+  argus-stt/vlm scaffold (own binary, preset pair `llm`/`llm-prod`, AGENTS.md,
+  /health, config template with ONLY `[llm]` + `[server]`) and compiles the
+  shared `LlmService` from the shared tree. argus-llm owns
+  `llama_backend_init`/`llama_backend_free` in `main.cc` with teardown order
+  listener → service → backend (SIGTERM and normal paths). Models are read
+  from the shared `models/llm` tree via config (never copied); no database
+  (Ruling BN analog).
+- **Internal wire (Ruling BT).** `POST /llm/v1/chat` takes
+  `{messages,max_tokens?,temperature?,reset_context?}` and answers the frozen
+  app-envelope with `info.text`. `POST /llm/v1/chat-stream` streams the same
+  request as a chunked token stream — one token per chunk, ARRIVAL ORDER
+  preserved, terminated by a sentinel chunk `"\n" + {"done":true,
+  "prompt_tokens","reused_tokens","decoded_tokens"} + "\n"`; the client finds
+  the last `"\n{"` whose remainder parses as `done:true` so token text passes
+  through unmodified. Errors: 400 bad JSON, 422 validation, 503
+  `LLM_NOT_LOADED`, frozen 404/405. No auth: loopback trust boundary, same as
+  the other capacities. `GET /llm/v1/config` is additive and internal-only.
+- **KV-prefix cache stays in the service.** Reuse happens only when the cached
+  token sequence is a strict prefix of the new prompt (fresh/divergent chat
+  `reused==0`, history-extension reuse > 0). Voice history with a divergent
+  tail re-prefills — the same thrash profile the in-process engine always had;
+  cache-owner improvements are deferred, semantics unchanged by extraction.
+- **Cutover switch (Rulings BU/BF — the DUAL STATE).** `llm.remote_url` in
+  `[llm]`: empty = everything exactly as before; set = the voice session's
+  `voiceLlm()` seam resolves to `RemoteVoiceLlm`
+  (`src/shared/services/llm/remote/`, dependency-free raw-socket client with
+  cached pooled connection rebuilt only when url/timeout change) and the
+  session NEVER touches the in-process engine. The legacy STILL boot-loads its
+  own `LlmService` (registry always registers `LlmServiceAdapter`) because
+  MemoryService calls `llm_.isBusy()`/`llm_.chat()` in-process for compaction,
+  profile and recall — until F4-6 moves MemoryService onto a wire. So with the
+  gate on there are TWO live engines: argus-llm serving voice over the wire,
+  the legacy engine serving memory in-process. Boot log line states it:
+  `LLM voice delegated to <url>; in-process LlmService still boots for
+  MemoryService until F4-6`. Down argus-llm surfaces as the existing turn
+  degradation (try/catch `Voice: LLM failed` in the voice worker; session and
+  worker survive) — same rule as TTS/STT. `llm.remote_url` needs a legacy
+  restart (boot gate, like tts/stt/vision).
+- **No tool loop moved (Ruling BV).** LfmAdapter/ToolRegistry stay legacy-side;
+  the wire carries plain chat messages only — the voice tool loop keeps its
+  in-process shape.
+- `labs/llm-bench` gained `--http <url>`: benches the LLM half ALONE against a
+  running argus-llm over the wire (in-process engine uninitialized, VLM
+  co-residency measured separately with direct mode); metrics code is shared
+  with the in-process path via the same onToken lambda.
