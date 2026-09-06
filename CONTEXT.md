@@ -2489,3 +2489,50 @@ camera-control routes against camera.db.
 - `labs/tts-probe` gained `--http <url>`: probes a running argus-tts over
   the wire (no local models needed); without the flag it drives the
   in-process engine as before.
+
+## Fase 4 step 3 — STT extracted to argus-stt (F4-3, 2026-09-06)
+
+- **argus-stt is the fifth microservice**: the speech-to-text capacity at
+  `:7030`, loopback bind, mirroring the argus-tts scaffold (own binary,
+  CMake preset pair `stt`/`stt-prod`, AGENTS.md, /health, config template
+  with ONLY `[stt]` + `[server]`). It compiles the shared SttService from
+  the shared tree via the same foundation slice pattern as argus-tts
+  (`ARGUS_NO_NCNN_GPU=1` instead of argus_common), reads `stt.models_dir`
+  from the shared models tree (never copied) and carries no database at all
+  (Ruling BN) — no persistence, no migrate tool.
+- **Internal wire (Ruling BL).** `POST /stt/v1/transcribe` takes a binary
+  body `audio/x-argus-pcm-s16` (16 kHz mono int16 little-endian) and
+  `lang` as query parameter or header (`es` | `en` | `auto` | empty — empty
+  resolves from the service's own `stt.language`). The response is the
+  frozen app-envelope with `info.text` (the `ApiResponse`-shaped success,
+  like /tts/v1/config — the brief's bare `{text}` is served inside the
+  envelope because every response in this codebase goes through
+  ApiResponse). Quantization both directions is `/32768.0F`, matching the
+  voice session's own WS-frame conversion so the A/B text is identical.
+  Errors: 400 wrong content-type/odd byte count, 422 empty body or
+  unsupported lang, 503 `STT_NOT_LOADED`, frozen 404/405 envelopes.
+  `GET /stt/v1/config` is additive and internal-only. No auth: loopback
+  trust boundary, same as argus-tts.
+- **Cutover switch.** `stt.remote_url` in `[stt]`: empty = the legacy
+  in-process `SttService` exactly as before; set = `RemoteVoiceStt`
+  (`src/shared/services/stt/remote/stt-remote.cc`, dependency-free raw
+  socket client) serves the IVoiceStt seam over the wire with a cached
+  per-config client (rebuilt only when the remote config changes — the
+  F4-2 three-connections-per-request lesson). NO in-process fallback: a
+  down argus-stt surfaces as the existing turn degradation
+  (`voice:event` `{reaction: confused, because: stt_failed}` — the brief's
+  "voice:error frame" is actually this reaction frame, ReactionEngine
+  sttFailed → Confused), the worker thread and the session survive. The
+  legacy binary keeps SttService linked and skips boot-init while
+  `stt.remote_url` is set (Ruling BM); there is no lazy-init path —
+  the singleton is only reachable through the seam, which returns the
+  remote adapter instead (SingletonVoiceStt stays for the non-cutover
+  path). The voice session keeps VAD + RNNoise + workerLoop untouched
+  (Ruling AY); `setLanguage` at session start steers the wire's per-request
+  `lang` parameter (Ruling BE semantics — the service keeps ONE global
+  recognizer and rebuilds it only when the effective language changes).
+- **Compose note.** argus-stt needs the models volume mounted (`models/stt`)
+  and, like the other capacities, must not open any database.
+- `labs/voice-test` gained `--stt-http <url> <wav>`: transcribes a 16 kHz
+  mono s16 wav through the running argus-stt wire (no local engine in the
+  path); without the flag the STT probe path is unchanged.
