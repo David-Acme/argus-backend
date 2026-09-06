@@ -8,6 +8,7 @@
 #include <shared/wrapper/nats/nats-bus.hxx>
 #include <shared/wrapper/nats/nats-subject.hxx>
 #include <sync/sync-fan-out.hxx>
+#include <sync/user-change-fan-out.hxx>
 #include <trantor/utils/Logger.h>
 
 #include <optional>
@@ -66,6 +67,9 @@ void subscribeChangeFanOut(NatsBus& bus)
               const Json::Value json = json_util::fromString(payload);
               if (subject == nats_subject::kCameraChange)
                 handleCameraChange(json);
+              else if (subject == nats_subject::kProductivityChange ||
+                       subject == nats_subject::kNotificationChange)
+                user_change_fan_out::handleUserChange(json);
               else {
                 const auto event = sync_fan_out::parseEvent(json);
                 if (!event) {

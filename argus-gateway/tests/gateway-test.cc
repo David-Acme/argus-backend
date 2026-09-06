@@ -629,6 +629,104 @@ TEST_CASE("route table sends two-segment CRUD to the camera backend")
   proxy.shutdown();
 }
 
+TEST_CASE("proxy config routes the productivity and notification domains")
+{
+  const char* path = "gateway-test-config-f32-proxy.toml";
+  {
+    std::ofstream file(path);
+    file << "[legacy]\n"
+         << "proxy_url = \"http://127.0.0.1:7025\"\n"
+         << "[productivity]\n"
+         << "proxy_url = \"http://127.0.0.1:7027\"\n"
+         << "[notifications]\n"
+         << "proxy_url = \"http://127.0.0.1:7028\"\n";
+  }
+
+  ConfigService::load(path);
+  const ProxyConfig config = ProxyConfig::resolve();
+
+  CHECK(config.upstreamUrl == "http://127.0.0.1:7025");
+  CHECK(config.productivityProxyUrl == "http://127.0.0.1:7027");
+  CHECK(config.notificationProxyUrl == "http://127.0.0.1:7028");
+
+  // Without the sections the domains stay on the legacy.
+  {
+    std::ofstream file(path);
+    file << "[legacy]\n"
+         << "proxy_url = \"http://127.0.0.1:7025\"\n";
+  }
+
+  ConfigService::load(path);
+  const ProxyConfig legacyOnly = ProxyConfig::resolve();
+  CHECK(legacyOnly.productivityProxyUrl.empty());
+  CHECK(legacyOnly.notificationProxyUrl.empty());
+
+  std::remove(path);
+}
+
+TEST_CASE("route table sends the productivity and notification domains to the fase 3 backends")
+{
+  gateway_proxy::SimpleReverseProxy proxy;
+  Json::Value config;
+  Json::Value backends(Json::arrayValue);
+  backends.append("http://127.0.0.1:7025");
+  config["backends"] = backends;
+  Json::Value routes(Json::arrayValue);
+
+  Json::Value productivityRoute(Json::objectValue);
+  Json::Value productivityPrefixes(Json::arrayValue);
+  productivityPrefixes.append("/calendar-event");
+  productivityPrefixes.append("/calendar-event-share");
+  productivityPrefixes.append("/project");
+  productivityPrefixes.append("/project-member");
+  productivityPrefixes.append("/project-task");
+  productivityRoute["prefixes"] = productivityPrefixes;
+  productivityRoute["max_segments"] = 8;
+  productivityRoute["backend"] = "http://127.0.0.1:7027";
+  routes.append(productivityRoute);
+
+  Json::Value notificationRoute(Json::objectValue);
+  Json::Value notificationPrefixes(Json::arrayValue);
+  notificationPrefixes.append("/notification");
+  notificationPrefixes.append("/notification-token");
+  notificationRoute["prefixes"] = notificationPrefixes;
+  notificationRoute["max_segments"] = 2;
+  notificationRoute["backend"] = "http://127.0.0.1:7028";
+  routes.append(notificationRoute);
+
+  config["routes"] = routes;
+
+  proxy.initAndStart(config);
+
+  // Every method and subpath of the productivity domain routes through; the
+  // segment-boundary match keeps /calendar-event-share distinct from
+  // /calendar-event.
+  CHECK(proxy.matchRoute("/calendar-event") == 0);
+  CHECK(proxy.matchRoute("/calendar-event/1") == 0);
+  CHECK(proxy.matchRoute("/calendar-event-share") == 0);
+  CHECK(proxy.matchRoute("/calendar-event-share/1") == 0);
+  CHECK(proxy.matchRoute("/project") == 0);
+  CHECK(proxy.matchRoute("/project/1") == 0);
+  CHECK(proxy.matchRoute("/project-member/1") == 0);
+  CHECK(proxy.matchRoute("/project-task/1") == 0);
+  CHECK(proxy.matchRoute("/calendar-event/1/a/b/c/d/e/f") == 0);
+  CHECK(proxy.matchRoute("/calendar-event/1/a/b/c/d/e/f/g") == -1);
+
+  CHECK(proxy.matchRoute("/notification") == 1);
+  CHECK(proxy.matchRoute("/notification/read") == 1);
+  CHECK(proxy.matchRoute("/notification-token") == 1);
+  CHECK(proxy.matchRoute("/notification/read/1") == -1);
+  CHECK(proxy.matchRoute("/notifications/1") == -1);
+  CHECK(proxy.matchRoute("/notificationtoken") == -1);
+
+  CHECK(gateway_proxy::SimpleReverseProxy::segmentCount(
+            "/calendar-event/1/a/b/c/d/e/f") == 8);
+  CHECK(gateway_proxy::SimpleReverseProxy::segmentCount(
+            "/calendar-event/1/a/b/c/d/e/f/g") == 9);
+
+  proxy.shutdown();
+}
+
 TEST_CASE("native path match keeps segment boundaries")
 {
   const std::vector<std::string> exclusions = {"/user", "/sync"};

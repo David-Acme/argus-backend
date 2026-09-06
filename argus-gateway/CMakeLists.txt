@@ -57,6 +57,7 @@ add_library(gateway-core STATIC
     ${GATEWAY_SRC_ROOT}/sync/sync-fan-out.cc
     ${GATEWAY_SRC_ROOT}/sync/sync-registrar.cc
     ${GATEWAY_SRC_ROOT}/sync/sync-relay.cc
+    ${GATEWAY_SRC_ROOT}/sync/user-change-fan-out.cc
 )
 
 target_include_directories(gateway-core PUBLIC ${GATEWAY_SRC_ROOT})

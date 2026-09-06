@@ -26,6 +26,8 @@ argus.<domain>.v1.<event>
 | `argus.sync.v1.change` | every mutating service | gateway  | a persisted change that must reach `/sync` |
 | `argus.camera.v1.change` | argus-camera (F2-2) | gateway  | a camera-domain persisted change (same payload as `argus.sync.v1.change`) |
 | `argus.camera.v1.object_detected` | argus-camera (F2-3) | gateway  | an evaluated detection event (not a persisted change; never re-emitted to `/sync`) |
+| `argus.productivity.v1.change` | argus-productivity (F3-2) | gateway  | a productivity-domain change: user-scoped emits plus `kind: audit` user_audit_log diffs the gateway persists before fanning the rows out |
+| `argus.notification.v1.change` | argus-notification (F3-2) | gateway  | a notification-domain change: user-scoped emits plus the `kind: audit` markAsRead rows (same payload contract as the productivity subject) |
 
 The gateway subscribes with the wildcard `argus.*.v1.change` — universally
 valid across nats-server versions, while a mid-subject `>` requires nats-server

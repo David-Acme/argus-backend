@@ -93,6 +93,14 @@ sync_url = "ws://127.0.0.1:7026/sync"
 proxy_url = "http://127.0.0.1:7026"
 db = "database/camera.db"
 
+[productivity]
+# F3-2 cutover (Rulings AP/AQ): argus-productivity owns the calendar-event,
+# calendar-event-share, project, project-member and project-task routes and
+# the productivity.db sync tables, which the gateway opens mode=ro. Empty
+# keys keep the productivity domain on the legacy.
+proxy_url = "http://127.0.0.1:7027"
+db = "database/productivity.db"
+
 # Same cert paths as the legacy (transitional shared directory): the app's
 # pinned CA is byte-identical, and CertService runs here with the same keys.
 [cert]
@@ -122,6 +130,13 @@ wss = "true"
 enabled = true
 
 [notifications]
+# F3-2 cutover (Rulings AP/AR): PATCH /notification/read and POST
+# /notification-token route to argus-notification; notification.db is the
+# single notification substrate, opened read-write here because the gateway
+# NotificationService writes notifications into it (camera-notifier
+# retarget). Empty keys keep the notification domain on the legacy.
+proxy_url = "http://127.0.0.1:7028"
+db = "database/notification.db"
 # Camera object_detected consumer (F2-3, Ruling AD): at most budget_per_hour
 # notifications per camera on a rolling hour; anything past it is counted and
 # summarized in a cumulative digest flushed every minute after the window or

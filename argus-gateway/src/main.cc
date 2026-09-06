@@ -21,6 +21,7 @@
 #include <sync/camera-notifier.hxx>
 #include <sync/sync-registrar.hxx>
 #include <sync/sync-relay.hxx>
+#include <sync/user-change-fan-out.hxx>
 #include <unistd.h>
 
 #include <cstdint>
@@ -65,20 +66,53 @@ Json::Value drogonConfig(const IdentityDbConfig& identityDb,
     for (const auto& prefix : proxy.exclusions)
       exclusions.append(prefix);
     proxyConfig["exclusions"] = exclusions;
-    if (!proxy.cameraProxyUrl.empty()) {
-      // Ruling X routing split: the two-segment /camera and /zone CRUD goes
-      // to argus-camera; the deeper control paths (/camera/{id}/ptz, preset,
-      // settings, status, presets, capabilities, talk) miss the segment cap
-      // and fall through to the legacy backend.
+    if (!proxy.cameraProxyUrl.empty() || !proxy.productivityProxyUrl.empty()
+        || !proxy.notificationProxyUrl.empty()) {
       Json::Value routes(Json::arrayValue);
-      Json::Value cameraRoute(Json::objectValue);
-      Json::Value prefixes(Json::arrayValue);
-      prefixes.append("/camera");
-      prefixes.append("/zone");
-      cameraRoute["prefixes"] = prefixes;
-      cameraRoute["max_segments"] = 2;
-      cameraRoute["backend"] = proxy.cameraProxyUrl;
-      routes.append(cameraRoute);
+      if (!proxy.cameraProxyUrl.empty()) {
+        // Ruling X routing split: the two-segment /camera and /zone CRUD goes
+        // to argus-camera; the deeper control paths (/camera/{id}/ptz, preset,
+        // settings, status, presets, capabilities, talk) miss the segment cap
+        // and fall through to the legacy backend.
+        Json::Value cameraRoute(Json::objectValue);
+        Json::Value prefixes(Json::arrayValue);
+        prefixes.append("/camera");
+        prefixes.append("/zone");
+        cameraRoute["prefixes"] = prefixes;
+        cameraRoute["max_segments"] = 2;
+        cameraRoute["backend"] = proxy.cameraProxyUrl;
+        routes.append(cameraRoute);
+      }
+      if (!proxy.productivityProxyUrl.empty()) {
+        // Ruling AP routing split: the whole productivity domain goes to
+        // argus-productivity, every method and subpath, so no path is served
+        // by both sides.
+        Json::Value productivityRoute(Json::objectValue);
+        Json::Value prefixes(Json::arrayValue);
+        prefixes.append("/calendar-event");
+        prefixes.append("/calendar-event-share");
+        prefixes.append("/project");
+        prefixes.append("/project-member");
+        prefixes.append("/project-task");
+        productivityRoute["prefixes"] = prefixes;
+        productivityRoute["max_segments"] = 8;
+        productivityRoute["backend"] = proxy.productivityProxyUrl;
+        routes.append(productivityRoute);
+      }
+      if (!proxy.notificationProxyUrl.empty()) {
+        // Ruling AP routing split: the write-side notification surface goes
+        // to argus-notification; /notification and /notification-token are
+        // distinct prefixes (segment-boundary match), both two segments deep
+        // at most.
+        Json::Value notificationRoute(Json::objectValue);
+        Json::Value prefixes(Json::arrayValue);
+        prefixes.append("/notification");
+        prefixes.append("/notification-token");
+        notificationRoute["prefixes"] = prefixes;
+        notificationRoute["max_segments"] = 2;
+        notificationRoute["backend"] = proxy.notificationProxyUrl;
+        routes.append(notificationRoute);
+      }
       proxyConfig["routes"] = routes;
     }
     proxyConfig["pipelining"] = 16;
@@ -279,6 +313,75 @@ int main()
     else if (!cameraDbPath.empty()) {
       LOG_WARN << "Camera database not found: " << cameraDbPath
                << "; camera reads fall back to the default client";
+    }
+
+    // Rulings AQ/AR: the productivity sync-table reads and the notification
+    // substrate resolve to the databases argus-productivity and
+    // argus-notification own. Cross-process SQLite rules apply on both sides:
+    // WAL plus busy_timeout. The gateway opens productivity.db read-only and
+    // never runs DDL; notification.db it opens read-write because the gateway
+    // NotificationService writes notifications there (camera-notifier
+    // retarget), with the schema applied only by argus-notification's boot.
+    const std::string productivityDbPath =
+        ConfigService::getString("productivity.db");
+    if (!productivityDbPath.empty() && !std::filesystem::exists(productivityDbPath)) {
+      LOG_INFO << "Productivity database not present yet: "
+               << productivityDbPath
+               << "; waiting up to 30s for the argus-productivity boot apply";
+      for (int ms = 0;
+           ms < 30000 && !std::filesystem::exists(productivityDbPath);
+           ms += 250)
+        std::this_thread::sleep_for(std::chrono::milliseconds(250));
+    }
+    if (!productivityDbPath.empty()
+        && std::filesystem::exists(productivityDbPath)) {
+      const auto productivityDb = drogon::orm::DbClient::newSqlite3Client(
+          "filename=file:" + productivityDbPath + "?mode=ro", 1);
+      try {
+        productivityDb->execSqlSync("PRAGMA busy_timeout = 5000");
+      }
+      catch (const std::exception& e) {
+        LOG_WARN << "Productivity database pragma error: " << e.what();
+      }
+      DbService::setProductivityClient(productivityDb);
+      LOG_INFO << "Productivity database opened read-only: "
+               << productivityDbPath;
+    }
+    else if (!productivityDbPath.empty()) {
+      LOG_WARN << "Productivity database not found: " << productivityDbPath
+               << "; productivity reads fall back to the default client";
+    }
+
+    const std::string notificationDbPath =
+        ConfigService::getString("notifications.db");
+    if (!notificationDbPath.empty()
+        && !std::filesystem::exists(notificationDbPath)) {
+      LOG_INFO << "Notification database not present yet: "
+               << notificationDbPath
+               << "; waiting up to 30s for the argus-notification boot apply";
+      for (int ms = 0;
+           ms < 30000 && !std::filesystem::exists(notificationDbPath);
+           ms += 250)
+        std::this_thread::sleep_for(std::chrono::milliseconds(250));
+    }
+    if (!notificationDbPath.empty()
+        && std::filesystem::exists(notificationDbPath)) {
+      const auto notificationDb = drogon::orm::DbClient::newSqlite3Client(
+          "filename=" + notificationDbPath, 1);
+      try {
+        notificationDb->execSqlSync("PRAGMA journal_mode = WAL");
+        notificationDb->execSqlSync("PRAGMA busy_timeout = 5000");
+      }
+      catch (const std::exception& e) {
+        LOG_WARN << "Notification database pragma error: " << e.what();
+      }
+      DbService::setNotificationClient(notificationDb);
+      LOG_INFO << "Notification database opened read-write: "
+               << notificationDbPath;
+    }
+    else if (!notificationDbPath.empty()) {
+      LOG_WARN << "Notification database not found: " << notificationDbPath
+               << "; notification reads fall back to the default client";
     }
 
     if (!DbService::runScriptFile(identityDb.schemaPath)) {

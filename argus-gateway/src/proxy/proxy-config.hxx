@@ -12,6 +12,14 @@ struct ProxyConfig
   // segments) route here while the deeper control paths keep falling through
   // to the legacy. Empty keeps the camera routes on the legacy.
   std::string cameraProxyUrl;
+  // Base URL of argus-productivity: the calendar-event, calendar-event-share,
+  // project, project-member and project-task routes route here entirely
+  // (Ruling AP). Empty keeps them on the legacy.
+  std::string productivityProxyUrl;
+  // Base URL of argus-notification: PATCH /notification/read and POST
+  // /notification-token route here (Ruling AP). Empty keeps them on the
+  // legacy.
+  std::string notificationProxyUrl;
   // Path prefixes served natively by the gateway: never forwarded.
   std::vector<std::string> exclusions;
 
