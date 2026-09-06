@@ -8,7 +8,7 @@ using namespace project_member_query;
 drogon::Task<std::optional<ProjectMemberSchema>>
 ProjectMemberRepository::findById(int64_t id) const
 {
-  auto client = DbService::client();
+  auto client = DbService::productivityClient();
   const auto result = co_await client->execSqlCoro(FIND_BY_ID.data(), id);
   if (result.empty())
     co_return std::nullopt;
@@ -18,7 +18,7 @@ ProjectMemberRepository::findById(int64_t id) const
 drogon::Task<std::vector<ProjectMemberSchema>>
 ProjectMemberRepository::findByParent(int64_t parentId) const
 {
-  auto client = DbService::client();
+  auto client = DbService::productivityClient();
   const auto result = co_await client->execSqlCoro(FIND_BY_PARENT.data(), parentId);
   std::vector<ProjectMemberSchema> rows;
   for (const auto& row : result)
@@ -29,7 +29,7 @@ ProjectMemberRepository::findByParent(int64_t parentId) const
 drogon::Task<std::optional<ShareAccess>>
 ProjectMemberRepository::findAccess(int64_t parentId, int64_t userId) const
 {
-  auto client = DbService::client();
+  auto client = DbService::productivityClient();
   const auto result =
       co_await client->execSqlCoro(FIND_ACCESS.data(), parentId, userId);
   if (result.empty())
@@ -40,7 +40,7 @@ ProjectMemberRepository::findAccess(int64_t parentId, int64_t userId) const
 drogon::Task<std::vector<int64_t>>
 ProjectMemberRepository::memberIds(int64_t parentId) const
 {
-  auto client = DbService::client();
+  auto client = DbService::productivityClient();
   const auto result =
       co_await client->execSqlCoro(FIND_MEMBER_IDS.data(), parentId);
   std::vector<int64_t> ids;
@@ -53,7 +53,7 @@ ProjectMemberRepository::memberIds(int64_t parentId) const
 drogon::Task<std::optional<ProjectMemberSchema>>
 ProjectMemberRepository::findExisting(int64_t parentId, int64_t userId) const
 {
-  auto client = DbService::client();
+  auto client = DbService::productivityClient();
   const auto result =
       co_await client->execSqlCoro(FIND_EXISTING.data(), parentId, userId);
   if (result.empty())
@@ -64,7 +64,7 @@ ProjectMemberRepository::findExisting(int64_t parentId, int64_t userId) const
 drogon::Task<ProjectMemberSchema>
 ProjectMemberRepository::create(const ProjectMemberCreateInput& input) const
 {
-  auto client = DbService::client();
+  auto client = DbService::productivityClient();
   const auto result = co_await client->execSqlCoro(
       INSERT.data(), input.projectId, input.userId,
       shareAccessToString(input.access));
@@ -79,7 +79,7 @@ ProjectMemberRepository::create(const ProjectMemberCreateInput& input) const
 drogon::Task<ProjectMemberSchema>
 ProjectMemberRepository::updateAccess(int64_t id, ShareAccess access) const
 {
-  auto client = DbService::client();
+  auto client = DbService::productivityClient();
   co_await client->execSqlCoro(UPDATE_ACCESS.data(),
                                shareAccessToString(access), id);
   const auto row = co_await findById(id);
@@ -90,7 +90,7 @@ ProjectMemberRepository::updateAccess(int64_t id, ShareAccess access) const
 
 drogon::Task<bool> ProjectMemberRepository::remove(int64_t id) const
 {
-  auto client = DbService::client();
+  auto client = DbService::productivityClient();
   const auto result = co_await client->execSqlCoro(REMOVE.data(), id);
   co_return result.affectedRows() > 0;
 }
@@ -98,7 +98,7 @@ drogon::Task<bool> ProjectMemberRepository::remove(int64_t id) const
 drogon::Task<std::vector<Json::Value>>
 ProjectMemberRepository::find(const SyncFilter& filter) const
 {
-  auto client = DbService::readOnlyClient();
+  auto client = DbService::productivityClient();
   const auto [query, args] = sync_query::withUser(
       sync_query::buildSyncQuery(filter, FIND, FIND_FROM, FIND_ALL, FIND_AFTER,
                                  FIND_AFTER_FROM),
@@ -115,7 +115,7 @@ ProjectMemberRepository::find(const SyncFilter& filter) const
 drogon::Task<std::vector<Json::Value>>
 ProjectMemberRepository::findDeleted(const SyncFilter& filter) const
 {
-  auto client = DbService::readOnlyClient();
+  auto client = DbService::productivityClient();
   const auto [query, args] = sync_query::withUser(
       sync_query::buildSyncQuery(filter, FIND_DELETED, FIND_DELETED_FROM,
                                  FIND_DELETED_ALL, FIND_DELETED_AFTER,
@@ -133,7 +133,7 @@ ProjectMemberRepository::findDeleted(const SyncFilter& filter) const
 drogon::Task<std::optional<Json::Value>>
 ProjectMemberRepository::findLast(const SyncFilter& filter) const
 {
-  auto client = DbService::readOnlyClient();
+  auto client = DbService::productivityClient();
   const auto userId = filter.userId.value_or(0);
   const auto result =
       co_await client->execSqlCoro(FIND_LAST.data(), userId, userId);
@@ -145,7 +145,7 @@ ProjectMemberRepository::findLast(const SyncFilter& filter) const
 drogon::Task<std::optional<Json::Value>>
 ProjectMemberRepository::findLastDeleted(const SyncFilter& filter) const
 {
-  auto client = DbService::readOnlyClient();
+  auto client = DbService::productivityClient();
   const auto userId = filter.userId.value_or(0);
   const auto result =
       co_await client->execSqlCoro(FIND_LAST_DELETED.data(), userId, userId);

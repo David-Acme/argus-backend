@@ -8,7 +8,7 @@ using namespace calendar_event_share_query;
 drogon::Task<std::optional<CalendarEventShareSchema>>
 CalendarEventShareRepository::findById(int64_t id) const
 {
-  auto client = DbService::client();
+  auto client = DbService::productivityClient();
   const auto result = co_await client->execSqlCoro(FIND_BY_ID.data(), id);
   if (result.empty())
     co_return std::nullopt;
@@ -18,7 +18,7 @@ CalendarEventShareRepository::findById(int64_t id) const
 drogon::Task<std::vector<CalendarEventShareSchema>>
 CalendarEventShareRepository::findByParent(int64_t parentId) const
 {
-  auto client = DbService::client();
+  auto client = DbService::productivityClient();
   const auto result = co_await client->execSqlCoro(FIND_BY_PARENT.data(), parentId);
   std::vector<CalendarEventShareSchema> rows;
   for (const auto& row : result)
@@ -29,7 +29,7 @@ CalendarEventShareRepository::findByParent(int64_t parentId) const
 drogon::Task<std::optional<ShareAccess>>
 CalendarEventShareRepository::findAccess(int64_t parentId, int64_t userId) const
 {
-  auto client = DbService::client();
+  auto client = DbService::productivityClient();
   const auto result =
       co_await client->execSqlCoro(FIND_ACCESS.data(), parentId, userId);
   if (result.empty())
@@ -40,7 +40,7 @@ CalendarEventShareRepository::findAccess(int64_t parentId, int64_t userId) const
 drogon::Task<std::vector<int64_t>>
 CalendarEventShareRepository::memberIds(int64_t parentId) const
 {
-  auto client = DbService::client();
+  auto client = DbService::productivityClient();
   const auto result =
       co_await client->execSqlCoro(FIND_MEMBER_IDS.data(), parentId);
   std::vector<int64_t> ids;
@@ -53,7 +53,7 @@ CalendarEventShareRepository::memberIds(int64_t parentId) const
 drogon::Task<std::optional<CalendarEventShareSchema>>
 CalendarEventShareRepository::findExisting(int64_t parentId, int64_t userId) const
 {
-  auto client = DbService::client();
+  auto client = DbService::productivityClient();
   const auto result =
       co_await client->execSqlCoro(FIND_EXISTING.data(), parentId, userId);
   if (result.empty())
@@ -64,7 +64,7 @@ CalendarEventShareRepository::findExisting(int64_t parentId, int64_t userId) con
 drogon::Task<CalendarEventShareSchema>
 CalendarEventShareRepository::create(const CalendarEventShareCreateInput& input) const
 {
-  auto client = DbService::client();
+  auto client = DbService::productivityClient();
   const auto result = co_await client->execSqlCoro(
       INSERT.data(), input.calendarEventId, input.userId,
       shareAccessToString(input.access));
@@ -79,7 +79,7 @@ CalendarEventShareRepository::create(const CalendarEventShareCreateInput& input)
 drogon::Task<CalendarEventShareSchema>
 CalendarEventShareRepository::updateAccess(int64_t id, ShareAccess access) const
 {
-  auto client = DbService::client();
+  auto client = DbService::productivityClient();
   co_await client->execSqlCoro(UPDATE_ACCESS.data(),
                                shareAccessToString(access), id);
   const auto row = co_await findById(id);
@@ -90,7 +90,7 @@ CalendarEventShareRepository::updateAccess(int64_t id, ShareAccess access) const
 
 drogon::Task<bool> CalendarEventShareRepository::remove(int64_t id) const
 {
-  auto client = DbService::client();
+  auto client = DbService::productivityClient();
   const auto result = co_await client->execSqlCoro(REMOVE.data(), id);
   co_return result.affectedRows() > 0;
 }
@@ -98,7 +98,7 @@ drogon::Task<bool> CalendarEventShareRepository::remove(int64_t id) const
 drogon::Task<std::vector<Json::Value>>
 CalendarEventShareRepository::find(const SyncFilter& filter) const
 {
-  auto client = DbService::readOnlyClient();
+  auto client = DbService::productivityClient();
   const auto [query, args] = sync_query::withUser(
       sync_query::buildSyncQuery(filter, FIND, FIND_FROM, FIND_ALL, FIND_AFTER,
                                  FIND_AFTER_FROM),
@@ -115,7 +115,7 @@ CalendarEventShareRepository::find(const SyncFilter& filter) const
 drogon::Task<std::vector<Json::Value>>
 CalendarEventShareRepository::findDeleted(const SyncFilter& filter) const
 {
-  auto client = DbService::readOnlyClient();
+  auto client = DbService::productivityClient();
   const auto [query, args] = sync_query::withUser(
       sync_query::buildSyncQuery(filter, FIND_DELETED, FIND_DELETED_FROM,
                                  FIND_DELETED_ALL, FIND_DELETED_AFTER,
@@ -133,7 +133,7 @@ CalendarEventShareRepository::findDeleted(const SyncFilter& filter) const
 drogon::Task<std::optional<Json::Value>>
 CalendarEventShareRepository::findLast(const SyncFilter& filter) const
 {
-  auto client = DbService::readOnlyClient();
+  auto client = DbService::productivityClient();
   const auto userId = filter.userId.value_or(0);
   const auto result =
       co_await client->execSqlCoro(FIND_LAST.data(), userId, userId);
@@ -145,7 +145,7 @@ CalendarEventShareRepository::findLast(const SyncFilter& filter) const
 drogon::Task<std::optional<Json::Value>>
 CalendarEventShareRepository::findLastDeleted(const SyncFilter& filter) const
 {
-  auto client = DbService::readOnlyClient();
+  auto client = DbService::productivityClient();
   const auto userId = filter.userId.value_or(0);
   const auto result =
       co_await client->execSqlCoro(FIND_LAST_DELETED.data(), userId, userId);

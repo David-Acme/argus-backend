@@ -1,6 +1,7 @@
 #include "project-task-feature-service.hxx"
 
 #include <ctime>
+#include <trantor/utils/Logger.h>
 
 drogon::Task<bool> ProjectTaskFeatureService::canWorkOn(int64_t projectId,
                                                        int64_t actorId) const
@@ -37,7 +38,12 @@ ProjectTaskFeatureService::emit(SyncOperation operation,
 
   auto recipients = co_await memberRepository_.memberIds(row.projectId);
   recipients.push_back(project->ownerId);
-  socketService_.emitUsers(recipients, body);
+  const auto* sink = user_change::getProductivitySink();
+  if (!sink) {
+    LOG_WARN << "user change sink not installed; drop project task emit";
+    co_return;
+  }
+  sink->emitUsers(recipients, body);
   co_return;
 }
 
@@ -86,13 +92,16 @@ ProjectTaskFeatureService::update(int64_t id, const UpdateProjectTaskDto& body,
   if (project) {
     auto recipients = co_await memberRepository_.memberIds(row.projectId);
     recipients.push_back(project->ownerId);
-    co_await syncAuditService_.publishUsers({
-        .recordId = row.id,
-        .tableName = TableName::ProjectTask,
-        .before = existing->toJson(),
-        .after = row.toJson(),
-        .userIds = std::move(recipients),
-    });
+    if (const auto* sink = user_change::getProductivitySink())
+      co_await sink->publishAudit(UserAuditInput{
+          .recordId = row.id,
+          .tableName = TableName::ProjectTask,
+          .before = existing->toJson(),
+          .after = row.toJson(),
+          .userIds = std::move(recipients),
+      });
+    else
+      LOG_WARN << "user change sink not installed; drop project task audit";
   }
   co_return row;
 }

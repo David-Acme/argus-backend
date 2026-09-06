@@ -40,6 +40,7 @@ SyncAuditService::publishUsers(const SyncAuditUsersInput& input) const
         .recordId = input.recordId,
         .tableName = input.tableName,
         .changes = changes,
+        .eventTimestamp = std::nullopt,
     });
   }
   co_return;

@@ -8,6 +8,7 @@
 #include <feature/api/auth/controllers/auth-controller.hxx>
 #include <feature/api/camera/controllers/camera-controller.hxx>
 #include <feature/api/camera/services/socket-camera-change-sink.hxx>
+#include <shared/services/socket/socket-user-change-sink.hxx>
 #include <feature/api/invitation/controllers/invitation-controller.hxx>
 #include <feature/api/pairing/controllers/pairing-controller.hxx>
 #include <feature/api/user/controllers/portrait-preview-controller.hxx>
@@ -197,6 +198,16 @@ void installIdentityClient()
   }
 }
 
+void installUserChangeSink()
+{
+  // The productivity and notification feature services route their change
+  // events through the sink; the legacy binds the local SocketService plus
+  // SyncAuditService, exactly the pre-cutover path.
+  static const SocketUserChangeSink sink;
+  user_change::setProductivitySink(&sink);
+  user_change::setNotificationSink(&sink);
+}
+
 void installCameraSurface()
 {
   // The camera feature services route their change events through the sink;
@@ -245,6 +256,7 @@ int Application::run()
   registerIdentitySurface();
   registerCameraSurface();
   installCameraSurface();
+  installUserChangeSink();
 
   installEventBus();
 

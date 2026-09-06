@@ -9,8 +9,7 @@
 #include <shared/repositories/project-member/project-member-repository.hxx>
 #include <shared/repositories/project/project-repository.hxx>
 #include <shared/schemas/project-task/project-task-schema.hxx>
-#include <shared/services/socket/socket-service.hxx>
-#include <shared/services/sync-audit/sync-audit-service.hxx>
+#include <shared/contracts/user-change-sink.hxx>
 
 class ProjectTaskFeatureService
 {
@@ -33,6 +32,4 @@ private:
   ProjectTaskRepository repository_;
   ProjectRepository projectRepository_;
   ProjectMemberRepository memberRepository_;
-  SocketService socketService_;
-  SyncAuditService syncAuditService_;
 };

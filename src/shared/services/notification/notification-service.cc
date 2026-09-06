@@ -4,7 +4,6 @@
 #include <shared/contracts/sync-operation.hxx>
 #include <shared/enums.hxx>
 #include <shared/schemas/notification/notification-schema.hxx>
-#include <shared/services/sync-audit/sync-audit-service.hxx>
 #include <trantor/utils/Logger.h>
 
 drogon::Task<void>
@@ -22,8 +21,7 @@ drogon::Task<void> NotificationService::createAndEmitMany(
     co_return;
 
   auto repo = repository_;
-  auto socket = socketService_;
-  drogon::async_run([repo, socket, userIds, input]() -> drogon::Task<void> {
+  drogon::async_run([repo, userIds, input]() -> drogon::Task<void> {
     try {
       std::vector<NotificationCreateInput> inputs;
       inputs.reserve(userIds.size());
@@ -39,7 +37,10 @@ drogon::Task<void> NotificationService::createAndEmitMany(
         emit.operation = SyncOperation::Add;
         emit.option = TableName::Notification;
         emit.obj = notification.toJson();
-        socket.emitUser(notification.userId, emit);
+        if (const auto* sink = user_change::getNotificationSink())
+          sink->emitUser(notification.userId, emit);
+        else
+          LOG_WARN << "user change sink not installed; drop notification emit";
       }
     }
     catch (const std::exception& e) {
@@ -54,9 +55,13 @@ NotificationService::markAsRead(int64_t userId,
                                 const std::vector<int64_t>& ids) const
 {
   const auto changes = co_await repository_.markAsRead(userId, ids);
-  SyncAuditService syncAuditService;
+  const auto* sink = user_change::getNotificationSink();
   for (const auto& change : changes) {
-    co_await syncAuditService.publishUsers({
+    if (!sink) {
+      LOG_WARN << "user change sink not installed; drop notification audit";
+      break;
+    }
+    co_await sink->publishAudit(UserAuditInput{
         .recordId = change.after.id,
         .tableName = TableName::Notification,
         .before = change.before.toJson(),

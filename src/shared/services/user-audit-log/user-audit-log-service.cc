@@ -20,11 +20,12 @@ std::pair<int64_t, int64_t> utcDayRangeMs(int64_t nowMs)
 } // namespace
 
 drogon::Task<UserAuditLogSchema>
-UserAuditLogService::createAndEmit(const UserAuditLogWriteInput& input) const
+UserAuditLogService::create(const UserAuditLogWriteInput& input) const
 {
-  const int64_t now = std::chrono::duration_cast<std::chrono::milliseconds>(
-                          std::chrono::system_clock::now().time_since_epoch())
-                          .count();
+  const int64_t now = input.eventTimestamp.value_or(
+      std::chrono::duration_cast<std::chrono::milliseconds>(
+          std::chrono::system_clock::now().time_since_epoch())
+          .count());
   const auto [dayStart, dayEnd] = utcDayRangeMs(now);
 
   const auto existing = co_await repository_.findExist(
@@ -43,21 +44,29 @@ UserAuditLogService::createAndEmit(const UserAuditLogWriteInput& input) const
          .changes = JsonDiff::toJson(input.changes),
          .priority = input.priority,
          .eventTimestamp = now});
+    co_return schema;
   }
-  else {
-    const auto prev =
-        JsonDiff::fromJsonString(json_util::toString(existing->changes));
-    const auto merged = JsonDiff::compareChanges(prev, input.changes);
-    const auto changes = merged.type == "DELETE" ? input.changes : merged.changes;
-    co_await repository_.remove(existing->id);
-    schema = co_await repository_.create(
-        {.userId = input.userId,
-         .recordId = input.recordId,
-         .tableName = input.tableName,
-         .changes = JsonDiff::toJson(changes),
-         .priority = input.priority,
-         .eventTimestamp = now});
-  }
+
+  const auto prev =
+      JsonDiff::fromJsonString(json_util::toString(existing->changes));
+  const auto merged = JsonDiff::compareChanges(prev, input.changes);
+  const auto changes = merged.type == "DELETE" ? input.changes : merged.changes;
+  co_await repository_.remove(existing->id);
+  schema = co_await repository_.create(
+      {.userId = input.userId,
+       .recordId = input.recordId,
+       .tableName = input.tableName,
+       .changes = JsonDiff::toJson(changes),
+       .priority = input.priority,
+       .eventTimestamp = now});
+
+  co_return schema;
+}
+
+drogon::Task<UserAuditLogSchema>
+UserAuditLogService::createAndEmit(const UserAuditLogWriteInput& input) const
+{
+  const auto schema = co_await create(input);
 
   SocketEmitDto emit;
   emit.operation = SyncOperation::Log;

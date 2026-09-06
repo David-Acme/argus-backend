@@ -1,6 +1,7 @@
 #include "project-member-feature-service.hxx"
 
 #include <ctime>
+#include <trantor/utils/Logger.h>
 #include <shared/access/role-access.hxx>
 
 void ProjectMemberFeatureService::emitMembership(SyncOperation operation,
@@ -19,7 +20,12 @@ void ProjectMemberFeatureService::emitMembership(SyncOperation operation,
   else {
     body.obj = row.toJson();
   }
-  socketService_.emitUsers({ownerId, row.userId}, body);
+  const auto* sink = user_change::getProductivitySink();
+  if (!sink) {
+    LOG_WARN << "user change sink not installed; drop project member membership emit";
+    return;
+  }
+  sink->emitUsers({ownerId, row.userId}, body);
 }
 
 drogon::Task<void> ProjectMemberFeatureService::emitParent(SyncOperation operation,
@@ -45,7 +51,12 @@ drogon::Task<void> ProjectMemberFeatureService::emitParent(SyncOperation operati
   else {
     body.obj = parent->toJson();
   }
-  socketService_.emitUser(userId, body);
+  const auto* sink = user_change::getProductivitySink();
+  if (!sink) {
+    LOG_WARN << "user change sink not installed; drop project member parent emit";
+    co_return;
+  }
+  sink->emitUser(userId, body);
   co_return;
 }
 
@@ -73,13 +84,16 @@ ProjectMemberFeatureService::create(const CreateProjectMemberDto& body, int64_t 
   if (const auto existing = co_await repository_.findExisting(
           body.projectId, body.userId)) {
     const auto row = co_await repository_.updateAccess(existing->id, access);
-    co_await syncAuditService_.publishUsers({
-        .recordId = row.id,
-        .tableName = TableName::ProjectMember,
-        .before = existing->toJson(),
-        .after = row.toJson(),
-        .userIds = {parent->ownerId, row.userId},
-    });
+    if (const auto* sink = user_change::getProductivitySink())
+      co_await sink->publishAudit(UserAuditInput{
+          .recordId = row.id,
+          .tableName = TableName::ProjectMember,
+          .before = existing->toJson(),
+          .after = row.toJson(),
+          .userIds = {parent->ownerId, row.userId},
+      });
+    else
+      LOG_WARN << "user change sink not installed; drop project member audit";
     co_return {.row = row};
   }
 
@@ -109,13 +123,16 @@ ProjectMemberFeatureService::update(int64_t id, const UpdateProjectMemberDto& bo
       id, shareAccessFromString(body.access));
   if (row.id == 0)
     co_return {.error = MembershipError::ParentNotFound, .row = std::nullopt};
-  co_await syncAuditService_.publishUsers({
-      .recordId = row.id,
-      .tableName = TableName::ProjectMember,
-      .before = existing->toJson(),
-      .after = row.toJson(),
-      .userIds = {parent->ownerId, row.userId},
-  });
+  if (const auto* sink = user_change::getProductivitySink())
+    co_await sink->publishAudit(UserAuditInput{
+        .recordId = row.id,
+        .tableName = TableName::ProjectMember,
+        .before = existing->toJson(),
+        .after = row.toJson(),
+        .userIds = {parent->ownerId, row.userId},
+    });
+  else
+    LOG_WARN << "user change sink not installed; drop project member audit";
   co_return {.row = row};
 }
 

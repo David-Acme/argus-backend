@@ -48,6 +48,30 @@ public:
   // app().run() creates any IO thread.
   static void setCameraClient(drogon::orm::DbClientPtr client);
 
+  // Client of the productivity domain (reminder, reminder_detail,
+  // calendar_event, calendar_event_share, project, project_member,
+  // project_task). The gateway installs productivity.db opened
+  // `file:...?mode=ro` at the cutover (Ruling AQ); hosts that never install
+  // one fall back to the default client, so the pre-cutover behavior stays
+  // byte-identical when the config key is absent.
+  static drogon::orm::DbClientPtr productivityClient();
+
+  // Installs the named productivity client. Must be called once at boot,
+  // before app().run() creates any IO thread.
+  static void setProductivityClient(drogon::orm::DbClientPtr client);
+
+  // Client of the notification domain (notification, notification_token). The
+  // gateway installs notification.db read-write — the camera-notifier writes
+  // it while argus-notification owns the file (Ruling AR, cross-process WAL +
+  // busy_timeout, no DDL from the gateway); hosts that never install one fall
+  // back to the default client, so the pre-cutover behavior stays
+  // byte-identical when the config key is absent.
+  static drogon::orm::DbClientPtr notificationClient();
+
+  // Installs the named notification client. Must be called once at boot,
+  // before app().run() creates any IO thread.
+  static void setNotificationClient(drogon::orm::DbClientPtr client);
+
   // Enables SQLite URI filenames (`file:...?mode=ro`) process-wide. A no-op
   // once SQLite is initialized; must run before the first sqlite3_open.
   static void enableUriFilenames();

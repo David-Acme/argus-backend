@@ -11,7 +11,7 @@ using namespace reminder_query;
 drogon::Task<std::optional<ReminderSchema>>
 ReminderRepository::findById(int64_t id) const
 {
-  auto client = DbService::client();
+  auto client = DbService::productivityClient();
   const auto result = co_await client->execSqlCoro(FIND_BY_ID.data(), id);
   if (result.empty())
     co_return std::nullopt;
@@ -21,7 +21,7 @@ ReminderRepository::findById(int64_t id) const
 drogon::Task<std::vector<ReminderSchema>>
 ReminderRepository::findByTargetUser(int64_t targetUserId) const
 {
-  auto client = DbService::client();
+  auto client = DbService::productivityClient();
   const auto result =
       co_await client->execSqlCoro(FIND_BY_TARGET.data(), targetUserId);
 
@@ -34,7 +34,7 @@ ReminderRepository::findByTargetUser(int64_t targetUserId) const
 drogon::Task<ReminderSchema>
 ReminderRepository::create(const ReminderCreateInput& input) const
 {
-  auto client = DbService::client();
+  auto client = DbService::productivityClient();
   const auto result =
       co_await client->execSqlCoro(INSERT.data(),
                                    input.createdBy ? *input.createdBy
@@ -61,7 +61,7 @@ ReminderRepository::create(const ReminderCreateInput& input) const
 drogon::Task<ReminderSchema>
 ReminderRepository::update(int64_t id, const ReminderUpdateInput& input) const
 {
-  auto client = DbService::client();
+  auto client = DbService::productivityClient();
   std::string sql = UPDATE_PREFIX.data();
   std::vector<std::string> args;
 
@@ -121,7 +121,7 @@ ReminderRepository::update(int64_t id, const ReminderUpdateInput& input) const
 
 drogon::Task<bool> ReminderRepository::remove(int64_t id) const
 {
-  auto client = DbService::client();
+  auto client = DbService::productivityClient();
   const auto result = co_await client->execSqlCoro(REMOVE.data(), id);
   co_return result.affectedRows() > 0;
 }
@@ -129,7 +129,7 @@ drogon::Task<bool> ReminderRepository::remove(int64_t id) const
 drogon::Task<std::vector<Json::Value>>
 ReminderRepository::find(const SyncFilter& filter) const
 {
-  auto client = DbService::readOnlyClient();
+  auto client = DbService::productivityClient();
 
   const auto [query, args] =
       sync_query::buildSyncQuery(filter, FIND, FIND_FROM, FIND_ALL, FIND_AFTER,
@@ -146,7 +146,7 @@ ReminderRepository::find(const SyncFilter& filter) const
 drogon::Task<std::vector<Json::Value>>
 ReminderRepository::findDeleted(const SyncFilter& filter) const
 {
-  auto client = DbService::readOnlyClient();
+  auto client = DbService::productivityClient();
 
   const auto [query, args] =
       sync_query::buildSyncQuery(filter, FIND_DELETED, FIND_DELETED_FROM,
@@ -163,7 +163,7 @@ ReminderRepository::findDeleted(const SyncFilter& filter) const
 
 drogon::Task<std::optional<Json::Value>> ReminderRepository::findLast(const SyncFilter&) const
 {
-  auto client = DbService::readOnlyClient();
+  auto client = DbService::productivityClient();
   const auto result = co_await client->execSqlCoro(FIND_LAST.data());
   if (result.empty())
     co_return std::nullopt;
@@ -173,7 +173,7 @@ drogon::Task<std::optional<Json::Value>> ReminderRepository::findLast(const Sync
 drogon::Task<std::optional<Json::Value>>
 ReminderRepository::findLastDeleted(const SyncFilter&) const
 {
-  auto client = DbService::readOnlyClient();
+  auto client = DbService::productivityClient();
   const auto result = co_await client->execSqlCoro(FIND_LAST_DELETED.data());
   if (result.empty())
     co_return std::nullopt;

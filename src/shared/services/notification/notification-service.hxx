@@ -2,7 +2,7 @@
 
 #include <drogon/utils/coroutine.h>
 #include <shared/repositories/notification/notification-repository.hxx>
-#include <shared/services/socket/socket-service.hxx>
+#include <shared/contracts/user-change-sink.hxx>
 #include <vector>
 
 class NotificationService
@@ -20,5 +20,4 @@ public:
 
 private:
   NotificationRepository repository_;
-  SocketService socketService_;
 };

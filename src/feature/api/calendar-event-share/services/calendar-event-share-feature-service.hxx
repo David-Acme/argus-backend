@@ -9,8 +9,7 @@
 #include <shared/repositories/calendar-event/calendar-event-repository.hxx>
 #include <shared/repositories/user/user-repository.hxx>
 #include <shared/schemas/calendar-event-share/calendar-event-share-schema.hxx>
-#include <shared/services/socket/socket-service.hxx>
-#include <shared/services/sync-audit/sync-audit-service.hxx>
+#include <shared/contracts/user-change-sink.hxx>
 
 struct CalendarEventShareResult
 {
@@ -40,6 +39,4 @@ private:
   CalendarEventShareRepository repository_;
   CalendarEventRepository parentRepository_;
   UserRepository userRepository_;
-  SocketService socketService_;
-  SyncAuditService syncAuditService_;
 };

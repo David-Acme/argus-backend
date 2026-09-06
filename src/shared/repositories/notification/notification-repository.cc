@@ -10,7 +10,7 @@ using namespace notification_query;
 drogon::Task<NotificationSchema>
 NotificationRepository::create(const NotificationCreateInput& input) const
 {
-  auto client = DbService::client();
+  auto client = DbService::notificationClient();
   const auto result = co_await client->execSqlCoro(
       INSERT.data(), input.userId, input.type, input.title, input.body,
       json_util::toString(input.data));
@@ -40,7 +40,7 @@ NotificationRepository::createMany(
 drogon::Task<std::vector<Json::Value>>
 NotificationRepository::findSync(const NotificationSyncFilter& filter) const
 {
-  auto client = DbService::readOnlyClient();
+  auto client = DbService::notificationClient();
   if (filter.startTime && filter.startId && filter.endTime) {
     const auto result = co_await client->execSqlCoro(
         std::string(FIND_SYNC_AFTER) + AppConfig::SYNC_LIMIT, filter.userId,
@@ -98,7 +98,7 @@ NotificationRepository::findSync(const NotificationSyncFilter& filter) const
 drogon::Task<std::optional<Json::Value>>
 NotificationRepository::findLastSync(const NotificationSyncFilter& filter) const
 {
-  auto client = DbService::readOnlyClient();
+  auto client = DbService::notificationClient();
   const auto result =
       co_await client->execSqlCoro(FIND_LAST_SYNC.data(), filter.userId);
   if (result.empty())
@@ -132,7 +132,7 @@ NotificationRepository::markAsRead(int64_t userId,
     return query;
   };
 
-  auto client = DbService::client();
+  auto client = DbService::notificationClient();
   const auto& argsRef = args;
   const auto rows = co_await client->execSqlCoro(withIds(FIND_UNREAD_BY_IDS), argsRef);
   if (rows.empty())
