@@ -17,6 +17,8 @@ set(UNIT_TESTS
     productivity-migration-test
     notification-schema-test
     notification-migration-test
+    productivity-controller-test
+    notification-controller-test
     event-intelligence-test
     camera-operator-test
 )
@@ -50,6 +52,56 @@ target_link_libraries(camera-config-test PRIVATE camera-core)
 target_link_libraries(camera-controller-test PRIVATE camera-core)
 target_link_libraries(event-intelligence-test PRIVATE camera-core)
 target_link_libraries(camera-operator-test PRIVATE camera-core)
+
+# The productivity/notification controller suites compile the same write-side
+# feature sources the fase 3 executables compile (shared tree) and ride the
+# sync layer for the repositories, schemas and boot plumbing.
+set(PRODUCTIVITY_CONTROLLER_SOURCES
+    ${SRC_ROOT}/feature/api/calendar-event/controllers/calendar-event-controller.cc
+    ${SRC_ROOT}/feature/api/calendar-event/dtos/create-calendar-event-dto.cc
+    ${SRC_ROOT}/feature/api/calendar-event/dtos/update-calendar-event-dto.cc
+    ${SRC_ROOT}/feature/api/calendar-event/services/calendar-event-feature-service.cc
+    ${SRC_ROOT}/feature/api/calendar-event-share/controllers/calendar-event-share-controller.cc
+    ${SRC_ROOT}/feature/api/calendar-event-share/dtos/create-calendar-event-share-dto.cc
+    ${SRC_ROOT}/feature/api/calendar-event-share/dtos/update-calendar-event-share-dto.cc
+    ${SRC_ROOT}/feature/api/calendar-event-share/services/calendar-event-share-feature-service.cc
+    ${SRC_ROOT}/feature/api/project/controllers/project-controller.cc
+    ${SRC_ROOT}/feature/api/project/dtos/create-project-dto.cc
+    ${SRC_ROOT}/feature/api/project/dtos/update-project-dto.cc
+    ${SRC_ROOT}/feature/api/project/services/project-feature-service.cc
+    ${SRC_ROOT}/feature/api/project-member/controllers/project-member-controller.cc
+    ${SRC_ROOT}/feature/api/project-member/dtos/create-project-member-dto.cc
+    ${SRC_ROOT}/feature/api/project-member/dtos/update-project-member-dto.cc
+    ${SRC_ROOT}/feature/api/project-member/services/project-member-feature-service.cc
+    ${SRC_ROOT}/feature/api/project-task/controllers/project-task-controller.cc
+    ${SRC_ROOT}/feature/api/project-task/dtos/create-project-task-dto.cc
+    ${SRC_ROOT}/feature/api/project-task/dtos/update-project-task-dto.cc
+    ${SRC_ROOT}/feature/api/project-task/services/project-task-feature-service.cc
+)
+
+set(NOTIFICATION_CONTROLLER_SOURCES
+    ${SRC_ROOT}/feature/api/notification/controllers/notification-controller.cc
+    ${SRC_ROOT}/feature/api/notification/controllers/notification-token-controller.cc
+    ${SRC_ROOT}/feature/api/notification/dtos/notification-read-dto.cc
+    ${SRC_ROOT}/feature/api/notification/dtos/register-notification-token-dto.cc
+    ${SRC_ROOT}/feature/api/notification/services/notification-feature-service.cc
+    ${SRC_ROOT}/feature/api/notification/services/notification-token-feature-service.cc
+    ${SRC_ROOT}/shared/repositories/notification-token/notification-token-repository.cc
+    ${SRC_ROOT}/shared/schemas/notification-token/notification-token-schema.cc
+    ${SRC_ROOT}/shared/services/notification-token/notification-token-service.cc
+)
+
+target_sources(productivity-controller-test PRIVATE
+    ${PRODUCTIVITY_CONTROLLER_SOURCES})
+
+target_link_libraries(productivity-controller-test PRIVATE argus_sync
+    doctest::doctest)
+
+target_sources(notification-controller-test PRIVATE
+    ${NOTIFICATION_CONTROLLER_SOURCES})
+
+target_link_libraries(notification-controller-test PRIVATE argus_sync
+    doctest::doctest)
 
 add_executable(identity-client-test identity-client-test.cc
     ${SRC_ROOT}/shared/services/sqlite/db-service.cc)

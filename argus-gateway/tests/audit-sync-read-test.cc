@@ -3,6 +3,9 @@
 
 #include <drogon/WebSocketConnection.h>
 #include <drogon/drogon.h>
+#include <feature/socket/sync/dtos/synchronized-dto.hxx>
+#include <feature/socket/sync/services/synchronized-service.hxx>
+#include <filter/jwt/jwt-filter.hxx>
 #include <shared/contracts/camera-audit-event.hxx>
 #include <shared/contracts/sync-operation.hxx>
 #include <shared/enums.hxx>
@@ -13,7 +16,11 @@
 #include <shared/services/sqlite/db-service.hxx>
 #include <shared/utils/json-diff/json-diff.hxx>
 #include <shared/utils/json-util/json-util.hxx>
+#include <shared/contracts/user-audit-event.hxx>
+#include <shared/repositories/notification/notification-repository.hxx>
+#include <shared/repositories/project/project-repository.hxx>
 #include <sync/camera-fan-out.hxx>
+#include <sync/user-change-fan-out.hxx>
 
 #include <chrono>
 #include <cstdio>
@@ -27,6 +34,10 @@ namespace
 constexpr const char* kIdentityDb = "audit-sync-read-test-identity.db";
 constexpr const char* kLegacyDb = "audit-sync-read-test-legacy.db";
 constexpr const char* kCameraDb = "audit-sync-read-test-camera.db";
+constexpr const char* kProductivityDb =
+    "audit-sync-read-test-productivity.db";
+constexpr const char* kNotificationDb =
+    "audit-sync-read-test-notification.db";
 
 void seedAuditTables(const char* path, int64_t auditId, int64_t userAuditId)
 {
@@ -105,6 +116,95 @@ void seedCameraTable(const char* path, int64_t id, const char* name)
   createCameraTable(path, id, name);
 }
 
+// Project table (productivity.db shape, productivity-schema.sql source of
+// truth) for the named-productivity-client resolution test.
+void createProjectTable(const char* path, int64_t id, const char* name)
+{
+  auto client =
+      drogon::orm::DbClient::newSqlite3Client(std::string("filename=") + path,
+                                              1);
+  client->execSqlSync(
+      "CREATE TABLE project ("
+      "id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, "
+      "owner_id INTEGER NOT NULL, name TEXT NOT NULL, "
+      "description TEXT NOT NULL DEFAULT '', "
+      "status TEXT NOT NULL DEFAULT 'active', "
+      "color TEXT NOT NULL DEFAULT '', starts_at INTEGER, "
+      "target_at INTEGER, "
+      "created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')), "
+      "updated_at INTEGER, deleted_at INTEGER)");
+  client->execSqlSync("INSERT INTO project (id, owner_id, name) "
+                      "VALUES (?, 7, ?)",
+                      id, name);
+}
+
+void seedProjectTable(const char* path, int64_t id, const char* name)
+{
+  std::remove(path);
+  createProjectTable(path, id, name);
+}
+
+void insertProjectRow(const char* path, int64_t id, int64_t ownerId,
+                      const char* name)
+{
+  auto client =
+      drogon::orm::DbClient::newSqlite3Client(std::string("filename=") + path,
+                                              1);
+  client->execSqlSync("INSERT INTO project (id, owner_id, name) VALUES (?, ?, ?)",
+                      id, ownerId, name);
+}
+
+// The project sync query probes project_member for shared access, so the
+// membership table must exist beside the project table (DDL verbatim from
+// productivity-schema.sql).
+void createProjectMemberTable(const char* path)
+{
+  auto client =
+      drogon::orm::DbClient::newSqlite3Client(std::string("filename=") + path,
+                                              1);
+  client->execSqlSync(
+      "CREATE TABLE IF NOT EXISTS project_member ("
+      "id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, "
+      "project_id INTEGER NOT NULL REFERENCES project(id) ON DELETE CASCADE, "
+      "user_id INTEGER NOT NULL REFERENCES user(id) ON DELETE CASCADE, "
+      "access TEXT NOT NULL DEFAULT 'view' "
+      "CHECK (access IN ('view', 'edit')), "
+      "created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')), "
+      "updated_at INTEGER, deleted_at INTEGER)");
+}
+
+// Notification table (notification.db shape, notification-schema.sql source
+// of truth) for the notification substrate resolution and round trip.
+void createNotificationTable(const char* path)
+{
+  auto client =
+      drogon::orm::DbClient::newSqlite3Client(std::string("filename=") + path,
+                                              1);
+  client->execSqlSync(
+      "CREATE TABLE notification ("
+      "id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, "
+      "user_id INTEGER NOT NULL, "
+      "type TEXT NOT NULL DEFAULT 'system', "
+      "title TEXT NOT NULL DEFAULT '', "
+      "body TEXT NOT NULL DEFAULT '', "
+      "data TEXT NOT NULL DEFAULT '{}', "
+      "is_read INTEGER NOT NULL DEFAULT 0 CHECK (is_read IN (0, 1)), "
+      "read_at INTEGER, "
+      "created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')))");
+}
+
+void seedNotificationRow(const char* path, int64_t id, const char* title)
+{
+  createNotificationTable(path);
+  auto client =
+      drogon::orm::DbClient::newSqlite3Client(std::string("filename=") + path,
+                                              1);
+  client->execSqlSync(
+      "INSERT INTO notification (id, user_id, title) VALUES (?, 7, ?)",
+      id, title);
+}
+
+
 class RecordingConnection final : public drogon::WebSocketConnection
 {
 public:
@@ -163,6 +263,11 @@ TEST_CASE("audit sync reads resolve to the default identity client on the "
 {
   // Gateway wiring: identity.db as the default client, legacy argus.db
   // read-only.
+  // The gateway calls this first thing in main: SQLite URI filenames must be
+  // configured before the library initializes, or the read-only URI clients
+  // below would open their query string as a plain file name.
+  DbService::enableUriFilenames();
+
   seedAuditTables(kLegacyDb, 1, 1);
   seedAuditTables(kIdentityDb, 2, 2);
 
@@ -175,7 +280,6 @@ TEST_CASE("audit sync reads resolve to the default identity client on the "
   std::thread runner([] { drogon::app().run(); });
   REQUIRE(waitForBoot(std::chrono::seconds(30)));
 
-  DbService::enableUriFilenames();
   // The client object must outlive the in-flight callbacks on its own loop
   // thread: only the resolution is reset mid-test, the release happens after
   // the app stopped.
@@ -305,12 +409,232 @@ TEST_CASE("audit sync reads resolve to the default identity client on the "
   const auto cameraGone = drogon::sync_wait(cameraRepository.findById(2));
   CHECK_FALSE(cameraGone);
 
+  // ── Phase: productivity audit funnel (Ruling AQ) ─────────────────────────
+  // argus-productivity funnels the exact user_audit_log diff over its
+  // subject; the gateway inserts it verbatim BEFORE fanning the DB-assigned
+  // row out to the user's room.
+  const auto userConn = std::make_shared<RecordingConnection>();
+  drogon::app().getIOLoop(0)->runInLoop(
+      [&] { rooms.join(userRoom(42), userConn); });
+
+  const Json::Value projectBefore = [&] {
+    Json::Value v;
+    v["id"] = Json::Int64(9);
+    v["name"] = "Chores";
+    return v;
+  }();
+  const Json::Value projectAfter = [&] {
+    Json::Value v;
+    v["id"] = Json::Int64(9);
+    v["name"] = "Renovations";
+    return v;
+  }();
+
+  UserAuditEvent userEvent;
+  userEvent.recordId = 9;
+  userEvent.tableName = TableName::Project;
+  userEvent.changes = JsonDiff::createFlatDiff(projectBefore, projectAfter);
+  userEvent.users = {42};
+  userEvent.eventTimestamp = 1735689600000;
+  const std::string userChangesText =
+      json_util::toString(JsonDiff::toJson(userEvent.changes));
+
+  drogon::app().getIOLoop(0)->runInLoop(
+      [&userEvent] { user_change_fan_out::handleUserChange(userEvent.toJson()); });
+  REQUIRE(waitForMessages(userConn, std::chrono::seconds(5)));
+  drogon::app().getIOLoop(0)->runInLoop(
+      [&] { rooms.leave(userRoom(42), userConn); });
+
+  REQUIRE(userConn->messages.size() == 1);
+  const Json::Value userFanned = json_util::fromString(userConn->messages.front());
+  CHECK(userFanned["operation"].asInt()
+        == static_cast<int>(SyncOperation::Log));
+  CHECK(userFanned["option"] == "user_audit_log");
+  const Json::Value userInfo = userFanned["info"];
+  CHECK(userInfo["id"].asInt64() > 0);
+  CHECK(userInfo["userId"].asInt64() == 42);
+  CHECK(userInfo["recordId"].asInt64() == 9);
+  CHECK(userInfo["tableName"] == "project");
+  CHECK(userInfo["eventTimestamp"].asInt64() == 1735689600000);
+  CHECK(json_util::toString(userInfo["changes"]) == userChangesText);
+
+  // The user audit row itself is byte-identical to what the producer sent,
+  // with the gateway-assigned id.
+  UserAuditLogSyncFilter funnelUserFilter;
+  funnelUserFilter.userId = 42;
+  funnelUserFilter.afterId = userInfo["id"].asInt64() - 1;
+  const auto funnelUserRows =
+      drogon::sync_wait(userAuditRepository.findSync(funnelUserFilter));
+  REQUIRE(funnelUserRows.size() == 1);
+  CHECK(json_util::toString(funnelUserRows.front()["changes"])
+        == userChangesText);
+  CHECK(funnelUserRows.front()["recordId"].asInt64() == 9);
+  CHECK(funnelUserRows.front()["tableName"] == "project");
+  CHECK(funnelUserRows.front()["eventTimestamp"].asInt64() == 1735689600000);
+
+  // A plain user-scoped change event fans out as-is, without an insert.
+  const Json::Value plainEvent = [&] {
+    Json::Value v;
+    v["operation"] = static_cast<int>(SyncOperation::Add);
+    v["option"] = "project";
+    Json::Value row;
+    row["id"] = Json::Int64(9);
+    v["info"] = row;
+    Json::Value users(Json::arrayValue);
+    users.append(42);
+    v["users"] = users;
+    return v;
+  }();
+  const auto plainConn = std::make_shared<RecordingConnection>();
+  drogon::app().getIOLoop(0)->runInLoop(
+      [&] { rooms.join(userRoom(42), plainConn); });
+  drogon::app().getIOLoop(0)->runInLoop([&plainEvent] {
+    user_change_fan_out::handleUserChange(plainEvent);
+  });
+  REQUIRE(waitForMessages(plainConn, std::chrono::seconds(5)));
+  drogon::app().getIOLoop(0)->runInLoop(
+      [&] { rooms.leave(userRoom(42), plainConn); });
+  REQUIRE(plainConn->messages.size() == 1);
+  const Json::Value plainFanned =
+      json_util::fromString(plainConn->messages.front());
+  CHECK(plainFanned["operation"].asInt()
+        == static_cast<int>(SyncOperation::Add));
+  CHECK(plainFanned["option"] == "project");
+  CHECK(plainFanned["info"]["id"].asInt64() == 9);
+
+  // ── Phase: named productivity client resolution (Ruling AQ) ──────────────
+  // The identity database stays in place: the default client's connection
+  // already holds the file, so only the productivity database is re-created.
+  createProjectTable(kIdentityDb, 1, "default row");
+  seedProjectTable(kProductivityDb, 2, "productivity-db row");
+
+  const auto productivityDb = drogon::orm::DbClient::newSqlite3Client(
+      std::string("filename=file:") + kProductivityDb + "?mode=ro", 1);
+  DbService::setProductivityClient(productivityDb);
+
+  const ProjectRepository projectRepository;
+  const auto fromProductivity = drogon::sync_wait(projectRepository.findById(2));
+  REQUIRE(fromProductivity);
+  CHECK(fromProductivity->name == "productivity-db row");
+
+  const auto notSharedProject =
+      drogon::sync_wait(projectRepository.findById(1));
+  CHECK_FALSE(notSharedProject);
+
+  DbService::setProductivityClient(nullptr);
+  const auto projectFallback =
+      drogon::sync_wait(projectRepository.findById(1));
+  REQUIRE(projectFallback);
+  CHECK(projectFallback->name == "default row");
+
+  // ── Phase: notification substrate (Ruling AR) ────────────────────────────
+  // The notification tables resolve to notification.db when the host installs
+  // the named client — reads and writes, since the gateway NotificationService
+  // writes there — and fall back to the default client when it does not.
+  seedNotificationRow(kIdentityDb, 1, "default row");
+  seedNotificationRow(kNotificationDb, 2, "notification-db row");
+
+  const auto notificationDb = drogon::orm::DbClient::newSqlite3Client(
+      std::string("filename=") + kNotificationDb, 1);
+  DbService::setNotificationClient(notificationDb);
+
+  const NotificationRepository notificationRepository;
+  NotificationSyncFilter notificationFilter;
+  notificationFilter.userId = 7;
+  const auto notificationRows =
+      drogon::sync_wait(notificationRepository.findSync(notificationFilter));
+  REQUIRE(notificationRows.size() == 1);
+  CHECK(notificationRows.front()["id"].asInt64() == 2);
+  CHECK(notificationRows.front()["title"] == "notification-db row");
+
+  NotificationCreateInput createInput;
+  createInput.userId = 7;
+  createInput.type = "system";
+  createInput.title = "gateway created";
+  createInput.body = "body";
+  createInput.data = Json::Value(Json::objectValue);
+  const auto created =
+      drogon::sync_wait(notificationRepository.create(createInput));
+  CHECK(created.id > 2);
+
+  const auto readChanges =
+      drogon::sync_wait(notificationRepository.markAsRead(7, {2}));
+  REQUIRE(readChanges.size() == 1);
+  CHECK(readChanges.front().before.id == 2);
+  CHECK(readChanges.front().before.isRead == 0);
+  CHECK(readChanges.front().after.id == 2);
+  CHECK(readChanges.front().after.isRead == 1);
+
+  DbService::setNotificationClient(nullptr);
+  const auto notificationFallback =
+      drogon::sync_wait(notificationRepository.findSync(notificationFilter));
+  REQUIRE(notificationFallback.size() == 1);
+  CHECK(notificationFallback.front()["id"].asInt64() == 1);
+
+  // ── Phase: personal-table sync scoping (Ruling AQ) ───────────────────────
+  // /sync scoping stays gateway-side: a personal table is filtered to the
+  // caller (owner or project member) whatever their role, so the pull pages
+  // the app reads need no knowledge of the caller on the backend side.
+  createProjectMemberTable(kIdentityDb);
+  insertProjectRow(kIdentityDb, 3, 42, "owned by 42");
+  insertProjectRow(kIdentityDb, 4, 7, "owned by 7");
+  auto memberClient = drogon::orm::DbClient::newSqlite3Client(
+      std::string("filename=") + kIdentityDb, 1);
+  memberClient->execSqlSync(
+      "INSERT INTO project_member (id, project_id, user_id, access) "
+      "VALUES (1, 4, 42, 'edit')");
+  memberClient.reset();
+
+  const SynchronizedService synchronizedService;
+  const JwtContext ownerCtx{42, "Owner", UserRole::Owner, true};
+  const JwtContext residentCtx{7, "Resident", UserRole::Resident, true};
+
+  Json::Value projectSyncBody;
+  Json::Value projectBody;
+  projectBody["requiredCreate"] = true;
+  projectSyncBody["project"] = projectBody;
+  const auto ownerSync = drogon::sync_wait(
+      synchronizedService.sync(SynchronizedDto::fromJson(projectSyncBody),
+                               ownerCtx));
+  // The owner sees their own project and the one shared with them as a
+  // member, never the rows of other users.
+  REQUIRE(ownerSync["info"]["project"]["created"].size() == 2);
+  CHECK(ownerSync["info"]["project"]["created"][0]["id"].asInt64() == 3);
+  CHECK(ownerSync["info"]["project"]["created"][1]["id"].asInt64() == 4);
+  const auto residentSync = drogon::sync_wait(
+      synchronizedService.sync(SynchronizedDto::fromJson(projectSyncBody),
+                               residentCtx));
+  REQUIRE(residentSync["info"]["project"]["created"].size() == 2);
+  CHECK(residentSync["info"]["project"]["created"][0]["id"].asInt64() == 1);
+  CHECK(residentSync["info"]["project"]["created"][1]["id"].asInt64() == 4);
+
+  // The notification page keeps its user scoping the same way.
+  Json::Value notificationSyncBody;
+  Json::Value notificationBody;
+  notificationBody["requiredCreate"] = true;
+  notificationSyncBody["notification"] = notificationBody;
+  const auto otherSync = drogon::sync_wait(
+      synchronizedService.sync(
+          SynchronizedDto::fromJson(notificationSyncBody), ownerCtx));
+  CHECK(otherSync["info"]["notification"]["created"].size() == 0);
+  const auto ownSync = drogon::sync_wait(
+      synchronizedService.sync(
+          SynchronizedDto::fromJson(notificationSyncBody), residentCtx));
+  REQUIRE(ownSync["info"]["notification"]["created"].size() == 1);
+  CHECK(ownSync["info"]["notification"]["created"][0]["id"].asInt64() == 1);
+
   drogon::app().quit();
   runner.join();
   DbService::setReadOnlyClient(nullptr);
   DbService::setCameraClient(nullptr);
+  DbService::setProductivityClient(nullptr);
+  DbService::setNotificationClient(nullptr);
   std::remove(kLegacyDb);
   std::remove(kIdentityDb);
   std::remove(kCameraDb);
+  std::remove(kProductivityDb);
+  std::remove(kNotificationDb);
+  std::remove("audit-sync-read-test-notification.db-wal");
+  std::remove("audit-sync-read-test-notification.db-shm");
   std::filesystem::remove_all("/tmp/argus-audit-sync-read-test-upload");
 }
