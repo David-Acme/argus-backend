@@ -382,17 +382,28 @@ void Application::registerServices()
     LOG_INFO << "TTS delegated to " << ConfigService::getString("tts.remote_url")
              << "; in-process TtsService stays uninitialized";
   }
-  // LLM cutover (Rulings BU/BF): the adapter stays boot-initialized
-  // unconditionally because MemoryService still calls the in-process
-  // engine until F4-6; with llm.remote_url set the voice session streams
-  // from argus-llm over HTTP instead.
-  if (!ConfigService::getString("llm.remote_url").empty()) {
+  // LLM cutover (Rulings BU/BF): with llm.remote_url set the voice session
+  // streams from argus-llm over HTTP; the in-process engine still boots while
+  // MemoryService calls it in-process, and closes with the F4-6 memory gate.
+  const bool llmDelegated =
+      !ConfigService::getString("llm.remote_url").empty();
+  const bool memoryDelegated =
+      !ConfigService::getString("memory.remote_url").empty();
+  if (llmDelegated && !memoryDelegated) {
     LOG_INFO << "LLM voice delegated to "
              << ConfigService::getString("llm.remote_url")
              << "; in-process LlmService still boots for MemoryService "
-                "until F4-6";
+                "(dual state)";
   }
-  registry_.registerService(std::make_unique<LlmServiceAdapter>());
+  if (!(llmDelegated && memoryDelegated)) {
+    registry_.registerService(std::make_unique<LlmServiceAdapter>());
+  }
+  else {
+    LOG_INFO << "LLM voice delegated to "
+             << ConfigService::getString("llm.remote_url")
+             << "; in-process LlmService stays uninitialized (memory "
+                "delegated)";
+  }
   // STT cutover (Rulings BM/BN): with stt.remote_url set the legacy skips
   // the in-process engine entirely — transcription goes to argus-stt over
   // HTTP and the sherpa-onnx models are never loaded here.
