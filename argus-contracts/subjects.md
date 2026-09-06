@@ -28,6 +28,7 @@ argus.<domain>.v1.<event>
 | `argus.camera.v1.object_detected` | argus-camera (F2-3) | gateway  | an evaluated detection event (not a persisted change; never re-emitted to `/sync`) |
 | `argus.productivity.v1.change` | argus-productivity (F3-2) | gateway  | a productivity-domain change: user-scoped emits plus `kind: audit` user_audit_log diffs the gateway persists before fanning the rows out |
 | `argus.notification.v1.change` | argus-notification (F3-2) | gateway  | a notification-domain change: user-scoped emits plus the `kind: audit` markAsRead rows (same payload contract as the productivity subject) |
+| `argus.identity.v1.change` | legacy backend (F4-6) | argus-memory | the memory catalog replica feed: person/user rows written by the identity surface; the gateway's wildcard subscription drops it (the gateway owns `/user` fan-out natively) |
 
 The gateway subscribes with the wildcard `argus.*.v1.change` — universally
 valid across nats-server versions, while a mid-subject `>` requires nats-server
@@ -116,3 +117,34 @@ restarts — the stream exists for later inspection, not for redelivery.
   frame pixels, top-left origin.
 - The gateway tolerates unknown extra keys and unknown rule/severity values
   (it treats them as data, never as commands).
+
+## Payload of `argus.identity.v1.change` (F4-6)
+
+The memory catalog replica feed (Ruling BX): the legacy publishes identity
+writes through the `identity_change` sink (`NatsIdentityChangeSink`, installed
+in `src/config/application.cc`) so argus-memory's `CatalogReplica` can keep
+`catalog_person` current. The subject is consumed ONLY by argus-memory — the
+gateway's `argus.*.v1.change` subscription matches it and explicitly drops it
+(`argus-gateway/src/sync/camera-fan-out.cc`), never re-emitting it to `/sync`.
+
+```json
+{
+  "kind": "identity",
+  "table": "person",
+  "id": 7,
+  "deleted": false,
+  "row": { "id": 7, "user_id": 42, "name": "Ana", "alias": "" }
+}
+```
+
+- `kind` — always `"identity"` (argus-memory ignores events without it).
+- `table` — the identity-domain row written: `"person"` (face-enrollment
+  rows, `src/feature/api/auth/services/auth-service.cc`) or `"user"` (profile
+  writes, `src/feature/api/user/services/user-feature-service.cc`). Other
+  values are ignored by the replica.
+- `id` — the row id; `deleted` marks a soft delete (the replica tombstones
+  `catalog_person` via `deleted_at`; the camera subject handles its own rows
+  on `argus.camera.v1.change`).
+- `row` — the post-write snapshot; the replica upserts `user_id`, `name` and
+  `alias` for person rows. Publication failure logs a WARN and is dropped
+  (best-effort feed; the boot snapshot fill recovers the catalog).

@@ -2638,3 +2638,52 @@ camera-control routes against camera.db.
   running argus-llm over the wire (in-process engine uninitialized, VLM
   co-residency measured separately with direct mode); metrics code is shared
   with the in-process path via the same onToken lambda.
+
+## Fase 4 step 6 — Memory extracted to argus-memory (F4-6, 2026-09-06)
+
+- **argus-memory is the eighth microservice**: the memory capacity at `:7033`,
+  loopback bind, llama.cpp (extract gguf) + onnxruntime + sqlite-vec. It owns
+  `memory.db` (memory tables VERBATIM from `database/schema.sql`, the
+  `memory_vec` partitions boot-applied idempotently from
+  `database/memory-schema.sql`) and the four catalog replicas
+  (`catalog_person`/`camera`/`zone`/`stream`). `nm -C` proof: no sherpa/
+  whisper/ncnn/tapo/`FaceService`/`TtsService` symbols — the residual
+  `tts`/`face` strings are llama's internal `qwen3tts` model type, the shared
+  `ThreadBudget::ttsThreads` config and c-ares `ares_iface_*` (documented in
+  the report). `memory.create_face_vec = false` (TOML boolean — `getString`
+  cannot read booleans, `ConfigService::hasKey` + a dual-shape read gate it)
+  keeps the face recognition index in the legacy only.
+- **Cutover gate (Ruling BY).** `memory.remote_url` empty = the legacy boots
+  the in-process stack exactly as before; set = `MemoryServiceAdapter` is
+  replaced by `RemoteMemoryServiceAdapter` (`src/config/application.cc:423`)
+  covering the adapter's tool surface over the wire and the memory stack never
+  initializes — boot line `Memory delegated to <url>; in-process memory stack
+  stays uninitialized`. Down argus-memory degrades through the adapter's
+  try/catch (the legacy stays alive). Needs a legacy restart (boot gate).
+- **Back-pressure (Ruling BZ).** The workers' `llm_.isBusy()` polling is
+  replaced by the bounded work queue (`[memory] queue_bound`, default 64): at
+  the bound non-extract jobs drop with a WARN and an extract evicts the oldest
+  non-extract job. argus-memory's worker chat rides `POST /llm/v1/chat` via
+  `WireMemoryChat`; a failed job is dropped with a WARN (`MemoryService worker
+  job failed`) and the service recovers with the NEXT job once argus-llm
+  returns — no in-queue retry, verified live. The legacy keeps
+  `InProcessMemoryChat` (identical queue semantics, in-process busy state).
+- **Catalog replicas (Ruling BX).** `argus.identity.v1.change` (new subject,
+  see `argus-contracts/subjects.md`) + `argus.camera.v1.change` replay into
+  the replicas through `CatalogReplica`; camera_stream rows ride the sync
+  wildcard filtered to `option == "camera_stream"`. The boot snapshot fill is
+  NOT gated on NATS: `CatalogReplica::seedSnapshot` (static) fills empty
+  replicas from the read-only `[identity]`/`[camera]` clients even when the
+  change feed never connected — a no-NATS boot still serves a real catalog.
+  The gateway's `argus.*.v1.change` wildcard subscription no-ops the identity
+  subject (`argus-gateway/src/sync/camera-fan-out.cc:74`), so `/sync` fan-out
+  is unchanged (verified).
+- **Compile coupling severed (Ruling CA).** `ReactionEngine`'s rule machinery
+  moved behind a pimpl so the voice path compiles without memory types;
+  voice-session sources carry zero memory-graph includes.
+- `labs/memory-probe` gained `--http <url>`: the full memory battery over the
+  wire (remember→recall A/B scope, forget, procedure degrade, durable
+  transcript, capture, compact) — pure wire, never touches a local store.
+- The dual state from F4-5 is closed: with both gates set the legacy loads NO
+  text engine and NO memory stack; `ConversationService` stays unwired in both
+  binaries (never constructed — nothing changed for it).

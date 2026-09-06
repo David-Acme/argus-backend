@@ -31,7 +31,14 @@ profiling, procedures). It mirrors the argus-llm (F4-5) scaffold.
   `argus.*.v1.change`, so the replica also subscribes the sync wildcard
   filtered to `option == "camera_stream"`. On boot, replica tables still
   empty get ONE snapshot fill from the read-only `[identity]`/`[camera]`
-  clients; populated tables are never re-seeded.
+  clients; populated tables are never re-seeded. The fill runs even when the
+  change feed never connects (`CatalogReplica::seedSnapshot` static entry —
+  main.cc calls it when NATS is absent or failed), because otherwise a no-NATS
+  boot would serve an empty catalog forever.
+- **The face index stays in the legacy**: `[memory] create_face_vec = false`
+  skips `face_vec` creation (`ConfigService::hasKey` + a dual-shape read,
+  since `getString` cannot surface TOML booleans); the key absent keeps the
+  pre-cutover legacy behavior (create it).
 - **The internal wire (Ruling BY)**: `POST /memory/v1/remember`, `/recall`,
   `/forget`, `/procedure-run`, `/capture`, `/compact`,
   `/durable-transcript` — frozen `{status, info, errors}` envelope. Every
