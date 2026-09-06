@@ -2442,3 +2442,44 @@ camera-control routes against camera.db.
   other path fall through to the legacy backends. No path is served by both
   sides (the legacy `/camera`/`/zone` CRUD controllers stay in the binary —
   strip is a later-phase task).
+
+## Fase 4 step 2 — TTS extracted to argus-tts (F4-2, 2026-09-06)
+
+- **argus-tts is the fourth microservice** (after gateway, argus-camera,
+  argus-notification): a dedicated TTS capacity at `:7029`, loopback bind,
+  built only from the shared TTS stack (tts-service/tts-engine/onnx-utils/
+  style/unicode-processor) plus onnxruntime — no LLM/STT/VAD/ncnn symbols
+  (nm -C proof in task-f4-2-report.md). The argus-tts tree
+  (`argus-tts/src`) carries its own main, health controller, TTS controller
+  and synthesize DTO; it compiles the shared sources directly (same pattern
+  as argus-camera), so `models/tts` is read from the same tree via
+  `tts.models_dir` — model files are never copied.
+- **Internal wire (Ruling BH).** `POST /tts/v1/synthesize` returns float32
+  PCM with `Content-Type: audio/x-argus-pcm-f32` and an
+  `X-Argus-Sample-Rate` header; `POST /tts/v1/synthesize-stream` returns the
+  same PCM chunked. Errors use the frozen app-envelope
+  `{status, info, errors}` (422 validation, 400 bad JSON, 404/405 routing,
+  503 `TTS_NOT_LOADED` when the engine is not ready). No auth: the service
+  binds loopback only and trusts the host network. `GET /tts/v1/config` is
+  additive (not in the frozen contract) and exists because the camera-control
+  adapter must fetch `defaultSpeed`/`sampleRate` over the wire (Ruling BI).
+- **Drogon chunking constraint.** Drogon refuses to send
+  `Transfer-Encoding: chunked` on a `Connection: close` response (it skips
+  the async-stream callback entirely when `ifCloseConnection()`), so the
+  stream leg keeps the connection open and terminates at the terminal zero
+  chunk. `TtsHttpClient::stream` de-chunks incrementally against that
+  keep-alive response; a `Connection: close` client gets no streamed body.
+- **Cutover switch.** `tts.remote_url` in `[tts]`: empty = the legacy
+  in-process `TtsService` exactly as before; set = `TtsClient`
+  (`src/shared/services/tts/remote/tts-remote.cc`) routes every synthesis to
+  argus-tts over the wire. There is NO in-process fallback once remote is
+  configured — a down argus-tts surfaces as an exception that each consumer
+  maps to degradation (camera talk → 502 `CAMERA_UNREACHABLE` "Text-to-speech
+  unavailable"; voice session → the assistant text frame still goes out, only
+  the audio leg is dropped). The legacy binary keeps TtsService linked and
+  boots init only while `tts.remote_url` is empty (boot-init gate, Ruling BJ).
+- **Compose note.** argus-tts needs the models volume mounted (`models/tts`)
+  and, like the other capacities, must not open any database.
+- `labs/tts-probe` gained `--http <url>`: probes a running argus-tts over
+  the wire (no local models needed); without the flag it drives the
+  in-process engine as before.
