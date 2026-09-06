@@ -2,8 +2,10 @@
 #include <chrono>
 #include <cmath>
 #include <cstdio>
+#include <functional>
 #include <shared/services/config-service/config-service.hxx>
 #include <shared/services/tts/onnx-utils.hxx>
+#include <shared/services/tts/remote/tts-remote.hxx>
 #include <shared/services/tts/tts-service.hxx>
 #include <string>
 #include <unistd.h>
@@ -175,17 +177,37 @@ void streamingSplitCheck()
   std::printf("\n");
 }
 
-int main()
+int main(int argc, char** argv)
 {
   streamingSplitCheck();
 
+  // --http <url> probes a running argus-tts over the internal wire instead
+  // of the in-process engine (no local models needed).
+  std::string httpUrl;
+  for (int i = 1; i < argc; ++i)
+    if (std::string(argv[i]) == "--http" && i + 1 < argc)
+      httpUrl = argv[++i];
+
   ConfigService::load("config.toml");
-  gTts.init();
-  if (!gTts.isLoaded()) {
-    std::printf("TTS NOT LOADED\n");
-    return 1;
+
+  std::function<std::vector<float>(const TtsRequest&)> synth;
+  int sr = 0;
+  const TtsClient remote;
+  if (!httpUrl.empty()) {
+    ConfigService::setRuntimeString("tts.remote_url", httpUrl);
+    sr = remote.sampleRate();
+    synth = [&remote](const TtsRequest& req) { return remote.synthesize(req); };
+    std::printf("argus-tts wire: %s\n", httpUrl.c_str());
   }
-  const int sr = gTts.sampleRate();
+  else {
+    gTts.init();
+    if (!gTts.isLoaded()) {
+      std::printf("TTS NOT LOADED\n");
+      return 1;
+    }
+    sr = gTts.sampleRate();
+    synth = [](const TtsRequest& req) { return gTts.synthesize(req); };
+  }
   std::printf("sample_rate=%d\n\n", sr);
 
   struct Case
@@ -215,7 +237,7 @@ int main()
     TtsRequest req;
     req.text = c.text;
     const auto t0 = std::chrono::steady_clock::now();
-    auto pcm = gTts.synthesize(req);
+    auto pcm = synth(req);
     const double ms = std::chrono::duration<double, std::milli>(
                           std::chrono::steady_clock::now() - t0)
                           .count();
@@ -226,8 +248,6 @@ int main()
                              ".wav",
                          pcm, sr);
   }
-
-  gTts.shutdown();
 
   if (gFailures > 0) {
     std::printf("\n%d SPLIT FAILURE(S)\n", gFailures);

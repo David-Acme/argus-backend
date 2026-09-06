@@ -1,6 +1,7 @@
 add_executable(argus-tts-probe
     tts-probe.cc
     ${SRC_ROOT}/shared/services/config-service/config-service.cc
+    ${SRC_ROOT}/shared/services/tts/remote/tts-remote.cc
     ${SRC_ROOT}/shared/services/tts/tts-service.cc
     ${SRC_ROOT}/shared/services/tts/tts-engine.cc
     ${SRC_ROOT}/shared/services/tts/onnx-utils.cc
