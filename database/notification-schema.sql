@@ -1,11 +1,12 @@
 -- ─────────────────────────────────────────────────────────────────────────────
 -- Argus notification  ·  Notification schema (notification.db)
 -- The 2 notification tables, copied verbatim from database/schema.sql (source
--- of truth): notification, notification_token. schema.sql defines no indexes
--- for them, so none exist here either (Ruling AN). Applied by
--- tools/migrate-notification and by argus-notification at boot. argus.db is
--- never touched.
--- Structure: pragmas → table creation.
+-- of truth): notification, notification_token, plus the 2 notification_token
+-- indexes schema.sql defines — the unique one backs the ON CONFLICT target of
+-- the token upsert, so without it the legacy registerToken statement fails to
+-- prepare. Applied by tools/migrate-notification and by argus-notification at
+-- boot. argus.db is never touched.
+-- Structure: pragmas → table creation → indexes (inline, verbatim order).
 -- ─────────────────────────────────────────────────────────────────────────────
 
 PRAGMA journal_mode       = WAL;
@@ -43,3 +44,7 @@ CREATE TABLE IF NOT EXISTS notification_token (
     created_at  INTEGER NOT NULL  DEFAULT (strftime('%s', 'now')),
     updated_at  INTEGER
 );
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_notification_token_uniq
+    ON notification_token (user_id, device_hash);
+CREATE INDEX IF NOT EXISTS idx_notification_token_user ON notification_token (user_id);
