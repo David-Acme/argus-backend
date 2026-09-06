@@ -16,12 +16,16 @@ class ToolRegistry
 public:
   static ToolRegistry& instance();
 
+  // The default constructor stays public so isolated registries (an
+  // internal wire that must not share boot-time registrations) can exist
+  // alongside the process-wide singleton.
+  ToolRegistry() = default;
+
   void registerTool(tools::ToolDescriptor descriptor);
   const tools::ToolDescriptor* find(const std::string& name) const;
   std::vector<std::string> names() const;
 
 private:
-  ToolRegistry() = default;
   std::unordered_map<std::string, tools::ToolDescriptor> tools_;
   mutable std::mutex mutex_;
 };

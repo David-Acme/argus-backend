@@ -4,9 +4,9 @@
 #include <string>
 
 // Chat substrate of the memory workers (Ruling BZ): the legacy binds the
-// in-process engine, the extracted service chats over the argus-llm wire and
-// relies on the bounded work queue for back-pressure instead of isBusy
-// polling.
+// in-process engine (in-process-memory-chat.hxx), the extracted service
+// chats over the argus-llm wire and relies on the bounded work queue for
+// back-pressure instead of isBusy polling.
 class IMemoryChat
 {
 public:
@@ -19,21 +19,4 @@ public:
   virtual bool busy() const = 0;
 
   virtual std::string chat(const ChatRequest& request) const = 0;
-};
-
-// Legacy substrate: the in-process engine, exactly the pre-cutover calls.
-class InProcessMemoryChat final : public IMemoryChat
-{
-public:
-  explicit InProcessMemoryChat(LlmService& llm) : llm_(llm) {}
-
-  bool available() const override { return llm_.isLoaded(); }
-  bool busy() const override { return llm_.isBusy(); }
-  std::string chat(const ChatRequest& request) const override
-  {
-    return llm_.chat(request);
-  }
-
-private:
-  LlmService& llm_;
 };

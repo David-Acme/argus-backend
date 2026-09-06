@@ -69,6 +69,10 @@
     { "name": "llm", "configurePreset": "dev", "jobs": 8,
       "targets": ["argus-llm"] },
     { "name": "llm-prod", "configurePreset": "prod", "jobs": 8,
-      "targets": ["argus-llm"] }
+      "targets": ["argus-llm"] },
+    { "name": "memory", "configurePreset": "dev", "jobs": 8,
+      "targets": ["argus-memory"] },
+    { "name": "memory-prod", "configurePreset": "prod", "jobs": 8,
+      "targets": ["argus-memory"] }
   ]
 }

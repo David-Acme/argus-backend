@@ -1,0 +1,106 @@
+# argus-memory configuration. Copy to config.toml (gitignored) to run.
+# Memory-domain keys (F4-6): the memory stack knobs mirroring the legacy
+# [memory]/[extract] blocks plus the internal listener and the replica
+# sources. Models are read from the shared models/ tree — never copied.
+
+[server]
+# Internal plain-HTTP listener. Loopback by default: only the legacy's remote
+# memory adapter calls this wire, and it is never routed through the gateway.
+host = "127.0.0.1"
+port = 7033
+
+# The memory database this service owns (Ruling BW). The memory stack opens
+# it through the shared `database.file` key.
+[database]
+file = "./database/memory.db"
+
+[memory]
+# The service boots the memory tables from its own schema file (Ruling BW):
+# the verbatim memory DDL plus the catalog replica tables, not the legacy
+# schema.sql.
+schema_file = "database/memory-schema.sql"
+# Catalog replicas (Ruling BX): the gazetteer reads resolve to the local
+# replica tables, fed by the change subjects.
+catalog_person_table = "catalog_person"
+catalog_camera_table = "catalog_camera"
+catalog_zone_table = "catalog_zone"
+catalog_stream_table = "catalog_stream"
+# The face recognition index belongs to the legacy process; this service
+# skips it.
+create_face_vec = false
+# Back-pressure bound (Ruling BZ): the worker queue stops growing past it.
+queue_bound = 64
+recall_max_tokens = 512
+profile_max_tokens = 256
+profile_max_facts = 4
+profile_stale_seconds = 300
+recall_deadline_ms = 200
+embedding_model = "models/memory/model.onnx"
+embedding_tokenizer = "models/memory/tokenizer.json"
+embedding_max_len = 512
+embedding_preload = true
+embedding_dim = 0
+recall_top_k = 4
+lexical_min_hits = 4
+vector_min_sim = 0.80
+vector_margin = 0.05
+vector_strict_min_sim = 0.88
+vector_small_store_sim = 0.84
+semantic_max_facts = 2
+vector_dedup_sim = 0.93
+chunk_chars = 400
+flush_timeout_ms = 60000
+compact_wait_ms = 15000
+compact_max_tokens = 256
+extract_wait_ms = 15000
+
+[extract]
+model_path = "models/extract/NuExtract-1.5-tiny-Q4_K_M.gguf"
+prompt_format = "v1.5"
+# Tier note: this service derives its capability tier without a Vulkan probe
+# (the ncnn-gated probe is compiled out), so -1 keeps the CPU-only default.
+gpu_layers = -1
+lexicon_min_coverage = 0.6
+threads = 0
+n_ctx = 2048
+max_tokens = 512
+
+# Worker chat leg (Ruling BZ): the extract/compaction/profile workers send
+# their chat calls to argus-llm over the internal wire. Must be an IPv4
+# host:port (the raw-socket client resolves IPv4 literals only).
+[llm]
+remote_url = "127.0.0.1:7032"
+remote_timeout_ms = 120000
+
+# Read-only snapshot sources for the catalog replica boot fill (Ruling BX).
+[identity]
+db = "./database/identity.db"
+
+[camera]
+db = "./database/camera.db"
+
+[nats]
+url = "nats://127.0.0.1:4222"
+reconnect_wait_ms = 2000
+max_reconnects = 60
+
+# Mirror of the legacy [drogon.app] block; the listener is built by the
+# service itself (see argus-memory/src/main.cc).
+[drogon.app]
+number_of_threads = 0
+enable_session = false
+document_root = "./"
+use_sendfile = true
+use_gzip = false
+use_brotli = false
+static_files_cache_time = 5
+idle_connection_timeout = 60
+enable_server_header = true
+enable_date_header = true
+keepalive_requests = 0
+pipelining_requests = 0
+client_max_body_size = "8M"
+client_max_memory_body_size = "8M"
+reuse_port = false
+handle_sig_term = true
+relaunch_on_error = false

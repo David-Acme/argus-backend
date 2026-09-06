@@ -62,6 +62,10 @@ add_subdirectory(argus-vlm EXCLUDE_FROM_ALL)
 # built on demand, never as part of the default backend build.
 add_subdirectory(argus-llm EXCLUDE_FROM_ALL)
 
+# argus-memory service (F4-6): the memory stack extracted out of the legacy,
+# built on demand, never as part of the default backend build.
+add_subdirectory(argus-memory EXCLUDE_FROM_ALL)
+
 # Data migration tools: the CLI is built on demand, never as part of the
 # default backend build.
 add_subdirectory(tools/migrate-identity EXCLUDE_FROM_ALL)

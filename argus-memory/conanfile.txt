@@ -1,0 +1,16 @@
+[requires]
+drogon/1.9.13
+tomlplusplus/3.3.0
+nlohmann_json/3.11.3
+doctest/2.4.12
+
+[options]
+drogon/*:with_sqlite=True
+sqlite3/*:enable_fts5=True
+
+[generators]
+CMakeDeps
+CMakeToolchain
+
+[layout]
+cmake_layout

@@ -2,7 +2,7 @@
 
 #include <config/service.hxx>
 #include <shared/services/llm/llm-service.hxx>
-#include <shared/services/memory/memory-chat.hxx>
+#include <shared/services/memory/in-process-memory-chat.hxx>
 #include <shared/services/memory/memory-service.hxx>
 #include <shared/services/sqlite/vec-db.hxx>
 
