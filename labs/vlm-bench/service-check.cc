@@ -68,7 +68,9 @@ void httpCheck(const std::string& url)
   const std::string prompt = "Can you describe this image?";
   for (int i = 0; i < 2; ++i) {
     const auto t0 = std::chrono::steady_clock::now();
-    const auto caption = client.describe(imageB64, prompt, "argus-vision-check");
+    const auto caption = client.describe({.imageJpegB64 = imageB64,
+                                          .prompt = prompt,
+                                          .cameraId = "argus-vision-check"});
     const double ms = std::chrono::duration<double, std::milli>(
                           std::chrono::steady_clock::now() - t0)
                           .count();

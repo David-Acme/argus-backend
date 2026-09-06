@@ -228,19 +228,17 @@ VlmHttpClient::RawResponse VlmHttpClient::exchange(
   return {.status = parsed.status, .body = wire.substr(parsed.bodyStart)};
 }
 
-std::string VlmHttpClient::describe(const std::string& imageJpegB64,
-                                    const std::string& prompt,
-                                    const std::string& cameraId) const
+std::string VlmHttpClient::describe(const VlmDescribeInput& input) const
 {
-  if (imageJpegB64.empty())
+  if (input.imageJpegB64.empty())
     throw std::runtime_error("argus-vlm describe needs a non-empty image");
 
   Json::Value body(Json::objectValue);
-  body["image_b64"] = imageJpegB64;
-  if (!prompt.empty())
-    body["prompt"] = prompt;
-  if (!cameraId.empty())
-    body["camera_id"] = cameraId;
+  body["image_b64"] = input.imageJpegB64;
+  if (!input.prompt.empty())
+    body["prompt"] = input.prompt;
+  if (!input.cameraId.empty())
+    body["camera_id"] = input.cameraId;
 
   VlmWireRequest request;
   request.path = kDescribePath;

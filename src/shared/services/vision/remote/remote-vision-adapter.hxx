@@ -1,25 +1,31 @@
 #pragma once
 
 #include <config/service.hxx>
-#include <shared/services/vision/vision-service.hxx>
 #include <shared/services/vision/remote/vlm-remote.hxx>
 
 #include <drogon/utils/coroutine.h>
 #include <json/value.h>
 #include <opencv2/core.hpp>
 
+#include <cstdint>
 #include <memory>
 #include <mutex>
 #include <string>
 #include <string_view>
 #include <vector>
 
-// Parameter struct for the remote describe call surface (AGENTS rule 2).
+// Parameter struct for the remote describe call surface (AGENTS rule 2) —
+// mirrors VisionService::describeMat(Mat, prompt, maxTokens).
 struct RemoteDescribeInput
 {
   cv::Mat bgr;
   // Empty = the service resolves its own configured default prompt.
   std::string prompt;
+  // Per-call max-token steering, as the in-process surface takes it. The
+  // frozen describe wire carries no field for it (Ruling BP), so the
+  // remote adapter cannot honor it — the service's configured default
+  // applies. Steering over the wire is a wire-v2 decision.
+  int32_t maxTokens{0};
   // Free-form caller context; the wire service logs it per request.
   std::string cameraId;
 };

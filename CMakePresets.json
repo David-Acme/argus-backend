@@ -28,143 +28,43 @@
     }
   ],
   "buildPresets": [
-    {
-      "name": "dev",
-      "configurePreset": "dev",
-      "jobs": 8
-    },
-    {
-      "name": "prod",
-      "configurePreset": "prod",
-      "jobs": 8
-    },
-    {
-      "name": "gateway",
-      "configurePreset": "dev",
-      "jobs": 8,
-      "targets": [
-        "argus-gateway",
-        "gateway-test",
-        "audit-sync-read-test",
-        "camera-notifier-test"
-      ]
-    },
-    {
-      "name": "gateway-prod",
-      "configurePreset": "prod",
-      "jobs": 8,
-      "targets": [
-        "argus-gateway",
-        "gateway-test",
-        "audit-sync-read-test",
-        "camera-notifier-test"
-      ]
-    },
-    {
-      "name": "camera",
-      "configurePreset": "dev",
-      "jobs": 8,
-      "targets": [
-        "argus-camera",
-        "event-intelligence-test",
-        "camera-operator-test"
-      ]
-    },
-    {
-      "name": "camera-prod",
-      "configurePreset": "prod",
-      "jobs": 8,
-      "targets": [
-        "argus-camera",
-        "event-intelligence-test",
-        "camera-operator-test"
-      ]
-    },
-    {
-      "name": "productivity",
-      "configurePreset": "dev",
-      "jobs": 8,
-      "targets": [
-        "argus-productivity",
-        "productivity-schema-test",
-        "productivity-migration-test"
-      ]
-    },
-    {
-      "name": "productivity-prod",
-      "configurePreset": "prod",
-      "jobs": 8,
-      "targets": [
-        "argus-productivity",
-        "productivity-schema-test",
-        "productivity-migration-test"
-      ]
-    },
-    {
-      "name": "notification",
-      "configurePreset": "dev",
-      "jobs": 8,
-      "targets": [
-        "argus-notification",
-        "notification-schema-test",
-        "notification-migration-test"
-      ]
-    },
-    {
-      "name": "notification-prod",
-      "configurePreset": "prod",
-      "jobs": 8,
-      "targets": [
-        "argus-notification",
-        "notification-schema-test",
-        "notification-migration-test"
-      ]
-    },
-    {
-      "name": "tts",
-      "configurePreset": "dev",
-      "jobs": 8,
-      "targets": [
-        "argus-tts"
-      ]
-    },
-    {
-      "name": "tts-prod",
-      "configurePreset": "prod",
-      "jobs": 8,
-      "targets": [
-        "argus-tts"
-      ]
-    },
-    {
-      "name": "stt",
-      "configurePreset": "dev",
-      "jobs": 8,
-      "targets": [
-        "argus-stt"
-      ]
-    },
-    {
-      "name": "stt-prod",
-      "configurePreset": "prod",
-      "jobs": 8,
-      "targets": [
-        "argus-stt"
-      ]
-    },
-    {
-      "name": "vlm",
-      "configurePreset": "dev",
-      "targets": [
-        "argus-vlm"
-      ]
-    },
-    {
-      "name": "vlm-prod",
-      "configurePreset": "prod",
-      "targets": [
-        "argus-vlm"
-      ]
-    }
+    { "name": "dev", "configurePreset": "dev", "jobs": 8 },
+    { "name": "prod", "configurePreset": "prod", "jobs": 8 },
+    { "name": "gateway", "configurePreset": "dev", "jobs": 8,
+      "targets": ["argus-gateway", "gateway-test", "audit-sync-read-test",
+                  "camera-notifier-test"] },
+    { "name": "gateway-prod", "configurePreset": "prod", "jobs": 8,
+      "targets": ["argus-gateway", "gateway-test", "audit-sync-read-test",
+                  "camera-notifier-test"] },
+    { "name": "camera", "configurePreset": "dev", "jobs": 8,
+      "targets": ["argus-camera", "event-intelligence-test",
+                  "camera-operator-test"] },
+    { "name": "camera-prod", "configurePreset": "prod", "jobs": 8,
+      "targets": ["argus-camera", "event-intelligence-test",
+                  "camera-operator-test"] },
+    { "name": "productivity", "configurePreset": "dev", "jobs": 8,
+      "targets": ["argus-productivity", "productivity-schema-test",
+                  "productivity-migration-test"] },
+    { "name": "productivity-prod", "configurePreset": "prod", "jobs": 8,
+      "targets": ["argus-productivity", "productivity-schema-test",
+                  "productivity-migration-test"] },
+    { "name": "notification", "configurePreset": "dev", "jobs": 8,
+      "targets": ["argus-notification", "notification-schema-test",
+                  "notification-migration-test"] },
+    { "name": "notification-prod", "configurePreset": "prod", "jobs": 8,
+      "targets": ["argus-notification", "notification-schema-test",
+                  "notification-migration-test"] },
+    { "name": "tts", "configurePreset": "dev", "jobs": 8,
+      "targets": ["argus-tts"] },
+    { "name": "tts-prod", "configurePreset": "prod", "jobs": 8,
+      "targets": ["argus-tts"] },
+    { "name": "stt", "configurePreset": "dev", "jobs": 8,
+      "targets": ["argus-stt"] },
+    { "name": "stt-prod", "configurePreset": "prod", "jobs": 8,
+      "targets": ["argus-stt"] },
+    { "name": "vlm", "configurePreset": "dev", "jobs": 8,
+      "targets": ["argus-vlm"] },
+    { "name": "vlm-prod", "configurePreset": "prod", "jobs": 8,
+      "targets": ["argus-vlm"] }
   ]
 }

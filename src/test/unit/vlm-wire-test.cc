@@ -270,9 +270,11 @@ TEST_CASE("the argus-vlm internal wire serves the vision capacity")
   MESSAGE("wire caption: \"", wireCaption, "\" (", static_cast<int>(wireMs),
           " ms)");
 
-  // Engine parity A/B (direct leg): the same JPEG through the in-process
-  // VisionService the legacy adapter owns. Both captions are recorded raw;
-  // equality holds because one leg is served by the same engine state.
+  // Wire-decode parity (direct leg): the same JPEG through the in-process
+  // VisionService the legacy adapter owns. The wire leg populated the
+  // service cache, so this leg is cache-served — its weight is that the
+  // wire's base64 -> imdecode -> scaled-pixels path hashes to the SAME
+  // cache key the direct Mat hashes to (byte-identical decoded pixels).
   const std::string jpegBytes = drogon::utils::base64Decode(imageB64);
   const cv::Mat encoded(1, static_cast<int>(jpegBytes.size()), CV_8UC1,
                         const_cast<char*>(jpegBytes.data()));
@@ -282,6 +284,16 @@ TEST_CASE("the argus-vlm internal wire serves the vision capacity")
       vlm->service().describeMat(decoded, personPrompt, 0);
   MESSAGE("direct caption: \"", directCaption, "\"");
   CHECK(directCaption == wireCaption);
+
+  // Real engine leg: a prompt no earlier call used busts the cache, so
+  // this caption comes from a genuine second engine run on the same JPEG
+  // (greedy decode). Raw output recorded; shape asserted, since captions
+  // may differ run-to-run under sampling.
+  const std::string colorsPrompt = "Describe the dominant colors in this image.";
+  const std::string engineCaption =
+      vlm->service().describeMat(decoded, colorsPrompt, 0);
+  MESSAGE("engine caption (cache-busted): \"", engineCaption, "\"");
+  CHECK_FALSE(engineCaption.empty());
 
   // Cache-hit path over the wire: an identical request returns the same
   // caption without re-running the engine.

@@ -50,6 +50,7 @@ int main()
   vlm->initEngine();
   if (!vlm->isEngineLoaded()) {
     LOG_FATAL << "Vision engine failed to load — aborting startup";
+    llama_backend_free();
     return 1;
   }
 

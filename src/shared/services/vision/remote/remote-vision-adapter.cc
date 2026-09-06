@@ -100,8 +100,9 @@ std::string RemoteVisionServiceAdapter::describeMat(
   if (const std::string* hit = cacheLookup(key))
     return *hit;
 
-  const std::string caption =
-      client_->describe(encoded, input.prompt, input.cameraId);
+  const std::string caption = client_->describe(
+      {.imageJpegB64 = encoded, .prompt = input.prompt,
+       .cameraId = input.cameraId});
   cacheStore(key, caption);
   return caption;
 }

@@ -28,6 +28,15 @@ struct VlmWireRequest
   std::string contentType;
 };
 
+// Parameter struct for one describe call (AGENTS rule 2).
+struct VlmDescribeInput
+{
+  std::string imageJpegB64;
+  // Empty prompt/camera_id stay off the wire body (optional fields).
+  std::string prompt;
+  std::string cameraId;
+};
+
 // HTTP client for the argus-vlm internal wire (Ruling BP): the describe
 // endpoint (base64 JPEG + optional prompt/camera_id in, frozen-envelope JSON
 // out). The caller encodes the cv::Mat to JPEG first — the in-process API
@@ -40,9 +49,7 @@ public:
 
   // Base64 JPEG in, caption text out. prompt/camera_id ride the body only
   // when non-empty (the wire contract marks them optional).
-  std::string describe(const std::string& imageJpegB64,
-                       const std::string& prompt,
-                       const std::string& cameraId) const;
+  std::string describe(const VlmDescribeInput& input) const;
 
 private:
   struct RawResponse
