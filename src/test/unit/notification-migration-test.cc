@@ -125,9 +125,11 @@ TEST_CASE("migration copies the notification tables and verifies them")
   while (sqlite3_step(violations) == SQLITE_ROW) {
     const auto* parent =
         reinterpret_cast<const char*>(sqlite3_column_text(violations, 2));
-    REQUIRE_MESSAGE(parent != nullptr && std::string(parent) == "user",
-                    "unexpected foreign_key_check violation against "
-                        + std::string(parent ? parent : "(null)"));
+    const bool isUser = parent != nullptr && std::string(parent) == "user";
+    const std::string detail =
+        "unexpected foreign_key_check violation against "
+        + std::string(parent ? parent : "(null)");
+    REQUIRE_MESSAGE(isUser, detail);
   }
   sqlite3_finalize(violations);
 }

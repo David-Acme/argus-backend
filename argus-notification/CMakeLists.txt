@@ -85,6 +85,7 @@ add_executable(argus-notification
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/feature/api/notification/services/notification-feature-service.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/feature/api/notification/services/notification-token-feature-service.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/shared/repositories/notification-token/notification-token-repository.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/shared/schemas/notification-token/notification-token-schema.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/shared/services/notification-token/notification-token-service.cc
 )
 
