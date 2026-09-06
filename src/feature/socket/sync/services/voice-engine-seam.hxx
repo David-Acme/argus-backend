@@ -1,7 +1,10 @@
 #pragma once
 
 #include <cstdint>
+#include <memory>
+#include <mutex>
 #include <shared/services/llm/llm-service.hxx>
+#include <shared/services/stt/remote/stt-remote.hxx>
 #include <shared/services/stt/stt-service.hxx>
 #include <shared/services/tts/remote/tts-remote.hxx>
 #include <shared/services/tts/tts-service.hxx>
@@ -99,6 +102,32 @@ public:
 
 private:
   TtsClient client_;
+};
+
+// IVoiceStt over the argus-stt internal wire (Ruling BM): active once
+// stt.remote_url is configured. The HTTP client is cached and only rebuilt
+// when the remote config changes; setLanguage stores the language and the
+// next transcribe carries it as the wire's lang parameter (Ruling BE: one
+// global recognizer, the session start still steers the language).
+class RemoteVoiceStt final : public IVoiceStt
+{
+public:
+  std::string transcribe(const std::vector<float>& audioSamples,
+                         int32_t sampleRate) override;
+
+  bool setLanguage(const std::string& lang) override;
+
+private:
+  // Shared snapshot of the cached client; rebuilt under the lock when
+  // stt.remote_url / stt.remote_timeout_ms changed.
+  std::shared_ptr<const SttHttpClient>
+  clientFor(const SttRemoteConfig& config);
+
+  mutable std::mutex mutex_;
+  std::string cachedUrl_;
+  int cachedTimeoutMs_{0};
+  std::shared_ptr<const SttHttpClient> client_;
+  std::string lang_;
 };
 
 // Access to the shared AI services (initialized by the service registry).

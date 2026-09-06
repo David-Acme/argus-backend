@@ -61,6 +61,7 @@ if(ARGUS_SHERPA_ONNX_TARGET)
         ${CMAKE_CURRENT_SOURCE_DIR}/../feature/socket/sync/media/sync-media-service.cc
         ${CMAKE_CURRENT_SOURCE_DIR}/../feature/socket/sync/services/voice-engine-seam.cc
         ${CMAKE_CURRENT_SOURCE_DIR}/../feature/socket/sync/services/voice-session-service.cc
+        ${CMAKE_CURRENT_SOURCE_DIR}/../shared/services/stt/remote/stt-remote.cc
     )
 
     add_library(argus_sync_media STATIC ${ARGUS_SYNC_MEDIA_SOURCES})

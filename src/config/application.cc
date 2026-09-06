@@ -374,7 +374,16 @@ void Application::registerServices()
              << "; in-process TtsService stays uninitialized";
   }
   registry_.registerService(std::make_unique<LlmServiceAdapter>());
-  registry_.registerService(std::make_unique<SttServiceAdapter>());
+  // STT cutover (Rulings BM/BN): with stt.remote_url set the legacy skips
+  // the in-process engine entirely — transcription goes to argus-stt over
+  // HTTP and the sherpa-onnx models are never loaded here.
+  if (ConfigService::getString("stt.remote_url").empty()) {
+    registry_.registerService(std::make_unique<SttServiceAdapter>());
+  }
+  else {
+    LOG_INFO << "STT delegated to " << ConfigService::getString("stt.remote_url")
+             << "; in-process SttService stays uninitialized";
+  }
   registry_.registerService(std::make_unique<VisionServiceAdapter>());
   registry_.registerService(std::make_unique<FaceServiceAdapter>());
   registry_.registerService(std::make_unique<IntentServiceAdapter>());

@@ -117,8 +117,19 @@ chat_template = "chatml"
 gpu_layers = -1
 
 [stt]
+# F4-3 cutover (Rulings BM/BN): with remote_url set the legacy delegates all
+# transcription to the argus-stt service over the internal wire and its
+# in-process engine stays uninitialized — these engine keys then only feed
+# the argus-stt service's own config. With remote_url empty the in-process
+# engine boots exactly as before and reads them here.
+remote_url = ""
+remote_timeout_ms = 30000
+
 engine = "nemo_transducer"
 language = "es"
+
+# Model artifacts read by the in-process engine (pre-cutover only).
+models_dir = "models/stt"
 
 [vision]
 model_path = "models/vision/lfm2vl-25/lm-Q8_0.gguf"
