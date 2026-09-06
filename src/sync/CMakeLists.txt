@@ -59,6 +59,7 @@ target_compile_options(argus_sync PRIVATE -Wall -Wextra)
 if(ARGUS_SHERPA_ONNX_TARGET)
     set(ARGUS_SYNC_MEDIA_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/../feature/socket/sync/media/sync-media-service.cc
+        ${CMAKE_CURRENT_SOURCE_DIR}/../feature/socket/sync/services/voice-engine-seam.cc
         ${CMAKE_CURRENT_SOURCE_DIR}/../feature/socket/sync/services/voice-session-service.cc
     )
 

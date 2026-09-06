@@ -240,27 +240,13 @@ std::vector<int16_t> floatToInt16(const std::vector<float>& pcm)
 
 } // namespace
 
-SttService& voiceStt()
-{
-  return SttService::instance();
-}
-
-TtsService& voiceTts()
-{
-  return TtsService::instance();
-}
-
-LlmService& voiceLlm()
-{
-  return LlmService::instance();
-}
-
 VoiceLang voiceSystemLang()
 {
   return voiceLangFromString(ConfigService::getString("stt.language"));
 }
 
-VoiceSessionService::VoiceSessionService()
+VoiceSessionService::VoiceSessionService(const VoiceEngineSeam& engines)
+    : stt_(engines.stt), tts_(engines.tts), llm_(engines.llm)
 {
   reactions_.init();
 }
@@ -302,7 +288,7 @@ void VoiceSessionService::start(const drogon::WebSocketConnectionPtr& conn,
   // system default when the recognizer cannot switch).
   const std::string code = voiceLangToString(session->lang);
   if (!code.empty())
-    voiceStt().setLanguage(code);
+    stt_.setLanguage(code);
 
   const std::string greeting = greetingFor(session->lang, userName);
   session->history.push_back({"assistant", greeting});
@@ -450,7 +436,7 @@ void VoiceSessionService::processTurn(Session& session,
 
   std::string userText;
   try {
-    userText = voiceStt().transcribe(samples, 16000);
+    userText = stt_.transcribe(samples, 16000);
   }
   catch (const std::exception& e) {
     // A broken recognizer must not kill the worker (std::terminate on an
@@ -543,7 +529,7 @@ void VoiceSessionService::processTurn(Session& session,
   bool firstSentenceSent = false;
 
   try {
-    voiceLlm().chatStream(req, [&](const std::string& token, bool) {
+    llm_.chatStream(req, [&](const std::string& token, bool) {
       if (!session.conn || session.conn->disconnected())
         return;
       if (session.interrupt.load())
@@ -611,9 +597,9 @@ void VoiceSessionService::speak(Session& session, const std::string& text)
   treq.text = text;
   treq.lang = session.lang == VoiceLang::En ? TtsLang::EN : TtsLang::ES;
   treq.quality = TtsQuality::Auto;
-  treq.speed = voiceTts().defaultSpeed();
+  treq.speed = tts_.defaultSpeed();
 
-  const int ttsRate = voiceTts().sampleRate();
+  const int ttsRate = tts_.sampleRate();
   AudioResampler resampler(
       {.sourceRate = ttsRate > 0 ? ttsRate : kTargetRate,
        .targetRate = kTargetRate});
@@ -622,7 +608,7 @@ void VoiceSessionService::speak(Session& session, const std::string& text)
   Json::Value assistant;
   assistant["text"] = text;
   try {
-    voiceTts().synthesizeStream(treq, [&](const std::vector<float>& chunk) {
+    tts_.synthesizeStream(treq, [&](const std::vector<float>& chunk) {
       if (!session.conn || session.conn->disconnected())
         return;
       if (session.interrupt.load())

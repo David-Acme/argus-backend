@@ -14,6 +14,7 @@
 #include <shared/services/tts/tts-service.hxx>
 #include <shared/services/vad/vad-service.hxx>
 #include <shared/wrapper/audio/audio-resampler.hxx>
+#include <feature/socket/sync/services/voice-engine-seam.hxx>
 #include <string>
 #include <thread>
 #include <unordered_map>
@@ -26,7 +27,7 @@
 class VoiceSessionService
 {
 public:
-  VoiceSessionService();
+  explicit VoiceSessionService(const VoiceEngineSeam& engines = {});
 
   void start(const drogon::WebSocketConnectionPtr& conn, int64_t userId,
              VoiceLang lang, const std::string& userName);
@@ -73,12 +74,12 @@ private:
   mutable std::mutex mutex_;
   std::unordered_map<const void*, std::shared_ptr<Session>> sessions_;
   ReactionEngine reactions_;
-};
+  IVoiceStt& stt_;
+  IVoiceTts& tts_;
+  IVoiceLlm& llm_;
 
-// Access to the shared AI services (initialized by the service registry).
-SttService& voiceStt();
-TtsService& voiceTts();
-LlmService& voiceLlm();
+  friend struct VoiceSessionTestAccess;
+};
 
 // System-wide voice language from config `stt.language`; the base for any
 // interaction without a registered user (e.g. camera conversations).
