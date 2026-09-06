@@ -2536,3 +2536,54 @@ camera-control routes against camera.db.
 - `labs/voice-test` gained `--stt-http <url> <wav>`: transcribes a 16 kHz
   mono s16 wav through the running argus-stt wire (no local engine in the
   path); without the flag the STT probe path is unchanged.
+
+## Fase 4 step 4 — Vision extracted to argus-vlm (F4-4, 2026-09-06)
+
+- **argus-vlm is the sixth microservice**: the vision captioning capacity
+  at `:7031`, loopback bind, llama.cpp + mtmd (`third_party/llama.cpp`, tag
+  b10305) serving the LFM2-VL model. It mirrors the argus-stt scaffold
+  (own binary, preset pair `vlm`/`vlm-prod`, AGENTS.md, /health, config
+  template with ONLY `[vision]` + `[server]`) and compiles the shared
+  `VisionService` from the shared tree via the same foundation slice
+  pattern (`ARGUS_NO_NCNN_GPU=1` instead of argus_common). Models are read
+  from the shared `models/vision/lfm2vl-25` tree (never copied) and the
+  service carries no database (Ruling BN analog) — `VisionService` is
+  owned BY VALUE by the controller, not as a singleton (Ruling BO).
+- **Internal wire (Ruling BP).** `POST /vlm/v1/describe` takes JSON
+  `{image_b64, prompt?, camera_id?}` (base64 JPEG) and answers the frozen
+  app-envelope with `info.caption`. Errors: 400 bad JSON, 422
+  validation/undecodable image, 503 `VLM_NOT_LOADED`, frozen 404/405
+  envelopes. No auth: loopback trust boundary, same as argus-tts/argus-stt.
+  `GET /vlm/v1/config` is additive and internal-only. The wire carries no
+  max-tokens field — the service's `vision.max_tokens`/`vision.prompt`
+  defaults apply on the remote path.
+- **Cutover switch (Ruling BQ).** `vision.remote_url` in `[vision]`: empty
+  = the legacy in-process `VisionServiceAdapter` exactly as before; set =
+  the registry gets `RemoteVisionServiceAdapter`
+  (`src/shared/services/vision/remote/`) under the same service name
+  `vision` and the legacy binary boots WITHOUT loading the vision model
+  (log line "VLM delegated to <url>; in-process VisionService stays
+  uninitialized"). This is a capacity move only — no production caller
+  changed: callers keep asking the registry for `vision`. The adapter
+  keeps the `describeMat`/`describeMatAsync` seam, encodes the Mat as JPEG
+  (quality 90) over the wire, holds a caption cache keyed FNV-1(encoded
+  JPEG + prompt) — the same-keyed cache as the service's own pixel cache
+  (shared `vision-hash.hxx`) — and surfaces a down service as an exception
+  carrying the envelope error (try/catch, never a terminate path); no
+  production caller changed, so degradation mapping belongs to the
+  deferred consumer (Ruling BA).
+- **Same-commit vendor constraint.** the mtmd projector is linked against
+  the vendored llama.cpp; the legacy and the service must run the SAME
+  `third_party/llama.cpp` commit (tag b10305) or the caption distribution
+  diverges between in-process and wire paths.
+- **Tier divergence pin.** argus-vlm derives its tier without a Vulkan
+  probe (it links no ncnn), so `vlmGpuLayers()` lands on 0 where the legacy
+  on a Vulkan host offloads layers; `vision.gpu_layers` in the argus-vlm
+  config template pins 999 for GPU parity (the F4-2 `steps_cap` lesson
+  analog). `vision.caption_cache_slots` sizes both caches.
+- **Deferred (Ruling BA).** the `IKnownPersonMatcher` wiring into the
+  event pipeline stays deferred — the wire contract does not expose the
+  matcher; a later step routes it through the describe wire.
+- `labs/vlm-bench/service-check` gained `--http <url>`: drives the
+  running argus-vlm describe wire with the synthetic bench frame (no local
+  engine in the path); without the flag the in-engine probe is unchanged.
