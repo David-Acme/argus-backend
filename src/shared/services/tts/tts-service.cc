@@ -12,6 +12,18 @@
 #include <shared/wrapper/thread-budget/thread-budget.hxx>
 #include <thread>
 
+namespace
+{
+// Root of the on-disk TTS models (models/tts by default); argus-tts points
+// tts.models_dir at the read-only models volume (Ruling BJ).
+std::string modelsDir()
+{
+  const std::string dir = ConfigService::getString("tts.models_dir");
+  return dir.empty() ? std::string("models/tts") : dir;
+}
+
+} // namespace
+
 // --- Init / shutdown ---
 
 TtsService::TtsService() = default;
@@ -30,8 +42,7 @@ TtsService& TtsService::instance()
 void TtsService::init()
 {
   try {
-    const std::string onnxDir = "models/tts/onnx";
-    const std::string voicesDir = "models/tts/voice_styles";
+    const std::string onnxDir = modelsDir() + "/onnx";
 
     auto nThreads = ThreadBudget::ttsThreads();
     if (const int cfg = ConfigService::getInt("tts.threads"); cfg > 0)
@@ -179,7 +190,7 @@ drogon::Task<void> TtsService::synthesizeStreamAsync(const TtsRequest& req,
 
 void TtsService::loadVoice(const std::string& voiceId)
 {
-  std::string path = "models/tts/voice_styles/" + voiceId + ".json";
+  std::string path = modelsDir() + "/voice_styles/" + voiceId + ".json";
   std::lock_guard<std::mutex> lock(voiceMutex_);
   voiceCache_[voiceId] = loadVoiceStyle(path);
 }
@@ -293,7 +304,7 @@ const Style& TtsService::resolveVoice(const std::string& voiceId)
     }
   }
 
-  std::string path = "models/tts/voice_styles/" + voiceId + ".json";
+  std::string path = modelsDir() + "/voice_styles/" + voiceId + ".json";
   auto style = loadVoiceStyle(path);
 
   std::lock_guard<std::mutex> lock(voiceMutex_);

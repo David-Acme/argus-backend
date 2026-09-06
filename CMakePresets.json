@@ -53,6 +53,10 @@
                   "notification-migration-test"] },
     { "name": "notification-prod", "configurePreset": "prod", "jobs": 8,
       "targets": ["argus-notification", "notification-schema-test",
-                  "notification-migration-test"] }
+                  "notification-migration-test"] },
+    { "name": "tts", "configurePreset": "dev", "jobs": 8,
+      "targets": ["argus-tts"] },
+    { "name": "tts-prod", "configurePreset": "prod", "jobs": 8,
+      "targets": ["argus-tts"] }
   ]
 }

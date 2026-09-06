@@ -9,7 +9,7 @@
 #include <thread>
 #include <unistd.h>
 
-#if __has_include(<gpu.h>)
+#if !defined(ARGUS_NO_NCNN_GPU) && __has_include(<gpu.h>)
 #include <gpu.h>
 #define ARGUS_HAS_NCNN_GPU 1
 #endif

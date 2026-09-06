@@ -1,0 +1,47 @@
+# argus-tts configuration. Copy to config.toml (gitignored) to run.
+# TTS-domain keys only (F4-2): the engine knobs mirroring the legacy [tts]
+# block plus the internal listener. No database, no JWT, no device keys.
+
+[server]
+# Internal plain-HTTP listener. Loopback by default: only the legacy backend
+# adapters call this wire, and it is never routed through the gateway.
+host = "127.0.0.1"
+port = 7029
+
+[tts]
+# Engine knobs identical to the legacy [tts] block: the shared TtsService
+# reads the same keys here as it does in the legacy.
+threads = 0
+quality = "auto"
+steps_low = 6
+steps_medium = 8
+steps_high = 12
+speed = 1.0
+max_chunk_len = 350
+edge_silence_ms = 40
+join_silence_ms = 90
+
+# Model artifacts live in the shared models tree; never copied into the
+# service. The build symlinks ../models next to the binary by default.
+models_dir = "models/tts"
+
+# Mirror of the legacy [drogon.app] block; the listener is built by the
+# service itself (see argus-tts/src/main.cc).
+[drogon.app]
+number_of_threads = 0
+enable_session = false
+document_root = "./"
+use_sendfile = true
+use_gzip = false
+use_brotli = false
+static_files_cache_time = 5
+idle_connection_timeout = 60
+enable_server_header = true
+enable_date_header = true
+keepalive_requests = 0
+pipelining_requests = 0
+client_max_body_size = "1M"
+client_max_memory_body_size = "1M"
+reuse_port = false
+handle_sig_term = true
+relaunch_on_error = false
