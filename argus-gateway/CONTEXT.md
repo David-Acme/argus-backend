@@ -222,12 +222,16 @@ proxies everything else to the legacy backend on its internal plain listener
   events count per class; a cumulative digest flushes every minute once the
   window or the silent window closes. Event payloads are data, never
   commands — no notification path can arm or trigger any audible device.
-- **Emission caveat**: the gateway never installs the `SocketService` event
-  bus, so pre-cutover the camera notifier's `createAndEmitMany` push was
-  already a no-op here (empty local user rooms, no bus to publish on). The
-  F3-2 sink seam turns that into an explicit warn instead of a silent no-op;
-  app-visible behavior is unchanged. Live camera-notification delivery to
-  the app happens through the next `/sync` pull from notification.db.
+- **Emission (F3-2 fix round)**: the gateway binds the legacy
+  `SocketUserChangeSink` into the notification slot
+  (`sync/user-change-sink.cc`, installed at boot next to the room-manager
+  lifecycle), so camera-notifier deliveries dispatch the `/sync` Add frame
+  into the user rooms the sync socket joined — the same pre-cutover
+  `SocketService` push. `SocketService::publishChange` stays a no-op here by
+  design: the gateway CONSUMES `kSyncChange` and must never publish it (it
+  would loop through its own sync fan-out). The productivity sink slot is
+  deliberately unset — the gateway performs no productivity writes (every
+  route is proxied), so binding it would be dead code.
 
 ## Productivity + notification cutover (F3-2): routing, funnels, named clients
 
@@ -248,16 +252,21 @@ proxies everything else to the legacy backend on its internal plain listener
   `Log` sync event. The F3 services never persist audit rows locally — the
   gateway is the only writer. Daily compaction of `user_audit_log` stays
   gateway-side.
-- **Named clients (Ruling AQ)**: `[productivity] db` and
-  `[notifications] db` open read-only named clients
-  (`DbService::setProductivityClient` / `setNotificationClient`); the 7
-  productivity sync tables and the notification/notification_token sync
-  reads resolve to them. Personal-table scoping (`isPersonalTable` +
-  `ctx.sub`) and role checks stay gateway-side; `/sync` pull pages for the
-  moved tables are byte-identical with the legacy (golden-sync evidence).
-- **WAL discipline (Ruling AR)**: the gateway opens the F3 databases
-  read-only with `busy_timeout` and never runs DDL against them —
-  schema/DDL belong to the F3 services and the migrate tools.
+- **Named clients (Ruling AQ)**: `[productivity] db` opens
+  `mode=ro` (`DbService::setProductivityClient`) and `[notifications] db`
+  opens READ-WRITE with WAL + `busy_timeout`
+  (`setNotificationClient` — Ruling AR requires rw: the camera notifier
+  writes notification rows through it). The 7 productivity sync tables and
+  the notification/notification_token sync reads resolve to them; an absent
+  db key keeps the F2-2 precedent — the reads fall back to the default
+  client and the boot logs a warn. Personal-table scoping
+  (`isPersonalTable` + `ctx.sub`) and role checks stay gateway-side;
+  `/sync` pull pages for the moved tables are byte-identical with the
+  legacy (golden-sync evidence).
+- **WAL discipline (Ruling AR)**: the gateway opens the productivity
+  database read-only and the notification database read-write, both with
+  `busy_timeout`, and never runs DDL against either — schema/DDL belong to
+  the F3 services and the migrate tools.
 - **camera-notifier retarget (Ruling AR)**: the camera notifier keeps
   running gateway-side but writes its rows through
   `NotificationService` → `DbService::notificationClient()`
