@@ -52,6 +52,7 @@ find_package(doctest REQUIRED)
 
 add_library(productivity-core STATIC
     ${PRODUCTIVITY_SRC_ROOT}/controllers/health-controller.cc
+    ${PRODUCTIVITY_SRC_ROOT}/productivity/nats-productivity-change-sink.cc
     ${PRODUCTIVITY_SRC_ROOT}/productivity/productivity-config.cc
     ${PRODUCTIVITY_SRC_ROOT}/server/listener-config.cc
     # Boot plumbing the service shares with the backend: the centralized

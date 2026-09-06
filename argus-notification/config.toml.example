@@ -64,3 +64,10 @@ trusted_proxy_ips = ""
 # registerToken) validates nothing against identity.db — the JWT and device
 # filters cover authorization, and notification rows reference user ids
 # without cross-database reads.
+[nats]
+# The change funnel toward the gateway (Rulings AQ/AR): change emits and
+# user audit diffs publish over argus.notification.v1.change. Empty disables the
+# funnel; the feature services then drop their change events with a
+# warning.
+url = "nats://127.0.0.1:4222"
+

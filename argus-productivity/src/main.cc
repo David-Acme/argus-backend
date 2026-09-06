@@ -6,7 +6,10 @@
 #include <filter/role/role-filter.hxx>
 #include <filter/valid-json/valid-json-filter.hxx>
 #include <productivity/productivity-config.hxx>
+#include <productivity/nats-productivity-change-sink.hxx>
+#include <shared/wrapper/nats/nats-bus.hxx>
 #include <server/listener-config.hxx>
+#include <shared/contracts/user-change-sink.hxx>
 #include <shared/services/config-service/config-service.hxx>
 #include <shared/services/sqlite/db-service.hxx>
 #include <unistd.h>
@@ -97,6 +100,18 @@ int main()
 
   drogon::app().loadConfigJson(drogonConfig(productivityDb, listener));
 
+  // The legacy answers CORS preflight for every path in pre-routing, and the
+  // gateway forwards OPTIONS on proxied paths untouched, so this surface
+  // keeps answering them itself.
+  drogon::app().registerPreRoutingAdvice(
+      [](const drogon::HttpRequestPtr& req, drogon::AdviceCallback&& cb,
+         drogon::AdviceChainCallback&& chain) {
+        if (req->method() == drogon::Options) {
+          AppConfig::handleOptions(req, std::move(cb));
+          return;
+        }
+        chain();
+      });
   drogon::app().registerPostHandlingAdvice(
       [](const drogon::HttpRequestPtr&, const drogon::HttpResponsePtr& resp) {
         AppConfig::applyCors(resp);
@@ -126,6 +141,29 @@ int main()
     // so foreign-key enforcement stays off on every connection (Ruling AM).
     DbService::client()->execSqlSync("PRAGMA foreign_keys = OFF");
   });
+
+  // The productivity-domain change funnel (Rulings AQ/Y): without NATS
+  // configured the feature services drop their change events with a warning,
+  // which keeps a NATS-less service bootable for contract tests.
+  std::shared_ptr<NatsProductivityChangeSink> changeSink;
+  std::shared_ptr<NatsBus> natsBus;
+  const std::string natsUrl = ConfigService::getString("nats.url");
+  if (natsUrl.empty()) {
+    LOG_INFO << "NATS not configured; productivity change funnel disabled";
+  }
+  else {
+    natsBus = std::make_shared<NatsBus>();
+    if (natsBus->connect()) {
+      LOG_INFO << "NATS event bus connected to " << natsBus->options().url;
+      changeSink = std::make_shared<NatsProductivityChangeSink>(natsBus);
+      user_change::setProductivitySink(changeSink.get());
+    }
+    else {
+      natsBus.reset();
+      LOG_WARN << "NATS unavailable at " << natsUrl
+               << "; productivity change funnel disabled";
+    }
+  }
 
   drogon::app()
       .setThreadNum(0)

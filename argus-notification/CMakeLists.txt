@@ -52,6 +52,7 @@ find_package(doctest REQUIRED)
 
 add_library(notification-core STATIC
     ${NOTIFICATION_SRC_ROOT}/controllers/health-controller.cc
+    ${NOTIFICATION_SRC_ROOT}/notification/nats-notification-change-sink.cc
     ${NOTIFICATION_SRC_ROOT}/notification/notification-config.cc
     ${NOTIFICATION_SRC_ROOT}/server/listener-config.cc
     # Boot plumbing the service shares with the backend: the centralized
