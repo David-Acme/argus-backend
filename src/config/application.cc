@@ -45,6 +45,7 @@
 #include <shared/services/stt/adapter/stt-service-adapter.hxx>
 #include <shared/services/tts/adapter/tts-service-adapter.hxx>
 #include <shared/services/vision/adapter/vision-service-adapter.hxx>
+#include <shared/services/vision/remote/remote-vision-adapter.hxx>
 #include <shared/wrapper/qr/qr-render.hxx>
 #include <shared/wrapper/nats/nats-bus.hxx>
 #include <unistd.h>
@@ -384,7 +385,20 @@ void Application::registerServices()
     LOG_INFO << "STT delegated to " << ConfigService::getString("stt.remote_url")
              << "; in-process SttService stays uninitialized";
   }
-  registry_.registerService(std::make_unique<VisionServiceAdapter>());
+  // VLM cutover (Ruling BQ): with vision.remote_url set the legacy boots
+  // without loading the vision model — describes go to argus-vlm over HTTP
+  // through the remote adapter; with it empty the in-process engine boots
+  // exactly as before.
+  if (ConfigService::getString("vision.remote_url").empty()) {
+    registry_.registerService(std::make_unique<VisionServiceAdapter>());
+  }
+  else {
+    registry_.registerService(
+        std::make_unique<RemoteVisionServiceAdapter>());
+    LOG_INFO << "VLM delegated to "
+             << ConfigService::getString("vision.remote_url")
+             << "; in-process VisionService stays uninitialized";
+  }
   registry_.registerService(std::make_unique<FaceServiceAdapter>());
   registry_.registerService(std::make_unique<IntentServiceAdapter>());
   registry_.registerService(std::make_unique<MemoryServiceAdapter>());

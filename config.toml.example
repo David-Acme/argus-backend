@@ -132,6 +132,13 @@ language = "es"
 models_dir = "models/stt"
 
 [vision]
+# F4-4 cutover (Ruling BQ): with remote_url set the legacy boots WITHOUT the
+# vision model — describes go to the argus-vlm service over the internal
+# wire and the in-process engine stays uninitialized. With remote_url empty
+# the in-process engine boots exactly as before and reads the keys below.
+remote_url = ""
+remote_timeout_ms = 120000
+
 model_path = "models/vision/lfm2vl-25/lm-Q8_0.gguf"
 mmproj_path = "models/vision/lfm2vl-25/mmproj-F16.gguf"
 context_size = 8192
