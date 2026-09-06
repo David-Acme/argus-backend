@@ -597,9 +597,17 @@ void VoiceSessionService::speak(Session& session, const std::string& text)
   treq.text = text;
   treq.lang = session.lang == VoiceLang::En ? TtsLang::EN : TtsLang::ES;
   treq.quality = TtsQuality::Auto;
-  treq.speed = tts_.defaultSpeed();
-
-  const int ttsRate = tts_.sampleRate();
+  // defaultSpeed/sampleRate reach over the argus-tts wire since the F4-2
+  // cutover; a refused connection degrades to neutral synthesis parameters
+  // (the synthesis below reports the same failure).
+  int ttsRate = kTargetRate;
+  try {
+    treq.speed = tts_.defaultSpeed();
+    ttsRate = tts_.sampleRate();
+  }
+  catch (const std::exception& e) {
+    LOG_WARN << "Voice: TTS unavailable: " << e.what();
+  }
   AudioResampler resampler(
       {.sourceRate = ttsRate > 0 ? ttsRate : kTargetRate,
        .targetRate = kTargetRate});

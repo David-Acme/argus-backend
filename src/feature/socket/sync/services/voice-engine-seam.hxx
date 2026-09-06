@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <shared/services/llm/llm-service.hxx>
 #include <shared/services/stt/stt-service.hxx>
+#include <shared/services/tts/remote/tts-remote.hxx>
 #include <shared/services/tts/tts-service.hxx>
 #include <string>
 #include <vector>
@@ -80,6 +81,24 @@ public:
   {
     LlmService::instance().chatStream(req, std::move(onToken));
   }
+};
+
+// IVoiceTts over the argus-tts internal wire (Ruling BI): active once
+// tts.remote_url is configured; failures surface as exceptions to speak().
+class RemoteVoiceTts final : public IVoiceTts
+{
+public:
+  float defaultSpeed() const override { return client_.defaultSpeed(); }
+
+  int sampleRate() const override { return client_.sampleRate(); }
+
+  void synthesizeStream(const TtsRequest& req, TtsChunkCallback onChunk) override
+  {
+    client_.synthesizeStream(req, std::move(onChunk));
+  }
+
+private:
+  TtsClient client_;
 };
 
 // Access to the shared AI services (initialized by the service registry).

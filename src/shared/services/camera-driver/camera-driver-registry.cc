@@ -47,3 +47,10 @@ void CameraDriverRegistry::forget(int64_t cameraId)
   std::lock_guard<std::mutex> lock(gMutex);
   gDrivers.erase(cameraId);
 }
+
+void CameraDriverTestAccess::install(
+    int64_t cameraId, const std::shared_ptr<ICameraDriver>& driver)
+{
+  std::lock_guard<std::mutex> lock(gMutex);
+  gDrivers[cameraId] = driver;
+}

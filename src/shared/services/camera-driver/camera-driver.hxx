@@ -80,3 +80,11 @@ public:
   std::shared_ptr<ICameraDriver> driverFor(const CameraSchema& camera);
   void forget(int64_t cameraId);
 };
+
+/** Test hook (same pattern as VoiceSessionTestAccess): seeds a stub driver
+ * for a camera row in unit tests. */
+struct CameraDriverTestAccess
+{
+  static void install(int64_t cameraId,
+                      const std::shared_ptr<ICameraDriver>& driver);
+};

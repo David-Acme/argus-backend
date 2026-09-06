@@ -10,6 +10,7 @@
 #include <optional>
 #include <shared/repositories/camera/camera-repository.hxx>
 #include <shared/services/camera-driver/camera-driver.hxx>
+#include <shared/services/tts/remote/tts-remote.hxx>
 
 /** Outcome of a device call: nullopt means the camera row does not exist. */
 using CameraControlResult = std::optional<DriverResult>;
@@ -37,4 +38,5 @@ private:
            const std::function<DriverResult(ICameraDriver&)>& work) const;
 
   CameraRepository repository_;
+  TtsClient tts_;
 };

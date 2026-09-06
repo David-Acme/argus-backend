@@ -363,7 +363,16 @@ void Application::registerServices()
   registry_.registerService(std::make_unique<RoomManagerServiceAdapter>());
   registry_.registerService(std::make_unique<CertServiceAdapter>());
   registry_.registerService(std::make_unique<MdnsServiceAdapter>());
-  registry_.registerService(std::make_unique<TtsServiceAdapter>());
+  // TTS cutover (Ruling BI/BJ): with tts.remote_url set the legacy skips the
+  // in-process engine entirely — synthesis goes to argus-tts over HTTP and
+  // the ONNX models are never loaded here.
+  if (ConfigService::getString("tts.remote_url").empty()) {
+    registry_.registerService(std::make_unique<TtsServiceAdapter>());
+  }
+  else {
+    LOG_INFO << "TTS delegated to " << ConfigService::getString("tts.remote_url")
+             << "; in-process TtsService stays uninitialized";
+  }
   registry_.registerService(std::make_unique<LlmServiceAdapter>());
   registry_.registerService(std::make_unique<SttServiceAdapter>());
   registry_.registerService(std::make_unique<VisionServiceAdapter>());
