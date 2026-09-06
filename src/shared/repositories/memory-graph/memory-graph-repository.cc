@@ -702,7 +702,7 @@ std::vector<CatalogRow> MemoryGraphRepository::catalogPersons(sqlite3* db)
   if (!db)
     return out;
   SqliteStmt stmt;
-  if (!stmt.prepare(db, FIND_PERSONS))
+  if (!stmt.prepare(db, findCatalogPersons().c_str()))
     return out;
   while (stmt.step() == SQLITE_ROW) {
     const int64_t id = stmt.columnInt64(0);
@@ -722,7 +722,7 @@ std::vector<CatalogRow> MemoryGraphRepository::catalogCameras(sqlite3* db)
   if (!db)
     return out;
   SqliteStmt stmt;
-  if (!stmt.prepare(db, FIND_CAMERAS))
+  if (!stmt.prepare(db, findCatalogCameras().c_str()))
     return out;
   while (stmt.step() == SQLITE_ROW) {
     const std::string norm = text_norm::whitespace(stmt.columnText(1));
@@ -740,7 +740,7 @@ std::vector<CatalogRow> MemoryGraphRepository::catalogZones(sqlite3* db)
   if (!db)
     return out;
   SqliteStmt stmt;
-  if (!stmt.prepare(db, FIND_ZONES))
+  if (!stmt.prepare(db, findCatalogZones().c_str()))
     return out;
   while (stmt.step() == SQLITE_ROW) {
     const std::string norm = text_norm::whitespace(stmt.columnText(1));
@@ -758,7 +758,7 @@ std::vector<CatalogRow> MemoryGraphRepository::catalogStreams(sqlite3* db)
   if (!db)
     return out;
   SqliteStmt stmt;
-  if (!stmt.prepare(db, FIND_STREAMS))
+  if (!stmt.prepare(db, findCatalogStreams().c_str()))
     return out;
   while (stmt.step() == SQLITE_ROW) {
     const std::string norm = text_norm::whitespace(stmt.columnText(1));

@@ -74,6 +74,7 @@ set(ARGUS_IDENTITY_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/../shared/services/mdns/mdns-service.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/../shared/services/room/room-manager.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/../shared/services/socket/socket-service.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/../shared/services/socket/nats-identity-change-sink.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/../shared/services/socket/socket-user-change-sink.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/../shared/services/sqlite/db-service.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/../shared/services/sqlite/vec-db.cc

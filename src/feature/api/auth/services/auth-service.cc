@@ -10,6 +10,7 @@
 #include <openssl/rand.h>
 #include <sstream>
 #include <string_view>
+#include <shared/contracts/identity-change-sink.hxx>
 #include <shared/contracts/sync-operation.hxx>
 #include <shared/exceptions/response-exception.hxx>
 #include <shared/services/config-service/config-service.hxx>
@@ -221,6 +222,18 @@ AuthService::registerUser(RegisterDto body,
                             AppConfig::ERROR_CODE_SERVICE_UNAVAILABLE);
 
   co_await privatePortraitService_.store(userId, portraitImage);
+
+  // Memory catalog replica feed (Ruling BX): the enrolled person row fans
+  // out on the identity change subject.
+  if (identity_change::getSink()) {
+    Json::Value row(Json::objectValue);
+    row["id"] = static_cast<Json::Int64>(personId);
+    row["user_id"] = static_cast<Json::Int64>(userId);
+    row["name"] = name;
+    row["alias"] = "";
+    identity_change::getSink()->publish(
+        {.table = "person", .id = personId, .deleted = false, .row = row});
+  }
 
   UserSchema user;
   user.id = userId;

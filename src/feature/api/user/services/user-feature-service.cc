@@ -1,6 +1,7 @@
 #include "user-feature-service.hxx"
 
 #include <config/app-config.hxx>
+#include <shared/contracts/identity-change-sink.hxx>
 #include <shared/contracts/sync-operation.hxx>
 #include <shared/dtos/socket-emit/socket-emit-dto.hxx>
 #include <shared/exceptions/response-exception.hxx>
@@ -74,6 +75,14 @@ UserFeatureService::update(const UserManagementUpdateInput& input) const
       .after = updated.toJson(),
       .userIds = std::move(recipientIds),
   });
+
+  // Memory catalog replica feed (Ruling BX): the identity change subject
+  // carries user renames so downstream replicas observe identity writes.
+  if (identity_change::getSink()) {
+    identity_change::getSink()->publish(
+        {.table = "user", .id = updated.id, .deleted = false,
+         .row = updated.toJson()});
+  }
   co_await recordChange({
       .actorId = input.actorId,
       .before = *existing,

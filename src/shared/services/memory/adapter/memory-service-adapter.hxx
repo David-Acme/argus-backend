@@ -2,6 +2,7 @@
 
 #include <config/service.hxx>
 #include <shared/services/llm/llm-service.hxx>
+#include <shared/services/memory/memory-chat.hxx>
 #include <shared/services/memory/memory-service.hxx>
 #include <shared/services/sqlite/vec-db.hxx>
 
@@ -16,5 +17,6 @@ public:
   Json::Value health() const override;
 
 private:
-  MemoryService memoryService_{VecDb::instance(), LlmService::instance()};
+  InProcessMemoryChat chat_{LlmService::instance()};
+  MemoryService memoryService_{VecDb::instance(), chat_};
 };

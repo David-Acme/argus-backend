@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <shared/services/config-service/config-service.hxx>
 
 #include <string>
 #include <vector>
@@ -167,16 +168,48 @@ inline constexpr const char* FIND_ALIAS_GAZETTEER =
     "SELECT a.norm, a.surface, a.person_frame, a.entity_id, e.kind "
     "FROM memory_alias a JOIN memory_entity e ON e.id = a.entity_id";
 
-inline constexpr const char* FIND_PERSONS =
-    "SELECT id, name, alias FROM person WHERE deleted_at IS NULL";
+// Catalog reads resolve their physical table from config so the extracted
+// service points them at its local replica tables while the legacy keeps the
+// domain tables by default.
+inline std::string catalogTable(const char* key, const char* legacy)
+{
+  const std::string configured = ConfigService::getString(key);
+  return configured.empty() ? legacy : configured;
+}
 
-inline constexpr const char* FIND_CAMERAS =
-    "SELECT id, name FROM camera WHERE deleted_at IS NULL";
+inline std::string findCatalogPersons()
+{
+  return "SELECT id, name, alias FROM " +
+         catalogTable("memory.catalog_person_table", "person") +
+         " WHERE deleted_at IS NULL";
+}
 
-inline constexpr const char* FIND_ZONES = "SELECT id, name FROM zone";
+inline std::string findCatalogCameras()
+{
+  return "SELECT id, name FROM " +
+         catalogTable("memory.catalog_camera_table", "camera") +
+         " WHERE deleted_at IS NULL";
+}
 
-inline constexpr const char* FIND_STREAMS =
-    "SELECT id, label FROM camera_stream";
+inline std::string findCatalogZones()
+{
+  return "SELECT id, name FROM " +
+         catalogTable("memory.catalog_zone_table", "zone");
+}
+
+inline std::string findCatalogStreams()
+{
+  return "SELECT id, label FROM " +
+         catalogTable("memory.catalog_stream_table", "camera_stream");
+}
+
+// Schema source for the memory stack's own connections: the legacy runs the
+// full database/schema.sql, the extracted service runs memory-schema.sql.
+inline std::string schemaFile()
+{
+  const std::string configured = ConfigService::getString("memory.schema_file");
+  return configured.empty() ? "database/schema.sql" : configured;
+}
 
 inline constexpr const char* FIND_LEGACY_ENTITY =
     "SELECT id FROM memory_entity WHERE kind = 'concept' AND "

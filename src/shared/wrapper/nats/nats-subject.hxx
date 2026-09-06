@@ -27,6 +27,11 @@ inline constexpr const char* kProductivityChange =
 inline constexpr const char* kNotificationChange =
     "argus.notification.v1.change";
 
+// Identity-domain changes (F4-6, Ruling BX): user and person writes funneled
+// to the memory catalog replicas. The gateway's wildcard sync fan-out drops
+// them by design; the gateway owns the /user fan-out natively.
+inline constexpr const char* kIdentityChange = "argus.identity.v1.change";
+
 // Object-detection events from the argus-camera operator (F2-3); consumed by
 // the gateway's notification budget, never re-emitted to /sync.
 inline constexpr const char* kCameraObjectDetected =

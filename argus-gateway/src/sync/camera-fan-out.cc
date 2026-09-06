@@ -70,6 +70,10 @@ void subscribeChangeFanOut(NatsBus& bus)
               else if (subject == nats_subject::kProductivityChange ||
                        subject == nats_subject::kNotificationChange)
                 user_change_fan_out::handleUserChange(json);
+              else if (subject == nats_subject::kIdentityChange) {
+                // Identity events feed the memory catalog replicas only
+                // (Ruling BX); the gateway owns the /user fan-out natively.
+              }
               else {
                 const auto event = sync_fan_out::parseEvent(json);
                 if (!event) {

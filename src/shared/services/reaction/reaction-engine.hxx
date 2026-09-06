@@ -1,20 +1,25 @@
 #pragma once
 
-#include <shared/services/memory/phrase-catalog.hxx>
-#include <shared/services/memory/rule-parser.hxx>
+#include <memory>
 #include <shared/services/reaction/reaction-contracts.hxx>
 #include <string>
 
 // Turns the signals a turn already produced into the assistant's reaction.
 // Deliberately NOT a model: every decision is a rule over signals the
 // pipeline computed anyway, so a wrong face is explainable from `because`.
-// Self-contained (own catalogue, ~137 KB) so the lab and the WebSocket path
-// can both use it without dragging MemoryService in.
+// The rule machinery lives behind the pimpl so the voice path compiles
+// without memory types (Ruling CA).
 class ReactionEngine
 {
 public:
+  ReactionEngine();
+  ~ReactionEngine();
+
+  ReactionEngine(const ReactionEngine&) = delete;
+  ReactionEngine& operator=(const ReactionEngine&) = delete;
+
   void init();
-  bool isLoaded() const { return loaded_; }
+  bool isLoaded() const;
 
   Reaction react(const ReactionSignals& signals) const;
 
@@ -24,7 +29,6 @@ public:
                               const std::string& lang);
 
 private:
-  PhraseCatalog phrases_;
-  RuleParser rules_{phrases_};
-  bool loaded_ = false;
+  struct Impl;
+  std::unique_ptr<Impl> impl_;
 };

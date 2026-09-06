@@ -1,6 +1,17 @@
 #include "reaction-engine.hxx"
 
+#include <memory>
+#include <shared/services/memory/phrase-catalog.hxx>
+#include <shared/services/memory/rule-parser.hxx>
+
 #include <algorithm>
+
+struct ReactionEngine::Impl
+{
+  PhraseCatalog phrases;
+  RuleParser rules{phrases};
+  bool loaded = false;
+};
 
 namespace
 {
@@ -35,10 +46,19 @@ float intensityFor(ReactionKind kind, const ReactionSignals& signals)
 
 } // namespace
 
+ReactionEngine::ReactionEngine() : impl_(std::make_unique<Impl>()) {}
+
+ReactionEngine::~ReactionEngine() = default;
+
 void ReactionEngine::init()
 {
-  phrases_.build();
-  loaded_ = phrases_.phraseCount() > 0;
+  impl_->phrases.build();
+  impl_->loaded = impl_->phrases.phraseCount() > 0;
+}
+
+bool ReactionEngine::isLoaded() const
+{
+  return impl_->loaded;
 }
 
 Reaction ReactionEngine::react(const ReactionSignals& signals) const
@@ -57,7 +77,7 @@ Reaction ReactionEngine::react(const ReactionSignals& signals) const
     return make(ReactionKind::Confused, "stt_failed");
 
   const RuleParseInput parsed{.text = signals.text, .lang = signals.lang};
-  if (rules_.isCancellation(parsed))
+  if (impl_->rules.isCancellation(parsed))
     return make(ReactionKind::Acknowledging, "retraction");
   if (signals.recallHits > 0)
     return make(ReactionKind::Recognizing, "recall_hit");
@@ -68,12 +88,12 @@ Reaction ReactionEngine::react(const ReactionSignals& signals) const
   if (signals.cameraIntent)
     return make(ReactionKind::Curious, "camera_intent");
 
-  const bool question = rules_.isQuestion(parsed);
+  const bool question = impl_->rules.isQuestion(parsed);
   if (question && signals.recallHits == 0)
     return make(ReactionKind::Uncertain, "recall_empty");
   if (question)
     return make(ReactionKind::Thinking, "question");
-  if (rules_.isVacuous(parsed))
+  if (impl_->rules.isVacuous(parsed))
     return make(ReactionKind::Warm, "small_talk");
   return make(ReactionKind::Idle, "no_signal");
 }

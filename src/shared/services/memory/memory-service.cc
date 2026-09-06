@@ -185,7 +185,7 @@ void MemoryService::waitForIdle(int waitMs)
     return;
   const auto deadline =
       std::chrono::steady_clock::now() + std::chrono::milliseconds(waitMs);
-  while (!stop_ && llm_.isBusy() && std::chrono::steady_clock::now() < deadline)
+  while (!stop_ && chat_.busy() && std::chrono::steady_clock::now() < deadline)
     std::this_thread::sleep_for(std::chrono::milliseconds(200));
 }
 
@@ -194,7 +194,7 @@ void MemoryService::processExtract(const MemoryJob& job)
   if (job.preferIdle) {
     const int waitMs = ConfigService::getInt("memory.extract_wait_ms");
     waitForIdle(waitMs > 0 ? waitMs : 15000);
-    if (llm_.isBusy()) {
+    if (chat_.busy()) {
       enqueueJob(job);
       return;
     }
@@ -228,12 +228,12 @@ void MemoryService::processCompact(const MemoryJob& job)
   if (job.preferIdle) {
     const int waitMs = ConfigService::getInt("memory.compact_wait_ms");
     waitForIdle(waitMs > 0 ? waitMs : 15000);
-    if (llm_.isBusy()) {
+    if (chat_.busy()) {
       enqueueJob(job);
       return;
     }
   }
-  if (!llm_.isLoaded())
+  if (!chat_.available())
     return;
 
   const int maxTokens = ConfigService::getInt("memory.compact_max_tokens");
@@ -245,7 +245,7 @@ void MemoryService::processCompact(const MemoryJob& job)
       .temperature = 0.0F,
       .resetContext = true,
   };
-  const std::string summary = llm_.chat(req);
+  const std::string summary = chat_.chat(req);
   if (summary.empty()) {
     LOG_WARN << "MemoryService: compact produced an empty summary";
     return;
@@ -353,6 +353,24 @@ void MemoryService::enqueueJob(MemoryJob job)
 {
   {
     std::lock_guard<std::mutex> lock(queueMutex_);
+    // Back-pressure gate (Ruling BZ): at the bound, derived-data jobs yield
+    // to user facts; a fact-only queue drops the newcomer.
+    if (queue_.size() >= queueBound_) {
+      if (job.kind != MemoryJob::Kind::Extract) {
+        LOG_WARN << "MemoryService queue full (" << queue_.size()
+                 << "); dropped " << static_cast<int>(job.kind) << " job";
+        return;
+      }
+      const auto derived = std::find_if(
+          queue_.begin(), queue_.end(), [](const MemoryJob& queued) {
+            return queued.kind != MemoryJob::Kind::Extract;
+          });
+      if (derived == queue_.end()) {
+        LOG_WARN << "MemoryService queue full of extracts; dropped one";
+        return;
+      }
+      queue_.erase(derived);
+    }
     queue_.push_back(std::move(job));
   }
   queueCv_.notify_one();
@@ -360,6 +378,8 @@ void MemoryService::enqueueJob(MemoryJob job)
 
 void MemoryService::init(const MemoryInitOptions& options)
 {
+  if (const int bound = ConfigService::getInt("memory.queue_bound"); bound > 0)
+    queueBound_ = static_cast<size_t>(bound);
   phrases_.build();
   extractor_.rebuild(vocabulary::allLexiconEntries());
   formation_.setExtractor(&extractor_);
@@ -587,7 +607,7 @@ void MemoryService::enqueueSummary(int64_t userId,
 {
   if (!running_ || userId < 0 || transcript.empty())
     return;
-  if (!llm_.isLoaded())
+  if (!chat_.available())
     return;
 
   const std::string durable = durableTranscript(transcript, lang);
@@ -610,7 +630,7 @@ void MemoryService::enqueueCompaction(int64_t userId,
 {
   if (!running_ || userId < 0 || transcript.empty())
     return;
-  if (!llm_.isLoaded())
+  if (!chat_.available())
     return;
 
   const std::string durable = durableTranscript(transcript, lang);
@@ -691,7 +711,7 @@ std::string MemoryService::profileFor(int64_t userId, const std::string& lang)
                      .text = built,
                      .built = std::time(nullptr)};
   }
-  if (running_ && llm_.isLoaded()) {
+  if (running_ && chat_.available()) {
     enqueueJob({.kind = MemoryJob::Kind::Profile,
                 .memoryId = 0,
                 .userId = userId,
@@ -741,11 +761,11 @@ void MemoryService::processProfile(const MemoryJob& job)
 {
   const int waitMs = ConfigService::getInt("memory.compact_wait_ms");
   waitForIdle(waitMs > 0 ? waitMs : 15000);
-  if (llm_.isBusy()) {
+  if (chat_.busy()) {
     enqueueJob(job);
     return;
   }
-  if (!llm_.isLoaded())
+  if (!chat_.available())
     return;
 
   const std::string base = buildProfile(job.userId, job.lang);
@@ -766,7 +786,7 @@ void MemoryService::processProfile(const MemoryJob& job)
       .temperature = 0.0F,
       .resetContext = true,
   };
-  const std::string polished = llm_.chat(req);
+  const std::string polished = chat_.chat(req);
   if (polished.empty())
     return;
   std::lock_guard<std::mutex> lock(profileMutex_);

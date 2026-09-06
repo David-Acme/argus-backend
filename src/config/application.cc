@@ -36,6 +36,8 @@
 #include <shared/services/memory/adapter/memory-service-adapter.hxx>
 #include <shared/services/queue/adapter/queue-manager-service-adapter.hxx>
 #include <shared/services/room/adapter/room-manager-service-adapter.hxx>
+#include <shared/contracts/identity-change-sink.hxx>
+#include <shared/services/socket/nats-identity-change-sink.hxx>
 #include <shared/services/socket/socket-service.hxx>
 #include <shared/services/sqlite/db-service.hxx>
 #include <shared/services/stream/go2rtc-manager.hxx>
@@ -170,6 +172,11 @@ void installEventBus()
     return;
   }
   SocketService::setEventBus(bus);
+
+  // Identity writes fan out to the memory catalog replicas (Ruling BX).
+  static const NatsIdentityChangeSink identitySink(bus);
+  identity_change::setSink(&identitySink);
+
   LOG_INFO << "NATS event bus connected to " << bus->options().url;
 }
 

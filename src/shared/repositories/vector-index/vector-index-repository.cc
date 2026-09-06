@@ -1,6 +1,7 @@
 #include <drogon/drogon.h>
 #include <shared/repositories/vector-index/vector-index-query.hxx>
 #include <shared/repositories/vector-index/vector-index-repository.hxx>
+#include <shared/services/config-service/config-service.hxx>
 #include <shared/wrapper/sqlite-stmt/sqlite-stmt.hxx>
 #include <sqlite3.h>
 
@@ -21,12 +22,24 @@ bool execUnlocked(sqlite3* db, const char* sql)
   return true;
 }
 
+// The face recognition index belongs to the legacy process only; services
+// without the face stack skip it (default keeps the pre-cutover behavior).
+bool createFaceVec()
+{
+  const std::string configured = ConfigService::getString("memory.create_face_vec");
+  return configured.empty() || configured == "true";
+}
+
 } // namespace
 
 bool VectorIndexRepository::createTables(sqlite3* db, int dims)
 {
   const std::string memory = memoryVecDdl(dims);
-  return execUnlocked(db, memory.c_str()) && execUnlocked(db, FACE_VEC_DDL);
+  if (!execUnlocked(db, memory.c_str()))
+    return false;
+  if (!createFaceVec())
+    return true;
+  return execUnlocked(db, FACE_VEC_DDL);
 }
 
 bool VectorIndexRepository::dropTables(sqlite3* db)
@@ -72,10 +85,13 @@ std::string VectorIndexRepository::tableSql(sqlite3* db,
 
 bool VectorIndexRepository::hasCosineMetric(sqlite3* db)
 {
-  return tableSql(db, "memory_vec").find("distance_metric=cosine") !=
-             std::string::npos &&
-         tableSql(db, "face_vec").find("distance_metric=cosine") !=
-             std::string::npos;
+  if (tableSql(db, "memory_vec").find("distance_metric=cosine") ==
+      std::string::npos)
+    return false;
+  if (!createFaceVec())
+    return true;
+  return tableSql(db, "face_vec").find("distance_metric=cosine") !=
+         std::string::npos;
 }
 
 bool VectorIndexRepository::memoryVecMatches(sqlite3* db, int dims)

@@ -10,8 +10,8 @@
 #include <shared/repositories/memory-graph/memory-graph-repository.hxx>
 #include <shared/services/embedding/embedding-service.hxx>
 #include <shared/services/extract/tiered-extractor.hxx>
-#include <shared/services/llm/llm-service.hxx>
 #include <shared/services/memory/graph-recall.hxx>
+#include <shared/services/memory/memory-chat.hxx>
 #include <shared/services/memory/memory-formation.hxx>
 #include <shared/services/memory/phrase-catalog.hxx>
 #include <shared/services/memory/sqlite-graph.hxx>
@@ -53,7 +53,7 @@ struct MemoryInitOptions
 class MemoryService
 {
 public:
-  MemoryService(VecDb& vecDb, LlmService& llm) : vecDb_(vecDb), llm_(llm) {}
+  MemoryService(VecDb& vecDb, IMemoryChat& chat) : vecDb_(vecDb), chat_(chat) {}
   ~MemoryService();
 
   MemoryService(const MemoryService&) = delete;
@@ -136,7 +136,7 @@ private:
   };
 
   VecDb& vecDb_;
-  LlmService& llm_;
+  IMemoryChat& chat_;
   std::unique_ptr<SqliteGraph> graph_{std::make_unique<SqliteGraph>()};
   MemoryGraphRepository graphRepo_;
   EntityResolver resolver_{*graph_};
@@ -155,6 +155,9 @@ private:
   std::mutex queueMutex_;
   std::condition_variable queueCv_;
   std::deque<MemoryJob> queue_;
+  // Back-pressure bound (Ruling BZ): memory.queue_bound, job intake stops
+  // growing past it instead of the workers polling the chat engine.
+  size_t queueBound_ = 64;
   bool stop_ = false;
   bool running_ = false;
   std::atomic<bool> working_{false};

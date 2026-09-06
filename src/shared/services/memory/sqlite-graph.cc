@@ -57,7 +57,7 @@ bool SqliteGraph::open(const std::string& dbPath)
                      "name = 'memory_entity'") &&
         stmt.step() == SQLITE_ROW;
     if (!hasGraph)
-      runSchemaFile(db_.get(), "database/schema.sql");
+      runSchemaFile(db_.get(), memory_graph_query::schemaFile());
   }
   return true;
 }
@@ -72,7 +72,7 @@ void SqliteGraph::applySchema()
 {
   std::scoped_lock lock(mutex_);
   if (db_)
-    runSchemaFile(db_.get(), "database/schema.sql");
+    runSchemaFile(db_.get(), memory_graph_query::schemaFile());
 }
 
 int64_t SqliteGraph::createEntity(const EntityCreateInput& input)
