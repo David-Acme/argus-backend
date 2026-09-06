@@ -65,6 +65,10 @@
     { "name": "vlm", "configurePreset": "dev", "jobs": 8,
       "targets": ["argus-vlm"] },
     { "name": "vlm-prod", "configurePreset": "prod", "jobs": 8,
-      "targets": ["argus-vlm"] }
+      "targets": ["argus-vlm"] },
+    { "name": "llm", "configurePreset": "dev", "jobs": 8,
+      "targets": ["argus-llm"] },
+    { "name": "llm-prod", "configurePreset": "prod", "jobs": 8,
+      "targets": ["argus-llm"] }
   ]
 }

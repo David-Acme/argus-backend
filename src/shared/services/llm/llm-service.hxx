@@ -66,6 +66,11 @@ public:
   bool isBusy();
   LlmPrefillStats lastPrefillStats();
 
+  // Read-only config views for the internal wire's config leg.
+  int32_t defaultMaxTokens() const { return defaultMaxTokens_; }
+  float defaultTemperature() const { return defaultTemperature_; }
+  int64_t contextSize() const { return contextSize_; }
+
   std::string buildPrompt(const std::vector<ChatMessage>& messages);
 
 private:
