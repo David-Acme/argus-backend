@@ -265,3 +265,40 @@ target_link_libraries(camera-talk-cutover-test PRIVATE argus_sync argus_common
 target_compile_options(camera-talk-cutover-test PRIVATE -Wall -Wextra)
 
 add_test(NAME camera-talk-cutover-test COMMAND camera-talk-cutover-test)
+
+# The argus-vlm wire contract (F4-4, Ruling BP): the real engine serves the
+# describe/config legs from the shared models tree, with the direct-engine
+# A/B leg on the same JPEG.
+add_executable(vlm-wire-test vlm-wire-test.cc
+    ${SRC_ROOT}/config/app-config.cc
+    ${CMAKE_SOURCE_DIR}/argus-vlm/src/controllers/health-controller.cc
+    ${CMAKE_SOURCE_DIR}/argus-vlm/src/controllers/vlm-controller.cc
+    ${CMAKE_SOURCE_DIR}/argus-vlm/src/vlm/describe-dto.cc
+    ${SRC_ROOT}/shared/services/vision/vision-service.cc)
+
+target_include_directories(vlm-wire-test PRIVATE
+    ${CMAKE_SOURCE_DIR}/argus-vlm/src)
+
+target_compile_definitions(vlm-wire-test PRIVATE
+    ARGUS_TEST_VLM_MODELS_DIR="${CMAKE_SOURCE_DIR}/models/vision/lfm2vl-25")
+
+target_link_libraries(vlm-wire-test PRIVATE argus_common
+    ${ARGUS_LLAMA_TARGETS} opencv::opencv doctest::doctest)
+
+target_compile_options(vlm-wire-test PRIVATE -Wall -Wextra)
+
+add_test(NAME vlm-wire-test COMMAND vlm-wire-test)
+
+# The remote vision adapter (F4-4, Ruling BQ): the JPEG encode, the
+# same-keyed caption cache and the error paths against the in-process fake
+# argus-vlm server.
+add_executable(vision-remote-adapter-test vision-remote-adapter-test.cc
+    ${SRC_ROOT}/shared/services/vision/remote/vlm-remote.cc
+    ${SRC_ROOT}/shared/services/vision/remote/remote-vision-adapter.cc)
+
+target_link_libraries(vision-remote-adapter-test PRIVATE argus_common
+    opencv::opencv doctest::doctest)
+
+target_compile_options(vision-remote-adapter-test PRIVATE -Wall -Wextra)
+
+add_test(NAME vision-remote-adapter-test COMMAND vision-remote-adapter-test)
