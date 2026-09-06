@@ -40,6 +40,7 @@ add_executable(argus-vision-check
     service-check.cc
     ${SRC_ROOT}/shared/services/config-service/config-service.cc
     ${SRC_ROOT}/shared/services/vision/vision-service.cc
+    ${SRC_ROOT}/shared/services/vision/remote/vlm-remote.cc
     ${SRC_ROOT}/shared/wrapper/thread-budget/thread-budget.cc
     ${SRC_ROOT}/shared/wrapper/hardware-profile/hardware-profile.cc
 )
