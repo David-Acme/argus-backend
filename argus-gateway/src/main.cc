@@ -22,6 +22,7 @@
 #include <sync/sync-registrar.hxx>
 #include <sync/sync-relay.hxx>
 #include <sync/user-change-fan-out.hxx>
+#include <sync/user-change-sink.hxx>
 #include <unistd.h>
 
 #include <cstdint>
@@ -257,6 +258,8 @@ int main()
   // natively; the backend reaches the same state through its registry).
   RoomManager roomManagerLifecycle;
   roomManagerLifecycle.init();
+
+  installUserChangeSink();
 
   std::unique_ptr<MdnsService> mdnsService;
 

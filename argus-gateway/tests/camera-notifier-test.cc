@@ -2,9 +2,12 @@
 #include <doctest/doctest.h>
 
 #include <drogon/drogon.h>
+#include <shared/contracts/sync-operation.hxx>
+#include <shared/services/room/room-manager.hxx>
 #include <shared/services/sqlite/db-service.hxx>
 #include <shared/utils/json-util/json-util.hxx>
 #include <sync/camera-notifier.hxx>
+#include <sync/user-change-sink.hxx>
 
 #include <chrono>
 #include <cstdio>
@@ -76,6 +79,46 @@ bool waitForNotifications(int expected, std::chrono::milliseconds timeout)
   }
   return notificationCount() >= expected;
 }
+
+// Same fake the camera controller tests use to observe socket deliveries.
+class RecordingConnection final : public drogon::WebSocketConnection
+{
+public:
+  void send(const char* msg, uint64_t len,
+            const drogon::WebSocketMessageType type) override
+  {
+    (void)type;
+    messages.emplace_back(msg, len);
+  }
+  void send(std::string_view msg,
+            const drogon::WebSocketMessageType type) override
+  {
+    (void)type;
+    messages.emplace_back(msg);
+  }
+  void sendJson(const Json::Value& json,
+                const drogon::WebSocketMessageType type) override
+  {
+    (void)type;
+    messages.push_back(json_util::toString(json));
+  }
+  const trantor::InetAddress& localAddr() const override { return addr_; }
+  const trantor::InetAddress& peerAddr() const override { return addr_; }
+  bool connected() const override { return true; }
+  bool disconnected() const override { return false; }
+  void shutdown(const drogon::CloseCode, const std::string&) override {}
+  void forceClose() override {}
+  void setPingMessage(const std::string&,
+                      const std::chrono::duration<double>&) override
+  {
+  }
+  void disablePing() override {}
+
+  std::vector<std::string> messages;
+
+private:
+  trantor::InetAddress addr_{"127.0.0.1", 0};
+};
 } // namespace
 
 TEST_CASE("the notification budget allows budget_per_hour then suppresses")
@@ -229,6 +272,8 @@ TEST_CASE("the consumer applies the budget and creates camera notifications")
   std::thread runner([] { drogon::app().run(); });
   REQUIRE(waitForBoot(std::chrono::seconds(30)));
 
+  installUserChangeSink();
+
   CameraObjectNotifier notifier({6, -1, -1});
 
   notifier.handle(eventJson(1, "person_in_alert_zone", "critical"));
@@ -258,6 +303,32 @@ TEST_CASE("the consumer applies the budget and creates camera notifications")
   notifier.handle(json_util::fromString("[1, 2, 3]"));
   std::this_thread::sleep_for(std::chrono::milliseconds(300));
   CHECK(notificationCount() == 12);
+
+  // The gateway-local sink dispatches the /sync Add frame to the user room
+  // the sync socket joined, exactly the pre-cutover SocketService push.
+  const auto conn = std::make_shared<RecordingConnection>();
+  RoomManager rooms;
+  drogon::app().getIOLoop(0)->queueInLoop(
+      [&rooms, &conn] { rooms.join(userRoom(1), conn); });
+
+  CameraObjectNotifier addFrameNotifier({6, -1, -1});
+  addFrameNotifier.handle(eventJson(1, "person", "info"));
+  const auto frameDeadline = std::chrono::steady_clock::now() +
+                             std::chrono::seconds(10);
+  while (conn->messages.empty()
+         && std::chrono::steady_clock::now() < frameDeadline)
+    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+  REQUIRE_FALSE(conn->messages.empty());
+  const Json::Value frame = json_util::fromString(conn->messages.back());
+  REQUIRE(frame);
+  CHECK(frame["operation"].asInt() ==
+        static_cast<int>(SyncOperation::Add));
+  CHECK(frame["option"].asString() == "notification");
+  CHECK(frame["info"]["title"].asString() == "Front door: person");
+  CHECK(frame["info"]["userId"].as<int64_t>() == 1);
+
+  drogon::app().getIOLoop(0)->queueInLoop(
+      [&rooms, &conn] { rooms.leaveAll(conn); });
 
   drogon::app().quit();
   runner.join();
