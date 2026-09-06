@@ -57,6 +57,10 @@
     { "name": "tts", "configurePreset": "dev", "jobs": 8,
       "targets": ["argus-tts"] },
     { "name": "tts-prod", "configurePreset": "prod", "jobs": 8,
-      "targets": ["argus-tts"] }
+      "targets": ["argus-tts"] },
+    { "name": "stt", "configurePreset": "dev", "jobs": 8,
+      "targets": ["argus-stt"] },
+    { "name": "stt-prod", "configurePreset": "prod", "jobs": 8,
+      "targets": ["argus-stt"] }
   ]
 }

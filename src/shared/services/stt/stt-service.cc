@@ -10,6 +10,21 @@
 namespace
 {
 
+// Root of the on-disk STT models (models/stt by default); argus-stt points
+// stt.models_dir at the read-only models volume.
+std::string modelsDir()
+{
+  const std::string dir = ConfigService::getString("stt.models_dir");
+  return dir.empty() ? std::string("models/stt") : dir;
+}
+
+// Default language for a fresh recognizer (stt.language, Spanish fallback).
+std::string configLanguage()
+{
+  const std::string lang = ConfigService::getString("stt.language");
+  return lang.empty() ? std::string("es") : lang;
+}
+
 SttEngine resolveEngine()
 {
   const std::string e = ConfigService::getString("stt.engine");
@@ -29,7 +44,7 @@ std::unique_ptr<const SherpaOnnxOfflineRecognizer,
                 void (*)(const SherpaOnnxOfflineRecognizer*)>
 createRecognizer(const std::string& lang)
 {
-  const std::string modelDir = "models/stt";
+  const std::string modelDir = modelsDir();
   auto nThreads = ThreadBudget::computeThreads();
   const SttEngine engine = resolveEngine();
 
@@ -116,11 +131,14 @@ SttService& SttService::instance()
 void SttService::init()
 {
   try {
-    const std::string lang = ConfigService::getString("stt.language").empty()
-                                 ? "es"
-                                 : ConfigService::getString("stt.language");
+    const std::string lang = configLanguage();
     recognizer_ = createRecognizer(lang);
-
+    if (!recognizer_) {
+      LOG_FATAL << "STT init failed: recognizer creation returned null";
+      shutdown();
+      return;
+    }
+    currentLang_ = lang;
     loaded_ = true;
 
     std::string engineName = "whisper";
@@ -142,7 +160,7 @@ void SttService::init()
         break;
     }
 
-    LOG_INFO << "STT loaded: models/stt"
+    LOG_INFO << "STT loaded: " << modelsDir()
              << " (" << engineName << ", " << lang
              << ", threads=" << ThreadBudget::computeThreads() << ")";
   }
@@ -161,8 +179,15 @@ bool SttService::setLanguage(const std::string& lang)
   if (!recognizer)
     return false;
   recognizer_ = std::move(recognizer);
+  currentLang_ = lang;
   LOG_INFO << "STT language set to " << lang;
   return true;
+}
+
+std::string SttService::language() const
+{
+  std::lock_guard<std::mutex> lock(mutex_);
+  return currentLang_;
 }
 
 void SttService::shutdown()
@@ -185,6 +210,10 @@ std::string SttService::transcribe(const std::vector<float>& audioSamples,
   std::lock_guard<std::mutex> lock(mutex_);
 
   auto* recognizer = recognizer_.get();
+  if (!recognizer) {
+    LOG_WARN << "STT: no recognizer loaded";
+    return "";
+  }
 
   std::unique_ptr<const SherpaOnnxOfflineStream,
                   void (*)(const SherpaOnnxOfflineStream*)>

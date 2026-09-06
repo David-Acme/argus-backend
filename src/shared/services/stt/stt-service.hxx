@@ -41,6 +41,9 @@ public:
   // runtime. Returns false if the language is unsupported.
   bool setLanguage(const std::string& lang);
 
+  // Language the current recognizer was built with ("" when not loaded).
+  std::string language() const;
+
   // Coroutine variant: runs inference off the event loop.
   drogon::Task<std::string>
   transcribeAsync(const std::vector<float>& audioSamples,
@@ -52,6 +55,7 @@ private:
   std::unique_ptr<const SherpaOnnxOfflineRecognizer,
                   void (*)(const SherpaOnnxOfflineRecognizer*)>
       recognizer_;
+  std::string currentLang_;
   bool loaded_ = false;
   mutable std::mutex mutex_;
 };
