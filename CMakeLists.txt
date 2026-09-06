@@ -41,10 +41,17 @@ add_subdirectory(argus-gateway EXCLUDE_FROM_ALL)
 # default backend build.
 add_subdirectory(argus-camera EXCLUDE_FROM_ALL)
 
+# argus-productivity and argus-notification services (Fase 3 substrate):
+# built on demand, never as part of the default backend build.
+add_subdirectory(argus-productivity EXCLUDE_FROM_ALL)
+add_subdirectory(argus-notification EXCLUDE_FROM_ALL)
+
 # Data migration tools: the CLI is built on demand, never as part of the
 # default backend build.
 add_subdirectory(tools/migrate-identity EXCLUDE_FROM_ALL)
 add_subdirectory(tools/migrate-camera EXCLUDE_FROM_ALL)
+add_subdirectory(tools/migrate-productivity EXCLUDE_FROM_ALL)
+add_subdirectory(tools/migrate-notification EXCLUDE_FROM_ALL)
 
 # Vulkan-in-container RADV probe: built on demand (target argus-vulkan-probe).
 add_subdirectory(tools/vulkan-probe EXCLUDE_FROM_ALL)

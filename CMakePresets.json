@@ -41,6 +41,18 @@
                   "camera-operator-test"] },
     { "name": "camera-prod", "configurePreset": "prod", "jobs": 8,
       "targets": ["argus-camera", "event-intelligence-test",
-                  "camera-operator-test"] }
+                  "camera-operator-test"] },
+    { "name": "productivity", "configurePreset": "dev", "jobs": 8,
+      "targets": ["argus-productivity", "productivity-schema-test",
+                  "productivity-migration-test"] },
+    { "name": "productivity-prod", "configurePreset": "prod", "jobs": 8,
+      "targets": ["argus-productivity", "productivity-schema-test",
+                  "productivity-migration-test"] },
+    { "name": "notification", "configurePreset": "dev", "jobs": 8,
+      "targets": ["argus-notification", "notification-schema-test",
+                  "notification-migration-test"] },
+    { "name": "notification-prod", "configurePreset": "prod", "jobs": 8,
+      "targets": ["argus-notification", "notification-schema-test",
+                  "notification-migration-test"] }
   ]
 }

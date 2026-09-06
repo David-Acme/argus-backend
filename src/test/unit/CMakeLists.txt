@@ -13,6 +13,10 @@ set(UNIT_TESTS
     camera-migration-test
     camera-config-test
     camera-controller-test
+    productivity-schema-test
+    productivity-migration-test
+    notification-schema-test
+    notification-migration-test
     event-intelligence-test
     camera-operator-test
 )
@@ -32,6 +36,13 @@ target_link_libraries(identity-migration-test PRIVATE identity-migration)
 # camera-migration builds only as a dependency of the camera unit suites.
 target_link_libraries(camera-schema-test PRIVATE camera-migration)
 target_link_libraries(camera-migration-test PRIVATE camera-migration)
+
+# productivity-migration and notification-migration build only as dependencies
+# of the productivity/notification unit suites.
+target_link_libraries(productivity-schema-test PRIVATE productivity-migration)
+target_link_libraries(productivity-migration-test PRIVATE productivity-migration)
+target_link_libraries(notification-schema-test PRIVATE notification-migration)
+target_link_libraries(notification-migration-test PRIVATE notification-migration)
 
 # camera-core (argus-camera service plumbing) is pulled into the default
 # backend build only by camera-config-test and camera-controller-test.
