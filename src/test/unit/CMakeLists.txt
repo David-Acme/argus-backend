@@ -120,8 +120,7 @@ endif()
 
 # The voice-session seam suite rides the legacy AI stack (argus_sync_media).
 if(TARGET argus_sync_media)
-    set(VOICE_SEAM_TEST_SOURCES
-        voice-session-seam-test.cc
+    set(VOICE_ENGINE_SOURCES
         ${SRC_ROOT}/shared/services/vad/vad-service.cc
         ${SRC_ROOT}/shared/services/noise/noise-suppression-service.cc
         ${SRC_ROOT}/shared/services/reaction/reaction-engine.cc
@@ -136,9 +135,11 @@ if(TARGET argus_sync_media)
         ${SRC_ROOT}/shared/services/tts/onnx-utils.cc
         ${SRC_ROOT}/shared/services/tts/style.cc
         ${SRC_ROOT}/shared/services/tts/unicode-processor.cc
+        ${SRC_ROOT}/shared/services/tts/remote/tts-remote.cc
     )
 
-    add_executable(voice-session-seam-test ${VOICE_SEAM_TEST_SOURCES})
+    add_executable(voice-session-seam-test voice-session-seam-test.cc
+        ${VOICE_ENGINE_SOURCES})
 
     target_link_libraries(voice-session-seam-test PRIVATE argus_sync_media
         doctest::doctest)
@@ -146,4 +147,83 @@ if(TARGET argus_sync_media)
     target_compile_options(voice-session-seam-test PRIVATE -Wall -Wextra)
 
     add_test(NAME voice-session-seam-test COMMAND voice-session-seam-test)
+
+    # The TTS cutover suite: the voice session speaks through the argus-tts
+    # internal wire (RemoteVoiceTts) against the in-process fake server.
+    add_executable(voice-tts-remote-test voice-tts-remote-test.cc
+        ${VOICE_ENGINE_SOURCES})
+
+    target_link_libraries(voice-tts-remote-test PRIVATE argus_sync_media
+        doctest::doctest)
+
+    target_compile_options(voice-tts-remote-test PRIVATE -Wall -Wextra)
+
+    add_test(NAME voice-tts-remote-test COMMAND voice-tts-remote-test)
 endif()
+
+# The argus-tts wire contract (F4-2, Ruling BH): the real engine serves the
+# synthesize/config legs from the shared models tree.
+add_executable(tts-wire-test tts-wire-test.cc
+    ${SRC_ROOT}/config/app-config.cc
+    ${SRC_ROOT}/filter/valid-json/valid-json-filter.cc
+    ${CMAKE_SOURCE_DIR}/argus-tts/src/controllers/health-controller.cc
+    ${CMAKE_SOURCE_DIR}/argus-tts/src/controllers/tts-controller.cc
+    ${CMAKE_SOURCE_DIR}/argus-tts/src/tts/synthesize-dto.cc
+    ${SRC_ROOT}/shared/services/tts/tts-service.cc
+    ${SRC_ROOT}/shared/services/tts/tts-engine.cc
+    ${SRC_ROOT}/shared/services/tts/onnx-utils.cc
+    ${SRC_ROOT}/shared/services/tts/style.cc
+    ${SRC_ROOT}/shared/services/tts/unicode-processor.cc)
+
+target_include_directories(tts-wire-test PRIVATE
+    ${CMAKE_SOURCE_DIR}/argus-tts/src)
+
+target_compile_definitions(tts-wire-test PRIVATE
+    ARGUS_TEST_TTS_MODELS_DIR="${CMAKE_SOURCE_DIR}/models/tts")
+
+target_link_libraries(tts-wire-test PRIVATE argus_common
+    onnxruntime::onnxruntime doctest::doctest)
+
+target_compile_options(tts-wire-test PRIVATE -Wall -Wextra)
+
+add_test(NAME tts-wire-test COMMAND tts-wire-test)
+
+# The camera-talk cutover (Ruling BI): speak() reaches the wire before the
+# device, degrading to the 502 envelope when argus-tts is down.
+set(CAMERA_TALK_TEST_SOURCES
+    camera-talk-cutover-test.cc
+    ${SRC_ROOT}/config/app-config.cc
+    ${SRC_ROOT}/feature/api/camera-control/controllers/camera-control-controller.cc
+    ${SRC_ROOT}/feature/api/camera-control/services/camera-control-feature-service.cc
+    ${SRC_ROOT}/feature/api/camera-control/dtos/camera-talk-dto.cc
+    ${SRC_ROOT}/feature/api/camera-control/dtos/camera-ptz-dto.cc
+    ${SRC_ROOT}/feature/api/camera-control/dtos/camera-preset-dto.cc
+    ${SRC_ROOT}/feature/api/camera-control/dtos/camera-settings-dto.cc
+    ${SRC_ROOT}/shared/services/camera-driver/camera-driver-registry.cc
+    ${SRC_ROOT}/shared/services/camera-driver/tapo-driver.cc
+    ${SRC_ROOT}/shared/services/tapo/tapo-crypto.cc
+    ${SRC_ROOT}/shared/services/tapo/tapo-http.cc
+    ${SRC_ROOT}/shared/services/tapo/tapo-audio.cc
+    ${SRC_ROOT}/shared/services/tapo/tapo-ts-muxer.cc
+    ${SRC_ROOT}/shared/services/tapo/secure-passthrough-transport.cc
+    ${SRC_ROOT}/shared/services/tapo/legacy-stok-transport.cc
+    ${SRC_ROOT}/shared/services/tapo/tapo-client.cc
+    ${SRC_ROOT}/shared/services/tapo/tapo-api.cc
+    ${SRC_ROOT}/shared/services/tapo/tapo-talk-client.cc
+    ${SRC_ROOT}/shared/services/tts/remote/tts-remote.cc
+    ${SRC_ROOT}/shared/services/tts/tts-service.cc
+    ${SRC_ROOT}/shared/services/tts/tts-engine.cc
+    ${SRC_ROOT}/shared/services/tts/onnx-utils.cc
+    ${SRC_ROOT}/shared/services/tts/style.cc
+    ${SRC_ROOT}/shared/services/tts/unicode-processor.cc
+    ${SRC_ROOT}/shared/wrapper/audio/audio-resampler.cc
+)
+
+add_executable(camera-talk-cutover-test ${CAMERA_TALK_TEST_SOURCES})
+
+target_link_libraries(camera-talk-cutover-test PRIVATE argus_sync argus_common
+    onnxruntime::onnxruntime OpenSSL::SSL OpenSSL::Crypto doctest::doctest)
+
+target_compile_options(camera-talk-cutover-test PRIVATE -Wall -Wextra)
+
+add_test(NAME camera-talk-cutover-test COMMAND camera-talk-cutover-test)
