@@ -129,6 +129,7 @@ if(TARGET argus_sync_media)
         ${SRC_ROOT}/shared/utils/text-match/phrase-automaton.cc
         ${SRC_ROOT}/shared/wrapper/audio/audio-resampler.cc
         ${SRC_ROOT}/shared/services/stt/stt-service.cc
+        ${SRC_ROOT}/shared/services/stt/remote/stt-remote.cc
         ${SRC_ROOT}/shared/services/llm/llm-service.cc
         ${SRC_ROOT}/shared/services/tts/tts-service.cc
         ${SRC_ROOT}/shared/services/tts/tts-engine.cc
@@ -159,7 +160,44 @@ if(TARGET argus_sync_media)
     target_compile_options(voice-tts-remote-test PRIVATE -Wall -Wextra)
 
     add_test(NAME voice-tts-remote-test COMMAND voice-tts-remote-test)
+
+    # The STT cutover suite: the voice session transcribes through the
+    # argus-stt internal wire (RemoteVoiceStt) against the in-process fake
+    # server, degrading to the existing stt_failed error path when it is down.
+    add_executable(voice-stt-remote-test voice-stt-remote-test.cc
+        ${VOICE_ENGINE_SOURCES})
+
+    target_link_libraries(voice-stt-remote-test PRIVATE argus_sync_media
+        doctest::doctest)
+
+    target_compile_options(voice-stt-remote-test PRIVATE -Wall -Wextra)
+
+    add_test(NAME voice-stt-remote-test COMMAND voice-stt-remote-test)
 endif()
+
+# The argus-stt wire contract (F4-3, Ruling BL): the real engine serves the
+# transcribe/config legs from the shared models tree.
+add_executable(stt-wire-test stt-wire-test.cc
+    ${SRC_ROOT}/config/app-config.cc
+    ${CMAKE_SOURCE_DIR}/argus-stt/src/controllers/health-controller.cc
+    ${CMAKE_SOURCE_DIR}/argus-stt/src/controllers/stt-controller.cc
+    ${SRC_ROOT}/shared/services/stt/stt-service.cc)
+
+target_include_directories(stt-wire-test PRIVATE
+    ${CMAKE_SOURCE_DIR}/argus-stt/src)
+
+target_include_directories(stt-wire-test SYSTEM PRIVATE
+    ${CMAKE_SOURCE_DIR}/third_party/sherpa-onnx)
+
+target_compile_definitions(stt-wire-test PRIVATE
+    ARGUS_TEST_STT_MODELS_DIR="${CMAKE_SOURCE_DIR}/models/stt")
+
+target_link_libraries(stt-wire-test PRIVATE argus_common
+    onnxruntime::onnxruntime ${ARGUS_SHERPA_ONNX_TARGET} doctest::doctest)
+
+target_compile_options(stt-wire-test PRIVATE -Wall -Wextra)
+
+add_test(NAME stt-wire-test COMMAND stt-wire-test)
 
 # The argus-tts wire contract (F4-2, Ruling BH): the real engine serves the
 # synthesize/config legs from the shared models tree.
