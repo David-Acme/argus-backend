@@ -144,13 +144,32 @@ struct VoiceSessionTestAccess
   {
     service.processTurn(session, samples);
   }
+
+  static const IVoiceStt& sttOf(VoiceSessionService& service)
+  {
+    return service.stt_;
+  }
+
+  static const IVoiceTts& ttsOf(VoiceSessionService& service)
+  {
+    return service.tts_;
+  }
+
+  static const IVoiceLlm& llmOf(VoiceSessionService& service)
+  {
+    return service.llm_;
+  }
 };
 
 TEST_CASE("VoiceSessionService default-constructs on the legacy singleton seam")
 {
   VoiceSessionService session;
-  CHECK(&voiceStt() == &voiceStt());
-  (void)session;
+  CHECK(&VoiceSessionTestAccess::sttOf(session) == &voiceStt());
+  CHECK(&VoiceSessionTestAccess::ttsOf(session) == &voiceTts());
+  CHECK(&VoiceSessionTestAccess::llmOf(session) == &voiceLlm());
+  CHECK(dynamic_cast<SingletonVoiceStt*>(&voiceStt()) != nullptr);
+  CHECK(dynamic_cast<SingletonVoiceTts*>(&voiceTts()) != nullptr);
+  CHECK(dynamic_cast<SingletonVoiceLlm*>(&voiceLlm()) != nullptr);
 }
 
 TEST_CASE("Voice session start speaks the greeting through the injected seam")

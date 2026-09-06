@@ -7,9 +7,7 @@
 #include <string>
 #include <vector>
 
-// Narrow engine seams behind the voice session. The legacy singletons back
-// them today; Fase 4 engine services re-point these adapters to HTTP clients
-// without touching the session again.
+// Engine seams behind the voice session.
 class IVoiceStt
 {
 public:
