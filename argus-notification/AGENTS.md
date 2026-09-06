@@ -10,8 +10,10 @@ that apply to notification-service code; when in doubt, the root file wins.
    domain. It must not compile or load any AI service registry (face, llm,
    vlm, tts, stt, vad stay in the legacy), no stream/media, no socket relay,
    and takes no labs.
-2. **Single-owner database (Ruling AN)** — this service alone writes
-   `notification.db`; the gateway keeps its read side until the F3-2 cutover.
+2. **Single-owner database (Rulings AN/AR)** — this service alone owns
+   `notification.db`; the gateway writes camera-notifier notifications
+   through its read-write named client and keeps no notification substrate
+   of its own.
 3. **Parameter structs for 3+ params** — any function with 3+ parameters
    must take a struct (designated initializers, every member listed).
 4. **Dependency injection** — services/filters hold dependencies as private

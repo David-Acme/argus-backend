@@ -62,11 +62,12 @@ trusted_proxy_ips = ""
 
 # Ruling AM: the identity database opened read-only for the share/member
 # target validation (UserRepository reads resolve to this client, so targets
-# created after the cutover are shareable). Point it at the gateway's
-# identity.db; empty falls back to the default productivity.db client
-# (validation fails).
-# [identity]
-# db = "database/identity.db"
+# created after the cutover are shareable) and for the JwtFilter user lookup.
+# Point it at the gateway's identity.db; without it a native (non-compose)
+# default boot cannot authenticate — the lookup falls back to the default
+# productivity.db client, which has no user table.
+[identity]
+db = "database/identity.db"
 [nats]
 # The change funnel toward the gateway (Rulings AQ/AR): change emits and
 # user audit diffs publish over argus.productivity.v1.change. Empty disables the

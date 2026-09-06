@@ -1,6 +1,6 @@
 -- ─────────────────────────────────────────────────────────────────────────────
 -- Argus productivity  ·  Productivity schema (productivity.db)
--- The 7 productivity tables plus their 6 indexes, copied verbatim from
+-- The 7 productivity tables plus their 13 indexes, copied verbatim from
 -- database/schema.sql (source of truth): reminder, project, project_task,
 -- calendar_event, project_member, calendar_event_share, reminder_detail.
 -- context_note stays a frozen argus.db orphan and is NOT recreated here
@@ -37,6 +37,11 @@ CREATE TABLE IF NOT EXISTS reminder (
     updated_at      INTEGER,
     deleted_at      INTEGER
 );
+
+CREATE INDEX IF NOT EXISTS idx_reminder_target_user  ON reminder (target_user_id);
+CREATE INDEX IF NOT EXISTS idx_reminder_scheduled    ON reminder (scheduled_at);
+CREATE INDEX IF NOT EXISTS idx_reminder_created_at   ON reminder (created_at);
+CREATE INDEX IF NOT EXISTS idx_reminder_deleted_at   ON reminder (deleted_at);
 
 CREATE TABLE IF NOT EXISTS project (
     id          INTEGER NOT NULL  PRIMARY KEY AUTOINCREMENT,
@@ -145,3 +150,7 @@ CREATE TABLE IF NOT EXISTS reminder_detail (
     updated_at  INTEGER,
     deleted_at  INTEGER
 );
+
+CREATE INDEX IF NOT EXISTS idx_reminder_detail_reminder  ON reminder_detail (reminder_id);
+CREATE INDEX IF NOT EXISTS idx_reminder_detail_created   ON reminder_detail (created_at);
+CREATE INDEX IF NOT EXISTS idx_reminder_detail_deleted   ON reminder_detail (deleted_at);

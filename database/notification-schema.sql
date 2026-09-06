@@ -1,8 +1,8 @@
 -- ─────────────────────────────────────────────────────────────────────────────
 -- Argus notification  ·  Notification schema (notification.db)
 -- The 2 notification tables, copied verbatim from database/schema.sql (source
--- of truth): notification, notification_token, plus the 2 notification_token
--- indexes schema.sql defines — the unique one backs the ON CONFLICT target of
+-- of truth): notification, notification_token, plus the 3 indexes schema.sql
+-- defines — the unique notification_token one backs the ON CONFLICT target of
 -- the token upsert, so without it the legacy registerToken statement fails to
 -- prepare. Applied by tools/migrate-notification and by argus-notification at
 -- boot. argus.db is never touched.
@@ -32,6 +32,8 @@ CREATE TABLE IF NOT EXISTS notification (
     read_at    INTEGER,
     created_at INTEGER NOT NULL  DEFAULT (strftime('%s', 'now'))
 );
+
+CREATE INDEX IF NOT EXISTS idx_notification_user_created ON notification (user_id, created_at);
 
 CREATE TABLE IF NOT EXISTS notification_token (
     id          INTEGER NOT NULL  PRIMARY KEY AUTOINCREMENT,

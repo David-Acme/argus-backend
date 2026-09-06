@@ -49,7 +49,7 @@ TEST_CASE("productivity schema applies cleanly to an in-memory database")
   const auto indexes = queryColumn(db.get(),
       "SELECT name FROM sqlite_master WHERE type = 'index' AND "
       "name LIKE 'idx_%' ORDER BY name");
-  CHECK(indexes.size() == 6);
+  CHECK(indexes.size() == 13);
 }
 
 TEST_CASE("productivity schema application is idempotent")
