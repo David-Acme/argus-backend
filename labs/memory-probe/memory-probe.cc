@@ -1,7 +1,12 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <arpa/inet.h>
 #include <drogon/drogon.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
+#include <thread>
+#include <unistd.h>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -2770,6 +2775,190 @@ int vocabCheck()
   return fails == 0 ? 0 : 1;
 }
 
+struct HttpReply
+{
+  int status{0};
+  std::string body;
+};
+
+HttpReply httpRequest(const std::string& hostPort, const std::string& method,
+                      const std::string& path, const std::string& body)
+{
+  const auto colon = hostPort.rfind(':');
+  const int port =
+      std::atoi(colon == std::string::npos ? hostPort.c_str()
+                                           : hostPort.c_str() + colon + 1);
+  const int fd = ::socket(AF_INET, SOCK_STREAM, 0);
+  if (fd < 0)
+    return {};
+  sockaddr_in addr{};
+  addr.sin_family = AF_INET;
+  addr.sin_port = htons(static_cast<uint16_t>(port));
+  addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+  if (::connect(fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) != 0) {
+    ::close(fd);
+    return {};
+  }
+  std::string wire =
+      method + " " + path + " HTTP/1.1\r\nHost: 127.0.0.1\r\n";
+  if (!body.empty()) {
+    wire += "Content-Type: application/json\r\nContent-Length: " +
+            std::to_string(body.size()) + "\r\n";
+  }
+  wire += "Connection: close\r\n\r\n" + body;
+  size_t sent = 0;
+  while (sent < wire.size()) {
+    const auto n = ::send(fd, wire.data() + sent, wire.size() - sent, 0);
+    if (n <= 0)
+      break;
+    sent += static_cast<size_t>(n);
+  }
+  std::string data;
+  char buffer[65536];
+  while (true) {
+    const auto n = ::recv(fd, buffer, sizeof(buffer), 0);
+    if (n <= 0)
+      break;
+    data.append(buffer, static_cast<size_t>(n));
+  }
+  ::close(fd);
+
+  HttpReply reply;
+  const auto split = data.find("\r\n\r\n");
+  if (split == std::string::npos)
+    return reply;
+  const auto space1 = data.find(' ');
+  const auto space2 = data.find(' ', space1 + 1);
+  reply.status =
+      std::atoi(data.substr(space1 + 1, space2 - space1 - 1).c_str());
+  reply.body = data.substr(split + 4);
+  return reply;
+}
+
+Json::Value envelopeOf(const HttpReply& reply)
+{
+  Json::Value json;
+  Json::Reader reader;
+  reader.parse(reply.body, json);
+  return json;
+}
+
+// Pure wire: never touches a local store, so it is safe to point at any
+// running argus-memory instance.
+int httpProbe(const std::string& hostPort)
+{
+  const auto post = [&](const std::string& path, const Json::Value& body) {
+    Json::StreamWriterBuilder builder;
+    builder["indentation"] = "";
+    return httpRequest(hostPort, "POST", path,
+                       Json::writeString(builder, body));
+  };
+  const Json::Int64 probeUser = kProbeUser;
+
+  const auto health = httpRequest(hostPort, "GET", "/health", "");
+  check(health.status == 200 &&
+            envelopeOf(health)["info"]["service"] == "argus-memory",
+        "health answers with the service identity");
+  if (health.status != 200)
+    return 1;
+
+  Json::Value ctx(Json::objectValue);
+  ctx["user_id"] = probeUser;
+  ctx["lang"] = "es";
+
+  Json::Value remember(Json::objectValue);
+  remember["subject"] = "mi hermana";
+  remember["predicate"] = "se llama";
+  remember["value"] = "Ana";
+  remember["type"] = "persona";
+  remember["context"] = ctx;
+  const auto rememberJson = envelopeOf(post("/memory/v1/remember", remember));
+  const int64_t factId =
+      rememberJson["info"]["data"]["fact_id"].asInt64();
+  check(rememberJson["status"].asInt() == 200 && factId > 0,
+        "remember stores a fact (id=" + std::to_string(factId) + ")");
+
+  Json::Value recall(Json::objectValue);
+  recall["query"] = "como se llama mi hermana";
+  recall["context"] = ctx;
+  bool recalled = false;
+  for (int i = 0; i < 50 && !recalled; ++i) {
+    recalled = envelopeOf(post("/memory/v1/recall", recall))["info"]["ok"]
+                   .asBool();
+    if (!recalled)
+      std::this_thread::sleep_for(std::chrono::milliseconds(200));
+  }
+  check(recalled, "recall resolves the stored fact through the wire");
+
+  Json::Value other(Json::objectValue);
+  Json::Value otherCtx(Json::objectValue);
+  otherCtx["user_id"] = probeUser + 1;
+  otherCtx["lang"] = "es";
+  other["query"] = "como se llama mi hermana";
+  other["context"] = otherCtx;
+  check(!envelopeOf(post("/memory/v1/recall", other))["info"]["ok"].asBool(),
+        "recall stays scoped to the owner");
+
+  Json::Value forget(Json::objectValue);
+  forget["fact_id"] = static_cast<Json::Int64>(factId);
+  const auto forgetJson = envelopeOf(post("/memory/v1/forget", forget));
+  check(forgetJson["status"].asInt() == 200 &&
+            forgetJson["info"]["ok"].asBool(),
+        "forget closes the fact");
+  check(!envelopeOf(post("/memory/v1/recall", recall))["info"]["ok"].asBool(),
+        "the forgotten fact no longer recalls");
+
+  Json::Value procedure(Json::objectValue);
+  procedure["goal"] = "encender las luces del salon";
+  const auto procedureJson =
+      envelopeOf(post("/memory/v1/procedure-run", procedure));
+  check(procedureJson["status"].asInt() == 200 &&
+            !procedureJson["info"]["ok"].asBool() &&
+            procedureJson["info"]["output"].asString().find(
+                "no hay un procedimiento conocido") != std::string::npos,
+        "procedure.run degrades without the engine");
+
+  Json::Value durable(Json::objectValue);
+  durable["transcript"] =
+      "user: buenas tardes\n"
+      "assistant: hola, en que te ayudo\n"
+      "user: ¿qué hora es?\n"
+      "assistant: son las nueve\n"
+      "user: recuerda que mi hermana viene los domingos\n"
+      "assistant: apuntado\n";
+  durable["lang"] = "es";
+  const std::string durableText =
+      envelopeOf(post("/memory/v1/durable-transcript", durable))["info"]["text"]
+          .asString();
+  check(durableText.find("buenas tardes") != std::string::npos &&
+            durableText.find("recuerda que mi hermana viene los domingos") !=
+                std::string::npos &&
+            durableText.find("hora es") == std::string::npos,
+        "durable transcript keeps statements, drops questions");
+
+  Json::Value capture(Json::objectValue);
+  capture["text"] = "recuerda que no me gusta el pescado";
+  capture["user_id"] = probeUser;
+  capture["lang"] = "es";
+  const auto captureJson = envelopeOf(post("/memory/v1/capture", capture));
+  check(captureJson["status"].asInt() == 200 &&
+            (captureJson["info"]["outcome"] == "stored" ||
+             captureJson["info"]["outcome"] == "deferred"),
+        "capture answers with a capture outcome");
+
+  Json::Value compact(Json::objectValue);
+  compact["user_id"] = probeUser;
+  compact["transcript"] =
+      "user: recuerda que mi hermana se llama Ana\nassistant: anotado";
+  compact["lang"] = "es";
+  const auto compactJson = envelopeOf(post("/memory/v1/compact", compact));
+  check(compactJson["status"].asInt() == 200 &&
+            compactJson["info"]["queued"].asBool(),
+        "compact queues without executing inline");
+
+  return fails == 0 ? 0 : 1;
+}
+
 void usage()
 {
   std::cout << "argus-memory-probe --wipe-memory | --vocabulary-check | "
@@ -2780,7 +2969,7 @@ void usage()
                "--embed-check | --recall-bench | "
                "--vec-gate-test | --dedup-bench | --sim \"<a>\" \"<b>\" | "
                "--purge <scope> <refId> | --seed <userId> \"<memory>\" | "
-               "--tokens <text>\n";
+               "--http [host:port] | --tokens <text>\n";
 }
 
 } // namespace
@@ -2855,6 +3044,8 @@ int main(int argc, char** argv)
     return recallDemo(argv[2]);
   if (mode == "--fts-debug" && argc >= 3)
     return ftsDebug(argv[2]);
+  if (mode == "--http")
+    return httpProbe(argc >= 3 ? argv[2] : "127.0.0.1:7033");
   if (mode == "--tokens" && argc >= 3)
     return tokenDebug(argv[2]);
 
