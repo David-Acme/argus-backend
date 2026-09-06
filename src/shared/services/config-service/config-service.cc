@@ -275,6 +275,14 @@ double ConfigService::getDouble(const std::string& keyPath)
   return getValue<double>(keyPath, 0.0);
 }
 
+bool ConfigService::hasKey(const std::string& keyPath)
+{
+  std::lock_guard lock(gConfigMutex);
+  if (gRuntimeOverrides.count(keyPath) > 0)
+    return true;
+  return resolvePath(keyPath) != nullptr;
+}
+
 bool ConfigService::setBool(const std::string& keyPath, bool value)
 {
   return applyValue(keyPath, value ? "true" : "false");

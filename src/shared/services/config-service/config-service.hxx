@@ -26,6 +26,10 @@ public:
   static bool getBool(const std::string& keyPath);
   static double getDouble(const std::string& keyPath);
 
+  // True when the key exists in the loaded config (any type): distinguishes
+  // "explicitly false" from "not set" for gates with a permissive default.
+  static bool hasKey(const std::string& keyPath);
+
   // Runtime mutations: update the in-memory config AND persist the value back
   // to the source file (surgical edit, comments/formatting preserved). Return
   // false if the file could not be loaded/patched (value not persisted).

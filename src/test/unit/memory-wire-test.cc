@@ -14,6 +14,8 @@
 
 #include <json/reader.h>
 #include <json/value.h>
+#include <shared/wrapper/sqlite-stmt/sqlite-stmt.hxx>
+#include <sqlite3.h>
 #include <atomic>
 #include <chrono>
 #include <cstring>
@@ -263,6 +265,36 @@ TEST_CASE("the argus-memory internal wire serves the memory capacity")
   REQUIRE_FALSE(listeners.empty());
   const int port = listeners.front().toPort();
   REQUIRE(port > 0);
+
+  // ── store layout: the memory tables plus the memory_vec partition; the
+  // face index belongs to the legacy process (create_face_vec = false) ──
+  {
+    sqlite3* scratch = nullptr;
+    REQUIRE(sqlite3_open_v2("/tmp/f46-memory-wire/memory.db", &scratch,
+                            SQLITE_OPEN_READONLY, nullptr) == SQLITE_OK);
+    SqliteStmt stmt;
+    auto tableCount = [&](const char* name) {
+      REQUIRE(stmt.prepare(scratch,
+                           "SELECT COUNT(*) FROM sqlite_master WHERE type = "
+                           "'table' AND name = ?"));
+      stmt.bindText(1, name);
+      REQUIRE(stmt.step() == SQLITE_ROW);
+      const int64_t count = stmt.columnInt64(0);
+      stmt.finalize();
+      return count;
+    };
+    CHECK(tableCount("memory_vec") == 1);
+    CHECK(tableCount("memory_fact") == 1);
+    CHECK(tableCount("memory_episode") == 1);
+    CHECK(tableCount("memory_entity") == 1);
+    CHECK(tableCount("memory_alias") == 1);
+    CHECK(tableCount("memory_edge") == 1);
+    CHECK(tableCount("memory_procedure") == 1);
+    CHECK(tableCount("catalog_person") == 1);
+    CHECK(tableCount("catalog_camera") == 1);
+    CHECK(tableCount("face_vec") == 0);
+    sqlite3_close(scratch);
+  }
 
   // ── GET /health ───────────────────────────────────────────────────────
   const auto health = request(port, "GET", "/health", "");

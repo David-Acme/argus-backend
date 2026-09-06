@@ -24,10 +24,16 @@ bool execUnlocked(sqlite3* db, const char* sql)
 
 // The face recognition index belongs to the legacy process only; services
 // without the face stack skip it (default keeps the pre-cutover behavior).
+// TOML booleans do not surface through getString, so both shapes read.
 bool createFaceVec()
 {
-  const std::string configured = ConfigService::getString("memory.create_face_vec");
-  return configured.empty() || configured == "true";
+  if (!ConfigService::hasKey("memory.create_face_vec"))
+    return true;
+  const std::string configured =
+      ConfigService::getString("memory.create_face_vec");
+  if (!configured.empty())
+    return configured != "false";
+  return ConfigService::getBool("memory.create_face_vec");
 }
 
 } // namespace
