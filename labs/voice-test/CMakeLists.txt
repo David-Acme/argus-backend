@@ -20,6 +20,7 @@ set(VOICE_SERVICE_SRC
     ${SRC_ROOT}/shared/services/embedding/unigram-tokenizer.cc
     ${SRC_ROOT}/shared/services/intent/intent-service.cc
     ${SRC_ROOT}/shared/services/memory/memory-service.cc
+    ${SRC_ROOT}/shared/services/memory/memory-tool-descriptors.cc
     ${SRC_ROOT}/shared/services/extract/lexicon-extractor.cc
     ${SRC_ROOT}/shared/services/extract/extraction-service.cc
     ${SRC_ROOT}/shared/services/extract/temporal-resolver.cc

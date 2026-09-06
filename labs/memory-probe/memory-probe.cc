@@ -16,6 +16,7 @@
 #include <shared/services/memory/entity-resolver.hxx>
 #include <shared/services/memory/graph-recall.hxx>
 #include <shared/services/memory/memory-formation.hxx>
+#include <shared/services/memory/in-process-memory-chat.hxx>
 #include <shared/services/memory/memory-service.hxx>
 #include <shared/services/memory/phrase-catalog.hxx>
 #include <shared/vocabulary/vocabulary.hxx>
@@ -38,7 +39,8 @@ namespace
 int fails = 0;
 VecDb gVecDb;
 LlmService gLlm;
-MemoryService gMemory{gVecDb, gLlm};
+InProcessMemoryChat gMemoryChat{gLlm};
+MemoryService gMemory{gVecDb, gMemoryChat};
 EmbeddingService gEmbedding;
 
 void loadLabConfig()

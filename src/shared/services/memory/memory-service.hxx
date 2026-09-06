@@ -89,6 +89,11 @@ public:
   // Returns false when it gave up with work still pending.
   bool flushPending(int timeoutMs = 0);
 
+  // Blocks while the chat port reports busy (legacy isBusy semantics through
+  // the IMemoryChat gate). Ruling BZ: the only busy wait left; the queue
+  // itself is bounded by memory.queue_bound instead.
+  void waitForIdle(int waitMs);
+
   int64_t observeSystemEvent(const std::string& channel,
                              const std::string& summary,
                              const std::string& actor, int64_t at,
@@ -177,7 +182,6 @@ private:
   void stopWorker();
   void enqueueJob(MemoryJob job);
   void processJob(const MemoryJob& job);
-  void waitForIdle(int waitMs);
   void processCompact(const MemoryJob& job);
   void processExtract(const MemoryJob& job);
   void processProfile(const MemoryJob& job);

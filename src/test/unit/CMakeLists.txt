@@ -339,3 +339,67 @@ target_link_libraries(vision-remote-adapter-test PRIVATE argus_common
 target_compile_options(vision-remote-adapter-test PRIVATE -Wall -Wextra)
 
 add_test(NAME vision-remote-adapter-test COMMAND vision-remote-adapter-test)
+
+# The argus-memory wire contract (F4-6, Ruling BY): the real stack serves
+# the memory tool surface over the internal wire, with the frozen envelope
+# errors and the 503 gate on the unloaded stack.
+add_executable(memory-wire-test memory-wire-test.cc)
+
+target_link_libraries(memory-wire-test PRIVATE memory-core doctest::doctest)
+
+target_compile_definitions(memory-wire-test PRIVATE
+    ARGUS_TEST_MEMORY_SCHEMA="${CMAKE_SOURCE_DIR}/database/memory-schema.sql"
+    ARGUS_TEST_MEMORY_MODELS_DIR="${CMAKE_SOURCE_DIR}/models/memory"
+    ARGUS_TEST_MEMORY_EXTRACT_MODEL="${CMAKE_SOURCE_DIR}/models/extract/NuExtract-1.5-tiny-Q4_K_M.gguf")
+
+target_compile_options(memory-wire-test PRIVATE -Wall -Wextra)
+
+add_test(NAME memory-wire-test COMMAND memory-wire-test)
+
+# The catalog replica replay (Ruling BX): identity and camera change events
+# land in the replicas and the gazetteer rebuilds; the snapshot fill only
+# fires on empty tables.
+add_executable(memory-replica-test memory-replica-test.cc)
+
+target_link_libraries(memory-replica-test PRIVATE memory-core doctest::doctest)
+
+target_compile_definitions(memory-replica-test PRIVATE
+    ARGUS_TEST_MEMORY_SCHEMA="${CMAKE_SOURCE_DIR}/database/memory-schema.sql")
+
+target_compile_options(memory-replica-test PRIVATE -Wall -Wextra)
+
+add_test(NAME memory-replica-test COMMAND memory-replica-test)
+
+# The queue back-pressure (Ruling BZ): waitForIdle rides the chat port and
+# the bounded queue drops derived-data jobs instead of growing.
+add_executable(memory-backpressure-test memory-backpressure-test.cc)
+
+target_link_libraries(memory-backpressure-test PRIVATE memory-core
+    doctest::doctest)
+
+target_compile_definitions(memory-backpressure-test PRIVATE
+    ARGUS_TEST_MEMORY_SCHEMA="${CMAKE_SOURCE_DIR}/database/memory-schema.sql"
+    ARGUS_TEST_MEMORY_MODELS_DIR="${CMAKE_SOURCE_DIR}/models/memory")
+
+target_compile_options(memory-backpressure-test PRIVATE -Wall -Wextra)
+
+add_test(NAME memory-backpressure-test COMMAND memory-backpressure-test)
+
+# The remote memory adapter (Ruling BY): the shared descriptors registered
+# onto the tool registry, the wire forwarding and the degrade-without-crash
+# paths when argus-memory is down.
+add_executable(memory-remote-adapter-test memory-remote-adapter-test.cc
+    ${SRC_ROOT}/shared/services/config-service/config-service.cc
+    ${SRC_ROOT}/shared/services/memory/remote/memory-remote.cc
+    ${SRC_ROOT}/shared/services/memory/remote/remote-memory-service-adapter.cc
+    ${SRC_ROOT}/shared/services/memory/memory-tool-descriptors.cc
+    ${SRC_ROOT}/shared/services/tools/tool-registry.cc)
+
+target_include_directories(memory-remote-adapter-test PRIVATE ${SRC_ROOT})
+
+target_link_libraries(memory-remote-adapter-test PRIVATE Drogon::Drogon
+    tomlplusplus::tomlplusplus doctest::doctest)
+
+target_compile_options(memory-remote-adapter-test PRIVATE -Wall -Wextra)
+
+add_test(NAME memory-remote-adapter-test COMMAND memory-remote-adapter-test)

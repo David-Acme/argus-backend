@@ -93,9 +93,20 @@ CaptureResult RemoteMemoryServiceAdapter::captureExplicit(
   body["text"] = input.text;
   body["lang"] = input.lang;
   body["user_id"] = static_cast<Json::Int64>(input.userId);
-  const Json::Value info = client_->call(kCapturePath, body);
 
   CaptureResult result;
+  Json::Value info;
+  try {
+    info = client_->call(kCapturePath, body);
+  }
+  catch (const std::exception& error) {
+    // The in-process capture degrades to Rejected on a store failure; the
+    // voice turn must survive argus-memory being down the same way.
+    LOG_WARN << "RemoteMemoryServiceAdapter: capture failed (" << error.what()
+             << ")";
+    return result;
+  }
+
   const std::string outcome = info.get("outcome", "rejected").asString();
   if (outcome == "stored")
     result.outcome = CaptureOutcome::Stored;
@@ -127,7 +138,14 @@ std::string RemoteMemoryServiceAdapter::durableTranscript(
   Json::Value body(Json::objectValue);
   body["transcript"] = transcript;
   body["lang"] = lang;
-  return client_->call(kDurableTranscriptPath, body)
-      .get("text", "")
-      .asString();
+  try {
+    return client_->call(kDurableTranscriptPath, body)
+        .get("text", "")
+        .asString();
+  }
+  catch (const std::exception& error) {
+    LOG_WARN << "RemoteMemoryServiceAdapter: durable transcript failed ("
+             << error.what() << ")";
+    return {};
+  }
 }

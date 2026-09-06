@@ -987,6 +987,16 @@ tools::ToolResult MemoryService::handleRemember(const tools::ToolCall& call)
   result.data["fact_id"] = static_cast<int64_t>(formed->factId);
   result.data["subject_entity_id"] =
       static_cast<int64_t>(formed->subjectEntityId);
+  // The vector index rides the worker queue like every other capture; the
+  // tool call is synchronous but the embedding is not.
+  enqueueJob({.kind = MemoryJob::Kind::Embed,
+              .memoryId = formed->factId,
+              .userId = 0,
+              .text = {},
+              .lang = {},
+              .preferIdle = false,
+              .salient = false,
+              .episode = false});
   result.output = "hecho guardado (id " + std::to_string(formed->factId) + ")";
   return result;
 }

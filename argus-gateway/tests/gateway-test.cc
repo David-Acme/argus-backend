@@ -283,6 +283,23 @@ TEST_CASE("fan-out parses the sync-change wire contract")
       json_util::fromString(R"({"action":"disconnect","operation":7,"option":"user","info":{}})")));
 }
 
+TEST_CASE("identity change events never fan out to the client sockets")
+{
+  // argus.identity.v1.change rides the sync wildcard, but its wire contract
+  // is an identity row diff, not a sync-change: the gateway must not be able
+  // to forward it to the /user rooms (Ruling BX — the replicas are the only
+  // consumer).
+  const Json::Value identity = json_util::fromString(
+      R"({"kind":"identity","table":"person","id":7,"deleted":false,
+          "row":{"id":7,"user_id":42,"name":"Ana Garcia"}})");
+  CHECK(sync_fan_out::parseEvent(identity) == std::nullopt);
+
+  const Json::Value tombstone = json_util::fromString(
+      R"({"kind":"identity","table":"person","id":7,"deleted":true,
+          "row":{}})");
+  CHECK(sync_fan_out::parseEvent(tombstone) == std::nullopt);
+}
+
 TEST_CASE("fan-out routing table matches the legacy SocketService mapping")
 {
   const auto emit = [](SyncOperation operation, TableName table) {

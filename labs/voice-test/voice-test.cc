@@ -23,6 +23,7 @@
 #include <shared/services/conversation/conversation-service.hxx>
 #include <shared/services/intent/intent-service.hxx>
 #include <shared/services/llm/llm-service.hxx>
+#include <shared/services/memory/in-process-memory-chat.hxx>
 #include <shared/services/memory/memory-service.hxx>
 #include <shared/services/reaction/reaction-engine.hxx>
 #include <shared/services/sqlite/db-service.hxx>
@@ -59,7 +60,8 @@ IntentService gIntent;
 SttService gStt;
 TtsService gTts;
 VisionService gVision;
-MemoryService gMemory{gVecDb, gLlm};
+InProcessMemoryChat gMemoryChat{gLlm};
+MemoryService gMemory{gVecDb, gMemoryChat};
 ConversationService gConv(gMemory, gLlm);
 ReactionEngine gReaction;
 constexpr size_t kMinSentenceChars = 24;
