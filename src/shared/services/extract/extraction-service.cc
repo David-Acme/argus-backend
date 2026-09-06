@@ -5,6 +5,7 @@
 #include <llama.h>
 #include <shared/services/config-service/config-service.hxx>
 #include <shared/services/extract/extract-contracts.hxx>
+#include <shared/wrapper/ai-init/ai-init.hxx>
 #include <shared/wrapper/blocking-task/blocking-task.hxx>
 #include <shared/wrapper/hardware-profile/hardware-profile.hxx>
 #include <shared/wrapper/thread-budget/thread-budget.hxx>
@@ -194,6 +195,8 @@ bool ExtractionService::ensureLoaded()
 
 bool ExtractionService::loadLocked()
 {
+  std::lock_guard<std::mutex> lock(ai_init::llamaMutex());
+
   const std::string modelPath = ConfigService::getString("extract.model_path");
   if (modelPath.empty() || !hasFile(modelPath)) {
     LOG_INFO << "ExtractionService: model absent (" << modelPath
