@@ -95,6 +95,14 @@ history_messages = 41
 top_k = 5
 
 [llm]
+# F4-5 cutover (Rulings BU/BF): with remote_url set the legacy voice session
+# streams its replies from the argus-llm service over the internal wire while
+# the in-process engine still boots for MemoryService until F4-6 — these
+# engine keys then feed the argus-llm service's own config (and keep feeding
+# the in-process engine MemoryService reaches). With remote_url empty the
+# in-process engine serves everything, exactly as before.
+remote_url = ""
+remote_timeout_ms = 120000
 model_path = "models/llm/LFM2.5-1.2B-Instruct-QAD-Q4_0.gguf"
 context_size = 32768
 max_tokens = 256

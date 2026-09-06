@@ -4,6 +4,7 @@
 #include <memory>
 #include <mutex>
 #include <shared/services/llm/llm-service.hxx>
+#include <shared/services/llm/remote/llm-remote.hxx>
 #include <shared/services/stt/remote/stt-remote.hxx>
 #include <shared/services/stt/stt-service.hxx>
 #include <shared/services/tts/remote/tts-remote.hxx>
@@ -128,6 +129,27 @@ private:
   int cachedTimeoutMs_{0};
   std::shared_ptr<const SttHttpClient> client_;
   std::string lang_;
+};
+
+// IVoiceLlm over the argus-llm internal wire (Ruling BU): active once
+// llm.remote_url is configured. The HTTP client is cached and only rebuilt
+// when the remote config changes; failures surface as exceptions to the
+// voice session's error path.
+class RemoteVoiceLlm final : public IVoiceLlm
+{
+public:
+  void chatStream(const ChatRequest& req, TokenCallback onToken) override;
+
+private:
+  // Shared snapshot of the cached client; rebuilt under the lock when
+  // llm.remote_url / llm.remote_timeout_ms changed.
+  std::shared_ptr<const LlmHttpClient>
+  clientFor(const LlmRemoteConfig& config);
+
+  mutable std::mutex mutex_;
+  std::string cachedUrl_;
+  int cachedTimeoutMs_{0};
+  std::shared_ptr<const LlmHttpClient> client_;
 };
 
 // Access to the shared AI services (initialized by the service registry).

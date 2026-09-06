@@ -374,6 +374,16 @@ void Application::registerServices()
     LOG_INFO << "TTS delegated to " << ConfigService::getString("tts.remote_url")
              << "; in-process TtsService stays uninitialized";
   }
+  // LLM cutover (Rulings BU/BF): the adapter stays boot-initialized
+  // unconditionally because MemoryService still calls the in-process
+  // engine until F4-6; with llm.remote_url set the voice session streams
+  // from argus-llm over HTTP instead.
+  if (!ConfigService::getString("llm.remote_url").empty()) {
+    LOG_INFO << "LLM voice delegated to "
+             << ConfigService::getString("llm.remote_url")
+             << "; in-process LlmService still boots for MemoryService "
+                "until F4-6";
+  }
   registry_.registerService(std::make_unique<LlmServiceAdapter>());
   // STT cutover (Rulings BM/BN): with stt.remote_url set the legacy skips
   // the in-process engine entirely — transcription goes to argus-stt over

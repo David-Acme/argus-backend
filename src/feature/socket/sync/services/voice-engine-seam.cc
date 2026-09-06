@@ -26,10 +26,46 @@ IVoiceTts& voiceTts()
   return localAdapter;
 }
 
+// Lazily resolved on the first call (after the boot config is loaded): the
+// argus-llm HTTP adapter when llm.remote_url is set, the in-process
+// singleton otherwise (Ruling BU; the in-process engine keeps serving
+// MemoryService until F4-6, Ruling BF).
 IVoiceLlm& voiceLlm()
 {
-  static SingletonVoiceLlm adapter;
-  return adapter;
+  static RemoteVoiceLlm remoteAdapter;
+  static SingletonVoiceLlm localAdapter;
+  if (LlmRemoteConfig::resolve().enabled())
+    return remoteAdapter;
+  return localAdapter;
+}
+
+std::shared_ptr<const LlmHttpClient>
+RemoteVoiceLlm::clientFor(const LlmRemoteConfig& config)
+{
+  if (!client_ || config.url != cachedUrl_ ||
+      config.timeoutMs != cachedTimeoutMs_) {
+    cachedUrl_ = config.url;
+    cachedTimeoutMs_ = config.timeoutMs;
+    client_ = std::make_shared<LlmHttpClient>(config.url, config.timeoutMs);
+  }
+  return client_;
+}
+
+void RemoteVoiceLlm::chatStream(const ChatRequest& req, TokenCallback onToken)
+{
+  const LlmRemoteConfig config = LlmRemoteConfig::resolve();
+  if (!config.enabled())
+    throw std::runtime_error("llm.remote_url is not configured");
+
+  std::shared_ptr<const LlmHttpClient> client;
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    client = clientFor(config);
+  }
+  LlmStreamInput input;
+  input.request = req;
+  input.onToken = std::move(onToken);
+  client->chatStream(input);
 }
 
 std::shared_ptr<const SttHttpClient>
