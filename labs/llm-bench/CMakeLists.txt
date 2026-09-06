@@ -5,6 +5,7 @@ set(LLM_BENCH_SRC
 set(LLM_BENCH_SERVICE_SRC
     ${SRC_ROOT}/shared/services/config-service/config-service.cc
     ${SRC_ROOT}/shared/services/llm/llm-service.cc
+    ${SRC_ROOT}/shared/services/llm/remote/llm-remote.cc
     ${SRC_ROOT}/shared/services/vision/vision-service.cc
     ${SRC_ROOT}/shared/wrapper/thread-budget/thread-budget.cc
     ${SRC_ROOT}/shared/wrapper/hardware-profile/hardware-profile.cc

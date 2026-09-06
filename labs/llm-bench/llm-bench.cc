@@ -6,10 +6,12 @@
 #include <cstring>
 #include <fstream>
 #include <iostream>
+#include <memory>
 #include <numeric>
 #include <opencv2/imgproc.hpp>
 #include <shared/services/config-service/config-service.hxx>
 #include <shared/services/llm/llm-service.hxx>
+#include <shared/services/llm/remote/llm-remote.hxx>
 #include <shared/services/vision/vision-service.hxx>
 #include <stdexcept>
 #include <string>
@@ -104,6 +106,11 @@ std::string writeTemporaryConfig(const std::string& section,
   return path;
 }
 
+// Set by --http: the LLM half runs against a remote argus-llm over the
+// internal wire instead of the in-process engine (no gLlm init, no VLM).
+std::string gHttpUrl;
+std::unique_ptr<LlmHttpClient> gHttpClient;
+
 GenStats runLlm(const std::string& systemPrompt, const std::string& userText,
                 int maxTokens)
 {
@@ -120,7 +127,7 @@ GenStats runLlm(const std::string& systemPrompt, const std::string& userText,
   auto tPrev = t0;
   bool first = true;
 
-  gLlm.chatStream(req, [&](const std::string& tok, bool done) {
+  const auto onToken = [&](const std::string& tok, bool done) {
     if (done)
       return;
     const auto now = Clock::now();
@@ -134,7 +141,17 @@ GenStats runLlm(const std::string& systemPrompt, const std::string& userText,
     tPrev = now;
     st.text += tok;
     ++st.tokens;
-  });
+  };
+
+  if (gHttpClient) {
+    LlmStreamInput input;
+    input.request = req;
+    input.onToken = onToken;
+    gHttpClient->chatStream(input);
+  }
+  else {
+    gLlm.chatStream(req, onToken);
+  }
 
   st.totalMs = msSince(t0);
   return st;
@@ -191,7 +208,10 @@ std::vector<unsigned char> syntheticImage(int w, int h)
 void benchLlm()
 {
   std::printf("\n=== LLM ===\n");
-  if (!gLlm.isLoaded()) {
+  if (!gHttpUrl.empty()) {
+    std::printf("  remote: %s\n", gHttpUrl.c_str());
+  }
+  else if (!gLlm.isLoaded()) {
     std::printf("  NOT LOADED\n");
     return;
   }
@@ -473,16 +493,31 @@ int main(int argc, char** argv)
       if (memRounds < 1)
         memRounds = 1;
     }
+    else if (std::strcmp(argv[i], "--http") == 0 && i + 1 < argc) {
+      gHttpUrl = argv[++i];
+      doLlm = true;
+    }
   }
   if (!doLlm && !doVlm && !doMemory)
     doLlm = doVlm = true;
+
+  // The --http mode benches the LLM half alone against a remote argus-llm:
+  // the in-process engine stays uninitialized and VLM co-residency is
+  // measured separately with the direct mode.
+  if (!gHttpUrl.empty())
+    doVlm = false;
 
   ConfigService::load(gTemporaryConfigPath.empty() ? "config.toml"
                                                    : gTemporaryConfigPath);
 
   const int64_t rss0 = currentRssKb();
 
-  if (doLlm) {
+  if (!gHttpUrl.empty()) {
+    gHttpClient =
+        std::make_unique<LlmHttpClient>(gHttpUrl, 120000);
+    std::printf("llm remote: %s\n", gHttpUrl.c_str());
+  }
+  else if (doLlm) {
     auto t0 = Clock::now();
     gLlm.init();
     std::printf("llm init: %.0f ms (rss +%lld KB)\n", msSince(t0),
@@ -513,7 +548,7 @@ int main(int argc, char** argv)
 
   if (doVlm)
     gVision.shutdown();
-  if (doLlm)
+  if (doLlm && !gHttpClient)
     gLlm.shutdown();
   return 0;
 }
