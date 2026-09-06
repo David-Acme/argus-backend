@@ -95,6 +95,11 @@ TEST_CASE("processFrame aggregates detections over the window")
   inputs.objects.maxFpsInference = 2.0;
   inputs.operator_.aggregationWindowMs = 80;
   inputs.operator_.cooldownMs = 60000;
+  // Pin the night window off (start == end): the day-rule assertions below
+  // must not depend on the wall clock at which the suite runs. The night
+  // rules themselves are covered by event-intelligence-test.
+  inputs.operator_.nightStartHour = 22;
+  inputs.operator_.nightEndHour = 22;
 
   CameraOperatorService service(inputs);
 
