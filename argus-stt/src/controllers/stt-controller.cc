@@ -1,6 +1,6 @@
 #include "stt-controller.hxx"
 
-#include <shared/services/config-service/config-service.hxx>
+#include <shared/services/stt/remote/stt-remote.hxx>
 #include <shared/services/stt/stt-service.hxx>
 #include <shared/wrapper/api-response/api-response.hxx>
 
@@ -14,24 +14,16 @@ namespace
 {
 constexpr const char* kPcmMime = "audio/x-argus-pcm-s16";
 
-// Default language for the "" param (the wire's documented semantic: an
-// empty lang resolves from stt.language, Spanish fallback).
-std::string configLanguage()
-{
-  const std::string lang = ConfigService::getString("stt.language");
-  return lang.empty() ? std::string("es") : lang;
-}
-
 // The voice session feeds float samples; its own frame conversion is
-// int16/32768 (voice-session-service.cc), so the inverse maps back losslessly
-// up to quantization.
+// int16/kPcmScale (voice-session-service.cc), so the inverse maps back
+// losslessly up to quantization.
 std::vector<float> pcmFromBytes(std::string_view bytes)
 {
   std::vector<float> samples(bytes.size() / sizeof(int16_t));
   for (size_t i = 0; i < samples.size(); ++i) {
     int16_t raw = 0;
     std::memcpy(&raw, bytes.data() + i * sizeof(int16_t), sizeof(raw));
-    samples[i] = static_cast<float>(raw) / 32768.0F;
+    samples[i] = static_cast<float>(raw) / kPcmScale;
   }
   return samples;
 }
@@ -72,11 +64,12 @@ SttController::transcribe(drogon::HttpRequestPtr req)
   }
 
   // Ruling BE: one global recognizer; a lang different from the current one
-  // rebuilds it (empty resolves from stt.language). Unsupported langs are a
-  // 422, mirroring SttService::setLanguage's accepted set.
+  // rebuilds it inside the transcribe's blocking leg (never on this IO
+  // thread). Unsupported langs are a 422, mirroring SttService::setLanguage's
+  // accepted set; empty resolves from stt.language.
   const std::string lang = langOf(req);
-  const std::string effective = lang.empty() ? configLanguage() : lang;
-  if (effective != stt.language() && !stt.setLanguage(effective)) {
+  const std::string effective = lang.empty() ? stt.configLanguage() : lang;
+  if (!stt.isSupportedLanguage(effective)) {
     Json::Value fields(Json::objectValue);
     fields["lang"] = "unsupported language (es, en, auto)";
     co_return ApiResponse::validationError(fields);
@@ -84,7 +77,7 @@ SttController::transcribe(drogon::HttpRequestPtr req)
 
   const std::vector<float> samples = pcmFromBytes(body);
   const auto t0 = std::chrono::steady_clock::now();
-  std::string text = co_await stt.transcribeAsync(samples, 16000);
+  std::string text = co_await stt.transcribeAsync(samples, kWireSampleRate, lang);
   const double ms =
       std::chrono::duration<double, std::milli>(
           std::chrono::steady_clock::now() - t0)
@@ -103,7 +96,7 @@ SttController::engine(drogon::HttpRequestPtr)
   auto& stt = SttService::instance();
   Json::Value info(Json::objectValue);
   info["language"] = stt.language();
-  info["defaultLanguage"] = configLanguage();
+  info["defaultLanguage"] = stt.configLanguage();
   info["loaded"] = stt.isLoaded();
   co_return ApiResponse::ok(info);
 }

@@ -30,6 +30,12 @@ public:
 
   static SttService& instance();
 
+  // Default language for a fresh recognizer (stt.language, Spanish fallback).
+  static std::string configLanguage();
+
+  // The language codes setLanguage accepts ("es", "en", "auto").
+  static bool isSupportedLanguage(const std::string& lang);
+
   void init();
   void shutdown();
 
@@ -44,10 +50,13 @@ public:
   // Language the current recognizer was built with ("" when not loaded).
   std::string language() const;
 
-  // Coroutine variant: runs inference off the event loop.
+  // Coroutine variant: runs inference off the event loop. An empty lang
+  // resolves from stt.language; a different supported language rebuilds the
+  // recognizer inside the blocking leg (never on the event loop).
   drogon::Task<std::string>
   transcribeAsync(const std::vector<float>& audioSamples,
-                  int32_t sampleRate = 16000);
+                  int32_t sampleRate = 16000,
+                  const std::string& lang = "");
 
   bool isLoaded() const;
 

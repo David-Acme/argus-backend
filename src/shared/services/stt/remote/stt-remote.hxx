@@ -5,6 +5,12 @@
 #include <string>
 #include <vector>
 
+// The internal wire contract (Ruling BL): 16 kHz mono s16 PCM, with the
+// float side scaled by /32768 exactly like the voice session's own WS-frame
+// conversion, so A/B text equality holds up to quantization.
+inline constexpr int32_t kWireSampleRate = 16000;
+inline constexpr float kPcmScale = 32768.0F;
+
 // Cutover plumbing for the STT engine (Rulings BM/BN): the legacy voice
 // session transcribes in-process until stt.remote_url is configured; from
 // then on every turn is an HTTP call to argus-stt (:7030) and a down service

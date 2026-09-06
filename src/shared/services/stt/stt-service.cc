@@ -18,13 +18,6 @@ std::string modelsDir()
   return dir.empty() ? std::string("models/stt") : dir;
 }
 
-// Default language for a fresh recognizer (stt.language, Spanish fallback).
-std::string configLanguage()
-{
-  const std::string lang = ConfigService::getString("stt.language");
-  return lang.empty() ? std::string("es") : lang;
-}
-
 SttEngine resolveEngine()
 {
   const std::string e = ConfigService::getString("stt.engine");
@@ -128,6 +121,17 @@ SttService& SttService::instance()
   return service;
 }
 
+std::string SttService::configLanguage()
+{
+  const std::string lang = ConfigService::getString("stt.language");
+  return lang.empty() ? std::string("es") : lang;
+}
+
+bool SttService::isSupportedLanguage(const std::string& lang)
+{
+  return lang == "es" || lang == "en" || lang == "auto";
+}
+
 void SttService::init()
 {
   try {
@@ -173,7 +177,7 @@ void SttService::init()
 bool SttService::setLanguage(const std::string& lang)
 {
   std::lock_guard<std::mutex> lock(mutex_);
-  if (lang != "es" && lang != "en" && lang != "auto")
+  if (!isSupportedLanguage(lang))
     return false;
   auto recognizer = createRecognizer(lang);
   if (!recognizer)
@@ -243,10 +247,17 @@ std::string SttService::transcribe(const std::vector<float>& audioSamples,
 
 drogon::Task<std::string>
 SttService::transcribeAsync(const std::vector<float>& audioSamples,
-                            int32_t sampleRate)
+                            int32_t sampleRate, const std::string& lang)
 {
   co_return co_await BlockingTask<std::string>(
-      [this, audioSamples, sampleRate]() {
+      [this, audioSamples, sampleRate, lang]() {
+        // Ruling BE: one global recognizer, rebuilt inside the blocking leg
+        // only when the effective language differs. A failed rebuild falls
+        // back to the current recognizer, like the voice session does.
+        const std::string effective = lang.empty() ? configLanguage() : lang;
+        if (effective != language() && !setLanguage(effective))
+          LOG_WARN << "STT language switch to " << effective
+                   << " failed; transcribing with the current recognizer";
         return transcribe(audioSamples, sampleRate);
       });
 }

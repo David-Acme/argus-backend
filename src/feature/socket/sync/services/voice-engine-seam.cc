@@ -50,7 +50,7 @@ std::string RemoteVoiceStt::transcribe(const std::vector<float>& audioSamples,
   const SttRemoteConfig config = SttRemoteConfig::resolve();
   if (!config.enabled())
     throw std::runtime_error("stt.remote_url is not configured");
-  if (sampleRate != 16000)
+  if (sampleRate != kWireSampleRate)
     throw std::runtime_error("argus-stt wire requires 16 kHz mono PCM");
 
   std::shared_ptr<const SttHttpClient> client;

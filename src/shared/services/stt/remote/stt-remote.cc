@@ -28,7 +28,7 @@ constexpr const char* kPcmMime = "audio/x-argus-pcm-s16";
 int16_t sampleFromFloat(float value)
 {
   const float clamped = std::max(-1.0F, std::min(1.0F, value));
-  const long scaled = std::lround(clamped * 32768.0F);
+  const long scaled = std::lround(clamped * kPcmScale);
   return static_cast<int16_t>(std::clamp(scaled, -32768L, 32767L));
 }
 

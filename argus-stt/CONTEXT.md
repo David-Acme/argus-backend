@@ -25,7 +25,8 @@ pattern (F4-2) one engine later.
     (`?lang=es`) or the `lang` header; `""` resolves from the service's
     `stt.language`. Response is the frozen envelope with
     `info.text`; a `lang` different from the current recognizer language
-    rebuilds the recognizer (the legacy global semantics, ledgered as the
+    rebuilds the recognizer inside the transcribe's blocking leg — never on
+    the Drogon IO thread (the legacy global semantics, ledgered as the
     BE contention, not fixed here). Latency is logged per request
     (`samples`, `lang`, `ms`).
   - `GET /stt/v1/config` — `{language, defaultLanguage, loaded}`
