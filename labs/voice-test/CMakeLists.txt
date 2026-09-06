@@ -9,6 +9,7 @@ set(VOICE_SERVICE_SRC
     ${SRC_ROOT}/shared/services/config-service/config-service.cc
     ${SRC_ROOT}/shared/services/llm/llm-service.cc
     ${SRC_ROOT}/shared/services/stt/stt-service.cc
+    ${SRC_ROOT}/shared/services/stt/remote/stt-remote.cc
     ${SRC_ROOT}/shared/services/tts/tts-service.cc
     ${SRC_ROOT}/shared/services/tts/tts-engine.cc
     ${SRC_ROOT}/shared/services/tts/onnx-utils.cc

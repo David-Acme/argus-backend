@@ -10,6 +10,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <deque>
 #include <fstream>
 #include <iostream>
@@ -30,6 +31,7 @@
 #include <shared/services/stream/go2rtc-manager.hxx>
 #include <shared/services/stream/media-relay.hxx>
 #include <shared/services/stream/upstream-http.hxx>
+#include <shared/services/stt/remote/stt-remote.hxx>
 #include <shared/services/stt/stt-service.hxx>
 #include <shared/services/tapo/tapo-talk-client.hxx>
 #include <shared/services/tts/onnx-utils.hxx>
@@ -675,6 +677,64 @@ int runAudioDump(const std::string& rtspUrl, const std::string& path)
   return 0;
 }
 
+// --stt-http <url> <wav>: transcribes a 16 kHz mono s16 wav through the
+// argus-stt internal wire (F4-3) instead of the in-process engine. The lang
+// rides the query; empty keeps the service's stt.language default.
+int runSttWireCheck(const std::string& baseUrl, const std::string& wavPath)
+{
+  std::ifstream in(wavPath, std::ios::binary);
+  if (!in) {
+    std::cerr << "cannot open " << wavPath << "\n";
+    return 1;
+  }
+  const std::string data((std::istreambuf_iterator<char>(in)),
+                         std::istreambuf_iterator<char>());
+  std::string::size_type cursor = 12;
+  std::string::size_type dataStart = std::string::npos;
+  uint32_t dataSize = 0;
+  while (cursor + 8 <= data.size()) {
+    const std::string id(data.data() + cursor, 4);
+    const uint32_t size = *reinterpret_cast<const uint32_t*>(
+        data.data() + cursor + 4);
+    if (id == "data") {
+      dataStart = cursor + 8;
+      dataSize = size;
+      break;
+    }
+    cursor += 8 + size + (size & 1);
+  }
+  if (dataStart == std::string::npos) {
+    std::cerr << "no data chunk in " << wavPath << "\n";
+    return 1;
+  }
+  std::vector<float> samples(dataSize / 2);
+  for (size_t i = 0; i < samples.size(); ++i) {
+    int16_t raw = 0;
+    std::memcpy(&raw, data.data() + dataStart + i * 2, 2);
+    samples[i] = static_cast<float>(raw) / 32768.0F;
+  }
+
+  try {
+    SttHttpClient client(baseUrl, 30000);
+    const auto t0 = std::chrono::steady_clock::now();
+    const std::string text = client.transcribe(
+        samples, ConfigService::getString("stt.language"));
+    const double ms =
+        std::chrono::duration<double, std::milli>(
+            std::chrono::steady_clock::now() - t0)
+            .count();
+    std::cout << "argus-stt wire: " << baseUrl << "\n"
+              << "samples=" << samples.size() << " ms=" << static_cast<int>(ms)
+              << "\n"
+              << "Transcription: [" << text << "]\n";
+  }
+  catch (const std::exception& e) {
+    std::cerr << "stt wire failed: " << e.what() << "\n";
+    return 1;
+  }
+  return 0;
+}
+
 int runTextChat(int64_t memoryUserId, const std::string& langCode,
                 bool enableIntent)
 {
@@ -1177,6 +1237,10 @@ int main(int argc, char** argv)
         return 1;
       }
       return runAudioDump(camRtspSub, argv[++i]);
+    }
+    if (std::string(argv[i]) == "--stt-http" && i + 2 < argc) {
+      Go2rtcManager::instance().shutdown();
+      return runSttWireCheck(argv[i + 1], argv[i + 2]);
     }
     if (std::string(argv[i]) == "--camera") {
       useCamera = true;
