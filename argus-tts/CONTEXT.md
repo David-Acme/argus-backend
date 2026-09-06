@@ -14,7 +14,9 @@ and instead call it over the internal wire.
   this binary via the F2-1 PORTED pattern), loaded at boot from the shared
   `models/tts` tree (`tts.models_dir`; the build symlinks `../models`
   next to the binary). Boot aborts if the engine fails to load — the
-  service is useless without its capacity.
+  service is useless without its capacity. The capability tier is derived
+  without a Vulkan probe (no ncnn here), so `tts.steps_cap` pins the
+  legacy denoising-steps ceiling on GPU hosts.
 - **The internal wire (Ruling BH)**:
   - `POST /tts/v1/synthesize` → binary float32 PCM,
     `audio/x-argus-pcm-f32` + `X-Argus-Sample-Rate`.

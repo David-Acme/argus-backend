@@ -74,6 +74,10 @@ public:
 
   static const std::vector<std::string>& supportedLangs();
 
+  // Denoising-steps ceiling: tier-derived, overridable with tts.steps_cap so
+  // an extracted deployment (no Vulkan probe) can pin the legacy cap.
+  static int effectiveStepsCap();
+
 private:
   static int resolveSteps(TtsQuality quality);
   const Style& resolveVoice(const std::string& voiceId);

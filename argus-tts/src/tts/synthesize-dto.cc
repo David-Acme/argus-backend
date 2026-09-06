@@ -2,11 +2,10 @@
 
 namespace
 {
-// Mirrors the TtsLang enumerators (EN..NA); used to map the wire language
-// code onto the engine enum.
+// Maps the wire language code onto the engine enum across the full TtsLang set.
 TtsLang ttsLangFromCode(const std::string& code)
 {
-  for (int i = 0; i < 32; ++i) {
+  for (int i = 0; i < kTtsLangCount; ++i) {
     if (code == langCode(static_cast<TtsLang>(i)))
       return static_cast<TtsLang>(i);
   }

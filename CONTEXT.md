@@ -2480,6 +2480,12 @@ camera-control routes against camera.db.
   boots init only while `tts.remote_url` is empty (boot-init gate, Ruling BJ).
 - **Compose note.** argus-tts needs the models volume mounted (`models/tts`)
   and, like the other capacities, must not open any database.
+- **Steps cap pin.** argus-tts derives its capability tier without a Vulkan
+  probe (it links no ncnn), so `deriveTier` always lands on Low and the
+  tier-derived denoising-steps ceiling is 8; the legacy on a Vulkan host
+  reaches 12/16. `tts.steps_cap` (both config templates) pins the ceiling to
+  the legacy value (12 = Balanced, 16 = High); unset keeps the
+  tier-derived cap (`TtsService::effectiveStepsCap`, unit-tested).
 - `labs/tts-probe` gained `--http <url>`: probes a running argus-tts over
   the wire (no local models needed); without the flag it drives the
   in-process engine as before.

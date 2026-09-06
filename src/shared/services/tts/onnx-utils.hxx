@@ -46,6 +46,10 @@ enum class TtsLang
   NA
 };
 
+// Enumerator count (EN..NA): the wire language mapping iterates the full set.
+constexpr int kTtsLangCount = static_cast<int>(TtsLang::NA) + 1;
+static_assert(kTtsLangCount == 32, "langCode/supportedLangCodes cover TtsLang");
+
 constexpr const char* langCode(TtsLang lang)
 {
   switch (lang) {

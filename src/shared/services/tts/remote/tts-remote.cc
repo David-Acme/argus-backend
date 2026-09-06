@@ -3,11 +3,15 @@
 #include <shared/services/config-service/config-service.hxx>
 
 #include <arpa/inet.h>
+#include <fcntl.h>
+#include <poll.h>
 #include <json/json.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
 #include <sys/socket.h>
 #include <unistd.h>
+
+#include <cerrno>
 
 #include <cctype>
 #include <chrono>
@@ -97,11 +101,35 @@ int connectLoopback(const std::string& host, int port, int timeoutMs)
   sockaddr_in addr{};
   addr.sin_family = AF_INET;
   addr.sin_port = htons(static_cast<uint16_t>(port));
-  if (::inet_pton(AF_INET, host.c_str(), &addr.sin_addr) != 1 ||
-      ::connect(fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) != 0) {
+  if (::inet_pton(AF_INET, host.c_str(), &addr.sin_addr) != 1) {
     ::close(fd);
     return -1;
   }
+
+  // Non-blocking connect + poll: the timeout bounds the connect phase too
+  // (SO_SNDTIMEO/SO_RCVTIMEO alone never do).
+  const int flags = ::fcntl(fd, F_GETFL, 0);
+  ::fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+  if (::connect(fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) != 0 &&
+      errno != EINPROGRESS) {
+    ::close(fd);
+    return -1;
+  }
+  pollfd pfd{};
+  pfd.fd = fd;
+  pfd.events = POLLOUT;
+  if (::poll(&pfd, 1, timeoutMs) != 1) {
+    ::close(fd);
+    return -1;
+  }
+  int soError = 0;
+  socklen_t len = sizeof(soError);
+  if (::getsockopt(fd, SOL_SOCKET, SO_ERROR, &soError, &len) != 0 ||
+      soError != 0) {
+    ::close(fd);
+    return -1;
+  }
+  ::fcntl(fd, F_SETFL, flags);
 
   timeval tv{};
   tv.tv_sec = timeoutMs / 1000;
@@ -141,19 +169,17 @@ Address parseUrl(const std::string& url)
   return address;
 }
 
-std::string requestHead(const std::string& method, const Address& address,
-                        const std::string& path, size_t bodySize,
-                        bool closeConnection)
+std::string requestHead(const WireRequest& request, const Address& address)
 {
-  std::string head = method + " " + path + " HTTP/1.1\r\n";
+  std::string head = request.method + " " + request.path + " HTTP/1.1\r\n";
   head += "Host: " + address.host + "\r\n";
-  if (bodySize > 0) {
+  if (!request.body.empty()) {
     head += "Content-Type: application/json\r\n";
-    head += "Content-Length: " + std::to_string(bodySize) + "\r\n";
+    head += "Content-Length: " + std::to_string(request.body.size()) + "\r\n";
   }
   // The stream leg must keep the connection open: Drogon refuses to chunk
   // a Connection-close response.
-  if (closeConnection)
+  if (request.closeConnection)
     head += "Connection: close\r\n";
   head += "\r\n";
   return head;
@@ -276,18 +302,16 @@ TtsHttpClient::TtsHttpClient(std::string baseUrl, int timeoutMs)
     throw std::runtime_error("argus-tts remote_url has no host");
 }
 
-TtsHttpClient::RawResponse TtsHttpClient::exchange(const std::string& method,
-                                                   const std::string& path,
-                                                   const std::string& body) const
+TtsHttpClient::RawResponse TtsHttpClient::exchange(
+    const WireRequest& request) const
 {
   const Address address = parseUrl(baseUrl_);
   const SocketGuard fd(connectLoopback(address.host, address.port, timeoutMs_));
   if (fd.get() < 0)
     throw std::runtime_error("argus-tts unreachable at " + baseUrl_);
 
-  const std::string head =
-      requestHead(method, address, path, body.size(), true);
-  sendAll(fd.get(), head + body);
+  const std::string head = requestHead(request, address);
+  sendAll(fd.get(), head + request.body);
 
   const auto deadline =
       std::chrono::steady_clock::now() +
@@ -311,18 +335,17 @@ TtsHttpClient::RawResponse TtsHttpClient::exchange(const std::string& method,
           .body = wire.substr(parsed.bodyStart, parsed.contentLength)};
 }
 
-void TtsHttpClient::stream(const std::string& method, const std::string& path,
-                           const std::string& body,
-                           const std::function<void(const char*, size_t)>& onChunk) const
+void TtsHttpClient::stream(
+    const WireRequest& request,
+    const std::function<void(const char*, size_t)>& onChunk) const
 {
   const Address address = parseUrl(baseUrl_);
   const SocketGuard fd(connectLoopback(address.host, address.port, timeoutMs_));
   if (fd.get() < 0)
     throw std::runtime_error("argus-tts unreachable at " + baseUrl_);
 
-  const std::string head =
-      requestHead(method, address, path, body.size(), false);
-  sendAll(fd.get(), head + body);
+  const std::string head = requestHead(request, address);
+  sendAll(fd.get(), head + request.body);
 
   const auto deadline =
       std::chrono::steady_clock::now() +
@@ -388,7 +411,9 @@ void TtsHttpClient::stream(const std::string& method, const std::string& path,
 
 float TtsHttpClient::defaultSpeed() const
 {
-  const RawResponse response = exchange("GET", "/tts/v1/config", "");
+  const RawResponse response = exchange(
+      {.method = "GET", .path = "/tts/v1/config", .body = "",
+       .closeConnection = true});
   Json::Value json;
   Json::Reader reader;
   if (!reader.parse(response.body, json) || !json["info"].isObject() ||
@@ -399,7 +424,9 @@ float TtsHttpClient::defaultSpeed() const
 
 int TtsHttpClient::sampleRate() const
 {
-  const RawResponse response = exchange("GET", "/tts/v1/config", "");
+  const RawResponse response = exchange(
+      {.method = "GET", .path = "/tts/v1/config", .body = "",
+       .closeConnection = true});
   Json::Value json;
   Json::Reader reader;
   if (!reader.parse(response.body, json) || !json["info"].isObject() ||
@@ -411,7 +438,10 @@ int TtsHttpClient::sampleRate() const
 std::vector<float> TtsHttpClient::synthesize(const TtsRequest& req) const
 {
   const RawResponse response =
-      exchange("POST", "/tts/v1/synthesize", jsonBody(req));
+      exchange({.method = "POST",
+                .path = "/tts/v1/synthesize",
+                .body = jsonBody(req),
+                .closeConnection = true});
   return pcmFromBytes(response.body);
 }
 
@@ -419,7 +449,10 @@ void TtsHttpClient::synthesizeStream(const TtsRequest& req,
                                      TtsChunkCallback onChunk) const
 {
   std::vector<float> pending;
-  stream("POST", "/tts/v1/synthesize-stream", jsonBody(req),
+  stream({.method = "POST",
+          .path = "/tts/v1/synthesize-stream",
+          .body = jsonBody(req),
+          .closeConnection = false},
          [&pending, &onChunk](const char* data, size_t size) {
            if (size % sizeof(float) != 0)
              throw std::runtime_error(

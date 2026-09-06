@@ -8,6 +8,7 @@
 #include <filter/valid-json/valid-json-filter.hxx>
 #include <shared/services/config-service/config-service.hxx>
 #include <shared/services/tts/tts-service.hxx>
+#include <shared/wrapper/hardware-profile/hardware-profile.hxx>
 
 #include <arpa/inet.h>
 #include <netinet/in.h>
@@ -221,6 +222,16 @@ TEST_CASE("the argus-tts internal wire serves the legacy adapters")
   ConfigService::load(kScratchConfig);
   ConfigService::setRuntimeString("tts.models_dir",
                                   ARGUS_TEST_TTS_MODELS_DIR);
+
+  // tts.steps_cap pins the tier-derived ceiling: it wins over deriveTier
+  // when set, and the default (unset) keeps the HardwareProbe cap.
+  ConfigService::setRuntimeString("tts.steps_cap", "16");
+  CHECK(TtsService::effectiveStepsCap() == 16);
+  // "0" is the unset marker for int overrides (an empty override would not
+  // parse as an int).
+  ConfigService::setRuntimeString("tts.steps_cap", "0");
+  CHECK(TtsService::effectiveStepsCap() == HardwareProbe::ttsStepsCap());
+  CHECK(TtsService::effectiveStepsCap() > 0);
 
   // The capacity boots for real: no engine, no contract.
   TtsService::instance().init();

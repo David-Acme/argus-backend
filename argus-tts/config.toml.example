@@ -16,6 +16,10 @@ quality = "auto"
 steps_low = 6
 steps_medium = 8
 steps_high = 12
+# Denoising-steps ceiling. This service derives its capability tier without
+# a Vulkan probe (it links no ncnn) and lands on Low; on GPU-equipped hosts
+# pin the legacy ceiling here (e.g. 12 for Balanced, 16 for High).
+steps_cap = 0
 speed = 1.0
 max_chunk_len = 350
 edge_silence_ms = 40

@@ -21,6 +21,16 @@ struct TtsRemoteConfig
   static TtsRemoteConfig resolve();
 };
 
+// One internal-wire exchange: method + path + optional JSON body; the stream
+// leg keeps the connection open, so it opts out of Connection: close.
+struct WireRequest
+{
+  std::string method;
+  std::string path;
+  std::string body;
+  bool closeConnection{true};
+};
+
 // HTTP client for the argus-tts internal wire (Ruling BH): the two
 // synthesize endpoints plus GET /tts/v1/config for defaultSpeed/sampleRate.
 // Throws std::runtime_error carrying the frozen envelope error on failure.
@@ -41,10 +51,8 @@ private:
     std::string body;
   };
 
-  RawResponse exchange(const std::string& method, const std::string& path,
-                       const std::string& body) const;
-  void stream(const std::string& method, const std::string& path,
-              const std::string& body,
+  RawResponse exchange(const WireRequest& request) const;
+  void stream(const WireRequest& request,
               const std::function<void(const char*, size_t)>& onChunk) const;
 
   std::string baseUrl_;

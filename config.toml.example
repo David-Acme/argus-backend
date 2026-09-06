@@ -149,6 +149,10 @@ quality = "auto"
 steps_low = 6
 steps_medium = 8
 steps_high = 12
+# Steps ceiling override: with remote_url set these engine keys feed the
+# argus-tts service, whose tier is derived without a Vulkan probe (always
+# Low); pin the legacy ceiling here (12 = Balanced, 16 = High) for parity.
+steps_cap = 0
 speed = 1.0
 max_chunk_len = 350
 edge_silence_ms = 40

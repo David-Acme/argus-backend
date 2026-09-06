@@ -247,9 +247,19 @@ TtsQuality TtsService::resolveQuality(const TtsRequest& req) const
   return autoQuality(req.text);
 }
 
+int TtsService::effectiveStepsCap()
+{
+  int cap = HardwareProbe::ttsStepsCap();
+  // argus-tts derives its tier without the Vulkan probe (it links no ncnn),
+  // which always lands on Low; tts.steps_cap pins the legacy ceiling.
+  if (const int pinned = ConfigService::getInt("tts.steps_cap"); pinned > 0)
+    cap = pinned;
+  return cap;
+}
+
 int TtsService::resolveSteps(TtsQuality quality)
 {
-  const int cap = HardwareProbe::ttsStepsCap();
+  const int cap = effectiveStepsCap();
   int low = std::clamp(ConfigService::getInt("tts.steps_low"), 1, cap);
   int medium = std::clamp(ConfigService::getInt("tts.steps_medium"), 1, cap);
   int high = std::clamp(ConfigService::getInt("tts.steps_high"), 1, cap);
