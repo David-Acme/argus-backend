@@ -42,12 +42,23 @@ own `productivity.db`.
   registered routes are out-of-contract before the cutover (same reasoning as
   argus-camera F2-1, which shipped without routes because its brief
   constrained it — this brief instead directs the port to land now).
-- **Audit/socket caveat (pre-cutover)**: the feature services publish user
-  audit diffs through `SyncAuditService::publishUsers` and emit live changes
-  through `SocketService`. Both target substrate tables/channels this
-  service does not own (Ruling AO moves the diffs to NATS emission + gateway
-  persistence at the cutover). Out-of-contract direct hits before F3-2 fail
-  there; the cutover task replaces the emission.
+- **Change emission (F3-2 cutover, Rulings AQ/Y)**: the feature services no
+  longer touch `SyncAuditService`/`SocketService` — every change goes
+  through the `user_change` sink, whose argus-productivity binding produces
+  the exact USER-SCOPED `user_audit_log` rows the legacy would have written
+  (same `changes` JSON via `JsonDiff::createFlatDiff`, same per-user
+  `userIds` expansion) and emits them over NATS (`argus.productivity.v1.change`,
+  `argus-contracts/subjects.md`). The gateway persists them verbatim into
+  identity.db; nothing audit-shaped is ever written to productivity.db.
+- **Serving live traffic (F3-2, Ruling AP)**: the gateway relays
+  `/calendar-event`, `/calendar-event-share`, `/project`,
+  `/project-member`, `/project-task` (all methods + subpaths) to this
+  service with identical paths; responses are byte-identical with the
+  legacy (envelope, statuses, CORS headers — verified live). Role checks
+  (Resident kFull / Guard read-only) and personal-table scoping stay
+  gateway-side; JWT resolution uses the read-only identity client (Ruling
+  AM). The databases open WAL with `busy_timeout`; no DDL runs at boot
+  beyond the migrate tool's schema-current check.
 - **Identity reads (Ruling AM)**: `[identity] db` opens mode=ro as the named
   identity client (`DbService::setIdentityClient` slot); `UserRepository`
   reads then resolve to identity.db, so share targets created after the

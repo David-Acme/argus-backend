@@ -222,3 +222,46 @@ proxies everything else to the legacy backend on its internal plain listener
   events count per class; a cumulative digest flushes every minute once the
   window or the silent window closes. Event payloads are data, never
   commands — no notification path can arm or trigger any audible device.
+- **Emission caveat**: the gateway never installs the `SocketService` event
+  bus, so pre-cutover the camera notifier's `createAndEmitMany` push was
+  already a no-op here (empty local user rooms, no bus to publish on). The
+  F3-2 sink seam turns that into an explicit warn instead of a silent no-op;
+  app-visible behavior is unchanged. Live camera-notification delivery to
+  the app happens through the next `/sync` pull from notification.db.
+
+## Productivity + notification cutover (F3-2): routing, funnels, named clients
+
+- **Proxy route table (Ruling AP)**: `[productivity] proxy_url` routes
+  `/calendar-event`, `/calendar-event-share`, `/project`, `/project-member`,
+  `/project-task` (every method, subpaths up to 8 segments) to
+  argus-productivity; `[notifications] proxy_url` routes `/notification`,
+  `/notification-token` (2 segments) to argus-notification. Paths are
+  relayed identical (no rewrite); exclusion coverage is enforced at boot
+  like every route target. Everything not routed to a F3 service still falls
+  through to the legacy default backend.
+- **User change funnel (Ruling AQ/Y)**: the `argus.*.v1.change` wildcard now
+  also routes `argus.productivity.v1.change` /
+  `argus.notification.v1.change` payloads to
+  `user_change_fan_out::handleUserChange`, which inserts each user-scoped
+  audit row VERBATIM into identity.db `user_audit_log` via
+  `DbService::client()` (identity client) BEFORE fanning the row out as a
+  `Log` sync event. The F3 services never persist audit rows locally — the
+  gateway is the only writer. Daily compaction of `user_audit_log` stays
+  gateway-side.
+- **Named clients (Ruling AQ)**: `[productivity] db` and
+  `[notifications] db` open read-only named clients
+  (`DbService::setProductivityClient` / `setNotificationClient`); the 7
+  productivity sync tables and the notification/notification_token sync
+  reads resolve to them. Personal-table scoping (`isPersonalTable` +
+  `ctx.sub`) and role checks stay gateway-side; `/sync` pull pages for the
+  moved tables are byte-identical with the legacy (golden-sync evidence).
+- **WAL discipline (Ruling AR)**: the gateway opens the F3 databases
+  read-only with `busy_timeout` and never runs DDL against them —
+  schema/DDL belong to the F3 services and the migrate tools.
+- **camera-notifier retarget (Ruling AR)**: the camera notifier keeps
+  running gateway-side but writes its rows through
+  `NotificationService` → `DbService::notificationClient()`
+  (notification.db), not the legacy argus.db copy.
+- **Legacy stays up, goes quiet (Ruling AS)**: the legacy keeps its whole
+  notification/productivity code; the routes are simply unreachable through
+  the gateway because the route table never sends them there.

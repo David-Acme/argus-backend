@@ -38,11 +38,23 @@ binary, own CMake preset, own `notification.db`.
   `notification.db` is a migrate-tool copy, NOT the authoritative store: the
   gateway never routes here, so the registered routes are out-of-contract
   before the cutover.
-- **Audit caveat (pre-cutover)**: `markAsRead` publishes user audit diffs
-  through `SyncAuditService::publishUsers`, which targets substrate this
-  service does not own (Ruling AO moves the diffs to NATS emission + gateway
-  persistence at the cutover). Out-of-contract direct hits before F3-2 fail
-  there; the cutover task replaces the emission.
+- **Audit emission (F3-2 cutover, Rulings AQ/Y/AR)**: `markAsRead` no longer
+  publishes through `SyncAuditService` — each change goes through the
+  `user_change` sink, whose argus-notification binding produces the exact
+  per-change rows the legacy `markAsRead` published (`userIds={userId}`,
+  `changes` JSON via `JsonDiff::createFlatDiff`, TableName::Notification)
+  and emits them over NATS (`argus.notification.v1.change`,
+  `argus-contracts/subjects.md`). The gateway persists them verbatim into
+  identity.db `user_audit_log`; nothing audit-shaped is written to
+  notification.db.
+- **Serving live traffic (F3-2, Ruling AR)**: the gateway relays
+  `/notification/read` (PATCH) and `/notification-token` (POST) to this
+  service with identical paths; the envelope, statuses and validation
+  (empty/unknown id handling) are byte-identical with the legacy — verified
+  live. notification.db opens WAL with `busy_timeout`; the gateway opens it
+  read-only for its `/sync` notification pulls and never runs DDL. The
+  legacy keeps its own markAsRead/token routes registered but they are
+  unreachable through the gateway (Ruling AS — quiet, not stripped).
 - **Identity client (F3-2)**: the JWT filter resolves the caller's user row
   (and the bound refresh-token session) in identity.db, so the boot installs
   the named identity client read-only (same install as argus-productivity,
@@ -51,8 +63,9 @@ binary, own CMake preset, own `notification.db`.
 - **`GET /health`**: standard `ApiResponse` envelope
   `{status: 200 (int), info: {service: argus-notification, uptimeSeconds},
   errors: null}`; never depends on any downstream service.
-- **What stays away**: no read-path controller (the gateway keeps serving
-  notification reads until F3-2), no /sync socket, no AI symbols (verified
+- **What stays away**: no read-path controller (notification list/read
+  snapshots keep flowing through the gateway's `/sync` pulls over
+  notification.db), no /sync socket, no AI symbols (verified
   with `nm -C`), no alarm-triggering code.
 
 ## Build wiring (decisions)
