@@ -17,3 +17,5 @@ argus-deploy/config.camera.toml
 *.log
 go2rtc.yaml
 third_party/go2rtc
+argus-deploy/config.productivity.toml
+argus-deploy/config.notification.toml

@@ -28,7 +28,9 @@ RUN --mount=type=cache,target=/root/.conan2 \
     && cmake --preset prod -DARGUS_BUILD_LABS=OFF \
     && cmake --build --preset prod -j"$(nproc)" \
     && cmake --build --preset prod --target argus-gateway argus-migrate-identity \
-      argus-vulkan-probe argus-migrate-camera argus-camera -j"$(nproc)"
+      argus-vulkan-probe argus-migrate-camera argus-camera \
+      argus-productivity argus-notification argus-migrate-productivity \
+      argus-migrate-notification -j"$(nproc)"
 
 FROM debian:trixie-slim AS runtime
 
@@ -49,12 +51,17 @@ COPY --from=build /opt/argus/build/prod/tools/migrate-identity/argus-migrate-ide
 COPY --from=build /opt/argus/build/prod/tools/migrate-camera/argus-migrate-camera /opt/argus/argus-migrate-camera
 COPY --from=build /opt/argus/build/prod/tools/vulkan-probe/argus-vulkan-probe /opt/argus/argus-vulkan-probe
 COPY --from=build /opt/argus/build/prod/argus-camera/argus-camera /opt/argus/argus-camera
+COPY --from=build /opt/argus/build/prod/argus-productivity/argus-productivity /opt/argus/argus-productivity
+COPY --from=build /opt/argus/build/prod/argus-notification/argus-notification /opt/argus/argus-notification
+COPY --from=build /opt/argus/build/prod/tools/migrate-productivity/argus-migrate-productivity /opt/argus/argus-migrate-productivity
+COPY --from=build /opt/argus/build/prod/tools/migrate-notification/argus-migrate-notification /opt/argus/argus-migrate-notification
 COPY config.toml.example /opt/argus/config.toml
 
 RUN groupadd --gid "$ARGUS_GID" argus \
     && useradd --uid "$ARGUS_UID" --gid "$ARGUS_GID" --create-home \
       --shell /usr/sbin/nologin argus \
     && mkdir -p certs database models third_party/go2rtc camera stream \
+      productivity notification \
     && chown -R argus:argus /opt/argus
 
 EXPOSE 7024
