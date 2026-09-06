@@ -1,0 +1,69 @@
+# argus-productivity configuration. Copy to config.toml (gitignored) to run.
+# Productivity-domain keys only: no AI sections, no stream/socket sections.
+# The productivity tables live in this service's own productivity.db; argus.db
+# is never touched here.
+
+[server]
+# Internal plain-HTTP listener. Loopback by default: the gateway is the only
+# public listener, and from the F3-2 cutover it routes the productivity CRUD
+# paths here.
+host = "127.0.0.1"
+port = 7027
+
+# Mirror of the legacy [drogon.app] block; the listener and db_clients are
+# built by the service itself (see argus-productivity/src/main.cc).
+[drogon.app]
+number_of_threads = 0
+enable_session = false
+document_root = "./"
+use_sendfile = true
+use_gzip = true
+use_brotli = false
+static_files_cache_time = 5
+idle_connection_timeout = 60
+enable_server_header = true
+enable_date_header = true
+keepalive_requests = 0
+pipelining_requests = 0
+gzip_static = true
+br_static = true
+client_max_body_size = "60M"
+client_max_memory_body_size = "16M"
+client_max_websocket_message_size = "128K"
+reuse_port = false
+enabled_compressed_request = false
+enable_request_stream = false
+handle_sig_term = true
+relaunch_on_error = false
+
+[productivity]
+# Own database of the productivity domain (reminder, project, project_task,
+# calendar_event, project_member, calendar_event_share, reminder_detail),
+# applied at boot from the schema below. tools/migrate-productivity fills it
+# from argus.db against the same config key.
+db = "database/productivity.db"
+schema = "database/productivity-schema.sql"
+
+# Access tokens minted by the gateway: the routes validate the same JWTs the
+# legacy validates. The secrets must match the gateway's [jwt] block.
+[jwt]
+secret = ""
+refresh_secret = ""
+access_ttl_minutes = 15
+refresh_ttl_days = 30
+
+# Device fingerprint of the routes: the HMAC key must match the gateway's
+# [device] block, and the forwarded-for trust makes the gateway's synthesized
+# X-Forwarded-For the observed client IP.
+[device]
+fingerprint_secret = ""
+trust_forwarded_for = true
+trusted_proxy_ips = ""
+
+# Ruling AM: the identity database opened read-only for the share/member
+# target validation (UserRepository reads resolve to this client, so targets
+# created after the cutover are shareable). Point it at the gateway's
+# identity.db; empty falls back to the default productivity.db client
+# (validation fails).
+# [identity]
+# db = "database/identity.db"
