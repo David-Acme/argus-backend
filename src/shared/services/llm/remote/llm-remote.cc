@@ -24,7 +24,6 @@ constexpr const char* kChatPath = "/llm/v1/chat";
 constexpr const char* kChatStreamPath = "/llm/v1/chat-stream";
 // The final JSON sentinel line opens with a newline separator (Ruling BT).
 constexpr std::string_view kSentinelMark = "\n{";
-constexpr int kJsonTimeoutDefaultMs = 120000;
 
 std::string trim(const std::string& value)
 {
@@ -145,16 +144,26 @@ Address parseUrl(const std::string& url)
   return address;
 }
 
-std::string requestHead(const std::string& method, const std::string& path,
-                        const std::string& body, const Address& address,
-                        bool closeConnection)
+// Parameter struct for one request head (AGENTS rule 2): the wire method,
+// path and body plus the resolved peer address.
+struct HttpRequestHead
 {
-  std::string head = method + " " + path + " HTTP/1.1\r\n";
-  head += "Host: " + address.host + "\r\n";
-  head += "Content-Type: application/json\r\n";
-  head += "Content-Length: " + std::to_string(body.size()) + "\r\n";
-  head += closeConnection ? "Connection: close\r\n\r\n" : "\r\n";
-  return head;
+  const char* method{nullptr};
+  const std::string* path{nullptr};
+  const std::string* body{nullptr};
+  const Address* address{nullptr};
+  bool closeConnection{true};
+};
+
+std::string serialize(const HttpRequestHead& head)
+{
+  std::string wire =
+      std::string(head.method) + " " + *head.path + " HTTP/1.1\r\n";
+  wire += "Host: " + head.address->host + "\r\n";
+  wire += "Content-Type: application/json\r\n";
+  wire += "Content-Length: " + std::to_string(head.body->size()) + "\r\n";
+  wire += head.closeConnection ? "Connection: close\r\n\r\n" : "\r\n";
+  return wire;
 }
 
 void sendAll(int fd, const std::string& data)
@@ -299,13 +308,17 @@ std::string LlmHttpClient::chat(const ChatRequest& request) const
     throw std::runtime_error("argus-llm unreachable at " + baseUrl_);
 
   const std::string body = chatBody(request);
-  const std::string head =
-      requestHead("POST", kChatPath, body, address, true);
-  sendAll(fd.get(), head + body);
+  const std::string path = kChatPath;
+  const HttpRequestHead head{.method = "POST",
+                             .path = &path,
+                             .body = &body,
+                             .address = &address,
+                             .closeConnection = true};
+  sendAll(fd.get(), serialize(head) + body);
 
   const auto deadline =
       std::chrono::steady_clock::now() +
-      std::chrono::milliseconds(std::max(timeoutMs_, kJsonTimeoutDefaultMs));
+      std::chrono::milliseconds(timeoutMs_);
   const std::string wire = readAll(fd.get(), deadline);
   if (wire.empty())
     throw std::runtime_error("argus-llm closed the connection before answering");
@@ -330,9 +343,13 @@ void LlmHttpClient::chatStream(const LlmStreamInput& input) const
     throw std::runtime_error("argus-llm unreachable at " + baseUrl_);
 
   const std::string body = chatBody(input.request);
-  const std::string head =
-      requestHead("POST", kChatStreamPath, body, address, false);
-  sendAll(fd.get(), head + body);
+  const std::string path = kChatStreamPath;
+  const HttpRequestHead head{.method = "POST",
+                             .path = &path,
+                             .body = &body,
+                             .address = &address,
+                             .closeConnection = false};
+  sendAll(fd.get(), serialize(head) + body);
 
   const auto deadline =
       std::chrono::steady_clock::now() +
@@ -399,6 +416,9 @@ void LlmHttpClient::chatStream(const LlmStreamInput& input) const
     // Deliver the chunk to the caller unless it carries (or ends with) the
     // JSON sentinel line: tokens ride their own chunks, the sentinel is a
     // self-contained JSON line the client strips from the token stream.
+    // Residual: a token chunk whose exact tail is "\n{" + valid sentinel
+    // JSON parses as the sentinel and swallows the token — accepted because
+    // the producer always sends the sentinel as its own chunk.
     const std::string chunk = wire.substr(dataStart, size);
     bool sentinel = false;
     for (auto mark = chunk.rfind(kSentinelMark); mark != std::string::npos;

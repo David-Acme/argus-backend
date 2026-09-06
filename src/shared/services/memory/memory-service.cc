@@ -15,6 +15,7 @@
 #include <shared/services/config-service/config-service.hxx>
 #include <shared/services/embedding/embedding-service.hxx>
 #include <shared/services/llm/llm-service.hxx>
+#include <shared/services/memory/memory-tool-descriptors.hxx>
 #include <shared/services/memory/memory-vec.hxx>
 #include <shared/services/memory/rule-parser.hxx>
 #include <shared/services/memory/sqlite-graph.hxx>
@@ -893,51 +894,25 @@ void MemoryService::rebuildAll()
 
 void MemoryService::registerTools(ToolRegistry& registry)
 {
-  using tools::ToolArgumentSpec;
-  registry.registerTool({.name = "memory.remember",
-                         .description = "Almacena un hecho sobre una persona, "
-                                        "dispositivo o lugar de la casa",
-                         .arguments = {{"subject", "string", true, {}, ""},
-                                       {"predicate", "string", true, {}, ""},
-                                       {"value", "string", true, {}, ""},
-                                       {"type",
-                                        "enum",
-                                        true,
-                                        {"persona", "preference", "schedule",
-                                         "instruction", "attribute"},
-                                        ""},
-                                       {"confidence", "number", false, {}, ""}},
-                         .accessTable = TableName::Memory,
-                         .accessPermission = RolePermission::Create,
-                         .handler = [this](const tools::ToolCall& call) {
-                           return handleRemember(call);
-                         }});
-  registry.registerTool({.name = "memory.recall",
-                         .description = "Recupera hechos guardados sobre la "
-                                        "casa, las personas o los dispositivos",
-                         .arguments = {{"query", "string", true, {}, ""}},
-                         .accessTable = TableName::Memory,
-                         .accessPermission = RolePermission::Read,
-                         .handler = [this](const tools::ToolCall& call) {
-                           return handleRecall(call);
-                         }});
-  registry.registerTool({.name = "procedure.run",
-                         .description = "Ejecuta un procedimiento conocido "
-                                        "para conseguir un objetivo",
-                         .arguments = {{"goal", "string", true, {}, ""}},
-                         .accessTable = TableName::Memory,
-                         .accessPermission = RolePermission::Read,
-                         .handler = [this](const tools::ToolCall& call) {
-                           return handleProcedureRun(call);
-                         }});
-  registry.registerTool({.name = "memory.forget",
-                         .description = "Olvida un hecho guardado por su id",
-                         .arguments = {{"fact_id", "number", true, {}, ""}},
-                         .accessTable = TableName::Memory,
-                         .accessPermission = RolePermission::Delete,
-                         .handler = [this](const tools::ToolCall& call) {
-                           return handleForget(call);
-                         }});
+  for (tools::ToolDescriptor descriptor : memoryToolDescriptors()) {
+    if (descriptor.name == "memory.remember")
+      descriptor.handler = [this](const tools::ToolCall& call) {
+        return handleRemember(call);
+      };
+    else if (descriptor.name == "memory.recall")
+      descriptor.handler = [this](const tools::ToolCall& call) {
+        return handleRecall(call);
+      };
+    else if (descriptor.name == "procedure.run")
+      descriptor.handler = [this](const tools::ToolCall& call) {
+        return handleProcedureRun(call);
+      };
+    else if (descriptor.name == "memory.forget")
+      descriptor.handler = [this](const tools::ToolCall& call) {
+        return handleForget(call);
+      };
+    registry.registerTool(std::move(descriptor));
+  }
 }
 
 int64_t MemoryService::observeSystemEvent(

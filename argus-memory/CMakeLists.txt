@@ -95,6 +95,7 @@ add_library(memory-core STATIC
     # The memory stack compiled from the shared tree (PORTED pattern), so the
     # legacy binary and this service behave identically.
     ${SHARED_ROOT}/services/memory/memory-service.cc
+    ${SHARED_ROOT}/services/memory/memory-tool-descriptors.cc
     ${SHARED_ROOT}/services/memory/sqlite-graph.cc
     ${SHARED_ROOT}/services/memory/entity-resolver.cc
     ${SHARED_ROOT}/services/memory/graph-recall.cc

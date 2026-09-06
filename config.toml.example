@@ -100,7 +100,9 @@ top_k = 5
 # the in-process engine still boots for MemoryService until F4-6 — these
 # engine keys then feed the argus-llm service's own config (and keep feeding
 # the in-process engine MemoryService reaches). With remote_url empty the
-# in-process engine serves everything, exactly as before.
+# in-process engine serves everything, exactly as before. remote_url must be
+# an IPv4 host:port (the client connects IPv4 literals only; "localhost"
+# resolves through the resolver and fails the connect).
 remote_url = ""
 remote_timeout_ms = 120000
 model_path = "models/llm/LFM2.5-1.2B-Instruct-QAD-Q4_0.gguf"
@@ -259,6 +261,15 @@ denoise = true
 denoise_gate_rms = 0.0035
 
 [memory]
+# F4-6 cutover (Ruling BY): with remote_url set the legacy boots WITHOUT the
+# memory stack — the tool loop serves from the argus-memory service over the
+# internal wire through the remote adapter. With remote_url empty the
+# in-process stack boots exactly as before and reads the keys below.
+# remote_url must be an IPv4 host:port (the client connects IPv4 literals
+# only; "localhost" resolves through the resolver and fails the connect).
+remote_url = ""
+remote_timeout_ms = 120000
+queue_bound = 64
 recall_max_tokens = 512
 profile_max_tokens = 256
 profile_max_facts = 4

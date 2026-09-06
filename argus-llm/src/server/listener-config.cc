@@ -2,6 +2,13 @@
 
 #include <shared/services/config-service/config-service.hxx>
 
+namespace
+{
+
+constexpr uint16_t kDefaultPort = 7032;
+
+} // namespace
+
 ListenerConfig ListenerConfig::resolve()
 {
   ListenerConfig config;
@@ -9,7 +16,7 @@ ListenerConfig ListenerConfig::resolve()
   if (config.host.empty())
     config.host = "127.0.0.1";
   const int port = ConfigService::getInt("server.port");
-  config.port = port > 0 ? static_cast<uint16_t>(port) : 7032;
+  config.port = port > 0 ? static_cast<uint16_t>(port) : kDefaultPort;
   return config;
 }
 

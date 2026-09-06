@@ -4,6 +4,8 @@ namespace
 {
 
 constexpr size_t kMaxMessages = 64;
+constexpr size_t kMaxRoleLength = 32;
+constexpr int kMaxTokensBound = 4096;
 constexpr size_t kMaxMessageLength = 32 * 1024;
 
 } // namespace
@@ -34,7 +36,7 @@ ChatCompletionDto ChatCompletionDto::fromJson(const Json::Value& json)
     for (const auto& message : value.messages) {
       if (message.role.empty() || message.content.empty())
         return "every message needs a role and a content";
-      if (message.role.size() > 32)
+      if (message.role.size() > kMaxRoleLength)
         return "message role is too long";
       if (message.content.size() > kMaxMessageLength)
         return "message content is too long";
@@ -43,7 +45,8 @@ ChatCompletionDto ChatCompletionDto::fromJson(const Json::Value& json)
   })
   CUSTOM_LAMBDA(maxTokens, [](const ChatCompletionDto& value)
                     -> std::optional<std::string> {
-    if (value.maxTokens && (*value.maxTokens < 1 || *value.maxTokens > 4096))
+    if (value.maxTokens &&
+        (*value.maxTokens < 1 || *value.maxTokens > kMaxTokensBound))
       return "max_tokens must be between 1 and 4096";
     return std::nullopt;
   })
