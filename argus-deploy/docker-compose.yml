@@ -1,8 +1,10 @@
 name: argus-cutover
 
-# Cutover stack (Fase 2): gateway (public TLS 7024) + legacy (internal 7025) +
-# argus-camera (internal, 7026) + nats + rustfs, with the identity and camera
-# migration init tools and the opt-in RADV vulkan-probe validation service.
+# Cutover stack (Fase 3, compose v3): gateway (public TLS 7024) + legacy
+# (internal 7025) + argus-camera (internal, 7026) + argus-productivity (7027)
+# + argus-notification (7028) + nats + rustfs, with the identity/camera/
+# productivity/notification migration init tools and the opt-in RADV
+# vulkan-probe validation service.
 # The root docker-compose.yml stays the dev tooling; this file is the
 # deployment stack.
 #
@@ -50,6 +52,8 @@ services:
         bind:
           create_host_path: false
       - camera-db:/opt/argus/camera
+      - productivity-db:/opt/argus/productivity
+      - notification-db:/opt/argus/notification
       - type: bind
         source: ../models
         target: /opt/argus/models
@@ -192,6 +196,96 @@ services:
     pids_limit: 512
     restart: unless-stopped
 
+  # Productivity-domain service (Fase 3 cutover, Rulings AP/AQ/AT): owns
+  # productivity.db (reminder, project, project_task, calendar_event,
+  # project_member, calendar_event_share, reminder_detail), serves the five
+  # productivity route prefixes the gateway proxies to it, and publishes its
+  # change events to the gateway over NATS. Its only host exposure is the
+  # loopback-published 7027 listener. It opens identity.db read-only for the
+  # JWT filter (bounded wait — the gateway creates identity.db at its boot),
+  # so it mounts the same data dir the gateway writes.
+  argus-productivity:
+    image: argus-cutover:local
+    pull_policy: never
+    user: "${ARGUS_UID:-1000}:${ARGUS_GID:-1000}"
+    networks:
+      internal:
+        aliases:
+          - argus-productivity
+    ports:
+      - "127.0.0.1:${PRODUCTIVITY_PORT:-7027}:7027"
+    entrypoint: ["/opt/argus/argus-productivity"]
+    volumes:
+      - type: bind
+        source: ./config.productivity.toml
+        target: /opt/argus/config.toml
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${ARGUS_DATA_DIR:-../database}
+        target: /opt/argus/database
+        bind:
+          create_host_path: false
+      - productivity-db:/opt/argus/productivity
+    depends_on:
+      nats:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://127.0.0.1:7027/health >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    mem_limit: "${ARGUS_PRODUCTIVITY_MEMORY_LIMIT:-1g}"
+    cpus: "${ARGUS_PRODUCTIVITY_CPU_LIMIT:-1.00}"
+    pids_limit: 512
+    restart: unless-stopped
+
+  # Notification-domain service (Fase 3 cutover, Rulings AP/AR/AT): owns
+  # notification.db as the single notification substrate, serves the
+  # /notification and /notification-token write paths the gateway proxies to
+  # it. Same identity/NATS/data-dir shape as argus-productivity; the gateway
+  # ALSO opens notification.db read-write here (its camera-notifier writes),
+  # which is why the volume is rw in both.
+  argus-notification:
+    image: argus-cutover:local
+    pull_policy: never
+    user: "${ARGUS_UID:-1000}:${ARGUS_GID:-1000}"
+    networks:
+      internal:
+        aliases:
+          - argus-notification
+    ports:
+      - "127.0.0.1:${NOTIFICATION_PORT:-7028}:7028"
+    entrypoint: ["/opt/argus/argus-notification"]
+    volumes:
+      - type: bind
+        source: ./config.notification.toml
+        target: /opt/argus/config.toml
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${ARGUS_DATA_DIR:-../database}
+        target: /opt/argus/database
+        bind:
+          create_host_path: false
+      - notification-db:/opt/argus/notification
+    depends_on:
+      nats:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://127.0.0.1:7028/health >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    mem_limit: "${ARGUS_NOTIFICATION_MEMORY_LIMIT:-1g}"
+    cpus: "${ARGUS_NOTIFICATION_CPU_LIMIT:-1.00}"
+    pids_limit: 512
+    restart: unless-stopped
+
   nats:
     image: nats:2.11.14-alpine
     command: ["-m", "8222"]
@@ -324,6 +418,69 @@ services:
       - camera-db:/opt/argus/camera
     restart: "no"
 
+  # Productivity migration init (Ruling AU): opt-in one-shot tool copying the
+  # 7 productivity tables from argus.db onto the productivity.db volume.
+  # Idempotent no-op on a schema-current target; run it with the stack stopped
+  # and BEFORE the first boot — once argus-productivity has applied the
+  # productivity schema the target is live data and the tool correctly no-ops
+  # instead of resurrecting argus.db rows over it (the f8291e4 ordering
+  # lesson, same as camera-init).
+  productivity-init:
+    profiles: ["productivity-init"]
+    image: argus-cutover:local
+    pull_policy: never
+    user: "${ARGUS_UID:-1000}:${ARGUS_GID:-1000}"
+    network_mode: none
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - >-
+        if [ -f /opt/argus/database/argus.db ]; then /opt/argus/argus-migrate-productivity --source /opt/argus/database/argus.db --target /opt/argus/productivity/productivity.db --schema /opt/argus/database/productivity-schema.sql; else echo 'No argus.db yet; argus-productivity applies the productivity schema at boot.'; fi
+    volumes:
+      - type: bind
+        source: ${ARGUS_DATA_DIR:-../database}
+        target: /opt/argus/database
+        bind:
+          create_host_path: false
+      # Same repo-shipped schema bind as the other init services: a
+      # provisioned data dir without the SQL would fail "schema file not
+      # found".
+      - type: bind
+        source: ../database/productivity-schema.sql
+        target: /opt/argus/database/productivity-schema.sql
+        read_only: true
+        bind:
+          create_host_path: false
+      - productivity-db:/opt/argus/productivity
+    restart: "no"
+
+  # Notification migration init (Ruling AU): opt-in one-shot tool copying
+  # notification + notification_token from argus.db onto the notification.db
+  # volume. Same before-first-boot rule as productivity-init.
+  notification-init:
+    profiles: ["notification-init"]
+    image: argus-cutover:local
+    pull_policy: never
+    user: "${ARGUS_UID:-1000}:${ARGUS_GID:-1000}"
+    network_mode: none
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - >-
+        if [ -f /opt/argus/database/argus.db ]; then /opt/argus/argus-migrate-notification --source /opt/argus/database/argus.db --target /opt/argus/notification/notification.db --schema /opt/argus/database/notification-schema.sql; else echo 'No argus.db yet; argus-notification applies the notification schema at boot.'; fi
+    volumes:
+      - type: bind
+        source: ${ARGUS_DATA_DIR:-../database}
+        target: /opt/argus/database
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ../database/notification-schema.sql
+        target: /opt/argus/database/notification-schema.sql
+        read_only: true
+        bind:
+          create_host_path: false
+      - notification-db:/opt/argus/notification
+    restart: "no"
+
   # RADV validation probe (Fase 2 gate): runs argus-vulkan-probe against the
   # host GPU with /dev/dri mounted. Opt-in because a host without /dev/dri
   # fails the device attach (or drops it with `devices: !override []`, which
@@ -358,6 +515,10 @@ volumes:
     name: argus-cutover-camera-db
   camera-stream:
     name: argus-cutover-camera-stream
+  productivity-db:
+    name: argus-cutover-productivity-db
+  notification-db:
+    name: argus-cutover-notification-db
 
 networks:
   internal:

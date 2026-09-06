@@ -1,8 +1,10 @@
 # argus-deploy — CONTEXT
 
-Compose v2 of the migration plan: the Fase 1 cutover stack (gateway + legacy +
-nats + rustfs + identity init) plus the Fase 2 argus-camera service (camera.db
-volume + camera-init). Decisions and traps live here.
+Compose v3 of the migration plan: the Fase 1 cutover stack (gateway + legacy +
+nats + rustfs + identity init), the Fase 2 argus-camera service (camera.db
+volume + camera-init) and the Fase 3 argus-productivity + argus-notification
+services (productivity.db / notification.db volumes + their init profiles).
+Decisions and traps live here.
 
 ## Image (Ruling N)
 
@@ -10,7 +12,8 @@ volume + camera-init). Decisions and traps live here.
 Conan 2.21.0 toolchain as `docker/Dockerfile`, a single `conan install` at
 Release, then `cmake --build --preset prod` (backend, all targets,
 `ARGUS_BUILD_LABS=OFF`) plus `--target argus-gateway argus-migrate-identity
-argus-vulkan-probe argus-migrate-camera argus-camera`.
+argus-vulkan-probe argus-migrate-camera argus-camera argus-productivity
+argus-notification argus-migrate-productivity argus-migrate-notification`.
 All binaries land in `/opt/argus`; the service picks its binary via an
 `entrypoint:` override (Docker composes `command:` as ARGUMENTS to the image
 `ENTRYPOINT`, so a `command:` "override" here would execute
@@ -82,6 +85,10 @@ with `scripts/setup.sh` / `scripts/setup.sh camera` on the host.
   no compose service and no host publish; the app only ever talks through the
   gateway. The camera config points `[nats] url` at the internal alias
   `nats://nats:4222`.
+- **argus-productivity / argus-notification** (Fase 3, compose v3) live on
+  the same `internal` bridge network with only their 7027/7028 listeners
+  loopback-published for the host-networked gateway; their `[nats] url`
+  points at the internal alias as well.
 - The gateway and legacy configs therefore point `[nats] url` and
   `[storage.s3] endpoint` at `127.0.0.1` ports.
 - Transitional trust note: the camera resolves the caller IP from
@@ -96,13 +103,17 @@ with `scripts/setup.sh` / `scripts/setup.sh camera` on the host.
 
 | Service | Image | Notes |
 |---|---|---|
-| gateway | built (`argus-cutover:local`) | TLS 7024, `/health` healthcheck |
+| gateway | built (`argus-cutover:local`) | TLS 7024, `/health` healthcheck; mounts the productivity and notification volumes next to camera-db |
 | legacy | same image, `entrypoint:` override | plain 127.0.0.1:7025 |
 | argus-camera | same image, `entrypoint:` override | internal network, loopback 7026 publish; `/health` healthcheck; `/dev/dri` |
+| argus-productivity | same image, `entrypoint:` override | internal network, loopback 7027 publish; owns productivity.db; `/health` healthcheck |
+| argus-notification | same image, `entrypoint:` override | internal network, loopback 7028 publish; owns notification.db; `/health` healthcheck |
 | nats | `nats:2.11.14-alpine` | exact tag pin; core NATS (no JetStream needed) |
 | rustfs / rustfs-init | copied verbatim from the root compose | only bind paths, volume/network names differ (`argus-cutover-*`) |
 | identity-init | same image | `profiles: [identity-init]`, runs `argus-migrate-identity` |
 | camera-init | same image | `profiles: [camera-init]`, runs `argus-migrate-camera` against the camera.db volume |
+| productivity-init | same image | `profiles: [productivity-init]`, runs `argus-migrate-productivity` against the productivity.db volume |
+| notification-init | same image | `profiles: [notification-init]`, runs `argus-migrate-notification` against the notification.db volume |
 | vulkan-probe | same image | `profiles: [vulkan-probe]`, runs `argus-vulkan-probe` with `/dev/dri` |
 
 Ordering: `nats` goes healthy first and both the gateway and argus-camera wait
@@ -139,6 +150,34 @@ source tables, skips cleanly when `argus.db` does not exist yet). Do not run
 either init tool while the services hold its target database open — stop the
 stack first.
 
+Fase 3 (Rulings AT/AU/AV) extends the same shape to productivity.db and
+notification.db, each on its own dedicated named volume:
+
+- `argus-productivity` mounts `argus-cutover-productivity-db` rw and applies
+  `database/productivity-schema.sql` at boot; the gateway mounts the same
+  volume and opens `productivity/productivity.db` mode=ro (sync reads). The
+  gateway waits bounded (30s) for the boot apply the same way it does for
+  camera.db, then falls back to the default client with a warn.
+- `argus-notification` mounts `argus-cutover-notification-db` rw; the gateway
+  mounts it rw too and opens `notification/notification.db` READ-WRITE (its
+  camera-notifier writes, Ruling AR) — the only cross-service rw db pair in
+  the stack. The gateway waits bounded (30s) here the same way.
+- `productivity-init` / `notification-init` are the only migration paths onto
+  those volumes and MUST run BEFORE the first boot (the f8291e4 lesson, same
+  as camera-init): once the owning service has boot-applied the schema the
+  volume is live data and the migrate tool correctly no-ops instead of
+  resurrecting argus.db rows over it. On an existing installation:
+  `docker compose --profile productivity-init run --rm productivity-init`
+  (and the notification twin) with the stack stopped; both are idempotent and
+  no-op on a schema-current target.
+- Boot order (Ruling AV): nats goes healthy first; the gateway, argus-camera,
+  argus-productivity and argus-notification then boot in parallel — every one
+  of them gates on `nats: service_healthy` because each connects its NatsBus
+  once at boot with no retry. argus-productivity/argus-notification wait
+  bounded (30s) for the gateway-created identity.db inside their own boot
+  (read-only open), so there is no compose dependency on the gateway and no
+  cycle.
+
 For acceptance runs, `scripts/seed-golden.py` seeds the golden /sync verify
 state into a scratch COPY of the databases (Golden Cam / Golden Zone rows,
 `calendar_event.ends_at` NULL, `project_task.assignee_id` 1, the identity
@@ -153,12 +192,16 @@ secrets are read at runtime, never printed; the refresh token lands in a
   (gateway-native, F1-3b); a TCP check is the honest equivalent until one
   exists. A listener that accepts but wedges would still report healthy.
 - argus-camera: `curl -fs http://127.0.0.1:7026/health` (envelope 200).
+- argus-productivity: `curl -fs http://127.0.0.1:7027/health` (envelope 200).
+- argus-notification: `curl -fs http://127.0.0.1:7028/health` (envelope 200).
 
 ## Volume map
 
 | Volume | Mounted into | Content |
 |---|---|---|
 | `argus-cutover-camera-db` | argus-camera, legacy, gateway — all at `/opt/argus/camera` (rw) | camera.db (+ WAL files) |
+| `argus-cutover-productivity-db` | argus-productivity (rw, owner), gateway (rw mount, mode=ro open) — at `/opt/argus/productivity` | productivity.db (+ WAL files) |
+| `argus-cutover-notification-db` | argus-notification (rw), gateway (rw, read-write client) — at `/opt/argus/notification` | notification.db (+ WAL files) |
 | `argus-cutover-camera-stream` | argus-camera at `/opt/argus/stream` | go2rtc.yaml generated by Go2rtcManager (chmod 600, camera credentials) |
 | `argus-cutover-rustfs-data` | rustfs at `/data` | object storage |
 
@@ -175,15 +218,21 @@ and `camera-init` is the only migration path onto the volume.
 ## Configuration and secrets (Ruling Q)
 
 - `config.gateway.toml.example` / `config.legacy.toml.example` /
-  `config.camera.toml.example` encode the cutover keys; copy to
-  `config.gateway.toml` / `config.legacy.toml` / `config.camera.toml`
+  `config.camera.toml.example` / `config.productivity.toml.example` /
+  `config.notification.toml.example` encode the cutover keys; copy to
+  `config.gateway.toml` / `config.legacy.toml` / `config.camera.toml` /
+  `config.productivity.toml` / `config.notification.toml`
   (gitignored) and fill: `[jwt] secret/refresh_secret` and
-  `[device] fingerprint_secret` (identical in all three — the gateway mints,
-  the legacy and argus-camera verify, and the device hash must match across
-  the proxy), `[storage.s3]` in the legacy (the `argus_s3_*` service-account
-  credentials rustfs-init creates from the docker secrets), plus
-  region/bucket, and the camera's `device.trusted_proxy_ips` (the internal
-  network's gateway IP, see the network section).
+  `[device] fingerprint_secret` (identical in all five — the gateway mints,
+  the legacy, argus-camera and the two Fase 3 services verify, and the device
+  hash must match across the proxy), `[storage.s3]` in the legacy (the
+  `argus_s3_*` service-account credentials rustfs-init creates from the docker
+  secrets), plus region/bucket, and the `device.trusted_proxy_ips` of every
+  bridge-networked service (argus-camera, argus-productivity,
+  argus-notification — the internal network's gateway IP, see the network
+  section). The gateway's `[productivity] db` /
+  `[notifications] db` point at the volume mounts
+  (`productivity/productivity.db`, `notification/notification.db`).
 - Docker secrets stay the existing `docker/runtime/secrets/*` files: nothing
   new, nothing baked into images.
 - The gateway links no go2rtc code, so it neither mounts nor spawns go2rtc.
@@ -208,6 +257,8 @@ and `camera-init` is the only migration path onto the volume.
 | 7024 TLS | 0.0.0.0 | gateway (public) |
 | 7025 plain | 127.0.0.1 | legacy (internal, gateway upstream) |
 | 7026 plain | 127.0.0.1 (compose publish) | argus-camera (internal, gateway upstream) |
+| 7027 plain | 127.0.0.1 (compose publish) | argus-productivity (internal, gateway upstream) |
+| 7028 plain | 127.0.0.1 (compose publish) | argus-notification (internal, gateway upstream) |
 | 4222 | 127.0.0.1 | nats client |
 | 8222 | 127.0.0.1 | nats monitor |
 | 9000 | 127.0.0.1 | rustfs S3 |

@@ -78,9 +78,11 @@ db = "camera/camera.db"
 [productivity]
 # F3-2 cutover: argus-productivity owns the productivity routes and
 # productivity.db (Rulings AP/AQ); the gateway opens it mode=ro for the
-# productivity sync-table reads.
+# productivity sync-table reads (Ruling AT). In the compose stack the db is
+# the dedicated named volume also mounted into argus-productivity, at
+# /opt/argus/productivity.
 proxy_url = "http://127.0.0.1:7027"
-db = "database/productivity.db"
+db = "productivity/productivity.db"
 
 # Same cert paths as the legacy (transitional shared directory): the app's
 # pinned CA is byte-identical, and CertService runs here with the same keys.
@@ -112,9 +114,12 @@ enabled = true
 [notifications]
 # F3-2 cutover: argus-notification owns the notification write surface and
 # notification.db (Rulings AP/AR); the gateway opens it read-write because
-# its NotificationService writes notifications (camera-notifier retarget).
+# its NotificationService writes notifications (camera-notifier retarget,
+# Ruling AR). In the compose stack the db is the dedicated named volume also
+# mounted into argus-notification, at /opt/argus/notification — rw on both
+# sides (Ruling AT).
 proxy_url = "http://127.0.0.1:7028"
-db = "database/notification.db"
+db = "notification/notification.db"
 # Camera object_detected budget (Ruling AD): 6 per camera per rolling hour,
 # cumulative digest for the excess, silent hours off by default.
 budget_per_hour = 6

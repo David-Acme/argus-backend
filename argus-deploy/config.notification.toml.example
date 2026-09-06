@@ -1,0 +1,86 @@
+# argus-deploy argus-notification configuration. Copy to config.notification.toml
+# (gitignored) next to this file and fill the instance secrets (the same
+# jwt/device values as config.gateway.toml); the compose file bind-mounts it as
+# argus-notification's config.toml.
+# Fase 3 cutover shape: the service runs on the internal bridge network and
+# owns notification.db as the single notification substrate (Rulings AN/AT),
+# serves the /notification and /notification-token write paths the gateway
+# proxies to it (Ruling AP) and publishes its change events to the gateway
+# over NATS (Rulings AQ/Y). The gateway ALSO opens notification.db read-write
+# here for its camera-notifier writes (Ruling AR), which is why the compose
+# volume is rw in both services. Only the gateway is public; the 7028 listener
+# is published on host loopback for the host-networked gateway.
+
+[server]
+# Bind all interfaces inside the container: the compose port publish reaches
+# the listener through the docker-proxy.
+host = "0.0.0.0"
+port = 7028
+
+# Mirror of the legacy [drogon.app] block; the listener and db_clients are
+# built by the service itself (see argus-notification/src/main.cc).
+[drogon.app]
+number_of_threads = 0
+enable_session = false
+document_root = "./"
+use_sendfile = true
+use_gzip = true
+use_brotli = false
+static_files_cache_time = 5
+idle_connection_timeout = 60
+enable_server_header = true
+enable_date_header = true
+keepalive_requests = 0
+pipelining_requests = 0
+gzip_static = true
+br_static = true
+client_max_body_size = "60M"
+client_max_memory_body_size = "16M"
+client_max_websocket_message_size = "128K"
+reuse_port = false
+enabled_compressed_request = false
+enable_request_stream = false
+handle_sig_term = true
+relaunch_on_error = false
+
+[notifications]
+# Own database of the notification domain (notification, notification_token)
+# on the compose volume (Ruling AT), applied at boot from the schema below;
+# notification-init migrates the argus.db rows onto it BEFORE the first boot.
+# argus.db is never touched here.
+db = "notification/notification.db"
+schema = "database/notification-schema.sql"
+
+# Change funnel toward the gateway (Rulings AQ/Y): the nats service is
+# reachable through the internal network alias.
+[nats]
+url = "nats://nats:4222"
+reconnect_wait_ms = 2000
+max_reconnects = 60
+
+# Access tokens minted by the gateway: the routes validate the same JWTs the
+# gateway mints. The secrets must match the gateway's [jwt] block.
+[jwt]
+secret = ""
+refresh_secret = ""
+access_ttl_minutes = 15
+refresh_ttl_days = 30
+
+# Device fingerprint of the routes: the HMAC key must match the gateway's
+# [device] block so the device hash is identical on both sides of the proxy,
+# and the forwarded-for trust must name the docker-proxy peer address (the
+# internal network's gateway IP, e.g. 172.18.0.1 — check
+# `docker network inspect argus-cutover-internal`) so the gateway's
+# synthesized X-Forwarded-For is the observed client IP.
+[device]
+fingerprint_secret = ""
+trust_forwarded_for = true
+trusted_proxy_ips = ""
+
+# Identity database opened read-only: the JWT filter resolves the caller's
+# user row (and the bound refresh-token session) there (Ruling AM/f17a9c8 —
+# without it every authenticated request would 401 against notification.db,
+# which holds no user table). The gateway creates identity.db in the shared
+# data dir at its boot; the service waits bounded for it.
+[identity]
+db = "database/identity.db"
