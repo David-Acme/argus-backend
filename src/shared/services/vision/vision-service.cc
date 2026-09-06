@@ -8,6 +8,7 @@
 #include <mtmd.h>
 #include <opencv2/imgproc.hpp>
 #include <shared/services/config-service/config-service.hxx>
+#include <shared/services/vision/vision-hash.hxx>
 #include <shared/wrapper/ai-init/ai-init.hxx>
 #include <shared/wrapper/blocking-task/blocking-task.hxx>
 #include <shared/wrapper/hardware-profile/hardware-profile.hxx>
@@ -21,29 +22,10 @@ constexpr const char* kDefaultMmproj =
     "models/vision/lfm2vl-25/mmproj-F16.gguf";
 constexpr const char* kFallbackPrompt = "Can you describe this image?";
 
-uint64_t hashBytes(const unsigned char* data, size_t len)
-{
-  uint64_t h = 14695981039346656037ULL;
-  const size_t blocks = len / 8;
-  const auto* words = reinterpret_cast<const uint64_t*>(data);
-  for (size_t b = 0; b < blocks; ++b) {
-    h ^= words[b];
-    h *= 1099511628211ULL;
-  }
-  for (size_t i = blocks * 8; i < len; ++i) {
-    h ^= data[i];
-    h *= 1099511628211ULL;
-  }
-  return h;
-}
-
 uint64_t hashMatAndPrompt(const cv::Mat& m, const std::string& prompt)
 {
-  uint64_t h = hashBytes(m.data, static_cast<size_t>(m.total()) * m.elemSize());
-  h ^= hashBytes(reinterpret_cast<const unsigned char*>(prompt.data()),
-                 prompt.size());
-  h *= 1099511628211ULL;
-  return h;
+  return visionHashBytesAndPrompt(
+      m.data, static_cast<size_t>(m.total()) * m.elemSize(), prompt);
 }
 
 void mtmdDeleter(mtmd_context* ctx)

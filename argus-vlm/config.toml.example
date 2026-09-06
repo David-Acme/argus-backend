@@ -1,0 +1,50 @@
+# argus-vlm configuration. Copy to config.toml (gitignored) to run.
+# Vision-domain keys only (F4-4): the engine knobs mirroring the legacy
+# [vision] block plus the internal listener. No database, no JWT, no device
+# keys.
+
+[server]
+# Internal plain-HTTP listener. Loopback by default: only the legacy backend
+# adapters call this wire, and it is never routed through the gateway.
+host = "127.0.0.1"
+port = 7031
+
+[vision]
+# Engine knobs identical to the legacy [vision] block: the shared
+# VisionService reads the same keys here as it does in the legacy.
+model_path = "models/vision/lfm2vl-25/lm-Q8_0.gguf"
+mmproj_path = "models/vision/lfm2vl-25/mmproj-F16.gguf"
+context_size = 8192
+max_tokens = 64
+max_input_px = 384
+image_max_tokens = 0
+prompt = "Can you describe this image?"
+caption_cache_slots = 8
+threads = 0
+# Tier note: this service derives its capability tier without a Vulkan probe
+# (the ncnn-gated probe is compiled out), so -1 keeps the CPU-only default.
+# Pin the legacy value here for parity when the legacy offloads to GPU
+# (999 on a Vulkan/CUDA host).
+gpu_layers = -1
+
+# Mirror of the legacy [drogon.app] block; the listener is built by the
+# service itself (see argus-vlm/src/main.cc). The body limit covers base64
+# JPEG frames: a 2688x1520 snapshot is ~1-2 MB, ~1.4-2.7 MB in base64.
+[drogon.app]
+number_of_threads = 0
+enable_session = false
+document_root = "./"
+use_sendfile = true
+use_gzip = false
+use_brotli = false
+static_files_cache_time = 5
+idle_connection_timeout = 60
+enable_server_header = true
+enable_date_header = true
+keepalive_requests = 0
+pipelining_requests = 0
+client_max_body_size = "64M"
+client_max_memory_body_size = "64M"
+reuse_port = false
+handle_sig_term = true
+relaunch_on_error = false

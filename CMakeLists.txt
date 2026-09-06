@@ -54,6 +54,10 @@ add_subdirectory(argus-tts EXCLUDE_FROM_ALL)
 # built on demand, never as part of the default backend build.
 add_subdirectory(argus-stt EXCLUDE_FROM_ALL)
 
+# argus-vlm service (F4-4): the vision capacity extracted out of the legacy,
+# built on demand, never as part of the default backend build.
+add_subdirectory(argus-vlm EXCLUDE_FROM_ALL)
+
 # Data migration tools: the CLI is built on demand, never as part of the
 # default backend build.
 add_subdirectory(tools/migrate-identity EXCLUDE_FROM_ALL)

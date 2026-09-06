@@ -49,6 +49,8 @@ public:
 
   void cancel();
   bool isLoaded() const;
+  int maxInputPx() const { return maxInputPx_; }
+  int defaultMaxTokens() const { return defaultMaxTokens_; }
 
 private:
   std::string run(const cv::Mat& src, bool srcIsBgr, const std::string& prompt,
