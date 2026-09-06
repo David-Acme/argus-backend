@@ -117,3 +117,33 @@ if(DOCTEST_INCLUDE_DIRS)
     set_target_properties(doctest::doctest PROPERTIES
         INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${DOCTEST_INCLUDE_DIRS}")
 endif()
+
+# The voice-session seam suite rides the legacy AI stack (argus_sync_media).
+if(TARGET argus_sync_media)
+    set(VOICE_SEAM_TEST_SOURCES
+        voice-session-seam-test.cc
+        ${SRC_ROOT}/shared/services/vad/vad-service.cc
+        ${SRC_ROOT}/shared/services/noise/noise-suppression-service.cc
+        ${SRC_ROOT}/shared/services/reaction/reaction-engine.cc
+        ${SRC_ROOT}/shared/services/memory/phrase-catalog.cc
+        ${SRC_ROOT}/shared/services/memory/rule-parser.cc
+        ${SRC_ROOT}/shared/utils/text-match/phrase-automaton.cc
+        ${SRC_ROOT}/shared/wrapper/audio/audio-resampler.cc
+        ${SRC_ROOT}/shared/services/stt/stt-service.cc
+        ${SRC_ROOT}/shared/services/llm/llm-service.cc
+        ${SRC_ROOT}/shared/services/tts/tts-service.cc
+        ${SRC_ROOT}/shared/services/tts/tts-engine.cc
+        ${SRC_ROOT}/shared/services/tts/onnx-utils.cc
+        ${SRC_ROOT}/shared/services/tts/style.cc
+        ${SRC_ROOT}/shared/services/tts/unicode-processor.cc
+    )
+
+    add_executable(voice-session-seam-test ${VOICE_SEAM_TEST_SOURCES})
+
+    target_link_libraries(voice-session-seam-test PRIVATE argus_sync_media
+        doctest::doctest)
+
+    target_compile_options(voice-session-seam-test PRIVATE -Wall -Wextra)
+
+    add_test(NAME voice-session-seam-test COMMAND voice-session-seam-test)
+endif()
