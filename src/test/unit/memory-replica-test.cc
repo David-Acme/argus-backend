@@ -265,6 +265,25 @@ TEST_CASE("a boot with empty replica tables takes one snapshot fill from the "
   CHECK(countRows(emptyDb, "SELECT COUNT(*) FROM catalog_person") == 0);
   CHECK(countRows(emptyDb, "SELECT COUNT(*) FROM catalog_camera") == 1);
 
+  // The no-NATS boot path fills through the static entry (main.cc calls it
+  // when the change feed never connected).
+  std::filesystem::remove(std::string(kScratchDir) + "/busless.db");
+  SqliteGraph buslessGraph;
+  REQUIRE(buslessGraph.open(std::string(kScratchDir) + "/busless.db"));
+  buslessGraph.applySchema();
+  EntityResolver buslessResolver(buslessGraph);
+  CatalogReplica::seedSnapshot({buslessGraph, buslessResolver,
+                                identityDb.get(), cameraDb.get()});
+  sqlite3* buslessDb = buslessGraph.handle();
+  CHECK(countRows(buslessDb, "SELECT COUNT(*) FROM catalog_person") == 2);
+  CHECK(countRows(buslessDb, "SELECT COUNT(*) FROM catalog_zone") == 1);
+  buslessResolver.build();
+  CHECK_FALSE(buslessResolver.resolve("Ana Garcia").empty());
+
+  graph.close();
+  emptyGraph.close();
+  buslessGraph.close();
+
   graph.close();
   emptyGraph.close();
   std::remove(kScratchConfig);

@@ -37,6 +37,17 @@ public:
   void seedFromSnapshot(drogon::orm::DbClient* identityDb,
                         drogon::orm::DbClient* cameraDb);
 
+  // Boot fill shared with the no-NATS path (a fresh boot without a change
+  // feed still fills the replicas from the read-only sources).
+  struct SnapshotSources
+  {
+    SqliteGraph& graph;
+    EntityResolver& resolver;
+    drogon::orm::DbClient* identityDb;
+    drogon::orm::DbClient* cameraDb;
+  };
+  static void seedSnapshot(const SnapshotSources& sources);
+
   void applyIdentity(const Json::Value& event);
   void applyCamera(const Json::Value& event);
   void applyStreamRow(const Json::Value& event);

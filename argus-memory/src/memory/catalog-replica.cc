@@ -263,11 +263,16 @@ void CatalogReplica::applyStreamRow(const Json::Value& event)
 void CatalogReplica::seedFromSnapshot(drogon::orm::DbClient* identityDb,
                                       drogon::orm::DbClient* cameraDb)
 {
-  if (!identityDb && !cameraDb)
+  seedSnapshot({graph_, resolver_, identityDb, cameraDb});
+}
+
+void CatalogReplica::seedSnapshot(const SnapshotSources& sources)
+{
+  if (!sources.identityDb && !sources.cameraDb)
     return;
   {
-    std::scoped_lock lock(graph_.mutex());
-    sqlite3* db = graph_.handle();
+    std::scoped_lock lock(sources.graph.mutex());
+    sqlite3* db = sources.graph.handle();
     if (!db)
       return;
     SqliteStmt probe;
@@ -284,12 +289,12 @@ void CatalogReplica::seedFromSnapshot(drogon::orm::DbClient* identityDb,
   int64_t zones = 0;
   int64_t streams = 0;
   {
-    std::scoped_lock lock(graph_.mutex());
-    sqlite3* db = graph_.handle();
+    std::scoped_lock lock(sources.graph.mutex());
+    sqlite3* db = sources.graph.handle();
     if (!db)
       return;
-    if (identityDb) {
-      for (const auto& row : identityDb->execSqlSync(SNAPSHOT_PERSONS)) {
+    if (sources.identityDb) {
+      for (const auto& row : sources.identityDb->execSqlSync(SNAPSHOT_PERSONS)) {
         execStmt(db, UPSERT_PERSON, [&](SqliteStmt& stmt) {
           stmt.bindInt64(1, row[0].as<int64_t>());
           stmt.bindInt64(2, row[1].isNull() ? 0 : row[1].as<int64_t>());
@@ -299,22 +304,22 @@ void CatalogReplica::seedFromSnapshot(drogon::orm::DbClient* identityDb,
         ++persons;
       }
     }
-    if (cameraDb) {
-      for (const auto& row : cameraDb->execSqlSync(SNAPSHOT_CAMERAS)) {
+    if (sources.cameraDb) {
+      for (const auto& row : sources.cameraDb->execSqlSync(SNAPSHOT_CAMERAS)) {
         execStmt(db, UPSERT_CAMERA, [&](SqliteStmt& stmt) {
           stmt.bindInt64(1, row[0].as<int64_t>());
           stmt.bindText(2, row[1].as<std::string>());
         });
         ++cameras;
       }
-      for (const auto& row : cameraDb->execSqlSync(SNAPSHOT_ZONES)) {
+      for (const auto& row : sources.cameraDb->execSqlSync(SNAPSHOT_ZONES)) {
         execStmt(db, UPSERT_ZONE, [&](SqliteStmt& stmt) {
           stmt.bindInt64(1, row[0].as<int64_t>());
           stmt.bindText(2, row[1].as<std::string>());
         });
         ++zones;
       }
-      for (const auto& row : cameraDb->execSqlSync(SNAPSHOT_STREAMS)) {
+      for (const auto& row : sources.cameraDb->execSqlSync(SNAPSHOT_STREAMS)) {
         execStmt(db, UPSERT_STREAM, [&](SqliteStmt& stmt) {
           stmt.bindInt64(1, row[0].as<int64_t>());
           stmt.bindText(2, row[1].as<std::string>());
@@ -323,7 +328,7 @@ void CatalogReplica::seedFromSnapshot(drogon::orm::DbClient* identityDb,
       }
     }
   }
-  resolver_.build();
+  sources.resolver.build();
   LOG_INFO << "CatalogReplica: snapshot filled persons=" << persons
            << " cameras=" << cameras << " zones=" << zones
            << " streams=" << streams;

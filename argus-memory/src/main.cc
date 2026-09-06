@@ -106,12 +106,17 @@ int main()
   }
 
   // Registered after initStack's own advice, so the store opens before the
-  // replica tables are filled.
+  // replica tables are filled. Without a change feed the boot snapshot is the
+  // replicas' only source — it must not be gated on NATS.
   drogon::app().registerBeginningAdvice(
       [memory, &replica, identity = identityDb.get(),
        camera = cameraDb.get()]() {
         if (replica)
           replica->seedFromSnapshot(identity, camera);
+        else
+          CatalogReplica::seedSnapshot(
+              {static_cast<SqliteGraph&>(memory->service().graph()),
+               memory->service().resolver(), identity, camera});
       });
 
   LOG_INFO << "argus-memory listening on " << listener.host << ":"
