@@ -73,4 +73,3 @@ db = "database/identity.db"
 # funnel; the feature services then drop their change events with a
 # warning.
 url = "nats://127.0.0.1:4222"
-
