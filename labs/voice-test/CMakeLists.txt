@@ -2,6 +2,7 @@ set(VOICE_TEST_SRC
     voice-test.cc
     audio.cc
     camera-audio.cc
+    conversation.cc
     ${SRC_ROOT}/shared/services/vad/vad-service.cc
 )
 
@@ -40,7 +41,6 @@ set(VOICE_SERVICE_SRC
     ${SRC_ROOT}/shared/services/tools/tool-registry.cc
     ${SRC_ROOT}/shared/services/tools/tool-validator.cc
     ${SRC_ROOT}/shared/services/tools/tool-executor.cc
-    ${SRC_ROOT}/shared/services/conversation/conversation-service.cc
     ${SRC_ROOT}/shared/services/llm/lfm-adapter.cc
     ${SRC_ROOT}/shared/services/sqlite/db-service.cc
     ${SRC_ROOT}/shared/services/sqlite/vec-db.cc

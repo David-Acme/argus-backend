@@ -57,62 +57,6 @@ inline StoredFileCategory storedFileCategoryFromString(const std::string& value)
                                : StoredFileCategory::Portrait;
 }
 
-enum class PortraitAccessRequestStatus : uint8_t
-{
-  Pending = 0,
-  Approved,
-  Denied,
-  Cancelled
-};
-
-inline std::string portraitAccessRequestStatusToString(
-    PortraitAccessRequestStatus status)
-{
-  switch (status) {
-    case PortraitAccessRequestStatus::Approved:
-      return "approved";
-    case PortraitAccessRequestStatus::Denied:
-      return "denied";
-    case PortraitAccessRequestStatus::Cancelled:
-      return "cancelled";
-    case PortraitAccessRequestStatus::Pending:
-      return "pending";
-  }
-  return "pending";
-}
-
-inline PortraitAccessRequestStatus portraitAccessRequestStatusFromString(
-    const std::string& value)
-{
-  if (value == "approved")
-    return PortraitAccessRequestStatus::Approved;
-  if (value == "denied")
-    return PortraitAccessRequestStatus::Denied;
-  if (value == "cancelled")
-    return PortraitAccessRequestStatus::Cancelled;
-  return PortraitAccessRequestStatus::Pending;
-}
-
-enum class PortraitAccessGrantScope : uint8_t
-{
-  Temporary = 0,
-  Permanent
-};
-
-inline std::string portraitAccessGrantScopeToString(
-    PortraitAccessGrantScope scope)
-{
-  return scope == PortraitAccessGrantScope::Permanent ? "permanent"
-                                                      : "temporary";
-}
-
-inline PortraitAccessGrantScope portraitAccessGrantScopeFromString(
-    const std::string& value)
-{
-  return value == "permanent" ? PortraitAccessGrantScope::Permanent
-                              : PortraitAccessGrantScope::Temporary;
-}
-
 enum class EventSeverity : uint8_t
 {
   Info = 0,
@@ -432,44 +376,6 @@ inline MemorySource memorySourceFromString(const std::string& s)
   if (s == "ingest")
     return MemorySource::Ingest;
   return MemorySource::Rule;
-}
-
-enum class JobState : uint8_t
-{
-  Waiting = 0,
-  Active,
-  Completed,
-  Failed,
-  Delayed
-};
-
-inline std::string jobStateToString(JobState s)
-{
-  switch (s) {
-    case JobState::Active:
-      return "active";
-    case JobState::Completed:
-      return "completed";
-    case JobState::Failed:
-      return "failed";
-    case JobState::Delayed:
-      return "delayed";
-    default:
-      return "waiting";
-  }
-}
-
-inline JobState jobStateFromString(const std::string& s)
-{
-  if (s == "active")
-    return JobState::Active;
-  if (s == "completed")
-    return JobState::Completed;
-  if (s == "failed")
-    return JobState::Failed;
-  if (s == "delayed")
-    return JobState::Delayed;
-  return JobState::Waiting;
 }
 
 enum class AuditLogPriority : uint8_t

@@ -45,54 +45,6 @@ else()
 endif()
 
 # ---------------------------------------------------------------------------
-# Kùzu (embedded graph DB — upstream kuzudb/kuzu @ v0.11.3, the final release
-# before the project was archived on 2025-10-10; Vela fork pinned at
-# third_party/kuzu-vela as a future upgrade path). GATE RESULT: kuzu does NOT
-# become Argus' memory engine. Measured in Release @ 5 000 facts: build
-# offline OK, RSS 54 MB, KNN p95 13 ms, traversal p95 2 ms — but the real
-# access pattern (consolidation worker inserting while recall reads, single
-# serialized connection, COGNITIVE_MEMORY_PLAN.md §9) FAILS: inserts degrade
-# from ~12 ms to ~9 s under concurrent reads (checkpoint starvation), with
-# non-deterministic DirectedCSRIndex asserts and SIGTERM-proof hangs. The
-# plan's fallback applies: SemanticGraph backed by the existing SQLite
-# tables. Both submodules stay pinned purely as the reproducer/upgrade path:
-# labs/kuzu-probe (EXCLUDE_FROM_ALL — never built by default, ~40 min
-# compile) is the gate probe and the crash reproducer for the Vela fork.
-# ---------------------------------------------------------------------------
-if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/kuzu/CMakeLists.txt")
-  message(STATUS "Argus: integrating kuzu submodule (reproducer only — gate failed)")
-
-  set(BUILD_KUZU ON CACHE BOOL "" FORCE)
-  set(BUILD_SHELL OFF CACHE BOOL "" FORCE)
-  set(BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
-  set(BUILD_TESTS OFF CACHE BOOL "" FORCE)
-  set(BUILD_EXTENSION_TESTS OFF CACHE BOOL "" FORCE)
-  set(BUILD_BENCHMARK OFF CACHE BOOL "" FORCE)
-  set(BUILD_JAVA OFF CACHE BOOL "" FORCE)
-  set(BUILD_NODEJS OFF CACHE BOOL "" FORCE)
-  set(BUILD_PYTHON OFF CACHE BOOL "" FORCE)
-  set(BUILD_SINGLE_FILE_HEADER OFF CACHE BOOL "" FORCE)
-  set(ENABLE_BACKTRACES OFF CACHE BOOL "" FORCE)
-  set(ENABLE_WERROR OFF CACHE BOOL "" FORCE)
-  # Bundled, statically linked, auto-registered at Database construction:
-  # no INSTALL/LOAD step, no extension registry reachable over the network.
-  set(BUILD_EXTENSIONS "fts;vector" CACHE STRING "" FORCE)
-  set(EXTENSION_STATIC_LINK_LIST "fts;vector" CACHE STRING "" FORCE)
-
-  add_subdirectory(kuzu EXCLUDE_FROM_ALL)
-
-  if(TARGET kuzu)
-    set(ARGUS_KUZU_TARGET kuzu)
-    set(ARGUS_KUZU_TARGET kuzu PARENT_SCOPE)
-    message(STATUS "Argus: kuzu target -> kuzu")
-  else()
-    message(FATAL_ERROR "Argus: kuzu built but kuzu target missing")
-  endif()
-else()
-  message(WARNING "Argus: kuzu submodule not found at third_party/kuzu")
-endif()
-
-# ---------------------------------------------------------------------------
 # sqlite-vec (vendored, MIT/Apache-2.0) — vec0 vector search for SQLite.
 # Compiled with SQLITE_CORE so it links statically against Drogon's sqlite3
 # (it only defines vec0_*/sqlite3_vec_init symbols — no clash).

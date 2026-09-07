@@ -35,7 +35,6 @@
 #include <shared/services/mdns/adapter/mdns-service-adapter.hxx>
 #include <shared/services/memory/adapter/memory-service-adapter.hxx>
 #include <shared/services/memory/remote/remote-memory-service-adapter.hxx>
-#include <shared/services/queue/adapter/queue-manager-service-adapter.hxx>
 #include <shared/services/room/adapter/room-manager-service-adapter.hxx>
 #include <shared/contracts/identity-change-sink.hxx>
 #include <shared/services/socket/nats-identity-change-sink.hxx>
@@ -443,6 +442,5 @@ void Application::registerServices()
              << ConfigService::getString("memory.remote_url")
              << "; in-process memory stack stays uninitialized";
   }
-  registry_.registerService(std::make_unique<QueueManagerServiceAdapter>());
   registry_.registerService(std::make_unique<ExtractionServiceAdapter>());
 }

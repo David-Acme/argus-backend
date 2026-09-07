@@ -512,7 +512,9 @@ still left to verify before the phase can be called complete:
 - **VAD calibration against recorded camera audio.** The live conversation
   (2026-08-09) validated the VAD + echo gate end-to-end: 100% fluid
   turn-taking, no false turns, ~780ms echo drains. The formal fixture
-  calibration remains optional: record `labs/fixtures/camera-quiet.wav`,
+  calibration remains optional: record `camera-quiet.wav` (the `labs/fixtures`
+  dir was removed in F6-1 — it shipped only a README pointing at wav files
+  that were never committed),
   `camera-speech.wav` and `camera-echo.wav` with `argus-voice-test
   --audio-dump`; acceptance: quiet → 0 turns, speech → exactly 3 turns (tune
   `min_silence_frames`/`min_mean_prob`), then derive `talk_drain_margin_ms`
@@ -559,13 +561,14 @@ ignores me"), three caller/config-level knobs were set (no changes inside
   is the model's maximum). Default stays 32k; raising it costs ~+300 MB of f16
   KV cache (only 6 of 16 LFM2.5 blocks carry attention) and marginally slower
   decode as the context fills; prefill only pays for real tokens. It pays off
-  only if the history actually grows, so the real lever is
-  `[conversation] history_messages`.
-- **`[conversation] history_messages = 41`** — the conversation keeps 20 turns
-  (was a hardcoded 21 messages). `LlmService` prefix reuse (`resetContext =
-  false`) only stays incremental while the history head is un-pruned; pruning
-  forces a full re-prefill, which is why a larger cap plus a larger context
-  helps long conversations.
+  only if the history actually grows, so the real lever is the history cap.
+- **History cap 41 messages** — the conversation keeps 20 turns. The
+  `[conversation]` config block was removed (F6-1): its only consumer was the
+  deleted ConversationService; `labs/voice-test` owns the cap now
+  (`labs.conversation.history_messages`, default 41). `LlmService` prefix
+  reuse (`resetContext = false`) only stays incremental while the history
+  head is un-pruned; pruning forces a full re-prefill, which is why a larger
+  cap plus a larger context helps long conversations.
 - **`[llm] temperature = 0.85`** (was 0.7) for more varied, natural phrasing.
 - **New system prompt in `labs/voice-test`** — warm, conversational persona
   that must engage with the user's actual words and must not reply with
@@ -694,14 +697,13 @@ Never static methods for service classes. Never local/temporary repository const
 
 - Home/collaboration: `user` (role, is_active, soft-delete via deleted_at),
   `person` (linked to users via `user_id`), `person_event`, `event`,
-  `reminder`, `reminder_detail`, `context_note`, `project`, `project_member`,
+  `reminder`, `reminder_detail`, `project`, `project_member`,
   `project_task`, `calendar_event`, `calendar_event_share`
 - Cameras: `camera`, `camera_stream`, `zone`
 - People/access: `user_invitation` (solo hash SHA-256 del token, nunca el
   token), `invitation_redemption` (UNIQUE user_id), `stored_file`,
-  `user_portrait`, `portrait_preview_capability` (one-use), 
-  `portrait_access_request`, `portrait_access_grant`, `device_login_challenge`
-  (login cruzado por QR)
+  `user_portrait`, `portrait_preview_capability` (one-use),
+  `device_login_challenge` (login cruzado por QR)
 - Auth/face: `refresh_token` (is_valid, is_used, device_hash, expires_at),
   `device_credential` (credential identity mode: `secret_hash` UNIQUE — only
   the SHA-256 of the per-device secret, never the plaintext),
@@ -713,8 +715,9 @@ Never static methods for service classes. Never local/temporary repository const
 - Memoria: `memory_entity`/`memory_alias`/`memory_fact`/`memory_edge`/
   `memory_episode`/`memory_source`/`memory_procedure` — grafo semántico
   (con sus FTS5: `memory_fact_fts`, `memory_episode_fts`, `memory_alias_fts`)
-- Ops/voz: `job` — worker job queue (state, attempts, dedupe_key),
-  `schema_version`, `voice_session`, `voice_message` (historial local de voz)
+- Ops: `schema_version` (el historial local de voz `voice_session`/
+  `voice_message`, la cola `job` y las tablas huérfanas `context_note`/
+  `portrait_access_request`/`portrait_access_grant` se borraron en F6-1)
 
 ## Sync engine (WebSocket, one-way server→client)
 
@@ -734,7 +737,7 @@ Never static methods for service classes. Never local/temporary repository const
   `camera_stream`, `zone`, `reminder`, `reminder_detail`, `calendar_event`,
   `calendar_event_share`, `project`, `project_member`, `project_task`,
   `event`, `person` — más `notification` (dedicated per user). Fuera del
-  sync: `context_note`, las tablas de archivos privados/portraits y
+  sync: las tablas de archivos privados/portraits y
   `device_login_challenge`. El frontend replica esta superficie en
   `SYNC_TABLE_KEYS`.
 - **Bootstrap versus updates**: the first `Synchronize` supplies a complete
@@ -990,10 +993,10 @@ FTS5 + recursive-CTE hop recall, §4 schema in schema.sql), one-shot
 `SqliteGraphServiceAdapter` + `MemoryServiceAdapter` registered at boot
 (application.cc), and MemoryService converted static → instance (worker
 state as private members; labs use a `gMemory` instance). `--graph-test`
-15/15; recall-bench 30/30; build dev 0/0. The submodules stay pinned as reproducer/upgrade path;
-`labs/kuzu-probe` (`EXCLUDE_FROM_ALL`, ~40 min compile when built
-explicitly) is the gate probe and the crash reproducer
-(`labs/kuzu-probe/REPRODUCER.md`, ready to file against Vela). The Wave A
+15/15; recall-bench 30/30; build dev 0/0. The submodules and the
+`labs/kuzu-probe` reproducer were deleted on 2026-09-07 (F6-1): the gate
+result above is retained as the record — never re-introduce Kùzu without
+re-running the gate. The Wave A
 overhead items (4, 7, 9) landed with `--recall-bench` p50 24.4 ms / p95
 27.3 ms / 30/30 and `--intent-check` 103/103 — those remain the regression
 baselines.

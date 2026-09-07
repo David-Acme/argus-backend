@@ -358,17 +358,15 @@ shared file-static behind a mutex.
   Target: `qr-code-generator::qrcodegencpp`, header `<qrcodegen/qrcodegen.hpp>`.
 - `opencv/4.13.0` (headless, for scaled face image decoding)
 - `onnxruntime/1.24.4` (STT/TTS via sherpa-onnx, VAD via Silero ONNX)
-- **Kùzu — NOT a dependency.** Pinned submodules `third_party/kuzu`
-  (upstream `kuzudb/kuzu` @ `v0.11.3`) and `third_party/kuzu-vela`
-  (`Vela-Engineering/kuzu` @ `v0.12.0-vela.87bf0be`) exist ONLY as the
-  Phase 0 gate reproducer / future upgrade path — **never built by default**
-  (`EXCLUDE_FROM_ALL`; `labs/kuzu-probe` is the gate probe + crash
-  reproducer, see
-  `labs/kuzu-probe/REPRODUCER.md`). Gate result: write+read interleaving on
+- **Kùzu — NOT a dependency (removed).** The Phase 0 gate rejected both Kùzu
+  candidates (upstream `kuzudb/kuzu` @ `v0.11.3` and the Vela fork
+  @ `v0.12.0-vela.87bf0be`) as the memory engine: write+read interleaving on
   one serialized connection fails on both (upstream: checkpoint starvation,
   inserts 12 ms → 4–18 s under read load + `DirectedCSRIndex` asserts +
-  SIGTERM-proof hangs; fork: any second connection crashes). The memory
-  redesign's `SemanticGraph` is backed by the existing SQLite tables.
+  SIGTERM-proof hangs; fork: any second connection crashes). The submodules,
+  the build integration and the `labs/kuzu-probe` reproducer are deleted;
+  the gate result lives in `CONTEXT.md`. The memory redesign's
+  `SemanticGraph` is backed by the existing SQLite tables.
 - **llama.cpp as a submodule** (`third_party/llama.cpp`, tag `b10305`) — powers
   the LLM **and** the VLM through `libmtmd`. Targets: `${ARGUS_LLAMA_TARGETS}`
   (= `llama mtmd`). Built with `LLAMA_BUILD_MTMD=ON`, everything else OFF.
@@ -573,6 +571,9 @@ Folder architecture, naming and ordering mirror the legacy monolith
 or directory that has no current consumer.
 
 ## Build Commands
+
+`ARGUS_BUILD_LABS` defaults OFF: the `labs/` probes and benches are a
+developer opt-in (`cmake --preset dev -DARGUS_BUILD_LABS=ON`).
 
 ```bash
 # Dev (Debug)

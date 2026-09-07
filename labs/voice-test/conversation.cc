@@ -1,12 +1,10 @@
-#include "conversation-service.hxx"
+#include "conversation.hxx"
 
 #include <shared/services/config-service/config-service.hxx>
 
 namespace
 {
 
-// Strips injected context (ack notes, <memorias>/<memories> blocks) from a
-// user message. Only run when the history head is already being pruned.
 std::string stripInjectedContext(std::string text)
 {
   static constexpr std::string_view kNotes[] = {
@@ -52,6 +50,27 @@ std::string stripInjectedContext(std::string text)
 
 } // namespace
 
+std::string captureAckNote(CaptureOutcome outcome, const std::string& lang)
+{
+  if (outcome == CaptureOutcome::Stored) {
+    return lang == "en"
+               ? "\n(Note: the user asked you to remember this and it is "
+                 "stored. Briefly confirm that you noted it.)"
+               : "\n(Nota: el usuario te pidió recordar esto y quedó "
+                 "guardado. Confirma brevemente que lo has apuntado.)";
+  }
+  if (outcome == CaptureOutcome::Deferred) {
+    return lang == "en"
+               ? "\n(Note: the user asked you to remember this and you are "
+                 "taking note now. Say you are noting it, in the present, "
+                 "and never that it is already saved.)"
+               : "\n(Nota: el usuario te pidió recordar esto y lo estás "
+                 "apuntando ahora. Dilo en presente, y nunca que ya quedó "
+                 "guardado.)";
+  }
+  return {};
+}
+
 std::string ConversationService::recallBlock(WorkingMemory& wm,
                                              const std::string& text,
                                              int64_t userId)
@@ -78,74 +97,10 @@ std::string ConversationService::recallBlock(WorkingMemory& wm,
   return recalled.block;
 }
 
-TurnResult ConversationService::processTurn(WorkingMemory& wm,
-                                            const std::string& userText,
-                                            const ConversationTurnInput& input)
-{
-  TurnResult result;
-  if (userText.empty())
-    return result;
-
-  // LISTEN -> UNDERSTAND: capture deterministically first ("recuerda que X"
-  // must never wait for the model).
-  const CaptureResult capture = memory_.captureExplicit(
-      {.userId = input.userId, .lang = wm.lang, .text = userText});
-  result.capture = capture.outcome;
-
-  // RETRIEVE: entity-anchored block injected into the turn.
-  const std::string block = recallBlock(wm, userText, input.userId);
-
-  // The system prompt stays constant so the prefill prefix is reusable, and
-  // the recalled facts ride at the tail of the user turn: measured on the
-  // 1.2B, facts placed before the question got answered from the previous
-  // turn's entity ("¿qué no le gusta a Pedro?" -> "tu hermana...").
-  std::string system =
-      wm.lang == "en"
-          ? "You are Argus, the home assistant. Reply briefly in the user's "
-            "language, like a person, and never with generic offers. "
-            "Questions, sums, dates, times and definitions are ephemeral "
-            "conversation, not memory. Memory is managed outside you: never "
-            "emit tool calls, JSON or save blocks, and only confirm that "
-            "something was stored when the turn carries a capture note."
-          : "Eres Argus, el asistente del hogar. Responde brevemente en el "
-            "idioma del usuario, como una persona, y nunca con ofertas "
-            "genéricas. Las preguntas, cálculos, fechas, horas y definiciones "
-            "son conversación efímera, no memoria. La memoria se administra "
-            "fuera de ti: no emitas tool calls, JSON ni bloques de guardado, "
-            "y confirma que algo quedó guardado solo si el turno trae una "
-            "nota de captura.";
-  if (input.userId >= 0) {
-    const std::string profile = memory_.profileFor(input.userId, wm.lang);
-    if (!profile.empty())
-      system += "\n\n" + profile;
-  }
-
-  if (wm.history.empty())
-    wm.history.push_back({.role = "system", .content = system});
-  else
-    wm.history.front().content = system;
-
-  std::string content = userText;
-  content += captureAckNote(capture.outcome, wm.lang);
-  if (!block.empty())
-    content += "\n\n" + block;
-  wm.history.push_back({.role = "user", .content = content});
-
-  const ChatRequest req{.messages = wm.history,
-                        .maxTokens = 0,
-                        .temperature = -1.0F,
-                        .resetContext = false};
-  result.reply = llm_.chat(req);
-  wm.history.push_back({.role = "assistant", .content = result.reply});
-
-  trimHistory(wm, input.userId);
-  return result;
-}
-
 void ConversationService::trimHistory(WorkingMemory& wm, int64_t userId)
 {
-  const int cap = ConfigService::getInt("conversation.history_messages");
-  const size_t limit = cap > 0 ? static_cast<size_t>(cap) : 21;
+  const int cap = ConfigService::getInt("labs.conversation.history_messages");
+  const size_t limit = cap > 0 ? static_cast<size_t>(cap) : 41;
   if (wm.history.size() <= limit || userId < 0)
     return;
 

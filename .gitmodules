@@ -1,6 +1,3 @@
-[submodule "third_party/inspireface"]
-	path = third_party/inspireface
-	url = https://github.com/HyperInspire/InspireFace.git
 [submodule "third_party/sherpa-onnx"]
 	path = third_party/sherpa-onnx
 	url = https://github.com/k2-fsa/sherpa-onnx.git
@@ -14,9 +11,3 @@
 [submodule "third_party/fastText"]
 	path = third_party/fastText
 	url = https://github.com/facebookresearch/fastText.git
-[submodule "third_party/kuzu-vela"]
-	path = third_party/kuzu-vela
-	url = https://github.com/Vela-Engineering/kuzu
-[submodule "kuzu-upstream"]
-	path = third_party/kuzu
-	url = https://github.com/kuzudb/kuzu

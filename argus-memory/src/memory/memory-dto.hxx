@@ -52,7 +52,7 @@ struct ProcedureBody
   static ProcedureBody fromJson(const Json::Value& json);
 };
 
-// POST /memory/v1/capture body: the ConversationService capture surface.
+// POST /memory/v1/capture body: the explicit memory-capture surface.
 struct CaptureBody
 {
   std::string text;

@@ -40,8 +40,8 @@ pattern (F4-2) one engine later.
     never routed through the gateway.
 - **Config**: `[stt]` (engine knobs, mirroring the legacy block) +
   `[server]` (loopback listener, default 7030) only. No database, no NATS,
-  no JWT/device keys (Ruling BN): `voice_session`/`voice_message` stay dead
-  and nothing here persists anything.
+  no JWT/device keys (Ruling BN): the dead `voice_session`/`voice_message`
+  tables were dropped in F6-1 and nothing here persists anything.
 
 ## What it did NOT change
 

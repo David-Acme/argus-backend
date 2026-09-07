@@ -34,24 +34,6 @@ TEST_CASE("stored file category strings round-trip")
                    storedFileCategoryFromString);
 }
 
-TEST_CASE("portrait access request status strings round-trip")
-{
-    checkRoundTrip(
-        {PortraitAccessRequestStatus::Pending, PortraitAccessRequestStatus::Approved,
-         PortraitAccessRequestStatus::Denied, PortraitAccessRequestStatus::Cancelled},
-        {"pending", "approved", "denied", "cancelled"},
-        portraitAccessRequestStatusToString,
-        portraitAccessRequestStatusFromString);
-}
-
-TEST_CASE("portrait access grant scope strings round-trip")
-{
-    checkRoundTrip({PortraitAccessGrantScope::Temporary,
-                    PortraitAccessGrantScope::Permanent},
-                   {"temporary", "permanent"}, portraitAccessGrantScopeToString,
-                   portraitAccessGrantScopeFromString);
-}
-
 TEST_CASE("event severity strings round-trip")
 {
     checkRoundTrip(
@@ -137,15 +119,6 @@ TEST_CASE("memory source strings round-trip")
                    memorySourceFromString);
 }
 
-TEST_CASE("job state strings round-trip")
-{
-    checkRoundTrip(
-        {JobState::Waiting, JobState::Active, JobState::Completed, JobState::Failed,
-         JobState::Delayed},
-        {"waiting", "active", "completed", "failed", "delayed"},
-        jobStateToString, jobStateFromString);
-}
-
 TEST_CASE("camera driver strings round-trip")
 {
     checkRoundTrip({CameraDriver::Tapo, CameraDriver::Onvif, CameraDriver::Rtsp},
@@ -203,10 +176,6 @@ TEST_CASE("unknown strings fall back to documented defaults")
     CHECK(userRoleFromString("bogus") == UserRole::Guest);
     CHECK(storedFileCategoryFromString("bogus") ==
           StoredFileCategory::Portrait);
-    CHECK(portraitAccessRequestStatusFromString("bogus") ==
-          PortraitAccessRequestStatus::Pending);
-    CHECK(portraitAccessGrantScopeFromString("bogus") ==
-          PortraitAccessGrantScope::Temporary);
     CHECK(eventSeverityFromString("bogus") == EventSeverity::Info);
     CHECK(cameraRecordModeFromString("bogus") == CameraRecordMode::Events);
     CHECK(zoneTypeFromString("bogus") == ZoneType::Monitor);
@@ -218,7 +187,6 @@ TEST_CASE("unknown strings fall back to documented defaults")
     CHECK(phraseKindFromString("bogus") == PhraseKind::Trigger);
     CHECK(lexiconKindFromString("bogus") == LexiconKind::Predicate);
     CHECK(memorySourceFromString("bogus") == MemorySource::Rule);
-    CHECK(jobStateFromString("bogus") == JobState::Waiting);
     CHECK(tableNameFromString("bogus") == TableName::User);
     CHECK(cameraDriverFromString("bogus") == CameraDriver::Tapo);
     CHECK(shareAccessFromString("bogus") == ShareAccess::View);

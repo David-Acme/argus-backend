@@ -94,9 +94,6 @@ file = "./database/argus.db"
 # [camera]
 # db = ""
 
-[conversation]
-history_messages = 41
-
 [face]
 top_k = 5
 

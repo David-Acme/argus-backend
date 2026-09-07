@@ -91,37 +91,6 @@ CREATE TABLE IF NOT EXISTS portrait_preview_capability (
     created_at          INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
 );
 
--- Guard access is opt-in and owner-auditable. A request and the resulting grant
--- remain separate so a decision does not erase the request history.
-CREATE TABLE IF NOT EXISTS portrait_access_request (
-    id                  INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
-    portrait_user_id    INTEGER NOT NULL REFERENCES user(id) ON DELETE CASCADE,
-    requester_user_id   INTEGER NOT NULL REFERENCES user(id) ON DELETE CASCADE,
-    status              TEXT    NOT NULL DEFAULT 'pending'
-                                    CHECK (status IN ('pending', 'approved', 'denied', 'cancelled')),
-    resolved_by         INTEGER REFERENCES user(id) ON DELETE SET NULL,
-    resolved_at         INTEGER,
-    created_at          INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
-    updated_at          INTEGER,
-    CHECK ((status = 'pending' AND resolved_at IS NULL) OR status <> 'pending')
-);
-
-CREATE TABLE IF NOT EXISTS portrait_access_grant (
-    id                  INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
-    request_id          INTEGER UNIQUE REFERENCES portrait_access_request(id) ON DELETE SET NULL,
-    portrait_user_id    INTEGER NOT NULL REFERENCES user(id) ON DELETE CASCADE,
-    grantee_user_id     INTEGER NOT NULL REFERENCES user(id) ON DELETE CASCADE,
-    granted_by          INTEGER NOT NULL REFERENCES user(id) ON DELETE RESTRICT,
-    scope               TEXT    NOT NULL CHECK (scope IN ('temporary', 'permanent')),
-    expires_at          INTEGER,
-    revoked_at          INTEGER,
-    revoked_by          INTEGER REFERENCES user(id) ON DELETE SET NULL,
-    created_at          INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
-    updated_at          INTEGER,
-    CHECK ((scope = 'temporary' AND expires_at IS NOT NULL)
-           OR (scope = 'permanent' AND expires_at IS NULL))
-);
-
 CREATE TABLE IF NOT EXISTS person (
     id             INTEGER NOT NULL  PRIMARY KEY AUTOINCREMENT,
     user_id        INTEGER           REFERENCES user(id) ON DELETE SET NULL,
@@ -274,20 +243,6 @@ CREATE TABLE IF NOT EXISTS reminder_detail (
     status      TEXT    NOT NULL  DEFAULT 'pending'
                                   CHECK (status IN ('pending', 'in_progress', 'done', 'blocked')),
     file_paths  TEXT    NOT NULL  DEFAULT '[]',
-    created_at  INTEGER NOT NULL  DEFAULT (strftime('%s', 'now')),
-    updated_at  INTEGER,
-    deleted_at  INTEGER
-);
-
-CREATE TABLE IF NOT EXISTS context_note (
-    id          INTEGER NOT NULL  PRIMARY KEY AUTOINCREMENT,
-    created_by  INTEGER           REFERENCES user(id) ON DELETE SET NULL,
-    title       TEXT    NOT NULL,
-    content     TEXT    NOT NULL  DEFAULT '',
-    tags        TEXT    NOT NULL  DEFAULT '',
-    valid_from  INTEGER,
-    valid_until INTEGER,
-    is_active   INTEGER NOT NULL  DEFAULT 1  CHECK (is_active IN (0, 1)),
     created_at  INTEGER NOT NULL  DEFAULT (strftime('%s', 'now')),
     updated_at  INTEGER,
     deleted_at  INTEGER
@@ -563,51 +518,6 @@ CREATE TABLE IF NOT EXISTS memory_procedure (
   updated_at INTEGER NOT NULL
 );
 
--- ── Tables · Jobs ────────────────────────────────────────────────────────────
-
-CREATE TABLE IF NOT EXISTS job (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  queue TEXT NOT NULL,
-  payload TEXT NOT NULL,
-  state TEXT NOT NULL CHECK (state IN ('waiting','active','completed','failed','delayed')),
-  priority INTEGER NOT NULL DEFAULT 0,
-  attempts INTEGER NOT NULL DEFAULT 0,
-  max_attempts INTEGER NOT NULL DEFAULT 3,
-  dedupe_key TEXT,
-  last_error TEXT,
-  next_run_at INTEGER,
-  created_at INTEGER NOT NULL,
-  updated_at INTEGER NOT NULL
-);
-
--- ── Tables · Voice sessions (historical, local-first, never synced) ─────────
--- Voice conversations kept as server-side history. `person_id` stays NULL
--- until the person is linked (future: Argus talks through cameras and a
--- detected person may not have an account).
-
-CREATE TABLE IF NOT EXISTS voice_session (
-    id            INTEGER NOT NULL  PRIMARY KEY AUTOINCREMENT,
-    person_id     INTEGER           REFERENCES person(id) ON DELETE SET NULL,
-    source        TEXT    NOT NULL  DEFAULT 'app'
-                                    CHECK (source IN ('app', 'camera')),
-    title         TEXT    NOT NULL  DEFAULT '',
-    started_at    INTEGER NOT NULL,
-    ended_at      INTEGER,
-    message_count INTEGER NOT NULL  DEFAULT 0,
-    created_at    INTEGER NOT NULL  DEFAULT (strftime('%s', 'now')),
-    updated_at    INTEGER
-);
-
-CREATE TABLE IF NOT EXISTS voice_message (
-    id          INTEGER NOT NULL  PRIMARY KEY AUTOINCREMENT,
-    session_id  INTEGER NOT NULL  REFERENCES voice_session(id) ON DELETE CASCADE,
-    person_id   INTEGER           REFERENCES person(id) ON DELETE SET NULL,
-    role        TEXT    NOT NULL  CHECK (role IN ('user', 'assistant')),
-    text        TEXT    NOT NULL  DEFAULT '',
-    duration_ms INTEGER NOT NULL  DEFAULT 0,
-    created_at  INTEGER NOT NULL  DEFAULT (strftime('%s', 'now'))
-);
-
 -- ── Virtual tables · Memory FTS5 (external content) ─────────────────────────
 
 CREATE VIRTUAL TABLE IF NOT EXISTS memory_fact_fts USING fts5(
@@ -648,12 +558,6 @@ CREATE INDEX IF NOT EXISTS idx_reminder_deleted_at   ON reminder (deleted_at);
 CREATE INDEX IF NOT EXISTS idx_reminder_detail_reminder  ON reminder_detail (reminder_id);
 CREATE INDEX IF NOT EXISTS idx_reminder_detail_created   ON reminder_detail (created_at);
 CREATE INDEX IF NOT EXISTS idx_reminder_detail_deleted   ON reminder_detail (deleted_at);
-
--- context_note
-CREATE INDEX IF NOT EXISTS idx_context_note_created_by  ON context_note (created_by);
-CREATE INDEX IF NOT EXISTS idx_context_note_tags        ON context_note (tags);
-CREATE INDEX IF NOT EXISTS idx_context_note_created_at  ON context_note (created_at);
-CREATE INDEX IF NOT EXISTS idx_context_note_deleted_at  ON context_note (deleted_at);
 
 -- camera
 CREATE INDEX IF NOT EXISTS idx_camera_created_at  ON camera (created_at);
@@ -702,18 +606,6 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_user_portrait_user_current
 CREATE INDEX IF NOT EXISTS idx_portrait_preview_capability_lookup
     ON portrait_preview_capability (token_hash, expires_at, consumed_at);
 
--- portrait access
-CREATE UNIQUE INDEX IF NOT EXISTS idx_portrait_access_request_pending
-    ON portrait_access_request (portrait_user_id, requester_user_id)
-    WHERE status = 'pending';
-CREATE INDEX IF NOT EXISTS idx_portrait_access_request_owner_status
-    ON portrait_access_request (portrait_user_id, status, created_at DESC);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_portrait_access_grant_active
-    ON portrait_access_grant (portrait_user_id, grantee_user_id)
-    WHERE revoked_at IS NULL;
-CREATE INDEX IF NOT EXISTS idx_portrait_access_grant_lookup
-    ON portrait_access_grant (grantee_user_id, portrait_user_id, expires_at);
-
 -- refresh_token
 CREATE INDEX IF NOT EXISTS idx_refresh_token_user_id   ON refresh_token (user_id);
 CREATE INDEX IF NOT EXISTS idx_refresh_token_access    ON refresh_token (access_token);
@@ -757,15 +649,3 @@ CREATE INDEX IF NOT EXISTS idx_memory_edge_dst    ON memory_edge (kind, dst_id);
 CREATE INDEX IF NOT EXISTS idx_memory_episode_time ON memory_episode (occurred_at);
 CREATE INDEX IF NOT EXISTS idx_memory_episode_scope ON memory_episode (scope, ref_id);
 
--- job
-CREATE INDEX IF NOT EXISTS idx_job_pick ON job (queue, state, next_run_at, priority DESC);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_job_dedupe ON job (queue, dedupe_key) WHERE dedupe_key IS NOT NULL;
-
--- voice_session
-CREATE INDEX IF NOT EXISTS idx_voice_session_person ON voice_session (person_id);
-CREATE INDEX IF NOT EXISTS idx_voice_session_started ON voice_session (started_at);
-
--- voice_message
-CREATE INDEX IF NOT EXISTS idx_voice_message_session ON voice_message (session_id);
-CREATE INDEX IF NOT EXISTS idx_voice_message_person ON voice_message (person_id);
-CREATE INDEX IF NOT EXISTS idx_voice_message_created ON voice_message (created_at);

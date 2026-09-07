@@ -80,7 +80,7 @@ add_subdirectory(tools/migrate-notification EXCLUDE_FROM_ALL)
 # Vulkan-in-container RADV probe: built on demand (target argus-vulkan-probe).
 add_subdirectory(tools/vulkan-probe EXCLUDE_FROM_ALL)
 
-option(ARGUS_BUILD_LABS "Build backend integration and verification labs" ON)
+option(ARGUS_BUILD_LABS "Build backend integration and verification labs" OFF)
 
 if(ARGUS_BUILD_LABS)
     add_subdirectory(labs/audio-probe)
@@ -94,9 +94,7 @@ if(ARGUS_BUILD_LABS)
     add_subdirectory(labs/intent-probe)
     add_subdirectory(labs/tool-bench)
     add_subdirectory(labs/extract-probe)
-    add_subdirectory(labs/queue-probe)
     add_subdirectory(labs/reaction-probe)
-    add_subdirectory(labs/kuzu-probe)
     add_subdirectory(labs/camera-control)
 endif()
 
@@ -282,10 +280,6 @@ if(RNNOISE_INCLUDE_DIR AND RNNOISE_LIBRARY)
   target_link_libraries(${PROJECT_NAME} PRIVATE ${RNNOISE_LIBRARY})
 else()
   target_compile_definitions(${PROJECT_NAME} PRIVATE ARGUS_HAS_RNNOISE=0)
-endif()
-
-if(ARGUS_BUILD_INSPIREFACE AND TARGET InspireFace)
-  target_link_libraries(${PROJECT_NAME} PRIVATE InspireFace)
 endif()
 
 if(ARGUS_SHERPA_ONNX_TARGET AND TARGET ${ARGUS_SHERPA_ONNX_TARGET})

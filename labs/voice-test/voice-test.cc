@@ -20,7 +20,7 @@
 #include <poll.h>
 #include <trantor/utils/Logger.h>
 #include <shared/services/config-service/config-service.hxx>
-#include <shared/services/conversation/conversation-service.hxx>
+#include "conversation.hxx"
 #include <shared/services/intent/intent-service.hxx>
 #include <shared/services/llm/llm-service.hxx>
 #include <shared/services/memory/in-process-memory-chat.hxx>
@@ -62,7 +62,7 @@ TtsService gTts;
 VisionService gVision;
 InProcessMemoryChat gMemoryChat{gLlm};
 MemoryService gMemory{gVecDb, gMemoryChat};
-ConversationService gConv(gMemory, gLlm);
+ConversationService gConv(gMemory);
 ReactionEngine gReaction;
 constexpr size_t kMinSentenceChars = 24;
 constexpr size_t kFirstSentenceMinChars = 0;
