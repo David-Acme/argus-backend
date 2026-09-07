@@ -9,6 +9,7 @@
 #include <feature/api/auth/dtos/register-dto.hxx>
 #include <feature/api/auth/dtos/response-login-dto.hxx>
 #include <feature/api/auth/dtos/response-refresh-token-dto.hxx>
+#include <shared/repositories/device-credential/device-credential-repository.hxx>
 #include <shared/repositories/device-login-challenge/device-login-challenge-repository.hxx>
 #include <shared/repositories/face-embedding/face-embedding-repository.hxx>
 #include <shared/repositories/person/person-repository.hxx>
@@ -26,6 +27,14 @@ struct LoginDeviceInput
 {
   std::string deviceHash;
   std::string userAgent;
+};
+
+// Plaintext secret shown once to the client plus the device hash the issued
+// session row must carry; both empty outside credential identity mode.
+struct IssuedDeviceCredential
+{
+  std::string secret;
+  std::string deviceHash;
 };
 
 class AuthService
@@ -63,11 +72,17 @@ private:
   issueSession(int64_t userId, int64_t personId, const UserSchema& user,
                const LoginDeviceInput& device) const;
 
+  // Issues the per-device secret in credential identity mode and persists its
+  // SHA-256; returns empty values in ip mode.
+  drogon::Task<IssuedDeviceCredential>
+  issueDeviceCredential(int64_t userId, const std::string& userAgent) const;
+
   JwtService jwtService_;
   PersonRepository personRepository_;
   UserRepository userRepository_;
   PrivatePortraitService privatePortraitService_;
   RefreshTokenRepository refreshTokenRepository_;
+  DeviceCredentialRepository deviceCredentialRepository_;
   FaceEmbeddingRepository faceEmbeddingRepository_;
   UserInvitationRepository invitationRepository_;
   DeviceLoginChallengeRepository challengeRepository_;

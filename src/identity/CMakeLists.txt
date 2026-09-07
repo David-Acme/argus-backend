@@ -42,6 +42,7 @@ set(ARGUS_IDENTITY_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/../filter/role/role-filter.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/../filter/valid-json/valid-json-filter.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/../shared/repositories/audit-log/audit-log-repository.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/../shared/repositories/device-credential/device-credential-repository.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/../shared/repositories/device-login-challenge/device-login-challenge-repository.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/../shared/repositories/face-embedding/face-embedding-repository.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/../shared/repositories/person/person-repository.cc
@@ -55,6 +56,7 @@ set(ARGUS_IDENTITY_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/../shared/repositories/user/user-repository.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/../shared/repositories/vector-index/vector-index-repository.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/../shared/schemas/audit-log/audit-log-schema.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/../shared/schemas/device-credential/device-credential-schema.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/../shared/schemas/device-login-challenge/device-login-challenge-schema.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/../shared/schemas/face-embedding/face-embedding-schema.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/../shared/schemas/person/person-schema.cc

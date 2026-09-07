@@ -14,6 +14,7 @@ struct ResponseLoginDto
   UserRole role;
   int64_t personId;
   bool alreadyRegistered = false;
+  std::string deviceSecret;
 
   Json::Value toJson() const;
 };

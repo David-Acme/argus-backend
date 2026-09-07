@@ -5,8 +5,11 @@
 #include <drogon/drogon.h>
 #include <drogon/orm/DbClient.h>
 #include <feature/api/invitation/services/invitation-feature-service.hxx>
+#include <filter/device/device-filter.hxx>
 #include <future>
 #include <iomanip>
+#include <map>
+#include <mutex>
 #include <openssl/rand.h>
 #include <sstream>
 #include <string_view>
@@ -47,6 +50,49 @@ namespace
 // Login challenges live 2 minutes, long enough for a mobile to scan and
 // approve while keeping the window of a stolen QR code short.
 constexpr int64_t kDeviceLoginTtlSeconds = 120;
+
+struct PendingDeviceSecret
+{
+  std::string secret;
+  int64_t expiresAt{0};
+};
+
+// A desktop challenge approved in credential mode delivers its issued device
+// secret exactly once to the polling device: held in memory only, TTL bound
+// to the challenge, never persisted.
+std::map<std::string, PendingDeviceSecret>& pendingDeviceSecrets()
+{
+  static std::map<std::string, PendingDeviceSecret> secrets;
+  return secrets;
+}
+
+std::mutex& pendingDeviceSecretsMutex()
+{
+  static std::mutex mutex;
+  return mutex;
+}
+
+void storePendingDeviceSecret(const std::string& challengeId,
+                              const std::string& secret, int64_t expiresAt)
+{
+  std::lock_guard lock(pendingDeviceSecretsMutex());
+  const int64_t now = std::time(nullptr);
+  std::erase_if(pendingDeviceSecrets(), [&](const auto& entry) {
+    return entry.second.expiresAt <= now;
+  });
+  pendingDeviceSecrets()[challengeId] = {secret, expiresAt};
+}
+
+std::string takePendingDeviceSecret(const std::string& challengeId)
+{
+  std::lock_guard lock(pendingDeviceSecretsMutex());
+  const auto it = pendingDeviceSecrets().find(challengeId);
+  if (it == pendingDeviceSecrets().end())
+    return {};
+  auto secret = std::move(it->second.secret);
+  pendingDeviceSecrets().erase(it);
+  return secret;
+}
 
 } // namespace
 
@@ -331,19 +377,28 @@ AuthService::approveDeviceLogin(const std::string& challengeId,
   const auto accessToken = jwtService_.generateAccess(claims);
   const auto refreshToken = jwtService_.generateRefresh(claims);
 
+  const auto credential = co_await issueDeviceCredential(
+      approvingUserId, challenge->userAgent);
+
   // Bind the session to the DESKTOP device hash captured when the challenge
-  // was created, so the desktop's own DeviceFilter matches when it polls.
+  // was created, so the desktop's own DeviceFilter matches when it polls. In
+  // credential mode the freshly issued credential defines that hash instead.
   RefreshTokenCreateInput rtInput;
   rtInput.userId = approvingUserId;
   rtInput.accessToken = accessToken;
   rtInput.refreshToken = refreshToken;
-  rtInput.deviceHash = challenge->deviceHash;
+  rtInput.deviceHash = credential.deviceHash.empty()
+                           ? challenge->deviceHash
+                           : credential.deviceHash;
   rtInput.userAgent = challenge->userAgent;
   rtInput.expiresAt = std::time(nullptr) + jwtService_.refreshTtlSeconds();
   co_await refreshTokenRepository_.create(rtInput);
 
   co_await challengeRepository_.markApproved(challengeId, approvingUserId,
                                              accessToken, refreshToken);
+  if (!credential.secret.empty())
+    storePendingDeviceSecret(challengeId, credential.secret,
+                             challenge->expiresAt);
   co_return true;
 }
 
@@ -357,6 +412,7 @@ AuthService::pollDeviceLogin(const std::string& challengeId) const
                                    .refreshToken = "",
                                    .userId = 0,
                                    .name = "",
+                                   .deviceSecret = "",
                                    .role = UserRole::Guest};
 
   if (challenge->status == "approved") {
@@ -364,6 +420,7 @@ AuthService::pollDeviceLogin(const std::string& challengeId) const
     dto.status = "approved";
     dto.accessToken = challenge->accessToken;
     dto.refreshToken = challenge->refreshToken;
+    dto.deviceSecret = takePendingDeviceSecret(challengeId);
     if (challenge->userId) {
       auto user = co_await userRepository_.findById(*challenge->userId);
       if (user) {
@@ -384,6 +441,7 @@ AuthService::pollDeviceLogin(const std::string& challengeId) const
                                    .refreshToken = "",
                                    .userId = 0,
                                    .name = "",
+                                   .deviceSecret = "",
                                    .role = UserRole::Guest};
   }
 
@@ -392,6 +450,7 @@ AuthService::pollDeviceLogin(const std::string& challengeId) const
                                  .refreshToken = "",
                                  .userId = 0,
                                  .name = "",
+                                 .deviceSecret = "",
                                  .role = UserRole::Guest};
 }
 
@@ -518,11 +577,43 @@ AuthService::updateMe(int64_t userId,
   });
 }
 
+drogon::Task<IssuedDeviceCredential>
+AuthService::issueDeviceCredential(int64_t userId,
+                                   const std::string& userAgent) const
+{
+  IssuedDeviceCredential issued;
+  if (ConfigService::getString("device.identity_mode") != "credential")
+    co_return issued;
+
+  unsigned char buf[32]{};
+  if (RAND_bytes(buf, sizeof(buf)) != 1)
+    throw ResponseException("Failed to issue device credential", 500,
+                            AppConfig::ERROR_CODE_SERVICE_UNAVAILABLE);
+
+  std::ostringstream hex;
+  for (unsigned char b : buf)
+    hex << std::hex << std::setw(2) << std::setfill('0') << static_cast<int>(b);
+  issued.secret = hex.str();
+
+  const auto secretHash = DeviceFilter::sha256Hex(issued.secret);
+  issued.deviceHash =
+      DeviceFilter::credentialFingerprint(userAgent, secretHash);
+  co_await deviceCredentialRepository_.create({.userId = userId,
+                                               .deviceHash = issued.deviceHash,
+                                               .secretHash = secretHash});
+  co_return issued;
+}
+
 drogon::Task<ResponseLoginDto>
 AuthService::issueSession(int64_t userId, int64_t personId,
                           const UserSchema& user,
                           const LoginDeviceInput& device) const
 {
+  const auto credential =
+      co_await issueDeviceCredential(userId, device.userAgent);
+  const std::string deviceHash =
+      credential.deviceHash.empty() ? device.deviceHash : credential.deviceHash;
+
   std::map<std::string, std::string> claims;
   claims["sub"] = std::to_string(userId);
 
@@ -533,7 +624,7 @@ AuthService::issueSession(int64_t userId, int64_t personId,
   rtInput.userId = userId;
   rtInput.accessToken = accessToken;
   rtInput.refreshToken = refreshToken;
-  rtInput.deviceHash = device.deviceHash;
+  rtInput.deviceHash = deviceHash;
   rtInput.userAgent = device.userAgent;
   rtInput.expiresAt = static_cast<int64_t>(std::time(nullptr)) +
                       jwtService_.refreshTtlSeconds();
@@ -547,9 +638,10 @@ AuthService::issueSession(int64_t userId, int64_t personId,
   result.name = user.name + " " + user.lastName;
   result.role = user.role;
   result.personId = personId;
+  result.deviceSecret = credential.secret;
 
   Json::Value session;
-  session["deviceHash"] = device.deviceHash;
+  session["deviceHash"] = deviceHash;
   session["userAgent"] = device.userAgent;
 
   co_await userActionLogService_.record({.userId = userId,

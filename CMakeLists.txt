@@ -164,6 +164,7 @@ list(REMOVE_ITEM SHARED_SRC
     ${SRC_ROOT}/shared/schemas/person-event/person-event-schema.cc
     ${SRC_ROOT}/shared/schemas/notification/notification-schema.cc
     ${SRC_ROOT}/shared/repositories/audit-log/audit-log-repository.cc
+    ${SRC_ROOT}/shared/repositories/device-credential/device-credential-repository.cc
     ${SRC_ROOT}/shared/repositories/device-login-challenge/device-login-challenge-repository.cc
     ${SRC_ROOT}/shared/repositories/face-embedding/face-embedding-repository.cc
     ${SRC_ROOT}/shared/repositories/person/person-repository.cc
@@ -177,6 +178,7 @@ list(REMOVE_ITEM SHARED_SRC
     ${SRC_ROOT}/shared/repositories/user/user-repository.cc
     ${SRC_ROOT}/shared/repositories/vector-index/vector-index-repository.cc
     ${SRC_ROOT}/shared/schemas/audit-log/audit-log-schema.cc
+    ${SRC_ROOT}/shared/schemas/device-credential/device-credential-schema.cc
     ${SRC_ROOT}/shared/schemas/device-login-challenge/device-login-challenge-schema.cc
     ${SRC_ROOT}/shared/schemas/face-embedding/face-embedding-schema.cc
     ${SRC_ROOT}/shared/schemas/person/person-schema.cc

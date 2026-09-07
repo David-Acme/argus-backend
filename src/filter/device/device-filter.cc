@@ -3,11 +3,16 @@
 #include <config/app-config.hxx>
 #include <openssl/evp.h>
 #include <openssl/hmac.h>
+#include <openssl/sha.h>
 #include <shared/services/config-service/config-service.hxx>
 #include <stdexcept>
 
 namespace
 {
+// A device credential is 32 random bytes as 64 hex chars; anything longer is
+// treated as an unknown credential without hashing or querying.
+constexpr size_t kMaxCredentialLength = 128;
+
 bool trustedProxy(const std::string& peer)
 {
   if (peer == "127.0.0.1" || peer == "::1")
@@ -27,6 +32,16 @@ bool trustedProxy(const std::string& peer)
   }
   return false;
 }
+
+std::string fingerprintKey()
+{
+  auto key = ConfigService::getString("device.fingerprint_secret");
+  if (key.empty())
+    key = ConfigService::getString("jwt.secret");
+  if (key.empty())
+    throw std::runtime_error("Device fingerprint secret is not configured");
+  return key;
+}
 } // namespace
 
 drogon::Task<drogon::HttpResponsePtr>
@@ -38,7 +53,21 @@ DeviceFilter::doFilter(const drogon::HttpRequestPtr& req)
   DeviceContext ctx;
   ctx.userAgent = ua;
   ctx.ip = ip;
-  ctx.deviceHash = hashFingerprint(ua, ip);
+  if (credentialMode()) {
+    const auto credential = req->getHeader("X-Argus-Device-Credential");
+    std::string deviceHash;
+    if (!credential.empty() && credential.size() <= kMaxCredentialLength) {
+      const auto secretHash = sha256Hex(credential);
+      if (co_await repository_.findActiveBySecretHash(secretHash))
+        deviceHash = credentialFingerprint(ua, secretHash);
+    }
+    // Unknown or missing credentials degrade to an empty device hash, which
+    // fails jwt-filter's session device match downstream.
+    ctx.deviceHash = deviceHash;
+  }
+  else {
+    ctx.deviceHash = hashFingerprint(ua, ip);
+  }
 
   req->getAttributes()->insert(AppConfig::DEVICE_CTX_KEY, ctx);
   co_return drogon::HttpResponsePtr{};
@@ -49,15 +78,33 @@ std::string DeviceFilter::deviceKey(const drogon::HttpRequestPtr& req)
   return hashFingerprint(req->getHeader("User-Agent"), resolveIp(req));
 }
 
+std::string DeviceFilter::sha256Hex(const std::string& data)
+{
+  unsigned char digest[SHA256_DIGEST_LENGTH]{};
+  SHA256(reinterpret_cast<const unsigned char*>(data.data()), data.size(),
+         digest);
+
+  static constexpr char hex[] = "0123456789abcdef";
+  std::string result;
+  result.reserve(sizeof(digest) * 2);
+  for (unsigned char byte : digest) {
+    result.push_back(hex[byte >> 4]);
+    result.push_back(hex[byte & 0x0f]);
+  }
+  return result;
+}
+
+std::string DeviceFilter::credentialFingerprint(const std::string& ua,
+                                                const std::string& secretHash)
+{
+  return hashFingerprint(ua, secretHash);
+}
+
 std::string DeviceFilter::hashFingerprint(const std::string& ua,
                                           const std::string& ip)
 {
   const std::string finger = ua + "|" + ip;
-  auto key = ConfigService::getString("device.fingerprint_secret");
-  if (key.empty())
-    key = ConfigService::getString("jwt.secret");
-  if (key.empty())
-    throw std::runtime_error("Device fingerprint secret is not configured");
+  const auto key = fingerprintKey();
 
   unsigned char digest[EVP_MAX_MD_SIZE]{};
   unsigned int digestLength = 0;
@@ -89,4 +136,9 @@ std::string DeviceFilter::resolveIp(const drogon::HttpRequestPtr& req)
     }
   }
   return peer;
+}
+
+bool DeviceFilter::credentialMode()
+{
+  return ConfigService::getString("device.identity_mode") == "credential";
 }

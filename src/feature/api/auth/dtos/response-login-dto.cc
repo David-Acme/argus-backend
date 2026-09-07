@@ -10,5 +10,7 @@ Json::Value ResponseLoginDto::toJson() const
   json["role"] = userRoleToString(role);
   json["personId"] = personId;
   json["alreadyRegistered"] = alreadyRegistered;
+  if (!deviceSecret.empty())
+    json["device_secret"] = deviceSecret;
   return json;
 }
