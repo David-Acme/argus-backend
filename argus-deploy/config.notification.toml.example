@@ -69,7 +69,7 @@ refresh_ttl_days = 30
 # Device fingerprint of the routes: the HMAC key must match the gateway's
 # [device] block so the device hash is identical on both sides of the proxy,
 # and the forwarded-for trust must name the docker-proxy peer address (the
-# internal network's gateway IP, e.g. 172.18.0.1 — check
+# internal network's pinned gateway IP 172.19.0.1 — check
 # `docker network inspect argus-cutover-internal`) so the gateway's
 # synthesized X-Forwarded-For is the observed client IP.
 [device]

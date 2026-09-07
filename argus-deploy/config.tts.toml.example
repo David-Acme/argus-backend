@@ -1,9 +1,6 @@
-# argus-deploy argus-tts configuration. Copy to config.tts.toml (gitignored)
-# next to this file; the compose file bind-mounts it as the service's
-# config.toml. Compose shape (F4-2): the listener binds 0.0.0.0 inside the
-# container — its only host exposure is the loopback-published 7029 listener
-# the legacy's [tts] remote_url gate dials. No JWT, no device keys, no
-# database; the engine keys mirror the legacy [tts] block.
+# argus-deploy argus-tts configuration. Copy to config.tts.toml (gitignored);
+# the compose file bind-mounts it as the service's config.toml. No JWT, no
+# device keys, no database; engine keys mirror the legacy [tts] block.
 
 [server]
 host = "0.0.0.0"

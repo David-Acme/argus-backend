@@ -109,7 +109,7 @@ with `scripts/setup.sh` / `scripts/setup.sh camera` on the host.
   `[storage.s3] endpoint` at `127.0.0.1` ports.
 - Transitional trust note: the camera resolves the caller IP from
   `X-Forwarded-For` only for trusted peers. Through the docker-proxy the
-  gateway arrives as the internal network's gateway IP (e.g. 172.18.0.1), so
+  gateway arrives as the internal network's gateway IP (the pinned 172.19.0.1), so
   `config.camera.toml` must list that address in `device.trusted_proxy_ips`
   (the legacy keeps its loopback trust — the gateway reaches it as 127.0.0.1).
   This dies when the internal identity headers replace the forwarded-for
@@ -226,6 +226,12 @@ Fase 4 (Rulings CB/CC/CD/CE, compose v4) adds the five AI engine services:
   env-driven. `depends_on` on the AI services is deliberately NOT set on the
   legacy/gateway: the gates default to unset behavior and remote legs degrade
   instead of failing boot.
+  **Upgrading from compose v3:** a pre-F4 `config.legacy.toml` carries no
+  gate keys, so a compose-only upgrade yields topology (a) (all engines
+  in-process) under the NEW 2g/1.50 default budget — an OOM/thrash risk. Set
+  the five `remote_url` gates (move to topology (b)), or restore the v3
+  budget with `ARGUS_BACKEND_MEMORY_LIMIT=6g` /
+  `ARGUS_BACKEND_CPU_LIMIT=4.00`.
 - **Boot order (Ruling CC).** Only `argus-memory` has a bus consumer, so only
   it gates on `nats: service_healthy`. The other four have no dependency at
   all (they publish nothing and consume nothing). The legacy and the gateway
@@ -269,7 +275,12 @@ Fase 4 (Rulings CB/CC/CD/CE, compose v4) adds the five AI engine services:
   (.29/.30/.31/.32/.33 matching their ports): argus-memory's `[llm]
   remote_url` must be an IPv4 literal (`172.19.0.32:7032`) because the
   internal raw-socket wires resolve literals only (no DNS). The legacy gates
-  do NOT use these addresses — they dial the loopback publishes.
+  do NOT use these addresses — they dial the loopback publishes. Operator
+  note: 172.19.0.0/24 sits inside docker's default address pool
+  (172.16.0.0/12), so another compose project that already allocated a
+  172.19.x range makes `up` fail with an overlap error, and pinning a network
+  that was previously auto-assigned forces network/container recreation on
+  existing installs.
 - The `argus-memory` snapshot sources reuse the established mounts-with-ro-
   opens discipline: the shared data dir (`database/identity.db`) and the
   camera-db volume (`camera/camera.db`) mount rw (a WAL reader must map the

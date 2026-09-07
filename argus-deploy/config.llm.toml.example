@@ -1,9 +1,6 @@
-# argus-deploy argus-llm configuration. Copy to config.llm.toml (gitignored)
-# next to this file; the compose file bind-mounts it as the service's
-# config.toml. Compose shape (F4-5): the listener binds 0.0.0.0 inside the
-# container — its only host exposure is the loopback-published 7032 listener
-# the legacy's [llm] remote_url gate dials. No JWT, no device keys, no
-# database; the engine keys mirror the legacy [llm] block.
+# argus-deploy argus-llm configuration. Copy to config.llm.toml (gitignored);
+# the compose file bind-mounts it as the service's config.toml. No JWT, no
+# device keys, no database; engine keys mirror the legacy [llm] block.
 
 [server]
 host = "0.0.0.0"

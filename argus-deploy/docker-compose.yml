@@ -1,26 +1,9 @@
 name: argus-cutover
 
-# Cutover stack (Fase 4, compose v4): gateway (public TLS 7024) + legacy
-# (internal 7025) + argus-camera (internal, 7026) + argus-productivity (7027)
-# + argus-notification (7028) + the five AI engine services argus-tts (7029),
-# argus-stt (7030), argus-vlm (7031), argus-llm (7032) and argus-memory (7033)
-# + nats + rustfs, with the identity/camera/productivity/notification
-# migration init tools and the opt-in RADV vulkan-probe validation service.
-# The root docker-compose.yml stays the dev tooling; this file is the
-# deployment stack.
-#
-# Transitional network shape (Ruling O exception): the legacy keeps host
-# networking for go2rtc/RTSP/mDNS camera discovery and the Tapo 8800 LAN talk
-# listener, and only binds 127.0.0.1:7025 (it trusts X-Forwarded-For from
-# loopback peers only), so the gateway is also host-networked to reach it as
-# 127.0.0.1. Only the gateway binds a public port. argus-camera runs on the
-# internal bridge network and publishes ONLY its 7026 listener on host
-# loopback for the host-networked gateway; its go2rtc (1984/8554) stays inside
-# the container (Ruling AH). The docker-proxy peer address the camera sees is
-# the internal network's gateway IP, so the camera config must list it in
-# device.trusted_proxy_ips (transitional until the internal identity headers
-# replace the forwarded-for trust). nats and rustfs live on the internal
-# bridge network, published on host loopback for the host-networked services.
+# Cutover deployment stack (Fase 4, compose v4): gateway + legacy +
+# argus-camera/productivity/notification + the five AI engine services +
+# nats + rustfs + the migration init tools and the vulkan probe. The root
+# docker-compose.yml stays the dev tooling.
 
 services:
   gateway:
@@ -126,10 +109,7 @@ services:
       timeout: 5s
       retries: 12
       start_period: 30s
-    # Ruling CD default: with the five engines offloaded (the shipped target
-    # state) the legacy keeps only face + VAD + drivers, so its budget drops
-    # from the v3 all-in-process 6g/4.00. Topology (a) restores the v3 values
-    # with ARGUS_BACKEND_MEMORY_LIMIT=6g ARGUS_BACKEND_CPU_LIMIT=4.00.
+    # Ruling CD: offloaded-legs default; topology (a) restores 6g/4.00 via env.
     mem_limit: "${ARGUS_BACKEND_MEMORY_LIMIT:-2g}"
     cpus: "${ARGUS_BACKEND_CPU_LIMIT:-1.50}"
     pids_limit: 1024
@@ -291,15 +271,8 @@ services:
     pids_limit: 512
     restart: unless-stopped
 
-  # AI engine services (Fase 4 cutover, F4-2..F4-6). Pure internal-wire RPC
-  # servers on the internal bridge network: no gateway route, no JWT, no bus
-  # consumer. Their only host exposure is the loopback-published listener the
-  # host-networked legacy's [tts]/[stt]/[vision]/[llm]/[memory] remote_url
-  # gates dial as 127.0.0.1 (Ruling CC topology (b)); with the gates unset
-  # they run idle (topology (a)). Ruling CB: every model tree is a per-service
-  # read-only subpath bind, never the whole tree. Ruling CD: mem_limit/cpus
-  # replace the llamaMutex as the per-engine budget boundary, with explicit
-  # distinct values for argus-vlm and argus-llm.
+  # AI engine services (Fase 4): internal-wire RPC servers; the legacy's
+  # remote_url gates dial the loopback publishes (Rulings CB/CC/CD).
   argus-tts:
     image: argus-cutover:local
     pull_policy: never
@@ -372,10 +345,8 @@ services:
     pids_limit: 512
     restart: unless-stopped
 
-  # /dev/dri engages llama.cpp's Vulkan backend (Ruling CD, F2-1 pattern): a
-  # host without /dev/dri drops this device line via a compose override with
-  # `devices: !override []` (a plain [] merge silently keeps the device) and
-  # the engine degrades to CPU in-binary.
+  # /dev/dri enables the Vulkan backend; a GPU-less host drops it via
+  # `devices: !override []` and the engine degrades to CPU (Ruling CD).
   argus-vlm:
     image: argus-cutover:local
     pull_policy: never
@@ -450,13 +421,8 @@ services:
     pids_limit: 512
     restart: unless-stopped
 
-  # Memory service (F4-6): owns memory.db on its dedicated named volume (the
-  # stack's ONLY single-owner database — no other service mounts it, no DDL
-  # sidecar, no migrate tool; boot-apply belongs to this service alone). Its
-  # catalog replicas subscribe the change subjects over NATS, so this is the
-  # only AI service with a bus consumer and the only one gated on nats
-  # (Ruling CC). The snapshot sources are the same read-only opens the
-  # gateway uses: rw mounts for the WAL -shm, mode=ro opens in-binary.
+  # Memory service (F4-6): single owner of the memory.db volume; the only AI
+  # service with a bus consumer, hence gated on nats (Rulings CB/CC).
   argus-memory:
     image: argus-cutover:local
     pull_policy: never
@@ -760,13 +726,9 @@ volumes:
 networks:
   internal:
     name: argus-cutover-internal
-    # Static subnet so the AI services carry fixed IPv4 addresses: the
-    # internal raw-socket wires resolve IPv4 literals only (no DNS), so
-    # argus-memory's [llm] remote_url needs a stable argus-llm address.
-    # 172.19.0.0/24 also keeps the host-networked gateway's relay source at
-    # 172.19.0.1, the peer config.camera.toml's device.trusted_proxy_ips
-    # already trusts (the gateway relays camera:* sync frames to
-    # argus-camera through this network).
+    # Pinned subnet: static AI-service IPv4s (raw-socket wires resolve
+    # literals only) and a stable 172.19.0.1 relay source for trusted-proxy
+    # checks.
     ipam:
       config:
         - subnet: 172.19.0.0/24

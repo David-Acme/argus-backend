@@ -1,10 +1,6 @@
 # argus-deploy argus-memory configuration. Copy to config.memory.toml
-# (gitignored) next to this file; the compose file bind-mounts it as the
-# service's config.toml. Compose shape (F4-6): the listener binds 0.0.0.0
-# inside the container — its only host exposure is the loopback-published
-# 7033 listener the legacy's [memory] remote_url gate dials. Ruling CB: the
-# memory.db volume is mounted into THIS service only (single owner, rw); the
-# snapshot sources open read-only in-binary.
+# (gitignored); the compose file bind-mounts it as the service's
+# config.toml.
 
 [server]
 host = "0.0.0.0"

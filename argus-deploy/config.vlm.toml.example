@@ -1,10 +1,6 @@
-# argus-deploy argus-vlm configuration. Copy to config.vlm.toml (gitignored)
-# next to this file; the compose file bind-mounts it as the service's
-# config.toml. Compose shape (F4-4): the listener binds 0.0.0.0 inside the
-# container — its only host exposure is the loopback-published 7031 listener
-# the legacy's [vision] remote_url gate dials. /dev/dri is mounted by the
-# compose service (Ruling CD); without it the engine degrades to CPU
-# in-binary. No JWT, no device keys, no database.
+# argus-deploy argus-vlm configuration. Copy to config.vlm.toml (gitignored);
+# the compose file bind-mounts it as the service's config.toml. No JWT, no
+# device keys, no database; engine keys mirror the legacy [vision] block.
 
 [server]
 host = "0.0.0.0"
