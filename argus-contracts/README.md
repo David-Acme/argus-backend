@@ -14,6 +14,7 @@ manifests/package.schema.json   typed capability package manifest
 manifests/plugin.schema.json    ed25519-signed plugin manifest
 sync/README.md                  frozen SyncOperation 0-7 + TableName 0-23 + SYNC_LIMIT=200
 sync/fixtures/                  golden /sync frames
+identity/README.md              device identity modes + X-Argus-Device-Credential header
 buf.yaml  buf.gen.yaml          lint + C++ codegen
 ```
 
