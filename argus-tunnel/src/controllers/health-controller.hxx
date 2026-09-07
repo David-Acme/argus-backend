@@ -13,7 +13,8 @@
 
 // /health provider wired to either tunnel binary's live link state. The push
 // accessors are optional: the client reports queue/Received/Dropped, the
-// relay also reports Forwarded; a binary without push wiring leaves them set.
+// relay also reports Forwarded; a binary without push wiring leaves them
+// unset.
 struct HealthStatus
 {
   std::string serviceName;

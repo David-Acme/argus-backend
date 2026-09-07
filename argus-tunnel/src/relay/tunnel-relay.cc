@@ -85,7 +85,7 @@ void TunnelRelay::postPushIntent(std::string payload)
 void TunnelRelay::onPushIntent(const std::string& payload)
 {
   if (!pushQueue_.push(payload)) {
-    LOG_WARN << "argus-relay: push queue full; intent dropped ("
+    LOG_WARN << "argus-relay: push intent dropped (full, empty or oversized; "
              << pushQueue_.dropped() << " total)";
     return;
   }

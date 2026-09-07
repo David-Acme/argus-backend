@@ -66,11 +66,17 @@ received/dropped counters exposed on `/health` (`pushQueued` / `pushReceived`
 / `pushDropped`, plus `pushForwarded` on the relay). The relay buffers intents
 while the home link is down and drains them the moment a link authenticates;
 the client queues what it receives. Past `push.queue_capacity` the drop is
-counted and logged — nothing persists, and the queue never becomes the
-source of truth: the notification row in the gateway's notification.db is.
-This is the deliberate trade-off of Ruling CK: at-least-once on the NATS leg,
-best-effort with drop accounting on the tunnel leg, because the queue only
-accelerates delivery — the authoritative fan-out to the device rides the
+counted and logged; empty or oversized intents are also rejected at the
+ingress with drop accounting (a PUSH frame caps at 256 KiB while NATS accepts
+more, so the bound is enforced before the queue — worst case the capacity
+times 256 KiB of relay RAM) — nothing persists, and the queue never becomes
+the source of truth: the notification row in the gateway's notification.db is.
+This is the deliberate trade-off of Ruling CK as implemented: the NATS leg is
+fire-and-forget (plain core-NATS publish, no ack/redelivery) and therefore
+at-most-once — an intent published while the relay is away from NATS is
+silently lost — and the tunnel leg is best-effort with drop accounting,
+because the queue only accelerates delivery — the authoritative fan-out to
+the device rides the
 existing `/sync` bootstrap (the app re-syncs notifications on connect). The
 final device-delivery leg (intent → OS push / APNs / FCM) is out of scope:
 the intent is display-only, never a command, and never carries alarm/siren
@@ -152,6 +158,17 @@ defense is the gateway's remote gate (`[remote] tunnel_port`
 classification, 403 `REMOTE_NOT_ALLOWED` for forbidden routes such as
 `/pairing`). Carried TLS means the relay sees ciphertext only; it cannot
 inspect or alter the session.
+
+The control plane itself is the exception to that last statement (F5-5): the
+home link is plaintext TCP with HMAC challenge auth — it authenticates but
+does not encrypt — so PUSH frames carry notification `title`/`body` in
+cleartext. A passive observer on the WAN leg, and the relay itself
+(necessarily, since it forwards the frames), can read notification display
+content; only the carried device streams remain end-to-end TLS. Ruling CK
+explicitly allowed a ref-only intent payload (ids + type, with the app
+fetching the row over its own TLS `/sync` session) as the mitigation if the
+controller prefers to close this exposure; the verbatim display fields were
+chosen for F5-5 and the trade-off is accepted and documented here.
 
 ## Config
 

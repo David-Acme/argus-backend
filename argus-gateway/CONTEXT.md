@@ -392,3 +392,22 @@ proxies everything else to the legacy backend on its internal plain listener
 - **Known gap, documented not fixed**: the leaf carries no EKU/keyUsage
   extensions (pre-existing SAN-only leaf shape, consistent with Ruling CH
   keeping client-cert issuance out of scope for the app).
+
+## Push-intent publisher (F5-5, Ruling CK)
+
+- **`[push] enabled` gate (default off)**: when the key is absent or false the
+  gateway installs no `NatsPushIntentSink`, `push_intent::getSink()` returns
+  null and `NotificationService::createAndEmitMany` skips the per-row publish
+  — structurally zero behavior change.
+- **Why the gateway carries the publisher**: the brief's "argus-notification
+  publishes" is topologically superseded — since the F3-2 cutover the only
+  producer of notification rows is the gateway's `camera-notifier` writing
+  through `NotificationService` into notification.db, so the row (and with it
+  the intent publish, which fires strictly after the row is persisted) lives
+  in the gateway process. The adjudication is forced by the cutover, not a
+  convenience.
+- **argus-notification remains the policy owner**: it owns the notification
+  HTTP surface and the delivery policy; the gateway only hosts the publish
+  seam. Intents are best-effort at-most-once (fire-and-forget NATS publish),
+  display-only, and never carry alarm/siren semantics — see
+  `argus-contracts/subjects.md`.

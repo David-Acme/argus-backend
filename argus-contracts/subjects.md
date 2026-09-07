@@ -166,11 +166,16 @@ to `/sync`.
 Consumer: `argus-relay` subscribes to this subject and forwards the payload as
 a tunnel PUSH control frame to the home client's bounded in-memory intent
 queue (Ruling CK: argus-notification is the publisher/policy owner, the tunnel
-is the transport owner). The NATS leg is at-least-once; the tunnel leg is
-best-effort with drop accounting — the queue never persists to disk (Ruling
-CL: no database in the tunnel), the final device-delivery leg rides the
-existing `/sync` fan-out once the app re-syncs. Intents carry display
-information only: they never carry or trigger alarm/siren semantics.
+is the transport owner). The NATS leg is fire-and-forget and therefore
+AT-MOST-ONCE: `NatsBus::publish` is a plain core-NATS publish — no JetStream,
+no ack, no redelivery — so an intent published while the relay is disconnected
+from NATS or mid-restart is silently lost. Both legs are best-effort with drop
+accounting; an intent is an accelerator, never a delivery guarantee — the
+persisted `notification` row is the source of truth and the final
+device-delivery leg rides the existing `/sync` fan-out once the app re-syncs.
+The queue never persists to disk (Ruling CL: no database in the tunnel).
+Intents carry display information only: they never carry or trigger
+alarm/siren semantics.
 
 ```json
 {
@@ -188,3 +193,8 @@ information only: they never carry or trigger alarm/siren semantics.
   correlate the intent against the `/sync` row).
 - `type`, `title`, `body` — the notification row's display fields, verbatim.
 - `createdAt` — the row's creation time as a millisecond Unix epoch.
+
+Size bound: the tunnel PUSH frame cannot carry more than 256 KiB of payload,
+while the NATS subscription accepts up to the server's maximum, so the relay
+rejects intents that are empty or above 256 KiB at its queue ingress and
+counts them as drops (`pushDropped`) instead of forwarding them.

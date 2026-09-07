@@ -1,5 +1,7 @@
 #pragma once
 
+#include <protocol/frames.hxx>
+
 #include <atomic>
 #include <deque>
 #include <string>
@@ -10,9 +12,13 @@ namespace tunnel
 // Bounded in-memory push-intent queue (F5-5): the relay buffers intents while
 // the home link is down, the client buffers intents for the device. The deque
 // is touched only on the owning PollLoop thread; the size/drop counters are
-// atomic so /health can read them from the Drogon thread. Nothing persists:
-// past the capacity the oldest accounting is a drop (Ruling CL — no database
-// in the tunnel).
+// atomic so /health can read them from the Drogon thread. Nothing persists
+// (Ruling CL — no database in the tunnel). The policy is reject-new: past the
+// capacity the INCOMING intent is counted as a drop and the queued ones are
+// kept in arrival order (no oldest eviction). Empty payloads and payloads
+// above the tunnel frame bound kMaxPayload are also rejected at this ingress
+// with drop accounting — the relay's NATS subscription can deliver larger
+// payloads than a PUSH frame can carry.
 class PushQueue
 {
 public:
@@ -21,7 +27,8 @@ public:
   bool push(std::string payload)
   {
     received_.fetch_add(1, std::memory_order_relaxed);
-    if (size_.load(std::memory_order_relaxed) >= capacity_) {
+    if (payload.empty() || payload.size() > kMaxPayload ||
+        size_.load(std::memory_order_relaxed) >= capacity_) {
       dropped_.fetch_add(1, std::memory_order_relaxed);
       return false;
     }

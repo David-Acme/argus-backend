@@ -102,6 +102,22 @@ TEST_CASE("the relay drops past capacity with accounting and no crash")
   CHECK(small.relay->pushDropped() == 2);
 }
 
+TEST_CASE("oversized and empty intents are dropped at the relay ingress")
+{
+  Harness harness({});
+  REQUIRE(harness.start());
+
+  const std::string oversized(kMaxPayload + 1, 'x');
+  harness.loop.post([&harness, oversized] {
+    harness.relay->postPushIntent(oversized);
+    harness.relay->postPushIntent("");
+  });
+  REQUIRE(waitFor([&] { return harness.relay->pushReceived() == 2; }, 5000));
+  CHECK(harness.relay->pushQueued() == 0);
+  CHECK(harness.relay->pushDropped() == 2);
+  CHECK(harness.relay->pushForwarded() == 0);
+}
+
 TEST_CASE("the client queue drops past capacity with accounting")
 {
   HarnessOptions options;
