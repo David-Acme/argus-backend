@@ -22,6 +22,7 @@ set(UNIT_TESTS
     event-intelligence-test
     camera-operator-test
     device-credential-test
+    cert-san-test
 )
 
 foreach(TEST_NAME IN LISTS UNIT_TESTS)
@@ -50,6 +51,10 @@ target_link_libraries(notification-migration-test PRIVATE notification-migration
 # The device credential suite rides the shared identity domain: the DeviceFilter
 # gate, the credential repository and the auth-service issuance flow.
 target_link_libraries(device-credential-test PRIVATE argus_identity)
+
+# The cert SAN suite rides the shared identity domain too: CertService rotation
+# and the in-process TLS listener that proves the hot reload.
+target_link_libraries(cert-san-test PRIVATE argus_identity)
 
 # camera-core (argus-camera service plumbing) is pulled into the default
 # backend build only by camera-config-test and camera-controller-test.

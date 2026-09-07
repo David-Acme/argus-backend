@@ -163,6 +163,10 @@ silent_end = -1
 # one's TLS posture (same host, certs and min protocol).
 tunnel_port = 0
 enabled = false
+# Public relay hostname the app configures as its manual server (Fase 5,
+# Ruling CI): appended as a DNS SAN to the leaf certificate. Empty keeps the
+# certificate output unchanged.
+hostname = ""
 
 [rate_limit]
 # Fase 5 (Ruling CJ): in-memory sliding-window limiter plus consecutive-

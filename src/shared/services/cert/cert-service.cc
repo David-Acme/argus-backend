@@ -190,6 +190,10 @@ std::vector<std::string> instanceSans()
   char hostname[256];
   if (gethostname(hostname, sizeof(hostname)) == 0)
     names.emplace_back(hostname);
+  // Public relay hostname for remote TLS; empty keeps the SAN list unchanged.
+  const std::string remoteHost = ConfigService::getString("remote.hostname");
+  if (!remoteHost.empty())
+    names.push_back(remoteHost);
   return names;
 }
 
