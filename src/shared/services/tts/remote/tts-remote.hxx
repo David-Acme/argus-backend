@@ -6,10 +6,9 @@
 #include <string>
 #include <vector>
 
-// Cutover plumbing for the TTS engine (Rulings BI/BJ): legacy consumers call
-// the in-process TtsService singleton until tts.remote_url is configured;
-// from then on every synthesis is an HTTP call to argus-tts (:7029) and a
-// down service surfaces as an exception, never as an in-process fallback.
+// Remote TTS endpoint settings: when tts.remote_url is set, every synthesis
+// is an HTTP call to argus-tts (:7029) and a down service surfaces as an
+// exception, never as an in-process fallback.
 struct TtsRemoteConfig
 {
   std::string url;

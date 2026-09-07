@@ -72,7 +72,11 @@ legacy backend keeps running untouched on its own listener.
   `user_invitation`) and Ruling S's audit pages (`sync_audit_log`/
   `sync_user_audit_log` over the identity.db `audit_log`/`user_audit_log`
   tables) read the default client instead, so post-cutover rows replay to the
-  app. It relays every `camera:*`/`voice:*` frame (text and
+  app. Because it serves the bootstrap itself, a gateway whose config omits
+  `[productivity] db` or `[notifications] db` resolves those sync reads to the
+  default identity client (which has no such tables) and the whole bootstrap
+  throws `sync_error` — a scratch/deploy config must always set both keys.
+  It relays every `camera:*`/`voice:*` frame (text and
   binary) byte-transparently to the legacy's internal `/sync`
   (`[legacy] sync_url`, empty disables the relay) as the client itself — same
   `Authorization` header and `User-Agent`, so the legacy device-hash filter

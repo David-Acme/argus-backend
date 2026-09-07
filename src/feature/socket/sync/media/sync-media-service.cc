@@ -1,7 +1,6 @@
 #include "sync-media-service.hxx"
 
 #include <filter/jwt/jwt-filter.hxx>
-#include <shared/repositories/user/user-repository.hxx>
 
 drogon::Task<bool> SyncMediaService::forwardText(
     const drogon::WebSocketConnectionPtr& conn, const Json::Value& message,
@@ -17,8 +16,7 @@ drogon::Task<bool> SyncMediaService::forwardText(
     VoiceLang lang = VoiceLang::System;
     std::string name;
     if (ctx.sub > 0) {
-      UserRepository userRepository;
-      const auto user = co_await userRepository.findById(ctx.sub);
+      const auto user = co_await userRepository_.findById(ctx.sub);
       if (user) {
         lang = voiceLangFromString(user->lang);
         name = user->name;

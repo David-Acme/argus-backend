@@ -93,8 +93,8 @@ add_library(camera-core STATIC
     # with the named identity client slot).
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/config/app-config.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/shared/services/sqlite/db-service.cc
-    # Camera-domain CRUD compiled from the shared tree so the legacy binary
-    # and this service serve byte-identical contracts.
+    # Camera-domain CRUD, compiled from the shared tree: this service is the
+    # sole owner since F6-2 (the legacy binary no longer compiles it).
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/feature/api/camera/controllers/camera-controller.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/feature/api/camera/dtos/create-camera-dto.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/feature/api/camera/dtos/update-camera-dto.cc

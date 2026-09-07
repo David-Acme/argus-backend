@@ -4,6 +4,7 @@
 #include <drogon/utils/coroutine.h>
 #include <feature/socket/sync/services/voice-session-service.hxx>
 #include <feature/socket/sync/socket/sync-forwarder.hxx>
+#include <shared/repositories/user/user-repository.hxx>
 #include <json/value.h>
 
 // Voice handler of the voice:* frames: one voice session per connection.
@@ -21,4 +22,5 @@ public:
 
 private:
   VoiceSessionService voiceSessionService_;
+  UserRepository userRepository_;
 };

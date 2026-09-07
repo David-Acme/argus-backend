@@ -18,10 +18,9 @@ struct CameraAuditInput
   std::optional<int64_t> actorId;
 };
 
-// Substrate of the camera-domain change events. The legacy binds the local
-// SocketService rooms plus the SyncAuditService diff publication; argus-camera
-// funnels the same payloads over NATS (Ruling Y). Installed once at boot,
-// before the service serves.
+// Substrate of the camera-domain change events: the owning service installs
+// one implementation at boot, before it serves. Since F6-2 the only binder is
+// argus-camera, which funnels the payloads over NATS (Ruling Y).
 class CameraChangeSink
 {
 public:
