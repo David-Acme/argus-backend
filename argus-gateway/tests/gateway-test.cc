@@ -29,6 +29,7 @@
 #include <cstdio>
 #include <fstream>
 #include <memory>
+#include <stdexcept>
 #include <string>
 
 namespace
@@ -901,6 +902,28 @@ TEST_CASE("remote listener appends the tunnel listener only when configured")
   CHECK_FALSE(plainListeners[1].isMember("ssl_conf"));
 
   std::remove(plain);
+}
+
+TEST_CASE("tunnel port validation refuses a gateway-port collision")
+{
+  const ListenerConfig base{.host = "0.0.0.0",
+                            .port = 7024,
+                            .tls = false,
+                            .certPath = {},
+                            .keyPath = {},
+                            .minTlsProtocol = {}};
+
+  RemoteConfig disabled;
+  CHECK_NOTHROW(requireDistinctTunnelPort(base, disabled));
+
+  RemoteConfig tunnel;
+  tunnel.tunnelPort = 17443;
+  CHECK_NOTHROW(requireDistinctTunnelPort(base, tunnel));
+
+  RemoteConfig collision;
+  collision.tunnelPort = 7024;
+  CHECK_THROWS_AS(requireDistinctTunnelPort(base, collision),
+                  std::runtime_error);
 }
 
 TEST_CASE("request classification stays local while the listener is disabled")

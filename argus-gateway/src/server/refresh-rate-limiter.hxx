@@ -26,6 +26,8 @@ class RefreshRateLimiter
 public:
   explicit RefreshRateLimiter(RateLimitConfig config);
 
+  bool enabled() const { return config_.enabled; }
+
   // Returns false when the request must be rejected with 429.
   bool admit(const std::string& key,
              std::chrono::steady_clock::time_point now);

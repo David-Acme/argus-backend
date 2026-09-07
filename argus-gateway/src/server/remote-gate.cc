@@ -42,7 +42,8 @@ drogon::HttpResponsePtr RemoteGate::check(const drogon::HttpRequestPtr& req,
   // Short-circuit responses bypass the post-handling advice, so CORS is
   // applied here to keep the response headers identical to every other
   // gateway response.
-  if (limiter_ && isRateLimitedRoute(req)
+  // The enabled check stays here so a disabled limiter costs no HMAC.
+  if (limiter_ && limiter_->enabled() && isRateLimitedRoute(req)
       && !limiter_->admit(rateLimitKey(req), now())) {
     auto resp = AppConfig::get429Response();
     AppConfig::applyCors(resp);
@@ -61,7 +62,7 @@ drogon::HttpResponsePtr RemoteGate::check(const drogon::HttpRequestPtr& req,
 void RemoteGate::recordOutcome(const drogon::HttpRequestPtr& req,
                                const drogon::HttpResponsePtr& resp)
 {
-  if (!limiter_ || !isRateLimitedRoute(req))
+  if (!limiter_ || !limiter_->enabled() || !isRateLimitedRoute(req))
     return;
   const bool success = resp->getStatusCode() < drogon::k400BadRequest;
   if (limiter_->recordResult(rateLimitKey(req), success, now()))
@@ -72,7 +73,9 @@ std::string RemoteGate::rateLimitKey(const drogon::HttpRequestPtr& req)
 {
   // The refresh-token route is DeviceFilter'd, so this is the same
   // fingerprint hash the filter stores; the peer IP keeps the limiter
-  // bounded when the fingerprint secret is unconfigured.
+  // bounded when the fingerprint secret is unconfigured. With
+  // device.trust_forwarded_for = true the IP half comes from the
+  // client-supplied X-Forwarded-For header.
   try {
     return DeviceFilter::deviceKey(req);
   }

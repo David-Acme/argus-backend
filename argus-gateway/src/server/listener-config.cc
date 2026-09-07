@@ -2,6 +2,8 @@
 
 #include <shared/services/config-service/config-service.hxx>
 
+#include <stdexcept>
+
 ListenerConfig ListenerConfig::resolve()
 {
   ListenerConfig config;
@@ -29,22 +31,19 @@ ListenerConfig ListenerConfig::resolve()
 
 namespace
 {
-Json::Value singleListenerJson(const std::string& host, int port, bool tls,
-                               const std::string& certPath,
-                               const std::string& keyPath,
-                               const std::string& minTlsProtocol)
+Json::Value singleListenerJson(const ListenerConfig& base, int port)
 {
   Json::Value listener(Json::objectValue);
-  listener["address"] = host;
+  listener["address"] = base.host;
   listener["port"] = port;
-  listener["https"] = tls;
-  if (tls) {
-    listener["cert"] = certPath;
-    listener["key"] = keyPath;
+  listener["https"] = base.tls;
+  if (base.tls) {
+    listener["cert"] = base.certPath;
+    listener["key"] = base.keyPath;
     Json::Value sslConf(Json::arrayValue);
     Json::Value protocol(Json::arrayValue);
     protocol.append("MinProtocol");
-    protocol.append(minTlsProtocol);
+    protocol.append(base.minTlsProtocol);
     sslConf.append(protocol);
     listener["ssl_conf"] = sslConf;
   }
@@ -55,9 +54,7 @@ Json::Value singleListenerJson(const std::string& host, int port, bool tls,
 Json::Value listenerJson(const ListenerConfig& config)
 {
   Json::Value listeners(Json::arrayValue);
-  listeners.append(singleListenerJson(config.host, config.port, config.tls,
-                                      config.certPath, config.keyPath,
-                                      config.minTlsProtocol));
+  listeners.append(singleListenerJson(config, config.port));
   return listeners;
 }
 
@@ -66,8 +63,16 @@ void appendRemoteListener(Json::Value& listeners, const RemoteConfig& remote,
 {
   if (remote.tunnelPort == 0)
     return;
-  listeners.append(singleListenerJson(base.host,
-                                      static_cast<int>(remote.tunnelPort),
-                                      base.tls, base.certPath, base.keyPath,
-                                      base.minTlsProtocol));
+  listeners.append(
+      singleListenerJson(base, static_cast<int>(remote.tunnelPort)));
+}
+
+void requireDistinctTunnelPort(const ListenerConfig& listener,
+                               const RemoteConfig& remote)
+{
+  if (remote.tunnelPort != 0 && remote.tunnelPort == listener.port)
+    throw std::runtime_error("[remote] tunnel_port "
+                             + std::to_string(remote.tunnelPort)
+                             + " collides with [gateway] port "
+                             + std::to_string(listener.port));
 }

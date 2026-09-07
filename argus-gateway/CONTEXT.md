@@ -305,10 +305,14 @@ proxies everything else to the legacy backend on its internal plain listener
   post-handling advice, so the gate applies CORS itself to keep the
   response headers identical to every other gateway response.
 - **Refresh-token rate limiting (Ruling CJ)**: the same gate rate-limits
-  `PATCH /auth/refresh-token` — the only pre-auth route a remote attacker
-  can hit that mints sessions (`/pairing` is bootstrap and 409s after
-  pairing; `/auth/login` and `/auth/register` are bootstrap/registration
-  surfaces gated above). `RefreshRateLimiter`
+  `PATCH /auth/refresh-token` — the scope Ruling CJ bound the limiter to,
+  not the whole remote pre-auth surface (`/pairing` is bootstrap and 409s
+  after pairing and `/auth/register` is LAN-only gated above, but
+  `POST /auth/login`, `POST /auth/device-login` + its challenge poll and
+  `POST /invitation/resolve` stay remote-reachable pre-auth routes that
+  mint sessions with no limiter — ledgered for F5-2, where extending
+  `isRateLimitedRoute` is a one-line addition per route).
+  `RefreshRateLimiter`
   (`argus-gateway/src/server/refresh-rate-limiter.cc`) keeps a
   sliding-window counter (at most `max_requests` admissions per
   `window_seconds`) and locks a key out for `lockout_seconds` after
@@ -321,12 +325,18 @@ proxies everything else to the legacy backend on its internal plain listener
 - **Key and honest limits**: the limiter key is the device fingerprint hash
   (`DeviceFilter::deviceKey` = HMAC(UA|IP) with the fingerprint secret) —
   the same key DeviceFilter stores for the request — falling back to the
-  peer IP if the fingerprint secret is unconfigured. Behind the tunnel all
-  remote clients share the relay's local hop, so per-key collapses to
-  per (User-Agent, relay-observed peer); UA rotation mints fresh keys.
-  This is defense-in-depth for the bootstrap route, not an internet-grade
-  WAF — stronger per-device binding lands with the device credential
-  identity (Fase 5, Ruling CH). All state is in-memory per gateway
-  process: a restart clears every counter and lockout, and the tracked-key
-  set is bounded (4096) so rotated fingerprints cannot grow it forever;
-  keys past the bound are rejected with 429.
+  peer IP if the fingerprint secret is unconfigured. The gateway must keep
+  `device.trust_forwarded_for` off: with it enabled the IP half of the key
+  comes from the client-supplied `X-Forwarded-For` header, so a remote
+  attacker controls the key (unlimited fresh keys, lockout defeat). Behind
+  the tunnel all remote clients share the relay's local hop, so per-key
+  collapses to per (User-Agent, relay-observed peer); UA rotation mints
+  fresh keys. This is defense-in-depth for the bootstrap route, not an
+  internet-grade WAF — stronger per-device binding lands with the device
+  credential identity (Fase 5, Ruling CH). All state is in-memory per
+  gateway process: a restart clears every counter and lockout, and the
+  tracked-key set is bounded (4096) so rotated fingerprints cannot grow it
+  forever; once 4096 live keys are tracked, a new-key insert first evicts
+  expired entries and, while the map stays full, rejects every further new
+  key — attacker-rotated or a legitimate first-seen device — with 429
+  until tracked entries expire (self-healing within `window_seconds`).

@@ -217,6 +217,7 @@ int main()
   const ListenerConfig listener = ListenerConfig::resolve();
   const RemoteConfig remote = RemoteConfig::resolve();
   const ProxyConfig proxy = ProxyConfig::resolve();
+  requireDistinctTunnelPort(listener, remote);
   requireExclusionCoverage(proxy);
   logRouting(proxy, listener, remote);
 

@@ -26,3 +26,8 @@ Json::Value listenerJson(const ListenerConfig& config);
 // posture (same host, certs and min protocol); no-op when tunnel_port is 0.
 void appendRemoteListener(Json::Value& listeners, const RemoteConfig& remote,
                           const ListenerConfig& base);
+
+// Fails fast when the tunnel listener would collide with the public one;
+// otherwise the duplicate bind aborts startup without a config message.
+void requireDistinctTunnelPort(const ListenerConfig& listener,
+                               const RemoteConfig& remote);

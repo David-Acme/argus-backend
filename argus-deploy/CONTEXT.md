@@ -380,7 +380,10 @@ and `camera-init` is the only migration path onto the volume.
   `[remote] enabled = true`. The listener mirrors the public one's TLS
   posture. `[rate_limit]` is the gateway's in-memory limiter + lockout for
   `PATCH /auth/refresh-token` (429 frozen envelope before any DB access);
-  all limiter state is process-local and a restart clears it.
+  all limiter state is process-local and a restart clears it. The gateway
+  template must keep `device.trust_forwarded_for` off: the limiter key
+  includes the client IP, so enabling it there would let a remote client
+  spoof the IP half of its own key.
 - The gateway links no go2rtc code, so it neither mounts nor spawns go2rtc.
 - argus-camera spawns go2rtc itself (Go2rtcManager fork/exec, Ruling AH) from
   the bind-mounted `third_party/go2rtc` binary and writes its own
