@@ -21,6 +21,7 @@
 #include <shared/services/sqlite/db-service.hxx>
 #include <shared/wrapper/nats/nats-bus.hxx>
 #include <shared/wrapper/nats/nats-push-intent-sink.hxx>
+#include <shared/services/socket/nats-identity-change-sink.hxx>
 #include <shared/wrapper/nats/nats-subject.hxx>
 #include <sync/camera-fan-out.hxx>
 #include <sync/camera-notifier.hxx>
@@ -286,6 +287,12 @@ int main()
       LOG_INFO << "NATS event bus connected to " << natsBus->options().url;
       camera_fan_out::subscribeChangeFanOut(*natsBus);
       camera_notifier::subscribeObjectDetected(*natsBus);
+      // The gateway owns the identity domain's writes post-cutover (F1-5):
+      // user/person rows change here, so the memory catalog replica feed
+      // (Ruling BX) is published from this process (the legacy keeps its own
+      // sink for its remaining identity surfaces).
+      static const NatsIdentityChangeSink identitySink(natsBus);
+      identity_change::setSink(&identitySink);
     }
     else
       LOG_WARN << "NATS unavailable at " << natsUrl
