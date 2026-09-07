@@ -510,6 +510,68 @@ Raw pointers only for non-owning access (`.get()`).
 - `RoomManager` is an instance class with file-level `thread_local` state; its
   lifecycle goes through `RoomManagerServiceAdapter` (IService).
 
+### 19. Modern C++20 everywhere
+
+Write C++20 as if starting today; carry nothing old forward. No owning raw
+pointers (rule 16), no C-style casts, no `typedef` (use `using`), no `NULL`
+(use `nullptr`), no C arrays, no `std::bind`, no `printf` family. Reach for
+`string_view`/`span` at hot boundaries, `constexpr`, designated initializers,
+structured bindings, ranges/algorithms over manual index loops, and
+`std::make_unique`/`make_shared` by default. Modernizing existing code is a
+normal part of any task that touches it — do not preserve old idioms out of
+consistency with their file.
+
+### 20. Comment discipline
+
+Comments exist ONLY at class, namespace or function scope, short and direct.
+No comments attached to individual statements, no multi-line doc blocks, no
+commented-out code. If a statement needs a comment to be understood, rewrite
+the statement. The "why" of a design decision goes to CONTEXT.md, not to the
+code.
+
+### 21. Efficiency first, architecture intact
+
+Every write/read path is written with cost in mind:
+
+- One transaction or multi-row statement over N single statements in a loop
+  (fan-out writes, audit batches, replica upserts, notification inserts).
+- Prepared statements and bulk `IN (...)` clauses over repeated round-trips.
+- No allocation churn in hot paths (string concatenation in loops, per-request
+  vector copies, JSON re-serialization round-trips).
+- No blocking IO inside event-loop callbacks (trantor/cnats).
+- Efficiency never changes semantics: the sync fan-out stays row-scoped and
+  per-recipient; batching applies only where the observable behavior is
+  identical.
+
+### 22. Databases optimized, not limited
+
+Each service's DB is tuned for its own hot queries (covering indices on sync
+cursors and join columns, WAL + PRAGMA tuning, FTS5 where already present)
+WITHOUT tricks that box in future work: no manual partitioning, no aggressive
+denormalization, no over-indexing every column. New features must fit the
+existing schema shape or extend it additively.
+
+### 23. Feature-based architecture + shared SDK
+
+- Every service follows the feature-based layout of the monolith
+  (`src/feature/...`, `src/filter/...`, `src/shared/...`, `src/server/...`).
+  Do not invent a new layout per service.
+- Cross-service calls go through the SHARED client/SDK layer, never through
+  per-service hand-rolled clients. Wire handling (URL/connect/envelope parse/
+  retry/auth token pass-through) lives in one place.
+- Each service owns its subroute (`/camera`, `/reminder`, ...) and its own
+  auth handling via the shared filter/auth SDK — no service reaches into
+  another service's database for auth.
+- Dead code, unused folders and duplicated copies are removed in the same
+  change that introduces their replacement.
+
+### 24. Respect the monolith structure, never speculative structure
+
+Folder architecture, naming and ordering mirror the legacy monolith
+(`src/feature`, `src/shared`, `src/filter`, `src/server`, `database/`,
+`tools/`). Do not implement structure for its own sake: no abstraction, layer
+or directory that has no current consumer.
+
 ## Build Commands
 
 ```bash

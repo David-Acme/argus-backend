@@ -63,3 +63,4 @@ review blocker:
   members with a `_` suffix (`userRepository_`, `service_`); controllers hold a
   non-static service member.
 - Minimal comments in code too: direct "what it does" one-liners only.
+> Binding cross-service code standards: root `AGENTS.md` MUST-FOLLOW rules 19-24 (modern C++20, comment discipline, efficiency, DB tuning, feature layout + shared SDK, monolith structure).

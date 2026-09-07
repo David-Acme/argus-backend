@@ -76,3 +76,5 @@ cmake --preset dev
 cmake --build --preset dev -j 8
 ctest --test-dir build/dev --output-on-failure
 ```
+
+> Binding cross-service code standards: root `AGENTS.md` MUST-FOLLOW rules 19-24 (modern C++20, comment discipline, efficiency, DB tuning, feature layout + shared SDK, monolith structure).
