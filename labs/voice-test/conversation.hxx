@@ -20,6 +20,13 @@ struct WorkingMemory
 // must not promise a saved fact.
 std::string captureAckNote(CaptureOutcome outcome, const std::string& lang);
 
+struct RecallBlockInput
+{
+  WorkingMemory& wm;
+  const std::string& text;
+  int64_t userId = 0;
+};
+
 class ConversationService
 {
 public:
@@ -28,8 +35,7 @@ public:
   // Entity-anchored recall block for the turn text. Updates wm.activeEntities
   // with the entities resolved this turn (anaphora source for follow-ups) and
   // bumps hit counts.
-  std::string recallBlock(WorkingMemory& wm, const std::string& text,
-                          int64_t userId);
+  std::string recallBlock(const RecallBlockInput& input);
 
   // History ring with compaction enqueue.
   void trimHistory(WorkingMemory& wm, int64_t userId);

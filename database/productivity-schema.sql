@@ -3,8 +3,8 @@
 -- The 7 productivity tables plus their 13 indexes, copied verbatim from
 -- database/schema.sql (source of truth): reminder, project, project_task,
 -- calendar_event, project_member, calendar_event_share, reminder_detail.
--- context_note stays a frozen argus.db orphan and is NOT recreated here
--- (Ruling AK; the drop decision is the user's). Applied by
+-- context_note is NOT recreated here (Ruling AK): the frozen argus.db copy
+-- was an orphan and was dropped from database/schema.sql in F6-1. Applied by
 -- tools/migrate-productivity and by argus-productivity at boot. argus.db is
 -- never touched.
 -- Structure: pragmas → table creation → indexes (inline, verbatim order).

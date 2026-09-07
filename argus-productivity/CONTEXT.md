@@ -17,9 +17,9 @@ own `productivity.db`.
   copied verbatim from `database/schema.sql:159-280`. The schema lands as
   `database/productivity-schema.sql` and is applied at boot through
   `DbService::runScriptFile` — abort on failure. `argus.db` is never
-  touched. `context_note` is NOT recreated: it is an orphan table with no
-  controller and no sync pull (Ruling AK); its frozen argus.db copy stays
-  and the drop decision is the user's.
+  touched. `context_note` is NOT recreated (Ruling AK): it was an orphan
+  table with no controller and no sync pull, and the frozen argus.db copy
+  was dropped from `database/schema.sql` in F6-1.
 - **Foreign keys stay off** (schema file pragma + re-applied after
   `applyPragmas`, which would otherwise turn them on per connection): every
   productivity table references `user(id)`, and the user rows live in

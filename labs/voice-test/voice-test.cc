@@ -791,7 +791,7 @@ int runTextChat(int64_t memoryUserId, const std::string& langCode,
     std::vector<int64_t> pendingHits;
     std::string recalled;
     if (memoryUserId >= 0) {
-      recalled = gConv.recallBlock(state, line, memoryUserId);
+      recalled = gConv.recallBlock({.wm = state, .text = line, .userId = memoryUserId});
       if (!recalled.empty()) {
         userMsg = userMsg + "\n\n" + recalled;
         hasMemories = true;
@@ -1035,7 +1035,7 @@ void runCameraConversation(const TapoTalkConfig& talkCfg,
     std::vector<int64_t> pendingHits;
     if (memoryUserId >= 0) {
       const std::string block =
-          gConv.recallBlock(state, userText, memoryUserId);
+          gConv.recallBlock({.wm = state, .text = userText, .userId = memoryUserId});
       if (!block.empty()) {
         userMsg = userMsg + "\n\n" + block;
         hasMemories = true;
@@ -1415,7 +1415,7 @@ int main(int argc, char** argv)
       std::vector<int64_t> pendingHits;
       std::string recalled;
       if (memoryUserId >= 0) {
-        recalled = gConv.recallBlock(state, userText, memoryUserId);
+        recalled = gConv.recallBlock({.wm = state, .text = userText, .userId = memoryUserId});
         if (!recalled.empty()) {
           userMsg = userMsg + "\n\n" + recalled;
           hasMemories = true;

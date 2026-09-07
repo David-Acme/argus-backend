@@ -71,19 +71,18 @@ std::string captureAckNote(CaptureOutcome outcome, const std::string& lang)
   return {};
 }
 
-std::string ConversationService::recallBlock(WorkingMemory& wm,
-                                             const std::string& text,
-                                             int64_t userId)
+std::string ConversationService::recallBlock(const RecallBlockInput& input)
 {
-  if (userId >= 0 && wm.addresseeEntityId == 0)
+  auto& wm = input.wm;
+  if (input.userId >= 0 && wm.addresseeEntityId == 0)
     wm.addresseeEntityId = memory_.resolveAddresseeEntity(wm.lang);
 
   const int topK = ConfigService::getInt("memory.recall_top_k");
   const auto recalled = memory_.graphRecall().recall(
-      {.text = text,
+      {.text = input.text,
        .lang = wm.lang,
        .scope = "user",
-       .refId = userId,
+       .refId = input.userId,
        .maxHops = 1,
        .limit = topK > 0 ? topK : 4,
        .addresseeEntityId = wm.addresseeEntityId,
