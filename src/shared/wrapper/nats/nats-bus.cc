@@ -86,6 +86,9 @@ void NatsBus::onClosed(natsConnection* connection, void* closure)
     return;
   auto* bus = static_cast<NatsBus*>(closure);
   std::lock_guard lock(bus->mutex_);
+  // Re-check: the gate can arm between the first load and this lock.
+  if (gCallbacksSuppressed.load(std::memory_order_acquire))
+    return;
   bus->connected_ = false;
 }
 
@@ -101,9 +104,11 @@ void NatsBus::onMessage(natsConnection* connection, natsSubscription* sub,
   MessageHandler handler;
   {
     std::lock_guard lock(bus->mutex_);
-    const auto it = bus->active_.find(sub);
-    if (it != bus->active_.end())
-      handler = it->second.handler;
+    if (!gCallbacksSuppressed.load(std::memory_order_acquire)) {
+      const auto it = bus->active_.find(sub);
+      if (it != bus->active_.end())
+        handler = it->second.handler;
+    }
   }
 
   const char* data = natsMsg_GetData(msg);
@@ -301,7 +306,9 @@ void NatsBus::drain()
     // Synchronous close instead of natsConnection_DrainTimeout: the drain
     // variant runs on a background cnats thread that would still own the
     // connection while the process exits (the teardown abort). Close joins
-    // the connection threads here, on the caller's thread.
+    // the connection threads here, on the caller's thread. In-flight
+    // outbound publishes at teardown are dropped, not flushed (Close does
+    // not drain) — shutdown-only semantics.
     natsConnection_Close(connection.get());
   }
 }

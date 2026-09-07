@@ -298,12 +298,13 @@ The `tunnel` profile carries the byte-transparent remote transport:
 
 - `argus-relay` is the device-facing entry point (device 7100 for the app,
   home 7101 for the single client link, `/health` 7103). Its block is
-  standalone-deployable: lifted onto a US server with its `config.relay.toml`
-  and the `argus-cutover:local` image it runs unchanged — it needs no other
-  compose service unless `[push] intents are wanted, and a US deployment
-  fronts the plain 7100 device listener with its own TLS terminator (the app
-  keeps its normal pinned-CA tunnel toward the relay hostname, whose DNS SAN
-  is baked into the leaf via `[remote] hostname`).
+  standalone-deployable: lift it minus its `depends_on` (no broker exists
+  there) onto a US server with its `config.relay.toml` and the
+  `argus-cutover:local` image — it needs no other compose service unless
+  `[push]` intents are wanted, and a US deployment fronts the plain 7100
+  device listener with its own TLS terminator (the app keeps its normal
+  pinned-CA tunnel toward the relay hostname, whose DNS SAN is baked into
+  the leaf via `[remote] hostname`).
 - `argus-tunnel-client` runs on the home topology and dials OUT: the relay's
   home listener, then the gateway's `[remote] tunnel_port` per stream. It is
   host-networked like the gateway (same transitional Ruling O exception) so
@@ -392,7 +393,9 @@ and `camera-init` is the only migration path onto the volume.
   `config.notification.toml` / `config.tts.toml` / `config.stt.toml` /
   `config.vlm.toml` / `config.llm.toml` / `config.memory.toml` /
   `config.tunnel.toml` / `config.relay.toml`
-  (gitignored) and fill: `[jwt] secret/refresh_secret` and
+  (gitignored, mode 0600 — the instance files carry real HMAC/JWT keys, so
+  copy with `install -m 600` or `chmod 600` after copying) and fill:
+  `[jwt] secret/refresh_secret` and
   `[device] fingerprint_secret` (identical in all five — the gateway mints,
   the legacy, argus-camera and the two Fase 3 services verify, and the device
   hash must match across the proxy), the `[tunnel] secret` (identical in the
