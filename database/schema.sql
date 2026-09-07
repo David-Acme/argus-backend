@@ -330,6 +330,18 @@ CREATE TABLE IF NOT EXISTS device_login_challenge (
     created_at    INTEGER NOT NULL  DEFAULT (strftime('%s', 'now'))
 );
 
+-- A per-device secret presented via the X-Argus-Device-Credential header
+-- (credential identity mode) replaces the source IP in the device hash. Only
+-- its SHA-256 is stored; the plaintext is returned once at issuance.
+CREATE TABLE IF NOT EXISTS device_credential (
+    id            INTEGER NOT NULL  PRIMARY KEY AUTOINCREMENT,
+    user_id       INTEGER NOT NULL  REFERENCES user(id) ON DELETE CASCADE,
+    device_hash   TEXT    NOT NULL,
+    secret_hash   TEXT    NOT NULL  UNIQUE,
+    is_active     INTEGER NOT NULL  DEFAULT 1  CHECK (is_active IN (0, 1)),
+    created_at    INTEGER NOT NULL  DEFAULT (strftime('%s', 'now'))
+);
+
 -- ── Tables · Face Recognition ────────────────────────────────────────────────
 
 CREATE TABLE IF NOT EXISTS face_embedding (
