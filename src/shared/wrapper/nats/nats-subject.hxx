@@ -37,6 +37,12 @@ inline constexpr const char* kIdentityChange = "argus.identity.v1.change";
 inline constexpr const char* kCameraObjectDetected =
     "argus.camera.v1.object_detected";
 
+// Push intents for the tunnel pipeline (F5-5, Ruling CK): notification rows
+// fanned to the home client through the tunnel transport. The gateway's
+// wildcard sync fan-out drops them (never re-emitted to /sync).
+inline constexpr const char* kNotificationPushIntent =
+    "argus.notification.v1.push_intent";
+
 enum class SubjectKind
 {
   Publish,

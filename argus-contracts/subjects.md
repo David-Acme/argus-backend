@@ -29,6 +29,7 @@ argus.<domain>.v1.<event>
 | `argus.productivity.v1.change` | argus-productivity (F3-2) | gateway  | a productivity-domain change: user-scoped emits plus `kind: audit` user_audit_log diffs the gateway persists before fanning the rows out |
 | `argus.notification.v1.change` | argus-notification (F3-2) | gateway  | a notification-domain change: user-scoped emits plus the `kind: audit` markAsRead rows (same payload contract as the productivity subject) |
 | `argus.identity.v1.change` | legacy backend (F4-6) | argus-memory | the memory catalog replica feed: person/user rows written by the identity surface; the gateway's wildcard subscription drops it (the gateway owns `/user` fan-out natively) |
+| `argus.notification.v1.push_intent` | argus-notification / gateway (F5-5) | argus-relay | a notification push intent carried to the home client through the tunnel transport (not a persisted change; never re-emitted to `/sync`) |
 
 The gateway subscribes with the wildcard `argus.*.v1.change` — universally
 valid across nats-server versions, while a mid-subject `>` requires nats-server
@@ -151,3 +152,39 @@ gateway's `argus.*.v1.change` subscription matches it and explicitly drops it
 - `row` — the post-write snapshot; the replica upserts `user_id`, `name` and
   `alias` for person rows. Publication failure logs a WARN and is dropped
   (best-effort feed; the boot snapshot fill recovers the catalog).
+
+## Payload of `argus.notification.v1.push_intent` (F5-5)
+
+Published per notification row by the `push_intent` sink
+(`NatsPushIntentSink`, installed behind `[push] enabled` — default off) when
+the shared `NotificationService::createAndEmitMany` creates rows. Like
+`object_detected` it is NOT a persisted change: it mirrors an already-persisted
+`notification` row and exists only to trigger a push. The gateway's wildcard
+`argus.*.v1.change` subscription does not match it and it is never re-emitted
+to `/sync`.
+
+Consumer: `argus-relay` subscribes to this subject and forwards the payload as
+a tunnel PUSH control frame to the home client's bounded in-memory intent
+queue (Ruling CK: argus-notification is the publisher/policy owner, the tunnel
+is the transport owner). The NATS leg is at-least-once; the tunnel leg is
+best-effort with drop accounting — the queue never persists to disk (Ruling
+CL: no database in the tunnel), the final device-delivery leg rides the
+existing `/sync` fan-out once the app re-syncs. Intents carry display
+information only: they never carry or trigger alarm/siren semantics.
+
+```json
+{
+  "userId": 42,
+  "notificationId": 17,
+  "type": "camera",
+  "title": "Front door",
+  "body": "Person detected",
+  "createdAt": 1735689600123
+}
+```
+
+- `userId` — the notification row's user id.
+- `notificationId` — the persisted `notification` row id (lets the device
+  correlate the intent against the `/sync` row).
+- `type`, `title`, `body` — the notification row's display fields, verbatim.
+- `createdAt` — the row's creation time as a millisecond Unix epoch.
