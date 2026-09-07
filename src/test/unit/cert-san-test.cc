@@ -311,6 +311,17 @@ TEST_CASE("remote.hostname drives the leaf SAN list and the hot reload")
                              std::filesystem::copy_options::overwrite_existing);
   const std::string absentFingerprint = fingerprintOf(absentLeaf.get());
 
+  // Invalid remote.hostname values are ignored: the leaf keeps the exact
+  // base SAN list instead of a dropped or corrupted SAN extension.
+  for (const char* bad : {" ", "bad_host", ".leading.dot", "trailing.dot.",
+                          "argus.example.com, IP:10.0.0.1", "white space"}) {
+    ConfigService::setRuntimeString("remote.hostname", bad);
+    REQUIRE(CertService::rotateServerCertificate());
+    const X509Ptr rejectedLeaf = firstCertFromPem(readFile(dir / "server.pem"));
+    REQUIRE(rejectedLeaf);
+    CHECK(sansOf(rejectedLeaf.get()) == baseSans());
+  }
+
   ConfigService::setRuntimeString("remote.hostname", kRemoteHost);
   REQUIRE(CertService::rotateServerCertificate());
   const X509Ptr leaf = firstCertFromPem(readFile(dir / "server.pem"));

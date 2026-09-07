@@ -381,8 +381,12 @@ and `camera-init` is the only migration path onto the volume.
   posture. Fase 5 (Ruling CI) also adds `[remote] hostname` (default empty
   = unchanged certificate output): when set it is appended as a DNS SAN to
   the instance leaf so the app can configure that hostname as its manual
-  remote server; the next leaf rotation (or gateway restart) bakes it in
-  and the running gateway hot reloads it. `[rate_limit]` is the gateway's
+  remote server; the next leaf rotation bakes it in — a restart alone
+  regenerates the leaf only when it is within
+  `cert.rotation_threshold_days` of expiry, so with a young leaf the SAN
+  waits for the periodic rotation loop (or a forced rotation via
+  `rotateServerCertificate()`), and once the leaf is re-signed the
+  running gateway hot reloads it. `[rate_limit]` is the gateway's
   in-memory limiter + lockout for
   `PATCH /auth/refresh-token` (429 frozen envelope before any DB access);
   all limiter state is process-local and a restart clears it. The gateway

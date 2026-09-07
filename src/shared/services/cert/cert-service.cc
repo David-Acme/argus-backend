@@ -180,6 +180,17 @@ long certDaysRemaining(X509* cert)
   return static_cast<long>(secs / 86400.0);
 }
 
+bool isValidHostname(const std::string& host)
+{
+  if (host.find_first_not_of(" \t") == std::string::npos)
+    return false;
+  if (host.front() == '.' || host.back() == '.')
+    return false;
+  return host.find_first_not_of(
+             "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+             ".-") == std::string::npos;
+}
+
 std::vector<std::string> instanceSans()
 {
   std::vector<std::string> names{"argus.local", "localhost", "127.0.0.1",
@@ -192,8 +203,14 @@ std::vector<std::string> instanceSans()
     names.emplace_back(hostname);
   // Public relay hostname for remote TLS; empty keeps the SAN list unchanged.
   const std::string remoteHost = ConfigService::getString("remote.hostname");
-  if (!remoteHost.empty())
-    names.push_back(remoteHost);
+  if (remoteHost.empty())
+    return names;
+  if (!isValidHostname(remoteHost)) {
+    LOG_WARN << "remote.hostname '" << remoteHost
+             << "' is not a valid DNS hostname, ignoring it";
+    return names;
+  }
+  names.push_back(remoteHost);
   return names;
 }
 
