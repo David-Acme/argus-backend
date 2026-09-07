@@ -125,3 +125,23 @@ db = "notification/notification.db"
 budget_per_hour = 6
 silent_start = -1
 silent_end = -1
+
+[remote]
+# Fase 5 (Ruling CG): second listener the argus-tunnel client forwards to.
+# 0 keeps the single-listener shape; when set, requests landing on this
+# port are classified remote and /pairing + /auth/register answer 403
+# REMOTE_NOT_ALLOWED unless enabled = true. The listener mirrors the public
+# one's TLS posture. Keep tunnel_port unpublished from the host network
+# until the tunnel client exists; it is the remote-facing door.
+tunnel_port = 0
+enabled = false
+
+[rate_limit]
+# Fase 5 (Ruling CJ): in-memory limiter + lockout for PATCH
+# /auth/refresh-token, evaluated before filters and any DB access.
+# enabled = false keeps today's behavior; a restart clears all state.
+enabled = false
+window_seconds = 60
+max_requests = 10
+lockout_threshold = 5
+lockout_seconds = 300
