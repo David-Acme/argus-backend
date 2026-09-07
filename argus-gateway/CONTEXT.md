@@ -359,3 +359,36 @@ proxies everything else to the legacy backend on its internal plain listener
   expired entries and, while the map stays full, rejects every further new
   key — attacker-rotated or a legitimate first-seen device — with 429
   until tracked entries expire (self-healing within `window_seconds`).
+
+## Leaf SAN for the public relay hostname (F5-3, Ruling CI)
+
+- **`[remote] hostname` appends a DNS SAN**: `CertService::instanceSans()`
+  (`src/shared/services/cert/cert-service.cc`) reads
+  `ConfigService::getString("remote.hostname")` after the always-present
+  base list (`argus.local`, `localhost`, `127.0.0.1`, `::1`, `[mdns] name`
+  when set, host hostname) and pushes a non-empty value as the LAST SAN
+  entry; the leaf keeps its pre-existing SAN-only extension shape. The key
+  is empty by default and ABSENT means zero change: the SAN list (and with
+  it the certificate content shape) is byte-identical to a build without
+  the key — rotation is only ever re-signed with a fresh key/serial, so
+  the honest statement is the SAN list is unchanged, verified in
+  `cert-san-test` against the exact base list.
+- **Rotation picks the SAN up and hot reloads**: every leaf regeneration
+  (startup near-expiry rotation or the periodic rotation loop) rebuilds
+  the SAN string from the live config, and `rotateServerCertificate()`
+  calls `drogon::app().reloadSSLFiles()` when the gateway is running —
+  the listener serves the regenerated leaf (new fingerprint + the
+  `remote.hostname` SAN) without a restart. Proven in-process in
+  `src/test/unit/cert-san-test.cc`: a live TLS client sees the served
+  fingerprint change and the hostname SAN appear after the rotation call
+  returns.
+- **App coordination (blueprint "la app configura servidor manual además
+  de mDNS")**: the app configures `remote.hostname` as its manual server
+  for remote access (in addition to mDNS discovery on the LAN) and
+  validates it against the instance CA, so the value must be in the leaf's
+  SANs or the TLS handshake fails. The templates ship `hostname = ""`;
+  setting it is the instance owner's deployment choice once the tunnel
+  relay hostname is known (Fase 5 argus-tunnel).
+- **Known gap, documented not fixed**: the leaf carries no EKU/keyUsage
+  extensions (pre-existing SAN-only leaf shape, consistent with Ruling CH
+  keeping client-cert issuance out of scope for the app).

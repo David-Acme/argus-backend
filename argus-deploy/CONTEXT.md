@@ -378,7 +378,12 @@ and `camera-init` is the only migration path onto the volume.
   is the tunnel and CIDR matching is meaningless) and `/pairing` +
   `/auth/register` answer `403 REMOTE_NOT_ALLOWED` unless
   `[remote] enabled = true`. The listener mirrors the public one's TLS
-  posture. `[rate_limit]` is the gateway's in-memory limiter + lockout for
+  posture. Fase 5 (Ruling CI) also adds `[remote] hostname` (default empty
+  = unchanged certificate output): when set it is appended as a DNS SAN to
+  the instance leaf so the app can configure that hostname as its manual
+  remote server; the next leaf rotation (or gateway restart) bakes it in
+  and the running gateway hot reloads it. `[rate_limit]` is the gateway's
+  in-memory limiter + lockout for
   `PATCH /auth/refresh-token` (429 frozen envelope before any DB access);
   all limiter state is process-local and a restart clears it. The gateway
   template must keep `device.trust_forwarded_for` off: the limiter key
