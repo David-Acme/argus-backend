@@ -29,6 +29,7 @@ Thumbs.db
 # Logs / runtime
 *.log
 core
+!argus-tunnel/src/core/
 argus.db
 database/*.db
 database/*.db-wal
