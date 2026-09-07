@@ -77,6 +77,12 @@ fingerprint_secret = ""
 # real client peer address on every proxied request and relayed frame.
 trust_forwarded_for = true
 trusted_proxy_ips = ""
+# Device identity source: "ip" fingerprints the source IP (legacy behavior);
+# "credential" replaces the IP with the per-device secret issued at
+# register/login and desktop-challenge approval, presented by clients via the
+# X-Argus-Device-Credential header. Flipping the mode invalidates every
+# existing session once (controlled re-login).
+identity_mode = "ip"
 
 [database]
 file = "./database/argus.db"

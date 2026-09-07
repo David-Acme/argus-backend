@@ -56,6 +56,12 @@ refresh_ttl_days = 30
 # both sides of the proxy.
 [device]
 fingerprint_secret = ""
+# Device identity source: "ip" fingerprints the source IP (legacy behavior);
+# "credential" replaces the IP with the per-device secret issued at
+# register/login and desktop-challenge approval, presented by clients via the
+# X-Argus-Device-Credential header. Flipping the mode invalidates every
+# existing session once (controlled re-login).
+identity_mode = "ip"
 
 [identity]
 db = "database/identity.db"
