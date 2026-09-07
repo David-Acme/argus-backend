@@ -32,6 +32,23 @@ legacy backend keeps running untouched on its own listener.
   `stored_file`, `portrait_preview_capability`), all copied verbatim from
   `database/schema.sql` — and aborts if it fails; it never touches `argus.db`
   and never runs the backend migrations.
+- **Device identity modes (F5-2, Ruling CH)**: `DeviceFilter` gained a
+  `[device] identity_mode` gate (`ip` default, byte-identical legacy
+  behavior | `credential`), shared with the legacy through `argus_identity`.
+  In credential mode the fingerprint drops the source IP entirely —
+  `HMAC(UA | SHA-256(secret))` — where `secret` is the per-device credential
+  presented via the `X-Argus-Device-Credential` header and validated against
+  the `device_credential` table in identity.db (only the SHA-256 is stored;
+  the plaintext is minted at register/login and at desktop-challenge approval
+  and shown once). Unknown, missing or oversized credentials degrade to an
+  empty device hash, which downstream fails jwt-filter's session device match
+  with the standard 401 `Device mismatch` — never a distinct error. A mode
+  flip invalidates every existing session once (controlled re-login). The
+  wire contract lives in `argus-contracts/identity/README.md`. The F5-1 rate
+  limiter key (`DeviceFilter::deviceKey`) deliberately stays IP-based even in
+  credential mode: the limiter evaluates pre-routing before any database
+  access (Ruling CJ) and a client-presented credential would be an
+  attacker-controlled key.
 - **NATS event bus client**: connects to the shared event bus (`[nats]` in
   config) so later phases can fan sync-change events without touching the
   legacy backend. Connecting is optional: with no `nats.url` configured the
@@ -310,8 +327,8 @@ proxies everything else to the legacy backend on its internal plain listener
   after pairing and `/auth/register` is LAN-only gated above, but
   `POST /auth/login`, `POST /auth/device-login` + its challenge poll and
   `POST /invitation/resolve` stay remote-reachable pre-auth routes that
-  mint sessions with no limiter — ledgered for F5-2, where extending
-  `isRateLimitedRoute` is a one-line addition per route).
+  mint sessions with no limiter — still ledgered (F5-2 kept its scope to
+  the device credential identity and left the limiter surface untouched).
   `RefreshRateLimiter`
   (`argus-gateway/src/server/refresh-rate-limiter.cc`) keeps a
   sliding-window counter (at most `max_requests` admissions per
@@ -332,8 +349,10 @@ proxies everything else to the legacy backend on its internal plain listener
   the tunnel all remote clients share the relay's local hop, so per-key
   collapses to per (User-Agent, relay-observed peer); UA rotation mints
   fresh keys. This is defense-in-depth for the bootstrap route, not an
-  internet-grade WAF — stronger per-device binding lands with the device
-  credential identity (Fase 5, Ruling CH). All state is in-memory per
+  internet-grade WAF — the device credential identity (F5-2, Ruling CH)
+  landed but the limiter key deliberately stays fingerprint-based: a
+  client-presented credential would be an attacker-controlled key and the
+  limiter evaluates pre-DB. All state is in-memory per
   gateway process: a restart clears every counter and lockout, and the
   tracked-key set is bounded (4096) so rotated fingerprints cannot grow it
   forever; once 4096 live keys are tracked, a new-key insert first evicts

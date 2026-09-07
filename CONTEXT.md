@@ -620,7 +620,28 @@ A Drogon custom error handler wraps built-in 404/405 in the same envelope.
   → user lookup → JWT issuance (access + refresh)
 - **JWT**: HS256, dual secrets. Claims: `sub=userId`, `iss=argus`. No role in token.
 - **Refresh tokens**: single-use rotation (`is_used=1` after first rotation), replay-protected
-- **Device binding**: hash of User-Agent + IP stored per token, validated on each request
+- **Device binding**: hash of User-Agent + IP stored per token, validated on each request.
+  `[device] identity_mode` (F5-2, Ruling CH) selects the hash source: `ip`
+  (default, legacy behavior, byte-identical) or `credential` — then the hash is
+  `HMAC(UA | SHA-256(secret))` with the IP excluded. In credential mode
+  auth-service mints a 32-byte random hex secret at register/login and at
+  desktop-challenge approval, stores only its SHA-256 in `device_credential`,
+  and returns the plaintext once (`device_secret` on the login response; the
+  desktop receives it on the first `approved` challenge poll — in-memory
+  pending map, single-use, TTL-bounded by the challenge expiry, never
+  persisted or logged). The client presents it via the
+  `X-Argus-Device-Credential` header, consumed by `DeviceFilter` only.
+  Unknown, missing or oversized (> 128 chars) credentials degrade to an empty
+  device hash, which fails jwt-filter's session device match with the standard
+  401 `Device mismatch` — never a distinct error. A mode flip invalidates
+  every existing session once (controlled re-login). App móvil coordination:
+  the client must start sending the header when the server flips the mode
+  (`argus-contracts/identity/README.md`); until it does, its sessions mismatch
+  once and the re-login populates `device_credential`. Wire contract:
+  `argus-contracts/identity/README.md`. The F5-1 rate limiter key stays
+  IP-based (`DeviceFilter::deviceKey`) in credential mode: the limiter runs
+  pre-DB (Ruling CJ) and a client-presented credential would be an
+  attacker-controlled key.
 - **Filter chain**: `DeviceFilter → ValidJsonFilter → JwtFilter → RoleFilter`
 - **Token extraction**: Authorization Bearer / query param `?token=` / cookie
 - **Logout**: invalidates all refresh tokens for user (`is_valid=0`)
@@ -678,6 +699,8 @@ Never static methods for service classes. Never local/temporary repository const
   `portrait_access_request`, `portrait_access_grant`, `device_login_challenge`
   (login cruzado por QR)
 - Auth/face: `refresh_token` (is_valid, is_used, device_hash, expires_at),
+  `device_credential` (credential identity mode: `secret_hash` UNIQUE — only
+  the SHA-256 of the per-device secret, never the plaintext),
   `face_embedding` (BLOB 128-dim float; rowid = fila vec0 `face_vec`)
 - Audit/notificaciones: `audit_log` (global, `changes` = JSON diff de
   `JsonDiff`), `user_audit_log` (por usuario, sincronizable), `notification`,

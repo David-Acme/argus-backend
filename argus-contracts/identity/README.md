@@ -24,6 +24,11 @@ consumer, proxy hop or controller may forward or log it.
 - Degrade: a missing, unknown, inactive or oversized (> 128 chars) credential
   produces an empty device hash, which fails jwt-filter's session device match
   with the standard `401` `Device mismatch` envelope — never a distinct error.
+- Transport security: the credential is only meaningful end-to-end over TLS.
+  The argus-tunnel relay is byte-transparent (it retransmits the client's TLS
+  bytes without decrypting, Ruling CF), so the header arrives at the gateway's
+  `DeviceFilter` intact and no intermediate hop can read or rewrite it. No
+  proxy, controller or relay may forward or log the header.
 
 ## Issuance
 
