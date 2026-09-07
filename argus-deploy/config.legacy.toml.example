@@ -101,6 +101,13 @@ history_messages = 41
 top_k = 5
 
 [llm]
+# Fase 4 engine offload gate (Ruling CC): with remote_url set the legacy voice
+# session streams its replies from the argus-llm service over the internal
+# wire. Empty keeps the in-process engine (topology (a)). The value must be
+# an IPv4 host:port (the raw-socket client resolves literals only) — the
+# compose-shape value is argus-llm's loopback-published listener.
+remote_url = "127.0.0.1:7032"
+remote_timeout_ms = 120000
 model_path = "models/llm/LFM2.5-1.2B-Instruct-QAD-Q4_0.gguf"
 context_size = 32768
 max_tokens = 256
@@ -123,10 +130,22 @@ chat_template = "chatml"
 gpu_layers = -1
 
 [stt]
+# Fase 4 engine offload gate (Ruling CC): with remote_url set the legacy
+# delegates all transcription to argus-stt over the internal wire. Empty
+# keeps the in-process engine (topology (a)).
+remote_url = "http://127.0.0.1:7030"
+remote_timeout_ms = 30000
+
 engine = "nemo_transducer"
 language = "es"
 
 [vision]
+# Fase 4 engine offload gate (Ruling CC): with remote_url set the legacy
+# boots WITHOUT the vision model — describes go to argus-vlm over the
+# internal wire. Empty keeps the in-process engine (topology (a)).
+remote_url = "http://127.0.0.1:7031"
+remote_timeout_ms = 120000
+
 model_path = "models/vision/lfm2vl-25/lm-Q8_0.gguf"
 mmproj_path = "models/vision/lfm2vl-25/mmproj-F16.gguf"
 context_size = 8192
@@ -139,6 +158,12 @@ threads = 0
 gpu_layers = -1
 
 [tts]
+# Fase 4 engine offload gate (Ruling CC): with remote_url set the legacy
+# delegates all TTS (voice session + camera talk) to argus-tts over the
+# internal wire. Empty keeps the in-process engine (topology (a)).
+remote_url = "http://127.0.0.1:7029"
+remote_timeout_ms = 30000
+
 threads = 0
 quality = "auto"
 steps_low = 6
@@ -228,6 +253,13 @@ denoise = true
 denoise_gate_rms = 0.0035
 
 [memory]
+# Fase 4 engine offload gate (Ruling CC): with remote_url set the legacy
+# boots WITHOUT the memory stack — the tool loop serves from argus-memory
+# over the internal wire. Must be an IPv4 host:port (the raw-socket client
+# resolves literals only). Empty keeps the in-process stack (topology (a)).
+remote_url = "127.0.0.1:7033"
+remote_timeout_ms = 120000
+
 recall_max_tokens = 512
 profile_max_tokens = 256
 profile_max_facts = 4

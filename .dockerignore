@@ -19,3 +19,8 @@ go2rtc.yaml
 third_party/go2rtc
 argus-deploy/config.productivity.toml
 argus-deploy/config.notification.toml
+argus-deploy/config.tts.toml
+argus-deploy/config.stt.toml
+argus-deploy/config.vlm.toml
+argus-deploy/config.llm.toml
+argus-deploy/config.memory.toml

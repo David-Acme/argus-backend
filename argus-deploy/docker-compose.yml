@@ -1,10 +1,11 @@
 name: argus-cutover
 
-# Cutover stack (Fase 3, compose v3): gateway (public TLS 7024) + legacy
+# Cutover stack (Fase 4, compose v4): gateway (public TLS 7024) + legacy
 # (internal 7025) + argus-camera (internal, 7026) + argus-productivity (7027)
-# + argus-notification (7028) + nats + rustfs, with the identity/camera/
-# productivity/notification migration init tools and the opt-in RADV
-# vulkan-probe validation service.
+# + argus-notification (7028) + the five AI engine services argus-tts (7029),
+# argus-stt (7030), argus-vlm (7031), argus-llm (7032) and argus-memory (7033)
+# + nats + rustfs, with the identity/camera/productivity/notification
+# migration init tools and the opt-in RADV vulkan-probe validation service.
 # The root docker-compose.yml stays the dev tooling; this file is the
 # deployment stack.
 #
@@ -125,8 +126,12 @@ services:
       timeout: 5s
       retries: 12
       start_period: 30s
-    mem_limit: "${ARGUS_BACKEND_MEMORY_LIMIT:-6g}"
-    cpus: "${ARGUS_BACKEND_CPU_LIMIT:-4.00}"
+    # Ruling CD default: with the five engines offloaded (the shipped target
+    # state) the legacy keeps only face + VAD + drivers, so its budget drops
+    # from the v3 all-in-process 6g/4.00. Topology (a) restores the v3 values
+    # with ARGUS_BACKEND_MEMORY_LIMIT=6g ARGUS_BACKEND_CPU_LIMIT=4.00.
+    mem_limit: "${ARGUS_BACKEND_MEMORY_LIMIT:-2g}"
+    cpus: "${ARGUS_BACKEND_CPU_LIMIT:-1.50}"
     pids_limit: 1024
     restart: unless-stopped
 
@@ -283,6 +288,236 @@ services:
       start_period: 20s
     mem_limit: "${ARGUS_NOTIFICATION_MEMORY_LIMIT:-1g}"
     cpus: "${ARGUS_NOTIFICATION_CPU_LIMIT:-1.00}"
+    pids_limit: 512
+    restart: unless-stopped
+
+  # AI engine services (Fase 4 cutover, F4-2..F4-6). Pure internal-wire RPC
+  # servers on the internal bridge network: no gateway route, no JWT, no bus
+  # consumer. Their only host exposure is the loopback-published listener the
+  # host-networked legacy's [tts]/[stt]/[vision]/[llm]/[memory] remote_url
+  # gates dial as 127.0.0.1 (Ruling CC topology (b)); with the gates unset
+  # they run idle (topology (a)). Ruling CB: every model tree is a per-service
+  # read-only subpath bind, never the whole tree. Ruling CD: mem_limit/cpus
+  # replace the llamaMutex as the per-engine budget boundary, with explicit
+  # distinct values for argus-vlm and argus-llm.
+  argus-tts:
+    image: argus-cutover:local
+    pull_policy: never
+    user: "${ARGUS_UID:-1000}:${ARGUS_GID:-1000}"
+    networks:
+      internal:
+        aliases:
+          - argus-tts
+        ipv4_address: 172.19.0.29
+    ports:
+      - "127.0.0.1:${TTS_PORT:-7029}:7029"
+    entrypoint: ["/opt/argus/argus-tts"]
+    volumes:
+      - type: bind
+        source: ./config.tts.toml
+        target: /opt/argus/config.toml
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ../models/tts
+        target: /opt/argus/models/tts
+        read_only: true
+        bind:
+          create_host_path: false
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://127.0.0.1:7029/health >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    mem_limit: "${ARGUS_TTS_MEMORY_LIMIT:-2g}"
+    cpus: "${ARGUS_TTS_CPU_LIMIT:-1.50}"
+    pids_limit: 512
+    restart: unless-stopped
+
+  argus-stt:
+    image: argus-cutover:local
+    pull_policy: never
+    user: "${ARGUS_UID:-1000}:${ARGUS_GID:-1000}"
+    networks:
+      internal:
+        aliases:
+          - argus-stt
+        ipv4_address: 172.19.0.30
+    ports:
+      - "127.0.0.1:${STT_PORT:-7030}:7030"
+    entrypoint: ["/opt/argus/argus-stt"]
+    volumes:
+      - type: bind
+        source: ./config.stt.toml
+        target: /opt/argus/config.toml
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ../models/stt
+        target: /opt/argus/models/stt
+        read_only: true
+        bind:
+          create_host_path: false
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://127.0.0.1:7030/health >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    mem_limit: "${ARGUS_STT_MEMORY_LIMIT:-2g}"
+    cpus: "${ARGUS_STT_CPU_LIMIT:-1.50}"
+    pids_limit: 512
+    restart: unless-stopped
+
+  # /dev/dri engages llama.cpp's Vulkan backend (Ruling CD, F2-1 pattern): a
+  # host without /dev/dri drops this device line via a compose override with
+  # `devices: !override []` (a plain [] merge silently keeps the device) and
+  # the engine degrades to CPU in-binary.
+  argus-vlm:
+    image: argus-cutover:local
+    pull_policy: never
+    user: "${ARGUS_UID:-1000}:${ARGUS_GID:-1000}"
+    networks:
+      internal:
+        aliases:
+          - argus-vlm
+        ipv4_address: 172.19.0.31
+    ports:
+      - "127.0.0.1:${VLM_PORT:-7031}:7031"
+    devices:
+      - /dev/dri:/dev/dri
+    entrypoint: ["/opt/argus/argus-vlm"]
+    volumes:
+      - type: bind
+        source: ./config.vlm.toml
+        target: /opt/argus/config.toml
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ../models/vision
+        target: /opt/argus/models/vision
+        read_only: true
+        bind:
+          create_host_path: false
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://127.0.0.1:7031/health >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    mem_limit: "${ARGUS_VLM_MEMORY_LIMIT:-2g}"
+    cpus: "${ARGUS_VLM_CPU_LIMIT:-2.00}"
+    pids_limit: 512
+    restart: unless-stopped
+
+  argus-llm:
+    image: argus-cutover:local
+    pull_policy: never
+    user: "${ARGUS_UID:-1000}:${ARGUS_GID:-1000}"
+    networks:
+      internal:
+        aliases:
+          - argus-llm
+        ipv4_address: 172.19.0.32
+    ports:
+      - "127.0.0.1:${LLM_PORT:-7032}:7032"
+    entrypoint: ["/opt/argus/argus-llm"]
+    volumes:
+      - type: bind
+        source: ./config.llm.toml
+        target: /opt/argus/config.toml
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ../models/llm
+        target: /opt/argus/models/llm
+        read_only: true
+        bind:
+          create_host_path: false
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://127.0.0.1:7032/health >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    mem_limit: "${ARGUS_LLM_MEMORY_LIMIT:-4g}"
+    cpus: "${ARGUS_LLM_CPU_LIMIT:-2.50}"
+    pids_limit: 512
+    restart: unless-stopped
+
+  # Memory service (F4-6): owns memory.db on its dedicated named volume (the
+  # stack's ONLY single-owner database — no other service mounts it, no DDL
+  # sidecar, no migrate tool; boot-apply belongs to this service alone). Its
+  # catalog replicas subscribe the change subjects over NATS, so this is the
+  # only AI service with a bus consumer and the only one gated on nats
+  # (Ruling CC). The snapshot sources are the same read-only opens the
+  # gateway uses: rw mounts for the WAL -shm, mode=ro opens in-binary.
+  argus-memory:
+    image: argus-cutover:local
+    pull_policy: never
+    user: "${ARGUS_UID:-1000}:${ARGUS_GID:-1000}"
+    networks:
+      internal:
+        aliases:
+          - argus-memory
+        ipv4_address: 172.19.0.33
+    ports:
+      - "127.0.0.1:${MEMORY_PORT:-7033}:7033"
+    entrypoint: ["/opt/argus/argus-memory"]
+    volumes:
+      - type: bind
+        source: ./config.memory.toml
+        target: /opt/argus/config.toml
+        read_only: true
+        bind:
+          create_host_path: false
+      - memory-db:/opt/argus/memory
+      - type: bind
+        source: ${ARGUS_DATA_DIR:-../database}
+        target: /opt/argus/database
+        bind:
+          create_host_path: false
+      # The schema SQL ships with the repo — bind it over the data-dir path so
+      # [memory] schema_file always resolves (same pattern as the init
+      # services).
+      - type: bind
+        source: ../database/memory-schema.sql
+        target: /opt/argus/database/memory-schema.sql
+        read_only: true
+        bind:
+          create_host_path: false
+      - camera-db:/opt/argus/camera
+      - type: bind
+        source: ../models/memory
+        target: /opt/argus/models/memory
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ../models/extract
+        target: /opt/argus/models/extract
+        read_only: true
+        bind:
+          create_host_path: false
+    # argus-memory's worker chat dials argus-llm by IPv4 literal (the
+    # raw-socket client resolves literals only), which is why the AI services
+    # carry static addresses on the internal subnet.
+    depends_on:
+      nats:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://127.0.0.1:7033/health >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    mem_limit: "${ARGUS_MEMORY_MEMORY_LIMIT:-2g}"
+    cpus: "${ARGUS_MEMORY_CPU_LIMIT:-1.50}"
     pids_limit: 512
     restart: unless-stopped
 
@@ -519,7 +754,19 @@ volumes:
     name: argus-cutover-productivity-db
   notification-db:
     name: argus-cutover-notification-db
+  memory-db:
+    name: argus-cutover-memory-db
 
 networks:
   internal:
     name: argus-cutover-internal
+    # Static subnet so the AI services carry fixed IPv4 addresses: the
+    # internal raw-socket wires resolve IPv4 literals only (no DNS), so
+    # argus-memory's [llm] remote_url needs a stable argus-llm address.
+    # 172.19.0.0/24 also keeps the host-networked gateway's relay source at
+    # 172.19.0.1, the peer config.camera.toml's device.trusted_proxy_ips
+    # already trusts (the gateway relays camera:* sync frames to
+    # argus-camera through this network).
+    ipam:
+      config:
+        - subnet: 172.19.0.0/24

@@ -1,0 +1,58 @@
+# argus-deploy argus-llm configuration. Copy to config.llm.toml (gitignored)
+# next to this file; the compose file bind-mounts it as the service's
+# config.toml. Compose shape (F4-5): the listener binds 0.0.0.0 inside the
+# container — its only host exposure is the loopback-published 7032 listener
+# the legacy's [llm] remote_url gate dials. No JWT, no device keys, no
+# database; the engine keys mirror the legacy [llm] block.
+
+[server]
+host = "0.0.0.0"
+port = 7032
+
+[llm]
+model_path = "models/llm/LFM2.5-1.2B-Instruct-QAD-Q4_0.gguf"
+context_size = 32768
+max_tokens = 256
+temperature = 0.85
+threads = 0
+batch_threads = 0
+n_batch = 1024
+n_ubatch = 512
+kv_type = "auto"
+flash_attn = "auto"
+swa_full = false
+top_k = 20
+top_p = 0.8
+penalty_last_n = 64
+penalty_repeat = 1.10
+penalty_freq = 0.0
+penalty_present = 0.0
+seed = 0
+chat_template = "chatml"
+# The compose service ships without /dev/dri (Ruling CD scopes the device to
+# argus-vlm), so the engine runs CPU: -1 skips the offload attempt. An
+# operator adding the device via a compose override pins 999 here for the
+# GPU path.
+gpu_layers = -1
+
+# Per-service model subpath (Ruling CB): the compose file binds models/llm
+# read-only at this exact path.
+
+[drogon.app]
+number_of_threads = 0
+enable_session = false
+document_root = "./"
+use_sendfile = true
+use_gzip = false
+use_brotli = false
+static_files_cache_time = 5
+idle_connection_timeout = 60
+enable_server_header = true
+enable_date_header = true
+keepalive_requests = 0
+pipelining_requests = 0
+client_max_body_size = "8M"
+client_max_memory_body_size = "8M"
+reuse_port = false
+handle_sig_term = true
+relaunch_on_error = false
