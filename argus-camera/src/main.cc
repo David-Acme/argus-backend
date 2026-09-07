@@ -4,6 +4,7 @@
 #include <controllers/camera-media-service.hxx>
 #include <controllers/health-controller.hxx>
 #include <drogon/drogon.h>
+#include <feature/api/camera-control/controllers/camera-control-controller.hxx>
 #include <feature/api/camera/controllers/camera-controller.hxx>
 #include <feature/api/zone/controllers/zone-controller.hxx>
 #include <feature/socket/sync/socket/sync-socket.hxx>
@@ -119,11 +120,12 @@ int main()
   const ListenerConfig listener = ListenerConfig::resolve();
 
   drogon::app().registerController(std::make_shared<HealthController>());
-  // The camera and zone controllers live in the shared static library, so
-  // their AutoCreation registration is linker-dropped there; the legacy
-  // registers the same classes explicitly.
+  // The camera, zone and camera-control controllers live in the shared
+  // static library, so their AutoCreation registration is linker-dropped
+  // there; this service registers them explicitly.
   drogon::app().registerController(std::make_shared<CameraController>());
   drogon::app().registerController(std::make_shared<ZoneController>());
+  drogon::app().registerController(std::make_shared<CameraControlController>());
 
   drogon::app().registerFilter(std::make_shared<DeviceFilter>());
   drogon::app().registerFilter(std::make_shared<ValidJsonFilter>());

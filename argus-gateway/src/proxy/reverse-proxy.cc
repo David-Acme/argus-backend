@@ -135,10 +135,9 @@ int SimpleReverseProxy::matchRoute(const std::string &path) const
         {
             if (!segmentPrefixMatch(path, prefix))
                 continue;
-            // The segment cap keeps the deeper control paths (/camera/{id}/
-            // ptz, preset, settings, status, presets, capabilities, talk) on
-            // the legacy backend while the two-segment CRUD goes to
-            // argus-camera.
+            // The segment cap bounds how deep a routed prefix matches; the
+            // camera route carries the whole domain (CRUD plus device
+            // control), the productivity route every subpath.
             if (segmentCount(path) <= route.maxSegments)
                 return static_cast<int>(i);
         }

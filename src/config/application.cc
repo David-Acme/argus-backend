@@ -6,14 +6,11 @@
 #include <drogon/drogon.h>
 #include <execinfo.h>
 #include <feature/api/auth/controllers/auth-controller.hxx>
-#include <feature/api/camera/controllers/camera-controller.hxx>
-#include <feature/api/camera/services/socket-camera-change-sink.hxx>
 #include <shared/services/socket/socket-user-change-sink.hxx>
 #include <feature/api/invitation/controllers/invitation-controller.hxx>
 #include <feature/api/pairing/controllers/pairing-controller.hxx>
 #include <feature/api/user/controllers/portrait-preview-controller.hxx>
 #include <feature/api/user/controllers/user-controller.hxx>
-#include <feature/api/zone/controllers/zone-controller.hxx>
 #include <feature/socket/sync/media/sync-media-service.hxx>
 #include <feature/socket/sync/socket/sync-socket.hxx>
 #include <filter/device/device-filter.hxx>
@@ -40,10 +37,7 @@
 #include <shared/services/socket/nats-identity-change-sink.hxx>
 #include <shared/services/socket/socket-service.hxx>
 #include <shared/services/sqlite/db-service.hxx>
-#include <shared/services/stream/go2rtc-manager.hxx>
-#include <shared/services/stream/media-relay.hxx>
 #include <shared/utils/json-util/json-util.hxx>
-#include <shared/services/stream/stream-hub.hxx>
 #include <shared/services/stt/adapter/stt-service-adapter.hxx>
 #include <shared/services/tts/adapter/tts-service-adapter.hxx>
 #include <shared/services/vision/adapter/vision-service-adapter.hxx>
@@ -95,15 +89,6 @@ void registerIdentitySurface()
   const auto syncSocket = std::make_shared<SyncSocket>();
   syncSocket->setForwarder(std::make_shared<SyncMediaService>());
   app().registerController(syncSocket);
-}
-
-void registerCameraSurface()
-{
-  // The camera controllers live in the shared static library, so their
-  // AutoCreation registration is linker-dropped: they register explicitly
-  // here and in argus-camera.
-  app().registerController(std::make_shared<CameraController>());
-  app().registerController(std::make_shared<ZoneController>());
 }
 
 void printPairingBanner()
@@ -216,41 +201,6 @@ void installUserChangeSink()
   user_change::setNotificationSink(&sink);
 }
 
-void installCameraSurface()
-{
-  // The camera feature services route their change events through the sink;
-  // the legacy binds the local SocketService plus SyncAuditService, exactly
-  // the pre-cutover path.
-  static const SocketCameraChangeSink sink;
-  camera_change::setSink(&sink);
-
-  // Transitional cutover write (F2-2): with [camera] db configured the legacy
-  // resolves the camera-domain reads and writes (camera, camera_stream, zone)
-  // to the camera database owned by argus-camera. Cross-process SQLite rules
-  // apply on both sides: WAL plus busy_timeout. The legacy never runs DDL on
-  // camera.db, so the client installs plain pragmas. Without the key the
-  // fallback to the default client keeps the pre-cutover behavior
-  // byte-identical.
-  const auto path = ConfigService::getString("camera.db");
-  if (path.empty())
-    return;
-
-  try {
-    const auto camera = drogon::orm::DbClient::newSqlite3Client(
-        "filename=" + path, 1);
-    camera->execSqlSync("PRAGMA journal_mode = WAL");
-    camera->execSqlSync("PRAGMA busy_timeout = 5000");
-    camera->execSqlSync("PRAGMA synchronous = NORMAL");
-    camera->execSqlSync("PRAGMA foreign_keys = ON");
-    DbService::setCameraClient(camera);
-    LOG_INFO << "Camera database attached read-write: " << path;
-  }
-  catch (const std::exception& e) {
-    LOG_WARN << "Camera database open failed (" << e.what()
-             << "); camera reads and writes fall back to the default client";
-  }
-}
-
 } // namespace
 
 int Application::run()
@@ -262,8 +212,6 @@ int Application::run()
   app().loadConfigJson(ConfigService::drogonConfig());
 
   registerIdentitySurface();
-  registerCameraSurface();
-  installCameraSurface();
   installUserChangeSink();
 
   installEventBus();
@@ -333,18 +281,6 @@ int Application::run()
     return 1;
   }
 
-  // At the cutover argus-camera owns the stream lifecycle, so the legacy
-  // leaves its go2rtc process down and its ports free. Standalone (no
-  // [camera] db) the legacy keeps spawning it, exactly as before.
-  if (ConfigService::getString("camera.db").empty()) {
-    Go2rtcManager::instance().init();
-  }
-  else {
-    LOG_INFO << "Camera domain delegated; go2rtc stays with argus-camera";
-  }
-  MediaRelay::instance().init();
-  StreamHub::instance().init();
-
   if (!FaceService::instance().isLoaded()) {
     LOG_WARN << "FaceService not loaded — face recognition disabled. "
              << "Run scripts/setup.sh to download models.";
@@ -359,9 +295,6 @@ int Application::run()
 
 void Application::shutdown()
 {
-  StreamHub::instance().shutdown();
-  MediaRelay::instance().shutdown();
-  Go2rtcManager::instance().shutdown();
   registry_.shutdownAll();
   llama_backend_free();
 }

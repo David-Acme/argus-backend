@@ -617,7 +617,7 @@ TEST_CASE("relay leg routing sends camera frames to argus-camera")
     CHECK(relayLegIsCamera(type));
 }
 
-TEST_CASE("route table sends two-segment CRUD to the camera backend")
+TEST_CASE("route table sends the whole camera domain to the camera backend")
 {
   gateway_proxy::SimpleReverseProxy proxy;
   Json::Value config;
@@ -630,7 +630,7 @@ TEST_CASE("route table sends two-segment CRUD to the camera backend")
   prefixes.append("/camera");
   prefixes.append("/zone");
   cameraRoute["prefixes"] = prefixes;
-  cameraRoute["max_segments"] = 2;
+  cameraRoute["max_segments"] = 8;
   cameraRoute["backend"] = "http://127.0.0.1:7026";
   routes.append(cameraRoute);
   config["routes"] = routes;
@@ -644,15 +644,18 @@ TEST_CASE("route table sends two-segment CRUD to the camera backend")
   CHECK(proxy.matchRoute("/zone") == 0);
   CHECK(proxy.matchRoute("/zone/3") == 0);
 
-  // The deeper control paths miss the segment cap and stay with the legacy.
-  CHECK(proxy.matchRoute("/camera/1/ptz") == -1);
-  CHECK(proxy.matchRoute("/camera/1/preset") == -1);
-  CHECK(proxy.matchRoute("/camera/1/settings") == -1);
-  CHECK(proxy.matchRoute("/camera/1/settings/x") == -1);
-  CHECK(proxy.matchRoute("/camera/1/status") == -1);
-  CHECK(proxy.matchRoute("/camera/1/presets") == -1);
-  CHECK(proxy.matchRoute("/camera/1/capabilities") == -1);
-  CHECK(proxy.matchRoute("/camera/1/talk") == -1);
+  // The device-control paths ride the same route now that the cap spans
+  // the whole domain.
+  CHECK(proxy.matchRoute("/camera/1/ptz") == 0);
+  CHECK(proxy.matchRoute("/camera/1/preset") == 0);
+  CHECK(proxy.matchRoute("/camera/1/settings") == 0);
+  CHECK(proxy.matchRoute("/camera/1/status") == 0);
+  CHECK(proxy.matchRoute("/camera/1/presets") == 0);
+  CHECK(proxy.matchRoute("/camera/1/capabilities") == 0);
+  CHECK(proxy.matchRoute("/camera/1/talk") == 0);
+  // Beyond the cap and foreign prefixes still fall through.
+  CHECK(proxy.matchRoute("/camera/1/settings/x/y/z") == 0);
+  CHECK(proxy.matchRoute("/camera/1/a/b/c/d/e/f/g/h/i") == -1);
   CHECK(proxy.matchRoute("/cameras/1") == -1);
   CHECK(proxy.matchRoute("/user/1") == -1);
 

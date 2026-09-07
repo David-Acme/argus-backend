@@ -72,10 +72,10 @@ with `scripts/setup.sh` / `scripts/setup.sh camera` on the host.
 - **gateway** — `network_mode: host`. The public surface: TLS 0.0.0.0:7024,
   mDNS advertised here only.
 - **legacy** — `network_mode: host`, mirroring the root compose's opt-in
-  `backend` service: go2rtc (1984/8554), RTSP and mDNS camera discovery need
-  the host, and the Tapo talk channel (`media_port = 8800`) listens on the
-  LAN for cameras. It binds **127.0.0.1:7025 only** (its config listener is
-  loopback).
+  `backend` service. Since F6-2 it serves no camera route and touches no
+  camera.db (the camera-db volume mount and the go2rtc bind are gone); it
+  binds **127.0.0.1:7025 only** (its config listener is loopback) for the
+  identity/voice surfaces.
 - The legacy trusts `X-Forwarded-For` **only from loopback peers** (and
   `device.trusted_proxy_ips`), so the gateway must reach it as 127.0.0.1 —
   a bridge-networked gateway cannot reach a host loopback bind. That is why
@@ -92,7 +92,13 @@ with `scripts/setup.sh` / `scripts/setup.sh camera` on the host.
   proxies to. Its go2rtc (1984/8554, Ruling AH) stays INSIDE the container —
   no compose service and no host publish; the app only ever talks through the
   gateway. The camera config points `[nats] url` at the internal alias
-  `nats://nats:4222`.
+  `nats://nats:4222`. Since F6-2 the camera domain is wholly served by this
+  service: the gateway routes `/camera` and `/zone` at every segment depth
+  here and relays every `camera:*` frame to the same listener
+  (`[camera] sync_url = ws://127.0.0.1:7026/sync`, the target flipped off the
+  legacy in F2-2); the legacy serves no camera route and mounts no camera-db
+  volume. Talk synthesis reaches argus-tts via the camera config's
+  `[tts] remote_url` (host-networked loopback 7029).
 - **argus-productivity / argus-notification** (Fase 3, compose v3) live on
   the same `internal` bridge network with only their 7027/7028 listeners
   loopback-published for the host-networked gateway; their `[nats] url`

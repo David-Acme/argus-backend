@@ -53,9 +53,9 @@ target_link_libraries(argus_sync
 
 target_compile_options(argus_sync PRIVATE -Wall -Wextra)
 
-# argus_sync_media: native camera/voice handling (StreamHub subscriptions and
-# the voice session on the AI stack). Only the legacy backend links it; the
-# gateway relays those frames to the backend instead.
+# argus_sync_media: the voice session on the AI stack (F6-2 split the camera
+# half out to argus-camera's CameraMediaService). Only the legacy backend links
+# it; the gateway relays the frames to each owner service instead.
 if(ARGUS_SHERPA_ONNX_TARGET)
     set(ARGUS_SYNC_MEDIA_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/../feature/socket/sync/media/sync-media-service.cc

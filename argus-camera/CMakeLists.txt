@@ -17,6 +17,7 @@ if(NOT TARGET argus_common)
     find_package(jwt-cpp REQUIRED)
     find_package(nlohmann_json REQUIRED)
     find_package(OpenCV CONFIG REQUIRED)
+    find_package(OpenSSL REQUIRED)
     find_package(mdns REQUIRED)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../src/shared
                      ${CMAKE_BINARY_DIR}/argus-common)
@@ -54,6 +55,29 @@ set(NCNN_SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/ncnn/src)
 add_library(camera-core STATIC
     ${CAMERA_SRC_ROOT}/controllers/health-controller.cc
     ${CAMERA_SRC_ROOT}/controllers/camera-media-service.cc
+    # Device control: camera-control feature (moved from the legacy in F6-2)
+    # plus the camera-driver stack it dispatches through. TTS synthesis is
+    # remote-only (TtsClient -> argus-tts wire); no in-process TTS engine is
+    # compiled here.
+    ${CAMERA_SRC_ROOT}/feature/api/camera-control/controllers/camera-control-controller.cc
+    ${CAMERA_SRC_ROOT}/feature/api/camera-control/dtos/camera-preset-dto.cc
+    ${CAMERA_SRC_ROOT}/feature/api/camera-control/dtos/camera-ptz-dto.cc
+    ${CAMERA_SRC_ROOT}/feature/api/camera-control/dtos/camera-settings-dto.cc
+    ${CAMERA_SRC_ROOT}/feature/api/camera-control/dtos/camera-talk-dto.cc
+    ${CAMERA_SRC_ROOT}/feature/api/camera-control/services/camera-control-feature-service.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/shared/services/camera-driver/camera-driver-registry.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/shared/services/camera-driver/tapo-driver.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/shared/services/tapo/legacy-stok-transport.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/shared/services/tapo/secure-passthrough-transport.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/shared/services/tapo/tapo-api.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/shared/services/tapo/tapo-audio.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/shared/services/tapo/tapo-client.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/shared/services/tapo/tapo-crypto.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/shared/services/tapo/tapo-http.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/shared/services/tapo/tapo-talk-client.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/shared/services/tapo/tapo-ts-muxer.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/shared/services/tts/remote/tts-remote.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/shared/wrapper/audio/audio-resampler.cc
     ${CAMERA_SRC_ROOT}/camera/camera-config.cc
     ${CAMERA_SRC_ROOT}/camera/nats-camera-change-sink.cc
     ${CAMERA_SRC_ROOT}/server/listener-config.cc
@@ -94,7 +118,8 @@ target_include_directories(camera-core PUBLIC
     ${CAMERA_SRC_ROOT}
     ${CMAKE_CURRENT_SOURCE_DIR}/../src)
 
-target_link_libraries(camera-core PUBLIC argus_sync sqlite-vec opencv::opencv ${ARGUS_NCNN_TARGET})
+target_link_libraries(camera-core PUBLIC argus_sync sqlite-vec opencv::opencv ${ARGUS_NCNN_TARGET}
+    OpenSSL::SSL OpenSSL::Crypto)
 
 target_compile_options(camera-core PRIVATE -Wall -Wextra)
 

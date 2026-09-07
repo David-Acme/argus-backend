@@ -196,9 +196,11 @@ proxies everything else to the legacy backend on its internal plain listener
 - **Proxy route table**: `SimpleReverseProxy` reads `[camera] proxy_url` and
   builds route targets (`prefixes`, `maxSegments`, `backend`); resolution
   (`segmentPrefixMatch`/`segmentCount`/`matchRoute`) is public for the test
-  suite. `/camera` and `/zone` with at most 2 segments go to argus-camera;
-  `/camera/{id}/ptz|preset|settings|status|presets|capabilities|talk` and
-  everything else fall through to the legacy. Default backends unchanged.
+  suite. Since F6-2 `/camera` and `/zone` go to argus-camera at every
+  segment depth (cap 8): CRUD plus
+  `/camera/{id}/ptz|preset|settings|status|presets|capabilities|talk`. Only
+  deeper paths than the cap and foreign prefixes fall through to the legacy.
+  Default backends unchanged.
 - **Composite `/sync` relay**: `SyncRelay` holds one upstream per protocol
   family — `voice:*` frames relay to the legacy (`[legacy] sync_url`), the
   seven `camera:*` frame types relay to argus-camera (`[camera] sync_url`,

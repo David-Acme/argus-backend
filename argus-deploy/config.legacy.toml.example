@@ -93,13 +93,6 @@ file = "./database/argus.db"
 [identity]
 db = "database/identity.db"
 
-# Cutover key (F2-2, Ruling X): camera database attached read-write on the
-# compose volume (Ruling AG) so the legacy control routes resolve the rows
-# argus-camera owns; the legacy never runs DDL on it and skips spawning
-# go2rtc (the camera service owns it).
-[camera]
-db = "camera/camera.db"
-
 [face]
 top_k = 5
 
@@ -223,16 +216,6 @@ path = "/"
 https = "true"
 wss = "true"
 
-[streaming]
-go2rtc_bin = "third_party/go2rtc/go2rtc"
-go2rtc_config = "go2rtc.yaml"
-go2rtc_api = "127.0.0.1:1984"
-go2rtc_rtsp = "127.0.0.1:8554"
-max_restarts = 8
-hub_window_bytes = 131072
-hub_chunk_bytes = 16384
-hub_grace_ms = 2000
-hub_max_subs_per_client = 8
 max_viewers_per_camera = 4
 max_total_viewers = 8
 relay_chunk_bytes = 32768

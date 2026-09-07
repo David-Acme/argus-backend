@@ -170,7 +170,7 @@ TEST_CASE("the camera-talk route synthesizes over the argus-tts wire")
   CHECK(envelope["status"].asInt() == 200);
   CHECK(envelope["errors"].isNull());
 
-  // An unknown camera row is still a 404 (legacy ownership, Ruling BC).
+  // An unknown camera row is still a 404.
   const auto missing = drogon::sync_wait(controller.talk(
       drogon::HttpRequest::newHttpJsonRequest(talkBody("Hola camera")), 99));
   CHECK(body(missing)["status"].asInt() == 404);

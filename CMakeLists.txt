@@ -122,6 +122,18 @@ file(GLOB_RECURSE IDENTITY_API_SRC
 )
 
 list(REMOVE_ITEM API_SRC ${IDENTITY_API_SRC})
+# Camera + zone features are argus-camera's surface since F6-2; the legacy no
+# longer compiles or serves them.
+list(REMOVE_ITEM API_SRC
+    ${SRC_ROOT}/feature/api/camera/controllers/camera-controller.cc
+    ${SRC_ROOT}/feature/api/camera/dtos/create-camera-dto.cc
+    ${SRC_ROOT}/feature/api/camera/dtos/update-camera-dto.cc
+    ${SRC_ROOT}/feature/api/camera/services/camera-feature-service.cc
+    ${SRC_ROOT}/feature/api/zone/controllers/zone-controller.cc
+    ${SRC_ROOT}/feature/api/zone/dtos/create-zone-dto.cc
+    ${SRC_ROOT}/feature/api/zone/dtos/update-zone-dto.cc
+    ${SRC_ROOT}/feature/api/zone/services/zone-feature-service.cc
+)
 list(REMOVE_ITEM FILTER_SRC
     ${SRC_ROOT}/filter/device/device-filter.cc
     ${SRC_ROOT}/filter/jwt/jwt-filter.cc
@@ -208,6 +220,24 @@ list(REMOVE_ITEM SHARED_SRC
     ${SRC_ROOT}/shared/services/user-action-log/user-action-log-service.cc
     ${SRC_ROOT}/shared/services/user-audit-log/user-audit-log-service.cc
     ${SRC_ROOT}/shared/utils/json-diff/json-diff.cc
+    # Camera domain (F6-2): the device-driver stack and the stream lifecycle
+    # belong to argus-camera now. Labs compile their own copies.
+    ${SRC_ROOT}/shared/services/camera-driver/camera-driver-registry.cc
+    ${SRC_ROOT}/shared/services/camera-driver/tapo-driver.cc
+    ${SRC_ROOT}/shared/services/stream/go2rtc-manager.cc
+    ${SRC_ROOT}/shared/services/stream/media-relay.cc
+    ${SRC_ROOT}/shared/services/stream/stream-hub.cc
+    ${SRC_ROOT}/shared/services/stream/upstream-http.cc
+    ${SRC_ROOT}/shared/services/stream/ws-frame.cc
+    ${SRC_ROOT}/shared/services/tapo/legacy-stok-transport.cc
+    ${SRC_ROOT}/shared/services/tapo/secure-passthrough-transport.cc
+    ${SRC_ROOT}/shared/services/tapo/tapo-api.cc
+    ${SRC_ROOT}/shared/services/tapo/tapo-audio.cc
+    ${SRC_ROOT}/shared/services/tapo/tapo-client.cc
+    ${SRC_ROOT}/shared/services/tapo/tapo-crypto.cc
+    ${SRC_ROOT}/shared/services/tapo/tapo-http.cc
+    ${SRC_ROOT}/shared/services/tapo/tapo-talk-client.cc
+    ${SRC_ROOT}/shared/services/tapo/tapo-ts-muxer.cc
 )
 
 add_executable(${PROJECT_NAME}

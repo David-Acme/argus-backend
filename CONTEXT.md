@@ -2717,3 +2717,63 @@ camera-control routes against camera.db.
 - The dual state from F4-5 is closed: with both gates set the legacy loads NO
   text engine and NO memory stack; `ConversationService` stays unwired in both
   binaries (never constructed — nothing changed for it).
+
+## Fase 6 step 2 — camera-control + camera media cutover completed (F6-2, 2026-09-07)
+
+The camera domain is now wholly served by argus-camera; the legacy serves no
+camera route and touches no camera.db. The app móvil needs zero changes:
+paths, envelope, 404-vs-502 `CAMERA_UNREACHABLE`, filter chain order and the
+`camera:*` frame bytes are all preserved by the move.
+
+- **camera-control moved**: `feature/api/camera-control/` (routes
+  `/camera/{id}/status|presets|ptz|preset|settings|capabilities|talk`) now
+  lives in `argus-camera/src/feature/api/camera-control/` with the same
+  controllers/dtos/services layout; `git mv` kept the code verbatim. The
+  gateway's camera route cap went 2 → 8 segments, so the control paths ride
+  `/camera`-prefix routing to argus-camera instead of falling through to the
+  legacy (`argus-gateway/src/main.cc` route table +
+  `argus-gateway/src/proxy/reverse-proxy.cc`).
+- **TtsClient is remote-only** (`src/shared/services/tts/remote/tts-remote.cc`):
+  with `tts.remote_url` empty every call throws `tts.remote_url is not
+  configured` — the in-process `TtsService` fallback branches are gone, so
+  argus-camera can compile tts-remote without the ONNX stack (in-process TTS
+  is never wanted there). The legacy's voice path is unaffected:
+  `SingletonVoiceTts` calls `TtsService` directly and `RemoteVoiceTts` only
+  activates when the remote gate is set.
+- **tts-wire.hxx extraction**: `TtsLang`/`kTtsLangCount`/`langCode`,
+  `TtsQuality`/`TtsRequest`/`TtsChunkCallback` moved from
+  `onnx-utils.hxx`/`tts-service.hxx` into
+  `src/shared/services/tts/tts-wire.hxx` (no ONNX includes) so tts-remote
+  stays compilable by services that do not link onnxruntime. The two ONNX
+  headers include it; content is unchanged.
+- **argus-camera build**: `camera-core` now compiles camera-control, the
+  camera-driver registry + Tapo driver, the tapo transport stack,
+  tts-remote and audio-resampler, and links OpenSSL::SSL/Crypto;
+  `CameraControlController` registers explicitly (AutoCreation is
+  linker-dropped in a static lib). `[tts] remote_url` documented in
+  `argus-camera/config.toml.example` and `argus-deploy/config.camera.toml.example`.
+- **Legacy slimming**: `application.cc` lost `registerCameraSurface` and
+  `installCameraSurface` (the camera.db read-write attach is gone — the
+  legacy opens camera.db nowhere), the go2rtc conditional init and the
+  `MediaRelay`/`StreamHub` init/shutdown. Root CMake drops the camera/zone
+  features plus camera-driver/tapo/stream sources from the legacy glob.
+  Deleted as dead: `SocketCameraChangeSink` (the only binder was the removed
+  `installCameraSurface`) and `CameraAudioSource` (zero callers;
+  `labs/voice-test`'s stale include + CMake entry cleaned with it).
+- **SyncMediaService split**: the legacy handler is voice-only
+  (`voice:start/stop/skip` + `feedPcm` + close); `DrogonStreamSink` and the
+  StreamHub plumbing moved out (argus-camera's `CameraMediaService` already
+  carries the camera half). Unknown frame types keep falling through to the
+  standard unknown-type error, so a client sending `camera:*` to the legacy
+  `/sync` directly gets an explicit error, not silence.
+- **MediaRelay kept (deliberate deviation from the brief)**: the brief
+  called it legacy-only with zero callers, but `labs/stream-probe` and
+  `labs/voice-test` still call `MediaRelay::instance().snapshotBytes` and
+  compile it from the shared tree; only its legacy boot init/shutdown was
+  removed. It is no longer compiled into the legacy binary (labs compile
+  their own copy).
+- **Configs**: the legacy `[camera]`/`[tapo]`/`[streaming]` keys and the
+  compose camera-db volume mount + go2rtc bind are gone from the legacy
+  templates (unread by the legacy binary); root `config.toml.example` lost
+  the transitional `# [camera] db` doc block. `argus.db` stays on the legacy
+  until F6-4 (identity reads, voice, sync).

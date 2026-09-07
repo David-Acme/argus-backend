@@ -68,9 +68,27 @@ preset, own `camera.db`.
   answers 200. The gateway proxy forwards OPTIONS fine (F1-5 scoped its own
   pre-routing advice to gateway-native paths); the divergence lives in this
   service. App-safe as shipped: the native client sends no preflight.
-- **What stays away**: no camera-control routes (ptz/preset/settings/status/
-  presets/capabilities/talk stay on the legacy — Ruling X), no voice path,
-  no alarm-triggering code, no AI symbols.
+- **What stays away**: no voice path, no alarm-triggering code, no AI
+  symbols beyond the detector.
+
+## Device control (F6-2): camera-control routes + the TTS wire
+
+- **camera-control moved out of the legacy**: `feature/api/camera-control/`
+  (routes `/camera/{id}/status|presets|ptz|preset|settings|capabilities|
+  talk`) lives here now, same controllers/dtos/services layout as the
+  monolith. The gateway routes every `/camera` and `/zone` segment depth to
+  this service; the legacy serves no camera route anymore.
+- **Talk synthesis is remote-only**: `TtsClient` (tts-remote) is compiled
+  into this binary and every synthesis is an HTTP exchange with argus-tts
+  (`[tts] remote_url`, default `127.0.0.1:7029`). No in-process TTS engine
+  exists here — with the key empty every talk call fails with the 502
+  `CAMERA_UNREACHABLE` envelope, never a fallback.
+- **Driver stack**: `camera-driver` (registry + Tapo driver) and the tapo
+  transport stack compile into `camera-core` (OpenSSL linked); `[tapo]`
+  config keys are read here, mirroring the legacy block.
+- **Legacy slimming**: the legacy binary no longer compiles the camera/
+  zone features, the camera-driver/tapo/stream stack, nor `camera.db`
+  access; `SocketCameraChangeSink` and `CameraAudioSource` were deleted.
 
 ## Build wiring (decisions)
 

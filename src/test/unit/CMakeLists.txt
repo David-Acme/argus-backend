@@ -250,17 +250,18 @@ target_compile_options(tts-wire-test PRIVATE -Wall -Wextra)
 
 add_test(NAME tts-wire-test COMMAND tts-wire-test)
 
-# The camera-talk cutover (Ruling BI): speak() reaches the wire before the
-# device, degrading to the 502 envelope when argus-tts is down.
+# The camera-talk cutover: speak() reaches the wire before the device,
+# degrading to the 502 envelope when argus-tts is down. The camera-control
+# feature lives in argus-camera since F6-2; the test compiles it from there.
 set(CAMERA_TALK_TEST_SOURCES
     camera-talk-cutover-test.cc
     ${SRC_ROOT}/config/app-config.cc
-    ${SRC_ROOT}/feature/api/camera-control/controllers/camera-control-controller.cc
-    ${SRC_ROOT}/feature/api/camera-control/services/camera-control-feature-service.cc
-    ${SRC_ROOT}/feature/api/camera-control/dtos/camera-talk-dto.cc
-    ${SRC_ROOT}/feature/api/camera-control/dtos/camera-ptz-dto.cc
-    ${SRC_ROOT}/feature/api/camera-control/dtos/camera-preset-dto.cc
-    ${SRC_ROOT}/feature/api/camera-control/dtos/camera-settings-dto.cc
+    ${CMAKE_SOURCE_DIR}/argus-camera/src/feature/api/camera-control/controllers/camera-control-controller.cc
+    ${CMAKE_SOURCE_DIR}/argus-camera/src/feature/api/camera-control/services/camera-control-feature-service.cc
+    ${CMAKE_SOURCE_DIR}/argus-camera/src/feature/api/camera-control/dtos/camera-talk-dto.cc
+    ${CMAKE_SOURCE_DIR}/argus-camera/src/feature/api/camera-control/dtos/camera-ptz-dto.cc
+    ${CMAKE_SOURCE_DIR}/argus-camera/src/feature/api/camera-control/dtos/camera-preset-dto.cc
+    ${CMAKE_SOURCE_DIR}/argus-camera/src/feature/api/camera-control/dtos/camera-settings-dto.cc
     ${SRC_ROOT}/shared/services/camera-driver/camera-driver-registry.cc
     ${SRC_ROOT}/shared/services/camera-driver/tapo-driver.cc
     ${SRC_ROOT}/shared/services/tapo/tapo-crypto.cc
@@ -273,18 +274,16 @@ set(CAMERA_TALK_TEST_SOURCES
     ${SRC_ROOT}/shared/services/tapo/tapo-api.cc
     ${SRC_ROOT}/shared/services/tapo/tapo-talk-client.cc
     ${SRC_ROOT}/shared/services/tts/remote/tts-remote.cc
-    ${SRC_ROOT}/shared/services/tts/tts-service.cc
-    ${SRC_ROOT}/shared/services/tts/tts-engine.cc
-    ${SRC_ROOT}/shared/services/tts/onnx-utils.cc
-    ${SRC_ROOT}/shared/services/tts/style.cc
-    ${SRC_ROOT}/shared/services/tts/unicode-processor.cc
     ${SRC_ROOT}/shared/wrapper/audio/audio-resampler.cc
 )
 
 add_executable(camera-talk-cutover-test ${CAMERA_TALK_TEST_SOURCES})
 
+target_include_directories(camera-talk-cutover-test PRIVATE
+    ${CMAKE_SOURCE_DIR}/argus-camera/src)
+
 target_link_libraries(camera-talk-cutover-test PRIVATE argus_sync argus_common
-    onnxruntime::onnxruntime OpenSSL::SSL OpenSSL::Crypto doctest::doctest)
+    OpenSSL::SSL OpenSSL::Crypto doctest::doctest)
 
 target_compile_options(camera-talk-cutover-test PRIVATE -Wall -Wextra)
 

@@ -1,6 +1,6 @@
 #pragma once
 
-#include <shared/services/tts/tts-service.hxx>
+#include <shared/services/tts/tts-wire.hxx>
 
 #include <cstdint>
 #include <string>
@@ -59,9 +59,9 @@ private:
   int timeoutMs_;
 };
 
-// The TTS entry point legacy consumers hold as a member: dispatches every
-// call to argus-tts when the cutover is configured, else to the in-process
-// singleton. Resolution happens per call, so tests can flip it at runtime.
+// The TTS entry point consumers hold as a member: every call is an HTTP
+// exchange with argus-tts and throws std::runtime_error when tts.remote_url
+// is not configured — there is no in-process fallback.
 class TtsClient
 {
 public:

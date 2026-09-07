@@ -1,8 +1,7 @@
 #pragma once
 
-#include "onnx-utils.hxx"
+#include "tts-wire.hxx"
 
-#include <cstdint>
 #include <drogon/utils/coroutine.h>
 #include <functional>
 #include <memory>
@@ -15,26 +14,6 @@
 class TtsEngine;
 class UnicodeProcessor;
 class Style;
-
-enum class TtsQuality
-{
-  Auto,
-  Low,
-  Medium,
-  High
-};
-
-struct TtsRequest
-{
-  std::string text;
-  TtsLang lang{TtsLang::EN};
-  std::string voiceId{"M3"};
-  TtsQuality quality{TtsQuality::Auto};
-  float speed{1.05f};
-};
-
-using TtsChunkCallback =
-    std::function<void(const std::vector<float>& chunkPcm)>;
 
 class TtsService
 {

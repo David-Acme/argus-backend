@@ -6,7 +6,8 @@
 #include <drogon/utils/coroutine.h>
 #include <feature/api/camera-control/services/camera-control-feature-service.hxx>
 
-class CameraControlController : public drogon::HttpController<CameraControlController>
+class CameraControlController
+    : public drogon::HttpController<CameraControlController, false>
 {
 public:
   METHOD_LIST_BEGIN

@@ -99,7 +99,8 @@ db = "database/argus.db"
 
 [camera]
 # F2-2 cutover (Rulings X/Z): the camera domain argus-camera owns. The relay
-# leg for camera:* frames and the /camera, /zone CRUD route (two segments)
+# leg for camera:* frames and the whole /camera, /zone domain (every segment
+# depth, device control included)
 # point at its internal listener; camera.db opens mode=ro for the camera
 # sync-table reads. Empty keys keep the camera domain on the legacy.
 sync_url = "ws://127.0.0.1:7026/sync"

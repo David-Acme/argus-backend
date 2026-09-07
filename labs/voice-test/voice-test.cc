@@ -28,7 +28,6 @@
 #include <shared/services/reaction/reaction-engine.hxx>
 #include <shared/services/sqlite/db-service.hxx>
 #include <shared/services/sqlite/vec-db.hxx>
-#include <shared/services/stream/camera-audio-source.hxx>
 #include <shared/services/stream/go2rtc-manager.hxx>
 #include <shared/services/stream/media-relay.hxx>
 #include <shared/services/stream/upstream-http.hxx>

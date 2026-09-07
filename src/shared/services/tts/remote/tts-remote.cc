@@ -466,35 +466,35 @@ void TtsHttpClient::synthesizeStream(const TtsRequest& req,
 float TtsClient::defaultSpeed() const
 {
   const auto config = TtsRemoteConfig::resolve();
-  if (config.enabled())
-    return TtsHttpClient(config.url, config.timeoutMs).defaultSpeed();
-  return TtsService::instance().defaultSpeed();
+  if (!config.enabled())
+    throw std::runtime_error("tts.remote_url is not configured");
+  return TtsHttpClient(config.url, config.timeoutMs).defaultSpeed();
 }
 
 int TtsClient::sampleRate() const
 {
   const auto config = TtsRemoteConfig::resolve();
-  if (config.enabled())
-    return TtsHttpClient(config.url, config.timeoutMs).sampleRate();
-  return TtsService::instance().sampleRate();
+  if (!config.enabled())
+    throw std::runtime_error("tts.remote_url is not configured");
+  return TtsHttpClient(config.url, config.timeoutMs).sampleRate();
 }
 
 std::vector<float> TtsClient::synthesize(const TtsRequest& req) const
 {
   const auto config = TtsRemoteConfig::resolve();
-  if (config.enabled())
-    return TtsHttpClient(config.url, config.timeoutMs).synthesize(req);
-  return TtsService::instance().synthesize(req);
+  if (!config.enabled())
+    throw std::runtime_error("tts.remote_url is not configured");
+  return TtsHttpClient(config.url, config.timeoutMs).synthesize(req);
 }
 
 void TtsClient::synthesizeStream(const TtsRequest& req,
                                  TtsChunkCallback onChunk) const
 {
   const auto config = TtsRemoteConfig::resolve();
-  if (config.enabled())
-    return TtsHttpClient(config.url, config.timeoutMs)
-        .synthesizeStream(req, std::move(onChunk));
-  TtsService::instance().synthesizeStream(req, std::move(onChunk));
+  if (!config.enabled())
+    throw std::runtime_error("tts.remote_url is not configured");
+  TtsHttpClient(config.url, config.timeoutMs)
+      .synthesizeStream(req, std::move(onChunk));
 }
 
 bool TtsClient::remote() const

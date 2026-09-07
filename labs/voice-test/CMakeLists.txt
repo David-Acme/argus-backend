@@ -47,7 +47,6 @@ set(VOICE_SERVICE_SRC
     ${SRC_ROOT}/shared/repositories/vector-index/vector-index-repository.cc
     ${SRC_ROOT}/shared/utils/schema-runner/schema-runner.cc
 
-    ${SRC_ROOT}/shared/services/stream/camera-audio-source.cc
     ${SRC_ROOT}/shared/services/stream/go2rtc-manager.cc
     ${SRC_ROOT}/shared/services/stream/media-relay.cc
     ${SRC_ROOT}/shared/services/stream/upstream-http.cc

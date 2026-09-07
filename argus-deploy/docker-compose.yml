@@ -87,16 +87,9 @@ services:
         target: /opt/argus/database
         bind:
           create_host_path: false
-      - camera-db:/opt/argus/camera
       - type: bind
         source: ../models
         target: /opt/argus/models
-        read_only: true
-        bind:
-          create_host_path: false
-      - type: bind
-        source: ../third_party/go2rtc
-        target: /opt/argus/third_party/go2rtc
         read_only: true
         bind:
           create_host_path: false

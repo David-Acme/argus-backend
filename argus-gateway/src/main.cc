@@ -80,16 +80,15 @@ Json::Value drogonConfig(const IdentityDbConfig& identityDb,
         || !proxy.notificationProxyUrl.empty()) {
       Json::Value routes(Json::arrayValue);
       if (!proxy.cameraProxyUrl.empty()) {
-        // Ruling X routing split: the two-segment /camera and /zone CRUD goes
-        // to argus-camera; the deeper control paths (/camera/{id}/ptz, preset,
-        // settings, status, presets, capabilities, talk) miss the segment cap
-        // and fall through to the legacy backend.
+        // The whole camera domain goes to argus-camera: CRUD, zone CRUD and
+        // the device-control paths (/camera/{id}/ptz, preset, settings,
+        // status, presets, capabilities, talk), every segment depth.
         Json::Value cameraRoute(Json::objectValue);
         Json::Value prefixes(Json::arrayValue);
         prefixes.append("/camera");
         prefixes.append("/zone");
         cameraRoute["prefixes"] = prefixes;
-        cameraRoute["max_segments"] = 2;
+        cameraRoute["max_segments"] = 8;
         cameraRoute["backend"] = proxy.cameraProxyUrl;
         routes.append(cameraRoute);
       }

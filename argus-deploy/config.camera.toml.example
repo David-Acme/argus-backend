@@ -63,6 +63,13 @@ max_viewers_per_camera = 4
 max_total_viewers = 8
 relay_chunk_bytes = 32768
 
+# Talk synthesis goes to argus-tts over the internal network; with remote_url
+# empty every /camera/{id}/talk call fails with a 502 CAMERA_UNREACHABLE
+# envelope (no in-process engine exists in this service).
+[tts]
+remote_url = "127.0.0.1:7029"
+remote_timeout_ms = 30000
+
 # Change funnel of the camera domain (F2-2, Ruling Y): change events and audit
 # diffs publish over NATS to the gateway, which inserts the audit rows and
 # fans the changes out to /sync. The nats service is reachable through the
