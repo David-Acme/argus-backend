@@ -26,8 +26,8 @@ offset  size  field
 
 | type | id | payload | direction |
 |------|----|---------|-----------|
-| 1 AUTH | 0 | 32-byte HMAC-SHA256(secret, "argus-tunnel-auth-v1") | client → relay |
-| 2 AUTH_OK | 0 | empty | relay → client |
+| 1 AUTH | 0 | 32-byte HMAC-SHA256(secret, challenge ‖ "argus-tunnel-auth-v1") | client → relay |
+| 2 AUTH_OK | 0 | 32-byte HMAC-SHA256(secret, challenge ‖ "argus-tunnel-relay-auth-v1") | relay → client |
 | 3 AUTH_FAIL | 0 | empty | relay → client (then link drop) |
 | 4 OPEN | streamId | empty | relay → client |
 | 5 DATA | streamId | carried bytes (≤ 64 KiB per frame) | both |
@@ -35,9 +35,19 @@ offset  size  field
 | 7 PING | 0 | empty | client → relay |
 | 8 PONG | 0 | empty | relay → client |
 | 9 PUSH | — | reserved F5-5 hook | both |
+| 10 CHALLENGE | 0 | 32 random bytes, fresh per link | relay → client |
 
 CloseReason: 0 normal, 1 busy (stream cap), 2 idle timeout, 3 back-pressure,
 4 error.
+
+Control-plane handshake: the relay generates a fresh 32-byte challenge when
+it accepts the home link and sends CHALLENGE; the client answers AUTH with
+HMAC(secret, challenge ‖ "argus-tunnel-auth-v1"); on verification the relay
+activates the link and demonstrates knowledge of the secret back to the
+client with AUTH_OK carrying HMAC(secret, challenge ‖
+"argus-tunnel-relay-auth-v1"); only then does the client activate the link
+(AUTH_FAIL and a bad AUTH_OK proof both drop it). The handshake must
+complete inside the 10 s auth timeout or the link is dropped.
 
 Stream lifecycle: the relay allocates stream ids (`openRemote`, latest-wins
 home link). A device TCP connection accepted on the relay opens a stream and
@@ -93,16 +103,31 @@ registry is ephemeral in-memory state; re-attaching old stream ids after a
 registry loss would desynchronize id allocation between the two sides, and
 the carried TLS handshake is idempotent from the app's point of view.
 
-The relay replaces an existing home link with a newer authenticated one
-(latest wins) and rejects device connections while no home link is
-authenticated.
+The home-link frame parser and the AUTH challenge are reset on every link
+drop: frames pipelined behind a control-plane rejection in the same read
+burst are never dispatched, and each new link runs a fresh challenge →
+AUTH → AUTH_OK handshake. The relay replaces an existing home link with a
+newer authenticated one (latest wins) and rejects device connections while
+no home link is authenticated.
 
 ## Threat model
 
-The relay authenticates the home link with the shared secret (constant-time
-compare); everything else — the device port — is unauthenticated by design:
-a rogue device can open streams and reach the gateway's remote listener.
-The defense is the gateway's remote gate (`[remote] tunnel_port`
+Both ends of the home link prove knowledge of the shared secret (constant-
+time compare): the client answers the relay's per-link CHALLENGE, and the
+relay answers with its own AUTH_OK proof over the same challenge before the
+client activates the link. The challenge makes every mac single-use — a
+passive eavesdropper on the plaintext home link captures nothing replayable
+on a later link — and the AUTH_OK proof lets the client authenticate the
+relay, so a path MITM can neither impersonate the home client nor feed it
+control frames. The client additionally enforces the gate client-side:
+OPEN/PUSH frames received before AUTH completes are ignored, and the frame
+parser dies with the link, so an AUTH_FAIL cannot be followed by pipelined
+frames in the same read burst. A relay that never sends a valid AUTH_OK
+proof cannot get the client to dial the gateway.
+
+Everything else — the device port — is unauthenticated by design: a rogue
+device can open streams and reach the gateway's remote listener. The
+defense is the gateway's remote gate (`[remote] tunnel_port`
 classification, 403 `REMOTE_NOT_ALLOWED` for forbidden routes such as
 `/pairing`). Carried TLS means the relay sees ciphertext only; it cannot
 inspect or alter the session.

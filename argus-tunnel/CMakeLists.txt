@@ -88,6 +88,20 @@ target_link_libraries(tunnel-reconnect-test PRIVATE tunnel-core
                                                     doctest::doctest)
 target_compile_options(tunnel-reconnect-test PRIVATE -Wall -Wextra)
 
+add_executable(tunnel-negauth-test
+               ${CMAKE_CURRENT_SOURCE_DIR}/tests/tunnel-negauth-test.cc)
+target_include_directories(tunnel-negauth-test PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/tests)
+target_link_libraries(tunnel-negauth-test PRIVATE tunnel-core
+                                                  doctest::doctest)
+target_compile_options(tunnel-negauth-test PRIVATE -Wall -Wextra)
+
+add_executable(service-config-test
+               ${CMAKE_CURRENT_SOURCE_DIR}/tests/service-config-test.cc)
+target_link_libraries(service-config-test PRIVATE tunnel-core
+                                                  doctest::doctest)
+target_compile_options(service-config-test PRIVATE -Wall -Wextra)
+
 # Test registration is standalone-only so the root project's ctest stays at
 # its 7 backend suites.
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
@@ -95,4 +109,6 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     add_test(NAME framing-test COMMAND framing-test)
     add_test(NAME tunnel-integration-test COMMAND tunnel-integration-test)
     add_test(NAME tunnel-reconnect-test COMMAND tunnel-reconnect-test)
+    add_test(NAME tunnel-negauth-test COMMAND tunnel-negauth-test)
+    add_test(NAME service-config-test COMMAND service-config-test)
 endif()

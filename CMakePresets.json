@@ -77,10 +77,12 @@
     { "name": "tunnel", "configurePreset": "dev", "jobs": 8,
       "targets": ["argus-tunnel-client", "argus-tunnel-relay",
                   "framing-test", "tunnel-integration-test",
-                  "tunnel-reconnect-test"] },
+                  "tunnel-reconnect-test", "tunnel-negauth-test",
+                  "service-config-test"] },
     { "name": "tunnel-prod", "configurePreset": "prod", "jobs": 8,
       "targets": ["argus-tunnel-client", "argus-tunnel-relay",
                   "framing-test", "tunnel-integration-test",
-                  "tunnel-reconnect-test"] }
+                  "tunnel-reconnect-test", "tunnel-negauth-test",
+                  "service-config-test"] }
   ]
 }

@@ -47,9 +47,10 @@ TEST_CASE("frame header layout is little-endian on the wire")
 TEST_CASE("encode and parse round-trip every frame type")
 {
   const FrameType types[] = {
-      FrameType::Auth,  FrameType::AuthOk, FrameType::AuthFail,
-      FrameType::Open,  FrameType::Data,   FrameType::Close,
-      FrameType::Ping,  FrameType::Pong,   FrameType::Push,
+      FrameType::Auth,     FrameType::AuthOk, FrameType::AuthFail,
+      FrameType::Open,     FrameType::Data,   FrameType::Close,
+      FrameType::Ping,     FrameType::Pong,   FrameType::Push,
+      FrameType::Challenge,
   };
   for (const FrameType type : types) {
     FrameParser parser;
@@ -163,19 +164,35 @@ TEST_CASE("HMAC-SHA256 matches RFC 4231 vectors")
         "8e0bc6213728c5140546040f0ee37f54");
 }
 
-TEST_CASE("auth mac is 32 bytes and secret sensitive")
+TEST_CASE("auth macs are 32 bytes, secret sensitive and challenge bound")
 {
-  const std::string mac = authMac("a-secret");
+  const std::string challenge(kChallengeSize, '\x11');
+  const std::string mac = authMac("a-secret", challenge);
   CHECK(mac.size() == kAuthPayloadSize);
-  CHECK(mac != authMac("another-secret"));
-  CHECK(mac == authMac("a-secret"));
+  CHECK(mac == authMac("a-secret", challenge));
+  CHECK(mac != authMac("another-secret", challenge));
+  // A different challenge (or a missing one) yields a different mac, so
+  // captured material cannot be replayed on a later link.
+  CHECK(mac != authMac("a-secret", std::string(kChallengeSize, '\x12')));
+  CHECK(mac != authMac("a-secret", ""));
+  CHECK(mac != relayAuthMac("a-secret", challenge));
+}
+
+TEST_CASE("random challenges are 32 bytes and do not repeat")
+{
+  const std::string first = randomChallenge();
+  const std::string second = randomChallenge();
+  CHECK(first.size() == kChallengeSize);
+  CHECK(second.size() == kChallengeSize);
+  CHECK(first != second);
 }
 
 TEST_CASE("constant time comparison only accepts equal macs")
 {
-  const std::string mac = authMac("a-secret");
+  const std::string challenge(kChallengeSize, '\x11');
+  const std::string mac = authMac("a-secret", challenge);
   CHECK(constantTimeEquals(mac, mac));
-  CHECK_FALSE(constantTimeEquals(mac, authMac("other")));
+  CHECK_FALSE(constantTimeEquals(mac, authMac("other", challenge)));
   CHECK_FALSE(constantTimeEquals(mac, mac.substr(0, 31)));
   CHECK(constantTimeEquals("", ""));
 }

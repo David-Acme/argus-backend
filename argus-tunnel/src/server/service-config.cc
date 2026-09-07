@@ -13,8 +13,9 @@ uint16_t clampPort(int value, uint16_t fallback)
 tunnel::TunnelMux::Limits resolveLimits()
 {
   tunnel::TunnelMux::Limits limits;
-  limits.idleTimeout = std::chrono::seconds(
-      std::max(1, ConfigService::getInt("tunnel.stream_idle_seconds")));
+  const int idleSeconds = ConfigService::getInt("tunnel.stream_idle_seconds");
+  if (idleSeconds > 0)
+    limits.idleTimeout = std::chrono::seconds(idleSeconds);
   limits.maxStreams = ConfigService::getInt("tunnel.max_streams");
   if (limits.maxStreams <= 0)
     limits.maxStreams = 256;

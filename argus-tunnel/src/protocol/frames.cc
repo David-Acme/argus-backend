@@ -3,6 +3,7 @@
 #include <trantor/utils/Utilities.h>
 
 #include <cstring>
+#include <random>
 
 namespace tunnel
 {
@@ -128,9 +129,28 @@ std::string hmacSha256(const std::string& key, const std::string& message)
   return std::string(reinterpret_cast<const char*>(mac.bytes), 32);
 }
 
-std::string authMac(const std::string& secret)
+std::string authMac(const std::string& secret, const std::string& challenge)
 {
-  return hmacSha256(secret, kAuthMessage);
+  return hmacSha256(secret, challenge + kAuthMessage);
+}
+
+std::string relayAuthMac(const std::string& secret,
+                         const std::string& challenge)
+{
+  return hmacSha256(secret, challenge + kRelayAuthMessage);
+}
+
+std::string randomChallenge()
+{
+  std::string out;
+  out.reserve(kChallengeSize);
+  std::random_device device;
+  while (out.size() < kChallengeSize) {
+    uint32_t value = device();
+    out.append(reinterpret_cast<const char*>(&value), sizeof(value));
+  }
+  out.resize(kChallengeSize);
+  return out;
 }
 
 bool constantTimeEquals(const std::string& left, const std::string& right)

@@ -63,7 +63,6 @@ void TunnelClient::connectHome()
     mux_.adoptHome(peer.sharedFromThis());
     pendingHome_.reset();
     homeConnected_.store(true);
-    mux_.sendAuth();
   };
   params.callbacks.onClosed = [this](TcpPeer&) {
     pendingHome_.reset();

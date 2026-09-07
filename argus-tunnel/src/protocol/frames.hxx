@@ -18,6 +18,7 @@ enum class FrameType : uint8_t
   Ping = 7,
   Pong = 8,
   Push = 9,
+  Challenge = 10,
 };
 
 inline constexpr uint16_t kMagic = 0xA755;
@@ -26,8 +27,9 @@ inline constexpr size_t kHeaderSize = 12;
 inline constexpr size_t kMaxPayload = 256 * 1024;
 inline constexpr size_t kDataFrameCap = 64 * 1024;
 inline constexpr size_t kAuthPayloadSize = 32;
+inline constexpr size_t kChallengeSize = 32;
 inline constexpr uint8_t kMinFrameType = 1;
-inline constexpr uint8_t kMaxFrameType = 9;
+inline constexpr uint8_t kMaxFrameType = 10;
 
 enum class CloseReason : uint8_t
 {
@@ -68,10 +70,18 @@ private:
 };
 
 // HMAC-SHA256 over the shared secret; the home control plane's only
-// authentication material.
+// authentication material. Both macs bind the per-link relay challenge, so
+// captured material cannot be replayed on a later link.
 std::string hmacSha256(const std::string& key, const std::string& message);
-std::string authMac(const std::string& secret);
+// Client proof: HMAC(secret, challenge || kAuthMessage).
+std::string authMac(const std::string& secret, const std::string& challenge);
+// Relay proof carried by AUTH_OK: HMAC(secret, challenge ||
+// kRelayAuthMessage); the client verifies it before activating the link.
+std::string relayAuthMac(const std::string& secret,
+                         const std::string& challenge);
+std::string randomChallenge();
 bool constantTimeEquals(const std::string& left, const std::string& right);
 
 inline constexpr char kAuthMessage[] = "argus-tunnel-auth-v1";
+inline constexpr char kRelayAuthMessage[] = "argus-tunnel-relay-auth-v1";
 } // namespace tunnel
