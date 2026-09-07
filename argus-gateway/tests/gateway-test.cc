@@ -1,11 +1,16 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
 
+#include <config/app-config.hxx>
 #include <controllers/health-controller.hxx>
+#include <filter/device/device-filter.hxx>
 #include <identity/identity-config.hxx>
 #include <identity/identity-registrar.hxx>
 #include <proxy/proxy-config.hxx>
 #include <server/listener-config.hxx>
+#include <server/refresh-rate-limiter.hxx>
+#include <server/remote-config.hxx>
+#include <server/remote-gate.hxx>
 #include <shared/services/config-service/config-service.hxx>
 #include <shared/services/room/room-manager.hxx>
 #include <shared/services/socket/sync-change.hxx>
@@ -20,8 +25,10 @@
 
 #include <json/json.h>
 
+#include <chrono>
 #include <cstdio>
 #include <fstream>
+#include <memory>
 #include <string>
 
 namespace
@@ -35,6 +42,16 @@ Json::Value parseBody(const drogon::HttpResponsePtr& response)
                          response->getBody().end());
   CHECK(reader.parse(text, body));
   return body;
+}
+
+drogon::HttpRequestPtr testRequest(drogon::HttpMethod method,
+                                   const std::string& path)
+{
+  auto req = drogon::HttpRequest::newHttpRequest();
+  req->setMethod(method);
+  req->setPath(path);
+  req->addHeader("User-Agent", "gateway-test");
+  return req;
 }
 
 } // namespace
@@ -783,4 +800,387 @@ TEST_CASE("proxy exclusion set covers every registered gateway route")
     CHECK_MESSAGE(isGatewayNativePath(pattern, proxy.exclusions),
                   pattern);
   }
+}
+
+TEST_CASE("remote config resolves disabled by default and honors overrides")
+{
+  const char* path = "gateway-test-config-remote-default.toml";
+  {
+    std::ofstream file(path);
+    file << "[gateway]\n"
+         << "port = 7024\n";
+  }
+
+  ConfigService::load(path);
+  const RemoteConfig config = RemoteConfig::resolve();
+
+  CHECK(config.tunnelPort == 0);
+  CHECK_FALSE(config.enabled);
+
+  std::remove(path);
+
+  const char* overrides = "gateway-test-config-remote.toml";
+  {
+    std::ofstream file(overrides);
+    file << "[remote]\n"
+         << "tunnel_port = 17443\n"
+         << "enabled = true\n";
+  }
+
+  ConfigService::load(overrides);
+  const RemoteConfig enabled = RemoteConfig::resolve();
+
+  CHECK(enabled.tunnelPort == 17443);
+  CHECK(enabled.enabled);
+
+  std::remove(overrides);
+
+  const char* invalid = "gateway-test-config-remote-invalid.toml";
+  {
+    std::ofstream file(invalid);
+    file << "[remote]\n"
+         << "tunnel_port = 70000\n";
+  }
+
+  ConfigService::load(invalid);
+  const RemoteConfig rejected = RemoteConfig::resolve();
+
+  CHECK(rejected.tunnelPort == 0);
+
+  std::remove(invalid);
+}
+
+TEST_CASE("remote listener appends the tunnel listener only when configured")
+{
+  const char* path = "gateway-test-config-remote-listener.toml";
+  {
+    std::ofstream file(path);
+    file << "[gateway]\n"
+         << "host = \"127.0.0.1\"\n"
+         << "port = 7024\n";
+  }
+
+  ConfigService::load(path);
+  const ListenerConfig base = ListenerConfig::resolve();
+  const RemoteConfig disabled;
+
+  Json::Value listeners = listenerJson(base);
+  appendRemoteListener(listeners, disabled, base);
+  CHECK(listeners.size() == 1);
+
+  RemoteConfig enabled;
+  enabled.tunnelPort = 17443;
+  listeners = listenerJson(base);
+  appendRemoteListener(listeners, enabled, base);
+  REQUIRE(listeners.size() == 2);
+  CHECK(listeners[1]["address"] == base.host);
+  CHECK(listeners[1]["port"].asInt() == 17443);
+  CHECK(listeners[1]["https"].asBool() == base.tls);
+  CHECK(listeners[1]["cert"] == base.certPath);
+  CHECK(listeners[1]["key"] == base.keyPath);
+  CHECK(listeners[1]["ssl_conf"][0][0] == "MinProtocol");
+  CHECK(listeners[1]["ssl_conf"][0][1] == base.minTlsProtocol);
+
+  std::remove(path);
+
+  const char* plain = "gateway-test-config-remote-plain.toml";
+  {
+    std::ofstream file(plain);
+    file << "[gateway]\n"
+         << "port = 7044\n"
+         << "plain = true\n";
+  }
+
+  ConfigService::load(plain);
+  const ListenerConfig plainBase = ListenerConfig::resolve();
+  Json::Value plainListeners = listenerJson(plainBase);
+  appendRemoteListener(plainListeners, enabled, plainBase);
+  REQUIRE(plainListeners.size() == 2);
+  CHECK(plainListeners[1]["https"].asBool() == false);
+  CHECK_FALSE(plainListeners[1].isMember("cert"));
+  CHECK_FALSE(plainListeners[1].isMember("ssl_conf"));
+
+  std::remove(plain);
+}
+
+TEST_CASE("request classification stays local while the listener is disabled")
+{
+  RemoteConfig disabled;
+  CHECK_FALSE(requestIsRemote(testRequest(drogon::Get, "/health"), disabled));
+
+  RemoteConfig enabled;
+  enabled.tunnelPort = 17443;
+  CHECK_FALSE(requestIsRemote(testRequest(drogon::Get, "/health"), enabled));
+}
+
+TEST_CASE("remote gate rejects pairing and register for remote requests")
+{
+  const char* path = "gateway-test-config-remote-gate.toml";
+  {
+    std::ofstream file(path);
+    file << "[gateway]\n"
+         << "port = 7024\n";
+  }
+
+  ConfigService::load(path);
+  std::remove(path);
+
+  RemoteConfig config;
+  config.tunnelPort = 17443;
+  RemoteGate gate(
+      config, std::make_shared<RefreshRateLimiter>(RateLimitConfig{}));
+
+  auto pairing = testRequest(drogon::Post, "/pairing");
+  const auto pairingResp = gate.check(pairing, true);
+  const Json::Value body = parseBody(pairingResp);
+  CHECK(body["status"].asInt() == 403);
+  CHECK(body["errors"]["code"] == "REMOTE_NOT_ALLOWED");
+  CHECK_FALSE(body["errors"]["message"].asString().empty());
+  CHECK(body["info"].isNull());
+  CHECK(body["errors"]["fields"].isNull());
+  CHECK(pairingResp->getHeader("Access-Control-Allow-Origin") == "*");
+
+  auto registration = testRequest(drogon::Post, "/auth/register");
+  const Json::Value registerBody = parseBody(gate.check(registration, true));
+  CHECK(registerBody["status"].asInt() == 403);
+  CHECK(registerBody["errors"]["code"] == "REMOTE_NOT_ALLOWED");
+
+  CHECK_FALSE(gate.check(testRequest(drogon::Post, "/pairing"), false));
+  CHECK_FALSE(gate.check(testRequest(drogon::Get, "/health"), true));
+
+  config.enabled = true;
+  RemoteGate openGate(
+      config, std::make_shared<RefreshRateLimiter>(RateLimitConfig{}));
+  CHECK_FALSE(openGate.check(testRequest(drogon::Post, "/pairing"), true));
+  CHECK_FALSE(openGate.check(testRequest(drogon::Post, "/auth/register"),
+                             true));
+}
+
+TEST_CASE("remote gate marks tunnel requests with the remote attribute")
+{
+  RemoteConfig config;
+  config.tunnelPort = 17443;
+  RemoteGate gate(
+      config, std::make_shared<RefreshRateLimiter>(RateLimitConfig{}));
+
+  auto sync = testRequest(drogon::Get, "/sync");
+  CHECK_FALSE(gate.check(sync, true));
+  CHECK(sync->getAttributes()->find(AppConfig::REMOTE_CTX_KEY));
+  CHECK(sync->getAttributes()->get<bool>(AppConfig::REMOTE_CTX_KEY));
+
+  auto local = testRequest(drogon::Get, "/sync");
+  CHECK_FALSE(gate.check(local, false));
+  CHECK_FALSE(local->getAttributes()->find(AppConfig::REMOTE_CTX_KEY));
+}
+
+TEST_CASE("rate limit config resolves defaults and honors overrides")
+{
+  const char* path = "gateway-test-config-ratelimit-default.toml";
+  {
+    std::ofstream file(path);
+    file << "[gateway]\n"
+         << "port = 7024\n";
+  }
+
+  ConfigService::load(path);
+  const RateLimitConfig config = RateLimitConfig::resolve();
+
+  CHECK_FALSE(config.enabled);
+  CHECK(config.windowSeconds == 60);
+  CHECK(config.maxRequests == 10);
+  CHECK(config.lockoutThreshold == 5);
+  CHECK(config.lockoutSeconds == 300);
+
+  std::remove(path);
+
+  const char* overrides = "gateway-test-config-ratelimit.toml";
+  {
+    std::ofstream file(overrides);
+    file << "[rate_limit]\n"
+         << "enabled = true\n"
+         << "window_seconds = 30\n"
+         << "max_requests = 3\n"
+         << "lockout_threshold = 2\n"
+         << "lockout_seconds = 120\n";
+  }
+
+  ConfigService::load(overrides);
+  const RateLimitConfig custom = RateLimitConfig::resolve();
+
+  CHECK(custom.enabled);
+  CHECK(custom.windowSeconds == 30);
+  CHECK(custom.maxRequests == 3);
+  CHECK(custom.lockoutThreshold == 2);
+  CHECK(custom.lockoutSeconds == 120);
+
+  std::remove(overrides);
+
+  const char* invalid = "gateway-test-config-ratelimit-invalid.toml";
+  {
+    std::ofstream file(invalid);
+    file << "[rate_limit]\n"
+         << "enabled = true\n"
+         << "window_seconds = -5\n"
+         << "max_requests = 0\n";
+  }
+
+  ConfigService::load(invalid);
+  const RateLimitConfig guarded = RateLimitConfig::resolve();
+
+  CHECK(guarded.windowSeconds == 60);
+  CHECK(guarded.maxRequests == 10);
+
+  std::remove(invalid);
+}
+
+TEST_CASE("rate limiter admits within the window and rejects past it")
+{
+  RateLimitConfig config;
+  config.enabled = true;
+  config.windowSeconds = 60;
+  config.maxRequests = 2;
+  RefreshRateLimiter limiter(config);
+
+  const auto t0 = std::chrono::steady_clock::now();
+  const auto second = std::chrono::seconds(1);
+
+  CHECK(limiter.admit("key", t0));
+  CHECK(limiter.admit("key", t0 + second));
+  CHECK_FALSE(limiter.admit("key", t0 + 2 * second));
+  CHECK(limiter.admit("other", t0));
+  CHECK(limiter.admit("key", t0 + std::chrono::seconds(61)));
+  CHECK(limiter.admit("key", t0 + std::chrono::seconds(62)));
+  CHECK_FALSE(limiter.admit("key", t0 + std::chrono::seconds(63)));
+}
+
+TEST_CASE("disabled rate limiter never rejects")
+{
+  RefreshRateLimiter limiter(RateLimitConfig{});
+
+  const auto t0 = std::chrono::steady_clock::now();
+  for (int i = 0; i < 10; ++i)
+    CHECK(limiter.admit("key", t0 + std::chrono::seconds(i)));
+
+  RateLimitConfig failures;
+  failures.enabled = false;
+  RefreshRateLimiter failedLimiter(failures);
+  CHECK_FALSE(failedLimiter.recordResult("key", false, t0));
+}
+
+TEST_CASE("rate limiter locks out after consecutive failures")
+{
+  RateLimitConfig config;
+  config.enabled = true;
+  config.maxRequests = 100;
+  config.lockoutThreshold = 3;
+  config.lockoutSeconds = 300;
+  RefreshRateLimiter limiter(config);
+
+  const auto t0 = std::chrono::steady_clock::now();
+  const auto second = std::chrono::seconds(1);
+
+  REQUIRE(limiter.admit("key", t0));
+  CHECK_FALSE(limiter.recordResult("key", false, t0 + second));
+  CHECK_FALSE(limiter.recordResult("key", false, t0 + 2 * second));
+  CHECK(limiter.recordResult("key", false, t0 + 3 * second));
+
+  CHECK_FALSE(limiter.admit("key", t0 + 4 * second));
+  CHECK_FALSE(limiter.recordResult("key", false, t0 + 5 * second));
+
+  CHECK_FALSE(limiter.admit("key", t0 + std::chrono::seconds(302)));
+  CHECK(limiter.admit("key", t0 + std::chrono::seconds(304)));
+  CHECK_FALSE(limiter.recordResult("key", true,
+                                   t0 + std::chrono::seconds(305)));
+  CHECK_FALSE(limiter.recordResult("key", false,
+                                   t0 + std::chrono::seconds(306)));
+  CHECK_FALSE(limiter.recordResult("key", false,
+                                   t0 + std::chrono::seconds(307)));
+}
+
+TEST_CASE("remote gate rate limits refresh-token before routing")
+{
+  const char* path = "gateway-test-config-ratelimit-gate.toml";
+  {
+    std::ofstream file(path);
+    file << "[device]\n"
+         << "fingerprint_secret = \"f51-limiter-secret\"\n"
+         << "\n"
+         << "[rate_limit]\n"
+         << "enabled = true\n"
+         << "window_seconds = 60\n"
+         << "max_requests = 2\n"
+         << "lockout_threshold = 3\n"
+         << "lockout_seconds = 300\n";
+  }
+
+  ConfigService::load(path);
+  std::remove(path);
+
+  RemoteGate gate(RemoteConfig{},
+                  std::make_shared<RefreshRateLimiter>(
+                      RateLimitConfig::resolve()));
+
+  auto first = testRequest(drogon::Patch, "/auth/refresh-token");
+  CHECK_FALSE(gate.check(first, false));
+  CHECK_FALSE(
+      gate.check(testRequest(drogon::Patch, "/auth/refresh-token"), false));
+
+  auto third = testRequest(drogon::Patch, "/auth/refresh-token");
+  const auto limitedResp = gate.check(third, false);
+  const Json::Value body = parseBody(limitedResp);
+  CHECK(body["status"].asInt() == 429);
+  CHECK(body["errors"]["code"] == "TOO_MANY_REQUESTS");
+  CHECK_FALSE(body["errors"]["message"].asString().empty());
+  CHECK(body["info"].isNull());
+  CHECK(limitedResp->getHeader("Access-Control-Allow-Origin") == "*");
+
+  CHECK_FALSE(gate.check(testRequest(drogon::Post, "/pairing"), false));
+  CHECK_FALSE(gate.check(testRequest(drogon::Get, "/health"), false));
+  CHECK_FALSE(
+      gate.check(testRequest(drogon::Get, "/auth/refresh-token"), false));
+}
+
+TEST_CASE("remote gate records outcomes into the lockout counter")
+{
+  RateLimitConfig config;
+  config.enabled = true;
+  config.maxRequests = 100;
+  config.lockoutThreshold = 3;
+  RemoteGate gate(
+      RemoteConfig{}, std::make_shared<RefreshRateLimiter>(config));
+
+  auto first = testRequest(drogon::Patch, "/auth/refresh-token");
+  auto second = testRequest(drogon::Patch, "/auth/refresh-token");
+  auto third = testRequest(drogon::Patch, "/auth/refresh-token");
+  CHECK_FALSE(gate.check(first, false));
+  CHECK_FALSE(gate.check(second, false));
+  CHECK_FALSE(gate.check(third, false));
+
+  gate.recordOutcome(first, AppConfig::get401Response());
+  gate.recordOutcome(second, AppConfig::get401Response());
+
+  auto fourth = testRequest(drogon::Patch, "/auth/refresh-token");
+  CHECK_FALSE(gate.check(fourth, false));
+  gate.recordOutcome(fourth, AppConfig::get401Response());
+
+  const Json::Value locked = parseBody(
+      gate.check(testRequest(drogon::Patch, "/auth/refresh-token"), false));
+  CHECK(locked["status"].asInt() == 429);
+  CHECK(locked["errors"]["code"] == "TOO_MANY_REQUESTS");
+
+  RateLimitConfig reset;
+  reset.enabled = true;
+  reset.maxRequests = 100;
+  reset.lockoutThreshold = 2;
+  RemoteGate resetGate(
+      RemoteConfig{}, std::make_shared<RefreshRateLimiter>(reset));
+
+  auto failure = testRequest(drogon::Patch, "/auth/refresh-token");
+  auto success = testRequest(drogon::Patch, "/auth/refresh-token");
+  CHECK_FALSE(resetGate.check(failure, false));
+  CHECK_FALSE(resetGate.check(success, false));
+  resetGate.recordOutcome(failure, AppConfig::get401Response());
+  resetGate.recordOutcome(success, ApiResponse::ok());
+  CHECK_FALSE(resetGate.check(
+      testRequest(drogon::Patch, "/auth/refresh-token"), false));
 }

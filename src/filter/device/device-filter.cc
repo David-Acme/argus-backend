@@ -44,6 +44,11 @@ DeviceFilter::doFilter(const drogon::HttpRequestPtr& req)
   co_return drogon::HttpResponsePtr{};
 }
 
+std::string DeviceFilter::deviceKey(const drogon::HttpRequestPtr& req)
+{
+  return hashFingerprint(req->getHeader("User-Agent"), resolveIp(req));
+}
+
 std::string DeviceFilter::hashFingerprint(const std::string& ua,
                                           const std::string& ip)
 {

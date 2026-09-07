@@ -5,6 +5,9 @@
 #include <proxy/proxy-config.hxx>
 #include <proxy/reverse-proxy.hxx>
 #include <server/listener-config.hxx>
+#include <server/remote-config.hxx>
+#include <server/remote-gate.hxx>
+#include <server/refresh-rate-limiter.hxx>
 #include <config/app-config.hxx>
 #include <json/value.h>
 #include <chrono>
@@ -35,6 +38,7 @@ namespace
 
 Json::Value drogonConfig(const IdentityDbConfig& identityDb,
                          const ListenerConfig& listener,
+                         const RemoteConfig& remote,
                          const ProxyConfig& proxy)
 {
   Json::Value config = ConfigService::drogonConfig();
@@ -52,7 +56,9 @@ Json::Value drogonConfig(const IdentityDbConfig& identityDb,
   clients.append(client);
   config["db_clients"] = clients;
 
-  config["listeners"] = listenerJson(listener);
+  Json::Value listeners = listenerJson(listener);
+  appendRemoteListener(listeners, remote, listener);
+  config["listeners"] = listeners;
 
   if (!proxy.upstreamUrl.empty()) {
     Json::Value plugins(Json::arrayValue);
@@ -142,11 +148,16 @@ void requireExclusionCoverage(const ProxyConfig& proxy)
   }
 }
 
-void logRouting(const ProxyConfig& proxy, const ListenerConfig& listener)
+void logRouting(const ProxyConfig& proxy, const ListenerConfig& listener,
+                const RemoteConfig& remote)
 {
   LOG_INFO << "Listening on " << listener.host << ":" << listener.port
            << (listener.tls ? " (TLS" : " (plain")
            << ", cert " << listener.certPath << ")";
+  if (remote.tunnelPort != 0)
+    LOG_INFO << "Remote tunnel listener on " << listener.host << ":"
+             << remote.tunnelPort << " (pairing/register "
+             << (remote.enabled ? "allowed" : "LAN-only") << ")";
   if (proxy.upstreamUrl.empty()) {
     LOG_INFO << "Reverse proxy disabled: the gateway serves its routes only";
     return;
@@ -204,11 +215,29 @@ int main()
                    : "; camera relay -> " + cameraSync.syncUrl);
 
   const ListenerConfig listener = ListenerConfig::resolve();
+  const RemoteConfig remote = RemoteConfig::resolve();
   const ProxyConfig proxy = ProxyConfig::resolve();
   requireExclusionCoverage(proxy);
-  logRouting(proxy, listener);
+  logRouting(proxy, listener, remote);
 
-  drogon::app().loadConfigJson(drogonConfig(identityDb, listener, proxy));
+  drogon::app().loadConfigJson(
+      drogonConfig(identityDb, listener, remote, proxy));
+
+  // Rulings CG/CJ: remote classification, the LAN-only bootstrap gate and
+  // the refresh-token rate limiter run before routing and filters.
+  RemoteGate remoteGate(remote,
+                        std::make_shared<RefreshRateLimiter>(
+                            RateLimitConfig::resolve()));
+  drogon::app().registerPreRoutingAdvice(
+      [&remoteGate, &remote](const drogon::HttpRequestPtr& req,
+                             drogon::AdviceCallback&& cb,
+                             drogon::AdviceChainCallback&& chain) {
+        if (auto resp = remoteGate.check(req, requestIsRemote(req, remote))) {
+          cb(std::move(resp));
+          return;
+        }
+        chain();
+      });
 
   // CORS preflight is answered only for gateway-native paths; OPTIONS on
   // proxied paths is forwarded to the legacy like any other request.
@@ -227,6 +256,12 @@ int main()
   drogon::app().registerPostHandlingAdvice(
       [](const drogon::HttpRequestPtr&, const drogon::HttpResponsePtr& resp) {
         AppConfig::applyCors(resp);
+      });
+
+  drogon::app().registerPostHandlingAdvice(
+      [&remoteGate](const drogon::HttpRequestPtr& req,
+                    const drogon::HttpResponsePtr& resp) {
+        remoteGate.recordOutcome(req, resp);
       });
 
   drogon::app().setExceptionHandler(AppConfig::handleException);

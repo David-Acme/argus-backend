@@ -147,3 +147,24 @@ budget_per_hour = 6
 # (23 -> 7) is supported.
 silent_start = -1
 silent_end = -1
+
+[remote]
+# Fase 5 (Ruling CG): second listener for tunnel-forwarded remote traffic
+# (argus-tunnel relays the client's TLS bytes end-to-end to this port).
+# 0 keeps the single-listener shape; when set, requests landing on this
+# port are classified remote and /pairing + /auth/register answer 403
+# REMOTE_NOT_ALLOWED unless enabled = true. The listener mirrors the public
+# one's TLS posture (same host, certs and min protocol).
+tunnel_port = 0
+enabled = false
+
+[rate_limit]
+# Fase 5 (Ruling CJ): in-memory sliding-window limiter plus consecutive-
+# failure lockout for PATCH /auth/refresh-token, evaluated in pre-routing
+# before filters and any database access. enabled = false keeps today's
+# behavior. State is process-local: a restart clears counters and lockouts.
+enabled = false
+window_seconds = 60
+max_requests = 10
+lockout_threshold = 5
+lockout_seconds = 300

@@ -27,23 +27,47 @@ ListenerConfig ListenerConfig::resolve()
   return config;
 }
 
-Json::Value listenerJson(const ListenerConfig& config)
+namespace
 {
-  Json::Value listeners(Json::arrayValue);
+Json::Value singleListenerJson(const std::string& host, int port, bool tls,
+                               const std::string& certPath,
+                               const std::string& keyPath,
+                               const std::string& minTlsProtocol)
+{
   Json::Value listener(Json::objectValue);
-  listener["address"] = config.host;
-  listener["port"] = Json::Value::Int(config.port);
-  listener["https"] = config.tls;
-  if (config.tls) {
-    listener["cert"] = config.certPath;
-    listener["key"] = config.keyPath;
+  listener["address"] = host;
+  listener["port"] = port;
+  listener["https"] = tls;
+  if (tls) {
+    listener["cert"] = certPath;
+    listener["key"] = keyPath;
     Json::Value sslConf(Json::arrayValue);
     Json::Value protocol(Json::arrayValue);
     protocol.append("MinProtocol");
-    protocol.append(config.minTlsProtocol);
+    protocol.append(minTlsProtocol);
     sslConf.append(protocol);
     listener["ssl_conf"] = sslConf;
   }
-  listeners.append(listener);
+  return listener;
+}
+} // namespace
+
+Json::Value listenerJson(const ListenerConfig& config)
+{
+  Json::Value listeners(Json::arrayValue);
+  listeners.append(singleListenerJson(config.host, config.port, config.tls,
+                                      config.certPath, config.keyPath,
+                                      config.minTlsProtocol));
   return listeners;
+}
+
+void appendRemoteListener(Json::Value& listeners, const RemoteConfig& remote,
+                          const ListenerConfig& base)
+{
+  if (remote.tunnelPort == 0)
+    return;
+  listeners.append(singleListenerJson(base.host,
+                                      static_cast<int>(remote.tunnelPort),
+                                      base.tls, base.certPath, base.keyPath,
+                                      base.minTlsProtocol));
 }

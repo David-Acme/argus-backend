@@ -54,6 +54,17 @@ drogon::HttpResponsePtr AppConfig::get409Response(const std::string& message)
   return ApiResponse::error(409, ERROR_CODE_CONFLICT, message);
 }
 
+drogon::HttpResponsePtr AppConfig::get429Response(const std::string& message)
+{
+  return ApiResponse::error(429, ERROR_CODE_TOO_MANY_REQUESTS, message);
+}
+
+drogon::HttpResponsePtr AppConfig::getRemoteNotAllowedResponse()
+{
+  return ApiResponse::error(403, ERROR_CODE_REMOTE_NOT_ALLOWED,
+                            "Remote requests are not allowed");
+}
+
 void AppConfig::handleException(
     const std::exception& e, const drogon::HttpRequestPtr&,
     std::function<void(const drogon::HttpResponsePtr&)>&& respCallback)

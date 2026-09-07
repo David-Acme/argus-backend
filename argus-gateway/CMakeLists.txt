@@ -52,6 +52,9 @@ add_library(gateway-core STATIC
     ${GATEWAY_SRC_ROOT}/proxy/proxy-config.cc
     ${GATEWAY_SRC_ROOT}/proxy/reverse-proxy.cc
     ${GATEWAY_SRC_ROOT}/server/listener-config.cc
+    ${GATEWAY_SRC_ROOT}/server/refresh-rate-limiter.cc
+    ${GATEWAY_SRC_ROOT}/server/remote-config.cc
+    ${GATEWAY_SRC_ROOT}/server/remote-gate.cc
     ${GATEWAY_SRC_ROOT}/sync/camera-fan-out.cc
     ${GATEWAY_SRC_ROOT}/sync/camera-notifier.cc
     ${GATEWAY_SRC_ROOT}/sync/sync-fan-out.cc

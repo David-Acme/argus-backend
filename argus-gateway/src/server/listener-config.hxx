@@ -1,6 +1,7 @@
 #pragma once
 
 #include <json/value.h>
+#include <server/remote-config.hxx>
 #include <string>
 
 struct ListenerConfig
@@ -20,3 +21,8 @@ struct ListenerConfig
 
 // The [[listeners]] JSON array Drogon consumes from the loaded config.
 Json::Value listenerJson(const ListenerConfig& config);
+
+// Ruling CG: appends the tunnel listener with the public listener's TLS
+// posture (same host, certs and min protocol); no-op when tunnel_port is 0.
+void appendRemoteListener(Json::Value& listeners, const RemoteConfig& remote,
+                          const ListenerConfig& base);

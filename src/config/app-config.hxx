@@ -25,6 +25,10 @@ public:
   get405Response(const std::string& message = "Method not allowed");
   static drogon::HttpResponsePtr
   get409Response(const std::string& message = "Conflict");
+  static drogon::HttpResponsePtr
+  get429Response(const std::string& message = "Too many requests");
+
+  static drogon::HttpResponsePtr getRemoteNotAllowedResponse();
 
   static void handleException(
       const std::exception& e, const drogon::HttpRequestPtr& req,
@@ -32,6 +36,7 @@ public:
 
   static inline const std::string JWT_CTX_KEY{"jwt_ctx"};
   static inline const std::string DEVICE_CTX_KEY{"device_ctx"};
+  static inline const std::string REMOTE_CTX_KEY{"remote_ctx"};
 
   static inline const std::string SYNC_LIMIT{"200"};
 
@@ -42,6 +47,8 @@ public:
   static inline const std::string ERROR_CODE_METHOD_NOT_ALLOWED{
       "METHOD_NOT_ALLOWED"};
   static inline const std::string ERROR_CODE_CONFLICT{"CONFLICT"};
+  static inline const std::string ERROR_CODE_REMOTE_NOT_ALLOWED{
+      "REMOTE_NOT_ALLOWED"};
   static inline const std::string ERROR_CODE_SERVICE_UNAVAILABLE{
       "SERVICE_UNAVAILABLE"};
   static inline const std::string ERROR_CODE_TOO_MANY_REQUESTS{

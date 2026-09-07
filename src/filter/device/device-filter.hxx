@@ -17,6 +17,10 @@ public:
   drogon::Task<drogon::HttpResponsePtr>
   doFilter(const drogon::HttpRequestPtr& req) override;
 
+  // Same fingerprint hash doFilter stores for this request; throws when no
+  // fingerprint secret is configured.
+  static std::string deviceKey(const drogon::HttpRequestPtr& req);
+
 private:
   static std::string hashFingerprint(const std::string& ua,
                                      const std::string& ip);
