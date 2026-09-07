@@ -23,6 +23,9 @@ public:
   virtual bool validatesAuth() const = 0;
   virtual void onAuthAccepted() {}
   virtual void onAuthRejected() {}
+  // The relay delivered a PUSH control frame; only dispatched after the home
+  // link is authenticated (F5-5).
+  virtual void onPushFrame(const std::string& payload) { (void)payload; }
   // The remote side opened a stream (client: dial the gateway).
   virtual void onRemoteOpen(uint32_t streamId) { (void)streamId; }
   virtual void onLinkUp() {}
@@ -82,6 +85,9 @@ public:
   void teardownAll();
   void sweep();
   void sendPing();
+  // Relay side: sends a PUSH control frame toward the home client (F5-5);
+  // loop thread only.
+  bool sendPush(const std::string& payload);
 
   bool hasHome() const { return homePeer_ != nullptr; }
   bool homeActive() const { return homeActive_; }

@@ -149,6 +149,15 @@ void TunnelMux::sendPing()
   sendFrameToHome(FrameType::Ping, 0, nullptr, 0);
 }
 
+bool TunnelMux::sendPush(const std::string& payload)
+{
+  if (!homePeer_ || !homeActive_ || payload.empty() ||
+      payload.size() > kMaxPayload)
+    return false;
+  sendFrameToHome(FrameType::Push, 0, payload.data(), payload.size());
+  return true;
+}
+
 void TunnelMux::sweep()
 {
   const auto now = Clock::now();
@@ -214,6 +223,7 @@ void TunnelMux::dispatchFrame(Frame frame)
         const std::string proof =
             relayAuthMac(delegate_->authSecret(), authChallenge_);
         sendFrameToHome(FrameType::AuthOk, 0, proof.data(), proof.size());
+        delegate_->onAuthAccepted();
       } else {
         sendFrameToHome(FrameType::AuthFail, 0, nullptr, 0);
         dropLink();
@@ -323,8 +333,7 @@ void TunnelMux::dispatchFrame(Frame frame)
   case FrameType::Push:
     if (!homeActive_)
       break;
-    LOG_WARN << "argus-tunnel: PUSH frame received; push delivery is not "
-                "wired yet";
+    delegate_->onPushFrame(frame.payload);
     break;
   }
 }

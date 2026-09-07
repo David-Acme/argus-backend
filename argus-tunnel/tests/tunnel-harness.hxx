@@ -63,6 +63,9 @@ struct HarnessOptions
   // depend on loopback autotuning.
   int gatewayRcvBuf{0};
   TunnelMux::Limits limits;
+  // Push-intent queue capacities (F5-5).
+  size_t relayPushCapacity{256};
+  size_t clientPushCapacity{256};
 };
 
 inline std::shared_ptr<TestPeer>
@@ -136,6 +139,7 @@ struct Harness
     relayOptions.homePort = 0;
     relayOptions.secret = options_.secret;
     relayOptions.limits = options_.limits;
+    relayOptions.pushQueueCapacity = options_.relayPushCapacity;
     relay = std::make_unique<TunnelRelay>(loop, std::move(relayOptions));
     if (!relay->start())
       return false;
@@ -160,6 +164,7 @@ struct Harness
     clientOptions.secret = options_.secret;
     clientOptions.reconnectWaitMs = 50;
     clientOptions.limits = options_.limits;
+    clientOptions.pushQueueCapacity = options_.clientPushCapacity;
     client = std::make_unique<TunnelClient>(loop, std::move(clientOptions));
 
     loopThread = std::thread([this] { loop.run(); });

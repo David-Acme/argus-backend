@@ -27,5 +27,13 @@ HealthController::health(drogon::HttpRequestPtr)
   info["homeConnected"] = status_.homeConnected && status_.homeConnected();
   info["activeStreams"] =
       status_.activeStreams ? status_.activeStreams() : 0;
+  if (status_.pushQueued)
+    info["pushQueued"] = Json::Value::Int64(status_.pushQueued());
+  if (status_.pushReceived)
+    info["pushReceived"] = Json::Value::Int64(status_.pushReceived());
+  if (status_.pushDropped)
+    info["pushDropped"] = Json::Value::Int64(status_.pushDropped());
+  if (status_.pushForwarded)
+    info["pushForwarded"] = Json::Value::Int64(status_.pushForwarded());
   co_return ApiResponse::ok(info);
 }

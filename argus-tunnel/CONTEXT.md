@@ -34,7 +34,7 @@ offset  size  field
 | 6 CLOSE | streamId | 1 byte CloseReason | both |
 | 7 PING | 0 | empty | client → relay |
 | 8 PONG | 0 | empty | relay → client |
-| 9 PUSH | — | reserved F5-5 hook | both |
+| 9 PUSH | 0 | push-intent JSON (F5-5) | relay → client |
 | 10 CHALLENGE | 0 | 32 random bytes, fresh per link | relay → client |
 
 CloseReason: 0 normal, 1 busy (stream cap), 2 idle timeout, 3 back-pressure,
@@ -55,8 +55,29 @@ sends OPEN; the client dials a fresh TCP connection to the gateway's remote
 listener (`[remote] tunnel_port`, F5-1) per OPEN and registers it
 (`openLocal`). DATA frames are retransmitted verbatim in both directions;
 frame boundaries never map to carried message boundaries. CLOSE propagates
-the reason; a local EOF closes the stream normally. Unknown PUSH frames are
-logged and ignored (the F5-5 hook).
+the reason; a local EOF closes the stream normally.
+
+## Push intents (F5-5)
+
+The relay subscribes to `argus.notification.v1.push_intent` over NATS (behind
+`[push] enabled`, default off) and forwards each payload as one PUSH frame to
+the home client; both ends keep a bounded in-memory intent queue with
+received/dropped counters exposed on `/health` (`pushQueued` / `pushReceived`
+/ `pushDropped`, plus `pushForwarded` on the relay). The relay buffers intents
+while the home link is down and drains them the moment a link authenticates;
+the client queues what it receives. Past `push.queue_capacity` the drop is
+counted and logged — nothing persists, and the queue never becomes the
+source of truth: the notification row in the gateway's notification.db is.
+This is the deliberate trade-off of Ruling CK: at-least-once on the NATS leg,
+best-effort with drop accounting on the tunnel leg, because the queue only
+accelerates delivery — the authoritative fan-out to the device rides the
+existing `/sync` bootstrap (the app re-syncs notifications on connect). The
+final device-delivery leg (intent → OS push / APNs / FCM) is out of scope:
+the intent is display-only, never a command, and never carries alarm/siren
+semantics — the client's queue is a terminal sink in this fase. cnats was
+added to the relay's dependencies for the subscription; the NATS handler
+posts into the PollLoop thread (`postPushIntent`), so the mux core stays
+single-threaded.
 
 ## Concurrency model
 
@@ -137,14 +158,18 @@ inspect or alter the session.
 `[tunnel]` carries the shared secret plus link knobs; `[server]` carries the
 per-binary listener keys (relay: `host`/`device_port`/`home_port`; client:
 `relay_host`/`relay_port`/`gateway_host`/`gateway_port`; health listeners
-default 7103 relay / 7104 client). The secret must be identical on both
+default 7103 relay / 7104 client); `[push]` (F5-5, relay-only gate) carries
+`enabled` (default false) and `queue_capacity` (default 256), plus
+`nats.url` for the subscription. The secret must be identical on both
 sides and never committed.
 
 ## What was NOT changed
 
 - Zero edits to existing services (root `CMakeLists.txt` /
   `CMakePresets.json` gained the subdirectory + presets only).
-- No database, no NATS, no JWT, no device registry: the relay's
-  device→home mapping is in-memory and dies with the process.
+- No database, no JWT, no device registry: the relay's device→home mapping
+  is in-memory and dies with the process. The push-intent queues are
+  in-memory too (F5-5); NATS is subscribe-only on the relay, publisher-side
+  policy lives in argus-notification / the gateway.
 - The app móvil contracts are untouched: the app keeps talking TLS to the
   gateway host through the tunnel's device port.

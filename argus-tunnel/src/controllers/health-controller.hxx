@@ -6,15 +6,23 @@
 #include <drogon/utils/coroutine.h>
 #include <json/value.h>
 
+#include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <string>
 
-// /health provider wired to either tunnel binary's live link state.
+// /health provider wired to either tunnel binary's live link state. The push
+// accessors are optional: the client reports queue/Received/Dropped, the
+// relay also reports Forwarded; a binary without push wiring leaves them set.
 struct HealthStatus
 {
   std::string serviceName;
   std::function<bool()> homeConnected;
   std::function<int()> activeStreams;
+  std::function<std::size_t()> pushQueued;
+  std::function<std::uint64_t()> pushReceived;
+  std::function<std::uint64_t()> pushDropped;
+  std::function<std::uint64_t()> pushForwarded;
 };
 
 class HealthController

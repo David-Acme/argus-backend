@@ -29,6 +29,9 @@ int main()
   status.activeStreams = [&client] {
     return static_cast<int>(client.streamCount());
   };
+  status.pushQueued = [&client] { return client.pushQueued(); };
+  status.pushReceived = [&client] { return client.pushReceived(); };
+  status.pushDropped = [&client] { return client.pushDropped(); };
 
   std::thread loopThread([&loop] { loop.run(); });
 

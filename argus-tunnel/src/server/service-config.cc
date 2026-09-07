@@ -22,6 +22,12 @@ tunnel::TunnelMux::Limits resolveLimits()
   limits.socketSndBuf = ConfigService::getInt("tunnel.socket_snd_buf");
   return limits;
 }
+
+size_t resolvePushQueueCapacity()
+{
+  const int capacity = ConfigService::getInt("push.queue_capacity");
+  return capacity > 0 ? static_cast<size_t>(capacity) : 256;
+}
 } // namespace
 
 ClientConfig ClientConfig::resolve()
@@ -53,6 +59,7 @@ ClientConfig ClientConfig::resolve()
                                           ? pingIntervalSeconds
                                           : 30;
   config.tunnel.limits = resolveLimits();
+  config.tunnel.pushQueueCapacity = resolvePushQueueCapacity();
   return config;
 }
 
@@ -73,6 +80,8 @@ RelayConfig RelayConfig::resolve()
       clampPort(ConfigService::getInt("server.home_port"), 7101);
   config.relay.secret = ConfigService::getString("tunnel.secret");
   config.relay.limits = resolveLimits();
+  config.relay.pushEnabled = ConfigService::getBool("push.enabled");
+  config.relay.pushQueueCapacity = resolvePushQueueCapacity();
   return config;
 }
 

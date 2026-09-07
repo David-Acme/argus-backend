@@ -4,10 +4,13 @@
 #include <net/poll-loop.hxx>
 #include <server/service-config.hxx>
 #include <shared/services/config-service/config-service.hxx>
+#include <shared/wrapper/nats/nats-bus.hxx>
+#include <shared/wrapper/nats/nats-subject.hxx>
 
 #include <relay/tunnel-relay.hxx>
 
 #include <json/value.h>
+#include <memory>
 #include <thread>
 
 int main()
@@ -29,6 +32,10 @@ int main()
   status.activeStreams = [&relay] {
     return static_cast<int>(relay.streamCount());
   };
+  status.pushQueued = [&relay] { return relay.pushQueued(); };
+  status.pushReceived = [&relay] { return relay.pushReceived(); };
+  status.pushDropped = [&relay] { return relay.pushDropped(); };
+  status.pushForwarded = [&relay] { return relay.pushForwarded(); };
 
   std::thread loopThread([&loop] { loop.run(); });
 
@@ -60,6 +67,28 @@ int main()
 
   LOG_INFO << "argus-relay health on " << config.healthHost << ":"
            << config.healthPort;
+
+  std::shared_ptr<NatsBus> natsBus;
+  if (config.relay.pushEnabled) {
+    const std::string natsUrl = ConfigService::getString("nats.url");
+    if (!natsUrl.empty()) {
+      natsBus = std::make_shared<NatsBus>();
+      if (natsBus->connect()) {
+        LOG_INFO << "argus-relay: push intents enabled ("
+                 << nats_subject::kNotificationPushIntent << ")";
+        natsBus->subscribe(nats_subject::kNotificationPushIntent,
+                           [&relay](std::string_view, std::string_view payload) {
+                             relay.postPushIntent(std::string(payload));
+                           });
+      } else {
+        natsBus.reset();
+        LOG_WARN << "NATS unavailable at " << natsUrl
+                 << "; push intents disabled";
+      }
+    } else {
+      LOG_WARN << "[push] enabled but nats.url missing; push intents disabled";
+    }
+  }
 
   drogon::app().setThreadNum(0).run();
 

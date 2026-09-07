@@ -125,7 +125,7 @@ if(DOCTEST_INCLUDE_DIRS)
 endif()
 
 # Test registration is standalone-only so the root project's ctest stays at
-# its 7 backend suites.
+# its 38 backend cases.
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     enable_testing()
     add_test(NAME gateway-test COMMAND gateway-test)

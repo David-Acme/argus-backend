@@ -1,10 +1,12 @@
 #pragma once
 
+#include <core/push-queue.hxx>
 #include <core/tunnel-mux.hxx>
 #include <net/tcp-listener.hxx>
 #include <net/tcp-peer.hxx>
 
 #include <atomic>
+#include <cstdint>
 #include <memory>
 #include <string>
 
@@ -17,6 +19,9 @@ struct RelayOptions
   uint16_t homePort{7101};
   std::string secret;
   TunnelMux::Limits limits;
+  // [push] enabled + queue capacity (F5-5).
+  bool pushEnabled{false};
+  size_t pushQueueCapacity{256};
 };
 
 // US-side relay: accepts device connections and multiplexes each one over
@@ -40,12 +45,27 @@ public:
   size_t streamCount() const { return mux_.streamCount(); }
   size_t pendingBytes() const { return mux_.pendingBytes(); }
 
+  // Push-intent ingress (F5-5): thread-safe post into the loop thread; the
+  // queue survives a home-link drop and drains once the link re-authenticates.
+  void postPushIntent(std::string payload);
+  size_t pushQueued() const { return pushQueue_.size(); }
+  uint64_t pushReceived() const { return pushQueue_.received(); }
+  uint64_t pushDropped() const { return pushQueue_.dropped(); }
+  uint64_t pushForwarded() const
+  {
+    return pushForwarded_.load(std::memory_order_relaxed);
+  }
+
 private:
   // MuxDelegate
   const std::string& authSecret() const override { return options_.secret; }
   bool validatesAuth() const override { return true; }
+  void onAuthAccepted() override;
   void onLinkUp() override;
   void onLinkDown() override;
+
+  void onPushIntent(const std::string& payload);
+  void drainPushQueue();
 
   void onHomeAccepted(int fd, const std::string& peerIp, uint16_t peerPort);
   void onDeviceAccepted(int fd, const std::string& peerIp, uint16_t peerPort);
@@ -61,5 +81,7 @@ private:
   uint16_t devicePort_{0};
   uint16_t homePort_{0};
   std::atomic<bool> stopped_{false};
+  PushQueue pushQueue_{options_.pushQueueCapacity};
+  std::atomic<uint64_t> pushForwarded_{0};
 };
 } // namespace tunnel

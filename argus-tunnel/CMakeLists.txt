@@ -13,6 +13,7 @@ if(NOT TARGET Drogon::Drogon)
     find_package(Drogon CONFIG REQUIRED)
     find_package(tomlplusplus REQUIRED)
     find_package(nlohmann_json REQUIRED)
+    find_package(cnats CONFIG REQUIRED)
 endif()
 
 find_package(doctest REQUIRED)
@@ -22,12 +23,13 @@ find_package(doctest REQUIRED)
 add_library(tunnel-foundation STATIC
     ${SHARED_ROOT}/wrapper/api-response/api-response.cc
     ${SHARED_ROOT}/services/config-service/config-service.cc
+    ${SHARED_ROOT}/wrapper/nats/nats-bus.cc
 )
 target_include_directories(tunnel-foundation PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/../src)
 target_compile_definitions(tunnel-foundation PRIVATE ARGUS_NO_NCNN_GPU=1)
 target_link_libraries(tunnel-foundation PUBLIC Drogon::Drogon
-    tomlplusplus::tomlplusplus)
+    tomlplusplus::tomlplusplus cnats::nats_static)
 target_compile_options(tunnel-foundation PRIVATE -Wall -Wextra)
 
 # Tunnel core: epoll engine, framing, multiplexer, client, relay and the
@@ -102,8 +104,15 @@ target_link_libraries(service-config-test PRIVATE tunnel-core
                                                   doctest::doctest)
 target_compile_options(service-config-test PRIVATE -Wall -Wextra)
 
+add_executable(tunnel-push-test
+               ${CMAKE_CURRENT_SOURCE_DIR}/tests/tunnel-push-test.cc)
+target_include_directories(tunnel-push-test PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/tests)
+target_link_libraries(tunnel-push-test PRIVATE tunnel-core doctest::doctest)
+target_compile_options(tunnel-push-test PRIVATE -Wall -Wextra)
+
 # Test registration is standalone-only so the root project's ctest stays at
-# its 7 backend suites.
+# its 38 backend cases.
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     enable_testing()
     add_test(NAME framing-test COMMAND framing-test)
@@ -111,4 +120,5 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     add_test(NAME tunnel-reconnect-test COMMAND tunnel-reconnect-test)
     add_test(NAME tunnel-negauth-test COMMAND tunnel-negauth-test)
     add_test(NAME service-config-test COMMAND service-config-test)
+    add_test(NAME tunnel-push-test COMMAND tunnel-push-test)
 endif()

@@ -1,9 +1,11 @@
 #pragma once
 
+#include <core/push-queue.hxx>
 #include <core/tunnel-mux.hxx>
 #include <net/tcp-peer.hxx>
 
 #include <atomic>
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -21,6 +23,8 @@ struct ClientOptions
   int maxReconnects{60};
   int pingIntervalSeconds{30};
   TunnelMux::Limits limits;
+  // Push-intent queue capacity (F5-5).
+  size_t pushQueueCapacity{256};
 };
 
 // Home-side tunnel client: ONE persistent outbound link to the relay with
@@ -45,6 +49,11 @@ public:
   bool gaveUp() const { return gaveUp_.load(); }
   size_t pendingBytes() const { return mux_.pendingBytes(); }
 
+  // Push-intent queue counters for /health (F5-5).
+  size_t pushQueued() const { return pushQueue_.size(); }
+  uint64_t pushReceived() const { return pushQueue_.received(); }
+  uint64_t pushDropped() const { return pushQueue_.dropped(); }
+
 private:
   // MuxDelegate
   const std::string& authSecret() const override { return options_.secret; }
@@ -52,6 +61,7 @@ private:
   void onAuthAccepted() override;
   void onAuthRejected() override;
   void onRemoteOpen(uint32_t streamId) override;
+  void onPushFrame(const std::string& payload) override;
   void onLinkUp() override;
   void onLinkDown() override;
 
@@ -72,5 +82,6 @@ private:
   std::atomic<int> reconnectAttempts_{0};
   std::atomic<bool> gaveUp_{false};
   std::atomic<bool> stopped_{false};
+  PushQueue pushQueue_{options_.pushQueueCapacity};
 };
 } // namespace tunnel

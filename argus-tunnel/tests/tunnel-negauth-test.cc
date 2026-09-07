@@ -160,6 +160,20 @@ TEST_CASE("OPEN before any AUTH never dials the gateway")
   CHECK(rig.gateway.dials.load() == 0);
 }
 
+TEST_CASE("PUSH before any AUTH never reaches the intent queue")
+{
+  RogueRig rig([](TcpPeer& peer) {
+    peer.send(encodeFrame(FrameType::Push, 0, R"({"notificationId":1})",
+                          18));
+  });
+
+  REQUIRE(waitFor([&] {
+    return rig.relay.acceptCount.load() >= kLinkAccepts;
+  }, kAcceptTimeoutMs));
+  CHECK_FALSE(rig.client->homeActive());
+  CHECK(rig.client->pushReceived() == 0);
+}
+
 TEST_CASE("pipelined OPEN after AUTH_FAIL in one burst never dials")
 {
   RogueRig rig([](TcpPeer& peer) {

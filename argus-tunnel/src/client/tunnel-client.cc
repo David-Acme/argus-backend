@@ -101,6 +101,16 @@ void TunnelClient::onAuthRejected()
                "configuration on both sides";
 }
 
+void TunnelClient::onPushFrame(const std::string& payload)
+{
+  if (pushQueue_.push(payload))
+    LOG_INFO << "argus-tunnel: push intent queued (" << pushQueue_.size()
+             << " buffered)";
+  else
+    LOG_WARN << "argus-tunnel: push queue full; intent dropped ("
+             << pushQueue_.dropped() << " total)";
+}
+
 void TunnelClient::onRemoteOpen(uint32_t streamId)
 {
   TcpPeer::Params params;
