@@ -1,0 +1,63 @@
+# argus-tunnel configuration. Copy to config.toml (gitignored) to run.
+# One file serves both binaries: argus-relay reads the [server] block's
+# relay keys on the US host, argus-tunnel-client reads the client keys on
+# the home host. The [tunnel] secret must be IDENTICAL on both sides and is
+# never baked into any template: keep it empty here and inject it at
+# deploy time.
+
+[tunnel]
+# Shared HMAC-SHA256 key for the home link AUTH handshake. Empty refuses to
+# start (both binaries). Never commit a real value.
+secret = ""
+
+# Client-only knobs (argus-tunnel-client).
+reconnect_wait_ms = 2000
+max_reconnects = 60
+ping_interval_seconds = 30
+
+# Shared link knobs (both binaries).
+stream_idle_seconds = 300
+max_streams = 256
+# SO_SNDBUF in bytes for every tunnel socket (0 = kernel-managed). A bounded
+# value keeps back-pressure in the software queues instead of kernel buffers.
+socket_snd_buf = 0
+
+[server]
+# argus-relay (US host): device listener for the app, home listener for the
+# single client link.
+host = "0.0.0.0"
+device_port = 7100
+home_port = 7101
+
+# argus-tunnel-client (home host): the relay's home listener, and the
+# gateway's [remote] tunnel_port (F5-1) the client dials per stream.
+relay_host = "127.0.0.1"
+relay_port = 7101
+gateway_host = "127.0.0.1"
+gateway_port = 7024
+
+# /health listener. Defaults differ per binary: the relay binds 0.0.0.0:7103
+# for remote probes, the client binds 127.0.0.1:7104. Set the home host's
+# copy to health_port = 7104.
+health_host = "127.0.0.1"
+health_port = 7103
+
+# Mirror of the legacy [drogon.app] block for the /health listener.
+[drogon.app]
+number_of_threads = 0
+enable_session = false
+document_root = "./"
+use_sendfile = true
+use_gzip = false
+use_brotli = false
+static_files_cache_time = 5
+idle_connection_timeout = 60
+enable_server_header = true
+enable_date_header = true
+keepalive_requests = 0
+pipelining_requests = 0
+client_max_body_size = "1M"
+client_max_memory_body_size = "1M"
+reuse_port = false
+handle_sig_term = true
+relaunch_on_error = false

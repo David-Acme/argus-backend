@@ -73,6 +73,14 @@
     { "name": "memory", "configurePreset": "dev", "jobs": 8,
       "targets": ["argus-memory"] },
     { "name": "memory-prod", "configurePreset": "prod", "jobs": 8,
-      "targets": ["argus-memory"] }
+      "targets": ["argus-memory"] },
+    { "name": "tunnel", "configurePreset": "dev", "jobs": 8,
+      "targets": ["argus-tunnel-client", "argus-tunnel-relay",
+                  "framing-test", "tunnel-integration-test",
+                  "tunnel-reconnect-test"] },
+    { "name": "tunnel-prod", "configurePreset": "prod", "jobs": 8,
+      "targets": ["argus-tunnel-client", "argus-tunnel-relay",
+                  "framing-test", "tunnel-integration-test",
+                  "tunnel-reconnect-test"] }
   ]
 }

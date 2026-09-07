@@ -66,6 +66,10 @@ add_subdirectory(argus-llm EXCLUDE_FROM_ALL)
 # built on demand, never as part of the default backend build.
 add_subdirectory(argus-memory EXCLUDE_FROM_ALL)
 
+# argus-tunnel service (F5-4): the byte-transparent relay pair, built on
+# demand, never as part of the default backend build.
+add_subdirectory(argus-tunnel EXCLUDE_FROM_ALL)
+
 # Data migration tools: the CLI is built on demand, never as part of the
 # default backend build.
 add_subdirectory(tools/migrate-identity EXCLUDE_FROM_ALL)

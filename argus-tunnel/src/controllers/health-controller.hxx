@@ -1,0 +1,34 @@
+#pragma once
+
+#include <drogon/HttpController.h>
+#include <drogon/HttpRequest.h>
+#include <drogon/HttpResponse.h>
+#include <drogon/utils/coroutine.h>
+#include <json/value.h>
+
+#include <functional>
+#include <string>
+
+// /health provider wired to either tunnel binary's live link state.
+struct HealthStatus
+{
+  std::string serviceName;
+  std::function<bool()> homeConnected;
+  std::function<int()> activeStreams;
+};
+
+class HealthController
+    : public drogon::HttpController<HealthController, false>
+{
+public:
+  explicit HealthController(HealthStatus status);
+
+  METHOD_LIST_BEGIN
+  ADD_METHOD_TO(HealthController::health, "/health", drogon::Get);
+  METHOD_LIST_END
+
+  drogon::Task<drogon::HttpResponsePtr> health(drogon::HttpRequestPtr req);
+
+private:
+  HealthStatus status_;
+};
