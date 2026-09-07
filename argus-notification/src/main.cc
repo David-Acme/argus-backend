@@ -7,6 +7,8 @@
 #include <filter/valid-json/valid-json-filter.hxx>
 #include <notification/nats-notification-change-sink.hxx>
 #include <shared/wrapper/nats/nats-bus.hxx>
+#include <shared/wrapper/nats/nats-push-intent-sink.hxx>
+#include <shared/wrapper/nats/nats-subject.hxx>
 #include <notification/notification-config.hxx>
 #include <server/listener-config.hxx>
 #include <shared/contracts/user-change-sink.hxx>
@@ -160,6 +162,18 @@ int main()
       natsBus.reset();
       LOG_WARN << "NATS unavailable at " << natsUrl
                << "; notification change funnel disabled";
+    }
+  }
+
+  std::shared_ptr<NatsPushIntentSink> pushIntentSink;
+  if (push_intent::enabledFromConfig()) {
+    if (natsBus) {
+      pushIntentSink = std::make_shared<NatsPushIntentSink>(natsBus);
+      push_intent::setSink(pushIntentSink.get());
+      LOG_INFO << "Push intents enabled (" << nats_subject::kNotificationPushIntent
+               << ")";
+    } else {
+      LOG_WARN << "[push] enabled but NATS unavailable; push intents disabled";
     }
   }
 

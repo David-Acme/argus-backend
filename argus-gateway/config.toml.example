@@ -44,6 +44,13 @@ url = ""
 reconnect_wait_ms = 2000
 max_reconnects = 60
 
+# Push intents to the home client through the tunnel transport (F5-5). The
+# gateway publishes one JSON intent per notification row it creates over
+# argus.notification.v1.push_intent; default off keeps the app movil contract
+# frozen (Ruling CM).
+[push]
+enabled = false
+
 # Same instance secrets as the legacy backend: both binaries verify (and the
 # gateway mints) the app's tokens.
 [jwt]

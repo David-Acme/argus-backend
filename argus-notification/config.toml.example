@@ -73,3 +73,10 @@ db = "database/identity.db"
 # funnel; the feature services then drop their change events with a
 # warning.
 url = "nats://127.0.0.1:4222"
+
+# Push intents to the home client through the tunnel transport (F5-5). One
+# JSON intent per notification row publishes over
+# argus.notification.v1.push_intent; default off keeps the app movil contract
+# frozen (Ruling CM).
+[push]
+enabled = false

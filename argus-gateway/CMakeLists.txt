@@ -108,6 +108,15 @@ target_link_libraries(camera-notifier-test PRIVATE gateway-core
 
 target_compile_options(camera-notifier-test PRIVATE -Wall -Wextra)
 
+add_executable(push-intent-test
+               ${CMAKE_CURRENT_SOURCE_DIR}/tests/push-intent-test.cc)
+
+target_include_directories(push-intent-test PRIVATE ${GATEWAY_SRC_ROOT})
+
+target_link_libraries(push-intent-test PRIVATE gateway-core doctest::doctest)
+
+target_compile_options(push-intent-test PRIVATE -Wall -Wextra)
+
 get_target_property(DOCTEST_INCLUDE_DIRS doctest::doctest
                     INTERFACE_INCLUDE_DIRECTORIES)
 if(DOCTEST_INCLUDE_DIRS)
@@ -122,4 +131,5 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     add_test(NAME gateway-test COMMAND gateway-test)
     add_test(NAME audit-sync-read-test COMMAND audit-sync-read-test)
     add_test(NAME camera-notifier-test COMMAND camera-notifier-test)
+    add_test(NAME push-intent-test COMMAND push-intent-test)
 endif()

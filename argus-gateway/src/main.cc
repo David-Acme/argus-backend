@@ -20,6 +20,8 @@
 #include <shared/services/room/room-manager.hxx>
 #include <shared/services/sqlite/db-service.hxx>
 #include <shared/wrapper/nats/nats-bus.hxx>
+#include <shared/wrapper/nats/nats-push-intent-sink.hxx>
+#include <shared/wrapper/nats/nats-subject.hxx>
 #include <sync/camera-fan-out.hxx>
 #include <sync/camera-notifier.hxx>
 #include <sync/sync-registrar.hxx>
@@ -288,6 +290,18 @@ int main()
     else
       LOG_WARN << "NATS unavailable at " << natsUrl
                << "; continuing without it";
+  }
+
+  std::shared_ptr<NatsPushIntentSink> pushIntentSink;
+  if (push_intent::enabledFromConfig()) {
+    if (natsBus) {
+      pushIntentSink = std::make_shared<NatsPushIntentSink>(natsBus);
+      push_intent::setSink(pushIntentSink.get());
+      LOG_INFO << "Push intents enabled (" << nats_subject::kNotificationPushIntent
+               << ")";
+    } else {
+      LOG_WARN << "[push] enabled but NATS unavailable; push intents disabled";
+    }
   }
 
   // Prune timers for the sync socket's rooms (the gateway serves /sync

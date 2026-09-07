@@ -58,6 +58,10 @@ url = "nats://nats:4222"
 reconnect_wait_ms = 2000
 max_reconnects = 60
 
+# Push intents to the home client through the tunnel transport (F5-5).
+[push]
+enabled = false
+
 # Access tokens minted by the gateway: the routes validate the same JWTs the
 # gateway mints. The secrets must match the gateway's [jwt] block.
 [jwt]

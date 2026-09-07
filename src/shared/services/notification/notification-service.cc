@@ -1,6 +1,7 @@
 #include "notification-service.hxx"
 
 #include <drogon/utils/coroutine.h>
+#include <shared/contracts/push-intent-sink.hxx>
 #include <shared/contracts/sync-operation.hxx>
 #include <shared/enums.hxx>
 #include <shared/schemas/notification/notification-schema.hxx>
@@ -41,6 +42,16 @@ drogon::Task<void> NotificationService::createAndEmitMany(
           sink->emitUser(notification.userId, emit);
         else
           LOG_WARN << "user change sink not installed; drop notification emit";
+        if (const auto* intents = push_intent::getSink()) {
+          intents->publish(PushIntent{
+              .userId = notification.userId,
+              .notificationId = notification.id,
+              .type = notification.type,
+              .title = notification.title,
+              .body = notification.body,
+              .createdAtMs = notification.createdAt * 1000,
+          });
+        }
       }
     }
     catch (const std::exception& e) {
