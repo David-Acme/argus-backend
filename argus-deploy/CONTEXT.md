@@ -367,6 +367,20 @@ and `camera-init` is the only migration path onto the volume.
   loopback publishes by the shipped target state) and the GPU pins.
 - Docker secrets stay the existing `docker/runtime/secrets/*` files: nothing
   new, nothing baked into images.
+- Fase 5 (Rulings CG/CJ): the gateway template gains `[remote]`
+  (`tunnel_port`, default 0 = disabled) and `[rate_limit]` (`enabled`,
+  default false) — both default-off so the shipped default is
+  behavior-identical. `tunnel_port` opens the SECOND gateway listener that
+  the argus-tunnel client (Fase 5) will forward to; requests landing on it
+  are classified remote (by local-port match, `remote_ctx` request
+  attribute — the blueprint's `network.lan_cidrs` is deliberately NOT
+  introduced because behind the byte-transparent relay every remote peer
+  is the tunnel and CIDR matching is meaningless) and `/pairing` +
+  `/auth/register` answer `403 REMOTE_NOT_ALLOWED` unless
+  `[remote] enabled = true`. The listener mirrors the public one's TLS
+  posture. `[rate_limit]` is the gateway's in-memory limiter + lockout for
+  `PATCH /auth/refresh-token` (429 frozen envelope before any DB access);
+  all limiter state is process-local and a restart clears it.
 - The gateway links no go2rtc code, so it neither mounts nor spawns go2rtc.
 - argus-camera spawns go2rtc itself (Go2rtcManager fork/exec, Ruling AH) from
   the bind-mounted `third_party/go2rtc` binary and writes its own
@@ -401,3 +415,4 @@ and `camera-init` is the only migration path onto the volume.
 | 9000 | 127.0.0.1 | rustfs S3 |
 | 1984 / 8554 | container loopback only | go2rtc spawned by argus-camera (Ruling AH — never published) |
 | 8800 | host | Tapo talk channel (camera-side, legacy `[tapo]`) |
+| `[remote] tunnel_port` TLS | gateway host/container port | gateway remote listener (default 0 = disabled; unpublished until the argus-tunnel client exists) |

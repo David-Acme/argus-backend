@@ -274,3 +274,59 @@ proxies everything else to the legacy backend on its internal plain listener
 - **Legacy stays up, goes quiet (Ruling AS)**: the legacy keeps its whole
   notification/productivity code; the routes are simply unreachable through
   the gateway because the route table never sends them there.
+
+## Remote listener + LAN-only bootstrap + refresh-token limiter (F5-1)
+
+- **Remote classification (Ruling CG)**: `[remote] tunnel_port` (default 0 =
+  disabled = the single-listener shape, zero behavior change) adds a SECOND
+  listener mirroring the public one's TLS posture (same host, certs, min
+  protocol; appended by `appendRemoteListener` in
+  `argus-gateway/src/server/listener-config.cc`). A request is
+  remote-classified when its connection's LOCAL port equals `tunnel_port`
+  (`requestIsRemote`, remote-config.cc — TLS is end-to-end through the
+  tunnel relay, so the observed local port is the only honest signal; the
+  relay cannot inject XFF and the peer address is the tunnel client, not
+  the device). The mechanism is one pre-routing advice in
+  `argus-gateway/src/main.cc` (`RemoteGate::check`), the only pre-filter
+  hook the gateway has, which also covers the `/sync` WebSocket upgrade
+  path (Drogon runs pre-routing advices for WS requests too): remote is
+  marked with the `remote_ctx` request attribute on EVERY request, and the
+  whole gateway surface works unchanged remotely except the two bootstrap
+  routes. `network.lan_cidrs` from the blueprint is deliberately NOT
+  introduced: behind the byte-transparent relay every remote peer is the
+  tunnel, so CIDR matching is meaningless — the deviation from the
+  blueprint is this listener marking.
+- **LAN-only gate (Ruling CG)**: `/pairing` and `/auth/register` answer
+  `403 REMOTE_NOT_ALLOWED` (frozen `{status, info, errors}` envelope, new
+  `AppConfig::ERROR_CODE_REMOTE_NOT_ALLOWED` +
+  `getRemoteNotAllowedResponse()`) when the request is remote-classified and
+  `[remote] enabled = false` (default). `enabled = true` lets them pass
+  byte-identical to LAN behavior. Short-circuit responses bypass the
+  post-handling advice, so the gate applies CORS itself to keep the
+  response headers identical to every other gateway response.
+- **Refresh-token rate limiting (Ruling CJ)**: the same gate rate-limits
+  `PATCH /auth/refresh-token` — the only pre-auth route a remote attacker
+  can hit that mints sessions (`/pairing` is bootstrap and 409s after
+  pairing; `/auth/login` and `/auth/register` are bootstrap/registration
+  surfaces gated above). `RefreshRateLimiter`
+  (`argus-gateway/src/server/refresh-rate-limiter.cc`) keeps a
+  sliding-window counter (at most `max_requests` admissions per
+  `window_seconds`) and locks a key out for `lockout_seconds` after
+  `lockout_threshold` consecutive 4xx handler outcomes; the outcome is fed
+  back by a second post-handling advice (`RemoteGate::recordOutcome`).
+  429 uses the frozen envelope (`AppConfig::get429Response`, code
+  `TOO_MANY_REQUESTS`) and is emitted in pre-routing — BEFORE routing,
+  filters and any database access. `[rate_limit] enabled = false` (default)
+  never rejects.
+- **Key and honest limits**: the limiter key is the device fingerprint hash
+  (`DeviceFilter::deviceKey` = HMAC(UA|IP) with the fingerprint secret) —
+  the same key DeviceFilter stores for the request — falling back to the
+  peer IP if the fingerprint secret is unconfigured. Behind the tunnel all
+  remote clients share the relay's local hop, so per-key collapses to
+  per (User-Agent, relay-observed peer); UA rotation mints fresh keys.
+  This is defense-in-depth for the bootstrap route, not an internet-grade
+  WAF — stronger per-device binding lands with the device credential
+  identity (Fase 5, Ruling CH). All state is in-memory per gateway
+  process: a restart clears every counter and lockout, and the tracked-key
+  set is bounded (4096) so rotated fingerprints cannot grow it forever;
+  keys past the bound are rejected with 429.
