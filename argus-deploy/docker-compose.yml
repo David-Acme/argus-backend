@@ -1,9 +1,11 @@
 name: argus-cutover
 
-# Cutover deployment stack (Fase 4, compose v4): gateway + legacy +
-# argus-camera/productivity/notification + the five AI engine services +
-# nats + rustfs + the migration init tools and the vulkan probe. The root
-# docker-compose.yml stays the dev tooling.
+# Cutover deployment stack (Fase 5, compose v5): everything from v4 plus the
+# tunnel transport pair — argus-relay (device-facing entry point) and
+# argus-tunnel-client (dials the gateway's [remote] listener). Both ride the
+# opt-in "tunnel" profile: the default stack stays the v4 shape, and the
+# relay block is written so it can be lifted onto a standalone US server as
+# is. The root docker-compose.yml stays the dev tooling.
 
 services:
   gateway:
@@ -485,6 +487,82 @@ services:
     mem_limit: "${ARGUS_MEMORY_MEMORY_LIMIT:-2g}"
     cpus: "${ARGUS_MEMORY_CPU_LIMIT:-1.50}"
     pids_limit: 512
+    restart: unless-stopped
+
+  # Tunnel relay (Fase 5, Rulings CF/CI/CL): the device-facing entry point of
+  # the byte-transparent transport. Standalone-deployable: lift this block
+  # (plus its config.relay.toml and the argus-cutover image) onto a US server
+  # unchanged — it needs no other service unless [push] intents are wanted.
+  # Opt-in via the "tunnel" profile so the default stack stays the v4 shape;
+  # an empty [tunnel] secret refuses to boot, which keeps it off until the
+  # instance config is filled.
+  argus-relay:
+    profiles: ["tunnel"]
+    image: argus-cutover:local
+    pull_policy: never
+    user: "${ARGUS_UID:-1000}:${ARGUS_GID:-1000}"
+    networks:
+      internal:
+        aliases:
+          - argus-relay
+    ports:
+      - "127.0.0.1:${RELAY_DEVICE_PORT:-7100}:7100"
+      - "127.0.0.1:${RELAY_HOME_PORT:-7101}:7101"
+      - "127.0.0.1:${RELAY_HEALTH_PORT:-7103}:7103"
+    entrypoint: ["/opt/argus/argus-tunnel-relay"]
+    volumes:
+      - type: bind
+        source: ./config.relay.toml
+        target: /opt/argus/config.toml
+        read_only: true
+        bind:
+          create_host_path: false
+    depends_on:
+      nats:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://127.0.0.1:7103/health >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    mem_limit: "${ARGUS_RELAY_MEMORY_LIMIT:-256m}"
+    cpus: "${ARGUS_RELAY_CPU_LIMIT:-0.50}"
+    pids_limit: 128
+    restart: unless-stopped
+
+  # Tunnel client (Fase 5): the home-side half of the transport. Host-networked
+  # like the gateway (transitional Ruling O exception) so it dials the
+  # gateway's [remote] tunnel_port and the relay's loopback-published home
+  # listener on 127.0.0.1. Same "tunnel" profile as the relay.
+  argus-tunnel-client:
+    profiles: ["tunnel"]
+    image: argus-cutover:local
+    pull_policy: never
+    user: "${ARGUS_UID:-1000}:${ARGUS_GID:-1000}"
+    network_mode: host
+    entrypoint: ["/opt/argus/argus-tunnel-client"]
+    volumes:
+      - type: bind
+        source: ./config.tunnel.toml
+        target: /opt/argus/config.toml
+        read_only: true
+        bind:
+          create_host_path: false
+    depends_on:
+      gateway:
+        condition: service_started
+      argus-relay:
+        condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://127.0.0.1:7104/health >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    mem_limit: "${ARGUS_TUNNEL_CLIENT_MEMORY_LIMIT:-256m}"
+    cpus: "${ARGUS_TUNNEL_CLIENT_CPU_LIMIT:-0.50}"
+    pids_limit: 128
     restart: unless-stopped
 
   nats:

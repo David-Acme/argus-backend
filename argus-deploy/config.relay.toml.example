@@ -1,0 +1,64 @@
+# argus-deploy relay configuration (Fase 5). Copy to config.relay.toml
+# (gitignored) next to this file; the compose file bind-mounts it as
+# argus-relay's config.toml. The relay block is also the standalone-deployable
+# US-server shape: copy this file plus the argus-cutover image and the relay
+# runs on its own (push intents off without a NATS broker). The [tunnel]
+# secret must be IDENTICAL to the client's and is never baked into any
+# template: keep it empty here and inject it at deploy time.
+
+[tunnel]
+# Shared HMAC-SHA256 key for the home link AUTH handshake. Empty refuses to
+# start (both binaries). Never commit a real value.
+secret = ""
+
+# Link knobs shared with the client: keep both sides in sync.
+stream_idle_seconds = 300
+max_streams = 256
+socket_snd_buf = 0
+
+# argus-relay (US host): device listener for the app, home listener for the
+# single client link. Published on host loopback by the compose service; a
+# US deployment fronts device_port with its own TLS terminator.
+[server]
+host = "0.0.0.0"
+device_port = 7100
+home_port = 7101
+
+# /health listener, bound on all interfaces so remote probes can reach it.
+health_host = "0.0.0.0"
+health_port = 7103
+
+# Push intents (F5-5): the relay subscribes to
+# argus.notification.v1.push_intent and forwards each intent as a PUSH frame
+# to the home client's bounded queue. Relay-only gate; default off. In the
+# compose stack the NATS broker is the internal alias; a standalone US
+# deployment that runs no broker keeps enabled = false (the notification
+# rows are the source of truth — the queue only accelerates delivery).
+[push]
+enabled = false
+queue_capacity = 256
+
+[nats]
+url = "nats://nats:4222"
+reconnect_wait_ms = 2000
+max_reconnects = 60
+
+# Mirror of the legacy [drogon.app] block for the /health listener.
+[drogon.app]
+number_of_threads = 0
+enable_session = false
+document_root = "./"
+use_sendfile = true
+use_gzip = false
+use_brotli = false
+static_files_cache_time = 5
+idle_connection_timeout = 60
+enable_server_header = true
+enable_date_header = true
+keepalive_requests = 0
+pipelining_requests = 0
+client_max_body_size = "1M"
+client_max_memory_body_size = "1M"
+reuse_port = false
+handle_sig_term = true
+relaunch_on_error = false

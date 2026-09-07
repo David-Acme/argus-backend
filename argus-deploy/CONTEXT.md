@@ -1,12 +1,13 @@
 # argus-deploy — CONTEXT
 
-Compose v4 of the migration plan: the Fase 1 cutover stack (gateway + legacy +
+Compose v5 of the migration plan: the Fase 1 cutover stack (gateway + legacy +
 nats + rustfs + identity init), the Fase 2 argus-camera service (camera.db
 volume + camera-init), the Fase 3 argus-productivity + argus-notification
 services (productivity.db / notification.db volumes + their init profiles) and
 the Fase 4 AI engine services argus-tts/argus-stt/argus-vlm/argus-llm/
-argus-memory (models subpaths + the single-owner memory.db volume).
-Decisions and traps live here.
+argus-memory (models subpaths + the single-owner memory.db volume). Fase 5
+adds the tunnel transport pair — argus-relay + argus-tunnel-client — behind
+the opt-in `tunnel` profile. Decisions and traps live here.
 
 ## Image (Ruling N)
 
@@ -16,7 +17,8 @@ Release, then `cmake --build --preset prod` (backend, all targets,
 `ARGUS_BUILD_LABS=OFF`) plus `--target argus-gateway argus-migrate-identity
 argus-vulkan-probe argus-migrate-camera argus-camera argus-productivity
 argus-notification argus-migrate-productivity argus-migrate-notification
-argus-tts argus-stt argus-vlm argus-llm argus-memory`.
+argus-tts argus-stt argus-vlm argus-llm argus-memory argus-tunnel-client
+argus-tunnel-relay`.
 All binaries land in `/opt/argus`; the service picks its binary via an
 `entrypoint:` override (Docker composes `command:` as ARGUMENTS to the image
 `ENTRYPOINT`, so a `command:` "override" here would execute
@@ -129,6 +131,8 @@ with `scripts/setup.sh` / `scripts/setup.sh camera` on the host.
 | argus-vlm | same image, `entrypoint:` override | internal network (172.19.0.31), loopback 7031 publish; models/vision subpath ro; `/dev/dri`; `/health` healthcheck |
 | argus-llm | same image, `entrypoint:` override | internal network (172.19.0.32), loopback 7032 publish; models/llm subpath ro; `/health` healthcheck |
 | argus-memory | same image, `entrypoint:` override | internal network (172.19.0.33), loopback 7033 publish; memory-db volume (single owner); data dir + camera-db ro opens; models/memory + models/extract ro; gated on nats; `/health` healthcheck |
+| argus-relay | same image, `entrypoint:` override | `profiles: [tunnel]`; internal network, loopback 7100/7101/7103 publishes; no database (Ruling CL); `/health` healthcheck |
+| argus-tunnel-client | same image, `entrypoint:` override | `profiles: [tunnel]`; host-networked like the gateway (dials the gateway `[remote]` listener and the relay's loopback home publish on 127.0.0.1); no database (Ruling CL); `/health` healthcheck |
 | nats | `nats:2.11.14-alpine` | exact tag pin; core NATS (no JetStream needed) |
 | rustfs / rustfs-init | copied verbatim from the root compose | only bind paths, volume/network names differ (`argus-cutover-*`) |
 | identity-init | same image | `profiles: [identity-init]`, runs `argus-migrate-identity` |
@@ -288,6 +292,37 @@ Fase 4 (Rulings CB/CC/CD/CE, compose v4) adds the five AI engine services:
   creates camera.db in parallel, so the camera snapshot fill skips on first
   boot and fills on a later argus-memory restart (per-table emptiness gate).
 
+## Tunnel transport (Fase 5, Rulings CF/CG/CI/CL)
+
+The `tunnel` profile carries the byte-transparent remote transport:
+
+- `argus-relay` is the device-facing entry point (device 7100 for the app,
+  home 7101 for the single client link, `/health` 7103). Its block is
+  standalone-deployable: lifted onto a US server with its `config.relay.toml`
+  and the `argus-cutover:local` image it runs unchanged — it needs no other
+  compose service unless `[push] intents are wanted, and a US deployment
+  fronts the plain 7100 device listener with its own TLS terminator (the app
+  keeps its normal pinned-CA tunnel toward the relay hostname, whose DNS SAN
+  is baked into the leaf via `[remote] hostname`).
+- `argus-tunnel-client` runs on the home topology and dials OUT: the relay's
+  home listener, then the gateway's `[remote] tunnel_port` per stream. It is
+  host-networked like the gateway (same transitional Ruling O exception) so
+  the loopback publishes reach it; it publishes nothing.
+- Both binaries refuse to start with an empty `[tunnel] secret`, which is
+  what keeps the pair inert until the instance configs are filled — that, and
+  the profile, is the default-off shape.
+- Resource limits follow the Ruling CD pattern with tunnel-sized defaults
+  (`ARGUS_RELAY_MEMORY_LIMIT` 256m / 0.50 cpu, same for the client): the
+  epoll engines are single-threaded and keep no database (Ruling CL).
+- Deviation, documented: the brief's "gateway tunnel listener env-driven"
+  is realized as config-file-driven. ConfigService has no env plumbing
+  (the F4-7 Ruling CE adjudication), so the gateway's remote listener port
+  rides the instance `[remote] tunnel_port` in `config.gateway.toml` — the
+  compose environment drives the tunnel pair's published ports instead.
+- The gateway's `[remote]` listener must stay unpublished from the host's
+  other interfaces (it rides the host network with the gateway): it is the
+  remote-facing door, and the relay — not the network — is the entry point.
+
 ## Two-topology truth table
 
 | Aspect | (a) all-legacy in-process | (b) engines-offloaded (shipped) |
@@ -316,6 +351,12 @@ secrets are read at runtime, never printed; the refresh token lands in a
 - argus-notification: `curl -fs http://127.0.0.1:7028/health` (envelope 200).
 - argus-tts / argus-stt / argus-vlm / argus-llm / argus-memory:
   `curl -fs http://127.0.0.1:7029..7033/health` (envelope 200, container-local).
+- argus-relay (tunnel profile): `curl -fs http://127.0.0.1:7103/health`
+  (envelope 200, container-local; the relay binds its health listener on all
+  interfaces so a US deployment can probe it remotely).
+- argus-tunnel-client (tunnel profile): `curl -fs
+  http://127.0.0.1:7104/health` (envelope 200, container-local; the client
+  binds health on host loopback only).
 
 ## Volume map
 
@@ -344,15 +385,20 @@ and `camera-init` is the only migration path onto the volume.
   `config.camera.toml.example` / `config.productivity.toml.example` /
   `config.notification.toml.example` / `config.tts.toml.example` /
   `config.stt.toml.example` / `config.vlm.toml.example` /
-  `config.llm.toml.example` / `config.memory.toml.example` encode the cutover
-  keys; copy to `config.gateway.toml` / `config.legacy.toml` /
+  `config.llm.toml.example` / `config.memory.toml.example` /
+  `config.tunnel.toml.example` / `config.relay.toml.example` encode the
+  cutover keys; copy to `config.gateway.toml` / `config.legacy.toml` /
   `config.camera.toml` / `config.productivity.toml` /
   `config.notification.toml` / `config.tts.toml` / `config.stt.toml` /
-  `config.vlm.toml` / `config.llm.toml` / `config.memory.toml`
+  `config.vlm.toml` / `config.llm.toml` / `config.memory.toml` /
+  `config.tunnel.toml` / `config.relay.toml`
   (gitignored) and fill: `[jwt] secret/refresh_secret` and
   `[device] fingerprint_secret` (identical in all five — the gateway mints,
   the legacy, argus-camera and the two Fase 3 services verify, and the device
-  hash must match across the proxy), `[storage.s3]` in the legacy (the
+  hash must match across the proxy), the `[tunnel] secret` (identical in the
+  two tunnel templates — the HMAC home-link key; empty keeps the pair from
+  booting, and it is never baked into any layer or template),
+  `[storage.s3]` in the legacy (the
   `argus_s3_*` service-account credentials rustfs-init creates from the docker
   secrets), plus region/bucket, and the `device.trusted_proxy_ips` of every
   bridge-networked service (argus-camera, argus-productivity,
@@ -424,7 +470,11 @@ and `camera-init` is the only migration path onto the volume.
 | 7033 plain | 127.0.0.1 (compose publish) | argus-memory (internal, legacy gate upstream) |
 | 4222 | 127.0.0.1 | nats client |
 | 8222 | 127.0.0.1 | nats monitor |
+| 7100 plain | 127.0.0.1 (compose publish) | argus-relay device listener — the app's manual remote server entry point (tunnel profile) |
+| 7101 plain | 127.0.0.1 (compose publish) | argus-relay home listener — the single client link (tunnel profile) |
+| 7103 plain | 127.0.0.1 (compose publish) | argus-relay `/health` (tunnel profile) |
+| 7104 plain | 127.0.0.1 (host network, container binds loopback) | argus-tunnel-client `/health` (tunnel profile) |
 | 9000 | 127.0.0.1 | rustfs S3 |
 | 1984 / 8554 | container loopback only | go2rtc spawned by argus-camera (Ruling AH — never published) |
 | 8800 | host | Tapo talk channel (camera-side, legacy `[tapo]`) |
-| `[remote] tunnel_port` TLS | gateway host/container port | gateway remote listener (default 0 = disabled; unpublished until the argus-tunnel client exists) |
+| `[remote] tunnel_port` TLS | gateway host/container port | gateway remote listener (default 0 = disabled; the instance sets 7034 when the tunnel profile is on — the listener is config-file-driven, not env-driven, see the tunnel section) |

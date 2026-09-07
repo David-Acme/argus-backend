@@ -69,6 +69,8 @@ argus-deploy/config.stt.toml
 argus-deploy/config.vlm.toml
 argus-deploy/config.llm.toml
 argus-deploy/config.memory.toml
+argus-deploy/config.tunnel.toml
+argus-deploy/config.relay.toml
 
 # Docker local runtime: RustFS data, generated bucket name and credentials.
 # These are instance state and must be backed up outside Git.

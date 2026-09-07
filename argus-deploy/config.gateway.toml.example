@@ -140,11 +140,12 @@ silent_end = -1
 
 [remote]
 # Fase 5 (Ruling CG): second listener the argus-tunnel client forwards to.
-# 0 keeps the single-listener shape; when set, requests landing on this
-# port are classified remote and /pairing + /auth/register answer 403
-# REMOTE_NOT_ALLOWED unless enabled = true. The listener mirrors the public
-# one's TLS posture. Keep tunnel_port unpublished from the host network
-# until the tunnel client exists; it is the remote-facing door.
+# 0 keeps the single-listener shape; when set (the compose tunnel profile
+# pairs it with config.tunnel.toml's server.gateway_port), requests landing
+# on this port are classified remote and /pairing + /auth/register answer
+# 403 REMOTE_NOT_ALLOWED unless enabled = true. The listener mirrors the
+# public one's TLS posture and stays unpublished — the relay is the only
+# remote-facing door.
 tunnel_port = 0
 enabled = false
 # Public relay hostname the app configures as its manual server (Fase 5,
