@@ -280,6 +280,52 @@ TEST_CASE("the remote adapter registers the shared descriptors and forwards "
   std::remove(kScratchConfig);
 }
 
+TEST_CASE("with argus-memory down the registered tool handlers degrade "
+          "instead of throwing")
+{
+  std::remove(kScratchConfig);
+  {
+    std::ofstream config(kScratchConfig);
+    config << "[memory]\nremote_timeout_ms = 200\n";
+  }
+  ConfigService::load(kScratchConfig);
+
+  // The adapter registers against a live wire, then the wire goes away —
+  // the outage the tool loop must survive (substrate parity: the in-process
+  // handlers return ok=false, they never throw).
+  std::string url;
+  {
+    const FakeMemoryServer server;
+    url = "127.0.0.1:" + std::to_string(server.port());
+    pointAt(url);
+    RemoteMemoryServiceAdapter adapter;
+    REQUIRE(adapter.initialize());
+    CHECK(ToolRegistry::instance().find("memory.recall") != nullptr);
+  }
+  pointAt(url);
+
+  RemoteMemoryServiceAdapter adapter;
+  REQUIRE(adapter.initialize());
+
+  auto& registry = ToolRegistry::instance();
+  for (const char* name :
+       {"memory.remember", "memory.recall", "memory.forget",
+        "procedure.run"}) {
+    INFO("handler: ", name);
+    const tools::ToolDescriptor* descriptor = registry.find(name);
+    REQUIRE(descriptor != nullptr);
+    tools::ToolResult result;
+    CHECK_NOTHROW(result = descriptor->handler(
+                      memoryCall(name, R"({"query":"mi hermana"})")));
+    CHECK_FALSE(result.ok);
+    CHECK(result.tool == name);
+    CHECK(result.output == "la memoria no esta disponible ahora");
+  }
+
+  adapter.shutdown();
+  std::remove(kScratchConfig);
+}
+
 TEST_CASE("with argus-memory down the adapter degrades instead of crashing")
 {
   std::remove(kScratchConfig);

@@ -68,6 +68,18 @@ bool execStmt(sqlite3* db, const char* sql,
   return stmt.step() == SQLITE_DONE;
 }
 
+// Per-table emptiness: each replica table that booted empty gets its own
+// snapshot fill (an absent identity source must not turn every later boot
+// into a camera re-seed).
+bool replicaPopulated(sqlite3* db, const char* table)
+{
+  SqliteStmt probe;
+  const std::string count = std::string("SELECT COUNT(*) FROM ") + table;
+  if (!probe.prepare(db, count.c_str()))
+    return false;
+  return probe.step() == SQLITE_ROW && probe.columnInt64(0) > 0;
+}
+
 } // namespace
 
 CatalogReplica::CatalogReplica(const Deps& deps)
@@ -270,19 +282,6 @@ void CatalogReplica::seedSnapshot(const SnapshotSources& sources)
 {
   if (!sources.identityDb && !sources.cameraDb)
     return;
-  {
-    std::scoped_lock lock(sources.graph.mutex());
-    sqlite3* db = sources.graph.handle();
-    if (!db)
-      return;
-    SqliteStmt probe;
-    if (probe.prepare(db, "SELECT COUNT(*) FROM catalog_person") &&
-        probe.step() == SQLITE_ROW && probe.columnInt64(0) > 0) {
-      LOG_INFO << "CatalogReplica: replicas already populated; snapshot "
-                  "fill skipped";
-      return;
-    }
-  }
 
   int64_t persons = 0;
   int64_t cameras = 0;
@@ -293,7 +292,16 @@ void CatalogReplica::seedSnapshot(const SnapshotSources& sources)
     sqlite3* db = sources.graph.handle();
     if (!db)
       return;
-    if (sources.identityDb) {
+    const bool personsEmpty = !replicaPopulated(db, "catalog_person");
+    const bool camerasEmpty = !replicaPopulated(db, "catalog_camera");
+    const bool zonesEmpty = !replicaPopulated(db, "catalog_zone");
+    const bool streamsEmpty = !replicaPopulated(db, "catalog_stream");
+    if (!personsEmpty && !camerasEmpty && !zonesEmpty && !streamsEmpty) {
+      LOG_INFO << "CatalogReplica: replicas already populated; snapshot "
+                  "fill skipped";
+      return;
+    }
+    if (sources.identityDb && personsEmpty) {
       for (const auto& row : sources.identityDb->execSqlSync(SNAPSHOT_PERSONS)) {
         execStmt(db, UPSERT_PERSON, [&](SqliteStmt& stmt) {
           stmt.bindInt64(1, row[0].as<int64_t>());
@@ -304,7 +312,7 @@ void CatalogReplica::seedSnapshot(const SnapshotSources& sources)
         ++persons;
       }
     }
-    if (sources.cameraDb) {
+    if (sources.cameraDb && camerasEmpty) {
       for (const auto& row : sources.cameraDb->execSqlSync(SNAPSHOT_CAMERAS)) {
         execStmt(db, UPSERT_CAMERA, [&](SqliteStmt& stmt) {
           stmt.bindInt64(1, row[0].as<int64_t>());
@@ -312,6 +320,8 @@ void CatalogReplica::seedSnapshot(const SnapshotSources& sources)
         });
         ++cameras;
       }
+    }
+    if (sources.cameraDb && zonesEmpty) {
       for (const auto& row : sources.cameraDb->execSqlSync(SNAPSHOT_ZONES)) {
         execStmt(db, UPSERT_ZONE, [&](SqliteStmt& stmt) {
           stmt.bindInt64(1, row[0].as<int64_t>());
@@ -319,6 +329,8 @@ void CatalogReplica::seedSnapshot(const SnapshotSources& sources)
         });
         ++zones;
       }
+    }
+    if (sources.cameraDb && streamsEmpty) {
       for (const auto& row : sources.cameraDb->execSqlSync(SNAPSHOT_STREAMS)) {
         execStmt(db, UPSERT_STREAM, [&](SqliteStmt& stmt) {
           stmt.bindInt64(1, row[0].as<int64_t>());

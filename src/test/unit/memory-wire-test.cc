@@ -123,14 +123,25 @@ struct HttpReply
 HttpReply request(int port, const std::string& method,
                   const std::string& path, const std::string& body)
 {
-  const int fd = ::socket(AF_INET, SOCK_STREAM, 0);
-  REQUIRE(fd >= 0);
   sockaddr_in addr{};
   addr.sin_family = AF_INET;
   addr.sin_port = htons(static_cast<uint16_t>(port));
   addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-  REQUIRE(::connect(fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) ==
-          0);
+  // A refused connect must not skip teardown: retry instead of failing the
+  // REQUIRE while the joinable runner thread is alive (a failed connect
+  // leaves the socket in an error state, so each attempt uses a fresh fd).
+  int fd = -1;
+  bool connected = false;
+  for (int attempt = 0; attempt < 10 && !connected; ++attempt) {
+    if (fd >= 0)
+      ::close(fd);
+    fd = ::socket(AF_INET, SOCK_STREAM, 0);
+    connected = fd >= 0 && ::connect(fd, reinterpret_cast<sockaddr*>(&addr),
+                                     sizeof(addr)) == 0;
+    if (!connected)
+      std::this_thread::sleep_for(std::chrono::milliseconds(100));
+  }
+  REQUIRE(connected);
 
   std::string wire = method + " " + path + " HTTP/1.1\r\nHost: 127.0.0.1\r\n";
   if (!body.empty()) {

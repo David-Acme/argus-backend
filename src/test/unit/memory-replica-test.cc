@@ -265,6 +265,12 @@ TEST_CASE("a boot with empty replica tables takes one snapshot fill from the "
   CHECK(countRows(emptyDb, "SELECT COUNT(*) FROM catalog_person") == 0);
   CHECK(countRows(emptyDb, "SELECT COUNT(*) FROM catalog_camera") == 1);
 
+  // A later boot with the identity source present fills ONLY the empty
+  // replica table (per-table emptiness: the seeded cameras are not re-seeded).
+  emptyReplica.seedFromSnapshot(identityDb.get(), cameraDb.get());
+  CHECK(countRows(emptyDb, "SELECT COUNT(*) FROM catalog_person") == 2);
+  CHECK(countRows(emptyDb, "SELECT COUNT(*) FROM catalog_camera") == 1);
+
   // The no-NATS boot path fills through the static entry (main.cc calls it
   // when the change feed never connected).
   std::filesystem::remove(std::string(kScratchDir) + "/busless.db");

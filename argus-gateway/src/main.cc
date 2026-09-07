@@ -16,8 +16,6 @@
 #include <shared/services/mdns/mdns-service.hxx>
 #include <shared/services/room/room-manager.hxx>
 #include <shared/services/sqlite/db-service.hxx>
-#include <shared/contracts/identity-change-sink.hxx>
-#include <shared/services/socket/nats-identity-change-sink.hxx>
 #include <shared/wrapper/nats/nats-bus.hxx>
 #include <sync/camera-fan-out.hxx>
 #include <sync/camera-notifier.hxx>
@@ -250,9 +248,6 @@ int main()
       LOG_INFO << "NATS event bus connected to " << natsBus->options().url;
       camera_fan_out::subscribeChangeFanOut(*natsBus);
       camera_notifier::subscribeObjectDetected(*natsBus);
-      // Identity writes fan out to the memory catalog replicas (Ruling BX).
-      static const NatsIdentityChangeSink identitySink(natsBus);
-      identity_change::setSink(&identitySink);
     }
     else
       LOG_WARN << "NATS unavailable at " << natsUrl

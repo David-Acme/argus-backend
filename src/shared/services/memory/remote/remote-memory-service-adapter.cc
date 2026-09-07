@@ -61,7 +61,19 @@ bool RemoteMemoryServiceAdapter::initialize()
       if (body.isNull())
         body = Json::Value(Json::objectValue);
       body["context"] = contextBody(call.context);
-      return toToolResult(name, client_->call(path, body));
+      try {
+        return toToolResult(name, client_->call(path, body));
+      }
+      catch (const std::exception& error) {
+        // The in-process substrate returns ok=false, never throws; the tool
+        // loop must not distinguish the substrates on an argus-memory outage.
+        LOG_WARN << "RemoteMemoryServiceAdapter: " << name << " failed ("
+                 << error.what() << ")";
+        tools::ToolResult degraded;
+        degraded.tool = name;
+        degraded.output = "la memoria no esta disponible ahora";
+        return degraded;
+      }
     };
     registry.registerTool(std::move(descriptor));
   }
