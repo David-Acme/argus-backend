@@ -3,6 +3,7 @@
 #include <drogon/drogon.h>
 #include <nats/nats.h>
 
+#include <atomic>
 #include <utility>
 #include <vector>
 
@@ -11,7 +12,11 @@
 
 namespace
 {
-constexpr int64_t kDrainTimeoutMs = 1000;
+// cnats posts the connection callbacks from its global async-dispatcher
+// thread, which can still fire after ~NatsBus freed the object (every
+// callback touching a member would be a use-after-free). Once drain()
+// begins, no callback may dereference the bus until the next connect().
+std::atomic<bool> gCallbacksSuppressed{false};
 } // namespace
 
 void NatsBus::ConnectionDeleter::operator()(natsConnection* connection) const
@@ -60,6 +65,8 @@ void NatsBus::onDisconnected(natsConnection* connection, void* closure)
 {
   (void)connection;
   (void)closure;
+  if (gCallbacksSuppressed.load(std::memory_order_acquire))
+    return;
   LOG_WARN << "NATS connection lost; reconnecting per policy";
 }
 
@@ -67,12 +74,16 @@ void NatsBus::onReconnected(natsConnection* connection, void* closure)
 {
   (void)connection;
   (void)closure;
+  if (gCallbacksSuppressed.load(std::memory_order_acquire))
+    return;
   LOG_INFO << "NATS connection re-established";
 }
 
 void NatsBus::onClosed(natsConnection* connection, void* closure)
 {
   (void)connection;
+  if (gCallbacksSuppressed.load(std::memory_order_acquire))
+    return;
   auto* bus = static_cast<NatsBus*>(closure);
   std::lock_guard lock(bus->mutex_);
   bus->connected_ = false;
@@ -83,7 +94,8 @@ void NatsBus::onMessage(natsConnection* connection, natsSubscription* sub,
 {
   (void)connection;
   auto* bus = static_cast<NatsBus*>(closure);
-  if (bus == nullptr || msg == nullptr)
+  if (bus == nullptr || msg == nullptr
+      || gCallbacksSuppressed.load(std::memory_order_acquire))
     return;
 
   MessageHandler handler;
@@ -111,6 +123,7 @@ bool NatsBus::connect(const Options& options)
     if (connected_)
       return true;
   }
+  gCallbacksSuppressed.store(false, std::memory_order_release);
 
   natsOptions* rawOptions = nullptr;
   if (natsOptions_Create(&rawOptions) != NATS_OK)
@@ -259,6 +272,7 @@ bool NatsBus::unsubscribe(uint64_t id)
 
 void NatsBus::drain()
 {
+  gCallbacksSuppressed.store(true, std::memory_order_release);
   std::vector<SubscriptionPtr> subs;
   ConnectionPtr connection;
   OptionsPtr options;
@@ -283,7 +297,13 @@ void NatsBus::drain()
   subs.clear();
 
   if (connection != nullptr)
-    natsConnection_DrainTimeout(connection.get(), kDrainTimeoutMs);
+  {
+    // Synchronous close instead of natsConnection_DrainTimeout: the drain
+    // variant runs on a background cnats thread that would still own the
+    // connection while the process exits (the teardown abort). Close joins
+    // the connection threads here, on the caller's thread.
+    natsConnection_Close(connection.get());
+  }
 }
 
 bool NatsBus::isConnected() const
