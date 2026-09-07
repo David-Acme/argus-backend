@@ -641,7 +641,11 @@ A Drogon custom error handler wraps built-in 404/405 in the same envelope.
   `argus-contracts/identity/README.md`. The F5-1 rate limiter key stays
   IP-based (`DeviceFilter::deviceKey`) in credential mode: the limiter runs
   pre-DB (Ruling CJ) and a client-presented credential would be an
-  attacker-controlled key.
+  attacker-controlled key. Per-request cost (F5-2 review MINOR-6): in
+  credential mode every authenticated request adds one DeviceFilter
+  `findActiveBySecretHash` lookup on top of jwt-filter's 2 queries — the
+  AGENTS.md "JwtFilter issues 2 queries per authenticated request" note is
+  mode-dependent.
 - **Filter chain**: `DeviceFilter → ValidJsonFilter → JwtFilter → RoleFilter`
 - **Token extraction**: Authorization Bearer / query param `?token=` / cookie
 - **Logout**: invalidates all refresh tokens for user (`is_valid=0`)

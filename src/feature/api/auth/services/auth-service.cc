@@ -57,6 +57,13 @@ struct PendingDeviceSecret
   int64_t expiresAt{0};
 };
 
+struct PendingDeviceSecretInput
+{
+  std::string challengeId;
+  std::string secret;
+  int64_t expiresAt{0};
+};
+
 // A desktop challenge approved in credential mode delivers its issued device
 // secret exactly once to the polling device: held in memory only, TTL bound
 // to the challenge, never persisted.
@@ -72,15 +79,14 @@ std::mutex& pendingDeviceSecretsMutex()
   return mutex;
 }
 
-void storePendingDeviceSecret(const std::string& challengeId,
-                              const std::string& secret, int64_t expiresAt)
+void storePendingDeviceSecret(const PendingDeviceSecretInput& input)
 {
   std::lock_guard lock(pendingDeviceSecretsMutex());
   const int64_t now = std::time(nullptr);
   std::erase_if(pendingDeviceSecrets(), [&](const auto& entry) {
     return entry.second.expiresAt <= now;
   });
-  pendingDeviceSecrets()[challengeId] = {secret, expiresAt};
+  pendingDeviceSecrets()[input.challengeId] = {input.secret, input.expiresAt};
 }
 
 std::string takePendingDeviceSecret(const std::string& challengeId)
@@ -397,8 +403,9 @@ AuthService::approveDeviceLogin(const std::string& challengeId,
   co_await challengeRepository_.markApproved(challengeId, approvingUserId,
                                              accessToken, refreshToken);
   if (!credential.secret.empty())
-    storePendingDeviceSecret(challengeId, credential.secret,
-                             challenge->expiresAt);
+    storePendingDeviceSecret({.challengeId = challengeId,
+                              .secret = credential.secret,
+                              .expiresAt = challenge->expiresAt});
   co_return true;
 }
 
