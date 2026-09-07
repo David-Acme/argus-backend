@@ -30,7 +30,8 @@ RUN --mount=type=cache,target=/root/.conan2 \
     && cmake --build --preset prod --target argus-gateway argus-migrate-identity \
       argus-vulkan-probe argus-migrate-camera argus-camera \
       argus-productivity argus-notification argus-migrate-productivity \
-      argus-migrate-notification -j"$(nproc)"
+      argus-migrate-notification argus-tts argus-stt argus-vlm argus-llm \
+      argus-memory -j"$(nproc)"
 
 FROM debian:trixie-slim AS runtime
 
@@ -55,13 +56,18 @@ COPY --from=build /opt/argus/build/prod/argus-productivity/argus-productivity /o
 COPY --from=build /opt/argus/build/prod/argus-notification/argus-notification /opt/argus/argus-notification
 COPY --from=build /opt/argus/build/prod/tools/migrate-productivity/argus-migrate-productivity /opt/argus/argus-migrate-productivity
 COPY --from=build /opt/argus/build/prod/tools/migrate-notification/argus-migrate-notification /opt/argus/argus-migrate-notification
+COPY --from=build /opt/argus/build/prod/argus-tts/argus-tts /opt/argus/argus-tts
+COPY --from=build /opt/argus/build/prod/argus-stt/argus-stt /opt/argus/argus-stt
+COPY --from=build /opt/argus/build/prod/argus-vlm/argus-vlm /opt/argus/argus-vlm
+COPY --from=build /opt/argus/build/prod/argus-llm/argus-llm /opt/argus/argus-llm
+COPY --from=build /opt/argus/build/prod/argus-memory/argus-memory /opt/argus/argus-memory
 COPY config.toml.example /opt/argus/config.toml
 
 RUN groupadd --gid "$ARGUS_GID" argus \
     && useradd --uid "$ARGUS_UID" --gid "$ARGUS_GID" --create-home \
       --shell /usr/sbin/nologin argus \
     && mkdir -p certs database models third_party/go2rtc camera stream \
-      productivity notification \
+      productivity notification memory \
     && chown -R argus:argus /opt/argus
 
 EXPOSE 7024
