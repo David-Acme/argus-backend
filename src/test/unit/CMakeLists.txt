@@ -21,6 +21,7 @@ set(UNIT_TESTS
     notification-controller-test
     event-intelligence-test
     camera-operator-test
+    device-credential-test
 )
 
 foreach(TEST_NAME IN LISTS UNIT_TESTS)
@@ -45,6 +46,10 @@ target_link_libraries(productivity-schema-test PRIVATE productivity-migration)
 target_link_libraries(productivity-migration-test PRIVATE productivity-migration)
 target_link_libraries(notification-schema-test PRIVATE notification-migration)
 target_link_libraries(notification-migration-test PRIVATE notification-migration)
+
+# The device credential suite rides the shared identity domain: the DeviceFilter
+# gate, the credential repository and the auth-service issuance flow.
+target_link_libraries(device-credential-test PRIVATE argus_identity)
 
 # camera-core (argus-camera service plumbing) is pulled into the default
 # backend build only by camera-config-test and camera-controller-test.
