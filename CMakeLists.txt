@@ -29,7 +29,7 @@ find_library(RNNOISE_LIBRARY NAMES rnnoise)
 
 # Before every add_subdirectory: enable_testing() only reaches
 # subdirectories added after the call, and service folders added earlier
-# (argus-identity) register their root-cttest suites from their own
+# (argus-identity) register their root-ctest suites from their own
 # CMakeLists.
 enable_testing()
 
@@ -61,11 +61,11 @@ add_subdirectory(argus-voice EXCLUDE_FROM_ALL)
 # backend build.
 add_subdirectory(argus-gateway EXCLUDE_FROM_ALL)
 
-# argus-camera service (Fase 2 pilot): built on demand, never as part of the
+# argus-camera service (phase 2 pilot): built on demand, never as part of the
 # default backend build.
 add_subdirectory(argus-camera EXCLUDE_FROM_ALL)
 
-# argus-productivity and argus-notification services (Fase 3 substrate):
+# argus-productivity and argus-notification services (phase 3 substrate):
 # built on demand, never as part of the default backend build.
 add_subdirectory(argus-productivity EXCLUDE_FROM_ALL)
 add_subdirectory(argus-notification EXCLUDE_FROM_ALL)

@@ -1,6 +1,6 @@
 # argus-deploy — AI Agent Instructions
 
-Deployment folder of the monorepo (Fase 6 compose v7). Read `CONTEXT.md` before
+Deployment folder of the monorepo (phase 6 compose v7). Read `CONTEXT.md` before
 any change; the cutover shape and its exceptions are documented there.
 
 ## Scope

@@ -127,4 +127,3 @@ What did NOT move: the productivity repositories and schemas, which
 `argus_sync` still compiles because the gateway's `/sync` reads the same
 rows, and the read-only identity.db the share/member validation needs
 (Ruling AM, narrowed in f7-3).
-

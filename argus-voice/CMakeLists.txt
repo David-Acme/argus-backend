@@ -47,7 +47,6 @@ argus_module(NAME voice-core
         ${VOICE_ENGINE_SOURCES}
     INCLUDES
         src
-        ../src
     DEPENDS
         argus::sdk-voice
         argus::sdk-health

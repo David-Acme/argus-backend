@@ -115,4 +115,3 @@ What did NOT move: the `notification` table's own repository and schema,
 which `argus_sync` compiles because the gateway's `/sync` serves those
 rows and its camera-notifier writes them. Only the notification-TOKEN
 side is exclusively this service's.
-

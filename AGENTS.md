@@ -228,8 +228,8 @@ Naming: `LoginDto`, `RefreshTokenDto`, `CreateCustomerDto`
 
 Naming: `ResponseLoginDto`, `ResponseRefreshTokenDto`
 
-**WS/sync DTOs** (header-only, por ejemplo `synchronized-dto.hxx`): parsean con
-`static {T} fromJson(const Json::Value&)`; se declaran en `argus-sync/src/feature/socket/sync/dtos/`.
+**WS/sync DTOs** (header-only, e.g. `synchronized-dto.hxx`): parsed with
+`static {T} fromJson(const Json::Value&)`; declared in `argus-sync/src/feature/socket/sync/dtos/`.
 
 ### 11. Validation DSL
 

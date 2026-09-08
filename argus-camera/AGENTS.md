@@ -8,7 +8,7 @@ that apply to camera-service code; when in doubt, the root file wins.
 
 1. **Camera domain only** — this service runs the camera/zone data + media
    domain. It must not compile or load any AI service registry (face, llm,
-   vlm, tts, stt, vad stay in the legacy until Fase 4) and takes no labs.
+   vlm, tts, stt, vad stay in the legacy until phase 4) and takes no labs.
 2. **Parameter structs for 3+ params** — any function with 3+ parameters
    must take a struct (designated initializers, every member listed).
 3. **Dependency injection** — services/filters hold dependencies as private

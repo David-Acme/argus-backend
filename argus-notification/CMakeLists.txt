@@ -67,8 +67,7 @@ add_library(notification-core STATIC
 )
 
 target_include_directories(notification-core PUBLIC
-    ${NOTIFICATION_SRC_ROOT}
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src)
+    ${NOTIFICATION_SRC_ROOT})
 
 target_link_libraries(notification-core PUBLIC argus_sync argus::sqlite
     ${ARGUS_SQLITE_VEC_TARGET})

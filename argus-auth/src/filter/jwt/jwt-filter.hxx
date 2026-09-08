@@ -24,7 +24,5 @@ public:
   // Token extraction order shared with the /sync relay.
   static std::string extractToken(const drogon::HttpRequestPtr& req);
 
-  // Signature check only; the user row and the refresh-token session are
-  // validated by the identity service (filterIdentityClient).
   JwtService jwtService_;
 };

@@ -33,8 +33,7 @@ add_library(tts-core STATIC
 )
 
 target_include_directories(tts-core PUBLIC
-    ${TTS_SRC_ROOT}
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src)
+    ${TTS_SRC_ROOT})
 
 target_link_libraries(tts-core PUBLIC
     argus_common

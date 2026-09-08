@@ -67,8 +67,7 @@ add_library(productivity-core STATIC
 )
 
 target_include_directories(productivity-core PUBLIC
-    ${PRODUCTIVITY_SRC_ROOT}
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src)
+    ${PRODUCTIVITY_SRC_ROOT})
 
 target_link_libraries(productivity-core PUBLIC argus_sync argus::sqlite
     ${ARGUS_SQLITE_VEC_TARGET})

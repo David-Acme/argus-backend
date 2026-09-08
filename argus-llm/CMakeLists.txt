@@ -69,8 +69,7 @@ target_include_directories(llm-core SYSTEM PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/../third_party)
 
 target_include_directories(llm-core PUBLIC
-    ${LLM_SRC_ROOT}
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src)
+    ${LLM_SRC_ROOT})
 
 target_link_libraries(llm-core PUBLIC
     argus_common

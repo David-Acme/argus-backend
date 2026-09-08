@@ -252,9 +252,38 @@ TEST_CASE("credential identity mode issues, binds and authenticates devices")
   rejected->addHeader("User-Agent", kUa);
   rejected->addHeader("Authorization", "Bearer " + seededToken);
   drogon::sync_wait(deviceFilter.doFilter(rejected));
+  CHECK(deviceCtx(rejected).deviceHash.empty());
   const auto mismatch = drogon::sync_wait(jwtFilter.doFilter(rejected));
   REQUIRE(mismatch);
   CHECK(mismatch->getStatusCode() == drogon::HttpStatusCode::k401Unauthorized);
+  CHECK(std::string(mismatch->getBody()).find("Device mismatch") !=
+        std::string::npos);
+
+  auto boundToEmpty = drogon::HttpRequest::newHttpRequest();
+  boundToEmpty->addHeader("User-Agent", kUa);
+  boundToEmpty->addHeader("Authorization", "Bearer " + seededToken);
+  boundToEmpty->addHeader("X-Argus-Device-Credential", kSecret);
+  drogon::sync_wait(deviceFilter.doFilter(boundToEmpty));
+  CHECK_FALSE(deviceCtx(boundToEmpty).deviceHash.empty());
+  const auto stillMismatch =
+      drogon::sync_wait(jwtFilter.doFilter(boundToEmpty));
+  REQUIRE(stillMismatch);
+  CHECK(stillMismatch->getStatusCode() ==
+        drogon::HttpStatusCode::k401Unauthorized);
+  client->execSqlSync("DELETE FROM refresh_token");
+
+  client->execSqlSync(
+      "INSERT INTO refresh_token (user_id, access_token, refresh_token, "
+      "device_hash, user_agent, expires_at) "
+      "VALUES (1, ?, 'seed-refresh-unbound', '', ?, ?)",
+      seededToken, kUa, now + 3600);
+  auto unboundSession = drogon::HttpRequest::newHttpRequest();
+  unboundSession->addHeader("User-Agent", kUa);
+  unboundSession->addHeader("Authorization", "Bearer " + seededToken);
+  drogon::sync_wait(deviceFilter.doFilter(unboundSession));
+  CHECK(deviceCtx(unboundSession).deviceHash.empty());
+  const auto admitted = drogon::sync_wait(jwtFilter.doFilter(unboundSession));
+  CHECK_FALSE(admitted);
   client->execSqlSync("DELETE FROM refresh_token");
 
   const auto created = drogon::sync_wait(

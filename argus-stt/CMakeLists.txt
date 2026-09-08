@@ -61,8 +61,7 @@ target_include_directories(stt-core SYSTEM PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/sherpa-onnx)
 
 target_include_directories(stt-core PUBLIC
-    ${STT_SRC_ROOT}
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src)
+    ${STT_SRC_ROOT})
 
 target_link_libraries(stt-core PUBLIC
     argus_common

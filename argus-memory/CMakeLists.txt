@@ -187,18 +187,13 @@ if(ARGUS_ROOT_PROJECT)
     # onto the tool registry, the wire forwarding and the degrade-without-crash
     # paths when argus-memory is down.
     add_executable(memory-remote-adapter-test tests/unit/memory-remote-adapter-test.cc
-        ${CMAKE_CURRENT_SOURCE_DIR}/../argus-common/src/shared/services/config-service/config-service.cc
         ${SHARED_ROOT}/services/memory/remote/memory-remote.cc
-        ${SHARED_ROOT}/services/memory/remote/remote-memory-service-adapter.cc
-        ${SHARED_ROOT}/services/memory/memory-tool-descriptors.cc
-        ${SHARED_ROOT}/services/tools/tool-registry.cc)
+        ${SHARED_ROOT}/services/memory/remote/remote-memory-service-adapter.cc)
 
-    target_include_directories(memory-remote-adapter-test PRIVATE ${MEMORY_SRC_ROOT}
-        ${CMAKE_CURRENT_SOURCE_DIR}/../argus-common/src)
+    target_include_directories(memory-remote-adapter-test PRIVATE ${MEMORY_SRC_ROOT})
 
-    target_link_libraries(memory-remote-adapter-test PRIVATE Drogon::Drogon
-        tomlplusplus::tomlplusplus argus::phrase argus::llm-client
-        argus::sqlite doctest::doctest)
+    target_link_libraries(memory-remote-adapter-test PRIVATE memory-core
+        doctest::doctest)
 
     target_compile_options(memory-remote-adapter-test PRIVATE -Wall -Wextra)
 

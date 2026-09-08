@@ -71,8 +71,7 @@ target_include_directories(vlm-core SYSTEM PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/../third_party)
 
 target_include_directories(vlm-core PUBLIC
-    ${VLM_SRC_ROOT}
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src)
+    ${VLM_SRC_ROOT})
 
 target_link_libraries(vlm-core PUBLIC
     argus_common
