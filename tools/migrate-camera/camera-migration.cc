@@ -16,7 +16,6 @@ namespace
 constexpr uint64_t kFnvOffset = 14695981039346656037ULL;
 constexpr uint64_t kFnvPrime = 1099511628211ULL;
 
-// FK-safe copy order: camera first, then the camera_id children.
 const std::vector<std::string> kCameraTables = {
     "camera",
     "camera_stream",
@@ -297,10 +296,7 @@ CameraResult validateSource(const std::string& sourcePath)
   return result;
 }
 
-// Ruling V no-op guard: an existing schema-current camera.db is live data
-// after the F2-2 cutover, so a rerun must leave it untouched and must never
-// fail just because the frozen argus.db copy is gone. An existing camera.db
-// that is NOT schema-current is an operator problem, never silently wiped.
+// No-op report for a schema-current live target; nothing is copied or wiped.
 CameraMigrationReport noOpReport(sqlite3* target)
 {
   CameraMigrationReport report;
@@ -322,8 +318,7 @@ CameraMigrationReport noOpReport(sqlite3* target)
   return report;
 }
 
-// In-memory schema reference used to compare the column shape of an existing
-// target against camera-schema.sql.
+// In-memory schema reference for comparing an existing target's column shape.
 CameraHandleResult schemaReference(const std::string& schemaPath)
 {
   auto reference = openHandle(":memory:", SQLITE_OPEN_READWRITE);

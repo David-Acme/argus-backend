@@ -216,8 +216,6 @@ int reactionTest()
                      .systemAlert = true});
   check(alarmed.intensity == 1.0F, "an alarm is full intensity");
 
-  // Tone rides the user turn, so only the kinds that change HOW Argus answers
-  // carry a note. Idle/Thinking must stay silent or every turn pays tokens.
   check(!ReactionEngine::toneNote(alarmed, "es").empty(),
         "alarmed carries a tone note");
   check(ReactionEngine::toneNote({.kind = ReactionKind::Idle,

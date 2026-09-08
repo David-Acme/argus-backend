@@ -17,8 +17,7 @@ public:
   virtual void handleEvents(uint32_t events) = 0;
 };
 
-// Single-threaded epoll loop: level-triggered I/O, timers, cross-thread
-// posts and deferred object release.
+// Single-threaded epoll loop: level-triggered I/O, timers, cross-thread posts, deferred release.
 class PollLoop
 {
 public:
@@ -39,8 +38,7 @@ public:
   void update(int fd, uint32_t events, LoopActor* actor);
   void unwatch(int fd);
 
-  // Keeps an object alive until the end of the current loop iteration so a
-  // callback may destroy it safely.
+  // Keeps an object alive until the end of the loop iteration so a callback may destroy it safely.
   void retain(std::shared_ptr<void> object);
 
 private:

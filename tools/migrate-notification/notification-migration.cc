@@ -16,7 +16,6 @@ namespace
 constexpr uint64_t kFnvOffset = 14695981039346656037ULL;
 constexpr uint64_t kFnvPrime = 1099511628211ULL;
 
-// The two notification tables share no parent among themselves.
 const std::vector<std::string> kNotificationTables = {
     "notification",
     "notification_token",
@@ -297,10 +296,7 @@ NotificationResult validateSource(const std::string& sourcePath)
   return result;
 }
 
-// No-op guard: an existing schema-current notification.db is live data after
-// the F3-2 cutover, so a rerun must leave it untouched and must never fail
-// just because the frozen argus.db copy is gone. An existing notification.db
-// that is NOT schema-current is an operator problem, never silently wiped.
+// No-op report for a schema-current live target; nothing is copied or wiped.
 NotificationMigrationReport noOpReport(sqlite3* target)
 {
   NotificationMigrationReport report;
@@ -322,8 +318,7 @@ NotificationMigrationReport noOpReport(sqlite3* target)
   return report;
 }
 
-// In-memory schema reference used to compare the column shape of an existing
-// target against notification-schema.sql.
+// In-memory schema reference for comparing an existing target's column shape.
 NotificationHandleResult schemaReference(const std::string& schemaPath)
 {
   auto reference = openHandle(":memory:", SQLITE_OPEN_READWRITE);
@@ -347,9 +342,6 @@ NotificationMigrationReport verifyForeignKeyIntegrity(sqlite3* target)
     report.error = sqlite3_errmsg(target);
     return report;
   }
-  // The user rows live in identity.db, so every child row references a
-  // missing user parent by design: only violations against the notification
-  // tables themselves fail the migration.
   while (stmt.step() == SQLITE_ROW) {
     const auto parent = stmt.columnText(2);
     if (parent == "user")

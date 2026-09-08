@@ -17,8 +17,7 @@ public:
   CameraMic& operator=(const CameraMic&) = delete;
 
   bool open(const std::string& rtspUrl, OnAudio onAudio);
-  // Reads and decodes audio until a block is emitted. Returns false on
-  // end-of-stream, error or timeout, or when the mic is not open.
+  // Reads and decodes audio until a block is emitted; false on end, error, timeout or closed mic.
   bool readBlock();
   void close();
   const std::string& lastError() const;

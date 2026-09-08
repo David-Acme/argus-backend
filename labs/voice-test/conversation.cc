@@ -37,7 +37,7 @@ std::string stripInjectedContext(std::string text)
         break;
       size_t end = closeAt + close.size();
       size_t lineEnd = text.find('\n', end);
-      if (lineEnd != std::string::npos)  // trailing "use these facts" line
+      if (lineEnd != std::string::npos)
         lineEnd = text.find('\n', lineEnd + 1);
       end = lineEnd == std::string::npos ? text.size() : lineEnd + 1;
       if (start >= 2 && text.compare(start - 2, 2, "\n\n") == 0)
@@ -116,8 +116,6 @@ void ConversationService::trimHistory(WorkingMemory& wm, int64_t userId)
   if (!transcript.empty())
     memory_.enqueueCompaction(userId, transcript, wm.lang);
 
-  // The prune already broke the prefill prefix; strip stale injected
-  // context from the surviving user messages.
   for (auto& msg : wm.history) {
     if (msg.role == "user")
       msg.content = stripInjectedContext(msg.content);

@@ -29,9 +29,6 @@ struct NotificationTableReport
 struct NotificationMigrationReport
 {
   bool ok = false;
-  // True when the target already existed schema-current and nothing was
-  // copied: after the F3-2 cutover notification.db is live data and a rerun
-  // must never wipe it.
   bool noop = false;
   std::string error;
   std::vector<NotificationTableReport> tables;
@@ -54,21 +51,13 @@ struct NotificationVerificationInput
   sqlite3* target = nullptr;
 };
 
-// Creates the notification tables on db from the schema file, failing on the
-// first statement error.
+// Creates the notification tables on db from the schema file, failing on the first statement error.
 NotificationResult applyNotificationSchema(const NotificationSchemaInput& input);
 
-// Compares the attached read-only source ("src") against the target main
-// database per notification table: column shape, row count and checksum.
-// Requires that a source database is already attached as "src".
+// Verifies the attached read-only source ("src") against the target per notification table.
 NotificationMigrationReport verifyNotificationTables(
     const NotificationVerificationInput& input);
 
-// Full migration: schema creation, transactional copy of notification and
-// notification_token and verification. The source database is attached
-// read-only; the target file is recreated. A schema-current target
-// short-circuits to a verified no-op. The user parent rows live in
-// identity.db, so the copy runs with foreign keys off and foreign_key_check
-// ignores user references.
+// Full migration: schema, transactional copy, verification; schema-current targets no-op.
 NotificationMigrationReport migrateNotification(
     const NotificationMigrationOptions& options);

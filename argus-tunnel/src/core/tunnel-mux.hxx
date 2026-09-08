@@ -17,14 +17,11 @@ class MuxDelegate
 public:
   virtual ~MuxDelegate() = default;
   virtual const std::string& authSecret() const = 0;
-  // The relay verifies the peer's AUTH mac against the per-link challenge
-  // and answers with its own AUTH_OK proof; the client verifies that proof
-  // before activating the link.
+  // Relay answers the peer AUTH with its own proof; the client verifies it before activating the link.
   virtual bool validatesAuth() const = 0;
   virtual void onAuthAccepted() {}
   virtual void onAuthRejected() {}
-  // The relay delivered a PUSH control frame; only dispatched after the home
-  // link is authenticated (F5-5).
+  // PUSH frame from the relay; dispatched only on an authenticated home link.
   virtual void onPushFrame(const std::string& payload) { (void)payload; }
   // The remote side opened a stream (client: dial the gateway).
   virtual void onRemoteOpen(uint32_t streamId) { (void)streamId; }
@@ -42,9 +39,7 @@ struct Stream
   bool localReadPaused{false};
 };
 
-// Shared stream multiplexer over the single home link: OPEN/DATA/CLOSE
-// routing, bounded per-stream and global pending buffers with read
-// pausing back-pressure, idle and dead-link sweeps.
+// Shared stream multiplexer over the single home link: OPEN/DATA/CLOSE routing, bounded pending buffers with read pausing, idle and dead-link sweeps.
 class TunnelMux
 {
 public:
@@ -52,14 +47,9 @@ public:
 
   struct Limits
   {
-    // Local reads pause at this pending depth and streams are killed past
-    // twice it (the safety net for a stalled far end).
     size_t streamPendingCap{256 * 1024};
     size_t globalPendingCap{8 * 1024 * 1024};
-    // Home-link read pauses when queued far-end bytes reach this mark.
     size_t linkHighWater{256 * 1024};
-    // SO_SNDBUF applied to every tunnel socket (0 = kernel default); keeps
-    // back-pressure in software queues instead of kernel buffers.
     int socketSndBuf{0};
     std::chrono::seconds idleTimeout{300};
     std::chrono::seconds deadLinkTimeout{90};
@@ -69,24 +59,20 @@ public:
 
   TunnelMux(PollLoop& loop, Limits limits, MuxDelegate* delegate);
 
-  // Takes ownership of the home-link socket (accepted on the relay,
-  // connected on the client).
+  // Takes ownership of the home-link socket (accepted on the relay, connected on the client).
   void adoptHome(const TcpPeer::Ptr& peer);
   // Client side: sends the AUTH mac bound to the current link challenge.
   void sendAuth();
-  // Registers a locally-created socket for a stream (device connection on
-  // the relay, dialed gateway connection on the client).
+  // Registers a locally-created socket for a stream (device connection on the relay, dialed gateway connection on the client).
   bool openLocal(uint32_t streamId, const TcpPeer::Ptr& peer);
-  // Relay side: allocates a stream id, registers it and sends OPEN.
-  // Returns 0 when the stream cap is reached or the link is down.
+  // Relay side: allocates a stream id and sends OPEN; returns 0 at the stream cap or on a down link.
   uint32_t openRemote();
   void closeStream(uint32_t streamId, CloseReason reason);
   void dropLink();
   void teardownAll();
   void sweep();
   void sendPing();
-  // Relay side: sends a PUSH control frame toward the home client (F5-5);
-  // loop thread only.
+  // Relay side: sends a PUSH frame toward the home client; loop thread only.
   bool sendPush(const std::string& payload);
 
   bool hasHome() const { return homePeer_ != nullptr; }

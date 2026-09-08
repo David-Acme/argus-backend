@@ -29,9 +29,6 @@ struct CameraTableReport
 struct CameraMigrationReport
 {
   bool ok = false;
-  // True when the target already existed schema-current and nothing was
-  // copied (the F2-1 Ruling V no-op: after the cutover camera.db is live
-  // data and a rerun must never wipe it).
   bool noop = false;
   std::string error;
   std::vector<CameraTableReport> tables;
@@ -54,17 +51,11 @@ struct CameraVerificationInput
   sqlite3* target = nullptr;
 };
 
-// Creates the camera tables on db from the schema file, failing on the first
-// statement error.
+// Creates the camera tables on db from the schema file, failing on the first statement error.
 CameraResult applyCameraSchema(const CameraSchemaInput& input);
 
-// Compares the attached read-only source ("src") against the target main
-// database per camera table: column shape, row count and checksum. Requires
-// that a source database is already attached as "src".
+// Verifies the attached read-only source ("src") against the target per camera table.
 CameraMigrationReport verifyCameraTables(const CameraVerificationInput& input);
 
-// Full migration: schema creation, transactional copy of the camera tables
-// (camera -> camera_stream -> zone, keeping camera_id FK integrity) and
-// verification. The source database is attached read-only; the target file is
-// recreated. A schema-current target short-circuits to a verified no-op.
+// Full migration: schema, transactional copy in FK-safe order, verification; schema-current targets no-op.
 CameraMigrationReport migrateCamera(const CameraMigrationOptions& options);

@@ -12,8 +12,7 @@ struct ClientConfig
   uint16_t healthPort{7104};
   tunnel::ClientOptions tunnel;
 
-  // Resolves [tunnel] connection/behavior keys plus the client's [server]
-  // keys (relay target, gateway remote listener, health listener).
+  // Resolves [tunnel] keys plus the client's [server] keys (relay target, gateway remote listener, health listener).
   static ClientConfig resolve();
 };
 
@@ -23,8 +22,7 @@ struct RelayConfig
   uint16_t healthPort{7103};
   tunnel::RelayOptions relay;
 
-  // Resolves the [tunnel] behavior keys plus the relay's [server] keys
-  // (bind host, device/home/health listeners).
+  // Resolves the [tunnel] behavior keys plus the relay's [server] keys (bind host, device/home/health listeners).
   static RelayConfig resolve();
 };
 

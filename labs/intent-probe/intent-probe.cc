@@ -116,14 +116,7 @@ struct TrainOptions
 
 constexpr const char* kCuratedName = "/usage-curated.tsv";
 
-// usage.tsv is telemetry: it records what fastText PREDICTED, so it already
-// contains questions, recalls and retractions labelled memory_save. Curation
-// runs the same deterministic barrier the runtime uses (RuleParser) before a
-// line may become a training label.
-// fastText is a hint, not a policy. STT output has no accents and no
-// punctuation, so the classifier will keep mislabelling retractions and
-// recall questions; what must be zero is how many of those survive the
-// deterministic barrier and reach memory formation.
+// usage.tsv records fastText predictions; only lines that survive the deterministic barrier become training labels.
 int barrierTestImpl(const std::string& modelPath, const std::string& casesPath)
 {
   ConfigService::load("config.toml");
@@ -691,9 +684,6 @@ int main(int argc, char** argv)
   int epoch = 25;
   double lr = 0.5;
   bool includeUsage = false;
-  // softmax, not ova: the shipped model is softmax and IntentService compares
-  // the winning class against `none`. One-vs-all scores do not sum to 1, so
-  // retraining with ova silently changes what the margin gate means.
   fasttext::loss_name loss = fasttext::loss_name::softmax;
   int dim = 50;
   int bucket = 20000;

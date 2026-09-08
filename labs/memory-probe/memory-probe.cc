@@ -336,9 +336,7 @@ int captureTest()
   return fails == 0 ? 0 : 1;
 }
 
-// Diagnostic sweep over cases no fixture covers: STT artefacts, corrections,
-// anaphora, name/vocabulary collisions, mixed language. Prints the verdict of
-// every deterministic layer so wrong answers are visible instead of implied.
+// Diagnostic sweep over cases no fixture covers; prints every deterministic layer's verdict.
 int edgeSweep()
 {
   loadLabConfig();
@@ -349,7 +347,7 @@ int edgeSweep()
   struct Group
   {
     const char* name;
-    std::vector<std::pair<const char*, const char*>> cases; // text, lang
+    std::vector<std::pair<const char*, const char*>> cases;
   };
 
   const std::vector<Group> groups = {
@@ -449,8 +447,6 @@ int edgeSweep()
 int capturePolicyTest()
 {
   loadLabConfig();
-  // deferStore keeps the worker and the graph out of the way: a policy
-  // decision must be observable without persisting anything.
   gMemory.init({.deferStore = true});
   ParserFixture fixture(ConfigService::getString("database.file"));
 
@@ -499,9 +495,6 @@ int capturePolicyTest()
   check(anonymous.outcome == CaptureOutcome::Rejected,
         "no user id -> nothing is queued");
 
-  // The explicit path decides from the rules before touching the store, so
-  // every case here returns without a graph. A regression shows up as a
-  // Deferred (and, in production, as a wasted extraction job).
   const Case explicitRejects[] = {
       {"cuando viene mi hermana", "es", CaptureOutcome::Rejected},
       {"cuándo viene mi hermana", "es", CaptureOutcome::Rejected},
@@ -531,7 +524,6 @@ int capturePolicyTest()
                 << " factId=" << got.factId << "\n";
   }
 
-  // The trailing tag is noise; the same words inside the sentence are the fact.
   struct Content
   {
     std::string text;
@@ -634,8 +626,7 @@ int toolParseTest()
   return fails == 0 ? 0 : 1;
 }
 
-// §10.6: the token cost the normal dialogue stops paying now that it never
-// announces tools to the model.
+// Token cost the dialogue stops paying once the prompt stops announcing tools.
 int64_t episodeCount(int64_t userId)
 {
   std::scoped_lock lock(gVecDb.mutex());
@@ -661,8 +652,7 @@ std::string newestEpisode(int64_t userId)
   return stmt.step() == SQLITE_ROW ? stmt.columnText(0) : std::string{};
 }
 
-// Plan §10.4.6-7: a session of greetings, questions and sums must not become
-// an episode; a durable statement must survive into the summary.
+// Greetings, questions and sums must not become episodes; durable statements survive the summary.
 int compactionTest()
 {
   loadLabConfig();
@@ -729,8 +719,7 @@ int compactionTest()
   return fails == 0 ? 0 : 1;
 }
 
-// Plan §10.6: what the normal dialogue stops paying now that the system
-// prompt no longer announces tools.
+// Token cost the dialogue stops paying once the prompt stops announcing tools.
 int ttftBench(int rounds)
 {
   loadLabConfig();
@@ -773,7 +762,7 @@ int ttftBench(int rounds)
     return std::pair{ttft, gLlm.lastPrefillStats().promptTokens};
   };
 
-  run(plain); // warm the weights so round 1 is not the outlier
+  run(plain);
   std::vector<long long> withMs, withoutMs;
   int withTok = 0, withoutTok = 0;
   for (int i = 0; i < rounds; ++i) {
@@ -2662,7 +2651,7 @@ int graphTest()
       stmt.step();
   }
   graph.migrateLegacy();
-  graph.migrateLegacy(); // idempotence: second pass must not duplicate
+  graph.migrateLegacy();
   {
     std::scoped_lock lock(graph.mutex());
     SqliteStmt stmt;
@@ -2843,8 +2832,7 @@ Json::Value envelopeOf(const HttpReply& reply)
   return json;
 }
 
-// Pure wire: never touches a local store, so it is safe to point at any
-// running argus-memory instance.
+// Pure wire probe: safe to point at any running argus-memory instance.
 int httpProbe(const std::string& hostPort)
 {
   const auto post = [&](const std::string& path, const Json::Value& body) {

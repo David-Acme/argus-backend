@@ -181,8 +181,6 @@ int main(int argc, char** argv)
 {
   streamingSplitCheck();
 
-  // --http <url> probes a running argus-tts over the internal wire instead
-  // of the in-process engine (no local models needed).
   std::string httpUrl;
   for (int i = 1; i < argc; ++i)
     if (std::string(argv[i]) == "--http" && i + 1 < argc)

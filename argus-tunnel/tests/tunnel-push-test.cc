@@ -22,8 +22,7 @@ TEST_CASE("push intents reach the client queue over an authenticated link")
 
 namespace
 {
-// Mutex-guarded holder for a client created on the loop thread, so the test
-// thread can poll its counters without racing the pointer itself.
+// Client created on the loop thread; the mutex guards the pointer for test-thread polls.
 struct ClientHolder
 {
   std::mutex mutex;
@@ -50,7 +49,6 @@ TEST_CASE("intents posted while the link is down deliver after reconnect")
   REQUIRE(waitFor([&] { return harness.relay->pushQueued() == 2; }, 5000));
   CHECK(harness.relay->pushForwarded() == 0);
 
-  // A restarted client re-authenticates and the queue drains.
   harness.loop.post([&harness, restarted] {
     ClientOptions options;
     options.relayHost = "127.0.0.1";
@@ -72,7 +70,6 @@ TEST_CASE("intents posted while the link is down deliver after reconnect")
   CHECK(harness.relay->pushQueued() == 0);
   CHECK(harness.relay->pushForwarded() == 2);
 
-  // Stop the replacement before the harness tears the loop down.
   harness.loop.post([restarted] {
     std::lock_guard<std::mutex> lock(restarted->mutex);
     if (restarted->client)
@@ -83,8 +80,6 @@ TEST_CASE("intents posted while the link is down deliver after reconnect")
 
 TEST_CASE("the relay drops past capacity with accounting and no crash")
 {
-  // Capacity 4; the client is stopped so the link stays down and nothing
-  // drains the queue.
   Harness small({});
   small.options_.relayPushCapacity = 4;
   REQUIRE(small.start());

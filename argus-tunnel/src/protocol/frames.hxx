@@ -69,14 +69,11 @@ private:
   bool failed_{false};
 };
 
-// HMAC-SHA256 over the shared secret; the home control plane's only
-// authentication material. Both macs bind the per-link relay challenge, so
-// captured material cannot be replayed on a later link.
+// HMAC-SHA256 over the shared secret; both macs bind the per-link relay challenge.
 std::string hmacSha256(const std::string& key, const std::string& message);
 // Client proof: HMAC(secret, challenge || kAuthMessage).
 std::string authMac(const std::string& secret, const std::string& challenge);
-// Relay proof carried by AUTH_OK: HMAC(secret, challenge ||
-// kRelayAuthMessage); the client verifies it before activating the link.
+// Relay proof carried by AUTH_OK, verified by the client before link activation.
 std::string relayAuthMac(const std::string& secret,
                          const std::string& challenge);
 std::string randomChallenge();

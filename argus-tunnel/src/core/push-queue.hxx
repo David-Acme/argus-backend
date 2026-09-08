@@ -9,16 +9,7 @@
 
 namespace tunnel
 {
-// Bounded in-memory push-intent queue (F5-5): the relay buffers intents while
-// the home link is down, the client buffers intents for the device. The deque
-// is touched only on the owning PollLoop thread; the size/drop counters are
-// atomic so /health can read them from the Drogon thread. Nothing persists
-// (Ruling CL — no database in the tunnel). The policy is reject-new: past the
-// capacity the INCOMING intent is counted as a drop and the queued ones are
-// kept in arrival order (no oldest eviction). Empty payloads and payloads
-// above the tunnel frame bound kMaxPayload are also rejected at this ingress
-// with drop accounting — the relay's NATS subscription can deliver larger
-// payloads than a PUSH frame can carry.
+// Bounded push-intent queue with drop accounting; reject-new, nothing persists.
 class PushQueue
 {
 public:

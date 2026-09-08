@@ -103,9 +103,10 @@ TEST_CASE("parser rejects oversize, corrupt and unknown frames")
   {
     FrameParser parser;
     std::string header = encodeFrame(FrameType::Data, 1);
-    header[8] = static_cast<char>(0x01);
-    header[9] = static_cast<char>(0x00);
-    header[10] = static_cast<char>(0x04); // 256 KiB + 1
+    constexpr size_t kOversizePayload = kMaxPayload + 1;
+    header[8] = static_cast<char>(kOversizePayload & 0xFF);
+    header[9] = static_cast<char>((kOversizePayload >> 8) & 0xFF);
+    header[10] = static_cast<char>((kOversizePayload >> 16) & 0xFF);
     parser.feed(header);
     CHECK(parser.failed());
   }
@@ -171,8 +172,6 @@ TEST_CASE("auth macs are 32 bytes, secret sensitive and challenge bound")
   CHECK(mac.size() == kAuthPayloadSize);
   CHECK(mac == authMac("a-secret", challenge));
   CHECK(mac != authMac("another-secret", challenge));
-  // A different challenge (or a missing one) yields a different mac, so
-  // captured material cannot be replayed on a later link.
   CHECK(mac != authMac("a-secret", std::string(kChallengeSize, '\x12')));
   CHECK(mac != authMac("a-secret", ""));
   CHECK(mac != relayAuthMac("a-secret", challenge));
