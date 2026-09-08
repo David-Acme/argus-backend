@@ -60,9 +60,21 @@ own `productivity.db`.
   AM). The databases open WAL with `busy_timeout`; no DDL runs at boot
   beyond the migrate tool's schema-current check.
 - **Identity reads (Ruling AM)**: `[identity] db` opens mode=ro as the named
-  identity client (`DbService::setIdentityClient` slot); `UserRepository`
+  identity client (`DbService::setIdentityClient` slot; SQLite URI filenames
+  are enabled before the first `sqlite3_open` so the `mode=ro` URI parses);
+  `UserRepository`
   reads then resolve to identity.db, so share targets created after the
-  cutover are shareable. Absent key boots identity-free.
+  cutover are shareable. Absent key boots identity-free. The gateway creates
+  identity.db at its own boot, which on a fresh install may land after ours,
+  so the open waits bounded for the file to exist; the productivity tables
+  reference user rows that live in identity.db, so foreign-key enforcement
+  stays off on every connection.
+- **CORS**: the legacy answered every preflight in pre-routing and the
+  gateway forwards OPTIONS on proxied paths untouched, so this surface keeps
+  answering OPTIONS itself (`AppConfig::handleOptions`).
+- **Audit recipients**: `publishAudit` keeps the same recipient set the
+  legacy `SyncAuditService::publishUsers` kept — non-positive ids out,
+  duplicates collapsed.
 - **`GET /health`**: standard `ApiResponse` envelope
   `{status: 200 (int), info: {service: argus-productivity, uptimeSeconds},
   errors: null}`; never depends on any downstream service.

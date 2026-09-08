@@ -13,10 +13,7 @@
 #include <shared/services/sqlite/vec-db.hxx>
 #include <shared/services/tools/tool-registry.hxx>
 
-// Owns the memory stack by value (the adapter shape: no singleton). The
-// stack is THE capacity of this service (Ruling BW); the tool handlers
-// (Ruling BY) are reached through the same descriptors MemoryService
-// registers, so the wire and the legacy tool loop cannot drift.
+// Owns the memory stack by value; no singleton.
 class MemoryController
     : public drogon::HttpController<MemoryController, false>
 {
@@ -34,9 +31,7 @@ public:
                 "/memory/v1/durable-transcript", drogon::Post);
   METHOD_LIST_END
 
-  // Boots the memory stack (deferStore: the store opens on the beginning
-  // advice, after Drogon's sqlite clients configured the engine) and
-  // registers the tool handlers into the controller-owned registry.
+  // Boots the memory stack (deferStore) and registers the tool handlers.
   MemoryController();
 
   void initStack();
@@ -61,8 +56,7 @@ private:
   runTool(const std::string& name, const Json::Value& arguments,
           const MemoryToolContext& context);
 
-  // Worker chats ride the argus-llm wire (Ruling BZ); back-pressure is the
-  // memory stack's bounded work queue, never a poll of the remote engine.
+  // Worker chats ride the argus-llm wire.
   std::unique_ptr<WireMemoryChat> chat_;
   MemoryService service_;
   ToolRegistry registry_;

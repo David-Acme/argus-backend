@@ -5,10 +5,7 @@
 
 namespace
 {
-/**
- * A device that answers "no" is not a server error: the row exists, the camera
- * refused. 502 keeps that apart from a missing camera (404).
- */
+// A device that answers "no" is 502, not a server error; a missing row is 404.
 drogon::HttpResponsePtr respond(const CameraControlResult& result)
 {
   if (!result)

@@ -4,9 +4,7 @@
 #include <shared/validation/validation_dsl.hxx>
 #include <string>
 
-// Internal wire request (Ruling BP): {image_b64, prompt?, camera_id?}.
-// image_b64 is a base64 JPEG — the in-process API takes a cv::Mat, so the
-// caller encodes before sending.
+// Internal wire request: {image_b64, prompt?, camera_id?}.
 struct DescribeImageDto
 {
   std::string imageB64;

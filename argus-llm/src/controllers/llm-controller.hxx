@@ -6,8 +6,7 @@
 #include <drogon/utils/coroutine.h>
 #include <shared/services/llm/llm-service.hxx>
 
-// Owns the LLM engine by value (the adapter shape: no singleton). The engine
-// is THE capacity of this service (Ruling BS).
+// Owns the LLM engine by value; no singleton.
 class LlmController : public drogon::HttpController<LlmController, false>
 {
 public:

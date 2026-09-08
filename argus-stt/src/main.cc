@@ -42,8 +42,6 @@ int main()
         return AppConfig::get404Response();
       });
 
-  // The sherpa-onnx engine is THE capacity of this service (Ruling BK): boot
-  // fails loudly rather than serving 503s to the legacy adapters.
   SttService::instance().init();
   if (!SttService::instance().isLoaded()) {
     LOG_FATAL << "STT engine failed to load — aborting startup";

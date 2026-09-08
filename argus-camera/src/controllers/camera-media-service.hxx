@@ -10,11 +10,7 @@
 #include <shared/services/stream/stream-hub.hxx>
 #include <unordered_map>
 
-// Binary sink of an fMP4 relay into one WebSocket connection, with the same
-// credit window the legacy SyncMediaService uses. The class mirrors the
-// legacy DrogonStreamSink byte for byte on the wire (camera:closed envelope,
-// window semantics); it lives here because the legacy object drags the voice
-// session and its AI stack with it.
+// Binary fMP4 relay sink into one WebSocket connection, legacy-wire-identical.
 class CameraStreamSink final : public StreamHub::ISink
 {
 public:
@@ -84,10 +80,7 @@ private:
   mutable std::mutex mutex_;
 };
 
-// Native camera:* handling of argus-camera's /sync socket: the StreamHub
-// lifecycle against its own go2rtc. Voice frames never reach this service;
-// the gateway keeps them pointed at the legacy (talk stays TTS-load-bearing
-// there until Fase 4).
+// Native camera:* handling of argus-camera's /sync socket.
 class CameraMediaService : public SyncForwarder
 {
 public:

@@ -5,7 +5,7 @@
 #include <shared/validation/validation_dsl.hxx>
 #include <string>
 
-// Internal wire request (Ruling BH): {text, style_id?, speed?, lang?}.
+// Internal wire request: {text, style_id?, speed?, lang?}.
 struct SynthesizeDto
 {
   std::string text;

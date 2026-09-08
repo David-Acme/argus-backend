@@ -1,6 +1,3 @@
-// object-bench: YOLO26n detector latency/fps per backend tier (vulkan, cpu).
-// Honest probe: with a real --image it reports what the model actually sees;
-// with synthetic frames it measures latency only and says so.
 #include <objects/ncnn-object-detector.hxx>
 #include <operator/operator-config.hxx>
 
@@ -43,7 +40,6 @@ std::vector<uint8_t> loadOrSynthesize(const std::string& imagePath, int width,
                 imagePath.c_str());
   }
 
-  // Deterministic gradient + block pattern: latency-only content.
   std::vector<uint8_t> data(static_cast<size_t>(width) * height * 3);
   for (int y = 0; y < height; ++y) {
     for (int x = 0; x < width; ++x) {
@@ -66,7 +62,6 @@ void bench(const char* tier, ObjectDetectorService& detector,
     return;
   }
 
-  // Warm-up (shader compilation, cache population).
   detector.detect(frame.data(), width, height);
 
   std::vector<double> samples;
@@ -139,7 +134,6 @@ int main(int argc, char** argv)
     return 1;
   }
 
-  // Tier 1: the production path (vulkan when the host has it).
   ObjectDetectorOptions vulkanOptions;
   vulkanOptions.modelDir = modelDir;
   vulkanOptions.classes = operator_config::defaultClasses();
@@ -149,7 +143,6 @@ int main(int argc, char** argv)
   vulkanDetector.init();
   bench("vulkan", vulkanDetector, frame, width, height, iterations);
 
-  // Tier 2: the CPU fallback every instance can degrade to.
   ObjectDetectorOptions cpuOptions = vulkanOptions;
   cpuOptions.useVulkan = false;
   ObjectDetectorService cpuDetector(cpuOptions);
@@ -164,7 +157,6 @@ int main(int argc, char** argv)
     return 1;
   }
 
-  // Real-image evidence: what the production backend saw.
   if (!imagePath.empty() && vulkanDetector.isLoaded()) {
     const auto objects = vulkanDetector.detect(frame.data(), width, height);
     std::printf("object-bench: %zu detections on %s:\n", objects.size(),

@@ -7,8 +7,7 @@
 #include <string>
 #include <vector>
 
-// A frame captured for analysis: either the go2rtc frame endpoint's JPEG
-// (production) or a decoded RGB buffer injected by the labs and tests.
+// A frame captured for analysis: go2rtc JPEG or a lab-injected RGB buffer.
 struct CameraFrame
 {
   std::vector<uint8_t> jpeg;
@@ -24,8 +23,7 @@ struct FrameGrabRequest
   std::string cameraName;
 };
 
-// Frames come from argus-camera's own media surface (go2rtc, owned here since
-// F2-2) — never from a device driver (Ruling AB).
+// Frames come from go2rtc, never a device driver.
 class IFrameSource
 {
 public:

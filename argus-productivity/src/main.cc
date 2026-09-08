@@ -47,18 +47,13 @@ Json::Value drogonConfig(const ProductivityDbConfig& productivityDb,
   return config;
 }
 
-// Ruling AM: share/member target validation reads identity.db through the
-// named identity client (the same mechanism the gateway uses), so targets
-// created after the cutover are shareable. With no [identity] db configured
-// the fallback to the default client keeps this boot identity-free.
+// Opens identity.db read-only for the share/member target validation.
 void installIdentityClient()
 {
   const auto path = ConfigService::getString("identity.db");
   if (path.empty())
     return;
 
-  // The gateway creates identity.db at its own boot, which on a fresh
-  // install may land after ours; wait bounded before opening it read-only.
   for (int ms = 0; ms < 30000 && !std::filesystem::exists(path); ms += 250)
     std::this_thread::sleep_for(std::chrono::milliseconds(250));
 
@@ -80,8 +75,6 @@ void installIdentityClient()
 
 int main()
 {
-  // SQLite URI filenames must be configured before the first sqlite3_open
-  // opens the read-only identity database above.
   DbService::enableUriFilenames();
 
   ConfigService::load("config.toml");
@@ -100,9 +93,6 @@ int main()
 
   drogon::app().loadConfigJson(drogonConfig(productivityDb, listener));
 
-  // The legacy answers CORS preflight for every path in pre-routing, and the
-  // gateway forwards OPTIONS on proxied paths untouched, so this surface
-  // keeps answering them itself.
   drogon::app().registerPreRoutingAdvice(
       [](const drogon::HttpRequestPtr& req, drogon::AdviceCallback&& cb,
          drogon::AdviceChainCallback&& chain) {
@@ -137,14 +127,9 @@ int main()
     }
 
     DbService::applyPragmas();
-    // The productivity tables reference user rows that live in identity.db,
-    // so foreign-key enforcement stays off on every connection (Ruling AM).
     DbService::client()->execSqlSync("PRAGMA foreign_keys = OFF");
   });
 
-  // The productivity-domain change funnel (Rulings AQ/Y): without NATS
-  // configured the feature services drop their change events with a warning,
-  // which keeps a NATS-less service bootable for contract tests.
   std::shared_ptr<NatsProductivityChangeSink> changeSink;
   std::shared_ptr<NatsBus> natsBus;
   const std::string natsUrl = ConfigService::getString("nats.url");

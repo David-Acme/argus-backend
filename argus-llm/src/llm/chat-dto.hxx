@@ -7,16 +7,14 @@
 #include <string>
 #include <vector>
 
-// One chat message on the internal wire (Ruling BT): {"role", "content"}.
+// One chat message on the internal wire: {"role", "content"}.
 struct ChatMessageDto
 {
   std::string role;
   std::string content;
 };
 
-// Internal wire request (Ruling BT): {messages, max_tokens?, temperature?,
-// reset_context?}. Optional fields keep the engine's own defaults when
-// absent (max_tokens 0 / temperature < 0 in ChatRequest semantics).
+// Internal wire request: {messages, max_tokens?, temperature?, reset_context?}.
 struct ChatCompletionDto
 {
   std::vector<ChatMessageDto> messages;

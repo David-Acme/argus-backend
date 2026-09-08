@@ -6,11 +6,7 @@
 
 class NatsBus;
 
-// Productivity-domain substrate of argus-productivity (Rulings AQ/Y): change
-// emits and user audit diffs funnel over `argus.productivity.v1.change`
-// instead of local rooms, and no audit rows are persisted locally. The
-// gateway inserts the rows verbatim into its user_audit_log substrate before
-// fanning them out.
+// Productivity-domain change funnel over argus.productivity.v1.change.
 class NatsProductivityChangeSink : public UserChangeSink
 {
 public:

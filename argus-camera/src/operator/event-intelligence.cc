@@ -14,7 +14,6 @@ bool centerInZone(const DetectedObject& object, const OperatorZone& zone,
   const double cx = (object.x + object.w / 2) / frameWidth;
   const double cy = (object.y + object.h / 2) / frameHeight;
 
-  // Ray casting on the normalized polygon.
   bool inside = false;
   for (size_t i = 0, j = zone.points.size() - 1; i < zone.points.size();
        j = i++) {
@@ -69,7 +68,6 @@ EventIntelligence::evaluate(const EventIntelligenceInput& input)
   if (input.objects.empty())
     return {};
 
-  // Rule 1: any object centered in an exclude zone discards the event.
   for (const auto& object : input.objects) {
     if (objectInZoneKind(object, input.zones, "exclude", input.frameWidth,
                          input.frameHeight)) {
@@ -86,7 +84,6 @@ EventIntelligence::evaluate(const EventIntelligenceInput& input)
                           containsClass(input.objects, "bus") ||
                           containsClass(input.objects, "motorcycle");
 
-  // Rule 2: identity first — a matched person dominates rules 3-8.
   if (input.matcher && hasPerson && input.frameRgb) {
     for (const auto& object : input.objects) {
       if (object.name != "person")
@@ -109,7 +106,6 @@ EventIntelligence::evaluate(const EventIntelligenceInput& input)
     }
   }
 
-  // Rule 3: person inside an alert zone.
   if (hasPerson) {
     for (const auto& object : input.objects) {
       if (object.name == "person" &&
@@ -124,7 +120,6 @@ EventIntelligence::evaluate(const EventIntelligenceInput& input)
     }
   }
 
-  // Rule 4: person inside a monitor zone.
   if (hasPerson) {
     for (const auto& object : input.objects) {
       if (object.name == "person" &&
@@ -139,7 +134,6 @@ EventIntelligence::evaluate(const EventIntelligenceInput& input)
     }
   }
 
-  // Rule 5 / 6: person during the night or day schedule.
   if (hasPerson) {
     EventIntelligenceOutcome person;
     person.publish = true;
@@ -148,7 +142,6 @@ EventIntelligence::evaluate(const EventIntelligenceInput& input)
     return person;
   }
 
-  // Rule 7: vehicle arrival after an absence.
   if (hasVehicle && input.state.vehiclePreviouslyAbsent && !input.night) {
     EventIntelligenceOutcome arrival;
     arrival.publish = true;
@@ -157,7 +150,6 @@ EventIntelligence::evaluate(const EventIntelligenceInput& input)
     return arrival;
   }
 
-  // Rule 8: vehicle at night or escalating presence.
   if (hasVehicle && (input.night || input.state.presenceEscalating)) {
     EventIntelligenceOutcome vehicle;
     vehicle.publish = true;
@@ -167,7 +159,6 @@ EventIntelligence::evaluate(const EventIntelligenceInput& input)
     return vehicle;
   }
 
-  // Rule 9: everything left is an ignored class.
   if (isIgnored(input.objects, input.ignoredClasses)) {
     EventIntelligenceOutcome ignored;
     ignored.publish = false;

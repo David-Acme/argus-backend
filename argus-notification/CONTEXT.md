@@ -59,7 +59,18 @@ binary, own CMake preset, own `notification.db`.
   (and the bound refresh-token session) in identity.db, so the boot installs
   the named identity client read-only (same install as argus-productivity,
   Ruling AM) from the `[identity] db` key; without it the fallback to the
-  default notification.db client would 401 every authenticated request.
+  default notification.db client would 401 every authenticated request. The
+  gateway creates identity.db at its own boot, which on a fresh install may
+  land after ours, so the open waits bounded for the file to exist.
+- **CORS**: the legacy answered every preflight in pre-routing and the
+  gateway forwards OPTIONS on proxied paths untouched, so this surface keeps
+  answering OPTIONS itself (`AppConfig::handleOptions`).
+- **Foreign keys (Ruling AN)**: the notification tables reference user rows
+  that live in identity.db, so foreign-key enforcement stays off on every
+  connection.
+- **Audit recipients**: `publishAudit` keeps the same recipient set the
+  legacy `SyncAuditService::publishUsers` kept — non-positive ids out,
+  duplicates collapsed.
 - **`GET /health`**: standard `ApiResponse` envelope
   `{status: 200 (int), info: {service: argus-notification, uptimeSeconds},
   errors: null}`; never depends on any downstream service.

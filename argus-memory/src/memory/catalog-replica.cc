@@ -15,9 +15,7 @@
 namespace
 {
 
-// Replica upsert/delete replay (Ruling BX). Person and camera tombstone
-// (mirroring the source tables' deleted_at predicate); zone and stream rows
-// are physical deletes — their gazetteer query has no deleted_at filter.
+// Replica upsert/delete replay of the identity and camera change subjects.
 constexpr const char* UPSERT_PERSON =
     "INSERT INTO catalog_person (id, user_id, name, alias, deleted_at) "
     "VALUES (?, ?, ?, ?, NULL) "
@@ -47,8 +45,7 @@ constexpr const char* UPSERT_STREAM =
 constexpr const char* DELETE_STREAM =
     "DELETE FROM catalog_stream WHERE id = ?";
 
-// Snapshot reads run against the SOURCE databases (the legacy table names),
-// never against the replicas themselves.
+// Snapshot reads run against the source databases, never the replicas.
 constexpr const char* SNAPSHOT_PERSONS =
     "SELECT id, user_id, name, alias FROM person WHERE deleted_at IS NULL";
 constexpr const char* SNAPSHOT_CAMERAS =
@@ -68,9 +65,7 @@ bool execStmt(sqlite3* db, const char* sql,
   return stmt.step() == SQLITE_DONE;
 }
 
-// Per-table emptiness: each replica table that booted empty gets its own
-// snapshot fill (an absent identity source must not turn every later boot
-// into a camera re-seed).
+// Per-table emptiness: only tables that booted empty get a snapshot fill.
 bool replicaPopulated(sqlite3* db, const char* table)
 {
   SqliteStmt probe;
@@ -161,7 +156,6 @@ void CatalogReplica::applyCamera(const Json::Value& event)
   if (!event.isObject())
     return;
 
-  // Audit diff shape (Ruling Y): field-level changes for one row.
   if (event.get("kind", "").asString() == "audit") {
     const auto audit = CameraAuditEvent::fromJson(event);
     if (!audit)
@@ -211,7 +205,6 @@ void CatalogReplica::applyCamera(const Json::Value& event)
     return;
   }
 
-  // Plain change-event shape (SocketEmitDto): {operation, option, info}.
   const auto operation = static_cast<SyncOperation>(
       event.get("operation", 0).asInt());
   const std::string option = event.get("option", "").asString();

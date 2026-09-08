@@ -21,10 +21,7 @@ struct CameraRef
   std::string name;
 };
 
-// Per-camera operator loop (Appendix B.2): one coroutine per camera on the
-// Drogon event loop, preprocessing + inference off the loop, aggregation and
-// cooldown per Ruling AD, publishing through IObjectEventSink only
-// (read-only toward hardware, Ruling AF).
+// Per-camera operator loop on the Drogon event loop.
 class CameraOperatorService
 {
 public:
@@ -45,17 +42,14 @@ public:
 
   explicit CameraOperatorService(Inputs inputs);
 
-  // Resolves the enabled cameras and launches one loop per camera. Call from
-  // the boot advice so the loops live on the Drogon event loop.
+  // Resolves the enabled cameras and launches one loop per camera.
   void start();
 
   void stop();
 
   bool running() const { return running_.load(); }
 
-  // One pipeline step (decode -> detect -> rules -> aggregate -> publish).
-  // Synchronous and dependency-injected, so the labs and tests drive it
-  // without a camera, NATS or an event loop.
+  // One synchronous pipeline step (decode -> detect -> rules -> aggregate -> publish).
   void processFrame(int64_t cameraId, const std::string& cameraName,
                     CameraFrame& frame);
 

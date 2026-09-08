@@ -6,8 +6,7 @@
 #include <string>
 #include <vector>
 
-// [objects] — the detection capacity: model path, class table, input size,
-// confidence, budget of inferences per second (Ruling AD camera side).
+// [objects] — the detection capacity.
 struct ObjectsConfig
 {
   bool enabled{false};
@@ -19,8 +18,7 @@ struct ObjectsConfig
   bool useVulkan{true};
 };
 
-// [operator] — per-camera aggregation, cooldowns, zones and schedule; the
-// gateway side keeps its own notification budget ([notifications] there).
+// [operator] — per-camera aggregation, cooldowns, zones and schedule.
 struct OperatorConfig
 {
   bool overlay{false};
@@ -39,7 +37,6 @@ namespace operator_config
 ObjectsConfig resolveObjects();
 OperatorConfig resolveOperator();
 
-// COCO-80, the default class table (row length = 4 + class count must match
-// the model's output width).
+// COCO-80, the default class table.
 std::vector<std::string> defaultClasses();
 } // namespace operator_config

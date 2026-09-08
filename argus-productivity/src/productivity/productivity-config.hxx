@@ -11,7 +11,6 @@ struct ProductivityDbConfig
 class ProductivityConfig
 {
 public:
-  // Resolves [productivity] db / [productivity] schema with the Fase-3
-  // defaults.
+  // Resolves the [productivity] db and schema with the phase-3 defaults.
   static ProductivityDbConfig resolveDb();
 };

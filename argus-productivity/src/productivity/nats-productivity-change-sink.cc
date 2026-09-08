@@ -40,8 +40,6 @@ drogon::Task<void> NatsProductivityChangeSink::publishAudit(
   if (changes.empty())
     co_return;
 
-  // The same recipient set the legacy SyncAuditService::publishUsers kept:
-  // non-positive ids out, duplicates collapsed.
   std::vector<int64_t> recipients;
   std::unordered_set<int64_t> seen;
   for (const auto userId : input.userIds) {

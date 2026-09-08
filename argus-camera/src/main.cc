@@ -61,18 +61,13 @@ Json::Value drogonConfig(const CameraDbConfig& cameraDb,
   return config;
 }
 
-// Placeholder for the F2-2 cutover: camera routes validating the caller will
-// read the gateway-minted identity database through the named identity
-// client. With no [identity] db configured the fallback to the default
-// client keeps this boot identity-free.
+// Config-gated read-only identity client ([identity] db).
 void installIdentityClient()
 {
   const auto path = ConfigService::getString("identity.db");
   if (path.empty())
     return;
 
-  // The gateway creates identity.db at its own boot, which on a fresh
-  // install may land after ours; wait bounded before opening it read-only.
   for (int ms = 0; ms < 30000 && !std::filesystem::exists(path); ms += 250)
     std::this_thread::sleep_for(std::chrono::milliseconds(250));
 
@@ -90,8 +85,7 @@ void installIdentityClient()
   }
 }
 
-// Long-lived operator collaborators: static lifetime so the per-camera
-// coroutines can hold non-owning pointers for the whole process.
+// Static lifetime: per-camera coroutines hold these non-owning pointers.
 Go2rtcFrameSource& frameSource()
 {
   static Go2rtcFrameSource source;
@@ -108,8 +102,6 @@ NatsObjectEventSink& objectEventSink(const std::shared_ptr<NatsBus>& bus)
 
 int main()
 {
-  // SQLite URI filenames must be configured before the first sqlite3_open
-  // opens the read-only identity database above.
   DbService::enableUriFilenames();
 
   ConfigService::load("config.toml");
@@ -120,9 +112,6 @@ int main()
   const ListenerConfig listener = ListenerConfig::resolve();
 
   drogon::app().registerController(std::make_shared<HealthController>());
-  // The camera, zone and camera-control controllers live in the shared
-  // static library, so their AutoCreation registration is linker-dropped
-  // there; this service registers them explicitly.
   drogon::app().registerController(std::make_shared<CameraController>());
   drogon::app().registerController(std::make_shared<ZoneController>());
   drogon::app().registerController(std::make_shared<CameraControlController>());
@@ -155,9 +144,6 @@ int main()
   LOG_INFO << "Listening on " << listener.host << ":" << listener.port
            << " (plain); camera database " << cameraDb.dbPath;
 
-  // The camera-domain change funnel (Ruling Y): without NATS configured the
-  // camera feature services drop their change events with a warning, which
-  // keeps a NATS-less camera service bootable for contract tests.
   std::shared_ptr<NatsCameraChangeSink> changeSink;
   std::shared_ptr<NatsBus> natsBus;
   const std::string natsUrl = ConfigService::getString("nats.url");
@@ -179,10 +165,6 @@ int main()
     }
   }
 
-  // The objects capacity (F2-3): the detector is the only AI linkage in this
-  // service; without a model or with [objects] disabled everything downstream
-  // stays inert. The operator is read-only toward hardware (Ruling AF): its
-  // only action is publishing argus.camera.v1.object_detected.
   const ObjectsConfig objectsConfig = operator_config::resolveObjects();
   std::unique_ptr<ObjectDetectorService> detector;
   std::unique_ptr<CameraOperatorService> operatorService;

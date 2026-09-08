@@ -45,8 +45,6 @@ int main()
 
   llama_backend_init();
 
-  // The vision engine is THE capacity of this service (Ruling BO): boot
-  // fails loudly rather than serving 503s to the legacy adapters.
   vlm->initEngine();
   if (!vlm->isEngineLoaded()) {
     LOG_FATAL << "Vision engine failed to load — aborting startup";

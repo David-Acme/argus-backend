@@ -48,20 +48,13 @@ Json::Value drogonConfig(const NotificationDbConfig& notificationDb,
   return config;
 }
 
-// The JWT filter resolves the caller's user row (and the bound refresh-token
-// session) from identity.db: without the named identity client those reads
-// would fall back to notification.db, which holds no user table, and every
-// authenticated request would 401. Same install as argus-productivity (Ruling
-// AM); with no [identity] db configured the fallback keeps this boot
-// identity-free.
+// Opens identity.db read-only for the JWT user-row reads.
 void installIdentityClient()
 {
   const auto path = ConfigService::getString("identity.db");
   if (path.empty())
     return;
 
-  // The gateway creates identity.db at its own boot, which on a fresh
-  // install may land after ours; wait bounded before opening it read-only.
   for (int ms = 0; ms < 30000 && !std::filesystem::exists(path); ms += 250)
     std::this_thread::sleep_for(std::chrono::milliseconds(250));
 
@@ -100,9 +93,6 @@ int main()
 
   drogon::app().loadConfigJson(drogonConfig(notificationDb, listener));
 
-  // The legacy answers CORS preflight for every path in pre-routing, and the
-  // gateway forwards OPTIONS on proxied paths untouched, so this surface
-  // keeps answering them itself.
   drogon::app().registerPreRoutingAdvice(
       [](const drogon::HttpRequestPtr& req, drogon::AdviceCallback&& cb,
          drogon::AdviceChainCallback&& chain) {
@@ -137,14 +127,9 @@ int main()
     }
 
     DbService::applyPragmas();
-    // The notification tables reference user rows that live in identity.db,
-    // so foreign-key enforcement stays off on every connection (Ruling AN).
     DbService::client()->execSqlSync("PRAGMA foreign_keys = OFF");
   });
 
-  // The notification-domain change funnel (Rulings AQ/Y): without NATS
-  // configured the feature services drop their change events with a warning,
-  // which keeps a NATS-less service bootable for contract tests.
   std::shared_ptr<NatsNotificationChangeSink> changeSink;
   std::shared_ptr<NatsBus> natsBus;
   const std::string natsUrl = ConfigService::getString("nats.url");

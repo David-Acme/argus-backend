@@ -15,7 +15,10 @@ profiling, procedures). It mirrors the argus-llm (F4-5) scaffold.
   (memory.db graph tables), `EntityResolver`, `GraphRecall`,
   `MemoryFormation`, extraction (NuExtract gguf + lexicon/tiered/temporal)
   and embeddings (onnxruntime + unigram tokenizer). Owned BY VALUE by the
-  controller (the adapter shape — no singleton).
+  controller (the adapter shape — no singleton). The stack is THE capacity
+  of this service: boot fails loudly rather than serving 503s to the legacy
+  workers. Feed handlers marshal onto the Drogon loop — cnats dispatcher
+  threads must not block.
 - **`memory.db`** with the memory tables VERBATIM from
   `database/schema.sql`, the `memory_vec` partitions from
   `database/memory-schema.sql` (boot-applied, idempotent), and the four
@@ -34,7 +37,12 @@ profiling, procedures). It mirrors the argus-llm (F4-5) scaffold.
   clients; populated tables are never re-seeded. The fill runs even when the
   change feed never connects (`CatalogReplica::seedSnapshot` static entry —
   main.cc calls it when NATS is absent or failed), because otherwise a no-NATS
-  boot would serve an empty catalog forever.
+  boot would serve an empty catalog forever. Feed handlers accept two event
+  shapes: the camera audit diff (`kind == "audit"`, field-level changes for
+  one row) and the plain SocketEmitDto change shape (`{operation, option,
+  info}`). Person and camera deletes tombstone (the source tables'
+  `deleted_at` predicate); zone and stream rows are physical deletes, since
+  their gazetteer query has no `deleted_at` filter.
 - **The face index stays in the legacy**: `[memory] create_face_vec = false`
   skips `face_vec` creation (`ConfigService::hasKey` + a dual-shape read,
   since `getString` cannot surface TOML booleans); the key absent keeps the
@@ -61,6 +69,8 @@ profiling, procedures). It mirrors the argus-llm (F4-5) scaffold.
   bounded work queue (`[memory] queue_bound`, default 64): at the bound,
   non-extract jobs drop with a WARN and an extract job evicts the oldest
   non-extract job instead of polling `isBusy()`.
+- **The `[server]` listener** is internal-network only (loopback by
+  default): the wire is never exposed through the gateway.
 
 ## The legacy side (Ruling BZ/CA)
 

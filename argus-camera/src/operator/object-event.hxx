@@ -7,8 +7,7 @@
 #include <string>
 #include <vector>
 
-// Payload of the `argus.camera.v1.object_detected` NATS event (see
-// argus-contracts/subjects.md for the frozen contract).
+// Payload of the argus.camera.v1.object_detected NATS event (frozen contract).
 struct DetectedEventObject
 {
   std::string name;
