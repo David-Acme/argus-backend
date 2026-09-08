@@ -23,8 +23,7 @@ namespace
 {
 constexpr const char* kPcmMime = "audio/x-argus-pcm-s16";
 
-// Inverse of the voice session's int16→float mapping (/32768): the wire
-// carries the same quantization the session's WS frames use.
+// Inverse of the voice session's int16->float mapping (/32768).
 int16_t sampleFromFloat(float value)
 {
   const float clamped = std::max(-1.0F, std::min(1.0F, value));
@@ -88,8 +87,7 @@ int connectLoopback(const std::string& host, int port, int timeoutMs)
     return -1;
   }
 
-  // Non-blocking connect + poll: the timeout bounds the connect phase too
-  // (SO_SNDTIMEO/SO_RCVTIMEO alone never do).
+  // Non-blocking connect + poll; the timeout bounds the connect phase too.
   const int flags = ::fcntl(fd, F_GETFL, 0);
   ::fcntl(fd, F_SETFL, flags | O_NONBLOCK);
   if (::connect(fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) != 0 &&
@@ -254,8 +252,6 @@ SttHttpClient::RawResponse SttHttpClient::exchange(
 std::string SttHttpClient::transcribe(const std::vector<float>& audioSamples,
                                       const std::string& lang) const
 {
-  // The wire is 16 kHz mono by contract; any other rate cannot be
-  // represented and must not be silently resampled.
   if (audioSamples.empty())
     throw std::runtime_error("argus-stt transcribe needs a non-empty body");
 

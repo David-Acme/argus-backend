@@ -23,21 +23,21 @@ drogon::orm::DbClientPtr& g_identityClient()
   return client;
 }
 
-// Camera-domain client (Rulings X/Z), installed by the host at boot.
+// Camera-domain client, installed by the host at boot.
 drogon::orm::DbClientPtr& g_cameraClient()
 {
   static drogon::orm::DbClientPtr client;
   return client;
 }
 
-// Productivity-domain client (Ruling AQ), installed by the host at boot.
+// Productivity-domain client, installed by the host at boot.
 drogon::orm::DbClientPtr& g_productivityClient()
 {
   static drogon::orm::DbClientPtr client;
   return client;
 }
 
-// Notification-domain client (Ruling AR), installed by the host at boot.
+// Notification-domain client, installed by the host at boot.
 drogon::orm::DbClientPtr& g_notificationClient()
 {
   static drogon::orm::DbClientPtr client;
@@ -99,11 +99,7 @@ struct ColumnPatch
   std::string definition;
 };
 
-/**
- * Columns added after a table shipped. `schema.sql` already carries them for a
- * fresh database, so each one is only applied when introspection says it is
- * missing — an `ALTER` cannot express that.
- */
+// Columns added after a table shipped; applied only when introspection says they are missing.
 const std::vector<ColumnPatch> kColumnPatches = {
     {"camera", "cloud_username", "TEXT NOT NULL DEFAULT ''"},
     {"camera", "cloud_password", "TEXT NOT NULL DEFAULT ''"},
@@ -142,7 +138,6 @@ void DbService::setReadOnlyClient(drogon::orm::DbClientPtr client)
 
 drogon::orm::DbClientPtr DbService::readOnlyClient()
 {
-  // Installed at boot, before any IO thread exists: no synchronization.
   if (auto client = g_readOnlyClient())
     return client;
   return client();
@@ -155,7 +150,6 @@ void DbService::setIdentityClient(drogon::orm::DbClientPtr client)
 
 drogon::orm::DbClientPtr DbService::identityClient()
 {
-  // Installed at boot, before any IO thread exists: no synchronization.
   if (auto client = g_identityClient())
     return client;
   return client();
@@ -168,7 +162,6 @@ void DbService::setCameraClient(drogon::orm::DbClientPtr client)
 
 drogon::orm::DbClientPtr DbService::cameraClient()
 {
-  // Installed at boot, before any IO thread exists: no synchronization.
   if (auto client = g_cameraClient())
     return client;
   return client();
@@ -181,7 +174,6 @@ void DbService::setProductivityClient(drogon::orm::DbClientPtr client)
 
 drogon::orm::DbClientPtr DbService::productivityClient()
 {
-  // Installed at boot, before any IO thread exists: no synchronization.
   if (auto client = g_productivityClient())
     return client;
   return client();
@@ -194,7 +186,6 @@ void DbService::setNotificationClient(drogon::orm::DbClientPtr client)
 
 drogon::orm::DbClientPtr DbService::notificationClient()
 {
-  // Installed at boot, before any IO thread exists: no synchronization.
   if (auto client = g_notificationClient())
     return client;
   return client();

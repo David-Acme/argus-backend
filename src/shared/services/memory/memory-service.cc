@@ -337,9 +337,6 @@ void MemoryService::stopWorker()
   {
     std::lock_guard<std::mutex> lock(queueMutex_);
     stop_ = true;
-    // The worker drains what is left before joining, so shutdown waits for
-    // it. Summaries are derived data and the main LLM makes them slow: drop
-    // them and keep the user's facts.
     std::erase_if(queue_, [](const MemoryJob& job) {
       return job.kind == MemoryJob::Kind::Compact;
     });
@@ -354,8 +351,6 @@ void MemoryService::enqueueJob(MemoryJob job)
 {
   {
     std::lock_guard<std::mutex> lock(queueMutex_);
-    // Back-pressure gate (Ruling BZ): at the bound, derived-data jobs yield
-    // to user facts; a fact-only queue drops the newcomer.
     if (queue_.size() >= queueBound_) {
       if (job.kind != MemoryJob::Kind::Extract) {
         LOG_WARN << "MemoryService queue full (" << queue_.size()
@@ -484,11 +479,6 @@ CaptureResult MemoryService::captureExplicit(const CaptureInput& input)
       ruleParser_.isVacuous(parsed))
     return {};
 
-  // A trigger is an explicit order and may carry a question tag ("…, ¿está
-  // bien?"). A bare statement inside a question is part of the question:
-  // "cuando viene mi hermana" must not be filed as "mi hermana". Formation
-  // requires the same match for a non-salient turn, so deciding here first
-  // only avoids the wasted call.
   if (!ruleParser_.parse(parsed)) {
     if (ruleParser_.isQuestion(parsed) || !ruleParser_.parseStatement(parsed))
       return {};
@@ -578,8 +568,6 @@ std::string MemoryService::durableTranscript(const std::string& transcript,
 
     if (isUser) {
       const RuleParseInput parsed{.text = line.substr(5), .lang = lang};
-      // A greeting strips down to nothing, so it carries no more episode
-      // material than a question does.
       dropAnswer = ruleParser_.isQuestion(parsed) ||
                    ruleParser_.isCancellation(parsed) ||
                    ruleParser_.stripFillers(parsed).empty();
@@ -987,8 +975,6 @@ tools::ToolResult MemoryService::handleRemember(const tools::ToolCall& call)
   result.data["fact_id"] = static_cast<int64_t>(formed->factId);
   result.data["subject_entity_id"] =
       static_cast<int64_t>(formed->subjectEntityId);
-  // The vector index rides the worker queue like every other capture; the
-  // tool call is synchronous but the embedding is not.
   enqueueJob({.kind = MemoryJob::Kind::Embed,
               .memoryId = formed->factId,
               .userId = 0,

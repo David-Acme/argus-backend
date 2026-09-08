@@ -12,10 +12,7 @@ class UserAuditLogService
 public:
   UserAuditLogService() = default;
 
-  // Persists the change: inserts a row or merges it into the record's
-  // same-day row (replacement with a strictly increasing id). No room emit,
-  // so a substrate that funnels from argus-productivity/argus-notification
-  // (Rulings AQ/AR) controls the event itself.
+  // Persists the change: inserts a row or merges it into the record's same-day row (strictly increasing id).
   drogon::Task<UserAuditLogSchema>
   create(const UserAuditLogWriteInput& input) const;
 

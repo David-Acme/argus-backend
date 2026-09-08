@@ -12,10 +12,7 @@
 
 namespace
 {
-// cnats posts the connection callbacks from its global async-dispatcher
-// thread, which can still fire after ~NatsBus freed the object (every
-// callback touching a member would be a use-after-free). Once drain()
-// begins, no callback may dereference the bus until the next connect().
+// Callbacks may not dereference the bus once drain() begins.
 std::atomic<bool> gCallbacksSuppressed{false};
 } // namespace
 
@@ -86,7 +83,6 @@ void NatsBus::onClosed(natsConnection* connection, void* closure)
     return;
   auto* bus = static_cast<NatsBus*>(closure);
   std::lock_guard lock(bus->mutex_);
-  // Re-check: the gate can arm between the first load and this lock.
   if (gCallbacksSuppressed.load(std::memory_order_acquire))
     return;
   bus->connected_ = false;
@@ -117,7 +113,6 @@ void NatsBus::onMessage(natsConnection* connection, natsSubscription* sub,
     handler(natsMsg_GetSubject(msg),
             std::string_view(data, static_cast<size_t>(length)));
 
-  // The dispatcher hands the callback ownership of the message.
   natsMsg_Destroy(msg);
 }
 
@@ -166,8 +161,6 @@ bool NatsBus::connect(const Options& options)
     options_ = options;
     connectionOptions_ = std::move(opts);
     if (connection_ != nullptr) {
-      // The previous connection was closed externally; release its
-      // subscriptions so a re-connect starts from a clean slate.
       for (auto& [sub, active] : active_)
         stale.push_back(std::move(active.raw));
       active_.clear();
@@ -303,12 +296,6 @@ void NatsBus::drain()
 
   if (connection != nullptr)
   {
-    // Synchronous close instead of natsConnection_DrainTimeout: the drain
-    // variant runs on a background cnats thread that would still own the
-    // connection while the process exits (the teardown abort). Close joins
-    // the connection threads here, on the caller's thread. In-flight
-    // outbound publishes at teardown are dropped, not flushed (Close does
-    // not drain) — shutdown-only semantics.
     natsConnection_Close(connection.get());
   }
 }

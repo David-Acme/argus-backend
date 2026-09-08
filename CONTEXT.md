@@ -340,6 +340,12 @@ end-of-sentence cadence. The fix is to detect the sentence boundary
 existing `isSentenceEnd()` (abbreviation list + digit guards) and only returns a
 cut once the character *after* the punctuation has been seen.
 
+Each synthesized chunk comes back padded with ~300-500 ms of silence at both
+ends. Concatenating raw chunks stacks one chunk's tail onto the next chunk's
+head — measured 565 ms at the boundary, which reads to the ear as "the
+assistant finished talking" — so every chunk is trimmed to a small controlled
+margin (`edgeSilenceMs_`) and chunks are joined with `joinSilenceMs_`.
+
 Playback is one PulseAudio stream per turn (`labs/voice-test/audio.{hxx,cc}`):
 `pa_buffer_attr.tlength` bounds how far ahead the audio runs and
 `pa_simple_write` blocking on a full buffer paces the producer with no extra
@@ -412,6 +418,12 @@ not restart it. fMP4 starts with `ftyp+moov`; the hub caches that init segment
 per upstream, sends it to every new subscriber before anything else, and joins
 the stream at the next keyframe. Skipping either step is the classic silent
 failure of this design: the player shows a black screen and reports nothing.
+
+Go2rtcManager's posture follows from the protocols: RTSP and the Tapo
+interfaces are unauthenticated on the wire, so the manager only ever targets a
+private or loopback host — a public host would leak camera credentials outside
+the LAN. The credentials reach go2rtc through the 0600 config file, never
+argv, because `/proc/<pid>/cmdline` is world-readable.
 
 Binary framing, 12-byte header: `0` magic `0xA7`, `1` version, `2` type
 (1=init, 2=media, 3=audio), `3` flags (bit0 = keyframe), `4..5` subId
@@ -2469,6 +2481,10 @@ camera-control routes against camera.db.
   camera/camera_stream/zone sync reads (bootstrap, diff pages, delete scans,
   cursors) resolve to it; TableName 0-23, SyncOperation 0-7, SYNC_LIMIT=200
   and the created_at+rowid cursors are untouched.
+- **cloudPassword never crosses the sync/API DTO boundary.** The runtime keeps
+  the password in the repository schema for device connections, but clients
+  must never receive or persist it — the sync/API schemas simply omit the
+  field.
 - **Media re-target.** The gateway `/sync` relay is composite now: `voice:*`
   legs still relay to the legacy (talk is TTS-load-bearing there until
   Fase 4); `camera:*` legs relay to argus-camera, which owns go2rtc
@@ -2802,3 +2818,10 @@ write goes through the typed `argus.identity.v1.IdentityService.UpdateUser`
 seed implemented on the gateway (which owns identity.db); with `llm.remote_url`
 set MemoryService reaches argus-llm over HTTP while the in-process engine still
 boots (F4-6 memory gate unchanged).
+
+The noise-suppression chain stays in RNNoise sample scale end to end: RNNoise
+expects float samples in the 16-bit range (+-32767), not [-1, 1] — feeding
+[-1, 1] makes it hear silence and pass the audio through untouched
+(xiph/rnnoise#184). The AGC ahead of it lifts quiet speech toward ~0.12 RMS
+(never more than ~24 dB, loud frames compressed down) so RNNoise and the STT
+see a healthy level.

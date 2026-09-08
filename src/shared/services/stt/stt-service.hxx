@@ -12,11 +12,11 @@ struct SherpaOnnxOfflineRecognizer;
 // STT engine backends supported by sherpa-onnx.
 enum class SttEngine
 {
-  Whisper,        // whisper tiny/base/small (auto language)
-  Canary,         // NeMo Canary 180m flash (en+es+de+fr)
-  NemoCtc,        // NeMo FastConformer CTC (single-pass, very fast)
-  NemoTransducer, // NeMo FastConformer transducer (RNN-T, better English)
-  Omnilingual     // 1600-language CTC model
+  Whisper,
+  Canary,
+  NemoCtc,
+  NemoTransducer,
+  Omnilingual
 };
 
 class SttService
@@ -42,17 +42,13 @@ public:
   std::string transcribe(const std::vector<float>& audioSamples,
                          int32_t sampleRate = 16000);
 
-  // Recreates the recognizer with a different Whisper language code
-  // (e.g. "es", "en"). Used by voice interfaces that switch language at
-  // runtime. Returns false if the language is unsupported.
+  // Recreates the recognizer with a different language code; false when unsupported.
   bool setLanguage(const std::string& lang);
 
   // Language the current recognizer was built with ("" when not loaded).
   std::string language() const;
 
-  // Coroutine variant: runs inference off the event loop. An empty lang
-  // resolves from stt.language; a different supported language rebuilds the
-  // recognizer inside the blocking leg (never on the event loop).
+  // Coroutine variant: runs inference off the event loop; a language change rebuilds there.
   drogon::Task<std::string>
   transcribeAsync(const std::vector<float>& audioSamples,
                   int32_t sampleRate = 16000,

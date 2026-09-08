@@ -8,14 +8,7 @@
 #include <shared/utils/json-util/json-util.hxx>
 #include <vector>
 
-// Wire contract of a user-scoped audit row funneled from argus-productivity or
-// argus-notification over `argus.productivity.v1.change` /
-// `argus.notification.v1.change` (Rulings AQ/AR): the exact user_audit_log
-// diff the legacy SyncAuditService::publishUsers would have written, per
-// recipient, so the gateway inserts it verbatim into its user_audit_log
-// substrate before fanning the resulting row out to the user's room. The
-// `kind` discriminator separates it from a plain SocketEmitDto change event on
-// the same subject.
+// User-scoped audit row on the productivity/notification subjects; the gateway inserts it verbatim.
 struct UserAuditEvent
 {
   int64_t recordId{0};

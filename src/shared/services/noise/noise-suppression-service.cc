@@ -9,23 +9,18 @@
 namespace
 {
 
-constexpr int kFrameSize = 480; // 10 ms at 48 kHz
+constexpr int kFrameSize = 480;
 
-// AGC: soft speech is boosted toward this RMS so RNNoise (and the STT)
-// see a healthy level. 0.12 ~ -18 dBFS.
+// AGC target RMS: soft speech is boosted toward a healthy level (0.12 ~ -18 dBFS).
 constexpr float kAgcTargetRms = 0.12F;
-// Never amplify more than ~24 dB: it would lift the noise floor into a
-// false speech signal. Loud frames compress down to 0.25x so the AGC
-// never clips.
+// AGC gain limits: never amplify past ~24 dB, compress loud frames to 0.25x.
 constexpr float kAgcMaxGain = 16.0F;
 constexpr float kAgcMinGain = 0.25F;
-// Fast attack, slow release: gain follows speech up quickly and does not
-// pump up and down between words.
+// Fast attack, slow release: gain follows speech without pumping.
 constexpr float kAgcAttack = 0.25F;
 constexpr float kAgcRelease = 0.008F;
 
-// Voice probability -> original/denoised blend. Below 0.35 the frame is
-// treated as noise (denoised), above 0.8 as voice (original, untouched).
+// Voice probability -> original/denoised blend bounds.
 constexpr float kMixLow = 0.35F;
 constexpr float kMixHigh = 0.8F;
 
@@ -76,12 +71,9 @@ void NoiseSuppressor::applyAgc(const std::vector<float>& in,
   const float rms =
       in.empty() ? 0.0F : static_cast<float>(std::sqrt(sumSq / in.size()));
 
-  // Track the envelope: fast attack on speech onsets, slow decay after.
   const float alpha = rms > agcRms_ ? kAgcAttack : kAgcRelease;
   agcRms_ += alpha * (rms - agcRms_);
 
-  // Compress toward the target: quiet speech is boosted, loud frames are
-  // tamed, so RNNoise always sees a healthy level without clipping.
   const float desired = kAgcTargetRms / (agcRms_ + 1e-4F);
   const float targetGain =
       std::max(kAgcMinGain, std::min(kAgcMaxGain, desired));
@@ -104,19 +96,13 @@ void NoiseSuppressor::process(const std::vector<float>& in,
     return;
   }
 
-  // AGC lifts quiet speech before RNNoise sees it.
   applyAgc(in, workBoosted_);
 
-  // 16 kHz float -> int16 -> upsample to 48 kHz.
   workI16_.resize(workBoosted_.size());
   for (size_t i = 0; i < workBoosted_.size(); ++i)
     workI16_[i] = static_cast<int16_t>(clampS16(workBoosted_[i]) * 32767.0F);
   upsampler_.process(workI16_.data(), workI16_.size(), workUp48_);
 
-  // Buffer the 48 kHz audio in RNNoise scale: it expects float samples in
-  // the 16-bit range (+-32767), NOT [-1, 1]. Feeding [-1, 1] makes it see
-  // silence, keep all gains open and pass the audio through untouched
-  // (xiph/rnnoise#184).
   pending48_.reserve(pending48_.size() + workUp48_.size());
   for (const int16_t s : workUp48_)
     pending48_.push_back(static_cast<float>(s));
@@ -135,9 +121,6 @@ void NoiseSuppressor::process(const std::vector<float>& in,
     probSum += prob;
     ++probCount;
 
-    // Blend: voice frames pass through untouched, noise-only frames come
-    // out suppressed. The voice probability is per frame, so the blend
-    // tracks onsets/offsets smoothly (no gate clicks).
     const float mix = clamp01((prob - kMixLow) / (kMixHigh - kMixLow));
     if (mix > 0.0F && mix < 1.0F) {
       for (int i = 0; i < kFrameSize; ++i)
@@ -159,7 +142,6 @@ void NoiseSuppressor::process(const std::vector<float>& in,
   lastVoiceProb_ = probCount > 0 ? probSum / static_cast<float>(probCount)
                                   : 0.0F;
 
-  // Downsample the blended 48 kHz audio back to 16 kHz.
   if (workDenoised_.empty())
     return;
   workD48_.resize(workDenoised_.size());

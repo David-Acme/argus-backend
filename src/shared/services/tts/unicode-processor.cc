@@ -9,9 +9,6 @@
 #include <unordered_map>
 #include <vector>
 
-// ============================================================================
-// Pre-compiled regex patterns (optimization: static const)
-// ============================================================================
 static const std::regex EMOJI_RE("[\xF0][\x9F][\x80-\xBF][\x80-\xBF]");
 static const std::regex SPACE_COMMA_RE(" ,");
 static const std::regex SPACE_DOT_RE(" \\.");
@@ -22,9 +19,6 @@ static const std::regex SPACE_COLON_RE(" :");
 static const std::regex SPACE_QUOTE_RE(" '");
 static const std::regex MULTISPACE_RE(R"(\s+)");
 
-// ============================================================================
-// Hangul syllable decomposition constants
-// ============================================================================
 static const uint32_t HANGUL_SBASE = 0xAC00;
 static const uint32_t HANGUL_LBASE = 0x1100;
 static const uint32_t HANGUL_VBASE = 0x1161;
@@ -62,10 +56,6 @@ static const std::unordered_map<uint32_t, std::vector<uint16_t>>
         {0x00F6, {0x006F, 0x0308}}, {0x00FC, {0x0075, 0x0308}},
         {0x00C7, {0x0043, 0x0327}}, {0x00E7, {0x0063, 0x0327}},
 };
-
-// ============================================================================
-// Helpers
-// ============================================================================
 
 static std::string trim(const std::string& str)
 {
@@ -110,10 +100,6 @@ static void decomposeCharacter(uint32_t codepoint,
   output.push_back(static_cast<uint16_t>(codepoint & 0xFFFF));
 }
 
-// ============================================================================
-// UnicodeProcessor
-// ============================================================================
-
 UnicodeProcessor::UnicodeProcessor(const std::string& unicodeIndexerJsonPath)
 {
   indexer_ = loadJsonInt64(unicodeIndexerJsonPath);
@@ -123,11 +109,10 @@ std::string UnicodeProcessor::preprocessText(const std::string& text,
                                              const std::string& lang) const
 {
   std::string result;
-  result.reserve(text.size() * 12 / 10); // 20% extra for tag wrapping
+  result.reserve(text.size() * 12 / 10);
 
   result = text;
 
-  // --- Single-pass character replacements (optimized: table-driven) ---
   struct Replacement
   {
     const char* from;
@@ -135,14 +120,14 @@ std::string UnicodeProcessor::preprocessText(const std::string& text,
   };
 
   static const Replacement replacements[] = {
-      {"\u2013", "-"}, // en dash
-      {"\u2011", "-"}, // non-breaking hyphen
-      {"\u2014", "-"}, // em dash
+      {"\u2013", "-"},
+      {"\u2011", "-"},
+      {"\u2014", "-"},
       {"_", " "},      {"\u201C", "\""}, {"\u201D", "\""}, {"\u2018", "'"},
-      {"\u2019", "'"}, {"\u00B4", "'"}, // acute accent
+      {"\u2019", "'"}, {"\u00B4", "'"},
       {"`", "'"},      {"[", " "},       {"]", " "},       {"|", " "},
-      {"/", " "},      {"#", " "},       {"\u2192", " "}, // right arrow
-      {"\u2190", " "},                                    // left arrow
+      {"/", " "},      {"#", " "},       {"\u2192", " "},
+      {"\u2190", " "},
   };
 
   for (const auto& repl : replacements) {
@@ -153,10 +138,8 @@ std::string UnicodeProcessor::preprocessText(const std::string& text,
     }
   }
 
-  // Remove emojis
   result = std::regex_replace(result, EMOJI_RE, "");
 
-  // Remove special symbols
   static const char* specialSymbols[] = {"\u2665", "\u2606", "\u2661", "\u00A9",
                                          "\\"};
   for (const char* symbol : specialSymbols) {
@@ -166,7 +149,6 @@ std::string UnicodeProcessor::preprocessText(const std::string& text,
     }
   }
 
-  // Replace known expressions
   static const Replacement exprReplacements[] = {
       {"@", " at "},
       {"e.g.,", "for example, "},
@@ -181,7 +163,6 @@ std::string UnicodeProcessor::preprocessText(const std::string& text,
     }
   }
 
-  // Fix spacing around punctuation
   result = std::regex_replace(result, SPACE_COMMA_RE, ",");
   result = std::regex_replace(result, SPACE_DOT_RE, ".");
   result = std::regex_replace(result, SPACE_EXCL_RE, "!");
@@ -190,7 +171,6 @@ std::string UnicodeProcessor::preprocessText(const std::string& text,
   result = std::regex_replace(result, SPACE_COLON_RE, ":");
   result = std::regex_replace(result, SPACE_QUOTE_RE, "'");
 
-  // Remove duplicate quotes
   while (result.find("\"\"") != std::string::npos) {
     result.replace(result.find("\"\""), 2, "\"");
   }
@@ -201,11 +181,9 @@ std::string UnicodeProcessor::preprocessText(const std::string& text,
     result.replace(result.find("``"), 2, "`");
   }
 
-  // Remove extra spaces
   result = std::regex_replace(result, MULTISPACE_RE, " ");
   result = trim(result);
 
-  // Add period if text doesn't end with punctuation
   if (!result.empty()) {
     char lastChar = result.back();
     bool endsWithPunct =
@@ -232,7 +210,6 @@ std::string UnicodeProcessor::preprocessText(const std::string& text,
     }
   }
 
-  // Validate language
   bool validLang = false;
   for (const auto& available : supportedLangCodes()) {
     if (lang == available) {
@@ -244,7 +221,6 @@ std::string UnicodeProcessor::preprocessText(const std::string& text,
     throw std::runtime_error("Invalid language: " + lang);
   }
 
-  // Wrap with language tags
   result = "<" + lang + ">" + result + "</" + lang + ">";
 
   return result;

@@ -20,11 +20,11 @@ struct DriverResult
   }
 };
 
+// PTZ move input; `angle` is the Tapo protocol direction in degrees and wins over x/y.
 struct DriverMoveInput
 {
   std::optional<int64_t> x;
   std::optional<int64_t> y;
-  /** Tapo protocol direction in degrees; wins over x/y when present. */
   std::optional<int64_t> angle;
 };
 
@@ -47,9 +47,9 @@ struct DriverSettingsInput
   std::optional<int> alarmVolume;
 };
 
+// Speak input: 16-bit PCM mono, already synthesized.
 struct DriverSpeakInput
 {
-  /** 16-bit PCM mono, already synthesized. */
   std::vector<int16_t> samples;
   int sampleRate{16000};
 };
@@ -81,8 +81,7 @@ public:
   void forget(int64_t cameraId);
 };
 
-/** Test hook (same pattern as VoiceSessionTestAccess): seeds a stub driver
- * for a camera row in unit tests. */
+// Test hook (same pattern as VoiceSessionTestAccess): seeds a stub driver for unit tests.
 struct CameraDriverTestAccess
 {
   static void install(int64_t cameraId,

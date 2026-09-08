@@ -168,9 +168,7 @@ inline constexpr const char* FIND_ALIAS_GAZETTEER =
     "SELECT a.norm, a.surface, a.person_frame, a.entity_id, e.kind "
     "FROM memory_alias a JOIN memory_entity e ON e.id = a.entity_id";
 
-// Catalog reads resolve their physical table from config so the extracted
-// service points them at its local replica tables while the legacy keeps the
-// domain tables by default.
+// Catalog tables resolve from config; the extracted service points at its replicas.
 inline std::string catalogTable(const char* key, const char* legacy)
 {
   const std::string configured = ConfigService::getString(key);
@@ -203,8 +201,7 @@ inline std::string findCatalogStreams()
          catalogTable("memory.catalog_stream_table", "camera_stream");
 }
 
-// Schema source for the memory stack's own connections: the legacy runs the
-// full database/schema.sql, the extracted service runs memory-schema.sql.
+// Memory connections run database/schema.sql by default, memory-schema.sql when configured.
 inline std::string schemaFile()
 {
   const std::string configured = ConfigService::getString("memory.schema_file");

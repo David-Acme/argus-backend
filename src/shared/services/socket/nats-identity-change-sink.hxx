@@ -5,10 +5,7 @@
 
 class NatsBus;
 
-// NATS substrate of the identity-domain change events (Ruling BX): user and
-// person writes funnel over `argus.identity.v1.change` for the memory catalog
-// replicas. The gateway's wildcard sync fan-out ignores the subject; the
-// gateway owns the /user fan-out natively.
+// NATS substrate of the identity-domain change events; the gateway's sync fan-out ignores the subject.
 class NatsIdentityChangeSink : public IdentityChangeSink
 {
 public:

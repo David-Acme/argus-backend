@@ -10,7 +10,6 @@
 #include <string>
 #include <vector>
 
-// ---- FieldAccessors ----
 
 template <typename DtoType>
 struct FieldAccessor
@@ -54,7 +53,6 @@ struct ArrayFieldAccessor
   std::function<const std::vector<ElementType>&(const DtoType&)> get;
 };
 
-// ---- Presence rules ----
 
 template <typename DtoType>
 class IsNotEmptyRule : public Validator<DtoType>::IRule
@@ -94,7 +92,6 @@ private:
   OptionalFieldAccessor<DtoType> accessor_;
 };
 
-// ---- Character type rules ----
 
 template <typename DtoType>
 class IsAlphaRule : public Validator<DtoType>::IRule
@@ -158,7 +155,6 @@ private:
   FieldAccessor<DtoType> accessor_;
 };
 
-// ---- Format rules ----
 
 template <typename DtoType>
 class IsEmailRule : public Validator<DtoType>::IRule
@@ -319,7 +315,6 @@ private:
   std::string message_;
 };
 
-// ---- Inclusion rules ----
 
 template <typename DtoType>
 class IsInRule : public Validator<DtoType>::IRule
@@ -343,7 +338,6 @@ private:
   std::vector<std::string> allowed_;
 };
 
-// ---- Length rules ----
 
 template <typename DtoType>
 class MinLengthRule : public Validator<DtoType>::IRule
@@ -437,7 +431,6 @@ private:
   size_t max_;
 };
 
-// ---- Numeric rules ----
 
 template <typename DtoType>
 class IsPositiveRule : public Validator<DtoType>::IRule
@@ -539,7 +532,6 @@ private:
   int64_t max_;
 };
 
-// ---- Cross-field rules ----
 
 template <typename DtoType>
 class EqualsFieldRule : public Validator<DtoType>::IRule
@@ -565,7 +557,6 @@ private:
   std::string field2_;
 };
 
-// ---- Array rules ----
 
 template <typename DtoType, typename ElementType>
 class ArrayNotEmptyRule : public Validator<DtoType>::IRule
@@ -631,7 +622,6 @@ private:
   size_t max_;
 };
 
-// ---- Timestamp rules ----
 
 template <typename DtoType>
 class IsValidTimestampRule : public Validator<DtoType>::IRule
@@ -690,7 +680,6 @@ private:
   OptionalIntFieldAccessor<DtoType> accessor_;
 };
 
-// ---- Boolean rules ----
 
 template <typename DtoType>
 class IsBooleanRule : public Validator<DtoType>::IRule
@@ -710,7 +699,6 @@ private:
   BoolFieldAccessor<DtoType> accessor_;
 };
 
-// ---- Custom rules ----
 
 template <typename DtoType>
 class LambdaRule : public Validator<DtoType>::IRule

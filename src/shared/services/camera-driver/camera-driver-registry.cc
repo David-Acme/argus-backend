@@ -30,7 +30,6 @@ std::shared_ptr<ICameraDriver> CameraDriverRegistry::driverFor(const CameraSchem
     case CameraDriver::Tapo:
       driver = std::make_shared<TapoDriver>(camera);
       break;
-    // Kept explicit so a new integration is a compile error until it is wired.
     case CameraDriver::Onvif:
     case CameraDriver::Rtsp:
       LOG_WARN << "Camera driver not implemented yet: "

@@ -5,16 +5,11 @@
 #include <string>
 #include <vector>
 
-// The internal wire contract (Ruling BL): 16 kHz mono s16 PCM, with the
-// float side scaled by /32768 exactly like the voice session's own WS-frame
-// conversion, so A/B text equality holds up to quantization.
+// Internal wire contract: 16 kHz mono s16 PCM, float scaled by /32768 like the voice session's WS frames.
 inline constexpr int32_t kWireSampleRate = 16000;
 inline constexpr float kPcmScale = 32768.0F;
 
-// Cutover plumbing for the STT engine (Rulings BM/BN): the legacy voice
-// session transcribes in-process until stt.remote_url is configured; from
-// then on every turn is an HTTP call to argus-stt (:7030) and a down service
-// surfaces as an exception, never as an in-process fallback.
+// STT cutover plumbing: every turn is an HTTP call to argus-stt once stt.remote_url is set.
 struct SttRemoteConfig
 {
   std::string url;
@@ -34,17 +29,13 @@ struct SttWireRequest
   std::string contentType;
 };
 
-// HTTP client for the argus-stt internal wire (Ruling BL): the transcribe
-// endpoint (binary s16 PCM in, frozen-envelope JSON out). Throws
-// std::runtime_error carrying the frozen envelope error on failure.
+// HTTP client for the argus-stt internal wire; throws std::runtime_error with the frozen envelope error.
 class SttHttpClient
 {
 public:
   SttHttpClient(std::string baseUrl, int timeoutMs);
 
-  // 16 kHz mono float samples in (the voice session's format), transcribed
-  // text out. `lang` rides the query string; "" resolves server-side from
-  // the service's stt.language.
+  // Transcribes 16 kHz mono float samples; `lang` rides the query string, "" resolves server-side.
   std::string transcribe(const std::vector<float>& audioSamples,
                          const std::string& lang) const;
 

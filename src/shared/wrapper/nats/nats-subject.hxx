@@ -10,36 +10,25 @@ namespace nats_subject
 inline constexpr const char* kSyncChange = "argus.sync.v1.change";
 inline constexpr const char* kSyncChangeWildcard = "argus.*.v1.change";
 
-// Camera-domain changes funnel from argus-camera over their own subject so the
-// gateway can distinguish an audit event it must persist first from a plain
-// legacy fan-out event (F2-2).
+// Camera-domain changes funneled from argus-camera.
 inline constexpr const char* kCameraChange = "argus.camera.v1.change";
 
-// Productivity-domain changes (F3-2, Ruling AQ): plain user-scoped change
-// events plus `kind: audit` user_audit_log diffs the gateway persists before
-// fanning the rows out.
+// Productivity-domain changes plus `kind: audit` user_audit_log diffs.
 inline constexpr const char* kProductivityChange =
     "argus.productivity.v1.change";
 
-// Notification-domain changes (F3-2, Ruling AR): the markAsRead effects
-// funneled from argus-notification, same payload contract as the
-// productivity subject.
+// Notification-domain markAsRead effects, same payload contract as productivity.
 inline constexpr const char* kNotificationChange =
     "argus.notification.v1.change";
 
-// Identity-domain changes (F4-6, Ruling BX): user and person writes funneled
-// to the memory catalog replicas. The gateway's wildcard sync fan-out drops
-// them by design; the gateway owns the /user fan-out natively.
+// Identity-domain user and person writes, funneled to the memory catalog replicas.
 inline constexpr const char* kIdentityChange = "argus.identity.v1.change";
 
-// Object-detection events from the argus-camera operator (F2-3); consumed by
-// the gateway's notification budget, never re-emitted to /sync.
+// Object-detection events from the argus-camera operator; never re-emitted to /sync.
 inline constexpr const char* kCameraObjectDetected =
     "argus.camera.v1.object_detected";
 
-// Push intents for the tunnel pipeline (F5-5, Ruling CK): notification rows
-// fanned to the home client through the tunnel transport. The gateway's
-// wildcard sync fan-out drops them (never re-emitted to /sync).
+// Push intents fanned to the home client through the tunnel; never re-emitted to /sync.
 inline constexpr const char* kNotificationPushIntent =
     "argus.notification.v1.push_intent";
 
@@ -70,8 +59,6 @@ inline bool isValidSubject(std::string_view subject, SubjectKind kind)
     if (kind == SubjectKind::Publish &&
         (isStarWildcard || isGreaterWildcard))
       return false;
-    // ">" matches one or more trailing tokens and is only valid as the last
-    // token; this stays valid across every nats-server version.
     if (isGreaterWildcard && dot != std::string::npos)
       return false;
 

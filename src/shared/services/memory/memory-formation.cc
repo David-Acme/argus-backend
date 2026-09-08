@@ -32,7 +32,7 @@ std::string factTypeFromMemoryType(const std::string& type)
 struct FoldedView
 {
   std::string folded;
-  std::vector<size_t> boundary;  // boundary[k] = source offset of folded[k]
+  std::vector<size_t> boundary;
 };
 
 FoldedView foldClause(std::string_view source)
@@ -82,8 +82,7 @@ FoldedView foldClause(std::string_view source)
   return out;
 }
 
-// Finds a folded needle in the view at word boundaries; returns the
-// [begin, end) byte offsets into the ORIGINAL clause.
+// Finds a folded needle at word boundaries; returns offsets into the original clause.
 std::optional<std::pair<size_t, size_t>>
 findSpanInClause(const FoldedView& view, const std::string& needle)
 {
@@ -212,9 +211,6 @@ MemoryFormation::observe(const Observation& obs,
 
     const bool explicitTrigger = parsed.has_value() || statement.has_value();
 
-    // Only a trigger is an explicit order, so only a trigger may carry a
-    // question mark. A statement matched inside a question ("cuando viene mi
-    // hermana" -> "mi hermana") is part of the question.
     if (!parsed.has_value() &&
         ruleParser_.isQuestion({.text = obs.text, .lang = obs.lang}))
       return std::nullopt;
@@ -267,8 +263,6 @@ MemoryFormation::observe(const Observation& obs,
       naturalClause = clause;
     }
     else {
-      // Canonical from verbatim clause spans: the lexicon predicate is an
-      // internal English canonical that must never reach the model.
       const FoldedView view = foldClause(clause);
       const auto span = [&](const std::string& part) {
         return findSpanInClause(view, TemporalResolver::normalize(part));
@@ -303,8 +297,6 @@ MemoryFormation::observe(const Observation& obs,
           naturalClause += " " + extracted.front().when.surface;
       }
 
-      // Keep the possessor / personal "a" when the clause carries it right
-      // before the subject ("a mi madre no le gusta el ruido").
       const std::string lowered = text_norm::whitespace(clause);
       const std::string needle = text_norm::whitespace(naturalClause);
       const size_t at = lowered.find(needle);

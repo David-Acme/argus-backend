@@ -5,10 +5,7 @@
 #include <shared/services/socket/socket-service.hxx>
 #include <shared/services/sync-audit/sync-audit-service.hxx>
 
-// Legacy substrate of the productivity and notification domain change events:
-// the local SocketService rooms plus the SyncAuditService publication, exactly
-// the pre-cutover path. argus-productivity and argus-notification bind their
-// own NATS funnels instead.
+// Legacy substrate: local SocketService rooms plus the SyncAuditService publication.
 class SocketUserChangeSink : public UserChangeSink
 {
 public:

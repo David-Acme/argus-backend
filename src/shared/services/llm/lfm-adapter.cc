@@ -21,7 +21,7 @@ std::string jsonType(const tools::ToolArgumentSpec& spec)
   return "string";
 }
 
-// [name(arg="v", arg2='v2', arg3=123)] — one or more calls.
+// Parses pythonic `[name(arg="v", ...)]` calls, one or more.
 std::vector<tools::ToolCall> parsePythonic(const std::string& text)
 {
   std::vector<tools::ToolCall> out;

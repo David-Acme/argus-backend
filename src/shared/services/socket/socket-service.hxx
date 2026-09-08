@@ -21,9 +21,7 @@ public:
   void replaceRoleRooms(const RoleRoomReplaceInput& input) const;
   void disconnectUser(int64_t userId, const SocketEmitDto& context) const;
 
-  // Installs the process-wide event bus the emits publish to as a side
-  // effect. Only the publisher host installs one (the gateway consumes);
-  // unset means publishing is a no-op.
+  // Installs the process-wide event bus emits publish to; unset means publishing is a no-op.
   static void setEventBus(std::shared_ptr<NatsBus> bus);
 
 private:

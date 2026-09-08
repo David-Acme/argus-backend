@@ -127,8 +127,7 @@ Address parseUrl(const std::string& url)
   return address;
 }
 
-// Parameter struct for one request head (AGENTS rule 2): the wire method,
-// path and body plus the resolved peer address.
+// One request head: wire method, path and body plus the resolved peer address.
 struct HttpRequestHead
 {
   const char* method{nullptr};

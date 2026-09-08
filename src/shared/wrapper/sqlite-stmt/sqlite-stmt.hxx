@@ -4,10 +4,7 @@
 #include <string>
 #include <utility>
 
-// RAII wrapper for sqlite3_stmt: prepared statements are always finalized,
-// never leaked. Move-only, like the underlying resource. The raw sqlite3_*
-// bind/column functions still work through get() when a convenience method
-// is missing.
+// RAII wrapper for sqlite3_stmt: statements are always finalized, move-only.
 class SqliteStmt
 {
 public:
@@ -27,8 +24,7 @@ public:
     return *this;
   }
 
-  // Prepares the statement on db; returns false on failure (same semantics
-  // as sqlite3_prepare_v2). Any previously held statement is finalized.
+  // Prepares the statement on db; false on failure.
   bool prepare(sqlite3* db, const char* sql)
   {
     finalize();

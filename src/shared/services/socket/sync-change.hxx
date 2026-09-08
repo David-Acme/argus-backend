@@ -6,12 +6,7 @@
 #include <shared/services/room/room-manager.hxx>
 #include <vector>
 
-// Wire contract of the `argus.sync.v1.change` NATS fan-out events (see
-// argus-contracts/subjects.md). The `operation`/`option`/`info` triple is the
-// SocketEmitDto exactly as it is emitted on /sync; the remaining keys are
-// routing metadata the gateway consumes and never re-emits: `users` selects
-// the user rooms of a change (absent = module room of `option`), `action`
-// distinguishes the room-control events from plain emits.
+// Wire contract of the argus.sync.v1.change fan-out (see argus-contracts/subjects.md): the SocketEmitDto triple plus gateway routing metadata.
 namespace sync_change
 {
 inline constexpr const char* kUsersField = "users";
@@ -39,8 +34,6 @@ inline Json::Value emitPayload(const SocketEmitDto& body,
 inline Json::Value userEmitPayload(const SocketEmitDto& body,
                                    const std::vector<int64_t>& users)
 {
-  // Always carries the field (even when empty) so the gateway never falls
-  // back to the module room for a user-scoped emit.
   Json::Value payload = body.toJson();
   Json::Value rooms(Json::arrayValue);
   for (const auto userId : users)
@@ -60,8 +53,6 @@ inline Json::Value disconnectPayload(const SocketEmitDto& context,
 
 inline Json::Value roleRoomsPayload(const RoleRoomReplaceInput& input)
 {
-  // Room-control events carry the AuthContextChanged user triple as envelope
-  // metadata: the gateway performs the room action and re-emits nothing.
   SocketEmitDto body;
   body.operation = SyncOperation::AuthContextChanged;
   body.option = TableName::User;

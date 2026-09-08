@@ -14,9 +14,9 @@ struct TapoMoveInput
   int64_t y{0};
 };
 
+// Step input: `direction` is the protocol direction in degrees, not the distance moved.
 struct TapoStepInput
 {
-  /** Protocol direction in degrees, not the distance moved. */
   int64_t direction{0};
 };
 

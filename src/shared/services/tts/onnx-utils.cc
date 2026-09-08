@@ -23,10 +23,6 @@ const std::vector<std::string>& supportedLangCodes()
   return codes;
 }
 
-// ============================================================================
-// ONNX model loading
-// ============================================================================
-
 std::unique_ptr<Ort::Session> loadOnnx(Ort::Env& env, const std::string& path,
                                        const Ort::SessionOptions& opts)
 {
@@ -43,10 +39,6 @@ OnnxModels loadOnnxAll(Ort::Env& env, const std::string& onnxDir,
   models.vocoder = loadOnnx(env, onnxDir + "/vocoder.onnx", opts);
   return models;
 }
-
-// ============================================================================
-// Config / processor loading
-// ============================================================================
 
 Config loadConfig(const std::string& onnxDir)
 {
@@ -73,10 +65,6 @@ std::unique_ptr<UnicodeProcessor> loadProcessor(const std::string& onnxDir)
   std::string path = onnxDir + "/unicode_indexer.json";
   return std::make_unique<UnicodeProcessor>(path);
 }
-
-// ============================================================================
-// Voice style loading
-// ============================================================================
 
 std::unique_ptr<Style> loadVoiceStyle(const std::string& path)
 {
@@ -122,10 +110,6 @@ std::unique_ptr<Style> loadVoiceStyle(const std::string& path)
   return std::make_unique<Style>(std::move(ttlFlat), std::move(ttlShape),
                                  std::move(dpFlat), std::move(dpShape));
 }
-
-// ============================================================================
-// Tensor conversion
-// ============================================================================
 
 Ort::Value
 arrayToTensor(Ort::MemoryInfo& memoryInfo,
@@ -180,10 +164,6 @@ Ort::Value intArrayToTensor(Ort::MemoryInfo& memoryInfo,
                                            dims.size());
 }
 
-// ============================================================================
-// Masks
-// ============================================================================
-
 std::vector<std::vector<std::vector<float>>>
 lengthToMask(const std::vector<int64_t>& lengths, int maxLen)
 {
@@ -216,10 +196,6 @@ latentMask(const std::vector<int64_t>& wavLengths, int baseChunkSize,
   }
   return lengthToMask(latentLengths);
 }
-
-// ============================================================================
-// WAV
-// ============================================================================
 
 void writeWav(const std::string& filename, const std::vector<float>& audioData,
               int sampleRate)
@@ -268,10 +244,6 @@ void writeWav(const std::string& filename, const std::vector<float>& audioData,
              intSamples.size() * sizeof(int16_t));
 }
 
-// ============================================================================
-// JSON
-// ============================================================================
-
 std::vector<int64_t> loadJsonInt64(const std::string& path)
 {
   std::ifstream file(path);
@@ -283,10 +255,6 @@ std::vector<int64_t> loadJsonInt64(const std::string& path)
   file >> j;
   return j.get<std::vector<int64_t>>();
 }
-
-// ============================================================================
-// Text utilities
-// ============================================================================
 
 static std::string trim(const std::string& str)
 {

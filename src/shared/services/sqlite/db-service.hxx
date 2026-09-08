@@ -10,70 +10,40 @@ class DbService
 public:
   static drogon::orm::DbClientPtr client()
   {
-    // Drogon's fast client mode is PostgreSQL/MySQL-only; SQLite clients
-    // always go through the shared client pool. A single connection keeps
-    // the SQLite serialization cheap (see number_of_connections in
-    // config.toml).
     return drogon::app().getDbClient();
   }
 
-  // Read path of the sync tables that stay in argus.db. The gateway installs
-  // the legacy argus.db opened `file:...?mode=ro` (see setReadOnlyClient);
-  // hosts that never install one fall back to the default client, so a
-  // single compiled read path serves both.
+  // Read path of the sync tables that stay in argus.db.
   static drogon::orm::DbClientPtr readOnlyClient();
 
-  // Installs the named read-only client used by the sync read path. Must be
-  // called once at boot, before app().run() creates any IO thread.
+  // Installs the named read-only sync client; call once at boot, before any IO thread exists.
   static void setReadOnlyClient(drogon::orm::DbClientPtr client);
 
-  // Client of the identity database used by the auth reads (JwtFilter's
-  // refresh-token and user lookups). Hosts that never install one fall back
-  // to the default client, so the legacy behavior stays byte-identical when
-  // the config key is absent.
+  // Client of the identity database used by the auth reads.
   static drogon::orm::DbClientPtr identityClient();
 
-  // Installs the named identity client. Must be called once at boot, before
-  // app().run() creates any IO thread.
+  // Installs the named identity client; call once at boot, before any IO thread exists.
   static void setIdentityClient(drogon::orm::DbClientPtr client);
 
-  // Client of the camera domain (camera, camera_stream, zone). The gateway
-  // installs camera.db opened `file:...?mode=ro` and the legacy installs it
-  // read-write at the cutover (Rulings X/Z); hosts that never install one
-  // fall back to the default client, so the pre-cutover behavior stays
-  // byte-identical when the config key is absent.
+  // Client of the camera domain (camera, camera_stream, zone).
   static drogon::orm::DbClientPtr cameraClient();
 
-  // Installs the named camera client. Must be called once at boot, before
-  // app().run() creates any IO thread.
+  // Installs the named camera client; call once at boot, before any IO thread exists.
   static void setCameraClient(drogon::orm::DbClientPtr client);
 
-  // Client of the productivity domain (reminder, reminder_detail,
-  // calendar_event, calendar_event_share, project, project_member,
-  // project_task). The gateway installs productivity.db opened
-  // `file:...?mode=ro` at the cutover (Ruling AQ); hosts that never install
-  // one fall back to the default client, so the pre-cutover behavior stays
-  // byte-identical when the config key is absent.
+  // Client of the productivity domain (reminder, calendar and project tables).
   static drogon::orm::DbClientPtr productivityClient();
 
-  // Installs the named productivity client. Must be called once at boot,
-  // before app().run() creates any IO thread.
+  // Installs the named productivity client; call once at boot, before any IO thread exists.
   static void setProductivityClient(drogon::orm::DbClientPtr client);
 
-  // Client of the notification domain (notification, notification_token). The
-  // gateway installs notification.db read-write — the camera-notifier writes
-  // it while argus-notification owns the file (Ruling AR, cross-process WAL +
-  // busy_timeout, no DDL from the gateway); hosts that never install one fall
-  // back to the default client, so the pre-cutover behavior stays
-  // byte-identical when the config key is absent.
+  // Client of the notification domain (notification, notification_token); the gateway opens it read-write.
   static drogon::orm::DbClientPtr notificationClient();
 
-  // Installs the named notification client. Must be called once at boot,
-  // before app().run() creates any IO thread.
+  // Installs the named notification client; call once at boot, before any IO thread exists.
   static void setNotificationClient(drogon::orm::DbClientPtr client);
 
-  // Enables SQLite URI filenames (`file:...?mode=ro`) process-wide. A no-op
-  // once SQLite is initialized; must run before the first sqlite3_open.
+  // Enables SQLite URI filenames (`file:...?mode=ro`) process-wide; before the first sqlite3_open.
   static void enableUriFilenames();
 
   static bool runScriptFile(const std::string& path);

@@ -3,8 +3,7 @@
 #include <cstdint>
 #include <string>
 
-// Adaptive thread budgets so every AI service performs well on any machine,
-// from 2-core laptops to 64-core servers, without hardcoded thread counts.
+// Adaptive thread budgets for every AI service, scaled to the host hardware.
 namespace ThreadBudget
 {
 
@@ -12,11 +11,9 @@ namespace ThreadBudget
 int hardwareThreads();
 
 // Steady-state compute threads for heavy per-call inference (decode/synth).
-// Roughly half the hardware threads, bounded to a sane range.
 int computeThreads();
 
 // Batch/prefill threads (parallel prompt/image processing).
-// Usually larger than computeThreads since batch work scales better.
 int batchThreads();
 
 // Threads for large parallel kernels (vision encoder, graph models).
@@ -26,12 +23,9 @@ int heavyThreads();
 int lightThreads();
 
 // Max concurrent heavy inferences allowed across services.
-// Scales with hardware so small machines stay responsive.
 int inferenceSlots();
 
-// Speech synthesis threads. Same share as computeThreads() but capped lower:
-// synthesis now overlaps with token generation, and it stops scaling past
-// ~8 threads, so a bigger slice only steals cores from the LLM.
+// Speech synthesis threads, capped lower than computeThreads.
 int ttsThreads();
 
 int extractionSlots();

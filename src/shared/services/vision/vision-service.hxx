@@ -14,14 +14,13 @@ struct llama_model;
 struct llama_context;
 struct mtmd_context;
 
+// Describe request; empty prompt and maxTokens 0 keep the configured defaults.
 struct VisionRequest
 {
   std::vector<unsigned char> imageRgb;
   uint32_t width{0};
   uint32_t height{0};
-  // Empty = use the configured default question.
   std::string prompt;
-  // 0 = use the configured default (vision.max_tokens).
   int32_t maxTokens{0};
 };
 

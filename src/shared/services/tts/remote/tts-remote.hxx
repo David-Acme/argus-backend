@@ -6,9 +6,7 @@
 #include <string>
 #include <vector>
 
-// Remote TTS endpoint settings: when tts.remote_url is set, every synthesis
-// is an HTTP call to argus-tts (:7029) and a down service surfaces as an
-// exception, never as an in-process fallback.
+// Remote TTS endpoint settings; every synthesis is an HTTP call once tts.remote_url is set.
 struct TtsRemoteConfig
 {
   std::string url;
@@ -20,8 +18,7 @@ struct TtsRemoteConfig
   static TtsRemoteConfig resolve();
 };
 
-// One internal-wire exchange: method + path + optional JSON body; the stream
-// leg keeps the connection open, so it opts out of Connection: close.
+// One internal-wire exchange; the stream leg keeps the connection open.
 struct WireRequest
 {
   std::string method;
@@ -30,9 +27,7 @@ struct WireRequest
   bool closeConnection{true};
 };
 
-// HTTP client for the argus-tts internal wire (Ruling BH): the two
-// synthesize endpoints plus GET /tts/v1/config for defaultSpeed/sampleRate.
-// Throws std::runtime_error carrying the frozen envelope error on failure.
+// HTTP client for the argus-tts internal wire; throws std::runtime_error with the frozen envelope error.
 class TtsHttpClient
 {
 public:
@@ -58,9 +53,7 @@ private:
   int timeoutMs_;
 };
 
-// The TTS entry point consumers hold as a member: every call is an HTTP
-// exchange with argus-tts and throws std::runtime_error when tts.remote_url
-// is not configured — there is no in-process fallback.
+// TTS entry point held by consumers; throws when tts.remote_url is not configured.
 class TtsClient
 {
 public:

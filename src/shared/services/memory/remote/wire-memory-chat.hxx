@@ -6,9 +6,7 @@
 #include <string>
 #include <utility>
 
-// Extracted-service substrate (Ruling BZ): worker chats go to argus-llm's
-// /llm/v1/chat; back-pressure is the memory service's bounded work queue, so
-// the leg never reports busy and never polls the remote engine.
+// Extracted-service substrate: worker chats go over the argus-llm wire, never busy.
 class WireMemoryChat final : public IMemoryChat
 {
 public:

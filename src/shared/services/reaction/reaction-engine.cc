@@ -69,8 +69,6 @@ Reaction ReactionEngine::react(const ReactionSignals& signals) const
                     .because = because};
   };
 
-  // Resolution order IS the priority: an alarm must never be buried under
-  // "thinking", and the first match wins.
   if (signals.systemAlert)
     return make(ReactionKind::Alarmed, "system_alert");
   if (signals.sttFailed || signals.text.empty())

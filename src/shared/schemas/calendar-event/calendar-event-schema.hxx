@@ -7,6 +7,7 @@
 #include <optional>
 #include <string>
 
+// Calendar event row; endsAt absent means a point in time, not a span.
 struct CalendarEventSchema
 {
   int64_t id{0};
@@ -18,7 +19,6 @@ struct CalendarEventSchema
   std::string location;
   std::string color;
   int64_t startsAt{0};
-  // Absent means a point in time, not a span.
   std::optional<int64_t> endsAt;
   bool isAllDay{false};
   std::optional<std::string> recurrenceRule;

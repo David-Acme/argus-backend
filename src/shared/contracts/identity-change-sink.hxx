@@ -4,10 +4,7 @@
 #include <json/value.h>
 #include <string>
 
-// Input of the identity-domain change publication (Ruling BX): one user or
-// person row written by the identity surface. The row is the post-write
-// snapshot; `deleted` marks a soft delete so the memory catalog replica can
-// tombstone it.
+// Post-write snapshot of one user or person row; `deleted` marks a soft delete.
 struct IdentityChangeInput
 {
   std::string table;
@@ -16,9 +13,7 @@ struct IdentityChangeInput
   Json::Value row;
 };
 
-// Substrate of the identity-domain change events. The legacy binds the NATS
-// funnel shared with the gateway so the memory service catalog replicas stay
-// fed from whichever process owns the identity writes.
+// Identity-domain change sink feeding the memory catalog replicas.
 class IdentityChangeSink
 {
 public:

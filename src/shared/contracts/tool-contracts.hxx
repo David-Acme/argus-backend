@@ -6,8 +6,7 @@
 #include <string>
 #include <vector>
 
-// Tool runtime contracts (COGNITIVE_MEMORY_PLAN.md §6). Namespaced to keep
-// the legacy memory ToolCall (tool-parser.hxx) unambiguous until Phase 8.
+// Tool runtime contracts (COGNITIVE_MEMORY_PLAN.md §6), namespaced so the legacy memory ToolCall stays unambiguous.
 namespace tools
 {
 

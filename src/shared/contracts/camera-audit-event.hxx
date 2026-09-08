@@ -8,12 +8,7 @@
 #include <shared/utils/json-util/json-util.hxx>
 #include <string>
 
-// Wire contract of a camera-domain audit row funneled from argus-camera over
-// `argus.camera.v1.change` (Ruling Y): the exact SyncAuditService diff output
-// the legacy would have written, so the gateway inserts it verbatim into its
-// audit substrate before fanning the resulting row out to /sync. The `kind`
-// discriminator separates it from a plain SocketEmitDto change event on the
-// same subject.
+// Camera-domain audit row on argus.camera.v1.change; the gateway inserts it verbatim.
 struct CameraAuditEvent
 {
   int64_t recordId{0};

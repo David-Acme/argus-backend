@@ -119,9 +119,7 @@ std::string escapeTomlString(const std::string& value)
   return out;
 }
 
-// Patches `key = literal` inside `[section]`, preserving every other line
-// (comments, blank lines, formatting). If the key is missing it is inserted
-// right after the section header; if the section is missing it is appended.
+// Patches `key = literal` inside `[section]`, preserving every other line.
 std::string patchContent(const std::string& content, const std::string& section,
                          const std::string& key, const std::string& literal)
 {

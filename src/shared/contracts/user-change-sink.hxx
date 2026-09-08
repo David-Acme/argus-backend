@@ -6,10 +6,7 @@
 #include <shared/enums.hxx>
 #include <vector>
 
-// Input of the user-scoped audit publication: the before/after snapshots of
-// one persisted row plus the recipients that would receive the user_audit_log
-// row. The sink computes the same flat diff and recipient set the legacy
-// SyncAuditService::publishUsers produces.
+// Before/after snapshots of one row plus the recipients of its user_audit_log row.
 struct UserAuditInput
 {
   int64_t recordId{0};
@@ -19,11 +16,7 @@ struct UserAuditInput
   std::vector<int64_t> userIds;
 };
 
-// Substrate of the productivity and notification domain change events. The
-// legacy binds the local SocketService rooms plus the SyncAuditService
-// publication; argus-productivity and argus-notification funnel the same
-// payloads over their own NATS subjects (Rulings AQ/AR). Installed once at
-// boot, before the service serves.
+// Sink for productivity and notification change events; each service installs its own at boot.
 class UserChangeSink
 {
 public:

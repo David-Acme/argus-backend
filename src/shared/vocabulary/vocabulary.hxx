@@ -12,10 +12,7 @@
 #include <shared/vocabulary/vocabulary-es.hxx>
 #include <shared/vocabulary/vocabulary-en.hxx>
 
-// Static per-language vocabulary for the memory rule engine. Single source
-// of truth: adding a phrase/lexicon entry = editing the language header.
-// No DB tables, no runtime queries (was memory_phrase / memory_lexicon).
-// PhraseSeed/LexiconSeed live in vocabulary-types.hxx.
+// Static per-language vocabulary for the memory rule engine; entries live in the language headers.
 namespace vocabulary
 {
 

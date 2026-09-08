@@ -11,15 +11,11 @@
 #include <string_view>
 #include <unordered_map>
 
-// NATS event bus: publish/subscribe service used to fan sync-change events to
-// the gateway. Handlers run on cnats worker threads and must not block; heavy
-// work belongs in a BlockingTask. connect() blocks until the first connection
-// result, so it must never be called on a Drogon IO thread.
+// NATS event bus over cnats; handlers run on cnats worker threads and must not block.
 class NatsBus
 {
 public:
-  // Delivers the subscribed subject (the concrete one a wildcard matched)
-  // plus the payload, so one wildcard subscription can route by subject.
+  // Delivers the concrete subject a wildcard matched plus the payload.
   using MessageHandler =
       std::function<void(std::string_view subject, std::string_view payload)>;
 
@@ -44,16 +40,12 @@ public:
 
   bool publish(std::string_view subject, std::string_view payload);
 
-  // Handlers registered before connect() become pending and activate once the
-  // connection is up.
+  // Handlers registered before connect() become pending and activate once connected.
   std::optional<uint64_t> subscribe(const std::string& subject,
                                     MessageHandler handler);
   bool unsubscribe(uint64_t id);
 
-  // Idempotent: releases every handler, unsubscribes and closes the
-  // connection. A later connect() starts a fresh lifecycle.
-  // Uses natsSubscription_Unsubscribe (not natsSubscription_Drain), which is
-  // the only one of the two safe to call from a message callback.
+  // Idempotent: releases every handler, subscription and connection; safe from a message callback.
   void drain();
 
   bool isConnected() const;

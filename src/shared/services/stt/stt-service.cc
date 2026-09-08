@@ -10,8 +10,7 @@
 namespace
 {
 
-// Root of the on-disk STT models (models/stt by default); argus-stt points
-// stt.models_dir at the read-only models volume.
+// Root of the on-disk STT models (models/stt by default).
 std::string modelsDir()
 {
   const std::string dir = ConfigService::getString("stt.models_dir");
@@ -43,9 +42,6 @@ createRecognizer(const std::string& lang)
 
   SherpaOnnxOfflineRecognizerConfig config{};
 
-  // Keep the resolved paths alive for the duration of this function: the
-  // recognizer copies the string contents during create, but a temporary
-  // std::string + c_str() would dangle before then.
   std::string encPath, decPath, tokPath, modelPath, langPath;
 
   if (engine == SttEngine::Canary) {
@@ -83,7 +79,7 @@ createRecognizer(const std::string& lang)
     config.model_config.model_type = "nemo_transducer";
     config.model_config.tokens = tokPath.c_str();
   }
-  else { // Whisper (default)
+  else {
     encPath = modelDir + "/tiny-encoder.int8.onnx";
     decPath = modelDir + "/tiny-decoder.int8.onnx";
     tokPath = modelDir + "/tiny-tokens.txt";
@@ -251,9 +247,6 @@ SttService::transcribeAsync(const std::vector<float>& audioSamples,
 {
   co_return co_await BlockingTask<std::string>(
       [this, audioSamples, sampleRate, lang]() {
-        // Ruling BE: one global recognizer, rebuilt inside the blocking leg
-        // only when the effective language differs. A failed rebuild falls
-        // back to the current recognizer, like the voice session does.
         const std::string effective = lang.empty() ? configLanguage() : lang;
         if (effective != language() && !setLanguage(effective))
           LOG_WARN << "STT language switch to " << effective

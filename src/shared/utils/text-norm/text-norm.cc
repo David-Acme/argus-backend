@@ -11,9 +11,6 @@ std::vector<std::string> words(const std::string& text, int minAlnum)
   std::string current;
   int alnum = 0;
   for (unsigned char c : text) {
-    // Bytes >= 0x80 are UTF-8 multi-byte characters: they stay glued to the
-    // current word so "¿cuándo" keeps its accented letters. The alnum
-    // counter keeps "¿a" (1 real letter) from passing as a query word.
     if (std::isalnum(c) || c >= 0x80) {
       current += static_cast<char>(std::tolower(c));
       if (std::isalnum(c))

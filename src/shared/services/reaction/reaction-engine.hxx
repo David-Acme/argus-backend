@@ -4,11 +4,7 @@
 #include <shared/services/reaction/reaction-contracts.hxx>
 #include <string>
 
-// Turns the signals a turn already produced into the assistant's reaction.
-// Deliberately NOT a model: every decision is a rule over signals the
-// pipeline computed anyway, so a wrong face is explainable from `because`.
-// The rule machinery lives behind the pimpl so the voice path compiles
-// without memory types (Ruling CA).
+// Turns the signals a turn already produced into the assistant's reaction; every decision is a rule.
 class ReactionEngine
 {
 public:
@@ -23,8 +19,7 @@ public:
 
   Reaction react(const ReactionSignals& signals) const;
 
-  // Short line appended to the TAIL of the user turn, never to the system
-  // prompt: the system prefix has to stay constant for KV-cache reuse.
+  // Short line appended to the tail of the user turn, never to the system prompt.
   static std::string toneNote(const Reaction& reaction,
                               const std::string& lang);
 
