@@ -18,22 +18,6 @@ endif()
 
 find_package(doctest REQUIRED)
 
-# Foundation slice instead of argus_common: argus_common PUBLIC-links ncnn
-# (face-era hardware probing) and would drag ncnn symbols into this binary,
-# breaking the zero-AI-symbols rule (Ruling BG).
-add_library(tts-foundation STATIC
-    ${SHARED_ROOT}/wrapper/api-response/api-response.cc
-    ${SHARED_ROOT}/wrapper/thread-budget/thread-budget.cc
-    ${SHARED_ROOT}/wrapper/hardware-profile/hardware-profile.cc
-    ${SHARED_ROOT}/services/config-service/config-service.cc
-)
-target_include_directories(tts-foundation PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src)
-target_compile_definitions(tts-foundation PRIVATE ARGUS_NO_NCNN_GPU=1)
-target_link_libraries(tts-foundation PUBLIC Drogon::Drogon
-    tomlplusplus::tomlplusplus)
-target_compile_options(tts-foundation PRIVATE -Wall -Wextra)
-
 # onnxruntime is THE capacity of this service (F4-2, Ruling BG): no face/llm/
 # vlm/stt/vad code is compiled, so the binary carries no other AI symbols.
 add_library(tts-core STATIC
@@ -59,7 +43,8 @@ target_include_directories(tts-core PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/../src)
 
 target_link_libraries(tts-core PUBLIC
-    tts-foundation
+    argus_common
+    argus::hardware-profile
     Drogon::Drogon
     onnxruntime::onnxruntime
     nlohmann_json::nlohmann_json)

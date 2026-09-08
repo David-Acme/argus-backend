@@ -17,23 +17,6 @@ endif()
 
 find_package(doctest REQUIRED)
 
-# Foundation slice instead of argus_common: argus_common PUBLIC-links ncnn
-# (face-era hardware probing) and would drag ncnn symbols into this binary,
-# breaking the zero-non-llm-AI-symbols rule (Ruling BS). Same pattern as the
-# F4-2 tts-foundation, F4-3 stt-foundation and F4-4 vlm-foundation slices.
-add_library(llm-foundation STATIC
-    ${SHARED_ROOT}/wrapper/api-response/api-response.cc
-    ${SHARED_ROOT}/wrapper/thread-budget/thread-budget.cc
-    ${SHARED_ROOT}/wrapper/hardware-profile/hardware-profile.cc
-    ${SHARED_ROOT}/services/config-service/config-service.cc
-)
-target_include_directories(llm-foundation PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src)
-target_compile_definitions(llm-foundation PRIVATE ARGUS_NO_NCNN_GPU=1)
-target_link_libraries(llm-foundation PUBLIC Drogon::Drogon
-    tomlplusplus::tomlplusplus)
-target_compile_options(llm-foundation PRIVATE -Wall -Wextra)
-
 # llama.cpp is THE capacity of this service (Ruling BS): it links the same
 # vendored engine the legacy links (third_party/llama.cpp, tag b10305) — the
 # mtmd projector is NOT needed here (chat only, no multimodal). Within the
@@ -95,7 +78,8 @@ target_include_directories(llm-core PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/../src)
 
 target_link_libraries(llm-core PUBLIC
-    llm-foundation
+    argus_common
+    argus::hardware-profile
     Drogon::Drogon
     nlohmann_json::nlohmann_json
     llama)

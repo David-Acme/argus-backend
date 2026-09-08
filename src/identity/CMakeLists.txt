@@ -109,6 +109,7 @@ endif()
 target_link_libraries(argus_identity
     PUBLIC
         argus_common
+        argus::hardware-profile-gpu
         Drogon::Drogon
         jwt-cpp::jwt-cpp
         nlohmann_json::nlohmann_json

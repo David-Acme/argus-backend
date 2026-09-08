@@ -18,20 +18,6 @@ endif()
 
 find_package(doctest REQUIRED)
 
-# Foundation slice instead of argus_common: the tunnel must not drag ncnn or
-# any database code into its binaries (Ruling CL: no database in the tunnel).
-add_library(tunnel-foundation STATIC
-    ${SHARED_ROOT}/wrapper/api-response/api-response.cc
-    ${SHARED_ROOT}/services/config-service/config-service.cc
-    ${SHARED_ROOT}/wrapper/nats/nats-bus.cc
-)
-target_include_directories(tunnel-foundation PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src)
-target_compile_definitions(tunnel-foundation PRIVATE ARGUS_NO_NCNN_GPU=1)
-target_link_libraries(tunnel-foundation PUBLIC Drogon::Drogon
-    tomlplusplus::tomlplusplus cnats::nats_static)
-target_compile_options(tunnel-foundation PRIVATE -Wall -Wextra)
-
 # Tunnel core: epoll engine, framing, multiplexer, client, relay and the
 # /health plumbing. No thread-per-stream: everything runs on one PollLoop.
 add_library(tunnel-core STATIC
@@ -51,7 +37,7 @@ target_include_directories(tunnel-core PUBLIC
     ${TUNNEL_SRC_ROOT}
     ${CMAKE_CURRENT_SOURCE_DIR}/../src)
 
-target_link_libraries(tunnel-core PUBLIC tunnel-foundation)
+target_link_libraries(tunnel-core PUBLIC argus_common)
 
 target_compile_options(tunnel-core PRIVATE -Wall -Wextra)
 

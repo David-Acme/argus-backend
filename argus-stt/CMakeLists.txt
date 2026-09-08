@@ -18,23 +18,6 @@ endif()
 
 find_package(doctest REQUIRED)
 
-# Foundation slice instead of argus_common: argus_common PUBLIC-links ncnn
-# (face-era hardware probing) and would drag ncnn symbols into this binary,
-# breaking the zero-AI-symbols rule (Ruling BK). Same pattern as the F4-2
-# tts-foundation slice.
-add_library(stt-foundation STATIC
-    ${SHARED_ROOT}/wrapper/api-response/api-response.cc
-    ${SHARED_ROOT}/wrapper/thread-budget/thread-budget.cc
-    ${SHARED_ROOT}/wrapper/hardware-profile/hardware-profile.cc
-    ${SHARED_ROOT}/services/config-service/config-service.cc
-)
-target_include_directories(stt-foundation PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src)
-target_compile_definitions(stt-foundation PRIVATE ARGUS_NO_NCNN_GPU=1)
-target_link_libraries(stt-foundation PUBLIC Drogon::Drogon
-    tomlplusplus::tomlplusplus)
-target_compile_options(stt-foundation PRIVATE -Wall -Wextra)
-
 # sherpa-onnx is THE capacity of this service (F4-3, Ruling BK): no face/llm/
 # vlm/tts/vad code is compiled, so the binary carries no other AI symbols.
 if(NOT TARGET sherpa-onnx-c-api)
@@ -87,7 +70,7 @@ target_include_directories(stt-core PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/../src)
 
 target_link_libraries(stt-core PUBLIC
-    stt-foundation
+    argus_common
     Drogon::Drogon
     onnxruntime::onnxruntime
     nlohmann_json::nlohmann_json

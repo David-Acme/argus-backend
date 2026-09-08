@@ -235,7 +235,7 @@ target_compile_definitions(tts-wire-test PRIVATE
     ARGUS_TEST_TTS_MODELS_DIR="${CMAKE_SOURCE_DIR}/models/tts")
 
 target_link_libraries(tts-wire-test PRIVATE argus_common
-    onnxruntime::onnxruntime doctest::doctest)
+    argus::hardware-profile onnxruntime::onnxruntime doctest::doctest)
 
 target_compile_options(tts-wire-test PRIVATE -Wall -Wextra)
 
@@ -297,7 +297,8 @@ target_compile_definitions(vlm-wire-test PRIVATE
     ARGUS_TEST_VLM_MODELS_DIR="${CMAKE_SOURCE_DIR}/models/vision/lfm2vl-25")
 
 target_link_libraries(vlm-wire-test PRIVATE argus_common
-    ${ARGUS_LLAMA_TARGETS} opencv::opencv doctest::doctest)
+    argus::hardware-profile ${ARGUS_LLAMA_TARGETS} opencv::opencv
+    doctest::doctest)
 
 target_compile_options(vlm-wire-test PRIVATE -Wall -Wextra)
 
@@ -320,7 +321,7 @@ target_compile_definitions(llm-wire-test PRIVATE
     ARGUS_TEST_LLM_MODELS_DIR="${CMAKE_SOURCE_DIR}/models/llm")
 
 target_link_libraries(llm-wire-test PRIVATE argus_common
-    ${ARGUS_LLAMA_TARGETS} doctest::doctest)
+    argus::hardware-profile ${ARGUS_LLAMA_TARGETS} doctest::doctest)
 
 target_compile_options(llm-wire-test PRIVATE -Wall -Wextra)
 

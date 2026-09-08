@@ -22,27 +22,6 @@ endif()
 
 find_package(doctest REQUIRED)
 
-# Foundation slice instead of argus_common: argus_common PUBLIC-links ncnn
-# (face-era hardware probing) and would drag ncnn symbols into this binary
-# (Ruling BW). Same pattern as the F4-2 tts-foundation, F4-3 stt-foundation,
-# F4-4 vlm-foundation and F4-5 llm-foundation slices.
-add_library(memory-foundation STATIC
-    ${SHARED_ROOT}/wrapper/api-response/api-response.cc
-    ${SHARED_ROOT}/wrapper/thread-budget/thread-budget.cc
-    ${SHARED_ROOT}/wrapper/hardware-profile/hardware-profile.cc
-    ${SHARED_ROOT}/services/config-service/config-service.cc
-    ${SHARED_ROOT}/utils/schema-runner/schema-runner.cc
-)
-target_include_directories(memory-foundation PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src)
-target_compile_definitions(memory-foundation PRIVATE ARGUS_NO_NCNN_GPU=1)
-target_link_libraries(memory-foundation PUBLIC Drogon::Drogon
-    tomlplusplus::tomlplusplus)
-if(TARGET SQLite::SQLite3)
-    target_link_libraries(memory-foundation PUBLIC SQLite::SQLite3)
-endif()
-target_compile_options(memory-foundation PRIVATE -Wall -Wextra)
-
 # sqlite-vec is THE capacity of this service's vector index (Ruling BW):
 # vec0 must register on the service's own connection.
 if(NOT TARGET sqlite-vec)
@@ -119,8 +98,6 @@ add_library(memory-core STATIC
     ${SHARED_ROOT}/utils/json-diff/json-diff.cc
     ${SHARED_ROOT}/utils/text-match/phrase-automaton.cc
     ${SHARED_ROOT}/utils/text-norm/text-norm.cc
-    # The NATS event bus wrapper: the catalog replica's change feed (Ruling BX).
-    ${SHARED_ROOT}/wrapper/nats/nats-bus.cc
 )
 
 target_include_directories(memory-core SYSTEM PUBLIC
@@ -131,7 +108,8 @@ target_include_directories(memory-core PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/../src)
 
 target_link_libraries(memory-core PUBLIC
-    memory-foundation
+    argus_common
+    argus::hardware-profile
     Drogon::Drogon
     nlohmann_json::nlohmann_json
     llama

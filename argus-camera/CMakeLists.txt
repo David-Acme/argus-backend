@@ -141,8 +141,8 @@ target_include_directories(camera-core PUBLIC
     ${CAMERA_SRC_ROOT}
     ${CMAKE_CURRENT_SOURCE_DIR}/../src)
 
-target_link_libraries(camera-core PUBLIC argus_sync sqlite-vec opencv::opencv ${ARGUS_NCNN_TARGET}
-    OpenSSL::SSL OpenSSL::Crypto)
+target_link_libraries(camera-core PUBLIC argus_sync sqlite-vec opencv::opencv
+    ${ARGUS_NCNN_TARGET} argus::hardware-profile-gpu OpenSSL::SSL OpenSSL::Crypto)
 
 target_compile_options(camera-core PRIVATE -Wall -Wextra)
 

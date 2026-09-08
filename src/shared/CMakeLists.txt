@@ -14,8 +14,6 @@ set(ARGUS_COMMON_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/wrapper/thread-budget/thread-budget.hxx
     ${CMAKE_CURRENT_SOURCE_DIR}/wrapper/blocking-task/blocking-task.hxx
     ${CMAKE_CURRENT_SOURCE_DIR}/wrapper/cancellation/cancellation-token.hxx
-    ${CMAKE_CURRENT_SOURCE_DIR}/wrapper/hardware-profile/hardware-profile.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/wrapper/hardware-profile/hardware-profile.hxx
     ${CMAKE_CURRENT_SOURCE_DIR}/wrapper/nats/nats-bus.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/wrapper/nats/nats-bus.hxx
     ${CMAKE_CURRENT_SOURCE_DIR}/wrapper/nats/nats-subject.hxx
@@ -26,6 +24,11 @@ set(ARGUS_COMMON_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/dtos/socket-emit/socket-emit-dto.hxx
     ${CMAKE_CURRENT_SOURCE_DIR}/utils/schema-runner/schema-runner.hxx
 )
+
+# argus::hardware-profile / argus::hardware-profile-gpu (rule 25: declared
+# once, in their own folder); argus_common carries neither, so it stays
+# ncnn-free for every service that links it.
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/wrapper/hardware-profile)
 
 add_library(argus_common STATIC ${ARGUS_COMMON_SOURCES})
 
@@ -38,10 +41,6 @@ target_link_libraries(argus_common
         tomlplusplus::tomlplusplus
         cnats::nats_static
 )
-
-if(ARGUS_NCNN_TARGET AND TARGET ${ARGUS_NCNN_TARGET})
-    target_link_libraries(argus_common PUBLIC ${ARGUS_NCNN_TARGET})
-endif()
 
 # schema-runner compiles sqlite3.h directly; sqlite3 is a direct conan
 # require (a transitive-only entry generates empty include dirs).

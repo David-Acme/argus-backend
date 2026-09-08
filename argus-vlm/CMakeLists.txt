@@ -18,23 +18,6 @@ endif()
 
 find_package(doctest REQUIRED)
 
-# Foundation slice instead of argus_common: argus_common PUBLIC-links ncnn
-# (face-era hardware probing) and would drag ncnn symbols into this binary,
-# breaking the zero-non-vision-AI-symbols rule (Ruling BO). Same pattern as
-# the F4-2 tts-foundation and F4-3 stt-foundation slices.
-add_library(vlm-foundation STATIC
-    ${SHARED_ROOT}/wrapper/api-response/api-response.cc
-    ${SHARED_ROOT}/wrapper/thread-budget/thread-budget.cc
-    ${SHARED_ROOT}/wrapper/hardware-profile/hardware-profile.cc
-    ${SHARED_ROOT}/services/config-service/config-service.cc
-)
-target_include_directories(vlm-foundation PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src)
-target_compile_definitions(vlm-foundation PRIVATE ARGUS_NO_NCNN_GPU=1)
-target_link_libraries(vlm-foundation PUBLIC Drogon::Drogon
-    tomlplusplus::tomlplusplus)
-target_compile_options(vlm-foundation PRIVATE -Wall -Wextra)
-
 # llama.cpp + libmtmd are THE capacity of this service (Ruling BO): this is
 # an AI-heavy service like the legacy, so it links the same vendored engines.
 # The mtmd projector must vendor the SAME llama.cpp commit the legacy links
@@ -97,7 +80,8 @@ target_include_directories(vlm-core PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/../src)
 
 target_link_libraries(vlm-core PUBLIC
-    vlm-foundation
+    argus_common
+    argus::hardware-profile
     Drogon::Drogon
     opencv::opencv
     nlohmann_json::nlohmann_json
