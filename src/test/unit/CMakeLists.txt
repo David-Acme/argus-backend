@@ -14,9 +14,6 @@ set(UNIT_TESTS
     validation-dsl-test
     nats-wrapper-test
     sync-change-test
-    notification-schema-test
-    notification-migration-test
-    notification-controller-test
     cert-san-test
 )
 
@@ -30,36 +27,10 @@ foreach(TEST_NAME IN LISTS UNIT_TESTS)
     add_test(NAME ${TEST_NAME} COMMAND ${TEST_NAME})
 endforeach()
 
-# notification-migration builds only as a dependency
-# of the notification unit suites.
-target_link_libraries(notification-schema-test PRIVATE notification-migration)
-target_link_libraries(notification-migration-test PRIVATE notification-migration)
-
 # The cert SAN suite rides the shared identity domain too: CertService rotation
 # and the in-process TLS listener that proves the hot reload.
 target_link_libraries(cert-san-test PRIVATE argus_identity)
 
-# The notification controller suite compiles the same write-side
-# feature sources the fase 3 executables compile (shared tree) and ride the
-# sync layer for the repositories, schemas and boot plumbing.
-
-set(NOTIFICATION_CONTROLLER_SOURCES
-    ${SRC_ROOT}/feature/api/notification/controllers/notification-controller.cc
-    ${SRC_ROOT}/feature/api/notification/controllers/notification-token-controller.cc
-    ${SRC_ROOT}/feature/api/notification/dtos/notification-read-dto.cc
-    ${SRC_ROOT}/feature/api/notification/dtos/register-notification-token-dto.cc
-    ${SRC_ROOT}/feature/api/notification/services/notification-feature-service.cc
-    ${SRC_ROOT}/feature/api/notification/services/notification-token-feature-service.cc
-    ${SRC_ROOT}/shared/repositories/notification-token/notification-token-repository.cc
-    ${SRC_ROOT}/shared/schemas/notification-token/notification-token-schema.cc
-    ${SRC_ROOT}/shared/services/notification-token/notification-token-service.cc
-)
-
-target_sources(notification-controller-test PRIVATE
-    ${NOTIFICATION_CONTROLLER_SOURCES})
-
-target_link_libraries(notification-controller-test PRIVATE argus_sync
-    doctest::doctest)
 
 add_executable(event-sync-empty-test event-sync-empty-test.cc)
 

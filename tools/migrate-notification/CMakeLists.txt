@@ -14,7 +14,7 @@ target_include_directories(notification-migration
 )
 
 target_compile_definitions(notification-migration PUBLIC
-    ARGUS_NOTIFICATION_SCHEMA_PATH="${CMAKE_SOURCE_DIR}/database/notification-schema.sql"
+    ARGUS_NOTIFICATION_SCHEMA_PATH="${CMAKE_SOURCE_DIR}/argus-notification/database/schema.sql"
 )
 
 target_link_libraries(notification-migration

@@ -10,6 +10,6 @@ NotificationDbConfig NotificationConfig::resolveDb()
     config.dbPath = "database/notification.db";
   config.schemaPath = ConfigService::getString("notifications.schema");
   if (config.schemaPath.empty())
-    config.schemaPath = "database/notification-schema.sql";
+    config.schemaPath = "argus-notification/database/schema.sql";
   return config;
 }

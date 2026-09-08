@@ -695,7 +695,7 @@ services:
         bind:
           create_host_path: false
       - type: bind
-        source: ../database/notification-schema.sql
+        source: ../argus-notification/database/schema.sql
         target: /opt/argus/database/notification-schema.sql
         read_only: true
         bind:

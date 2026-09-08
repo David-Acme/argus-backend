@@ -7,7 +7,7 @@
 struct sqlite3;
 
 #ifndef ARGUS_NOTIFICATION_SCHEMA_PATH
-#define ARGUS_NOTIFICATION_SCHEMA_PATH "database/notification-schema.sql"
+#define ARGUS_NOTIFICATION_SCHEMA_PATH "argus-notification/database/schema.sql"
 #endif
 
 struct NotificationMigrationOptions

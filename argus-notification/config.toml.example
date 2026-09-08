@@ -42,7 +42,7 @@ relaunch_on_error = false
 # from argus.db against the same config key. Ruling AN: notification.db is
 # single-owner — this service alone writes it.
 db = "database/notification.db"
-schema = "database/notification-schema.sql"
+schema = "argus-notification/database/schema.sql"
 
 # Access tokens minted by the gateway: the routes validate the same JWTs the
 # legacy validates. The secrets must match the gateway's [jwt] block.

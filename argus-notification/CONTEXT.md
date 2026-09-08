@@ -101,3 +101,18 @@ makes reruns a verified no-op, because after the F3-2 cutover
 resurrected over it. Nothing is deleted from `argus.db`. Its
 `foreign_key_check` ignores user references by design (the user parent rows
 live in identity.db) and fails on any other violation.
+
+## The folder owns its domain (f7-7c)
+
+The notification feature tree, the notification-token repository, schema
+and service, the notification schema file and the three unit suites moved
+out of the shared `src/` tree into this folder, prefixes preserved. The
+write-side source list is one `NOTIFICATION_FEATURE_SOURCES` variable
+shared by the executable and the controller suite, replacing the two
+hand-kept copies.
+
+What did NOT move: the `notification` table's own repository and schema,
+which `argus_sync` compiles because the gateway's `/sync` serves those
+rows and its camera-notifier writes them. Only the notification-TOKEN
+side is exclusively this service's.
+
