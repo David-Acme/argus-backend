@@ -134,11 +134,11 @@ legacy backend keeps running untouched on its own listener.
 - Run from a directory containing `config.toml` (copy
   `config.toml.example`); `config.toml` is gitignored.
 
-## Cutover (F1-5): public TLS listener + reverse proxy to the legacy
+## Cutover (F1-5): public TLS listener + reverse proxy
 
 The gateway takes the public listener the app has always connected to and
-proxies everything else to the legacy backend on its internal plain listener
-(config-gated port, e.g. 7025). The app keeps working without any update.
+forwards each extracted domain to its service backend through the proxy route
+table. The app keeps working without any update.
 
 - **Listener**: `ListenerConfig::resolve()` reads `[gateway] host` (default
   `0.0.0.0`), `port` (7024), `plain` (TLS unless `true` — local-test option),
@@ -148,12 +148,18 @@ proxies everything else to the legacy backend on its internal plain listener
 - **Reverse proxy**: `gateway_proxy::SimpleReverseProxy` (official Drogon
   example vendored into `src/proxy/`, `setPassThrough(true)` both directions —
   headers and multipart bodies are never mutated) registered as the plugin
-  `gateway_proxy::SimpleReverseProxy` with `backends: [legacy.proxy_url]`.
+  `gateway_proxy::SimpleReverseProxy` with the built route table (one entry
+  per configured `[camera]`/`[productivity]`/`[notifications]` `proxy_url`;
+  the plugin registers only when at least one route exists).
   Two additive behaviors over the official pattern: path exclusions
   (`gatewayNativePaths()`, segment-boundary match) pass through to the normal
   routing chain, and the proxy synthesizes `X-Forwarded-For` from the observed
-  TCP peer address (dropping any client-supplied value) so the legacy device
+  TCP peer address (dropping any client-supplied value) so the backend device
   hash still binds the real client — same rule the `/sync` relay applies.
+  **Fallback**: a request no route claims also passes through to the normal
+  routing chain, which answers unknown paths with the frozen NOT_FOUND
+  envelope (`setCustomErrorHandler` → `AppConfig::get404Response()`) —
+  byte-identical to what the retired monolith served.
   **Link lesson**: the plugin self-registers through a `DrObject<T>` template
   static that nothing references by name, so the `gateway-core` static lib
   must be linked `WHOLE_ARCHIVE` into the executable or Drogon logs
@@ -161,16 +167,17 @@ proxies everything else to the legacy backend on its internal plain listener
 - **Proxy exclusion table (Ruling I — who serves what)**: gateway-native and
   therefore NEVER proxied: `/auth/*` (identity), `/pairing`, `/invitation/*`,
   `/user`, `/portrait-preview/*`, `/sync` (native WS + relay), `/health`.
-  The extracted domains go through the route table instead of the legacy:
+  The extracted domains go through the route table:
   `/camera/*` + `/zone/*` (up to 8 segments) → argus-camera,
   `/calendar-event*` + `/project*` (up to 8 segments) → argus-productivity,
   `/notification*` (up to 2 segments) → argus-notification. Only what no
-  route claims falls through to the legacy default backend. Coverage is
-  enforced at boot (`requireExclusionCoverage`): every registered gateway
-  route must be inside the exclusion set or startup aborts. No path is
+  route claims falls through to the gateway's own routing chain, which answers
+  unknown paths with the NOT_FOUND envelope. Coverage is enforced at boot
+  (`requireExclusionCoverage`): every registered gateway route must be inside
+  the exclusion set or startup aborts. No path is
   served by both sides (verified live: `/health` → gateway envelope through
-  the gateway, legacy 404 envelope direct; `/no-such-route` → legacy
-  envelope through the proxy).
+  the gateway, 404 envelope direct; `/no-such-route` → the same NOT_FOUND
+  envelope the monolith served).
 - **TLS trust chain (Ruling K)**: the gateway points at the SAME `certs/`
   directory as the legacy (transitional shared path) and runs
   `CertService::init()` + `MdnsService` with the same `[cert]`/`[mdns]` keys
@@ -206,8 +213,8 @@ proxies everything else to the legacy backend on its internal plain listener
   suite. Since F6-2 `/camera` and `/zone` go to argus-camera at every
   segment depth (cap 8): CRUD plus
   `/camera/{id}/ptz|preset|settings|status|presets|capabilities|talk`. Only
-  deeper paths than the cap and foreign prefixes fall through to the legacy.
-  Default backends unchanged.
+  deeper paths than the cap and foreign prefixes fall through to the
+  gateway-native routing chain.
 - **Composite `/sync` relay**: `SyncRelay` holds one upstream per protocol
   family — the seven `camera:*` frame types relay to argus-camera
   (`[camera] sync_url`), and since F6-3 `voice:*` frames relay to argus-voice
@@ -268,8 +275,8 @@ proxies everything else to the legacy backend on its internal plain listener
   argus-productivity; `[notifications] proxy_url` routes `/notification`,
   `/notification-token` (2 segments) to argus-notification. Paths are
   relayed identical (no rewrite); exclusion coverage is enforced at boot
-  like every route target. Everything not routed to a F3 service still falls
-  through to the legacy default backend.
+  like every route target. Everything not routed falls through to the
+  gateway-native routing chain.
 - **User change funnel (Ruling AQ/Y)**: the `argus.*.v1.change` wildcard now
   also routes `argus.productivity.v1.change` /
   `argus.notification.v1.change` payloads to

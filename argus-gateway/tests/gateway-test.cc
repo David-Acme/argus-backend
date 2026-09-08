@@ -550,28 +550,27 @@ TEST_CASE("plain listener option serves local tests without TLS")
   std::remove(path);
 }
 
-TEST_CASE("proxy config resolves the internal upstream and native paths")
+TEST_CASE("proxy config resolves the native paths")
 {
   const char* path = "gateway-test-config-proxy.toml";
   {
     std::ofstream file(path);
-    file << "[legacy]\n"
-         << "proxy_url = \"http://127.0.0.1:7025\"\n";
+    file << "[gateway]\n"
+         << "port = 7024\n";
   }
 
   ConfigService::load(path);
   const ProxyConfig config = ProxyConfig::resolve();
 
-  CHECK(config.upstreamUrl == "http://127.0.0.1:7025");
   REQUIRE(config.exclusions.size() == 7);
   const std::vector<std::string> expected = {
       "/auth", "/invitation", "/pairing", "/portrait-preview",
       "/user", "/sync", "/health",
   };
   CHECK(config.exclusions == expected);
-
-  ProxyConfig disabled;
-  CHECK(disabled.upstreamUrl.empty());
+  CHECK(config.cameraProxyUrl.empty());
+  CHECK(config.productivityProxyUrl.empty());
+  CHECK(config.notificationProxyUrl.empty());
 
   std::remove(path);
 }
@@ -581,28 +580,25 @@ TEST_CASE("proxy config routes the camera CRUD to argus-camera")
   const char* path = "gateway-test-config-camera-proxy.toml";
   {
     std::ofstream file(path);
-    file << "[legacy]\n"
-         << "proxy_url = \"http://127.0.0.1:7025\"\n"
-         << "[camera]\n"
+    file << "[camera]\n"
          << "proxy_url = \"http://127.0.0.1:7026\"\n";
   }
 
   ConfigService::load(path);
   const ProxyConfig config = ProxyConfig::resolve();
 
-  CHECK(config.upstreamUrl == "http://127.0.0.1:7025");
   CHECK(config.cameraProxyUrl == "http://127.0.0.1:7026");
 
-  // Without the [camera] section the camera routes stay on the legacy.
+  // Without the [camera] section the camera routes stay unrouted.
   {
     std::ofstream file(path);
-    file << "[legacy]\n"
-         << "proxy_url = \"http://127.0.0.1:7025\"\n";
+    file << "[gateway]\n"
+         << "port = 7024\n";
   }
 
   ConfigService::load(path);
-  const ProxyConfig legacyOnly = ProxyConfig::resolve();
-  CHECK(legacyOnly.cameraProxyUrl.empty());
+  const ProxyConfig unrouted = ProxyConfig::resolve();
+  CHECK(unrouted.cameraProxyUrl.empty());
 
   std::remove(path);
 }
@@ -622,8 +618,8 @@ TEST_CASE("camera relay config resolves the sync target")
 
   {
     std::ofstream file(path);
-    file << "[legacy]\n"
-         << "proxy_url = \"http://127.0.0.1:7025\"\n";
+    file << "[gateway]\n"
+         << "port = 7024\n";
   }
 
   ConfigService::load(path);
@@ -648,8 +644,8 @@ TEST_CASE("voice gRPC config resolves the typed voice leg target")
 
   {
     std::ofstream file(path);
-    file << "[legacy]\n"
-         << "sync_url = \"ws://127.0.0.1:7025/sync\"\n";
+    file << "[gateway]\n"
+         << "port = 7024\n";
   }
 
   ConfigService::load(path);
@@ -778,9 +774,6 @@ TEST_CASE("route table sends the whole camera domain to the camera backend")
 {
   gateway_proxy::SimpleReverseProxy proxy;
   Json::Value config;
-  Json::Value backends(Json::arrayValue);
-  backends.append("http://127.0.0.1:7025");
-  config["backends"] = backends;
   Json::Value routes(Json::arrayValue);
   Json::Value cameraRoute(Json::objectValue);
   Json::Value prefixes(Json::arrayValue);
@@ -829,9 +822,7 @@ TEST_CASE("proxy config routes the productivity and notification domains")
   const char* path = "gateway-test-config-f32-proxy.toml";
   {
     std::ofstream file(path);
-    file << "[legacy]\n"
-         << "proxy_url = \"http://127.0.0.1:7025\"\n"
-         << "[productivity]\n"
+    file << "[productivity]\n"
          << "proxy_url = \"http://127.0.0.1:7027\"\n"
          << "[notifications]\n"
          << "proxy_url = \"http://127.0.0.1:7028\"\n";
@@ -840,21 +831,20 @@ TEST_CASE("proxy config routes the productivity and notification domains")
   ConfigService::load(path);
   const ProxyConfig config = ProxyConfig::resolve();
 
-  CHECK(config.upstreamUrl == "http://127.0.0.1:7025");
   CHECK(config.productivityProxyUrl == "http://127.0.0.1:7027");
   CHECK(config.notificationProxyUrl == "http://127.0.0.1:7028");
 
-  // Without the sections the domains stay on the legacy.
+  // Without the sections the domains stay unrouted.
   {
     std::ofstream file(path);
-    file << "[legacy]\n"
-         << "proxy_url = \"http://127.0.0.1:7025\"\n";
+    file << "[gateway]\n"
+         << "port = 7024\n";
   }
 
   ConfigService::load(path);
-  const ProxyConfig legacyOnly = ProxyConfig::resolve();
-  CHECK(legacyOnly.productivityProxyUrl.empty());
-  CHECK(legacyOnly.notificationProxyUrl.empty());
+  const ProxyConfig unrouted = ProxyConfig::resolve();
+  CHECK(unrouted.productivityProxyUrl.empty());
+  CHECK(unrouted.notificationProxyUrl.empty());
 
   std::remove(path);
 }
@@ -863,9 +853,6 @@ TEST_CASE("route table sends the productivity and notification domains to the fa
 {
   gateway_proxy::SimpleReverseProxy proxy;
   Json::Value config;
-  Json::Value backends(Json::arrayValue);
-  backends.append("http://127.0.0.1:7025");
-  config["backends"] = backends;
   Json::Value routes(Json::arrayValue);
 
   Json::Value productivityRoute(Json::objectValue);

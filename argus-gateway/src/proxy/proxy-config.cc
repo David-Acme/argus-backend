@@ -31,7 +31,6 @@ bool isGatewayNativePath(const std::string& path,
 ProxyConfig ProxyConfig::resolve()
 {
   ProxyConfig config;
-  config.upstreamUrl = ConfigService::getString("legacy.proxy_url");
   config.cameraProxyUrl = ConfigService::getString("camera.proxy_url");
   config.productivityProxyUrl =
       ConfigService::getString("productivity.proxy_url");

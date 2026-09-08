@@ -7,23 +7,6 @@ using namespace gateway_proxy;
 
 void SimpleReverseProxy::initAndStart(const Json::Value &config)
 {
-    if (config.isMember("backends") && config["backends"].isArray())
-    {
-        for (auto &backend : config["backends"])
-        {
-            backendAddrs_.emplace_back(backend.asString());
-        }
-        if (backendAddrs_.empty())
-        {
-            LOG_ERROR << "You must set at least one backend";
-            abort();
-        }
-    }
-    else
-    {
-        LOG_ERROR << "Error in configuration";
-        abort();
-    }
     if (config.isMember("exclusions") && config["exclusions"].isArray())
     {
         for (auto &exclusion : config["exclusions"])
@@ -32,8 +15,6 @@ void SimpleReverseProxy::initAndStart(const Json::Value &config)
         }
     }
     pipeliningDepth_ = config.get("pipelining", 0).asInt();
-    sameClientToSameBackend_ =
-        config.get("same_client_to_same_backend", false).asBool();
     connectionFactor_ = config.get("connection_factor", 1).asInt();
     if (connectionFactor_ == 0 || connectionFactor_ > 100)
     {
@@ -62,10 +43,11 @@ void SimpleReverseProxy::initAndStart(const Json::Value &config)
             routes_.emplace_back(std::move(target));
         }
     }
-    clients_.init(
-        [this](std::vector<HttpClientPtr> &clients, size_t) {
-            clients.resize(backendAddrs_.size() * connectionFactor_);
-        });
+    if (routes_.empty())
+    {
+        LOG_ERROR << "You must set at least one route";
+        abort();
+    }
     routeClients_.init(
         [this](std::vector<HttpClientPtr> &clients, size_t) {
             clients.resize(routes_.size() * connectionFactor_);
@@ -156,37 +138,15 @@ void SimpleReverseProxy::preRouting(const HttpRequestPtr &req,
     }
 
     const int routeIndex = matchRoute(req->path());
-    auto &clientsVector =
-        routeIndex < 0 ? *clients_ : *routeClients_;
     if (routeIndex < 0)
     {
-        size_t index;
-        if (sameClientToSameBackend_)
-        {
-            index = std::hash<uint32_t>{}(req->getPeerAddr().ipNetEndian()) %
-                    clientsVector.size();
-            index = (index + (++(*clientIndex_)) * backendAddrs_.size()) %
-                    clientsVector.size();
-        }
-        else
-        {
-            index = ++(*clientIndex_) % clientsVector.size();
-        }
-        auto &clientPtr = clientsVector[index];
-        if (!clientPtr)
-        {
-            auto &addr = backendAddrs_[index % backendAddrs_.size()];
-            clientPtr = HttpClient::newHttpClient(
-                addr, trantor::EventLoop::getEventLoopOfCurrentThread());
-            clientPtr->setPipeliningDepth(pipeliningDepth_);
-        }
-        forward(req, std::move(callback), clientPtr);
+        pass();
         return;
     }
 
     const size_t base = static_cast<size_t>(routeIndex) * connectionFactor_;
     const size_t index = base + (++(*clientIndex_)) % connectionFactor_;
-    auto &clientPtr = clientsVector[index];
+    auto &clientPtr = (*routeClients_)[index];
     if (!clientPtr)
     {
         clientPtr = HttpClient::newHttpClient(
@@ -204,7 +164,7 @@ void SimpleReverseProxy::forward(const HttpRequestPtr &req,
     req->setPassThrough(true);
     // The gateway is the only one that sees the client: replace any
     // client-supplied value with the observed TCP peer address, exactly like
-    // the /sync relay does (the legacy device hash is HMAC(User-Agent|IP)).
+    // the /sync relay does.
     req->removeHeader("x-forwarded-for");
     req->addHeader("X-Forwarded-For", req->getPeerAddr().toIp());
     clientPtr->sendRequest(
@@ -221,7 +181,7 @@ void SimpleReverseProxy::forward(const HttpRequestPtr &req,
                 // Deviation from the vendored example: a bare 500 would break
                 // the {status, info, errors} wire contract the app parses.
                 callback(ApiResponse::error(
-                    500, "INTERNAL_ERROR", "Legacy backend is unreachable"));
+                    500, "INTERNAL_ERROR", "Route backend is unreachable"));
             }
         });
 }

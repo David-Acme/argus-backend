@@ -65,21 +65,18 @@ Json::Value drogonConfig(const IdentityDbConfig& identityDb,
   appendRemoteListener(listeners, remote, listener);
   config["listeners"] = listeners;
 
-  if (!proxy.upstreamUrl.empty()) {
+  if (!proxy.cameraProxyUrl.empty() || !proxy.productivityProxyUrl.empty()
+      || !proxy.notificationProxyUrl.empty()) {
     Json::Value plugins(Json::arrayValue);
     Json::Value proxyPlugin(Json::objectValue);
     proxyPlugin["name"] = "gateway_proxy::SimpleReverseProxy";
     proxyPlugin["dependencies"] = Json::Value(Json::arrayValue);
     Json::Value proxyConfig(Json::objectValue);
-    Json::Value backends(Json::arrayValue);
-    backends.append(proxy.upstreamUrl);
-    proxyConfig["backends"] = backends;
     Json::Value exclusions(Json::arrayValue);
     for (const auto& prefix : proxy.exclusions)
       exclusions.append(prefix);
     proxyConfig["exclusions"] = exclusions;
-    if (!proxy.cameraProxyUrl.empty() || !proxy.productivityProxyUrl.empty()
-        || !proxy.notificationProxyUrl.empty()) {
+    {
       Json::Value routes(Json::arrayValue);
       if (!proxy.cameraProxyUrl.empty()) {
         // The whole camera domain goes to argus-camera: CRUD, zone CRUD and
@@ -162,15 +159,14 @@ void logRouting(const ProxyConfig& proxy, const ListenerConfig& listener,
     LOG_INFO << "Remote tunnel listener on " << listener.host << ":"
              << remote.tunnelPort << " (pairing/register "
              << (remote.enabled ? "allowed" : "LAN-only") << ")";
-  if (proxy.upstreamUrl.empty()) {
+  if (proxy.cameraProxyUrl.empty() && proxy.productivityProxyUrl.empty()
+      && proxy.notificationProxyUrl.empty()) {
     LOG_INFO << "Reverse proxy disabled: the gateway serves its routes only";
     return;
   }
-  LOG_INFO << "Reverse proxy -> " << proxy.upstreamUrl
-           << " (excluded, gateway-native:";
+  LOG_INFO << "Reverse proxy excluded paths (gateway-native):";
   for (const auto& prefix : proxy.exclusions)
     LOG_INFO << "  " << prefix;
-  LOG_INFO << ")";
 }
 
 } // namespace
@@ -245,7 +241,7 @@ int main()
       });
 
   // CORS preflight is answered only for gateway-native paths; OPTIONS on
-  // proxied paths is forwarded to the legacy like any other request.
+  // routed paths is forwarded to the service backend like any other request.
   drogon::app().registerPreRoutingAdvice(
       [&proxy](const drogon::HttpRequestPtr& req,
                drogon::AdviceCallback&& cb,
@@ -290,8 +286,7 @@ int main()
       camera_notifier::subscribeObjectDetected(*natsBus);
       // The gateway owns the identity domain's writes post-cutover (F1-5):
       // user/person rows change here, so the memory catalog replica feed
-      // (Ruling BX) is published from this process (the legacy keeps its own
-      // sink for its remaining identity surfaces).
+      // (Ruling BX) is published from this process.
       static const NatsIdentityChangeSink identitySink(natsBus);
       identity_change::setSink(&identitySink);
     }
