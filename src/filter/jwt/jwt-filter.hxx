@@ -3,8 +3,6 @@
 #include <drogon/HttpFilter.h>
 #include <drogon/utils/coroutine.h>
 #include <shared/enums.hxx>
-#include <shared/repositories/refresh-token/refresh-token-repository.hxx>
-#include <shared/repositories/user/user-repository.hxx>
 #include <shared/services/jwt/jwt-service.hxx>
 #include <string>
 
@@ -26,7 +24,7 @@ public:
   // Token extraction order shared with the /sync relay.
   static std::string extractToken(const drogon::HttpRequestPtr& req);
 
+  // Signature check only; the user row and the refresh-token session are
+  // validated by the identity service (filterIdentityClient).
   JwtService jwtService_;
-  UserRepository userRepository_;
-  RefreshTokenRepository refreshTokenRepository_;
 };

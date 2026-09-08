@@ -107,13 +107,11 @@ add_executable(argus-productivity
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/feature/api/project-task/services/project-task-feature-service.cc
 )
 
-# argus::auth linked ahead of the transitive argus_identity pull: main.cc
-# constructs the filters directly (DeviceFilter/JwtFilter/RoleFilter/
-# ValidJsonFilter), and those filters read back into argus_identity's
-# UserRepository/RefreshTokenRepository/DeviceCredentialRepository, so a
-# single-pass linker needs argus::auth resolved before it, not after.
+# The filters validate through argus.identity.v1 (argus::sdk-identity rides
+# argus::auth); argus_identity stays for the share/member reads and arrives
+# transitively through productivity-core's argus_sync pull.
 target_link_libraries(argus-productivity PRIVATE productivity-core
-    argus::auth argus_identity)
+    argus::auth)
 
 target_compile_options(argus-productivity PRIVATE -Wall -Wextra)
 

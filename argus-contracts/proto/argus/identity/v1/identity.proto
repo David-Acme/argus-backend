@@ -3,11 +3,16 @@ syntax = "proto3";
 
 package argus.identity.v1;
 
+// The identity service's user payload. UpdateUser fills the spoken-name
+// fields; ValidateToken fills every field.
 message UserIdentity
 {
   int64 user_id = 1;
   string name = 2;
   string lang = 3;
+  optional string last_name = 4;
+  optional string role = 5;
+  optional bool is_active = 6;
 }
 
 // Patch semantics: only the provided fields change.
@@ -22,8 +27,45 @@ message UpdateUserResponse
   UserIdentity user = 1;
 }
 
+// Full token validation, server-authoritative: the service verifies the
+// signature itself and always reads the live user row (no cached verdicts,
+// so a disabled user or a revoked session fails on the next request).
+message ValidateTokenRequest
+{
+  string access_token = 1;
+  // The caller's device fingerprint; present when the route runs the
+  // device filter, making the validation device-bound.
+  optional string device_hash = 2;
+}
+
+message ValidateTokenResponse
+{
+  bool valid = 1;
+  // The 401 body the caller must emit when invalid; empty means a plain 401.
+  string reason = 2;
+  UserIdentity user = 3;
+  // Refresh-token row expiry (unix seconds); 0 when no device binding ran.
+  int64 expires_at = 4;
+}
+
+message CheckDeviceCredentialRequest
+{
+  // SHA-256 hex of the credential plaintext; the raw secret never crosses.
+  string secret_hash = 1;
+}
+
+message CheckDeviceCredentialResponse
+{
+  bool active = 1;
+}
+
 service IdentityService
 {
   // Requires x-argus-user matching user_id (x-argus-role rides along).
   rpc UpdateUser(UpdateUserRequest) returns (UpdateUserResponse) {}
+
+  rpc ValidateToken(ValidateTokenRequest) returns (ValidateTokenResponse) {}
+
+  rpc CheckDeviceCredential(CheckDeviceCredentialRequest)
+      returns (CheckDeviceCredentialResponse) {}
 }

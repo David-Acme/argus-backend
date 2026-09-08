@@ -16,11 +16,8 @@
 #include <shared/services/sqlite/db-service.hxx>
 #include <unistd.h>
 
-#include <chrono>
-#include <filesystem>
 #include <memory>
 #include <string>
-#include <thread>
 
 namespace
 {
@@ -48,29 +45,6 @@ Json::Value drogonConfig(const NotificationDbConfig& notificationDb,
   return config;
 }
 
-// Opens identity.db read-only for the JWT user-row reads.
-void installIdentityClient()
-{
-  const auto path = ConfigService::getString("identity.db");
-  if (path.empty())
-    return;
-
-  for (int ms = 0; ms < 30000 && !std::filesystem::exists(path); ms += 250)
-    std::this_thread::sleep_for(std::chrono::milliseconds(250));
-
-  try {
-    const auto identity = drogon::orm::DbClient::newSqlite3Client(
-        "filename=file:" + path + "?mode=ro", 1);
-    identity->execSqlSync("PRAGMA busy_timeout = 5000");
-    DbService::setIdentityClient(identity);
-    LOG_INFO << "Identity database opened read-only: " << path;
-  }
-  catch (const std::exception& e) {
-    LOG_WARN << "Identity database open failed (" << e.what()
-             << "); identity reads fall back to the default client";
-  }
-}
-
 } // namespace
 
 int main()
@@ -78,8 +52,6 @@ int main()
   DbService::enableUriFilenames();
 
   ConfigService::load("config.toml");
-
-  installIdentityClient();
 
   const NotificationDbConfig notificationDb = NotificationConfig::resolveDb();
   const ListenerConfig listener = ListenerConfig::resolve();

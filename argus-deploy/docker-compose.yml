@@ -113,9 +113,11 @@ services:
         bind:
           create_host_path: false
     # The gateway pulls the camera sync tables over the 7036 gRPC leg once
-    # this service is up; identity.db is created by the gateway at ITS boot,
-    # and argus-camera waits bounded for it the same way — so both services
-    # boot in parallel after nats with no circular health dependency.
+    # this service is up; this service validates its callers over the
+    # gateway's identity RPC (7040) and still opens identity.db read-only for
+    # its sync socket's user reads (bounded wait — the gateway creates it at
+    # ITS boot), so both boot in parallel after nats with no circular health
+    # dependency.
     depends_on:
       nats:
         condition: service_healthy
@@ -135,9 +137,10 @@ services:
   # project_member, calendar_event_share, reminder_detail), serves the five
   # productivity route prefixes the gateway proxies to it, and publishes its
   # change events to the gateway over NATS. Its only host exposure is the
-  # loopback-published 7027 listener. It opens identity.db read-only for the
-  # JWT filter (bounded wait — the gateway creates identity.db at its boot),
-  # so it mounts the same data dir the gateway writes.
+  # loopback-published 7027 listener. Its JWT filter validates over the
+  # gateway's identity RPC (7040); it still opens identity.db read-only for
+  # the share/member target validation (Ruling AM), so it mounts the same
+  # data dir the gateway writes.
   argus-productivity:
     image: argus-cutover:local
     pull_policy: never
@@ -179,9 +182,10 @@ services:
   # Notification-domain service (Fase 3 cutover, Rulings AP/AR/AT): owns
   # notification.db as the single notification substrate, serves the
   # /notification and /notification-token write paths the gateway proxies to
-  # it. Same identity/NATS/data-dir shape as argus-productivity; the gateway
-  # ALSO opens notification.db read-write here (its camera-notifier writes),
-  # which is why the volume is rw in both.
+  # it. Same NATS/data-dir shape as argus-productivity, but no identity.db of
+  # its own — its filters validate over the gateway's identity RPC (7040).
+  # The gateway ALSO opens notification.db read-write here (its
+  # camera-notifier writes), which is why the volume is rw in both.
   argus-notification:
     image: argus-cutover:local
     pull_policy: never

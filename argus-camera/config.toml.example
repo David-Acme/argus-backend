@@ -104,11 +104,15 @@ fingerprint_secret = ""
 trust_forwarded_for = true
 trusted_proxy_ips = ""
 
-# Optional: identity database opened read-only for the JwtFilter's
-# refresh-token and user lookups. Point it at the gateway's identity.db;
-# empty falls back to the default camera.db client (auth reads fail).
+# The filter chain validates tokens and device credentials over the gateway's
+# internal identity RPC (argus.identity.v1) at target (default 127.0.0.1:7040,
+# the gateway's own listener). db stays for the sync socket's user reads
+# (SyncService::refreshContext and the user sync table) — point it at the
+# gateway's identity.db; without it those reads hit camera.db, which has no
+# user table.
 # [identity]
 # db = "database/identity.db"
+# target = "127.0.0.1:7040"
 
 # Objects capacity (F2-3): the YOLO26n detector behind the IObjectDetector
 # seam. With enabled = false or a missing model everything downstream stays

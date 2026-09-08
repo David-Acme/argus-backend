@@ -467,3 +467,10 @@ table. The app keeps working without any update.
   the renamed user. Role rides the `x-argus-role` metadata. UpdateUser
   enforces row scoping: the `x-argus-user` metadata must carry the request's
   `user_id`, otherwise the RPC answers UNAUTHENTICATED.
+- **The service implementation moved out in f7-3**: `IdentityRpcService` now
+  lives in `argus-identity/src/feature/rpc/identity-rpc.cc` — the surface
+  belongs to the identity service; the gateway only constructs it and binds
+  the listener, so it travels with the folder at the standalone extraction.
+  The same listener gained `ValidateToken` and `CheckDeviceCredential`,
+  which the whole fleet's filter chain calls instead of reading identity.db:
+  the gateway is the only process that still touches those rows.

@@ -59,12 +59,15 @@ own `productivity.db`.
   gateway-side; JWT resolution uses the read-only identity client (Ruling
   AM). The databases open WAL with `busy_timeout`; no DDL runs at boot
   beyond the migrate tool's schema-current check.
-- **Identity reads (Ruling AM)**: `[identity] db` opens mode=ro as the named
-  identity client (`DbService::setIdentityClient` slot; SQLite URI filenames
-  are enabled before the first `sqlite3_open` so the `mode=ro` URI parses);
-  `UserRepository`
-  reads then resolve to identity.db, so share targets created after the
-  cutover are shareable. Absent key boots identity-free. The gateway creates
+- **Identity reads (Ruling AM, narrowed in f7-3)**: `[identity] db` opens
+  mode=ro as the named identity client (`DbService::setIdentityClient` slot;
+  SQLite URI filenames are enabled before the first `sqlite3_open` so the
+  `mode=ro` URI parses); `UserRepository` reads then resolve to identity.db,
+  so share targets created after the cutover are shareable. That is now the
+  ONLY reason this service opens the file — the JWT filter stopped reading
+  it in f7-3 and validates over `argus.identity.v1.ValidateToken` at
+  `[identity] target` instead. Absent db key boots identity-free (share
+  target validation degrades, authentication does not). The gateway creates
   identity.db at its own boot, which on a fresh install may land after ours,
   so the open waits bounded for the file to exist; the productivity tables
   reference user rows that live in identity.db, so foreign-key enforcement

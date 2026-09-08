@@ -15,6 +15,17 @@ struct UpdateUserNameInput
   std::string role;
 };
 
+// Token validation input. hasDeviceContext mirrors the device filter having
+// run: an EMPTY hash with the context present is a failed credential and must
+// still be checked against the session's binding, so presence and value are
+// carried separately.
+struct ValidateTokenInput
+{
+  std::string accessToken;
+  std::string deviceHash;
+  bool hasDeviceContext{false};
+};
+
 // Thin SDK wrapper over argus.identity.v1.IdentityService (rule 23).
 class IdentityClient
 {
@@ -28,6 +39,15 @@ public:
   // Spoken-name write; nullopt when the gateway refuses or is unreachable.
   virtual std::optional<argus::identity::v1::UserIdentity>
   updateUserName(const UpdateUserNameInput& input) const;
+
+  // Server-authoritative token validation; nullopt when the gateway is
+  // unreachable (the caller must treat that as a rejection).
+  virtual std::optional<argus::identity::v1::ValidateTokenResponse>
+  validateToken(const ValidateTokenInput& input) const;
+
+  // Device credential check by secret hash; false when unknown, refused or
+  // unreachable.
+  virtual bool checkDeviceCredential(const std::string& secretHash) const;
 
 private:
   std::shared_ptr<grpc::Channel> channel_;

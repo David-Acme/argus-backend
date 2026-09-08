@@ -7,6 +7,12 @@
 
 include(${CMAKE_CURRENT_SOURCE_DIR}/../cmake/argus-module.cmake)
 
+# The identity RPC contract (argus.identity.v1) this service serves.
+if(NOT TARGET argus::sdk-identity)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../argus-contracts
+                     ${CMAKE_BINARY_DIR}/argus-contracts EXCLUDE_FROM_ALL)
+endif()
+
 find_package(Drogon CONFIG REQUIRED)
 find_package(jwt-cpp REQUIRED)
 find_package(nlohmann_json REQUIRED)
@@ -34,6 +40,7 @@ argus_module(NAME identity
         src/feature/api/pairing/controllers/pairing-controller.cc
         src/feature/api/pairing/dtos/pairing-dto.cc
         src/feature/api/pairing/dtos/response-pairing-dto.cc
+        src/feature/rpc/identity-rpc.cc
         src/feature/api/user/controllers/portrait-preview-controller.cc
         src/feature/api/user/controllers/user-controller.cc
         src/feature/api/user/dtos/response-portrait-preview-capability-dto.cc
@@ -71,6 +78,7 @@ argus_module(NAME identity
     DEPENDS
         argus_common
         argus::auth
+        argus::sdk-identity
         argus::audit
         argus::sqlite
         argus::cert

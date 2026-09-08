@@ -4,14 +4,19 @@
 #include <config/app-config.hxx>
 #include <drogon/drogon.h>
 #include <feature/api/auth/services/auth-service.hxx>
+#include <feature/rpc/identity-rpc.hxx>
 #include <filter/device/device-filter.hxx>
 #include <filter/jwt/jwt-filter.hxx>
+#include <grpcpp/grpcpp.h>
+#include <shared/repositories/refresh-token/refresh-token-repository.hxx>
+#include <shared/repositories/user/user-repository.hxx>
 #include <shared/services/config-service/config-service.hxx>
 #include <shared/services/jwt/jwt-service.hxx>
 #include <shared/services/sqlite/db-service.hxx>
 
 #include <chrono>
 #include <cstdio>
+#include <memory>
 #include <string>
 #include <thread>
 
@@ -111,6 +116,36 @@ bool waitForBoot(std::chrono::milliseconds timeout)
   return drogon::app().isRunning();
 }
 
+// The filters validate through argus.identity.v1, so the suite hosts the
+// real service over the seeded database and points identity.target at it.
+class IdentityRpcHarness
+{
+public:
+  IdentityRpcHarness()
+  {
+    int port = 0;
+    grpc::ServerBuilder builder;
+    builder.AddListeningPort("127.0.0.1:0", grpc::InsecureServerCredentials(),
+                             &port);
+    builder.RegisterService(&service_);
+    server_ = builder.BuildAndStart();
+    ConfigService::setRuntimeString("identity.target",
+                                    "127.0.0.1:" + std::to_string(port));
+  }
+
+  ~IdentityRpcHarness()
+  {
+    if (server_)
+      server_->Shutdown();
+  }
+
+  bool listening() const { return server_ != nullptr; }
+
+private:
+  IdentityRpcService service_{nullptr};
+  std::unique_ptr<grpc::Server> server_;
+};
+
 bool hexShape(const std::string& value, size_t length)
 {
   if (value.size() != length)
@@ -162,6 +197,9 @@ TEST_CASE("credential identity mode issues, binds and authenticates devices")
   drogon::app().addDbClient(drogon::orm::Sqlite3Config{1, kDb, "default", -1});
   std::thread runner([] { drogon::app().run(); });
   REQUIRE(waitForBoot(std::chrono::seconds(30)));
+
+  IdentityRpcHarness identityRpc;
+  REQUIRE(identityRpc.listening());
 
   JwtFilter jwtFilter;
   DeviceFilter deviceFilter;
@@ -271,6 +309,30 @@ TEST_CASE("credential identity mode issues, binds and authenticates devices")
         deviceCtx(desktop).deviceHash);
   CHECK(ipRows.back()["device_hash"].as<std::string>() ==
         "1975e81a234fd02f4ae788a8fdb0911b1a1f15dd6d5d6d21d311fe4bbe130ceb");
+
+  // A/B parity: the JwtContext the RPC path produced must equal what the
+  // direct repository reads (the pre-f7-3 path) say about the same session.
+  const auto& rpcCtx =
+      desktop->getAttributes()->get<JwtContext>(AppConfig::JWT_CTX_KEY);
+  const auto directUser = drogon::sync_wait(UserRepository().findById(1));
+  REQUIRE(directUser);
+  const auto directRt = drogon::sync_wait(
+      RefreshTokenRepository().findByAccessToken(1, polled.accessToken));
+  REQUIRE(directRt);
+  CHECK(rpcCtx.sub == directUser->id);
+  CHECK(rpcCtx.name == directUser->name + " " + directUser->lastName);
+  CHECK(rpcCtx.role == directUser->role);
+  CHECK(rpcCtx.isActive == directUser->isActive);
+  CHECK(rpcCtx.deviceHash == directRt->deviceHash);
+
+  // Fail closed: an unreachable identity service rejects, it does not admit.
+  ConfigService::setRuntimeString("identity.target", "127.0.0.1:1");
+  auto unreachable = drogon::HttpRequest::newHttpRequest();
+  unreachable->addHeader("User-Agent", kDesktopUa);
+  unreachable->addHeader("Authorization", "Bearer " + polled.accessToken);
+  const auto refused = drogon::sync_wait(jwtFilter.doFilter(unreachable));
+  REQUIRE(refused);
+  CHECK(refused->getStatusCode() == drogon::HttpStatusCode::k401Unauthorized);
 
   drogon::app().quit();
   runner.join();

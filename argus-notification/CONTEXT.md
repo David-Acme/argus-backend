@@ -55,13 +55,14 @@ binary, own CMake preset, own `notification.db`.
   read-only for its `/sync` notification pulls and never runs DDL. The
   legacy keeps its own markAsRead/token routes registered but they are
   unreachable through the gateway (Ruling AS — quiet, not stripped).
-- **Identity client (F3-2)**: the JWT filter resolves the caller's user row
-  (and the bound refresh-token session) in identity.db, so the boot installs
-  the named identity client read-only (same install as argus-productivity,
-  Ruling AM) from the `[identity] db` key; without it the fallback to the
-  default notification.db client would 401 every authenticated request. The
-  gateway creates identity.db at its own boot, which on a fresh install may
-  land after ours, so the open waits bounded for the file to exist.
+- **Identity validation (f7-3)**: the JWT filter validates the caller over
+  `argus.identity.v1.ValidateToken` at `[identity] target` — the user row,
+  the bound refresh-token session and the device binding are resolved by the
+  identity service, which owns them. This service opens NO identity.db: the
+  F3-2 read-only client install is gone, and with it the boot-order wait on
+  a file another service creates (`nm -C` on the binary shows zero
+  UserRepository / RefreshTokenRepository / DeviceCredentialRepository
+  symbols). An unreachable identity service means 401, never an open door.
 - **CORS**: the legacy answered every preflight in pre-routing and the
   gateway forwards OPTIONS on proxied paths untouched, so this surface keeps
   answering OPTIONS itself (`AppConfig::handleOptions`).

@@ -75,9 +75,11 @@ fingerprint_secret = ""
 trust_forwarded_for = true
 trusted_proxy_ips = ""
 
-# Identity database opened read-only: the JWT filter resolves the caller's
-# user row (and the bound refresh-token session) there, and share/member
-# target validation reads it (Ruling AM). The gateway creates identity.db in
-# the shared data dir at its boot; the service waits bounded for it.
+# Ruling AM, split in two: share/member target validation still reads
+# identity.db read-only (the stayed features' UserRepository reads), while
+# the JWT filter validates through the identity RPC at target below — the
+# gateway is host-networked, so its listener answers on the bridge gateway
+# address.
 [identity]
 db = "database/identity.db"
+target = "172.19.0.1:7040"

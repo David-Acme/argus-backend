@@ -2,7 +2,6 @@
 
 #include <drogon/HttpFilter.h>
 #include <drogon/utils/coroutine.h>
-#include <shared/repositories/device-credential/device-credential-repository.hxx>
 #include <string>
 
 struct DeviceContext
@@ -33,6 +32,4 @@ private:
                                      const std::string& ip);
   static std::string resolveIp(const drogon::HttpRequestPtr& req);
   static bool credentialMode();
-
-  DeviceCredentialRepository repository_;
 };

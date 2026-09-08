@@ -2,7 +2,7 @@
 #include <drogon/drogon.h>
 #include <identity/identity-config.hxx>
 #include <identity/identity-registrar.hxx>
-#include <identity/identity-rpc.hxx>
+#include <feature/rpc/identity-rpc.hxx>
 #include <proxy/proxy-config.hxx>
 #include <proxy/reverse-proxy.hxx>
 #include <server/listener-config.hxx>

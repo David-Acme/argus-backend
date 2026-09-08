@@ -4,7 +4,7 @@
 
 namespace
 {
-constexpr int kUpdateTimeoutMs = 5000;
+constexpr int kCallTimeoutMs = 5000;
 } // namespace
 
 IdentityClient::IdentityClient(std::string target)
@@ -18,7 +18,7 @@ IdentityClient::updateUserName(const UpdateUserNameInput& input) const
 {
   grpc::ClientContext context;
   context.set_deadline(std::chrono::system_clock::now() +
-                       std::chrono::milliseconds(kUpdateTimeoutMs));
+                       std::chrono::milliseconds(kCallTimeoutMs));
   context.AddMetadata("x-argus-user", std::to_string(input.userId));
   context.AddMetadata("x-argus-role", input.role);
 
@@ -31,4 +31,41 @@ IdentityClient::updateUserName(const UpdateUserNameInput& input) const
       !status.ok())
     return std::nullopt;
   return response.user();
+}
+
+std::optional<argus::identity::v1::ValidateTokenResponse>
+IdentityClient::validateToken(const ValidateTokenInput& input) const
+{
+  grpc::ClientContext context;
+  context.set_deadline(std::chrono::system_clock::now() +
+                       std::chrono::milliseconds(kCallTimeoutMs));
+
+  argus::identity::v1::ValidateTokenRequest request;
+  request.set_access_token(input.accessToken);
+  if (input.hasDeviceContext)
+    request.set_device_hash(input.deviceHash);
+
+  argus::identity::v1::ValidateTokenResponse response;
+  if (const grpc::Status status =
+          stub_->ValidateToken(&context, request, &response);
+      !status.ok())
+    return std::nullopt;
+  return response;
+}
+
+bool IdentityClient::checkDeviceCredential(const std::string& secretHash) const
+{
+  grpc::ClientContext context;
+  context.set_deadline(std::chrono::system_clock::now() +
+                       std::chrono::milliseconds(kCallTimeoutMs));
+
+  argus::identity::v1::CheckDeviceCredentialRequest request;
+  request.set_secret_hash(secretHash);
+
+  argus::identity::v1::CheckDeviceCredentialResponse response;
+  if (const grpc::Status status =
+          stub_->CheckDeviceCredential(&context, request, &response);
+      !status.ok())
+    return false;
+  return response.active();
 }

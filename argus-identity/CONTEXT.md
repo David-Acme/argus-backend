@@ -59,15 +59,34 @@ user-action-log), `argus::sqlite` (db-service, vec-db), `argus::auth`
 (jwt-service, the filters), `argus_common` (config, validation, wrapper,
 contracts, s3-storage).
 
-## The auth⇄identity cycle is declared, not hidden
+## The auth⇄identity cycle is gone (f7-3)
 
-`argus::auth`'s filters read this service's repositories (device
-credential by secret hash; user and refresh-token by the JWT chain), and
-this service's AuthService calls JwtService and DeviceFilter statics.
-Both edges are now declared PUBLIC to CMake — the sanctioned mechanism:
-CMake repeats the archives at link time, so no consumer's link order
-matters. The auth-RPC step (f7-3) deletes auth's database reads in favor
-of one SDK call through argus-contracts, and the cycle dissolves with it.
+`argus::auth`'s filters used to read this service's repositories (device
+credential by secret hash; user and refresh-token by the JWT chain), which
+made the dependency mutual — this service's AuthService calls JwtService
+and DeviceFilter statics in the other direction. f7-3 deleted the reading
+half: the filters now call `argus.identity.v1` (ValidateToken,
+CheckDeviceCredential) through `argus::sdk-identity`, so `argus::auth`
+depends on argus-contracts, never on this folder. What remains is one
+direction only — argus_identity → argus::auth — and no consumer's link
+order matters anymore.
+
+## The RPC surface
+
+`src/feature/rpc/identity-rpc.cc` serves `argus.identity.v1`: UpdateUser
+(the F6-3 spoken-name write) plus the f7-3 pair ValidateToken and
+CheckDeviceCredential. It lives here because the surface belongs to this
+service; the gateway only HOSTS the listener (it constructs the service
+and binds `identity.rpc_host:rpc_port`), which is what makes it move with
+the folder at the standalone extraction instead of being rewritten.
+
+ValidateToken is the single authoritative validation: it verifies the JWT
+signature, reads the live user row (status always fresh — no cached
+verdicts) and, when the caller's device filter ran, the refresh-token row
+with its expiry and device binding. It answers OK with `valid=false` and
+the caller's 401 body rather than a gRPC error, so a rejected token and a
+broken service stay distinguishable — an unreachable service makes the
+filter fail closed.
 
 ## The unit suites
 

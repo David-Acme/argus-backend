@@ -1,10 +1,13 @@
 #include "device-filter.hxx"
 
 #include <config/app-config.hxx>
+#include <filter/identity-access.hxx>
+#include <identity/identity-client.hxx>
 #include <openssl/evp.h>
 #include <openssl/hmac.h>
 #include <openssl/sha.h>
 #include <shared/services/config-service/config-service.hxx>
+#include <shared/wrapper/blocking-task/blocking-task.hxx>
 #include <stdexcept>
 
 namespace
@@ -57,7 +60,14 @@ DeviceFilter::doFilter(const drogon::HttpRequestPtr& req)
     std::string deviceHash;
     if (!credential.empty() && credential.size() <= kMaxCredentialLength) {
       const auto secretHash = sha256Hex(credential);
-      if (co_await repository_.findActiveBySecretHash(secretHash))
+      // Active-credential check by the identity service; unreachable or
+      // unknown means no device hash (fail closed).
+      const auto client = filterIdentityClient();
+      const auto active = co_await BlockingTask<bool>(
+          [client, secretHash]() {
+            return client->checkDeviceCredential(secretHash);
+          });
+      if (active)
         deviceHash = credentialFingerprint(ua, secretHash);
     }
     ctx.deviceHash = deviceHash;

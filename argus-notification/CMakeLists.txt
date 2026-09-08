@@ -97,13 +97,11 @@ add_executable(argus-notification
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/shared/services/notification-token/notification-token-service.cc
 )
 
-# argus::auth linked ahead of the transitive argus_identity pull: main.cc
-# constructs the filters directly (DeviceFilter/JwtFilter/RoleFilter/
-# ValidJsonFilter), and those filters read back into argus_identity's
-# UserRepository/RefreshTokenRepository/DeviceCredentialRepository, so a
-# single-pass linker needs argus::auth resolved before it, not after.
+# The filters validate through argus.identity.v1 (argus::sdk-identity rides
+# argus::auth); argus_identity arrives transitively through
+# notification-core's argus_sync pull, with no link-order meaning left.
 target_link_libraries(argus-notification PRIVATE notification-core
-    argus::auth argus_identity)
+    argus::auth)
 
 target_compile_options(argus-notification PRIVATE -Wall -Wextra)
 

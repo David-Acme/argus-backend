@@ -60,12 +60,11 @@ fingerprint_secret = ""
 trust_forwarded_for = true
 trusted_proxy_ips = ""
 
-# The JWT filter resolves the caller's user row (and the bound refresh-token
-# session) in identity.db; without this key the boot stays identity-free and
-# authenticated requests fail their user lookup. Same install as
-# argus-productivity (Ruling AM).
+# The gateway's internal identity RPC (argus.identity.v1): the filter chain
+# validates tokens and device credentials there instead of opening
+# identity.db. Default 127.0.0.1:7040 (the gateway's own listener).
 [identity]
-db = "database/identity.db"
+target = "127.0.0.1:7040"
 
 [nats]
 # The change funnel toward the gateway (Rulings AQ/AR): change emits and

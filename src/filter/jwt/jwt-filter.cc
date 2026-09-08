@@ -1,8 +1,10 @@
 #include "jwt-filter.hxx"
 
 #include <config/app-config.hxx>
-#include <ctime>
 #include <filter/device/device-filter.hxx>
+#include <filter/identity-access.hxx>
+#include <identity/identity-client.hxx>
+#include <shared/wrapper/blocking-task/blocking-task.hxx>
 #include <trantor/utils/Logger.h>
 
 drogon::Task<drogon::HttpResponsePtr>
@@ -34,42 +36,41 @@ JwtFilter::doFilter(const drogon::HttpRequestPtr& req)
     co_return AppConfig::get401Response();
   }
 
-  const auto user = co_await userRepository_.findById(userId);
-  if (!user) {
+  const bool hasDeviceContext =
+      req->getAttributes()->find(AppConfig::DEVICE_CTX_KEY);
+  std::string deviceHash;
+  if (hasDeviceContext) {
+    deviceHash = req->getAttributes()
+                     ->get<DeviceContext>(AppConfig::DEVICE_CTX_KEY)
+                     .deviceHash;
+  }
+
+  // One server-authoritative validation: user status, refresh-token row and
+  // device binding in a single round trip. An unreachable identity service
+  // rejects the request (fail closed).
+  const auto client = filterIdentityClient();
+  const auto verdict =
+      co_await BlockingTask<
+          std::optional<argus::identity::v1::ValidateTokenResponse>>(
+          [client, token, deviceHash, hasDeviceContext]() {
+            return client->validateToken({token, deviceHash,
+                                          hasDeviceContext});
+          });
+
+  if (!verdict || !verdict->valid()) {
+    if (verdict && !verdict->reason().empty()) {
+      co_return AppConfig::get401Response(verdict->reason());
+    }
     co_return AppConfig::get401Response();
   }
 
-  if (!user->isActive) {
-    co_return AppConfig::get401Response("User account is disabled");
-  }
-
-  if (req->getAttributes()->find(AppConfig::DEVICE_CTX_KEY)) {
-    const auto& devCtx =
-        req->getAttributes()->get<DeviceContext>(AppConfig::DEVICE_CTX_KEY);
-    const auto rt =
-        co_await refreshTokenRepository_.findByAccessToken(userId, token);
-    if (!rt) {
-      co_return AppConfig::get401Response();
-    }
-    if (rt->expiresAt <= std::time(nullptr)) {
-      LOG_WARN << "Refresh token expired for user " << userId;
-      co_return AppConfig::get401Response("Token expired");
-    }
-    if (rt->deviceHash != devCtx.deviceHash) {
-      LOG_WARN << "Device hash mismatch for user " << userId;
-      co_return AppConfig::get401Response("Device mismatch");
-    }
-  }
-
+  const auto& user = verdict->user();
   JwtContext ctx;
-  ctx.sub = user->id;
-  ctx.name = user->name + " " + user->lastName;
-  ctx.role = user->role;
-  ctx.isActive = user->isActive;
-  if (req->getAttributes()->find(AppConfig::DEVICE_CTX_KEY))
-    ctx.deviceHash = req->getAttributes()
-                         ->get<DeviceContext>(AppConfig::DEVICE_CTX_KEY)
-                         .deviceHash;
+  ctx.sub = user.user_id();
+  ctx.name = user.name() + " " + user.last_name();
+  ctx.role = userRoleFromString(user.role());
+  ctx.isActive = user.is_active();
+  ctx.deviceHash = deviceHash;
 
   req->getAttributes()->insert(AppConfig::JWT_CTX_KEY, ctx);
   co_return drogon::HttpResponsePtr{};

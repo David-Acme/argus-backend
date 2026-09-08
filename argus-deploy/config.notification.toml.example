@@ -81,10 +81,9 @@ fingerprint_secret = ""
 trust_forwarded_for = true
 trusted_proxy_ips = ""
 
-# Identity database opened read-only: the JWT filter resolves the caller's
-# user row (and the bound refresh-token session) there (Ruling AM/f17a9c8 —
-# without it every authenticated request would 401 against notification.db,
-# which holds no user table). The gateway creates identity.db in the shared
-# data dir at its boot; the service waits bounded for it.
+# Gateway internal identity RPC (argus.identity.v1): the filter chain
+# validates tokens and device credentials there instead of opening
+# identity.db (the Ruling AM/f17a9c8 user lookup, now remote). The gateway is
+# host-networked, so its listener answers on the bridge gateway address.
 [identity]
-db = "database/identity.db"
+target = "172.19.0.1:7040"

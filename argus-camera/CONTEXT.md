@@ -22,10 +22,10 @@ preset, own `camera.db`.
   internal plain listener (loopback 7026 default), `DbService` default
   client on `[camera] db` (default `database/camera.db`), `[drogon.app]`
   mirror, CORS/exception/404/405 plumbing identical to the gateway so
-  envelopes are byte-shape-identical. A config-gated named identity client
-  placeholder (`[identity] db`, read-only) reuses the legacy
-  `DbService::setIdentityClient` slot for the F2-2 caller validation; absent
-  key boots identity-free. No AI service registry is compiled or loaded
+  envelopes are byte-shape-identical. Caller validation rides the identity
+  RPC (`[identity] target`); the config-gated named identity client
+  (`[identity] db`, read-only) now backs only the sync socket's user reads;
+  absent key boots identity-free. No AI service registry is compiled or loaded
   (no ncnn/llama/opencv/onnxruntime code paths).
 - **`GET /health`**: standard `ApiResponse` envelope
   `{status: 200 (int), info: {service: argus-camera, uptimeSeconds},
@@ -59,12 +59,16 @@ preset, own `camera.db`.
   not found), subscribes through StreamHub fMP4 with the `0xA7` frame magic,
   and degrades to the legacy `503 go2rtc_not_running` envelope when go2rtc is
   down. Go2rtcManager owns the go2rtc lifecycle here.
-- **Identity reads**: `[identity] db` opens mode=ro as the named identity
-  client (`DbService::setIdentityClient` slot; SQLite URI filenames are
-  enabled before the first `sqlite3_open` so the `mode=ro` URI parses);
-  absent key boots identity-free. The gateway creates identity.db at its own
-  boot, which on a fresh install may land after ours, so the open waits
-  bounded for the file to exist.
+- **Identity reads (narrowed in f7-3)**: `[identity] db` opens mode=ro as the
+  named identity client (`DbService::setIdentityClient` slot; SQLite URI
+  filenames are enabled before the first `sqlite3_open` so the `mode=ro` URI
+  parses). It now serves only the sync socket — `SyncService::refreshContext`
+  resolves the connecting user's row and the `user` sync table is read from
+  the same repository. The filters stopped reading it in f7-3 and validate
+  over `argus.identity.v1.ValidateToken` at `[identity] target`; absent db
+  key boots identity-free (sync user reads degrade, authentication does
+  not). The gateway creates identity.db at its own boot, which on a fresh
+  install may land after ours, so the open waits bounded for the file.
 - **Explicit controller registration**: the camera, zone and camera-control
   controllers live in the shared static library, so their AutoCreation
   registration is linker-dropped there; this service registers them
