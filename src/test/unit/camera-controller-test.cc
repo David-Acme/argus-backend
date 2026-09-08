@@ -271,7 +271,7 @@ TEST_CASE("camera and zone contracts hold on the argus-camera surface")
 
   // ── camera:subscribe decision path ────────────────────────────────────────
   // go2rtc is deliberately not started here: the known-camera subscribe must
-  // degrade to the legacy 503 go2rtc_not_running envelope, the unknown camera
+  // degrade to the 503 go2rtc_not_running envelope, the unknown camera
   // to the 404 Camera not found envelope.
   CameraMediaService mediaService;
   const auto conn = std::make_shared<RecordingConnection>();

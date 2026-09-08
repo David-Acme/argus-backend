@@ -161,13 +161,16 @@ proxies everything else to the legacy backend on its internal plain listener
 - **Proxy exclusion table (Ruling I — who serves what)**: gateway-native and
   therefore NEVER proxied: `/auth/*` (identity), `/pairing`, `/invitation/*`,
   `/user`, `/portrait-preview/*`, `/sync` (native WS + relay), `/health`.
-  Everything else (legacy-owned: `/camera/*`, `/zone/*`, `/notification/*`,
-  `/calendar-event*`, `/project*`, and any unknown path) is forwarded verbatim to the legacy. Coverage is enforced
-  at boot (`requireExclusionCoverage`): every registered gateway route must
-  be inside the exclusion set or startup aborts. No path is served by both
-  sides (verified live: `/health` → gateway envelope through the gateway,
-  legacy 404 envelope direct; `/no-such-route` → legacy envelope through the
-  proxy).
+  The extracted domains go through the route table instead of the legacy:
+  `/camera/*` + `/zone/*` (up to 8 segments) → argus-camera,
+  `/calendar-event*` + `/project*` (up to 8 segments) → argus-productivity,
+  `/notification*` (up to 2 segments) → argus-notification. Only what no
+  route claims falls through to the legacy default backend. Coverage is
+  enforced at boot (`requireExclusionCoverage`): every registered gateway
+  route must be inside the exclusion set or startup aborts. No path is
+  served by both sides (verified live: `/health` → gateway envelope through
+  the gateway, legacy 404 envelope direct; `/no-such-route` → legacy
+  envelope through the proxy).
 - **TLS trust chain (Ruling K)**: the gateway points at the SAME `certs/`
   directory as the legacy (transitional shared path) and runs
   `CertService::init()` + `MdnsService` with the same `[cert]`/`[mdns]` keys
