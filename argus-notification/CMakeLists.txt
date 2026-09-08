@@ -20,6 +20,8 @@ if(NOT TARGET argus_common)
     find_package(mdns REQUIRED)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../argus-common
                      ${CMAKE_BINARY_DIR}/argus-common)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../src/filter
+                     ${CMAKE_BINARY_DIR}/argus-filter)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../src/identity
                      ${CMAKE_BINARY_DIR}/argus-identity)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../src/sync
@@ -88,7 +90,13 @@ add_executable(argus-notification
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/shared/services/notification-token/notification-token-service.cc
 )
 
-target_link_libraries(argus-notification PRIVATE notification-core)
+# argus::auth linked ahead of the transitive argus_identity pull: main.cc
+# constructs the filters directly (DeviceFilter/JwtFilter/RoleFilter/
+# ValidJsonFilter), and those filters read back into argus_identity's
+# UserRepository/RefreshTokenRepository/DeviceCredentialRepository, so a
+# single-pass linker needs argus::auth resolved before it, not after.
+target_link_libraries(argus-notification PRIVATE notification-core
+    argus::auth argus_identity)
 
 target_compile_options(argus-notification PRIVATE -Wall -Wextra)
 

@@ -1,6 +1,8 @@
 # argus_identity: identity domain (auth, user, invitation, pairing) plus the
-# filters, repositories, schemas and services its routes need to link. The
-# legacy backend and the argus-gateway both consume this one definition.
+# repositories, schemas and services its routes need to link. The legacy
+# backend and the argus-gateway both consume this one definition. Links
+# argus_auth PUBLIC because AuthService calls JwtService and DeviceFilter's
+# static helpers directly.
 
 find_package(Drogon CONFIG REQUIRED)
 find_package(jwt-cpp REQUIRED)
@@ -36,10 +38,6 @@ set(ARGUS_IDENTITY_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/../feature/api/user/dtos/update-user-dto.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/../feature/api/user/services/portrait-preview-service.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/../feature/api/user/services/user-feature-service.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/../filter/device/device-filter.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/../filter/jwt/jwt-filter.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/../filter/role/role-filter.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/../filter/valid-json/valid-json-filter.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/../shared/repositories/audit-log/audit-log-repository.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/../shared/repositories/device-credential/device-credential-repository.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/../shared/repositories/device-login-challenge/device-login-challenge-repository.cc
@@ -71,7 +69,6 @@ set(ARGUS_IDENTITY_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/../shared/services/cert/cert-service.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/../shared/services/face/face-db.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/../shared/services/face/face-service.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/../shared/services/jwt/jwt-service.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/../shared/services/mdns/mdns-service.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/../shared/services/room/room-manager.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/../shared/services/socket/socket-service.cc
@@ -106,6 +103,7 @@ endif()
 target_link_libraries(argus_identity
     PUBLIC
         argus_common
+        argus::auth
         argus::hardware-profile-gpu
         Drogon::Drogon
         jwt-cpp::jwt-cpp

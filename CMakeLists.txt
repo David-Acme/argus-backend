@@ -26,6 +26,7 @@ find_library(RNNOISE_LIBRARY NAMES rnnoise)
 add_subdirectory(third_party)
 
 add_subdirectory(argus-common)
+add_subdirectory(src/filter)
 add_subdirectory(src/identity)
 add_subdirectory(src/sync)
 

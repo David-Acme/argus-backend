@@ -25,9 +25,6 @@ add_library(tts-core STATIC
     ${TTS_SRC_ROOT}/controllers/tts-controller.cc
     ${TTS_SRC_ROOT}/server/listener-config.cc
     ${TTS_SRC_ROOT}/tts/synthesize-dto.cc
-    # Boot plumbing shared with the backend: the JSON-body filter tts-controller
-    # reports through.
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src/filter/valid-json/valid-json-filter.cc
     # The engine compiled from the shared tree (F2-1 PORTED pattern), so the
     # legacy binary and this service synthesize byte-identically.
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/shared/services/tts/tts-service.cc
@@ -43,6 +40,7 @@ target_include_directories(tts-core PUBLIC
 
 target_link_libraries(tts-core PUBLIC
     argus_common
+    argus::auth
     argus::hardware-profile
     Drogon::Drogon
     onnxruntime::onnxruntime

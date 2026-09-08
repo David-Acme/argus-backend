@@ -222,7 +222,6 @@ add_test(NAME stt-wire-test COMMAND stt-wire-test)
 # The argus-tts wire contract (F4-2, Ruling BH): the real engine serves the
 # synthesize/config legs from the shared models tree.
 add_executable(tts-wire-test tts-wire-test.cc
-    ${SRC_ROOT}/filter/valid-json/valid-json-filter.cc
     ${CMAKE_SOURCE_DIR}/argus-tts/src/controllers/health-controller.cc
     ${CMAKE_SOURCE_DIR}/argus-tts/src/controllers/tts-controller.cc
     ${CMAKE_SOURCE_DIR}/argus-tts/src/tts/synthesize-dto.cc
@@ -238,7 +237,7 @@ target_include_directories(tts-wire-test PRIVATE
 target_compile_definitions(tts-wire-test PRIVATE
     ARGUS_TEST_TTS_MODELS_DIR="${CMAKE_SOURCE_DIR}/models/tts")
 
-target_link_libraries(tts-wire-test PRIVATE argus_common
+target_link_libraries(tts-wire-test PRIVATE argus_common argus::auth
     argus::hardware-profile onnxruntime::onnxruntime doctest::doctest)
 
 target_compile_options(tts-wire-test PRIVATE -Wall -Wextra)

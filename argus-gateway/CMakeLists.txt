@@ -42,6 +42,8 @@ if(NOT TARGET argus_identity)
                      ${CMAKE_BINARY_DIR}/third_party/ncnn EXCLUDE_FROM_ALL)
     set(ARGUS_NCNN_TARGET ncnn)
 
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../src/filter
+                     ${CMAKE_BINARY_DIR}/argus-filter)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../src/identity
                      ${CMAKE_BINARY_DIR}/argus-identity)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../src/sync
