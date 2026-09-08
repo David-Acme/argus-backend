@@ -10,6 +10,6 @@ ProductivityDbConfig ProductivityConfig::resolveDb()
     config.dbPath = "database/productivity.db";
   config.schemaPath = ConfigService::getString("productivity.schema");
   if (config.schemaPath.empty())
-    config.schemaPath = "database/productivity-schema.sql";
+    config.schemaPath = "argus-productivity/database/schema.sql";
   return config;
 }

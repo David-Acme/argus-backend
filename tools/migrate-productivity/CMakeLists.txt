@@ -14,7 +14,7 @@ target_include_directories(productivity-migration
 )
 
 target_compile_definitions(productivity-migration PUBLIC
-    ARGUS_PRODUCTIVITY_SCHEMA_PATH="${CMAKE_SOURCE_DIR}/database/productivity-schema.sql"
+    ARGUS_PRODUCTIVITY_SCHEMA_PATH="${CMAKE_SOURCE_DIR}/argus-productivity/database/schema.sql"
 )
 
 target_link_libraries(productivity-migration

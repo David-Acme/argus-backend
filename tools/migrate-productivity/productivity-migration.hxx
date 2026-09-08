@@ -7,7 +7,7 @@
 struct sqlite3;
 
 #ifndef ARGUS_PRODUCTIVITY_SCHEMA_PATH
-#define ARGUS_PRODUCTIVITY_SCHEMA_PATH "database/productivity-schema.sql"
+#define ARGUS_PRODUCTIVITY_SCHEMA_PATH "argus-productivity/database/schema.sql"
 #endif
 
 struct ProductivityMigrationOptions

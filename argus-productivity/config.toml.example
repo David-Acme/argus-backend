@@ -42,7 +42,7 @@ relaunch_on_error = false
 # applied at boot from the schema below. tools/migrate-productivity fills it
 # from argus.db against the same config key.
 db = "database/productivity.db"
-schema = "database/productivity-schema.sql"
+schema = "argus-productivity/database/schema.sql"
 
 # Access tokens minted by the gateway: the routes validate the same JWTs the
 # legacy validates. The secrets must match the gateway's [jwt] block.

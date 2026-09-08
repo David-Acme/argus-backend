@@ -14,11 +14,8 @@ set(UNIT_TESTS
     validation-dsl-test
     nats-wrapper-test
     sync-change-test
-    productivity-schema-test
-    productivity-migration-test
     notification-schema-test
     notification-migration-test
-    productivity-controller-test
     notification-controller-test
     cert-san-test
 )
@@ -33,10 +30,8 @@ foreach(TEST_NAME IN LISTS UNIT_TESTS)
     add_test(NAME ${TEST_NAME} COMMAND ${TEST_NAME})
 endforeach()
 
-# productivity-migration and notification-migration build only as dependencies
-# of the productivity/notification unit suites.
-target_link_libraries(productivity-schema-test PRIVATE productivity-migration)
-target_link_libraries(productivity-migration-test PRIVATE productivity-migration)
+# notification-migration builds only as a dependency
+# of the notification unit suites.
 target_link_libraries(notification-schema-test PRIVATE notification-migration)
 target_link_libraries(notification-migration-test PRIVATE notification-migration)
 
@@ -44,31 +39,9 @@ target_link_libraries(notification-migration-test PRIVATE notification-migration
 # and the in-process TLS listener that proves the hot reload.
 target_link_libraries(cert-san-test PRIVATE argus_identity)
 
-# The productivity/notification controller suites compile the same write-side
+# The notification controller suite compiles the same write-side
 # feature sources the fase 3 executables compile (shared tree) and ride the
 # sync layer for the repositories, schemas and boot plumbing.
-set(PRODUCTIVITY_CONTROLLER_SOURCES
-    ${SRC_ROOT}/feature/api/calendar-event/controllers/calendar-event-controller.cc
-    ${SRC_ROOT}/feature/api/calendar-event/dtos/create-calendar-event-dto.cc
-    ${SRC_ROOT}/feature/api/calendar-event/dtos/update-calendar-event-dto.cc
-    ${SRC_ROOT}/feature/api/calendar-event/services/calendar-event-feature-service.cc
-    ${SRC_ROOT}/feature/api/calendar-event-share/controllers/calendar-event-share-controller.cc
-    ${SRC_ROOT}/feature/api/calendar-event-share/dtos/create-calendar-event-share-dto.cc
-    ${SRC_ROOT}/feature/api/calendar-event-share/dtos/update-calendar-event-share-dto.cc
-    ${SRC_ROOT}/feature/api/calendar-event-share/services/calendar-event-share-feature-service.cc
-    ${SRC_ROOT}/feature/api/project/controllers/project-controller.cc
-    ${SRC_ROOT}/feature/api/project/dtos/create-project-dto.cc
-    ${SRC_ROOT}/feature/api/project/dtos/update-project-dto.cc
-    ${SRC_ROOT}/feature/api/project/services/project-feature-service.cc
-    ${SRC_ROOT}/feature/api/project-member/controllers/project-member-controller.cc
-    ${SRC_ROOT}/feature/api/project-member/dtos/create-project-member-dto.cc
-    ${SRC_ROOT}/feature/api/project-member/dtos/update-project-member-dto.cc
-    ${SRC_ROOT}/feature/api/project-member/services/project-member-feature-service.cc
-    ${SRC_ROOT}/feature/api/project-task/controllers/project-task-controller.cc
-    ${SRC_ROOT}/feature/api/project-task/dtos/create-project-task-dto.cc
-    ${SRC_ROOT}/feature/api/project-task/dtos/update-project-task-dto.cc
-    ${SRC_ROOT}/feature/api/project-task/services/project-task-feature-service.cc
-)
 
 set(NOTIFICATION_CONTROLLER_SOURCES
     ${SRC_ROOT}/feature/api/notification/controllers/notification-controller.cc
@@ -81,12 +54,6 @@ set(NOTIFICATION_CONTROLLER_SOURCES
     ${SRC_ROOT}/shared/schemas/notification-token/notification-token-schema.cc
     ${SRC_ROOT}/shared/services/notification-token/notification-token-service.cc
 )
-
-target_sources(productivity-controller-test PRIVATE
-    ${PRODUCTIVITY_CONTROLLER_SOURCES})
-
-target_link_libraries(productivity-controller-test PRIVATE argus_sync
-    doctest::doctest)
 
 target_sources(notification-controller-test PRIVATE
     ${NOTIFICATION_CONTROLLER_SOURCES})

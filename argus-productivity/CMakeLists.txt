@@ -81,29 +81,32 @@ target_compile_options(productivity-core PRIVATE -Wall -Wextra)
 # AutoCreation and register their routes during static init, exactly like the
 # legacy binary does. The legacy keeps its own registration until F3-2; the
 # repositories and schemas ride argus_sync.
+set(PRODUCTIVITY_FEATURE_SOURCES
+    ${PRODUCTIVITY_SRC_ROOT}/feature/api/calendar-event/controllers/calendar-event-controller.cc
+    ${PRODUCTIVITY_SRC_ROOT}/feature/api/calendar-event/dtos/create-calendar-event-dto.cc
+    ${PRODUCTIVITY_SRC_ROOT}/feature/api/calendar-event/dtos/update-calendar-event-dto.cc
+    ${PRODUCTIVITY_SRC_ROOT}/feature/api/calendar-event/services/calendar-event-feature-service.cc
+    ${PRODUCTIVITY_SRC_ROOT}/feature/api/calendar-event-share/controllers/calendar-event-share-controller.cc
+    ${PRODUCTIVITY_SRC_ROOT}/feature/api/calendar-event-share/dtos/create-calendar-event-share-dto.cc
+    ${PRODUCTIVITY_SRC_ROOT}/feature/api/calendar-event-share/dtos/update-calendar-event-share-dto.cc
+    ${PRODUCTIVITY_SRC_ROOT}/feature/api/calendar-event-share/services/calendar-event-share-feature-service.cc
+    ${PRODUCTIVITY_SRC_ROOT}/feature/api/project/controllers/project-controller.cc
+    ${PRODUCTIVITY_SRC_ROOT}/feature/api/project/dtos/create-project-dto.cc
+    ${PRODUCTIVITY_SRC_ROOT}/feature/api/project/dtos/update-project-dto.cc
+    ${PRODUCTIVITY_SRC_ROOT}/feature/api/project/services/project-feature-service.cc
+    ${PRODUCTIVITY_SRC_ROOT}/feature/api/project-member/controllers/project-member-controller.cc
+    ${PRODUCTIVITY_SRC_ROOT}/feature/api/project-member/dtos/create-project-member-dto.cc
+    ${PRODUCTIVITY_SRC_ROOT}/feature/api/project-member/dtos/update-project-member-dto.cc
+    ${PRODUCTIVITY_SRC_ROOT}/feature/api/project-member/services/project-member-feature-service.cc
+    ${PRODUCTIVITY_SRC_ROOT}/feature/api/project-task/controllers/project-task-controller.cc
+    ${PRODUCTIVITY_SRC_ROOT}/feature/api/project-task/dtos/create-project-task-dto.cc
+    ${PRODUCTIVITY_SRC_ROOT}/feature/api/project-task/dtos/update-project-task-dto.cc
+    ${PRODUCTIVITY_SRC_ROOT}/feature/api/project-task/services/project-task-feature-service.cc
+)
+
 add_executable(argus-productivity
     ${PRODUCTIVITY_SRC_ROOT}/main.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src/feature/api/calendar-event/controllers/calendar-event-controller.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src/feature/api/calendar-event/dtos/create-calendar-event-dto.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src/feature/api/calendar-event/dtos/update-calendar-event-dto.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src/feature/api/calendar-event/services/calendar-event-feature-service.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src/feature/api/calendar-event-share/controllers/calendar-event-share-controller.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src/feature/api/calendar-event-share/dtos/create-calendar-event-share-dto.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src/feature/api/calendar-event-share/dtos/update-calendar-event-share-dto.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src/feature/api/calendar-event-share/services/calendar-event-share-feature-service.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src/feature/api/project/controllers/project-controller.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src/feature/api/project/dtos/create-project-dto.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src/feature/api/project/dtos/update-project-dto.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src/feature/api/project/services/project-feature-service.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src/feature/api/project-member/controllers/project-member-controller.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src/feature/api/project-member/dtos/create-project-member-dto.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src/feature/api/project-member/dtos/update-project-member-dto.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src/feature/api/project-member/services/project-member-feature-service.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src/feature/api/project-task/controllers/project-task-controller.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src/feature/api/project-task/dtos/create-project-task-dto.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src/feature/api/project-task/dtos/update-project-task-dto.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src/feature/api/project-task/services/project-task-feature-service.cc
-)
+    ${PRODUCTIVITY_FEATURE_SOURCES})
 
 # The filters validate through argus.identity.v1 (argus::sdk-identity rides
 # argus::auth); argus_identity stays for the share/member reads and arrives
@@ -118,4 +121,49 @@ get_target_property(DOCTEST_INCLUDE_DIRS doctest::doctest
 if(DOCTEST_INCLUDE_DIRS)
     set_target_properties(doctest::doctest PROPERTIES
         INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${DOCTEST_INCLUDE_DIRS}")
+endif()
+
+# The productivity unit suites are root-project tests: they are part of the
+# root ctest run, and productivity-migration (tools/) is EXCLUDE_FROM_ALL
+# there. Standalone consumer builds never had these suites. The targets opt
+# back into the default build because this folder is added EXCLUDE_FROM_ALL.
+if(ARGUS_ROOT_PROJECT)
+    find_package(doctest REQUIRED)
+
+    foreach(TEST_NAME IN ITEMS productivity-schema-test productivity-migration-test)
+        add_executable(${TEST_NAME} tests/unit/${TEST_NAME}.cc)
+        set_target_properties(${TEST_NAME} PROPERTIES EXCLUDE_FROM_ALL FALSE)
+        target_link_libraries(${TEST_NAME} PRIVATE argus_common
+            productivity-migration doctest::doctest)
+        target_compile_options(${TEST_NAME} PRIVATE -Wall -Wextra)
+        add_test(NAME ${TEST_NAME} COMMAND ${TEST_NAME})
+    endforeach()
+
+    # The controller suite compiles the same write-side feature sources the
+    # service compiles and rides the sync layer for the repositories,
+    # schemas and boot plumbing.
+    add_executable(productivity-controller-test
+        tests/unit/productivity-controller-test.cc
+        ${PRODUCTIVITY_FEATURE_SOURCES})
+
+    set_target_properties(productivity-controller-test PROPERTIES
+        EXCLUDE_FROM_ALL FALSE)
+
+    target_include_directories(productivity-controller-test PRIVATE
+        ${PRODUCTIVITY_SRC_ROOT})
+
+    target_link_libraries(productivity-controller-test PRIVATE argus_sync
+        argus_common doctest::doctest)
+
+    target_compile_options(productivity-controller-test PRIVATE -Wall -Wextra)
+
+    add_test(NAME productivity-controller-test
+             COMMAND productivity-controller-test)
+
+    get_target_property(DOCTEST_INCLUDE_DIRS doctest::doctest
+                        INTERFACE_INCLUDE_DIRECTORIES)
+    if(DOCTEST_INCLUDE_DIRS)
+        set_target_properties(doctest::doctest PROPERTIES
+            INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${DOCTEST_INCLUDE_DIRS}")
+    endif()
 endif()

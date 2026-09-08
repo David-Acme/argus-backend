@@ -667,7 +667,7 @@ services:
       # provisioned data dir without the SQL would fail "schema file not
       # found".
       - type: bind
-        source: ../database/productivity-schema.sql
+        source: ../argus-productivity/database/schema.sql
         target: /opt/argus/database/productivity-schema.sql
         read_only: true
         bind:

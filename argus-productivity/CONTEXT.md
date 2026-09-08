@@ -15,7 +15,7 @@ own `productivity.db`.
   `project_task`, `calendar_event`, `project_member`,
   `calendar_event_share`, `reminder_detail`) plus their 6 indexes, DDL
   copied verbatim from `database/schema.sql:159-280`. The schema lands as
-  `database/productivity-schema.sql` and is applied at boot through
+  `argus-productivity/database/schema.sql` and is applied at boot through
   `DbService::runScriptFile` — abort on failure. `argus.db` is never
   touched. `context_note` is NOT recreated (Ruling AK): it was an orphan
   table with no controller and no sync pull, and the frozen argus.db copy
@@ -108,3 +108,23 @@ because after the F3-2 cutover `productivity.db` is live data and the frozen
 `argus.db`. Its `foreign_key_check` ignores user references by design (the
 user parent rows live in identity.db) and fails on any violation between the
 productivity tables themselves.
+
+## The folder owns its domain (f7-7b)
+
+The five write-side feature trees (calendar-event, calendar-event-share,
+project, project-member, project-task), the productivity schema and the
+three unit suites moved out of the shared `src/` tree into this folder,
+prefixes preserved, so no include line changed. The feature source list
+is now a single `PRODUCTIVITY_FEATURE_SOURCES` variable that both the
+executable and the controller suite consume, instead of the two
+hand-kept copies (one here, one in the root test tree) that could drift.
+
+The suites register under `ARGUS_ROOT_PROJECT` and opt back into the
+default build (`EXCLUDE_FROM_ALL FALSE`), because this folder is added
+excluded.
+
+What did NOT move: the productivity repositories and schemas, which
+`argus_sync` still compiles because the gateway's `/sync` reads the same
+rows, and the read-only identity.db the share/member validation needs
+(Ruling AM, narrowed in f7-3).
+
