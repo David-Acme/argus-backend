@@ -29,8 +29,8 @@ if(NOT TARGET argus_common)
                      ${CMAKE_BINARY_DIR}/argus-room)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../src/socket
                      ${CMAKE_BINARY_DIR}/argus-socket)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../src/filter
-                     ${CMAKE_BINARY_DIR}/argus-filter)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../argus-auth
+                     ${CMAKE_BINARY_DIR}/argus-auth)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../argus-identity
                      ${CMAKE_BINARY_DIR}/argus-identity)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../src/sync

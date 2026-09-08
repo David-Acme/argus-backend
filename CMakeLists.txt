@@ -43,7 +43,7 @@ add_subdirectory(src/room)
 add_subdirectory(src/sqlite)
 add_subdirectory(src/socket)
 add_subdirectory(src/audit)
-add_subdirectory(src/filter)
+add_subdirectory(argus-auth)
 add_subdirectory(argus-identity)
 add_subdirectory(src/sync)
 
