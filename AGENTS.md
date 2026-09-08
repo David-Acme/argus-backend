@@ -440,28 +440,23 @@ Raw pointers only for non-owning access (`.get()`).
 - Release builds are machine-tuned: `-march=native` + `-flto=auto` on the app
   target only. `-Wall -Wextra` are always on; third-party includes are SYSTEM.
 
-### 17b. Local deployment and object storage
+### 17b. Local deployment
 
 - Argus remains self-hosted: the backend, database, certificates, models and
   private files run on the user's hardware. A tunnel may route remote traffic,
   but neither client contracts nor backend code should need to switch between
   LAN and tunnel endpoints.
-- Native backend development is the default. `docker-compose.yml` starts only
-  RustFS + its one-shot initializer by default; the backend container is an
-  opt-in `backend` profile and must not be started incidentally while emulators
-  are active.
-- Run `scripts/setup.sh --storage-only` to create the per-installation 0600
-  `config.toml` from `config.toml.example`, generate RustFS/app credentials,
-  create the ignored lab overlay from `labs/config.toml.example`, and start
-  the storage compose services. There is no `config.local.toml` overlay or
-  RustFS-specific setup script. Never commit, print, log or send these
-  credentials to the frontend.
-- RustFS is published on loopback only (`127.0.0.1:9000`). The app service
-  account is bucket-scoped and least-privilege; use it through
-  `S3StorageService`, never direct ad-hoc HTTP from feature code.
-- The backend container is only for production-style deployment and runs as a
-  separate Compose service under the `backend` profile. Native development
-  remains the default.
+- Native backend development is the default: run `scripts/setup.sh` to create
+  the per-installation 0600 `config.toml` from `config.toml.example` and the
+  ignored lab overlay from `labs/config.toml.example`, then run
+  `build/dev/argus-gateway/argus-gateway`. Never commit, print, log or send
+  instance secrets to the frontend.
+- Production-style deployment is container-only: `argus-deploy/` builds one
+  source-built image and `argus-deploy/docker-compose.yml` runs the gateway and
+  the domain services from it. There is no separate local compose stack.
+- Object storage is opt-in through `S3StorageService`
+  (`storage.mode = "s3"` in `config.toml`); no object store ships with the
+  repository. Use the service, never direct ad-hoc HTTP from feature code.
 - Development uses a fresh schema when the developer explicitly resets the
   local DB. Do not silently delete, migrate or recreate a user's database as a
   side effect of a feature; ask/require an explicit development reset.

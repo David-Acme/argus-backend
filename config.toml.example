@@ -41,12 +41,6 @@ handle_sig_term = true
 relaunch_on_error = false
 
 [[drogon.plugins]]
-name = "drogon::plugin::PromExporter"
-dependencies = []
-[drogon.plugins.config]
-path = "/metrics"
-
-[[drogon.plugins]]
 name = "drogon::plugin::AccessLogger"
 dependencies = []
 [drogon.plugins.config]
@@ -77,13 +71,6 @@ identity_mode = "ip"
 
 [database]
 file = "./database/argus.db"
-
-# Transitional cutover key (F1-5): identity database opened read-only for the
-# legacy JwtFilter's refresh-token and user lookups, so proxied authenticated
-# requests validate against the gateway-minted identity rows. Empty keeps the
-# pre-cutover behavior (auth reads use the default argus.db client).
-# [identity]
-# db = ""
 
 [face]
 top_k = 5
@@ -120,7 +107,7 @@ chat_template = "chatml"
 gpu_layers = -1
 
 [vision]
-# F4-4 cutover (Ruling BQ): with remote_url set the legacy boots WITHOUT the
+# F4-4 cutover (Ruling BQ): with remote_url set the gateway boots WITHOUT the
 # vision model — describes go to the argus-vlm service over the internal
 # wire and the in-process engine stays uninitialized. With remote_url empty
 # the in-process engine boots exactly as before and reads the keys below.
@@ -147,20 +134,6 @@ login_attempts = 2
 transport = "auto"
 talk_framing = "none"
 talk_mode = "aec"
-
-[storage]
-mode = "s3"
-
-[storage.s3]
-endpoint = ""
-access_key = ""
-secret_key = ""
-region = ""
-bucket = ""
-
-[storage.rustfs]
-access_key = ""
-secret_key = ""
 
 [cert]
 dir = "certs"
@@ -201,7 +174,7 @@ max_total_viewers = 8
 relay_chunk_bytes = 32768
 
 [memory]
-# F4-6 cutover (Ruling BY): with remote_url set the legacy boots WITHOUT the
+# F4-6 cutover (Ruling BY): with remote_url set the gateway boots WITHOUT the
 # memory stack — the tool loop serves from the argus-memory service over the
 # internal wire through the remote adapter. With remote_url empty the
 # in-process stack boots exactly as before and reads the keys below.

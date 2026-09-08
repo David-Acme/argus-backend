@@ -7,7 +7,7 @@
 # through to the gateway's own routing chain, which answers unknown paths with
 # the frozen NOT_FOUND envelope. The container runs host-networked
 # (transitional Ruling O exception), so 127.0.0.1 reaches the service backends
-# and the published nats/rustfs ports.
+# and the published nats port.
 
 [gateway]
 host = "0.0.0.0"

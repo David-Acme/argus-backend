@@ -1,9 +1,9 @@
 # syntax=docker/dockerfile:1.7
 
 # One source-built image for the cutover stack (Ruling N): multi-stage build of
-# the legacy backend, the gateway, argus-camera and the migration tools from
-# the same source tree. Extends docker/Dockerfile (same toolchain, Release) and
-# keeps the ARGUS_UID/ARGUS_GID runtime pattern.
+# the gateway, the domain services and the migration tools from the same
+# source tree (same toolchain, Release), keeping the ARGUS_UID/ARGUS_GID
+# runtime pattern.
 
 FROM debian:trixie-slim AS build
 
@@ -46,12 +46,11 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
       ca-certificates libgcc-s1 libgomp1 libstdc++6 libvulkan1 \
-      mesa-vulkan-drivers curl netcat-openbsd \
+      mesa-vulkan-drivers curl \
       libgrpc++1.51t64 libgrpc29t64 \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /opt/argus
-COPY --from=build /opt/argus/build/prod/argus-backend /opt/argus/argus-backend
 COPY --from=build /opt/argus/build/prod/argus-gateway/argus-gateway /opt/argus/argus-gateway
 COPY --from=build /opt/argus/build/prod/tools/migrate-identity/argus-migrate-identity /opt/argus/argus-migrate-identity
 COPY --from=build /opt/argus/build/prod/tools/migrate-camera/argus-migrate-camera /opt/argus/argus-migrate-camera
@@ -80,4 +79,4 @@ RUN groupadd --gid "$ARGUS_GID" argus \
 
 EXPOSE 7024
 USER argus
-ENTRYPOINT ["/opt/argus/argus-backend"]
+ENTRYPOINT ["/opt/argus/argus-gateway"]

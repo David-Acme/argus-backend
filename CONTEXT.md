@@ -86,7 +86,7 @@
 | `ExtractionService` | llama.cpp | NuExtract-1.5-tiny Q4_K_M (off-turn) | `[extract] model_path` |
 | `ReactionEngine` | señales puras (sin modelo) | 10 reacciones priorizadas → `voice:event` | — |
 | `StreamHub` / `MediaRelay` / `Go2rtcManager` | go2rtc | fMP4 sobre `/sync` con credit window | — |
-| `S3StorageService` / `PrivatePortraitService` | RustFS (S3) | objetos privados + capabilities one-use | loopback :9000 |
+| `S3StorageService` / `PrivatePortraitService` | S3 (SigV4, opt-in) | objetos privados + capabilities one-use | `[storage]` config |
 
 ## Performance & portability batch (2026-08)
 
@@ -2094,19 +2094,15 @@ device reaches this same backend.
   `portrait_preview`; image content, object keys, token and credentials never
   enter the audit log.
 
-### Local RustFS deployment
+### Object storage (opt-in)
 
-- `docker-compose.yml` defaults to a loopback-only RustFS stack
-  (`127.0.0.1:9000`) plus an initializer. It is intentionally independent from
-  native backend development so active emulators do not pay its memory cost.
-- `scripts/setup.sh --storage-only` generates the ignored 0600 `config.toml`
-  from `config.toml.example`, derives the runtime secret files under ignored
-  `docker/runtime/`, and starts the initializer. The initializer creates a
-  bucket-scoped application account; RustFS root credentials are not mounted
-  into the backend. There is no `config.local.toml` overlay.
-- The optional backend Docker profile runs with host UID/GID and refuses to
-  create missing bind-mount paths, avoiding root-owned development files. No
-  Docker build, pull or startup is part of normal feature validation.
+- No object store ships with the repository (F6-4 retirement): the local
+  RustFS compose stack, its initializer and the `--storage-only` setup path
+  are gone, and `config.toml.example` carries no `[storage]` block.
+- `S3StorageService` stays as code: an operator who wants private portrait
+  objects points `[storage] mode` at `s3` and fills the `[storage.s3]` keys
+  against any S3-compatible endpoint; without them the service reports
+  "not configured" and `PrivatePortraitService` skips portraits.
 
 ### Verification kept with the feature
 
@@ -2802,3 +2798,26 @@ write goes through the typed `argus.identity.v1.IdentityService.UpdateUser`
 seed implemented on the gateway (which owns identity.db); with `llm.remote_url`
 set MemoryService reaches argus-llm over HTTP while the in-process engine still
 boots (F4-6 memory gate unchanged).
+
+## F6-4 migration completed: legacy retired, argus.db cut (2026-09-08)
+
+The gateway is the only binary surface. Four sequenced commits finished the
+migration: (1) the legacy-only build set was deleted from the root CMake; (2)
+the gateway-native catch-all replaced the legacy proxy fallback with the same
+byte-identical "Path not found" NOT_FOUND envelope, so unrouted paths no
+longer depend on the legacy process; (3) the argus.db cut: the gateway serves
+the event domain as the empty shape `{"created":[],"deleted":[],"lastSyncDate":{}}`
+(readOnlyClient returns nullptr after the legacy tables emptied), the legacy
+config/db mount is gone, `LegacySyncRelay` keeps its name and its 503
+"Legacy sync ..." unconfigured wire messages for wire stability, and
+`database/schema.sql` (the monolith schema) was deleted — the per-service
+schema files under `database/` are the only schema truth; (4) retirement: the
+compose legacy block, `config.legacy.toml(.example)`, the root local compose
+(its three services were rustfs, rustfs-init and the legacy container) and
+`docker/Dockerfile` are gone; the RustFS provisioning (`setup.sh --storage-only`,
+runtime secrets, the `[storage]` example block and the PromExporter plugin
+block) is dropped while `S3StorageService` stays as opt-in code. The physical
+argus.db deletion is deliberately withheld for a separate, user-confirmed
+step: at cutover the real argus.db held zero rows in `event` and
+`person_event` and zero rows in every other migrated table, so nothing
+sync-serving reads it anymore.

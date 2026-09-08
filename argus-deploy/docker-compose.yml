@@ -1,10 +1,10 @@
 name: argus-cutover
 
-# Cutover deployment stack (Fase 6, compose v6): everything from v5 plus the
-# argus-voice cutover — the voice orchestration stack becomes the pilot
-# pure-gRPC service (argus.voice.v1 on 7034, /health on 7035) and the
-# gateway gains the identity RPC the spoken-name write goes through. The
-# root docker-compose.yml stays the dev tooling.
+# Cutover deployment stack (Fase 6, compose v7): the legacy service and the
+# RustFS storage pair are retired — the gateway is the only public surface
+# and every domain is served by its own argus-cutover service, with the
+# argus-voice pure-gRPC cutover (argus.voice.v1 on 7034, /health on 7035)
+# and the gateway identity RPC the spoken-name write goes through.
 
 services:
   gateway:
@@ -60,53 +60,6 @@ services:
     mem_limit: "${ARGUS_GATEWAY_MEMORY_LIMIT:-2g}"
     cpus: "${ARGUS_GATEWAY_CPU_LIMIT:-2.00}"
     pids_limit: 512
-    restart: unless-stopped
-
-  legacy:
-    image: argus-cutover:local
-    pull_policy: never
-    user: "${ARGUS_UID:-1000}:${ARGUS_GID:-1000}"
-    network_mode: host
-    entrypoint: ["/opt/argus/argus-backend"]
-    volumes:
-      - type: bind
-        source: ./config.legacy.toml
-        target: /opt/argus/config.toml
-        read_only: true
-        bind:
-          create_host_path: false
-      - type: bind
-        source: ../certs
-        target: /opt/argus/certs
-        read_only: true
-        bind:
-          create_host_path: false
-      - type: bind
-        source: ${ARGUS_DATA_DIR:-../database}
-        target: /opt/argus/database
-        bind:
-          create_host_path: false
-      - type: bind
-        source: ../models
-        target: /opt/argus/models
-        read_only: true
-        bind:
-          create_host_path: false
-    depends_on:
-      gateway:
-        condition: service_started
-      rustfs-init:
-        condition: service_completed_successfully
-    healthcheck:
-      test: ["CMD-SHELL", "nc -z 127.0.0.1 7025"]
-      interval: 10s
-      timeout: 5s
-      retries: 12
-      start_period: 30s
-    # Ruling CD: offloaded-legs default; topology (a) restores 6g/4.00 via env.
-    mem_limit: "${ARGUS_BACKEND_MEMORY_LIMIT:-2g}"
-    cpus: "${ARGUS_BACKEND_CPU_LIMIT:-1.50}"
-    pids_limit: 1024
     restart: unless-stopped
 
   # Camera-domain service (Fase 2 cutover, Rulings X/Y/Z): owns camera.db, the
@@ -265,7 +218,7 @@ services:
     pids_limit: 512
     restart: unless-stopped
 
-  # AI engine services (Fase 4): internal-wire RPC servers; the legacy's
+  # AI engine services (Fase 4): internal-wire RPC servers; the config
   # remote_url gates dial the loopback publishes (Rulings CB/CC/CD).
   argus-tts:
     image: argus-cutover:local
@@ -622,60 +575,6 @@ services:
     mem_limit: "${NATS_MEMORY_LIMIT:-256m}"
     restart: unless-stopped
 
-  rustfs:
-    image: rustfs/rustfs:1.0.0-beta.12
-    environment:
-      RUSTFS_ADDRESS: "0.0.0.0:9000"
-      RUSTFS_CONSOLE_ENABLE: "false"
-      RUSTFS_ACCESS_KEY_FILE: /run/secrets/rustfs_access_key
-      RUSTFS_SECRET_KEY_FILE: /run/secrets/rustfs_secret_key
-    ports:
-      - "127.0.0.1:${RUSTFS_API_PORT:-9000}:9000"
-    volumes:
-      - rustfs-data:/data
-    secrets:
-      - rustfs_access_key
-      - rustfs_secret_key
-    networks:
-      internal:
-        aliases:
-          - rustfs
-    healthcheck:
-      test: ["CMD-SHELL", "curl --fail --silent http://127.0.0.1:9000/health/ready >/dev/null"]
-      interval: 5s
-      timeout: 3s
-      retries: 12
-      start_period: 10s
-    mem_limit: "${RUSTFS_MEMORY_LIMIT:-512m}"
-    cpus: "${RUSTFS_CPU_LIMIT:-1.00}"
-    pids_limit: 128
-    restart: unless-stopped
-
-  rustfs-init:
-    image: rustfs/rc:v0.1.31
-    entrypoint: ["/bin/sh", "-ec"]
-    command:
-      - >-
-        bucket="$$(tr -d '\r\n' < "$${RUSTFS_BUCKET_FILE}")"; test -n "$${bucket}"; access_key="$$(tr -d '\r\n' < /run/secrets/rustfs_access_key)"; secret_key="$$(tr -d '\r\n' < /run/secrets/rustfs_secret_key)"; app_access_key="$$(tr -d '\r\n' < /run/secrets/argus_s3_access_key)"; app_secret_key="$$(tr -d '\r\n' < /run/secrets/argus_s3_secret_key)"; /usr/bin/rc alias set argus "$${RUSTFS_ENDPOINT}" "$${access_key}" "$${secret_key}" --region "$${RUSTFS_REGION}" --bucket-lookup path >/dev/null; /usr/bin/rc bucket create "argus/$${bucket}" --ignore-existing >/dev/null; if /usr/bin/rc admin service-account info argus "$${app_access_key}" >/dev/null 2>&1; then /usr/bin/rc admin service-account update argus "$${app_access_key}" --secret-key "$${app_secret_key}" --name argus-backend --description "Argus private object storage" --policy /run/argus/rustfs-policy.json >/dev/null; else /usr/bin/rc admin service-account create argus "$${app_access_key}" "$${app_secret_key}" --name argus-backend --description "Argus private object storage" --policy /run/argus/rustfs-policy.json >/dev/null; fi; /usr/bin/rc admin service-account info argus "$${app_access_key}" >/dev/null; echo 'RustFS private bucket and application service account are ready.'
-    environment:
-      RUSTFS_ENDPOINT: http://rustfs:9000
-      RUSTFS_REGION: "${RUSTFS_REGION:-us-east-1}"
-      RUSTFS_BUCKET_FILE: /run/argus/rustfs-bucket
-    volumes:
-      - ../docker/runtime/rustfs-bucket:/run/argus/rustfs-bucket:ro
-      - ../docker/runtime/rustfs-policy.json:/run/argus/rustfs-policy.json:ro
-    secrets:
-      - rustfs_access_key
-      - rustfs_secret_key
-      - argus_s3_access_key
-      - argus_s3_secret_key
-    depends_on:
-      rustfs:
-        condition: service_healthy
-    networks:
-      - internal
-    restart: "no"
-
   identity-init:
     profiles: ["identity-init"]
     image: argus-cutover:local
@@ -815,19 +714,7 @@ services:
       - /dev/dri:/dev/dri
     restart: "no"
 
-secrets:
-  rustfs_access_key:
-    file: ../docker/runtime/secrets/rustfs_access_key
-  rustfs_secret_key:
-    file: ../docker/runtime/secrets/rustfs_secret_key
-  argus_s3_access_key:
-    file: ../docker/runtime/secrets/argus_s3_access_key
-  argus_s3_secret_key:
-    file: ../docker/runtime/secrets/argus_s3_secret_key
-
 volumes:
-  rustfs-data:
-    name: argus-cutover-rustfs-data
   camera-db:
     name: argus-cutover-camera-db
   camera-stream:
