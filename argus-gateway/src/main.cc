@@ -313,8 +313,17 @@ int main()
     }
   }
 
-  IdentityRpcService identityRpc(natsBus);
   const IdentityRpcConfig identityRpcConfig = IdentityRpcConfig::resolve();
+  if (identityRpcConfig.reachableBeyondLoopback() &&
+      identityRpcConfig.secret.empty()) {
+    LOG_FATAL << "[identity] rpc_host " << identityRpcConfig.host
+              << " is reachable beyond loopback and validates tokens for the "
+                 "whole fleet: set [identity] rpc_secret (and the same value "
+                 "in every service's config) — aborting startup";
+    _exit(1);
+  }
+
+  IdentityRpcService identityRpc(natsBus, identityRpcConfig.secret);
   grpc::ServerBuilder identityBuilder;
   identityBuilder.AddListeningPort(
       identityRpcConfig.host + ":" + std::to_string(identityRpcConfig.port),
@@ -323,7 +332,11 @@ int main()
   std::unique_ptr<grpc::Server> identityServer(identityBuilder.BuildAndStart());
   if (identityServer)
     LOG_INFO << "Identity RPC listening on " << identityRpcConfig.host << ":"
-             << identityRpcConfig.port << " (cleartext)";
+             << identityRpcConfig.port << " (cleartext, "
+             << (identityRpcConfig.secret.empty()
+                     ? "loopback only, no fleet secret"
+                     : "fleet secret required")
+             << ")";
   else
     LOG_WARN << "Identity RPC failed to listen on " << identityRpcConfig.host
              << ":" << identityRpcConfig.port;

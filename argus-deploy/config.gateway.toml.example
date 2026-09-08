@@ -74,13 +74,19 @@ identity_mode = "ip"
 [identity]
 db = "database/identity.db"
 schema = "database/identity-schema.sql"
-# Internal identity gRPC listener (IdentityService.UpdateUser, F6-3): the
-# voice service writes the spoken name here; the gateway owns identity.db and
-# re-fans the change out on argus.sync.v1.change. Bind loopback or the
-# pinned internal bridge address only: the listener is row-scoped but
-# unauthenticated, so it must never face a routable host interface.
+# Internal identity gRPC listener (IdentityService: UpdateUser, ValidateToken,
+# CheckDeviceCredential): the voice service writes the spoken name here and
+# every service validates its tokens here. Bind loopback or the pinned
+# internal bridge address only — the listener is cleartext, so it must never
+# face a routable host interface.
 rpc_host = "172.19.0.1"
 rpc_port = 7040
+# Fleet-shared secret, sent as x-argus-fleet by every caller. REQUIRED
+# whenever rpc_host is not loopback (the gateway refuses to start otherwise):
+# without it, anything that can reach the bridge can test tokens and device
+# credential hashes. Same value in every service's config; rotate together.
+# Generate with: openssl rand -hex 32
+rpc_secret = "CHANGE_ME_SAME_IN_EVERY_SERVICE"
 
 [camera]
 # argus-camera owns the camera domain (F2-2 CRUD, F6-2 device control).

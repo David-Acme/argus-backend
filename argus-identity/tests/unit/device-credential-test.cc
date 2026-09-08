@@ -30,6 +30,7 @@ constexpr const char* kUa = "argus-ua/1.0";
 constexpr const char* kDesktopUa = "argus-desktop/1.0";
 constexpr const char* kSecret = "00112233445566778899aabbccddeeff"
                                "00112233445566778899aabbccddeeff";
+constexpr const char* kFleetSecret = "f7-r-fleet-secret-0123456789abcdef";
 
 void setConfig()
 {
@@ -121,7 +122,8 @@ bool waitForBoot(std::chrono::milliseconds timeout)
 class IdentityRpcHarness
 {
 public:
-  IdentityRpcHarness()
+  explicit IdentityRpcHarness(std::string fleetSecret = {})
+      : service_(nullptr, std::move(fleetSecret))
   {
     int port = 0;
     grpc::ServerBuilder builder;
@@ -142,7 +144,7 @@ public:
   bool listening() const { return server_ != nullptr; }
 
 private:
-  IdentityRpcService service_{nullptr};
+  IdentityRpcService service_;
   std::unique_ptr<grpc::Server> server_;
 };
 
@@ -362,6 +364,37 @@ TEST_CASE("credential identity mode issues, binds and authenticates devices")
   const auto refused = drogon::sync_wait(jwtFilter.doFilter(unreachable));
   REQUIRE(refused);
   CHECK(refused->getStatusCode() == drogon::HttpStatusCode::k401Unauthorized);
+
+  // The fleet secret gates the listener: the same request that authenticates
+  // with the secret is refused without it.
+  {
+    IdentityRpcHarness guarded(kFleetSecret);
+    REQUIRE(guarded.listening());
+    ConfigService::setRuntimeString("device.identity_mode", "credential");
+
+    ConfigService::setRuntimeString("identity.rpc_secret", "");
+    auto noSecret = drogon::HttpRequest::newHttpRequest();
+    noSecret->addHeader("User-Agent", kDesktopUa);
+    noSecret->addHeader("X-Argus-Device-Credential", polled.deviceSecret);
+    noSecret->addHeader("Authorization", "Bearer " + polled.accessToken);
+    drogon::sync_wait(deviceFilter.doFilter(noSecret));
+    CHECK(deviceCtx(noSecret).deviceHash.empty());
+    const auto rejectedCall = drogon::sync_wait(jwtFilter.doFilter(noSecret));
+    REQUIRE(rejectedCall);
+    CHECK(rejectedCall->getStatusCode() ==
+          drogon::HttpStatusCode::k401Unauthorized);
+
+    ConfigService::setRuntimeString("identity.rpc_secret", kFleetSecret);
+    auto withSecret = drogon::HttpRequest::newHttpRequest();
+    withSecret->addHeader("User-Agent", kDesktopUa);
+    withSecret->addHeader("X-Argus-Device-Credential", polled.deviceSecret);
+    withSecret->addHeader("Authorization", "Bearer " + polled.accessToken);
+    drogon::sync_wait(deviceFilter.doFilter(withSecret));
+    CHECK(deviceCtx(withSecret).deviceHash == expectedHash);
+    const auto admittedCall = drogon::sync_wait(jwtFilter.doFilter(withSecret));
+    CHECK_FALSE(admittedCall);
+    ConfigService::setRuntimeString("identity.rpc_secret", "");
+  }
 
   drogon::app().quit();
   runner.join();

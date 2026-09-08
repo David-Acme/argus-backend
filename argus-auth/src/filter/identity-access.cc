@@ -29,13 +29,16 @@ std::shared_ptr<const IdentityClient> filterIdentityClient()
 {
   static std::mutex mutex;
   static std::string cachedTarget;
+  static std::string cachedSecret;
   static std::shared_ptr<const IdentityClient> client;
 
   const auto target = resolveTarget();
+  const auto secret = ConfigService::getString("identity.rpc_secret");
   const std::lock_guard<std::mutex> lock(mutex);
-  if (!client || target != cachedTarget) {
+  if (!client || target != cachedTarget || secret != cachedSecret) {
     cachedTarget = target;
-    client = std::make_shared<IdentityClient>(target);
+    cachedSecret = secret;
+    client = std::make_shared<IdentityClient>(target, secret);
   }
   return client;
 }

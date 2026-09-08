@@ -69,6 +69,16 @@ trusted_proxy_ips = ""
 # existing session once (controlled re-login).
 identity_mode = "ip"
 
+[identity]
+# Internal identity gRPC listener: the gateway hosts it and every service
+# validates tokens and device credentials against it. Loopback needs no
+# secret; the moment rpc_host is not loopback the gateway refuses to start
+# without rpc_secret, because the listener is cleartext and answers verdicts
+# for the whole fleet. scripts/setup.sh generates one.
+rpc_host = "127.0.0.1"
+rpc_port = 7040
+rpc_secret = ""
+
 [database]
 file = "./database/argus.db"
 

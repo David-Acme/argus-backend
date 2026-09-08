@@ -33,4 +33,12 @@ void setDeadline(grpc::ClientContext& context, int timeoutMs);
 void addCallerIdentity(grpc::ClientContext& context,
                        const CallerIdentity& identity);
 
+// The fleet-shared secret proving the caller is part of this installation,
+// sent as x-argus-fleet. An empty secret sends no header, which the receiver
+// only accepts on a loopback listener.
+void addFleetSecret(grpc::ClientContext& context, const std::string& secret);
+
+// The metadata key the fleet secret travels in, shared by both ends.
+inline constexpr const char* kFleetSecretKey = "x-argus-fleet";
+
 } // namespace argus::sdk

@@ -19,6 +19,10 @@ health_port = 7035
 # on the bridge gateway address.
 [identity]
 target = "172.19.0.1:7040"
+# Fleet-shared secret sent as x-argus-fleet on every identity RPC. Must match
+# [identity] rpc_secret in the gateway's config, or the filters get an
+# UNAUTHENTICATED refusal and every request 401s.
+rpc_secret = "CHANGE_ME_SAME_IN_EVERY_SERVICE"
 
 # Transcription goes to argus-stt over the internal wire (raw-socket wires
 # resolve IPv4 literals only — hence the service's static address on the

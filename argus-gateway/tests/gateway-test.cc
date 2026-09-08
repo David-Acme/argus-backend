@@ -143,6 +143,37 @@ TEST_CASE("identity config honors the identity section overrides")
   std::remove(path);
 }
 
+TEST_CASE("identity rpc config gates a non-loopback listener on the secret")
+{
+  const char* path = "gateway-test-config-identity-rpc.toml";
+  {
+    std::ofstream file(path);
+    file << "[identity]\n"
+         << "rpc_host = \"172.19.0.1\"\n"
+         << "rpc_port = 7040\n";
+  }
+  ConfigService::load(path);
+  const IdentityRpcConfig exposed = IdentityRpcConfig::resolve();
+  CHECK(exposed.host == "172.19.0.1");
+  CHECK(exposed.port == 7040);
+  CHECK(exposed.secret.empty());
+  // main.cc aborts on exactly this pair: reachable beyond loopback with no
+  // fleet secret would answer token verdicts for anything on the bridge.
+  CHECK(exposed.reachableBeyondLoopback());
+
+  ConfigService::setRuntimeString("identity.rpc_secret", "fleet-secret");
+  const IdentityRpcConfig guarded = IdentityRpcConfig::resolve();
+  CHECK(guarded.secret == "fleet-secret");
+  CHECK(guarded.reachableBeyondLoopback());
+  ConfigService::setRuntimeString("identity.rpc_secret", "");
+
+  ConfigService::setRuntimeString("identity.rpc_host", "127.0.0.1");
+  const IdentityRpcConfig loopback = IdentityRpcConfig::resolve();
+  CHECK_FALSE(loopback.reachableBeyondLoopback());
+
+  std::remove(path);
+}
+
 TEST_CASE("runtime override wins over the config file value")
 {
   const char* path = "gateway-test-config-runtime.toml";

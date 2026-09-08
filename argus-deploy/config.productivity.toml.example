@@ -83,3 +83,7 @@ trusted_proxy_ips = ""
 [identity]
 db = "database/identity.db"
 target = "172.19.0.1:7040"
+# Fleet-shared secret sent as x-argus-fleet on every identity RPC. Must match
+# [identity] rpc_secret in the gateway's config, or the filters get an
+# UNAUTHENTICATED refusal and every request 401s.
+rpc_secret = "CHANGE_ME_SAME_IN_EVERY_SERVICE"

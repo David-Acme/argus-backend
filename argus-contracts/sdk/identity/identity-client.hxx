@@ -30,7 +30,9 @@ struct ValidateTokenInput
 class IdentityClient
 {
 public:
-  explicit IdentityClient(std::string target);
+  // fleetSecret rides every call as x-argus-fleet; empty means the identity
+  // service must be on a loopback listener to accept the call.
+  explicit IdentityClient(std::string target, std::string fleetSecret = {});
 
   IdentityClient(const IdentityClient&) = delete;
   IdentityClient& operator=(const IdentityClient&) = delete;
@@ -53,4 +55,5 @@ private:
   std::shared_ptr<grpc::Channel> channel_;
   std::unique_ptr<argus::identity::v1::IdentityService::StubInterface>
       stub_;
+  std::string fleetSecret_;
 };

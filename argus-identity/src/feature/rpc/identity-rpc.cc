@@ -1,6 +1,7 @@
 #include "identity-rpc.hxx"
 
 #include <ctime>
+#include <grpc-client-base.hxx>
 #include <drogon/drogon.h>
 #include <optional>
 #include <shared/contracts/sync-operation.hxx>
@@ -30,11 +31,37 @@ std::optional<int64_t> scopedUserId(const grpc::CallbackServerContext* context)
   return std::nullopt;
 }
 
+// Secret comparison that does not return early on the first differing byte.
+bool constantTimeEquals(const std::string& a, const std::string& b)
+{
+  if (a.size() != b.size())
+    return false;
+  unsigned char diff = 0;
+  for (std::string::size_type i = 0; i < a.size(); ++i)
+    diff |= static_cast<unsigned char>(a[i]) ^ static_cast<unsigned char>(b[i]);
+  return diff == 0;
+}
+
 } // namespace
 
-IdentityRpcService::IdentityRpcService(std::shared_ptr<NatsBus> bus)
-    : bus_(std::move(bus))
+IdentityRpcService::IdentityRpcService(std::shared_ptr<NatsBus> bus,
+                                       std::string fleetSecret)
+    : bus_(std::move(bus)), fleetSecret_(std::move(fleetSecret))
 {
+}
+
+bool IdentityRpcService::fleetAuthorized(
+    const grpc::CallbackServerContext* context) const
+{
+  if (fleetSecret_.empty())
+    return true;
+  for (const auto& [key, value] : context->client_metadata()) {
+    if (key == argus::sdk::kFleetSecretKey) {
+      return constantTimeEquals(std::string(value.begin(), value.end()),
+                                fleetSecret_);
+    }
+  }
+  return false;
 }
 
 void IdentityRpcService::finishRejected(
@@ -52,6 +79,13 @@ grpc::ServerUnaryReactor* IdentityRpcService::UpdateUser(
     const argus::identity::v1::UpdateUserRequest* request,
     argus::identity::v1::UpdateUserResponse* response)
 {
+  if (!fleetAuthorized(context)) {
+    auto* reactor = context->DefaultReactor();
+    reactor->Finish(grpc::Status(grpc::StatusCode::UNAUTHENTICATED,
+                                 "Fleet secret missing or invalid"));
+    return reactor;
+  }
+
   const std::optional<int64_t> scopedUser = scopedUserId(context);
   if (!scopedUser || *scopedUser != request->user_id()) {
     auto* reactor = context->DefaultReactor();
@@ -125,6 +159,13 @@ grpc::ServerUnaryReactor* IdentityRpcService::ValidateToken(
     const argus::identity::v1::ValidateTokenRequest* request,
     argus::identity::v1::ValidateTokenResponse* response)
 {
+  if (!fleetAuthorized(context)) {
+    auto* reactor = context->DefaultReactor();
+    reactor->Finish(grpc::Status(grpc::StatusCode::UNAUTHENTICATED,
+                                 "Fleet secret missing or invalid"));
+    return reactor;
+  }
+
   const std::string accessToken = request->access_token();
   const bool hasDeviceContext = request->has_device_hash();
   const std::string deviceHash =
@@ -217,6 +258,13 @@ grpc::ServerUnaryReactor* IdentityRpcService::CheckDeviceCredential(
     const argus::identity::v1::CheckDeviceCredentialRequest* request,
     argus::identity::v1::CheckDeviceCredentialResponse* response)
 {
+  if (!fleetAuthorized(context)) {
+    auto* reactor = context->DefaultReactor();
+    reactor->Finish(grpc::Status(grpc::StatusCode::UNAUTHENTICATED,
+                                 "Fleet secret missing or invalid"));
+    return reactor;
+  }
+
   const std::string secretHash = request->secret_hash();
   auto* reactor = context->DefaultReactor();
   auto* responseWriter = response;

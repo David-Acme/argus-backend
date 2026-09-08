@@ -16,7 +16,10 @@ class IdentityRpcService final
     : public argus::identity::v1::IdentityService::CallbackService
 {
 public:
-  explicit IdentityRpcService(std::shared_ptr<NatsBus> bus);
+  // fleetSecret is required in x-argus-fleet on every call; empty disables the
+  // check and is only allowed on a loopback listener (main.cc refuses to bind
+  // a wider one without a secret).
+  IdentityRpcService(std::shared_ptr<NatsBus> bus, std::string fleetSecret);
 
   grpc::ServerUnaryReactor*
   UpdateUser(grpc::CallbackServerContext* context,
@@ -41,9 +44,14 @@ private:
                  argus::identity::v1::ValidateTokenResponse* response,
                  const std::string& reason);
 
+  // Fleet-secret gate: the listener is cleartext, so a caller that cannot
+  // present the installation's shared secret is refused before any lookup.
+  bool fleetAuthorized(const grpc::CallbackServerContext* context) const;
+
   JwtService jwtService_;
   UserRepository userRepository_;
   RefreshTokenRepository refreshTokenRepository_;
   DeviceCredentialRepository deviceCredentialRepository_;
   std::shared_ptr<NatsBus> bus_;
+  std::string fleetSecret_;
 };

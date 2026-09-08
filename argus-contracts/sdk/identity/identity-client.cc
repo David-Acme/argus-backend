@@ -7,9 +7,10 @@ namespace
 constexpr int kCallTimeoutMs = 5000;
 } // namespace
 
-IdentityClient::IdentityClient(std::string target)
+IdentityClient::IdentityClient(std::string target, std::string fleetSecret)
     : channel_(argus::sdk::makeChannel(target)),
-      stub_(argus::identity::v1::IdentityService::NewStub(channel_))
+      stub_(argus::identity::v1::IdentityService::NewStub(channel_)),
+      fleetSecret_(std::move(fleetSecret))
 {
 }
 
@@ -18,6 +19,7 @@ IdentityClient::updateUserName(const UpdateUserNameInput& input) const
 {
   grpc::ClientContext context;
   argus::sdk::setDeadline(context, kCallTimeoutMs);
+  argus::sdk::addFleetSecret(context, fleetSecret_);
   argus::sdk::addCallerIdentity(context,
                                 {.userId = input.userId, .role = input.role});
 
@@ -37,6 +39,7 @@ IdentityClient::validateToken(const ValidateTokenInput& input) const
 {
   grpc::ClientContext context;
   argus::sdk::setDeadline(context, kCallTimeoutMs);
+  argus::sdk::addFleetSecret(context, fleetSecret_);
 
   argus::identity::v1::ValidateTokenRequest request;
   request.set_access_token(input.accessToken);
@@ -55,6 +58,7 @@ bool IdentityClient::checkDeviceCredential(const std::string& secretHash) const
 {
   grpc::ClientContext context;
   argus::sdk::setDeadline(context, kCallTimeoutMs);
+  argus::sdk::addFleetSecret(context, fleetSecret_);
 
   argus::identity::v1::CheckDeviceCredentialRequest request;
   request.set_secret_hash(secretHash);

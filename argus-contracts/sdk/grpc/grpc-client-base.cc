@@ -42,4 +42,10 @@ void addCallerIdentity(grpc::ClientContext& context,
     context.AddMetadata("x-argus-device", *identity.device);
 }
 
+void addFleetSecret(grpc::ClientContext& context, const std::string& secret)
+{
+  if (!secret.empty())
+    context.AddMetadata(kFleetSecretKey, secret);
+}
+
 } // namespace argus::sdk

@@ -475,6 +475,7 @@ ensure_local_config() {
   ensure_toml_value jwt secret "$(openssl rand -hex 48)" "$CONFIG"
   ensure_toml_value jwt refresh_secret "$(openssl rand -hex 48)" "$CONFIG"
   ensure_toml_value device fingerprint_secret "$(openssl rand -hex 48)" "$CONFIG"
+  ensure_toml_value identity rpc_secret "$(openssl rand -hex 32)" "$CONFIG"
   chmod 600 "$CONFIG"
   ensure_labs_config
   log "System and lab configs are ready."

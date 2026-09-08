@@ -42,9 +42,11 @@ IVoiceIdentity& voiceIdentity()
 std::shared_ptr<const IdentityClient>
 GrpcVoiceIdentity::clientFor(const std::string& target)
 {
-  if (!client_ || target != cachedTarget_) {
+  const auto secret = ConfigService::getString("identity.rpc_secret");
+  if (!client_ || target != cachedTarget_ || secret != cachedSecret_) {
     cachedTarget_ = target;
-    client_ = std::make_shared<IdentityClient>(target);
+    cachedSecret_ = secret;
+    client_ = std::make_shared<IdentityClient>(target, secret);
   }
   return client_;
 }

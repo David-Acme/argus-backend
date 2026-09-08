@@ -70,6 +70,7 @@ private:
 
   mutable std::mutex mutex_;
   std::string cachedTarget_;
+  std::string cachedSecret_;
   std::shared_ptr<const IdentityClient> client_;
 };
 

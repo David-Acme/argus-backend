@@ -24,5 +24,11 @@ IdentityRpcConfig IdentityRpcConfig::resolve()
     config.host = "127.0.0.1";
   const int port = ConfigService::getInt("identity.rpc_port");
   config.port = port > 0 ? static_cast<uint16_t>(port) : 7040;
+  config.secret = ConfigService::getString("identity.rpc_secret");
   return config;
+}
+
+bool IdentityRpcConfig::reachableBeyondLoopback() const
+{
+  return host != "127.0.0.1" && host != "::1" && host != "localhost";
 }
