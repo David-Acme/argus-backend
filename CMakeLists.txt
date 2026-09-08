@@ -94,15 +94,16 @@ add_subdirectory(argus-memory EXCLUDE_FROM_ALL)
 # demand, never as part of the default backend build.
 add_subdirectory(argus-tunnel EXCLUDE_FROM_ALL)
 
-# Data migration tools: the CLI is built on demand, never as part of the
-# default backend build.
-add_subdirectory(tools/migrate-identity EXCLUDE_FROM_ALL)
-add_subdirectory(tools/migrate-camera EXCLUDE_FROM_ALL)
-add_subdirectory(tools/migrate-productivity EXCLUDE_FROM_ALL)
-add_subdirectory(tools/migrate-notification EXCLUDE_FROM_ALL)
+# Data migration tools now live with the service whose database they write;
+# each CLI is built on demand, never as part of the default backend build.
+add_subdirectory(argus-identity/tools/migrate-identity EXCLUDE_FROM_ALL)
+add_subdirectory(argus-camera/tools/migrate-camera EXCLUDE_FROM_ALL)
+add_subdirectory(argus-productivity/tools/migrate-productivity EXCLUDE_FROM_ALL)
+add_subdirectory(argus-notification/tools/migrate-notification EXCLUDE_FROM_ALL)
 
-# Vulkan-in-container RADV probe: built on demand (target argus-vulkan-probe).
-add_subdirectory(tools/vulkan-probe EXCLUDE_FROM_ALL)
+# Vulkan-in-container RADV probe: it reuses ncnn's Vulkan init, which is
+# argus-camera's capacity (target argus-vulkan-probe).
+add_subdirectory(argus-camera/tools/vulkan-probe EXCLUDE_FROM_ALL)
 
 option(ARGUS_BUILD_LABS "Build backend integration and verification labs" OFF)
 

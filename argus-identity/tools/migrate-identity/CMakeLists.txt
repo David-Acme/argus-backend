@@ -9,7 +9,6 @@ add_library(identity-migration STATIC
 target_include_directories(identity-migration
     PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}
-        ${SRC_ROOT}
         ${CMAKE_SOURCE_DIR}/argus-common/src
 )
 
