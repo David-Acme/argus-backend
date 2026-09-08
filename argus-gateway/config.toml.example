@@ -86,13 +86,14 @@ rpc_port = 7040
 # F2-2 cutover (Rulings X/Z): the camera domain argus-camera owns. The relay
 # leg for camera:* frames and the whole /camera, /zone domain (every segment
 # depth, device control included)
-# point at its internal listener; camera.db opens mode=ro for the camera
-# sync-table reads. Empty keys leave camera:* frames on the 503
-# unconfigured-relay envelope and the /camera, /zone paths on the gateway's
-# native 404 envelope.
+# point at its internal listener; the camera sync tables ride the
+# argus.camera.v1 gRPC leg at grpc_target. Empty keys leave camera:* frames
+# on the 503 unconfigured-relay envelope, the /camera, /zone paths on the
+# gateway's native 404 envelope and the camera sync tables on the 503
+# camera-sync envelope.
 sync_url = "ws://127.0.0.1:7026/sync"
 proxy_url = "http://127.0.0.1:7026"
-db = "database/camera.db"
+grpc_target = "127.0.0.1:7036"
 
 [voice]
 # F6-3 cutover: argus-voice owns the voice orchestration; the voice:* frames

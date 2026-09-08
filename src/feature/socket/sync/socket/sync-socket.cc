@@ -78,6 +78,11 @@ void SyncSocket::handleNewConnection(const drogon::HttpRequestPtr& req,
   });
 }
 
+void SyncSocket::setCameraSource(std::shared_ptr<CameraSyncSource> source)
+{
+  service_.setCameraSource(std::move(source));
+}
+
 void SyncSocket::handleConnectionClosed(
     const drogon::WebSocketConnectionPtr& conn)
 {

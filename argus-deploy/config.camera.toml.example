@@ -13,6 +13,9 @@
 # the listener through the docker-proxy.
 host = "0.0.0.0"
 port = 7026
+# argus.camera.v1 SyncService listener the gateway pulls the camera sync
+# tables from, published on host loopback only.
+grpc_port = 7036
 
 # Mirror of the legacy [drogon.app] block; the listener and db_clients are
 # built by the service itself (see argus-camera/src/main.cc).

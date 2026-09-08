@@ -61,3 +61,18 @@ on both runtimes is the only safe mix; Debian grpc++ 1.51 headers cannot
 pair with conan protobuf 6.33 headers, so pinning the graph down is the
 one available direction. The dev host is unaffected: the vendored grpc
 1.82 stack pairs with conan protobuf only, a single runtime.
+
+## Camera sync contract (F6-5)
+
+`proto/argus/camera/v1/sync.proto` types the frozen /sync semantics of the
+camera domain: `SyncService.PullTable` carries one camera/camera_stream/zone
+branch with the required-create/required-delete/find-last legs and the
+(createdAt, id) cursor range, and answers typed rows (`CameraRow`,
+`CameraStreamRow`, `ZoneRow`) plus `{id, deletedAt}` tombstones. The row
+messages mirror the sync-table JSON field sets exactly (driver/record_mode/
+zone_type stay strings like the CRUD contract; secrets never cross it). The
+SDK wrapper `argus::sdk-camera` (`sdk/camera/camera-sync-client.cc`) is the
+one wire-handling point: a blocking unary pull with the
+x-argus-user / x-argus-role / x-argus-device metadata and a 5s deadline.
+The contracts subdirectory guards are per-module now, so a build that adds
+`argus-contracts` twice still defines whichever SDK targets are missing.

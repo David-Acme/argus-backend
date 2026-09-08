@@ -267,7 +267,7 @@ TEST_CASE("camera and zone contracts hold on the argus-camera surface")
   CameraMediaService mediaService;
   const auto conn = std::make_shared<RecordingConnection>();
   conn->setContext(std::make_shared<JwtContext>(
-      JwtContext{1, "Golden", UserRole::Owner, true}));
+      JwtContext{1, "Golden", UserRole::Owner, true, {}}));
 
   auto subscribeMessage = [](int64_t cameraId) {
     Json::Value payload;

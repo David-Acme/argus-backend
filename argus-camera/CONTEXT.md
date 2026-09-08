@@ -161,3 +161,22 @@ preset, own `camera.db`.
 - Model artifacts (`models/objects/`) come from `scripts/setup.sh camera`:
   yolo26n.pt sha256-pinned download + local raw e2e NCNN export; without the
   artifacts the detector boots disabled — never a fake success.
+
+## Camera sync gRPC leg (F6-5 step 1)
+
+- **`argus.camera.v1.SyncService.PullTable`** (port 7036, `[server]
+  grpc_port`): serves the camera-domain sync tables (camera, camera_stream,
+  zone) to the gateway with the frozen /sync semantics typed into
+  `argus-contracts/proto/argus/camera/v1/sync.proto` — per-table
+  required_create/required_deleted/find_last legs, (createdAt, id) cursor
+  ranges, LIMIT 200 baked into the owner's SQL, tombstones as
+  {id, deletedAt}. The implementation calls the same camera/camera_stream/
+  zone repositories the CRUD surface uses, so the served rows are the exact
+  JSON the sync tables always produced. The caller identity rides
+  x-argus-user / x-argus-role / x-argus-device metadata: presence is
+  required, the role was validated once at the gateway before the call, and
+  the camera tables carry no userId row scoping. A grpc.health.v1 Health
+  service shares the listener (F6-3 shape).
+- The gateway no longer opens camera.db read-only: `[camera] db` is gone
+  from the gateway config and the camera-db compose mount is gateway-only
+  history. argus-camera stays the single owner of the file.

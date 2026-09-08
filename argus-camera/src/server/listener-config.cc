@@ -13,6 +13,17 @@ ListenerConfig ListenerConfig::resolve()
   return config;
 }
 
+GrpcListenerConfig GrpcListenerConfig::resolve()
+{
+  GrpcListenerConfig config;
+  config.host = ConfigService::getString("server.host");
+  if (config.host.empty())
+    config.host = "127.0.0.1";
+  const int port = ConfigService::getInt("server.grpc_port");
+  config.port = port > 0 ? static_cast<uint16_t>(port) : 7036;
+  return config;
+}
+
 Json::Value listenerJson(const ListenerConfig& config)
 {
   Json::Value listeners(Json::arrayValue);

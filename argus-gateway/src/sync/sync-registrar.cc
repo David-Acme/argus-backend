@@ -28,10 +28,12 @@ void requireLinkedFilter()
 } // namespace
 
 SyncRegistrationStats registerSyncSurface(
-    std::shared_ptr<SyncForwarder> forwarder)
+    std::shared_ptr<SyncForwarder> forwarder,
+    std::shared_ptr<CameraSyncSource> cameraSource)
 {
   const auto socket = std::make_shared<SyncSocket>();
   socket->setForwarder(std::move(forwarder));
+  socket->setCameraSource(std::move(cameraSource));
   drogon::app().registerController(socket);
 
   bool registered = false;

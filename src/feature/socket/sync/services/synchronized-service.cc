@@ -1,7 +1,9 @@
 #include "synchronized-service.hxx"
 
+#include <config/app-config.hxx>
 #include <shared/access/role-access.hxx>
 #include <shared/contracts/sync-operation.hxx>
+#include <shared/exceptions/response-exception.hxx>
 #include <stdexcept>
 
 namespace
@@ -20,6 +22,20 @@ bool isPersonalTable(TableName table)
       return false;
   }
 }
+
+std::optional<CameraSyncTable> cameraSyncTableFor(TableName table)
+{
+  switch (table) {
+    case TableName::Camera:
+      return CameraSyncTable::Camera;
+    case TableName::CameraStream:
+      return CameraSyncTable::CameraStream;
+    case TableName::Zone:
+      return CameraSyncTable::Zone;
+    default:
+      return std::nullopt;
+  }
+}
 } // namespace
 
 const Syncable& SynchronizedService::repoFor(TableName table) const
@@ -29,12 +45,6 @@ const Syncable& SynchronizedService::repoFor(TableName table) const
       return userRepository_;
     case TableName::UserInvitation:
       return userInvitationRepository_;
-    case TableName::Camera:
-      return cameraRepository_;
-    case TableName::CameraStream:
-      return cameraStreamRepository_;
-    case TableName::Zone:
-      return zoneRepository_;
     case TableName::Reminder:
       return reminderRepository_;
     case TableName::ReminderDetail:
@@ -245,6 +255,16 @@ drogon::Task<Json::Value> SynchronizedService::sync(const SynchronizedDto& body,
 
     if (table == TableName::Notification) {
       out[name] = co_await syncUserNotification(*(body.*member), ctx.sub);
+      continue;
+    }
+
+    if (const auto cameraTable = cameraSyncTableFor(table)) {
+      if (!cameraSyncSource_ || !cameraSyncSource_->serves(*cameraTable))
+        throw ResponseException("Camera sync unavailable", 503,
+                                AppConfig::ERROR_CODE_SERVICE_UNAVAILABLE);
+      const auto source = cameraSyncSource_->sourceFor(*cameraTable, ctx);
+      out[name] =
+          co_await syncWithRepo({.repo = *source, .dto = *(body.*member)}, {});
       continue;
     }
 

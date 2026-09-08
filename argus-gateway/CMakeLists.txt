@@ -68,6 +68,7 @@ add_library(gateway-core STATIC
     ${GATEWAY_SRC_ROOT}/server/remote-gate.cc
     ${GATEWAY_SRC_ROOT}/sync/camera-fan-out.cc
     ${GATEWAY_SRC_ROOT}/sync/camera-notifier.cc
+    ${GATEWAY_SRC_ROOT}/sync/camera-sync-source.cc
     ${GATEWAY_SRC_ROOT}/sync/sync-fan-out.cc
     ${GATEWAY_SRC_ROOT}/sync/sync-registrar.cc
     ${GATEWAY_SRC_ROOT}/sync/sync-relay.cc
@@ -79,7 +80,7 @@ add_library(gateway-core STATIC
 target_include_directories(gateway-core PUBLIC ${GATEWAY_SRC_ROOT})
 
 target_link_libraries(gateway-core PUBLIC argus_identity argus_sync
-    argus::sdk-voice argus::sdk-identity)
+    argus::sdk-voice argus::sdk-identity argus::sdk-camera)
 
 target_compile_options(gateway-core PRIVATE -Wall -Wextra)
 

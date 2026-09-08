@@ -82,7 +82,8 @@ with `scripts/setup.sh` / `scripts/setup.sh camera` on the host.
   via `NATS_CLIENT_PORT`, `NATS_MONITOR_PORT`) for the host-networked gateway.
 - **argus-camera** (Fase 2) lives on the `internal` bridge network too: its
   only host exposure is the loopback-published 7026 listener the gateway
-  proxies to. Its go2rtc (1984/8554, Ruling AH) stays INSIDE the container —
+  proxies to, plus the 7036 gRPC listener the gateway pulls the camera sync
+  tables from (F6-5). Its go2rtc (1984/8554, Ruling AH) stays INSIDE the container —
   no compose service and no host publish; the app only ever talks through the
   gateway. The camera config points `[nats] url` at the internal alias
   `nats://nats:4222`. The camera domain is wholly served by this service: the
@@ -116,8 +117,8 @@ with `scripts/setup.sh` / `scripts/setup.sh camera` on the host.
 
 | Service | Image | Notes |
 |---|---|---|
-| gateway | built (`argus-cutover:local`) | TLS 7024, `/health` healthcheck; mounts the productivity and notification volumes next to camera-db |
-| argus-camera | same image, `entrypoint:` override | internal network, loopback 7026 publish; `/health` healthcheck; `/dev/dri` |
+| gateway | built (`argus-cutover:local`) | TLS 7024, `/health` healthcheck; mounts the productivity and notification volumes (camera.db is argus-camera's alone since F6-5) |
+| argus-camera | same image, `entrypoint:` override | internal network, loopback 7026 + 7036 (sync gRPC) publishes; owns camera.db; `/health` healthcheck; `/dev/dri` |
 | argus-productivity | same image, `entrypoint:` override | internal network, loopback 7027 publish; owns productivity.db; `/health` healthcheck |
 | argus-notification | same image, `entrypoint:` override | internal network, loopback 7028 publish; owns notification.db; `/health` healthcheck |
 | argus-tts | same image, `entrypoint:` override | internal network (172.19.0.29), loopback 7029 publish; models/tts subpath ro; `/health` healthcheck |
@@ -139,14 +140,14 @@ Ordering: `nats` goes healthy first and the gateway and argus-camera wait
 for `nats: service_healthy` — the gateway's NatsBus connects once at boot with
 no retry, so a lost boot race would leave every fan-out subscription silently
 dead while all healthchecks stay green. The gateway and argus-camera then boot
-in parallel and resolve their database handoff inside each process: the gateway opens
-camera.db read-only only after argus-camera's boot schema apply has created it
-(waiting bounded, 30s, before falling back to the default client), and
+in parallel and resolve their database handoff inside each process: since F6-5
+the gateway pulls the camera sync tables over the 7036 gRPC leg (no
+camera.db mount) and only waits bounded for identity.db's own reads, while
 argus-camera opens identity.db read-only only after the gateway's boot schema
 apply has created it (same bounded wait). Neither service waits on the other's
 health, so there is no cycle. A fresh `up -d` without camera-init therefore
-works end to end: argus-camera creates camera.db, the gateway picks it up
-within seconds and camera CRUD through the gateway serves live rows — but
+works end to end: argus-camera creates camera.db and serves both the CRUD
+routes and the sync gRPC pulls with live rows — but
 argus-camera's boot apply then makes camera.db live data, so `camera-init`
 can no longer migrate the pre-existing argus.db camera rows (it no-ops on any
 schema-current target before reading the source). An installation that wants
@@ -449,4 +450,5 @@ and `camera-init` is the only migration path onto the volume.
 | 1984 / 8554 | container loopback only | go2rtc spawned by argus-camera (Ruling AH — never published) |
 | 8800 | host | Tapo talk channel (camera-side, argus-camera `[tapo]`) |
 | 7034 gRPC + 7035 plain | 127.0.0.1 (compose publish) | argus-voice voice wire + `/health` (F6-3) |
+| 7036 gRPC | 127.0.0.1 (compose publish) | argus-camera camera-domain sync wire (F6-5) |
 | `[remote] tunnel_port` TLS | gateway host/container port | gateway remote listener (default 0 = disabled; the instance sets a port when the tunnel profile is on — the listener is config-file-driven, not env-driven, see the tunnel section) |

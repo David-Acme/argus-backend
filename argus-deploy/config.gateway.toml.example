@@ -84,11 +84,10 @@ rpc_port = 7040
 
 [camera]
 # argus-camera owns the camera domain (F2-2 CRUD, F6-2 device control).
-# The camera.db path is the compose volume mounted into gateway and
-# argus-camera; the gateway opens it mode=ro for the camera sync reads.
+# The camera sync tables ride the argus.camera.v1 gRPC leg at grpc_target.
 sync_url = "ws://127.0.0.1:7026/sync"
 proxy_url = "http://127.0.0.1:7026"
-db = "camera/camera.db"
+grpc_target = "127.0.0.1:7036"
 
 [voice]
 # F6-3 cutover: argus-voice owns the voice orchestration; the voice:* frames

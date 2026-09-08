@@ -7,7 +7,10 @@
 #include <feature/api/camera-control/controllers/camera-control-controller.hxx>
 #include <feature/api/camera/controllers/camera-controller.hxx>
 #include <feature/api/zone/controllers/zone-controller.hxx>
+#include <feature/health/health-rpc-service.hxx>
 #include <feature/socket/sync/socket/sync-socket.hxx>
+#include <feature/sync/camera-sync-rpc-service.hxx>
+#include <grpcpp/grpcpp.h>
 #include <filter/device/device-filter.hxx>
 #include <filter/jwt/jwt-filter.hxx>
 #include <filter/role/role-filter.hxx>
@@ -110,6 +113,22 @@ int main()
 
   const CameraDbConfig cameraDb = CameraConfig::resolveDb();
   const ListenerConfig listener = ListenerConfig::resolve();
+  const GrpcListenerConfig grpcListener = GrpcListenerConfig::resolve();
+
+  CameraSyncRpcService cameraSyncRpc;
+  HealthRpcService healthRpc;
+
+  grpc::ServerBuilder builder;
+  const std::string grpcAddress =
+      grpcListener.host + ":" + std::to_string(grpcListener.port);
+  builder.AddListeningPort(grpcAddress, grpc::InsecureServerCredentials());
+  builder.RegisterService(&cameraSyncRpc);
+  builder.RegisterService(&healthRpc);
+  std::unique_ptr<grpc::Server> grpcServer(builder.BuildAndStart());
+  if (!grpcServer) {
+    LOG_FATAL << "gRPC server failed to listen on " << grpcAddress;
+    return 1;
+  }
 
   drogon::app().registerController(std::make_shared<HealthController>());
   drogon::app().registerController(std::make_shared<CameraController>());
@@ -142,7 +161,8 @@ int main()
       });
 
   LOG_INFO << "Listening on " << listener.host << ":" << listener.port
-           << " (plain); camera database " << cameraDb.dbPath;
+           << " (plain); camera database " << cameraDb.dbPath
+           << "; gRPC SyncService on " << grpcAddress;
 
   std::shared_ptr<NatsCameraChangeSink> changeSink;
   std::shared_ptr<NatsBus> natsBus;
@@ -222,6 +242,8 @@ int main()
   drogon::app()
       .setThreadNum(0)
       .run();
+
+  grpcServer->Shutdown();
 
   if (operatorService)
     operatorService->stop();

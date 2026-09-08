@@ -48,6 +48,29 @@ endif()
 
 find_package(doctest REQUIRED)
 
+include(${CMAKE_CURRENT_SOURCE_DIR}/../cmake/argus-module.cmake)
+
+# The camera-domain sync contract (argus.camera.v1.SyncService); consumers
+# link argus::sdk-camera.
+if(NOT TARGET argus::sdk-camera)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../argus-contracts
+                     ${CMAKE_BINARY_DIR}/argus-contracts EXCLUDE_FROM_ALL)
+endif()
+
+argus_module(NAME camera-rpc
+    SOURCES
+        src/feature/sync/camera-sync-rpc-service.cc
+        src/feature/health/health-rpc-service.cc
+    INCLUDES
+        src
+        ../src
+    DEPENDS
+        argus::sdk-camera
+        argus::sdk-health
+        argus_common)
+
+target_compile_options(argus_camera-rpc PRIVATE -Wall -Wextra)
+
 # ncnn is THE objects capacity of this service (F2-3): the detector is the
 # only AI linkage here — no face/llm/vlm/tts/stt/vad code is compiled.
 set(NCNN_SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/ncnn/src)
@@ -125,7 +148,7 @@ target_compile_options(camera-core PRIVATE -Wall -Wextra)
 
 add_executable(argus-camera ${CAMERA_SRC_ROOT}/main.cc)
 
-target_link_libraries(argus-camera PRIVATE camera-core)
+target_link_libraries(argus-camera PRIVATE camera-core argus_camera-rpc)
 
 target_compile_options(argus-camera PRIVATE -Wall -Wextra)
 

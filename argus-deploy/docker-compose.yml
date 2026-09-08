@@ -36,7 +36,6 @@ services:
         target: /opt/argus/database
         bind:
           create_host_path: false
-      - camera-db:/opt/argus/camera
       - productivity-db:/opt/argus/productivity
       - notification-db:/opt/argus/notification
       - type: bind
@@ -65,7 +64,8 @@ services:
   # Camera-domain service (Fase 2 cutover, Rulings X/Y/Z): owns camera.db, the
   # /camera+/zone CRUD surface, the camera:* sync frames and the go2rtc it
   # spawns itself (Ruling AH). Internal network only; the gateway reaches it
-  # through the single loopback-published 7026 listener. /dev/dri engages the
+  # through the loopback-published 7026 HTTP listener and the 7036
+  # argus.camera.v1 sync leg. /dev/dri engages the
   # RADV detector (Ruling AI): a host without /dev/dri must drop this device
   # line via a compose override — `devices: !override []` (a plain `[]` merge
   # silently keeps the device) — and the detector then degrades to CPU
@@ -80,6 +80,9 @@ services:
           - argus-camera
     ports:
       - "127.0.0.1:${CAMERA_PORT:-7026}:7026"
+      # argus.camera.v1 SyncService leg the gateway pulls the camera sync
+      # tables from.
+      - "127.0.0.1:${CAMERA_GRPC_PORT:-7036}:7036"
     devices:
       - /dev/dri:/dev/dri
     entrypoint: ["/opt/argus/argus-camera"]
@@ -109,11 +112,10 @@ services:
         read_only: true
         bind:
           create_host_path: false
-    # The gateway opens camera.db read-only at boot once argus-camera's schema
-    # apply has created it (bounded wait inside the gateway, see its main);
-    # identity.db is created by the gateway at ITS boot, and argus-camera
-    # waits bounded for it the same way — so both services boot in parallel
-    # after nats with no circular health dependency.
+    # The gateway pulls the camera sync tables over the 7036 gRPC leg once
+    # this service is up; identity.db is created by the gateway at ITS boot,
+    # and argus-camera waits bounded for it the same way — so both services
+    # boot in parallel after nats with no circular health dependency.
     depends_on:
       nats:
         condition: service_healthy

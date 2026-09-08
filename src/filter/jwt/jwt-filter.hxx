@@ -14,6 +14,7 @@ struct JwtContext
   std::string name;
   UserRole role{UserRole::Guest};
   bool isActive{false};
+  std::string deviceHash;
 };
 
 class JwtFilter : public drogon::HttpCoroFilter<JwtFilter, false>

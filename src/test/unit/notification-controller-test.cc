@@ -156,7 +156,7 @@ TEST_CASE("notification contracts hold on the argus-notification surface")
     auto req = drogon::HttpRequest::newHttpJsonRequest(payload);
     req->getAttributes()->insert(
         AppConfig::JWT_CTX_KEY,
-        JwtContext{7, "Resident", UserRole::Resident, true});
+        JwtContext{7, "Resident", UserRole::Resident, true, {}});
     return req;
   };
 
@@ -208,7 +208,7 @@ TEST_CASE("notification contracts hold on the argus-notification surface")
     auto req = drogon::HttpRequest::newHttpJsonRequest(payload);
     req->getAttributes()->insert(
         AppConfig::JWT_CTX_KEY,
-        JwtContext{7, "Resident", UserRole::Resident, true});
+        JwtContext{7, "Resident", UserRole::Resident, true, {}});
     req->getAttributes()->insert(AppConfig::DEVICE_CTX_KEY,
                                  DeviceContext{deviceHash, "ua", "127.0.0.1"});
     return req;

@@ -37,11 +37,10 @@ public:
   // app().run() creates any IO thread.
   static void setIdentityClient(drogon::orm::DbClientPtr client);
 
-  // Client of the camera domain (camera, camera_stream, zone). The gateway
-  // installs camera.db opened `file:...?mode=ro` and the legacy installs it
-  // read-write at the cutover (Rulings X/Z); hosts that never install one
-  // fall back to the default client, so the pre-cutover behavior stays
-  // byte-identical when the config key is absent.
+  // Client of the camera domain (camera, camera_stream, zone). argus-camera
+  // serves it from its own default client (camera.db); no production host
+  // installs a separate camera client since the gateway moved the camera
+  // sync reads to the argus.camera.v1 gRPC leg (F6-5).
   static drogon::orm::DbClientPtr cameraClient();
 
   // Installs the named camera client. Must be called once at boot, before

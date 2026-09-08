@@ -115,3 +115,9 @@ void SyncService::setForwarder(std::shared_ptr<SyncForwarder> forwarder)
 {
   forwarder_ = std::move(forwarder);
 }
+
+void SyncService::setCameraSource(std::shared_ptr<CameraSyncSource> source)
+{
+  cameraSource_ = std::move(source);
+  synchronizedService_.setCameraSource(cameraSource_.get());
+}

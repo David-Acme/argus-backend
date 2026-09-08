@@ -7,6 +7,7 @@
 #include <filter/jwt/jwt-filter.hxx>
 #include <json/value.h>
 #include <memory>
+#include <shared/contracts/camera-sync-source.hxx>
 #include <shared/repositories/user/user-repository.hxx>
 #include <shared/services/room/room-manager.hxx>
 #include <string_view>
@@ -26,6 +27,7 @@ public:
   void handleDisconnect(const drogon::WebSocketConnectionPtr& conn) const;
 
   void setForwarder(std::shared_ptr<SyncForwarder> forwarder);
+  void setCameraSource(std::shared_ptr<CameraSyncSource> source);
 
 private:
   drogon::Task<void>
@@ -35,4 +37,5 @@ private:
   RoomManager roomManager_;
   UserRepository userRepository_;
   std::shared_ptr<SyncForwarder> forwarder_;
+  std::shared_ptr<CameraSyncSource> cameraSource_;
 };

@@ -65,10 +65,12 @@ monolith's build set was retired (F6-4).
 - **`/sync` socket (F1-4)**: the gateway owns the `/sync` WebSocket end to end.
   It serves the sync protocol natively (`sync`, `sync_audit_log`,
   `sync_user_audit_log`, identity rooms, `initial_info`) from
-  `argus_sync`: the camera/productivity/notification sync tables read their
-  named read-only clients (`[camera] db`, `[productivity] db`,
-  `[notifications] db`, opened `file:...?mode=ro`, enabled process-wide by
-  `DbService::enableUriFilenames()`) — Ruling G's identity-owned tables
+  `argus_sync`: the productivity/notification sync tables read their
+  named read-only clients (`[productivity] db`, `[notifications] db`, opened
+  `file:...?mode=ro`, enabled process-wide by
+  `DbService::enableUriFilenames()`), and since F6-5 the camera sync tables
+  pull from argus-camera over the `argus.camera.v1.SyncService` gRPC leg
+  (`[camera] grpc_target`) — Ruling G's identity-owned tables
   (`user`, `person`, `user_invitation`) and Ruling S's audit pages
   (`sync_audit_log`/`sync_user_audit_log` over the identity.db
   `audit_log`/`user_audit_log` tables) read the default client instead, so
@@ -236,9 +238,11 @@ table. The app keeps working without any update.
   via `AuditLogService::create` first, then the DB-assigned row is fanned out
   as a `Log` event; a plain change payload fans out directly. The funnel
   handler runs on the Drogon IO loop (RoomManager is thread-local).
-- **Named camera client (Ruling Z)**: `[camera] db` opens mode=ro as the
-  named camera client (`DbService::setCameraClient`); camera/camera_stream/
-  zone sync reads resolve to it, identity tables stay on the default client.
+- **Named camera client (Ruling Z, superseded F6-5)**: `[camera] db` opened
+  mode=ro as the named camera client is gone; the camera/camera_stream/zone
+  sync reads pull from argus-camera over the `argus.camera.v1.SyncService`
+  gRPC leg (`[camera] grpc_target`), identity tables stay on the default
+  client.
 
 ## Camera object_detected consumer (F2-3): budget, silent hours, digest
 

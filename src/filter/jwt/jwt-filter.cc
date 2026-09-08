@@ -66,6 +66,10 @@ JwtFilter::doFilter(const drogon::HttpRequestPtr& req)
   ctx.name = user->name + " " + user->lastName;
   ctx.role = user->role;
   ctx.isActive = user->isActive;
+  if (req->getAttributes()->find(AppConfig::DEVICE_CTX_KEY))
+    ctx.deviceHash = req->getAttributes()
+                         ->get<DeviceContext>(AppConfig::DEVICE_CTX_KEY)
+                         .deviceHash;
 
   req->getAttributes()->insert(AppConfig::JWT_CTX_KEY, ctx);
   co_return drogon::HttpResponsePtr{};

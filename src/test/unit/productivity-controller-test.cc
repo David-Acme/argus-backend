@@ -201,7 +201,7 @@ Json::Value body(const drogon::HttpResponsePtr& response)
 void setActor(const drogon::HttpRequestPtr& req, int64_t sub, UserRole role)
 {
   req->getAttributes()->insert(AppConfig::JWT_CTX_KEY,
-                               JwtContext{sub, "Actor", role, true});
+                               JwtContext{sub, "Actor", role, true, {}});
 }
 
 // Delete endpoints read the actor from the request attributes the filters leave.

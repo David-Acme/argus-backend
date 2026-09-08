@@ -7,6 +7,9 @@
 # public listener, and from the F2-2 cutover it routes /camera* and /zone here.
 host = "127.0.0.1"
 port = 7026
+# argus.camera.v1 SyncService listener the gateway pulls the camera sync
+# tables from. Loopback by default: an unauthenticated-surface RPC.
+grpc_port = 7036
 
 # Mirror of the legacy [drogon.app] block; the listener and db_clients are
 # built by the service itself (see argus-camera/src/main.cc).

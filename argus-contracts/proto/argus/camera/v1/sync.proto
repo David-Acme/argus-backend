@@ -1,0 +1,126 @@
+syntax = "proto3";
+
+package argus.camera.v1;
+
+option cc_enable_arenas = true;
+
+// (createdAt, id) cursor window; any subset present narrows the pull.
+message SyncRange {
+  optional int64 start_time = 1;
+  optional int64 start_id = 2;
+  optional int64 end_time = 3;
+}
+
+// Camera row as the camera sync table serves it; secrets never leave the service.
+message CameraRow {
+  int64 id = 1;
+  string name = 2;
+  string manufacturer = 3;
+  string model = 4;
+  string ip = 5;
+  int32 port = 6;
+  string username = 7;
+  string cloud_username = 8;
+  string driver = 9; // tapo | onvif | rtsp
+  string icon = 10;
+  string record_mode = 11; // events | continuous
+  optional int64 retention_days = 12;
+  string capabilities = 13;
+  string config = 14;
+  bool is_enabled = 15;
+  bool is_online = 16;
+  int64 created_at = 17;
+  optional int64 updated_at = 18;
+  optional int64 deleted_at = 19;
+}
+
+// Zone row of one camera.
+message ZoneRow {
+  int64 id = 1;
+  int64 camera_id = 2;
+  string name = 3;
+  string points = 4;
+  string zone_type = 5; // monitor | alert | exclude
+  string color = 6;
+  bool is_enabled = 7;
+  int64 created_at = 8;
+  optional int64 updated_at = 9;
+  optional int64 deleted_at = 10;
+}
+
+// Stream row of one camera.
+message CameraStreamRow {
+  int64 id = 1;
+  int64 camera_id = 2;
+  string label = 3;
+  string url = 4;
+  string resolution = 5;
+  int32 fps = 6;
+  string codec = 7;
+  bool is_primary = 8;
+  bool is_enabled = 9;
+  int64 created_at = 10;
+  optional int64 updated_at = 11;
+  optional int64 deleted_at = 12;
+}
+
+// Tombstone as the deleted legs serve it: identity and deletion time only.
+message DeletedRow {
+  int64 id = 1;
+  int64 deleted_at = 2;
+}
+
+// Pull of one camera-domain sync table; created/deleted carry the ranges.
+message TablePull {
+  bool required_create = 1;
+  bool required_deleted = 2;
+  bool find_last_created = 3;
+  bool find_last_deleted = 4;
+  optional SyncRange created = 5;
+  optional SyncRange deleted = 6;
+}
+
+message CameraTableRows {
+  repeated CameraRow created = 1;
+  repeated DeletedRow deleted = 2;
+  optional CameraRow last_created = 3;
+  optional DeletedRow last_deleted = 4;
+}
+
+message CameraStreamTableRows {
+  repeated CameraStreamRow created = 1;
+  repeated DeletedRow deleted = 2;
+  optional CameraStreamRow last_created = 3;
+  optional DeletedRow last_deleted = 4;
+}
+
+message ZoneTableRows {
+  repeated ZoneRow created = 1;
+  repeated DeletedRow deleted = 2;
+  optional ZoneRow last_created = 3;
+  optional DeletedRow last_deleted = 4;
+}
+
+// One camera-domain sync table per call; exactly one branch set.
+message PullTableRequest {
+  oneof table {
+    TablePull camera = 1;
+    TablePull camera_stream = 2;
+    TablePull zone = 3;
+  }
+}
+
+// Rows of the requested table; the branch mirrors PullTableRequest.table.
+message PullTableResponse {
+  oneof table {
+    CameraTableRows camera = 1;
+    CameraStreamTableRows camera_stream = 2;
+    ZoneTableRows zone = 3;
+  }
+}
+
+// Camera-domain sync-table pulls served by argus-camera; the caller identity
+// rides the x-argus-user / x-argus-role / x-argus-device metadata.
+service SyncService {
+  rpc PullTable(PullTableRequest) returns (PullTableResponse) {}
+}

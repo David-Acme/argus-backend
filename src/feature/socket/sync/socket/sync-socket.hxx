@@ -4,6 +4,7 @@
 #include <feature/socket/sync/socket/sync-forwarder.hxx>
 #include <feature/socket/sync/services/sync-service.hxx>
 #include <memory>
+#include <shared/contracts/camera-sync-source.hxx>
 
 class SyncSocket : public drogon::WebSocketController<SyncSocket, false>
 {
@@ -17,6 +18,7 @@ public:
       const drogon::WebSocketConnectionPtr& conn) override;
 
   void setForwarder(std::shared_ptr<SyncForwarder> forwarder);
+  void setCameraSource(std::shared_ptr<CameraSyncSource> source);
 
   WS_PATH_LIST_BEGIN
   WS_PATH_ADD("/sync", "DeviceFilter", "JwtFilter");

@@ -2845,3 +2845,29 @@ expects float samples in the 16-bit range (+-32767), not [-1, 1] — feeding
 (never more than ~24 dB, loud frames compressed down) so RNNoise and the STT
 see a healthy level.
 
+
+## F6-5 step 1 — camera cross-DB decoupling (2026-09-08)
+
+The gateway no longer opens camera.db. `argus-camera` serves the
+camera-domain sync tables (camera, camera_stream, zone) through the typed
+`argus.camera.v1.SyncService.PullTable` gRPC on port 7036
+(`[server] grpc_port`), carrying the frozen /sync semantics per table:
+required_create/required_deleted/find_last legs, the (createdAt, id) cursor
+ranges, LIMIT 200 baked into the owner's SQL, and tombstones as
+{id, deletedAt} — typed row messages in
+`argus-contracts/proto/argus/camera/v1/sync.proto` whose field sets mirror
+the sync-table JSON exactly (no password/cloudPassword). The gateway
+consumes it through the `argus::sdk-camera` wrapper (`CameraSyncGateway`,
+a `CameraSyncSource` seam injected into `SynchronizedService`), which maps
+each `Syncable` leg to one pull and throws the 503 "Camera sync unavailable"
+envelope when argus-camera is unreachable or `[camera] grpc_target` is
+unset; the sync composition and the lastSyncDate overwrite logic are
+untouched, so the golden /sync camera rows are byte-identical. Ruling Z's
+camera.db read-only mount is superseded: the `[camera] db` config key, the
+gateway's camera-db compose mount and the `DbService::setCameraClient` boot
+install are gone (argus-camera's repositories resolve the named slot's
+fallback to its own default client). The role gate stays at the gateway
+before the pull; argus-camera requires the x-argus-user /
+x-argus-role / x-argus-device metadata to be PRESENT and applies no other
+authorization (row scoping is data semantics; camera tables carry none). A
+grpc.health.v1 Health service shares the listener (F6-3 shape).

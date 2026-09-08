@@ -26,6 +26,7 @@
 #include <shared/wrapper/nats/nats-subject.hxx>
 #include <sync/camera-fan-out.hxx>
 #include <sync/camera-notifier.hxx>
+#include <sync/camera-sync-source.hxx>
 #include <sync/sync-registrar.hxx>
 #include <sync/sync-relay.hxx>
 #include <sync/voice-grpc-relay.hxx>
@@ -204,11 +205,17 @@ int main()
   else {
     relay = std::make_shared<LegacySyncRelay>(std::string());
   }
-  const SyncRegistrationStats sync = registerSyncSurface(relay);
+  const std::string cameraGrpcTarget =
+      ConfigService::getString("camera.grpc_target");
+  const auto cameraSource = std::make_shared<CameraSyncGateway>(cameraGrpcTarget);
+  const SyncRegistrationStats sync = registerSyncSurface(relay, cameraSource);
   LOG_INFO << "Sync surface registered: " << sync.controllers << " controller, "
            << sync.filters << " filters"
            << (voiceCutover ? "; voice leg -> gRPC " + voiceGrpc.target
                             : "; voice leg -> unconfigured relay (503)")
+           << (cameraGrpcTarget.empty()
+                   ? "; camera leg -> unconfigured source (503)"
+                   : "; camera leg -> gRPC " + cameraGrpcTarget)
            << (cameraSync.syncUrl.empty()
                    ? ""
                    : "; camera relay -> " + cameraSync.syncUrl);
@@ -333,37 +340,6 @@ int main()
   drogon::app().registerBeginningAdvice([&identityDb = identityDb,
                                          &mdnsService]() {
     DbService::installExtensions();
-
-    // Rulings Z/X: camera, camera_stream and zone reads resolve to the
-    // camera database argus-camera owns. Cross-process SQLite rules apply on
-    // both sides: WAL plus busy_timeout; the gateway opens it read-only and
-    // never writes. argus-camera applies the camera schema on its own boot,
-    // which on a fresh install may land after ours, so wait bounded for the
-    // file instead of pinning the fallback client for the whole process.
-    const std::string cameraDbPath = ConfigService::getString("camera.db");
-    if (!cameraDbPath.empty() && !std::filesystem::exists(cameraDbPath)) {
-      LOG_INFO << "Camera database not present yet: " << cameraDbPath
-               << "; waiting up to 30s for the argus-camera boot apply";
-      for (int ms = 0; ms < 30000 && !std::filesystem::exists(cameraDbPath);
-           ms += 250)
-        std::this_thread::sleep_for(std::chrono::milliseconds(250));
-    }
-    if (!cameraDbPath.empty() && std::filesystem::exists(cameraDbPath)) {
-      const auto cameraDb = drogon::orm::DbClient::newSqlite3Client(
-          "filename=file:" + cameraDbPath + "?mode=ro", 1);
-      try {
-        cameraDb->execSqlSync("PRAGMA busy_timeout = 5000");
-      }
-      catch (const std::exception& e) {
-        LOG_WARN << "Camera database pragma error: " << e.what();
-      }
-      DbService::setCameraClient(cameraDb);
-      LOG_INFO << "Camera database opened read-only: " << cameraDbPath;
-    }
-    else if (!cameraDbPath.empty()) {
-      LOG_WARN << "Camera database not found: " << cameraDbPath
-               << "; camera reads fall back to the default client";
-    }
 
     // Rulings AQ/AR: the productivity sync-table reads and the notification
     // substrate resolve to the databases argus-productivity and
