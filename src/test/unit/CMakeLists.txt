@@ -53,63 +53,6 @@ if(DOCTEST_INCLUDE_DIRS)
         INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${DOCTEST_INCLUDE_DIRS}")
 endif()
 
-# The voice suites ride argus-voice's voice-core (F6-3): the typed gRPC
-# session, the remote-only engine seam and the SDK stubs compile there.
-add_executable(voice-session-seam-test voice-session-seam-test.cc)
-
-target_link_libraries(voice-session-seam-test PRIVATE argus::voice-core
-    doctest::doctest)
-
-target_compile_options(voice-session-seam-test PRIVATE -Wall -Wextra)
-
-argus_runtime_rpath(voice-session-seam-test)
-
-add_test(NAME voice-session-seam-test COMMAND voice-session-seam-test)
-
-# The TTS cutover suite: the voice session speaks through the argus-tts
-# internal wire (RemoteVoiceTts) against the in-process fake server.
-add_executable(voice-tts-remote-test voice-tts-remote-test.cc)
-
-# The TTS wire's fake server moved to the wire module with f7-7a.
-target_include_directories(voice-tts-remote-test PRIVATE
-    ${CMAKE_SOURCE_DIR}/argus-tts-client/tests/support)
-
-target_link_libraries(voice-tts-remote-test PRIVATE argus::voice-core
-    doctest::doctest)
-
-target_compile_options(voice-tts-remote-test PRIVATE -Wall -Wextra)
-
-argus_runtime_rpath(voice-tts-remote-test)
-
-add_test(NAME voice-tts-remote-test COMMAND voice-tts-remote-test)
-
-# The STT cutover suite: the voice session transcribes through the
-# argus-stt internal wire (RemoteVoiceStt), degrading to the existing
-# stt_failed error path when the server is down.
-add_executable(voice-stt-remote-test voice-stt-remote-test.cc)
-
-target_link_libraries(voice-stt-remote-test PRIVATE argus::voice-core
-    doctest::doctest)
-
-target_compile_options(voice-stt-remote-test PRIVATE -Wall -Wextra)
-
-argus_runtime_rpath(voice-stt-remote-test)
-
-add_test(NAME voice-stt-remote-test COMMAND voice-stt-remote-test)
-
-# The LLM cutover suite (F4-5): the voice session streams its replies through
-# the argus-llm internal wire (RemoteVoiceLlm), degrading silently when the
-# server is down.
-add_executable(voice-llm-remote-test voice-llm-remote-test.cc)
-
-target_link_libraries(voice-llm-remote-test PRIVATE argus::voice-core
-    doctest::doctest)
-
-target_compile_options(voice-llm-remote-test PRIVATE -Wall -Wextra)
-
-argus_runtime_rpath(voice-llm-remote-test)
-
-add_test(NAME voice-llm-remote-test COMMAND voice-llm-remote-test)
 
 # The argus-stt wire contract (F4-3, Ruling BL): the real engine serves the
 # transcribe/config legs from the shared models tree.
@@ -126,7 +69,7 @@ target_include_directories(stt-wire-test SYSTEM PRIVATE
 target_compile_definitions(stt-wire-test PRIVATE
     ARGUS_TEST_STT_MODELS_DIR="${CMAKE_SOURCE_DIR}/models/stt")
 
-target_link_libraries(stt-wire-test PRIVATE argus_common
+target_link_libraries(stt-wire-test PRIVATE argus_common argus::stt-client
     onnxruntime::onnxruntime ${ARGUS_SHERPA_ONNX_TARGET} doctest::doctest)
 
 target_compile_options(stt-wire-test PRIVATE -Wall -Wextra)

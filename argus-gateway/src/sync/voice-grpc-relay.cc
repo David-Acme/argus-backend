@@ -5,7 +5,7 @@
 #include <shared/exceptions/response-exception.hxx>
 #include <shared/repositories/user/user-repository.hxx>
 #include <shared/services/config-service/config-service.hxx>
-#include <shared/services/reaction/reaction-contracts.hxx>
+#include <voice/reaction-contracts.hxx>
 #include <shared/wrapper/blocking-task/blocking-task.hxx>
 #include <trantor/utils/Logger.h>
 

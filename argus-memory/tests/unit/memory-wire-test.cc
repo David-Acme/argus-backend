@@ -243,7 +243,12 @@ TEST_CASE("the argus-memory internal wire serves the memory capacity")
   }
   ConfigService::load(kScratchConfig);
   std::filesystem::create_directories("/tmp/f46-memory-wire");
+  // The -wal/-shm siblings have to go too: deleting only the database file
+  // leaves SQLite journal state from the previous run, which is how this
+  // suite intermittently found memory_vec missing.
   std::remove("/tmp/f46-memory-wire/memory.db");
+  std::remove("/tmp/f46-memory-wire/memory.db-wal");
+  std::remove("/tmp/f46-memory-wire/memory.db-shm");
 
   drogon::app().setLogLevel(trantor::Logger::kWarn);
   drogon::app().setClientMaxBodySize(8 * 1024 * 1024);

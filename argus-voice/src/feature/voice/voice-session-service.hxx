@@ -8,7 +8,7 @@
 #include <shared/enums.hxx>
 #include <shared/services/llm/llm-service.hxx>
 #include <shared/services/noise/noise-suppression-service.hxx>
-#include <shared/services/reaction/reaction-contracts.hxx>
+#include <voice/reaction-contracts.hxx>
 #include <shared/services/reaction/reaction-engine.hxx>
 #include <shared/services/tts/tts-wire.hxx>
 #include <shared/services/vad/vad-service.hxx>

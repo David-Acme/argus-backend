@@ -1,7 +1,7 @@
 #pragma once
 
 #include <memory>
-#include <shared/services/reaction/reaction-contracts.hxx>
+#include <voice/reaction-contracts.hxx>
 #include <string>
 
 // Turns the signals a turn already produced into the assistant's reaction; every decision is a rule.

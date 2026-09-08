@@ -1,5 +1,9 @@
 #pragma once
 
+// The reaction vocabulary of the argus.voice.v1 wire: argus-voice decides a
+// reaction and the gateway relays it to the app, so the enum and its string
+// mapping live with the contract rather than inside either service.
+
 #include <cstdint>
 #include <string>
 

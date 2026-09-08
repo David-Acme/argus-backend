@@ -66,6 +66,7 @@ target_include_directories(stt-core PUBLIC
 
 target_link_libraries(stt-core PUBLIC
     argus_common
+    argus::stt-client
     Drogon::Drogon
     onnxruntime::onnxruntime
     nlohmann_json::nlohmann_json
