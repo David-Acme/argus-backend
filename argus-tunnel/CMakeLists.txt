@@ -28,6 +28,7 @@ add_library(tunnel-core STATIC
     ${TUNNEL_SRC_ROOT}/client/tunnel-client.cc
     ${TUNNEL_SRC_ROOT}/relay/tunnel-relay.cc
     ${TUNNEL_SRC_ROOT}/server/service-config.cc
+    ${TUNNEL_SRC_ROOT}/server/health-extras.cc
 )
 
 target_include_directories(tunnel-core PUBLIC ${TUNNEL_SRC_ROOT})
@@ -92,6 +93,13 @@ target_include_directories(tunnel-push-test PRIVATE
 target_link_libraries(tunnel-push-test PRIVATE tunnel-core doctest::doctest)
 target_compile_options(tunnel-push-test PRIVATE -Wall -Wextra)
 
+add_executable(tunnel-health-test
+               ${CMAKE_CURRENT_SOURCE_DIR}/tests/tunnel-health-test.cc)
+target_include_directories(tunnel-health-test PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/tests)
+target_link_libraries(tunnel-health-test PRIVATE tunnel-core doctest::doctest)
+target_compile_options(tunnel-health-test PRIVATE -Wall -Wextra)
+
 # Test registration is standalone-only so the root project's ctest stays at
 # its 38 backend cases.
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
@@ -102,4 +110,5 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     add_test(NAME tunnel-negauth-test COMMAND tunnel-negauth-test)
     add_test(NAME service-config-test COMMAND service-config-test)
     add_test(NAME tunnel-push-test COMMAND tunnel-push-test)
+    add_test(NAME tunnel-health-test COMMAND tunnel-health-test)
 endif()

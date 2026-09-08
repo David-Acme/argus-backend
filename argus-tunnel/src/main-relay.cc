@@ -2,6 +2,7 @@
 #include <controllers/health-controller.hxx>
 #include <drogon/drogon.h>
 #include <net/poll-loop.hxx>
+#include <server/health-extras.hxx>
 #include <server/listener-config.hxx>
 #include <server/service-config.hxx>
 #include <shared/services/config-service/config-service.hxx>
@@ -27,33 +28,7 @@ int main()
   PollLoop loop;
   tunnel::TunnelRelay relay(loop, config.relay);
 
-  HealthStatus status;
-  status.serviceName = "argus-relay";
-  // The relay's extra /health fields are injected providers, read live per
-  // request; the controller itself stays the shared one.
-  status.extras = {
-      {"homeConnected", [&relay] { return Json::Value(relay.hasHome()); }},
-      {"activeStreams",
-       [&relay] {
-         return Json::Value(static_cast<int>(relay.streamCount()));
-       }},
-      {"pushQueued",
-       [&relay] {
-         return Json::Value(Json::Value::Int64(relay.pushQueued()));
-       }},
-      {"pushReceived",
-       [&relay] {
-         return Json::Value(Json::Value::Int64(relay.pushReceived()));
-       }},
-      {"pushDropped",
-       [&relay] {
-         return Json::Value(Json::Value::Int64(relay.pushDropped()));
-       }},
-      {"pushForwarded",
-       [&relay] {
-         return Json::Value(Json::Value::Int64(relay.pushForwarded()));
-       }},
-  };
+  HealthStatus status = relayHealthStatus(relay);
 
   std::thread loopThread([&loop] { loop.run(); });
 

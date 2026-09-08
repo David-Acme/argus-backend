@@ -2,6 +2,7 @@
 #include <controllers/health-controller.hxx>
 #include <drogon/drogon.h>
 #include <net/poll-loop.hxx>
+#include <server/health-extras.hxx>
 #include <server/listener-config.hxx>
 #include <server/service-config.hxx>
 #include <shared/services/config-service/config-service.hxx>
@@ -24,29 +25,7 @@ int main()
   PollLoop loop;
   tunnel::TunnelClient client(loop, config.tunnel);
 
-  // The tunnel's extra /health fields are injected providers, read live per
-  // request; the controller itself stays the shared one.
-  HealthStatus status;
-  status.serviceName = "argus-tunnel-client";
-  status.extras = {
-      {"homeConnected", [&client] { return Json::Value(client.homeConnected()); }},
-      {"activeStreams",
-       [&client] {
-         return Json::Value(static_cast<int>(client.streamCount()));
-       }},
-      {"pushQueued",
-       [&client] {
-         return Json::Value(Json::Value::Int64(client.pushQueued()));
-       }},
-      {"pushReceived",
-       [&client] {
-         return Json::Value(Json::Value::Int64(client.pushReceived()));
-       }},
-      {"pushDropped",
-       [&client] {
-         return Json::Value(Json::Value::Int64(client.pushDropped()));
-       }},
-  };
+  HealthStatus status = clientHealthStatus(client);
 
   std::thread loopThread([&loop] { loop.run(); });
 
