@@ -21,9 +21,7 @@ find_package(doctest REQUIRED)
 # onnxruntime is THE capacity of this service (F4-2, Ruling BG): no face/llm/
 # vlm/stt/vad code is compiled, so the binary carries no other AI symbols.
 add_library(tts-core STATIC
-    ${TTS_SRC_ROOT}/controllers/health-controller.cc
     ${TTS_SRC_ROOT}/controllers/tts-controller.cc
-    ${TTS_SRC_ROOT}/server/listener-config.cc
     ${TTS_SRC_ROOT}/tts/synthesize-dto.cc
     # The engine compiled from the shared tree (F2-1 PORTED pattern), so the
     # legacy binary and this service synthesize byte-identically.

@@ -20,6 +20,10 @@ argus_module(NAME common
         src/config/app-config.cc
         src/config/app-config.hxx
         src/config/service.hxx
+        src/controllers/health-controller.cc
+        src/controllers/health-controller.hxx
+        src/server/listener-config.cc
+        src/server/listener-config.hxx
         src/shared/enums.hxx
         src/shared/access/role-access.hxx
         src/shared/validation/rules.hxx

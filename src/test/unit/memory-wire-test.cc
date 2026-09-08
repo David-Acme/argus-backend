@@ -247,7 +247,8 @@ TEST_CASE("the argus-memory internal wire serves the memory capacity")
 
   drogon::app().setLogLevel(trantor::Logger::kWarn);
   drogon::app().setClientMaxBodySize(8 * 1024 * 1024);
-  drogon::app().registerController(std::make_shared<HealthController>());
+  drogon::app().registerController(std::make_shared<HealthController>(
+      HealthStatus{.serviceName = "argus-memory"}));
   const auto memory = std::make_shared<MemoryController>();
   drogon::app().registerController(memory);
 

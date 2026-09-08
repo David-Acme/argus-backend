@@ -35,8 +35,8 @@ int main()
 {
   ConfigService::load("config.toml");
 
-  const ListenerConfig healthListener = ListenerConfig::resolve();
-  const GrpcListenerConfig grpcListener = GrpcListenerConfig::resolve();
+  const ListenerConfig healthListener = ListenerConfig::resolve(7035, "server.health_port");
+  const GrpcListenerConfig grpcListener = GrpcListenerConfig::resolve(7034);
 
   VoiceRpcService voiceRpc;
   HealthRpcService healthRpc;
@@ -53,7 +53,7 @@ int main()
     return 1;
   }
 
-  drogon::app().registerController(std::make_shared<HealthController>());
+  drogon::app().registerController(std::make_shared<HealthController>(HealthStatus{.serviceName = "argus-voice"}));
 
   drogon::app().loadConfigJson(drogonConfig(healthListener));
 

@@ -2,6 +2,7 @@
 #include <controllers/health-controller.hxx>
 #include <drogon/drogon.h>
 #include <net/poll-loop.hxx>
+#include <server/listener-config.hxx>
 #include <server/service-config.hxx>
 #include <shared/services/config-service/config-service.hxx>
 #include <shared/wrapper/nats/nats-bus.hxx>
@@ -28,14 +29,31 @@ int main()
 
   HealthStatus status;
   status.serviceName = "argus-relay";
-  status.homeConnected = [&relay] { return relay.hasHome(); };
-  status.activeStreams = [&relay] {
-    return static_cast<int>(relay.streamCount());
+  // The relay's extra /health fields are injected providers, read live per
+  // request; the controller itself stays the shared one.
+  status.extras = {
+      {"homeConnected", [&relay] { return Json::Value(relay.hasHome()); }},
+      {"activeStreams",
+       [&relay] {
+         return Json::Value(static_cast<int>(relay.streamCount()));
+       }},
+      {"pushQueued",
+       [&relay] {
+         return Json::Value(Json::Value::Int64(relay.pushQueued()));
+       }},
+      {"pushReceived",
+       [&relay] {
+         return Json::Value(Json::Value::Int64(relay.pushReceived()));
+       }},
+      {"pushDropped",
+       [&relay] {
+         return Json::Value(Json::Value::Int64(relay.pushDropped()));
+       }},
+      {"pushForwarded",
+       [&relay] {
+         return Json::Value(Json::Value::Int64(relay.pushForwarded()));
+       }},
   };
-  status.pushQueued = [&relay] { return relay.pushQueued(); };
-  status.pushReceived = [&relay] { return relay.pushReceived(); };
-  status.pushDropped = [&relay] { return relay.pushDropped(); };
-  status.pushForwarded = [&relay] { return relay.pushForwarded(); };
 
   std::thread loopThread([&loop] { loop.run(); });
 
@@ -53,8 +71,8 @@ int main()
   Json::Value drogonConfig = ConfigService::drogonConfig();
   if (drogonConfig.isNull())
     drogonConfig = Json::Value(Json::objectValue);
-  drogonConfig["listeners"] =
-      healthListenerJson(config.healthHost, config.healthPort);
+  drogonConfig["listeners"] = listenerJson(
+      ListenerConfig{.host = config.healthHost, .port = config.healthPort});
 
   drogon::app().loadConfigJson(drogonConfig);
   drogon::app().setExceptionHandler(AppConfig::handleException);

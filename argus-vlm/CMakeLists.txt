@@ -60,9 +60,7 @@ if(NOT TARGET llama)
 endif()
 
 add_library(vlm-core STATIC
-    ${VLM_SRC_ROOT}/controllers/health-controller.cc
     ${VLM_SRC_ROOT}/controllers/vlm-controller.cc
-    ${VLM_SRC_ROOT}/server/listener-config.cc
     ${VLM_SRC_ROOT}/vlm/describe-dto.cc
     # The engine compiled from the shared tree (PORTED pattern), so the
     # legacy binary and this service describe identically.

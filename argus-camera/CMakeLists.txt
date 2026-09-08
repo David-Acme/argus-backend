@@ -87,7 +87,6 @@ target_compile_options(argus_camera-rpc PRIVATE -Wall -Wextra)
 set(NCNN_SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/ncnn/src)
 
 add_library(camera-core STATIC
-    ${CAMERA_SRC_ROOT}/controllers/health-controller.cc
     ${CAMERA_SRC_ROOT}/controllers/camera-media-service.cc
     # Device control: camera-control feature (moved from the legacy in F6-2)
     # plus the camera-driver stack it dispatches through. TTS synthesis is
@@ -114,7 +113,6 @@ add_library(camera-core STATIC
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/shared/wrapper/audio/audio-resampler.cc
     ${CAMERA_SRC_ROOT}/camera/camera-config.cc
     ${CAMERA_SRC_ROOT}/camera/nats-camera-change-sink.cc
-    ${CAMERA_SRC_ROOT}/server/listener-config.cc
     ${CAMERA_SRC_ROOT}/objects/ncnn-object-detector.cc
     ${CAMERA_SRC_ROOT}/operator/camera-operator-service.cc
     ${CAMERA_SRC_ROOT}/operator/event-intelligence.cc

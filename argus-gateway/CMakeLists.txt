@@ -70,12 +70,10 @@ endif()
 find_package(doctest REQUIRED)
 
 add_library(gateway-core STATIC
-    ${GATEWAY_SRC_ROOT}/controllers/health-controller.cc
     ${GATEWAY_SRC_ROOT}/identity/identity-config.cc
     ${GATEWAY_SRC_ROOT}/identity/identity-registrar.cc
     ${GATEWAY_SRC_ROOT}/proxy/proxy-config.cc
     ${GATEWAY_SRC_ROOT}/proxy/reverse-proxy.cc
-    ${GATEWAY_SRC_ROOT}/server/listener-config.cc
     ${GATEWAY_SRC_ROOT}/server/refresh-rate-limiter.cc
     ${GATEWAY_SRC_ROOT}/server/remote-config.cc
     ${GATEWAY_SRC_ROOT}/server/remote-gate.cc

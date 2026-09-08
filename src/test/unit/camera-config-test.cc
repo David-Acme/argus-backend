@@ -22,7 +22,7 @@ TEST_CASE("camera config resolves database and schema with defaults")
 
   ConfigService::load(path);
   const CameraDbConfig config = CameraConfig::resolveDb();
-  const ListenerConfig listener = ListenerConfig::resolve();
+  const ListenerConfig listener = ListenerConfig::resolve(7026);
 
   CHECK(config.dbPath == "database/camera.db");
   CHECK(config.schemaPath == "database/camera-schema.sql");
@@ -47,7 +47,7 @@ TEST_CASE("camera config honors the camera and server overrides")
 
   ConfigService::load(path);
   const CameraDbConfig config = CameraConfig::resolveDb();
-  const ListenerConfig listener = ListenerConfig::resolve();
+  const ListenerConfig listener = ListenerConfig::resolve(7026);
 
   CHECK(config.dbPath == "/tmp/argus-test/camera.db");
   CHECK(config.schemaPath == "/tmp/argus-test/camera-schema.sql");
@@ -74,7 +74,7 @@ TEST_CASE("camera listener JSON is a plain internal listener")
 
 TEST_CASE("camera health envelope carries the camera service name")
 {
-  auto response = ApiResponse::ok(HealthController::info(3.5));
+  auto response = ApiResponse::ok(HealthController::info("argus-camera", 3.5));
 
   const Json::Value body = [&response] {
     Json::Value parsed;

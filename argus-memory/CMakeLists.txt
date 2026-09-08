@@ -63,11 +63,9 @@ if(NOT TARGET cnats::nats_static)
 endif()
 
 add_library(memory-core STATIC
-    ${MEMORY_SRC_ROOT}/controllers/health-controller.cc
     ${MEMORY_SRC_ROOT}/controllers/memory-controller.cc
     ${MEMORY_SRC_ROOT}/memory/catalog-replica.cc
     ${MEMORY_SRC_ROOT}/memory/memory-dto.cc
-    ${MEMORY_SRC_ROOT}/server/listener-config.cc
     # The memory stack compiled from the shared tree (PORTED pattern), so the
     # legacy binary and this service behave identically.
     ${SHARED_ROOT}/services/memory/memory-service.cc

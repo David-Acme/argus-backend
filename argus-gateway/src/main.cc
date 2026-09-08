@@ -185,7 +185,7 @@ int main()
   // and VecDb (face-db) both read the config-driven path below.
   ConfigService::setRuntimeString("database.file", identityDb.dbPath);
 
-  drogon::app().registerController(std::make_shared<HealthController>());
+  drogon::app().registerController(std::make_shared<HealthController>(HealthStatus{.serviceName = "argus-gateway"}));
   const IdentityRegistrationStats identity =
       registerIdentitySurface();
   LOG_INFO << "Identity surface registered: " << identity.controllers
@@ -220,7 +220,7 @@ int main()
                    ? ""
                    : "; camera relay -> " + cameraSync.syncUrl);
 
-  const ListenerConfig listener = ListenerConfig::resolve();
+  const ListenerConfig listener = ListenerConfig::resolveTls(7024);
   const RemoteConfig remote = RemoteConfig::resolve();
   const ProxyConfig proxy = ProxyConfig::resolve();
   requireDistinctTunnelPort(listener, remote);

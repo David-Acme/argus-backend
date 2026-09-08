@@ -6,23 +6,22 @@
 #include <drogon/utils/coroutine.h>
 #include <json/value.h>
 
-#include <cstddef>
-#include <cstdint>
 #include <functional>
 #include <string>
+#include <utility>
+#include <vector>
 
-// /health provider wired to either tunnel binary's live link state; push accessors are optional.
+// What /health reports: the service name every binary carries, plus any
+// extra fields that service wants appended. Providers are called per
+// request, so they read live state.
 struct HealthStatus
 {
   std::string serviceName;
-  std::function<bool()> homeConnected;
-  std::function<int()> activeStreams;
-  std::function<std::size_t()> pushQueued;
-  std::function<std::uint64_t()> pushReceived;
-  std::function<std::uint64_t()> pushDropped;
-  std::function<std::uint64_t()> pushForwarded;
+  std::vector<std::pair<std::string, std::function<Json::Value()>>> extras;
 };
 
+// The /health surface shared by every service (Ruling: one envelope shape,
+// one uptime clock). Construct with the owning service's name.
 class HealthController
     : public drogon::HttpController<HealthController, false>
 {
@@ -32,6 +31,10 @@ public:
   METHOD_LIST_BEGIN
   ADD_METHOD_TO(HealthController::health, "/health", drogon::Get);
   METHOD_LIST_END
+
+  // The payload without the ApiResponse envelope; tests pin its shape.
+  static Json::Value info(const std::string& serviceName,
+                          double uptimeSeconds);
 
   drogon::Task<drogon::HttpResponsePtr> health(drogon::HttpRequestPtr req);
 

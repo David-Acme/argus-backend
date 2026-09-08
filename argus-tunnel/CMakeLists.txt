@@ -29,7 +29,6 @@ add_library(tunnel-core STATIC
     ${TUNNEL_SRC_ROOT}/client/tunnel-client.cc
     ${TUNNEL_SRC_ROOT}/relay/tunnel-relay.cc
     ${TUNNEL_SRC_ROOT}/server/service-config.cc
-    ${TUNNEL_SRC_ROOT}/controllers/health-controller.cc
 )
 
 target_include_directories(tunnel-core PUBLIC

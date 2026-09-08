@@ -1,7 +1,9 @@
 #pragma once
 
-#include <drogon/HttpRequest.h>
 #include <cstdint>
+#include <drogon/HttpRequest.h>
+#include <json/value.h>
+#include <server/listener-config.hxx>
 
 struct RemoteConfig
 {
@@ -17,3 +19,13 @@ struct RemoteConfig
 // the connection landed on is the only honest remote signal.
 bool requestIsRemote(const drogon::HttpRequestPtr& req,
                      const RemoteConfig& config);
+
+// Ruling CG: appends the tunnel listener with the public listener's TLS
+// posture (same host, certs and min protocol); no-op when tunnel_port is 0.
+void appendRemoteListener(Json::Value& listeners, const RemoteConfig& remote,
+                          const ListenerConfig& base);
+
+// Fails fast when the tunnel listener would collide with the public one;
+// otherwise the duplicate bind aborts startup without a config message.
+void requireDistinctTunnelPort(const ListenerConfig& listener,
+                               const RemoteConfig& remote);

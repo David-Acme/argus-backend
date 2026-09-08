@@ -26,9 +26,9 @@ int main()
 {
   ConfigService::load("config.toml");
 
-  const ListenerConfig listener = ListenerConfig::resolve();
+  const ListenerConfig listener = ListenerConfig::resolve(7031);
 
-  drogon::app().registerController(std::make_shared<HealthController>());
+  drogon::app().registerController(std::make_shared<HealthController>(HealthStatus{.serviceName = "argus-vlm"}));
   const auto vlm = std::make_shared<VlmController>();
   drogon::app().registerController(vlm);
 

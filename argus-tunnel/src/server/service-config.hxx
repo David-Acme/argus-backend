@@ -27,5 +27,4 @@ struct RelayConfig
 };
 
 // The /health listener JSON for either binary (plain HTTP, frozen envelope).
-Json::Value healthListenerJson(const std::string& host, uint16_t port);
 uint16_t resolvePort(const char* key, uint16_t fallback);

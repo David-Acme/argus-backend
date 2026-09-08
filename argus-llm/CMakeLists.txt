@@ -58,9 +58,7 @@ if(NOT TARGET llama)
 endif()
 
 add_library(llm-core STATIC
-    ${LLM_SRC_ROOT}/controllers/health-controller.cc
     ${LLM_SRC_ROOT}/controllers/llm-controller.cc
-    ${LLM_SRC_ROOT}/server/listener-config.cc
     ${LLM_SRC_ROOT}/llm/chat-dto.cc
     # The engine compiled from the shared tree (PORTED pattern), so the
     # legacy binary and this service generate identically.

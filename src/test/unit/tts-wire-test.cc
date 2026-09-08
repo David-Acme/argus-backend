@@ -231,7 +231,8 @@ TEST_CASE("the argus-tts internal wire serves the legacy adapters")
                   " — run scripts/setup.sh tts first");
 
   drogon::app().setLogLevel(trantor::Logger::kWarn);
-  drogon::app().registerController(std::make_shared<HealthController>());
+  drogon::app().registerController(std::make_shared<HealthController>(
+      HealthStatus{.serviceName = "argus-tts"}));
   drogon::app().registerController(std::make_shared<TtsController>());
   drogon::app().registerFilter(std::make_shared<ValidJsonFilter>());
   drogon::app().setExceptionHandler(AppConfig::handleException);

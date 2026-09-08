@@ -114,8 +114,8 @@ int main()
   installIdentityClient();
 
   const CameraDbConfig cameraDb = CameraConfig::resolveDb();
-  const ListenerConfig listener = ListenerConfig::resolve();
-  const GrpcListenerConfig grpcListener = GrpcListenerConfig::resolve();
+  const ListenerConfig listener = ListenerConfig::resolve(7026);
+  const GrpcListenerConfig grpcListener = GrpcListenerConfig::resolve(7036);
 
   CameraSyncRpcService cameraSyncRpc;
   HealthRpcService healthRpc;
@@ -132,7 +132,7 @@ int main()
     return 1;
   }
 
-  drogon::app().registerController(std::make_shared<HealthController>());
+  drogon::app().registerController(std::make_shared<HealthController>(HealthStatus{.serviceName = "argus-camera"}));
   drogon::app().registerController(std::make_shared<CameraController>());
   drogon::app().registerController(std::make_shared<ZoneController>());
   drogon::app().registerController(std::make_shared<CameraControlController>());

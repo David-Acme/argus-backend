@@ -89,14 +89,3 @@ uint16_t resolvePort(const char* key, uint16_t fallback)
 {
   return clampPort(ConfigService::getInt(key), fallback);
 }
-
-Json::Value healthListenerJson(const std::string& host, uint16_t port)
-{
-  Json::Value listeners(Json::arrayValue);
-  Json::Value listener(Json::objectValue);
-  listener["address"] = host;
-  listener["port"] = Json::Value::Int(port);
-  listener["https"] = false;
-  listeners.append(listener);
-  return listeners;
-}

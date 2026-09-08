@@ -189,7 +189,6 @@ add_test(NAME voice-llm-remote-test COMMAND voice-llm-remote-test)
 # The argus-stt wire contract (F4-3, Ruling BL): the real engine serves the
 # transcribe/config legs from the shared models tree.
 add_executable(stt-wire-test stt-wire-test.cc
-    ${CMAKE_SOURCE_DIR}/argus-stt/src/controllers/health-controller.cc
     ${CMAKE_SOURCE_DIR}/argus-stt/src/controllers/stt-controller.cc
     ${SRC_ROOT}/shared/services/stt/stt-service.cc)
 
@@ -212,7 +211,6 @@ add_test(NAME stt-wire-test COMMAND stt-wire-test)
 # The argus-tts wire contract (F4-2, Ruling BH): the real engine serves the
 # synthesize/config legs from the shared models tree.
 add_executable(tts-wire-test tts-wire-test.cc
-    ${CMAKE_SOURCE_DIR}/argus-tts/src/controllers/health-controller.cc
     ${CMAKE_SOURCE_DIR}/argus-tts/src/controllers/tts-controller.cc
     ${CMAKE_SOURCE_DIR}/argus-tts/src/tts/synthesize-dto.cc
     ${SRC_ROOT}/shared/services/tts/tts-service.cc
@@ -276,7 +274,6 @@ add_test(NAME camera-talk-cutover-test COMMAND camera-talk-cutover-test)
 # describe/config legs from the shared models tree, with the direct-engine
 # A/B leg on the same JPEG.
 add_executable(vlm-wire-test vlm-wire-test.cc
-    ${CMAKE_SOURCE_DIR}/argus-vlm/src/controllers/health-controller.cc
     ${CMAKE_SOURCE_DIR}/argus-vlm/src/controllers/vlm-controller.cc
     ${CMAKE_SOURCE_DIR}/argus-vlm/src/vlm/describe-dto.cc
     ${SRC_ROOT}/shared/services/vision/vision-service.cc)
@@ -299,7 +296,6 @@ add_test(NAME vlm-wire-test COMMAND vlm-wire-test)
 # the chat/stream/config legs from the shared models tree, with the sentinel
 # framing and the KV-cache counters asserted over the wire.
 add_executable(llm-wire-test llm-wire-test.cc
-    ${CMAKE_SOURCE_DIR}/argus-llm/src/controllers/health-controller.cc
     ${CMAKE_SOURCE_DIR}/argus-llm/src/controllers/llm-controller.cc
     ${CMAKE_SOURCE_DIR}/argus-llm/src/llm/chat-dto.cc
     ${SRC_ROOT}/shared/services/llm/llm-service.cc)

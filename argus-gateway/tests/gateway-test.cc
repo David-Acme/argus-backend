@@ -93,7 +93,7 @@ drogon::HttpRequestPtr testRequest(drogon::HttpMethod method,
 
 TEST_CASE("health envelope conforms to the ApiResponse shape")
 {
-  auto response = ApiResponse::ok(HealthController::info(12.5));
+  auto response = ApiResponse::ok(HealthController::info("argus-gateway", 12.5));
 
   const Json::Value body = parseBody(response);
 
@@ -468,7 +468,7 @@ TEST_CASE("listener config resolves the cutover TLS listener by default")
   }
 
   ConfigService::load(path);
-  const ListenerConfig config = ListenerConfig::resolve();
+  const ListenerConfig config = ListenerConfig::resolveTls(7024);
   const Json::Value listeners = listenerJson(config);
 
   CHECK(config.host == "0.0.0.0");
@@ -502,7 +502,7 @@ TEST_CASE("plain listener option serves local tests without TLS")
   }
 
   ConfigService::load(path);
-  const ListenerConfig config = ListenerConfig::resolve();
+  const ListenerConfig config = ListenerConfig::resolveTls(7024);
   const Json::Value listeners = listenerJson(config);
 
   CHECK_FALSE(config.tls);
@@ -897,7 +897,8 @@ TEST_CASE("proxy exclusion set covers every registered gateway route")
   ConfigService::load(path);
   std::remove(path);
 
-  drogon::app().registerController(std::make_shared<HealthController>());
+  drogon::app().registerController(std::make_shared<HealthController>(
+      HealthStatus{.serviceName = "argus-gateway"}));
   registerIdentitySurface();
   registerSyncSurface(nullptr, nullptr);
 
@@ -972,7 +973,7 @@ TEST_CASE("remote listener appends the tunnel listener only when configured")
   }
 
   ConfigService::load(path);
-  const ListenerConfig base = ListenerConfig::resolve();
+  const ListenerConfig base = ListenerConfig::resolveTls(7024);
   const RemoteConfig disabled;
 
   Json::Value listeners = listenerJson(base);
@@ -1003,7 +1004,7 @@ TEST_CASE("remote listener appends the tunnel listener only when configured")
   }
 
   ConfigService::load(plain);
-  const ListenerConfig plainBase = ListenerConfig::resolve();
+  const ListenerConfig plainBase = ListenerConfig::resolveTls(7024);
   Json::Value plainListeners = listenerJson(plainBase);
   appendRemoteListener(plainListeners, enabled, plainBase);
   REQUIRE(plainListeners.size() == 2);

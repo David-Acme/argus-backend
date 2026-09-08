@@ -1,6 +1,8 @@
 #include "remote-config.hxx"
 
 #include <shared/services/config-service/config-service.hxx>
+#include <stdexcept>
+#include <string>
 
 RemoteConfig RemoteConfig::resolve()
 {
@@ -17,4 +19,23 @@ bool requestIsRemote(const drogon::HttpRequestPtr& req,
 {
   return config.tunnelPort != 0
          && req->localAddr().toPort() == config.tunnelPort;
+}
+
+void appendRemoteListener(Json::Value& listeners, const RemoteConfig& remote,
+                          const ListenerConfig& base)
+{
+  if (remote.tunnelPort == 0)
+    return;
+  listeners.append(
+      singleListenerJson(base, static_cast<int>(remote.tunnelPort)));
+}
+
+void requireDistinctTunnelPort(const ListenerConfig& listener,
+                               const RemoteConfig& remote)
+{
+  if (remote.tunnelPort != 0 && remote.tunnelPort == listener.port)
+    throw std::runtime_error("[remote] tunnel_port "
+                             + std::to_string(remote.tunnelPort)
+                             + " collides with [gateway] port "
+                             + std::to_string(listener.port));
 }

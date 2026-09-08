@@ -50,9 +50,7 @@ if(NOT TARGET sherpa-onnx-c-api)
 endif()
 
 add_library(stt-core STATIC
-    ${STT_SRC_ROOT}/controllers/health-controller.cc
     ${STT_SRC_ROOT}/controllers/stt-controller.cc
-    ${STT_SRC_ROOT}/server/listener-config.cc
     # The engine compiled from the shared tree (PORTED pattern), so the
     # legacy binary and this service transcribe identically.
     ${SHARED_ROOT}/services/stt/stt-service.cc

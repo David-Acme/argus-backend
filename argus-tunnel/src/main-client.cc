@@ -2,6 +2,7 @@
 #include <controllers/health-controller.hxx>
 #include <drogon/drogon.h>
 #include <net/poll-loop.hxx>
+#include <server/listener-config.hxx>
 #include <server/service-config.hxx>
 #include <shared/services/config-service/config-service.hxx>
 
@@ -23,15 +24,29 @@ int main()
   PollLoop loop;
   tunnel::TunnelClient client(loop, config.tunnel);
 
+  // The tunnel's extra /health fields are injected providers, read live per
+  // request; the controller itself stays the shared one.
   HealthStatus status;
   status.serviceName = "argus-tunnel-client";
-  status.homeConnected = [&client] { return client.homeConnected(); };
-  status.activeStreams = [&client] {
-    return static_cast<int>(client.streamCount());
+  status.extras = {
+      {"homeConnected", [&client] { return Json::Value(client.homeConnected()); }},
+      {"activeStreams",
+       [&client] {
+         return Json::Value(static_cast<int>(client.streamCount()));
+       }},
+      {"pushQueued",
+       [&client] {
+         return Json::Value(Json::Value::Int64(client.pushQueued()));
+       }},
+      {"pushReceived",
+       [&client] {
+         return Json::Value(Json::Value::Int64(client.pushReceived()));
+       }},
+      {"pushDropped",
+       [&client] {
+         return Json::Value(Json::Value::Int64(client.pushDropped()));
+       }},
   };
-  status.pushQueued = [&client] { return client.pushQueued(); };
-  status.pushReceived = [&client] { return client.pushReceived(); };
-  status.pushDropped = [&client] { return client.pushDropped(); };
 
   std::thread loopThread([&loop] { loop.run(); });
 
@@ -41,8 +56,8 @@ int main()
   Json::Value drogonConfig = ConfigService::drogonConfig();
   if (drogonConfig.isNull())
     drogonConfig = Json::Value(Json::objectValue);
-  drogonConfig["listeners"] =
-      healthListenerJson(config.healthHost, config.healthPort);
+  drogonConfig["listeners"] = listenerJson(
+      ListenerConfig{.host = config.healthHost, .port = config.healthPort});
 
   drogon::app().loadConfigJson(drogonConfig);
   drogon::app().setExceptionHandler(AppConfig::handleException);

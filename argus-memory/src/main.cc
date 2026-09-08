@@ -56,9 +56,9 @@ int main()
   const auto identityDb = openReadOnlySource("identity.db");
   const auto cameraDb = openReadOnlySource("camera.db");
 
-  const ListenerConfig listener = ListenerConfig::resolve();
+  const ListenerConfig listener = ListenerConfig::resolve(7033);
 
-  drogon::app().registerController(std::make_shared<HealthController>());
+  drogon::app().registerController(std::make_shared<HealthController>(HealthStatus{.serviceName = "argus-memory"}));
   const auto memory = std::make_shared<MemoryController>();
   drogon::app().registerController(memory);
 

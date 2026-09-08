@@ -62,10 +62,8 @@ endif()
 find_package(doctest REQUIRED)
 
 add_library(notification-core STATIC
-    ${NOTIFICATION_SRC_ROOT}/controllers/health-controller.cc
     ${NOTIFICATION_SRC_ROOT}/notification/nats-notification-change-sink.cc
     ${NOTIFICATION_SRC_ROOT}/notification/notification-config.cc
-    ${NOTIFICATION_SRC_ROOT}/server/listener-config.cc
 )
 
 target_include_directories(notification-core PUBLIC

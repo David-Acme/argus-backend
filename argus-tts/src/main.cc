@@ -28,9 +28,9 @@ int main()
 {
   ConfigService::load("config.toml");
 
-  const ListenerConfig listener = ListenerConfig::resolve();
+  const ListenerConfig listener = ListenerConfig::resolve(7029);
 
-  drogon::app().registerController(std::make_shared<HealthController>());
+  drogon::app().registerController(std::make_shared<HealthController>(HealthStatus{.serviceName = "argus-tts"}));
   drogon::app().registerController(std::make_shared<TtsController>());
   drogon::app().registerFilter(std::make_shared<ValidJsonFilter>());
 
