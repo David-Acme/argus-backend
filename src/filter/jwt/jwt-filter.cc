@@ -55,9 +55,6 @@ JwtFilter::doFilter(const drogon::HttpRequestPtr& req)
       LOG_WARN << "Refresh token expired for user " << userId;
       co_return AppConfig::get401Response("Token expired");
     }
-    // The session row must exist for every transport: that is what makes a
-    // logout close the sockets too. Every authenticated transport must remain
-    // bound to the device that created the session.
     if (rt->deviceHash != devCtx.deviceHash) {
       LOG_WARN << "Device hash mismatch for user " << userId;
       co_return AppConfig::get401Response("Device mismatch");

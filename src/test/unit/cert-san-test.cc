@@ -165,8 +165,7 @@ std::string fingerprintOf(X509* cert)
   return out;
 }
 
-// The SAN list cert-service produces with remote.hostname unset (the base
-// entries instanceSans() always emits).
+// The SAN list cert-service produces with remote.hostname unset.
 std::vector<std::string> baseSans()
 {
   std::vector<std::string> names{"argus.local", "localhost", "127.0.0.1",
@@ -302,7 +301,6 @@ TEST_CASE("remote.hostname drives the leaf SAN list and the hot reload")
   REQUIRE(CertService::init());
   REQUIRE(CertService::isLoaded());
 
-  // Rotation with the key absent keeps the base SAN list byte-for-byte.
   REQUIRE(CertService::rotateServerCertificate());
   const X509Ptr absentLeaf = firstCertFromPem(readFile(dir / "server.pem"));
   REQUIRE(absentLeaf);
@@ -311,8 +309,6 @@ TEST_CASE("remote.hostname drives the leaf SAN list and the hot reload")
                              std::filesystem::copy_options::overwrite_existing);
   const std::string absentFingerprint = fingerprintOf(absentLeaf.get());
 
-  // Invalid remote.hostname values are ignored: the leaf keeps the exact
-  // base SAN list instead of a dropped or corrupted SAN extension.
   for (const char* bad : {" ", "bad_host", ".leading.dot", "trailing.dot.",
                           "argus.example.com, IP:10.0.0.1", "white space"}) {
     ConfigService::setRuntimeString("remote.hostname", bad);
@@ -333,7 +329,6 @@ TEST_CASE("remote.hostname drives the leaf SAN list and the hot reload")
       dir / "server.pem", dir / "leaf-with-hostname.pem",
       std::filesystem::copy_options::overwrite_existing);
 
-  // The running listener hot reloads the regenerated leaf.
   const uint16_t port = freePort();
   drogon::app().setLogLevel(trantor::Logger::kWarn);
   drogon::app().setUploadPath("/tmp/argus-cert-san-test-upload");

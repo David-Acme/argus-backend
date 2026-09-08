@@ -11,10 +11,7 @@
 #include <shared/services/room/room-manager.hxx>
 #include <string_view>
 
-// Serves the sync tables natively (sync, sync_audit_log,
-// sync_user_audit_log) and hands every other frame plus raw binary to the
-// installed forwarder (native media service on the backend, legacy relay on
-// the gateway).
+// Serves the sync tables natively and hands every other frame to the installed forwarder.
 class SyncService
 {
 public:

@@ -15,8 +15,6 @@ UpdateZoneDto UpdateZoneDto::fromJson(const Json::Value& json)
   if (json.isMember("isEnabled") && json["isEnabled"].isBool())
     dto.isEnabled = json["isEnabled"].asBool();
 
-  // An empty string marks "sent but invalid" so the rule below can reject it;
-  // an absent key stays nullopt and leaves the column untouched.
   if (json.isMember("points"))
     dto.points =
         geometry::serializeNormalizedPolygon(json["points"]).value_or("");

@@ -152,14 +152,11 @@ HttpReply request(int port, const std::string& method,
     cursor = lineEnd + 2;
   }
 
-  // With the connection held open (the streaming leg), the body ends at the
-  // terminal chunk or the content length, never at EOF.
   const bool chunked =
       headers.count("transfer-encoding") &&
       headers.at("transfer-encoding").find("chunked") != std::string::npos;
   const size_t bodyStart = split + 4;
   if (chunked && !closeConnection) {
-    // Read until the wire carries the terminal chunk.
     while (!hasTerminalChunk(data.substr(bodyStart))) {
       if (!recvMore())
         break;
@@ -184,7 +181,6 @@ HttpReply request(int port, const std::string& method,
   HttpReply reply;
   reply.status = status;
   reply.headers = std::move(headers);
-  // Re-dechunk from the fully buffered wire.
   const std::string bufferedBody = data.substr(bodyStart);
   reply.body = chunked ? dechunk(bufferedBody) : bufferedBody;
   return reply;
@@ -223,17 +219,12 @@ TEST_CASE("the argus-tts internal wire serves the legacy adapters")
   ConfigService::setRuntimeString("tts.models_dir",
                                   ARGUS_TEST_TTS_MODELS_DIR);
 
-  // tts.steps_cap pins the tier-derived ceiling: it wins over deriveTier
-  // when set, and the default (unset) keeps the HardwareProbe cap.
   ConfigService::setRuntimeString("tts.steps_cap", "16");
   CHECK(TtsService::effectiveStepsCap() == 16);
-  // "0" is the unset marker for int overrides (an empty override would not
-  // parse as an int).
   ConfigService::setRuntimeString("tts.steps_cap", "0");
   CHECK(TtsService::effectiveStepsCap() == HardwareProbe::ttsStepsCap());
   CHECK(TtsService::effectiveStepsCap() > 0);
 
-  // The capacity boots for real: no engine, no contract.
   TtsService::instance().init();
   REQUIRE_MESSAGE(TtsService::instance().isLoaded(),
                   "TTS engine failed to load from " ARGUS_TEST_TTS_MODELS_DIR
@@ -259,13 +250,11 @@ TEST_CASE("the argus-tts internal wire serves the legacy adapters")
   const int port = listeners.front().toPort();
   REQUIRE(port > 0);
 
-  // ── GET /health ───────────────────────────────────────────────────────────
   const auto health = request(port, "GET", "/health", "");
   const Json::Value healthJson = envelope(health);
   CHECK(health.status == 200);
   CHECK(healthJson["info"]["service"] == "argus-tts");
 
-  // ── GET /tts/v1/config ────────────────────────────────────────────────────
   const auto config = request(port, "GET", "/tts/v1/config", "");
   const Json::Value configJson = envelope(config);
   CHECK(config.status == 200);
@@ -274,7 +263,6 @@ TEST_CASE("the argus-tts internal wire serves the legacy adapters")
   CHECK(configJson["info"]["defaultSpeed"].asDouble() > 0);
   CHECK(configJson["info"]["loaded"].asBool());
 
-  // ── POST /tts/v1/synthesize ───────────────────────────────────────────────
   const auto t0 = std::chrono::steady_clock::now();
   const auto synth = request(port, "POST", "/tts/v1/synthesize",
                              R"({"text":"Hola argus","lang":"es"})");
@@ -292,8 +280,6 @@ TEST_CASE("the argus-tts internal wire serves the legacy adapters")
   CHECK_FALSE(synth.body.empty());
   CHECK(ms < 30000);
 
-  // ── POST /tts/v1/synthesize-stream: chunked float32 PCM (the connection
-  // stays open: Drogon refuses to chunk a Connection-close response) ────────
   const auto stream = request(port, "POST", "/tts/v1/synthesize-stream",
                               R"({"text":"Hola argus","lang":"es"})", false);
   CHECK(stream.status == 200);
@@ -301,12 +287,10 @@ TEST_CASE("the argus-tts internal wire serves the legacy adapters")
             "audio/x-argus-pcm-f32") != std::string::npos);
   CHECK(stream.headers.at("transfer-encoding") == "chunked");
   CHECK(stream.headers.count("x-argus-sample-rate") == 1);
-  // request() already de-chunked the wire.
   const std::string& pcm = stream.body;
   CHECK(pcm.size() % sizeof(float) == 0);
   CHECK_FALSE(pcm.empty());
 
-  // ── Validation envelope (422) and JSON filter (400) ──────────────────────
   const auto invalid =
       request(port, "POST", "/tts/v1/synthesize", R"({"text":""})");
   const Json::Value invalidJson = envelope(invalid);
@@ -318,7 +302,6 @@ TEST_CASE("the argus-tts internal wire serves the legacy adapters")
   CHECK(badJson.status == 400);
   CHECK(envelope(badJson)["errors"]["code"] == "BAD_REQUEST");
 
-  // ── Frozen routing errors: 404 and 405 envelopes ─────────────────────────
   const auto notFound = request(port, "GET", "/tts/v1/missing", "");
   CHECK(notFound.status == 404);
   CHECK(envelope(notFound)["errors"]["code"] == "NOT_FOUND");

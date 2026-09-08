@@ -7,7 +7,7 @@
 
 struct DeviceLoginStatusDto
 {
-  std::string status; // pending | approved | expired
+  std::string status;
   std::string accessToken;
   std::string refreshToken;
   int64_t userId{0};

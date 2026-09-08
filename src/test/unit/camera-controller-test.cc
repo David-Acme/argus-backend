@@ -91,8 +91,7 @@ Json::Value body(const drogon::HttpResponsePtr& response)
   return *json;
 }
 
-// The camera schema never exposes credentials: the sync/API DTO boundary
-// carries username only.
+// The camera DTO boundary never exposes credentials.
 void checkNoCredentials(const Json::Value& info)
 {
   CHECK_FALSE(info.isMember("password"));
@@ -151,7 +150,6 @@ TEST_CASE("camera and zone contracts hold on the argus-camera surface")
   std::thread runner([] { drogon::app().run(); });
   REQUIRE(waitForBoot(std::chrono::seconds(30)));
 
-  // ── Camera CRUD envelopes ─────────────────────────────────────────────────
   CameraController cameraController;
 
   Json::Value createBody;
@@ -182,7 +180,6 @@ TEST_CASE("camera and zone contracts hold on the argus-camera surface")
   CHECK_FALSE(cam["isOnline"].asBool());
   CHECK(cam["updatedAt"].isNull());
   CHECK(cam["deletedAt"].isNull());
-  // The wire shape is frozen: every field the legacy serves, nothing more.
   CHECK(cam.getMemberNames().size() == 19);
   checkNoCredentials(cam);
 
@@ -204,7 +201,6 @@ TEST_CASE("camera and zone contracts hold on the argus-camera surface")
       drogon::sync_wait(cameraController.remove(nullptr, cameraId));
   CHECK(body(removedTwice)["status"].asInt() == 404);
 
-  // DTO validation keeps the legacy 422 envelope contract.
   Json::Value invalidBody;
   invalidBody["name"] = "No Ip";
   bool validationThrown = false;
@@ -219,7 +215,6 @@ TEST_CASE("camera and zone contracts hold on the argus-camera surface")
   }
   CHECK(validationThrown);
 
-  // ── Zone CRUD envelopes ───────────────────────────────────────────────────
   ZoneController zoneController;
 
   const auto reCam = drogon::sync_wait(cameraController.create(createReq));
@@ -269,10 +264,6 @@ TEST_CASE("camera and zone contracts hold on the argus-camera surface")
       drogon::sync_wait(zoneController.remove(nullptr, zoneId));
   CHECK(body(zoneGoneTwice)["status"].asInt() == 404);
 
-  // ── camera:subscribe decision path ────────────────────────────────────────
-  // go2rtc is deliberately not started here: the known-camera subscribe must
-  // degrade to the 503 go2rtc_not_running envelope, the unknown camera
-  // to the 404 Camera not found envelope.
   CameraMediaService mediaService;
   const auto conn = std::make_shared<RecordingConnection>();
   conn->setContext(std::make_shared<JwtContext>(

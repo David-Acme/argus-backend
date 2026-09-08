@@ -92,8 +92,6 @@ TEST_CASE("RemoteVoiceLlm serves the IVoiceLlm seam over the argus-llm wire")
 
   RemoteVoiceLlm adapter;
 
-  // The stream leg: tokens arrive in wire order and the sentinel never
-  // surfaces as a token.
   std::vector<std::string> arrived;
   bool done = false;
   adapter.chatStream(greetingRequest(),
@@ -110,12 +108,10 @@ TEST_CASE("RemoteVoiceLlm serves the IVoiceLlm seam over the argus-llm wire")
     joined += token;
   CHECK(joined.find("done") == std::string::npos);
 
-  // The chat leg: the joined text comes back in the frozen envelope.
   LlmHttpClient client("http://127.0.0.1:" + std::to_string(server.port()),
                        120000);
   CHECK(client.chat(greetingRequest()) == joined);
 
-  // The sentinel stats ride the last line when the caller asks for them.
   LlmPrefillStats stats;
   LlmStreamInput input;
   input.request = greetingRequest();
@@ -130,7 +126,6 @@ TEST_CASE("RemoteVoiceLlm serves the IVoiceLlm seam over the argus-llm wire")
   CHECK(stats.promptTokens == 7);
   CHECK(stats.decodedTokens == 7);
 
-  // Coalesced framing: tokens + sentinel in one chunk still splits cleanly.
   FakeLlmServer coalesced({.tokens = tokens, .coalesce = true});
   pointLlmAt("http://127.0.0.1:" + std::to_string(coalesced.port()));
   std::vector<std::string> coalescedArrived;
@@ -148,8 +143,6 @@ TEST_CASE("RemoteVoiceLlm serves the IVoiceLlm seam over the argus-llm wire")
     coalescedText += token;
   CHECK(coalescedText == joined);
 
-  // The cached client follows a runtime remote_url change instead of being
-  // constructed per call (F4-2 lesson).
   FakeLlmServer second({.tokens = {"Adios"}});
   pointLlmAt("http://127.0.0.1:" + std::to_string(second.port()));
   std::string secondText;
@@ -162,21 +155,18 @@ TEST_CASE("RemoteVoiceLlm serves the IVoiceLlm seam over the argus-llm wire")
   CHECK(second.requests().at("POST /llm/v1/chat-stream") == 1);
   CHECK(coalesced.requests().at("POST /llm/v1/chat-stream") == 1);
 
-  // A 503 envelope from argus-llm surfaces as an exception to the caller.
   FakeLlmServer down({.tokens = tokens, .status = 503});
   pointLlmAt("http://127.0.0.1:" + std::to_string(down.port()));
   CHECK_THROWS_AS(adapter.chatStream(greetingRequest(),
                                      [](const std::string&, bool) {}),
                   std::runtime_error);
 
-  // A stream that ends without a sentinel is a protocol error.
   FakeLlmServer truncated({.tokens = tokens, .truncated = true});
   pointLlmAt("http://127.0.0.1:" + std::to_string(truncated.port()));
   CHECK_THROWS_AS(adapter.chatStream(greetingRequest(),
                                      [](const std::string&, bool) {}),
                   std::runtime_error);
 
-  // No remote_url configured: the adapter refuses locally.
   pointLlmAt("");
   CHECK_THROWS_AS(adapter.chatStream(greetingRequest(),
                                      [](const std::string&, bool) {}),
@@ -216,8 +206,6 @@ TEST_CASE("The voice session speaks through the remote adapter")
   auto sess = VoiceSessionTestAccess::sessionOf(session, sink);
   VoiceSessionTestAccess::runTurn(session, *sess, samples);
 
-  // The transcribed text rode the STT wire and the streamed reply rode the
-  // LLM wire, sentence by sentence as the tokens arrived.
   CHECK(sttServer.requests().at("POST /stt/v1/transcribe?lang=es") == 1);
   CHECK(llmServer.requests().at("POST /llm/v1/chat-stream") == 1);
   bool sttSeen = false;
@@ -243,7 +231,6 @@ TEST_CASE("The voice session speaks through the remote adapter")
 
 TEST_CASE("An unreachable argus-llm degrades the turn, not the session")
 {
-  // A bound-then-closed port: every connect is refused on the loopback.
   int probe = ::socket(AF_INET, SOCK_STREAM, 0);
   sockaddr_in addr{};
   addr.sin_family = AF_INET;
@@ -278,13 +265,9 @@ TEST_CASE("An unreachable argus-llm degrades the turn, not the session")
   auto sess = VoiceSessionTestAccess::sessionOf(session, sink);
   VoiceSessionTestAccess::runTurn(session, *sess, samples);
 
-  // The existing error path: the turn's LLM leg fails silently (logged), no
-  // new assistant frame goes out, and the worker thread is still alive.
   CHECK(assistantFrames(sink).size() == assistantBefore);
   CHECK(sink.of(true).size() == chunksBefore);
 
-  // The cached client rebuilds on a remote_url change and the session still
-  // serves another turn afterwards.
   FakeLlmServer llmServer({.tokens = {"Recuperado", "."}});
   pointLlmAt("http://127.0.0.1:" + std::to_string(llmServer.port()));
   sess->history.clear();

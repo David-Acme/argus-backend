@@ -1,9 +1,5 @@
 #pragma once
 
-// Minimal in-process HTTP server mimicking the argus-llm internal wire for
-// unit tests: canned chat/stream responses over chunked framing, request
-// counting, one connection at a time.
-
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
@@ -21,17 +17,17 @@
 namespace
 {
 
+// Options for FakeLlmServer's canned chat/stream responses.
 struct FakeLlmOptions
 {
   std::vector<std::string> tokens;
   int status{200};
-  // Everything (tokens + sentinel) rides one single chunk.
   bool coalesce{false};
-  // Token chunks go out but the stream ends with no sentinel.
   bool truncated{false};
   int tokenDelayMs{0};
 };
 
+// Minimal in-process HTTP server standing in for the argus-llm wire in unit tests.
 class FakeLlmServer
 {
 public:
@@ -70,7 +66,6 @@ public:
       return;
     ::close(listen_);
     listen_ = -1;
-    // Unblock the accept loop with a throwaway connection.
     const int fd = ::socket(AF_INET, SOCK_STREAM, 0);
     sockaddr_in addr{};
     addr.sin_family = AF_INET;

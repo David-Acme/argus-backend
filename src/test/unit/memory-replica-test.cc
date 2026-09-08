@@ -26,9 +26,6 @@ namespace
 constexpr const char* kScratchConfig = "memory-replica-test.toml";
 constexpr const char* kScratchDir = "/tmp/f46-memory-replica";
 
-// Drogon's sqlite clients reassert SQLITE_CONFIG_MULTITHREAD: it must be
-// configured before any connection exists (Ruling BW), so pin it at static
-// init, before main runs anything.
 const int sqliteThreadMode =
     sqlite3_config(SQLITE_CONFIG_MULTITHREAD);
 
@@ -98,8 +95,6 @@ TEST_CASE("catalog replicas replay identity and camera events and rebuild "
   sqlite3* db = graph.handle();
   REQUIRE(db != nullptr);
 
-  // ── identity change upserts the person replica and rebuilds the
-  // gazetteer (Ruling BX) ──────────────────────────────────────────────
   replica.applyIdentity(eventJson(
       R"({"kind":"identity","table":"person","id":7,"deleted":false,
           "row":{"id":7,"user_id":42,"name":"Ana Garcia","alias":""}})"));
@@ -113,7 +108,6 @@ TEST_CASE("catalog replicas replay identity and camera events and rebuild "
       personHit = true;
   CHECK(personHit);
 
-  // ── an identity tombstone hides the person from the gazetteer ─────────
   replica.applyIdentity(eventJson(
       R"({"kind":"identity","table":"person","id":7,"deleted":true,
           "row":{}})"));
@@ -124,7 +118,6 @@ TEST_CASE("catalog replicas replay identity and camera events and rebuild "
   resolver.build();
   CHECK(resolver.resolve("Ana Garcia").empty());
 
-  // ── camera audit diffs replay into camera/zone/stream replicas ────────
   replica.applyCamera(eventJson(
       R"({"kind":"audit","record_id":3,"table_name":"camera",
           "changes":{"name":{"previous":"cam vieja","current":"cam nueva"}},
@@ -148,8 +141,6 @@ TEST_CASE("catalog replicas replay identity and camera events and rebuild "
           "event_timestamp":1770000000})"));
   CHECK(rowExists(db, "SELECT 1 FROM catalog_stream WHERE id = ?", 9));
 
-  // ── camera tombstone: the replica mirrors the source deleted_at
-  // predicate; zone/stream rows are removed physically ───────────────────
   replica.applyCamera(eventJson(
       R"({"kind":"audit","record_id":3,"table_name":"camera",
           "changes":{"deleted_at":{"previous":null,"current":1770000000}},
@@ -167,8 +158,6 @@ TEST_CASE("catalog replicas replay identity and camera events and rebuild "
           "event_timestamp":1770000000})"));
   CHECK(rowExists(db, "SELECT 1 FROM catalog_zone WHERE id = ?", 5) == false);
 
-  // ── sync-wildcard rows: camera_stream rides argus.*.v1.change (Ruling
-  // BX); non-stream options are ignored ─────────────────────────────────
   replica.applyStreamRow(eventJson(
       R"({"operation":4,"option":"camera_stream",
           "info":{"id":11,"label":"patio"}})"));
@@ -180,7 +169,6 @@ TEST_CASE("catalog replicas replay identity and camera events and rebuild "
   CHECK(rowExists(db, "SELECT 1 FROM catalog_camera WHERE id = ?", 12) ==
         false);
 
-  // ── a sync delete removes the stream row ──────────────────────────────
   replica.applyStreamRow(eventJson(
       R"({"operation":5,"option":"camera_stream",
           "info":{"id":11,"label":"patio"}})"));
@@ -248,11 +236,9 @@ TEST_CASE("a boot with empty replica tables takes one snapshot fill from the "
   CHECK_FALSE(resolver.resolve("Beto Ruiz").empty());
   CHECK_FALSE(resolver.resolve("cam nueva").empty());
 
-  // A populated table set is never re-seeded: the second call is a no-op.
   replica.seedFromSnapshot(identityDb.get(), cameraDb.get());
   CHECK(countRows(db, "SELECT COUNT(*) FROM catalog_person") == 2);
 
-  // Absent source clients skip their tables without touching the others.
   std::filesystem::remove(std::string(kScratchDir) + "/empty.db");
   SqliteGraph emptyGraph;
   REQUIRE(emptyGraph.open(std::string(kScratchDir) + "/empty.db"));
@@ -265,14 +251,10 @@ TEST_CASE("a boot with empty replica tables takes one snapshot fill from the "
   CHECK(countRows(emptyDb, "SELECT COUNT(*) FROM catalog_person") == 0);
   CHECK(countRows(emptyDb, "SELECT COUNT(*) FROM catalog_camera") == 1);
 
-  // A later boot with the identity source present fills ONLY the empty
-  // replica table (per-table emptiness: the seeded cameras are not re-seeded).
   emptyReplica.seedFromSnapshot(identityDb.get(), cameraDb.get());
   CHECK(countRows(emptyDb, "SELECT COUNT(*) FROM catalog_person") == 2);
   CHECK(countRows(emptyDb, "SELECT COUNT(*) FROM catalog_camera") == 1);
 
-  // The no-NATS boot path fills through the static entry (main.cc calls it
-  // when the change feed never connected).
   std::filesystem::remove(std::string(kScratchDir) + "/busless.db");
   SqliteGraph buslessGraph;
   REQUIRE(buslessGraph.open(std::string(kScratchDir) + "/busless.db"));

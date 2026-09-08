@@ -28,9 +28,7 @@ public:
   drogon::Task<bool> remove(int64_t id, int64_t actorId) const;
 
 private:
-  // The membership row goes to both sides of the share. The parent record goes
-  // to the member as well: without it the share would only show up on their
-  // device after a full resync.
+  // Emits the membership row to both sides and the parent record to the member.
   void emitMembership(SyncOperation operation, const CalendarEventShareSchema& row,
                       int64_t ownerId) const;
   drogon::Task<void> emitParent(SyncOperation operation, int64_t parentId,

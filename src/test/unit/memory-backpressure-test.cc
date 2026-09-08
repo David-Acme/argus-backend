@@ -29,9 +29,7 @@ namespace
 constexpr const char* kScratchConfig = "memory-backpressure-test.toml";
 constexpr const char* kScratchDir = "/tmp/f46-memory-backpressure";
 
-// A controllable chat substrate: busy() is the gate the idle wait polls,
-// chat() counts the jobs that actually reached the engine and can be held
-// so the worker accumulates queue depth.
+// Controllable chat substrate: jobs can be held so the worker queues up.
 class FakeChat final : public IMemoryChat
 {
 public:
@@ -41,8 +39,6 @@ public:
   {
     ++calls_;
     std::unique_lock lock(gateMutex_);
-    // Self-release so a failed assertion can never deadlock the worker
-    // join at teardown.
     gateCv_.wait_for(lock, std::chrono::seconds(5),
                      [this] { return released_; });
     return "resumen";
@@ -104,8 +100,6 @@ TEST_CASE("waitForIdle rides the chat port's busy gate (Ruling BZ)")
   service.init({});
   REQUIRE(service.isLoaded());
 
-  // waitForIdle blocks while the engine reports busy — the legacy isBusy
-  // semantics through the port — and returns as soon as it is idle.
   chat.setBusy(true);
   const auto t0 = std::chrono::steady_clock::now();
   service.waitForIdle(400);
@@ -135,8 +129,6 @@ TEST_CASE("the bounded work queue drops compactions instead of growing "
   service.init({});
   REQUIRE(service.isLoaded());
 
-  // The first compaction reaches the engine and is held there, so the
-  // queue grows behind it and the bound bites deterministically.
   service.enqueueCompaction(
       1, "user: mi hermana se llama Ana\nassistant: anotado", "es");
   const auto deadline = std::chrono::steady_clock::now() +
@@ -145,8 +137,6 @@ TEST_CASE("the bounded work queue drops compactions instead of growing "
     std::this_thread::sleep_for(std::chrono::milliseconds(10));
   REQUIRE(chat.calls() == 1);
 
-  // Four more arrive behind the held one: at queue_bound 2 the last two
-  // drop instead of growing the queue.
   for (int i = 0; i < 4; ++i) {
     service.enqueueCompaction(
         1, "user: mi hermana se llama Ana\nassistant: anotado", "es");
@@ -156,7 +146,6 @@ TEST_CASE("the bounded work queue drops compactions instead of growing "
 
   chat.release();
   CHECK(service.flushPending(10000));
-  // The held one plus the two retained behind it; the other two dropped.
   CHECK(chat.calls() == 3);
 
   service.shutdown();
@@ -166,9 +155,6 @@ TEST_CASE("the bounded work queue drops compactions instead of growing "
 TEST_CASE("the wire chat port never reports busy and never blocks the idle "
           "wait")
 {
-  // WireMemoryChat never polls the remote engine: back-pressure is the
-  // queue-depth gate, so busy() is always false and waitForIdle returns
-  // immediately even with the remote unreachable (Ruling BZ).
   WireMemoryChat wire("127.0.0.1:1", 50);
   CHECK(wire.available());
   CHECK_FALSE(wire.busy());

@@ -69,8 +69,6 @@ CalendarEventFeatureService::update(int64_t id,
                                     int64_t actorId) const
 {
   const auto existing = co_await repository_.findById(id);
-  // The role filter cannot express ownership, so it is checked here: the owner
-  // always, a member only when their share grants `edit`.
   if (!existing || !co_await canEdit(*existing, actorId))
     co_return std::nullopt;
 
@@ -107,13 +105,9 @@ drogon::Task<bool> CalendarEventFeatureService::remove(int64_t id,
                                                        int64_t actorId) const
 {
   const auto existing = co_await repository_.findById(id);
-  // Deleting is the owner's alone: an `edit` member changes the event, it does
-  // not get to make it disappear from the owner's calendar.
   if (!existing || existing->ownerId != actorId)
     co_return false;
 
-  // A soft delete leaves the share rows alone, so the member list is still
-  // there afterwards and every member receives the tombstone.
   const bool removed = co_await repository_.remove(id);
   if (removed)
     co_await emit(SyncOperation::Delete, *existing);

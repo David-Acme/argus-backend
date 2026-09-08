@@ -59,9 +59,7 @@ void seedIdentityDb(const char* path)
   }
 }
 
-// productivity.db shape, productivity-schema.sql source of truth: the five
-// write-domain tables plus the sharing indexes (the project_member unique
-// index backs the re-share path).
+// Seeds the five write-domain tables and the sharing indexes.
 void seedProductivityDb(const char* path)
 {
   std::remove(path);
@@ -151,9 +149,7 @@ struct RecordedAudit
   std::vector<int64_t> users;
 };
 
-// Captures what the feature services hand to the change funnel: the emit
-// payloads with their recipient sets, and the audit diffs that the gateway
-// turns into user_audit_log rows (Ruling Y: nothing is persisted locally).
+// Records the emits and audit diffs the feature services hand to the funnel.
 class RecordingSink final : public UserChangeSink
 {
 public:
@@ -208,8 +204,7 @@ void setActor(const drogon::HttpRequestPtr& req, int64_t sub, UserRole role)
                                JwtContext{sub, "Actor", role, true});
 }
 
-// The delete endpoints read the actor from the request attributes like the
-// filters leave it, so the controller invocations need a real request.
+// Delete endpoints read the actor from the request attributes the filters leave.
 drogon::HttpRequestPtr ownerRequest(int64_t sub = 42)
 {
   auto req = drogon::HttpRequest::newHttpRequest();
@@ -236,7 +231,6 @@ TEST_CASE("productivity contracts hold on the argus-productivity surface")
   RecordingSink sink;
   user_change::setProductivitySink(&sink);
 
-  // ── Project CRUD envelope ─────────────────────────────────────────────────
   ProjectController projectController;
 
   Json::Value projectBody;
@@ -264,7 +258,6 @@ TEST_CASE("productivity contracts hold on the argus-productivity surface")
   CHECK(project["targetAt"].isNull());
   CHECK(project["updatedAt"].isNull());
   CHECK(project["deletedAt"].isNull());
-  // The wire shape is frozen: every field the legacy serves, nothing more.
   CHECK(project.getMemberNames().size() == 11);
   REQUIRE(sink.emits.size() == 1);
   CHECK(sink.emits.front().operation
@@ -302,10 +295,6 @@ TEST_CASE("productivity contracts hold on the argus-productivity surface")
         == "Renovation 2");
   CHECK(sink.audits.front().users == std::vector<int64_t>{42});
 
-  // ── Project membership ────────────────────────────────────────────────────
-  // The owner shares with an active user whose role can read projects (Ruling
-  // AM identity validation); a self share, an inactive user and a user whose
-  // role cannot see projects all fail with the legacy envelopes.
   ProjectMemberController memberController;
 
   auto memberReq = [&](int64_t userId, const char* access) {
@@ -347,8 +336,6 @@ TEST_CASE("productivity contracts hold on the argus-productivity surface")
   CHECK(member["access"] == "view");
   CHECK(member.getMemberNames().size() == 7);
   REQUIRE(sink.emits.size() == 3);
-  // The membership row reaches owner and member, the project row reaches the
-  // member so the share shows up on their device.
   CHECK(sink.emits.at(1).option == "project_member");
   CHECK(sink.emits.at(1).users == std::vector<int64_t>{42, 7});
   CHECK(sink.emits.at(1).body["id"].asInt64() == memberId);
@@ -376,8 +363,6 @@ TEST_CASE("productivity contracts hold on the argus-productivity surface")
       drogon::sync_wait(memberController.remove(ownerRequest(), memberId));
   CHECK(body(memberGoneTwice)["status"].asInt() == 404);
   CHECK(body(memberGoneTwice)["errors"]["message"] == "Share not found");
-  // Revoking reaches owner and member; the project tombstone only reaches
-  // the member who lost access.
   REQUIRE(sink.emits.size() == 5);
   CHECK(sink.emits.at(3).operation
         == static_cast<int>(SyncOperation::Delete));
@@ -388,7 +373,6 @@ TEST_CASE("productivity contracts hold on the argus-productivity surface")
   CHECK(sink.emits.at(4).option == "project");
   CHECK(sink.emits.at(4).users == std::vector<int64_t>{7});
 
-  // ── Project tasks ─────────────────────────────────────────────────────────
   ProjectTaskController taskController;
 
   Json::Value taskBody;
@@ -438,7 +422,6 @@ TEST_CASE("productivity contracts hold on the argus-productivity surface")
   CHECK(sink.audits.back().tableName == "project_task");
   CHECK(sink.audits.back().users == std::vector<int64_t>{42});
 
-  // A task for a project that does not exist keeps the legacy envelope.
   Json::Value orphanTaskBody;
   orphanTaskBody["projectId"] = Json::Int64(999);
   orphanTaskBody["title"] = "Orphan";
@@ -450,7 +433,6 @@ TEST_CASE("productivity contracts hold on the argus-productivity surface")
   CHECK(body(orphan)["status"].asInt() == 404);
   CHECK(body(orphan)["errors"]["message"] == "Project not found");
 
-  // ── Calendar events and shares ────────────────────────────────────────────
   CalendarEventController eventController;
 
   Json::Value eventBody;
@@ -548,7 +530,6 @@ TEST_CASE("productivity contracts hold on the argus-productivity surface")
   CHECK(body(eventGoneTwice)["errors"]["message"]
         == "Calendar event not found");
 
-  // ── Project removal closes the domain ─────────────────────────────────────
   const auto projectGone =
       drogon::sync_wait(projectController.remove(ownerRequest(), projectId));
   CHECK(body(projectGone)["status"].asInt() == 200);

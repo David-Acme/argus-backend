@@ -19,8 +19,7 @@
 namespace
 {
 
-// Independent reference implementation of the cache-key hash contract
-// (FNV-1 over 64-bit little-endian words, byte tail, folded prompt).
+// Independent reference implementation of the cache-key FNV-1 hash contract.
 uint64_t referenceHash(const unsigned char* data, size_t len)
 {
   uint64_t h = 14695981039346656037ULL;
@@ -94,8 +93,6 @@ TEST_CASE("the remote vision adapter serves describeMat over the argus-vlm wire"
 
   const std::string jpeg = jpegOf(sampleImage());
 
-  // The cache key pins the FNV-1 hash contract: stable, prompt-sensitive,
-  // and equal to the independent reference implementation.
   CHECK(RemoteVisionServiceAdapter::cacheKey(jpeg, "p") ==
         RemoteVisionServiceAdapter::cacheKey(jpeg, "p"));
   CHECK(RemoteVisionServiceAdapter::cacheKey(jpeg, "p") !=
@@ -103,7 +100,6 @@ TEST_CASE("the remote vision adapter serves describeMat over the argus-vlm wire"
   CHECK(RemoteVisionServiceAdapter::cacheKey(jpeg, "p") ==
         referenceKey(jpeg, "p"));
 
-  // An adapter without remote_url never initializes.
   pointAt("");
   RemoteVisionServiceAdapter disabled;
   CHECK_FALSE(disabled.initialize());
@@ -118,8 +114,6 @@ TEST_CASE("the remote vision adapter serves describeMat over the argus-vlm wire"
   REQUIRE(adapter.initialize());
   CHECK(adapter.isLoaded());
 
-  // First describe: the Mat rides the wire as base64 JPEG with the prompt
-  // and camera_id, and the canned caption comes back.
   const std::string first = adapter.describeMat({.bgr = sampleImage(),
                                                  .prompt = "p",
                                                  .cameraId = "cam-1"});
@@ -135,15 +129,12 @@ TEST_CASE("the remote vision adapter serves describeMat over the argus-vlm wire"
   CHECK(body["camera_id"] == "cam-1");
   CHECK(server.requests().at("POST /vlm/v1/describe") == 1);
 
-  // The adapter cache is keyed over the encoded JPEG + prompt: an identical
-  // Mat hits warm state and does NOT re-call the wire.
   const std::string cached = adapter.describeMat({.bgr = sampleImage(),
                                                   .prompt = "p",
                                                   .cameraId = "cam-1"});
   CHECK(cached == first);
   CHECK(server.requests().at("POST /vlm/v1/describe") == 1);
 
-  // Empty prompt/camera_id stay OFF the wire body (optional fields).
   const std::string bare = adapter.describeMat(
       {.bgr = sampleImage(), .prompt = "", .cameraId = ""});
   CHECK(bare == "canned caption");
@@ -151,14 +142,11 @@ TEST_CASE("the remote vision adapter serves describeMat over the argus-vlm wire"
   CHECK_FALSE(server.lastBody().isMember("camera_id"));
   CHECK(server.requests().at("POST /vlm/v1/describe") == 2);
 
-  // A different prompt is a different key: a second wire call happens.
   CHECK(adapter.describeMat({.bgr = sampleImage(),
                              .prompt = "other",
                              .cameraId = "cam-1"}) == "canned caption");
   CHECK(server.requests().at("POST /vlm/v1/describe") == 3);
 
-  // The coroutine variant keeps the describeMatAsync semantics and rides
-  // the same adapter cache (no new request).
   drogon::app().setLogLevel(trantor::Logger::kWarn);
   std::thread runner([] { drogon::app().run(); });
   REQUIRE(waitForBoot(std::chrono::seconds(10)));
@@ -171,8 +159,6 @@ TEST_CASE("the remote vision adapter serves describeMat over the argus-vlm wire"
   drogon::app().quit();
   runner.join();
 
-  // A down service surfaces as an exception carrying the envelope error —
-  // the caller catches it, nothing terminates.
   FakeVlmServer downServer(503);
   pointAt("http://127.0.0.1:" + std::to_string(downServer.port()));
   RemoteVisionServiceAdapter downAdapter;
@@ -190,7 +176,6 @@ TEST_CASE("the remote vision adapter serves describeMat over the argus-vlm wire"
   CHECK(caught);
   downAdapter.shutdown();
 
-  // An unreachable endpoint is a throw too, never a crash.
   pointAt("http://127.0.0.1:1");
   RemoteVisionServiceAdapter deadAdapter;
   REQUIRE(deadAdapter.initialize());

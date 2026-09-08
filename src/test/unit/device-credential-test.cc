@@ -40,8 +40,7 @@ void setConfig()
       drogon::HttpRequest::newHttpRequest()->getPeerAddr().toIp());
 }
 
-// In-process requests have one fixed peer; the trusted X-Forwarded-For path
-// varies the source IP the filter resolves.
+// Varies the source IP the filter resolves through the trusted proxy path.
 void setSourceIp(const drogon::HttpRequestPtr& req, const std::string& ip)
 {
   req->addHeader("X-Forwarded-For", ip);
@@ -130,16 +129,12 @@ TEST_CASE("device credential fingerprints are pinned and IP-free")
 {
   setConfig();
 
-  // Issuance-side derivation: the secret hash and the credential fingerprint
-  // are stable wire inputs.
   const auto secretHash = DeviceFilter::sha256Hex(kSecret);
   CHECK(secretHash ==
         "2a8abfa8cb9906290437854193ca6bca41d4d4e26d1d454bd66a35158095e737");
   CHECK(DeviceFilter::credentialFingerprint(kUa, secretHash) ==
         "5b7ed91198d33d7982e10c5bcba905637d88022b5f2c5b85dd9f97b75fbacaaf");
 
-  // ip mode (default): the classic UA|IP fingerprint is unchanged, the
-  // credential header plays no part.
   DeviceFilter ipFilter;
   auto lan = drogon::HttpRequest::newHttpRequest();
   lan->addHeader("User-Agent", kUa);
@@ -173,8 +168,6 @@ TEST_CASE("credential identity mode issues, binds and authenticates devices")
   AuthService authService;
   const int64_t now = std::time(nullptr);
 
-  // Credential mode: the fingerprint excludes the source IP, so the same UA
-  // and credential hash identically from two IPs.
   ConfigService::setRuntimeString("device.identity_mode", "credential");
   auto first = drogon::HttpRequest::newHttpRequest();
   first->addHeader("User-Agent", kUa);
@@ -191,7 +184,6 @@ TEST_CASE("credential identity mode issues, binds and authenticates devices")
   drogon::sync_wait(deviceFilter.doFilter(second));
   CHECK(deviceCtx(second).deviceHash == deviceCtx(first).deviceHash);
 
-  // Unknown, missing and oversized credentials all degrade to an empty hash.
   auto unknown = drogon::HttpRequest::newHttpRequest();
   unknown->addHeader("User-Agent", kUa);
   unknown->addHeader("X-Argus-Device-Credential", "ff00ff00ff00ff00");
@@ -209,7 +201,6 @@ TEST_CASE("credential identity mode issues, binds and authenticates devices")
   drogon::sync_wait(deviceFilter.doFilter(oversized));
   CHECK(deviceCtx(oversized).deviceHash.empty());
 
-  // The degraded empty device hash fails jwt-filter's session device match.
   const auto seededToken = JwtService().generateAccess({{"sub", "1"}});
   auto client = DbService::client();
   client->execSqlSync(
@@ -228,8 +219,6 @@ TEST_CASE("credential identity mode issues, binds and authenticates devices")
   CHECK(mismatch->getStatusCode() == drogon::HttpStatusCode::k401Unauthorized);
   client->execSqlSync("DELETE FROM refresh_token");
 
-  // Desktop challenge flow in credential mode: approval issues the credential,
-  // the single poll delivers it and the issued session matches the header.
   const auto created = drogon::sync_wait(
       authService.createDeviceLogin({.deviceHash = "", .userAgent = kDesktopUa}));
   REQUIRE(hexShape(created.challengeId, 64));
@@ -240,7 +229,6 @@ TEST_CASE("credential identity mode issues, binds and authenticates devices")
   const auto polled =
       drogon::sync_wait(authService.pollDeviceLogin(created.challengeId));
   CHECK(polled.status == "approved");
-  // The plaintext never reaches a log or an assertion message: shape only.
   CHECK(hexShape(polled.deviceSecret, 64));
 
   auto desktop = drogon::HttpRequest::newHttpRequest();
@@ -258,14 +246,11 @@ TEST_CASE("credential identity mode issues, binds and authenticates devices")
             ->get<JwtContext>(AppConfig::JWT_CTX_KEY)
             .sub == 1);
 
-  // Single-use delivery: the credential is handed over exactly once.
   const auto replayed =
       drogon::sync_wait(authService.pollDeviceLogin(created.challengeId));
   CHECK(replayed.status == "expired");
   CHECK(replayed.deviceSecret.empty());
 
-  // ip mode (default): issuance stays off and the challenge binds the hash
-  // captured at creation time, with no device_secret key in the response.
   ConfigService::setRuntimeString("device.identity_mode", "");
   const auto ipChallenge = drogon::sync_wait(authService.createDeviceLogin(
       {.deviceHash =

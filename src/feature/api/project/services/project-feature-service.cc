@@ -61,7 +61,6 @@ ProjectFeatureService::update(int64_t id, const UpdateProjectDto& body,
                               int64_t actorId) const
 {
   const auto existing = co_await repository_.findById(id);
-  // The owner always; a member only when their membership grants `edit`.
   if (!existing || !co_await canEdit(*existing, actorId))
     co_return std::nullopt;
 
@@ -95,8 +94,6 @@ drogon::Task<bool> ProjectFeatureService::remove(int64_t id,
                                                   int64_t actorId) const
 {
   const auto existing = co_await repository_.findById(id);
-  // Deleting the project is the owner's alone; a member with `edit` works
-  // inside it but cannot remove it from the owner's list.
   if (!existing || existing->ownerId != actorId)
     co_return false;
 

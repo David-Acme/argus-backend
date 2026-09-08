@@ -26,9 +26,7 @@ public:
   drogon::Task<bool> remove(int64_t id, int64_t actorId) const;
 
 private:
-  // Writes go over REST, reads come back through /sync: every mutation pushes
-  // the row to the owner and to everyone the event is shared with, so a shared
-  // calendar updates on every device without polling.
+  // Pushes every mutation to the owner and to everyone the event is shared with.
   drogon::Task<void> emit(SyncOperation operation,
                           const CalendarEventSchema& row) const;
   /** True for the owner and for a member whose share says `edit`. */

@@ -1,9 +1,5 @@
 #pragma once
 
-// Minimal in-process HTTP server mimicking the argus-tts internal wire for
-// unit tests: canned config/synthesize/synthesize-stream responses plus
-// request counting, one connection at a time.
-
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
@@ -25,6 +21,7 @@ namespace
 constexpr const char* kConfigBody =
     R"({"status":200,"info":{"sampleRate":22050,"defaultSpeed":1.25},"errors":null})";
 
+// Minimal in-process HTTP server standing in for the argus-tts wire in unit tests.
 class FakeTtsServer
 {
 public:
@@ -63,7 +60,6 @@ public:
       return;
     ::close(listen_);
     listen_ = -1;
-    // Unblock the accept loop with a throwaway connection.
     const int fd = ::socket(AF_INET, SOCK_STREAM, 0);
     sockaddr_in addr{};
     addr.sin_family = AF_INET;
@@ -152,7 +148,6 @@ private:
                    "\r\nConnection: close\r\n\r\n" + kConfigBody;
       }
       else if (path == "/tts/v1/synthesize" && method == "POST") {
-        // 8 float32 samples of 0.25.
         std::string floats(8 * 4, '\0');
         for (size_t i = 0; i < 8; ++i) {
           const float sample = 0.25F;
@@ -164,8 +159,6 @@ private:
                    "\r\nConnection: close\r\n\r\n" + floats;
       }
       else if (path == "/tts/v1/synthesize-stream" && method == "POST") {
-        // Two chunks of 64 float32 samples of 0.25 (enough history for the
-        // voice session's resampler to emit output), then the zero chunk.
         std::string chunkData(64 * 4, '\0');
         for (size_t i = 0; i < 64; ++i) {
           const float sample = 0.25F;

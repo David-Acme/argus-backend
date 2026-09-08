@@ -40,9 +40,6 @@ drogon::Task<void> CalendarEventShareFeatureService::emitParent(SyncOperation op
   body.operation = operation;
   body.option = TableName::CalendarEvent;
   if (operation == SyncOperation::Delete) {
-    // Revoking is not a delete for anyone else, so only the member who lost
-    // access is told to drop the row. The id is all the client needs, and the
-    // record is not actually deleted, so no timestamp is invented for it.
     Json::Value tombstone;
     tombstone["id"] = parent->id;
     tombstone["deletedAt"] = static_cast<Json::Int64>(std::time(nullptr));
@@ -72,15 +69,11 @@ CalendarEventShareFeatureService::create(const CreateCalendarEventShareDto& body
   const auto target = co_await userRepository_.findById(body.userId);
   if (!target || !target->isActive)
     co_return {.error = MembershipError::UserNotFound, .row = std::nullopt};
-  // Sharing with someone whose role cannot read the table would be a silent
-  // no-op: the row would never reach their device.
   if (!role_access::hasAccess(target->role, TableName::CalendarEvent,
                               RolePermission::Read))
     co_return {.error = MembershipError::UserNotAllowed, .row = std::nullopt};
 
   const auto access = shareAccessFromString(body.access);
-  // Re-sharing with the same person changes the level instead of colliding
-  // with the unique index.
   if (const auto existing = co_await repository_.findExisting(
           body.calendarEventId, body.userId)) {
     const auto row = co_await repository_.updateAccess(existing->id, access);

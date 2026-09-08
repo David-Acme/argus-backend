@@ -20,8 +20,7 @@
 namespace
 {
 
-// The fake argus-memory wire: one frozen envelope per path, with the last
-// request recorded so the forwarding contract is asserted end to end.
+// Fake argus-memory wire with one recorded request per path.
 class FakeMemoryServer
 {
 public:
@@ -202,8 +201,6 @@ TEST_CASE("the remote adapter registers the shared descriptors and forwards "
   CHECK(adapter.health()["remote"].asString() ==
         "127.0.0.1:" + std::to_string(server.port()));
 
-  // The tool loop cannot tell the substrates apart: the registered
-  // descriptors are byte-for-byte the shared metadata.
   auto& registry = ToolRegistry::instance();
   const std::vector<tools::ToolDescriptor> shared = memoryToolDescriptors();
   for (const auto& descriptor : shared) {
@@ -219,7 +216,6 @@ TEST_CASE("the remote adapter registers the shared descriptors and forwards "
     }
   }
 
-  // ── memory.remember forwards arguments plus the derived context ────────
   const tools::ToolResult remembered =
       registry.find("memory.remember")->handler(memoryCall(
           "memory.remember",
@@ -235,25 +231,20 @@ TEST_CASE("the remote adapter registers the shared descriptors and forwards "
   CHECK(server.lastBody()["context"]["session_id"] == "sess-1");
   CHECK(server.lastBody()["subject"] == "mi hermana");
 
-  // ── memory.recall maps the info block into the ToolResult ──────────────
   const tools::ToolResult recalled = registry.find("memory.recall")->handler(
       memoryCall("memory.recall", R"({"query":"mi hermana"})"));
   CHECK(recalled.ok);
   CHECK(recalled.output == "mi hermana se llama Ana");
   CHECK(server.lastPath() == "/memory/v1/recall");
 
-  // ── memory.procedure.run is served on the wire but is not a model-facing
-  // tool: only the three shared descriptors are registered ────────────────
   CHECK(registry.find("memory.procedure.run") == nullptr);
 
-  // ── memory.forget ──────────────────────────────────────────────────────
   const tools::ToolResult forgotten = registry.find("memory.forget")->handler(
       memoryCall("memory.forget", R"({"fact_id":77})"));
   CHECK(forgotten.ok);
   CHECK(server.lastPath() == "/memory/v1/forget");
   CHECK(server.lastBody()["fact_id"].asInt64() == 77);
 
-  // ── capture: stored and deferred outcomes map onto CaptureOutcome ──────
   const CaptureResult stored = adapter.captureExplicit(
       {.userId = 9, .lang = "es", .text = "mi hermana se llama Ana"});
   CHECK(stored.outcome == CaptureOutcome::Stored);
@@ -265,14 +256,12 @@ TEST_CASE("the remote adapter registers the shared descriptors and forwards "
   CHECK(deferred.outcome == CaptureOutcome::Deferred);
   CHECK(deferred.factId == 0);
 
-  // ── compaction is enqueued and never inline ────────────────────────────
   adapter.enqueueCompaction(9, "user: hola\nassistant: hola", "es");
   CHECK(server.lastPath() == "/memory/v1/compact");
   CHECK(server.lastBody()["queued"].isNull());
   CHECK(server.lastBody()["transcript"].asString().find("hola") !=
         std::string::npos);
 
-  // ── the durable transcript rides the wire ──────────────────────────────
   CHECK(adapter.durableTranscript("user: durable", "es") == "user: durable");
   CHECK(server.lastPath() == "/memory/v1/durable-transcript");
 
@@ -290,9 +279,6 @@ TEST_CASE("with argus-memory down the registered tool handlers degrade "
   }
   ConfigService::load(kScratchConfig);
 
-  // The adapter registers against a live wire, then the wire goes away —
-  // the outage the tool loop must survive (substrate parity: the in-process
-  // handlers return ok=false, they never throw).
   std::string url;
   {
     const FakeMemoryServer server;
@@ -337,8 +323,6 @@ TEST_CASE("with argus-memory down the adapter degrades instead of crashing")
   ConfigService::load(kScratchConfig);
 
   RemoteMemoryServiceAdapter adapter;
-  // The gate only decides the substrate: an unreachable argus-memory still
-  // disables the in-process stack.
   CHECK(adapter.initialize());
   CHECK(adapter.isLoaded());
 
