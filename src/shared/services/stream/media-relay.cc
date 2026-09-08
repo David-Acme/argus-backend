@@ -182,8 +182,6 @@ drogon::HttpResponsePtr MediaRelay::stream(int64_t cameraId, MediaFormat format)
                 continue;
               break;
             }
-            // send() returns false once the client is gone, which is how a
-            // closed viewer tears the upstream down instead of leaking it.
             if (!(*shared)->send(
                     std::string(buf.data(), static_cast<size_t>(n))))
               break;

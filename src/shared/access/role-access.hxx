@@ -97,8 +97,6 @@ inline std::vector<TableName> readableTables(UserRole role)
 {
   std::vector<TableName> out;
   if (role == UserRole::Owner) {
-    // The owner reads everything except the tables no client should ever see,
-    // so the sweep runs to the end of the enum rather than to a fixed table.
     for (auto t = static_cast<uint8_t>(TableName::User);
          t <= static_cast<uint8_t>(kLastTableName); ++t) {
       const auto table = static_cast<TableName>(t);

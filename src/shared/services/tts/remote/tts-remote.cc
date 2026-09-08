@@ -106,8 +106,7 @@ int connectLoopback(const std::string& host, int port, int timeoutMs)
     return -1;
   }
 
-  // Non-blocking connect + poll: the timeout bounds the connect phase too
-  // (SO_SNDTIMEO/SO_RCVTIMEO alone never do).
+  // Non-blocking connect + poll; the timeout bounds the connect phase too.
   const int flags = ::fcntl(fd, F_GETFL, 0);
   ::fcntl(fd, F_SETFL, flags | O_NONBLOCK);
   if (::connect(fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) != 0 &&
@@ -177,8 +176,6 @@ std::string requestHead(const WireRequest& request, const Address& address)
     head += "Content-Type: application/json\r\n";
     head += "Content-Length: " + std::to_string(request.body.size()) + "\r\n";
   }
-  // The stream leg must keep the connection open: Drogon refuses to chunk
-  // a Connection-close response.
   if (request.closeConnection)
     head += "Connection: close\r\n";
   head += "\r\n";
@@ -196,8 +193,7 @@ void sendAll(int fd, const std::string& data)
   }
 }
 
-// Reads until the peer closes or the recv timeout fires; returns everything
-// received. `deadline` bounds the whole exchange, not a single recv.
+// Reads until the peer closes or the recv timeout fires; `deadline` bounds the whole exchange.
 std::string readAll(int fd, const std::chrono::steady_clock::time_point& deadline)
 {
   std::string data;
@@ -351,9 +347,6 @@ void TtsHttpClient::stream(
       std::chrono::steady_clock::now() +
       std::chrono::milliseconds(timeoutMs_);
 
-  // The connection stays open (Drogon refuses to chunk a Connection-close
-  // response), so the chunked body is de-chunked incrementally and the
-  // terminal zero chunk ends the read.
   std::string wire;
   auto recvMore = [&]() -> bool {
     if (std::chrono::steady_clock::now() >= deadline)

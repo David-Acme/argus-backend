@@ -8,6 +8,7 @@
 #include <shared/enums.hxx>
 #include <string>
 
+// Camera row schema; cloudPassword stays server-side, never sent to a client.
 struct CameraSchema
 {
   int64_t id{0};
@@ -19,7 +20,6 @@ struct CameraSchema
   std::string username;
   std::string password;
   std::string cloudUsername;
-  /** Vendor cloud password; needed by the talk channel, never sent to a client. */
   std::string cloudPassword;
   CameraDriver driver{CameraDriver::Tapo};
   std::string icon{"video"};

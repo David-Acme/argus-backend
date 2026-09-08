@@ -12,7 +12,6 @@ struct ProjectMemberSchema
   int64_t id{0};
   int64_t projectId{0};
   int64_t userId{0};
-  /** `view` or `edit`; see `ShareAccess`. */
   std::string access;
   int64_t createdAt{0};
   std::optional<int64_t> updatedAt;

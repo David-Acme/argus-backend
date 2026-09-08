@@ -42,9 +42,7 @@ struct CaptureResult
   int64_t factId = 0;
 };
 
-// deferStore: open the store from drogon's beginning advice instead of
-// init(), because app().run() logs a FATAL from
-// sqlite3_config(SQLITE_CONFIG_MULTITHREAD) if sqlite3 is already up.
+// Store setup deferral: open it from drogon's beginning advice, never before sqlite3 is initialized.
 struct MemoryInitOptions
 {
   bool deferStore = false;
@@ -75,9 +73,7 @@ public:
   int64_t resolveAddresseeEntity(const std::string& lang);
   std::string profileFor(int64_t userId, const std::string& lang);
 
-  // Drops transient user turns (questions, retractions) and the assistant
-  // answers bound to them, so a session of small talk never becomes an
-  // episode. Public because the memory probe asserts on it directly.
+  // Drops transient turns and their bound answers, so small talk never becomes an episode.
   std::string durableTranscript(const std::string& transcript,
                                 const std::string& lang) const;
 
@@ -85,13 +81,10 @@ public:
                       const std::string& lang);
   void enqueueCompaction(int64_t userId, const std::string& transcript,
                          const std::string& lang);
-  // Waits for the worker queue to drain. timeoutMs 0 = memory.flush_timeout_ms.
-  // Returns false when it gave up with work still pending.
+  // Waits for the worker queue to drain; false when it gave up with work pending.
   bool flushPending(int timeoutMs = 0);
 
-  // Blocks while the chat port reports busy (legacy isBusy semantics through
-  // the IMemoryChat gate). Ruling BZ: the only busy wait left; the queue
-  // itself is bounded by memory.queue_bound instead.
+  // Blocks while the chat port reports busy; the queue itself is bounded by memory.queue_bound.
   void waitForIdle(int waitMs);
 
   int64_t observeSystemEvent(const std::string& channel,
@@ -160,8 +153,7 @@ private:
   std::mutex queueMutex_;
   std::condition_variable queueCv_;
   std::deque<MemoryJob> queue_;
-  // Back-pressure bound (Ruling BZ): memory.queue_bound, job intake stops
-  // growing past it instead of the workers polling the chat engine.
+  // Back-pressure bound: past it, job intake stops instead of isBusy polling.
   size_t queueBound_ = 64;
   bool stop_ = false;
   bool running_ = false;

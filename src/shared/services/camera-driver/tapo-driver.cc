@@ -10,7 +10,6 @@ TapoClientConfig controlConfig(const CameraSchema& camera)
 {
   TapoClientConfig config;
   config.host = camera.ip;
-  // The row keeps the RTSP port; control speaks HTTPS on its own one.
   config.port = static_cast<int>(ConfigService::getInt("tapo.control_port"));
   config.connectTimeoutMs = static_cast<int>(ConfigService::getInt("tapo.connect_timeout_ms"));
   config.requestTimeoutMs = static_cast<int>(ConfigService::getInt("tapo.request_timeout_ms"));
@@ -21,8 +20,6 @@ TapoClientConfig controlConfig(const CameraSchema& camera)
     config.candidates.push_back({.label = "camera_account",
                                  .username = camera.username,
                                  .password = camera.password});
-  // The cloud account is the fallback the probe uses when the camera account is
-  // refused, and the only one the talk channel accepts.
   if (!camera.cloudPassword.empty())
     config.candidates.push_back(
         {.label = "cloud_admin",

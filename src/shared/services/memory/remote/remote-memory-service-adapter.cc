@@ -45,9 +45,6 @@ bool RemoteMemoryServiceAdapter::initialize()
 
   client_ = std::make_unique<MemoryHttpClient>(config_.url, config_.timeoutMs);
 
-  // Same descriptors as the in-process registration (shared metadata),
-  // wire-forwarding handlers: the tool loop cannot tell the substrates
-  // apart.
   auto& registry = ToolRegistry::instance();
   for (tools::ToolDescriptor descriptor : memoryToolDescriptors()) {
     const std::string path =
@@ -65,8 +62,6 @@ bool RemoteMemoryServiceAdapter::initialize()
         return toToolResult(name, client_->call(path, body));
       }
       catch (const std::exception& error) {
-        // The in-process substrate returns ok=false, never throws; the tool
-        // loop must not distinguish the substrates on an argus-memory outage.
         LOG_WARN << "RemoteMemoryServiceAdapter: " << name << " failed ("
                  << error.what() << ")";
         tools::ToolResult degraded;
@@ -112,8 +107,6 @@ CaptureResult RemoteMemoryServiceAdapter::captureExplicit(
     info = client_->call(kCapturePath, body);
   }
   catch (const std::exception& error) {
-    // The in-process capture degrades to Rejected on a store failure; the
-    // voice turn must survive argus-memory being down the same way.
     LOG_WARN << "RemoteMemoryServiceAdapter: capture failed (" << error.what()
              << ")";
     return result;

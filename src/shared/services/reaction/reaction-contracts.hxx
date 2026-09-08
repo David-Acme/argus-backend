@@ -3,9 +3,7 @@
 #include <cstdint>
 #include <string>
 
-// What the assistant is reacting WITH. The backend owns the meaning; the
-// client owns how it looks (see REACTION_EXPRESSION in the frontend), so
-// renaming an avatar expression never touches C++.
+// What the assistant is reacting WITH; the client owns how it looks.
 enum class ReactionKind : uint8_t
 {
   Idle = 0,
@@ -69,10 +67,7 @@ inline ReactionKind reactionKindFromString(const std::string& name)
   return ReactionKind::Idle;
 }
 
-// Every field is optional in practice: labs/voice-test fills all of them,
-// VoiceSessionService fills what it has until MemoryService reaches it.
-// recallHits < 0 means recall was never consulted, which is NOT the same as
-// consulted and empty.
+// Signals of one turn; every field optional, recallHits < 0 means never consulted.
 struct ReactionSignals
 {
   std::string text;

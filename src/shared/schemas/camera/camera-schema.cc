@@ -41,9 +41,6 @@ Json::Value CameraSchema::toJson() const
   json["cloudUsername"] = cloudUsername;
   json["driver"] = cameraDriverToString(driver);
   json["icon"] = icon;
-  // Camera credentials never cross the sync/API DTO boundary. The runtime
-  // keeps the password in the repository schema for device connections, but
-  // clients must not receive or persist it.
   json["recordMode"] = cameraRecordModeToString(recordMode);
   json["retentionDays"] =
       retentionDays ? Json::Value(Json::Int64(*retentionDays)) : Json::Value();

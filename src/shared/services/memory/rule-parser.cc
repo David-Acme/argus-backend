@@ -89,9 +89,7 @@ struct HitFilter
   bool requireNearStart = false;
 };
 
-// "…el pescado, está bien" is a tag; "…el router está bien" is the fact. Only
-// a confirmation detached by punctuation may be cut, and the punctuation goes
-// with it. npos = the phrase belongs to the sentence, leave it alone.
+// Only a confirmation detached by punctuation may be cut; npos keeps the phrase.
 size_t tagCut(const std::string& lowered, uint32_t begin)
 {
   size_t i = begin;
@@ -152,8 +150,6 @@ std::string RuleParser::stripTrailingConfirmation(std::string text,
     catalog_.match(lowered, lang, hits);
     size_t cut = std::string::npos;
     for (const auto& hit : hits) {
-      // A phrase carries a single kind, so "vale" is a Filler while "bien" is
-      // a Confirmation. Detached at the tail, both are noise.
       const bool tail = hit.kind == PhraseKind::Confirmation ||
                         hit.kind == PhraseKind::Filler;
       if (!tail || hit.end != lowered.size())
@@ -168,7 +164,6 @@ std::string RuleParser::stripTrailingConfirmation(std::string text,
       text.erase(cut);
       continue;
     }
-    // "…ok?", "…verdad?" — speech keeps the mark after the tag.
     const size_t q = text.find_last_not_of("?¿!");
     if (q == std::string::npos || q + 1 >= text.size())
       return text;
@@ -205,7 +200,6 @@ bool RuleParser::isQuestion(const RuleParseInput& input) const
       continue;
     if (!openerOk(lowered, hit.begin) || !closerOk(lowered, hit.end))
       continue;
-    // The "que" of "recuerda que" is a relative pronoun, not a question.
     if (insideTrigger(hits, hit))
       continue;
     if (wordsBefore(lowered, hit.begin) < 3)

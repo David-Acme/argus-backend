@@ -21,8 +21,6 @@ void SocketService::setEventBus(std::shared_ptr<NatsBus> bus)
 
 void SocketService::publishChange(const Json::Value& payload)
 {
-  // Additive side effect of every emit: a publish failure never fails the
-  // emit itself.
   auto bus = eventBus();
   if (!bus)
     return;

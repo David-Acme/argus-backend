@@ -19,15 +19,12 @@ struct ChatMessage
   std::string content;
 };
 
+// Inference request; maxTokens 0 and temperature < 0 keep the configured defaults.
 struct ChatRequest
 {
   std::vector<ChatMessage> messages;
-  // 0 = use the configured default (llm.max_tokens).
   int32_t maxTokens{0};
-  // < 0 = use the configured default (llm.temperature).
   float temperature{-1.0F};
-  // Forces a full KV reset. Not needed for isolation: a prompt that diverges
-  // from the cached prefix already triggers a reset automatically.
   bool resetContext{false};
 };
 

@@ -6,9 +6,7 @@
 #include <shared/dtos/socket-emit/socket-emit-dto.hxx>
 #include <shared/enums.hxx>
 
-// Input of the camera-domain audit publication: the before/after snapshots of
-// one persisted camera or zone row. The sink computes the same flat diff the
-// legacy SyncAuditService produces.
+// Before/after snapshots of one camera or zone row; the sink diffs them.
 struct CameraAuditInput
 {
   int64_t recordId{0};
@@ -18,9 +16,7 @@ struct CameraAuditInput
   std::optional<int64_t> actorId;
 };
 
-// Substrate of the camera-domain change events: the owning service installs
-// one implementation at boot, before it serves. Since F6-2 the only binder is
-// argus-camera, which funnels the payloads over NATS (Ruling Y).
+// Camera-domain change sink; argus-camera installs the NATS funnel at boot.
 class CameraChangeSink
 {
 public:

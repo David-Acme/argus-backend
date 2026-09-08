@@ -22,8 +22,7 @@ public:
   drogon::Task<std::vector<UserInvitationSchema>> findAll() const;
   drogon::Task<bool> revoke(const UserInvitationRevokeInput& input) const;
 
-  // The caller must use this conditional update in its enrollment transaction,
-  // immediately before recording the completed redemption.
+  // Conditional update; call it in the enrollment transaction before the redemption record.
   drogon::Task<bool> tryConsume(int64_t invitationId, int64_t now) const;
   drogon::Task<bool>
   recordRedemption(const InvitationRedemptionCreateInput& input) const;

@@ -9,10 +9,10 @@
 namespace
 {
 
-constexpr int kWindowSize = 512; // 32ms at 16 kHz
-constexpr int kContextSize = 64; // Silero pads the window with 64 prev samples
+constexpr int kWindowSize = 512;
+constexpr int kContextSize = 64;
 constexpr int kEffectiveWindow = kWindowSize + kContextSize;
-constexpr int kStateSize = 2 * 1 * 128; // [2, 1, 128]
+constexpr int kStateSize = 2 * 1 * 128;
 constexpr const char* kModelPath = "models/vad/silero_vad.onnx";
 
 Ort::MemoryInfo& vadMem()

@@ -3,10 +3,7 @@
 #include <json/value.h>
 #include <string>
 
-// One notification push intent: a display-only mirror of an already-persisted
-// notification row, fanned to the device through the tunnel transport (F5-5).
-// It is not a persisted change and never reaches /sync; it never carries
-// alarm/siren semantics.
+// Display-only push intent mirrored to the device through the tunnel; never a /sync event.
 struct PushIntent
 {
   int64_t userId{0};
@@ -31,8 +28,7 @@ inline Json::Value toJson(const PushIntent& intent)
   return json;
 }
 
-// Installed once at boot behind [push] enabled (default off); publication is
-// best-effort and never fails the notification emit.
+// Push-intent sink installed once at boot behind [push] enabled (default off).
 class PushIntentSink
 {
 public:

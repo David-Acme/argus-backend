@@ -14,8 +14,7 @@
 
 namespace
 {
-// Root of the on-disk TTS models (models/tts by default); argus-tts points
-// tts.models_dir at the read-only models volume (Ruling BJ).
+// Root of the on-disk TTS models (models/tts by default).
 std::string modelsDir()
 {
   const std::string dir = ConfigService::getString("tts.models_dir");
@@ -24,7 +23,6 @@ std::string modelsDir()
 
 } // namespace
 
-// --- Init / shutdown ---
 
 TtsService::TtsService() = default;
 
@@ -53,8 +51,6 @@ void TtsService::init()
     maxChunkLen_ =
         std::clamp(ConfigService::getInt("tts.max_chunk_len"), 30, 2000);
 
-    // Default quality from config: "auto" (adaptive by text length),
-    // "low", "medium" or "high". Absent/invalid => auto.
     const std::string q = ConfigService::getString("tts.quality");
     if (q == "high")
       defaultQuality_ = TtsQuality::High;
@@ -127,7 +123,6 @@ bool TtsService::isLoaded() const
   return loaded_;
 }
 
-// --- Synthesis ---
 
 std::vector<float> TtsService::synthesize(const TtsRequest& req)
 {
@@ -186,7 +181,6 @@ drogon::Task<void> TtsService::synthesizeStreamAsync(const TtsRequest& req,
   co_return;
 }
 
-// --- Voice cache ---
 
 void TtsService::loadVoice(const std::string& voiceId)
 {
@@ -195,7 +189,6 @@ void TtsService::loadVoice(const std::string& voiceId)
   voiceCache_[voiceId] = loadVoiceStyle(path);
 }
 
-// --- Getters ---
 
 int TtsService::sampleRate() const
 {
@@ -223,7 +216,6 @@ float TtsService::defaultSpeed() const
   return defaultSpeed_;
 }
 
-// --- Static utils ---
 
 void TtsService::writeWav(const std::string& path,
                           const std::vector<float>& pcm, int sampleRate)
@@ -236,7 +228,6 @@ const std::vector<std::string>& TtsService::supportedLangs()
   return supportedLangCodes();
 }
 
-// --- Private ---
 
 TtsQuality TtsService::resolveQuality(const TtsRequest& req) const
 {
@@ -250,8 +241,6 @@ TtsQuality TtsService::resolveQuality(const TtsRequest& req) const
 int TtsService::effectiveStepsCap()
 {
   int cap = HardwareProbe::ttsStepsCap();
-  // argus-tts derives its tier without the Vulkan probe (it links no ncnn),
-  // which always lands on Low; tts.steps_cap pins the legacy ceiling.
   if (const int pinned = ConfigService::getInt("tts.steps_cap"); pinned > 0)
     cap = pinned;
   return cap;

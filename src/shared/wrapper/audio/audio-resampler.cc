@@ -38,8 +38,6 @@ int16_t AudioResampler::sampleAt(double pos)
 {
   const size_t i0 = static_cast<size_t>(pos);
   const double fraction = pos - static_cast<double>(i0);
-  // Group near-identical fractions (e.g. repeated 1/3 with ulp drift) into
-  // one table; the table is the product of tap * window for all j.
   const int64_t key = static_cast<int64_t>(std::llround(fraction * 1e9));
   const std::vector<double>* weights = nullptr;
   auto it = tapCache_.find(key);

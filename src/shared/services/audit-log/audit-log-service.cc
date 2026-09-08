@@ -49,8 +49,6 @@ AuditLogService::create(const AuditLogWriteInput& input) const
   const auto prev =
       JsonDiff::fromJsonString(json_util::toString(existing->changes));
   const auto merged = JsonDiff::compareChanges(prev, input.changes);
-  // A replacement gives every compacted snapshot a strictly increasing ID.
-  // Clients can then resume by ID even when a prior change was compacted.
   const auto changes = merged.type == "DELETE" ? input.changes : merged.changes;
   co_await repository_.remove(existing->id);
   schema = co_await repository_.create(

@@ -15,7 +15,7 @@ namespace
 {
 
 constexpr const char* kLabelPrefix = "__label__";
-constexpr int kLabelPrefixLen = 9; // strlen("__label__")
+constexpr int kLabelPrefixLen = 9;
 
 ToolIntent labelToIntent(const std::string& label)
 {

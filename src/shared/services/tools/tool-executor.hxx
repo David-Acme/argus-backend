@@ -4,8 +4,7 @@
 #include <shared/services/tools/tool-registry.hxx>
 #include <string>
 
-// resolve -> validate -> role_access::hasAccess -> handler (AGENTS.md §7:
-// the central role check is the single source of truth).
+// Tool call pipeline: resolve -> validate -> role_access::hasAccess -> handler.
 class ToolExecutor
 {
 public:

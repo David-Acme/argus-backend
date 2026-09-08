@@ -99,8 +99,6 @@ bool Go2rtcManager::isSafeUrl(const std::string& url)
     hostEnd = url.size();
   const std::string host = url.substr(hostStart, hostEnd - hostStart);
 
-  // RTSP and the Tapo protocols are unauthenticated on the wire; a public host
-  // here would leak camera credentials outside the LAN.
   return isPrivateHost(host);
 }
 
@@ -138,7 +136,6 @@ bool Go2rtcManager::writeConfig()
   }
   out.close();
 
-  // The file embeds camera credentials.
   ::chmod(configPath_.c_str(), S_IRUSR | S_IWUSR);
   return true;
 }
@@ -165,8 +162,6 @@ bool Go2rtcManager::spawn()
       ::dup2(logFd, STDERR_FILENO);
       ::close(logFd);
     }
-    // Credentials live in the config file, never in argv: /proc/<pid>/cmdline
-    // is world-readable.
     const char* argv[] = {binPath_.c_str(), "-config", configPath_.c_str(),
                           nullptr};
     ::execv(binPath_.c_str(), const_cast<char* const*>(argv));

@@ -69,8 +69,6 @@ std::string toSecondPerson(const std::string& text, bool es)
         const std::string_view from(table[k].from);
         if (text.compare(i, from.size(), from) != 0)
           continue;
-        // Bare entries ("me", "mi", "I") need a word end, or "mira"/"meme"
-        // would shift too.
         if (from.back() != ' ' && !rightBoundary(i + from.size()))
           continue;
         out += table[k].to;
@@ -274,9 +272,7 @@ void GraphRecall::collectSemantic(const GraphRecallInput& input,
   const float strictSim = cfg.strictSim;
   const int maxFacts = cfg.maxFacts;
 
-  // Small stores have no reliable background: with 1 distinct fact the
-  // absolute strict floor decides, with 2 a slightly relaxed one (the
-  // leave-one-out mean would otherwise drop both related facts).
+  // Small stores have no reliable background: the absolute strict floor decides.
   const bool strictGate = distinctFacts < 3;
   const float strictFloor = distinctFacts <= 1 ? strictSim : cfg.smallStoreSim;
 

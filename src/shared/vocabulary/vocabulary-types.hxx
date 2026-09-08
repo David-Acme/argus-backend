@@ -3,9 +3,7 @@
 #include <shared/enums.hxx>
 #include <string_view>
 
-// Static per-language vocabulary entries for the memory rule engine
-// (src/shared/vocabulary/). Single source of truth: adding an entry means
-// editing the language header, never a DB table.
+// Static per-language vocabulary entries for the memory rule engine.
 struct PhraseSeed
 {
   PhraseKind kind;

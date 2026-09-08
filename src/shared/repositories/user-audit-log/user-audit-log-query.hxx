@@ -79,10 +79,7 @@ struct UserAuditLogWriteInput
   TableName tableName{TableName::User};
   ChangesDiff changes;
   AuditLogPriority priority{AuditLogPriority::Medium};
-  // Production time of the change. Absent means the write happens now, so
-  // the day merge window and the row's event_timestamp both derive from the
-  // inserting clock; a remote producer (argus-productivity, argus-notification)
-  // carries its own stamp so the row keeps the time the change happened.
+  // Production time of the change; absent means the inserting clock stamps it.
   std::optional<int64_t> eventTimestamp;
 };
 

@@ -18,9 +18,9 @@ struct llama_sampler;
 
 enum class ExtractPromptFormat
 {
-  V15, // NuExtract 1.5 family: <|input|> / <|output|> markers
-  V2,  // NuExtract 2.0 family: ChatML with a "# Template:" header
-  Lfm, // LFM2 Extract family: ChatML, schema and rules in the system turn
+  V15,
+  V2,
+  Lfm,
 };
 
 ExtractPromptFormat extractPromptFormatFromString(const std::string& raw);

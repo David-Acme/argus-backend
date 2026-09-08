@@ -25,14 +25,7 @@ struct MediaRelayStats
   int rejected{0};
 };
 
-// Relays already-encoded media from the internal go2rtc instance to the client
-// over the backend's own HTTPS port. Nothing is decoded or re-encoded: bytes
-// move from a loopback socket to a chunked response, so the cost is a memcpy
-// per fragment rather than a codec.
-//
-// Going through the backend instead of handing the client a direct WebRTC peer
-// is what makes remote access work: a tunnel only proxies this one port, and a
-// peer-to-peer media path would need TURN and extra ports to survive it.
+// Relays already-encoded media from go2rtc over the backend's own HTTPS port, no re-encoding.
 class MediaRelay
 {
 public:
@@ -50,9 +43,7 @@ public:
   drogon::HttpResponsePtr stream(int64_t cameraId, MediaFormat format);
   drogon::HttpResponsePtr snapshot(int64_t cameraId);
 
-  // Raw JPEG bytes of the last frame go2rtc has for the camera. Empty when
-  // go2rtc is not running or the frame cannot be fetched. No camera session
-  // is opened: go2rtc already holds the connection.
+  // Raw JPEG bytes of the last frame go2rtc has for the camera; no new session opened.
   std::string snapshotBytes(int64_t cameraId);
 
   MediaRelayStats stats();

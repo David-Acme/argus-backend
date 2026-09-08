@@ -3,10 +3,7 @@
 #include <cstdint>
 #include <string>
 
-// Cutover plumbing for the vision engine (Ruling BQ): the legacy boots its
-// in-process VisionService until vision.remote_url is configured; from then
-// on describeMat is an HTTP call to argus-vlm (:7031) and the model is never
-// loaded in the legacy process.
+// Vision cutover plumbing: describe goes over the argus-vlm wire once vision.remote_url is set.
 struct VlmRemoteConfig
 {
   std::string url;
@@ -14,13 +11,11 @@ struct VlmRemoteConfig
 
   bool enabled() const { return !url.empty(); }
 
-  // Reads vision.remote_url / vision.remote_timeout_ms from the loaded
-  // config.
+  // Reads vision.remote_url / vision.remote_timeout_ms from the loaded config.
   static VlmRemoteConfig resolve();
 };
 
-// One internal-wire exchange: JSON body + its MIME (the describe wire is
-// JSON in and JSON out, unlike the binary TTS/STT wires).
+// One internal-wire exchange: JSON body + its MIME.
 struct VlmWireRequest
 {
   std::string path;
@@ -28,27 +23,21 @@ struct VlmWireRequest
   std::string contentType;
 };
 
-// Parameter struct for one describe call (AGENTS rule 2).
+// One describe call; empty prompt/camera_id stay off the wire body.
 struct VlmDescribeInput
 {
   std::string imageJpegB64;
-  // Empty prompt/camera_id stay off the wire body (optional fields).
   std::string prompt;
   std::string cameraId;
 };
 
-// HTTP client for the argus-vlm internal wire (Ruling BP): the describe
-// endpoint (base64 JPEG + optional prompt/camera_id in, frozen-envelope JSON
-// out). The caller encodes the cv::Mat to JPEG first — the in-process API
-// takes a Mat, the wire takes encoded bytes. Throws std::runtime_error
-// carrying the frozen envelope error on failure.
+// HTTP client for the argus-vlm internal wire; throws std::runtime_error with the frozen envelope error.
 class VlmHttpClient
 {
 public:
   VlmHttpClient(std::string baseUrl, int timeoutMs);
 
-  // Base64 JPEG in, caption text out. prompt/camera_id ride the body only
-  // when non-empty (the wire contract marks them optional).
+  // Base64 JPEG in, caption text out.
   std::string describe(const VlmDescribeInput& input) const;
 
 private:

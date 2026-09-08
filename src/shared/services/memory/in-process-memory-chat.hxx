@@ -4,9 +4,7 @@
 #include <shared/services/memory/memory-chat.hxx>
 #include <string>
 
-// Legacy substrate: the in-process engine, exactly the pre-cutover calls.
-// Kept out of memory-chat.hxx so the extracted argus-memory binary never
-// links the in-process engine wrapper.
+// Legacy substrate: the in-process engine; argus-memory never links it.
 class InProcessMemoryChat final : public IMemoryChat
 {
 public:

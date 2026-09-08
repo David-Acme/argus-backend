@@ -4,9 +4,7 @@
 #include <cstdint>
 #include <string>
 
-// FNV-1 over raw bytes: the caption-cache key basis shared by the in-process
-// VisionService (scaled pixels + prompt) and the remote adapter (encoded
-// JPEG + prompt).
+// FNV-1 over raw bytes: the shared caption-cache key basis.
 inline uint64_t visionHashBytes(const unsigned char* data, size_t len)
 {
   uint64_t h = 14695981039346656037ULL;

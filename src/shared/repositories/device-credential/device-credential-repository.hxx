@@ -14,10 +14,7 @@ public:
   DeviceCredentialRepository() = default;
   ~DeviceCredentialRepository() = default;
 
-  // Credential rows live in the identity database: writes go to the default
-  // client (identity.db on the gateway, argus.db on the monolith) and the
-  // filter-side lookups resolve through the same client the JwtFilter's
-  // session reads use.
+  // Identity-database rows: writes use the default client, lookups the JwtFilter's client.
   drogon::Task<DeviceCredentialSchema>
   create(const DeviceCredentialCreateInput& input) const;
 

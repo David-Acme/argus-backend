@@ -42,13 +42,11 @@ public:
 
   std::vector<IntentHit> match(const std::string& text) const;
 
-  // Pure functions over a hit list: no model state, so they stay free
-  // functions and every caller (labs included) uses the same ones.
+  // Pure functions over a hit list; every caller uses the same ones.
   static std::string normalize(const std::string& text);
   static bool isMatchable(const std::string& text);
   static float score(const std::vector<IntentHit>& hits, ToolIntent intent);
-  // Winning class + threshold + intent.margin over the runner-up: an OVA
-  // model scores memory_save 0.95 with none at 0.98 quite happily.
+  // Winning class over the runner-up by threshold + intent.margin.
   static bool fired(const std::vector<IntentHit>& hits, ToolIntent intent);
   static float margin(const std::vector<IntentHit>& hits);
 

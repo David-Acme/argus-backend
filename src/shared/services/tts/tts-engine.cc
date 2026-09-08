@@ -85,7 +85,6 @@ TtsEngine::Result TtsEngine::infer(const std::vector<std::string>& textList,
         "Number of texts must match number of style vectors");
   }
 
-  // --- Process text ---
   std::vector<std::vector<int64_t>> textIds;
   std::vector<std::vector<std::vector<float>>> textMask;
   processor_->process(textList, langList, textIds, textMask);
@@ -96,7 +95,6 @@ TtsEngine::Result TtsEngine::infer(const std::vector<std::string>& textList,
                                         static_cast<int64_t>(
                                             textMask[0][0].size())};
 
-  // --- Build tensors once ---
   Ort::Value textIdsTensor =
       intArrayToTensor(memoryInfo_, textIds, textIdsShape, tensorInts_);
   Ort::Value textMaskTensor =
@@ -117,7 +115,6 @@ TtsEngine::Result TtsEngine::infer(const std::vector<std::string>& textList,
                                       style.dpShape().data(),
                                       style.dpShape().size());
 
-  // --- Duration predictor ---
   const char* dpInputNames[] = {"text_ids", "style_dp", "text_mask"};
   const char* dpOutputNames[] = {"duration"};
   std::vector<Ort::Value> dpInputs;
@@ -136,7 +133,6 @@ TtsEngine::Result TtsEngine::infer(const std::vector<std::string>& textList,
     dur /= speed;
   }
 
-  // --- Rebuild tensors for text encoder (previous ones were moved) ---
   Ort::Value textIdsTensor2 =
       intArrayToTensor(memoryInfo_, textIds, textIdsShape, tensorInts_);
   Ort::Value textMaskTensor2 =
@@ -150,7 +146,6 @@ TtsEngine::Result TtsEngine::infer(const std::vector<std::string>& textList,
                                       style.ttlShape().data(),
                                       style.ttlShape().size());
 
-  // --- Text encoder ---
   const char* textEncInputNames[] = {"text_ids", "style_ttl", "text_mask"};
   const char* textEncOutputNames[] = {"text_emb"};
   std::vector<Ort::Value> textEncInputs;
@@ -164,7 +159,6 @@ TtsEngine::Result TtsEngine::infer(const std::vector<std::string>& textList,
                     textEncInputs.data(), textEncInputs.size(),
                     textEncOutputNames, 1);
 
-  // --- Sample noisy latent (flat array for efficiency) ---
   std::vector<std::vector<std::vector<float>>> latentMaskData;
   std::vector<std::vector<std::vector<float>>> xt3d;
   sampleNoisyLatent(duration, xt3d, latentMaskData);
@@ -203,17 +197,14 @@ TtsEngine::Result TtsEngine::infer(const std::vector<std::string>& textList,
   }
   latentMaskData.clear();
 
-  // --- Cache text_emb for reuse across iterations ---
   auto textEmbInfo = textEncOutputs[0].GetTensorTypeAndShapeInfo();
   size_t textEmbSize = textEmbInfo.GetElementCount();
   auto* textEmbDataPtr = textEncOutputs[0].GetTensorMutableData<float>();
   std::vector<float> textEmbVec(textEmbDataPtr, textEmbDataPtr + textEmbSize);
   auto textEmbShape = textEmbInfo.GetShape();
 
-  // --- Prepare scalar tensors ---
   std::vector<float> totalStepVec(bsz, static_cast<float>(totalStep));
 
-  // --- Iterative denoising ---
   for (int step = 0; step < totalStep; step++) {
     std::vector<float> currentStepVec(bsz, static_cast<float>(step));
 
@@ -278,7 +269,6 @@ TtsEngine::Result TtsEngine::infer(const std::vector<std::string>& textList,
       xtFlat[i] = denoisedData[i];
   }
 
-  // --- Vocoder ---
   Ort::Value latentTensor =
       Ort::Value::CreateTensor<float>(memoryInfo_, xtFlat.data(), xtFlat.size(),
                                       latentShape.data(), latentShape.size());
@@ -355,11 +345,6 @@ TtsEngine::Result TtsEngine::synthesize(const std::string& text,
   int maxLen = (lang == "ko" || lang == "ja") ? 120 : 300;
   auto textList = chunkText(text, maxLen);
 
-  // Every chunk the model returns is padded with ~300-500 ms of silence at
-  // both ends. Concatenating raw chunks stacks one chunk's tail onto the next
-  // chunk's head, which measured 565 ms at the boundary and reads to the ear
-  // as "the assistant finished talking". Each chunk is trimmed to a small
-  // controlled margin and joined with joinSilenceMs_ instead.
   const float threshold = 1e-3f;
   const size_t keepEdge =
       static_cast<size_t>(0.001f * edgeSilenceMs_ * sampleRate_);

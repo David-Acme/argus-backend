@@ -53,17 +53,14 @@ public:
 
   static const std::vector<std::string>& supportedLangs();
 
-  // Denoising-steps ceiling: tier-derived, overridable with tts.steps_cap so
-  // an extracted deployment (no Vulkan probe) can pin the legacy cap.
+  // Denoising-steps ceiling; tts.steps_cap pins it for extracted deployments.
   static int effectiveStepsCap();
 
 private:
   static int resolveSteps(TtsQuality quality);
   const Style& resolveVoice(const std::string& voiceId);
   static TtsQuality autoQuality(const std::string& text);
-  // Resolves the effective quality: an explicit request quality wins; an
-  // "Auto" request falls back to the configured default (tts.quality), which
-  // in turn falls back to the adaptive autoQuality() by text length.
+  // Effective quality: request wins, then tts.quality, then autoQuality() by text length.
   TtsQuality resolveQuality(const TtsRequest& req) const;
 
   std::unique_ptr<TtsEngine> engine_;

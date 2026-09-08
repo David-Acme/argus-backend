@@ -35,8 +35,6 @@ private:
   std::vector<int16_t> history_;
   std::vector<double> window_;
 
-  // Sinc-tap tables keyed by the (rounded) fractional position. A resampler
-  // visits only a handful of fractions (e.g. 16k->48k: 0, 1/3, 2/3), so the
-  // 65 sin/cos per output sample collapse to ~3 tables computed once.
+  // Sinc-tap tables keyed by the rounded fractional position, computed once.
   mutable std::unordered_map<int64_t, std::vector<double>> tapCache_;
 };

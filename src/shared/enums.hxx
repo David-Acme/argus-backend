@@ -38,8 +38,7 @@ inline UserRole userRoleFromString(const std::string& s)
   return UserRole::Guest;
 }
 
-// Private objects are never part of the sync stream. The category allows the
-// storage layer to apply a dedicated retention and access policy per object.
+// Private objects stay out of the sync stream; the category drives retention and access policy.
 enum class StoredFileCategory : uint8_t
 {
   Portrait = 0,
@@ -413,10 +412,7 @@ enum class TableName : uint8_t
   Memory
 };
 
-/**
- * Last value of `TableName`. Role sets that sweep the enum use it, so adding a
- * table cannot silently fall outside a role's reach.
- */
+// Last TableName value; role sets sweeping the enum cannot miss a new table.
 inline constexpr TableName kLastTableName = TableName::Memory;
 
 inline std::string tableNameToString(TableName t)
@@ -508,8 +504,7 @@ inline TableName tableNameFromString(const std::string& s)
   return it->second;
 }
 
-// Which integration drives a camera. The row carries it so the control layer
-// picks a driver instead of assuming a brand.
+// Which integration drives a camera; the control layer picks a driver from it.
 enum class CameraDriver : uint8_t
 {
   Tapo = 0,
@@ -539,8 +534,7 @@ inline CameraDriver cameraDriverFromString(const std::string& s)
   return CameraDriver::Tapo;
 }
 
-// What a member may do with a record shared with them. `View` is the default
-// because widening access has to be a deliberate act by the owner.
+// What a member may do with a record shared with them; `View` is the default.
 enum class ShareAccess : uint8_t
 {
   View = 0,
@@ -557,9 +551,7 @@ inline ShareAccess shareAccessFromString(const std::string& s)
   return s == "edit" ? ShareAccess::Edit : ShareAccess::View;
 }
 
-// Why a share could not be granted. The controller turns each case into its
-// own status, so the client can tell "no such project" from "that user cannot
-// see projects at all".
+// Why a share could not be granted; the controller maps each case to its own status.
 enum class MembershipError : uint8_t
 {
   None = 0,
@@ -569,12 +561,10 @@ enum class MembershipError : uint8_t
   SelfShare
 };
 
-// Voice interaction languages. This is the canonical set the system can
-// speak in; extend the map when a new language is supported end to end
-// (STT + TTS + prompts). The DB stores the string code, never the enum.
+// Canonical voice interaction languages (STT + TTS + prompts); the DB stores the string code.
 enum class VoiceLang : uint8_t
 {
-  System = 0, // resolve from config `stt.language`
+  System = 0,
   Es,
   En
 };

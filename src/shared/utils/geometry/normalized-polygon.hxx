@@ -7,10 +7,7 @@
 namespace geometry
 {
 
-// Zone polygons travel as normalized [0..1] coordinates so the same zone maps
-// onto any resolution the camera or the client happens to render at. The
-// canonical form is a compact JSON array, which is what the `zone.points`
-// column stores.
+// Zone polygons travel as normalized [0..1] coordinates, stored as the zone.points JSON array.
 inline constexpr int kMinPolygonPoints = 3;
 inline constexpr int kMaxPolygonPoints = 64;
 
@@ -43,8 +40,6 @@ serializeNormalizedPolygon(const Json::Value& points)
 
   Json::StreamWriterBuilder builder;
   builder["indentation"] = "";
-  // Six decimals is sub-pixel even on a 4K frame, and it keeps the stored
-  // string short instead of spelling out the full double (0.10000000000000001).
   builder["precision"] = 6;
   builder["precisionType"] = "decimal";
   return Json::writeString(builder, out);

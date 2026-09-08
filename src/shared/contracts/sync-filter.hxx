@@ -12,11 +12,7 @@ struct SyncFilter
   std::optional<int64_t> startTime;
   std::optional<int64_t> startId;
   std::optional<int64_t> endTime;
-  /**
-   * Set for the tables that belong to a user. Their queries close with the
-   * ownership predicate, so the id is appended after the range arguments
-   * `buildSyncQuery` produces (see `sync_query::withUser`).
-   */
+  // Set for user-scoped tables; the ownership predicate appends it after the range args.
   std::optional<int64_t> userId;
 };
 
@@ -61,16 +57,11 @@ inline SyncQueryParts buildSyncQuery(const SyncFilter& filter,
   return {std::string(queryAll), {}};
 }
 
-/**
- * Appends the user argument once per `?` the ownership predicate spends. Kept
- * here so every user-scoped repository binds it the same way.
- */
+// Appends the user argument once per `?` the ownership predicate spends.
 inline SyncQueryParts withUser(SyncQueryParts parts,
                                const std::optional<int64_t>& userId,
                                int placeholders)
 {
-  // Fails closed: without a user the predicate binds 0, which no row can own,
-  // so a caller that forgets the scope gets nothing rather than everything.
   const std::string value = std::to_string(userId.value_or(0));
   for (int i = 0; i < placeholders; ++i)
     parts.args.push_back(value);

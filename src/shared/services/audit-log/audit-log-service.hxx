@@ -12,10 +12,7 @@ class AuditLogService
 public:
   AuditLogService() = default;
 
-  // Persists the change: inserts a row or merges it into the record's
-  // same-day row (replacement with a strictly increasing id). No room emit,
-  // so a substrate that fans out over its own channel — the camera domain
-  // funnels from argus-camera (F2-2) — controls the event itself.
+  // Persists the change: inserts a row or merges it into the record's same-day row (strictly increasing id).
   drogon::Task<AuditLogSchema> create(const AuditLogWriteInput& input) const;
 
   drogon::Task<AuditLogSchema>

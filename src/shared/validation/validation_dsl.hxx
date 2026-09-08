@@ -8,7 +8,6 @@
   using __D = DtoType;                                                         \
   auto& __d = (objRef);
 
-// ---- Presence ----
 
 #define IS_NOT_EMPTY(field)                                                    \
   __v.template add<IsNotEmptyRule<__D>>(                                       \
@@ -24,7 +23,6 @@
                                    return d.field;                             \
                                  }});
 
-// ---- Character type ----
 
 #define IS_ALPHA(field)                                                        \
   __v.template add<IsAlphaRule<__D>>(                                          \
@@ -44,7 +42,6 @@
                            return d.field;                                     \
                          }});
 
-// ---- Format ----
 
 #define IS_EMAIL(field)                                                        \
   __v.template add<IsEmailRule<__D>>(                                          \
@@ -90,7 +87,6 @@
                          }},                                                   \
       pattern, message);
 
-// ---- Inclusion ----
 
 #define IS_IN(field, ...)                                                      \
   __v.template add<IsInRule<__D>>(                                             \
@@ -100,7 +96,6 @@
                          }},                                                   \
       std::initializer_list<std::string>{__VA_ARGS__});
 
-// ---- Length ----
 
 #define MIN_LENGTH(field, n)                                                   \
   __v.template add<MinLengthRule<__D>>(                                        \
@@ -136,7 +131,6 @@
                                  }},                                           \
       n);
 
-// ---- Numeric ----
 
 #define IS_POSITIVE(field)                                                     \
   __v.template add<IsPositiveRule<__D>>(                                       \
@@ -172,7 +166,6 @@
                                                            }},                 \
                                      min, max);
 
-// ---- Cross-field ----
 
 #define EQUALS_FIELD(field1, field2)                                           \
   __v.template add<EqualsFieldRule<__D>>(                                      \
@@ -186,7 +179,6 @@
                          }},                                                   \
       std::string{#field2});
 
-// ---- Array ----
 
 #define ARRAY_NOT_EMPTY(field, ElementType)                                    \
   __v.template add<ArrayNotEmptyRule<__D, ElementType>>(                       \
@@ -213,7 +205,6 @@
           }},                                                                  \
       n);
 
-// ---- Timestamp ----
 
 #define IS_VALID_TIMESTAMP(field)                                              \
   __v.template add<IsValidTimestampRule<__D>>(                                 \
@@ -233,17 +224,14 @@
             return d.field;                                                    \
           }});
 
-// ---- Boolean ----
 
 #define IS_BOOLEAN(field)                                                      \
   __v.template add<IsBooleanRule<__D>>(                                        \
       BoolFieldAccessor<__D>{#field, [](const __D& d) -> bool { return d.field; }});
 
-// ---- Custom ----
 
 #define CUSTOM_LAMBDA(field, fn)                                               \
   __v.template add<LambdaRule<__D>>(std::string{#field}, fn);
 
-// ----
 
 #define END_VALIDATION() __v.validateOrThrow(__d);
