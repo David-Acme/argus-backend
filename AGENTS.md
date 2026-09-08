@@ -570,6 +570,34 @@ Folder architecture, naming and ordering mirror the legacy monolith
 `tools/`). Do not implement structure for its own sake: no abstraction, layer
 or directory that has no current consumer.
 
+### 25. Build ergonomics: the folder IS the module
+
+Build import is by module name, never by listing files in consumers.
+Every shared feature/repo/SDK piece lives in its OWN folder and is declared
+ONCE, in its home, through the project helpers:
+
+```cmake
+# src/shared/vad/CMakeLists.txt — the module declares its sources + deps
+argus_module(NAME vad
+  SOURCES vad-service.cc
+  DEPENDS onnxruntime)
+
+# SDK modules wrap generated gRPC stubs — consumers never see protobuf
+argus_sdk_module(NAME identity PROTO identity.proto)
+```
+
+- Parents auto-discover modules (a loop over subdirectories) — adding a
+  module = creating a folder; adding a file = dropping it in its module.
+  NO ONE edits another module's CMakeLists and NO consumer lists `.cc`
+  files.
+- Consumers link by name: `target_link_libraries(argus-voice PRIVATE
+  argus::vad argus::sdk-identity)`. Include paths travel with the target.
+- Services bootstrap through a `argus_service()` helper (presets,
+  EXCLUDE_FROM_ALL, ports) instead of copy-pasted CMake blocks.
+- Explicit source lists stay ONLY inside the module's own CMakeLists.
+  `file(GLOB)` for sources is forbidden (fragile); auto-discovery of
+  module folders (GLOB over `*/CMakeLists.txt`) is the only allowed glob.
+
 ## Build Commands
 
 `ARGUS_BUILD_LABS` defaults OFF: the `labs/` probes and benches are a

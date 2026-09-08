@@ -1,5 +1,7 @@
 #include "identity-config.hxx"
 
+#include <cstdint>
+
 #include <shared/services/config-service/config-service.hxx>
 
 IdentityDbConfig IdentityConfig::resolveDb()
@@ -11,5 +13,16 @@ IdentityDbConfig IdentityConfig::resolveDb()
   config.schemaPath = ConfigService::getString("identity.schema");
   if (config.schemaPath.empty())
     config.schemaPath = "database/identity-schema.sql";
+  return config;
+}
+
+IdentityRpcConfig IdentityRpcConfig::resolve()
+{
+  IdentityRpcConfig config;
+  config.host = ConfigService::getString("identity.rpc_host");
+  if (config.host.empty())
+    config.host = "127.0.0.1";
+  const int port = ConfigService::getInt("identity.rpc_port");
+  config.port = port > 0 ? static_cast<uint16_t>(port) : 7040;
   return config;
 }

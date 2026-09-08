@@ -128,76 +128,59 @@ if(DOCTEST_INCLUDE_DIRS)
         INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${DOCTEST_INCLUDE_DIRS}")
 endif()
 
-# The voice-session seam suite rides the legacy AI stack (argus_sync_media).
-if(TARGET argus_sync_media)
-    set(VOICE_ENGINE_SOURCES
-        ${SRC_ROOT}/shared/services/vad/vad-service.cc
-        ${SRC_ROOT}/shared/services/noise/noise-suppression-service.cc
-        ${SRC_ROOT}/shared/services/reaction/reaction-engine.cc
-        ${SRC_ROOT}/shared/services/memory/phrase-catalog.cc
-        ${SRC_ROOT}/shared/services/memory/rule-parser.cc
-        ${SRC_ROOT}/shared/utils/text-match/phrase-automaton.cc
-        ${SRC_ROOT}/shared/wrapper/audio/audio-resampler.cc
-        ${SRC_ROOT}/shared/services/stt/stt-service.cc
-        ${SRC_ROOT}/shared/services/stt/remote/stt-remote.cc
-        ${SRC_ROOT}/shared/services/llm/llm-service.cc
-        ${SRC_ROOT}/shared/services/llm/remote/llm-remote.cc
-        ${SRC_ROOT}/shared/services/tts/tts-service.cc
-        ${SRC_ROOT}/shared/services/tts/tts-engine.cc
-        ${SRC_ROOT}/shared/services/tts/onnx-utils.cc
-        ${SRC_ROOT}/shared/services/tts/style.cc
-        ${SRC_ROOT}/shared/services/tts/unicode-processor.cc
-        ${SRC_ROOT}/shared/services/tts/remote/tts-remote.cc
-    )
+# The voice suites ride argus-voice's voice-core (F6-3): the typed gRPC
+# session, the remote-only engine seam and the SDK stubs compile there.
+add_executable(voice-session-seam-test voice-session-seam-test.cc)
 
-    add_executable(voice-session-seam-test voice-session-seam-test.cc
-        ${VOICE_ENGINE_SOURCES})
+target_link_libraries(voice-session-seam-test PRIVATE argus::voice-core
+    doctest::doctest)
 
-    target_link_libraries(voice-session-seam-test PRIVATE argus_sync_media
-        doctest::doctest)
+target_compile_options(voice-session-seam-test PRIVATE -Wall -Wextra)
 
-    target_compile_options(voice-session-seam-test PRIVATE -Wall -Wextra)
+argus_runtime_rpath(voice-session-seam-test)
 
-    add_test(NAME voice-session-seam-test COMMAND voice-session-seam-test)
+add_test(NAME voice-session-seam-test COMMAND voice-session-seam-test)
 
-    # The TTS cutover suite: the voice session speaks through the argus-tts
-    # internal wire (RemoteVoiceTts) against the in-process fake server.
-    add_executable(voice-tts-remote-test voice-tts-remote-test.cc
-        ${VOICE_ENGINE_SOURCES})
+# The TTS cutover suite: the voice session speaks through the argus-tts
+# internal wire (RemoteVoiceTts) against the in-process fake server.
+add_executable(voice-tts-remote-test voice-tts-remote-test.cc)
 
-    target_link_libraries(voice-tts-remote-test PRIVATE argus_sync_media
-        doctest::doctest)
+target_link_libraries(voice-tts-remote-test PRIVATE argus::voice-core
+    doctest::doctest)
 
-    target_compile_options(voice-tts-remote-test PRIVATE -Wall -Wextra)
+target_compile_options(voice-tts-remote-test PRIVATE -Wall -Wextra)
 
-    add_test(NAME voice-tts-remote-test COMMAND voice-tts-remote-test)
+argus_runtime_rpath(voice-tts-remote-test)
 
-    # The STT cutover suite: the voice session transcribes through the
-    # argus-stt internal wire (RemoteVoiceStt) against the in-process fake
-    # server, degrading to the existing stt_failed error path when it is down.
-    add_executable(voice-stt-remote-test voice-stt-remote-test.cc
-        ${VOICE_ENGINE_SOURCES})
+add_test(NAME voice-tts-remote-test COMMAND voice-tts-remote-test)
 
-    target_link_libraries(voice-stt-remote-test PRIVATE argus_sync_media
-        doctest::doctest)
+# The STT cutover suite: the voice session transcribes through the
+# argus-stt internal wire (RemoteVoiceStt), degrading to the existing
+# stt_failed error path when the server is down.
+add_executable(voice-stt-remote-test voice-stt-remote-test.cc)
 
-    target_compile_options(voice-stt-remote-test PRIVATE -Wall -Wextra)
+target_link_libraries(voice-stt-remote-test PRIVATE argus::voice-core
+    doctest::doctest)
 
-    add_test(NAME voice-stt-remote-test COMMAND voice-stt-remote-test)
+target_compile_options(voice-stt-remote-test PRIVATE -Wall -Wextra)
 
-    # The LLM cutover suite (F4-5, Ruling BU): the voice session streams its
-    # replies through the argus-llm internal wire (RemoteVoiceLlm) against
-    # the in-process fake server, degrading silently when it is down.
-    add_executable(voice-llm-remote-test voice-llm-remote-test.cc
-        ${VOICE_ENGINE_SOURCES})
+argus_runtime_rpath(voice-stt-remote-test)
 
-    target_link_libraries(voice-llm-remote-test PRIVATE argus_sync_media
-        doctest::doctest)
+add_test(NAME voice-stt-remote-test COMMAND voice-stt-remote-test)
 
-    target_compile_options(voice-llm-remote-test PRIVATE -Wall -Wextra)
+# The LLM cutover suite (F4-5): the voice session streams its replies through
+# the argus-llm internal wire (RemoteVoiceLlm), degrading silently when the
+# server is down.
+add_executable(voice-llm-remote-test voice-llm-remote-test.cc)
 
-    add_test(NAME voice-llm-remote-test COMMAND voice-llm-remote-test)
-endif()
+target_link_libraries(voice-llm-remote-test PRIVATE argus::voice-core
+    doctest::doctest)
+
+target_compile_options(voice-llm-remote-test PRIVATE -Wall -Wextra)
+
+argus_runtime_rpath(voice-llm-remote-test)
+
+add_test(NAME voice-llm-remote-test COMMAND voice-llm-remote-test)
 
 # The argus-stt wire contract (F4-3, Ruling BL): the real engine serves the
 # transcribe/config legs from the shared models tree.

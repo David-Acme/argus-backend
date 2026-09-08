@@ -22,6 +22,7 @@
 #include <sync/sync-fan-out.hxx>
 #include <sync/sync-registrar.hxx>
 #include <sync/sync-relay.hxx>
+#include <sync/voice-grpc-relay.hxx>
 
 #include <json/json.h>
 
@@ -31,9 +32,42 @@
 #include <memory>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 namespace
 {
+
+// Recording stub of a relay leg: counts lifecycle callbacks, keeps forwarded frames.
+class RecordingLeg final : public SyncForwarder
+{
+public:
+  void onConnect(const drogon::HttpRequestPtr&,
+                 const drogon::WebSocketConnectionPtr&) override
+  {
+    ++connects;
+  }
+
+  drogon::Task<bool> forwardText(const drogon::WebSocketConnectionPtr&,
+                                 const Json::Value&, std::string_view raw)
+      override
+  {
+    texts.emplace_back(raw);
+    co_return true;
+  }
+
+  void forwardBinary(const drogon::WebSocketConnectionPtr&,
+                     const std::string& data) override
+  {
+    binaries.push_back(data);
+  }
+
+  void onClose(const drogon::WebSocketConnectionPtr&) override { ++closes; }
+
+  int connects{0};
+  int closes{0};
+  std::vector<std::string> texts;
+  std::vector<std::string> binaries;
+};
 
 Json::Value parseBody(const drogon::HttpResponsePtr& response)
 {
@@ -599,6 +633,75 @@ TEST_CASE("camera relay config resolves the sync target")
   std::remove(path);
 }
 
+TEST_CASE("voice gRPC config resolves the typed voice leg target")
+{
+  const char* path = "gateway-test-config-voice-grpc.toml";
+  {
+    std::ofstream file(path);
+    file << "[voice]\n"
+         << "target = \"127.0.0.1:7034\"\n";
+  }
+
+  ConfigService::load(path);
+  const VoiceGrpcConfig cutover = VoiceGrpcConfig::resolve();
+  CHECK(cutover.target == "127.0.0.1:7034");
+
+  {
+    std::ofstream file(path);
+    file << "[legacy]\n"
+         << "sync_url = \"ws://127.0.0.1:7025/sync\"\n";
+  }
+
+  ConfigService::load(path);
+  const VoiceGrpcConfig fallback = VoiceGrpcConfig::resolve();
+  CHECK(fallback.target.empty());
+
+  std::remove(path);
+}
+
+TEST_CASE("renderServerFrame reproduces the frozen voice wire JSON")
+{
+  argus::voice::v1::ServerFrame stt;
+  stt.mutable_stt()->set_text("hola argus");
+  stt.mutable_stt()->set_final(true);
+  const Json::Value sttJson =
+      json_util::fromString(json_util::toString(
+          VoiceGrpcRelay::renderServerFrame(stt)));
+  CHECK(sttJson["type"] == "voice:stt");
+  CHECK(sttJson["payload"]["text"] == "hola argus");
+  CHECK(sttJson["payload"]["final"] == true);
+
+  argus::voice::v1::ServerFrame assistant;
+  assistant.mutable_assistant()->set_text("Hola de nuevo.");
+  const Json::Value assistantJson =
+      json_util::fromString(json_util::toString(
+          VoiceGrpcRelay::renderServerFrame(assistant)));
+  CHECK(assistantJson["type"] == "voice:assistant");
+  CHECK(assistantJson["payload"]["text"] == "Hola de nuevo.");
+
+  argus::voice::v1::ServerFrame event;
+  event.mutable_event()->set_reaction(
+      argus::voice::v1::REACTION_RECOGNIZING);
+  event.mutable_event()->set_intensity(0.5F);
+  event.mutable_event()->set_because("stt_failed");
+  const Json::Value eventJson =
+      json_util::fromString(json_util::toString(
+          VoiceGrpcRelay::renderServerFrame(event)));
+  CHECK(eventJson["type"] == "voice:event");
+  CHECK(eventJson["payload"]["reaction"] == "recognizing");
+  CHECK(eventJson["payload"]["intensity"].asDouble() ==
+        doctest::Approx(0.5));
+  CHECK(eventJson["payload"]["because"] == "stt_failed");
+
+  argus::voice::v1::ServerFrame done;
+  done.mutable_done()->set_session_id(0);
+  const Json::Value doneJson =
+      json_util::fromString(json_util::toString(
+          VoiceGrpcRelay::renderServerFrame(done)));
+  CHECK(doneJson["type"] == "voice:done");
+  CHECK(doneJson["payload"]["sessionId"].asInt64() == 0);
+}
+
 TEST_CASE("relay leg routing sends camera frames to argus-camera")
 {
   CHECK(relayLegIsCamera("camera:subscribe"));
@@ -615,6 +718,60 @@ TEST_CASE("relay leg routing sends camera frames to argus-camera")
         "camera:subscribe_error", "camera:ack_error",
         "camera:unsubscribe_error"})
     CHECK(relayLegIsCamera(type));
+}
+
+TEST_CASE("relay leg routing sends voice frames to argus-voice")
+{
+  CHECK(relayLegIsVoice("voice:start"));
+  CHECK(relayLegIsVoice("voice:stop"));
+  CHECK(relayLegIsVoice("voice:skip"));
+  CHECK_FALSE(relayLegIsVoice("voice"));
+  CHECK_FALSE(relayLegIsVoice("voiceX"));
+  CHECK_FALSE(relayLegIsVoice("camera:subscribe"));
+
+  // Every voice frame type the legacy emits routes to the voice leg.
+  for (const char* type :
+       {"voice:start", "voice:stop", "voice:skip", "voice:stt",
+        "voice:assistant", "voice:event", "voice:done", "voice:start_error",
+        "voice:stop_error", "voice:skip_error"})
+    CHECK(relayLegIsVoice(type));
+}
+
+TEST_CASE("composite relay split routes voice frames and binary to the "
+          "voice leg")
+{
+  auto camera = std::make_shared<RecordingLeg>();
+  auto voice = std::make_shared<RecordingLeg>();
+  CompositeSyncRelay relay(camera, voice);
+
+  relay.onConnect(nullptr, nullptr);
+  CHECK(camera->connects == 1);
+  CHECK(voice->connects == 1);
+
+  const drogon::WebSocketConnectionPtr conn;
+  Json::Value cameraFrame;
+  cameraFrame["type"] = "camera:subscribe";
+  CHECK(drogon::sync_wait(relay.forwardText(
+      conn, cameraFrame, "{\"type\":\"camera:subscribe\"}")));
+
+  Json::Value voiceFrame;
+  voiceFrame["type"] = "voice:start";
+  CHECK(drogon::sync_wait(relay.forwardText(
+      conn, voiceFrame, "{\"type\":\"voice:start\"}")));
+
+  relay.forwardBinary(conn, std::string("\x01\x02\x03", 3));
+
+  CHECK(camera->texts.size() == 1);
+  CHECK(camera->texts.front() == "{\"type\":\"camera:subscribe\"}");
+  CHECK(voice->texts.size() == 1);
+  CHECK(voice->texts.front() == "{\"type\":\"voice:start\"}");
+  CHECK(camera->binaries.empty());
+  CHECK(voice->binaries.size() == 1);
+  CHECK(voice->binaries.front() == std::string("\x01\x02\x03", 3));
+
+  relay.onClose(nullptr);
+  CHECK(camera->closes == 1);
+  CHECK(voice->closes == 1);
 }
 
 TEST_CASE("route table sends the whole camera domain to the camera backend")

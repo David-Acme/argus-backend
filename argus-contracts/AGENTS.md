@@ -35,7 +35,12 @@ review blocker:
 ## Layout
 
 - `proto/argus/{domain}/v1/*.proto` — one package per domain
-  (`common`, `camera`, `ai`, `productivity`, `notification`, `memory`, `sync`).
+  (`common`, `camera`, `ai`, `productivity`, `notification`, `memory`, `sync`,
+  `identity`, `voice`, plus vendored `grpc/health/v1`).
+- `CMakeLists.txt` — `argus_sdk_module(NAME <domain> PROTO ...)` turns each
+  domain into the `argus::sdk-<domain>` module (generated stubs + the
+  `sdk/<domain>/` wrapper). Consumers link by module name only; generated
+  headers stay in the build tree.
 - `manifests/` — JSON Schemas for the typed capability package manifest
   (`package.schema.json`) and the ed25519-signed plugin manifest
   (`plugin.schema.json`).

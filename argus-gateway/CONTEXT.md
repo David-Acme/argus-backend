@@ -206,10 +206,11 @@ proxies everything else to the legacy backend on its internal plain listener
   deeper paths than the cap and foreign prefixes fall through to the legacy.
   Default backends unchanged.
 - **Composite `/sync` relay**: `SyncRelay` holds one upstream per protocol
-  family — `voice:*` frames relay to the legacy (`[legacy] sync_url`), the
-  seven `camera:*` frame types relay to argus-camera (`[camera] sync_url`,
-  empty keys keep the old single-legacy behavior). Same client credentials
-  and XFF rule on both legs.
+  family — the seven `camera:*` frame types relay to argus-camera
+  (`[camera] sync_url`), and since F6-3 `voice:*` frames relay to argus-voice
+  over argus.voice.v1 (`[voice] target`, see the F6-3 section); empty keys
+  keep the old single-legacy behavior. Same client credentials and XFF rule
+  on both legs.
 - **Camera change funnel (`camera_fan_out`)**: the NATS subscription is the
   wildcard `argus.*.v1.change`; the concrete subject routes the payload —
   `argus.camera.v1.change` goes to `camera_fan_out::handleCameraChange`,
@@ -417,3 +418,29 @@ proxies everything else to the legacy backend on its internal plain listener
   seam. Intents are best-effort at-most-once (fire-and-forget NATS publish),
   display-only, and never carry alarm/siren semantics — see
   `argus-contracts/subjects.md`.
+
+## Voice cutover (F6-3): argus.voice.v1 leg, typed identity, UpdateUser RPC
+
+- **`[voice] target` leg**: with `voice.target` set, `voice:*` frames no longer
+  relay to the legacy WS — `VoiceGrpcRelay` speaks `argus.voice.v1`
+  VoiceService bidi to argus-voice (default 127.0.0.1:7034): text frames map
+  to VoiceStart/VoiceStop/VoiceSkip, PCM binary frames to the `pcm` oneof
+  field of `ClientFrame`. An empty `target` keeps the legacy `sync_url` leg.
+  The frozen mobile app `/sync` contract is untouched: the gateway still
+  renders every app frame as JSON — `voice:stt`, `voice:assistant`,
+  `voice:event`, `voice:done`, plus TTS binary chunks — so byte-identity is a
+  gateway concern, not argus-voice's.
+- **Typed identity on VoiceStart**: the gateway resolves the session's user in
+  identity.db and sends `identity{user_id, name, lang, role}` inside the first
+  proto message, so argus-voice never reads a database — it greets from the
+  typed fields and answers in the user's language.
+- **`argus.identity.v1.IdentityService` listener**: the gateway hosts
+  UpdateUser on `[identity] rpc_host`/`rpc_port` (default loopback 7040;
+  compose binds 0.0.0.0 because argus-voice is on the bridge network). When a
+  user says their name mid-session, argus-voice writes the spoken name back
+  through this RPC; the gateway persists it via `UserRepository` and
+  re-fans-out `argus.sync.v1.change` on NATS (the same user-change fan-out
+  every other identity write already uses) so every connected device sees
+  the renamed user. Role rides the `x-argus-role` metadata. UpdateUser
+  enforces row scoping: the `x-argus-user` metadata must carry the request's
+  `user_id`, otherwise the RPC answers UNAUTHENTICATED.

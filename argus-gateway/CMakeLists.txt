@@ -7,6 +7,8 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 set(GATEWAY_SRC_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
+include(${CMAKE_CURRENT_SOURCE_DIR}/../cmake/argus-module.cmake)
+
 if(NOT TARGET argus_identity)
     # Standalone build: reuse the root project's argus_common, argus_identity
     # and third-party sources so the gateway links the same objects as the
@@ -16,6 +18,9 @@ if(NOT TARGET argus_identity)
     find_package(tomlplusplus REQUIRED)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../src/shared
                      ${CMAKE_BINARY_DIR}/argus-common)
+
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../argus-contracts
+                     ${CMAKE_BINARY_DIR}/argus-contracts EXCLUDE_FROM_ALL)
 
     enable_language(C)
     add_library(sqlite-vec STATIC
@@ -43,12 +48,18 @@ if(NOT TARGET argus_identity)
                      ${CMAKE_BINARY_DIR}/argus-sync)
 endif()
 
+if(NOT TARGET argus::sdk-voice)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../argus-contracts
+                     ${CMAKE_BINARY_DIR}/argus-contracts EXCLUDE_FROM_ALL)
+endif()
+
 find_package(doctest REQUIRED)
 
 add_library(gateway-core STATIC
     ${GATEWAY_SRC_ROOT}/controllers/health-controller.cc
     ${GATEWAY_SRC_ROOT}/identity/identity-config.cc
     ${GATEWAY_SRC_ROOT}/identity/identity-registrar.cc
+    ${GATEWAY_SRC_ROOT}/identity/identity-rpc.cc
     ${GATEWAY_SRC_ROOT}/proxy/proxy-config.cc
     ${GATEWAY_SRC_ROOT}/proxy/reverse-proxy.cc
     ${GATEWAY_SRC_ROOT}/server/listener-config.cc
@@ -60,13 +71,15 @@ add_library(gateway-core STATIC
     ${GATEWAY_SRC_ROOT}/sync/sync-fan-out.cc
     ${GATEWAY_SRC_ROOT}/sync/sync-registrar.cc
     ${GATEWAY_SRC_ROOT}/sync/sync-relay.cc
+    ${GATEWAY_SRC_ROOT}/sync/voice-grpc-relay.cc
     ${GATEWAY_SRC_ROOT}/sync/user-change-fan-out.cc
     ${GATEWAY_SRC_ROOT}/sync/user-change-sink.cc
 )
 
 target_include_directories(gateway-core PUBLIC ${GATEWAY_SRC_ROOT})
 
-target_link_libraries(gateway-core PUBLIC argus_identity argus_sync)
+target_link_libraries(gateway-core PUBLIC argus_identity argus_sync
+    argus::sdk-voice argus::sdk-identity)
 
 target_compile_options(gateway-core PRIVATE -Wall -Wextra)
 
@@ -80,6 +93,8 @@ target_link_libraries(argus-gateway PRIVATE
 
 target_compile_options(argus-gateway PRIVATE -Wall -Wextra)
 
+argus_runtime_rpath(argus-gateway)
+
 add_executable(gateway-test ${CMAKE_CURRENT_SOURCE_DIR}/tests/gateway-test.cc)
 
 target_include_directories(gateway-test PRIVATE ${GATEWAY_SRC_ROOT})
@@ -87,6 +102,8 @@ target_include_directories(gateway-test PRIVATE ${GATEWAY_SRC_ROOT})
 target_link_libraries(gateway-test PRIVATE gateway-core doctest::doctest)
 
 target_compile_options(gateway-test PRIVATE -Wall -Wextra)
+
+argus_runtime_rpath(gateway-test)
 
 add_executable(audit-sync-read-test
                ${CMAKE_CURRENT_SOURCE_DIR}/tests/audit-sync-read-test.cc)

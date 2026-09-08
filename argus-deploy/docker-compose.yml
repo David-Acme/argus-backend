@@ -1,11 +1,10 @@
 name: argus-cutover
 
-# Cutover deployment stack (Fase 5, compose v5): everything from v4 plus the
-# tunnel transport pair — argus-relay (device-facing entry point) and
-# argus-tunnel-client (dials the gateway's [remote] listener). Both ride the
-# opt-in "tunnel" profile: the default stack stays the v4 shape, and the
-# relay block is written so it can be lifted onto a standalone US server as
-# is. The root docker-compose.yml stays the dev tooling.
+# Cutover deployment stack (Fase 6, compose v6): everything from v5 plus the
+# argus-voice cutover — the voice orchestration stack becomes the pilot
+# pure-gRPC service (argus.voice.v1 on 7034, /health on 7035) and the
+# gateway gains the identity RPC the spoken-name write goes through. The
+# root docker-compose.yml stays the dev tooling.
 
 services:
   gateway:
@@ -479,6 +478,52 @@ services:
       start_period: 20s
     mem_limit: "${ARGUS_MEMORY_MEMORY_LIMIT:-2g}"
     cpus: "${ARGUS_MEMORY_CPU_LIMIT:-1.50}"
+    pids_limit: 512
+    restart: unless-stopped
+
+  # Voice-orchestration service (F6-3 v2 cutover, the pure-gRPC pilot): owns
+  # the voice session (VAD → STT → LLM → TTS) and serves argus.voice.v1 on
+  # its gRPC listener; the gateway relays the frozen /sync voice wire to it.
+  # STT/TTS/LLM are remote ([stt]/[tts]/[llm] point at argus-stt/tts/llm) and
+  # the spoken-name write is the typed UpdateUser RPC to the gateway, so it
+  # mounts no databases — only the in-process silero VAD model.
+  argus-voice:
+    image: argus-cutover:local
+    pull_policy: never
+    user: "${ARGUS_UID:-1000}:${ARGUS_GID:-1000}"
+    networks:
+      internal:
+        aliases:
+          - argus-voice
+        ipv4_address: 172.19.0.34
+    ports:
+      - "127.0.0.1:${VOICE_PORT:-7034}:7034"
+      - "127.0.0.1:${VOICE_HEALTH_PORT:-7035}:7035"
+    entrypoint: ["/opt/argus/argus-voice"]
+    volumes:
+      - type: bind
+        source: ./config.voice.toml
+        target: /opt/argus/config.toml
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ../models/vad
+        target: /opt/argus/models/vad
+        read_only: true
+        bind:
+          create_host_path: false
+    depends_on:
+      nats:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://127.0.0.1:7035/health >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    mem_limit: "${ARGUS_VOICE_MEMORY_LIMIT:-2g}"
+    cpus: "${ARGUS_VOICE_CPU_LIMIT:-2.00}"
     pids_limit: 512
     restart: unless-stopped
 

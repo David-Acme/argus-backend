@@ -4,18 +4,14 @@
 #include <cctype>
 #include <cmath>
 #include <drogon/drogon.h>
-#include <shared/contracts/sync-operation.hxx>
-#include <shared/repositories/user/user-repository.hxx>
 #include <shared/services/config-service/config-service.hxx>
-#include <shared/services/socket/socket-service.hxx>
-#include <shared/services/tts/onnx-utils.hxx>
 
 namespace
 {
 
 constexpr int kTargetRate = 16000;
 
-// Root-mean-square of a float sample buffer (16 kHz, [-1, 1]).
+// Root-mean-square of a float sample buffer.
 float rmsOf(const std::vector<float>& samples)
 {
   if (samples.empty())
@@ -25,25 +21,21 @@ float rmsOf(const std::vector<float>& samples)
     sum += static_cast<double>(s) * s;
   return static_cast<float>(std::sqrt(sum / static_cast<double>(samples.size())));
 }
-// Minimum sentence length (chars) before a `. ! ?` boundary flushes mid-
-// stream. The first sentence flushes at any boundary; shorter sentences are
-// held until the stream ends so tiny fragments are not spoken separately.
+
+// Sentence flush threshold (chars).
 constexpr size_t kMinSentenceChars = 10;
-// Clause boundaries (`, ; :`) only split after this much text, and only when
-// enough text follows — a small look-ahead keeps prosody intact.
+// Clause split thresholds (chars).
 constexpr size_t kClauseMinChars = 46;
 constexpr size_t kClauseTailChars = 22;
-// Hard cap: cut run-on answers at the last space (never break a word).
+// Hard-cap thresholds for run-on text (chars).
 constexpr size_t kHardMaxChars = 110;
 constexpr size_t kHardMinCut = 28;
 
-// Opening lines per language. Extend this map when a new VoiceLang is
-// supported end to end. `{name}` is replaced with the user's name when
-// known, otherwise the name-asking variant is spoken.
+// Opening lines per language; {name} is substituted when known.
 struct Greeting
 {
-  std::string withName; // spoken when the user's name is known
-  std::string askName;  // spoken when the name is unknown
+  std::string withName;
+  std::string askName;
 };
 
 const std::unordered_map<VoiceLang, Greeting>& greetings()
@@ -88,9 +80,47 @@ std::string langDisplayName(VoiceLang lang)
   return "Spanish";
 }
 
-// RAII: `speaking` must never stay true. If TTS synthesis throws, the
-// session would otherwise drop every mic frame forever ("stops hearing
-// you").
+VoiceLang voiceLangFromProto(argus::voice::v1::VoiceLanguage lang)
+{
+  switch (lang) {
+    case argus::voice::v1::VOICE_LANGUAGE_ES:
+      return VoiceLang::Es;
+    case argus::voice::v1::VOICE_LANGUAGE_EN:
+      return VoiceLang::En;
+    default:
+      break;
+  }
+  return VoiceLang::System;
+}
+
+argus::voice::v1::ReactionKind reactionKindToProto(ReactionKind kind)
+{
+  switch (kind) {
+    case ReactionKind::Idle:
+      return argus::voice::v1::REACTION_IDLE;
+    case ReactionKind::Warm:
+      return argus::voice::v1::REACTION_WARM;
+    case ReactionKind::Thinking:
+      return argus::voice::v1::REACTION_THINKING;
+    case ReactionKind::Uncertain:
+      return argus::voice::v1::REACTION_UNCERTAIN;
+    case ReactionKind::Attentive:
+      return argus::voice::v1::REACTION_ATTENTIVE;
+    case ReactionKind::Recognizing:
+      return argus::voice::v1::REACTION_RECOGNIZING;
+    case ReactionKind::Curious:
+      return argus::voice::v1::REACTION_CURIOUS;
+    case ReactionKind::Acknowledging:
+      return argus::voice::v1::REACTION_ACKNOWLEDGING;
+    case ReactionKind::Confused:
+      return argus::voice::v1::REACTION_CONFUSED;
+    case ReactionKind::Alarmed:
+      return argus::voice::v1::REACTION_ALARMED;
+  }
+  return argus::voice::v1::REACTION_IDLE;
+}
+
+// Keeps `speaking` false even when TTS synthesis throws.
 class SpeakingGuard
 {
 public:
@@ -155,12 +185,7 @@ std::string stripPrefix(const std::string& text)
   return out;
 }
 
-// Streaming chunk boundary for TTS. Returns the byte length of the next
-// chunk to speak (0 = keep buffering):
-//  - `. ! ?` followed by whitespace (or end of text) → flush the sentence.
-//  - `, ; :` after a minimum length with a look-ahead tail → flush the
-//    clause so the reply paces like human speech instead of one gulp.
-//  - run-on text past the hard cap → cut at the last space.
+// Next TTS chunk boundary in bytes (0 = keep buffering).
 size_t nextChunkEnd(const std::string& text, bool firstSentence)
 {
   const size_t len = text.size();
@@ -173,9 +198,9 @@ size_t nextChunkEnd(const std::string& text, bool firstSentence)
                          text[j] == '\''))
         ++j;
       if (j == len)
-        return len; // sentence complete at the end of the stream
+        return len;
       if (!std::isspace(static_cast<unsigned char>(text[j])))
-        continue; // "3.5", "Dr. Smith" — not a boundary
+        continue;
       if (firstSentence || i >= kMinSentenceChars)
         return j;
     }
@@ -184,7 +209,7 @@ size_t nextChunkEnd(const std::string& text, bool firstSentence)
         i + 1 < len &&
         std::isspace(static_cast<unsigned char>(text[i + 1])) &&
         len - i - 1 >= kClauseTailChars) {
-      return i + 1; // cut right after the clause mark
+      return i + 1;
     }
   }
   if (len >= kHardMaxChars) {
@@ -246,7 +271,8 @@ VoiceLang voiceSystemLang()
 }
 
 VoiceSessionService::VoiceSessionService(const VoiceEngineSeam& engines)
-    : stt_(engines.stt), tts_(engines.tts), llm_(engines.llm)
+    : stt_(engines.stt), tts_(engines.tts), llm_(engines.llm),
+      identity_(engines.identity)
 {
   reactions_.init();
 }
@@ -255,37 +281,38 @@ Reaction VoiceSessionService::emitReaction(Session& session,
                                           const ReactionSignals& signals)
 {
   const Reaction reaction = reactions_.react(signals);
-  Json::Value payload;
-  payload["reaction"] = reactionKindToString(reaction.kind);
-  payload["intensity"] = reaction.intensity;
-  payload["because"] = reaction.because;
-  sendJson(session, "voice:event", payload);
+  argus::voice::v1::ServerFrame frame;
+  auto* event = frame.mutable_event();
+  event->set_reaction(reactionKindToProto(reaction.kind));
+  event->set_intensity(reaction.intensity);
+  event->set_because(reaction.because);
+  sendFrame(session, std::move(frame));
   return reaction;
 }
 
-void VoiceSessionService::start(const drogon::WebSocketConnectionPtr& conn,
-                                int64_t userId, VoiceLang lang,
-                                const std::string& userName)
+void VoiceSessionService::start(VoiceSessionSink& sink,
+                                const argus::voice::v1::VoiceIdentity& identity)
 {
+  VoiceLang lang = voiceLangFromProto(identity.language());
   if (lang == VoiceLang::System)
     lang = voiceSystemLang();
 
-  LOG_INFO << "Voice: session start user=" << userId
+  const std::string userName = identity.name();
+  LOG_INFO << "Voice: session start user=" << identity.user_id()
            << " lang=" << voiceLangToString(lang)
            << " nameKnown=" << (userName.size() >= 2);
 
   auto session = std::make_shared<Session>();
-  session->conn = conn;
+  session->sink = &sink;
   session->lang = lang;
-  session->userId = userId;
+  session->userId = identity.user_id();
+  session->role = voiceRoleToString(identity.role());
   session->nameKnown = userName.size() >= 2;
   session->denoise = ConfigService::getBool("vad.denoise");
   const double gateRms = ConfigService::getDouble("vad.denoise_gate_rms");
   session->denoiseGateRms = gateRms > 0.0 ? static_cast<float>(gateRms) : 0.0035F;
   session->history.push_back({"system", systemPrompt(session->lang)});
 
-  // The shared recognizer follows the session language (falls back to the
-  // system default when the recognizer cannot switch).
   const std::string code = voiceLangToString(session->lang);
   if (!code.empty())
     stt_.setLanguage(code);
@@ -299,23 +326,21 @@ void VoiceSessionService::start(const drogon::WebSocketConnectionPtr& conn,
   });
 
   std::lock_guard<std::mutex> lock(mutex_);
-  sessions_[conn.get()] = std::move(session);
+  sessions_[&sink] = std::move(session);
 }
 
-void VoiceSessionService::feedPcm(const drogon::WebSocketConnectionPtr& conn,
-                                  const char* data, size_t len)
+void VoiceSessionService::feedPcm(VoiceSessionSink& sink, const char* data,
+                                  size_t len)
 {
   std::shared_ptr<Session> session;
   {
     std::lock_guard<std::mutex> lock(mutex_);
-    auto it = sessions_.find(conn.get());
+    auto it = sessions_.find(&sink);
     if (it == sessions_.end())
       return;
     session = it->second;
   }
 
-  // While the assistant speaks, the app mic may pick up its own audio (echo);
-  // drop those frames instead of feeding them to the VAD.
   if (session->speaking)
     return;
 
@@ -336,12 +361,12 @@ void VoiceSessionService::feedPcm(const drogon::WebSocketConnectionPtr& conn,
   session->pcmCv.notify_one();
 }
 
-void VoiceSessionService::stop(const drogon::WebSocketConnectionPtr& conn)
+void VoiceSessionService::stop(VoiceSessionSink& sink)
 {
   std::shared_ptr<Session> session;
   {
     std::lock_guard<std::mutex> lock(mutex_);
-    auto it = sessions_.find(conn.get());
+    auto it = sessions_.find(&sink);
     if (it == sessions_.end())
       return;
     session = it->second;
@@ -352,10 +377,10 @@ void VoiceSessionService::stop(const drogon::WebSocketConnectionPtr& conn)
   if (session->worker.joinable())
     session->worker.join();
 
-  if (session->conn && !session->conn->disconnected()) {
-    Json::Value done;
-    done["sessionId"] = 0;
-    sendJson(*session, "voice:done", done);
+  if (session->sink && session->sink->connected()) {
+    argus::voice::v1::ServerFrame done;
+    done.mutable_done()->set_session_id(0);
+    sendFrame(*session, std::move(done));
   }
 }
 
@@ -373,16 +398,9 @@ void VoiceSessionService::workerLoop(std::shared_ptr<Session> session)
       batch.swap(session->pcmQueue);
     }
 
-    // While the assistant speaks, the mic may pick up its own audio; drop
-    // those samples instead of feeding them to the VAD.
     if (session->speaking)
       continue;
 
-    // RNNoise strips background noise first, so the VAD only reacts to the
-    // speaker's voice (and the STT never sees raw noisy audio). The AGC +
-    // voice-probability blend keeps quiet speech alive. Batches below the
-    // silence gate (no signal, no recently-decaying voice) skip the whole
-    // RNNoise path — that is where most CPU goes when nobody is talking.
     std::vector<float> clean;
     if (session->denoise) {
       const bool silent = rmsOf(batch) < session->denoiseGateRms &&
@@ -398,10 +416,6 @@ void VoiceSessionService::workerLoop(std::shared_ptr<Session> session)
       clean.swap(batch);
     }
 
-    // Feed the VAD window by window. The VAD keeps its own state across
-    // batches; when it completes a turn (speech + trailing silence), run
-    // STT → LLM → TTS. Audio that did not complete a turn stays buffered
-    // inside the VAD for the next batch.
     size_t offset = 0;
     while (offset < clean.size() && session->active.load()) {
       const size_t chunk = std::min<size_t>(512, clean.size() - offset);
@@ -413,7 +427,6 @@ void VoiceSessionService::workerLoop(std::shared_ptr<Session> session)
             processTurn(*session, turn.samples);
           }
           catch (const std::exception& e) {
-            // Last line of defence: a turn must never kill the worker.
             LOG_WARN << "Voice: turn failed: " << e.what();
             session->speaking.store(false);
           }
@@ -431,7 +444,6 @@ void VoiceSessionService::workerLoop(std::shared_ptr<Session> session)
 void VoiceSessionService::processTurn(Session& session,
                                       const std::vector<float>& samples)
 {
-  // A new turn starts clean: a previous skip() must not leak into it.
   session.interrupt.store(false);
 
   std::string userText;
@@ -439,8 +451,6 @@ void VoiceSessionService::processTurn(Session& session,
     userText = stt_.transcribe(samples, 16000);
   }
   catch (const std::exception& e) {
-    // A broken recognizer must not kill the worker (std::terminate on an
-    // uncaught exception in a std::thread).
     LOG_WARN << "Voice: STT failed: " << e.what();
     emitReaction(session, {.text = {},
                            .lang = session.lang == VoiceLang::En ? "en" : "es",
@@ -466,43 +476,22 @@ void VoiceSessionService::processTurn(Session& session,
   }
   LOG_INFO << "Voice: STT -> " << userText;
 
-  Json::Value stt;
-  stt["text"] = userText;
-  stt["final"] = true;
-  sendJson(session, "voice:stt", stt);
+  argus::voice::v1::ServerFrame sttFrame;
+  sttFrame.mutable_stt()->set_text(userText);
+  sttFrame.mutable_stt()->set_final(true);
+  sendFrame(session, std::move(sttFrame));
 
   session.history.push_back({"user", userText});
 
-  // Persist the user's name when given (onboarding). The repository methods
-  // are coroutines, so the update runs on the event loop.
   if (session.userId > 0 && !session.nameKnown) {
     if (const auto name = extractName(userText)) {
-      const std::string persisted = *name;
-      const int64_t userId = session.userId;
-      drogon::app().getLoop()->queueInLoop([userId, persisted]() {
-        drogon::async_run([userId, persisted]() -> drogon::Task<void> {
-          auto user = co_await UserRepository().update(
-              userId,
-              {.name = persisted,
-               .lastName = std::nullopt,
-               .role = std::nullopt,
-               .isActive = std::nullopt});
-          if (user.id > 0) {
-            SocketEmitDto emit;
-            emit.operation = SyncOperation::Add;
-            emit.option = TableName::User;
-            emit.obj = user.toJson();
-            SocketService().emitModule(TableName::User, emit);
-          }
-          co_return;
-        });
-      });
+      identity_.updateUserName({.userId = session.userId,
+                                .role = session.role,
+                                .name = *name});
       session.nameKnown = true;
     }
   }
 
-  // The reaction goes out BEFORE generating: the face reacts while Argus
-  // thinks instead of after he speaks.
   const Reaction reaction =
       emitReaction(session, {.text = userText,
                              .lang = session.lang == VoiceLang::En ? "en" : "es",
@@ -515,9 +504,6 @@ void VoiceSessionService::processTurn(Session& session,
 
   ChatRequest req;
   req.messages = session.history;
-  // The tone rides the tail of the request copy, never the system prompt (the
-  // prefix has to stay constant for KV reuse) and never the stored history
-  // (a note from three turns ago must not keep steering the answer).
   const std::string tone = ReactionEngine::toneNote(
       reaction, session.lang == VoiceLang::En ? "en" : "es");
   if (!tone.empty() && !req.messages.empty())
@@ -530,15 +516,11 @@ void VoiceSessionService::processTurn(Session& session,
 
   try {
     llm_.chatStream(req, [&](const std::string& token, bool) {
-      if (!session.conn || session.conn->disconnected())
+      if (!session.sink || !session.sink->connected())
         return;
       if (session.interrupt.load())
-        return; // skip(): swallow the rest of the stream
+        return;
 
-      // Tokens are appended verbatim: llama tokenization puts the space at
-      // the START of the next word's token, so stripping per token glues
-      // words together ("Con gusto" -> "Congusto"). Only the model's
-      // "Argus:" preamble is stripped once, from the accumulated buffer.
       full += token;
       pending += token;
       if (!prefixStripped && pending.size() >= 8) {
@@ -562,7 +544,6 @@ void VoiceSessionService::processTurn(Session& session,
     });
   }
   catch (const std::exception& e) {
-    // Same rule as TTS: a failing LLM must not kill the worker.
     LOG_WARN << "Voice: LLM failed: " << e.what();
   }
   catch (...) {
@@ -580,16 +561,12 @@ void VoiceSessionService::processTurn(Session& session,
   }
   session.speaking = false;
 
-  // Reset the VAD so the next turn starts from a clean slate. The PCM queue
-  // is NOT cleared: audio captured while the LLM was "thinking" (the mic
-  // only pauses at the first TTS chunk) may hold a real interjection, and
-  // the worker processes it as the next turn.
   session.vad.reset();
 }
 
 void VoiceSessionService::speak(Session& session, const std::string& text)
 {
-  if (text.empty() || !session.conn || session.conn->disconnected())
+  if (text.empty() || !session.sink || !session.sink->connected())
     return;
   LOG_INFO << "Voice: speaking -> " << text.substr(0, 80);
 
@@ -597,9 +574,6 @@ void VoiceSessionService::speak(Session& session, const std::string& text)
   treq.text = text;
   treq.lang = session.lang == VoiceLang::En ? TtsLang::EN : TtsLang::ES;
   treq.quality = TtsQuality::Auto;
-  // defaultSpeed/sampleRate reach over the argus-tts wire since the F4-2
-  // cutover; a refused connection degrades to neutral synthesis parameters
-  // (the synthesis below reports the same failure).
   int ttsRate = kTargetRate;
   try {
     treq.speed = tts_.defaultSpeed();
@@ -613,42 +587,41 @@ void VoiceSessionService::speak(Session& session, const std::string& text)
        .targetRate = kTargetRate});
 
   SpeakingGuard speakingGuard(session.speaking);
-  Json::Value assistant;
-  assistant["text"] = text;
+  argus::voice::v1::ServerFrame assistantFrame;
+  assistantFrame.mutable_assistant()->set_text(text);
   try {
     tts_.synthesizeStream(treq, [&](const std::vector<float>& chunk) {
-      if (!session.conn || session.conn->disconnected())
+      if (!session.sink || !session.sink->connected())
         return;
       if (session.interrupt.load())
-        return; // skip(): cut the audio; the text is still reported below
+        return;
       const auto raw = floatToInt16(chunk);
       std::vector<int16_t> resampled;
       resampler.process(raw.data(), raw.size(), resampled);
       if (!resampled.empty()) {
-        session.conn->send(
-            std::string_view(reinterpret_cast<const char*>(resampled.data()),
-                             resampled.size() * sizeof(int16_t)),
-            drogon::WebSocketMessageType::Binary);
+        argus::voice::v1::ServerFrame chunkFrame;
+        chunkFrame.mutable_tts_chunk()->set_pcm(
+            reinterpret_cast<const char*>(resampled.data()),
+            static_cast<size_t>(resampled.size()) * sizeof(int16_t));
+        sendFrame(session, std::move(chunkFrame));
       }
     });
   }
   catch (const std::exception& e) {
-    // A TTS failure must not kill the worker thread nor leave the session
-    // permanently deaf (SpeakingGuard handles the latter).
     LOG_WARN << "Voice: TTS failed: " << e.what();
   }
   catch (...) {
     LOG_WARN << "Voice: TTS failed (unknown error)";
   }
-  sendJson(session, "voice:assistant", assistant);
+  sendFrame(session, std::move(assistantFrame));
 }
 
-void VoiceSessionService::skip(const drogon::WebSocketConnectionPtr& conn)
+void VoiceSessionService::skip(VoiceSessionSink& sink)
 {
   std::shared_ptr<Session> session;
   {
     std::lock_guard<std::mutex> lock(mutex_);
-    auto it = sessions_.find(conn.get());
+    auto it = sessions_.find(&sink);
     if (it == sessions_.end())
       return;
     session = it->second;
@@ -657,13 +630,10 @@ void VoiceSessionService::skip(const drogon::WebSocketConnectionPtr& conn)
   session->interrupt.store(true);
 }
 
-void VoiceSessionService::sendJson(Session& session, const std::string& type,
-                                   const Json::Value& payload) const
+void VoiceSessionService::sendFrame(Session& session,
+                                    argus::voice::v1::ServerFrame frame) const
 {
-  if (!session.conn || session.conn->disconnected())
+  if (!session.sink || !session.sink->connected())
     return;
-  Json::Value msg;
-  msg["type"] = type;
-  msg["payload"] = payload;
-  session.conn->sendJson(msg);
+  session.sink->sendServerFrame(std::move(frame));
 }

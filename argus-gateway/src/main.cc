@@ -2,6 +2,7 @@
 #include <drogon/drogon.h>
 #include <identity/identity-config.hxx>
 #include <identity/identity-registrar.hxx>
+#include <identity/identity-rpc.hxx>
 #include <proxy/proxy-config.hxx>
 #include <proxy/reverse-proxy.hxx>
 #include <server/listener-config.hxx>
@@ -27,6 +28,7 @@
 #include <sync/camera-notifier.hxx>
 #include <sync/sync-registrar.hxx>
 #include <sync/sync-relay.hxx>
+#include <sync/voice-grpc-relay.hxx>
 #include <sync/user-change-fan-out.hxx>
 #include <sync/user-change-sink.hxx>
 #include <unistd.h>
@@ -194,14 +196,15 @@ int main()
 
   const LegacySyncConfig legacySync = LegacySyncConfig::resolve();
   const CameraSyncConfig cameraSync = CameraSyncConfig::resolve();
-  // F2-2 relay split: camera:* frames relay to argus-camera, voice:* and raw
-  // binary stay with the legacy (talk is TTS-load-bearing there until
-  // Fase 4). A missing leg collapses to a single relay.
+  const VoiceGrpcConfig voiceGrpc = VoiceGrpcConfig::resolve();
+  const bool voiceCutover = !voiceGrpc.target.empty();
   std::shared_ptr<SyncForwarder> relay;
-  if (!cameraSync.syncUrl.empty()) {
+  if (!cameraSync.syncUrl.empty() || voiceCutover) {
     relay = std::make_shared<CompositeSyncRelay>(
         std::make_shared<LegacySyncRelay>(cameraSync.syncUrl),
-        std::make_shared<LegacySyncRelay>(legacySync.syncUrl));
+        voiceCutover ? std::static_pointer_cast<SyncForwarder>(
+                           std::make_shared<VoiceGrpcRelay>(voiceGrpc))
+                     : std::make_shared<LegacySyncRelay>(legacySync.syncUrl));
   }
   else {
     relay = std::make_shared<LegacySyncRelay>(legacySync);
@@ -209,9 +212,8 @@ int main()
   const SyncRegistrationStats sync = registerSyncSurface(relay);
   LOG_INFO << "Sync surface registered: " << sync.controllers << " controller, "
            << sync.filters << " filters"
-           << (legacySync.syncUrl.empty()
-                   ? " (relay disabled)"
-                   : "; voice relay -> " + legacySync.syncUrl)
+           << (voiceCutover ? "; voice leg -> gRPC " + voiceGrpc.target
+                            : "; voice leg -> legacy WS")
            << (cameraSync.syncUrl.empty()
                    ? ""
                    : "; camera relay -> " + cameraSync.syncUrl);
@@ -309,6 +311,21 @@ int main()
       LOG_WARN << "[push] enabled but NATS unavailable; push intents disabled";
     }
   }
+
+  IdentityRpcService identityRpc(natsBus);
+  const IdentityRpcConfig identityRpcConfig = IdentityRpcConfig::resolve();
+  grpc::ServerBuilder identityBuilder;
+  identityBuilder.AddListeningPort(
+      identityRpcConfig.host + ":" + std::to_string(identityRpcConfig.port),
+      grpc::InsecureServerCredentials());
+  identityBuilder.RegisterService(&identityRpc);
+  std::unique_ptr<grpc::Server> identityServer(identityBuilder.BuildAndStart());
+  if (identityServer)
+    LOG_INFO << "Identity RPC listening on " << identityRpcConfig.host << ":"
+             << identityRpcConfig.port << " (cleartext)";
+  else
+    LOG_WARN << "Identity RPC failed to listen on " << identityRpcConfig.host
+             << ":" << identityRpcConfig.port;
 
   // Prune timers for the sync socket's rooms (the gateway serves /sync
   // natively; the backend reaches the same state through its registry).
@@ -472,5 +489,8 @@ int main()
   drogon::app()
       .setThreadNum(0)
       .run();
+
+  if (identityServer)
+    identityServer->Shutdown();
   return 0;
 }

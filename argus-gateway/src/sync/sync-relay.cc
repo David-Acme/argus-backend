@@ -50,6 +50,11 @@ bool relayLegIsCamera(std::string_view type)
   return type.rfind("camera:", 0) == 0;
 }
 
+bool relayLegIsVoice(std::string_view type)
+{
+  return type.rfind("voice:", 0) == 0;
+}
+
 LegacySyncRelay::LegacySyncRelay(LegacySyncConfig config)
     : config_(std::move(config))
 {

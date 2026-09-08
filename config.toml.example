@@ -89,14 +89,13 @@ file = "./database/argus.db"
 top_k = 5
 
 [llm]
-# F4-5 cutover (Rulings BU/BF): with remote_url set the legacy voice session
-# streams its replies from the argus-llm service over the internal wire while
-# the in-process engine still boots for MemoryService until F4-6 — these
-# engine keys then feed the argus-llm service's own config (and keep feeding
-# the in-process engine MemoryService reaches). With remote_url empty the
-# in-process engine serves everything, exactly as before. remote_url must be
-# an IPv4 host:port (the client connects IPv4 literals only; "localhost"
-# resolves through the resolver and fails the connect).
+# F4-5 cutover (Rulings BU/BF): with remote_url set MemoryService reaches the
+# argus-llm service over the internal wire while the in-process engine still
+# boots — these engine keys then feed the argus-llm service's own config (and
+# keep feeding the in-process engine MemoryService reaches). With remote_url
+# empty the in-process engine serves everything, exactly as before.
+# remote_url must be an IPv4 host:port (the client connects IPv4 literals
+# only; "localhost" resolves through the resolver and fails the connect).
 remote_url = ""
 remote_timeout_ms = 120000
 model_path = "models/llm/LFM2.5-1.2B-Instruct-QAD-Q4_0.gguf"
@@ -120,21 +119,6 @@ seed = 0
 chat_template = "chatml"
 gpu_layers = -1
 
-[stt]
-# F4-3 cutover (Rulings BM/BN): with remote_url set the legacy delegates all
-# transcription to the argus-stt service over the internal wire and its
-# in-process engine stays uninitialized — these engine keys then only feed
-# the argus-stt service's own config. With remote_url empty the in-process
-# engine boots exactly as before and reads them here.
-remote_url = ""
-remote_timeout_ms = 30000
-
-engine = "nemo_transducer"
-language = "es"
-
-# Model artifacts read by the in-process engine (pre-cutover only).
-models_dir = "models/stt"
-
 [vision]
 # F4-4 cutover (Ruling BQ): with remote_url set the legacy boots WITHOUT the
 # vision model — describes go to the argus-vlm service over the internal
@@ -153,32 +137,6 @@ prompt = "Can you describe this image?"
 caption_cache_slots = 8
 threads = 0
 gpu_layers = -1
-
-[tts]
-# F4-2 cutover (Rulings BI/BJ): with remote_url set the legacy delegates all
-# TTS to the argus-tts service over the internal wire (voice session +
-# camera talk) and its in-process engine stays uninitialized — these engine
-# keys then only feed the argus-tts service's own config. With remote_url
-# empty the in-process engine boots exactly as before and reads them here.
-remote_url = ""
-remote_timeout_ms = 30000
-
-# Model artifacts read by the in-process engine (pre-cutover only).
-models_dir = "models/tts"
-
-threads = 0
-quality = "auto"
-steps_low = 6
-steps_medium = 8
-steps_high = 12
-# Steps ceiling override: with remote_url set these engine keys feed the
-# argus-tts service, whose tier is derived without a Vulkan probe (always
-# Low); pin the legacy ceiling here (12 = Balanced, 16 = High) for parity.
-steps_cap = 0
-speed = 1.0
-max_chunk_len = 350
-edge_silence_ms = 40
-join_silence_ms = 90
 
 [tapo]
 control_port = 443
@@ -241,18 +199,6 @@ hub_max_subs_per_client = 8
 max_viewers_per_camera = 4
 max_total_viewers = 8
 relay_chunk_bytes = 32768
-
-[vad]
-threshold = 0.45
-neg_threshold = 0.25
-min_speech_frames = 5
-min_silence_frames = 12
-max_turn_frames = 750
-pre_roll_frames = 10
-min_turn_ms = 240
-min_mean_prob = 0.35
-denoise = true
-denoise_gate_rms = 0.0035
 
 [memory]
 # F4-6 cutover (Ruling BY): with remote_url set the legacy boots WITHOUT the

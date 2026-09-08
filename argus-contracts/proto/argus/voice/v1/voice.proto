@@ -1,0 +1,111 @@
+// Voice orchestration wire (F6-3): the typed successor of the frozen /sync voice frames.
+syntax = "proto3";
+
+package argus.voice.v1;
+
+// Gateway-resolved session language; SYSTEM falls back to stt.language.
+enum VoiceLanguage {
+  VOICE_LANGUAGE_SYSTEM = 0;
+  VOICE_LANGUAGE_ES = 1;
+  VOICE_LANGUAGE_EN = 2;
+}
+
+// Gateway-resolved user role (mirrors UserRole: owner, resident, guard, guest).
+enum VoiceRole
+{
+  VOICE_ROLE_OWNER = 0;
+  VOICE_ROLE_RESIDENT = 1;
+  VOICE_ROLE_GUARD = 2;
+  VOICE_ROLE_GUEST = 3;
+}
+
+// Gateway-resolved identity; argus-voice never reads a database.
+message VoiceIdentity
+{
+  int64 user_id = 1;
+  string name = 2;
+  VoiceLanguage language = 3;
+  VoiceRole role = 4;
+}
+
+message VoiceStart
+{
+  VoiceIdentity identity = 1;
+}
+
+message VoiceStop {}
+
+message VoiceSkip {}
+
+// One client frame; pcm is raw 16 kHz s16le mono, the WS binary verbatim.
+message ClientFrame
+{
+  oneof body
+  {
+    VoiceStart start = 1;
+    VoiceStop stop = 2;
+    VoiceSkip skip = 3;
+    bytes pcm = 4;
+  }
+}
+
+message VoiceStt
+{
+  string text = 1;
+  bool final = 2;
+}
+
+message VoiceAssistant
+{
+  string text = 1;
+}
+
+message VoiceEvent
+{
+  ReactionKind reaction = 1;
+  float intensity = 2;
+  string because = 3;
+}
+
+// Avatar reaction meaning (mirrors ReactionKind: 0 = idle, 9 = alarmed).
+enum ReactionKind
+{
+  REACTION_IDLE = 0;
+  REACTION_WARM = 1;
+  REACTION_THINKING = 2;
+  REACTION_UNCERTAIN = 3;
+  REACTION_ATTENTIVE = 4;
+  REACTION_RECOGNIZING = 5;
+  REACTION_CURIOUS = 6;
+  REACTION_ACKNOWLEDGING = 7;
+  REACTION_CONFUSED = 8;
+  REACTION_ALARMED = 9;
+}
+
+message VoiceDone
+{
+  int64 session_id = 1;
+}
+
+message TtsChunk
+{
+  bytes pcm = 1;
+}
+
+message ServerFrame
+{
+  oneof body
+  {
+    VoiceStt stt = 1;
+    VoiceAssistant assistant = 2;
+    VoiceEvent event = 3;
+    VoiceDone done = 4;
+    TtsChunk tts_chunk = 5;
+  }
+}
+
+service VoiceService
+{
+  // One bidi stream per app voice session; x-argus metadata required.
+  rpc Connect(stream ClientFrame) returns (stream ServerFrame) {}
+}

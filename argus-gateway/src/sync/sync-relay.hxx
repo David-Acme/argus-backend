@@ -33,9 +33,11 @@ struct CameraSyncConfig
 // natively).
 bool relayAllowedText(std::string_view type);
 
-// Relay-leg split of the F2-2 cutover: camera:* frames belong to the
-// argus-camera leg, everything else the relay forwards to the legacy.
+// camera:* frames belong to the argus-camera leg, everything else to the legacy.
 bool relayLegIsCamera(std::string_view type);
+
+// voice:* frames and raw binary belong to the argus-voice leg.
+bool relayLegIsVoice(std::string_view type);
 
 // Per-client byte-transparent relay to the legacy /sync socket. Each session
 // connects with the client's own credentials (token and User-Agent; the
@@ -75,10 +77,8 @@ private:
   std::unordered_map<const void*, std::shared_ptr<Session>> sessions_;
 };
 
-// Per-client relay split of the F2-2 cutover: camera:* frames go to the
-// argus-camera leg, voice:* frames and raw binary stay with the legacy leg
-// (talk is TTS-load-bearing there until Fase 4). One leg per direction
-// prefix; both legs keep their own per-client sessions.
+// Per-client relay split: camera:* to argus-camera, voice:* and binary to
+// argus-voice.
 class CompositeSyncRelay final : public SyncForwarder
 {
 public:

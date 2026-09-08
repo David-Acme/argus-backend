@@ -8,6 +8,8 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 set(SRC_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/src)
 set(CMAKE_PREFIX_PATH ${CMAKE_BINARY_DIR} ${CMAKE_PREFIX_PATH})
 
+include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/argus-module.cmake)
+
 find_package(Drogon CONFIG REQUIRED)
 find_package(jwt-cpp REQUIRED)
 find_package(nlohmann_json REQUIRED)
@@ -27,6 +29,10 @@ add_subdirectory(third_party)
 add_subdirectory(src/shared)
 add_subdirectory(src/identity)
 add_subdirectory(src/sync)
+
+# argus-voice service (F6-3): before the test tree so the suites link
+# voice-core with its usage requirements resolved; built on demand only.
+add_subdirectory(argus-voice EXCLUDE_FROM_ALL)
 
 enable_testing()
 
@@ -238,6 +244,20 @@ list(REMOVE_ITEM SHARED_SRC
     ${SRC_ROOT}/shared/services/tapo/tapo-http.cc
     ${SRC_ROOT}/shared/services/tapo/tapo-talk-client.cc
     ${SRC_ROOT}/shared/services/tapo/tapo-ts-muxer.cc
+    # Voice orchestration (F6-3): the engine set belongs to argus-voice now; the
+    # legacy keeps the LLM pair (MemoryService) and the memory text-match stack.
+    ${SRC_ROOT}/shared/services/vad/vad-service.cc
+    ${SRC_ROOT}/shared/services/noise/noise-suppression-service.cc
+    ${SRC_ROOT}/shared/services/reaction/reaction-engine.cc
+    ${SRC_ROOT}/shared/wrapper/audio/audio-resampler.cc
+    ${SRC_ROOT}/shared/services/stt/stt-service.cc
+    ${SRC_ROOT}/shared/services/stt/remote/stt-remote.cc
+    ${SRC_ROOT}/shared/services/tts/tts-service.cc
+    ${SRC_ROOT}/shared/services/tts/tts-engine.cc
+    ${SRC_ROOT}/shared/services/tts/onnx-utils.cc
+    ${SRC_ROOT}/shared/services/tts/style.cc
+    ${SRC_ROOT}/shared/services/tts/unicode-processor.cc
+    ${SRC_ROOT}/shared/services/tts/remote/tts-remote.cc
 )
 
 add_executable(${PROJECT_NAME}
@@ -254,7 +274,6 @@ target_include_directories(${PROJECT_NAME}
     SYSTEM PRIVATE
         ${CMAKE_SOURCE_DIR}/third_party
         ${CMAKE_SOURCE_DIR}/third_party/stb
-        ${CMAKE_SOURCE_DIR}/third_party/sherpa-onnx
         ${CMAKE_SOURCE_DIR}/third_party/ncnn/src
 )
 
@@ -283,7 +302,6 @@ target_link_libraries(${PROJECT_NAME}
     PRIVATE
         argus_identity
         argus_sync
-        argus_sync_media
         argus_common
         Drogon::Drogon
         jwt-cpp::jwt-cpp
@@ -298,23 +316,10 @@ target_link_libraries(${PROJECT_NAME}
         OpenSSL::Crypto
         ${ARGUS_SQLITE_VEC_TARGET}
         ${ARGUS_NCNN_TARGET}
-        ${ARGUS_SHERPA_ONNX_TARGET}
         ${ARGUS_FASTTEXT_TARGET}
         qr-code-generator::qrcodegencpp
         ${CONAN_LIBS}
 )
-
-if(RNNOISE_INCLUDE_DIR AND RNNOISE_LIBRARY)
-  target_compile_definitions(${PROJECT_NAME} PRIVATE ARGUS_HAS_RNNOISE=1)
-  target_include_directories(${PROJECT_NAME} SYSTEM PRIVATE ${RNNOISE_INCLUDE_DIR})
-  target_link_libraries(${PROJECT_NAME} PRIVATE ${RNNOISE_LIBRARY})
-else()
-  target_compile_definitions(${PROJECT_NAME} PRIVATE ARGUS_HAS_RNNOISE=0)
-endif()
-
-if(ARGUS_SHERPA_ONNX_TARGET AND TARGET ${ARGUS_SHERPA_ONNX_TARGET})
-  target_link_libraries(${PROJECT_NAME} PRIVATE ${ARGUS_SHERPA_ONNX_TARGET})
-endif()
 
 # Third-party mdns.h is header-only: treat its include dir as SYSTEM so the
 # always-on -Wall -Wextra never reports warnings from the vendored header.

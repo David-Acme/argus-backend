@@ -1,0 +1,48 @@
+# argus-voice configuration. Copy to config.toml (gitignored) to run.
+# Pure gRPC voice service (F6-3 v2): the gateway relays the frozen /sync
+# voice wire and speaks argus.voice.v1 here. No database; the only model is
+# the in-process silero VAD (compose mounts models/vad).
+
+[server]
+host = "127.0.0.1"
+# VoiceService + grpc.health.v1 gRPC listener.
+grpc_port = 7034
+# Minimal /health HTTP listener for the compose healthcheck.
+health_port = 7035
+
+# Gateway internal identity RPC (IdentityService.UpdateUser). Empty disables
+# the spoken-name persist (logged, session continues).
+[identity]
+target = "127.0.0.1:7040"
+
+# Transcription through the argus-stt internal wire.
+[stt]
+remote_url = "127.0.0.1:7030"
+remote_timeout_ms = 30000
+# System-wide voice language; the fallback when the stream identity carries
+# VOICE_LANGUAGE_SYSTEM.
+language = "es"
+
+# Synthesis through the argus-tts internal wire.
+[tts]
+remote_url = "127.0.0.1:7029"
+remote_timeout_ms = 30000
+
+# Chat streaming through the argus-llm internal wire.
+[llm]
+remote_url = "127.0.0.1:7032"
+remote_timeout_ms = 120000
+
+# Turn detection of the voice session (in-process silero VAD,
+# models/vad/silero_vad.onnx).
+[vad]
+threshold = 0.45
+neg_threshold = 0.25
+min_speech_frames = 5
+min_silence_frames = 12
+max_turn_frames = 750
+pre_roll_frames = 10
+min_turn_ms = 240
+min_mean_prob = 0.35
+denoise = true
+denoise_gate_rms = 0.0035

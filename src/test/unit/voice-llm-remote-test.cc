@@ -4,55 +4,14 @@
 #include "fake-llm-server.hxx"
 #include "fake-stt-server.hxx"
 
-#include <feature/socket/sync/services/voice-engine-seam.hxx>
-#include <feature/socket/sync/services/voice-session-service.hxx>
+#include <test-support/fake-voice-sink.hxx>
 #include <shared/services/config-service/config-service.hxx>
 
-#include <chrono>
 #include <string>
-#include <thread>
 #include <vector>
 
 namespace
 {
-
-class FakeVoiceConnection final : public drogon::WebSocketConnection
-{
-public:
-  void send(const char* msg, uint64_t len,
-            drogon::WebSocketMessageType) override
-  {
-    binaryFrames.emplace_back(msg, len);
-  }
-
-  void send(std::string_view msg, drogon::WebSocketMessageType) override
-  {
-    binaryFrames.emplace_back(msg);
-  }
-
-  void sendJson(const Json::Value& json, drogon::WebSocketMessageType) override
-  {
-    jsonFrames.push_back(json);
-  }
-
-  const trantor::InetAddress& localAddr() const override { return addr_; }
-  const trantor::InetAddress& peerAddr() const override { return addr_; }
-  bool connected() const override { return true; }
-  bool disconnected() const override { return false; }
-  void shutdown(drogon::CloseCode, const std::string&) override {}
-  void forceClose() override {}
-  void setPingMessage(const std::string&,
-                      const std::chrono::duration<double>&) override
-  {
-  }
-  void disablePing() override {}
-
-  std::vector<std::string> binaryFrames;
-  std::vector<Json::Value> jsonFrames;
-
-private:
-  trantor::InetAddress addr_;
-};
 
 struct FakeTts final : IVoiceTts
 {
@@ -76,37 +35,6 @@ struct LocalFakeStt final : IVoiceStt
   bool setLanguage(const std::string&) override { return true; }
 };
 
-template <typename Pred>
-bool waitFor(Pred ready, int ms = 5000)
-{
-  for (int waited = 0; waited < ms; waited += 20) {
-    if (ready())
-      return true;
-    std::this_thread::sleep_for(std::chrono::milliseconds(20));
-  }
-  return ready();
-}
-
-const Json::Value* frameOf(const FakeVoiceConnection& conn,
-                           const std::string& type)
-{
-  const Json::Value* found = nullptr;
-  for (const auto& frame : conn.jsonFrames)
-    if (frame["type"] == type)
-      found = &frame;
-  return found;
-}
-
-std::vector<const Json::Value*> framesOf(const FakeVoiceConnection& conn,
-                                         const std::string& type)
-{
-  std::vector<const Json::Value*> found;
-  for (const auto& frame : conn.jsonFrames)
-    if (frame["type"] == type)
-      found.push_back(&frame);
-  return found;
-}
-
 void pointLlmAt(const std::string& url)
 {
   ConfigService::setRuntimeString("llm.remote_url", url);
@@ -118,11 +46,10 @@ void pointLlmAt(const std::string& url)
 struct VoiceSessionTestAccess
 {
   static std::shared_ptr<VoiceSessionService::Session>
-  sessionOf(VoiceSessionService& service,
-            const drogon::WebSocketConnectionPtr& conn)
+  sessionOf(VoiceSessionService& service, VoiceSessionSink& sink)
   {
     std::lock_guard<std::mutex> lock(service.mutex_);
-    return service.sessions_.at(conn.get());
+    return service.sessions_.at(&sink);
   }
 
   static void runTurn(VoiceSessionService& service,
@@ -142,6 +69,16 @@ ChatRequest greetingRequest()
   req.messages = {{"user", "Di hola"}};
   req.maxTokens = 16;
   return req;
+}
+
+std::vector<argus::voice::v1::ServerFrame>
+assistantFrames(const FakeVoiceSink& sink)
+{
+  std::vector<argus::voice::v1::ServerFrame> out;
+  for (const auto& frame : sink.snapshot())
+    if (frame.has_assistant())
+      out.push_back(frame);
+  return out;
 }
 
 } // namespace
@@ -257,40 +194,49 @@ TEST_CASE("The voice session speaks through the remote adapter")
   pointLlmAt("http://127.0.0.1:" + std::to_string(llmServer.port()));
 
   FakeTts tts;
+  FakeIdentity identity;
   RemoteVoiceStt stt;
   RemoteVoiceLlm llm;
-  VoiceEngineSeam seam{.stt = stt, .tts = tts, .llm = llm};
+  VoiceEngineSeam seam{.stt = stt, .tts = tts, .llm = llm, .identity = identity};
   VoiceSessionService session(seam);
 
-  auto conn = std::make_shared<FakeVoiceConnection>();
-  session.start(conn, 0, VoiceLang::Es, "Ana");
+  FakeVoiceSink sink;
+  argus::voice::v1::VoiceIdentity voiceIdentity;
+  voiceIdentity.set_user_id(7);
+  voiceIdentity.set_role(argus::voice::v1::VOICE_ROLE_OWNER);
+  voiceIdentity.set_language(argus::voice::v1::VOICE_LANGUAGE_ES);
+  voiceIdentity.set_name("Ana");
+  session.start(sink, voiceIdentity);
   CHECK(waitFor([&] {
-    return frameOf(*conn, "voice:assistant") != nullptr;
+    return sink.hasType("voice:assistant");
   }));
 
-  const size_t binaryBefore = conn->binaryFrames.size();
+  const size_t chunksBefore = sink.of(true).size();
   const std::vector<float> samples(1600, 0.1F);
-  auto sess = VoiceSessionTestAccess::sessionOf(session, conn);
+  auto sess = VoiceSessionTestAccess::sessionOf(session, sink);
   VoiceSessionTestAccess::runTurn(session, *sess, samples);
 
   // The transcribed text rode the STT wire and the streamed reply rode the
   // LLM wire, sentence by sentence as the tokens arrived.
   CHECK(sttServer.requests().at("POST /stt/v1/transcribe?lang=es") == 1);
   CHECK(llmServer.requests().at("POST /llm/v1/chat-stream") == 1);
-  const Json::Value* sttFrame = frameOf(*conn, "voice:stt");
-  REQUIRE(sttFrame != nullptr);
-  CHECK((*sttFrame)["payload"]["text"] == "hola es");
+  bool sttSeen = false;
+  for (const auto& frame : sink.snapshot())
+    if (frame.has_stt()) {
+      CHECK(frame.stt().text() == "hola es");
+      sttSeen = true;
+    }
+  CHECK(sttSeen);
 
-  // The greeting is its own voice:assistant frame; only the turn's replies
-  // go into the spoken text.
   std::string spoken;
-  auto replies = framesOf(*conn, "voice:assistant");
+  const auto replies = assistantFrames(sink);
+  REQUIRE(replies.size() >= 2);
   for (size_t i = 1; i < replies.size(); ++i)
-    spoken += (*replies[i])["payload"]["text"].asString();
+    spoken += replies[i].assistant().text();
   CHECK(spoken == "Hola de nuevo. Otra frase.");
-  CHECK(conn->binaryFrames.size() > binaryBefore);
+  CHECK(sink.of(true).size() > chunksBefore);
 
-  session.stop(conn);
+  session.stop(sink);
   pointLlmAt("");
   ConfigService::setRuntimeString("stt.remote_url", "");
 }
@@ -312,27 +258,30 @@ TEST_CASE("An unreachable argus-llm degrades the turn, not the session")
 
   FakeTts tts;
   LocalFakeStt stt;
+  FakeIdentity identity;
   RemoteVoiceLlm llm;
-  VoiceEngineSeam seam{.stt = stt, .tts = tts, .llm = llm};
+  VoiceEngineSeam seam{.stt = stt, .tts = tts, .llm = llm, .identity = identity};
 
-  auto conn = std::make_shared<FakeVoiceConnection>();
+  FakeVoiceSink sink;
   VoiceSessionService session(seam);
-  session.start(conn, 0, VoiceLang::Es, "");
+  argus::voice::v1::VoiceIdentity voiceIdentity;
+  voiceIdentity.set_role(argus::voice::v1::VOICE_ROLE_OWNER);
+  voiceIdentity.set_language(argus::voice::v1::VOICE_LANGUAGE_ES);
+  session.start(sink, voiceIdentity);
   CHECK(waitFor([&] {
-    return frameOf(*conn, "voice:assistant") != nullptr;
+    return sink.hasType("voice:assistant");
   }));
 
-  const size_t assistantBefore =
-      framesOf(*conn, "voice:assistant").size();
-  const size_t binaryBefore = conn->binaryFrames.size();
+  const size_t assistantBefore = assistantFrames(sink).size();
+  const size_t chunksBefore = sink.of(true).size();
   const std::vector<float> samples(1600, 0.1F);
-  auto sess = VoiceSessionTestAccess::sessionOf(session, conn);
+  auto sess = VoiceSessionTestAccess::sessionOf(session, sink);
   VoiceSessionTestAccess::runTurn(session, *sess, samples);
 
   // The existing error path: the turn's LLM leg fails silently (logged), no
-  // new voice:assistant goes out, and the worker thread is still alive.
-  CHECK(framesOf(*conn, "voice:assistant").size() == assistantBefore);
-  CHECK(conn->binaryFrames.size() == binaryBefore);
+  // new assistant frame goes out, and the worker thread is still alive.
+  CHECK(assistantFrames(sink).size() == assistantBefore);
+  CHECK(sink.of(true).size() == chunksBefore);
 
   // The cached client rebuilds on a remote_url change and the session still
   // serves another turn afterwards.
@@ -340,10 +289,10 @@ TEST_CASE("An unreachable argus-llm degrades the turn, not the session")
   pointLlmAt("http://127.0.0.1:" + std::to_string(llmServer.port()));
   sess->history.clear();
   VoiceSessionTestAccess::runTurn(session, *sess, samples);
-  const Json::Value* assistant = frameOf(*conn, "voice:assistant");
-  REQUIRE(assistant != nullptr);
-  CHECK((*assistant)["payload"]["text"] == "Recuperado.");
+  const auto replies = assistantFrames(sink);
+  REQUIRE_FALSE(replies.empty());
+  CHECK(replies.back().assistant().text() == "Recuperado.");
 
-  session.stop(conn);
+  session.stop(sink);
   pointLlmAt("");
 }

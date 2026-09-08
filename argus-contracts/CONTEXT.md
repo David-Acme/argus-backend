@@ -10,10 +10,13 @@ single source of truth.
 
 ## What lives here
 
-- `proto/argus/<domain>/v1/*.proto` — v1 draft skeletons derived from the
-  current backend DTO/controller semantics. They are drafts for the later
-  implementation phase, not compiled code yet; the C++ services keep serving
-  HTTP/WS on the same paths during the migration.
+- `proto/argus/<domain>/v1/*.proto` — the wire contracts. Since F6-3 they are
+  compiled: `cmake/argus-module.cmake` turns each domain into an
+  `argus::sdk-<domain>` C++ module (protobuf + gRPC stubs plus a thin typed
+  wrapper), and services link the SDK instead of speaking raw strings.
+- `sdk/` — the thin per-domain C++ wrappers over the generated stubs
+  (`sdk/voice/`, `sdk/identity/`), so consumers never see protobuf types
+  directly.
 - `manifests/package.schema.json` — typed per-capability package manifest
   (`model_path`, `accepted_models`, `defaults`) for interchangeable on-device
   models, without a database; consumers pin a version range (e.g. `llm: ^1.2`).
@@ -31,3 +34,30 @@ single source of truth.
   (the mobile app paints persisted local data first, then reacts to live sync).
 - Proto evolution inside v1 is additive only: `reserved` for retired fields,
   never renumbering, never reassigning enum numbers 0-7 or table ids 0-23.
+
+## Codegen substrate (F6-3)
+
+`CMakeLists.txt` exposes `argus_contracts_substrate()` (find_package for
+Protobuf + gRPC) and the root build calls it before adding any service. The
+gRPC toolchain on the development host is vendored under
+`~/.local/argus-thirdparty/grpc` (Arch grpc 1.83.1 shared libraries); the
+CMake fallback appends that prefix and records the library directory so
+`argus_runtime_rpath()` can add it to every gRPC-linked binary. The container
+image instead uses Debian trixie's grpc 1.51 packages — the code avoids APIs
+whose signatures differ across those versions (e.g. no `OnCancel` overrides;
+`OnDone` + `IsCancelled()` instead). Generated stubs land in the build tree
+and are never committed. `grpc.health.v1` is vendored verbatim from the
+upstream protobuf well-known types so the health surface does not depend on
+host-specific well-known-proto installs.
+
+The image pins the whole conan graph to protobuf 3.21.12 (Dockerfile:
+`[replace_requires] protobuf/*: protobuf/3.21.12`) so it matches Debian
+trixie's protobuf, which the SDK binds to under `ARGUS_SYSTEM_PROTOBUF`.
+onnxruntime pulls conan protobuf 6.33 statically into `argus-voice`; with
+two different protobuf runtimes in one binary the same-mangled-name
+symbols interpose across versions and heap corruption hits at static
+descriptor registration (observed as a SIGSEGV crash loop). Same version
+on both runtimes is the only safe mix; Debian grpc++ 1.51 headers cannot
+pair with conan protobuf 6.33 headers, so pinning the graph down is the
+one available direction. The dev host is unaffected: the vendored grpc
+1.82 stack pairs with conan protobuf only, a single runtime.

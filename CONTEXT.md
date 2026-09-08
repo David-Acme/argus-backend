@@ -2777,3 +2777,19 @@ paths, envelope, 404-vs-502 `CAMERA_UNREACHABLE`, filter chain order and the
   templates (unread by the legacy binary); root `config.toml.example` lost
   the transitional `# [camera] db` doc block. `argus.db` stays on the legacy
   until F6-4 (identity reads, voice, sync).
+
+## F6-3 voice cutover to argus-voice (2026-09-07)
+
+The voice stack (voice-session-service + voice-engine-seam + VAD + noise
+suppression + reaction engine + the voice half of SyncMediaService) moved to
+`argus-voice/`, a pure gRPC service (`argus.voice.v1.VoiceService`, port 7034)
+with no SyncSocket, no /sync surface and no database. The legacy registers no
+TTS or STT adapter (stt/tts service adapters deleted): synthesis and
+transcription live in argus-voice behind the same seams, remote-only. The
+`/sync` socket forwards nothing locally anymore: camera:* went to argus-camera
+(F6-2), voice:* to argus-voice (F6-3) — the gateway relays to the owner
+services and the legacy keeps only the sync-table surface. The spoken-name
+write goes through the typed `argus.identity.v1.IdentityService.UpdateUser`
+seed implemented on the gateway (which owns identity.db); with `llm.remote_url`
+set MemoryService reaches argus-llm over HTTP while the in-process engine still
+boots (F4-6 memory gate unchanged).

@@ -1,55 +1,13 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
 
-#include <feature/socket/sync/services/voice-session-service.hxx>
+#include <test-support/fake-voice-sink.hxx>
 
-#include <algorithm>
-#include <chrono>
 #include <string>
-#include <string_view>
-#include <thread>
 #include <vector>
 
 namespace
 {
-
-class FakeVoiceConnection final : public drogon::WebSocketConnection
-{
-public:
-  void send(const char* msg, uint64_t len,
-            drogon::WebSocketMessageType) override
-  {
-    binaryFrames.emplace_back(msg, len);
-  }
-
-  void send(std::string_view msg, drogon::WebSocketMessageType) override
-  {
-    binaryFrames.emplace_back(msg);
-  }
-
-  void sendJson(const Json::Value& json, drogon::WebSocketMessageType) override
-  {
-    jsonFrames.push_back(json);
-  }
-
-  const trantor::InetAddress& localAddr() const override { return addr_; }
-  const trantor::InetAddress& peerAddr() const override { return addr_; }
-  bool connected() const override { return true; }
-  bool disconnected() const override { return false; }
-  void shutdown(drogon::CloseCode, const std::string&) override {}
-  void forceClose() override {}
-  void setPingMessage(const std::string&,
-                      const std::chrono::duration<double>&) override
-  {
-  }
-  void disablePing() override {}
-
-  std::vector<std::string> binaryFrames;
-  std::vector<Json::Value> jsonFrames;
-
-private:
-  trantor::InetAddress addr_;
-};
 
 struct FakeStt final : IVoiceStt
 {
@@ -102,40 +60,16 @@ struct FakeLlm final : IVoiceLlm
   }
 };
 
-// Polls a condition on a worker thread for at most `ms` (the session runs
-// its greeting on its own worker thread).
-template <typename Pred>
-bool waitFor(Pred ready, int ms = 5000)
-{
-  for (int waited = 0; waited < ms; waited += 20) {
-    if (ready())
-      return true;
-    std::this_thread::sleep_for(std::chrono::milliseconds(20));
-  }
-  return ready();
-}
-
-const Json::Value* frameOf(const FakeVoiceConnection& conn,
-                           const std::string& type)
-{
-  const Json::Value* found = nullptr;
-  for (const auto& frame : conn.jsonFrames)
-    if (frame["type"] == type)
-      found = &frame;
-  return found;
-}
-
 } // namespace
 
 // Must match the friend declaration inside VoiceSessionService (global scope).
 struct VoiceSessionTestAccess
 {
   static std::shared_ptr<VoiceSessionService::Session>
-  sessionOf(VoiceSessionService& service,
-            const drogon::WebSocketConnectionPtr& conn)
+  sessionOf(VoiceSessionService& service, VoiceSessionSink& sink)
   {
     std::lock_guard<std::mutex> lock(service.mutex_);
-    return service.sessions_.at(conn.get());
+    return service.sessions_.at(&sink);
   }
 
   static void runTurn(VoiceSessionService& service,
@@ -159,17 +93,24 @@ struct VoiceSessionTestAccess
   {
     return service.llm_;
   }
+
+  static const IVoiceIdentity& identityOf(VoiceSessionService& service)
+  {
+    return service.identity_;
+  }
 };
 
-TEST_CASE("VoiceSessionService default-constructs on the legacy singleton seam")
+TEST_CASE("VoiceSessionService default-constructs on the remote seam")
 {
   VoiceSessionService session;
   CHECK(&VoiceSessionTestAccess::sttOf(session) == &voiceStt());
   CHECK(&VoiceSessionTestAccess::ttsOf(session) == &voiceTts());
   CHECK(&VoiceSessionTestAccess::llmOf(session) == &voiceLlm());
-  CHECK(dynamic_cast<SingletonVoiceStt*>(&voiceStt()) != nullptr);
-  CHECK(dynamic_cast<SingletonVoiceTts*>(&voiceTts()) != nullptr);
-  CHECK(dynamic_cast<SingletonVoiceLlm*>(&voiceLlm()) != nullptr);
+  CHECK(&VoiceSessionTestAccess::identityOf(session) == &voiceIdentity());
+  CHECK(dynamic_cast<RemoteVoiceStt*>(&voiceStt()) != nullptr);
+  CHECK(dynamic_cast<RemoteVoiceTts*>(&voiceTts()) != nullptr);
+  CHECK(dynamic_cast<RemoteVoiceLlm*>(&voiceLlm()) != nullptr);
+  CHECK(dynamic_cast<GrpcVoiceIdentity*>(&voiceIdentity()) != nullptr);
 }
 
 TEST_CASE("Voice session start speaks the greeting through the injected seam")
@@ -177,28 +118,32 @@ TEST_CASE("Voice session start speaks the greeting through the injected seam")
   FakeStt stt;
   FakeTts tts;
   FakeLlm llm;
-  VoiceEngineSeam seam{.stt = stt, .tts = tts, .llm = llm};
+  FakeIdentity identity;
+  VoiceEngineSeam seam{.stt = stt, .tts = tts, .llm = llm, .identity = identity};
   VoiceSessionService session(seam);
 
-  auto conn = std::make_shared<FakeVoiceConnection>();
-  session.start(conn, 0, VoiceLang::Es, "");
+  FakeVoiceSink sink;
+  argus::voice::v1::VoiceIdentity voiceIdentity;
+  voiceIdentity.set_user_id(7);
+  voiceIdentity.set_role(argus::voice::v1::VOICE_ROLE_OWNER);
+  voiceIdentity.set_language(argus::voice::v1::VOICE_LANGUAGE_ES);
+  session.start(sink, voiceIdentity);
 
   CHECK(stt.setLanguageCalls == 1);
   CHECK(stt.lastLanguage == "es");
 
   CHECK(waitFor([&] {
-    return frameOf(*conn, "voice:assistant") != nullptr;
+    return sink.hasType("voice:assistant");
   }));
   CHECK(tts.synthesizeCalls > 0);
   CHECK(tts.lastText.find("Argus") != std::string::npos);
-  CHECK_FALSE(conn->binaryFrames.empty());
-  const Json::Value* assistant = frameOf(*conn, "voice:assistant");
-  REQUIRE(assistant != nullptr);
-  CHECK((*assistant)["payload"]["text"].asString().find("Argus") !=
-        std::string::npos);
+  CHECK_FALSE(sink.of(true).empty());
+  for (const auto& frame : sink.snapshot())
+    if (frame.has_assistant())
+      CHECK(frame.assistant().text().find("Argus") != std::string::npos);
 
-  session.stop(conn);
-  CHECK(frameOf(*conn, "voice:done") != nullptr);
+  session.stop(sink);
+  CHECK(sink.hasType("voice:done"));
 }
 
 TEST_CASE("A turn runs STT, LLM and TTS against the injected fakes")
@@ -206,40 +151,86 @@ TEST_CASE("A turn runs STT, LLM and TTS against the injected fakes")
   FakeStt stt;
   FakeTts tts;
   FakeLlm llm;
-  VoiceEngineSeam seam{.stt = stt, .tts = tts, .llm = llm};
+  FakeIdentity identity;
+  VoiceEngineSeam seam{.stt = stt, .tts = tts, .llm = llm, .identity = identity};
   VoiceSessionService session(seam);
 
-  auto conn = std::make_shared<FakeVoiceConnection>();
-  session.start(conn, 0, VoiceLang::Es, "Ana");
+  FakeVoiceSink sink;
+  argus::voice::v1::VoiceIdentity voiceIdentity;
+  voiceIdentity.set_user_id(7);
+  voiceIdentity.set_role(argus::voice::v1::VOICE_ROLE_RESIDENT);
+  voiceIdentity.set_language(argus::voice::v1::VOICE_LANGUAGE_ES);
+  voiceIdentity.set_name("Ana");
+  session.start(sink, voiceIdentity);
   CHECK(waitFor([&] {
-    auto sess = VoiceSessionTestAccess::sessionOf(session, conn);
+    auto sess = VoiceSessionTestAccess::sessionOf(session, sink);
     return tts.synthesizeCalls > 0 && !sess->speaking.load();
   }));
 
-  const size_t binaryBefore = conn->binaryFrames.size();
+  const size_t chunksBefore = sink.of(true).size();
   const std::vector<float> samples(1600, 0.1F);
-  auto sess = VoiceSessionTestAccess::sessionOf(session, conn);
+  auto sess = VoiceSessionTestAccess::sessionOf(session, sink);
   VoiceSessionTestAccess::runTurn(session, *sess, samples);
 
   CHECK(stt.transcribeCalls == 1);
-  const Json::Value* sttFrame = frameOf(*conn, "voice:stt");
-  REQUIRE(sttFrame != nullptr);
-  CHECK((*sttFrame)["payload"]["text"] == "hola argus");
-  CHECK((*sttFrame)["payload"]["final"] == true);
+  argus::voice::v1::ServerFrame sttFrame;
+  for (const auto& frame : sink.snapshot())
+    if (frame.has_stt())
+      sttFrame = frame;
+  CHECK(sttFrame.stt().text() == "hola argus");
+  CHECK(sttFrame.stt().final());
 
   CHECK(llm.chatStreamCalls == 1);
   CHECK(llm.lastPromptMessages == 3);
 
   CHECK(tts.synthesizeCalls == 2);
   CHECK(tts.lastText == "Hola de nuevo.");
-  CHECK(conn->binaryFrames.size() > binaryBefore);
+  CHECK(sink.of(true).size() > chunksBefore);
 
-  const Json::Value* assistant = frameOf(*conn, "voice:assistant");
-  REQUIRE(assistant != nullptr);
-  CHECK((*assistant)["payload"]["text"] == "Hola de nuevo.");
+  bool assistantFound = false;
+  for (const auto& frame : sink.snapshot())
+    if (frame.has_assistant() && frame.assistant().text() == "Hola de nuevo.")
+      assistantFound = true;
+  CHECK(assistantFound);
 
   CHECK(sess->history.size() == 4);
   CHECK(sess->history[3].content == "Hola de nuevo.");
 
-  session.stop(conn);
+  session.stop(sink);
+}
+
+TEST_CASE("The spoken name is written once through the identity seam")
+{
+  FakeStt stt;
+  stt.transcript = "me llamo Juan";
+  FakeTts tts;
+  FakeLlm llm;
+  FakeIdentity identity;
+  VoiceEngineSeam seam{.stt = stt, .tts = tts, .llm = llm, .identity = identity};
+  VoiceSessionService session(seam);
+
+  FakeVoiceSink sink;
+  argus::voice::v1::VoiceIdentity voiceIdentity;
+  voiceIdentity.set_user_id(7);
+  voiceIdentity.set_role(argus::voice::v1::VOICE_ROLE_OWNER);
+  voiceIdentity.set_language(argus::voice::v1::VOICE_LANGUAGE_ES);
+  session.start(sink, voiceIdentity);
+  CHECK(waitFor([&] {
+    auto sess = VoiceSessionTestAccess::sessionOf(session, sink);
+    return tts.synthesizeCalls > 0 && !sess->speaking.load();
+  }));
+
+  const std::vector<float> samples(1600, 0.1F);
+  auto sess = VoiceSessionTestAccess::sessionOf(session, sink);
+  VoiceSessionTestAccess::runTurn(session, *sess, samples);
+
+  REQUIRE(identity.writes.size() == 1);
+  CHECK(identity.writes[0].userId == 7);
+  CHECK(identity.writes[0].name == "Juan");
+  CHECK(identity.writes[0].role == "owner");
+
+  VoiceSessionTestAccess::runTurn(session, *sess, samples);
+  CHECK(identity.writes.size() == 1);
+
+  session.stop(sink);
 }

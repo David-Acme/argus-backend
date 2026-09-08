@@ -1,0 +1,29 @@
+// Identity domain seed (F6-3); F6-5 extracts the full identity surface.
+syntax = "proto3";
+
+package argus.identity.v1;
+
+message UserIdentity
+{
+  int64 user_id = 1;
+  string name = 2;
+  string lang = 3;
+}
+
+// Patch semantics: only the provided fields change.
+message UpdateUserRequest
+{
+  int64 user_id = 1;
+  optional string name = 2;
+}
+
+message UpdateUserResponse
+{
+  UserIdentity user = 1;
+}
+
+service IdentityService
+{
+  // Requires x-argus-user matching user_id (x-argus-role rides along).
+  rpc UpdateUser(UpdateUserRequest) returns (UpdateUserResponse) {}
+}

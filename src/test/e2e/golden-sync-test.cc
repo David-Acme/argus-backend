@@ -37,6 +37,7 @@ namespace
 constexpr int kConnectTimeoutSeconds = 10;
 constexpr int kFrameTimeoutSeconds = 10;
 constexpr int kClosedGraceSeconds = 3;
+constexpr int kVoiceQuietSeconds = 5;
 constexpr int kBinaryDrainMs = 1500;
 constexpr size_t kBinaryKeepBytes = 64 * 1024;
 constexpr size_t kHexPreviewBytes = 256;
@@ -708,6 +709,40 @@ int main(int argc, char* argv[])
     runScenario(std::move(unknown), stopOnFirst);
   }
 
+  // start → greeting → stop → done, with no uplink PCM. The greeting needs a
+  // full LLM turn plus TTS synthesis, so the first frame waits on the frame
+  // timeout; the quiet window only measures silence after an observed frame.
+  {
+    Scenario voice;
+    voice.name = "voice-start-stop";
+    if (connection) {
+      connection->send("{\"type\":\"voice:start\",\"payload\":{}}");
+      std::cout << "  > voice:start\n";
+    }
+    bool greeted = false;
+    while (auto frame = collector.take(std::chrono::seconds(
+               greeted ? kVoiceQuietSeconds : kFrameTimeoutSeconds))) {
+      voice.frames.push_back(*frame);
+      greeted = true;
+      std::cout << "  < " << messageTypeOf(*frame) << "\n";
+    }
+    if (!voice.frames.empty() && connection) {
+      connection->send("{\"type\":\"voice:stop\",\"payload\":{}}");
+      std::cout << "  > voice:stop\n";
+    }
+    while (auto frame =
+               collector.take(std::chrono::seconds(kFrameTimeoutSeconds))) {
+      voice.frames.push_back(*frame);
+      std::cout << "  < " << messageTypeOf(*frame) << "\n";
+      if (messageTypeOf(*frame) == "voice:done")
+        break;
+    }
+    if (!voice.frames.empty())
+      scenarios.push_back(std::move(voice));
+    else
+      std::cout << "  voice-start-stop captured no frames\n";
+  }
+
   if (connection)
     connection->shutdown();
   {
@@ -725,24 +760,29 @@ int main(int argc, char* argv[])
   if (mode != "record" && verifyMode) {
     std::cout << "verify against " << fixturesDir << "\n";
     bool ok = true;
-    for (const auto& scenario : scenarios)
-      ok = verifyScenario(fixturesDir, scenario) && ok;
 
-    // A scenario that times out captures zero frames and is dropped, so the
-    // committed manifest list closes the gap: every committed scenario must
-    // have been captured in this session.
+    // The manifest list is the contract: scenarios captured but not committed
+    // (voice-start-stop, whose TTS audio and greeting text are not stable) are
+    // skipped, and a scenario that times out captures zero frames and is
+    // dropped, so the committed list also closes the gap in the other
+    // direction: every committed scenario must have been captured.
+    std::set<std::string> committed;
     const Json::Value manifest = readJsonFile(manifestPath);
     if (!manifest.isObject()) {
       std::cout << "  MISMATCH manifest: cannot read " << manifestPath << "\n";
       ok = false;
     }
-    std::set<std::string> committed;
     if (manifest.isObject() && manifest["frames"].isArray()) {
       for (const auto& entry : manifest["frames"]) {
         if (entry.isObject() && entry.isMember("fixture") &&
             entry["fixture"].isString())
           committed.insert(entry["fixture"].asString());
       }
+    }
+    for (const auto& scenario : scenarios) {
+      if (!committed.count(scenario.name + ".json"))
+        continue;
+      ok = verifyScenario(fixturesDir, scenario) && ok;
     }
     for (const auto& fixture : committed) {
       if (!endsWith(fixture, ".json"))

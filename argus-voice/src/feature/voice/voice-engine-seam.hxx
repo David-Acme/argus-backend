@@ -1,18 +1,18 @@
 #pragma once
 
-#include <cstdint>
+#include <argus/voice/v1/voice.pb.h>
+#include <identity/identity-client.hxx>
 #include <memory>
 #include <mutex>
+#include <shared/enums.hxx>
 #include <shared/services/llm/llm-service.hxx>
 #include <shared/services/llm/remote/llm-remote.hxx>
 #include <shared/services/stt/remote/stt-remote.hxx>
-#include <shared/services/stt/stt-service.hxx>
 #include <shared/services/tts/remote/tts-remote.hxx>
-#include <shared/services/tts/tts-service.hxx>
 #include <string>
 #include <vector>
 
-// Engine seams behind the voice session.
+// Engine seams behind the voice session; argus-voice is remote-only.
 class IVoiceStt
 {
 public:
@@ -42,53 +42,38 @@ public:
   virtual void chatStream(const ChatRequest& req, TokenCallback onToken) = 0;
 };
 
-// Adapters wrapping the legacy singletons (the current seam wiring).
-class SingletonVoiceStt final : public IVoiceStt
+// Spoken-name write input: the role is the x-argus-role metadata value.
+struct VoiceNameWrite
 {
-public:
-  std::string transcribe(const std::vector<float>& audioSamples,
-                         int32_t sampleRate) override
-  {
-    return SttService::instance().transcribe(audioSamples, sampleRate);
-  }
-
-  bool setLanguage(const std::string& lang) override
-  {
-    return SttService::instance().setLanguage(lang);
-  }
+  int64_t userId{0};
+  std::string role;
+  std::string name;
 };
 
-class SingletonVoiceTts final : public IVoiceTts
+// The typed spoken-name write: IdentityService.UpdateUser on the gateway.
+class IVoiceIdentity
 {
 public:
-  float defaultSpeed() const override
-  {
-    return TtsService::instance().defaultSpeed();
-  }
+  virtual ~IVoiceIdentity() = default;
 
-  int sampleRate() const override
-  {
-    return TtsService::instance().sampleRate();
-  }
-
-  void synthesizeStream(const TtsRequest& req,
-                        TtsChunkCallback onChunk) override
-  {
-    TtsService::instance().synthesizeStream(req, std::move(onChunk));
-  }
+  virtual void updateUserName(const VoiceNameWrite& write) = 0;
 };
 
-class SingletonVoiceLlm final : public IVoiceLlm
+// IdentityClient-backed adapter over identity.target.
+class GrpcVoiceIdentity final : public IVoiceIdentity
 {
 public:
-  void chatStream(const ChatRequest& req, TokenCallback onToken) override
-  {
-    LlmService::instance().chatStream(req, std::move(onToken));
-  }
+  void updateUserName(const VoiceNameWrite& write) override;
+
+private:
+  std::shared_ptr<const IdentityClient> clientFor(const std::string& target);
+
+  mutable std::mutex mutex_;
+  std::string cachedTarget_;
+  std::shared_ptr<const IdentityClient> client_;
 };
 
-// IVoiceTts over the argus-tts internal wire (Ruling BI): active once
-// tts.remote_url is configured; failures surface as exceptions to speak().
+// IVoiceTts over the argus-tts internal wire.
 class RemoteVoiceTts final : public IVoiceTts
 {
 public:
@@ -105,11 +90,7 @@ private:
   TtsClient client_;
 };
 
-// IVoiceStt over the argus-stt internal wire (Ruling BM): active once
-// stt.remote_url is configured. The HTTP client is cached and only rebuilt
-// when the remote config changes; setLanguage stores the language and the
-// next transcribe carries it as the wire's lang parameter (Ruling BE: one
-// global recognizer, the session start still steers the language).
+// IVoiceStt over the argus-stt internal wire.
 class RemoteVoiceStt final : public IVoiceStt
 {
 public:
@@ -119,8 +100,6 @@ public:
   bool setLanguage(const std::string& lang) override;
 
 private:
-  // Shared snapshot of the cached client; rebuilt under the lock when
-  // stt.remote_url / stt.remote_timeout_ms changed.
   std::shared_ptr<const SttHttpClient>
   clientFor(const SttRemoteConfig& config);
 
@@ -131,18 +110,13 @@ private:
   std::string lang_;
 };
 
-// IVoiceLlm over the argus-llm internal wire (Ruling BU): active once
-// llm.remote_url is configured. The HTTP client is cached and only rebuilt
-// when the remote config changes; failures surface as exceptions to the
-// voice session's error path.
+// IVoiceLlm over the argus-llm internal wire.
 class RemoteVoiceLlm final : public IVoiceLlm
 {
 public:
   void chatStream(const ChatRequest& req, TokenCallback onToken) override;
 
 private:
-  // Shared snapshot of the cached client; rebuilt under the lock when
-  // llm.remote_url / llm.remote_timeout_ms changed.
   std::shared_ptr<const LlmHttpClient>
   clientFor(const LlmRemoteConfig& config);
 
@@ -152,15 +126,17 @@ private:
   std::shared_ptr<const LlmHttpClient> client_;
 };
 
-// Access to the shared AI services (initialized by the service registry).
+// Process-wide seam adapters.
 IVoiceStt& voiceStt();
 IVoiceTts& voiceTts();
 IVoiceLlm& voiceLlm();
+IVoiceIdentity& voiceIdentity();
 
-// The engine set backing one voice session; defaults to the legacy singletons.
+// The engine set backing one voice session.
 struct VoiceEngineSeam
 {
   IVoiceStt& stt = voiceStt();
   IVoiceTts& tts = voiceTts();
   IVoiceLlm& llm = voiceLlm();
+  IVoiceIdentity& identity = voiceIdentity();
 };

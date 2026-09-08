@@ -11,7 +11,6 @@
 #include <feature/api/pairing/controllers/pairing-controller.hxx>
 #include <feature/api/user/controllers/portrait-preview-controller.hxx>
 #include <feature/api/user/controllers/user-controller.hxx>
-#include <feature/socket/sync/media/sync-media-service.hxx>
 #include <feature/socket/sync/socket/sync-socket.hxx>
 #include <filter/device/device-filter.hxx>
 #include <filter/jwt/jwt-filter.hxx>
@@ -38,8 +37,6 @@
 #include <shared/services/socket/socket-service.hxx>
 #include <shared/services/sqlite/db-service.hxx>
 #include <shared/utils/json-util/json-util.hxx>
-#include <shared/services/stt/adapter/stt-service-adapter.hxx>
-#include <shared/services/tts/adapter/tts-service-adapter.hxx>
 #include <shared/services/vision/adapter/vision-service-adapter.hxx>
 #include <shared/services/vision/remote/remote-vision-adapter.hxx>
 #include <shared/wrapper/qr/qr-render.hxx>
@@ -87,7 +84,6 @@ void registerIdentitySurface()
   app().registerController(std::make_shared<PortraitPreviewController>());
 
   const auto syncSocket = std::make_shared<SyncSocket>();
-  syncSocket->setForwarder(std::make_shared<SyncMediaService>());
   app().registerController(syncSocket);
 }
 
@@ -304,19 +300,6 @@ void Application::registerServices()
   registry_.registerService(std::make_unique<RoomManagerServiceAdapter>());
   registry_.registerService(std::make_unique<CertServiceAdapter>());
   registry_.registerService(std::make_unique<MdnsServiceAdapter>());
-  // TTS cutover (Ruling BI/BJ): with tts.remote_url set the legacy skips the
-  // in-process engine entirely — synthesis goes to argus-tts over HTTP and
-  // the ONNX models are never loaded here.
-  if (ConfigService::getString("tts.remote_url").empty()) {
-    registry_.registerService(std::make_unique<TtsServiceAdapter>());
-  }
-  else {
-    LOG_INFO << "TTS delegated to " << ConfigService::getString("tts.remote_url")
-             << "; in-process TtsService stays uninitialized";
-  }
-  // LLM cutover (Rulings BU/BF): with llm.remote_url set the voice session
-  // streams from argus-llm over HTTP; the in-process engine still boots while
-  // MemoryService calls it in-process, and closes with the F4-6 memory gate.
   const bool llmDelegated =
       !ConfigService::getString("llm.remote_url").empty();
   const bool memoryDelegated =
@@ -335,16 +318,6 @@ void Application::registerServices()
              << ConfigService::getString("llm.remote_url")
              << "; in-process LlmService stays uninitialized (memory "
                 "delegated)";
-  }
-  // STT cutover (Rulings BM/BN): with stt.remote_url set the legacy skips
-  // the in-process engine entirely — transcription goes to argus-stt over
-  // HTTP and the sherpa-onnx models are never loaded here.
-  if (ConfigService::getString("stt.remote_url").empty()) {
-    registry_.registerService(std::make_unique<SttServiceAdapter>());
-  }
-  else {
-    LOG_INFO << "STT delegated to " << ConfigService::getString("stt.remote_url")
-             << "; in-process SttService stays uninitialized";
   }
   // VLM cutover (Ruling BQ): with vision.remote_url set the legacy boots
   // without loading the vision model — describes go to argus-vlm over HTTP

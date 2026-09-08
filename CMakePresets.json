@@ -28,61 +28,229 @@
     }
   ],
   "buildPresets": [
-    { "name": "dev", "configurePreset": "dev", "jobs": 8 },
-    { "name": "prod", "configurePreset": "prod", "jobs": 8 },
-    { "name": "gateway", "configurePreset": "dev", "jobs": 8,
-      "targets": ["argus-gateway", "gateway-test", "audit-sync-read-test",
-                  "camera-notifier-test", "push-intent-test"] },
-    { "name": "gateway-prod", "configurePreset": "prod", "jobs": 8,
-      "targets": ["argus-gateway", "gateway-test", "audit-sync-read-test",
-                  "camera-notifier-test", "push-intent-test"] },
-    { "name": "camera", "configurePreset": "dev", "jobs": 8,
-      "targets": ["argus-camera", "event-intelligence-test",
-                  "camera-operator-test"] },
-    { "name": "camera-prod", "configurePreset": "prod", "jobs": 8,
-      "targets": ["argus-camera", "event-intelligence-test",
-                  "camera-operator-test"] },
-    { "name": "productivity", "configurePreset": "dev", "jobs": 8,
-      "targets": ["argus-productivity", "productivity-schema-test",
-                  "productivity-migration-test"] },
-    { "name": "productivity-prod", "configurePreset": "prod", "jobs": 8,
-      "targets": ["argus-productivity", "productivity-schema-test",
-                  "productivity-migration-test"] },
-    { "name": "notification", "configurePreset": "dev", "jobs": 8,
-      "targets": ["argus-notification", "notification-schema-test",
-                  "notification-migration-test"] },
-    { "name": "notification-prod", "configurePreset": "prod", "jobs": 8,
-      "targets": ["argus-notification", "notification-schema-test",
-                  "notification-migration-test"] },
-    { "name": "tts", "configurePreset": "dev", "jobs": 8,
-      "targets": ["argus-tts"] },
-    { "name": "tts-prod", "configurePreset": "prod", "jobs": 8,
-      "targets": ["argus-tts"] },
-    { "name": "stt", "configurePreset": "dev", "jobs": 8,
-      "targets": ["argus-stt"] },
-    { "name": "stt-prod", "configurePreset": "prod", "jobs": 8,
-      "targets": ["argus-stt"] },
-    { "name": "vlm", "configurePreset": "dev", "jobs": 8,
-      "targets": ["argus-vlm"] },
-    { "name": "vlm-prod", "configurePreset": "prod", "jobs": 8,
-      "targets": ["argus-vlm"] },
-    { "name": "llm", "configurePreset": "dev", "jobs": 8,
-      "targets": ["argus-llm"] },
-    { "name": "llm-prod", "configurePreset": "prod", "jobs": 8,
-      "targets": ["argus-llm"] },
-    { "name": "memory", "configurePreset": "dev", "jobs": 8,
-      "targets": ["argus-memory"] },
-    { "name": "memory-prod", "configurePreset": "prod", "jobs": 8,
-      "targets": ["argus-memory"] },
-    { "name": "tunnel", "configurePreset": "dev", "jobs": 8,
-      "targets": ["argus-tunnel-client", "argus-tunnel-relay",
-                  "framing-test", "tunnel-integration-test",
-                  "tunnel-reconnect-test", "tunnel-negauth-test",
-                  "service-config-test"] },
-    { "name": "tunnel-prod", "configurePreset": "prod", "jobs": 8,
-      "targets": ["argus-tunnel-client", "argus-tunnel-relay",
-                  "framing-test", "tunnel-integration-test",
-                  "tunnel-reconnect-test", "tunnel-negauth-test",
-                  "service-config-test"] }
+    {
+      "name": "dev",
+      "configurePreset": "dev",
+      "jobs": 8
+    },
+    {
+      "name": "prod",
+      "configurePreset": "prod",
+      "jobs": 8
+    },
+    {
+      "name": "gateway",
+      "configurePreset": "dev",
+      "jobs": 8,
+      "targets": [
+        "argus-gateway",
+        "gateway-test",
+        "audit-sync-read-test",
+        "camera-notifier-test",
+        "push-intent-test"
+      ]
+    },
+    {
+      "name": "gateway-prod",
+      "configurePreset": "prod",
+      "jobs": 8,
+      "targets": [
+        "argus-gateway",
+        "gateway-test",
+        "audit-sync-read-test",
+        "camera-notifier-test",
+        "push-intent-test"
+      ]
+    },
+    {
+      "name": "camera",
+      "configurePreset": "dev",
+      "jobs": 8,
+      "targets": [
+        "argus-camera",
+        "event-intelligence-test",
+        "camera-operator-test"
+      ]
+    },
+    {
+      "name": "camera-prod",
+      "configurePreset": "prod",
+      "jobs": 8,
+      "targets": [
+        "argus-camera",
+        "event-intelligence-test",
+        "camera-operator-test"
+      ]
+    },
+    {
+      "name": "productivity",
+      "configurePreset": "dev",
+      "jobs": 8,
+      "targets": [
+        "argus-productivity",
+        "productivity-schema-test",
+        "productivity-migration-test"
+      ]
+    },
+    {
+      "name": "productivity-prod",
+      "configurePreset": "prod",
+      "jobs": 8,
+      "targets": [
+        "argus-productivity",
+        "productivity-schema-test",
+        "productivity-migration-test"
+      ]
+    },
+    {
+      "name": "notification",
+      "configurePreset": "dev",
+      "jobs": 8,
+      "targets": [
+        "argus-notification",
+        "notification-schema-test",
+        "notification-migration-test"
+      ]
+    },
+    {
+      "name": "notification-prod",
+      "configurePreset": "prod",
+      "jobs": 8,
+      "targets": [
+        "argus-notification",
+        "notification-schema-test",
+        "notification-migration-test"
+      ]
+    },
+    {
+      "name": "tts",
+      "configurePreset": "dev",
+      "jobs": 8,
+      "targets": [
+        "argus-tts"
+      ]
+    },
+    {
+      "name": "tts-prod",
+      "configurePreset": "prod",
+      "jobs": 8,
+      "targets": [
+        "argus-tts"
+      ]
+    },
+    {
+      "name": "stt",
+      "configurePreset": "dev",
+      "jobs": 8,
+      "targets": [
+        "argus-stt"
+      ]
+    },
+    {
+      "name": "stt-prod",
+      "configurePreset": "prod",
+      "jobs": 8,
+      "targets": [
+        "argus-stt"
+      ]
+    },
+    {
+      "name": "vlm",
+      "configurePreset": "dev",
+      "jobs": 8,
+      "targets": [
+        "argus-vlm"
+      ]
+    },
+    {
+      "name": "vlm-prod",
+      "configurePreset": "prod",
+      "jobs": 8,
+      "targets": [
+        "argus-vlm"
+      ]
+    },
+    {
+      "name": "llm",
+      "configurePreset": "dev",
+      "jobs": 8,
+      "targets": [
+        "argus-llm"
+      ]
+    },
+    {
+      "name": "llm-prod",
+      "configurePreset": "prod",
+      "jobs": 8,
+      "targets": [
+        "argus-llm"
+      ]
+    },
+    {
+      "name": "memory",
+      "configurePreset": "dev",
+      "jobs": 8,
+      "targets": [
+        "argus-memory"
+      ]
+    },
+    {
+      "name": "memory-prod",
+      "configurePreset": "prod",
+      "jobs": 8,
+      "targets": [
+        "argus-memory"
+      ]
+    },
+    {
+      "name": "tunnel",
+      "configurePreset": "dev",
+      "jobs": 8,
+      "targets": [
+        "argus-tunnel-client",
+        "argus-tunnel-relay",
+        "framing-test",
+        "tunnel-integration-test",
+        "tunnel-reconnect-test",
+        "tunnel-negauth-test",
+        "service-config-test"
+      ]
+    },
+    {
+      "name": "tunnel-prod",
+      "configurePreset": "prod",
+      "jobs": 8,
+      "targets": [
+        "argus-tunnel-client",
+        "argus-tunnel-relay",
+        "framing-test",
+        "tunnel-integration-test",
+        "tunnel-reconnect-test",
+        "tunnel-negauth-test",
+        "service-config-test"
+      ]
+    },
+    {
+      "name": "voice",
+      "configurePreset": "dev",
+      "targets": [
+        "argus-voice",
+        "voice-session-seam-test",
+        "voice-tts-remote-test",
+        "voice-stt-remote-test",
+        "voice-llm-remote-test"
+      ]
+    },
+    {
+      "name": "voice-prod",
+      "configurePreset": "prod",
+      "targets": [
+        "argus-voice",
+        "voice-session-seam-test",
+        "voice-tts-remote-test",
+        "voice-stt-remote-test",
+        "voice-llm-remote-test"
+      ]
+    }
   ]
 }

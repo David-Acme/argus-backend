@@ -53,42 +53,6 @@ target_link_libraries(argus_sync
 
 target_compile_options(argus_sync PRIVATE -Wall -Wextra)
 
-# argus_sync_media: the voice session on the AI stack (F6-2 split the camera
-# half out to argus-camera's CameraMediaService). Only the legacy backend links
-# it; the gateway relays the frames to each owner service instead.
-if(ARGUS_SHERPA_ONNX_TARGET)
-    set(ARGUS_SYNC_MEDIA_SOURCES
-        ${CMAKE_CURRENT_SOURCE_DIR}/../feature/socket/sync/media/sync-media-service.cc
-        ${CMAKE_CURRENT_SOURCE_DIR}/../feature/socket/sync/services/voice-engine-seam.cc
-        ${CMAKE_CURRENT_SOURCE_DIR}/../feature/socket/sync/services/voice-session-service.cc
-        ${CMAKE_CURRENT_SOURCE_DIR}/../shared/services/stt/remote/stt-remote.cc
-        ${CMAKE_CURRENT_SOURCE_DIR}/../shared/services/llm/remote/llm-remote.cc
-    )
-
-    add_library(argus_sync_media STATIC ${ARGUS_SYNC_MEDIA_SOURCES})
-
-    target_include_directories(argus_sync_media SYSTEM PUBLIC
-        ${CMAKE_SOURCE_DIR}/third_party
-        ${CMAKE_SOURCE_DIR}/third_party/stb
-        ${CMAKE_SOURCE_DIR}/third_party/sherpa-onnx
-        ${CMAKE_BINARY_DIR}/third_party/ncnn/src)
-
-    target_link_libraries(argus_sync_media
-        PUBLIC
-            argus_sync
-            ${ARGUS_LLAMA_TARGETS}
-            onnxruntime::onnxruntime
-            ${ARGUS_NCNN_TARGET}
-            ${ARGUS_SHERPA_ONNX_TARGET})
-
-    if(RNNOISE_INCLUDE_DIR AND RNNOISE_LIBRARY)
-        target_compile_definitions(argus_sync_media PUBLIC ARGUS_HAS_RNNOISE=1)
-        target_include_directories(argus_sync_media SYSTEM PUBLIC
-            ${RNNOISE_INCLUDE_DIR})
-        target_link_libraries(argus_sync_media PUBLIC ${RNNOISE_LIBRARY})
-    else()
-        target_compile_definitions(argus_sync_media PUBLIC ARGUS_HAS_RNNOISE=0)
-    endif()
-
-    target_compile_options(argus_sync_media PRIVATE -Wall -Wextra)
-endif()
+# The voice half of the media forwarder left with F6-3: the whole former
+# argus_sync_media library is argus-voice's voice-core now; the gateway relays
+# the frames to the owner service instead of linking any of this.
