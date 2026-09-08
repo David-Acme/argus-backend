@@ -35,75 +35,66 @@ enable_testing()
 
 add_subdirectory(third_party)
 
-# The foundation and the shared modules, in dependency order: a module may
-# only be added after everything it links. Everything below this block is a
-# service, discovered rather than listed.
-add_subdirectory(argus-common)
-add_subdirectory(argus-audio)
-add_subdirectory(argus-phrase)
-add_subdirectory(argus-tts-client)
-add_subdirectory(argus-llm-client)
-add_subdirectory(argus-stt-client)
-add_subdirectory(argus-cert)
-add_subdirectory(argus-room)
-add_subdirectory(argus-sqlite)
-add_subdirectory(argus-socket)
-add_subdirectory(argus-audit)
-add_subdirectory(argus-auth)
-add_subdirectory(argus-identity)
-add_subdirectory(argus-sync)
+# The foundation and the shared modules. This list is explicit and ORDERED on
+# purpose: a module may only be added after every module it links, so it is the
+# one place the dependency order is stated.
+set(ARGUS_MODULES
+    argus-common
+    argus-audio
+    argus-phrase
+    argus-tts-client
+    argus-llm-client
+    argus-stt-client
+    argus-cert
+    argus-room
+    argus-sqlite
+    argus-socket
+    argus-audit
+    argus-auth
+    argus-identity
+    argus-sync)
 
-# argus-voice service (F6-3): before the services discovered below so the
-# suites link voice-core with its usage requirements resolved.
-add_subdirectory(argus-voice EXCLUDE_FROM_ALL)
+foreach(argus_module_dir IN LISTS ARGUS_MODULES)
+    add_subdirectory(${argus_module_dir})
+endforeach()
 
-# argus-gateway service: built on demand, never as part of the default
-# backend build.
-add_subdirectory(argus-gateway EXCLUDE_FROM_ALL)
+# argus-contracts is added by whichever consumer needs it first (each guards
+# with if(NOT TARGET)), so it is never added here.
+# argus-voice is added before the discovered services: their suites link
+# voice-core and need its usage requirements resolved.
+set(ARGUS_SERVICES_EXPLICIT argus-voice)
+set(ARGUS_SERVICES_SKIP argus-contracts ${ARGUS_MODULES})
 
-# argus-camera service (phase 2 pilot): built on demand, never as part of the
-# default backend build.
-add_subdirectory(argus-camera EXCLUDE_FROM_ALL)
+foreach(argus_service_dir IN LISTS ARGUS_SERVICES_EXPLICIT)
+    add_subdirectory(${argus_service_dir} EXCLUDE_FROM_ALL)
+endforeach()
 
-# argus-productivity and argus-notification services (phase 3 substrate):
+# Every other argus-* folder carrying a CMakeLists is a service: discovered,
+# not listed, so adding a service means creating its folder. Services are
 # built on demand, never as part of the default backend build.
-add_subdirectory(argus-productivity EXCLUDE_FROM_ALL)
-add_subdirectory(argus-notification EXCLUDE_FROM_ALL)
+file(GLOB ARGUS_SERVICE_CMAKE CONFIGURE_DEPENDS
+    ${CMAKE_CURRENT_SOURCE_DIR}/argus-*/CMakeLists.txt)
 
-# argus-tts service (F4-2): the TTS capacity extracted out of the legacy,
-# built on demand, never as part of the default backend build.
-add_subdirectory(argus-tts EXCLUDE_FROM_ALL)
+foreach(argus_service_cmake IN LISTS ARGUS_SERVICE_CMAKE)
+    get_filename_component(argus_service_dir ${argus_service_cmake} DIRECTORY)
+    get_filename_component(argus_service_name ${argus_service_dir} NAME)
+    if(NOT argus_service_name IN_LIST ARGUS_SERVICES_SKIP
+       AND NOT argus_service_name IN_LIST ARGUS_SERVICES_EXPLICIT)
+        add_subdirectory(${argus_service_name} EXCLUDE_FROM_ALL)
+    endif()
+endforeach()
 
-# argus-stt service (F4-3): the STT capacity extracted out of the legacy,
-# built on demand, never as part of the default backend build.
-add_subdirectory(argus-stt EXCLUDE_FROM_ALL)
+# Data migration tools live with the service whose database they write, and
+# the Vulkan probe with argus-camera whose ncnn Vulkan init it reuses. Same
+# discovery rule, same on-demand build.
+file(GLOB ARGUS_TOOL_CMAKE CONFIGURE_DEPENDS
+    ${CMAKE_CURRENT_SOURCE_DIR}/argus-*/tools/*/CMakeLists.txt)
 
-# argus-vlm service (F4-4): the vision capacity extracted out of the legacy,
-# built on demand, never as part of the default backend build.
-add_subdirectory(argus-vlm EXCLUDE_FROM_ALL)
-
-# argus-llm service (F4-5): the LLM engine extracted out of the legacy,
-# built on demand, never as part of the default backend build.
-add_subdirectory(argus-llm EXCLUDE_FROM_ALL)
-
-# argus-memory service (F4-6): the memory stack extracted out of the legacy,
-# built on demand, never as part of the default backend build.
-add_subdirectory(argus-memory EXCLUDE_FROM_ALL)
-
-# argus-tunnel service (F5-4): the byte-transparent relay pair, built on
-# demand, never as part of the default backend build.
-add_subdirectory(argus-tunnel EXCLUDE_FROM_ALL)
-
-# Data migration tools now live with the service whose database they write;
-# each CLI is built on demand, never as part of the default backend build.
-add_subdirectory(argus-identity/tools/migrate-identity EXCLUDE_FROM_ALL)
-add_subdirectory(argus-camera/tools/migrate-camera EXCLUDE_FROM_ALL)
-add_subdirectory(argus-productivity/tools/migrate-productivity EXCLUDE_FROM_ALL)
-add_subdirectory(argus-notification/tools/migrate-notification EXCLUDE_FROM_ALL)
-
-# Vulkan-in-container RADV probe: it reuses ncnn's Vulkan init, which is
-# argus-camera's capacity (target argus-vulkan-probe).
-add_subdirectory(argus-camera/tools/vulkan-probe EXCLUDE_FROM_ALL)
+foreach(argus_tool_cmake IN LISTS ARGUS_TOOL_CMAKE)
+    get_filename_component(argus_tool_dir ${argus_tool_cmake} DIRECTORY)
+    file(RELATIVE_PATH argus_tool_rel ${CMAKE_CURRENT_SOURCE_DIR} ${argus_tool_dir})
+    add_subdirectory(${argus_tool_rel} EXCLUDE_FROM_ALL)
+endforeach()
 
 option(ARGUS_BUILD_LABS "Build backend integration and verification labs" OFF)
 
