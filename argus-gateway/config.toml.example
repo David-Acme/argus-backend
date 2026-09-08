@@ -1,7 +1,9 @@
 # argus-gateway configuration. Copy to config.toml (gitignored) to run.
 # Cutover shape (F1-5): the gateway owns the public TLS 7024 listener (the
-# same instance certificates the legacy uses) and proxies every non-native
-# route to the legacy backend on its internal plain-HTTP listener.
+# same instance certificates the monolith used) and forwards each extracted
+# domain to its service backend through the proxy route table. Unrouted paths
+# fall through to the gateway's own routing chain, which answers unknown
+# paths with the frozen NOT_FOUND envelope.
 
 [gateway]
 host = "0.0.0.0"
@@ -72,7 +74,7 @@ identity_mode = "ip"
 
 [identity]
 # Own database of the gateway identity domain (F1-3): all identity routes
-# read this SQLite file, never the backend's argus.db.
+# read this SQLite file.
 db = "database/identity.db"
 schema = "database/identity-schema.sql"
 # Internal IdentityService gRPC listener (argus.identity.v1, F6-3 seed).
@@ -80,34 +82,14 @@ schema = "database/identity-schema.sql"
 rpc_host = "127.0.0.1"
 rpc_port = 7040
 
-[legacy]
-# The internal listener both URLs point at lives in the legacy's own
-# config.toml:
-#   [[drogon.listeners]]
-#   address = "127.0.0.1"  # MUST be loopback: the legacy trusts
-#                          # X-Forwarded-For for the device hash
-#                          # ([device] trust_forwarded_for = true), so a
-#                          # routable internal bind is spoofable from the LAN
-#   port = 7025
-#   https = false
-# Internal /sync of the legacy backend, used to relay the remaining sync
-# frames (and voice:* while [voice] target is empty) with the client's own
-# credentials. Empty disables the relay.
-sync_url = "ws://127.0.0.1:7025/sync"
-# Internal HTTP upstream of the legacy backend for proxied routes (Ruling I
-# exclusion table: everything the gateway does not serve itself). Empty
-# disables the reverse proxy.
-proxy_url = "http://127.0.0.1:7025"
-# Legacy database the gateway reads the non-identity sync tables from,
-# opened mode=ro.
-db = "database/argus.db"
-
 [camera]
 # F2-2 cutover (Rulings X/Z): the camera domain argus-camera owns. The relay
 # leg for camera:* frames and the whole /camera, /zone domain (every segment
 # depth, device control included)
 # point at its internal listener; camera.db opens mode=ro for the camera
-# sync-table reads. Empty keys keep the camera domain on the legacy.
+# sync-table reads. Empty keys leave camera:* frames on the 503
+# unconfigured-relay envelope and the /camera, /zone paths on the gateway's
+# native 404 envelope.
 sync_url = "ws://127.0.0.1:7026/sync"
 proxy_url = "http://127.0.0.1:7026"
 db = "database/camera.db"
@@ -115,16 +97,16 @@ db = "database/camera.db"
 [voice]
 # F6-3 cutover: argus-voice owns the voice orchestration; the voice:* frames
 # and the raw 16 kHz s16le PCM binary ride the argus.voice.v1 gRPC leg at
-# [voice].target. Empty keeps voice:* on the legacy WS leg ([legacy]
-# sync_url), which since F6-3 answers them with the unknown-type 400
-# envelope (set "127.0.0.1:7034" with argus-voice in the stack).
+# [voice].target. Empty leaves voice:* answered with the gateway's 503
+# unconfigured-relay envelope (argus-gateway/src/sync/sync-relay.cc), so set
+# "127.0.0.1:7034" with argus-voice in the stack.
 target = ""
 
 [productivity]
 # F3-2 cutover (Rulings AP/AQ): argus-productivity owns the calendar-event,
 # calendar-event-share, project, project-member and project-task routes and
 # the productivity.db sync tables, which the gateway opens mode=ro. Empty
-# keys keep the productivity domain on the legacy.
+# keys leave the productivity paths on the gateway's native 404 envelope.
 proxy_url = "http://127.0.0.1:7027"
 db = "database/productivity.db"
 
@@ -161,7 +143,8 @@ enabled = true
 # /notification-token route to argus-notification; notification.db is the
 # single notification substrate, opened read-write here because the gateway
 # NotificationService writes notifications into it (camera-notifier
-# retarget). Empty keys keep the notification domain on the legacy.
+# retarget). Empty keys leave the notification routes on the gateway's
+# native 404 envelope.
 proxy_url = "http://127.0.0.1:7028"
 db = "database/notification.db"
 # Camera object_detected consumer (F2-3, Ruling AD): at most budget_per_hour
