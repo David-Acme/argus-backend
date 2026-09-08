@@ -119,19 +119,17 @@ target_sources(notification-controller-test PRIVATE
 target_link_libraries(notification-controller-test PRIVATE argus_sync
     doctest::doctest)
 
-add_executable(event-sync-empty-test event-sync-empty-test.cc
-    ${SRC_ROOT}/shared/services/sqlite/db-service.cc)
+add_executable(event-sync-empty-test event-sync-empty-test.cc)
 
-target_link_libraries(event-sync-empty-test PRIVATE argus_sync argus_common
-    Drogon::Drogon sqlite-vec doctest::doctest)
+target_link_libraries(event-sync-empty-test PRIVATE argus_sync argus::sqlite
+    argus_common Drogon::Drogon sqlite-vec doctest::doctest)
 
 add_test(NAME event-sync-empty-test COMMAND event-sync-empty-test)
 
-add_executable(identity-client-test identity-client-test.cc
-    ${SRC_ROOT}/shared/services/sqlite/db-service.cc)
+add_executable(identity-client-test identity-client-test.cc)
 
-target_link_libraries(identity-client-test PRIVATE argus_common Drogon::Drogon
-    sqlite-vec doctest::doctest)
+target_link_libraries(identity-client-test PRIVATE argus::sqlite argus_common
+    Drogon::Drogon sqlite-vec doctest::doctest)
 
 add_test(NAME identity-client-test COMMAND identity-client-test)
 

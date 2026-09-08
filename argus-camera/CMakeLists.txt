@@ -21,6 +21,10 @@ if(NOT TARGET argus_common)
     find_package(mdns REQUIRED)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../argus-common
                      ${CMAKE_BINARY_DIR}/argus-common)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../src/sqlite
+                     ${CMAKE_BINARY_DIR}/argus-sqlite)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../src/audit
+                     ${CMAKE_BINARY_DIR}/argus-audit)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../src/filter
                      ${CMAKE_BINARY_DIR}/argus-filter)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../src/identity
@@ -113,9 +117,6 @@ add_library(camera-core STATIC
     ${CAMERA_SRC_ROOT}/operator/nats-object-event-sink.cc
     ${CAMERA_SRC_ROOT}/operator/object-event.cc
     ${CAMERA_SRC_ROOT}/operator/operator-config.cc
-    # Boot plumbing the service shares with the backend: the SQLite layer
-    # (DbService with the named identity client slot).
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src/shared/services/sqlite/db-service.cc
     # Camera-domain CRUD, compiled from the shared tree: this service is the
     # sole owner since F6-2 (the legacy binary no longer compiles it).
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/feature/api/camera/controllers/camera-controller.cc
@@ -141,7 +142,8 @@ target_include_directories(camera-core PUBLIC
     ${CAMERA_SRC_ROOT}
     ${CMAKE_CURRENT_SOURCE_DIR}/../src)
 
-target_link_libraries(camera-core PUBLIC argus_sync sqlite-vec opencv::opencv
+target_link_libraries(camera-core PUBLIC argus_sync argus::sqlite sqlite-vec
+    opencv::opencv
     ${ARGUS_NCNN_TARGET} argus::hardware-profile-gpu OpenSSL::SSL OpenSSL::Crypto)
 
 target_compile_options(camera-core PRIVATE -Wall -Wextra)

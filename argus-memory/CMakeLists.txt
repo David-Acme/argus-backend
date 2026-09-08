@@ -86,12 +86,9 @@ add_library(memory-core STATIC
     ${SHARED_ROOT}/services/extract/temporal-resolver.cc
     ${SHARED_ROOT}/services/extract/tiered-extractor.cc
     ${SHARED_ROOT}/services/llm/remote/llm-remote.cc
-    ${SHARED_ROOT}/services/sqlite/vec-db.cc
-    ${SHARED_ROOT}/services/sqlite/db-service.cc
     ${SHARED_ROOT}/services/tools/tool-registry.cc
     ${SHARED_ROOT}/services/tools/tool-validator.cc
     ${SHARED_ROOT}/repositories/memory-graph/memory-graph-repository.cc
-    ${SHARED_ROOT}/repositories/vector-index/vector-index-repository.cc
     ${SHARED_ROOT}/utils/text-match/phrase-automaton.cc
     ${SHARED_ROOT}/utils/text-norm/text-norm.cc
 )
@@ -105,6 +102,7 @@ target_include_directories(memory-core PUBLIC
 
 target_link_libraries(memory-core PUBLIC
     argus_common
+    argus::sqlite
     argus::hardware-profile
     Drogon::Drogon
     nlohmann_json::nlohmann_json

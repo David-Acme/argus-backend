@@ -20,6 +20,10 @@ if(NOT TARGET argus_common)
     find_package(mdns REQUIRED)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../argus-common
                      ${CMAKE_BINARY_DIR}/argus-common)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../src/sqlite
+                     ${CMAKE_BINARY_DIR}/argus-sqlite)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../src/audit
+                     ${CMAKE_BINARY_DIR}/argus-audit)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../src/filter
                      ${CMAKE_BINARY_DIR}/argus-filter)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../src/identity
@@ -57,16 +61,14 @@ add_library(notification-core STATIC
     ${NOTIFICATION_SRC_ROOT}/notification/nats-notification-change-sink.cc
     ${NOTIFICATION_SRC_ROOT}/notification/notification-config.cc
     ${NOTIFICATION_SRC_ROOT}/server/listener-config.cc
-    # Boot plumbing the service shares with the backend: the SQLite layer
-    # (DbService with the named client slots).
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src/shared/services/sqlite/db-service.cc
 )
 
 target_include_directories(notification-core PUBLIC
     ${NOTIFICATION_SRC_ROOT}
     ${CMAKE_CURRENT_SOURCE_DIR}/../src)
 
-target_link_libraries(notification-core PUBLIC argus_sync ${ARGUS_SQLITE_VEC_TARGET})
+target_link_libraries(notification-core PUBLIC argus_sync argus::sqlite
+    ${ARGUS_SQLITE_VEC_TARGET})
 
 target_compile_options(notification-core PRIVATE -Wall -Wextra)
 

@@ -38,7 +38,6 @@ set(ARGUS_IDENTITY_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/../feature/api/user/dtos/update-user-dto.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/../feature/api/user/services/portrait-preview-service.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/../feature/api/user/services/user-feature-service.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/../shared/repositories/audit-log/audit-log-repository.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/../shared/repositories/device-credential/device-credential-repository.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/../shared/repositories/device-login-challenge/device-login-challenge-repository.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/../shared/repositories/face-embedding/face-embedding-repository.cc
@@ -46,13 +45,9 @@ set(ARGUS_IDENTITY_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/../shared/repositories/portrait-preview-capability/portrait-preview-capability-repository.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/../shared/repositories/refresh-token/refresh-token-repository.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/../shared/repositories/stored-file/stored-file-repository.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/../shared/repositories/user-action-log/user-action-log-repository.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/../shared/repositories/user-audit-log/user-audit-log-repository.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/../shared/repositories/user-invitation/user-invitation-repository.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/../shared/repositories/user-portrait/user-portrait-repository.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/../shared/repositories/user/user-repository.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/../shared/repositories/vector-index/vector-index-repository.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/../shared/schemas/audit-log/audit-log-schema.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/../shared/schemas/device-credential/device-credential-schema.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/../shared/schemas/device-login-challenge/device-login-challenge-schema.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/../shared/schemas/face-embedding/face-embedding-schema.cc
@@ -60,12 +55,9 @@ set(ARGUS_IDENTITY_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/../shared/schemas/portrait-preview-capability/portrait-preview-capability-schema.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/../shared/schemas/refresh-token/refresh-token-schema.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/../shared/schemas/stored-file/stored-file-schema.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/../shared/schemas/user-action-log/user-action-log-schema.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/../shared/schemas/user-audit-log/user-audit-log-schema.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/../shared/schemas/user-invitation/user-invitation-schema.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/../shared/schemas/user-portrait/user-portrait-schema.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/../shared/schemas/user/user-schema.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/../shared/services/audit-log/audit-log-service.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/../shared/services/cert/cert-service.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/../shared/services/face/face-db.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/../shared/services/face/face-service.cc
@@ -74,12 +66,7 @@ set(ARGUS_IDENTITY_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/../shared/services/socket/socket-service.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/../shared/services/socket/nats-identity-change-sink.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/../shared/services/socket/socket-user-change-sink.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/../shared/services/sqlite/db-service.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/../shared/services/sqlite/vec-db.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/../shared/services/storage/private-portrait-service.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/../shared/services/sync-audit/sync-audit-service.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/../shared/services/user-action-log/user-action-log-service.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/../shared/services/user-audit-log/user-audit-log-service.cc
 )
 
 add_library(argus_identity STATIC ${ARGUS_IDENTITY_SOURCES})
@@ -96,14 +83,12 @@ if(ARGUS_NCNN_TARGET AND TARGET ${ARGUS_NCNN_TARGET})
         ${CMAKE_BINARY_DIR}/third_party/ncnn/src)
 endif()
 
-if(ARGUS_SQLITE_VEC_TARGET AND TARGET ${ARGUS_SQLITE_VEC_TARGET})
-    target_link_libraries(argus_identity PUBLIC ${ARGUS_SQLITE_VEC_TARGET})
-endif()
-
 target_link_libraries(argus_identity
     PUBLIC
         argus_common
         argus::auth
+        argus::audit
+        argus::sqlite
         argus::hardware-profile-gpu
         Drogon::Drogon
         jwt-cpp::jwt-cpp

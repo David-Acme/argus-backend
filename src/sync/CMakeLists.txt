@@ -48,6 +48,7 @@ target_include_directories(argus_sync
 target_link_libraries(argus_sync
     PUBLIC
         argus_identity
+        argus::audit
         argus_common
         Drogon::Drogon)
 
