@@ -9,8 +9,9 @@
   `argus::common`) every backend service links: enums, role access,
   validation DSL, the API response envelope, the NATS event bus, the
   hardware-profile probe, the config-service TOML reader, the schema runner,
-  the socket-emit DTO, and the pure-C++ sync contract interfaces
-  (`Syncable`, `SyncFilter`, `SyncOperation`).
+  the socket-emit DTO, the pure-C++ sync contract interfaces (`Syncable`,
+  `SyncFilter`, `SyncOperation`), the app config loader, the sqlite-stmt and
+  json-util/json-diff wrappers, and the S3 storage client.
 - Top-level folder of the Argus monorepo (rooted at `backend/`), not an
   independent repo — a package, not a service. It carries no
   `conanfile.txt`/`CMakePresets.json` of its own; it is never built or run
@@ -22,12 +23,14 @@
 ```
 argus-common/
   CMakeLists.txt          argus_module(NAME common ...) + hardware-profile
+  src/config/...           the moved files, original relative path preserved
   src/shared/...           the moved files, original relative path preserved
 ```
 
-The `src/shared/...` path prefix inside this package is intentional, not
-legacy: every `#include <shared/...>` across the 450 consumer files in the
-rest of the tree keeps resolving unchanged. See CONTEXT.md for why.
+The `src/config/...` and `src/shared/...` path prefixes inside this package
+are intentional, not legacy: every `#include <config/...>`/`<shared/...>`
+across the consumer files in the rest of the tree keeps resolving unchanged.
+See CONTEXT.md for why.
 
 ## Binding rules
 
@@ -45,10 +48,14 @@ monolith structure, build-by-module-name). In particular:
 
 ## What does NOT live here
 
-`src/shared/repositories`, `src/shared/schemas`, the other
-`src/shared/services/*`, the rest of `src/shared/contracts/*` (domain seams:
-`camera-*`, `identity-change-sink.hxx`, `push-intent-sink.hxx`,
-`tool-contracts.hxx`, `user-*`), `src/shared/vocabulary`, and the rest of
-`src/shared/wrapper/*` all stay in `src/shared` for now — later steps of the
-microservices migration move them. Before adding a file here, check
+`src/shared/repositories`, `src/shared/schemas`, `src/shared/services/sqlite`
+(`db-service`, `VecDb` — reaches domain repositories, a design problem, not
+a move), `src/shared/services/storage/private-portrait-service.*` (reaches
+identity repositories), `src/shared/utils/text-match`,
+`src/shared/utils/text-norm` (single-domain, memory/intent/extract only),
+the rest of `src/shared/contracts/*` (domain seams: `camera-*`,
+`identity-change-sink.hxx`, `push-intent-sink.hxx`, `tool-contracts.hxx`,
+`user-*`), `src/shared/vocabulary`, and the rest of `src/shared/wrapper/*`
+all stay in `src/shared` for now — later steps of the microservices
+migration move them. Before adding a file here, check
 `docs/migracion-microservicios.md` for the step that owns it.

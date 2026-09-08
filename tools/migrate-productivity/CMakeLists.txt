@@ -10,6 +10,7 @@ target_include_directories(productivity-migration
     PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}
         ${SRC_ROOT}
+        ${CMAKE_SOURCE_DIR}/argus-common/src
 )
 
 target_compile_definitions(productivity-migration PUBLIC

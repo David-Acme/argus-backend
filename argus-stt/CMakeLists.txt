@@ -53,9 +53,6 @@ add_library(stt-core STATIC
     ${STT_SRC_ROOT}/controllers/health-controller.cc
     ${STT_SRC_ROOT}/controllers/stt-controller.cc
     ${STT_SRC_ROOT}/server/listener-config.cc
-    # Boot plumbing shared with the backend: the centralized response config
-    # (envelope/404/405).
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src/config/app-config.cc
     # The engine compiled from the shared tree (PORTED pattern), so the
     # legacy binary and this service transcribe identically.
     ${SHARED_ROOT}/services/stt/stt-service.cc

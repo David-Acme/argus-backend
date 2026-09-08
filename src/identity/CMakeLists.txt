@@ -10,7 +10,6 @@ find_package(OpenSSL REQUIRED)
 find_package(mdns CONFIG REQUIRED)
 
 set(ARGUS_IDENTITY_SOURCES
-    ${CMAKE_CURRENT_SOURCE_DIR}/../config/app-config.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/../feature/api/auth/controllers/auth-controller.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/../feature/api/auth/dtos/create-device-login-dto.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/../feature/api/auth/dtos/device-login-status-dto.cc
@@ -81,11 +80,9 @@ set(ARGUS_IDENTITY_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/../shared/services/sqlite/db-service.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/../shared/services/sqlite/vec-db.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/../shared/services/storage/private-portrait-service.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/../shared/services/storage/s3-storage-service.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/../shared/services/sync-audit/sync-audit-service.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/../shared/services/user-action-log/user-action-log-service.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/../shared/services/user-audit-log/user-audit-log-service.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/../shared/utils/json-diff/json-diff.cc
 )
 
 add_library(argus_identity STATIC ${ARGUS_IDENTITY_SOURCES})

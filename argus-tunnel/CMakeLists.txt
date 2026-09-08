@@ -30,7 +30,6 @@ add_library(tunnel-core STATIC
     ${TUNNEL_SRC_ROOT}/relay/tunnel-relay.cc
     ${TUNNEL_SRC_ROOT}/server/service-config.cc
     ${TUNNEL_SRC_ROOT}/controllers/health-controller.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src/config/app-config.cc
 )
 
 target_include_directories(tunnel-core PUBLIC

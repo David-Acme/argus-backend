@@ -3,6 +3,13 @@
 
 include(${CMAKE_CURRENT_SOURCE_DIR}/../cmake/argus-module.cmake)
 
+# s3-signing/s3-storage-service need OpenSSL; found here instead of relying
+# on the caller, since not every root/standalone build path finds it before
+# add_subdirectory(argus-common).
+if(NOT TARGET OpenSSL::SSL)
+    find_package(OpenSSL REQUIRED)
+endif()
+
 # argus::hardware-profile / argus::hardware-profile-gpu (rule 25: declared
 # once, in their own folder); argus_common carries neither, so it stays
 # ncnn-free for every service that links it.
@@ -10,6 +17,9 @@ add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/src/shared/wrapper/hardware-profile
 
 argus_module(NAME common
     SOURCES
+        src/config/app-config.cc
+        src/config/app-config.hxx
+        src/config/service.hxx
         src/shared/enums.hxx
         src/shared/access/role-access.hxx
         src/shared/validation/rules.hxx
@@ -25,8 +35,15 @@ argus_module(NAME common
         src/shared/wrapper/nats/nats-bus.cc
         src/shared/wrapper/nats/nats-bus.hxx
         src/shared/wrapper/nats/nats-subject.hxx
+        src/shared/wrapper/sqlite-stmt/sqlite-stmt.hxx
         src/shared/services/config-service/config-service.cc
         src/shared/services/config-service/config-service.hxx
+        src/shared/services/storage/s3-signing.hxx
+        src/shared/services/storage/s3-storage-service.cc
+        src/shared/services/storage/s3-storage-service.hxx
+        src/shared/utils/json-diff/json-diff.cc
+        src/shared/utils/json-diff/json-diff.hxx
+        src/shared/utils/json-util/json-util.hxx
         src/shared/utils/schema-runner/schema-runner.cc
         src/shared/utils/schema-runner/schema-runner.hxx
         src/shared/dtos/socket-emit/socket-emit-dto.cc
@@ -41,6 +58,9 @@ target_link_libraries(argus_common
         Drogon::Drogon
         tomlplusplus::tomlplusplus
         cnats::nats_static
+    PRIVATE
+        OpenSSL::SSL
+        OpenSSL::Crypto
 )
 
 # schema-runner compiles sqlite3.h directly; sqlite3 is a direct conan

@@ -111,10 +111,8 @@ add_library(camera-core STATIC
     ${CAMERA_SRC_ROOT}/operator/nats-object-event-sink.cc
     ${CAMERA_SRC_ROOT}/operator/object-event.cc
     ${CAMERA_SRC_ROOT}/operator/operator-config.cc
-    # Boot plumbing the service shares with the backend: the centralized
-    # response config (envelope/CORS/404/405) and the SQLite layer (DbService
-    # with the named identity client slot).
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src/config/app-config.cc
+    # Boot plumbing the service shares with the backend: the SQLite layer
+    # (DbService with the named identity client slot).
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/shared/services/sqlite/db-service.cc
     # Camera-domain CRUD, compiled from the shared tree: this service is the
     # sole owner since F6-2 (the legacy binary no longer compiles it).

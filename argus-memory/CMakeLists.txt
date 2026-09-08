@@ -68,9 +68,6 @@ add_library(memory-core STATIC
     ${MEMORY_SRC_ROOT}/memory/catalog-replica.cc
     ${MEMORY_SRC_ROOT}/memory/memory-dto.cc
     ${MEMORY_SRC_ROOT}/server/listener-config.cc
-    # Boot plumbing shared with the backend: the centralized response config
-    # (envelope/404/405).
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src/config/app-config.cc
     # The memory stack compiled from the shared tree (PORTED pattern), so the
     # legacy binary and this service behave identically.
     ${SHARED_ROOT}/services/memory/memory-service.cc
@@ -95,7 +92,6 @@ add_library(memory-core STATIC
     ${SHARED_ROOT}/services/tools/tool-validator.cc
     ${SHARED_ROOT}/repositories/memory-graph/memory-graph-repository.cc
     ${SHARED_ROOT}/repositories/vector-index/vector-index-repository.cc
-    ${SHARED_ROOT}/utils/json-diff/json-diff.cc
     ${SHARED_ROOT}/utils/text-match/phrase-automaton.cc
     ${SHARED_ROOT}/utils/text-norm/text-norm.cc
 )

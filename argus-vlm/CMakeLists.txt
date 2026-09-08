@@ -64,9 +64,6 @@ add_library(vlm-core STATIC
     ${VLM_SRC_ROOT}/controllers/vlm-controller.cc
     ${VLM_SRC_ROOT}/server/listener-config.cc
     ${VLM_SRC_ROOT}/vlm/describe-dto.cc
-    # Boot plumbing shared with the backend: the centralized response config
-    # (envelope/404/405).
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src/config/app-config.cc
     # The engine compiled from the shared tree (PORTED pattern), so the
     # legacy binary and this service describe identically.
     ${SHARED_ROOT}/services/vision/vision-service.cc

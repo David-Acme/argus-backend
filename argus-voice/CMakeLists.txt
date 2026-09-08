@@ -53,7 +53,6 @@ argus_module(NAME voice-core
         src/feature/health/health-rpc-service.cc
         src/controllers/health-controller.cc
         src/server/listener-config.cc
-        ../src/config/app-config.cc
         ${VOICE_ENGINE_SOURCES}
     INCLUDES
         src

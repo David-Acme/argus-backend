@@ -55,10 +55,8 @@ add_library(productivity-core STATIC
     ${PRODUCTIVITY_SRC_ROOT}/productivity/nats-productivity-change-sink.cc
     ${PRODUCTIVITY_SRC_ROOT}/productivity/productivity-config.cc
     ${PRODUCTIVITY_SRC_ROOT}/server/listener-config.cc
-    # Boot plumbing the service shares with the backend: the centralized
-    # response config (envelope/CORS/404/405) and the SQLite layer (DbService
-    # with the named identity client slot).
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src/config/app-config.cc
+    # Boot plumbing the service shares with the backend: the SQLite layer
+    # (DbService with the named identity client slot).
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/shared/services/sqlite/db-service.cc
 )
 

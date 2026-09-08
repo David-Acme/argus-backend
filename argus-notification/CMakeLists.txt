@@ -55,10 +55,8 @@ add_library(notification-core STATIC
     ${NOTIFICATION_SRC_ROOT}/notification/nats-notification-change-sink.cc
     ${NOTIFICATION_SRC_ROOT}/notification/notification-config.cc
     ${NOTIFICATION_SRC_ROOT}/server/listener-config.cc
-    # Boot plumbing the service shares with the backend: the centralized
-    # response config (envelope/CORS/404/405) and the SQLite layer (DbService
-    # with the named client slots).
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src/config/app-config.cc
+    # Boot plumbing the service shares with the backend: the SQLite layer
+    # (DbService with the named client slots).
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/shared/services/sqlite/db-service.cc
 )
 

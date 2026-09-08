@@ -119,6 +119,66 @@ includes `config-service.hxx`, both of which really did move into
 `argus-common` (they are not just an old-back-door dependency), so it also
 carries an explicit `${CMAKE_SOURCE_DIR}/argus-common/src` include.
 
+## Step f7-1c: config, sqlite-stmt, json-util, json-diff, s3 storage
+
+Five more foundation pieces moved in, closing the last raw-path duplication
+of files that already lived entirely inside `argus_common`'s consumers:
+`src/config/{app-config.cc,app-config.hxx,service.hxx}`,
+`src/shared/wrapper/sqlite-stmt/sqlite-stmt.hxx`,
+`src/shared/utils/json-util/json-util.hxx`,
+`src/shared/utils/json-diff/{json-diff.cc,json-diff.hxx}`, and
+`src/shared/services/storage/{s3-storage-service.cc,s3-storage-service.hxx,
+s3-signing.hxx}`. Left behind on purpose: `src/shared/services/sqlite/`
+(`db-service`, `VecDb`, which still reach into domain repositories — a
+design problem, not a move), `src/shared/utils/text-match/` and
+`text-norm/` (single-domain, belong to argus-memory later), and
+`src/shared/services/storage/private-portrait-service.{cc,hxx}` (reaches
+identity repositories, argus-identity owns it later).
+
+`app-config.cc` was compiled by raw path in 16 places; `s3-storage-service.cc`
+in 1; `json-diff.cc` in 2. All 19 raw-path entries were deleted since every
+one of those targets already linked `argus_common` (directly, or
+transitively through `argus_identity`/`argus_sync`) — the library now
+supplies the object instead. Comments that described why a file was raw-path
+compiled (e.g. "the centralized response config") were trimmed or reworded
+alongside the deleted line rather than left describing code that is no
+longer there.
+
+**New dependency: OpenSSL.** `s3-signing.hxx`/`s3-storage-service.cc` are
+the first `argus_common` sources to need OpenSSL. Not every root/standalone
+build path that `add_subdirectory(argus-common)`s finds OpenSSL first (e.g.
+`argus-voice`, `argus-productivity`, `argus-notification`, `argus-gateway`
+standalone blocks don't), so `argus-common/CMakeLists.txt` now does its own
+guarded `find_package(OpenSSL REQUIRED)` (`if(NOT TARGET OpenSSL::SSL)`)
+instead of assuming a caller already ran it, and links it PRIVATE since
+nothing in the public headers exposes an OpenSSL type.
+
+**Another quoted-include break, same shape as the one in step f7-1b.**
+`src/shared/services/storage/private-portrait-service.cc` (staying behind)
+did `#include "s3-storage-service.hxx"`; once that header moved out of
+`src/shared/services/storage/`, the quoted form stopped resolving even
+though `argus_identity` (which compiles this file) links `argus_common` and
+would otherwise pick it up fine. Fixed the same way as before, matching the
+file's own convention for its other cross-directory references
+(`<shared/repositories/...>`): `#include
+<shared/services/storage/s3-storage-service.hxx>`.
+
+**A consumer-side break the file-list audit didn't surface on its own:**
+`tools/migrate-{identity,productivity,camera,notification}/CMakeLists.txt`
+each compile a `*-migration.cc` that does `#include
+<shared/wrapper/sqlite-stmt/sqlite-stmt.hxx>`, resolved before this step
+through their own `${SRC_ROOT}` include (not through `argus_common`, which
+none of them link). Moving `sqlite-stmt.hxx` out of `src/` broke all four the
+same way the six-service standalone-build gap did, but for the root-tree
+build itself, not just standalone. Fixed by adding
+`${CMAKE_SOURCE_DIR}/argus-common/src` to each of their `PUBLIC` include
+directories, the same pattern `memory-remote-adapter-test` already used for
+`config-service.hxx` in f7-1b. This is the reason invariant #2 above says
+"per-consumer audit, not something a file move can paper over" — a target
+list built from `grep`ing raw-path `CMakeLists.txt` entries misses consumers
+that only reach a moved file through an include, never a compiled source of
+their own.
+
 ## Known regression (deferred, not introduced by this step)
 
 Six services — `argus-tts`, `argus-stt`, `argus-vlm`, `argus-llm`,

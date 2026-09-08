@@ -1,6 +1,6 @@
 #include "private-portrait-service.hxx"
 
-#include "s3-storage-service.hxx"
+#include <shared/services/storage/s3-storage-service.hxx>
 
 #include <drogon/drogon.h>
 #include <optional>
