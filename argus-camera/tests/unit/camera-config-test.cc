@@ -25,7 +25,7 @@ TEST_CASE("camera config resolves database and schema with defaults")
   const ListenerConfig listener = ListenerConfig::resolve(7026);
 
   CHECK(config.dbPath == "database/camera.db");
-  CHECK(config.schemaPath == "database/camera-schema.sql");
+  CHECK(config.schemaPath == "argus-camera/database/schema.sql");
   CHECK(listener.host == "127.0.0.1");
   CHECK(listener.port == 7026);
 

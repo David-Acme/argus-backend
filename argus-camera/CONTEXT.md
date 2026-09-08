@@ -14,7 +14,7 @@ preset, own `camera.db`.
 - **camera.db**: the camera-domain tables (`camera`, `camera_stream`,
   `zone` plus their 8 indexes), DDL copied verbatim from
   `database/schema.sql`. The schema lands as
-  `database/camera-schema.sql` (same pattern as
+  `argus-camera/database/schema.sql` (same pattern as
   `argus-identity/database/schema.sql`) and
   is applied at boot through `DbService::runScriptFile` — abort on failure.
   `argus.db` is never touched here.
@@ -185,3 +185,28 @@ preset, own `camera.db`.
 - The gateway no longer opens camera.db read-only: `[camera] db` is gone
   from the gateway config and the camera-db compose mount is gateway-only
   history. argus-camera stays the single owner of the file.
+
+## The folder owns its domain (f7-7a)
+
+The camera CRUD features, the Tapo driver stack, the stream lifecycle and
+the camera schema all moved out of the shared `src/` tree into this
+folder, prefixes preserved (`src/feature/api/{camera,zone}`,
+`src/shared/services/{camera-driver,tapo,stream}`), so no include line in
+the fleet changed. The unit suites moved to `tests/unit/` and register
+themselves under `ARGUS_ROOT_PROJECT`; they must opt back into the default
+build (`EXCLUDE_FROM_ALL FALSE`) because this folder is added excluded,
+otherwise ctest registers tests whose binaries never build.
+
+Two sources could NOT come along, because argus-voice compiles them too:
+the PCM resampler and the TTS HTTP client. They became their own modules
+rather than either service reaching into the other — `argus::audio` and
+`argus::tts-client` (which also carries `tts-wire.hxx`, the contract the
+client and argus-tts both speak). `media-relay.{cc,hxx}` came with the
+stream folder even though only `labs/` uses it; it is stream-domain code
+and labs is out of scope for this arc.
+
+What did NOT move: the camera-domain repositories and schemas
+(`camera`, `camera_stream`, `zone`), which `argus_sync` still compiles
+because the gateway's `/sync` reads the same rows. `argus_camera-rpc`
+therefore still carries `../src` on its include path — the one raw reach
+left in this folder, and it goes away when the sync split lands.

@@ -36,9 +36,7 @@ set(VOICE_ENGINE_SOURCES
     ../src/shared/services/vad/vad-service.cc
     ../src/shared/services/noise/noise-suppression-service.cc
     ../src/shared/services/reaction/reaction-engine.cc
-    ../src/shared/wrapper/audio/audio-resampler.cc
     ../src/shared/services/stt/remote/stt-remote.cc
-    ../src/shared/services/tts/remote/tts-remote.cc
     ../src/shared/services/llm/remote/llm-remote.cc
     ../src/shared/services/memory/phrase-catalog.cc
     ../src/shared/services/memory/rule-parser.cc
@@ -59,6 +57,8 @@ argus_module(NAME voice-core
         argus::sdk-voice
         argus::sdk-health
         argus::sdk-identity
+        argus::audio
+        argus::tts-client
         argus_common
     SYSTEM_DEPENDS
         Drogon::Drogon

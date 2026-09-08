@@ -10,6 +10,6 @@ CameraDbConfig CameraConfig::resolveDb()
     config.dbPath = "database/camera.db";
   config.schemaPath = ConfigService::getString("camera.schema");
   if (config.schemaPath.empty())
-    config.schemaPath = "database/camera-schema.sql";
+    config.schemaPath = "argus-camera/database/schema.sql";
   return config;
 }

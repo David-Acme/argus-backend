@@ -42,7 +42,7 @@ relaunch_on_error = false
 # boot from the schema below. tools/migrate-camera fills it from argus.db
 # against the same config key.
 db = "database/camera.db"
-schema = "database/camera-schema.sql"
+schema = "argus-camera/database/schema.sql"
 
 # Tapo local protocols (control + 8800 talk channel). Values mirror the
 # legacy [tapo] block; the Fase-2 drivers read these keys.

@@ -7,7 +7,7 @@
 struct sqlite3;
 
 #ifndef ARGUS_CAMERA_SCHEMA_PATH
-#define ARGUS_CAMERA_SCHEMA_PATH "database/camera-schema.sql"
+#define ARGUS_CAMERA_SCHEMA_PATH "argus-camera/database/schema.sql"
 #endif
 
 struct CameraMigrationOptions

@@ -37,6 +37,8 @@ enable_testing()
 add_subdirectory(third_party)
 
 add_subdirectory(argus-common)
+add_subdirectory(argus-audio)
+add_subdirectory(argus-tts-client)
 add_subdirectory(src/cert)
 add_subdirectory(src/mdns)
 add_subdirectory(src/room)

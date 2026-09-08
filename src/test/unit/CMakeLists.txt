@@ -14,18 +14,12 @@ set(UNIT_TESTS
     validation-dsl-test
     nats-wrapper-test
     sync-change-test
-    camera-schema-test
-    camera-migration-test
-    camera-config-test
-    camera-controller-test
     productivity-schema-test
     productivity-migration-test
     notification-schema-test
     notification-migration-test
     productivity-controller-test
     notification-controller-test
-    event-intelligence-test
-    camera-operator-test
     cert-san-test
 )
 
@@ -39,10 +33,6 @@ foreach(TEST_NAME IN LISTS UNIT_TESTS)
     add_test(NAME ${TEST_NAME} COMMAND ${TEST_NAME})
 endforeach()
 
-# camera-migration builds only as a dependency of the camera unit suites.
-target_link_libraries(camera-schema-test PRIVATE camera-migration)
-target_link_libraries(camera-migration-test PRIVATE camera-migration)
-
 # productivity-migration and notification-migration build only as dependencies
 # of the productivity/notification unit suites.
 target_link_libraries(productivity-schema-test PRIVATE productivity-migration)
@@ -53,13 +43,6 @@ target_link_libraries(notification-migration-test PRIVATE notification-migration
 # The cert SAN suite rides the shared identity domain too: CertService rotation
 # and the in-process TLS listener that proves the hot reload.
 target_link_libraries(cert-san-test PRIVATE argus_identity)
-
-# camera-core (argus-camera service plumbing) is pulled into the default
-# backend build only by camera-config-test and camera-controller-test.
-target_link_libraries(camera-config-test PRIVATE camera-core)
-target_link_libraries(camera-controller-test PRIVATE camera-core)
-target_link_libraries(event-intelligence-test PRIVATE camera-core)
-target_link_libraries(camera-operator-test PRIVATE camera-core)
 
 # The productivity/notification controller suites compile the same write-side
 # feature sources the fase 3 executables compile (shared tree) and ride the
@@ -149,6 +132,10 @@ add_test(NAME voice-session-seam-test COMMAND voice-session-seam-test)
 # internal wire (RemoteVoiceTts) against the in-process fake server.
 add_executable(voice-tts-remote-test voice-tts-remote-test.cc)
 
+# The TTS wire's fake server moved to the wire module with f7-7a.
+target_include_directories(voice-tts-remote-test PRIVATE
+    ${CMAKE_SOURCE_DIR}/argus-tts-client/tests/support)
+
 target_link_libraries(voice-tts-remote-test PRIVATE argus::voice-core
     doctest::doctest)
 
@@ -226,49 +213,13 @@ target_compile_definitions(tts-wire-test PRIVATE
     ARGUS_TEST_TTS_MODELS_DIR="${CMAKE_SOURCE_DIR}/models/tts")
 
 target_link_libraries(tts-wire-test PRIVATE argus_common argus::auth
-    argus::hardware-profile onnxruntime::onnxruntime doctest::doctest)
+    argus::tts-client argus::hardware-profile onnxruntime::onnxruntime
+    doctest::doctest)
 
 target_compile_options(tts-wire-test PRIVATE -Wall -Wextra)
 
 add_test(NAME tts-wire-test COMMAND tts-wire-test)
 
-# The camera-talk cutover: speak() reaches the wire before the device,
-# degrading to the 502 envelope when argus-tts is down. The camera-control
-# feature lives in argus-camera since F6-2; the test compiles it from there.
-set(CAMERA_TALK_TEST_SOURCES
-    camera-talk-cutover-test.cc
-    ${CMAKE_SOURCE_DIR}/argus-camera/src/feature/api/camera-control/controllers/camera-control-controller.cc
-    ${CMAKE_SOURCE_DIR}/argus-camera/src/feature/api/camera-control/services/camera-control-feature-service.cc
-    ${CMAKE_SOURCE_DIR}/argus-camera/src/feature/api/camera-control/dtos/camera-talk-dto.cc
-    ${CMAKE_SOURCE_DIR}/argus-camera/src/feature/api/camera-control/dtos/camera-ptz-dto.cc
-    ${CMAKE_SOURCE_DIR}/argus-camera/src/feature/api/camera-control/dtos/camera-preset-dto.cc
-    ${CMAKE_SOURCE_DIR}/argus-camera/src/feature/api/camera-control/dtos/camera-settings-dto.cc
-    ${SRC_ROOT}/shared/services/camera-driver/camera-driver-registry.cc
-    ${SRC_ROOT}/shared/services/camera-driver/tapo-driver.cc
-    ${SRC_ROOT}/shared/services/tapo/tapo-crypto.cc
-    ${SRC_ROOT}/shared/services/tapo/tapo-http.cc
-    ${SRC_ROOT}/shared/services/tapo/tapo-audio.cc
-    ${SRC_ROOT}/shared/services/tapo/tapo-ts-muxer.cc
-    ${SRC_ROOT}/shared/services/tapo/secure-passthrough-transport.cc
-    ${SRC_ROOT}/shared/services/tapo/legacy-stok-transport.cc
-    ${SRC_ROOT}/shared/services/tapo/tapo-client.cc
-    ${SRC_ROOT}/shared/services/tapo/tapo-api.cc
-    ${SRC_ROOT}/shared/services/tapo/tapo-talk-client.cc
-    ${SRC_ROOT}/shared/services/tts/remote/tts-remote.cc
-    ${SRC_ROOT}/shared/wrapper/audio/audio-resampler.cc
-)
-
-add_executable(camera-talk-cutover-test ${CAMERA_TALK_TEST_SOURCES})
-
-target_include_directories(camera-talk-cutover-test PRIVATE
-    ${CMAKE_SOURCE_DIR}/argus-camera/src)
-
-target_link_libraries(camera-talk-cutover-test PRIVATE argus_sync argus_common
-    OpenSSL::SSL OpenSSL::Crypto doctest::doctest)
-
-target_compile_options(camera-talk-cutover-test PRIVATE -Wall -Wextra)
-
-add_test(NAME camera-talk-cutover-test COMMAND camera-talk-cutover-test)
 
 # The argus-vlm wire contract (F4-4, Ruling BP): the real engine serves the
 # describe/config legs from the shared models tree, with the direct-engine

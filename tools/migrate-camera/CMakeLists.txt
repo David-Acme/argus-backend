@@ -14,7 +14,7 @@ target_include_directories(camera-migration
 )
 
 target_compile_definitions(camera-migration PUBLIC
-    ARGUS_CAMERA_SCHEMA_PATH="${CMAKE_SOURCE_DIR}/database/camera-schema.sql"
+    ARGUS_CAMERA_SCHEMA_PATH="${CMAKE_SOURCE_DIR}/argus-camera/database/schema.sql"
 )
 
 target_link_libraries(camera-migration

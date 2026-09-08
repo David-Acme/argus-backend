@@ -632,7 +632,7 @@ services:
       # Same repo-shipped schema bind as identity-init: a provisioned data
       # dir without the SQL would fail "schema file not found".
       - type: bind
-        source: ../database/camera-schema.sql
+        source: ../argus-camera/database/schema.sql
         target: /opt/argus/database/camera-schema.sql
         read_only: true
         bind:

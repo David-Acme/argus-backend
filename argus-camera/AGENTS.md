@@ -30,7 +30,7 @@ that apply to camera-service code; when in doubt, the root file wins.
     toward hardware; the audible alarm test is the user's personal task, so
     no code path here may ever arm the siren.
 11. **No argus.db migrations** — this service owns `camera.db` only
-    (`database/camera-schema.sql`); it never writes or migrates `argus.db`.
+    (`argus-camera/database/schema.sql`); it never writes or migrates `argus.db`.
 12. **Frozen contracts** — HTTP paths, the `{status, info, errors}`
     envelope, `SyncOperation` 0-7, `SYNC_LIMIT=200` and `TableName` 0-23
     never change here; the mobile app must keep working unmodified.

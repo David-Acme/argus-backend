@@ -1,6 +1,6 @@
 #pragma once
 
-#include "tts-wire.hxx"
+#include <shared/services/tts/tts-wire.hxx>
 
 #include <memory>
 #include <onnxruntime_cxx_api.h>

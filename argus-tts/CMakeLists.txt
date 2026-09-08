@@ -39,6 +39,7 @@ target_include_directories(tts-core PUBLIC
 target_link_libraries(tts-core PUBLIC
     argus_common
     argus::auth
+    argus::tts-client
     argus::hardware-profile
     Drogon::Drogon
     onnxruntime::onnxruntime

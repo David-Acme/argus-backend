@@ -36,6 +36,10 @@ if(NOT TARGET argus_common)
                      ${CMAKE_BINARY_DIR}/argus-identity)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../src/sync
                      ${CMAKE_BINARY_DIR}/argus-sync)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../argus-audio
+                     ${CMAKE_BINARY_DIR}/argus-audio)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../argus-tts-client
+                     ${CMAKE_BINARY_DIR}/argus-tts-client)
 
     enable_language(C)
     add_library(sqlite-vec STATIC
@@ -68,6 +72,9 @@ if(NOT TARGET argus::sdk-camera)
                      ${CMAKE_BINARY_DIR}/argus-contracts EXCLUDE_FROM_ALL)
 endif()
 
+# The camera sync tables' repositories and schemas are still compiled by
+# argus_sync in the shared tree (they are camera-domain rows the gateway's
+# /sync also reads); this include root goes away when that split lands.
 argus_module(NAME camera-rpc
     SOURCES
         src/feature/sync/camera-sync-rpc-service.cc
@@ -98,19 +105,17 @@ add_library(camera-core STATIC
     ${CAMERA_SRC_ROOT}/feature/api/camera-control/dtos/camera-settings-dto.cc
     ${CAMERA_SRC_ROOT}/feature/api/camera-control/dtos/camera-talk-dto.cc
     ${CAMERA_SRC_ROOT}/feature/api/camera-control/services/camera-control-feature-service.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src/shared/services/camera-driver/camera-driver-registry.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src/shared/services/camera-driver/tapo-driver.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src/shared/services/tapo/legacy-stok-transport.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src/shared/services/tapo/secure-passthrough-transport.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src/shared/services/tapo/tapo-api.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src/shared/services/tapo/tapo-audio.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src/shared/services/tapo/tapo-client.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src/shared/services/tapo/tapo-crypto.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src/shared/services/tapo/tapo-http.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src/shared/services/tapo/tapo-talk-client.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src/shared/services/tapo/tapo-ts-muxer.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src/shared/services/tts/remote/tts-remote.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src/shared/wrapper/audio/audio-resampler.cc
+    ${CAMERA_SRC_ROOT}/shared/services/camera-driver/camera-driver-registry.cc
+    ${CAMERA_SRC_ROOT}/shared/services/camera-driver/tapo-driver.cc
+    ${CAMERA_SRC_ROOT}/shared/services/tapo/legacy-stok-transport.cc
+    ${CAMERA_SRC_ROOT}/shared/services/tapo/secure-passthrough-transport.cc
+    ${CAMERA_SRC_ROOT}/shared/services/tapo/tapo-api.cc
+    ${CAMERA_SRC_ROOT}/shared/services/tapo/tapo-audio.cc
+    ${CAMERA_SRC_ROOT}/shared/services/tapo/tapo-client.cc
+    ${CAMERA_SRC_ROOT}/shared/services/tapo/tapo-crypto.cc
+    ${CAMERA_SRC_ROOT}/shared/services/tapo/tapo-http.cc
+    ${CAMERA_SRC_ROOT}/shared/services/tapo/tapo-talk-client.cc
+    ${CAMERA_SRC_ROOT}/shared/services/tapo/tapo-ts-muxer.cc
     ${CAMERA_SRC_ROOT}/camera/camera-config.cc
     ${CAMERA_SRC_ROOT}/camera/nats-camera-change-sink.cc
     ${CAMERA_SRC_ROOT}/objects/ncnn-object-detector.cc
@@ -122,32 +127,31 @@ add_library(camera-core STATIC
     ${CAMERA_SRC_ROOT}/operator/operator-config.cc
     # Camera-domain CRUD, compiled from the shared tree: this service is the
     # sole owner since F6-2 (the legacy binary no longer compiles it).
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src/feature/api/camera/controllers/camera-controller.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src/feature/api/camera/dtos/create-camera-dto.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src/feature/api/camera/dtos/update-camera-dto.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src/feature/api/camera/services/camera-feature-service.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src/feature/api/zone/controllers/zone-controller.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src/feature/api/zone/dtos/create-zone-dto.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src/feature/api/zone/dtos/update-zone-dto.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src/feature/api/zone/services/zone-feature-service.cc
+    ${CAMERA_SRC_ROOT}/feature/api/camera/controllers/camera-controller.cc
+    ${CAMERA_SRC_ROOT}/feature/api/camera/dtos/create-camera-dto.cc
+    ${CAMERA_SRC_ROOT}/feature/api/camera/dtos/update-camera-dto.cc
+    ${CAMERA_SRC_ROOT}/feature/api/camera/services/camera-feature-service.cc
+    ${CAMERA_SRC_ROOT}/feature/api/zone/controllers/zone-controller.cc
+    ${CAMERA_SRC_ROOT}/feature/api/zone/dtos/create-zone-dto.cc
+    ${CAMERA_SRC_ROOT}/feature/api/zone/dtos/update-zone-dto.cc
+    ${CAMERA_SRC_ROOT}/feature/api/zone/services/zone-feature-service.cc
     # Stream lifecycle: go2rtc supervision and the fMP4 StreamHub relay.
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src/shared/services/stream/go2rtc-manager.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src/shared/services/stream/stream-hub.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src/shared/services/stream/upstream-http.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src/shared/services/stream/ws-frame.cc
+    ${CAMERA_SRC_ROOT}/shared/services/stream/go2rtc-manager.cc
+    ${CAMERA_SRC_ROOT}/shared/services/stream/stream-hub.cc
+    ${CAMERA_SRC_ROOT}/shared/services/stream/upstream-http.cc
+    ${CAMERA_SRC_ROOT}/shared/services/stream/ws-frame.cc
 )
 
 target_include_directories(camera-core SYSTEM PUBLIC
     ${NCNN_SRC_DIR}
     ${CMAKE_BINARY_DIR}/third_party/ncnn/src)
 
-target_include_directories(camera-core PUBLIC
-    ${CAMERA_SRC_ROOT}
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src)
+target_include_directories(camera-core PUBLIC ${CAMERA_SRC_ROOT})
 
 target_link_libraries(camera-core PUBLIC argus_sync argus::sqlite
-    argus::socket argus::room sqlite-vec opencv::opencv
-    ${ARGUS_NCNN_TARGET} argus::hardware-profile-gpu OpenSSL::SSL OpenSSL::Crypto)
+    argus::socket argus::room argus::audio argus::tts-client sqlite-vec
+    opencv::opencv ${ARGUS_NCNN_TARGET} argus::hardware-profile-gpu
+    OpenSSL::SSL OpenSSL::Crypto)
 
 target_compile_options(camera-core PRIVATE -Wall -Wextra)
 
@@ -166,6 +170,85 @@ get_target_property(DOCTEST_INCLUDE_DIRS doctest::doctest
 if(DOCTEST_INCLUDE_DIRS)
     set_target_properties(doctest::doctest PROPERTIES
         INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${DOCTEST_INCLUDE_DIRS}")
+endif()
+
+# The camera unit suites are root-project tests: they are part of the root
+# ctest run, and camera-migration (tools/) is EXCLUDE_FROM_ALL there.
+# Standalone consumer builds never had these suites.
+if(ARGUS_ROOT_PROJECT)
+    set(CAMERA_UNIT_TESTS
+        camera-schema-test
+        camera-migration-test
+        camera-config-test
+        camera-controller-test
+        camera-operator-test
+        event-intelligence-test
+    )
+
+    foreach(TEST_NAME IN LISTS CAMERA_UNIT_TESTS)
+        add_executable(${TEST_NAME} tests/unit/${TEST_NAME}.cc)
+
+        # This folder is added EXCLUDE_FROM_ALL, so the suites have to opt
+        # back into the default build or ctest registers tests whose
+        # binaries never get built.
+        set_target_properties(${TEST_NAME} PROPERTIES EXCLUDE_FROM_ALL FALSE)
+
+        target_link_libraries(${TEST_NAME} PRIVATE argus_common doctest::doctest)
+
+        target_compile_options(${TEST_NAME} PRIVATE -Wall -Wextra)
+
+        add_test(NAME ${TEST_NAME} COMMAND ${TEST_NAME})
+    endforeach()
+
+    # camera-migration builds only as a dependency of these two.
+    target_link_libraries(camera-schema-test PRIVATE camera-migration)
+    target_link_libraries(camera-migration-test PRIVATE camera-migration)
+
+    target_link_libraries(camera-config-test PRIVATE camera-core)
+    target_link_libraries(camera-controller-test PRIVATE camera-core)
+    target_link_libraries(camera-operator-test PRIVATE camera-core)
+    target_link_libraries(event-intelligence-test PRIVATE camera-core)
+
+    # The camera-talk cutover: speak() reaches the wire before the device,
+    # degrading to the 502 envelope when argus-tts is down. It compiles the
+    # control feature and the driver stack directly rather than linking
+    # camera-core, which would drag ncnn into a suite that needs none of it.
+    add_executable(camera-talk-cutover-test
+        tests/unit/camera-talk-cutover-test.cc
+        ${CAMERA_SRC_ROOT}/feature/api/camera-control/controllers/camera-control-controller.cc
+        ${CAMERA_SRC_ROOT}/feature/api/camera-control/services/camera-control-feature-service.cc
+        ${CAMERA_SRC_ROOT}/feature/api/camera-control/dtos/camera-talk-dto.cc
+        ${CAMERA_SRC_ROOT}/feature/api/camera-control/dtos/camera-ptz-dto.cc
+        ${CAMERA_SRC_ROOT}/feature/api/camera-control/dtos/camera-preset-dto.cc
+        ${CAMERA_SRC_ROOT}/feature/api/camera-control/dtos/camera-settings-dto.cc
+        ${CAMERA_SRC_ROOT}/shared/services/camera-driver/camera-driver-registry.cc
+        ${CAMERA_SRC_ROOT}/shared/services/camera-driver/tapo-driver.cc
+        ${CAMERA_SRC_ROOT}/shared/services/tapo/tapo-crypto.cc
+        ${CAMERA_SRC_ROOT}/shared/services/tapo/tapo-http.cc
+        ${CAMERA_SRC_ROOT}/shared/services/tapo/tapo-audio.cc
+        ${CAMERA_SRC_ROOT}/shared/services/tapo/tapo-ts-muxer.cc
+        ${CAMERA_SRC_ROOT}/shared/services/tapo/secure-passthrough-transport.cc
+        ${CAMERA_SRC_ROOT}/shared/services/tapo/legacy-stok-transport.cc
+        ${CAMERA_SRC_ROOT}/shared/services/tapo/tapo-client.cc
+        ${CAMERA_SRC_ROOT}/shared/services/tapo/tapo-api.cc
+        ${CAMERA_SRC_ROOT}/shared/services/tapo/tapo-talk-client.cc)
+
+    # The TTS wire's fake server ships with the wire module, so both this
+    # suite and argus-voice's can drive the same fake.
+    target_include_directories(camera-talk-cutover-test PRIVATE
+        ${CAMERA_SRC_ROOT}
+        ${CMAKE_CURRENT_SOURCE_DIR}/../argus-tts-client/tests/support)
+
+    target_link_libraries(camera-talk-cutover-test PRIVATE argus_sync
+        argus_common argus::audio argus::tts-client OpenSSL::SSL
+        OpenSSL::Crypto doctest::doctest)
+
+    set_target_properties(camera-talk-cutover-test PROPERTIES
+        EXCLUDE_FROM_ALL FALSE)
+
+    target_compile_options(camera-talk-cutover-test PRIVATE -Wall -Wextra)
+
+    add_test(NAME camera-talk-cutover-test COMMAND camera-talk-cutover-test)
 endif()
 
 # Verification labs, built on demand (--target argus-object-bench /
