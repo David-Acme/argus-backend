@@ -16,7 +16,7 @@ if(NOT TARGET argus_identity)
     find_package(Drogon CONFIG REQUIRED)
     find_package(cnats CONFIG REQUIRED)
     find_package(tomlplusplus REQUIRED)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../src/shared
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../argus-common
                      ${CMAKE_BINARY_DIR}/argus-common)
 
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../argus-contracts

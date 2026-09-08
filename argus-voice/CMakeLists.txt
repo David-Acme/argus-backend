@@ -17,7 +17,7 @@ if(NOT TARGET argus_common)
     find_package(onnxruntime CONFIG REQUIRED)
     find_path(RNNOISE_INCLUDE_DIR NAMES rnnoise.h)
     find_library(RNNOISE_LIBRARY NAMES rnnoise)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../src/shared
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../argus-common
                      ${CMAKE_BINARY_DIR}/argus-common)
 endif()
 

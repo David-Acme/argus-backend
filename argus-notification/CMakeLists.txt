@@ -18,7 +18,7 @@ if(NOT TARGET argus_common)
     find_package(nlohmann_json REQUIRED)
     find_package(OpenCV CONFIG REQUIRED)
     find_package(mdns REQUIRED)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../src/shared
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../argus-common
                      ${CMAKE_BINARY_DIR}/argus-common)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../src/identity
                      ${CMAKE_BINARY_DIR}/argus-identity)

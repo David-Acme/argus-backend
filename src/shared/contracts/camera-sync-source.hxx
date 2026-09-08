@@ -1,9 +1,8 @@
 #pragma once
 
-#include "syncable.hxx"
-
 #include <filter/jwt/jwt-filter.hxx>
 #include <memory>
+#include <shared/contracts/syncable.hxx>
 
 enum class CameraSyncTable
 {

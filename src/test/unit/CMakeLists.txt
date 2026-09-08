@@ -1,5 +1,11 @@
 find_package(doctest REQUIRED)
 
+# Transitional: this tree still compiles shared/config/filter sources by raw
+# path (rule-25 debt, tracked for the move to per-service tests/), so it
+# needs the whole src/ root itself now that argus_common no longer exports
+# it; see argus-common/CONTEXT.md.
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/../..)
+
 set(UNIT_TESTS
     api-response-test
     enums-test
@@ -390,13 +396,14 @@ add_test(NAME memory-backpressure-test COMMAND memory-backpressure-test)
 # onto the tool registry, the wire forwarding and the degrade-without-crash
 # paths when argus-memory is down.
 add_executable(memory-remote-adapter-test memory-remote-adapter-test.cc
-    ${SRC_ROOT}/shared/services/config-service/config-service.cc
+    ${CMAKE_SOURCE_DIR}/argus-common/src/shared/services/config-service/config-service.cc
     ${SRC_ROOT}/shared/services/memory/remote/memory-remote.cc
     ${SRC_ROOT}/shared/services/memory/remote/remote-memory-service-adapter.cc
     ${SRC_ROOT}/shared/services/memory/memory-tool-descriptors.cc
     ${SRC_ROOT}/shared/services/tools/tool-registry.cc)
 
-target_include_directories(memory-remote-adapter-test PRIVATE ${SRC_ROOT})
+target_include_directories(memory-remote-adapter-test PRIVATE ${SRC_ROOT}
+    ${CMAKE_SOURCE_DIR}/argus-common/src)
 
 target_link_libraries(memory-remote-adapter-test PRIVATE Drogon::Drogon
     tomlplusplus::tomlplusplus doctest::doctest)
