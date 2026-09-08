@@ -5,7 +5,6 @@
 
 #include <drogon/drogon.h>
 #include <memory>
-#include <shared/repositories/memory-graph/memory-graph-query.hxx>
 #include <shared/repositories/vector-index/vector-index-repository.hxx>
 #include <shared/services/config-service/config-service.hxx>
 #include <shared/utils/schema-runner/schema-runner.hxx>
@@ -54,10 +53,10 @@ void VecDb::recreateVecTables()
     repo_.recreateVecTables(db, embeddingDims());
 }
 
-void VecDb::applySchema()
+void VecDb::applySchema(const std::string& schemaFile)
 {
   std::scoped_lock lock(mutex_);
-  runSchemaFile(handle(), memory_graph_query::schemaFile());
+  runSchemaFile(handle(), schemaFile);
 }
 
 sqlite3* VecDb::handle()

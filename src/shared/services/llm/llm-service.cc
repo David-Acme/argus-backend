@@ -1,4 +1,4 @@
-#include "llm-service.hxx"
+#include <shared/services/llm/llm-service.hxx>
 
 #include <algorithm>
 #include <cstdint>

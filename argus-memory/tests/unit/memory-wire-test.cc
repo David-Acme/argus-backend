@@ -28,7 +28,7 @@ namespace
 {
 
 #ifndef ARGUS_TEST_MEMORY_SCHEMA
-#define ARGUS_TEST_MEMORY_SCHEMA "database/memory-schema.sql"
+#define ARGUS_TEST_MEMORY_SCHEMA "argus-memory/database/schema.sql"
 #endif
 #ifndef ARGUS_TEST_MEMORY_MODELS_DIR
 #define ARGUS_TEST_MEMORY_MODELS_DIR "models/memory"

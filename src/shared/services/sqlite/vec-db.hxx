@@ -19,7 +19,9 @@ public:
 
   std::mutex& mutex();
   sqlite3* handle();
-  void applySchema();
+  // The caller names its schema: the vector database is domain-neutral and
+  // must not know which service's tables it is applying.
+  void applySchema(const std::string& schemaFile);
   int embeddingDims() const;
   bool schemaOutdated();
   void recreateMemoryVecTable();

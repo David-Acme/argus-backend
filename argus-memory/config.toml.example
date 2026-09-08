@@ -18,7 +18,7 @@ file = "./database/memory.db"
 # The service boots the memory tables from its own schema file (Ruling BW):
 # the verbatim memory DDL plus the catalog replica tables, not the legacy
 # schema.sql.
-schema_file = "database/memory-schema.sql"
+schema_file = "argus-memory/database/schema.sql"
 # Catalog replicas (Ruling BX): the gazetteer reads resolve to the local
 # replica tables, fed by the change subjects.
 catalog_person_table = "catalog_person"

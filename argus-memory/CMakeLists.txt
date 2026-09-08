@@ -6,7 +6,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 set(MEMORY_SRC_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/src)
-set(SHARED_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../src/shared)
+set(SHARED_ROOT ${MEMORY_SRC_ROOT}/shared)
 
 if(NOT TARGET Drogon::Drogon)
     # Standalone build (outside the root project's configure).
@@ -74,8 +74,6 @@ add_library(memory-core STATIC
     ${SHARED_ROOT}/services/memory/entity-resolver.cc
     ${SHARED_ROOT}/services/memory/graph-recall.cc
     ${SHARED_ROOT}/services/memory/memory-formation.cc
-    ${SHARED_ROOT}/services/memory/phrase-catalog.cc
-    ${SHARED_ROOT}/services/memory/rule-parser.cc
     ${SHARED_ROOT}/services/memory/tool-parser.cc
     ${SHARED_ROOT}/services/embedding/embedding-service.cc
     ${SHARED_ROOT}/services/embedding/unigram-tokenizer.cc
@@ -83,24 +81,22 @@ add_library(memory-core STATIC
     ${SHARED_ROOT}/services/extract/lexicon-extractor.cc
     ${SHARED_ROOT}/services/extract/temporal-resolver.cc
     ${SHARED_ROOT}/services/extract/tiered-extractor.cc
-    ${SHARED_ROOT}/services/llm/remote/llm-remote.cc
     ${SHARED_ROOT}/services/tools/tool-registry.cc
     ${SHARED_ROOT}/services/tools/tool-validator.cc
     ${SHARED_ROOT}/repositories/memory-graph/memory-graph-repository.cc
-    ${SHARED_ROOT}/utils/text-match/phrase-automaton.cc
     ${SHARED_ROOT}/utils/text-norm/text-norm.cc
 )
 
 target_include_directories(memory-core SYSTEM PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/../third_party)
 
-target_include_directories(memory-core PUBLIC
-    ${MEMORY_SRC_ROOT}
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src)
+target_include_directories(memory-core PUBLIC ${MEMORY_SRC_ROOT})
 
 target_link_libraries(memory-core PUBLIC
     argus_common
     argus::sqlite
+    argus::llm-client
+    argus::phrase
     argus::hardware-profile
     Drogon::Drogon
     nlohmann_json::nlohmann_json
@@ -132,3 +128,81 @@ add_custom_command(TARGET argus-memory POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E create_symlink
             ${CMAKE_CURRENT_SOURCE_DIR}/../models
             $<TARGET_FILE_DIR:argus-memory>/models)
+
+# The memory unit suites are root-project tests; the targets opt back into
+# the default build because this folder is added EXCLUDE_FROM_ALL.
+if(ARGUS_ROOT_PROJECT)
+    # The argus-memory wire contract (F4-6, Ruling BY): the real stack serves
+    # the memory tool surface over the internal wire, with the frozen envelope
+    # errors and the 503 gate on the unloaded stack.
+    add_executable(memory-wire-test tests/unit/memory-wire-test.cc)
+
+    target_link_libraries(memory-wire-test PRIVATE memory-core doctest::doctest)
+
+    target_compile_definitions(memory-wire-test PRIVATE
+        ARGUS_TEST_MEMORY_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql"
+        ARGUS_TEST_MEMORY_MODELS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../models/memory"
+        ARGUS_TEST_MEMORY_EXTRACT_MODEL="${CMAKE_CURRENT_SOURCE_DIR}/../models/extract/NuExtract-1.5-tiny-Q4_K_M.gguf")
+
+    target_compile_options(memory-wire-test PRIVATE -Wall -Wextra)
+
+    set_target_properties(memory-wire-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+
+    add_test(NAME memory-wire-test COMMAND memory-wire-test)
+
+    # The catalog replica replay (Ruling BX): identity and camera change events
+    # land in the replicas and the gazetteer rebuilds; the snapshot fill only
+    # fires on empty tables.
+    add_executable(memory-replica-test tests/unit/memory-replica-test.cc)
+
+    target_link_libraries(memory-replica-test PRIVATE memory-core doctest::doctest)
+
+    target_compile_definitions(memory-replica-test PRIVATE
+        ARGUS_TEST_MEMORY_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql")
+
+    target_compile_options(memory-replica-test PRIVATE -Wall -Wextra)
+
+    set_target_properties(memory-replica-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+
+    add_test(NAME memory-replica-test COMMAND memory-replica-test)
+
+    # The queue back-pressure (Ruling BZ): waitForIdle rides the chat port and
+    # the bounded queue drops derived-data jobs instead of growing.
+    add_executable(memory-backpressure-test tests/unit/memory-backpressure-test.cc)
+
+    target_link_libraries(memory-backpressure-test PRIVATE memory-core
+        doctest::doctest)
+
+    target_compile_definitions(memory-backpressure-test PRIVATE
+        ARGUS_TEST_MEMORY_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql"
+        ARGUS_TEST_MEMORY_MODELS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../models/memory")
+
+    target_compile_options(memory-backpressure-test PRIVATE -Wall -Wextra)
+
+    set_target_properties(memory-backpressure-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+
+    add_test(NAME memory-backpressure-test COMMAND memory-backpressure-test)
+
+    # The remote memory adapter (Ruling BY): the shared descriptors registered
+    # onto the tool registry, the wire forwarding and the degrade-without-crash
+    # paths when argus-memory is down.
+    add_executable(memory-remote-adapter-test tests/unit/memory-remote-adapter-test.cc
+        ${CMAKE_CURRENT_SOURCE_DIR}/../argus-common/src/shared/services/config-service/config-service.cc
+        ${SHARED_ROOT}/services/memory/remote/memory-remote.cc
+        ${SHARED_ROOT}/services/memory/remote/remote-memory-service-adapter.cc
+        ${SHARED_ROOT}/services/memory/memory-tool-descriptors.cc
+        ${SHARED_ROOT}/services/tools/tool-registry.cc)
+
+    target_include_directories(memory-remote-adapter-test PRIVATE ${MEMORY_SRC_ROOT}
+        ${CMAKE_CURRENT_SOURCE_DIR}/../argus-common/src)
+
+    target_link_libraries(memory-remote-adapter-test PRIVATE Drogon::Drogon
+        tomlplusplus::tomlplusplus argus::phrase argus::llm-client
+        argus::sqlite doctest::doctest)
+
+    target_compile_options(memory-remote-adapter-test PRIVATE -Wall -Wextra)
+
+    set_target_properties(memory-remote-adapter-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+
+    add_test(NAME memory-remote-adapter-test COMMAND memory-remote-adapter-test)
+endif()

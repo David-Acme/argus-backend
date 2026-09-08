@@ -37,10 +37,6 @@ set(VOICE_ENGINE_SOURCES
     ../src/shared/services/noise/noise-suppression-service.cc
     ../src/shared/services/reaction/reaction-engine.cc
     ../src/shared/services/stt/remote/stt-remote.cc
-    ../src/shared/services/llm/remote/llm-remote.cc
-    ../src/shared/services/memory/phrase-catalog.cc
-    ../src/shared/services/memory/rule-parser.cc
-    ../src/shared/utils/text-match/phrase-automaton.cc
 )
 
 argus_module(NAME voice-core
@@ -59,6 +55,8 @@ argus_module(NAME voice-core
         argus::sdk-identity
         argus::audio
         argus::tts-client
+        argus::llm-client
+        argus::phrase
         argus_common
     SYSTEM_DEPENDS
         Drogon::Drogon

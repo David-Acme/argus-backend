@@ -74,6 +74,7 @@ target_include_directories(llm-core PUBLIC
 
 target_link_libraries(llm-core PUBLIC
     argus_common
+    argus::llm-client
     argus::hardware-profile
     Drogon::Drogon
     nlohmann_json::nlohmann_json

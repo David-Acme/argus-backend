@@ -405,7 +405,7 @@ services:
       # [memory] schema_file always resolves (same pattern as the init
       # services).
       - type: bind
-        source: ../database/memory-schema.sql
+        source: ../argus-memory/database/schema.sql
         target: /opt/argus/database/memory-schema.sql
         read_only: true
         bind:

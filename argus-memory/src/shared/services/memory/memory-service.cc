@@ -21,6 +21,8 @@
 #include <shared/services/memory/sqlite-graph.hxx>
 #include <shared/services/sqlite/vec-db.hxx>
 #include <shared/utils/text-norm/text-norm.hxx>
+#include <shared/repositories/memory-graph/memory-graph-query.hxx>
+#include <shared/services/extract/vocabulary-lexicon.hxx>
 #include <shared/vocabulary/vocabulary.hxx>
 #include <shared/wrapper/sqlite-stmt/sqlite-stmt.hxx>
 #include <sqlite3.h>
@@ -377,7 +379,7 @@ void MemoryService::init(const MemoryInitOptions& options)
   if (const int bound = ConfigService::getInt("memory.queue_bound"); bound > 0)
     queueBound_ = static_cast<size_t>(bound);
   phrases_.build();
-  extractor_.rebuild(vocabulary::allLexiconEntries());
+  extractor_.rebuild(extract::allLexiconEntries());
   formation_.setExtractor(&extractor_);
   embedding_.init();
   if (options.deferStore) {
@@ -397,7 +399,7 @@ void MemoryService::openStore()
   }
   graph_->open(ConfigService::getString("database.file"));
   graph_->migrateLegacy();
-  vecDb_.applySchema();
+  vecDb_.applySchema(memory_graph_query::schemaFile());
   startWorker();
   if (vecDb_.schemaOutdated()) {
     vecDb_.recreateMemoryVecTable();
