@@ -5,8 +5,15 @@
       "byteLength" : 64,
       "kind" : "text",
       "messageType" : "camera:ready",
-      "raw" : "{\"payload\":{\"mime\":\"video/mp4\",\"subId\":1},\"type\":\"camera:ready\"}",
-      "sha256" : "dec3d2fe6539a280ea2a35d67ba1f89ff6d976e9726e4a9fe91a7d0187f98f2c"
+      "raw" : "{\"payload\":{\"mime\":\"video/mp4\",\"subId\":2},\"type\":\"camera:ready\"}",
+      "sha256" : "786b07fb9862da797384a3e8cb3e8e2b625207bb50395ce862bd0b8c1bf065fd"
+    },
+    {
+      "byteLength" : 73,
+      "kind" : "text",
+      "messageType" : "camera:closed",
+      "raw" : "{\"payload\":{\"reason\":\"upstream_failed\",\"subId\":2},\"type\":\"camera:closed\"}",
+      "sha256" : "6e552db03d25ca54bd8b72f5c08f5136d90e409a93eafe101dc101c8e655478e"
     }
   ],
   "request" : "{\"type\":\"camera:subscribe\",\"payload\":{\"cameraId\":1,\"quality\":\"main\"}}"

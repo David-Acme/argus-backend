@@ -2,11 +2,11 @@
 
 ## Why the gateway exists
 
-The Argus backend is being split from a single monolith into small services
+The Argus backend was split from a single monolith into small services
 (Fase 1 of the `migracion-microservicios` plan). The gateway is the first new
 service of that split: a real Drogon application inside the monorepo (sibling
-of `src/`) that progressively takes over the public HTTP surface while the
-legacy backend keeps running untouched on its own listener.
+of `src/`) that progressively took over the public HTTP surface until the
+monolith's build set was retired (F6-4).
 
 ## What it owns
 
@@ -29,9 +29,9 @@ legacy backend keeps running untouched on its own listener.
   applies F1-3a's `identity-schema.sql` (`[identity] schema`) — the 7
   identity tables plus the audit/portrait substrate the identity write paths
   touch (`audit_log`, `user_audit_log`, `user_action_log`, `user_portrait`,
-  `stored_file`, `portrait_preview_capability`), all copied verbatim from
-  `database/schema.sql` — and aborts if it fails; it never touches `argus.db`
-  and never runs the backend migrations.
+  `stored_file`, `portrait_preview_capability`), carried verbatim from the
+  retired monolith schema — and aborts if it fails; it never touches
+  `argus.db` and never runs the backend migrations.
 - **Device identity modes (F5-2, Ruling CH)**: `DeviceFilter` gained a
   `[device] identity_mode` gate (`ip` default, byte-identical legacy
   behavior | `credential`), shared with the legacy through `argus_identity`.
@@ -60,43 +60,50 @@ legacy backend keeps running untouched on its own listener.
   the identity surface).
 - F1-4 will move the `/sync` listener ownership here.
 
-## What proxies to legacy
+## `/sync` surface (F1-4)
 
-- **`/sync` relay (F1-4)**: the gateway owns the `/sync` WebSocket end to end.
+- **`/sync` socket (F1-4)**: the gateway owns the `/sync` WebSocket end to end.
   It serves the sync protocol natively (`sync`, `sync_audit_log`,
   `sync_user_audit_log`, identity rooms, `initial_info`) from
-  `argus_sync`: the non-identity sync tables read the legacy `argus.db`
-  through a read-only SQLite connection (`file:...?mode=ro`, enabled
-  process-wide by `DbService::enableUriFilenames()`; `[legacy] db`, default
-  `database/argus.db`) — Ruling G's identity-owned tables (`user`, `person`,
-  `user_invitation`) and Ruling S's audit pages (`sync_audit_log`/
-  `sync_user_audit_log` over the identity.db `audit_log`/`user_audit_log`
-  tables) read the default client instead, so post-cutover rows replay to the
-  app. Because it serves the bootstrap itself, a gateway whose config omits
-  `[productivity] db` or `[notifications] db` resolves those sync reads to the
-  default identity client (which has no such tables) and the whole bootstrap
-  throws `sync_error` — a scratch/deploy config must always set both keys.
+  `argus_sync`: the camera/productivity/notification sync tables read their
+  named read-only clients (`[camera] db`, `[productivity] db`,
+  `[notifications] db`, opened `file:...?mode=ro`, enabled process-wide by
+  `DbService::enableUriFilenames()`) — Ruling G's identity-owned tables
+  (`user`, `person`, `user_invitation`) and Ruling S's audit pages
+  (`sync_audit_log`/`sync_user_audit_log` over the identity.db
+  `audit_log`/`user_audit_log` tables) read the default client instead, so
+  post-cutover rows replay to the app. Because it serves the bootstrap
+  itself, a gateway whose config omits `[productivity] db` or
+  `[notifications] db` resolves those sync reads to the default identity
+  client (which has no such tables) and the whole bootstrap throws
+  `sync_error` — a scratch/deploy config must always set both keys. With
+  argus.db retired (F6-4) no read-only client is installed for the `event`
+  domain (permanent orphan, Ruling DH) and `EventRepository` answers the
+  empty shape — `DbService::readOnlyClient()` returns nullptr when nothing
+  is installed instead of falling back to a database lacking the tables.
   It relays every `camera:*`/`voice:*` frame (text and
-  binary) byte-transparently to the legacy's internal `/sync`
-  (`[legacy] sync_url`, empty disables the relay) as the client itself — same
-  `Authorization` header and `User-Agent`, so the legacy device-hash filter
+  binary) byte-transparently to the service `/sync`/gRPC legs — `camera:*`
+  to argus-camera (`[camera] sync_url`), `voice:*` to argus-voice
+  (`[voice] target`) — as the client itself — same
+  `Authorization` header and `User-Agent`, so the device-hash filter
   still binds the session. The relay never forwards a client-supplied
   `X-Forwarded-For`: it synthesizes it from the observed TCP peer address of
   the client connection (the gateway is the only one that sees the client;
-  the device hash is `HMAC(User-Agent|IP)`), and the legacy needs
-  `[device] trust_forwarded_for = true` with the gateway as trusted proxy.
-  While the legacy session is still connecting, frames are buffered up to a
+  the device hash is `HMAC(User-Agent|IP)`).
+  While the relay session is still connecting, frames are buffered up to a
   256-frame cap; binary frames past the cap are dropped (transient PCM,
   stale on replay), text overflow answers the standard 503 envelope.
-  Legacy frames coming back are filtered to the relayed protocol only
+  Relay frames coming back are filtered to the relayed protocol only
   (`camera:*` / `voice:*` types); module emits and `initial_info` of the relay
-  session are dropped — the gateway emits those itself.
+  session are dropped — the gateway emits those itself. An unconfigured leg
+  answers its frames with the 503 unconfigured-relay envelope.
 - **Sync-change fan-out**: subscribes the tail-only wildcard
   `argus.*.v1.change` and re-emits through the same `RoomManager` rooms
   (`moduleRoom`, `userRoom`, `replaceRoleRooms`, `disconnectUser`) exactly as
-  the legacy `SocketService` would, marshalled into the Drogon loop. It never
-  publishes — only the legacy installs the event bus
-  (`SocketService::setEventBus`). Payload contract: `argus-contracts/subjects.md`.
+  the retired `SocketService` did, marshalled into the Drogon loop. It never
+  publishes — no gateway component installs the event-bus publisher
+  (`SocketService::setEventBus` stays a no-op slot here). Payload contract:
+  `argus-contracts/subjects.md`.
 
 ## Build wiring (decisions)
 
@@ -184,17 +191,17 @@ table. The app keeps working without any update.
   as the legacy; verified live with the shared CA (`openssl s_client`
   verify OK, `issuer=CN=Argus Instance CA`). In the cutover runtime mDNS is
   advertised by the gateway only (legacy `mdns.enabled=false`).
-- **Legacy config requirements (documented, config-only)**: internal plain
-  listener (loopback bind only — the legacy trusts X-Forwarded-For for the
+- **Cutover config requirements (historical, config-only)**: internal plain
+  listener (loopback bind only — the monolith trusted X-Forwarded-For for the
   device hash, so a routable internal bind is spoofable), `[identity] db`
-  (Ruling H read-only identity client: legacy `UserRepository::findById` and
-  `RefreshTokenRepository::findByAccessToken` resolve to identity.db when the
-  key is configured — this covers the JWT filter's per-request reads AND the
-  proxied project-member/calendar-event-share target-user checks, which is
-  why gateway-only users are not rejected against stale argus.db),
+  (Ruling H read-only identity client: the monolith's `UserRepository::findById`
+  and `RefreshTokenRepository::findByAccessToken` resolved to identity.db when
+  the key was configured — this covered the JWT filter's per-request reads AND
+  the proxied project-member/calendar-event-share target-user checks, which is
+  why gateway-only users were not rejected against stale argus.db),
   `[device] trust_forwarded_for = true` so the proxied `/sync` relay and
-  reverse-proxy X-Forwarded-For are trusted (the gateway is a 127.0.0.1 peer
-  and always trusted).
+  reverse-proxy X-Forwarded-For were trusted (the gateway is a 127.0.0.1 peer
+  and always trusted). Moot since the monolith build set was retired (F6-4).
 - **Acceptance evidence**: two-process run (gateway TLS 7024 + legacy
   internal 7025) — proxied matrix byte-identical to direct-legacy captures
   (statuses and bodies; only CORS header order differs), 404-vs-502
@@ -218,9 +225,9 @@ table. The app keeps working without any update.
 - **Composite `/sync` relay**: `SyncRelay` holds one upstream per protocol
   family — the seven `camera:*` frame types relay to argus-camera
   (`[camera] sync_url`), and since F6-3 `voice:*` frames relay to argus-voice
-  over argus.voice.v1 (`[voice] target`, see the F6-3 section); empty keys
-  keep the old single-legacy behavior. Same client credentials and XFF rule
-  on both legs.
+  over argus.voice.v1 (`[voice] target`, see the F6-3 section); an empty key
+  makes that leg answer the 503 unconfigured-relay envelope. Same client
+  credentials and XFF rule on both legs.
 - **Camera change funnel (`camera_fan_out`)**: the NATS subscription is the
   wildcard `argus.*.v1.change`; the concrete subject routes the payload —
   `argus.camera.v1.change` goes to `camera_fan_out::handleCameraChange`,
@@ -231,8 +238,7 @@ table. The app keeps working without any update.
   handler runs on the Drogon IO loop (RoomManager is thread-local).
 - **Named camera client (Ruling Z)**: `[camera] db` opens mode=ro as the
   named camera client (`DbService::setCameraClient`); camera/camera_stream/
-  zone sync reads resolve to it, legacy non-camera tables keep the read-only
-  argus.db client, identity tables stay on the default client.
+  zone sync reads resolve to it, identity tables stay on the default client.
 
 ## Camera object_detected consumer (F2-3): budget, silent hours, digest
 
@@ -296,7 +302,7 @@ table. The app keeps working without any update.
   client and the boot logs a warn. Personal-table scoping
   (`isPersonalTable` + `ctx.sub`) and role checks stay gateway-side;
   `/sync` pull pages for the moved tables are byte-identical with the
-  legacy (golden-sync evidence).
+  monolith's (golden-sync evidence).
 - **WAL discipline (Ruling AR)**: the gateway opens the productivity
   database read-only and the notification database read-write, both with
   `busy_timeout`, and never runs DDL against either — schema/DDL belong to
@@ -304,10 +310,10 @@ table. The app keeps working without any update.
 - **camera-notifier retarget (Ruling AR)**: the camera notifier keeps
   running gateway-side but writes its rows through
   `NotificationService` → `DbService::notificationClient()`
-  (notification.db), not the legacy argus.db copy.
-- **Legacy stays up, goes quiet (Ruling AS)**: the legacy keeps its whole
-  notification/productivity code; the routes are simply unreachable through
-  the gateway because the route table never sends them there.
+  (notification.db), not the retired argus.db copy.
+- **Ruling AS (legacy stays up, goes quiet)**: historical — the retired
+  monolith kept its whole notification/productivity code with the routes
+  unreachable through the gateway; the build set died in F6-4.
 
 ## Remote listener + LAN-only bootstrap + refresh-token limiter (F5-1)
 
@@ -432,10 +438,11 @@ table. The app keeps working without any update.
 ## Voice cutover (F6-3): argus.voice.v1 leg, typed identity, UpdateUser RPC
 
 - **`[voice] target` leg**: with `voice.target` set, `voice:*` frames no longer
-  relay to the legacy WS — `VoiceGrpcRelay` speaks `argus.voice.v1`
+  relay to the old WS leg — `VoiceGrpcRelay` speaks `argus.voice.v1`
   VoiceService bidi to argus-voice (default 127.0.0.1:7034): text frames map
   to VoiceStart/VoiceStop/VoiceSkip, PCM binary frames to the `pcm` oneof
-  field of `ClientFrame`. An empty `target` keeps the legacy `sync_url` leg.
+  field of `ClientFrame`. An empty `target` answers voice frames with the
+  503 unconfigured-relay envelope.
   The frozen mobile app `/sync` contract is untouched: the gateway still
   renders every app frame as JSON — `voice:stt`, `voice:assistant`,
   `voice:event`, `voice:done`, plus TTS binary chunks — so byte-identity is a

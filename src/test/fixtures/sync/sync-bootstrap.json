@@ -82,27 +82,9 @@
           },
           "event" : 
           {
-            "created" : 
-            [
-              {
-                "createdAt" : 0,
-                "deletedAt" : null,
-                "details" : "{}",
-                "eventType" : "motion",
-                "id" : 0,
-                "occurredAt" : 0,
-                "severity" : "info",
-                "source" : "golden",
-                "summary" : "Fixture event",
-                "updatedAt" : null
-              }
-            ],
+            "created" : [],
             "deleted" : [],
-            "lastSyncDate" : 
-            {
-              "created" : 0,
-              "createdId" : 0
-            }
+            "lastSyncDate" : {}
           },
           "notification" : 
           {

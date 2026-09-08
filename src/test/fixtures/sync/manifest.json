@@ -22,14 +22,14 @@
       "sha256" : "7a91dcd83d6ca8e2ddc54bf70e27edd386c8b2f6c69ef5255946628be5ab395e"
     },
     {
-      "byteLength" : 3454,
+      "byteLength" : 3233,
       "direction" : "in",
       "fixture" : "sync-bootstrap.json",
       "index" : 2,
       "kind" : "text",
       "messageType" : "sync",
       "scenario" : "sync-bootstrap",
-      "sha256" : "c8aef5f737b5cf88365f4b19e19b9e74a9e737d1b048b1b8dd2653795aef7b77"
+      "sha256" : "5e5a181acda93868909e715845368d8d141af108584946d753aa45a146c132d2"
     },
     {
       "byteLength" : 53,
@@ -48,7 +48,7 @@
       "kind" : "text",
       "messageType" : "sync_audit_log",
       "scenario" : "sync-audit-log-watermark",
-      "sha256" : "daf80f30a18e09592034e2df71a54772b225852aca56bbd36454651b0b5facba"
+      "sha256" : "131cd2f18eb3779bb6151b05d1c5650f742f3cfd36b5c3be76db4f6430090d63"
     },
     {
       "byteLength" : 59,
@@ -67,7 +67,7 @@
       "kind" : "text",
       "messageType" : "sync_audit_log",
       "scenario" : "sync-audit-log-page",
-      "sha256" : "478d2f0dcc162fa406ed01732c3387438098eed2df8c7417f910c0b5de777950"
+      "sha256" : "c292aeee720fa93cdcee50468417e53d84d3c0f10582f62040752fb1f8dd5fdc"
     },
     {
       "byteLength" : 58,
@@ -86,7 +86,7 @@
       "kind" : "text",
       "messageType" : "sync_user_audit_log",
       "scenario" : "sync-user-audit-log-watermark",
-      "sha256" : "1263fb26bc4f843c81ef9ffcec15ee22e53e078ee290adc849c7f3a9293da6b8"
+      "sha256" : "e08aaefd4f246d5d2d9b06a5ff0ff7b81fcba82c3419fa187636dbb5f3d3f735"
     },
     {
       "byteLength" : 64,
@@ -105,7 +105,7 @@
       "kind" : "text",
       "messageType" : "sync_user_audit_log",
       "scenario" : "sync-user-audit-log-page",
-      "sha256" : "21e78fee7011be58bb7887c60993acf92e38912f01fe496c25ba2ffd0783d1f1"
+      "sha256" : "55ca9ef970a7c41a08adf3e33383725d7dae88eb5230f4dc4d01fa205989e6fa"
     },
     {
       "byteLength" : 69,
@@ -124,13 +124,23 @@
       "kind" : "text",
       "messageType" : "camera:ready",
       "scenario" : "camera-subscribe",
-      "sha256" : "dec3d2fe6539a280ea2a35d67ba1f89ff6d976e9726e4a9fe91a7d0187f98f2c"
+      "sha256" : "786b07fb9862da797384a3e8cb3e8e2b625207bb50395ce862bd0b8c1bf065fd"
+    },
+    {
+      "byteLength" : 73,
+      "direction" : "in",
+      "fixture" : "camera-subscribe.json",
+      "index" : 13,
+      "kind" : "text",
+      "messageType" : "camera:closed",
+      "scenario" : "camera-subscribe",
+      "sha256" : "6e552db03d25ca54bd8b72f5c08f5136d90e409a93eafe101dc101c8e655478e"
     },
     {
       "byteLength" : 40,
       "direction" : "out",
       "fixture" : "unknown-type-error.json",
-      "index" : 13,
+      "index" : 14,
       "kind" : "text",
       "messageType" : "__golden_probe__",
       "sha256" : "ff87ec05283f7403dca535162081870dc2f79f849381af40dc8c25ce2d501525"
@@ -139,7 +149,7 @@
       "byteLength" : 77,
       "direction" : "in",
       "fixture" : "unknown-type-error.json",
-      "index" : 14,
+      "index" : 15,
       "kind" : "text",
       "messageType" : "__golden_probe___error",
       "scenario" : "unknown-type-error",
@@ -156,6 +166,6 @@
     "maskedSecrets" : "key containing token/hash/secret/nonce/password/credential (string) -> '<masked>'",
     "maskedTimestamps" : "key ending in 'At'/'_at'/'Date', containing 'timestamp', or exactly 'created'/'deleted' (integer) -> 0"
   },
-  "recordedAtUtc" : "2026-09-04T13:08:24Z",
+  "recordedAtUtc" : "2026-09-08T05:20:26Z",
   "userAgent" : "argus-golden-recorder/1.0"
 }

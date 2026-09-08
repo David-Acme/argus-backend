@@ -204,43 +204,6 @@ TEST_CASE("gateway config section resolves listener and nats keys")
   std::remove(path);
 }
 
-TEST_CASE("legacy config resolves the relay url and database with defaults")
-{
-  const char* path = "gateway-test-config-legacy-empty.toml";
-  {
-    std::ofstream file(path);
-    file << "[gateway]\n"
-         << "port = 7024\n";
-  }
-
-  ConfigService::load(path);
-  const LegacySyncConfig config = LegacySyncConfig::resolve();
-
-  CHECK(config.syncUrl.empty());
-  CHECK(config.dbPath == "database/argus.db");
-
-  std::remove(path);
-}
-
-TEST_CASE("legacy config honors the legacy section overrides")
-{
-  const char* path = "gateway-test-config-legacy.toml";
-  {
-    std::ofstream file(path);
-    file << "[legacy]\n"
-         << "sync_url = \"wss://127.0.0.1:7024\"\n"
-         << "db = \"/tmp/argus-test/argus.db\"\n";
-  }
-
-  ConfigService::load(path);
-  const LegacySyncConfig config = LegacySyncConfig::resolve();
-
-  CHECK(config.syncUrl == "wss://127.0.0.1:7024");
-  CHECK(config.dbPath == "/tmp/argus-test/argus.db");
-
-  std::remove(path);
-}
-
 TEST_CASE("relay text allowlist keeps every camera and voice frame type")
 {
   struct Row

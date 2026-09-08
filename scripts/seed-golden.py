@@ -72,10 +72,6 @@ try:
             "recurrence_rule,created_at) VALUES(1,1,NULL,'Golden event',"
             "'Fixture row','','',?,NULL,0,NULL,?)", (now, now))
         cur.execute(
-            "INSERT INTO event(event_type,severity,source,summary,details,"
-            "occurred_at,created_at) VALUES('motion','info','golden',"
-            "'Fixture event','{}',?,?)", (now, now))
-        cur.execute(
             "INSERT INTO notification(user_id,type,title,body,data,is_read,"
             "created_at) VALUES(1,'system','Golden notification','Fixture"
             " row','{}',0,?)", (now,))

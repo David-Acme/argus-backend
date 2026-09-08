@@ -11,7 +11,7 @@
 
 namespace
 {
-// Frames buffered while the legacy session is still connecting. Binary frames
+// Frames buffered while the relay session is still connecting. Binary frames
 // past the cap are dropped instead of queued: they are transient PCM of the
 // moment, stale on replay.
 constexpr size_t kPendingLimit = 256;
@@ -23,22 +23,12 @@ struct LegacySyncRelay::Session
   std::string userAgent;
   std::string forwardedFor;
   drogon::WebSocketClientPtr client;
-  drogon::WebSocketConnectionPtr legacy;
+  drogon::WebSocketConnectionPtr leg;
   std::vector<Frame> pending;
   bool connecting{false};
   bool failed{false};
   bool closing{false};
 };
-
-LegacySyncConfig LegacySyncConfig::resolve()
-{
-  LegacySyncConfig config;
-  config.syncUrl = ConfigService::getString("legacy.sync_url");
-  config.dbPath = ConfigService::getString("legacy.db");
-  if (config.dbPath.empty())
-    config.dbPath = "database/argus.db";
-  return config;
-}
 
 bool relayAllowedText(std::string_view type)
 {
@@ -55,13 +45,8 @@ bool relayLegIsVoice(std::string_view type)
   return type.rfind("voice:", 0) == 0;
 }
 
-LegacySyncRelay::LegacySyncRelay(LegacySyncConfig config)
-    : config_(std::move(config))
-{
-}
-
 LegacySyncRelay::LegacySyncRelay(std::string syncUrl)
-    : config_(LegacySyncConfig{.syncUrl = std::move(syncUrl), .dbPath = {}})
+    : syncUrl_(std::move(syncUrl))
 {
 }
 
@@ -80,7 +65,7 @@ void LegacySyncRelay::onConnect(const drogon::HttpRequestPtr& req,
   session->userAgent = req->getHeader("User-Agent");
   // Never trust a client-supplied X-Forwarded-For: the gateway is the only
   // one that sees the client, so the header is replaced with the observed TCP
-  // peer address (the legacy device hash is HMAC(User-Agent|IP)).
+  // peer address (the device hash is HMAC(User-Agent|IP)).
   session->forwardedFor = conn->peerAddr().toIp();
 
   std::lock_guard<std::mutex> lock(sessionsMutex_);
@@ -118,7 +103,7 @@ drogon::Task<bool> LegacySyncRelay::forwardText(
     std::string_view raw)
 {
   (void)message;
-  if (config_.syncUrl.empty())
+  if (syncUrl_.empty())
     throw ResponseException("Legacy sync relay is not configured", 503,
                             AppConfig::ERROR_CODE_SERVICE_UNAVAILABLE);
 
@@ -129,8 +114,8 @@ drogon::Task<bool> LegacySyncRelay::forwardText(
   if (session->closing)
     co_return true;
 
-  if (session->legacy) {
-    session->legacy->send(raw.data(), raw.size(),
+  if (session->leg) {
+    session->leg->send(raw.data(), raw.size(),
                           drogon::WebSocketMessageType::Text);
     co_return true;
   }
@@ -153,14 +138,14 @@ drogon::Task<bool> LegacySyncRelay::forwardText(
 void LegacySyncRelay::forwardBinary(const drogon::WebSocketConnectionPtr& conn,
                                     const std::string& data)
 {
-  if (config_.syncUrl.empty())
+  if (syncUrl_.empty())
     return;
 
   auto session = sessionFor(conn);
   if (session->failed || session->closing)
     return;
-  if (session->legacy) {
-    session->legacy->send(data.data(), data.size(),
+  if (session->leg) {
+    session->leg->send(data.data(), data.size(),
                           drogon::WebSocketMessageType::Binary);
     return;
   }
@@ -177,7 +162,7 @@ void LegacySyncRelay::onClose(const drogon::WebSocketConnectionPtr& conn)
   session->closing = true;
   if (session->client)
     session->client->stop();
-  session->legacy.reset();
+  session->leg.reset();
 }
 
 drogon::Task<void>
@@ -189,14 +174,14 @@ LegacySyncRelay::openSession(const drogon::WebSocketConnectionPtr& conn,
   if (!loop)
     loop = drogon::app().getIOLoop(0);
 
-  if (!config_.syncUrl.empty() && session->token.empty()) {
-    LOG_WARN << "Sync relay: refusing legacy connection without a token";
+  if (!syncUrl_.empty() && session->token.empty()) {
+    LOG_WARN << "Sync relay: refusing connection without a token";
     session->failed = true;
     conn->shutdown(drogon::CloseCode::kNormalClosure);
     co_return;
   }
 
-  auto client = drogon::WebSocketClient::newWebSocketClient(config_.syncUrl,
+  auto client = drogon::WebSocketClient::newWebSocketClient(syncUrl_,
                                                             loop, false, false);
   session->client = client;
   client->setMessageHandler(
@@ -222,7 +207,7 @@ LegacySyncRelay::openSession(const drogon::WebSocketConnectionPtr& conn,
 
   client->setConnectionClosedHandler(
       [conn, session](const drogon::WebSocketClientPtr&) {
-        session->legacy.reset();
+        session->leg.reset();
         if (session->closing || conn->disconnected())
           return;
         session->failed = true;
@@ -243,7 +228,7 @@ LegacySyncRelay::openSession(const drogon::WebSocketConnectionPtr& conn,
     (void)resp;
   }
   catch (const std::exception& e) {
-    LOG_WARN << "Sync relay: legacy connection failed: " << e.what();
+    LOG_WARN << "Sync relay: leg connection failed: " << e.what();
     session->client.reset();
     session->failed = true;
     if (!session->closing && !conn->disconnected())
@@ -256,9 +241,9 @@ LegacySyncRelay::openSession(const drogon::WebSocketConnectionPtr& conn,
     co_return;
   }
 
-  session->legacy = client->getConnection();
+  session->leg = client->getConnection();
   for (const auto& frame : session->pending) {
-    session->legacy->send(frame.data.data(), frame.data.size(),
+    session->leg->send(frame.data.data(), frame.data.size(),
                           frame.binary ? drogon::WebSocketMessageType::Binary
                                        : drogon::WebSocketMessageType::Text);
   }

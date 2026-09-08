@@ -17,10 +17,10 @@ public:
     return drogon::app().getDbClient();
   }
 
-  // Read path of the sync tables that stay in argus.db. The gateway installs
-  // the legacy argus.db opened `file:...?mode=ro` (see setReadOnlyClient);
-  // hosts that never install one fall back to the default client, so a
-  // single compiled read path serves both.
+  // Read path of the sync tables that live outside the host's own database.
+  // Only what a host installs (see setReadOnlyClient) is served: nullptr when
+  // nothing is installed, which the sync repositories answer with empty
+  // results instead of falling back to another database.
   static drogon::orm::DbClientPtr readOnlyClient();
 
   // Installs the named read-only client used by the sync read path. Must be
@@ -77,7 +77,6 @@ public:
   static void enableUriFilenames();
 
   static bool runScriptFile(const std::string& path);
-  static bool migrate(int64_t targetVersion);
   static void applyPragmas();
   static void installExtensions();
 };

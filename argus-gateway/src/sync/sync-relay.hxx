@@ -11,15 +11,6 @@
 #include <unordered_map>
 #include <vector>
 
-struct LegacySyncConfig
-{
-  // Internal /sync of the legacy backend; empty disables the relay.
-  std::string syncUrl;
-  std::string dbPath;
-
-  static LegacySyncConfig resolve();
-};
-
 // Internal /sync of argus-camera; empty disables the camera relay leg.
 struct CameraSyncConfig
 {
@@ -28,26 +19,27 @@ struct CameraSyncConfig
   static CameraSyncConfig resolve();
 };
 
-// Every legacy-emitted text frame the client must still receive; module and
-// sync emits of the relay session are dropped (the gateway serves those
+// Every relay-leg-emitted text frame the client must still receive; module
+// and sync emits of the relay session are dropped (the gateway serves those
 // natively).
 bool relayAllowedText(std::string_view type);
 
-// camera:* frames belong to the argus-camera leg, everything else to the legacy.
+// camera:* frames belong to the argus-camera leg, everything else to the
+// voice leg.
 bool relayLegIsCamera(std::string_view type);
 
 // voice:* frames and raw binary belong to the argus-voice leg.
 bool relayLegIsVoice(std::string_view type);
 
-// Per-client byte-transparent relay to the legacy /sync socket. Each session
-// connects with the client's own credentials (token and User-Agent; the
-// X-Forwarded-For is synthesized from the observed TCP peer address) and is
-// only touched from the event loop of its client connection. Binary frames
-// past the pending-frame cap are dropped while the legacy session connects.
+// Per-client byte-transparent relay to a service /sync socket leg. Each
+// session connects with the client's own credentials (token and User-Agent;
+// the X-Forwarded-For is synthesized from the observed TCP peer address) and
+// is only touched from the event loop of its client connection. Binary frames
+// past the pending-frame cap are dropped while the relay session connects.
+// An empty target answers every frame with the 503 unconfigured envelope.
 class LegacySyncRelay final : public SyncForwarder
 {
 public:
-  explicit LegacySyncRelay(LegacySyncConfig config);
   explicit LegacySyncRelay(std::string syncUrl);
 
   void onConnect(const drogon::HttpRequestPtr& req,
@@ -72,7 +64,7 @@ private:
   drogon::Task<void> openSession(const drogon::WebSocketConnectionPtr& conn,
                                  std::shared_ptr<Session> session);
 
-  const LegacySyncConfig config_;
+  const std::string syncUrl_;
   mutable std::mutex sessionsMutex_;
   std::unordered_map<const void*, std::shared_ptr<Session>> sessions_;
 };

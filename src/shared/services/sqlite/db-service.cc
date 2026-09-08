@@ -73,56 +73,6 @@ std::vector<std::string> splitStatements(const std::string& script)
   return statements;
 }
 
-const std::vector<std::string> kMigrationStatementsV1 = {
-    "DROP INDEX IF EXISTS \"idx_user_a  ction_log_created\"",
-};
-
-const std::vector<std::string> kMigrationStatementsV2 = {
-    "CREATE TABLE IF NOT EXISTS device_login_challenge ("
-    "id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,"
-    "challenge_id TEXT NOT NULL UNIQUE,"
-    "device_hash TEXT NOT NULL,"
-    "user_agent TEXT NOT NULL DEFAULT '',"
-    "status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN "
-    "('pending', 'approved', 'expired')),"
-    "user_id INTEGER,"
-    "access_token TEXT,"
-    "refresh_token TEXT,"
-    "expires_at INTEGER NOT NULL,"
-    "created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')))",
-};
-
-struct ColumnPatch
-{
-  std::string table;
-  std::string column;
-  std::string definition;
-};
-
-/**
- * Columns added after a table shipped. `schema.sql` already carries them for a
- * fresh database, so each one is only applied when introspection says it is
- * missing — an `ALTER` cannot express that.
- */
-const std::vector<ColumnPatch> kColumnPatches = {
-    {"camera", "cloud_username", "TEXT NOT NULL DEFAULT ''"},
-    {"camera", "cloud_password", "TEXT NOT NULL DEFAULT ''"},
-    {"camera", "driver", "TEXT NOT NULL DEFAULT 'tapo'"},
-    {"camera", "icon", "TEXT NOT NULL DEFAULT 'video'"},
-};
-
-const std::vector<std::string>* migrationStatements(int64_t version)
-{
-  switch (version) {
-    case 1:
-      return &kMigrationStatementsV1;
-    case 2:
-      return &kMigrationStatementsV2;
-    default:
-      return nullptr;
-  }
-}
-
 const std::vector<std::string> kPerBootPragmas = {
     "PRAGMA journal_mode = WAL",
     "PRAGMA synchronous = NORMAL",
@@ -143,9 +93,9 @@ void DbService::setReadOnlyClient(drogon::orm::DbClientPtr client)
 drogon::orm::DbClientPtr DbService::readOnlyClient()
 {
   // Installed at boot, before any IO thread exists: no synchronization.
-  if (auto client = g_readOnlyClient())
-    return client;
-  return client();
+  // No fallback: an uninstalled read-only client means the tables it serves
+  // do not exist on this host, and the sync repositories answer empty.
+  return g_readOnlyClient();
 }
 
 void DbService::setIdentityClient(drogon::orm::DbClientPtr client)
@@ -257,92 +207,4 @@ bool DbService::runScriptFile(const std::string& path)
   if (ok)
     LOG_INFO << "Applied SQLite script: " << path;
   return ok;
-}
-
-bool DbService::migrate(int64_t targetVersion)
-{
-  auto client = DbService::client();
-
-  try {
-    client->execSqlSync(
-        "CREATE TABLE IF NOT EXISTS schema_version ("
-        "version INTEGER NOT NULL PRIMARY KEY,"
-        "applied_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')))");
-  }
-  catch (const std::exception& e) {
-    LOG_WARN << "schema_version table setup failed: " << e.what();
-    return false;
-  }
-
-  int64_t current = 0;
-  try {
-    const auto result = client->execSqlSync(
-        "SELECT COALESCE(MAX(version), 0) AS v FROM schema_version");
-    if (!result.empty())
-      current = result.front()["v"].as<int64_t>();
-  }
-  catch (const std::exception& e) {
-    LOG_WARN << "schema_version read failed: " << e.what();
-    return false;
-  }
-
-  if (current >= targetVersion) {
-    LOG_INFO << "Database schema already at version " << current;
-    return true;
-  }
-
-  if (!runScriptFile("database/schema.sql"))
-    return false;
-
-  for (const auto& patch : kColumnPatches) {
-    try {
-      const auto columns =
-          client->execSqlSync("SELECT name FROM pragma_table_info(?)", patch.table);
-      bool present = false;
-      for (const auto& row : columns) {
-        if (row["name"].as<std::string>() == patch.column) {
-          present = true;
-          break;
-        }
-      }
-      if (!present)
-        client->execSqlSync("ALTER TABLE " + patch.table + " ADD COLUMN " +
-                            patch.column + " " + patch.definition);
-    }
-    catch (const std::exception& e) {
-      LOG_FATAL << "Column patch " << patch.table << "." << patch.column
-                << " failed: " << e.what();
-      return false;
-    }
-  }
-
-  for (int64_t version = current + 1; version <= targetVersion; ++version) {
-    const auto* statements = migrationStatements(version);
-    if (!statements)
-      continue;
-    for (const auto& statement : *statements) {
-      try {
-        client->execSqlSync(statement);
-      }
-      catch (const std::exception& e) {
-        LOG_FATAL << "Database migration v" << version
-                  << " failed: " << e.what();
-        return false;
-      }
-    }
-  }
-
-  try {
-    client->execSqlSync(
-        "INSERT OR REPLACE INTO schema_version (version, applied_at) "
-        "VALUES (?, strftime('%s', 'now'))",
-        targetVersion);
-  }
-  catch (const std::exception& e) {
-    LOG_WARN << "schema_version record failed: " << e.what();
-    return false;
-  }
-
-  LOG_INFO << "Database schema migrated to version " << targetVersion;
-  return true;
 }

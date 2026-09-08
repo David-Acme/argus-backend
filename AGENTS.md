@@ -676,7 +676,6 @@ Before any commit, verify: `cmake --build --preset dev -j 8` passes with
 | `src/shared/wrapper/api-response/` | Standardized API response builder |
 | `src/shared/wrapper/blocking-task/` | Coroutine awaiter for off-loop heavy work |
 | `src/shared/wrapper/thread-budget/` | Adaptive thread sizing for AI services |
-| `database/schema.sql` | DDL applied at startup |
 | `config.toml` | System application + JWT config |
 | `labs/config.toml` | Ignored lab-only overlay |
 | `CONTEXT.md` | Full project history and decisions |

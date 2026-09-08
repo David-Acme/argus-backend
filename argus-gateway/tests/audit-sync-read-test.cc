@@ -311,8 +311,8 @@ TEST_CASE("audit sync reads resolve to the default identity client on the "
   REQUIRE(userLast);
   CHECK((*userLast)["id"].asInt64() == 2);
 
-  // With or without the read-only client the rows come from the default
-  // client, the resolution the legacy host always got through the fallback.
+  // With or without the read-only client the audit rows come from the
+  // default client: the audit repositories never resolve readOnlyClient().
   DbService::setReadOnlyClient(nullptr);
   const auto auditRowsAfter =
       drogon::sync_wait(auditRepository.findSync(auditFilter));

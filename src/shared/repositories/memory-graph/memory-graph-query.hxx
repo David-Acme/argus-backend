@@ -203,12 +203,12 @@ inline std::string findCatalogStreams()
          catalogTable("memory.catalog_stream_table", "camera_stream");
 }
 
-// Schema source for the memory stack's own connections: the legacy runs the
-// full database/schema.sql, the extracted service runs memory-schema.sql.
+// Schema source for the memory stack's own connections; argus-memory's
+// config sets it, the default is the memory schema in the repo layout.
 inline std::string schemaFile()
 {
   const std::string configured = ConfigService::getString("memory.schema_file");
-  return configured.empty() ? "database/schema.sql" : configured;
+  return configured.empty() ? "database/memory-schema.sql" : configured;
 }
 
 inline constexpr const char* FIND_LEGACY_ENTITY =

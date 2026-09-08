@@ -5,8 +5,8 @@
       "byteLength" : 118,
       "kind" : "text",
       "messageType" : "sync_audit_log",
-      "raw" : "{\"info\":{\"info\":[],\"lastSyncRecord\":{\"id\":1,\"lastSyncDate\":1788526933},\"watermarkId\":1},\"operation\":2,\"option\":\"user\"}",
-      "sha256" : "daf80f30a18e09592034e2df71a54772b225852aca56bbd36454651b0b5facba"
+      "raw" : "{\"info\":{\"info\":[],\"lastSyncRecord\":{\"id\":1,\"lastSyncDate\":1788844101},\"watermarkId\":1},\"operation\":2,\"option\":\"user\"}",
+      "sha256" : "131cd2f18eb3779bb6151b05d1c5650f742f3cfd36b5c3be76db4f6430090d63"
     }
   ],
   "request" : "{\"type\":\"sync_audit_log\",\"payload\":{\"findLast\":true}}"

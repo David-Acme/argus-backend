@@ -174,7 +174,7 @@ void logRouting(const ProxyConfig& proxy, const ListenerConfig& listener,
 int main()
 {
   // SQLite URI filenames must be configured before the first sqlite3_open
-  // opens the read-only legacy database below.
+  // opens the read-only domain databases below.
   DbService::enableUriFilenames();
 
   ConfigService::load("config.toml");
@@ -190,7 +190,6 @@ int main()
   LOG_INFO << "Identity surface registered: " << identity.controllers
            << " controllers, " << identity.filters << " filters";
 
-  const LegacySyncConfig legacySync = LegacySyncConfig::resolve();
   const CameraSyncConfig cameraSync = CameraSyncConfig::resolve();
   const VoiceGrpcConfig voiceGrpc = VoiceGrpcConfig::resolve();
   const bool voiceCutover = !voiceGrpc.target.empty();
@@ -200,16 +199,16 @@ int main()
         std::make_shared<LegacySyncRelay>(cameraSync.syncUrl),
         voiceCutover ? std::static_pointer_cast<SyncForwarder>(
                            std::make_shared<VoiceGrpcRelay>(voiceGrpc))
-                     : std::make_shared<LegacySyncRelay>(legacySync.syncUrl));
+                     : std::make_shared<LegacySyncRelay>(std::string()));
   }
   else {
-    relay = std::make_shared<LegacySyncRelay>(legacySync);
+    relay = std::make_shared<LegacySyncRelay>(std::string());
   }
   const SyncRegistrationStats sync = registerSyncSurface(relay);
   LOG_INFO << "Sync surface registered: " << sync.controllers << " controller, "
            << sync.filters << " filters"
            << (voiceCutover ? "; voice leg -> gRPC " + voiceGrpc.target
-                            : "; voice leg -> legacy WS")
+                            : "; voice leg -> unconfigured relay (503)")
            << (cameraSync.syncUrl.empty()
                    ? ""
                    : "; camera relay -> " + cameraSync.syncUrl);
@@ -332,28 +331,8 @@ int main()
   std::unique_ptr<MdnsService> mdnsService;
 
   drogon::app().registerBeginningAdvice([&identityDb = identityDb,
-                                         &legacySync = legacySync,
                                          &mdnsService]() {
     DbService::installExtensions();
-
-    if (std::filesystem::exists(legacySync.dbPath)) {
-      // Sync tables read the legacy argus.db read-only; identity keeps its
-      // own writable default client above.
-      const auto readOnly = drogon::orm::DbClient::newSqlite3Client(
-          "filename=file:" + legacySync.dbPath + "?mode=ro", 1);
-      try {
-        readOnly->execSqlSync("PRAGMA busy_timeout = 5000");
-      }
-      catch (const std::exception& e) {
-        LOG_WARN << "Read-only database pragma error: " << e.what();
-      }
-      DbService::setReadOnlyClient(readOnly);
-      LOG_INFO << "Legacy database opened read-only: " << legacySync.dbPath;
-    }
-    else {
-      LOG_WARN << "Legacy database not found: " << legacySync.dbPath
-               << "; sync reads fall back to the default client";
-    }
 
     // Rulings Z/X: camera, camera_stream and zone reads resolve to the
     // camera database argus-camera owns. Cross-process SQLite rules apply on

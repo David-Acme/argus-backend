@@ -82,6 +82,8 @@ drogon::Task<std::vector<Json::Value>>
 EventRepository::find(const SyncFilter& filter) const
 {
   auto client = DbService::readOnlyClient();
+  if (!client)
+    co_return {};
   const auto [query, args] =
       sync_query::buildSyncQuery(filter, SYNC_FIND, SYNC_FIND_FROM,
                                  SYNC_FIND_ALL, SYNC_FIND_AFTER,
@@ -99,6 +101,8 @@ drogon::Task<std::vector<Json::Value>>
 EventRepository::findDeleted(const SyncFilter& filter) const
 {
   auto client = DbService::readOnlyClient();
+  if (!client)
+    co_return {};
   const auto [query, args] = sync_query::buildSyncQuery(
       filter, SYNC_FIND_DELETED, SYNC_FIND_DELETED_FROM,
       SYNC_FIND_DELETED_ALL, SYNC_FIND_DELETED_AFTER,
@@ -115,6 +119,8 @@ EventRepository::findDeleted(const SyncFilter& filter) const
 drogon::Task<std::optional<Json::Value>> EventRepository::findLast(const SyncFilter&) const
 {
   auto client = DbService::readOnlyClient();
+  if (!client)
+    co_return std::nullopt;
   const auto result = co_await client->execSqlCoro(SYNC_FIND_LAST.data());
   if (result.empty())
     co_return std::nullopt;
@@ -124,6 +130,8 @@ drogon::Task<std::optional<Json::Value>> EventRepository::findLast(const SyncFil
 drogon::Task<std::optional<Json::Value>> EventRepository::findLastDeleted(const SyncFilter&) const
 {
   auto client = DbService::readOnlyClient();
+  if (!client)
+    co_return std::nullopt;
   const auto result =
       co_await client->execSqlCoro(SYNC_FIND_LAST_DELETED.data());
   if (result.empty())
