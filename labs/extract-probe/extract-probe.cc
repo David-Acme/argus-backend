@@ -32,8 +32,7 @@
 namespace
 {
 
-// The extraction vocabulary is static per-language code
-// (src/shared/vocabulary/), loaded the same way the product does.
+// Loads the static per-language extraction vocabulary the product uses.
 std::vector<extract::LexiconEntry> loadLexicon()
 {
   return vocabulary::allLexiconEntries();
@@ -1022,15 +1021,11 @@ const HoldoutCase kHoldoutCases[] = {
     {"ana feeds the cat every morning", "en", "ana"},
     {"my father reads the newspaper in the morning", "en", "father"},
     {"the postman leaves the parcels at the door", "en", "postman"},
-    // Scoping: the subject is the whole noun phrase. Collapsing these to the
-    // head noun makes two different things share one entity, and the second
-    // fact silently invalidates the first.
     {"la bicicleta de ana descansa en el garaje", "es", "bicicleta de ana"},
     {"la bicicleta de luis reposa en el trastero", "es", "bicicleta de luis"},
     {"el gato de marta ronronea por las noches", "es", "gato de marta"},
     {"la persiana del salon chirria por las mananas", "es",
      "persiana del salon"},
-    // First person with an object of its own: the car is not the user.
     {"mi coche aparca en el garaje", "es", "coche"},
     {"mi portatil reposa sobre la mesa", "es", "portatil"},
     {"ana's bike rests in the garage", "en", "ana's bike"},
@@ -1173,8 +1168,6 @@ int runHoldoutTest(const char* modelOverride, const char* formatOverride)
                      src.find(normalize(f.predicate)) != std::string::npos;
     const bool dOk = f.value.empty() || f.when.surface.empty() ||
                      normalize(f.value) != normalize(f.when.surface);
-    // Containment tolerates a subject that swallowed the sentence; scoping is
-    // only right when the phrase matches exactly.
     const bool exact = normalize(f.subject) == normalize(c.subject);
     subjectExact += exact ? 1 : 0;
     if (!exact)

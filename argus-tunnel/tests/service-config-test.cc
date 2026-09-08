@@ -10,8 +10,6 @@ using namespace tunnel;
 
 TEST_CASE("a missing stream_idle_seconds yields the struct default")
 {
-  // No config file is loaded in a fresh process, so every [tunnel] key is
-  // missing here.
   const ClientConfig config = ClientConfig::resolve();
   CHECK(config.tunnel.limits.idleTimeout == std::chrono::seconds(300));
 }

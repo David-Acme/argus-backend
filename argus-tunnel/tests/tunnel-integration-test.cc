@@ -116,12 +116,7 @@ TEST_CASE("idle streams are swept with a bounded close")
 TEST_CASE("stalled gateway read applies back-pressure without byte loss")
 {
   HarnessOptions options;
-  // Bounded SO_SNDBUF on every tunnel socket keeps back-pressure in the
-  // software queues instead of megabytes of kernel-buffered bytes.
   options.limits.socketSndBuf = 64 * 1024;
-  // A slow (not stopped) reader: the gateway absorbs slower than the device
-  // pushes, so the tunnel valves engage without the kernel's zero-window
-  // probe backoff polluting the drain phase.
   options.slowGatewayReadMs = 20;
   options.gatewayRcvBuf = 64 * 1024;
   Harness harness(std::move(options));
@@ -132,8 +127,6 @@ TEST_CASE("stalled gateway read applies back-pressure without byte loss")
                                 options.limits.socketSndBuf);
   REQUIRE(waitFor([device] { return device->connected.load(); }, 5000));
 
-  // Chunks are paced against the device peer's own send buffer so the 4 MiB
-  // peer hard cap is never hit.
   const size_t kChunk = 256 * 1024;
   const std::string request = makePayload(4 * 1024 * 1024, 9);
   size_t sent = 0;
@@ -156,8 +149,6 @@ TEST_CASE("stalled gateway read applies back-pressure without byte loss")
   }
   REQUIRE(waitFor(stalled, 10000));
 
-  // Keep pushing: the relay's own valve engages only after the client's
-  // home-link receive window fills.
   while (sent < request.size() && harness.relay->pendingBytes() == 0) {
     sendNext();
     REQUIRE(waitFor([&] {

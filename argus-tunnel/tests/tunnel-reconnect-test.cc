@@ -24,8 +24,6 @@ TEST_CASE("home link reconnect tears down streams and recovers")
   CHECK(device->bytes() == first);
   CHECK(harness.client->reconnectAttempts() == 0);
 
-  // Dropping the home link on the relay side tears down every device
-  // stream: streams do not survive a reconnect.
   harness.loop.post([&harness] { harness.relay->dropLink(); });
   REQUIRE(waitFor([&] { return device->eof.load(); }, 10000));
   REQUIRE(waitFor([&] {
@@ -59,7 +57,6 @@ TEST_CASE("auth rejection keeps the client reconnecting")
   Harness harness(std::move(options));
   REQUIRE(harness.start());
 
-  // A wrong secret must never activate the link.
   RelayOptions relayOptions;
   relayOptions.host = "127.0.0.1";
   relayOptions.devicePort = 0;
@@ -83,8 +80,6 @@ TEST_CASE("auth rejection keeps the client reconnecting")
   CHECK(waitFor([&] { return client2->gaveUp(); }, 10000));
   CHECK_FALSE(client2->homeActive());
 
-  // Stop the loop before destroying the manual components: their posted
-  // stop tasks would otherwise run against dangling pointers.
   harness.stop();
   rogue.reset();
   client2.reset();

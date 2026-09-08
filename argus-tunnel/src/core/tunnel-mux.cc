@@ -118,14 +118,10 @@ void TunnelMux::dropLink()
 {
   if (!homePeer_)
     return;
-  // Reset homePeer_ before closing so the old callbacks' guards see no
-  // home peer and cannot re-enter dropLink.
   const TcpPeer::Ptr peer = homePeer_;
   homePeer_.reset();
   homeActive_ = false;
   homeReadPaused_ = false;
-  // Frames pipelined after the drop in the same read burst must never be
-  // dispatched: the parser (and the challenge) die with the link.
   parser_ = FrameParser();
   authChallenge_.clear();
   peer->setCallbacks(TcpPeer::Callbacks{});
@@ -186,9 +182,7 @@ void TunnelMux::handleHomeRead(TcpPeer&, const char* data, size_t size)
   pumpHomeFrames();
 }
 
-// Dispatches parsed frames while the home-read valve is open; frames already
-// fed into the parser must wait when the valve closes mid-burst, otherwise a
-// single read event could overflow the far-end queues.
+// Dispatches parsed frames only while the home-read valve is open.
 void TunnelMux::pumpHomeFrames()
 {
   while (parser_.hasFrame() && !parser_.failed() && !homeReadPaused_)

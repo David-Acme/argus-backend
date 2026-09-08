@@ -2,10 +2,6 @@
 
 #include <cstdio>
 
-// RADV-in-container probe (blueprint "Validación de Vulkan en contenedor"):
-// reuses ncnn's own Vulkan init, the same path the detector takes. Exit 0
-// means the instance plus at least one physical device work; anything else
-// leaves the detector on its Vulkan->CPU fallback.
 int main()
 {
   if (ncnn::create_gpu_instance() != 0) {

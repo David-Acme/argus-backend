@@ -16,8 +16,6 @@ namespace
 constexpr uint64_t kFnvOffset = 14695981039346656037ULL;
 constexpr uint64_t kFnvPrime = 1099511628211ULL;
 
-// FK-safe copy order: project, calendar_event and reminder first, then their
-// project_task/project_member/calendar_event_share/reminder_detail children.
 const std::vector<std::string> kProductivityTables = {
     "project",
     "calendar_event",
@@ -302,10 +300,7 @@ ProductivityResult validateSource(const std::string& sourcePath)
   return result;
 }
 
-// No-op guard: an existing schema-current productivity.db is live data after
-// the F3-2 cutover, so a rerun must leave it untouched and must never fail
-// just because the frozen argus.db copy is gone. An existing productivity.db
-// that is NOT schema-current is an operator problem, never silently wiped.
+// No-op report for a schema-current live target; nothing is copied or wiped.
 ProductivityMigrationReport noOpReport(sqlite3* target)
 {
   ProductivityMigrationReport report;
@@ -327,8 +322,7 @@ ProductivityMigrationReport noOpReport(sqlite3* target)
   return report;
 }
 
-// In-memory schema reference used to compare the column shape of an existing
-// target against productivity-schema.sql.
+// In-memory schema reference for comparing an existing target's column shape.
 ProductivityHandleResult schemaReference(const std::string& schemaPath)
 {
   auto reference = openHandle(":memory:", SQLITE_OPEN_READWRITE);
@@ -352,9 +346,6 @@ ProductivityMigrationReport verifyForeignKeyIntegrity(sqlite3* target)
     report.error = sqlite3_errmsg(target);
     return report;
   }
-  // The user rows live in identity.db, so every child row references a
-  // missing user parent by design (Ruling AM): only violations against the
-  // productivity tables themselves fail the migration.
   while (stmt.step() == SQLITE_ROW) {
     const auto parent = stmt.columnText(2);
     if (parent == "user")

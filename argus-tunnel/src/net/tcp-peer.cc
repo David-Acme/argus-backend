@@ -113,8 +113,6 @@ void TcpPeer::send(std::string data)
 void TcpPeer::setCallbacks(Callbacks callbacks)
 {
   if (dispatchDepth_ > 0) {
-    // Called from inside a callback: replacing callbacks_ would destroy the
-    // executing std::function; apply the swap when the dispatch unwinds.
     stagedCallbacks_ = std::move(callbacks);
     staged_ = true;
     return;

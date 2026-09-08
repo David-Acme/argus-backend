@@ -23,13 +23,10 @@ struct ClientOptions
   int maxReconnects{60};
   int pingIntervalSeconds{30};
   TunnelMux::Limits limits;
-  // Push-intent queue capacity (F5-5).
   size_t pushQueueCapacity{256};
 };
 
-// Home-side tunnel client: ONE persistent outbound link to the relay with
-// NatsBus-style reconnect; forwards each opened stream as a fresh TCP
-// connection to the gateway's remote listener.
+// Home-side client: one persistent link to the relay, each stream dialed fresh on the gateway listener.
 class TunnelClient : public MuxDelegate
 {
 public:
@@ -49,7 +46,7 @@ public:
   bool gaveUp() const { return gaveUp_.load(); }
   size_t pendingBytes() const { return mux_.pendingBytes(); }
 
-  // Push-intent queue counters for /health (F5-5).
+  // Push-intent queue counters for /health.
   size_t pushQueued() const { return pushQueue_.size(); }
   uint64_t pushReceived() const { return pushQueue_.received(); }
   uint64_t pushDropped() const { return pushQueue_.dropped(); }

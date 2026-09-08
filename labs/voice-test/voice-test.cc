@@ -75,8 +75,7 @@ float temperatureForTurn(bool hasMemories)
   return cfg >= 0.0 ? static_cast<float>(cfg) : 0.5F;
 }
 
-// Camera scene preamble in the conversation's language (was hardcoded
-// Spanish, which leaked into English sessions).
+// Camera scene preamble in the conversation's language.
 std::string cameraPreamble(const std::string& scene, const std::string& text,
                            const std::string& langCode)
 {
@@ -128,8 +127,7 @@ struct TurnReactionInput
   bool cameraIntent;
 };
 
-// The lab has every signal the engine can use, so it doubles as the reference
-// for what the WebSocket path will report once MemoryService reaches it.
+// Reference note for what the WebSocket path will report once MemoryService reaches it.
 std::string reactionNote(const TurnReactionInput& input)
 {
   if (!gReaction.isLoaded())
@@ -314,9 +312,7 @@ void summarizeSession(const ConversationState& state, int64_t userId,
     std::cout << "[memory] session closed (summary dropped, facts kept)\n";
 }
 
-// High-quality system prompt. Injected as the first message so it overrides
-// the service default; the LLM is instructed to reply strictly in the
-// selected language.
+// Injected as the first message so it overrides the service default and pins the reply language.
 std::string systemPromptFor(const std::string& langCode, bool withMemory,
                             bool withIntent)
 {
@@ -386,8 +382,7 @@ std::string systemPromptFor(const std::string& langCode, bool withMemory,
   return prompt;
 }
 
-// Strip a spurious "Argus:" / "Argus" prefix the model sometimes emits
-// before the actual reply (it mirrors the persona from the system prompt).
+// Strip a spurious "Argus:" prefix the model sometimes emits before the reply.
 std::string stripPrefix(const std::string& text)
 {
   std::string out = text;
@@ -678,9 +673,7 @@ int runAudioDump(const std::string& rtspUrl, const std::string& path)
   return 0;
 }
 
-// --stt-http <url> <wav>: transcribes a 16 kHz mono s16 wav through the
-// argus-stt internal wire (F4-3) instead of the in-process engine. The lang
-// rides the query; empty keeps the service's stt.language default.
+// --stt-http <url> <wav>: transcribes a 16 kHz mono wav over the argus-stt wire; lang rides the query.
 int runSttWireCheck(const std::string& baseUrl, const std::string& wavPath)
 {
   std::ifstream in(wavPath, std::ios::binary);
@@ -1159,8 +1152,7 @@ int runMicCheck(const std::string& rtspSub, int seconds)
 }
 
 int main(int argc, char** argv)
-{ // Run from the binary's own directory so config.toml and models/ resolve
-  // no matter where the command is launched from.
+{
   if (chdir(exeDir().c_str()) != 0)
     std::cerr << "Warning: could not chdir to " << exeDir() << "\n";
 
@@ -1172,8 +1164,6 @@ int main(int argc, char** argv)
     if (std::string(argv[i]) == "--verbose")
       verbose = true;
   }
-  // The console is the UI here: framework INFO lines land in the middle of a
-  // turn and bury the prompt. Warnings and errors still print.
   if (!verbose)
     trantor::Logger::setLogLevel(trantor::Logger::kWarn);
 
@@ -1350,8 +1340,6 @@ int main(int argc, char** argv)
     const bool withMemory = memoryUserId >= 0;
     ConversationState state;
     state.lang = langCode;
-    // System prompt is the first message so the LLM replies in the selected
-    // language and keeps answers short.
     state.history.push_back(
         {"system", systemPromptFor(langCode, withMemory, enableIntent)});
     if (memoryUserId >= 0) {

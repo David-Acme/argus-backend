@@ -20,12 +20,9 @@ namespace
 constexpr double kSampleRateIn = 16000.0;
 constexpr unsigned long kFramesPerBuffer = 512;
 
-// Windowed-sinc resampler. Linear interpolation has no anti-alias filter, so
-// decimating 44.1k -> 16k folds everything above the 8k Nyquist back into the
-// speech band and corrupts STT (the device now runs at 44.1k when OBS holds
-// the mic via PipeWire). A band-limited sinc kernel fixes that in one pass.
-constexpr int kSincHalf = 32;      // kernel half-length (64 taps)
-constexpr double kSincCutoff = 7000.0;  // Hz, below the 8k output Nyquist
+// Windowed-sinc resampler; the band-limited kernel prevents 44.1k-to-16k aliasing.
+constexpr int kSincHalf = 32;
+constexpr double kSincCutoff = 7000.0;
 
 // Blackman window at offset j in [-kSincHalf, kSincHalf].
 double sincWindow(int j)
@@ -36,8 +33,7 @@ double sincWindow(int j)
          0.08 * std::cos(4.0 * M_PI * n / N);
 }
 
-// Band-limited sinc kernel: h(t) = 2*fc * sinc(2*fc*t) * window, with fc
-// normalized in cycles per source sample and t measured in source samples.
+// Band-limited sinc kernel h(t) = 2*fc*sinc(2*fc*t) under a Blackman window.
 double sincTap(double fc, double t)
 {
   if (std::fabs(t) < 1e-12)
@@ -49,8 +45,6 @@ struct CaptureState
 {
   AudioSampleCallback onFrames;
   double rate{0.0};
-  // Resampler state: fractional source position of the next output sample and
-  // the history window carried over between callbacks.
   double resamplePos{0.0};
   std::vector<float> resamplePrev;
 };
@@ -77,9 +71,6 @@ int captureCallback(const void* input, void* output, unsigned long framesPerBuff
   const auto* in = static_cast<const float*>(input);
   if (!in || !st->onFrames || framesPerBuffer == 0)
     return paContinue;
-  // A stream can misreport its buffer size while the device is contended
-  // (e.g. OBS holds the mic via PipeWire). Clamp to a sane maximum so the
-  // reserve/insert below can never request an absurd allocation.
   const unsigned long capped = std::min<unsigned long>(framesPerBuffer,
                                                        kFramesPerBuffer * 4);
 
@@ -88,22 +79,15 @@ int captureCallback(const void* input, void* output, unsigned long framesPerBuff
     return paContinue;
   }
 
-  // Windowed-sinc resample from the device rate down to 16 kHz. The kernel
-  // (cutoff below the 8k output Nyquist) rejects out-of-band energy before
-  // decimation, so no aliasing folds noise back into the speech band.
   const double ratio = kSampleRateIn / st->rate;
   if (!(ratio > 0.0) || !(ratio < 1.0))
     return paContinue;
   std::vector<float> out;
   out.reserve(static_cast<size_t>(capped * ratio) + 2);
 
-  // Combined stream: carried-over history + current buffer.
   std::vector<float> combined = st->resamplePrev;
   combined.insert(combined.end(), in, in + capped);
 
-  // fc is normalized in cycles per source sample. Emit output samples while
-  // the kernel's right half still fits inside the combined buffer; the left
-  // half is always covered by the seeded history (resamplePos >= kSincHalf).
   const double fc = kSincCutoff / st->rate;
   const double step = 1.0 / ratio;
   while (st->resamplePos + kSincHalf <
@@ -127,9 +111,6 @@ int captureCallback(const void* input, void* output, unsigned long framesPerBuff
     st->resamplePos += step;
   }
 
-  // Keep the tail as history for the next callback: at least kSincHalf samples
-  // before the read position so the kernel's left half stays valid, plus the
-  // unconsumed samples. resamplePos is rewound relative to that window.
   const size_t start = static_cast<size_t>(st->resamplePos - kSincHalf);
   st->resamplePrev.assign(combined.begin() + start, combined.end());
   st->resamplePos -= static_cast<double>(start);
@@ -190,7 +171,6 @@ bool openMicrophone(int deviceIndex, AudioSampleCallback onFrames)
     gPaInitialized = true;
   }
 
-  // Close a previous capture stream before reopening.
   if (gCaptureStream) {
     Pa_StopStream(gCaptureStream);
     Pa_CloseStream(gCaptureStream);
@@ -219,8 +199,6 @@ bool openMicrophone(int deviceIndex, AudioSampleCallback onFrames)
                               &gCapture);
   bool resampling = false;
   if (err != paNoError) {
-    // The device may not support 16 kHz (e.g. a raw hw: device). Fall back
-    // to its native rate and resample to 16 kHz in software.
     rate = info->defaultSampleRate;
     gCapture.rate = rate;
     resampling = true;
@@ -233,7 +211,6 @@ bool openMicrophone(int deviceIndex, AudioSampleCallback onFrames)
               << "\n";
     return false;
   }
-  // The stream is reopened every turn; announce it only when it changes.
   static int announcedDevice = -1;
   static int announcedRate = -1;
   if (announcedDevice != deviceIndex || announcedRate != static_cast<int>(rate)) {
@@ -270,9 +247,6 @@ bool playPcm(const std::vector<float>& pcm, int sampleRate,
   if (pcm.empty())
     return false;
 
-  // Prefer PulseAudio/PipeWire: it plays through the system sink that screen
-  // recorders (OBS "Desktop Audio") capture. PortAudio-ALSA hw devices
-  // bypass PipeWire and would not be recorded.
   int paErr = 0;
   pa_sample_spec ss;
   ss.format = PA_SAMPLE_FLOAT32LE;
@@ -289,7 +263,6 @@ bool playPcm(const std::vector<float>& pcm, int sampleRate,
     return true;
   }
 
-  // No PulseAudio/PipeWire server: fall back to PortAudio output devices.
   std::cerr << "[audio] pulse unavailable (" << pa_strerror(paErr)
             << "), trying PortAudio\n";
   if (!gPaInitialized) {

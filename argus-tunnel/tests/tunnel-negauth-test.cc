@@ -15,9 +15,7 @@ using namespace tunnel::test;
 
 namespace
 {
-// Scripted home-link peer standing in for the relay: replays its script on
-// every accepted link (client reconnects re-run it) and records what the
-// client sends back.
+// Scripted relay stand-in: replays its script on every accepted link and records the client's replies.
 struct FakeRelay
 {
   std::function<void(TcpPeer&)> script;
@@ -46,8 +44,6 @@ struct FakeRelay
       };
       callbacks.onEof = [this](TcpPeer& gone) { gone.close(); };
       peerParams.callbacks = std::move(callbacks);
-      // The previous link is dead by then; a still-watched actor must never
-      // be destroyed unwatched.
       if (peer && !peer->closed())
         peer->close();
       peer = TcpPeer::adopt(peerParams);
@@ -93,9 +89,7 @@ struct GatewayCounter
   uint16_t port() const { return listener->boundPort(); }
 };
 
-// Relay stand-in + client + gateway counter on one PollLoop thread; the
-// 1 s auth timeout makes an unauthenticated link drop and reconnect, so
-// every scenario delivers its attack burst repeatedly.
+// Relay stand-in + client + gateway counter on one PollLoop thread; the 1 s auth timeout re-runs each scenario.
 struct RogueRig
 {
   explicit RogueRig(const std::function<void(TcpPeer&)>& script)

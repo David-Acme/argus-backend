@@ -106,8 +106,7 @@ std::string writeTemporaryConfig(const std::string& section,
   return path;
 }
 
-// Set by --http: the LLM half runs against a remote argus-llm over the
-// internal wire instead of the in-process engine (no gLlm init, no VLM).
+// Set by --http: the LLM half runs against a remote argus-llm wire.
 std::string gHttpUrl;
 std::unique_ptr<LlmHttpClient> gHttpClient;
 
@@ -339,9 +338,9 @@ void benchVlm()
 
 struct MemCase
 {
-  const char* memories; // the <memorias> body, one attributed fact per line
+  const char* memories;
   const char* question;
-  const char* mustContain; // empty = must NOT assert anything
+  const char* mustContain;
   const char* mustNotContain;
 };
 
@@ -501,9 +500,6 @@ int main(int argc, char** argv)
   if (!doLlm && !doVlm && !doMemory)
     doLlm = doVlm = true;
 
-  // The --http mode benches the LLM half alone against a remote argus-llm:
-  // the in-process engine stays uninitialized and VLM co-residency is
-  // measured separately with the direct mode.
   if (!gHttpUrl.empty())
     doVlm = false;
 

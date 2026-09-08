@@ -54,16 +54,9 @@ struct HarnessOptions
   std::string secret{"f5-4-loopback-secret"};
   bool echoGateway{false};
   std::string gatewayReply;
-  // Rate-limits the stub to one read burst every N ms (0 = full speed).
-  // A fully stopped reader makes the kernel close the TCP window and the
-  // sender fall into zero-window probe backoff (~75 KB/s), so a slow
-  // reader exercises the tunnel valves without that pathology.
   int slowGatewayReadMs{0};
-  // Shrinks the stub's kernel receive buffer so back-pressure tests do not
-  // depend on loopback autotuning.
   int gatewayRcvBuf{0};
   TunnelMux::Limits limits;
-  // Push-intent queue capacities (F5-5).
   size_t relayPushCapacity{256};
   size_t clientPushCapacity{256};
 };
@@ -123,8 +116,7 @@ bool waitFor(Predicate predicate, int timeoutMs)
   return predicate();
 }
 
-// Loopback harness: relay + client + stub gateway on ephemeral ports, all
-// in-process over one PollLoop thread.
+// Loopback harness: relay + client + stub gateway on ephemeral ports, one PollLoop thread.
 struct Harness
 {
   explicit Harness(HarnessOptions options) : options_(std::move(options)) {}
@@ -243,8 +235,6 @@ private:
     callbacks.onEof = [conn](TcpPeer&) { conn->eof = true; };
     params.callbacks = std::move(callbacks);
     conn->peer = TcpPeer::adopt(params);
-    // adopt() does not fire onConnected (that is for outbound connects),
-    // so the stub posture is applied right here.
     if (!options_.gatewayReply.empty())
       conn->peer->send(options_.gatewayReply);
     std::lock_guard<std::mutex> lock(gatewayMutex_);

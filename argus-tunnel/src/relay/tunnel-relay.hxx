@@ -19,13 +19,11 @@ struct RelayOptions
   uint16_t homePort{7101};
   std::string secret;
   TunnelMux::Limits limits;
-  // [push] enabled + queue capacity (F5-5).
   bool pushEnabled{false};
   size_t pushQueueCapacity{256};
 };
 
-// US-side relay: accepts device connections and multiplexes each one over
-// the single authenticated home link; single-tenant, ephemeral registry.
+// US-side relay: accepts device connections, multiplexes each over the single authenticated home link.
 class TunnelRelay : public MuxDelegate
 {
 public:
@@ -45,8 +43,7 @@ public:
   size_t streamCount() const { return mux_.streamCount(); }
   size_t pendingBytes() const { return mux_.pendingBytes(); }
 
-  // Push-intent ingress (F5-5): thread-safe post into the loop thread; the
-  // queue survives a home-link drop and drains once the link re-authenticates.
+  // Push-intent ingress: thread-safe post into the loop thread; drains once the link re-authenticates.
   void postPushIntent(std::string payload);
   size_t pushQueued() const { return pushQueue_.size(); }
   uint64_t pushReceived() const { return pushQueue_.received(); }

@@ -90,8 +90,6 @@ int main(int argc, char** argv)
   }
 
   if (!httpUrl.empty()) {
-    // Wire mode: no local engine, the probe drives the argus-vlm describe
-    // wire exactly like the legacy remote adapter does.
     httpCheck(httpUrl);
     return 0;
   }
