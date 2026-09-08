@@ -117,9 +117,11 @@ monolith's build set was retired (F6-4).
 - `argus_common` was moved into `src/shared/CMakeLists.txt` (same target,
   same sources, same flags) so both the root project and the gateway consume
   one definition without duplicating the source list. `argus_identity`
-  (F1-3) follows the same pattern in `src/identity/CMakeLists.txt`.
-- The gateway also builds standalone: it reuses `../src/shared`,
-  `../src/identity`, `../third_party/sqlite-vec` and `../third_party/ncnn`
+  (F1-3, moved to `argus-identity/` in f7-2d) follows the same pattern in
+  `argus-identity/CMakeLists.txt`.
+- The gateway also builds standalone: it reuses the root module folders
+  (`../src/{cert,mdns,room,sqlite,socket,audit,filter,sync}`),
+  `../argus-identity`, `../third_party/sqlite-vec` and `../third_party/ncnn`
   via `add_subdirectory`, and its own `conanfile.txt` (Drogon 1.9.13, cnats
   3.13.0, tomlplusplus 3.3.0, doctest 2.4.12, jwt-cpp 0.7.2,
   nlohmann_json 3.11.3, mdns 1.4.3, opencv 4.13.0 — same versions as the

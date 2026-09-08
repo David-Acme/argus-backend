@@ -14,7 +14,7 @@ target_include_directories(identity-migration
 )
 
 target_compile_definitions(identity-migration PUBLIC
-    ARGUS_IDENTITY_SCHEMA_PATH="${CMAKE_SOURCE_DIR}/database/identity-schema.sql"
+    ARGUS_IDENTITY_SCHEMA_PATH="${CMAKE_SOURCE_DIR}/argus-identity/database/schema.sql"
 )
 
 target_link_libraries(identity-migration

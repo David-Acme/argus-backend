@@ -76,7 +76,7 @@ identity_mode = "ip"
 # Own database of the gateway identity domain (F1-3): all identity routes
 # read this SQLite file.
 db = "database/identity.db"
-schema = "database/identity-schema.sql"
+schema = "argus-identity/database/schema.sql"
 # Internal IdentityService gRPC listener (argus.identity.v1, F6-3 seed).
 # Loopback by default: a wider bind exposes an unauthenticated-surface RPC.
 rpc_host = "127.0.0.1"

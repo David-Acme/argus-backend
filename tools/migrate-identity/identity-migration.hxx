@@ -7,7 +7,7 @@
 struct sqlite3;
 
 #ifndef ARGUS_IDENTITY_SCHEMA_PATH
-#define ARGUS_IDENTITY_SCHEMA_PATH "database/identity-schema.sql"
+#define ARGUS_IDENTITY_SCHEMA_PATH "argus-identity/database/schema.sql"
 #endif
 
 struct IdentityMigrationOptions

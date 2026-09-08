@@ -12,7 +12,7 @@ IdentityDbConfig IdentityConfig::resolveDb()
     config.dbPath = "database/identity.db";
   config.schemaPath = ConfigService::getString("identity.schema");
   if (config.schemaPath.empty())
-    config.schemaPath = "database/identity-schema.sql";
+    config.schemaPath = "argus-identity/database/schema.sql";
   return config;
 }
 

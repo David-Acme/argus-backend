@@ -8,6 +8,11 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 set(SRC_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/src)
 set(CMAKE_PREFIX_PATH ${CMAKE_BINARY_DIR} ${CMAKE_PREFIX_PATH})
 
+# Marks the root backend project: subprojects test this variable to know
+# they are being built as part of the root tree (their root-registered
+# ctest suites only exist there).
+set(ARGUS_ROOT_PROJECT ON)
+
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/argus-module.cmake)
 
 find_package(Drogon CONFIG REQUIRED)
@@ -23,6 +28,12 @@ find_package(cnats CONFIG REQUIRED)
 find_path(RNNOISE_INCLUDE_DIR NAMES rnnoise.h)
 find_library(RNNOISE_LIBRARY NAMES rnnoise)
 
+# Before every add_subdirectory: enable_testing() only reaches
+# subdirectories added after the call, and service folders added earlier
+# (argus-identity) register their root-cttest suites from their own
+# CMakeLists.
+enable_testing()
+
 add_subdirectory(third_party)
 
 add_subdirectory(argus-common)
@@ -33,14 +44,12 @@ add_subdirectory(src/sqlite)
 add_subdirectory(src/socket)
 add_subdirectory(src/audit)
 add_subdirectory(src/filter)
-add_subdirectory(src/identity)
+add_subdirectory(argus-identity)
 add_subdirectory(src/sync)
 
 # argus-voice service (F6-3): before the test tree so the suites link
 # voice-core with its usage requirements resolved; built on demand only.
 add_subdirectory(argus-voice EXCLUDE_FROM_ALL)
-
-enable_testing()
 
 add_subdirectory(${SRC_ROOT}/test/unit ${CMAKE_BINARY_DIR}/test/unit)
 add_subdirectory(${SRC_ROOT}/test/e2e ${CMAKE_BINARY_DIR}/test/e2e)

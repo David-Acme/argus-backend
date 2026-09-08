@@ -119,7 +119,7 @@ TEST_CASE("identity config resolves database and schema with defaults")
   const IdentityDbConfig config = IdentityConfig::resolveDb();
 
   CHECK(config.dbPath == "database/identity.db");
-  CHECK(config.schemaPath == "database/identity-schema.sql");
+  CHECK(config.schemaPath == "argus-identity/database/schema.sql");
 
   std::remove(path);
 }

@@ -14,7 +14,8 @@ preset, own `camera.db`.
 - **camera.db**: the camera-domain tables (`camera`, `camera_stream`,
   `zone` plus their 8 indexes), DDL copied verbatim from
   `database/schema.sql`. The schema lands as
-  `database/camera-schema.sql` (same pattern as `identity-schema.sql`) and
+  `database/camera-schema.sql` (same pattern as
+  `argus-identity/database/schema.sql`) and
   is applied at boot through `DbService::runScriptFile` — abort on failure.
   `argus.db` is never touched here.
 - **Wiring**: Drogon boot with the camera domain only — `[server]`

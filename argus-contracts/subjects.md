@@ -140,8 +140,9 @@ gateway's `argus.*.v1.change` subscription matches it and explicitly drops it
 
 - `kind` — always `"identity"` (argus-memory ignores events without it).
 - `table` — the identity-domain row written: `"person"` (face-enrollment
-  rows, `src/feature/api/auth/services/auth-service.cc`) or `"user"` (profile
-  writes, `src/feature/api/user/services/user-feature-service.cc`). The
+  rows, `argus-identity/src/feature/api/auth/services/auth-service.cc`) or
+  `"user"` (profile writes,
+  `argus-identity/src/feature/api/user/services/user-feature-service.cc`). The
   replica consumes only `person` rows today; `user` rows are published for a
   future consumer and are intentionally ignored by argus-memory — a rename
   reaches the catalog only through the person row's own `name`. Other values

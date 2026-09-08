@@ -132,8 +132,8 @@ s3-signing.hxx}`. Left behind on purpose: `src/shared/services/sqlite/`
 (`db-service`, `VecDb`, which still reach into domain repositories — a
 design problem, not a move), `src/shared/utils/text-match/` and
 `text-norm/` (single-domain, belong to argus-memory later), and
-`src/shared/services/storage/private-portrait-service.{cc,hxx}` (reaches
-identity repositories, argus-identity owns it later).
+`src/shared/services/storage/private-portrait-service.{cc,hxx}` (reached
+identity repositories; moved to `argus-identity/` in f7-2d).
 
 `app-config.cc` was compiled by raw path in 16 places; `s3-storage-service.cc`
 in 1; `json-diff.cc` in 2. All 19 raw-path entries were deleted since every
@@ -154,7 +154,8 @@ instead of assuming a caller already ran it, and links it PRIVATE since
 nothing in the public headers exposes an OpenSSL type.
 
 **Another quoted-include break, same shape as the one in step f7-1b.**
-`src/shared/services/storage/private-portrait-service.cc` (staying behind)
+`src/shared/services/storage/private-portrait-service.cc` (at the time
+still in `src/`; it moved to `argus-identity/` in f7-2d)
 did `#include "s3-storage-service.hxx"`; once that header moved out of
 `src/shared/services/storage/`, the quoted form stopped resolving even
 though `argus_identity` (which compiles this file) links `argus_common` and

@@ -29,4 +29,16 @@ argus_module(NAME auth
         OpenSSL::SSL
         OpenSSL::Crypto)
 
+# The filters read the identity repositories (device-credential by secret
+# hash, user + refresh-token by the JWT chain), which moved to
+# argus-identity/src in f7-2d — so the package needs its include root.
+# INCLUDES ONLY, never a link: a PUBLIC link edge would drag argus_identity
+# (ncnn, opencv) into every argus::auth consumer, and argus-tts must stay
+# ncnn-free. The repository SYMBOLS resolve the old way — the binaries that
+# pull the filter objects (gateway, camera, productivity, notification)
+# link argus_identity directly; the link order lines there stay load-bearing
+# until the auth-RPC step deletes this whole seam in favor of one SDK call.
+target_include_directories(argus_auth PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../argus-identity/src)
+
 target_compile_options(argus_auth PRIVATE -Wall -Wextra)

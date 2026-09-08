@@ -50,8 +50,7 @@ monolith structure, build-by-module-name). In particular:
 
 `src/shared/repositories`, `src/shared/schemas`, `src/shared/services/sqlite`
 (`db-service`, `VecDb` — reaches domain repositories, a design problem, not
-a move), `src/shared/services/storage/private-portrait-service.*` (reaches
-identity repositories), `src/shared/utils/text-match`,
+a move), `src/shared/utils/text-match`,
 `src/shared/utils/text-norm` (single-domain, memory/intent/extract only),
 the rest of `src/shared/contracts/*` (domain seams: `camera-*`,
 `identity-change-sink.hxx`, `push-intent-sink.hxx`, `tool-contracts.hxx`,

@@ -14,7 +14,6 @@ set(UNIT_TESTS
     validation-dsl-test
     nats-wrapper-test
     sync-change-test
-    identity-migration-test
     camera-schema-test
     camera-migration-test
     camera-config-test
@@ -27,7 +26,6 @@ set(UNIT_TESTS
     notification-controller-test
     event-intelligence-test
     camera-operator-test
-    device-credential-test
     cert-san-test
 )
 
@@ -41,8 +39,6 @@ foreach(TEST_NAME IN LISTS UNIT_TESTS)
     add_test(NAME ${TEST_NAME} COMMAND ${TEST_NAME})
 endforeach()
 
-target_link_libraries(identity-migration-test PRIVATE identity-migration)
-
 # camera-migration builds only as a dependency of the camera unit suites.
 target_link_libraries(camera-schema-test PRIVATE camera-migration)
 target_link_libraries(camera-migration-test PRIVATE camera-migration)
@@ -53,10 +49,6 @@ target_link_libraries(productivity-schema-test PRIVATE productivity-migration)
 target_link_libraries(productivity-migration-test PRIVATE productivity-migration)
 target_link_libraries(notification-schema-test PRIVATE notification-migration)
 target_link_libraries(notification-migration-test PRIVATE notification-migration)
-
-# The device credential suite rides the shared identity domain: the DeviceFilter
-# gate, the credential repository and the auth-service issuance flow.
-target_link_libraries(device-credential-test PRIVATE argus_identity)
 
 # The cert SAN suite rides the shared identity domain too: CertService rotation
 # and the in-process TLS listener that proves the hot reload.

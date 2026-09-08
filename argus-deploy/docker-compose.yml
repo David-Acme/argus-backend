@@ -596,7 +596,7 @@ services:
       # The schema SQL ships with the repo, not with every provisioned data
       # dir — bind it into the data-dir path so --schema always resolves.
       - type: bind
-        source: ../database/identity-schema.sql
+        source: ../argus-identity/database/schema.sql
         target: /opt/argus/database/identity-schema.sql
         read_only: true
         bind:

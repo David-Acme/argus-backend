@@ -634,7 +634,7 @@ Before any commit, verify: `cmake --build --preset dev -j 8` passes with
 | `src/filter/valid-json/` | JSON body validation for POST/PATCH |
 | `src/config/app-config.hxx` | Centralized responses + attribute keys |
 | `src/shared/services/jwt/` | JWT sign/verify (HS256, instance class) |
-| `src/shared/services/face/` | Face detection + recognition (ncnn) — FaceDB = vec0 index (sqlite-vec) |
+| `argus-identity/src/shared/services/face/` | Face detection + recognition (ncnn) — FaceDB = vec0 index (sqlite-vec) |
 | `src/shared/services/llm/` | LLM inference (llama.cpp) |
 | `src/shared/services/embedding/` | `EmbeddingService` (multilingual-e5-small int8 ONNX) + `UnigramTokenizer` |
 | `src/shared/services/intent/` | `IntentService` (fastText supervised: cámara/memory_save implícitos) + adapter IService |

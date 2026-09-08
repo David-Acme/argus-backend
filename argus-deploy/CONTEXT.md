@@ -154,7 +154,7 @@ schema-current target before reading the source). An installation that wants
 the legacy camera rows migrated must run `docker compose --profile camera-init
 run --rm camera-init` BEFORE the first boot, while camera.db does not exist
 yet. The init tools resolve `--schema` INSIDE the data-dir bind, so both init
-services bind the repo-shipped `database/identity-schema.sql` /
+services bind the repo-shipped `argus-identity/database/schema.sql` /
 `database/camera-schema.sql` read-only over that path — a data dir provisioned
 without the schema SQLs still works (the default `../database` deployment dir
 already carries them; the single-file binds are no-ops there). The gateway

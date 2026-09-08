@@ -233,8 +233,8 @@ TEST_CASE("the consumer applies the budget and creates camera notifications")
       drogon::orm::DbClient::newSqlite3Client(std::string("filename=") +
                                                   kIdentityDb,
                                               1);
-  // Identity user table (identity-schema.sql shape) plus the notification
-  // table the service writes (argus.db shape).
+  // Identity user table (argus-identity/database/schema.sql shape) plus the
+  // notification table the service writes (argus.db shape).
   client->execSqlSync(
       "CREATE TABLE user ("
       "id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, "
