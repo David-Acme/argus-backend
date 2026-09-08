@@ -30,11 +30,12 @@
 - **Conan 2** for deps (`conanfile.txt` + `CMakePresets.json`). CMake presets:
   `dev` (Debug) and `prod` (Release), generator Ninja.
 - **Git submodules** under `third_party/` for libs that change rarely and we want
-  to control: `ncnn`, `sherpa-onnx`, `llama.cpp`, `inspireface`, `fastText`
-  (pinned at 1f12150 = v0.9.2 + local C++20 patch). Built via
+  to control: `ncnn`, `sherpa-onnx`, `llama.cpp`, `inspireface`. Built via
   `add_subdirectory` with `EXCLUDE_FROM_ALL`. `fastText` was removed on
-  2026-08-09 (zero uses in `src/`) and **re-added the same day** as the intent
-  engine backend; `hnswlib` was replaced by sqlite-vec for face embeddings.
+  2026-08-09 (zero uses in `src/`), **re-added the same day** as the intent
+  engine backend, and **removed for good on 2026-09-08** together with
+  `IntentService` (see "Intent detection retired"); `hnswlib` was replaced by
+  sqlite-vec for face embeddings.
 - **sqlite-vec** is vendored (single-file C extension, v0.1.10-alpha.4, MIT/
   Apache-2.0) at `third_party/sqlite-vec/` with sqlite3 3.53.3 headers. It is
   compiled with `SQLITE_CORE` and registered via
@@ -81,7 +82,6 @@
 | `DbService` | Drogon DbClient | SQLite async client | `database/argus.db` |
 | `VadService` | Silero VAD v5 (ONNX, instance class) | turn-taking con gate de calidad | `models/vad/` |
 | `EmbeddingService` | ONNX Runtime | multilingual-e5-small INT8 (lazy load) | `models/memory/` |
-| `IntentService` | fastText (submodule) | argus-intent.ftz (~20 µs predict) | `models/intent/` |
 | `MemoryService` | SQLite graph (FTS5 + vec0) | grafo semántico + recall multi-tier | `database/argus.db` |
 | `ExtractionService` | llama.cpp | NuExtract-1.5-tiny Q4_K_M (off-turn) | `[extract] model_path` |
 | `ReactionEngine` | señales puras (sin modelo) | 10 reacciones priorizadas → `voice:event` | — |
@@ -1305,7 +1305,6 @@ result honest rather than a service locator with extra steps:
 | --- | --- |
 | `EmbeddingService` | `MemoryService` |
 | `FaceDB` | `FaceService` |
-| `IntentService` | `IntentServiceAdapter` |
 | `SttService`, `TtsService`, `VisionService` | their `IService` adapters |
 | `GraphRecall`, `PhraseCatalog`, `EntityResolver` | `MemoryService` |
 
@@ -2871,3 +2870,29 @@ before the pull; argus-camera requires the x-argus-user /
 x-argus-role / x-argus-device metadata to be PRESENT and applies no other
 authorization (row scoping is data semantics; camera tables carry none). A
 grpc.health.v1 Health service shares the listener (F6-3 shape).
+## Intent detection retired: the LLM's own tool calling wins (2026-09-08)
+
+`IntentService` (fastText supervised classifier) and the `third_party/fastText`
+submodule are deleted, together with `labs/intent-probe` and the `[intent]`
+config block. Implicit tool activation is now the LLM's own tool calling.
+
+**Why**: the LLM route is measurably more precise, and precision is what this
+path is for — a false `memory_save` writes a fact nobody stated, and a false
+camera trigger burns a capture. The classifier's ~20 µs predict was never the
+bottleneck the extra machinery implied: it bought latency at the cost of the
+accuracy that matters, and it was a second, separately-trained model to keep in
+sync with the tool set it was guessing at. The LLM is slower and that is
+accepted, deliberately.
+
+**What survives**: `labs/intent-data/` stays as the labelled evaluation set —
+it is now the accuracy harness for tool calling rather than fastText training
+data — and `labs/tool-bench` keeps running against `check.tsv` with its
+fastText leg removed (it was the A/B that produced this decision). In
+`labs/voice-test` the camera turn is detected by the keyword path
+(`mentionsCamera`), which is what `IntentService` degraded to whenever its
+model was absent, so the lab's behavior is unchanged when the model was missing
+and simply loses the classifier hint when it was present.
+
+**State at deletion**: the service was compiled by nothing — the F7 arc's R3
+review found it orphaned (`src/` was deleted and only `labs/` ever built it),
+which is what surfaced the decision.

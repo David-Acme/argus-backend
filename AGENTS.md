@@ -411,14 +411,10 @@ shared file-static behind a mutex.
   off-turn LLM polish). Facade `MemoryService`; DB via `SqliteGraph`/`VecDb`
   (mutex-serialized, prepared statements are RAII `SqliteStmt`). Embeddings:
   `multilingual-e5-small` int8 ONNX, loaded lazily. Full details in CONTEXT.md.
-- **fastText** (submodule `third_party/fastText`, pinned 1f12150 = v0.9.2 +
-  local C++20 patch) — supervised text classification for `IntentService`
-  (`argus-voice/src/shared/services/intent/`): static intent detection for implicit tool
-  activation (camera + memory_save), `loss softmax` + `none` class, trained
-  from `labs/intent-data/` with `labs/intent-probe` (`--intent-train`,
-  `--intent-quantize` → `models/intent/argus-intent.ftz`, `--intent-check`).
-  Thread-safe read-only predict (~20 µs), degraded to literal keywords when
-  the model is missing.
+- **NO fastText, NO IntentService** — implicit tool activation is the LLM's
+  own tool calling, not a separate classifier. The submodule, the service and
+  `labs/intent-probe` were deleted; `labs/intent-data/` stays as the labelled
+  evaluation set for tool-calling accuracy (`labs/tool-bench`).
 - **NO spdlog** — use Drogon's built-in logging (`LOG_INFO`, `LOG_WARN`, `LOG_FATAL`)
 - **NO libsodium** — auth is face-based
 - **NO ORM** — raw SQL via `DbService::client()->execSqlCoro()`
@@ -640,7 +636,6 @@ Before any commit, verify: `cmake --build --preset dev -j 8` passes with
 | `argus-identity/argus-identity/src/shared/services/face/` | Face detection + recognition (ncnn) — FaceDB = vec0 index (sqlite-vec) |
 | `argus-llm/src/shared/services/llm/` | LLM inference (llama.cpp) |
 | `argus-memory/src/shared/services/embedding/` | `EmbeddingService` (multilingual-e5-small int8 ONNX) + `UnigramTokenizer` |
-| `argus-voice/src/shared/services/intent/` | `IntentService` (fastText supervised: cámara/memory_save implícitos) + adapter IService |
 | `argus-memory/src/shared/services/memory/` | `MemoryService`/`SemanticGraph`(`SqliteGraph`)/`GraphRecall`/`MemoryFormation`/`RuleParser`/`PhraseCatalog`/`EntityResolver`/`ToolParser` — semantic-graph long-term memory (async worker, episode recall, L3 profile) |
 | `argus-phrase/src/shared/vocabulary/` | Static per-language memory vocabulary (es/en): `PhraseSeed`/`LexiconSeed` constants — no DB tables |
 | `argus-sqlite/src/shared/services/sqlite/` | DB client access (`DbService::client()`, extensions) + `VecDb` (vec0 connection) |

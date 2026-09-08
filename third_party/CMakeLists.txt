@@ -1,48 +1,7 @@
 # Integration of bundled third-party libraries (git submodules).
-# Both are built as part of this project via add_subdirectory so there is no
+# They are built as part of this project via add_subdirectory so there is no
 # external package manager involved. EXCLUDE_FROM_ALL keeps them out of a plain
 # `make` and they are only built when something links against their targets.
-
-# ---------------------------------------------------------------------------
-# fastText (text classification / intent detection — IntentService)
-# Pinned at 1f12150 (v0.9.2 + local "build with C++20" patch).
-# ---------------------------------------------------------------------------
-if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/fastText/CMakeLists.txt")
-  message(STATUS "Argus: integrating fastText submodule")
-  set(FASTTEXT_BUILD_TEST OFF CACHE BOOL "" FORCE)
-  set(FASTTEXT_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
-  # fastText's CMakeLists declares cmake_minimum_required(VERSION 3.5) with the
-  # deprecated single-value syntax. Bumping CMAKE_POLICY_VERSION_MINIMUM to 3.10
-  # silences the "Compatibility with CMake < 3.10" deprecation warning while
-  # keeping its old policies applied.
-  set(ARGUS_FASTTEXT_POLICY ${CMAKE_POLICY_VERSION_MINIMUM})
-  set(CMAKE_POLICY_VERSION_MINIMUM 3.10)
-  add_subdirectory(fastText EXCLUDE_FROM_ALL)
-  # fastText lowers CMAKE_CXX_STANDARD to 17 for its own targets; restore the
-  # project-wide C++20 setting so the rest of Argus is unaffected.
-  set(CMAKE_CXX_STANDARD 20)
-  if(ARGUS_FASTTEXT_POLICY)
-    set(CMAKE_POLICY_VERSION_MINIMUM ${ARGUS_FASTTEXT_POLICY})
-  else()
-    unset(CMAKE_POLICY_VERSION_MINIMUM)
-  endif()
-  if(TARGET fasttext-static_pic)
-    set(ARGUS_FASTTEXT_TARGET fasttext-static_pic)
-    # fastText predates C++20: silence the implicit-this-capture deprecation
-    # warning that only appears when compiled with the project's C++20 patch.
-    target_compile_options(fasttext-static_pic PRIVATE -Wno-deprecated)
-  elseif(TARGET fasttext-shared)
-    set(ARGUS_FASTTEXT_TARGET fasttext-shared)
-  endif()
-  if(ARGUS_FASTTEXT_TARGET)
-    target_include_directories(${ARGUS_FASTTEXT_TARGET} SYSTEM INTERFACE
-        ${CMAKE_CURRENT_SOURCE_DIR}/fastText/src)
-    message(STATUS "Argus: fastText target -> ${ARGUS_FASTTEXT_TARGET}")
-    set(ARGUS_FASTTEXT_TARGET ${ARGUS_FASTTEXT_TARGET} PARENT_SCOPE)
-  endif()
-else()
-  message(WARNING "Argus: fastText submodule not found at third_party/fastText")
-endif()
 
 # ---------------------------------------------------------------------------
 # sqlite-vec (vendored, MIT/Apache-2.0) — vec0 vector search for SQLite.

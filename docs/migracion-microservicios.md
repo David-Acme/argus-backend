@@ -429,7 +429,7 @@ Reglas de composición (decisión del usuario):
 | `argus-camera` | `camera`, `camera_stream`, `zone`; camera-control; drivers (tapo); go2rtc/StreamHub/MediaRelay; **YOLO26n (ObjectDetectorService + CameraOperatorService + EventIntelligence + seam IObjectDetector)** | drogon, ncnn (Vulkan), opencv, cnats |
 | `argus-productivity` | `calendar_event(+share)`, `project(+member,+task)`, `reminder(+detail)`, `context_note` | drogon, cnats |
 | `argus-notification` | `notification`, `notification_token`; **política** de notificación (presupuesto, horas-silencio, digests); la **entrega** física la hace el túnel vía NATS (§3.7) | drogon, cnats |
-| `argus-llm` | LLM (llama.cpp in-proc) + LfmAdapter/tools + intent (fastText) | llama.cpp, fastText |
+| `argus-llm` | LLM (llama.cpp in-proc) + LfmAdapter/tools (la activación implícita de herramientas es tool calling del propio LLM: fastText/IntentService retirados el 2026-09-08) | llama.cpp |
 | `argus-vlm` | Visión/LFM2.5-VL (llama.cpp mtmd in-proc) | llama.cpp (mtmd) |
 | `argus-tts` | supertonic-3 (onnxruntime in-proc) | onnxruntime |
 | `argus-stt` | sherpa-onnx nemo-transducer in-proc | sherpa-onnx, onnxruntime |

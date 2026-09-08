@@ -20,6 +20,3 @@ talk_packet_ms = 20
 exit_flush_ms = 4000
 save_trigger = "<|tool_call_start|>"
 tool_end_trigger = "<|tool_call_end|>"
-
-[labs.intent]
-usage_log = "labs/intent-data/usage.tsv"

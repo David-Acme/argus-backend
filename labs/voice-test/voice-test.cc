@@ -21,7 +21,6 @@
 #include <trantor/utils/Logger.h>
 #include <shared/services/config-service/config-service.hxx>
 #include "conversation.hxx"
-#include <shared/services/intent/intent-service.hxx>
 #include <shared/services/llm/llm-service.hxx>
 #include <shared/services/memory/in-process-memory-chat.hxx>
 #include <shared/services/memory/memory-service.hxx>
@@ -55,7 +54,6 @@ std::atomic<bool> gStop{false};
 int gMicIndex = 0;
 VecDb gVecDb;
 LlmService gLlm;
-IntentService gIntent;
 SttService gStt;
 TtsService gTts;
 VisionService gVision;
@@ -83,12 +81,9 @@ std::string cameraPreamble(const std::string& scene, const std::string& text,
                           : "La cámara muestra: " + scene + ". " + text;
 }
 
-void logIntentUsage(const std::string& label, const std::string& text);
-
 CaptureOutcome captureExplicitMemory(const std::string& userText,
                                      const std::string& langCode,
-                                     int64_t userId,
-                                     const std::vector<IntentHit>& intents)
+                                     int64_t userId)
 {
   if (userId < 0)
     return CaptureOutcome::Rejected;
@@ -101,18 +96,6 @@ CaptureOutcome captureExplicitMemory(const std::string& userText,
   if (explicitCapture.outcome == CaptureOutcome::Deferred) {
     std::cout << "[memory] candidate queued (formation decides)\n";
     return explicitCapture.outcome;
-  }
-  if (IntentService::fired(intents, ToolIntent::MemorySave)) {
-    const auto implicitCapture = gMemory.captureImplicit({
-        .userId = userId,
-        .lang = langCode,
-        .text = userText,
-    });
-    if (implicitCapture.outcome != CaptureOutcome::Rejected) {
-      logIntentUsage("memory_save", userText);
-      std::cout << "[memory] candidate queued by intent (formation decides)\n";
-      return implicitCapture.outcome;
-    }
   }
   return CaptureOutcome::Rejected;
 }
@@ -201,26 +184,6 @@ int cameraIdFromText(const std::string& text)
       return n;
   }
   return 1;
-}
-
-void logIntentUsage(const std::string& label, const std::string& text)
-{
-  static std::mutex usageMutex;
-  std::lock_guard lock(usageMutex);
-  std::ofstream file(ConfigService::getString("labs.intent.usage_log"),
-                     std::ios::app);
-  if (file.is_open())
-    file << label << '\t' << text << '\n';
-}
-
-std::vector<IntentHit> matchIntents(const std::string& text)
-{
-  if (!gIntent.isLoaded())
-    return {};
-  const auto intents = gIntent.match(text);
-  if (IntentService::fired(intents, ToolIntent::Camera))
-    logIntentUsage("camera", text);
-  return intents;
 }
 
 cv::Mat captureCameraFrame(int64_t cameraId)
@@ -313,8 +276,7 @@ void summarizeSession(const ConversationState& state, int64_t userId,
 }
 
 // Injected as the first message so it overrides the service default and pins the reply language.
-std::string systemPromptFor(const std::string& langCode, bool withMemory,
-                            bool withIntent)
+std::string systemPromptFor(const std::string& langCode, bool withMemory)
 {
   const std::string langName = langCode == "es" ? "Spanish" : "English";
   std::string prompt =
@@ -346,10 +308,6 @@ std::string systemPromptFor(const std::string& langCode, bool withMemory,
       "tags or save blocks; just talk.\n"
       "- The creator and master of this system is David Acme; he is also the "
       "user who usually talks to you, so call him David when it is natural.\n";
-  if (withIntent) {
-    prompt += "- When the camera is involved, refer concretely to what you see "
-              "or know instead of making vague statements.\n";
-  }
   if (withMemory) {
     if (langCode == "es") {
       prompt +=
@@ -729,14 +687,11 @@ int runSttWireCheck(const std::string& baseUrl, const std::string& wavPath)
   return 0;
 }
 
-int runTextChat(int64_t memoryUserId, const std::string& langCode,
-                bool enableIntent)
+int runTextChat(int64_t memoryUserId, const std::string& langCode)
 {
   gLlm.init();
   if (memoryUserId >= 0)
     gMemory.init();
-  if (enableIntent)
-    gIntent.init();
   gReaction.init();
   if (!gLlm.isLoaded()) {
     std::cerr << "LLM init failed.\n";
@@ -747,7 +702,7 @@ int runTextChat(int64_t memoryUserId, const std::string& langCode,
   ConversationState state;
   state.lang = langCode;
   state.history.push_back(
-      {"system", systemPromptFor(langCode, withMemory, enableIntent)});
+      {"system", systemPromptFor(langCode, withMemory)});
   if (memoryUserId >= 0) {
     const std::string profile = gMemory.profileFor(memoryUserId, langCode);
     if (!profile.empty())
@@ -761,11 +716,8 @@ int runTextChat(int64_t memoryUserId, const std::string& langCode,
     if (gStop.load() || line == "exit" || line == "quit" || line == "salir")
       break;
 
-    const std::vector<IntentHit> intents =
-        enableIntent ? matchIntents(line) : std::vector<IntentHit>{};
     std::string reply = line;
-    if (enableIntent && (IntentService::fired(intents, ToolIntent::Camera) ||
-                         mentionsCamera(line))) {
+    if (mentionsCamera(line)) {
       const std::string scene = describeCamera(cameraIdFromText(line));
       if (!scene.empty()) {
         std::cout << "[camera] " << scene << "\n";
@@ -774,7 +726,7 @@ int runTextChat(int64_t memoryUserId, const std::string& langCode,
     }
 
     const CaptureOutcome captured =
-        captureExplicitMemory(line, langCode, memoryUserId, intents);
+        captureExplicitMemory(line, langCode, memoryUserId);
 
     std::string userMsg = reply;
     if (captured != CaptureOutcome::Rejected && memoryUserId >= 0)
@@ -795,9 +747,7 @@ int runTextChat(int64_t memoryUserId, const std::string& langCode,
                              .captured = captured,
                              .recallBlock = recalled,
                              .recallConsulted = memoryUserId >= 0,
-                             .cameraIntent = enableIntent &&
-                                             IntentService::fired(
-                                                 intents, ToolIntent::Camera)});
+                             .cameraIntent = mentionsCamera(line)});
 
     state.history.push_back({"user", userMsg});
     gConv.trimHistory(state, memoryUserId);
@@ -828,8 +778,8 @@ int runTextChat(int64_t memoryUserId, const std::string& langCode,
 
 void runCameraConversation(const TapoTalkConfig& talkCfg,
                            const std::string& camRtspSub,
-                           const std::string& langCode, int64_t memoryUserId,
-                           bool enableIntent)
+                           const std::string& langCode,
+                           int64_t memoryUserId)
 {
   std::atomic<bool> paused{false};
   std::atomic<int> discardRemaining{0};
@@ -902,7 +852,7 @@ void runCameraConversation(const TapoTalkConfig& talkCfg,
   ConversationState state;
   state.lang = langCode;
   state.history.push_back(
-      {"system", systemPromptFor(langCode, withMemory, enableIntent)});
+      {"system", systemPromptFor(langCode, withMemory)});
   if (memoryUserId >= 0) {
     const std::string profile = gMemory.profileFor(memoryUserId, langCode);
     if (!profile.empty())
@@ -1004,10 +954,7 @@ void runCameraConversation(const TapoTalkConfig& talkCfg,
     }
 
     std::string reply = userText;
-    const std::vector<IntentHit> intents =
-        enableIntent ? matchIntents(userText) : std::vector<IntentHit>{};
-    if (enableIntent && (IntentService::fired(intents, ToolIntent::Camera) ||
-                         mentionsCamera(userText))) {
+    if (mentionsCamera(userText)) {
       std::cout << "[camera] capturing frame...\n";
       const std::string scene = describeCamera(cameraIdFromText(userText));
       resumeListening();
@@ -1018,7 +965,7 @@ void runCameraConversation(const TapoTalkConfig& talkCfg,
     }
 
     const CaptureOutcome captured =
-        captureExplicitMemory(userText, langCode, memoryUserId, intents);
+        captureExplicitMemory(userText, langCode, memoryUserId);
 
     std::string userMsg = reply;
     if (captured != CaptureOutcome::Rejected && memoryUserId >= 0)
@@ -1191,7 +1138,6 @@ int main(int argc, char** argv)
   bool useCamera = false;
   bool textChat = false;
   int64_t memoryUserId = -1;
-  bool enableIntent = false;
   std::string textChatLang = "es";
   std::string cloudPass;
   for (int i = 1; i < argc; ++i) {
@@ -1245,9 +1191,6 @@ int main(int argc, char** argv)
     else if (std::string(argv[i]) == "--memory-user" && i + 1 < argc) {
       memoryUserId = std::strtoll(argv[++i], nullptr, 10);
     }
-    else if (std::string(argv[i]) == "--intent") {
-      enableIntent = true;
-    }
     else if (std::string(argv[i]) == "--cloud-pass" && i + 1 < argc) {
       cloudPass = argv[++i];
     }
@@ -1255,7 +1198,7 @@ int main(int argc, char** argv)
 
   if (textChat) {
     Go2rtcManager::instance().shutdown();
-    return runTextChat(memoryUserId, textChatLang, enableIntent);
+    return runTextChat(memoryUserId, textChatLang);
   }
 
   TapoTalkConfig talkCfg;
@@ -1319,8 +1262,6 @@ int main(int argc, char** argv)
 
   if (memoryUserId >= 0)
     gMemory.init();
-  if (enableIntent)
-    gIntent.init();
   gReaction.init();
 
   const std::string greeting = langCode == "es"
@@ -1330,8 +1271,7 @@ int main(int argc, char** argv)
                                      "I'm listening.";
   std::cout << "\n[Argus] " << greeting << "\n";
   if (useCamera) {
-    runCameraConversation(talkCfg, camRtspSub, langCode, memoryUserId,
-                          enableIntent);
+    runCameraConversation(talkCfg, camRtspSub, langCode, memoryUserId);
   }
   else {
     speak(greeting, langCode, gStop);
@@ -1341,7 +1281,7 @@ int main(int argc, char** argv)
     ConversationState state;
     state.lang = langCode;
     state.history.push_back(
-        {"system", systemPromptFor(langCode, withMemory, enableIntent)});
+        {"system", systemPromptFor(langCode, withMemory)});
     if (memoryUserId >= 0) {
       const std::string profile = gMemory
                                       .recall({.userId = memoryUserId,
@@ -1372,10 +1312,7 @@ int main(int argc, char** argv)
       }
 
       std::string reply = userText;
-      const std::vector<IntentHit> intents =
-          enableIntent ? matchIntents(userText) : std::vector<IntentHit>{};
-      if (enableIntent && (IntentService::fired(intents, ToolIntent::Camera) ||
-                           mentionsCamera(userText))) {
+      if (mentionsCamera(userText)) {
         std::cout << "[camera] capturing frame from the camera...\n";
         const auto t0 = std::chrono::steady_clock::now();
         const std::string scene = describeCamera(cameraIdFromText(userText));
@@ -1393,7 +1330,7 @@ int main(int argc, char** argv)
       }
 
       const CaptureOutcome captured =
-          captureExplicitMemory(userText, langCode, memoryUserId, intents);
+          captureExplicitMemory(userText, langCode, memoryUserId);
 
       std::string userMsg = reply;
       if (captured != CaptureOutcome::Rejected && memoryUserId >= 0)
@@ -1415,8 +1352,7 @@ int main(int argc, char** argv)
            .captured = captured,
            .recallBlock = recalled,
            .recallConsulted = memoryUserId >= 0,
-           .cameraIntent =
-               enableIntent && IntentService::fired(intents, ToolIntent::Camera)});
+           .cameraIntent = mentionsCamera(userText)});
 
       state.history.push_back({"user", userMsg});
       gConv.trimHistory(state, memoryUserId);

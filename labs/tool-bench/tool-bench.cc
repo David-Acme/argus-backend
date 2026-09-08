@@ -4,7 +4,6 @@
 #include <iostream>
 #include <map>
 #include <shared/services/config-service/config-service.hxx>
-#include <shared/services/intent/intent-service.hxx>
 #include <shared/services/llm/lfm-adapter.hxx>
 #include <shared/services/llm/llm-service.hxx>
 #include <shared/services/tools/tool-registry.hxx>
@@ -17,7 +16,6 @@ namespace
 {
 
 LlmService gLlm;
-IntentService gIntent;
 
 struct Case
 {
@@ -94,12 +92,10 @@ int main(int argc, char** argv)
   }
   ConfigService::load("config.toml");
 
-  gIntent.init();
   gLlm.init();
   if (!gLlm.isLoaded()) {
     std::cout << "[skip] LLM model not loaded (llm.model_path="
               << ConfigService::getString("llm.model_path") << ")\n";
-    gIntent.shutdown();
     return 0;
   }
   std::cout << "[ok] LLM loaded ("
@@ -160,30 +156,15 @@ int main(int argc, char** argv)
                             .resetContext = false};
       std::cout << gLlm.chat(req) << "\n---\n";
     }
-    gIntent.shutdown();
     return 0;
   }
 
   int llmHits = 0;
   int llmTotal = 0;
-  int ftHits = 0;
-  int ftTotal = 0;
   std::vector<double> latencies;
-  int both = 0;
-  int neither = 0;
-  int mismatch = 0;
   std::map<std::string, std::pair<int, int>> llmByLabel;
-  std::map<std::string, std::pair<int, int>> ftByLabel;
 
   for (const auto& c : cases) {
-    const auto ftHitsNow = gIntent.match(c.text);
-    const bool ftFired =
-        IntentService::fired(ftHitsNow, ToolIntent::MemorySave);
-    auto& ftBucket = ftByLabel[c.label];
-    ftBucket.second++;
-    if (ftFired)
-      ftBucket.first++;
-
     std::vector<ChatMessage> history;
     history.push_back({.role = "user", .content = c.text});
     const long long t0 = nowMs();
@@ -207,38 +188,22 @@ int main(int argc, char** argv)
     llmBucket.second++;
     if (llmFired)
       llmBucket.first++;
-
-    if (llmFired == ftFired)
-      (llmFired ? both++ : neither++);
-    else
-      ++mismatch;
   }
 
   for (const auto& [label, bucket] : llmByLabel) {
     if (label == "memory_save")
       llmTotal = bucket.second, llmHits = bucket.first;
   }
-  for (const auto& [label, bucket] : ftByLabel) {
-    if (label == "memory_save")
-      ftTotal = bucket.second, ftHits = bucket.first;
-  }
-
   std::sort(latencies.begin(), latencies.end());
   const double p50 = latencies[latencies.size() / 2];
   const double p95 = latencies[static_cast<size_t>(latencies.size() * 0.95)];
-  std::cout << "fastText memory_save precision: " << ftHits << "/" << ftTotal
+  std::cout << "LLM memory_save precision: " << llmHits << "/" << llmTotal
             << "\n";
-  std::cout << "LLM     memory_save precision: " << llmHits << "/" << llmTotal
-            << "\n";
-  std::cout << "agreement: " << both << " both, " << neither << " neither, "
-            << mismatch << " mismatch\n";
   std::cout << "LLM tool latency: p50=" << p50 << " ms p95=" << p95 << " ms\n";
   std::cout << "per-label (fired/total):\n";
   for (const auto& [label, bucket] : llmByLabel)
-    std::cout << "  LLM " << label << ": " << bucket.first << "/"
-              << bucket.second << " | fastText: " << ftByLabel[label].first
-              << "/" << ftByLabel[label].second << "\n";
+    std::cout << "  " << label << ": " << bucket.first << "/" << bucket.second
+              << "\n";
 
-  gIntent.shutdown();
   return 0;
 }

@@ -207,12 +207,6 @@ compact_wait_ms = 15000
 compact_max_tokens = 256
 extract_wait_ms = 15000
 
-[intent]
-model = "models/intent/argus-intent.ftz"
-camera_threshold = 0.60
-memory_save_threshold = 0.60
-margin = 0.20
-
 [extract]
 model_path = "models/extract/NuExtract-1.5-tiny-Q4_K_M.gguf"
 prompt_format = "v1.5"

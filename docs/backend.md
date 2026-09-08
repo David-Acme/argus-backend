@@ -198,7 +198,6 @@ of user actions lives in `user_action_log` (write-only, not synced).
 - **ncnn** — neural net inference (face detection + recognition), Vulkan when available
 - **hnswlib** — approximate nearest neighbor search (face embedding index)
 - **sherpa-onnx** — speech-to-text (FastConformer RNN-T / Whisper via ONNX Runtime)
-- **fastText** — text classification / intent detection
 - **inspireface** — optional face recognition backend
 
 ### Vision model (ONNX)

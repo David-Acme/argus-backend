@@ -9,7 +9,6 @@ set(TOOL_BENCH_SERVICE_SRC
     ${SRC_ROOT}/shared/services/tools/tool-registry.cc
     ${SRC_ROOT}/shared/services/tools/tool-validator.cc
     ${SRC_ROOT}/shared/services/tools/tool-executor.cc
-    ${SRC_ROOT}/shared/services/intent/intent-service.cc
     ${SRC_ROOT}/shared/utils/text-norm/text-norm.cc
     ${SRC_ROOT}/shared/wrapper/thread-budget/thread-budget.cc
     ${SRC_ROOT}/shared/wrapper/hardware-profile/hardware-profile.cc
@@ -33,7 +32,6 @@ target_include_directories(argus-tool-bench
 
 target_link_libraries(argus-tool-bench
     PRIVATE
-        ${ARGUS_FASTTEXT_TARGET}
         Drogon::Drogon
         onnxruntime::onnxruntime
         tomlplusplus::tomlplusplus

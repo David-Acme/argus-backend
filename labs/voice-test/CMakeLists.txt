@@ -19,7 +19,6 @@ set(VOICE_SERVICE_SRC
     ${SRC_ROOT}/shared/services/vision/vision-service.cc
     ${SRC_ROOT}/shared/services/embedding/embedding-service.cc
     ${SRC_ROOT}/shared/services/embedding/unigram-tokenizer.cc
-    ${SRC_ROOT}/shared/services/intent/intent-service.cc
     ${SRC_ROOT}/shared/services/memory/memory-service.cc
     ${SRC_ROOT}/shared/services/memory/memory-tool-descriptors.cc
     ${SRC_ROOT}/shared/services/extract/lexicon-extractor.cc
@@ -93,7 +92,6 @@ target_link_libraries(argus-voice-test
         opencv::opencv
         ${ARGUS_SHERPA_ONNX_TARGET}
         ${ARGUS_SQLITE_VEC_TARGET}
-        ${ARGUS_FASTTEXT_TARGET}
         ${CONAN_LIBS}
         portaudio
         pulse-simple
