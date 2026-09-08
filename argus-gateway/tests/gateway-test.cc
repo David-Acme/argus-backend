@@ -448,7 +448,7 @@ TEST_CASE("sync surface registers the socket with the relay forwarder")
   ConfigService::load(path);
   std::remove(path);
 
-  const SyncRegistrationStats stats = registerSyncSurface(nullptr);
+  const SyncRegistrationStats stats = registerSyncSurface(nullptr, nullptr);
 
   CHECK(stats.controllers == 1);
   CHECK(stats.filters == 2);
@@ -899,7 +899,7 @@ TEST_CASE("proxy exclusion set covers every registered gateway route")
 
   drogon::app().registerController(std::make_shared<HealthController>());
   registerIdentitySurface();
-  registerSyncSurface(nullptr);
+  registerSyncSurface(nullptr, nullptr);
 
   const ProxyConfig proxy = ProxyConfig::resolve();
   REQUIRE_FALSE(proxy.exclusions.empty());

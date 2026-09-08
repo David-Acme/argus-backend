@@ -586,8 +586,8 @@ TEST_CASE("audit sync reads resolve to the default identity client on the "
   memberClient.reset();
 
   const SynchronizedService synchronizedService;
-  const JwtContext ownerCtx{42, "Owner", UserRole::Owner, true};
-  const JwtContext residentCtx{7, "Resident", UserRole::Resident, true};
+  const JwtContext ownerCtx{42, "Owner", UserRole::Owner, true, {}};
+  const JwtContext residentCtx{7, "Resident", UserRole::Resident, true, {}};
 
   Json::Value projectSyncBody;
   Json::Value projectBody;
