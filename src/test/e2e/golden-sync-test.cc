@@ -709,9 +709,6 @@ int main(int argc, char* argv[])
     runScenario(std::move(unknown), stopOnFirst);
   }
 
-  // start → greeting → stop → done, with no uplink PCM. The greeting needs a
-  // full LLM turn plus TTS synthesis, so the first frame waits on the frame
-  // timeout; the quiet window only measures silence after an observed frame.
   {
     Scenario voice;
     voice.name = "voice-start-stop";
@@ -757,28 +754,28 @@ int main(int argc, char* argv[])
       mode == "verify" ||
       (mode.empty() && std::filesystem::exists(manifestPath));
 
+  const auto committedFixtures = [](const Json::Value& manifest) {
+    std::set<std::string> fixtures;
+    if (manifest.isObject() && manifest["frames"].isArray()) {
+      for (const auto& entry : manifest["frames"]) {
+        if (entry.isObject() && entry.isMember("fixture") &&
+            entry["fixture"].isString())
+          fixtures.insert(entry["fixture"].asString());
+      }
+    }
+    return fixtures;
+  };
+
   if (mode != "record" && verifyMode) {
     std::cout << "verify against " << fixturesDir << "\n";
     bool ok = true;
 
-    // The manifest list is the contract: scenarios captured but not committed
-    // (voice-start-stop, whose TTS audio and greeting text are not stable) are
-    // skipped, and a scenario that times out captures zero frames and is
-    // dropped, so the committed list also closes the gap in the other
-    // direction: every committed scenario must have been captured.
-    std::set<std::string> committed;
     const Json::Value manifest = readJsonFile(manifestPath);
     if (!manifest.isObject()) {
       std::cout << "  MISMATCH manifest: cannot read " << manifestPath << "\n";
       ok = false;
     }
-    if (manifest.isObject() && manifest["frames"].isArray()) {
-      for (const auto& entry : manifest["frames"]) {
-        if (entry.isObject() && entry.isMember("fixture") &&
-            entry["fixture"].isString())
-          committed.insert(entry["fixture"].asString());
-      }
-    }
+    const std::set<std::string> committed = committedFixtures(manifest);
     for (const auto& scenario : scenarios) {
       if (!committed.count(scenario.name + ".json"))
         continue;
@@ -805,6 +802,10 @@ int main(int argc, char* argv[])
     std::cout << "PASS: golden /sync contract matches fixtures\n";
     return 0;
   }
+
+  const Json::Value previous = readJsonFile(manifestPath);
+  const std::set<std::string> committed = committedFixtures(previous);
+  const bool firstRecord = !previous.isObject();
 
   Json::Value manifest(Json::objectValue);
   manifest["generator"] = "golden-sync-test";
@@ -842,7 +843,11 @@ int main(int argc, char* argv[])
 
   Json::Value frames(Json::arrayValue);
   int index = 0;
+  int recorded = 0;
   for (const auto& scenario : scenarios) {
+    if (!firstRecord && !committed.count(scenario.name + ".json"))
+      continue;
+    ++recorded;
     if (!scenario.request.empty()) {
       const Frame outgoing = makeTextFrame(scenario.request);
       Json::Value requestEntry = frameSummary(outgoing);
@@ -876,7 +881,7 @@ int main(int argc, char* argv[])
   manifest["frames"] = frames;
   writeTextFile(manifestPath, jsonToString(manifest) + "\n");
 
-  std::cout << "recorded " << scenarios.size() << " scenario(s), " << index
+  std::cout << "recorded " << recorded << " scenario(s), " << index
             << " frame(s) into " << fixturesDir << "\n";
   return 0;
 }

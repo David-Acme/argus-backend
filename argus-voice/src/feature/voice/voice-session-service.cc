@@ -329,8 +329,7 @@ void VoiceSessionService::start(VoiceSessionSink& sink,
   sessions_[&sink] = std::move(session);
 }
 
-void VoiceSessionService::feedPcm(VoiceSessionSink& sink, const char* data,
-                                  size_t len)
+void VoiceSessionService::feedPcm(VoiceSessionSink& sink, const PcmFrame& pcm)
 {
   std::shared_ptr<Session> session;
   {
@@ -344,12 +343,12 @@ void VoiceSessionService::feedPcm(VoiceSessionSink& sink, const char* data,
   if (session->speaking)
     return;
 
-  const size_t sampleCount = len / 2;
+  const size_t sampleCount = pcm.size / 2;
   std::vector<float> floats(sampleCount);
   for (size_t i = 0; i < sampleCount; ++i) {
     const int16_t s = static_cast<int16_t>(
-        (static_cast<unsigned char>(data[i * 2]) |
-         (static_cast<unsigned char>(data[i * 2 + 1]) << 8)));
+        (static_cast<unsigned char>(pcm.data[i * 2]) |
+         (static_cast<unsigned char>(pcm.data[i * 2 + 1]) << 8)));
     floats[i] = static_cast<float>(s) / 32768.0F;
   }
 

@@ -2287,6 +2287,15 @@ session against the fixtures structurally: ids, timestamps and secret-ish
 values are masked (rules live in the manifest), binary frames compare as kind
 only.
 
+The manifest frame list is the contract: both verify and record mode key off
+the committed scenario list it carries, so the recorder's `voice:start`/
+`voice:stop` probe (greeting text and TTS audio are not deterministic — the
+greeting waits a full frame timeout for the LLM+TTS turn, and the quiet
+window only measures silence after an observed frame) is captured for
+coverage but never committed, and a re-record can never bake its unstable
+frames into the fixtures. A missing manifest is the only path that records
+every captured scenario (the initial contract definition).
+
 Recording procedure (local): copy `build/dev/database/argus.db` + certs into a
 sandbox dir, write a test `config.toml` there (test JWT/fingerprint secrets,
 `pairing.paired=true`, mdns off), symlink `models/`, seed one owner user +

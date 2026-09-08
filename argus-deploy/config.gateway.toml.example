@@ -74,9 +74,10 @@ db = "database/identity.db"
 schema = "database/identity-schema.sql"
 # Internal identity gRPC listener (IdentityService.UpdateUser, F6-3): the
 # voice service writes the spoken name here; the gateway owns identity.db and
-# re-fans the change out on argus.sync.v1.change. Loopback by default; the
-# compose stack publishes it on the gateway's static subnet address.
-rpc_host = "0.0.0.0"
+# re-fans the change out on argus.sync.v1.change. Bind loopback or the
+# pinned internal bridge address only: the listener is row-scoped but
+# unauthenticated, so it must never face a routable host interface.
+rpc_host = "172.19.0.1"
 rpc_port = 7040
 
 [legacy]
@@ -95,8 +96,9 @@ db = "camera/camera.db"
 [voice]
 # F6-3 cutover: argus-voice owns the voice orchestration; the voice:* frames
 # and the raw PCM binary ride the argus.voice.v1 gRPC leg at [voice].target.
-# Empty selects the legacy WS leg ([legacy] sync_url) — the zero-change
-# default — so never clear this key once argus-voice is in the stack.
+# Empty keeps voice:* on the legacy WS leg ([legacy] sync_url), which since
+# F6-3 answers them with the unknown-type 400 envelope — never clear this
+# key once argus-voice is in the stack.
 target = "127.0.0.1:7034"
 
 [productivity]

@@ -115,8 +115,9 @@ db = "database/camera.db"
 [voice]
 # F6-3 cutover: argus-voice owns the voice orchestration; the voice:* frames
 # and the raw 16 kHz s16le PCM binary ride the argus.voice.v1 gRPC leg at
-# [voice].target. Empty selects the legacy WS leg ([legacy] sync_url) — the
-# zero-change default (set "127.0.0.1:7034" with argus-voice in the stack).
+# [voice].target. Empty keeps voice:* on the legacy WS leg ([legacy]
+# sync_url), which since F6-3 answers them with the unknown-type 400
+# envelope (set "127.0.0.1:7034" with argus-voice in the stack).
 target = ""
 
 [productivity]

@@ -58,8 +58,6 @@ argus_module(NAME voice-core
     INCLUDES
         src
         ../src
-        ../third_party
-        ../third_party/stb
     DEPENDS
         argus::sdk-voice
         argus::sdk-health
@@ -70,6 +68,11 @@ argus_module(NAME voice-core
         nlohmann_json::nlohmann_json
         onnxruntime::onnxruntime
 )
+
+# Third-party headers are SYSTEM (AGENTS.md rule 15).
+target_include_directories(argus_voice-core SYSTEM PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/../third_party
+    ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/stb)
 
 if(RNNOISE_INCLUDE_DIR AND RNNOISE_LIBRARY)
     target_compile_definitions(argus_voice-core PUBLIC ARGUS_HAS_RNNOISE=1)

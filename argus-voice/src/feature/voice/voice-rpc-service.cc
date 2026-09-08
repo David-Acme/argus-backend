@@ -103,8 +103,9 @@ private:
         sessions_.skip(*this);
         break;
       case argus::voice::v1::ClientFrame::kPcm:
-        sessions_.feedPcm(*this, frame.pcm().data(),
-                          static_cast<size_t>(frame.pcm().size()));
+        sessions_.feedPcm(*this, {.data = frame.pcm().data(),
+                                  .size = static_cast<size_t>(
+                                      frame.pcm().size())});
         break;
       default:
         LOG_WARN << "Voice: client frame without body";

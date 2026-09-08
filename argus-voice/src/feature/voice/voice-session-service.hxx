@@ -30,6 +30,13 @@ public:
   virtual void sendServerFrame(argus::voice::v1::ServerFrame frame) = 0;
 };
 
+// One uplink PCM chunk, raw 16 kHz s16le.
+struct PcmFrame
+{
+  const char* data{nullptr};
+  size_t size{0};
+};
+
 class VoiceSessionService
 {
 public:
@@ -37,7 +44,7 @@ public:
 
   void start(VoiceSessionSink& sink,
              const argus::voice::v1::VoiceIdentity& identity);
-  void feedPcm(VoiceSessionSink& sink, const char* data, size_t len);
+  void feedPcm(VoiceSessionSink& sink, const PcmFrame& frame);
   void stop(VoiceSessionSink& sink);
   void skip(VoiceSessionSink& sink);
 
