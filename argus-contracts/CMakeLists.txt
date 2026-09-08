@@ -35,3 +35,33 @@ if(NOT TARGET argus::sdk-health)
   argus_sdk_module(NAME health
       PROTO grpc/health/v1/health.proto)
 endif()
+
+# Root-project suite: the caller-identity metadata contract of the shared
+# client base. Standalone consumer builds pull the SDKs as a dependency and
+# never registered contract tests.
+if(ARGUS_ROOT_PROJECT)
+  find_package(doctest REQUIRED)
+
+  add_executable(sdk-caller-identity-test
+      tests/unit/sdk-caller-identity-test.cc)
+
+  # This folder is pulled in EXCLUDE_FROM_ALL (consumers add it for the SDK
+  # targets), so the suite has to opt back into the default build to be
+  # present when ctest runs it.
+  set_target_properties(sdk-caller-identity-test PROPERTIES
+      EXCLUDE_FROM_ALL FALSE)
+
+  target_link_libraries(sdk-caller-identity-test PRIVATE argus::sdk-camera
+      doctest::doctest)
+
+  target_compile_options(sdk-caller-identity-test PRIVATE -Wall -Wextra)
+
+  add_test(NAME sdk-caller-identity-test COMMAND sdk-caller-identity-test)
+
+  get_target_property(DOCTEST_INCLUDE_DIRS doctest::doctest
+                      INTERFACE_INCLUDE_DIRECTORIES)
+  if(DOCTEST_INCLUDE_DIRS)
+    set_target_properties(doctest::doctest PROPERTIES
+        INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${DOCTEST_INCLUDE_DIRS}")
+  endif()
+endif()

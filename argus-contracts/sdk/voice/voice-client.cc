@@ -1,16 +1,13 @@
 #include "voice-client.hxx"
 
+#include <grpc-client-base.hxx>
+
 #include <chrono>
 #include <deque>
 #include <mutex>
 
 namespace
 {
-// Keepalive probes keep idle voice streams alive and detect a dead peer.
-constexpr int kKeepaliveTimeMs = 30000;
-constexpr int kKeepaliveTimeoutMs = 10000;
-constexpr int kMaxPingsWithoutData = 0;
-
 // One write in flight; frames beyond the cap are dropped.
 constexpr size_t kMaxPendingWrites = 1024;
 
@@ -115,9 +112,9 @@ public:
 
   void begin()
   {
-    context_->AddMetadata("x-argus-user",
-                          std::to_string(identity_.user_id()));
-    context_->AddMetadata("x-argus-role", voiceRoleToString(identity_.role()));
+    argus::sdk::addCallerIdentity(
+        *context_, {.userId = identity_.user_id(),
+                    .role = voiceRoleToString(identity_.role())});
 
     {
       std::lock_guard<std::mutex> lock(mutex_);
@@ -166,15 +163,9 @@ private:
 } // namespace
 
 VoiceClient::VoiceClient(std::string target)
+    : channel_(argus::sdk::makeStreamingChannel(target)),
+      stub_(argus::voice::v1::VoiceService::NewStub(channel_))
 {
-  grpc::ChannelArguments args;
-  args.SetInt(GRPC_ARG_KEEPALIVE_TIME_MS, kKeepaliveTimeMs);
-  args.SetInt(GRPC_ARG_KEEPALIVE_TIMEOUT_MS, kKeepaliveTimeoutMs);
-  args.SetInt(GRPC_ARG_HTTP2_MAX_PINGS_WITHOUT_DATA, kMaxPingsWithoutData);
-  channel_ = grpc::CreateCustomChannel(target,
-                                       grpc::InsecureChannelCredentials(),
-                                       args);
-  stub_ = argus::voice::v1::VoiceService::NewStub(channel_);
 }
 
 std::shared_ptr<VoiceStream> VoiceClient::connect(

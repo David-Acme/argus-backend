@@ -1,6 +1,6 @@
 #include "identity-client.hxx"
 
-#include <chrono>
+#include <grpc-client-base.hxx>
 
 namespace
 {
@@ -8,7 +8,7 @@ constexpr int kCallTimeoutMs = 5000;
 } // namespace
 
 IdentityClient::IdentityClient(std::string target)
-    : channel_(grpc::CreateChannel(target, grpc::InsecureChannelCredentials())),
+    : channel_(argus::sdk::makeChannel(target)),
       stub_(argus::identity::v1::IdentityService::NewStub(channel_))
 {
 }
@@ -17,10 +17,9 @@ std::optional<argus::identity::v1::UserIdentity>
 IdentityClient::updateUserName(const UpdateUserNameInput& input) const
 {
   grpc::ClientContext context;
-  context.set_deadline(std::chrono::system_clock::now() +
-                       std::chrono::milliseconds(kCallTimeoutMs));
-  context.AddMetadata("x-argus-user", std::to_string(input.userId));
-  context.AddMetadata("x-argus-role", input.role);
+  argus::sdk::setDeadline(context, kCallTimeoutMs);
+  argus::sdk::addCallerIdentity(context,
+                                {.userId = input.userId, .role = input.role});
 
   argus::identity::v1::UpdateUserRequest request;
   request.set_user_id(input.userId);
@@ -37,8 +36,7 @@ std::optional<argus::identity::v1::ValidateTokenResponse>
 IdentityClient::validateToken(const ValidateTokenInput& input) const
 {
   grpc::ClientContext context;
-  context.set_deadline(std::chrono::system_clock::now() +
-                       std::chrono::milliseconds(kCallTimeoutMs));
+  argus::sdk::setDeadline(context, kCallTimeoutMs);
 
   argus::identity::v1::ValidateTokenRequest request;
   request.set_access_token(input.accessToken);
@@ -56,8 +54,7 @@ IdentityClient::validateToken(const ValidateTokenInput& input) const
 bool IdentityClient::checkDeviceCredential(const std::string& secretHash) const
 {
   grpc::ClientContext context;
-  context.set_deadline(std::chrono::system_clock::now() +
-                       std::chrono::milliseconds(kCallTimeoutMs));
+  argus::sdk::setDeadline(context, kCallTimeoutMs);
 
   argus::identity::v1::CheckDeviceCredentialRequest request;
   request.set_secret_hash(secretHash);

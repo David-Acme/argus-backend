@@ -54,6 +54,22 @@ function(argus_grpc_absl_bridge)
   target_link_libraries(argus_sdk_grpc_bridge_exit PRIVATE gRPC::grpc++)
 endfunction()
 
+# The shared client base every SDK wrapper builds on (channel credentials,
+# deadlines, x-argus-* caller metadata) — declared once, linked into each
+# argus_sdk_module the same way the ABI bridge is.
+function(argus_grpc_client_base)
+  if(TARGET argus_sdk_grpc_base)
+    return()
+  endif()
+  set(base_dir ${CMAKE_CURRENT_LIST_DIR}/../argus-contracts/sdk/grpc)
+  add_library(argus_sdk_grpc_base OBJECT ${base_dir}/grpc-client-base.cc)
+  set_target_properties(argus_sdk_grpc_base PROPERTIES
+      POSITION_INDEPENDENT_CODE ON)
+  target_include_directories(argus_sdk_grpc_base PUBLIC ${base_dir})
+  target_link_libraries(argus_sdk_grpc_base PUBLIC gRPC::grpc++)
+  target_compile_options(argus_sdk_grpc_base PRIVATE -Wall -Wextra)
+endfunction()
+
 # ARGUS_SYSTEM_PROTOBUF swaps the SDK's protobuf/gRPC for the Debian stack.
 function(argus_contracts_substrate)
   get_property(substrate_done GLOBAL PROPERTY ARGUS_PROTOBUF_TARGET)
@@ -280,7 +296,8 @@ function(argus_sdk_module)
   if(abs_includes)
     target_include_directories(argus_sdk_${ARG_NAME} PUBLIC ${abs_includes})
   endif()
-  set(bridge "")
+  argus_grpc_client_base()
+  set(bridge argus_sdk_grpc_base)
   if(TARGET argus_sdk_grpc_bridge_entry)
     list(APPEND bridge argus_sdk_grpc_bridge_entry argus_sdk_grpc_bridge_exit)
   endif()
