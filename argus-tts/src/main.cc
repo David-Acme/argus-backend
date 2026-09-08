@@ -45,8 +45,6 @@ int main()
         return AppConfig::get404Response();
       });
 
-  // The onnxruntime engine is THE capacity of this service (Ruling BG): boot
-  // fails loudly rather than serving 503s to the legacy adapters.
   TtsService::instance().init();
   if (!TtsService::instance().isLoaded()) {
     LOG_FATAL << "TTS engine failed to load — aborting startup";

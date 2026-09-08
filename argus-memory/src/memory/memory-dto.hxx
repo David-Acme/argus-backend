@@ -13,8 +13,7 @@ struct MemoryToolContext
   std::string sessionId;
 };
 
-// POST /memory/v1/remember body: mirrors the memory.remember descriptor
-// parameters (Ruling BY).
+// POST /memory/v1/remember body: mirrors the memory.remember descriptor.
 struct RememberBody
 {
   std::string subject;

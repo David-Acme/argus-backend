@@ -17,8 +17,6 @@ drogon::Task<CameraControlResult> CameraControlFeatureService::onDevice(
   const auto result =
       co_await BlockingTask<DriverResult>([driver, work]() { return work(*driver); });
 
-  // A failed session is dropped so the next call logs in again instead of
-  // reusing a transport the camera has already closed.
   if (!result.ok)
     CameraDriverRegistry::instance().forget(cameraId);
   co_return result;
@@ -80,9 +78,6 @@ CameraControlFeatureService::settings(int64_t cameraId, const CameraSettingsDto&
 drogon::Task<CameraControlResult>
 CameraControlFeatureService::speak(int64_t cameraId, const CameraTalkDto& body) const
 {
-  // Synthesis is blocking too, and it happens before the device call so a TTS
-  // failure never opens a talk session for nothing. An unreachable argus-tts
-  // surfaces as a 502-shaped failure.
   std::pair<std::vector<int16_t>, int> audio;
   try {
     audio = co_await BlockingTask<std::pair<std::vector<int16_t>, int>>(

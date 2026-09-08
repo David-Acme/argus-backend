@@ -14,9 +14,7 @@ namespace
 {
 constexpr const char* kPcmMime = "audio/x-argus-pcm-s16";
 
-// The voice session feeds float samples; its own frame conversion is
-// int16/kPcmScale (voice-session-service.cc), so the inverse maps back
-// losslessly up to quantization.
+// Maps the s16 PCM body back to float samples.
 std::vector<float> pcmFromBytes(std::string_view bytes)
 {
   std::vector<float> samples(bytes.size() / sizeof(int16_t));
@@ -28,8 +26,7 @@ std::vector<float> pcmFromBytes(std::string_view bytes)
   return samples;
 }
 
-// lang comes on the query string (?lang=es) or the `lang` header; "" keeps
-// the service-configured default.
+// Resolves lang from the query string (?lang=es) or the `lang` header.
 std::string langOf(const drogon::HttpRequestPtr& req)
 {
   std::string lang = req->getParameter("lang");
@@ -63,10 +60,6 @@ SttController::transcribe(drogon::HttpRequestPtr req)
     co_return ApiResponse::validationError(fields);
   }
 
-  // Ruling BE: one global recognizer; a lang different from the current one
-  // rebuilds it inside the transcribe's blocking leg (never on this IO
-  // thread). Unsupported langs are a 422, mirroring SttService::setLanguage's
-  // accepted set; empty resolves from stt.language.
   const std::string lang = langOf(req);
   const std::string effective = lang.empty() ? stt.configLanguage() : lang;
   if (!stt.isSupportedLanguage(effective)) {

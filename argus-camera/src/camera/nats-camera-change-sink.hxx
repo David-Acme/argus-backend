@@ -6,10 +6,7 @@
 
 class NatsBus;
 
-// Camera-domain substrate of argus-camera (Ruling Y): change emits and audit
-// diffs funnel over `argus.camera.v1.change` instead of local rooms, and
-// nothing is persisted locally. The gateway inserts the audit row verbatim
-// into its substrate before fanning the change out.
+// Camera-domain change funnel over argus.camera.v1.change.
 class NatsCameraChangeSink : public CameraChangeSink
 {
 public:

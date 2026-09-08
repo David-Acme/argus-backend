@@ -4,9 +4,7 @@
 
 #include <string>
 
-// The operator's ONLY output channel (Ruling AF): evaluate rules and publish
-// `argus.camera.v1.object_detected`. No path from here ever reaches a camera
-// control or audible action.
+// The operator's ONLY output channel.
 class IObjectEventSink
 {
 public:

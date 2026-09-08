@@ -1,8 +1,3 @@
-// camera-probe: the operator pipeline with NO camera, no NATS, no database.
-// Synthetic RGB frames (or a --image file) go through
-// CameraOperatorService::processFrame against the real detector when
-// models/objects is present, a stub detector otherwise, and the published
-// events print as the exact argus.camera.v1.object_detected payloads.
 #include <operator/camera-operator-service.hxx>
 #include <operator/known-person-matcher.hxx>
 #include <operator/object-event.hxx>
@@ -30,7 +25,6 @@ public:
 
   std::vector<DetectedObject> detect(const uint8_t*, int, int) override
   {
-    // A synthetic person box center-left and a car center-right.
     DetectedObject person;
     person.name = "person";
     person.cls = 0;
@@ -122,8 +116,6 @@ int main(int argc, char** argv)
     }
   }
 
-  // The real model when installed (scripts/setup.sh camera), the stub
-  // otherwise: either way the pipeline runs end to end with no camera.
   ObjectDetectorOptions options;
   options.modelDir = modelDir;
   options.classes = operator_config::defaultClasses();

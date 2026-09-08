@@ -8,8 +8,7 @@ struct ListenerConfig
   std::string host;
   uint16_t port{0};
 
-  // Resolves the [server] internal plain-HTTP listener (loopback by default:
-  // the wire is internal-network only and never exposed through the gateway).
+  // Resolves the [server] internal plain-HTTP listener.
   static ListenerConfig resolve();
 };
 

@@ -29,9 +29,7 @@ std::string pcmBytes(const std::vector<float>& pcm)
   return bytes;
 }
 
-// Producer state for the chunked stream leg: the synthesis thread sends each
-// engine chunk through the async stream (thread-safe queue into the loop)
-// and closes it when done or when the consumer disconnects.
+// Producer state for the chunked stream leg.
 struct PcmStreamJob
 {
   TtsRequest request;

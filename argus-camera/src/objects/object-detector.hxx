@@ -16,9 +16,7 @@ struct DetectedObject
   float h{0};
 };
 
-// The only seam of the detection capacity (Appendix B.4): YOLO26n is
-// AGPL-3.0, so the model artifact behind this interface can be swapped for a
-// permissively licensed one without touching the service.
+// The only seam of the detection capacity.
 class IObjectDetector
 {
 public:

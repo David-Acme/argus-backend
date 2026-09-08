@@ -59,8 +59,15 @@ preset, own `camera.db`.
   and degrades to the legacy `503 go2rtc_not_running` envelope when go2rtc is
   down. Go2rtcManager owns the go2rtc lifecycle here.
 - **Identity reads**: `[identity] db` opens mode=ro as the named identity
-  client (`DbService::setIdentityClient` slot); absent key boots
-  identity-free.
+  client (`DbService::setIdentityClient` slot; SQLite URI filenames are
+  enabled before the first `sqlite3_open` so the `mode=ro` URI parses);
+  absent key boots identity-free. The gateway creates identity.db at its own
+  boot, which on a fresh install may land after ours, so the open waits
+  bounded for the file to exist.
+- **Explicit controller registration**: the camera, zone and camera-control
+  controllers live in the shared static library, so their AutoCreation
+  registration is linker-dropped there; this service registers them
+  explicitly.
 - **OPTIONS divergence attribution (F2-4 review)**: unlike the legacy
   (`src/config/application.cc` pre-routing advice answers every OPTIONS with
   `AppConfig::handleOptions` before routing), argus-camera registers only the
@@ -82,7 +89,10 @@ preset, own `camera.db`.
   into this binary and every synthesis is an HTTP exchange with argus-tts
   (`[tts] remote_url`, default `127.0.0.1:7029`). No in-process TTS engine
   exists here — with the key empty every talk call fails with the 502
-  `CAMERA_UNREACHABLE` envelope, never a fallback.
+  `CAMERA_UNREACHABLE` envelope, never a fallback. Synthesis runs before the
+  device call (a TTS failure never opens a talk session for nothing), and a
+  failed driver session is dropped so the next call logs in again instead of
+  reusing a transport the camera has already closed.
 - **Driver stack**: `camera-driver` (registry + Tapo driver) and the tapo
   transport stack compile into `camera-core` (OpenSSL linked); `[tapo]`
   config keys are read here, mirroring the legacy block.
@@ -113,14 +123,25 @@ preset, own `camera.db`.
 - **Vulkan selection differs from FaceService on purpose**: the detector
   takes HardwareProbe's `vulkan` flag (any device, integrated included) and
   degrades to CPU per instance on runtime failure; FaceService gates on
-  `vulkanDiscrete`.
+  `vulkanDiscrete`. The inference slots are released only after a successful
+  load (the FaceService deadlock pattern: a failed init must leave the
+  service disabled, never a held semaphore), and the mutex guards only the
+  snapshot grab — inference runs on a shared snapshot so concurrent cameras
+  overlap, bounded by the semaphore.
 - **Frames come from go2rtc** (`/api/frame.jpeg?src=cam<id>` via
   Go2rtcFrameSource, resolved per grab because Go2rtcManager resolves its
   address only at init) — never from a device driver (Ruling AB). The Tapo
   `ICameraDriver` detection walker is deferred to Fase 4.
 - **Identity is deferred behind `IKnownPersonMatcher`** (default
   `NoKnownPersonMatcher`): rules 3-8 keep their own severity; the real
-  matcher arrives in Fase 4 with the identity domain.
+  matcher arrives in Fase 4 with the identity domain. Absent (or no-match)
+  matcher keeps rules 3-8 severities; present and matching, rule 2
+  `known_person` dominates.
+- **The 9-rule table (Appendix B.3, fixed order)**: 1 `exclude_zone` drop,
+  2 `known_person` (dominates 3-8 when matched), 3 `person_in_alert_zone`
+  Critical, 4 `person_in_monitor_zone` Warning, 5 `person_night` Warning,
+  6 `person_day` Info, 7 `vehicle_arrival` Info, 8 `vehicle_night` /
+  escalating presence Warning, 9 `ignored_class` drop.
 - **Ruling AF is absolute**: the operator never touches hardware. The only
   output channel is `IObjectEventSink` → `NatsObjectEventSink` publishing
   `argus.camera.v1.object_detected` (JetStream stream `ARGUS_CAMERA`, 7d
@@ -131,6 +152,10 @@ preset, own `camera.db`.
 - **Budget split (Ruling AD)**: camera side = aggregation window +
   per camera+class cooldown + `max_fps_inference`; gateway side =
   notification budget/silent hours/digest (see argus-gateway CONTEXT.md).
+  Inside one aggregation window objects dedupe by class and the pending
+  event keeps the dominant severity; a class still cooling down drops the
+  whole window and the next window starts fresh. Preprocessing and
+  inference never run on the event loop (`BlockingTask`).
 - The labs (`argus-camera/labs/`) build on demand via the camera presets
   (`--target argus-object-bench` / `argus-camera-probe`), EXCLUDE_FROM_ALL.
 - Model artifacts (`models/objects/`) come from `scripts/setup.sh camera`:

@@ -26,19 +26,15 @@ bool vulkanAvailable(const ObjectDetectorOptions& options)
 {
   if (!options.useVulkan)
     return false;
-  // Any Vulkan device qualifies (integrated included): a runtime failure
-  // falls back to CPU on the same instance.
   return HardwareProbe::get().vulkan;
 }
 
 float rowScore(const float* row, size_t rowLength, size_t classCount, int& cls)
 {
   if (rowLength == 6) {
-    // e2e graph with in-graph TopK: xyxy + score + cls.
     cls = static_cast<int>(row[5]);
     return row[4];
   }
-  // Raw one2one export: 4 xyxy columns + one score column per class.
   int best = 0;
   float bestScore = row[4];
   for (size_t c = 1; c < classCount; ++c) {
@@ -66,7 +62,6 @@ struct ObjectDetectorService::Impl
   std::string inputBlob;
   std::string outputBlob;
   bool vulkan{false};
-  // Accepted runtime shape; a rejected shape is logged once per load.
   bool shapeAccepted{false};
   size_t acceptedRowLength{0};
 };
@@ -94,8 +89,6 @@ ObjectDetectorService::loadImpl(const std::string& modelDir, bool useVulkan)
     return nullptr;
   }
 
-  // Blob names are read from the .param, never hardcoded: ncnn resolves
-  // the Input layers' tops as inputs and unconsumed blobs as outputs.
   const auto& inputNames = impl->net->input_names();
   const auto& outputNames = impl->net->output_names();
   if (inputNames.empty() || outputNames.empty()) {
@@ -138,9 +131,6 @@ void ObjectDetectorService::init()
     std::lock_guard<std::mutex> lock(implMutex_);
     impl_ = std::move(impl);
   }
-  // FaceService deadlock pattern fixed here: the inference slots are
-  // released only after a successful load, so a failed init leaves the
-  // service disabled instead of blocking every caller forever.
   slots_.release(ThreadBudget::inferenceSlots());
 }
 
@@ -172,8 +162,6 @@ std::vector<DetectedObject> ObjectDetectorService::detect(const uint8_t* rgb,
     ~SlotRelease() { slots.release(); }
   } guard{slots_};
 
-  // The mutex guards only the snapshot grab; the inference itself runs on
-  // the shared snapshot so concurrent cameras do not serialize.
   std::shared_ptr<Impl> impl;
   {
     std::lock_guard<std::mutex> lock(implMutex_);
@@ -184,7 +172,6 @@ std::vector<DetectedObject> ObjectDetectorService::detect(const uint8_t* rgb,
 
   auto result = runNet(*impl, rgb, width, height);
   if (!result && impl->vulkan) {
-    // Vulkan failure on this instance: degrade to CPU and retry once.
     LOG_WARN << "ObjectDetector: vulkan inference failed; falling back to CPU"
                 " on this instance";
     if (auto reloaded = loadImpl(impl->modelDir, false)) {
@@ -205,7 +192,6 @@ std::optional<std::vector<DetectedObject>>
 ObjectDetectorService::runNet(Impl& impl, const uint8_t* rgb, int width,
                               int height)
 {
-  // Letterbox (gray 114) to the model's native input size.
   const int inputSize = options_.inputSize;
   const double scale =
       std::min(static_cast<double>(inputSize) / width,
@@ -236,7 +222,6 @@ ObjectDetectorService::runNet(Impl& impl, const uint8_t* rgb, int width,
   if (ex.extract(impl.outputBlob.c_str(), out) != 0)
     return std::nullopt;
 
-  // Runtime shape detection: rows are the tensor's last dim.
   const size_t rowLength = out.w;
   const size_t rowCount = rowLength == 0 ? 0 : out.total() / rowLength;
   const size_t e2eLength = 6;
@@ -299,7 +284,6 @@ std::vector<DetectedObject> ObjectDetectorService::postProcess(
     if (score < options_.confidence)
       continue;
 
-    // Rows are xyxy in model-input pixels; map back to the frame.
     const float x1 = std::clamp((row[0] - plan.padX) / plan.scale, 0.f,
                                 static_cast<float>(width));
     const float y1 = std::clamp((row[1] - plan.padY) / plan.scale, 0.f,

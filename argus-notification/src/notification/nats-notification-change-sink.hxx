@@ -6,11 +6,7 @@
 
 class NatsBus;
 
-// Notification-domain substrate of argus-notification (Rulings AR/Y): the
-// markAsRead audit rows and notification change emits funnel over
-// `argus.notification.v1.change` instead of local rooms, and no audit rows
-// are persisted locally. The gateway inserts the rows verbatim into its
-// user_audit_log substrate before fanning them out.
+// Notification-domain change funnel over argus.notification.v1.change.
 class NatsNotificationChangeSink : public UserChangeSink
 {
 public:

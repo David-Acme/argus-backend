@@ -5,9 +5,7 @@
 
 #include <json/value.h>
 
-// The class table must match the model's output width on the raw one2one
-// export (row length = 4 + class count), so the full COCO-80 table is the
-// default and the config key overrides it wholesale.
+// The class table must match the model's output width (row length = 4 + class count).
 std::vector<std::string> operator_config::defaultClasses()
 {
   return {"person", "bicycle", "car", "motorcycle", "airplane", "bus", "train",

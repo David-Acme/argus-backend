@@ -8,6 +8,9 @@
 
 #include <chrono>
 
+// 7 days of server-side retention, in nanoseconds.
+constexpr int64_t kJetStreamRetentionNs = 7LL * 24 * 60 * 60 * 1000000000;
+
 NatsObjectEventSink::NatsObjectEventSink(std::shared_ptr<NatsBus> bus)
     : bus_(std::move(bus))
 {
@@ -49,7 +52,7 @@ void NatsObjectEventSink::ensureStream(const std::string& natsUrl)
   config.Subjects = kSubjects;
   config.SubjectsLen = 2;
   config.Retention = js_LimitsPolicy;
-  config.MaxAge = 7LL * 24 * 60 * 60 * 1000000000; // 7 days, in nanoseconds
+  config.MaxAge = kJetStreamRetentionNs;
   config.Storage = js_FileStorage;
 
   jsErrCode errCode = jsErrCode(0);

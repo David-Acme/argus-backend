@@ -53,7 +53,9 @@ scaffolds.
     documented DSL quirk), 503 `LLM_NOT_LOADED`, frozen 404/405. Latency
     logged per request.
 - **Config**: `[llm]` (engine knobs, mirroring the legacy block) +
-  `[server]` (loopback listener, default 7032) only. No database, no NATS,
+  `[server]` (loopback listener, default 7032) only. The `[server]`
+  listener is internal-network only: the wire is never exposed through the
+  gateway. No database, no NATS,
   no JWT/device keys — nothing here persists anything.
 
 ## Tier note (the F4-2 lesson, applied)

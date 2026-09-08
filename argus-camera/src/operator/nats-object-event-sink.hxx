@@ -7,11 +7,7 @@
 
 class NatsBus;
 
-// Publishes object_detected events over NATS. Ensures (best-effort, once)
-// the JetStream stream that retains the subject server-side for later
-// inspection only — the gateway's subscription is an ephemeral core-NATS
-// consumer, so events published while it is down are not replayed on
-// restart.
+// Publishes object_detected over NATS (JetStream retention is inspection-only).
 class NatsObjectEventSink final : public IObjectEventSink
 {
 public:
@@ -19,8 +15,7 @@ public:
 
   bool publish(const ObjectDetectedEvent& event) override;
 
-  // Creates the ARGUS_CAMERA JetStream stream when missing; a failure is
-  // logged and core publishing continues (events still flow, retention off).
+  // Creates the ARGUS_CAMERA JetStream stream when missing.
   static void ensureStream(const std::string& natsUrl);
 
 private:

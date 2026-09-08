@@ -45,8 +45,6 @@ int main()
 
   llama_backend_init();
 
-  // The chat engine is THE capacity of this service (Ruling BS): boot fails
-  // loudly rather than serving 503s to the voice session.
   llm->initEngine();
   if (!llm->isEngineLoaded()) {
     LOG_FATAL << "LLM engine failed to load — aborting startup";

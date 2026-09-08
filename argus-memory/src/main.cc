@@ -53,10 +53,6 @@ int main()
 {
   ConfigService::load("config.toml");
 
-  // Snapshot source clients install BEFORE loadConfigJson. Drogon's first
-  // sqlite3 client creation performs sqlite3_config(SQLITE_CONFIG_MULTITHREAD)
-  // and the memory stack opens its raw connections only on the beginning
-  // advice (deferStore), replicating the legacy ordering (Ruling BW).
   const auto identityDb = openReadOnlySource("identity.db");
   const auto cameraDb = openReadOnlySource("camera.db");
 
@@ -79,8 +75,6 @@ int main()
 
   llama_backend_init();
 
-  // The memory stack is THE capacity of this service (Ruling BW): boot fails
-  // loudly rather than serving 503s to the legacy workers.
   memory->initStack();
   if (!memory->isStackLoaded()) {
     LOG_FATAL << "Memory stack failed to load — aborting startup";
@@ -105,9 +99,6 @@ int main()
     }
   }
 
-  // Registered after initStack's own advice, so the store opens before the
-  // replica tables are filled. Without a change feed the boot snapshot is the
-  // replicas' only source — it must not be gated on NATS.
   drogon::app().registerBeginningAdvice(
       [memory, &replica, identity = identityDb.get(),
        camera = cameraDb.get()]() {

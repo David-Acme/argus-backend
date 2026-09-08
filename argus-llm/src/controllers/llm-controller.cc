@@ -24,9 +24,7 @@ drogon::HttpResponsePtr badRequest()
   return ApiResponse::error(400, "BAD_REQUEST", "Body must be a JSON object");
 }
 
-// Producer state for the chunked stream leg: the generation thread sends each
-// token through the async stream as it is produced (arrival order preserved)
-// and closes it with the JSON sentinel line when the engine reports done.
+// Producer state for the chunked stream leg.
 struct ChatStreamJob
 {
   LlmController* owner{nullptr};
@@ -66,8 +64,6 @@ void runStreamJob(const std::shared_ptr<ChatStreamJob>& job)
                            job->charCount += token.size();
                            return;
                          }
-                         // The final sentinel line: the client's exact
-                         // end-of-stream marker carrying the prefill stats.
                          const std::string line =
                              "\n" + sentinelLine(service.lastPrefillStats());
                          if (!job->stream->send(line))

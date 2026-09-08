@@ -103,7 +103,6 @@ drogon::Task<void> CameraOperatorService::runCamera(CameraRef camera)
     auto frame = co_await inputs_.dependencies.source->grab(
         {.cameraId = camera.id, .cameraName = camera.name});
     if (frame) {
-      // Preprocess + inference never run on the event loop.
       co_await BlockingTask<void>{[this, &camera, &frame]() {
         processFrame(camera.id, camera.name, *frame);
       }};
@@ -224,7 +223,6 @@ void CameraOperatorService::processFrame(int64_t cameraId,
       state.pending->escalated = outcome.escalated;
       state.pending->knownPersonId = outcome.knownPersonId;
     } else {
-      // Keep the dominant severity of the aggregation window.
       if (severityRank(severityName(outcome.severity)) >
           severityRank(state.pending->severity)) {
         state.pending->rule = outcome.rule;
@@ -234,7 +232,6 @@ void CameraOperatorService::processFrame(int64_t cameraId,
       }
     }
     for (const auto& object : objects) {
-      // Dedupe by class inside one window (Ruling AD aggregation).
       const bool alreadyPending =
           std::any_of(state.pending->objects.begin(),
                       state.pending->objects.end(),
@@ -265,8 +262,6 @@ void CameraOperatorService::publishPending(int64_t cameraId,
   auto event = *state.pending;
   state.pending.reset();
 
-  // Per camera+class cooldown (Ruling AD): a class still cooling down drops
-  // the whole window; the next window starts fresh, nothing is carried over.
   for (const auto& object : event.objects) {
     const auto last = state.lastEmitByClass.find(object.name);
     if (last != state.lastEmitByClass.end() &&
