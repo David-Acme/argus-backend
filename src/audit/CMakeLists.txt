@@ -1,6 +1,6 @@
 # argus_audit: the cross-domain audit trail (audit_log, user_audit_log,
-# user_action_log) and the SyncAudit entry every feature writes through.
-# Consumers link argus::audit.
+# user_action_log), the SyncAudit entry every feature writes through, and
+# the socket-backed user-change sink. Consumers link argus::audit.
 
 find_package(Drogon CONFIG REQUIRED)
 find_package(nlohmann_json REQUIRED)
@@ -17,15 +17,14 @@ argus_module(NAME audit
         ../shared/services/sync-audit/sync-audit-service.cc
         ../shared/services/user-action-log/user-action-log-service.cc
         ../shared/services/user-audit-log/user-audit-log-service.cc
+        ../shared/services/socket/socket-user-change-sink.cc
     INCLUDES ..)
 
-# SocketService still compiles inside argus_identity until it peels off on
-# its own; the mutual edge is declared so CMake repeats the archives.
 target_link_libraries(argus_audit
     PUBLIC
+        argus::socket
         argus::sqlite
         argus_common
-        argus_identity
         Drogon::Drogon
         nlohmann_json::nlohmann_json)
 

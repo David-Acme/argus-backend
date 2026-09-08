@@ -18,13 +18,18 @@ if(NOT TARGET argus_common)
     find_package(nlohmann_json REQUIRED)
     find_package(OpenCV CONFIG REQUIRED)
     find_package(OpenSSL REQUIRED)
-    find_package(mdns REQUIRED)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../argus-common
                      ${CMAKE_BINARY_DIR}/argus-common)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../src/sqlite
                      ${CMAKE_BINARY_DIR}/argus-sqlite)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../src/audit
                      ${CMAKE_BINARY_DIR}/argus-audit)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../src/cert
+                     ${CMAKE_BINARY_DIR}/argus-cert)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../src/room
+                     ${CMAKE_BINARY_DIR}/argus-room)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../src/socket
+                     ${CMAKE_BINARY_DIR}/argus-socket)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../src/filter
                      ${CMAKE_BINARY_DIR}/argus-filter)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../src/identity
@@ -142,8 +147,8 @@ target_include_directories(camera-core PUBLIC
     ${CAMERA_SRC_ROOT}
     ${CMAKE_CURRENT_SOURCE_DIR}/../src)
 
-target_link_libraries(camera-core PUBLIC argus_sync argus::sqlite sqlite-vec
-    opencv::opencv
+target_link_libraries(camera-core PUBLIC argus_sync argus::sqlite
+    argus::socket argus::room sqlite-vec opencv::opencv
     ${ARGUS_NCNN_TARGET} argus::hardware-profile-gpu OpenSSL::SSL OpenSSL::Crypto)
 
 target_compile_options(camera-core PRIVATE -Wall -Wextra)

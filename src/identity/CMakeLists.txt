@@ -9,7 +9,6 @@ find_package(jwt-cpp REQUIRED)
 find_package(nlohmann_json REQUIRED)
 find_package(OpenCV CONFIG REQUIRED)
 find_package(OpenSSL REQUIRED)
-find_package(mdns CONFIG REQUIRED)
 
 set(ARGUS_IDENTITY_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/../feature/api/auth/controllers/auth-controller.cc
@@ -58,14 +57,8 @@ set(ARGUS_IDENTITY_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/../shared/schemas/user-invitation/user-invitation-schema.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/../shared/schemas/user-portrait/user-portrait-schema.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/../shared/schemas/user/user-schema.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/../shared/services/cert/cert-service.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/../shared/services/face/face-db.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/../shared/services/face/face-service.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/../shared/services/mdns/mdns-service.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/../shared/services/room/room-manager.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/../shared/services/socket/socket-service.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/../shared/services/socket/nats-identity-change-sink.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/../shared/services/socket/socket-user-change-sink.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/../shared/services/storage/private-portrait-service.cc
 )
 
@@ -89,24 +82,14 @@ target_link_libraries(argus_identity
         argus::auth
         argus::audit
         argus::sqlite
+        argus::cert
+        argus::socket
         argus::hardware-profile-gpu
         Drogon::Drogon
         jwt-cpp::jwt-cpp
         nlohmann_json::nlohmann_json
         opencv::opencv
-        mdns::mdns
         OpenSSL::SSL
         OpenSSL::Crypto)
-
-# Third-party mdns.h is header-only: treat its include dir as SYSTEM so
-# -Wall -Wextra never reports warnings from the vendored header.
-if(TARGET mdns::mdns)
-    get_target_property(_argus_identity_mdns_dirs mdns::mdns
-                        INTERFACE_INCLUDE_DIRECTORIES)
-    if(_argus_identity_mdns_dirs)
-        set_target_properties(mdns::mdns PROPERTIES
-            INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${_argus_identity_mdns_dirs}")
-    endif()
-endif()
 
 target_compile_options(argus_identity PRIVATE -Wall -Wextra)

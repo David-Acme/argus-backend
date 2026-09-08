@@ -42,6 +42,18 @@ if(NOT TARGET argus_identity)
                      ${CMAKE_BINARY_DIR}/third_party/ncnn EXCLUDE_FROM_ALL)
     set(ARGUS_NCNN_TARGET ncnn)
 
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../src/cert
+                     ${CMAKE_BINARY_DIR}/argus-cert)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../src/mdns
+                     ${CMAKE_BINARY_DIR}/argus-mdns)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../src/room
+                     ${CMAKE_BINARY_DIR}/argus-room)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../src/sqlite
+                     ${CMAKE_BINARY_DIR}/argus-sqlite)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../src/socket
+                     ${CMAKE_BINARY_DIR}/argus-socket)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../src/audit
+                     ${CMAKE_BINARY_DIR}/argus-audit)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../src/filter
                      ${CMAKE_BINARY_DIR}/argus-filter)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../src/identity
@@ -82,6 +94,7 @@ add_library(gateway-core STATIC
 target_include_directories(gateway-core PUBLIC ${GATEWAY_SRC_ROOT})
 
 target_link_libraries(gateway-core PUBLIC argus_identity argus_sync
+    argus::cert argus::mdns argus::room argus::socket
     argus::sdk-voice argus::sdk-identity argus::sdk-camera)
 
 target_compile_options(gateway-core PRIVATE -Wall -Wextra)

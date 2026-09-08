@@ -49,6 +49,8 @@ target_link_libraries(argus_sync
     PUBLIC
         argus_identity
         argus::audit
+        argus::socket
+        argus::room
         argus_common
         Drogon::Drogon)
 
