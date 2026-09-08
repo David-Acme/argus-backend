@@ -85,3 +85,25 @@ foreach(_tomlplusplus_include_var
 endforeach()
 
 target_compile_options(argus_common PRIVATE -Wall -Wextra)
+
+# The foundation suites: the envelope, the enums, the role table, the thread
+# budget, the validation DSL and the NATS wrapper.
+if(ARGUS_ROOT_PROJECT)
+    find_package(doctest REQUIRED)
+
+    foreach(TEST_NAME IN ITEMS api-response-test enums-test role-access-test
+                               thread-budget-test validation-dsl-test
+                               nats-wrapper-test)
+        add_executable(${TEST_NAME} tests/unit/${TEST_NAME}.cc)
+        target_link_libraries(${TEST_NAME} PRIVATE argus_common doctest::doctest)
+        target_compile_options(${TEST_NAME} PRIVATE -Wall -Wextra)
+        add_test(NAME ${TEST_NAME} COMMAND ${TEST_NAME})
+    endforeach()
+
+    get_target_property(DOCTEST_INCLUDE_DIRS doctest::doctest
+                        INTERFACE_INCLUDE_DIRECTORIES)
+    if(DOCTEST_INCLUDE_DIRS)
+        set_target_properties(doctest::doctest PROPERTIES
+            INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${DOCTEST_INCLUDE_DIRS}")
+    endif()
+endif()

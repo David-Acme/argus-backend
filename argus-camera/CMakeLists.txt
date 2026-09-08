@@ -20,21 +20,21 @@ if(NOT TARGET argus_common)
     find_package(OpenSSL REQUIRED)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../argus-common
                      ${CMAKE_BINARY_DIR}/argus-common)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../src/sqlite
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../argus-sqlite
                      ${CMAKE_BINARY_DIR}/argus-sqlite)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../src/audit
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../argus-audit
                      ${CMAKE_BINARY_DIR}/argus-audit)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../src/cert
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../argus-cert
                      ${CMAKE_BINARY_DIR}/argus-cert)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../src/room
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../argus-room
                      ${CMAKE_BINARY_DIR}/argus-room)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../src/socket
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../argus-socket
                      ${CMAKE_BINARY_DIR}/argus-socket)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../argus-auth
                      ${CMAKE_BINARY_DIR}/argus-auth)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../argus-identity
                      ${CMAKE_BINARY_DIR}/argus-identity)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../src/sync
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../argus-sync
                      ${CMAKE_BINARY_DIR}/argus-sync)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../argus-audio
                      ${CMAKE_BINARY_DIR}/argus-audio)
@@ -72,17 +72,17 @@ if(NOT TARGET argus::sdk-camera)
                      ${CMAKE_BINARY_DIR}/argus-contracts EXCLUDE_FROM_ALL)
 endif()
 
-# The camera sync tables' repositories and schemas are still compiled by
-# argus_sync in the shared tree (they are camera-domain rows the gateway's
-# /sync also reads); this include root goes away when that split lands.
+# The camera sync tables' repositories and schemas belong to argus_sync (the
+# gateway's /sync reads the same rows), so this target depends on the module
+# rather than reaching into a shared source tree.
 argus_module(NAME camera-rpc
     SOURCES
         src/feature/sync/camera-sync-rpc-service.cc
         src/feature/health/health-rpc-service.cc
     INCLUDES
         src
-        ../src
     DEPENDS
+        argus_sync
         argus::sdk-camera
         argus::sdk-health
         argus_common)

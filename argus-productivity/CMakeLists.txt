@@ -19,21 +19,21 @@ if(NOT TARGET argus_common)
     find_package(OpenCV CONFIG REQUIRED)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../argus-common
                      ${CMAKE_BINARY_DIR}/argus-common)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../src/sqlite
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../argus-sqlite
                      ${CMAKE_BINARY_DIR}/argus-sqlite)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../src/audit
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../argus-audit
                      ${CMAKE_BINARY_DIR}/argus-audit)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../src/cert
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../argus-cert
                      ${CMAKE_BINARY_DIR}/argus-cert)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../src/room
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../argus-room
                      ${CMAKE_BINARY_DIR}/argus-room)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../src/socket
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../argus-socket
                      ${CMAKE_BINARY_DIR}/argus-socket)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../argus-auth
                      ${CMAKE_BINARY_DIR}/argus-auth)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../argus-identity
                      ${CMAKE_BINARY_DIR}/argus-identity)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../src/sync
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../argus-sync
                      ${CMAKE_BINARY_DIR}/argus-sync)
 
     enable_language(C)

@@ -42,23 +42,21 @@ if(NOT TARGET argus_identity)
                      ${CMAKE_BINARY_DIR}/third_party/ncnn EXCLUDE_FROM_ALL)
     set(ARGUS_NCNN_TARGET ncnn)
 
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../src/cert
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../argus-cert
                      ${CMAKE_BINARY_DIR}/argus-cert)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../src/mdns
-                     ${CMAKE_BINARY_DIR}/argus-mdns)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../src/room
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../argus-room
                      ${CMAKE_BINARY_DIR}/argus-room)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../src/sqlite
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../argus-sqlite
                      ${CMAKE_BINARY_DIR}/argus-sqlite)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../src/socket
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../argus-socket
                      ${CMAKE_BINARY_DIR}/argus-socket)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../src/audit
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../argus-audit
                      ${CMAKE_BINARY_DIR}/argus-audit)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../argus-auth
                      ${CMAKE_BINARY_DIR}/argus-auth)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../argus-identity
                      ${CMAKE_BINARY_DIR}/argus-identity)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../src/sync
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../argus-sync
                      ${CMAKE_BINARY_DIR}/argus-sync)
 endif()
 
@@ -67,10 +65,27 @@ if(NOT TARGET argus::sdk-voice)
                      ${CMAKE_BINARY_DIR}/argus-contracts EXCLUDE_FROM_ALL)
 endif()
 
+# mdns is gateway-only since f7-8 (nothing else ever linked argus::mdns), so
+# its source compiles into gateway-core and its third-party wiring lives here.
+find_package(mdns REQUIRED)
+
+# Third-party mdns.h is header-only: treat its include dir as SYSTEM so
+# -Wall -Wextra never reports warnings from the vendored header.
+if(TARGET mdns::mdns)
+    get_target_property(_argus_mdns_dirs mdns::mdns
+                        INTERFACE_INCLUDE_DIRECTORIES)
+    if(_argus_mdns_dirs)
+        set_target_properties(mdns::mdns PROPERTIES
+            INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${_argus_mdns_dirs}")
+    endif()
+endif()
+
 find_package(doctest REQUIRED)
 
 add_library(gateway-core STATIC
     ${GATEWAY_SRC_ROOT}/identity/identity-config.cc
+    # mdns is gateway-only, so it is a source here rather than a module.
+    ${GATEWAY_SRC_ROOT}/shared/services/mdns/mdns-service.cc
     ${GATEWAY_SRC_ROOT}/identity/identity-registrar.cc
     ${GATEWAY_SRC_ROOT}/proxy/proxy-config.cc
     ${GATEWAY_SRC_ROOT}/proxy/reverse-proxy.cc
@@ -91,7 +106,7 @@ add_library(gateway-core STATIC
 target_include_directories(gateway-core PUBLIC ${GATEWAY_SRC_ROOT})
 
 target_link_libraries(gateway-core PUBLIC argus_identity argus_sync
-    argus::cert argus::mdns argus::room argus::socket
+    argus::cert mdns::mdns argus::room argus::socket
     argus::sdk-voice argus::sdk-identity argus::sdk-camera)
 
 target_compile_options(gateway-core PRIVATE -Wall -Wextra)

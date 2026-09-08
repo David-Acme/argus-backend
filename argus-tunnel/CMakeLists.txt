@@ -6,7 +6,6 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 set(TUNNEL_SRC_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/src)
-set(SHARED_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../src/shared)
 
 if(NOT TARGET Drogon::Drogon)
     # Standalone build (outside the root project's configure).
@@ -31,9 +30,7 @@ add_library(tunnel-core STATIC
     ${TUNNEL_SRC_ROOT}/server/service-config.cc
 )
 
-target_include_directories(tunnel-core PUBLIC
-    ${TUNNEL_SRC_ROOT}
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src)
+target_include_directories(tunnel-core PUBLIC ${TUNNEL_SRC_ROOT})
 
 target_link_libraries(tunnel-core PUBLIC argus_common)
 

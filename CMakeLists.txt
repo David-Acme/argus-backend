@@ -5,7 +5,6 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-set(SRC_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/src)
 set(CMAKE_PREFIX_PATH ${CMAKE_BINARY_DIR} ${CMAKE_PREFIX_PATH})
 
 # Marks the root backend project: subprojects test this variable to know
@@ -36,28 +35,27 @@ enable_testing()
 
 add_subdirectory(third_party)
 
+# The foundation and the shared modules, in dependency order: a module may
+# only be added after everything it links. Everything below this block is a
+# service, discovered rather than listed.
 add_subdirectory(argus-common)
 add_subdirectory(argus-audio)
+add_subdirectory(argus-phrase)
 add_subdirectory(argus-tts-client)
 add_subdirectory(argus-llm-client)
 add_subdirectory(argus-stt-client)
-add_subdirectory(argus-phrase)
-add_subdirectory(src/cert)
-add_subdirectory(src/mdns)
-add_subdirectory(src/room)
-add_subdirectory(src/sqlite)
-add_subdirectory(src/socket)
-add_subdirectory(src/audit)
+add_subdirectory(argus-cert)
+add_subdirectory(argus-room)
+add_subdirectory(argus-sqlite)
+add_subdirectory(argus-socket)
+add_subdirectory(argus-audit)
 add_subdirectory(argus-auth)
 add_subdirectory(argus-identity)
-add_subdirectory(src/sync)
+add_subdirectory(argus-sync)
 
-# argus-voice service (F6-3): before the test tree so the suites link
-# voice-core with its usage requirements resolved; built on demand only.
+# argus-voice service (F6-3): before the services discovered below so the
+# suites link voice-core with its usage requirements resolved.
 add_subdirectory(argus-voice EXCLUDE_FROM_ALL)
-
-add_subdirectory(${SRC_ROOT}/test/unit ${CMAKE_BINARY_DIR}/test/unit)
-add_subdirectory(${SRC_ROOT}/test/e2e ${CMAKE_BINARY_DIR}/test/e2e)
 
 # argus-gateway service: built on demand, never as part of the default
 # backend build.
