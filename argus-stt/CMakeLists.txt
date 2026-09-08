@@ -6,7 +6,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 set(STT_SRC_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/src)
-set(SHARED_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../src/shared)
+set(SHARED_ROOT ${STT_SRC_ROOT}/shared)
 
 if(NOT TARGET Drogon::Drogon)
     # Standalone build (outside the root project's configure).
@@ -95,3 +95,37 @@ add_custom_command(TARGET argus-stt POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E create_symlink
             ${CMAKE_CURRENT_SOURCE_DIR}/../models
             $<TARGET_FILE_DIR:argus-stt>/models)
+
+# The wire suite is a root-project test; it opts back into the default
+# build because this folder is added EXCLUDE_FROM_ALL.
+if(ARGUS_ROOT_PROJECT)
+    find_package(doctest REQUIRED)
+
+
+    # The argus-stt wire contract (F4-3, Ruling BL): the real engine serves the
+    # transcribe/config legs from the shared models tree.
+    add_executable(stt-wire-test tests/unit/stt-wire-test.cc
+        ${STT_SRC_ROOT}/controllers/stt-controller.cc
+        ${SHARED_ROOT}/services/stt/stt-service.cc)
+
+    target_include_directories(stt-wire-test PRIVATE
+        ${STT_SRC_ROOT})
+
+    target_include_directories(stt-wire-test SYSTEM PRIVATE
+        ${CMAKE_SOURCE_DIR}/third_party/sherpa-onnx)
+
+    target_compile_definitions(stt-wire-test PRIVATE
+        ARGUS_TEST_STT_MODELS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../models/stt")
+
+    target_link_libraries(stt-wire-test PRIVATE argus_common argus::stt-client
+        onnxruntime::onnxruntime ${ARGUS_SHERPA_ONNX_TARGET} doctest::doctest)
+
+    target_include_directories(stt-wire-test PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/../argus-stt-client/tests/support)
+
+    target_compile_options(stt-wire-test PRIVATE -Wall -Wextra)
+
+    set_target_properties(stt-wire-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+
+    add_test(NAME stt-wire-test COMMAND stt-wire-test)
+endif()

@@ -6,7 +6,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 set(LLM_SRC_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/src)
-set(SHARED_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../src/shared)
+set(SHARED_ROOT ${LLM_SRC_ROOT}/shared)
 
 if(NOT TARGET Drogon::Drogon)
     # Standalone build (outside the root project's configure).
@@ -103,3 +103,29 @@ add_custom_command(TARGET argus-llm POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E create_symlink
             ${CMAKE_CURRENT_SOURCE_DIR}/../models
             $<TARGET_FILE_DIR:argus-llm>/models)
+
+# The LLM wire suite is a root-project test; it opts back into the default
+# build because this folder is added EXCLUDE_FROM_ALL.
+if(ARGUS_ROOT_PROJECT)
+    find_package(doctest REQUIRED)
+
+    add_executable(llm-wire-test tests/unit/llm-wire-test.cc
+        ${LLM_SRC_ROOT}/controllers/llm-controller.cc
+        ${LLM_SRC_ROOT}/llm/chat-dto.cc
+        ${SHARED_ROOT}/services/llm/llm-service.cc)
+
+    target_include_directories(llm-wire-test PRIVATE
+        ${CMAKE_SOURCE_DIR}/argus-llm/src)
+
+    target_compile_definitions(llm-wire-test PRIVATE
+        ARGUS_TEST_LLM_MODELS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../models/llm")
+
+    target_link_libraries(llm-wire-test PRIVATE argus_common argus::llm-client
+        argus::hardware-profile ${ARGUS_LLAMA_TARGETS} doctest::doctest)
+
+    target_compile_options(llm-wire-test PRIVATE -Wall -Wextra)
+
+    set_target_properties(llm-wire-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+
+    add_test(NAME llm-wire-test COMMAND llm-wire-test)
+endif()

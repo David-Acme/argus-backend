@@ -34,6 +34,7 @@ argus_module(NAME common
         src/shared/wrapper/api-response/api-response.hxx
         src/shared/wrapper/thread-budget/thread-budget.cc
         src/shared/wrapper/thread-budget/thread-budget.hxx
+        src/shared/wrapper/ai-init/ai-init.hxx
         src/shared/wrapper/blocking-task/blocking-task.hxx
         src/shared/wrapper/cancellation/cancellation-token.hxx
         src/shared/wrapper/nats/nats-bus.cc
