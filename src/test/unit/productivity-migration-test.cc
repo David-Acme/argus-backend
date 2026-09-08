@@ -129,9 +129,6 @@ TEST_CASE("migration copies the productivity tables and verifies them")
     CHECK_FALSE(entry.sourceChecksum.empty());
     CHECK(entry.sourceChecksum == entry.targetChecksum);
   }
-  // FK integrity: the copy keeps rows pointing at real productivity parents;
-  // only user references are expected to dangle (the user rows live in
-  // identity.db).
   sqlite3_stmt* violations = nullptr;
   REQUIRE(sqlite3_prepare_v2(target.get(), "PRAGMA foreign_key_check", -1,
                              &violations, nullptr) == SQLITE_OK);
@@ -199,7 +196,6 @@ TEST_CASE("migration refuses a non-schema-current existing target")
   CHECK_FALSE(report.ok);
   CHECK_MESSAGE(report.error.find("schema-current") != std::string::npos,
                 report.error);
-  // The operator file is never deleted: the target keeps its own tables.
   const auto target = openFile(fixture.targetPath);
   exec(target.get(), "SELECT * FROM unrelated");
 }
@@ -209,8 +205,6 @@ TEST_CASE("migration refuses an existing target with a stale column shape")
   const auto fixture = makeFixture();
   {
     const auto target = openFile(fixture.targetPath);
-    // All seven productivity tables exist but project lacks the schema's
-    // columns.
     for (const auto* table : {"project", "calendar_event", "reminder",
                               "project_task", "project_member",
                               "calendar_event_share", "reminder_detail"})

@@ -141,8 +141,7 @@ std::string historyBody(const std::string& first, const std::string& answer,
   return Json::writeString(builder, body);
 }
 
-// The chunked stream leg stays open (no Connection: close), so the reader
-// de-chunks the framing itself and stops at the terminal zero chunk.
+// The stream leg stays open, so the reader de-chunks the framing itself.
 std::vector<std::string> requestStream(int port, const std::string& body)
 {
   const int fd = ::socket(AF_INET, SOCK_STREAM, 0);
@@ -202,8 +201,7 @@ std::vector<std::string> requestStream(int port, const std::string& body)
   return chunks;
 }
 
-// The sentinel line is the exact end-of-stream marker; it is found by
-// scanning for the last "\n{" whose remainder parses as a done:true JSON.
+// Tokens plus the sentinel parsed from the final JSON stream line.
 struct StreamBody
 {
   std::string tokens;
@@ -274,8 +272,6 @@ TEST_CASE("the argus-llm internal wire serves the chat capacity")
   }
   ConfigService::load(kScratchConfig);
 
-  // argus-llm owns the process-global llama lifecycle in main.cc; the test
-  // mirrors that exact teardown order.
   llama_backend_init();
 
   const auto llm = std::make_shared<LlmController>();
@@ -304,12 +300,10 @@ TEST_CASE("the argus-llm internal wire serves the chat capacity")
   const int port = listeners.front().toPort();
   REQUIRE(port > 0);
 
-  // ── GET /health ───────────────────────────────────────────────────────
   const auto health = request(port, "GET", "/health", "");
   CHECK(health.status == 200);
   CHECK(envelope(health)["info"]["service"] == "argus-llm");
 
-  // ── GET /llm/v1/config ────────────────────────────────────────────────
   const auto config = request(port, "GET", "/llm/v1/config", "");
   const Json::Value configJson = envelope(config);
   CHECK(config.status == 200);
@@ -318,7 +312,6 @@ TEST_CASE("the argus-llm internal wire serves the chat capacity")
   CHECK(configJson["info"]["defaultTemperature"].asFloat() == doctest::Approx(0.3F));
   CHECK(configJson["info"]["contextSize"].asInt64() == 4096);
 
-  // ── POST /llm/v1/chat: frozen envelope {status, info.text, errors} ────
   const std::string firstBody = chatBody("Di exactamente: hola");
   const Json::Value firstJson = envelope({0, postChat(port, firstBody)});
   CHECK(firstJson["status"].asInt() == 200);
@@ -326,15 +319,12 @@ TEST_CASE("the argus-llm internal wire serves the chat capacity")
   const std::string firstText = firstJson["info"]["text"].asString();
   CHECK_FALSE(firstText.empty());
 
-  // Fresh cache: the boot warmup leaves nothing to reuse.
   const Json::Value afterFirst = envelope(request(port, "GET", "/llm/v1/config", ""));
   CHECK(afterFirst["info"]["lastReusedTokens"].asInt() == 0);
   CHECK(afterFirst["info"]["lastPromptTokens"].asInt() > 0);
   MESSAGE("first chat: \"" << firstText << "\" prompt="
            << afterFirst["info"]["lastPromptTokens"].asInt() << " tokens");
 
-  // KV-prefix reuse: a turn that extends the previous conversation's cached
-  // prompt+answer prefix reuses it; a diverging prompt thrashes the slot.
   const std::string historyBodyWire =
       historyBody("Di exactamente: hola", firstText, "Y ahora despidete");
   const Json::Value historyJson = envelope({0, postChat(port, historyBodyWire)});
@@ -354,7 +344,6 @@ TEST_CASE("the argus-llm internal wire serves the chat capacity")
   const Json::Value afterDivergent = envelope(request(port, "GET", "/llm/v1/config", ""));
   CHECK(afterDivergent["info"]["lastReusedTokens"].asInt() == 0);
 
-  // ── POST /llm/v1/chat-stream: token chunks + final sentinel line ──────
   const auto chunks = requestStream(port, divergentBody);
   const StreamBody streamed = joinChunks(chunks);
   REQUIRE(streamed.sentinelFound);
@@ -363,16 +352,11 @@ TEST_CASE("the argus-llm internal wire serves the chat capacity")
   CHECK(streamed.sentinel["decoded_tokens"].asInt() > 0);
   CHECK_FALSE(streamed.tokens.empty());
 
-  // Deterministic sampling (fixed seed): the streamed tokens join to the
-  // exact text the chat leg produced for the same request.
   CHECK(streamed.tokens == divergentText);
-  // Tokens ride their own chunks in arrival order; only the sentinel chunk
-  // carries the JSON line.
   CHECK(chunks.size() > 2);
   for (size_t i = 0; i + 1 < chunks.size(); ++i)
     CHECK(chunks[i].find("\"done\"") == std::string::npos);
 
-  // ── Validation: 400 transport shape, 422 field errors ────────────────
   const auto notJson = request(port, "POST", "/llm/v1/chat", "not json",
                                "text/plain");
   CHECK(notJson.status == 400);
@@ -389,7 +373,6 @@ TEST_CASE("the argus-llm internal wire serves the chat capacity")
   CHECK(badToken["status"].asInt() == 422);
   CHECK(badToken["errors"]["fields"].isMember("maxTokens"));
 
-  // ── Frozen routing errors: 404 and 405 envelopes ─────────────────────
   const auto notFound = request(port, "GET", "/llm/v1/missing", "");
   CHECK(notFound.status == 404);
   CHECK(envelope(notFound)["errors"]["code"] == "NOT_FOUND");
@@ -398,7 +381,6 @@ TEST_CASE("the argus-llm internal wire serves the chat capacity")
   CHECK(notAllowed.status == 405);
   CHECK(envelope(notAllowed)["errors"]["code"] == "METHOD_NOT_ALLOWED");
 
-  // ── 503 LLM_NOT_LOADED when the engine is down, then recovery ─────────
   llm->shutdownEngine();
   const auto down = postChat(port, firstBody);
   Json::Value downJson;

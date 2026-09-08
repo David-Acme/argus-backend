@@ -20,8 +20,7 @@ public:
   drogon::Task<bool> remove(int64_t id, int64_t actorId) const;
 
 private:
-  // Writes go over REST, reads come back through /sync: every mutation pushes
-  // the row to the owner's room so the client updates without polling.
+  // Pushes every mutation to the owner's room so the client updates without polling.
   drogon::Task<void> emit(SyncOperation operation,
                           const ProjectSchema& row) const;
   /** True for the owner and for a member whose membership says `edit`. */

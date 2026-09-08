@@ -137,7 +137,6 @@ TEST_CASE("the camera-talk route synthesizes over the argus-tts wire")
   std::thread runner([] { drogon::app().run(); });
   REQUIRE(waitForBoot(std::chrono::seconds(30)));
 
-  // ── Live wire: stub driver + reachable fake argus-tts ─────────────────────
   FakeTtsServer server;
   ConfigService::setRuntimeString(
       "tts.remote_url", "http://127.0.0.1:" + std::to_string(server.port()));
@@ -152,8 +151,6 @@ TEST_CASE("the camera-talk route synthesizes over the argus-tts wire")
   REQUIRE(result);
   CHECK(result->ok);
 
-  // The wire saw exactly one synthesize leg; the driver got the converted
-  // 16-bit PCM at the wire's sample rate.
   const auto requests = server.requests();
   CHECK(requests.at("POST /tts/v1/synthesize") == 1);
   CHECK(requests.at("GET /tts/v1/config") >= 1);
@@ -161,7 +158,6 @@ TEST_CASE("the camera-talk route synthesizes over the argus-tts wire")
   CHECK(speaker->lastSamples == 8);
   CHECK(speaker->lastRate == 22050);
 
-  // The controller wraps the same result in the frozen envelope.
   CameraControlController controller;
   const auto response =
       drogon::sync_wait(controller.talk(
@@ -170,13 +166,11 @@ TEST_CASE("the camera-talk route synthesizes over the argus-tts wire")
   CHECK(envelope["status"].asInt() == 200);
   CHECK(envelope["errors"].isNull());
 
-  // An unknown camera row is still a 404.
   const auto missing = drogon::sync_wait(controller.talk(
       drogon::HttpRequest::newHttpJsonRequest(talkBody("Hola camera")), 99));
   CHECK(body(missing)["status"].asInt() == 404);
   CHECK(body(missing)["errors"]["code"] == "NOT_FOUND");
 
-  // ── Dead argus-tts: 502-shaped envelope, no device call ───────────────────
   ConfigService::setRuntimeString("tts.remote_url",
                                   "http://127.0.0.1:" +
                                       std::to_string(deadPort()));
@@ -187,8 +181,6 @@ TEST_CASE("the camera-talk route synthesizes over the argus-tts wire")
   CHECK(deadEnvelope["errors"]["code"] == "CAMERA_UNREACHABLE");
   CHECK(deadEnvelope["errors"]["message"].asString().find(
             "Text-to-speech unavailable") != std::string::npos);
-  // The controller's own successful talk already spoke once; the dead leg
-  // must not have added another device call.
   CHECK(speaker->speakCalls == 2);
 
   ConfigService::setRuntimeString("tts.remote_url", "");

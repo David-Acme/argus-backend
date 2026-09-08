@@ -65,8 +65,6 @@ TEST_CASE("RemoteVoiceStt serves the IVoiceStt seam over the argus-stt wire")
   RemoteVoiceStt adapter;
   const std::vector<float> samples(1600, 0.1F);
 
-  // No setLanguage yet: the empty lang rides the wire and the service
-  // resolves it from its own stt.language config.
   CHECK(adapter.transcribe(samples, 16000) == "hola default");
   CHECK(server.requests().at("POST /stt/v1/transcribe?lang=") == 1);
 
@@ -78,24 +76,18 @@ TEST_CASE("RemoteVoiceStt serves the IVoiceStt seam over the argus-stt wire")
   CHECK(adapter.transcribe(samples, 16000) == "hola en");
   CHECK(server.requests().at("POST /stt/v1/transcribe?lang=en") == 1);
 
-  // The same accepted set as SttService::setLanguage, rejected locally
-  // without a wire call.
   const auto before = server.requests();
   CHECK_FALSE(adapter.setLanguage("fr"));
   CHECK(server.requests() == before);
 
-  // The wire is 16 kHz mono by contract.
   CHECK_THROWS_AS(adapter.transcribe(samples, 44100), std::runtime_error);
 
-  // The cached client follows a runtime remote_url change instead of being
-  // constructed per call (F4-2 lesson).
   FakeSttServer secondServer;
   pointAt("http://127.0.0.1:" + std::to_string(secondServer.port()));
   CHECK(adapter.transcribe(samples, 16000) == "hola en");
   CHECK(secondServer.requests().at("POST /stt/v1/transcribe?lang=en") == 1);
   CHECK(server.requests().at("POST /stt/v1/transcribe?lang=en") == 1);
 
-  // The body is binary s16 PCM: one int16 per sample.
   CHECK(server.lastBodySize() == samples.size() * sizeof(int16_t));
 
   pointAt("");
@@ -124,8 +116,6 @@ TEST_CASE("The voice session transcribes through the remote adapter")
     return sink.hasType("voice:assistant");
   }));
 
-  // The greeting leg runs TTS only: start() sets the language locally but
-  // sends nothing on the STT wire.
   CHECK(server.requests().empty());
 
   const size_t chunksBefore = sink.of(true).size();
@@ -133,7 +123,6 @@ TEST_CASE("The voice session transcribes through the remote adapter")
   auto sess = VoiceSessionTestAccess::sessionOf(session, sink);
   VoiceSessionTestAccess::runTurn(session, *sess, samples);
 
-  // The turn text came back over the wire and went out as the stt frame.
   CHECK(server.requests().at("POST /stt/v1/transcribe?lang=es") == 1);
   argus::voice::v1::ServerFrame sttFrame;
   for (const auto& frame : sink.snapshot())
@@ -148,7 +137,6 @@ TEST_CASE("The voice session transcribes through the remote adapter")
 
 TEST_CASE("An unreachable argus-stt degrades the turn, not the session")
 {
-  // A bound-then-closed port: every connect is refused on the loopback.
   int probe = ::socket(AF_INET, SOCK_STREAM, 0);
   sockaddr_in addr{};
   addr.sin_family = AF_INET;
@@ -182,8 +170,6 @@ TEST_CASE("An unreachable argus-stt degrades the turn, not the session")
   auto sess = VoiceSessionTestAccess::sessionOf(session, sink);
   VoiceSessionTestAccess::runTurn(session, *sess, samples);
 
-  // The existing error path: no stt frame, the stt_failed reaction frame
-  // goes out instead, and the worker thread is still alive.
   CHECK_FALSE(sink.hasType("voice:stt"));
   argus::voice::v1::ServerFrame event;
   bool eventFound = false;
@@ -194,7 +180,6 @@ TEST_CASE("An unreachable argus-stt degrades the turn, not the session")
     }
   CHECK(eventFound);
 
-  // The session still serves another turn after the failure.
   sess->history.clear();
   VoiceSessionTestAccess::runTurn(session, *sess, samples);
   CHECK(sink.size() > framesBefore);

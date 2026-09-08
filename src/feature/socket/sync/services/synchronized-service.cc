@@ -249,8 +249,6 @@ drogon::Task<Json::Value> SynchronizedService::sync(const SynchronizedDto& body,
     }
 
     const auto& repo = repoFor(table);
-    // A personal table is scoped to the caller whatever their role: the role
-    // decides which tables exist for them, the scope decides which rows.
     SyncFilter base{};
     if (isPersonalTable(table))
       base.userId = ctx.sub;

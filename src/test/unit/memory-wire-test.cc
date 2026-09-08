@@ -40,9 +40,7 @@ namespace
 
 constexpr const char* kScratchConfig = "memory-wire-test.toml";
 
-// The workers' chat substrate (WireMemoryChat) points at argus-llm; the test
-// stands in for it with a one-response-per-connection fake on an ephemeral
-// port, so the wire endpoints run against the real stack without the engine.
+// Fake argus-llm stand-in so the wire endpoints run against the real stack.
 class FakeLlmServer
 {
 public:
@@ -127,9 +125,6 @@ HttpReply request(int port, const std::string& method,
   addr.sin_family = AF_INET;
   addr.sin_port = htons(static_cast<uint16_t>(port));
   addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-  // A refused connect must not skip teardown: retry instead of failing the
-  // REQUIRE while the joinable runner thread is alive (a failed connect
-  // leaves the socket in an error state, so each attempt uses a fresh fd).
   int fd = -1;
   bool connected = false;
   for (int attempt = 0; attempt < 10 && !connected; ++attempt) {
@@ -256,8 +251,6 @@ TEST_CASE("the argus-memory internal wire serves the memory capacity")
   const auto memory = std::make_shared<MemoryController>();
   drogon::app().registerController(memory);
 
-  // argus-memory's main boots the stack before run() with deferStore: the
-  // store opens on the beginning advice, mirroring main.cc.
   memory->initStack();
   REQUIRE(memory->isStackLoaded());
 
@@ -277,8 +270,6 @@ TEST_CASE("the argus-memory internal wire serves the memory capacity")
   const int port = listeners.front().toPort();
   REQUIRE(port > 0);
 
-  // ── store layout: the memory tables plus the memory_vec partition; the
-  // face index belongs to the legacy process (create_face_vec = false) ──
   {
     sqlite3* scratch = nullptr;
     REQUIRE(sqlite3_open_v2("/tmp/f46-memory-wire/memory.db", &scratch,
@@ -307,12 +298,10 @@ TEST_CASE("the argus-memory internal wire serves the memory capacity")
     sqlite3_close(scratch);
   }
 
-  // ── GET /health ───────────────────────────────────────────────────────
   const auto health = request(port, "GET", "/health", "");
   CHECK(health.status == 200);
   CHECK(envelope(health)["info"]["service"] == "argus-memory");
 
-  // ── remember → fact_id ────────────────────────────────────────────────
   Json::Value remember(Json::objectValue);
   remember["subject"] = "mi hermana";
   remember["predicate"] = "se llama";
@@ -329,10 +318,8 @@ TEST_CASE("the argus-memory internal wire serves the memory capacity")
   CHECK(rememberJson["info"]["ok"].asBool());
   const int64_t factId = rememberJson["info"]["data"]["fact_id"].asInt64();
   CHECK(factId > 0);
-  // The vector index rides the worker queue: drain it so recall can hit.
   CHECK(memory->service().flushPending(10000));
 
-  // ── recall resolves the stored fact for user 1 (A) but not user 2 (B) ─
   Json::Value recallA(Json::objectValue);
   recallA["query"] = "mi hermana";
   recallA["context"] = context;
@@ -341,7 +328,6 @@ TEST_CASE("the argus-memory internal wire serves the memory capacity")
   CHECK(recallAJson["status"].asInt() == 200);
   CHECK(recallAJson["info"]["ok"].asBool());
   const std::string recallText = recallAJson["info"]["output"].asString();
-  // The recalled block carries the canonical surfaces, lowercased.
   CHECK(recallText.find("se llama ana") != std::string::npos);
 
   Json::Value recallB(Json::objectValue);
@@ -355,7 +341,6 @@ TEST_CASE("the argus-memory internal wire serves the memory capacity")
   CHECK(recallBJson["status"].asInt() == 200);
   CHECK_FALSE(recallBJson["info"]["ok"].asBool());
 
-  // ── procedure.run: an unknown goal degrades without the engine ────────
   Json::Value procedure(Json::objectValue);
   procedure["goal"] = "encender las luces del salon";
   const Json::Value procedureJson =
@@ -365,19 +350,16 @@ TEST_CASE("the argus-memory internal wire serves the memory capacity")
   CHECK(procedureJson["info"]["output"].asString().find(
             "no hay un procedimiento conocido") != std::string::npos);
 
-  // ── forget closes the fact ────────────────────────────────────────────
   Json::Value forget(Json::objectValue);
   forget["fact_id"] = factId;
   const Json::Value forgetJson = postJson(port, "/memory/v1/forget", forget);
   CHECK(forgetJson["status"].asInt() == 200);
   CHECK(forgetJson["info"]["ok"].asBool());
 
-  // The forgotten fact no longer resolves for user 1.
   const Json::Value recallGoneJson =
       postJson(port, "/memory/v1/recall", recallA);
   CHECK_FALSE(recallGoneJson["info"]["ok"].asBool());
 
-  // ── durable-transcript strips questions and their answers ─────────────
   Json::Value durable(Json::objectValue);
   durable["transcript"] =
       "user: buenas tardes\nassistant: hola, en que te ayudo\n"
@@ -397,7 +379,6 @@ TEST_CASE("the argus-memory internal wire serves the memory capacity")
         std::string::npos);
   CHECK(durableText.find("assistant: anotado") != std::string::npos);
 
-  // ── 422: validation errors carry the DTO field names ──────────────────
   const Json::Value badType = postJson(
       port, "/memory/v1/remember",
       parseJson(R"({"subject":"s","predicate":"p","value":"v",
@@ -416,18 +397,15 @@ TEST_CASE("the argus-memory internal wire serves the memory capacity")
   CHECK(badForget["status"].asInt() == 422);
   CHECK(badForget["errors"]["fields"].isMember("fact_id"));
 
-  // ── 400: a non-JSON body ──────────────────────────────────────────────
   CHECK(request(port, "POST", "/memory/v1/recall", "not json").status ==
         400);
 
-  // ── 404: an unknown tool route; 405: wrong method ─────────────────────
   Json::Value unknown(Json::objectValue);
   unknown["query"] = "algo";
   CHECK(postJson(port, "/memory/v1/unknown", unknown)["status"].asInt() ==
         404);
   CHECK(request(port, "GET", "/memory/v1/recall", "").status == 405);
 
-  // ── 503: the endpoints gate on the stack being loaded ─────────────────
   const auto dormant = std::make_shared<MemoryController>();
   Json::Value dormantBody;
   Json::Reader dormantReader;
@@ -442,7 +420,6 @@ TEST_CASE("the argus-memory internal wire serves the memory capacity")
   REQUIRE(reader.parse(std::string(notLoaded->getBody()), notLoadedJson));
   CHECK(notLoadedJson["errors"]["code"] == "MEMORY_NOT_LOADED");
 
-  // ── capture: an explicit statement stores with a fact id ──────────────
   Json::Value capture(Json::objectValue);
   capture["text"] = "recuerda que mi hermana se llama Ana";
   capture["user_id"] = 3;
@@ -452,7 +429,6 @@ TEST_CASE("the argus-memory internal wire serves the memory capacity")
   CHECK(captureJson["info"]["outcome"].asString() == "stored");
   CHECK(captureJson["info"]["fact_id"].asInt64() > 0);
 
-  // ── compact: the transcript is queued, not executed inline ────────────
   Json::Value compact(Json::objectValue);
   compact["user_id"] = 3;
   compact["transcript"] =

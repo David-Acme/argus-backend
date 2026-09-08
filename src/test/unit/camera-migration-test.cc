@@ -127,7 +127,6 @@ TEST_CASE("migration copies camera tables and verifies them")
     CHECK_FALSE(entry.sourceChecksum.empty());
     CHECK(entry.sourceChecksum == entry.targetChecksum);
   }
-  // FK integrity: the copy keeps camera_id rows pointing at real cameras.
   sqlite3_stmt* violations = nullptr;
   REQUIRE(sqlite3_prepare_v2(target.get(), "PRAGMA foreign_key_check", -1,
                              &violations, nullptr) == SQLITE_OK);
@@ -185,7 +184,6 @@ TEST_CASE("migration refuses a non-schema-current existing target")
   CHECK_FALSE(report.ok);
   CHECK_MESSAGE(report.error.find("schema-current") != std::string::npos,
                 report.error);
-  // The operator file is never deleted: the target keeps its own tables.
   const auto target = openFile(fixture.targetPath);
   exec(target.get(), "SELECT * FROM unrelated");
 }
@@ -195,7 +193,6 @@ TEST_CASE("migration refuses an existing target with a stale column shape")
   const auto fixture = makeFixture();
   {
     const auto target = openFile(fixture.targetPath);
-    // All three camera tables exist but camera lacks the schema's columns.
     exec(target.get(), "CREATE TABLE camera (id INTEGER PRIMARY KEY)");
     exec(target.get(), "CREATE TABLE camera_stream (id INTEGER PRIMARY KEY)");
     exec(target.get(), "CREATE TABLE zone (id INTEGER PRIMARY KEY)");

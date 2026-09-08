@@ -95,9 +95,6 @@ TEST_CASE("processFrame aggregates detections over the window")
   inputs.objects.maxFpsInference = 2.0;
   inputs.operator_.aggregationWindowMs = 80;
   inputs.operator_.cooldownMs = 60000;
-  // Pin the night window off (start == end): the day-rule assertions below
-  // must not depend on the wall clock at which the suite runs. The night
-  // rules themselves are covered by event-intelligence-test.
   inputs.operator_.nightStartHour = 22;
   inputs.operator_.nightEndHour = 22;
 
@@ -110,7 +107,6 @@ TEST_CASE("processFrame aggregates detections over the window")
   CHECK(sink.events.empty());
 
   sleepMs(100);
-  // The window keeps the person (rule 6) and gathers the car as extra data.
   detector.next = {personObject(), carObject()};
   service.processFrame(1, "Front", frame);
 
@@ -135,7 +131,6 @@ TEST_CASE("the aggregation window keeps the dominant severity")
   inputs.dependencies = {&detector, nullptr, &sink, &matcher};
   inputs.operator_.aggregationWindowMs = 80;
   inputs.operator_.cooldownMs = 60000;
-  // A person inside an alert zone lifts the window to critical.
   OperatorZone zone;
   zone.cameraId = 1;
   zone.kind = "alert";
@@ -205,7 +200,6 @@ TEST_CASE("no detections and an unloaded detector never publish")
   service.processFrame(1, "Front", frame);
   CHECK(sink.events.empty());
 
-  // An unloaded detector stops the pipeline before inference.
   class UnloadedDetector final : public IObjectDetector
   {
   public:

@@ -129,8 +129,7 @@ Json::Value envelope(const HttpReply& reply)
   return json;
 }
 
-// 16 kHz mono s16 RIFF wav → float samples (the exact int16/32768 mapping
-// the voice session applies to its WS frames).
+// 16 kHz mono s16 RIFF wav to float samples, int16/32768 mapping.
 std::vector<float> wavSamples(const std::string& path)
 {
   std::ifstream in(path, std::ios::binary);
@@ -200,7 +199,6 @@ TEST_CASE("the argus-stt internal wire serves the legacy voice session")
   ConfigService::load(kScratchConfig);
   ConfigService::setRuntimeString("stt.models_dir", ARGUS_TEST_STT_MODELS_DIR);
 
-  // The capacity boots for real: no engine, no contract.
   SttService::instance().init();
   REQUIRE_MESSAGE(SttService::instance().isLoaded(),
                   "STT engine failed to load from " ARGUS_TEST_STT_MODELS_DIR
@@ -229,12 +227,10 @@ TEST_CASE("the argus-stt internal wire serves the legacy voice session")
   constexpr const char* kWav =
       ARGUS_TEST_STT_MODELS_DIR "/zipformer-en/test_wavs/0.wav";
 
-  // ── GET /health ───────────────────────────────────────────────────────────
   const auto health = request(port, "GET", "/health", "");
   CHECK(health.status == 200);
   CHECK(envelope(health)["info"]["service"] == "argus-stt");
 
-  // ── GET /stt/v1/config ────────────────────────────────────────────────────
   const auto config = request(port, "GET", "/stt/v1/config", "");
   const Json::Value configJson = envelope(config);
   CHECK(config.status == 200);
@@ -242,7 +238,6 @@ TEST_CASE("the argus-stt internal wire serves the legacy voice session")
   CHECK(configJson["info"]["defaultLanguage"] == "es");
   CHECK(configJson["info"]["language"] == "es");
 
-  // ── POST /stt/v1/transcribe: binary s16 PCM in, envelope {text} out ──────
   const std::vector<float> samples = wavSamples(kWav);
   const std::string pcm = pcmBytes(samples);
   REQUIRE(samples.size() > 16000);
@@ -263,14 +258,10 @@ TEST_CASE("the argus-stt internal wire serves the legacy voice session")
   CHECK(transcribeJson["info"].isMember("text"));
   CHECK(ms < 30000);
 
-  // A/B vs the pre-cutover in-process path: the same PCM through
-  // SttService::transcribe produces the SAME TEXT (deterministic greedy
-  // decode; audio bytes are not the acceptance, text is).
   const std::string inProcess =
       SttService::instance().transcribe(samples, 16000);
   CHECK(transcribeJson["info"]["text"].asString() == inProcess);
 
-  // ── lang handling: "" resolves from the service stt.language config ──────
   const auto emptyLang = request(port, "POST", "/stt/v1/transcribe?lang=", pcm,
                                  "audio/x-argus-pcm-s16");
   CHECK(emptyLang.status == 200);
@@ -281,22 +272,18 @@ TEST_CASE("the argus-stt internal wire serves the legacy voice session")
   CHECK(noParam.status == 200);
   CHECK(envelope(noParam)["info"]["text"] == inProcess);
 
-  // Ruling BE: one global recognizer — a different lang rebuilds it and
-  // /stt/v1/config reports the new language.
   const auto english = request(port, "POST", "/stt/v1/transcribe?lang=en", pcm,
                                "audio/x-argus-pcm-s16");
   CHECK(english.status == 200);
   const auto afterSwitch = request(port, "GET", "/stt/v1/config", "");
   CHECK(envelope(afterSwitch)["info"]["language"] == "en");
 
-  // Unsupported lang → 422 with the frozen envelope.
   const auto french = request(port, "POST", "/stt/v1/transcribe?lang=fr", pcm,
                               "audio/x-argus-pcm-s16");
   CHECK(french.status == 422);
   CHECK(envelope(french)["errors"]["code"] == "VALIDATION_ERROR");
   CHECK(envelope(french)["errors"]["fields"].isMember("lang"));
 
-  // ── Body validation: 400 for transport-shape problems, 422 for empty ─────
   const auto badType = request(port, "POST", "/stt/v1/transcribe?lang=es", pcm,
                                "audio/wav");
   CHECK(badType.status == 400);
@@ -312,7 +299,6 @@ TEST_CASE("the argus-stt internal wire serves the legacy voice session")
   CHECK(emptyBody.status == 422);
   CHECK(envelope(emptyBody)["errors"]["fields"].isMember("body"));
 
-  // ── Frozen routing errors: 404 and 405 envelopes ─────────────────────────
   const auto notFound = request(port, "GET", "/stt/v1/missing", "");
   CHECK(notFound.status == 404);
   CHECK(envelope(notFound)["errors"]["code"] == "NOT_FOUND");
@@ -321,7 +307,6 @@ TEST_CASE("the argus-stt internal wire serves the legacy voice session")
   CHECK(notAllowed.status == 405);
   CHECK(envelope(notAllowed)["errors"]["code"] == "METHOD_NOT_ALLOWED");
 
-  // ── Long audio: latency is served and logged (samples + ms at INFO) ──────
   const std::vector<float> longSamples =
       wavSamples(ARGUS_TEST_STT_MODELS_DIR "/zipformer-en/test_wavs/1.wav");
   const auto longT0 = std::chrono::steady_clock::now();
@@ -336,7 +321,6 @@ TEST_CASE("the argus-stt internal wire serves the legacy voice session")
   CHECK(longSamples.size() > 16000 * 10);
   CHECK(longMs < 60000);
 
-  // ── 503 STT_NOT_LOADED when the engine is down ───────────────────────────
   SttService::instance().shutdown();
   const auto down = request(port, "POST", "/stt/v1/transcribe?lang=es", pcm,
                             "audio/x-argus-pcm-s16");

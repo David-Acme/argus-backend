@@ -1,9 +1,5 @@
 #pragma once
 
-// Minimal in-process HTTP server mimicking the argus-stt internal wire for
-// unit tests: canned transcribe responses keyed by the lang parameter plus
-// request counting, one connection at a time.
-
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
@@ -21,6 +17,7 @@
 namespace
 {
 
+// Minimal in-process HTTP server standing in for the argus-stt wire in unit tests.
 class FakeSttServer
 {
 public:
@@ -65,7 +62,6 @@ public:
       return;
     ::close(listen_);
     listen_ = -1;
-    // Unblock the accept loop with a throwaway connection.
     const int fd = ::socket(AF_INET, SOCK_STREAM, 0);
     sockaddr_in addr{};
     addr.sin_family = AF_INET;
@@ -138,8 +134,6 @@ private:
           lastBodySize_ = request.size() - bodyStart - 4;
       }
 
-      // The canned text encodes the received lang so tests can prove the
-      // parameter rode the wire ("hola default" resolves server-side).
       std::string lang;
       const auto langPos = path.find("lang=");
       if (langPos != std::string::npos)

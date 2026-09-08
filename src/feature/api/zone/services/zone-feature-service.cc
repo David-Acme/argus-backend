@@ -29,8 +29,6 @@ void ZoneFeatureService::emit(SyncOperation operation,
 drogon::Task<std::optional<ZoneSchema>>
 ZoneFeatureService::create(const CreateZoneDto& body) const
 {
-  // The FK would reject a dangling camera anyway; checking here turns that
-  // into a 404 instead of a database error.
   const auto camera = co_await cameraRepository_.findById(body.cameraId);
   if (!camera)
     co_return std::nullopt;

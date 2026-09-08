@@ -18,8 +18,7 @@ public:
   drogon::Task<bool> remove(int64_t id) const;
 
 private:
-  // A camera belongs to the house, not to a user, so it goes to the module
-  // room: every session with read access to `camera` sees the change.
+  // Emits camera changes to the module room so every reader session sees them.
   void emit(SyncOperation operation, const CameraSchema& row) const;
 
   CameraRepository repository_;

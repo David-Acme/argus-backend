@@ -1,9 +1,5 @@
 #pragma once
 
-// Minimal in-process HTTP server mimicking the argus-vlm internal wire for
-// unit tests: canned describe responses plus request counting and a parsed
-// copy of the last JSON body, so tests can prove which fields rode the wire.
-
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
@@ -21,6 +17,7 @@
 namespace
 {
 
+// Minimal in-process HTTP server standing in for the argus-vlm wire in unit tests.
 class FakeVlmServer
 {
 public:

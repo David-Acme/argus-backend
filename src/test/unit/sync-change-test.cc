@@ -60,7 +60,6 @@ TEST_CASE("disconnect and role-room payloads carry the room-control action")
   input.oldRole = UserRole::Resident;
   input.newRole = UserRole::Guest;
   const Json::Value roleRooms = sync_change::roleRoomsPayload(input);
-  // Room-control events carry the envelope triple the gateway parser requires.
   CHECK(roleRooms["action"] == "replace_role_rooms");
   CHECK(roleRooms["operation"] == 7);
   CHECK(roleRooms["option"] == "user");
@@ -76,8 +75,6 @@ TEST_CASE("payloads re-serialize to the client wire triple")
       emitDto(SyncOperation::Delete, TableName::Reminder);
   const Json::Value payload = sync_change::emitPayload(body, {9});
 
-  // The fan-out rebuilds the dto and emits json_util::toString(toJson()),
-  // exactly the string the legacy room emit sends.
   SocketEmitDto rebuilt;
   rebuilt.operation = static_cast<SyncOperation>(payload["operation"].asInt());
   rebuilt.option = tableNameFromString(payload["option"].asString());

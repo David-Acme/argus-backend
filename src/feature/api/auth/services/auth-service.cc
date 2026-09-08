@@ -47,8 +47,7 @@ inline constexpr std::string_view INSERT_REDEMPTION =
 namespace
 {
 
-// Login challenges live 2 minutes, long enough for a mobile to scan and
-// approve while keeping the window of a stolen QR code short.
+// Login challenges live 2 minutes to bound a stolen QR code window.
 constexpr int64_t kDeviceLoginTtlSeconds = 120;
 
 struct PendingDeviceSecret
@@ -64,9 +63,7 @@ struct PendingDeviceSecretInput
   int64_t expiresAt{0};
 };
 
-// A desktop challenge approved in credential mode delivers its issued device
-// secret exactly once to the polling device: held in memory only, TTL bound
-// to the challenge, never persisted.
+// Pending device secrets live in memory only and expire with their challenge.
 std::map<std::string, PendingDeviceSecret>& pendingDeviceSecrets()
 {
   static std::map<std::string, PendingDeviceSecret> secrets;
@@ -144,9 +141,6 @@ AuthService::registerUser(RegisterDto body,
   auto existing =
       FaceService::instance().faceDb().search(face->embedding.data());
 
-  // A face that already belongs to an active user lets the caller straight in:
-  // the owner gets an admin session, anyone else a session marked as
-  // "already registered" so the client can inform them.
   if (existing && existing->second >= 0.80F) {
     auto person = co_await personRepository_.findById(existing->first);
     if (!person || !person->userId)
@@ -164,7 +158,6 @@ AuthService::registerUser(RegisterDto body,
     co_return session;
   }
 
-  // Language: from the device on register; empty/invalid → system default.
   VoiceLang lang = voiceLangFromString(body.lang);
   if (lang == VoiceLang::System) {
     lang = voiceLangFromString(ConfigService::getString("stt.language"));
@@ -275,8 +268,6 @@ AuthService::registerUser(RegisterDto body,
 
   co_await privatePortraitService_.store(userId, portraitImage);
 
-  // Memory catalog replica feed (Ruling BX): the enrolled person row fans
-  // out on the identity change subject.
   if (identity_change::getSink()) {
     Json::Value row(Json::objectValue);
     row["id"] = static_cast<Json::Int64>(personId);
@@ -386,9 +377,6 @@ AuthService::approveDeviceLogin(const std::string& challengeId,
   const auto credential = co_await issueDeviceCredential(
       approvingUserId, challenge->userAgent);
 
-  // Bind the session to the DESKTOP device hash captured when the challenge
-  // was created, so the desktop's own DeviceFilter matches when it polls. In
-  // credential mode the freshly issued credential defines that hash instead.
   RefreshTokenCreateInput rtInput;
   rtInput.userId = approvingUserId;
   rtInput.accessToken = accessToken;
@@ -436,7 +424,6 @@ AuthService::pollDeviceLogin(const std::string& challengeId) const
         dto.role = user->role;
       }
     }
-    // Single-use delivery: the tokens are handed over exactly once.
     co_await challengeRepository_.remove(challengeId);
     co_return dto;
   }
@@ -507,8 +494,6 @@ AuthService::refreshToken(const RefreshTokenDto& body,
   if (!co_await refreshTokenRepository_.markUsed(existing->id))
     throw ResponseException("Invalid or expired refresh token", 401,
                             AppConfig::ERROR_CODE_UNAUTHORIZED);
-  // Used and expired rows pile up otherwise: one login per day leaves a year of
-  // dead tokens behind.
   co_await refreshTokenRepository_.pruneStale(userId);
 
   std::map<std::string, std::string> newClaims;

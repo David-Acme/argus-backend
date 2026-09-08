@@ -16,9 +16,6 @@ void SyncSocket::handleNewMessage(const drogon::WebSocketConnectionPtr& conn,
                                   const drogon::WebSocketMessageType& type)
 {
   if (type == drogon::WebSocketMessageType::Binary) {
-    // Per-frame logging is removed: 25+ lines/s of real-time mic audio
-    // floods the log. The voice service logs the meaningful events (VAD
-    // turns, STT results, spoken sentences) instead.
     service_.handleBinary(conn, message);
     return;
   }

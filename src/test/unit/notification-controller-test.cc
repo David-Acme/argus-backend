@@ -42,9 +42,7 @@ struct RecordedAudit
   std::vector<int64_t> users;
 };
 
-// Captures what the feature services hand to the change funnel: the audit
-// diffs the gateway turns into user_audit_log rows (Ruling Y: nothing is
-// persisted locally).
+// Records the emits and audit diffs the feature services hand to the funnel.
 class RecordingSink final : public UserChangeSink
 {
 public:
@@ -75,9 +73,7 @@ public:
   mutable std::vector<RecordedAudit> audits;
 };
 
-// notification.db shape, notification-schema.sql source of truth: both
-// notification tables plus the notification_token indexes (the unique one
-// backs the ON CONFLICT target of the token upsert).
+// Seeds both notification tables and the notification_token indexes.
 void seedNotificationDb(const char* path)
 {
   std::remove(path);
@@ -164,7 +160,6 @@ TEST_CASE("notification contracts hold on the argus-notification surface")
     return req;
   };
 
-  // Empty ids keeps the legacy 422 validation envelope.
   bool validationThrown = false;
   try {
     const auto dto = NotificationReadDto::fromJson(Json::Value());
@@ -185,9 +180,6 @@ TEST_CASE("notification contracts hold on the argus-notification surface")
   CHECK(markedJson["errors"].isNull());
   CHECK(markedJson["info"]["updated"].asBool());
 
-  // Every actually-changed row produces one audit publication addressed to
-  // the caller: the byte-identical legacy markAsRead behavior, funneled
-  // instead of persisted locally (Rulings AR/Y).
   REQUIRE(sink.audits.size() == 2);
   for (std::size_t i = 0; i < sink.audits.size(); ++i) {
     CHECK(sink.audits[i].recordId == static_cast<int64_t>(i + 1));
@@ -199,10 +191,8 @@ TEST_CASE("notification contracts hold on the argus-notification surface")
     CHECK(after["isRead"].asInt() == 1);
     CHECK(after["readAt"].asInt64() > 0);
   }
-  // Nothing is emitted for a read: the mobile app pulls the rows over /sync.
   CHECK(sink.emits.empty());
 
-  // Re-marking already-read rows is a no-op for the funnel.
   const auto remarkedAgain =
       drogon::sync_wait(notificationController.markAsRead(readReq({1, 2})));
   CHECK(body(remarkedAgain)["status"].asInt() == 200);
@@ -241,8 +231,6 @@ TEST_CASE("notification contracts hold on the argus-notification surface")
   CHECK(tokens.front().platform == "android");
   CHECK(tokens.front().lang == "en");
 
-  // Re-registering the same device rotates the token instead of colliding
-  // with the unique index.
   const auto rotated = drogon::sync_wait(
       tokenController.registerToken(tokenReq("token-b", "device-a")));
   CHECK(body(rotated)["status"].asInt() == 200);

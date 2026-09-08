@@ -112,7 +112,6 @@ TEST_CASE("The voice session greeting flows through the remote adapter")
 
 TEST_CASE("An unreachable argus-tts degrades the speak leg, not the session")
 {
-  // A bound-then-closed port: every connect is refused on the loopback.
   int probe = ::socket(AF_INET, SOCK_STREAM, 0);
   sockaddr_in addr{};
   addr.sin_family = AF_INET;

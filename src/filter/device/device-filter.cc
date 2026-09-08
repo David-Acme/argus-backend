@@ -9,8 +9,7 @@
 
 namespace
 {
-// A device credential is 32 random bytes as 64 hex chars; anything longer is
-// treated as an unknown credential without hashing or querying.
+// Anything over 64 hex chars is treated as an unknown credential.
 constexpr size_t kMaxCredentialLength = 128;
 
 bool trustedProxy(const std::string& peer)
@@ -61,8 +60,6 @@ DeviceFilter::doFilter(const drogon::HttpRequestPtr& req)
       if (co_await repository_.findActiveBySecretHash(secretHash))
         deviceHash = credentialFingerprint(ua, secretHash);
     }
-    // Unknown or missing credentials degrade to an empty device hash, which
-    // fails jwt-filter's session device match downstream.
     ctx.deviceHash = deviceHash;
   }
   else {

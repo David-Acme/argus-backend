@@ -4,9 +4,7 @@
 #include <drogon/drogon.h>
 #include <shared/services/sqlite/db-service.hxx>
 
-// The fallback to DbService::client() when no identity client is installed
-// keeps the pre-cutover byte-identical reads; the readOnlyClient() sync path
-// deliberately has no fallback (an uninstalled client serves empty).
+// Fallback identity client reads; the read-only sync client has no fallback.
 
 TEST_CASE("installed identity client serves its own database")
 {

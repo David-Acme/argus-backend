@@ -18,8 +18,7 @@ public:
   drogon::Task<drogon::HttpResponsePtr>
   doFilter(const drogon::HttpRequestPtr& req) override;
 
-  // Same fingerprint hash doFilter stores for this request; throws when no
-  // fingerprint secret is configured.
+  // Fingerprint hash doFilter stores for this request; throws without a secret.
   static std::string deviceKey(const drogon::HttpRequestPtr& req);
 
   // SHA-256 hex of a device credential plaintext.

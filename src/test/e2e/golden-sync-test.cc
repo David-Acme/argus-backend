@@ -1,8 +1,4 @@
-// Golden /sync frame recorder. A scripted WebSocket client that plays the
-// real client flow (refresh-token auth, bootstrap, audit syncs, camera
-// subscribe) against a locally running backend and either records the
-// resulting frames as fixtures or verifies a new session against them.
-// Read-only: it never touches camera control or alarm endpoints.
+// Golden /sync frame recorder: records fixture frames or verifies a new session.
 
 #include <drogon/HttpClient.h>
 #include <drogon/HttpRequest.h>
@@ -134,8 +130,7 @@ bool containsLower(const std::string& value, const std::string& needle)
   return lower.find(needle) != std::string::npos;
 }
 
-// Per-boot-varying values (ids, timestamps, tokens, nonces) are masked so the
-// fixtures compare structurally across migrations instead of byte-wise.
+// Masks the per-boot values the fixtures compare around.
 bool isMaskedIdKey(const std::string& key)
 {
   return key == "id" || key == "sub" || key == "subId" ||
@@ -256,7 +251,6 @@ Json::Value scenarioNormalized(const Scenario& scenario)
   }
   Json::Value frames(Json::arrayValue);
   for (const auto& frame : scenario.frames) {
-    // go2rtc emits camera:closed on its own retry schedule; compare without it.
     if (messageTypeOf(frame) == "camera:closed")
       continue;
     Json::Value entry(Json::objectValue);
@@ -449,10 +443,8 @@ int main(int argc, char* argv[])
   auto httpClient =
       drogon::HttpClient::newHttpClient(httpHost, loopThread.getLoop(), false,
                                         false);
-  // Drogon stamps its own default user agent over the request header.
   httpClient->setUserAgent(kRecorderUserAgent);
 
-  // Step 1: rotate the test refresh token over the real HTTP auth endpoint.
   Json::Value body;
   body["refreshToken"] = refreshToken;
   auto authReq = drogon::HttpRequest::newHttpJsonRequest(body);
@@ -520,7 +512,6 @@ int main(int argc, char* argv[])
   std::cout << "auth ok; the rotated ARGUS_TEST_REFRESH_TOKEN must be reused "
                "by the next recording run\n";
 
-  // Step 2: open /sync with the rotated access token.
   trantor::EventLoopThread wsLoopThread;
   wsLoopThread.run();
 
@@ -581,7 +572,6 @@ int main(int argc, char* argv[])
   const drogon::WebSocketConnectionPtr connection = wsClient->getConnection();
   std::cout << "ws connected: " << baseUrl << "/sync\n";
 
-  // Step 3: play the client scenarios and capture every incoming frame.
   std::vector<Scenario> scenarios;
   const auto runScenario = [&](Scenario scenario,
                                const std::function<bool(const Frame&)>& more) {
@@ -689,8 +679,6 @@ int main(int argc, char* argv[])
         const int subId = (*json)["payload"].get("subId", 0).asInt();
         connection->send("{\"type\":\"camera:unsubscribe\",\"payload\":"
                          "{\"subId\":" + std::to_string(subId) + "}}");
-        // The closed event arrives on go2rtc's own schedule: collect it when
-        // it shows up inside a short grace window, never wait for it.
         while (auto frame =
                    collector.take(std::chrono::seconds(kClosedGraceSeconds))) {
           scenarios.back().frames.push_back(*frame);
@@ -747,7 +735,6 @@ int main(int argc, char* argv[])
     closedCv.wait_for(closedLock, std::chrono::seconds(3));
   }
 
-  // Step 4: write the fixtures or verify the new session against them.
   std::filesystem::create_directories(fixturesDir);
   const std::string manifestPath = fixturesDir + "/manifest.json";
   const bool verifyMode =

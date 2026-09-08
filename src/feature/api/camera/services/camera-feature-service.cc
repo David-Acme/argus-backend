@@ -72,8 +72,6 @@ CameraFeatureService::update(int64_t id, const UpdateCameraDto& body) const
   if (body.driver)
     input.driver = cameraDriverFromString(*body.driver);
   input.isEnabled = body.isEnabled;
-  // The enum is parsed here rather than inline in the aggregate: the string is
-  // only readable when the client actually sent the field.
   if (body.recordMode)
     input.recordMode = cameraRecordModeFromString(*body.recordMode);
 

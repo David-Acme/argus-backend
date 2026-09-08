@@ -76,8 +76,6 @@ UserFeatureService::update(const UserManagementUpdateInput& input) const
       .userIds = std::move(recipientIds),
   });
 
-  // Memory catalog replica feed (Ruling BX): the identity change subject
-  // carries user renames so downstream replicas observe identity writes.
   if (identity_change::getSink()) {
     identity_change::getSink()->publish(
         {.table = "user", .id = updated.id, .deleted = false,

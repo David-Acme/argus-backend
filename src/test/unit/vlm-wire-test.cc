@@ -147,8 +147,7 @@ std::string postDescribe(int port, const std::string& imageB64,
       .body;
 }
 
-// The synthetic bench frame: the exact image labs/vlm-bench builds, so the
-// wire captions can be compared 1:1 with the direct-engine probe.
+// The exact synthetic bench frame labs/vlm-bench builds.
 cv::Mat syntheticImage(int w, int h)
 {
   cv::Mat img(h, w, CV_8UC3, cv::Scalar(30, 40, 55));
@@ -207,7 +206,6 @@ TEST_CASE("the argus-vlm internal wire serves the vision capacity")
 
   llama_backend_init();
 
-  // The capacity boots for real: no engine, no contract.
   const auto vlm = std::make_shared<VlmController>();
   vlm->initEngine();
   REQUIRE_MESSAGE(vlm->isEngineLoaded(),
@@ -234,12 +232,10 @@ TEST_CASE("the argus-vlm internal wire serves the vision capacity")
   const int port = listeners.front().toPort();
   REQUIRE(port > 0);
 
-  // ── GET /health ───────────────────────────────────────────────────────
   const auto health = request(port, "GET", "/health", "");
   CHECK(health.status == 200);
   CHECK(envelope(health)["info"]["service"] == "argus-vlm");
 
-  // ── GET /vlm/v1/config ────────────────────────────────────────────────
   const auto config = request(port, "GET", "/vlm/v1/config", "");
   const Json::Value configJson = envelope(config);
   CHECK(config.status == 200);
@@ -247,7 +243,6 @@ TEST_CASE("the argus-vlm internal wire serves the vision capacity")
   CHECK(configJson["info"]["maxInputPx"].asInt() == 384);
   CHECK(configJson["info"]["defaultMaxTokens"].asInt() == 64);
 
-  // ── POST /vlm/v1/describe: base64 JPEG in, envelope {caption} out ────
   const cv::Mat img = syntheticImage(640, 480);
   const std::string imageB64 = jpegB64(img);
   const std::string personPrompt =
@@ -270,11 +265,6 @@ TEST_CASE("the argus-vlm internal wire serves the vision capacity")
   MESSAGE("wire caption: \"", wireCaption, "\" (", static_cast<int>(wireMs),
           " ms)");
 
-  // Wire-decode parity (direct leg): the same JPEG through the in-process
-  // VisionService the legacy adapter owns. The wire leg populated the
-  // service cache, so this leg is cache-served — its weight is that the
-  // wire's base64 -> imdecode -> scaled-pixels path hashes to the SAME
-  // cache key the direct Mat hashes to (byte-identical decoded pixels).
   const std::string jpegBytes = drogon::utils::base64Decode(imageB64);
   const cv::Mat encoded(1, static_cast<int>(jpegBytes.size()), CV_8UC1,
                         const_cast<char*>(jpegBytes.data()));
@@ -285,18 +275,12 @@ TEST_CASE("the argus-vlm internal wire serves the vision capacity")
   MESSAGE("direct caption: \"", directCaption, "\"");
   CHECK(directCaption == wireCaption);
 
-  // Real engine leg: a prompt no earlier call used busts the cache, so
-  // this caption comes from a genuine second engine run on the same JPEG
-  // (greedy decode). Raw output recorded; shape asserted, since captions
-  // may differ run-to-run under sampling.
   const std::string colorsPrompt = "Describe the dominant colors in this image.";
   const std::string engineCaption =
       vlm->service().describeMat(decoded, colorsPrompt, 0);
   MESSAGE("engine caption (cache-busted): \"", engineCaption, "\"");
   CHECK_FALSE(engineCaption.empty());
 
-  // Cache-hit path over the wire: an identical request returns the same
-  // caption without re-running the engine.
   const auto t1 = std::chrono::steady_clock::now();
   const std::string cachedBody = postDescribe(port, imageB64, personPrompt, "cam-1");
   const auto cachedMs =
@@ -308,7 +292,6 @@ TEST_CASE("the argus-vlm internal wire serves the vision capacity")
   CHECK(cachedJson["info"]["caption"].asString() == wireCaption);
   MESSAGE("cached repeat: ", static_cast<int>(cachedMs), " ms");
 
-  // Default prompt: an absent prompt resolves the configured default.
   const std::string defaultBody = postDescribe(port, imageB64, "");
   Json::Value defaultJson;
   REQUIRE(reader.parse(defaultBody, defaultJson));
@@ -317,7 +300,6 @@ TEST_CASE("the argus-vlm internal wire serves the vision capacity")
   MESSAGE("default-prompt caption: \"", defaultCaption, "\"");
   CHECK_FALSE(defaultCaption.empty());
 
-  // ── Validation: 400 transport shape, 422 field errors ────────────────
   const auto notJson =
       request(port, "POST", "/vlm/v1/describe", "not json", "text/plain");
   CHECK(notJson.status == 400);
@@ -345,7 +327,6 @@ TEST_CASE("the argus-vlm internal wire serves the vision capacity")
   CHECK(notAnImageJson["status"].asInt() == 422);
   CHECK(notAnImageJson["errors"]["fields"].isMember("image_b64"));
 
-  // ── Frozen routing errors: 404 and 405 envelopes ─────────────────────
   const auto notFound = request(port, "GET", "/vlm/v1/missing", "");
   CHECK(notFound.status == 404);
   CHECK(envelope(notFound)["errors"]["code"] == "NOT_FOUND");
@@ -354,7 +335,6 @@ TEST_CASE("the argus-vlm internal wire serves the vision capacity")
   CHECK(notAllowed.status == 405);
   CHECK(envelope(notAllowed)["errors"]["code"] == "METHOD_NOT_ALLOWED");
 
-  // ── 503 VLM_NOT_LOADED when the engine is down ───────────────────────
   vlm->shutdownEngine();
   const auto down = postDescribe(port, imageB64, personPrompt);
   Json::Value downJson;

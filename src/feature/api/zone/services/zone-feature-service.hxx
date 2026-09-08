@@ -19,8 +19,7 @@ public:
   drogon::Task<bool> remove(int64_t id) const;
 
 private:
-  // Zones belong to a camera, which belongs to the house: same module room as
-  // the camera itself.
+  // Zones share the camera's module room.
   void emit(SyncOperation operation, const ZoneSchema& row) const;
 
   ZoneRepository repository_;
