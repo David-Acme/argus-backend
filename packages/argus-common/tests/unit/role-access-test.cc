@@ -10,94 +10,116 @@ TEST_CASE("Owner has every permission on every table")
     for (int table = static_cast<int>(TableName::User);
          table <= static_cast<int>(kLastTableName); ++table) {
         const auto name = static_cast<TableName>(table);
-        CHECK(role_access::hasAccess(UserRole::Owner, name,
-                                     RolePermission::Read));
-        CHECK(role_access::hasAccess(UserRole::Owner, name,
-                                     RolePermission::Create));
-        CHECK(role_access::hasAccess(UserRole::Owner, name,
-                                     RolePermission::Update));
-        CHECK(role_access::hasAccess(UserRole::Owner, name,
-                                     RolePermission::Delete));
+        CHECK(role_access::hasAccess({.role = UserRole::Owner, .table = name,
+                                      .perm = RolePermission::Read}));
+        CHECK(role_access::hasAccess({.role = UserRole::Owner, .table = name,
+                                      .perm = RolePermission::Create}));
+        CHECK(role_access::hasAccess({.role = UserRole::Owner, .table = name,
+                                      .perm = RolePermission::Update}));
+        CHECK(role_access::hasAccess({.role = UserRole::Owner, .table = name,
+                                      .perm = RolePermission::Delete}));
     }
 }
 
 TEST_CASE("Resident permissions follow the kTableAccess map")
 {
-    CHECK(role_access::hasAccess(UserRole::Resident, TableName::Camera,
-                                 RolePermission::Read));
-    CHECK(role_access::hasAccess(UserRole::Resident, TableName::Camera,
-                                 RolePermission::Create));
-    CHECK(role_access::hasAccess(UserRole::Resident, TableName::Camera,
-                                 RolePermission::Update));
-    CHECK(role_access::hasAccess(UserRole::Resident, TableName::Camera,
-                                 RolePermission::Delete));
+    CHECK(role_access::hasAccess({.role = UserRole::Resident,
+                                  .table = TableName::Camera,
+                                  .perm = RolePermission::Read}));
+    CHECK(role_access::hasAccess({.role = UserRole::Resident,
+                                  .table = TableName::Camera,
+                                  .perm = RolePermission::Create}));
+    CHECK(role_access::hasAccess({.role = UserRole::Resident,
+                                  .table = TableName::Camera,
+                                  .perm = RolePermission::Update}));
+    CHECK(role_access::hasAccess({.role = UserRole::Resident,
+                                  .table = TableName::Camera,
+                                  .perm = RolePermission::Delete}));
 
-    CHECK(role_access::hasAccess(UserRole::Resident, TableName::Zone,
-                                 RolePermission::Delete));
-    CHECK(role_access::hasAccess(UserRole::Resident, TableName::Memory,
-                                 RolePermission::Create));
+    CHECK(role_access::hasAccess({.role = UserRole::Resident,
+                                  .table = TableName::Zone,
+                                  .perm = RolePermission::Delete}));
+    CHECK(role_access::hasAccess({.role = UserRole::Resident,
+                                  .table = TableName::Memory,
+                                  .perm = RolePermission::Create}));
 
-    CHECK(role_access::hasAccess(UserRole::Resident, TableName::User,
-                                 RolePermission::Read));
-    CHECK_FALSE(role_access::hasAccess(UserRole::Resident, TableName::User,
-                                       RolePermission::Create));
-    CHECK_FALSE(role_access::hasAccess(UserRole::Resident, TableName::User,
-                                       RolePermission::Update));
-    CHECK_FALSE(role_access::hasAccess(UserRole::Resident, TableName::User,
-                                       RolePermission::Delete));
+    CHECK(role_access::hasAccess({.role = UserRole::Resident,
+                                  .table = TableName::User,
+                                  .perm = RolePermission::Read}));
+    CHECK_FALSE(role_access::hasAccess({.role = UserRole::Resident,
+                                        .table = TableName::User,
+                                        .perm = RolePermission::Create}));
+    CHECK_FALSE(role_access::hasAccess({.role = UserRole::Resident,
+                                        .table = TableName::User,
+                                        .perm = RolePermission::Update}));
+    CHECK_FALSE(role_access::hasAccess({.role = UserRole::Resident,
+                                        .table = TableName::User,
+                                        .perm = RolePermission::Delete}));
 
-    CHECK(role_access::hasAccess(UserRole::Resident, TableName::Notification,
-                                 RolePermission::Read));
-    CHECK(role_access::hasAccess(UserRole::Resident, TableName::Notification,
-                                 RolePermission::Update));
-    CHECK_FALSE(role_access::hasAccess(UserRole::Resident,
-                                       TableName::Notification,
-                                       RolePermission::Delete));
+    CHECK(role_access::hasAccess({.role = UserRole::Resident,
+                                  .table = TableName::Notification,
+                                  .perm = RolePermission::Read}));
+    CHECK(role_access::hasAccess({.role = UserRole::Resident,
+                                  .table = TableName::Notification,
+                                  .perm = RolePermission::Update}));
+    CHECK_FALSE(role_access::hasAccess({.role = UserRole::Resident,
+                                        .table = TableName::Notification,
+                                        .perm = RolePermission::Delete}));
 
-    CHECK_FALSE(role_access::hasAccess(UserRole::Resident,
-                                       TableName::UserInvitation,
-                                       RolePermission::Read));
-    CHECK_FALSE(role_access::hasAccess(UserRole::Resident,
-                                       TableName::NotificationToken,
-                                       RolePermission::Read));
+    CHECK_FALSE(role_access::hasAccess({.role = UserRole::Resident,
+                                        .table = TableName::UserInvitation,
+                                        .perm = RolePermission::Read}));
+    CHECK_FALSE(role_access::hasAccess({.role = UserRole::Resident,
+                                        .table = TableName::NotificationToken,
+                                        .perm = RolePermission::Read}));
 }
 
 TEST_CASE("Guard permissions follow the kTableAccess map")
 {
-    CHECK(role_access::hasAccess(UserRole::Guard, TableName::Camera,
-                                 RolePermission::Read));
-    CHECK_FALSE(role_access::hasAccess(UserRole::Guard, TableName::Camera,
-                                       RolePermission::Create));
-    CHECK_FALSE(role_access::hasAccess(UserRole::Guard, TableName::Camera,
-                                       RolePermission::Delete));
+    CHECK(role_access::hasAccess({.role = UserRole::Guard,
+                                  .table = TableName::Camera,
+                                  .perm = RolePermission::Read}));
+    CHECK_FALSE(role_access::hasAccess({.role = UserRole::Guard,
+                                        .table = TableName::Camera,
+                                        .perm = RolePermission::Create}));
+    CHECK_FALSE(role_access::hasAccess({.role = UserRole::Guard,
+                                        .table = TableName::Camera,
+                                        .perm = RolePermission::Delete}));
 
-    CHECK(role_access::hasAccess(UserRole::Guard, TableName::Person,
-                                 RolePermission::Read));
-    CHECK_FALSE(role_access::hasAccess(UserRole::Guard, TableName::Person,
-                                       RolePermission::Update));
+    CHECK(role_access::hasAccess({.role = UserRole::Guard,
+                                  .table = TableName::Person,
+                                  .perm = RolePermission::Read}));
+    CHECK_FALSE(role_access::hasAccess({.role = UserRole::Guard,
+                                        .table = TableName::Person,
+                                        .perm = RolePermission::Update}));
 
-    CHECK_FALSE(role_access::hasAccess(UserRole::Guard, TableName::Reminder,
-                                       RolePermission::Read));
-    CHECK_FALSE(role_access::hasAccess(UserRole::Guard, TableName::Memory,
-                                       RolePermission::Read));
+    CHECK_FALSE(role_access::hasAccess({.role = UserRole::Guard,
+                                        .table = TableName::Reminder,
+                                        .perm = RolePermission::Read}));
+    CHECK_FALSE(role_access::hasAccess({.role = UserRole::Guard,
+                                        .table = TableName::Memory,
+                                        .perm = RolePermission::Read}));
 }
 
 TEST_CASE("Guest permissions follow the kTableAccess map")
 {
-    CHECK(role_access::hasAccess(UserRole::Guest, TableName::Camera,
-                                 RolePermission::Read));
-    CHECK_FALSE(role_access::hasAccess(UserRole::Guest, TableName::Camera,
-                                       RolePermission::Update));
+    CHECK(role_access::hasAccess({.role = UserRole::Guest,
+                                  .table = TableName::Camera,
+                                  .perm = RolePermission::Read}));
+    CHECK_FALSE(role_access::hasAccess({.role = UserRole::Guest,
+                                        .table = TableName::Camera,
+                                        .perm = RolePermission::Update}));
 
-    CHECK_FALSE(role_access::hasAccess(UserRole::Guest, TableName::Person,
-                                       RolePermission::Read));
+    CHECK_FALSE(role_access::hasAccess({.role = UserRole::Guest,
+                                        .table = TableName::Person,
+                                        .perm = RolePermission::Read}));
 
-    CHECK(role_access::hasAccess(UserRole::Guest,
-                                 TableName::NotificationToken,
-                                 RolePermission::Create));
-    CHECK_FALSE(role_access::hasAccess(UserRole::Guest,
-                                       TableName::NotificationToken,
-                                       RolePermission::Read));
+    CHECK(role_access::hasAccess({.role = UserRole::Guest,
+                                  .table = TableName::NotificationToken,
+                                  .perm = RolePermission::Create}));
+    CHECK_FALSE(role_access::hasAccess({.role = UserRole::Guest,
+                                        .table = TableName::NotificationToken,
+                                        .perm = RolePermission::Read}));
 }
 
 TEST_CASE("readableTables lists every table a role can read")
@@ -161,50 +183,62 @@ TEST_CASE("tableFromPath resolves the longest matching prefix")
 
 TEST_CASE("hasHttpAccess allows the Owner everywhere")
 {
-    CHECK(role_access::hasHttpAccess(UserRole::Owner, "/camera",
-                                     drogon::Delete));
-    CHECK(role_access::hasHttpAccess(UserRole::Owner, "/auth/logout",
-                                     drogon::Delete));
-    CHECK(role_access::hasHttpAccess(UserRole::Owner, "/anything", drogon::Get));
+    CHECK(role_access::hasHttpAccess(
+        {.role = UserRole::Owner, .path = "/camera", .method = drogon::Delete}));
+    CHECK(role_access::hasHttpAccess({.role = UserRole::Owner,
+                                      .path = "/auth/logout",
+                                      .method = drogon::Delete}));
+    CHECK(role_access::hasHttpAccess(
+        {.role = UserRole::Owner, .path = "/anything", .method = drogon::Get}));
 }
 
 TEST_CASE("hasHttpAccess enforces table permissions per role")
 {
-    CHECK(role_access::hasHttpAccess(UserRole::Resident, "/camera/1",
-                                     drogon::Get));
-    CHECK(role_access::hasHttpAccess(UserRole::Resident, "/camera/1",
-                                     drogon::Delete));
-    CHECK(role_access::hasHttpAccess(UserRole::Resident, "/zone",
-                                     drogon::Post));
-    CHECK_FALSE(role_access::hasHttpAccess(UserRole::Guest, "/camera/1",
-                                           drogon::Delete));
-    CHECK(role_access::hasHttpAccess(UserRole::Guard, "/camera/1",
-                                     drogon::Get));
-    CHECK_FALSE(role_access::hasHttpAccess(UserRole::Guard, "/camera/1",
-                                           drogon::Post));
-    CHECK(role_access::hasHttpAccess(UserRole::Guest, "/camera", drogon::Get));
-    CHECK_FALSE(role_access::hasHttpAccess(UserRole::Guest, "/reminder",
-                                           drogon::Get));
-    CHECK_FALSE(role_access::hasHttpAccess(UserRole::Guest, "/sync",
-                                           drogon::Get));
+    CHECK(role_access::hasHttpAccess(
+        {.role = UserRole::Resident, .path = "/camera/1", .method = drogon::Get}));
+    CHECK(role_access::hasHttpAccess({.role = UserRole::Resident,
+                                      .path = "/camera/1",
+                                      .method = drogon::Delete}));
+    CHECK(role_access::hasHttpAccess(
+        {.role = UserRole::Resident, .path = "/zone", .method = drogon::Post}));
+    CHECK_FALSE(role_access::hasHttpAccess({.role = UserRole::Guest,
+                                            .path = "/camera/1",
+                                            .method = drogon::Delete}));
+    CHECK(role_access::hasHttpAccess(
+        {.role = UserRole::Guard, .path = "/camera/1", .method = drogon::Get}));
+    CHECK_FALSE(role_access::hasHttpAccess(
+        {.role = UserRole::Guard, .path = "/camera/1", .method = drogon::Post}));
+    CHECK(role_access::hasHttpAccess(
+        {.role = UserRole::Guest, .path = "/camera", .method = drogon::Get}));
+    CHECK_FALSE(role_access::hasHttpAccess(
+        {.role = UserRole::Guest, .path = "/reminder", .method = drogon::Get}));
+    CHECK_FALSE(role_access::hasHttpAccess(
+        {.role = UserRole::Guest, .path = "/sync", .method = drogon::Get}));
 }
 
 TEST_CASE("hasHttpAccess applies kAuthAccess to /auth paths")
 {
-    CHECK(role_access::hasHttpAccess(UserRole::Resident, "/auth/login",
-                                     drogon::Post));
-    CHECK(role_access::hasHttpAccess(UserRole::Resident, "/auth/me",
-                                     drogon::Get));
-    CHECK(role_access::hasHttpAccess(UserRole::Resident, "/auth/profile",
-                                     drogon::Patch));
-    CHECK_FALSE(role_access::hasHttpAccess(UserRole::Resident, "/auth/logout",
-                                           drogon::Delete));
+    CHECK(role_access::hasHttpAccess({.role = UserRole::Resident,
+                                      .path = "/auth/login",
+                                      .method = drogon::Post}));
+    CHECK(role_access::hasHttpAccess(
+        {.role = UserRole::Resident, .path = "/auth/me", .method = drogon::Get}));
+    CHECK(role_access::hasHttpAccess({.role = UserRole::Resident,
+                                      .path = "/auth/profile",
+                                      .method = drogon::Patch}));
+    CHECK_FALSE(role_access::hasHttpAccess({.role = UserRole::Resident,
+                                            .path = "/auth/logout",
+                                            .method = drogon::Delete}));
 
-    CHECK(role_access::hasHttpAccess(UserRole::Guard, "/auth/me", drogon::Get));
-    CHECK_FALSE(role_access::hasHttpAccess(UserRole::Guard, "/auth/login",
-                                           drogon::Post));
+    CHECK(role_access::hasHttpAccess(
+        {.role = UserRole::Guard, .path = "/auth/me", .method = drogon::Get}));
+    CHECK_FALSE(role_access::hasHttpAccess({.role = UserRole::Guard,
+                                            .path = "/auth/login",
+                                            .method = drogon::Post}));
 
-    CHECK(role_access::hasHttpAccess(UserRole::Guest, "/auth/me", drogon::Get));
-    CHECK_FALSE(role_access::hasHttpAccess(UserRole::Guest, "/auth/logout",
-                                           drogon::Delete));
+    CHECK(role_access::hasHttpAccess(
+        {.role = UserRole::Guest, .path = "/auth/me", .method = drogon::Get}));
+    CHECK_FALSE(role_access::hasHttpAccess({.role = UserRole::Guest,
+                                            .path = "/auth/logout",
+                                            .method = drogon::Delete}));
 }

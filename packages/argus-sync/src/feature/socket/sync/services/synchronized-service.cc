@@ -248,7 +248,8 @@ drogon::Task<Json::Value> SynchronizedService::sync(const SynchronizedDto& body,
       continue;
 
     const auto table = tableNameFromString(name);
-    if (!role_access::hasAccess(ctx.role, table, RolePermission::Read)) {
+    if (!role_access::hasAccess(
+            {.role = ctx.role, .table = table, .perm = RolePermission::Read})) {
       out[name] = Json::nullValue;
       continue;
     }

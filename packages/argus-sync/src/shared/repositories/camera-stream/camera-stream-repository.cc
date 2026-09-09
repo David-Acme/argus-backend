@@ -131,8 +131,12 @@ CameraStreamRepository::find(const SyncFilter& filter) const
   auto client = DbService::cameraClient();
 
   const auto [query, args] =
-      sync_query::buildSyncQuery(filter, FIND, FIND_FROM, FIND_ALL, FIND_AFTER,
-                                 FIND_AFTER_FROM);
+      sync_query::buildSyncQuery({.filter = filter,
+                                  .queryBoth = FIND,
+                                  .queryFrom = FIND_FROM,
+                                  .queryAll = FIND_ALL,
+                                  .queryAfterBoth = FIND_AFTER,
+                                  .queryAfterFrom = FIND_AFTER_FROM});
   const auto& argsRef = args;
   const auto rows = co_await client->execSqlCoro(query, argsRef);
 
@@ -148,9 +152,12 @@ CameraStreamRepository::findDeleted(const SyncFilter& filter) const
   auto client = DbService::cameraClient();
 
   const auto [query, args] =
-      sync_query::buildSyncQuery(filter, FIND_DELETED, FIND_DELETED_FROM,
-                                 FIND_DELETED_ALL, FIND_DELETED_AFTER,
-                                 FIND_DELETED_AFTER_FROM);
+      sync_query::buildSyncQuery({.filter = filter,
+                                  .queryBoth = FIND_DELETED,
+                                  .queryFrom = FIND_DELETED_FROM,
+                                  .queryAll = FIND_DELETED_ALL,
+                                  .queryAfterBoth = FIND_DELETED_AFTER,
+                                  .queryAfterFrom = FIND_DELETED_AFTER_FROM});
   const auto& argsRef = args;
   const auto rows = co_await client->execSqlCoro(query, argsRef);
 

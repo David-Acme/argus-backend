@@ -21,8 +21,9 @@ tools::ToolResult ToolExecutor::execute(const tools::ToolCall& call,
     return result;
   }
 
-  if (!role_access::hasAccess(role, descriptor->accessTable,
-                              descriptor->accessPermission)) {
+  if (!role_access::hasAccess({.role = role,
+                               .table = descriptor->accessTable,
+                               .perm = descriptor->accessPermission})) {
     result.output = "permission denied for tool: " + call.name;
     return result;
   }

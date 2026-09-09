@@ -24,13 +24,25 @@ struct SyncQueryParts
   std::vector<std::string> args;
 };
 
-inline SyncQueryParts buildSyncQuery(const SyncFilter& filter,
-                                     std::string_view queryBoth,
-                                     std::string_view queryFrom,
-                                     std::string_view queryAll,
-                                     std::string_view queryAfterBoth = {},
-                                     std::string_view queryAfterFrom = {})
+struct BuildSyncQueryInput
 {
+  const SyncFilter& filter;
+  std::string_view queryBoth;
+  std::string_view queryFrom;
+  std::string_view queryAll;
+  std::string_view queryAfterBoth = {};
+  std::string_view queryAfterFrom = {};
+};
+
+inline SyncQueryParts buildSyncQuery(const BuildSyncQueryInput& input)
+{
+  const SyncFilter& filter = input.filter;
+  const std::string_view queryBoth = input.queryBoth;
+  const std::string_view queryFrom = input.queryFrom;
+  const std::string_view queryAll = input.queryAll;
+  const std::string_view queryAfterBoth = input.queryAfterBoth;
+  const std::string_view queryAfterFrom = input.queryAfterFrom;
+
   if (filter.startTime && filter.startId && !queryAfterBoth.empty()) {
     if (filter.endTime) {
       return {std::string(queryAfterBoth),
@@ -58,10 +70,19 @@ inline SyncQueryParts buildSyncQuery(const SyncFilter& filter,
 }
 
 // Appends the user argument once per `?` the ownership predicate spends.
-inline SyncQueryParts withUser(SyncQueryParts parts,
-                               const std::optional<int64_t>& userId,
-                               int placeholders)
+struct WithUserInput
 {
+  SyncQueryParts parts;
+  const std::optional<int64_t>& userId;
+  int placeholders;
+};
+
+inline SyncQueryParts withUser(const WithUserInput& input)
+{
+  SyncQueryParts parts = std::move(input.parts);
+  const std::optional<int64_t>& userId = input.userId;
+  const int placeholders = input.placeholders;
+
   const std::string value = std::to_string(userId.value_or(0));
   for (int i = 0; i < placeholders; ++i)
     parts.args.push_back(value);

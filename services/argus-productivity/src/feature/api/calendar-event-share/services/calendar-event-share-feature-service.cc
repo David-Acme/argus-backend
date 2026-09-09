@@ -70,8 +70,9 @@ CalendarEventShareFeatureService::create(const CreateCalendarEventShareDto& body
   const auto target = co_await userRepository_.findById(body.userId);
   if (!target || !target->isActive)
     co_return {.error = MembershipError::UserNotFound, .row = std::nullopt};
-  if (!role_access::hasAccess(target->role, TableName::CalendarEvent,
-                              RolePermission::Read))
+  if (!role_access::hasAccess({.role = target->role,
+                               .table = TableName::CalendarEvent,
+                               .perm = RolePermission::Read}))
     co_return {.error = MembershipError::UserNotAllowed, .row = std::nullopt};
 
   const auto access = shareAccessFromString(body.access);

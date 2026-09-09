@@ -85,9 +85,12 @@ EventRepository::find(const SyncFilter& filter) const
   if (!client)
     co_return {};
   const auto [query, args] =
-      sync_query::buildSyncQuery(filter, SYNC_FIND, SYNC_FIND_FROM,
-                                 SYNC_FIND_ALL, SYNC_FIND_AFTER,
-                                 SYNC_FIND_AFTER_FROM);
+      sync_query::buildSyncQuery({.filter = filter,
+                                  .queryBoth = SYNC_FIND,
+                                  .queryFrom = SYNC_FIND_FROM,
+                                  .queryAll = SYNC_FIND_ALL,
+                                  .queryAfterBoth = SYNC_FIND_AFTER,
+                                  .queryAfterFrom = SYNC_FIND_AFTER_FROM});
   const auto& argsRef = args;
   const auto rows = co_await client->execSqlCoro(query, argsRef);
 
@@ -103,10 +106,12 @@ EventRepository::findDeleted(const SyncFilter& filter) const
   auto client = DbService::readOnlyClient();
   if (!client)
     co_return {};
-  const auto [query, args] = sync_query::buildSyncQuery(
-      filter, SYNC_FIND_DELETED, SYNC_FIND_DELETED_FROM,
-      SYNC_FIND_DELETED_ALL, SYNC_FIND_DELETED_AFTER,
-      SYNC_FIND_DELETED_AFTER_FROM);
+  const auto [query, args] = sync_query::buildSyncQuery({.filter = filter,
+                                                         .queryBoth = SYNC_FIND_DELETED,
+                                                         .queryFrom = SYNC_FIND_DELETED_FROM,
+                                                         .queryAll = SYNC_FIND_DELETED_ALL,
+                                                         .queryAfterBoth = SYNC_FIND_DELETED_AFTER,
+                                                         .queryAfterFrom = SYNC_FIND_DELETED_AFTER_FROM});
   const auto& argsRef = args;
   const auto rows = co_await client->execSqlCoro(query, argsRef);
 

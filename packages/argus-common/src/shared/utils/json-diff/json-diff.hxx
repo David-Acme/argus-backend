@@ -13,6 +13,21 @@ struct Change
 
 using ChangesDiff = std::unordered_map<std::string, Change>;
 
+struct SetByPathInput
+{
+  Json::Value& root;
+  const std::vector<std::string>& segments;
+  const Json::Value& value;
+};
+
+struct DiffRecursiveInput
+{
+  const Json::Value& orig;
+  const Json::Value& upd;
+  std::string& path;
+  ChangesDiff& out;
+};
+
 struct ChangesComparisonResult
 {
   std::string type;
@@ -35,14 +50,11 @@ public:
   static Json::Value toJson(const ChangesDiff& changes);
 
 private:
-  static void diffRecursive(const Json::Value& orig, const Json::Value& upd,
-                            std::string& path, ChangesDiff& out);
+  static void diffRecursive(const DiffRecursiveInput& input);
   static bool valuesEqual(const Json::Value& a, const Json::Value& b);
   static Json::Value getByPath(const Json::Value& root,
                                const std::vector<std::string>& segments);
-  static void setByPath(Json::Value& root,
-                        const std::vector<std::string>& segments,
-                        const Json::Value& value);
+  static void setByPath(const SetByPathInput& input);
   static std::vector<std::string> splitPath(const std::string& path);
   static void deepMerge(Json::Value& target, const Json::Value& source);
   static bool isIndex(const std::string& s);

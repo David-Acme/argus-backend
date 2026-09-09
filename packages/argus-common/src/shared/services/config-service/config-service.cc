@@ -120,9 +120,21 @@ std::string escapeTomlString(const std::string& value)
 }
 
 // Patches `key = literal` inside `[section]`, preserving every other line.
-std::string patchContent(const std::string& content, const std::string& section,
-                         const std::string& key, const std::string& literal)
+struct PatchContentInput
 {
+  const std::string& content;
+  const std::string& section;
+  const std::string& key;
+  const std::string& literal;
+};
+
+std::string patchContent(const PatchContentInput& input)
+{
+  const std::string& content = input.content;
+  const std::string& section = input.section;
+  const std::string& key = input.key;
+  const std::string& literal = input.literal;
+
   std::vector<std::string> lines;
   std::istringstream ss(content);
   std::string line;
@@ -185,7 +197,10 @@ bool applyValue(const std::string& keyPath, const std::string& literal)
                             std::istreambuf_iterator<char>());
 
   const auto [section, key] = splitSectionKey(keyPath);
-  const std::string patched = patchContent(content, section, key, literal);
+  const std::string patched = patchContent({.content = content,
+                                            .section = section,
+                                            .key = key,
+                                            .literal = literal});
 
   try {
     gConfig = toml::parse(patched);

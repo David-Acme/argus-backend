@@ -46,8 +46,10 @@ drogon::Task<bool> CameraMediaService::forwardText(
   const auto& ctx = conn->getContextRef<JwtContext>();
 
   if (type == "camera:subscribe") {
-    if (!role_access::hasAccess(ctx.role, TableName::Camera,
-                                RolePermission::Read))
+    if (!role_access::hasAccess(
+            {.role = ctx.role,
+             .table = TableName::Camera,
+             .perm = RolePermission::Read}))
       throw ResponseException("Forbidden", 403,
                               AppConfig::ERROR_CODE_FORBIDDEN);
 

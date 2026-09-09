@@ -89,9 +89,12 @@ drogon::Task<std::vector<Json::Value>>
 UserInvitationRepository::find(const SyncFilter& filter) const
 {
   auto client = DbService::client();
-  const auto [query, args] = sync_query::buildSyncQuery(
-      filter, FIND_SYNC, FIND_SYNC_FROM, FIND_SYNC_ALL, FIND_SYNC_AFTER,
-      FIND_SYNC_AFTER_FROM);
+  const auto [query, args] = sync_query::buildSyncQuery({.filter = filter,
+                                                         .queryBoth = FIND_SYNC,
+                                                         .queryFrom = FIND_SYNC_FROM,
+                                                         .queryAll = FIND_SYNC_ALL,
+                                                         .queryAfterBoth = FIND_SYNC_AFTER,
+                                                         .queryAfterFrom = FIND_SYNC_AFTER_FROM});
   const auto& argsRef = args;
   const auto rows = co_await client->execSqlCoro(query, argsRef);
   std::vector<Json::Value> data;

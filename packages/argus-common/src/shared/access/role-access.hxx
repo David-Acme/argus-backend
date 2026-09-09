@@ -77,8 +77,19 @@ inline const std::unordered_map<UserRole,
         {UserRole::Guest, {drogon::Get}},
 };
 
-inline bool hasAccess(UserRole role, TableName table, RolePermission perm)
+struct HasAccessInput
 {
+  UserRole role;
+  TableName table;
+  RolePermission perm;
+};
+
+inline bool hasAccess(const HasAccessInput& input)
+{
+  const UserRole role = input.role;
+  const TableName table = input.table;
+  const RolePermission perm = input.perm;
+
   if (role == UserRole::Owner)
     return true;
 
@@ -164,9 +175,19 @@ inline std::optional<TableName> tableFromPath(std::string_view path)
   return std::nullopt;
 }
 
-inline bool hasHttpAccess(UserRole role, std::string_view path,
-                          drogon::HttpMethod method)
+struct HasHttpAccessInput
 {
+  UserRole role;
+  std::string_view path;
+  drogon::HttpMethod method;
+};
+
+inline bool hasHttpAccess(const HasHttpAccessInput& input)
+{
+  const UserRole role = input.role;
+  const std::string_view path = input.path;
+  const drogon::HttpMethod method = input.method;
+
   if (role == UserRole::Owner)
     return true;
 
@@ -181,7 +202,8 @@ inline bool hasHttpAccess(UserRole role, std::string_view path,
   if (!table)
     return false;
 
-  return hasAccess(role, *table, permissionForMethod(method));
+  return hasAccess(
+      {.role = role, .table = *table, .perm = permissionForMethod(method)});
 }
 
 } // namespace role_access

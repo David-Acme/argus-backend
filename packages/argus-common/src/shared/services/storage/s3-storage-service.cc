@@ -82,14 +82,27 @@ std::string objectPath(const S3Config& config, const std::string& objectKey)
   return "/" + config.bucket + "/" + objectKey;
 }
 
-drogon::Task<std::string> send(const S3Config& config, const std::string& method,
-                               const std::string& objectKey, const std::string& body,
-                               const std::string& contentType)
+struct SendInput
 {
+  const S3Config& config;
+  const std::string& method;
+  const std::string& objectKey;
+  const std::string& body;
+  const std::string& contentType;
+};
+
+drogon::Task<std::string> send(const SendInput& input)
+{
+  const S3Config& config = input.config;
+  const std::string& method = input.method;
+  const std::string& objectKey = input.objectKey;
+  const std::string& body = input.body;
+  const std::string& contentType = input.contentType;
+
   const auto payloadHash = s3_signing::sha256Hex(body);
   const auto timestamp = timestampUtc();
   const auto path = objectPath(config, objectKey);
-  s3_signing::SigV4Input input{
+  s3_signing::SigV4Input sig{
       .method = method,
       .canonicalUri = path,
       .canonicalQuery = "",
@@ -105,8 +118,8 @@ drogon::Task<std::string> send(const S3Config& config, const std::string& method
       .timestamp = timestamp,
   };
   if (!contentType.empty())
-    input.headers.emplace("content-type", contentType);
-  const auto signedRequest = s3_signing::sign(input);
+    sig.headers.emplace("content-type", contentType);
+  const auto signedRequest = s3_signing::sign(sig);
 
   auto request = drogon::HttpRequest::newHttpRequest();
   request->setMethod(method == "PUT" ? drogon::Put
@@ -154,7 +167,11 @@ S3StorageService::putPortrait(int64_t userId, const std::string& image) const
 
   const auto config = loadConfig();
   const auto key = "portraits/" + std::to_string(userId) + "/" + randomKeyPart() + ".jpg";
-  static_cast<void>(co_await send(config, "PUT", key, image, "image/jpeg"));
+  static_cast<void>(co_await send({.config = config,
+                                   .method = "PUT",
+                                   .objectKey = key,
+                                   .body = image,
+                                   .contentType = "image/jpeg"}));
   co_return S3StoredObject{
       .objectKey = key,
       .sha256 = s3_signing::sha256Hex(image),
@@ -168,12 +185,20 @@ S3StorageService::get(const std::string& objectKey) const
   if (objectKey.empty())
     throw ResponseException("Invalid portrait object", 422,
                             AppConfig::ERROR_CODE_BAD_REQUEST);
-  co_return co_await send(loadConfig(), "GET", objectKey, "", "");
+  co_return co_await send({.config = loadConfig(),
+                           .method = "GET",
+                           .objectKey = objectKey,
+                           .body = "",
+                           .contentType = ""});
 }
 
 drogon::Task<void> S3StorageService::remove(const std::string& objectKey) const
 {
   if (objectKey.empty())
     co_return;
-  static_cast<void>(co_await send(loadConfig(), "DELETE", objectKey, "", ""));
+  static_cast<void>(co_await send({.config = loadConfig(),
+                                   .method = "DELETE",
+                                   .objectKey = objectKey,
+                                   .body = "",
+                                   .contentType = ""}));
 }

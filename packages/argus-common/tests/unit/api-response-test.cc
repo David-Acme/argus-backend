@@ -71,7 +71,10 @@ TEST_CASE("ApiResponse::noContent keeps info and errors null")
 
 TEST_CASE("ApiResponse::error carries the status, code and message")
 {
-    const auto response = ApiResponse::error(404, "NOT_FOUND", "Path not found");
+    const auto response =
+        ApiResponse::error({.statusCode = 404,
+                            .errorCode = "NOT_FOUND",
+                            .message = "Path not found"});
     CHECK(response->getStatusCode() == drogon::k404NotFound);
 
     const auto body = bodyOf(response);

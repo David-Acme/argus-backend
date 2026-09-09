@@ -71,10 +71,12 @@ Json::Value JsonDiff::getByPath(const Json::Value& root,
   return *cur;
 }
 
-void JsonDiff::setByPath(Json::Value& root,
-                         const std::vector<std::string>& segments,
-                         const Json::Value& value)
+void JsonDiff::setByPath(const SetByPathInput& input)
 {
+  Json::Value& root = input.root;
+  const std::vector<std::string>& segments = input.segments;
+  const Json::Value& value = input.value;
+
   if (segments.empty())
     return;
   Json::Value* cur = &root;
@@ -137,9 +139,13 @@ void JsonDiff::deepMerge(Json::Value& target, const Json::Value& source)
   }
 }
 
-void JsonDiff::diffRecursive(const Json::Value& orig, const Json::Value& upd,
-                             std::string& path, ChangesDiff& out)
+void JsonDiff::diffRecursive(const DiffRecursiveInput& input)
 {
+  const Json::Value& orig = input.orig;
+  const Json::Value& upd = input.upd;
+  std::string& path = input.path;
+  ChangesDiff& out = input.out;
+
   if (orig.isArray() || upd.isArray()) {
     if (!valuesEqual(orig, upd))
       out[path] = Change{orig, upd};
@@ -171,7 +177,8 @@ void JsonDiff::diffRecursive(const Json::Value& orig, const Json::Value& upd,
         out[path] = Change{Json::Value(), upd[k]};
       }
       else {
-        diffRecursive(orig[k], upd[k], path, out);
+        diffRecursive(
+            {.orig = orig[k], .upd = upd[k], .path = path, .out = out});
       }
 
       path.resize(baseLen);
@@ -192,7 +199,7 @@ ChangesDiff JsonDiff::createFlatDiff(const Json::Value& original,
   ChangesDiff out;
   std::string path;
   path.reserve(128);
-  diffRecursive(original, updated, path, out);
+  diffRecursive({.orig = original, .upd = updated, .path = path, .out = out});
   return out;
 }
 
@@ -261,7 +268,7 @@ Json::Value JsonDiff::applyChanges(const ChangesDiff& changes,
 {
   for (const auto& [key, change] : changes) {
     const auto segments = splitPath(key);
-    setByPath(target, segments, change.current);
+    setByPath({.root = target, .segments = segments, .value = change.current});
   }
   return target;
 }

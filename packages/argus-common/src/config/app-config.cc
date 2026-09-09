@@ -26,64 +26,85 @@ void AppConfig::handleOptions(
 
 drogon::HttpResponsePtr AppConfig::get400Response(const std::string& message)
 {
-  return ApiResponse::error(400, ERROR_CODE_BAD_REQUEST, message);
+  return ApiResponse::error({.statusCode = 400,
+                              .errorCode = ERROR_CODE_BAD_REQUEST,
+                              .message = message});
 }
 
 drogon::HttpResponsePtr AppConfig::get401Response(const std::string& message)
 {
-  return ApiResponse::error(401, ERROR_CODE_UNAUTHORIZED, message);
+  return ApiResponse::error({.statusCode = 401,
+                              .errorCode = ERROR_CODE_UNAUTHORIZED,
+                              .message = message});
 }
 
 drogon::HttpResponsePtr AppConfig::get403Response(const std::string& message)
 {
-  return ApiResponse::error(403, ERROR_CODE_FORBIDDEN, message);
+  return ApiResponse::error({.statusCode = 403,
+                              .errorCode = ERROR_CODE_FORBIDDEN,
+                              .message = message});
 }
 
 drogon::HttpResponsePtr AppConfig::get404Response(const std::string& message)
 {
-  return ApiResponse::error(404, ERROR_CODE_NOT_FOUND, message);
+  return ApiResponse::error({.statusCode = 404,
+                              .errorCode = ERROR_CODE_NOT_FOUND,
+                              .message = message});
 }
 
 drogon::HttpResponsePtr AppConfig::get405Response(const std::string& message)
 {
-  return ApiResponse::error(405, ERROR_CODE_METHOD_NOT_ALLOWED, message);
+  return ApiResponse::error({.statusCode = 405,
+                              .errorCode = ERROR_CODE_METHOD_NOT_ALLOWED,
+                              .message = message});
 }
 
 drogon::HttpResponsePtr AppConfig::get409Response(const std::string& message)
 {
-  return ApiResponse::error(409, ERROR_CODE_CONFLICT, message);
+  return ApiResponse::error({.statusCode = 409,
+                              .errorCode = ERROR_CODE_CONFLICT,
+                              .message = message});
 }
 
 drogon::HttpResponsePtr AppConfig::get429Response(const std::string& message)
 {
-  return ApiResponse::error(429, ERROR_CODE_TOO_MANY_REQUESTS, message);
+  return ApiResponse::error({.statusCode = 429,
+                              .errorCode = ERROR_CODE_TOO_MANY_REQUESTS,
+                              .message = message});
 }
 
 drogon::HttpResponsePtr
 AppConfig::get500Response(const std::string& message,
                           const std::string& errorCode)
 {
-  return ApiResponse::error(500, errorCode, message);
+  return ApiResponse::error({.statusCode = 500,
+                              .errorCode = errorCode,
+                              .message = message});
 }
 
 drogon::HttpResponsePtr
 AppConfig::get502Response(const std::string& message,
                           const std::string& errorCode)
 {
-  return ApiResponse::error(502, errorCode, message);
+  return ApiResponse::error({.statusCode = 502,
+                              .errorCode = errorCode,
+                              .message = message});
 }
 
 drogon::HttpResponsePtr
 AppConfig::get503Response(const std::string& message,
                           const std::string& errorCode)
 {
-  return ApiResponse::error(503, errorCode, message);
+  return ApiResponse::error({.statusCode = 503,
+                              .errorCode = errorCode,
+                              .message = message});
 }
 
 drogon::HttpResponsePtr AppConfig::getRemoteNotAllowedResponse()
 {
-  return ApiResponse::error(403, ERROR_CODE_REMOTE_NOT_ALLOWED,
-                            "Remote requests are not allowed");
+  return ApiResponse::error({.statusCode = 403,
+                              .errorCode = ERROR_CODE_REMOTE_NOT_ALLOWED,
+                              .message = "Remote requests are not allowed"});
 }
 
 void AppConfig::handleException(
@@ -104,9 +125,13 @@ void AppConfig::handleException(
 
   if (const auto* re = dynamic_cast<const ResponseException*>(&e)) {
     respCallback(
-        ApiResponse::error(re->statusCode(), re->errorCode(), re->what()));
+        ApiResponse::error({.statusCode = re->statusCode(),
+                            .errorCode = re->errorCode(),
+                            .message = re->what()}));
     return;
   }
 
-  respCallback(ApiResponse::error(500, "INTERNAL_ERROR", e.what()));
+  respCallback(ApiResponse::error({.statusCode = 500,
+                                   .errorCode = "INTERNAL_ERROR",
+                                   .message = e.what()}));
 }

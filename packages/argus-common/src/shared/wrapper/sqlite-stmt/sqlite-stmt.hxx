@@ -4,6 +4,13 @@
 #include <string>
 #include <utility>
 
+struct BindBlobInput
+{
+  int index;
+  const void* data;
+  size_t size;
+};
+
 // RAII wrapper for sqlite3_stmt: statements are always finalized, move-only.
 class SqliteStmt
 {
@@ -65,8 +72,11 @@ public:
   {
     return sqlite3_bind_null(stmt_, index) == SQLITE_OK;
   }
-  bool bindBlob(int index, const void* data, size_t size)
+  bool bindBlob(const BindBlobInput& input)
   {
+    const int index = input.index;
+    const void* data = input.data;
+    const size_t size = input.size;
     return sqlite3_bind_blob(stmt_, index, data, static_cast<int>(size),
                              SQLITE_TRANSIENT) == SQLITE_OK;
   }

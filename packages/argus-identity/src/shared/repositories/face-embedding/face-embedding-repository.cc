@@ -12,7 +12,9 @@ namespace
 
 bool bindFloatVector(SqliteStmt& stmt, int index, const float* data, int count)
 {
-  return stmt.bindBlob(index, data, static_cast<size_t>(count) * sizeof(float));
+  return stmt.bindBlob({.index = index,
+                        .data = data,
+                        .size = static_cast<size_t>(count) * sizeof(float)});
 }
 
 } // namespace

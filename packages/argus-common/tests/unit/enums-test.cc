@@ -7,11 +7,22 @@
 #include <vector>
 
 template <typename Enum>
-static void checkRoundTrip(const std::vector<Enum>& values,
-                           const std::vector<std::string>& names,
-                           std::string (*toString)(Enum),
-                           Enum (*fromString)(const std::string&))
+struct CheckRoundTripInput
 {
+    const std::vector<Enum>& values;
+    const std::vector<std::string>& names;
+    std::string (*toString)(Enum);
+    Enum (*fromString)(const std::string&);
+};
+
+template <typename Enum>
+static void checkRoundTrip(const CheckRoundTripInput<Enum>& input)
+{
+    const auto& values = input.values;
+    const auto& names = input.names;
+    auto toString = input.toString;
+    auto fromString = input.fromString;
+
     REQUIRE(values.size() == names.size());
     for (size_t i = 0; i < values.size(); ++i) {
         CHECK(toString(values[i]) == names[i]);
@@ -21,121 +32,148 @@ static void checkRoundTrip(const std::vector<Enum>& values,
 
 TEST_CASE("user role strings round-trip")
 {
-    checkRoundTrip(
-        {UserRole::Owner, UserRole::Resident, UserRole::Guard, UserRole::Guest},
-        {"owner", "resident", "guard", "guest"}, userRoleToString,
-        userRoleFromString);
+    checkRoundTrip(CheckRoundTripInput{
+        .values = {UserRole::Owner, UserRole::Resident, UserRole::Guard,
+                   UserRole::Guest},
+        .names = {"owner", "resident", "guard", "guest"},
+        .toString = userRoleToString,
+        .fromString = userRoleFromString});
 }
 
 TEST_CASE("stored file category strings round-trip")
 {
-    checkRoundTrip({StoredFileCategory::Portrait, StoredFileCategory::Attachment},
-                   {"portrait", "attachment"}, storedFileCategoryToString,
-                   storedFileCategoryFromString);
+    checkRoundTrip(CheckRoundTripInput{
+        .values = {StoredFileCategory::Portrait, StoredFileCategory::Attachment},
+        .names = {"portrait", "attachment"},
+        .toString = storedFileCategoryToString,
+        .fromString = storedFileCategoryFromString});
 }
 
 TEST_CASE("event severity strings round-trip")
 {
-    checkRoundTrip(
-        {EventSeverity::Info, EventSeverity::Warning, EventSeverity::Critical},
-        {"info", "warning", "critical"}, eventSeverityToString,
-        eventSeverityFromString);
+    checkRoundTrip(CheckRoundTripInput{
+        .values = {EventSeverity::Info, EventSeverity::Warning,
+                   EventSeverity::Critical},
+        .names = {"info", "warning", "critical"},
+        .toString = eventSeverityToString,
+        .fromString = eventSeverityFromString});
 }
 
 TEST_CASE("camera record mode strings round-trip")
 {
-    checkRoundTrip({CameraRecordMode::Events, CameraRecordMode::Continuous},
-                   {"events", "continuous"}, cameraRecordModeToString,
-                   cameraRecordModeFromString);
+    checkRoundTrip(CheckRoundTripInput{
+        .values = {CameraRecordMode::Events, CameraRecordMode::Continuous},
+        .names = {"events", "continuous"},
+        .toString = cameraRecordModeToString,
+        .fromString = cameraRecordModeFromString});
 }
 
 TEST_CASE("zone type strings round-trip")
 {
-    checkRoundTrip({ZoneType::Monitor, ZoneType::Alert, ZoneType::Exclude},
-                   {"monitor", "alert", "exclude"}, zoneTypeToString,
-                   zoneTypeFromString);
+    checkRoundTrip(CheckRoundTripInput{
+        .values = {ZoneType::Monitor, ZoneType::Alert, ZoneType::Exclude},
+        .names = {"monitor", "alert", "exclude"},
+        .toString = zoneTypeToString,
+        .fromString = zoneTypeFromString});
 }
 
 TEST_CASE("reminder detail status strings round-trip")
 {
-    checkRoundTrip(
-        {ReminderDetailStatus::Pending, ReminderDetailStatus::InProgress,
-         ReminderDetailStatus::Done, ReminderDetailStatus::Blocked},
-        {"pending", "in_progress", "done", "blocked"},
-        reminderDetailStatusToString, reminderDetailStatusFromString);
+    checkRoundTrip(CheckRoundTripInput{
+        .values = {ReminderDetailStatus::Pending, ReminderDetailStatus::InProgress,
+                   ReminderDetailStatus::Done, ReminderDetailStatus::Blocked},
+        .names = {"pending", "in_progress", "done", "blocked"},
+        .toString = reminderDetailStatusToString,
+        .fromString = reminderDetailStatusFromString});
 }
 
 TEST_CASE("user action strings round-trip")
 {
-    checkRoundTrip(
-        {UserAction::Create, UserAction::Read, UserAction::Update,
-         UserAction::Delete},
-        {"create", "read", "update", "delete"}, userActionToString,
-        userActionFromString);
+    checkRoundTrip(CheckRoundTripInput{
+        .values = {UserAction::Create, UserAction::Read, UserAction::Update,
+                   UserAction::Delete},
+        .names = {"create", "read", "update", "delete"},
+        .toString = userActionToString,
+        .fromString = userActionFromString});
 }
 
 TEST_CASE("memory scope strings round-trip")
 {
-    checkRoundTrip(
-        {MemoryScope::Global, MemoryScope::User, MemoryScope::Person,
-         MemoryScope::Device, MemoryScope::Role},
-        {"global", "user", "person", "device", "role"}, memoryScopeToString,
-        memoryScopeFromString);
+    checkRoundTrip(CheckRoundTripInput{
+        .values = {MemoryScope::Global, MemoryScope::User, MemoryScope::Person,
+                   MemoryScope::Device, MemoryScope::Role},
+        .names = {"global", "user", "person", "device", "role"},
+        .toString = memoryScopeToString,
+        .fromString = memoryScopeFromString});
 }
 
 TEST_CASE("memory type strings round-trip")
 {
-    checkRoundTrip(
-        {MemoryType::Persona, MemoryType::Episodic, MemoryType::Instruction,
-         MemoryType::System},
-        {"persona", "episodic", "instruction", "system"}, memoryTypeToString,
-        memoryTypeFromString);
+    checkRoundTrip(CheckRoundTripInput{
+        .values = {MemoryType::Persona, MemoryType::Episodic, MemoryType::Instruction,
+                   MemoryType::System},
+        .names = {"persona", "episodic", "instruction", "system"},
+        .toString = memoryTypeToString,
+        .fromString = memoryTypeFromString});
 }
 
 TEST_CASE("phrase kind strings round-trip")
 {
-    checkRoundTrip(
-        {PhraseKind::Trigger, PhraseKind::Confirmation, PhraseKind::StatementStart,
-         PhraseKind::RecallMarker, PhraseKind::Interrogative, PhraseKind::Filler,
-         PhraseKind::Cancellation},
-        {"trigger", "confirmation", "statement_start", "recall_marker",
-         "interrogative", "filler", "cancellation"},
-        phraseKindToString, phraseKindFromString);
+    checkRoundTrip(CheckRoundTripInput{
+        .values = {PhraseKind::Trigger, PhraseKind::Confirmation,
+                   PhraseKind::StatementStart, PhraseKind::RecallMarker,
+                   PhraseKind::Interrogative, PhraseKind::Filler,
+                   PhraseKind::Cancellation},
+        .names = {"trigger", "confirmation", "statement_start", "recall_marker",
+                  "interrogative", "filler", "cancellation"},
+        .toString = phraseKindToString,
+        .fromString = phraseKindFromString});
 }
 
 TEST_CASE("lexicon kind strings round-trip")
 {
-    checkRoundTrip(
-        {LexiconKind::Predicate, LexiconKind::Kinship, LexiconKind::FirstPerson,
-         LexiconKind::Stopword},
-        {"predicate", "kinship", "first_person", "stopword"},
-        lexiconKindToString, lexiconKindFromString);
+    checkRoundTrip(CheckRoundTripInput{
+        .values = {LexiconKind::Predicate, LexiconKind::Kinship,
+                   LexiconKind::FirstPerson, LexiconKind::Stopword},
+        .names = {"predicate", "kinship", "first_person", "stopword"},
+        .toString = lexiconKindToString,
+        .fromString = lexiconKindFromString});
 }
 
 TEST_CASE("memory source strings round-trip")
 {
-    checkRoundTrip({MemorySource::Rule, MemorySource::Llm, MemorySource::Ingest},
-                   {"rule", "llm", "ingest"}, memorySourceToString,
-                   memorySourceFromString);
+    checkRoundTrip(CheckRoundTripInput{
+        .values = {MemorySource::Rule, MemorySource::Llm, MemorySource::Ingest},
+        .names = {"rule", "llm", "ingest"},
+        .toString = memorySourceToString,
+        .fromString = memorySourceFromString});
 }
 
 TEST_CASE("camera driver strings round-trip")
 {
-    checkRoundTrip({CameraDriver::Tapo, CameraDriver::Onvif, CameraDriver::Rtsp},
-                   {"tapo", "onvif", "rtsp"}, cameraDriverToString,
-                   cameraDriverFromString);
+    checkRoundTrip(CheckRoundTripInput{
+        .values = {CameraDriver::Tapo, CameraDriver::Onvif, CameraDriver::Rtsp},
+        .names = {"tapo", "onvif", "rtsp"},
+        .toString = cameraDriverToString,
+        .fromString = cameraDriverFromString});
 }
 
 TEST_CASE("share access strings round-trip")
 {
-    checkRoundTrip({ShareAccess::View, ShareAccess::Edit}, {"view", "edit"},
-                   shareAccessToString, shareAccessFromString);
+    checkRoundTrip(CheckRoundTripInput{
+        .values = {ShareAccess::View, ShareAccess::Edit},
+        .names = {"view", "edit"},
+        .toString = shareAccessToString,
+        .fromString = shareAccessFromString});
 }
 
 TEST_CASE("voice language strings round-trip")
 {
-    checkRoundTrip({VoiceLang::Es, VoiceLang::En}, {"es", "en"},
-                   voiceLangToString, voiceLangFromString);
+    checkRoundTrip(CheckRoundTripInput{
+        .values = {VoiceLang::Es, VoiceLang::En},
+        .names = {"es", "en"},
+        .toString = voiceLangToString,
+        .fromString = voiceLangFromString});
     CHECK(voiceLangToString(VoiceLang::System) == "");
     CHECK(voiceLangFromString("") == VoiceLang::System);
 }
@@ -165,7 +203,10 @@ TEST_CASE("table name strings round-trip")
         "notification_token", "user_action_log",     "refresh_token",
         "face_embedding",     "memory",
     };
-    checkRoundTrip(values, names, tableNameToString, tableNameFromString);
+    checkRoundTrip(CheckRoundTripInput{.values = values,
+                                        .names = names,
+                                        .toString = tableNameToString,
+                                        .fromString = tableNameFromString});
 
     CHECK(tableNameToString(TableName::Memory) == "memory");
     CHECK(tableNameToString(TableName::PersonEvent) == "person_event");

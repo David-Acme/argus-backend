@@ -14,7 +14,10 @@ RoleFilter::doFilter(const drogon::HttpRequestPtr& req)
   const auto& ctx =
       req->getAttributes()->get<JwtContext>(AppConfig::JWT_CTX_KEY);
 
-  if (!role_access::hasHttpAccess(ctx.role, req->getPath(), req->method())) {
+  if (!role_access::hasHttpAccess(
+          {.role = ctx.role,
+           .path = req->getPath(),
+           .method = req->method()})) {
     co_return AppConfig::get403Response();
   }
 
