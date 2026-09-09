@@ -76,6 +76,29 @@ struct RecallHit
   float score;
 };
 
+struct EpisodesBetweenInput
+{
+  std::string scope;
+  int64_t refId;
+  int64_t from;
+  int64_t to;
+  int limit;
+};
+
+struct SourceCreateInput
+{
+  std::string channel;
+  std::string turnRef;
+  int64_t at;
+};
+
+struct ProcedureRecordInput
+{
+  std::string name;
+  std::string goal;
+  std::string steps;
+};
+
 struct EpisodeCreateInput
 {
   std::string kind;
@@ -108,9 +131,7 @@ public:
   factsForEntity(const RecallEntityInput& input) = 0;
 
   virtual int64_t recordEpisode(const EpisodeCreateInput& input) = 0;
-  virtual std::vector<int64_t> episodesBetween(const std::string& scope,
-                                               int64_t refId, int64_t from,
-                                               int64_t to, int limit) = 0;
-  virtual int64_t createSource(const std::string& channel,
-                               const std::string& turnRef, int64_t at) = 0;
+  virtual std::vector<int64_t>
+  episodesBetween(const EpisodesBetweenInput& input) = 0;
+  virtual int64_t createSource(const SourceCreateInput& input) = 0;
 };

@@ -29,6 +29,24 @@ struct CaptureInput
   std::string text;
 };
 
+struct TranscriptJobInput
+{
+  int64_t userId;
+  std::string transcript;
+  std::string lang;
+};
+
+struct SystemEventInput
+{
+  std::string channel;
+  std::string summary;
+  std::string actor;
+  int64_t at;
+  int64_t userId;
+  std::string lang;
+  std::vector<int64_t> entitiesHint;
+};
+
 enum class CaptureOutcome
 {
   Rejected,
@@ -65,8 +83,6 @@ public:
 
   CaptureResult captureExplicit(const CaptureInput& input);
   CaptureResult captureImplicit(const CaptureInput& input);
-  CaptureResult captureToolCall(int64_t userId, const std::string& lang,
-                                const ToolCall& call);
   RecallContext recall(const RecallInput& input);
   void bumpHitCount(const std::vector<int64_t>& ids);
   void bumpEpisodeHits(const std::vector<int64_t>& ids);
@@ -77,23 +93,16 @@ public:
   std::string durableTranscript(const std::string& transcript,
                                 const std::string& lang) const;
 
-  void enqueueSummary(int64_t userId, const std::string& transcript,
-                      const std::string& lang);
-  void enqueueCompaction(int64_t userId, const std::string& transcript,
-                         const std::string& lang);
+  void enqueueSummary(const TranscriptJobInput& input);
+  void enqueueCompaction(const TranscriptJobInput& input);
   // Waits for the worker queue to drain; false when it gave up with work pending.
   bool flushPending(int timeoutMs = 0);
 
   // Blocks while the chat port reports busy; the queue itself is bounded by memory.queue_bound.
   void waitForIdle(int waitMs);
 
-  int64_t observeSystemEvent(const std::string& channel,
-                             const std::string& summary,
-                             const std::string& actor, int64_t at,
-                             int64_t userId, const std::string& lang,
-                             const std::vector<int64_t>& entitiesHint);
-  int64_t recordProcedure(const std::string& name, const std::string& goal,
-                          const std::string& steps);
+  int64_t observeSystemEvent(const SystemEventInput& input);
+  int64_t recordProcedure(const ProcedureRecordInput& input);
 
   void registerTools(ToolRegistry& registry);
 

@@ -443,8 +443,11 @@ GraphRecallResult GraphRecall::recall(const GraphRecallInput& input)
       std::vector<RecallHit> facts;
       {
         std::scoped_lock lock(graph_.mutex());
-        facts = repo_.ftsFacts(graph_.handle(), match, input.scope, input.refId,
-                               input.limit);
+        facts = repo_.ftsFacts(graph_.handle(),
+                               {.match = match,
+                                .scope = input.scope,
+                                .refId = input.refId,
+                                .limit = input.limit});
       }
       for (const auto& fact : facts) {
         GraphRecallHit out;
@@ -494,8 +497,11 @@ GraphRecallResult GraphRecall::recall(const GraphRecallInput& input)
       std::vector<EpisodeHit> episodes;
       {
         std::scoped_lock lock(graph_.mutex());
-        episodes = repo_.ftsEpisodes(graph_.handle(), match, input.scope,
-                                     input.refId, 2);
+        episodes = repo_.ftsEpisodes(graph_.handle(),
+                                     {.match = match,
+                                      .scope = input.scope,
+                                      .refId = input.refId,
+                                      .limit = 2});
       }
       for (const auto& episode : episodes) {
         bool seen = false;

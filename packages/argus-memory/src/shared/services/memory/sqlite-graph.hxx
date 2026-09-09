@@ -28,8 +28,7 @@ public:
 
   void migrateLegacy();
   void bumpFactHits(const std::vector<int64_t>& factIds);
-  int64_t recordProcedure(const std::string& name, const std::string& goal,
-                          const std::string& steps);
+  int64_t recordProcedure(const ProcedureRecordInput& input);
   std::optional<std::string> findProcedure(const std::string& goal);
 
   int64_t createEntity(const EntityCreateInput& input) override;
@@ -41,11 +40,9 @@ public:
   std::vector<RecallHit>
   factsForEntity(const RecallEntityInput& input) override;
   int64_t recordEpisode(const EpisodeCreateInput& input) override;
-  std::vector<int64_t> episodesBetween(const std::string& scope, int64_t refId,
-                                       int64_t from, int64_t to,
-                                       int limit) override;
-  int64_t createSource(const std::string& channel, const std::string& turnRef,
-                       int64_t at) override;
+  std::vector<int64_t>
+  episodesBetween(const EpisodesBetweenInput& input) override;
+  int64_t createSource(const SourceCreateInput& input) override;
 
 private:
   std::unique_ptr<sqlite3, int (*)(sqlite3*)> db_;

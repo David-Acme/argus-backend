@@ -346,7 +346,8 @@ MemoryFormation::observe(const Observation& obs,
   std::optional<int64_t> sourceId;
   {
     std::scoped_lock lock(graph_.mutex());
-    const int64_t id = graph_.createSource(obs.channel, obs.sessionId, obs.at);
+    const int64_t id = graph_.createSource(
+        {.channel = obs.channel, .turnRef = obs.sessionId, .at = obs.at});
     if (id > 0)
       sourceId = id;
   }

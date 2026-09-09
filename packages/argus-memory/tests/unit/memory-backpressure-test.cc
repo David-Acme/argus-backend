@@ -130,7 +130,9 @@ TEST_CASE("the bounded work queue drops compactions instead of growing "
   REQUIRE(service.isLoaded());
 
   service.enqueueCompaction(
-      1, "user: mi hermana se llama Ana\nassistant: anotado", "es");
+      {.userId = 1,
+       .transcript = "user: mi hermana se llama Ana\nassistant: anotado",
+       .lang = "es"});
   const auto deadline = std::chrono::steady_clock::now() +
                         std::chrono::seconds(10);
   while (chat.calls() < 1 && std::chrono::steady_clock::now() < deadline)
@@ -139,7 +141,9 @@ TEST_CASE("the bounded work queue drops compactions instead of growing "
 
   for (int i = 0; i < 4; ++i) {
     service.enqueueCompaction(
-        1, "user: mi hermana se llama Ana\nassistant: anotado", "es");
+        {.userId = 1,
+         .transcript = "user: mi hermana se llama Ana\nassistant: anotado",
+         .lang = "es"});
   }
   std::this_thread::sleep_for(std::chrono::milliseconds(100));
   CHECK(chat.calls() == 1);

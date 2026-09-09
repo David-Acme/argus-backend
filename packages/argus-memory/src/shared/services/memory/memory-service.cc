@@ -535,23 +535,6 @@ CaptureResult MemoryService::captureImplicit(const CaptureInput& input)
   return {.outcome = CaptureOutcome::Deferred, .factId = 0};
 }
 
-CaptureResult MemoryService::captureToolCall(int64_t userId,
-                                             const std::string& lang,
-                                             const ToolCall& call)
-{
-  const InlineCapture capture{.channel = "tool_call",
-                              .text = call.content,
-                              .lang = lang,
-                              .userId = userId,
-                              .salient = true,
-                              .preferIdle = false};
-  const int64_t id = captureInline(capture);
-  if (id > 0)
-    return {.outcome = CaptureOutcome::Stored, .factId = id};
-  deferCapture(capture);
-  return {.outcome = CaptureOutcome::Deferred, .factId = 0};
-}
-
 RecallContext MemoryService::recall(const RecallInput& input)
 {
   RecallContext ctx;
@@ -611,47 +594,43 @@ std::string MemoryService::durableTranscript(const std::string& transcript,
   return durable;
 }
 
-void MemoryService::enqueueSummary(int64_t userId,
-                                   const std::string& transcript,
-                                   const std::string& lang)
+void MemoryService::enqueueSummary(const TranscriptJobInput& input)
 {
-  if (!running_ || userId < 0 || transcript.empty())
+  if (!running_ || input.userId < 0 || input.transcript.empty())
     return;
   if (!chat_.available())
     return;
 
-  const std::string durable = durableTranscript(transcript, lang);
+  const std::string durable = durableTranscript(input.transcript, input.lang);
   if (durable.empty())
     return;
 
   enqueueJob({.kind = MemoryJob::Kind::Compact,
               .memoryId = 0,
-              .userId = userId,
+              .userId = input.userId,
               .text = durable,
-              .lang = lang,
+              .lang = input.lang,
               .preferIdle = false,
               .salient = false,
               .episode = false});
 }
 
-void MemoryService::enqueueCompaction(int64_t userId,
-                                      const std::string& transcript,
-                                      const std::string& lang)
+void MemoryService::enqueueCompaction(const TranscriptJobInput& input)
 {
-  if (!running_ || userId < 0 || transcript.empty())
+  if (!running_ || input.userId < 0 || input.transcript.empty())
     return;
   if (!chat_.available())
     return;
 
-  const std::string durable = durableTranscript(transcript, lang);
+  const std::string durable = durableTranscript(input.transcript, input.lang);
   if (durable.empty())
     return;
 
   enqueueJob({.kind = MemoryJob::Kind::Compact,
               .memoryId = 0,
-              .userId = userId,
+              .userId = input.userId,
               .text = durable,
-              .lang = lang,
+              .lang = input.lang,
               .preferIdle = true,
               .salient = false,
               .episode = false});
@@ -688,7 +667,8 @@ void MemoryService::bumpEpisodeHits(const std::vector<int64_t>& ids)
   if (ids.empty())
     return;
   std::scoped_lock lock(graph_->mutex());
-  graphRepo_.bumpEpisodeHits(graph_->handle(), ids, std::time(nullptr));
+  graphRepo_.bumpEpisodeHits(graph_->handle(),
+                             {.ids = ids, .at = std::time(nullptr)});
 }
 
 int64_t MemoryService::resolveAddresseeEntity(const std::string& lang)
@@ -739,7 +719,7 @@ std::string MemoryService::buildProfile(int64_t userId, const std::string& lang)
   std::vector<ProfileFactRow> rows;
   {
     std::scoped_lock lock(graph_->mutex());
-    rows = graphRepo_.topProfileFacts(graph_->handle(), userId, 6);
+    rows = graphRepo_.topProfileFacts(graph_->handle(), {.refId = userId, .limit = 6});
   }
   if (rows.size() < 2)
     return {};
@@ -821,8 +801,14 @@ void MemoryService::embedAndStore(int64_t factId, bool episode)
     if (!db)
       return;
     const auto found = episode
-                           ? graphRepo_.episodeContent(db, factId, scope, refId)
-                           : graphRepo_.factContent(db, factId, scope, refId);
+                           ? graphRepo_.episodeContent(db,
+                                                       {.id = factId,
+                                                        .scope = scope,
+                                                        .refId = refId})
+                           : graphRepo_.factContent(db,
+                                                    {.id = factId,
+                                                     .scope = scope,
+                                                     .refId = refId});
     if (!found)
       return;
     content = *found;
@@ -852,9 +838,11 @@ void MemoryService::embedAndStore(int64_t factId, bool episode)
     const double dedupCfg = ConfigService::getDouble("memory.vector_dedup_sim");
     const float dedupFloor =
         dedupCfg > 0.0 ? static_cast<float>(dedupCfg) : 0.93F;
-    const float dupSim = graphRepo_.vecDedupSim(db, enc, partition, factId);
+    const float dupSim = graphRepo_.vecDedupSim(
+        db, {.encoded = enc, .partition = partition, .factId = factId});
     if (dupSim >= dedupFloor) {
-      graphRepo_.bumpFactImportance(db, factId, std::time(nullptr));
+      graphRepo_.bumpFactImportance(db,
+                                    {.factId = factId, .at = std::time(nullptr)});
       LOG_INFO << "MemoryService: fact " << factId
                << " merged as semantic duplicate (sim=" << dupSim
                << ", partition=" << partition << ")";
@@ -868,22 +856,38 @@ void MemoryService::embedAndStore(int64_t factId, bool episode)
   int view = 0;
   for (const auto& chunk : chunks) {
     if (chunk == content) {
-      graphRepo_.insertVecRow(db, partition, factId, view, *primary);
+      graphRepo_.insertVecRow(db,
+                              {.partition = partition,
+                               .factId = factId,
+                               .view = view,
+                               .vec = *primary});
       ++view;
       continue;
     }
     const auto vec = embedding_.embed(chunk, "passage:");
     if (vec)
-      graphRepo_.insertVecRow(db, partition, factId, view, *vec);
+      graphRepo_.insertVecRow(db,
+                              {.partition = partition,
+                               .factId = factId,
+                               .view = view,
+                               .vec = *vec});
     ++view;
   }
   if (view == 0)
-    graphRepo_.insertVecRow(db, partition, factId, 0, *primary);
+    graphRepo_.insertVecRow(db,
+                            {.partition = partition,
+                             .factId = factId,
+                             .view = 0,
+                             .vec = *primary});
 
   if (hasExpanded) {
     const auto vec = embedding_.embed(expanded, "passage:");
     if (vec)
-      graphRepo_.insertVecRow(db, partition, factId, 100, *vec);
+      graphRepo_.insertVecRow(db,
+                              {.partition = partition,
+                               .factId = factId,
+                               .view = 100,
+                               .vec = *vec});
   }
 }
 
@@ -929,33 +933,28 @@ void MemoryService::registerTools(ToolRegistry& registry)
   }
 }
 
-int64_t MemoryService::observeSystemEvent(
-    const std::string& channel, const std::string& summary,
-    const std::string& actor, int64_t at, int64_t userId,
-    const std::string& lang, const std::vector<int64_t>& entitiesHint)
+int64_t MemoryService::observeSystemEvent(const SystemEventInput& input)
 {
-  if (summary.empty())
+  if (input.summary.empty())
     return 0;
   std::scoped_lock lock(graph_->mutex());
-  return graph_->recordEpisode({.kind = channel,
-                                .summary = summary,
-                                .actor = actor,
-                                .occurredAt = at,
+  return graph_->recordEpisode({.kind = input.channel,
+                                .summary = input.summary,
+                                .actor = input.actor,
+                                .occurredAt = input.at,
                                 .sessionId = {},
-                                .lang = lang,
+                                .lang = input.lang,
                                 .scope = "user",
-                                .refId = userId,
+                                .refId = input.userId,
                                 .salience = 0.5F,
                                 .sourceId = std::nullopt,
-                                .mentionEntityIds = entitiesHint});
+                                .mentionEntityIds = input.entitiesHint});
 }
 
-int64_t MemoryService::recordProcedure(const std::string& name,
-                                       const std::string& goal,
-                                       const std::string& steps)
+int64_t MemoryService::recordProcedure(const ProcedureRecordInput& input)
 {
   std::scoped_lock lock(graph_->mutex());
-  return graph_->recordProcedure(name, goal, steps);
+  return graph_->recordProcedure(input);
 }
 
 tools::ToolResult MemoryService::handleProcedureRun(const tools::ToolCall& call)

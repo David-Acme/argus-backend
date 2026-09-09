@@ -103,7 +103,7 @@ int64_t SqliteGraph::upsertFact(const FactUpsertInput& input)
 
 bool SqliteGraph::closeFact(int64_t factId, int64_t at)
 {
-  return repo_.closeFact(db_.get(), factId, at);
+  return repo_.closeFact(db_.get(), {.factId = factId, .at = at});
 }
 
 std::vector<RecallHit>
@@ -117,17 +117,15 @@ int64_t SqliteGraph::recordEpisode(const EpisodeCreateInput& input)
   return repo_.recordEpisode(db_.get(), input);
 }
 
-std::vector<int64_t> SqliteGraph::episodesBetween(const std::string& scope,
-                                                  int64_t refId, int64_t from,
-                                                  int64_t to, int limit)
+std::vector<int64_t>
+SqliteGraph::episodesBetween(const EpisodesBetweenInput& input)
 {
-  return repo_.episodesBetween(db_.get(), scope, refId, from, to, limit);
+  return repo_.episodesBetween(db_.get(), input);
 }
 
-int64_t SqliteGraph::createSource(const std::string& channel,
-                                  const std::string& turnRef, int64_t at)
+int64_t SqliteGraph::createSource(const SourceCreateInput& input)
 {
-  return repo_.createSource(db_.get(), channel, turnRef, at);
+  return repo_.createSource(db_.get(), input);
 }
 
 void SqliteGraph::bumpFactHits(const std::vector<int64_t>& factIds)
@@ -135,11 +133,9 @@ void SqliteGraph::bumpFactHits(const std::vector<int64_t>& factIds)
   repo_.bumpFactHits(db_.get(), factIds);
 }
 
-int64_t SqliteGraph::recordProcedure(const std::string& name,
-                                     const std::string& goal,
-                                     const std::string& steps)
+int64_t SqliteGraph::recordProcedure(const ProcedureRecordInput& input)
 {
-  return repo_.recordProcedure(db_.get(), name, goal, steps);
+  return repo_.recordProcedure(db_.get(), input);
 }
 
 std::optional<std::string> SqliteGraph::findProcedure(const std::string& goal)
