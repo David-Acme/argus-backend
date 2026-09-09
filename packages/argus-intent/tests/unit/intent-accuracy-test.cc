@@ -4,6 +4,7 @@
 #include <shared/services/intent/fasttext-classifier.hxx>
 #include <shared/services/intent/intent-contracts.hxx>
 #include <shared/services/intent/intent-router.hxx>
+#include <shared/services/memory/phrase-catalog.hxx>
 
 #include <fstream>
 #include <map>
@@ -100,4 +101,47 @@ TEST_CASE("the published model keeps memory_save precision on the judges")
     // The 0.90 floor in integers: correct >= ceil(0.9 * predicted).
     CHECK(save.correct * 10 >= save.predicted * 9);
   }
+}
+
+// The direct contrast with the f8-b4 bench, which ran on this very file: the
+// LLM's own tool calling fired memory.remember on 9 of these 20 rows. This is
+// the same question asked of the router — rules first, then the model at the
+// deployment operating point.
+TEST_CASE("the router covers the judge set the LLM tier under-fired")
+{
+  const FastTextClassifier model(
+      std::string(ARGUS_TEST_INTENT_MODELS_DIR) + "/intent.bin");
+  if (!model.isLoaded()) {
+    MESSAGE("no intent model on disk; coverage measurement skipped");
+    return;
+  }
+
+  PhraseCatalog catalog;
+  catalog.build();
+  const IntentRouter router(
+      {.catalog = catalog, .model = model, .recurrent = nullptr});
+
+  const auto rows = readFixture(
+      std::string(ARGUS_TEST_INTENT_FIXTURES_DIR) + "/eval-check.tsv");
+  int saves = 0;
+  int routed = 0;
+  int byRules = 0;
+  for (const auto& row : rows) {
+    if (row.label != "memory_save")
+      continue;
+    ++saves;
+    const auto decision = router.decide(row.text, "es");
+    if (!decision.confident || decision.intent != intent::ToolIntent::MemorySave)
+      continue;
+    ++routed;
+    if (decision.fromRules)
+      ++byRules;
+  }
+
+  MESSAGE("router decides memory_save on " << routed << "/" << saves
+                                           << " (" << byRules
+                                           << " by rules); the f8-b4 bench "
+                                           << "measured the LLM firing 9/20");
+  CHECK(saves == 20);
+  CHECK(routed >= 9);
 }
