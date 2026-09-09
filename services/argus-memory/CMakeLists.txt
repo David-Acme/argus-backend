@@ -81,8 +81,6 @@ add_library(memory-core STATIC
     ${SHARED_ROOT}/services/extract/lexicon-extractor.cc
     ${SHARED_ROOT}/services/extract/temporal-resolver.cc
     ${SHARED_ROOT}/services/extract/tiered-extractor.cc
-    ${SHARED_ROOT}/services/tools/tool-registry.cc
-    ${SHARED_ROOT}/services/tools/tool-validator.cc
     ${SHARED_ROOT}/repositories/memory-graph/memory-graph-repository.cc
     ${SHARED_ROOT}/utils/text-norm/text-norm.cc
 )

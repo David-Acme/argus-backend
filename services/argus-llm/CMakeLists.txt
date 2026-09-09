@@ -63,6 +63,9 @@ add_library(llm-core STATIC
     # The engine compiled from the shared tree (PORTED pattern), so the
     # legacy binary and this service generate identically.
     ${SHARED_ROOT}/services/llm/llm-service.cc
+    # The tool-calling loop over that engine: hops, call parsing and the
+    # declarations the model reads. Compiled by nothing until f8-b2.
+    ${SHARED_ROOT}/services/llm/lfm-adapter.cc
 )
 
 target_include_directories(llm-core SYSTEM PUBLIC
@@ -102,6 +105,21 @@ add_custom_command(TARGET argus-llm POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E create_symlink
             ${CMAKE_CURRENT_SOURCE_DIR}/../../models
             $<TARGET_FILE_DIR:argus-llm>/models)
+
+# Tool-calling accuracy bench. Built with the default target set so it cannot
+# rot, but NOT registered with ctest: it needs the real model and takes
+# minutes. Run it by hand from the repo root:
+#   ./build/dev/services/argus-llm/argus-tool-bench [--limit N] [--verbose]
+add_executable(argus-tool-bench tests/bench/tool-calling-bench.cc)
+
+target_link_libraries(argus-tool-bench PRIVATE llm-core)
+
+target_compile_definitions(argus-tool-bench PRIVATE
+    ARGUS_BENCH_CASES="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/tools/check.tsv")
+
+target_compile_options(argus-tool-bench PRIVATE -Wall -Wextra)
+
+set_target_properties(argus-tool-bench PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
 # The LLM wire suite is a root-project test; it opts back into the default
 # build because this folder is added EXCLUDE_FROM_ALL.
