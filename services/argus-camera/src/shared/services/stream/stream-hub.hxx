@@ -76,13 +76,34 @@ private:
     std::thread reader;
   };
 
+  struct SendFramedInput
+  {
+    const std::shared_ptr<Subscriber>& sub;
+    uint8_t type{0};
+    bool keyframe{false};
+    const uint8_t* data{nullptr};
+    size_t len{0};
+  };
+
+  struct SendBoxInput
+  {
+    const std::shared_ptr<Subscriber>& sub;
+    const std::string& box;
+    bool keyframe{false};
+  };
+
+  struct DispatchBoxInput
+  {
+    Upstream& up;
+    std::string box;
+    bool keyframe{false};
+  };
+
   std::shared_ptr<Upstream> getOrOpen(const SubscribeInput& input,
                                       std::string& error);
-  static void sendFramed(const std::shared_ptr<Subscriber>& sub, uint8_t type,
-                         bool keyframe, const uint8_t* data, size_t len);
-  void sendBox(const std::shared_ptr<Subscriber>& sub, const std::string& box,
-               bool keyframe);
-  void dispatchBox(Upstream& up, std::string box, bool keyframe);
+  static void sendFramed(const SendFramedInput& input);
+  void sendBox(const SendBoxInput& input);
+  void dispatchBox(const DispatchBoxInput& input);
   void runUpstream(std::shared_ptr<Upstream> up);
 
   std::mutex hubMutex_;

@@ -24,8 +24,18 @@ uint32_t crc32Mpeg(const std::vector<uint8_t>& data)
   return crc;
 }
 
-void appendTimestamp(std::vector<uint8_t>& out, uint8_t prefix, int64_t value)
+struct AppendTimestampInput
 {
+  std::vector<uint8_t>& out;
+  uint8_t prefix{0};
+  int64_t value{0};
+};
+
+void appendTimestamp(const AppendTimestampInput& input)
+{
+  std::vector<uint8_t>& out = input.out;
+  const uint8_t prefix = input.prefix;
+  const int64_t value = input.value;
   out.push_back(static_cast<uint8_t>((prefix << 4) | ((value >> 29) & 0x0E) | 0x01));
   out.push_back(static_cast<uint8_t>((value >> 22) & 0xFF));
   out.push_back(static_cast<uint8_t>(((value >> 14) & 0xFE) | 0x01));
@@ -62,9 +72,13 @@ std::vector<uint8_t> TapoTsMuxer::section(uint8_t tableId,
   return out;
 }
 
-std::string TapoTsMuxer::packetize(uint16_t pid, const std::vector<uint8_t>& payload,
-                                   bool sectionPayload, bool withPcr, int64_t pcr90k)
+std::string TapoTsMuxer::packetize(const PacketizeInput& input)
 {
+  const uint16_t pid = input.pid;
+  const std::vector<uint8_t>& payload = input.payload;
+  const bool sectionPayload = input.sectionPayload;
+  const bool withPcr = input.withPcr;
+  const int64_t pcr90k = input.pcr90k;
   std::string out;
   size_t offset = 0;
   bool first = true;
@@ -165,8 +179,16 @@ std::string TapoTsMuxer::tables()
   pmt.push_back(0xF0);
   pmt.push_back(0x00);
 
-  return packetize(kPatPid, section(0x00, pat), true, false, 0) +
-         packetize(config_.pmtPid, section(0x02, pmt), true, false, 0);
+  return packetize({.pid = kPatPid,
+                    .payload = section(0x00, pat),
+                    .sectionPayload = true,
+                    .withPcr = false,
+                    .pcr90k = 0}) +
+         packetize({.pid = config_.pmtPid,
+                    .payload = section(0x02, pmt),
+                    .sectionPayload = true,
+                    .withPcr = false,
+                    .pcr90k = 0});
 }
 
 std::string TapoTsMuxer::frame(const TapoTsFrame& input)
@@ -183,8 +205,12 @@ std::string TapoTsMuxer::frame(const TapoTsFrame& input)
   pes.push_back(0x80);
   pes.push_back(0x80);
   pes.push_back(0x05);
-  appendTimestamp(pes, 0x02, input.pts90k);
+  appendTimestamp({.out = pes, .prefix = 0x02, .value = input.pts90k});
   pes.insert(pes.end(), input.payload.begin(), input.payload.end());
 
-  return packetize(config_.audioPid, pes, false, true, input.pts90k);
+  return packetize({.pid = config_.audioPid,
+                    .payload = pes,
+                    .sectionPayload = false,
+                    .withPcr = true,
+                    .pcr90k = input.pts90k});
 }

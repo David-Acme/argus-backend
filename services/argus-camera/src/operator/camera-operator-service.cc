@@ -104,7 +104,8 @@ drogon::Task<void> CameraOperatorService::runCamera(CameraRef camera)
         {.cameraId = camera.id, .cameraName = camera.name});
     if (frame) {
       co_await BlockingTask<void>{[this, &camera, &frame]() {
-        processFrame(camera.id, camera.name, *frame);
+        processFrame({.cameraId = camera.id, .cameraName = camera.name,
+                      .frame = *frame});
       }};
     }
     const int64_t elapsed = nowMs() - tickStart;
@@ -117,10 +118,11 @@ drogon::Task<void> CameraOperatorService::runCamera(CameraRef camera)
   co_return;
 }
 
-void CameraOperatorService::processFrame(int64_t cameraId,
-                                         const std::string& cameraName,
-                                         CameraFrame& frame)
+void CameraOperatorService::processFrame(const ProcessFrameInput& input)
 {
+  const int64_t cameraId = input.cameraId;
+  const std::string& cameraName = input.cameraName;
+  CameraFrame& frame = input.frame;
   if (!inputs_.dependencies.detector ||
       !inputs_.dependencies.detector->isLoaded())
     return;
@@ -142,7 +144,9 @@ void CameraOperatorService::processFrame(int64_t cameraId,
   }
 
   auto objects = inputs_.dependencies.detector->detect(
-      reinterpret_cast<const uint8_t*>(rgb.data), rgb.cols, rgb.rows);
+      {.rgb = reinterpret_cast<const uint8_t*>(rgb.data),
+       .width = rgb.cols,
+       .height = rgb.rows});
 
   if (inputs_.operator_.overlay && !inputs_.operator_.overlayDir.empty()) {
     cv::Mat annotated;
@@ -253,12 +257,14 @@ void CameraOperatorService::processFrame(int64_t cameraId,
 
   if (state.pending &&
       stamp - state.pendingStartMs >= inputs_.operator_.aggregationWindowMs)
-    publishPending(cameraId, state, stamp);
+    publishPending({.cameraId = cameraId, .state = state, .nowMs = stamp});
 }
 
-void CameraOperatorService::publishPending(int64_t cameraId,
-                                           CameraState& state, int64_t nowMs)
+void CameraOperatorService::publishPending(const PublishPendingInput& input)
 {
+  const int64_t cameraId = input.cameraId;
+  CameraState& state = input.state;
+  const int64_t nowMs = input.nowMs;
   auto event = *state.pending;
   state.pending.reset();
 

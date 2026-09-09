@@ -5,9 +5,20 @@
 
 namespace
 {
-bool centerInZone(const DetectedObject& object, const OperatorZone& zone,
-                  int frameWidth, int frameHeight)
+struct CenterInZoneInput
 {
+  const DetectedObject& object;
+  const OperatorZone& zone;
+  int frameWidth{0};
+  int frameHeight{0};
+};
+
+bool centerInZone(const CenterInZoneInput& input)
+{
+  const DetectedObject& object = input.object;
+  const OperatorZone& zone = input.zone;
+  const int frameWidth = input.frameWidth;
+  const int frameHeight = input.frameHeight;
   if (zone.points.size() < 3)
     return false;
 
@@ -29,13 +40,24 @@ bool centerInZone(const DetectedObject& object, const OperatorZone& zone,
   return inside;
 }
 
-bool objectInZoneKind(const DetectedObject& object,
-                      const std::vector<OperatorZone>& zones,
-                      const std::string& kind, int frameWidth, int frameHeight)
+struct ObjectInZoneKindInput
 {
-  for (const auto& zone : zones) {
-    if (zone.kind == kind &&
-        centerInZone(object, zone, frameWidth, frameHeight))
+  const DetectedObject& object;
+  const std::vector<OperatorZone>& zones;
+  const std::string& kind;
+  int frameWidth{0};
+  int frameHeight{0};
+};
+
+bool objectInZoneKind(const ObjectInZoneKindInput& input)
+{
+  const DetectedObject& object = input.object;
+  const int frameWidth = input.frameWidth;
+  const int frameHeight = input.frameHeight;
+  for (const auto& zone : input.zones) {
+    if (zone.kind == input.kind &&
+        centerInZone({.object = object, .zone = zone,
+                      .frameWidth = frameWidth, .frameHeight = frameHeight}))
       return true;
   }
   return false;
@@ -69,8 +91,10 @@ EventIntelligence::evaluate(const EventIntelligenceInput& input)
     return {};
 
   for (const auto& object : input.objects) {
-    if (objectInZoneKind(object, input.zones, "exclude", input.frameWidth,
-                         input.frameHeight)) {
+    if (objectInZoneKind({.object = object, .zones = input.zones,
+                          .kind = "exclude",
+                          .frameWidth = input.frameWidth,
+                          .frameHeight = input.frameHeight})) {
       EventIntelligenceOutcome dropped;
       dropped.publish = false;
       dropped.rule = "exclude_zone";
@@ -109,8 +133,10 @@ EventIntelligence::evaluate(const EventIntelligenceInput& input)
   if (hasPerson) {
     for (const auto& object : input.objects) {
       if (object.name == "person" &&
-          objectInZoneKind(object, input.zones, "alert", input.frameWidth,
-                           input.frameHeight)) {
+          objectInZoneKind({.object = object, .zones = input.zones,
+                            .kind = "alert",
+                            .frameWidth = input.frameWidth,
+                            .frameHeight = input.frameHeight})) {
         EventIntelligenceOutcome alert;
         alert.publish = true;
         alert.rule = "person_in_alert_zone";
@@ -123,8 +149,10 @@ EventIntelligence::evaluate(const EventIntelligenceInput& input)
   if (hasPerson) {
     for (const auto& object : input.objects) {
       if (object.name == "person" &&
-          objectInZoneKind(object, input.zones, "monitor", input.frameWidth,
-                           input.frameHeight)) {
+          objectInZoneKind({.object = object, .zones = input.zones,
+                            .kind = "monitor",
+                            .frameWidth = input.frameWidth,
+                            .frameHeight = input.frameHeight})) {
         EventIntelligenceOutcome monitor;
         monitor.publish = true;
         monitor.rule = "person_in_monitor_zone";

@@ -14,9 +14,12 @@
 namespace upstream_http
 {
 
-Upstream open(const std::string& host, int port, const std::string& path,
-              int timeoutSec)
+Upstream open(const OpenInput& input)
 {
+  const std::string& host = input.host;
+  const int port = input.port;
+  const std::string& path = input.path;
+  const int timeoutSec = input.timeoutSec;
   Upstream up;
   up.fd = ::socket(AF_INET, SOCK_STREAM, 0);
   if (up.fd < 0)

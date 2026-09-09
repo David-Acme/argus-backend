@@ -34,24 +34,27 @@ StreamHub& StreamHub::instance()
   return hub;
 }
 
-void StreamHub::sendFramed(const std::shared_ptr<Subscriber>& sub, uint8_t type,
-                           bool keyframe, const uint8_t* data, size_t len)
+void StreamHub::sendFramed(const SendFramedInput& input)
 {
+  const std::shared_ptr<Subscriber>& sub = input.sub;
   ws_frame::Header h;
-  h.type = type;
-  h.keyframe = keyframe;
+  h.type = input.type;
+  h.keyframe = input.keyframe;
   h.subId = sub->subId;
   h.seq = ++sub->seq;
-  const std::string blob = ws_frame::frame(h, data, len);
+  const std::string blob =
+      ws_frame::frame({.header = h, .payload = input.data, .len = input.len});
   if (!sub->sink->sendBinary(reinterpret_cast<const uint8_t*>(blob.data()),
                              blob.size())) {
     sub->sink = nullptr;
   }
 }
 
-void StreamHub::sendBox(const std::shared_ptr<Subscriber>& sub,
-                        const std::string& box, bool keyframe)
+void StreamHub::sendBox(const SendBoxInput& input)
 {
+  const std::shared_ptr<Subscriber>& sub = input.sub;
+  const std::string& box = input.box;
+  const bool keyframe = input.keyframe;
   size_t offset = 0;
   bool first = true;
   while (offset < box.size()) {
@@ -60,8 +63,11 @@ void StreamHub::sendBox(const std::shared_ptr<Subscriber>& sub,
       sub->skipUntilKeyframe = true;
       return;
     }
-    sendFramed(sub, ws_frame::kTypeMedia, keyframe && first,
-               reinterpret_cast<const uint8_t*>(box.data() + offset), part);
+    sendFramed({.sub = sub,
+                .type = ws_frame::kTypeMedia,
+                .keyframe = keyframe && first,
+                .data = reinterpret_cast<const uint8_t*>(box.data() + offset),
+                .len = part});
     if (!sub->sink)
       return;
     offset += part;
@@ -69,8 +75,11 @@ void StreamHub::sendBox(const std::shared_ptr<Subscriber>& sub,
   }
 }
 
-void StreamHub::dispatchBox(Upstream& up, std::string box, bool keyframe)
+void StreamHub::dispatchBox(const DispatchBoxInput& input)
 {
+  Upstream& up = input.up;
+  std::string box = std::move(input.box);
+  const bool keyframe = input.keyframe;
   std::lock_guard<std::mutex> lock(up.mtx);
   for (auto& sub : up.subs) {
     if (!sub->sink)
@@ -84,15 +93,17 @@ void StreamHub::dispatchBox(Upstream& up, std::string box, bool keyframe)
           sub->skipUntilKeyframe = true;
           continue;
         }
-        sendFramed(sub, ws_frame::kTypeInit, true,
-                   reinterpret_cast<const uint8_t*>(up.init.data()),
-                   up.init.size());
+        sendFramed({.sub = sub,
+                    .type = ws_frame::kTypeInit,
+                    .keyframe = true,
+                    .data = reinterpret_cast<const uint8_t*>(up.init.data()),
+                    .len = up.init.size()});
         if (!sub->sink)
           continue;
         sub->sentInit = true;
       }
     }
-    sendBox(sub, box, keyframe);
+    sendBox({.sub = sub, .box = box, .keyframe = keyframe});
   }
 
   up.subs.erase(std::remove_if(up.subs.begin(), up.subs.end(),
@@ -106,7 +117,9 @@ void StreamHub::runUpstream(std::shared_ptr<Upstream> up)
       Go2rtcManager::instance().apiBase().substr(7));
   const std::string path = "/api/stream.mp4?src=" + up->name;
 
-  upstream_http::Upstream conn = upstream_http::open(host, port, path, 10);
+  upstream_http::Upstream conn =
+      upstream_http::open({.host = host, .port = port, .path = path,
+                           .timeoutSec = 10});
   if (!conn.ok) {
     LOG_WARN << "StreamHub: upstream failed for " << up->name;
     std::lock_guard<std::mutex> lock(up->mtx);
@@ -132,7 +145,7 @@ void StreamHub::runUpstream(std::shared_ptr<Upstream> up)
     up->hasInit = true;
   };
   reader.onFragment = [this, &up](std::string box, bool keyframe) {
-    dispatchBox(*up, std::move(box), keyframe);
+    dispatchBox({.up = *up, .box = std::move(box), .keyframe = keyframe});
   };
   if (!conn.leftover.empty())
     reader.feed(conn.leftover.data(), conn.leftover.size());

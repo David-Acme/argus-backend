@@ -10,16 +10,24 @@
 
 namespace
 {
-DetectedObject personAt(float x, float y, float w, float h)
+struct PersonAtInput
+{
+  float x{0};
+  float y{0};
+  float w{0};
+  float h{0};
+};
+
+DetectedObject personAt(const PersonAtInput& input)
 {
   DetectedObject object;
+  object.x = input.x;
+  object.y = input.y;
+  object.w = input.w;
+  object.h = input.h;
   object.name = "person";
   object.cls = 0;
   object.confidence = 0.9f;
-  object.x = x;
-  object.y = y;
-  object.w = w;
-  object.h = h;
   return object;
 }
 
@@ -37,14 +45,25 @@ DetectedObject vehicleAt(float x, float y)
 }
 
 // Full-frame square polygon in normalized coordinates.
-OperatorZone squareZone(const char* kind, float fromX, float fromY, float toX,
-                        float toY)
+struct SquareZoneInput
+{
+  const char* kind{nullptr};
+  float fromX{0};
+  float fromY{0};
+  float toX{0};
+  float toY{0};
+};
+
+OperatorZone squareZone(const SquareZoneInput& input)
 {
   OperatorZone zone;
+  zone.name = input.kind;
+  zone.kind = input.kind;
+  zone.points = {{input.fromX, input.fromY},
+                 {input.toX, input.fromY},
+                 {input.toX, input.toY},
+                 {input.fromX, input.toY}};
   zone.cameraId = 1;
-  zone.name = kind;
-  zone.kind = kind;
-  zone.points = {{fromX, fromY}, {toX, fromY}, {toX, toY}, {fromX, toY}};
   return zone;
 }
 
@@ -71,8 +90,9 @@ public:
 
 TEST_CASE("rule 1: an object centered in an exclude zone drops the event")
 {
-  auto input = baseInput({personAt(280, 200, 80, 160)});
-  input.zones.push_back(squareZone("exclude", 0.25f, 0.25f, 0.75f, 0.75f));
+  auto input = baseInput({personAt({.x = 280, .y = 200, .w = 80, .h = 160})});
+  input.zones.push_back(squareZone({.kind = "exclude", .fromX = 0.25f,
+            .fromY = 0.25f, .toX = 0.75f, .toY = 0.75f}));
 
   const auto outcome = EventIntelligence::evaluate(input);
   CHECK_FALSE(outcome.publish);
@@ -81,8 +101,9 @@ TEST_CASE("rule 1: an object centered in an exclude zone drops the event")
 
 TEST_CASE("rule 3: person inside an alert zone is critical")
 {
-  auto input = baseInput({personAt(280, 200, 80, 160)});
-  input.zones.push_back(squareZone("alert", 0.25f, 0.25f, 0.75f, 0.75f));
+  auto input = baseInput({personAt({.x = 280, .y = 200, .w = 80, .h = 160})});
+  input.zones.push_back(squareZone({.kind = "alert", .fromX = 0.25f,
+            .fromY = 0.25f, .toX = 0.75f, .toY = 0.75f}));
 
   const auto outcome = EventIntelligence::evaluate(input);
   CHECK(outcome.publish);
@@ -92,8 +113,9 @@ TEST_CASE("rule 3: person inside an alert zone is critical")
 
 TEST_CASE("rule 4: person inside a monitor zone is warning")
 {
-  auto input = baseInput({personAt(280, 200, 80, 160)});
-  input.zones.push_back(squareZone("monitor", 0.25f, 0.25f, 0.75f, 0.75f));
+  auto input = baseInput({personAt({.x = 280, .y = 200, .w = 80, .h = 160})});
+  input.zones.push_back(squareZone({.kind = "monitor", .fromX = 0.25f,
+            .fromY = 0.25f, .toX = 0.75f, .toY = 0.75f}));
 
   const auto outcome = EventIntelligence::evaluate(input);
   CHECK(outcome.publish);
@@ -103,14 +125,16 @@ TEST_CASE("rule 4: person inside a monitor zone is warning")
 
 TEST_CASE("rules 5 and 6: person by the night schedule")
 {
-  auto night = baseInput({personAt(0, 0, 80, 160)});
+  auto night = baseInput({personAt({.x = 0, .y = 0, .w = 80, .h = 160})});
   night.night = true;
   const auto nightOutcome = EventIntelligence::evaluate(night);
   CHECK(nightOutcome.publish);
   CHECK(nightOutcome.rule == "person_night");
   CHECK(nightOutcome.severity == EventSeverity::Warning);
 
-  const auto dayOutcome = EventIntelligence::evaluate(baseInput({personAt(0, 0, 80, 160)}));
+  const auto dayOutcome =
+      EventIntelligence::evaluate(baseInput({personAt({.x = 0, .y = 0,
+                                                       .w = 80, .h = 160})}));
   CHECK(dayOutcome.publish);
   CHECK(dayOutcome.rule == "person_day");
   CHECK(dayOutcome.severity == EventSeverity::Info);
@@ -182,8 +206,9 @@ TEST_CASE("empty detections drop the event")
 TEST_CASE("rule 2: a matched known person dominates the zone rules")
 {
   KnownPerson7Matcher matcher;
-  auto input = baseInput({personAt(280, 200, 80, 160)});
-  input.zones.push_back(squareZone("alert", 0.25f, 0.25f, 0.75f, 0.75f));
+  auto input = baseInput({personAt({.x = 280, .y = 200, .w = 80, .h = 160})});
+  input.zones.push_back(squareZone({.kind = "alert", .fromX = 0.25f,
+            .fromY = 0.25f, .toX = 0.75f, .toY = 0.75f}));
   input.matcher = &matcher;
   static std::vector<uint8_t> frame(640 * 480 * 3, 128);
   input.frameRgb = frame.data();
@@ -199,8 +224,9 @@ TEST_CASE("rule 2: a matched known person dominates the zone rules")
 TEST_CASE("the no-match matcher keeps the zone rule severity")
 {
   NoKnownPersonMatcher matcher;
-  auto input = baseInput({personAt(280, 200, 80, 160)});
-  input.zones.push_back(squareZone("alert", 0.25f, 0.25f, 0.75f, 0.75f));
+  auto input = baseInput({personAt({.x = 280, .y = 200, .w = 80, .h = 160})});
+  input.zones.push_back(squareZone({.kind = "alert", .fromX = 0.25f,
+            .fromY = 0.25f, .toX = 0.75f, .toY = 0.75f}));
   input.matcher = &matcher;
   static std::vector<uint8_t> frame(640 * 480 * 3, 128);
   input.frameRgb = frame.data();
@@ -214,7 +240,7 @@ TEST_CASE("the no-match matcher keeps the zone rule severity")
 
 TEST_CASE("a vehicle arriving before a person keeps the person rule dominant")
 {
-  auto input = baseInput({vehicleAt(10, 10), personAt(0, 0, 80, 160)});
+  auto input = baseInput({vehicleAt(10, 10), personAt({.x = 0, .y = 0, .w = 80, .h = 160})});
   input.state.vehiclePreviouslyAbsent = true;
 
   const auto outcome = EventIntelligence::evaluate(input);

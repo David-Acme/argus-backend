@@ -15,8 +15,15 @@ struct Upstream
   bool ok{false};
 };
 
-Upstream open(const std::string& host, int port, const std::string& path,
-              int timeoutSec);
+struct OpenInput
+{
+  std::string host;
+  int port{0};
+  std::string path;
+  int timeoutSec{0};
+};
+
+Upstream open(const OpenInput& input);
 
 std::pair<std::string, int> splitHostPort(const std::string& addr);
 

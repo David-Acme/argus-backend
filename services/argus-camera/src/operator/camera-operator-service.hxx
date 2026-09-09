@@ -49,9 +49,15 @@ public:
 
   bool running() const { return running_.load(); }
 
+  struct ProcessFrameInput
+  {
+    int64_t cameraId{0};
+    const std::string& cameraName;
+    CameraFrame& frame;
+  };
+
   // One synchronous pipeline step (decode -> detect -> rules -> aggregate -> publish).
-  void processFrame(int64_t cameraId, const std::string& cameraName,
-                    CameraFrame& frame);
+  void processFrame(const ProcessFrameInput& input);
 
 private:
   struct CameraState
@@ -63,11 +69,18 @@ private:
     int presenceStreak{0};
   };
 
+  struct PublishPendingInput
+  {
+    int64_t cameraId{0};
+    CameraState& state;
+    int64_t nowMs{0};
+  };
+
   drogon::Task<void> runCamera(CameraRef camera);
 
   bool isNightHour(int hour) const;
 
-  void publishPending(int64_t cameraId, CameraState& state, int64_t nowMs);
+  void publishPending(const PublishPendingInput& input);
 
   Inputs inputs_;
   std::atomic<bool> running_{false};

@@ -30,8 +30,17 @@ public:
 
 private:
   std::vector<uint8_t> section(uint8_t tableId, const std::vector<uint8_t>& body);
-  std::string packetize(uint16_t pid, const std::vector<uint8_t>& payload,
-                        bool sectionPayload, bool withPcr, int64_t pcr90k);
+
+  struct PacketizeInput
+  {
+    uint16_t pid{0};
+    const std::vector<uint8_t>& payload;
+    bool sectionPayload{false};
+    bool withPcr{false};
+    int64_t pcr90k{0};
+  };
+
+  std::string packetize(const PacketizeInput& input);
 
   TapoTsConfig config_;
   uint8_t patCounter_{0};

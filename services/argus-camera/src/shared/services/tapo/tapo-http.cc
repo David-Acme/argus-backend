@@ -31,8 +31,18 @@ std::string lower(std::string value)
   return value;
 }
 
-bool waitReady(int fd, short events, int timeoutMs)
+struct WaitReadyInput
 {
+  int fd{-1};
+  short events{0};
+  int timeoutMs{0};
+};
+
+bool waitReady(const WaitReadyInput& input)
+{
+  const int fd = input.fd;
+  const short events = input.events;
+  const int timeoutMs = input.timeoutMs;
   pollfd descriptor{};
   descriptor.fd = fd;
   descriptor.events = events;
@@ -93,7 +103,8 @@ struct TapoConnection::Impl
         }
         if (reason == SSL_ERROR_WANT_READ || reason == SSL_ERROR_WANT_WRITE) {
           const short events = reason == SSL_ERROR_WANT_READ ? POLLIN : POLLOUT;
-          if (!waitReady(fd, events, ioTimeoutMs)) {
+          if (!waitReady(
+                  {.fd = fd, .events = events, .timeoutMs = ioTimeoutMs})) {
             error = "read timeout";
             return false;
           }
@@ -112,7 +123,8 @@ struct TapoConnection::Impl
       if (errno == EINTR)
         continue;
       if (errno == EAGAIN || errno == EWOULDBLOCK) {
-        if (!waitReady(fd, POLLIN, ioTimeoutMs)) {
+        if (!waitReady(
+                {.fd = fd, .events = POLLIN, .timeoutMs = ioTimeoutMs})) {
           error = "read timeout";
           return false;
         }
@@ -160,7 +172,8 @@ bool TapoConnection::open(const TapoEndpoint& endpoint)
     if (::connect(fd, candidate->ai_addr, candidate->ai_addrlen) == 0)
       break;
     if (errno == EINPROGRESS &&
-        waitReady(fd, POLLOUT, endpoint.connectTimeoutMs)) {
+        waitReady({.fd = fd, .events = POLLOUT,
+                   .timeoutMs = endpoint.connectTimeoutMs})) {
       int status = 0;
       socklen_t length = sizeof(status);
       if (::getsockopt(fd, SOL_SOCKET, SO_ERROR, &status, &length) == 0 &&
@@ -209,7 +222,8 @@ bool TapoConnection::open(const TapoEndpoint& endpoint)
     const int reason = SSL_get_error(impl_->ssl.get(), handshake);
     if (reason == SSL_ERROR_WANT_READ || reason == SSL_ERROR_WANT_WRITE) {
       const short events = reason == SSL_ERROR_WANT_READ ? POLLIN : POLLOUT;
-      if (waitReady(fd, events, endpoint.connectTimeoutMs))
+      if (waitReady({.fd = fd, .events = events,
+                     .timeoutMs = endpoint.connectTimeoutMs}))
         continue;
       impl_->error = "TLS handshake timeout";
       close();
@@ -244,7 +258,8 @@ bool TapoConnection::write(const std::string& data)
         const int reason = SSL_get_error(impl_->ssl.get(), written);
         if (reason == SSL_ERROR_WANT_READ || reason == SSL_ERROR_WANT_WRITE) {
           const short events = reason == SSL_ERROR_WANT_READ ? POLLIN : POLLOUT;
-          if (!waitReady(impl_->fd, events, impl_->ioTimeoutMs)) {
+          if (!waitReady({.fd = impl_->fd, .events = events,
+                          .timeoutMs = impl_->ioTimeoutMs})) {
             impl_->error = "write timeout";
             return false;
           }
@@ -261,7 +276,8 @@ bool TapoConnection::write(const std::string& data)
         if (errno == EINTR)
           continue;
         if (errno == EAGAIN || errno == EWOULDBLOCK) {
-          if (!waitReady(impl_->fd, POLLOUT, impl_->ioTimeoutMs)) {
+          if (!waitReady({.fd = impl_->fd, .events = POLLOUT,
+                          .timeoutMs = impl_->ioTimeoutMs})) {
             impl_->error = "write timeout";
             return false;
           }

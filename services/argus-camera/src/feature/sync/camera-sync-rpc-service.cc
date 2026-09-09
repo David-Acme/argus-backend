@@ -97,10 +97,20 @@ void toProto(const Json::Value& row, argus::camera::v1::CameraStreamRow* out)
 }
 
 template <typename TableRows, typename Repo>
-drogon::Task<void>
-fill(const argus::camera::v1::TablePull& body, TableRows* rows,
-     const Repo& repo)
+struct FillInput
 {
+  const argus::camera::v1::TablePull& body;
+  TableRows* rows;
+  const Repo& repo;
+};
+
+template <typename TableRows, typename Repo>
+drogon::Task<void>
+fill(const FillInput<TableRows, Repo>& input)
+{
+  const argus::camera::v1::TablePull& body = input.body;
+  TableRows* rows = input.rows;
+  const Repo& repo = input.repo;
   if (body.required_create()) {
     const auto data = co_await repo.find(filterOf(body.created()));
     for (const auto& row : data)
@@ -160,15 +170,19 @@ grpc::ServerUnaryReactor* CameraSyncRpcService::PullTable(
       try {
         switch (pull.table_case()) {
           case argus::camera::v1::PullTableRequest::kCamera:
-            co_await fill(pull.camera(), responseWriter->mutable_camera(),
-                          cameras_);
+            co_await fill({.body = pull.camera(),
+                           .rows = responseWriter->mutable_camera(),
+                           .repo = cameras_});
             break;
           case argus::camera::v1::PullTableRequest::kCameraStream:
-            co_await fill(pull.camera_stream(),
-                          responseWriter->mutable_camera_stream(), streams_);
+            co_await fill({.body = pull.camera_stream(),
+                           .rows = responseWriter->mutable_camera_stream(),
+                           .repo = streams_});
             break;
           case argus::camera::v1::PullTableRequest::kZone:
-            co_await fill(pull.zone(), responseWriter->mutable_zone(), zones_);
+            co_await fill({.body = pull.zone(),
+                           .rows = responseWriter->mutable_zone(),
+                           .repo = zones_});
             break;
           default:
             co_return;

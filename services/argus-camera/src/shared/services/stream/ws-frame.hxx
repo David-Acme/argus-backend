@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <string>
 
 namespace ws_frame
@@ -22,8 +23,22 @@ struct Header
   uint32_t seq{0};
 };
 
-bool parse(const uint8_t* data, size_t len, Header& out);
+struct ParseInput
+{
+  const uint8_t* data{nullptr};
+  size_t len{0};
+};
+
+std::optional<Header> parse(const ParseInput& input);
 void encode(uint8_t* out, const Header& header);
-std::string frame(const Header& header, const uint8_t* payload, size_t len);
+
+struct FrameInput
+{
+  const Header& header;
+  const uint8_t* payload{nullptr};
+  size_t len{0};
+};
+
+std::string frame(const FrameInput& input);
 
 } // namespace ws_frame

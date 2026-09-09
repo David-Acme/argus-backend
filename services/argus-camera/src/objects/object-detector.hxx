@@ -16,6 +16,14 @@ struct DetectedObject
   float h{0};
 };
 
+// rgb is a tightly packed RGB8 buffer of width*height*3 bytes.
+struct DetectInput
+{
+  const uint8_t* rgb{nullptr};
+  int width{0};
+  int height{0};
+};
+
 // The only seam of the detection capacity.
 class IObjectDetector
 {
@@ -24,9 +32,7 @@ public:
 
   virtual bool isLoaded() const = 0;
 
-  // rgb is a tightly packed RGB8 buffer of width*height*3 bytes.
-  virtual std::vector<DetectedObject> detect(const uint8_t* rgb, int width,
-                                             int height) = 0;
+  virtual std::vector<DetectedObject> detect(const DetectInput& input) = 0;
 
   virtual const std::vector<std::string>& classes() const = 0;
 };

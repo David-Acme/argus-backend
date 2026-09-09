@@ -24,7 +24,7 @@ class StubDetector final : public IObjectDetector
 public:
   bool isLoaded() const override { return true; }
 
-  std::vector<DetectedObject> detect(const uint8_t*, int, int) override
+  std::vector<DetectedObject> detect(const DetectInput&) override
   {
     return next;
   }
@@ -102,13 +102,13 @@ TEST_CASE("processFrame aggregates detections over the window")
 
   auto frame = rgbFrame();
   detector.next = {personObject()};
-  service.processFrame(1, "Front", frame);
+  service.processFrame({.cameraId = 1, .cameraName = "Front", .frame = frame});
 
   CHECK(sink.events.empty());
 
   sleepMs(100);
   detector.next = {personObject(), carObject()};
-  service.processFrame(1, "Front", frame);
+  service.processFrame({.cameraId = 1, .cameraName = "Front", .frame = frame});
 
   REQUIRE(sink.events.size() == 1);
   const auto& event = sink.events.front();
@@ -141,12 +141,12 @@ TEST_CASE("the aggregation window keeps the dominant severity")
 
   auto frame = rgbFrame();
   detector.next = {personObject()};
-  service.processFrame(1, "Front", frame);
+  service.processFrame({.cameraId = 1, .cameraName = "Front", .frame = frame});
 
   CHECK(sink.events.empty());
 
   sleepMs(100);
-  service.processFrame(1, "Front", frame);
+  service.processFrame({.cameraId = 1, .cameraName = "Front", .frame = frame});
 
   REQUIRE(sink.events.size() == 1);
   CHECK(sink.events.front().rule == "person_in_alert_zone");
@@ -168,16 +168,16 @@ TEST_CASE("a class in cooldown suppresses the whole next window")
 
   auto frame = rgbFrame();
   detector.next = {personObject()};
-  service.processFrame(1, "Front", frame);
+  service.processFrame({.cameraId = 1, .cameraName = "Front", .frame = frame});
   sleepMs(5);
-  service.processFrame(1, "Front", frame);
+  service.processFrame({.cameraId = 1, .cameraName = "Front", .frame = frame});
 
   REQUIRE(sink.events.size() == 1);
 
   sleepMs(5);
-  service.processFrame(1, "Front", frame);
+  service.processFrame({.cameraId = 1, .cameraName = "Front", .frame = frame});
   sleepMs(5);
-  service.processFrame(1, "Front", frame);
+  service.processFrame({.cameraId = 1, .cameraName = "Front", .frame = frame});
   CHECK(sink.events.size() == 1);
 }
 
@@ -195,16 +195,16 @@ TEST_CASE("no detections and an unloaded detector never publish")
 
   auto frame = rgbFrame();
   detector.next = {};
-  service.processFrame(1, "Front", frame);
+  service.processFrame({.cameraId = 1, .cameraName = "Front", .frame = frame});
   sleepMs(5);
-  service.processFrame(1, "Front", frame);
+  service.processFrame({.cameraId = 1, .cameraName = "Front", .frame = frame});
   CHECK(sink.events.empty());
 
   class UnloadedDetector final : public IObjectDetector
   {
   public:
     bool isLoaded() const override { return false; }
-    std::vector<DetectedObject> detect(const uint8_t*, int, int) override
+    std::vector<DetectedObject> detect(const DetectInput&) override
     {
       return {};
     }
@@ -213,6 +213,6 @@ TEST_CASE("no detections and an unloaded detector never publish")
   } unloaded;
   inputs.dependencies.detector = &unloaded;
   CameraOperatorService disabled(inputs);
-  disabled.processFrame(1, "Front", frame);
+  disabled.processFrame({.cameraId = 1, .cameraName = "Front", .frame = frame});
   CHECK(sink.events.empty());
 }

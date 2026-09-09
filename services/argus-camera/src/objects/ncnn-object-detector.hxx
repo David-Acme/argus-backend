@@ -37,8 +37,7 @@ public:
   void init();
   bool isLoaded() const override;
 
-  std::vector<DetectedObject> detect(const uint8_t* rgb, int width,
-                                     int height) override;
+  std::vector<DetectedObject> detect(const DetectInput& input) override;
 
   const std::vector<std::string>& classes() const override
   {
@@ -60,12 +59,28 @@ private:
     int padY{0};
   };
 
+  struct RunNetInput
+  {
+    Impl& impl;
+    const uint8_t* rgb{nullptr};
+    int width{0};
+    int height{0};
+  };
+
+  struct PostProcessInput
+  {
+    const float* rows{nullptr};
+    size_t rowCount{0};
+    size_t rowLength{0};
+    const LetterboxPlan& plan;
+    int width{0};
+    int height{0};
+  };
+
   std::optional<std::vector<DetectedObject>>
-  runNet(Impl& impl, const uint8_t* rgb, int width, int height);
-  std::vector<DetectedObject> postProcess(const float* rows, size_t rowCount,
-                                          size_t rowLength,
-                                          const LetterboxPlan& plan, int width,
-                                          int height) const;
+  runNet(const RunNetInput& input);
+  std::vector<DetectedObject>
+  postProcess(const PostProcessInput& input) const;
 
   // Loads a fresh net; in-flight snapshots keep running on the old instance.
   static std::shared_ptr<Impl> loadImpl(const std::string& modelDir,

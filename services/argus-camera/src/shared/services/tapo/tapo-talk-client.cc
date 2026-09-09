@@ -30,9 +30,18 @@ std::string lower(std::string value)
   return value;
 }
 
-std::string between(const std::string& text, const std::string& open,
-                    const std::string& close)
+struct BetweenInput
 {
+  const std::string& text;
+  const std::string& open;
+  const std::string& close;
+};
+
+std::string between(const BetweenInput& input)
+{
+  const std::string& text = input.text;
+  const std::string& open = input.open;
+  const std::string& close = input.close;
   const size_t begin = text.find(open);
   if (begin == std::string::npos)
     return {};
@@ -209,7 +218,9 @@ TapoResult TapoTalkClient::authenticate()
 
   if (probe.status == 200) {
     passwordVariant_ = "none";
-    keyExchangeNonce_ = between(probe.header("Key-Exchange"), "nonce=\"", "\"");
+    keyExchangeNonce_ = between({.text = probe.header("Key-Exchange"),
+                                 .open = "nonce=\"",
+                                 .close = "\""});
     return TapoResult::success(Json::Value());
   }
   if (probe.status != 401)
@@ -259,7 +270,9 @@ TapoResult TapoTalkClient::authenticate()
     if (response.status == 200) {
       passwordVariant_ = variant;
       keyExchangeNonce_ =
-          between(response.header("Key-Exchange"), "nonce=\"", "\"");
+          between({.text = response.header("Key-Exchange"),
+                   .open = "nonce=\"",
+                   .close = "\""});
       LOG_INFO << "tapo talk: authenticated with password variant '" << variant
                << "'";
       return TapoResult::success(Json::Value());

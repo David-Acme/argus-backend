@@ -29,8 +29,20 @@ bool vulkanAvailable(const ObjectDetectorOptions& options)
   return HardwareProbe::get().vulkan;
 }
 
-float rowScore(const float* row, size_t rowLength, size_t classCount, int& cls)
+struct RowScoreInput
 {
+  const float* row{nullptr};
+  size_t rowLength{0};
+  size_t classCount{0};
+  int& cls;
+};
+
+float rowScore(const RowScoreInput& input)
+{
+  const float* row = input.row;
+  const size_t rowLength = input.rowLength;
+  const size_t classCount = input.classCount;
+  int& cls = input.cls;
   if (rowLength == 6) {
     cls = static_cast<int>(row[5]);
     return row[4];
@@ -148,10 +160,11 @@ std::string ObjectDetectorService::backend() const
   return impl_->vulkan ? "vulkan" : "cpu";
 }
 
-std::vector<DetectedObject> ObjectDetectorService::detect(const uint8_t* rgb,
-                                                          int width,
-                                                          int height)
+std::vector<DetectedObject> ObjectDetectorService::detect(const DetectInput& input)
 {
+  const uint8_t* rgb = input.rgb;
+  const int width = input.width;
+  const int height = input.height;
   if (!isLoaded() || rgb == nullptr || width <= 0 || height <= 0)
     return {};
 
@@ -170,7 +183,7 @@ std::vector<DetectedObject> ObjectDetectorService::detect(const uint8_t* rgb,
   if (!impl)
     return {};
 
-  auto result = runNet(*impl, rgb, width, height);
+  auto result = runNet({.impl = *impl, .rgb = rgb, .width = width, .height = height});
   if (!result && impl->vulkan) {
     LOG_WARN << "ObjectDetector: vulkan inference failed; falling back to CPU"
                 " on this instance";
@@ -180,7 +193,7 @@ std::vector<DetectedObject> ObjectDetectorService::detect(const uint8_t* rgb,
         impl_ = reloaded;
       }
       impl = std::move(reloaded);
-      result = runNet(*impl, rgb, width, height);
+      result = runNet({.impl = *impl, .rgb = rgb, .width = width, .height = height});
     }
   }
   if (!result)
@@ -189,9 +202,12 @@ std::vector<DetectedObject> ObjectDetectorService::detect(const uint8_t* rgb,
 }
 
 std::optional<std::vector<DetectedObject>>
-ObjectDetectorService::runNet(Impl& impl, const uint8_t* rgb, int width,
-                              int height)
+ObjectDetectorService::runNet(const RunNetInput& input)
 {
+  Impl& impl = input.impl;
+  const uint8_t* rgb = input.rgb;
+  const int width = input.width;
+  const int height = input.height;
   const int inputSize = options_.inputSize;
   const double scale =
       std::min(static_cast<double>(inputSize) / width,
@@ -261,15 +277,24 @@ ObjectDetectorService::runNet(Impl& impl, const uint8_t* rgb, int width,
     return std::nullopt;
   }
 
-  return postProcess(rows.data(), rowCount, rowLength,
-                     LetterboxPlan{static_cast<float>(scale), padX, padY},
-                     width, height);
+  return postProcess(
+      {.rows = rows.data(),
+       .rowCount = rowCount,
+       .rowLength = rowLength,
+       .plan = LetterboxPlan{static_cast<float>(scale), padX, padY},
+       .width = width,
+       .height = height});
 }
 
-std::vector<DetectedObject> ObjectDetectorService::postProcess(
-    const float* rows, size_t rowCount, size_t rowLength,
-    const LetterboxPlan& plan, int width, int height) const
+std::vector<DetectedObject>
+ObjectDetectorService::postProcess(const PostProcessInput& input) const
 {
+  const float* rows = input.rows;
+  const size_t rowCount = input.rowCount;
+  const size_t rowLength = input.rowLength;
+  const LetterboxPlan& plan = input.plan;
+  const int width = input.width;
+  const int height = input.height;
   struct Candidate
   {
     DetectedObject object;
@@ -280,7 +305,9 @@ std::vector<DetectedObject> ObjectDetectorService::postProcess(
   for (size_t r = 0; r < rowCount; ++r) {
     const float* row = rows + r * rowLength;
     int cls = -1;
-    const float score = rowScore(row, rowLength, options_.classes.size(), cls);
+    const float score = rowScore({.row = row, .rowLength = rowLength,
+                                  .classCount = options_.classes.size(),
+                                  .cls = cls});
     if (score < options_.confidence)
       continue;
 
