@@ -55,32 +55,32 @@ set(ARGUS_MODULES
     argus-sync)
 
 foreach(argus_module_dir IN LISTS ARGUS_MODULES)
-    add_subdirectory(${argus_module_dir})
+    add_subdirectory(packages/${argus_module_dir})
 endforeach()
 
-# argus-contracts is added by whichever consumer needs it first (each guards
-# with if(NOT TARGET)), so it is never added here.
+# packages/argus-contracts is added by whichever consumer needs it first (each
+# guards with if(NOT TARGET)), so it is never added here.
 # argus-voice is added before the discovered services: their suites link
 # voice-core and need its usage requirements resolved.
 set(ARGUS_SERVICES_EXPLICIT argus-voice)
 set(ARGUS_SERVICES_SKIP argus-contracts ${ARGUS_MODULES})
 
 foreach(argus_service_dir IN LISTS ARGUS_SERVICES_EXPLICIT)
-    add_subdirectory(${argus_service_dir} EXCLUDE_FROM_ALL)
+    add_subdirectory(services/${argus_service_dir} EXCLUDE_FROM_ALL)
 endforeach()
 
-# Every other argus-* folder carrying a CMakeLists is a service: discovered,
+# Every folder under services/ is a service: discovered,
 # not listed, so adding a service means creating its folder. Services are
 # built on demand, never as part of the default backend build.
 file(GLOB ARGUS_SERVICE_CMAKE CONFIGURE_DEPENDS
-    ${CMAKE_CURRENT_SOURCE_DIR}/argus-*/CMakeLists.txt)
+    ${CMAKE_CURRENT_SOURCE_DIR}/services/argus-*/CMakeLists.txt)
 
 foreach(argus_service_cmake IN LISTS ARGUS_SERVICE_CMAKE)
     get_filename_component(argus_service_dir ${argus_service_cmake} DIRECTORY)
     get_filename_component(argus_service_name ${argus_service_dir} NAME)
     if(NOT argus_service_name IN_LIST ARGUS_SERVICES_SKIP
        AND NOT argus_service_name IN_LIST ARGUS_SERVICES_EXPLICIT)
-        add_subdirectory(${argus_service_name} EXCLUDE_FROM_ALL)
+        add_subdirectory(services/${argus_service_name} EXCLUDE_FROM_ALL)
     endif()
 endforeach()
 
@@ -88,7 +88,8 @@ endforeach()
 # the Vulkan probe with argus-camera whose ncnn Vulkan init it reuses. Same
 # discovery rule, same on-demand build.
 file(GLOB ARGUS_TOOL_CMAKE CONFIGURE_DEPENDS
-    ${CMAKE_CURRENT_SOURCE_DIR}/argus-*/tools/*/CMakeLists.txt)
+    ${CMAKE_CURRENT_SOURCE_DIR}/services/argus-*/tools/*/CMakeLists.txt
+    ${CMAKE_CURRENT_SOURCE_DIR}/packages/argus-*/tools/*/CMakeLists.txt)
 
 foreach(argus_tool_cmake IN LISTS ARGUS_TOOL_CMAKE)
     get_filename_component(argus_tool_dir ${argus_tool_cmake} DIRECTORY)

@@ -405,7 +405,7 @@ services:
       # [memory] schema_file always resolves (same pattern as the init
       # services).
       - type: bind
-        source: ../argus-memory/database/schema.sql
+        source: ../services/argus-memory/database/schema.sql
         target: /opt/argus/database/memory-schema.sql
         read_only: true
         bind:
@@ -600,7 +600,7 @@ services:
       # The schema SQL ships with the repo, not with every provisioned data
       # dir — bind it into the data-dir path so --schema always resolves.
       - type: bind
-        source: ../argus-identity/database/schema.sql
+        source: ../packages/argus-identity/database/schema.sql
         target: /opt/argus/database/identity-schema.sql
         read_only: true
         bind:
@@ -632,7 +632,7 @@ services:
       # Same repo-shipped schema bind as identity-init: a provisioned data
       # dir without the SQL would fail "schema file not found".
       - type: bind
-        source: ../argus-camera/database/schema.sql
+        source: ../services/argus-camera/database/schema.sql
         target: /opt/argus/database/camera-schema.sql
         read_only: true
         bind:
@@ -667,7 +667,7 @@ services:
       # provisioned data dir without the SQL would fail "schema file not
       # found".
       - type: bind
-        source: ../argus-productivity/database/schema.sql
+        source: ../services/argus-productivity/database/schema.sql
         target: /opt/argus/database/productivity-schema.sql
         read_only: true
         bind:
@@ -695,7 +695,7 @@ services:
         bind:
           create_host_path: false
       - type: bind
-        source: ../argus-notification/database/schema.sql
+        source: ../services/argus-notification/database/schema.sql
         target: /opt/argus/database/notification-schema.sql
         read_only: true
         bind:

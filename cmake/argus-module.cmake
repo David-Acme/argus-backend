@@ -3,6 +3,11 @@
 
 include_guard(GLOBAL)
 
+# This file's own directory, captured at include time. CMAKE_CURRENT_LIST_DIR
+# inside a function resolves against the CALLER's list file, so paths to
+# sibling folders must be anchored here instead.
+set(ARGUS_CMAKE_DIR ${CMAKE_CURRENT_LIST_DIR})
+
 # argus_module(NAME <name> [SOURCES ...] [INCLUDES ...] [DEPENDS ...]
 #              [SYSTEM_DEPENDS ...]) -> static lib argus_<name> / argus::<name>
 function(argus_module)
@@ -38,7 +43,7 @@ function(argus_grpc_absl_bridge)
   if(TARGET argus_sdk_grpc_bridge_entry)
     return()
   endif()
-  set(bridge_dir ${CMAKE_CURRENT_LIST_DIR}/../argus-contracts/sdk/grpc)
+  set(bridge_dir ${ARGUS_CMAKE_DIR}/../packages/argus-contracts/sdk/grpc)
   foreach(side entry exit)
     add_library(argus_sdk_grpc_bridge_${side} OBJECT
                 ${bridge_dir}/grpc-cq-bridge-${side}.cc)
@@ -61,7 +66,7 @@ function(argus_grpc_client_base)
   if(TARGET argus_sdk_grpc_base)
     return()
   endif()
-  set(base_dir ${CMAKE_CURRENT_LIST_DIR}/../argus-contracts/sdk/grpc)
+  set(base_dir ${ARGUS_CMAKE_DIR}/../packages/argus-contracts/sdk/grpc)
   add_library(argus_sdk_grpc_base OBJECT ${base_dir}/grpc-client-base.cc)
   set_target_properties(argus_sdk_grpc_base PROPERTIES
       POSITION_INDEPENDENT_CODE ON)

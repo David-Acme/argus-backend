@@ -1,0 +1,185 @@
+# argus-gateway configuration. Copy to config.toml (gitignored) to run.
+# Cutover shape (F1-5): the gateway owns the public TLS 7024 listener (the
+# same instance certificates the monolith used) and forwards each extracted
+# domain to its service backend through the proxy route table. Unrouted paths
+# fall through to the gateway's own routing chain, which answers unknown
+# paths with the frozen NOT_FOUND envelope.
+
+[gateway]
+host = "0.0.0.0"
+# Public listener the mobile app has always connected to.
+port = 7024
+# Plain-HTTP listener option for local tests (tls off, no cert files).
+plain = false
+# Passed to OpenSSL as [MinProtocol, value] on the TLS listener.
+min_protocol = "TLSv1.2"
+
+# Mirror of the legacy [drogon.app] block; the listeners, db_clients and
+# plugins are built by the gateway itself (see argus-gateway/src/main.cc).
+[drogon.app]
+number_of_threads = 0
+enable_session = false
+document_root = "./"
+use_sendfile = true
+use_gzip = true
+use_brotli = false
+static_files_cache_time = 5
+idle_connection_timeout = 60
+enable_server_header = true
+enable_date_header = true
+keepalive_requests = 0
+pipelining_requests = 0
+gzip_static = true
+br_static = true
+client_max_body_size = "60M"
+client_max_memory_body_size = "16M"
+client_max_websocket_message_size = "128K"
+reuse_port = false
+enabled_compressed_request = false
+enable_request_stream = false
+handle_sig_term = true
+relaunch_on_error = false
+
+[nats]
+# Empty disables the event bus; health never depends on NATS being up.
+url = ""
+reconnect_wait_ms = 2000
+max_reconnects = 60
+
+# Push intents to the home client through the tunnel transport (F5-5). The
+# gateway publishes one JSON intent per notification row it creates over
+# argus.notification.v1.push_intent; default off keeps the app movil contract
+# frozen (Ruling CM).
+[push]
+enabled = false
+
+# Same instance secrets as the legacy backend: both binaries verify (and the
+# gateway mints) the app's tokens.
+[jwt]
+secret = ""
+refresh_secret = ""
+access_ttl_minutes = 15
+refresh_ttl_days = 30
+
+# Same instance secret as the legacy: the device hash must stay identical on
+# both sides of the proxy.
+[device]
+fingerprint_secret = ""
+# Device identity source: "ip" fingerprints the source IP (legacy behavior);
+# "credential" replaces the IP with the per-device secret issued at
+# register/login and desktop-challenge approval, presented by clients via the
+# X-Argus-Device-Credential header. Flipping the mode invalidates every
+# existing session once (controlled re-login).
+identity_mode = "ip"
+
+[identity]
+# Own database of the gateway identity domain (F1-3): all identity routes
+# read this SQLite file.
+db = "database/identity.db"
+schema = "packages/argus-identity/database/schema.sql"
+# Internal IdentityService gRPC listener (argus.identity.v1, F6-3 seed).
+# Loopback by default: a wider bind exposes an unauthenticated-surface RPC.
+rpc_host = "127.0.0.1"
+rpc_port = 7040
+
+[camera]
+# F2-2 cutover (Rulings X/Z): the camera domain argus-camera owns. The relay
+# leg for camera:* frames and the whole /camera, /zone domain (every segment
+# depth, device control included)
+# point at its internal listener; the camera sync tables ride the
+# argus.camera.v1 gRPC leg at grpc_target. Empty keys leave camera:* frames
+# on the 503 unconfigured-relay envelope, the /camera, /zone paths on the
+# gateway's native 404 envelope and the camera sync tables on the 503
+# camera-sync envelope.
+sync_url = "ws://127.0.0.1:7026/sync"
+proxy_url = "http://127.0.0.1:7026"
+grpc_target = "127.0.0.1:7036"
+
+[voice]
+# F6-3 cutover: argus-voice owns the voice orchestration; the voice:* frames
+# and the raw 16 kHz s16le PCM binary ride the argus.voice.v1 gRPC leg at
+# [voice].target. Empty leaves voice:* answered with the gateway's 503
+# unconfigured-relay envelope (argus-gateway/src/sync/sync-relay.cc), so set
+# "127.0.0.1:7034" with argus-voice in the stack.
+target = ""
+
+[productivity]
+# F3-2 cutover (Rulings AP/AQ): argus-productivity owns the calendar-event,
+# calendar-event-share, project, project-member and project-task routes and
+# the productivity.db sync tables, which the gateway opens mode=ro. Empty
+# keys leave the productivity paths on the gateway's native 404 envelope.
+proxy_url = "http://127.0.0.1:7027"
+db = "database/productivity.db"
+
+# Same cert paths as the legacy (transitional shared directory): the app's
+# pinned CA is byte-identical, and CertService runs here with the same keys.
+[cert]
+dir = "certs"
+ca_cert = "certs/ca.pem"
+ca_key = "certs/ca.key"
+server_cert = "certs/server.pem"
+server_key = "certs/server.key"
+leaf_ttl_days = 90
+rotation_threshold_days = 30
+rotate_check_hours = 24
+
+[mdns]
+enabled = true
+name = "Argus"
+service_type = "_argus._tcp"
+port = 7024
+
+[mdns.txt]
+path = "/"
+https = "true"
+wss = "true"
+
+[face]
+# Facial login models (models/face, from scripts/setup.sh). Disabled (or an
+# absent section) boots the gateway without face models.
+enabled = true
+
+[notifications]
+# F3-2 cutover (Rulings AP/AR): PATCH /notification/read and POST
+# /notification-token route to argus-notification; notification.db is the
+# single notification substrate, opened read-write here because the gateway
+# NotificationService writes notifications into it (camera-notifier
+# retarget). Empty keys leave the notification routes on the gateway's
+# native 404 envelope.
+proxy_url = "http://127.0.0.1:7028"
+db = "database/notification.db"
+# Camera object_detected consumer (F2-3, Ruling AD): at most budget_per_hour
+# notifications per camera on a rolling hour; anything past it is counted and
+# summarized in a cumulative digest flushed every minute after the window or
+# the silent window closes.
+budget_per_hour = 6
+# Local-hour window [silent_start, silent_end) that suppresses notifications
+# (events are still digested). Both -1, or equal values, disable it; wrapping
+# (23 -> 7) is supported.
+silent_start = -1
+silent_end = -1
+
+[remote]
+# Fase 5 (Ruling CG): second listener for tunnel-forwarded remote traffic
+# (argus-tunnel relays the client's TLS bytes end-to-end to this port).
+# 0 keeps the single-listener shape; when set, requests landing on this
+# port are classified remote and /pairing + /auth/register answer 403
+# REMOTE_NOT_ALLOWED unless enabled = true. The listener mirrors the public
+# one's TLS posture (same host, certs and min protocol).
+tunnel_port = 0
+enabled = false
+# Public relay hostname the app configures as its manual server (Fase 5,
+# Ruling CI): appended as a DNS SAN to the leaf certificate. Empty keeps the
+# certificate output unchanged.
+hostname = ""
+
+[rate_limit]
+# Fase 5 (Ruling CJ): in-memory sliding-window limiter plus consecutive-
+# failure lockout for PATCH /auth/refresh-token, evaluated in pre-routing
+# before filters and any database access. enabled = false keeps today's
+# behavior. State is process-local: a restart clears counters and lockouts.
+enabled = false
+window_seconds = 60
+max_requests = 10
+lockout_threshold = 5
+lockout_seconds = 300

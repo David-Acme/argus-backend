@@ -1,0 +1,156 @@
+cmake_minimum_required(VERSION 3.25)
+project(argus-notification VERSION 1.0.0 LANGUAGES CXX)
+
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+
+set(NOTIFICATION_SRC_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/src)
+
+if(NOT TARGET argus_common)
+    # Standalone build: reuse the root project's libraries and third-party
+    # sqlite-vec so the notification service links the same objects as the
+    # root-tree build.
+    find_package(Drogon CONFIG REQUIRED)
+    find_package(cnats CONFIG REQUIRED)
+    find_package(tomlplusplus REQUIRED)
+    find_package(jwt-cpp REQUIRED)
+    find_package(nlohmann_json REQUIRED)
+    find_package(OpenCV CONFIG REQUIRED)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/argus-common
+                     ${CMAKE_BINARY_DIR}/argus-common)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/argus-sqlite
+                     ${CMAKE_BINARY_DIR}/argus-sqlite)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/argus-audit
+                     ${CMAKE_BINARY_DIR}/argus-audit)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/argus-cert
+                     ${CMAKE_BINARY_DIR}/argus-cert)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/argus-room
+                     ${CMAKE_BINARY_DIR}/argus-room)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/argus-socket
+                     ${CMAKE_BINARY_DIR}/argus-socket)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/argus-auth
+                     ${CMAKE_BINARY_DIR}/argus-auth)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/argus-identity
+                     ${CMAKE_BINARY_DIR}/argus-identity)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/argus-sync
+                     ${CMAKE_BINARY_DIR}/argus-sync)
+
+    enable_language(C)
+    add_library(sqlite-vec STATIC
+                ${CMAKE_CURRENT_SOURCE_DIR}/../../third_party/sqlite-vec/sqlite-vec.c)
+    target_compile_definitions(sqlite-vec PRIVATE SQLITE_CORE SQLITE_VEC_STATIC)
+    target_include_directories(sqlite-vec PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../third_party/sqlite-vec)
+    set(ARGUS_SQLITE_VEC_TARGET sqlite-vec)
+
+    # argus_identity compiles the face services, whose headers need ncnn; the
+    # objects are dropped at link time because nothing in this service
+    # references them (verified with nm -C: zero AI symbols).
+    set(NCNN_BUILD_BENCHMARK OFF CACHE BOOL "" FORCE)
+    set(NCNN_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+    set(NCNN_BUILD_TOOLS OFF CACHE BOOL "" FORCE)
+    set(NCNN_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+    set(NCNN_OPENMP ON CACHE BOOL "" FORCE)
+    set(NCNN_AVX2 ON CACHE BOOL "" FORCE)
+    set(NCNN_ENABLE_PIC ON CACHE BOOL "" FORCE)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../third_party/ncnn
+                     ${CMAKE_BINARY_DIR}/third_party/ncnn EXCLUDE_FROM_ALL)
+    set(ARGUS_NCNN_TARGET ncnn)
+endif()
+
+find_package(doctest REQUIRED)
+
+add_library(notification-core STATIC
+    ${NOTIFICATION_SRC_ROOT}/notification/nats-notification-change-sink.cc
+    ${NOTIFICATION_SRC_ROOT}/notification/notification-config.cc
+)
+
+target_include_directories(notification-core PUBLIC
+    ${NOTIFICATION_SRC_ROOT})
+
+target_link_libraries(notification-core PUBLIC argus_sync argus::sqlite
+    ${ARGUS_SQLITE_VEC_TARGET})
+
+target_compile_options(notification-core PRIVATE -Wall -Wextra)
+
+# The write-side feature surface (markAsRead + registerToken controllers,
+# feature services, DTOs) compiles from the shared tree into THIS executable
+# only: the controllers are AutoCreation and register their routes during
+# static init, exactly like the legacy binary does. The legacy keeps its own
+# registration until F3-2; the notification repository and schema ride
+# argus_sync, the notification-token repository/service are not in argus_sync
+# and compile from the shared tree too.
+set(NOTIFICATION_FEATURE_SOURCES
+    ${NOTIFICATION_SRC_ROOT}/feature/api/notification/controllers/notification-controller.cc
+    ${NOTIFICATION_SRC_ROOT}/feature/api/notification/controllers/notification-token-controller.cc
+    ${NOTIFICATION_SRC_ROOT}/feature/api/notification/dtos/notification-read-dto.cc
+    ${NOTIFICATION_SRC_ROOT}/feature/api/notification/dtos/register-notification-token-dto.cc
+    ${NOTIFICATION_SRC_ROOT}/feature/api/notification/services/notification-feature-service.cc
+    ${NOTIFICATION_SRC_ROOT}/feature/api/notification/services/notification-token-feature-service.cc
+    ${NOTIFICATION_SRC_ROOT}/shared/repositories/notification-token/notification-token-repository.cc
+    ${NOTIFICATION_SRC_ROOT}/shared/schemas/notification-token/notification-token-schema.cc
+    ${NOTIFICATION_SRC_ROOT}/shared/services/notification-token/notification-token-service.cc
+)
+
+add_executable(argus-notification
+    ${NOTIFICATION_SRC_ROOT}/main.cc
+    ${NOTIFICATION_FEATURE_SOURCES})
+
+# The filters validate through argus.identity.v1 (argus::sdk-identity rides
+# argus::auth); argus_identity arrives transitively through
+# notification-core's argus_sync pull, with no link-order meaning left.
+target_link_libraries(argus-notification PRIVATE notification-core
+    argus::auth)
+
+target_compile_options(argus-notification PRIVATE -Wall -Wextra)
+
+get_target_property(DOCTEST_INCLUDE_DIRS doctest::doctest
+                    INTERFACE_INCLUDE_DIRECTORIES)
+if(DOCTEST_INCLUDE_DIRS)
+    set_target_properties(doctest::doctest PROPERTIES
+        INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${DOCTEST_INCLUDE_DIRS}")
+endif()
+
+# The notification unit suites are root-project tests; notification-migration
+# (tools/) is EXCLUDE_FROM_ALL there. The targets opt back into the default
+# build because this folder is added EXCLUDE_FROM_ALL.
+if(ARGUS_ROOT_PROJECT)
+    find_package(doctest REQUIRED)
+
+    foreach(TEST_NAME IN ITEMS notification-schema-test notification-migration-test)
+        add_executable(${TEST_NAME} tests/unit/${TEST_NAME}.cc)
+        set_target_properties(${TEST_NAME} PROPERTIES EXCLUDE_FROM_ALL FALSE)
+        target_link_libraries(${TEST_NAME} PRIVATE argus_common
+            notification-migration doctest::doctest)
+        target_compile_options(${TEST_NAME} PRIVATE -Wall -Wextra)
+        add_test(NAME ${TEST_NAME} COMMAND ${TEST_NAME})
+    endforeach()
+
+    # The controller suite compiles the same write-side sources the service
+    # compiles and rides the sync layer for repositories and boot plumbing.
+    add_executable(notification-controller-test
+        tests/unit/notification-controller-test.cc
+        ${NOTIFICATION_FEATURE_SOURCES})
+
+    set_target_properties(notification-controller-test PROPERTIES
+        EXCLUDE_FROM_ALL FALSE)
+
+    target_include_directories(notification-controller-test PRIVATE
+        ${NOTIFICATION_SRC_ROOT})
+
+    target_link_libraries(notification-controller-test PRIVATE argus_sync
+        argus_common doctest::doctest)
+
+    target_compile_options(notification-controller-test PRIVATE -Wall -Wextra)
+
+    add_test(NAME notification-controller-test
+             COMMAND notification-controller-test)
+
+    get_target_property(DOCTEST_INCLUDE_DIRS doctest::doctest
+                        INTERFACE_INCLUDE_DIRECTORIES)
+    if(DOCTEST_INCLUDE_DIRS)
+        set_target_properties(doctest::doctest PROPERTIES
+            INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${DOCTEST_INCLUDE_DIRS}")
+    endif()
+endif()

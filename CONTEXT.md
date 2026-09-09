@@ -651,9 +651,9 @@ A Drogon custom error handler wraps built-in 404/405 in the same envelope.
   401 `Device mismatch` — never a distinct error. A mode flip invalidates
   every existing session once (controlled re-login). App móvil coordination:
   the client must start sending the header when the server flips the mode
-  (`argus-contracts/identity/README.md`); until it does, its sessions mismatch
+  (`packages/argus-contracts/identity/README.md`); until it does, its sessions mismatch
   once and the re-login populates `device_credential`. Wire contract:
-  `argus-contracts/identity/README.md`. The F5-1 rate limiter key stays
+  `packages/argus-contracts/identity/README.md`. The F5-1 rate limiter key stays
   IP-based (`DeviceFilter::deviceKey`) in credential mode: the limiter runs
   pre-DB (Ruling CJ) and a client-presented credential would be an
   attacker-controlled key. Per-request cost (F5-2 review MINOR-6): in
@@ -2329,7 +2329,7 @@ Fase 1 of the migration starts here: the gateway will own `/sync`, and every
 other service publishes persisted-change events to NATS instead of calling the
 gateway. The foundation is `NatsBus` (`src/shared/wrapper/nats/`) over cnats
 (`cnats/3.13.0` via Conan; its `nats_static` target is linked PUBLIC into
-`argus_common`). The frozen subject naming lives in `argus-contracts/subjects.md`
+`argus_common`). The frozen subject naming lives in `packages/argus-contracts/subjects.md`
 (`argus.<domain>.v1.<event>`; the concrete `/sync` subject is
 `argus.sync.v1.change` with the `SocketEmitDto` payload shape
 `{operation, option, info}`, and the gateway subscribes with the frozen
@@ -2361,7 +2361,7 @@ proxies everything it does not own to the legacy backend on an internal plain
 listener (`[[drogon.listeners]] port 7025` — config-gated, zero legacy code
 moved). The backend code change this phase is additive only (Ruling H below);
 the A/B probe matrix
-(`argus-gateway/tools/probe-identity-matrix.sh`, unauthenticated runs) re-run
+(`services/argus-gateway/tools/probe-identity-matrix.sh`, unauthenticated runs) re-run
 against the booted modified backend is byte-identical to the committed
 captures (01–09, 11, 20–24; the JWT-authenticated captures differ only in the
 auth outcome of the no-token run, same conclusion as F1-4).
@@ -2500,7 +2500,7 @@ camera-control routes against camera.db.
   built only from the shared TTS stack (tts-service/tts-engine/onnx-utils/
   style/unicode-processor) plus onnxruntime — no LLM/STT/VAD/ncnn symbols
   (nm -C proof in task-f4-2-report.md). The argus-tts tree
-  (`argus-tts/src`) carries its own main, health controller, TTS controller
+  (`services/argus-tts/src`) carries its own main, health controller, TTS controller
   and synthesize DTO; it compiles the shared sources directly (same pattern
   as argus-camera), so `models/tts` is read from the same tree via
   `tts.models_dir` — model files are never copied.
@@ -2603,7 +2603,7 @@ camera-control routes against camera.db.
   `{image_b64, prompt?, camera_id?}` (base64 JPEG) and answers the frozen
   app-envelope with `info.caption`. Errors: 400 bad JSON, 422
   validation/undecodable image, 503 `VLM_NOT_LOADED`, frozen 404/405
-  envelopes. No auth: loopback trust boundary, same as argus-tts/argus-stt.
+  envelopes. No auth: loopback trust boundary, same as services/argus-tts/argus-stt.
   `GET /vlm/v1/config` is additive and internal-only. The wire carries no
   max-tokens field — the service's `vision.max_tokens`/`vision.prompt`
   defaults apply on the remote path.
@@ -2643,7 +2643,7 @@ camera-control routes against camera.db.
 - **argus-llm is the seventh microservice**: the text-generation capacity at
   `:7032`, loopback bind, llama.cpp only (NO mtmd — the binary must stay
   vision-free; `nm -C` scan for mtmd/onnx/ncnn/whisper = 0). It mirrors the
-  argus-stt/vlm scaffold (own binary, preset pair `llm`/`llm-prod`, AGENTS.md,
+  services/argus-stt/vlm scaffold (own binary, preset pair `llm`/`llm-prod`, AGENTS.md,
   /health, config template with ONLY `[llm]` + `[server]`) and compiles the
   shared `LlmService` from the shared tree. argus-llm owns
   `llama_backend_init`/`llama_backend_free` in `main.cc` with teardown order
@@ -2719,14 +2719,14 @@ camera-control routes against camera.db.
   returns — no in-queue retry, verified live. The legacy keeps
   `InProcessMemoryChat` (identical queue semantics, in-process busy state).
 - **Catalog replicas (Ruling BX).** `argus.identity.v1.change` (new subject,
-  see `argus-contracts/subjects.md`) + `argus.camera.v1.change` replay into
+  see `packages/argus-contracts/subjects.md`) + `argus.camera.v1.change` replay into
   the replicas through `CatalogReplica`; camera_stream rows ride the sync
   wildcard filtered to `option == "camera_stream"`. The boot snapshot fill is
   NOT gated on NATS: `CatalogReplica::seedSnapshot` (static) fills empty
   replicas from the read-only `[identity]`/`[camera]` clients even when the
   change feed never connected — a no-NATS boot still serves a real catalog.
   The gateway's `argus.*.v1.change` wildcard subscription no-ops the identity
-  subject (`argus-gateway/src/sync/camera-fan-out.cc:74`), so `/sync` fan-out
+  subject (`services/argus-gateway/src/sync/camera-fan-out.cc:74`), so `/sync` fan-out
   is unchanged (verified).
 - **Compile coupling severed (Ruling CA).** `ReactionEngine`'s rule machinery
   moved behind a pimpl so the voice path compiles without memory types;
@@ -2747,12 +2747,12 @@ paths, envelope, 404-vs-502 `CAMERA_UNREACHABLE`, filter chain order and the
 
 - **camera-control moved**: `feature/api/camera-control/` (routes
   `/camera/{id}/status|presets|ptz|preset|settings|capabilities|talk`) now
-  lives in `argus-camera/src/feature/api/camera-control/` with the same
+  lives in `services/argus-camera/src/feature/api/camera-control/` with the same
   controllers/dtos/services layout; `git mv` kept the code verbatim. The
   gateway's camera route cap went 2 → 8 segments, so the control paths ride
   `/camera`-prefix routing to argus-camera instead of falling through to the
-  legacy (`argus-gateway/src/main.cc` route table +
-  `argus-gateway/src/proxy/reverse-proxy.cc`).
+  legacy (`services/argus-gateway/src/main.cc` route table +
+  `services/argus-gateway/src/proxy/reverse-proxy.cc`).
 - **TtsClient is remote-only** (`src/shared/services/tts/remote/tts-remote.cc`):
   with `tts.remote_url` empty every call throws `tts.remote_url is not
   configured` — the in-process `TtsService` fallback branches are gone, so
@@ -2771,7 +2771,7 @@ paths, envelope, 404-vs-502 `CAMERA_UNREACHABLE`, filter chain order and the
   tts-remote and audio-resampler, and links OpenSSL::SSL/Crypto;
   `CameraControlController` registers explicitly (AutoCreation is
   linker-dropped in a static lib). `[tts] remote_url` documented in
-  `argus-camera/config.toml.example` and `argus-deploy/config.camera.toml.example`.
+  `services/argus-camera/config.toml.example` and `argus-deploy/config.camera.toml.example`.
 - **Legacy slimming**: `application.cc` lost `registerCameraSurface` and
   `installCameraSurface` (the camera.db read-write attach is gone — the
   legacy opens camera.db nowhere), the go2rtc conditional init and the
@@ -2802,7 +2802,7 @@ paths, envelope, 404-vs-502 `CAMERA_UNREACHABLE`, filter chain order and the
 
 The voice stack (voice-session-service + voice-engine-seam + VAD + noise
 suppression + reaction engine + the voice half of SyncMediaService) moved to
-`argus-voice/`, a pure gRPC service (`argus.voice.v1.VoiceService`, port 7034)
+`services/argus-voice/`, a pure gRPC service (`argus.voice.v1.VoiceService`, port 7034)
 with no SyncSocket, no /sync surface and no database. The legacy registers no
 TTS or STT adapter (stt/tts service adapters deleted): synthesis and
 transcription live in argus-voice behind the same seams, remote-only. The
@@ -2854,7 +2854,7 @@ camera-domain sync tables (camera, camera_stream, zone) through the typed
 required_create/required_deleted/find_last legs, the (createdAt, id) cursor
 ranges, LIMIT 200 baked into the owner's SQL, and tombstones as
 {id, deletedAt} — typed row messages in
-`argus-contracts/proto/argus/camera/v1/sync.proto` whose field sets mirror
+`packages/argus-contracts/proto/argus/camera/v1/sync.proto` whose field sets mirror
 the sync-table JSON exactly (no password/cloudPassword). The gateway
 consumes it through the `argus::sdk-camera` wrapper (`CameraSyncGateway`,
 a `CameraSyncSource` seam injected into `SynchronizedService`), which maps
@@ -2899,8 +2899,8 @@ which is what surfaced the decision.
 
 ## labs/ deleted (2026-09-08)
 
-The thirteen `labs/` binaries are gone, with `argus-camera/labs/` and
-`MediaRelay` (`argus-camera/src/shared/services/stream/media-relay.*`, whose
+The thirteen `labs/` binaries are gone, with `services/argus-camera/labs/` and
+`MediaRelay` (`services/argus-camera/src/shared/services/stream/media-relay.*`, whose
 only consumer was itself).
 
 **Why now**: they had already stopped building. Every lab compiled backend
@@ -2912,7 +2912,7 @@ work of rebuilding them rather than keeping them. The user's call was that
 labs are for trying things out and can go.
 
 **What survives**: the labelled utterance set moved to
-`argus-llm/tests/fixtures/tools/` (see its README). It was fastText training
+`services/argus-llm/tests/fixtures/tools/` (see its README). It was fastText training
 data; with the classifier retired it is the accuracy harness for the LLM's own
 tool calling, and `check.tsv` is the exact file the 2026-08-11 gate scored.
 `labs/tool-bench/tool-bench.cc` was NOT kept in the tree — it cannot compile
