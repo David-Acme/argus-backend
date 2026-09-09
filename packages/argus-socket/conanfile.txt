@@ -1,0 +1,18 @@
+[requires]
+drogon/1.9.13
+sqlite3/[>=3.45.0 <4]
+nlohmann_json/3.11.3
+tomlplusplus/3.3.0
+cnats/3.13.0
+doctest/2.4.12
+
+[options]
+drogon/*:with_sqlite=True
+sqlite3/*:enable_fts5=True
+
+[generators]
+CMakeDeps
+CMakeToolchain
+
+[layout]
+cmake_layout
