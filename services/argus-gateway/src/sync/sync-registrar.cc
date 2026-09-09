@@ -12,10 +12,7 @@
 
 namespace
 {
-// Real evidence that the filter's object code is linked: DrObject-derived
-// classes static-register into the class map (getAllClassName) when their
-// translation unit is linked. getSingleInstance would fabricate the instance
-// instead.
+// Evidence the filter's object code is linked: getSingleInstance would fabricate it.
 template <typename T>
 void requireLinkedFilter()
 {

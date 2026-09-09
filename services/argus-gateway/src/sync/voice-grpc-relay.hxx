@@ -21,8 +21,7 @@ struct VoiceGrpcConfig
   static VoiceGrpcConfig resolve();
 };
 
-// The voice leg of the relay split: voice:* frames and raw binary ride one
-// bidi gRPC stream per WS client.
+// The voice leg: voice:* frames and raw binary ride one bidi stream per client.
 class VoiceGrpcRelay final : public SyncForwarder
 {
 public:

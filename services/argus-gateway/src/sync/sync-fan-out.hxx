@@ -8,9 +8,7 @@
 #include <vector>
 
 
-// Parsed `argus.*.v1.change` event (see shared/services/socket/sync-change.hxx
-// for the wire contract): the emit triple plus the routing metadata the
-// gateway consumes and never re-emits.
+// Parsed `argus.*.v1.change` event: the emit triple plus routing metadata.
 namespace sync_fan_out
 {
 struct Event
@@ -22,9 +20,7 @@ struct Event
   std::optional<UserRole> newRole;
 };
 
-// Room routing decision for one event, the same mapping the legacy
-// SocketService applies: plain emits target the module room or the user
-// rooms, room-control actions take precedence over them.
+// Room routing decision, the same mapping the legacy SocketService applies.
 struct FanOutPlan
 {
   enum class Kind

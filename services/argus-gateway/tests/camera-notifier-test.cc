@@ -20,8 +20,7 @@ namespace
 {
 constexpr const char* kIdentityDb = "camera-notifier-test-identity.db";
 
-// A timestamp whose LOCAL hour is the requested one (hourOfDay reads the
-// local clock, so the tests build their timestamps with mktime).
+// A timestamp whose LOCAL hour is the requested one (hourOfDay reads the clock).
 int64_t atLocalHour(int hour, int minute = 0, int day = 15)
 {
   std::tm local{};
@@ -213,8 +212,7 @@ TEST_CASE("counts suppressed inside silent hours carry until the window ends")
   CHECK_FALSE(policy.shouldNotify(1, night));
   policy.countSuppressed(1, "person");
 
-  // The budget hour rolls inside the silent window; the digest must not
-  // go out at night and the counts carry.
+  // The budget hour rolls inside the silent window; the counts carry.
   CHECK_FALSE(policy.shouldNotify(1, atLocalHour(0, 5, 16)));
   policy.countSuppressed(1, "car");
   CHECK(policy.takeDigest(1, atLocalHour(1, 0, 16)).empty());
@@ -233,8 +231,7 @@ TEST_CASE("the consumer applies the budget and creates camera notifications")
       drogon::orm::DbClient::newSqlite3Client(std::string("filename=") +
                                                   kIdentityDb,
                                               1);
-  // Identity user table (packages/argus-identity/database/schema.sql shape) plus the
-  // notification table the service writes (argus.db shape).
+  // Identity user table plus the notification table the service writes.
   client->execSqlSync(
       "CREATE TABLE user ("
       "id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, "
@@ -254,8 +251,7 @@ TEST_CASE("the consumer applies the budget and creates camera notifications")
       "is_read INTEGER NOT NULL DEFAULT 0 CHECK (is_read IN (0, 1)), "
       "read_at INTEGER, "
       "created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')))");
-  // One owner (notified), one guard (notified), one resident (skipped) and
-  // one deactivated owner (skipped).
+  // One owner and one guard (notified), one resident and one deactivated (skipped).
   client->execSqlSync("INSERT INTO user (name, last_name, role) VALUES "
                       "('Ana', 'Owner', 'owner')");
   client->execSqlSync("INSERT INTO user (name, last_name, role) VALUES "
@@ -304,8 +300,7 @@ TEST_CASE("the consumer applies the budget and creates camera notifications")
   std::this_thread::sleep_for(std::chrono::milliseconds(300));
   CHECK(notificationCount() == 12);
 
-  // The gateway-local sink dispatches the /sync Add frame to the user room
-  // the sync socket joined, exactly the pre-cutover SocketService push.
+  // The gateway-local sink dispatches the /sync Add frame to the user room.
   const auto conn = std::make_shared<RecordingConnection>();
   RoomManager rooms;
   drogon::app().getIOLoop(0)->queueInLoop(

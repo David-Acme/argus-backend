@@ -11,17 +11,14 @@
 #include <utility>
 #include <vector>
 
-// What /health reports: the service name every binary carries, plus any
-// extra fields that service wants appended. Providers are called per
-// request, so they read live state.
+// What /health reports; providers are called per request.
 struct HealthStatus
 {
   std::string serviceName;
   std::vector<std::pair<std::string, std::function<Json::Value()>>> extras;
 };
 
-// The /health surface shared by every service (Ruling: one envelope shape,
-// one uptime clock). Construct with the owning service's name.
+// The /health surface shared by every service.
 class HealthController
     : public drogon::HttpController<HealthController, false>
 {

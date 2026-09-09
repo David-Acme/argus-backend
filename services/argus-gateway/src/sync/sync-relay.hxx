@@ -19,24 +19,16 @@ struct CameraSyncConfig
   static CameraSyncConfig resolve();
 };
 
-// Every relay-leg-emitted text frame the client must still receive; module
-// and sync emits of the relay session are dropped (the gateway serves those
-// natively).
+// Relay-leg text frames the client must still receive; the gateway serves module emits.
 bool relayAllowedText(std::string_view type);
 
-// camera:* frames belong to the argus-camera leg, everything else to the
-// voice leg.
+// camera:* frames belong to the argus-camera leg, the rest to the voice leg.
 bool relayLegIsCamera(std::string_view type);
 
 // voice:* frames and raw binary belong to the argus-voice leg.
 bool relayLegIsVoice(std::string_view type);
 
-// Per-client byte-transparent relay to a service /sync socket leg. Each
-// session connects with the client's own credentials (token and User-Agent;
-// the X-Forwarded-For is synthesized from the observed TCP peer address) and
-// is only touched from the event loop of its client connection. Binary frames
-// past the pending-frame cap are dropped while the relay session connects.
-// An empty target answers every frame with the 503 unconfigured envelope.
+// Byte-transparent relay to a service /sync leg with the client's own credentials.
 class LegacySyncRelay final : public SyncForwarder
 {
 public:
@@ -69,8 +61,7 @@ private:
   std::unordered_map<const void*, std::shared_ptr<Session>> sessions_;
 };
 
-// Per-client relay split: camera:* to argus-camera, voice:* and binary to
-// argus-voice.
+// Relay split: camera:* to argus-camera, voice:* and binary to argus-voice.
 class CompositeSyncRelay final : public SyncForwarder
 {
 public:

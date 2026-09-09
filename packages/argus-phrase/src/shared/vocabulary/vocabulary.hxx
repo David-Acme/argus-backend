@@ -9,9 +9,7 @@
 #include <shared/vocabulary/vocabulary-es.hxx>
 #include <shared/vocabulary/vocabulary-en.hxx>
 
-// Static per-language vocabulary; the entries live in the language headers.
-// Domain-neutral on purpose: the extraction lexicon built from these seeds
-// lives with the extractor that consumes it (argus-memory).
+// Static per-language vocabulary; entries live in the language headers.
 namespace vocabulary
 {
 

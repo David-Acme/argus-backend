@@ -9,9 +9,7 @@
 namespace extract
 {
 
-// The static vocabulary seeds flattened into lexicon entries. It lives here
-// rather than in the vocabulary headers so the phrase data stays free of the
-// extraction contract.
+// The static vocabulary seeds flattened into lexicon entries.
 inline std::vector<LexiconEntry> allLexiconEntries()
 {
   std::vector<LexiconEntry> out;

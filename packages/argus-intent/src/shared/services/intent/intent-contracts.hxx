@@ -9,8 +9,7 @@
 #include <utility>
 #include <vector>
 
-// The fast tier of the intent router: what the turn is for, decided in
-// microseconds before the LLM is asked to write anything.
+// The fast tier of the intent router: what the turn is for, in microseconds.
 namespace intent
 {
 
@@ -25,8 +24,7 @@ enum class ToolIntent : uint8_t
   Unknown
 };
 
-// The training labels, in the enum's own order; the classifier reads them
-// back and the accuracy gate compares fixtures against them.
+// The training labels, in the enum's own order.
 inline constexpr std::array<std::pair<std::string_view, ToolIntent>, 6> kIntentNames{{
     {"none", ToolIntent::None},
     {"memory_save", ToolIntent::MemorySave},
@@ -60,8 +58,7 @@ struct IntentHit
   float score = 0.0F;
 };
 
-// The router's verdict for one turn. Unknown and not confident means the fast
-// tier abstains, and the LLM's tool calling keeps the turn untouched.
+// Unknown and not confident means the fast tier abstains; the LLM keeps the turn.
 struct IntentDecision
 {
   ToolIntent intent = ToolIntent::Unknown;
@@ -71,17 +68,14 @@ struct IntentDecision
   bool confident = false;
 };
 
-// The normalisation the published model was trained on: inverted marks
-// stripped, punctuation to spaces, accents folded, lowercased, whitespace
-// collapsed. Classifier and callers must agree on it or the scores drift.
+// The normalisation the published model was trained on; both sides must agree.
 inline std::string normalizeInput(const std::string& text)
 {
   return text_norm::whitespace(
       text_norm::stripAccents(text_norm::intent(text)), true);
 }
 
-// Scores the already-normalised text, top-k so the router can measure a
-// margin. A classifier that is not loaded never decides anything.
+// Scores already-normalised text, top-k so the router can measure a margin.
 class IIntentClassifier
 {
 public:

@@ -157,8 +157,7 @@ TEST_CASE("identity rpc config gates a non-loopback listener on the secret")
   CHECK(exposed.host == "172.19.0.1");
   CHECK(exposed.port == 7040);
   CHECK(exposed.secret.empty());
-  // main.cc aborts on exactly this pair: reachable beyond loopback with no
-  // fleet secret would answer token verdicts for anything on the bridge.
+  // main.cc aborts on exactly this pair: beyond loopback with no fleet secret.
   CHECK(exposed.reachableBeyondLoopback());
 
   ConfigService::setRuntimeString("identity.rpc_secret", "fleet-secret");
@@ -307,8 +306,7 @@ TEST_CASE("fan-out parses the sync-change wire contract")
   REQUIRE(disconnection);
   CHECK(disconnection->user == 7);
 
-  // The room-control action must round-trip the payload the legacy actually
-  // publishes, not a hand-written shape.
+  // The room-control action must round-trip the payload the legacy publishes.
   RoleRoomReplaceInput input;
   input.userId = 7;
   input.oldRole = UserRole::Resident;
@@ -331,10 +329,7 @@ TEST_CASE("fan-out parses the sync-change wire contract")
 
 TEST_CASE("identity change events never fan out to the client sockets")
 {
-  // argus.identity.v1.change rides the sync wildcard, but its wire contract
-  // is an identity row diff, not a sync-change: the gateway must not be able
-  // to forward it to the /user rooms (Ruling BX — the replicas are the only
-  // consumer).
+  // Its wire contract is an identity row diff, not a sync-change (Ruling BX).
   const Json::Value identity = json_util::fromString(
       R"({"kind":"identity","table":"person","id":7,"deleted":false,
           "row":{"id":7,"user_id":42,"name":"Ana Garcia"}})");
@@ -386,9 +381,7 @@ TEST_CASE("fan-out routing table matches the legacy SocketService mapping")
   CHECK(unscopedPlan.kind == sync_fan_out::FanOutPlan::Kind::UserEmit);
   CHECK(unscopedPlan.rooms.empty());
 
-  // Room-control actions take precedence over the emit fields; the
-  // disconnect input is the user id, the role-rooms input is the same
-  // RoleRoomReplaceInput the legacy replaceRoleRooms consumes.
+  // Room-control actions take precedence over the emit fields.
   const auto disconnection =
       sync_fan_out::parseEvent(sync_change::disconnectPayload(
           emit(SyncOperation::AuthContextChanged, TableName::User), 42));
@@ -779,8 +772,7 @@ TEST_CASE("route table sends the whole camera domain to the camera backend")
   routes.append(cameraRoute);
   config["routes"] = routes;
 
-  // initAndStart registers the pre-routing advice; a plugin instance is
-  // started once per process, so this case runs alone here.
+  // initAndStart registers the pre-routing advice.
   proxy.initAndStart(config);
 
   CHECK(proxy.matchRoute("/camera") == 0);
@@ -788,8 +780,7 @@ TEST_CASE("route table sends the whole camera domain to the camera backend")
   CHECK(proxy.matchRoute("/zone") == 0);
   CHECK(proxy.matchRoute("/zone/3") == 0);
 
-  // The device-control paths ride the same route now that the cap spans
-  // the whole domain.
+  // The device-control paths ride the same route under the domain-wide cap.
   CHECK(proxy.matchRoute("/camera/1/ptz") == 0);
   CHECK(proxy.matchRoute("/camera/1/preset") == 0);
   CHECK(proxy.matchRoute("/camera/1/settings") == 0);
@@ -874,9 +865,7 @@ TEST_CASE("route table sends the productivity and notification domains to the fa
 
   proxy.initAndStart(config);
 
-  // Every method and subpath of the productivity domain routes through; the
-  // segment-boundary match keeps /calendar-event-share distinct from
-  // /calendar-event.
+  // Segment-boundary matching keeps /calendar-event-share distinct from /calendar-event.
   CHECK(proxy.matchRoute("/calendar-event") == 0);
   CHECK(proxy.matchRoute("/calendar-event/1") == 0);
   CHECK(proxy.matchRoute("/calendar-event-share") == 0);

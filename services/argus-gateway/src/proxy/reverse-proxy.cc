@@ -118,9 +118,7 @@ int SimpleReverseProxy::matchRoute(const std::string &path) const
         {
             if (!segmentPrefixMatch(path, prefix))
                 continue;
-            // The segment cap bounds how deep a routed prefix matches; the
-            // camera route carries the whole domain (CRUD plus device
-            // control), the productivity route every subpath.
+            // The segment cap bounds how deep a routed prefix matches.
             if (segmentCount(path) <= route.maxSegments)
                 return static_cast<int>(i);
         }
@@ -163,9 +161,7 @@ void SimpleReverseProxy::forward(const HttpRequestPtr &req,
                                  HttpClientPtr &clientPtr)
 {
     req->setPassThrough(true);
-    // The gateway is the only one that sees the client: replace any
-    // client-supplied value with the observed TCP peer address, exactly like
-    // the /sync relay does.
+    // The gateway is the only one that sees the client; never trust the header.
     req->removeHeader("x-forwarded-for");
     req->addHeader("X-Forwarded-For", req->getPeerAddr().toIp());
     clientPtr->sendRequest(
@@ -179,8 +175,7 @@ void SimpleReverseProxy::forward(const HttpRequestPtr &req,
             }
             else
             {
-                // Deviation from the vendored example: a bare 500 would break
-                // the {status, info, errors} wire contract the app parses.
+                // A bare 500 would break the {status, info, errors} wire contract.
                 callback(AppConfig::get500Response(
                     "Route backend is unreachable", "INTERNAL_ERROR"));
             }

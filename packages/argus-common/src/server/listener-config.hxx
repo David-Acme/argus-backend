@@ -4,8 +4,7 @@
 #include <json/value.h>
 #include <string>
 
-// The HTTP listener every service builds its Drogon config from. Services
-// bind one plain loopback listener; the gateway binds the public TLS one.
+// The HTTP listener every service builds its Drogon config from.
 struct ListenerConfig
 {
   std::string host;
@@ -20,9 +19,7 @@ struct ListenerConfig
   static ListenerConfig resolve(uint16_t defaultPort,
                                 const char* portKey = "server.port");
 
-  // The gateway's public listener: [gateway] host/port/plain/min_protocol
-  // plus the [cert] server key pair, mirroring the legacy listener shape so
-  // the app's pinned CA stays byte-identical.
+  // The gateway's public listener, mirroring the legacy shape.
   static ListenerConfig resolveTls(uint16_t defaultPort);
 };
 
@@ -39,6 +36,5 @@ struct GrpcListenerConfig
 // The [[listeners]] JSON array Drogon consumes from the loaded config.
 Json::Value listenerJson(const ListenerConfig& config);
 
-// One listener entry, for callers that assemble several (the gateway's
-// tunnel listener rides the public listener's TLS posture).
+// One listener entry, for callers that assemble several.
 Json::Value singleListenerJson(const ListenerConfig& base, int port);

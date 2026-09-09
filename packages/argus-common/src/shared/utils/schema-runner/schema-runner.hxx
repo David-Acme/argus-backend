@@ -4,7 +4,5 @@
 
 struct sqlite3;
 
-// Executes every statement of a schema file (comments and blanks skipped) on
-// the connection. Returns false when the file cannot be opened; statement
-// failures are logged and skipped.
+// Executes every statement of a schema file; statement failures log and skip.
 bool runSchemaFile(sqlite3* db, const std::string& path);

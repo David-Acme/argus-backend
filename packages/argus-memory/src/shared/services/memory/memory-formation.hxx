@@ -23,13 +23,9 @@ struct Observation
   std::vector<int64_t> entitiesHint;
   bool allowModel = true;
   bool salient = false;
-  // An upstream classifier already decided this turn is a save, so the
-  // sentence needs neither an explicit trigger nor a successful extraction to
-  // be stored: 39.5% of real memory_save utterances carry no rule clause, and
-  // dropping them would throw away exactly what the user asked to keep.
+  // Upstream already decided this is a save; no trigger or extraction needed.
   bool decided = false;
-  // Forces the stored fact type the rule path would otherwise infer; the
-  // reminder tool sets it so a scheduled fact is not filed as an attribute.
+  // Forces the stored fact type; the reminder tool sets it for scheduled facts.
   std::string typeHint;
 };
 

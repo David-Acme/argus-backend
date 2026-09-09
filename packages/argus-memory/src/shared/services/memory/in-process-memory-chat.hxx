@@ -4,9 +4,7 @@
 #include <shared/services/memory/memory-chat.hxx>
 #include <string>
 
-// The memory worker's chat straight into the host engine — the brain hosts
-// the memory stack in process, so worker generations share the LlmService
-// the tool loop rides.
+// The memory worker's chat goes straight to the host engine's LlmService.
 class InProcessMemoryChat final : public IMemoryChat
 {
 public:

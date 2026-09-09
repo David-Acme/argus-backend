@@ -80,8 +80,7 @@ bool waitForBoot(std::chrono::milliseconds timeout)
   return drogon::app().isRunning();
 }
 
-// Camera table (camera.db shape, camera-schema.sql source of truth) for the
-// named-camera-client resolution test.
+// Camera table (camera.db shape) for the named-camera-client resolution test.
 void createCameraTable(const char* path, int64_t id, const char* name)
 {
   auto client =
@@ -116,8 +115,7 @@ void seedCameraTable(const char* path, int64_t id, const char* name)
   createCameraTable(path, id, name);
 }
 
-// Project table (productivity.db shape, productivity-schema.sql source of
-// truth) for the named-productivity-client resolution test.
+// Project table (productivity.db shape) for the named-productivity-client test.
 void createProjectTable(const char* path, int64_t id, const char* name)
 {
   auto client =
@@ -154,9 +152,7 @@ void insertProjectRow(const char* path, int64_t id, int64_t ownerId,
                       id, ownerId, name);
 }
 
-// The project sync query probes project_member for shared access, so the
-// membership table must exist beside the project table (DDL verbatim from
-// productivity-schema.sql).
+// The project sync query probes project_member for shared access.
 void createProjectMemberTable(const char* path)
 {
   auto client =
@@ -173,8 +169,7 @@ void createProjectMemberTable(const char* path)
       "updated_at INTEGER, deleted_at INTEGER)");
 }
 
-// Notification table (notification.db shape, notification-schema.sql source
-// of truth) for the notification substrate resolution and round trip.
+// Notification table (notification.db shape) for substrate resolution.
 void createNotificationTable(const char* path)
 {
   auto client =
@@ -261,11 +256,7 @@ bool waitForMessages(const std::shared_ptr<RecordingConnection>& conn,
 TEST_CASE("audit sync reads resolve to the default identity client on the "
           "gateway")
 {
-  // Gateway wiring: identity.db as the default client, legacy argus.db
-  // read-only.
-  // The gateway calls this first thing in main: SQLite URI filenames must be
-  // configured before the library initializes, or the read-only URI clients
-  // below would open their query string as a plain file name.
+  // The gateway calls this first in main; URI filenames must precede client init.
   DbService::enableUriFilenames();
 
   seedAuditTables(kLegacyDb, 1, 1);
@@ -280,9 +271,7 @@ TEST_CASE("audit sync reads resolve to the default identity client on the "
   std::thread runner([] { drogon::app().run(); });
   REQUIRE(waitForBoot(std::chrono::seconds(30)));
 
-  // The client object must outlive the in-flight callbacks on its own loop
-  // thread: only the resolution is reset mid-test, the release happens after
-  // the app stopped.
+  // The client object must outlive the in-flight callbacks on its own loop.
   const auto legacyDb = drogon::orm::DbClient::newSqlite3Client(
       std::string("filename=file:") + kLegacyDb + "?mode=ro", 1);
   DbService::setReadOnlyClient(legacyDb);
@@ -311,8 +300,7 @@ TEST_CASE("audit sync reads resolve to the default identity client on the "
   REQUIRE(userLast);
   CHECK((*userLast)["id"].asInt64() == 2);
 
-  // With or without the read-only client the audit rows come from the
-  // default client: the audit repositories never resolve readOnlyClient().
+  // Audit repositories never resolve readOnlyClient(); rows come from default.
   DbService::setReadOnlyClient(nullptr);
   const auto auditRowsAfter =
       drogon::sync_wait(auditRepository.findSync(auditFilter));
@@ -320,13 +308,9 @@ TEST_CASE("audit sync reads resolve to the default identity client on the "
   CHECK(auditRowsAfter.front()["id"].asInt64() == 2);
 
   // ── Phase: camera audit funnel (Ruling Y) ────────────────────────────────
-  // The gateway inserts the camera-produced diff verbatim into its audit
-  // substrate and only then fans the DB-assigned row out to /sync, so online
-  // replay and the offline audit cursor observe the same order.
   const auto conn = std::make_shared<RecordingConnection>();
   RoomManager rooms;
-  // Room state is thread-local per IO loop, so the member joins and the
-  // fan-out both go through the loop that dispatches the change.
+  // Room state is thread-local per IO loop; joins ride the dispatching loop.
   drogon::app().getIOLoop(0)->runInLoop(
       [&] { rooms.join(moduleRoom(TableName::Camera), conn); });
 
@@ -383,9 +367,6 @@ TEST_CASE("audit sync reads resolve to the default identity client on the "
   CHECK(funnelRows.front()["eventTimestamp"].asInt64() == 1735689600000);
 
   // ── Phase: named camera client resolution (Ruling Z) ─────────────────────
-  // Camera-domain reads resolve to camera.db when the host installs the named
-  // client and fall back to the default client when it does not (the
-  // pre-cutover behavior).
   createCameraTable(kIdentityDb, 1, "default row");
   seedCameraTable(kCameraDb, 2, "camera-db row");
 
@@ -410,9 +391,6 @@ TEST_CASE("audit sync reads resolve to the default identity client on the "
   CHECK_FALSE(cameraGone);
 
   // ── Phase: productivity audit funnel (Ruling AQ) ─────────────────────────
-  // argus-productivity funnels the exact user_audit_log diff over its
-  // subject; the gateway inserts it verbatim BEFORE fanning the DB-assigned
-  // row out to the user's room.
   const auto userConn = std::make_shared<RecordingConnection>();
   drogon::app().getIOLoop(0)->runInLoop(
       [&] { rooms.join(userRoom(42), userConn); });
@@ -458,8 +436,7 @@ TEST_CASE("audit sync reads resolve to the default identity client on the "
   CHECK(userInfo["eventTimestamp"].asInt64() == 1735689600000);
   CHECK(json_util::toString(userInfo["changes"]) == userChangesText);
 
-  // The user audit row itself is byte-identical to what the producer sent,
-  // with the gateway-assigned id.
+  // Byte-identical to what the producer sent, with the gateway-assigned id.
   UserAuditLogSyncFilter funnelUserFilter;
   funnelUserFilter.userId = 42;
   funnelUserFilter.afterId = userInfo["id"].asInt64() - 1;
@@ -503,8 +480,6 @@ TEST_CASE("audit sync reads resolve to the default identity client on the "
   CHECK(plainFanned["info"]["id"].asInt64() == 9);
 
   // ── Phase: named productivity client resolution (Ruling AQ) ──────────────
-  // The identity database stays in place: the default client's connection
-  // already holds the file, so only the productivity database is re-created.
   createProjectTable(kIdentityDb, 1, "default row");
   seedProjectTable(kProductivityDb, 2, "productivity-db row");
 
@@ -528,9 +503,6 @@ TEST_CASE("audit sync reads resolve to the default identity client on the "
   CHECK(projectFallback->name == "default row");
 
   // ── Phase: notification substrate (Ruling AR) ────────────────────────────
-  // The notification tables resolve to notification.db when the host installs
-  // the named client — reads and writes, since the gateway NotificationService
-  // writes there — and fall back to the default client when it does not.
   seedNotificationRow(kIdentityDb, 1, "default row");
   seedNotificationRow(kNotificationDb, 2, "notification-db row");
 
@@ -572,9 +544,6 @@ TEST_CASE("audit sync reads resolve to the default identity client on the "
   CHECK(notificationFallback.front()["id"].asInt64() == 1);
 
   // ── Phase: personal-table sync scoping (Ruling AQ) ───────────────────────
-  // /sync scoping stays gateway-side: a personal table is filtered to the
-  // caller (owner or project member) whatever their role, so the pull pages
-  // the app reads need no knowledge of the caller on the backend side.
   createProjectMemberTable(kIdentityDb);
   insertProjectRow(kIdentityDb, 3, 42, "owned by 42");
   insertProjectRow(kIdentityDb, 4, 7, "owned by 7");
@@ -596,8 +565,7 @@ TEST_CASE("audit sync reads resolve to the default identity client on the "
   const auto ownerSync = drogon::sync_wait(
       synchronizedService.sync(SynchronizedDto::fromJson(projectSyncBody),
                                ownerCtx));
-  // The owner sees their own project and the one shared with them as a
-  // member, never the rows of other users.
+  // Own project plus the one shared with them as a member, never others'.
   REQUIRE(ownerSync["info"]["project"]["created"].size() == 2);
   CHECK(ownerSync["info"]["project"]["created"][0]["id"].asInt64() == 3);
   CHECK(ownerSync["info"]["project"]["created"][1]["id"].asInt64() == 4);

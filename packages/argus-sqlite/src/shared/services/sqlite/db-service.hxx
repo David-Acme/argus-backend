@@ -10,69 +10,40 @@ class DbService
 public:
   static drogon::orm::DbClientPtr client()
   {
-    // Drogon's fast client mode is PostgreSQL/MySQL-only; SQLite clients
-    // always go through the shared client pool. A single connection keeps
-    // the SQLite serialization cheap (see number_of_connections in
-    // config.toml).
     return drogon::app().getDbClient();
   }
 
   // Read path of the sync tables that live outside the host's own database.
-  // Only what a host installs (see setReadOnlyClient) is served: nullptr when
-  // nothing is installed, which the sync repositories answer with empty
-  // results instead of falling back to another database.
   static drogon::orm::DbClientPtr readOnlyClient();
 
-  // Installs the named read-only client used by the sync read path. Must be
-  // called once at boot, before app().run() creates any IO thread.
+  // Installs the named read-only client; once at boot, before app().run().
   static void setReadOnlyClient(drogon::orm::DbClientPtr client);
 
-  // Client of the identity database used by the auth reads (JwtFilter's
-  // refresh-token and user lookups). Hosts that never install one fall back
-  // to the default client, so the legacy behavior stays byte-identical when
-  // the config key is absent.
+  // Client of the identity database for the auth reads.
   static drogon::orm::DbClientPtr identityClient();
 
-  // Installs the named identity client. Must be called once at boot, before
-  // app().run() creates any IO thread.
+  // Installs the named identity client; once at boot, before app().run().
   static void setIdentityClient(drogon::orm::DbClientPtr client);
 
-  // Client of the camera domain (camera, camera_stream, zone). argus-camera
-  // serves it from its own default client (camera.db); no production host
-  // installs a separate camera client since the gateway moved the camera
-  // sync reads to the argus.camera.v1 gRPC leg (F6-5).
+  // Client of the camera domain (camera, camera_stream, zone).
   static drogon::orm::DbClientPtr cameraClient();
 
-  // Installs the named camera client. Must be called once at boot, before
-  // app().run() creates any IO thread.
+  // Installs the named camera client; once at boot, before app().run().
   static void setCameraClient(drogon::orm::DbClientPtr client);
 
-  // Client of the productivity domain (reminder, reminder_detail,
-  // calendar_event, calendar_event_share, project, project_member,
-  // project_task). The gateway installs productivity.db opened
-  // `file:...?mode=ro` at the cutover (Ruling AQ); hosts that never install
-  // one fall back to the default client, so the pre-cutover behavior stays
-  // byte-identical when the config key is absent.
+  // Client of the productivity domain (reminder, project, calendar tables).
   static drogon::orm::DbClientPtr productivityClient();
 
-  // Installs the named productivity client. Must be called once at boot,
-  // before app().run() creates any IO thread.
+  // Installs the named productivity client; once at boot, before app().run().
   static void setProductivityClient(drogon::orm::DbClientPtr client);
 
-  // Client of the notification domain (notification, notification_token). The
-  // gateway installs notification.db read-write — the camera-notifier writes
-  // it while argus-notification owns the file (Ruling AR, cross-process WAL +
-  // busy_timeout, no DDL from the gateway); hosts that never install one fall
-  // back to the default client, so the pre-cutover behavior stays
-  // byte-identical when the config key is absent.
+  // Client of the notification domain (notification, notification_token).
   static drogon::orm::DbClientPtr notificationClient();
 
-  // Installs the named notification client. Must be called once at boot,
-  // before app().run() creates any IO thread.
+  // Installs the named notification client; once at boot, before app().run().
   static void setNotificationClient(drogon::orm::DbClientPtr client);
 
-  // Enables SQLite URI filenames (`file:...?mode=ro`) process-wide. A no-op
-  // once SQLite is initialized; must run before the first sqlite3_open.
+  // Enables SQLite URI filenames process-wide, before the first sqlite3_open.
   static void enableUriFilenames();
 
   static bool runScriptFile(const std::string& path);

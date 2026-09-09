@@ -5,16 +5,7 @@
 #include <string>
 #include <vector>
 
-// Official Drogon SimpleReverseProxy pattern (examples/simple_reverse_proxy),
-// vendored with three additive behaviors required by the cutover:
-//   - path exclusions: gateway-native routes pass through to the normal
-//     routing chain instead of being forwarded;
-//   - X-Forwarded-For synthesized from the observed TCP peer address (same
-//     rule the /sync relay applies), so the DeviceFilter device-hash binds
-//     the real client and a client-supplied header is never trusted;
-//   - route table: prefix + max-segment routes forward to their own backend;
-//     a request no route claims falls through to the normal routing chain,
-//     which answers unknown paths with the frozen NOT_FOUND envelope.
+// Vendored Drogon SimpleReverseProxy with exclusions, XFF and a route table.
 namespace gateway_proxy
 {
 class SimpleReverseProxy : public drogon::Plugin<SimpleReverseProxy>
@@ -36,8 +27,7 @@ class SimpleReverseProxy : public drogon::Plugin<SimpleReverseProxy>
     static bool segmentPrefixMatch(const std::string &path,
                                    const std::string &prefix);
     static size_t segmentCount(const std::string &path);
-    // Index into routes_, or -1 when the request falls through to the
-    // normal routing chain.
+    // Index into routes_, or -1 when the request falls through.
     int matchRoute(const std::string &path) const;
 
   private:

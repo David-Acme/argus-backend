@@ -33,8 +33,6 @@ ListenerConfig ListenerConfig::resolveTls(uint16_t defaultPort)
   ListenerConfig config;
   config.host = configString("gateway.host", "0.0.0.0");
   config.port = resolvePort("gateway.port", defaultPort);
-  // Plain-HTTP is a local-test option ([gateway] plain = true); the cutover
-  // listener is TLS by default.
   config.tls = !ConfigService::getBool("gateway.plain");
   config.certPath = configString("cert.server_cert", "certs/server.pem");
   config.keyPath = configString("cert.server_key", "certs/server.key");

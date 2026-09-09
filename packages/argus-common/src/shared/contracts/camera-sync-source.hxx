@@ -11,8 +11,7 @@ enum class CameraSyncTable
   Zone,
 };
 
-// Pull source for the camera-domain sync tables; the gateway backs it with
-// argus-camera's gRPC leg.
+// Pull source for the camera-domain sync tables.
 class CameraSyncSource
 {
 public:

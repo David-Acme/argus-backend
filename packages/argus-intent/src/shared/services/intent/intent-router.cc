@@ -88,8 +88,7 @@ intent::IntentDecision IntentRouter::decide(const std::string& text,
   if (top.score < kThreshold || decision.margin < kMargin)
     return decision;
 
-  // Inside the margin the model itself cannot separate a fact from a
-  // reminder; the rubric does.
+  // Inside the margin the model cannot separate fact from reminder; rubric does.
   if (top.intent == intent::ToolIntent::MemorySave && runner > 0.0F &&
       hits[1].intent == intent::ToolIntent::ReminderSet) {
     decision.intent = factOrReminder(text, lang);

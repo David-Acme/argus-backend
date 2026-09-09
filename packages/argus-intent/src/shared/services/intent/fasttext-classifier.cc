@@ -44,9 +44,7 @@ bool FastTextClassifier::isLoaded() const
   return model_ != nullptr;
 }
 
-// The trailing newline is what Python's predict() appends: it becomes the EOS
-// token, so without it the closing word-ngrams differ and the scores drift
-// (docs/CONTEXT.md carries the divergence this caught).
+// Appends the trailing newline Python's predict() does; without it scores drift.
 std::vector<intent::IntentHit>
 FastTextClassifier::score(const std::string& normalized) const
 {

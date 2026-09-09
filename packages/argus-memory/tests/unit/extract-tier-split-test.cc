@@ -17,12 +17,7 @@ namespace
 #define ARGUS_TEST_MEMORY_FIXTURES_DIR "packages/argus-memory/tests/fixtures"
 #endif
 
-// The measured baseline, held as a regression floor. F9 Tarea 12 set 30% miss
-// as the threshold that opens a heavier-NER evaluation; the measurement below
-// came out at 37% miss, so that evaluation is open and its outcome is a
-// product decision recorded in docs/CONTEXT.md. What this gate protects is the
-// number itself: the lexicon tier runs in microseconds and every point it
-// loses wakes the 1.2 s model tier instead.
+// Regression floor: every point it loses wakes the 1.2 s model tier instead.
 constexpr double kMinLexiconHitRate = 0.60;
 
 std::vector<std::string> savedUtterances(const std::string& path)
@@ -42,9 +37,7 @@ std::vector<std::string> savedUtterances(const std::string& path)
 
 } // namespace
 
-// Walks the production path a routed memory_save turn takes: rule parse,
-// filler strip, then the lexicon tier. What it reports is the share of real
-// utterances that would have to wake the model tier.
+// Reports the share of real memory_save utterances that would wake the model tier.
 TEST_CASE("the lexicon tier carries most real memory_save turns")
 {
   const auto rows = savedUtterances(
@@ -67,8 +60,7 @@ TEST_CASE("the lexicon tier carries most real memory_save turns")
     if (!parsed && !statement)
       ++noClause;
 
-    // A routed turn is salient by construction, so the whole utterance is the
-    // clause when no rule found a narrower one.
+    // A routed turn is salient, so the whole utterance is the clause then.
     const std::string clause =
         parser.stripFillers({.text = parsed    ? parsed->content
                                      : statement ? statement->content

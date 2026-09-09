@@ -6,8 +6,7 @@
 
 namespace
 {
-// Process start, not controller construction: uptime must survive a
-// controller being registered late.
+// Process start, not controller construction: uptime survives late registration.
 const std::chrono::steady_clock::time_point kStartTime =
     std::chrono::steady_clock::now();
 }

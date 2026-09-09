@@ -12,8 +12,7 @@
 namespace
 {
 
-// Neither a trigger, nor a statement-start opener in the catalog, nor a
-// recall marker: only the model could decide this turn.
+// No trigger, no catalog opener, no recall marker: only the model decides it.
 constexpr const char* kModelOnlyTurn = "el sofa del salon es nuevo";
 
 class NullClassifier final : public intent::IIntentClassifier
@@ -26,8 +25,7 @@ public:
   }
 };
 
-// Answers Camera with a perfect score no matter what, so only the rule layer
-// can beat it.
+// Answers Camera with a perfect score, so only the rule layer can beat it.
 class AlwaysCameraClassifier final : public intent::IIntentClassifier
 {
 public:
@@ -39,8 +37,7 @@ public:
   }
 };
 
-// Scripted hits, so the threshold and margin logic is testable without a
-// model file on disk.
+// Scripted hits: the threshold and margin logic is testable without a model.
 class ScriptedClassifier final : public intent::IIntentClassifier
 {
 public:
@@ -59,8 +56,7 @@ private:
   std::vector<intent::IntentHit> hits_;
 };
 
-// PhraseCatalog holds a mutex, so it is neither copyable nor movable: each
-// test builds its own in place.
+// PhraseCatalog is neither copyable nor movable; each test builds its own.
 struct BuiltCatalog
 {
   BuiltCatalog() { value.build(); }
@@ -175,8 +171,7 @@ TEST_CASE("the label round trip covers every class")
         intent::ToolIntent::Unknown);
 }
 
-// Argmax lands on the right class; whether it clears the 0.90 threshold is
-// the accuracy gate's business, not this sentence's.
+// Whether the argmax clears the 0.90 threshold is the accuracy gate's business.
 TEST_CASE("the real model, when published, decides a turn no rule covers")
 {
   BuiltCatalog catalog;

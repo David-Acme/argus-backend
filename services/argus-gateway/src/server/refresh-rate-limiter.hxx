@@ -18,9 +18,7 @@ struct RateLimitConfig
   static RateLimitConfig resolve();
 };
 
-// Ruling CJ: in-memory sliding-window counter plus consecutive-failure
-// lockout. Single-instance state only: a restart clears every counter and
-// lockout, and the tracked-key set is bounded.
+// Ruling CJ: in-memory sliding window plus lockout; single-instance state.
 class RefreshRateLimiter
 {
 public:

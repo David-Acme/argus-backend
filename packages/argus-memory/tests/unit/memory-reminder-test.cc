@@ -28,8 +28,7 @@ constexpr const char* kScratchDir = "/tmp/f9-memory-reminder";
 constexpr int64_t kSpeaker = 7;
 constexpr int64_t kOtherUser = 9;
 
-// D2: a reminder is silent. The chat port stays unavailable so any attempt to
-// generate on this path shows up here rather than as latency in production.
+// D2: a reminder is silent; any generation attempt fails loudly here.
 class SilentChat final : public IMemoryChat
 {
 public:
@@ -107,9 +106,7 @@ TEST_CASE("a reminder is written for the speaking user and no one else")
   const auto otherRecall = executor.execute(theirs, UserRole::Resident);
   CHECK(otherRecall.output.find("dentista") == std::string::npos);
 
-  // The routed path: the classifier already decided, so a sentence carrying
-  // no rule trigger must still form. 32 of the 81 real memory_save
-  // utterances look like this (see extract-tier-split-test).
+  // The routed path: no rule trigger, yet the save must still form.
   auto routed = callFor("memory.remind", kSpeaker);
   routed.arguments["text"] = "mi revision del coche cae el jueves";
   routed.context.utterance = routed.arguments["text"].asString();

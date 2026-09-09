@@ -6,6 +6,5 @@ struct IdentityRegistrationStats
   int filters{0};
 };
 
-// Registers the identity filters and controllers on the running app and
-// returns how many objects were registered.
+// Registers the identity filters and controllers on the running app.
 IdentityRegistrationStats registerIdentitySurface();

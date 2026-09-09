@@ -92,9 +92,7 @@ void DbService::setReadOnlyClient(drogon::orm::DbClientPtr client)
 
 drogon::orm::DbClientPtr DbService::readOnlyClient()
 {
-  // Installed at boot, before any IO thread exists: no synchronization.
-  // No fallback: an uninstalled read-only client means the tables it serves
-  // do not exist on this host, and the sync repositories answer empty.
+  // Uninstalled means the tables it serves do not exist; repositories answer empty.
   return g_readOnlyClient();
 }
 

@@ -47,9 +47,7 @@ std::vector<FixtureRow> readFixture(const std::string& path)
   return rows;
 }
 
-// The deployment operating point (IntentRouter's): a below-threshold or
-// thin-margin top score abstains to none, exactly as the training project's
-// gated run measured the published card.
+// The router's operating point: below-threshold or thin-margin abstains to none.
 std::string_view gatedPrediction(const std::vector<intent::IntentHit>& hits)
 {
   if (hits.empty())
@@ -65,10 +63,7 @@ std::string_view gatedPrediction(const std::vector<intent::IntentHit>& hits)
 
 } // namespace
 
-// Re-measures the published card on the published judges, at the operating
-// point the router deploys, so a republished model that regressed cannot
-// enter the build. Skipped when no model is on disk: the degradation contract
-// keeps the LLM tier alive there and there is nothing to measure.
+// A republished model that regressed on the judges cannot enter the build.
 TEST_CASE("the published model keeps memory_save precision on the judges")
 {
   const FastTextClassifier model(
@@ -103,10 +98,7 @@ TEST_CASE("the published model keeps memory_save precision on the judges")
   }
 }
 
-// The direct contrast with the f8-b4 bench, which ran on this very file: the
-// LLM's own tool calling fired memory.remember on 9 of these 20 rows. This is
-// the same question asked of the router — rules first, then the model at the
-// deployment operating point.
+// The same 20 rows the f8-b4 bench under-fired with the LLM's tool calling.
 TEST_CASE("the router covers the judge set the LLM tier under-fired")
 {
   const FastTextClassifier model(

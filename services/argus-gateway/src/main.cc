@@ -80,9 +80,7 @@ Json::Value drogonConfig(const IdentityDbConfig& identityDb,
     {
       Json::Value routes(Json::arrayValue);
       if (!proxy.cameraProxyUrl.empty()) {
-        // The whole camera domain goes to argus-camera: CRUD, zone CRUD and
-        // the device-control paths (/camera/{id}/ptz, preset, settings,
-        // status, presets, capabilities, talk), every segment depth.
+        // The whole camera domain goes to argus-camera, every segment depth.
         Json::Value cameraRoute(Json::objectValue);
         Json::Value prefixes(Json::arrayValue);
         prefixes.append("/camera");
@@ -93,9 +91,7 @@ Json::Value drogonConfig(const IdentityDbConfig& identityDb,
         routes.append(cameraRoute);
       }
       if (!proxy.productivityProxyUrl.empty()) {
-        // Ruling AP routing split: the whole productivity domain goes to
-        // argus-productivity, every method and subpath, so no path is served
-        // by both sides.
+        // The whole productivity domain goes to argus-productivity.
         Json::Value productivityRoute(Json::objectValue);
         Json::Value prefixes(Json::arrayValue);
         prefixes.append("/calendar-event");
@@ -109,10 +105,7 @@ Json::Value drogonConfig(const IdentityDbConfig& identityDb,
         routes.append(productivityRoute);
       }
       if (!proxy.notificationProxyUrl.empty()) {
-        // Ruling AP routing split: the write-side notification surface goes
-        // to argus-notification; /notification and /notification-token are
-        // distinct prefixes (segment-boundary match), both two segments deep
-        // at most.
+        // The write-side notification surface goes to argus-notification.
         Json::Value notificationRoute(Json::objectValue);
         Json::Value prefixes(Json::arrayValue);
         prefixes.append("/notification");
@@ -134,9 +127,7 @@ Json::Value drogonConfig(const IdentityDbConfig& identityDb,
   return config;
 }
 
-// Ruling I: the proxy never forwards a gateway-native path. Every route the
-// gateway registered must be covered by the exclusion set — checked here so
-// an unlisted future route fails fast instead of being served by both sides.
+// Every gateway-native route must be covered by the exclusion set, fail fast.
 void requireExclusionCoverage(const ProxyConfig& proxy)
 {
   for (const auto& handlerInfo : drogon::app().getHandlersInfo()) {
@@ -174,15 +165,12 @@ void logRouting(const ProxyConfig& proxy, const ListenerConfig& listener,
 
 int main()
 {
-  // SQLite URI filenames must be configured before the first sqlite3_open
-  // opens the read-only domain databases below.
   DbService::enableUriFilenames();
 
   ConfigService::load("config.toml");
 
   const IdentityDbConfig identityDb = IdentityConfig::resolveDb();
-  // One database drives the whole identity domain: the Drogon default client
-  // and VecDb (face-db) both read the config-driven path below.
+  // One database drives the whole identity domain.
   ConfigService::setRuntimeString("database.file", identityDb.dbPath);
 
   drogon::app().registerController(std::make_shared<HealthController>(HealthStatus{.serviceName = "argus-gateway", .extras = {}}));
@@ -230,8 +218,7 @@ int main()
   drogon::app().loadConfigJson(
       drogonConfig(identityDb, listener, remote, proxy));
 
-  // Rulings CG/CJ: remote classification, the LAN-only bootstrap gate and
-  // the refresh-token rate limiter run before routing and filters.
+  // Remote classification and the rate limiter run before filters.
   RemoteGate remoteGate(remote,
                         std::make_shared<RefreshRateLimiter>(
                             RateLimitConfig::resolve()));
@@ -246,8 +233,7 @@ int main()
         chain();
       });
 
-  // CORS preflight is answered only for gateway-native paths; OPTIONS on
-  // routed paths is forwarded to the service backend like any other request.
+  // OPTIONS on routed paths is forwarded to the backend like any request.
   drogon::app().registerPreRoutingAdvice(
       [&proxy](const drogon::HttpRequestPtr& req,
                drogon::AdviceCallback&& cb,
@@ -290,9 +276,7 @@ int main()
       LOG_INFO << "NATS event bus connected to " << natsBus->options().url;
       camera_fan_out::subscribeChangeFanOut(*natsBus);
       camera_notifier::subscribeObjectDetected(*natsBus);
-      // The gateway owns the identity domain's writes post-cutover (F1-5):
-      // user/person rows change here, so the memory catalog replica feed
-      // (Ruling BX) is published from this process.
+      // User rows change here, so the catalog replica feed publishes from here.
       static const NatsIdentityChangeSink identitySink(natsBus);
       identity_change::setSink(&identitySink);
     }
@@ -341,8 +325,7 @@ int main()
     LOG_WARN << "Identity RPC failed to listen on " << identityRpcConfig.host
              << ":" << identityRpcConfig.port;
 
-  // Prune timers for the sync socket's rooms (the gateway serves /sync
-  // natively; the backend reaches the same state through its registry).
+  // Prune timers for the sync socket's rooms.
   RoomManager roomManagerLifecycle;
   roomManagerLifecycle.init();
 
@@ -354,13 +337,7 @@ int main()
                                          &mdnsService]() {
     DbService::installExtensions();
 
-    // Rulings AQ/AR: the productivity sync-table reads and the notification
-    // substrate resolve to the databases argus-productivity and
-    // argus-notification own. Cross-process SQLite rules apply on both sides:
-    // WAL plus busy_timeout. The gateway opens productivity.db read-only and
-    // never runs DDL; notification.db it opens read-write because the gateway
-    // NotificationService writes notifications there (camera-notifier
-    // retarget), with the schema applied only by argus-notification's boot.
+    // Cross-process SQLite rules apply on both sides: WAL plus busy_timeout.
     const std::string productivityDbPath =
         ConfigService::getString("productivity.db");
     if (!productivityDbPath.empty() && !std::filesystem::exists(productivityDbPath)) {
@@ -442,8 +419,6 @@ int main()
     if (!CertService::init())
       LOG_WARN << "PKI not loaded — pairing disabled";
 
-    // Same service name, type and TXT records the app discovers on the
-    // legacy: identical [mdns] config keys, same certs directory.
     mdnsService = std::make_unique<MdnsService>();
     if (!mdnsService->initialize())
       LOG_WARN << "mDNS advertising failed";

@@ -13,9 +13,7 @@
 namespace
 {
 
-// Padded, so a marker that opens or closes the sentence matches too: the
-// routed path sees plenty of "mi cita es el jueves", where the unpadded scan
-// found nothing and the fact lost its subject.
+// Padded, so a first-person marker that opens or closes the sentence matches too.
 bool mentionsFirstPerson(const std::string& text)
 {
   const std::string norm = " " + text_norm::whitespace(text) + " ";
@@ -187,10 +185,7 @@ MemoryFormation::observe(const Observation& obs,
   int priority = 85;
   float confidence = 0.8F;
 
-  // The model's triple is honored only when complete: the f8-b4 probes
-  // measured dropped or mangled middles (predicate) on nearly every fired
-  // call, while the echoed sentence stayed faithful. Incomplete calls fall
-  // through to the rule parse below — the pre-f8 production path.
+  // The model's triple is honored only when complete; otherwise rule-parse.
   const Json::Value* toolArgs = nullptr;
   if (toolCall && toolCall->name == "memory.remember")
     toolArgs = &toolCall->arguments;

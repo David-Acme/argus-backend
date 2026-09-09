@@ -18,8 +18,7 @@ struct IdentityRpcConfig
 
   static IdentityRpcConfig resolve();
 
-  // A listener reachable beyond the loopback interface answers token and
-  // credential verdicts for the whole fleet, so it may not run unauthenticated.
+  // A non-loopback listener answers verdicts for the whole fleet: must be authed.
   bool reachableBeyondLoopback() const;
 };
 

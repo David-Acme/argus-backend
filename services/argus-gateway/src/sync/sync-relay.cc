@@ -11,9 +11,7 @@
 
 namespace
 {
-// Frames buffered while the relay session is still connecting. Binary frames
-// past the cap are dropped instead of queued: they are transient PCM of the
-// moment, stale on replay.
+// Binary frames past the cap are dropped: transient PCM, stale on replay.
 constexpr size_t kPendingLimit = 256;
 } // namespace
 
@@ -63,9 +61,7 @@ void LegacySyncRelay::onConnect(const drogon::HttpRequestPtr& req,
   auto session = std::make_shared<Session>();
   session->token = JwtFilter::extractToken(req);
   session->userAgent = req->getHeader("User-Agent");
-  // Never trust a client-supplied X-Forwarded-For: the gateway is the only
-  // one that sees the client, so the header is replaced with the observed TCP
-  // peer address (the device hash is HMAC(User-Agent|IP)).
+  // Never trust a client-supplied X-Forwarded-For; the device hash needs the peer IP.
   session->forwardedFor = conn->peerAddr().toIp();
 
   std::lock_guard<std::mutex> lock(sessionsMutex_);

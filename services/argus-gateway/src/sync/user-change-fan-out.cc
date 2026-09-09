@@ -21,10 +21,7 @@ void handleUserChange(const Json::Value& json)
       return;
     }
 
-    // Drogon loop coroutine: per recipient, insert first, fan the DB-assigned
-    // row out second, so the online replay and the offline audit-cursor
-    // catch-up observe the same insert order. The gateway never re-emits the
-    // raw diff.
+    // Per recipient: insert first, fan the DB-assigned row out second.
     drogon::async_run([event = *event]() -> drogon::Task<void> {
       UserAuditLogService auditLogService;
       std::unordered_set<int64_t> recipients;

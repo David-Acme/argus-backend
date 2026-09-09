@@ -10,9 +10,7 @@
 
 class NatsBus;
 
-// Gateway-side notification budget (Ruling AD): per camera and rolling hour,
-// a cumulative digest when the budget is exceeded, and silent hours. Pure
-// state — unit-testable without NATS or a database.
+// Notification budget (Ruling AD): rolling hour, digest, silent hours. Pure state.
 class CameraNotificationPolicy
 {
 public:
@@ -34,11 +32,7 @@ public:
   // Camera ids with tracked state (for the periodic digest flush).
   std::vector<int64_t> trackedCameras() const;
 
-  // A one-line cumulative digest for the suppressed events, taken only when
-  // the hour rolled over or the silent window ended — never during silent
-  // hours (the counts carry until the next active window); resets the
-  // counters. The roll inside shouldNotify marks the digest due instead of
-  // clearing it, so no event arriving around the roll can lose the digest.
+  // Digest for suppressed events, flushed only outside silent hours; resets counters.
   std::string takeDigest(int64_t cameraId, int64_t nowMs);
 
   static bool inSilentHours(const Config& config, int hour);
@@ -48,8 +42,7 @@ private:
   {
     int64_t windowStartMs{0};
     int notified{0};
-    // Set when the window rolled with suppressed counts still pending, so
-    // the digest survives the roll until takeDigest flushes it.
+    // Set on a roll with suppressed counts pending; takeDigest flushes it.
     bool digestDue{false};
     std::map<std::string, int> suppressedByClass;
   };
@@ -58,8 +51,7 @@ private:
   std::map<int64_t, CameraWindow> windows_;
 };
 
-// Consumes argus.camera.v1.object_detected, applies the policy above and
-// delivers to owner/guard users through the existing NotificationService.
+// Applies the policy to object_detected and delivers through NotificationService.
 class CameraObjectNotifier
 {
 public:
@@ -87,7 +79,6 @@ namespace camera_notifier
 // Resolves [notifications] keys: budget_per_hour, silent_start, silent_end.
 CameraNotificationPolicy::Config resolveConfig();
 
-// Subscribes the object_detected subject; events marshal into the Drogon
-// loop before touching the policy or the database.
+// Subscribes object_detected; events marshal into the Drogon loop first.
 void subscribeObjectDetected(NatsBus& bus);
 } // namespace camera_notifier

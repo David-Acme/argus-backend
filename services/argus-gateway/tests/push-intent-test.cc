@@ -82,8 +82,7 @@ TEST_CASE("push_intent payloads match the subjects.md contract")
 
   CHECK(nats_subject::isValidSubject(nats_subject::kNotificationPushIntent,
                                      nats_subject::SubjectKind::Publish));
-  // The gateway's sync wildcard does not match the intent subject: it is
-  // never re-emitted to /sync.
+  // The gateway's sync wildcard does not match the intent subject.
   CHECK(nats_subject::kNotificationPushIntent ==
         std::string("argus.notification.v1.push_intent"));
 }
