@@ -6,6 +6,7 @@
 #include <drogon/drogon.h>
 #include <json/reader.h>
 #include <json/writer.h>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <string_view>
@@ -371,11 +372,134 @@ std::string LfmAdapter::streamHop(const ChatRequest& request,
   return reply;
 }
 
-bool LfmAdapter::toolHops(const ToolChatInput& input,
-                          std::vector<ChatMessage>& history,
-                          const std::string& declarations,
-                          ToolChatOutput& output, const TokenCallback* onToken)
+namespace
 {
+
+// The triggering sentence: handlers fall back to it when the model's
+// arguments are incomplete, and the router classifies it.
+std::string lastUserMessage(const std::vector<ChatMessage>& history)
+{
+  const auto found = std::find_if(
+      history.rbegin(), history.rend(),
+      [](const ChatMessage& message) { return message.role == "user"; });
+  return found == history.rend() ? std::string() : found->content;
+}
+
+// The router picks the tool and the utterance is its only argument; handlers
+// parse it themselves (memory.remember rule-parses when the model's triple is
+// absent), which is what lets a routed turn skip the tool hop entirely.
+// memory_forget needs a fact id the router cannot know, camera has no tool in
+// this process and none asks for no tool: all three fall to the LLM tier.
+std::optional<tools::ToolCall> routedCall(intent::ToolIntent decided,
+                                          const std::string& utterance)
+{
+  tools::ToolCall call;
+  call.arguments = Json::Value(Json::objectValue);
+  switch (decided) {
+    case intent::ToolIntent::MemorySave:
+      call.name = "memory.remember";
+      call.arguments["text"] = utterance;
+      break;
+    case intent::ToolIntent::MemoryRecall:
+      call.name = "memory.recall";
+      call.arguments["query"] = utterance;
+      break;
+    case intent::ToolIntent::ReminderSet:
+      call.name = "memory.remind";
+      call.arguments["text"] = utterance;
+      break;
+    default:
+      return std::nullopt;
+  }
+  return call;
+}
+
+} // namespace
+
+bool LfmAdapter::routedTurn(ToolHopContext ctx)
+{
+  if (router_ == nullptr)
+    return false;
+  const std::string utterance = lastUserMessage(ctx.history);
+  if (utterance.empty())
+    return false;
+
+  const intent::IntentDecision decision =
+      router_->decide(utterance, ctx.input.context.lang);
+  if (!decision.confident)
+    return false;
+
+  auto call = routedCall(decision.intent, utterance);
+  if (!call || ToolRegistry::instance().find(call->name) == nullptr)
+    return false;
+
+  call->context = ctx.input.context;
+  call->context.utterance = utterance;
+  call->context.decided = true;
+
+  const ToolExecutor executor(ToolRegistry::instance());
+  const auto toolStart = std::chrono::steady_clock::now();
+  const tools::ToolResult executed = executor.execute(*call, ctx.input.role);
+  ctx.output.toolMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+                          std::chrono::steady_clock::now() - toolStart)
+                          .count();
+  if (!executed.ok) {
+    LOG_WARN << "LfmAdapter: routed tool '" << call->name
+             << "' failed: " << executed.output << "; falling back to the "
+             << "tool loop";
+    return false;
+  }
+
+  LOG_INFO << "LfmAdapter: router picked '" << call->name << "' ("
+           << intent::toolIntentToString(decision.intent) << " score "
+           << decision.score << (decision.fromRules ? ", rules" : ", model")
+           << "): " << executed.output;
+  ctx.output.executed.push_back(*call);
+  ctx.output.hops = 1;
+  ctx.history.push_back({.role = "tool", .content = executed.output});
+  proseAnswer(ctx, ctx.input.toolTemperature);
+  return true;
+}
+
+void LfmAdapter::proseAnswer(ToolHopContext ctx, float temperature)
+{
+  ChatRequest req;
+  req.messages =
+      hopMessages(ctx.history, ctx.input.systemPrompt, std::string());
+  req.maxTokens =
+      ctx.input.answerMaxTokens > 0 ? ctx.input.answerMaxTokens : 512;
+  req.temperature = temperature;
+  req.resetContext = false;
+  req.stop = {};
+
+  const auto genStart = std::chrono::steady_clock::now();
+  std::string reply;
+  if (ctx.onToken != nullptr) {
+    const TokenCallback& onToken = *ctx.onToken;
+    llm_.chatStream(req, [&reply, &onToken](const std::string& token,
+                                            bool done) {
+      reply += token;
+      onToken(token, done);
+    });
+    ctx.output.emitted = true;
+  }
+  else {
+    reply = llm_.chat(req);
+  }
+  ctx.output.generateMs +=
+      std::chrono::duration_cast<std::chrono::milliseconds>(
+          std::chrono::steady_clock::now() - genStart)
+          .count();
+  ctx.output.reply = reply;
+  ctx.history.push_back({.role = "assistant", .content = reply});
+}
+
+bool LfmAdapter::toolHops(ToolHopContext ctx, const std::string& declarations)
+{
+  const ToolChatInput& input = ctx.input;
+  std::vector<ChatMessage>& history = ctx.history;
+  ToolChatOutput& output = ctx.output;
+  const TokenCallback* onToken = ctx.onToken;
   const int32_t cap =
       input.answerMaxTokens > 0 ? input.answerMaxTokens : 512;
   for (output.hops = 0; output.hops < input.maxHops; ++output.hops) {
@@ -408,15 +532,7 @@ bool LfmAdapter::toolHops(const ToolChatInput& input,
       return true;
     }
 
-    // The triggering sentence rides along on every call: handlers fall back
-    // to it when the model's arguments are incomplete.
-    std::string utterance;
-    for (auto it = history.rbegin(); it != history.rend(); ++it) {
-      if (it->role == "user") {
-        utterance = it->content;
-        break;
-      }
-    }
+    const std::string utterance = lastUserMessage(history);
     for (auto call : calls) {
       call.context = input.context;
       call.context.utterance = utterance;
@@ -447,24 +563,21 @@ ToolChatOutput LfmAdapter::chatWithTools(const ToolChatInput& input,
                                          std::vector<ChatMessage>& history)
 {
   ToolChatOutput output;
+  const ToolHopContext ctx{
+      .input = input, .history = history, .output = output, .onToken = nullptr};
+
+  if (routedTurn(ctx))
+    return output;
+
   const std::string declarations = input.tools.empty()
                                        ? std::string()
                                        : buildToolDeclarations(input.tools);
-
-  if (toolHops(input, history, declarations, output))
+  if (toolHops(ctx, declarations))
     return output;
 
   LOG_WARN << "LfmAdapter: tool loop exhausted after " << input.maxHops
            << " hops";
-  // The exhausted loop answers in prose: one more generation without tool
-  // declarations, so raw tool output never reaches the caller.
-  ChatRequest req;
-  req.messages = hopMessages(history, input.systemPrompt, std::string());
-  req.maxTokens = input.answerMaxTokens > 0 ? input.answerMaxTokens : 512;
-  req.temperature = input.temperature;
-  req.resetContext = false;
-  output.reply = llm_.chat(req);
-  history.push_back({.role = "assistant", .content = output.reply});
+  proseAnswer(ctx, input.temperature);
   return output;
 }
 
@@ -473,14 +586,21 @@ ToolChatOutput LfmAdapter::chatWithToolsStream(
     const TokenCallback& onToken)
 {
   ToolChatOutput output;
+  const ToolHopContext ctx{.input = input,
+                           .history = history,
+                           .output = output,
+                           .onToken = &onToken};
+
+  if (routedTurn(ctx))
+    return output;
+
   const std::string declarations = input.tools.empty()
                                        ? std::string()
                                        : buildToolDeclarations(input.tools);
-
-  if (toolHops(input, history, declarations, output, &onToken)) {
+  if (toolHops(ctx, declarations)) {
     // The hop held everything back (it opened like a call and was not one):
     // nothing reached the wire, so emit the answer whole.
-    if (!output.emitted && onToken) {
+    if (!output.emitted) {
       onToken(output.reply, false);
       onToken("", true);
     }
@@ -489,20 +609,6 @@ ToolChatOutput LfmAdapter::chatWithToolsStream(
 
   LOG_WARN << "LfmAdapter: tool loop exhausted after " << input.maxHops
            << " hops";
-  // Final prose hop without tool declarations, streamed token by token.
-  ChatRequest req;
-  req.messages = hopMessages(history, input.systemPrompt, std::string());
-  req.maxTokens = input.answerMaxTokens > 0 ? input.answerMaxTokens : 512;
-  req.temperature = input.temperature;
-  req.resetContext = false;
-  std::string reply;
-  llm_.chatStream(req, [&reply, &onToken](const std::string& token,
-                                           bool done) {
-    reply += token;
-    if (onToken)
-      onToken(token, done);
-  });
-  output.reply = reply;
-  history.push_back({.role = "assistant", .content = reply});
+  proseAnswer(ctx, input.temperature);
   return output;
 }

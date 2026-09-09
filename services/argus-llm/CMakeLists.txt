@@ -66,6 +66,8 @@ add_library(llm-core STATIC
     # The tool-calling loop over that engine: hops, call parsing and the
     # declarations the model reads.
     ${SHARED_ROOT}/services/llm/lfm-adapter.cc
+    # The router's process-lifetime owner: catalog, model and temporal probe.
+    ${SHARED_ROOT}/services/llm/intent-gate.cc
 )
 
 target_include_directories(llm-core SYSTEM PUBLIC
@@ -80,6 +82,7 @@ target_link_libraries(llm-core PUBLIC
     argus_common
     argus::llm-client
     argus::hardware-profile
+    argus::intent
     memory-core
     Drogon::Drogon
     nlohmann_json::nlohmann_json
@@ -138,7 +141,10 @@ if(ARGUS_ROOT_PROJECT)
         ${SHARED_ROOT}/services/llm/llm-service.cc
         # The controller drives the loop when tools are registered; the test
         # registers none and exercises the direct paths.
-        ${SHARED_ROOT}/services/llm/lfm-adapter.cc)
+        ${SHARED_ROOT}/services/llm/lfm-adapter.cc
+        # The controller owns the router's gate, so the wire test builds it
+        # too: with no model on disk it abstains and the paths stay direct.
+        ${SHARED_ROOT}/services/llm/intent-gate.cc)
 
     target_include_directories(llm-wire-test PRIVATE
         ${CMAKE_SOURCE_DIR}/services/argus-llm/src)
@@ -147,7 +153,8 @@ if(ARGUS_ROOT_PROJECT)
         ARGUS_TEST_LLM_MODELS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../../models/llm")
 
     target_link_libraries(llm-wire-test PRIVATE argus_common argus::llm-client
-        argus::hardware-profile ${ARGUS_LLAMA_TARGETS} doctest::doctest)
+        argus::hardware-profile argus::intent memory-core
+        ${ARGUS_LLAMA_TARGETS} doctest::doctest)
 
     target_compile_options(llm-wire-test PRIVATE -Wall -Wextra)
 

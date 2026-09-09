@@ -4,6 +4,7 @@
 #include <drogon/HttpRequest.h>
 #include <drogon/HttpResponse.h>
 #include <drogon/utils/coroutine.h>
+#include <shared/services/llm/intent-gate.hxx>
 #include <shared/services/llm/llm-service.hxx>
 
 // Owns the LLM engine by value; no singleton.
@@ -22,10 +23,15 @@ public:
 
   LlmService& service() { return service_; }
 
+  // The fast tier in front of the tool loop. Always non-null: an unloaded
+  // model makes the router abstain, it does not remove it.
+  const IntentRouter& router() const { return intentGate_.router(); }
+
   drogon::Task<drogon::HttpResponsePtr> chat(drogon::HttpRequestPtr req);
   drogon::Task<drogon::HttpResponsePtr> chatStream(drogon::HttpRequestPtr req);
   drogon::Task<drogon::HttpResponsePtr> engine(drogon::HttpRequestPtr req);
 
 private:
   LlmService service_;
+  IntentGate intentGate_;
 };

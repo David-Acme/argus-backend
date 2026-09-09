@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <shared/contracts/tool-contracts.hxx>
+#include <shared/services/intent/intent-router.hxx>
 #include <shared/services/llm/llm-service.hxx>
 #include <shared/services/tools/tool-executor.hxx>
 #include <string>
@@ -38,11 +39,26 @@ struct ToolChatOutput
   int64_t toolMs = 0;
 };
 
+// One turn's mutable state, threaded through the loop's stages.
+struct ToolHopContext
+{
+  const ToolChatInput& input;
+  std::vector<ChatMessage>& history;
+  ToolChatOutput& output;
+  const TokenCallback* onToken = nullptr;
+};
+
 // Tool-calling adapter over LlmService; parses raw JSON, pythonic and marker-wrapped calls.
+// With a router attached the classifier picks the tool and the model only
+// writes the prose; without one, or when the router abstains, the hop loop
+// runs exactly as it did before.
 class LfmAdapter
 {
 public:
-  explicit LfmAdapter(LlmService& llm) : llm_(llm) {}
+  explicit LfmAdapter(LlmService& llm, const IntentRouter* router = nullptr)
+      : llm_(llm), router_(router)
+  {
+  }
 
   static std::string
   buildToolDeclarations(const std::vector<const tools::ToolDescriptor*>& tools);
@@ -64,12 +80,21 @@ public:
                                      const TokenCallback& onToken);
 
 private:
+  // The routed path: a confident router runs the tool it picked and answers
+  // in one prose generation, skipping the tool hop entirely. True when it
+  // took the turn; false hands the turn to toolHops untouched.
+  bool routedTurn(ToolHopContext ctx);
+
   // Hops with tool declarations until the model answers in prose. True when
-  // `output.reply` holds that answer; false when the hops exhausted and a
-  // final prose hop is needed.
-  bool toolHops(const ToolChatInput& input, std::vector<ChatMessage>& history,
-                const std::string& declarations, ToolChatOutput& output,
-                const TokenCallback* onToken = nullptr);
+  // `ctx.output.reply` holds that answer; false when the hops exhausted and
+  // a final prose hop is needed.
+  bool toolHops(ToolHopContext ctx, const std::string& declarations);
+
+  // The turn's closing generation: no declarations, so raw tool output never
+  // reaches the caller. Streams when the context carries a callback. The
+  // routed path runs it cold (it confirms a completed action), the exhausted
+  // loop at the caller's conversational temperature.
+  void proseAnswer(ToolHopContext ctx, float temperature);
 
   // Streams a hop that might still turn out to be a tool call: tokens are
   // held while the text can still be a call's opening, released live once it
@@ -78,4 +103,5 @@ private:
                         bool& streamed);
 
   LlmService& llm_;
+  const IntentRouter* router_ = nullptr;
 };

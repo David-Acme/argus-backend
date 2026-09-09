@@ -14,13 +14,17 @@ struct ChatMessageDto
   std::string content;
 };
 
-// Internal wire request: {messages, max_tokens?, temperature?, reset_context?}.
+// Internal wire request:
+// {messages, max_tokens?, temperature?, reset_context?, user_id?}.
 struct ChatCompletionDto
 {
   std::vector<ChatMessageDto> messages;
   std::optional<int32_t> maxTokens;
   std::optional<float> temperature;
   bool resetContext{false};
+  // Whose memory a tool call writes to and reads from (D4). Absent means the
+  // unattributed caller: tools still run, scoped to user 0.
+  std::optional<int64_t> userId;
 
   static ChatCompletionDto fromJson(const Json::Value& json);
 

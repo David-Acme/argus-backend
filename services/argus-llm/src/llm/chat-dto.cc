@@ -27,6 +27,8 @@ ChatCompletionDto ChatCompletionDto::fromJson(const Json::Value& json)
     dto.temperature = json["temperature"].asFloat();
   if (json.isMember("reset_context") && json["reset_context"].isBool())
     dto.resetContext = json["reset_context"].asBool();
+  if (json.isMember("user_id") && json["user_id"].isIntegral())
+    dto.userId = json["user_id"].asInt64();
 
   START_VALIDATION(ChatCompletionDto, dto)
   ARRAY_NOT_EMPTY(messages, ChatMessageDto)
@@ -54,6 +56,12 @@ ChatCompletionDto ChatCompletionDto::fromJson(const Json::Value& json)
                     -> std::optional<std::string> {
     if (value.temperature && (*value.temperature < 0.0F || *value.temperature > 2.0F))
       return "temperature must be between 0.0 and 2.0";
+    return std::nullopt;
+  })
+  CUSTOM_LAMBDA(userId, [](const ChatCompletionDto& value)
+                    -> std::optional<std::string> {
+    if (value.userId && *value.userId < 0)
+      return "user_id must not be negative";
     return std::nullopt;
   })
   END_VALIDATION()

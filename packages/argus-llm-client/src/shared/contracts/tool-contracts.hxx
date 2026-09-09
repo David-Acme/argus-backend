@@ -20,6 +20,10 @@ struct ToolContext
   // fall back to the triggering sentence when the model's arguments are
   // incomplete (see the f8-b4 record).
   std::string utterance;
+  // An upstream classifier already decided this turn's intent, so a handler
+  // must not re-derive it from an explicit trigger the sentence may not
+  // carry: 39.5% of real memory_save utterances have no rule clause.
+  bool decided = false;
 };
 
 struct ToolCall
