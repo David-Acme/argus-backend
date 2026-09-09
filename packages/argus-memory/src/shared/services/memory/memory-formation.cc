@@ -107,10 +107,12 @@ findSpanInClause(const FoldedView& view, const std::string& needle)
 
 } // namespace
 
-int64_t MemoryFormation::resolveOrCreateEntity(const std::string& surface,
-                                               const std::string& lang,
-                                               const std::string& kindHint)
+int64_t
+MemoryFormation::resolveOrCreateEntity(const EntityResolveInput& input)
 {
+  const std::string& surface = input.surface;
+  const std::string& lang = input.lang;
+  const std::string& kindHint = input.kindHint;
   if (surface.empty())
     return 0;
 
@@ -334,7 +336,8 @@ MemoryFormation::observe(const Observation& obs,
   if (subjectSurface.empty())
     return std::nullopt;
 
-  const int64_t entityId = resolveOrCreateEntity(subjectSurface, obs.lang);
+  const int64_t entityId =
+      resolveOrCreateEntity({.surface = subjectSurface, .lang = obs.lang});
   if (entityId == 0)
     return std::nullopt;
 

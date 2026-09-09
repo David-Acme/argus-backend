@@ -11,13 +11,21 @@ namespace
 
 constexpr size_t kMaxTextLength = 32 * 1024;
 
-void requireText(const std::string& value, const char* field,
-                 ValidationErrors& errors)
+struct RequireTextInput
 {
+  const std::string& value;
+  const char* field;
+  ValidationErrors& errors;
+};
+
+void requireText(const RequireTextInput& input)
+{
+  const std::string& value = input.value;
+  const char* field = input.field;
   if (value.empty())
-    errors[field].push_back(std::string(field) + " is required");
+    input.errors[field].push_back(std::string(field) + " is required");
   else if (value.size() > kMaxTextLength)
-    errors[field].push_back(std::string(field) + " is too long");
+    input.errors[field].push_back(std::string(field) + " is too long");
 }
 
 MemoryToolContext contextFromJson(const Json::Value& json)
@@ -49,9 +57,9 @@ RememberBody RememberBody::fromJson(const Json::Value& json)
   body.context = contextFromJson(json);
 
   ValidationErrors errors;
-  requireText(body.subject, "subject", errors);
-  requireText(body.predicate, "predicate", errors);
-  requireText(body.value, "value", errors);
+  requireText({.value = body.subject, .field = "subject", .errors = errors});
+  requireText({.value = body.predicate, .field = "predicate", .errors = errors});
+  requireText({.value = body.value, .field = "value", .errors = errors});
   constexpr std::array<const char*, 5> kTypes = {"persona", "preference",
                                                  "schedule", "instruction",
                                                  "attribute"};
@@ -72,7 +80,7 @@ RecallBody RecallBody::fromJson(const Json::Value& json)
   body.context = contextFromJson(json);
 
   ValidationErrors errors;
-  requireText(body.query, "query", errors);
+  requireText({.value = body.query, .field = "query", .errors = errors});
   if (!errors.empty())
     throw ValidationException(errors);
   return body;
@@ -97,7 +105,7 @@ ProcedureBody ProcedureBody::fromJson(const Json::Value& json)
   body.goal = json.get("goal", "").asString();
 
   ValidationErrors errors;
-  requireText(body.goal, "goal", errors);
+  requireText({.value = body.goal, .field = "goal", .errors = errors});
   if (!errors.empty())
     throw ValidationException(errors);
   return body;
@@ -113,7 +121,7 @@ CaptureBody CaptureBody::fromJson(const Json::Value& json)
     body.userId = json["user_id"].asInt64();
 
   ValidationErrors errors;
-  requireText(body.text, "text", errors);
+  requireText({.value = body.text, .field = "text", .errors = errors});
   if (!errors.empty())
     throw ValidationException(errors);
   return body;
@@ -131,7 +139,7 @@ CompactBody CompactBody::fromJson(const Json::Value& json)
   ValidationErrors errors;
   if (body.userId < 0)
     errors["user_id"].push_back("user_id must not be negative");
-  requireText(body.transcript, "transcript", errors);
+  requireText({.value = body.transcript, .field = "transcript", .errors = errors});
   if (!errors.empty())
     throw ValidationException(errors);
   return body;
@@ -145,7 +153,7 @@ DurableTranscriptBody DurableTranscriptBody::fromJson(const Json::Value& json)
     body.lang = json["lang"].asString();
 
   ValidationErrors errors;
-  requireText(body.transcript, "transcript", errors);
+  requireText({.value = body.transcript, .field = "transcript", .errors = errors});
   if (!errors.empty())
     throw ValidationException(errors);
   return body;

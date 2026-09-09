@@ -231,7 +231,8 @@ bool LexiconExtractor::extract(const extract::ExtractInput& input,
   fact.subject = subject;
   fact.predicate = rule.canonical;
   fact.value = value.empty() ? valueRaw : value;
-  temporal_.resolve(input.lang, fact.value, fact.when);
+  fact.when =
+      temporal_.resolve({.lang = input.lang, .normalized = fact.value});
   if (fact.when.kind != extract::TemporalKind::None)
     fact.factType = "schedule";
   else if (fact.predicate == "allergic_to")

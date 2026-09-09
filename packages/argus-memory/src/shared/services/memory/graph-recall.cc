@@ -142,11 +142,11 @@ std::string stripTagChars(std::string text)
 
 } // namespace
 
-std::string GraphRecall::render(int64_t entityId, int64_t addresseeEntityId,
-                                const std::string& canonical) const
+std::string GraphRecall::render(const AliasRenderInput& input) const
 {
+  const int64_t entityId = input.entityId;
   if (entityId <= 0)
-    return canonical;
+    return input.canonical;
 
   std::vector<AliasInfo> aliases;
   {
@@ -154,7 +154,7 @@ std::string GraphRecall::render(int64_t entityId, int64_t addresseeEntityId,
     aliases = graph_.aliasesForEntity(entityId);
   }
   if (aliases.empty())
-    return canonical;
+    return input.canonical;
 
   const auto pick = [&](const std::string& frame) -> std::string {
     for (const auto& alias : aliases)
@@ -164,7 +164,7 @@ std::string GraphRecall::render(int64_t entityId, int64_t addresseeEntityId,
   };
 
   std::string surface;
-  if (addresseeEntityId > 0 && entityId == addresseeEntityId) {
+  if (input.addresseeEntityId > 0 && entityId == input.addresseeEntityId) {
     surface = pick("second");
     if (surface.empty())
       surface = pick("first");
@@ -177,13 +177,14 @@ std::string GraphRecall::render(int64_t entityId, int64_t addresseeEntityId,
       surface = pick("first");
   }
   if (surface.empty())
-    return canonical;
+    return input.canonical;
   const std::string normSurface = text_norm::whitespace(surface);
-  const std::string normCanonical = text_norm::whitespace(canonical);
+  const std::string normCanonical =
+      text_norm::whitespace(input.canonical);
   if (!normSurface.empty() &&
       normCanonical.find(normSurface) != std::string::npos)
-    return canonical;
-  return surface + ": " + canonical;
+    return input.canonical;
+  return surface + ": " + input.canonical;
 }
 
 const GraphRecall::Tuning& GraphRecall::tuning() const
@@ -328,7 +329,9 @@ void GraphRecall::collectSemantic(const GraphRecallInput& input,
         out.hops = 1;
         out.score = static_cast<float>(fact->priority) * sim;
         out.rendered =
-            render(out.entityId, input.addresseeEntityId, out.canonical);
+            render({.entityId = out.entityId,
+                    .addresseeEntityId = input.addresseeEntityId,
+                    .canonical = out.canonical});
         result.hits.push_back(std::move(out));
         ++taken;
         continue;
@@ -398,7 +401,9 @@ GraphRecallResult GraphRecall::recall(const GraphRecallInput& input)
       out.hops = fact.hops;
       out.score = fact.score;
       out.rendered =
-          render(fact.entityId, input.addresseeEntityId, fact.canonical);
+          render({.entityId = fact.entityId,
+                  .addresseeEntityId = input.addresseeEntityId,
+                  .canonical = fact.canonical});
       result.hits.push_back(std::move(out));
     }
   };
@@ -462,7 +467,9 @@ GraphRecallResult GraphRecall::recall(const GraphRecallInput& input)
         out.hops = 1;
         out.score = static_cast<float>(out.priority);
         out.rendered =
-            render(out.entityId, input.addresseeEntityId, out.canonical);
+            render({.entityId = out.entityId,
+                    .addresseeEntityId = input.addresseeEntityId,
+                    .canonical = out.canonical});
         result.hits.push_back(std::move(out));
       }
     }

@@ -45,11 +45,17 @@ int64_t countRows(sqlite3* db, const char* sql)
   return stmt.columnInt64(0);
 }
 
-bool rowExists(sqlite3* db, const char* sql, int64_t id)
+struct RowExistsInput
+{
+  const char* sql;
+  int64_t id;
+};
+
+bool rowExists(sqlite3* db, const RowExistsInput& input)
 {
   SqliteStmt stmt;
-  REQUIRE(stmt.prepare(db, sql));
-  stmt.bindInt64(1, id);
+  REQUIRE(stmt.prepare(db, input.sql));
+  stmt.bindInt64(1, input.id);
   return stmt.step() == SQLITE_ROW;
 }
 
@@ -111,10 +117,9 @@ TEST_CASE("catalog replicas replay identity and camera events and rebuild "
   replica.applyIdentity(eventJson(
       R"({"kind":"identity","table":"person","id":7,"deleted":true,
           "row":{}})"));
-  CHECK(rowExists(db,
-                  "SELECT 1 FROM catalog_person WHERE id = ? AND "
-                  "deleted_at IS NULL",
-                  7) == false);
+  CHECK(rowExists(db, {.sql = "SELECT 1 FROM catalog_person WHERE id = ? AND "
+                      "deleted_at IS NULL",
+                .id = 7}) == false);
   resolver.build();
   CHECK(resolver.resolve("Ana Garcia").empty());
 
@@ -123,7 +128,7 @@ TEST_CASE("catalog replicas replay identity and camera events and rebuild "
           "changes":{"name":{"previous":"cam vieja","current":"cam nueva"}},
           "priority":0,"create_user_id":1,
           "event_timestamp":1770000000})"));
-  CHECK(rowExists(db, "SELECT 1 FROM catalog_camera WHERE id = ?", 3));
+  CHECK(rowExists(db, {.sql = "SELECT 1 FROM catalog_camera WHERE id = ?", .id = 3}));
   resolver.build();
   CHECK_FALSE(resolver.resolve("cam nueva").empty());
 
@@ -132,47 +137,46 @@ TEST_CASE("catalog replicas replay identity and camera events and rebuild "
           "changes":{"name":{"previous":"salon","current":"estar"}},
           "priority":0,"create_user_id":1,
           "event_timestamp":1770000000})"));
-  CHECK(rowExists(db, "SELECT 1 FROM catalog_zone WHERE id = ?", 5));
+  CHECK(rowExists(db, {.sql = "SELECT 1 FROM catalog_zone WHERE id = ?", .id = 5}));
 
   replica.applyCamera(eventJson(
       R"({"kind":"audit","record_id":9,"table_name":"camera_stream",
           "changes":{"label":{"previous":"","current":"entrada"}},
           "priority":0,"create_user_id":1,
           "event_timestamp":1770000000})"));
-  CHECK(rowExists(db, "SELECT 1 FROM catalog_stream WHERE id = ?", 9));
+  CHECK(rowExists(db, {.sql = "SELECT 1 FROM catalog_stream WHERE id = ?", .id = 9}));
 
   replica.applyCamera(eventJson(
       R"({"kind":"audit","record_id":3,"table_name":"camera",
           "changes":{"deleted_at":{"previous":null,"current":1770000000}},
           "priority":0,"create_user_id":1,
           "event_timestamp":1770000000})"));
-  CHECK(rowExists(db,
-                  "SELECT 1 FROM catalog_camera WHERE id = ? AND "
-                  "deleted_at IS NULL",
-                  3) == false);
+  CHECK(rowExists(db, {.sql = "SELECT 1 FROM catalog_camera WHERE id = ? AND "
+                      "deleted_at IS NULL",
+                .id = 3}) == false);
 
   replica.applyCamera(eventJson(
       R"({"kind":"audit","record_id":5,"table_name":"zone",
           "changes":{"deleted_at":{"previous":null,"current":1770000000}},
           "priority":0,"create_user_id":1,
           "event_timestamp":1770000000})"));
-  CHECK(rowExists(db, "SELECT 1 FROM catalog_zone WHERE id = ?", 5) == false);
+  CHECK(rowExists(db, {.sql = "SELECT 1 FROM catalog_zone WHERE id = ?", .id = 5}) == false);
 
   replica.applyStreamRow(eventJson(
       R"({"operation":4,"option":"camera_stream",
           "info":{"id":11,"label":"patio"}})"));
-  CHECK(rowExists(db, "SELECT 1 FROM catalog_stream WHERE id = ?", 11));
+  CHECK(rowExists(db, {.sql = "SELECT 1 FROM catalog_stream WHERE id = ?", .id = 11}));
 
   replica.applyStreamRow(eventJson(
       R"({"operation":4,"option":"camera",
           "info":{"id":12,"name":"garaje"}})"));
-  CHECK(rowExists(db, "SELECT 1 FROM catalog_camera WHERE id = ?", 12) ==
+  CHECK(rowExists(db, {.sql = "SELECT 1 FROM catalog_camera WHERE id = ?", .id = 12}) ==
         false);
 
   replica.applyStreamRow(eventJson(
       R"({"operation":5,"option":"camera_stream",
           "info":{"id":11,"label":"patio"}})"));
-  CHECK(rowExists(db, "SELECT 1 FROM catalog_stream WHERE id = ?", 11) ==
+  CHECK(rowExists(db, {.sql = "SELECT 1 FROM catalog_stream WHERE id = ?", .id = 11}) ==
         false);
 
   graph.close();
@@ -228,7 +232,7 @@ TEST_CASE("a boot with empty replica tables takes one snapshot fill from the "
   replica.seedFromSnapshot(identityDb.get(), cameraDb.get());
   CHECK(countRows(db, "SELECT COUNT(*) FROM catalog_person") == 2);
   CHECK(countRows(db, "SELECT COUNT(*) FROM catalog_camera") == 1);
-  CHECK(rowExists(db, "SELECT 1 FROM catalog_camera WHERE id = ?", 4) ==
+  CHECK(rowExists(db, {.sql = "SELECT 1 FROM catalog_camera WHERE id = ?", .id = 4}) ==
         false);
   CHECK(countRows(db, "SELECT COUNT(*) FROM catalog_zone") == 1);
   CHECK(countRows(db, "SELECT COUNT(*) FROM catalog_stream") == 1);

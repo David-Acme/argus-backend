@@ -152,8 +152,13 @@ private:
   RuleParser ruleParser_{phrases_};
   ExtractionService extractModel_;
   TieredExtractor extractor_{extractModel_};
-  MemoryFormation formation_{*graph_, resolver_, ruleParser_};
-  GraphRecall graphRecall_{*graph_, resolver_, embedding_, vecDb_};
+  MemoryFormation formation_{MemoryFormationDeps{.graph = *graph_,
+                                                 .resolver = resolver_,
+                                                 .ruleParser = ruleParser_}};
+  GraphRecall graphRecall_{GraphRecallDeps{.graph = *graph_,
+                                           .resolver = resolver_,
+                                           .embedding = embedding_,
+                                           .vecDb = vecDb_}};
 
   std::mutex storeMutex_;
   bool storeOpen_ = false;

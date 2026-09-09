@@ -39,12 +39,26 @@ struct FormationResult
   std::string source;
 };
 
+struct MemoryFormationDeps
+{
+  SqliteGraph& graph;
+  EntityResolver& resolver;
+  const RuleParser& ruleParser;
+};
+
+struct EntityResolveInput
+{
+  std::string surface;
+  std::string lang;
+  std::string kindHint = "thing";
+};
+
 class MemoryFormation
 {
 public:
-  MemoryFormation(SqliteGraph& graph, EntityResolver& resolver,
-                  const RuleParser& ruleParser)
-      : graph_(graph), resolver_(resolver), ruleParser_(ruleParser)
+  explicit MemoryFormation(const MemoryFormationDeps& deps)
+      : graph_(deps.graph), resolver_(deps.resolver),
+        ruleParser_(deps.ruleParser)
   {
   }
 
@@ -57,9 +71,7 @@ public:
   observe(const Observation& obs,
           const std::optional<tools::ToolCall>& toolCall = std::nullopt);
 
-  int64_t resolveOrCreateEntity(const std::string& surface,
-                                const std::string& lang,
-                                const std::string& kindHint = "thing");
+  int64_t resolveOrCreateEntity(const EntityResolveInput& input);
 
 private:
   SqliteGraph& graph_;

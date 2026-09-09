@@ -70,19 +70,33 @@ struct RecallContext
   std::vector<int64_t> usedIds;
 };
 
+struct GraphRecallDeps
+{
+  SqliteGraph& graph;
+  EntityResolver& resolver;
+  EmbeddingService& embedding;
+  VecDb& vecDb;
+};
+
+struct AliasRenderInput
+{
+  int64_t entityId;
+  int64_t addresseeEntityId;
+  std::string canonical;
+};
+
 class GraphRecall
 {
 public:
-  GraphRecall(SqliteGraph& graph, EntityResolver& resolver,
-              EmbeddingService& embedding, VecDb& vecDb)
-      : graph_(graph), resolver_(resolver), embedding_(embedding), vecDb_(vecDb)
+  explicit GraphRecall(const GraphRecallDeps& deps)
+      : graph_(deps.graph), resolver_(deps.resolver),
+        embedding_(deps.embedding), vecDb_(deps.vecDb)
   {
   }
 
   GraphRecallResult recall(const GraphRecallInput& input);
 
-  std::string render(int64_t entityId, int64_t addresseeEntityId,
-                     const std::string& canonical) const;
+  std::string render(const AliasRenderInput& input) const;
 
 private:
   struct Tuning

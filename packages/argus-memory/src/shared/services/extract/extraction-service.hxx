@@ -43,6 +43,13 @@ struct PromptInput
   ExtractPromptFormat format;
 };
 
+struct GrammarInput
+{
+  std::string canonicalTemplate;
+  const Json::Value& parsedTemplate;
+  std::string rawOrder;
+};
+
 class ExtractionService
 {
 public:
@@ -78,9 +85,7 @@ private:
   bool loadLocked();
   std::optional<Json::Value> extractOnSlot(ContextSlot& slot,
                                            const ExtractRequest& request);
-  std::string grammarFor(const std::string& canonicalTemplate,
-                         const Json::Value& parsedTemplate,
-                         const std::string& rawOrder);
+  std::string grammarFor(const GrammarInput& input);
 
   std::unique_ptr<llama_model, void (*)(llama_model*)> model_{nullptr,
                                                               &llamaModelFree};

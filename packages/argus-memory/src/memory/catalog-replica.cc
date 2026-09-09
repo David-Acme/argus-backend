@@ -54,14 +54,19 @@ constexpr const char* SNAPSHOT_ZONES = "SELECT id, name FROM zone";
 constexpr const char* SNAPSHOT_STREAMS =
     "SELECT id, label FROM camera_stream";
 
-bool execStmt(sqlite3* db, const char* sql,
-              const std::function<void(SqliteStmt&)>& bind)
+struct StmtExecInput
+{
+  const char* sql;
+  std::function<void(SqliteStmt&)> bind;
+};
+
+bool execStmt(sqlite3* db, const StmtExecInput& input)
 {
   SqliteStmt stmt;
-  if (!stmt.prepare(db, sql))
+  if (!stmt.prepare(db, input.sql))
     return false;
-  if (bind)
-    bind(stmt);
+  if (input.bind)
+    input.bind(stmt);
   return stmt.step() == SQLITE_DONE;
 }
 
@@ -131,19 +136,18 @@ void CatalogReplica::applyIdentity(const Json::Value& event)
   {
     std::scoped_lock lock(graph_.mutex());
     if (deleted) {
-      execStmt(graph_.handle(), TOMBSTONE_PERSON,
-               [&](SqliteStmt& stmt) {
+      execStmt(graph_.handle(), {.sql = TOMBSTONE_PERSON, .bind = [&](SqliteStmt& stmt) {
                  stmt.bindInt64(1, std::time(nullptr));
                  stmt.bindInt64(2, id);
-               });
+               }});
     }
     else {
-      execStmt(graph_.handle(), UPSERT_PERSON, [&](SqliteStmt& stmt) {
+      execStmt(graph_.handle(), {.sql = UPSERT_PERSON, .bind = [&](SqliteStmt& stmt) {
         stmt.bindInt64(1, id);
         stmt.bindInt64(2, row.get("user_id", 0).asInt64());
         stmt.bindText(3, row.get("name", "").asString());
         stmt.bindText(4, row.get("alias", "").asString());
-      });
+      }});
     }
   }
   resolver_.build();
@@ -168,34 +172,32 @@ void CatalogReplica::applyCamera(const Json::Value& event)
       std::scoped_lock lock(graph_.mutex());
       if (deletedIt != audit->changes.end()) {
         if (table == "camera")
-          execStmt(graph_.handle(), TOMBSTONE_CAMERA, [&](SqliteStmt& stmt) {
+          execStmt(graph_.handle(), {.sql = TOMBSTONE_CAMERA, .bind = [&](SqliteStmt& stmt) {
             stmt.bindInt64(1, std::time(nullptr));
             stmt.bindInt64(2, audit->recordId);
-          });
+          }});
         else if (table == "zone")
-          execStmt(graph_.handle(), DELETE_ZONE,
-                   [&](SqliteStmt& stmt) { stmt.bindInt64(1, audit->recordId); });
+          execStmt(graph_.handle(), {.sql = DELETE_ZONE, .bind = [&](SqliteStmt& stmt) { stmt.bindInt64(1, audit->recordId); }});
         else if (table == "camera_stream")
-          execStmt(graph_.handle(), DELETE_STREAM,
-                   [&](SqliteStmt& stmt) { stmt.bindInt64(1, audit->recordId); });
+          execStmt(graph_.handle(), {.sql = DELETE_STREAM, .bind = [&](SqliteStmt& stmt) { stmt.bindInt64(1, audit->recordId); }});
       }
       else if (table == "camera" && nameIt != audit->changes.end()) {
-        execStmt(graph_.handle(), UPSERT_CAMERA, [&](SqliteStmt& stmt) {
+        execStmt(graph_.handle(), {.sql = UPSERT_CAMERA, .bind = [&](SqliteStmt& stmt) {
           stmt.bindInt64(1, audit->recordId);
           stmt.bindText(2, nameIt->second.current.asString());
-        });
+        }});
       }
       else if (table == "zone" && nameIt != audit->changes.end()) {
-        execStmt(graph_.handle(), UPSERT_ZONE, [&](SqliteStmt& stmt) {
+        execStmt(graph_.handle(), {.sql = UPSERT_ZONE, .bind = [&](SqliteStmt& stmt) {
           stmt.bindInt64(1, audit->recordId);
           stmt.bindText(2, nameIt->second.current.asString());
-        });
+        }});
       }
       else if (table == "camera_stream" && labelIt != audit->changes.end()) {
-        execStmt(graph_.handle(), UPSERT_STREAM, [&](SqliteStmt& stmt) {
+        execStmt(graph_.handle(), {.sql = UPSERT_STREAM, .bind = [&](SqliteStmt& stmt) {
           stmt.bindInt64(1, audit->recordId);
           stmt.bindText(2, labelIt->second.current.asString());
-        });
+        }});
       }
       else {
         return;
@@ -219,37 +221,35 @@ void CatalogReplica::applyCamera(const Json::Value& event)
     std::scoped_lock lock(graph_.mutex());
     if (operation == SyncOperation::Delete) {
       if (option == "camera")
-        execStmt(graph_.handle(), TOMBSTONE_CAMERA, [&](SqliteStmt& stmt) {
+        execStmt(graph_.handle(), {.sql = TOMBSTONE_CAMERA, .bind = [&](SqliteStmt& stmt) {
           stmt.bindInt64(1,
                          row.get("deletedAt", std::time(nullptr)).asInt64());
           stmt.bindInt64(2, id);
-        });
+        }});
       else if (option == "zone")
-        execStmt(graph_.handle(), DELETE_ZONE,
-                 [&](SqliteStmt& stmt) { stmt.bindInt64(1, id); });
+        execStmt(graph_.handle(), {.sql = DELETE_ZONE, .bind = [&](SqliteStmt& stmt) { stmt.bindInt64(1, id); }});
       else if (option == "camera_stream")
-        execStmt(graph_.handle(), DELETE_STREAM,
-                 [&](SqliteStmt& stmt) { stmt.bindInt64(1, id); });
+        execStmt(graph_.handle(), {.sql = DELETE_STREAM, .bind = [&](SqliteStmt& stmt) { stmt.bindInt64(1, id); }});
       else
         return;
     }
     else if (option == "camera") {
-      execStmt(graph_.handle(), UPSERT_CAMERA, [&](SqliteStmt& stmt) {
+      execStmt(graph_.handle(), {.sql = UPSERT_CAMERA, .bind = [&](SqliteStmt& stmt) {
         stmt.bindInt64(1, id);
         stmt.bindText(2, row.get("name", "").asString());
-      });
+      }});
     }
     else if (option == "zone") {
-      execStmt(graph_.handle(), UPSERT_ZONE, [&](SqliteStmt& stmt) {
+      execStmt(graph_.handle(), {.sql = UPSERT_ZONE, .bind = [&](SqliteStmt& stmt) {
         stmt.bindInt64(1, id);
         stmt.bindText(2, row.get("name", "").asString());
-      });
+      }});
     }
     else if (option == "camera_stream") {
-      execStmt(graph_.handle(), UPSERT_STREAM, [&](SqliteStmt& stmt) {
+      execStmt(graph_.handle(), {.sql = UPSERT_STREAM, .bind = [&](SqliteStmt& stmt) {
         stmt.bindInt64(1, id);
         stmt.bindText(2, row.get("label", "").asString());
-      });
+      }});
     }
     else {
       return;
@@ -296,39 +296,39 @@ void CatalogReplica::seedSnapshot(const SnapshotSources& sources)
     }
     if (sources.identityDb && personsEmpty) {
       for (const auto& row : sources.identityDb->execSqlSync(SNAPSHOT_PERSONS)) {
-        execStmt(db, UPSERT_PERSON, [&](SqliteStmt& stmt) {
+        execStmt(db, {.sql = UPSERT_PERSON, .bind = [&](SqliteStmt& stmt) {
           stmt.bindInt64(1, row[0].as<int64_t>());
           stmt.bindInt64(2, row[1].isNull() ? 0 : row[1].as<int64_t>());
           stmt.bindText(3, row[2].as<std::string>());
           stmt.bindText(4, row[3].as<std::string>());
-        });
+        }});
         ++persons;
       }
     }
     if (sources.cameraDb && camerasEmpty) {
       for (const auto& row : sources.cameraDb->execSqlSync(SNAPSHOT_CAMERAS)) {
-        execStmt(db, UPSERT_CAMERA, [&](SqliteStmt& stmt) {
+        execStmt(db, {.sql = UPSERT_CAMERA, .bind = [&](SqliteStmt& stmt) {
           stmt.bindInt64(1, row[0].as<int64_t>());
           stmt.bindText(2, row[1].as<std::string>());
-        });
+        }});
         ++cameras;
       }
     }
     if (sources.cameraDb && zonesEmpty) {
       for (const auto& row : sources.cameraDb->execSqlSync(SNAPSHOT_ZONES)) {
-        execStmt(db, UPSERT_ZONE, [&](SqliteStmt& stmt) {
+        execStmt(db, {.sql = UPSERT_ZONE, .bind = [&](SqliteStmt& stmt) {
           stmt.bindInt64(1, row[0].as<int64_t>());
           stmt.bindText(2, row[1].as<std::string>());
-        });
+        }});
         ++zones;
       }
     }
     if (sources.cameraDb && streamsEmpty) {
       for (const auto& row : sources.cameraDb->execSqlSync(SNAPSHOT_STREAMS)) {
-        execStmt(db, UPSERT_STREAM, [&](SqliteStmt& stmt) {
+        execStmt(db, {.sql = UPSERT_STREAM, .bind = [&](SqliteStmt& stmt) {
           stmt.bindInt64(1, row[0].as<int64_t>());
           stmt.bindText(2, row[1].as<std::string>());
-        });
+        }});
         ++streams;
       }
     }

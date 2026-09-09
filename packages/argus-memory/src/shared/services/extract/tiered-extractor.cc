@@ -109,10 +109,22 @@ std::string firstWord(const std::string& text)
   return at == std::string::npos ? text : text.substr(0, at);
 }
 
-std::string trimSubject(std::string subject, const std::string& predicate,
-                        const std::string& value, const std::string& when,
-                        std::string_view clause)
+struct SubjectTrimInput
 {
+  std::string subject;
+  const std::string& predicate;
+  const std::string& value;
+  const std::string& when;
+  std::string_view clause;
+};
+
+std::string trimSubject(SubjectTrimInput input)
+{
+  std::string& subject = input.subject;
+  const std::string& predicate = input.predicate;
+  const std::string& value = input.value;
+  const std::string& when = input.when;
+  const std::string_view clause = input.clause;
   const auto findWord = [](const std::string& hay, const std::string& needle) {
     if (needle.empty())
       return std::string::npos;
@@ -218,14 +230,16 @@ bool TieredExtractor::extract(const extract::ExtractInput& input,
                       .cancel = CancellationToken{}});
   if (!root)
     return false;
-  addModelFacts(input, *root, out);
+  const auto facts = addModelFacts(input, *root);
+  out.insert(out.end(), facts.begin(), facts.end());
   return !out.empty();
 }
 
-void TieredExtractor::addModelFacts(
-    const extract::ExtractInput& input, const Json::Value& root,
-    std::vector<extract::ExtractedFact>& out) const
+std::vector<extract::ExtractedFact>
+TieredExtractor::addModelFacts(const extract::ExtractInput& input,
+                               const Json::Value& root) const
 {
+  std::vector<extract::ExtractedFact> out;
   Json::Value facts(Json::arrayValue);
   if (root["facts"].isArray())
     facts = root["facts"];
@@ -234,7 +248,7 @@ void TieredExtractor::addModelFacts(
             root.isMember("subject")))
     facts.append(root);
   if (facts.empty())
-    return;
+    return out;
   const std::string source = foldLower(input.clause);
   for (const Json::Value& f : facts) {
     std::string subject =
@@ -247,7 +261,12 @@ void TieredExtractor::addModelFacts(
     std::string when =
         f.get("cuando", f.get("when", f.get("time", ""))).asString();
 
-    subject = trimSubject(subject, predicate, value, when, input.clause);
+    subject =
+        trimSubject({.subject = std::move(subject),
+                     .predicate = predicate,
+                     .value = value,
+                     .when = when,
+                     .clause = input.clause});
 
     if (!value.empty() && foldLower(value) == foldLower(when))
       value.clear();
@@ -269,8 +288,9 @@ void TieredExtractor::addModelFacts(
     if (wordCount(when) > kMaxComplementWords)
       when.clear();
 
-    extract::TemporalValue resolved;
-    temporal_.resolve(input.lang, foldLower(when), resolved);
+    extract::TemporalValue resolved =
+        temporal_.resolve({.lang = input.lang,
+                           .normalized = foldLower(when)});
     if (!when.empty() && resolved.kind == extract::TemporalKind::None) {
       when.clear();
       resolved = extract::TemporalValue{};
@@ -290,4 +310,5 @@ void TieredExtractor::addModelFacts(
     fact.tier = extract::ExtractTier::Model;
     out.push_back(std::move(fact));
   }
+  return out;
 }

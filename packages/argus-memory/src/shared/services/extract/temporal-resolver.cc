@@ -143,11 +143,13 @@ int TemporalResolver::hourFor(std::string_view token) const
   return -1;
 }
 
-void TemporalResolver::resolve(std::string_view lang,
-                               const std::string& normalized,
-                               extract::TemporalValue& out) const
+extract::TemporalValue
+TemporalResolver::resolve(const TemporalResolveInput& input) const
 {
+  extract::TemporalValue out;
+  const std::string& normalized = input.normalized;
   out.surface = normalized;
+  const std::string_view lang = input.lang;
   const auto tokens = words(normalized);
   const bool es = lang == "es";
 
@@ -159,26 +161,26 @@ void TemporalResolver::resolve(std::string_view lang,
   };
 
   if (tokens.empty())
-    return;
+    return out;
 
   const std::string& first = tokens.front();
   if (first == "manana" || first == "hoy" || first == "ayer" ||
       first == "tomorrow" || first == "today" || first == "yesterday") {
     out.kind = extract::TemporalKind::Relative;
-    return;
+    return out;
   }
 
   if (findToken("cada", "every")) {
     if (findToken("mes", "month") || findToken("meses", "months")) {
       out.kind = extract::TemporalKind::Recurrence;
       out.recur = extract::Recurrence::Monthly;
-      return;
+      return out;
     }
     if (findToken("manana", "morning") || findToken("tarde", "afternoon") ||
         findToken("noche", "night") || findToken("dia", "day")) {
       out.kind = extract::TemporalKind::Recurrence;
       out.recur = extract::Recurrence::Daily;
-      return;
+      return out;
     }
     for (const auto& t : tokens) {
       const int wd = weekdayFor(lang, t);
@@ -186,12 +188,12 @@ void TemporalResolver::resolve(std::string_view lang,
         out.kind = extract::TemporalKind::Recurrence;
         out.recur = extract::Recurrence::Weekly;
         out.weekday = wd;
-        return;
+        return out;
       }
     }
     out.kind = extract::TemporalKind::Recurrence;
     out.recur = extract::Recurrence::Weekly;
-    return;
+    return out;
   }
 
   if (findToken("los", "on")) {
@@ -201,7 +203,7 @@ void TemporalResolver::resolve(std::string_view lang,
         out.kind = extract::TemporalKind::Recurrence;
         out.recur = extract::Recurrence::Weekly;
         out.weekday = wd;
-        return;
+        return out;
       }
     }
   }
@@ -216,7 +218,7 @@ void TemporalResolver::resolve(std::string_view lang,
       out.weekday = wd;
       if (plural)
         out.recur = extract::Recurrence::Weekly;
-      return;
+      return out;
     }
   }
 
@@ -234,7 +236,7 @@ void TemporalResolver::resolve(std::string_view lang,
       }
       out.kind = extract::TemporalKind::Time;
       out.minuteOfDay = minute;
-      return;
+      return out;
     }
   }
 
@@ -250,13 +252,13 @@ void TemporalResolver::resolve(std::string_view lang,
     for (const std::string_view m : kMonths) {
       if (t == m) {
         out.kind = extract::TemporalKind::Relative;
-        return;
+        return out;
       }
     }
     for (const std::string_view s2 : kSeasons) {
       if (t == s2) {
         out.kind = extract::TemporalKind::Relative;
-        return;
+        return out;
       }
     }
   }
@@ -270,10 +272,11 @@ void TemporalResolver::resolve(std::string_view lang,
     for (const std::string_view d : kDayParts) {
       if (t == d) {
         out.kind = extract::TemporalKind::Relative;
-        return;
+        return out;
       }
     }
   }
 
   out.kind = extract::TemporalKind::None;
+  return out;
 }

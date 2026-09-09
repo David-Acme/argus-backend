@@ -21,9 +21,9 @@ std::string modelPath()
 bool atemporalOrRecurring(const std::string& text, const std::string& lang)
 {
   static const TemporalResolver resolver;
-  extract::TemporalValue when;
-  resolver.resolve(lang.empty() ? "es" : lang,
-                   TemporalResolver::normalize(text), when);
+  const extract::TemporalValue when =
+      resolver.resolve({.lang = lang.empty() ? "es" : lang,
+                        .normalized = TemporalResolver::normalize(text)});
   return when.kind == extract::TemporalKind::None ||
          when.recur != extract::Recurrence::None;
 }

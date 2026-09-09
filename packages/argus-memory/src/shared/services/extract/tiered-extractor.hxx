@@ -21,9 +21,9 @@ public:
   LexiconExtractor& lexicon() { return lexicon_; }
 
 private:
-  void addModelFacts(const extract::ExtractInput& input,
-                     const Json::Value& root,
-                     std::vector<extract::ExtractedFact>& out) const;
+  std::vector<extract::ExtractedFact>
+  addModelFacts(const extract::ExtractInput& input,
+                const Json::Value& root) const;
 
   LexiconExtractor lexicon_;
   ExtractionService& model_;

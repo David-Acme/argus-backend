@@ -4,11 +4,17 @@
 #include <string>
 #include <string_view>
 
+struct TemporalResolveInput
+{
+  std::string_view lang;
+  std::string normalized;
+};
+
 class TemporalResolver
 {
 public:
-  void resolve(std::string_view lang, const std::string& normalized,
-               extract::TemporalValue& out) const;
+  extract::TemporalValue
+  resolve(const TemporalResolveInput& input) const;
 
   static std::string normalize(std::string_view text);
 

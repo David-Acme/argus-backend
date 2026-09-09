@@ -312,14 +312,13 @@ ExtractionService::extract(const ExtractRequest& request)
   return result;
 }
 
-std::string ExtractionService::grammarFor(const std::string& canonical,
-                                          const Json::Value& parsed,
-                                          const std::string& rawOrder)
+std::string ExtractionService::grammarFor(const GrammarInput& input)
 {
   std::scoped_lock lock(grammarMutex_);
-  if (grammarKey_ != canonical) {
-    grammarValue_ = buildGrammar(parsed, rawOrder);
-    grammarKey_ = canonical;
+  if (grammarKey_ != input.canonicalTemplate) {
+    grammarValue_ =
+        buildGrammar(input.parsedTemplate, input.rawOrder);
+    grammarKey_ = input.canonicalTemplate;
   }
   return grammarValue_;
 }
@@ -333,7 +332,10 @@ ExtractionService::extractOnSlot(ContextSlot& slot,
 
   const ResolvedTemplate tpl = resolveTemplate(request.templateJson);
   const std::string canonical = canonicalTemplate(tpl.parsed, tpl.raw);
-  const std::string grammar = grammarFor(canonical, tpl.parsed, tpl.raw);
+  const std::string grammar =
+      grammarFor({.canonicalTemplate = canonical,
+                  .parsedTemplate = tpl.parsed,
+                  .rawOrder = tpl.raw});
 
   const auto* vocab = llama_model_get_vocab(model_.get());
   auto sparams = llama_sampler_chain_default_params();
