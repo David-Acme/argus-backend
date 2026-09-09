@@ -9,11 +9,11 @@ add_library(identity-migration STATIC
 target_include_directories(identity-migration
     PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}
-        ${CMAKE_SOURCE_DIR}/packages/argus-common/src
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../../argus-common/src
 )
 
 target_compile_definitions(identity-migration PUBLIC
-    ARGUS_IDENTITY_SCHEMA_PATH="${CMAKE_SOURCE_DIR}/packages/argus-identity/database/schema.sql"
+    ARGUS_IDENTITY_SCHEMA_PATH="${CMAKE_CURRENT_SOURCE_DIR}/../../database/schema.sql"
 )
 
 target_link_libraries(identity-migration

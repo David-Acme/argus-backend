@@ -1,3 +1,10 @@
+cmake_minimum_required(VERSION 3.25)
+project(argus-identity VERSION 1.0.0 LANGUAGES CXX)
+
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+
 # argus_identity: the identity service (auth/invitation/pairing/user
 # features, the identity repositories and schemas, faces and portraits).
 # Compiled INTO the argus-gateway binary for now — no new process, no new
@@ -6,6 +13,65 @@
 # share this one definition.
 
 include(${CMAKE_CURRENT_SOURCE_DIR}/../../cmake/argus-module.cmake)
+
+# Standalone configure (top level): add the sibling packages the identity
+# module links, the vendored sqlite-vec the vec repositories ride and the
+# ncnn build the face services compile against. Every guard keeps the root
+# and consumer builds in charge. The empty cq-bridge stand-ins skip the
+# bridge: standalone protobuf comes from the system, not from conan, so the
+# bridge entry symbol would interpose libgrpc's own callbacks (see
+# argus-contracts/CONTEXT.md).
+if(PROJECT_IS_TOP_LEVEL)
+    if(NOT TARGET argus_sdk_grpc_bridge_entry)
+        add_library(argus_sdk_grpc_bridge_entry INTERFACE)
+        add_library(argus_sdk_grpc_bridge_exit INTERFACE)
+    endif()
+    if(NOT TARGET argus_common)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../argus-common
+                         ${CMAKE_BINARY_DIR}/argus-common)
+    endif()
+    if(NOT TARGET argus::room)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../argus-room
+                         ${CMAKE_BINARY_DIR}/argus-room)
+    endif()
+    if(NOT TARGET sqlite-vec)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../third_party/sqlite-vec
+                         ${CMAKE_BINARY_DIR}/third_party/sqlite-vec)
+    endif()
+    set(ARGUS_SQLITE_VEC_TARGET sqlite-vec)
+    if(NOT TARGET argus::sqlite)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../argus-sqlite
+                         ${CMAKE_BINARY_DIR}/argus-sqlite)
+    endif()
+    if(NOT TARGET argus::socket)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../argus-socket
+                         ${CMAKE_BINARY_DIR}/argus-socket)
+    endif()
+    if(NOT TARGET argus::audit)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../argus-audit
+                         ${CMAKE_BINARY_DIR}/argus-audit)
+    endif()
+    if(NOT TARGET argus::cert)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../argus-cert
+                         ${CMAKE_BINARY_DIR}/argus-cert)
+    endif()
+    if(NOT TARGET argus::auth)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../argus-auth
+                         ${CMAKE_BINARY_DIR}/argus-auth)
+    endif()
+
+    set(NCNN_BUILD_BENCHMARK OFF CACHE BOOL "" FORCE)
+    set(NCNN_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+    set(NCNN_BUILD_TOOLS OFF CACHE BOOL "" FORCE)
+    set(NCNN_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+    set(NCNN_OPENMP ON CACHE BOOL "" FORCE)
+    set(NCNN_AVX2 ON CACHE BOOL "" FORCE)
+    set(NCNN_VULKAN ON CACHE BOOL "" FORCE)
+    set(NCNN_ENABLE_PIC ON CACHE BOOL "" FORCE)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../third_party/ncnn
+                     ${CMAKE_BINARY_DIR}/third_party/ncnn EXCLUDE_FROM_ALL)
+    set(ARGUS_NCNN_TARGET ncnn)
+endif()
 
 # The identity RPC contract (argus.identity.v1) this service serves.
 if(NOT TARGET argus::sdk-identity)
@@ -99,8 +165,13 @@ endif()
 
 target_compile_options(argus_identity PRIVATE -Wall -Wextra)
 
-# The unit suites ride identity-migration, a target only the root tree
-# builds (tools/ is added there and stays EXCLUDE_FROM_ALL).
+# The unit suites ride identity-migration: the root tree adds the tool
+# folder EXCLUDE_FROM_ALL via its discovery glob, the standalone build adds
+# it here (the CLI executable stays EXCLUDE_FROM_ALL on its own).
+if(PROJECT_IS_TOP_LEVEL AND NOT TARGET identity-migration)
+    add_subdirectory(tools/migrate-identity)
+endif()
+
 enable_testing()
 find_package(doctest REQUIRED)
 

@@ -19,8 +19,17 @@ strangler-pattern state the migration plan calls "contract now, binary
 later"). No new port, no new deployment unit. The gRPC contract
 (`argus.identity.v1`) is designed for the standalone shape from the
 start, so the later extraction changes CMake and deploy, not file
-locations. That is why this folder has no `CMakePresets.json` or
-`conanfile.txt` today.
+locations.
+
+## Standalone build (f8-c2)
+
+The package also configures from its own folder (`conanfile.txt` +
+dev/prod presets): the top-level configure adds the sibling packages the
+module links, the vendored `sqlite-vec` and `ncnn`, and the migration
+tool the unit suites ride. Like argus-contracts standalone, the cq-bridge
+stand-ins are declared empty: standalone protobuf comes from the system
+(no conan onnxruntime to pull conan protobuf in), so the bridge entry
+symbol would interpose libgrpc's own callbacks and recurse.
 
 ## What moved and what didn't
 
