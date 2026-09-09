@@ -51,10 +51,23 @@ std::string toLower(std::string value)
   return value;
 }
 
-HttpReply request(int port, const std::string& method,
-                  const std::string& path, const std::string& body,
-                  const std::string& contentType = "")
+struct WireRequest
 {
+  int port{0};
+  std::string method;
+  std::string path;
+  std::string body;
+  std::string contentType;
+};
+
+HttpReply request(const WireRequest& input)
+{
+  const int port = input.port;
+  const std::string& method = input.method;
+  const std::string& path = input.path;
+  const std::string& body = input.body;
+  const std::string& contentType = input.contentType;
+
   const int fd = ::socket(AF_INET, SOCK_STREAM, 0);
   REQUIRE(fd >= 0);
   sockaddr_in addr{};
@@ -228,11 +241,19 @@ TEST_CASE("the argus-stt internal wire serves the legacy voice session")
   constexpr const char* kWav =
       ARGUS_TEST_STT_MODELS_DIR "/zipformer-en/test_wavs/0.wav";
 
-  const auto health = request(port, "GET", "/health", "");
+  const auto health = request({.port = port,
+                               .method = "GET",
+                               .path = "/health",
+                               .body = "",
+                               .contentType = ""});
   CHECK(health.status == 200);
   CHECK(envelope(health)["info"]["service"] == "argus-stt");
 
-  const auto config = request(port, "GET", "/stt/v1/config", "");
+  const auto config = request({.port = port,
+                               .method = "GET",
+                               .path = "/stt/v1/config",
+                               .body = "",
+                               .contentType = ""});
   const Json::Value configJson = envelope(config);
   CHECK(config.status == 200);
   CHECK(configJson["info"]["loaded"].asBool());
@@ -245,8 +266,11 @@ TEST_CASE("the argus-stt internal wire serves the legacy voice session")
 
   const auto t0 = std::chrono::steady_clock::now();
   const auto transcribe =
-      request(port, "POST", "/stt/v1/transcribe?lang=es", pcm,
-              "audio/x-argus-pcm-s16");
+      request({.port = port,
+               .method = "POST",
+               .path = "/stt/v1/transcribe?lang=es",
+               .body = pcm,
+               .contentType = "audio/x-argus-pcm-s16"});
   const auto ms =
       std::chrono::duration_cast<std::chrono::milliseconds>(
           std::chrono::steady_clock::now() - t0)
@@ -263,48 +287,81 @@ TEST_CASE("the argus-stt internal wire serves the legacy voice session")
       SttService::instance().transcribe(samples, 16000);
   CHECK(transcribeJson["info"]["text"].asString() == inProcess);
 
-  const auto emptyLang = request(port, "POST", "/stt/v1/transcribe?lang=", pcm,
-                                 "audio/x-argus-pcm-s16");
+  const auto emptyLang = request({.port = port,
+                                  .method = "POST",
+                                  .path = "/stt/v1/transcribe?lang=",
+                                  .body = pcm,
+                                  .contentType = "audio/x-argus-pcm-s16"});
   CHECK(emptyLang.status == 200);
   CHECK(envelope(emptyLang)["info"]["text"] == inProcess);
 
-  const auto noParam = request(port, "POST", "/stt/v1/transcribe", pcm,
-                               "audio/x-argus-pcm-s16");
+  const auto noParam = request({.port = port,
+                                .method = "POST",
+                                .path = "/stt/v1/transcribe",
+                                .body = pcm,
+                                .contentType = "audio/x-argus-pcm-s16"});
   CHECK(noParam.status == 200);
   CHECK(envelope(noParam)["info"]["text"] == inProcess);
 
-  const auto english = request(port, "POST", "/stt/v1/transcribe?lang=en", pcm,
-                               "audio/x-argus-pcm-s16");
+  const auto english = request({.port = port,
+                                .method = "POST",
+                                .path = "/stt/v1/transcribe?lang=en",
+                                .body = pcm,
+                                .contentType = "audio/x-argus-pcm-s16"});
   CHECK(english.status == 200);
-  const auto afterSwitch = request(port, "GET", "/stt/v1/config", "");
+  const auto afterSwitch = request({.port = port,
+                                    .method = "GET",
+                                    .path = "/stt/v1/config",
+                                    .body = "",
+                                    .contentType = ""});
   CHECK(envelope(afterSwitch)["info"]["language"] == "en");
 
-  const auto french = request(port, "POST", "/stt/v1/transcribe?lang=fr", pcm,
-                              "audio/x-argus-pcm-s16");
+  const auto french = request({.port = port,
+                               .method = "POST",
+                               .path = "/stt/v1/transcribe?lang=fr",
+                               .body = pcm,
+                               .contentType = "audio/x-argus-pcm-s16"});
   CHECK(french.status == 422);
   CHECK(envelope(french)["errors"]["code"] == "VALIDATION_ERROR");
   CHECK(envelope(french)["errors"]["fields"].isMember("lang"));
 
-  const auto badType = request(port, "POST", "/stt/v1/transcribe?lang=es", pcm,
-                               "audio/wav");
+  const auto badType = request({.port = port,
+                                .method = "POST",
+                                .path = "/stt/v1/transcribe?lang=es",
+                                .body = pcm,
+                                .contentType = "audio/wav"});
   CHECK(badType.status == 400);
   CHECK(envelope(badType)["errors"]["code"] == "BAD_REQUEST");
 
-  const auto oddBody = request(port, "POST", "/stt/v1/transcribe?lang=es",
-                               std::string(3, '\0'), "audio/x-argus-pcm-s16");
+  const auto oddBody = request({.port = port,
+                                .method = "POST",
+                                .path = "/stt/v1/transcribe?lang=es",
+                                .body = std::string(3, '\0'),
+                                .contentType = "audio/x-argus-pcm-s16"});
   CHECK(oddBody.status == 400);
   CHECK(envelope(oddBody)["errors"]["code"] == "BAD_REQUEST");
 
-  const auto emptyBody = request(port, "POST", "/stt/v1/transcribe?lang=es",
-                                 "", "audio/x-argus-pcm-s16");
+  const auto emptyBody = request({.port = port,
+                                  .method = "POST",
+                                  .path = "/stt/v1/transcribe?lang=es",
+                                  .body = "",
+                                  .contentType = "audio/x-argus-pcm-s16"});
   CHECK(emptyBody.status == 422);
   CHECK(envelope(emptyBody)["errors"]["fields"].isMember("body"));
 
-  const auto notFound = request(port, "GET", "/stt/v1/missing", "");
+  const auto notFound = request({.port = port,
+                                 .method = "GET",
+                                 .path = "/stt/v1/missing",
+                                 .body = "",
+                                 .contentType = ""});
   CHECK(notFound.status == 404);
   CHECK(envelope(notFound)["errors"]["code"] == "NOT_FOUND");
 
-  const auto notAllowed = request(port, "POST", "/stt/v1/config", "");
+  const auto notAllowed = request({.port = port,
+                                   .method = "POST",
+                                   .path = "/stt/v1/config",
+                                   .body = "",
+                                   .contentType = ""});
   CHECK(notAllowed.status == 405);
   CHECK(envelope(notAllowed)["errors"]["code"] == "METHOD_NOT_ALLOWED");
 
@@ -312,8 +369,11 @@ TEST_CASE("the argus-stt internal wire serves the legacy voice session")
       wavSamples(ARGUS_TEST_STT_MODELS_DIR "/zipformer-en/test_wavs/1.wav");
   const auto longT0 = std::chrono::steady_clock::now();
   const auto longReply =
-      request(port, "POST", "/stt/v1/transcribe?lang=en", pcmBytes(longSamples),
-              "audio/x-argus-pcm-s16");
+      request({.port = port,
+               .method = "POST",
+               .path = "/stt/v1/transcribe?lang=en",
+               .body = pcmBytes(longSamples),
+               .contentType = "audio/x-argus-pcm-s16"});
   const auto longMs =
       std::chrono::duration_cast<std::chrono::milliseconds>(
           std::chrono::steady_clock::now() - longT0)
@@ -323,8 +383,11 @@ TEST_CASE("the argus-stt internal wire serves the legacy voice session")
   CHECK(longMs < 60000);
 
   SttService::instance().shutdown();
-  const auto down = request(port, "POST", "/stt/v1/transcribe?lang=es", pcm,
-                            "audio/x-argus-pcm-s16");
+  const auto down = request({.port = port,
+                             .method = "POST",
+                             .path = "/stt/v1/transcribe?lang=es",
+                             .body = pcm,
+                             .contentType = "audio/x-argus-pcm-s16"});
   CHECK(down.status == 503);
   CHECK(envelope(down)["errors"]["code"] == "STT_NOT_LOADED");
   SttService::instance().init();

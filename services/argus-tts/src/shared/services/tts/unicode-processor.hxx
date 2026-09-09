@@ -4,16 +4,20 @@
 #include <string>
 #include <vector>
 
+struct ProcessOutput
+{
+  std::vector<std::vector<int64_t>> textIds;
+  std::vector<std::vector<std::vector<float>>> textMask;
+};
+
 class UnicodeProcessor
 {
 public:
   explicit UnicodeProcessor(const std::string& unicodeIndexerJsonPath);
   ~UnicodeProcessor() = default;
 
-  void process(const std::vector<std::string>& textList,
-               const std::vector<std::string>& langList,
-               std::vector<std::vector<int64_t>>& textIds,
-               std::vector<std::vector<std::vector<float>>>& textMask) const;
+  ProcessOutput process(const std::vector<std::string>& textList,
+                        const std::vector<std::string>& langList) const;
 
 private:
   std::string preprocessText(const std::string& text,

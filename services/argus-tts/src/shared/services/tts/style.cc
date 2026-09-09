@@ -1,8 +1,7 @@
 #include "style.hxx"
 
-Style::Style(std::vector<float> ttlData, std::vector<int64_t> ttlShape,
-             std::vector<float> dpData, std::vector<int64_t> dpShape)
-    : ttlData_(std::move(ttlData)), dpData_(std::move(dpData)),
-      ttlShape_(std::move(ttlShape)), dpShape_(std::move(dpShape))
+Style::Style(StyleDeps deps)
+    : ttlData_(std::move(deps.ttlData)), dpData_(std::move(deps.dpData)),
+      ttlShape_(std::move(deps.ttlShape)), dpShape_(std::move(deps.dpShape))
 {
 }

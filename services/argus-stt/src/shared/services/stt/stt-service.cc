@@ -241,10 +241,12 @@ std::string SttService::transcribe(const std::vector<float>& audioSamples,
   return result;
 }
 
-drogon::Task<std::string>
-SttService::transcribeAsync(const std::vector<float>& audioSamples,
-                            int32_t sampleRate, const std::string& lang)
+drogon::Task<std::string> SttService::transcribeAsync(const TranscribeInput& input)
 {
+  const std::vector<float>& audioSamples = input.audioSamples;
+  const int32_t sampleRate = input.sampleRate;
+  const std::string& lang = input.lang;
+
   co_return co_await BlockingTask<std::string>(
       [this, audioSamples, sampleRate, lang]() {
         const std::string effective = lang.empty() ? configLanguage() : lang;

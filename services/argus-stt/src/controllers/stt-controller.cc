@@ -69,7 +69,8 @@ SttController::transcribe(drogon::HttpRequestPtr req)
 
   const std::vector<float> samples = pcmFromBytes(body);
   const auto t0 = std::chrono::steady_clock::now();
-  std::string text = co_await stt.transcribeAsync(samples, kWireSampleRate, lang);
+  std::string text = co_await stt.transcribeAsync(
+      {.audioSamples = samples, .sampleRate = kWireSampleRate, .lang = lang});
   const double ms =
       std::chrono::duration<double, std::milli>(
           std::chrono::steady_clock::now() - t0)

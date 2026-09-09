@@ -363,12 +363,15 @@ std::string LlmService::buildPrompt(const std::vector<ChatMessage>& messages)
   return std::string(buf.data(), static_cast<size_t>(n));
 }
 
-void LlmService::generateStream(const std::string& formattedPrompt,
-                                float temperature, int32_t maxTokens,
-                                bool resetContext,
-                                const std::vector<std::string>& stop,
+void LlmService::generateStream(const GenerateInput& input,
                                 TokenCallback onToken)
 {
+  const std::string& formattedPrompt = input.formattedPrompt;
+  const float temperature = input.temperature;
+  const int32_t maxTokens = input.maxTokens;
+  const bool resetContext = input.resetContext;
+  const std::vector<std::string>& stop = input.stop;
+
   std::lock_guard<std::mutex> lock(mutex_);
   struct BusyGuard
   {
@@ -480,17 +483,13 @@ void LlmService::generateStream(const std::string& formattedPrompt,
   onToken("", true);
 }
 
-std::string LlmService::generate(const std::string& formattedPrompt,
-                                 float temperature, int32_t maxTokens,
-                                 bool resetContext,
-                                 const std::vector<std::string>& stop)
+std::string LlmService::generate(const GenerateInput& input)
 {
   std::string result;
-  generateStream(formattedPrompt, temperature, maxTokens, resetContext, stop,
-                 [&result](const std::string& token, bool done) {
-                   if (!done)
-                     result.append(token);
-                 });
+  generateStream(input, [&result](const std::string& token, bool done) {
+    if (!done)
+      result.append(token);
+  });
   return result;
 }
 
@@ -501,7 +500,11 @@ std::string LlmService::chat(const ChatRequest& req)
       req.maxTokens > 0 ? req.maxTokens : defaultMaxTokens_;
   const float temp =
       req.temperature >= 0.0F ? req.temperature : defaultTemperature_;
-  return generate(prompt, temp, maxTokens, req.resetContext, req.stop);
+  return generate({.formattedPrompt = prompt,
+                   .temperature = temp,
+                   .maxTokens = maxTokens,
+                   .resetContext = req.resetContext,
+                   .stop = req.stop});
 }
 
 void LlmService::chatStream(const ChatRequest& req, TokenCallback onToken)
@@ -511,7 +514,11 @@ void LlmService::chatStream(const ChatRequest& req, TokenCallback onToken)
       req.maxTokens > 0 ? req.maxTokens : defaultMaxTokens_;
   const float temp =
       req.temperature >= 0.0F ? req.temperature : defaultTemperature_;
-  generateStream(prompt, temp, maxTokens, req.resetContext, req.stop,
+  generateStream({.formattedPrompt = prompt,
+                  .temperature = temp,
+                  .maxTokens = maxTokens,
+                  .resetContext = req.resetContext,
+                  .stop = req.stop},
                  std::move(onToken));
 }
 
@@ -536,7 +543,11 @@ drogon::Task<void> LlmService::chatStreamAsync(const ChatRequest& req,
             req.maxTokens > 0 ? req.maxTokens : defaultMaxTokens_;
         const float temp =
             req.temperature >= 0.0F ? req.temperature : defaultTemperature_;
-        generateStream(prompt, temp, maxTokens, req.resetContext, req.stop,
+        generateStream({.formattedPrompt = prompt,
+                        .temperature = temp,
+                        .maxTokens = maxTokens,
+                        .resetContext = req.resetContext,
+                        .stop = req.stop},
                        std::move(wrapped));
       });
   co_return;

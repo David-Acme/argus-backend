@@ -46,6 +46,20 @@ struct ToolHopContext
   const TokenCallback* onToken = nullptr;
 };
 
+struct ChatWithToolsStreamInput
+{
+  const ToolChatInput& input;
+  std::vector<ChatMessage>& history;
+  const TokenCallback& onToken;
+};
+
+struct StreamHopInput
+{
+  const ChatRequest& request;
+  const TokenCallback& onToken;
+  bool& streamed;
+};
+
 // Tool-calling adapter over LlmService; parses raw JSON, pythonic and marker-wrapped calls.
 class LfmAdapter
 {
@@ -66,9 +80,7 @@ public:
                                std::vector<ChatMessage>& history);
 
   // Same loop, streaming every hop.
-  ToolChatOutput chatWithToolsStream(const ToolChatInput& input,
-                                     std::vector<ChatMessage>& history,
-                                     const TokenCallback& onToken);
+  ToolChatOutput chatWithToolsStream(const ChatWithToolsStreamInput& args);
 
 private:
   // The router's own path: its tool runs and one prose answer closes the turn.
@@ -81,8 +93,7 @@ private:
   void proseAnswer(ToolHopContext ctx, float temperature);
 
   // Streams a hop, holding tokens back while a call may still open.
-  std::string streamHop(const ChatRequest& request, const TokenCallback& onToken,
-                        bool& streamed);
+  std::string streamHop(const StreamHopInput& args);
 
   LlmService& llm_;
   const IntentRouter* router_ = nullptr;

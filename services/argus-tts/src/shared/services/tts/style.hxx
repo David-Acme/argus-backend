@@ -3,11 +3,18 @@
 #include <cstdint>
 #include <vector>
 
+struct StyleDeps
+{
+  std::vector<float> ttlData;
+  std::vector<int64_t> ttlShape;
+  std::vector<float> dpData;
+  std::vector<int64_t> dpShape;
+};
+
 class Style
 {
 public:
-  Style(std::vector<float> ttlData, std::vector<int64_t> ttlShape,
-        std::vector<float> dpData, std::vector<int64_t> dpShape);
+  explicit Style(StyleDeps deps);
   ~Style() = default;
 
   const std::vector<float>& ttlData() const { return ttlData_; }

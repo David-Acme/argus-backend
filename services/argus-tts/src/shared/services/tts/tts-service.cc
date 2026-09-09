@@ -68,18 +68,21 @@ void TtsService::init()
     opts.SetInterOpNumThreads(1);
 
     auto cfg = loadConfig(onnxDir);
-    auto models = loadOnnxAll(env_, onnxDir, opts);
+    auto models =
+        loadOnnxAll({.env = env_, .onnxDir = onnxDir, .opts = opts});
     processor_ = loadProcessor(onnxDir);
 
     Ort::MemoryInfo memoryInfo =
         Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
 
-    engine_ =
-        std::make_unique<TtsEngine>(cfg, processor_.get(), std::move(models.dp),
-                                    std::move(models.textEnc),
-                                    std::move(models.vectorEst),
-                                    std::move(models.vocoder),
-                                    std::move(memoryInfo));
+    engine_ = std::make_unique<TtsEngine>(
+        TtsEngine::Deps{.cfg = cfg,
+                        .processor = processor_.get(),
+                        .dp = std::move(models.dp),
+                        .textEnc = std::move(models.textEnc),
+                        .vectorEst = std::move(models.vectorEst),
+                        .vocoder = std::move(models.vocoder),
+                        .memoryInfo = std::move(memoryInfo)});
 
     loaded_ = true;
 
@@ -132,7 +135,11 @@ std::vector<float> TtsService::synthesize(const TtsRequest& req)
   int steps = resolveSteps(quality);
 
   std::lock_guard<std::mutex> lock(synthMutex_);
-  auto result = engine_->synthesize(req.text, langStr, style, steps, req.speed);
+  auto result = engine_->synthesize({.text = req.text,
+                                     .lang = langStr,
+                                     .style = style,
+                                     .totalStep = steps,
+                                     .speed = req.speed});
   return result.wav;
 }
 
@@ -153,7 +160,11 @@ void TtsService::synthesizeStream(const TtsRequest& req,
 
   std::lock_guard<std::mutex> lock(synthMutex_);
   for (const auto& chunk : textList) {
-    auto result = engine_->synthesize(chunk, langStr, style, steps, req.speed);
+    auto result = engine_->synthesize({.text = chunk,
+                                       .lang = langStr,
+                                       .style = style,
+                                       .totalStep = steps,
+                                       .speed = req.speed});
     if (!result.wav.empty())
       onChunk(result.wav);
   }

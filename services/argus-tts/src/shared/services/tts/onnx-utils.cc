@@ -23,20 +23,28 @@ const std::vector<std::string>& supportedLangCodes()
   return codes;
 }
 
-std::unique_ptr<Ort::Session> loadOnnx(Ort::Env& env, const std::string& path,
-                                       const Ort::SessionOptions& opts)
+std::unique_ptr<Ort::Session> loadOnnx(const LoadOnnxInput& input)
 {
-  return std::make_unique<Ort::Session>(env, path.c_str(), opts);
+  return std::make_unique<Ort::Session>(input.env, input.path.c_str(),
+                                        input.opts);
 }
 
-OnnxModels loadOnnxAll(Ort::Env& env, const std::string& onnxDir,
-                       const Ort::SessionOptions& opts)
+OnnxModels loadOnnxAll(const LoadOnnxAllInput& input)
 {
+  Ort::Env& env = input.env;
+  const std::string& onnxDir = input.onnxDir;
+  const Ort::SessionOptions& opts = input.opts;
+
   OnnxModels models;
-  models.dp = loadOnnx(env, onnxDir + "/duration_predictor.onnx", opts);
-  models.textEnc = loadOnnx(env, onnxDir + "/text_encoder.onnx", opts);
-  models.vectorEst = loadOnnx(env, onnxDir + "/vector_estimator.onnx", opts);
-  models.vocoder = loadOnnx(env, onnxDir + "/vocoder.onnx", opts);
+  models.dp = loadOnnx({.env = env,
+                        .path = onnxDir + "/duration_predictor.onnx",
+                        .opts = opts});
+  models.textEnc = loadOnnx(
+      {.env = env, .path = onnxDir + "/text_encoder.onnx", .opts = opts});
+  models.vectorEst = loadOnnx(
+      {.env = env, .path = onnxDir + "/vector_estimator.onnx", .opts = opts});
+  models.vocoder =
+      loadOnnx({.env = env, .path = onnxDir + "/vocoder.onnx", .opts = opts});
   return models;
 }
 
@@ -107,16 +115,19 @@ std::unique_ptr<Style> loadVoiceStyle(const std::string& path)
   std::vector<int64_t> ttlShape = {1, ttlDim1, ttlDim2};
   std::vector<int64_t> dpShape = {1, dpDim1, dpDim2};
 
-  return std::make_unique<Style>(std::move(ttlFlat), std::move(ttlShape),
-                                 std::move(dpFlat), std::move(dpShape));
+  return std::make_unique<Style>(
+      StyleDeps{.ttlData = std::move(ttlFlat),
+                .ttlShape = std::move(ttlShape),
+                .dpData = std::move(dpFlat),
+                .dpShape = std::move(dpShape)});
 }
 
-Ort::Value
-arrayToTensor(Ort::MemoryInfo& memoryInfo,
-              const std::vector<std::vector<std::vector<float>>>& array,
-              const std::vector<int64_t>& dims,
-              std::vector<std::vector<float>>& bufferPool)
+Ort::Value arrayToTensor(const ArrayToTensorInput& input)
 {
+  const std::vector<std::vector<std::vector<float>>>& array = input.array;
+  const std::vector<int64_t>& dims = input.dims;
+  std::vector<std::vector<float>>& bufferPool = input.bufferPool;
+
   size_t total = 1;
   for (auto d : dims)
     total *= d;
@@ -134,16 +145,17 @@ arrayToTensor(Ort::MemoryInfo& memoryInfo,
   bufferPool.push_back(std::move(flat));
   auto& buffer = bufferPool.back();
 
-  return Ort::Value::CreateTensor<float>(memoryInfo, buffer.data(),
+  return Ort::Value::CreateTensor<float>(input.memoryInfo, buffer.data(),
                                          buffer.size(), dims.data(),
                                          dims.size());
 }
 
-Ort::Value intArrayToTensor(Ort::MemoryInfo& memoryInfo,
-                            const std::vector<std::vector<int64_t>>& array,
-                            const std::vector<int64_t>& dims,
-                            std::vector<std::vector<int64_t>>& bufferPool)
+Ort::Value intArrayToTensor(const IntArrayToTensorInput& input)
 {
+  const std::vector<std::vector<int64_t>>& array = input.array;
+  const std::vector<int64_t>& dims = input.dims;
+  std::vector<std::vector<int64_t>>& bufferPool = input.bufferPool;
+
   size_t total = 1;
   for (auto d : dims)
     total *= d;
@@ -159,7 +171,7 @@ Ort::Value intArrayToTensor(Ort::MemoryInfo& memoryInfo,
   bufferPool.push_back(std::move(flat));
   auto& buffer = bufferPool.back();
 
-  return Ort::Value::CreateTensor<int64_t>(memoryInfo, buffer.data(),
+  return Ort::Value::CreateTensor<int64_t>(input.memoryInfo, buffer.data(),
                                            buffer.size(), dims.data(),
                                            dims.size());
 }
@@ -185,9 +197,12 @@ lengthToMask(const std::vector<int64_t>& lengths, int maxLen)
 }
 
 std::vector<std::vector<std::vector<float>>>
-latentMask(const std::vector<int64_t>& wavLengths, int baseChunkSize,
-           int chunkCompressFactor)
+latentMask(const LatentMaskInput& input)
 {
+  const std::vector<int64_t>& wavLengths = input.wavLengths;
+  const int baseChunkSize = input.baseChunkSize;
+  const int chunkCompressFactor = input.chunkCompressFactor;
+
   int latentSize = baseChunkSize * chunkCompressFactor;
   std::vector<int64_t> latentLengths;
   latentLengths.reserve(wavLengths.size());

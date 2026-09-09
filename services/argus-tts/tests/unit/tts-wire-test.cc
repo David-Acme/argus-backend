@@ -85,10 +85,23 @@ bool hasTerminalChunk(const std::string& wire)
   return false;
 }
 
-HttpReply request(int port, const std::string& method,
-                  const std::string& path, const std::string& body,
-                  bool closeConnection = true)
+struct WireRequest
 {
+  int port{0};
+  std::string method;
+  std::string path;
+  std::string body;
+  bool closeConnection{true};
+};
+
+HttpReply request(const WireRequest& input)
+{
+  const int port = input.port;
+  const std::string& method = input.method;
+  const std::string& path = input.path;
+  const std::string& body = input.body;
+  const bool closeConnection = input.closeConnection;
+
   const int fd = ::socket(AF_INET, SOCK_STREAM, 0);
   REQUIRE(fd >= 0);
   sockaddr_in addr{};
@@ -251,12 +264,20 @@ TEST_CASE("the argus-tts internal wire serves the legacy adapters")
   const int port = listeners.front().toPort();
   REQUIRE(port > 0);
 
-  const auto health = request(port, "GET", "/health", "");
+  const auto health = request({.port = port,
+                               .method = "GET",
+                               .path = "/health",
+                               .body = "",
+                               .closeConnection = true});
   const Json::Value healthJson = envelope(health);
   CHECK(health.status == 200);
   CHECK(healthJson["info"]["service"] == "argus-tts");
 
-  const auto config = request(port, "GET", "/tts/v1/config", "");
+  const auto config = request({.port = port,
+                               .method = "GET",
+                               .path = "/tts/v1/config",
+                               .body = "",
+                               .closeConnection = true});
   const Json::Value configJson = envelope(config);
   CHECK(config.status == 200);
   CHECK(configJson["status"].asInt() == 200);
@@ -265,8 +286,11 @@ TEST_CASE("the argus-tts internal wire serves the legacy adapters")
   CHECK(configJson["info"]["loaded"].asBool());
 
   const auto t0 = std::chrono::steady_clock::now();
-  const auto synth = request(port, "POST", "/tts/v1/synthesize",
-                             R"({"text":"Hola argus","lang":"es"})");
+  const auto synth = request({.port = port,
+                              .method = "POST",
+                              .path = "/tts/v1/synthesize",
+                              .body = R"({"text":"Hola argus","lang":"es"})",
+                              .closeConnection = true});
   const auto ms =
       std::chrono::duration_cast<std::chrono::milliseconds>(
           std::chrono::steady_clock::now() - t0)
@@ -281,8 +305,11 @@ TEST_CASE("the argus-tts internal wire serves the legacy adapters")
   CHECK_FALSE(synth.body.empty());
   CHECK(ms < 30000);
 
-  const auto stream = request(port, "POST", "/tts/v1/synthesize-stream",
-                              R"({"text":"Hola argus","lang":"es"})", false);
+  const auto stream = request({.port = port,
+                               .method = "POST",
+                               .path = "/tts/v1/synthesize-stream",
+                               .body = R"({"text":"Hola argus","lang":"es"})",
+                               .closeConnection = false});
   CHECK(stream.status == 200);
   CHECK(toLower(stream.headers.at("content-type")).find(
             "audio/x-argus-pcm-f32") != std::string::npos);
@@ -292,22 +319,37 @@ TEST_CASE("the argus-tts internal wire serves the legacy adapters")
   CHECK(pcm.size() % sizeof(float) == 0);
   CHECK_FALSE(pcm.empty());
 
-  const auto invalid =
-      request(port, "POST", "/tts/v1/synthesize", R"({"text":""})");
+  const auto invalid = request({.port = port,
+                                .method = "POST",
+                                .path = "/tts/v1/synthesize",
+                                .body = R"({"text":""})",
+                                .closeConnection = true});
   const Json::Value invalidJson = envelope(invalid);
   CHECK(invalid.status == 422);
   CHECK(invalidJson["status"].asInt() == 422);
   CHECK_FALSE(invalidJson["errors"].isNull());
 
-  const auto badJson = request(port, "POST", "/tts/v1/synthesize", "{not json");
+  const auto badJson = request({.port = port,
+                                .method = "POST",
+                                .path = "/tts/v1/synthesize",
+                                .body = "{not json",
+                                .closeConnection = true});
   CHECK(badJson.status == 400);
   CHECK(envelope(badJson)["errors"]["code"] == "BAD_REQUEST");
 
-  const auto notFound = request(port, "GET", "/tts/v1/missing", "");
+  const auto notFound = request({.port = port,
+                                 .method = "GET",
+                                 .path = "/tts/v1/missing",
+                                 .body = "",
+                                 .closeConnection = true});
   CHECK(notFound.status == 404);
   CHECK(envelope(notFound)["errors"]["code"] == "NOT_FOUND");
 
-  const auto notAllowed = request(port, "POST", "/tts/v1/config", "");
+  const auto notAllowed = request({.port = port,
+                                   .method = "POST",
+                                   .path = "/tts/v1/config",
+                                   .body = "",
+                                   .closeConnection = true});
   CHECK(notAllowed.status == 405);
   CHECK(envelope(notAllowed)["errors"]["code"] == "METHOD_NOT_ALLOWED");
 

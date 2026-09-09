@@ -19,6 +19,13 @@ enum class SttEngine
   Omnilingual
 };
 
+struct TranscribeInput
+{
+  const std::vector<float>& audioSamples;
+  int32_t sampleRate{16000};
+  const std::string& lang;
+};
+
 class SttService
 {
 public:
@@ -49,10 +56,7 @@ public:
   std::string language() const;
 
   // Coroutine variant: runs inference off the event loop; a language change rebuilds there.
-  drogon::Task<std::string>
-  transcribeAsync(const std::vector<float>& audioSamples,
-                  int32_t sampleRate = 16000,
-                  const std::string& lang = "");
+  drogon::Task<std::string> transcribeAsync(const TranscribeInput& input);
 
   bool isLoaded() const;
 

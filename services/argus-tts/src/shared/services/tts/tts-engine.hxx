@@ -15,12 +15,18 @@ class Style;
 class TtsEngine
 {
 public:
-  TtsEngine(const Config& cfg, UnicodeProcessor* processor,
-            std::unique_ptr<Ort::Session> dp,
-            std::unique_ptr<Ort::Session> textEnc,
-            std::unique_ptr<Ort::Session> vectorEst,
-            std::unique_ptr<Ort::Session> vocoder,
-            Ort::MemoryInfo&& memoryInfo);
+  struct Deps
+  {
+    const Config& cfg;
+    UnicodeProcessor* processor{nullptr};
+    std::unique_ptr<Ort::Session> dp;
+    std::unique_ptr<Ort::Session> textEnc;
+    std::unique_ptr<Ort::Session> vectorEst;
+    std::unique_ptr<Ort::Session> vocoder;
+    Ort::MemoryInfo&& memoryInfo;
+  };
+
+  explicit TtsEngine(Deps deps);
   ~TtsEngine() = default;
 
   TtsEngine(const TtsEngine&) = delete;
@@ -32,20 +38,38 @@ public:
     std::vector<float> duration;
   };
 
-  Result synthesize(const std::string& text, const std::string& lang,
-                    const Style& style, int totalStep, float speed) const;
+  struct SynthesizeInput
+  {
+    const std::string& text;
+    const std::string& lang;
+    const Style& style;
+    int totalStep{0};
+    float speed{1.0F};
+  };
+
+  Result synthesize(const SynthesizeInput& input) const;
 
   int sampleRate() const { return sampleRate_; }
 
 private:
-  Result infer(const std::vector<std::string>& textList,
-               const std::vector<std::string>& langList, const Style& style,
-               int totalStep, float speed) const;
+  struct InferInput
+  {
+    const std::vector<std::string>& textList;
+    const std::vector<std::string>& langList;
+    const Style& style;
+    int totalStep{0};
+    float speed{1.0F};
+  };
 
-  void sampleNoisyLatent(
-      const std::vector<float>& duration,
-      std::vector<std::vector<std::vector<float>>>& noisyLatent,
-      std::vector<std::vector<std::vector<float>>>& latentMask) const;
+  Result infer(const InferInput& input) const;
+
+  struct LatentSample
+  {
+    std::vector<std::vector<std::vector<float>>> noisyLatent;
+    std::vector<std::vector<std::vector<float>>> latentMask;
+  };
+
+  LatentSample sampleNoisyLatent(const std::vector<float>& duration) const;
 
   Config cfg_;
   UnicodeProcessor* processor_;

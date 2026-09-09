@@ -276,12 +276,14 @@ UnicodeProcessor::textMask(const std::vector<int64_t>& textIdsLengths) const
   return lengthToMask(textIdsLengths);
 }
 
-void UnicodeProcessor::process(
-    const std::vector<std::string>& textList,
-    const std::vector<std::string>& langList,
-    std::vector<std::vector<int64_t>>& textIds,
-    std::vector<std::vector<std::vector<float>>>& textMask) const
+ProcessOutput
+UnicodeProcessor::process(const std::vector<std::string>& textList,
+                          const std::vector<std::string>& langList) const
 {
+  ProcessOutput out;
+  auto& textIds = out.textIds;
+  auto& textMask = out.textMask;
+
   std::vector<std::string> processedTexts;
   processedTexts.reserve(textList.size());
   for (size_t i = 0; i < textList.size(); i++) {
@@ -313,4 +315,6 @@ void UnicodeProcessor::process(
   }
 
   textMask = this->textMask(textIdsLengths);
+
+  return out;
 }

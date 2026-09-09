@@ -141,13 +141,22 @@ std::vector<tools::ToolCall> parsePythonic(const std::string& text)
   return out;
 }
 
-std::optional<tools::ToolCall> tryJson(const std::string& text, size_t open,
-                                       size_t close)
+struct TryJsonInput
 {
+  const std::string& text;
+  size_t open{0};
+  size_t close{0};
+};
+
+std::optional<tools::ToolCall> tryJson(const TryJsonInput& input)
+{
+  const std::string& text = input.text;
+
   Json::Value value;
   Json::CharReaderBuilder builder;
   std::string errors;
-  std::istringstream in(text.substr(open, close - open + 1));
+  std::istringstream in(
+      text.substr(input.open, input.close - input.open + 1));
   if (!Json::parseFromStream(builder, in, &value, &errors) ||
       !value.isObject() || !value.isMember("name") || !value["name"].isString())
     return std::nullopt;
@@ -198,7 +207,8 @@ std::vector<tools::ToolCall> parseJsonCalls(const std::string& text)
     }
     if (close == std::string::npos)
       break;
-    if (const auto call = tryJson(text, open, close)) {
+    if (const auto call =
+            tryJson({.text = text, .open = open, .close = close})) {
       bool seen = false;
       for (const auto& existing : out) {
         if (existing.name == call->name)
@@ -213,10 +223,19 @@ std::vector<tools::ToolCall> parseJsonCalls(const std::string& text)
 }
 
 // One hop's prompt: the tool policy rides the caller's own system message.
-std::vector<ChatMessage>
-hopMessages(const std::vector<ChatMessage>& history, const std::string& system,
-            const std::string& declarations)
+struct HopMessagesInput
 {
+  const std::vector<ChatMessage>& history;
+  const std::string& system;
+  const std::string& declarations;
+};
+
+std::vector<ChatMessage> hopMessages(const HopMessagesInput& input)
+{
+  const std::vector<ChatMessage>& history = input.history;
+  const std::string& system = input.system;
+  const std::string& declarations = input.declarations;
+
   std::vector<ChatMessage> msgs = history;
   std::string content = system;
   if (!declarations.empty())
@@ -289,7 +308,8 @@ std::vector<tools::ToolCall> LfmAdapter::parseToolCalls(const std::string& text)
     pos = close + strlen(kToolClose);
 
     bool parsed = false;
-    if (const auto call = tryJson(block, 0, block.size() - 1)) {
+    if (const auto call =
+            tryJson({.text = block, .open = 0, .close = block.size() - 1})) {
       calls.push_back(*call);
       parsed = true;
     }
@@ -341,28 +361,27 @@ bool LfmAdapter::mayOpenToolCall(const std::string& text)
   return text[first] == '[' || text[first] == '{';
 }
 
-std::string LfmAdapter::streamHop(const ChatRequest& request,
-                                  const TokenCallback& onToken, bool& streamed)
+std::string LfmAdapter::streamHop(const StreamHopInput& input)
 {
   std::string reply;
   std::string held;
-  streamed = false;
-  llm_.chatStream(request, [&](const std::string& token, bool done) {
+  input.streamed = false;
+  llm_.chatStream(input.request, [&](const std::string& token, bool done) {
     if (done) {
-      if (streamed)
-        onToken("", true);
+      if (input.streamed)
+        input.onToken("", true);
       return;
     }
     reply += token;
-    if (streamed) {
-      onToken(token, false);
+    if (input.streamed) {
+      input.onToken(token, false);
       return;
     }
     held += token;
     if (mayOpenToolCall(held))
       return;
-    streamed = true;
-    onToken(held, false);
+    input.streamed = true;
+    input.onToken(held, false);
   });
   return reply;
 }
@@ -453,8 +472,9 @@ bool LfmAdapter::routedTurn(ToolHopContext ctx)
 void LfmAdapter::proseAnswer(ToolHopContext ctx, float temperature)
 {
   ChatRequest req;
-  req.messages =
-      hopMessages(ctx.history, ctx.input.systemPrompt, std::string());
+  req.messages = hopMessages({.history = ctx.history,
+                              .system = ctx.input.systemPrompt,
+                              .declarations = std::string()});
   req.maxTokens =
       ctx.input.answerMaxTokens > 0 ? ctx.input.answerMaxTokens : 512;
   req.temperature = temperature;
@@ -493,7 +513,9 @@ bool LfmAdapter::toolHops(ToolHopContext ctx, const std::string& declarations)
       input.answerMaxTokens > 0 ? input.answerMaxTokens : 512;
   for (output.hops = 0; output.hops < input.maxHops; ++output.hops) {
     ChatRequest req;
-    req.messages = hopMessages(history, input.systemPrompt, declarations);
+    req.messages = hopMessages({.history = history,
+                                .system = input.systemPrompt,
+                                .declarations = declarations});
     req.maxTokens = cap;
     req.temperature = input.toolTemperature;
     req.resetContext = output.hops == 0 && input.resetContext;
@@ -503,7 +525,9 @@ bool LfmAdapter::toolHops(ToolHopContext ctx, const std::string& declarations)
     bool streamed = false;
     const auto genStart = std::chrono::steady_clock::now();
     const std::string reply =
-        onToken ? streamHop(req, *onToken, streamed) : llm_.chat(req);
+        onToken
+            ? streamHop({.request = req, .onToken = *onToken, .streamed = streamed})
+            : llm_.chat(req);
     output.generateMs += std::chrono::duration_cast<std::chrono::milliseconds>(
                              std::chrono::steady_clock::now() - genStart)
                              .count();
@@ -567,9 +591,12 @@ ToolChatOutput LfmAdapter::chatWithTools(const ToolChatInput& input,
 }
 
 ToolChatOutput LfmAdapter::chatWithToolsStream(
-    const ToolChatInput& input, std::vector<ChatMessage>& history,
-    const TokenCallback& onToken)
+    const ChatWithToolsStreamInput& args)
 {
+  const ToolChatInput& input = args.input;
+  std::vector<ChatMessage>& history = args.history;
+  const TokenCallback& onToken = args.onToken;
+
   ToolChatOutput output;
   const ToolHopContext ctx{.input = input,
                            .history = history,

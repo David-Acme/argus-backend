@@ -9,15 +9,11 @@
 #include <shared/services/config-service/config-service.hxx>
 #include <stdexcept>
 
-TtsEngine::TtsEngine(const Config& cfg, UnicodeProcessor* processor,
-                     std::unique_ptr<Ort::Session> dp,
-                     std::unique_ptr<Ort::Session> textEnc,
-                     std::unique_ptr<Ort::Session> vectorEst,
-                     std::unique_ptr<Ort::Session> vocoder,
-                     Ort::MemoryInfo&& memoryInfo)
-    : cfg_(cfg), processor_(processor), dp_(std::move(dp)),
-      textEnc_(std::move(textEnc)), vectorEst_(std::move(vectorEst)),
-      vocoder_(std::move(vocoder)), memoryInfo_(std::move(memoryInfo))
+TtsEngine::TtsEngine(Deps deps)
+    : cfg_(deps.cfg), processor_(deps.processor), dp_(std::move(deps.dp)),
+      textEnc_(std::move(deps.textEnc)), vectorEst_(std::move(deps.vectorEst)),
+      vocoder_(std::move(deps.vocoder)),
+      memoryInfo_(std::move(deps.memoryInfo))
 {
   sampleRate_ = cfg_.ae.sampleRate;
   baseChunkSize_ = cfg_.ae.baseChunkSize;
@@ -29,11 +25,13 @@ TtsEngine::TtsEngine(const Config& cfg, UnicodeProcessor* processor,
   ldim_ = cfg_.ttl.latentDim;
 }
 
-void TtsEngine::sampleNoisyLatent(
-    const std::vector<float>& duration,
-    std::vector<std::vector<std::vector<float>>>& noisyLatent,
-    std::vector<std::vector<std::vector<float>>>& latentMaskOut) const
+TtsEngine::LatentSample
+TtsEngine::sampleNoisyLatent(const std::vector<float>& duration) const
 {
+  LatentSample out;
+  auto& noisyLatent = out.noisyLatent;
+  auto& latentMaskOut = out.latentMask;
+
   int bsz = static_cast<int>(duration.size());
   float wavLenMax =
       *std::max_element(duration.begin(), duration.end()) * sampleRate_;
@@ -59,7 +57,9 @@ void TtsEngine::sampleNoisyLatent(
     }
   }
 
-  latentMaskOut = latentMask(wavLengths, baseChunkSize_, chunkCompressFactor_);
+  latentMaskOut = latentMask({.wavLengths = wavLengths,
+                              .baseChunkSize = baseChunkSize_,
+                              .chunkCompressFactor = chunkCompressFactor_});
 
   for (int b = 0; b < bsz; b++) {
     for (int d = 0; d < latentDim; d++) {
@@ -68,13 +68,18 @@ void TtsEngine::sampleNoisyLatent(
       }
     }
   }
+
+  return out;
 }
 
-TtsEngine::Result TtsEngine::infer(const std::vector<std::string>& textList,
-                                   const std::vector<std::string>& langList,
-                                   const Style& style, int totalStep,
-                                   float speed) const
+TtsEngine::Result TtsEngine::infer(const InferInput& input) const
 {
+  const std::vector<std::string>& textList = input.textList;
+  const std::vector<std::string>& langList = input.langList;
+  const Style& style = input.style;
+  const int totalStep = input.totalStep;
+  const float speed = input.speed;
+
   tensorFloats_.clear();
   tensorInts_.clear();
 
@@ -85,9 +90,9 @@ TtsEngine::Result TtsEngine::infer(const std::vector<std::string>& textList,
         "Number of texts must match number of style vectors");
   }
 
-  std::vector<std::vector<int64_t>> textIds;
-  std::vector<std::vector<std::vector<float>>> textMask;
-  processor_->process(textList, langList, textIds, textMask);
+  auto processed = processor_->process(textList, langList);
+  std::vector<std::vector<int64_t>>& textIds = processed.textIds;
+  std::vector<std::vector<std::vector<float>>>& textMask = processed.textMask;
 
   std::vector<int64_t> textIdsShape = {bsz,
                                        static_cast<int64_t>(textIds[0].size())};
@@ -95,10 +100,16 @@ TtsEngine::Result TtsEngine::infer(const std::vector<std::string>& textList,
                                         static_cast<int64_t>(
                                             textMask[0][0].size())};
 
-  Ort::Value textIdsTensor =
-      intArrayToTensor(memoryInfo_, textIds, textIdsShape, tensorInts_);
-  Ort::Value textMaskTensor =
-      arrayToTensor(memoryInfo_, textMask, textMaskShape, tensorFloats_);
+  Ort::Value textIdsTensor = intArrayToTensor(
+      {.memoryInfo = memoryInfo_,
+       .array = textIds,
+       .dims = textIdsShape,
+       .bufferPool = tensorInts_});
+  Ort::Value textMaskTensor = arrayToTensor(
+      {.memoryInfo = memoryInfo_,
+       .array = textMask,
+       .dims = textMaskShape,
+       .bufferPool = tensorFloats_});
 
   Ort::Value styleTtlTensor =
       Ort::Value::CreateTensor<float>(memoryInfo_,
@@ -133,10 +144,16 @@ TtsEngine::Result TtsEngine::infer(const std::vector<std::string>& textList,
     dur /= speed;
   }
 
-  Ort::Value textIdsTensor2 =
-      intArrayToTensor(memoryInfo_, textIds, textIdsShape, tensorInts_);
-  Ort::Value textMaskTensor2 =
-      arrayToTensor(memoryInfo_, textMask, textMaskShape, tensorFloats_);
+  Ort::Value textIdsTensor2 = intArrayToTensor(
+      {.memoryInfo = memoryInfo_,
+       .array = textIds,
+       .dims = textIdsShape,
+       .bufferPool = tensorInts_});
+  Ort::Value textMaskTensor2 = arrayToTensor(
+      {.memoryInfo = memoryInfo_,
+       .array = textMask,
+       .dims = textMaskShape,
+       .bufferPool = tensorFloats_});
 
   Ort::Value styleTtlTensor2 =
       Ort::Value::CreateTensor<float>(memoryInfo_,
@@ -159,9 +176,10 @@ TtsEngine::Result TtsEngine::infer(const std::vector<std::string>& textList,
                     textEncInputs.data(), textEncInputs.size(),
                     textEncOutputNames, 1);
 
-  std::vector<std::vector<std::vector<float>>> latentMaskData;
-  std::vector<std::vector<std::vector<float>>> xt3d;
-  sampleNoisyLatent(duration, xt3d, latentMaskData);
+  auto sampled = sampleNoisyLatent(duration);
+  std::vector<std::vector<std::vector<float>>>& xt3d = sampled.noisyLatent;
+  std::vector<std::vector<std::vector<float>>>& latentMaskData =
+      sampled.latentMask;
 
   int latentDim = static_cast<int>(xt3d[0].size());
   int latentLen = static_cast<int>(xt3d[0][0].size());
@@ -315,9 +333,23 @@ size_t trailingSilence(const std::vector<float>& wav, float threshold)
   return wav.size() - i;
 }
 
-void appendTrimmed(std::vector<float>& dst, const std::vector<float>& src,
-                   float threshold, size_t keepLead, size_t keepTail)
+struct AppendTrimmedInput
 {
+  std::vector<float>& dst;
+  const std::vector<float>& src;
+  float threshold{0.0F};
+  size_t keepLead{0};
+  size_t keepTail{0};
+};
+
+void appendTrimmed(const AppendTrimmedInput& input)
+{
+  std::vector<float>& dst = input.dst;
+  const std::vector<float>& src = input.src;
+  const float threshold = input.threshold;
+  const size_t keepLead = input.keepLead;
+  const size_t keepTail = input.keepTail;
+
   const size_t lead = leadingSilence(src, threshold);
   const size_t tail = trailingSilence(src, threshold);
   if (lead + tail >= src.size()) {
@@ -332,11 +364,14 @@ void appendTrimmed(std::vector<float>& dst, const std::vector<float>& src,
 
 } // namespace
 
-TtsEngine::Result TtsEngine::synthesize(const std::string& text,
-                                        const std::string& lang,
-                                        const Style& style, int totalStep,
-                                        float speed) const
+TtsEngine::Result TtsEngine::synthesize(const SynthesizeInput& input) const
 {
+  const std::string& text = input.text;
+  const std::string& lang = input.lang;
+  const Style& style = input.style;
+  const int totalStep = input.totalStep;
+  const float speed = input.speed;
+
   if (style.ttlShape()[0] != 1) {
     throw std::runtime_error(
         "Single speaker text to speech only supports single style");
@@ -355,10 +390,18 @@ TtsEngine::Result TtsEngine::synthesize(const std::string& text,
   float durCat = 0.0f;
 
   for (const auto& chunk : textList) {
-    auto result = infer({chunk}, {lang}, style, totalStep, speed);
+    auto result = infer({.textList = {chunk},
+                         .langList = {lang},
+                         .style = style,
+                         .totalStep = totalStep,
+                         .speed = speed});
     if (!wavCat.empty() && joinSamples > 0)
       wavCat.insert(wavCat.end(), joinSamples, 0.0f);
-    appendTrimmed(wavCat, result.wav, threshold, keepEdge, keepEdge);
+    appendTrimmed({.dst = wavCat,
+                   .src = result.wav,
+                   .threshold = threshold,
+                   .keepLead = keepEdge,
+                   .keepTail = keepEdge});
     durCat += result.duration[0];
   }
 

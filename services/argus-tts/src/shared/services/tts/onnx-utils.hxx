@@ -25,8 +25,14 @@ struct Config
   } ttl;
 };
 
-std::unique_ptr<Ort::Session> loadOnnx(Ort::Env& env, const std::string& path,
-                                       const Ort::SessionOptions& opts);
+struct LoadOnnxInput
+{
+  Ort::Env& env;
+  const std::string& path;
+  const Ort::SessionOptions& opts;
+};
+
+std::unique_ptr<Ort::Session> loadOnnx(const LoadOnnxInput& input);
 
 struct OnnxModels
 {
@@ -36,31 +42,52 @@ struct OnnxModels
   std::unique_ptr<Ort::Session> vocoder;
 };
 
-OnnxModels loadOnnxAll(Ort::Env& env, const std::string& onnxDir,
-                       const Ort::SessionOptions& opts);
+struct LoadOnnxAllInput
+{
+  Ort::Env& env;
+  const std::string& onnxDir;
+  const Ort::SessionOptions& opts;
+};
+
+OnnxModels loadOnnxAll(const LoadOnnxAllInput& input);
 
 Config loadConfig(const std::string& onnxDir);
 std::unique_ptr<UnicodeProcessor> loadProcessor(const std::string& onnxDir);
 
 std::unique_ptr<Style> loadVoiceStyle(const std::string& path);
 
-Ort::Value
-arrayToTensor(Ort::MemoryInfo& memoryInfo,
-              const std::vector<std::vector<std::vector<float>>>& array,
-              const std::vector<int64_t>& dims,
-              std::vector<std::vector<float>>& bufferPool);
+struct ArrayToTensorInput
+{
+  Ort::MemoryInfo& memoryInfo;
+  const std::vector<std::vector<std::vector<float>>>& array;
+  const std::vector<int64_t>& dims;
+  std::vector<std::vector<float>>& bufferPool;
+};
 
-Ort::Value intArrayToTensor(Ort::MemoryInfo& memoryInfo,
-                            const std::vector<std::vector<int64_t>>& array,
-                            const std::vector<int64_t>& dims,
-                            std::vector<std::vector<int64_t>>& bufferPool);
+Ort::Value arrayToTensor(const ArrayToTensorInput& input);
+
+struct IntArrayToTensorInput
+{
+  Ort::MemoryInfo& memoryInfo;
+  const std::vector<std::vector<int64_t>>& array;
+  const std::vector<int64_t>& dims;
+  std::vector<std::vector<int64_t>>& bufferPool;
+};
+
+Ort::Value intArrayToTensor(const IntArrayToTensorInput& input);
 
 std::vector<std::vector<std::vector<float>>>
 lengthToMask(const std::vector<int64_t>& lengths, int maxLen = -1);
 
+struct LatentMaskInput
+{
+  const std::vector<int64_t>& wavLengths;
+  int baseChunkSize{0};
+  int chunkCompressFactor{0};
+};
+
 std::vector<std::vector<std::vector<float>>>
-latentMask(const std::vector<int64_t>& wavLengths, int baseChunkSize,
-           int chunkCompressFactor);
+latentMask(const LatentMaskInput& input);
 
 std::vector<int64_t> loadJsonInt64(const std::string& path);
 

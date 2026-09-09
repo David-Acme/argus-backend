@@ -68,8 +68,19 @@ private:
   int fd_;
 };
 
-int connectLoopback(const std::string& host, int port, int timeoutMs)
+struct ConnectLoopbackInput
 {
+  const std::string& host;
+  int port{0};
+  int timeoutMs{0};
+};
+
+int connectLoopback(const ConnectLoopbackInput& input)
+{
+  const std::string& host = input.host;
+  const int port = input.port;
+  const int timeoutMs = input.timeoutMs;
+
   const int fd = ::socket(AF_INET, SOCK_STREAM, 0);
   if (fd < 0)
     return -1;
@@ -301,7 +312,9 @@ std::string LlmHttpClient::chatBody(const ChatRequest& request) const
 std::string LlmHttpClient::chat(const ChatRequest& request) const
 {
   const Address address = parseUrl(baseUrl_);
-  const SocketGuard fd(connectLoopback(address.host, address.port, timeoutMs_));
+  const SocketGuard fd(connectLoopback({.host = address.host,
+                                        .port = address.port,
+                                        .timeoutMs = timeoutMs_}));
   if (fd.get() < 0)
     throw std::runtime_error("argus-llm unreachable at " + baseUrl_);
 
@@ -336,7 +349,9 @@ std::string LlmHttpClient::chat(const ChatRequest& request) const
 void LlmHttpClient::chatStream(const LlmStreamInput& input) const
 {
   const Address address = parseUrl(baseUrl_);
-  const SocketGuard fd(connectLoopback(address.host, address.port, timeoutMs_));
+  const SocketGuard fd(connectLoopback({.host = address.host,
+                                        .port = address.port,
+                                        .timeoutMs = timeoutMs_}));
   if (fd.get() < 0)
     throw std::runtime_error("argus-llm unreachable at " + baseUrl_);
 

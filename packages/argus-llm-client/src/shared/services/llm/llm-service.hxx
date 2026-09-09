@@ -39,6 +39,15 @@ struct LlmPrefillStats
   int32_t decodedTokens{0};
 };
 
+struct GenerateInput
+{
+  std::string formattedPrompt;
+  float temperature{-1.0F};
+  int32_t maxTokens{0};
+  bool resetContext{false};
+  std::vector<std::string> stop;
+};
+
 class LlmService
 {
 public:
@@ -78,13 +87,8 @@ private:
   buildChatMlPrompt(const std::vector<ChatMessage>& messages);
   std::vector<int32_t> tokenize(const std::string& text, bool addSpecial);
   bool prefill(const std::vector<int32_t>& promptTokens, bool forceReset);
-  std::string generate(const std::string& formattedPrompt, float temperature,
-                       int32_t maxTokens, bool resetContext,
-                       const std::vector<std::string>& stop);
-  void generateStream(const std::string& formattedPrompt, float temperature,
-                      int32_t maxTokens, bool resetContext,
-                      const std::vector<std::string>& stop,
-                      TokenCallback onToken);
+  std::string generate(const GenerateInput& input);
+  void generateStream(const GenerateInput& input, TokenCallback onToken);
 
   std::unique_ptr<llama_model, void (*)(llama_model*)> model_;
   std::unique_ptr<llama_context, void (*)(llama_context*)> context_;

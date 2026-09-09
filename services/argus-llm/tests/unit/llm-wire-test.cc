@@ -40,10 +40,23 @@ struct HttpReply
   std::string body;
 };
 
-HttpReply request(int port, const std::string& method,
-                  const std::string& path, const std::string& body,
-                  const std::string& contentType = "")
+struct WireRequest
 {
+  int port{0};
+  std::string method;
+  std::string path;
+  std::string body;
+  std::string contentType;
+};
+
+HttpReply request(const WireRequest& input)
+{
+  const int port = input.port;
+  const std::string& method = input.method;
+  const std::string& path = input.path;
+  const std::string& body = input.body;
+  const std::string& contentType = input.contentType;
+
   const int fd = ::socket(AF_INET, SOCK_STREAM, 0);
   REQUIRE(fd >= 0);
   sockaddr_in addr{};
@@ -118,9 +131,19 @@ std::string chatBody(const std::string& message, int maxTokens = 0)
   return Json::writeString(builder, body);
 }
 
-std::string historyBody(const std::string& first, const std::string& answer,
-                        const std::string& followUp)
+struct HistoryBodyInput
 {
+  std::string first;
+  std::string answer;
+  std::string followUp;
+};
+
+std::string historyBody(const HistoryBodyInput& input)
+{
+  const std::string& first = input.first;
+  const std::string& answer = input.answer;
+  const std::string& followUp = input.followUp;
+
   Json::Value body(Json::objectValue);
   Json::Value messages(Json::arrayValue);
   Json::Value turn(Json::objectValue);
@@ -236,7 +259,12 @@ StreamBody joinChunks(const std::vector<std::string>& chunks)
 
 std::string postChat(int port, const std::string& body)
 {
-  return request(port, "POST", "/llm/v1/chat", body, "application/json").body;
+  return request({.port = port,
+                  .method = "POST",
+                  .path = "/llm/v1/chat",
+                  .body = body,
+                  .contentType = "application/json"})
+      .body;
 }
 
 bool waitForBoot(std::chrono::milliseconds timeout)
@@ -301,11 +329,19 @@ TEST_CASE("the argus-llm internal wire serves the chat capacity")
   const int port = listeners.front().toPort();
   REQUIRE(port > 0);
 
-  const auto health = request(port, "GET", "/health", "");
+  const auto health = request({.port = port,
+                               .method = "GET",
+                               .path = "/health",
+                               .body = "",
+                               .contentType = ""});
   CHECK(health.status == 200);
   CHECK(envelope(health)["info"]["service"] == "argus-llm");
 
-  const auto config = request(port, "GET", "/llm/v1/config", "");
+  const auto config = request({.port = port,
+                               .method = "GET",
+                               .path = "/llm/v1/config",
+                               .body = "",
+                               .contentType = ""});
   const Json::Value configJson = envelope(config);
   CHECK(config.status == 200);
   CHECK(configJson["info"]["loaded"].asBool());
@@ -320,18 +356,30 @@ TEST_CASE("the argus-llm internal wire serves the chat capacity")
   const std::string firstText = firstJson["info"]["text"].asString();
   CHECK_FALSE(firstText.empty());
 
-  const Json::Value afterFirst = envelope(request(port, "GET", "/llm/v1/config", ""));
+  const Json::Value afterFirst = envelope(request(
+      {.port = port,
+       .method = "GET",
+       .path = "/llm/v1/config",
+       .body = "",
+       .contentType = ""}));
   CHECK(afterFirst["info"]["lastReusedTokens"].asInt() == 0);
   CHECK(afterFirst["info"]["lastPromptTokens"].asInt() > 0);
   MESSAGE("first chat: \"" << firstText << "\" prompt="
            << afterFirst["info"]["lastPromptTokens"].asInt() << " tokens");
 
   const std::string historyBodyWire =
-      historyBody("Di exactamente: hola", firstText, "Y ahora despidete");
+      historyBody({.first = "Di exactamente: hola",
+                   .answer = firstText,
+                   .followUp = "Y ahora despidete"});
   const Json::Value historyJson = envelope({0, postChat(port, historyBodyWire)});
   CHECK(historyJson["status"].asInt() == 200);
   CHECK_FALSE(historyJson["info"]["text"].asString().empty());
-  const Json::Value afterHistory = envelope(request(port, "GET", "/llm/v1/config", ""));
+  const Json::Value afterHistory = envelope(request(
+      {.port = port,
+       .method = "GET",
+       .path = "/llm/v1/config",
+       .body = "",
+       .contentType = ""}));
   MESSAGE("history chat reused " << afterHistory["info"]["lastReusedTokens"].asInt()
            << " of " << afterHistory["info"]["lastPromptTokens"].asInt()
            << " tokens");
@@ -342,7 +390,12 @@ TEST_CASE("the argus-llm internal wire serves the chat capacity")
   CHECK(divergentJson["status"].asInt() == 200);
   const std::string divergentText = divergentJson["info"]["text"].asString();
   CHECK_FALSE(divergentText.empty());
-  const Json::Value afterDivergent = envelope(request(port, "GET", "/llm/v1/config", ""));
+  const Json::Value afterDivergent = envelope(request(
+      {.port = port,
+       .method = "GET",
+       .path = "/llm/v1/config",
+       .body = "",
+       .contentType = ""}));
   CHECK(afterDivergent["info"]["lastReusedTokens"].asInt() == 0);
 
   const auto chunks = requestStream(port, divergentBody);
@@ -358,8 +411,11 @@ TEST_CASE("the argus-llm internal wire serves the chat capacity")
   for (size_t i = 0; i + 1 < chunks.size(); ++i)
     CHECK(chunks[i].find("\"done\"") == std::string::npos);
 
-  const auto notJson = request(port, "POST", "/llm/v1/chat", "not json",
-                               "text/plain");
+  const auto notJson = request({.port = port,
+                                .method = "POST",
+                                .path = "/llm/v1/chat",
+                                .body = "not json",
+                                .contentType = "text/plain"});
   CHECK(notJson.status == 400);
   CHECK(envelope(notJson)["errors"]["code"] == "BAD_REQUEST");
 
@@ -374,11 +430,19 @@ TEST_CASE("the argus-llm internal wire serves the chat capacity")
   CHECK(badToken["status"].asInt() == 422);
   CHECK(badToken["errors"]["fields"].isMember("maxTokens"));
 
-  const auto notFound = request(port, "GET", "/llm/v1/missing", "");
+  const auto notFound = request({.port = port,
+                                 .method = "GET",
+                                 .path = "/llm/v1/missing",
+                                 .body = "",
+                                 .contentType = ""});
   CHECK(notFound.status == 404);
   CHECK(envelope(notFound)["errors"]["code"] == "NOT_FOUND");
 
-  const auto notAllowed = request(port, "GET", "/llm/v1/chat", "");
+  const auto notAllowed = request({.port = port,
+                                   .method = "GET",
+                                   .path = "/llm/v1/chat",
+                                   .body = "",
+                                   .contentType = ""});
   CHECK(notAllowed.status == 405);
   CHECK(envelope(notAllowed)["errors"]["code"] == "METHOD_NOT_ALLOWED");
 
@@ -389,8 +453,11 @@ TEST_CASE("the argus-llm internal wire serves the chat capacity")
   CHECK(downJson["status"].asInt() == 503);
   CHECK(downJson["errors"]["code"] == "LLM_NOT_LOADED");
 
-  const auto streamDown = request(port, "POST", "/llm/v1/chat-stream",
-                                  firstBody, "application/json");
+  const auto streamDown = request({.port = port,
+                                   .method = "POST",
+                                   .path = "/llm/v1/chat-stream",
+                                   .body = firstBody,
+                                   .contentType = "application/json"});
   CHECK(streamDown.status == 503);
   CHECK(envelope(streamDown)["errors"]["code"] == "LLM_NOT_LOADED");
 
