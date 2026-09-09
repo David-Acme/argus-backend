@@ -10,10 +10,7 @@
 namespace argus::sdk
 {
 
-// The caller the RPC acts for, carried as x-argus-* metadata. Receivers
-// check PRESENCE, not value (argus-camera's sync service rejects a request
-// missing any of the three keys), so an engaged-but-empty device is sent as
-// an empty header rather than dropped.
+// The caller the RPC acts for, carried as x-argus-* metadata; receivers gate on presence.
 struct CallerIdentity
 {
   int64_t userId{0};
@@ -33,9 +30,7 @@ void setDeadline(grpc::ClientContext& context, int timeoutMs);
 void addCallerIdentity(grpc::ClientContext& context,
                        const CallerIdentity& identity);
 
-// The fleet-shared secret proving the caller is part of this installation,
-// sent as x-argus-fleet. An empty secret sends no header, which the receiver
-// only accepts on a loopback listener.
+// The fleet-shared secret proving the caller is part of this installation.
 void addFleetSecret(grpc::ClientContext& context, const std::string& secret);
 
 // The metadata key the fleet secret travels in, shared by both ends.

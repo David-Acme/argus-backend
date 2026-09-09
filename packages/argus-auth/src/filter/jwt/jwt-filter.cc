@@ -7,9 +7,7 @@
 #include <shared/wrapper/blocking-task/blocking-task.hxx>
 #include <trantor/utils/Logger.h>
 
-// One server-authoritative validation per request: user status, refresh-token
-// row and device binding in a single round trip, fail closed when the identity
-// service is unreachable.
+// One server-authoritative validation per request, fail closed.
 drogon::Task<drogon::HttpResponsePtr>
 JwtFilter::doFilter(const drogon::HttpRequestPtr& req)
 {

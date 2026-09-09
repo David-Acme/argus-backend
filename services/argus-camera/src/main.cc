@@ -64,9 +64,7 @@ Json::Value drogonConfig(const CameraDbConfig& cameraDb,
   return config;
 }
 
-// Config-gated read-only identity client ([identity] db): the sync socket
-// resolves the caller's user row and serves the user table from it. The
-// filters do not read here — they validate over the identity RPC.
+// Config-gated read-only identity client; the filters validate over the identity RPC.
 void installIdentityClient()
 {
   const auto path = ConfigService::getString("identity.db");

@@ -15,10 +15,7 @@ struct UpdateUserNameInput
   std::string role;
 };
 
-// Token validation input. hasDeviceContext mirrors the device filter having
-// run: an EMPTY hash with the context present is a failed credential and must
-// still be checked against the session's binding, so presence and value are
-// carried separately.
+// Token validation input; presence and value of the device context carried separately.
 struct ValidateTokenInput
 {
   std::string accessToken;
@@ -30,8 +27,7 @@ struct ValidateTokenInput
 class IdentityClient
 {
 public:
-  // fleetSecret rides every call as x-argus-fleet; empty means the identity
-  // service must be on a loopback listener to accept the call.
+  // fleetSecret rides every call as x-argus-fleet.
   explicit IdentityClient(std::string target, std::string fleetSecret = {});
 
   IdentityClient(const IdentityClient&) = delete;
@@ -42,13 +38,11 @@ public:
   virtual std::optional<argus::identity::v1::UserIdentity>
   updateUserName(const UpdateUserNameInput& input) const;
 
-  // Server-authoritative token validation; nullopt when the gateway is
-  // unreachable (the caller must treat that as a rejection).
+  // Server-authoritative token validation; nullopt when the gateway is unreachable.
   virtual std::optional<argus::identity::v1::ValidateTokenResponse>
   validateToken(const ValidateTokenInput& input) const;
 
-  // Device credential check by secret hash; false when unknown, refused or
-  // unreachable.
+  // Device credential check by secret hash; false when unknown or unreachable.
   virtual bool checkDeviceCredential(const std::string& secretHash) const;
 
 private:

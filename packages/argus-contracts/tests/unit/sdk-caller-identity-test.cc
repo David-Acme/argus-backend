@@ -10,10 +10,7 @@
 #include <mutex>
 #include <string>
 
-// Receivers gate on the PRESENCE of the x-argus-* keys, not their values:
-// argus-camera's sync service rejects a request missing any of the three,
-// and in credential mode the device hash is legitimately empty. This suite
-// pins that contract against the shared SDK client base.
+// Pins that receivers gate on the PRESENCE of the x-argus-* keys, not their values.
 namespace
 {
 

@@ -16,13 +16,9 @@ struct ToolContext
   std::string lang = "es";
   std::string sessionId;
   std::string channel = "tool_result";
-  // The user message the call answers; the loop sets it so a handler can
-  // fall back to the triggering sentence when the model's arguments are
-  // incomplete (see the f8-b4 record).
+  // The user message the call answers; handlers fall back to it.
   std::string utterance;
-  // An upstream classifier already decided this turn's intent, so a handler
-  // must not re-derive it from an explicit trigger the sentence may not
-  // carry: 39.5% of real memory_save utterances have no rule clause.
+  // An upstream classifier already decided this turn's intent.
   bool decided = false;
 };
 

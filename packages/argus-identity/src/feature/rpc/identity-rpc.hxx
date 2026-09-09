@@ -9,16 +9,12 @@
 #include <shared/services/jwt/jwt-service.hxx>
 #include <shared/wrapper/nats/nats-bus.hxx>
 
-// IdentityService controller: enforces x-argus-user against request->user_id()
-// on UpdateUser; ValidateToken and CheckDeviceCredential are
-// self-authoritative (the token/credential is the authority, no metadata).
+// IdentityService controller: UpdateUser is metadata-authoritative, the rest self-authoritative.
 class IdentityRpcService final
     : public argus::identity::v1::IdentityService::CallbackService
 {
 public:
-  // fleetSecret is required in x-argus-fleet on every call; empty disables the
-  // check and is only allowed on a loopback listener (main.cc refuses to bind
-  // a wider one without a secret).
+  // fleetSecret is required in x-argus-fleet on every call; empty allows only loopback.
   IdentityRpcService(std::shared_ptr<NatsBus> bus, std::string fleetSecret);
 
   grpc::ServerUnaryReactor*
@@ -44,8 +40,7 @@ private:
                  argus::identity::v1::ValidateTokenResponse* response,
                  const std::string& reason);
 
-  // Fleet-secret gate: the listener is cleartext, so a caller that cannot
-  // present the installation's shared secret is refused before any lookup.
+  // Fleet-secret gate; the listener is cleartext.
   bool fleetAuthorized(const grpc::CallbackServerContext* context) const;
 
   JwtService jwtService_;

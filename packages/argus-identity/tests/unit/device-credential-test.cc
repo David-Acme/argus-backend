@@ -117,8 +117,7 @@ bool waitForBoot(std::chrono::milliseconds timeout)
   return drogon::app().isRunning();
 }
 
-// The filters validate through argus.identity.v1, so the suite hosts the
-// real service over the seeded database and points identity.target at it.
+// Hosts the real service over the seeded database and points identity.target at it.
 class IdentityRpcHarness
 {
 public:
@@ -341,8 +340,7 @@ TEST_CASE("credential identity mode issues, binds and authenticates devices")
   CHECK(ipRows.back()["device_hash"].as<std::string>() ==
         "1975e81a234fd02f4ae788a8fdb0911b1a1f15dd6d5d6d21d311fe4bbe130ceb");
 
-  // A/B parity: the JwtContext the RPC path produced must equal what the
-  // direct repository reads (the pre-f7-3 path) say about the same session.
+  // A/B parity: the RPC path's JwtContext equals the direct repository read.
   const auto& rpcCtx =
       desktop->getAttributes()->get<JwtContext>(AppConfig::JWT_CTX_KEY);
   const auto directUser = drogon::sync_wait(UserRepository().findById(1));
@@ -365,8 +363,7 @@ TEST_CASE("credential identity mode issues, binds and authenticates devices")
   REQUIRE(refused);
   CHECK(refused->getStatusCode() == drogon::HttpStatusCode::k401Unauthorized);
 
-  // The fleet secret gates the listener: the same request that authenticates
-  // with the secret is refused without it.
+  // The same request that authenticates with the secret is refused without it.
   {
     IdentityRpcHarness guarded(kFleetSecret);
     REQUIRE(guarded.listening());

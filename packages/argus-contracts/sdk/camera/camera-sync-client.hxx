@@ -26,9 +26,9 @@ public:
   virtual ~CameraSyncClient() = default;
 
   // Sync-table pull; nullopt when argus-camera refuses or is unreachable.
-  virtual std::optional<argus::camera::v1::PullTableResponse>
-  pullTable(const argus::camera::v1::PullTableRequest& request,
-            const SyncIdentity& identity) const;
+  virtual std::optional<argus::camera::v1::PullTableResponse> pullTable(
+      const argus::camera::v1::PullTableRequest& request,
+      const SyncIdentity& identity) const;
 
 private:
   std::shared_ptr<grpc::Channel> channel_;

@@ -26,9 +26,7 @@ struct ChatRequest
   int32_t maxTokens{0};
   float temperature{-1.0F};
   bool resetContext{false};
-  // Generation ends once one of these appears (llama.cpp server semantics),
-  // except that the matched text is kept: the tool parser needs its closing
-  // marker.
+  // Generation ends once one of these appears; the matched text is kept.
   std::vector<std::string> stop;
 };
 

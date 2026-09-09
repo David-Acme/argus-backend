@@ -7,9 +7,7 @@
 namespace tunnel
 {
 
-// The /health contract of each tunnel binary: the field set the fleet reads,
-// built as providers so every field is sampled per request rather than at
-// boot. The relay adds pushForwarded, which the client has no counterpart for.
+// The /health contract of each tunnel binary, sampled per request.
 HealthStatus relayHealthStatus(TunnelRelay& relay);
 HealthStatus clientHealthStatus(TunnelClient& client);
 

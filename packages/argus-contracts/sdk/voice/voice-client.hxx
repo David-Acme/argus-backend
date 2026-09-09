@@ -40,9 +40,9 @@ public:
   virtual ~VoiceClient() = default;
 
   // Opens one bidi stream; the stream owns the observer until OnDone.
-  virtual std::shared_ptr<VoiceStream>
-  connect(const argus::voice::v1::VoiceIdentity& identity,
-          std::shared_ptr<VoiceStreamObserver> observer);
+  virtual std::shared_ptr<VoiceStream> connect(
+      const argus::voice::v1::VoiceIdentity& identity,
+      std::shared_ptr<VoiceStreamObserver> observer);
 
   // Blocks up to timeoutMs for the channel to connect.
   virtual bool waitConnected(int timeoutMs) const;

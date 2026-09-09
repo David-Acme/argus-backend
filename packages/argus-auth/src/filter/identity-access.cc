@@ -8,8 +8,7 @@
 namespace
 {
 
-// identity.target when set, else the gateway's own listener keys — so the
-// gateway needs no target of its own and every other service names one.
+// identity.target when set, else the gateway's own listener keys.
 std::string resolveTarget()
 {
   auto target = ConfigService::getString("identity.target");

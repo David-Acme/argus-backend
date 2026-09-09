@@ -149,11 +149,7 @@ grpc::ServerUnaryReactor* IdentityRpcService::UpdateUser(
   return reactor;
 }
 
-// Device binding keys on request-field PRESENCE, not on the hash being
-// non-empty: the device filter having run means the session binding is checked
-// even when the credential resolved to no hash. The reason strings are the 401
-// bodies the JwtFilter emitted when it read the rows itself; empty means a
-// plain 401.
+// Device binding keys on request-field PRESENCE, not on the hash being non-empty.
 grpc::ServerUnaryReactor* IdentityRpcService::ValidateToken(
     grpc::CallbackServerContext* context,
     const argus::identity::v1::ValidateTokenRequest* request,

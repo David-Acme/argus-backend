@@ -25,8 +25,8 @@ public:
   virtual bool isLoaded() const = 0;
 
   // rgb is a tightly packed RGB8 buffer of width*height*3 bytes.
-  virtual std::vector<DetectedObject>
-  detect(const uint8_t* rgb, int width, int height) = 0;
+  virtual std::vector<DetectedObject> detect(const uint8_t* rgb, int width,
+                                             int height) = 0;
 
   virtual const std::vector<std::string>& classes() const = 0;
 };

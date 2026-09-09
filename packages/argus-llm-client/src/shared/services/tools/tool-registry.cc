@@ -21,8 +21,7 @@ const tools::ToolDescriptor* ToolRegistry::find(const std::string& name) const
   const auto it = tools_.find(name);
   if (it != tools_.end())
     return &it->second;
-  // The small model capitalizes tool names (bench f8-b4: "Memory.remember");
-  // a case mismatch must not silently answer prose over a save.
+  // A case mismatch must not silently answer prose over a save (bench f8-b4).
   const std::string lower = [name] {
     std::string out;
     out.reserve(name.size());

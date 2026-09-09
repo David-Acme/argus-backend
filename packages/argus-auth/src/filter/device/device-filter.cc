@@ -60,8 +60,7 @@ DeviceFilter::doFilter(const drogon::HttpRequestPtr& req)
     std::string deviceHash;
     if (!credential.empty() && credential.size() <= kMaxCredentialLength) {
       const auto secretHash = sha256Hex(credential);
-      // Active-credential check by the identity service; unreachable or
-      // unknown means no device hash (fail closed).
+      // Unreachable or unknown credential means no device hash (fail closed).
       const auto client = filterIdentityClient();
       const auto active = co_await BlockingTask<bool>(
           [client, secretHash]() {
