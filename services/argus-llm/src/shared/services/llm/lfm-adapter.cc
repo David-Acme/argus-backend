@@ -1,10 +1,14 @@
 #include "lfm-adapter.hxx"
 
+#include <algorithm>
+#include <chrono>
 #include <cstring>
 #include <drogon/drogon.h>
 #include <json/reader.h>
 #include <json/writer.h>
 #include <sstream>
+#include <string>
+#include <string_view>
 
 namespace
 {
@@ -19,6 +23,41 @@ std::string jsonType(const tools::ToolArgumentSpec& spec)
   if (spec.type == "boolean")
     return "boolean";
   return "string";
+}
+
+// Bare pythonic tokens keep the schema's types: one that parses fully as a
+// number becomes one, so number fields (fact_id, confidence) validate.
+Json::Value bareValue(const std::string& token)
+{
+  try {
+    std::size_t used = 0;
+    if (token.find('.') != std::string::npos) {
+      const double number = std::stod(token, &used);
+      if (used == token.size())
+        return Json::Value(number);
+    }
+    else {
+      const long long number = std::stoll(token, &used);
+      if (used == token.size())
+        return Json::Value(Json::Int64(number));
+    }
+  }
+  catch (...) {
+  }
+  return Json::Value(token);
+}
+
+// Model emissions trail separators into keys (`...", predicate"=` lands
+// under `", predicate"` and the argument is lost) — strip the junk so it
+// lands under its real name.
+std::string trimKey(const std::string& raw)
+{
+  static const std::string junk = " \t\",";
+  const size_t begin = raw.find_first_not_of(junk);
+  if (begin == std::string::npos)
+    return {};
+  const size_t end = raw.find_last_not_of(junk);
+  return raw.substr(begin, end - begin + 1);
 }
 
 // Parses pythonic `[name(arg="v", ...)]` calls, one or more.
@@ -66,11 +105,7 @@ std::vector<tools::ToolCall> parsePythonic(const std::string& text)
         const size_t eq = body.find('=', argPos);
         if (eq == std::string::npos)
           break;
-        std::string key = body.substr(argPos, eq - argPos);
-        while (!key.empty() && key.front() == ' ')
-          key.erase(key.begin());
-        while (!key.empty() && key.back() == ' ')
-          key.pop_back();
+        std::string key = trimKey(body.substr(argPos, eq - argPos));
         size_t valueStart = eq + 1;
         while (valueStart < body.size() && body[valueStart] == ' ')
           ++valueStart;
@@ -92,6 +127,8 @@ std::vector<tools::ToolCall> parsePythonic(const std::string& text)
           while (valueStart < body.size() && body[valueStart] != ',')
             value += body[valueStart++];
           argPos = valueStart;
+          args[key] = bareValue(value);
+          continue;
         }
         args[key] = value;
         while (argPos < body.size() && body[argPos] != ',')
@@ -175,6 +212,25 @@ std::vector<tools::ToolCall> parseJsonCalls(const std::string& text)
     pos = close + 1;
   }
   return out;
+}
+
+// One hop's prompt: the tool policy rides the caller's own system message
+// when it has one (the voice persona) instead of stacking a second system
+// block the chat template may drop.
+std::vector<ChatMessage>
+hopMessages(const std::vector<ChatMessage>& history, const std::string& system,
+            const std::string& declarations)
+{
+  std::vector<ChatMessage> msgs = history;
+  std::string content = system;
+  if (!declarations.empty())
+    content += "\nList of tools: " + declarations;
+  if (!msgs.empty() && msgs.front().role == "system")
+    msgs.front().content += "\n" + content;
+  else
+    msgs.insert(msgs.begin(),
+                ChatMessage{.role = "system", .content = content});
+  return msgs;
 }
 
 } // namespace
@@ -277,42 +333,176 @@ std::vector<tools::ToolCall> LfmAdapter::parseToolCalls(const std::string& text)
   return calls;
 }
 
-ToolChatOutput LfmAdapter::chatWithTools(const ToolChatInput& input,
-                                         std::vector<ChatMessage>& history)
+bool LfmAdapter::mayOpenToolCall(const std::string& text)
 {
-  ToolChatOutput output;
-  std::string system = input.systemPrompt;
-  if (!input.tools.empty())
-    system += "\nList of tools: " + buildToolDeclarations(input.tools);
+  const std::string_view open(kToolOpen);
+  const size_t seen = std::min(text.size(), open.size());
+  if (text.compare(0, seen, open.substr(0, seen)) == 0)
+    return true;
+  const size_t first = text.find_first_not_of(" \t\r\n");
+  if (first == std::string::npos)
+    return true;
+  return text[first] == '[' || text[first] == '{';
+}
 
+std::string LfmAdapter::streamHop(const ChatRequest& request,
+                                  const TokenCallback& onToken, bool& streamed)
+{
+  std::string reply;
+  std::string held;
+  streamed = false;
+  llm_.chatStream(request, [&](const std::string& token, bool done) {
+    if (done) {
+      if (streamed)
+        onToken("", true);
+      return;
+    }
+    reply += token;
+    if (streamed) {
+      onToken(token, false);
+      return;
+    }
+    held += token;
+    if (mayOpenToolCall(held))
+      return;
+    streamed = true;
+    onToken(held, false);
+  });
+  return reply;
+}
+
+bool LfmAdapter::toolHops(const ToolChatInput& input,
+                          std::vector<ChatMessage>& history,
+                          const std::string& declarations,
+                          ToolChatOutput& output, const TokenCallback* onToken)
+{
+  const int32_t cap =
+      input.answerMaxTokens > 0 ? input.answerMaxTokens : 512;
   for (output.hops = 0; output.hops < input.maxHops; ++output.hops) {
     ChatRequest req;
-    req.messages = history;
-    req.messages.insert(req.messages.begin(),
-                        ChatMessage{.role = "system", .content = system});
-    req.maxTokens = 512;
-    req.temperature = input.temperature;
-    req.resetContext = false;
+    req.messages = hopMessages(history, input.systemPrompt, declarations);
+    req.maxTokens = cap;
+    req.temperature = input.toolTemperature;
+    req.resetContext = output.hops == 0 && input.resetContext;
+    // The model narrates after closing a call and the narration is thrown
+    // away — every token of it is latency the turn cannot spend.
+    if (!declarations.empty())
+      req.stop = {kToolClose};
 
-    const std::string reply = llm_.chat(req);
+    bool streamed = false;
+    const auto genStart = std::chrono::steady_clock::now();
+    const std::string reply =
+        onToken ? streamHop(req, *onToken, streamed) : llm_.chat(req);
+    output.generateMs += std::chrono::duration_cast<std::chrono::milliseconds>(
+                             std::chrono::steady_clock::now() - genStart)
+                             .count();
     history.push_back({.role = "assistant", .content = reply});
 
-    const auto calls = parseToolCalls(reply);
+    // Once a byte is on the wire the hop is prose: it opened as prose, and
+    // nothing emitted after that can be unsent.
+    const auto calls =
+        streamed ? std::vector<tools::ToolCall>{} : parseToolCalls(reply);
     if (calls.empty()) {
       output.reply = reply;
-      return output;
+      output.emitted = streamed;
+      return true;
     }
 
+    // The triggering sentence rides along on every call: handlers fall back
+    // to it when the model's arguments are incomplete.
+    std::string utterance;
+    for (auto it = history.rbegin(); it != history.rend(); ++it) {
+      if (it->role == "user") {
+        utterance = it->content;
+        break;
+      }
+    }
     for (auto call : calls) {
       call.context = input.context;
+      call.context.utterance = utterance;
       ToolExecutor executor(ToolRegistry::instance());
+      const auto toolStart = std::chrono::steady_clock::now();
       const auto executed = executor.execute(call, input.role);
+      output.toolMs += std::chrono::duration_cast<std::chrono::milliseconds>(
+                           std::chrono::steady_clock::now() - toolStart)
+                           .count();
+      if (executed.ok)
+        LOG_INFO << "LfmAdapter: tool '" << call.name
+                 << "' ok: " << executed.output;
+      else {
+        Json::StreamWriterBuilder builder;
+        builder["indentation"] = "";
+        LOG_WARN << "LfmAdapter: tool '" << call.name
+                 << "' failed: " << executed.output
+                 << " args: " << Json::writeString(builder, call.arguments);
+      }
       output.executed.push_back(call);
       history.push_back({.role = "tool", .content = executed.output});
     }
   }
+  return false;
+}
+
+ToolChatOutput LfmAdapter::chatWithTools(const ToolChatInput& input,
+                                         std::vector<ChatMessage>& history)
+{
+  ToolChatOutput output;
+  const std::string declarations = input.tools.empty()
+                                       ? std::string()
+                                       : buildToolDeclarations(input.tools);
+
+  if (toolHops(input, history, declarations, output))
+    return output;
+
   LOG_WARN << "LfmAdapter: tool loop exhausted after " << input.maxHops
            << " hops";
-  output.reply = history.back().content;
+  // The exhausted loop answers in prose: one more generation without tool
+  // declarations, so raw tool output never reaches the caller.
+  ChatRequest req;
+  req.messages = hopMessages(history, input.systemPrompt, std::string());
+  req.maxTokens = input.answerMaxTokens > 0 ? input.answerMaxTokens : 512;
+  req.temperature = input.temperature;
+  req.resetContext = false;
+  output.reply = llm_.chat(req);
+  history.push_back({.role = "assistant", .content = output.reply});
+  return output;
+}
+
+ToolChatOutput LfmAdapter::chatWithToolsStream(
+    const ToolChatInput& input, std::vector<ChatMessage>& history,
+    const TokenCallback& onToken)
+{
+  ToolChatOutput output;
+  const std::string declarations = input.tools.empty()
+                                       ? std::string()
+                                       : buildToolDeclarations(input.tools);
+
+  if (toolHops(input, history, declarations, output, &onToken)) {
+    // The hop held everything back (it opened like a call and was not one):
+    // nothing reached the wire, so emit the answer whole.
+    if (!output.emitted && onToken) {
+      onToken(output.reply, false);
+      onToken("", true);
+    }
+    return output;
+  }
+
+  LOG_WARN << "LfmAdapter: tool loop exhausted after " << input.maxHops
+           << " hops";
+  // Final prose hop without tool declarations, streamed token by token.
+  ChatRequest req;
+  req.messages = hopMessages(history, input.systemPrompt, std::string());
+  req.maxTokens = input.answerMaxTokens > 0 ? input.answerMaxTokens : 512;
+  req.temperature = input.temperature;
+  req.resetContext = false;
+  std::string reply;
+  llm_.chatStream(req, [&reply, &onToken](const std::string& token,
+                                           bool done) {
+    reply += token;
+    if (onToken)
+      onToken(token, done);
+  });
+  output.reply = reply;
+  history.push_back({.role = "assistant", .content = reply});
   return output;
 }

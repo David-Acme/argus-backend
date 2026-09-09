@@ -1,5 +1,8 @@
 #include "tool-registry.hxx"
 
+#include <algorithm>
+#include <cctype>
+
 ToolRegistry& ToolRegistry::instance()
 {
   static ToolRegistry registry;
@@ -16,7 +19,27 @@ const tools::ToolDescriptor* ToolRegistry::find(const std::string& name) const
 {
   std::lock_guard lock(mutex_);
   const auto it = tools_.find(name);
-  return it == tools_.end() ? nullptr : &it->second;
+  if (it != tools_.end())
+    return &it->second;
+  // The small model capitalizes tool names (bench f8-b4: "Memory.remember");
+  // a case mismatch must not silently answer prose over a save.
+  const std::string lower = [name] {
+    std::string out;
+    out.reserve(name.size());
+    for (char c : name)
+      out.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
+    return out;
+  }();
+  for (const auto& [key, descriptor] : tools_) {
+    if (key.size() == lower.size() &&
+        std::equal(key.begin(), key.end(), lower.begin(),
+                   [](char a, char b) {
+                     return std::tolower(static_cast<unsigned char>(a)) ==
+                            static_cast<unsigned char>(b);
+                   }))
+      return &descriptor;
+  }
+  return nullptr;
 }
 
 std::vector<std::string> ToolRegistry::names() const

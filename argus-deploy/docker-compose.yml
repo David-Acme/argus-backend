@@ -363,14 +363,47 @@ services:
         read_only: true
         bind:
           create_host_path: false
+      # The hosted memory stack (f8-b4) carries the retired argus-memory
+      # mounts: the store it owns rw, the snapshot sources opened mode=ro
+      # in-binary (the binds stay rw so the WAL -shm can materialize when the
+      # gateway has not opened the db yet), and the schema SQL the repo ships.
+      - memory-db:/opt/argus/memory
+      - type: bind
+        source: ${ARGUS_DATA_DIR:-../database}
+        target: /opt/argus/database
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ../packages/argus-memory/database/schema.sql
+        target: /opt/argus/database/memory-schema.sql
+        read_only: true
+        bind:
+          create_host_path: false
+      - camera-db:/opt/argus/camera
+      - type: bind
+        source: ../models/memory
+        target: /opt/argus/models/memory
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ../models/extract
+        target: /opt/argus/models/extract
+        read_only: true
+        bind:
+          create_host_path: false
+    # The hosted catalog replica subscribes to the NATS change subjects.
+    depends_on:
+      nats:
+        condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "curl -fs http://127.0.0.1:7032/health >/dev/null"]
       interval: 10s
       timeout: 5s
       retries: 12
       start_period: 20s
-    mem_limit: "${ARGUS_LLM_MEMORY_LIMIT:-4g}"
-    cpus: "${ARGUS_LLM_CPU_LIMIT:-2.50}"
+    mem_limit: "${ARGUS_LLM_MEMORY_LIMIT:-6g}"
+    cpus: "${ARGUS_LLM_CPU_LIMIT:-4.00}"
     pids_limit: 512
     restart: unless-stopped
 

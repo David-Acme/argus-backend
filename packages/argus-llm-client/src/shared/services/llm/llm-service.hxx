@@ -26,6 +26,10 @@ struct ChatRequest
   int32_t maxTokens{0};
   float temperature{-1.0F};
   bool resetContext{false};
+  // Generation ends once one of these appears (llama.cpp server semantics),
+  // except that the matched text is kept: the tool parser needs its closing
+  // marker.
+  std::vector<std::string> stop;
 };
 
 using TokenCallback = std::function<void(const std::string& token, bool done)>;
@@ -77,9 +81,11 @@ private:
   std::vector<int32_t> tokenize(const std::string& text, bool addSpecial);
   bool prefill(const std::vector<int32_t>& promptTokens, bool forceReset);
   std::string generate(const std::string& formattedPrompt, float temperature,
-                       int32_t maxTokens, bool resetContext);
+                       int32_t maxTokens, bool resetContext,
+                       const std::vector<std::string>& stop);
   void generateStream(const std::string& formattedPrompt, float temperature,
                       int32_t maxTokens, bool resetContext,
+                      const std::vector<std::string>& stop,
                       TokenCallback onToken);
 
   std::unique_ptr<llama_model, void (*)(llama_model*)> model_;

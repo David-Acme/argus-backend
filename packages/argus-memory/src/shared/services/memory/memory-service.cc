@@ -261,6 +261,7 @@ void MemoryService::processCompact(const MemoryJob& job)
       .maxTokens = maxTokens > 0 ? maxTokens : 256,
       .temperature = 0.0F,
       .resetContext = true,
+      .stop = {},
   };
   const std::string summary = chat_.chat(req);
   if (summary.empty()) {
@@ -792,6 +793,7 @@ void MemoryService::processProfile(const MemoryJob& job)
       .maxTokens = 256,
       .temperature = 0.0F,
       .resetContext = true,
+      .stop = {},
   };
   const std::string polished = chat_.chat(req);
   if (polished.empty())
@@ -975,16 +977,31 @@ tools::ToolResult MemoryService::handleRemember(const tools::ToolCall& call)
   const std::string subject = args.get("subject", "").asString();
   const std::string predicate = args.get("predicate", "").asString();
   const std::string value = args.get("value", "").asString();
-  const auto formed =
-      formation_.observe({.channel = call.context.channel,
-                          .text = subject + " " + predicate + " " + value,
-                          .actor = "",
-                          .at = std::time(nullptr),
-                          .userId = call.context.userId,
-                          .lang = call.context.lang,
-                          .sessionId = call.context.sessionId,
-                          .entitiesHint = {}},
-                         call);
+  // The echoed text is the model's one faithful output (the f8-b4 probes);
+  // the triple join is the last resort for a call that carried only a
+  // complete triple.
+  std::string text = args.get("text", "").asString();
+  if (text.empty())
+    text = call.context.utterance;
+  if (text.empty())
+    text = subject + " " + predicate + " " + value;
+  const auto observe = [&](const std::string& candidate) {
+    return formation_.observe({.channel = call.context.channel,
+                               .text = candidate,
+                               .actor = "",
+                               .at = std::time(nullptr),
+                               .userId = call.context.userId,
+                               .lang = call.context.lang,
+                               .sessionId = call.context.sessionId,
+                               .entitiesHint = {}},
+                              call);
+  };
+  auto formed = observe(text);
+  // The echo drops the trigger the rule layer needs; the triggering sentence
+  // carries it, and is the pre-f8 production input verbatim.
+  if (!formed && !call.context.utterance.empty() &&
+      call.context.utterance != text)
+    formed = observe(call.context.utterance);
   if (!formed) {
     result.output = "no se pudo guardar el hecho";
     return result;

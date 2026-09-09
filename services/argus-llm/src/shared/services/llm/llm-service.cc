@@ -364,7 +364,9 @@ std::string LlmService::buildPrompt(const std::vector<ChatMessage>& messages)
 
 void LlmService::generateStream(const std::string& formattedPrompt,
                                 float temperature, int32_t maxTokens,
-                                bool resetContext, TokenCallback onToken)
+                                bool resetContext,
+                                const std::vector<std::string>& stop,
+                                TokenCallback onToken)
 {
   std::lock_guard<std::mutex> lock(mutex_);
   struct BusyGuard
@@ -429,6 +431,13 @@ void LlmService::generateStream(const std::string& formattedPrompt,
   llama_pos pos = static_cast<llama_pos>(promptTokens.size());
 
   auto& batch = *genBatch_;
+  // Only the tail can carry a stop match, and a match ends the generation
+  // with its text already emitted.
+  std::string tail;
+  size_t tailKeep = 0;
+  for (const auto& needle : stop)
+    tailKeep = std::max(tailKeep, needle.size());
+  tailKeep += 256;
   for (int32_t i = 0; i < maxTokens; ++i) {
     const llama_token newToken = llama_sampler_sample(smpl.get(), ctx, -1);
 
@@ -438,8 +447,22 @@ void LlmService::generateStream(const std::string& formattedPrompt,
     char buf[256];
     const int n =
         llama_token_to_piece(vocab, newToken, buf, sizeof(buf), 0, true);
-    if (n > 0)
-      onToken(std::string(buf, static_cast<size_t>(n)), false);
+    if (n > 0) {
+      const std::string piece(buf, static_cast<size_t>(n));
+      onToken(piece, false);
+      if (!stop.empty()) {
+        tail += piece;
+        bool hit = false;
+        for (const auto& needle : stop) {
+          if (tail.find(needle) != std::string::npos)
+            hit = true;
+        }
+        if (hit)
+          break;
+        if (tail.size() > tailKeep)
+          tail.erase(0, tail.size() - tailKeep);
+      }
+    }
 
     llama_sampler_accept(smpl.get(), newToken);
     cachedTokens_.push_back(newToken);
@@ -459,10 +482,11 @@ void LlmService::generateStream(const std::string& formattedPrompt,
 
 std::string LlmService::generate(const std::string& formattedPrompt,
                                  float temperature, int32_t maxTokens,
-                                 bool resetContext)
+                                 bool resetContext,
+                                 const std::vector<std::string>& stop)
 {
   std::string result;
-  generateStream(formattedPrompt, temperature, maxTokens, resetContext,
+  generateStream(formattedPrompt, temperature, maxTokens, resetContext, stop,
                  [&result](const std::string& token, bool done) {
                    if (!done)
                      result.append(token);
@@ -477,7 +501,7 @@ std::string LlmService::chat(const ChatRequest& req)
       req.maxTokens > 0 ? req.maxTokens : defaultMaxTokens_;
   const float temp =
       req.temperature >= 0.0F ? req.temperature : defaultTemperature_;
-  return generate(prompt, temp, maxTokens, req.resetContext);
+  return generate(prompt, temp, maxTokens, req.resetContext, req.stop);
 }
 
 void LlmService::chatStream(const ChatRequest& req, TokenCallback onToken)
@@ -487,7 +511,8 @@ void LlmService::chatStream(const ChatRequest& req, TokenCallback onToken)
       req.maxTokens > 0 ? req.maxTokens : defaultMaxTokens_;
   const float temp =
       req.temperature >= 0.0F ? req.temperature : defaultTemperature_;
-  generateStream(prompt, temp, maxTokens, req.resetContext, std::move(onToken));
+  generateStream(prompt, temp, maxTokens, req.resetContext, req.stop,
+                 std::move(onToken));
 }
 
 drogon::Task<std::string> LlmService::chatAsync(const ChatRequest& req)
@@ -511,7 +536,7 @@ drogon::Task<void> LlmService::chatStreamAsync(const ChatRequest& req,
             req.maxTokens > 0 ? req.maxTokens : defaultMaxTokens_;
         const float temp =
             req.temperature >= 0.0F ? req.temperature : defaultTemperature_;
-        generateStream(prompt, temp, maxTokens, req.resetContext,
+        generateStream(prompt, temp, maxTokens, req.resetContext, req.stop,
                        std::move(wrapped));
       });
   co_return;

@@ -181,13 +181,23 @@ MemoryFormation::observe(const Observation& obs,
   int priority = 85;
   float confidence = 0.8F;
 
-  if (toolCall && toolCall->name == "memory.remember") {
-    const Json::Value& args = toolCall->arguments;
-    subjectSurface = args.get("subject", "").asString();
-    predicate = args.get("predicate", "").asString();
-    value = args.get("value", "").asString();
-    factType = args.get("type", "persona").asString();
-    confidence = args.get("confidence", 0.8).asFloat();
+  // The model's triple is honored only when complete: the f8-b4 probes
+  // measured dropped or mangled middles (predicate) on nearly every fired
+  // call, while the echoed sentence stayed faithful. Incomplete calls fall
+  // through to the rule parse below — the pre-f8 production path.
+  const Json::Value* toolArgs = nullptr;
+  if (toolCall && toolCall->name == "memory.remember")
+    toolArgs = &toolCall->arguments;
+  if (toolArgs) {
+    subjectSurface = toolArgs->get("subject", "").asString();
+    predicate = toolArgs->get("predicate", "").asString();
+    value = toolArgs->get("value", "").asString();
+  }
+  const bool completeTriple = toolArgs && !subjectSurface.empty() &&
+                              !predicate.empty() && !value.empty();
+  if (completeTriple) {
+    factType = toolArgs->get("type", "attribute").asString();
+    confidence = toolArgs->get("confidence", 0.8).asFloat();
     result.source = "tool";
   }
   else {

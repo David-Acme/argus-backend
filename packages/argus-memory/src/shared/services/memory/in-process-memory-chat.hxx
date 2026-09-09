@@ -4,7 +4,9 @@
 #include <shared/services/memory/memory-chat.hxx>
 #include <string>
 
-// Legacy substrate: the in-process engine; argus-memory never links it.
+// The memory worker's chat straight into the host engine — the brain hosts
+// the memory stack in process, so worker generations share the LlmService
+// the tool loop rides.
 class InProcessMemoryChat final : public IMemoryChat
 {
 public:

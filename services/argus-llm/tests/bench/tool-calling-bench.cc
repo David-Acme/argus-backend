@@ -126,13 +126,23 @@ int main(int argc, char** argv)
             << (filter.empty() ? "" : ", filter=" + filter) << ")\n";
 
   ToolRegistry& registry = ToolRegistry::instance();
+  // Mirrors packages/argus-memory memoryToolDescriptors(): all arguments
+  // optional, the echoed sentence in `text` — the f8-b4 probes measured the
+  // model mangling the triple's middle while echoing the sentence faithfully.
   tools::ToolDescriptor remember;
   remember.name = "memory.remember";
   remember.accessTable = TableName::Memory;
   remember.accessPermission = RolePermission::Create;
-  remember.arguments = {{"subject", "string", true, {}, ""},
-                        {"predicate", "string", true, {}, ""},
-                        {"value", "string", true, {}, ""}};
+  remember.arguments = {{"text", "string", false, {}, ""},
+                        {"subject", "string", false, {}, ""},
+                        {"predicate", "string", false, {}, ""},
+                        {"value", "string", false, {}, ""},
+                        {"type",
+                         "enum",
+                         false,
+                         {"persona", "preference", "schedule", "instruction",
+                          "attribute"},
+                         ""}};
   remember.handler = [](const tools::ToolCall&) {
     tools::ToolResult r;
     r.ok = true;
@@ -162,7 +172,8 @@ int main(int argc, char** argv)
       const ChatRequest req{.messages = msgs,
                             .maxTokens = 512,
                             .temperature = 0.0F,
-                            .resetContext = false};
+                            .resetContext = false,
+                            .stop = {}};
       std::cout << gLlm.chat(req) << "\n---\n";
     }
     return 0;
@@ -182,7 +193,9 @@ int main(int argc, char** argv)
                                                .role = UserRole::Resident,
                                                .context = {.userId = 7,
                                                            .lang = "es",
-                                                           .sessionId = {}},
+                                                           .sessionId = {},
+                                                           .channel = "tool_result",
+                                                           .utterance = {}},
                                                .maxHops = 1,
                                                .temperature = temperature},
                                               history);
@@ -222,7 +235,8 @@ int main(int argc, char** argv)
     gLlm.chat({.messages = std::move(msgs),
                .maxTokens = 1,
                .temperature = 0.0F,
-               .resetContext = true});
+               .resetContext = true,
+               .stop = {}});
     return static_cast<double>(nowMs() - t0);
   };
   const double bareMs = timeFirst(bare);

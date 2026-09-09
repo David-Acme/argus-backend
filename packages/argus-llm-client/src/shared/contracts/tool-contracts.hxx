@@ -16,6 +16,10 @@ struct ToolContext
   std::string lang = "es";
   std::string sessionId;
   std::string channel = "tool_result";
+  // The user message the call answers; the loop sets it so a handler can
+  // fall back to the triggering sentence when the model's arguments are
+  // incomplete (see the f8-b4 record).
+  std::string utterance;
 };
 
 struct ToolCall

@@ -6,13 +6,23 @@ std::vector<tools::ToolDescriptor> memoryToolDescriptors()
   std::vector<tools::ToolDescriptor> descriptors;
   descriptors.push_back({.name = "memory.remember",
                          .description = "Almacena un hecho sobre una persona, "
-                                        "dispositivo o lugar de la casa",
-                         .arguments = {{"subject", "string", true, {}, ""},
-                                       {"predicate", "string", true, {}, ""},
-                                       {"value", "string", true, {}, ""},
+                                        "dispositivo o lugar de la casa. El "
+                                        "hecho completo va en el argumento "
+                                        "text, tal cual lo pidió el usuario",
+                         // No required arguments: the f8-b4 probes measured
+                         // the model dropping or mangling the middle of the
+                         // subject/predicate/value triple on nearly every
+                         // fired call, while echoing the sentence faithfully.
+                         // A fired call must reach the handler; formation
+                         // honors a complete triple and rule-parses the text
+                         // otherwise.
+                         .arguments = {{"text", "string", false, {}, ""},
+                                       {"subject", "string", false, {}, ""},
+                                       {"predicate", "string", false, {}, ""},
+                                       {"value", "string", false, {}, ""},
                                        {"type",
                                         "enum",
-                                        true,
+                                        false,
                                         {"persona", "preference", "schedule",
                                          "instruction", "attribute"},
                                         ""},

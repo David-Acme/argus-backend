@@ -64,7 +64,7 @@ add_library(llm-core STATIC
     # legacy binary and this service generate identically.
     ${SHARED_ROOT}/services/llm/llm-service.cc
     # The tool-calling loop over that engine: hops, call parsing and the
-    # declarations the model reads. Compiled by nothing until f8-b2.
+    # declarations the model reads.
     ${SHARED_ROOT}/services/llm/lfm-adapter.cc
 )
 
@@ -89,7 +89,10 @@ target_compile_options(llm-core PRIVATE -Wall -Wextra)
 
 add_executable(argus-llm ${LLM_SRC_ROOT}/main.cc)
 
-target_link_libraries(argus-llm PRIVATE llm-core)
+# memory-catalog: the hosted stack's replica leg (NATS subscription plus the
+# read-only identity/camera snapshot seeds) — the brain owns the retired
+# process's role.
+target_link_libraries(argus-llm PRIVATE llm-core memory-catalog)
 
 target_compile_options(argus-llm PRIVATE -Wall -Wextra)
 
@@ -132,7 +135,10 @@ if(ARGUS_ROOT_PROJECT)
     add_executable(llm-wire-test tests/unit/llm-wire-test.cc
         ${LLM_SRC_ROOT}/controllers/llm-controller.cc
         ${LLM_SRC_ROOT}/llm/chat-dto.cc
-        ${SHARED_ROOT}/services/llm/llm-service.cc)
+        ${SHARED_ROOT}/services/llm/llm-service.cc
+        # The controller drives the loop when tools are registered; the test
+        # registers none and exercises the direct paths.
+        ${SHARED_ROOT}/services/llm/lfm-adapter.cc)
 
     target_include_directories(llm-wire-test PRIVATE
         ${CMAKE_SOURCE_DIR}/services/argus-llm/src)
@@ -148,4 +154,16 @@ if(ARGUS_ROOT_PROJECT)
     set_target_properties(llm-wire-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
     add_test(NAME llm-wire-test COMMAND llm-wire-test)
+
+    # Parsing and streaming-gate rules, no model: the f8-b4 probes found each
+    # of these on live traffic.
+    add_executable(llm-tool-parse-test tests/unit/llm-tool-parse-test.cc)
+
+    target_link_libraries(llm-tool-parse-test PRIVATE llm-core doctest::doctest)
+
+    target_compile_options(llm-tool-parse-test PRIVATE -Wall -Wextra)
+
+    set_target_properties(llm-tool-parse-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+
+    add_test(NAME llm-tool-parse-test COMMAND llm-tool-parse-test)
 endif()

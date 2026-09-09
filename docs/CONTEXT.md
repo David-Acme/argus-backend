@@ -3007,3 +3007,46 @@ The gate passes: the arc continues to B4. Temperature was the hidden
 lever in the harness history — the lab passed -1.0 ("use `[llm]
 temperature`") and got 0.85, a conversational temperature being asked
 for structured output; at 0.85 the same model scored 6/20.
+
+## The tool loop inside argus-llm (f8-b4, 2026-09-09)
+
+The B4 wiring: `LfmAdapter::chatWithTools` / `chatWithToolsStream` run the
+hop loop — tool-bearing generations until the model answers in prose — and
+`LlmController` routes both `/llm/v1/chat` and `/llm/v1/chat-stream`
+through it whenever the hosted memory stack has registered tools (Ruling
+BT intact: the wire, its sentinel and its shape did not change; Ruling CA
+intact: voice sources untouched). A process that registered nothing (the
+bench, llm-wire-test) keeps the direct paths.
+
+**Policy decisions, resolved in code:**
+- *A fired call is a prediction, not a policy.* The probes measured the
+  model dropping or mangling the triple's middle (`subject=meeting` inside
+  the predicate slot) on nearly every fired call while echoing the
+  sentence faithfully in prose. So `memory.remember` now carries every
+  argument optional plus `text` (the echoed sentence, threaded through the
+  new `ToolContext::utterance`); formation honors a complete triple and
+  falls back to the rule parse otherwise. The rule layer survives as the
+  policy fallback (the 2026-08-20 ruling stands).
+- *Hops exhausted* never return raw tool output: the loop closes with one
+  final prose generation without tool declarations (both legs).
+- *Tool hops run cold* at temperature 0 (the B1 lever); the caller's
+  `max_tokens` caps every generation; tool-close markers ride the new
+  `ChatRequest::stop` (matched text kept — the parser needs its closing
+  marker).
+- Streaming holds tokens only while the reply can still open a tool call
+  (`mayOpenToolCall`), then flows live; narration after a call's close is
+  thrown away — it is pure latency.
+- The registry resolves tool names case-insensitively: the model emits
+  `Memory.remember` on live traffic and a case miss must not silently
+  answer prose over a save (locked by llm-tool-parse-test).
+
+**The gate re-run (2026-09-09, QAD-Q4_0, temp 0):** the bench with the
+B1 descriptor reproduces B1 exactly — memory_save 11/20, camera 3/56,
+none 1/27, first-token 1.27x (1242 -> 1576 ms) — the loop adds no
+regression on the old basis. On the production descriptor (all-optional
+args, `text`) the same run measures memory_save 9/20, camera 2/56, none
+0/27, first-token 1.43x (1285 -> 1833 ms), turn latency p50 22.5 s /
+p95 34.5 s CPU: the longer declaration text makes the model fire less but
+the fires are cleaner, and a fired-but-mangled call still lands the fact
+through the formation fallback — the f8-b1 specificity job moved to that
+policy layer, as B1 predicted.
