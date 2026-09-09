@@ -53,7 +53,14 @@ private:
   int fd_;
 };
 
-int connectLoopback(const std::string& host, int port, int timeoutMs)
+struct ConnectLoopbackInput
+{
+  const std::string& host;
+  int port{0};
+  int timeoutMs{0};
+};
+
+int connectLoopback(const ConnectLoopbackInput& input)
 {
   const int fd = ::socket(AF_INET, SOCK_STREAM, 0);
   if (fd < 0)
@@ -61,8 +68,8 @@ int connectLoopback(const std::string& host, int port, int timeoutMs)
 
   sockaddr_in addr{};
   addr.sin_family = AF_INET;
-  addr.sin_port = htons(static_cast<uint16_t>(port));
-  if (::inet_pton(AF_INET, host.c_str(), &addr.sin_addr) != 1) {
+  addr.sin_port = htons(static_cast<uint16_t>(input.port));
+  if (::inet_pton(AF_INET, input.host.c_str(), &addr.sin_addr) != 1) {
     ::close(fd);
     return -1;
   }
@@ -77,7 +84,7 @@ int connectLoopback(const std::string& host, int port, int timeoutMs)
   pollfd pfd{};
   pfd.fd = fd;
   pfd.events = POLLOUT;
-  if (::poll(&pfd, 1, timeoutMs) != 1) {
+  if (::poll(&pfd, 1, input.timeoutMs) != 1) {
     ::close(fd);
     return -1;
   }
@@ -91,8 +98,8 @@ int connectLoopback(const std::string& host, int port, int timeoutMs)
   ::fcntl(fd, F_SETFL, flags);
 
   timeval tv{};
-  tv.tv_sec = timeoutMs / 1000;
-  tv.tv_usec = (timeoutMs % 1000) * 1000;
+  tv.tv_sec = input.timeoutMs / 1000;
+  tv.tv_usec = (input.timeoutMs % 1000) * 1000;
   ::setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
   ::setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
   const int one = 1;
@@ -209,7 +216,8 @@ VlmHttpClient::RawResponse VlmHttpClient::exchange(
     const VlmWireRequest& request) const
 {
   const Address address = parseUrl(baseUrl_);
-  const SocketGuard fd(connectLoopback(address.host, address.port, timeoutMs_));
+  const SocketGuard fd(connectLoopback(
+      {.host = address.host, .port = address.port, .timeoutMs = timeoutMs_}));
   if (fd.get() < 0)
     throw std::runtime_error("argus-vlm unreachable at " + baseUrl_);
 

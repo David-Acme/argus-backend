@@ -15,12 +15,13 @@ TEST_CASE("loopback carries bytes identically through relay and client")
   Harness harness(std::move(options));
   REQUIRE(harness.start());
 
-  auto device = connectTestPeer(harness.loop, "127.0.0.1",
-                                harness.relay->devicePort());
+  auto device = connectTestPeer({.loop = harness.loop,
+                                 .ip = "127.0.0.1",
+                                 .port = harness.relay->devicePort()});
   REQUIRE(waitFor([device] { return device->connected.load(); }, 5000));
 
   const std::string request = makePayload(200 * 1024, 42);
-  postSend(harness.loop, device->peer, request);
+  postSend({.loop = harness.loop, .peer = device->peer, .data = request});
 
   auto gatewayConns = harness.gatewayConnections();
   REQUIRE(waitFor([&] {
@@ -60,11 +61,12 @@ TEST_CASE("loopback multiplexes concurrent device streams")
   for (size_t index = 0; index < kStreams; ++index) {
     payloads.push_back(
         makePayload(kPayloadSize, static_cast<uint32_t>(1000 + index)));
-    devices.push_back(connectTestPeer(harness.loop, "127.0.0.1",
-                                      harness.relay->devicePort()));
+    devices.push_back(connectTestPeer({.loop = harness.loop,
+                                 .ip = "127.0.0.1",
+                                 .port = harness.relay->devicePort()}));
     REQUIRE(waitFor(
         [peer = devices.back()] { return peer->connected.load(); }, 5000));
-    postSend(harness.loop, devices.back()->peer, payloads.back());
+    postSend({.loop = harness.loop, .peer = devices.back()->peer, .data = payloads.back()});
   }
 
   REQUIRE(waitFor([&] {
@@ -97,8 +99,9 @@ TEST_CASE("idle streams are swept with a bounded close")
   Harness harness(std::move(options));
   REQUIRE(harness.start());
 
-  auto device = connectTestPeer(harness.loop, "127.0.0.1",
-                                harness.relay->devicePort());
+  auto device = connectTestPeer({.loop = harness.loop,
+                                 .ip = "127.0.0.1",
+                                 .port = harness.relay->devicePort()});
   REQUIRE(waitFor([device] { return device->connected.load(); }, 5000));
   REQUIRE(waitFor([&] {
     return !harness.gatewayConnections().empty();
@@ -122,9 +125,10 @@ TEST_CASE("stalled gateway read applies back-pressure without byte loss")
   Harness harness(std::move(options));
   REQUIRE(harness.start());
 
-  auto device = connectTestPeer(harness.loop, "127.0.0.1",
-                                harness.relay->devicePort(),
-                                options.limits.socketSndBuf);
+  auto device = connectTestPeer({.loop = harness.loop,
+                                 .ip = "127.0.0.1",
+                                 .port = harness.relay->devicePort(),
+                                 .sndBuf = options.limits.socketSndBuf});
   REQUIRE(waitFor([device] { return device->connected.load(); }, 5000));
 
   const size_t kChunk = 256 * 1024;
@@ -132,7 +136,9 @@ TEST_CASE("stalled gateway read applies back-pressure without byte loss")
   size_t sent = 0;
   const auto sendNext = [&] {
     const size_t end = std::min(sent + kChunk, request.size());
-    postSend(harness.loop, device->peer, request.substr(sent, end - sent));
+    postSend({.loop = harness.loop,
+              .peer = device->peer,
+              .data = request.substr(sent, end - sent)});
     sent = end;
   };
   const auto stalled = [&] {

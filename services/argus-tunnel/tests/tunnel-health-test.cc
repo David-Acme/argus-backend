@@ -86,8 +86,9 @@ TEST_CASE("health providers sample live state, not boot state")
   CHECK(valueOf(clientStatus, "homeConnected").asBool());
   CHECK(valueOf(relayStatus, "activeStreams").asInt() == 0);
 
-  auto device = connectTestPeer(harness.loop, "127.0.0.1",
-                                harness.relay->devicePort());
+  auto device = connectTestPeer({.loop = harness.loop,
+                                 .ip = "127.0.0.1",
+                                 .port = harness.relay->devicePort()});
   REQUIRE(waitFor([device] { return device->connected.load(); }, 5000));
 
   // A provider frozen at construction would still report zero here.

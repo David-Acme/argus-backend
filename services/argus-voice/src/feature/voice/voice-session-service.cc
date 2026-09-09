@@ -418,12 +418,12 @@ void VoiceSessionService::workerLoop(std::shared_ptr<Session> session)
     size_t offset = 0;
     while (offset < clean.size() && session->active.load()) {
       const size_t chunk = std::min<size_t>(512, clean.size() - offset);
-      VadTurn turn;
-      if (session->vad.process(clean.data() + offset,
-                               static_cast<int>(chunk), turn)) {
-        if (!turn.samples.empty()) {
+      if (const auto turn = session->vad.process(
+              {.samples = clean.data() + offset,
+               .count = static_cast<int>(chunk)})) {
+        if (!turn->samples.empty()) {
           try {
-            processTurn(*session, turn.samples);
+            processTurn(*session, turn->samples);
           }
           catch (const std::exception& e) {
             LOG_WARN << "Voice: turn failed: " << e.what();

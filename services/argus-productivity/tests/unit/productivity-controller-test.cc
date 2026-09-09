@@ -198,17 +198,25 @@ Json::Value body(const drogon::HttpResponsePtr& response)
   return *json;
 }
 
-void setActor(const drogon::HttpRequestPtr& req, int64_t sub, UserRole role)
+struct SetActorInput
 {
-  req->getAttributes()->insert(AppConfig::JWT_CTX_KEY,
-                               JwtContext{sub, "Actor", role, true, {}});
+  const drogon::HttpRequestPtr& req;
+  int64_t sub{0};
+  UserRole role{};
+};
+
+void setActor(const SetActorInput& input)
+{
+  input.req->getAttributes()->insert(
+      AppConfig::JWT_CTX_KEY,
+      JwtContext{input.sub, "Actor", input.role, true, {}});
 }
 
 // Delete endpoints read the actor from the request attributes the filters leave.
 drogon::HttpRequestPtr ownerRequest(int64_t sub = 42)
 {
   auto req = drogon::HttpRequest::newHttpRequest();
-  setActor(req, sub, UserRole::Owner);
+  setActor({.req = req, .sub = sub, .role = UserRole::Owner});
   return req;
 }
 } // namespace
@@ -240,7 +248,7 @@ TEST_CASE("productivity contracts hold on the argus-productivity surface")
   projectBody["color"] = "#00FF00";
   projectBody["startsAt"] = Json::Int64(1735689600000);
   auto projectReq = drogon::HttpRequest::newHttpJsonRequest(projectBody);
-  setActor(projectReq, 42, UserRole::Owner);
+  setActor({.req = projectReq, .sub = 42, .role = UserRole::Owner});
   const auto created = drogon::sync_wait(projectController.create(projectReq));
   REQUIRE(created);
   const Json::Value projectJson = body(created);
@@ -267,7 +275,7 @@ TEST_CASE("productivity contracts hold on the argus-productivity surface")
 
   auto missingUpdateReq =
       drogon::HttpRequest::newHttpJsonRequest(projectBody);
-  setActor(missingUpdateReq, 42, UserRole::Owner);
+  setActor({.req = missingUpdateReq, .sub = 42, .role = UserRole::Owner});
   const auto missingUpdate =
       drogon::sync_wait(projectController.update(missingUpdateReq, 999));
   const Json::Value missingUpdateJson = body(missingUpdate);
@@ -279,7 +287,7 @@ TEST_CASE("productivity contracts hold on the argus-productivity surface")
   Json::Value renameBody;
   renameBody["name"] = "Renovation 2";
   auto renameReq = drogon::HttpRequest::newHttpJsonRequest(renameBody);
-  setActor(renameReq, 42, UserRole::Owner);
+  setActor({.req = renameReq, .sub = 42, .role = UserRole::Owner});
   const auto renamed = drogon::sync_wait(projectController.update(renameReq,
                                                                   projectId));
   const Json::Value renamedJson = body(renamed);
@@ -303,7 +311,7 @@ TEST_CASE("productivity contracts hold on the argus-productivity surface")
     memberBody["userId"] = Json::Int64(userId);
     memberBody["access"] = access;
     auto req = drogon::HttpRequest::newHttpJsonRequest(memberBody);
-    setActor(req, 42, UserRole::Owner);
+    setActor({.req = req, .sub = 42, .role = UserRole::Owner});
     return req;
   };
 
@@ -345,7 +353,7 @@ TEST_CASE("productivity contracts hold on the argus-productivity surface")
   Json::Value editBody;
   editBody["access"] = "edit";
   auto editReq = drogon::HttpRequest::newHttpJsonRequest(editBody);
-  setActor(editReq, 42, UserRole::Owner);
+  setActor({.req = editReq, .sub = 42, .role = UserRole::Owner});
   const auto memberEdited =
       drogon::sync_wait(memberController.update(editReq, memberId));
   CHECK(body(memberEdited)["status"].asInt() == 200);
@@ -382,7 +390,7 @@ TEST_CASE("productivity contracts hold on the argus-productivity surface")
   taskBody["priority"] = "low";
   taskBody["sortOrder"] = 1.0;
   auto taskReq = drogon::HttpRequest::newHttpJsonRequest(taskBody);
-  setActor(taskReq, 42, UserRole::Owner);
+  setActor({.req = taskReq, .sub = 42, .role = UserRole::Owner});
   const auto taskCreated = drogon::sync_wait(taskController.create(taskReq));
   const Json::Value taskJson = body(taskCreated);
   CHECK(taskJson["status"].asInt() == 200);
@@ -412,7 +420,7 @@ TEST_CASE("productivity contracts hold on the argus-productivity surface")
   taskStatusBody["status"] = "doing";
   auto taskUpdateReq =
       drogon::HttpRequest::newHttpJsonRequest(taskStatusBody);
-  setActor(taskUpdateReq, 42, UserRole::Owner);
+  setActor({.req = taskUpdateReq, .sub = 42, .role = UserRole::Owner});
   const auto taskMoved =
       drogon::sync_wait(taskController.update(taskUpdateReq, taskId));
   CHECK(body(taskMoved)["status"].asInt() == 200);
@@ -428,7 +436,7 @@ TEST_CASE("productivity contracts hold on the argus-productivity surface")
   orphanTaskBody["status"] = "todo";
   orphanTaskBody["priority"] = "none";
   auto orphanReq = drogon::HttpRequest::newHttpJsonRequest(orphanTaskBody);
-  setActor(orphanReq, 42, UserRole::Owner);
+  setActor({.req = orphanReq, .sub = 42, .role = UserRole::Owner});
   const auto orphan = drogon::sync_wait(taskController.create(orphanReq));
   CHECK(body(orphan)["status"].asInt() == 404);
   CHECK(body(orphan)["errors"]["message"] == "Project not found");
@@ -445,7 +453,7 @@ TEST_CASE("productivity contracts hold on the argus-productivity surface")
   eventBody["isAllDay"] = false;
   eventBody["projectId"] = Json::Int64(projectId);
   auto eventReq = drogon::HttpRequest::newHttpJsonRequest(eventBody);
-  setActor(eventReq, 42, UserRole::Owner);
+  setActor({.req = eventReq, .sub = 42, .role = UserRole::Owner});
   const auto eventCreated = drogon::sync_wait(eventController.create(eventReq));
   const Json::Value eventJson = body(eventCreated);
   CHECK(eventJson["status"].asInt() == 200);
@@ -474,7 +482,7 @@ TEST_CASE("productivity contracts hold on the argus-productivity surface")
     shareBody["userId"] = Json::Int64(userId);
     shareBody["access"] = "view";
     auto req = drogon::HttpRequest::newHttpJsonRequest(shareBody);
-    setActor(req, 42, UserRole::Owner);
+    setActor({.req = req, .sub = 42, .role = UserRole::Owner});
     return req;
   };
 
@@ -502,7 +510,7 @@ TEST_CASE("productivity contracts hold on the argus-productivity surface")
   Json::Value shareEditBody;
   shareEditBody["access"] = "edit";
   auto shareEditReq = drogon::HttpRequest::newHttpJsonRequest(shareEditBody);
-  setActor(shareEditReq, 42, UserRole::Owner);
+  setActor({.req = shareEditReq, .sub = 42, .role = UserRole::Owner});
   const auto shareEdited =
       drogon::sync_wait(shareController.update(shareEditReq, shareId));
   CHECK(body(shareEdited)["status"].asInt() == 200);

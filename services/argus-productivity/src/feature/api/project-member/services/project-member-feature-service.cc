@@ -4,10 +4,11 @@
 #include <trantor/utils/Logger.h>
 #include <shared/access/role-access.hxx>
 
-void ProjectMemberFeatureService::emitMembership(SyncOperation operation,
-                                         const ProjectMemberSchema& row,
-                                         int64_t ownerId) const
+void ProjectMemberFeatureService::emitMembership(
+    const EmitMembershipInput& input) const
 {
+  const SyncOperation operation = input.operation;
+  const ProjectMemberSchema& row = input.row;
   SocketEmitDto body;
   body.operation = operation;
   body.option = TableName::ProjectMember;
@@ -25,14 +26,14 @@ void ProjectMemberFeatureService::emitMembership(SyncOperation operation,
     LOG_WARN << "user change sink not installed; drop project member membership emit";
     return;
   }
-  sink->emitUsers({ownerId, row.userId}, body);
+  sink->emitUsers({input.ownerId, row.userId}, body);
 }
 
-drogon::Task<void> ProjectMemberFeatureService::emitParent(SyncOperation operation,
-                                                   int64_t parentId,
-                                                   int64_t userId) const
+drogon::Task<void> ProjectMemberFeatureService::emitParent(
+    const EmitParentInput& input) const
 {
-  const auto parent = co_await parentRepository_.findById(parentId);
+  const SyncOperation operation = input.operation;
+  const auto parent = co_await parentRepository_.findById(input.parentId);
   if (!parent)
     co_return;
 
@@ -53,7 +54,7 @@ drogon::Task<void> ProjectMemberFeatureService::emitParent(SyncOperation operati
     LOG_WARN << "user change sink not installed; drop project member parent emit";
     co_return;
   }
-  sink->emitUser(userId, body);
+  sink->emitUser(input.userId, body);
   co_return;
 }
 
@@ -95,25 +96,28 @@ ProjectMemberFeatureService::create(const CreateProjectMemberDto& body, int64_t 
       .userId = body.userId,
       .access = access,
   });
-  emitMembership(SyncOperation::Add, row, parent->ownerId);
-  co_await emitParent(SyncOperation::Add, body.projectId, body.userId);
+  emitMembership({.operation = SyncOperation::Add,
+                  .row = row,
+                  .ownerId = parent->ownerId});
+  co_await emitParent({.operation = SyncOperation::Add,
+                       .parentId = body.projectId,
+                       .userId = body.userId});
   co_return {.row = row};
 }
 
 drogon::Task<ProjectMemberResult>
-ProjectMemberFeatureService::update(int64_t id, const UpdateProjectMemberDto& body,
-                            int64_t actorId) const
+ProjectMemberFeatureService::update(const UpdateInput& input) const
 {
-  const auto existing = co_await repository_.findById(id);
+  const auto existing = co_await repository_.findById(input.id);
   if (!existing)
     co_return {.error = MembershipError::ParentNotFound, .row = std::nullopt};
 
   const auto parent = co_await parentRepository_.findById(existing->projectId);
-  if (!parent || parent->ownerId != actorId)
+  if (!parent || parent->ownerId != input.actorId)
     co_return {.error = MembershipError::ParentNotFound, .row = std::nullopt};
 
   const auto row = co_await repository_.updateAccess(
-      id, shareAccessFromString(body.access));
+      input.id, shareAccessFromString(input.body.access));
   if (row.id == 0)
     co_return {.error = MembershipError::ParentNotFound, .row = std::nullopt};
   if (const auto* sink = user_change::getProductivitySink())
@@ -144,8 +148,11 @@ drogon::Task<bool> ProjectMemberFeatureService::remove(int64_t id,
   if (!removed)
     co_return false;
 
-  emitMembership(SyncOperation::Delete, *existing, parent->ownerId);
-  co_await emitParent(SyncOperation::Delete, existing->projectId,
-                      existing->userId);
+  emitMembership({.operation = SyncOperation::Delete,
+                  .row = *existing,
+                  .ownerId = parent->ownerId});
+  co_await emitParent({.operation = SyncOperation::Delete,
+                       .parentId = existing->projectId,
+                       .userId = existing->userId});
   co_return true;
 }

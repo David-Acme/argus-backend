@@ -61,16 +61,23 @@ struct HarnessOptions
   size_t clientPushCapacity{256};
 };
 
+struct TestPeerConnectInput
+{
+  PollLoop& loop;
+  const std::string& ip;
+  uint16_t port{0};
+  int sndBuf{0};
+};
+
 inline std::shared_ptr<TestPeer>
-connectTestPeer(PollLoop& loop, const std::string& ip, uint16_t port,
-                int sndBuf = 0)
+connectTestPeer(const TestPeerConnectInput& input)
 {
   auto peer = std::make_shared<TestPeer>();
   TcpPeer::Params params;
-  params.loop = &loop;
-  params.ip = ip;
-  params.port = port;
-  params.sndBuf = sndBuf;
+  params.loop = &input.loop;
+  params.ip = input.ip;
+  params.port = input.port;
+  params.sndBuf = input.sndBuf;
   TcpPeer::Callbacks callbacks;
   callbacks.onConnected = [peer](TcpPeer&) { peer->connected.store(true); };
   callbacks.onRead = [peer](TcpPeer&, const char* data, size_t size) {
@@ -84,10 +91,18 @@ connectTestPeer(PollLoop& loop, const std::string& ip, uint16_t port,
 }
 
 // Sends from the test thread must run on the loop thread next to flush().
-inline void postSend(PollLoop& loop, const TcpPeer::Ptr& peer,
-                     const std::string& data)
+struct PostSendInput
 {
-  loop.post([peer, data] { peer->send(data); });
+  PollLoop& loop;
+  const TcpPeer::Ptr& peer;
+  const std::string& data;
+};
+
+inline void postSend(const PostSendInput& input)
+{
+  input.loop.post([peer = input.peer, data = input.data] {
+    peer->send(data);
+  });
 }
 
 // Deterministic LCG payload; no library RNG so failures reproduce.
@@ -142,7 +157,7 @@ struct Harness
     gatewayParams.port = 0;
     gatewayParams.onAccept = [this](int fd, const std::string& ip,
                                     uint16_t port) {
-      acceptGateway(fd, ip, port);
+      acceptGateway({.fd = fd, .ip = ip, .port = port});
     };
     gatewayListener = TcpListener::create(gatewayParams);
     if (!gatewayListener)
@@ -208,18 +223,25 @@ private:
   std::mutex gatewayMutex_;
   std::vector<std::shared_ptr<StubConn>> gatewayConns_;
 
-  void acceptGateway(int fd, const std::string& ip, uint16_t port)
+  struct AcceptGatewayInput
+  {
+    int fd{-1};
+    const std::string& ip;
+    uint16_t port{0};
+  };
+
+  void acceptGateway(const AcceptGatewayInput& input)
   {
     if (options_.gatewayRcvBuf > 0) {
       int size = options_.gatewayRcvBuf;
-      ::setsockopt(fd, SOL_SOCKET, SO_RCVBUF, &size, sizeof(size));
+      ::setsockopt(input.fd, SOL_SOCKET, SO_RCVBUF, &size, sizeof(size));
     }
     auto conn = std::make_shared<StubConn>();
     TcpPeer::Params params;
     params.loop = &loop;
-    params.fd = fd;
-    params.ip = ip;
-    params.port = port;
+    params.fd = input.fd;
+    params.ip = input.ip;
+    params.port = input.port;
     TcpPeer::Callbacks callbacks;
     callbacks.onRead = [this, conn](TcpPeer& peer, const char* data,
                                     size_t size) {

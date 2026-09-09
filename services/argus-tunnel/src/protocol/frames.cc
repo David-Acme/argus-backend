@@ -40,23 +40,23 @@ uint32_t readU32(const char* data)
 }
 } // namespace
 
-std::string encodeFrame(FrameType type, uint32_t streamId, const char* payload,
-                        size_t size)
+std::string encodeFrame(const EncodeFrameInput& input)
 {
   std::string out;
-  out.reserve(kHeaderSize + size);
+  out.reserve(kHeaderSize + input.size);
   appendU16(out, kMagic);
   out.push_back(static_cast<char>(kVersion));
-  out.push_back(static_cast<char>(type));
-  appendU32(out, streamId);
-  appendU32(out, static_cast<uint32_t>(size));
-  out.append(payload, size);
+  out.push_back(static_cast<char>(input.type));
+  appendU32(out, input.streamId);
+  appendU32(out, static_cast<uint32_t>(input.size));
+  out.append(input.payload, input.size);
   return out;
 }
 
 std::string encodeFrame(FrameType type, uint32_t streamId)
 {
-  return encodeFrame(type, streamId, nullptr, 0);
+  return encodeFrame(
+      {.type = type, .streamId = streamId, .payload = nullptr, .size = 0});
 }
 
 void FrameParser::feed(const char* data, size_t size)

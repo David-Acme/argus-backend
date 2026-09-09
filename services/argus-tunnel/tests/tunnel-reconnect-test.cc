@@ -13,12 +13,13 @@ TEST_CASE("home link reconnect tears down streams and recovers")
   Harness harness(std::move(options));
   REQUIRE(harness.start());
 
-  auto device = connectTestPeer(harness.loop, "127.0.0.1",
-                                harness.relay->devicePort());
+  auto device = connectTestPeer({.loop = harness.loop,
+                                 .ip = "127.0.0.1",
+                                 .port = harness.relay->devicePort()});
   REQUIRE(waitFor([device] { return device->connected.load(); }, 5000));
 
   const std::string first = makePayload(16 * 1024, 11);
-  postSend(harness.loop, device->peer, first);
+  postSend({.loop = harness.loop, .peer = device->peer, .data = first});
   REQUIRE(waitFor([&] { return device->bytes().size() == first.size(); },
                   10000));
   CHECK(device->bytes() == first);
@@ -36,12 +37,13 @@ TEST_CASE("home link reconnect tears down streams and recovers")
            harness.client->streamCount() == 0;
   }, 10000));
 
-  auto recovered = connectTestPeer(harness.loop, "127.0.0.1",
-                                   harness.relay->devicePort());
+  auto recovered = connectTestPeer({.loop = harness.loop,
+                                 .ip = "127.0.0.1",
+                                 .port = harness.relay->devicePort()});
   REQUIRE(waitFor([recovered] { return recovered->connected.load(); }, 5000));
 
   const std::string second = makePayload(24 * 1024, 22);
-  postSend(harness.loop, recovered->peer, second);
+  postSend({.loop = harness.loop, .peer = recovered->peer, .data = second});
   REQUIRE(waitFor([&] { return recovered->bytes().size() == second.size(); },
                   10000));
   CHECK(recovered->bytes() == second);

@@ -10,7 +10,7 @@ namespace tunnel
 {
 TunnelRelay::TunnelRelay(PollLoop& loop, RelayOptions options)
     : loop_(loop), options_(std::move(options)),
-      mux_(loop, options_.limits, this)
+      mux_({.loop = loop, .limits = options_.limits, .delegate = this})
 {
 }
 
@@ -26,7 +26,7 @@ bool TunnelRelay::start()
   homeParams.ip = options_.host;
   homeParams.port = options_.homePort;
   homeParams.onAccept = [this](int fd, const std::string& ip, uint16_t port) {
-    onHomeAccepted(fd, ip, port);
+    onHomeAccepted({.fd = fd, .peerIp = ip, .peerPort = port});
   };
   homeListener_ = TcpListener::create(homeParams);
   if (!homeListener_)
@@ -38,7 +38,7 @@ bool TunnelRelay::start()
   deviceParams.ip = options_.host;
   deviceParams.port = options_.devicePort;
   deviceParams.onAccept = [this](int fd, const std::string& ip, uint16_t port) {
-    onDeviceAccepted(fd, ip, port);
+    onDeviceAccepted({.fd = fd, .peerIp = ip, .peerPort = port});
   };
   deviceListener_ = TcpListener::create(deviceParams);
   if (!deviceListener_)
@@ -108,45 +108,45 @@ void TunnelRelay::onLinkDown()
     LOG_WARN << "argus-relay: home link down; device streams torn down";
 }
 
-void TunnelRelay::onHomeAccepted(int fd, const std::string& peerIp,
-                                 uint16_t peerPort)
+void TunnelRelay::onHomeAccepted(const PeerAcceptedInput& input)
 {
   TcpPeer::Params params;
   params.loop = &loop_;
-  params.fd = fd;
-  params.ip = peerIp;
-  params.port = peerPort;
+  params.fd = input.fd;
+  params.ip = input.peerIp;
+  params.port = input.peerPort;
   params.sndBuf = options_.limits.socketSndBuf;
   try {
     const TcpPeer::Ptr peer = TcpPeer::adopt(params);
     mux_.adoptHome(peer);
   } catch (const std::exception& error) {
     LOG_WARN << "argus-relay: home adopt failed: " << error.what();
-    ::close(fd);
+    ::close(input.fd);
   }
 }
 
-void TunnelRelay::onDeviceAccepted(int fd, const std::string& peerIp,
-                                   uint16_t peerPort)
+void TunnelRelay::onDeviceAccepted(const PeerAcceptedInput& input)
 {
   if (!mux_.homeActive()) {
-    LOG_WARN << "argus-relay: device " << peerIp << ":" << peerPort
+    LOG_WARN << "argus-relay: device " << input.peerIp << ":"
+             << input.peerPort
              << " rejected; home link not authenticated";
-    ::close(fd);
+    ::close(input.fd);
     return;
   }
   const uint32_t streamId = mux_.openRemote();
   if (streamId == 0) {
-    LOG_WARN << "argus-relay: device " << peerIp << ":" << peerPort
+    LOG_WARN << "argus-relay: device " << input.peerIp << ":"
+             << input.peerPort
              << " rejected; stream cap reached or link down";
-    ::close(fd);
+    ::close(input.fd);
     return;
   }
   TcpPeer::Params params;
   params.loop = &loop_;
-  params.fd = fd;
-  params.ip = peerIp;
-  params.port = peerPort;
+  params.fd = input.fd;
+  params.ip = input.peerIp;
+  params.port = input.peerPort;
   params.sndBuf = options_.limits.socketSndBuf;
   try {
     const TcpPeer::Ptr peer = TcpPeer::adopt(params);
@@ -155,7 +155,7 @@ void TunnelRelay::onDeviceAccepted(int fd, const std::string& peerIp,
   } catch (const std::exception& error) {
     LOG_WARN << "argus-relay: device adopt failed: " << error.what();
     mux_.closeStream(streamId, CloseReason::Error);
-    ::close(fd);
+    ::close(input.fd);
   }
 }
 

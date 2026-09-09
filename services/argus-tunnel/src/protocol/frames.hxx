@@ -47,8 +47,15 @@ struct Frame
   std::string payload;
 };
 
-std::string encodeFrame(FrameType type, uint32_t streamId, const char* payload,
-                        size_t size);
+struct EncodeFrameInput
+{
+  FrameType type{FrameType::Data};
+  uint32_t streamId{0};
+  const char* payload;
+  size_t size{0};
+};
+
+std::string encodeFrame(const EncodeFrameInput& input);
 std::string encodeFrame(FrameType type, uint32_t streamId);
 
 // Incremental frame parser; failed() marks an unrecoverable desync.

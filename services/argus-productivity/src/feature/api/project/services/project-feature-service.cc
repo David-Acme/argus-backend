@@ -57,20 +57,19 @@ ProjectFeatureService::create(const CreateProjectDto& body,
 }
 
 drogon::Task<std::optional<ProjectSchema>>
-ProjectFeatureService::update(int64_t id, const UpdateProjectDto& body,
-                              int64_t actorId) const
+ProjectFeatureService::update(const UpdateInput& input) const
 {
-  const auto existing = co_await repository_.findById(id);
-  if (!existing || !co_await canEdit(*existing, actorId))
+  const auto existing = co_await repository_.findById(input.id);
+  if (!existing || !co_await canEdit(*existing, input.actorId))
     co_return std::nullopt;
 
-  const auto row = co_await repository_.update(id, {
-      .name = body.name,
-      .description = body.description,
-      .status = body.status,
-      .color = body.color,
-      .startsAt = body.startsAt,
-      .targetAt = body.targetAt,
+  const auto row = co_await repository_.update(input.id, {
+      .name = input.body.name,
+      .description = input.body.description,
+      .status = input.body.status,
+      .color = input.body.color,
+      .startsAt = input.body.startsAt,
+      .targetAt = input.body.targetAt,
   });
   if (row.id == 0)
     co_return std::nullopt;

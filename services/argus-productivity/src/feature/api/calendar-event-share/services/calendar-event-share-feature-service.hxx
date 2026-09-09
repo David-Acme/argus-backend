@@ -20,19 +20,37 @@ struct CalendarEventShareResult
 class CalendarEventShareFeatureService
 {
 public:
+  struct UpdateInput
+  {
+    int64_t id{0};
+    const UpdateCalendarEventShareDto& body;
+    int64_t actorId{0};
+  };
+
   /** Only the owner of the parent record may share it. */
   drogon::Task<CalendarEventShareResult> create(const CreateCalendarEventShareDto& body,
                                     int64_t actorId) const;
-  drogon::Task<CalendarEventShareResult> update(int64_t id, const UpdateCalendarEventShareDto& body,
-                                    int64_t actorId) const;
+  drogon::Task<CalendarEventShareResult> update(const UpdateInput& input) const;
   drogon::Task<bool> remove(int64_t id, int64_t actorId) const;
 
 private:
+  struct EmitMembershipInput
+  {
+    SyncOperation operation{};
+    const CalendarEventShareSchema& row;
+    int64_t ownerId{0};
+  };
+
+  struct EmitParentInput
+  {
+    SyncOperation operation{};
+    int64_t parentId{0};
+    int64_t userId{0};
+  };
+
   // Emits the membership row to both sides and the parent record to the member.
-  void emitMembership(SyncOperation operation, const CalendarEventShareSchema& row,
-                      int64_t ownerId) const;
-  drogon::Task<void> emitParent(SyncOperation operation, int64_t parentId,
-                                int64_t userId) const;
+  void emitMembership(const EmitMembershipInput& input) const;
+  drogon::Task<void> emitParent(const EmitParentInput& input) const;
 
   CalendarEventShareRepository repository_;
   CalendarEventRepository parentRepository_;

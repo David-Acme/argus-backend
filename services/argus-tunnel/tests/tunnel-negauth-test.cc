@@ -136,7 +136,10 @@ constexpr int kAcceptTimeoutMs = 20000;
 std::string authFrame(const std::string& secret, const std::string& challenge)
 {
   const std::string mac = authMac(secret, challenge);
-  return encodeFrame(FrameType::Auth, 0, mac.data(), mac.size());
+  return encodeFrame({.type = FrameType::Auth,
+                      .streamId = 0,
+                      .payload = mac.data(),
+                      .size = mac.size()});
 }
 } // namespace
 
@@ -157,8 +160,10 @@ TEST_CASE("OPEN before any AUTH never dials the gateway")
 TEST_CASE("PUSH before any AUTH never reaches the intent queue")
 {
   RogueRig rig([](TcpPeer& peer) {
-    peer.send(encodeFrame(FrameType::Push, 0, R"({"notificationId":1})",
-                          18));
+    peer.send(encodeFrame({.type = FrameType::Push,
+                           .streamId = 0,
+                           .payload = R"({"notificationId":1})",
+                           .size = 18}));
   });
 
   REQUIRE(waitFor([&] {
@@ -189,10 +194,15 @@ TEST_CASE("AUTH_OK without a valid relay proof does not activate the link")
   const std::string secret = "f5-4-loopback-secret";
   const std::string challenge = randomChallenge();
   RogueRig rig([&](TcpPeer& peer) {
-    peer.send(encodeFrame(FrameType::Challenge, 0, challenge.data(),
-                          challenge.size()));
+    peer.send(encodeFrame({.type = FrameType::Challenge,
+                           .streamId = 0,
+                           .payload = challenge.data(),
+                           .size = challenge.size()}));
     const std::string bogus(kAuthPayloadSize, '\0');
-    peer.send(encodeFrame(FrameType::AuthOk, 0, bogus.data(), bogus.size()));
+    peer.send(encodeFrame({.type = FrameType::AuthOk,
+                           .streamId = 0,
+                           .payload = bogus.data(),
+                           .size = bogus.size()}));
   });
 
   REQUIRE(waitFor([&] {
@@ -210,10 +220,15 @@ TEST_CASE("a correct challenge handshake activates the client link")
   const std::string secret = "f5-4-loopback-secret";
   const std::string challenge = randomChallenge();
   RogueRig rig([&](TcpPeer& peer) {
-    peer.send(encodeFrame(FrameType::Challenge, 0, challenge.data(),
-                          challenge.size()));
+    peer.send(encodeFrame({.type = FrameType::Challenge,
+                           .streamId = 0,
+                           .payload = challenge.data(),
+                           .size = challenge.size()}));
     const std::string proof = relayAuthMac(secret, challenge);
-    peer.send(encodeFrame(FrameType::AuthOk, 0, proof.data(), proof.size()));
+    peer.send(encodeFrame({.type = FrameType::AuthOk,
+                           .streamId = 0,
+                           .payload = proof.data(),
+                           .size = proof.size()}));
   });
 
   REQUIRE(waitFor([&] { return rig.client->homeActive(); }, 5000));

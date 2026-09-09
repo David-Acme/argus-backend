@@ -51,7 +51,7 @@ TcpPeer::Ptr TcpPeer::connect(const Params& params)
   Ptr peer(new TcpPeer(updated));
   peer->connecting_ = true;
   peer->loop_.watch(peer->fd_.get(), peer.get());
-  peer->loop_.update(peer->fd_.get(), EPOLLOUT, peer.get());
+  peer->loop_.update({.fd = peer->fd_.get(), .events = EPOLLOUT, .actor = peer.get()});
   return peer;
 }
 
@@ -257,7 +257,7 @@ void TcpPeer::updateInterest()
 {
   if (closed_)
     return;
-  loop_.update(fd_.get(), interestEvents(), this);
+  loop_.update({.fd = fd_.get(), .events = interestEvents(), .actor = this});
 }
 
 uint32_t TcpPeer::interestEvents() const

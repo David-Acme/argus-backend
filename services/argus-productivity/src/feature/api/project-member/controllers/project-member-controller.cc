@@ -43,7 +43,8 @@ ProjectMemberController::update(drogon::HttpRequestPtr req, int64_t id)
   const auto& ctx =
       req->getAttributes()->get<JwtContext>(AppConfig::JWT_CTX_KEY);
 
-  const auto result = co_await service_.update(id, body, ctx.sub);
+  const auto result = co_await service_.update(
+      {.id = id, .body = body, .actorId = ctx.sub});
   if (!result.row)
     co_return failureFor(result.error);
   co_return ApiResponse::ok(result.row->toJson());

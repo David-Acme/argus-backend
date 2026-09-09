@@ -113,14 +113,12 @@ void VadService::runModel(float& prob)
               kStateSize * sizeof(float));
 }
 
-bool VadService::process(const float* samples, int count, VadTurn& outTurn)
+std::optional<VadTurn> VadService::process(const VadProcessInput& input)
 {
-  outTurn.samples.clear();
-  outTurn.speechFrames = 0;
-  outTurn.meanProb = 0.0F;
+  VadTurn turn;
   bool completed = false;
 
-  pending_.push(samples, static_cast<size_t>(count));
+  pending_.push(input.samples, static_cast<size_t>(input.count));
 
   while (pending_.size() >= static_cast<size_t>(kWindowSize)) {
     std::copy(context_.begin(), context_.end(), window_.begin());
@@ -182,9 +180,9 @@ bool VadService::process(const float* samples, int count, VadTurn& outTurn)
                   << cfg_.minMeanProb << ")";
       }
       if (accepted) {
-        outTurn.samples = std::move(buffer_);
-        outTurn.speechFrames = frameCounter_;
-        outTurn.meanProb = meanProb;
+        turn.samples = std::move(buffer_);
+        turn.speechFrames = frameCounter_;
+        turn.meanProb = meanProb;
         completed = true;
       }
       buffer_.clear();
@@ -196,7 +194,9 @@ bool VadService::process(const float* samples, int count, VadTurn& outTurn)
       speechProbSum_ = 0.0F;
     }
   }
-  return completed;
+  if (!completed)
+    return std::nullopt;
+  return turn;
 }
 
 bool VadService::inSpeech() const

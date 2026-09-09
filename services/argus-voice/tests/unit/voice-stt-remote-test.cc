@@ -49,11 +49,16 @@ struct VoiceSessionTestAccess
     return service.sessions_.at(&sink);
   }
 
-  static void runTurn(VoiceSessionService& service,
-                      VoiceSessionService::Session& session,
-                      const std::vector<float>& samples)
+  struct RunTurnInput
   {
-    service.processTurn(session, samples);
+    VoiceSessionService& service;
+    VoiceSessionService::Session& session;
+    const std::vector<float>& samples;
+  };
+
+  static void runTurn(const RunTurnInput& input)
+  {
+    input.service.processTurn(input.session, input.samples);
   }
 };
 
@@ -121,7 +126,7 @@ TEST_CASE("The voice session transcribes through the remote adapter")
   const size_t chunksBefore = sink.of(true).size();
   const std::vector<float> samples(1600, 0.1F);
   auto sess = VoiceSessionTestAccess::sessionOf(session, sink);
-  VoiceSessionTestAccess::runTurn(session, *sess, samples);
+  VoiceSessionTestAccess::runTurn({.service = session, .session = *sess, .samples = samples});
 
   CHECK(server.requests().at("POST /stt/v1/transcribe?lang=es") == 1);
   argus::voice::v1::ServerFrame sttFrame;
@@ -168,7 +173,7 @@ TEST_CASE("An unreachable argus-stt degrades the turn, not the session")
   const size_t framesBefore = sink.size();
   const std::vector<float> samples(1600, 0.1F);
   auto sess = VoiceSessionTestAccess::sessionOf(session, sink);
-  VoiceSessionTestAccess::runTurn(session, *sess, samples);
+  VoiceSessionTestAccess::runTurn({.service = session, .session = *sess, .samples = samples});
 
   CHECK_FALSE(sink.hasType("voice:stt"));
   argus::voice::v1::ServerFrame event;
@@ -181,7 +186,7 @@ TEST_CASE("An unreachable argus-stt degrades the turn, not the session")
   CHECK(eventFound);
 
   sess->history.clear();
-  VoiceSessionTestAccess::runTurn(session, *sess, samples);
+  VoiceSessionTestAccess::runTurn({.service = session, .session = *sess, .samples = samples});
   CHECK(sink.size() > framesBefore);
 
   session.stop(sink);

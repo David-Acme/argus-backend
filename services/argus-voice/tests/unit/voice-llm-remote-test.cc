@@ -52,11 +52,16 @@ struct VoiceSessionTestAccess
     return service.sessions_.at(&sink);
   }
 
-  static void runTurn(VoiceSessionService& service,
-                      VoiceSessionService::Session& session,
-                      const std::vector<float>& samples)
+  struct RunTurnInput
   {
-    service.processTurn(session, samples);
+    VoiceSessionService& service;
+    VoiceSessionService::Session& session;
+    const std::vector<float>& samples;
+  };
+
+  static void runTurn(const RunTurnInput& input)
+  {
+    input.service.processTurn(input.session, input.samples);
   }
 };
 
@@ -204,7 +209,7 @@ TEST_CASE("The voice session speaks through the remote adapter")
   const size_t chunksBefore = sink.of(true).size();
   const std::vector<float> samples(1600, 0.1F);
   auto sess = VoiceSessionTestAccess::sessionOf(session, sink);
-  VoiceSessionTestAccess::runTurn(session, *sess, samples);
+  VoiceSessionTestAccess::runTurn({.service = session, .session = *sess, .samples = samples});
 
   CHECK(sttServer.requests().at("POST /stt/v1/transcribe?lang=es") == 1);
   CHECK(llmServer.requests().at("POST /llm/v1/chat-stream") == 1);
@@ -263,7 +268,7 @@ TEST_CASE("An unreachable argus-llm degrades the turn, not the session")
   const size_t chunksBefore = sink.of(true).size();
   const std::vector<float> samples(1600, 0.1F);
   auto sess = VoiceSessionTestAccess::sessionOf(session, sink);
-  VoiceSessionTestAccess::runTurn(session, *sess, samples);
+  VoiceSessionTestAccess::runTurn({.service = session, .session = *sess, .samples = samples});
 
   CHECK(assistantFrames(sink).size() == assistantBefore);
   CHECK(sink.of(true).size() == chunksBefore);
@@ -271,7 +276,7 @@ TEST_CASE("An unreachable argus-llm degrades the turn, not the session")
   FakeLlmServer llmServer({.tokens = {"Recuperado", "."}});
   pointLlmAt("http://127.0.0.1:" + std::to_string(llmServer.port()));
   sess->history.clear();
-  VoiceSessionTestAccess::runTurn(session, *sess, samples);
+  VoiceSessionTestAccess::runTurn({.service = session, .session = *sess, .samples = samples});
   const auto replies = assistantFrames(sink);
   REQUIRE_FALSE(replies.empty());
   CHECK(replies.back().assistant().text() == "Recuperado.");

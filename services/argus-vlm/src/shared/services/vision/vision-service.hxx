@@ -24,6 +24,21 @@ struct VisionRequest
   int32_t maxTokens{0};
 };
 
+struct VisionDescribeMatInput
+{
+  cv::Mat bgr;
+  std::string prompt;
+  int32_t maxTokens{0};
+};
+
+struct VisionRunInput
+{
+  cv::Mat src;
+  bool srcIsBgr{false};
+  std::string prompt;
+  int32_t maxTokens{0};
+};
+
 class VisionService
 {
 public:
@@ -37,14 +52,11 @@ public:
   void shutdown();
 
   std::string describe(const VisionRequest& req);
-  std::string describeMat(const cv::Mat& bgr, const std::string& prompt = {},
-                          int32_t maxTokens = 0);
+  std::string describeMat(const VisionDescribeMatInput& input);
 
   // Coroutine variants: run inference off the event loop.
   drogon::Task<std::string> describeAsync(const VisionRequest& req);
-  drogon::Task<std::string> describeMatAsync(const cv::Mat& bgr,
-                                             const std::string& prompt = {},
-                                             int32_t maxTokens = 0);
+  drogon::Task<std::string> describeMatAsync(const VisionDescribeMatInput& input);
 
   void cancel();
   bool isLoaded() const;
@@ -52,8 +64,7 @@ public:
   int defaultMaxTokens() const { return defaultMaxTokens_; }
 
 private:
-  std::string run(const cv::Mat& src, bool srcIsBgr, const std::string& prompt,
-                  int32_t maxTokens);
+  std::string run(const VisionRunInput& input);
   cv::Mat fitToBudget(const cv::Mat& src, bool srcIsBgr);
   const std::string* cacheLookup(uint64_t key);
   void cacheStore(uint64_t key, const std::string& caption);

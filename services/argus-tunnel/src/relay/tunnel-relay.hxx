@@ -64,8 +64,15 @@ private:
   void onPushIntent(const std::string& payload);
   void drainPushQueue();
 
-  void onHomeAccepted(int fd, const std::string& peerIp, uint16_t peerPort);
-  void onDeviceAccepted(int fd, const std::string& peerIp, uint16_t peerPort);
+  struct PeerAcceptedInput
+  {
+    int fd{-1};
+    const std::string& peerIp;
+    uint16_t peerPort{0};
+  };
+
+  void onHomeAccepted(const PeerAcceptedInput& input);
+  void onDeviceAccepted(const PeerAcceptedInput& input);
   void scheduleSweep();
 
   PollLoop& loop_;

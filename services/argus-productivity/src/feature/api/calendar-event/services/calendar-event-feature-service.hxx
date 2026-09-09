@@ -19,10 +19,17 @@ struct CalendarEventOwnerInput
 class CalendarEventFeatureService
 {
 public:
+  struct UpdateInput
+  {
+    int64_t id{0};
+    const UpdateCalendarEventDto& body;
+    int64_t actorId{0};
+  };
+
   drogon::Task<CalendarEventSchema> create(const CreateCalendarEventDto& body,
                                            const CalendarEventOwnerInput& who) const;
   drogon::Task<std::optional<CalendarEventSchema>>
-  update(int64_t id, const UpdateCalendarEventDto& body, int64_t actorId) const;
+  update(const UpdateInput& input) const;
   drogon::Task<bool> remove(int64_t id, int64_t actorId) const;
 
 private:

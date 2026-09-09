@@ -14,10 +14,17 @@
 class ProjectTaskFeatureService
 {
 public:
+  struct UpdateInput
+  {
+    int64_t id{0};
+    const UpdateProjectTaskDto& body;
+    int64_t actorId{0};
+  };
+
   drogon::Task<std::optional<ProjectTaskSchema>>
   create(const CreateProjectTaskDto& body, int64_t actorId) const;
   drogon::Task<std::optional<ProjectTaskSchema>>
-  update(int64_t id, const UpdateProjectTaskDto& body, int64_t actorId) const;
+  update(const UpdateInput& input) const;
   drogon::Task<bool> remove(int64_t id, int64_t actorId) const;
 
 private:

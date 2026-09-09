@@ -27,7 +27,7 @@ std::string hex(const std::string& bytes)
 TEST_CASE("frame header layout is little-endian on the wire")
 {
   const std::string frame =
-      encodeFrame(FrameType::Data, 0x0102A3B4, "xy", 2);
+      encodeFrame({.type = FrameType::Data, .streamId = 0x0102A3B4, .payload = "xy", .size = 2});
   REQUIRE(frame.size() == kHeaderSize + 2);
   CHECK(frame[0] == static_cast<char>(0x55));
   CHECK(frame[1] == static_cast<char>(0xA7));
@@ -54,7 +54,7 @@ TEST_CASE("encode and parse round-trip every frame type")
   };
   for (const FrameType type : types) {
     FrameParser parser;
-    parser.feed(encodeFrame(type, 77, "payload", 7));
+    parser.feed(encodeFrame({.type = type, .streamId = 77, .payload = "payload", .size = 7}));
     REQUIRE(parser.hasFrame());
     const Frame frame = parser.popFrame();
     CHECK(frame.type == type);
@@ -69,7 +69,7 @@ TEST_CASE("parser reassembles frames fed byte by byte")
 {
   const std::string first = encodeFrame(FrameType::Open, 5);
   const std::string second =
-      encodeFrame(FrameType::Data, 5, "chunked", 7);
+      encodeFrame({.type = FrameType::Data, .streamId = 5, .payload = "chunked", .size = 7});
   const std::string wire = first + second;
 
   FrameParser parser;
@@ -88,7 +88,8 @@ TEST_CASE("parser reassembles frames fed byte by byte")
 
 TEST_CASE("parser buffers partial payloads across feeds")
 {
-  const std::string wire = encodeFrame(FrameType::Data, 3, "abcdefgh", 8);
+  const std::string wire =
+      encodeFrame({.type = FrameType::Data, .streamId = 3, .payload = "abcdefgh", .size = 8});
   FrameParser parser;
   parser.feed(wire.data(), kHeaderSize + 3);
   CHECK_FALSE(parser.hasFrame());

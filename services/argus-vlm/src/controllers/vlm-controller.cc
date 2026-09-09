@@ -39,8 +39,8 @@ VlmController::describe(drogon::HttpRequestPtr req)
   }
 
   const auto t0 = std::chrono::steady_clock::now();
-  std::string caption =
-      co_await service_.describeMatAsync(bgr, body.prompt, 0);
+  std::string caption = co_await service_.describeMatAsync(
+      {.bgr = bgr, .prompt = body.prompt, .maxTokens = 0});
   const double ms =
       std::chrono::duration<double, std::milli>(
           std::chrono::steady_clock::now() - t0)

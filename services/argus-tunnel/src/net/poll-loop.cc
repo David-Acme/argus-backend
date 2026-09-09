@@ -51,12 +51,12 @@ void PollLoop::watch(int fd, LoopActor* actor)
     throw std::runtime_error("epoll_ctl add failed");
 }
 
-void PollLoop::update(int fd, uint32_t events, LoopActor* actor)
+void PollLoop::update(const UpdateInput& input)
 {
   epoll_event event{};
-  event.events = events | EPOLLRDHUP;
-  event.data.ptr = actor;
-  if (::epoll_ctl(epollFd_, EPOLL_CTL_MOD, fd, &event) < 0)
+  event.events = input.events | EPOLLRDHUP;
+  event.data.ptr = input.actor;
+  if (::epoll_ctl(epollFd_, EPOLL_CTL_MOD, input.fd, &event) < 0)
     throw std::runtime_error("epoll_ctl mod failed");
 }
 

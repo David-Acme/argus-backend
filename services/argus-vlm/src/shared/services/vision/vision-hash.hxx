@@ -21,12 +21,20 @@ inline uint64_t visionHashBytes(const unsigned char* data, size_t len)
   return h;
 }
 
-inline uint64_t visionHashBytesAndPrompt(const unsigned char* data, size_t len,
-                                         const std::string& prompt)
+struct VisionHashBytesAndPromptInput
 {
-  uint64_t h = visionHashBytes(data, len);
+  const unsigned char* data;
+  size_t len{0};
+  const std::string& prompt;
+};
+
+inline uint64_t visionHashBytesAndPrompt(
+    const VisionHashBytesAndPromptInput& input)
+{
+  uint64_t h = visionHashBytes(input.data, input.len);
   h ^= visionHashBytes(
-      reinterpret_cast<const unsigned char*>(prompt.data()), prompt.size());
+      reinterpret_cast<const unsigned char*>(input.prompt.data()),
+      input.prompt.size());
   h *= 1099511628211ULL;
   return h;
 }

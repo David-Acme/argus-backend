@@ -24,7 +24,8 @@ ProjectController::update(drogon::HttpRequestPtr req, int64_t id)
   const auto& ctx =
       req->getAttributes()->get<JwtContext>(AppConfig::JWT_CTX_KEY);
 
-  const auto row = co_await service_.update(id, body, ctx.sub);
+  const auto row = co_await service_.update(
+      {.id = id, .body = body, .actorId = ctx.sub});
   if (!row)
     co_return AppConfig::get404Response("Project not found");
   co_return ApiResponse::ok(row->toJson());

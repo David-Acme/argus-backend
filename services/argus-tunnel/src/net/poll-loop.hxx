@@ -23,6 +23,13 @@ class PollLoop
 public:
   using Task = std::function<void()>;
 
+  struct UpdateInput
+  {
+    int fd{-1};
+    uint32_t events{0};
+    LoopActor* actor{};
+  };
+
   PollLoop();
   ~PollLoop();
   PollLoop(const PollLoop&) = delete;
@@ -34,7 +41,7 @@ public:
   void runAfter(int milliseconds, Task task);
 
   void watch(int fd, LoopActor* actor);
-  void update(int fd, uint32_t events, LoopActor* actor);
+  void update(const UpdateInput& input);
   void unwatch(int fd);
 
   // Keeps an object alive until the end of the loop iteration so a callback may destroy it safely.

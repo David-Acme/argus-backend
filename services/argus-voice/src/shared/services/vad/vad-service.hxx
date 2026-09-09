@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <memory>
 #include <onnxruntime_cxx_api.h>
+#include <optional>
 #include <shared/wrapper/audio/sample-ring.hxx>
 #include <vector>
 
@@ -27,6 +28,12 @@ struct VadTurn
   float meanProb{0.0F};
 };
 
+struct VadProcessInput
+{
+  const float* samples;
+  int count{0};
+};
+
 class VadService
 {
 public:
@@ -37,7 +44,7 @@ public:
   VadService(const VadService&) = delete;
   VadService& operator=(const VadService&) = delete;
 
-  bool process(const float* samples, int count, VadTurn& outTurn);
+  std::optional<VadTurn> process(const VadProcessInput& input);
 
   bool inSpeech() const;
 

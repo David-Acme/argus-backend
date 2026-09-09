@@ -7,8 +7,8 @@
 
 namespace tunnel
 {
-TunnelMux::TunnelMux(PollLoop& loop, Limits limits, MuxDelegate* delegate)
-    : loop_(loop), limits_(limits), delegate_(delegate)
+TunnelMux::TunnelMux(const Deps& deps)
+    : loop_(deps.loop), limits_(deps.limits), delegate_(deps.delegate)
 {
 }
 
@@ -29,7 +29,7 @@ void TunnelMux::adoptHome(const TcpPeer::Ptr& peer)
   homeReadPaused_ = false;
   TcpPeer::Callbacks callbacks;
   callbacks.onRead = [this](TcpPeer&, const char* data, size_t size) {
-    handleHomeRead(*homePeer_, data, size);
+    handleHomeRead({.data = data, .size = size});
   };
   callbacks.onEof = [this](TcpPeer&) {
     if (homePeer_ && !homePeer_->closed())
@@ -42,8 +42,10 @@ void TunnelMux::adoptHome(const TcpPeer::Ptr& peer)
   };
   peer->setCallbacks(std::move(callbacks));
   if (delegate_->validatesAuth())
-    sendFrameToHome(FrameType::Challenge, 0, authChallenge_.data(),
-                    authChallenge_.size());
+    sendFrameToHome({.type = FrameType::Challenge,
+                        .streamId = 0,
+                        .payload = authChallenge_.data(),
+                        .size = authChallenge_.size()});
   const auto now = Clock::now();
   attachedAt_ = now;
   lastFrameAt_ = now;
@@ -55,7 +57,10 @@ void TunnelMux::sendAuth()
   if (!homePeer_ || authChallenge_.empty())
     return;
   const std::string mac = authMac(delegate_->authSecret(), authChallenge_);
-  sendFrameToHome(FrameType::Auth, 0, mac.data(), mac.size());
+  sendFrameToHome({.type = FrameType::Auth,
+                      .streamId = 0,
+                      .payload = mac.data(),
+                      .size = mac.size()});
 }
 
 uint32_t TunnelMux::openRemote()
@@ -68,7 +73,10 @@ uint32_t TunnelMux::openRemote()
   Stream& stream = streams_[id];
   stream.id = id;
   stream.lastActivity = Clock::now();
-  sendFrameToHome(FrameType::Open, id, nullptr, 0);
+  sendFrameToHome({.type = FrameType::Open,
+                      .streamId = id,
+                      .payload = nullptr,
+                      .size = 0});
   return id;
 }
 
@@ -83,7 +91,7 @@ bool TunnelMux::openLocal(uint32_t streamId, const TcpPeer::Ptr& peer)
                                       size_t size) {
     Stream* target = findStream(streamId);
     if (target)
-      handleLocalRead(*target, data, size);
+      handleLocalRead({.stream = *target, .data = data, .size = size});
   };
   callbacks.onEof = [this, streamId](TcpPeer&) {
     Stream* target = findStream(streamId);
@@ -142,7 +150,10 @@ void TunnelMux::sendPing()
 {
   if (!homePeer_)
     return;
-  sendFrameToHome(FrameType::Ping, 0, nullptr, 0);
+  sendFrameToHome({.type = FrameType::Ping,
+                      .streamId = 0,
+                      .payload = nullptr,
+                      .size = 0});
 }
 
 bool TunnelMux::sendPush(const std::string& payload)
@@ -150,7 +161,10 @@ bool TunnelMux::sendPush(const std::string& payload)
   if (!homePeer_ || !homeActive_ || payload.empty() ||
       payload.size() > kMaxPayload)
     return false;
-  sendFrameToHome(FrameType::Push, 0, payload.data(), payload.size());
+  sendFrameToHome({.type = FrameType::Push,
+                      .streamId = 0,
+                      .payload = payload.data(),
+                      .size = payload.size()});
   return true;
 }
 
@@ -171,9 +185,9 @@ void TunnelMux::sweep()
     closeStream(id, CloseReason::IdleTimeout);
 }
 
-void TunnelMux::handleHomeRead(TcpPeer&, const char* data, size_t size)
+void TunnelMux::handleHomeRead(const HomeReadInput& input)
 {
-  parser_.feed(data, size);
+  parser_.feed(input.data, input.size);
   if (parser_.failed()) {
     LOG_WARN << "argus-tunnel: home link frame desync; dropping link";
     dropLink();
@@ -216,10 +230,16 @@ void TunnelMux::dispatchFrame(Frame frame)
         homeActive_ = true;
         const std::string proof =
             relayAuthMac(delegate_->authSecret(), authChallenge_);
-        sendFrameToHome(FrameType::AuthOk, 0, proof.data(), proof.size());
+        sendFrameToHome({.type = FrameType::AuthOk,
+                      .streamId = 0,
+                      .payload = proof.data(),
+                      .size = proof.size()});
         delegate_->onAuthAccepted();
       } else {
-        sendFrameToHome(FrameType::AuthFail, 0, nullptr, 0);
+        sendFrameToHome({.type = FrameType::AuthFail,
+                      .streamId = 0,
+                      .payload = nullptr,
+                      .size = 0});
         dropLink();
       }
     } else {
@@ -272,8 +292,10 @@ void TunnelMux::dispatchFrame(Frame frame)
     }
     if (static_cast<int>(streams_.size()) >= limits_.maxStreams) {
       const CloseReason busy = CloseReason::Busy;
-      sendFrameToHome(FrameType::Close, frame.streamId,
-                      reinterpret_cast<const char*>(&busy), 1);
+      sendFrameToHome({.type = FrameType::Close,
+                       .streamId = frame.streamId,
+                       .payload = reinterpret_cast<const char*>(&busy),
+                       .size = 1});
       break;
     }
     {
@@ -320,7 +342,10 @@ void TunnelMux::dispatchFrame(Frame frame)
     break;
   }
   case FrameType::Ping:
-    sendFrameToHome(FrameType::Pong, 0, nullptr, 0);
+    sendFrameToHome({.type = FrameType::Pong,
+                      .streamId = 0,
+                      .payload = nullptr,
+                      .size = 0});
     break;
   case FrameType::Pong:
     break;
@@ -332,15 +357,16 @@ void TunnelMux::dispatchFrame(Frame frame)
   }
 }
 
-void TunnelMux::handleLocalRead(Stream& stream, const char* data, size_t size)
+void TunnelMux::handleLocalRead(const LocalReadInput& input)
 {
+  Stream& stream = input.stream;
   if (!homeActive_ || !homePeer_ || homePeer_->closed()) {
     closeStream(stream.id, CloseReason::Error);
     return;
   }
   stream.lastActivity = Clock::now();
-  stream.pendingToHome.append(data, size);
-  globalPendingToHome_ += size;
+  stream.pendingToHome.append(input.data, input.size);
+  globalPendingToHome_ += input.size;
   if (stream.pendingToHome.size() >= limits_.streamPendingCap &&
       !stream.localReadPaused && stream.local) {
     stream.localReadPaused = true;
@@ -362,8 +388,10 @@ void TunnelMux::flushToHome(Stream& stream)
     return;
   while (!stream.pendingToHome.empty() && !homePeer_->congested()) {
     const size_t chunk = std::min(stream.pendingToHome.size(), kDataFrameCap);
-    sendFrameToHome(FrameType::Data, stream.id, stream.pendingToHome.data(),
-                    chunk);
+    sendFrameToHome({.type = FrameType::Data,
+                     .streamId = stream.id,
+                     .payload = stream.pendingToHome.data(),
+                     .size = chunk});
     stream.pendingToHome.erase(0, chunk);
     globalPendingToHome_ -= chunk;
   }
@@ -422,12 +450,15 @@ void TunnelMux::resumeHomeRead()
   }
 }
 
-void TunnelMux::sendFrameToHome(FrameType type, uint32_t streamId,
-                                const char* payload, size_t size)
+void TunnelMux::sendFrameToHome(const FrameToHomeInput& input)
 {
   if (!homePeer_ || homePeer_->closed())
     return;
-  homePeer_->send(encodeFrame(type, streamId, payload, size));
+  homePeer_->send(encodeFrame(
+      {.type = input.type,
+       .streamId = input.streamId,
+       .payload = input.payload,
+       .size = input.size}));
 }
 
 void TunnelMux::closeLocal(Stream& stream, CloseReason reason)
@@ -438,8 +469,10 @@ void TunnelMux::closeLocal(Stream& stream, CloseReason reason)
   globalPendingToHome_ -= moved.pendingToHome.size();
   globalPendingToLocal_ -= moved.pendingToLocal.size();
   if (homeActive_)
-    sendFrameToHome(FrameType::Close, id,
-                    reinterpret_cast<const char*>(&reason), 1);
+    sendFrameToHome({.type = FrameType::Close,
+                     .streamId = id,
+                     .payload = reinterpret_cast<const char*>(&reason),
+                     .size = 1});
   if (moved.local)
     moved.local->close();
   resumeHomeRead();

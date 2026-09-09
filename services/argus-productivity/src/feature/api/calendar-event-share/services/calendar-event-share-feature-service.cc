@@ -4,10 +4,11 @@
 #include <trantor/utils/Logger.h>
 #include <shared/access/role-access.hxx>
 
-void CalendarEventShareFeatureService::emitMembership(SyncOperation operation,
-                                         const CalendarEventShareSchema& row,
-                                         int64_t ownerId) const
+void CalendarEventShareFeatureService::emitMembership(
+    const EmitMembershipInput& input) const
 {
+  const SyncOperation operation = input.operation;
+  const CalendarEventShareSchema& row = input.row;
   SocketEmitDto body;
   body.operation = operation;
   body.option = TableName::CalendarEventShare;
@@ -25,14 +26,14 @@ void CalendarEventShareFeatureService::emitMembership(SyncOperation operation,
     LOG_WARN << "user change sink not installed; drop calendar event share membership emit";
     return;
   }
-  sink->emitUsers({ownerId, row.userId}, body);
+  sink->emitUsers({input.ownerId, row.userId}, body);
 }
 
-drogon::Task<void> CalendarEventShareFeatureService::emitParent(SyncOperation operation,
-                                                   int64_t parentId,
-                                                   int64_t userId) const
+drogon::Task<void> CalendarEventShareFeatureService::emitParent(
+    const EmitParentInput& input) const
 {
-  const auto parent = co_await parentRepository_.findById(parentId);
+  const SyncOperation operation = input.operation;
+  const auto parent = co_await parentRepository_.findById(input.parentId);
   if (!parent)
     co_return;
 
@@ -53,7 +54,7 @@ drogon::Task<void> CalendarEventShareFeatureService::emitParent(SyncOperation op
     LOG_WARN << "user change sink not installed; drop calendar event share parent emit";
     co_return;
   }
-  sink->emitUser(userId, body);
+  sink->emitUser(input.userId, body);
   co_return;
 }
 
@@ -95,25 +96,28 @@ CalendarEventShareFeatureService::create(const CreateCalendarEventShareDto& body
       .userId = body.userId,
       .access = access,
   });
-  emitMembership(SyncOperation::Add, row, parent->ownerId);
-  co_await emitParent(SyncOperation::Add, body.calendarEventId, body.userId);
+  emitMembership({.operation = SyncOperation::Add,
+                  .row = row,
+                  .ownerId = parent->ownerId});
+  co_await emitParent({.operation = SyncOperation::Add,
+                       .parentId = body.calendarEventId,
+                       .userId = body.userId});
   co_return {.row = row};
 }
 
 drogon::Task<CalendarEventShareResult>
-CalendarEventShareFeatureService::update(int64_t id, const UpdateCalendarEventShareDto& body,
-                            int64_t actorId) const
+CalendarEventShareFeatureService::update(const UpdateInput& input) const
 {
-  const auto existing = co_await repository_.findById(id);
+  const auto existing = co_await repository_.findById(input.id);
   if (!existing)
     co_return {.error = MembershipError::ParentNotFound, .row = std::nullopt};
 
   const auto parent = co_await parentRepository_.findById(existing->calendarEventId);
-  if (!parent || parent->ownerId != actorId)
+  if (!parent || parent->ownerId != input.actorId)
     co_return {.error = MembershipError::ParentNotFound, .row = std::nullopt};
 
   const auto row = co_await repository_.updateAccess(
-      id, shareAccessFromString(body.access));
+      input.id, shareAccessFromString(input.body.access));
   if (row.id == 0)
     co_return {.error = MembershipError::ParentNotFound, .row = std::nullopt};
   if (const auto* sink = user_change::getProductivitySink())
@@ -144,8 +148,11 @@ drogon::Task<bool> CalendarEventShareFeatureService::remove(int64_t id,
   if (!removed)
     co_return false;
 
-  emitMembership(SyncOperation::Delete, *existing, parent->ownerId);
-  co_await emitParent(SyncOperation::Delete, existing->calendarEventId,
-                      existing->userId);
+  emitMembership({.operation = SyncOperation::Delete,
+                  .row = *existing,
+                  .ownerId = parent->ownerId});
+  co_await emitParent({.operation = SyncOperation::Delete,
+                       .parentId = existing->calendarEventId,
+                       .userId = existing->userId});
   co_return true;
 }

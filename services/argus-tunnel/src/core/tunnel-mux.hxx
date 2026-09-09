@@ -57,7 +57,14 @@ public:
     int maxStreams{256};
   };
 
-  TunnelMux(PollLoop& loop, Limits limits, MuxDelegate* delegate);
+  struct Deps
+  {
+    PollLoop& loop;
+    Limits limits;
+    MuxDelegate* delegate;
+  };
+
+  explicit TunnelMux(const Deps& deps);
 
   // Takes ownership of the home-link socket (accepted on the relay, connected on the client).
   void adoptHome(const TcpPeer::Ptr& peer);
@@ -84,20 +91,40 @@ public:
   }
 
 private:
+  struct HomeReadInput
+  {
+    const char* data;
+    size_t size{0};
+  };
+
+  struct LocalReadInput
+  {
+    Stream& stream;
+    const char* data;
+    size_t size{0};
+  };
+
+  struct FrameToHomeInput
+  {
+    FrameType type{};
+    uint32_t streamId{0};
+    const char* payload;
+    size_t size{0};
+  };
+
   Stream* findStream(uint32_t streamId);
-  void handleHomeRead(TcpPeer& peer, const char* data, size_t size);
+  void handleHomeRead(const HomeReadInput& input);
   void handleHomeDrained(TcpPeer& peer);
   void dispatchFrame(Frame frame);
   void pumpHomeFrames();
-  void handleLocalRead(Stream& stream, const char* data, size_t size);
+  void handleLocalRead(const LocalReadInput& input);
   void handleLocalEof(Stream& stream);
   void flushToHome(Stream& stream);
   void flushToLocal(Stream& stream);
   void pauseAllLocalReads();
   void resumeLocalReads();
   void resumeHomeRead();
-  void sendFrameToHome(FrameType type, uint32_t streamId, const char* payload,
-                       size_t size);
+  void sendFrameToHome(const FrameToHomeInput& input);
   void closeLocal(Stream& stream, CloseReason reason);
 
   PollLoop& loop_;

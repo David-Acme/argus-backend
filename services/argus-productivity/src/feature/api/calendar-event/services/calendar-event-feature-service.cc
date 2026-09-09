@@ -64,24 +64,22 @@ CalendarEventFeatureService::create(const CreateCalendarEventDto& body,
 }
 
 drogon::Task<std::optional<CalendarEventSchema>>
-CalendarEventFeatureService::update(int64_t id,
-                                    const UpdateCalendarEventDto& body,
-                                    int64_t actorId) const
+CalendarEventFeatureService::update(const UpdateInput& input) const
 {
-  const auto existing = co_await repository_.findById(id);
-  if (!existing || !co_await canEdit(*existing, actorId))
+  const auto existing = co_await repository_.findById(input.id);
+  if (!existing || !co_await canEdit(*existing, input.actorId))
     co_return std::nullopt;
 
-  const auto row = co_await repository_.update(id, {
-      .title = body.title,
-      .description = body.description,
-      .location = body.location,
-      .color = body.color,
-      .startsAt = body.startsAt,
-      .endsAt = body.endsAt,
-      .isAllDay = body.isAllDay,
-      .recurrenceRule = body.recurrenceRule,
-      .projectId = body.projectId,
+  const auto row = co_await repository_.update(input.id, {
+      .title = input.body.title,
+      .description = input.body.description,
+      .location = input.body.location,
+      .color = input.body.color,
+      .startsAt = input.body.startsAt,
+      .endsAt = input.body.endsAt,
+      .isAllDay = input.body.isAllDay,
+      .recurrenceRule = input.body.recurrenceRule,
+      .projectId = input.body.projectId,
   });
   if (row.id == 0)
     co_return std::nullopt;

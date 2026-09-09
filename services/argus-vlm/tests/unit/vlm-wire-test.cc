@@ -52,27 +52,36 @@ std::string toLower(std::string value)
   return value;
 }
 
-HttpReply request(int port, const std::string& method,
-                  const std::string& path, const std::string& body,
-                  const std::string& contentType = "")
+struct HttpRequestInput
+{
+  int port{0};
+  const std::string& method;
+  const std::string& path;
+  const std::string& body;
+  const std::string& contentType;
+};
+
+HttpReply request(const HttpRequestInput& input)
 {
   const int fd = ::socket(AF_INET, SOCK_STREAM, 0);
   REQUIRE(fd >= 0);
   sockaddr_in addr{};
   addr.sin_family = AF_INET;
-  addr.sin_port = htons(static_cast<uint16_t>(port));
+  addr.sin_port = htons(static_cast<uint16_t>(input.port));
   addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
   REQUIRE(::connect(fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) ==
           0);
 
-  std::string wire = method + " " + path + " HTTP/1.1\r\nHost: 127.0.0.1\r\n";
-  if (!body.empty() || !contentType.empty()) {
+  std::string wire =
+      input.method + " " + input.path + " HTTP/1.1\r\nHost: 127.0.0.1\r\n";
+  if (!input.body.empty() || !input.contentType.empty()) {
     wire += "Content-Type: " +
-            (contentType.empty() ? std::string("application/octet-stream")
-                                 : contentType) +
-            "\r\nContent-Length: " + std::to_string(body.size()) + "\r\n";
+            (input.contentType.empty() ? std::string("application/octet-stream")
+                                       : input.contentType) +
+            "\r\nContent-Length: " + std::to_string(input.body.size()) +
+            "\r\n";
   }
-  wire += "Connection: close\r\n\r\n" + body;
+  wire += "Connection: close\r\n\r\n" + input.body;
 
   size_t sent = 0;
   while (sent < wire.size()) {
@@ -130,20 +139,29 @@ Json::Value envelope(const HttpReply& reply)
   return json;
 }
 
-std::string postDescribe(int port, const std::string& imageB64,
-                         const std::string& prompt,
-                         const std::string& cameraId = {})
+struct PostDescribeInput
+{
+  int port{0};
+  const std::string& imageB64;
+  const std::string& prompt;
+  const std::string& cameraId;
+};
+
+std::string postDescribe(const PostDescribeInput& input)
 {
   Json::Value body(Json::objectValue);
-  body["image_b64"] = imageB64;
-  if (!prompt.empty())
-    body["prompt"] = prompt;
-  if (!cameraId.empty())
-    body["camera_id"] = cameraId;
+  body["image_b64"] = input.imageB64;
+  if (!input.prompt.empty())
+    body["prompt"] = input.prompt;
+  if (!input.cameraId.empty())
+    body["camera_id"] = input.cameraId;
   Json::StreamWriterBuilder builder;
   builder["indentation"] = "";
-  return request(port, "POST", "/vlm/v1/describe",
-                 Json::writeString(builder, body), "application/json")
+  return request({.port = input.port,
+                  .method = "POST",
+                  .path = "/vlm/v1/describe",
+                  .body = Json::writeString(builder, body),
+                  .contentType = "application/json"})
       .body;
 }
 
@@ -233,11 +251,19 @@ TEST_CASE("the argus-vlm internal wire serves the vision capacity")
   const int port = listeners.front().toPort();
   REQUIRE(port > 0);
 
-  const auto health = request(port, "GET", "/health", "");
+  const auto health = request({.port = port,
+           .method = "GET",
+           .path = "/health",
+           .body = "",
+           .contentType = ""});
   CHECK(health.status == 200);
   CHECK(envelope(health)["info"]["service"] == "argus-vlm");
 
-  const auto config = request(port, "GET", "/vlm/v1/config", "");
+  const auto config = request({.port = port,
+           .method = "GET",
+           .path = "/vlm/v1/config",
+           .body = "",
+           .contentType = ""});
   const Json::Value configJson = envelope(config);
   CHECK(config.status == 200);
   CHECK(configJson["info"]["loaded"].asBool());
@@ -251,7 +277,10 @@ TEST_CASE("the argus-vlm internal wire serves the vision capacity")
 
   const auto t0 = std::chrono::steady_clock::now();
   const std::string wireBody =
-      postDescribe(port, imageB64, personPrompt, "cam-1");
+      postDescribe({.port = port,
+                .imageB64 = imageB64,
+                .prompt = personPrompt,
+                .cameraId = "cam-1"});
   const auto wireMs =
       std::chrono::duration<double, std::milli>(
           std::chrono::steady_clock::now() - t0)
@@ -271,19 +300,22 @@ TEST_CASE("the argus-vlm internal wire serves the vision capacity")
                         const_cast<char*>(jpegBytes.data()));
   const cv::Mat decoded = cv::imdecode(encoded, cv::IMREAD_COLOR);
   REQUIRE_FALSE(decoded.empty());
-  const std::string directCaption =
-      vlm->service().describeMat(decoded, personPrompt, 0);
+  const std::string directCaption = vlm->service().describeMat(
+      {.bgr = decoded, .prompt = personPrompt, .maxTokens = 0});
   MESSAGE("direct caption: \"", directCaption, "\"");
   CHECK(directCaption == wireCaption);
 
   const std::string colorsPrompt = "Describe the dominant colors in this image.";
-  const std::string engineCaption =
-      vlm->service().describeMat(decoded, colorsPrompt, 0);
+  const std::string engineCaption = vlm->service().describeMat(
+      {.bgr = decoded, .prompt = colorsPrompt, .maxTokens = 0});
   MESSAGE("engine caption (cache-busted): \"", engineCaption, "\"");
   CHECK_FALSE(engineCaption.empty());
 
   const auto t1 = std::chrono::steady_clock::now();
-  const std::string cachedBody = postDescribe(port, imageB64, personPrompt, "cam-1");
+  const std::string cachedBody = postDescribe({.port = port,
+                .imageB64 = imageB64,
+                .prompt = personPrompt,
+                .cameraId = "cam-1"});
   const auto cachedMs =
       std::chrono::duration<double, std::milli>(
           std::chrono::steady_clock::now() - t1)
@@ -293,7 +325,10 @@ TEST_CASE("the argus-vlm internal wire serves the vision capacity")
   CHECK(cachedJson["info"]["caption"].asString() == wireCaption);
   MESSAGE("cached repeat: ", static_cast<int>(cachedMs), " ms");
 
-  const std::string defaultBody = postDescribe(port, imageB64, "");
+  const std::string defaultBody = postDescribe({.port = port,
+                .imageB64 = imageB64,
+                .prompt = "",
+                .cameraId = ""});
   Json::Value defaultJson;
   REQUIRE(reader.parse(defaultBody, defaultJson));
   CHECK(defaultJson["status"].asInt() == 200);
@@ -302,12 +337,19 @@ TEST_CASE("the argus-vlm internal wire serves the vision capacity")
   CHECK_FALSE(defaultCaption.empty());
 
   const auto notJson =
-      request(port, "POST", "/vlm/v1/describe", "not json", "text/plain");
+      request({.port = port,
+           .method = "POST",
+           .path = "/vlm/v1/describe",
+           .body = "not json",
+           .contentType = "text/plain"});
   CHECK(notJson.status == 400);
   CHECK(envelope(notJson)["errors"]["code"] == "BAD_REQUEST");
 
   const std::string missingImage =
-      postDescribe(port, "", personPrompt);
+      postDescribe({.port = port,
+                .imageB64 = "",
+                .prompt = personPrompt,
+                .cameraId = ""});
   Json::Value missingJson;
   REQUIRE(reader.parse(missingImage, missingJson));
   CHECK(missingJson["status"].asInt() == 422);
@@ -315,29 +357,46 @@ TEST_CASE("the argus-vlm internal wire serves the vision capacity")
   CHECK(missingJson["errors"]["fields"].isMember("imageB64"));
 
   const std::string badB64 =
-      postDescribe(port, "not base64 !!!", personPrompt);
+      postDescribe({.port = port,
+                .imageB64 = "not base64 !!!",
+                .prompt = personPrompt,
+                .cameraId = ""});
   Json::Value badB64Json;
   REQUIRE(reader.parse(badB64, badB64Json));
   CHECK(badB64Json["status"].asInt() == 422);
   CHECK(badB64Json["errors"]["fields"].isMember("imageB64"));
 
   const std::string notAnImage =
-      postDescribe(port, drogon::utils::base64Encode("hello"), personPrompt);
+      postDescribe({.port = port,
+                .imageB64 = drogon::utils::base64Encode("hello"),
+                .prompt = personPrompt,
+                .cameraId = ""});
   Json::Value notAnImageJson;
   REQUIRE(reader.parse(notAnImage, notAnImageJson));
   CHECK(notAnImageJson["status"].asInt() == 422);
   CHECK(notAnImageJson["errors"]["fields"].isMember("image_b64"));
 
-  const auto notFound = request(port, "GET", "/vlm/v1/missing", "");
+  const auto notFound = request({.port = port,
+           .method = "GET",
+           .path = "/vlm/v1/missing",
+           .body = "",
+           .contentType = ""});
   CHECK(notFound.status == 404);
   CHECK(envelope(notFound)["errors"]["code"] == "NOT_FOUND");
 
-  const auto notAllowed = request(port, "POST", "/vlm/v1/config", "");
+  const auto notAllowed = request({.port = port,
+           .method = "POST",
+           .path = "/vlm/v1/config",
+           .body = "",
+           .contentType = ""});
   CHECK(notAllowed.status == 405);
   CHECK(envelope(notAllowed)["errors"]["code"] == "METHOD_NOT_ALLOWED");
 
   vlm->shutdownEngine();
-  const auto down = postDescribe(port, imageB64, personPrompt);
+  const auto down = postDescribe({.port = port,
+                .imageB64 = imageB64,
+                .prompt = personPrompt,
+                .cameraId = ""});
   Json::Value downJson;
   REQUIRE(reader.parse(down, downJson));
   CHECK(downJson["status"].asInt() == 503);

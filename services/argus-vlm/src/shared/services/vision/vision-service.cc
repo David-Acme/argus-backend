@@ -26,7 +26,7 @@ constexpr const char* kFallbackPrompt = "Can you describe this image?";
 uint64_t hashMatAndPrompt(const cv::Mat& m, const std::string& prompt)
 {
   return visionHashBytesAndPrompt(
-      m.data, static_cast<size_t>(m.total()) * m.elemSize(), prompt);
+      {.data = m.data, .len = static_cast<size_t>(m.total()) * m.elemSize(), .prompt = prompt});
 }
 
 void mtmdDeleter(mtmd_context* ctx)
@@ -216,9 +216,9 @@ cv::Mat VisionService::fitToBudget(const cv::Mat& src, bool srcIsBgr)
   return rgb;
 }
 
-std::string VisionService::run(const cv::Mat& src, bool srcIsBgr,
-                               const std::string& promptIn, int32_t maxTokensIn)
+std::string VisionService::run(const VisionRunInput& input)
 {
+  const cv::Mat& src = input.src;
   if (!loaded_) {
     LOG_WARN << "Vision: service not loaded";
     return "";
@@ -229,10 +229,12 @@ std::string VisionService::run(const cv::Mat& src, bool srcIsBgr,
   std::lock_guard<std::mutex> lock(mutex_);
   cancelled_.store(false, std::memory_order_relaxed);
 
-  const std::string question = promptIn.empty() ? defaultPrompt_ : promptIn;
-  const int32_t maxTokens = maxTokensIn > 0 ? maxTokensIn : defaultMaxTokens_;
+  const std::string question =
+      input.prompt.empty() ? defaultPrompt_ : input.prompt;
+  const int32_t maxTokens =
+      input.maxTokens > 0 ? input.maxTokens : defaultMaxTokens_;
 
-  const cv::Mat rgb = fitToBudget(src, srcIsBgr);
+  const cv::Mat rgb = fitToBudget(src, input.srcIsBgr);
   const uint64_t key = hashMatAndPrompt(rgb, question);
   if (const std::string* hit = cacheLookup(key))
     return *hit;
@@ -332,14 +334,18 @@ std::string VisionService::describe(const VisionRequest& req)
 
   const cv::Mat rgb(static_cast<int>(req.height), static_cast<int>(req.width),
                     CV_8UC3, const_cast<unsigned char*>(req.imageRgb.data()));
-  return run(rgb, false, req.prompt, req.maxTokens);
+  return run({.src = rgb,
+              .srcIsBgr = false,
+              .prompt = req.prompt,
+              .maxTokens = req.maxTokens});
 }
 
-std::string VisionService::describeMat(const cv::Mat& bgr,
-                                       const std::string& prompt,
-                                       int32_t maxTokens)
+std::string VisionService::describeMat(const VisionDescribeMatInput& input)
 {
-  return run(bgr, true, prompt, maxTokens);
+  return run({.src = input.bgr,
+              .srcIsBgr = true,
+              .prompt = input.prompt,
+              .maxTokens = input.maxTokens});
 }
 
 drogon::Task<std::string> VisionService::describeAsync(const VisionRequest& req)
@@ -349,11 +355,8 @@ drogon::Task<std::string> VisionService::describeAsync(const VisionRequest& req)
 }
 
 drogon::Task<std::string>
-VisionService::describeMatAsync(const cv::Mat& bgr, const std::string& prompt,
-                                int32_t maxTokens)
+VisionService::describeMatAsync(const VisionDescribeMatInput& input)
 {
   co_return co_await BlockingTask<std::string>(
-      [this, bgr, prompt, maxTokens]() {
-        return describeMat(bgr, prompt, maxTokens);
-      });
+      [this, input]() { return describeMat(input); });
 }

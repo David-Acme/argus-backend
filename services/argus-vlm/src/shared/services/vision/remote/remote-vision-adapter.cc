@@ -20,8 +20,9 @@ uint64_t RemoteVisionServiceAdapter::cacheKey(std::string_view jpeg,
                                               const std::string& prompt)
 {
   return visionHashBytesAndPrompt(
-      reinterpret_cast<const unsigned char*>(jpeg.data()), jpeg.size(),
-      prompt);
+      {.data = reinterpret_cast<const unsigned char*>(jpeg.data()),
+       .len = jpeg.size(),
+       .prompt = prompt});
 }
 
 bool RemoteVisionServiceAdapter::initialize()

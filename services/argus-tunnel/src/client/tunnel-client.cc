@@ -8,7 +8,7 @@ namespace tunnel
 {
 TunnelClient::TunnelClient(PollLoop& loop, ClientOptions options)
     : loop_(loop), options_(std::move(options)),
-      mux_(loop, options_.limits, this)
+      mux_({.loop = loop, .limits = options_.limits, .delegate = this})
 {
 }
 

@@ -72,11 +72,16 @@ struct VoiceSessionTestAccess
     return service.sessions_.at(&sink);
   }
 
-  static void runTurn(VoiceSessionService& service,
-                      VoiceSessionService::Session& session,
-                      const std::vector<float>& samples)
+  struct RunTurnInput
   {
-    service.processTurn(session, samples);
+    VoiceSessionService& service;
+    VoiceSessionService::Session& session;
+    const std::vector<float>& samples;
+  };
+
+  static void runTurn(const RunTurnInput& input)
+  {
+    input.service.processTurn(input.session, input.samples);
   }
 
   static const IVoiceStt& sttOf(VoiceSessionService& service)
@@ -170,7 +175,7 @@ TEST_CASE("A turn runs STT, LLM and TTS against the injected fakes")
   const size_t chunksBefore = sink.of(true).size();
   const std::vector<float> samples(1600, 0.1F);
   auto sess = VoiceSessionTestAccess::sessionOf(session, sink);
-  VoiceSessionTestAccess::runTurn(session, *sess, samples);
+  VoiceSessionTestAccess::runTurn({.service = session, .session = *sess, .samples = samples});
 
   CHECK(stt.transcribeCalls == 1);
   argus::voice::v1::ServerFrame sttFrame;
@@ -222,14 +227,14 @@ TEST_CASE("The spoken name is written once through the identity seam")
 
   const std::vector<float> samples(1600, 0.1F);
   auto sess = VoiceSessionTestAccess::sessionOf(session, sink);
-  VoiceSessionTestAccess::runTurn(session, *sess, samples);
+  VoiceSessionTestAccess::runTurn({.service = session, .session = *sess, .samples = samples});
 
   REQUIRE(identity.writes.size() == 1);
   CHECK(identity.writes[0].userId == 7);
   CHECK(identity.writes[0].name == "Juan");
   CHECK(identity.writes[0].role == "owner");
 
-  VoiceSessionTestAccess::runTurn(session, *sess, samples);
+  VoiceSessionTestAccess::runTurn({.service = session, .session = *sess, .samples = samples});
   CHECK(identity.writes.size() == 1);
 
   session.stop(sink);
