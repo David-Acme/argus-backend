@@ -169,12 +169,20 @@ if(DOCTEST_INCLUDE_DIRS)
         INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${DOCTEST_INCLUDE_DIRS}")
 endif()
 
-# Test registration is standalone-only so the root project's ctest stays at
-# its 38 backend cases.
+# The suites opt back into the default build: their folder is added
+# EXCLUDE_FROM_ALL, and a registered test whose binary never builds is a
+# ctest "Not Run", not a pass.
+set_target_properties(gateway-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+set_target_properties(audit-sync-read-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+set_target_properties(camera-notifier-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+set_target_properties(push-intent-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+
+# Registered unconditionally: these ran in no automated circuit while they were
+# standalone-only, because nothing configures the standalone tree.
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     enable_testing()
-    add_test(NAME gateway-test COMMAND gateway-test)
-    add_test(NAME audit-sync-read-test COMMAND audit-sync-read-test)
-    add_test(NAME camera-notifier-test COMMAND camera-notifier-test)
-    add_test(NAME push-intent-test COMMAND push-intent-test)
 endif()
+add_test(NAME gateway-test COMMAND gateway-test)
+add_test(NAME audit-sync-read-test COMMAND audit-sync-read-test)
+add_test(NAME camera-notifier-test COMMAND camera-notifier-test)
+add_test(NAME push-intent-test COMMAND push-intent-test)

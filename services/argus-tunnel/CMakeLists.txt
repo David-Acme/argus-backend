@@ -100,15 +100,26 @@ target_include_directories(tunnel-health-test PRIVATE
 target_link_libraries(tunnel-health-test PRIVATE tunnel-core doctest::doctest)
 target_compile_options(tunnel-health-test PRIVATE -Wall -Wextra)
 
-# Test registration is standalone-only so the root project's ctest stays at
-# its 38 backend cases.
+# The suites opt back into the default build: their folder is added
+# EXCLUDE_FROM_ALL, and a registered test whose binary never builds is a
+# ctest "Not Run", not a pass.
+set_target_properties(framing-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+set_target_properties(tunnel-integration-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+set_target_properties(tunnel-reconnect-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+set_target_properties(tunnel-negauth-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+set_target_properties(service-config-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+set_target_properties(tunnel-push-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+set_target_properties(tunnel-health-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+
+# Registered unconditionally: these ran in no automated circuit while they were
+# standalone-only, because nothing configures the standalone tree.
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     enable_testing()
-    add_test(NAME framing-test COMMAND framing-test)
-    add_test(NAME tunnel-integration-test COMMAND tunnel-integration-test)
-    add_test(NAME tunnel-reconnect-test COMMAND tunnel-reconnect-test)
-    add_test(NAME tunnel-negauth-test COMMAND tunnel-negauth-test)
-    add_test(NAME service-config-test COMMAND service-config-test)
-    add_test(NAME tunnel-push-test COMMAND tunnel-push-test)
-    add_test(NAME tunnel-health-test COMMAND tunnel-health-test)
 endif()
+add_test(NAME framing-test COMMAND framing-test)
+add_test(NAME tunnel-integration-test COMMAND tunnel-integration-test)
+add_test(NAME tunnel-reconnect-test COMMAND tunnel-reconnect-test)
+add_test(NAME tunnel-negauth-test COMMAND tunnel-negauth-test)
+add_test(NAME service-config-test COMMAND service-config-test)
+add_test(NAME tunnel-push-test COMMAND tunnel-push-test)
+add_test(NAME tunnel-health-test COMMAND tunnel-health-test)
