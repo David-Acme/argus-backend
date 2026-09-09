@@ -27,6 +27,16 @@ public:
   get409Response(const std::string& message = "Conflict");
   static drogon::HttpResponsePtr
   get429Response(const std::string& message = "Too many requests");
+  static drogon::HttpResponsePtr
+  get500Response(const std::string& message = "Internal error",
+                 const std::string& errorCode = ERROR_CODE_INTERNAL_ERROR);
+  static drogon::HttpResponsePtr
+  get502Response(const std::string& message = "Upstream unreachable",
+                 const std::string& errorCode = ERROR_CODE_BAD_GATEWAY);
+  static drogon::HttpResponsePtr
+  get503Response(const std::string& message = "Service unavailable",
+                 const std::string& errorCode =
+                     ERROR_CODE_SERVICE_UNAVAILABLE);
 
   static drogon::HttpResponsePtr getRemoteNotAllowedResponse();
 
@@ -53,4 +63,7 @@ public:
       "SERVICE_UNAVAILABLE"};
   static inline const std::string ERROR_CODE_TOO_MANY_REQUESTS{
       "TOO_MANY_REQUESTS"};
+  static inline const std::string ERROR_CODE_INTERNAL_ERROR{
+      "INTERNAL_ERROR"};
+  static inline const std::string ERROR_CODE_BAD_GATEWAY{"BAD_GATEWAY"};
 };

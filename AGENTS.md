@@ -128,6 +128,9 @@ AppConfig::get403Response();
 AppConfig::get400Response("Bad request");
 AppConfig::get404Response("Path not found");
 AppConfig::get409Response("Server already paired");
+AppConfig::get500Response("...", "INTERNAL_ERROR");   // optional domain code
+AppConfig::get502Response("...", "CAMERA_UNREACHABLE");
+AppConfig::get503Response("...", "LLM_NOT_LOADED");
 ```
 
 Never call `ApiResponse::error()` directly from filters/controllers.

@@ -1,5 +1,6 @@
 #include "reverse-proxy.hxx"
 
+#include <config/app-config.hxx>
 #include <shared/wrapper/api-response/api-response.hxx>
 
 using namespace drogon;
@@ -180,8 +181,8 @@ void SimpleReverseProxy::forward(const HttpRequestPtr &req,
             {
                 // Deviation from the vendored example: a bare 500 would break
                 // the {status, info, errors} wire contract the app parses.
-                callback(ApiResponse::error(
-                    500, "INTERNAL_ERROR", "Route backend is unreachable"));
+                callback(AppConfig::get500Response(
+                    "Route backend is unreachable", "INTERNAL_ERROR"));
             }
         });
 }

@@ -3,6 +3,7 @@
 #include <llm/chat-dto.hxx>
 #include <shared/services/llm/lfm-adapter.hxx>
 #include <shared/services/tools/tool-registry.hxx>
+#include <config/app-config.hxx>
 #include <shared/wrapper/api-response/api-response.hxx>
 #include <shared/wrapper/blocking-task/blocking-task.hxx>
 
@@ -19,13 +20,13 @@ namespace
 
 drogon::HttpResponsePtr notLoaded()
 {
-  return ApiResponse::error(503, "LLM_NOT_LOADED",
-                            "LLM engine is not loaded");
+  return AppConfig::get503Response("LLM engine is not loaded",
+                                   "LLM_NOT_LOADED");
 }
 
 drogon::HttpResponsePtr badRequest()
 {
-  return ApiResponse::error(400, "BAD_REQUEST", "Body must be a JSON object");
+  return AppConfig::get400Response("Body must be a JSON object");
 }
 
 // The bench-exact framing from f8-b1 — Spanish, the tool named with its

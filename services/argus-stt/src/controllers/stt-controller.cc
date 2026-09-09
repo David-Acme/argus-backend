@@ -2,6 +2,7 @@
 
 #include <shared/services/stt/remote/stt-remote.hxx>
 #include <shared/services/stt/stt-service.hxx>
+#include <config/app-config.hxx>
 #include <shared/wrapper/api-response/api-response.hxx>
 
 #include <chrono>
@@ -42,18 +43,16 @@ SttController::transcribe(drogon::HttpRequestPtr req)
 {
   auto& stt = SttService::instance();
   if (!stt.isLoaded())
-    co_return ApiResponse::error(503, "STT_NOT_LOADED",
-                                 "Speech-to-text engine is not loaded");
+    co_return AppConfig::get503Response("Speech-to-text engine is not loaded",
+                                        "STT_NOT_LOADED");
 
   const std::string_view body = req->getBody();
   const std::string contentType =
       std::string(req->getHeader("content-type"));
   if (contentType.find(kPcmMime) == std::string::npos)
-    co_return ApiResponse::error(400, "BAD_REQUEST",
-                                 "Body must be audio/x-argus-pcm-s16");
+    co_return AppConfig::get400Response("Body must be audio/x-argus-pcm-s16");
   if (body.size() % sizeof(int16_t) != 0)
-    co_return ApiResponse::error(400, "BAD_REQUEST",
-                                 "PCM body is not int16-aligned");
+    co_return AppConfig::get400Response("PCM body is not int16-aligned");
   if (body.empty()) {
     Json::Value fields(Json::objectValue);
     fields["body"] = "empty pcm body";

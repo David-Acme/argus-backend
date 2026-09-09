@@ -59,6 +59,27 @@ drogon::HttpResponsePtr AppConfig::get429Response(const std::string& message)
   return ApiResponse::error(429, ERROR_CODE_TOO_MANY_REQUESTS, message);
 }
 
+drogon::HttpResponsePtr
+AppConfig::get500Response(const std::string& message,
+                          const std::string& errorCode)
+{
+  return ApiResponse::error(500, errorCode, message);
+}
+
+drogon::HttpResponsePtr
+AppConfig::get502Response(const std::string& message,
+                          const std::string& errorCode)
+{
+  return ApiResponse::error(502, errorCode, message);
+}
+
+drogon::HttpResponsePtr
+AppConfig::get503Response(const std::string& message,
+                          const std::string& errorCode)
+{
+  return ApiResponse::error(503, errorCode, message);
+}
+
 drogon::HttpResponsePtr AppConfig::getRemoteNotAllowedResponse()
 {
   return ApiResponse::error(403, ERROR_CODE_REMOTE_NOT_ALLOWED,

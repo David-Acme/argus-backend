@@ -11,9 +11,10 @@ drogon::HttpResponsePtr respond(const CameraControlResult& result)
   if (!result)
     return AppConfig::get404Response("Camera not found");
   if (!result->ok)
-    return ApiResponse::error(502, "CAMERA_UNREACHABLE",
-                              result->error.empty() ? "The camera refused the command"
-                                                    : result->error);
+    return AppConfig::get502Response(result->error.empty()
+                                         ? "The camera refused the command"
+                                         : result->error,
+                                     "CAMERA_UNREACHABLE");
   return ApiResponse::ok(result->data);
 }
 } // namespace

@@ -1,6 +1,7 @@
 #include "vlm-controller.hxx"
 
 #include <vlm/describe-dto.hxx>
+#include <config/app-config.hxx>
 #include <shared/wrapper/api-response/api-response.hxx>
 
 #include <drogon/drogon.h>
@@ -13,12 +14,11 @@ drogon::Task<drogon::HttpResponsePtr>
 VlmController::describe(drogon::HttpRequestPtr req)
 {
   if (!service_.isLoaded())
-    co_return ApiResponse::error(503, "VLM_NOT_LOADED",
-                                 "Vision engine is not loaded");
+    co_return AppConfig::get503Response("Vision engine is not loaded",
+                                        "VLM_NOT_LOADED");
 
   if (!req->getJsonError().empty() || !req->getJsonObject())
-    co_return ApiResponse::error(400, "BAD_REQUEST",
-                                 "Body must be a JSON object");
+    co_return AppConfig::get400Response("Body must be a JSON object");
 
   const auto body = DescribeImageDto::fromJson(*req->getJsonObject());
 

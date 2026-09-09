@@ -3,6 +3,7 @@
 #include <tts/synthesize-dto.hxx>
 
 #include <shared/services/tts/tts-service.hxx>
+#include <config/app-config.hxx>
 #include <shared/wrapper/api-response/api-response.hxx>
 
 #include <chrono>
@@ -17,8 +18,8 @@ constexpr const char* kPcmMime = "audio/x-argus-pcm-f32";
 
 drogon::HttpResponsePtr notLoaded()
 {
-  return ApiResponse::error(503, "TTS_NOT_LOADED",
-                            "Text-to-speech engine is not loaded");
+  return AppConfig::get503Response("Text-to-speech engine is not loaded",
+                                   "TTS_NOT_LOADED");
 }
 
 std::string pcmBytes(const std::vector<float>& pcm)
