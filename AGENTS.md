@@ -411,10 +411,23 @@ shared file-static behind a mutex.
   off-turn LLM polish). Facade `MemoryService`; DB via `SqliteGraph`/`VecDb`
   (mutex-serialized, prepared statements are RAII `SqliteStmt`). Embeddings:
   `multilingual-e5-small` int8 ONNX, loaded lazily. Full details in docs/CONTEXT.md.
-- **NO fastText, NO IntentService** — implicit tool activation is the LLM's
-  own tool calling, not a separate classifier. The submodule, the service and
-  `labs/` were deleted; the labelled evaluation set survives at
-  `services/argus-llm/tests/fixtures/tools/` for tool-calling accuracy.
+- **fastText as a submodule** (`third_party/fastText`, `1142dc4`) — inference
+  only, built as a static lib by `packages/argus-intent`. It backs the fast
+  tier of the intent router: rules (`argus::phrase`) decide explicit triggers,
+  fastText classifies the rest into six classes (`memory_save`,
+  `memory_recall`, `reminder_set`, `memory_forget`, `camera`, `none`), and the
+  LLM's own tool calling keeps every turn the router is not confident about.
+  The classifier picks the tool; the model only writes its arguments and the
+  prose. Operating point 0.90 / 0.10, precision-gated — a gated false `none`
+  costs one LLM round trip, a false tool call writes a fact nobody stated.
+  The model is a published artifact carried in-repo
+  (`models/intent/intent.bin`, 12.6 MB) with a configure-time SHA256 pin in
+  `packages/argus-intent/models/`; training lives OUTSIDE this repo, in the
+  sibling `intent-training/` project, and only the artifact, its card and the
+  frozen eval fixtures cross over. **Degradation is a contract**: no model on
+  disk, or a sub-threshold score, and the router abstains so tool calling runs
+  byte for byte as it did before. The labelled tool-calling evaluation set
+  stays at `services/argus-llm/tests/fixtures/tools/`.
 - **NO spdlog** — use Drogon's built-in logging (`LOG_INFO`, `LOG_WARN`, `LOG_FATAL`)
 - **NO libsodium** — auth is face-based
 - **NO ORM** — raw SQL via `DbService::client()->execSqlCoro()`
