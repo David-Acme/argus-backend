@@ -17,8 +17,7 @@ std::string modelPath()
   return configured.empty() ? kDefaultModelPath : configured;
 }
 
-// The rubric the taxonomy fixes: atemporal or recurring is a fact, a single
-// future instant is a reminder.
+// Atemporal or recurring is a fact; a single future instant is a reminder.
 bool atemporalOrRecurring(const std::string& text, const std::string& lang)
 {
   static const TemporalResolver resolver;

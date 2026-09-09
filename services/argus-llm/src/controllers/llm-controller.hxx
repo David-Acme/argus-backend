@@ -28,8 +28,7 @@ public:
 
   LfmAdapter& adapter() { return adapter_; }
 
-  // The fast tier in front of the tool loop. Always non-null: an unloaded
-  // model makes the router abstain, it does not remove it.
+  // The fast tier in front of the tool loop.
   const IntentRouter& router() const { return intentGate_.router(); }
 
   drogon::Task<drogon::HttpResponsePtr> chat(drogon::HttpRequestPtr req);

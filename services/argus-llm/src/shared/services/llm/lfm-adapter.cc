@@ -26,8 +26,7 @@ std::string jsonType(const tools::ToolArgumentSpec& spec)
   return "string";
 }
 
-// Bare pythonic tokens keep the schema's types: one that parses fully as a
-// number becomes one, so number fields (fact_id, confidence) validate.
+// Bare pythonic tokens keep the schema's types: a full number parse becomes one.
 Json::Value bareValue(const std::string& token)
 {
   try {
@@ -48,9 +47,7 @@ Json::Value bareValue(const std::string& token)
   return Json::Value(token);
 }
 
-// Model emissions trail separators into keys (`...", predicate"=` lands
-// under `", predicate"` and the argument is lost) — strip the junk so it
-// lands under its real name.
+// Model emissions trail separators into keys; strip the junk so arguments land.
 std::string trimKey(const std::string& raw)
 {
   static const std::string junk = " \t\",";
@@ -215,9 +212,7 @@ std::vector<tools::ToolCall> parseJsonCalls(const std::string& text)
   return out;
 }
 
-// One hop's prompt: the tool policy rides the caller's own system message
-// when it has one (the voice persona) instead of stacking a second system
-// block the chat template may drop.
+// One hop's prompt: the tool policy rides the caller's own system message.
 std::vector<ChatMessage>
 hopMessages(const std::vector<ChatMessage>& history, const std::string& system,
             const std::string& declarations)
@@ -375,8 +370,7 @@ std::string LfmAdapter::streamHop(const ChatRequest& request,
 namespace
 {
 
-// The triggering sentence: handlers fall back to it when the model's
-// arguments are incomplete, and the router classifies it.
+// Handlers fall back to it when the model's arguments are incomplete.
 std::string lastUserMessage(const std::vector<ChatMessage>& history)
 {
   const auto found = std::find_if(
@@ -385,11 +379,7 @@ std::string lastUserMessage(const std::vector<ChatMessage>& history)
   return found == history.rend() ? std::string() : found->content;
 }
 
-// The router picks the tool and the utterance is its only argument; handlers
-// parse it themselves (memory.remember rule-parses when the model's triple is
-// absent), which is what lets a routed turn skip the tool hop entirely.
-// memory_forget needs a fact id the router cannot know, camera has no tool in
-// this process and none asks for no tool: all three fall to the LLM tier.
+// The router picks the tool and the utterance is its only argument.
 std::optional<tools::ToolCall> routedCall(intent::ToolIntent decided,
                                           const std::string& utterance)
 {
@@ -507,8 +497,6 @@ bool LfmAdapter::toolHops(ToolHopContext ctx, const std::string& declarations)
     req.maxTokens = cap;
     req.temperature = input.toolTemperature;
     req.resetContext = output.hops == 0 && input.resetContext;
-    // The model narrates after closing a call and the narration is thrown
-    // away — every token of it is latency the turn cannot spend.
     if (!declarations.empty())
       req.stop = {kToolClose};
 
@@ -521,8 +509,7 @@ bool LfmAdapter::toolHops(ToolHopContext ctx, const std::string& declarations)
                              .count();
     history.push_back({.role = "assistant", .content = reply});
 
-    // Once a byte is on the wire the hop is prose: it opened as prose, and
-    // nothing emitted after that can be unsent.
+    // Once a byte is on the wire the hop is prose.
     const auto calls =
         streamed ? std::vector<tools::ToolCall>{} : parseToolCalls(reply);
     if (calls.empty()) {
@@ -596,8 +583,7 @@ ToolChatOutput LfmAdapter::chatWithToolsStream(
                                        ? std::string()
                                        : buildToolDeclarations(input.tools);
   if (toolHops(ctx, declarations)) {
-    // The hop held everything back (it opened like a call and was not one):
-    // nothing reached the wire, so emit the answer whole.
+    // The final hop held its tokens back to guard the call boundary.
     if (!output.emitted) {
       onToken(output.reply, false);
       onToken("", true);

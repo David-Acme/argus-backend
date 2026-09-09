@@ -29,9 +29,7 @@ Json::Value drogonConfig(const ListenerConfig& listener)
   return config;
 }
 
-// Read-only snapshot source for the catalog seeds. Opened BEFORE
-// loadConfigJson: the first sqlite3 client creation runs sqlite3_config
-// globally (Ruling BW), so it must not race Drogon's own client setup.
+// Read-only snapshot source for the catalog seeds; opened before loadConfigJson (Ruling BW).
 std::shared_ptr<drogon::orm::DbClient>
 openReadOnlySource(const char* configKey)
 {
@@ -71,11 +69,7 @@ int main()
 
   drogon::app().loadConfigJson(drogonConfig(listener));
 
-  // LLM turns are silent for their whole generation, and a whole-emitting
-  // tool loop can run minutes on CPU. Drogon's 60 s default idle-connection
-  // timeout marks such a connection mid-request and the finished response
-  // is dropped (measured: empty reply at turn end); 10 min covers a
-  // 3-hop turn on the slowest box while still reaping dead connections.
+  // A whole-emitting tool loop outruns Drogon's 60 s idle default (f8-b4).
   drogon::app().setIdleConnectionTimeout(600);
 
   drogon::app().setExceptionHandler(AppConfig::handleException);
@@ -96,8 +90,7 @@ int main()
     return 1;
   }
 
-  // The brain: the memory package hosted in process over the same engine
-  // the chat rides. One LlmService, no wire hop between loop and worker.
+  // The memory package hosted in process over the same engine the chat rides.
   InProcessMemoryChat chat(llm->service());
   MemoryService memory(VecDb::instance(), chat);
   memory.init({.deferStore = true});
@@ -108,8 +101,7 @@ int main()
     llama_backend_free();
     return 1;
   }
-  // One registry: the loop reads the singleton, so the stack must register
-  // into it, not into a private copy.
+  // The stack must register into the singleton the loop reads.
   memory.registerTools(ToolRegistry::instance());
 
   std::unique_ptr<NatsBus> bus;
@@ -129,8 +121,7 @@ int main()
     }
   }
 
-  // The stack's own openStore advice (registered inside init) runs first,
-  // so the seed reads an open graph.
+  // Runs after the stack's own openStore advice, so the seed reads an open graph.
   drogon::app().registerBeginningAdvice(
       [&memory, &replica, identity = identityDb.get(),
        camera = cameraDb.get()]() {

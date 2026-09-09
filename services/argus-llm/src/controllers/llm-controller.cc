@@ -29,17 +29,12 @@ drogon::HttpResponsePtr badRequest()
   return AppConfig::get400Response("Body must be a JSON object");
 }
 
-// The bench-exact framing from f8-b1 — Spanish, the tool named with its
-// trigger, a short answer otherwise. Measured on the live wire: 8/20
-// memory_save fires against 1/20 for an English generic cut and 2/20
-// (wrong-tool) for a five-sentence variant; the f8-b4 record in
-// docs/CONTEXT.md carries the numbers.
+// Bench-exact framing from f8-b1; the measured variants live in docs/CONTEXT.md.
 constexpr const char* kToolPolicy =
     "Eres Argus. Si el usuario pide guardar o recordar algo, usa "
     "memory.remember. Si no, responde brevemente.";
 
-// The hosted memory stack registers its tools at boot; a process that
-// registered nothing (llm-wire-test, the bench) keeps the direct paths.
+// Processes that register no tools (the bench, the wire test) keep the direct paths.
 std::vector<const tools::ToolDescriptor*> registeredTools()
 {
   std::vector<const tools::ToolDescriptor*> out;
@@ -59,9 +54,7 @@ std::vector<ChatMessage> toChatMessages(const ChatCompletionDto& body)
   return messages;
 }
 
-// The loop mirrors the direct path's wire semantics: the caller's
-// max_tokens (or the service default) caps every generation, and
-// reset_context resets before hop one.
+// Mirrors the direct path's wire semantics for max_tokens and reset_context.
 ToolChatInput toolLoopInput(const ChatCompletionDto& body,
                             const std::vector<const tools::ToolDescriptor*>& tools,
                             int32_t defaultMaxTokens)
@@ -70,7 +63,6 @@ ToolChatInput toolLoopInput(const ChatCompletionDto& body,
   input.systemPrompt = kToolPolicy;
   input.tools = tools;
   input.role = UserRole::Resident;
-  // D4: a reminder or a fact is written in the speaking user's own memory.
   input.context = tools::ToolContext{.userId = body.userId.value_or(0),
                                      .lang = "es",
                                      .sessionId = {},

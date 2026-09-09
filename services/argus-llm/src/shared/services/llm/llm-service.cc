@@ -432,8 +432,7 @@ void LlmService::generateStream(const std::string& formattedPrompt,
   llama_pos pos = static_cast<llama_pos>(promptTokens.size());
 
   auto& batch = *genBatch_;
-  // Only the tail can carry a stop match, and a match ends the generation
-  // with its text already emitted.
+  // Only the tail can carry a stop match, and a match ends the generation.
   std::string tail;
   size_t tailKeep = 0;
   for (const auto& needle : stop)
