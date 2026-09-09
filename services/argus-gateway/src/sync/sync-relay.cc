@@ -100,13 +100,17 @@ drogon::Task<bool> LegacySyncRelay::forwardText(
 {
   (void)message;
   if (syncUrl_.empty())
-    throw ResponseException("Legacy sync relay is not configured", 503,
-                            AppConfig::ERROR_CODE_SERVICE_UNAVAILABLE);
+    throw ResponseException(
+        {.message = "Legacy sync relay is not configured",
+         .statusCode = 503,
+         .errorCode = AppConfig::ERROR_CODE_SERVICE_UNAVAILABLE});
 
   auto session = sessionFor(conn);
   if (session->failed)
-    throw ResponseException("Legacy sync unavailable", 503,
-                            AppConfig::ERROR_CODE_SERVICE_UNAVAILABLE);
+    throw ResponseException(
+        {.message = "Legacy sync unavailable",
+         .statusCode = 503,
+         .errorCode = AppConfig::ERROR_CODE_SERVICE_UNAVAILABLE});
   if (session->closing)
     co_return true;
 
@@ -118,8 +122,10 @@ drogon::Task<bool> LegacySyncRelay::forwardText(
 
   if (session->pending.size() >= kPendingLimit) {
     session->failed = true;
-    throw ResponseException("Legacy sync queue overflow", 503,
-                            AppConfig::ERROR_CODE_SERVICE_UNAVAILABLE);
+    throw ResponseException(
+        {.message = "Legacy sync queue overflow",
+         .statusCode = 503,
+         .errorCode = AppConfig::ERROR_CODE_SERVICE_UNAVAILABLE});
   }
   session->pending.push_back(Frame{std::string(raw), false});
   if (!session->connecting) {

@@ -10,11 +10,20 @@ using namespace face_embedding_query;
 namespace
 {
 
-bool bindFloatVector(SqliteStmt& stmt, int index, const float* data, int count)
+struct BindFloatVectorInput
 {
-  return stmt.bindBlob({.index = index,
-                        .data = data,
-                        .size = static_cast<size_t>(count) * sizeof(float)});
+  SqliteStmt& stmt;
+  int index{0};
+  const float* data{nullptr};
+  int count{0};
+};
+
+bool bindFloatVector(const BindFloatVectorInput& input)
+{
+  return input.stmt.bindBlob(
+      {.index = input.index,
+       .data = input.data,
+       .size = static_cast<size_t>(input.count) * sizeof(float)});
 }
 
 } // namespace
@@ -110,7 +119,10 @@ bool FaceEmbeddingRepository::insertVec(sqlite3* db,
   }
 
   if (!stmt.bindInt64(1, input.faceEmbeddingId) ||
-      !bindFloatVector(stmt, 2, input.embedding, input.dims) ||
+      !bindFloatVector({.stmt = stmt,
+                        .index = 2,
+                        .data = input.embedding,
+                        .count = input.dims}) ||
       !stmt.bindInt64(3, input.personId) ||
       !stmt.bindInt64(4, input.faceEmbeddingId)) {
     LOG_ERROR << "FaceDB: vector insert binding failed: " << sqlite3_errmsg(db);
@@ -134,7 +146,8 @@ FaceEmbeddingRepository::searchVec(sqlite3* db,
   SqliteStmt stmt;
   if (!stmt.prepare(db, VEC_SEARCH.data()))
     return hits;
-  bindFloatVector(stmt, 1, input.query, input.dims);
+  bindFloatVector(
+      {.stmt = stmt, .index = 1, .data = input.query, .count = input.dims});
   stmt.bindInt(2, input.topK);
   while (stmt.step() == SQLITE_ROW) {
     hits.push_back({.personId = stmt.columnInt64(0),

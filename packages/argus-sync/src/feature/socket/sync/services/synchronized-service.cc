@@ -261,8 +261,10 @@ drogon::Task<Json::Value> SynchronizedService::sync(const SynchronizedDto& body,
 
     if (const auto cameraTable = cameraSyncTableFor(table)) {
       if (!cameraSyncSource_ || !cameraSyncSource_->serves(*cameraTable))
-        throw ResponseException("Camera sync unavailable", 503,
-                                AppConfig::ERROR_CODE_SERVICE_UNAVAILABLE);
+        throw ResponseException(
+            {.message = "Camera sync unavailable",
+             .statusCode = 503,
+             .errorCode = AppConfig::ERROR_CODE_SERVICE_UNAVAILABLE});
       const auto source = cameraSyncSource_->sourceFor(*cameraTable, ctx);
       out[name] =
           co_await syncWithRepo({.repo = *source, .dto = *(body.*member)}, {});

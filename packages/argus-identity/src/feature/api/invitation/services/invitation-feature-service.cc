@@ -30,8 +30,10 @@ std::string newOpaqueToken()
 {
   std::array<unsigned char, 32> bytes{};
   if (RAND_bytes(bytes.data(), bytes.size()) != 1)
-    throw ResponseException("Unable to create invitation", 503,
-                            AppConfig::ERROR_CODE_SERVICE_UNAVAILABLE);
+    throw ResponseException(
+        {.message = "Unable to create invitation",
+         .statusCode = 503,
+         .errorCode = AppConfig::ERROR_CODE_SERVICE_UNAVAILABLE});
 
   static constexpr std::string_view kAlphabet =
       "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
@@ -65,8 +67,10 @@ std::string InvitationFeatureService::hashToken(const std::string& token)
   unsigned int length = 0;
   if (EVP_Digest(token.data(), token.size(), digest, &length, EVP_sha256(),
                  nullptr) != 1)
-    throw ResponseException("Unable to resolve invitation", 503,
-                            AppConfig::ERROR_CODE_SERVICE_UNAVAILABLE);
+    throw ResponseException(
+        {.message = "Unable to resolve invitation",
+         .statusCode = 503,
+         .errorCode = AppConfig::ERROR_CODE_SERVICE_UNAVAILABLE});
   return hexDigest(digest, length);
 }
 
@@ -75,8 +79,9 @@ InvitationFeatureService::create(const CreateInvitationDto& body,
                                  int64_t actorId) const
 {
   if (body.role == UserRole::Owner)
-    throw ResponseException("Invitations cannot grant owner access", 422,
-                            AppConfig::ERROR_CODE_BAD_REQUEST);
+    throw ResponseException({.message = "Invitations cannot grant owner access",
+                             .statusCode = 422,
+                             .errorCode = AppConfig::ERROR_CODE_BAD_REQUEST});
 
   const auto token = newOpaqueToken();
   const auto invitation = co_await repository_.create({
@@ -112,19 +117,22 @@ InvitationFeatureService::revoke(int64_t invitationId, int64_t actorId) const
 {
   const auto before = co_await repository_.findById(invitationId);
   if (!before)
-    throw ResponseException("Invitation not found", 404,
-                            AppConfig::ERROR_CODE_NOT_FOUND);
+    throw ResponseException({.message = "Invitation not found",
+                             .statusCode = 404,
+                             .errorCode = AppConfig::ERROR_CODE_NOT_FOUND});
   const bool revoked = co_await repository_.revoke({
       .invitationId = invitationId,
       .revokedBy = actorId,
   });
   if (!revoked)
-    throw ResponseException("Invitation not found", 404,
-                            AppConfig::ERROR_CODE_NOT_FOUND);
+    throw ResponseException({.message = "Invitation not found",
+                             .statusCode = 404,
+                             .errorCode = AppConfig::ERROR_CODE_NOT_FOUND});
   const auto after = co_await repository_.findById(invitationId);
   if (!after)
-    throw ResponseException("Invitation not found", 404,
-                            AppConfig::ERROR_CODE_NOT_FOUND);
+    throw ResponseException({.message = "Invitation not found",
+                             .statusCode = 404,
+                             .errorCode = AppConfig::ERROR_CODE_NOT_FOUND});
   co_await syncAuditService_.publishModule({
       .recordId = after->id,
       .tableName = TableName::UserInvitation,
@@ -170,16 +178,20 @@ drogon::Task<ResponseInvitationResolveDto>
 InvitationFeatureService::resolve(const std::string& token) const
 {
   if (!ConfigService::getBool("pairing.paired"))
-    throw ResponseException("Server is not paired yet", 409,
-                            AppConfig::ERROR_CODE_CONFLICT);
+    throw ResponseException({.message = "Server is not paired yet",
+                             .statusCode = 409,
+                             .errorCode = AppConfig::ERROR_CODE_CONFLICT});
   if (!CertService::isLoaded())
-    throw ResponseException("Server certificate is unavailable", 503,
-                            AppConfig::ERROR_CODE_SERVICE_UNAVAILABLE);
+    throw ResponseException(
+        {.message = "Server certificate is unavailable",
+         .statusCode = 503,
+         .errorCode = AppConfig::ERROR_CODE_SERVICE_UNAVAILABLE});
 
   const auto invitation = co_await repository_.findByTokenHash(hashToken(token));
   if (!invitation || !isUsable(*invitation, std::time(nullptr)))
-    throw ResponseException("Invitation is invalid or expired", 404,
-                            AppConfig::ERROR_CODE_NOT_FOUND);
+    throw ResponseException({.message = "Invitation is invalid or expired",
+                             .statusCode = 404,
+                             .errorCode = AppConfig::ERROR_CODE_NOT_FOUND});
 
   ResponseInvitationResolveDto result;
   result.role = invitation->role;

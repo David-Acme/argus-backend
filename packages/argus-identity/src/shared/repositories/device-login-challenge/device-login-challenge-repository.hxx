@@ -21,9 +21,7 @@ public:
   findByChallengeId(const std::string& challengeId) const;
 
   drogon::Task<bool>
-  markApproved(const std::string& challengeId, int64_t userId,
-               const std::string& accessToken,
-               const std::string& refreshToken) const;
+  markApproved(const DeviceLoginChallengeMarkApprovedInput& input) const;
 
   drogon::Task<bool> remove(const std::string& challengeId) const;
   drogon::Task<int> deleteExpired(int64_t now) const;

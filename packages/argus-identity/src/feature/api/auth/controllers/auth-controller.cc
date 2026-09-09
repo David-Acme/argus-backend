@@ -109,7 +109,8 @@ AuthController::refreshToken(drogon::HttpRequestPtr req)
   const auto& dev =
       req->getAttributes()->get<DeviceContext>(AppConfig::DEVICE_CTX_KEY);
 
-  const auto result = co_await service_.refreshToken(body, dev.deviceHash, dev.userAgent);
+  const auto result = co_await service_.refreshToken(
+      {.body = body, .deviceHash = dev.deviceHash, .userAgent = dev.userAgent});
 
   co_return ApiResponse::ok(result.toJson());
 }

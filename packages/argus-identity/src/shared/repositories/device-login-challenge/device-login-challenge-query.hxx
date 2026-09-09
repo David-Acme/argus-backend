@@ -36,3 +36,11 @@ struct DeviceLoginChallengeCreateInput
   std::string userAgent;
   int64_t expiresAt{0};
 };
+
+struct DeviceLoginChallengeMarkApprovedInput
+{
+  std::string challengeId;
+  int64_t userId{0};
+  std::string accessToken;
+  std::string refreshToken;
+};

@@ -106,21 +106,27 @@ AuthService::login(LoginDto body, const LoginDeviceInput& device) const
   auto personId =
       co_await FaceService::instance().identifyAsync(std::move(body.image));
   if (!personId) {
-    throw ResponseException("Face not recognized", 401,
-                            AppConfig::ERROR_CODE_UNAUTHORIZED);
+    throw ResponseException({.message = "Face not recognized",
+                             .statusCode = 401,
+                             .errorCode = AppConfig::ERROR_CODE_UNAUTHORIZED});
   }
 
   auto person = co_await personRepository_.findById(*personId);
   if (!person || !person->userId)
-    throw ResponseException("Face not recognized", 401,
-                            AppConfig::ERROR_CODE_UNAUTHORIZED);
+    throw ResponseException({.message = "Face not recognized",
+                             .statusCode = 401,
+                             .errorCode = AppConfig::ERROR_CODE_UNAUTHORIZED});
 
   auto user = co_await userRepository_.findById(*person->userId);
   if (!user || !user->isActive)
-    throw ResponseException("Face not recognized", 401,
-                            AppConfig::ERROR_CODE_UNAUTHORIZED);
+    throw ResponseException({.message = "Face not recognized",
+                             .statusCode = 401,
+                             .errorCode = AppConfig::ERROR_CODE_UNAUTHORIZED});
 
-  co_return co_await issueSession(user->id, *personId, *user, device);
+  co_return co_await issueSession({.userId = user->id,
+                                   .personId = *personId,
+                                   .user = *user,
+                                   .device = device});
 }
 
 drogon::Task<ResponseLoginDto>
@@ -128,15 +134,17 @@ AuthService::registerUser(RegisterDto body,
                           const LoginDeviceInput& device) const
 {
   if (!ConfigService::getBool("pairing.paired"))
-    throw ResponseException("Server is not paired yet", 409,
-                            AppConfig::ERROR_CODE_CONFLICT);
+    throw ResponseException({.message = "Server is not paired yet",
+                             .statusCode = 409,
+                             .errorCode = AppConfig::ERROR_CODE_CONFLICT});
 
   const auto portraitImage = body.image;
   auto face =
       co_await FaceService::instance().extractImageAsync(std::move(body.image));
   if (!face) {
-    throw ResponseException("Face could not be extracted", 422,
-                            AppConfig::ERROR_CODE_BAD_REQUEST);
+    throw ResponseException({.message = "Face could not be extracted",
+                             .statusCode = 422,
+                             .errorCode = AppConfig::ERROR_CODE_BAD_REQUEST});
   }
 
   auto existing =
@@ -145,16 +153,21 @@ AuthService::registerUser(RegisterDto body,
   if (existing && existing->second >= 0.80F) {
     auto person = co_await personRepository_.findById(existing->first);
     if (!person || !person->userId)
-      throw ResponseException("Face already registered", 409,
-                              AppConfig::ERROR_CODE_CONFLICT);
+      throw ResponseException({.message = "Face already registered",
+                               .statusCode = 409,
+                               .errorCode = AppConfig::ERROR_CODE_CONFLICT});
 
     auto user = co_await userRepository_.findById(*person->userId);
     if (!user || !user->isActive)
-      throw ResponseException("Face not recognized", 401,
-                              AppConfig::ERROR_CODE_UNAUTHORIZED);
+      throw ResponseException(
+          {.message = "Face not recognized",
+           .statusCode = 401,
+           .errorCode = AppConfig::ERROR_CODE_UNAUTHORIZED});
 
-    auto session =
-        co_await issueSession(user->id, person->id, *user, device);
+    auto session = co_await issueSession({.userId = user->id,
+                                          .personId = person->id,
+                                          .user = *user,
+                                          .device = device});
     session.alreadyRegistered = true;
     co_return session;
   }
@@ -170,15 +183,17 @@ AuthService::registerUser(RegisterDto body,
   UserRole role = UserRole::Owner;
   if (!isInitialOwner) {
     if (body.inviteCode.empty())
-      throw ResponseException("A valid invitation is required", 403,
-                              AppConfig::ERROR_CODE_FORBIDDEN);
+      throw ResponseException({.message = "A valid invitation is required",
+                               .statusCode = 403,
+                               .errorCode = AppConfig::ERROR_CODE_FORBIDDEN});
     invitationHash = InvitationFeatureService::hashToken(body.inviteCode);
     invitation = co_await invitationRepository_.findByTokenHash(invitationHash);
     const int64_t now = std::time(nullptr);
     if (!invitation || invitation->revokedAt || invitation->expiresAt <= now ||
         invitation->redemptionCount >= invitation->maxRedemptions) {
-      throw ResponseException("Invitation is invalid or expired", 404,
-                              AppConfig::ERROR_CODE_NOT_FOUND);
+      throw ResponseException({.message = "Invitation is invalid or expired",
+                               .statusCode = 404,
+                               .errorCode = AppConfig::ERROR_CODE_NOT_FOUND});
     }
     role = invitation->role;
   }
@@ -216,8 +231,9 @@ AuthService::registerUser(RegisterDto body,
             return;
           }
           indexResult->set_value(FaceService::instance().faceDb().insert(
-              indexInput->embedding.data(), indexInput->personId,
-              indexInput->faceEmbeddingId));
+              {.embedding = indexInput->embedding.data(),
+               .personId = indexInput->personId,
+               .faceEmbeddingId = indexInput->faceEmbeddingId}));
         });
     const auto userCount =
         co_await transaction->execSqlCoro(user_enrollment_query::COUNT_USERS.data());
@@ -225,16 +241,18 @@ AuthService::registerUser(RegisterDto body,
     if (isInitialOwner && !userCount.empty() &&
         userCount.front()[0].as<int64_t>() > 0) {
       transaction->rollback();
-      throw ResponseException("An owner already exists", 409,
-                              AppConfig::ERROR_CODE_CONFLICT);
+      throw ResponseException({.message = "An owner already exists",
+                               .statusCode = 409,
+                               .errorCode = AppConfig::ERROR_CODE_CONFLICT});
     }
     if (!isInitialOwner) {
       const auto consumed = co_await transaction->execSqlCoro(
           user_enrollment_query::TRY_CONSUME.data(), invitationHash, now);
       if (consumed.affectedRows() != 1) {
         transaction->rollback();
-        throw ResponseException("Invitation is invalid or expired", 404,
-                                AppConfig::ERROR_CODE_NOT_FOUND);
+        throw ResponseException({.message = "Invitation is invalid or expired",
+                                 .statusCode = 404,
+                                 .errorCode = AppConfig::ERROR_CODE_NOT_FOUND});
       }
     }
 
@@ -264,8 +282,10 @@ AuthService::registerUser(RegisterDto body,
   const bool indexed = co_await BlockingTask<bool>(
       [indexFuture] { return indexFuture->get(); });
   if (!indexed)
-    throw ResponseException("Could not index enrolled face", 503,
-                            AppConfig::ERROR_CODE_SERVICE_UNAVAILABLE);
+    throw ResponseException(
+        {.message = "Could not index enrolled face",
+         .statusCode = 503,
+         .errorCode = AppConfig::ERROR_CODE_SERVICE_UNAVAILABLE});
 
   co_await privatePortraitService_.store(userId, portraitImage);
 
@@ -322,7 +342,8 @@ AuthService::registerUser(RegisterDto body,
     }
   }
 
-  co_return co_await issueSession(userId, personId, user, device);
+  co_return co_await issueSession(
+      {.userId = userId, .personId = personId, .user = user, .device = device});
 }
 
 drogon::Task<CreateDeviceLoginDto>
@@ -330,8 +351,10 @@ AuthService::createDeviceLogin(const LoginDeviceInput& device) const
 {
   std::array<unsigned char, 32> buf{};
   if (RAND_bytes(buf.data(), buf.size()) != 1)
-    throw ResponseException("Failed to generate login challenge", 500,
-                            AppConfig::ERROR_CODE_SERVICE_UNAVAILABLE);
+    throw ResponseException(
+        {.message = "Failed to generate login challenge",
+         .statusCode = 500,
+         .errorCode = AppConfig::ERROR_CODE_SERVICE_UNAVAILABLE});
 
   std::ostringstream hex;
   for (unsigned char b : buf)
@@ -357,18 +380,21 @@ AuthService::approveDeviceLogin(const std::string& challengeId,
 {
   auto challenge = co_await challengeRepository_.findByChallengeId(challengeId);
   if (!challenge || challenge->status != "pending")
-    throw ResponseException("Challenge not found", 404,
-                            AppConfig::ERROR_CODE_NOT_FOUND);
+    throw ResponseException({.message = "Challenge not found",
+                             .statusCode = 404,
+                             .errorCode = AppConfig::ERROR_CODE_NOT_FOUND});
   if (challenge->expiresAt <= std::time(nullptr)) {
     co_await challengeRepository_.remove(challengeId);
-    throw ResponseException("Challenge expired", 404,
-                            AppConfig::ERROR_CODE_NOT_FOUND);
+    throw ResponseException({.message = "Challenge expired",
+                             .statusCode = 404,
+                             .errorCode = AppConfig::ERROR_CODE_NOT_FOUND});
   }
 
   auto user = co_await userRepository_.findById(approvingUserId);
   if (!user || !user->isActive)
-    throw ResponseException("Face not recognized", 401,
-                            AppConfig::ERROR_CODE_UNAUTHORIZED);
+    throw ResponseException({.message = "Face not recognized",
+                             .statusCode = 401,
+                             .errorCode = AppConfig::ERROR_CODE_UNAUTHORIZED});
 
   std::map<std::string, std::string> claims;
   claims["sub"] = std::to_string(approvingUserId);
@@ -389,8 +415,10 @@ AuthService::approveDeviceLogin(const std::string& challengeId,
   rtInput.expiresAt = std::time(nullptr) + jwtService_.refreshTtlSeconds();
   co_await refreshTokenRepository_.create(rtInput);
 
-  co_await challengeRepository_.markApproved(challengeId, approvingUserId,
-                                             accessToken, refreshToken);
+  co_await challengeRepository_.markApproved({.challengeId = challengeId,
+                                              .userId = approvingUserId,
+                                              .accessToken = accessToken,
+                                              .refreshToken = refreshToken});
   if (!credential.secret.empty())
     storePendingDeviceSecret({.challengeId = challengeId,
                               .secret = credential.secret,
@@ -450,14 +478,17 @@ AuthService::pollDeviceLogin(const std::string& challengeId) const
 }
 
 drogon::Task<ResponseRefreshTokenDto>
-AuthService::refreshToken(const RefreshTokenDto& body,
-                          const std::string& deviceHash,
-                          const std::string& userAgent) const
+AuthService::refreshToken(const RefreshTokenInput& input) const
 {
+  const RefreshTokenDto& body = input.body;
+  const std::string& deviceHash = input.deviceHash;
+  const std::string& userAgent = input.userAgent;
+
   auto claims = jwtService_.verifyRefresh(body.refreshToken);
   if (claims.empty())
-    throw ResponseException("Invalid or expired refresh token", 401,
-                            AppConfig::ERROR_CODE_UNAUTHORIZED);
+    throw ResponseException({.message = "Invalid or expired refresh token",
+                             .statusCode = 401,
+                             .errorCode = AppConfig::ERROR_CODE_UNAUTHORIZED});
 
   int64_t userId = 0;
   auto it = claims.find("sub");
@@ -469,32 +500,37 @@ AuthService::refreshToken(const RefreshTokenDto& body,
     }
   }
   if (userId == 0)
-    throw ResponseException("Invalid or expired refresh token", 401,
-                            AppConfig::ERROR_CODE_UNAUTHORIZED);
+    throw ResponseException({.message = "Invalid or expired refresh token",
+                             .statusCode = 401,
+                             .errorCode = AppConfig::ERROR_CODE_UNAUTHORIZED});
 
   auto existing =
       co_await refreshTokenRepository_.findByRefreshToken(userId,
                                                           body.refreshToken);
   if (!existing || !existing->isValid || existing->isUsed)
-    throw ResponseException("Invalid or expired refresh token", 401,
-                            AppConfig::ERROR_CODE_UNAUTHORIZED);
+    throw ResponseException({.message = "Invalid or expired refresh token",
+                             .statusCode = 401,
+                             .errorCode = AppConfig::ERROR_CODE_UNAUTHORIZED});
 
   if (existing->expiresAt <= std::time(nullptr)) {
     LOG_WARN << "AuthService: expired refresh token for user " << userId;
-    throw ResponseException("Invalid or expired refresh token", 401,
-                            AppConfig::ERROR_CODE_UNAUTHORIZED);
+    throw ResponseException({.message = "Invalid or expired refresh token",
+                             .statusCode = 401,
+                             .errorCode = AppConfig::ERROR_CODE_UNAUTHORIZED});
   }
 
   if (!existing->userAgent.empty() && !userAgent.empty() &&
       existing->userAgent != userAgent) {
     LOG_WARN << "AuthService: user agent mismatch on refresh for user " << userId;
-    throw ResponseException("Invalid or expired refresh token", 401,
-                            AppConfig::ERROR_CODE_UNAUTHORIZED);
+    throw ResponseException({.message = "Invalid or expired refresh token",
+                             .statusCode = 401,
+                             .errorCode = AppConfig::ERROR_CODE_UNAUTHORIZED});
   }
 
   if (!co_await refreshTokenRepository_.markUsed(existing->id))
-    throw ResponseException("Invalid or expired refresh token", 401,
-                            AppConfig::ERROR_CODE_UNAUTHORIZED);
+    throw ResponseException({.message = "Invalid or expired refresh token",
+                             .statusCode = 401,
+                             .errorCode = AppConfig::ERROR_CODE_UNAUTHORIZED});
   co_await refreshTokenRepository_.pruneStale(userId);
 
   std::map<std::string, std::string> newClaims;
@@ -551,7 +587,9 @@ AuthService::updateMe(int64_t userId,
 {
   const auto before = co_await userRepository_.findById(userId);
   if (!before)
-    throw ResponseException("User not found", 404, AppConfig::ERROR_CODE_NOT_FOUND);
+    throw ResponseException({.message = "User not found",
+                             .statusCode = 404,
+                             .errorCode = AppConfig::ERROR_CODE_NOT_FOUND});
   auto user = co_await userRepository_.update(
       userId, {.name = name, .lastName = std::nullopt, .role = std::nullopt,
                .isActive = std::nullopt});
@@ -580,8 +618,10 @@ AuthService::issueDeviceCredential(int64_t userId,
 
   std::array<unsigned char, 32> buf{};
   if (RAND_bytes(buf.data(), buf.size()) != 1)
-    throw ResponseException("Failed to issue device credential", 500,
-                            AppConfig::ERROR_CODE_SERVICE_UNAVAILABLE);
+    throw ResponseException(
+        {.message = "Failed to issue device credential",
+         .statusCode = 500,
+         .errorCode = AppConfig::ERROR_CODE_SERVICE_UNAVAILABLE});
 
   std::ostringstream hex;
   for (unsigned char b : buf)
@@ -598,10 +638,13 @@ AuthService::issueDeviceCredential(int64_t userId,
 }
 
 drogon::Task<ResponseLoginDto>
-AuthService::issueSession(int64_t userId, int64_t personId,
-                          const UserSchema& user,
-                          const LoginDeviceInput& device) const
+AuthService::issueSession(const IssueSessionInput& input) const
 {
+  const int64_t userId = input.userId;
+  const int64_t personId = input.personId;
+  const UserSchema& user = input.user;
+  const LoginDeviceInput& device = input.device;
+
   const auto credential =
       co_await issueDeviceCredential(userId, device.userAgent);
   const std::string deviceHash =

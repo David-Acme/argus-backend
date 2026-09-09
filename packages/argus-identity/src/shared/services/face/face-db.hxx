@@ -8,6 +8,13 @@
 #include <string>
 #include <utility>
 
+struct FaceInsertInput
+{
+  const float* embedding{nullptr};
+  int64_t personId{0};
+  int64_t faceEmbeddingId{0};
+};
+
 class FaceDB
 {
 public:
@@ -15,8 +22,7 @@ public:
 
   void init();
   void shutdown();
-  bool insert(const float* embedding, int64_t personId,
-              int64_t faceEmbeddingId);
+  bool insert(const FaceInsertInput& input);
   std::optional<std::pair<int64_t, float>> search(const float* query);
   void remove(int64_t personId);
   size_t count();

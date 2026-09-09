@@ -162,8 +162,9 @@ drogon::Task<S3StoredObject>
 S3StorageService::putPortrait(int64_t userId, const std::string& image) const
 {
   if (userId <= 0 || image.empty())
-    throw ResponseException("Invalid portrait upload", 422,
-                            AppConfig::ERROR_CODE_BAD_REQUEST);
+    throw ResponseException({.message = "Invalid portrait upload",
+                             .statusCode = 422,
+                             .errorCode = AppConfig::ERROR_CODE_BAD_REQUEST});
 
   const auto config = loadConfig();
   const auto key = "portraits/" + std::to_string(userId) + "/" + randomKeyPart() + ".jpg";
@@ -183,8 +184,9 @@ drogon::Task<std::string>
 S3StorageService::get(const std::string& objectKey) const
 {
   if (objectKey.empty())
-    throw ResponseException("Invalid portrait object", 422,
-                            AppConfig::ERROR_CODE_BAD_REQUEST);
+    throw ResponseException({.message = "Invalid portrait object",
+                             .statusCode = 422,
+                             .errorCode = AppConfig::ERROR_CODE_BAD_REQUEST});
   co_return co_await send({.config = loadConfig(),
                            .method = "GET",
                            .objectKey = objectKey,

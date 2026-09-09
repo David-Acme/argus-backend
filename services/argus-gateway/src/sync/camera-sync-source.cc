@@ -128,8 +128,10 @@ Json::Value deletedRowToJson(const argus::camera::v1::DeletedRow& row)
 
 ResponseException unavailable()
 {
-  return ResponseException("Camera sync unavailable", 503,
-                           AppConfig::ERROR_CODE_SERVICE_UNAVAILABLE);
+  return ResponseException({.message = "Camera sync unavailable",
+                            .statusCode = 503,
+                            .errorCode =
+                                AppConfig::ERROR_CODE_SERVICE_UNAVAILABLE});
 }
 } // namespace
 

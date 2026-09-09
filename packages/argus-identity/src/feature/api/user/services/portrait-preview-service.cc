@@ -34,8 +34,10 @@ std::string base64(const std::string& input)
       reinterpret_cast<const unsigned char*>(input.data()),
       static_cast<int>(input.size()));
   if (written <= 0)
-    throw ResponseException("Unable to prepare portrait preview", 503,
-                            AppConfig::ERROR_CODE_SERVICE_UNAVAILABLE);
+    throw ResponseException(
+        {.message = "Unable to prepare portrait preview",
+         .statusCode = 503,
+         .errorCode = AppConfig::ERROR_CODE_SERVICE_UNAVAILABLE});
   output.resize(static_cast<size_t>(written));
   return output;
 }
@@ -44,8 +46,10 @@ std::string base64(const std::string& input)
 void PortraitPreviewService::requireAccess(UserRole role)
 {
   if (role != UserRole::Owner && role != UserRole::Guard)
-    throw ResponseException("Portrait verification is not available", 403,
-                            AppConfig::ERROR_CODE_FORBIDDEN);
+    throw ResponseException(
+        {.message = "Portrait verification is not available",
+         .statusCode = 403,
+         .errorCode = AppConfig::ERROR_CODE_FORBIDDEN});
 }
 
 std::string PortraitPreviewService::hashToken(const std::string& token)
@@ -54,8 +58,10 @@ std::string PortraitPreviewService::hashToken(const std::string& token)
   unsigned int length = 0;
   if (EVP_Digest(token.data(), token.size(), digest, &length, EVP_sha256(),
                  nullptr) != 1)
-    throw ResponseException("Unable to prepare portrait preview", 503,
-                            AppConfig::ERROR_CODE_SERVICE_UNAVAILABLE);
+    throw ResponseException(
+        {.message = "Unable to prepare portrait preview",
+         .statusCode = 503,
+         .errorCode = AppConfig::ERROR_CODE_SERVICE_UNAVAILABLE});
   return hexDigest(digest, length);
 }
 
@@ -63,8 +69,10 @@ std::string PortraitPreviewService::newToken()
 {
   std::array<unsigned char, 32> bytes{};
   if (RAND_bytes(bytes.data(), bytes.size()) != 1)
-    throw ResponseException("Unable to prepare portrait preview", 503,
-                            AppConfig::ERROR_CODE_SERVICE_UNAVAILABLE);
+    throw ResponseException(
+        {.message = "Unable to prepare portrait preview",
+         .statusCode = 503,
+         .errorCode = AppConfig::ERROR_CODE_SERVICE_UNAVAILABLE});
 
   static constexpr std::string_view kAlphabet =
       "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
@@ -90,14 +98,19 @@ PortraitPreviewService::create(const PortraitPreviewCreateInput& input) const
 {
   requireAccess(input.requesterRole);
   if (input.portraitUserId <= 0)
-    throw ResponseException("Invalid user id", 400, AppConfig::ERROR_CODE_BAD_REQUEST);
+    throw ResponseException({.message = "Invalid user id",
+                             .statusCode = 400,
+                             .errorCode = AppConfig::ERROR_CODE_BAD_REQUEST});
 
   const auto target = co_await userRepository_.findById(input.portraitUserId);
   if (!target)
-    throw ResponseException("User not found", 404, AppConfig::ERROR_CODE_NOT_FOUND);
+    throw ResponseException({.message = "User not found",
+                             .statusCode = 404,
+                             .errorCode = AppConfig::ERROR_CODE_NOT_FOUND});
   if (!co_await privatePortraitService_.has(target->id))
-    throw ResponseException("Portrait is unavailable", 404,
-                            AppConfig::ERROR_CODE_NOT_FOUND);
+    throw ResponseException({.message = "Portrait is unavailable",
+                             .statusCode = 404,
+                             .errorCode = AppConfig::ERROR_CODE_NOT_FOUND});
 
   const auto token = newToken();
   const auto expiresAt = std::time(nullptr) + kCapabilityLifetimeSeconds;
@@ -115,15 +128,17 @@ PortraitPreviewService::consume(const PortraitPreviewConsumeInput& input) const
 {
   requireAccess(input.requesterRole);
   if (input.token.empty())
-    throw ResponseException("Portrait preview is unavailable", 404,
-                            AppConfig::ERROR_CODE_NOT_FOUND);
+    throw ResponseException({.message = "Portrait preview is unavailable",
+                             .statusCode = 404,
+                             .errorCode = AppConfig::ERROR_CODE_NOT_FOUND});
 
   const auto capability =
       co_await capabilityRepository_.findByTokenHash(hashToken(input.token));
   const auto now = std::time(nullptr);
   if (!capability || capability->requesterUserId != input.requesterUserId) {
-    throw ResponseException("Portrait preview is unavailable", 404,
-                            AppConfig::ERROR_CODE_NOT_FOUND);
+    throw ResponseException({.message = "Portrait preview is unavailable",
+                             .statusCode = 404,
+                             .errorCode = AppConfig::ERROR_CODE_NOT_FOUND});
   }
   const bool consumed = co_await capabilityRepository_.tryConsume({
       .id = capability->id,
@@ -131,14 +146,16 @@ PortraitPreviewService::consume(const PortraitPreviewConsumeInput& input) const
       .now = now,
   });
   if (!consumed)
-    throw ResponseException("Portrait preview is unavailable", 404,
-                            AppConfig::ERROR_CODE_NOT_FOUND);
+    throw ResponseException({.message = "Portrait preview is unavailable",
+                             .statusCode = 404,
+                             .errorCode = AppConfig::ERROR_CODE_NOT_FOUND});
 
   const auto portrait =
       co_await privatePortraitService_.read(capability->portraitUserId);
   if (!portrait)
-    throw ResponseException("Portrait is unavailable", 404,
-                            AppConfig::ERROR_CODE_NOT_FOUND);
+    throw ResponseException({.message = "Portrait is unavailable",
+                             .statusCode = 404,
+                             .errorCode = AppConfig::ERROR_CODE_NOT_FOUND});
 
   Json::Value event;
   event["event"] = "portrait_preview";

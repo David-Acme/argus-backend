@@ -29,9 +29,12 @@ void FaceDB::init()
 
 void FaceDB::shutdown() {}
 
-bool FaceDB::insert(const float* embedding, int64_t personId,
-                    int64_t faceEmbeddingId)
+bool FaceDB::insert(const FaceInsertInput& input)
 {
+  const float* embedding = input.embedding;
+  const int64_t personId = input.personId;
+  const int64_t faceEmbeddingId = input.faceEmbeddingId;
+
   std::scoped_lock lock(vecMutex());
   sqlite3* db = vecDb_.handle();
   if (!db) {

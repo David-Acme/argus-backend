@@ -36,6 +36,21 @@ struct IssuedDeviceCredential
   std::string deviceHash;
 };
 
+struct RefreshTokenInput
+{
+  RefreshTokenDto body;
+  std::string deviceHash;
+  std::string userAgent;
+};
+
+struct IssueSessionInput
+{
+  int64_t userId{0};
+  int64_t personId{0};
+  UserSchema user;
+  LoginDeviceInput device;
+};
+
 class AuthService
 {
 public:
@@ -58,8 +73,7 @@ public:
   pollDeviceLogin(const std::string& challengeId) const;
 
   drogon::Task<ResponseRefreshTokenDto>
-  refreshToken(const RefreshTokenDto& body, const std::string& deviceHash,
-               const std::string& userAgent) const;
+  refreshToken(const RefreshTokenInput& input) const;
 
   drogon::Task<void> logout(int64_t userId) const;
 
@@ -68,8 +82,7 @@ public:
 
 private:
   drogon::Task<ResponseLoginDto>
-  issueSession(int64_t userId, int64_t personId, const UserSchema& user,
-               const LoginDeviceInput& device) const;
+  issueSession(const IssueSessionInput& input) const;
 
   // Issues the per-device secret in credential identity mode; empty in ip mode.
   drogon::Task<IssuedDeviceCredential>

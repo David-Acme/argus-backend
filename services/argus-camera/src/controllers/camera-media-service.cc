@@ -50,19 +50,22 @@ drogon::Task<bool> CameraMediaService::forwardText(
             {.role = ctx.role,
              .table = TableName::Camera,
              .perm = RolePermission::Read}))
-      throw ResponseException("Forbidden", 403,
-                              AppConfig::ERROR_CODE_FORBIDDEN);
+      throw ResponseException({.message = "Forbidden",
+                               .statusCode = 403,
+                               .errorCode = AppConfig::ERROR_CODE_FORBIDDEN});
 
     const int64_t cameraId = payload.get("cameraId", 0).asInt64();
     if (cameraId <= 0)
-      throw ResponseException("Invalid cameraId", 400,
-                              AppConfig::ERROR_CODE_BAD_REQUEST);
+      throw ResponseException({.message = "Invalid cameraId",
+                               .statusCode = 400,
+                               .errorCode = AppConfig::ERROR_CODE_BAD_REQUEST});
     const std::string quality = payload.get("quality", "main").asString();
 
     const auto camera = co_await cameraRepository_.findById(cameraId);
     if (!camera)
-      throw ResponseException("Camera not found", 404,
-                              AppConfig::ERROR_CODE_NOT_FOUND);
+      throw ResponseException({.message = "Camera not found",
+                               .statusCode = 404,
+                               .errorCode = AppConfig::ERROR_CODE_NOT_FOUND});
 
     auto sink = sinkFor(conn);
     if (!sink) {
@@ -74,8 +77,10 @@ drogon::Task<bool> CameraMediaService::forwardText(
       storeSink(conn, sink);
     }
     if (sink->subscriptions() >= maxSubsPerClient_)
-      throw ResponseException("Too many camera subscriptions", 429,
-                              AppConfig::ERROR_CODE_TOO_MANY_REQUESTS);
+      throw ResponseException(
+          {.message = "Too many camera subscriptions",
+           .statusCode = 429,
+           .errorCode = AppConfig::ERROR_CODE_TOO_MANY_REQUESTS});
 
     StreamHub::SubscribeInput input;
     input.sink = sink;
@@ -84,8 +89,10 @@ drogon::Task<bool> CameraMediaService::forwardText(
     std::string error;
     const uint16_t subId = StreamHub::instance().subscribe(input, error);
     if (subId == 0)
-      throw ResponseException(error.empty() ? "subscribe_failed" : error, 503,
-                              AppConfig::ERROR_CODE_SERVICE_UNAVAILABLE);
+      throw ResponseException(
+          {.message = error.empty() ? "subscribe_failed" : error,
+           .statusCode = 503,
+           .errorCode = AppConfig::ERROR_CODE_SERVICE_UNAVAILABLE});
     sink->addSubscription();
 
     Json::Value resp;

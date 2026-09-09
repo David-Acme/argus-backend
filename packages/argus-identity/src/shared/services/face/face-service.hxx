@@ -46,13 +46,33 @@ public:
     float lm[10];
   };
 
-  std::vector<FaceBox> detectAll(const uint8_t* rgbData, int width, int height);
+  struct DetectAllInput
+  {
+    const uint8_t* rgbData{nullptr};
+    int width{0};
+    int height{0};
+  };
 
-  std::optional<FaceResult> extractFace(const uint8_t* rgbData, int width,
-                                        int height, const FaceBox& box);
+  struct ExtractFaceInput
+  {
+    const uint8_t* rgbData{nullptr};
+    int width{0};
+    int height{0};
+    FaceBox box;
+  };
 
-  std::optional<FaceResult> extract(const uint8_t* rgbData, int width,
-                                    int height);
+  struct ExtractInput
+  {
+    const uint8_t* rgbData{nullptr};
+    int width{0};
+    int height{0};
+  };
+
+  std::vector<FaceBox> detectAll(const DetectAllInput& input);
+
+  std::optional<FaceResult> extractFace(const ExtractFaceInput& input);
+
+  std::optional<FaceResult> extract(const ExtractInput& input);
 
   std::optional<int64_t> identify(std::string imageBytes);
 
@@ -80,9 +100,15 @@ private:
     bool init(const std::string& modelDir);
   };
 
-  static std::vector<FaceBox> runDetector(Impl& impl,
-                                          const uint8_t* rgbData, int width,
-                                          int height);
+  struct RunDetectorInput
+  {
+    Impl& impl;
+    const uint8_t* rgbData{nullptr};
+    int width{0};
+    int height{0};
+  };
+
+  static std::vector<FaceBox> runDetector(const RunDetectorInput& input);
 
   std::unique_ptr<Impl> impl_;
   FaceDB faceDb_;

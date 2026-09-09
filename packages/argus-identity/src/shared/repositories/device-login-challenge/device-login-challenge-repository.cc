@@ -37,14 +37,14 @@ DeviceLoginChallengeRepository::findByChallengeId(
   co_return DeviceLoginChallengeSchema(result.front());
 }
 
-drogon::Task<bool>
-DeviceLoginChallengeRepository::markApproved(
-    const std::string& challengeId, int64_t userId,
-    const std::string& accessToken, const std::string& refreshToken) const
+drogon::Task<bool> DeviceLoginChallengeRepository::markApproved(
+    const DeviceLoginChallengeMarkApprovedInput& input) const
 {
   auto client = DbService::client();
-  const auto result = co_await client->execSqlCoro(
-      MARK_APPROVED.data(), userId, accessToken, refreshToken, challengeId);
+  const auto result =
+      co_await client->execSqlCoro(MARK_APPROVED.data(), input.userId,
+                                   input.accessToken, input.refreshToken,
+                                   input.challengeId);
   co_return result.affectedRows() > 0;
 }
 

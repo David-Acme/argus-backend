@@ -185,9 +185,13 @@ nms(std::vector<FaceService::FaceBox> boxes, float thresh)
 }
 
 std::vector<FaceService::FaceBox>
-FaceService::runDetector(Impl& impl, const uint8_t* imageData, int width,
-                         int height)
+FaceService::runDetector(const RunDetectorInput& input)
 {
+  Impl& impl = input.impl;
+  const uint8_t* imageData = input.rgbData;
+  const int width = input.width;
+  const int height = input.height;
+
   constexpr int kTarget = 640;
   const float invScaleX = static_cast<float>(width) / kTarget;
   const float invScaleY = static_cast<float>(height) / kTarget;
@@ -265,18 +269,27 @@ FaceService::runDetector(Impl& impl, const uint8_t* imageData, int width,
 }
 
 std::vector<FaceService::FaceBox>
-FaceService::detectAll(const uint8_t* imageData, int width, int height)
+FaceService::detectAll(const DetectAllInput& input)
 {
+  const uint8_t* imageData = input.rgbData;
+  const int width = input.width;
+  const int height = input.height;
+
   std::lock_guard<std::mutex> lock(implMutex_);
   if (!impl_)
     return {};
-  return runDetector(*impl_, imageData, width, height);
+  return runDetector(
+      {.impl = *impl_, .rgbData = imageData, .width = width, .height = height});
 }
 
 std::optional<FaceService::FaceResult>
-FaceService::extractFace(const uint8_t* imageData, int width, int height,
-                         const FaceBox& fb)
+FaceService::extractFace(const ExtractFaceInput& input)
 {
+  const uint8_t* imageData = input.rgbData;
+  const int width = input.width;
+  const int height = input.height;
+  const FaceBox& fb = input.box;
+
   std::lock_guard<std::mutex> lock(implMutex_);
   if (!impl_)
     return std::nullopt;
@@ -329,14 +342,21 @@ FaceService::extractFace(const uint8_t* imageData, int width, int height,
 }
 
 std::optional<FaceService::FaceResult>
-FaceService::extract(const uint8_t* imageData, int width, int height)
+FaceService::extract(const ExtractInput& input)
 {
+  const uint8_t* imageData = input.rgbData;
+  const int width = input.width;
+  const int height = input.height;
+
   std::vector<FaceBox> kept;
   {
     std::lock_guard<std::mutex> lock(implMutex_);
     if (!impl_)
       return std::nullopt;
-    kept = runDetector(*impl_, imageData, width, height);
+    kept = runDetector({.impl = *impl_,
+                        .rgbData = imageData,
+                        .width = width,
+                        .height = height});
   }
   if (kept.empty())
     return std::nullopt;
@@ -346,7 +366,10 @@ FaceService::extract(const uint8_t* imageData, int width, int height)
     if (kept[i].score > kept[bestIdx].score)
       bestIdx = static_cast<int>(i);
 
-  return extractFace(imageData, width, height, kept[bestIdx]);
+  return extractFace({.rgbData = imageData,
+                      .width = width,
+                      .height = height,
+                      .box = kept[bestIdx]});
 }
 
 namespace
@@ -355,8 +378,14 @@ namespace
 constexpr int kScaledDecodeThreshold = 2048;
 constexpr int kScaledDecodeDeepThreshold = 4096;
 
-std::vector<uint8_t> decodeToRgb(const std::string& imageBytes, int& width,
-                                 int& height)
+struct DecodedImage
+{
+  std::vector<uint8_t> rgb;
+  int width{0};
+  int height{0};
+};
+
+DecodedImage decodeToRgb(const std::string& imageBytes)
 {
   int origW = 0;
   int origH = 0;
@@ -383,11 +412,13 @@ std::vector<uint8_t> decodeToRgb(const std::string& imageBytes, int& width,
 
     cv::Mat rgb;
     cv::cvtColor(bgr, rgb, cv::COLOR_BGR2RGB);
-    width = rgb.cols;
-    height = rgb.rows;
-    return std::vector<uint8_t>(rgb.data, rgb.data + rgb.total() * 3);
+    return {.rgb = std::vector<uint8_t>(rgb.data, rgb.data + rgb.total() * 3),
+            .width = rgb.cols,
+            .height = rgb.rows};
   }
 
+  int width = 0;
+  int height = 0;
   std::unique_ptr<stbi_uc, decltype(&stbi_image_free)>
       decoded(stbi_load_from_memory(reinterpret_cast<const stbi_uc*>(
                                         imageBytes.data()),
@@ -397,9 +428,12 @@ std::vector<uint8_t> decodeToRgb(const std::string& imageBytes, int& width,
   if (!decoded)
     return {};
 
-  return std::vector<uint8_t>(decoded.get(),
-                              decoded.get() +
-                                  static_cast<size_t>(width) * height * 3);
+  return {.rgb =
+              std::vector<uint8_t>(decoded.get(),
+                                   decoded.get() +
+                                       static_cast<size_t>(width) * height * 3),
+          .width = width,
+          .height = height};
 }
 
 } // namespace
@@ -413,13 +447,13 @@ std::optional<int64_t> FaceService::identify(std::string imageBytes)
     FaceService* owner;
   } slotGuard{this};
 
-  int width = 0;
-  int height = 0;
-  auto rgb = decodeToRgb(imageBytes, width, height);
-  if (rgb.empty())
+  const auto decoded = decodeToRgb(imageBytes);
+  if (decoded.rgb.empty())
     return std::nullopt;
 
-  auto faceResult = extract(rgb.data(), width, height);
+  auto faceResult = extract({.rgbData = decoded.rgb.data(),
+                             .width = decoded.width,
+                             .height = decoded.height});
   if (!faceResult)
     return std::nullopt;
 
@@ -452,13 +486,13 @@ FaceService::extractImage(std::string imageBytes)
     FaceService* owner;
   } slotGuard{this};
 
-  int width = 0;
-  int height = 0;
-  auto rgb = decodeToRgb(imageBytes, width, height);
-  if (rgb.empty())
+  const auto decoded = decodeToRgb(imageBytes);
+  if (decoded.rgb.empty())
     return std::nullopt;
 
-  return extract(rgb.data(), width, height);
+  return extract({.rgbData = decoded.rgb.data(),
+                  .width = decoded.width,
+                  .height = decoded.height});
 }
 
 drogon::Task<std::optional<FaceService::FaceResult>>

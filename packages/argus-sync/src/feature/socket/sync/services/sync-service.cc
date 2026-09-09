@@ -12,8 +12,9 @@ SyncService::refreshContext(const drogon::WebSocketConnectionPtr& conn) const
   auto& ctx = conn->getContextRef<JwtContext>();
   const auto user = co_await userRepository_.findById(ctx.sub);
   if (!user || !user->isActive)
-    throw ResponseException("User account is disabled", 401,
-                            AppConfig::ERROR_CODE_UNAUTHORIZED);
+    throw ResponseException({.message = "User account is disabled",
+                             .statusCode = 401,
+                             .errorCode = AppConfig::ERROR_CODE_UNAUTHORIZED});
 
   ctx.name = user->name + " " + user->lastName;
   ctx.role = user->role;
@@ -57,8 +58,9 @@ SyncService::handleMessage(const drogon::WebSocketConnectionPtr& conn,
                            std::string_view rawMessage) const
 {
   if (!obj.isMember("type") || !obj["type"].isString())
-    throw ResponseException("Missing message type", 400,
-                            AppConfig::ERROR_CODE_BAD_REQUEST);
+    throw ResponseException({.message = "Missing message type",
+                             .statusCode = 400,
+                             .errorCode = AppConfig::ERROR_CODE_BAD_REQUEST});
 
   co_await refreshContext(conn);
 
@@ -86,13 +88,15 @@ SyncService::handleMessage(const drogon::WebSocketConnectionPtr& conn,
     const bool handled = forwarder_ &&
                          co_await forwarder_->forwardText(conn, obj, rawMessage);
     if (!handled)
-      throw ResponseException("Unknown message type", 400,
-                              AppConfig::ERROR_CODE_BAD_REQUEST);
+      throw ResponseException({.message = "Unknown message type",
+                               .statusCode = 400,
+                               .errorCode = AppConfig::ERROR_CODE_BAD_REQUEST});
     co_return;
   }
 
-  throw ResponseException("Unknown message type", 400,
-                          AppConfig::ERROR_CODE_BAD_REQUEST);
+  throw ResponseException({.message = "Unknown message type",
+                           .statusCode = 400,
+                           .errorCode = AppConfig::ERROR_CODE_BAD_REQUEST});
 }
 
 void SyncService::handleBinary(const drogon::WebSocketConnectionPtr& conn,

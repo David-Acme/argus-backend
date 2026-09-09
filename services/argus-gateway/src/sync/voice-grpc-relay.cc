@@ -190,8 +190,10 @@ drogon::Task<bool> VoiceGrpcRelay::forwardText(
   if (!session)
     co_return false;
   if (session->failed)
-    throw ResponseException("Legacy sync unavailable", 503,
-                            AppConfig::ERROR_CODE_SERVICE_UNAVAILABLE);
+    throw ResponseException(
+        {.message = "Legacy sync unavailable",
+         .statusCode = 503,
+         .errorCode = AppConfig::ERROR_CODE_SERVICE_UNAVAILABLE});
   if (session->closing)
     co_return true;
 
@@ -211,8 +213,10 @@ drogon::Task<bool> VoiceGrpcRelay::forwardText(
     const bool up = co_await BlockingTask<bool>{
         [this] { return client_->waitConnected(kConnectProbeTimeoutMs); }};
     if (!up)
-      throw ResponseException("Legacy sync unavailable", 503,
-                              AppConfig::ERROR_CODE_SERVICE_UNAVAILABLE);
+      throw ResponseException(
+          {.message = "Legacy sync unavailable",
+           .statusCode = 503,
+           .errorCode = AppConfig::ERROR_CODE_SERVICE_UNAVAILABLE});
 
     session->stream = client_->connect(
         identity, std::make_shared<StreamObserver>(conn, session));
