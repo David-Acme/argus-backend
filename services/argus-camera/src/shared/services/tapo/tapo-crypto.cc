@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cstring>
+#include <format>
 #include <memory>
 #include <openssl/evp.h>
 #include <openssl/rand.h>
@@ -256,8 +257,7 @@ std::string buildDigestHeader(const DigestInput& input)
       hash(input.username + ":" + input.realm + ":" + input.password);
   const std::string ha2 = hash(input.method + ":" + input.uri);
 
-  char counter[9];
-  std::snprintf(counter, sizeof(counter), "%08x", input.nonceCount);
+  const std::string counter = std::format("{:08x}", input.nonceCount);
 
   std::string response;
   if (input.qop.empty())

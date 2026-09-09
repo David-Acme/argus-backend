@@ -1,6 +1,7 @@
 #include "cert-service.hxx"
 
 #include <arpa/inet.h>
+#include <array>
 #include <atomic>
 #include <cctype>
 #include <chrono>
@@ -198,9 +199,9 @@ std::vector<std::string> instanceSans()
   const std::string mdnsName = ConfigService::getString("mdns.name");
   if (!mdnsName.empty())
     names.push_back(mdnsName);
-  char hostname[256];
-  if (gethostname(hostname, sizeof(hostname)) == 0)
-    names.emplace_back(hostname);
+  std::array<char, 256> hostname{};
+  if (gethostname(hostname.data(), hostname.size()) == 0)
+    names.emplace_back(hostname.data());
   const std::string remoteHost = ConfigService::getString("remote.hostname");
   if (remoteHost.empty())
     return names;
@@ -216,12 +217,12 @@ std::vector<std::string> instanceSans()
 std::string buildSanString(const std::vector<std::string>& sans)
 {
   std::string out;
-  unsigned char addr[16];
+  std::array<unsigned char, 16> addr{};
   for (const auto& value : sans) {
     if (!out.empty())
       out.push_back(',');
-    if (inet_pton(AF_INET, value.c_str(), addr) == 1 ||
-        inet_pton(AF_INET6, value.c_str(), addr) == 1)
+    if (inet_pton(AF_INET, value.c_str(), addr.data()) == 1 ||
+        inet_pton(AF_INET6, value.c_str(), addr.data()) == 1)
       out += "IP:" + value;
     else
       out += "DNS:" + value;

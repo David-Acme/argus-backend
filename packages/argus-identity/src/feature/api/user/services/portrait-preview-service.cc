@@ -1,10 +1,12 @@
 #include "portrait-preview-service.hxx"
 
 #include <config/app-config.hxx>
+#include <array>
 #include <ctime>
 #include <openssl/evp.h>
 #include <openssl/rand.h>
 #include <shared/exceptions/response-exception.hxx>
+#include <string_view>
 
 namespace
 {
@@ -12,7 +14,7 @@ constexpr int64_t kCapabilityLifetimeSeconds = 60;
 
 std::string hexDigest(const unsigned char* bytes, unsigned int length)
 {
-  static constexpr char kHex[] = "0123456789abcdef";
+  static constexpr std::string_view kHex = "0123456789abcdef";
   std::string output;
   output.reserve(static_cast<size_t>(length) * 2);
   for (unsigned int i = 0; i < length; ++i) {
@@ -59,12 +61,12 @@ std::string PortraitPreviewService::hashToken(const std::string& token)
 
 std::string PortraitPreviewService::newToken()
 {
-  unsigned char bytes[32]{};
-  if (RAND_bytes(bytes, sizeof(bytes)) != 1)
+  std::array<unsigned char, 32> bytes{};
+  if (RAND_bytes(bytes.data(), bytes.size()) != 1)
     throw ResponseException("Unable to prepare portrait preview", 503,
                             AppConfig::ERROR_CODE_SERVICE_UNAVAILABLE);
 
-  static constexpr char kAlphabet[] =
+  static constexpr std::string_view kAlphabet =
       "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
   std::string token;
   token.reserve(43);

@@ -6,6 +6,7 @@
 #include <cmath>
 #include <cstdlib>
 #include <drogon/drogon.h>
+#include <format>
 #include <shared/services/tapo/tapo-audio.hxx>
 #include <shared/services/tapo/tapo-crypto.hxx>
 #include <shared/utils/json-util/json-util.hxx>
@@ -284,8 +285,7 @@ bool TapoTalkClient::writePart(const std::vector<TapoHttpHeader>& headers,
   if (config_.framing != TapoTalkFraming::Chunked)
     return connection_->write(part);
 
-  char length[32];
-  std::snprintf(length, sizeof(length), "%zx\r\n", part.size());
+  const std::string length = std::format("{:x}\r\n", part.size());
   return connection_->write(length) && connection_->write(part) &&
          connection_->write("\r\n");
 }

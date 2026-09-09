@@ -1,6 +1,7 @@
 #include <shared/services/llm/llm-service.hxx>
 
 #include <algorithm>
+#include <array>
 #include <cstdint>
 #include <cstring>
 #include <drogon/drogon.h>
@@ -444,11 +445,11 @@ void LlmService::generateStream(const std::string& formattedPrompt,
     if (newToken == eosToken || newToken == eotToken)
       break;
 
-    char buf[256];
-    const int n =
-        llama_token_to_piece(vocab, newToken, buf, sizeof(buf), 0, true);
+    std::array<char, 256> buf{};
+    const int n = llama_token_to_piece(vocab, newToken, buf.data(),
+                                       buf.size(), 0, true);
     if (n > 0) {
-      const std::string piece(buf, static_cast<size_t>(n));
+      const std::string piece(buf.data(), static_cast<size_t>(n));
       onToken(piece, false);
       if (!stop.empty()) {
         tail += piece;

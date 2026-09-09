@@ -1,10 +1,12 @@
 #include "invitation-feature-service.hxx"
 
 #include <config/app-config.hxx>
+#include <array>
 #include <ctime>
 #include <openssl/evp.h>
 #include <openssl/rand.h>
 #include <shared/exceptions/response-exception.hxx>
+#include <string_view>
 #include <shared/services/cert/cert-service.hxx>
 #include <shared/services/config-service/config-service.hxx>
 #include <shared/contracts/sync-operation.hxx>
@@ -14,7 +16,7 @@ namespace
 {
 std::string hexDigest(const unsigned char* bytes, unsigned int length)
 {
-  static constexpr char kHex[] = "0123456789abcdef";
+  static constexpr std::string_view kHex = "0123456789abcdef";
   std::string output;
   output.reserve(static_cast<size_t>(length) * 2);
   for (unsigned int i = 0; i < length; ++i) {
@@ -26,12 +28,12 @@ std::string hexDigest(const unsigned char* bytes, unsigned int length)
 
 std::string newOpaqueToken()
 {
-  unsigned char bytes[32]{};
-  if (RAND_bytes(bytes, sizeof(bytes)) != 1)
+  std::array<unsigned char, 32> bytes{};
+  if (RAND_bytes(bytes.data(), bytes.size()) != 1)
     throw ResponseException("Unable to create invitation", 503,
                             AppConfig::ERROR_CODE_SERVICE_UNAVAILABLE);
 
-  static constexpr char kAlphabet[] =
+  static constexpr std::string_view kAlphabet =
       "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
   std::string token;
   token.reserve(43);

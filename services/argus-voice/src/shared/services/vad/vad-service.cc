@@ -1,8 +1,9 @@
 #include "vad-service.hxx"
 
+#include <drogon/drogon.h>
+
 #include <algorithm>
 #include <cstring>
-#include <iostream>
 #include <mutex>
 #include <shared/services/config-service/config-service.hxx>
 
@@ -176,9 +177,9 @@ bool VadService::process(const float* samples, int count, VadTurn& outTurn)
       const bool accepted =
           speechMs >= cfg_.minTurnMs && meanProb >= cfg_.minMeanProb;
       if (!accepted) {
-        std::cout << "[vad] turno descartado: speech=" << speechMs
-                  << "ms meanProb=" << meanProb << " (min " << cfg_.minTurnMs
-                  << "ms / " << cfg_.minMeanProb << ")\n";
+        LOG_DEBUG << "turn discarded: speech=" << speechMs << "ms meanProb="
+                  << meanProb << " (min " << cfg_.minTurnMs << "ms / "
+                  << cfg_.minMeanProb << ")";
       }
       if (accepted) {
         outTurn.samples = std::move(buffer_);

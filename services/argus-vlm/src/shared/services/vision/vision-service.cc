@@ -1,6 +1,7 @@
 #include "vision-service.hxx"
 
 #include <algorithm>
+#include <array>
 #include <cstring>
 #include <drogon/drogon.h>
 #include <llama.h>
@@ -301,11 +302,11 @@ std::string VisionService::run(const cv::Mat& src, bool srcIsBgr,
     if (token == eos || token == eot)
       break;
 
-    char piece[256];
-    const int n =
-        llama_token_to_piece(vocab, token, piece, sizeof(piece), 0, true);
+    std::array<char, 256> piece{};
+    const int n = llama_token_to_piece(vocab, token, piece.data(),
+                                       piece.size(), 0, true);
     if (n > 0)
-      caption.append(piece, static_cast<size_t>(n));
+      caption.append(piece.data(), static_cast<size_t>(n));
 
     llama_sampler_accept(smpl.get(), token);
 

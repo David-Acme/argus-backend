@@ -1,6 +1,7 @@
 #include "auth-service.hxx"
 
 #include <config/app-config.hxx>
+#include <array>
 #include <ctime>
 #include <drogon/drogon.h>
 #include <drogon/orm/DbClient.h>
@@ -327,8 +328,8 @@ AuthService::registerUser(RegisterDto body,
 drogon::Task<CreateDeviceLoginDto>
 AuthService::createDeviceLogin(const LoginDeviceInput& device) const
 {
-  unsigned char buf[32]{};
-  if (RAND_bytes(buf, sizeof(buf)) != 1)
+  std::array<unsigned char, 32> buf{};
+  if (RAND_bytes(buf.data(), buf.size()) != 1)
     throw ResponseException("Failed to generate login challenge", 500,
                             AppConfig::ERROR_CODE_SERVICE_UNAVAILABLE);
 
@@ -577,8 +578,8 @@ AuthService::issueDeviceCredential(int64_t userId,
   if (ConfigService::getString("device.identity_mode") != "credential")
     co_return issued;
 
-  unsigned char buf[32]{};
-  if (RAND_bytes(buf, sizeof(buf)) != 1)
+  std::array<unsigned char, 32> buf{};
+  if (RAND_bytes(buf.data(), buf.size()) != 1)
     throw ResponseException("Failed to issue device credential", 500,
                             AppConfig::ERROR_CODE_SERVICE_UNAVAILABLE);
 
