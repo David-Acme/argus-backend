@@ -7,6 +7,14 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 include(${CMAKE_CURRENT_SOURCE_DIR}/../../cmake/argus-module.cmake)
 
+# Standalone configure (top level): the substrate still finds the vendored
+# gRPC and would build the cq bridge, whose entry symbol then interposes the
+# identically-named implementation inside libgrpc. Empty stand-ins skip it.
+if(PROJECT_IS_TOP_LEVEL AND NOT TARGET argus_sdk_grpc_bridge_entry)
+  add_library(argus_sdk_grpc_bridge_entry INTERFACE)
+  add_library(argus_sdk_grpc_bridge_exit INTERFACE)
+endif()
+
 # Thin per-domain SDK wrappers (AGENTS rule 23): the one wire-handling point
 # every consumer shares. Consumers link argus::sdk-voice / argus::sdk-identity
 # / argus::sdk-camera.

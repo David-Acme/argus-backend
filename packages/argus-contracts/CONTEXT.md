@@ -38,7 +38,12 @@ single source of truth.
 ## Codegen substrate (F6-3)
 
 `CMakeLists.txt` exposes `argus_contracts_substrate()` (find_package for
-Protobuf + gRPC) and the root build calls it before adding any service. The
+Protobuf + gRPC) and the root build calls it before adding any service.
+The package also builds standalone (its own `conanfile.txt` + dev/prod
+presets, doctest only): with a single abseil flavor the cq bridge entry
+symbol would interpose the identically-named implementation inside
+`libgrpc`, so the standalone configure declares empty bridge stand-ins and
+lets the vendored gRPC resolve its callbacks natively. The
 gRPC toolchain on the development host is vendored under
 `~/.local/argus-thirdparty/grpc` (Arch grpc 1.83.1 shared libraries); the
 CMake fallback appends that prefix and records the library directory so
