@@ -39,8 +39,19 @@ constexpr const char* kProductivityDb =
 constexpr const char* kNotificationDb =
     "audit-sync-read-test-notification.db";
 
-void seedAuditTables(const char* path, int64_t auditId, int64_t userAuditId)
+struct SeedAuditTablesInput
 {
+  const char* path;
+  int64_t auditId{0};
+  int64_t userAuditId{0};
+};
+
+void seedAuditTables(const SeedAuditTablesInput& input)
+{
+  const char* path = input.path;
+  const int64_t auditId = input.auditId;
+  const int64_t userAuditId = input.userAuditId;
+
   std::remove(path);
   auto client =
       drogon::orm::DbClient::newSqlite3Client(std::string("filename=") + path,
@@ -81,8 +92,19 @@ bool waitForBoot(std::chrono::milliseconds timeout)
 }
 
 // Camera table (camera.db shape) for the named-camera-client resolution test.
-void createCameraTable(const char* path, int64_t id, const char* name)
+struct CreateCameraTableInput
 {
+  const char* path;
+  int64_t id{0};
+  const char* name;
+};
+
+void createCameraTable(const CreateCameraTableInput& input)
+{
+  const char* path = input.path;
+  const int64_t id = input.id;
+  const char* name = input.name;
+
   auto client =
       drogon::orm::DbClient::newSqlite3Client(std::string("filename=") + path,
                                               1);
@@ -109,15 +131,37 @@ void createCameraTable(const char* path, int64_t id, const char* name)
       "INSERT INTO camera (id, name, ip) VALUES (?, ?, '127.0.0.1')", id, name);
 }
 
-void seedCameraTable(const char* path, int64_t id, const char* name)
+struct SeedCameraTableInput
 {
+  const char* path;
+  int64_t id{0};
+  const char* name;
+};
+
+void seedCameraTable(const SeedCameraTableInput& input)
+{
+  const char* path = input.path;
+  const int64_t id = input.id;
+  const char* name = input.name;
+
   std::remove(path);
-  createCameraTable(path, id, name);
+  createCameraTable({.path = path, .id = id, .name = name});
 }
 
 // Project table (productivity.db shape) for the named-productivity-client test.
-void createProjectTable(const char* path, int64_t id, const char* name)
+struct CreateProjectTableInput
 {
+  const char* path;
+  int64_t id{0};
+  const char* name;
+};
+
+void createProjectTable(const CreateProjectTableInput& input)
+{
+  const char* path = input.path;
+  const int64_t id = input.id;
+  const char* name = input.name;
+
   auto client =
       drogon::orm::DbClient::newSqlite3Client(std::string("filename=") + path,
                                               1);
@@ -136,15 +180,38 @@ void createProjectTable(const char* path, int64_t id, const char* name)
                       id, name);
 }
 
-void seedProjectTable(const char* path, int64_t id, const char* name)
+struct SeedProjectTableInput
 {
+  const char* path;
+  int64_t id{0};
+  const char* name;
+};
+
+void seedProjectTable(const SeedProjectTableInput& input)
+{
+  const char* path = input.path;
+  const int64_t id = input.id;
+  const char* name = input.name;
+
   std::remove(path);
-  createProjectTable(path, id, name);
+  createProjectTable({.path = path, .id = id, .name = name});
 }
 
-void insertProjectRow(const char* path, int64_t id, int64_t ownerId,
-                      const char* name)
+struct InsertProjectRowInput
 {
+  const char* path;
+  int64_t id{0};
+  int64_t ownerId{0};
+  const char* name;
+};
+
+void insertProjectRow(const InsertProjectRowInput& input)
+{
+  const char* path = input.path;
+  const int64_t id = input.id;
+  const int64_t ownerId = input.ownerId;
+  const char* name = input.name;
+
   auto client =
       drogon::orm::DbClient::newSqlite3Client(std::string("filename=") + path,
                                               1);
@@ -188,8 +255,19 @@ void createNotificationTable(const char* path)
       "created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')))");
 }
 
-void seedNotificationRow(const char* path, int64_t id, const char* title)
+struct SeedNotificationRowInput
 {
+  const char* path;
+  int64_t id{0};
+  const char* title;
+};
+
+void seedNotificationRow(const SeedNotificationRowInput& input)
+{
+  const char* path = input.path;
+  const int64_t id = input.id;
+  const char* title = input.title;
+
   createNotificationTable(path);
   auto client =
       drogon::orm::DbClient::newSqlite3Client(std::string("filename=") + path,
@@ -259,8 +337,8 @@ TEST_CASE("audit sync reads resolve to the default identity client on the "
   // The gateway calls this first in main; URI filenames must precede client init.
   DbService::enableUriFilenames();
 
-  seedAuditTables(kLegacyDb, 1, 1);
-  seedAuditTables(kIdentityDb, 2, 2);
+  seedAuditTables({.path = kLegacyDb, .auditId = 1, .userAuditId = 1});
+  seedAuditTables({.path = kIdentityDb, .auditId = 2, .userAuditId = 2});
 
   std::filesystem::remove_all("/tmp/argus-audit-sync-read-test-upload");
   drogon::app().setUploadPath("/tmp/argus-audit-sync-read-test-upload");
@@ -367,8 +445,8 @@ TEST_CASE("audit sync reads resolve to the default identity client on the "
   CHECK(funnelRows.front()["eventTimestamp"].asInt64() == 1735689600000);
 
   // ── Phase: named camera client resolution (Ruling Z) ─────────────────────
-  createCameraTable(kIdentityDb, 1, "default row");
-  seedCameraTable(kCameraDb, 2, "camera-db row");
+  createCameraTable({.path = kIdentityDb, .id = 1, .name = "default row"});
+  seedCameraTable({.path = kCameraDb, .id = 2, .name = "camera-db row"});
 
   const auto cameraDb = drogon::orm::DbClient::newSqlite3Client(
       std::string("filename=") + kCameraDb, 1);
@@ -480,8 +558,8 @@ TEST_CASE("audit sync reads resolve to the default identity client on the "
   CHECK(plainFanned["info"]["id"].asInt64() == 9);
 
   // ── Phase: named productivity client resolution (Ruling AQ) ──────────────
-  createProjectTable(kIdentityDb, 1, "default row");
-  seedProjectTable(kProductivityDb, 2, "productivity-db row");
+  createProjectTable({.path = kIdentityDb, .id = 1, .name = "default row"});
+  seedProjectTable({.path = kProductivityDb, .id = 2, .name = "productivity-db row"});
 
   const auto productivityDb = drogon::orm::DbClient::newSqlite3Client(
       std::string("filename=file:") + kProductivityDb + "?mode=ro", 1);
@@ -503,8 +581,8 @@ TEST_CASE("audit sync reads resolve to the default identity client on the "
   CHECK(projectFallback->name == "default row");
 
   // ── Phase: notification substrate (Ruling AR) ────────────────────────────
-  seedNotificationRow(kIdentityDb, 1, "default row");
-  seedNotificationRow(kNotificationDb, 2, "notification-db row");
+  seedNotificationRow({.path = kIdentityDb, .id = 1, .title = "default row"});
+  seedNotificationRow({.path = kNotificationDb, .id = 2, .title = "notification-db row"});
 
   const auto notificationDb = drogon::orm::DbClient::newSqlite3Client(
       std::string("filename=") + kNotificationDb, 1);
@@ -545,8 +623,8 @@ TEST_CASE("audit sync reads resolve to the default identity client on the "
 
   // ── Phase: personal-table sync scoping (Ruling AQ) ───────────────────────
   createProjectMemberTable(kIdentityDb);
-  insertProjectRow(kIdentityDb, 3, 42, "owned by 42");
-  insertProjectRow(kIdentityDb, 4, 7, "owned by 7");
+  insertProjectRow({.path = kIdentityDb, .id = 3, .ownerId = 42, .name = "owned by 42"});
+  insertProjectRow({.path = kIdentityDb, .id = 4, .ownerId = 7, .name = "owned by 7"});
   auto memberClient = drogon::orm::DbClient::newSqlite3Client(
       std::string("filename=") + kIdentityDb, 1);
   memberClient->execSqlSync(

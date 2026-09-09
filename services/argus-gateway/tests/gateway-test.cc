@@ -997,13 +997,13 @@ TEST_CASE("remote listener appends the tunnel listener only when configured")
   const RemoteConfig disabled;
 
   Json::Value listeners = listenerJson(base);
-  appendRemoteListener(listeners, disabled, base);
+  appendRemoteListener({.listeners = listeners, .remote = disabled, .base = base});
   CHECK(listeners.size() == 1);
 
   RemoteConfig enabled;
   enabled.tunnelPort = 17443;
   listeners = listenerJson(base);
-  appendRemoteListener(listeners, enabled, base);
+  appendRemoteListener({.listeners = listeners, .remote = enabled, .base = base});
   REQUIRE(listeners.size() == 2);
   CHECK(listeners[1]["address"] == base.host);
   CHECK(listeners[1]["port"].asInt() == 17443);
@@ -1026,7 +1026,7 @@ TEST_CASE("remote listener appends the tunnel listener only when configured")
   ConfigService::load(plain);
   const ListenerConfig plainBase = ListenerConfig::resolveTls(7024);
   Json::Value plainListeners = listenerJson(plainBase);
-  appendRemoteListener(plainListeners, enabled, plainBase);
+  appendRemoteListener({.listeners = plainListeners, .remote = enabled, .base = plainBase});
   REQUIRE(plainListeners.size() == 2);
   CHECK(plainListeners[1]["https"].asBool() == false);
   CHECK_FALSE(plainListeners[1].isMember("cert"));
@@ -1218,7 +1218,7 @@ TEST_CASE("disabled rate limiter never rejects")
   RateLimitConfig failures;
   failures.enabled = false;
   RefreshRateLimiter failedLimiter(failures);
-  CHECK_FALSE(failedLimiter.recordResult("key", false, t0));
+  CHECK_FALSE(failedLimiter.recordResult({.key = "key", .success = false, .now = t0}));
 }
 
 TEST_CASE("rate limiter locks out after consecutive failures")
@@ -1234,21 +1234,24 @@ TEST_CASE("rate limiter locks out after consecutive failures")
   const auto second = std::chrono::seconds(1);
 
   REQUIRE(limiter.admit("key", t0));
-  CHECK_FALSE(limiter.recordResult("key", false, t0 + second));
-  CHECK_FALSE(limiter.recordResult("key", false, t0 + 2 * second));
-  CHECK(limiter.recordResult("key", false, t0 + 3 * second));
+  CHECK_FALSE(limiter.recordResult({.key = "key", .success = false, .now = t0 + second}));
+  CHECK_FALSE(limiter.recordResult({.key = "key", .success = false, .now = t0 + 2 * second}));
+  CHECK(limiter.recordResult({.key = "key", .success = false, .now = t0 + 3 * second}));
 
   CHECK_FALSE(limiter.admit("key", t0 + 4 * second));
-  CHECK_FALSE(limiter.recordResult("key", false, t0 + 5 * second));
+  CHECK_FALSE(limiter.recordResult({.key = "key", .success = false, .now = t0 + 5 * second}));
 
   CHECK_FALSE(limiter.admit("key", t0 + std::chrono::seconds(302)));
   CHECK(limiter.admit("key", t0 + std::chrono::seconds(304)));
-  CHECK_FALSE(limiter.recordResult("key", true,
-                                   t0 + std::chrono::seconds(305)));
-  CHECK_FALSE(limiter.recordResult("key", false,
-                                   t0 + std::chrono::seconds(306)));
-  CHECK_FALSE(limiter.recordResult("key", false,
-                                   t0 + std::chrono::seconds(307)));
+  CHECK_FALSE(limiter.recordResult({.key = "key",
+                              .success = true,
+                              .now = t0 + std::chrono::seconds(305)}));
+  CHECK_FALSE(limiter.recordResult({.key = "key",
+                              .success = false,
+                              .now = t0 + std::chrono::seconds(306)}));
+  CHECK_FALSE(limiter.recordResult({.key = "key",
+                              .success = false,
+                              .now = t0 + std::chrono::seconds(307)}));
 }
 
 TEST_CASE("remote gate rate limits refresh-token before routing")

@@ -68,9 +68,12 @@ bool RefreshRateLimiter::admit(const std::string& key,
   return true;
 }
 
-bool RefreshRateLimiter::recordResult(const std::string& key, bool success,
-                                      std::chrono::steady_clock::time_point now)
+bool RefreshRateLimiter::recordResult(const RecordResultInput& input)
 {
+  const std::string& key = input.key;
+  const bool success = input.success;
+  const std::chrono::steady_clock::time_point now = input.now;
+
   if (!config_.enabled)
     return false;
 

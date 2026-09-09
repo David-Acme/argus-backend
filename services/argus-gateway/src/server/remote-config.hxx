@@ -19,9 +19,15 @@ struct RemoteConfig
 bool requestIsRemote(const drogon::HttpRequestPtr& req,
                      const RemoteConfig& config);
 
+struct AppendRemoteListenerInput
+{
+  Json::Value& listeners;
+  const RemoteConfig& remote;
+  const ListenerConfig& base;
+};
+
 // Appends the tunnel listener with the public listener's TLS posture.
-void appendRemoteListener(Json::Value& listeners, const RemoteConfig& remote,
-                          const ListenerConfig& base);
+void appendRemoteListener(const AppendRemoteListenerInput& input);
 
 // Fails fast when the tunnel listener would collide with the public one.
 void requireDistinctTunnelPort(const ListenerConfig& listener,

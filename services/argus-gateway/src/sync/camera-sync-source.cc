@@ -136,30 +136,39 @@ ResponseException unavailable()
 class CameraSyncGateway::Pull : public Syncable
 {
 public:
-  Pull(std::shared_ptr<CameraSyncClient> client, CameraSyncTable table,
-       SyncIdentity identity)
-      : client_(std::move(client)), table_(table), identity_(std::move(identity))
+  struct Deps
+  {
+    std::shared_ptr<CameraSyncClient> client;
+    CameraSyncTable table{CameraSyncTable::Camera};
+    SyncIdentity identity;
+  };
+
+  explicit Pull(const Deps& deps)
+      : client_(deps.client), table_(deps.table), identity_(deps.identity)
   {
   }
 
   drogon::Task<std::vector<Json::Value>>
   find(const SyncFilter& filter) const override
   {
-    const auto response = co_await pull(table_, Mode::Created, filter);
+    const auto response =
+        co_await pull({.table = table_, .mode = Mode::Created, .filter = filter});
     co_return createdRows(response);
   }
 
   drogon::Task<std::vector<Json::Value>>
   findDeleted(const SyncFilter& filter) const override
   {
-    const auto response = co_await pull(table_, Mode::Deleted, filter);
+    const auto response =
+        co_await pull({.table = table_, .mode = Mode::Deleted, .filter = filter});
     co_return deletedRows(response);
   }
 
   drogon::Task<std::optional<Json::Value>>
   findLast(const SyncFilter&) const override
   {
-    const auto response = co_await pull(table_, Mode::LastCreated, {});
+    const auto response = co_await pull(
+        {.table = table_, .mode = Mode::LastCreated, .filter = {}});
     std::optional<Json::Value> row;
     switch (response.table_case()) {
       case argus::camera::v1::PullTableResponse::kCamera:
@@ -183,7 +192,8 @@ public:
   drogon::Task<std::optional<Json::Value>>
   findLastDeleted(const SyncFilter&) const override
   {
-    const auto response = co_await pull(table_, Mode::LastDeleted, {});
+    const auto response = co_await pull(
+        {.table = table_, .mode = Mode::LastDeleted, .filter = {}});
     std::optional<Json::Value> row;
     switch (response.table_case()) {
       case argus::camera::v1::PullTableResponse::kCamera:
@@ -213,9 +223,20 @@ private:
     LastDeleted,
   };
 
-  static argus::camera::v1::PullTableRequest
-  requestFor(CameraSyncTable table, Mode mode, const SyncFilter& filter)
+  struct RequestForInput
   {
+    CameraSyncTable table{CameraSyncTable::Camera};
+    Mode mode{Mode::Created};
+    const SyncFilter& filter;
+  };
+
+  static argus::camera::v1::PullTableRequest
+  requestFor(const RequestForInput& input)
+  {
+    const CameraSyncTable table = input.table;
+    const Mode mode = input.mode;
+    const SyncFilter& filter = input.filter;
+
     argus::camera::v1::PullTableRequest request;
     switch (table) {
       case CameraSyncTable::Camera:
@@ -248,10 +269,19 @@ private:
     return request;
   }
 
-  drogon::Task<argus::camera::v1::PullTableResponse>
-  pull(CameraSyncTable table, Mode mode, const SyncFilter& filter) const
+  struct PullInput
   {
-    const auto request = requestFor(table, mode, filter);
+    CameraSyncTable table{CameraSyncTable::Camera};
+    Mode mode{Mode::Created};
+    const SyncFilter& filter;
+  };
+
+  drogon::Task<argus::camera::v1::PullTableResponse>
+  pull(const PullInput& input) const
+  {
+    const auto request = requestFor({.table = input.table,
+                                     .mode = input.mode,
+                                     .filter = input.filter});
     auto response = co_await BlockingTask<
         std::optional<argus::camera::v1::PullTableResponse>>(
         [this, request]() { return client_->pullTable(request, identity_); });
@@ -324,5 +354,6 @@ bool CameraSyncGateway::serves(CameraSyncTable) const
 std::unique_ptr<Syncable>
 CameraSyncGateway::sourceFor(CameraSyncTable table, const JwtContext& ctx) const
 {
-  return std::make_unique<Pull>(client_, table, identityFor(ctx));
+  return std::make_unique<Pull>(
+      Pull::Deps{.client = client_, .table = table, .identity = identityFor(ctx)});
 }

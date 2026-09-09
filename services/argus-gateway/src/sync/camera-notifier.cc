@@ -157,7 +157,7 @@ void CameraObjectNotifier::handle(const Json::Value& json)
     return;
   }
 
-  deliver(json, titleFor(json), bodyFor(json));
+  deliver({.json = json, .title = titleFor(json), .body = bodyFor(json)});
 }
 
 void CameraObjectNotifier::flushDigests()
@@ -171,14 +171,16 @@ void CameraObjectNotifier::flushDigests()
       continue;
     Json::Value digest;
     digest["cameraId"] = cameraId;
-    deliver(digest, "Camera activity digest", summary);
+    deliver({.json = digest, .title = "Camera activity digest", .body = summary});
   }
 }
 
-void CameraObjectNotifier::deliver(const Json::Value& json,
-                                   const std::string& title,
-                                   const std::string& body)
+void CameraObjectNotifier::deliver(const DeliverInput& input)
 {
+  const Json::Value& json = input.json;
+  const std::string& title = input.title;
+  const std::string& body = input.body;
+
   drogon::async_run([json, title, body, this]() -> drogon::Task<void> {
     try {
       auto rows = co_await DbService::client()->execSqlCoro(

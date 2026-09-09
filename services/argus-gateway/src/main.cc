@@ -42,11 +42,21 @@
 namespace
 {
 
-Json::Value drogonConfig(const IdentityDbConfig& identityDb,
-                         const ListenerConfig& listener,
-                         const RemoteConfig& remote,
-                         const ProxyConfig& proxy)
+struct DrogonConfigInput
 {
+  const IdentityDbConfig& identityDb;
+  const ListenerConfig& listener;
+  const RemoteConfig& remote;
+  const ProxyConfig& proxy;
+};
+
+Json::Value drogonConfig(const DrogonConfigInput& input)
+{
+  const IdentityDbConfig& identityDb = input.identityDb;
+  const ListenerConfig& listener = input.listener;
+  const RemoteConfig& remote = input.remote;
+  const ProxyConfig& proxy = input.proxy;
+
   Json::Value config = ConfigService::drogonConfig();
   if (config.isNull())
     config = Json::Value(Json::objectValue);
@@ -63,7 +73,8 @@ Json::Value drogonConfig(const IdentityDbConfig& identityDb,
   config["db_clients"] = clients;
 
   Json::Value listeners = listenerJson(listener);
-  appendRemoteListener(listeners, remote, listener);
+  appendRemoteListener(
+      {.listeners = listeners, .remote = remote, .base = listener});
   config["listeners"] = listeners;
 
   if (!proxy.cameraProxyUrl.empty() || !proxy.productivityProxyUrl.empty()
@@ -141,9 +152,19 @@ void requireExclusionCoverage(const ProxyConfig& proxy)
   }
 }
 
-void logRouting(const ProxyConfig& proxy, const ListenerConfig& listener,
-                const RemoteConfig& remote)
+struct LogRoutingInput
 {
+  const ProxyConfig& proxy;
+  const ListenerConfig& listener;
+  const RemoteConfig& remote;
+};
+
+void logRouting(const LogRoutingInput& input)
+{
+  const ProxyConfig& proxy = input.proxy;
+  const ListenerConfig& listener = input.listener;
+  const RemoteConfig& remote = input.remote;
+
   LOG_INFO << "Listening on " << listener.host << ":" << listener.port
            << (listener.tls ? " (TLS" : " (plain")
            << ", cert " << listener.certPath << ")";
@@ -213,10 +234,13 @@ int main()
   const ProxyConfig proxy = ProxyConfig::resolve();
   requireDistinctTunnelPort(listener, remote);
   requireExclusionCoverage(proxy);
-  logRouting(proxy, listener, remote);
+  logRouting({.proxy = proxy, .listener = listener, .remote = remote});
 
   drogon::app().loadConfigJson(
-      drogonConfig(identityDb, listener, remote, proxy));
+      drogonConfig({.identityDb = identityDb,
+                    .listener = listener,
+                    .remote = remote,
+                    .proxy = proxy}));
 
   // Remote classification and the rate limiter run before filters.
   RemoteGate remoteGate(remote,

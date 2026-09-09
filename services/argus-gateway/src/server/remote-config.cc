@@ -21,9 +21,12 @@ bool requestIsRemote(const drogon::HttpRequestPtr& req,
          && req->localAddr().toPort() == config.tunnelPort;
 }
 
-void appendRemoteListener(Json::Value& listeners, const RemoteConfig& remote,
-                          const ListenerConfig& base)
+void appendRemoteListener(const AppendRemoteListenerInput& input)
 {
+  Json::Value& listeners = input.listeners;
+  const RemoteConfig& remote = input.remote;
+  const ListenerConfig& base = input.base;
+
   if (remote.tunnelPort == 0)
     return;
   listeners.append(

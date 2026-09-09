@@ -62,7 +62,9 @@ void RemoteGate::recordOutcome(const drogon::HttpRequestPtr& req,
   if (!limiter_ || !limiter_->enabled() || !isRateLimitedRoute(req))
     return;
   const bool success = resp->getStatusCode() < drogon::k400BadRequest;
-  if (limiter_->recordResult(rateLimitKey(req), success, now()))
+  if (limiter_->recordResult({.key = rateLimitKey(req),
+                              .success = success,
+                              .now = now()}))
     LOG_WARN << "Refresh-token key locked out after consecutive failures";
 }
 

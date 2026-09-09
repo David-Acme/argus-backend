@@ -127,11 +127,17 @@ bool isUsableInterface(const struct ifaddrs* ifa)
   return true;
 }
 
-bool nameEquals(const mdns_string_t& name, const char* expected,
-                size_t expectedLength)
+struct NameEqualsInput
 {
-  return name.length == expectedLength &&
-         strncasecmp(name.str, expected, name.length) == 0;
+  const mdns_string_t& name;
+  const char* expected;
+  size_t expectedLength{0};
+};
+
+bool nameEquals(const NameEqualsInput& input)
+{
+  return input.name.length == input.expectedLength &&
+         strncasecmp(input.name.str, input.expected, input.name.length) == 0;
 }
 
 } // namespace
@@ -167,15 +173,36 @@ struct MdnsService::Impl
 
   void runLoop();
 
-  void sendAnswer(int sock, const struct sockaddr* from, size_t addrlen,
-                  uint16_t query_id, uint16_t rtype, uint16_t rclass,
-                  const mdns_string_t& queryName, const mdns_record_t& answer,
-                  const std::vector<mdns_record_t>& additional) const;
+  struct SendAnswerInput
+  {
+    int sock{0};
+    const struct sockaddr* from;
+    size_t addrlen{0};
+    uint16_t queryId{0};
+    uint16_t rtype{0};
+    uint16_t rclass{0};
+    const mdns_string_t& queryName;
+    const mdns_record_t& answer;
+    const std::vector<mdns_record_t>& additional;
+  };
 
-  int handleQuestion(int sock, const struct sockaddr* from, size_t addrlen,
-                     uint16_t query_id, uint16_t rtype, uint16_t rclass,
-                     const void* data, size_t size, size_t name_offset,
-                     size_t name_length) const;
+  void sendAnswer(const SendAnswerInput& input) const;
+
+  struct HandleQuestionInput
+  {
+    int sock{0};
+    const struct sockaddr* from;
+    size_t addrlen{0};
+    uint16_t queryId{0};
+    uint16_t rtype{0};
+    uint16_t rclass{0};
+    const void* data;
+    size_t size{0};
+    size_t nameOffset{0};
+    size_t nameLength{0};
+  };
+
+  int handleQuestion(const HandleQuestionInput& input) const;
 
   void announce();
   void goodbye();
@@ -287,15 +314,21 @@ std::vector<mdns_record_t> MdnsService::Impl::buildAdditionalRecords() const
   return additional;
 }
 
-void MdnsService::Impl::sendAnswer(
-    int sock, const struct sockaddr* from, size_t addrlen, uint16_t query_id,
-    uint16_t rtype, uint16_t rclass, const mdns_string_t& queryName,
-    const mdns_record_t& answer,
-    const std::vector<mdns_record_t>& additional) const
+void MdnsService::Impl::sendAnswer(const SendAnswerInput& input) const
 {
+  const int sock = input.sock;
+  const struct sockaddr* from = input.from;
+  const size_t addrlen = input.addrlen;
+  const uint16_t queryId = input.queryId;
+  const uint16_t rtype = input.rtype;
+  const uint16_t rclass = input.rclass;
+  const mdns_string_t& queryName = input.queryName;
+  const mdns_record_t& answer = input.answer;
+  const std::vector<mdns_record_t>& additional = input.additional;
+
   if ((rclass & MDNS_UNICAST_RESPONSE) != 0) {
     mdns_query_answer_unicast(sock, from, addrlen, buffer.get(), bufferCapacity,
-                              query_id, static_cast<mdns_record_type_t>(rtype),
+                              queryId, static_cast<mdns_record_type_t>(rtype),
                               queryName.str, queryName.length, answer, 0, 0,
                               additional.data(), additional.size());
   }
@@ -305,43 +338,68 @@ void MdnsService::Impl::sendAnswer(
   }
 }
 
-int MdnsService::Impl::handleQuestion(int sock, const struct sockaddr* from,
-                                      size_t addrlen, uint16_t query_id,
-                                      uint16_t rtype, uint16_t rclass,
-                                      const void* data, size_t size,
-                                      size_t name_offset,
-                                      size_t name_length) const
+int MdnsService::Impl::handleQuestion(const HandleQuestionInput& input) const
 {
   static constexpr std::string_view kDnsSd = "_services._dns-sd._udp.local.";
 
-  (void)name_length;
+  const int sock = input.sock;
+  const struct sockaddr* from = input.from;
+  const size_t addrlen = input.addrlen;
+  const uint16_t queryId = input.queryId;
+  const uint16_t rtype = input.rtype;
+  const uint16_t rclass = input.rclass;
+  const void* data = input.data;
+  const size_t size = input.size;
+  const size_t nameOffset = input.nameOffset;
+
+  (void)input.nameLength;
 
   std::array<char, 256> nameBuffer;
-  size_t offset = name_offset;
+  size_t offset = nameOffset;
   const mdns_string_t name = mdns_string_extract(
       data, size, &offset, nameBuffer.data(), nameBuffer.size());
   if (name.length == 0)
     return 0;
 
-  if (nameEquals(name, kDnsSd.data(), kDnsSd.size())) {
+  if (nameEquals(
+          {.name = name, .expected = kDnsSd.data(), .expectedLength = kDnsSd.size()})) {
     if (rtype != MDNS_RECORDTYPE_PTR && rtype != MDNS_RECORDTYPE_ANY)
       return 0;
     mdns_record_t answer = recordPtr;
     answer.name = name;
-    sendAnswer(sock, from, addrlen, query_id, rtype, rclass, name, answer, {});
+    sendAnswer({.sock = sock,
+                .from = from,
+                .addrlen = addrlen,
+                .queryId = queryId,
+                .rtype = rtype,
+                .rclass = rclass,
+                .queryName = name,
+                .answer = answer,
+                .additional = {}});
     return 0;
   }
 
-  if (nameEquals(name, service.data(), service.size())) {
+  if (nameEquals({.name = name,
+                  .expected = service.data(),
+                  .expectedLength = service.size()})) {
     if (rtype != MDNS_RECORDTYPE_PTR && rtype != MDNS_RECORDTYPE_ANY)
       return 0;
     const std::vector<mdns_record_t> additional = buildAdditionalRecords();
-    sendAnswer(sock, from, addrlen, query_id, rtype, rclass, name, recordPtr,
-               additional);
+    sendAnswer({.sock = sock,
+                .from = from,
+                .addrlen = addrlen,
+                .queryId = queryId,
+                .rtype = rtype,
+                .rclass = rclass,
+                .queryName = name,
+                .answer = recordPtr,
+                .additional = additional});
     return 0;
   }
 
-  if (nameEquals(name, serviceInstance.data(), serviceInstance.size())) {
+  if (nameEquals({.name = name,
+                  .expected = serviceInstance.data(),
+                  .expectedLength = serviceInstance.size()})) {
     if (rtype != MDNS_RECORDTYPE_SRV && rtype != MDNS_RECORDTYPE_ANY)
       return 0;
     std::vector<mdns_record_t> additional;
@@ -352,12 +410,21 @@ int MdnsService::Impl::handleQuestion(int sock, const struct sockaddr* from,
       additional.push_back(recordAaaa);
     for (const auto& txt : txtRecords)
       additional.push_back(txt);
-    sendAnswer(sock, from, addrlen, query_id, rtype, rclass, name, recordSrv,
-               additional);
+    sendAnswer({.sock = sock,
+                .from = from,
+                .addrlen = addrlen,
+                .queryId = queryId,
+                .rtype = rtype,
+                .rclass = rclass,
+                .queryName = name,
+                .answer = recordSrv,
+                .additional = additional});
     return 0;
   }
 
-  if (nameEquals(name, hostnameQualified.data(), hostnameQualified.size())) {
+  if (nameEquals({.name = name,
+                  .expected = hostnameQualified.data(),
+                  .expectedLength = hostnameQualified.size()})) {
     const bool answerA =
         (rtype == MDNS_RECORDTYPE_A || rtype == MDNS_RECORDTYPE_ANY) && hasIpv4;
     const bool answerAaaa =
@@ -373,8 +440,15 @@ int MdnsService::Impl::handleQuestion(int sock, const struct sockaddr* from,
         additional.push_back(recordAaaa);
       for (const auto& txt : txtRecords)
         additional.push_back(txt);
-      sendAnswer(sock, from, addrlen, query_id, rtype, rclass, name, recordA,
-                 additional);
+      sendAnswer({.sock = sock,
+                  .from = from,
+                  .addrlen = addrlen,
+                  .queryId = queryId,
+                  .rtype = rtype,
+                  .rclass = rclass,
+                  .queryName = name,
+                  .answer = recordA,
+                  .additional = additional});
     }
 
     if (answerAaaa) {
@@ -384,8 +458,15 @@ int MdnsService::Impl::handleQuestion(int sock, const struct sockaddr* from,
         additional.push_back(recordA);
       for (const auto& txt : txtRecords)
         additional.push_back(txt);
-      sendAnswer(sock, from, addrlen, query_id, rtype, rclass, name, recordAaaa,
-                 additional);
+      sendAnswer({.sock = sock,
+                  .from = from,
+                  .addrlen = addrlen,
+                  .queryId = queryId,
+                  .rtype = rtype,
+                  .rclass = rclass,
+                  .queryName = name,
+                  .answer = recordAaaa,
+                  .additional = additional});
     }
     return 0;
   }
@@ -434,8 +515,16 @@ int MdnsService::Impl::callbackBridge(int sock, const struct sockaddr* from,
     return 0;
 
   auto* impl = static_cast<MdnsService::Impl*>(user_data);
-  return impl->handleQuestion(sock, from, addrlen, query_id, rtype, rclass,
-                              data, size, name_offset, name_length);
+  return impl->handleQuestion({.sock = sock,
+                               .from = from,
+                               .addrlen = addrlen,
+                               .queryId = query_id,
+                               .rtype = rtype,
+                               .rclass = rclass,
+                               .data = data,
+                               .size = size,
+                               .nameOffset = name_offset,
+                               .nameLength = name_length});
 }
 
 void MdnsService::Impl::announce()

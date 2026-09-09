@@ -66,9 +66,14 @@ public:
   CameraNotificationPolicy& policy() { return policy_; }
 
 private:
-  void deliver(const Json::Value& json,
-               const std::string& title,
-               const std::string& body);
+  struct DeliverInput
+  {
+    const Json::Value& json;
+    const std::string& title;
+    const std::string& body;
+  };
+
+  void deliver(const DeliverInput& input);
 
   NotificationService notificationService_;
   CameraNotificationPolicy policy_;

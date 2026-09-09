@@ -21,8 +21,19 @@ namespace
 constexpr const char* kIdentityDb = "camera-notifier-test-identity.db";
 
 // A timestamp whose LOCAL hour is the requested one (hourOfDay reads the clock).
-int64_t atLocalHour(int hour, int minute = 0, int day = 15)
+struct AtLocalHourInput
 {
+  int hour{0};
+  int minute{0};
+  int day{0};
+};
+
+int64_t atLocalHour(const AtLocalHourInput& input)
+{
+  const int hour = input.hour;
+  const int minute = input.minute;
+  const int day = input.day;
+
   std::tm local{};
   local.tm_year = 2025 - 1900;
   local.tm_mon = 5;
@@ -34,8 +45,19 @@ int64_t atLocalHour(int hour, int minute = 0, int day = 15)
   return static_cast<int64_t>(tick) * 1000;
 }
 
-Json::Value eventJson(int64_t cameraId, const char* rule, const char* severity)
+struct EventJsonInput
 {
+  int64_t cameraId{0};
+  const char* rule;
+  const char* severity;
+};
+
+Json::Value eventJson(const EventJsonInput& input)
+{
+  const int64_t cameraId = input.cameraId;
+  const char* rule = input.rule;
+  const char* severity = input.severity;
+
   Json::Value event;
   event["cameraId"] = Json::Int64(cameraId);
   event["cameraName"] = "Front door";
@@ -123,7 +145,7 @@ private:
 TEST_CASE("the notification budget allows budget_per_hour then suppresses")
 {
   CameraNotificationPolicy policy({2, -1, -1});
-  const int64_t start = atLocalHour(12);
+  const int64_t start = atLocalHour({.hour = 12, .minute = 0, .day = 15});
 
   CHECK(policy.shouldNotify(1, start));
   CHECK(policy.shouldNotify(1, start + 1000));
@@ -137,21 +159,21 @@ TEST_CASE("the notification budget allows budget_per_hour then suppresses")
 TEST_CASE("silent hours suppress and support wrapping")
 {
   CameraNotificationPolicy policy({6, 22, 6});
-  CHECK_FALSE(policy.shouldNotify(1, atLocalHour(23)));
-  CHECK_FALSE(policy.shouldNotify(1, atLocalHour(2)));
-  CHECK(policy.shouldNotify(1, atLocalHour(12)));
+  CHECK_FALSE(policy.shouldNotify(1, atLocalHour({.hour = 23, .minute = 0, .day = 15})));
+  CHECK_FALSE(policy.shouldNotify(1, atLocalHour({.hour = 2, .minute = 0, .day = 15})));
+  CHECK(policy.shouldNotify(1, atLocalHour({.hour = 12, .minute = 0, .day = 15})));
   // 21:59 is still before the silent window opens.
-  CHECK(policy.shouldNotify(1, atLocalHour(21, 59)));
-  CHECK(policy.shouldNotify(1, atLocalHour(6, 0)));
+  CHECK(policy.shouldNotify(1, atLocalHour({.hour = 21, .minute = 59, .day = 15})));
+  CHECK(policy.shouldNotify(1, atLocalHour({.hour = 6, .minute = 0, .day = 15})));
 
   CameraNotificationPolicy disabled({6, -1, -1});
-  CHECK(disabled.shouldNotify(1, atLocalHour(23)));
+  CHECK(disabled.shouldNotify(1, atLocalHour({.hour = 23, .minute = 0, .day = 15})));
 }
 
 TEST_CASE("the digest summarizes suppressed events after the window closes")
 {
   CameraNotificationPolicy policy({1, -1, -1});
-  const int64_t start = atLocalHour(12);
+  const int64_t start = atLocalHour({.hour = 12, .minute = 0, .day = 15});
 
   CHECK(policy.shouldNotify(1, start));
   policy.countSuppressed(1, "person");
@@ -173,13 +195,13 @@ TEST_CASE("the digest summarizes suppressed events after the window closes")
 TEST_CASE("a digest flushes when the silent window ends")
 {
   CameraNotificationPolicy policy({6, 22, 6});
-  const int64_t night = atLocalHour(23);
+  const int64_t night = atLocalHour({.hour = 23, .minute = 0, .day = 15});
 
   CHECK_FALSE(policy.shouldNotify(1, night));
   policy.countSuppressed(1, "person");
 
   // Morning after the silent window [22, 6) closed: the digest goes out.
-  const std::string digest = policy.takeDigest(1, atLocalHour(6, 0, 16));
+  const std::string digest = policy.takeDigest(1, atLocalHour({.hour = 6, .minute = 0, .day = 16}));
   CHECK(digest.find("1 events suppressed") != std::string::npos);
   CHECK(digest.find("1 person") != std::string::npos);
 }
@@ -187,7 +209,7 @@ TEST_CASE("a digest flushes when the silent window ends")
 TEST_CASE("a pending digest survives the hour-roll race")
 {
   CameraNotificationPolicy policy({6, -1, -1});
-  const int64_t start = atLocalHour(12);
+  const int64_t start = atLocalHour({.hour = 12, .minute = 0, .day = 15});
 
   CHECK(policy.shouldNotify(1, start));
   policy.countSuppressed(1, "person");
@@ -207,18 +229,18 @@ TEST_CASE("a pending digest survives the hour-roll race")
 TEST_CASE("counts suppressed inside silent hours carry until the window ends")
 {
   CameraNotificationPolicy policy({6, 22, 6});
-  const int64_t night = atLocalHour(23);
+  const int64_t night = atLocalHour({.hour = 23, .minute = 0, .day = 15});
 
   CHECK_FALSE(policy.shouldNotify(1, night));
   policy.countSuppressed(1, "person");
 
   // The budget hour rolls inside the silent window; the counts carry.
-  CHECK_FALSE(policy.shouldNotify(1, atLocalHour(0, 5, 16)));
+  CHECK_FALSE(policy.shouldNotify(1, atLocalHour({.hour = 0, .minute = 5, .day = 16})));
   policy.countSuppressed(1, "car");
-  CHECK(policy.takeDigest(1, atLocalHour(1, 0, 16)).empty());
+  CHECK(policy.takeDigest(1, atLocalHour({.hour = 1, .minute = 0, .day = 16})).empty());
 
   // Morning after the silent window [22, 6) closed: everything flushes.
-  const std::string digest = policy.takeDigest(1, atLocalHour(6, 0, 16));
+  const std::string digest = policy.takeDigest(1, atLocalHour({.hour = 6, .minute = 0, .day = 16}));
   CHECK(digest.find("2 events suppressed") != std::string::npos);
   CHECK(digest.find("1 person") != std::string::npos);
   CHECK(digest.find("1 car") != std::string::npos);
@@ -272,7 +294,9 @@ TEST_CASE("the consumer applies the budget and creates camera notifications")
 
   CameraObjectNotifier notifier({6, -1, -1});
 
-  notifier.handle(eventJson(1, "person_in_alert_zone", "critical"));
+  notifier.handle(eventJson({.cameraId = 1,
+                             .rule = "person_in_alert_zone",
+                             .severity = "critical"}));
   REQUIRE(waitForNotifications(2, std::chrono::seconds(10)));
   const auto rows = drogon::app().getDbClient()->execSqlSync(
       "SELECT user_id, title, body FROM notification WHERE type = 'camera' "
@@ -287,9 +311,9 @@ TEST_CASE("the consumer applies the budget and creates camera notifications")
 
   // Budget 6 per hour: the next five pass, the seventh is suppressed.
   for (int i = 0; i < 5; ++i)
-    notifier.handle(eventJson(1, "person_day", "info"));
+    notifier.handle(eventJson({.cameraId = 1, .rule = "person_day", .severity = "info"}));
   REQUIRE(waitForNotifications(12, std::chrono::seconds(10)));
-  notifier.handle(eventJson(1, "person_day", "info"));
+  notifier.handle(eventJson({.cameraId = 1, .rule = "person_day", .severity = "info"}));
 
   // Wait past any in-flight write, then confirm the count stopped at 12.
   std::this_thread::sleep_for(std::chrono::milliseconds(300));
@@ -307,7 +331,7 @@ TEST_CASE("the consumer applies the budget and creates camera notifications")
       [&rooms, &conn] { rooms.join(userRoom(1), conn); });
 
   CameraObjectNotifier addFrameNotifier({6, -1, -1});
-  addFrameNotifier.handle(eventJson(1, "person", "info"));
+  addFrameNotifier.handle(eventJson({.cameraId = 1, .rule = "person", .severity = "info"}));
   const auto frameDeadline = std::chrono::steady_clock::now() +
                              std::chrono::seconds(10);
   while (conn->messages.empty()

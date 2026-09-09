@@ -44,9 +44,19 @@ private:
   mutable std::vector<PushIntent> recorded;
 };
 
-bool waitForIntents(const RecordingPushIntentSink& sink, size_t expected,
-                    std::chrono::milliseconds timeout)
+struct WaitForIntentsInput
 {
+  const RecordingPushIntentSink& sink;
+  size_t expected{0};
+  std::chrono::milliseconds timeout{0};
+};
+
+bool waitForIntents(const WaitForIntentsInput& input)
+{
+  const RecordingPushIntentSink& sink = input.sink;
+  const size_t expected = input.expected;
+  const std::chrono::milliseconds timeout = input.timeout;
+
   const auto deadline = std::chrono::steady_clock::now() + timeout;
   while (std::chrono::steady_clock::now() < deadline) {
     if (sink.recordedIntents().size() >= expected)
@@ -132,7 +142,9 @@ TEST_CASE("the createAndEmitMany hook publishes one intent per row")
   const NotificationService service;
   drogon::sync_wait(service.createAndEmitMany({1, 2}, input));
 
-  REQUIRE(waitForIntents(sink, 2, std::chrono::seconds(10)));
+  REQUIRE(waitForIntents({.sink = sink,
+                          .expected = 2,
+                          .timeout = std::chrono::seconds(10)}));
   REQUIRE(sink.recordedIntents().size() == 2);
   CHECK(sink.recordedIntents()[0].userId == 1);
   CHECK(sink.recordedIntents()[0].type == "camera");

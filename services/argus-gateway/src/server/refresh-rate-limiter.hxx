@@ -29,9 +29,15 @@ public:
   // Returns false when the request must be rejected with 429.
   bool admit(const std::string& key,
              std::chrono::steady_clock::time_point now);
+
+  struct RecordResultInput
+  {
+    const std::string& key;
+    bool success{false};
+    std::chrono::steady_clock::time_point now{};
+  };
   // Returns true when this failure just locked the key.
-  bool recordResult(const std::string& key, bool success,
-                    std::chrono::steady_clock::time_point now);
+  bool recordResult(const RecordResultInput& input);
 
 private:
   struct Entry
