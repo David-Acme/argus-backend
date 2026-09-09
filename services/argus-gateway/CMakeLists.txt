@@ -177,11 +177,7 @@ set_target_properties(audit-sync-read-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 set_target_properties(camera-notifier-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 set_target_properties(push-intent-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
-# Registered unconditionally: these ran in no automated circuit while they were
-# standalone-only, because nothing configures the standalone tree.
-if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
-    enable_testing()
-endif()
+enable_testing()
 add_test(NAME gateway-test COMMAND gateway-test)
 add_test(NAME audit-sync-read-test COMMAND audit-sync-read-test)
 add_test(NAME camera-notifier-test COMMAND camera-notifier-test)

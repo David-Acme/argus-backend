@@ -111,11 +111,7 @@ set_target_properties(service-config-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 set_target_properties(tunnel-push-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 set_target_properties(tunnel-health-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
-# Registered unconditionally: these ran in no automated circuit while they were
-# standalone-only, because nothing configures the standalone tree.
-if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
-    enable_testing()
-endif()
+enable_testing()
 add_test(NAME framing-test COMMAND framing-test)
 add_test(NAME tunnel-integration-test COMMAND tunnel-integration-test)
 add_test(NAME tunnel-reconnect-test COMMAND tunnel-reconnect-test)

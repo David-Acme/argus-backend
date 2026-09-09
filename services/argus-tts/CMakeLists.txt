@@ -68,39 +68,38 @@ add_custom_command(TARGET argus-tts POST_BUILD
             ${CMAKE_CURRENT_SOURCE_DIR}/../../models
             $<TARGET_FILE_DIR:argus-tts>/models)
 
-# The wire suite is a root-project test; it opts back into the default
-# build because this folder is added EXCLUDE_FROM_ALL.
-if(ARGUS_ROOT_PROJECT)
-    find_package(doctest REQUIRED)
+# The wire suite opts back into the default build: this folder is added
+# EXCLUDE_FROM_ALL.
+enable_testing()
+find_package(doctest REQUIRED)
 
 
-    # The argus-tts wire contract (F4-2, Ruling BH): the real engine serves the
-    # synthesize/config legs from the shared models tree.
-    add_executable(tts-wire-test tests/unit/tts-wire-test.cc
-        ${TTS_SRC_ROOT}/controllers/tts-controller.cc
-        ${TTS_SRC_ROOT}/tts/synthesize-dto.cc
-        ${SHARED_ROOT}/services/tts/tts-service.cc
-        ${SHARED_ROOT}/services/tts/tts-engine.cc
-        ${SHARED_ROOT}/services/tts/onnx-utils.cc
-        ${SHARED_ROOT}/services/tts/style.cc
-        ${SHARED_ROOT}/services/tts/unicode-processor.cc)
+# The argus-tts wire contract (F4-2, Ruling BH): the real engine serves the
+# synthesize/config legs from the shared models tree.
+add_executable(tts-wire-test tests/unit/tts-wire-test.cc
+    ${TTS_SRC_ROOT}/controllers/tts-controller.cc
+    ${TTS_SRC_ROOT}/tts/synthesize-dto.cc
+    ${SHARED_ROOT}/services/tts/tts-service.cc
+    ${SHARED_ROOT}/services/tts/tts-engine.cc
+    ${SHARED_ROOT}/services/tts/onnx-utils.cc
+    ${SHARED_ROOT}/services/tts/style.cc
+    ${SHARED_ROOT}/services/tts/unicode-processor.cc)
 
-    target_include_directories(tts-wire-test PRIVATE
-        ${TTS_SRC_ROOT})
+target_include_directories(tts-wire-test PRIVATE
+    ${TTS_SRC_ROOT})
 
-    target_compile_definitions(tts-wire-test PRIVATE
-        ARGUS_TEST_TTS_MODELS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../../models/tts")
+target_compile_definitions(tts-wire-test PRIVATE
+    ARGUS_TEST_TTS_MODELS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../../models/tts")
 
-    target_link_libraries(tts-wire-test PRIVATE argus_common argus::auth
-        argus::tts-client argus::hardware-profile onnxruntime::onnxruntime
-        doctest::doctest)
+target_link_libraries(tts-wire-test PRIVATE argus_common argus::auth
+    argus::tts-client argus::hardware-profile onnxruntime::onnxruntime
+    doctest::doctest)
 
-    target_include_directories(tts-wire-test PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/../../packages/argus-tts-client/tests/support)
+target_include_directories(tts-wire-test PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../packages/argus-tts-client/tests/support)
 
-    target_compile_options(tts-wire-test PRIVATE -Wall -Wextra)
+target_compile_options(tts-wire-test PRIVATE -Wall -Wextra)
 
-    set_target_properties(tts-wire-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+set_target_properties(tts-wire-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
-    add_test(NAME tts-wire-test COMMAND tts-wire-test)
-endif()
+add_test(NAME tts-wire-test COMMAND tts-wire-test)

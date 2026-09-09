@@ -130,47 +130,46 @@ target_compile_options(argus-tool-bench PRIVATE -Wall -Wextra)
 
 set_target_properties(argus-tool-bench PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
-# The LLM wire suite is a root-project test; it opts back into the default
-# build because this folder is added EXCLUDE_FROM_ALL.
-if(ARGUS_ROOT_PROJECT)
-    find_package(doctest REQUIRED)
+# The LLM wire suite opts back into the default build: this folder is added
+# EXCLUDE_FROM_ALL.
+enable_testing()
+find_package(doctest REQUIRED)
 
-    add_executable(llm-wire-test tests/unit/llm-wire-test.cc
-        ${LLM_SRC_ROOT}/controllers/llm-controller.cc
-        ${LLM_SRC_ROOT}/llm/chat-dto.cc
-        ${SHARED_ROOT}/services/llm/llm-service.cc
-        # The controller drives the loop when tools are registered; the test
-        # registers none and exercises the direct paths.
-        ${SHARED_ROOT}/services/llm/lfm-adapter.cc
-        # The controller owns the router's gate, so the wire test builds it
-        # too: with no model on disk it abstains and the paths stay direct.
-        ${SHARED_ROOT}/services/llm/intent-gate.cc)
+add_executable(llm-wire-test tests/unit/llm-wire-test.cc
+    ${LLM_SRC_ROOT}/controllers/llm-controller.cc
+    ${LLM_SRC_ROOT}/llm/chat-dto.cc
+    ${SHARED_ROOT}/services/llm/llm-service.cc
+    # The controller drives the loop when tools are registered; the test
+    # registers none and exercises the direct paths.
+    ${SHARED_ROOT}/services/llm/lfm-adapter.cc
+    # The controller owns the router's gate, so the wire test builds it
+    # too: with no model on disk it abstains and the paths stay direct.
+    ${SHARED_ROOT}/services/llm/intent-gate.cc)
 
-    target_include_directories(llm-wire-test PRIVATE
-        ${CMAKE_SOURCE_DIR}/services/argus-llm/src)
+target_include_directories(llm-wire-test PRIVATE
+    ${CMAKE_SOURCE_DIR}/services/argus-llm/src)
 
-    target_compile_definitions(llm-wire-test PRIVATE
-        ARGUS_TEST_LLM_MODELS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../../models/llm")
+target_compile_definitions(llm-wire-test PRIVATE
+    ARGUS_TEST_LLM_MODELS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../../models/llm")
 
-    target_link_libraries(llm-wire-test PRIVATE argus_common argus::llm-client
-        argus::hardware-profile argus::intent memory-core
-        ${ARGUS_LLAMA_TARGETS} doctest::doctest)
+target_link_libraries(llm-wire-test PRIVATE argus_common argus::llm-client
+    argus::hardware-profile argus::intent memory-core
+    ${ARGUS_LLAMA_TARGETS} doctest::doctest)
 
-    target_compile_options(llm-wire-test PRIVATE -Wall -Wextra)
+target_compile_options(llm-wire-test PRIVATE -Wall -Wextra)
 
-    set_target_properties(llm-wire-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+set_target_properties(llm-wire-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
-    add_test(NAME llm-wire-test COMMAND llm-wire-test)
+add_test(NAME llm-wire-test COMMAND llm-wire-test)
 
-    # Parsing and streaming-gate rules, no model: the f8-b4 probes found each
-    # of these on live traffic.
-    add_executable(llm-tool-parse-test tests/unit/llm-tool-parse-test.cc)
+# Parsing and streaming-gate rules, no model: the f8-b4 probes found each
+# of these on live traffic.
+add_executable(llm-tool-parse-test tests/unit/llm-tool-parse-test.cc)
 
-    target_link_libraries(llm-tool-parse-test PRIVATE llm-core doctest::doctest)
+target_link_libraries(llm-tool-parse-test PRIVATE llm-core doctest::doctest)
 
-    target_compile_options(llm-tool-parse-test PRIVATE -Wall -Wextra)
+target_compile_options(llm-tool-parse-test PRIVATE -Wall -Wextra)
 
-    set_target_properties(llm-tool-parse-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+set_target_properties(llm-tool-parse-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
-    add_test(NAME llm-tool-parse-test COMMAND llm-tool-parse-test)
-endif()
+add_test(NAME llm-tool-parse-test COMMAND llm-tool-parse-test)

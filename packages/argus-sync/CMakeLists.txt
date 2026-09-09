@@ -62,19 +62,18 @@ target_compile_options(argus_sync PRIVATE -Wall -Wextra)
 
 # The sync suites: the empty-table contract and the golden /sync transcript
 # whose fixtures are frozen (a re-record is a contract change, not a fix).
-if(ARGUS_ROOT_PROJECT)
-    find_package(doctest REQUIRED)
+enable_testing()
+find_package(doctest REQUIRED)
 
-    add_executable(event-sync-empty-test tests/unit/event-sync-empty-test.cc)
-    target_link_libraries(event-sync-empty-test PRIVATE argus_sync
-        argus::sqlite argus_common Drogon::Drogon sqlite-vec doctest::doctest)
-    target_compile_options(event-sync-empty-test PRIVATE -Wall -Wextra)
-    add_test(NAME event-sync-empty-test COMMAND event-sync-empty-test)
+add_executable(event-sync-empty-test tests/unit/event-sync-empty-test.cc)
+target_link_libraries(event-sync-empty-test PRIVATE argus_sync
+    argus::sqlite argus_common Drogon::Drogon sqlite-vec doctest::doctest)
+target_compile_options(event-sync-empty-test PRIVATE -Wall -Wextra)
+add_test(NAME event-sync-empty-test COMMAND event-sync-empty-test)
 
-    add_executable(golden-sync-test tests/e2e/golden-sync-test.cc)
-    target_compile_definitions(golden-sync-test PRIVATE
-        ARGUS_TEST_SYNC_FIXTURES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/sync")
-    target_link_libraries(golden-sync-test PRIVATE Drogon::Drogon)
-    target_compile_options(golden-sync-test PRIVATE -Wall -Wextra)
-    add_test(NAME golden-sync-test COMMAND golden-sync-test)
-endif()
+add_executable(golden-sync-test tests/e2e/golden-sync-test.cc)
+target_compile_definitions(golden-sync-test PRIVATE
+    ARGUS_TEST_SYNC_FIXTURES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/sync")
+target_link_libraries(golden-sync-test PRIVATE Drogon::Drogon)
+target_compile_options(golden-sync-test PRIVATE -Wall -Wextra)
+add_test(NAME golden-sync-test COMMAND golden-sync-test)

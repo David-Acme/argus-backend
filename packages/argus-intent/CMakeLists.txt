@@ -60,16 +60,15 @@ target_compile_options(argus_intent PRIVATE -Wall -Wextra)
 
 # The router contract (degradation first) and the accuracy gate against the
 # published judges — the same fixtures the training project gated on.
-if(ARGUS_ROOT_PROJECT)
-    find_package(doctest REQUIRED)
+enable_testing()
+find_package(doctest REQUIRED)
 
-    foreach(TEST_NAME IN ITEMS intent-router-test intent-accuracy-test)
-        add_executable(${TEST_NAME} tests/unit/${TEST_NAME}.cc)
-        target_compile_definitions(${TEST_NAME} PRIVATE
-            ARGUS_TEST_INTENT_MODELS_DIR="${CMAKE_SOURCE_DIR}/models/intent"
-            ARGUS_TEST_INTENT_FIXTURES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures")
-        target_link_libraries(${TEST_NAME} PRIVATE argus_intent doctest::doctest)
-        target_compile_options(${TEST_NAME} PRIVATE -Wall -Wextra)
-        add_test(NAME ${TEST_NAME} COMMAND ${TEST_NAME})
-    endforeach()
-endif()
+foreach(TEST_NAME IN ITEMS intent-router-test intent-accuracy-test)
+    add_executable(${TEST_NAME} tests/unit/${TEST_NAME}.cc)
+    target_compile_definitions(${TEST_NAME} PRIVATE
+        ARGUS_TEST_INTENT_MODELS_DIR="${CMAKE_SOURCE_DIR}/models/intent"
+        ARGUS_TEST_INTENT_FIXTURES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures")
+    target_link_libraries(${TEST_NAME} PRIVATE argus_intent doctest::doctest)
+    target_compile_options(${TEST_NAME} PRIVATE -Wall -Wextra)
+    add_test(NAME ${TEST_NAME} COMMAND ${TEST_NAME})
+endforeach()

@@ -91,80 +91,79 @@ if(DOCTEST_INCLUDE_DIRS)
         INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${DOCTEST_INCLUDE_DIRS}")
 endif()
 
-# The voice suites are root-project tests; the targets opt back into the
-# default build because this folder is added EXCLUDE_FROM_ALL.
-if(ARGUS_ROOT_PROJECT)
-    # The voice suites ride argus-voice's voice-core (F6-3): the typed gRPC
-    # session, the remote-only engine seam and the SDK stubs compile there.
-    add_executable(voice-session-seam-test tests/unit/voice-session-seam-test.cc)
+# The voice suites opt back into the default build: this folder is added
+# EXCLUDE_FROM_ALL.
+enable_testing()
+# The voice suites ride argus-voice's voice-core (F6-3): the typed gRPC
+# session, the remote-only engine seam and the SDK stubs compile there.
+add_executable(voice-session-seam-test tests/unit/voice-session-seam-test.cc)
 
-    target_link_libraries(voice-session-seam-test PRIVATE argus::voice-core
-        doctest::doctest)
+target_link_libraries(voice-session-seam-test PRIVATE argus::voice-core
+    doctest::doctest)
 
-    target_compile_options(voice-session-seam-test PRIVATE -Wall -Wextra)
+target_compile_options(voice-session-seam-test PRIVATE -Wall -Wextra)
 
-    argus_runtime_rpath(voice-session-seam-test)
+argus_runtime_rpath(voice-session-seam-test)
 
-    set_target_properties(voice-session-seam-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+set_target_properties(voice-session-seam-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
-    add_test(NAME voice-session-seam-test COMMAND voice-session-seam-test)
+add_test(NAME voice-session-seam-test COMMAND voice-session-seam-test)
 
-    # The TTS cutover suite: the voice session speaks through the argus-tts
-    # internal wire (RemoteVoiceTts) against the in-process fake server.
-    add_executable(voice-tts-remote-test tests/unit/voice-tts-remote-test.cc)
+# The TTS cutover suite: the voice session speaks through the argus-tts
+# internal wire (RemoteVoiceTts) against the in-process fake server.
+add_executable(voice-tts-remote-test tests/unit/voice-tts-remote-test.cc)
 
-    # The TTS wire's fake server moved to the wire module with f7-7a.
-    target_include_directories(voice-tts-remote-test PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/../../packages/argus-tts-client/tests/support)
+# The TTS wire's fake server moved to the wire module with f7-7a.
+target_include_directories(voice-tts-remote-test PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../packages/argus-tts-client/tests/support)
 
-    target_link_libraries(voice-tts-remote-test PRIVATE argus::voice-core
-        doctest::doctest)
+target_link_libraries(voice-tts-remote-test PRIVATE argus::voice-core
+    doctest::doctest)
 
-    target_compile_options(voice-tts-remote-test PRIVATE -Wall -Wextra)
+target_compile_options(voice-tts-remote-test PRIVATE -Wall -Wextra)
 
-    argus_runtime_rpath(voice-tts-remote-test)
+argus_runtime_rpath(voice-tts-remote-test)
 
-    set_target_properties(voice-tts-remote-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+set_target_properties(voice-tts-remote-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
-    add_test(NAME voice-tts-remote-test COMMAND voice-tts-remote-test)
+add_test(NAME voice-tts-remote-test COMMAND voice-tts-remote-test)
 
-    # The STT cutover suite: the voice session transcribes through the
-    # argus-stt internal wire (RemoteVoiceStt), degrading to the existing
-    # stt_failed error path when the server is down.
-    add_executable(voice-stt-remote-test tests/unit/voice-stt-remote-test.cc)
+# The STT cutover suite: the voice session transcribes through the
+# argus-stt internal wire (RemoteVoiceStt), degrading to the existing
+# stt_failed error path when the server is down.
+add_executable(voice-stt-remote-test tests/unit/voice-stt-remote-test.cc)
 
-    target_include_directories(voice-stt-remote-test PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/../../packages/argus-stt-client/tests/support)
+target_include_directories(voice-stt-remote-test PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../packages/argus-stt-client/tests/support)
 
-    target_link_libraries(voice-stt-remote-test PRIVATE argus::voice-core
-        doctest::doctest)
+target_link_libraries(voice-stt-remote-test PRIVATE argus::voice-core
+    doctest::doctest)
 
-    target_compile_options(voice-stt-remote-test PRIVATE -Wall -Wextra)
+target_compile_options(voice-stt-remote-test PRIVATE -Wall -Wextra)
 
-    argus_runtime_rpath(voice-stt-remote-test)
+argus_runtime_rpath(voice-stt-remote-test)
 
-    set_target_properties(voice-stt-remote-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+set_target_properties(voice-stt-remote-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
-    add_test(NAME voice-stt-remote-test COMMAND voice-stt-remote-test)
+add_test(NAME voice-stt-remote-test COMMAND voice-stt-remote-test)
 
-    # The LLM cutover suite (F4-5): the voice session streams its replies through
-    # the argus-llm internal wire (RemoteVoiceLlm), degrading silently when the
-    # server is down.
-    add_executable(voice-llm-remote-test tests/unit/voice-llm-remote-test.cc)
+# The LLM cutover suite (F4-5): the voice session streams its replies through
+# the argus-llm internal wire (RemoteVoiceLlm), degrading silently when the
+# server is down.
+add_executable(voice-llm-remote-test tests/unit/voice-llm-remote-test.cc)
 
-    # This suite drives both the LLM and STT fakes.
-    target_include_directories(voice-llm-remote-test PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/../../packages/argus-llm-client/tests/support
-        ${CMAKE_CURRENT_SOURCE_DIR}/../../packages/argus-stt-client/tests/support)
+# This suite drives both the LLM and STT fakes.
+target_include_directories(voice-llm-remote-test PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../packages/argus-llm-client/tests/support
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../packages/argus-stt-client/tests/support)
 
-    target_link_libraries(voice-llm-remote-test PRIVATE argus::voice-core
-        doctest::doctest)
+target_link_libraries(voice-llm-remote-test PRIVATE argus::voice-core
+    doctest::doctest)
 
-    target_compile_options(voice-llm-remote-test PRIVATE -Wall -Wextra)
+target_compile_options(voice-llm-remote-test PRIVATE -Wall -Wextra)
 
-    argus_runtime_rpath(voice-llm-remote-test)
+argus_runtime_rpath(voice-llm-remote-test)
 
-    set_target_properties(voice-llm-remote-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+set_target_properties(voice-llm-remote-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
-    add_test(NAME voice-llm-remote-test COMMAND voice-llm-remote-test)
-endif()
+add_test(NAME voice-llm-remote-test COMMAND voice-llm-remote-test)

@@ -7,11 +7,6 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 set(CMAKE_PREFIX_PATH ${CMAKE_BINARY_DIR} ${CMAKE_PREFIX_PATH})
 
-# Marks the root backend project: subprojects test this variable to know
-# they are being built as part of the root tree (their root-registered
-# ctest suites only exist there).
-set(ARGUS_ROOT_PROJECT ON)
-
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/argus-module.cmake)
 
 find_package(Drogon CONFIG REQUIRED)
@@ -27,10 +22,7 @@ find_package(cnats CONFIG REQUIRED)
 find_path(RNNOISE_INCLUDE_DIR NAMES rnnoise.h)
 find_library(RNNOISE_LIBRARY NAMES rnnoise)
 
-# Before every add_subdirectory: enable_testing() only reaches
-# subdirectories added after the call, and service folders added earlier
-# (argus-identity) register their root-ctest suites from their own
-# CMakeLists.
+# Lets ctest run from each build root; every subproject also enables its own.
 enable_testing()
 
 add_subdirectory(third_party)

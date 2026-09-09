@@ -23,12 +23,11 @@ target_compile_options(argus_sqlite PRIVATE -Wall -Wextra)
 
 # The named identity client slot: installed at boot, falling back to the
 # default client when the host installs none.
-if(ARGUS_ROOT_PROJECT)
-    find_package(doctest REQUIRED)
+enable_testing()
+find_package(doctest REQUIRED)
 
-    add_executable(identity-client-test tests/unit/identity-client-test.cc)
-    target_link_libraries(identity-client-test PRIVATE argus::sqlite
-        argus_common Drogon::Drogon sqlite-vec doctest::doctest)
-    target_compile_options(identity-client-test PRIVATE -Wall -Wextra)
-    add_test(NAME identity-client-test COMMAND identity-client-test)
-endif()
+add_executable(identity-client-test tests/unit/identity-client-test.cc)
+target_link_libraries(identity-client-test PRIVATE argus::sqlite
+    argus_common Drogon::Drogon sqlite-vec doctest::doctest)
+target_compile_options(identity-client-test PRIVATE -Wall -Wextra)
+add_test(NAME identity-client-test COMMAND identity-client-test)

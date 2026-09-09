@@ -172,84 +172,81 @@ if(DOCTEST_INCLUDE_DIRS)
         INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${DOCTEST_INCLUDE_DIRS}")
 endif()
 
-# The camera unit suites are root-project tests: they are part of the root
-# ctest run, and camera-migration (tools/) is EXCLUDE_FROM_ALL there.
-# Standalone consumer builds never had these suites.
-if(ARGUS_ROOT_PROJECT)
-    set(CAMERA_UNIT_TESTS
-        camera-schema-test
-        camera-migration-test
-        camera-config-test
-        camera-controller-test
-        camera-operator-test
-        event-intelligence-test
-    )
+# The unit suites opt into the default build: this folder is added
+# EXCLUDE_FROM_ALL, and camera-migration (tools/) stays out of it.
+enable_testing()
+set(CAMERA_UNIT_TESTS
+    camera-schema-test
+    camera-migration-test
+    camera-config-test
+    camera-controller-test
+    camera-operator-test
+    event-intelligence-test
+)
 
-    foreach(TEST_NAME IN LISTS CAMERA_UNIT_TESTS)
-        add_executable(${TEST_NAME} tests/unit/${TEST_NAME}.cc)
+foreach(TEST_NAME IN LISTS CAMERA_UNIT_TESTS)
+    add_executable(${TEST_NAME} tests/unit/${TEST_NAME}.cc)
 
-        # This folder is added EXCLUDE_FROM_ALL, so the suites have to opt
-        # back into the default build or ctest registers tests whose
-        # binaries never get built.
-        set_target_properties(${TEST_NAME} PROPERTIES EXCLUDE_FROM_ALL FALSE)
+    # This folder is added EXCLUDE_FROM_ALL, so the suites have to opt
+    # back into the default build or ctest registers tests whose
+    # binaries never get built.
+    set_target_properties(${TEST_NAME} PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
-        target_link_libraries(${TEST_NAME} PRIVATE argus_common doctest::doctest)
+    target_link_libraries(${TEST_NAME} PRIVATE argus_common doctest::doctest)
 
-        target_compile_options(${TEST_NAME} PRIVATE -Wall -Wextra)
+    target_compile_options(${TEST_NAME} PRIVATE -Wall -Wextra)
 
-        add_test(NAME ${TEST_NAME} COMMAND ${TEST_NAME})
-    endforeach()
+    add_test(NAME ${TEST_NAME} COMMAND ${TEST_NAME})
+endforeach()
 
-    # camera-migration builds only as a dependency of these two.
-    target_link_libraries(camera-schema-test PRIVATE camera-migration)
-    target_link_libraries(camera-migration-test PRIVATE camera-migration)
+# camera-migration builds only as a dependency of these two.
+target_link_libraries(camera-schema-test PRIVATE camera-migration)
+target_link_libraries(camera-migration-test PRIVATE camera-migration)
 
-    target_link_libraries(camera-config-test PRIVATE camera-core)
-    target_link_libraries(camera-controller-test PRIVATE camera-core)
-    target_link_libraries(camera-operator-test PRIVATE camera-core)
-    target_link_libraries(event-intelligence-test PRIVATE camera-core)
+target_link_libraries(camera-config-test PRIVATE camera-core)
+target_link_libraries(camera-controller-test PRIVATE camera-core)
+target_link_libraries(camera-operator-test PRIVATE camera-core)
+target_link_libraries(event-intelligence-test PRIVATE camera-core)
 
-    # The camera-talk cutover: speak() reaches the wire before the device,
-    # degrading to the 502 envelope when argus-tts is down. It compiles the
-    # control feature and the driver stack directly rather than linking
-    # camera-core, which would drag ncnn into a suite that needs none of it.
-    add_executable(camera-talk-cutover-test
-        tests/unit/camera-talk-cutover-test.cc
-        ${CAMERA_SRC_ROOT}/feature/api/camera-control/controllers/camera-control-controller.cc
-        ${CAMERA_SRC_ROOT}/feature/api/camera-control/services/camera-control-feature-service.cc
-        ${CAMERA_SRC_ROOT}/feature/api/camera-control/dtos/camera-talk-dto.cc
-        ${CAMERA_SRC_ROOT}/feature/api/camera-control/dtos/camera-ptz-dto.cc
-        ${CAMERA_SRC_ROOT}/feature/api/camera-control/dtos/camera-preset-dto.cc
-        ${CAMERA_SRC_ROOT}/feature/api/camera-control/dtos/camera-settings-dto.cc
-        ${CAMERA_SRC_ROOT}/shared/services/camera-driver/camera-driver-registry.cc
-        ${CAMERA_SRC_ROOT}/shared/services/camera-driver/tapo-driver.cc
-        ${CAMERA_SRC_ROOT}/shared/services/tapo/tapo-crypto.cc
-        ${CAMERA_SRC_ROOT}/shared/services/tapo/tapo-http.cc
-        ${CAMERA_SRC_ROOT}/shared/services/tapo/tapo-audio.cc
-        ${CAMERA_SRC_ROOT}/shared/services/tapo/tapo-ts-muxer.cc
-        ${CAMERA_SRC_ROOT}/shared/services/tapo/secure-passthrough-transport.cc
-        ${CAMERA_SRC_ROOT}/shared/services/tapo/legacy-stok-transport.cc
-        ${CAMERA_SRC_ROOT}/shared/services/tapo/tapo-client.cc
-        ${CAMERA_SRC_ROOT}/shared/services/tapo/tapo-api.cc
-        ${CAMERA_SRC_ROOT}/shared/services/tapo/tapo-talk-client.cc)
+# The camera-talk cutover: speak() reaches the wire before the device,
+# degrading to the 502 envelope when argus-tts is down. It compiles the
+# control feature and the driver stack directly rather than linking
+# camera-core, which would drag ncnn into a suite that needs none of it.
+add_executable(camera-talk-cutover-test
+    tests/unit/camera-talk-cutover-test.cc
+    ${CAMERA_SRC_ROOT}/feature/api/camera-control/controllers/camera-control-controller.cc
+    ${CAMERA_SRC_ROOT}/feature/api/camera-control/services/camera-control-feature-service.cc
+    ${CAMERA_SRC_ROOT}/feature/api/camera-control/dtos/camera-talk-dto.cc
+    ${CAMERA_SRC_ROOT}/feature/api/camera-control/dtos/camera-ptz-dto.cc
+    ${CAMERA_SRC_ROOT}/feature/api/camera-control/dtos/camera-preset-dto.cc
+    ${CAMERA_SRC_ROOT}/feature/api/camera-control/dtos/camera-settings-dto.cc
+    ${CAMERA_SRC_ROOT}/shared/services/camera-driver/camera-driver-registry.cc
+    ${CAMERA_SRC_ROOT}/shared/services/camera-driver/tapo-driver.cc
+    ${CAMERA_SRC_ROOT}/shared/services/tapo/tapo-crypto.cc
+    ${CAMERA_SRC_ROOT}/shared/services/tapo/tapo-http.cc
+    ${CAMERA_SRC_ROOT}/shared/services/tapo/tapo-audio.cc
+    ${CAMERA_SRC_ROOT}/shared/services/tapo/tapo-ts-muxer.cc
+    ${CAMERA_SRC_ROOT}/shared/services/tapo/secure-passthrough-transport.cc
+    ${CAMERA_SRC_ROOT}/shared/services/tapo/legacy-stok-transport.cc
+    ${CAMERA_SRC_ROOT}/shared/services/tapo/tapo-client.cc
+    ${CAMERA_SRC_ROOT}/shared/services/tapo/tapo-api.cc
+    ${CAMERA_SRC_ROOT}/shared/services/tapo/tapo-talk-client.cc)
 
-    # The TTS wire's fake server ships with the wire module, so both this
-    # suite and argus-voice's can drive the same fake.
-    target_include_directories(camera-talk-cutover-test PRIVATE
-        ${CAMERA_SRC_ROOT}
-        ${CMAKE_CURRENT_SOURCE_DIR}/../../packages/argus-tts-client/tests/support)
+# The TTS wire's fake server ships with the wire module, so both this
+# suite and argus-voice's can drive the same fake.
+target_include_directories(camera-talk-cutover-test PRIVATE
+    ${CAMERA_SRC_ROOT}
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../packages/argus-tts-client/tests/support)
 
-    target_link_libraries(camera-talk-cutover-test PRIVATE argus_sync
-        argus_common argus::audio argus::tts-client OpenSSL::SSL
-        OpenSSL::Crypto doctest::doctest)
+target_link_libraries(camera-talk-cutover-test PRIVATE argus_sync
+    argus_common argus::audio argus::tts-client OpenSSL::SSL
+    OpenSSL::Crypto doctest::doctest)
 
-    set_target_properties(camera-talk-cutover-test PROPERTIES
-        EXCLUDE_FROM_ALL FALSE)
+set_target_properties(camera-talk-cutover-test PROPERTIES
+    EXCLUDE_FROM_ALL FALSE)
 
-    target_compile_options(camera-talk-cutover-test PRIVATE -Wall -Wextra)
+target_compile_options(camera-talk-cutover-test PRIVATE -Wall -Wextra)
 
-    add_test(NAME camera-talk-cutover-test COMMAND camera-talk-cutover-test)
-endif()
+add_test(NAME camera-talk-cutover-test COMMAND camera-talk-cutover-test)
 
-# The camera suites (schema, migration, config) run from src/test/unit so the
-# root ctest covers them without a standalone conan gate.
+# The schema, migration and config suites run from src/test/unit.

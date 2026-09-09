@@ -99,40 +99,36 @@ endif()
 
 target_compile_options(argus_identity PRIVATE -Wall -Wextra)
 
-# The identity unit suites are root-project tests: they are part of the root
-# ctest run, and the identity-migration library they ride exists only in the
-# root project (tools/ is EXCLUDE_FROM_ALL there). Standalone consumer
-# builds (gateway, camera, productivity, notification) never had these
-# suites and still don't.
-if(ARGUS_ROOT_PROJECT)
-    find_package(doctest REQUIRED)
+# The unit suites ride identity-migration, a target only the root tree
+# builds (tools/ is added there and stays EXCLUDE_FROM_ALL).
+enable_testing()
+find_package(doctest REQUIRED)
 
-    # The migration suite: schema apply + argus.db -> identity.db verified
-    # row by row, against the schema this folder owns.
-    add_executable(identity-migration-test tests/unit/identity-migration-test.cc)
+# The migration suite: schema apply + argus.db -> identity.db verified
+# row by row, against the schema this folder owns.
+add_executable(identity-migration-test tests/unit/identity-migration-test.cc)
 
-    target_link_libraries(identity-migration-test PRIVATE identity-migration
-        doctest::doctest)
+target_link_libraries(identity-migration-test PRIVATE identity-migration
+    doctest::doctest)
 
-    target_compile_options(identity-migration-test PRIVATE -Wall -Wextra)
+target_compile_options(identity-migration-test PRIVATE -Wall -Wextra)
 
-    add_test(NAME identity-migration-test COMMAND identity-migration-test)
+add_test(NAME identity-migration-test COMMAND identity-migration-test)
 
-    # The device credential suite rides the identity domain: the DeviceFilter
-    # gate, the credential repository and the auth-service issuance flow.
-    add_executable(device-credential-test tests/unit/device-credential-test.cc)
+# The device credential suite rides the identity domain: the DeviceFilter
+# gate, the credential repository and the auth-service issuance flow.
+add_executable(device-credential-test tests/unit/device-credential-test.cc)
 
-    target_link_libraries(device-credential-test PRIVATE argus_identity
-        doctest::doctest)
+target_link_libraries(device-credential-test PRIVATE argus_identity
+    doctest::doctest)
 
-    target_compile_options(device-credential-test PRIVATE -Wall -Wextra)
+target_compile_options(device-credential-test PRIVATE -Wall -Wextra)
 
-    add_test(NAME device-credential-test COMMAND device-credential-test)
+add_test(NAME device-credential-test COMMAND device-credential-test)
 
-    get_target_property(DOCTEST_INCLUDE_DIRS doctest::doctest
-                        INTERFACE_INCLUDE_DIRECTORIES)
-    if(DOCTEST_INCLUDE_DIRS)
-        set_target_properties(doctest::doctest PROPERTIES
-            INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${DOCTEST_INCLUDE_DIRS}")
-    endif()
+get_target_property(DOCTEST_INCLUDE_DIRS doctest::doctest
+                    INTERFACE_INCLUDE_DIRECTORIES)
+if(DOCTEST_INCLUDE_DIRS)
+    set_target_properties(doctest::doctest PROPERTIES
+        INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${DOCTEST_INCLUDE_DIRS}")
 endif()

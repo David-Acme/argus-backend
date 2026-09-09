@@ -22,12 +22,11 @@ target_compile_options(argus_cert PRIVATE -Wall -Wextra)
 
 # CertService rotation and the in-process TLS listener that proves the hot
 # reload. It rides the identity domain, which is why it links argus_identity.
-if(ARGUS_ROOT_PROJECT)
-    find_package(doctest REQUIRED)
+enable_testing()
+find_package(doctest REQUIRED)
 
-    add_executable(cert-san-test tests/unit/cert-san-test.cc)
-    target_link_libraries(cert-san-test PRIVATE argus::cert argus_identity
-        argus_common doctest::doctest)
-    target_compile_options(cert-san-test PRIVATE -Wall -Wextra)
-    add_test(NAME cert-san-test COMMAND cert-san-test)
-endif()
+add_executable(cert-san-test tests/unit/cert-san-test.cc)
+target_link_libraries(cert-san-test PRIVATE argus::cert argus_identity
+    argus_common doctest::doctest)
+target_compile_options(cert-san-test PRIVATE -Wall -Wextra)
+add_test(NAME cert-san-test COMMAND cert-san-test)

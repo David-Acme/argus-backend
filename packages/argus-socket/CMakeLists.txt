@@ -20,12 +20,11 @@ target_link_libraries(argus_socket
 target_compile_options(argus_socket PRIVATE -Wall -Wextra)
 
 # The sync-change payload shape the socket module owns.
-if(ARGUS_ROOT_PROJECT)
-    find_package(doctest REQUIRED)
+enable_testing()
+find_package(doctest REQUIRED)
 
-    add_executable(sync-change-test tests/unit/sync-change-test.cc)
-    target_link_libraries(sync-change-test PRIVATE argus::socket argus_common
-        doctest::doctest)
-    target_compile_options(sync-change-test PRIVATE -Wall -Wextra)
-    add_test(NAME sync-change-test COMMAND sync-change-test)
-endif()
+add_executable(sync-change-test tests/unit/sync-change-test.cc)
+target_link_libraries(sync-change-test PRIVATE argus::socket argus_common
+    doctest::doctest)
+target_compile_options(sync-change-test PRIVATE -Wall -Wextra)
+add_test(NAME sync-change-test COMMAND sync-change-test)

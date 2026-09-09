@@ -106,55 +106,54 @@ add_custom_command(TARGET argus-vlm POST_BUILD
             ${CMAKE_CURRENT_SOURCE_DIR}/../../models
             $<TARGET_FILE_DIR:argus-vlm>/models)
 
-# The VLM suites are root-project tests; they opt back into the default build
-# because this folder is added EXCLUDE_FROM_ALL.
-if(ARGUS_ROOT_PROJECT)
-    find_package(doctest REQUIRED)
+# The VLM suites opt back into the default build: this folder is added
+# EXCLUDE_FROM_ALL.
+enable_testing()
+find_package(doctest REQUIRED)
 
-    # The argus-vlm wire contract (F4-4, Ruling BP): the real engine serves
-    # the describe/config legs from the shared models tree, with the
-    # direct-engine A/B leg on the same JPEG.
-    add_executable(vlm-wire-test tests/unit/vlm-wire-test.cc
-        ${VLM_SRC_ROOT}/controllers/vlm-controller.cc
-        ${VLM_SRC_ROOT}/vlm/describe-dto.cc
-        ${SHARED_ROOT}/services/vision/vision-service.cc)
+# The argus-vlm wire contract (F4-4, Ruling BP): the real engine serves
+# the describe/config legs from the shared models tree, with the
+# direct-engine A/B leg on the same JPEG.
+add_executable(vlm-wire-test tests/unit/vlm-wire-test.cc
+    ${VLM_SRC_ROOT}/controllers/vlm-controller.cc
+    ${VLM_SRC_ROOT}/vlm/describe-dto.cc
+    ${SHARED_ROOT}/services/vision/vision-service.cc)
 
-    set_target_properties(vlm-wire-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+set_target_properties(vlm-wire-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
-    target_include_directories(vlm-wire-test PRIVATE
-        ${VLM_SRC_ROOT}
-        ${CMAKE_CURRENT_SOURCE_DIR}/tests/support)
+target_include_directories(vlm-wire-test PRIVATE
+    ${VLM_SRC_ROOT}
+    ${CMAKE_CURRENT_SOURCE_DIR}/tests/support)
 
-    target_compile_definitions(vlm-wire-test PRIVATE
-        ARGUS_TEST_VLM_MODELS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../../models/vision/lfm2vl-25")
+target_compile_definitions(vlm-wire-test PRIVATE
+    ARGUS_TEST_VLM_MODELS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../../models/vision/lfm2vl-25")
 
-    target_link_libraries(vlm-wire-test PRIVATE argus_common
-        argus::hardware-profile ${ARGUS_LLAMA_TARGETS} opencv::opencv
-        doctest::doctest)
+target_link_libraries(vlm-wire-test PRIVATE argus_common
+    argus::hardware-profile ${ARGUS_LLAMA_TARGETS} opencv::opencv
+    doctest::doctest)
 
-    target_compile_options(vlm-wire-test PRIVATE -Wall -Wextra)
+target_compile_options(vlm-wire-test PRIVATE -Wall -Wextra)
 
-    add_test(NAME vlm-wire-test COMMAND vlm-wire-test)
+add_test(NAME vlm-wire-test COMMAND vlm-wire-test)
 
-    # The remote vision adapter (F4-4, Ruling BQ): the JPEG encode, the
-    # same-keyed caption cache and the error paths against the in-process
-    # fake argus-vlm server.
-    add_executable(vision-remote-adapter-test
-        tests/unit/vision-remote-adapter-test.cc
-        ${SHARED_ROOT}/services/vision/remote/vlm-remote.cc
-        ${SHARED_ROOT}/services/vision/remote/remote-vision-adapter.cc)
+# The remote vision adapter (F4-4, Ruling BQ): the JPEG encode, the
+# same-keyed caption cache and the error paths against the in-process
+# fake argus-vlm server.
+add_executable(vision-remote-adapter-test
+    tests/unit/vision-remote-adapter-test.cc
+    ${SHARED_ROOT}/services/vision/remote/vlm-remote.cc
+    ${SHARED_ROOT}/services/vision/remote/remote-vision-adapter.cc)
 
-    set_target_properties(vision-remote-adapter-test PROPERTIES
-        EXCLUDE_FROM_ALL FALSE)
+set_target_properties(vision-remote-adapter-test PROPERTIES
+    EXCLUDE_FROM_ALL FALSE)
 
-    target_include_directories(vision-remote-adapter-test PRIVATE
-        ${VLM_SRC_ROOT}
-        ${CMAKE_CURRENT_SOURCE_DIR}/tests/support)
+target_include_directories(vision-remote-adapter-test PRIVATE
+    ${VLM_SRC_ROOT}
+    ${CMAKE_CURRENT_SOURCE_DIR}/tests/support)
 
-    target_link_libraries(vision-remote-adapter-test PRIVATE argus_common
-        opencv::opencv doctest::doctest)
+target_link_libraries(vision-remote-adapter-test PRIVATE argus_common
+    opencv::opencv doctest::doctest)
 
-    target_compile_options(vision-remote-adapter-test PRIVATE -Wall -Wextra)
+target_compile_options(vision-remote-adapter-test PRIVATE -Wall -Wextra)
 
-    add_test(NAME vision-remote-adapter-test COMMAND vision-remote-adapter-test)
-endif()
+add_test(NAME vision-remote-adapter-test COMMAND vision-remote-adapter-test)

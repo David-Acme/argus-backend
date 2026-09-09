@@ -122,47 +122,44 @@ if(DOCTEST_INCLUDE_DIRS)
         INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${DOCTEST_INCLUDE_DIRS}")
 endif()
 
-# The productivity unit suites are root-project tests: they are part of the
-# root ctest run, and productivity-migration (tools/) is EXCLUDE_FROM_ALL
-# there. Standalone consumer builds never had these suites. The targets opt
-# back into the default build because this folder is added EXCLUDE_FROM_ALL.
-if(ARGUS_ROOT_PROJECT)
-    find_package(doctest REQUIRED)
+# The unit suites opt back into the default build: this folder is added
+# EXCLUDE_FROM_ALL, and productivity-migration (tools/) stays out of it.
+enable_testing()
+find_package(doctest REQUIRED)
 
-    foreach(TEST_NAME IN ITEMS productivity-schema-test productivity-migration-test)
-        add_executable(${TEST_NAME} tests/unit/${TEST_NAME}.cc)
-        set_target_properties(${TEST_NAME} PROPERTIES EXCLUDE_FROM_ALL FALSE)
-        target_link_libraries(${TEST_NAME} PRIVATE argus_common
-            productivity-migration doctest::doctest)
-        target_compile_options(${TEST_NAME} PRIVATE -Wall -Wextra)
-        add_test(NAME ${TEST_NAME} COMMAND ${TEST_NAME})
-    endforeach()
+foreach(TEST_NAME IN ITEMS productivity-schema-test productivity-migration-test)
+    add_executable(${TEST_NAME} tests/unit/${TEST_NAME}.cc)
+    set_target_properties(${TEST_NAME} PROPERTIES EXCLUDE_FROM_ALL FALSE)
+    target_link_libraries(${TEST_NAME} PRIVATE argus_common
+        productivity-migration doctest::doctest)
+    target_compile_options(${TEST_NAME} PRIVATE -Wall -Wextra)
+    add_test(NAME ${TEST_NAME} COMMAND ${TEST_NAME})
+endforeach()
 
-    # The controller suite compiles the same write-side feature sources the
-    # service compiles and rides the sync layer for the repositories,
-    # schemas and boot plumbing.
-    add_executable(productivity-controller-test
-        tests/unit/productivity-controller-test.cc
-        ${PRODUCTIVITY_FEATURE_SOURCES})
+# The controller suite compiles the same write-side feature sources the
+# service compiles and rides the sync layer for the repositories,
+# schemas and boot plumbing.
+add_executable(productivity-controller-test
+    tests/unit/productivity-controller-test.cc
+    ${PRODUCTIVITY_FEATURE_SOURCES})
 
-    set_target_properties(productivity-controller-test PROPERTIES
-        EXCLUDE_FROM_ALL FALSE)
+set_target_properties(productivity-controller-test PROPERTIES
+    EXCLUDE_FROM_ALL FALSE)
 
-    target_include_directories(productivity-controller-test PRIVATE
-        ${PRODUCTIVITY_SRC_ROOT})
+target_include_directories(productivity-controller-test PRIVATE
+    ${PRODUCTIVITY_SRC_ROOT})
 
-    target_link_libraries(productivity-controller-test PRIVATE argus_sync
-        argus_common doctest::doctest)
+target_link_libraries(productivity-controller-test PRIVATE argus_sync
+    argus_common doctest::doctest)
 
-    target_compile_options(productivity-controller-test PRIVATE -Wall -Wextra)
+target_compile_options(productivity-controller-test PRIVATE -Wall -Wextra)
 
-    add_test(NAME productivity-controller-test
-             COMMAND productivity-controller-test)
+add_test(NAME productivity-controller-test
+         COMMAND productivity-controller-test)
 
-    get_target_property(DOCTEST_INCLUDE_DIRS doctest::doctest
-                        INTERFACE_INCLUDE_DIRECTORIES)
-    if(DOCTEST_INCLUDE_DIRS)
-        set_target_properties(doctest::doctest PROPERTIES
-            INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${DOCTEST_INCLUDE_DIRS}")
-    endif()
+get_target_property(DOCTEST_INCLUDE_DIRS doctest::doctest
+                    INTERFACE_INCLUDE_DIRECTORIES)
+if(DOCTEST_INCLUDE_DIRS)
+    set_target_properties(doctest::doctest PROPERTIES
+        INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${DOCTEST_INCLUDE_DIRS}")
 endif()

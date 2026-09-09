@@ -112,45 +112,43 @@ if(DOCTEST_INCLUDE_DIRS)
         INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${DOCTEST_INCLUDE_DIRS}")
 endif()
 
-# The notification unit suites are root-project tests; notification-migration
-# (tools/) is EXCLUDE_FROM_ALL there. The targets opt back into the default
-# build because this folder is added EXCLUDE_FROM_ALL.
-if(ARGUS_ROOT_PROJECT)
-    find_package(doctest REQUIRED)
+# The unit suites opt back into the default build: this folder is added
+# EXCLUDE_FROM_ALL, and notification-migration (tools/) stays out of it.
+enable_testing()
+find_package(doctest REQUIRED)
 
-    foreach(TEST_NAME IN ITEMS notification-schema-test notification-migration-test)
-        add_executable(${TEST_NAME} tests/unit/${TEST_NAME}.cc)
-        set_target_properties(${TEST_NAME} PROPERTIES EXCLUDE_FROM_ALL FALSE)
-        target_link_libraries(${TEST_NAME} PRIVATE argus_common
-            notification-migration doctest::doctest)
-        target_compile_options(${TEST_NAME} PRIVATE -Wall -Wextra)
-        add_test(NAME ${TEST_NAME} COMMAND ${TEST_NAME})
-    endforeach()
+foreach(TEST_NAME IN ITEMS notification-schema-test notification-migration-test)
+    add_executable(${TEST_NAME} tests/unit/${TEST_NAME}.cc)
+    set_target_properties(${TEST_NAME} PROPERTIES EXCLUDE_FROM_ALL FALSE)
+    target_link_libraries(${TEST_NAME} PRIVATE argus_common
+        notification-migration doctest::doctest)
+    target_compile_options(${TEST_NAME} PRIVATE -Wall -Wextra)
+    add_test(NAME ${TEST_NAME} COMMAND ${TEST_NAME})
+endforeach()
 
-    # The controller suite compiles the same write-side sources the service
-    # compiles and rides the sync layer for repositories and boot plumbing.
-    add_executable(notification-controller-test
-        tests/unit/notification-controller-test.cc
-        ${NOTIFICATION_FEATURE_SOURCES})
+# The controller suite compiles the same write-side sources the service
+# compiles and rides the sync layer for repositories and boot plumbing.
+add_executable(notification-controller-test
+    tests/unit/notification-controller-test.cc
+    ${NOTIFICATION_FEATURE_SOURCES})
 
-    set_target_properties(notification-controller-test PROPERTIES
-        EXCLUDE_FROM_ALL FALSE)
+set_target_properties(notification-controller-test PROPERTIES
+    EXCLUDE_FROM_ALL FALSE)
 
-    target_include_directories(notification-controller-test PRIVATE
-        ${NOTIFICATION_SRC_ROOT})
+target_include_directories(notification-controller-test PRIVATE
+    ${NOTIFICATION_SRC_ROOT})
 
-    target_link_libraries(notification-controller-test PRIVATE argus_sync
-        argus_common doctest::doctest)
+target_link_libraries(notification-controller-test PRIVATE argus_sync
+    argus_common doctest::doctest)
 
-    target_compile_options(notification-controller-test PRIVATE -Wall -Wextra)
+target_compile_options(notification-controller-test PRIVATE -Wall -Wextra)
 
-    add_test(NAME notification-controller-test
-             COMMAND notification-controller-test)
+add_test(NAME notification-controller-test
+         COMMAND notification-controller-test)
 
-    get_target_property(DOCTEST_INCLUDE_DIRS doctest::doctest
-                        INTERFACE_INCLUDE_DIRECTORIES)
-    if(DOCTEST_INCLUDE_DIRS)
-        set_target_properties(doctest::doctest PROPERTIES
-            INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${DOCTEST_INCLUDE_DIRS}")
-    endif()
+get_target_property(DOCTEST_INCLUDE_DIRS doctest::doctest
+                    INTERFACE_INCLUDE_DIRECTORIES)
+if(DOCTEST_INCLUDE_DIRS)
+    set_target_properties(doctest::doctest PROPERTIES
+        INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${DOCTEST_INCLUDE_DIRS}")
 endif()
