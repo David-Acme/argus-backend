@@ -49,6 +49,8 @@ argus_module(NAME common
         src/shared/utils/json-diff/json-diff.cc
         src/shared/utils/json-diff/json-diff.hxx
         src/shared/utils/json-util/json-util.hxx
+        src/shared/utils/text-norm/text-norm.cc
+        src/shared/utils/text-norm/text-norm.hxx
         src/shared/utils/schema-runner/schema-runner.cc
         src/shared/utils/schema-runner/schema-runner.hxx
         src/shared/dtos/socket-emit/socket-emit-dto.cc

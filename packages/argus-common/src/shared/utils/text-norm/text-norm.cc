@@ -1,6 +1,10 @@
 #include "text-norm.hxx"
 
+#include <algorithm>
+#include <array>
 #include <cctype>
+#include <string_view>
+#include <utility>
 
 namespace text_norm
 {
@@ -70,16 +74,36 @@ std::string whitespace(const std::string& text, bool toLower)
   return out;
 }
 
+// Multi-byte aware: every folded sequence below is two bytes, so a byte-wise
+// pass would split mid-character and mangle the word. Uppercase forms fold
+// and lowercase together.
 std::string stripAccents(std::string text)
 {
-  const std::string src = "áéíóúüñÁÉÍÓÚÜÑ";
-  const std::string dst = "aeiouunAEIOUUN";
-  for (auto& c : text) {
-    const size_t i = src.find(c);
-    if (i != std::string::npos)
-      c = dst[i];
+  static constexpr std::array<std::pair<std::string_view, char>, 35> kFolds{{
+      {"á", 'a'}, {"é", 'e'}, {"í", 'i'}, {"ó", 'o'}, {"ú", 'u'},
+      {"ü", 'u'}, {"ñ", 'n'}, {"à", 'a'}, {"è", 'e'}, {"ì", 'i'},
+      {"ò", 'o'}, {"ù", 'u'}, {"â", 'a'}, {"ê", 'e'}, {"î", 'i'},
+      {"ô", 'o'}, {"û", 'u'}, {"ä", 'a'}, {"ë", 'e'}, {"ï", 'i'},
+      {"ö", 'o'}, {"ÿ", 'y'}, {"ç", 'c'}, {"Á", 'a'}, {"É", 'e'},
+      {"Í", 'i'}, {"Ó", 'o'}, {"Ú", 'u'}, {"Ü", 'u'}, {"Ñ", 'n'},
+      {"À", 'a'}, {"È", 'e'}, {"Ì", 'i'}, {"Ò", 'o'}, {"Ù", 'u'},
+  }};
+  std::string out;
+  out.reserve(text.size());
+  const std::string_view view(text);
+  for (size_t i = 0; i < view.size();) {
+    const auto fold = std::ranges::find_if(kFolds, [view, i](const auto& entry) {
+      return view.substr(i).starts_with(entry.first);
+    });
+    if (fold == kFolds.end()) {
+      out.push_back(view[i]);
+      ++i;
+      continue;
+    }
+    out.push_back(fold->second);
+    i += fold->first.size();
   }
-  return text;
+  return out;
 }
 
 std::string intent(const std::string& text)

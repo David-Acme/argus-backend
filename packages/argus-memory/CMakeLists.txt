@@ -78,7 +78,6 @@ add_library(memory-core STATIC
     ${SHARED_ROOT}/services/extract/temporal-resolver.cc
     ${SHARED_ROOT}/services/extract/tiered-extractor.cc
     ${SHARED_ROOT}/repositories/memory-graph/memory-graph-repository.cc
-    ${SHARED_ROOT}/utils/text-norm/text-norm.cc
 )
 
 target_include_directories(memory-core SYSTEM PUBLIC

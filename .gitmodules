@@ -8,3 +8,6 @@
 	path = third_party/llama.cpp
 	url = https://github.com/ggml-org/llama.cpp.git
 	branch = master
+[submodule "third_party/fastText"]
+	path = third_party/fastText
+	url = https://github.com/facebookresearch/fastText.git

@@ -35,8 +35,17 @@ database/*.db
 database/*.db-wal
 database/*.db-shm
 
-# TTS models (downloaded separately)
-models/
+# TTS models (downloaded separately). A trailing-slash rule would exclude the
+# directory itself, and git cannot re-include anything under an excluded
+# directory, so the exclusion is on the contents.
+models/*
+# The intent classifier is the one published artifact versioned in-repo (D3):
+# 12.6 MB, no release infrastructure needed. Named one by one so the retired
+# probe's leftovers in the same folder stay untracked.
+!models/intent/
+models/intent/*
+!models/intent/intent.bin
+!models/intent/MODEL-CARD.md
 
 # Python cache
 __pycache__/

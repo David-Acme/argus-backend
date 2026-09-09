@@ -1,0 +1,61 @@
+memory_save	es	ah si, ten en cuenta que las llaves estan en el cajon de la entrada
+memory_save	es	ah y por cierto, ten en cuenta que las llaves estan en el cajon de la entrada
+memory_save	es	apunta que el gimnasio abre a las siete
+memory_recall	es	a que hora abre el gimnasio?
+memory_recall	es	Argus, una duda, que no le gusta a Rodrigo.
+memory_save	es	a ver, escucha, es que el router ese lo tengo en el trastero, apuntalo
+memory_save	es	a ver, escucha, es que... el router ese lo tengo en el trastero, apuntalo
+memory_save	es	bien, Argus, ¿recuérdame que a Rodrigo no le gusta el pescado, ¿está bien?
+memory_recall	es	¿dónde está el router?
+memory_recall	es	¿dónde está la bicicleta de Ana?
+memory_recall	es	¿dónde está mi coche?
+none	es	eh... nada, olvidalo
+memory_recall	es	Eh, quisiera saber que no le gusta a Pedro.
+memory_recall	es	eh, ¿y mi coche dónde estaba?
+memory_save	es	hola Argus, recuérdame que a Pedro no le gusta el pescado. ¿Está bien?
+memory_recall	es	Hola, Argus, ¿recuérdame qué no le gustaba máximo?
+none	es	La pregunta va mas a que si alguien. por ejemplo yo estoy en mi casa y si alguien intenta entrar a mi casa y es una persona no autorizada como tú reaccionarias.
+memory_save	es	Largos. ¿Recuérdame que a Rodrigo no le gusta el pescado. Está bien.
+memory_save	es	Mira, hazme acordar que a Máximo no le gusta el pescado.
+memory_save	es	mira, quiero que me recuerdas acerca de que a Pedro no le gusta el pescado
+memory_save	es	mira, quiero que me recuerdas acerca de que a Pedro no le guste el pescado.
+memory_save	es	mira, ten en cuenta que la bicicleta de Ana está en el garaje
+memory_save	es	mira una cosa, a mi vecina le molesta el ruido por la noche, tenlo en cuenta
+memory_save	es	mira una cosa, el sabado viene mi hermana, apuntalo
+none	es	no, olvida lo que dije
+memory_save	es	Oh, Argos, quisiera que me haga recordar que a Rodrigo no le gusta el pescado.
+memory_recall	es	¿ola, una duda, ¿que no le gusta a Rodrigo?
+memory_save	es	oye, apunta que el filtro del agua se cambia en marzo
+memory_save	es	oye argus, a ver, es que la bicicleta de ana la tengo en el trastero, apuntalo
+memory_save	es	oye argus, mira, es que las llaves del coche las dejo en el mueble de la entrada, apuntalo
+memory_save	es	oye argus mira, este, queria decirte que... bueno, que a mi madre no le gusta el ruido
+memory_save	es	oye Argus, mira, ten en cuenta que la bicicleta de Ana está en el trastero
+memory_save	es	oye Argus, ten en cuenta que la bicicleta de Ana está en el trastero
+memory_save	es	oye argus, ten en cuenta que mi hermana trabaja los sábados
+memory_save	es	pues nada, que a mi cunado no le gusta el marisco, tenlo en cuenta
+memory_save	es	pues nada, que a mi sobrino le da miedo la oscuridad
+memory_save	es	pues nada, que a mi sobrino le da miedo la oscuridad, tenlo en cuenta
+memory_recall	es	que le molesta a mi vecina?
+memory_recall	es	que le pasaba a mi sobrino?
+memory_recall	es	que no le gusta a mi cunado?
+memory_recall	es	que no le gusta a Rodrigo
+memory_recall	es	que no le gustaba a mi madre?
+memory_save	es	quiero que me crees un recordatorio para que, bueno, acerca de que mi hermano no le guste el pescado.
+memory_save	es	Quiero que me hagas recordar a futuro que a Rodrigo no le guste el pescado.
+memory_save	es	quiero que me recuerdes, quiero que recuerdes acerca de que a Pedro no le guste el pescado. ¿Está bien?
+memory_save	es	Quisiera que me hagas recordar que a Rodrigo no le gusta el pescado
+memory_save	es	recuérdame que a Pedro no le gusta el pescado
+memory_save	es	recuérdame que el router está en el garaje
+memory_save	es	recuérdame que la basura sale los martes
+reminder_set	es	recuérdame que la reunión del lunes es a las nueve
+memory_save	es	recuérdame que mi coche está en el garaje
+memory_save	es	recuérdame que mi hermana trabaja los sábados
+memory_save	es	recuérdame que mi hermana viene los domingos
+memory_save	es	recuerda que el perro se llama Toby
+memory_save	es	recuerda que las llaves se guardan en el cajón de la cocina
+memory_save	es	recuerda que la vecina del quinto se llama Rosa
+memory_save	es	recuerda que mi coche está en el garaje
+memory_save	es	recuerda que mi hermana trabaja los sábados
+memory_save	es	recuerda que mi hermana viene los domingos
+memory_save	es	recuerda que mi madre viene los domingos
+memory_save	es	ten en cuenta que la caldera se revisa en octubre
