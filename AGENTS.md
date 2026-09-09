@@ -365,7 +365,7 @@ shared file-static behind a mutex.
   inserts 12 ms → 4–18 s under read load + `DirectedCSRIndex` asserts +
   SIGTERM-proof hangs; fork: any second connection crashes). The submodules,
   the build integration and the `labs/kuzu-probe` reproducer are deleted;
-  the gate result lives in `CONTEXT.md`. The memory redesign's
+  the gate result lives in `docs/CONTEXT.md`. The memory redesign's
   `SemanticGraph` is backed by the existing SQLite tables.
 - **llama.cpp as a submodule** (`third_party/llama.cpp`, tag `b10305`) — powers
   the LLM **and** the VLM through `libmtmd`. Targets: `${ARGUS_LLAMA_TARGETS}`
@@ -391,7 +391,7 @@ shared file-static behind a mutex.
 - **sqlite-vec** (vendored in `third_party/sqlite-vec/`, MIT/Apache-2.0) — vec0
   vector search; compiled with `SQLITE_CORE`, registered via
   `sqlite3_auto_extension` in `DbService::installExtensions()` (must run AFTER
-  Drogon's first connection — see CONTEXT.md ordering note). FTS5 (bm25,
+  Drogon's first connection — see docs/CONTEXT.md ordering note). FTS5 (bm25,
   unicode61, trigram) is enabled via the conan option
   `sqlite3/*:enable_fts5=True` (Drogon rebuilt once).
 - **MemoryService** (`services/argus-memory/src/shared/services/memory/`) — long-term memory over a
@@ -410,7 +410,7 @@ shared file-static behind a mutex.
   busy), L3 profile (deterministic persona/instruction selection + optional
   off-turn LLM polish). Facade `MemoryService`; DB via `SqliteGraph`/`VecDb`
   (mutex-serialized, prepared statements are RAII `SqliteStmt`). Embeddings:
-  `multilingual-e5-small` int8 ONNX, loaded lazily. Full details in CONTEXT.md.
+  `multilingual-e5-small` int8 ONNX, loaded lazily. Full details in docs/CONTEXT.md.
 - **NO fastText, NO IntentService** — implicit tool activation is the LLM's
   own tool calling, not a separate classifier. The submodule, the service and
   `labs/` were deleted; the labelled evaluation set survives at
@@ -662,4 +662,4 @@ Before any commit, verify: `cmake --build --preset dev -j 8` passes with
 | `packages/argus-common/src/shared/wrapper/blocking-task/` | Coroutine awaiter for off-loop heavy work |
 | `packages/argus-common/src/shared/wrapper/thread-budget/` | Adaptive thread sizing for AI services |
 | `config.toml` | System application + JWT config |
-| `CONTEXT.md` | Full project history and decisions |
+| `docs/CONTEXT.md` | Full project history and decisions |
