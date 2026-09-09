@@ -1,5 +1,6 @@
 #include "embedding-service.hxx"
 
+#include <array>
 #include <cmath>
 #include <drogon/drogon.h>
 #include <mutex>
@@ -153,17 +154,17 @@ EmbeddingService::embed(const std::string& text, const std::string& prefix)
       Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault),
       tokenTypes.data(), tokenTypes.size(), shape.data(), shape.size());
 
-  const char* inputNames[] = {"input_ids", "attention_mask", "token_type_ids"};
-  const char* outputNames[] = {"last_hidden_state"};
+  const std::array inputNames{"input_ids", "attention_mask", "token_type_ids"};
+  const std::array outputNames{"last_hidden_state"};
   Ort::RunOptions runOpts;
 
   try {
-    auto outputs = session_->Run(runOpts, inputNames,
+    auto outputs = session_->Run(runOpts, inputNames.data(),
                                  std::array<Ort::Value, 3>{std::move(inIds),
                                                            std::move(inMask),
                                                            std::move(inTypes)}
                                      .data(),
-                                 3, outputNames, 1);
+                                 3, outputNames.data(), 1);
     const auto& out = outputs.front();
     const auto* hidden = out.GetTensorData<float>();
     const auto outShape = out.GetTensorTypeAndShapeInfo().GetShape();

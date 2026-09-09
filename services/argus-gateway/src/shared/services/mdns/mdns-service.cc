@@ -1,6 +1,7 @@
 #include "mdns-service.hxx"
 
 #include <arpa/inet.h>
+#include <array>
 #include <atomic>
 #include <cerrno>
 #include <cstddef>
@@ -311,18 +312,18 @@ int MdnsService::Impl::handleQuestion(int sock, const struct sockaddr* from,
                                       size_t name_offset,
                                       size_t name_length) const
 {
-  static constexpr char kDnsSd[] = "_services._dns-sd._udp.local.";
+  static constexpr std::string_view kDnsSd = "_services._dns-sd._udp.local.";
 
   (void)name_length;
 
-  char nameBuffer[256];
+  std::array<char, 256> nameBuffer;
   size_t offset = name_offset;
-  const mdns_string_t name =
-      mdns_string_extract(data, size, &offset, nameBuffer, sizeof(nameBuffer));
+  const mdns_string_t name = mdns_string_extract(
+      data, size, &offset, nameBuffer.data(), nameBuffer.size());
   if (name.length == 0)
     return 0;
 
-  if (nameEquals(name, kDnsSd, sizeof(kDnsSd) - 1)) {
+  if (nameEquals(name, kDnsSd.data(), kDnsSd.size())) {
     if (rtype != MDNS_RECORDTYPE_PTR && rtype != MDNS_RECORDTYPE_ANY)
       return 0;
     mdns_record_t answer = recordPtr;

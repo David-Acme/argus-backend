@@ -14,8 +14,7 @@ struct ListenerConfig
   std::string keyPath;
   std::string minTlsProtocol;
 
-  // Plain internal listener: [server] host (default 127.0.0.1) and portKey
-  // (default [server] port), falling back to the service's own default.
+  // Plain internal listener: [server] host and portKey, service default as fallback.
   static ListenerConfig resolve(uint16_t defaultPort,
                                 const char* portKey = "server.port");
 

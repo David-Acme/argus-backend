@@ -1,8 +1,10 @@
 #include "tiered-extractor.hxx"
 
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <cstring>
+#include <string_view>
 #include <shared/services/config-service/config-service.hxx>
 #include <utility>
 
@@ -138,19 +140,17 @@ std::string trimSubject(std::string subject, const std::string& predicate,
   cutAt(value);
   cutAt(when);
 
-  static constexpr const char* kLeading[] = {"el ",    "la ",   "los ", "las ",
-                                             "un ",    "una ",  "mi ",  "mis ",
-                                             "tu ",    "tus ",  "su ",  "sus ",
-                                             "a ",     "al ",   "de ",  "the ",
-                                             "my ",    "your ", "his ", "her ",
-                                             "their ", "an "};
+  static constexpr std::array<std::string_view, 22> kLeading{
+      "el ", "la ", "los ", "las ", "un ", "una ", "mi ", "mis ",
+      "tu ", "tus ", "su ", "sus ", "a ", "al ", "de ", "the ",
+      "my ", "your ", "his ", "her ", "their ", "an "};
   for (;;) {
     const std::string lower = foldLower(subject);
     bool stripped = false;
-    for (const char* prefix : kLeading) {
+    for (const std::string_view prefix : kLeading) {
       if (lower.rfind(prefix, 0) != 0)
         continue;
-      subject.erase(0, std::strlen(prefix));
+      subject.erase(0, prefix.size());
       stripped = true;
       break;
     }

@@ -41,14 +41,13 @@ struct FoldedView
 
 FoldedView foldClause(std::string_view source)
 {
-  static constexpr std::string_view kFrom[] = {
-      "á", "é", "í", "ó", "ú", "ü", "ñ", "à", "è", "ì", "ò", "ù",
-      "â", "ê", "î", "ô", "û", "ä", "ë", "ï", "ö", "ÿ", "ç",
-  };
-  static constexpr char kTo[] = {
-      'a', 'e', 'i', 'o', 'u', 'u', 'n', 'a', 'e', 'i', 'o', 'u',
-      'a', 'e', 'i', 'o', 'u', 'a', 'e', 'i', 'o', 'y', 'c',
-  };
+  static constexpr std::array<std::pair<std::string_view, char>, 23> kFold{{
+      {"á", 'a'}, {"é", 'e'},
+      {"í", 'i'}, {"ó", 'o'}, {"ú", 'u'}, {"ü", 'u'}, {"ñ", 'n'},
+      {"à", 'a'}, {"è", 'e'}, {"ì", 'i'}, {"ò", 'o'}, {"ù", 'u'},
+      {"â", 'a'}, {"ê", 'e'}, {"î", 'i'}, {"ô", 'o'}, {"û", 'u'},
+      {"ä", 'a'}, {"ë", 'e'}, {"ï", 'i'}, {"ö", 'o'}, {"ÿ", 'y'},
+      {"ç", 'c'}}};
   FoldedView out;
   out.boundary.push_back(0);
   size_t i = 0;
@@ -67,11 +66,10 @@ FoldedView foldClause(std::string_view source)
     }
     pendingSpace = false;
     bool foldedChar = false;
-    for (size_t k = 0; k < std::size(kFrom); ++k) {
-      const size_t len = kFrom[k].size();
-      if (i + len <= source.size() && source.substr(i, len) == kFrom[k]) {
-        out.folded.push_back(kTo[k]);
-        i += len;
+    for (const auto& [from, to] : kFold) {
+      if (i + from.size() <= source.size() && source.substr(i, from.size()) == from) {
+        out.folded.push_back(to);
+        i += from.size();
         out.boundary.push_back(i);
         foldedChar = true;
         break;
@@ -312,10 +310,10 @@ MemoryFormation::observe(const Observation& obs,
       const std::string needle = text_norm::whitespace(naturalClause);
       const size_t at = lowered.find(needle);
       if (at != std::string::npos) {
-        static constexpr std::string_view kMarkers[] = {
-            "a mi ", "a tu ", "a la ", "mis ", "mi ", "tus ",
-            "tu ",   "sus ",  "su ",   "my ",  "your ", "his ",
-            "her ",  "the ", "al ",   "a "};
+        static constexpr std::array<std::string_view, 16> kMarkers{
+            "a mi ", "a tu ", "a la ", "mis ", "mi ", "tus ", "tu ",
+            "sus ", "su ", "my ", "your ", "his ", "her ", "the ",
+            "al ", "a "};
         for (const auto marker : kMarkers) {
           if (at < marker.size())
             continue;

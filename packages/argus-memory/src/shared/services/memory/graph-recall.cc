@@ -1,6 +1,10 @@
 #include "graph-recall.hxx"
 
 #include <algorithm>
+#include <array>
+#include <span>
+#include <string_view>
+#include <utility>
 #include <shared/services/config-service/config-service.hxx>
 #include <shared/services/embedding/embedding-service.hxx>
 #include <shared/services/memory/memory-vec.hxx>
@@ -28,27 +32,19 @@ constexpr int kBackgroundSample = 2;
 
 std::string toSecondPerson(const std::string& text, bool es)
 {
-  struct Shift
-  {
-    const char* from;
-    const char* to;
-  };
-  static constexpr Shift kEs[] = {
-      {"conmigo", "contigo"}, {"mis ", "tus "},   {"mi ", "tu "},
-      {"mí ", "ti "},         {"me ", "te "},     {"yo ", "tú "},
-      {"Mi ", "Tu "},         {"Mis ", "Tus "},   {"Mí ", "Ti "},
-      {"Me ", "Te "},         {"Yo ", "Tú "},     {"mi", "tu"},
-      {"mí", "ti"},           {"me", "te"},       {"yo", "tú"}};
-  static constexpr Shift kEn[] = {{"my ", "your "},
-                                  {"My ", "Your "},
-                                  {"mine", "yours"},
-                                  {"me ", "you "},
-                                  {"Me ", "You "},
-                                  {"I ", "you "},
-                                  {"I", "you"},
-                                  {"me", "you"}};
-  const Shift* table = es ? kEs : kEn;
-  const size_t count = es ? std::size(kEs) : std::size(kEn);
+  static constexpr std::array<std::pair<std::string_view, std::string_view>, 15>
+      kEs{{{"conmigo", "contigo"}, {"mis ", "tus "}, {"mi ", "tu "},
+      {"mí ", "ti "},   {"me ", "te "},   {"yo ", "tú "}, {"Mi ", "Tu "},
+      {"Mis ", "Tus "}, {"Mí ", "Ti "},   {"Me ", "Te "}, {"Yo ", "Tú "},
+      {"mi", "tu"},     {"mí", "ti"},     {"me", "te"},   {"yo", "tú"}}};
+  static constexpr std::array<std::pair<std::string_view, std::string_view>, 8>
+      kEn{{{"my ", "your "}, {"My ", "Your "}, {"mine", "yours"},
+      {"me ", "you "}, {"Me ", "You "}, {"I ", "you "}, {"I", "you"},
+      {"me", "you"}}};
+  const std::span<const std::pair<std::string_view, std::string_view>> table =
+      es ? std::span<const std::pair<std::string_view, std::string_view>>{kEs}
+         : std::span<const std::pair<std::string_view, std::string_view>>{kEn};
+  const size_t count = table.size();
 
   const auto rightBoundary = [&](size_t after) {
     if (after >= text.size())
@@ -66,12 +62,12 @@ std::string toSecondPerson(const std::string& text, bool es)
     bool shifted = false;
     if (atWordStart) {
       for (size_t k = 0; k < count; ++k) {
-        const std::string_view from(table[k].from);
+        const std::string_view from(table[k].first);
         if (text.compare(i, from.size(), from) != 0)
           continue;
         if (from.back() != ' ' && !rightBoundary(i + from.size()))
           continue;
-        out += table[k].to;
+        out += table[k].second;
         i += from.size();
         shifted = true;
         break;
@@ -120,16 +116,16 @@ bool worthSemanticSearch(const std::string& text)
 
 bool mentionsAnaphora(const std::string& text)
 {
-  static constexpr const char* kEs[] = {"ella",   "eso",   "aquello", "ese",
-                                        "esa",    "esto",  "aquella", "aquel"};
-  static constexpr const char* kEn[] = {"she",  "he",   "it",  "they",
-                                        "them", "him",  "her", "that"};
+  static constexpr std::array<std::string_view, 8> kEs{
+      "ella", "eso", "aquello", "ese", "esa", "esto", "aquella", "aquel"};
+  static constexpr std::array<std::string_view, 8> kEn{
+      "she", "he", "it", "they", "them", "him", "her", "that"};
   const std::vector<std::string> tokens = text_norm::words(text, 2);
   for (const auto& token : tokens) {
-    for (const char* p : kEs)
+    for (const std::string_view p : kEs)
       if (token == p)
         return true;
-    for (const char* p : kEn)
+    for (const std::string_view p : kEn)
       if (token == p)
         return true;
   }

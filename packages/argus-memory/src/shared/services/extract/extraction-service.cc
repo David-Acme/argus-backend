@@ -1,6 +1,7 @@
 #include "extraction-service.hxx"
 
 #include <algorithm>
+#include <array>
 #include <drogon/drogon.h>
 #include <llama.h>
 #include <shared/services/config-service/config-service.hxx>
@@ -400,11 +401,11 @@ ExtractionService::extractOnSlot(ContextSlot& slot,
           llama_sampler_sample(sampler.get(), slot.ctx.get(), -1);
       if (token == eos || token == eot)
         break;
-      char buf[256];
-      const int n =
-          llama_token_to_piece(vocab, token, buf, sizeof(buf), 0, true);
+      std::array<char, 256> buf;
+      const int n = llama_token_to_piece(vocab, token, buf.data(),
+                                         buf.size(), 0, true);
       if (n > 0)
-        output.append(buf, static_cast<size_t>(n));
+        output.append(buf.data(), static_cast<size_t>(n));
 
       auto& gen = *slot.genBatch;
       gen.token[0] = token;
