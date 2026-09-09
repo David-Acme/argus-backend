@@ -225,7 +225,9 @@ void MemoryService::processExtract(const MemoryJob& job)
                                           .sessionId = {},
                                           .entitiesHint = {},
                                           .allowModel = true,
-                                          .salient = job.salient});
+                                          .salient = job.salient,
+                                          .decided = false,
+                                          .typeHint = {}});
   if (!formed)
     return;
   LOG_INFO << "MemoryService: deferred extraction stored fact "
@@ -458,7 +460,9 @@ int64_t MemoryService::captureInline(const InlineCapture& capture)
                                           .sessionId = {},
                                           .entitiesHint = {},
                                           .allowModel = false,
-                                          .salient = capture.salient});
+                                          .salient = capture.salient,
+                                          .decided = false,
+                                          .typeHint = {}});
   if (!formed)
     return 0;
   enqueueJob({.kind = MemoryJob::Kind::Embed,
@@ -907,6 +911,10 @@ void MemoryService::registerTools(ToolRegistry& registry)
       descriptor.handler = [this](const tools::ToolCall& call) {
         return handleRemember(call);
       };
+    else if (descriptor.name == "memory.remind")
+      descriptor.handler = [this](const tools::ToolCall& call) {
+        return handleRemind(call);
+      };
     else if (descriptor.name == "memory.recall")
       descriptor.handler = [this](const tools::ToolCall& call) {
         return handleRecall(call);
@@ -993,7 +1001,11 @@ tools::ToolResult MemoryService::handleRemember(const tools::ToolCall& call)
                                .userId = call.context.userId,
                                .lang = call.context.lang,
                                .sessionId = call.context.sessionId,
-                               .entitiesHint = {}},
+                               .entitiesHint = {},
+                               .allowModel = true,
+                               .salient = false,
+                               .decided = call.context.decided,
+                               .typeHint = {}},
                               call);
   };
   auto formed = observe(text);
@@ -1019,6 +1031,56 @@ tools::ToolResult MemoryService::handleRemember(const tools::ToolCall& call)
               .salient = false,
               .episode = false});
   result.output = "hecho guardado (id " + std::to_string(formed->factId) + ")";
+  return result;
+}
+
+// D4: the reminder is written in the speaking user's own memory, in process,
+// with no hop to argus-productivity. D2: it is silent — no path here reaches
+// an alarm. What separates it from a plain fact is the schedule type, which
+// is what a later recall keys on.
+tools::ToolResult MemoryService::handleRemind(const tools::ToolCall& call)
+{
+  tools::ToolResult result;
+  std::string text = call.arguments.get("text", "").asString();
+  if (text.empty())
+    text = call.context.utterance;
+  if (text.empty()) {
+    result.output = "no hay nada que recordar";
+    return result;
+  }
+
+  const auto formed = formation_.observe({.channel = call.context.channel,
+                                          .text = text,
+                                          .actor = "",
+                                          .at = std::time(nullptr),
+                                          .userId = call.context.userId,
+                                          .lang = call.context.lang,
+                                          .sessionId = call.context.sessionId,
+                                          .entitiesHint = {},
+                                          .allowModel = true,
+                                          .salient = false,
+                                          .decided = call.context.decided,
+                                          .typeHint = "schedule"},
+                                         call);
+  if (!formed) {
+    result.output = "no se pudo guardar el recordatorio";
+    return result;
+  }
+
+  result.ok = true;
+  result.data["fact_id"] = static_cast<int64_t>(formed->factId);
+  result.data["subject_entity_id"] =
+      static_cast<int64_t>(formed->subjectEntityId);
+  enqueueJob({.kind = MemoryJob::Kind::Embed,
+              .memoryId = formed->factId,
+              .userId = 0,
+              .text = {},
+              .lang = {},
+              .preferIdle = false,
+              .salient = false,
+              .episode = false});
+  result.output =
+      "recordatorio guardado (id " + std::to_string(formed->factId) + ")";
   return result;
 }
 

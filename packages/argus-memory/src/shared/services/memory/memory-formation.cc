@@ -1,5 +1,9 @@
 #include "memory-formation.hxx"
 
+#include <algorithm>
+#include <array>
+#include <string_view>
+
 #include <drogon/drogon.h>
 #include <shared/services/extract/temporal-resolver.hxx>
 #include <shared/services/memory/rule-parser.hxx>
@@ -9,15 +13,17 @@
 namespace
 {
 
+// Padded, so a marker that opens or closes the sentence matches too: the
+// routed path sees plenty of "mi cita es el jueves", where the unpadded scan
+// found nothing and the fact lost its subject.
 bool mentionsFirstPerson(const std::string& text)
 {
-  const std::string norm = text_norm::whitespace(text);
-  const std::vector<std::string> markers = {" me ", " yo ", " mi ", " mis "};
-  for (const auto& marker : markers) {
-    if (norm.find(marker) != std::string::npos)
-      return true;
-  }
-  return norm == "me" || norm == "yo" || norm == "mi";
+  const std::string norm = " " + text_norm::whitespace(text) + " ";
+  static constexpr std::array<std::string_view, 4> kMarkers{" me ", " yo ",
+                                                            " mi ", " mis "};
+  return std::ranges::any_of(kMarkers, [&norm](std::string_view marker) {
+    return norm.find(marker) != std::string::npos;
+  });
 }
 
 std::string factTypeFromMemoryType(const std::string& type)
@@ -206,7 +212,7 @@ MemoryFormation::observe(const Observation& obs,
         parsed
             ? std::nullopt
             : ruleParser_.parseStatement({.text = obs.text, .lang = obs.lang});
-    if (!parsed && !statement && !obs.salient)
+    if (!parsed && !statement && !obs.salient && !obs.decided)
       return std::nullopt;
 
     const RuleParseResult salientGate{.type = MemoryType::Persona,
@@ -254,7 +260,7 @@ MemoryFormation::observe(const Observation& obs,
           first.tier == extract::ExtractTier::Lexicon ? "lexicon" : "model";
     }
     else {
-      if (extractor_)
+      if (extractor_ && !obs.decided)
         return std::nullopt;
       value = clause;
       predicate = "nota";
@@ -328,6 +334,8 @@ MemoryFormation::observe(const Observation& obs,
     }
   }
 
+  if (!obs.typeHint.empty())
+    factType = obs.typeHint;
   if (subjectSurface.empty() && mentionsFirstPerson(obs.text))
     subjectSurface = "usuario";
   if (subjectSurface.empty())

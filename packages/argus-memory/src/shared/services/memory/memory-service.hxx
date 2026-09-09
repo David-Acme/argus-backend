@@ -184,6 +184,7 @@ private:
   void rebuildAll();
 
   tools::ToolResult handleRemember(const tools::ToolCall& call);
+  tools::ToolResult handleRemind(const tools::ToolCall& call);
   tools::ToolResult handleRecall(const tools::ToolCall& call);
   tools::ToolResult handleForget(const tools::ToolCall& call);
   tools::ToolResult handleProcedureRun(const tools::ToolCall& call);

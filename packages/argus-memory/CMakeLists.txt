@@ -152,4 +152,38 @@ if(ARGUS_ROOT_PROJECT)
 
     add_test(NAME memory-backpressure-test COMMAND memory-backpressure-test)
 
+    # D4: memory.remind writes in the speaking user's own memory, in process,
+    # and another user's recall never sees it.
+    add_executable(memory-reminder-test tests/unit/memory-reminder-test.cc)
+
+    target_link_libraries(memory-reminder-test PRIVATE memory-core
+        doctest::doctest)
+
+    target_compile_definitions(memory-reminder-test PRIVATE
+        ARGUS_TEST_MEMORY_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql"
+        ARGUS_TEST_MEMORY_MODELS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../../models/memory")
+
+    target_compile_options(memory-reminder-test PRIVATE -Wall -Wextra)
+
+    set_target_properties(memory-reminder-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+
+    add_test(NAME memory-reminder-test COMMAND memory-reminder-test)
+
+    # F9 Tarea 12: how much of the real memory_save traffic the microsecond
+    # lexicon tier carries, which is what decides whether a heavier NER is
+    # worth evaluating.
+    add_executable(extract-tier-split-test tests/unit/extract-tier-split-test.cc)
+
+    target_link_libraries(extract-tier-split-test PRIVATE memory-core
+        doctest::doctest)
+
+    target_compile_definitions(extract-tier-split-test PRIVATE
+        ARGUS_TEST_MEMORY_FIXTURES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures")
+
+    target_compile_options(extract-tier-split-test PRIVATE -Wall -Wextra)
+
+    set_target_properties(extract-tier-split-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+
+    add_test(NAME extract-tier-split-test COMMAND extract-tier-split-test)
+
 endif()
