@@ -2922,3 +2922,25 @@ bench and is recoverable with
 
 The lab-only config overlay (`labs/config.toml*`) and `ARGUS_BUILD_LABS` are
 gone with them.
+
+## The flat root becomes packages/ and services/ (f8-a3, 2026-09-08)
+
+The 27 flat `argus-*` folders mixed two different things: 11 services (a
+process each) and 16 libraries compiled into them. The tree answered the
+question "how many microservices does this deploy" with a number four
+times too high. They now live under `services/` and `packages/`;
+`argus-deploy` stays at the root as its own folder (neither thing).
+
+**Zero `#include` edits**: the `argus-*/src` include prefixes are preserved
+(the F7 move rule), so the relocation was 108 relative paths across 23
+CMakeLists and zero source files.
+
+**The trap that set the gate**: the root configure discovers the services
+and tools with `file(GLOB ...)`, and a glob that matches nothing
+configures green with zero warnings — eleven services silently absent as
+targets. The gate therefore counted targets by name against the pre-move
+build, never trusting a green configure alone. The same class of bug bit
+`cmake/argus-module.cmake` mid-step: `CMAKE_CURRENT_LIST_DIR` inside a
+function resolves against the CALLER's list file, so the contracts bridge
+gained a `packages/packages/` at the new depth — caught by the build,
+fixed with `ARGUS_CMAKE_DIR` captured at include time.

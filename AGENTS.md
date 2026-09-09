@@ -630,7 +630,7 @@ Before any commit, verify: `cmake --build --preset dev -j 8` passes with
 | `packages/argus-auth/src/filter/valid-json/` | JSON body validation for POST/PATCH |
 | `packages/argus-common/src/config/app-config.hxx` | Centralized responses + attribute keys |
 | `packages/argus-auth/src/shared/services/jwt/` | JWT sign/verify (HS256, instance class) |
-| `packages/argus-identity/argus-identity/src/shared/services/face/` | Face detection + recognition (ncnn) — FaceDB = vec0 index (sqlite-vec) |
+| `packages/argus-identity/src/shared/services/face/` | Face detection + recognition (ncnn) — FaceDB = vec0 index (sqlite-vec) |
 | `services/argus-llm/src/shared/services/llm/` | LLM inference (llama.cpp) |
 | `services/argus-memory/src/shared/services/embedding/` | `EmbeddingService` (multilingual-e5-small int8 ONNX) + `UnigramTokenizer` |
 | `services/argus-memory/src/shared/services/memory/` | `MemoryService`/`SemanticGraph`(`SqliteGraph`)/`GraphRecall`/`MemoryFormation`/`RuleParser`/`PhraseCatalog`/`EntityResolver`/`ToolParser` — semantic-graph long-term memory (async worker, episode recall, L3 profile) |
@@ -638,7 +638,7 @@ Before any commit, verify: `cmake --build --preset dev -j 8` passes with
 | `packages/argus-sqlite/src/shared/services/sqlite/` | DB client access (`DbService::client()`, extensions) + `VecDb` (vec0 connection) |
 | `services/argus-vlm/src/shared/services/vision/` | VLM inference: LFM2.5-VL-450M via llama.cpp + libmtmd (arbitrary prompts, caption cache) |
 | `services/argus-voice/src/shared/services/vad/` | `VadService` — Silero VAD v5 as an **instance** class (per-stream LSTM, shared ONNX session), with the turn-quality gate |
-| `services/argus-camera/src/shared/services/stream/` | go2rtc manager, `StreamHub` (fMP4 over `/sync`, per-connection credit window, lock order `hubMutex_ → Upstream::mtx`), `Fmp4Reader` (encoding from headers, whole fragments), `MediaRelay` (incl. `snapshotBytes`) |
+| `services/argus-camera/src/shared/services/stream/` | go2rtc manager, `StreamHub` (fMP4 over `/sync`, per-connection credit window, lock order `hubMutex_ → Upstream::mtx`), `Fmp4Reader` (encoding from headers, whole fragments) |
 | `packages/argus-audio/src/shared/wrapper/audio/` | `AudioResampler` (stateful sinc) + `SampleRing` — every block-processed audio path MUST use these, never a custom conversion |
 | `services/argus-stt/src/shared/services/stt/` | Speech-to-text via sherpa-onnx (default `nemo_transducer` FastConformer RNN-T, es/en; whisper/canary/nemo_ctc/omnilingual selectable) |
 | `services/argus-tts/src/shared/services/tts/` | Text-to-speech (Supertonic 3) |
