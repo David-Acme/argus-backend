@@ -51,7 +51,6 @@ public:
   }
   void setCallbacks(Callbacks callbacks);
   void setReadPaused(bool paused);
-  bool readPaused() const { return readPaused_; }
   void close();
   bool closed() const { return closed_; }
   bool connected() const { return connected_ && !closed_; }

@@ -4,7 +4,6 @@
 #include <unistd.h>
 
 #include <cerrno>
-#include <cstring>
 #include <stdexcept>
 
 namespace
@@ -89,10 +88,6 @@ void PollLoop::runAfter(int milliseconds, Task task)
                   std::move(task));
 }
 
-void PollLoop::defer(Task task)
-{
-  deferred_.push_back(std::move(task));
-}
 
 void PollLoop::stop()
 {
@@ -124,11 +119,9 @@ void PollLoop::run()
       }
     }
     runDueTimers();
-    runDeferred();
     retained_.clear();
   }
   runPostedTasks();
-  runDeferred();
   retained_.clear();
 }
 
@@ -157,15 +150,6 @@ void PollLoop::runDueTimers()
     task();
 }
 
-void PollLoop::runDeferred()
-{
-  if (deferred_.empty())
-    return;
-  std::vector<Task> batch;
-  batch.swap(deferred_);
-  for (auto& task : batch)
-    task();
-}
 
 int PollLoop::pollTimeoutMs() const
 {

@@ -48,9 +48,6 @@ public:
   int sampleRate() const;
   std::vector<std::string> availableVoices() const;
 
-  static void writeWav(const std::string& path, const std::vector<float>& pcm,
-                       int sampleRate = 44100);
-
   static const std::vector<std::string>& supportedLangs();
 
   // Denoising-steps ceiling; tts.steps_cap pins it for extracted deployments.

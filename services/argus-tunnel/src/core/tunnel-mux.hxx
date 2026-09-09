@@ -86,7 +86,6 @@ public:
 private:
   Stream* findStream(uint32_t streamId);
   void handleHomeRead(TcpPeer& peer, const char* data, size_t size);
-  void handleHomeEof(TcpPeer& peer);
   void handleHomeDrained(TcpPeer& peer);
   void dispatchFrame(Frame frame);
   void pumpHomeFrames();

@@ -14,15 +14,6 @@ inline constexpr std::string_view UPSERT =
 
 inline constexpr std::string_view FIND_BY_USER =
     "SELECT * FROM notification_token WHERE user_id = ? AND is_active = 1";
-
-inline constexpr std::string_view DELETE_BY_DEVICE =
-    "UPDATE notification_token SET is_active = 0, "
-    "updated_at = strftime('%s', 'now') "
-    "WHERE user_id = ? AND device_hash = ?";
-
-inline constexpr std::string_view REMOVE_ALL_BY_USER =
-    "UPDATE notification_token SET is_active = 0, "
-    "updated_at = strftime('%s', 'now') WHERE user_id = ?";
 } // namespace notification_token_query
 
 struct NotificationTokenCreateInput

@@ -84,8 +84,3 @@ RelayConfig RelayConfig::resolve()
   config.relay.pushQueueCapacity = resolvePushQueueCapacity();
   return config;
 }
-
-uint16_t resolvePort(const char* key, uint16_t fallback)
-{
-  return clampPort(ConfigService::getInt(key), fallback);
-}

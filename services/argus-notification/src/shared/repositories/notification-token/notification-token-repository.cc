@@ -22,18 +22,3 @@ NotificationTokenRepository::findByUser(int64_t userId) const
     tokens.push_back(NotificationTokenSchema(row));
   co_return tokens;
 }
-
-drogon::Task<void>
-NotificationTokenRepository::deleteByDevice(int64_t userId,
-                                            const std::string& deviceHash) const
-{
-  auto client = DbService::client();
-  co_await client->execSqlCoro(DELETE_BY_DEVICE.data(), userId, deviceHash);
-}
-
-drogon::Task<void>
-NotificationTokenRepository::removeAllByUser(int64_t userId) const
-{
-  auto client = DbService::client();
-  co_await client->execSqlCoro(REMOVE_ALL_BY_USER.data(), userId);
-}

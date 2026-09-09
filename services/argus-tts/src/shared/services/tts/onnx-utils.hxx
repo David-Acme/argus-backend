@@ -62,9 +62,6 @@ std::vector<std::vector<std::vector<float>>>
 latentMask(const std::vector<int64_t>& wavLengths, int baseChunkSize,
            int chunkCompressFactor);
 
-void writeWav(const std::string& filename, const std::vector<float>& audioData,
-              int sampleRate);
-
 std::vector<int64_t> loadJsonInt64(const std::string& path);
 
 std::vector<std::string> chunkText(const std::string& text, int maxLen = 300);

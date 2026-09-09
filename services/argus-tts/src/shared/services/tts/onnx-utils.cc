@@ -197,53 +197,6 @@ latentMask(const std::vector<int64_t>& wavLengths, int baseChunkSize,
   return lengthToMask(latentLengths);
 }
 
-void writeWav(const std::string& filename, const std::vector<float>& audioData,
-              int sampleRate)
-{
-  std::ofstream file(filename, std::ios::binary);
-  if (!file.is_open()) {
-    throw std::runtime_error("Failed to open file for writing: " + filename);
-  }
-
-  int numChannels = 1;
-  int bitsPerSample = 16;
-  int byteRate = sampleRate * numChannels * bitsPerSample / 8;
-  int blockAlign = numChannels * bitsPerSample / 8;
-  int dataSize = audioData.size() * bitsPerSample / 8;
-
-  file.write("RIFF", 4);
-  int32_t chunkSize = 36 + dataSize;
-  file.write(reinterpret_cast<const char*>(&chunkSize), 4);
-  file.write("WAVE", 4);
-
-  file.write("fmt ", 4);
-  int32_t fmtChunkSize = 16;
-  file.write(reinterpret_cast<const char*>(&fmtChunkSize), 4);
-  int16_t audioFormat = 1;
-  file.write(reinterpret_cast<const char*>(&audioFormat), 2);
-  int16_t numChannels16 = static_cast<int16_t>(numChannels);
-  file.write(reinterpret_cast<const char*>(&numChannels16), 2);
-  file.write(reinterpret_cast<const char*>(&sampleRate), 4);
-  file.write(reinterpret_cast<const char*>(&byteRate), 4);
-  int16_t blockAlign16 = static_cast<int16_t>(blockAlign);
-  file.write(reinterpret_cast<const char*>(&blockAlign16), 2);
-  int16_t bitsPerSample16 = static_cast<int16_t>(bitsPerSample);
-  file.write(reinterpret_cast<const char*>(&bitsPerSample16), 2);
-
-  file.write("data", 4);
-  file.write(reinterpret_cast<const char*>(&dataSize), 4);
-
-  std::vector<int16_t> intSamples;
-  intSamples.reserve(audioData.size());
-  for (float sample : audioData) {
-    float clamped = std::max(-1.0f, std::min(1.0f, sample));
-    intSamples.push_back(static_cast<int16_t>(clamped * 32767));
-  }
-
-  file.write(reinterpret_cast<const char*>(intSamples.data()),
-             intSamples.size() * sizeof(int16_t));
-}
-
 std::vector<int64_t> loadJsonInt64(const std::string& path)
 {
   std::ifstream file(path);

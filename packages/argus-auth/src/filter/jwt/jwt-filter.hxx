@@ -24,5 +24,6 @@ public:
   // Token extraction order shared with the /sync relay.
   static std::string extractToken(const drogon::HttpRequestPtr& req);
 
+private:
   JwtService jwtService_;
 };

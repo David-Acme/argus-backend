@@ -32,7 +32,6 @@ public:
   void stop();
   void post(Task task);
   void runAfter(int milliseconds, Task task);
-  void defer(Task task);
 
   void watch(int fd, LoopActor* actor);
   void update(int fd, uint32_t events, LoopActor* actor);
@@ -44,14 +43,12 @@ public:
 private:
   void runDueTimers();
   void runPostedTasks();
-  void runDeferred();
   int pollTimeoutMs() const;
 
   int epollFd_{-1};
   int wakeFd_{-1};
   bool running_{false};
   std::multimap<std::chrono::steady_clock::time_point, Task> timers_;
-  std::vector<Task> deferred_;
   std::vector<std::shared_ptr<void>> retained_;
 
   std::mutex postedMutex_;

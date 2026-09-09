@@ -12,7 +12,4 @@ public:
   drogon::Task<void> upsert(const NotificationTokenCreateInput& input) const;
   drogon::Task<std::vector<NotificationTokenSchema>>
   findByUser(int64_t userId) const;
-  drogon::Task<void> deleteByDevice(int64_t userId,
-                                    const std::string& deviceHash) const;
-  drogon::Task<void> removeAllByUser(int64_t userId) const;
 };

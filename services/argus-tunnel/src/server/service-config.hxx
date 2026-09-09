@@ -25,6 +25,3 @@ struct RelayConfig
   // Resolves the [tunnel] behavior keys plus the relay's [server] keys (bind host, device/home/health listeners).
   static RelayConfig resolve();
 };
-
-// The /health listener JSON for either binary (plain HTTP, frozen envelope).
-uint16_t resolvePort(const char* key, uint16_t fallback);

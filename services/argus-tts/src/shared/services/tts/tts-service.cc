@@ -216,13 +216,6 @@ float TtsService::defaultSpeed() const
   return defaultSpeed_;
 }
 
-
-void TtsService::writeWav(const std::string& path,
-                          const std::vector<float>& pcm, int sampleRate)
-{
-  ::writeWav(path, pcm, sampleRate);
-}
-
 const std::vector<std::string>& TtsService::supportedLangs()
 {
   return supportedLangCodes();
