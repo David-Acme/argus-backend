@@ -42,10 +42,16 @@ public:
   bool isFiller(const std::string& phrase, const std::string& lang) const;
 
 private:
-  std::optional<std::string> contentBeforeTrigger(const std::string& text,
-                                                  const std::string& lowered,
-                                                  uint32_t begin,
-                                                  uint32_t end) const;
+  struct ContentBeforeTriggerInput
+  {
+    const std::string& text;
+    const std::string& lowered;
+    uint32_t begin;
+    uint32_t end;
+  };
+
+  std::optional<std::string>
+  contentBeforeTrigger(const ContentBeforeTriggerInput& input) const;
 
   std::string stripTrailingConfirmation(std::string text,
                                         const std::string& lang) const;

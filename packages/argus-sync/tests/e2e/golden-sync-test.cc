@@ -381,14 +381,19 @@ void writeTextFile(const std::string& path, const std::string& content)
   out << content;
 }
 
-void reportMismatch(const Scenario& scenario,
-                    const std::string& expected,
-                    const std::string& actual)
+struct ReportMismatchInput
 {
-  std::cout << "  MISMATCH " << scenario.name << ": normalized session "
+  const Scenario& scenario;
+  std::string expected;
+  std::string actual;
+};
+
+void reportMismatch(const ReportMismatchInput& input)
+{
+  std::cout << "  MISMATCH " << input.scenario.name << ": normalized session "
             << "differs from the committed fixture\n";
-  std::cout << "    expected: " << expected << "\n";
-  std::cout << "    actual:   " << actual << "\n";
+  std::cout << "    expected: " << input.expected << "\n";
+  std::cout << "    actual:   " << input.actual << "\n";
 }
 
 bool verifyScenario(const std::string& fixturesDir, const Scenario& scenario)
@@ -396,12 +401,16 @@ bool verifyScenario(const std::string& fixturesDir, const Scenario& scenario)
   const Json::Value expected =
       readJsonFile(fixturesDir + "/" + scenario.name + ".json");
   if (expected.isNull() || !expected.isObject()) {
-    reportMismatch(scenario, "<fixture file>", "<missing>");
+    reportMismatch({.scenario = scenario,
+                    .expected = "<fixture file>",
+                    .actual = "<missing>"});
     return false;
   }
   const Json::Value actual = scenarioNormalized(scenario);
   if (expected != actual) {
-    reportMismatch(scenario, jsonToString(expected), jsonToString(actual));
+    reportMismatch({.scenario = scenario,
+                    .expected = jsonToString(expected),
+                    .actual = jsonToString(actual)});
     return false;
   }
   std::cout << "  OK " << scenario.name << " (" << scenario.frames.size()

@@ -101,7 +101,7 @@ void NoiseSuppressor::process(const std::vector<float>& in,
   workI16_.resize(workBoosted_.size());
   for (size_t i = 0; i < workBoosted_.size(); ++i)
     workI16_[i] = static_cast<int16_t>(clampS16(workBoosted_[i]) * 32767.0F);
-  upsampler_.process(workI16_.data(), workI16_.size(), workUp48_);
+  workUp48_ = upsampler_.process(workI16_.data(), workI16_.size());
 
   pending48_.reserve(pending48_.size() + workUp48_.size());
   for (const int16_t s : workUp48_)
@@ -148,7 +148,7 @@ void NoiseSuppressor::process(const std::vector<float>& in,
   for (size_t i = 0; i < workDenoised_.size(); ++i)
     workD48_[i] = static_cast<int16_t>(
         std::max(-32767.0F, std::min(32767.0F, workDenoised_[i])));
-  downsampler_.process(workD48_.data(), workD48_.size(), workDown16_);
+  workDown16_ = downsampler_.process(workD48_.data(), workD48_.size());
 
   out.reserve(workDown16_.size());
   for (const int16_t s : workDown16_)

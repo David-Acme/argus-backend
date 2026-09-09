@@ -25,8 +25,8 @@ public:
 
   void build();
   void reload() { build(); }
-  void match(std::string_view lowered, const std::string& lang,
-             std::vector<PhraseHit>& out) const;
+  std::vector<PhraseHit> match(std::string_view lowered,
+                               const std::string& lang) const;
   size_t phraseCount() const;
 
 private:

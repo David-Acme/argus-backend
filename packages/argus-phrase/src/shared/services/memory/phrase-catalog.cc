@@ -62,19 +62,19 @@ size_t PhraseCatalog::phraseCount() const
   return snapshot ? snapshot->entries.size() : 0;
 }
 
-void PhraseCatalog::match(std::string_view lowered, const std::string& lang,
-                          std::vector<PhraseHit>& out) const
+std::vector<PhraseHit>
+PhraseCatalog::match(std::string_view lowered, const std::string& lang) const
 {
-  out.clear();
   const auto snapshot = currentSnapshot();
   if (!snapshot || !snapshot->automaton || lowered.empty())
-    return;
+    return {};
 
   thread_local text_match::MatchBuffer buffer;
   buffer.clear();
   snapshot->automaton->match(lowered, buffer);
 
   const std::string& wanted = lang.empty() ? "es" : lang;
+  std::vector<PhraseHit> out;
   for (const auto& hit : buffer.items) {
     const auto& pattern = snapshot->automaton->pattern(hit.patternIndex);
     const auto& entry = snapshot->entries[pattern.payloadId];
@@ -85,4 +85,5 @@ void PhraseCatalog::match(std::string_view lowered, const std::string& lang,
                    .begin = hit.begin,
                    .end = hit.end});
   }
+  return out;
 }

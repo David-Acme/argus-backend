@@ -26,10 +26,12 @@ JwtService::JwtService()
         "JWT secrets must be configured with at least 32 non-default characters");
 }
 
-std::string
-JwtService::generate(const std::map<std::string, std::string>& claims,
-                     const std::string& secret, int64_t expiresInSeconds) const
+std::string JwtService::generate(const JwtGenerateInput& input) const
 {
+  const auto& claims = input.claims;
+  const std::string& secret = input.secret;
+  const int64_t expiresInSeconds = input.expiresInSeconds;
+
   auto builder = jwt::create()
                      .set_issuer("argus")
                      .set_issued_at(std::chrono::system_clock::now())
@@ -75,13 +77,17 @@ JwtService::verify(const std::string& token, const std::string& secret) const
 std::string JwtService::generateAccess(
     const std::map<std::string, std::string>& claims) const
 {
-  return generate(claims, accessSecret_, accessTtlSeconds_);
+  return generate({.claims = claims,
+                   .secret = accessSecret_,
+                   .expiresInSeconds = accessTtlSeconds_});
 }
 
 std::string JwtService::generateRefresh(
     const std::map<std::string, std::string>& claims) const
 {
-  return generate(claims, refreshSecret_, refreshTtlSeconds_);
+  return generate({.claims = claims,
+                   .secret = refreshSecret_,
+                   .expiresInSeconds = refreshTtlSeconds_});
 }
 
 std::map<std::string, std::string>

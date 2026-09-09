@@ -14,9 +14,23 @@
 namespace
 {
 
-std::vector<float> meanPool(const float* hidden, int seq, int dim,
-                            const std::vector<int32_t>& ids, int32_t padId)
+struct MeanPoolInput
 {
+  const float* hidden;
+  int seq;
+  int dim;
+  const std::vector<int32_t>& ids;
+  int32_t padId;
+};
+
+std::vector<float> meanPool(const MeanPoolInput& input)
+{
+  const float* hidden = input.hidden;
+  const int seq = input.seq;
+  const int dim = input.dim;
+  const std::vector<int32_t>& ids = input.ids;
+  const int32_t padId = input.padId;
+
   std::vector<float> pooled(static_cast<size_t>(dim), 0.0F);
   int count = 0;
   for (int i = 0; i < seq; ++i) {
@@ -169,8 +183,11 @@ EmbeddingService::embed(const std::string& text, const std::string& prefix)
     const auto* hidden = out.GetTensorData<float>();
     const auto outShape = out.GetTensorTypeAndShapeInfo().GetShape();
     const int64_t outSeq = outShape.size() > 1 ? outShape[1] : seq;
-    auto pooled = meanPool(hidden, static_cast<int>(outSeq), dim_, ids,
-                           tokenizer_.padId());
+    auto pooled = meanPool({.hidden = hidden,
+                            .seq = static_cast<int>(outSeq),
+                            .dim = dim_,
+                            .ids = ids,
+                            .padId = tokenizer_.padId()});
     if (pooled.empty())
       return std::nullopt;
     if (outDim_ < dim_)

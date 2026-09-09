@@ -4,15 +4,20 @@
 #include <map>
 #include <string>
 
+struct JwtGenerateInput
+{
+  const std::map<std::string, std::string>& claims;
+  const std::string& secret;
+  int64_t expiresInSeconds;
+};
+
 class JwtService
 {
 public:
   JwtService();
   ~JwtService() = default;
 
-  std::string generate(const std::map<std::string, std::string>& claims,
-                       const std::string& secret,
-                       int64_t expiresInSeconds = 3600) const;
+  std::string generate(const JwtGenerateInput& input) const;
 
   std::map<std::string, std::string> verify(const std::string& token,
                                             const std::string& secret) const;

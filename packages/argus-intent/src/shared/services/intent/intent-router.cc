@@ -40,9 +40,7 @@ intent::ToolIntent IntentRouter::factOrReminder(const std::string& text,
 bool IntentRouter::recallMarkerOpens(const std::string& lowered,
                                      const std::string& lang) const
 {
-  thread_local std::vector<PhraseHit> hits;
-  hits.clear();
-  catalog_.match(lowered, lang, hits);
+  const std::vector<PhraseHit> hits = catalog_.match(lowered, lang);
   return std::ranges::any_of(hits, [&lowered](const PhraseHit& hit) {
     const std::string_view before(lowered.data(), hit.begin);
     return hit.kind == PhraseKind::RecallMarker &&

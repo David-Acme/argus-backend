@@ -15,7 +15,7 @@ class AudioResampler
 public:
   explicit AudioResampler(AudioResamplerInput input);
 
-  void process(const int16_t* samples, size_t count, std::vector<int16_t>& out);
+  std::vector<int16_t> process(const int16_t* samples, size_t count);
   void reset();
 
   int sourceRate() const { return sourceRate_; }

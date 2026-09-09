@@ -230,9 +230,23 @@ std::string buildSanString(const std::vector<std::string>& sans)
   return out;
 }
 
-X509Ptr buildLeaf(EVP_PKEY* leafKey, X509* caCert, EVP_PKEY* caKey,
-                  const std::vector<std::string>& sans, int ttlDays)
+struct CertLeafInput
 {
+  EVP_PKEY* leafKey;
+  X509* caCert;
+  EVP_PKEY* caKey;
+  const std::vector<std::string>& sans;
+  int ttlDays;
+};
+
+X509Ptr buildLeaf(const CertLeafInput& input)
+{
+  EVP_PKEY* leafKey = input.leafKey;
+  X509* caCert = input.caCert;
+  EVP_PKEY* caKey = input.caKey;
+  const std::vector<std::string>& sans = input.sans;
+  const int ttlDays = input.ttlDays;
+
   X509Ptr cert(X509_new(), X509_free);
   if (!cert)
     return {nullptr, X509_free};
@@ -422,8 +436,12 @@ bool CertService::rotateServerCertificate()
     return false;
   }
 
-  X509Ptr leaf = buildLeaf(leafKey.get(), ca.get(), caKey.get(), instanceSans(),
-                           gState.paths.leafTtlDays);
+  const std::vector<std::string> sans = instanceSans();
+  X509Ptr leaf = buildLeaf({.leafKey = leafKey.get(),
+                            .caCert = ca.get(),
+                            .caKey = caKey.get(),
+                            .sans = sans,
+                            .ttlDays = gState.paths.leafTtlDays});
   if (!leaf) {
     LOG_ERROR << "cert rotation: failed to build leaf";
     return false;

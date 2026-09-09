@@ -92,8 +92,19 @@ private:
   int fd_;
 };
 
-int connectLoopback(const std::string& host, int port, int timeoutMs)
+struct ConnectLoopbackInput
 {
+  const std::string& host;
+  int port;
+  int timeoutMs;
+};
+
+int connectLoopback(const ConnectLoopbackInput& input)
+{
+  const std::string& host = input.host;
+  const int port = input.port;
+  const int timeoutMs = input.timeoutMs;
+
   const int fd = ::socket(AF_INET, SOCK_STREAM, 0);
   if (fd < 0)
     return -1;
@@ -252,9 +263,18 @@ Head parseHead(const std::string& wire)
 }
 
 // De-chunks a buffered chunked body; calls onChunk for every HTTP chunk.
-void forEachHttpChunk(const std::string& wire, const Head& head,
-                      const std::function<void(const char*, size_t)>& onChunk)
+struct ForEachHttpChunkInput
 {
+  const std::string& wire;
+  const Head& head;
+  const std::function<void(const char*, size_t)>& onChunk;
+};
+
+void forEachHttpChunk(const ForEachHttpChunkInput& input)
+{
+  const std::string& wire = input.wire;
+  const Head& head = input.head;
+  const std::function<void(const char*, size_t)>& onChunk = input.onChunk;
   std::string::size_type cursor = head.bodyStart;
   for (;;) {
     const auto lineEnd = wire.find("\r\n", cursor);
@@ -302,7 +322,10 @@ TtsHttpClient::RawResponse TtsHttpClient::exchange(
     const WireRequest& request) const
 {
   const Address address = parseUrl(baseUrl_);
-  const SocketGuard fd(connectLoopback(address.host, address.port, timeoutMs_));
+  const SocketGuard fd(
+      connectLoopback({.host = address.host,
+                       .port = address.port,
+                       .timeoutMs = timeoutMs_}));
   if (fd.get() < 0)
     throw std::runtime_error("argus-tts unreachable at " + baseUrl_);
 
@@ -321,10 +344,11 @@ TtsHttpClient::RawResponse TtsHttpClient::exchange(
     throwEnvelopeError(parsed.status, wire.substr(parsed.bodyStart));
   if (parsed.chunked) {
     std::string body;
-    forEachHttpChunk(wire, parsed,
-                     [&body](const char* data, size_t size) {
-                       body.append(data, size);
-                     });
+    forEachHttpChunk({.wire = wire,
+                      .head = parsed,
+                      .onChunk = [&body](const char* data, size_t size) {
+                        body.append(data, size);
+                      }});
     return {.status = parsed.status, .body = std::move(body)};
   }
   return {.status = parsed.status,
@@ -336,7 +360,10 @@ void TtsHttpClient::stream(
     const std::function<void(const char*, size_t)>& onChunk) const
 {
   const Address address = parseUrl(baseUrl_);
-  const SocketGuard fd(connectLoopback(address.host, address.port, timeoutMs_));
+  const SocketGuard fd(
+      connectLoopback({.host = address.host,
+                       .port = address.port,
+                       .timeoutMs = timeoutMs_}));
   if (fd.get() < 0)
     throw std::runtime_error("argus-tts unreachable at " + baseUrl_);
 

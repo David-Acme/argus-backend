@@ -68,15 +68,15 @@ int16_t AudioResampler::sampleAt(double pos)
   return static_cast<int16_t>(std::clamp(value, -32768.0, 32767.0));
 }
 
-void AudioResampler::process(const int16_t* samples, size_t count,
-                             std::vector<int16_t>& out)
+std::vector<int16_t> AudioResampler::process(const int16_t* samples,
+                                             size_t count)
 {
-  out.clear();
+  std::vector<int16_t> out;
   if (count == 0)
-    return;
+    return out;
   if (sourceRate_ == targetRate_) {
     out.assign(samples, samples + count);
-    return;
+    return out;
   }
 
   history_.insert(history_.end(), samples, samples + count);
@@ -94,4 +94,5 @@ void AudioResampler::process(const int16_t* samples, size_t count,
     history_.erase(history_.begin(), history_.begin() + static_cast<long>(keep));
     pos_ -= static_cast<double>(keep);
   }
+  return out;
 }

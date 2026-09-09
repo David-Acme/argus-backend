@@ -595,8 +595,8 @@ void VoiceSessionService::speak(Session& session, const std::string& text)
       if (session.interrupt.load())
         return;
       const auto raw = floatToInt16(chunk);
-      std::vector<int16_t> resampled;
-      resampler.process(raw.data(), raw.size(), resampled);
+      const std::vector<int16_t> resampled =
+          resampler.process(raw.data(), raw.size());
       if (!resampled.empty()) {
         argus::voice::v1::ServerFrame chunkFrame;
         chunkFrame.mutable_tts_chunk()->set_pcm(

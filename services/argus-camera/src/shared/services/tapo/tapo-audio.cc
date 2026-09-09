@@ -64,7 +64,7 @@ std::vector<int16_t> resample(const TapoResampleInput& input)
   AudioResampler resampler(
       {.sourceRate = input.sourceRate, .targetRate = input.targetRate});
   std::vector<int16_t> out;
-  resampler.process(input.samples.data(), input.samples.size(), out);
+  out = resampler.process(input.samples.data(), input.samples.size());
   return out;
 }
 

@@ -73,8 +73,19 @@ private:
   int fd_;
 };
 
-int connectLoopback(const std::string& host, int port, int timeoutMs)
+struct ConnectLoopbackInput
 {
+  const std::string& host;
+  int port;
+  int timeoutMs;
+};
+
+int connectLoopback(const ConnectLoopbackInput& input)
+{
+  const std::string& host = input.host;
+  const int port = input.port;
+  const int timeoutMs = input.timeoutMs;
+
   const int fd = ::socket(AF_INET, SOCK_STREAM, 0);
   if (fd < 0)
     return -1;
@@ -230,7 +241,10 @@ SttHttpClient::RawResponse SttHttpClient::exchange(
     const SttWireRequest& request) const
 {
   const Address address = parseUrl(baseUrl_);
-  const SocketGuard fd(connectLoopback(address.host, address.port, timeoutMs_));
+  const SocketGuard fd(
+      connectLoopback({.host = address.host,
+                       .port = address.port,
+                       .timeoutMs = timeoutMs_}));
   if (fd.get() < 0)
     throw std::runtime_error("argus-stt unreachable at " + baseUrl_);
 
