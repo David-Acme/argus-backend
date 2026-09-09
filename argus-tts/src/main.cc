@@ -30,7 +30,7 @@ int main()
 
   const ListenerConfig listener = ListenerConfig::resolve(7029);
 
-  drogon::app().registerController(std::make_shared<HealthController>(HealthStatus{.serviceName = "argus-tts"}));
+  drogon::app().registerController(std::make_shared<HealthController>(HealthStatus{.serviceName = "argus-tts", .extras = {}}));
   drogon::app().registerController(std::make_shared<TtsController>());
   drogon::app().registerFilter(std::make_shared<ValidJsonFilter>());
 

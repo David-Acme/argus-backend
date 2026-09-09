@@ -28,7 +28,7 @@ int main()
 
   const ListenerConfig listener = ListenerConfig::resolve(7030);
 
-  drogon::app().registerController(std::make_shared<HealthController>(HealthStatus{.serviceName = "argus-stt"}));
+  drogon::app().registerController(std::make_shared<HealthController>(HealthStatus{.serviceName = "argus-stt", .extras = {}}));
   drogon::app().registerController(std::make_shared<SttController>());
 
   drogon::app().loadConfigJson(drogonConfig(listener));

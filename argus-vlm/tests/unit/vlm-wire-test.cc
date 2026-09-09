@@ -215,7 +215,7 @@ TEST_CASE("the argus-vlm internal wire serves the vision capacity")
   drogon::app().setLogLevel(trantor::Logger::kWarn);
   drogon::app().setClientMaxBodySize(64 * 1024 * 1024);
   drogon::app().registerController(std::make_shared<HealthController>(
-      HealthStatus{.serviceName = "argus-vlm"}));
+      HealthStatus{.serviceName = "argus-vlm", .extras = {}}));
   drogon::app().registerController(vlm);
   drogon::app().setExceptionHandler(AppConfig::handleException);
   drogon::app().setCustomErrorHandler(

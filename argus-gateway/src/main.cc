@@ -185,7 +185,7 @@ int main()
   // and VecDb (face-db) both read the config-driven path below.
   ConfigService::setRuntimeString("database.file", identityDb.dbPath);
 
-  drogon::app().registerController(std::make_shared<HealthController>(HealthStatus{.serviceName = "argus-gateway"}));
+  drogon::app().registerController(std::make_shared<HealthController>(HealthStatus{.serviceName = "argus-gateway", .extras = {}}));
   const IdentityRegistrationStats identity =
       registerIdentitySurface();
   LOG_INFO << "Identity surface registered: " << identity.controllers

@@ -132,7 +132,7 @@ int main()
     return 1;
   }
 
-  drogon::app().registerController(std::make_shared<HealthController>(HealthStatus{.serviceName = "argus-camera"}));
+  drogon::app().registerController(std::make_shared<HealthController>(HealthStatus{.serviceName = "argus-camera", .extras = {}}));
   drogon::app().registerController(std::make_shared<CameraController>());
   drogon::app().registerController(std::make_shared<ZoneController>());
   drogon::app().registerController(std::make_shared<CameraControlController>());

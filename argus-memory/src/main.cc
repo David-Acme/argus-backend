@@ -58,7 +58,7 @@ int main()
 
   const ListenerConfig listener = ListenerConfig::resolve(7033);
 
-  drogon::app().registerController(std::make_shared<HealthController>(HealthStatus{.serviceName = "argus-memory"}));
+  drogon::app().registerController(std::make_shared<HealthController>(HealthStatus{.serviceName = "argus-memory", .extras = {}}));
   const auto memory = std::make_shared<MemoryController>();
   drogon::app().registerController(memory);
 

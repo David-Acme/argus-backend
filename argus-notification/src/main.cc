@@ -56,7 +56,7 @@ int main()
   const NotificationDbConfig notificationDb = NotificationConfig::resolveDb();
   const ListenerConfig listener = ListenerConfig::resolve(7028);
 
-  drogon::app().registerController(std::make_shared<HealthController>(HealthStatus{.serviceName = "argus-notification"}));
+  drogon::app().registerController(std::make_shared<HealthController>(HealthStatus{.serviceName = "argus-notification", .extras = {}}));
 
   drogon::app().registerFilter(std::make_shared<DeviceFilter>());
   drogon::app().registerFilter(std::make_shared<ValidJsonFilter>());

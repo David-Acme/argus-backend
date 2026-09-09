@@ -28,7 +28,7 @@ int main()
 
   const ListenerConfig listener = ListenerConfig::resolve(7031);
 
-  drogon::app().registerController(std::make_shared<HealthController>(HealthStatus{.serviceName = "argus-vlm"}));
+  drogon::app().registerController(std::make_shared<HealthController>(HealthStatus{.serviceName = "argus-vlm", .extras = {}}));
   const auto vlm = std::make_shared<VlmController>();
   drogon::app().registerController(vlm);
 

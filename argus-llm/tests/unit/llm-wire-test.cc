@@ -283,7 +283,7 @@ TEST_CASE("the argus-llm internal wire serves the chat capacity")
   drogon::app().setLogLevel(trantor::Logger::kWarn);
   drogon::app().setClientMaxBodySize(8 * 1024 * 1024);
   drogon::app().registerController(std::make_shared<HealthController>(
-      HealthStatus{.serviceName = "argus-llm"}));
+      HealthStatus{.serviceName = "argus-llm", .extras = {}}));
   drogon::app().registerController(llm);
   drogon::app().setExceptionHandler(AppConfig::handleException);
   drogon::app().setCustomErrorHandler(

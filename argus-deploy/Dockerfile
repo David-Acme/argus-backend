@@ -52,14 +52,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /opt/argus
 COPY --from=build /opt/argus/build/prod/argus-gateway/argus-gateway /opt/argus/argus-gateway
-COPY --from=build /opt/argus/build/prod/tools/migrate-identity/argus-migrate-identity /opt/argus/argus-migrate-identity
-COPY --from=build /opt/argus/build/prod/tools/migrate-camera/argus-migrate-camera /opt/argus/argus-migrate-camera
-COPY --from=build /opt/argus/build/prod/tools/vulkan-probe/argus-vulkan-probe /opt/argus/argus-vulkan-probe
+COPY --from=build /opt/argus/build/prod/argus-identity/tools/migrate-identity/argus-migrate-identity /opt/argus/argus-migrate-identity
+COPY --from=build /opt/argus/build/prod/argus-camera/tools/migrate-camera/argus-migrate-camera /opt/argus/argus-migrate-camera
+COPY --from=build /opt/argus/build/prod/argus-camera/tools/vulkan-probe/argus-vulkan-probe /opt/argus/argus-vulkan-probe
 COPY --from=build /opt/argus/build/prod/argus-camera/argus-camera /opt/argus/argus-camera
 COPY --from=build /opt/argus/build/prod/argus-productivity/argus-productivity /opt/argus/argus-productivity
 COPY --from=build /opt/argus/build/prod/argus-notification/argus-notification /opt/argus/argus-notification
-COPY --from=build /opt/argus/build/prod/tools/migrate-productivity/argus-migrate-productivity /opt/argus/argus-migrate-productivity
-COPY --from=build /opt/argus/build/prod/tools/migrate-notification/argus-migrate-notification /opt/argus/argus-migrate-notification
+COPY --from=build /opt/argus/build/prod/argus-productivity/tools/migrate-productivity/argus-migrate-productivity /opt/argus/argus-migrate-productivity
+COPY --from=build /opt/argus/build/prod/argus-notification/tools/migrate-notification/argus-migrate-notification /opt/argus/argus-migrate-notification
 COPY --from=build /opt/argus/build/prod/argus-tts/argus-tts /opt/argus/argus-tts
 COPY --from=build /opt/argus/build/prod/argus-stt/argus-stt /opt/argus/argus-stt
 COPY --from=build /opt/argus/build/prod/argus-vlm/argus-vlm /opt/argus/argus-vlm

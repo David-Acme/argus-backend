@@ -929,7 +929,7 @@ TEST_CASE("proxy exclusion set covers every registered gateway route")
   std::remove(path);
 
   drogon::app().registerController(std::make_shared<HealthController>(
-      HealthStatus{.serviceName = "argus-gateway"}));
+      HealthStatus{.serviceName = "argus-gateway", .extras = {}}));
   registerIdentitySurface();
   registerSyncSurface(nullptr, nullptr);
 

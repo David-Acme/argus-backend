@@ -53,7 +53,7 @@ int main()
     return 1;
   }
 
-  drogon::app().registerController(std::make_shared<HealthController>(HealthStatus{.serviceName = "argus-voice"}));
+  drogon::app().registerController(std::make_shared<HealthController>(HealthStatus{.serviceName = "argus-voice", .extras = {}}));
 
   drogon::app().loadConfigJson(drogonConfig(healthListener));
 
