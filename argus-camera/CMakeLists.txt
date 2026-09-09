@@ -251,10 +251,5 @@ if(ARGUS_ROOT_PROJECT)
     add_test(NAME camera-talk-cutover-test COMMAND camera-talk-cutover-test)
 endif()
 
-# Verification labs, built on demand (--target argus-object-bench /
-# argus-camera-probe); never part of the default service build.
-add_subdirectory(labs/object-bench EXCLUDE_FROM_ALL)
-add_subdirectory(labs/camera-probe EXCLUDE_FROM_ALL)
-
 # The camera suites (schema, migration, config) run from src/test/unit so the
 # root ctest covers them without a standalone conan gate.

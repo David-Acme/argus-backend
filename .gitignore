@@ -56,7 +56,6 @@ go2rtc.yaml
 
 # Per-installation configuration generated from config.toml.example.
 config.toml
-labs/config.toml
 
 # argus-deploy per-installation runtime configs (instance secrets).
 argus-deploy/config.gateway.toml
@@ -75,6 +74,5 @@ argus-deploy/config.relay.toml
 # These are instance state and must be backed up outside Git.
 docker/runtime/
 
-# Artifacts written by labs/tts-probe
 probe-*.wav
 bench-results/

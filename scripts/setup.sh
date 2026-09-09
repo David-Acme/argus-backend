@@ -76,8 +76,6 @@ log "Profile: $PROFILE  build_type: $BUILD_TYPE  output: $OUTPUT_FOLDER  preset:
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CONFIG="$ROOT/config.toml"
 CONFIG_TEMPLATE="$ROOT/config.toml.example"
-LABS_CONFIG="$ROOT/labs/config.toml"
-LABS_CONFIG_TEMPLATE="$ROOT/labs/config.toml.example"
 
 install_system_deps() {
   log "Detecting distribution and installing build dependencies..."
@@ -450,18 +448,6 @@ migrate_legacy_overlay() {
   log "Migrated the legacy config.local.toml values into config.toml."
 }
 
-ensure_labs_config() {
-  [ -f "$LABS_CONFIG_TEMPLATE" ] || {
-    err "missing labs config template: $LABS_CONFIG_TEMPLATE"
-    exit 1
-  }
-  if [ ! -f "$LABS_CONFIG" ]; then
-    umask 077
-    cp "$LABS_CONFIG_TEMPLATE" "$LABS_CONFIG"
-    chmod 600 "$LABS_CONFIG"
-  fi
-}
-
 ensure_local_config() {
   need_cmd openssl
   [ -f "$CONFIG_TEMPLATE" ] || { err "missing config template: $CONFIG_TEMPLATE"; exit 1; }
@@ -477,8 +463,7 @@ ensure_local_config() {
   ensure_toml_value device fingerprint_secret "$(openssl rand -hex 48)" "$CONFIG"
   ensure_toml_value identity rpc_secret "$(openssl rand -hex 32)" "$CONFIG"
   chmod 600 "$CONFIG"
-  ensure_labs_config
-  log "System and lab configs are ready."
+  log "System config is ready."
 }
 
 setup_llm_model() {

@@ -6,7 +6,9 @@ in this single repository; all agent rules, code and comments are in English.
 
 ## Layout
 
-- `src/` — backend monolith (C++20 / Drogon), with `labs/` beside it
+- `argus-<name>/` — one folder per service (produces a process) or package
+  (a library compiled into them). There is no monolith: `src/` was deleted
+  once the last service moved out.
 - `argus-contracts/` — protobuf contracts (`argus.<domain>.v1`), manifest
   schemas, `buf` config and sync fixtures
 - `docs/` — architecture and migration documents
@@ -14,13 +16,13 @@ in this single repository; all agent rules, code and comments are in English.
 
 ## Adding services
 
-Future services are top-level folders **siblings of `src/`**:
+Services are top-level folders:
 
 - `argus-gateway/` (Phase 1), `argus-camera/` (Phase 2), and so on.
 
 Each service keeps its own `CMakeLists.txt`, `conanfile`, `database/`,
-`CONTEXT.md`, `AGENTS.md`, `tests/` and `labs/`, builds its own artifacts and
-is deployed as its own container.
+`CONTEXT.md`, `AGENTS.md` and `tests/`, builds its own artifacts and is
+deployed as its own container.
 
 Internal versioning uses repository tags: `contracts-v*` for
 `argus-contracts/`, `service-v*` for each service folder.

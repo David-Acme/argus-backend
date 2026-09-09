@@ -413,8 +413,8 @@ shared file-static behind a mutex.
   `multilingual-e5-small` int8 ONNX, loaded lazily. Full details in CONTEXT.md.
 - **NO fastText, NO IntentService** — implicit tool activation is the LLM's
   own tool calling, not a separate classifier. The submodule, the service and
-  `labs/intent-probe` were deleted; `labs/intent-data/` stays as the labelled
-  evaluation set for tool-calling accuracy (`labs/tool-bench`).
+  `labs/` were deleted; the labelled evaluation set survives at
+  `argus-llm/tests/fixtures/tools/` for tool-calling accuracy.
 - **NO spdlog** — use Drogon's built-in logging (`LOG_INFO`, `LOG_WARN`, `LOG_FATAL`)
 - **NO libsodium** — auth is face-based
 - **NO ORM** — raw SQL via `DbService::client()->execSqlCoro()`
@@ -444,7 +444,7 @@ Raw pointers only for non-owning access (`.get()`).
   LAN and tunnel endpoints.
 - Native backend development is the default: run `scripts/setup.sh` to create
   the per-installation 0600 `config.toml` from `config.toml.example` and the
-  ignored lab overlay from `labs/config.toml.example`, then run
+  then run
   `build/dev/argus-gateway/argus-gateway`. Never commit, print, log or send
   instance secrets to the frontend.
 - Production-style deployment is container-only: `argus-deploy/` builds one
@@ -594,9 +594,6 @@ argus_sdk_module(NAME identity PROTO identity.proto)
 
 ## Build Commands
 
-`ARGUS_BUILD_LABS` defaults OFF: the `labs/` probes and benches are a
-developer opt-in (`cmake --preset dev -DARGUS_BUILD_LABS=ON`).
-
 ```bash
 # Dev (Debug)
 cmake --preset dev
@@ -650,11 +647,6 @@ Before any commit, verify: `cmake --build --preset dev -j 8` passes with
 | `argus-voice/src/shared/services/reaction/` | `ReactionEngine` — reacciones de turno por prioridad de señales → `voice:event` (significado, nunca nombres de expresión) |
 | `argus-identity/src/shared/repositories/{user-invitation,portrait-*,device-login-challenge}/` | Dominio people: invitaciones (hash-only), capabilities de retrato, retos de login cruzado |
 | `argus-common/src/shared/wrapper/cancellation/` | `CancellationToken` shared across streaming AI/audio paths |
-| `labs/` | Standalone binaries for prototyping and validating new capabilities against real hardware before wiring them into the backend |
-| `labs/tapo-probe/` | `argus-tapo-probe` — validates the camera protocols against real hardware |
-| `labs/voice-test/` | `argus-voice-test` — STT → LLM → TTS conversation loop with Silero VAD (memory via `--memory-user <id>`) |
-| `labs/memory-probe/` | `argus-memory-probe` — memory schema/capture/tool/embedding/recall checks + bench |
-| `labs/reaction-probe/` | `argus-reaction-probe` — ladder completo de reacciones es/en (23 checks) |
 | `argus-common/src/shared/services/config-service/` | `ConfigService` read + runtime writes (`setBool/...` persisten a `config.toml`, comentarios preservados) |
 | `argus-room/src/shared/services/room/` | `RoomManager` local (rooms por módulo/usuario, `thread_local`) |
 | `argus-socket/src/shared/services/socket/` | `SocketService` (emitModule/emitUser) + `SocketEmitDto` |
@@ -670,5 +662,4 @@ Before any commit, verify: `cmake --build --preset dev -j 8` passes with
 | `argus-common/src/shared/wrapper/blocking-task/` | Coroutine awaiter for off-loop heavy work |
 | `argus-common/src/shared/wrapper/thread-budget/` | Adaptive thread sizing for AI services |
 | `config.toml` | System application + JWT config |
-| `labs/config.toml` | Ignored lab-only overlay |
 | `CONTEXT.md` | Full project history and decisions |

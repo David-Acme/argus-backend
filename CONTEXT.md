@@ -2896,3 +2896,29 @@ and simply loses the classifier hint when it was present.
 **State at deletion**: the service was compiled by nothing — the F7 arc's R3
 review found it orphaned (`src/` was deleted and only `labs/` ever built it),
 which is what surfaced the decision.
+
+## labs/ deleted (2026-09-08)
+
+The thirteen `labs/` binaries are gone, with `argus-camera/labs/` and
+`MediaRelay` (`argus-camera/src/shared/services/stream/media-relay.*`, whose
+only consumer was itself).
+
+**Why now**: they had already stopped building. Every lab compiled backend
+sources by raw `${SRC_ROOT}/...` path, and `src/` was deleted at f7-8, so
+`-DARGUS_BUILD_LABS=ON` failed at configure in twelve places. F7's ruling 10
+said reviving them would be "an include-dir change, nothing more"; that was
+wrong — it needed their source lists rewritten to the new owners, which is the
+work of rebuilding them rather than keeping them. The user's call was that
+labs are for trying things out and can go.
+
+**What survives**: the labelled utterance set moved to
+`argus-llm/tests/fixtures/tools/` (see its README). It was fastText training
+data; with the classifier retired it is the accuracy harness for the LLM's own
+tool calling, and `check.tsv` is the exact file the 2026-08-11 gate scored.
+`labs/tool-bench/tool-bench.cc` was NOT kept in the tree — it cannot compile
+until the tools module is rehomed — but it is the basis for the committed
+bench and is recoverable with
+`git show 8b8e0c7:labs/tool-bench/tool-bench.cc`.
+
+The lab-only config overlay (`labs/config.toml*`) and `ARGUS_BUILD_LABS` are
+gone with them.
