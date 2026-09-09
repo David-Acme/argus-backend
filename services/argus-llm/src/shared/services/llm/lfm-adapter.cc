@@ -437,9 +437,8 @@ bool LfmAdapter::routedTurn(ToolHopContext ctx)
   call->context.utterance = utterance;
   call->context.decided = true;
 
-  const ToolExecutor executor(ToolRegistry::instance());
   const auto toolStart = std::chrono::steady_clock::now();
-  const tools::ToolResult executed = executor.execute(*call, ctx.input.role);
+  const tools::ToolResult executed = executor_.execute(*call, ctx.input.role);
   ctx.output.toolMs = std::chrono::duration_cast<std::chrono::milliseconds>(
                           std::chrono::steady_clock::now() - toolStart)
                           .count();
@@ -536,9 +535,8 @@ bool LfmAdapter::toolHops(ToolHopContext ctx, const std::string& declarations)
     for (auto call : calls) {
       call.context = input.context;
       call.context.utterance = utterance;
-      ToolExecutor executor(ToolRegistry::instance());
       const auto toolStart = std::chrono::steady_clock::now();
-      const auto executed = executor.execute(call, input.role);
+      const auto executed = executor_.execute(call, input.role);
       output.toolMs += std::chrono::duration_cast<std::chrono::milliseconds>(
                            std::chrono::steady_clock::now() - toolStart)
                            .count();

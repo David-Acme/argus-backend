@@ -87,7 +87,6 @@ ToolChatInput toolLoopInput(const ChatCompletionDto& body,
 struct ChatStreamJob
 {
   LlmController* owner{nullptr};
-  const IntentRouter* router{nullptr};
   ChatRequest request;
   ToolChatInput loop;
   std::vector<ChatMessage> history;
@@ -134,9 +133,8 @@ void runStreamJob(const std::shared_ptr<ChatStreamJob>& job)
       service.chatStream(job->request, send);
     }
     else {
-      const ToolChatOutput output = LfmAdapter(service, job->router)
-                                        .chatWithToolsStream(job->loop,
-                                                             job->history, send);
+      const ToolChatOutput output = job->owner->adapter().chatWithToolsStream(
+          job->loop, job->history, send);
       LOG_INFO << "LLM stream loop: hops=" << output.hops
                << " tools=" << output.executed.size()
                << " gen_ms=" << output.generateMs
@@ -192,7 +190,7 @@ LlmController::chat(drogon::HttpRequestPtr req)
                                                                     toChatMessages(
                                                                         body)]()
                                                                    mutable {
-      return LfmAdapter(service_, &router()).chatWithTools(input, history);
+      return adapter_.chatWithTools(input, history);
     });
     text = output.reply;
     hops = output.hops;
@@ -230,7 +228,6 @@ LlmController::chatStream(drogon::HttpRequestPtr req)
 
   auto job = std::make_shared<ChatStreamJob>();
   job->owner = this;
-  job->router = &router();
   const auto tools = registeredTools();
   if (tools.empty())
     job->request = body.request();

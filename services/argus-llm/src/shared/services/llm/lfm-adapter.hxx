@@ -56,7 +56,7 @@ class LfmAdapter
 {
 public:
   explicit LfmAdapter(LlmService& llm, const IntentRouter* router = nullptr)
-      : llm_(llm), router_(router)
+      : llm_(llm), router_(router), executor_(ToolRegistry::instance())
   {
   }
 
@@ -104,4 +104,5 @@ private:
 
   LlmService& llm_;
   const IntentRouter* router_ = nullptr;
+  ToolExecutor executor_;
 };

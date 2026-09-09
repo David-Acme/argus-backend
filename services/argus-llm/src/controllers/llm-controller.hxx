@@ -5,6 +5,7 @@
 #include <drogon/HttpResponse.h>
 #include <drogon/utils/coroutine.h>
 #include <shared/services/llm/intent-gate.hxx>
+#include <shared/services/llm/lfm-adapter.hxx>
 #include <shared/services/llm/llm-service.hxx>
 
 // Owns the LLM engine by value; no singleton.
@@ -17,11 +18,15 @@ public:
   ADD_METHOD_TO(LlmController::engine, "/llm/v1/config", drogon::Get);
   METHOD_LIST_END
 
+  LlmController() : adapter_(service_, &intentGate_.router()) {}
+
   void initEngine();
   void shutdownEngine();
   bool isEngineLoaded();
 
   LlmService& service() { return service_; }
+
+  LfmAdapter& adapter() { return adapter_; }
 
   // The fast tier in front of the tool loop. Always non-null: an unloaded
   // model makes the router abstain, it does not remove it.
@@ -34,4 +39,5 @@ public:
 private:
   LlmService service_;
   IntentGate intentGate_;
+  LfmAdapter adapter_;
 };
