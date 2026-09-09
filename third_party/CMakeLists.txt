@@ -4,22 +4,13 @@
 # `make` and they are only built when something links against their targets.
 
 # ---------------------------------------------------------------------------
-# sqlite-vec (vendored, MIT/Apache-2.0) — vec0 vector search for SQLite.
-# Compiled with SQLITE_CORE so it links statically against Drogon's sqlite3
-# (it only defines vec0_*/sqlite3_vec_init symbols — no clash).
+# sqlite-vec (vendored, MIT/Apache-2.0) — vec0 vector search for SQLite; the
+# target is declared in its own folder so standalone projects reuse it.
 # ---------------------------------------------------------------------------
 enable_language(C)
-if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/sqlite-vec/sqlite-vec.c")
-  add_library(sqlite-vec STATIC sqlite-vec/sqlite-vec.c)
-  target_compile_definitions(sqlite-vec PRIVATE SQLITE_CORE SQLITE_VEC_STATIC)
-  target_include_directories(sqlite-vec PUBLIC
-      ${CMAKE_CURRENT_SOURCE_DIR}/sqlite-vec)
-  set(ARGUS_SQLITE_VEC_TARGET sqlite-vec)
-  set(ARGUS_SQLITE_VEC_TARGET sqlite-vec PARENT_SCOPE)
-  message(STATUS "Argus: sqlite-vec target -> sqlite-vec")
-else()
-  message(WARNING "Argus: sqlite-vec not found at third_party/sqlite-vec")
-endif()
+add_subdirectory(sqlite-vec)
+set(ARGUS_SQLITE_VEC_TARGET sqlite-vec)
+set(ARGUS_SQLITE_VEC_TARGET sqlite-vec PARENT_SCOPE)
 
 # ---------------------------------------------------------------------------
 # sherpa-onnx (streaming STT — Zipformer / SenseVoice via ONNX Runtime)
