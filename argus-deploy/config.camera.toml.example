@@ -2,23 +2,12 @@
 # next to this file and fill the instance secrets (the same jwt/device values as
 # config.gateway.toml); the compose file bind-mounts it as argus-camera's
 # config.toml.
-# Fase 2 cutover shape: the camera service runs on the internal bridge network
-# and owns camera.db (Ruling AG), the camera change funnel (Ruling Y) and the
-# go2rtc it spawns itself (Ruling AH). Only the gateway is public; the camera's
-# 7026 listener is published on host loopback for the host-networked gateway,
-# and its go2rtc 1984/8554 stays inside the container.
 
 [server]
-# Bind all interfaces inside the container: the compose port publish reaches
-# the listener through the docker-proxy.
 host = "0.0.0.0"
 port = 7026
-# argus.camera.v1 SyncService listener the gateway pulls the camera sync
-# tables from, published on host loopback only.
 grpc_port = 7036
 
-# Mirror of the legacy [drogon.app] block; the listener and db_clients are
-# built by the service itself (see argus-camera/src/main.cc).
 [drogon.app]
 number_of_threads = 0
 enable_session = false
@@ -44,14 +33,9 @@ handle_sig_term = true
 relaunch_on_error = false
 
 [camera]
-# Own database of the camera domain (camera, camera_stream, zone) on the
-# compose volume (Ruling AG), applied at boot from the schema below. The
-# legacy and the gateway open the same volume path; argus.db is never touched.
 db = "camera/camera.db"
 schema = "database/camera-schema.sql"
 
-# go2rtc lifecycle and the stream hub/relay windows. The generated go2rtc.yaml
-# (chmod 600, camera credentials) lives on the camera-stream volume.
 [streaming]
 go2rtc_bin = "third_party/go2rtc/go2rtc"
 go2rtc_config = "stream/go2rtc.yaml"
@@ -66,61 +50,32 @@ max_viewers_per_camera = 4
 max_total_viewers = 8
 relay_chunk_bytes = 32768
 
-# Talk synthesis goes to argus-tts over the internal network; with remote_url
-# empty every /camera/{id}/talk call fails with a 502 CAMERA_UNREACHABLE
-# envelope (no in-process engine exists in this service).
 [tts]
 remote_url = "127.0.0.1:7029"
 remote_timeout_ms = 30000
 
-# Change funnel of the camera domain (F2-2, Ruling Y): change events and audit
-# diffs publish over NATS to the gateway, which inserts the audit rows and
-# fans the changes out to /sync. The nats service is reachable through the
-# internal network alias.
 [nats]
 url = "nats://nats:4222"
 reconnect_wait_ms = 2000
 max_reconnects = 60
 
-# Access tokens minted by the gateway: the camera routes and the /sync socket
-# validate the same JWTs and identity rows the gateway validates. The secrets
-# must match the gateway's [jwt] block.
 [jwt]
 secret = ""
 refresh_secret = ""
 access_ttl_minutes = 15
 refresh_ttl_days = 30
 
-# Device fingerprint of the /sync socket and the camera routes: the HMAC key
-# must match the gateway's [device] block so the device hash is identical on
-# both sides of the proxy, and the forwarded-for trust must name the
-# docker-proxy peer address (the pinned internal gateway IP 172.19.0.1 —
-# check `docker network inspect argus-cutover-internal`) so the gateway's
-# synthesized X-Forwarded-For is the observed client IP.
 [device]
 fingerprint_secret = ""
 trust_forwarded_for = true
 trusted_proxy_ips = ""
 
-# The filter chain validates tokens and device credentials over the gateway's
-# internal identity RPC at target — the gateway is host-networked, so its
-# listener answers on the bridge gateway address (same dial as argus-voice's
-# spoken-name write). db stays for the sync socket's user reads
-# (SyncService::refreshContext and the user sync table).
 [identity]
 db = "database/identity.db"
 target = "172.19.0.1:7040"
-# Fleet-shared secret sent as x-argus-fleet on every identity RPC. Must match
-# [identity] rpc_secret in the gateway's config, or the filters get an
-# UNAUTHENTICATED refusal and every request 401s.
+# Must match the gateway's [identity] rpc_secret, or every request 401s.
 rpc_secret = "CHANGE_ME_SAME_IN_EVERY_SERVICE"
 
-# Objects capacity (F2-3): the YOLO26n detector behind the IObjectDetector
-# seam. With enabled = false or a missing model everything downstream stays
-# inert. The class table must match the model's class count on the raw
-# one2one export (row length = 4 + class count), so the full COCO-80 default
-# is what the yolo26n export expects. Provision with `scripts/setup.sh camera`
-# on the host; models stay a read-only bind mount, never baked into the image.
 [objects]
 enabled = false
 model = "models/objects"
@@ -130,11 +85,6 @@ max_fps_inference = 2.0
 use_vulkan = true
 # classes = "person,bicycle,car,..." (COCO-80 default when empty)
 
-# Operator behavior (F2-3): aggregation, cooldowns, zones and schedule.
-# Camera-side budget only (Ruling AD); the gateway keeps the notification
-# budget and silent hours in its own [notifications] section. The operator is
-# read-only toward hardware (Ruling AF): it publishes
-# argus.camera.v1.object_detected to NATS and never sends camera commands.
 [operator]
 aggregation_window_ms = 5000
 cooldown_ms = 30000

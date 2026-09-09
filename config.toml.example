@@ -62,19 +62,10 @@ refresh_ttl_days = 30
 fingerprint_secret = ""
 trust_forwarded_for = false
 trusted_proxy_ips = ""
-# Device identity source: "ip" fingerprints the source IP (legacy behavior);
-# "credential" replaces the IP with the per-device secret issued at
-# register/login and desktop-challenge approval, presented by clients via the
-# X-Argus-Device-Credential header. Flipping the mode invalidates every
-# existing session once (controlled re-login).
 identity_mode = "ip"
 
 [identity]
-# Internal identity gRPC listener: the gateway hosts it and every service
-# validates tokens and device credentials against it. Loopback needs no
-# secret; the moment rpc_host is not loopback the gateway refuses to start
-# without rpc_secret, because the listener is cleartext and answers verdicts
-# for the whole fleet. scripts/setup.sh generates one.
+# The cleartext listener the whole fleet validates against; loopback needs no secret.
 rpc_host = "127.0.0.1"
 rpc_port = 7040
 rpc_secret = ""
@@ -86,13 +77,8 @@ file = "./database/argus.db"
 top_k = 5
 
 [llm]
-# F4-5 cutover (Rulings BU/BF): with remote_url set MemoryService reaches the
-# argus-llm service over the internal wire while the in-process engine still
-# boots — these engine keys then feed the argus-llm service's own config (and
-# keep feeding the in-process engine MemoryService reaches). With remote_url
-# empty the in-process engine serves everything, exactly as before.
-# remote_url must be an IPv4 host:port (the client connects IPv4 literals
-# only; "localhost" resolves through the resolver and fails the connect).
+# With remote_url set the memory stack reaches argus-llm over the internal wire.
+# IPv4 host:port only; "localhost" fails the connect.
 remote_url = ""
 remote_timeout_ms = 120000
 model_path = "models/llm/LFM2.5-1.2B-Instruct-QAD-Q4_0.gguf"
@@ -117,10 +103,7 @@ chat_template = "chatml"
 gpu_layers = -1
 
 [vision]
-# F4-4 cutover (Ruling BQ): with remote_url set the gateway boots WITHOUT the
-# vision model — describes go to the argus-vlm service over the internal
-# wire and the in-process engine stays uninitialized. With remote_url empty
-# the in-process engine boots exactly as before and reads the keys below.
+# With remote_url set the gateway boots without the vision model; describes go remote.
 remote_url = ""
 remote_timeout_ms = 120000
 
@@ -184,12 +167,8 @@ max_total_viewers = 8
 relay_chunk_bytes = 32768
 
 [memory]
-# F4-6 cutover (Ruling BY): with remote_url set the gateway boots WITHOUT the
-# memory stack — the tool loop serves from the argus-memory service over the
-# internal wire through the remote adapter. With remote_url empty the
-# in-process stack boots exactly as before and reads the keys below.
-# remote_url must be an IPv4 host:port (the client connects IPv4 literals
-# only; "localhost" resolves through the resolver and fails the connect).
+# With remote_url set the tool loop serves from argus-memory over the internal wire.
+# IPv4 host:port only; "localhost" fails the connect.
 remote_url = ""
 remote_timeout_ms = 120000
 queue_bound = 64

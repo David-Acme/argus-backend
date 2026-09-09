@@ -1,6 +1,5 @@
 # argus-deploy argus-vlm configuration. Copy to config.vlm.toml (gitignored);
-# the compose file bind-mounts it as the service's config.toml. No JWT, no
-# device keys, no database; engine keys mirror the legacy [vision] block.
+# the compose file bind-mounts it as the service's config.toml.
 
 [server]
 host = "0.0.0.0"
@@ -16,16 +15,9 @@ image_max_tokens = 0
 prompt = "Can you describe this image?"
 caption_cache_slots = 8
 threads = 0
-# Vulkan host parity pin (F4-4): offload every layer to the GPU the compose
-# service reaches through /dev/dri. A GPU-less host degrades to CPU; set -1
-# to skip the offload attempt entirely.
+# 999 offloads every layer; a GPU-less host degrades to CPU, -1 skips the attempt.
 gpu_layers = 999
 
-# Per-service model subpath (Ruling CB): the compose file binds models/vision
-# read-only at this exact path (the GGUF + its mmproj projector).
-
-# The body limit covers base64 JPEG frames: a 2688x1520 snapshot is ~1-2 MB,
-# ~1.4-2.7 MB in base64.
 [drogon.app]
 number_of_threads = 0
 enable_session = false

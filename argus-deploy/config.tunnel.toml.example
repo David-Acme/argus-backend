@@ -1,36 +1,29 @@
 # argus-deploy tunnel-client configuration (Fase 5). Copy to
 # config.tunnel.toml (gitignored) next to this file; the compose file
-# bind-mounts it as argus-tunnel-client's config.toml. The [tunnel] secret
-# must be IDENTICAL to the relay's and is never baked into any template:
-# keep it empty here and inject it at deploy time.
+# bind-mounts it as argus-tunnel-client's config.toml.
 
 [tunnel]
 secret = ""
 
-# Client knobs (argus-tunnel-client on the home host).
+# Home-host client knobs.
 reconnect_wait_ms = 2000
 max_reconnects = 60
 ping_interval_seconds = 30
 
-# Link knobs shared with the relay: keep both sides in sync.
+# Link knobs shared with the relay.
 stream_idle_seconds = 300
 max_streams = 256
 socket_snd_buf = 0
 
-# argus-tunnel-client: the relay's home listener (loopback-published by the
-# compose relay service) and the gateway's [remote] tunnel_port the client
-# dials per stream (the gateway is host-networked, so loopback reaches it).
 [server]
 relay_host = "127.0.0.1"
 relay_port = 7101
 gateway_host = "127.0.0.1"
 gateway_port = 7034
 
-# /health listener (host-networked service; loopback only).
 health_host = "127.0.0.1"
 health_port = 7104
 
-# Mirror of the legacy [drogon.app] block for the /health listener.
 [drogon.app]
 number_of_threads = 0
 enable_session = false

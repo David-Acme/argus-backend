@@ -1,6 +1,5 @@
 # argus-deploy argus-tts configuration. Copy to config.tts.toml (gitignored);
-# the compose file bind-mounts it as the service's config.toml. No JWT, no
-# device keys, no database; engine keys mirror the legacy [tts] block.
+# the compose file bind-mounts it as the service's config.toml.
 
 [server]
 host = "0.0.0.0"
@@ -12,17 +11,12 @@ quality = "auto"
 steps_low = 6
 steps_medium = 8
 steps_high = 12
-# This service derives its capability tier without a Vulkan probe (it links
-# no ncnn) and lands on Low; pin the legacy ceiling here for parity on
-# GPU-equipped hosts (12 for Balanced, 16 for High).
 steps_cap = 12
 speed = 1.0
 max_chunk_len = 350
 edge_silence_ms = 40
 join_silence_ms = 90
 
-# Per-service model subpath (Ruling CB): the compose file binds models/tts
-# read-only at this exact path.
 models_dir = "models/tts"
 
 [drogon.app]

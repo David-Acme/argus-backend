@@ -1,17 +1,10 @@
 # argus-deploy gateway configuration. Copy to config.gateway.toml (gitignored)
 # next to this file and fill the instance secrets; the compose file bind-mounts
-# it as the gateway's config.toml.
-# Cutover shape (F1-5): the gateway owns the public TLS 7024 listener (the same
-# instance certificates the monolith used) and forwards each extracted domain
-# to its service backend through the proxy route table. Unrouted paths fall
-# through to the gateway's own routing chain, which answers unknown paths with
-# the frozen NOT_FOUND envelope. The container runs host-networked
-# (transitional Ruling O exception), so 127.0.0.1 reaches the service backends
-# and the published nats port.
+# it as the gateway's config.toml. The container runs host-networked
+# (transitional Ruling O exception), so 127.0.0.1 reaches the service backends.
 
 [gateway]
 host = "0.0.0.0"
-# Public listener the mobile app has always connected to.
 port = 7024
 plain = false
 min_protocol = "TLSv1.2"
@@ -41,78 +34,44 @@ handle_sig_term = true
 relaunch_on_error = false
 
 [nats]
-# Published by the compose stack on host loopback (NATS_CLIENT_PORT).
 url = "nats://127.0.0.1:4222"
 reconnect_wait_ms = 2000
 max_reconnects = 60
 
-# Push intents to the home client through the tunnel transport (F5-5). The
-# gateway creates the notification rows, so it carries the push_intent
-# publisher alongside argus-notification (Ruling CK).
 [push]
 enabled = false
 
-# Instance secrets the app's tokens were minted with: the gateway verifies
-# (and mints) them.
 [jwt]
 secret = ""
 refresh_secret = ""
 access_ttl_minutes = 15
 refresh_ttl_days = 30
 
-# The device hash must stay identical across the services that verify it.
 [device]
 fingerprint_secret = ""
-# Device identity source: "ip" fingerprints the source IP (the original
-# behavior);
-# "credential" replaces the IP with the per-device secret issued at
-# register/login and desktop-challenge approval, presented by clients via the
-# X-Argus-Device-Credential header. Flipping the mode invalidates every
-# existing session once (controlled re-login).
 identity_mode = "ip"
 
 [identity]
 db = "database/identity.db"
 schema = "database/identity-schema.sql"
-# Internal identity gRPC listener (IdentityService: UpdateUser, ValidateToken,
-# CheckDeviceCredential): the voice service writes the spoken name here and
-# every service validates its tokens here. Bind loopback or the pinned
-# internal bridge address only — the listener is cleartext, so it must never
-# face a routable host interface.
+# Cleartext listener: bind loopback or the pinned bridge address only.
 rpc_host = "172.19.0.1"
 rpc_port = 7040
-# Fleet-shared secret, sent as x-argus-fleet by every caller. REQUIRED
-# whenever rpc_host is not loopback (the gateway refuses to start otherwise):
-# without it, anything that can reach the bridge can test tokens and device
-# credential hashes. Same value in every service's config; rotate together.
-# Generate with: openssl rand -hex 32
+# Required whenever rpc_host is not loopback; same value in every service.
 rpc_secret = "CHANGE_ME_SAME_IN_EVERY_SERVICE"
 
 [camera]
-# argus-camera owns the camera domain (F2-2 CRUD, F6-2 device control).
-# The camera sync tables ride the argus.camera.v1 gRPC leg at grpc_target.
 sync_url = "ws://127.0.0.1:7026/sync"
 proxy_url = "http://127.0.0.1:7026"
 grpc_target = "127.0.0.1:7036"
 
 [voice]
-# F6-3 cutover: argus-voice owns the voice orchestration; the voice:* frames
-# and the raw PCM binary ride the argus.voice.v1 gRPC leg at [voice].target.
-# Empty leaves voice:* answered with the 503 unconfigured-relay envelope —
-# never clear this key once argus-voice is in the stack.
 target = "127.0.0.1:7034"
 
 [productivity]
-# F3-2 cutover: argus-productivity owns the productivity routes and
-# productivity.db (Rulings AP/AQ); the gateway opens it mode=ro for the
-# productivity sync-table reads (Ruling AT). In the compose stack the db is
-# the dedicated named volume also mounted into argus-productivity, at
-# /opt/argus/productivity.
 proxy_url = "http://127.0.0.1:7027"
 db = "productivity/productivity.db"
 
-# Same cert paths the monolith used (transitional shared directory): the app's
-# pinned CA is byte-identical, and CertService runs here with the same keys.
 [cert]
 dir = "certs"
 ca_cert = "certs/ca.pem"
@@ -123,7 +82,6 @@ leaf_ttl_days = 90
 rotation_threshold_days = 30
 rotate_check_hours = 24
 
-# The gateway advertises mDNS in the cutover runtime; the monolith disabled it.
 [mdns]
 enabled = true
 name = "Argus"
@@ -139,39 +97,18 @@ wss = "true"
 enabled = true
 
 [notifications]
-# F3-2 cutover: argus-notification owns the notification write surface and
-# notification.db (Rulings AP/AR); the gateway opens it read-write because
-# its NotificationService writes notifications (camera-notifier retarget,
-# Ruling AR). In the compose stack the db is the dedicated named volume also
-# mounted into argus-notification, at /opt/argus/notification — rw on both
-# sides (Ruling AT).
 proxy_url = "http://127.0.0.1:7028"
 db = "notification/notification.db"
-# Camera object_detected budget (Ruling AD): 6 per camera per rolling hour,
-# cumulative digest for the excess, silent hours off by default.
 budget_per_hour = 6
 silent_start = -1
 silent_end = -1
 
 [remote]
-# Fase 5 (Ruling CG): second listener the argus-tunnel client forwards to.
-# 0 keeps the single-listener shape; when set (the compose tunnel profile
-# pairs it with config.tunnel.toml's server.gateway_port), requests landing
-# on this port are classified remote and /pairing + /auth/register answer
-# 403 REMOTE_NOT_ALLOWED unless enabled = true. The listener mirrors the
-# public one's TLS posture and stays unpublished — the relay is the only
-# remote-facing door.
 tunnel_port = 0
 enabled = false
-# Public relay hostname the app configures as its manual server (Fase 5,
-# Ruling CI): appended as a DNS SAN to the leaf certificate. Empty keeps the
-# certificate output unchanged.
 hostname = ""
 
 [rate_limit]
-# Fase 5 (Ruling CJ): in-memory limiter + lockout for PATCH
-# /auth/refresh-token, evaluated before filters and any DB access.
-# enabled = false keeps today's behavior; a restart clears all state.
 enabled = false
 window_seconds = 60
 max_requests = 10

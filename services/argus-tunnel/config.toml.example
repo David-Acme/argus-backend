@@ -1,57 +1,43 @@
 # argus-tunnel configuration. Copy to config.toml (gitignored) to run.
 # One file serves both binaries: argus-relay reads the [server] block's
 # relay keys on the US host, argus-tunnel-client reads the client keys on
-# the home host. The [tunnel] secret must be IDENTICAL on both sides and is
-# never baked into any template: keep it empty here and inject it at
-# deploy time.
+# the home host.
 
 [tunnel]
-# Shared HMAC-SHA256 key for the home link AUTH handshake. Empty refuses to
-# start (both binaries). Never commit a real value.
+# Empty refuses to start (both binaries).
 secret = ""
 
-# Client-only knobs (argus-tunnel-client).
+# Client-only knobs.
 reconnect_wait_ms = 2000
 max_reconnects = 60
 ping_interval_seconds = 30
 
-# Shared link knobs (both binaries).
+# Shared link knobs.
 stream_idle_seconds = 300
 max_streams = 256
-# SO_SNDBUF in bytes for every tunnel socket (0 = kernel-managed). A bounded
-# value keeps back-pressure in the software queues instead of kernel buffers.
+# SO_SNDBUF in bytes for every tunnel socket (0 = kernel-managed).
 socket_snd_buf = 0
 
 [server]
-# argus-relay (US host): device listener for the app, home listener for the
-# single client link.
 host = "0.0.0.0"
 device_port = 7100
 home_port = 7101
 
-# argus-tunnel-client (home host): the relay's home listener, and the
-# gateway's [remote] tunnel_port (F5-1) the client dials per stream.
+# Client dial targets.
 relay_host = "127.0.0.1"
 relay_port = 7101
 gateway_host = "127.0.0.1"
 gateway_port = 7024
 
-# /health listener. Defaults differ per binary: the relay binds 0.0.0.0:7103
-# for remote probes, the client binds 127.0.0.1:7104. Set the home host's
-# copy to health_port = 7104.
+# Defaults differ per binary; the home host's copy sets health_port = 7104.
 health_host = "127.0.0.1"
 health_port = 7103
 
-# Push intents (F5-5): the relay subscribes to
-# argus.notification.v1.push_intent and forwards each intent as a PUSH frame
-# to the home client's bounded queue. Relay-only gate; default off.
+# Relay-only push-intent gate; default off.
 [push]
 enabled = false
-# In-memory queue capacity while the home link is down (no persistence,
-# Ruling CL): past it intents are dropped with a counter.
 queue_capacity = 256
 
-# Mirror of the legacy [drogon.app] block for the /health listener.
 [drogon.app]
 number_of_threads = 0
 enable_session = false

@@ -1,6 +1,5 @@
 # argus-deploy argus-stt configuration. Copy to config.stt.toml (gitignored);
-# the compose file bind-mounts it as the service's config.toml. No JWT, no
-# device keys, no database; engine keys mirror the legacy [stt] block.
+# the compose file bind-mounts it as the service's config.toml.
 
 [server]
 host = "0.0.0.0"
@@ -10,12 +9,8 @@ port = 7030
 engine = "nemo_transducer"
 language = "es"
 
-# Per-service model subpath (Ruling CB): the compose file binds models/stt
-# read-only at this exact path.
 models_dir = "models/stt"
 
-# The body limit covers long PCM turns: 16 kHz mono s16 is ~32 kB per second
-# of audio.
 [drogon.app]
 number_of_threads = 0
 enable_session = false

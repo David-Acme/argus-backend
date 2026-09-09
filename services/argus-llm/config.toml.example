@@ -1,16 +1,10 @@
 # argus-llm configuration. Copy to config.toml (gitignored) to run.
-# LLM-domain keys only (F4-5): the engine knobs mirroring the legacy [llm]
-# block plus the internal listener. No database, no JWT, no device keys.
 
 [server]
-# Internal plain-HTTP listener. Loopback by default: only the legacy voice
-# session calls this wire, and it is never routed through the gateway.
 host = "127.0.0.1"
 port = 7032
 
 [llm]
-# Engine knobs identical to the legacy [llm] block: the shared LlmService
-# reads the same keys here as it does in the legacy.
 model_path = "models/llm/LFM2.5-1.2B-Instruct-QAD-Q4_0.gguf"
 context_size = 32768
 max_tokens = 256
@@ -30,19 +24,12 @@ penalty_freq = 0.0
 penalty_present = 0.0
 seed = 0
 chat_template = "chatml"
-# Tier note: this service derives its capability tier without a Vulkan probe
-# (the ncnn-gated probe is compiled out), so -1 keeps the CPU-only default.
-# Pin the legacy value here for parity when the legacy offloads to GPU
-# (999 on a Vulkan/CUDA host).
 gpu_layers = -1
 
 [intent]
-# The published fastText classifier in front of the tool loop. An absent file
-# makes the router abstain and every turn stays on the LLM's tool calling.
+# An absent file makes the router abstain; every turn stays on tool calling.
 model_file = "models/intent/intent.bin"
 
-# Mirror of the legacy [drogon.app] block; the listener is built by the
-# service itself (see argus-llm/src/main.cc).
 [drogon.app]
 number_of_threads = 0
 enable_session = false

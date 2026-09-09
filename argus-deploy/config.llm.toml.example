@@ -1,9 +1,7 @@
 # argus-deploy argus-llm configuration. Copy to config.llm.toml (gitignored);
-# the compose file bind-mounts it as the service's config.toml. No JWT, no
-# device keys. Since f8-b4 this is the brain: the [llm] engine block drives
-# both the wire and the tool loop, and the blocks below carry the hosted
-# memory stack — the retired argus-memory process's config minus its
-# worker-chat remote leg, which the in-process worker no longer needs.
+# the compose file bind-mounts it as the service's config.toml. Since f8-b4
+# this is the brain: the [llm] engine block drives both the wire and the tool
+# loop, and the blocks below carry the hosted memory stack.
 
 [server]
 host = "0.0.0.0"
@@ -29,18 +27,12 @@ penalty_freq = 0.0
 penalty_present = 0.0
 seed = 0
 chat_template = "chatml"
-# The compose service ships without /dev/dri (Ruling CD scopes the device to
-# argus-vlm), so the engine runs CPU: -1 skips the offload attempt. An
-# operator adding the device via a compose override pins 999 here for the
-# GPU path.
+# The compose service ships without /dev/dri, so the engine runs CPU.
 gpu_layers = -1
 
-# Per-service model subpath (Ruling CB): the compose file binds models/llm,
-# models/memory and models/extract read-only at these exact paths.
+# The compose file binds models/llm, models/memory and models/extract read-only.
 
-# The hosted memory stack: the store this service owns (the memory-db volume
-# mounts at /opt/argus/memory), the schema SQL compose bind-mounts, and the
-# read-only snapshot sources for the catalog replica boot fill (Ruling BX).
+# The hosted memory stack; the memory-db volume mounts at /opt/argus/memory.
 [memory]
 db_file = "memory/memory.db"
 schema_file = "database/memory-schema.sql"
@@ -48,7 +40,7 @@ catalog_person_table = "catalog_person"
 catalog_camera_table = "catalog_camera"
 catalog_zone_table = "catalog_zone"
 catalog_stream_table = "catalog_stream"
-# The face recognition index belongs to the face service; memory skips it.
+# The face recognition index belongs to the face service.
 create_face_vec = false
 queue_bound = 64
 recall_max_tokens = 512
@@ -78,18 +70,14 @@ extract_wait_ms = 15000
 [extract]
 model_path = "models/extract/NuExtract-1.5-tiny-Q4_K_M.gguf"
 prompt_format = "v1.5"
-# The extract model runs CPU in the container (no /dev/dri on this service,
-# Ruling CD), so -1 keeps the offload attempt skipped.
+# CPU only in the container (no /dev/dri on this service).
 gpu_layers = -1
 lexicon_min_coverage = 0.6
 threads = 0
 n_ctx = 2048
 max_tokens = 512
 
-# Read-only snapshot sources: mode=ro opens in-binary; the compose binds stay
-# rw so the WAL -shm can materialize when the gateway has not opened the db
-# yet. The identity.db lives in the shared data dir the gateway creates it
-# in; camera.db on the shared camera-db volume.
+# Read-only snapshot sources for the catalog replica boot fill.
 [identity]
 db = "database/identity.db"
 
@@ -97,8 +85,7 @@ db = "database/identity.db"
 db = "camera/camera.db"
 
 [nats]
-# The hosted catalog replica subscribes to the change subjects; empty skips
-# the replica (the snapshot fill still runs).
+# Empty skips the hosted catalog replica (the snapshot fill still runs).
 url = "nats://nats:4222"
 reconnect_wait_ms = 2000
 max_reconnects = 60

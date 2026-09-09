@@ -1,26 +1,16 @@
 # argus-stt configuration. Copy to config.toml (gitignored) to run.
-# STT-domain keys only (F4-3): the engine knobs mirroring the legacy [stt]
-# block plus the internal listener. No database, no JWT, no device keys.
 
 [server]
-# Internal plain-HTTP listener. Loopback by default: only the legacy backend
-# adapters call this wire, and it is never routed through the gateway.
 host = "127.0.0.1"
 port = 7030
 
 [stt]
-# Engine knobs identical to the legacy [stt] block: the shared SttService
-# reads the same keys here as it does in the legacy.
 engine = "nemo_transducer"
 language = "es"
 
-# Model artifacts live in the shared models tree; never copied into the
-# service. The build symlinks ../models next to the binary by default.
 models_dir = "models/stt"
 
-# Mirror of the legacy [drogon.app] block; the listener is built by the
-# service itself (see argus-stt/src/main.cc). The body limit covers long
-# PCM turns: 16 kHz mono s16 is ~32 kB per second of audio.
+# The body limit covers long PCM turns.
 [drogon.app]
 number_of_threads = 0
 enable_session = false

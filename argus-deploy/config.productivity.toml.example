@@ -2,20 +2,11 @@
 # (gitignored) next to this file and fill the instance secrets (the same
 # jwt/device values as config.gateway.toml); the compose file bind-mounts it as
 # argus-productivity's config.toml.
-# Fase 3 cutover shape: the service runs on the internal bridge network and owns
-# productivity.db (Ruling AT), serves the five productivity route prefixes the
-# gateway proxies to it (Ruling AP) and publishes its change events to the
-# gateway over NATS (Rulings AQ/Y). Only the gateway is public; the 7027
-# listener is published on host loopback for the host-networked gateway.
 
 [server]
-# Bind all interfaces inside the container: the compose port publish reaches
-# the listener through the docker-proxy.
 host = "0.0.0.0"
 port = 7027
 
-# Mirror of the legacy [drogon.app] block; the listener and db_clients are
-# built by the service itself (see argus-productivity/src/main.cc).
 [drogon.app]
 number_of_threads = 0
 enable_session = false
@@ -41,49 +32,27 @@ handle_sig_term = true
 relaunch_on_error = false
 
 [productivity]
-# Own database of the productivity domain on the compose volume (Ruling AT),
-# applied at boot from the schema below; productivity-init migrates the
-# argus.db rows onto it BEFORE the first boot. The gateway opens the same
-# volume read-only for the productivity sync-table reads. argus.db is never
-# touched here.
 db = "productivity/productivity.db"
 schema = "database/productivity-schema.sql"
 
-# Change funnel toward the gateway (Rulings AQ/Y): the nats service is
-# reachable through the internal network alias.
 [nats]
 url = "nats://nats:4222"
 reconnect_wait_ms = 2000
 max_reconnects = 60
 
-# Access tokens minted by the gateway: the routes validate the same JWTs the
-# gateway mints. The secrets must match the gateway's [jwt] block.
 [jwt]
 secret = ""
 refresh_secret = ""
 access_ttl_minutes = 15
 refresh_ttl_days = 30
 
-# Device fingerprint of the routes: the HMAC key must match the gateway's
-# [device] block so the device hash is identical on both sides of the proxy,
-# and the forwarded-for trust must name the docker-proxy peer address (the
-# internal network's pinned gateway IP 172.19.0.1 — check
-# `docker network inspect argus-cutover-internal`) so the gateway's
-# synthesized X-Forwarded-For is the observed client IP.
 [device]
 fingerprint_secret = ""
 trust_forwarded_for = true
 trusted_proxy_ips = ""
 
-# Ruling AM, split in two: share/member target validation still reads
-# identity.db read-only (the stayed features' UserRepository reads), while
-# the JWT filter validates through the identity RPC at target below — the
-# gateway is host-networked, so its listener answers on the bridge gateway
-# address.
 [identity]
 db = "database/identity.db"
 target = "172.19.0.1:7040"
-# Fleet-shared secret sent as x-argus-fleet on every identity RPC. Must match
-# [identity] rpc_secret in the gateway's config, or the filters get an
-# UNAUTHENTICATED refusal and every request 401s.
+# Must match the gateway's [identity] rpc_secret, or every request 401s.
 rpc_secret = "CHANGE_ME_SAME_IN_EVERY_SERVICE"
