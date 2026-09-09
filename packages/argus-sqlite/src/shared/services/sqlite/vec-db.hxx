@@ -19,6 +19,9 @@ public:
 
   std::mutex& mutex();
   sqlite3* handle();
+  // The caller names its database file, for the same reason it names its
+  // schema. Empty keeps the [database] file fallback.
+  void setDbFile(std::string file);
   // The caller names its schema: the vector database is domain-neutral and
   // must not know which service's tables it is applying.
   void applySchema(const std::string& schemaFile);
@@ -28,6 +31,8 @@ public:
   void recreateVecTables();
 
 private:
+  std::string dbFile_;
+
   std::mutex mutex_;
   std::unique_ptr<sqlite3, int (*)(sqlite3*)> db_{nullptr, &sqlite3_close};
   VectorIndexRepository repo_;

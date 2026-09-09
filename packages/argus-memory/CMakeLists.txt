@@ -63,11 +63,7 @@ if(NOT TARGET cnats::nats_static)
 endif()
 
 add_library(memory-core STATIC
-    ${MEMORY_SRC_ROOT}/controllers/memory-controller.cc
-    ${MEMORY_SRC_ROOT}/memory/catalog-replica.cc
     ${MEMORY_SRC_ROOT}/memory/memory-dto.cc
-    # The memory stack compiled from the shared tree (PORTED pattern), so the
-    # legacy binary and this service behave identically.
     ${SHARED_ROOT}/services/memory/memory-service.cc
     ${SHARED_ROOT}/services/memory/memory-tool-descriptors.cc
     ${SHARED_ROOT}/services/memory/sqlite-graph.cc
@@ -100,16 +96,19 @@ target_link_libraries(memory-core PUBLIC
     nlohmann_json::nlohmann_json
     llama
     onnxruntime::onnxruntime
-    sqlite-vec
-    cnats::nats_static)
+    sqlite-vec)
 
 target_compile_options(memory-core PRIVATE -Wall -Wextra)
 
-add_executable(argus-memory ${MEMORY_SRC_ROOT}/main.cc)
+# The catalog replica is the one piece that assumes a running process: it
+# subscribes to NATS change subjects and seeds from read-only identity/camera
+# clients. It stays a separate target so linking the memory package does not
+# drag cnats into a consumer that does not want it.
+add_library(memory-catalog STATIC ${MEMORY_SRC_ROOT}/memory/catalog-replica.cc)
 
-target_link_libraries(argus-memory PRIVATE memory-core)
+target_link_libraries(memory-catalog PUBLIC memory-core cnats::nats_static)
 
-target_compile_options(argus-memory PRIVATE -Wall -Wextra)
+target_compile_options(memory-catalog PRIVATE -Wall -Wextra)
 
 get_target_property(DOCTEST_INCLUDE_DIRS doctest::doctest
                     INTERFACE_INCLUDE_DIRECTORIES)
@@ -118,42 +117,15 @@ if(DOCTEST_INCLUDE_DIRS)
         INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${DOCTEST_INCLUDE_DIRS}")
 endif()
 
-set_target_properties(argus-memory PROPERTIES
-    BUILD_RPATH "$ORIGIN"
-    INSTALL_RPATH "$ORIGIN")
-
-add_custom_command(TARGET argus-memory POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E create_symlink
-            ${CMAKE_CURRENT_SOURCE_DIR}/../../models
-            $<TARGET_FILE_DIR:argus-memory>/models)
-
 # The memory unit suites are root-project tests; the targets opt back into
 # the default build because this folder is added EXCLUDE_FROM_ALL.
 if(ARGUS_ROOT_PROJECT)
-    # The argus-memory wire contract (F4-6, Ruling BY): the real stack serves
-    # the memory tool surface over the internal wire, with the frozen envelope
-    # errors and the 503 gate on the unloaded stack.
-    add_executable(memory-wire-test tests/unit/memory-wire-test.cc)
-
-    target_link_libraries(memory-wire-test PRIVATE memory-core doctest::doctest)
-
-    target_compile_definitions(memory-wire-test PRIVATE
-        ARGUS_TEST_MEMORY_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql"
-        ARGUS_TEST_MEMORY_MODELS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../../models/memory"
-        ARGUS_TEST_MEMORY_EXTRACT_MODEL="${CMAKE_CURRENT_SOURCE_DIR}/../../models/extract/NuExtract-1.5-tiny-Q4_K_M.gguf")
-
-    target_compile_options(memory-wire-test PRIVATE -Wall -Wextra)
-
-    set_target_properties(memory-wire-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
-
-    add_test(NAME memory-wire-test COMMAND memory-wire-test)
-
     # The catalog replica replay (Ruling BX): identity and camera change events
     # land in the replicas and the gazetteer rebuilds; the snapshot fill only
     # fires on empty tables.
     add_executable(memory-replica-test tests/unit/memory-replica-test.cc)
 
-    target_link_libraries(memory-replica-test PRIVATE memory-core doctest::doctest)
+    target_link_libraries(memory-replica-test PRIVATE memory-catalog doctest::doctest)
 
     target_compile_definitions(memory-replica-test PRIVATE
         ARGUS_TEST_MEMORY_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql")
@@ -181,21 +153,4 @@ if(ARGUS_ROOT_PROJECT)
 
     add_test(NAME memory-backpressure-test COMMAND memory-backpressure-test)
 
-    # The remote memory adapter (Ruling BY): the shared descriptors registered
-    # onto the tool registry, the wire forwarding and the degrade-without-crash
-    # paths when argus-memory is down.
-    add_executable(memory-remote-adapter-test tests/unit/memory-remote-adapter-test.cc
-        ${SHARED_ROOT}/services/memory/remote/memory-remote.cc
-        ${SHARED_ROOT}/services/memory/remote/remote-memory-service-adapter.cc)
-
-    target_include_directories(memory-remote-adapter-test PRIVATE ${MEMORY_SRC_ROOT})
-
-    target_link_libraries(memory-remote-adapter-test PRIVATE memory-core
-        doctest::doctest)
-
-    target_compile_options(memory-remote-adapter-test PRIVATE -Wall -Wextra)
-
-    set_target_properties(memory-remote-adapter-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
-
-    add_test(NAME memory-remote-adapter-test COMMAND memory-remote-adapter-test)
 endif()

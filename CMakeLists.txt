@@ -52,7 +52,8 @@ set(ARGUS_MODULES
     argus-audit
     argus-auth
     argus-identity
-    argus-sync)
+    argus-sync
+    argus-memory)
 
 foreach(argus_module_dir IN LISTS ARGUS_MODULES)
     add_subdirectory(packages/${argus_module_dir})

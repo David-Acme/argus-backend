@@ -1,12 +1,34 @@
 # argus-memory — CONTEXT
 
-## Why the memory service exists
+## f8-b3: the service becomes a package (2026-09-08)
 
-F4-6 of the `migracion-microservicios` plan extracts the memory stack out
-of the legacy monolith (Rulings BW-CA). `argus-memory` is a capacity-only
-sibling service (like argus-vlm): the legacy voice session never talks to
-it; the CONSUMERS are the background workers (memory formation, compaction,
-profiling, procedures). It mirrors the argus-llm (F4-5) scaffold.
+The user's ruling: the LLM's memory should not be a wire hop away — the
+tool-calling loop needs the memory tools in process, and the memory
+worker gets LlmService as a direct call. What died with the process:
+`src/main.cc`, the `/memory/v1/*` HTTP surface and its controller, port
+7033 with its compose service and config template, and the remote wire
+adapter (`memory-remote` / `RemoteMemoryServiceAdapter`) that existed
+for the retired legacy's Ruling BY cutover gate.
+
+`catalog-replica.cc` is the one piece that assumes a running process (a
+NATS subscriber with read-only identity/camera snapshot seeds), so it is
+its own `memory-catalog` target: linking the memory package does not
+drag cnats into a consumer that does not want it. The host that wants the
+replica links `memory-catalog` explicitly.
+
+The database key inverted: memory no longer rides the host's
+`[database] file`; it owns `[memory] db_file` (fallback `[database] file`,
+final default `database/memory.db`) and `memoryDbFile()` refuses the
+retired argus.db outright.
+
+## Why the memory capacity exists
+
+F4-6 of the `migracion-microservicios` plan extracted the memory stack out
+of the legacy monolith (Rulings BW-CA). `argus-memory` was a
+capacity-only sibling service (like argus-vlm): the voice session never
+talked to it; the CONSUMERS are the background workers (memory formation,
+compaction, profiling, procedures) and, since f8-b3, the LLM's own tool
+loop.
 
 ## What it owns
 
@@ -15,17 +37,17 @@ profiling, procedures). It mirrors the argus-llm (F4-5) scaffold.
   (memory.db graph tables), `EntityResolver`, `GraphRecall`,
   `MemoryFormation`, extraction (NuExtract gguf + lexicon/tiered/temporal)
   and embeddings (onnxruntime + unigram tokenizer). Owned BY VALUE by the
-  controller (the adapter shape — no singleton). The stack is THE capacity
-  of this service: boot fails loudly rather than serving 503s to the legacy
-  workers. Feed handlers marshal onto the Drogon loop — cnats dispatcher
-  threads must not block.
+  host (no singleton). The stack is THE capacity of the package: the
+  host's boot gate fails loudly rather than running without memory. Feed
+  handlers marshal onto the Drogon loop — cnats dispatcher threads must
+  not block.
 - **`memory.db`** with the memory tables VERBATIM from
   `database/schema.sql`, the `memory_vec` partitions from
   `database/memory-schema.sql` (boot-applied, idempotent), and the four
   catalog replicas (`catalog_person`/`catalog_camera`/`catalog_zone`/
   `catalog_stream`). The schema file is configurable
   (`[memory] schema_file`) so the shared queries and `VecDb` apply the same
-  DDL this service ships.
+  DDL the package ships.
 - **The catalog replica feed (Ruling BX)**: `argus.identity.v1.change`
   (new subject; the legacy publishes person/user rows through the
   `identity_change` sink installed in application.cc and the gateway
@@ -47,52 +69,32 @@ profiling, procedures). It mirrors the argus-llm (F4-5) scaffold.
   skips `face_vec` creation (`ConfigService::hasKey` + a dual-shape read,
   since `getString` cannot surface TOML booleans); the key absent keeps the
   pre-cutover legacy behavior (create it).
-- **The internal wire (Ruling BY)**: `POST /memory/v1/remember`, `/recall`,
-  `/forget`, `/procedure-run`, `/capture`, `/compact`,
-  `/durable-transcript` — frozen `{status, info, errors}` envelope. Every
-  tool-shaped endpoint dispatches through the controller's OWN
-  `ToolRegistry` fed by `MemoryService::registerTools`, so the wire and the
-  legacy tool loop cannot drift. Errors: 400 `BAD_REQUEST`, 422
-  VALIDATION_ERROR (`fields` keyed by the DTO member names), 503
-  `MEMORY_NOT_LOADED`, frozen 404/405.
 - **The sqlite3_config ordering (Ruling BW)**: the read-only
-  `[identity]`/`[camera]` snapshot clients install BEFORE
+  `[identity]`/`[camera]` snapshot clients must install BEFORE
   `loadConfigJson` — Drogon's first sqlite3 client creation performs
   `sqlite3_config(SQLITE_CONFIG_MULTITHREAD)` — while the memory stack's
-  raw connections open only on the beginning advice (`deferStore`
-  pattern), exactly the legacy ordering.
-- **The chat port (Ruling BZ)**: worker `chat()` rides `argus-llm`'s
-  `POST /llm/v1/chat` through `WireMemoryChat` (header-only over
-  `LlmHttpClient`). The port never polls a remote engine: `busy()` is
-  in-process-only state (`InProcessMemoryChat` keeps the legacy
-  `isBusy()` semantics for the legacy binary). Back-pressure here is the
-  bounded work queue (`[memory] queue_bound`, default 64): at the bound,
-  non-extract jobs drop with a WARN and an extract job evicts the oldest
-  non-extract job instead of polling `isBusy()`.
-- **The `[server]` listener** is internal-network only (loopback by
-  default): the wire is never exposed through the gateway.
-
-## The legacy side (Ruling BZ/CA)
-
-The legacy keeps `InProcessMemoryChat` (the `IMemoryChat` port over the
-in-process `LlmService` singleton) until the cutover commit sets
-`memory.remote_url`; when set, `RemoteMemoryServiceAdapter` covers the
-adapter's tool surface over the wire. The queue-depth gate replaces the
-`isBusy()` polling loop the same way in both processes.
-
+  raw connections open only after the loop begins (the `deferStore`
+  pattern). The host's wiring (f8-b4) must preserve this ordering.
+- **The chat port (Ruling BZ)**: the production chat leg is
+  `InProcessMemoryChat` — the `IMemoryChat` port over the host's
+  in-process `LlmService`, no wire hop. `WireMemoryChat` survives
+  header-only because the back-pressure suite exercises the port over
+  the wire shape. Back-pressure is the bounded work queue
+  (`[memory] queue_bound`, default 64): at the bound, non-extract jobs
+  drop with a WARN and an extract job evicts the oldest non-extract job.
 ## What it did NOT change
 
-- The app móvil never talks to this service; no gateway routing, no new
-  app-facing contract.
+- The mobile app never talks to the memory capacity; no gateway routing,
+  no app-facing contract.
 - No migrations: `memory-schema.sql` is additive and applied idempotently
   at boot; `argus.db` is never touched.
 - Models stay in the shared `models/memory/` tree — never copied.
 - The gateway still owns the `/user` fan-out natively; identity change
   events are only the catalog-replica feed.
 
-## Compose volume
+## The host's mounts (f8-b4)
 
-The docker compose must mount the shared `models/` tree (at least
-`models/memory`) and the `database/` directory into this service's working
+The compose mounts the shared `models/` subpaths (`models/memory` +
+`models/extract`) and the memory database into the HOST's working
 directory — the ONNX/GGUF artifacts and `memory.db` are read relative to
 the config keys.

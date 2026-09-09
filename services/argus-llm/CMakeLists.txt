@@ -74,10 +74,13 @@ target_include_directories(llm-core SYSTEM PUBLIC
 target_include_directories(llm-core PUBLIC
     ${LLM_SRC_ROOT})
 
+# memory-core makes this the brain: the tool loop needs the memory tools in
+# process, and the memory worker gets LlmService without a wire hop.
 target_link_libraries(llm-core PUBLIC
     argus_common
     argus::llm-client
     argus::hardware-profile
+    memory-core
     Drogon::Drogon
     nlohmann_json::nlohmann_json
     llama)

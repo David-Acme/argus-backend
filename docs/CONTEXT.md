@@ -2944,3 +2944,66 @@ build, never trusting a green configure alone. The same class of bug bit
 function resolves against the CALLER's list file, so the contracts bridge
 gained a `packages/packages/` at the new depth — caught by the build,
 fixed with `ARGUS_CMAKE_DIR` captured at include time.
+
+## argus-memory becomes a package (f8-b3, 2026-09-08)
+
+The user's ruling: the LLM's memory should not be a wire hop away — the
+tool-calling loop (f8-b4) needs the memory tools in process, and the memory
+worker gets LlmService as a direct call. argus-memory stopped being a
+service and became `packages/argus-memory`, compiled into its host
+argus-llm (the brain).
+
+**What died with the process**: `src/main.cc`, the `/memory/v1/*` HTTP
+surface and its controller, port 7033 with its compose service and
+`config.memory.toml.example`, and the remote wire adapter
+(`memory-remote` / `RemoteMemoryServiceAdapter`) that existed for the
+retired legacy's Ruling BY cutover gate. `memory-wire-test` died with the
+API; the remote-adapter test died with the remote.
+
+**The catalog split**: `catalog-replica.cc` is the one piece that assumes a
+running process (a NATS subscriber with read-only identity/camera snapshot
+seeds), so it left `memory-core` for its own `memory-catalog` target —
+linking the memory package does not drag cnats into a consumer that does
+not want it; the host that wants the replica links `memory-catalog`
+explicitly.
+
+**The database key inverted**: memory no longer rides the host's
+`[database] file`; it owns `[memory] db_file` (fallback chain
+`[memory] db_file` → `[database] file` → `"database/memory.db"`) and
+`memoryDbFile()` refuses the retired argus.db outright. This is an
+observable config change for the host: the f8-b4 wiring carries it into
+`config.llm.toml.example`.
+
+**The volume outlives the process**: the `argus-cutover-memory-db` named
+volume stays DECLARED in compose but mounts into no service at b3 — the
+declaration keeps the data alive across `down -v` teardowns, and argus-llm
+takes the rw mount over at f8-b4 together with the models/memory +
+models/extract binds, the identity/camera read-only snapshot opens, and
+the change-subject subscription (the NATS gate returns there too, Ruling
+CC). Single-owner principle intact (Ruling CB).
+
+`wire-memory-chat.hxx` survives header-only because the back-pressure
+suite exercises the `IMemoryChat` port over the wire shape; the production
+chat leg is `InProcessMemoryChat` — no wire hop.
+
+## The tool-calling gate re-measured: 0/20 -> 11/20 (f8-b1, 2026-09-08)
+
+The retired fastText/intent-service removal rested on an out-of-repo
+observation; B1's job was to turn it into a number inside the repo — or
+refute it before the architecture moved. The 2026-08-11 gate (0/20) and
+the 2026-08-20 schema cost (3.3x TTFT) were measured on
+`LFM2.5-1.2B-Instruct-Q4_K_M.gguf` (Jul 25); the active model is the
+QAD-Q4_0 quant (Aug 23) those numbers never saw.
+
+Full 103-case run on `check.tsv` (temperature 0, the bench's CPU-only
+ceiling): **memory_save precision 11/20** — the model emits well-formed
+`memory.remember` calls the parser accepts — against 0/20 for the old
+model on the same labelled set. False positives: camera 3/56, none 1/27
+(95% specificity across the 83 non-memory utterances; bounding them is
+the B4 policy layer's job, not the schema's). **Schema cost 1.20x TTFT**
+(1421 -> 1708 ms CPU) against the 3.3x of 2026-08-20.
+
+The gate passes: the arc continues to B4. Temperature was the hidden
+lever in the harness history — the lab passed -1.0 ("use `[llm]
+temperature`") and got 0.85, a conversational temperature being asked
+for structured output; at 0.85 the same model scored 6/20.

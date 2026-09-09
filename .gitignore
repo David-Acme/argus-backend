@@ -66,6 +66,7 @@ argus-deploy/config.tts.toml
 argus-deploy/config.stt.toml
 argus-deploy/config.vlm.toml
 argus-deploy/config.llm.toml
+argus-deploy/config.voice.toml
 argus-deploy/config.memory.toml
 argus-deploy/config.tunnel.toml
 argus-deploy/config.relay.toml

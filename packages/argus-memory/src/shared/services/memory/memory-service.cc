@@ -34,6 +34,20 @@
 namespace
 {
 
+// [memory] db_file names the memory store; [database] file stays as the
+// fallback for installs that predate the key. The default is memory's own
+// file, never the retired argus.db.
+std::string memoryDbFile()
+{
+  std::string file = ConfigService::getString("memory.db_file");
+  if (file.empty())
+    file = ConfigService::getString("database.file");
+  if (file.empty() || file.find("argus.db") != std::string::npos)
+    file = "database/memory.db";
+  return file;
+}
+
+
 constexpr const char* kCompactSystem =
     "A home assistant's memory core. Compress the conversation below into "
     "ONE short paragraph (3-6 sentences), written in the SAME language as "
@@ -397,8 +411,10 @@ void MemoryService::openStore()
       return;
     storeOpen_ = true;
   }
-  graph_->open(ConfigService::getString("database.file"));
+  const std::string dbFile = memoryDbFile();
+  graph_->open(dbFile);
   graph_->migrateLegacy();
+  vecDb_.setDbFile(dbFile);
   vecDb_.applySchema(memory_graph_query::schemaFile());
   startWorker();
   if (vecDb_.schemaOutdated()) {

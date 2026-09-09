@@ -4,8 +4,10 @@ Compose v7 of the migration plan: the Fase 1 cutover stack (gateway + nats +
 identity init), the Fase 2 argus-camera service (camera.db volume +
 camera-init), the Fase 3 argus-productivity + argus-notification services
 (productivity.db / notification.db volumes + their init profiles), the Fase 4
-AI engine services argus-tts/argus-stt/argus-vlm/argus-llm/argus-memory
-(models subpaths + the single-owner memory.db volume), the Fase 5 tunnel
+AI engine services argus-tts/argus-stt/argus-vlm/argus-llm (models
+subpaths; the single-owner memory.db volume stays declared unmounted since
+f8-b3, when argus-memory stopped being a process and became a package
+hosted by argus-llm), the Fase 5 tunnel
 transport pair — argus-relay + argus-tunnel-client — behind the opt-in
 `tunnel` profile and the F6-3 argus-voice pure-gRPC service. The Fase 1
 legacy service and the RustFS storage pair are retired (F6-4): the gateway is
@@ -20,8 +22,9 @@ at Release, then `cmake --build --preset prod` (`ARGUS_BUILD_LABS=OFF`) plus
 `--target argus-gateway argus-migrate-identity argus-vulkan-probe
 argus-migrate-camera argus-camera argus-productivity argus-notification
 argus-migrate-productivity argus-migrate-notification argus-tts argus-stt
-argus-vlm argus-llm argus-memory argus-voice argus-tunnel-client
-argus-tunnel-relay`.
+argus-vlm argus-llm argus-voice argus-tunnel-client argus-tunnel-relay`
+(the argus-memory binary is gone since f8-b3: the package compiles into
+argus-llm, no separate target).
 All binaries land in `/opt/argus`; the service picks its binary via an
 `entrypoint:` override (Docker composes `command:` as ARGUMENTS to the image
 `ENTRYPOINT`, so a `command:` "override" here would append to the image's
@@ -96,12 +99,12 @@ with `scripts/setup.sh` / `scripts/setup.sh camera` on the host.
   the same `internal` bridge network with only their 7027/7028 listeners
   loopback-published for the host-networked gateway; their `[nats] url`
   points at the internal alias as well.
-- **The five AI engine services** (Fase 4, compose v4) live on the same
+- **The four AI engine services** (Fase 4, compose v4) live on the same
   `internal` bridge network, which now pins `172.19.0.0/24` so they carry
   static addresses (argus-tts .29, argus-stt .30, argus-vlm .31, argus-llm
-  .32, argus-memory .33, argus-voice .34). The remote wires dial the static
-  literals (argus-voice dials argus-stt/argus-tts/argus-llm, argus-memory
-  dials argus-llm at `172.19.0.32:7032`) because the internal raw-socket
+  .32, argus-voice .34; .33 left the map with the argus-memory process,
+  f8-b3). The remote wires dial the static literals (argus-voice dials
+  argus-stt/argus-tts/argus-llm) because the internal raw-socket
   wires resolve IPv4 literals only. Loopback-only publishes keep every AI
   wire unreachable from the LAN — "internal, no host publish" means no
   non-loopback exposure; the publishes exist for host-side reachability.
@@ -124,8 +127,7 @@ with `scripts/setup.sh` / `scripts/setup.sh camera` on the host.
 | argus-tts | same image, `entrypoint:` override | internal network (172.19.0.29), loopback 7029 publish; models/tts subpath ro; `/health` healthcheck |
 | argus-stt | same image, `entrypoint:` override | internal network (172.19.0.30), loopback 7030 publish; models/stt subpath ro; `/health` healthcheck |
 | argus-vlm | same image, `entrypoint:` override | internal network (172.19.0.31), loopback 7031 publish; models/vision subpath ro; `/dev/dri`; `/health` healthcheck |
-| argus-llm | same image, `entrypoint:` override | internal network (172.19.0.32), loopback 7032 publish; models/llm subpath ro; `/health` healthcheck |
-| argus-memory | same image, `entrypoint:` override | internal network (172.19.0.33), loopback 7033 publish; memory-db volume (single owner); data dir + camera-db ro opens; models/memory + models/extract ro; gated on nats; `/health` healthcheck |
+| argus-llm | same image, `entrypoint:` override | internal network (172.19.0.32), loopback 7032 publish; models/llm subpath ro; links the memory package since f8-b3 (its stack hosting lands at f8-b4); `/health` healthcheck |
 | argus-voice | same image, `entrypoint:` override | internal network (172.19.0.34), loopback 7034 (gRPC) + 7035 (`/health`) publishes; no database; models/vad ro; gated on nats; `/health` healthcheck |
 | argus-relay | same image, `entrypoint:` override | `profiles: [tunnel]`; internal network, loopback 7100/7101/7103 publishes; no database (Ruling CL); `/health` healthcheck |
 | argus-tunnel-client | same image, `entrypoint:` override | `profiles: [tunnel]`; host-networked like the gateway (dials the gateway `[remote]` listener and the relay's loopback home publish on 127.0.0.1); no database (Ruling CL); `/health` healthcheck |
@@ -196,37 +198,43 @@ notification.db, each on its own dedicated named volume:
   (read-only open), so there is no compose dependency on the gateway and no
   cycle.
 
-Fase 4 (Rulings CB/CC/CD/CE, compose v4) adds the five AI engine services:
+Fase 4 (Rulings CB/CC/CD/CE, compose v4) adds the four AI engine services:
 
 - `argus-tts` (7029), `argus-stt` (7030), `argus-vlm` (7031) and `argus-llm`
-  (7032) are pure internal-wire RPC servers: no database, no JWT, no bus
-  consumer. `argus-memory` (7033) owns memory.db, subscribes the change
-  subjects over NATS and dials argus-llm for its worker chat. None of them is
+  (7032) are pure internal-wire RPC servers: no JWT, no bus consumer and —
+  until f8-b4 hands memory.db over — no database. argus-memory (7033) is
+  retired since f8-b3: the memory capacity is a package compiled into
+  argus-llm, the worker chat is an in-process call, and the change-subject
+  subscription returns with f8-b4 inside argus-llm. None of them is
   reachable from the gateway — the AI wire is internal-only and the gateway
   proxies NOTHING new (Ruling CE). The in-process engine topology is retired
   (F6-4): the gateway carries no engines and every engine consumer dials a
   remote gate.
 - **Remote gates (Ruling CC, post-retirement shape).** The gates live in the
   consumer instance configs: argus-voice's
-  `[stt]/[tts]/[llm] remote_url` (static internal literals),
-  argus-memory's `[llm] remote_url` and argus-camera's `[tts] remote_url`.
-  There is no in-process fallback once a gate is set; a down engine degrades
-  that leg (voice turn loses STT/LLM/TTS, camera talk 502s, memory tools
-  degrade). The gate URLs ride the instance config because `ConfigService`
+  `[stt]/[tts]/[llm] remote_url` (static internal literals) and
+  argus-camera's `[tts] remote_url`. argus-memory's `[llm] remote_url` died
+  with the process (f8-b3): the memory worker's chat is an in-process call
+  inside argus-llm. There is no in-process fallback once a gate is set; a
+  down engine degrades that leg (voice turn loses STT/LLM/TTS, camera talk
+  502s). The gate URLs ride the instance config because `ConfigService`
   has no env plumbing (Ruling CE); the limits and ports ARE env-driven.
   `depends_on` on the AI services is deliberately NOT set on the consumers:
   a down engine degrades its leg instead of failing boot.
-- **Boot order (Ruling CC).** Only `argus-memory` (bus consumer) gates on
-  `nats: service_healthy` among the Fase 4 five; the other four have no
-  dependency at all (they publish nothing and consume nothing). argus-voice
+- **Boot order (Ruling CC).** Since f8-b3 none of the Fase 4 four gates on
+  `nats: service_healthy` (they publish nothing and consume nothing); the
+  bus consumer returns with f8-b4, when argus-llm hosts the memory catalog
+  replica and gates on nats. argus-voice
   (F6-3) also carries a bus consumer and gates the same way; the gateway
-  gates on nats like argus-memory.
+  gates on nats.
 - **Resource limits (Ruling CD).** The per-service mem_limit/cpus pair is
   the engine budget boundary. Derived from the ThreadBudget defaults on this
   reference host (16 hardware threads: compute 8, batch 8, heavy 12, light 4,
   tts 8) and the model footprints: argus-tts 2g/1.50, argus-stt 2g/1.50,
-  argus-vlm 2g/2.00, argus-llm 4g/2.50, argus-memory 2g/1.50 — argus-vlm and
-  argus-llm carry explicit DISTINCT values (they never share a cpus pool
+  argus-vlm 2g/2.00, argus-llm 4g/2.50 (argus-memory's 2g/1.50 retired with
+  the process at f8-b3; argus-llm absorbs the memory workload at f8-b4) —
+  argus-vlm and argus-llm carry explicit DISTINCT values (they never share
+  a cpus pool
   implicitly). The gateway ships at 2g/2.00 (no engines inside). Every value
   is env-overridable (`ARGUS_TTS_MEMORY_LIMIT`, `ARGUS_LLM_CPU_LIMIT`, ...).
 - `/dev/dri` is mounted into `argus-vlm` (llama.cpp Vulkan backend, F2-1
@@ -238,23 +246,28 @@ Fase 4 (Rulings CB/CC/CD/CE, compose v4) adds the five AI engine services:
 - **Models (Ruling CB).** Per-service read-only subpath binds, never the
   whole tree: `models/tts` → argus-tts, `models/stt` → argus-stt,
   `models/vision` → argus-vlm (the GGUF + its mmproj projector),
-  `models/llm` → argus-llm, `models/memory` + `models/extract` →
-  argus-memory.
+  `models/llm` → argus-llm. `models/memory` + `models/extract` return as
+  argus-llm binds at f8-b4, when argus-llm hosts the memory stack (their
+  argus-memory binds are gone with the process, f8-b3).
 - **memory.db single-owner exception (Ruling CB).** The
-  `argus-cutover-memory-db` volume is mounted rw into argus-memory and into
-  NO other service — the F4-6 replica architecture means nothing else reads
-  it (the gateway has no memory client at all; argus-voice mounts no
-  databases). This breaks the shared-volume pattern of camera.db /
-  productivity.db / notification.db ON PURPOSE: memory.db is private state of
-  the semantic graph, not a synced projection the gateway reads. There is no
-  `memory-init` profile and no migrate tool: boot-apply of
-  `database/memory-schema.sql` belongs to argus-memory alone, and the
-  memory tables in the repo's argus.db are empty schema (nothing to
-  migrate). Disclosed honestly:
+  `argus-cutover-memory-db` volume stays DECLARED but mounts into NO
+  service since f8-b3 (argus-memory's retirement): the declaration keeps
+  the data alive across `down -v` teardowns, and argus-llm takes the rw
+  mount over at f8-b4 when it hosts the memory stack — still into NO other
+  service, the single-owner principle intact (the F4-6 replica architecture
+  means nothing else reads it; the gateway has no memory client at all;
+  argus-voice mounts no databases). This breaks the shared-volume pattern
+  of camera.db / productivity.db / notification.db ON PURPOSE: memory.db
+  is private state of the semantic graph, not a synced projection the
+  gateway reads. There is no `memory-init` profile and no migrate tool:
+  boot-apply of `database/memory-schema.sql` moves to argus-llm at f8-b4,
+  and the memory tables in the repo's argus.db are empty schema (nothing
+  to migrate). Disclosed honestly:
   no DDL sidecar exists for memory.db and none is needed.
 - **Static IPv4 addresses.** The internal network now pins
   `172.19.0.0/24` and the AI services carry fixed addresses
-  (.29/.30/.31/.32/.33/.34 matching their ports): the `[llm] remote_url`
+  (.29/.30/.31/.32/.34 matching their ports; .33 left the map with the
+  argus-memory process, f8-b3): the `[llm] remote_url`
   gates must be IPv4 literals (`172.19.0.32:7032`) because the
   internal raw-socket wires resolve literals only (no DNS). Operator
   note: 172.19.0.0/24 sits inside docker's default address pool
@@ -262,12 +275,14 @@ Fase 4 (Rulings CB/CC/CD/CE, compose v4) adds the five AI engine services:
   172.19.x range makes `up` fail with an overlap error, and pinning a network
   that was previously auto-assigned forces network/container recreation on
   existing installs.
-- The `argus-memory` snapshot sources reuse the established mounts-with-ro-
-  opens discipline: the shared data dir (`database/identity.db`) and the
-  camera-db volume (`camera/camera.db`) mount rw (a WAL reader must map the
-  `-shm`) and open `mode=ro` in-binary. On a fresh install argus-camera
+- The catalog-replica snapshot sources reuse the established
+  mounts-with-ro-opens discipline: the shared data dir (`database/identity.db`)
+  and the camera-db volume (`camera/camera.db`) mount rw (a WAL reader must
+  map the `-shm`) and open `mode=ro` in-binary. The fills move to argus-llm
+  at f8-b4 with the rest of the memory stack; their argus-memory mounts are
+  gone with the process (f8-b3). On a fresh install argus-camera
   creates camera.db in parallel, so the camera snapshot fill skips on first
-  boot and fills on a later argus-memory restart (per-table emptiness gate).
+  boot and fills on a later host restart (per-table emptiness gate).
 
 ## Tunnel transport (Fase 5, Rulings CF/CG/CI/CL)
 
@@ -305,9 +320,9 @@ The `tunnel` profile carries the byte-transparent remote transport:
 
 | Aspect | Engines-offloaded (the only shape since F6-4) |
 |---|---|
-| remote gates | argus-voice `[stt]/[tts]/[llm]`, argus-memory `[llm]`, argus-camera `[tts]` |
-| five AI services | serve the internal wires |
-| degradation when an engine container is stopped | that leg degrades (voice turn, talk 502, memory tools ok=false); never a crash, never a boot failure |
+| remote gates | argus-voice `[stt]/[tts]/[llm]`, argus-camera `[tts]` |
+| four AI services | serve the internal wires |
+| degradation when an engine container is stopped | that leg degrades (voice turn, talk 502); never a crash, never a boot failure |
 
 For acceptance runs, `scripts/seed-golden.py` seeds the golden /sync verify
 state into a scratch COPY of the databases (Golden Cam / Golden Zone rows,
@@ -323,8 +338,8 @@ secrets are read at runtime, never printed; the refresh token lands in a
 - argus-productivity: `curl -fs http://127.0.0.1:7027/health` (envelope 200).
 - argus-notification: `curl -fs http://127.0.0.1:7028/health` (envelope 200).
 - argus-voice: `curl -fs http://127.0.0.1:7035/health` (envelope 200).
-- argus-tts / argus-stt / argus-vlm / argus-llm / argus-memory:
-  `curl -fs http://127.0.0.1:7029..7033/health` (envelope 200, container-local).
+- argus-tts / argus-stt / argus-vlm / argus-llm:
+  `curl -fs http://127.0.0.1:7029..7032/health` (envelope 200, container-local).
 - argus-relay (tunnel profile): `curl -fs http://127.0.0.1:7103/health`
   (envelope 200, container-local; the relay binds its health listener on all
   interfaces so a US deployment can probe it remotely).
@@ -336,19 +351,19 @@ secrets are read at runtime, never printed; the refresh token lands in a
 
 | Volume | Mounted into | Content |
 |---|---|---|
-| `argus-cutover-camera-db` | argus-camera, gateway, argus-memory — all at `/opt/argus/camera` | camera.db (+ WAL files) |
+| `argus-cutover-camera-db` | argus-camera, gateway — at `/opt/argus/camera` | camera.db (+ WAL files) |
 | `argus-cutover-productivity-db` | argus-productivity (rw, owner), gateway (rw mount, mode=ro open) — at `/opt/argus/productivity` | productivity.db (+ WAL files) |
 | `argus-cutover-notification-db` | argus-notification (rw), gateway (rw, read-write client) — at `/opt/argus/notification` | notification.db (+ WAL files) |
-| `argus-cutover-memory-db` | argus-memory ONLY (rw, single owner) — at `/opt/argus/memory` | memory.db (+ WAL files); the volume-map exception (Ruling CB) |
+| `argus-cutover-memory-db` | NO service at f8-b3 (argus-memory retired); argus-llm takes the rw mount at f8-b4 — at `/opt/argus/memory` | memory.db (+ WAL files); the volume-map exception (Ruling CB) |
 | `argus-cutover-camera-stream` | argus-camera at `/opt/argus/stream` | go2rtc.yaml generated by Go2rtcManager (chmod 600, camera credentials) |
 
 `argus-cutover-camera-db` is ONE file on ONE named volume shared by the
-services (Ruling AG): argus-camera owns it, the gateway opens it mode=ro for
-the camera sync reads (Ruling Z) and argus-memory opens it mode=ro for the
-camera snapshot fill. All three configs point `[camera] db` at
-`camera/camera.db`. Cross-process access is safe by construction: every
-opener applies WAL + busy_timeout 5000 (argus-camera at boot, the gateway
-when it opens the read-only client, argus-memory for its snapshot opens).
+services (Ruling AG): argus-camera owns it and the gateway opens it mode=ro
+for the camera sync reads (Ruling Z); memory's ro snapshot open returns as
+a third opener when argus-llm hosts the stack (f8-b4). Both configs point
+`[camera] db` at `camera/camera.db`. Cross-process access is safe by
+construction: every opener applies WAL + busy_timeout 5000 (argus-camera at
+boot, the gateway when it opens the read-only client).
 Compose adds
 no DDL sidecar — the camera schema boot-apply belongs to argus-camera alone,
 and `camera-init` is the only migration path onto the volume.
@@ -359,13 +374,14 @@ and `camera-init` is the only migration path onto the volume.
   `config.productivity.toml.example` /
   `config.notification.toml.example` / `config.tts.toml.example` /
   `config.stt.toml.example` / `config.vlm.toml.example` /
-  `config.llm.toml.example` / `config.memory.toml.example` /
-  `config.voice.toml.example` /
+  `config.llm.toml.example` / `config.voice.toml.example` /
   `config.tunnel.toml.example` / `config.relay.toml.example` encode the
-  cutover keys; copy to `config.gateway.toml` /
+  cutover keys (`config.memory.toml.example` is deleted since f8-b3: the
+  memory package's keys ride the host's config.llm.toml from f8-b4); copy
+  to `config.gateway.toml` /
   `config.camera.toml` / `config.productivity.toml` /
   `config.notification.toml` / `config.tts.toml` / `config.stt.toml` /
-  `config.vlm.toml` / `config.llm.toml` / `config.memory.toml` /
+  `config.vlm.toml` / `config.llm.toml` /
   `config.voice.toml` /
   `config.tunnel.toml` / `config.relay.toml`
   (gitignored, mode 0600 — the instance files carry real HMAC/JWT keys, so
@@ -385,9 +401,10 @@ and `camera-init` is the only migration path onto the volume.
   The AI service configs carry NO secrets at all (no JWT, no device
   filter): the instance files are pure engine knobs, the only
   per-install choices being the remote gates (`[stt]/[tts]/[llm] remote_url`
-  in config.voice.toml and `[llm] remote_url` in config.memory.toml — the
-  compose-shape static internal literals — plus `[tts] remote_url` in
-  config.camera.toml, the loopback publish) and the GPU pins.
+  in config.voice.toml — the compose-shape static internal literals — plus
+  `[tts] remote_url` in config.camera.toml, the loopback publish), the GPU
+  pins, and (from f8-b4) the `[memory]`/`[extract]` blocks config.llm.toml
+  gains with the hosted memory package.
 - No docker secrets: nothing is baked into images and instance secrets live
   only in the gitignored config files.
 - Fase 5 (Rulings CG/CJ): the gateway template gains `[remote]`
@@ -439,8 +456,7 @@ and `camera-init` is the only migration path onto the volume.
 | 7029 plain | 127.0.0.1 (compose publish) | argus-tts (internal, argus-camera `[tts]` gate upstream — never proxied by the gateway) |
 | 7030 plain | 127.0.0.1 (compose publish) | argus-stt (internal, argus-voice `[stt]` gate upstream) |
 | 7031 plain | 127.0.0.1 (compose publish) | argus-vlm (internal) |
-| 7032 plain | 127.0.0.1 (compose publish) | argus-llm (internal, argus-voice/argus-memory `[llm]` gate upstream) |
-| 7033 plain | 127.0.0.1 (compose publish) | argus-memory (internal) |
+| 7032 plain | 127.0.0.1 (compose publish) | argus-llm (internal, argus-voice `[llm]` gate upstream) |
 | 4222 | 127.0.0.1 | nats client |
 | 8222 | 127.0.0.1 | nats monitor |
 | 7100 plain | 127.0.0.1 (compose publish) | argus-relay device listener — the app's manual remote server entry point (tunnel profile) |

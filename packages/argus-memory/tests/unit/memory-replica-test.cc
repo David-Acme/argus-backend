@@ -20,7 +20,7 @@ namespace
 {
 
 #ifndef ARGUS_TEST_MEMORY_SCHEMA
-#define ARGUS_TEST_MEMORY_SCHEMA "services/argus-memory/database/schema.sql"
+#define ARGUS_TEST_MEMORY_SCHEMA "packages/argus-memory/database/schema.sql"
 #endif
 
 constexpr const char* kScratchConfig = "memory-replica-test.toml";

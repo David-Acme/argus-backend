@@ -1,0 +1,69 @@
+# argus-memory package keys (f8-b3). The package has no process and no
+# listener: the host service (argus-llm, the brain) carries these blocks in
+# its own config.toml. Copy the block, not the file. Models are read from
+# the shared models/ tree — never copied.
+
+[memory]
+# Memory's own database (Ruling BW). It must not ride the host's
+# [database] file: the fallback chain is [memory] db_file → [database]
+# file → "database/memory.db", and the retired argus.db is refused.
+db_file = "database/memory.db"
+# The memory tables boot from the memory schema (Ruling BW): the verbatim
+# memory DDL plus the catalog replica tables, not the legacy schema.sql.
+schema_file = "packages/argus-memory/database/schema.sql"
+# Catalog replicas (Ruling BX): the gazetteer reads resolve to the local
+# replica tables, fed by the change subjects.
+catalog_person_table = "catalog_person"
+catalog_camera_table = "catalog_camera"
+catalog_zone_table = "catalog_zone"
+catalog_stream_table = "catalog_stream"
+# The face recognition index belongs to the face service; memory skips it.
+create_face_vec = false
+# Back-pressure bound (Ruling BZ): the worker queue stops growing past it.
+queue_bound = 64
+recall_max_tokens = 512
+profile_max_tokens = 256
+profile_max_facts = 4
+profile_stale_seconds = 300
+recall_deadline_ms = 200
+embedding_model = "models/memory/model.onnx"
+embedding_tokenizer = "models/memory/tokenizer.json"
+embedding_max_len = 512
+embedding_preload = true
+embedding_dim = 0
+recall_top_k = 4
+lexical_min_hits = 4
+vector_min_sim = 0.80
+vector_margin = 0.05
+vector_strict_min_sim = 0.88
+vector_small_store_sim = 0.84
+semantic_max_facts = 2
+vector_dedup_sim = 0.93
+chunk_chars = 400
+flush_timeout_ms = 60000
+compact_wait_ms = 15000
+compact_max_tokens = 256
+extract_wait_ms = 15000
+
+[extract]
+model_path = "models/extract/NuExtract-1.5-tiny-Q4_K_M.gguf"
+prompt_format = "v1.5"
+# The memory package derives its capability tier without a Vulkan probe
+# (the ncnn-gated probe is compiled out), so -1 keeps the CPU-only default.
+gpu_layers = -1
+lexicon_min_coverage = 0.6
+threads = 0
+n_ctx = 2048
+max_tokens = 512
+
+# Read-only snapshot sources for the catalog replica boot fill (Ruling BX).
+[identity]
+db = "./database/identity.db"
+
+[camera]
+db = "./database/camera.db"
+
+[nats]
+url = "nats://127.0.0.1:4222"
+reconnect_wait_ms = 2000
+max_reconnects = 60

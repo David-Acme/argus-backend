@@ -208,7 +208,7 @@ inline std::string findCatalogStreams()
 inline std::string schemaFile()
 {
   const std::string configured = ConfigService::getString("memory.schema_file");
-  return configured.empty() ? "services/argus-memory/database/schema.sql" : configured;
+  return configured.empty() ? "packages/argus-memory/database/schema.sql" : configured;
 }
 
 inline constexpr const char* FIND_LEGACY_ENTITY =

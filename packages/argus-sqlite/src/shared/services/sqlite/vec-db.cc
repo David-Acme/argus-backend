@@ -53,6 +53,12 @@ void VecDb::recreateVecTables()
     repo_.recreateVecTables(db, embeddingDims());
 }
 
+void VecDb::setDbFile(std::string file)
+{
+  std::scoped_lock lock(mutex_);
+  dbFile_ = std::move(file);
+}
+
 void VecDb::applySchema(const std::string& schemaFile)
 {
   std::scoped_lock lock(mutex_);
@@ -64,7 +70,8 @@ sqlite3* VecDb::handle()
   if (db_)
     return db_.get();
 
-  const std::string file = ConfigService::getString("database.file");
+  const std::string file =
+      dbFile_.empty() ? ConfigService::getString("database.file") : dbFile_;
   sqlite3* raw = nullptr;
   if (sqlite3_open(file.c_str(), &raw) != SQLITE_OK) {
     LOG_ERROR << "VecDb: open failed: "

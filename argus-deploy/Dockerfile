@@ -35,7 +35,7 @@ RUN --mount=type=cache,target=/root/.conan2 \
       argus-vulkan-probe argus-migrate-camera argus-camera \
       argus-productivity argus-notification argus-migrate-productivity \
       argus-migrate-notification argus-tts argus-stt argus-vlm argus-llm \
-      argus-memory argus-voice argus-tunnel-client argus-tunnel-relay -j"$(nproc)"
+      argus-voice argus-tunnel-client argus-tunnel-relay -j"$(nproc)"
 
 FROM debian:trixie-slim AS runtime
 
@@ -64,7 +64,6 @@ COPY --from=build /opt/argus/build/prod/services/argus-tts/argus-tts /opt/argus/
 COPY --from=build /opt/argus/build/prod/services/argus-stt/argus-stt /opt/argus/argus-stt
 COPY --from=build /opt/argus/build/prod/services/argus-vlm/argus-vlm /opt/argus/argus-vlm
 COPY --from=build /opt/argus/build/prod/services/argus-llm/argus-llm /opt/argus/argus-llm
-COPY --from=build /opt/argus/build/prod/services/argus-memory/argus-memory /opt/argus/argus-memory
 COPY --from=build /opt/argus/build/prod/services/argus-voice/argus-voice /opt/argus/argus-voice
 COPY --from=build /opt/argus/build/prod/services/argus-tunnel/argus-tunnel-client /opt/argus/argus-tunnel-client
 COPY --from=build /opt/argus/build/prod/services/argus-tunnel/argus-tunnel-relay /opt/argus/argus-tunnel-relay

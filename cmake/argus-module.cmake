@@ -43,6 +43,7 @@ function(argus_grpc_absl_bridge)
   if(TARGET argus_sdk_grpc_bridge_entry)
     return()
   endif()
+  argus_contracts_substrate()
   set(bridge_dir ${ARGUS_CMAKE_DIR}/../packages/argus-contracts/sdk/grpc)
   foreach(side entry exit)
     add_library(argus_sdk_grpc_bridge_${side} OBJECT
@@ -54,9 +55,11 @@ function(argus_grpc_absl_bridge)
   get_property(protobuf_includes GLOBAL PROPERTY ARGUS_PROTOBUF_INCLUDES)
   target_include_directories(argus_sdk_grpc_bridge_entry SYSTEM PRIVATE
                              ${protobuf_includes} ${bridge_dir})
+  get_property(bridge_protobuf GLOBAL PROPERTY ARGUS_PROTOBUF_TARGET)
+  get_property(bridge_grpc GLOBAL PROPERTY ARGUS_GRPC_TARGET)
   target_link_libraries(argus_sdk_grpc_bridge_entry PRIVATE
-                        protobuf::libprotobuf gRPC::grpc++)
-  target_link_libraries(argus_sdk_grpc_bridge_exit PRIVATE gRPC::grpc++)
+                        ${bridge_protobuf} ${bridge_grpc})
+  target_link_libraries(argus_sdk_grpc_bridge_exit PRIVATE ${bridge_grpc})
 endfunction()
 
 # The shared client base every SDK wrapper builds on (channel credentials,
@@ -66,12 +69,14 @@ function(argus_grpc_client_base)
   if(TARGET argus_sdk_grpc_base)
     return()
   endif()
+  argus_contracts_substrate()
   set(base_dir ${ARGUS_CMAKE_DIR}/../packages/argus-contracts/sdk/grpc)
   add_library(argus_sdk_grpc_base OBJECT ${base_dir}/grpc-client-base.cc)
   set_target_properties(argus_sdk_grpc_base PROPERTIES
       POSITION_INDEPENDENT_CODE ON)
   target_include_directories(argus_sdk_grpc_base PUBLIC ${base_dir})
-  target_link_libraries(argus_sdk_grpc_base PUBLIC gRPC::grpc++)
+  get_property(base_grpc GLOBAL PROPERTY ARGUS_GRPC_TARGET)
+  target_link_libraries(argus_sdk_grpc_base PUBLIC ${base_grpc})
   target_compile_options(argus_sdk_grpc_base PRIVATE -Wall -Wextra)
 endfunction()
 

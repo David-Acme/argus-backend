@@ -394,7 +394,7 @@ shared file-static behind a mutex.
   Drogon's first connection — see docs/CONTEXT.md ordering note). FTS5 (bm25,
   unicode61, trigram) is enabled via the conan option
   `sqlite3/*:enable_fts5=True` (Drogon rebuilt once).
-- **MemoryService** (`services/argus-memory/src/shared/services/memory/`) — long-term memory over a
+- **MemoryService** (`packages/argus-memory/src/shared/services/memory/`, a package compiled into its host argus-llm) — long-term memory over a
   SQLite semantic graph (NOT the legacy `memory_l1`): `memory_entity`/alias
   (person frames), `memory_fact` (upsert closes the previous open fact via
   `supersedes`), `memory_edge`, `memory_episode` (compaction/system-event
@@ -632,8 +632,8 @@ Before any commit, verify: `cmake --build --preset dev -j 8` passes with
 | `packages/argus-auth/src/shared/services/jwt/` | JWT sign/verify (HS256, instance class) |
 | `packages/argus-identity/src/shared/services/face/` | Face detection + recognition (ncnn) — FaceDB = vec0 index (sqlite-vec) |
 | `services/argus-llm/src/shared/services/llm/` | LLM inference (llama.cpp) |
-| `services/argus-memory/src/shared/services/embedding/` | `EmbeddingService` (multilingual-e5-small int8 ONNX) + `UnigramTokenizer` |
-| `services/argus-memory/src/shared/services/memory/` | `MemoryService`/`SemanticGraph`(`SqliteGraph`)/`GraphRecall`/`MemoryFormation`/`RuleParser`/`PhraseCatalog`/`EntityResolver`/`ToolParser` — semantic-graph long-term memory (async worker, episode recall, L3 profile) |
+| `packages/argus-memory/src/shared/services/embedding/` | `EmbeddingService` (multilingual-e5-small int8 ONNX) + `UnigramTokenizer` |
+| `packages/argus-memory/src/shared/services/memory/` | `MemoryService`/`SemanticGraph`(`SqliteGraph`)/`GraphRecall`/`MemoryFormation`/`RuleParser`/`PhraseCatalog`/`EntityResolver`/`ToolParser` — semantic-graph long-term memory (async worker, episode recall, L3 profile); a package hosted by argus-llm |
 | `packages/argus-phrase/src/shared/vocabulary/` | Static per-language memory vocabulary (es/en): `PhraseSeed`/`LexiconSeed` constants — no DB tables |
 | `packages/argus-sqlite/src/shared/services/sqlite/` | DB client access (`DbService::client()`, extensions) + `VecDb` (vec0 connection) |
 | `services/argus-vlm/src/shared/services/vision/` | VLM inference: LFM2.5-VL-450M via llama.cpp + libmtmd (arbitrary prompts, caption cache) |
