@@ -5,15 +5,24 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+include(${CMAKE_CURRENT_SOURCE_DIR}/../../cmake/argus-module.cmake)
+
 set(TTS_SRC_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/src)
 set(SHARED_ROOT ${TTS_SRC_ROOT}/shared)
 
 if(NOT TARGET Drogon::Drogon)
-    # Standalone build (outside the root project's configure).
+    # Standalone build (outside the root project's configure): add the
+    # sibling packages the tts module links, argus-common first.
     find_package(Drogon CONFIG REQUIRED)
     find_package(onnxruntime CONFIG REQUIRED)
     find_package(tomlplusplus REQUIRED)
     find_package(nlohmann_json REQUIRED)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/argus-common
+                     ${CMAKE_BINARY_DIR}/argus-common)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/argus-tts-client
+                     ${CMAKE_BINARY_DIR}/argus-tts-client)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/argus-auth
+                     ${CMAKE_BINARY_DIR}/argus-auth)
 endif()
 
 find_package(doctest REQUIRED)
