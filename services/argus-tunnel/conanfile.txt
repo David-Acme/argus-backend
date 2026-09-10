@@ -1,5 +1,6 @@
 [requires]
 drogon/1.9.13
+sqlite3/[>=3.45.0 <4]
 tomlplusplus/3.3.0
 nlohmann_json/3.11.3
 cnats/3.13.0

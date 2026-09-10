@@ -8,11 +8,14 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 set(TUNNEL_SRC_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
 if(NOT TARGET Drogon::Drogon)
-    # Standalone build (outside the root project's configure).
+    # Standalone build (outside the root project's configure): add the
+    # shared foundation tunnel-core links, argus-common.
     find_package(Drogon CONFIG REQUIRED)
     find_package(tomlplusplus REQUIRED)
     find_package(nlohmann_json REQUIRED)
     find_package(cnats CONFIG REQUIRED)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/argus-common
+                     ${CMAKE_BINARY_DIR}/argus-common)
 endif()
 
 find_package(doctest REQUIRED)

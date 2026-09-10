@@ -98,7 +98,7 @@ target_link_libraries(argus_common
 # schema-runner compiles sqlite3.h directly; sqlite3 is a direct conan
 # require (a transitive-only entry generates empty include dirs).
 if(TARGET SQLite::SQLite3)
-    target_link_libraries(argus_common PUBLIC SQLite::SQLite3)
+    target_link_libraries(argus_common PRIVATE SQLite::SQLite3)
 endif()
 
 foreach(_tomlplusplus_include_var
