@@ -1,7 +1,33 @@
+cmake_minimum_required(VERSION 3.25)
+project(argus-sqlite VERSION 1.0.0 LANGUAGES CXX)
+
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+
 # argus_sqlite: the SQLite substrate — DbService boot, VecDb and the vec0
 # vector-index repository. Consumers link argus::sqlite.
 
+include(${CMAKE_CURRENT_SOURCE_DIR}/../../cmake/argus-module.cmake)
+
+# Found before the sibling add_subdirectory block: argus_sqlite links Drogon
+# from this scope.
 find_package(Drogon CONFIG REQUIRED)
+
+# Standalone configure (top level): the sqlite module links argus_common and
+# the vendored sqlite-vec the vec repositories ride. Every guard keeps the
+# root and consumer builds in charge.
+if(PROJECT_IS_TOP_LEVEL)
+    if(NOT TARGET argus_common)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../argus-common
+                         ${CMAKE_BINARY_DIR}/argus-common)
+    endif()
+    if(NOT TARGET sqlite-vec)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../third_party/sqlite-vec
+                         ${CMAKE_BINARY_DIR}/third_party/sqlite-vec)
+    endif()
+    set(ARGUS_SQLITE_VEC_TARGET sqlite-vec)
+endif()
 
 argus_module(NAME sqlite
     SOURCES
