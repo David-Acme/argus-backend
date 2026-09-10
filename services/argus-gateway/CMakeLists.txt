@@ -13,6 +13,13 @@ if(NOT TARGET argus_identity)
     # Standalone build: reuse the root project's argus_common, argus_identity
     # and third-party sources so the gateway links the same objects as the
     # root-tree build.
+    # The substrate still finds the vendored gRPC and would build the cq
+    # bridge, whose entry symbol then interposes the identically-named
+    # implementation inside libgrpc. Empty stand-ins skip it.
+    if(NOT TARGET argus_sdk_grpc_bridge_entry)
+        add_library(argus_sdk_grpc_bridge_entry INTERFACE)
+        add_library(argus_sdk_grpc_bridge_exit INTERFACE)
+    endif()
     find_package(Drogon CONFIG REQUIRED)
     find_package(cnats CONFIG REQUIRED)
     find_package(tomlplusplus REQUIRED)
@@ -22,12 +29,10 @@ if(NOT TARGET argus_identity)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/argus-contracts
                      ${CMAKE_BINARY_DIR}/argus-contracts EXCLUDE_FROM_ALL)
 
-    enable_language(C)
-    add_library(sqlite-vec STATIC
-                ${CMAKE_CURRENT_SOURCE_DIR}/../../third_party/sqlite-vec/sqlite-vec.c)
-    target_compile_definitions(sqlite-vec PRIVATE SQLITE_CORE SQLITE_VEC_STATIC)
-    target_include_directories(sqlite-vec PUBLIC
-        ${CMAKE_CURRENT_SOURCE_DIR}/../../third_party/sqlite-vec)
+    if(NOT TARGET sqlite-vec)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../third_party/sqlite-vec
+                         ${CMAKE_BINARY_DIR}/third_party/sqlite-vec)
+    endif()
     set(ARGUS_SQLITE_VEC_TARGET sqlite-vec)
 
     set(NCNN_BUILD_BENCHMARK OFF CACHE BOOL "" FORCE)
@@ -56,6 +61,10 @@ if(NOT TARGET argus_identity)
                      ${CMAKE_BINARY_DIR}/argus-auth)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/argus-identity
                      ${CMAKE_BINARY_DIR}/argus-identity)
+    if(NOT TARGET identity-migration)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/argus-identity/tools/migrate-identity
+                         ${CMAKE_BINARY_DIR}/argus-identity/tools/migrate-identity)
+    endif()
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/argus-sync
                      ${CMAKE_BINARY_DIR}/argus-sync)
 endif()
