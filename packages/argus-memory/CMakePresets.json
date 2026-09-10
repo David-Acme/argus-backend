@@ -13,9 +13,22 @@
         "CMAKE_PREFIX_PATH": "build/dev/build/Debug/generators"
       },
       "description": "argus-memory Debug build with Conan 2"
+    },
+    {
+      "name": "prod",
+      "generator": "Ninja",
+      "binaryDir": "build/prod",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_TOOLCHAIN_FILE": "build/prod/build/Release/generators/conan_toolchain.cmake",
+        "CMAKE_CXX_STANDARD": "20",
+        "CMAKE_PREFIX_PATH": "build/prod/build/Release/generators"
+      },
+      "description": "argus-memory Release build with Conan 2"
     }
   ],
   "buildPresets": [
-    { "name": "dev", "configurePreset": "dev", "jobs": 8 }
+    { "name": "dev", "configurePreset": "dev", "jobs": 8 },
+    { "name": "prod", "configurePreset": "prod", "jobs": 8 }
   ]
 }

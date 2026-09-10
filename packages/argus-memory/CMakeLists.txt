@@ -5,33 +5,49 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+include(${CMAKE_CURRENT_SOURCE_DIR}/../../cmake/argus-module.cmake)
+
 set(MEMORY_SRC_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/src)
 set(SHARED_ROOT ${MEMORY_SRC_ROOT}/shared)
 
 if(NOT TARGET Drogon::Drogon)
-    # Standalone build (outside the root project's configure).
+    # Standalone build (outside the root project's configure): add the
+    # sibling packages memory-core links, argus-common first.
     find_package(Drogon CONFIG REQUIRED)
     find_package(tomlplusplus REQUIRED)
     find_package(nlohmann_json REQUIRED)
     find_package(onnxruntime CONFIG REQUIRED)
     find_package(cnats CONFIG REQUIRED)
+    if(NOT TARGET argus_common)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/argus-common
+                         ${CMAKE_BINARY_DIR}/argus-common)
+    endif()
+    if(NOT TARGET argus::phrase)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/argus-phrase
+                         ${CMAKE_BINARY_DIR}/argus-phrase)
+    endif()
+    if(NOT TARGET argus::llm-client)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/argus-llm-client
+                         ${CMAKE_BINARY_DIR}/argus-llm-client)
+    endif()
+    # sqlite-vec is THE capacity of this service's vector index (Ruling BW):
+    # vec0 must register on the service's own connection. Added before
+    # argus-sqlite so its vec repositories see the target.
+    if(NOT TARGET sqlite-vec)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../third_party/sqlite-vec
+                         ${CMAKE_BINARY_DIR}/third_party/sqlite-vec)
+    endif()
+    set(ARGUS_SQLITE_VEC_TARGET sqlite-vec)
+    if(NOT TARGET argus::sqlite)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/argus-sqlite
+                         ${CMAKE_BINARY_DIR}/argus-sqlite)
+    endif()
     if(TARGET SQLite::SQLite3)
         set(ARGUS_SQLITE3_TARGET SQLite::SQLite3)
     endif()
 endif()
 
 find_package(doctest REQUIRED)
-
-# sqlite-vec is THE capacity of this service's vector index (Ruling BW):
-# vec0 must register on the service's own connection.
-if(NOT TARGET sqlite-vec)
-    enable_language(C)
-    add_library(sqlite-vec STATIC
-        ${CMAKE_CURRENT_SOURCE_DIR}/../../third_party/sqlite-vec/sqlite-vec.c)
-    target_compile_definitions(sqlite-vec PRIVATE SQLITE_CORE SQLITE_VEC_STATIC)
-    target_include_directories(sqlite-vec PUBLIC
-        ${CMAKE_CURRENT_SOURCE_DIR}/../../third_party/sqlite-vec)
-endif()
 
 # llama.cpp for the extract model (NuExtract): the same vendored engine the
 # legacy links, WITHOUT mtmd (text extraction only).
