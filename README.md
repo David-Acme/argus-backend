@@ -11,7 +11,8 @@ there is no root CMake project or monolithic backend executable.
 - `packages/argus-<name>/` — reusable libraries compiled into their consumers
 - `packages/argus-contracts/` — protobuf contracts and internal gRPC SDKs
 - `third_party/` — pinned source dependencies maintained as Git submodules
-- `argus-deploy/` — the multi-service Compose stack and shared image
+- `argus-deploy/` — the multi-service Compose stack; every service builds its
+  own image
 - `scripts/` — provisioning, setup and the standalone build orchestrator
 - `models/` — shared runtime model locations; large artifacts are gitignored
 - `docs/` — architecture, migration history and operational guidance
@@ -41,8 +42,9 @@ preset and CTest commands from that project folder.
 
 The gateway is the only public entry point. Camera, productivity,
 notification, TTS, STT, VLM, LLM, voice and tunnel capacities run as separate
-processes behind it. See `argus-deploy/docker-compose.yml` for the complete
-topology and `docs/architecture/system-overview.md` for local commands.
+processes behind it, each from its own image. See
+`argus-deploy/docker-compose.yml` for the complete topology and
+`docs/operations/deployment-docker.md` for the image build.
 
 Internal versioning uses repository tags: `contracts-v*` for contracts and
 `service-v*` for service releases.

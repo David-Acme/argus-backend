@@ -103,18 +103,23 @@ ordering, prefer Compose rather than launching every process by hand.
 
 ## Container deployment
 
-The deployment uses one multi-stage image containing all runtime binaries.
-The build stage calls the same standalone Release orchestrator as local work:
+Every microservice builds its own image from its service folder; packages are
+compiled into those images. Compose builds and runs one container per
+service:
 
 ```bash
-docker build -f argus-deploy/Dockerfile -t argus-cutover:local .
+COMPOSE_PARALLEL_LIMIT=1 docker compose \
+  -f argus-deploy/docker-compose.yml \
+  --profile tunnel --profile identity-init build
 cd argus-deploy
 ARGUS_UID="$(id -u)" ARGUS_GID="$(id -g)" docker compose up -d
 ```
 
-Models are not baked into the image. They are provisioned on the host and
-mounted read-only. Service data and generated secrets are also excluded from
-Git. Never print or commit a real `config.toml`, certificate key or database.
+Image builds run sequentially: parallel builds collide in the shared Conan
+package cache. Models are not baked into the images — they are provisioned on
+the host and mounted read-only. Service data and generated secrets are also
+excluded from Git. Never print or commit a real `config.toml`, certificate
+key or database.
 
 ## Camera object detection
 

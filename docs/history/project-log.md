@@ -3160,3 +3160,55 @@ md5s exact; `database/argus.db` absent; `git diff --check` clean; EOF `0a`.
 in none of argus-llm, argus-voice, argus-gateway or argus-tunnel-client,
 the router's symbols present in argus-llm, and no memory-graph symbol in
 argus-voice — Ruling CA still holds with the router in the process.
+
+## F8-C4-2 — the root build cut (2026-09-10)
+
+The root `CMakeLists.txt`, `CMakePresets.json` and `conanfile.txt` are
+deleted; the repository root is folders, docs and dotfiles only. The 19
+standalone owner projects carry their own Conan graph and `dev`/`prod`
+presets, and `scripts/build-all.sh` became the single build entry point that
+`setup.sh`, CI and the deploy image delegate to.
+
+- The orchestrator also builds each owner's on-demand CLI tools
+  (`argus-migrate-*`, `argus-vulkan-probe`); `scripts/build-all-test.sh`
+  mocks Conan/CMake/CTest and locks the flags CI depends on.
+- The deploy COPY paths follow the standalone layout, and the first real
+  Docker build exposed two context traps fixed here: `.dockerignore` patterns
+  do not match nested build trees (`**/build` is required), and generated
+  `CMakeUserPresets.json` files must stay out of the context.
+- Verified: dev orchestrator 19/19 with 206 tests, prod 19/19 `--no-tests`,
+  a real image build with all 16 runtime binaries, gateway 367/78/48/20 and
+  tunnel 106/50/19/28/2/26/24 doctest assertions, zero warnings outside
+  `third_party`.
+
+## F10 — repository hygiene and per-service images (2026-09-10)
+
+The user's ruling: the root keeps only essential folders plus `AGENTS.md`,
+`README.md` and `LICENSE`; every microservice owns its build and its image;
+packages are reusable libraries without images; documentation is English and
+ordered.
+
+- The docs moved into `docs/{architecture,operations,history}` with
+  descriptive names: `system-overview.md`, `contracts-overview.md`, the
+  `wire-*` contract docs, the tool-calling evaluation set, `timeline.md`,
+  `project-log.md` (this file), the translated migration and tool-calling
+  plans, and the reports. Outside docs/ only the root `AGENTS.md`/`README.md`,
+  each owner's `AGENTS.md`/`CONTEXT.md` and the published intent model card
+  remain. Spanish prose in the plans, this log, `AGENTS.md` and the owner
+  `CONTEXT.md` files was translated; quoted test data stays verbatim.
+- The root `.gitignore` is gone: every standalone project ignores its own
+  `build/`, presets and `config.toml`, while `models/`, `database/`, `certs/`,
+  `scripts/`, `third_party/` and `argus-deploy/` self-ignore their runtime
+  state.
+- `third_party/CMakeLists.txt` (the pre-F8 aggregator, unreferenced since the
+  root build was cut) was deleted.
+- Every service owns `services/argus-<name>/Dockerfile` plus its own
+  `Dockerfile.dockerignore`, and Compose builds one image per microservice.
+  The gateway image also carries `argus-migrate-identity`, the camera image
+  carries its migration tool and `argus-vulkan-probe`, productivity and
+  notification carry their tools, and the tunnel image carries the client and
+  the relay; no package has an image. Image builds run sequentially because
+  parallel Conan downloads into the shared BuildKit cache collide.
+- Verified: all 10 service images build and contain their binaries, the full
+  dev/prod orchestrator stays green, and the Spanish sweep covers every
+  tracked Markdown file.

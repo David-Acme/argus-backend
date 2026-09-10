@@ -14,18 +14,30 @@ legacy service and the RustFS storage pair are retired (F6-4): the gateway is
 the only public surface and every domain is served by its own service.
 Decisions and traps live here.
 
-## Image (Ruling N)
+## Images (Ruling N, revised F10)
 
-`Dockerfile` is ONE multi-stage image from the repo root. Its Debian + Conan
-2.21.0 build stage runs `scripts/build-all.sh prod --no-tests`, so the image
-uses the same 19 standalone Conan/CMake graphs as local builds and CI. The
-root has no CMake project. The argus-memory binary is gone since f8-b3: the
-package compiles into argus-llm, with no separate runtime target.
-All binaries land in `/opt/argus`; the service picks its binary via an
-`entrypoint:` override (Docker composes `command:` as ARGUMENTS to the image
-`ENTRYPOINT`, so a `command:` "override" here would append to the image's
-`ENTRYPOINT` binary instead of replacing it — the trap 242ffd3 fixed). Each
-project resolves its own Conan dependency set. The memory stack needs no
+Every microservice owns `services/argus-<name>/Dockerfile`: a Debian + Conan
+2.21.0 build stage runs `scripts/build-all.sh prod --no-tests --only
+argus-<name>` from the repo root, and a slim runtime stage carries only that
+service's binaries. Packages are reusable libraries compiled into the service
+images — no package has an image of its own. The gateway image also carries
+`argus-migrate-identity` (identity is its package); argus-camera carries
+`argus-migrate-camera` and `argus-vulkan-probe`; productivity and
+notification carry their migration tools; the argus-tunnel image carries the
+client and the relay. The argus-memory binary is gone since f8-b3: the
+package compiles into argus-llm.
+
+Build all images from the repository root, sequentially:
+
+    COMPOSE_PARALLEL_LIMIT=1 docker compose \
+      -f argus-deploy/docker-compose.yml \
+      --profile tunnel --profile identity-init build
+
+Parallel builds collide in the shared Conan package cache ("Reference ...
+already exists"), so builds run one at a time. The Dockerfile-specific
+ignores next to each Dockerfile (`services/argus-*/Dockerfile.dockerignore`)
+keep the nested build trees out of the context. Each project resolves its own
+Conan dependency set. The memory stack needs no
 extra runtime packages: sqlite-vec compiles
 into the binary (`SQLITE_CORE`), onnxruntime/llama/cnats are static conan
 archives and the runtime stage's `libgomp1`/`libstdc++6` already cover them.
@@ -43,7 +55,7 @@ engage RADV (it would only ever run CPU).
 
 Runtime image adds `curl` (gateway and argus-camera `/health` healthchecks)
 and `mesa-vulkan-drivers` (RADV, so a container with `/dev/dri` can drive the
-GPU). The image also carries
+GPU). The argus-camera image also carries
 `argus-vulkan-probe` (Fase 2 Vulkan gate): it reuses ncnn's own Vulkan init
 and exits 0 only when `vkCreateInstance` plus at least one physical device
 work; otherwise the detector stays on its Vulkan→CPU fallback. Run it with
@@ -52,7 +64,7 @@ work; otherwise the detector stays on its Vulkan→CPU fallback. Run it with
 cgroup plus the host's device ACLs let `--user 1000:1000` reach both nodes;
 `renderD128` is 0666 and `card1` carries an ACL). Plain-docker equivalent,
 also verified here: `docker run --rm --device /dev/dri --user 1000:1000
---entrypoint /opt/argus/argus-vulkan-probe argus-cutover:local`. On hosts
+--entrypoint /opt/argus/argus-vulkan-probe argus-camera:local`. On hosts
 with restrictive `/dev/dri` ACLs add the HOST `video`/`render` GIDs
 numerically via `group_add: [<gid>, <gid>]` — Docker resolves group NAMES
 against the host group file, so `--group-add video --group-add render`
@@ -115,23 +127,23 @@ with `scripts/setup.sh` / `scripts/setup.sh camera` on the host.
 
 | Service | Image | Notes |
 |---|---|---|
-| gateway | built (`argus-cutover:local`) | TLS 7024, `/health` healthcheck; mounts the productivity and notification volumes (camera.db is argus-camera's alone since F6-5) |
-| argus-camera | same image, `entrypoint:` override | internal network, loopback 7026 + 7036 (sync gRPC) publishes; owns camera.db; `/health` healthcheck; `/dev/dri` |
-| argus-productivity | same image, `entrypoint:` override | internal network, loopback 7027 publish; owns productivity.db; `/health` healthcheck |
-| argus-notification | same image, `entrypoint:` override | internal network, loopback 7028 publish; owns notification.db; `/health` healthcheck |
-| argus-tts | same image, `entrypoint:` override | internal network (172.19.0.29), loopback 7029 publish; models/tts subpath ro; `/health` healthcheck |
-| argus-stt | same image, `entrypoint:` override | internal network (172.19.0.30), loopback 7030 publish; models/stt subpath ro; `/health` healthcheck |
-| argus-vlm | same image, `entrypoint:` override | internal network (172.19.0.31), loopback 7031 publish; models/vision subpath ro; `/dev/dri`; `/health` healthcheck |
-| argus-llm | same image, `entrypoint:` override | internal network (172.19.0.32), loopback 7032 publish; models/llm subpath ro; links the memory package since f8-b3 (its stack hosting lands at f8-b4); `/health` healthcheck |
-| argus-voice | same image, `entrypoint:` override | internal network (172.19.0.34), loopback 7034 (gRPC) + 7035 (`/health`) publishes; no database; models/vad ro; gated on nats; `/health` healthcheck |
-| argus-relay | same image, `entrypoint:` override | `profiles: [tunnel]`; internal network, loopback 7100/7101/7103 publishes; no database (Ruling CL); `/health` healthcheck |
-| argus-tunnel-client | same image, `entrypoint:` override | `profiles: [tunnel]`; host-networked like the gateway (dials the gateway `[remote]` listener and the relay's loopback home publish on 127.0.0.1); no database (Ruling CL); `/health` healthcheck |
+| gateway | `argus-gateway:local` | TLS 7024, `/health` healthcheck; mounts the productivity and notification volumes (camera.db is argus-camera's alone since F6-5) |
+| argus-camera | `argus-camera:local` | internal network, loopback 7026 + 7036 (sync gRPC) publishes; owns camera.db; `/health` healthcheck; `/dev/dri` |
+| argus-productivity | `argus-productivity:local` | internal network, loopback 7027 publish; owns productivity.db; `/health` healthcheck |
+| argus-notification | `argus-notification:local` | internal network, loopback 7028 publish; owns notification.db; `/health` healthcheck |
+| argus-tts | `argus-tts:local` | internal network (172.19.0.29), loopback 7029 publish; models/tts subpath ro; `/health` healthcheck |
+| argus-stt | `argus-stt:local` | internal network (172.19.0.30), loopback 7030 publish; models/stt subpath ro; `/health` healthcheck |
+| argus-vlm | `argus-vlm:local` | internal network (172.19.0.31), loopback 7031 publish; models/vision subpath ro; `/dev/dri`; `/health` healthcheck |
+| argus-llm | `argus-llm:local` | internal network (172.19.0.32), loopback 7032 publish; models/llm subpath ro; links the memory package since f8-b3 (its stack hosting lands at f8-b4); `/health` healthcheck |
+| argus-voice | `argus-voice:local` | internal network (172.19.0.34), loopback 7034 (gRPC) + 7035 (`/health`) publishes; no database; models/vad ro; gated on nats; `/health` healthcheck |
+| argus-relay | `argus-tunnel:local` | `profiles: [tunnel]`; internal network, loopback 7100/7101/7103 publishes; no database (Ruling CL); `/health` healthcheck |
+| argus-tunnel-client | `argus-tunnel:local` | `profiles: [tunnel]`; host-networked like the gateway (dials the gateway `[remote]` listener and the relay's loopback home publish on 127.0.0.1); no database (Ruling CL); `/health` healthcheck |
 | nats | `nats:2.11.14-alpine` | exact tag pin; core NATS (no JetStream needed) |
-| identity-init | same image | `profiles: [identity-init]`, runs `argus-migrate-identity` |
-| camera-init | same image | `profiles: [camera-init]`, runs `argus-migrate-camera` against the camera.db volume |
-| productivity-init | same image | `profiles: [productivity-init]`, runs `argus-migrate-productivity` against the productivity.db volume |
-| notification-init | same image | `profiles: [notification-init]`, runs `argus-migrate-notification` against the notification.db volume |
-| vulkan-probe | same image | `profiles: [vulkan-probe]`, runs `argus-vulkan-probe` with `/dev/dri` |
+| identity-init | `argus-gateway:local` | `profiles: [identity-init]`, runs `argus-migrate-identity` |
+| camera-init | `argus-camera:local` | `profiles: [camera-init]`, runs `argus-migrate-camera` against the camera.db volume |
+| productivity-init | `argus-productivity:local` | `profiles: [productivity-init]`, runs `argus-migrate-productivity` against the productivity.db volume |
+| notification-init | `argus-notification:local` | `profiles: [notification-init]`, runs `argus-migrate-notification` against the notification.db volume |
+| vulkan-probe | `argus-camera:local` | `profiles: [vulkan-probe]`, runs `argus-vulkan-probe` with `/dev/dri` |
 
 Ordering: `nats` goes healthy first and the gateway and argus-camera wait
 for `nats: service_healthy` — the gateway's NatsBus connects once at boot with
@@ -287,7 +299,7 @@ The `tunnel` profile carries the byte-transparent remote transport:
   home 7101 for the single client link, `/health` 7103). Its block is
   standalone-deployable: lift it minus its `depends_on` (no broker exists
   there) onto a US server with its `config.relay.toml` and the
-  `argus-cutover:local` image — it needs no other compose service unless
+  `argus-tunnel:local` image — it needs no other compose service unless
   `[push]` intents are wanted, and a US deployment fronts the plain 7100
   device listener with its own TLS terminator (the app keeps its normal
   pinned-CA tunnel toward the relay hostname, whose DNS SAN is baked into

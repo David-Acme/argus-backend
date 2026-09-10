@@ -25,6 +25,21 @@ order below.
 10. [Docker deployment](operations/deployment-docker.md)
 11. [Hardware tiers](operations/hardware-tiers.md)
 
+## Contract reference
+
+- [Contracts overview](architecture/contracts-overview.md) — the protobuf
+  package and its versioning policy.
+- [Sync wire](architecture/wire-sync-tables.md) — frozen `SyncOperation`,
+  `TableName` and `SYNC_LIMIT`.
+- [Device identity wire](architecture/wire-device-identity.md) — the
+  `ip`/`credential` modes and the device-credential header.
+- [Golden sync frames](architecture/wire-sync-golden-frames.md) — the frozen
+  `/sync` fixtures and where they live.
+- [NATS subjects](architecture/wire-nats-subjects.md) — the frozen subject
+  contract.
+- [Tool-calling evaluation set](operations/tool-calling-eval-set.md) — the
+  labelled utterances behind the intent-router gates.
+
 ## History and traceability
 
 - [Timeline](history/timeline.md) — every arc from the first build to today,

@@ -7,8 +7,8 @@ any change; the cutover shape and its exceptions are documented there.
 
 - `docker-compose.yml` — cutover stack: gateway, nats, argus-camera,
   domain services, identity migration init tool.
-- `Dockerfile` — the single source-built image (gateway + domain services +
-  migration tools).
+- `../services/argus-<name>/Dockerfile` — one image per microservice; packages
+  are compiled into the service images (no package image).
 - `config.gateway.toml.example` and one template per domain service —
   per-installation copies (`config.gateway.toml`, ...) are gitignored and hold
   the instance secrets.
@@ -23,8 +23,8 @@ any change; the cutover shape and its exceptions are documented there.
   install works without the init profile.
 - This stack uses the `argus-cutover` project, `argus-cutover-*` volumes and
   networks only; never touch other compose projects or their volumes.
-- No C++ code in this folder: changes here are compose/Dockerfile/config only.
-  Follow the backend `AGENTS.md` for anything that leaks into source.
+- No C++ code in this folder: changes here are compose/config only.
+  Dockerfiles live in the service folders they build.
 - 100% English; minimal comments.
 
 > Binding cross-service code standards: root `AGENTS.md` MUST-FOLLOW rules 19-24 (modern C++20, comment discipline, efficiency, DB tuning, feature layout + shared SDK, monolith structure).

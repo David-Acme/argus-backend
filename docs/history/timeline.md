@@ -19,4 +19,4 @@ verification records live in [reports/](reports/).
 | 2026-09-09 | F8-C — build independence | Test-gate inversion, per-project Conan/presets, per-owner provisioning, the `build-all.sh` orchestrator. |
 | 2026-09-09/10 | F9 — intent router | fastText returns as the router fast tier in front of tool calling, with a pinned artifact and eval fixtures. |
 | 2026-09-10 | F8-C4-2 — root cut | Root CMake trio deleted; CI, `setup.sh` and the image build through `build-all.sh`; real `docker build` verified. |
-| 2026-09-10 | F10 — hygiene | Curated English documentation tree, per-project ignores, dead root aggregator removed. |
+| 2026-09-10 | F10 — hygiene | Curated English documentation tree, per-project ignores, dead root aggregator removed, one Docker image per microservice. |

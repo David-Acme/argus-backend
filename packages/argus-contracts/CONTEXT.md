@@ -46,16 +46,17 @@ lets the vendored gRPC resolve its callbacks natively. The
 gRPC toolchain on the development host is vendored under
 `~/.local/argus-thirdparty/grpc` (Arch grpc 1.83.1 shared libraries); the
 CMake fallback appends that prefix and records the library directory so
-`argus_runtime_rpath()` can add it to every gRPC-linked binary. The container
-image instead uses Debian trixie's grpc 1.51 packages — the code avoids APIs
+`argus_runtime_rpath()` can add it to every gRPC-linked binary. The service
+images instead use Debian trixie's grpc 1.51 packages — the code avoids APIs
 whose signatures differ across those versions (e.g. no `OnCancel` overrides;
 `OnDone` + `IsCancelled()` instead). Generated stubs land in the build tree
 and are never committed. `grpc.health.v1` is vendored verbatim from the
 upstream protobuf well-known types so the health surface does not depend on
 host-specific well-known-proto installs.
 
-The image pins the whole conan graph to protobuf 3.21.12 (Dockerfile:
-`[replace_requires] protobuf/*: protobuf/3.21.12`) so it matches Debian
+The service images pin the whole conan graph to protobuf 3.21.12 (every
+service Dockerfile: `[replace_requires] protobuf/*: protobuf/3.21.12`) so it
+matches Debian
 trixie's protobuf, which the SDK binds to under `ARGUS_SYSTEM_PROTOBUF`.
 onnxruntime pulls conan protobuf 6.33 statically into `argus-voice`; with
 two different protobuf runtimes in one binary the same-mangled-name

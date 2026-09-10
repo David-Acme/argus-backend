@@ -117,7 +117,7 @@ monolith's build set was retired (F6-4).
   gateway adds those folders and links their named targets rather than
   duplicating source lists.
 - The standalone graph carries the gateway's complete transitive dependency
-  closure and produces the deployable binary used by the shared Docker image.
+  closure and produces the deployable binary used by the gateway image.
 - Controller registration: gateway controllers MUST be declared as
   `HttpController<T, false>` and registered explicitly in `main.cc` with
   `app().registerController(std::make_shared<T>())` before `run()`. Drogon's

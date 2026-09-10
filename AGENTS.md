@@ -463,9 +463,11 @@ Raw pointers only for non-owning access (`.get()`).
   `config.toml.example`, and then run
   `services/argus-gateway/build/dev/argus-gateway`. Never commit, print, log
   or send instance secrets to the frontend.
-- Production-style deployment is container-only: `argus-deploy/` builds one
-  source-built image and `argus-deploy/docker-compose.yml` runs the gateway and
-  the domain services from it. There is no separate local compose stack.
+- Production-style deployment is container-only: every microservice owns a
+  `Dockerfile` and `argus-deploy/docker-compose.yml` builds and runs one
+  container per service. Packages are reusable libraries compiled into the
+  service images — no package has an image of its own. There is no separate
+  local compose stack.
 - Object storage is opt-in through `S3StorageService`
   (`storage.mode = "s3"` in `config.toml`); no object store ships with the
   repository. Use the service, never direct ad-hoc HTTP from feature code.

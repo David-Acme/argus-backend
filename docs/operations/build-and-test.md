@@ -32,8 +32,9 @@ ctest --test-dir build/dev --output-on-failure
   shared build infrastructure changes.
 - `./scripts/build-all-test.sh` mocks Conan/CMake/CTest and locks the
   orchestrator flags that CI depends on.
-- The Debian image build is the integration gate:
-  `docker build -f argus-deploy/Dockerfile -t argus-cutover:local .`.
+- The image build is the integration gate: build every service image with
+  `COMPOSE_PARALLEL_LIMIT=1 docker compose -f argus-deploy/docker-compose.yml
+  --profile tunnel --profile identity-init build`.
 
 ## Current scale
 

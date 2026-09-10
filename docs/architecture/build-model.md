@@ -23,6 +23,11 @@ Each project carries `CMakeLists.txt`, `conanfile.txt` and
 `build/prod`). `scripts/build-all.sh` drives all of them; see
 [build-and-test.md](../operations/build-and-test.md).
 
+Every microservice also owns `services/argus-<name>/Dockerfile`, built from
+the repository root; packages are compiled into the service images and never
+get an image of their own. See
+[deployment-docker.md](../operations/deployment-docker.md).
+
 ## Third-party map
 
 Sources stay shared in `third_party/` and every project compiles its own copy
