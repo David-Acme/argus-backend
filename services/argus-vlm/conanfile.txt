@@ -3,6 +3,8 @@ drogon/1.9.13
 opencv/4.13.0
 tomlplusplus/3.3.0
 nlohmann_json/3.11.3
+sqlite3/[>=3.45.0 <4]
+cnats/3.13.0
 doctest/2.4.12
 
 [options]

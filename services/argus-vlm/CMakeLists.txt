@@ -5,15 +5,22 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+include(${CMAKE_CURRENT_SOURCE_DIR}/../../cmake/argus-module.cmake)
+
 set(VLM_SRC_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/src)
 set(SHARED_ROOT ${VLM_SRC_ROOT}/shared)
 
 if(NOT TARGET Drogon::Drogon)
-    # Standalone build (outside the root project's configure).
+    # Standalone build (outside the root project's configure): add the
+    # sibling package the vlm module links, argus-common first.
     find_package(Drogon CONFIG REQUIRED)
     find_package(OpenCV CONFIG REQUIRED)
     find_package(tomlplusplus REQUIRED)
     find_package(nlohmann_json REQUIRED)
+    if(NOT TARGET argus_common)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/argus-common
+                         ${CMAKE_BINARY_DIR}/argus-common)
+    endif()
 endif()
 
 find_package(doctest REQUIRED)
@@ -57,6 +64,7 @@ if(NOT TARGET llama)
 
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../third_party/llama.cpp
                      llama-build EXCLUDE_FROM_ALL)
+    set(ARGUS_LLAMA_TARGETS llama mtmd)
 endif()
 
 add_library(vlm-core STATIC
