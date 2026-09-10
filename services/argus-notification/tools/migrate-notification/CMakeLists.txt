@@ -9,11 +9,11 @@ add_library(notification-migration STATIC
 target_include_directories(notification-migration
     PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}
-        ${CMAKE_SOURCE_DIR}/packages/argus-common/src
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../../../packages/argus-common/src
 )
 
 target_compile_definitions(notification-migration PUBLIC
-    ARGUS_NOTIFICATION_SCHEMA_PATH="${CMAKE_SOURCE_DIR}/services/argus-notification/database/schema.sql"
+    ARGUS_NOTIFICATION_SCHEMA_PATH="${CMAKE_CURRENT_SOURCE_DIR}/../../database/schema.sql"
 )
 
 target_link_libraries(notification-migration
