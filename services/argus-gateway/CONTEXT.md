@@ -44,7 +44,7 @@ monolith's build set was retired (F6-4).
   empty device hash, which downstream fails jwt-filter's session device match
   with the standard 401 `Device mismatch` — never a distinct error. A mode
   flip invalidates every existing session once (controlled re-login). The
-  wire contract lives in `argus-contracts/identity/README.md`. The F5-1 rate
+  wire contract lives in `docs/architecture/wire-device-identity.md`. The F5-1 rate
   limiter key (`DeviceFilter::deviceKey`) deliberately stays IP-based even in
   credential mode: the limiter evaluates pre-routing before any database
   access (Ruling CJ) and a client-presented credential would be an
@@ -105,7 +105,7 @@ monolith's build set was retired (F6-4).
   the retired `SocketService` did, marshalled into the Drogon loop. It never
   publishes — no gateway component installs the event-bus publisher
   (`SocketService::setEventBus` stays a no-op slot here). Payload contract:
-  `argus-contracts/subjects.md`.
+  `docs/architecture/wire-nats-subjects.md`.
 
 ## Build wiring (decisions)
 
@@ -421,7 +421,7 @@ table. The app keeps working without any update.
   HTTP surface and the delivery policy; the gateway only hosts the publish
   seam. Intents are best-effort at-most-once (fire-and-forget NATS publish),
   display-only, and never carry alarm/siren semantics — see
-  `argus-contracts/subjects.md`.
+  `docs/architecture/wire-nats-subjects.md`.
 
 ## Voice cutover (F6-3): argus.voice.v1 leg, typed identity, UpdateUser RPC
 

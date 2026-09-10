@@ -13,7 +13,7 @@
 - The gateway subscribes the frozen wildcard `argus.*.v1.change` and routes
   by concrete subject; camera audit diffs are persisted before fan-out.
 
-The full subject contract lives in `packages/argus-contracts/subjects.md`.
+The full subject contract lives in `wire-nats-subjects.md`.
 
 ## Typed gRPC contracts
 

@@ -6,7 +6,7 @@
 #include <shared/services/room/room-manager.hxx>
 #include <vector>
 
-// Wire contract of the argus.sync.v1.change fan-out (see argus-contracts/subjects.md): the SocketEmitDto triple plus gateway routing metadata.
+// Wire contract of the argus.sync.v1.change fan-out (see docs/architecture/wire-nats-subjects.md): the SocketEmitDto triple plus gateway routing metadata.
 namespace sync_change
 {
 inline constexpr const char* kUsersField = "users";

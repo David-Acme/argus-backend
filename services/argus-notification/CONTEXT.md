@@ -44,7 +44,7 @@ binary, own CMake preset, own `notification.db`.
   per-change rows the legacy `markAsRead` published (`userIds={userId}`,
   `changes` JSON via `JsonDiff::createFlatDiff`, TableName::Notification)
   and emits them over NATS (`argus.notification.v1.change`,
-  `argus-contracts/subjects.md`). The gateway persists them verbatim into
+  `docs/architecture/wire-nats-subjects.md`). The gateway persists them verbatim into
   identity.db `user_audit_log`; nothing audit-shaped is written to
   notification.db.
 - **Serving live traffic (F3-2, Ruling AR)**: the gateway relays

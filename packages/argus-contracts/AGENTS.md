@@ -25,7 +25,7 @@ review blocker:
   `TOO_MANY_REQUESTS`, `INTERNAL_ERROR`, `CAMERA_UNREACHABLE`
   (`proto/argus/common/v1/base.proto`).
 - `SyncOperation` 0-7, `TableName` 0-23 and `SYNC_LIMIT = 200`
-  (`proto/argus/sync/v1/contracts.proto`, `sync/README.md`). New sync
+  (`proto/argus/sync/v1/contracts.proto`, `docs/architecture/wire-sync-tables.md`). New sync
   operations may only use numbers >= 8.
 - Versioning: packages `argus.<domain>.v1`; additive changes only inside v1.
   A retired field gets `reserved` + a new field. Breaking changes go to a new

@@ -12,11 +12,14 @@ and the mobile app (`frontend/` React Native) coordinate against this folder.
 proto/argus/{common,camera,ai,productivity,notification,memory,sync}/v1/*.proto
 manifests/package.schema.json   typed capability package manifest
 manifests/plugin.schema.json    ed25519-signed plugin manifest
-sync/README.md                  frozen SyncOperation 0-7 + TableName 0-23 + SYNC_LIMIT=200
 sync/fixtures/                  golden /sync frames
-identity/README.md              device identity modes + X-Argus-Device-Credential header
+identity/                       device identity contract
 buf.yaml  buf.gen.yaml          lint + C++ codegen
 ```
+
+Wire contracts documented under `docs/architecture/`:
+`wire-sync-tables.md`, `wire-device-identity.md`,
+`wire-sync-golden-frames.md` and `wire-nats-subjects.md`.
 
 ## Validation
 

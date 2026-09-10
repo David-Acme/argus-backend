@@ -48,7 +48,7 @@ own `productivity.db`.
   the exact USER-SCOPED `user_audit_log` rows the legacy would have written
   (same `changes` JSON via `JsonDiff::createFlatDiff`, same per-user
   `userIds` expansion) and emits them over NATS (`argus.productivity.v1.change`,
-  `argus-contracts/subjects.md`). The gateway persists them verbatim into
+  `docs/architecture/wire-nats-subjects.md`). The gateway persists them verbatim into
   identity.db; nothing audit-shaped is ever written to productivity.db.
 - **Serving live traffic (F3-2, Ruling AP)**: the gateway relays
   `/calendar-event`, `/calendar-event-share`, `/project`,

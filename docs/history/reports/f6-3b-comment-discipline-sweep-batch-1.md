@@ -19,7 +19,7 @@ Rule 20 sweep over the batch-1 inventory scope `src/shared/**`, excluding `src/s
 - Ruling 1: `// namespace` end tags kept everywhere.
 - Ruling 2: frozen-contract wire-table trailing comments kept as short lines: `contracts/sync-operation.hxx` enum comments (SocketIO wire table) and `contracts/tool-contracts.hxx` `arguments`/`type` field lines.
 - Ruling 9: zero commented-out code existed; none found.
-- Kept compliant one-liners (F bucket) and the two external-document citations (`COGNITIVE_MEMORY_PLAN.md §6` in tool-registry.hxx/tool-contracts.hxx, same style as the kept `argus-contracts/subjects.md` reference) — these are doc pointers, not Ruling tokens.
+- Kept compliant one-liners (F bucket) and the two external-document citations (`COGNITIVE_MEMORY_PLAN.md §6` in tool-registry.hxx/tool-contracts.hxx, same style as the kept `docs/architecture/wire-nats-subjects.md` reference) — these are doc pointers, not Ruling tokens.
 
 ## CONTEXT.md re-homing (ruling c)
 

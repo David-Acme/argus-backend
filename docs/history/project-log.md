@@ -649,9 +649,9 @@ A Drogon custom error handler wraps built-in 404/405 in the same envelope.
   401 `Device mismatch` — never a distinct error. A mode flip invalidates
   every existing session once (controlled re-login). Mobile app coordination:
   the client must start sending the header when the server flips the mode
-  (`packages/argus-contracts/identity/README.md`); until it does, its sessions mismatch
+  (`docs/architecture/wire-device-identity.md`); until it does, its sessions mismatch
   once and the re-login populates `device_credential`. Wire contract:
-  `packages/argus-contracts/identity/README.md`. The F5-1 rate limiter key stays
+  `docs/architecture/wire-device-identity.md`. The F5-1 rate limiter key stays
   IP-based (`DeviceFilter::deviceKey`) in credential mode: the limiter runs
   pre-DB (Ruling CJ) and a client-presented credential would be an
   attacker-controlled key. Per-request cost (F5-2 review MINOR-6): in
@@ -2327,7 +2327,7 @@ Fase 1 of the migration starts here: the gateway will own `/sync`, and every
 other service publishes persisted-change events to NATS instead of calling the
 gateway. The foundation is `NatsBus` (`src/shared/wrapper/nats/`) over cnats
 (`cnats/3.13.0` via Conan; its `nats_static` target is linked PUBLIC into
-`argus_common`). The frozen subject naming lives in `packages/argus-contracts/subjects.md`
+`argus_common`). The frozen subject naming lives in `docs/architecture/wire-nats-subjects.md`
 (`argus.<domain>.v1.<event>`; the concrete `/sync` subject is
 `argus.sync.v1.change` with the `SocketEmitDto` payload shape
 `{operation, option, info}`, and the gateway subscribes with the frozen
@@ -2717,7 +2717,7 @@ camera-control routes against camera.db.
   returns — no in-queue retry, verified live. The legacy keeps
   `InProcessMemoryChat` (identical queue semantics, in-process busy state).
 - **Catalog replicas (Ruling BX).** `argus.identity.v1.change` (new subject,
-  see `packages/argus-contracts/subjects.md`) + `argus.camera.v1.change` replay into
+  see `docs/architecture/wire-nats-subjects.md`) + `argus.camera.v1.change` replay into
   the replicas through `CatalogReplica`; camera_stream rows ride the sync
   wildcard filtered to `option == "camera_stream"`. The boot snapshot fill is
   NOT gated on NATS: `CatalogReplica::seedSnapshot` (static) fills empty

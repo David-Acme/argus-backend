@@ -663,9 +663,9 @@ Run the full orchestrator when changing shared build infrastructure.
 | `services/argus-camera/src/shared/services/tapo/` | Tapo camera local protocols: control (`stok` + `securePassthrough`, legacy fallback) and the 8800 talk channel (Digest + MPEG-TS PCMA) |
 | `packages/argus-common/src/shared/services/storage/` | `S3StorageService` (RustFS S3, SigV4 in `s3-signing.hxx`) + `PrivatePortraitService` (private objects, read via one-use capability) |
 | `services/argus-voice/src/shared/services/reaction/` | `ReactionEngine` — per-turn reactions by signal priority → `voice:event` (meaning, never expression names) |
-| `packages/argus-identity/src/shared/repositories/{user-invitation,portrait-*,device-login-challenge}/` | Dominio people: invitaciones (hash-only), capabilities de retrato, retos de login cruzado |
+| `packages/argus-identity/src/shared/repositories/{user-invitation,portrait-*,device-login-challenge}/` | People domain: invitations (hash-only), portrait capabilities, cross-device login challenges |
 | `packages/argus-common/src/shared/wrapper/cancellation/` | `CancellationToken` shared across streaming AI/audio paths |
-| `packages/argus-common/src/shared/services/config-service/` | `ConfigService` read + runtime writes (`setBool/...` persisten a `config.toml`, comentarios preservados) |
+| `packages/argus-common/src/shared/services/config-service/` | `ConfigService` read + runtime writes (`setBool/...` persist to `config.toml`, comments preserved) |
 | `packages/argus-room/src/shared/services/room/` | local `RoomManager` (rooms per module/user, `thread_local`) |
 | `packages/argus-socket/src/shared/services/socket/` | `SocketService` (emitModule/emitUser) + `SocketEmitDto` |
 | `packages/argus-audit/src/shared/services/audit-log/` | Global audit: per-field diffs, daily compaction and monotonic id for sync |
