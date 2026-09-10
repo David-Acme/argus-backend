@@ -36,7 +36,7 @@ runs the stack — the self-hosted model — or the binary may SIGILL elsewhere.
 first build (the conan cache is a buildkit cache mount, so rebuilds are fast).
 
 The build stage installs `libvulkan-dev` + `glslc`: ncnn is integrated with
-`NCNN_VULKAN=ON` (third_party/CMakeLists.txt) and compiles its Vulkan shaders
+`NCNN_VULKAN=ON` (the camera project's vendored integration) and compiles its Vulkan shaders
 with `glslc` at build time. Without them the ncnn build silently drops its
 Vulkan backend in the container and the argus-camera detector could never
 engage RADV (it would only ever run CPU).

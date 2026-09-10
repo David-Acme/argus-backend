@@ -318,7 +318,7 @@ want_packages() {
 TIER="minimal"; GPU_BACKEND="cpu"
 
 # Picks the single best backend the host can actually run, mirroring the
-# precedence in third_party/CMakeLists.txt: CUDA > Vulkan > CPU. Never mixes
+# precedence in the vendored llama.cpp integration: CUDA > Vulkan > CPU. Never mixes
 # vendors: only the driver stack matching the detected GPU gets installed.
 derive_backend() {
   if [ "$HAS_NVCC" -eq 1 ] && [ "$GPU_VENDOR" = "nvidia" ]; then
