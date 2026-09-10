@@ -9,7 +9,8 @@ include(${CMAKE_CURRENT_SOURCE_DIR}/../../cmake/argus-module.cmake)
 
 if(NOT TARGET argus_common)
     # Standalone build: reuse the root project's shared foundation so the
-    # voice service links the same objects as the root-tree build.
+    # voice service links the same objects as the root-tree build, and add
+    # the sibling packages voice-core links, argus-common first.
     find_package(Drogon CONFIG REQUIRED)
     find_package(cnats CONFIG REQUIRED)
     find_package(tomlplusplus REQUIRED)
@@ -19,6 +20,26 @@ if(NOT TARGET argus_common)
     find_library(RNNOISE_LIBRARY NAMES rnnoise)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/argus-common
                      ${CMAKE_BINARY_DIR}/argus-common)
+    if(NOT TARGET argus::audio)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/argus-audio
+                         ${CMAKE_BINARY_DIR}/argus-audio)
+    endif()
+    if(NOT TARGET argus::tts-client)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/argus-tts-client
+                         ${CMAKE_BINARY_DIR}/argus-tts-client)
+    endif()
+    if(NOT TARGET argus::llm-client)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/argus-llm-client
+                         ${CMAKE_BINARY_DIR}/argus-llm-client)
+    endif()
+    if(NOT TARGET argus::stt-client)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/argus-stt-client
+                         ${CMAKE_BINARY_DIR}/argus-stt-client)
+    endif()
+    if(NOT TARGET argus::phrase)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/argus-phrase
+                         ${CMAKE_BINARY_DIR}/argus-phrase)
+    endif()
 endif()
 
 if(NOT TARGET argus::sdk-voice)
