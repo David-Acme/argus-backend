@@ -2,7 +2,7 @@ name: argus-cutover
 
 # Cutover deployment stack (Fase 6, compose v7): the legacy service and the
 # RustFS storage pair are retired — the gateway is the only public surface
-# and every domain is served by its own argus-cutover service, with the
+# and every domain is served by its own argus-<domain> image, with the
 # argus-voice pure-gRPC cutover (argus.voice.v1 on 7034, /health on 7035)
 # and the gateway identity RPC the spoken-name write goes through.
 
@@ -10,11 +10,11 @@ services:
   gateway:
     build:
       context: ..
-      dockerfile: argus-deploy/Dockerfile
+      dockerfile: services/argus-gateway/Dockerfile
       args:
         ARGUS_UID: "${ARGUS_UID:-1000}"
         ARGUS_GID: "${ARGUS_GID:-1000}"
-    image: argus-cutover:local
+    image: argus-gateway:local
     user: "${ARGUS_UID:-1000}:${ARGUS_GID:-1000}"
     network_mode: host
     entrypoint: ["/opt/argus/argus-gateway"]
@@ -71,7 +71,13 @@ services:
   # silently keeps the device) — and the detector then degrades to CPU
   # in-binary.
   argus-camera:
-    image: argus-cutover:local
+    build:
+      context: ..
+      dockerfile: services/argus-camera/Dockerfile
+      args:
+        ARGUS_UID: "${ARGUS_UID:-1000}"
+        ARGUS_GID: "${ARGUS_GID:-1000}"
+    image: argus-camera:local
     pull_policy: never
     user: "${ARGUS_UID:-1000}:${ARGUS_GID:-1000}"
     networks:
@@ -142,7 +148,13 @@ services:
   # the share/member target validation (Ruling AM), so it mounts the same
   # data dir the gateway writes.
   argus-productivity:
-    image: argus-cutover:local
+    build:
+      context: ..
+      dockerfile: services/argus-productivity/Dockerfile
+      args:
+        ARGUS_UID: "${ARGUS_UID:-1000}"
+        ARGUS_GID: "${ARGUS_GID:-1000}"
+    image: argus-productivity:local
     pull_policy: never
     user: "${ARGUS_UID:-1000}:${ARGUS_GID:-1000}"
     networks:
@@ -187,7 +199,13 @@ services:
   # The gateway ALSO opens notification.db read-write here (its
   # camera-notifier writes), which is why the volume is rw in both.
   argus-notification:
-    image: argus-cutover:local
+    build:
+      context: ..
+      dockerfile: services/argus-notification/Dockerfile
+      args:
+        ARGUS_UID: "${ARGUS_UID:-1000}"
+        ARGUS_GID: "${ARGUS_GID:-1000}"
+    image: argus-notification:local
     pull_policy: never
     user: "${ARGUS_UID:-1000}:${ARGUS_GID:-1000}"
     networks:
@@ -227,7 +245,13 @@ services:
   # AI engine services (Fase 4): internal-wire RPC servers; the config
   # remote_url gates dial the loopback publishes (Rulings CB/CC/CD).
   argus-tts:
-    image: argus-cutover:local
+    build:
+      context: ..
+      dockerfile: services/argus-tts/Dockerfile
+      args:
+        ARGUS_UID: "${ARGUS_UID:-1000}"
+        ARGUS_GID: "${ARGUS_GID:-1000}"
+    image: argus-tts:local
     pull_policy: never
     user: "${ARGUS_UID:-1000}:${ARGUS_GID:-1000}"
     networks:
@@ -263,7 +287,13 @@ services:
     restart: unless-stopped
 
   argus-stt:
-    image: argus-cutover:local
+    build:
+      context: ..
+      dockerfile: services/argus-stt/Dockerfile
+      args:
+        ARGUS_UID: "${ARGUS_UID:-1000}"
+        ARGUS_GID: "${ARGUS_GID:-1000}"
+    image: argus-stt:local
     pull_policy: never
     user: "${ARGUS_UID:-1000}:${ARGUS_GID:-1000}"
     networks:
@@ -301,7 +331,13 @@ services:
   # /dev/dri enables the Vulkan backend; a GPU-less host drops it via
   # `devices: !override []` and the engine degrades to CPU (Ruling CD).
   argus-vlm:
-    image: argus-cutover:local
+    build:
+      context: ..
+      dockerfile: services/argus-vlm/Dockerfile
+      args:
+        ARGUS_UID: "${ARGUS_UID:-1000}"
+        ARGUS_GID: "${ARGUS_GID:-1000}"
+    image: argus-vlm:local
     pull_policy: never
     user: "${ARGUS_UID:-1000}:${ARGUS_GID:-1000}"
     networks:
@@ -339,7 +375,13 @@ services:
     restart: unless-stopped
 
   argus-llm:
-    image: argus-cutover:local
+    build:
+      context: ..
+      dockerfile: services/argus-llm/Dockerfile
+      args:
+        ARGUS_UID: "${ARGUS_UID:-1000}"
+        ARGUS_GID: "${ARGUS_GID:-1000}"
+    image: argus-llm:local
     pull_policy: never
     user: "${ARGUS_UID:-1000}:${ARGUS_GID:-1000}"
     networks:
@@ -414,7 +456,13 @@ services:
   # the spoken-name write is the typed UpdateUser RPC to the gateway, so it
   # mounts no databases — only the in-process silero VAD model.
   argus-voice:
-    image: argus-cutover:local
+    build:
+      context: ..
+      dockerfile: services/argus-voice/Dockerfile
+      args:
+        ARGUS_UID: "${ARGUS_UID:-1000}"
+        ARGUS_GID: "${ARGUS_GID:-1000}"
+    image: argus-voice:local
     pull_policy: never
     user: "${ARGUS_UID:-1000}:${ARGUS_GID:-1000}"
     networks:
@@ -455,14 +503,20 @@ services:
 
   # Tunnel relay (Fase 5, Rulings CF/CI/CL): the device-facing entry point of
   # the byte-transparent transport. Standalone-deployable: lift this block
-  # (plus its config.relay.toml and the argus-cutover image) onto a US server
+  # (plus its config.relay.toml and the argus-tunnel image) onto a US server
   # unchanged — it needs no other service unless [push] intents are wanted.
   # Opt-in via the "tunnel" profile so the default stack stays the v4 shape;
   # an empty [tunnel] secret refuses to boot, which keeps it off until the
   # instance config is filled.
   argus-relay:
     profiles: ["tunnel"]
-    image: argus-cutover:local
+    build:
+      context: ..
+      dockerfile: services/argus-tunnel/Dockerfile
+      args:
+        ARGUS_UID: "${ARGUS_UID:-1000}"
+        ARGUS_GID: "${ARGUS_GID:-1000}"
+    image: argus-tunnel:local
     pull_policy: never
     user: "${ARGUS_UID:-1000}:${ARGUS_GID:-1000}"
     networks:
@@ -501,7 +555,7 @@ services:
   # listener on 127.0.0.1. Same "tunnel" profile as the relay.
   argus-tunnel-client:
     profiles: ["tunnel"]
-    image: argus-cutover:local
+    image: argus-tunnel:local
     pull_policy: never
     user: "${ARGUS_UID:-1000}:${ARGUS_GID:-1000}"
     network_mode: host
@@ -550,7 +604,7 @@ services:
 
   identity-init:
     profiles: ["identity-init"]
-    image: argus-cutover:local
+    image: argus-gateway:local
     pull_policy: never
     user: "${ARGUS_UID:-1000}:${ARGUS_GID:-1000}"
     network_mode: none
@@ -582,7 +636,7 @@ services:
   # the tool refuses to resurrect argus.db rows over it).
   camera-init:
     profiles: ["camera-init"]
-    image: argus-cutover:local
+    image: argus-camera:local
     pull_policy: never
     user: "${ARGUS_UID:-1000}:${ARGUS_GID:-1000}"
     network_mode: none
@@ -616,7 +670,7 @@ services:
   # lesson, same as camera-init).
   productivity-init:
     profiles: ["productivity-init"]
-    image: argus-cutover:local
+    image: argus-productivity:local
     pull_policy: never
     user: "${ARGUS_UID:-1000}:${ARGUS_GID:-1000}"
     network_mode: none
@@ -647,7 +701,7 @@ services:
   # volume. Same before-first-boot rule as productivity-init.
   notification-init:
     profiles: ["notification-init"]
-    image: argus-cutover:local
+    image: argus-notification:local
     pull_policy: never
     user: "${ARGUS_UID:-1000}:${ARGUS_GID:-1000}"
     network_mode: none
@@ -678,7 +732,7 @@ services:
   # video/render group gid via group_add.
   vulkan-probe:
     profiles: ["vulkan-probe"]
-    image: argus-cutover:local
+    image: argus-camera:local
     pull_policy: never
     user: "${ARGUS_UID:-1000}:${ARGUS_GID:-1000}"
     network_mode: none
