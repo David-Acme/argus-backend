@@ -42,9 +42,6 @@ if(NOT TARGET Drogon::Drogon)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/argus-sqlite
                          ${CMAKE_BINARY_DIR}/argus-sqlite)
     endif()
-    if(TARGET SQLite::SQLite3)
-        set(ARGUS_SQLITE3_TARGET SQLite::SQLite3)
-    endif()
 endif()
 
 find_package(doctest REQUIRED)
