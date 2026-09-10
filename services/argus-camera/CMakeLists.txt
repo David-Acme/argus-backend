@@ -5,12 +5,21 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+include(${CMAKE_CURRENT_SOURCE_DIR}/../../cmake/argus-module.cmake)
+
 set(CAMERA_SRC_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
 if(NOT TARGET argus_common)
     # Standalone build: reuse the root project's libraries and third-party
     # sqlite-vec so the camera service links the same objects as the
     # root-tree build.
+    # The substrate still finds the vendored gRPC and would build the cq
+    # bridge, whose entry symbol then interposes the identically-named
+    # implementation inside libgrpc. Empty stand-ins skip it.
+    if(NOT TARGET argus_sdk_grpc_bridge_entry)
+        add_library(argus_sdk_grpc_bridge_entry INTERFACE)
+        add_library(argus_sdk_grpc_bridge_exit INTERFACE)
+    endif()
     find_package(Drogon CONFIG REQUIRED)
     find_package(cnats CONFIG REQUIRED)
     find_package(tomlplusplus REQUIRED)
@@ -18,6 +27,23 @@ if(NOT TARGET argus_common)
     find_package(nlohmann_json REQUIRED)
     find_package(OpenCV CONFIG REQUIRED)
     find_package(OpenSSL REQUIRED)
+    if(NOT TARGET sqlite-vec)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../third_party/sqlite-vec
+                         ${CMAKE_BINARY_DIR}/third_party/sqlite-vec)
+    endif()
+    set(ARGUS_SQLITE_VEC_TARGET sqlite-vec)
+
+    set(NCNN_BUILD_BENCHMARK OFF CACHE BOOL "" FORCE)
+    set(NCNN_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+    set(NCNN_BUILD_TOOLS OFF CACHE BOOL "" FORCE)
+    set(NCNN_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+    set(NCNN_OPENMP ON CACHE BOOL "" FORCE)
+    set(NCNN_AVX2 ON CACHE BOOL "" FORCE)
+    set(NCNN_VULKAN ON CACHE BOOL "" FORCE)
+    set(NCNN_ENABLE_PIC ON CACHE BOOL "" FORCE)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../third_party/ncnn
+                     ${CMAKE_BINARY_DIR}/third_party/ncnn EXCLUDE_FROM_ALL)
+    set(ARGUS_NCNN_TARGET ncnn)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/argus-common
                      ${CMAKE_BINARY_DIR}/argus-common)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/argus-sqlite
@@ -34,36 +60,19 @@ if(NOT TARGET argus_common)
                      ${CMAKE_BINARY_DIR}/argus-auth)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/argus-identity
                      ${CMAKE_BINARY_DIR}/argus-identity)
+    if(NOT TARGET identity-migration)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/argus-identity/tools/migrate-identity
+                         ${CMAKE_BINARY_DIR}/argus-identity/tools/migrate-identity)
+    endif()
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/argus-sync
                      ${CMAKE_BINARY_DIR}/argus-sync)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/argus-audio
                      ${CMAKE_BINARY_DIR}/argus-audio)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/argus-tts-client
                      ${CMAKE_BINARY_DIR}/argus-tts-client)
-
-    enable_language(C)
-    add_library(sqlite-vec STATIC
-                ${CMAKE_CURRENT_SOURCE_DIR}/../../third_party/sqlite-vec/sqlite-vec.c)
-    target_compile_definitions(sqlite-vec PRIVATE SQLITE_CORE SQLITE_VEC_STATIC)
-    target_include_directories(sqlite-vec PUBLIC
-        ${CMAKE_CURRENT_SOURCE_DIR}/../../third_party/sqlite-vec)
-    set(ARGUS_SQLITE_VEC_TARGET sqlite-vec)
-
-    set(NCNN_BUILD_BENCHMARK OFF CACHE BOOL "" FORCE)
-    set(NCNN_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
-    set(NCNN_BUILD_TOOLS OFF CACHE BOOL "" FORCE)
-    set(NCNN_BUILD_TESTS OFF CACHE BOOL "" FORCE)
-    set(NCNN_OPENMP ON CACHE BOOL "" FORCE)
-    set(NCNN_AVX2 ON CACHE BOOL "" FORCE)
-    set(NCNN_ENABLE_PIC ON CACHE BOOL "" FORCE)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../third_party/ncnn
-                     ${CMAKE_BINARY_DIR}/third_party/ncnn EXCLUDE_FROM_ALL)
-    set(ARGUS_NCNN_TARGET ncnn)
 endif()
 
 find_package(doctest REQUIRED)
-
-include(${CMAKE_CURRENT_SOURCE_DIR}/../../cmake/argus-module.cmake)
 
 # The camera-domain sync contract (argus.camera.v1.SyncService); consumers
 # link argus::sdk-camera.
@@ -199,7 +208,17 @@ foreach(TEST_NAME IN LISTS CAMERA_UNIT_TESTS)
     add_test(NAME ${TEST_NAME} COMMAND ${TEST_NAME})
 endforeach()
 
-# camera-migration builds only as a dependency of these two.
+# camera-migration builds only as a dependency of these two. The standalone
+# build adds its folder here; the root tree finds it via the discovery glob.
+if(PROJECT_IS_TOP_LEVEL AND NOT TARGET camera-migration)
+    add_subdirectory(tools/migrate-camera)
+endif()
+
+# The Vulkan probe reuses ncnn's Vulkan init; on-demand like the root tree's
+# discovery glob.
+if(PROJECT_IS_TOP_LEVEL AND TARGET ncnn)
+    add_subdirectory(tools/vulkan-probe)
+endif()
 target_link_libraries(camera-schema-test PRIVATE camera-migration)
 target_link_libraries(camera-migration-test PRIVATE camera-migration)
 

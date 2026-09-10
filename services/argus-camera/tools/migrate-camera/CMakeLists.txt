@@ -9,11 +9,11 @@ add_library(camera-migration STATIC
 target_include_directories(camera-migration
     PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}
-        ${CMAKE_SOURCE_DIR}/packages/argus-common/src
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../../../packages/argus-common/src
 )
 
 target_compile_definitions(camera-migration PUBLIC
-    ARGUS_CAMERA_SCHEMA_PATH="${CMAKE_SOURCE_DIR}/services/argus-camera/database/schema.sql"
+    ARGUS_CAMERA_SCHEMA_PATH="${CMAKE_CURRENT_SOURCE_DIR}/../../database/schema.sql"
 )
 
 target_link_libraries(camera-migration

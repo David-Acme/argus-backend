@@ -170,19 +170,19 @@ grpc::ServerUnaryReactor* CameraSyncRpcService::PullTable(
       try {
         switch (pull.table_case()) {
           case argus::camera::v1::PullTableRequest::kCamera:
-            co_await fill({.body = pull.camera(),
-                           .rows = responseWriter->mutable_camera(),
-                           .repo = cameras_});
+            co_await fill(FillInput{.body = pull.camera(),
+                                    .rows = responseWriter->mutable_camera(),
+                                    .repo = cameras_});
             break;
           case argus::camera::v1::PullTableRequest::kCameraStream:
-            co_await fill({.body = pull.camera_stream(),
-                           .rows = responseWriter->mutable_camera_stream(),
-                           .repo = streams_});
+            co_await fill(FillInput{.body = pull.camera_stream(),
+                                    .rows = responseWriter->mutable_camera_stream(),
+                                    .repo = streams_});
             break;
           case argus::camera::v1::PullTableRequest::kZone:
-            co_await fill({.body = pull.zone(),
-                           .rows = responseWriter->mutable_zone(),
-                           .repo = zones_});
+            co_await fill(FillInput{.body = pull.zone(),
+                                    .rows = responseWriter->mutable_zone(),
+                                    .repo = zones_});
             break;
           default:
             co_return;
