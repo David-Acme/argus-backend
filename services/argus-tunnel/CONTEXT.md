@@ -7,7 +7,7 @@ host (Rulings CF-CM). The home network cannot accept inbound connections,
 so the home runs `argus-tunnel-client` which holds ONE persistent outbound
 connection to `argus-relay` on the US host; the relay multiplexes every
 device connection over that single link back to the gateway. The carried
-payload is the app móvil's TLS: end-to-end between the app and the gateway,
+payload is the mobile app's TLS: end-to-end between the app and the gateway,
 unterminated by the tunnel (Ruling CF — byte transparency, not gRPC).
 
 ## Wire protocol
@@ -188,5 +188,5 @@ sides and never committed.
   is in-memory and dies with the process. The push-intent queues are
   in-memory too (F5-5); NATS is subscribe-only on the relay, publisher-side
   policy lives in argus-notification / the gateway.
-- The app móvil contracts are untouched: the app keeps talking TLS to the
+- The mobile app contracts are untouched: the app keeps talking TLS to the
   gateway host through the tunnel's device port.

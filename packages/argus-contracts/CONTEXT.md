@@ -3,7 +3,7 @@
 ## Origin
 
 The Argus backend (C++20/Drogon monolith) is being migrated to microservices
-(see `docs/migracion-microservicios.md`, phase 0, step 5). Once several
+(see `docs/history/plans/microservices-migration-plan.md`, phase 0, step 5). Once several
 services exist, a contract owned by any single service stops working: the
 mobile app and every service must agree on one wire format. This folder is that
 single source of truth.

@@ -83,7 +83,7 @@ untouched.
 
 ## What it did NOT change
 
-- The app móvil never talks to this service; no gateway routing, no new
+- The mobile app never talks to this service; no gateway routing, no new
   app-facing contract; voice frames stay byte-identical.
 - No tool loop: `LfmAdapter`/`ToolRegistry`/`chatWithTools` stay legacy-side
   (Ruling BV) — this service exposes chat/chat-stream only.

@@ -3,7 +3,7 @@
 ## Origin
 
 The Argus backend (C++20/Drogon monolith) is being migrated to microservices
-(`docs/migracion-microservicios.md`). `src/` disappears entirely over the
+(`docs/history/plans/microservices-migration-plan.md`). `src/` disappears entirely over the
 course of that migration; every folder at the repo root becomes a service or
 a package. argus-common (step f7-1b) is the first package extracted this
 way: the shared foundation library that `src/shared/CMakeLists.txt` used to

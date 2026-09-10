@@ -393,8 +393,8 @@ table. The app keeps working without any update.
   `src/test/unit/cert-san-test.cc`: a live TLS client sees the served
   fingerprint change and the hostname SAN appear after the rotation call
   returns.
-- **App coordination (blueprint "la app configura servidor manual además
-  de mDNS")**: the app configures `remote.hostname` as its manual server
+- **App coordination (blueprint "the app configures a manual server in
+  addition to mDNS")**: the app configures `remote.hostname` as its manual server
   for remote access (in addition to mDNS discovery on the LAN) and
   validates it against the instance CA, so the value must be in the leaf's
   SANs or the TLS handshake fails. The templates ship `hostname = ""`;

@@ -647,7 +647,7 @@ A Drogon custom error handler wraps built-in 404/405 in the same envelope.
   Unknown, missing or oversized (> 128 chars) credentials degrade to an empty
   device hash, which fails jwt-filter's session device match with the standard
   401 `Device mismatch` — never a distinct error. A mode flip invalidates
-  every existing session once (controlled re-login). App móvil coordination:
+  every existing session once (controlled re-login). Mobile app coordination:
   the client must start sending the header when the server flips the mode
   (`packages/argus-contracts/identity/README.md`); until it does, its sessions mismatch
   once and the re-login populates `device_credential`. Wire contract:
@@ -710,10 +710,10 @@ Never static methods for service classes. Never local/temporary repository const
   `reminder`, `reminder_detail`, `project`, `project_member`,
   `project_task`, `calendar_event`, `calendar_event_share`
 - Cameras: `camera`, `camera_stream`, `zone`
-- People/access: `user_invitation` (solo hash SHA-256 del token, nunca el
+- People/access: `user_invitation` (only the token's SHA-256 hash, never the
   token), `invitation_redemption` (UNIQUE user_id), `stored_file`,
   `user_portrait`, `portrait_preview_capability` (one-use),
-  `device_login_challenge` (login cruzado por QR)
+  `device_login_challenge` (cross-device QR login)
 - Auth/face: `refresh_token` (is_valid, is_used, device_hash, expires_at),
   `device_credential` (credential identity mode: `secret_hash` UNIQUE — only
   the SHA-256 of the per-device secret, never the plaintext),
@@ -722,12 +722,12 @@ Never static methods for service classes. Never local/temporary repository const
   `JsonDiff`), `user_audit_log` (por usuario, sincronizable), `notification`,
   `notification_token` (UNIQUE user_id+device_hash), `user_action_log`
   (write-only, NO sync)
-- Memoria: `memory_entity`/`memory_alias`/`memory_fact`/`memory_edge`/
-  `memory_episode`/`memory_source`/`memory_procedure` — grafo semántico
-  (con sus FTS5: `memory_fact_fts`, `memory_episode_fts`, `memory_alias_fts`)
-- Ops: `schema_version` (el historial local de voz `voice_session`/
-  `voice_message`, la cola `job` y las tablas huérfanas `context_note`/
-  `portrait_access_request`/`portrait_access_grant` se borraron en F6-1)
+- Memory: `memory_entity`/`memory_alias`/`memory_fact`/`memory_edge`/
+  `memory_episode`/`memory_source`/`memory_procedure` — semantic graph
+  (with its FTS5 tables: `memory_fact_fts`, `memory_episode_fts`, `memory_alias_fts`)
+- Ops: `schema_version` (the local voice history `voice_session`/
+  `voice_message`, the `job` queue and the orphan tables `context_note`/
+  `portrait_access_request`/`portrait_access_grant` were removed in F6-1)
 
 ## Sync engine (WebSocket, one-way server→client)
 
@@ -742,13 +742,13 @@ Never static methods for service classes. Never local/temporary repository const
   `sub`). Live events: `Add=4`, `Delete=5`, `Log=6`.
 - **WS responses**: `SocketEmitDto` `{operation, option(TableName), info}`;
   errors `{type:"<type>_error", status, error}`.
-- **Syncable entities**: 14 repositorios implementan `Syncable` — `user`,
+- **Syncable entities**: 14 repositories implement `Syncable` — `user`,
   `user_invitation` (metadata solo Owner, sin token), `camera`,
   `camera_stream`, `zone`, `reminder`, `reminder_detail`, `calendar_event`,
   `calendar_event_share`, `project`, `project_member`, `project_task`,
-  `event`, `person` — más `notification` (dedicated per user). Fuera del
-  sync: las tablas de archivos privados/portraits y
-  `device_login_challenge`. El frontend replica esta superficie en
+  `event`, `person` — plus `notification` (dedicated per user). Outside
+  sync: the private file/portrait tables and
+  `device_login_challenge`. The frontend replicates this surface in
   `SYNC_TABLE_KEYS`.
 - **Bootstrap versus updates**: the first `Synchronize` supplies a complete
   authorized projection. Later normal sync pages use `created_at`, so they only
@@ -1802,9 +1802,9 @@ long as nothing it mislabels reaches formation.
 Cascade for implicit capture:
 
     RuleParser
-      trigger explícito           -> captureExplicit (store or defer)
-      pregunta / recall / retracto -> reject, nothing queued
-      posible declaración          -> fastText (winning class + margin)
+      explicit trigger            -> captureExplicit (store or defer)
+      question / recall / retraction -> reject, nothing queued
+      possible statement          -> fastText (winning class + margin)
                                         -> captureImplicit -> idle queue
 
 ## Measured (2026-08-20, same machine, no other inference running)
@@ -2739,7 +2739,7 @@ camera-control routes against camera.db.
 ## Fase 6 step 2 — camera-control + camera media cutover completed (F6-2, 2026-09-07)
 
 The camera domain is now wholly served by argus-camera; the legacy serves no
-camera route and touches no camera.db. The app móvil needs zero changes:
+camera route and touches no camera.db. The mobile app needs zero changes:
 paths, envelope, 404-vs-502 `CAMERA_UNREACHABLE`, filter chain order and the
 `camera:*` frame bytes are all preserved by the move.
 

@@ -39,7 +39,7 @@ and instead call it over the internal wire.
 
 ## What it did NOT change
 
-- The app móvil never talks to this service; `/camera/{id}/talk` keeps
+- The mobile app never talks to this service; `/camera/{id}/talk` keeps
   legacy ownership (Ruling BC) and the gateway routing is untouched.
 - Model artifacts stay in the shared `models/tts` paths — never copied.
 - The legacy `TtsService` stays linked in the legacy binary: only the boot

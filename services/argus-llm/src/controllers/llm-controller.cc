@@ -29,7 +29,7 @@ drogon::HttpResponsePtr badRequest()
   return AppConfig::get400Response("Body must be a JSON object");
 }
 
-// Bench-exact framing from f8-b1; the measured variants live in docs/CONTEXT.md.
+// Bench-exact framing from f8-b1; the measured variants live in docs/history/project-log.md.
 constexpr const char* kToolPolicy =
     "Eres Argus. Si el usuario pide guardar o recordar algo, usa "
     "memory.remember. Si no, responde brevemente.";

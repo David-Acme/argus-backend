@@ -1,337 +1,340 @@
-# Argus — Plan detallado para reducir la dependencia del tool-calling
+# Argus — Detailed plan to reduce tool-calling dependency
 
-**Destinatario:** Claude, agente de implementación  
-**Proyecto:** Argus backend  
-**Ruta:** `/home/acme/Desktop/argus/backend`  
-**Fecha:** 2026-08-20  
-**Estado:** plan de trabajo; validar el árbol actual antes de continuar
+**Recipient:** Claude, implementation agent  
+**Project:** Argus backend  
+**Path:** `/home/acme/Desktop/argus/backend`  
+**Date:** 2026-08-20  
+**Status:** work plan; validate the current tree before continuing
 
-## 1. Objetivo
+## 1. Objective
 
-Mejorar Argus para que el modelo conversacional no necesite emitir tool calls
-para responder, guardar memoria, recuperar memoria o activar acciones simples.
-La infraestructura de tools no debe eliminarse completamente: debe quedar
-disponible para pruebas, administración y acciones explícitas que realmente
-necesiten un contrato estructurado.
+Improve Argus so that the conversational model does not need to emit tool
+calls to answer, save memory, retrieve memory or trigger simple actions.
+The tools infrastructure must not be removed entirely: it must remain
+available for tests, administration and explicit actions that really need
+a structured contract.
 
-El diseño final debe funcionar con modelos pequeños, sin capacidad nativa de
-tool-calling y en computadoras con pocos recursos. La evaluación debe medir no
-solo flexibilidad, sino también precisión, velocidad, RAM, facilidad de
-depuración y comportamiento cuando el modelo cambia.
+The final design must work with small models, without native tool-calling
+capability and on computers with few resources. The evaluation must measure
+not only flexibility, but also precision, speed, RAM, ease of debugging
+and behavior when the model changes.
 
-La propuesta inicial es una hipótesis, no una decisión irreversible:
+The initial proposal is a hypothesis, not an irreversible decision:
 
-    reglas deterministas
-      + fastText como hint barato
-      + extracción en segundo plano
-      + recall determinista
-      + una generación normal del LLM
-      + tools solamente en rutas explícitas
+    deterministic rules
+      + fastText as a cheap hint
+      + background extraction
+      + deterministic recall
+      + one normal LLM generation
+      + tools only on explicit routes
 
-Claude debe comparar esta propuesta con reglas solamente, un router LLM
-separado, un extractor estructurado dedicado y tool-calling del LLM principal.
+Claude must compare this proposal with rules only, a separate LLM router,
+a dedicated structured extractor and tool-calling from the main LLM.
 
-## 2. Instrucciones obligatorias para Claude
+## 2. Mandatory instructions for Claude
 
-### 2.1 Leer instrucciones antes de generar código
+### 2.1 Read instructions before generating code
 
-Antes de crear o editar cualquier archivo, Claude debe leer completamente:
+Before creating or editing any file, Claude must read completely:
 
 1. `/home/acme/Desktop/argus/backend/AGENTS.md`.
 2. `CONTEXT.md`.
-3. Este archivo, `CLAUDE_PLAN.md`.
-4. Los `AGENTS.md` y `CONTEXT.md` del frontend si un cambio afecta contratos
-   HTTP, WebSocket, DTO, permisos o sincronización.
+3. This file, `CLAUDE_PLAN.md`.
+4. The frontend `AGENTS.md` and `CONTEXT.md` if a change affects HTTP,
+   WebSocket, DTO, permissions or synchronization contracts.
 
-No basta con leer el bloque de instrucciones recibido en el prompt: debe
-confirmar el contenido del archivo local antes de modificar código.
+It is not enough to read the instruction block received in the prompt: it
+must confirm the contents of the local file before modifying code.
 
-### 2.2 No llenar el código de comentarios
+### 2.2 Do not fill the code with comments
 
-No añadir comentarios largos, narrativos o que repitan lo que el código ya
-expresa. Preferir nombres claros, funciones pequeñas y estructuras explícitas.
+Do not add long, narrative comments that repeat what the code already
+expresses. Prefer clear names, small functions and explicit structures.
 
-Un comentario nuevo solo está justificado si documenta una invariancia no
-obvia, una limitación de una biblioteca externa, una condición de concurrencia
-o una decisión de seguridad. Debe ser corto, específico y cercano a la línea
-relevante.
+A new comment is only justified if it documents a non-obvious invariant, a
+limitation of an external library, a concurrency condition or a security
+decision. It must be short, specific and close to the relevant line.
 
-No convertir cada cambio en un bloque de explicación dentro del `.cc` o `.hxx`.
-Las explicaciones extensas van en `CONTEXT.md` o en este plan.
+Do not turn every change into a block of explanation inside the `.cc` or
+`.hxx`. Extensive explanations go in `CONTEXT.md` or in this plan.
 
-### 2.3 Proteger cambios existentes
+### 2.3 Protect existing changes
 
-El árbol puede contener modificaciones legítimas del usuario. Antes de tocarlo:
+The tree may contain legitimate user modifications. Before touching it:
 
     git status --short
     git diff --stat
 
-No ejecutar:
+Do not run:
 
 - `git reset --hard`;
 - `git checkout --`;
-- borrados recursivos amplios;
-- limpieza de modelos, bases de datos o logs sin autorización;
-- reformateo masivo de archivos no relacionados.
+- broad recursive deletions;
+- cleaning of models, databases or logs without authorization;
+- massive reformatting of unrelated files.
 
-Usar `apply_patch`, revisar el diff después de cada grupo de cambios y separar
-los cambios de este plan de los cambios preexistentes.
+Use `apply_patch`, review the diff after each group of changes and separate
+the changes of this plan from pre-existing changes.
 
-### 2.4 Cuidar los recursos de la computadora
+### 2.4 Take care of the computer's resources
 
-Antes de una compilación completa, una prueba de voz o una inferencia:
+Before a full compilation, a voice test or an inference:
 
     pgrep -af 'ollama|argus-llm-bench|voice-test|llama|cmake --build' || true
 
-Si hay otro trabajo pesado activo, no iniciar otra carga sin avisar. Las
-búsquedas, inspecciones y pruebas pequeñas sí pueden ejecutarse.
+If there is other heavy work active, do not start another load without
+warning. Searches, inspections and small tests can still be run.
 
-## 3. Estado conocido del proyecto
+## 3. Known project state
 
-### 3.1 Modelo de referencia
+### 3.1 Reference model
 
-El modelo actual de referencia es LFM2.5 1.2B Instruct. En la última batería
-Ollama obtuvo aproximadamente:
+The current reference model is LFM2.5 1.2B Instruct. In the last Ollama
+battery it obtained approximately:
 
-| Caso | tok/s |
-|---|---:|
-| corto | 48.17 |
-| medio | 46.22 |
-| largo | 43.40 |
-| muy largo | 40.09 |
-| extremo | 35.08 |
-| batería de memoria | 48.45 |
+| Case | tok/s |
+|---|---|
+| short | 48.17 |
+| medium | 46.22 |
+| long | 43.40 |
+| very long | 40.09 |
+| extreme | 35.08 |
+| memory battery | 48.45 |
 
-La batería de memoria obtuvo recall 8/8, atribución 8/8, no invención 2/2 y
-0/10 respuestas con pensamiento visible.
+The memory battery obtained recall 8/8, attribution 8/8, no invention 2/2
+and 0/10 responses with visible thinking.
 
-Resultados recientes de alternativas:
+Recent results of alternatives:
 
-| Modelo | Velocidad de memoria | Recall | Atribución | No invención |
+| Model | Memory speed | Recall | Attribution | No invention |
 |---|---:|---:|---:|---:|
 | LFM2.5 1.2B | 48.45 tok/s | 8/8 | 8/8 | 2/2 |
 | Granite 3.3 2B | 21.61 tok/s | 8/8 | 8/8 | 2/2 |
-| Granite 4.0 H-1B | 31.32 tok/s | 6/8 | 8/8 | 2/2 |
+| Granite 4.0 H-1B | 31.32 tok/s | 8/8 | 8/8 | 2/2 |
 | Granite 4.0 1B | 33.83 tok/s | 7/8 | 8/8 | 2/2 |
 | Granite 4.0 Micro 3B | 17.79 tok/s | 6/8 | 8/8 | 2/2 |
 
-Granite H-Micro 3B fue descargado, pero no fue evaluado. No reabrir la búsqueda
-de modelos en este plan salvo que el usuario lo solicite explícitamente.
+Granite H-Micro 3B was downloaded, but it was not evaluated. Do not reopen
+the model search in this plan unless the user explicitly requests it.
 
-### 3.2 Rutas de ejecución
+### 3.2 Execution paths
 
-`labs/voice-test/voice-test.cc` es el laboratorio principal de voz, memoria,
-cámara, STT, LLM y TTS. Su flujo actual es:
+`labs/voice-test/voice-test.cc` is the main laboratory for voice, memory,
+camera, STT, LLM and TTS. Its current flow is:
 
-    entrada
-      -> IntentService opcional
-      -> cámara opcional
+    input
+      -> optional IntentService
+      -> optional camera
       -> MemoryService::captureExplicit
-      -> MemoryService::captureImplicit si fastText lo autoriza
+      -> MemoryService::captureImplicit if fastText authorizes it
       -> GraphRecall
       -> LlmService::chatStream
-      -> TTS en los modos de voz
-      -> historial y compaction
+      -> TTS in the voice modes
+      -> history and compaction
 
-`src/feature/socket/sync/services/voice-session-service.cc` es la ruta real del
-WebSocket de voz. Actualmente usa VAD, STT, `voiceLlm()` y TTS, pero no utiliza
-`MemoryService` ni `ConversationService`. No asumir que un cambio del lab ya
-modificó el backend productivo.
+`src/feature/socket/sync/services/voice-session-service.cc` is the real voice
+WebSocket path. It currently uses VAD, STT, `voiceLlm()` and TTS, but does not
+use `MemoryService` or `ConversationService`. Do not assume that a lab change
+has already modified the production backend.
 
-`src/shared/services/conversation/` contiene la abstracción general de
-conversación. Originalmente enumeraba `ToolRegistry`, construía descriptores y
-llamaba `LfmAdapter::chatWithTools()`. El camino normal debe pasar a una sola
-generación de `LlmService::chat()` o `chatStream()`.
+`src/shared/services/conversation/` contains the general conversation
+abstraction. It originally enumerated `ToolRegistry`, built descriptors and
+called `LfmAdapter::chatWithTools()`. The normal path must move to a single
+generation of `LlmService::chat()` or `chatStream()`.
 
-### 3.3 Memoria
+### 3.3 Memory
 
-`MemoryService` coordina `SqliteGraph`, `MemoryFormation`, `RuleParser`,
-`TieredExtractor`, `EmbeddingService`, `GraphRecall`, el worker y la
-compaction. Las fronteras relevantes son:
+`MemoryService` coordinates `SqliteGraph`, `MemoryFormation`, `RuleParser`,
+`TieredExtractor`, `EmbeddingService`, `GraphRecall`, the worker and
+compaction. The relevant boundaries are:
 
-- `captureExplicit`: trigger o statement reconocido por reglas;
-- `captureImplicit`: candidato aprobado por un caller ligero;
-- `captureToolCall`: compatibilidad con tools explícitos;
-- `enqueueSummary` y `enqueueCompaction`: episodios en segundo plano.
+- `captureExplicit`: trigger or statement recognized by rules;
+- `captureImplicit`: candidate approved by a lightweight caller;
+- `captureToolCall`: compatibility with explicit tools;
+- `enqueueSummary` and `enqueueCompaction`: background episodes.
 
-`RuleParser` ya reconoce triggers, statements, interrogativos, recall markers,
-fillers y confirmaciones en el vocabulario estático español/inglés.
+`RuleParser` already recognizes triggers, statements, interrogatives, recall
+markers, fillers and confirmations in the static Spanish/English vocabulary.
 
-### 3.4 Intent y datos
+### 3.4 Intent and data
 
-`IntentService` usa fastText para `camera` y `memory_save`. El corpus tiene
-aproximadamente 1406 ejemplos de cámara, 351 de memoria y 5161 de `none`.
+`IntentService` uses fastText for `camera` and `memory_save`. The corpus has
+approximately 1406 camera examples, 351 memory examples and 5161 `none`
+examples.
 
-`labs/intent-data/usage.tsv` es telemetría histórica. No es ground truth. Ya
-contiene falsos positivos como preguntas, recalls y cancelaciones etiquetados
-como `memory_save`. Nunca volver a mezclarlo automáticamente con `train.tsv`.
+`labs/intent-data/usage.tsv` is historical telemetry. It is not ground truth.
+It already contains false positives such as questions, recalls and
+cancellations labeled as `memory_save`. Never merge it automatically with
+`train.tsv` again.
 
-### 3.5 Tools existentes
+### 3.5 Existing tools
 
-`ToolRegistry`, `ToolExecutor`, `LfmAdapter`, `ToolParser` y
-`MemoryService::registerTools()` deben conservarse para `labs/tool-bench`,
-`labs/memory-probe`, automatizaciones explícitas y pruebas de compatibilidad.
-Que el diálogo normal no use tools no justifica borrar esos componentes.
+`ToolRegistry`, `ToolExecutor`, `LfmAdapter`, `ToolParser` and
+`MemoryService::registerTools()` must be preserved for `labs/tool-bench`,
+`labs/memory-probe`, explicit automations and compatibility tests. The fact
+that normal dialogue does not use tools does not justify deleting those
+components.
 
-## 4. Causa de los falsos guardados
+## 4. Cause of false saves
 
-El problema de una entrada como “Argus, cuándo es 2 x 2” tiene varias capas:
+The problem of an input such as “Argus, cuándo es 2 x 2” has several layers:
 
-1. fastText puede disparar `memory_save` por una clasificación imperfecta.
-2. `captureImplicit()` históricamente encolaba cualquier texto recibido.
-3. `voice-test` imprimía “queued by intent” aunque la formación posterior
-   pudiera rechazar el texto.
-4. `usage.tsv` registraba predicciones y luego podía usarse para entrenar como
-   si fueran etiquetas manuales.
-5. `enqueueSummary()` podía recibir preguntas y confiar solamente en que otro
-   LLM las omitiera.
+1. fastText can trigger `memory_save` due to an imperfect classification.
+2. `captureImplicit()` historically queued any text received.
+3. `voice-test` printed “queued by intent” even though later formation could
+   reject the text.
+4. `usage.tsv` recorded predictions and could later be used for training as
+   if they were manual labels.
+5. `enqueueSummary()` could receive questions and rely only on another LLM
+   omitting them.
 
-La corrección debe separar:
+The fix must separate:
 
-    predicción -> política -> persistencia -> telemetría -> entrenamiento
+    prediction -> policy -> persistence -> telemetry -> training
 
-Una predicción no es una política y una política aceptada no es automáticamente
-un ejemplo de entrenamiento perfecto.
+A prediction is not a policy and an accepted policy is not automatically a
+perfect training example.
 
-## 5. Comparación de alternativas
+## 5. Comparison of alternatives
 
-### 5.1 Solo reglas
+### 5.1 Rules only
 
-Flujo:
+Flow:
 
-    RuleParser -> guardar o rechazar -> LLM normal
+    RuleParser -> save or reject -> normal LLM
 
-Es la opción más rápida y explicable. Tiene alta precisión en “recuerda que”,
-“anota que” y frases cubiertas por el vocabulario, pero menor recall para
-declaraciones naturales no previstas.
+It is the fastest and most explainable option. It has high precision on
+“recuerda que”, “anota que” and phrases covered by the vocabulary, but lower
+recall for unforeseen natural statements.
 
-Debe existir siempre como fallback cuando fastText o un extractor no estén
-disponibles.
+It must always exist as a fallback when fastText or an extractor are not
+available.
 
-### 5.2 Reglas + fastText + extractor idle
+### 5.2 Rules + fastText + idle extractor
 
-Flujo:
+Flow:
 
-    RuleParser pregunta
-      -> fastText como hint
-      -> MemoryService decide
-      -> extractor lexicon/model en worker
-      -> LLM conversacional sin tools
+    RuleParser asks
+      -> fastText as a hint
+      -> MemoryService decides
+      -> lexicon/model extractor in worker
+      -> conversational LLM without tools
 
-Es la opción recomendada provisionalmente porque conserva baja latencia y
-permite declaraciones implícitas. Requiere un corpus limpio, una barrera
-determinista contra preguntas y una cola que no bloquee la voz.
+It is the provisionally recommended option because it preserves low latency
+and allows implicit statements. It requires a clean corpus, a deterministic
+barrier against questions and a queue that does not block voice.
 
-### 5.3 Router LLM pequeño
+### 5.3 Small LLM router
 
-Un modelo separado puede clasificar `conversation`, `memory_save`, `camera` o
-`recall`. Puede mejorar casos ambiguos, pero introduce otra inferencia por
-turno, otra dependencia de RAM/CPU y otra fuente de errores. Solo probarlo si
-fastText + reglas no alcanza una precisión aceptable con datos reales.
+A separate model can classify `conversation`, `memory_save`, `camera` or
+`recall`. It can improve ambiguous cases, but it introduces another inference
+per turn, another RAM/CPU dependency and another source of errors. Only test
+it if fastText + rules do not reach acceptable precision with real data.
 
-### 5.4 Tool-calling del LLM principal
+### 5.4 Tool-calling from the main LLM
 
-Es flexible para acciones complejas, pero añade descriptores, tokens, parsing,
-variabilidad y posiblemente varias generaciones. No debe ser requisito del
-diálogo normal. Mantenerlo aislado para rutas que realmente lo necesitan.
+It is flexible for complex actions, but it adds descriptors, tokens, parsing,
+variability and possibly several generations. It must not be a requirement of
+normal dialogue. Keep it isolated for routes that really need it.
 
-### 5.5 Extractor dedicado fuera de turno
+### 5.5 Dedicated extractor off-turn
 
-Permite separar formación de memoria y conversación. Puede ser muy preciso,
-pero aumenta consumo y hace que la memoria aparezca con retraso. Debe ser
-opcional, cancelable y de prioridad inferior a la respuesta de voz.
+It allows separating memory formation and conversation. It can be very
+precise, but it increases consumption and makes memory appear with delay. It
+must be optional, cancelable and lower priority than the voice response.
 
-### 5.6 Decisión provisional
+### 5.6 Provisional decision
 
-Implementar primero la alternativa 5.2, medirla y compararla contra 5.1. No
-añadir un router LLM hasta demostrar que fastText y las reglas no son
-suficientes.
+Implement alternative 5.2 first, measure it and compare it against 5.1. Do
+not add an LLM router until it is demonstrated that fastText and the rules
+are not sufficient.
 
-## 6. Arquitectura objetivo
+## 6. Target architecture
 
-### 6.1 Flujo normal
+### 6.1 Normal flow
 
-    STT o texto
-      -> normalización e idioma
+    STT or text
+      -> normalization and language
       -> captureExplicit
-      -> isQuestion para la ruta implícita
-      -> fastText como hint
-      -> cola de formación si es candidato válido
-      -> recall determinista
-      -> una generación normal del LLM
-      -> TTS o respuesta HTTP/WS
+      -> isQuestion for the implicit route
+      -> fastText as a hint
+      -> formation queue if it is a valid candidate
+      -> deterministic recall
+      -> one normal LLM generation
+      -> TTS or HTTP/WS response
 
-### 6.2 Invariantes
+### 6.2 Invariants
 
-1. Una pregunta no se guarda como memoria implícita.
-2. Un intent no escribe directamente en SQLite.
-3. `Rejected` significa que no se encoló ni persistió nada.
-4. `Deferred` significa que existe trabajo válido en la cola.
-5. `Stored` significa que existe un fact persistido.
-6. El LLM conversacional no recibe descriptores de tools en la ruta normal.
-7. El LLM no debe producir JSON, tags ni bloques para guardar memoria.
-8. Solo se confirma una memoria si el backend confirma la captura.
-9. La extracción en background no debe bloquear la primera respuesta de voz.
-10. Las acciones sensibles validan permisos fuera del LLM.
-11. `ToolRegistry` mantiene sus validaciones de `role_access`.
-12. Los probes pueden seguir ejercitando tool-calling aislado.
+1. A question is not saved as implicit memory.
+2. An intent does not write directly to SQLite.
+3. `Rejected` means that nothing was queued or persisted.
+4. `Deferred` means that valid work exists in the queue.
+5. `Stored` means that a fact is persisted.
+6. The conversational LLM does not receive tool descriptors on the normal
+   route.
+7. The LLM must not produce JSON, tags or blocks to save memory.
+8. A memory is only confirmed if the backend confirms the capture.
+9. Background extraction must not block the first voice response.
+10. Sensitive actions validate permissions outside the LLM.
+11. `ToolRegistry` keeps its `role_access` validations.
+12. Probes can still exercise isolated tool-calling.
 
-## 7. Cambios parciales presentes en el árbol
+## 7. Partial changes present in the tree
 
-Hay un parche parcial que Claude debe revisar y compilar antes de ampliarlo.
+There is a partial patch that Claude must review and compile before extending
+it.
 
 ### 7.1 `MemoryService::captureImplicit`
 
-Se añadió una comprobación de usuario, texto vacío y `RuleParser::isQuestion()`
-antes de encolar. Verificar que:
+A user check, empty text check and `RuleParser::isQuestion()` were added before
+queuing. Verify that it:
 
-- rechace “¿cuánto es 2 x 2?”;
-- rechace “Argus, cuando es 2 x 2” sin signo de pregunta;
-- rechace “¿cuándo viene mi hermana?”;
-- permita que `captureExplicit()` maneje triggers explícitos;
-- no rompa statements implícitos legítimos;
-- no reporte `Deferred` si la entrada fue rechazada.
+- rejects “¿cuánto es 2 x 2?”;
+- rejects “Argus, cuando es 2 x 2” without a question mark;
+- rejects “¿cuándo viene mi hermana?”;
+- allows `captureExplicit()` to handle explicit triggers;
+- does not break legitimate implicit statements;
+- does not report `Deferred` if the input was rejected.
 
 ### 7.2 `voice-test`
 
-Se retiró el procesamiento activo de `ToolParser` en los loops de texto,
-cámara y voz. Los tokens se manejan como respuesta normal. `ToolParser` debe
-seguir compilando para los probes que lo necesiten.
+Active `ToolParser` processing was removed from the text, camera and voice
+loops. Tokens are handled as a normal response. `ToolParser` must still
+compile for the probes that need it.
 
-El log de `memory_save` debe ocurrir después de que `captureImplicit()` acepte,
-no inmediatamente después de la predicción de fastText.
+The `memory_save` log must occur after `captureImplicit()` accepts, not
+immediately after the fastText prediction.
 
 ### 7.3 `ConversationService`
 
-Se cambió el camino normal a captura explícita, recall, perfil y una llamada
-normal a `LlmService`. Se introdujo `ConversationTurnInput` para no mantener
-parámetros de tool-calling que ya no son necesarios en esa ruta.
+The normal path was changed to explicit capture, recall, profile and a normal
+call to `LlmService`. `ConversationTurnInput` was introduced to avoid keeping
+tool-calling parameters that are no longer necessary on that route.
 
-Claude debe buscar todos los call sites antes de cambiar nuevamente la firma.
+Claude must search for all call sites before changing the signature again.
 
-## 8. Fases de implementación
+## 8. Implementation phases
 
-### Fase 0 — Baseline
+### Phase 0 — Baseline
 
-1. Leer `AGENTS.md`, `CONTEXT.md` y este plan.
-2. Revisar estado y diff.
-3. Buscar call sites de `processTurn()` y `chatWithTools()`.
-4. Confirmar que no haya inferencias activas.
-5. Compilar o hacer una comprobación focalizada para detectar errores del
-   parche parcial.
+1. Read `AGENTS.md`, `CONTEXT.md` and this plan.
+2. Review status and diff.
+3. Search for call sites of `processTurn()` and `chatWithTools()`.
+4. Confirm that there are no active inferences.
+5. Compile or do a focused check to detect errors from the partial patch.
 
-Salida: mapa de rutas y lista de errores sin mezclar cambios no relacionados.
+Output: route map and list of errors without mixing unrelated changes.
 
-### Fase 1 — Contrato de captura
+### Phase 1 — Capture contract
 
-1. Mantener `captureExplicit()` como primera ruta.
-2. Rechazar en `captureImplicit()` usuario inválido, texto vacío, preguntas,
-   recall markers, cancelaciones y olvidos.
-3. Mantener la formación como segunda validación, nunca como único filtro.
-4. Ajustar mensajes de `voice-test` para que reflejen el `CaptureOutcome` real.
-5. Añadir pruebas para español e inglés.
+1. Keep `captureExplicit()` as the first route.
+2. Reject in `captureImplicit()` invalid user, empty text, questions, recall
+   markers, cancellations and forgettings.
+3. Keep formation as a second validation, never as the only filter.
+4. Adjust `voice-test` messages so they reflect the real `CaptureOutcome`.
+5. Add tests for Spanish and English.
 
-Casos negativos mínimos:
+Minimum negative cases:
 
     ¿cuánto es 2 x 2?
     Argus, cuando es 2 x 2
@@ -340,166 +343,166 @@ Casos negativos mínimos:
     qué no le gusta a Rodrigo
     no, olvídalo
 
-Casos positivos mínimos:
+Minimum positive cases:
 
     recuerda que mi hermana viene los domingos
     anota que llegó el paquete
     ten en cuenta que soy alérgico a los frutos secos
     mi perro se llama Toby
 
-### Fase 2 — Compaction segura
+### Phase 2 — Safe compaction
 
-1. Filtrar preguntas de las líneas `user:` antes de `enqueueSummary()` y
+1. Filter questions from `user:` lines before `enqueueSummary()` and
    `enqueueCompaction()`.
-2. Eliminar la respuesta `assistant:` inmediatamente asociada cuando el turno
-   completo sea una consulta transitoria.
-3. No encolar si no queda contenido útil.
-4. Mantener el prompt de compaction como defensa secundaria.
-5. Probar que una sesión solo de saludos, preguntas y cálculos no crea un
-   episodio.
-6. Probar que una declaración durable sí aparece en el resumen cuando procede.
+2. Remove the immediately associated `assistant:` response when the whole
+   turn is a transient query.
+3. Do not enqueue if no useful content remains.
+4. Keep the compaction prompt as a secondary defense.
+5. Test that a session with only greetings, questions and calculations does
+   not create an episode.
+6. Test that a durable statement does appear in the summary when appropriate.
 
-### Fase 3 — Datos de fastText
+### Phase 3 — fastText data
 
-1. Mantener `usage.tsv` como telemetría.
-2. No fusionarlo automáticamente con `train.tsv`.
-3. Crear un flujo de datos curado, por ejemplo `usage-curated.tsv`, o un flag
-   que exija revisión explícita.
-4. Si se conservan muestras históricas, descartar preguntas, recalls,
-   cancelaciones y frases ambiguas.
-5. Mostrar conteos de líneas aceptadas y rechazadas.
-6. Añadir casos negativos de cálculo, hora, fecha, clima, recall y small talk.
-7. Medir precision, recall y falsos positivos sobre preguntas.
-8. No bajar el threshold solo para hacer pasar un corpus pequeño.
+1. Keep `usage.tsv` as telemetry.
+2. Do not merge it automatically with `train.tsv`.
+3. Create a curated data flow, for example `usage-curated.tsv`, or a flag
+   that requires explicit review.
+4. If historical samples are kept, discard questions, recalls, cancellations
+   and ambiguous phrases.
+5. Show counts of accepted and rejected lines.
+6. Add negative cases for calculation, time, date, weather, recall and small
+   talk.
+7. Measure precision, recall and false positives over questions.
+8. Do not lower the threshold just to make a small corpus pass.
 
-La precisión debe pesar más que el recall para `memory_save`: un falso positivo
-contamina hechos futuros y un falso negativo puede corregirse con un trigger
-explícito.
+Precision must weigh more than recall for `memory_save`: a false positive
+contaminates future facts and a false negative can be corrected with an
+explicit trigger.
 
-### Fase 4 — Prompt sin tools
+### Phase 4 — Prompt without tools
 
-Añadir al prompt, en español e inglés, instrucciones breves equivalentes a:
+Add to the prompt, in Spanish and English, brief instructions equivalent to:
 
-    Las preguntas, cálculos, fechas, horas, definiciones, chistes y consultas
-    son conversación efímera; respóndelos y no los trates como memoria.
+    Questions, calculations, dates, times, definitions, jokes and queries
+    are ephemeral conversation; answer them and do not treat them as memory.
 
-    La memoria se administra fuera del modelo. No emitas tool calls, JSON,
-    etiquetas especiales ni bloques de guardado.
+    Memory is managed outside the model. Do not emit tool calls, JSON,
+    special tags or save blocks.
 
-    Solo confirma que algo fue guardado si el sistema añadió una nota de captura
-    aceptada.
+    Only confirm that something was saved if the system added an accepted
+    capture note.
 
-No llenar el prompt con instrucciones repetidas. Medir el tamaño del prefijo y
-conservar la reutilización de KV cache.
+Do not fill the prompt with repeated instructions. Measure the prefix size
+and preserve KV cache reuse.
 
-### Fase 5 — ConversationService
+### Phase 5 — ConversationService
 
-El orden debe ser:
+The order must be:
 
-    validar texto
+    validate text
     captureExplicit
     recallBlock
     profileFor
-    construir mensaje del usuario
-    LlmService::chat o chatStream
-    actualizar historial
+    build the user message
+    LlmService::chat or chatStream
+    update history
     trimHistory
 
-No debe enumerar tools, construir `ToolDescriptor`, llamar `chatWithTools`,
-ejecutar `ToolExecutor` por decisión del modelo ni usar `maxToolHops`.
+It must not enumerate tools, build `ToolDescriptor`, call `chatWithTools`,
+run `ToolExecutor` by model decision or use `maxToolHops`.
 
-Los tools externos siguen disponibles para probes y rutas explícitas.
+External tools remain available for probes and explicit routes.
 
-### Fase 6 — Prioridad del worker
+### Phase 6 — Worker priority
 
-Auditar `deferCapture()`, `enqueueJob()` y `processExtract()`. La captura
-implícita que requiera extractor LLM debe poder marcarse como trabajo idle.
+Audit `deferCapture()`, `enqueueJob()` and `processExtract()`. Implicit
+capture that requires an LLM extractor must be markable as idle work.
 
-Objetivo:
+Objective:
 
-- responder primero;
-- formar memoria después;
-- reencolar si `LlmService::isBusy()`;
-- evitar que el extractor se convierta en una segunda generación bloqueante;
-- conservar la memoria explícita determinista en la ruta de mayor prioridad.
+- answer first;
+- form memory later;
+- re-enqueue if `LlmService::isBusy()`;
+- prevent the extractor from becoming a second blocking generation;
+- keep deterministic explicit memory on the highest-priority route.
 
-No cambiar la política sin medir la latencia y revisar la concurrencia del
-contexto compartido de `LlmService`.
+Do not change the policy without measuring latency and reviewing the
+concurrency of the shared `LlmService` context.
 
-### Fase 7 — VoiceSessionService productivo
+### Phase 7 — Production VoiceSessionService
 
-No copiar globals del lab. Antes de integrar:
+Do not copy lab globals. Before integrating:
 
-1. determinar cómo obtener `MemoryService` por inyección;
-2. agregar `WorkingMemory` por sesión si corresponde;
-3. usar el `userId` autenticado;
-4. resolver idioma por sesión;
-5. definir la notificación de captura aceptada;
-6. definir cancelación al cerrar WebSocket;
-7. asegurar que STT, LLM, TTS y memoria respeten sus mutex/slots;
-8. añadir pruebas específicas de WebSocket.
+1. determine how to obtain `MemoryService` by injection;
+2. add `WorkingMemory` per session if appropriate;
+3. use the authenticated `userId`;
+4. resolve language per session;
+5. define the accepted-capture notification;
+6. define cancellation on WebSocket close;
+7. ensure that STT, LLM, TTS and memory respect their mutexes/slots;
+8. add WebSocket-specific tests.
 
-## 9. Prompt y comportamiento esperado
+## 9. Prompt and expected behavior
 
-Para la entrada “Argus, cuando es 2 x 2” el resultado correcto es:
+For the input “Argus, cuando es 2 x 2” the correct result is:
 
-1. `captureExplicit()` no encuentra una memoria explícita.
-2. `captureImplicit()` rechaza porque es una pregunta.
-3. No se encola extracción.
-4. No se escribe fact ni episodio.
-5. El LLM responde la pregunta normalmente.
-6. TTS solo recibe la respuesta hablada.
+1. `captureExplicit()` does not find an explicit memory.
+2. `captureImplicit()` rejects because it is a question.
+3. No extraction is queued.
+4. No fact or episode is written.
+5. The LLM answers the question normally.
+6. TTS only receives the spoken response.
 
-Para “recuerda que mi hermana viene los domingos”:
+For “recuerda que mi hermana viene los domingos”:
 
-1. `captureExplicit()` guarda o encola una captura válida.
-2. El mensaje contiene una nota de captura únicamente si el resultado lo
-   permite.
-3. El LLM confirma brevemente sin generar un tool call.
-4. El recall posterior recupera el hecho.
+1. `captureExplicit()` saves or queues a valid capture.
+2. The message contains a capture note only if the result allows it.
+3. The LLM briefly confirms without generating a tool call.
+4. The subsequent recall retrieves the fact.
 
-Para “mi perro se llama Toby”:
+For “mi perro se llama Toby”:
 
-1. fastText puede actuar como hint si el modelo está disponible.
-2. La pregunta determinista no dispara.
-3. `MemoryService` decide si encola extracción.
-4. La respuesta del usuario no espera otro ciclo de tool-calling.
+1. fastText can act as a hint if the model is available.
+2. The deterministic question does not trigger.
+3. `MemoryService` decides whether to queue extraction.
+4. The user response does not wait for another tool-calling cycle.
 
-Para “no, olvídalo”:
+For “no, olvídalo”:
 
-1. no se guarda como fact;
-2. no se usa como muestra positiva automática;
-3. si existe una operación explícita de olvidar, debe tener una ruta separada
-   y validada.
+1. it is not saved as a fact;
+2. it is not used as an automatic positive sample;
+3. if an explicit forget operation exists, it must have a separate and
+   validated route.
 
-## 10. Pruebas
+## 10. Tests
 
-### 10.1 Búsquedas estáticas
+### 10.1 Static searches
 
-Ejecutar:
+Run:
 
     rg -n "chatWithTools|ToolParser|captureToolCall" \
       src/shared/services/conversation labs/voice-test
 
-Esperado:
+Expected:
 
-- no `chatWithTools` en el camino normal;
-- no `ToolParser` en los loops activos de `voice-test`;
-- `captureToolCall` solo en compatibilidad, probes o tests.
+- no `chatWithTools` on the normal path;
+- no `ToolParser` in the active `voice-test` loops;
+- `captureToolCall` only in compatibility, probes or tests.
 
-### 10.2 Compilación
+### 10.2 Compilation
 
-Ejecutar primero el target focalizado si existe. Luego:
+Run the focused target first if it exists. Then:
 
     cmake --preset dev
     cmake --build --preset dev -j 8
 
-Requisito: 0 errores y 0 warnings nuevos. No continuar con pruebas pesadas si
-la compilación falla.
+Requirement: 0 errors and 0 new warnings. Do not continue with heavy tests if
+the compilation fails.
 
 ### 10.3 Intent
 
-Ejecutar el `intent-probe` existente y revisar especialmente los casos con:
+Run the existing `intent-probe` and review especially the cases with:
 
 - `2 x 2`;
 - `cuándo viene`;
@@ -509,141 +512,141 @@ Ejecutar el `intent-probe` existente y revisar especialmente los casos con:
 - `what time`;
 - `tell me`.
 
-Ninguno debe disparar `memory_save` al threshold de producción.
+None of them must trigger `memory_save` at the production threshold.
 
-### 10.4 Memoria
+### 10.4 Memory
 
-Probar:
+Test:
 
-1. declaración explícita almacenada;
-2. pregunta rechazada antes de cola;
-3. declaración implícita aprobada;
-4. recall posterior;
-5. cancelación rechazada;
-6. compaction sin preguntas como episodio;
-7. compaction con declaración durable;
-8. no invención cuando no existe recall.
+1. explicit statement stored;
+2. question rejected before the queue;
+3. implicit statement approved;
+4. subsequent recall;
+5. cancellation rejected;
+6. compaction without questions as an episode;
+7. compaction with a durable statement;
+8. no invention when no recall exists.
 
-### 10.5 Voz
+### 10.5 Voice
 
-Solo ejecutar `voice-test` cuando el usuario lo autorice y la computadora no
-esté ocupada. Verificar que no se pronuncien tags, JSON ni texto interno.
+Only run `voice-test` when the user authorizes it and the computer is not
+busy. Verify that tags, JSON or internal text are not spoken.
 
-### 10.6 Métricas
+### 10.6 Metrics
 
-Comparar en condiciones equivalentes:
+Compare under equivalent conditions:
 
-| Métrica | Antes | Después |
+| Metric | Before | After |
 |---|---:|---:|
-| TTFT sin memoria | medir | medir |
-| TTFT con recall | medir | medir |
-| generaciones por turno | medir | objetivo 1 |
-| tokens de schema de tools | medir | objetivo 0 |
-| falsos `memory_save` en preguntas | medir | objetivo 0 |
-| disponibilidad de memoria implícita | medir | medir |
+| TTFT without memory | measure | measure |
+| TTFT with recall | measure | measure |
+| generations per turn | measure | goal 1 |
+| tool schema tokens | measure | goal 0 |
+| false `memory_save` on questions | measure | goal 0 |
+| implicit memory availability | measure | measure |
 
-No comparar una máquina ocupada contra una libre y atribuir la diferencia al
-modelo.
+Do not compare a busy machine against an idle one and attribute the
+difference to the model.
 
-## 11. Documentación en `CONTEXT.md`
+## 11. Documentation in `CONTEXT.md`
 
-Añadir una sección fechada con:
+Add a dated section with:
 
-1. tabla LFM2.5 vs Granite;
-2. aclaración de que H-Micro fue descargado, no evaluado;
-3. decisión de no exigir tool-calling al diálogo normal;
-4. separación entre `RuleParser`, `IntentService`, `MemoryService`,
-   `GraphRecall`, `LlmService` y `ToolRegistry`;
-5. problema de `usage.tsv` como telemetría no curada;
-6. diferencia entre `labs/voice-test` y `VoiceSessionService` productivo;
-7. métricas antes/después;
-8. cualquier limitación pendiente.
+1. LFM2.5 vs Granite table;
+2. clarification that H-Micro was downloaded, not evaluated;
+3. decision not to require tool-calling from normal dialogue;
+4. separation between `RuleParser`, `IntentService`, `MemoryService`,
+   `GraphRecall`, `LlmService` and `ToolRegistry`;
+5. problem of `usage.tsv` as uncurated telemetry;
+6. difference between `labs/voice-test` and the production
+   `VoiceSessionService`;
+7. before/after metrics;
+8. any pending limitation.
 
-## 12. Riesgos
+## 12. Risks
 
-### Pérdida de declaraciones implícitas
+### Loss of implicit statements
 
-Mitigar con vocabulario, ejemplos reales, fastText como hint y un trigger
-explícito como fallback.
+Mitigate with vocabulary, real examples, fastText as a hint and an explicit
+trigger as a fallback.
 
-### Bloqueo de voz por extractor
+### Voice blocked by the extractor
 
-Marcar trabajo implícito como idle, reencolar si el LLM está ocupado y medir
-latencia de primera respuesta.
+Mark implicit work as idle, re-enqueue if the LLM is busy and measure
+first-response latency.
 
-### Salida del modelo con tags
+### Model output with tags
 
-No incluir schemas, reforzar el prompt y usar sanitizer solo para ocultar
-artefactos; nunca interpretar ese sanitizer como ejecución de una acción.
+Do not include schemas, reinforce the prompt and use a sanitizer only to hide
+artifacts; never interpret that sanitizer as executing an action.
 
-### Cambio de firma pública
+### Public signature change
 
-Buscar call sites, adaptar consumidores reales y compilar inmediatamente.
+Search for call sites, adapt real consumers and compile immediately.
 
-### Confundir episode con fact
+### Confusing episode with fact
 
-Probar tablas y rutas de recall separadamente. No llamar “guardado” a un
-summary provisional.
+Test tables and recall routes separately. Do not call a provisional summary
+“saved”.
 
-### Contaminación del corpus
+### Corpus contamination
 
-Separar telemetría, muestras curadas y corpus de entrenamiento. No usar
-predicciones como etiquetas sin revisión.
+Separate telemetry, curated samples and training corpus. Do not use
+predictions as labels without review.
 
-## 13. Criterios de aceptación
+## 13. Acceptance criteria
 
-- [ ] Claude leyó `AGENTS.md` local antes de modificar código.
-- [ ] No se añadieron bloques de comentarios largos al código.
-- [ ] El diálogo normal no llama `LfmAdapter::chatWithTools()`.
-- [ ] El diálogo normal no anuncia tools al LLM.
-- [ ] `ToolRegistry` sigue funcionando en probes y rutas explícitas.
-- [ ] Las preguntas no entran a `captureImplicit()`.
-- [ ] “Argus, cuándo es 2 x 2” no aparece como fact ni episodio.
-- [ ] Las preguntas de recall no disparan `memory_save`.
-- [ ] “olvídalo” no se guarda.
-- [ ] `usage.tsv` no recibe predicciones crudas como etiquetas de entrenamiento.
-- [ ] Compaction filtra preguntas.
-- [ ] El prompt indica que memoria se administra fuera del modelo.
-- [ ] La ruta normal usa una generación.
-- [ ] TTS no pronuncia protocolos internos.
-- [ ] Se midieron falsos positivos y latencia.
-- [ ] `CONTEXT.md` documenta la decisión.
-- [ ] El build dev termina con 0 errores y 0 warnings.
+- [ ] Claude read the local `AGENTS.md` before modifying code.
+- [ ] No long comment blocks were added to the code.
+- [ ] Normal dialogue does not call `LfmAdapter::chatWithTools()`.
+- [ ] Normal dialogue does not announce tools to the LLM.
+- [ ] `ToolRegistry` still works in probes and explicit routes.
+- [ ] Questions do not enter `captureImplicit()`.
+- [ ] “Argus, cuándo es 2 x 2” does not appear as a fact or episode.
+- [ ] Recall questions do not trigger `memory_save`.
+- [ ] “olvídalo” is not saved.
+- [ ] `usage.tsv` does not receive raw predictions as training labels.
+- [ ] Compaction filters questions.
+- [ ] The prompt states that memory is managed outside the model.
+- [ ] The normal route uses one generation.
+- [ ] TTS does not speak internal protocols.
+- [ ] False positives and latency were measured.
+- [ ] `CONTEXT.md` documents the decision.
+- [ ] The dev build finishes with 0 errors and 0 warnings.
 
-## 14. Orden de ejecución
+## 14. Execution order
 
-    1. Leer AGENTS.md, CONTEXT.md y CLAUDE_PLAN.md.
-    2. Revisar status y diff.
-    3. Confirmar procesos pesados.
-    4. Buscar call sites y reparar errores del parche parcial.
-    5. Terminar contrato de captureImplicit.
-    6. Terminar filtro de compaction.
-    7. Separar usage.tsv del corpus curado.
-    8. Añadir casos negativos y positivos revisados.
-    9. Actualizar prompts sin tool-calling.
-    10. Compilar dev.
-    11. Ejecutar pruebas focalizadas.
-    12. Ejecutar voz solo con autorización.
-    13. Medir latencia y precisión.
-    14. Documentar en CONTEXT.md.
-    15. Revisar diff final y entregar resultados.
+    1. Read AGENTS.md, CONTEXT.md and CLAUDE_PLAN.md.
+    2. Review status and diff.
+    3. Confirm heavy processes.
+    4. Search for call sites and fix errors from the partial patch.
+    5. Finish the captureImplicit contract.
+    6. Finish the compaction filter.
+    7. Separate usage.tsv from the curated corpus.
+    8. Add reviewed negative and positive cases.
+    9. Update prompts without tool-calling.
+    10. Compile dev.
+    11. Run focused tests.
+    12. Run voice only with authorization.
+    13. Measure latency and precision.
+    14. Document in CONTEXT.md.
+    15. Review the final diff and deliver results.
 
-## 15. Entrega de Claude
+## 15. Claude's delivery
 
-El resumen final debe incluir:
+The final summary must include:
 
-1. archivos modificados;
-2. archivos deliberadamente no modificados;
-3. alternativa elegida y alternativas descartadas;
-4. pruebas ejecutadas y resultados;
-5. falsos positivos y recall de memoria;
-6. latencia antes/después;
-7. limitaciones pendientes;
-8. pruebas pesadas que no se ejecutaron y por qué;
-9. confirmación de que no se borraron modelos, bases de datos ni cambios del
-   usuario;
-10. confirmación de que el diálogo normal no depende del tool-calling.
+1. modified files;
+2. files deliberately not modified;
+3. chosen alternative and discarded alternatives;
+4. tests run and results;
+5. memory false positives and recall;
+6. before/after latency;
+7. pending limitations;
+8. heavy tests that were not run and why;
+9. confirmation that no models, databases or user changes were deleted;
+10. confirmation that normal dialogue does not depend on tool-calling.
 
-No declarar el trabajo terminado solo porque compile. Debe demostrarse el
-comportamiento con preguntas, cálculos, declaraciones explícitas,
-declaraciones implícitas, recalls, cancelaciones y compaction.
+Do not declare the work finished just because it compiles. The behavior must
+be demonstrated with questions, calculations, explicit statements, implicit
+statements, recalls, cancellations and compaction.

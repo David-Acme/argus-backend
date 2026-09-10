@@ -368,7 +368,7 @@ shared file-static behind a mutex.
   inserts 12 ms → 4–18 s under read load + `DirectedCSRIndex` asserts +
   SIGTERM-proof hangs; fork: any second connection crashes). The submodules,
   the build integration and the `labs/kuzu-probe` reproducer are deleted;
-  the gate result lives in `docs/CONTEXT.md`. The memory redesign's
+  the gate result lives in `docs/history/project-log.md`. The memory redesign's
   `SemanticGraph` is backed by the existing SQLite tables.
 - **llama.cpp as a submodule** (`third_party/llama.cpp`, tag `b10305`) — powers
   the LLM **and** the VLM through `libmtmd`. Targets: `${ARGUS_LLAMA_TARGETS}`
@@ -394,7 +394,7 @@ shared file-static behind a mutex.
 - **sqlite-vec** (vendored in `third_party/sqlite-vec/`, MIT/Apache-2.0) — vec0
   vector search; compiled with `SQLITE_CORE`, registered via
   `sqlite3_auto_extension` in `DbService::installExtensions()` (must run AFTER
-  Drogon's first connection — see docs/CONTEXT.md ordering note). FTS5 (bm25,
+  Drogon's first connection — see docs/history/project-log.md ordering note). FTS5 (bm25,
   unicode61, trigram) is enabled via the conan option
   `sqlite3/*:enable_fts5=True` (Drogon rebuilt once).
 - **MemoryService** (`packages/argus-memory/src/shared/services/memory/`, a package compiled into its host argus-llm) — long-term memory over a
@@ -413,7 +413,7 @@ shared file-static behind a mutex.
   busy), L3 profile (deterministic persona/instruction selection + optional
   off-turn LLM polish). Facade `MemoryService`; DB via `SqliteGraph`/`VecDb`
   (mutex-serialized, prepared statements are RAII `SqliteStmt`). Embeddings:
-  `multilingual-e5-small` int8 ONNX, loaded lazily. Full details in docs/CONTEXT.md.
+  `multilingual-e5-small` int8 ONNX, loaded lazily. Full details in docs/history/project-log.md.
 - **fastText as a submodule** (`third_party/fastText`, `1142dc4`) — inference
   only, built as a static lib by `packages/argus-intent`. It backs the fast
   tier of the intent router: rules (`argus::phrase`) decide explicit triggers,
@@ -661,23 +661,24 @@ Run the full orchestrator when changing shared build infrastructure.
 | `services/argus-stt/src/shared/services/stt/` | Speech-to-text via sherpa-onnx (default `nemo_transducer` FastConformer RNN-T, es/en; whisper/canary/nemo_ctc/omnilingual selectable) |
 | `services/argus-tts/src/shared/services/tts/` | Text-to-speech (Supertonic 3) |
 | `services/argus-camera/src/shared/services/tapo/` | Tapo camera local protocols: control (`stok` + `securePassthrough`, legacy fallback) and the 8800 talk channel (Digest + MPEG-TS PCMA) |
-| `packages/argus-common/src/shared/services/storage/` | `S3StorageService` (RustFS S3, SigV4 en `s3-signing.hxx`) + `PrivatePortraitService` (objetos privados, lectura vía capability one-use) |
-| `services/argus-voice/src/shared/services/reaction/` | `ReactionEngine` — reacciones de turno por prioridad de señales → `voice:event` (significado, nunca nombres de expresión) |
+| `packages/argus-common/src/shared/services/storage/` | `S3StorageService` (RustFS S3, SigV4 in `s3-signing.hxx`) + `PrivatePortraitService` (private objects, read via one-use capability) |
+| `services/argus-voice/src/shared/services/reaction/` | `ReactionEngine` — per-turn reactions by signal priority → `voice:event` (meaning, never expression names) |
 | `packages/argus-identity/src/shared/repositories/{user-invitation,portrait-*,device-login-challenge}/` | Dominio people: invitaciones (hash-only), capabilities de retrato, retos de login cruzado |
 | `packages/argus-common/src/shared/wrapper/cancellation/` | `CancellationToken` shared across streaming AI/audio paths |
 | `packages/argus-common/src/shared/services/config-service/` | `ConfigService` read + runtime writes (`setBool/...` persisten a `config.toml`, comentarios preservados) |
-| `packages/argus-room/src/shared/services/room/` | `RoomManager` local (rooms por módulo/usuario, `thread_local`) |
+| `packages/argus-room/src/shared/services/room/` | local `RoomManager` (rooms per module/user, `thread_local`) |
 | `packages/argus-socket/src/shared/services/socket/` | `SocketService` (emitModule/emitUser) + `SocketEmitDto` |
-| `packages/argus-audit/src/shared/services/audit-log/` | Audit global: diffs por campo, compactación diaria e id monotónico para sync |
-| `packages/argus-audit/src/shared/services/user-audit-log/` | Audit por destinatario: diffs por campo, compactación diaria e id monotónico para sync |
-| `packages/argus-audit/src/shared/services/sync-audit/` | Fachada central para publicar diffs module/user tras mutaciones de features |
-| `packages/argus-sync/src/shared/services/notification/` | Notificaciones por usuario: `Add` al crear y user-audit granular al marcar lectura |
-| `services/argus-notification/src/shared/services/notification-token/` | Push tokens por sesión |
+| `packages/argus-audit/src/shared/services/audit-log/` | Global audit: per-field diffs, daily compaction and monotonic id for sync |
+| `packages/argus-audit/src/shared/services/user-audit-log/` | Per-recipient audit: per-field diffs, daily compaction and monotonic id for sync |
+| `packages/argus-audit/src/shared/services/sync-audit/` | Central facade to publish module/user diffs after feature mutations |
+| `packages/argus-sync/src/shared/services/notification/` | Per-user notifications: `Add` on create and granular user-audit on mark-as-read |
+| `services/argus-notification/src/shared/services/notification-token/` | Push tokens per session |
 | `packages/argus-common/src/shared/utils/json-diff/` | Diff JSON + snapshot (`JsonDiff`) |
 | `packages/argus-common/src/shared/utils/json-util/` | `jsonToString`/`jsonFromString` |
 | `packages/argus-sync/src/feature/socket/sync/` | `SyncSocket` + `SyncService` + `SynchronizedService` + DTOs |
 | `packages/argus-common/src/shared/wrapper/api-response/` | Standardized API response builder |
 | `packages/argus-common/src/shared/wrapper/blocking-task/` | Coroutine awaiter for off-loop heavy work |
 | `packages/argus-common/src/shared/wrapper/thread-budget/` | Adaptive thread sizing for AI services |
-| `config.toml` | System application + JWT config |
-| `docs/CONTEXT.md` | Full project history and decisions |
+| `docs/README.md` | Documentation index and reading order |
+| `docs/history/project-log.md` | Full project history and decisions |
+| `<project>/config.toml.example` | Per-project template; `setup.sh` generates the gitignored `config.toml` |

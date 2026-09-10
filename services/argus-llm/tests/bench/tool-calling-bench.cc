@@ -217,7 +217,7 @@ int main(int argc, char** argv)
   std::sort(latencies.begin(), latencies.end());
   const double p50 = latencies[latencies.size() / 2];
   const double p95 = latencies[static_cast<size_t>(latencies.size() * 0.95)];
-  // The schema cost this arc has to justify (numbers in docs/CONTEXT.md).
+  // The schema cost this arc has to justify (numbers in docs/history/project-log.md).
   const std::string probe = "hola, como estas?";
   std::vector<ChatMessage> bare{{.role = "system", .content = systemPrompt},
                                 {.role = "user", .content = probe}};

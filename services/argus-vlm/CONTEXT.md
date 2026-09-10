@@ -64,7 +64,7 @@ legacy reads.
 
 ## What it did NOT change
 
-- The app móvil never talks to this service; no gateway routing, no new
+- The mobile app never talks to this service; no gateway routing, no new
   app-facing contract.
 - Model artifacts stay in the shared `models/vision/lfm2vl-25/` paths —
   never copied.

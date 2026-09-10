@@ -45,7 +45,7 @@ pattern (F4-2) one engine later.
 
 ## What it did NOT change
 
-- The app móvil never talks to this service; voice frames and `/sync` are
+- The mobile app never talks to this service; voice frames and `/sync` are
   untouched and the gateway routing is untouched.
 - VAD (Silero) and RNNoise stay in the legacy voice session (Ruling AY) —
   only the transcribe leg moves.

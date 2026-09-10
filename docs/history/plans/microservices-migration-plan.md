@@ -1,715 +1,713 @@
-# Argus — Plan de migración a microservicios (packages + plugins + Docker)
+# Argus — Microservices migration plan (packages + plugins + Docker)
 
-> Fecha: 2026-09-03 · Estado: propuesta para revisión · Enfoque: backend
+> Date: 2026-09-03 · Status: proposal for review · Focus: backend
 >
-> Este documento consolida el análisis exhaustivo del código actual (tres auditorías con
-> verificación file:line) y la investigación de ecosistema (Drogon/Trantor, gRPC+Conan,
-> gateways, NATS, Conan multi-repo, runtime de plugins móvil). Todo lo marcado como
-> **verificado** fue confirmado en el código con `file:line`.
+> This document consolidates the exhaustive analysis of the current code (three audits with
+> file:line verification) and the ecosystem research (Drogon/Trantor, gRPC+Conan,
+> gateways, NATS, multi-repo Conan, mobile plugin runtime). Everything marked as
+> **verified** was confirmed in the code with `file:line`.
 
 ---
 
-## 1. Resumen ejecutivo
+## 1. Executive summary
 
-Argus es hoy **un solo binario C++20** (Drogon 1.9.13 + SQLite + submodules de IA) con:
+Argus is today **a single C++20 binary** (Drogon 1.9.13 + SQLite + AI submodules) with:
 
-- 34 directorios de servicios bajo `src/shared/services/`, **49 rutas HTTP + 1 WebSocket
-  (`/sync`)** = 50 endpoints (recontado con grep sobre `ADD_METHOD_TO`; ya sin
-  `/auth/has-admin`, que se elimina — ver §2.3).
-- Una única DB SQLite (`database/argus.db`) compartida por **4 conexiones dueñas**.
-- **Sin librerías internas, sin CI, sin tests (`src/test/` vacío), sin versionado de API.**
-- Toda la IA corre in-process vía submodules (llama.cpp, sherpa-onnx, ncnn, ONNX Runtime,
-  fastText). Solo `go2rtc` es proceso externo.
+- 34 service directories under `src/shared/services/`, **49 HTTP routes + 1 WebSocket
+  (`/sync`)** = 50 endpoints (recounted with grep over `ADD_METHOD_TO`; no longer counting
+  `/auth/has-admin`, which is removed — see §2.3).
+- A single SQLite DB (`database/argus.db`) shared by **4 owning connections**.
+- **No internal libraries, no CI, no tests (`src/test/` empty), no API versioning.**
+- All AI runs in-process via submodules (llama.cpp, sherpa-onnx, ncnn, ONNX Runtime,
+  fastText). Only `go2rtc` is an external process.
 
-El objetivo: dividirlo en **microservicios independientes** (un repo, una DB, unas dependencias
-y unos labs por servicio), comunicados por **gRPC**, orquestados en **Docker/Swarm**, con una
-capa de **packages** (interfaces tipadas sobre los servicios) y una de **plugins** (features
-instalables del frontend sobre una base casi vacía), con **versionado y retrocompatibilidad
-formales** para que la app móvil existente nunca se rompa, y con **acceso remoto E2E** por
-túnel terminando TLS en el gateway (§3.7).
+The goal: split it into **independent microservices** (one repo, one DB, one set of
+dependencies and one set of labs per service), communicating over **gRPC**, orchestrated
+in **Docker/Swarm**, with a layer of **packages** (typed interfaces over the services)
+and a layer of **plugins** (installable frontend features on an almost empty base),
+with **formal versioning and backward compatibility** so that the existing mobile app
+never breaks, and with **E2E remote access** via tunnel terminating TLS at the gateway (§3.7).
 
-Estrategia: **strangler pattern** — un gateway propietario adopta el rol del binario actual y
-va re-enrutando dominios a microservicios fase por fase. En cada fase la app móvil real sigue
-funcionando sin actualizarse. Esa es la definición operativa de retrocompatibilidad de este plan.
+Strategy: **strangler pattern** — a proprietary gateway adopts the role of the current
+binary and re-routes domains to microservices phase by phase. In each phase the real
+mobile app keeps working without updating. That is the operational definition of backward compatibility of this plan.
 
 ---
 
-## 2. Estado actual auditado (lo que el código obliga a respetar)
+## 2. Audited current state (what the code forces us to respect)
 
-### 2.1 El binario y su ciclo de vida
+### 2.1 The binary and its lifecycle
 
-- Un solo target: `add_executable(argus-backend src/main.cc)` (`CMakeLists.txt:58-61`), fuentes
-  por `file(GLOB_RECURSE)` en 4 grupos (`CMakeLists.txt:42-56`). **No existe ninguna
-  `add_library` interna.**
+- A single target: `add_executable(argus-backend src/main.cc)` (`CMakeLists.txt:58-61`), sources
+  via `file(GLOB_RECURSE)` in 4 groups (`CMakeLists.txt:42-56`). **No internal
+  `add_library` exists.**
 - `Application::run()` (`src/config/application.cc:115-200`): ConfigService::load →
-  `app().loadConfigJson(ConfigService::drogonConfig())` → CORS/OPTIONS → handlers de error →
-  señales → `DbService::migrate(5)` + pragmas + `sqlite3_auto_extension(sqlite3_vec_init)` →
-  banner de pairing → `registerServices()` → `llama_backend_init()` → **Go2rtcManager,
-  MediaRelay y StreamHub se inicializan FUERA del ServiceRegistry** (`:186-188`) → `app().run()`.
-  Shutdown en orden inverso (`:202-209`).
-- TLS lo termina Drogon: listener definido **en `config.toml`**, no en código
-  (`config.toml:3-9`), con `certs/server.pem` (cadena completa: CA de instancia + leaf, EC
-  P-256, SANs `argus.local, localhost, 127.0.0.1, <mdns.name>.local`, generados por
-  `setup.sh:297-358` y rotados por `CertService`).
+  `app().loadConfigJson(ConfigService::drogonConfig())` → CORS/OPTIONS → error handlers →
+  signals → `DbService::migrate(5)` + pragmas + `sqlite3_auto_extension(sqlite3_vec_init)` →
+  pairing banner → `registerServices()` → `llama_backend_init()` → **Go2rtcManager,
+  MediaRelay and StreamHub are initialized OUTSIDE the ServiceRegistry** (`:186-188`) → `app().run()`.
+  Shutdown in reverse order (`:202-209`).
+- TLS is terminated by Drogon: listener defined **in `config.toml`**, not in code
+  (`config.toml:3-9`), with `certs/server.pem` (full chain: instance CA + leaf, EC
+  P-256, SANs `argus.local, localhost, 127.0.0.1, <mdns.name>.local`, generated by
+  `setup.sh:297-358` and rotated by `CertService`).
 
-### 2.2 El ServiceRegistry es decorativo (hoy)
+### 2.2 The ServiceRegistry is decorative (today)
 
-- Contrato `IService` (`src/config/service.hxx:7-20`): name/version/dependencies/initialize/
+- `IService` contract (`src/config/service.hxx:7-20`): name/version/dependencies/initialize/
   isLoaded/shutdown/health.
-- `ServiceRegistry::initialize()` hace orden topológico Kahn (`service-registry.cc:12-74`)…
-  **pero ningún adapter sobreescribe `dependencies()`** (grep lo confirma): el sort degenera en
-  orden de registro y el orden real lo fija `Application::registerServices()`
+- `ServiceRegistry::initialize()` performs a Kahn topological sort (`service-registry.cc:12-74`)…
+  **but no adapter overrides `dependencies()`** (grep confirms it): the sort degenerates into
+  registration order and the real order is set by `Application::registerServices()`
   (`application.cc:211-225`): room_manager, cert, mdns, tts, llm, stt, vision, face, intent,
   memory, queue, extract.
-- `ServiceRegistry::health()` y `names()` tienen **cero llamadores**: no existe ruta `/health`.
+- `ServiceRegistry::health()` and `names()` have **zero callers**: there is no `/health` route.
 
-### 2.3 La superficie HTTP (49 rutas + 1 WS, paths planos, sin versión)
+### 2.3 The HTTP surface (49 routes + 1 WS, flat paths, no versioning)
 
-- Registradas por macros `HttpController<T>` **dentro del `.hxx` de cada controller**
-  (auto-registro por static-init al linkarse el TU). No hay tabla central de rutas.
-- Cadena de filtros canónica: `DeviceFilter → ValidJsonFilter → JwtFilter → RoleFilter`
-  (`AGENTS.md:110-118`), referenciados **por nombre en string** en cada controller.
-  - `DeviceFilter` (`src/filter/device/device-filter.cc`): fingerprint HMAC-SHA256 de
-    `User-Agent|IP` con `device.fingerprint_secret`. Honra `X-Forwarded-For` **solo** si
-    `device.trust_forwarded_for=true` y el peer es loopback o está en
-    `device.trusted_proxy_ips` — **el bloqueador #1 para cualquier proxy intermedio**.
-  - `JwtFilter` (`jwt-filter.cc`): token por `Authorization: Bearer`, **`?token=`** o cookie;
-    HS256 con secret dual (`jwt.secret`/`jwt.refresh_secret`); **2 queries DB por request**
-    (`user` + `refresh_token`, el access token vive en la tabla) + equality de `device_hash`.
+- Registered by `HttpController<T>` macros **inside each controller's `.hxx`**
+  (auto-registration by static-init when the TU is linked). There is no central route table.
+- Canonical filter chain: `DeviceFilter → ValidJsonFilter → JwtFilter → RoleFilter`
+  (`AGENTS.md:110-118`), referenced **by string name** in each controller.
+  - `DeviceFilter` (`src/filter/device/device-filter.cc`): HMAC-SHA256 fingerprint of
+    `User-Agent|IP` with `device.fingerprint_secret`. It honors `X-Forwarded-For` **only** if
+    `device.trust_forwarded_for=true` and the peer is loopback or is in
+    `device.trusted_proxy_ips` — **the #1 blocker for any intermediate proxy**.
+  - `JwtFilter` (`jwt-filter.cc`): token via `Authorization: Bearer`, **`?token=`** or cookie;
+    HS256 with dual secret (`jwt.secret`/`jwt.refresh_secret`); **2 DB queries per request**
+    (`user` + `refresh_token`, the access token lives in the table) + `device_hash` equality.
   - `RoleFilter` → `role-access.hxx`: `kTableAccess` (`:31-70`) + `tableFromPath`
-    (`:139-160`) — **un segundo mapa path→tabla que debe coincidir con las rutas**;
-    `/auth/*` usa `kAuthAccess` especial (`:72-78`); el mismo archivo gobierna HTTP y sync.
-- Inventario por feature (todas las rutas son top-level, sin `/api` ni `/v1`):
-  - **auth** (9 rutas): `/auth/login` (multipart con imagen → **login facial**),
-    `/auth/register` (multipart; bootstrap del primer owner o invitación; transacción
-    IMMEDIATE user+person+face_embedding+invitation_redemption + HNSW en-proceso),
+    (`:139-160`) — **a second path→table map that must match the routes**;
+    `/auth/*` uses the special `kAuthAccess` (`:72-78`); the same file governs HTTP and sync.
+- Inventory by feature (all routes are top-level, with no `/api` or `/v1`):
+  - **auth** (9 routes): `/auth/login` (multipart with image → **face login**),
+    `/auth/register` (multipart; bootstrap of the first owner or invitation; IMMEDIATE
+    transaction user+person+face_embedding+invitation_redemption + in-process HNSW),
     `/auth/status`, device-login (QR, TTL 120 s), `/auth/refresh-token`
-    (single-use, replay protection), `/auth/logout` (invalida + desconecta sockets WS del
-    usuario), `/auth/me`. **`/auth/has-admin` se elimina** (decisión del usuario: el frontend
-    nunca la consume — el frontend arranca por el certificado, no por esta ruta; el
-    handler de controlador y `AuthService::hasAdmin` desaparecen con ella — el bootstrap de
-    `/auth/register` ya hace su propio chequeo de owner dentro de la transacción).
-    Segundo cambio de wire deliberado de la Phase 0: `tableNameFromString("memory")` ahora
-    mapea a `TableName::Memory` (antes caía en el fallback `TableName::User`) — corrección de
-    un input previamente degenerado, sancionada en el migration ledger.
-  - **camera** (3): `POST/PATCH/DELETE /camera[/{id}]` — **no existe `GET /camera`**: la lista
-    se lee por el WS `/sync`.
+    (single-use, replay protection), `/auth/logout` (invalidates + disconnects the user's WS
+    sockets), `/auth/me`. **`/auth/has-admin` is removed** (user decision: the frontend
+    never consumes it — the frontend starts from the certificate, not from this route; the
+    controller handler and `AuthService::hasAdmin` disappear with it — the bootstrap of
+    `/auth/register` already performs its own owner check inside the transaction).
+    Second deliberate wire change of Phase 0: `tableNameFromString("memory")` now
+    maps to `TableName::Memory` (previously it fell back to `TableName::User`) — a correction
+    of a previously degenerate input, sanctioned in the migration ledger.
+  - **camera** (3): `POST/PATCH/DELETE /camera[/{id}]` — **there is no `GET /camera`**: the
+    list is read via the `/sync` WS.
   - **camera-control** (7): `/camera/{id}/status|presets|ptz|preset|settings|capabilities|talk`.
-    Error envelope propio: 404 "Camera not found" vs **502 `CAMERA_UNREACHABLE`** — el gateway
-    debe preservar esa distinción. `/talk` toca `TtsService` in-proc.
+    Its own error envelope: 404 "Camera not found" vs **502 `CAMERA_UNREACHABLE`** — the gateway
+    must preserve that distinction. `/talk` hits `TtsService` in-proc.
   - **calendar-event / calendar-event-share / project / project-member / project-task** (3+3+3+3+3).
-  - **invitation** (4; `POST /invitation/resolve` deliberadamente sin auth — onboarding).
+  - **invitation** (4; `POST /invitation/resolve` deliberately unauthenticated — onboarding).
   - **notification** (2: `/notification/read`, `/notification-token`).
-  - **pairing** (1: `POST /pairing` sin auth — bootstrap de confianza PKI; devuelve
-    `caFingerprint`, `serverFingerprint`, `caPem`; 409 si ya paired).
-  - **user** (5: `GET /user` es **la única lista HTTP de toda la app**; portrait-preview +2).
-  - **zone** (3, valida cameraId contra `camera` → 404).
-- **Sin controladores HTTP para**: `event`, `person`, `reminder*`, `context_note`,
-  `camera_stream`, `audit_log*`, `memory_*` — esas tablas **solo se leen por el WS `/sync`**.
-- **Rutas pre-auth** (sin JwtFilter — el gateway debe replicarlas tal cual): `/auth/login`,
-  `/auth/register`, `/auth/device-login` (crear y poll), `/auth/refresh-token`
-  (Device+ValidJson — refresco pre-autenticación), `/invitation/resolve` y `/pairing` (solo
-  ValidJsonFilter). Toda ruta GET se ahorra `ValidJsonFilter` (no hay cuerpo). **Regla de
-  seguridad (decisión del usuario): `/pairing` y `/auth/register` (creación de usuarios) se
-  ejecutan ÚNICA y exclusivamente dentro de la red local del hogar** — el túnel (§3.7) es solo
-  para dispositivos ya autenticados y registrados. El inventario completo ruta por ruta (método,
-  path, filtros, handler) está en **Appendix A**.
+  - **pairing** (1: `POST /pairing` unauthenticated — PKI trust bootstrap; returns
+    `caFingerprint`, `serverFingerprint`, `caPem`; 409 if already paired).
+  - **user** (5: `GET /user` is **the only HTTP list in the entire app**; portrait-preview +2).
+  - **zone** (3, validates cameraId against `camera` → 404).
+- **No HTTP controllers for**: `event`, `person`, `reminder*`, `context_note`,
+  `camera_stream`, `audit_log*`, `memory_*` — those tables **are only read via the `/sync` WS**.
+- **Pre-auth routes** (without JwtFilter — the gateway must replicate them as-is): `/auth/login`,
+  `/auth/register`, `/auth/device-login` (create and poll), `/auth/refresh-token`
+  (Device+ValidJson — pre-authentication refresh), `/invitation/resolve` and `/pairing` (only
+  ValidJsonFilter). Every GET route skips `ValidJsonFilter` (there is no body). **Security
+  rule (user decision): `/pairing` and `/auth/register` (user creation) run ONLY and exclusively
+  within the home's local network** — the tunnel (§3.7) is only
+  for already authenticated and registered devices. The complete route-by-route inventory (method,
+  path, filters, handler) is in **Appendix A**.
 
-### 2.4 El WebSocket `/sync` (el contrato más load-bearing)
+### 2.4 The `/sync` WebSocket (the most load-bearing contract)
 
-- Única ruta WS: `WS_PATH_ADD("/sync", "DeviceFilter", "JwtFilter")` (`sync-socket.hxx:18`),
-  frames texto cap 64 KiB, binarios van a la sesión de voz.
-- Al conectar: rooms numéricas por tabla + room de usuario
-  (`moduleRoom = 1+(uint8_t)table`, `userRoom = 1000+userId`, `room-manager.hxx:11-19`) y envía
+- Only WS route: `WS_PATH_ADD("/sync", "DeviceFilter", "JwtFilter")` (`sync-socket.hxx:18`),
+  text frames cap 64 KiB, binaries go to the voice session.
+- On connect: numeric rooms per table + user room
+  (`moduleRoom = 1+(uint8_t)table`, `userRoom = 1000+userId`, `room-manager.hxx:11-19`) and it sends
   `InitialInfo`.
-- Mensajes cliente→servidor (`sync-service.cc:98-205`): `sync` (bootstrap de 15 tablas),
-  `sync_audit_log` / `sync_user_audit_log` (diffs, cursor por **id**),
-  `camera:subscribe` (`{cameraId, quality}` → **binarios fMP4 por el mismo socket**,
-  `mime:"video/mp4"`, window 128 KiB, cap de subs → 429), `camera:ack` (flow control),
-  `camera:unsubscribe`, `voice:start|stop|skip` (→ **binarios PCM int16 de TTS** por el mismo
+- Client→server messages (`sync-service.cc:98-205`): `sync` (bootstrap of 15 tables),
+  `sync_audit_log` / `sync_user_audit_log` (diffs, cursor by **id**),
+  `camera:subscribe` (`{cameraId, quality}` → **fMP4 binaries over the same socket**,
+  `mime:"video/mp4"`, window 128 KiB, subs cap → 429), `camera:ack` (flow control),
+  `camera:unsubscribe`, `voice:start|stop|skip` (→ **TTS PCM int16 binaries** over the same
   socket). Error envelope: `{type:"<type>_error", status, error}`.
-- **Protocolo de sincronización** (`src/shared/contracts/`): `SyncOperation` **numérico**
+- **Sync protocol** (`src/shared/contracts/`): **numeric** `SyncOperation`
   (0=initial_info, 1=sync, 2=sync_audit_log, 3=sync_user_audit_log, 4=add, 5=delete, 6=log,
   7=auth_context_changed); `Syncable` (find/findDeleted/findLast/findLastDeleted); cursor
-  `created_at`+rowid (**`updated_at` nunca es cursor** por diseño — `AGENTS.md:479-486`),
-  deletes por cursor `deleted_at`, cap `SYNC_LIMIT=200`.
-- **Cada write empuja**: `SocketService.emitModule/emitUser/disconnectUser` +
-  `SyncAuditService` → `AuditLogService`/`UserAuditLogService` (diff JSON plano, compactación
-  diaria). **Esta es la razón por la que la división necesita un bus de eventos.**
+  `created_at`+rowid (**`updated_at` is never a cursor** by design — `AGENTS.md:479-486`),
+  deletes by `deleted_at` cursor, cap `SYNC_LIMIT=200`.
+- **Every write pushes**: `SocketService.emitModule/emitUser/disconnectUser` +
+  `SyncAuditService` → `AuditLogService`/`UserAuditLogService` (flat JSON diff, daily
+  compaction). **This is why the split needs an event bus.**
 
-### 2.5 La base de datos (hoy: un archivo, 4 dueños)
+### 2.5 The database (today: one file, 4 owners)
 
 | File | Handles |
 |---|---|
-| `database/argus.db` | Pool Drogon (`number_of_connections=1`) + **VecDb** (vec0: `memory_vec`, `face_vec`) + **SqliteGraph** (grafo de memoria, FTS5) + **JobRepository** (cola durable) — todos apuntando al **mismo archivo** |
+| `database/argus.db` | Drogon Pool (`number_of_connections=1`) + **VecDb** (vec0: `memory_vec`, `face_vec`) + **SqliteGraph** (memory graph, FTS5) + **JobRepository** (durable queue) — all pointing to the **same file** |
 
-- Un único `database/schema.sql` (759 líneas) es la única fuente DDL, ejecutada
-  **incondicionalmente** por las 4 conexiones al abrir (`schema-runner.hxx:9-13`).
-- Versionado: tabla `schema_version` (`schema.sql:296-299`) + `DbService::migrate(target)`
-  (`db-service.cc:154-240`) con migraciones **inline en C++** (V1/V2; target 5 con V3-V5 no-op)
-  + column patches por introspección (`pragma_table_info`). Sin `PRAGMA user_version`, sin
-  directorio de migraciones.
-- Pragmas por arranque: WAL, synchronous=NORMAL, busy_timeout=5000, foreign_keys=**ON**, etc.
-- **`user(id)` es un hub FK**: ~20 tablas le apuntan (user_invitation, invitation_redemption,
+- A single `database/schema.sql` (759 lines) is the only DDL source, executed
+  **unconditionally** by all 4 connections on open (`schema-runner.hxx:9-13`).
+- Versioning: `schema_version` table (`schema.sql:296-299`) + `DbService::migrate(target)`
+  (`db-service.cc:154-240`) with migrations **inline in C++** (V1/V2; target 5 with V3-V5 no-op)
+  + column patches by introspection (`pragma_table_info`). No `PRAGMA user_version`, no
+  migrations directory.
+- Pragmas per startup: WAL, synchronous=NORMAL, busy_timeout=5000, foreign_keys=**ON**, etc.
+- **`user(id)` is a FK hub**: ~20 tables point to it (user_invitation, invitation_redemption,
   stored_file, user_portrait, portrait_*, person, reminder*, project*, calendar*,
-  refresh_token, audit_log, user_audit_log, notification*, user_action_log). **`person`** es el
-  segundo hub (face_embedding, person_event, voice_session, voice_message, memory_entity sin
-  FK). `camera` es el hub del dominio cámara (camera_stream, zone).
-- **Cross-dominio por SQL directo (el peor caso)**: `memory-graph-query.hxx:171-179` lee
-  `person`, `camera`, `zone`, `camera_stream` para construir un gazetteer de resolución.
-- `audit_log`/`user_audit_log` son el **sustrato de sync de todos los dominios** y referencian
-  cualquier tabla por nombre (`record_id`+`table_name` TEXT) — no pueden vivir en una DB de un
-  solo servicio sin romper los diffs del resto.
-- Tablas huérfanas (sin código que las use): `voice_session`, `voice_message` (ni repositorio),
-  `context_note`, `portrait_access_request`, `portrait_access_grant`; `event` (nunca escrita,
-  solo lectura sync) y `camera_stream` (solo sync).
+  refresh_token, audit_log, user_audit_log, notification*, user_action_log). **`person`** is the
+  second hub (face_embedding, person_event, voice_session, voice_message, memory_entity without
+  FK). `camera` is the camera-domain hub (camera_stream, zone).
+- **Cross-domain via direct SQL (the worst case)**: `memory-graph-query.hxx:171-179` reads
+  `person`, `camera`, `zone`, `camera_stream` to build a resolution gazetteer.
+- `audit_log`/`user_audit_log` are the **sync substrate of all domains** and reference
+  any table by name (`record_id`+`table_name` TEXT) — they cannot live in a DB of a
+  single service without breaking the diffs of the rest.
+- Orphan tables (no code that uses them): `voice_session`, `voice_message` (not even a
+  repository), `context_note`, `portrait_access_request`, `portrait_access_grant`; `event`
+  (never written, sync read-only) and `camera_stream` (sync only).
 
-### 2.6 Infraestructura transversal
+### 2.6 Cross-cutting infrastructure
 
-| Primitiva | Dónde | Consumidores |
+| Primitive | Where | Consumers |
 |---|---|---|
-| `ConfigService` | `config-service/` (static, file-scope `gConfig`+`gOverlay`, write-back quirúrgico a `config.toml`, sin hot-reload) | **27 archivos** |
-| `ThreadBudget` + `HardwareProbe` | `src/shared/wrapper/` | 8 servicios de IA (tts, stt, llm, vision, face, extract, embedding, job-queue) |
-| `BlockingTask<T>` | `wrapper/blocking-task/` | puente síncrono↔coroutine en 6 servicios |
-| `ai_init::llamaMutex()` | `wrapper/ai-init/` | **llm y vision comparten la llave global de llama.cpp** |
-| `ToolRegistry`/`ToolExecutor` | `services/tools/` | memory (registra), LfmAdapter (llm) |
-| go2rtc | `stream/go2rtc-manager.cc`: fork+setsid+execv, config generado **chmod 600 con credenciales**, supervisor con backoff 250ms→30s, máx 8 restarts; API `127.0.0.1:1984`, RTSP `8554`; `isSafeUrl()` restringe a RFC1918/loopback y rtsp/tapo/http | stream service |
+| `ConfigService` | `config-service/` (static, file-scope `gConfig`+`gOverlay`, surgical write-back to `config.toml`, no hot-reload) | **27 files** |
+| `ThreadBudget` + `HardwareProbe` | `src/shared/wrapper/` | 8 AI services (tts, stt, llm, vision, face, extract, embedding, job-queue) |
+| `BlockingTask<T>` | `wrapper/blocking-task/` | sync↔coroutine bridge in 6 services |
+| `ai_init::llamaMutex()` | `wrapper/ai-init/` | **llm and vision share the global llama.cpp lock** |
+| `ToolRegistry`/`ToolExecutor` | `services/tools/` | memory (registers), LfmAdapter (llm) |
+| go2rtc | `stream/go2rtc-manager.cc`: fork+setsid+execv, config generated **chmod 600 with credentials**, supervisor with 250ms→30s backoff, max 8 restarts; API `127.0.0.1:1984`, RTSP `8554`; `isSafeUrl()` restricts to RFC1918/loopback and rtsp/tapo/http | stream service |
 
-### 2.7 Build, modelos, despliegue
+### 2.7 Build, models, deployment
 
-- Conan (`conanfile.txt`): drogon/1.9.13, jwt-cpp, nlohmann_json, opencv/4.13.0 (sin CUDA),
-  onnxruntime/1.24.4 (sin CUDA), tomlplusplus, mdns, qr-code-generator. **Los motores de IA NO
-  vienen de Conan**: submodules (ncnn Vulkan+AVX2, llama.cpp CUDA>Vulkan>CPU, sherpa-onnx,
-  sqlite-vec, fastText, inspireface-presente-pero-sin-usar, kuzu).
-- Presets `dev`/`prod` (Ninja, `-j 8`), `-O3 -march=native -flto` solo Release, RPATH `$ORIGIN`,
-  POST_BUILD que copia `config.toml` y symlinka `models/`, `database/`, `certs/`,
-  `third_party/go2rtc/` — así resuelven las rutas runtime.
-- **Modelos: 13 GB** en `models/` (todo git-ignorado): llm ~696MB (LFM2.5-1.2B Q4_0), vlm ~568MB
+- Conan (`conanfile.txt`): drogon/1.9.13, jwt-cpp, nlohmann_json, opencv/4.13.0 (without CUDA),
+  onnxruntime/1.24.4 (without CUDA), tomlplusplus, mdns, qr-code-generator. **The AI engines do
+  NOT come from Conan**: submodules (ncnn Vulkan+AVX2, llama.cpp CUDA>Vulkan>CPU, sherpa-onnx,
+  sqlite-vec, fastText, inspireface-present-but-unused, kuzu).
+- `dev`/`prod` presets (Ninja, `-j 8`), `-O3 -march=native -flto` only Release, RPATH `$ORIGIN`,
+  POST_BUILD that copies `config.toml` and symlinks `models/`, `database/`, `certs/`,
+  `third_party/go2rtc/` — that is how the runtime paths resolve.
+- **Models: 13 GB** in `models/` (all git-ignored): llm ~696MB (LFM2.5-1.2B Q4_0), vlm ~568MB
   (LFM2.5-VL-450M Q8 + mmproj), tts ~415MB (supertonic-3), stt ~107MB (nemo fast-conformer
   int8), extract ~469MB (NuExtract-1.5-tiny), memory ~130MB (e5-small int8), face ~5MB
-  (RetinaFace+MobileFaceNet), vad 2.3MB (silero), intent ~5MB (fastText **entrenado localmente**
-  por `labs/intent-probe`, no descargado).
-- `setup.sh` (1088 líneas): system deps → conan → submodules → certs → modelos (con sha256 y
-  `.part`+rename atómico) → build. Incluye `detect-hardware.sh` (escribe `scripts/.hw-profile`,
-  tier CUDA > Vulkan > CPU), `setup_certs` (CA + leaf + `certs/pairing.code` = primeros 8 hex
-  del SHA-256 de la CA), RustFS en Docker (S3, `127.0.0.1:9000`).
-- Docker actual: solo RustFS en compose + un Dockerfile multi-stage del binario
+  (RetinaFace+MobileFaceNet), vad 2.3MB (silero), intent ~5MB (fastText **trained locally**
+  by `labs/intent-probe`, not downloaded).
+- `setup.sh` (1088 lines): system deps → conan → submodules → certs → models (with sha256 and
+  `.part`+atomic rename) → build. Includes `detect-hardware.sh` (writes `scripts/.hw-profile`,
+  tier CUDA > Vulkan > CPU), `setup_certs` (CA + leaf + `certs/pairing.code` = first 8 hex
+  of the CA's SHA-256), RustFS in Docker (S3, `127.0.0.1:9000`).
+- Current Docker: only RustFS in compose + a multi-stage Dockerfile of the binary
   (`-DARGUS_BUILD_LABS=OFF`, non-root, EXPOSE 7024, conan==2.21.0).
-- **Sin CI, sin tests** (`src/test/` vacío, `enable_testing()` ausente). La única verificación
-  hoy es build limpio + labs manuales.
+- **No CI, no tests** (`src/test/` empty, `enable_testing()` absent). The only verification
+  today is a clean build + manual labs.
 
-### 2.8 Labs (verificado hoy)
+### 2.8 Labs (verified today)
 
-- **16 labs** en `labs/`, de los cuales **14 enlazan fuentes de `src/shared/services/`
-  directamente** (compilan los `.cc` de los servicios, porque no existe ninguna librería interna
-  a la que apuntar):
-  - `voice-test` arrastra **42 fuentes de 16 directorios de servicio** (vad, stt, tts, llm,
+- **16 labs** in `labs/`, of which **14 link sources from `src/shared/services/`
+  directly** (they compile the services' `.cc` files, because there is no internal library
+  to point to):
+  - `voice-test` drags in **42 sources from 16 service directories** (vad, stt, tts, llm,
     memory, intent, extract, embedding, conversation, reaction, tools, stream, tapo, sqlite,
-    config, vision) — el peor caso de acoplamiento por fuentes.
+    config, vision) — the worst case of source coupling.
   - `memory-probe` 22, `camera-control` 20, `tapo-probe` 15, `tool-bench` 7,
-    `tts-probe`/`stream-probe`/`extract-probe` 6 cada uno, y el resto ≤4.
-- `labs/intent-probe` **entrena localmente** el modelo fastText de intent (no se descarga:
-  `models/intent/` no viene de `setup.sh`).
-- Consecuencia para la migración: tras la división, cada repo tiene **SUS labs** y consume los
-  demás servicios por gRPC o por el package Conan de `argus-common` — nunca compilando fuentes
-  ajenas. `voice-test` se convierte en el lab de voz de base (orquestador) y deja de compilar
+    `tts-probe`/`stream-probe`/`extract-probe` 6 each, and the rest ≤4.
+- `labs/intent-probe` **trains locally** the intent fastText model (it is not downloaded:
+  `models/intent/` does not come from `setup.sh`).
+- Consequence for the migration: after the split, each repo has **ITS OWN labs** and consumes the
+  other services via gRPC or the `argus-common` Conan package — never compiling foreign
+  sources. `voice-test` becomes the base voice lab (orchestrator) and stops compiling
   tts/stt/llm/vision in-proc.
 
 ---
 
-## 3. Decisiones de ecosistema (investigadas y justificadas)
+## 3. Ecosystem decisions (investigated and justified)
 
-### 3.1 Comunicación: gRPC + Protobuf vía Conan
+### 3.1 Communication: gRPC + Protobuf via Conan
 
-- `grpc/1.70+` + `protobuf/>=5.27 <7` (receta oficial de Conan Center), abseil/re2/c-ares
-  transitivos. C++17 mínimo requerido por grpc (ya usamos C++20).
-- Codegen moderno: `find_package(gRPC CONFIG)` + `find_package(protobuf CONFIG)`;
-  `protobuf_generate` ×2 — una para `*.pb.cc/h` y otra con `LANGUAGE grpc` +
-  `PLUGIN protoc-gen-grpc=$<TARGET_FILE:gRPC::grpc_cpp_plugin>` → `.grpc.pb.cc/h`; generar a un
-  **OBJECT library** con `SKIP_UNITY_BUILD_INCLUSION`; versiones protoc/runtime **pinneadas
-  EXACT** (desajuste protoc↔libprotobuf es un fallo runtime silencioso clásico).
-- **Pitfall conocido (Conan #19790)**: con el generador `CMakeConfigDeps` y `-Wl,-z,defs`,
-  `gRPC::grpc++` solo sub-enlaza → enlazar explícitamente
+- `grpc/1.70+` + `protobuf/>=5.27 <7` (official Conan Center recipe), abseil/re2/c-ares
+  transitive. C++17 minimum required by grpc (we already use C++20).
+- Modern codegen: `find_package(gRPC CONFIG)` + `find_package(protobuf CONFIG)`;
+  `protobuf_generate` ×2 — one for `*.pb.cc/h` and another with `LANGUAGE grpc` +
+  `PLUGIN protoc-gen-grpc=$<TARGET_FILE:gRPC::grpc_cpp_plugin>` → `.grpc.pb.cc/h`; generate into an
+  **OBJECT library** with `SKIP_UNITY_BUILD_INCLUSION`; protoc/runtime versions **pinned
+  EXACT** (a protoc↔libprotobuf mismatch is a classic silent runtime failure).
+- **Known pitfall (Conan #19790)**: with the `CMakeConfigDeps` generator and `-Wl,-z,defs`,
+  `gRPC::grpc++` only sub-links → link explicitly
   `gRPC::grpc++ gRPC::grpc gRPC::gpr protobuf::libprotobuf`.
-- Reglas de producción: deadlines en todo (`set_deadline`), `IsCancelled()` en loops de
-  streaming, retry con backoff en `UNAVAILABLE`/`DEADLINE_EXCEEDED`, channels/stubs reusables
-  (thread-safe), keepalive, `grpc_health_v1` en todos los servicios, reflection activada para
-  debugging, shutdown graceful por señal.
+- Production rules: deadlines everywhere (`set_deadline`), `IsCancelled()` in streaming
+  loops, retry with backoff on `UNAVAILABLE`/`DEADLINE_EXCEEDED`, reusable channels/stubs
+  (thread-safe), keepalive, `grpc_health_v1` on all services, reflection enabled for
+  debugging, graceful shutdown on signal.
 
-### 3.2 Trantor: ya es parte del stack
+### 3.2 Trantor: already part of the stack
 
-Trantor es la capa de red no-bloqueante (EventLoop, TcpClient/TcpServer, TLSPolicy) sobre la que
-Drogon está construido — mismo autor (Tao An). **No se adopta como dependencia aparte**; es
-detalle interno de Drogon. Lo que sí importa: Drogon `HttpClient` (async + coroutine
-`sendRequestCoro`, pipelining, conexiones persistentes, sobre `trantor::TcpClient`) y el plugin
-oficial de ejemplo **SimpleReverseProxy** (round-robin/sticky, `setPassThrough(true)` para no
-mutar headers) — el benchmark del issue #307 de Drogon mostró un proxy Drogon superando a nginx
-y Envoy (~50K req/s). Conclusión: el gateway en C++ con Drogon es viable **sin introducir
-ninguna librería nueva**.
+Trantor is the non-blocking network layer (EventLoop, TcpClient/TcpServer, TLSPolicy) on which
+Drogon is built — same author (Tao An). **It is not adopted as a separate dependency**; it is an
+internal detail of Drogon. What does matter: Drogon `HttpClient` (async + coroutine
+`sendRequestCoro`, pipelining, persistent connections, on top of `trantor::TcpClient`) and the
+official example plugin **SimpleReverseProxy** (round-robin/sticky, `setPassThrough(true)` to avoid
+mutating headers) — the benchmark in Drogon issue #307 showed a Drogon proxy beating nginx
+and Envoy (~50K req/s). Conclusion: the gateway in C++ with Drogon is viable **without introducing
+any new library**.
 
-### 3.3 Gateway: propio con Drogon (edge + filtros preservados)
+### 3.3 Gateway: in-house with Drogon (edge + preserved filters)
 
-Elección: **argus-gateway** construido con Drogon usando el patrón `SimpleReverseProxy` para el
-routing por prefijo de path + los filtros existentes (Device/ValidJson/Jwt/Role) ejecutándose
-una sola vez en el edge.
+Choice: **argus-gateway** built with Drogon using the `SimpleReverseProxy` pattern for
+path-prefix routing + the existing filters (Device/ValidJson/Jwt/Role) running
+only once at the edge.
 
-Por qué no Traefik/Caddy/nginx como punto único de entrada:
-1. **Device fingerprint**: `deviceHash = HMAC(User-Agent|IP)` — un proxy cambia el peer IP y
-   (peor) puede mutar User-Agent → **401 "Device mismatch" en toda la app** salvo configurar
-   `trust_forwarded_for` + proxy confiables. El gateway propio recibe al cliente directo, como
-   hoy.
-2. **CA de instancia propia** (no ACME): los clientes pinnean el fingerprint de la CA devuelto
-   por `/pairing`; la rotación de leaf la hace `CertService` en C++. Terminar TLS fuera exige
-   replicar ese ciclo de vida.
-3. **mDNS** anuncia `_argus._tcp` con TXT `path=/, https=true, wss=true` — el punto de entrada
-   debe seguir siendo uno solo con ese contrato.
+Why not Traefik/Caddy/nginx as the single entry point:
+1. **Device fingerprint**: `deviceHash = HMAC(User-Agent|IP)` — a proxy changes the peer IP and
+   (worse) may mutate the User-Agent → **401 "Device mismatch" across the whole app** unless
+   `trust_forwarded_for` + trusted proxies are configured. The in-house gateway receives the client directly, as
+   today.
+2. **Own instance CA** (not ACME): clients pin the CA fingerprint returned
+   by `/pairing`; leaf rotation is done by `CertService` in C++. Terminating TLS outside requires
+   replicating that lifecycle.
+3. **mDNS** announces `_argus._tcp` with TXT `path=/, https=true, wss=true` — the entry point
+   must remain a single one with that contract.
 
-Los proxies maduros pueden agregarse **después** como capa TLS pura si algún día se necesita
-(HTTP/3, ACME de dominio público), sin tocar los servicios.
+Mature proxies can be added **later** as a pure TLS layer if it is ever needed
+(HTTP/3, public-domain ACME), without touching the services.
 
-### 3.4 Bus de eventos: NATS + JetStream (cliente oficial cnats)
+### 3.4 Event bus: NATS + JetStream (official cnats client)
 
-- **cnats** (`nats-io/nats.c`): Apache-2.0, cliente C/C++ oficial, JetStream completo desde
-  v3.0 (streams, consumers durables, at-least-once con replay), **disponible en Conan**,
-  v3.13.0 mantenida. TLS + NKeys.
-- Alternativa evaluada: Redis Streams (menos maduro como bus dedicado), Kafka (sobredimensionado
-  para LAN single-host). NATS = un binario Go, RAM mínima, ideal para edge/self-hosted.
-- Sujeto a decisión en diseño: JetStream KV para config compartida (reemplazo potencial de
-  `config.toml` compartido) — deferido.
+- **cnats** (`nats-io/nats.c`): Apache-2.0, official C/C++ client, full JetStream since
+  v3.0 (streams, durable consumers, at-least-once with replay), **available on Conan**,
+  v3.13.0 maintained. TLS + NKeys.
+- Alternative evaluated: Redis Streams (less mature as a dedicated bus), Kafka (overkill
+  for single-host LAN). NATS = a single Go binary, minimal RAM, ideal for edge/self-hosted.
+- Subject to a design decision: JetStream KV for shared config (potential replacement of the
+  shared `config.toml`) — deferred.
 
-### 3.5 Dependencias multi-repo: Conan 2 + registry privado
+### 3.5 Multi-repo dependencies: Conan 2 + private registry
 
-- **Principio del usuario**: cada package, plugin y proyecto principal tiene **sus propias
-  dependencias** — nadie comparte un conanfile global.
-- `argus-common` se **publica como package Conan** (`argus-common/1.x`) a un registry privado:
-  - Arranque (1 máquina): remote `local_recipes_index` (carpeta local de recetas, sin servidor).
-  - Multi-máquina: **Artifactory CE for C/C++** en Docker (gratis, WebUI, permisos, REST),
-    con repos `develop → packages → products` y **promoción** entre repos (channels
-    desaconsejados en Conan 2).
-- Rangos de versión en los consumidores: `argus-common/[>=1.2 <2]`; `package_id` modes
-  (embed/non-embed) controlan cuándo se reconstruyen binarios; inmutabilidad de binarios
-  publicados.
-- Submodules (ncnn, llama.cpp, sherpa-onnx…) quedan **dentro del repo del servicio que los
-  usa**, no en común.
+- **User's principle**: each package, plugin and main project has **its own
+  dependencies** — nobody shares a global conanfile.
+- `argus-common` is **published as a Conan package** (`argus-common/1.x`) to a private registry:
+  - Bootstrapping (1 machine): remote `local_recipes_index` (local recipes folder, no server).
+  - Multi-machine: **Artifactory CE for C/C++** on Docker (free, WebUI, permissions, REST),
+    with `develop → packages → products` repos and **promotion** between repos (channels
+    discouraged in Conan 2).
+- Version ranges in consumers: `argus-common/[>=1.2 <2]`; `package_id` modes
+  (embed/non-embed) control when binaries are rebuilt; immutability of published
+  binaries.
+- Submodules (ncnn, llama.cpp, sherpa-onnx…) stay **inside the repo of the service that
+  uses them**, not in common.
 
-### 3.7 Acceso remoto: túnel propio, E2E y el rediseño de identidad que obliga
+### 3.7 Remote access: in-house tunnel, E2E, and the identity redesign it forces
 
-Requisito del usuario: todo el stack se expondrá a internet mediante un **túnel propio y
-personalizado, 100% gratis** (nada pagado, nada de terceros comerciales). Su desarrollo todavía
-no comienza, pero este apartado deja **el contrato definido** para cuando se construya. El túnel
-tendrá tres responsabilidades:
+User requirement: the whole stack will be exposed to the internet through an **in-house,
+custom, 100% free tunnel** (nothing paid, no commercial third parties). Its development has not
+yet begun, but this section leaves **the contract defined** for when it is built. The tunnel
+will have three responsibilities:
 
-1. **Transporte seguro** de dispositivos ya autenticados hacia `argus-gateway`, con
-   encriptación **punto a punto basada en la certificado de instancia** (probablemente **gRPC**
-   como protocolo del túnel).
-2. **Canal de push**: el túnel es el encargado de **enviar las notificaciones push a los
-   dispositivos conectados** (mantiene conexiones persistentes con ellos; ver abajo).
-3. **Nada más**: el túnel es **solo para personas ya previamente autenticadas y registradas en
-   el sistema**. No bootstrap: ni crear usuarios ni parear dispositivos a través del túnel.
+1. **Secure transport** of already-authenticated devices to `argus-gateway`, with
+   **end-to-end encryption based on the instance certificate** (probably **gRPC**
+   as the tunnel protocol).
+2. **Push channel**: the tunnel is responsible for **sending push notifications to
+   connected devices** (it maintains persistent connections with them; see below).
+3. **Nothing else**: the tunnel is **only for people already previously authenticated and registered in
+   the system**. No bootstrap: neither creating users nor pairing devices through the tunnel.
 
-**Regla no negociable — el TLS termina en `argus-gateway`, no en el túnel:**
-- El túnel retransmite; nunca descifra. La sesión TLS del cliente va de punta a punta con los
-  certificados de la instancia (la CA que `/pairing` devolvió y el cliente pinneó). Si el túnel
-  usa gRPC internamente, ese gRPC es **otro canal** (túnel↔gateway) y no debe confundirse con el
-  canal del cliente: dos TLS distintos, el del cliente sigue siendo E2E.
-- **Dónde corre el relay (decisión del usuario): un servidor dedicado en la nube, ubicado en
-  Estados Unidos** — latencia genérica alrededor del mundo — y corriendo **exclusivamente el
-  túnel** (single-tenant: ningún otro servicio en la máquina). Hardware moderno (CPU potente,
-  DDR5 ECC, M.2). Nota técnica: como el relay **no descifra**, su carga es puro reenvío TCP/gRPC
-  — el cuello de botella real es el ancho de banda y el peering, no la CPU; el hardware dedicado
-  da margen de sobra. El relay solo ve bytes cifrados.
+**Non-negotiable rule — TLS terminates at `argus-gateway`, not at the tunnel:**
+- The tunnel relays; it never decrypts. The client's TLS session goes end to end with the
+  instance certificates (the CA that `/pairing` returned and the client pinned). If the tunnel
+  uses gRPC internally, that gRPC is **another channel** (tunnel↔gateway) and must not be confused with the
+  client channel: two different TLSs, the client's remains E2E.
+- **Where the relay runs (user's decision): a dedicated cloud server, located in
+  the United States** — generic latency around the world — and running **exclusively the
+  tunnel** (single-tenant: no other service on the machine). Modern hardware (powerful CPU,
+  DDR5 ECC, M.2). Technical note: since the relay **does not decrypt**, its load is pure TCP/gRPC forwarding
+  — the real bottleneck is bandwidth and peering, not CPU; dedicated hardware
+  gives plenty of headroom. The relay only sees encrypted bytes.
 
-**Lo que el túnel rompe y hay que rediseñar — la identidad de dispositivo (decisión del
-usuario: la IP sale del deviceHash):**
-- `DeviceFilter` hoy calcula `deviceHash = HMAC(User-Agent|IP)` (§2.3). La IP **no sirve** como
-  material de identidad: cambia con la red del dispositivo (LAN del hogar, datos móviles, túnel).
-  Peor aún: con el túnel, todos los remotos llegan con la IP del relay y ni siquiera existe
-  `X-Forwarded-For` posible si los bytes van cifrados.
-- Rediseño objetivo: **credencial de dispositivo sin IP**. El gateway emite, al login/pairing,
-  una **credencial por dispositivo** (certificado de cliente mTLS emitido por `CertService` para
-  el transporte, más un `device_secret` opaco que la app presenta en cada request). El hash pasa
-  a `HMAC(User-Agent | credencial)` — misma identidad en LAN, en datos móviles y por el túnel;
-  roaming transparente, la IP deja de existir como material de identidad.
-- Transición honesta: durante la migración strangler la app no cambia (invariante), así que el
-  monolito/gateway sigue calculando `HMAC(UA|IP)` en LAN. La identidad sin IP aterriza en la
-  **Fase 5** junto con el túnel, coordinada vía `argus-contracts` (cambio de cliente). En ese
-  momento las sesiones existentes se re-emiten una única vez (re-login controlado).
+**What the tunnel breaks and what must be redesigned — device identity (user's decision: IP leaves the deviceHash):**
+- `DeviceFilter` today computes `deviceHash = HMAC(User-Agent|IP)` (§2.3). The IP **is not usable** as
+  identity material: it changes with the device's network (home LAN, mobile data, tunnel).
+  Worse still: with the tunnel, all remotes arrive with the relay's IP and there isn't even a
+  possible `X-Forwarded-For` if the bytes are encrypted.
+- Target redesign: **device credential without IP**. The gateway issues, at login/pairing,
+  a **per-device credential** (mTLS client certificate issued by `CertService` for
+  transport, plus an opaque `device_secret` that the app presents on each request). The hash becomes
+  `HMAC(User-Agent | credential)` — same identity on LAN, on mobile data and through the tunnel;
+  transparent roaming, the IP ceases to exist as identity material.
+- Honest transition: during the strangler migration the app does not change (invariant), so the
+  monolith/gateway keeps computing `HMAC(UA|IP)` on LAN. IP-less identity lands in
+  **Phase 5** together with the tunnel, coordinated via `argus-contracts` (client change). At that
+  point existing sessions are re-issued exactly once (controlled re-login).
 
-**Certificados — SANs incompletas hoy:**
-- Los SANs actuales son `argus.local, localhost, 127.0.0.1, <mdns.name>.local`. El hostname
-  público del relay **no está** → mismatch de TLS. `CertService` incluirá el hostname público
-  en las SANs (config nueva `remote.hostname`), y la app aceptará un servidor manual además del
-  descubierto por mDNS.
+**Certificates — incomplete SANs today:**
+- The current SANs are `argus.local, localhost, 127.0.0.1, <mdns.name>.local`. The relay's
+  public hostname **is not** → TLS mismatch. `CertService` will include the public hostname
+  in the SANs (new config `remote.hostname`), and the app will accept a manual server in addition to the
+  one discovered via mDNS.
 
-**Superficie expuesta — endurecimiento del edge:**
-- **`/pairing` y `/auth/register` (creación de usuarios) se ejecutan ÚNICA y exclusivamente
-  dentro de la red local del hogar** (decisión del usuario, motivo de seguridad: no puedes
-  crear un usuario y colarte por el túnel). El gateway las rechaza cuando `remote.enabled=true`
-  o cuando el peer no está en los CIDRs de LAN configurados (`network.lan_cidrs`). La
-  incorporación de gente nueva es un acto físico en el hogar, como debe ser.
-- El túnel solo sirve a usuarios ya registrados: la superficie pre-auth remota se reduce a
-  `/auth/refresh-token` (single-use, replay protection). Aun así: **rate limiting por
-  credencial** en el edge **antes** de que `JwtFilter` toque SQLite (son 2 queries por request;
-  `identity.db` es de un solo escritor) y lockout progresivo.
-- Solo el gateway y el componente de túnel viven en `edge`; NATS/gRPC/RustFS jamás expuestos.
+**Exposed surface — edge hardening:**
+- **`/pairing` and `/auth/register` (user creation) run ONLY and exclusively
+  inside the home local network** (user's decision, security reason: you cannot
+  create a user and sneak in through the tunnel). The gateway rejects them when `remote.enabled=true`
+  or when the peer is not in the configured LAN CIDRs (`network.lan_cidrs`). The
+  onboarding of new people is a physical act at home, as it should be.
+- The tunnel only serves already-registered users: the remote pre-auth surface is reduced to
+  `/auth/refresh-token` (single-use, replay protection). Even so: **rate limiting per
+  credential** at the edge **before** `JwtFilter` touches SQLite (that's 2 queries per request;
+  `identity.db` is single-writer) and progressive lockout.
+- Only the gateway and the tunnel component live in `edge`; NATS/gRPC/RustFS never exposed.
 
-**Push — quién manda qué (arquitectura del canal):**
-- El dispositivo remoto mantiene **una conexión persistente con el túnel** (esa conexión es el
-  push channel). El flujo de un evento (ej. YOLO26n detecta presencia): `argus-camera` publica
-  a NATS → `argus-notification` decide (presupuesto, horas-silencio, dedupe, digests) → publica
-  la **intención de notificación** → el túnel la consume y la entrega por las conexiones
-  persistentes de los dispositivos conectados.
-- Separación limpia: `argus-notification` es **política** (qué notificar, a quién, cuándo, en
-  qué formato); el túnel es **transporte** (por dónde llega). Ninguno sabe del otro: se hablan
-  por NATS con un contrato en `argus-contracts`.
+**Push — who sends what (channel architecture):**
+- The remote device maintains **a persistent connection with the tunnel** (that connection is the
+  push channel). The flow of an event (e.g. YOLO26n detects presence): `argus-camera` publishes
+  to NATS → `argus-notification` decides (budget, quiet hours, dedupe, digests) → publishes
+  the **notification intent** → the tunnel consumes it and delivers it through the
+  persistent connections of the connected devices.
+- Clean separation: `argus-notification` is **policy** (what to notify, to whom, when, in
+  what format); the tunnel is **transport** (where it arrives). Neither knows about the other: they speak
+  over NATS with a contract in `argus-contracts`.
 
-## 4. Arquitectura objetivo
+## 4. Target architecture
 
 ```
                          ┌──────────────────────────────────────────┐
-  móvil / desktop        │        argus-gateway  (= la "base")      │
-  base shell + plugins   │  TLS 7024 · misma CA de instancia        │
+  mobile / desktop       │        argus-gateway  (= the "base")     │
+  base shell + plugins   │  TLS 7024 · same instance CA             │
     │  WSS /sync         │  DeviceFilter→ValidJsonFilter→JwtFilter  │
     ▼                    │  →RoleFilter · /pairing · /auth/* · mdns │
-  path routing ─────────►│  /sync: fan-out NATS + proxy media/voz   │
+  path routing ─────────►│  /sync: NATS fan-out + media/voice proxy │
   argus.local/camera/…   └───────┬──────────────────────────────────┘
-                                 │  gRPC (mTLS interno, deadlines, health)
+                                 │  gRPC (internal mTLS, deadlines, health)
         ┌──────────────┬─────────┴────┬──────────┬──────────┬─────────┐
         ▼              ▼              ▼          ▼          ▼         ▼
   argus-productivity  argus-camera  argus-llm  argus-vlm  argus-tts  argus-stt
    calendar, project,  camera, zone, llama.cpp   LFM2.5-VL  supertonic sherpa-onnx
    reminder            stream/go2rtc, +tools                (onnx)     (onnx)
-                       YOLO26n,
-                       operator
-                        + argus-memory (grafo+extract+embedding+VecDb+FTS5)
-                        + NATS JetStream · RustFS (S3)
+                        YOLO26n,
+                        operator
+                         + argus-memory (graph+extract+embedding+VecDb+FTS5)
+                         + NATS JetStream · RustFS (S3)
 ```
 
-### 4.1 Repositorios (monorepo único; cada servicio compila lo suyo, pero todo vive como una sola aplicación)
+### 4.1 Repositories (single monorepo; each service builds its own, but everything lives as a single application)
 
-Reglas de composición (decisión del usuario):
+Composition rules (user's decision):
 
-- **Un único monorepo** (la raíz del repo actual del backend). Cada servicio vive como una
-  carpeta `argus-*` hermana de `src/` (`argus-gateway/`, `argus-camera/`, …), con su propio
-  `CMakeLists.txt`, `CMakePresets.json`, `conanfile.txt`, `database/schema.sql`, `config/` y
-  `labs/` — compila independiente, produce sus propios artefactos de build y se despliega como
-  contenedor propio, **pero todo junto opera como una sola aplicación** (un gateway, un
-  contrato, una UI).
-- **Versionado interno por tags del repo**: `contracts-v*` para `argus-contracts/` y
-  `service-v*` para cada carpeta de servicio. La CI filtra por ruta (`paths`) para compilar y
-  testear solo lo que cambió.
-- **Cada carpeta de servicio lleva su `CONTEXT.md` y su `AGENTS.md`, ambos en inglés** (el
-  "why" viaja con el código, las reglas de agente también).
-- **Infra por necesidad, no por uniformidad**: `argus-camera` necesita S3 (RustFS) para sus
-  artefactos; los demás solo consumen lo que su dominio pide. La infra se declara en el compose
-  de `argus-deploy`, no en cada servicio.
-- **Reutilización en `argus-common`** (validación de DTOs/DSL, envelope, role-access, enums,
-  ConfigService…) para no redundar código que ya existe.
-- **`argus-auth` (package, nuevo)**: un package simple que encapsula TODO el ciclo de
-  autenticación — DeviceFilter/JwtFilter/RoleFilter, JwtService, device credential (sin IP,
-  §3.7), validación y helpers — para que gateway y servicios mantengan la lógica de auth
-  sencilla, escalable y mantenible en un solo lugar. Depende de `argus-common`.
-- **`argus-tunnel` se contempla desde el inicio pero como CLIENTE** (decisión del usuario: el
-  túnel solo está en idea). El folder `argus-contracts` define el contrato del cliente
-  (conexión al relay, canal de
-  push) y su integración en compose; el relay propio es implementación futura.
-- **Tests separados por tipo en cada servicio**: `test/unit/`, `test/e2e/` y cobertura; e2e
-  ejercita el contrato por HTTP/gRPC. Cada cosa con sus tests especializados y sus tests
-  principales.
-- **Convención de nombres de tests (decisión del usuario, cambia la de AGENTS.md actual
-  `*_test.cc`)**: guion, no underscore — `user-service-test.cc` / `user-service-test.hxx`
-  (antes `user-service_test.cc`). El resto de la declaración de archivos sigue el patrón que ya
-  se trabaja (`.hxx` headers, `.cc` fuentes, kebab-case), sin variantes nuevas.
+- **A single monorepo** (the root of the current backend repo). Each service lives as an
+  `argus-*` folder sibling to `src/` (`argus-gateway/`, `argus-camera/`, …), with its own
+  `CMakeLists.txt`, `CMakePresets.json`, `conanfile.txt`, `database/schema.sql`, `config/` and
+  `labs/` — it builds independently, produces its own build artifacts and is deployed as its own
+  container, **but all together operates as a single application** (one gateway, one
+  contract, one UI).
+- **Internal versioning via repo tags**: `contracts-v*` for `argus-contracts/` and
+  `service-v*` for each service folder. CI filters by path (`paths`) to build and
+  test only what changed.
+- **Each service folder carries its `CONTEXT.md` and its `AGENTS.md`, both in English** (the
+  "why" travels with the code, the agent rules too).
+- **Infra by necessity, not by uniformity**: `argus-camera` needs S3 (RustFS) for its
+  artifacts; the others only consume what their domain asks for. Infra is declared in the compose
+  of `argus-deploy`, not in each service.
+- **Reuse in `argus-common`** (DTO/DSL validation, envelope, role-access, enums,
+  ConfigService…) to avoid duplicating code that already exists.
+- **`argus-auth` (package, new)**: a simple package that encapsulates ALL the authentication
+  lifecycle — DeviceFilter/JwtFilter/RoleFilter, JwtService, device credential (without IP,
+  §3.7), validation and helpers — so that gateway and services keep the auth logic
+  simple, scalable and maintainable in one place. It depends on `argus-common`.
+- **`argus-tunnel` is contemplated from the start but as a CLIENT** (user's decision: the
+  tunnel is only an idea). The `argus-contracts` folder defines the client contract
+  (connection to the relay, push
+  channel) and its integration in compose; the in-house relay is a future implementation.
+- **Tests separated by type in each service**: `test/unit/`, `test/e2e/` and coverage; e2e
+  exercises the contract over HTTP/gRPC. Each thing with its specialized tests and its
+  main tests.
+- **Test naming convention (user's decision, changes the current AGENTS.md one
+  `*_test.cc`)**: hyphen, not underscore — `user-service-test.cc` / `user-service-test.hxx`
+  (previously `user-service_test.cc`). The rest of the file declaration follows the pattern already
+  in use (`.hxx` headers, `.cc` sources, kebab-case), no new variants.
 
-| Servicio | Contiene | Deps propias (conanfile) |
+| Service | Contains | Own deps (conanfile) |
 |---|---|---|
-| `argus-contracts` | Todos los `.proto` (`argus.<dominio>.v1`), schemas de manifiestos package/plugin, fixtures de frames `/sync`, `buf` + CI de breaking | buf, protoc |
-| `argus-common` | ConfigService, ThreadBudget, HardwareProbe, BlockingTask, CancellationToken, schema-runner, envelope `ApiResponse`, `role-access`, enums, validation, logging | toml++, nlohmann_json, jwt-cpp |
-| `argus-gateway` | TLS, filtros, auth facial, pairing, certs, mdns, dueño de `/sync` (fan-out + proxy), reverse-proxy | drogon, cnats, argus-common |
-| `argus-camera` | `camera`, `camera_stream`, `zone`; camera-control; drivers (tapo); go2rtc/StreamHub/MediaRelay; **YOLO26n (ObjectDetectorService + CameraOperatorService + EventIntelligence + seam IObjectDetector)** | drogon, ncnn (Vulkan), opencv, cnats |
+| `argus-contracts` | All the `.proto` (`argus.<domain>.v1`), package/plugin manifest schemas, `/sync` frame fixtures, `buf` + breaking CI | buf, protoc |
+| `argus-common` | ConfigService, ThreadBudget, HardwareProbe, BlockingTask, CancellationToken, schema-runner, `ApiResponse` envelope, `role-access`, enums, validation, logging | toml++, nlohmann_json, jwt-cpp |
+| `argus-gateway` | TLS, filters, facial auth, pairing, certs, mdns, owner of `/sync` (fan-out + proxy), reverse-proxy | drogon, cnats, argus-common |
+| `argus-camera` | `camera`, `camera_stream`, `zone`; camera-control; drivers (tapo); go2rtc/StreamHub/MediaRelay; **YOLO26n (ObjectDetectorService + CameraOperatorService + EventIntelligence + IObjectDetector seam)** | drogon, ncnn (Vulkan), opencv, cnats |
 | `argus-productivity` | `calendar_event(+share)`, `project(+member,+task)`, `reminder(+detail)`, `context_note` | drogon, cnats |
-| `argus-notification` | `notification`, `notification_token`; **política** de notificación (presupuesto, horas-silencio, digests); la **entrega** física la hace el túnel vía NATS (§3.7) | drogon, cnats |
-| `argus-llm` | LLM (llama.cpp in-proc) + LfmAdapter/tools (la activación implícita de herramientas es tool calling del propio LLM: fastText/IntentService retirados el 2026-09-08) | llama.cpp |
-| `argus-vlm` | Visión/LFM2.5-VL (llama.cpp mtmd in-proc) | llama.cpp (mtmd) |
+| `argus-notification` | `notification`, `notification_token`; notification **policy** (budget, quiet hours, digests); the physical **delivery** is done by the tunnel via NATS (§3.7) | drogon, cnats |
+| `argus-llm` | LLM (llama.cpp in-proc) + LfmAdapter/tools (implicit tool activation is the LLM's own tool calling: fastText/IntentService retired on 2026-09-08) | llama.cpp |
+| `argus-vlm` | Vision/LFM2.5-VL (llama.cpp mtmd in-proc) | llama.cpp (mtmd) |
 | `argus-tts` | supertonic-3 (onnxruntime in-proc) | onnxruntime |
 | `argus-stt` | sherpa-onnx nemo-transducer in-proc | sherpa-onnx, onnxruntime |
-| `argus-memory` | grafo de memoria + extract (NuExtract) + embedding (e5) + VecDb (`memory_vec`) + FTS5 | llama.cpp, onnxruntime, sqlite-vec |
-| `argus-tunnel` | Túnel propio (§3.7): cliente en el hogar + relay en **servidor dedicado en la nube (EE.UU., single-tenant)**; gRPC; conexiones persistentes con dispositivos (canal de push); retransmite TLS de la instancia sin descifrar | grpc, cnats |
-| `argus-deploy` | compose/swarm, Dockerfiles por servicio (incluye el relay del túnel), instalador, secrets, detect-hardware | — |
+| `argus-memory` | memory graph + extract (NuExtract) + embedding (e5) + VecDb (`memory_vec`) + FTS5 | llama.cpp, onnxruntime, sqlite-vec |
+| `argus-tunnel` | In-house tunnel (§3.7): home client + relay on a **dedicated cloud server (U.S., single-tenant)**; gRPC; persistent connections with devices (push channel); relays the instance TLS without decrypting | grpc, cnats |
+| `argus-deploy` | compose/swarm, Dockerfiles per service (includes the tunnel relay), installer, secrets, detect-hardware | — |
 
-Regla de datos: **ningún servicio hace SQL contra la DB de otro**. Referencias cross-dominio →
-ids validados por el servicio dueño o RPC gRPC.
+Data rule: **no service does SQL against another's DB**. Cross-domain references →
+ids validated by the owning service or gRPC RPC.
 
-### 4.2 Separación de dominios de datos (una DB por archivo)
+### 4.2 Data domain separation (one DB per file)
 
-| Servicio | Tablas que posee (del `schema.sql` actual) |
+| Service | Tables it owns (from the current `schema.sql`) |
 |---|---|
 | **gateway (base)** | `user`, `refresh_token`, `device_login_challenge`, `user_invitation`, `invitation_redemption`, `person`, `face_embedding` (+ `face_vec`), `audit_log`, `user_audit_log`, `user_action_log`, `stored_file`, `user_portrait`, `portrait_preview_capability` |
 | **camera** | `camera`, `camera_stream`, `zone` |
 | **productivity** | `calendar_event`, `calendar_event_share`, `project`, `project_member`, `project_task`, `reminder`, `reminder_detail`, `context_note` |
 | **notification** | `notification`, `notification_token` |
 | **memory** | `memory_entity`, `memory_alias`, `memory_fact`, `memory_edge`, `memory_episode`, `memory_source`, `memory_procedure`, `memory_*_fts`, `memory_vec` |
-| **gateway (sync/audit)** | `schema_version` propio por DB; sync de todas las tablas vía NATS |
+| **gateway (sync/audit)** | `schema_version` own per DB; sync of all tables via NATS |
 
-Nota: `user(id)` deja de ser hub FK — las demás DBs guardan `user_id` como entero validado en el
-servicio que lo usa (o vía RPC a base). `person` sigue vivo en base; `face_embedding` y
-`memory_entity.person_id` lo referencian por id (memory hoy ya lo hace sin FK).
+Note: `user(id)` ceases to be a hub FK — the other DBs store `user_id` as an integer validated in the
+service that uses it (or via RPC to base). `person` remains alive in base; `face_embedding` and
+`memory_entity.person_id` reference it by id (memory today already does so without FK).
 
-### 4.3 Identidad y seguridad
+### 4.3 Identity and security
 
-- El **gateway es el único que ve al cliente**: ejecuta DeviceFilter (HMAC User-Agent+IP intacto
-  durante la migración; ver §3.7 para la evolución a identidad por certificado de cliente mTLS
-  con acceso remoto) → JwtFilter (2 queries a `identity.db`) → RoleFilter (`role-access`
-  intacto), y **propaga la identidad por metadata gRPC mTLS** (`x-argus-user`, `x-argus-role`,
-  `x-argus-device`) a los servicios. Los servicios confían solo en la red `internal`.
-- `/pairing`, certs y mdns viven en el gateway (bootstrap de confianza PKI intacto: pairing
-  code = fingerprint de la CA). **Pairing y creación de usuarios solo en LAN** (§3.7); por el
-  túnel solo pasan dispositivos ya autenticados.
-- CORS `*` + short-circuit de OPTIONS: el gateway lo replica **exactamente igual** (o aparecen
-  headers duplicados).
-- Los cuerpos multipart (`/auth/login`, `/auth/register`) pasan byte-exactos.
+- The **gateway is the only one that sees the client**: it runs DeviceFilter (HMAC User-Agent+IP intact
+  during the migration; see §3.7 for the evolution to identity by mTLS client certificate
+  with remote access) → JwtFilter (2 queries to `identity.db`) → RoleFilter (`role-access`
+  intact), and **propagates the identity via gRPC mTLS metadata** (`x-argus-user`, `x-argus-role`,
+  `x-argus-device`) to the services. The services trust only the `internal` network.
+- `/pairing`, certs and mdns live in the gateway (PKI trust bootstrap intact: pairing
+  code = CA fingerprint). **Pairing and user creation only on LAN** (§3.7); through the
+  tunnel only already-authenticated devices pass.
+- CORS `*` + OPTIONS short-circuit: the gateway replicates it **exactly the same** (or duplicate
+  headers appear).
+- Multipart bodies (`/auth/login`, `/auth/register`) pass byte-exact.
 
 ---
 
-## 5. Versionado y retrocompatibilidad (política formal)
+## 5. Versioning and backward compatibility (formal policy)
 
-| Capa | Regla |
+| Layer | Rule |
 |---|---|
-| **gRPC** | Paquetes `argus.<dominio>.v1` · SemVer por paquete · cambios solo aditivos; campo retirado → `reserved` + campo nuevo · CI `buf breaking` contra la versión publicada · health-checking + reflection en todos |
-| **HTTP existente** | **Paths, envelope `{status, info, errors}` (siempre presentes, `info`/`errors` null cuando vacío), códigos de error (`BAD_REQUEST…CAMERA_UNREACHABLE`) y `SyncOperation` 0–7: congelados para siempre.** El gateway enruta por prefijo de path idéntico al actual |
-| **Cambios breaking futuros** | Ruta nueva versionada (`/v2/...`); el gateway puede servir v1 y v2 en paralelo durante la ventana |
-| **Deprecación** | Ventana N-1 minor: header `Deprecation` + `Sunset` un release antes de retirar |
-| **Contratos** | La fuente de verdad es `argus-contracts` (nunca un servicio suelto). El móvil coordina contra este repo |
-| **DB** | Un ledger `schema_version` **por servicio** (hoy: una tabla compartida + `migrate()` C++ inline). Migraciones aditivas; destructivas en 2 fases (tabla nueva + backfill + drop una versión después) |
-| **Sync wire** | `TableName`, valores 0–7 y `SYNC_LIMIT=200` intactos; operaciones nuevas solo con números ≥8 |
-| **Packages** | Manifiesto tipado por capacidad (`[llm] model_path, accepted_models, defaults`) sin DB; `apiVersion` SemVer; consumidores declaran rango (`llm: ^1.2`) |
-| **Plugins** | `manifest.json` (vistas declarativas, permisos, `requires`) + `logic.js` + assets; firmado ed25519, verificado antes de instalar; resolutor reutiliza capacidades ya instaladas |
-| **Modelos** | Intercambiables por hardware (`detect-hardware.sh` → tier CUDA > Vulkan > CPU); el package declara modelos aceptados |
+| **gRPC** | Packages `argus.<dominio>.v1` · SemVer per package · additive-only changes; retired field → `reserved` + new field · CI `buf breaking` against the published version · health-checking + reflection on all |
+| **Existing HTTP** | **Paths, envelope `{status, info, errors}` (always present, `info`/`errors` null when empty), error codes (`BAD_REQUEST…CAMERA_UNREACHABLE`) and `SyncOperation` 0–7: frozen forever.** The gateway routes by path prefix identical to the current one |
+| **Future breaking changes** | New versioned route (`/v2/...`); the gateway can serve v1 and v2 in parallel during the window |
+| **Deprecation** | N-1 minor window: `Deprecation` + `Sunset` header one release before removal |
+| **Contracts** | The source of truth is `argus-contracts` (never a loose service). Mobile coordinates against this repo |
+| **DB** | A `schema_version` ledger **per service** (today: one shared table + inline C++ `migrate()`). Additive migrations; destructive ones in 2 phases (new table + backfill + drop one version later) |
+| **Sync wire** | `TableName`, values 0–7 and `SYNC_LIMIT=200` untouched; new operations only with numbers ≥8 |
+| **Packages** | Typed manifest per capability (`[llm] model_path, accepted_models, defaults`) without DB; `apiVersion` SemVer; consumers declare a range (`llm: ^1.2`) |
+| **Plugins** | `manifest.json` (declarative views, permissions, `requires`) + `logic.js` + assets; signed ed25519, verified before installing; the resolver reuses already-installed capabilities |
+| **Models** | Interchangeable by hardware (`detect-hardware.sh` → tier CUDA > Vulkan > CPU); the package declares accepted models |
 
 ---
 
-## 6. Docker / despliegue
+## 6. Docker / deployment
 
-- **Imagen por servicio**, multi-stage sobre una base común `argus-runtime` (deps Conan
-  prebuilt → cache de capas). Cada imagen compila los submodules que necesita (la de camera
-  lleva ncnn; la de llm, llama.cpp; etc.). Non-root, read-only rootfs, `EXPOSE` solo gRPC.
-- **Redes**: `edge` (solo gateway expuesto), `internal` (gRPC mTLS + NATS), `media` (go2rtc
-  RTSP/API — el media plane aislado del plano de control).
-- **Secrets de Docker**: `jwt.secret`, `jwt.refresh_secret`, `device.fingerprint_secret`,
-  credenciales de cámara, claves de firma de plugins. Nada en imagen ni repo.
-- **Volumen read-only compartido** para `models/` (13 GB): un solo lugar que actualiza el
-  instalador por capacidad (`setup.sh camera|llm|vlm|tts|stt|memory|face`).
-- **GPU**: `/dev/dri` + Mesa del host en las imágenes de camera/vlm (Vulkan RADV) — validar
-  RADV dentro del contenedor antes de la Fase 2.
-- **Límites `cpus`/`mem_limit` por servicio**: el consumo descontrolado se vuelve
-  técnicamente impuesto por el orquestador, no convención.
-- **Compose primero; Swarm solo al multi-nodo** (ej. nodo GPU + nodo cámaras). El diseño es
-  orquestador-agnóstico: cambiar de compose a Swarm no toca código.
-- Healthchecks gRPC (`grpc_health_v1`) en todos; restart policies; logs estructurados.
-- **Instalador** (evolución de `setup.sh`): detecta hardware, descarga modelos por capacidad a
-  los volúmenes, genera secrets, escribe `config/<servicio>.toml` (0600), hace `docker compose
-  up`. Cada servicio publica su lista de modelos aceptados en su manifiesto package.
-- **Túnel propio** (§3.7, repo `argus-tunnel`): el cliente corre como contenedor en el hogar,
-  unido **solo** a la red `edge` junto al gateway; el relay corre en el **servidor dedicado de
-  EE.UU.** con su propio compose (máquina exclusiva del túnel, desplegada también desde
-  `argus-deploy`). Nunca se expone NATS/gRPC/RustFS.
+- **Image per service**, multi-stage on a common `argus-runtime` base (prebuilt Conan
+  deps → layer cache). Each image compiles the submodules it needs (the camera one
+  carries ncnn; the llm one, llama.cpp; etc.). Non-root, read-only rootfs, `EXPOSE` gRPC only.
+- **Networks**: `edge` (only gateway exposed), `internal` (gRPC mTLS + NATS), `media` (go2rtc
+  RTSP/API — the media plane isolated from the control plane).
+- **Docker secrets**: `jwt.secret`, `jwt.refresh_secret`, `device.fingerprint_secret`,
+  camera credentials, plugin signing keys. Nothing in the image or repo.
+- **Shared read-only volume** for `models/` (13 GB): a single place that the
+  installer updates per capability (`setup.sh camera|llm|vlm|tts|stt|memory|face`).
+- **GPU**: `/dev/dri` + host Mesa in the camera/vlm images (Vulkan RADV) — validate
+  RADV inside the container before Phase 2.
+- **Per-service `cpus`/`mem_limit` limits**: uncontrolled consumption becomes
+  technically enforced by the orchestrator, not a convention.
+- **Compose first; Swarm only for multi-node** (e.g., GPU node + camera node). The design is
+  orchestrator-agnostic: switching from compose to Swarm does not touch code.
+- gRPC healthchecks (`grpc_health_v1`) on all; restart policies; structured logs.
+- **Installer** (evolution of `setup.sh`): detects hardware, downloads models per capability to
+  the volumes, generates secrets, writes `config/<servicio>.toml` (0600), runs `docker compose
+  up`. Each service publishes its list of accepted models in its package manifest.
+- **Own tunnel** (§3.7, repo `argus-tunnel`): the client runs as a container in the home,
+  joined **only** to the `edge` network alongside the gateway; the relay runs on the **dedicated
+  US server** with its own compose (a machine exclusive to the tunnel, also deployed from
+  `argus-deploy`). NATS/gRPC/RustFS are never exposed.
 
 ---
 
-## 7. Fases de migración (strangler)
+## 7. Migration phases (strangler)
 
-> Invariante de cada fase: **la app móvil real funciona sin actualizarse**. El gateway enruta
-> por prefijo de path idéntico al actual; lo no migrado sigue yendo al monolito legacy.
+> Invariant of every phase: **the real mobile app works without updating**. The gateway routes
+> by path prefix identical to the current one; whatever is not migrated still goes to the legacy
+> monolith.
 
-### Fase 0 — Preparación (en el monolito, sin mover servicios)
-1. Extraer `add_library(argus_common STATIC)` con las piezas transversales (ConfigService,
+### Phase 0 — Preparation (in the monolith, without moving services)
+1. Extract `add_library(argus_common STATIC)` with the cross-cutting pieces (ConfigService,
    ThreadBudget, HardwareProbe, BlockingTask, schema-runner, envelope, role-access, enums,
-   validation) y enlazarla desde `argus-backend`. Labs siguen compilando `.cc` crudos.
-2. Resolver tablas huérfanas (drop o implementar): `voice_session`, `voice_message`,
-   `context_note`, `portrait_access_request`, `portrait_access_grant`; decidir el destino de
-   `event` (hoy solo lectura por sync).
-3. **Harness mínimo** (prerrequisito duro, sin esto no arranca nada): doctest/catch2 en
-   `src/test/` con (a) tests de contrato por ruta (request → envelope exacto, códigos 404/502),
-   (b) **frames de oro de `/sync`** grabados con la app real: bootstrap de las 15 tablas,
-   `camera:subscribe` → binarios fMP4, `voice:start` → PCM. Quedan en
+   validation) and link it from `argus-backend`. Labs still compile raw `.cc` files.
+2. Resolve orphan tables (drop or implement): `voice_session`, `voice_message`,
+   `context_note`, `portrait_access_request`, `portrait_access_grant`; decide the fate of
+   `event` (today read-only via sync).
+3. **Minimal harness** (hard prerequisite; without this nothing starts): doctest/catch2 in
+   `src/test/` with (a) per-route contract tests (request → exact envelope, 404/502 codes),
+   (b) **golden frames of `/sync`** recorded with the real app: bootstrap of the 15 tables,
+   `camera:subscribe` → fMP4 binaries, `voice:start` → PCM. They live in
    `argus-contracts/fixtures/`.
 4. CI (GitHub Actions): build + tests + clang-format + `buf breaking`.
-5. Crear `argus-contracts`: `.proto` v1 por dominio, tomando los DTO/`SyncOperation`/`TableName`
-   actuales como referencia semántica.
+5. Create `argus-contracts`: v1 `.proto` per domain, taking the current DTOs/`SyncOperation`/`TableName`
+   as semantic reference.
 
-### Fase 1 — Gateway + base
-- `argus-gateway` (Drogon): mismo listener TLS 7024, misma CA/`CertService`, filtros tal cual,
-  `/pairing`, `/auth/*` (login facial con FaceService + `identity.db`), `/invitation/resolve`,
-  mdns, y **dueño exclusivo de `/sync`** (fan-out de NATS + proxy binario de media y voz).
-- Reverse-proxy a servicios con el patrón oficial `SimpleReverseProxy`
-  (`setPassThrough(true)`): no mutar headers, no transformar multipart.
-- Identidad interna: metadata gRPC mTLS (`x-argus-user/role/device`) — ya no se necesita
-  `trust_forwarded_for` entre gateway y servicios.
-- Resto del tráfico → **legacy** (el `argus-backend` actual en contenedor, sin labs).
+### Phase 1 — Gateway + base
+- `argus-gateway` (Drogon): same TLS 7024 listener, same CA/`CertService`, filters as-is,
+  `/pairing`, `/auth/*` (facial login with FaceService + `identity.db`), `/invitation/resolve`,
+  mdns, and **exclusive owner of `/sync`** (NATS fan-out + binary proxy for media and voice).
+- Reverse-proxy to services with the official `SimpleReverseProxy` pattern
+  (`setPassThrough(true)`): do not mutate headers, do not transform multipart.
+- Internal identity: gRPC mTLS metadata (`x-argus-user/role/device`) — `trust_forwarded_for`
+  is no longer needed between gateway and services.
+- Rest of the traffic → **legacy** (the current `argus-backend` in a container, without labs).
 - `argus-deploy`: compose v1 (gateway + legacy + nats + rustfs) + secrets.
 
-### Fase 2 — Piloto: argus-camera (aquí vive el plan YOLO26n completo)
-- `camera.db` (`camera`, `camera_stream`, `zone`); endpoints `/camera*` y `/zone` con **paths
-  idénticos** y distinción 404 vs 502 `CAMERA_UNREACHABLE` preservada.
-- Drivers (camera-driver + tapo), go2rtc-manager/MediaRelay/StreamHub (lifecycle ya bespoke,
-  fuera del registry — extracción natural).
-- **YOLO26n**: diseño completo en **Appendix B** (ObjectDetectorService, CameraOperatorService,
-  EventIntelligence, seam `IObjectDetector`, config e instalador). Resumen: detector ncnn
-  end-to-end `(N,300,6)` sin NMS con fallback Vulkan→CPU; operador read-only que **jamás
-  dispara sirena** (la prueba audible la hace el usuario personalmente); publica
-  `argus.camera.v1.object_detected` a NATS → el gateway notifica con su NotificationService.
-- Media: `camera:subscribe` del gateway → gRPC streaming al servicio → binarios fMP4 al
-  cliente sin cambiar el protocolo.
-- Labs propios del repo; `setup.sh camera` para go2rtc + artefactos del detector.
-- **Validación de Vulkan en contenedor antes de esta fase.**
+### Phase 2 — Pilot: argus-camera (the complete YOLO26n plan lives here)
+- `camera.db` (`camera`, `camera_stream`, `zone`); `/camera*` and `/zone` endpoints with **identical
+  paths** and the 404 vs 502 `CAMERA_UNREACHABLE` distinction preserved.
+- Drivers (camera-driver + tapo), go2rtc-manager/MediaRelay/StreamHub (lifecycle already bespoke,
+  outside the registry — a natural extraction).
+- **YOLO26n**: complete design in **Appendix B** (ObjectDetectorService, CameraOperatorService,
+  EventIntelligence, `IObjectDetector` seam, config and installer). Summary: end-to-end ncnn
+  detector `(N,300,6)` without NMS with Vulkan→CPU fallback; a read-only operator that **never
+  triggers the siren** (the audible test is performed by the user personally); it publishes
+  `argus.camera.v1.object_detected` to NATS → the gateway notifies with its NotificationService.
+- Media: gateway `camera:subscribe` → gRPC streaming to the service → fMP4 binaries to the
+  client without changing the protocol.
+- The repo's own labs; `setup.sh camera` for go2rtc + detector artifacts.
+- **Validation of Vulkan in the container before this phase.**
 
-### Fase 3 — productivity + notification
-- `argus-productivity` (`productivity.db`): calendar/project/reminder/context_note — todas
-  "personal tables", mismo patrón → publican SyncOperation a NATS.
-- `argus-notification` a repo/DB propia — **confirmado como servicio** (§3.7: dueño de la
-  **política** de notificación; la entrega física la hará el túnel vía NATS). En Fase 3 se extrae
-  con su DB y su lógica de presupuesto/digest.
+### Phase 3 — productivity + notification
+- `argus-productivity` (`productivity.db`): calendar/project/reminder/context_note — all
+  "personal tables", same pattern → they publish SyncOperation to NATS.
+- `argus-notification` to its own repo/DB — **confirmed as a service** (§3.7: owner of the
+  notification **policy**; physical delivery will be done by the tunnel via NATS). In Phase 3 it is
+  extracted with its DB and its budget/digest logic.
 
-### Fase 4 — Capacidades de IA (los packages)
-- `argus-llm` (llama.cpp + tools + intent), `argus-vlm`, `argus-tts`, `argus-stt`: un proceso,
-  un engine in-process, un conanfile y un `config/<servicio>.toml` por servicio. El
-  `ai_init::llamaMutex` compartido entre LLM y VLM **desaparece** al separar procesos; los
-  `cpus` de Docker imponen el budget. Tiering CUDA > Vulkan > CPU lo resuelve el instalador.
-- `argus-memory` al final a propósito (el más enredado, 3.666 líneas): sus lecturas
-  cross-dominio (`person`, `camera`, `zone`, `camera_stream`) se vuelven RPC o réplicas de
-  lectura llenadas por eventos.
-- La voz (`voice-session`) queda como orquestador en base consumiendo stt/tts/llm por gRPC;
-  su extracción propia es fase futura.
+### Phase 4 — AI capabilities (the packages)
+- `argus-llm` (llama.cpp + tools + intent), `argus-vlm`, `argus-tts`, `argus-stt`: one process,
+  one in-process engine, one conanfile and one `config/<servicio>.toml` per service. The
+  `ai_init::llamaMutex` shared between LLM and VLM **disappears** when separating processes; Docker
+  `cpus` enforce the budget. CUDA > Vulkan > CPU tiering is resolved by the installer.
+- `argus-memory` last on purpose (the most tangled, 3,666 lines): its cross-domain reads
+  (`person`, `camera`, `zone`, `camera_stream`) become RPC or read replicas fed by events.
+- Voice (`voice-session`) remains as an orchestrator at base consuming stt/tts/llm over gRPC;
+  its own extraction is a future phase.
 
-### Fase 5 — Acceso remoto: túnel propio + identidad sin IP + push
-- **`argus-tunnel`** (repo nuevo, se construye aquí — hoy no existe): cliente en el hogar
-  (contenedor en `edge`) + relay en el **servidor dedicado de EE.UU.** (single-tenant, latencia
-  genérica mundial); gRPC como protocolo del túnel; retransmite los bytes TLS del cliente
-  **sin descifrar** (E2E con la CA de instancia); mantiene conexiones persistentes con los
-  dispositivos ya autenticados. El relay se despliega con su propio compose desde `argus-deploy`
-  y lleva healthcheck + reinicio automático (si cae, el acceso remoto cae pero la LAN no).
-- **Identidad de dispositivo sin IP**: CertService emite certificados de cliente por dispositivo
-  + `device_secret`; DeviceFilter pasa a `HMAC(User-Agent | credencial)` — la IP sale del hash
-  (decisión del usuario). Cambio de app coordinado vía `argus-contracts`; re-emisión única de
-  sesiones existentes (re-login controlado).
-- **Enforcement LAN-only**: el gateway rechaza `/pairing` y `/auth/register` cuando el peer no
-  está en `network.lan_cidrs` o `remote.enabled=true` — por el túnel solo pasan usuarios ya
-  registrados.
-- **SANs**: `remote.hostname` en los certificados; la app configura servidor manual además de
+### Phase 5 — Remote access: own tunnel + identity without IP + push
+- **`argus-tunnel`** (new repo, built here — it does not exist today): client in the home
+  (container on `edge`) + relay on the **dedicated US server** (single-tenant, generic worldwide
+  latency); gRPC as the tunnel protocol; it forwards the client's TLS bytes
+  **without decrypting** (E2E with the instance CA); it maintains persistent connections with
+  already-authenticated devices. The relay is deployed with its own compose from `argus-deploy`
+  and carries a healthcheck + automatic restart (if it goes down, remote access goes down but the LAN does not).
+- **Device identity without IP**: CertService issues per-device client certificates
+  + `device_secret`; DeviceFilter changes to `HMAC(User-Agent | credential)` — the IP leaves the hash
+  (user's decision). App change coordinated via `argus-contracts`; one-time re-issuance of
+  existing sessions (controlled re-login).
+- **LAN-only enforcement**: the gateway rejects `/pairing` and `/auth/register` when the peer is not
+  in `network.lan_cidrs` or `remote.enabled=true` — only already-registered users pass through the tunnel.
+- **SANs**: `remote.hostname` in the certificates; the app configures a manual server in addition to
   mDNS.
-- Endurecimiento: rate limiting + lockout por credencial en `/auth/refresh-token` (única
-  pre-auth remota), antes de tocar SQLite.
-- **Push por el túnel**: `argus-notification` publica intenciones a NATS → `argus-tunnel` las
-  entrega por las conexiones persistentes de los dispositivos conectados (evento de cámara,
-  presencia, alarmas de zona llegan fuera de casa).
-- **Prueba de aceptación**: la app fuera de la LAN hace login facial, bootstrap de `/sync`, ve
-  video y recibe push por el túnel; al volver a la LAN la sesión **no se invalida** (identidad
-  sin IP).
+- Hardening: rate limiting + lockout per credential on `/auth/refresh-token` (the only
+  remote pre-auth), before touching SQLite.
+- **Push over the tunnel**: `argus-notification` publishes intents to NATS → `argus-tunnel`
+  delivers them over the persistent connections of connected devices (camera event,
+  presence, zone alarms arrive outside the home).
+- **Acceptance test**: the app outside the LAN performs facial login, `/sync` bootstrap, watches
+  video and receives push over the tunnel; when returning to the LAN the session **is not invalidated**
+  (identity without IP).
 
-### Fase 6 — Plugins frontend (blueprint; implementación posterior)
-- Base app (React Native + Tauri): shell (configuraciones, certs/pairing, runtime de plugins,
-  catálogo). Plugin = manifest + logic.js (QuickJS sandbox) + assets, firmado ed25519.
-- El resolutor verifica capacidades (backend vivo por gRPC + modelo instalado), instala lo
-  faltante y **reutiliza lo ya instalado** (si otro plugin ya trajo LLM, no se reinstala).
-- Comunicación dispositivo-dispositivo por `/sync` con operaciones nuevas (números ≥8).
-- Los permisos declarados del plugin los aplica el gateway como metadata gRPC.
+### Phase 6 — Frontend plugins (blueprint; later implementation)
+- Base app (React Native + Tauri): shell (settings, certs/pairing, plugin runtime,
+  catalog). Plugin = manifest + logic.js (QuickJS sandbox) + assets, signed ed25519.
+- The resolver verifies capabilities (backend alive over gRPC + model installed), installs what is
+  missing and **reuses what is already installed** (if another plugin already brought an LLM, it is not reinstalled).
+- Device-to-device communication via `/sync` with new operations (numbers ≥8).
+- The plugin's declared permissions are enforced by the gateway as gRPC metadata.
 
 ---
 
-## 8. Verificación
+## 8. Verification
 
-1. **Fase 0**: build 0 errores/0 warnings; tests verdes; `buf breaking` limpio; frames de oro
-   de `/sync` grabados y versionados en `argus-contracts/fixtures/`.
-2. **Por cada extracción**: suite de contratos del servicio movido pasa contra el gateway
-   (envelope exacto, multipart intacto, 404 vs 502 distinguidos, **matriz de filtros de
-   Appendix A idéntica ruta por ruta**, incluidas las 6 pre-auth); replay de frames `/sync`
-   byte-idéntico en las operaciones migradas.
-3. **App móvil real** conectada en cada fase: login facial, bootstrap de las 15 tablas, video
-   de cámara y voz funcionan sin actualizar la app — LA prueba de retrocompatibilidad.
-4. **Compose**: `docker compose up` levanta el stack; healthcheck gRPC por servicio; matar el
-   container de un servicio de IA no tumba gateway ni cámara (aislamiento verificado).
-5. **Datos**: conteos/checksums de filas migradas vs legacy antes de cortar cada dominio;
-   rollback documentado por fase.
-6. **Seguridad**: solo el gateway escucha en `edge`; el resto en `internal` (gRPC mTLS);
-   secrets nunca en imagen/repo; `go2rtc.yaml` sigue chmod 600 en su volumen.
+1. **Phase 0**: 0-error/0-warning build; green tests; clean `buf breaking`; `/sync` golden frames
+   recorded and versioned in `argus-contracts/fixtures/`.
+2. **For each extraction**: the moved service's contract suite passes against the gateway
+   (exact envelope, multipart intact, 404 vs 502 distinguished, **Appendix A filter matrix
+   identical route by route**, including the 6 pre-auth ones); `/sync` frame replay
+   byte-identical on the migrated operations.
+3. **Real mobile app** connected at every phase: facial login, bootstrap of the 15 tables, camera
+   video and voice work without updating the app — THE backward-compatibility proof.
+4. **Compose**: `docker compose up` brings up the stack; gRPC healthcheck per service; killing the
+   container of an AI service does not bring down gateway or camera (isolation verified).
+5. **Data**: row counts/checksums migrated vs legacy before cutting over each domain;
+   documented rollback per phase.
+6. **Security**: only the gateway listens on `edge`; the rest on `internal` (gRPC mTLS);
+   secrets never in image/repo; `go2rtc.yaml` remains chmod 600 on its volume.
 
-## 9. Riesgos y mitigaciones
+## 9. Risks and mitigations
 
-| Riesgo | Mitigación |
+| Risk | Mitigation |
 |---|---|
-| `/sync` no descompone limpio (sync + media + voz en un socket con permisos por mensaje) | El gateway lo posee **completo** y hace proxy; nunca se divide por dentro mientras existan clientes v1 |
-| Device fingerprint a través de proxies | Resuelto por diseño (el gateway es el único que ve al cliente); cualquier proxy futuro exige `User-Agent` byte-exacto |
-| gRPC en Conan: under-linking con `CMakeConfigDeps` (#19790) | Enlazar explícitamente `gRPC::grpc++ gRPC::grpc gRPC::gpr protobuf::libprotobuf`; protoc pinneado EXACT |
-| Sin tests hoy | Harness de Fase 0 = prerrequisito duro de todas las fases |
-| Memory lee tablas ajenas por SQL directo (`memory-graph-query.hxx:171`) | RPC o réplicas de lectura por eventos; se extrae al final a propósito |
-| CORS `*` + OPTIONS short-circuit hoy | El gateway lo replica exacto (o headers duplicados) |
-| Login facial in-proc (HNSW + ncnn) | Va con el gateway en Fase 1, no después |
-| Imágenes grandes (submodules + modelos) | Base `argus-runtime` en cache de capas; modelos en volumen read-only |
-| Vulkan en contenedor (RADV) | `/dev/dri` + Mesa del host; validar dentro del contenedor antes de Fase 2 |
-| SQLite: una DB por servicio es la escalabilidad correcta | Cada servicio con su WAL y su lock; FKs cross-dominio → ids validados en el servicio dueño |
-| **Identidad por IP (HMAC UA\|IP)**: la IP cambia por red y con el túnel todos los remotos comparten la del relay → 401 "Device mismatch" y colisiones | Credencial por dispositivo sin IP (cert mTLS + `device_secret`); hash = HMAC(UA\|credencial) — Fase 5, con re-login controlado una vez |
-| El túnel propio descifra (rompe el E2E y el pinning de la CA) | El túnel solo **retransmite bytes**; dos TLS distintos (cliente↔gateway E2E, y túnel↔gateway interno si usa gRPC) |
-| El relay es punto único de falla del acceso remoto (servidor dedicado en EE.UU.) | Healthcheck + auto-restart; si cae, solo el acceso remoto se pierde — la LAN y todo el stack local siguen funcionando; el push local no depende del relay |
-| Superficie pre-auth remota: `/auth/refresh-token` queda expuesta (y `/pairing`/`/auth/register` si no se refuerzan) | `/pairing` y `/auth/register` **LAN-only** por CIDRs (decisión del usuario); rate limiting + lockout en refresh-token antes de tocar SQLite; `/auth/has-admin` eliminada |
-| SANs actuales sin hostname público del relay → TLS mismatch desde internet | `remote.hostname` en las SANs vía CertService; la app acepta servidor manual para remoto |
-| `JwtFilter` = 2 queries SQLite por request; un flood desde internet golpea `identity.db` | Rate limit en el edge **antes** del filtro; lockout; WAL + busy_timeout en identity.db |
+| `/sync` does not decompose cleanly (sync + media + voice on one socket with per-message permissions) | The gateway owns it **completely** and proxies; it is never split internally while v1 clients exist |
+| Device fingerprint through proxies | Solved by design (the gateway is the only one that sees the client); any future proxy requires a byte-exact `User-Agent` |
+| gRPC on Conan: under-linking with `CMakeConfigDeps` (#19790) | Explicitly link `gRPC::grpc++ gRPC::grpc gRPC::gpr protobuf::libprotobuf`; protoc pinned EXACT |
+| No tests today | Phase 0 harness = hard prerequisite for all phases |
+| Memory reads other services' tables via direct SQL (`memory-graph-query.hxx:171`) | RPC or event-fed read replicas; extracted last on purpose |
+| CORS `*` + OPTIONS short-circuit today | The gateway replicates it exactly (or duplicate headers) |
+| Facial login in-proc (HNSW + ncnn) | It goes with the gateway in Phase 1, not later |
+| Large images (submodules + models) | `argus-runtime` base in layer cache; models on a read-only volume |
+| Vulkan in container (RADV) | `/dev/dri` + host Mesa; validate inside the container before Phase 2 |
+| SQLite: one DB per service is the right scalability | Each service with its own WAL and lock; cross-domain FKs → ids validated in the owning service |
+| **Identity by IP (HMAC UA\|IP)**: the IP changes per network and with the tunnel all remotes share the relay's IP → 401 "Device mismatch" and collisions | Per-device credential without IP (mTLS cert + `device_secret`); hash = HMAC(UA\|credential) — Phase 5, with controlled one-time re-login |
+| The own tunnel decrypts (breaks E2E and the CA pinning) | The tunnel only **forwards bytes**; two distinct TLS (client↔gateway E2E, and tunnel↔gateway internal if it uses gRPC) |
+| The relay is a single point of failure for remote access (dedicated US server) | Healthcheck + auto-restart; if it goes down, only remote access is lost — the LAN and the whole local stack keep working; local push does not depend on the relay |
+| Remote pre-auth surface: `/auth/refresh-token` remains exposed (and `/pairing`/`/auth/register` if not hardened) | `/pairing` and `/auth/register` **LAN-only** by CIDRs (user's decision); rate limiting + lockout on refresh-token before touching SQLite; `/auth/has-admin` removed |
+| Current SANs without the relay's public hostname → TLS mismatch from the internet | `remote.hostname` in the SANs via CertService; the app accepts a manual server for remote |
+| `JwtFilter` = 2 SQLite queries per request; a flood from the internet hits `identity.db` | Rate limit at the edge **before** the filter; lockout; WAL + busy_timeout in identity.db |
 
-## 10. Decisiones abiertas (para el usuario)
+## 10. Open decisions (for the user)
 
-1. **Tablas huérfanas**: ¿drop (`voice_session`, `voice_message`, `context_note`,
-   `portrait_access_request/grant`) o implementarlas?
-2. **Registry Conan**: ¿`local_recipes_index` local para arrancar y Artifactory CE después, o
-   Artifactory CE desde el día 1?
-3. **Plugin runtime móvil**: ¿QuickJS embebido (recomendado) vs. solo manifiesto declarativo
-   sin lógica custom?
-4. **Yolo26n dentro de `argus-camera`**: confirmar que el plan YOLO26n (ObjectDetectorService +
-   operator + intelligence) se implementa como capacidad `camera.objects` en Fase 2, tal como
-   estaba planeado (detalle completo en Appendix B).
-5. ~~Dónde corre el relay del túnel~~ **DECIDIDO**: servidor dedicado en la nube, EE.UU.,
-   single-tenant (solo el túnel), latencia genérica mundial. Queda por definir el detalle del
-   protocolo del túnel (gRPC confirmado como base) y su mecanismo de fallback si el relay cae.
+1. **Orphan tables**: drop (`voice_session`, `voice_message`, `context_note`,
+   `portrait_access_request/grant`) or implement them?
+2. **Conan registry**: local `local_recipes_index` to start and Artifactory CE later, or
+   Artifactory CE from day 1?
+3. **Mobile plugin runtime**: embedded QuickJS (recommended) vs. declarative manifest only
+   without custom logic?
+4. **Yolo26n inside `argus-camera`**: confirm that the YOLO26n plan (ObjectDetectorService +
+   operator + intelligence) is implemented as capability `camera.objects` in Phase 2, as
+   planned (full detail in Appendix B).
+5. ~~Where the tunnel relay runs~~ **DECIDED**: dedicated cloud server, US,
+   single-tenant (tunnel only), generic worldwide latency. Still to be defined: the detail of the
+   tunnel protocol (gRPC confirmed as the base) and its fallback mechanism if the relay goes down.
 
 ---
 
-## Appendix A — Inventario completo de rutas (recontado en código)
+## Appendix A — Complete route inventory (recounted in code)
 
-49 rutas HTTP vía `ADD_METHOD_TO` (grep verificado) + 1 WS (`/sync`, `sync-socket.hxx:18`).
-Abreviaturas: **D**=DeviceFilter · **V**=ValidJsonFilter · **J**=JwtFilter · **R**=RoleFilter ·
-**DVR** completa = D+V+J+R. `/auth/has-admin` **se elimina** del código (decisión del usuario),
-incluido su handler y `AuthService::hasAdmin` — el bootstrap de `/auth/register` usa su propio
-chequeo transaccional de owner.
+49 HTTP routes via `ADD_METHOD_TO` (grep-verified) + 1 WS (`/sync`, `sync-socket.hxx:18`).
+Abbreviations: **D**=DeviceFilter · **V**=ValidJsonFilter · **J**=JwtFilter · **R**=RoleFilter ·
+**DVR** complete = D+V+J+R. `/auth/has-admin` **is removed** from the code (user's decision),
+including its handler and `AuthService::hasAdmin` — the `/auth/register` bootstrap uses its own
+transactional owner check.
 
 **auth (9)**
-| Método | Path | Filtros | Handler |
+| Method | Path | Filters | Handler |
 |---|---|---|---|
-| POST | `/auth/login` | D | login (multipart con imagen → facial) |
-| POST | `/auth/register` | D | register (multipart; bootstrap owner/invitación) — **LAN-only en Fase 5** |
+| POST | `/auth/login` | D | login (multipart with image → facial) |
+| POST | `/auth/register` | D | register (multipart; owner/invitation bootstrap) — **LAN-only in Phase 5** |
 | GET | `/auth/status` | D+J | status |
 | POST | `/auth/device-login` | D | createDeviceLogin (QR, TTL 120 s) |
 | POST | `/auth/device-login/{1}/approve` | D+J | approveDeviceLogin |
 | GET | `/auth/device-login/{1}` | D | pollDeviceLogin |
-| PATCH | `/auth/refresh-token` | D+V | refreshToken (single-use, pre-auth: **sin JwtFilter**) |
+| PATCH | `/auth/refresh-token` | D+V | refreshToken (single-use, pre-auth: **no JwtFilter**) |
 | PATCH | `/auth/logout` | D+J | logout |
 | PATCH | `/auth/me` | D+V+J | updateMe |
 
-**pairing (1)** — POST `/pairing`, solo V (bootstrap PKI sin auth; 409 si ya paired) — **LAN-only en Fase 5**
-**invitation (4)** — POST `/invitation/resolve` solo V (onboarding sin auth) · GET `/invitation`
+**pairing (1)** — POST `/pairing`, V only (PKI bootstrap without auth; 409 if already paired) — **LAN-only in Phase 5**
+**invitation (4)** — POST `/invitation/resolve` V only (onboarding without auth) · GET `/invitation`
 D+J+R · POST `/invitation` DVR · DELETE `/invitation/{1}` D+J+R
 
 **user (3) + portrait-preview (2)**
-| Método | Path | Filtros | Handler |
+| Method | Path | Filters | Handler |
 |---|---|---|---|
-| GET | `/user` | D+J+R | list — **la única lista HTTP de la app** |
+| GET | `/user` | D+J+R | list — **the app's only HTTP list** |
 | PATCH | `/user/{1}` | DVR | update |
 | DELETE | `/user/{1}` | D+J+R | deactivate |
-| GET | `/portrait-preview/{1}` | D+J+R | create (emite token de preview) |
+| GET | `/portrait-preview/{1}` | D+J+R | create (issues preview token) |
 | GET | `/portrait-preview/{1}/content` | D+J+R | consume |
 
 **camera (3)** — POST `/camera` DVR · PATCH `/camera/{1}` DVR · DELETE `/camera/{1}` DVR
-(lectura de la lista **no existe** por HTTP: va por `/sync`)
+(reading the list **does not exist** over HTTP: it goes via `/sync`)
 
 **camera-control (7)**
-| Método | Path | Filtros |
+| Method | Path | Filters |
 |---|---|---|
 | GET | `/camera/{1}/status` | D+J+R |
 | GET | `/camera/{1}/presets` | D+J+R |
@@ -717,112 +715,112 @@ D+J+R · POST `/invitation` DVR · DELETE `/invitation/{1}` D+J+R
 | PATCH | `/camera/{1}/preset` | DVR |
 | PATCH | `/camera/{1}/settings` | DVR |
 | GET | `/camera/{1}/capabilities` | D+J+R |
-| POST | `/camera/{1}/talk` | DVR (toca TtsService) |
+| POST | `/camera/{1}/talk` | DVR (touches TtsService) |
 
-**zone (3)** — POST `/zone` DVR (valida cameraId → 404) · PATCH `/zone/{1}` DVR · DELETE `/zone/{1}` DVR
+**zone (3)** — POST `/zone` DVR (validates cameraId → 404) · PATCH `/zone/{1}` DVR · DELETE `/zone/{1}` DVR
 
-**calendar-event (3)** — POST/PATCH/DELETE, todos DVR
-**calendar-event-share (3)** — POST/PATCH/DELETE, todos DVR
-**project (3)** — POST/PATCH/DELETE, todos DVR
-**project-member (3)** — POST/PATCH/DELETE, todos DVR
-**project-task (3)** — POST/PATCH/DELETE, todos DVR
+**calendar-event (3)** — POST/PATCH/DELETE, all DVR
+**calendar-event-share (3)** — POST/PATCH/DELETE, all DVR
+**project (3)** — POST/PATCH/DELETE, all DVR
+**project-member (3)** — POST/PATCH/DELETE, all DVR
+**project-task (3)** — POST/PATCH/DELETE, all DVR
 
 **notification (2)** — PATCH `/notification/read` DVR · POST `/notification-token` DVR
 
-**WS (1)** — `/sync` con D+J (sin RoleFilter: los permisos por tabla se aplican **dentro**,
-por rooms y `role-access`).
+**WS (1)** — `/sync` with D+J (no RoleFilter: per-table permissions are applied **inside**,
+by rooms and `role-access`).
 
-Patrón global: toda ruta de escritura lleva la cadena completa D+V+J+R; las de solo-lectura se
-ahorran V; solo 6 rutas (las pre-auth listadas en §2.3) omiten J. El gateway debe preservar esta
-matriz **exacta** — `role-access.hxx` mapea cada path a su tabla y el sync comparte ese mapa.
-Con el túnel (Fase 5): `/pairing` y `/auth/register` solo responden a peers de LAN; el resto de
-la matriz funciona igual dentro y fuera del hogar porque la identidad deja de depender de la IP.
+Global pattern: every write route carries the full chain D+V+J+R; read-only ones skip V;
+only 6 routes (the pre-auth ones listed in §2.3) omit J. The gateway must preserve this **exact**
+matrix — `role-access.hxx` maps each path to its table and sync shares that map.
+With the tunnel (Phase 5): `/pairing` and `/auth/register` only respond to LAN peers; the rest of
+the matrix works the same inside and outside the home because identity no longer depends on IP.
 
 ---
 
-## Appendix B — Piloto cámara: plan YOLO26n completo (se implementa en Fase 2 dentro de argus-camera)
+## Appendix B — Camera pilot: complete YOLO26n plan (implemented in Phase 2 inside argus-camera)
 
-Estado real (verificado hoy): **diseño completo, cero código**. `src/shared/services/
-camera-operator/` existe **vacío**; no hay `yolo26n.param/bin` en `models/`, no hay
-`setup_object_model` en `scripts/setup.sh`, no hay secciones `[objects]`/`[operator]` en
-`config.toml`. Se implementa directamente sobre la estructura de microservicios.
+Real state (verified today): **complete design, zero code**. `src/shared/services/
+camera-operator/` exists **empty**; there is no `yolo26n.param/bin` in `models/`, there is no
+`setup_object_model` in `scripts/setup.sh`, there are no `[objects]`/`[operator]` sections in
+`config.toml`. It is implemented directly on the microservices structure.
 
 ### B.1 ObjectDetectorService (ncnn)
 
-- YOLO26n **end-to-end**: entrada letterbox (padding gris **114**) a la resolución nativa del
-  modelo. Corrección verificada en la implementación (F2-3): el export NCNN estándar de
-  Ultralytics (`YOLO(...).export(format="ncnn")`) **no produce el grafo end-to-end** — cae al
-  head one2many `(N, nc+4, 8400)` con NMS en C++. El export **e2e raw** se obtiene parcheando el
-  `postprocess` del head one2one a identidad y exportando vía PNNX
-  (`scripts/export-yolo26-ncnn-e2e.py`): salida `(1, anchors, 4+nc)` en **XYXY**, sin TopK en el
-  grafo; el TopK (conf + maxDet) lo aplica el C++ en runtime.
-- El detector **detecta la forma de salida en runtime**: acepta `row_length == 6`
-  (`[x1, y1, x2, y2, score, cls]`, e2e con TopK en grafo) o `row_length == 4+nc` (raw one2one +
-  TopK en C++) y **se niega a decodificar cualquier otra** con log claro — nunca interpreta
-  un tensor de forma equivocada.
-- Los blob names de entrada/salida se **leen del `.param`** en runtime (no hardcodeados: varían
-  según el export; en el export e2e raw son `in0`/`out0`).
-- **Fallback Vulkan→CPU por instancia** si la GPU falla en runtime (el detector degrada, el
-  servicio no muere).
-- Semáforo de inicialización **liberado solo cuando el init es exitoso** — patrón que corrige el
-  deadlock latente de FaceService (retiene el semáforo si la carga del modelo falla y bloquea
-  todos los logins siguientes).
-- Config (sección nueva `[objects]` en `config/camera.toml`): `model` (ruta), `classes`,
+- YOLO26n **end-to-end**: letterbox input (gray padding **114**) to the model's native
+  resolution. Correction verified in the implementation (F2-3): the standard Ultralytics NCNN export
+  (`YOLO(...).export(format="ncnn")`) **does not produce the end-to-end graph** — it falls back to the
+  one2many head `(N, nc+4, 8400)` with NMS in C++. The **e2e raw** export is obtained by patching the
+  one2one head's `postprocess` to identity and exporting via PNNX
+  (`scripts/export-yolo26-ncnn-e2e.py`): output `(1, anchors, 4+nc)` in **XYXY**, without TopK in the
+  graph; the TopK (conf + maxDet) is applied by the C++ at runtime.
+- The detector **detects the output shape at runtime**: it accepts `row_length == 6`
+  (`[x1, y1, x2, y2, score, cls]`, e2e with TopK in the graph) or `row_length == 4+nc` (raw one2one +
+  TopK in C++) and **refuses to decode any other** with a clear log — it never interprets
+  a tensor of the wrong shape.
+- Input/output blob names are **read from the `.param`** at runtime (not hardcoded: they vary
+  by export; in the raw e2e export they are `in0`/`out0`).
+- **Per-instance Vulkan→CPU fallback** if the GPU fails at runtime (the detector degrades, the
+  service does not die).
+- Initialization semaphore **released only when init is successful** — a pattern that fixes
+  FaceService's latent deadlock (it retains the semaphore if model loading fails and blocks
+  all subsequent logins).
+- Config (new `[objects]` section in `config/camera.toml`): `model` (path), `classes`,
   `input_size`, `conf`, `enabled`, `max_fps_inference`.
-- Instalador: `setup.sh camera` descarga `yolo26n.pt` con sha256 y `.part`+rename atómico y
-  **exporta los artefactos NCNN localmente** (nunca los descarga: dependen del export); sin
-  python+ultralytics+torch+pnnx imprime el comando manual exacto y el detector arranca
-  deshabilitado — nunca simula éxito.
-- Fuentes: https://docs.ultralytics.com/guides/end2end-detection,
+- Installer: `setup.sh camera` downloads `yolo26n.pt` with sha256 and `.part`+atomic rename and
+  **exports the NCNN artifacts locally** (never downloads them: they depend on the export); without
+  python+ultralytics+torch+pnnx it prints the exact manual command and the detector starts
+  disabled — it never simulates success.
+- Sources: https://docs.ultralytics.com/guides/end2end-detection,
   https://github.com/skygazer42/yolo26-NCNN, https://huggingface.co/Ultralytics/YOLO26.
 
 ### B.2 CameraOperatorService
 
-- Loop por cámara como **coroutine en el event loop de Drogon**; el trabajo pesado (preproceso +
-  inferencia) va a `BlockingTask` — nunca bloquea el loop.
-- `ICameraDriver::events`: los drivers reportan eventos; para el cliente Tapo el walker de la
-  lista de detección es **tolerante a forma** (el SDK puede cambiar el shape del payload
-  `searchDetectionList`) con fallback `getLastAlarmInfo` cuando el push falla. **Diferido a
-  Fase 4** (Ruling AB): los frames de F2-3 salen de la superficie media propia (go2rtc
-  `/api/frame.jpeg`), no del driver; el walker se implementa con el driver Tapo.
-- **El operador es read-only respecto al hardware**: jamás llama `setAlarm`, sirena ni ningún
-  comando audible. La sirena se prueba **personalmente por el usuario** — ninguna ruta de código
-  (operador, EventIntelligence ni notificaciones) debe dispararla. Única acción: publicar a
-  NATS y notificar.
-- Overlay/watermark opcional sobre el frame analizado y dedupe (solo keyframes o salto
-  configurable por `max_fps_inference`).
+- Per-camera loop as a **coroutine on Drogon's event loop**; the heavy work (preprocessing +
+  inference) goes to `BlockingTask` — it never blocks the loop.
+- `ICameraDriver::events`: the drivers report events; for the Tapo client the detection-list
+  walker is **shape-tolerant** (the SDK may change the shape of the `searchDetectionList` payload)
+  with `getLastAlarmInfo` fallback when the push fails. **Deferred to
+  Phase 4** (Ruling AB): the F2-3 frames come from the own media surface (go2rtc
+  `/api/frame.jpeg`), not from the driver; the walker is implemented with the Tapo driver.
+- **The operator is read-only with respect to hardware**: it never calls `setAlarm`, the siren or any
+  audible command. The siren is tested **personally by the user** — no code path
+  (operator, EventIntelligence or notifications) may trigger it. Only action: publish to
+  NATS and notify.
+- Optional overlay/watermark on the analyzed frame and dedupe (only keyframes or a jump
+  configurable via `max_fps_inference`).
 
-### B.3 EventIntelligence (9 reglas, evaluadas en orden)
+### B.3 EventIntelligence (9 rules, evaluated in order)
 
-| # | Regla | Severidad/acción |
+| # | Rule | Severity/action |
 |---|---|---|
-| 1 | `exclude_zone` | descarta el evento |
-| 2 | `known_person` | notificación personalizada ("David llegó a casa") |
+| 1 | `exclude_zone` | discards the event |
+| 2 | `known_person` | personalized notification ("David llegó a casa") |
 | 3 | `person_in_alert_zone` | **Critical** |
 | 4 | `person_in_monitor_zone` | Warning |
 | 5 | `person_night` | Warning |
 | 6 | `person_day` | Info |
 | 7 | `vehicle_arrival` | Info |
-| 8 | `vehicle_night` / presencia escalando | Warning + escalado |
-| 9 | `ignored_class` | descarta |
+| 8 | `vehicle_night` / escalating presence | Warning + escalation |
+| 9 | `ignored_class` | discards |
 
-- **Identidad primero**: si el crop pasa por FaceService (persona conocida), `known_person`
-  domina la severidad de las reglas 3–8. En F2-3 va detrás del seam `IKnownPersonMatcher`
-  (implementación por defecto: sin match — las reglas 3–8 conservan su severidad); el matcher
-  real llega en Fase 4 con la identidad.
-- Agregación: ventana de agregación por cámara; **cooldown por cámara+clase**;
-  **presupuesto de notificación 6/hora** con digest acumulativo cuando se excede;
-  **horas de silencio** configurables.
-- Config (sección `[operator]` en `config/camera.toml`): zonas por cámara (alert/monitor/
-  exclude), horarios, presupuesto, cooldown.
+- **Identity first**: if the crop goes through FaceService (known person), `known_person`
+  dominates the severity of rules 3–8. In F2-3 it sits behind the `IKnownPersonMatcher` seam
+  (default implementation: no match — rules 3–8 keep their severity); the real matcher
+  arrives in Phase 4 with identity.
+- Aggregation: aggregation window per camera; **cooldown per camera+class**;
+  **notification budget 6/hour** with cumulative digest when exceeded;
+  configurable **quiet hours**.
+- Config (`[operator]` section in `config/camera.toml`): zones per camera (alert/monitor/
+  exclude), schedules, budget, cooldown.
 
-### B.4 Seam, licencia y salida
+### B.4 Seam, license and output
 
-- **`IObjectDetector`** como única interfaz del servicio de detección: YOLO26n es **AGPL-3.0**
-  — para distribución comercial se reemplaza el artefacto del modelo (p. ej. RF-DETR-Nano,
-  licencia permisiva) **sin tocar el servicio**; NOTICE/atribución de terceros vive en
+- **`IObjectDetector`** as the only interface of the detection service: YOLO26n is **AGPL-3.0**
+  — for commercial distribution the model artifact is replaced (e.g., RF-DETR-Nano,
+  permissive license) **without touching the service**; NOTICE/third-party attribution lives in
   `argus-camera`.
-- Salida: evento `argus.camera.v1.object_detected` a NATS (JetStream) → el gateway consume,
-  aplica presupuesto/horas-silencio y notifica con su NotificationService.
-- Labs propios del repo: `object-bench` (latencia/fps del detector por tier de hardware) y
+- Output: event `argus.camera.v1.object_detected` to NATS (JetStream) → the gateway consumes,
+  applies budget/quiet-hours and notifies with its NotificationService.
+- The repo's own labs: `object-bench` (detector latency/fps per hardware tier) and
   `camera-probe`.

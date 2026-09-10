@@ -42,7 +42,7 @@ preset and CTest commands from that project folder.
 The gateway is the only public entry point. Camera, productivity,
 notification, TTS, STT, VLM, LLM, voice and tunnel capacities run as separate
 processes behind it. See `argus-deploy/docker-compose.yml` for the complete
-topology and `docs/backend.md` for local commands.
+topology and `docs/architecture/system-overview.md` for local commands.
 
 Internal versioning uses repository tags: `contracts-v*` for contracts and
 `service-v*` for service releases.

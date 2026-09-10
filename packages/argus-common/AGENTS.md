@@ -57,4 +57,4 @@ the rest of `src/shared/contracts/*` (domain seams: `camera-*`,
 `user-*`), `src/shared/vocabulary`, and the rest of `src/shared/wrapper/*`
 all stay in `src/shared` for now — later steps of the microservices
 migration move them. Before adding a file here, check
-`docs/migracion-microservicios.md` for the step that owns it.
+`docs/history/plans/microservices-migration-plan.md` for the step that owns it.
