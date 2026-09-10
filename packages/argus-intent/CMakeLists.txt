@@ -1,3 +1,10 @@
+cmake_minimum_required(VERSION 3.25)
+project(argus-intent VERSION 1.0.0 LANGUAGES CXX)
+
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+
 # argus_intent: the fast tier of the intent router — the fastText wrapper, the
 # rules-first fusion and the degradation contract. Inference only; the training
 # lives in the sibling intent-training project.
@@ -41,6 +48,18 @@ if(EXISTS ${INTENT_MODEL} AND EXISTS ${INTENT_MODEL_PIN})
             "${INTENT_EXPECTED_SHA256}, got ${INTENT_MODEL_SHA256}. "
             "Republish from the intent-training project.")
     endif()
+endif()
+
+# Standalone build (outside the root project's configure): add the sibling
+# packages the intent module links, argus-common first.
+if(NOT TARGET argus_common)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/argus-common
+                     ${CMAKE_BINARY_DIR}/argus-common)
+endif()
+
+if(NOT TARGET argus::phrase)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/argus-phrase
+                     ${CMAKE_BINARY_DIR}/argus-phrase)
 endif()
 
 include(${CMAKE_CURRENT_SOURCE_DIR}/../../cmake/argus-module.cmake)
