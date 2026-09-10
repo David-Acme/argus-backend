@@ -1,0 +1,27 @@
+[requires]
+drogon/1.9.13
+sqlite3/[>=3.45.0 <4]
+jwt-cpp/0.7.2
+nlohmann_json/3.11.3
+opencv/4.13.0
+tomlplusplus/3.3.0
+cnats/3.13.0
+doctest/2.4.12
+
+[options]
+drogon/*:with_sqlite=True
+sqlite3/*:enable_fts5=True
+opencv/*:with_cuda=False
+opencv/*:with_protobuf=False
+opencv/*:with_eigen=False
+opencv/*:with_ffmpeg=False
+opencv/*:with_wayland=False
+opencv/*:with_gtk=False
+opencv/*:with_vulkan=False
+
+[generators]
+CMakeDeps
+CMakeToolchain
+
+[layout]
+cmake_layout
