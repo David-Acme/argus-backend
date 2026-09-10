@@ -49,14 +49,18 @@ They are idempotent and never touch a live database.
 
 ```bash
 cd argus-deploy
+mkdir -p data
 ARGUS_UID="$(id -u)" ARGUS_GID="$(id -g)" docker compose up -d
 ```
 
 ## Volumes and models
 
 - Host model directories mount read-only; images never bake weights.
-- Per-service data directories (`camera`, `productivity`, `notification`,
-  `memory`) and `database/` hold SQLite files; schema SQL is bind-mounted
-  from the owner folders so migration tools always resolve `--schema`.
+- The gitignored `argus-deploy/data/` directory holds the shared SQLite data
+  dir (`ARGUS_DATA_DIR` overrides it; create it with `mkdir -p
+  argus-deploy/data` before the first `up`). Per-service engine data
+  (`camera`, `productivity`, `notification`, `memory`) lives on named
+  volumes; schema SQL is bind-mounted from the owner folders so migration
+  tools always resolve `--schema`.
 - `third_party/go2rtc` mounts into the camera container for its managed
   go2rtc binary.

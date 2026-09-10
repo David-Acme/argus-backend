@@ -32,7 +32,7 @@ services:
         bind:
           create_host_path: false
       - type: bind
-        source: ${ARGUS_DATA_DIR:-../database}
+        source: ${ARGUS_DATA_DIR:-./data}
         target: /opt/argus/database
         bind:
           create_host_path: false
@@ -102,7 +102,7 @@ services:
       - camera-db:/opt/argus/camera
       - camera-stream:/opt/argus/stream
       - type: bind
-        source: ${ARGUS_DATA_DIR:-../database}
+        source: ${ARGUS_DATA_DIR:-./data}
         target: /opt/argus/database
         bind:
           create_host_path: false
@@ -172,7 +172,7 @@ services:
         bind:
           create_host_path: false
       - type: bind
-        source: ${ARGUS_DATA_DIR:-../database}
+        source: ${ARGUS_DATA_DIR:-./data}
         target: /opt/argus/database
         bind:
           create_host_path: false
@@ -223,7 +223,7 @@ services:
         bind:
           create_host_path: false
       - type: bind
-        source: ${ARGUS_DATA_DIR:-../database}
+        source: ${ARGUS_DATA_DIR:-./data}
         target: /opt/argus/database
         bind:
           create_host_path: false
@@ -411,7 +411,7 @@ services:
       # gateway has not opened the db yet), and the schema SQL the repo ships.
       - memory-db:/opt/argus/memory
       - type: bind
-        source: ${ARGUS_DATA_DIR:-../database}
+        source: ${ARGUS_DATA_DIR:-./data}
         target: /opt/argus/database
         bind:
           create_host_path: false
@@ -614,7 +614,7 @@ services:
         if [ -f /opt/argus/database/argus.db ]; then /opt/argus/argus-migrate-identity --source /opt/argus/database/argus.db --target /opt/argus/database/identity.db --schema /opt/argus/database/identity-schema.sql; else echo 'No argus.db yet; the gateway creates identity.db at boot.'; fi
     volumes:
       - type: bind
-        source: ${ARGUS_DATA_DIR:-../database}
+        source: ${ARGUS_DATA_DIR:-./data}
         target: /opt/argus/database
         bind:
           create_host_path: false
@@ -646,7 +646,7 @@ services:
         if [ -f /opt/argus/database/argus.db ]; then /opt/argus/argus-migrate-camera --source /opt/argus/database/argus.db --target /opt/argus/camera/camera.db --schema /opt/argus/database/camera-schema.sql; else echo 'No argus.db yet; argus-camera applies the camera schema at boot.'; fi
     volumes:
       - type: bind
-        source: ${ARGUS_DATA_DIR:-../database}
+        source: ${ARGUS_DATA_DIR:-./data}
         target: /opt/argus/database
         bind:
           create_host_path: false
@@ -680,7 +680,7 @@ services:
         if [ -f /opt/argus/database/argus.db ]; then /opt/argus/argus-migrate-productivity --source /opt/argus/database/argus.db --target /opt/argus/productivity/productivity.db --schema /opt/argus/database/productivity-schema.sql; else echo 'No argus.db yet; argus-productivity applies the productivity schema at boot.'; fi
     volumes:
       - type: bind
-        source: ${ARGUS_DATA_DIR:-../database}
+        source: ${ARGUS_DATA_DIR:-./data}
         target: /opt/argus/database
         bind:
           create_host_path: false
@@ -711,7 +711,7 @@ services:
         if [ -f /opt/argus/database/argus.db ]; then /opt/argus/argus-migrate-notification --source /opt/argus/database/argus.db --target /opt/argus/notification/notification.db --schema /opt/argus/database/notification-schema.sql; else echo 'No argus.db yet; argus-notification applies the notification schema at boot.'; fi
     volumes:
       - type: bind
-        source: ${ARGUS_DATA_DIR:-../database}
+        source: ${ARGUS_DATA_DIR:-./data}
         target: /opt/argus/database
         bind:
           create_host_path: false

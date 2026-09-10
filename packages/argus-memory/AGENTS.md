@@ -21,7 +21,7 @@ memory code; when in doubt, the root file wins.
 4. **Database discipline** — the `[identity]`/`[camera]` source clients
    are READ-ONLY snapshots (`file:...?mode=ro`); scratch copies only for
    any seeding or test fixture. Never point the config at the real
-   `database/identity.db` or `database/camera.db` outside acceptance runs
+   `identity.db`/`camera.db` outside acceptance runs
    that only read them, and never at the retired `argus.db`.
 5. **Parameter structs for 3+ params** — any function with 3+ parameters
    must take a struct (designated initializers, every member listed).

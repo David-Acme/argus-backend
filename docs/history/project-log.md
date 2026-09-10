@@ -3202,6 +3202,9 @@ ordered.
   state.
 - `third_party/CMakeLists.txt` (the pre-F8 aggregator, unreferenced since the
   root build was cut) was deleted.
+- The retired root `database/` directory is gone: each owner keeps its schema
+  under its own `database/` folder, and the Compose data dir moved to the
+  gitignored `argus-deploy/data/` (`ARGUS_DATA_DIR` still overrides it).
 - Every service owns `services/argus-<name>/Dockerfile` plus its own
   `Dockerfile.dockerignore`, and Compose builds one image per microservice.
   The gateway image also carries `argus-migrate-identity`, the camera image

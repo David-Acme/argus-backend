@@ -13,10 +13,15 @@ is no shared monolith database: `argus.db` is retired and must not appear.
 | `notification.db` | `argus-notification` | `services/argus-notification/database/schema.sql` | `database/notification.db` |
 | `memory.db` | `argus-llm` (`packages/argus-memory`) | `packages/argus-memory/database/schema.sql` | `database/memory.db` |
 
+Runtime paths are relative to each process working directory. In the Compose
+stack the working directory is `/opt/argus`, so they resolve under
+`/opt/argus/database`, bind-mounted from the gitignored `argus-deploy/data/`
+on the host.
+
 Each owner applies its schema at boot and owns a migration CLI
 (`argus-migrate-identity`, `-camera`, `-productivity`, `-notification`) that
-migrates legacy `argus.db` data when present. Migrations run from the shared
-image as opt-in Compose init profiles.
+migrates legacy `argus.db` data when present. Migrations run from the owner
+service images as opt-in Compose init profiles.
 
 ## Access rules
 

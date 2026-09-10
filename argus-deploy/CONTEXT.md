@@ -165,8 +165,8 @@ run --rm camera-init` BEFORE the first boot, while camera.db does not exist
 yet. The init tools resolve `--schema` INSIDE the data-dir bind, so both init
 services bind the repo-shipped `argus-identity/database/schema.sql` /
 `database/camera-schema.sql` read-only over that path — a data dir provisioned
-without the schema SQLs still works (the default `../database` deployment dir
-already carries them; the single-file binds are no-ops there). The gateway
+without the schema SQLs still works (the single-file binds come from the
+repo). The gateway
 applies `identity-schema.sql` at boot and
 aborts if it fails, so a fresh install creates `identity.db` without the init
 profile; argus-camera applies `camera-schema.sql` at boot the same way, so a
@@ -283,7 +283,8 @@ Fase 4 (Rulings CB/CC/CD/CE, compose v4) adds the four AI engine services:
   that was previously auto-assigned forces network/container recreation on
   existing installs.
 - The catalog-replica snapshot sources reuse the established
-  mounts-with-ro-opens discipline: the shared data dir (`database/identity.db`)
+  mounts-with-ro-opens discipline: the shared data dir (`data/identity.db`
+  under argus-deploy)
   and the camera-db volume (`camera/camera.db`) mount rw (a WAL reader must
   map the `-shm`) and open `mode=ro` in-binary. The fills move to argus-llm
   at f8-b4 with the rest of the memory stack; their argus-memory mounts are
@@ -445,12 +446,11 @@ and `camera-init` is the only migration path onto the volume.
   the bind-mounted `third_party/go2rtc` binary and writes its own
   `go2rtc.yaml` (chmod 600, camera credentials) onto the camera-stream
   volume — never a bind. Its 1984/8554 binds stay inside the container.
-- `certs/`, `models/` are bind-mounted read-only from the repo; the database
-  directory
-  (`${ARGUS_DATA_DIR:-../database}`) is writable (identity.db, WAL files).
-  `ARGUS_DATA_DIR` exists for acceptance runs on a scratch copy of the real
-  database directory — the default is the repo `database/` and unset env
-  reproduces the F1-6 shape byte-identically.
+- `certs/`, `models/` are bind-mounted read-only from the repo; the data
+  directory (`${ARGUS_DATA_DIR:-./data}`) is writable (identity.db, WAL
+  files). `ARGUS_DATA_DIR` exists for acceptance runs on a scratch copy of the
+  real data directory; the default lives in `argus-deploy/data/` and is
+  gitignored.
 
 ## Port map (host)
 
