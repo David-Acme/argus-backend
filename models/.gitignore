@@ -1,0 +1,6 @@
+*
+!.gitignore
+!intent/
+intent/*
+!intent/intent.bin
+!intent/MODEL-CARD.md

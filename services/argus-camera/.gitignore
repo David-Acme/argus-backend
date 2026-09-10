@@ -9,3 +9,5 @@ database/*.db-shm
 *.log
 __pycache__/
 gen/
+go2rtc.yaml
+bench-results/
