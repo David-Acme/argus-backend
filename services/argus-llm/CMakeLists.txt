@@ -5,24 +5,18 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+include(${CMAKE_CURRENT_SOURCE_DIR}/../../cmake/argus-module.cmake)
+
 set(LLM_SRC_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/src)
 set(SHARED_ROOT ${LLM_SRC_ROOT}/shared)
-
-if(NOT TARGET Drogon::Drogon)
-    # Standalone build (outside the root project's configure).
-    find_package(Drogon CONFIG REQUIRED)
-    find_package(tomlplusplus REQUIRED)
-    find_package(nlohmann_json REQUIRED)
-endif()
-
-find_package(doctest REQUIRED)
 
 # llama.cpp is THE capacity of this service (Ruling BS): it links the same
 # vendored engine the legacy links (third_party/llama.cpp, tag b10305) — the
 # mtmd projector is NOT needed here (chat only, no multimodal). Within the
 # root build the target is the one third_party already integrates; a
 # standalone build re-adds the same submodule directory with the same cache
-# variables.
+# variables. Added before the sibling packages so argus-memory's guarded
+# llama block is skipped and these cache vars win.
 if(NOT TARGET llama)
     set(LLAMA_BUILD_COMMON OFF CACHE BOOL "" FORCE)
     set(LLAMA_BUILD_TESTS OFF CACHE BOOL "" FORCE)
@@ -55,7 +49,49 @@ if(NOT TARGET llama)
 
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../third_party/llama.cpp
                      llama-build EXCLUDE_FROM_ALL)
+    set(ARGUS_LLAMA_TARGETS llama)
 endif()
+
+if(NOT TARGET Drogon::Drogon)
+    # Standalone build (outside the root project's configure): add the
+    # sibling packages the llm module links, argus-common first.
+    find_package(Drogon CONFIG REQUIRED)
+    find_package(tomlplusplus REQUIRED)
+    find_package(nlohmann_json REQUIRED)
+    if(NOT TARGET argus_common)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/argus-common
+                         ${CMAKE_BINARY_DIR}/argus-common)
+    endif()
+    if(NOT TARGET argus::phrase)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/argus-phrase
+                         ${CMAKE_BINARY_DIR}/argus-phrase)
+    endif()
+    if(NOT TARGET argus::llm-client)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/argus-llm-client
+                         ${CMAKE_BINARY_DIR}/argus-llm-client)
+    endif()
+    # sqlite-vec rides its own vendored folder; added before argus-sqlite so
+    # its vec repositories see the target.
+    if(NOT TARGET sqlite-vec)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../third_party/sqlite-vec
+                         ${CMAKE_BINARY_DIR}/third_party/sqlite-vec)
+    endif()
+    set(ARGUS_SQLITE_VEC_TARGET sqlite-vec)
+    if(NOT TARGET argus::sqlite)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/argus-sqlite
+                         ${CMAKE_BINARY_DIR}/argus-sqlite)
+    endif()
+    if(NOT TARGET memory-core)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/argus-memory
+                         ${CMAKE_BINARY_DIR}/argus-memory)
+    endif()
+    if(NOT TARGET argus::intent)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/argus-intent
+                         ${CMAKE_BINARY_DIR}/argus-intent)
+    endif()
+endif()
+
+find_package(doctest REQUIRED)
 
 add_library(llm-core STATIC
     ${LLM_SRC_ROOT}/controllers/llm-controller.cc
@@ -147,7 +183,7 @@ add_executable(llm-wire-test tests/unit/llm-wire-test.cc
     ${SHARED_ROOT}/services/llm/intent-gate.cc)
 
 target_include_directories(llm-wire-test PRIVATE
-    ${CMAKE_SOURCE_DIR}/services/argus-llm/src)
+    ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
 target_compile_definitions(llm-wire-test PRIVATE
     ARGUS_TEST_LLM_MODELS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../../models/llm")

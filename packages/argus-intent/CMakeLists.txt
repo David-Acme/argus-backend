@@ -2,14 +2,14 @@
 # rules-first fusion and the degradation contract. Inference only; the training
 # lives in the sibling intent-training project.
 
-set(INTENT_MODEL ${CMAKE_SOURCE_DIR}/models/intent/intent.bin)
+set(INTENT_MODEL ${CMAKE_CURRENT_SOURCE_DIR}/../../models/intent/intent.bin)
 set(INTENT_MODEL_PIN ${CMAKE_CURRENT_SOURCE_DIR}/models/intent.bin.sha256)
 
 if(NOT TARGET fasttext)
     # Inference-only static build of the vendored fastText: no main, no tests,
     # none of the targets add_subdirectory would install. Sources are listed
     # (rule 25) so a vendored-tree change is a visible diff, not a silent one.
-    set(FASTTEXT_SRC ${CMAKE_SOURCE_DIR}/third_party/fastText/src)
+    set(FASTTEXT_SRC ${CMAKE_CURRENT_SOURCE_DIR}/../../third_party/fastText/src)
     add_library(fasttext STATIC
         ${FASTTEXT_SRC}/args.cc
         ${FASTTEXT_SRC}/autotune.cc
@@ -66,7 +66,7 @@ find_package(doctest REQUIRED)
 foreach(TEST_NAME IN ITEMS intent-router-test intent-accuracy-test)
     add_executable(${TEST_NAME} tests/unit/${TEST_NAME}.cc)
     target_compile_definitions(${TEST_NAME} PRIVATE
-        ARGUS_TEST_INTENT_MODELS_DIR="${CMAKE_SOURCE_DIR}/models/intent"
+        ARGUS_TEST_INTENT_MODELS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../../models/intent"
         ARGUS_TEST_INTENT_FIXTURES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures")
     target_link_libraries(${TEST_NAME} PRIVATE argus_intent doctest::doctest)
     target_compile_options(${TEST_NAME} PRIVATE -Wall -Wextra)
