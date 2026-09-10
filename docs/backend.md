@@ -61,11 +61,10 @@ se utiliza para RustFS y, cuando se necesita un despliegue reproducible, para
 el servicio backend de producción. Los dos servicios son contenedores
 independientes.
 
-`setup.sh` genera una única configuración local ignorada por Git:
-`config.toml`, a partir de `config.toml.example`. Allí se guardan los secretos
-JWT, las credenciales S3 de aplicación y las credenciales administrativas
-locales de RustFS. También crea `labs/config.toml` desde su template; esa
-configuración solo se carga al ejecutar un lab. No existe `config.local.toml`.
+`setup.sh` genera las configuraciones locales ignoradas por Git: un
+`config.toml` por proyecto, a partir del `config.toml.example` de cada
+servicio o paquete. Allí se guardan los secretos JWT. No existe
+`config.local.toml`.
 
 ```bash
 # Configurar solamente RustFS para desarrollo nativo

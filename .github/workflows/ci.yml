@@ -35,8 +35,11 @@ jobs:
       - name: Detect Conan profile
         run: conan profile detect
 
-      - name: Generate runtime config
-        run: cp config.toml.example config.toml
+      - name: Generate runtime configs
+        run: |
+          for f in services/*/config.toml.example packages/*/config.toml.example; do
+            cp "$f" "${f%.example}"
+          done
 
       - name: Install Conan dependencies
         run: conan install . --output-folder=build/dev -s build_type=Debug -s compiler.cppstd=gnu20 --build=missing

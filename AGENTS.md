@@ -459,8 +459,8 @@ Raw pointers only for non-owning access (`.get()`).
   but neither client contracts nor backend code should need to switch between
   LAN and tunnel endpoints.
 - Native backend development is the default: run `scripts/setup.sh` to create
-  the per-installation 0600 `config.toml` from `config.toml.example` and the
-  then run
+  the per-installation 0600 per-project `config.toml` files from each
+  `config.toml.example`, and then run
   `build/dev/argus-gateway/argus-gateway`. Never commit, print, log or send
   instance secrets to the frontend.
 - Production-style deployment is container-only: `argus-deploy/` builds one

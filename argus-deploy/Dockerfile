@@ -24,8 +24,7 @@ WORKDIR /opt/argus
 COPY . .
 
 RUN --mount=type=cache,target=/root/.conan2 \
-    cp config.toml.example config.toml \
-    && conan profile detect --force \
+    conan profile detect --force \
     && printf '\n[replace_requires]\nprotobuf/*: protobuf/3.21.12\n' \
       >> /root/.conan2/profiles/default \
     && conan install . --output-folder=build/prod -s build_type=Release --build=missing \
@@ -67,7 +66,7 @@ COPY --from=build /opt/argus/build/prod/services/argus-llm/argus-llm /opt/argus/
 COPY --from=build /opt/argus/build/prod/services/argus-voice/argus-voice /opt/argus/argus-voice
 COPY --from=build /opt/argus/build/prod/services/argus-tunnel/argus-tunnel-client /opt/argus/argus-tunnel-client
 COPY --from=build /opt/argus/build/prod/services/argus-tunnel/argus-tunnel-relay /opt/argus/argus-tunnel-relay
-COPY config.toml.example /opt/argus/config.toml
+COPY services/argus-gateway/config.toml.example /opt/argus/config.toml
 
 RUN groupadd --gid "$ARGUS_GID" argus \
     && useradd --uid "$ARGUS_UID" --gid "$ARGUS_GID" --create-home \

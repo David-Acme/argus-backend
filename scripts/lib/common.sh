@@ -54,6 +54,21 @@ toml_value() {
     }' "$file"
 }
 
+toml_key_exists() {
+  local file="$1"
+  local table="$2"
+  local key="$3"
+  awk -v table="$table" -v key="$key" '
+    /^[[:space:]]*\[/ {
+      in_table = ($0 ~ "^\\[" table "\\][[:space:]]*$")
+    }
+    in_table && $0 ~ "^[[:space:]]*" key "[[:space:]]*=" {
+      found = 1
+      exit
+    }
+    END { exit !found }' "$file"
+}
+
 ensure_toml_value() {
   local table="$1"
   local key="$2"
@@ -100,4 +115,30 @@ ensure_toml_value() {
   ' "$config" > "$temp"
   chmod 600 "$temp"
   mv "$temp" "$config"
+}
+
+ensure_project_config() {
+  local dir="$1"
+  local template="$dir/config.toml.example"
+  local config="$dir/config.toml"
+
+  [ -f "$template" ] || { err "missing config template: $template"; return 1; }
+
+  if [ ! -f "$config" ]; then
+    umask 077
+    cp "$template" "$config"
+  fi
+  chmod 600 "$config"
+
+  local table key bytes value
+  while read -r table key bytes; do
+    toml_key_exists "$template" "$table" "$key" || continue
+    value="$(openssl rand -hex "$bytes")"
+    ensure_toml_value "$table" "$key" "$value" "$config"
+  done <<'EOF'
+jwt secret 48
+jwt refresh_secret 48
+device fingerprint_secret 48
+identity rpc_secret 32
+EOF
 }

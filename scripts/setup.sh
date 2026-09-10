@@ -9,7 +9,7 @@
 #   4. Download the LFM2.5-1.2B-Instruct QAD LLM (~696 MB)
 #   5. Install Conan dependencies into build/<profile>
 #   6. Configure and build with the matching CMake preset
-#   7. Create local system/lab configs
+#   7. Create per-project local configs
 #
 # Usage:
 #   ./scripts/setup.sh                     # default: dev
@@ -46,8 +46,6 @@ esac
 log "Profile: $PROFILE  build_type: $BUILD_TYPE  output: $OUTPUT_FOLDER  preset: $CMAKE_PRESET"
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-CONFIG="$ROOT/config.toml"
-CONFIG_TEMPLATE="$ROOT/config.toml.example"
 
 install_system_deps() {
   log "Detecting distribution and installing build dependencies..."
@@ -209,8 +207,9 @@ setup_certs() {
 
     # SANs: advertised hostname, configurable mdns.name, localhost/loopback.
     local MDNS_NAME=""
-    if [ -f "$ROOT/config.toml" ]; then
-      MDNS_NAME="$(sed -n 's/^[[:space:]]*name *= *"\([^"]*\)".*/\1/p' "$ROOT/config.toml" | head -1)"
+    local GW_CONFIG="$ROOT/services/argus-gateway/config.toml"
+    if [ -f "$GW_CONFIG" ]; then
+      MDNS_NAME="$(sed -n 's/^[[:space:]]*name *= *"\([^"]*\)".*/\1/p' "$GW_CONFIG" | head -1)"
     fi
     [ -z "$MDNS_NAME" ] && MDNS_NAME="Argus"
     local SAN="DNS:argus.local,DNS:localhost,IP:127.0.0.1,IP:::1"
@@ -247,47 +246,24 @@ setup_certs() {
   log "Pairing code: ${FP:0:8}"
 }
 
-migrate_legacy_overlay() {
-  local legacy="$ROOT/config.local.toml"
-  [ -f "$legacy" ] || return 0
-
-  local spec table key value
-  for spec in \
-      "jwt secret" \
-      "jwt refresh_secret" \
-      "device fingerprint_secret" \
-      "storage mode" \
-      "storage.s3 endpoint" \
-      "storage.s3 access_key" \
-      "storage.s3 secret_key" \
-      "storage.s3 region" \
-      "storage.s3 bucket"; do
-    table="${spec% *}"
-    key="${spec##* }"
-    value="$(toml_value "$legacy" "$table" "$key")"
-    [ -n "$value" ] && ensure_toml_value "$table" "$key" "$value" "$CONFIG"
-  done
-
-  rm -f "$legacy"
-  log "Migrated the legacy config.local.toml values into config.toml."
-}
-
 ensure_local_config() {
   need_cmd openssl
-  [ -f "$CONFIG_TEMPLATE" ] || { err "missing config template: $CONFIG_TEMPLATE"; exit 1; }
-  if [ ! -f "$CONFIG" ]; then
-    umask 077
-    cp "$CONFIG_TEMPLATE" "$CONFIG"
-    chmod 600 "$CONFIG"
-  fi
-  migrate_legacy_overlay
-
-  ensure_toml_value jwt secret "$(openssl rand -hex 48)" "$CONFIG"
-  ensure_toml_value jwt refresh_secret "$(openssl rand -hex 48)" "$CONFIG"
-  ensure_toml_value device fingerprint_secret "$(openssl rand -hex 48)" "$CONFIG"
-  ensure_toml_value identity rpc_secret "$(openssl rand -hex 32)" "$CONFIG"
-  chmod 600 "$CONFIG"
-  log "System config is ready."
+  local dir
+  for dir in \
+      services/argus-gateway \
+      services/argus-camera \
+      services/argus-productivity \
+      services/argus-notification \
+      services/argus-tts \
+      services/argus-stt \
+      services/argus-vlm \
+      services/argus-llm \
+      services/argus-voice \
+      services/argus-tunnel \
+      packages/argus-memory; do
+    ensure_project_config "$ROOT/$dir" || exit 1
+  done
+  log "Per-project configs are ready."
 }
 
 main() {
