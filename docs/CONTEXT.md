@@ -16,26 +16,26 @@
 
 ## Hard constraints / decisions
 
-- **C++20**, Drogon HTTP/WebSocket server. SQLite via Drogon async `DbClient`
-  (NO ORM, manual SQL). DB file `database/argus.db`, `number_of_connections: 4`
-  (pragmas reapplied at every boot via `DbService::applyPragmas()`).
-- **Config**: single `config.toml` file (TOML, parsed via `tomlplusplus`).
-  Replaces `.env` + `config.json`. Drogon section converted to JSON at runtime
-  and loaded via `loadConfigJson()`. `ConfigService` in `src/shared/services/config-service/`.
+- **C++20**, Drogon HTTP/WebSocket services. SQLite uses Drogon's async
+  `DbClient` with manual SQL and no ORM. Identity, camera, productivity,
+  notification and memory data have separate owner databases; `argus.db` is
+  retired. Each owner reapplies its connection pragmas at boot.
+- **Config**: each runtime owner has a local `config.toml` generated from its
+  committed `config.toml.example`. TOML is parsed through `ConfigService` and
+  each Drogon process converts its own section to JSON at runtime.
 - **NO spdlog** — Drogon already provides logging. Do not add spdlog.
 - **Smart pointers only** — no raw owning pointers. All service resources use
   `std::unique_ptr` with custom deleters.
-- **Services use hardcoded model paths** — all services know their model paths
-  internally (no parameters). Paths live at `models/{llm,stt,vision,tts,face}/`.
-- **Conan 2** for deps (`conanfile.txt` + `CMakePresets.json`). CMake presets:
-  `dev` (Debug) and `prod` (Release), generator Ninja.
-- **Git submodules** under `third_party/` for libs that change rarely and we want
-  to control: `ncnn`, `sherpa-onnx`, `llama.cpp`, `inspireface`. Built via
-  `add_subdirectory` with `EXCLUDE_FROM_ALL`. `fastText` was removed on
-  2026-08-09 (zero uses in `src/`), **re-added the same day** as the intent
-  engine backend, and **removed for good on 2026-09-08** together with
-  `IntentService` (see "Intent detection retired"); `hnswlib` was replaced by
-  sqlite-vec for face embeddings.
+- **Models are shared runtime artifacts** under `models/`; each owner resolves
+  its model path from its local configuration and provisioning script.
+- **Conan 2** for dependencies. Each of the 19 standalone owner projects has
+  its own `conanfile.txt` and `CMakePresets.json`: `dev` (Debug) and `prod`
+  (Release), both using Ninja. The repository root has no CMake project.
+- **Git submodules** under `third_party/` for controlled source dependencies:
+  `ncnn`, `sherpa-onnx`, `llama.cpp` and `fastText`. Owner projects integrate
+  them with `add_subdirectory`. `fastText` backs the current intent classifier
+  in `packages/argus-intent`; `hnswlib` was replaced by sqlite-vec for face
+  embeddings.
 - **sqlite-vec** is vendored (single-file C extension, v0.1.10-alpha.4, MIT/
   Apache-2.0) at `third_party/sqlite-vec/` with sqlite3 3.53.3 headers. It is
   compiled with `SQLITE_CORE` and registered via
@@ -47,7 +47,7 @@
   so vec0 only needs to exist from then on). FTS5 is compiled into the conan
   sqlite3 (`sqlite3/*:enable_fts5=True` — Drogon was rebuilt once against it).
 - Convention: Conventional Commits in English. Remote `git@github.com:David-Acme/argus-backend.git`,
-  branch `main`.
+  branch `master`.
 
 ## Dependency resolution notes (Conan conflicts, learned the hard way)
 
@@ -63,30 +63,28 @@
 
 ## Current build state
 
-- Build is **green**: `cmake --preset dev` + `cmake --build --preset dev -j 8`
-  succeeds; server starts on `0.0.0.0:7024`.
-- **Build script**: `./scripts/setup.sh` handles Conan deps + cmake configure + build.
+- The build graph consists of 19 standalone projects. The repository root has
+  no `CMakeLists.txt`, `CMakePresets.json` or `conanfile.txt`.
+- `./scripts/build-all.sh dev` installs, configures, builds and tests every
+  standalone project. Use `--only <project>`, `--no-tests` or
+  `--install-only` for scoped workflows.
+- `./scripts/setup.sh` provisions dependencies, models and per-project config,
+  then delegates compilation and tests to `build-all.sh`.
 
 ## Current services (all implemented)
 
-| Service | Engine | Model | Path |
-|---------|--------|-------|------|
-| `FaceService` | ncnn (Vulkan) | RetinaFace + MobileFaceNet | `models/face/` |
-| `FaceDB` | vec0 (sqlite-vec) | 128-dim cosine KNN, persisted | SQLite (`face_vec`) |
-| `LlmService` | llama.cpp (submodule b10305) | LFM2.5-1.2B-Instruct QAD Q4_0 | `models/llm/` |
-| `VisionService` | llama.cpp + libmtmd | LFM2.5-VL-450M (Q8_0 + mmproj F16) | `models/vision/lfm2vl-25/` |
-| `SttService` | sherpa-onnx | nemo_transducer (FastConformer RNN-T, es/en) | `models/stt/` |
-| `TtsService` | Supertonic 3 | ONNX models | `models/tts/` |
-| `JwtService` | jwt-cpp | HS256, instance class | — |
-| `ConfigService` | tomlplusplus | TOML config reader + runtime writes | `config.toml` |
-| `DbService` | Drogon DbClient | SQLite async client | `database/argus.db` |
-| `VadService` | Silero VAD v5 (ONNX, instance class) | turn-taking con gate de calidad | `models/vad/` |
-| `EmbeddingService` | ONNX Runtime | multilingual-e5-small INT8 (lazy load) | `models/memory/` |
-| `MemoryService` | SQLite graph (FTS5 + vec0) | grafo semántico + recall multi-tier | `database/argus.db` |
-| `ExtractionService` | llama.cpp | NuExtract-1.5-tiny Q4_K_M (off-turn) | `[extract] model_path` |
-| `ReactionEngine` | señales puras (sin modelo) | 10 reacciones priorizadas → `voice:event` | — |
-| `StreamHub` / `MediaRelay` / `Go2rtcManager` | go2rtc | fMP4 sobre `/sync` con credit window | — |
-| `S3StorageService` / `PrivatePortraitService` | S3 (SigV4, opt-in) | objetos privados + capabilities one-use | `[storage]` config |
+| Runtime owner | Capacity |
+|---|---|
+| `argus-gateway` | Public TLS API, identity, WebSocket relay and routing |
+| `argus-camera` | Camera data, go2rtc streaming and YOLO26n object events |
+| `argus-productivity` | Reminder, project and calendar data |
+| `argus-notification` | Notifications and push tokens |
+| `argus-tts` | Supertonic ONNX speech synthesis |
+| `argus-stt` | sherpa-onnx speech recognition |
+| `argus-vlm` | LFM2.5-VL vision inference |
+| `argus-llm` | LFM2.5 chat, intent routing, tool execution and hosted memory |
+| `argus-voice` | gRPC voice-session orchestration |
+| `argus-tunnel` | Byte-transparent client and relay transport |
 
 ## Performance & portability batch (2026-08)
 

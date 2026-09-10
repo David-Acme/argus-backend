@@ -89,11 +89,9 @@ own `productivity.db`.
 
 ## Build wiring (decisions)
 
-- The canonical productivity-service builds are the ROOT presets
-  (`cmake --build --preset productivity` / `--preset productivity-prod`):
-  they reuse the root Conan cache. The standalone `argus-productivity/` build
-  directory goes stale on new `conanfile.txt` requires until `conan install`
-  is re-run there.
+- The canonical build is the service's standalone graph. From the repository
+  root use `scripts/build-all.sh dev --only argus-productivity`; direct builds
+  rerun Conan before the matching preset and CTest.
 - The standalone build compiles ncnn only because `argus_identity` compiles
   the face services, whose headers need it; nothing references those objects,
   so they drop at link time (zero AI symbols).
@@ -119,9 +117,7 @@ is now a single `PRODUCTIVITY_FEATURE_SOURCES` variable that both the
 executable and the controller suite consume, instead of the two
 hand-kept copies (one here, one in the root test tree) that could drift.
 
-The suites register under `ARGUS_ROOT_PROJECT` and opt back into the
-default build (`EXCLUDE_FROM_ALL FALSE`), because this folder is added
-excluded.
+The suites register in the service's standalone CTest graph.
 
 What did NOT move: the productivity repositories and schemas, which
 `argus_sync` still compiles because the gateway's `/sync` reads the same

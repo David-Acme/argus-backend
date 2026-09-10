@@ -16,22 +16,17 @@ Decisions and traps live here.
 
 ## Image (Ruling N)
 
-`Dockerfile` is ONE multi-stage image from the repo root: the same Debian +
-Conan 2.21.0 toolchain as the root CMake prod preset, a single `conan install`
-at Release, then `cmake --build --preset prod` (`ARGUS_BUILD_LABS=OFF`) plus
-`--target argus-gateway argus-migrate-identity argus-vulkan-probe
-argus-migrate-camera argus-camera argus-productivity argus-notification
-argus-migrate-productivity argus-migrate-notification argus-tts argus-stt
-argus-vlm argus-llm argus-voice argus-tunnel-client argus-tunnel-relay`
-(the argus-memory binary is gone since f8-b3: the package compiles into
-argus-llm, no separate target).
+`Dockerfile` is ONE multi-stage image from the repo root. Its Debian + Conan
+2.21.0 build stage runs `scripts/build-all.sh prod --no-tests`, so the image
+uses the same 19 standalone Conan/CMake graphs as local builds and CI. The
+root has no CMake project. The argus-memory binary is gone since f8-b3: the
+package compiles into argus-llm, with no separate runtime target.
 All binaries land in `/opt/argus`; the service picks its binary via an
 `entrypoint:` override (Docker composes `command:` as ARGUMENTS to the image
 `ENTRYPOINT`, so a `command:` "override" here would append to the image's
-`ENTRYPOINT` binary instead of replacing it — the trap 242ffd3 fixed). One
-conan dependency set serves all binaries (the root `conanfile.txt` already
-carries cnats, mdns and everything else they need when built from the root
-tree). The memory stack needs no extra runtime packages: sqlite-vec compiles
+`ENTRYPOINT` binary instead of replacing it — the trap 242ffd3 fixed). Each
+project resolves its own Conan dependency set. The memory stack needs no
+extra runtime packages: sqlite-vec compiles
 into the binary (`SQLITE_CORE`), onnxruntime/llama/cnats are static conan
 archives and the runtime stage's `libgomp1`/`libstdc++6` already cover them.
 

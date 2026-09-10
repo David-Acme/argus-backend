@@ -37,10 +37,9 @@ single source of truth.
 
 ## Codegen substrate (F6-3)
 
-`CMakeLists.txt` exposes `argus_contracts_substrate()` (find_package for
-Protobuf + gRPC) and the root build calls it before adding any service.
-The package also builds standalone (its own `conanfile.txt` + dev/prod
-presets, doctest only): with a single abseil flavor the cq bridge entry
+`CMakeLists.txt` exposes `argus_contracts_substrate()` for every standalone
+consumer to resolve Protobuf + gRPC. The package builds with its own
+`conanfile.txt` and dev/prod presets: with a single abseil flavor the cq bridge entry
 symbol would interpose the identically-named implementation inside
 `libgrpc`, so the standalone configure declares empty bridge stand-ins and
 lets the vendored gRPC resolve its callbacks natively. The

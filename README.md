@@ -1,31 +1,48 @@
-# Argus Monorepo
+# Argus Backend Monorepo
 
-This is the root of the **Argus** monorepo — a 100% local, modular AI platform
-for the home (intelligent security guard + virtual assistant). Everything lives
-in this single repository; all agent rules, code and comments are in English.
+Argus is a local-first home security and assistant platform written in C++20.
+The backend is a set of independently buildable services plus shared packages;
+there is no root CMake project or monolithic backend executable.
 
 ## Layout
 
-- `services/argus-<name>/` — one folder per service; each produces a process
-- `packages/argus-<name>/` — shared libraries compiled into those services;
-  they produce no process of their own
-- `packages/argus-contracts/` — protobuf contracts (`argus.<domain>.v1`),
-  manifest schemas, `buf` config and sync fixtures
-- `argus-deploy/` — compose stack, Dockerfile and per-service config examples
-- `docs/` — architecture and migration documents
-- `database/`, `docker/`, `scripts/` — schema, local runtime and tooling
+- `services/argus-<name>/` — deployable processes, each with its own Conan
+  graph and CMake presets
+- `packages/argus-<name>/` — reusable libraries compiled into their consumers
+- `packages/argus-contracts/` — protobuf contracts and internal gRPC SDKs
+- `third_party/` — pinned source dependencies maintained as Git submodules
+- `argus-deploy/` — the multi-service Compose stack and shared image
+- `scripts/` — provisioning, setup and the standalone build orchestrator
+- `models/` — shared runtime model locations; large artifacts are gitignored
+- `docs/` — architecture, migration history and operational guidance
 
-There is no monolith: `src/` was deleted once the last service moved out.
+## Build
 
-## Adding services
+Provision local configuration, models and dependencies, then build and test all
+projects:
 
-A service is a folder under `services/`; a shared library is a folder under
-`packages/`. Both are discovered by the root build, so adding one means
-creating its folder.
+```bash
+./scripts/setup.sh dev
+```
 
-Each service keeps its own `CMakeLists.txt`, `conanfile`, `database/`,
-`CONTEXT.md`, `AGENTS.md` and `tests/`, builds its own artifacts and is
-deployed as its own container.
+Build an already provisioned checkout:
 
-Internal versioning uses repository tags: `contracts-v*` for
-`packages/argus-contracts/`, `service-v*` for each service folder.
+```bash
+./scripts/build-all.sh dev
+./scripts/build-all.sh prod --no-tests
+./scripts/build-all.sh dev --only argus-camera
+```
+
+Every orchestrated project owns `CMakeLists.txt`, `conanfile.txt` and
+`CMakePresets.json`. To work directly inside one, run its Conan install, CMake
+preset and CTest commands from that project folder.
+
+## Runtime
+
+The gateway is the only public entry point. Camera, productivity,
+notification, TTS, STT, VLM, LLM, voice and tunnel capacities run as separate
+processes behind it. See `argus-deploy/docker-compose.yml` for the complete
+topology and `docs/backend.md` for local commands.
+
+Internal versioning uses repository tags: `contracts-v*` for contracts and
+`service-v*` for service releases.

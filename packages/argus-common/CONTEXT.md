@@ -180,7 +180,7 @@ list built from `grep`ing raw-path `CMakeLists.txt` entries misses consumers
 that only reach a moved file through an include, never a compiled source of
 their own.
 
-## Known regression (deferred, not introduced by this step)
+## Standalone fallback regression (resolved by F8 C2)
 
 Six services — `argus-tts`, `argus-stt`, `argus-vlm`, `argus-llm`,
 `argus-memory`, `argus-tunnel` — link `argus_common` but carry no
@@ -188,8 +188,6 @@ standalone-build fallback
 block (`if(NOT TARGET argus_common) add_subdirectory(...) endif()`), unlike
 `argus-voice`, `argus-camera`, `argus-productivity`, `argus-notification`
 and `argus-gateway`, which all repoint that block at `../argus-common` as of
-this step. Building any of the six outside the root tree (e.g. `cmake -S
-argus-llm -B build-standalone`) will fail to find `argus_common`. This was
-already a known gap before this step and stays deferred to a later one; it
-is unrelated to the include-root issues above, which are about the root-tree
-build.
+this step. Those six projects later gained complete standalone dependency
+closures in F8 C2. The repository root build was removed in F8 C4, so this
+paragraph remains only as the history behind those fallback blocks.

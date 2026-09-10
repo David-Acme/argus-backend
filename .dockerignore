@@ -5,12 +5,15 @@
 .superpowers
 .zed
 build
+**/build
+**/CMakeUserPresets.json
 bench-results
 certs
 database
 docker/runtime
 models
 config.toml
+**/config.toml
 argus-deploy/config.gateway.toml
 argus-deploy/config.camera.toml
 *.log

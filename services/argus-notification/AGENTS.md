@@ -1,6 +1,6 @@
 # argus-notification — AI Agent Instructions
 
-The root `AGENTS.md` (at the monorepo root, next to `src/`) is binding for
+The root `AGENTS.md` (at the monorepo root) is binding for
 every change in this service. The MUST-FOLLOW rules below restate the ones
 that apply to notification-service code; when in doubt, the root file wins.
 
@@ -69,13 +69,14 @@ shared tree.
 ## Build commands
 
 ```bash
-# From the monorepo root (recommended)
-cmake --build --preset notification
+# From the monorepo root
+./scripts/build-all.sh dev --only argus-notification
 
-# Standalone
+# From services/argus-notification
 conan install . --output-folder=build/dev -s build_type=Debug --build=missing
 cmake --preset dev
 cmake --build --preset dev -j 8
+ctest --test-dir build/dev --output-on-failure
 ```
 
 > Binding cross-service code standards: root `AGENTS.md` MUST-FOLLOW rules 19-24 (modern C++20, comment discipline, efficiency, DB tuning, feature layout + shared SDK, monolith structure).

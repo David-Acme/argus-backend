@@ -10,11 +10,9 @@
   pairing, device credentials, refresh tokens, face embeddings and the
   portrait/private-portrait storage. Declared as the `argus_identity`
   module (`argus::identity` alias).
-- A service folder of the Argus monorepo (rooted at `backend/`), not an
-  independent repo. It is compiled INTO the argus-gateway binary today —
-  no new process, no new port — so it carries no `CMakePresets.json` /
-  `conanfile.txt` of its own yet; the later standalone extraction is a
-  CMake/deploy change, not a second file move.
+- A package folder of the Argus monorepo (rooted at `backend/`), not an
+  independent repository or process. It compiles into `argus-gateway` and
+  also owns a standalone Conan/CMake graph for validation.
 - Authentication IDENTIFIES here; it does not authorize. Role-based
   authorization is the `argus-auth` filter package declared on routes by
   name. Biometrics (faces, embeddings) stay in this service.
@@ -24,11 +22,14 @@
 
 ```
 argus-identity/
-  CMakeLists.txt          argus_module(NAME identity ...) + the two unit suites
+  CMakeLists.txt          argus_module(NAME identity ...) + unit suites
+  conanfile.txt           standalone dependency graph
+  CMakePresets.json       dev/prod standalone presets
   database/schema.sql     the DDL truth for every identity table
   src/feature/api/{auth,invitation,pairing,user}/   moved files, relative
   src/shared/{repositories,schemas,services}/...    paths preserved
-  tests/unit/             identity-migration-test, device-credential-test
+  tests/unit/             identity migration and device credential suites
+  tools/migrate-identity/ identity migration CLI and library
 ```
 
 The `src/feature/...` and `src/shared/...` path prefixes inside this
@@ -55,20 +56,24 @@ monolith structure, build-by-module-name). In particular:
 
 ## Tests
 
-The two unit suites are root-project tests: they register with the root
-ctest run only (guarded by `ARGUS_ROOT_PROJECT`), because the
-identity-migration library they ride is a root-only target. Test file
-naming stays hyphenated (`user-feature-service-test.cc`).
+The two unit suites register in this package's standalone CTest graph. Test
+file naming stays hyphenated (`identity-migration-test.cc`).
+
+```bash
+# From the monorepo root
+./scripts/build-all.sh dev --only argus-identity
+
+# From packages/argus-identity
+conan install . --output-folder=build/dev -s build_type=Debug --build=missing
+cmake --preset dev
+cmake --build --preset dev -j 8
+ctest --test-dir build/dev --output-on-failure
+```
 
 ## What does NOT live here
 
-- `argus-auth` — the filter package (`DeviceFilter`, `JwtFilter`,
-  `RoleFilter`, `ValidJsonFilter`, `JwtService`), still `src/filter/`
-  until its package extraction.
-- The audit / socket / cert / sqlite / mdns / room modules — cross-domain
-  or gateway-owned, still in their temporary `src/` module folders.
+- `argus-auth` — the sibling filter package (`DeviceFilter`, `JwtFilter`,
+  `RoleFilter`, `ValidJsonFilter`, `JwtService`).
+- Audit, socket, cert, sqlite and room — sibling cross-domain packages.
 - The `identity.db` file — live data, opened from `database/` at runtime;
   only the schema (`database/schema.sql` here) is code.
-- The migration CLI (`tools/migrate-identity`) — still in `tools/` until
-  the root `tools/` dissolution; its library is what
-  `identity-migration-test` verifies.

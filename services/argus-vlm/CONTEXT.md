@@ -26,10 +26,9 @@ the legacy's RAM/VRAM with zero functional risk. It mirrors the argus-tts
 - **llama.cpp vendor constraint**: the mtmd projector must vendor the SAME
   llama.cpp commit the legacy links (`third_party/llama.cpp`, tag b10305 —
   Conan's llama-cpp recipe ships CPU-only with no mtmd and a projector that
-  rejects LFM2.5-VL mmproj files). Within the root build the service links
-  the exact targets third_party integrates (`${ARGUS_LLAMA_TARGETS}` =
-  llama + mtmd); the standalone preset re-adds the same submodule directory
-  with the same cache variables.
+  rejects LFM2.5-VL mmproj files). The standalone project links the exact
+  vendored targets (`${ARGUS_LLAMA_TARGETS}` = llama + mtmd) with the pinned
+  cache variables.
 - **The internal wire (Ruling BP)**:
   - `POST /vlm/v1/describe` — JSON body `{image_b64, prompt?, camera_id?}`.
     `image_b64` is a base64 JPEG: the in-process API takes a `cv::Mat`, so

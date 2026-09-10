@@ -107,10 +107,9 @@ preset, own `camera.db`.
 
 ## Build wiring (decisions)
 
-- The canonical camera-service builds are the ROOT presets
-  (`cmake --build --preset camera` / `--preset camera-prod`): they reuse the
-  root Conan cache. The standalone `argus-camera/` build directory goes stale
-  on new `conanfile.txt` requires until `conan install` is re-run there.
+- The canonical camera build is its standalone graph. From the repository
+  root use `scripts/build-all.sh dev --only argus-camera`; direct builds run
+  Conan, the matching preset and CTest inside `services/argus-camera`.
 
 ## Object detection (F2-3): detector, operator, event intelligence
 
@@ -161,8 +160,8 @@ preset, own `camera.db`.
   event keeps the dominant severity; a class still cooling down drops the
   whole window and the next window starts fresh. Preprocessing and
   inference never run on the event loop (`BlockingTask`).
-- The labs (`argus-camera/labs/`) build on demand via the camera presets
-  (`--target argus-object-bench` / `argus-camera-probe`), EXCLUDE_FROM_ALL.
+- The former camera labs were deleted in F8. Detector validation belongs in
+  the production owner or an external diagnostic, never a second build graph.
 - Model artifacts (`models/objects/`) come from `scripts/setup.sh camera`:
   yolo26n.pt sha256-pinned download + local raw e2e NCNN export; without the
   artifacts the detector boots disabled — never a fake success.
@@ -192,10 +191,8 @@ The camera CRUD features, the Tapo driver stack, the stream lifecycle and
 the camera schema all moved out of the shared `src/` tree into this
 folder, prefixes preserved (`src/feature/api/{camera,zone}`,
 `src/shared/services/{camera-driver,tapo,stream}`), so no include line in
-the fleet changed. The unit suites moved to `tests/unit/` and register
-themselves under `ARGUS_ROOT_PROJECT`; they must opt back into the default
-build (`EXCLUDE_FROM_ALL FALSE`) because this folder is added excluded,
-otherwise ctest registers tests whose binaries never build.
+the fleet changed. The unit suites live in `tests/unit/` and register in the
+camera project's standalone CTest graph.
 
 Two sources could NOT come along, because argus-voice compiles them too:
 the PCM resampler and the TTS HTTP client. They became their own modules

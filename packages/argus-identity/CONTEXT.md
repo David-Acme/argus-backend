@@ -101,9 +101,6 @@ filter fail closed.
 
 `identity-migration-test` (schema apply + the argus.db → identity.db row
 by row verification) and `device-credential-test` (the DeviceFilter gate,
-the credential repository, the auth-service issuance flow) are
-root-project tests: the migration library is a root-only target
-(`tools/` is EXCLUDE_FROM_ALL there), so the suites register only under
-`ARGUS_ROOT_PROJECT`. Standalone consumer builds (gateway, camera,
-productivity, notification) never had them. No e2e suite exists yet; the
-folder gains `tests/e2e/` when the service has one.
+the credential repository, the auth-service issuance flow) register in the
+package's standalone CTest graph. No e2e suite exists yet; the folder gains
+`tests/e2e/` when the package has one.

@@ -1,6 +1,6 @@
 # argus-tunnel — AI Agent Instructions
 
-The root `AGENTS.md` (at the monorepo root, next to `src/`) is binding for
+The root `AGENTS.md` (at the monorepo root) is binding for
 every change in this service. The MUST-FOLLOW rules below restate the ones
 that apply to tunnel code; when in doubt, the root file wins.
 
@@ -67,10 +67,10 @@ argus-tunnel/
 ## Build commands
 
 ```bash
-# From the monorepo root (recommended)
-cmake --build --preset tunnel --target argus-tunnel-relay argus-tunnel-client
+# From the monorepo root
+./scripts/build-all.sh dev --only argus-tunnel
 
-# Standalone
+# From services/argus-tunnel
 conan install . --output-folder=build/dev -s build_type=Debug --build=missing
 cmake --preset dev
 cmake --build --preset dev -j 8

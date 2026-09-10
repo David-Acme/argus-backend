@@ -2,14 +2,13 @@
 #
 # Argus backend - setup script (Linux).
 #
-# Automates build with CMake presets. Unifies dev & prod profiles:
+# Provisions local dependencies and builds every standalone project:
 #   1. Install system build dependencies (distro aware)
 #   2. Install Conan (if missing) and configure the profile for C++20
 #   3. Download the Supertonic 3 TTS model (~415 MB)
 #   4. Download the LFM2.5-1.2B-Instruct QAD LLM (~696 MB)
-#   5. Install Conan dependencies into build/<profile>
-#   6. Configure and build with the matching CMake preset
-#   7. Create per-project local configs
+#   5. Install, configure, build and test every standalone project
+#   6. Create per-project local configs
 #
 # Usage:
 #   ./scripts/setup.sh                     # default: dev
@@ -39,11 +38,11 @@ for a in "$@"; do
 done
 
 case "$PROFILE" in
-  dev)  BUILD_TYPE="Debug";   OUTPUT_FOLDER="build/dev";  CMAKE_PRESET="dev" ;;
-  prod) BUILD_TYPE="Release"; OUTPUT_FOLDER="build/prod"; CMAKE_PRESET="prod" ;;
+  dev)  BUILD_TYPE="Debug" ;;
+  prod) BUILD_TYPE="Release" ;;
 esac
 
-log "Profile: $PROFILE  build_type: $BUILD_TYPE  output: $OUTPUT_FOLDER  preset: $CMAKE_PRESET"
+log "Profile: $PROFILE  build_type: $BUILD_TYPE"
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
@@ -128,7 +127,7 @@ configure_conan_profile() {
 
 setup_submodules() {
   log "Initialising git submodules (third_party/*)..."
-  if [ ! -d ".git" ] && [ -f ".gitmodules" ]; then
+  if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
     warn "Not a git worktree; skipping submodule init."
     return
   fi
@@ -162,24 +161,13 @@ setup_submodules() {
 
 build_project() {
   if [ "$SKIP_BUILD" -eq 1 ]; then
-    log "Installing Conan dependencies into $OUTPUT_FOLDER ($BUILD_TYPE)..."
-    conan install . --output-folder="$OUTPUT_FOLDER" -s "build_type=$BUILD_TYPE" --build=missing
-    rm -f CMakeUserPresets.json
-    log "Skipping build (--no-build / SKIP_BUILD). Done."
+    "$ROOT/scripts/build-all.sh" "$PROFILE" --install-only
+    log "Standalone dependencies installed; build skipped."
     return
   fi
 
-  log "Installing Conan dependencies into $OUTPUT_FOLDER ($BUILD_TYPE)..."
-  conan install . --output-folder="$OUTPUT_FOLDER" -s "build_type=$BUILD_TYPE" --build=missing
-  rm -f CMakeUserPresets.json
-
-  log "Configuring with CMake preset '$CMAKE_PRESET'..."
-  cmake --preset "$CMAKE_PRESET"
-
-  log "Building with CMake preset '$CMAKE_PRESET'..."
-  cmake --build --preset "$CMAKE_PRESET"
-
-  log "Build complete. Run the services from: $OUTPUT_FOLDER/argus-gateway"
+  "$ROOT/scripts/build-all.sh" "$PROFILE"
+  log "Standalone projects built and tested."
 }
 
 setup_certs() {
@@ -297,7 +285,7 @@ main() {
   "$ROOT/packages/argus-memory/scripts/provision.sh"
   "$ROOT/services/argus-camera/scripts/provision.sh"
   build_project
-  log "All done (profile: $PROFILE). Happy hacking!"
+  log "All setup tasks completed (profile: $PROFILE)."
 }
 
 main "$@"

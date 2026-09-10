@@ -461,8 +461,8 @@ Raw pointers only for non-owning access (`.get()`).
 - Native backend development is the default: run `scripts/setup.sh` to create
   the per-installation 0600 per-project `config.toml` files from each
   `config.toml.example`, and then run
-  `build/dev/argus-gateway/argus-gateway`. Never commit, print, log or send
-  instance secrets to the frontend.
+  `services/argus-gateway/build/dev/argus-gateway`. Never commit, print, log
+  or send instance secrets to the frontend.
 - Production-style deployment is container-only: `argus-deploy/` builds one
   source-built image and `argus-deploy/docker-compose.yml` runs the gateway and
   the domain services from it. There is no separate local compose stack.
@@ -611,17 +611,19 @@ argus_sdk_module(NAME identity PROTO identity.proto)
 ## Build Commands
 
 ```bash
-# Dev (Debug)
-cmake --preset dev
-cmake --build --preset dev -j 8
+# All standalone projects (Debug + tests)
+./scripts/build-all.sh dev
 
-# Prod (Release)
-cmake --preset prod
-cmake --build --preset prod -j 8
+# All standalone projects (Release + tests)
+./scripts/build-all.sh prod
+
+# One project
+./scripts/build-all.sh dev --only argus-camera
 ```
 
-Before any commit, verify: `cmake --build --preset dev -j 8` passes with
-**0 errors, 0 warnings**.
+Before any commit, verify the affected standalone project with
+`./scripts/build-all.sh dev --only <project>` and **0 errors, 0 warnings**.
+Run the full orchestrator when changing shared build infrastructure.
 
 ## File Naming
 

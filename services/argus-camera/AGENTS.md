@@ -1,14 +1,14 @@
 # argus-camera — AI Agent Instructions
 
-The root `AGENTS.md` (at the monorepo root, next to `src/`) is binding for
+The root `AGENTS.md` (at the monorepo root) is binding for
 every change in this service. The MUST-FOLLOW rules below restate the ones
 that apply to camera-service code; when in doubt, the root file wins.
 
 ## MUST-FOLLOW Rules
 
-1. **Camera domain only** — this service runs the camera/zone data + media
-   domain. It must not compile or load any AI service registry (face, llm,
-   vlm, tts, stt, vad stay in the legacy until phase 4) and takes no labs.
+1. **Camera domain only** — this service runs camera/zone data, media and its
+   local YOLO26n object detector. It must not compile or load unrelated AI
+   engines such as face, LLM, VLM, STT or VAD.
 2. **Parameter structs for 3+ params** — any function with 3+ parameters
    must take a struct (designated initializers, every member listed).
 3. **Dependency injection** — services/filters hold dependencies as private
@@ -50,21 +50,21 @@ argus-camera/
   src/camera/           camera-domain config resolution
   src/controllers/      HTTP controllers (health today; /camera*, /zone in F2-2)
   src/server/           internal listener resolution
-  config.toml.example   camera-domain keys only ([server], [camera], [tapo],
-                        [streaming]; no AI keys)
+  config.toml.example   camera, streaming, YOLO object and operator settings
   CONTEXT.md            purpose, ownership, wiring decisions
 ```
 
 ## Build commands
 
 ```bash
-# From the monorepo root (recommended)
-cmake --build --preset dev --target argus-camera
+# From the monorepo root
+./scripts/build-all.sh dev --only argus-camera
 
-# Standalone
+# From services/argus-camera
 conan install . --output-folder=build/dev -s build_type=Debug --build=missing
 cmake --preset dev
 cmake --build --preset dev -j 8
+ctest --test-dir build/dev --output-on-failure
 ```
 
 > Binding cross-service code standards: root `AGENTS.md` MUST-FOLLOW rules 19-24 (modern C++20, comment discipline, efficiency, DB tuning, feature layout + shared SDK, monolith structure).

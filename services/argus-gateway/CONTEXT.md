@@ -109,33 +109,15 @@ monolith's build set was retired (F6-4).
 
 ## Build wiring (decisions)
 
-- The gateway is added from the root project with
-  `add_subdirectory(argus-gateway EXCLUDE_FROM_ALL)`, so
-  `cmake --build --preset dev` still builds ONLY the backend. Build it with
-  the root build preset `cmake --build --preset gateway` (targets
-  `argus-gateway` + `gateway-test`), or with `--target`.
-- `argus_common` was moved into `src/shared/CMakeLists.txt` (same target,
-  same sources, same flags) so both the root project and the gateway consume
-  one definition without duplicating the source list. `argus_identity`
-  (F1-3, moved to `argus-identity/` in f7-2d) follows the same pattern in
-  `argus-identity/CMakeLists.txt`.
-- The gateway also builds standalone: it reuses the root module folders
-  (`../src/{cert,mdns,room,sqlite,socket,audit,filter,sync}`),
-  `../argus-identity`, `../third_party/sqlite-vec` and `../third_party/ncnn`
-  via `add_subdirectory`, and its own `conanfile.txt` (Drogon 1.9.13, cnats
-  3.13.0, tomlplusplus 3.3.0, doctest 2.4.12, jwt-cpp 0.7.2,
-  nlohmann_json 3.11.3, mdns 1.4.3, opencv 4.13.0 — same versions as the
-  root, same Drogon/sqlite3 options for Conan cache reuse; re-run
-  `conan install` after pulling: the identity deps were added in F1-3).
-  Its tests register into ctest only in the standalone tree, keeping the
-  root ctest at its 7 backend suites.
-- Canonical build shape: `cmake --build --preset gateway` (root tree) is the
-  canonical way to produce deployable gateway binaries. The standalone tree
-  compiles `argus_common` WITHOUT ncnn, so HardwareProfile-derived behavior
-  (`CapabilityTier`, the vulkan fields, `deriveTier` in
-  `src/shared/wrapper/hardware-profile/hardware-profile.cc`) differs between
-  the two shapes; the first gateway consumer of HardwareProfile must know
-  this and must not ship binaries from the standalone tree.
+- The gateway's standalone Conan/CMake graph is the only build shape. From
+  the repository root use `scripts/build-all.sh dev --only argus-gateway`;
+  direct builds run Conan, the matching preset and CTest inside the service.
+- Shared packages such as `argus-common`, `argus-identity`, auth, sync and the
+  internal SDKs keep their source declarations in their owner folders. The
+  gateway adds those folders and links their named targets rather than
+  duplicating source lists.
+- The standalone graph carries the gateway's complete transitive dependency
+  closure and produces the deployable binary used by the shared Docker image.
 - Controller registration: gateway controllers MUST be declared as
   `HttpController<T, false>` and registered explicitly in `main.cc` with
   `app().registerController(std::make_shared<T>())` before `run()`. Drogon's

@@ -51,7 +51,7 @@ argus-memory/
   CMakePresets.json     dev preset, binaryDir build/dev inside the folder
   src/memory/           wire DTOs (validation DSL) + catalog replica feed
   src/shared/           the memory stack, extraction, embeddings, repositories
-  tests/unit/           replica + back-pressure suites (root circuit)
+  tests/unit/           replica + back-pressure suites
   config.toml.example   consumer-side [memory]/[extract]/[identity]/[camera]/[nats]
   CONTEXT.md            purpose, ownership, wiring decisions
 ```
@@ -59,13 +59,14 @@ argus-memory/
 ## Build commands
 
 ```bash
-# From the monorepo root (recommended): the package builds with its host
-cmake --build --preset dev --target memory-core memory-catalog
+# From the monorepo root
+./scripts/build-all.sh dev --only argus-memory
 
-# Standalone (libraries only; the suites run from the root circuit)
+# From packages/argus-memory
 conan install . --output-folder=build/dev -s build_type=Debug --build=missing
 cmake --preset dev
 cmake --build --preset dev -j 8
+ctest --test-dir build/dev --output-on-failure
 ```
 
 > Binding cross-service code standards: root `AGENTS.md` MUST-FOLLOW rules 19-24 (modern C++20, comment discipline, efficiency, DB tuning, feature layout + shared SDK, monolith structure).

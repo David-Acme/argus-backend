@@ -1,6 +1,6 @@
 # argus-voice — AI Agent Instructions
 
-The root `AGENTS.md` (at the monorepo root, next to `src/`) is binding for
+The root `AGENTS.md` (at the monorepo root) is binding for
 every change in this service. The MUST-FOLLOW rules below restate the ones
 that apply to voice-service code; when in doubt, the root file wins.
 
@@ -61,13 +61,14 @@ argus-voice/
 ## Build commands
 
 ```bash
-# From the monorepo root (recommended)
-cmake --build --preset voice --target argus-voice
+# From the monorepo root
+./scripts/build-all.sh dev --only argus-voice
 
-# Standalone
+# From services/argus-voice
 conan install . --output-folder=build/dev -s build_type=Debug --build=missing
 cmake --preset dev
 cmake --build --preset dev -j 8
+ctest --test-dir build/dev --output-on-failure
 ```
 
 > Binding cross-service code standards: root `AGENTS.md` MUST-FOLLOW rules

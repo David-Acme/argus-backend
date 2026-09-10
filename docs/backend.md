@@ -1,309 +1,172 @@
 # Argus Backend
 
-**Argus** is a 100% local, modular AI platform for the home — intelligent security
-guard + virtual assistant. Everything runs on-device: face recognition, speech-to-text,
-text-to-speech, LLM chat, vision understanding, and a **WebSocket sync engine** that keeps
-your devices in sync with the server. No cloud processing, ever.
+Argus is a local-first C++20 platform for home security and assistance. The
+backend runs as independent domain and AI services behind one public gateway.
+Media, speech, vision, language-model and biometric processing stay on the
+host; the optional tunnel transports encrypted bytes without processing user
+data.
 
-- **Language:** C++20 (coroutines for async flow)
-- **Framework:** [Drogon](https://github.com/drogonframework/drogon) HTTP/WebSocket
-- **Database:** SQLite (async `DbClient`, no ORM)
-- **Package manager:** Conan 2 + CMake presets
+## Architecture
 
-## Philosophy
+| Owner | Process or package | Primary responsibility |
+|---|---|---|
+| Gateway | `argus-gateway` | Public TLS API, WebSocket relay, identity host and routing |
+| Camera | `argus-camera` | Camera/zone data, go2rtc media, YOLO26n object events |
+| Productivity | `argus-productivity` | Reminders, projects and calendar data |
+| Notification | `argus-notification` | Notifications and device push tokens |
+| TTS | `argus-tts` | Supertonic ONNX speech synthesis |
+| STT | `argus-stt` | sherpa-onnx speech recognition |
+| VLM | `argus-vlm` | LFM2.5-VL image understanding |
+| LLM | `argus-llm` | LFM2.5 chat, intent routing, tool execution and hosted memory |
+| Voice | `argus-voice` | Pure-gRPC voice-session orchestration |
+| Tunnel | `argus-tunnel-client`, `argus-tunnel-relay` | Byte-transparent remote transport |
+| Contracts | `argus-contracts` | Versioned protobuf contracts and typed internal SDKs |
 
-- **Local first, private by default.** No video, audio, or conversations leave your hardware.
-- **Rules before LLM.** Events hit the rule engine first; the LLM is only invoked when rules
-  can't resolve the situation. This keeps latency low and resource usage minimal.
-- **Modular.** Every capability lives behind a clean interface so models can be swapped
-  without touching business logic.
+The gateway is the only public surface. Internal services bind to loopback or
+the deployment's private network. Core NATS carries change and object events;
+typed gRPC contracts cover health, sync, voice and identity operations.
 
-## Features
+SQLite ownership is split by domain. Identity, camera, productivity,
+notification and memory each own their data; the retired `argus.db` is not a
+runtime database. Cross-owner access is read-only or goes through a typed
+service contract, as recorded in each owner's `CONTEXT.md`.
 
-| Feature | Engine |
-|---------|--------|
-| **Face login** (multipart) | ncnn RetinaFace + MobileFaceNet + HNSW |
-| **JWT auth** + refresh rotation | HS256, dual secrets, device-bound |
-| **LLM chat** (sync + streaming) | llama.cpp via Conan (LFM2.5-1.2B-Instruct QAD Q4_0) |
-| **Vision analysis** | SmolVLM2-500M-Video-Instruct (ONNX int8, 0.5B) |
-| **Speech-to-text** | sherpa-onnx (FastConformer RNN-T, Spanish) |
-| **Text-to-speech** | Supertonic 3 (ONNX) |
-| **WebSocket sync** (one-way server→client) | created/deleted + atomic audit diffs + live events |
-| **Notifications** | per-user notifications + push tokens per session |
-| **Validation DSL** | 31+ built-in validation rules |
+## Build model
 
-All AI services run fully off the event loop (C++20 coroutines) and auto-tune
-their thread usage to the host CPU, so the same build performs well on anything
-from a 2-core laptop to a 64-core server. Vulkan is used automatically when a
-compatible GPU is available.
+The repository root intentionally has no `CMakeLists.txt`,
+`CMakePresets.json` or `conanfile.txt`. Nineteen standalone owner projects
+each carry their own Conan graph and `dev`/`prod` CMake presets.
 
-## Quick start
+Build and test all projects:
 
 ```bash
-./scripts/setup.sh prod     # install deps + build release
-./build/prod/argus-backend  # start server on :7024
+./scripts/build-all.sh dev
+./scripts/build-all.sh prod
 ```
 
-```bash
-# Login with your face (multipart/form-data)
-curl -X POST http://localhost:7024/auth/login \
-  -F "image=@your-face.jpg"
+Useful scoped modes:
 
-# Use the token
-curl http://localhost:7024/auth/status \
-  -H "Authorization: Bearer <access_token>"
+```bash
+./scripts/build-all.sh dev --only argus-camera
+./scripts/build-all.sh prod --no-tests
+./scripts/build-all.sh dev --install-only
 ```
 
-## RustFS local y backend en producción
-
-El backend continúa ejecutándose de forma nativa durante desarrollo. Docker
-se utiliza para RustFS y, cuando se necesita un despliegue reproducible, para
-el servicio backend de producción. Los dos servicios son contenedores
-independientes.
-
-`setup.sh` genera las configuraciones locales ignoradas por Git: un
-`config.toml` por proyecto, a partir del `config.toml.example` de cada
-servicio o paquete. Allí se guardan los secretos JWT. No existe
-`config.local.toml`.
+Build one project directly:
 
 ```bash
-# Configurar solamente RustFS para desarrollo nativo
-./scripts/setup.sh --storage-only
-
-# El backend continúa ejecutándose como siempre
-./build/dev/argus-backend
+cd services/argus-camera
+conan install . --output-folder=build/dev \
+  -s build_type=Debug --build=missing
+cmake --preset dev
+cmake --build --preset dev -j 8
+ctest --test-dir build/dev --output-on-failure
 ```
 
-RustFS queda publicado únicamente en `127.0.0.1:9000`, con la consola
-desactivada. La inicialización del bucket y de la cuenta S3 se ejecuta desde
-el servicio temporal `rustfs-init` definido en Compose; no se necesita ningún
-script específico de RustFS.
-
-Los datos persistentes viven en el volumen Docker `argus-rustfs-data` y los
-secretos derivados de `config.toml` se guardan en `docker/runtime/`, ambos
-ignorados por Git.
-
-### Backend en Docker para producción
-
-El backend es un perfil optativo para no interferir con el desarrollo nativo:
+`scripts/setup.sh` installs host dependencies, creates ignored local configs,
+provisions model artifacts and delegates the build to `build-all.sh`:
 
 ```bash
+./scripts/setup.sh dev
 ./scripts/setup.sh prod
-ARGUS_UID="$(id -u)" ARGUS_GID="$(id -g)" \
-  docker compose --profile backend up -d --build
+SKIP_BUILD=1 ./scripts/setup.sh prod
+./scripts/setup.sh camera
 ```
 
-El contenedor del backend utiliza red host en Linux para conservar mDNS y el
-descubrimiento de cámaras. RustFS sigue siendo otro servicio separado y el
-backend lo consume mediante `http://127.0.0.1:9000`. No se monta ni utiliza
-ninguna carpeta `uploads`; los archivos privados se almacenan mediante
-`S3StorageService`.
+## Local runtime
 
-## API response format
+Each process reads its own ignored `config.toml`, generated from the adjacent
+`config.toml.example`. The main default listeners are:
 
-Every endpoint returns the same envelope:
+| Service | Listener |
+|---|---|
+| Gateway | HTTPS `7024` |
+| Camera | HTTP `7026`, gRPC `7036` |
+| Productivity | HTTP `7027` |
+| Notification | HTTP `7028` |
+| TTS | HTTP `7029` |
+| STT | HTTP `7030` |
+| VLM | HTTP `7031` |
+| LLM | HTTP `7032` |
+| Voice | gRPC `7034`, health HTTP `7035` |
+
+Standalone binaries are produced inside their owner folder, for example:
+
+```bash
+./services/argus-gateway/build/dev/argus-gateway
+./services/argus-camera/build/dev/argus-camera
+./services/argus-llm/build/dev/argus-llm
+```
+
+Start dependencies before consumers. For the complete topology and health
+ordering, prefer Compose rather than launching every process by hand.
+
+## Container deployment
+
+The deployment uses one multi-stage image containing all runtime binaries.
+The build stage calls the same standalone Release orchestrator as local work:
+
+```bash
+docker build -f argus-deploy/Dockerfile -t argus-cutover:local .
+cd argus-deploy
+ARGUS_UID="$(id -u)" ARGUS_GID="$(id -g)" docker compose up -d
+```
+
+Models are not baked into the image. They are provisioned on the host and
+mounted read-only. Service data and generated secrets are also excluded from
+Git. Never print or commit a real `config.toml`, certificate key or database.
+
+## Camera object detection
+
+`argus-camera` implements object detection with YOLO26n through ncnn. When
+`[objects].enabled` is true, the service:
+
+1. obtains JPEG frames from its managed go2rtc instance;
+2. decodes and letterboxes frames to the configured detector size;
+3. runs the local `models/objects/yolo26n` ncnn graph, with Vulkan-to-CPU
+   fallback;
+4. tracks configured classes and evaluates zones, cooldown and presence
+   rules; and
+5. publishes `object_detected` events to NATS.
+
+Provision only the detector and go2rtc artifacts with:
+
+```bash
+./scripts/setup.sh camera
+```
+
+The operator is read-only toward camera hardware. It never arms an alarm or
+siren. Overlay output is disabled by default and is intended only for local
+diagnostics.
+
+## API invariants
+
+Public JSON responses use the envelope:
 
 ```json
 {
   "status": 200,
-  "info": { },
+  "info": {},
   "errors": null
 }
 ```
 
-Errors always use `errors: { "code": "...", "message": "..." }` with the matching
-HTTP status (`BAD_REQUEST`, `UNAUTHORIZED`, `FORBIDDEN`, `NOT_FOUND`,
-`METHOD_NOT_ALLOWED`, `VALIDATION_ERROR`).
+Authentication uses device-bound HS256 access and refresh tokens. Public
+routes preserve their pre-migration contracts; the gateway proxies them to
+the owning service. Health endpoints must remain fast and available even when
+NATS, models, cameras or downstream services are degraded.
 
-## Auth flow
+## Engineering rules
 
-```
-POST /auth/login (multipart image)
-  → FaceService.identify() → FaceDB.search() → person → user
-  → JWT (sub=userId, iss=argus, no role) + refresh token rotation
-  → 200 { accessToken, refreshToken, userId, name, role, personId }
-```
+- C++20 with `.hxx` headers, `.cc` sources and hyphenated `*-test.cc` tests.
+- Zero warnings in Argus-owned code under `-Wall -Wextra`.
+- Raw SQL, no ORM; migrations belong to the database owner.
+- Parameter structs for functions with three or more parameters.
+- Smart ownership and bounded queues; no raw owning pointers or unbounded
+  transport buffers.
+- English-only source, comments, documentation and commits.
+- Never trigger camera alarms or sirens during development or tests.
 
-- **Tokens**: HS256, dual secrets. Access = 15min, Refresh = 30 days.
-- **Replay protection**: Refresh tokens are single-use (`is_used=1` after rotation).
-- **Device binding**: Tokens bound to User-Agent + IP hash.
-- **Logout**: Invalidates all refresh tokens for the user.
-- **Filters**: `DeviceFilter → ValidJsonFilter → JwtFilter → RoleFilter`
-
-## WebSocket sync (`/sync`)
-
-One-way server→client synchronization, protected by `DeviceFilter` and
-`JwtFilter` on the same route. Messages are `{ type, payload }`; responses use the
-`SocketEmitDto` envelope `{ operation, option(TableName), info }`. Errors are
-`{ type: "<type>_error", status, error }`.
-
-| operation | value | purpose |
-|-----------|-------|---------|
-| `InitialInfo` | 0 | user info (`{id, role, isActive}`) sent on connect |
-| `Synchronize` | 1 | created/deleted data per table (global + `notification` per user) |
-| `SynchronizeAuditLog` | 2 | atomic update diffs for global data (tables decided by the backend per role) |
-| `SynchronizeUserAuditLog` | 3 | atomic update diffs for user-scoped data (filtered by `sub`) |
-| `Add` | 4 | live event: entity/notification created |
-| `Delete` | 5 | live event: entity deleted |
-| `Log` | 6 | live event: audit log |
-
-**Request** (`sync`):
-```json
-{ "type": "sync", "payload": {
-  "camera": { "created": {"startTime": 100, "endTime": 200},
-              "deleted": {"startTime": 100, "endTime": 200},
-              "findLastCreated": true, "findLastDeleted": true,
-              "requiredCreate": true, "requiredDeleted": true }
-}}
-```
-
-**Response** (`Synchronize`):
-```json
-{ "operation": 1, "option": "user",
-  "info": { "camera": { "created": [ ... ],
-                        "deleted": [ ... ],
-                        "lastSyncDate": { "createdId": 5, "created": 200 } } } }
-```
-
-Syncable entities: `user`, `camera`, `camera_stream`, `zone`, `reminder`,
-`reminder_detail`, `notification`. `sync_audit_log` and `sync_user_audit_log`
-don't ask for tables — the backend picks them from the role. Diffs use
-`JsonDiff` (snapshot merge per record/day), so only the changed part is sent.
-
-## Notifications (HTTP)
-
-- `PATCH /notification/read` — mark own notifications as read
-  (`{ "ids": [1, 2] }`).
-- `POST /notification-token` — register a push token for the current session
-  (`{ "token", "platform", "lang" }`; bound to `(user_id, device_hash)`).
-
-Notifications are created server-side by `NotificationService` (writes to
-`notification` + emits live `Add` to the user's socket sessions). Per-user
-state changes are recorded in `user_audit_log` (syncable); server-side history
-of user actions lives in `user_action_log` (write-only, not synced).
-
-## Tech stack
-
-### Conan packages
-- `drogon` — HTTP/WebSocket + logging
-- `jwt-cpp/0.7.2` + `nlohmann_json/3.11.3` — JWT auth
-- `opencv/4.13.0` (headless) — scaled face image decoding
-- `onnxruntime/1.24.4` — STT/TTS/vision inference
-- `llama-cpp/b6565` — LLM inference (LFM2.5-1.2B-Instruct QAD)
-- `tomlplusplus/3.3.0` — config
-- `eigen/5.0.1` — linear algebra
-
-### Third-party (git submodules)
-- **ncnn** — neural net inference (face detection + recognition), Vulkan when available
-- **hnswlib** — approximate nearest neighbor search (face embedding index)
-- **sherpa-onnx** — speech-to-text (FastConformer RNN-T / Whisper via ONNX Runtime)
-- **inspireface** — optional face recognition backend
-
-### Vision model (ONNX)
-- **SmolVLM2-500M-Video-Instruct** (ONNX int8, 0.5B) from
-  `HuggingFaceTB/SmolVLM2-500M-Video-Instruct` — 3 sessions (SigLIP vision
-  encoder at 512px producing 64 image tokens, merged Llama3 decoder with fp32 KV
-  cache, token embeddings) + GPT-2 byte-level BPE tokenizer, downloaded by
-  `scripts/setup.sh` into `models/vision/smolvlm/`. ChatML prompt with an
-  expanded `<image>` block and a fixed captioning instruction. A frame cache
-  reuses the encoder output for repeated camera frames, so repeated frames skip
-  the ~0.5s encoder pass. `vision.max_tokens` (default 64) controls caption length.
-
-### Speech-to-text (sherpa-onnx)
-Default engine is **FastConformer RNN-T** (`nemo_transducer`, en+de+es+fr,
-RTF ~0.02, `models/stt/`), language `es`. `SttService::setLanguage()` switches
-`es`/`en` at runtime. Other engines selectable via `config.toml [stt]`:
-`canary` (NeMo Canary 180m flash), `whisper` (tiny/base/small, auto language),
-`nemo_ctc` (fastest, weaker English), `omnilingual` (1600 languages).
-
-## Project structure
-
-```
-src/
-├── config/              Kernel: responses, CORS, exception handler, service registry
-├── feature/
-│   ├── api/
-│   │   ├── auth/        Auth controllers, services, DTOs
-│   │   └── notification/  Notification read + push token endpoints
-│   └── socket/
-│       └── sync/        SyncSocket (/sync), SyncService, SynchronizedService, DTOs
-├── filter/
-│   ├── device/          Device fingerprint (UA + IP hash)
-│   ├── jwt/             JWT verification + DB validation
-│   ├── role/            Role-based access control (via shared RoleAccess)
-│   └── valid-json/      JSON body validation middleware
-├── shared/
-│   ├── enums.hxx        All enum types (incl. TableName, AuditLogPriority)
-│   ├── contracts/       Syncable, SyncFilter (+ sync_query), sync-operation.hxx
-│   ├── access/          RoleAccess centralizado (rol → tabla → permisos)
-│   ├── dtos/            SocketEmitDto
-│   ├── exceptions/      ResponseException
-│   ├── repositories/    Data access layer (raw SQL, no ORM)
-│   ├── schemas/         DB row → C++ struct mapping
-│   ├── services/
-│   │   ├── face/        Face detection (ncnn) + FaceDB (HNSW index)
-│   │   ├── jwt/         JWT sign/verify (HS256, instance class)
-│   │   ├── llm/         LLM inference (llama.cpp)
-│   │   ├── vision/      Vision captioning (SmolVLM2, ONNX)
-│   │   ├── stt/         Speech-to-text (sherpa-onnx)
-│   │   ├── tts/         Text-to-speech (Supertonic 3, ONNX)
-│   │   ├── sqlite/      DbClient access
-│   │   ├── room/        RoomManager (thread_local, no Redis)
-│   │   ├── socket/      SocketService (emitModule/emitUser)
-│   │   ├── audit-log/   Global audit with daily snapshot + emit
-│   │   ├── user-audit-log/  Per-user audit (syncable)
-│   │   ├── notification/    Per-user notifications (createAndEmit + Add)
-│   │   ├── notification-token/  Push tokens per session
-│   │   ├── user-action-log/  Write-only server-side history
-│   │   └── config-service/  TOML config reader
-│   ├── utils/           json-diff (JsonDiff), json-util
-│   ├── validation/      Validation DSL (rules + macros + validator)
-│   └── wrapper/         api-response, blocking-task, thread-budget
-└── main.cc
-```
-
-## Build
-
-```bash
-# Development (Debug)
-cmake --preset dev
-cmake --build --preset dev -j 8
-
-# Production (Release) — auto-tuned to the build machine (-march=native, LTO)
-cmake --preset prod
-cmake --build --preset prod -j 8
-
-# Full setup (installs deps + builds)
-./scripts/setup.sh dev
-./scripts/setup.sh prod
-```
-
-Server listens on `0.0.0.0:7024`. Database at `database/argus.db`.
-Models under `models/{face,llm,vision,stt,tts}/` are runtime artifacts. The
-LFM2.5-1.2B-Instruct QAD GGUF, vision model and STT assets are downloaded
-automatically by `scripts/setup.sh`; model checksums are verified before the
-files become active.
-
-## Benchmarks
-
-```bash
-./build/prod/argus-backend --bench   # LLM / VL / STT / TTS: init, latency, RAM
-```
-
-## Conventions
-
-- **C++20**, `.hxx` / `.cc` extensions
-- **Coroutines** for any flow that touches the event loop (`BlockingTask` awaiter)
-- **Enums** for all constrained DB columns (no raw strings)
-- **DTOs** self-validate using DSL macros; JSON factories use camelCase
-  (`fromJson` / `toJson`)
-- **Controllers** ultra-thin (4-8 lines per endpoint)
-- **Dependency injection** — all services/repos as private `_` suffix members
-- **Structs** for any function with 3+ params (in `*-query.hxx`, or the class
-  header), built with designated initializers
-- **No ORM** — raw SQL via `DbService::client()->execSqlCoro()`
-- **No spdlog** — built-in Drogon logging
-- **Smart pointers only** — no raw owning pointers
-- **Sync queries** — build SQL synchronously via `sync_query::buildSyncQuery`
-  and `co_await execSqlCoro(query, args)` directly; never capture references in
-  inner coroutine lambdas that suspend
+The binding rules live in the root `AGENTS.md`; service-specific constraints
+live in each owner folder's `AGENTS.md` and architectural decisions in its
+`CONTEXT.md`.

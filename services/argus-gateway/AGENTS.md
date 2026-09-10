@@ -1,6 +1,6 @@
 # argus-gateway — AI Agent Instructions
 
-The root `AGENTS.md` (at the monorepo root, next to `src/`) is binding for
+The root `AGENTS.md` (at the monorepo root) is binding for
 every change in this service. The MUST-FOLLOW rules below restate the ones
 that apply to gateway code; when in doubt, the root file wins.
 
@@ -45,14 +45,14 @@ argus-gateway/
 ## Build commands
 
 ```bash
-# From the monorepo root (recommended)
-cmake --build --preset gateway -j 8
+# From the monorepo root
+./scripts/build-all.sh dev --only argus-gateway
 
-# Standalone
+# From services/argus-gateway
 conan install . --output-folder=build/dev -s build_type=Debug --build=missing
 cmake --preset dev
 cmake --build --preset dev -j 8
-ctest --preset dev
+ctest --test-dir build/dev --output-on-failure
 ```
 
 > Binding cross-service code standards: root `AGENTS.md` MUST-FOLLOW rules 19-24 (modern C++20, comment discipline, efficiency, DB tuning, feature layout + shared SDK, monolith structure).

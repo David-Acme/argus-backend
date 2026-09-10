@@ -30,7 +30,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.conan2
-          key: conan-${{ runner.os }}-${{ hashFiles('conanfile.txt') }}
+          key: conan-${{ runner.os }}-${{ hashFiles('**/conanfile.txt') }}
 
       - name: Detect Conan profile
         run: conan profile detect
@@ -41,15 +41,8 @@ jobs:
             cp "$f" "${f%.example}"
           done
 
-      - name: Install Conan dependencies
-        run: conan install . --output-folder=build/dev -s build_type=Debug -s compiler.cppstd=gnu20 --build=missing
+      - name: Test build orchestrator
+        run: ./scripts/build-all-test.sh
 
-      - name: Configure (dev preset)
-        run: cmake --preset dev -DARGUS_BUILD_LABS=OFF
-
-      - name: Build (dev preset)
-        run: cmake --build --preset dev -j 8
-
-      - name: Unit tests
-        working-directory: build/dev
-        run: ctest --output-on-failure
+      - name: Build and test standalone projects
+        run: ./scripts/build-all.sh dev

@@ -82,11 +82,9 @@ binary, own CMake preset, own `notification.db`.
 
 ## Build wiring (decisions)
 
-- The canonical notification-service builds are the ROOT presets
-  (`cmake --build --preset notification` / `--preset notification-prod`):
-  they reuse the root Conan cache. The standalone `argus-notification/`
-  build directory goes stale on new `conanfile.txt` requires until
-  `conan install` is re-run there.
+- The canonical build is the service's standalone graph. From the repository
+  root use `scripts/build-all.sh dev --only argus-notification`; direct builds
+  rerun Conan before the matching preset and CTest.
 - The standalone build compiles ncnn only because `argus_identity` compiles
   the face services, whose headers need it; nothing references those
   objects, so they drop at link time (zero AI symbols).
