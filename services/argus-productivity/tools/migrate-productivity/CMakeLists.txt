@@ -9,11 +9,11 @@ add_library(productivity-migration STATIC
 target_include_directories(productivity-migration
     PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}
-        ${CMAKE_SOURCE_DIR}/packages/argus-common/src
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../../../packages/argus-common/src
 )
 
 target_compile_definitions(productivity-migration PUBLIC
-    ARGUS_PRODUCTIVITY_SCHEMA_PATH="${CMAKE_SOURCE_DIR}/services/argus-productivity/database/schema.sql"
+    ARGUS_PRODUCTIVITY_SCHEMA_PATH="${CMAKE_CURRENT_SOURCE_DIR}/../../database/schema.sql"
 )
 
 target_link_libraries(productivity-migration
