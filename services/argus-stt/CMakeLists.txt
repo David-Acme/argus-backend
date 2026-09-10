@@ -5,15 +5,26 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+include(${CMAKE_CURRENT_SOURCE_DIR}/../../cmake/argus-module.cmake)
+
 set(STT_SRC_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/src)
 set(SHARED_ROOT ${STT_SRC_ROOT}/shared)
 
 if(NOT TARGET Drogon::Drogon)
-    # Standalone build (outside the root project's configure).
+    # Standalone build (outside the root project's configure): add the
+    # sibling packages the stt module links, argus-common first.
     find_package(Drogon CONFIG REQUIRED)
     find_package(onnxruntime CONFIG REQUIRED)
     find_package(tomlplusplus REQUIRED)
     find_package(nlohmann_json REQUIRED)
+    if(NOT TARGET argus_common)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/argus-common
+                         ${CMAKE_BINARY_DIR}/argus-common)
+    endif()
+    if(NOT TARGET argus::stt-client)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/argus-stt-client
+                         ${CMAKE_BINARY_DIR}/argus-stt-client)
+    endif()
 endif()
 
 find_package(doctest REQUIRED)
@@ -47,6 +58,7 @@ if(NOT TARGET sherpa-onnx-c-api)
     target_link_libraries(onnxruntime INTERFACE onnxruntime::onnxruntime)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../third_party/sherpa-onnx
                      sherpa-onnx-build EXCLUDE_FROM_ALL)
+    set(ARGUS_SHERPA_ONNX_TARGET sherpa-onnx-c-api)
 endif()
 
 add_library(stt-core STATIC
@@ -57,7 +69,7 @@ add_library(stt-core STATIC
 )
 
 target_include_directories(stt-core SYSTEM PUBLIC
-    ${CMAKE_SOURCE_DIR}/third_party
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../third_party
     ${CMAKE_CURRENT_SOURCE_DIR}/../../third_party/sherpa-onnx)
 
 target_include_directories(stt-core PUBLIC
@@ -111,7 +123,7 @@ target_include_directories(stt-wire-test PRIVATE
     ${STT_SRC_ROOT})
 
 target_include_directories(stt-wire-test SYSTEM PRIVATE
-    ${CMAKE_SOURCE_DIR}/third_party/sherpa-onnx)
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../third_party/sherpa-onnx)
 
 target_compile_definitions(stt-wire-test PRIVATE
     ARGUS_TEST_STT_MODELS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../../models/stt")
