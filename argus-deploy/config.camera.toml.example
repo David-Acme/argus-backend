@@ -36,6 +36,16 @@ relaunch_on_error = false
 db = "camera/camera.db"
 schema = "database/schema.sql"
 
+[tapo]
+control_port = 443
+media_port = 8800
+connect_timeout_ms = 3000
+request_timeout_ms = 5000
+login_attempts = 2
+transport = "auto"
+talk_framing = "none"
+talk_mode = "aec"
+
 [streaming]
 go2rtc_bin = "third_party/go2rtc/go2rtc"
 go2rtc_config = "stream/go2rtc.yaml"

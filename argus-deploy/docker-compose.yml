@@ -124,11 +124,9 @@ services:
         bind:
           create_host_path: false
     # The gateway pulls the camera sync tables over the 7036 gRPC leg once
-    # this service is up; this service validates its callers over the
-    # gateway's identity RPC (7040) and still opens identity.db read-only for
-    # its sync socket's user reads (bounded wait — the gateway creates it at
-    # ITS boot), so both boot in parallel after nats with no circular health
-    # dependency.
+    # this service is up; this service validates its callers and resolves the
+    # sync socket's user reads over the gateway's identity RPC (7040), so both
+    # boot in parallel after nats with no circular health dependency.
     depends_on:
       nats:
         condition: service_healthy
