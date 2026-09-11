@@ -16,6 +16,7 @@ public:
 
   drogon::Task<std::optional<PersonSchema>> findById(int64_t id) const;
   drogon::Task<std::vector<PersonSchema>> findByUser(int64_t userId) const;
+  drogon::Task<std::vector<PersonSchema>> findAllCatalog() const;
   drogon::Task<PersonSchema> create(const PersonCreateInput& input) const;
   drogon::Task<PersonSchema> update(int64_t id,
                                     const PersonUpdateInput& input) const;

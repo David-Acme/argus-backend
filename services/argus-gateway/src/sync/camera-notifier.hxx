@@ -1,10 +1,12 @@
 #pragma once
 
 #include <json/value.h>
-#include <shared/services/notification/notification-service.hxx>
+#include <notification/notification-client.hxx>
+#include <shared/repositories/user/user-repository.hxx>
 
 #include <cstdint>
 #include <map>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -51,11 +53,12 @@ private:
   std::map<int64_t, CameraWindow> windows_;
 };
 
-// Applies the policy to object_detected and delivers through NotificationService.
+// Applies the policy to object_detected and delivers through the notification SDK.
 class CameraObjectNotifier
 {
 public:
-  explicit CameraObjectNotifier(CameraNotificationPolicy::Config config);
+  CameraObjectNotifier(CameraNotificationPolicy::Config config,
+                       std::shared_ptr<NotificationClient> client);
 
   // Runs on the Drogon loop (marshaled from the cnats dispatcher).
   void handle(const Json::Value& json);
@@ -75,7 +78,8 @@ private:
 
   void deliver(const DeliverInput& input);
 
-  NotificationService notificationService_;
+  std::shared_ptr<NotificationClient> notificationClient_;
+  UserRepository userRepository_;
   CameraNotificationPolicy policy_;
 };
 
@@ -85,5 +89,6 @@ namespace camera_notifier
 CameraNotificationPolicy::Config resolveConfig();
 
 // Subscribes object_detected; events marshal into the Drogon loop first.
-void subscribeObjectDetected(NatsBus& bus);
+void subscribeObjectDetected(NatsBus& bus,
+                             std::shared_ptr<NotificationClient> client);
 } // namespace camera_notifier

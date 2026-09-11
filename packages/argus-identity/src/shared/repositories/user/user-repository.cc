@@ -152,6 +152,18 @@ drogon::Task<std::vector<UserSchema>> UserRepository::findAll() const
   co_return users;
 }
 
+drogon::Task<std::vector<int64_t>> UserRepository::findNotifiableIds() const
+{
+  auto client = DbService::identityClient();
+  const auto result = co_await client->execSqlCoro(FIND_NOTIFIABLE_IDS.data());
+
+  std::vector<int64_t> ids;
+  ids.reserve(result.size());
+  for (const auto& row : result)
+    ids.push_back(row["id"].as<int64_t>());
+  co_return ids;
+}
+
 drogon::Task<std::vector<Json::Value>>
 UserRepository::find(const SyncFilter& filter) const
 {

@@ -10,11 +10,10 @@ class NotificationService
 public:
   NotificationService() = default;
 
-  drogon::Task<void>
-  createAndEmit(int64_t userId, const NotificationCreateInput& input) const;
-  drogon::Task<void>
-  createAndEmitMany(const std::vector<int64_t>& userIds,
+  drogon::Task<std::vector<NotificationSchema>>
+  createManyAndEmit(const std::vector<int64_t>& userIds,
                     const NotificationCreateInput& input) const;
+
   drogon::Task<void> markAsRead(int64_t userId,
                                 const std::vector<int64_t>& ids) const;
 

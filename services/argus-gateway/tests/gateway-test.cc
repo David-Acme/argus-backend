@@ -47,11 +47,9 @@ public:
     ++connects;
   }
 
-  drogon::Task<bool> forwardText(const drogon::WebSocketConnectionPtr&,
-                                 const Json::Value&, std::string_view raw)
-      override
+  drogon::Task<bool> forwardText(const SyncFrameInput& input) override
   {
-    texts.emplace_back(raw);
+    texts.emplace_back(input.raw);
     co_return true;
   }
 
@@ -472,7 +470,7 @@ TEST_CASE("sync surface registers the socket with the relay forwarder")
   ConfigService::load(path);
   std::remove(path);
 
-  const SyncRegistrationStats stats = registerSyncSurface(nullptr, nullptr);
+  const SyncRegistrationStats stats = registerSyncSurface({});
 
   CHECK(stats.controllers == 1);
   CHECK(stats.filters == 2);
@@ -735,12 +733,16 @@ TEST_CASE("composite relay split routes voice frames and binary to the "
   Json::Value cameraFrame;
   cameraFrame["type"] = "camera:subscribe";
   CHECK(drogon::sync_wait(relay.forwardText(
-      conn, cameraFrame, "{\"type\":\"camera:subscribe\"}")));
+      {.conn = conn,
+       .message = cameraFrame,
+       .raw = "{\"type\":\"camera:subscribe\"}"})));
 
   Json::Value voiceFrame;
   voiceFrame["type"] = "voice:start";
   CHECK(drogon::sync_wait(relay.forwardText(
-      conn, voiceFrame, "{\"type\":\"voice:start\"}")));
+      {.conn = conn,
+       .message = voiceFrame,
+       .raw = "{\"type\":\"voice:start\"}"})));
 
   relay.forwardBinary(conn, std::string("\x01\x02\x03", 3));
 
@@ -920,7 +922,7 @@ TEST_CASE("proxy exclusion set covers every registered gateway route")
   drogon::app().registerController(std::make_shared<HealthController>(
       HealthStatus{.serviceName = "argus-gateway", .extras = {}}));
   registerIdentitySurface();
-  registerSyncSurface(nullptr, nullptr);
+  registerSyncSurface({});
 
   const ProxyConfig proxy = ProxyConfig::resolve();
   REQUIRE_FALSE(proxy.exclusions.empty());

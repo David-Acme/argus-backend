@@ -29,9 +29,7 @@ public:
 
   void onConnect(const drogon::HttpRequestPtr& req,
                  const drogon::WebSocketConnectionPtr& conn) override;
-  drogon::Task<bool> forwardText(const drogon::WebSocketConnectionPtr& conn,
-                                 const Json::Value& message,
-                                 std::string_view raw) override;
+  drogon::Task<bool> forwardText(const SyncFrameInput& input) override;
   void forwardBinary(const drogon::WebSocketConnectionPtr& conn,
                      const std::string& data) override;
   void onClose(const drogon::WebSocketConnectionPtr& conn) override;

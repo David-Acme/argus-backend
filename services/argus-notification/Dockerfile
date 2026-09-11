@@ -53,6 +53,6 @@ RUN groupadd --gid "$ARGUS_GID" argus \
       productivity notification memory \
     && chown -R argus:argus /opt/argus
 
-EXPOSE 7028
+EXPOSE 7028 7038
 USER argus
 ENTRYPOINT ["/opt/argus/argus-notification"]

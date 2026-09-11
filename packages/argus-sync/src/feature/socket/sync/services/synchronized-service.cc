@@ -8,21 +8,6 @@
 
 namespace
 {
-/** Tables whose rows belong to one user plus the people they shared with. */
-bool isPersonalTable(TableName table)
-{
-  switch (table) {
-    case TableName::CalendarEvent:
-    case TableName::CalendarEventShare:
-    case TableName::Project:
-    case TableName::ProjectMember:
-    case TableName::ProjectTask:
-      return true;
-    default:
-      return false;
-  }
-}
-
 std::optional<CameraSyncTable> cameraSyncTableFor(TableName table)
 {
   switch (table) {
@@ -36,6 +21,28 @@ std::optional<CameraSyncTable> cameraSyncTableFor(TableName table)
       return std::nullopt;
   }
 }
+
+std::optional<ProductivitySyncTable> productivitySyncTableFor(TableName table)
+{
+  switch (table) {
+    case TableName::Reminder:
+      return ProductivitySyncTable::Reminder;
+    case TableName::ReminderDetail:
+      return ProductivitySyncTable::ReminderDetail;
+    case TableName::CalendarEvent:
+      return ProductivitySyncTable::CalendarEvent;
+    case TableName::CalendarEventShare:
+      return ProductivitySyncTable::CalendarEventShare;
+    case TableName::Project:
+      return ProductivitySyncTable::Project;
+    case TableName::ProjectMember:
+      return ProductivitySyncTable::ProjectMember;
+    case TableName::ProjectTask:
+      return ProductivitySyncTable::ProjectTask;
+    default:
+      return std::nullopt;
+  }
+}
 } // namespace
 
 const Syncable& SynchronizedService::repoFor(TableName table) const
@@ -45,20 +52,6 @@ const Syncable& SynchronizedService::repoFor(TableName table) const
       return userRepository_;
     case TableName::UserInvitation:
       return userInvitationRepository_;
-    case TableName::Reminder:
-      return reminderRepository_;
-    case TableName::ReminderDetail:
-      return reminderDetailRepository_;
-    case TableName::CalendarEvent:
-      return calendarEventRepository_;
-    case TableName::CalendarEventShare:
-      return calendarEventShareRepository_;
-    case TableName::Project:
-      return projectRepository_;
-    case TableName::ProjectMember:
-      return projectMemberRepository_;
-    case TableName::ProjectTask:
-      return projectTaskRepository_;
     case TableName::Event:
       return eventRepository_;
     case TableName::Person:
@@ -156,22 +149,24 @@ drogon::Task<Json::Value> SynchronizedService::syncWithRepo(
 }
 
 drogon::Task<Json::Value> SynchronizedService::syncUserNotification(
-    const SynchronizedBodyDto& dto, int64_t userId) const
+    const SynchronizedBodyDto& dto, const JwtContext& ctx) const
 {
+  if (!notificationSyncSource_)
+    throw ResponseException(
+        {.message = "Notification sync unavailable",
+         .statusCode = 503,
+         .errorCode = AppConfig::ERROR_CODE_SERVICE_UNAVAILABLE});
+
   Json::Value node(Json::objectValue);
 
   if (dto.requiredCreate) {
-    NotificationSyncFilter filter;
-    filter.userId = userId;
+    SyncFilter filter;
     if (dto.created) {
-      if (dto.created->startTime)
-        filter.startTime = *dto.created->startTime;
-      if (dto.created->startId)
-        filter.startId = *dto.created->startId;
-      if (dto.created->endTime)
-        filter.endTime = *dto.created->endTime;
+      filter.startTime = dto.created->startTime;
+      filter.startId = dto.created->startId;
+      filter.endTime = dto.created->endTime;
     }
-    const auto rows = co_await notificationRepository_.findSync(filter);
+    const auto rows = co_await notificationSyncSource_->find(ctx, filter);
     Json::Value arr(Json::arrayValue);
     for (const auto& row : rows)
       arr.append(row);
@@ -188,9 +183,7 @@ drogon::Task<Json::Value> SynchronizedService::syncUserNotification(
   node["deleted"] = Json::arrayValue;
 
   if (dto.findLastCreated) {
-    NotificationSyncFilter filter;
-    filter.userId = userId;
-    const auto v = co_await notificationRepository_.findLastSync(filter);
+    const auto v = co_await notificationSyncSource_->findLast(ctx);
     Json::Value last(Json::objectValue);
     if (v) {
       if ((*v).isMember("id"))
@@ -255,7 +248,7 @@ drogon::Task<Json::Value> SynchronizedService::sync(const SynchronizedDto& body,
     }
 
     if (table == TableName::Notification) {
-      out[name] = co_await syncUserNotification(*(body.*member), ctx.sub);
+      out[name] = co_await syncUserNotification(*(body.*member), ctx);
       continue;
     }
 
@@ -271,10 +264,22 @@ drogon::Task<Json::Value> SynchronizedService::sync(const SynchronizedDto& body,
       continue;
     }
 
+    if (const auto productivityTable = productivitySyncTableFor(table)) {
+      if (!productivitySyncSource_ ||
+          !productivitySyncSource_->serves(*productivityTable))
+        throw ResponseException(
+            {.message = "Productivity sync unavailable",
+             .statusCode = 503,
+             .errorCode = AppConfig::ERROR_CODE_SERVICE_UNAVAILABLE});
+      const auto source =
+          productivitySyncSource_->sourceFor(*productivityTable, ctx);
+      out[name] =
+          co_await syncWithRepo({.repo = *source, .dto = *(body.*member)}, {});
+      continue;
+    }
+
     const auto& repo = repoFor(table);
     SyncFilter base{};
-    if (isPersonalTable(table))
-      base.userId = ctx.sub;
     if (table == TableName::User && ctx.role != UserRole::Owner &&
         ctx.role != UserRole::Guard)
       base.userId = ctx.sub;

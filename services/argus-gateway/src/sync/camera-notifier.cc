@@ -2,9 +2,8 @@
 
 #include <drogon/drogon.h>
 #include <shared/services/config-service/config-service.hxx>
-#include <shared/services/notification/notification-service.hxx>
-#include <shared/services/sqlite/db-service.hxx>
 #include <shared/utils/json-util/json-util.hxx>
+#include <shared/wrapper/blocking-task/blocking-task.hxx>
 #include <shared/wrapper/nats/nats-bus.hxx>
 #include <shared/wrapper/nats/nats-subject.hxx>
 #include <trantor/utils/Logger.h>
@@ -132,8 +131,9 @@ std::string CameraNotificationPolicy::takeDigest(int64_t cameraId,
 }
 
 CameraObjectNotifier::CameraObjectNotifier(
-    CameraNotificationPolicy::Config config)
-    : policy_(config)
+    CameraNotificationPolicy::Config config,
+    std::shared_ptr<NotificationClient> client)
+    : notificationClient_(std::move(client)), policy_(config)
 {
 }
 
@@ -180,29 +180,40 @@ void CameraObjectNotifier::deliver(const DeliverInput& input)
   const Json::Value& json = input.json;
   const std::string& title = input.title;
   const std::string& body = input.body;
+  if (!notificationClient_) {
+    LOG_WARN << "Camera notifier: notification SDK not configured";
+    return;
+  }
 
   drogon::async_run([json, title, body, this]() -> drogon::Task<void> {
     try {
-      auto rows = co_await DbService::client()->execSqlCoro(
-          "SELECT id FROM user WHERE deleted_at IS NULL AND is_active = 1 "
-          "AND role IN ('owner', 'guard')");
-      if (rows.empty()) {
+      const auto userIds = co_await userRepository_.findNotifiableIds();
+      if (userIds.empty()) {
         LOG_WARN << "Camera notifier: no owner/guard users to notify";
         co_return;
       }
-      std::vector<int64_t> userIds;
-      userIds.reserve(rows.size());
-      for (const auto& row : rows)
-        userIds.push_back(row["id"].as<int64_t>());
 
-      NotificationCreateInput input;
-      input.type = "camera";
-      input.title = title;
-      input.body = body;
-      input.data = json;
-      co_await notificationService_.createAndEmitMany(userIds, input);
-      LOG_INFO << "Camera notifier: notification delivered ("
-               << title << ")";
+      argus::notification::v1::CreateNotificationsRequest request;
+      for (const auto userId : userIds)
+        request.add_user_ids(userId);
+      request.set_type("camera");
+      request.set_title(title);
+      request.set_body(body);
+      request.set_data(json_util::toString(json));
+
+      const auto response = co_await BlockingTask<
+          std::optional<argus::notification::v1::CreateNotificationsResponse>>(
+          [this, request]() {
+            return notificationClient_->createNotifications(
+                request,
+                {.userId = 0, .role = "system", .device = "argus-gateway"});
+          });
+      if (!response) {
+        LOG_WARN << "Camera notifier: notification service unavailable ("
+                 << title << ")";
+        co_return;
+      }
+      LOG_INFO << "Camera notifier: notification delivered (" << title << ")";
     }
     catch (const std::exception& e) {
       LOG_ERROR << "Camera notifier: delivery failed: " << e.what();
@@ -213,15 +224,6 @@ void CameraObjectNotifier::deliver(const DeliverInput& input)
 
 namespace camera_notifier
 {
-namespace
-{
-CameraObjectNotifier& notifier()
-{
-  static CameraObjectNotifier instance(resolveConfig());
-  return instance;
-}
-} // namespace
-
 CameraNotificationPolicy::Config resolveConfig()
 {
   CameraNotificationPolicy::Config config;
@@ -234,17 +236,19 @@ CameraNotificationPolicy::Config resolveConfig()
   return config;
 }
 
-void subscribeObjectDetected(NatsBus& bus)
+void subscribeObjectDetected(NatsBus& bus,
+                             std::shared_ptr<NotificationClient> client)
 {
+  static CameraObjectNotifier notifier(resolveConfig(), std::move(client));
   bus.subscribe(nats_subject::kCameraObjectDetected,
                 [](std::string_view, std::string_view payload) {
                   // cnats dispatcher thread: marshal into the Drogon loop.
                   drogon::app().getIOLoop(0)->runInLoop(
                       [payload = std::string(payload)]() {
-                        notifier().handle(json_util::fromString(payload));
+                        notifier.handle(json_util::fromString(payload));
                       });
                 });
   drogon::app().getLoop()->runEvery(
-      std::chrono::minutes(1), []() { notifier().flushDigests(); });
+      std::chrono::minutes(1), []() { notifier.flushDigests(); });
 }
 } // namespace camera_notifier

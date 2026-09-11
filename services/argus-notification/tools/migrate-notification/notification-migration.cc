@@ -1,6 +1,8 @@
 #include "notification-migration.hxx"
 
 #include <shared/wrapper/sqlite-stmt/sqlite-stmt.hxx>
+#include <shared/utils/fnv-hash/fnv-hash.hxx>
+#include <shared/utils/sql-escape/sql-escape.hxx>
 
 #include <cstdio>
 #include <cstring>
@@ -12,9 +14,6 @@
 
 namespace
 {
-
-constexpr uint64_t kFnvOffset = 14695981039346656037ULL;
-constexpr uint64_t kFnvPrime = 1099511628211ULL;
 
 const std::vector<std::string> kNotificationTables = {
     "notification",
@@ -113,30 +112,6 @@ NotificationHandleResult openHandle(const std::string& path, int flags)
   return result;
 }
 
-void hashByte(uint64_t& hash, uint8_t value)
-{
-  hash ^= value;
-  hash *= kFnvPrime;
-}
-
-void hashBytes(uint64_t& hash, const void* data, size_t size)
-{
-  const auto* bytes = static_cast<const uint8_t*>(data);
-  for (size_t i = 0; i < size; ++i)
-    hashByte(hash, bytes[i]);
-}
-
-std::string hexHash(uint64_t hash)
-{
-  static const char* digits = "0123456789abcdef";
-  std::string out(16, '0');
-  for (int i = 15; i >= 0; --i) {
-    out[static_cast<size_t>(i)] = digits[hash & 0xF];
-    hash >>= 4;
-  }
-  return out;
-}
-
 NotificationChecksumResult tableChecksum(
     const NotificationChecksumInput& input)
 {
@@ -149,31 +124,31 @@ NotificationChecksumResult tableChecksum(
     return result;
   }
 
-  uint64_t hash = kFnvOffset;
+  Fnv1a hash;
   const int columns = sqlite3_column_count(stmt.get());
   int step = 0;
   while ((step = stmt.step()) == SQLITE_ROW) {
     ++result.rows;
-    hashByte(hash, 0x00);
+    hash.add(0x00);
     for (int i = 0; i < columns; ++i) {
       const int type = sqlite3_column_type(stmt.get(), i);
-      hashByte(hash, static_cast<uint8_t>(type));
+      hash.add(static_cast<uint8_t>(type));
       switch (type) {
         case SQLITE_INTEGER: {
           const int64_t value = sqlite3_column_int64(stmt.get(), i);
-          hashBytes(hash, &value, sizeof(value));
+          hash.add(&value, sizeof(value));
           break;
         }
         case SQLITE_FLOAT: {
           const double value = sqlite3_column_double(stmt.get(), i);
-          hashBytes(hash, &value, sizeof(value));
+          hash.add(&value, sizeof(value));
           break;
         }
         case SQLITE_TEXT:
         case SQLITE_BLOB: {
           const void* data = sqlite3_column_blob(stmt.get(), i);
           const int size = sqlite3_column_bytes(stmt.get(), i);
-          hashBytes(hash, data, static_cast<size_t>(size));
+          hash.add(data, static_cast<size_t>(size));
           break;
         }
         default:
@@ -185,7 +160,7 @@ NotificationChecksumResult tableChecksum(
     result.error = sqlite3_errmsg(input.db);
     return result;
   }
-  result.checksum = hexHash(hash);
+  result.checksum = hash.hex();
   result.ok = true;
   return result;
 }
@@ -550,16 +525,8 @@ NotificationMigrationReport migrateNotification(
     return report;
   }
 
-  std::string sourcePath = options.sourcePath;
-  const auto escape = [](std::string& text, const std::string& from,
-                         const std::string& to) {
-    size_t at = 0;
-    while ((at = text.find(from, at)) != std::string::npos) {
-      text.replace(at, from.size(), to);
-      at += to.size();
-    }
-  };
-  escape(sourcePath, "'", "''");
+  const std::string sourcePath =
+      sql_util::escapeLiteral(options.sourcePath);
   const auto uri = "file:" + sourcePath + "?mode=ro";
   const auto attach =
       execStatement({.db = target.db.get(),

@@ -91,6 +91,12 @@ if(NOT TARGET Drogon::Drogon)
     endif()
 endif()
 
+# The identity and camera contracts the catalog seed reads through the SDK.
+if(NOT TARGET argus::sdk-identity)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/argus-contracts
+                     ${CMAKE_BINARY_DIR}/argus-contracts EXCLUDE_FROM_ALL)
+endif()
+
 find_package(doctest REQUIRED)
 
 add_library(llm-core STATIC
@@ -129,9 +135,10 @@ target_compile_options(llm-core PRIVATE -Wall -Wextra)
 add_executable(argus-llm ${LLM_SRC_ROOT}/main.cc)
 
 # memory-catalog: the hosted stack's replica leg (NATS subscription plus the
-# read-only identity/camera snapshot seeds) — the brain owns the retired
+# identity/camera SDK snapshot seeds) — the brain owns the retired
 # process's role.
-target_link_libraries(argus-llm PRIVATE llm-core memory-catalog)
+target_link_libraries(argus-llm PRIVATE llm-core memory-catalog
+    argus::sdk-identity argus::sdk-camera)
 
 target_compile_options(argus-llm PRIVATE -Wall -Wextra)
 

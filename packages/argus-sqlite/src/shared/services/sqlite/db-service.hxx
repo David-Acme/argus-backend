@@ -37,12 +37,6 @@ public:
   // Installs the named productivity client; once at boot, before app().run().
   static void setProductivityClient(drogon::orm::DbClientPtr client);
 
-  // Client of the notification domain (notification, notification_token).
-  static drogon::orm::DbClientPtr notificationClient();
-
-  // Installs the named notification client; once at boot, before app().run().
-  static void setNotificationClient(drogon::orm::DbClientPtr client);
-
   // Enables SQLite URI filenames process-wide, before the first sqlite3_open.
   static void enableUriFilenames();
 

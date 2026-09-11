@@ -38,7 +38,8 @@ void SyncSocket::handleNewMessage(const drogon::WebSocketConnectionPtr& conn,
                      raw = std::move(message)]() mutable
                     -> drogon::Task<> {
     try {
-      co_await self->service_.handleMessage(conn, json, raw);
+      co_await self->service_.handleMessage(
+          {.conn = conn, .message = json, .raw = raw});
     }
     catch (const ValidationException& ex) {
       Json::Value errResp;
@@ -81,6 +82,24 @@ void SyncSocket::handleNewConnection(const drogon::HttpRequestPtr& req,
 void SyncSocket::setCameraSource(std::shared_ptr<CameraSyncSource> source)
 {
   service_.setCameraSource(std::move(source));
+}
+
+void SyncSocket::setProductivitySource(
+    std::shared_ptr<ProductivitySyncSource> source)
+{
+  service_.setProductivitySource(std::move(source));
+}
+
+void SyncSocket::setNotificationSource(
+    std::shared_ptr<NotificationSyncSource> source)
+{
+  service_.setNotificationSource(std::move(source));
+}
+
+void SyncSocket::setUserDirectory(
+    std::shared_ptr<const IUserDirectory> directory)
+{
+  service_.setUserDirectory(std::move(directory));
 }
 
 void SyncSocket::handleConnectionClosed(

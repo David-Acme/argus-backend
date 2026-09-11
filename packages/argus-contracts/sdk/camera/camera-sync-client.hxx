@@ -30,6 +30,10 @@ public:
       const argus::camera::v1::PullTableRequest& request,
       const SyncIdentity& identity) const;
 
+  // Catalog snapshot read; nullopt when argus-camera refuses or is unreachable.
+  virtual std::optional<argus::camera::v1::ListCatalogResponse>
+  listCatalog(const SyncIdentity& identity) const;
+
 private:
   std::shared_ptr<grpc::Channel> channel_;
   std::unique_ptr<argus::camera::v1::SyncService::StubInterface> stub_;

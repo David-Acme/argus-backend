@@ -127,10 +127,10 @@ with `scripts/setup.sh` / `scripts/setup.sh camera` on the host.
 
 | Service | Image | Notes |
 |---|---|---|
-| gateway | `argus-gateway:local` | TLS 7024, `/health` healthcheck; mounts the productivity and notification volumes (camera.db is argus-camera's alone since F6-5) |
+| gateway | `argus-gateway:local` | TLS 7024, `/health` healthcheck; mounts only identity.db and pulls camera/productivity/notification sync over the 7036/7037/7038 gRPC legs |
 | argus-camera | `argus-camera:local` | internal network, loopback 7026 + 7036 (sync gRPC) publishes; owns camera.db; `/health` healthcheck; `/dev/dri` |
-| argus-productivity | `argus-productivity:local` | internal network, loopback 7027 publish; owns productivity.db; `/health` healthcheck |
-| argus-notification | `argus-notification:local` | internal network, loopback 7028 publish; owns notification.db; `/health` healthcheck |
+| argus-productivity | `argus-productivity:local` | internal network, loopback 7027 + 7037 (sync gRPC) publishes; owns productivity.db; `/health` healthcheck |
+| argus-notification | `argus-notification:local` | internal network, loopback 7028 + 7038 (RPC) publishes; owns notification.db; `/health` healthcheck |
 | argus-tts | `argus-tts:local` | internal network (172.19.0.29), loopback 7029 publish; models/tts subpath ro; `/health` healthcheck |
 | argus-stt | `argus-stt:local` | internal network (172.19.0.30), loopback 7030 publish; models/stt subpath ro; `/health` healthcheck |
 | argus-vlm | `argus-vlm:local` | internal network (172.19.0.31), loopback 7031 publish; models/vision subpath ro; `/dev/dri`; `/health` healthcheck |
@@ -162,15 +162,14 @@ can no longer migrate the pre-existing argus.db camera rows (it no-ops on any
 schema-current target before reading the source). An installation that wants
 the legacy camera rows migrated must run `docker compose --profile camera-init
 run --rm camera-init` BEFORE the first boot, while camera.db does not exist
-yet. The init tools resolve `--schema` INSIDE the data-dir bind, so both init
-services bind the repo-shipped `argus-identity/database/schema.sql` /
-`database/camera-schema.sql` read-only over that path — a data dir provisioned
-without the schema SQLs still works (the single-file binds come from the
-repo). The gateway
-applies `identity-schema.sql` at boot and
+yet. Every service bind-mounts its own owner `database/schema.sql`
+(`packages/argus-identity`, `services/argus-camera`, ...) at the data-dir
+`database/schema.sql` path, so a data dir provisioned without schema SQLs
+still works (the single-file binds come from the repo). The gateway
+applies `database/schema.sql` at boot and
 aborts if it fails, so a fresh install creates `identity.db` without the init
-profile; argus-camera applies `camera-schema.sql` at boot the same way, so a
-fresh install creates camera.db without `camera-init`. On an existing
+profile; argus-camera applies its own `database/schema.sql` at boot the same
+way, so a fresh install creates camera.db without `camera-init`. On an existing
 installation run `docker compose --profile identity-init run --rm
 identity-init` (idempotent, guards intact: refuses same-path, requires the 7
 source tables, skips cleanly when `argus.db` does not exist yet). Do not run
@@ -181,14 +180,14 @@ Fase 3 (Rulings AT/AU/AV) extends the same shape to productivity.db and
 notification.db, each on its own dedicated named volume:
 
 - `argus-productivity` mounts `argus-cutover-productivity-db` rw and applies
-  `database/productivity-schema.sql` at boot; the gateway mounts the same
-  volume and opens `productivity/productivity.db` mode=ro (sync reads). The
-  gateway waits bounded (30s) for the boot apply the same way it does for
-  camera.db, then falls back to the default client with a warn.
-- `argus-notification` mounts `argus-cutover-notification-db` rw; the gateway
-  mounts it rw too and opens `notification/notification.db` READ-WRITE (its
-  camera-notifier writes, Ruling AR) — the only cross-service rw db pair in
-  the stack. The gateway waits bounded (30s) here the same way.
+  `database/schema.sql` at boot, then serves `argus.productivity.v1.SyncService`
+  on 7037. The gateway mounts nothing of it (rule 27): its `/sync` pulls for
+  the 7 tables go over that gRPC leg.
+- `argus-notification` mounts `argus-cutover-notification-db` rw and serves
+  `argus.notification.v1.NotificationService` on 7038. The gateway's
+  camera-notifier creates through `CreateNotifications` and its `/sync`
+  notification pulls use `PullNotifications`; the volume is mounted by no one
+  else (rule 27).
 - `productivity-init` / `notification-init` are the only migration paths onto
   those volumes and MUST run BEFORE the first boot (the f8291e4 lesson, same
   as camera-init): once the owning service has boot-applied the schema the
@@ -267,7 +266,7 @@ Fase 4 (Rulings CB/CC/CD/CE, compose v4) adds the four AI engine services:
   of camera.db / productivity.db / notification.db ON PURPOSE: memory.db
   is private state of the semantic graph, not a synced projection the
   gateway reads. There is no `memory-init` profile and no migrate tool:
-  boot-apply of `database/memory-schema.sql` moves to argus-llm at f8-b4,
+  boot-apply of `database/schema.sql` moves to argus-llm at f8-b4,
   and the memory tables in the repo's argus.db are empty schema (nothing
   to migrate). Disclosed honestly:
   no DDL sidecar exists for memory.db and none is needed.
@@ -359,22 +358,19 @@ secrets are read at runtime, never printed; the refresh token lands in a
 
 | Volume | Mounted into | Content |
 |---|---|---|
-| `argus-cutover-camera-db` | argus-camera, gateway — at `/opt/argus/camera` | camera.db (+ WAL files) |
-| `argus-cutover-productivity-db` | argus-productivity (rw, owner), gateway (rw mount, mode=ro open) — at `/opt/argus/productivity` | productivity.db (+ WAL files) |
-| `argus-cutover-notification-db` | argus-notification (rw), gateway (rw, read-write client) — at `/opt/argus/notification` | notification.db (+ WAL files) |
-| `argus-cutover-memory-db` | NO service at f8-b3 (argus-memory retired); argus-llm takes the rw mount at f8-b4 — at `/opt/argus/memory` | memory.db (+ WAL files); the volume-map exception (Ruling CB) |
+| `argus-cutover-camera-db` | argus-camera (rw, owner) — at `/opt/argus/camera` | camera.db (+ WAL files) |
+| `argus-cutover-productivity-db` | argus-productivity (rw, owner) — at `/opt/argus/productivity` | productivity.db (+ WAL files) |
+| `argus-cutover-notification-db` | argus-notification (rw, owner) — at `/opt/argus/notification` | notification.db (+ WAL files) |
+| `argus-cutover-memory-db` | argus-llm (rw, owner since f8-b4) — at `/opt/argus/memory` | memory.db (+ WAL files); the volume-map exception (Ruling CB) |
 | `argus-cutover-camera-stream` | argus-camera at `/opt/argus/stream` | go2rtc.yaml generated by Go2rtcManager (chmod 600, camera credentials) |
 
-`argus-cutover-camera-db` is ONE file on ONE named volume shared by the
-services (Ruling AG): argus-camera owns it and the gateway opens it mode=ro
-for the camera sync reads (Ruling Z); memory's ro snapshot open returns as
-a third opener when argus-llm hosts the stack (f8-b4). Both configs point
-`[camera] db` at `camera/camera.db`. Cross-process access is safe by
-construction: every opener applies WAL + busy_timeout 5000 (argus-camera at
-boot, the gateway when it opens the read-only client).
-Compose adds
-no DDL sidecar — the camera schema boot-apply belongs to argus-camera alone,
-and `camera-init` is the only migration path onto the volume.
+Every database volume is mounted by its owner only (rule 27): cross-domain
+reads travel through the typed gRPC legs (camera/productivity/notification)
+and NATS change feeds, never through another service's file. Each owner
+applies WAL + busy_timeout 5000 at boot; the `*-init` one-shot tools are the
+only other writers and run while the stack is stopped. Compose adds no DDL
+sidecar — each schema boot-apply belongs to its owner service alone, and
+the matching `*-init` profile is the only migration path onto a volume.
 
 ## Configuration and secrets (Ruling Q)
 

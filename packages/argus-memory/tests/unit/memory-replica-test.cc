@@ -59,17 +59,6 @@ bool rowExists(sqlite3* db, const RowExistsInput& input)
   return stmt.step() == SQLITE_ROW;
 }
 
-drogon::orm::DbClientPtr
-openScratchSource(const std::string& path,
-                  const std::vector<const char*>& statements)
-{
-  std::filesystem::remove(path);
-  auto client = drogon::orm::DbClient::newSqlite3Client("filename=" + path, 1);
-  for (const char* statement : statements)
-    client->execSqlSync(statement);
-  return client;
-}
-
 } // namespace
 
 TEST_CASE("catalog replicas replay identity and camera events and rebuild "
@@ -202,23 +191,17 @@ TEST_CASE("a boot with empty replica tables takes one snapshot fill from the "
   std::filesystem::create_directories(kScratchDir);
   std::filesystem::remove(std::string(kScratchDir) + "/snapshot.db");
 
-  const auto identityDb = openScratchSource(
-      std::string(kScratchDir) + "/identity.db",
-      {"CREATE TABLE person (id INTEGER PRIMARY KEY, user_id INTEGER, "
-       "name TEXT, alias TEXT, deleted_at INTEGER)",
-       "INSERT INTO person (id, user_id, name, alias, deleted_at) VALUES "
-       "(7, 42, 'Ana Garcia', '', NULL), (8, 43, 'Beto Ruiz', 'betito', "
-       "NULL)"});
-  const auto cameraDb = openScratchSource(
-      std::string(kScratchDir) + "/camera.db",
-      {"CREATE TABLE camera (id INTEGER PRIMARY KEY, name TEXT, "
-       "deleted_at INTEGER)",
-       "CREATE TABLE zone (id INTEGER PRIMARY KEY, name TEXT)",
-       "CREATE TABLE camera_stream (id INTEGER PRIMARY KEY, label TEXT)",
-       "INSERT INTO camera (id, name, deleted_at) VALUES (3, 'cam nueva', "
-       "NULL), (4, 'cam muerta', 1770000000)",
-       "INSERT INTO zone (id, name) VALUES (5, 'estar')",
-       "INSERT INTO camera_stream (id, label) VALUES (9, 'entrada')"});
+  const CatalogReplica::Snapshot snapshot{
+      .persons = {{.id = 7, .userId = 42, .name = "Ana Garcia", .alias = ""},
+                  {.id = 8, .userId = 43, .name = "Beto Ruiz", .alias = "betito"}},
+      .cameras = {{.id = 3, .name = "cam nueva"}},
+      .zones = {{.id = 5, .name = "estar"}},
+      .streams = {{.id = 9, .label = "entrada"}}};
+  const CatalogReplica::Snapshot cameraOnly{
+      .persons = {},
+      .cameras = {{.id = 3, .name = "cam nueva"}},
+      .zones = {{.id = 5, .name = "estar"}},
+      .streams = {{.id = 9, .label = "entrada"}}};
 
   NatsBus bus;
   SqliteGraph graph;
@@ -229,7 +212,7 @@ TEST_CASE("a boot with empty replica tables takes one snapshot fill from the "
   sqlite3* db = graph.handle();
   REQUIRE(db != nullptr);
 
-  replica.seedFromSnapshot(identityDb.get(), cameraDb.get());
+  replica.seedFromSnapshot(snapshot);
   CHECK(countRows(db, "SELECT COUNT(*) FROM catalog_person") == 2);
   CHECK(countRows(db, "SELECT COUNT(*) FROM catalog_camera") == 1);
   CHECK(rowExists(db, {.sql = "SELECT 1 FROM catalog_camera WHERE id = ?", .id = 4}) ==
@@ -240,7 +223,7 @@ TEST_CASE("a boot with empty replica tables takes one snapshot fill from the "
   CHECK_FALSE(resolver.resolve("Beto Ruiz").empty());
   CHECK_FALSE(resolver.resolve("cam nueva").empty());
 
-  replica.seedFromSnapshot(identityDb.get(), cameraDb.get());
+  replica.seedFromSnapshot(snapshot);
   CHECK(countRows(db, "SELECT COUNT(*) FROM catalog_person") == 2);
 
   std::filesystem::remove(std::string(kScratchDir) + "/empty.db");
@@ -250,12 +233,12 @@ TEST_CASE("a boot with empty replica tables takes one snapshot fill from the "
   EntityResolver emptyResolver(emptyGraph);
   CatalogReplica emptyReplica(
       {.bus = bus, .graph = emptyGraph, .resolver = emptyResolver});
-  emptyReplica.seedFromSnapshot(nullptr, cameraDb.get());
+  emptyReplica.seedFromSnapshot(cameraOnly);
   sqlite3* emptyDb = emptyGraph.handle();
   CHECK(countRows(emptyDb, "SELECT COUNT(*) FROM catalog_person") == 0);
   CHECK(countRows(emptyDb, "SELECT COUNT(*) FROM catalog_camera") == 1);
 
-  emptyReplica.seedFromSnapshot(identityDb.get(), cameraDb.get());
+  emptyReplica.seedFromSnapshot(snapshot);
   CHECK(countRows(emptyDb, "SELECT COUNT(*) FROM catalog_person") == 2);
   CHECK(countRows(emptyDb, "SELECT COUNT(*) FROM catalog_camera") == 1);
 
@@ -264,8 +247,7 @@ TEST_CASE("a boot with empty replica tables takes one snapshot fill from the "
   REQUIRE(buslessGraph.open(std::string(kScratchDir) + "/busless.db"));
   buslessGraph.applySchema();
   EntityResolver buslessResolver(buslessGraph);
-  CatalogReplica::seedSnapshot({buslessGraph, buslessResolver,
-                                identityDb.get(), cameraDb.get()});
+  CatalogReplica::seedSnapshot({buslessGraph, buslessResolver, snapshot});
   sqlite3* buslessDb = buslessGraph.handle();
   CHECK(countRows(buslessDb, "SELECT COUNT(*) FROM catalog_person") == 2);
   CHECK(countRows(buslessDb, "SELECT COUNT(*) FROM catalog_zone") == 1);

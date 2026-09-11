@@ -36,8 +36,9 @@ that apply to llm-service code; when in doubt, the root file wins.
 12. **No std::future** — plain `std::thread` for the stream producer, as the
     TTS controller does.
 13. **Memory database only** — the hosted memory package owns `memory.db`.
-    Identity and camera snapshot sources are read-only; no other domain
-    database is written here.
+    Identity/camera catalog snapshots arrive over the SDK clients
+    (`argus::sdk-identity`, `argus::sdk-camera`); this service opens no
+    other domain database.
 14. **Models are never copied** — LLM, memory and intent artifacts are read
     from the shared `models/` tree.
 15. **Build gate** — 0 errors AND 0 warnings (`-Wall -Wextra`) in Argus's

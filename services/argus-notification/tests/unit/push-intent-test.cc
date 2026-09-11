@@ -92,7 +92,7 @@ TEST_CASE("push_intent payloads match the subjects.md contract")
 
   CHECK(nats_subject::isValidSubject(nats_subject::kNotificationPushIntent,
                                      nats_subject::SubjectKind::Publish));
-  // The gateway's sync wildcard does not match the intent subject.
+  // The sync wildcard does not match the intent subject.
   CHECK(nats_subject::kNotificationPushIntent ==
         std::string("argus.notification.v1.push_intent"));
 }
@@ -109,7 +109,7 @@ TEST_CASE("a publish on an unconnected bus is a warn, not a crash")
                           .createdAtMs = 0});
 }
 
-TEST_CASE("the createAndEmitMany hook publishes one intent per row")
+TEST_CASE("the create path publishes one intent per row")
 {
   std::remove(kPushDb);
   auto client =
@@ -140,7 +140,7 @@ TEST_CASE("the createAndEmitMany hook publishes one intent per row")
   input.title = "Front door";
   input.body = "Person detected";
   const NotificationService service;
-  drogon::sync_wait(service.createAndEmitMany({1, 2}, input));
+  drogon::sync_wait(service.createManyAndEmit({1, 2}, input));
 
   REQUIRE(waitForIntents({.sink = sink,
                           .expected = 2,

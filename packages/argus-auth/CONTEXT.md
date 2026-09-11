@@ -37,8 +37,7 @@ empty falls back to `identity.rpc_host` / `identity.rpc_port` (default
 `127.0.0.1:7040`). The fallback is what lets the gateway — which HOSTS the
 listener — need no target key of its own, while every other service names
 one explicitly. The client is cached per resolved target (the
-`voice-engine-seam` precedent), so a config change picks up a new client
-and tests can point the chain at a dead port to prove fail-closed.
+`voice-engine-seam` precedent), so a config change picks up a new clientand tests can point the chain at a dead port to prove fail-closed.
 
 The call itself rides `BlockingTask`, which moves the blocking stub call
 off the event loop — the `camera-sync-source` pattern. It costs a detached
@@ -54,6 +53,16 @@ hash being non-empty — otherwise a credential-less request passes a
 device-bound session. f7-3 shipped that bug briefly and the
 device-credential suite caught it; the contract now carries presence
 (proto field presence) separately from the value.
+
+## The user directory
+
+`IdentityUserDirectory` (rule 27) exposes the identity domain's read-only
+user row over the same cached client: `findById` calls
+`argus.identity.v1.GetUser` and returns the DB-free `DirectoryUser`
+(`shared/contracts/user-directory.hxx` in argus-common). Consumers install
+it where they own a seam — argus-camera injects it into the sync socket,
+argus-productivity holds it as a private member — so no service opens
+another domain's database for a user row.
 
 ## What does NOT live here
 

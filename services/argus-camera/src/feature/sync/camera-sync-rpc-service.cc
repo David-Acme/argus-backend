@@ -1,28 +1,12 @@
 #include "camera-sync-rpc-service.hxx"
 
 #include <drogon/drogon.h>
+#include <grpc-server-identity.hxx>
 #include <shared/contracts/sync-filter.hxx>
 #include <trantor/utils/Logger.h>
 
 namespace
 {
-
-// Row scoping is data semantics only; the gateway validated the role.
-bool identityPresent(const grpc::CallbackServerContext* context)
-{
-  bool user = false;
-  bool role = false;
-  bool device = false;
-  for (const auto& [key, value] : context->client_metadata()) {
-    if (key == "x-argus-user")
-      user = true;
-    else if (key == "x-argus-role")
-      role = true;
-    else if (key == "x-argus-device")
-      device = true;
-  }
-  return user && role && device;
-}
 
 SyncFilter filterOf(const argus::camera::v1::SyncRange& range)
 {
@@ -147,7 +131,7 @@ grpc::ServerUnaryReactor* CameraSyncRpcService::PullTable(
     const argus::camera::v1::PullTableRequest* request,
     argus::camera::v1::PullTableResponse* response)
 {
-  if (!identityPresent(context)) {
+  if (!argus::sdk::callerUserId(context)) {
     auto* reactor = context->DefaultReactor();
     reactor->Finish(grpc::Status(grpc::StatusCode::UNAUTHENTICATED,
                                  "identity metadata missing"));
@@ -191,6 +175,52 @@ grpc::ServerUnaryReactor* CameraSyncRpcService::PullTable(
       }
       catch (const std::exception& e) {
         LOG_WARN << "Camera sync RPC: PullTable failed: " << e.what();
+        reactor->Finish(grpc::Status(grpc::StatusCode::INTERNAL, e.what()));
+      }
+      co_return;
+    });
+  });
+  return reactor;
+}
+
+grpc::ServerUnaryReactor* CameraSyncRpcService::ListCatalog(
+    grpc::CallbackServerContext* context,
+    const argus::camera::v1::ListCatalogRequest* request,
+    argus::camera::v1::ListCatalogResponse* response)
+{
+  (void)request;
+  if (!argus::sdk::callerUserId(context)) {
+    auto* reactor = context->DefaultReactor();
+    reactor->Finish(grpc::Status(grpc::StatusCode::UNAUTHENTICATED,
+                                 "identity metadata missing"));
+    return reactor;
+  }
+
+  auto* reactor = context->DefaultReactor();
+  auto* responseWriter = response;
+  drogon::app().getLoop()->queueInLoop([this, reactor, responseWriter]() {
+    drogon::async_run([this, reactor,
+                       responseWriter]() -> drogon::Task<void> {
+      try {
+        for (const auto& row : co_await cameras_.find({})) {
+          auto* camera = responseWriter->add_cameras();
+          camera->set_id(row["id"].asInt64());
+          camera->set_name(row["name"].asString());
+        }
+        for (const auto& row : co_await zones_.find({})) {
+          auto* zone = responseWriter->add_zones();
+          zone->set_id(row["id"].asInt64());
+          zone->set_name(row["name"].asString());
+        }
+        for (const auto& row : co_await streams_.find({})) {
+          auto* stream = responseWriter->add_streams();
+          stream->set_id(row["id"].asInt64());
+          stream->set_label(row["label"].asString());
+        }
+        reactor->Finish(grpc::Status::OK);
+      }
+      catch (const std::exception& e) {
+        LOG_WARN << "Camera sync RPC: ListCatalog failed: " << e.what();
         reactor->Finish(grpc::Status(grpc::StatusCode::INTERNAL, e.what()));
       }
       co_return;

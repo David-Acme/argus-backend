@@ -104,19 +104,21 @@ add_library(gateway-core STATIC
     ${GATEWAY_SRC_ROOT}/sync/camera-fan-out.cc
     ${GATEWAY_SRC_ROOT}/sync/camera-notifier.cc
     ${GATEWAY_SRC_ROOT}/sync/camera-sync-source.cc
+    ${GATEWAY_SRC_ROOT}/sync/notification-sync-source.cc
+    ${GATEWAY_SRC_ROOT}/sync/productivity-sync-source.cc
     ${GATEWAY_SRC_ROOT}/sync/sync-fan-out.cc
     ${GATEWAY_SRC_ROOT}/sync/sync-registrar.cc
     ${GATEWAY_SRC_ROOT}/sync/sync-relay.cc
     ${GATEWAY_SRC_ROOT}/sync/voice-grpc-relay.cc
     ${GATEWAY_SRC_ROOT}/sync/user-change-fan-out.cc
-    ${GATEWAY_SRC_ROOT}/sync/user-change-sink.cc
 )
 
 target_include_directories(gateway-core PUBLIC ${GATEWAY_SRC_ROOT})
 
 target_link_libraries(gateway-core PUBLIC argus_identity argus_sync
     argus::cert mdns::mdns argus::room argus::socket
-    argus::sdk-voice argus::sdk-identity argus::sdk-camera)
+    argus::sdk-voice argus::sdk-identity argus::sdk-camera
+    argus::sdk-productivity argus::sdk-notification)
 
 target_compile_options(gateway-core PRIVATE -Wall -Wextra)
 
@@ -162,15 +164,6 @@ target_link_libraries(camera-notifier-test PRIVATE gateway-core
 
 target_compile_options(camera-notifier-test PRIVATE -Wall -Wextra)
 
-add_executable(push-intent-test
-               ${CMAKE_CURRENT_SOURCE_DIR}/tests/push-intent-test.cc)
-
-target_include_directories(push-intent-test PRIVATE ${GATEWAY_SRC_ROOT})
-
-target_link_libraries(push-intent-test PRIVATE gateway-core doctest::doctest)
-
-target_compile_options(push-intent-test PRIVATE -Wall -Wextra)
-
 get_target_property(DOCTEST_INCLUDE_DIRS doctest::doctest
                     INTERFACE_INCLUDE_DIRECTORIES)
 if(DOCTEST_INCLUDE_DIRS)
@@ -184,10 +177,8 @@ endif()
 set_target_properties(gateway-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 set_target_properties(audit-sync-read-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 set_target_properties(camera-notifier-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
-set_target_properties(push-intent-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
 enable_testing()
 add_test(NAME gateway-test COMMAND gateway-test)
 add_test(NAME audit-sync-read-test COMMAND audit-sync-read-test)
 add_test(NAME camera-notifier-test COMMAND camera-notifier-test)
-add_test(NAME push-intent-test COMMAND push-intent-test)

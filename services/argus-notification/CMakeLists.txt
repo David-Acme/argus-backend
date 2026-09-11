@@ -73,6 +73,14 @@ endif()
 
 find_package(doctest REQUIRED)
 
+# The notification RPC contract (argus.notification.v1.NotificationService);
+# this service is the owner and serves it, consumers link
+# argus::sdk-notification.
+if(NOT TARGET argus::sdk-notification)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/argus-contracts
+                     ${CMAKE_BINARY_DIR}/argus-contracts EXCLUDE_FROM_ALL)
+endif()
+
 add_library(notification-core STATIC
     ${NOTIFICATION_SRC_ROOT}/notification/nats-notification-change-sink.cc
     ${NOTIFICATION_SRC_ROOT}/notification/notification-config.cc
@@ -107,13 +115,14 @@ set(NOTIFICATION_FEATURE_SOURCES
 
 add_executable(argus-notification
     ${NOTIFICATION_SRC_ROOT}/main.cc
+    ${NOTIFICATION_SRC_ROOT}/feature/rpc/notification-rpc-service.cc
     ${NOTIFICATION_FEATURE_SOURCES})
 
 # The filters validate through argus.identity.v1 (argus::sdk-identity rides
-# argus::auth); argus_identity arrives transitively through
-# notification-core's argus_sync pull, with no link-order meaning left.
+# argus::auth); the RPC owner serves argus.notification.v1 via
+# argus::sdk-notification.
 target_link_libraries(argus-notification PRIVATE notification-core
-    argus::auth)
+    argus::auth argus::sdk-notification)
 
 target_compile_options(argus-notification PRIVATE -Wall -Wextra)
 
@@ -164,6 +173,40 @@ target_compile_options(notification-controller-test PRIVATE -Wall -Wextra)
 
 add_test(NAME notification-controller-test
          COMMAND notification-controller-test)
+
+# The RPC suite boots the real schema and the real service against it.
+add_executable(notification-rpc-test
+    tests/unit/notification-rpc-test.cc
+    ${NOTIFICATION_SRC_ROOT}/feature/rpc/notification-rpc-service.cc)
+
+set_target_properties(notification-rpc-test PROPERTIES
+    EXCLUDE_FROM_ALL FALSE)
+
+target_include_directories(notification-rpc-test PRIVATE
+    ${NOTIFICATION_SRC_ROOT})
+
+target_compile_definitions(notification-rpc-test PRIVATE
+    ARGUS_NOTIFICATION_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql")
+
+target_link_libraries(notification-rpc-test PRIVATE argus_sync
+    argus::sdk-notification argus_common doctest::doctest)
+
+target_compile_options(notification-rpc-test PRIVATE -Wall -Wextra)
+
+add_test(NAME notification-rpc-test COMMAND notification-rpc-test)
+
+# The push-intent publish seam rides the owner: the camera-notifier create
+# enters here, so the sink hook is tested here.
+add_executable(push-intent-test tests/unit/push-intent-test.cc)
+
+set_target_properties(push-intent-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+
+target_link_libraries(push-intent-test PRIVATE argus_sync
+    argus_common doctest::doctest)
+
+target_compile_options(push-intent-test PRIVATE -Wall -Wextra)
+
+add_test(NAME push-intent-test COMMAND push-intent-test)
 
 get_target_property(DOCTEST_INCLUDE_DIRS doctest::doctest
                     INTERFACE_INCLUDE_DIRECTORIES)

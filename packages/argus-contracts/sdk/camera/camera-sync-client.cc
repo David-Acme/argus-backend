@@ -29,3 +29,22 @@ CameraSyncClient::pullTable(const argus::camera::v1::PullTableRequest& request,
     return std::nullopt;
   return response;
 }
+
+std::optional<argus::camera::v1::ListCatalogResponse>
+CameraSyncClient::listCatalog(const SyncIdentity& identity) const
+{
+  grpc::ClientContext context;
+  argus::sdk::setDeadline(context, kPullTimeoutMs);
+  argus::sdk::addCallerIdentity(context, {.userId = identity.userId,
+                                          .role = identity.role,
+                                          .device = identity.device});
+
+  const argus::camera::v1::ListCatalogRequest request;
+
+  argus::camera::v1::ListCatalogResponse response;
+  if (const grpc::Status status =
+          stub_->ListCatalog(&context, request, &response);
+      !status.ok())
+    return std::nullopt;
+  return response;
+}

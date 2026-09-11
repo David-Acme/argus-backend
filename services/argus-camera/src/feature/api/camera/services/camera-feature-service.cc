@@ -1,7 +1,25 @@
 #include "camera-feature-service.hxx"
 
 #include <ctime>
+#include <shared/services/stream/camera-source-registrar.hxx>
+#include <shared/wrapper/blocking-task/blocking-task.hxx>
 #include <trantor/utils/Logger.h>
+
+namespace
+{
+drogon::Task<void> syncSource(CameraSchema camera)
+{
+  co_await BlockingTask<void>([camera = std::move(camera)] {
+    cameraSourceRegistrar().apply(camera);
+  });
+}
+
+drogon::Task<void> dropSource(int64_t cameraId)
+{
+  co_await BlockingTask<void>(
+      [cameraId] { cameraSourceRegistrar().remove(cameraId); });
+}
+} // namespace
 
 void CameraFeatureService::emit(SyncOperation operation,
                                 const CameraSchema& row) const
@@ -47,6 +65,7 @@ CameraFeatureService::create(const CreateCameraDto& body) const
       .config = "{}",
   });
   emit(SyncOperation::Add, row);
+  co_await syncSource(row);
   co_return row;
 }
 
@@ -91,6 +110,7 @@ CameraFeatureService::update(int64_t id, const UpdateCameraDto& body) const
         .actorId = std::nullopt,
     });
   }
+  co_await syncSource(row);
   co_return row;
 }
 
@@ -101,7 +121,9 @@ drogon::Task<bool> CameraFeatureService::remove(int64_t id) const
     co_return false;
 
   const bool removed = co_await repository_.remove(id);
-  if (removed)
+  if (removed) {
     emit(SyncOperation::Delete, *existing);
+    co_await dropSource(id);
+  }
   co_return removed;
 }

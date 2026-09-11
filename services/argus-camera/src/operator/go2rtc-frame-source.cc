@@ -19,7 +19,13 @@ Go2rtcFrameSource::grab(const FrameGrabRequest& request)
 
   const auto client = drogon::HttpClient::newHttpClient(
       Go2rtcManager::instance().apiBase());
-  const auto response = co_await client->sendRequestCoro(request2, 5.0);
+  drogon::HttpResponsePtr response;
+  try {
+    response = co_await client->sendRequestCoro(request2, 5.0);
+  }
+  catch (const std::exception&) {
+    response.reset();
+  }
   if (!response || response->getStatusCode() != drogon::k200OK) {
     const bool wasOk = [&] {
       std::lock_guard<std::mutex> lock(mutex_);

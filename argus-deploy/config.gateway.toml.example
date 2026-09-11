@@ -38,8 +38,6 @@ url = "nats://127.0.0.1:4222"
 reconnect_wait_ms = 2000
 max_reconnects = 60
 
-[push]
-enabled = false
 
 [jwt]
 secret = ""
@@ -53,7 +51,7 @@ identity_mode = "ip"
 
 [identity]
 db = "database/identity.db"
-schema = "database/identity-schema.sql"
+schema = "database/schema.sql"
 # Cleartext listener: bind loopback or the pinned bridge address only.
 rpc_host = "172.19.0.1"
 rpc_port = 7040
@@ -70,7 +68,7 @@ target = "127.0.0.1:7034"
 
 [productivity]
 proxy_url = "http://127.0.0.1:7027"
-db = "productivity/productivity.db"
+grpc_target = "127.0.0.1:7037"
 
 [cert]
 dir = "certs"
@@ -98,7 +96,7 @@ enabled = true
 
 [notifications]
 proxy_url = "http://127.0.0.1:7028"
-db = "notification/notification.db"
+grpc_target = "127.0.0.1:7038"
 budget_per_hour = 6
 silent_start = -1
 silent_end = -1

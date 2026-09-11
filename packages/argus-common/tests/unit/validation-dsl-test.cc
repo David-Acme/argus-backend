@@ -362,6 +362,17 @@ TEST_CASE("format rules reject malformed values")
     CHECK(errors->at("base64")[0] == "base64 must be a valid base64 string");
 
     probe = validFormat();
+    probe.base64 = std::string(256 * 1024, 'A');
+    errors = formatErrors(probe);
+    CHECK(!errors.has_value());
+
+    probe = validFormat();
+    probe.base64 = "aGVsbG8===";
+    errors = formatErrors(probe);
+    REQUIRE(errors.has_value());
+    CHECK(errors->at("base64")[0] == "base64 must be a valid base64 string");
+
+    probe = validFormat();
     probe.alpha = "Argus42";
     errors = formatErrors(probe);
     REQUIRE(errors.has_value());

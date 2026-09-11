@@ -26,7 +26,7 @@ monolith's build set was retired (F6-4).
   `[identity] db` (default `database/identity.db`), injected both as the
   Drogon default client and as the `database.file` runtime override so
   `VecDb`/face-db write face embeddings there too. At boot the gateway
-  applies F1-3a's `identity-schema.sql` (`[identity] schema`) — the 7
+  applies F1-3a's `database/schema.sql` (`[identity] schema`) — the 7
   identity tables plus the audit/portrait substrate the identity write paths
   touch (`audit_log`, `user_audit_log`, `user_action_log`, `user_portrait`,
   `stored_file`, `portrait_preview_capability`), carried verbatim from the
@@ -65,24 +65,22 @@ monolith's build set was retired (F6-4).
 - **`/sync` socket (F1-4)**: the gateway owns the `/sync` WebSocket end to end.
   It serves the sync protocol natively (`sync`, `sync_audit_log`,
   `sync_user_audit_log`, identity rooms, `initial_info`) from
-  `argus_sync`: the productivity/notification sync tables read their
-  named read-only clients (`[productivity] db`, `[notifications] db`, opened
-  `file:...?mode=ro`, enabled process-wide by
-  `DbService::enableUriFilenames()`), and since F6-5 the camera sync tables
-  pull from argus-camera over the `argus.camera.v1.SyncService` gRPC leg
-  (`[camera] grpc_target`) — Ruling G's identity-owned tables
+  `argus_sync`: the productivity sync tables pull from argus-productivity
+  over the `argus.productivity.v1.SyncService` leg
+  (`[productivity] grpc_target`), the notification page from
+  argus-notification over `argus.notification.v1.NotificationService`
+  (`[notifications] grpc_target`), and the camera tables from argus-camera
+  over `argus.camera.v1.SyncService` (`[camera] grpc_target`) since F6-5 —
+  all through the shared SDK sources. Ruling G's identity-owned tables
   (`user`, `person`, `user_invitation`) and Ruling S's audit pages
   (`sync_audit_log`/`sync_user_audit_log` over the identity.db
-  `audit_log`/`user_audit_log` tables) read the default client instead, so
-  post-cutover rows replay to the app. Because it serves the bootstrap
-  itself, a gateway whose config omits `[productivity] db` or
-  `[notifications] db` resolves those sync reads to the default identity
-  client (which has no such tables) and the whole bootstrap throws
-  `sync_error` — a scratch/deploy config must always set both keys. With
-  argus.db retired (F6-4) no read-only client is installed for the `event`
-  domain (permanent orphan, Ruling DH) and `EventRepository` answers the
-  empty shape — `DbService::readOnlyClient()` returns nullptr when nothing
-  is installed instead of falling back to a database lacking the tables.
+  `audit_log`/`user_audit_log` tables) read the default identity client, so
+  post-cutover rows replay to the app. An absent or unreachable
+  `grpc_target` answers 503 for that domain: the gateway opens no database
+  it does not own (rule 27). With argus.db retired (F6-4) no read-only
+  client is installed for the `event` domain (permanent orphan, Ruling DH)
+  and `EventRepository` answers the empty shape —
+  `DbService::readOnlyClient()` returns nullptr when nothing is installed.
   It relays every `camera:*`/`voice:*` frame (text and
   binary) byte-transparently to the service `/sync`/gRPC legs — `camera:*`
   to argus-camera (`[camera] sync_url`), `voice:*` to argus-voice
@@ -250,18 +248,15 @@ table. The app keeps working without any update.
   events count per class; a cumulative digest flushes every minute once the
   window or the silent window closes. Event payloads are data, never
   commands — no notification path can arm or trigger any audible device.
-- **Emission (F3-2 fix round)**: the gateway binds the legacy
-  `SocketUserChangeSink` into the notification slot
-  (`sync/user-change-sink.cc`, installed at boot next to the room-manager
-  lifecycle), so camera-notifier deliveries dispatch the `/sync` Add frame
-  into the user rooms the sync socket joined — the same pre-cutover
-  `SocketService` push. `SocketService::publishChange` stays a no-op here by
-  design: the gateway CONSUMES `kSyncChange` and must never publish it (it
-  would loop through its own sync fan-out). The productivity sink slot is
-  deliberately unset — the gateway performs no productivity writes (every
-  route is proxied), so binding it would be dead code.
+- **Emission (rule 27)**: notification Add/audit frames are emitted by
+  argus-notification's `NatsNotificationChangeSink` and re-fanned by the
+  gateway's NATS `user_change_fan_out` into the user rooms the sync socket
+  joined. The gateway installs no local user-change sink and performs no
+  local domain writes: `SocketService::publishChange` stays a no-op here by
+  design (the gateway consumes `argus.*.v1.change` and must never publish it,
+  or it would loop through its own sync fan-out).
 
-## Productivity + notification cutover (F3-2): routing, funnels, named clients
+## Productivity + notification cutover (F3-2): routing, funnels, domain gRPC legs
 
 - **Proxy route table (Ruling AP)**: `[productivity] proxy_url` routes
   `/calendar-event`, `/calendar-event-share`, `/project`, `/project-member`,
@@ -280,25 +275,26 @@ table. The app keeps working without any update.
   `Log` sync event. The F3 services never persist audit rows locally — the
   gateway is the only writer. Daily compaction of `user_audit_log` stays
   gateway-side.
-- **Named clients (Ruling AQ)**: `[productivity] db` opens
-  `mode=ro` (`DbService::setProductivityClient`) and `[notifications] db`
-  opens READ-WRITE with WAL + `busy_timeout`
-  (`setNotificationClient` — Ruling AR requires rw: the camera notifier
-  writes notification rows through it). The 7 productivity sync tables and
-  the notification/notification_token sync reads resolve to them; an absent
-  db key keeps the F2-2 precedent — the reads fall back to the default
-  client and the boot logs a warn. Personal-table scoping
-  (`isPersonalTable` + `ctx.sub`) and role checks stay gateway-side;
-  `/sync` pull pages for the moved tables are byte-identical with the
-  monolith's (golden-sync evidence).
-- **WAL discipline (Ruling AR)**: the gateway opens the productivity
-  database read-only and the notification database read-write, both with
-  `busy_timeout`, and never runs DDL against either — schema/DDL belong to
-  the F3 services and the migrate tools.
-- **camera-notifier retarget (Ruling AR)**: the camera notifier keeps
-  running gateway-side but writes its rows through
-  `NotificationService` → `DbService::notificationClient()`
-  (notification.db), not the retired argus.db copy.
+- **Domain pull sources (rule 27)**: the 7 productivity sync tables pull over
+  `argus.productivity.v1.SyncService` (`[productivity] grpc_target`, 7037) and
+  the notification page over `argus.notification.v1.NotificationService`
+  (`[notifications] grpc_target`, 7038), both through the shared SDK clients
+  (`argus::sdk-productivity` / `argus::sdk-notification`) wrapped as
+  `ProductivitySyncGateway` / `NotificationSyncGateway`. The owner applies the
+  personal-table scoping and the role read gate from the forwarded identity
+  metadata; the gateway only forwards the range and the caller. An absent or
+  unreachable target answers 503 for that domain — there is no fallback client
+  and no local database read. `/sync` pull pages for the moved tables are
+  byte-identical with the monolith's (golden-sync evidence).
+- **No cross-domain database access (rule 27)**: the gateway mounts and opens
+  only its own identity database. productivity.db and notification.db live
+  exclusively in their owner volumes; schema/DDL and WAL settings belong to the
+  owner services.
+- **camera-notifier retarget (Ruling AR)**: the camera notifier still runs
+  gateway-side but creates rows through
+  `NotificationClient::createNotifications` (`argus.notification.v1`), so
+  argus-notification persists the row, emits the user change and publishes the
+  push intent in its own process.
 - **Ruling AS (legacy stays up, goes quiet)**: historical — the retired
   monolith kept its whole notification/productivity code with the routes
   unreachable through the gateway; the build set died in F6-4.
@@ -406,22 +402,19 @@ table. The app keeps working without any update.
 
 ## Push-intent publisher (F5-5, Ruling CK)
 
-- **`[push] enabled` gate (default off)**: when the key is absent or false the
-  gateway installs no `NatsPushIntentSink`, `push_intent::getSink()` returns
-  null and `NotificationService::createAndEmitMany` skips the per-row publish
-  — structurally zero behavior change.
-- **Why the gateway carries the publisher**: the brief's "argus-notification
-  publishes" is topologically superseded — since the F3-2 cutover the only
-  producer of notification rows is the gateway's `camera-notifier` writing
-  through `NotificationService` into notification.db, so the row (and with it
-  the intent publish, which fires strictly after the row is persisted) lives
-  in the gateway process. The adjudication is forced by the cutover, not a
-  convenience.
+- **`[push] enabled` gate (default off)**: when the key is absent or false
+  argus-notification installs no `NatsPushIntentSink`, `push_intent::getSink()`
+  returns null and `NotificationService::createManyAndEmit` skips the per-row
+  publish — structurally zero behavior change.
+- **Why the owner carries the publisher**: since rule 27 moved the camera
+  notifier create to `argus.notification.v1`, the only producer of notification
+  rows is argus-notification itself, so the row and the intent publish (which
+  fires strictly after the row is persisted) live in that process. The gateway
+  no longer installs a push sink.
 - **argus-notification remains the policy owner**: it owns the notification
-  HTTP surface and the delivery policy; the gateway only hosts the publish
-  seam. Intents are best-effort at-most-once (fire-and-forget NATS publish),
-  display-only, and never carry alarm/siren semantics — see
-  `docs/architecture/wire-nats-subjects.md`.
+  HTTP surface and the delivery policy; intents are best-effort at-most-once
+  (fire-and-forget NATS publish), display-only, and never carry alarm/siren
+  semantics — see `docs/architecture/wire-nats-subjects.md`.
 
 ## Voice cutover (F6-3): argus.voice.v1 leg, typed identity, UpdateUser RPC
 

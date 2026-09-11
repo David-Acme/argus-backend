@@ -7,9 +7,9 @@
 #include <optional>
 #include <shared/repositories/project-member/project-member-repository.hxx>
 #include <shared/repositories/project/project-repository.hxx>
-#include <shared/repositories/user/user-repository.hxx>
 #include <shared/schemas/project-member/project-member-schema.hxx>
 #include <shared/contracts/user-change-sink.hxx>
+#include <shared/services/user-directory/user-directory-identity.hxx>
 
 struct ProjectMemberResult
 {
@@ -54,5 +54,5 @@ private:
 
   ProjectMemberRepository repository_;
   ProjectRepository parentRepository_;
-  UserRepository userRepository_;
+  IdentityUserDirectory directory_;
 };

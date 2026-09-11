@@ -2,46 +2,63 @@ syntax = "proto3";
 
 package argus.notification.v1;
 
-import "argus/common/v1/base.proto";
-
 option cc_enable_arenas = true;
 
-// Notification row as delivered through the sync stream (TableName::notification).
-message Notification {
-  string id = 1;
-  string user_id = 2;
+// (createdAt, id) cursor window; any subset present narrows the pull.
+message SyncRange {
+  optional int64 start_time = 1;
+  optional int64 start_id = 2;
+  optional int64 end_time = 3;
+}
+
+// Notification row as the notification sync table serves it.
+message NotificationRow {
+  int64 id = 1;
+  int64 user_id = 2;
+  string type = 3;
+  string title = 4;
+  string body = 5;
+  string data = 6; // serialized JSON payload
+  bool is_read = 7;
+  optional int64 read_at = 8;
+  int64 created_at = 9;
+}
+
+// One fan-out create: the server writes one row per user id.
+message CreateNotificationsRequest {
+  repeated int64 user_ids = 1;
+  string type = 2;
   string title = 3;
   string body = 4;
-  string severity = 5; // info | warning | critical
-  bool read = 6;
-  int64 created_at = 7;
+  string data = 5; // serialized JSON payload
 }
 
-// Push token registered by a device (TableName::notification_token).
-message NotificationToken {
-  string id = 1;
-  string user_id = 2;
-  string token = 3;
-  string platform = 4;
-  int64 created_at = 5;
+message CreateNotificationsResponse {
+  int32 created = 1;
 }
 
-// Mirrors the current /notification/read and /notification-token endpoints.
+// Pull of one user's notification rows; only the created leg is serverable.
+message NotificationPull {
+  bool required_create = 1;
+  bool find_last_created = 2;
+  optional SyncRange created = 3;
+}
+
+message PullNotificationsRequest {
+  NotificationPull notification = 1;
+}
+
+message PullNotificationsResponse {
+  repeated NotificationRow created = 1;
+  optional NotificationRow last_created = 2;
+}
+
+// Notification-domain RPCs served by argus-notification; the caller identity
+// rides the x-argus-user / x-argus-role / x-argus-device metadata.
 service NotificationService {
-  rpc MarkAsRead(MarkAsReadRequest) returns (argus.common.v1.Envelope);
-}
+  rpc CreateNotifications(CreateNotificationsRequest)
+      returns (CreateNotificationsResponse) {}
 
-service NotificationTokenService {
-  rpc RegisterToken(RegisterTokenRequest) returns (argus.common.v1.Envelope);
-}
-
-message MarkAsReadRequest {
-  argus.common.v1.RequestContext context = 1;
-  repeated string ids = 2;
-}
-
-message RegisterTokenRequest {
-  argus.common.v1.RequestContext context = 1;
-  string token = 2;
-  string platform = 3;
+  rpc PullNotifications(PullNotificationsRequest)
+      returns (PullNotificationsResponse) {}
 }

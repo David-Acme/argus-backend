@@ -35,7 +35,7 @@ symbol would interpose libgrpc's own callbacks and recurse.
 
 Moved: 107 source files (26 feature `.cc` + headers, 10 repository
 triplets, 10 schema pairs, `services/face`, `private-portrait-service`),
-`database/identity-schema.sql` (now `database/schema.sql` here — the DDL
+`database/schema.sql` (the DDL
 truth for every identity table), and the two identity unit suites
 (`identity-migration-test`, `device-credential-test`).
 

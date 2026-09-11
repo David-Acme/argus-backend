@@ -9,6 +9,9 @@ namespace camera_query
 {
 inline constexpr std::string_view FIND_BY_ID =
     "SELECT * FROM camera WHERE id = ? AND deleted_at IS NULL";
+inline constexpr std::string_view FIND_ENABLED =
+    "SELECT * FROM camera WHERE deleted_at IS NULL AND is_enabled = 1 "
+    "ORDER BY id ASC";
 inline constexpr std::string_view FIND =
     "SELECT * FROM camera WHERE deleted_at IS NULL "
     "AND created_at >= ? AND created_at <= ? ORDER BY created_at ASC, id ASC LIMIT 200";

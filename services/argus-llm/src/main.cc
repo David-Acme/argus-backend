@@ -1,7 +1,9 @@
+#include <camera/camera-sync-client.hxx>
 #include <config/app-config.hxx>
 #include <controllers/health-controller.hxx>
 #include <controllers/llm-controller.hxx>
 #include <drogon/drogon.h>
+#include <identity/identity-client.hxx>
 #include <memory/catalog-replica.hxx>
 #include <server/listener-config.hxx>
 #include <shared/services/config-service/config-service.hxx>
@@ -11,12 +13,15 @@
 #include <shared/services/sqlite/db-service.hxx>
 #include <shared/services/sqlite/vec-db.hxx>
 #include <shared/services/tools/tool-registry.hxx>
+#include <shared/wrapper/blocking-task/blocking-task.hxx>
 #include <shared/wrapper/nats/nats-bus.hxx>
 
+#include <chrono>
 #include <json/value.h>
 #include <llama.h>
 #include <memory>
 #include <string>
+#include <thread>
 
 namespace
 {
@@ -29,27 +34,65 @@ Json::Value drogonConfig(const ListenerConfig& listener)
   return config;
 }
 
-// Read-only snapshot source for the catalog seeds; opened before loadConfigJson (Ruling BW).
-std::shared_ptr<drogon::orm::DbClient>
-openReadOnlySource(const char* configKey)
+CatalogReplica::Snapshot fetchCatalogSnapshot()
 {
-  const std::string path = ConfigService::getString(configKey);
-  if (path.empty())
-    return nullptr;
-  DbService::enableUriFilenames();
-  try {
-    const auto client = drogon::orm::DbClient::newSqlite3Client(
-        "filename=file:" + path + "?mode=ro", 1);
-    client->execSqlSync("PRAGMA busy_timeout = 5000");
-    LOG_INFO << "argus-llm: snapshot source opened read-only (" << configKey
-             << "): " << path;
-    return client;
+  CatalogReplica::Snapshot snapshot;
+
+  const auto identityTarget = ConfigService::getString("identity.target");
+  if (!identityTarget.empty()) {
+    const IdentityClient client(
+        identityTarget, ConfigService::getString("identity.rpc_secret"));
+    if (const auto persons = client.listPersons()) {
+      for (const auto& person : persons->persons())
+        snapshot.persons.push_back({.id = person.id(),
+                                    .userId = person.user_id(),
+                                    .name = person.name(),
+                                    .alias = person.alias()});
+    }
+    else {
+      LOG_WARN << "argus-llm: identity snapshot read failed at "
+               << identityTarget;
+    }
   }
-  catch (const std::exception& error) {
-    LOG_WARN << "argus-llm: source client " << configKey
-             << " unavailable (" << error.what() << ")";
-    return nullptr;
+
+  const auto cameraTarget = ConfigService::getString("camera.grpc_target");
+  if (!cameraTarget.empty()) {
+    const CameraSyncClient client(cameraTarget);
+    const SyncIdentity identity{
+        .userId = 0, .role = "system", .device = "argus-llm"};
+    if (const auto catalog = client.listCatalog(identity)) {
+      for (const auto& camera : catalog->cameras())
+        snapshot.cameras.push_back({.id = camera.id(), .name = camera.name()});
+      for (const auto& zone : catalog->zones())
+        snapshot.zones.push_back({.id = zone.id(), .name = zone.name()});
+      for (const auto& stream : catalog->streams())
+        snapshot.streams.push_back(
+            {.id = stream.id(), .label = stream.label()});
+    }
+    else {
+      LOG_WARN << "argus-llm: camera catalog read failed at " << cameraTarget;
+    }
   }
+
+  return snapshot;
+}
+
+bool hasCatalogRows(const CatalogReplica::Snapshot& snapshot)
+{
+  return !snapshot.persons.empty() || !snapshot.cameras.empty() ||
+         !snapshot.zones.empty() || !snapshot.streams.empty();
+}
+
+CatalogReplica::Snapshot fetchCatalogSnapshotWithRetry()
+{
+  for (int attempt = 0; attempt < 20; ++attempt) {
+    auto snapshot = fetchCatalogSnapshot();
+    if (hasCatalogRows(snapshot))
+      return snapshot;
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+  }
+  LOG_WARN << "argus-llm: catalog snapshot sources empty after retries";
+  return CatalogReplica::Snapshot{};
 }
 
 } // namespace
@@ -57,9 +100,6 @@ openReadOnlySource(const char* configKey)
 int main()
 {
   ConfigService::load("config.toml");
-
-  const auto identityDb = openReadOnlySource("identity.db");
-  const auto cameraDb = openReadOnlySource("camera.db");
 
   const ListenerConfig listener = ListenerConfig::resolve(7032);
 
@@ -121,17 +161,20 @@ int main()
     }
   }
 
-  // Runs after the stack's own openStore advice, so the seed reads an open graph.
-  drogon::app().registerBeginningAdvice(
-      [&memory, &replica, identity = identityDb.get(),
-       camera = cameraDb.get()]() {
-        if (replica)
-          replica->seedFromSnapshot(identity, camera);
-        else
-          CatalogReplica::seedSnapshot(
-              {static_cast<SqliteGraph&>(memory.graph()),
-               memory.resolver(), identity, camera});
-      });
+  drogon::app().registerBeginningAdvice([&memory, &replica]() {
+    drogon::async_run([&memory,
+                       &replica]() -> drogon::Task<void> {
+      const auto snapshot = co_await BlockingTask<CatalogReplica::Snapshot>(
+          [] { return fetchCatalogSnapshotWithRetry(); });
+      if (replica)
+        replica->seedFromSnapshot(snapshot);
+      else
+        CatalogReplica::seedSnapshot(
+            {static_cast<SqliteGraph&>(memory.graph()), memory.resolver(),
+             snapshot});
+      co_return;
+    });
+  });
 
   LOG_INFO << "argus-llm listening on " << listener.host << ":"
            << listener.port;

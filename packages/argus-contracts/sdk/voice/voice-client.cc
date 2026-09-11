@@ -11,18 +11,24 @@ namespace
 // One write in flight; frames beyond the cap are dropped.
 constexpr size_t kMaxPendingWrites = 1024;
 
+struct VoiceStreamInput
+{
+  argus::voice::v1::VoiceService::StubInterface* stub;
+  std::unique_ptr<grpc::ClientContext> context;
+  std::shared_ptr<VoiceStreamObserver> observer;
+  argus::voice::v1::VoiceIdentity identity;
+};
+
 class VoiceStreamImpl final
     : public VoiceStream,
       public grpc::ClientBidiReactor<argus::voice::v1::ClientFrame,
                                      argus::voice::v1::ServerFrame>
 {
 public:
-  VoiceStreamImpl(argus::voice::v1::VoiceService::StubInterface* stub,
-                  std::unique_ptr<grpc::ClientContext> context,
-                  std::shared_ptr<VoiceStreamObserver> observer,
-                  argus::voice::v1::VoiceIdentity identity)
-      : stub_(stub), context_(std::move(context)),
-        observer_(std::move(observer)), identity_(std::move(identity))
+  explicit VoiceStreamImpl(VoiceStreamInput input)
+      : stub_(input.stub), context_(std::move(input.context)),
+        observer_(std::move(input.observer)),
+        identity_(std::move(input.identity))
   {
   }
 
@@ -173,9 +179,11 @@ std::shared_ptr<VoiceStream> VoiceClient::connect(
     std::shared_ptr<VoiceStreamObserver> observer)
 {
   auto context = std::make_unique<grpc::ClientContext>();
-  auto stream = std::shared_ptr<VoiceStreamImpl>(
-      new VoiceStreamImpl(stub_.get(), std::move(context),
-                          std::move(observer), identity));
+  auto stream = std::shared_ptr<VoiceStreamImpl>(new VoiceStreamImpl(
+      {.stub = stub_.get(),
+       .context = std::move(context),
+       .observer = std::move(observer),
+       .identity = identity}));
   stream->begin();
   return stream;
 }

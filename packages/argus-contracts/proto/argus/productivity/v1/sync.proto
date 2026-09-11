@@ -1,0 +1,211 @@
+syntax = "proto3";
+
+package argus.productivity.v1;
+
+option cc_enable_arenas = true;
+
+// (createdAt, id) cursor window; any subset present narrows the pull.
+message SyncRange {
+  optional int64 start_time = 1;
+  optional int64 start_id = 2;
+  optional int64 end_time = 3;
+}
+
+// Reminder row as the productivity sync table serves it.
+message ReminderRow {
+  int64 id = 1;
+  optional int64 created_by = 2;
+  int64 target_user_id = 3;
+  string title = 4;
+  string description = 5;
+  int64 scheduled_at = 6;
+  optional string recurrence_rule = 7;
+  bool is_completed = 8;
+  optional int64 completed_at = 9;
+  int64 created_at = 10;
+  optional int64 updated_at = 11;
+  optional int64 deleted_at = 12;
+}
+
+// Reminder detail row; status is pending | done | failed.
+message ReminderDetailRow {
+  int64 id = 1;
+  int64 reminder_id = 2;
+  optional int64 created_by = 3;
+  string content = 4;
+  string status = 5;
+  string file_paths = 6;
+  int64 created_at = 7;
+  optional int64 updated_at = 8;
+  optional int64 deleted_at = 9;
+}
+
+// Calendar event row; endsAt absent means a point in time, not a span.
+message CalendarEventRow {
+  int64 id = 1;
+  optional int64 created_by = 2;
+  int64 owner_id = 3;
+  optional int64 project_id = 4;
+  string title = 5;
+  string description = 6;
+  string location = 7;
+  string color = 8;
+  int64 starts_at = 9;
+  optional int64 ends_at = 10;
+  bool is_all_day = 11;
+  optional string recurrence_rule = 12;
+  int64 created_at = 13;
+  optional int64 updated_at = 14;
+  optional int64 deleted_at = 15;
+}
+
+// Calendar event share row (user share of one event).
+message CalendarEventShareRow {
+  int64 id = 1;
+  int64 calendar_event_id = 2;
+  int64 user_id = 3;
+  string access = 4;
+  int64 created_at = 5;
+  optional int64 updated_at = 6;
+  optional int64 deleted_at = 7;
+}
+
+// Project row (owner plus shared members scope the pull).
+message ProjectRow {
+  int64 id = 1;
+  int64 owner_id = 2;
+  string name = 3;
+  string description = 4;
+  string status = 5;
+  string color = 6;
+  optional int64 starts_at = 7;
+  optional int64 target_at = 8;
+  int64 created_at = 9;
+  optional int64 updated_at = 10;
+  optional int64 deleted_at = 11;
+}
+
+// Project member row.
+message ProjectMemberRow {
+  int64 id = 1;
+  int64 project_id = 2;
+  int64 user_id = 3;
+  string access = 4;
+  int64 created_at = 5;
+  optional int64 updated_at = 6;
+  optional int64 deleted_at = 7;
+}
+
+// Project task row; sort_order is the manual ordering within a column.
+message ProjectTaskRow {
+  int64 id = 1;
+  int64 project_id = 2;
+  optional int64 created_by = 3;
+  optional int64 assignee_id = 4;
+  string title = 5;
+  string status = 6;
+  string priority = 7;
+  optional int64 due_at = 8;
+  double sort_order = 9;
+  int64 created_at = 10;
+  optional int64 updated_at = 11;
+  optional int64 deleted_at = 12;
+}
+
+// Tombstone as the deleted legs serve it: identity and deletion time only.
+message DeletedRow {
+  int64 id = 1;
+  int64 deleted_at = 2;
+}
+
+// Pull of one productivity-domain sync table; created/deleted carry the ranges.
+message TablePull {
+  bool required_create = 1;
+  bool required_deleted = 2;
+  bool find_last_created = 3;
+  bool find_last_deleted = 4;
+  optional SyncRange created = 5;
+  optional SyncRange deleted = 6;
+}
+
+message ReminderTableRows {
+  repeated ReminderRow created = 1;
+  repeated DeletedRow deleted = 2;
+  optional ReminderRow last_created = 3;
+  optional DeletedRow last_deleted = 4;
+}
+
+message ReminderDetailTableRows {
+  repeated ReminderDetailRow created = 1;
+  repeated DeletedRow deleted = 2;
+  optional ReminderDetailRow last_created = 3;
+  optional DeletedRow last_deleted = 4;
+}
+
+message CalendarEventTableRows {
+  repeated CalendarEventRow created = 1;
+  repeated DeletedRow deleted = 2;
+  optional CalendarEventRow last_created = 3;
+  optional DeletedRow last_deleted = 4;
+}
+
+message CalendarEventShareTableRows {
+  repeated CalendarEventShareRow created = 1;
+  repeated DeletedRow deleted = 2;
+  optional CalendarEventShareRow last_created = 3;
+  optional DeletedRow last_deleted = 4;
+}
+
+message ProjectTableRows {
+  repeated ProjectRow created = 1;
+  repeated DeletedRow deleted = 2;
+  optional ProjectRow last_created = 3;
+  optional DeletedRow last_deleted = 4;
+}
+
+message ProjectMemberTableRows {
+  repeated ProjectMemberRow created = 1;
+  repeated DeletedRow deleted = 2;
+  optional ProjectMemberRow last_created = 3;
+  optional DeletedRow last_deleted = 4;
+}
+
+message ProjectTaskTableRows {
+  repeated ProjectTaskRow created = 1;
+  repeated DeletedRow deleted = 2;
+  optional ProjectTaskRow last_created = 3;
+  optional DeletedRow last_deleted = 4;
+}
+
+// One productivity-domain sync table per call; exactly one branch set.
+message PullTableRequest {
+  oneof table {
+    TablePull reminder = 1;
+    TablePull reminder_detail = 2;
+    TablePull calendar_event = 3;
+    TablePull calendar_event_share = 4;
+    TablePull project = 5;
+    TablePull project_member = 6;
+    TablePull project_task = 7;
+  }
+}
+
+// Rows of the requested table; the branch mirrors PullTableRequest.table.
+message PullTableResponse {
+  oneof table {
+    ReminderTableRows reminder = 1;
+    ReminderDetailTableRows reminder_detail = 2;
+    CalendarEventTableRows calendar_event = 3;
+    CalendarEventShareTableRows calendar_event_share = 4;
+    ProjectTableRows project = 5;
+    ProjectMemberTableRows project_member = 6;
+    ProjectTaskTableRows project_task = 7;
+  }
+}
+
+// Productivity-domain sync-table pulls served by argus-productivity; the
+// caller identity rides the x-argus-user / x-argus-role / x-argus-device
+// metadata and scopes the personal tables.
+service SyncService {
+  rpc PullTable(PullTableRequest) returns (PullTableResponse) {}
+}

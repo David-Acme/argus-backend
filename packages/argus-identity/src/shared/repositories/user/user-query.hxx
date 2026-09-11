@@ -17,6 +17,11 @@ inline constexpr std::string_view FIND_ALL =
     "WHERE deleted_at IS NULL "
     "ORDER BY created_at ASC, id ASC LIMIT 200";
 
+inline constexpr std::string_view FIND_NOTIFIABLE_IDS =
+    "SELECT id FROM user "
+    "WHERE deleted_at IS NULL AND is_active = 1 "
+    "AND role IN ('owner', 'guard') ORDER BY id ASC";
+
 inline constexpr std::string_view FIND =
     "SELECT * FROM user "
     "WHERE deleted_at IS NULL AND created_at >= ? AND created_at <= ? "

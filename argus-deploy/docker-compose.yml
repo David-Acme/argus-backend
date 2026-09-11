@@ -36,8 +36,12 @@ services:
         target: /opt/argus/database
         bind:
           create_host_path: false
-      - productivity-db:/opt/argus/productivity
-      - notification-db:/opt/argus/notification
+      - type: bind
+        source: ../packages/argus-identity/database/schema.sql
+        target: /opt/argus/database/schema.sql
+        read_only: true
+        bind:
+          create_host_path: false
       - type: bind
         source: ../models
         target: /opt/argus/models
@@ -102,8 +106,9 @@ services:
       - camera-db:/opt/argus/camera
       - camera-stream:/opt/argus/stream
       - type: bind
-        source: ${ARGUS_DATA_DIR:-./data}
-        target: /opt/argus/database
+        source: ../services/argus-camera/database/schema.sql
+        target: /opt/argus/database/schema.sql
+        read_only: true
         bind:
           create_host_path: false
       - type: bind
@@ -163,6 +168,7 @@ services:
           - argus-productivity
     ports:
       - "127.0.0.1:${PRODUCTIVITY_PORT:-7027}:7027"
+      - "127.0.0.1:${PRODUCTIVITY_GRPC_PORT:-7037}:7037"
     entrypoint: ["/opt/argus/argus-productivity"]
     volumes:
       - type: bind
@@ -172,8 +178,9 @@ services:
         bind:
           create_host_path: false
       - type: bind
-        source: ${ARGUS_DATA_DIR:-./data}
-        target: /opt/argus/database
+        source: ../services/argus-productivity/database/schema.sql
+        target: /opt/argus/database/schema.sql
+        read_only: true
         bind:
           create_host_path: false
       - productivity-db:/opt/argus/productivity
@@ -194,10 +201,10 @@ services:
   # Notification-domain service (Fase 3 cutover, Rulings AP/AR/AT): owns
   # notification.db as the single notification substrate, serves the
   # /notification and /notification-token write paths the gateway proxies to
-  # it. Same NATS/data-dir shape as argus-productivity, but no identity.db of
-  # its own — its filters validate over the gateway's identity RPC (7040).
-  # The gateway ALSO opens notification.db read-write here (its
-  # camera-notifier writes), which is why the volume is rw in both.
+  # it plus the argus.notification.v1 RPC leg (7038) the gateway's
+  # camera-notifier and /sync pulls go through. Same NATS/data-dir shape as
+  # argus-productivity, but no identity.db of its own — its filters validate
+  # over the gateway's identity RPC (7040).
   argus-notification:
     build:
       context: ..
@@ -214,6 +221,7 @@ services:
           - argus-notification
     ports:
       - "127.0.0.1:${NOTIFICATION_PORT:-7028}:7028"
+      - "127.0.0.1:${NOTIFICATION_GRPC_PORT:-7038}:7038"
     entrypoint: ["/opt/argus/argus-notification"]
     volumes:
       - type: bind
@@ -223,8 +231,9 @@ services:
         bind:
           create_host_path: false
       - type: bind
-        source: ${ARGUS_DATA_DIR:-./data}
-        target: /opt/argus/database
+        source: ../services/argus-notification/database/schema.sql
+        target: /opt/argus/database/schema.sql
+        read_only: true
         bind:
           create_host_path: false
       - notification-db:/opt/argus/notification
@@ -405,23 +414,15 @@ services:
         read_only: true
         bind:
           create_host_path: false
-      # The hosted memory stack (f8-b4) carries the retired argus-memory
-      # mounts: the store it owns rw, the snapshot sources opened mode=ro
-      # in-binary (the binds stay rw so the WAL -shm can materialize when the
-      # gateway has not opened the db yet), and the schema SQL the repo ships.
+      # The hosted memory stack (f8-b4): the store it owns rw plus the schema
+      # SQL the repo ships; identity/camera data arrives over the SDK clients.
       - memory-db:/opt/argus/memory
       - type: bind
-        source: ${ARGUS_DATA_DIR:-./data}
-        target: /opt/argus/database
-        bind:
-          create_host_path: false
-      - type: bind
         source: ../packages/argus-memory/database/schema.sql
-        target: /opt/argus/database/memory-schema.sql
+        target: /opt/argus/database/schema.sql
         read_only: true
         bind:
           create_host_path: false
-      - camera-db:/opt/argus/camera
       - type: bind
         source: ../models/memory
         target: /opt/argus/models/memory
@@ -611,7 +612,7 @@ services:
     entrypoint: ["/bin/sh", "-ec"]
     command:
       - >-
-        if [ -f /opt/argus/database/argus.db ]; then /opt/argus/argus-migrate-identity --source /opt/argus/database/argus.db --target /opt/argus/database/identity.db --schema /opt/argus/database/identity-schema.sql; else echo 'No argus.db yet; the gateway creates identity.db at boot.'; fi
+        if [ -f /opt/argus/database/argus.db ]; then /opt/argus/argus-migrate-identity --source /opt/argus/database/argus.db --target /opt/argus/database/identity.db --schema /opt/argus/database/schema.sql; else echo 'No argus.db yet; the gateway creates identity.db at boot.'; fi
     volumes:
       - type: bind
         source: ${ARGUS_DATA_DIR:-./data}
@@ -622,7 +623,7 @@ services:
       # dir — bind it into the data-dir path so --schema always resolves.
       - type: bind
         source: ../packages/argus-identity/database/schema.sql
-        target: /opt/argus/database/identity-schema.sql
+        target: /opt/argus/database/schema.sql
         read_only: true
         bind:
           create_host_path: false
@@ -643,7 +644,7 @@ services:
     entrypoint: ["/bin/sh", "-ec"]
     command:
       - >-
-        if [ -f /opt/argus/database/argus.db ]; then /opt/argus/argus-migrate-camera --source /opt/argus/database/argus.db --target /opt/argus/camera/camera.db --schema /opt/argus/database/camera-schema.sql; else echo 'No argus.db yet; argus-camera applies the camera schema at boot.'; fi
+        if [ -f /opt/argus/database/argus.db ]; then /opt/argus/argus-migrate-camera --source /opt/argus/database/argus.db --target /opt/argus/camera/camera.db --schema /opt/argus/database/schema.sql; else echo 'No argus.db yet; argus-camera applies the camera schema at boot.'; fi
     volumes:
       - type: bind
         source: ${ARGUS_DATA_DIR:-./data}
@@ -654,7 +655,7 @@ services:
       # dir without the SQL would fail "schema file not found".
       - type: bind
         source: ../services/argus-camera/database/schema.sql
-        target: /opt/argus/database/camera-schema.sql
+        target: /opt/argus/database/schema.sql
         read_only: true
         bind:
           create_host_path: false
@@ -677,7 +678,7 @@ services:
     entrypoint: ["/bin/sh", "-ec"]
     command:
       - >-
-        if [ -f /opt/argus/database/argus.db ]; then /opt/argus/argus-migrate-productivity --source /opt/argus/database/argus.db --target /opt/argus/productivity/productivity.db --schema /opt/argus/database/productivity-schema.sql; else echo 'No argus.db yet; argus-productivity applies the productivity schema at boot.'; fi
+        if [ -f /opt/argus/database/argus.db ]; then /opt/argus/argus-migrate-productivity --source /opt/argus/database/argus.db --target /opt/argus/productivity/productivity.db --schema /opt/argus/database/schema.sql; else echo 'No argus.db yet; argus-productivity applies the productivity schema at boot.'; fi
     volumes:
       - type: bind
         source: ${ARGUS_DATA_DIR:-./data}
@@ -689,7 +690,7 @@ services:
       # found".
       - type: bind
         source: ../services/argus-productivity/database/schema.sql
-        target: /opt/argus/database/productivity-schema.sql
+        target: /opt/argus/database/schema.sql
         read_only: true
         bind:
           create_host_path: false
@@ -708,7 +709,7 @@ services:
     entrypoint: ["/bin/sh", "-ec"]
     command:
       - >-
-        if [ -f /opt/argus/database/argus.db ]; then /opt/argus/argus-migrate-notification --source /opt/argus/database/argus.db --target /opt/argus/notification/notification.db --schema /opt/argus/database/notification-schema.sql; else echo 'No argus.db yet; argus-notification applies the notification schema at boot.'; fi
+        if [ -f /opt/argus/database/argus.db ]; then /opt/argus/argus-migrate-notification --source /opt/argus/database/argus.db --target /opt/argus/notification/notification.db --schema /opt/argus/database/schema.sql; else echo 'No argus.db yet; argus-notification applies the notification schema at boot.'; fi
     volumes:
       - type: bind
         source: ${ARGUS_DATA_DIR:-./data}
@@ -717,7 +718,7 @@ services:
           create_host_path: false
       - type: bind
         source: ../services/argus-notification/database/schema.sql
-        target: /opt/argus/database/notification-schema.sql
+        target: /opt/argus/database/schema.sql
         read_only: true
         bind:
           create_host_path: false

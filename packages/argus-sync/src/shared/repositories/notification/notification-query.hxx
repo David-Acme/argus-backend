@@ -11,6 +11,11 @@ inline constexpr std::string_view INSERT =
     "INSERT INTO notification (user_id, type, title, body, data) "
     "VALUES (?, ?, ?, ?, ?)";
 
+inline constexpr std::string_view INSERT_MANY_PREFIX =
+    "INSERT INTO notification (user_id, type, title, body, data) VALUES ";
+
+inline constexpr std::string_view INSERT_MANY_SUFFIX = " RETURNING id";
+
 inline constexpr std::string_view FIND_SYNC =
     "SELECT * FROM notification WHERE user_id = ? "
     "AND created_at >= ? AND created_at <= ? "

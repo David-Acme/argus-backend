@@ -219,9 +219,25 @@ FaceService::runDetector(const RunDetectorInput& input)
 
   std::vector<FaceBox> allBoxes;
 
-  auto processScale = [&](const ncnn::Mat& cls, const ncnn::Mat& bbox,
-                          const ncnn::Mat& lm, int stride, float scale0,
-                          float scale1, float scoreThresh) {
+  struct ScaleInput
+  {
+    const ncnn::Mat& cls;
+    const ncnn::Mat& bbox;
+    const ncnn::Mat& lm;
+    int stride{0};
+    float scale0{0.0F};
+    float scale1{0.0F};
+    float scoreThresh{0.0F};
+  };
+
+  auto processScale = [&](const ScaleInput& input) {
+    const ncnn::Mat& cls = input.cls;
+    const ncnn::Mat& bbox = input.bbox;
+    const ncnn::Mat& lm = input.lm;
+    const int stride = input.stride;
+    const float scale0 = input.scale0;
+    const float scale1 = input.scale1;
+    const float scoreThresh = input.scoreThresh;
     for (int a = 0; a < 2; ++a) {
       const float anchorSize = 16.0F * (a == 0 ? scale0 : scale1);
       for (int r = 0; r < cls.h; ++r) {
@@ -260,9 +276,27 @@ FaceService::runDetector(const RunDetectorInput& input)
     }
   };
 
-  processScale(cls32, bbox32, lm32, 32, 32.0F, 16.0F, 0.5F);
-  processScale(cls16, bbox16, lm16, 16, 8.0F, 4.0F, 0.5F);
-  processScale(cls8, bbox8, lm8, 8, 2.0F, 1.0F, 0.5F);
+  processScale({.cls = cls32,
+                .bbox = bbox32,
+                .lm = lm32,
+                .stride = 32,
+                .scale0 = 32.0F,
+                .scale1 = 16.0F,
+                .scoreThresh = 0.5F});
+  processScale({.cls = cls16,
+                .bbox = bbox16,
+                .lm = lm16,
+                .stride = 16,
+                .scale0 = 8.0F,
+                .scale1 = 4.0F,
+                .scoreThresh = 0.5F});
+  processScale({.cls = cls8,
+                .bbox = bbox8,
+                .lm = lm8,
+                .stride = 8,
+                .scale0 = 2.0F,
+                .scale1 = 1.0F,
+                .scoreThresh = 0.5F});
 
   auto kept = nms(allBoxes, 0.4F);
   return kept;

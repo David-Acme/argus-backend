@@ -24,6 +24,7 @@ public:
   drogon::Task<bool> hasAnyUser() const;
   drogon::Task<bool> hasOtherActiveOwner(int64_t excludedUserId) const;
   drogon::Task<std::vector<UserSchema>> findAll() const;
+  drogon::Task<std::vector<int64_t>> findNotifiableIds() const;
 
   drogon::Task<std::vector<Json::Value>>
   find(const SyncFilter& filter) const override;

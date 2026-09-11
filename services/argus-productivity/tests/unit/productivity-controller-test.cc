@@ -13,13 +13,17 @@
 #include <feature/api/project-task/dtos/create-project-task-dto.hxx>
 #include <feature/api/project/controllers/project-controller.hxx>
 #include <feature/api/project/dtos/create-project-dto.hxx>
+#include <feature/rpc/identity-rpc.hxx>
 #include <filter/jwt/jwt-filter.hxx>
+#include <grpcpp/grpcpp.h>
 #include <shared/contracts/user-change-sink.hxx>
+#include <shared/services/config-service/config-service.hxx>
 #include <shared/services/sqlite/db-service.hxx>
 #include <shared/utils/json-util/json-util.hxx>
 
 #include <chrono>
 #include <cstdio>
+#include <memory>
 #include <mutex>
 #include <string>
 #include <thread>
@@ -29,6 +33,8 @@ namespace
 {
 constexpr const char* kIdentityDb = "productivity-controller-test-identity.db";
 constexpr const char* kProductivityDb = "productivity-controller-test.db";
+constexpr const char* kTestSecret =
+    "productivity-controller-test-secret-0123456789";
 
 void seedIdentityDb(const char* path)
 {
@@ -58,6 +64,35 @@ void seedIdentityDb(const char* path)
         id, name, role, isActive);
   }
 }
+
+// Hosts the real identity RPC over the seeded database for the directory reads.
+class IdentityRpcHarness
+{
+public:
+  IdentityRpcHarness() : service_(nullptr, "")
+  {
+    int port = 0;
+    grpc::ServerBuilder builder;
+    builder.AddListeningPort("127.0.0.1:0", grpc::InsecureServerCredentials(),
+                             &port);
+    builder.RegisterService(&service_);
+    server_ = builder.BuildAndStart();
+    ConfigService::setRuntimeString("identity.target",
+                                    "127.0.0.1:" + std::to_string(port));
+  }
+
+  ~IdentityRpcHarness()
+  {
+    if (server_)
+      server_->Shutdown();
+  }
+
+  bool listening() const { return server_ != nullptr; }
+
+private:
+  IdentityRpcService service_;
+  std::unique_ptr<grpc::Server> server_;
+};
 
 // Seeds the five write-domain tables and the sharing indexes.
 void seedProductivityDb(const char* path)
@@ -225,6 +260,12 @@ TEST_CASE("productivity contracts hold on the argus-productivity surface")
 {
   seedIdentityDb(kIdentityDb);
   seedProductivityDb(kProductivityDb);
+  ConfigService::setRuntimeString("jwt.secret", kTestSecret);
+  ConfigService::setRuntimeString("jwt.refresh_secret", kTestSecret);
+
+  IdentityRpcHarness identity;
+  REQUIRE(identity.listening());
+
   drogon::app().setLogLevel(trantor::Logger::kWarn);
   drogon::app().addDbClient(
       drogon::orm::Sqlite3Config{1, kIdentityDb, "default", -1});

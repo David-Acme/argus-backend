@@ -277,9 +277,20 @@ public:
       return std::nullopt;
     if (v.size() % 4 != 0)
       return accessor_.name + " must be a valid base64 string";
-    static const std::regex re(R"(^[A-Za-z0-9+/]*={0,2}$)");
-    if (!std::regex_match(v, re))
-      return accessor_.name + " must be a valid base64 string";
+    const auto isBase64Char = [](char c) {
+      return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
+             (c >= '0' && c <= '9') || c == '+' || c == '/';
+    };
+    size_t body = v.size();
+    size_t padding = 0;
+    while (body > 0 && v[body - 1] == '=' && padding < 2) {
+      --body;
+      ++padding;
+    }
+    for (size_t i = 0; i < body; ++i) {
+      if (!isBase64Char(v[i]))
+        return accessor_.name + " must be a valid base64 string";
+    }
     return std::nullopt;
   }
 
@@ -288,13 +299,21 @@ private:
 };
 
 template <typename DtoType>
+struct RegexMatchInput
+{
+  FieldAccessor<DtoType> accessor;
+  std::string pattern;
+  std::string message;
+};
+
+template <typename DtoType>
 class MatchesRegexRule : public Validator<DtoType>::IRule
 {
 public:
-  MatchesRegexRule(FieldAccessor<DtoType> f, std::string pattern,
-                   std::string message = "does not match pattern")
-      : accessor_(std::move(f)), pattern_(std::move(pattern)),
-        message_(std::move(message))
+  explicit MatchesRegexRule(RegexMatchInput<DtoType> input)
+      : accessor_(std::move(input.accessor)),
+        pattern_(std::move(input.pattern)),
+        message_(std::move(input.message))
   {
   }
   std::string field() const override { return accessor_.name; }
@@ -509,11 +528,19 @@ private:
 };
 
 template <typename DtoType>
+struct IntRangeInput
+{
+  IntFieldAccessor<DtoType> accessor;
+  int64_t min{0};
+  int64_t max{0};
+};
+
+template <typename DtoType>
 class BetweenRule : public Validator<DtoType>::IRule
 {
 public:
-  BetweenRule(IntFieldAccessor<DtoType> f, int64_t min, int64_t max)
-      : accessor_(std::move(f)), min_(min), max_(max)
+  explicit BetweenRule(IntRangeInput<DtoType> input)
+      : accessor_(std::move(input.accessor)), min_(input.min), max_(input.max)
   {
   }
   std::string field() const override { return accessor_.name; }
@@ -534,13 +561,21 @@ private:
 
 
 template <typename DtoType>
+struct FieldMatchInput
+{
+  FieldAccessor<DtoType> first;
+  FieldAccessor<DtoType> second;
+  std::string secondName;
+};
+
+template <typename DtoType>
 class EqualsFieldRule : public Validator<DtoType>::IRule
 {
 public:
-  EqualsFieldRule(FieldAccessor<DtoType> f1, FieldAccessor<DtoType> f2,
-                  std::string f2name)
-      : accessor1_(std::move(f1)), accessor2_(std::move(f2)),
-        field2_(std::move(f2name))
+  explicit EqualsFieldRule(FieldMatchInput<DtoType> input)
+      : accessor1_(std::move(input.first)),
+        accessor2_(std::move(input.second)),
+        field2_(std::move(input.secondName))
   {
   }
   std::string field() const override { return accessor1_.name; }

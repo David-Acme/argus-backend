@@ -610,6 +610,26 @@ argus_sdk_module(NAME identity PROTO identity.proto)
   `file(GLOB)` for sources is forbidden (fragile); auto-discovery of
   module folders (GLOB over `*/CMakeLists.txt`) is the only allowed glob.
 
+### 26. One schema per microservice: `database/schema.sql`
+
+Every owner keeps exactly one schema file named `database/schema.sql` inside
+its own project (`packages/<owner>/database/schema.sql` for packages). Never
+introduce `<domain>-schema.sql` aliases. The deploy stack bind-mounts each
+owner's file at `database/schema.sql` in its container and every config points
+at `database/schema.sql`; a service applies only its own schema, never the
+schema of another service.
+
+### 27. Database isolation between microservices
+
+A service may only open its own database. Accessing another domain's data is
+forbidden at the file/SQL level, even read-only. Cross-domain reads travel
+ONLY through the typed gRPC contracts and their SDK clients
+(`packages/argus-contracts/sdk`, linked as `argus::sdk-<domain>`); change
+feeds travel through NATS events. No compose mount may expose one service's
+DB volume to another. If a domain needs data it does not own, add an SDK
+method on the owner and call it through the client; never reach into its DB
+file. The SDK/client is the whole point of the boundary.
+
 ## Build Commands
 
 ```bash

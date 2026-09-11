@@ -1,16 +1,20 @@
 #include "notification-repository.hxx"
 
 #include <config/app-config.hxx>
+#include <algorithm>
 #include <ctime>
 #include <shared/services/sqlite/db-service.hxx>
 #include <shared/utils/json-util/json-util.hxx>
+#include <stdexcept>
+#include <string>
+#include <vector>
 
 using namespace notification_query;
 
 drogon::Task<NotificationSchema>
 NotificationRepository::create(const NotificationCreateInput& input) const
 {
-  auto client = DbService::notificationClient();
+  auto client = DbService::client();
   const auto result = co_await client->execSqlCoro(
       INSERT.data(), input.userId, input.type, input.title, input.body,
       json_util::toString(input.data));
@@ -31,16 +35,57 @@ NotificationRepository::createMany(
     const std::vector<NotificationCreateInput>& inputs) const
 {
   std::vector<NotificationSchema> schemas;
+  if (inputs.empty())
+    co_return schemas;
+
+  std::string sql{INSERT_MANY_PREFIX};
+  std::vector<std::string> args;
+  args.reserve(inputs.size() * 5);
+  for (std::size_t i = 0; i < inputs.size(); ++i) {
+    if (i > 0)
+      sql += ", ";
+    sql += "(?, ?, ?, ?, ?)";
+    const auto& input = inputs[i];
+    args.push_back(std::to_string(input.userId));
+    args.push_back(input.type);
+    args.push_back(input.title);
+    args.push_back(input.body);
+    args.push_back(json_util::toString(input.data));
+  }
+  sql += INSERT_MANY_SUFFIX;
+
+  auto client = DbService::client();
+  const auto& argsRef = args;
+  const auto result = co_await client->execSqlCoro(sql, argsRef);
+
+  std::vector<int64_t> ids;
+  ids.reserve(result.size());
+  for (const auto& row : result)
+    ids.push_back(row["id"].as<int64_t>());
+  if (ids.size() != inputs.size())
+    throw std::runtime_error("notification batch insert returned wrong size");
+  std::sort(ids.begin(), ids.end());
+
+  const auto now = std::time(nullptr);
   schemas.reserve(inputs.size());
-  for (const auto& input : inputs)
-    schemas.push_back(co_await create(input));
+  for (std::size_t i = 0; i < inputs.size(); ++i) {
+    NotificationSchema schema;
+    schema.id = ids[i];
+    schema.userId = inputs[i].userId;
+    schema.type = inputs[i].type;
+    schema.title = inputs[i].title;
+    schema.body = inputs[i].body;
+    schema.data = inputs[i].data;
+    schema.createdAt = now;
+    schemas.push_back(std::move(schema));
+  }
   co_return schemas;
 }
 
 drogon::Task<std::vector<Json::Value>>
 NotificationRepository::findSync(const NotificationSyncFilter& filter) const
 {
-  auto client = DbService::notificationClient();
+  auto client = DbService::client();
   if (filter.startTime && filter.startId && filter.endTime) {
     const auto result = co_await client->execSqlCoro(
         std::string(FIND_SYNC_AFTER) + AppConfig::SYNC_LIMIT, filter.userId,
@@ -98,7 +143,7 @@ NotificationRepository::findSync(const NotificationSyncFilter& filter) const
 drogon::Task<std::optional<Json::Value>>
 NotificationRepository::findLastSync(const NotificationSyncFilter& filter) const
 {
-  auto client = DbService::notificationClient();
+  auto client = DbService::client();
   const auto result =
       co_await client->execSqlCoro(FIND_LAST_SYNC.data(), filter.userId);
   if (result.empty())
@@ -132,7 +177,7 @@ NotificationRepository::markAsRead(int64_t userId,
     return query;
   };
 
-  auto client = DbService::notificationClient();
+  auto client = DbService::client();
   const auto& argsRef = args;
   const auto rows = co_await client->execSqlCoro(withIds(FIND_UNREAD_BY_IDS), argsRef);
   if (rows.empty())

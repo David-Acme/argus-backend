@@ -10,10 +10,11 @@ that apply to notification-service code; when in doubt, the root file wins.
    domain. It must not compile or load any AI service registry (face, llm,
    vlm, tts, stt, vad stay in the legacy), no stream/media, no socket relay,
    and takes no labs.
-2. **Single-owner database (Rulings AN/AR)** — this service alone owns
-   `notification.db`; the gateway writes camera-notifier notifications
-   through its read-write named client and keeps no notification substrate
-   of its own.
+2. **Single-owner database (Rulings AN/AR, rule 27)** — this service alone
+   owns and opens `notification.db`. The gateway's camera-notifier creates
+   notifications through `argus.notification.v1` (CreateNotifications,
+   `argus::sdk-notification`) and its `/sync` notification pulls use
+   PullNotifications; no other service mounts the volume.
 3. **Parameter structs for 3+ params** — any function with 3+ parameters
    must take a struct (designated initializers, every member listed).
 4. **Dependency injection** — services/filters hold dependencies as private
@@ -50,10 +51,10 @@ argus-notification/
   CMakeLists.txt        add_subdirectory-compatible AND standalone buildable
   conanfile.txt         Drogon + transitive needs (same versions as root)
   CMakePresets.json     dev preset, binaryDir build/dev inside the folder
-  src/main.cc           config load, notification.db wiring, app run
+  src/main.cc           config load, notification.db wiring, gRPC server, app run
   src/notification/     notification-domain config resolution
-  src/controllers/      HTTP controllers (health; write-side feature surface
-                        since this task)
+  src/feature/rpc/      argus.notification.v1 owner (create + pull)
+  src/feature/api/      HTTP controllers (health; write-side feature surface)
   src/server/           internal listener resolution
   config.toml.example   notification-domain keys only ([server],
                         [notifications], [jwt], [device]; no AI keys, no

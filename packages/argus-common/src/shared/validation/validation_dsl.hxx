@@ -79,13 +79,16 @@
                            return d.field;                                     \
                          }});
 
-#define MATCHES_REGEX(field, pattern, message)                                 \
+#define MATCHES_REGEX(field, expr, text)                                       \
   __v.template add<MatchesRegexRule<__D>>(                                     \
-      FieldAccessor<__D>{#field,                                               \
-                         [](const __D& d) -> const std::string& {              \
-                           return d.field;                                     \
-                         }},                                                   \
-      pattern, message);
+      RegexMatchInput<__D>{                                                    \
+          .accessor = FieldAccessor<__D>{#field,                               \
+                                         [](const __D& d)                      \
+                                             -> const std::string& {           \
+                                           return d.field;                     \
+                                         }},                                   \
+          .pattern = expr,                                                     \
+          .message = text});
 
 
 #define IS_IN(field, ...)                                                      \
@@ -158,26 +161,29 @@
                                                           }},                  \
                                     n);
 
-#define BETWEEN(field, min, max)                                               \
-  __v.template add<BetweenRule<__D>>(IntFieldAccessor<__D>{#field,             \
-                                                           [](const __D& d)    \
-                                                               -> int64_t {    \
-                                                             return d.field;   \
-                                                           }},                 \
-                                     min, max);
+#define BETWEEN(field, lo, hi)                                                 \
+  __v.template add<BetweenRule<__D>>(                                          \
+      IntRangeInput<__D>{                                                      \
+          .accessor = IntFieldAccessor<__D>{#field, [](const __D& d)           \
+                                                     -> int64_t {              \
+                                                       return d.field;         \
+                                                     }},                       \
+          .min = lo,                                                           \
+          .max = hi});
 
 
 #define EQUALS_FIELD(field1, field2)                                           \
   __v.template add<EqualsFieldRule<__D>>(                                      \
-      FieldAccessor<__D>{#field1,                                              \
-                         [](const __D& d) -> const std::string& {              \
-                           return d.field1;                                    \
-                         }},                                                   \
-      FieldAccessor<__D>{#field2,                                              \
-                         [](const __D& d) -> const std::string& {              \
-                           return d.field2;                                    \
-                         }},                                                   \
-      std::string{#field2});
+      FieldMatchInput<__D>{                                                    \
+          .first = FieldAccessor<__D>{#field1,                                 \
+                                      [](const __D& d) -> const std::string& { \
+                                        return d.field1;                       \
+                                      }},                                      \
+          .second = FieldAccessor<__D>{#field2,                                \
+                                       [](const __D& d) -> const std::string& {\
+                                         return d.field2;                      \
+                                       }},                                     \
+          .secondName = std::string{#field2}});
 
 
 #define ARRAY_NOT_EMPTY(field, ElementType)                                    \

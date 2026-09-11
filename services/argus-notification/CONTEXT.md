@@ -14,7 +14,7 @@ binary, own CMake preset, own `notification.db`.
 - **notification.db**: the `notification` and `notification_token` tables
   (Ruling AN — single-owner), DDL copied verbatim from
   `database/schema.sql:428-450`. The schema lands as
-  `database/notification-schema.sql` and is applied at boot through
+  `database/schema.sql` and is applied at boot through
   `DbService::runScriptFile` — abort on failure. `argus.db` is never
   touched. No indexes exist on these tables in the legacy schema, so the
   schema file carries none.
@@ -51,10 +51,18 @@ binary, own CMake preset, own `notification.db`.
   `/notification/read` (PATCH) and `/notification-token` (POST) to this
   service with identical paths; the envelope, statuses and validation
   (empty/unknown id handling) are byte-identical with the legacy — verified
-  live. notification.db opens WAL with `busy_timeout`; the gateway opens it
-  read-only for its `/sync` notification pulls and never runs DDL. The
-  legacy keeps its own markAsRead/token routes registered but they are
-  unreachable through the gateway (Ruling AS — quiet, not stripped).
+  live. notification.db opens WAL with `busy_timeout` and only this service
+  opens it (rule 27). The legacy keeps its own markAsRead/token routes
+  registered but they are unreachable through the gateway (Ruling AS — quiet,
+  not stripped).
+- **RPC owner (rule 27)**: `feature/rpc/notification-rpc-service.cc` serves
+  `argus.notification.v1.NotificationService` on `server.grpc_port` (7038):
+  `CreateNotifications` fans one row per user id and reuses the shared
+  create+emit path (the whole fan-out is one multi-row INSERT with
+  `RETURNING id`, so the emit mirrors strictly persisted rows), and
+  `PullNotifications` serves the user-scoped `/sync` page from the identity
+  metadata. The gateway's camera-notifier and `/sync` pulls are the only
+  clients; no other service opens notification.db.
 - **Identity validation (f7-3)**: the JWT filter validates the caller over
   `argus.identity.v1.ValidateToken` at `[identity] target` — the user row,
   the bound refresh-token session and the device binding are resolved by the
@@ -77,7 +85,7 @@ binary, own CMake preset, own `notification.db`.
   errors: null}`; never depends on any downstream service.
 - **What stays away**: no read-path controller (notification list/read
   snapshots keep flowing through the gateway's `/sync` pulls over
-  notification.db), no /sync socket, no AI symbols (verified
+  `argus.notification.v1`), no /sync socket, no AI symbols (verified
   with `nm -C`), no alarm-triggering code.
 
 ## Build wiring (decisions)
@@ -110,6 +118,8 @@ shared by the executable and the controller suite, replacing the two
 hand-kept copies.
 
 What did NOT move: the `notification` table's own repository and schema,
-which `argus_sync` compiles because the gateway's `/sync` serves those
-rows and its camera-notifier writes them. Only the notification-TOKEN
-side is exclusively this service's.
+which `argus_sync` compiles instead of duplicating. Since rule 27 this
+service is the only writer and reader of those rows: the gateway's
+camera-notifier creates through `argus.notification.v1` and its `/sync`
+page pulls through the same contract. Only the notification-TOKEN side is
+exclusively this service's.

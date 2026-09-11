@@ -33,7 +33,7 @@ relaunch_on_error = false
 
 [notifications]
 db = "notification/notification.db"
-schema = "database/notification-schema.sql"
+schema = "database/schema.sql"
 
 [nats]
 url = "nats://nats:4222"

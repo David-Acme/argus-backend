@@ -55,23 +55,27 @@ own `productivity.db`.
   `/project-member`, `/project-task` (all methods + subpaths) to this
   service with identical paths; responses are byte-identical with the
   legacy (envelope, statuses, CORS headers — verified live). Role checks
-  (Resident kFull / Guard read-only) and personal-table scoping stay
-  gateway-side; JWT resolution uses the read-only identity client (Ruling
-  AM). The databases open WAL with `busy_timeout`; no DDL runs at boot
+  stay in the gateway; the personal-table scoping moved to this service with
+  the sync RPC (rule 27); JWT resolution uses the identity RPC (Ruling AM).
+  The databases open WAL with `busy_timeout`; no DDL runs at boot
   beyond the migrate tool's schema-current check.
-- **Identity reads (Ruling AM, narrowed in f7-3)**: `[identity] db` opens
-  mode=ro as the named identity client (`DbService::setIdentityClient` slot;
-  SQLite URI filenames are enabled before the first `sqlite3_open` so the
-  `mode=ro` URI parses); `UserRepository` reads then resolve to identity.db,
-  so share targets created after the cutover are shareable. That is now the
-  ONLY reason this service opens the file — the JWT filter stopped reading
-  it in f7-3 and validates over `argus.identity.v1.ValidateToken` at
-  `[identity] target` instead. Absent db key boots identity-free (share
-  target validation degrades, authentication does not). The gateway creates
-  identity.db at its own boot, which on a fresh install may land after ours,
-  so the open waits bounded for the file to exist; the productivity tables
-  reference user rows that live in identity.db, so foreign-key enforcement
-  stays off on every connection.
+- **Identity reads (RPC-only since rule 27)**: this service opens no
+  identity.db. The share/member target validation goes through
+  `IdentityUserDirectory` (private member of both feature services), a
+  `user-directory-identity.hxx` client of
+  `argus.identity.v1.GetUser`; the JWT filter validates over
+  `argus.identity.v1.ValidateToken` at `[identity] target`. A target that
+  the RPC cannot resolve degrades to the same `UserNotFound` answer a
+  missing row always produced.
+- **Sync RPC owner (rule 27)**: `feature/sync/productivity-sync-rpc-service.cc`
+  serves `argus.productivity.v1.SyncService` on `server.grpc_port` (7037).
+  `PullTable` carries one of the 7 tables with the required-create/
+  required-delete/find-last legs; the caller identity rides the
+  x-argus-user/role/device metadata and scopes the personal tables
+  (calendar_event, calendar_event_share, project, project_member,
+  project_task) by owner-or-membership, while reminder/reminder_detail stay
+  unscoped exactly as the monolith's gateway did. The gateway consumes it
+  through `argus::sdk-productivity`; no other service opens productivity.db.
 - **CORS**: the legacy answered every preflight in pre-routing and the
   gateway forwards OPTIONS on proxied paths untouched, so this surface keeps
   answering OPTIONS itself (`AppConfig::handleOptions`).
@@ -84,8 +88,8 @@ own `productivity.db`.
 - **What stays away**: no reminder/reminder_detail write path anywhere
   (sync-read-only, Ruling AL — the repositories/schemas exist in `argus_sync`
   and nothing more), no context_note table, no /sync socket (reads ride the
-  gateway's sync pull until F3-2), no AI symbols (verified with `nm -C`), no
-  alarm-triggering code.
+  gateway's `/sync` pull over this service's gRPC leg), no identity.db, no AI
+  symbols (verified with `nm -C`), no alarm-triggering code.
 
 ## Build wiring (decisions)
 
@@ -121,5 +125,4 @@ The suites register in the service's standalone CTest graph.
 
 What did NOT move: the productivity repositories and schemas, which
 `argus_sync` still compiles because the gateway's `/sync` reads the same
-rows, and the read-only identity.db the share/member validation needs
-(Ruling AM, narrowed in f7-3).
+rows through the productivity sync RPC.

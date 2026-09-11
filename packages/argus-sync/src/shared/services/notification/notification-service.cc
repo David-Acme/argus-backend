@@ -7,58 +7,45 @@
 #include <shared/schemas/notification/notification-schema.hxx>
 #include <trantor/utils/Logger.h>
 
-drogon::Task<void>
-NotificationService::createAndEmit(int64_t userId,
-                                   const NotificationCreateInput& input) const
-{
-  co_await createAndEmitMany({userId}, input);
-}
-
-drogon::Task<void> NotificationService::createAndEmitMany(
+drogon::Task<std::vector<NotificationSchema>>
+NotificationService::createManyAndEmit(
     const std::vector<int64_t>& userIds,
     const NotificationCreateInput& input) const
 {
+  std::vector<NotificationSchema> notifications;
   if (userIds.empty())
-    co_return;
+    co_return notifications;
 
-  auto repo = repository_;
-  drogon::async_run([repo, userIds, input]() -> drogon::Task<void> {
-    try {
-      std::vector<NotificationCreateInput> inputs;
-      inputs.reserve(userIds.size());
-      for (const auto userId : userIds) {
-        NotificationCreateInput entry = input;
-        entry.userId = userId;
-        inputs.push_back(std::move(entry));
-      }
+  std::vector<NotificationCreateInput> inputs;
+  inputs.reserve(userIds.size());
+  for (const auto userId : userIds) {
+    NotificationCreateInput entry = input;
+    entry.userId = userId;
+    inputs.push_back(std::move(entry));
+  }
 
-      const auto notifications = co_await repo.createMany(inputs);
-      for (const auto& notification : notifications) {
-        SocketEmitDto emit;
-        emit.operation = SyncOperation::Add;
-        emit.option = TableName::Notification;
-        emit.obj = notification.toJson();
-        if (const auto* sink = user_change::getNotificationSink())
-          sink->emitUser(notification.userId, emit);
-        else
-          LOG_WARN << "user change sink not installed; drop notification emit";
-        if (const auto* intents = push_intent::getSink()) {
-          intents->publish(PushIntent{
-              .userId = notification.userId,
-              .notificationId = notification.id,
-              .type = notification.type,
-              .title = notification.title,
-              .body = notification.body,
-              .createdAtMs = notification.createdAt * 1000,
-          });
-        }
-      }
+  notifications = co_await repository_.createMany(inputs);
+  for (const auto& notification : notifications) {
+    SocketEmitDto emit;
+    emit.operation = SyncOperation::Add;
+    emit.option = TableName::Notification;
+    emit.obj = notification.toJson();
+    if (const auto* sink = user_change::getNotificationSink())
+      sink->emitUser(notification.userId, emit);
+    else
+      LOG_WARN << "user change sink not installed; drop notification emit";
+    if (const auto* intents = push_intent::getSink()) {
+      intents->publish(PushIntent{
+          .userId = notification.userId,
+          .notificationId = notification.id,
+          .type = notification.type,
+          .title = notification.title,
+          .body = notification.body,
+          .createdAtMs = notification.createdAt * 1000,
+      });
     }
-    catch (const std::exception& e) {
-      LOG_ERROR << "NotificationService::createAndEmitMany error: " << e.what();
-    }
-  });
-  co_return;
+  }
+  co_return notifications;
 }
 
 drogon::Task<void>

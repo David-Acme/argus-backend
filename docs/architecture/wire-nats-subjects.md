@@ -158,7 +158,7 @@ gateway's `argus.*.v1.change` subscription matches it and explicitly drops it
 
 Published per notification row by the `push_intent` sink
 (`NatsPushIntentSink`, installed behind `[push] enabled` — default off) when
-the shared `NotificationService::createAndEmitMany` creates rows. Like
+the owner's `NotificationService::createManyAndEmit` creates rows. Like
 `object_detected` it is NOT a persisted change: it mirrors an already-persisted
 `notification` row and exists only to trigger a push. The gateway's wildcard
 `argus.*.v1.change` subscription does not match it and it is never re-emitted

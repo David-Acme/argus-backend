@@ -22,7 +22,7 @@ int main(int argc, char** argv)
       ++i;
     } else {
       std::cerr << "usage: argus-migrate-identity --source <argus.db> "
-                   "--target <identity.db> [--schema <identity-schema.sql>]\n";
+                   "--target <identity.db> [--schema <schema.sql>]\n";
       return 2;
     }
   }

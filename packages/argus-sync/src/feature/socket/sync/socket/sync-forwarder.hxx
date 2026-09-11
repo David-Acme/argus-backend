@@ -7,6 +7,13 @@
 #include <string>
 #include <string_view>
 
+struct SyncFrameInput
+{
+  const drogon::WebSocketConnectionPtr& conn;
+  const Json::Value& message;
+  std::string_view raw;
+};
+
 // Side channel of SyncService for the frame types the sync tables do not serve themselves.
 class SyncForwarder
 {
@@ -20,9 +27,7 @@ public:
   }
 
   // One text frame of a relayed type; false means it was not handled.
-  virtual drogon::Task<bool>
-  forwardText(const drogon::WebSocketConnectionPtr& conn,
-              const Json::Value& message, std::string_view raw) = 0;
+  virtual drogon::Task<bool> forwardText(const SyncFrameInput& input) = 0;
 
   virtual void forwardBinary(const drogon::WebSocketConnectionPtr& conn,
                              const std::string& data) = 0;

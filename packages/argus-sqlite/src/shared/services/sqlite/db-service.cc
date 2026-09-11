@@ -36,13 +36,6 @@ drogon::orm::DbClientPtr& g_productivityClient()
   static drogon::orm::DbClientPtr client;
   return client;
 }
-
-// Notification-domain client (Ruling AR), installed by the host at boot.
-drogon::orm::DbClientPtr& g_notificationClient()
-{
-  static drogon::orm::DbClientPtr client;
-  return client;
-}
 } // namespace
 
 namespace
@@ -131,19 +124,6 @@ drogon::orm::DbClientPtr DbService::productivityClient()
 {
   // Installed at boot, before any IO thread exists: no synchronization.
   if (auto client = g_productivityClient())
-    return client;
-  return client();
-}
-
-void DbService::setNotificationClient(drogon::orm::DbClientPtr client)
-{
-  g_notificationClient() = std::move(client);
-}
-
-drogon::orm::DbClientPtr DbService::notificationClient()
-{
-  // Installed at boot, before any IO thread exists: no synchronization.
-  if (auto client = g_notificationClient())
     return client;
   return client();
 }

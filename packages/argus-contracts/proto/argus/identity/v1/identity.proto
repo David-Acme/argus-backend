@@ -59,10 +59,46 @@ message CheckDeviceCredentialResponse
   bool active = 1;
 }
 
+// Typed directory read for services that validate another user's row.
+message GetUserRequest
+{
+  int64 user_id = 1;
+}
+
+message GetUserResponse
+{
+  // Absent when the user does not exist.
+  UserIdentity user = 1;
+}
+
+// Minimal person row for the memory catalog gazetteer.
+message CatalogPerson
+{
+  int64 id = 1;
+  int64 user_id = 2;
+  string name = 3;
+  string alias = 4;
+}
+
+message ListPersonsRequest
+{
+}
+
+message ListPersonsResponse
+{
+  repeated CatalogPerson persons = 1;
+}
+
 service IdentityService
 {
   // Requires x-argus-user matching user_id (x-argus-role rides along).
   rpc UpdateUser(UpdateUserRequest) returns (UpdateUserResponse) {}
+
+  // Fleet-secret gated; carries the live row, never a cached verdict.
+  rpc GetUser(GetUserRequest) returns (GetUserResponse) {}
+
+  // Fleet-secret gated snapshot read for the memory catalog seed.
+  rpc ListPersons(ListPersonsRequest) returns (ListPersonsResponse) {}
 
   rpc ValidateToken(ValidateTokenRequest) returns (ValidateTokenResponse) {}
 

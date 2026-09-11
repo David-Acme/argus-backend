@@ -74,7 +74,7 @@ int main(int argc, char** argv)
     } else {
       std::cerr << "usage: argus-migrate-productivity --source <argus.db> "
                    "--target <productivity.db> "
-                   "[--schema <productivity-schema.sql>] "
+                   "[--schema <schema.sql>] "
                    "[--config <config.toml>]\n";
       return 2;
     }

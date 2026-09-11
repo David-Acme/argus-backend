@@ -119,8 +119,35 @@ message PullTableResponse {
   }
 }
 
+// Minimal catalog rows for the memory gazetteer seed.
+message CatalogCamera {
+  int64 id = 1;
+  string name = 2;
+}
+
+message CatalogZone {
+  int64 id = 1;
+  string name = 2;
+}
+
+message CatalogStream {
+  int64 id = 1;
+  string label = 2;
+}
+
+message ListCatalogRequest {
+}
+
+message ListCatalogResponse {
+  repeated CatalogCamera cameras = 1;
+  repeated CatalogZone zones = 2;
+  repeated CatalogStream streams = 3;
+}
+
 // Camera-domain sync-table pulls served by argus-camera; the caller identity
 // rides the x-argus-user / x-argus-role / x-argus-device metadata.
 service SyncService {
   rpc PullTable(PullTableRequest) returns (PullTableResponse) {}
+
+  rpc ListCatalog(ListCatalogRequest) returns (ListCatalogResponse) {}
 }

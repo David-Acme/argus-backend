@@ -30,6 +30,18 @@ PersonRepository::findByUser(int64_t userId) const
   co_return data;
 }
 
+drogon::Task<std::vector<PersonSchema>>
+PersonRepository::findAllCatalog() const
+{
+  auto client = DbService::client();
+  const auto result = co_await client->execSqlCoro(FIND_ALL_CATALOG.data());
+
+  std::vector<PersonSchema> data;
+  for (const auto& row : result)
+    data.push_back(PersonSchema(row));
+  co_return data;
+}
+
 drogon::Task<PersonSchema>
 PersonRepository::create(const PersonCreateInput& input) const
 {

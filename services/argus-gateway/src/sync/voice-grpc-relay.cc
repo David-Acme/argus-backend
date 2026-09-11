@@ -180,11 +180,11 @@ VoiceGrpcRelay::takeSession(const drogon::WebSocketConnectionPtr& conn)
   return session;
 }
 
-drogon::Task<bool> VoiceGrpcRelay::forwardText(
-    const drogon::WebSocketConnectionPtr& conn, const Json::Value& message,
-    std::string_view raw)
+drogon::Task<bool> VoiceGrpcRelay::forwardText(const SyncFrameInput& input)
 {
-  (void)raw;
+  const drogon::WebSocketConnectionPtr& conn = input.conn;
+  const Json::Value& message = input.message;
+  (void)input.raw;
   const std::string type = message["type"].asString();
   auto session = sessionFor(conn);
   if (!session)

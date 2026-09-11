@@ -67,6 +67,29 @@ pair with conan protobuf 6.33 headers, so pinning the graph down is the
 one available direction. The dev host is unaffected: the vendored grpc
 1.82 stack pairs with conan protobuf only, a single runtime.
 
+## Productivity and notification sync contracts (rule 27)
+
+`proto/argus/productivity/v1/sync.proto` types the productivity domain's
+frozen `/sync` semantics: `SyncService.PullTable` carries one of the 7 table
+branches (reminder, reminder_detail, calendar_event, calendar_event_share,
+project, project_member, project_task) with the required-create/required-delete/
+find-last legs and the (createdAt, id) cursor range, and answers typed rows
+plus `{id, deletedAt}` tombstones plus the optional last-row watermarks. The
+SDK wrapper `argus::sdk-productivity`
+(`sdk/productivity/productivity-sync-client.cc`) is the one wire-handling
+point: a blocking unary pull with the x-argus-user / x-argus-role /
+x-argus-device metadata and a 5s deadline; the owner applies the
+owner-or-membership scoping for the personal tables.
+
+`proto/argus/notification/v1/notification.proto` types the notification
+domain: `NotificationService.CreateNotifications` is the fan-out create
+(one row per user id, reused by the gateway camera-notifier) and
+`PullNotifications` is the user-scoped `/sync` page (created rows plus the
+last-created watermark). The SDK wrapper `argus::sdk-notification`
+(`sdk/notification/notification-client.cc`) carries the same metadata and
+deadline shape. Both owners are the only openers of their databases; the
+gateway links these two SDK targets and never mounts those volumes (rule 27).
+
 ## Camera sync contract (F6-5)
 
 `proto/argus/camera/v1/sync.proto` types the frozen /sync semantics of the
@@ -79,5 +102,9 @@ zone_type stay strings like the CRUD contract; secrets never cross it). The
 SDK wrapper `argus::sdk-camera` (`sdk/camera/camera-sync-client.cc`) is the
 one wire-handling point: a blocking unary pull with the
 x-argus-user / x-argus-role / x-argus-device metadata and a 5s deadline.
+`sdk/grpc/grpc-server-identity.hxx` is the server-side twin of that
+metadata contract: every owner handler reads the caller through
+`argus::sdk::callerUserId` (camera sync, productivity sync, notification
+RPC) instead of re-parsing the metadata per service.
 The contracts subdirectory guards are per-module now, so a build that adds
 `argus-contracts` twice still defines whichever SDK targets are missing.

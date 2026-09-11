@@ -67,7 +67,7 @@ CalendarEventShareFeatureService::create(const CreateCalendarEventShareDto& body
   if (body.userId == parent->ownerId)
     co_return {.error = MembershipError::SelfShare, .row = std::nullopt};
 
-  const auto target = co_await userRepository_.findById(body.userId);
+  const auto target = co_await directory_.findById(body.userId);
   if (!target || !target->isActive)
     co_return {.error = MembershipError::UserNotFound, .row = std::nullopt};
   if (!role_access::hasAccess({.role = target->role,

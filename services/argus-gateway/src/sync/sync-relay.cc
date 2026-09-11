@@ -94,11 +94,11 @@ LegacySyncRelay::takeSession(const drogon::WebSocketConnectionPtr& conn)
   return session;
 }
 
-drogon::Task<bool> LegacySyncRelay::forwardText(
-    const drogon::WebSocketConnectionPtr& conn, const Json::Value& message,
-    std::string_view raw)
+drogon::Task<bool> LegacySyncRelay::forwardText(const SyncFrameInput& input)
 {
-  (void)message;
+  const drogon::WebSocketConnectionPtr& conn = input.conn;
+  const std::string_view raw = input.raw;
+  (void)input.message;
   if (syncUrl_.empty())
     throw ResponseException(
         {.message = "Legacy sync relay is not configured",
@@ -265,13 +265,11 @@ void CompositeSyncRelay::onConnect(const drogon::HttpRequestPtr& req,
   voiceLeg_->onConnect(req, conn);
 }
 
-drogon::Task<bool> CompositeSyncRelay::forwardText(
-    const drogon::WebSocketConnectionPtr& conn, const Json::Value& message,
-    std::string_view raw)
+drogon::Task<bool> CompositeSyncRelay::forwardText(const SyncFrameInput& input)
 {
-  if (relayLegIsCamera(message["type"].asString()))
-    co_return co_await cameraLeg_->forwardText(conn, message, raw);
-  co_return co_await voiceLeg_->forwardText(conn, message, raw);
+  if (relayLegIsCamera(input.message["type"].asString()))
+    co_return co_await cameraLeg_->forwardText(input);
+  co_return co_await voiceLeg_->forwardText(input);
 }
 
 void CompositeSyncRelay::forwardBinary(

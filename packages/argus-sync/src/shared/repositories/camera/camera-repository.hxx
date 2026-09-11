@@ -16,6 +16,7 @@ public:
   ~CameraRepository() override = default;
 
   drogon::Task<std::optional<CameraSchema>> findById(int64_t id) const;
+  drogon::Task<std::vector<CameraSchema>> findEnabled() const;
   drogon::Task<CameraSchema> create(const CameraCreateInput& input) const;
   drogon::Task<CameraSchema> update(int64_t id,
                                     const CameraUpdateInput& input) const;

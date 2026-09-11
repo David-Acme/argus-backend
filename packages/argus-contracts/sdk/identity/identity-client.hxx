@@ -42,6 +42,14 @@ public:
   virtual std::optional<argus::identity::v1::ValidateTokenResponse>
   validateToken(const ValidateTokenInput& input) const;
 
+  // Typed directory read; nullopt when unknown or unreachable.
+  virtual std::optional<argus::identity::v1::GetUserResponse>
+  getUser(int64_t userId) const;
+
+  // Catalog snapshot read; nullopt when the gateway is unreachable.
+  virtual std::optional<argus::identity::v1::ListPersonsResponse>
+  listPersons() const;
+
   // Device credential check by secret hash; false when unknown or unreachable.
   virtual bool checkDeviceCredential(const std::string& secretHash) const;
 

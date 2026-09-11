@@ -72,7 +72,7 @@ int main(int argc, char** argv)
       ++i;
     } else {
       std::cerr << "usage: argus-migrate-camera --source <argus.db> "
-                   "--target <camera.db> [--schema <camera-schema.sql>] "
+                   "--target <camera.db> [--schema <schema.sql>] "
                    "[--config <config.toml>]\n";
       return 2;
     }

@@ -34,7 +34,7 @@ relaunch_on_error = false
 
 [camera]
 db = "camera/camera.db"
-schema = "database/camera-schema.sql"
+schema = "database/schema.sql"
 
 [streaming]
 go2rtc_bin = "third_party/go2rtc/go2rtc"
@@ -71,7 +71,6 @@ trust_forwarded_for = true
 trusted_proxy_ips = ""
 
 [identity]
-db = "database/identity.db"
 target = "172.19.0.1:7040"
 # Must match the gateway's [identity] rpc_secret, or every request 401s.
 rpc_secret = "CHANGE_ME_SAME_IN_EVERY_SERVICE"

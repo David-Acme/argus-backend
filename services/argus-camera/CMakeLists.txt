@@ -145,6 +145,7 @@ add_library(camera-core STATIC
     ${CAMERA_SRC_ROOT}/feature/api/zone/dtos/update-zone-dto.cc
     ${CAMERA_SRC_ROOT}/feature/api/zone/services/zone-feature-service.cc
     # Stream lifecycle: go2rtc supervision and the fMP4 StreamHub relay.
+    ${CAMERA_SRC_ROOT}/shared/services/stream/camera-source-registrar.cc
     ${CAMERA_SRC_ROOT}/shared/services/stream/go2rtc-manager.cc
     ${CAMERA_SRC_ROOT}/shared/services/stream/stream-hub.cc
     ${CAMERA_SRC_ROOT}/shared/services/stream/upstream-http.cc
@@ -191,6 +192,7 @@ set(CAMERA_UNIT_TESTS
     camera-controller-test
     camera-operator-test
     event-intelligence-test
+    camera-source-registrar-test
 )
 
 foreach(TEST_NAME IN LISTS CAMERA_UNIT_TESTS)
@@ -226,6 +228,7 @@ target_link_libraries(camera-config-test PRIVATE camera-core)
 target_link_libraries(camera-controller-test PRIVATE camera-core)
 target_link_libraries(camera-operator-test PRIVATE camera-core)
 target_link_libraries(event-intelligence-test PRIVATE camera-core)
+target_link_libraries(camera-source-registrar-test PRIVATE camera-core)
 
 # The camera-talk cutover: speak() reaches the wire before the device,
 # degrading to the 502 envelope when argus-tts is down. It compiles the

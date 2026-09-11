@@ -282,7 +282,9 @@ TEST_CASE("camera and zone contracts hold on the argus-camera surface")
   bool badRequestThrown = false;
   try {
     drogon::sync_wait(mediaService.forwardText(
-        conn, subscribeMessage(0), std::string_view{}));
+        {.conn = conn,
+         .message = subscribeMessage(0),
+         .raw = std::string_view{}}));
   }
   catch (const ResponseException& e) {
     badRequestThrown = true;
@@ -295,7 +297,9 @@ TEST_CASE("camera and zone contracts hold on the argus-camera surface")
   bool notFoundThrown = false;
   try {
     drogon::sync_wait(mediaService.forwardText(
-        conn, subscribeMessage(999), std::string_view{}));
+        {.conn = conn,
+         .message = subscribeMessage(999),
+         .raw = std::string_view{}}));
   }
   catch (const ResponseException& e) {
     notFoundThrown = true;
@@ -308,7 +312,9 @@ TEST_CASE("camera and zone contracts hold on the argus-camera surface")
   bool go2rtcThrown = false;
   try {
     drogon::sync_wait(mediaService.forwardText(
-        conn, subscribeMessage(cameraId2), std::string_view{}));
+        {.conn = conn,
+         .message = subscribeMessage(cameraId2),
+         .raw = std::string_view{}}));
   }
   catch (const ResponseException& e) {
     go2rtcThrown = true;
@@ -322,22 +328,22 @@ TEST_CASE("camera and zone contracts hold on the argus-camera surface")
   ackMessage["type"] = "camera:ack";
   ackMessage["payload"]["subId"] = 1;
   ackMessage["payload"]["bytes"] = Json::Int64(1024);
-  const bool ackHandled = drogon::sync_wait(
-      mediaService.forwardText(conn, ackMessage, std::string_view{}));
+  const bool ackHandled = drogon::sync_wait(mediaService.forwardText(
+      {.conn = conn, .message = ackMessage, .raw = std::string_view{}}));
   CHECK(ackHandled);
 
   Json::Value unsubMessage;
   unsubMessage["type"] = "camera:unsubscribe";
   unsubMessage["payload"]["subId"] = 1;
-  const bool unsubHandled = drogon::sync_wait(
-      mediaService.forwardText(conn, unsubMessage, std::string_view{}));
+  const bool unsubHandled = drogon::sync_wait(mediaService.forwardText(
+      {.conn = conn, .message = unsubMessage, .raw = std::string_view{}}));
   CHECK(unsubHandled);
 
   Json::Value unknownMessage;
   unknownMessage["type"] = "voice:start";
   unknownMessage["payload"] = Json::Value(Json::objectValue);
-  const bool voiceIgnored = drogon::sync_wait(
-      mediaService.forwardText(conn, unknownMessage, std::string_view{}));
+  const bool voiceIgnored = drogon::sync_wait(mediaService.forwardText(
+      {.conn = conn, .message = unknownMessage, .raw = std::string_view{}}));
   CHECK_FALSE(voiceIgnored);
 
   drogon::app().quit();

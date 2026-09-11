@@ -3,6 +3,7 @@
 #include <config/app-config.hxx>
 #include <shared/access/role-access.hxx>
 #include <shared/contracts/sync-operation.hxx>
+#include <shared/contracts/user-directory.hxx>
 #include <shared/dtos/socket-emit/socket-emit-dto.hxx>
 #include <shared/exceptions/response-exception.hxx>
 
@@ -10,15 +11,26 @@ drogon::Task<void>
 SyncService::refreshContext(const drogon::WebSocketConnectionPtr& conn) const
 {
   auto& ctx = conn->getContextRef<JwtContext>();
-  const auto user = co_await userRepository_.findById(ctx.sub);
-  if (!user || !user->isActive)
+
+  std::optional<DirectoryUser> resolved;
+  if (userDirectory_)
+    resolved = co_await userDirectory_->findById(ctx.sub);
+  else if (const auto user = co_await userRepository_.findById(ctx.sub))
+    resolved = DirectoryUser{.id = user->id,
+                             .name = user->name,
+                             .lastName = user->lastName,
+                             .lang = user->lang,
+                             .role = user->role,
+                             .isActive = user->isActive};
+
+  if (!resolved || !resolved->isActive)
     throw ResponseException({.message = "User account is disabled",
                              .statusCode = 401,
                              .errorCode = AppConfig::ERROR_CODE_UNAUTHORIZED});
 
-  ctx.name = user->name + " " + user->lastName;
-  ctx.role = user->role;
-  ctx.isActive = user->isActive;
+  ctx.name = resolved->name + " " + resolved->lastName;
+  ctx.role = resolved->role;
+  ctx.isActive = resolved->isActive;
   co_return;
 }
 
@@ -53,10 +65,11 @@ SyncService::handleConnect(const drogon::HttpRequestPtr& req,
 }
 
 drogon::Task<void>
-SyncService::handleMessage(const drogon::WebSocketConnectionPtr& conn,
-                           const Json::Value& obj,
-                           std::string_view rawMessage) const
+SyncService::handleMessage(const SyncFrameInput& input) const
 {
+  const drogon::WebSocketConnectionPtr& conn = input.conn;
+  const Json::Value& obj = input.message;
+
   if (!obj.isMember("type") || !obj["type"].isString())
     throw ResponseException({.message = "Missing message type",
                              .statusCode = 400,
@@ -85,8 +98,7 @@ SyncService::handleMessage(const drogon::WebSocketConnectionPtr& conn,
   }
 
   if (type.rfind("camera:", 0) == 0 || type.rfind("voice:", 0) == 0) {
-    const bool handled = forwarder_ &&
-                         co_await forwarder_->forwardText(conn, obj, rawMessage);
+    const bool handled = forwarder_ && co_await forwarder_->forwardText(input);
     if (!handled)
       throw ResponseException({.message = "Unknown message type",
                                .statusCode = 400,
@@ -124,4 +136,24 @@ void SyncService::setCameraSource(std::shared_ptr<CameraSyncSource> source)
 {
   cameraSource_ = std::move(source);
   synchronizedService_.setCameraSource(cameraSource_.get());
+}
+
+void SyncService::setProductivitySource(
+    std::shared_ptr<ProductivitySyncSource> source)
+{
+  productivitySource_ = std::move(source);
+  synchronizedService_.setProductivitySource(productivitySource_.get());
+}
+
+void SyncService::setNotificationSource(
+    std::shared_ptr<NotificationSyncSource> source)
+{
+  notificationSource_ = std::move(source);
+  synchronizedService_.setNotificationSource(notificationSource_.get());
+}
+
+void SyncService::setUserDirectory(
+    std::shared_ptr<const IUserDirectory> directory)
+{
+  userDirectory_ = std::move(directory);
 }

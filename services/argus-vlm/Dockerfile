@@ -44,6 +44,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /opt/argus
 COPY --from=build /opt/argus/services/argus-vlm/build/prod/argus-vlm /opt/argus/argus-vlm
+COPY --from=build /opt/argus/services/argus-vlm/build/prod/bin/libllama.so* /opt/argus/lib/
+COPY --from=build /opt/argus/services/argus-vlm/build/prod/bin/libmtmd.so* /opt/argus/lib/
+COPY --from=build /opt/argus/services/argus-vlm/build/prod/bin/libggml*.so* /opt/argus/lib/
+ENV LD_LIBRARY_PATH=/opt/argus/lib
 
 RUN groupadd --gid "$ARGUS_GID" argus \
     && useradd --uid "$ARGUS_UID" --gid "$ARGUS_GID" --create-home \

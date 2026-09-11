@@ -11,10 +11,10 @@ adapter (`memory-remote` / `RemoteMemoryServiceAdapter`) that existed
 for the retired legacy's Ruling BY cutover gate.
 
 `catalog-replica.cc` is the one piece that assumes a running process (a
-NATS subscriber with read-only identity/camera snapshot seeds), so it is
-its own `memory-catalog` target: linking the memory package does not
-drag cnats into a consumer that does not want it. The host that wants the
-replica links `memory-catalog` explicitly.
+NATS subscriber plus typed snapshot seeds the host fetches over the SDK
+clients), so it is its own `memory-catalog` target: linking the memory
+package does not drag cnats into a consumer that does not want it. The
+host that wants the replica links `memory-catalog` explicitly.
 
 The database key inverted: memory no longer rides the host's
 `[database] file`; it owns `[memory] db_file` (fallback `[database] file`,
@@ -43,7 +43,7 @@ loop.
   not block.
 - **`memory.db`** with the memory tables VERBATIM from
   `database/schema.sql`, the `memory_vec` partitions from
-  `database/memory-schema.sql` (boot-applied, idempotent), and the four
+  `database/schema.sql` (boot-applied, idempotent), and the four
   catalog replicas (`catalog_person`/`catalog_camera`/`catalog_zone`/
   `catalog_stream`). The schema file is configurable
   (`[memory] schema_file`) so the shared queries and `VecDb` apply the same
@@ -55,8 +55,9 @@ loop.
   the replicas. Camera_stream rows are written via `/sync` and only ride
   `argus.*.v1.change`, so the replica also subscribes the sync wildcard
   filtered to `option == "camera_stream"`. On boot, replica tables still
-  empty get ONE snapshot fill from the read-only `[identity]`/`[camera]`
-  clients; populated tables are never re-seeded. The fill runs even when the
+  empty get ONE snapshot fill from the typed rows the host fetched over
+  `argus.identity.v1.ListPersons` and `argus.camera.v1.ListCatalog`;
+  populated tables are never re-seeded. The fill runs even when the
   change feed never connects (`CatalogReplica::seedSnapshot` static entry —
   main.cc calls it when NATS is absent or failed), because otherwise a no-NATS
   boot would serve an empty catalog forever. Feed handlers accept two event
@@ -86,7 +87,7 @@ loop.
 
 - The mobile app never talks to the memory capacity; no gateway routing,
   no app-facing contract.
-- No migrations: `memory-schema.sql` is additive and applied idempotently
+- No migrations: the memory `database/schema.sql` is additive and applied idempotently
   at boot; `argus.db` is never touched.
 - Models stay in the shared `models/memory/` tree — never copied.
 - The gateway still owns the `/user` fan-out natively; identity change

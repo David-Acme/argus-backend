@@ -1,10 +1,12 @@
 #include <config/app-config.hxx>
 #include <controllers/health-controller.hxx>
 #include <drogon/drogon.h>
+#include <feature/rpc/notification-rpc-service.hxx>
 #include <filter/device/device-filter.hxx>
 #include <filter/jwt/jwt-filter.hxx>
 #include <filter/role/role-filter.hxx>
 #include <filter/valid-json/valid-json-filter.hxx>
+#include <grpcpp/grpcpp.h>
 #include <notification/nats-notification-change-sink.hxx>
 #include <shared/wrapper/nats/nats-bus.hxx>
 #include <shared/wrapper/nats/nats-push-intent-sink.hxx>
@@ -55,6 +57,20 @@ int main()
 
   const NotificationDbConfig notificationDb = NotificationConfig::resolveDb();
   const ListenerConfig listener = ListenerConfig::resolve(7028);
+  const GrpcListenerConfig grpcListener = GrpcListenerConfig::resolve(7038);
+
+  NotificationRpcService notificationRpc;
+
+  grpc::ServerBuilder grpcBuilder;
+  const std::string grpcAddress =
+      grpcListener.host + ":" + std::to_string(grpcListener.port);
+  grpcBuilder.AddListeningPort(grpcAddress, grpc::InsecureServerCredentials());
+  grpcBuilder.RegisterService(&notificationRpc);
+  std::unique_ptr<grpc::Server> grpcServer(grpcBuilder.BuildAndStart());
+  if (!grpcServer) {
+    LOG_FATAL << "gRPC server failed to listen on " << grpcAddress;
+    return 1;
+  }
 
   drogon::app().registerController(std::make_shared<HealthController>(HealthStatus{.serviceName = "argus-notification", .extras = {}}));
 
@@ -89,7 +105,8 @@ int main()
       });
 
   LOG_INFO << "Listening on " << listener.host << ":" << listener.port
-           << " (plain); notification database " << notificationDb.dbPath;
+           << " (plain); notification database " << notificationDb.dbPath
+           << "; gRPC NotificationService on " << grpcAddress;
 
   drogon::app().registerBeginningAdvice([&notificationDb]() {
     if (!DbService::runScriptFile(notificationDb.schemaPath)) {
@@ -137,5 +154,7 @@ int main()
   drogon::app()
       .setThreadNum(0)
       .run();
+
+  grpcServer->Shutdown();
   return 0;
 }

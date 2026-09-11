@@ -6,20 +6,14 @@
 #include <json/value.h>
 #include <shared/contracts/syncable.hxx>
 #include <shared/contracts/camera-sync-source.hxx>
+#include <shared/contracts/notification-sync-source.hxx>
+#include <shared/contracts/productivity-sync-source.hxx>
 #include <shared/contracts/sync-filter.hxx>
 #include <shared/dtos/socket-emit/socket-emit-dto.hxx>
 #include <shared/enums.hxx>
 #include <shared/repositories/audit-log/audit-log-repository.hxx>
-#include <shared/repositories/notification/notification-repository.hxx>
-#include <shared/repositories/reminder-detail/reminder-detail-repository.hxx>
-#include <shared/repositories/calendar-event-share/calendar-event-share-repository.hxx>
-#include <shared/repositories/calendar-event/calendar-event-repository.hxx>
-#include <shared/repositories/project-member/project-member-repository.hxx>
-#include <shared/repositories/project/project-repository.hxx>
-#include <shared/repositories/project-task/project-task-repository.hxx>
 #include <shared/repositories/event/event-repository.hxx>
 #include <shared/repositories/person/person-repository.hxx>
-#include <shared/repositories/reminder/reminder-repository.hxx>
 #include <shared/repositories/user-audit-log/user-audit-log-repository.hxx>
 #include <shared/repositories/user/user-repository.hxx>
 #include <shared/repositories/user-invitation/user-invitation-repository.hxx>
@@ -41,6 +35,16 @@ public:
     cameraSyncSource_ = source;
   }
 
+  void setProductivitySource(const ProductivitySyncSource* source)
+  {
+    productivitySyncSource_ = source;
+  }
+
+  void setNotificationSource(const NotificationSyncSource* source)
+  {
+    notificationSyncSource_ = source;
+  }
+
   drogon::Task<Json::Value> sync(const SynchronizedDto& body,
                                  const JwtContext& ctx) const;
   drogon::Task<Json::Value> syncAuditLog(const SynchronizedLogDto& body,
@@ -52,16 +56,10 @@ private:
   UserRepository userRepository_;
   UserInvitationRepository userInvitationRepository_;
   const CameraSyncSource* cameraSyncSource_{nullptr};
-  ReminderRepository reminderRepository_;
-  ReminderDetailRepository reminderDetailRepository_;
-  CalendarEventRepository calendarEventRepository_;
-  CalendarEventShareRepository calendarEventShareRepository_;
-  ProjectRepository projectRepository_;
-  ProjectMemberRepository projectMemberRepository_;
-  ProjectTaskRepository projectTaskRepository_;
+  const ProductivitySyncSource* productivitySyncSource_{nullptr};
+  const NotificationSyncSource* notificationSyncSource_{nullptr};
   EventRepository eventRepository_;
   PersonRepository personRepository_;
-  NotificationRepository notificationRepository_;
   AuditLogRepository auditLogRepository_;
   UserAuditLogRepository userAuditLogRepository_;
 
@@ -71,6 +69,7 @@ private:
   drogon::Task<Json::Value>
   syncWithRepo(const SyncWithRepoInput& input, const SyncFilter& base) const;
   drogon::Task<Json::Value>
-  syncUserNotification(const SynchronizedBodyDto& dto, int64_t userId) const;
+  syncUserNotification(const SynchronizedBodyDto& dto,
+                       const JwtContext& ctx) const;
   std::vector<TableName> auditTablesForRole(UserRole role) const;
 };

@@ -4,6 +4,7 @@
 #include <controllers/camera-media-service.hxx>
 #include <controllers/health-controller.hxx>
 #include <drogon/drogon.h>
+#include <drogon/utils/coroutine.h>
 #include <feature/api/camera-control/controllers/camera-control-controller.hxx>
 #include <feature/api/camera/controllers/camera-controller.hxx>
 #include <feature/api/zone/controllers/zone-controller.hxx>
@@ -22,21 +23,21 @@
 #include <operator/nats-object-event-sink.hxx>
 #include <operator/operator-config.hxx>
 #include <server/listener-config.hxx>
+#include <shared/repositories/camera/camera-repository.hxx>
 #include <shared/services/config-service/config-service.hxx>
 #include <shared/services/room/room-manager.hxx>
 #include <shared/services/sqlite/db-service.hxx>
 #include <shared/services/stream/go2rtc-manager.hxx>
+#include <shared/services/stream/camera-source-registrar.hxx>
 #include <shared/services/stream/stream-hub.hxx>
+#include <shared/services/user-directory/user-directory-identity.hxx>
+#include <shared/wrapper/blocking-task/blocking-task.hxx>
 #include <shared/wrapper/nats/nats-bus.hxx>
 #include <unistd.h>
 
 #include <json/value.h>
-#include <chrono>
-#include <filesystem>
 #include <memory>
-#include <stdexcept>
 #include <string>
-#include <thread>
 
 namespace
 {
@@ -64,30 +65,6 @@ Json::Value drogonConfig(const CameraDbConfig& cameraDb,
   return config;
 }
 
-// Config-gated read-only identity client; the filters validate over the identity RPC.
-void installIdentityClient()
-{
-  const auto path = ConfigService::getString("identity.db");
-  if (path.empty())
-    return;
-
-  for (int ms = 0; ms < 30000 && !std::filesystem::exists(path); ms += 250)
-    std::this_thread::sleep_for(std::chrono::milliseconds(250));
-
-  DbService::enableUriFilenames();
-  try {
-    const auto identity = drogon::orm::DbClient::newSqlite3Client(
-        "filename=file:" + path + "?mode=ro", 1);
-    identity->execSqlSync("PRAGMA busy_timeout = 5000");
-    DbService::setIdentityClient(identity);
-    LOG_INFO << "Identity database opened read-only: " << path;
-  }
-  catch (const std::exception& e) {
-    LOG_WARN << "Identity database open failed (" << e.what()
-             << "); identity reads fall back to the default client";
-  }
-}
-
 // Static lifetime: per-camera coroutines hold these non-owning pointers.
 Go2rtcFrameSource& frameSource()
 {
@@ -108,8 +85,6 @@ int main()
   DbService::enableUriFilenames();
 
   ConfigService::load("config.toml");
-
-  installIdentityClient();
 
   const CameraDbConfig cameraDb = CameraConfig::resolveDb();
   const ListenerConfig listener = ListenerConfig::resolve(7026);
@@ -142,6 +117,7 @@ int main()
 
   const auto syncSocket = std::make_shared<SyncSocket>();
   syncSocket->setForwarder(std::make_shared<CameraMediaService>());
+  syncSocket->setUserDirectory(std::make_shared<IdentityUserDirectory>());
   drogon::app().registerController(syncSocket);
 
   drogon::app().loadConfigJson(drogonConfig(cameraDb, listener));
@@ -237,6 +213,18 @@ int main()
 
     if (operatorService)
       operatorService->start();
+
+    drogon::async_run([]() -> drogon::Task<void> {
+      CameraRepository repository;
+      auto cameras = co_await repository.findEnabled();
+      if (cameras.empty())
+        co_return;
+      co_await BlockingTask<void>([cameras = std::move(cameras)] {
+        for (const auto& camera : cameras)
+          cameraSourceRegistrar().apply(camera);
+      });
+      co_return;
+    });
   });
 
   drogon::app()

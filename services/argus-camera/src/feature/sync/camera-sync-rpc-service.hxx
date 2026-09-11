@@ -16,6 +16,11 @@ public:
             const argus::camera::v1::PullTableRequest* request,
             argus::camera::v1::PullTableResponse* response) override;
 
+  grpc::ServerUnaryReactor*
+  ListCatalog(grpc::CallbackServerContext* context,
+              const argus::camera::v1::ListCatalogRequest* request,
+              argus::camera::v1::ListCatalogResponse* response) override;
+
 private:
   CameraRepository cameras_;
   CameraStreamRepository streams_;

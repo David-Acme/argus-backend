@@ -10,8 +10,8 @@ consumers. The gateway is the only public entry point.
 |---|---|---|---|
 | `argus-gateway` | Public TLS API, WebSocket relay, identity host | HTTPS 7024 | `identity.db` |
 | `argus-camera` | Camera/zone data, go2rtc streaming, object events | HTTP 7026, gRPC 7036 | `camera.db` |
-| `argus-productivity` | Reminders, projects, calendar | HTTP 7027 | `productivity.db` |
-| `argus-notification` | Notifications and push tokens | HTTP 7028 | `notification.db` |
+| `argus-productivity` | Reminders, projects, calendar | HTTP 7027, gRPC 7037 | `productivity.db` |
+| `argus-notification` | Notifications and push tokens | HTTP 7028, gRPC 7038 | `notification.db` |
 | `argus-tts` | Supertonic ONNX speech synthesis | HTTP 7029 | — |
 | `argus-stt` | sherpa-onnx speech recognition | HTTP 7030 | — |
 | `argus-vlm` | LFM2.5-VL image understanding | HTTP 7031 | — |
@@ -21,7 +21,9 @@ consumers. The gateway is the only public entry point.
 
 Every service binds loopback or the deployment's private network; the gateway
 proxies the public surface. Core NATS (`4222`) carries change events; typed
-gRPC covers camera sync, voice sessions and identity operations.
+gRPC covers camera/productivity/notification sync, voice sessions and
+identity operations. Each database volume is mounted by its owner only
+(rule 27): cross-domain reads go through the SDK clients.
 
 ## Standalone packages
 

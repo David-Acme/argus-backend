@@ -74,6 +74,8 @@ argus_module(NAME common
         src/shared/utils/json-diff/json-diff.cc
         src/shared/utils/json-diff/json-diff.hxx
         src/shared/utils/json-util/json-util.hxx
+        src/shared/utils/fnv-hash/fnv-hash.hxx
+        src/shared/utils/sql-escape/sql-escape.hxx
         src/shared/utils/text-norm/text-norm.cc
         src/shared/utils/text-norm/text-norm.hxx
         src/shared/utils/schema-runner/schema-runner.cc

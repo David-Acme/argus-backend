@@ -73,6 +73,13 @@ endif()
 
 find_package(doctest REQUIRED)
 
+# The productivity sync contract (argus.productivity.v1.SyncService); this
+# service is the owner and serves it, consumers link argus::sdk-productivity.
+if(NOT TARGET argus::sdk-productivity)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/argus-contracts
+                     ${CMAKE_BINARY_DIR}/argus-contracts EXCLUDE_FROM_ALL)
+endif()
+
 add_library(productivity-core STATIC
     ${PRODUCTIVITY_SRC_ROOT}/productivity/nats-productivity-change-sink.cc
     ${PRODUCTIVITY_SRC_ROOT}/productivity/productivity-config.cc
@@ -117,13 +124,14 @@ set(PRODUCTIVITY_FEATURE_SOURCES
 
 add_executable(argus-productivity
     ${PRODUCTIVITY_SRC_ROOT}/main.cc
+    ${PRODUCTIVITY_SRC_ROOT}/feature/sync/productivity-sync-rpc-service.cc
     ${PRODUCTIVITY_FEATURE_SOURCES})
 
 # The filters validate through argus.identity.v1 (argus::sdk-identity rides
-# argus::auth); argus_identity stays for the share/member reads and arrives
-# transitively through productivity-core's argus_sync pull.
+# argus::auth); the sync RPC owner serves argus.productivity.v1 via
+# argus::sdk-productivity.
 target_link_libraries(argus-productivity PRIVATE productivity-core
-    argus::auth)
+    argus::auth argus::sdk-productivity)
 
 target_compile_options(argus-productivity PRIVATE -Wall -Wextra)
 
@@ -169,12 +177,34 @@ target_include_directories(productivity-controller-test PRIVATE
     ${PRODUCTIVITY_SRC_ROOT})
 
 target_link_libraries(productivity-controller-test PRIVATE argus_sync
-    argus_common doctest::doctest)
+    argus_identity argus::auth argus_common doctest::doctest)
 
 target_compile_options(productivity-controller-test PRIVATE -Wall -Wextra)
 
 add_test(NAME productivity-controller-test
          COMMAND productivity-controller-test)
+
+# The sync RPC suite boots the real schema and the real service against it.
+add_executable(productivity-sync-rpc-test
+    tests/unit/productivity-sync-rpc-test.cc
+    ${PRODUCTIVITY_SRC_ROOT}/feature/sync/productivity-sync-rpc-service.cc)
+
+set_target_properties(productivity-sync-rpc-test PROPERTIES
+    EXCLUDE_FROM_ALL FALSE)
+
+target_include_directories(productivity-sync-rpc-test PRIVATE
+    ${PRODUCTIVITY_SRC_ROOT})
+
+target_compile_definitions(productivity-sync-rpc-test PRIVATE
+    ARGUS_PRODUCTIVITY_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql")
+
+target_link_libraries(productivity-sync-rpc-test PRIVATE argus_sync
+    argus::sdk-productivity argus_common doctest::doctest)
+
+target_compile_options(productivity-sync-rpc-test PRIVATE -Wall -Wextra)
+
+add_test(NAME productivity-sync-rpc-test
+         COMMAND productivity-sync-rpc-test)
 
 get_target_property(DOCTEST_INCLUDE_DIRS doctest::doctest
                     INTERFACE_INCLUDE_DIRECTORIES)

@@ -45,15 +45,6 @@ constexpr const char* UPSERT_STREAM =
 constexpr const char* DELETE_STREAM =
     "DELETE FROM catalog_stream WHERE id = ?";
 
-// Snapshot reads run against the source databases, never the replicas.
-constexpr const char* SNAPSHOT_PERSONS =
-    "SELECT id, user_id, name, alias FROM person WHERE deleted_at IS NULL";
-constexpr const char* SNAPSHOT_CAMERAS =
-    "SELECT id, name FROM camera WHERE deleted_at IS NULL";
-constexpr const char* SNAPSHOT_ZONES = "SELECT id, name FROM zone";
-constexpr const char* SNAPSHOT_STREAMS =
-    "SELECT id, label FROM camera_stream";
-
 struct StmtExecInput
 {
   const char* sql;
@@ -265,17 +256,13 @@ void CatalogReplica::applyStreamRow(const Json::Value& event)
   applyCamera(event);
 }
 
-void CatalogReplica::seedFromSnapshot(drogon::orm::DbClient* identityDb,
-                                      drogon::orm::DbClient* cameraDb)
+void CatalogReplica::seedFromSnapshot(const Snapshot& snapshot)
 {
-  seedSnapshot({graph_, resolver_, identityDb, cameraDb});
+  seedSnapshot({graph_, resolver_, snapshot});
 }
 
 void CatalogReplica::seedSnapshot(const SnapshotSources& sources)
 {
-  if (!sources.identityDb && !sources.cameraDb)
-    return;
-
   int64_t persons = 0;
   int64_t cameras = 0;
   int64_t zones = 0;
@@ -294,40 +281,40 @@ void CatalogReplica::seedSnapshot(const SnapshotSources& sources)
                   "fill skipped";
       return;
     }
-    if (sources.identityDb && personsEmpty) {
-      for (const auto& row : sources.identityDb->execSqlSync(SNAPSHOT_PERSONS)) {
+    if (personsEmpty) {
+      for (const auto& row : sources.snapshot.persons) {
         execStmt(db, {.sql = UPSERT_PERSON, .bind = [&](SqliteStmt& stmt) {
-          stmt.bindInt64(1, row[0].as<int64_t>());
-          stmt.bindInt64(2, row[1].isNull() ? 0 : row[1].as<int64_t>());
-          stmt.bindText(3, row[2].as<std::string>());
-          stmt.bindText(4, row[3].as<std::string>());
+          stmt.bindInt64(1, row.id);
+          stmt.bindInt64(2, row.userId);
+          stmt.bindText(3, row.name);
+          stmt.bindText(4, row.alias);
         }});
         ++persons;
       }
     }
-    if (sources.cameraDb && camerasEmpty) {
-      for (const auto& row : sources.cameraDb->execSqlSync(SNAPSHOT_CAMERAS)) {
+    if (camerasEmpty) {
+      for (const auto& row : sources.snapshot.cameras) {
         execStmt(db, {.sql = UPSERT_CAMERA, .bind = [&](SqliteStmt& stmt) {
-          stmt.bindInt64(1, row[0].as<int64_t>());
-          stmt.bindText(2, row[1].as<std::string>());
+          stmt.bindInt64(1, row.id);
+          stmt.bindText(2, row.name);
         }});
         ++cameras;
       }
     }
-    if (sources.cameraDb && zonesEmpty) {
-      for (const auto& row : sources.cameraDb->execSqlSync(SNAPSHOT_ZONES)) {
+    if (zonesEmpty) {
+      for (const auto& row : sources.snapshot.zones) {
         execStmt(db, {.sql = UPSERT_ZONE, .bind = [&](SqliteStmt& stmt) {
-          stmt.bindInt64(1, row[0].as<int64_t>());
-          stmt.bindText(2, row[1].as<std::string>());
+          stmt.bindInt64(1, row.id);
+          stmt.bindText(2, row.name);
         }});
         ++zones;
       }
     }
-    if (sources.cameraDb && streamsEmpty) {
-      for (const auto& row : sources.cameraDb->execSqlSync(SNAPSHOT_STREAMS)) {
+    if (streamsEmpty) {
+      for (const auto& row : sources.snapshot.streams) {
         execStmt(db, {.sql = UPSERT_STREAM, .bind = [&](SqliteStmt& stmt) {
-          stmt.bindInt64(1, row[0].as<int64_t>());
-          stmt.bindText(2, row[1].as<std::string>());
+          stmt.bindInt64(1, row.id);
+          stmt.bindText(2, row.label);
         }});
         ++streams;
       }

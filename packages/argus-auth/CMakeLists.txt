@@ -31,6 +31,7 @@ argus_module(NAME auth
         src/filter/role/role-filter.cc
         src/filter/valid-json/valid-json-filter.cc
         src/shared/services/jwt/jwt-service.cc
+        src/shared/services/user-directory/user-directory-identity.cc
     INCLUDES
         src
     DEPENDS

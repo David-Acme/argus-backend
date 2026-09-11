@@ -8,6 +8,9 @@
 #include <json/value.h>
 #include <memory>
 #include <shared/contracts/camera-sync-source.hxx>
+#include <shared/contracts/notification-sync-source.hxx>
+#include <shared/contracts/productivity-sync-source.hxx>
+#include <shared/contracts/user-directory.hxx>
 #include <shared/repositories/user/user-repository.hxx>
 #include <shared/services/room/room-manager.hxx>
 #include <string_view>
@@ -19,15 +22,16 @@ public:
   drogon::Task<void>
   handleConnect(const drogon::HttpRequestPtr& req,
                 const drogon::WebSocketConnectionPtr& conn) const;
-  drogon::Task<void> handleMessage(const drogon::WebSocketConnectionPtr& conn,
-                                   const Json::Value& obj,
-                                   std::string_view rawMessage) const;
+  drogon::Task<void> handleMessage(const SyncFrameInput& input) const;
   void handleBinary(const drogon::WebSocketConnectionPtr& conn,
                     const std::string& data) const;
   void handleDisconnect(const drogon::WebSocketConnectionPtr& conn) const;
 
   void setForwarder(std::shared_ptr<SyncForwarder> forwarder);
   void setCameraSource(std::shared_ptr<CameraSyncSource> source);
+  void setProductivitySource(std::shared_ptr<ProductivitySyncSource> source);
+  void setNotificationSource(std::shared_ptr<NotificationSyncSource> source);
+  void setUserDirectory(std::shared_ptr<const IUserDirectory> directory);
 
 private:
   drogon::Task<void>
@@ -38,4 +42,7 @@ private:
   UserRepository userRepository_;
   std::shared_ptr<SyncForwarder> forwarder_;
   std::shared_ptr<CameraSyncSource> cameraSource_;
+  std::shared_ptr<ProductivitySyncSource> productivitySource_;
+  std::shared_ptr<NotificationSyncSource> notificationSource_;
+  std::shared_ptr<const IUserDirectory> userDirectory_;
 };

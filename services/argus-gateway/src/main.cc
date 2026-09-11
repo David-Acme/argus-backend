@@ -11,9 +11,7 @@
 #include <server/refresh-rate-limiter.hxx>
 #include <config/app-config.hxx>
 #include <json/value.h>
-#include <chrono>
 #include <memory>
-#include <thread>
 #include <shared/services/cert/cert-service.hxx>
 #include <shared/services/config-service/config-service.hxx>
 #include <shared/services/face/face-service.hxx>
@@ -21,21 +19,18 @@
 #include <shared/services/room/room-manager.hxx>
 #include <shared/services/sqlite/db-service.hxx>
 #include <shared/wrapper/nats/nats-bus.hxx>
-#include <shared/wrapper/nats/nats-push-intent-sink.hxx>
 #include <shared/services/socket/nats-identity-change-sink.hxx>
-#include <shared/wrapper/nats/nats-subject.hxx>
 #include <sync/camera-fan-out.hxx>
 #include <sync/camera-notifier.hxx>
 #include <sync/camera-sync-source.hxx>
+#include <sync/notification-sync-source.hxx>
+#include <sync/productivity-sync-source.hxx>
 #include <sync/sync-registrar.hxx>
 #include <sync/sync-relay.hxx>
 #include <sync/voice-grpc-relay.hxx>
 #include <sync/user-change-fan-out.hxx>
-#include <sync/user-change-sink.hxx>
 #include <unistd.h>
 
-#include <cstdint>
-#include <filesystem>
 #include <stdexcept>
 #include <string>
 
@@ -216,8 +211,20 @@ int main()
   }
   const std::string cameraGrpcTarget =
       ConfigService::getString("camera.grpc_target");
+  const std::string productivityGrpcTarget =
+      ConfigService::getString("productivity.grpc_target");
+  const std::string notificationGrpcTarget =
+      ConfigService::getString("notifications.grpc_target");
   const auto cameraSource = std::make_shared<CameraSyncGateway>(cameraGrpcTarget);
-  const SyncRegistrationStats sync = registerSyncSurface(relay, cameraSource);
+  const auto productivitySource =
+      std::make_shared<ProductivitySyncGateway>(productivityGrpcTarget);
+  const auto notificationSource =
+      std::make_shared<NotificationSyncGateway>(notificationGrpcTarget);
+  const SyncRegistrationStats sync =
+      registerSyncSurface({.forwarder = relay,
+                           .cameraSource = cameraSource,
+                           .productivitySource = productivitySource,
+                           .notificationSource = notificationSource});
   LOG_INFO << "Sync surface registered: " << sync.controllers << " controller, "
            << sync.filters << " filters"
            << (voiceCutover ? "; voice leg -> gRPC " + voiceGrpc.target
@@ -225,6 +232,12 @@ int main()
            << (cameraGrpcTarget.empty()
                    ? "; camera leg -> unconfigured source (503)"
                    : "; camera leg -> gRPC " + cameraGrpcTarget)
+           << (productivityGrpcTarget.empty()
+                   ? "; productivity leg -> unconfigured source (503)"
+                   : "; productivity leg -> gRPC " + productivityGrpcTarget)
+           << (notificationGrpcTarget.empty()
+                   ? "; notification leg -> unconfigured source (503)"
+                   : "; notification leg -> gRPC " + notificationGrpcTarget)
            << (cameraSync.syncUrl.empty()
                    ? ""
                    : "; camera relay -> " + cameraSync.syncUrl);
@@ -299,7 +312,9 @@ int main()
     if (natsBus->connect()) {
       LOG_INFO << "NATS event bus connected to " << natsBus->options().url;
       camera_fan_out::subscribeChangeFanOut(*natsBus);
-      camera_notifier::subscribeObjectDetected(*natsBus);
+      camera_notifier::subscribeObjectDetected(
+          *natsBus, std::make_shared<NotificationClient>(
+                        notificationGrpcTarget));
       // User rows change here, so the catalog replica feed publishes from here.
       static const NatsIdentityChangeSink identitySink(natsBus);
       identity_change::setSink(&identitySink);
@@ -307,18 +322,6 @@ int main()
     else
       LOG_WARN << "NATS unavailable at " << natsUrl
                << "; continuing without it";
-  }
-
-  std::shared_ptr<NatsPushIntentSink> pushIntentSink;
-  if (push_intent::enabledFromConfig()) {
-    if (natsBus) {
-      pushIntentSink = std::make_shared<NatsPushIntentSink>(natsBus);
-      push_intent::setSink(pushIntentSink.get());
-      LOG_INFO << "Push intents enabled (" << nats_subject::kNotificationPushIntent
-               << ")";
-    } else {
-      LOG_WARN << "[push] enabled but NATS unavailable; push intents disabled";
-    }
   }
 
   const IdentityRpcConfig identityRpcConfig = IdentityRpcConfig::resolve();
@@ -353,76 +356,11 @@ int main()
   RoomManager roomManagerLifecycle;
   roomManagerLifecycle.init();
 
-  installUserChangeSink();
-
   std::unique_ptr<MdnsService> mdnsService;
 
   drogon::app().registerBeginningAdvice([&identityDb = identityDb,
                                          &mdnsService]() {
     DbService::installExtensions();
-
-    // Cross-process SQLite rules apply on both sides: WAL plus busy_timeout.
-    const std::string productivityDbPath =
-        ConfigService::getString("productivity.db");
-    if (!productivityDbPath.empty() && !std::filesystem::exists(productivityDbPath)) {
-      LOG_INFO << "Productivity database not present yet: "
-               << productivityDbPath
-               << "; waiting up to 30s for the argus-productivity boot apply";
-      for (int ms = 0;
-           ms < 30000 && !std::filesystem::exists(productivityDbPath);
-           ms += 250)
-        std::this_thread::sleep_for(std::chrono::milliseconds(250));
-    }
-    if (!productivityDbPath.empty()
-        && std::filesystem::exists(productivityDbPath)) {
-      const auto productivityDb = drogon::orm::DbClient::newSqlite3Client(
-          "filename=file:" + productivityDbPath + "?mode=ro", 1);
-      try {
-        productivityDb->execSqlSync("PRAGMA busy_timeout = 5000");
-      }
-      catch (const std::exception& e) {
-        LOG_WARN << "Productivity database pragma error: " << e.what();
-      }
-      DbService::setProductivityClient(productivityDb);
-      LOG_INFO << "Productivity database opened read-only: "
-               << productivityDbPath;
-    }
-    else if (!productivityDbPath.empty()) {
-      LOG_WARN << "Productivity database not found: " << productivityDbPath
-               << "; productivity reads fall back to the default client";
-    }
-
-    const std::string notificationDbPath =
-        ConfigService::getString("notifications.db");
-    if (!notificationDbPath.empty()
-        && !std::filesystem::exists(notificationDbPath)) {
-      LOG_INFO << "Notification database not present yet: "
-               << notificationDbPath
-               << "; waiting up to 30s for the argus-notification boot apply";
-      for (int ms = 0;
-           ms < 30000 && !std::filesystem::exists(notificationDbPath);
-           ms += 250)
-        std::this_thread::sleep_for(std::chrono::milliseconds(250));
-    }
-    if (!notificationDbPath.empty()
-        && std::filesystem::exists(notificationDbPath)) {
-      const auto notificationDb = drogon::orm::DbClient::newSqlite3Client(
-          "filename=" + notificationDbPath, 1);
-      try {
-        notificationDb->execSqlSync("PRAGMA journal_mode = WAL");
-        notificationDb->execSqlSync("PRAGMA busy_timeout = 5000");
-      }
-      catch (const std::exception& e) {
-        LOG_WARN << "Notification database pragma error: " << e.what();
-      }
-      DbService::setNotificationClient(notificationDb);
-      LOG_INFO << "Notification database opened read-write: "
-               << notificationDbPath;
-    }
-    else if (!notificationDbPath.empty()) {
-      LOG_WARN << "Notification database not found: " << notificationDbPath
-               << "; notification reads fall back to the default client";
-    }
 
     if (!DbService::runScriptFile(identityDb.schemaPath)) {
       LOG_FATAL << "Identity database schema failed to apply — aborting startup";

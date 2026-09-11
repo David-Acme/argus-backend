@@ -54,6 +54,43 @@ IdentityClient::validateToken(const ValidateTokenInput& input) const
   return response;
 }
 
+std::optional<argus::identity::v1::GetUserResponse>
+IdentityClient::getUser(int64_t userId) const
+{
+  if (userId <= 0)
+    return std::nullopt;
+
+  grpc::ClientContext context;
+  argus::sdk::setDeadline(context, kCallTimeoutMs);
+  argus::sdk::addFleetSecret(context, fleetSecret_);
+
+  argus::identity::v1::GetUserRequest request;
+  request.set_user_id(userId);
+
+  argus::identity::v1::GetUserResponse response;
+  if (const grpc::Status status = stub_->GetUser(&context, request, &response);
+      !status.ok())
+    return std::nullopt;
+  return response;
+}
+
+std::optional<argus::identity::v1::ListPersonsResponse>
+IdentityClient::listPersons() const
+{
+  grpc::ClientContext context;
+  argus::sdk::setDeadline(context, kCallTimeoutMs);
+  argus::sdk::addFleetSecret(context, fleetSecret_);
+
+  const argus::identity::v1::ListPersonsRequest request;
+
+  argus::identity::v1::ListPersonsResponse response;
+  if (const grpc::Status status =
+          stub_->ListPersons(&context, request, &response);
+      !status.ok())
+    return std::nullopt;
+  return response;
+}
+
 bool IdentityClient::checkDeviceCredential(const std::string& secretHash) const
 {
   grpc::ClientContext context;

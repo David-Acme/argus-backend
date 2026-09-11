@@ -59,16 +59,19 @@ preset, own `camera.db`.
   not found), subscribes through StreamHub fMP4 with the `0xA7` frame magic,
   and degrades to the legacy `503 go2rtc_not_running` envelope when go2rtc is
   down. Go2rtcManager owns the go2rtc lifecycle here.
-- **Identity reads (narrowed in f7-3)**: `[identity] db` opens mode=ro as the
-  named identity client (`DbService::setIdentityClient` slot; SQLite URI
-  filenames are enabled before the first `sqlite3_open` so the `mode=ro` URI
-  parses). It now serves only the sync socket — `SyncService::refreshContext`
-  resolves the connecting user's row and the `user` sync table is read from
-  the same repository. The filters stopped reading it in f7-3 and validate
-  over `argus.identity.v1.ValidateToken` at `[identity] target`; absent db
-  key boots identity-free (sync user reads degrade, authentication does
-  not). The gateway creates identity.db at its own boot, which on a fresh
-  install may land after ours, so the open waits bounded for the file.
+- **Identity reads (RPC-only since rule 27)**: this service opens no
+  identity.db. `SyncService::refreshContext` resolves the connecting user
+  through `IdentityUserDirectory` (injected into the sync socket), a
+  `std::shared_ptr<const IUserDirectory>` backed by
+  `argus.identity.v1.GetUser`; the filters validate over
+  `argus.identity.v1.ValidateToken` at `[identity] target`. Camera.db is the
+  only database this process opens.
+- **Source registration**: `CameraSourceRegistrar` syncs go2rtc's
+  `cam<id>`/`cam<id>-sub` sources at boot and on camera create/update/remove
+  (disabled rows drop their sources). The URL derives from the camera row
+  (`rtsp://user:pass@ip:port/stream1|stream2`, credentials percent-encoded).
+  go2rtc restarts per source change and the frame grab tolerates those
+  restarts, so neither the operator nor the HTTP loop is blocked by it.
 - **Explicit controller registration**: the camera, zone and camera-control
   controllers live in the shared static library, so their AutoCreation
   registration is linker-dropped there; this service registers them

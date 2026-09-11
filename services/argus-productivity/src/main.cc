@@ -1,10 +1,12 @@
 #include <config/app-config.hxx>
 #include <controllers/health-controller.hxx>
 #include <drogon/drogon.h>
+#include <feature/sync/productivity-sync-rpc-service.hxx>
 #include <filter/device/device-filter.hxx>
 #include <filter/jwt/jwt-filter.hxx>
 #include <filter/role/role-filter.hxx>
 #include <filter/valid-json/valid-json-filter.hxx>
+#include <grpcpp/grpcpp.h>
 #include <productivity/productivity-config.hxx>
 #include <productivity/nats-productivity-change-sink.hxx>
 #include <shared/wrapper/nats/nats-bus.hxx>
@@ -14,12 +16,8 @@
 #include <shared/services/sqlite/db-service.hxx>
 #include <unistd.h>
 
-#include <chrono>
-#include <filesystem>
 #include <memory>
-#include <stdexcept>
 #include <string>
-#include <thread>
 
 namespace
 {
@@ -47,30 +45,6 @@ Json::Value drogonConfig(const ProductivityDbConfig& productivityDb,
   return config;
 }
 
-// Opens identity.db read-only for the share/member target validation.
-void installIdentityClient()
-{
-  const auto path = ConfigService::getString("identity.db");
-  if (path.empty())
-    return;
-
-  for (int ms = 0; ms < 30000 && !std::filesystem::exists(path); ms += 250)
-    std::this_thread::sleep_for(std::chrono::milliseconds(250));
-
-  DbService::enableUriFilenames();
-  try {
-    const auto identity = drogon::orm::DbClient::newSqlite3Client(
-        "filename=file:" + path + "?mode=ro", 1);
-    identity->execSqlSync("PRAGMA busy_timeout = 5000");
-    DbService::setIdentityClient(identity);
-    LOG_INFO << "Identity database opened read-only: " << path;
-  }
-  catch (const std::exception& e) {
-    LOG_WARN << "Identity database open failed (" << e.what()
-             << "); identity reads fall back to the default client";
-  }
-}
-
 } // namespace
 
 int main()
@@ -79,10 +53,22 @@ int main()
 
   ConfigService::load("config.toml");
 
-  installIdentityClient();
-
   const ProductivityDbConfig productivityDb = ProductivityConfig::resolveDb();
   const ListenerConfig listener = ListenerConfig::resolve(7027);
+  const GrpcListenerConfig grpcListener = GrpcListenerConfig::resolve(7037);
+
+  ProductivitySyncRpcService productivitySyncRpc;
+
+  grpc::ServerBuilder grpcBuilder;
+  const std::string grpcAddress =
+      grpcListener.host + ":" + std::to_string(grpcListener.port);
+  grpcBuilder.AddListeningPort(grpcAddress, grpc::InsecureServerCredentials());
+  grpcBuilder.RegisterService(&productivitySyncRpc);
+  std::unique_ptr<grpc::Server> grpcServer(grpcBuilder.BuildAndStart());
+  if (!grpcServer) {
+    LOG_FATAL << "gRPC server failed to listen on " << grpcAddress;
+    return 1;
+  }
 
   drogon::app().registerController(std::make_shared<HealthController>(HealthStatus{.serviceName = "argus-productivity", .extras = {}}));
 
@@ -117,7 +103,8 @@ int main()
       });
 
   LOG_INFO << "Listening on " << listener.host << ":" << listener.port
-           << " (plain); productivity database " << productivityDb.dbPath;
+           << " (plain); productivity database " << productivityDb.dbPath
+           << "; gRPC SyncService on " << grpcAddress;
 
   drogon::app().registerBeginningAdvice([&productivityDb]() {
     if (!DbService::runScriptFile(productivityDb.schemaPath)) {
@@ -153,5 +140,7 @@ int main()
   drogon::app()
       .setThreadNum(0)
       .run();
+
+  grpcServer->Shutdown();
   return 0;
 }

@@ -74,7 +74,7 @@ int main(int argc, char** argv)
     } else {
       std::cerr << "usage: argus-migrate-notification --source <argus.db> "
                    "--target <notification.db> "
-                   "[--schema <notification-schema.sql>] "
+                   "[--schema <schema.sql>] "
                    "[--config <config.toml>]\n";
       return 2;
     }

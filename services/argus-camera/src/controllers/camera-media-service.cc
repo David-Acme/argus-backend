@@ -36,11 +36,11 @@ void CameraMediaService::dropSink(
   sinks_.erase(conn.get());
 }
 
-drogon::Task<bool> CameraMediaService::forwardText(
-    const drogon::WebSocketConnectionPtr& conn, const Json::Value& message,
-    std::string_view raw)
+drogon::Task<bool> CameraMediaService::forwardText(const SyncFrameInput& input)
 {
-  (void)raw;
+  const drogon::WebSocketConnectionPtr& conn = input.conn;
+  const Json::Value& message = input.message;
+  (void)input.raw;
   const std::string type = message["type"].asString();
   const Json::Value& payload = message["payload"];
   const auto& ctx = conn->getContextRef<JwtContext>();

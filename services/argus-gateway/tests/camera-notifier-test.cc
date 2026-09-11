@@ -2,19 +2,19 @@
 #include <doctest/doctest.h>
 
 #include <drogon/drogon.h>
-#include <shared/contracts/sync-operation.hxx>
-#include <shared/services/room/room-manager.hxx>
-#include <shared/services/sqlite/db-service.hxx>
+#include <notification/notification-client.hxx>
 #include <shared/utils/json-util/json-util.hxx>
 #include <sync/camera-notifier.hxx>
-#include <sync/user-change-sink.hxx>
 
 #include <chrono>
 #include <cstdio>
 #include <ctime>
-#include <filesystem>
+#include <memory>
+#include <mutex>
+#include <optional>
 #include <string>
 #include <thread>
+#include <vector>
 
 namespace
 {
@@ -83,62 +83,47 @@ bool waitForBoot(std::chrono::milliseconds timeout)
   return drogon::app().isRunning();
 }
 
-int notificationCount()
-{
-  const auto rows = drogon::app().getDbClient()->execSqlSync(
-      "SELECT COUNT(*) AS n FROM notification WHERE type = 'camera'");
-  return rows.front()["n"].as<int>();
-}
-
-bool waitForNotifications(int expected, std::chrono::milliseconds timeout)
-{
-  const auto deadline = std::chrono::steady_clock::now() + timeout;
-  while (std::chrono::steady_clock::now() < deadline) {
-    if (notificationCount() >= expected)
-      return true;
-    std::this_thread::sleep_for(std::chrono::milliseconds(20));
-  }
-  return notificationCount() >= expected;
-}
-
-// Same fake the camera controller tests use to observe socket deliveries.
-class RecordingConnection final : public drogon::WebSocketConnection
+// Records the create requests the notifier hands to the notification SDK.
+class RecordingNotificationClient final : public NotificationClient
 {
 public:
-  void send(const char* msg, uint64_t len,
-            const drogon::WebSocketMessageType type) override
-  {
-    (void)type;
-    messages.emplace_back(msg, len);
-  }
-  void send(std::string_view msg,
-            const drogon::WebSocketMessageType type) override
-  {
-    (void)type;
-    messages.emplace_back(msg);
-  }
-  void sendJson(const Json::Value& json,
-                const drogon::WebSocketMessageType type) override
-  {
-    (void)type;
-    messages.push_back(json_util::toString(json));
-  }
-  const trantor::InetAddress& localAddr() const override { return addr_; }
-  const trantor::InetAddress& peerAddr() const override { return addr_; }
-  bool connected() const override { return true; }
-  bool disconnected() const override { return false; }
-  void shutdown(const drogon::CloseCode, const std::string&) override {}
-  void forceClose() override {}
-  void setPingMessage(const std::string&,
-                      const std::chrono::duration<double>&) override
-  {
-  }
-  void disablePing() override {}
+  RecordingNotificationClient() : NotificationClient("127.0.0.1:1") {}
 
-  std::vector<std::string> messages;
+  std::optional<argus::notification::v1::CreateNotificationsResponse>
+  createNotifications(
+      const argus::notification::v1::CreateNotificationsRequest& request,
+      const argus::sdk::CallerIdentity&) const override
+  {
+    std::lock_guard lock(mutex_);
+    requests.push_back(request);
+    argus::notification::v1::CreateNotificationsResponse response;
+    response.set_created(request.user_ids_size());
+    return response;
+  }
 
-private:
-  trantor::InetAddress addr_{"127.0.0.1", 0};
+  int totalUsers() const
+  {
+    std::lock_guard lock(mutex_);
+    int total = 0;
+    for (const auto& request : requests)
+      total += request.user_ids_size();
+    return total;
+  }
+
+  bool waitForUsers(int expected, std::chrono::milliseconds timeout) const
+  {
+    const auto deadline = std::chrono::steady_clock::now() + timeout;
+    while (std::chrono::steady_clock::now() < deadline) {
+      if (totalUsers() >= expected)
+        return true;
+      std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    }
+    return totalUsers() >= expected;
+  }
+
+  mutable std::mutex mutex_;
+  mutable std::vector<argus::notification::v1::CreateNotificationsRequest>
+      requests;
 };
 } // namespace
 
@@ -253,7 +238,7 @@ TEST_CASE("the consumer applies the budget and creates camera notifications")
       drogon::orm::DbClient::newSqlite3Client(std::string("filename=") +
                                                   kIdentityDb,
                                               1);
-  // Identity user table plus the notification table the service writes.
+  // Identity user table only: the notification write leaves through the SDK.
   client->execSqlSync(
       "CREATE TABLE user ("
       "id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, "
@@ -263,16 +248,6 @@ TEST_CASE("the consumer applies the budget and creates camera notifications")
       "is_active INTEGER NOT NULL DEFAULT 1, "
       "created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')), "
       "updated_at INTEGER, deleted_at INTEGER)");
-  client->execSqlSync(
-      "CREATE TABLE notification ("
-      "id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, "
-      "user_id INTEGER NOT NULL REFERENCES user(id) ON DELETE CASCADE, "
-      "type TEXT NOT NULL DEFAULT 'system', "
-      "title TEXT NOT NULL DEFAULT '', body TEXT NOT NULL DEFAULT '', "
-      "data TEXT NOT NULL DEFAULT '{}', "
-      "is_read INTEGER NOT NULL DEFAULT 0 CHECK (is_read IN (0, 1)), "
-      "read_at INTEGER, "
-      "created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')))");
   // One owner and one guard (notified), one resident and one deactivated (skipped).
   client->execSqlSync("INSERT INTO user (name, last_name, role) VALUES "
                       "('Ana', 'Owner', 'owner')");
@@ -290,64 +265,40 @@ TEST_CASE("the consumer applies the budget and creates camera notifications")
   std::thread runner([] { drogon::app().run(); });
   REQUIRE(waitForBoot(std::chrono::seconds(30)));
 
-  installUserChangeSink();
-
-  CameraObjectNotifier notifier({6, -1, -1});
+  auto notificationClient = std::make_shared<RecordingNotificationClient>();
+  CameraObjectNotifier notifier({6, -1, -1}, notificationClient);
 
   notifier.handle(eventJson({.cameraId = 1,
                              .rule = "person_in_alert_zone",
                              .severity = "critical"}));
-  REQUIRE(waitForNotifications(2, std::chrono::seconds(10)));
-  const auto rows = drogon::app().getDbClient()->execSqlSync(
-      "SELECT user_id, title, body FROM notification WHERE type = 'camera' "
-      "ORDER BY user_id");
-  REQUIRE(rows.size() == 2);
-  CHECK(rows[0]["user_id"].as<int64_t>() == 1);
-  CHECK(rows[1]["user_id"].as<int64_t>() == 2);
-  CHECK(rows[0]["title"].as<std::string>() ==
-        "Front door: person_in_alert_zone");
-  CHECK(rows[0]["body"].as<std::string>() ==
-        "Severity critical; detected person");
+  REQUIRE(notificationClient->waitForUsers(2, std::chrono::seconds(10)));
+  {
+    std::lock_guard lock(notificationClient->mutex_);
+    REQUIRE(notificationClient->requests.size() == 1);
+    const auto& request = notificationClient->requests.front();
+    REQUIRE(request.user_ids_size() == 2);
+    CHECK(request.user_ids(0) == 1);
+    CHECK(request.user_ids(1) == 2);
+    CHECK(request.type() == "camera");
+    CHECK(request.title() == "Front door: person_in_alert_zone");
+    CHECK(request.body() == "Severity critical; detected person");
+    CHECK(json_util::fromString(request.data())["cameraId"].asInt64() == 1);
+  }
 
   // Budget 6 per hour: the next five pass, the seventh is suppressed.
   for (int i = 0; i < 5; ++i)
     notifier.handle(eventJson({.cameraId = 1, .rule = "person_day", .severity = "info"}));
-  REQUIRE(waitForNotifications(12, std::chrono::seconds(10)));
+  REQUIRE(notificationClient->waitForUsers(12, std::chrono::seconds(10)));
   notifier.handle(eventJson({.cameraId = 1, .rule = "person_day", .severity = "info"}));
 
-  // Wait past any in-flight write, then confirm the count stopped at 12.
+  // Wait past any in-flight delivery, then confirm the count stopped at 12.
   std::this_thread::sleep_for(std::chrono::milliseconds(300));
-  CHECK(notificationCount() == 12);
+  CHECK(notificationClient->totalUsers() == 12);
 
-  // A malformed payload is dropped without touching the database.
+  // A malformed payload is dropped without touching the SDK.
   notifier.handle(json_util::fromString("[1, 2, 3]"));
   std::this_thread::sleep_for(std::chrono::milliseconds(300));
-  CHECK(notificationCount() == 12);
-
-  // The gateway-local sink dispatches the /sync Add frame to the user room.
-  const auto conn = std::make_shared<RecordingConnection>();
-  RoomManager rooms;
-  drogon::app().getIOLoop(0)->queueInLoop(
-      [&rooms, &conn] { rooms.join(userRoom(1), conn); });
-
-  CameraObjectNotifier addFrameNotifier({6, -1, -1});
-  addFrameNotifier.handle(eventJson({.cameraId = 1, .rule = "person", .severity = "info"}));
-  const auto frameDeadline = std::chrono::steady_clock::now() +
-                             std::chrono::seconds(10);
-  while (conn->messages.empty()
-         && std::chrono::steady_clock::now() < frameDeadline)
-    std::this_thread::sleep_for(std::chrono::milliseconds(20));
-  REQUIRE_FALSE(conn->messages.empty());
-  const Json::Value frame = json_util::fromString(conn->messages.back());
-  REQUIRE(frame);
-  CHECK(frame["operation"].asInt() ==
-        static_cast<int>(SyncOperation::Add));
-  CHECK(frame["option"].asString() == "notification");
-  CHECK(frame["info"]["title"].asString() == "Front door: person");
-  CHECK(frame["info"]["userId"].as<int64_t>() == 1);
-
-  drogon::app().getIOLoop(0)->queueInLoop(
-      [&rooms, &conn] { rooms.leaveAll(conn); });
+  CHECK(notificationClient->totalUsers() == 12);
 
   drogon::app().quit();
   runner.join();

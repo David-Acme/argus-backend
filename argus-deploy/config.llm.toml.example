@@ -35,7 +35,7 @@ gpu_layers = -1
 # The hosted memory stack; the memory-db volume mounts at /opt/argus/memory.
 [memory]
 db_file = "memory/memory.db"
-schema_file = "database/memory-schema.sql"
+schema_file = "database/schema.sql"
 catalog_person_table = "catalog_person"
 catalog_camera_table = "catalog_camera"
 catalog_zone_table = "catalog_zone"
@@ -79,10 +79,11 @@ max_tokens = 512
 
 # Read-only snapshot sources for the catalog replica boot fill.
 [identity]
-db = "database/identity.db"
+target = "172.19.0.1:7040"
+rpc_secret = "CHANGE_ME_SAME_IN_EVERY_SERVICE"
 
 [camera]
-db = "camera/camera.db"
+grpc_target = "argus-camera:7036"
 
 [nats]
 # Empty skips the hosted catalog replica (the snapshot fill still runs).

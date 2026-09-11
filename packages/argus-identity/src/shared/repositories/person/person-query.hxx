@@ -14,6 +14,9 @@ inline constexpr std::string_view FIND_BY_ID =
 inline constexpr std::string_view FIND_BY_USER =
     "SELECT * FROM person WHERE user_id = ? AND deleted_at IS NULL";
 
+inline constexpr std::string_view FIND_ALL_CATALOG =
+    "SELECT * FROM person WHERE deleted_at IS NULL";
+
 inline constexpr std::string_view INSERT =
     "INSERT INTO person (user_id, name, alias, observation, "
     "first_seen_at, last_seen_at) VALUES (?, ?, ?, ?, "

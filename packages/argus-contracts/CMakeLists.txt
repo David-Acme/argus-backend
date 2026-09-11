@@ -39,6 +39,20 @@ if(NOT TARGET argus::sdk-camera)
       INCLUDES sdk)
 endif()
 
+if(NOT TARGET argus::sdk-productivity)
+  argus_sdk_module(NAME productivity
+      PROTO argus/productivity/v1/sync.proto
+      SOURCES sdk/productivity/productivity-sync-client.cc
+      INCLUDES sdk)
+endif()
+
+if(NOT TARGET argus::sdk-notification)
+  argus_sdk_module(NAME notification
+      PROTO argus/notification/v1/notification.proto
+      SOURCES sdk/notification/notification-client.cc
+      INCLUDES sdk)
+endif()
+
 if(NOT TARGET argus::sdk-health)
   argus_sdk_module(NAME health
       PROTO grpc/health/v1/health.proto)
