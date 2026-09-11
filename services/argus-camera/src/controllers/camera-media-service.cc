@@ -88,11 +88,14 @@ drogon::Task<bool> CameraMediaService::handleText(const SyncFrameInput& input)
     input.quality = quality;
     std::string error;
     const uint16_t subId = StreamHub::instance().subscribe(input, error);
-    if (subId == 0)
+    if (subId == 0) {
+      const bool viewerLimit = error.rfind("too_many_viewers", 0) == 0;
       throw ResponseException(
           {.message = error.empty() ? "subscribe_failed" : error,
-           .statusCode = 503,
-           .errorCode = AppConfig::ERROR_CODE_SERVICE_UNAVAILABLE});
+           .statusCode = viewerLimit ? 429 : 503,
+           .errorCode = viewerLimit ? AppConfig::ERROR_CODE_TOO_MANY_REQUESTS
+                                    : AppConfig::ERROR_CODE_SERVICE_UNAVAILABLE});
+    }
     sink->addSubscription();
 
     Json::Value resp;

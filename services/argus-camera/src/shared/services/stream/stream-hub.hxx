@@ -66,6 +66,7 @@ private:
   struct Upstream
   {
     std::string name;
+    int64_t cameraId{0};
     std::mutex mtx;
     std::vector<std::shared_ptr<Subscriber>> subs;
     std::string init;
@@ -101,6 +102,7 @@ private:
 
   std::shared_ptr<Upstream> getOrOpen(const SubscribeInput& input,
                                       std::string& error);
+  void countViewers(int64_t cameraId, int& perCamera, int& total);
   static void sendFramed(const SendFramedInput& input);
   void sendBox(const SendBoxInput& input);
   void dispatchBox(const DispatchBoxInput& input);
@@ -113,4 +115,6 @@ private:
   uint32_t nextSeq_ = 0;
   size_t chunkBytes_ = 16 * 1024;
   int64_t graceMs_ = 2000;
+  int maxViewersPerCamera_ = 4;
+  int maxTotalViewers_ = 8;
 };

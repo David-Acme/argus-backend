@@ -205,8 +205,14 @@ void StreamHub::init()
     chunkBytes_ = static_cast<size_t>(v);
   if (const int64_t v = ConfigService::getInt("streaming.hub_grace_ms"); v > 0)
     graceMs_ = v;
+  if (const int v = ConfigService::getInt("streaming.max_viewers_per_camera");
+      v > 0)
+    maxViewersPerCamera_ = v;
+  if (const int v = ConfigService::getInt("streaming.max_total_viewers"); v > 0)
+    maxTotalViewers_ = v;
   LOG_INFO << "StreamHub ready (chunk=" << chunkBytes_ << "B grace=" << graceMs_
-           << "ms)";
+           << "ms viewers/camera=" << maxViewersPerCamera_
+           << " viewers/total=" << maxTotalViewers_ << ")";
 }
 
 void StreamHub::shutdown()
@@ -247,9 +253,23 @@ StreamHub::getOrOpen(const SubscribeInput& input, std::string& error)
 
   auto up = std::make_shared<Upstream>();
   up->name = name;
+  up->cameraId = input.cameraId;
   up->reader = std::thread(&StreamHub::runUpstream, this, up);
   upstreams_.emplace(name, up);
   return up;
+}
+
+void StreamHub::countViewers(int64_t cameraId, int& perCamera, int& total)
+{
+  perCamera = 0;
+  total = 0;
+  for (const auto& [name, up] : upstreams_) {
+    std::lock_guard<std::mutex> upLock(up->mtx);
+    const int count = static_cast<int>(up->subs.size());
+    total += count;
+    if (up->cameraId == cameraId)
+      perCamera += count;
+  }
 }
 
 uint16_t StreamHub::subscribe(const SubscribeInput& input, std::string& error)
@@ -259,14 +279,40 @@ uint16_t StreamHub::subscribe(const SubscribeInput& input, std::string& error)
     return 0;
   }
 
+  {
+    std::lock_guard<std::mutex> hubLock(hubMutex_);
+    int perCamera = 0;
+    int total = 0;
+    countViewers(input.cameraId, perCamera, total);
+    if (maxTotalViewers_ > 0 && total >= maxTotalViewers_) {
+      error = "too_many_viewers";
+      return 0;
+    }
+    if (maxViewersPerCamera_ > 0 && perCamera >= maxViewersPerCamera_) {
+      error = "too_many_viewers_for_camera";
+      return 0;
+    }
+  }
+
   auto up = getOrOpen(input, error);
   if (!up)
     return 0;
 
-  uint16_t subId = 0;
   auto sub = std::make_shared<Subscriber>();
   {
     std::lock_guard<std::mutex> hubLock(hubMutex_);
+    int perCamera = 0;
+    int total = 0;
+    countViewers(input.cameraId, perCamera, total);
+    if (maxTotalViewers_ > 0 && total >= maxTotalViewers_) {
+      error = "too_many_viewers";
+      return 0;
+    }
+    if (maxViewersPerCamera_ > 0 && perCamera >= maxViewersPerCamera_) {
+      error = "too_many_viewers_for_camera";
+      return 0;
+    }
+    uint16_t subId = 0;
     for (int attempt = 0; attempt < 65535; ++attempt) {
       subId = nextSubId_++;
       if (nextSubId_ == 0)
@@ -279,16 +325,15 @@ uint16_t StreamHub::subscribe(const SubscribeInput& input, std::string& error)
       error = "no_free_subscription_id";
       return 0;
     }
+    sub->subId = subId;
+    sub->sink = input.sink;
+    {
+      std::lock_guard<std::mutex> upLock(up->mtx);
+      up->subs.push_back(sub);
+    }
     subToUpstream_[subId] = up;
   }
-
-  sub->subId = subId;
-  sub->sink = input.sink;
-  {
-    std::lock_guard<std::mutex> upLock(up->mtx);
-    up->subs.push_back(sub);
-  }
-  return subId;
+  return sub->subId;
 }
 
 void StreamHub::ack(uint16_t subId, int64_t bytes)
