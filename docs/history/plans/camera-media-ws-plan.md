@@ -226,7 +226,17 @@ Frontend:
   added latency (same-socket tests before/after).
 - 0 errors / 0 warnings on touched projects; gateway tests and live E2E pass.
 
-## 8. Out of scope
+## 8. Delivery status
+
+Backend (committed, live-verified with the C225): `/camera-stream` endpoint,
+`/media` camera socket, voice-only `/sync`, viewer caps and the protocol doc.
+Frontend: `modules/argus-camera` (Android Media3 + iOS AVSampleBufferDisplayLayer
+with an fMP4 parser), `cameraMediaService`, the live view on the camera screen
+and the prebuild patch script; `bunx tsc`, `bun run lint` and the Android
+`assembleDebug` build pass. Pending: iOS compile on macOS and an on-device
+run-through (the environment here has no iOS toolchain).
+
+## 9. Out of scope
 
 - Recording, storage, WebRTC, camera audio/talk (talk stays HTTP).
 - WebTransport/QUIC experimentation.
