@@ -1,4 +1,4 @@
-#include "sync-relay.hxx"
+#include "camera-stream-relay.hxx"
 
 #include <config/app-config.hxx>
 #include <filter/jwt/jwt-filter.hxx>
@@ -8,82 +8,72 @@
 #include <trantor/utils/Logger.h>
 
 #include <utility>
+#include <vector>
 
 namespace
 {
-// Binary frames past the cap are dropped: transient PCM, stale on replay.
+constexpr std::string_view kCameraPrefix = "camera:";
+constexpr std::string_view kMediaPath = "/media";
+// Pending frames are bounded; a stalled upstream leg must not grow unbounded.
 constexpr size_t kPendingLimit = 256;
 } // namespace
 
-struct LegacySyncRelay::Session
+struct CameraStreamRelay::Session
 {
   std::string token;
   std::string userAgent;
   std::string forwardedFor;
   drogon::WebSocketClientPtr client;
   drogon::WebSocketConnectionPtr leg;
-  std::vector<Frame> pending;
+  std::vector<std::string> pending;
   bool connecting{false};
   bool failed{false};
   bool closing{false};
 };
 
-bool relayAllowedText(std::string_view type)
+bool isCameraStreamFrame(std::string_view type)
 {
-  return type.rfind("camera:", 0) == 0 || type.rfind("voice:", 0) == 0;
+  return type.rfind(kCameraPrefix, 0) == 0;
 }
 
-bool relayLegIsCamera(std::string_view type)
+CameraStreamConfig CameraStreamConfig::resolve()
 {
-  return type.rfind("camera:", 0) == 0;
-}
-
-bool relayLegIsVoice(std::string_view type)
-{
-  return type.rfind("voice:", 0) == 0;
-}
-
-LegacySyncRelay::LegacySyncRelay(std::string syncUrl)
-    : syncUrl_(std::move(syncUrl))
-{
-}
-
-CameraSyncConfig CameraSyncConfig::resolve()
-{
-  CameraSyncConfig config;
-  config.syncUrl = ConfigService::getString("camera.sync_url");
+  CameraStreamConfig config;
+  config.streamUrl = ConfigService::getString("camera.stream_url");
   return config;
 }
 
-void LegacySyncRelay::onConnect(const drogon::HttpRequestPtr& req,
-                                const drogon::WebSocketConnectionPtr& conn)
+CameraStreamRelay::CameraStreamRelay(std::string streamUrl)
+    : streamUrl_(std::move(streamUrl))
+{
+}
+
+void CameraStreamRelay::onConnect(const drogon::HttpRequestPtr& req,
+                                  const drogon::WebSocketConnectionPtr& conn)
 {
   auto session = std::make_shared<Session>();
   session->token = JwtFilter::extractToken(req);
   session->userAgent = req->getHeader("User-Agent");
-  // Never trust a client-supplied X-Forwarded-For; the device hash needs the peer IP.
+  // The gateway is the only peer that saw the client, so the device hash uses
+  // the peer IP and never a client-supplied X-Forwarded-For.
   session->forwardedFor = conn->peerAddr().toIp();
 
   std::lock_guard<std::mutex> lock(sessionsMutex_);
   sessions_[conn.get()] = std::move(session);
-  (void)conn;
 }
 
-std::shared_ptr<LegacySyncRelay::Session>
-LegacySyncRelay::sessionFor(const drogon::WebSocketConnectionPtr& conn)
+std::shared_ptr<CameraStreamRelay::Session>
+CameraStreamRelay::sessionFor(const drogon::WebSocketConnectionPtr& conn)
 {
   std::lock_guard<std::mutex> lock(sessionsMutex_);
   auto it = sessions_.find(conn.get());
-  if (it == sessions_.end()) {
-    it = sessions_
-             .emplace(conn.get(), std::make_shared<Session>())
-             .first;
-  }
+  if (it == sessions_.end())
+    it = sessions_.emplace(conn.get(), std::make_shared<Session>()).first;
   return it->second;
 }
 
-std::shared_ptr<LegacySyncRelay::Session>
-LegacySyncRelay::takeSession(const drogon::WebSocketConnectionPtr& conn)
+std::shared_ptr<CameraStreamRelay::Session>
+CameraStreamRelay::takeSession(const drogon::WebSocketConnectionPtr& conn)
 {
   std::lock_guard<std::mutex> lock(sessionsMutex_);
   auto it = sessions_.find(conn.get());
@@ -94,21 +84,18 @@ LegacySyncRelay::takeSession(const drogon::WebSocketConnectionPtr& conn)
   return session;
 }
 
-drogon::Task<bool> LegacySyncRelay::forwardText(const SyncFrameInput& input)
+drogon::Task<bool> CameraStreamRelay::forwardText(const SyncFrameInput& input)
 {
+  if (!isCameraStreamFrame(input.message["type"].asString()))
+    co_return false;
+
   const drogon::WebSocketConnectionPtr& conn = input.conn;
   const std::string_view raw = input.raw;
-  (void)input.message;
-  if (syncUrl_.empty())
-    throw ResponseException(
-        {.message = "Legacy sync relay is not configured",
-         .statusCode = 503,
-         .errorCode = AppConfig::ERROR_CODE_SERVICE_UNAVAILABLE});
 
   auto session = sessionFor(conn);
   if (session->failed)
     throw ResponseException(
-        {.message = "Legacy sync unavailable",
+        {.message = "Camera stream unavailable",
          .statusCode = 503,
          .errorCode = AppConfig::ERROR_CODE_SERVICE_UNAVAILABLE});
   if (session->closing)
@@ -116,18 +103,18 @@ drogon::Task<bool> LegacySyncRelay::forwardText(const SyncFrameInput& input)
 
   if (session->leg) {
     session->leg->send(raw.data(), raw.size(),
-                          drogon::WebSocketMessageType::Text);
+                       drogon::WebSocketMessageType::Text);
     co_return true;
   }
 
   if (session->pending.size() >= kPendingLimit) {
     session->failed = true;
     throw ResponseException(
-        {.message = "Legacy sync queue overflow",
+        {.message = "Camera stream queue overflow",
          .statusCode = 503,
          .errorCode = AppConfig::ERROR_CODE_SERVICE_UNAVAILABLE});
   }
-  session->pending.push_back(Frame{std::string(raw), false});
+  session->pending.push_back(std::string(raw));
   if (!session->connecting) {
     session->connecting = true;
     drogon::async_run([this, conn, session]() -> drogon::Task<void> {
@@ -137,26 +124,7 @@ drogon::Task<bool> LegacySyncRelay::forwardText(const SyncFrameInput& input)
   co_return true;
 }
 
-void LegacySyncRelay::forwardBinary(const drogon::WebSocketConnectionPtr& conn,
-                                    const std::string& data)
-{
-  if (syncUrl_.empty())
-    return;
-
-  auto session = sessionFor(conn);
-  if (session->failed || session->closing)
-    return;
-  if (session->leg) {
-    session->leg->send(data.data(), data.size(),
-                          drogon::WebSocketMessageType::Binary);
-    return;
-  }
-  if (session->pending.size() >= kPendingLimit)
-    return;
-  session->pending.push_back(Frame{data, true});
-}
-
-void LegacySyncRelay::onClose(const drogon::WebSocketConnectionPtr& conn)
+void CameraStreamRelay::onClose(const drogon::WebSocketConnectionPtr& conn)
 {
   auto session = takeSession(conn);
   if (!session)
@@ -168,23 +136,23 @@ void LegacySyncRelay::onClose(const drogon::WebSocketConnectionPtr& conn)
 }
 
 drogon::Task<void>
-LegacySyncRelay::openSession(const drogon::WebSocketConnectionPtr& conn,
-                             std::shared_ptr<Session> session)
+CameraStreamRelay::openSession(const drogon::WebSocketConnectionPtr& conn,
+                               std::shared_ptr<Session> session)
 {
   // The client connection's loop: every session callback stays on it.
   auto* loop = trantor::EventLoop::getEventLoopOfCurrentThread();
   if (!loop)
     loop = drogon::app().getIOLoop(0);
 
-  if (!syncUrl_.empty() && session->token.empty()) {
-    LOG_WARN << "Sync relay: refusing connection without a token";
+  if (session->token.empty()) {
+    LOG_WARN << "Camera stream relay: refusing connection without a token";
     session->failed = true;
     conn->shutdown(drogon::CloseCode::kNormalClosure);
     co_return;
   }
 
-  auto client = drogon::WebSocketClient::newWebSocketClient(syncUrl_,
-                                                            loop, false, false);
+  auto client = drogon::WebSocketClient::newWebSocketClient(streamUrl_, loop,
+                                                            false, false);
   session->client = client;
   client->setMessageHandler(
       [conn, session](std::string&& message, const drogon::WebSocketClientPtr&,
@@ -201,7 +169,7 @@ LegacySyncRelay::openSession(const drogon::WebSocketConnectionPtr& conn,
         const Json::Value json = json_util::fromString(message);
         if (!json.isObject() || !json["type"].isString())
           return;
-        if (!relayAllowedText(json["type"].asString()))
+        if (!isCameraStreamFrame(json["type"].asString()))
           return;
         conn->send(message.data(), message.size(),
                    drogon::WebSocketMessageType::Text);
@@ -218,11 +186,10 @@ LegacySyncRelay::openSession(const drogon::WebSocketConnectionPtr& conn,
 
   const auto req = drogon::HttpRequest::newHttpRequest();
   req->setMethod(drogon::Get);
-  req->setPath("/sync");
+  req->setPath(std::string(kMediaPath));
   req->addHeader("Authorization", "Bearer " + session->token);
   if (!session->userAgent.empty())
     req->addHeader("User-Agent", session->userAgent);
-  // Synthesized, never the client's value (see onConnect).
   req->addHeader("X-Forwarded-For", session->forwardedFor);
 
   try {
@@ -230,7 +197,7 @@ LegacySyncRelay::openSession(const drogon::WebSocketConnectionPtr& conn,
     (void)resp;
   }
   catch (const std::exception& e) {
-    LOG_WARN << "Sync relay: leg connection failed: " << e.what();
+    LOG_WARN << "Camera stream relay: leg connection failed: " << e.what();
     session->client.reset();
     session->failed = true;
     if (!session->closing && !conn->disconnected())
@@ -244,42 +211,8 @@ LegacySyncRelay::openSession(const drogon::WebSocketConnectionPtr& conn,
   }
 
   session->leg = client->getConnection();
-  for (const auto& frame : session->pending) {
-    session->leg->send(frame.data.data(), frame.data.size(),
-                          frame.binary ? drogon::WebSocketMessageType::Binary
-                                       : drogon::WebSocketMessageType::Text);
-  }
+  for (const auto& frame : session->pending)
+    session->leg->send(frame.data(), frame.size(),
+                       drogon::WebSocketMessageType::Text);
   session->pending.clear();
-}
-
-CompositeSyncRelay::CompositeSyncRelay(std::shared_ptr<SyncForwarder> cameraLeg,
-                                       std::shared_ptr<SyncForwarder> voiceLeg)
-    : cameraLeg_(std::move(cameraLeg)), voiceLeg_(std::move(voiceLeg))
-{
-}
-
-void CompositeSyncRelay::onConnect(const drogon::HttpRequestPtr& req,
-                                   const drogon::WebSocketConnectionPtr& conn)
-{
-  cameraLeg_->onConnect(req, conn);
-  voiceLeg_->onConnect(req, conn);
-}
-
-drogon::Task<bool> CompositeSyncRelay::forwardText(const SyncFrameInput& input)
-{
-  if (relayLegIsCamera(input.message["type"].asString()))
-    co_return co_await cameraLeg_->forwardText(input);
-  co_return co_await voiceLeg_->forwardText(input);
-}
-
-void CompositeSyncRelay::forwardBinary(
-    const drogon::WebSocketConnectionPtr& conn, const std::string& data)
-{
-  voiceLeg_->forwardBinary(conn, data);
-}
-
-void CompositeSyncRelay::onClose(const drogon::WebSocketConnectionPtr& conn)
-{
-  cameraLeg_->onClose(conn);
-  voiceLeg_->onClose(conn);
 }

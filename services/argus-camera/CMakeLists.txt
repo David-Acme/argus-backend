@@ -104,6 +104,7 @@ set(NCNN_SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../third_party/ncnn/src)
 
 add_library(camera-core STATIC
     ${CAMERA_SRC_ROOT}/controllers/camera-media-service.cc
+    ${CAMERA_SRC_ROOT}/controllers/camera-media-socket.cc
     # Device control: camera-control feature (moved from the legacy in F6-2)
     # plus the camera-driver stack it dispatches through. TTS synthesis is
     # remote-only (TtsClient -> argus-tts wire); no in-process TTS engine is

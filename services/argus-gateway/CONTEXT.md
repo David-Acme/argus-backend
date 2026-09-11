@@ -81,15 +81,15 @@ monolith's build set was retired (F6-4).
   client is installed for the `event` domain (permanent orphan, Ruling DH)
   and `EventRepository` answers the empty shape —
   `DbService::readOnlyClient()` returns nullptr when nothing is installed.
-  It relays every `camera:*`/`voice:*` frame (text and
-  binary) byte-transparently to the service `/sync`/gRPC legs — `camera:*`
-  to argus-camera (`[camera] sync_url`), `voice:*` to argus-voice
-  (`[voice] target`) — as the client itself — same
+  It relays `voice:*` frames (text and binary) byte-transparently to
+  argus-voice (`[voice] target`) as the client itself — same
   `Authorization` header and `User-Agent`, so the device-hash filter
-  still binds the session. The relay never forwards a client-supplied
-  `X-Forwarded-For`: it synthesizes it from the observed TCP peer address of
-  the client connection (the gateway is the only one that sees the client;
-  the device hash is `HMAC(User-Agent|IP)`).
+  still binds the session. Camera media is not on `/sync`: the dedicated
+  `/camera-stream` socket relays `camera:*` frames and fMP4 to
+  argus-camera (`[camera] stream_url`). The relays never forward a
+  client-supplied `X-Forwarded-For`: they synthesize it from the observed
+  TCP peer address of the client connection (the gateway is the only one
+  that sees the client; the device hash is `HMAC(User-Agent|IP)`).
   While the relay session is still connecting, frames are buffered up to a
   256-frame cap; binary frames past the cap are dropped (transient PCM,
   stale on replay), text overflow answers the standard 503 envelope.
@@ -206,12 +206,15 @@ table. The app keeps working without any update.
   `/camera/{id}/ptz|preset|settings|status|presets|capabilities|talk`. Only
   deeper paths than the cap and foreign prefixes fall through to the
   gateway-native routing chain.
-- **Composite `/sync` relay**: `SyncRelay` holds one upstream per protocol
-  family — the seven `camera:*` frame types relay to argus-camera
-  (`[camera] sync_url`), and since F6-3 `voice:*` frames relay to argus-voice
-  over argus.voice.v1 (`[voice] target`, see the F6-3 section); an empty key
-  makes that leg answer the 503 unconfigured-relay envelope. Same client
-  credentials and XFF rule on both legs.
+- **Voice `/sync` relay**: `voice:*` frames relay to argus-voice over
+  argus.voice.v1 (`[voice] target`, see the F6-3 section); an empty key
+  leaves `/sync` with no forwarder. Same client credentials and XFF rule as
+  the camera media relay.
+- **Camera media socket (`/camera-stream`)**: a dedicated client socket with
+  the same `DeviceFilter`+`JwtFilter` chain relays `camera:*` frames and fMP4
+  binary to argus-camera's internal `/media` socket (`[camera] stream_url`),
+  keeping best-effort video off the `/sync` egress queue. Gateway-native path
+  (never proxied); only camera frames cross it.
 - **Camera change funnel (`camera_fan_out`)**: the NATS subscription is the
   wildcard `argus.*.v1.change`; the concrete subject routes the payload —
   `argus.camera.v1.change` goes to `camera_fan_out::handleCameraChange`,

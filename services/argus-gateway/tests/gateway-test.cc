@@ -19,11 +19,12 @@
 #include <shared/wrapper/api-response/api-response.hxx>
 #include <proxy/reverse-proxy.hxx>
 #include <sync/camera-fan-out.hxx>
+#include <sync/camera-stream-relay.hxx>
 #include <sync/sync-fan-out.hxx>
 #include <sync/sync-registrar.hxx>
-#include <sync/sync-relay.hxx>
 #include <sync/voice-grpc-relay.hxx>
 
+#include <drogon/utils/coroutine.h>
 #include <json/json.h>
 
 #include <chrono>
@@ -36,36 +37,6 @@
 
 namespace
 {
-
-// Recording stub of a relay leg: counts lifecycle callbacks, keeps forwarded frames.
-class RecordingLeg final : public SyncForwarder
-{
-public:
-  void onConnect(const drogon::HttpRequestPtr&,
-                 const drogon::WebSocketConnectionPtr&) override
-  {
-    ++connects;
-  }
-
-  drogon::Task<bool> forwardText(const SyncFrameInput& input) override
-  {
-    texts.emplace_back(input.raw);
-    co_return true;
-  }
-
-  void forwardBinary(const drogon::WebSocketConnectionPtr&,
-                     const std::string& data) override
-  {
-    binaries.push_back(data);
-  }
-
-  void onClose(const drogon::WebSocketConnectionPtr&) override { ++closes; }
-
-  int connects{0};
-  int closes{0};
-  std::vector<std::string> texts;
-  std::vector<std::string> binaries;
-};
 
 Json::Value parseBody(const drogon::HttpResponsePtr& response)
 {
@@ -232,7 +203,7 @@ TEST_CASE("gateway config section resolves listener and nats keys")
   std::remove(path);
 }
 
-TEST_CASE("relay text allowlist keeps every camera and voice frame type")
+TEST_CASE("camera stream frames are the only ones on the media socket")
 {
   struct Row
   {
@@ -240,35 +211,21 @@ TEST_CASE("relay text allowlist keeps every camera and voice frame type")
     bool allowed;
   };
   static const Row table[] = {
-      // Legacy camera emissions and errors
+      {"camera:subscribe", true},
       {"camera:ready", true},
       {"camera:closed", true},
+      {"camera:ack", true},
+      {"camera:unsubscribe", true},
       {"camera:subscribe_error", true},
-      {"camera:ack_error", true},
-      {"camera:unsubscribe_error", true},
-      // Voice emissions, session control and errors
-      {"voice:event", true},
-      {"voice:done", true},
-      {"voice:stt", true},
-      {"voice:assistant", true},
-      {"voice:start_error", true},
-      {"voice:stop_error", true},
-      {"voice:skip_error", true},
-      // Never forwarded: the gateway serves the sync protocol natively
+      {"voice:start", false},
       {"sync", false},
-      {"sync_audit_log", false},
-      {"sync_user_audit_log", false},
-      {"initial_info", false},
-      {"add", false},
-      {"delete", false},
-      {"log", false},
-      {"auth_context_changed", false},
-      {"unknown", false},
+      {"camera", false},
+      {"cameraX", false},
       {"", false},
   };
 
   for (const auto& row : table)
-    CHECK(relayAllowedText(row.type) == row.allowed);
+    CHECK(isCameraStreamFrame(row.type) == row.allowed);
 }
 
 TEST_CASE("fan-out parses the sync-change wire contract")
@@ -547,10 +504,10 @@ TEST_CASE("proxy config resolves the native paths")
   ConfigService::load(path);
   const ProxyConfig config = ProxyConfig::resolve();
 
-  REQUIRE(config.exclusions.size() == 7);
+  REQUIRE(config.exclusions.size() == 8);
   const std::vector<std::string> expected = {
       "/auth", "/invitation", "/pairing", "/portrait-preview",
-      "/user", "/sync", "/health",
+      "/user", "/sync", "/camera-stream", "/health",
   };
   CHECK(config.exclusions == expected);
   CHECK(config.cameraProxyUrl.empty());
@@ -588,18 +545,18 @@ TEST_CASE("proxy config routes the camera CRUD to argus-camera")
   std::remove(path);
 }
 
-TEST_CASE("camera relay config resolves the sync target")
+TEST_CASE("camera stream config resolves the media target")
 {
-  const char* path = "gateway-test-config-camera-sync.toml";
+  const char* path = "gateway-test-config-camera-stream.toml";
   {
     std::ofstream file(path);
     file << "[camera]\n"
-         << "sync_url = \"ws://127.0.0.1:7026/sync\"\n";
+         << "stream_url = \"ws://127.0.0.1:7026/media\"\n";
   }
 
   ConfigService::load(path);
-  const CameraSyncConfig config = CameraSyncConfig::resolve();
-  CHECK(config.syncUrl == "ws://127.0.0.1:7026/sync");
+  const CameraStreamConfig config = CameraStreamConfig::resolve();
+  CHECK(config.streamUrl == "ws://127.0.0.1:7026/media");
 
   {
     std::ofstream file(path);
@@ -608,8 +565,8 @@ TEST_CASE("camera relay config resolves the sync target")
   }
 
   ConfigService::load(path);
-  const CameraSyncConfig fallback = CameraSyncConfig::resolve();
-  CHECK(fallback.syncUrl.empty());
+  const CameraStreamConfig fallback = CameraStreamConfig::resolve();
+  CHECK(fallback.streamUrl.empty());
 
   std::remove(path);
 }
@@ -683,80 +640,17 @@ TEST_CASE("renderServerFrame reproduces the frozen voice wire JSON")
   CHECK(doneJson["payload"]["sessionId"].asInt64() == 0);
 }
 
-TEST_CASE("relay leg routing sends camera frames to argus-camera")
+TEST_CASE("camera stream relay rejects every non-camera frame")
 {
-  CHECK(relayLegIsCamera("camera:subscribe"));
-  CHECK(relayLegIsCamera("camera:ready"));
-  CHECK(relayLegIsCamera("camera:closed"));
-  CHECK(relayLegIsCamera("camera:ack"));
-  CHECK_FALSE(relayLegIsCamera("camera"));
-  CHECK_FALSE(relayLegIsCamera("cameraX"));
-  CHECK_FALSE(relayLegIsCamera("voice:transcribe"));
-
-  // Every camera frame type the legacy emits routes to the camera leg.
-  for (const char* type :
-       {"camera:subscribe", "camera:ready", "camera:closed", "camera:ack",
-        "camera:subscribe_error", "camera:ack_error",
-        "camera:unsubscribe_error"})
-    CHECK(relayLegIsCamera(type));
-}
-
-TEST_CASE("relay leg routing sends voice frames to argus-voice")
-{
-  CHECK(relayLegIsVoice("voice:start"));
-  CHECK(relayLegIsVoice("voice:stop"));
-  CHECK(relayLegIsVoice("voice:skip"));
-  CHECK_FALSE(relayLegIsVoice("voice"));
-  CHECK_FALSE(relayLegIsVoice("voiceX"));
-  CHECK_FALSE(relayLegIsVoice("camera:subscribe"));
-
-  // Every voice frame type the legacy emits routes to the voice leg.
-  for (const char* type :
-       {"voice:start", "voice:stop", "voice:skip", "voice:stt",
-        "voice:assistant", "voice:event", "voice:done", "voice:start_error",
-        "voice:stop_error", "voice:skip_error"})
-    CHECK(relayLegIsVoice(type));
-}
-
-TEST_CASE("composite relay split routes voice frames and binary to the "
-          "voice leg")
-{
-  auto camera = std::make_shared<RecordingLeg>();
-  auto voice = std::make_shared<RecordingLeg>();
-  CompositeSyncRelay relay(camera, voice);
-
-  relay.onConnect(nullptr, nullptr);
-  CHECK(camera->connects == 1);
-  CHECK(voice->connects == 1);
-
+  CameraStreamRelay relay("ws://127.0.0.1:7026/media");
   const drogon::WebSocketConnectionPtr conn;
-  Json::Value cameraFrame;
-  cameraFrame["type"] = "camera:subscribe";
-  CHECK(drogon::sync_wait(relay.forwardText(
-      {.conn = conn,
-       .message = cameraFrame,
-       .raw = "{\"type\":\"camera:subscribe\"}"})));
 
-  Json::Value voiceFrame;
-  voiceFrame["type"] = "voice:start";
-  CHECK(drogon::sync_wait(relay.forwardText(
-      {.conn = conn,
-       .message = voiceFrame,
-       .raw = "{\"type\":\"voice:start\"}"})));
-
-  relay.forwardBinary(conn, std::string("\x01\x02\x03", 3));
-
-  CHECK(camera->texts.size() == 1);
-  CHECK(camera->texts.front() == "{\"type\":\"camera:subscribe\"}");
-  CHECK(voice->texts.size() == 1);
-  CHECK(voice->texts.front() == "{\"type\":\"voice:start\"}");
-  CHECK(camera->binaries.empty());
-  CHECK(voice->binaries.size() == 1);
-  CHECK(voice->binaries.front() == std::string("\x01\x02\x03", 3));
-
-  relay.onClose(nullptr);
-  CHECK(camera->closes == 1);
-  CHECK(voice->closes == 1);
+  for (const char* type : {"voice:start", "sync", "camera", "cameraX", ""}) {
+    Json::Value frame;
+    frame["type"] = type;
+    CHECK_FALSE(drogon::sync_wait(
+        relay.forwardText({.conn = conn, .message = frame, .raw = ""})));
+  }
 }
 
 TEST_CASE("route table sends the whole camera domain to the camera backend")
@@ -896,11 +790,14 @@ TEST_CASE("route table sends the productivity and notification domains to the fa
 
 TEST_CASE("native path match keeps segment boundaries")
 {
-  const std::vector<std::string> exclusions = {"/user", "/sync"};
+  const std::vector<std::string> exclusions = {"/user", "/sync",
+                                               "/camera-stream"};
 
   CHECK(isGatewayNativePath("/user", exclusions));
   CHECK(isGatewayNativePath("/user/1", exclusions));
   CHECK(isGatewayNativePath("/sync", exclusions));
+  CHECK(isGatewayNativePath("/camera-stream", exclusions));
+  CHECK_FALSE(isGatewayNativePath("/camera-streamx", exclusions));
   CHECK_FALSE(isGatewayNativePath("/userx", exclusions));
   CHECK_FALSE(isGatewayNativePath("/camera", exclusions));
   CHECK_FALSE(isGatewayNativePath("/camera/1/status", exclusions));

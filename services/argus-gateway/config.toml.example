@@ -58,7 +58,7 @@ rpc_host = "127.0.0.1"
 rpc_port = 7040
 
 [camera]
-sync_url = "ws://127.0.0.1:7026/sync"
+stream_url = "ws://127.0.0.1:7026/media"
 proxy_url = "http://127.0.0.1:7026"
 grpc_target = "127.0.0.1:7036"
 

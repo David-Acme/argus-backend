@@ -85,6 +85,7 @@ if(PROJECT_IS_TOP_LEVEL)
 endif()
 
 set(ARGUS_SYNC_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/feature/socket/sync/socket/sync-forwarder.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/src/feature/socket/sync/socket/sync-socket.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/src/feature/socket/sync/services/sync-service.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/src/feature/socket/sync/services/synchronized-service.cc

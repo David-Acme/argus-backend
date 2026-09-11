@@ -14,6 +14,17 @@ struct SyncFrameInput
   std::string_view raw;
 };
 
+struct SocketFrameError
+{
+  const drogon::WebSocketConnectionPtr& conn;
+  const std::string& type;
+  int status{500};
+  const std::string& error;
+};
+
+// Sends the {type:"<type>_error", status, error} envelope for a failed frame.
+void sendSocketFrameError(const SocketFrameError& input);
+
 // Side channel of SyncService for the frame types the sync tables do not serve themselves.
 class SyncForwarder
 {

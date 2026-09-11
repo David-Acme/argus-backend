@@ -22,11 +22,12 @@
 #include <shared/services/socket/nats-identity-change-sink.hxx>
 #include <sync/camera-fan-out.hxx>
 #include <sync/camera-notifier.hxx>
+#include <sync/camera-stream-relay.hxx>
+#include <sync/camera-stream-socket.hxx>
 #include <sync/camera-sync-source.hxx>
 #include <sync/notification-sync-source.hxx>
 #include <sync/productivity-sync-source.hxx>
 #include <sync/sync-registrar.hxx>
-#include <sync/sync-relay.hxx>
 #include <sync/voice-grpc-relay.hxx>
 #include <sync/user-change-fan-out.hxx>
 #include <unistd.h>
@@ -195,20 +196,12 @@ int main()
   LOG_INFO << "Identity surface registered: " << identity.controllers
            << " controllers, " << identity.filters << " filters";
 
-  const CameraSyncConfig cameraSync = CameraSyncConfig::resolve();
+  const CameraStreamConfig cameraStream = CameraStreamConfig::resolve();
   const VoiceGrpcConfig voiceGrpc = VoiceGrpcConfig::resolve();
   const bool voiceCutover = !voiceGrpc.target.empty();
   std::shared_ptr<SyncForwarder> relay;
-  if (!cameraSync.syncUrl.empty() || voiceCutover) {
-    relay = std::make_shared<CompositeSyncRelay>(
-        std::make_shared<LegacySyncRelay>(cameraSync.syncUrl),
-        voiceCutover ? std::static_pointer_cast<SyncForwarder>(
-                           std::make_shared<VoiceGrpcRelay>(voiceGrpc))
-                     : std::make_shared<LegacySyncRelay>(std::string()));
-  }
-  else {
-    relay = std::make_shared<LegacySyncRelay>(std::string());
-  }
+  if (voiceCutover)
+    relay = std::make_shared<VoiceGrpcRelay>(voiceGrpc);
   const std::string cameraGrpcTarget =
       ConfigService::getString("camera.grpc_target");
   const std::string productivityGrpcTarget =
@@ -228,19 +221,27 @@ int main()
   LOG_INFO << "Sync surface registered: " << sync.controllers << " controller, "
            << sync.filters << " filters"
            << (voiceCutover ? "; voice leg -> gRPC " + voiceGrpc.target
-                            : "; voice leg -> unconfigured relay (503)")
+                            : "; voice leg -> unconfigured (503)")
            << (cameraGrpcTarget.empty()
-                   ? "; camera leg -> unconfigured source (503)"
-                   : "; camera leg -> gRPC " + cameraGrpcTarget)
+                   ? "; camera tables -> unconfigured source (503)"
+                   : "; camera tables -> gRPC " + cameraGrpcTarget)
            << (productivityGrpcTarget.empty()
                    ? "; productivity leg -> unconfigured source (503)"
                    : "; productivity leg -> gRPC " + productivityGrpcTarget)
            << (notificationGrpcTarget.empty()
                    ? "; notification leg -> unconfigured source (503)"
-                   : "; notification leg -> gRPC " + notificationGrpcTarget)
-           << (cameraSync.syncUrl.empty()
-                   ? ""
-                   : "; camera relay -> " + cameraSync.syncUrl);
+                   : "; notification leg -> gRPC " + notificationGrpcTarget);
+
+  if (!cameraStream.streamUrl.empty()) {
+    const auto socket = std::make_shared<CameraStreamSocket>();
+    socket->setRelay(std::make_shared<CameraStreamRelay>(cameraStream.streamUrl));
+    drogon::app().registerController(socket);
+    LOG_INFO << "Camera stream socket registered: /camera-stream -> "
+             << cameraStream.streamUrl;
+  }
+  else {
+    LOG_INFO << "Camera stream socket disabled";
+  }
 
   const ListenerConfig listener = ListenerConfig::resolveTls(7024);
   const RemoteConfig remote = RemoteConfig::resolve();

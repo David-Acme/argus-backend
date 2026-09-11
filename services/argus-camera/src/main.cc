@@ -1,7 +1,7 @@
 #include <camera/camera-config.hxx>
 #include <camera/nats-camera-change-sink.hxx>
 #include <config/app-config.hxx>
-#include <controllers/camera-media-service.hxx>
+#include <controllers/camera-media-socket.hxx>
 #include <controllers/health-controller.hxx>
 #include <drogon/drogon.h>
 #include <drogon/utils/coroutine.h>
@@ -9,7 +9,6 @@
 #include <feature/api/camera/controllers/camera-controller.hxx>
 #include <feature/api/zone/controllers/zone-controller.hxx>
 #include <feature/health/health-rpc-service.hxx>
-#include <feature/socket/sync/socket/sync-socket.hxx>
 #include <feature/sync/camera-sync-rpc-service.hxx>
 #include <grpcpp/grpcpp.h>
 #include <filter/device/device-filter.hxx>
@@ -30,7 +29,6 @@
 #include <shared/services/stream/go2rtc-manager.hxx>
 #include <shared/services/stream/camera-source-registrar.hxx>
 #include <shared/services/stream/stream-hub.hxx>
-#include <shared/services/user-directory/user-directory-identity.hxx>
 #include <shared/wrapper/blocking-task/blocking-task.hxx>
 #include <shared/wrapper/nats/nats-bus.hxx>
 #include <unistd.h>
@@ -115,10 +113,8 @@ int main()
   drogon::app().registerFilter(std::make_shared<JwtFilter>());
   drogon::app().registerFilter(std::make_shared<RoleFilter>());
 
-  const auto syncSocket = std::make_shared<SyncSocket>();
-  syncSocket->setForwarder(std::make_shared<CameraMediaService>());
-  syncSocket->setUserDirectory(std::make_shared<IdentityUserDirectory>());
-  drogon::app().registerController(syncSocket);
+  drogon::app().registerController(
+      std::make_shared<CameraMediaSocket>());
 
   drogon::app().loadConfigJson(drogonConfig(cameraDb, listener));
 

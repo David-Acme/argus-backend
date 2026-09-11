@@ -98,9 +98,9 @@ with `scripts/setup.sh` / `scripts/setup.sh camera` on the host.
   gateway. The camera config points `[nats] url` at the internal alias
   `nats://nats:4222`. The camera domain is wholly served by this service: the
   gateway routes `/camera` and `/zone` at every segment depth here and relays
-  every `camera:*` frame to the same listener
-  (`[camera] sync_url = ws://127.0.0.1:7026/sync`). Talk synthesis reaches
-  argus-tts via the camera config's `[tts] remote_url` (host-networked
+  `/camera-stream` media (`camera:*` frames and fMP4) to the service's `/media`
+  socket (`[camera] stream_url = ws://127.0.0.1:7026/media`). Talk synthesis
+  reaches argus-tts via the camera config's `[tts] remote_url` (host-networked
   loopback 7029).
 - **argus-productivity / argus-notification** (Fase 3, compose v3) live on
   the same `internal` bridge network with only their 7027/7028 listeners

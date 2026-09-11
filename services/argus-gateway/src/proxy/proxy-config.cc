@@ -11,6 +11,7 @@ const std::vector<std::string>& gatewayNativePaths()
       "/portrait-preview",
       "/user",
       "/sync",
+      "/camera-stream",
       "/health",
   };
   return paths;

@@ -36,7 +36,7 @@ void CameraMediaService::dropSink(
   sinks_.erase(conn.get());
 }
 
-drogon::Task<bool> CameraMediaService::forwardText(const SyncFrameInput& input)
+drogon::Task<bool> CameraMediaService::handleText(const SyncFrameInput& input)
 {
   const drogon::WebSocketConnectionPtr& conn = input.conn;
   const Json::Value& message = input.message;
@@ -125,14 +125,7 @@ drogon::Task<bool> CameraMediaService::forwardText(const SyncFrameInput& input)
   co_return false;
 }
 
-void CameraMediaService::forwardBinary(
-    const drogon::WebSocketConnectionPtr& conn, const std::string& data)
-{
-  (void)conn;
-  (void)data;
-}
-
-void CameraMediaService::onClose(const drogon::WebSocketConnectionPtr& conn)
+void CameraMediaService::handleClose(const drogon::WebSocketConnectionPtr& conn)
 {
   if (auto sink = sinkFor(conn))
     StreamHub::instance().closeAll(sink.get());

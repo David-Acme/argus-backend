@@ -103,12 +103,13 @@ add_library(gateway-core STATIC
     ${GATEWAY_SRC_ROOT}/server/remote-gate.cc
     ${GATEWAY_SRC_ROOT}/sync/camera-fan-out.cc
     ${GATEWAY_SRC_ROOT}/sync/camera-notifier.cc
+    ${GATEWAY_SRC_ROOT}/sync/camera-stream-relay.cc
+    ${GATEWAY_SRC_ROOT}/sync/camera-stream-socket.cc
     ${GATEWAY_SRC_ROOT}/sync/camera-sync-source.cc
     ${GATEWAY_SRC_ROOT}/sync/notification-sync-source.cc
     ${GATEWAY_SRC_ROOT}/sync/productivity-sync-source.cc
     ${GATEWAY_SRC_ROOT}/sync/sync-fan-out.cc
     ${GATEWAY_SRC_ROOT}/sync/sync-registrar.cc
-    ${GATEWAY_SRC_ROOT}/sync/sync-relay.cc
     ${GATEWAY_SRC_ROOT}/sync/voice-grpc-relay.cc
     ${GATEWAY_SRC_ROOT}/sync/user-change-fan-out.cc
 )

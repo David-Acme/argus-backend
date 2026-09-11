@@ -19,7 +19,8 @@ buf.yaml  buf.gen.yaml          lint + C++ codegen
 
 Wire contracts documented under `docs/architecture/`:
 `wire-sync-tables.md`, `wire-device-identity.md`,
-`wire-sync-golden-frames.md` and `wire-nats-subjects.md`.
+`wire-sync-golden-frames.md`, `wire-camera-media.md` and
+`wire-nats-subjects.md`.
 
 ## Validation
 

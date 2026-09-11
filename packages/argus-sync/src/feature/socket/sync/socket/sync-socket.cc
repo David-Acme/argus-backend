@@ -31,7 +31,7 @@ void SyncSocket::handleNewMessage(const drogon::WebSocketConnectionPtr& conn,
   catch (...) {
     return;
   }
-  LOG_INFO << "SyncSocket: text " << message.substr(0, 120);
+  LOG_DEBUG << "SyncSocket: text " << message.substr(0, 120);
 
   auto* self = this;
   drogon::async_run([self, conn, json = std::move(json),
@@ -42,25 +42,22 @@ void SyncSocket::handleNewMessage(const drogon::WebSocketConnectionPtr& conn,
           {.conn = conn, .message = json, .raw = raw});
     }
     catch (const ValidationException& ex) {
-      Json::Value errResp;
-      errResp["type"] = json.get("type", "").asString() + "_error";
-      errResp["status"] = 422;
-      errResp["error"] = ex.what();
-      conn->sendJson(errResp);
+      sendSocketFrameError({.conn = conn,
+                            .type = json.get("type", "").asString(),
+                            .status = 422,
+                            .error = ex.what()});
     }
     catch (const ResponseException& ex) {
-      Json::Value errResp;
-      errResp["type"] = json.get("type", "").asString() + "_error";
-      errResp["status"] = ex.statusCode();
-      errResp["error"] = ex.what();
-      conn->sendJson(errResp);
+      sendSocketFrameError({.conn = conn,
+                            .type = json.get("type", "").asString(),
+                            .status = ex.statusCode(),
+                            .error = ex.what()});
     }
     catch (const std::exception& ex) {
-      Json::Value errResp;
-      errResp["type"] = json.get("type", "").asString() + "_error";
-      errResp["status"] = 500;
-      errResp["error"] = ex.what();
-      conn->sendJson(errResp);
+      sendSocketFrameError({.conn = conn,
+                            .type = json.get("type", "").asString(),
+                            .status = 500,
+                            .error = ex.what()});
     }
   });
 }

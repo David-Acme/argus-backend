@@ -281,7 +281,7 @@ TEST_CASE("camera and zone contracts hold on the argus-camera surface")
 
   bool badRequestThrown = false;
   try {
-    drogon::sync_wait(mediaService.forwardText(
+    drogon::sync_wait(mediaService.handleText(
         {.conn = conn,
          .message = subscribeMessage(0),
          .raw = std::string_view{}}));
@@ -296,7 +296,7 @@ TEST_CASE("camera and zone contracts hold on the argus-camera surface")
 
   bool notFoundThrown = false;
   try {
-    drogon::sync_wait(mediaService.forwardText(
+    drogon::sync_wait(mediaService.handleText(
         {.conn = conn,
          .message = subscribeMessage(999),
          .raw = std::string_view{}}));
@@ -311,7 +311,7 @@ TEST_CASE("camera and zone contracts hold on the argus-camera surface")
 
   bool go2rtcThrown = false;
   try {
-    drogon::sync_wait(mediaService.forwardText(
+    drogon::sync_wait(mediaService.handleText(
         {.conn = conn,
          .message = subscribeMessage(cameraId2),
          .raw = std::string_view{}}));
@@ -328,21 +328,21 @@ TEST_CASE("camera and zone contracts hold on the argus-camera surface")
   ackMessage["type"] = "camera:ack";
   ackMessage["payload"]["subId"] = 1;
   ackMessage["payload"]["bytes"] = Json::Int64(1024);
-  const bool ackHandled = drogon::sync_wait(mediaService.forwardText(
+  const bool ackHandled = drogon::sync_wait(mediaService.handleText(
       {.conn = conn, .message = ackMessage, .raw = std::string_view{}}));
   CHECK(ackHandled);
 
   Json::Value unsubMessage;
   unsubMessage["type"] = "camera:unsubscribe";
   unsubMessage["payload"]["subId"] = 1;
-  const bool unsubHandled = drogon::sync_wait(mediaService.forwardText(
+  const bool unsubHandled = drogon::sync_wait(mediaService.handleText(
       {.conn = conn, .message = unsubMessage, .raw = std::string_view{}}));
   CHECK(unsubHandled);
 
   Json::Value unknownMessage;
   unknownMessage["type"] = "voice:start";
   unknownMessage["payload"] = Json::Value(Json::objectValue);
-  const bool voiceIgnored = drogon::sync_wait(mediaService.forwardText(
+  const bool voiceIgnored = drogon::sync_wait(mediaService.handleText(
       {.conn = conn, .message = unknownMessage, .raw = std::string_view{}}));
   CHECK_FALSE(voiceIgnored);
 

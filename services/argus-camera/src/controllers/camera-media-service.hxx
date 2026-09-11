@@ -10,7 +10,7 @@
 #include <shared/services/stream/stream-hub.hxx>
 #include <unordered_map>
 
-// Binary fMP4 relay sink into one WebSocket connection, legacy-wire-identical.
+// Binary fMP4 relay sink into one WebSocket connection.
 class CameraStreamSink final : public StreamHub::ISink
 {
 public:
@@ -80,21 +80,14 @@ private:
   mutable std::mutex mutex_;
 };
 
-// Native camera:* handling of argus-camera's /sync socket.
-class CameraMediaService : public SyncForwarder
+// Camera media protocol of argus-camera's /media socket.
+class CameraMediaService
 {
 public:
   CameraMediaService();
 
-  void onConnect(const drogon::HttpRequestPtr&,
-                 const drogon::WebSocketConnectionPtr&) override
-  {
-  }
-
-  drogon::Task<bool> forwardText(const SyncFrameInput& input) override;
-  void forwardBinary(const drogon::WebSocketConnectionPtr& conn,
-                     const std::string& data) override;
-  void onClose(const drogon::WebSocketConnectionPtr& conn) override;
+  drogon::Task<bool> handleText(const SyncFrameInput& input);
+  void handleClose(const drogon::WebSocketConnectionPtr& conn);
 
 private:
   std::shared_ptr<CameraStreamSink>

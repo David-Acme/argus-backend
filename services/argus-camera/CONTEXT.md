@@ -55,7 +55,8 @@ preset, own `camera.db`.
   `argus.camera.v1.change` (Ruling Y) — no audit rows are persisted locally.
   Creates/deletes emit `Add`/`Delete` change events on the same subject.
 - **Media**: `CameraMediaService` handles the native `camera:*` frames of
-  this `/sync` socket: `camera:subscribe` checks the camera row (404 Camera
+  the `/media` socket (relayed from the gateway's `/camera-stream`):
+  `camera:subscribe` checks the camera row (404 Camera
   not found), subscribes through StreamHub fMP4 with the `0xA7` frame magic,
   and degrades to the legacy `503 go2rtc_not_running` envelope when go2rtc is
   down. Go2rtcManager owns the go2rtc lifecycle here.
