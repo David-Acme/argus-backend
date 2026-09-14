@@ -14,15 +14,44 @@
 #include <shared/services/jwt/jwt-service.hxx>
 #include <shared/services/sqlite/db-service.hxx>
 
+#include <atomic>
 #include <chrono>
 #include <cstdio>
 #include <memory>
 #include <string>
 #include <thread>
+#include <unistd.h>
 
 namespace
 {
-constexpr const char* kDb = "device-credential-test.db";
+int tempCounter()
+{
+  static std::atomic<int> counter{0};
+  return counter.fetch_add(1);
+}
+
+class TempDb
+{
+public:
+  explicit TempDb(const char* stem)
+      : path_(std::string(stem) + "-" + std::to_string(::getpid()) + "-" +
+              std::to_string(tempCounter()) + ".db")
+  {
+  }
+
+  ~TempDb()
+  {
+    std::remove(path_.c_str());
+    std::remove((path_ + "-wal").c_str());
+    std::remove((path_ + "-shm").c_str());
+  }
+
+  const std::string& path() const { return path_; }
+
+private:
+  std::string path_;
+};
+
 constexpr const char* kJwtSecret =
     "f5-2-device-credential-test-jwt-secret-0123456789";
 constexpr const char* kFingerprintSecret = "f5-2-test-secret";
@@ -192,10 +221,12 @@ TEST_CASE("device credential fingerprints are pinned and IP-free")
 TEST_CASE("credential identity mode issues, binds and authenticates devices")
 {
   setConfig();
-  seedIdentityDb(kDb);
+  const TempDb db("device-credential-test");
+  seedIdentityDb(db.path().c_str());
 
   drogon::app().setLogLevel(trantor::Logger::kWarn);
-  drogon::app().addDbClient(drogon::orm::Sqlite3Config{1, kDb, "default", -1});
+  drogon::app().addDbClient(
+      drogon::orm::Sqlite3Config{1, db.path(), "default", -1});
   std::thread runner([] { drogon::app().run(); });
   REQUIRE(waitForBoot(std::chrono::seconds(30)));
 
@@ -395,7 +426,4 @@ TEST_CASE("credential identity mode issues, binds and authenticates devices")
 
   drogon::app().quit();
   runner.join();
-  std::remove(kDb);
-  std::remove("device-credential-test.db-wal");
-  std::remove("device-credential-test.db-shm");
 }

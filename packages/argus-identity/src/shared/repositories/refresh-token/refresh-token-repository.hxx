@@ -25,6 +25,9 @@ public:
   drogon::Task<std::optional<RefreshTokenSchema>>
   findByRefreshToken(int64_t userId, const std::string& refreshToken) const;
 
+  drogon::Task<bool> hasActiveSession(int64_t userId,
+                                      const std::string& deviceHash) const;
+
   drogon::Task<bool> invalidate(int64_t id) const;
   drogon::Task<bool> markUsed(int64_t id) const;
   drogon::Task<bool> invalidateAllUser(int64_t userId) const;
