@@ -476,9 +476,13 @@ TapoResult TapoTalkClient::sendChunk(const TapoTalkSendInput& input,
                                      const CancellationToken& token)
 {
   if (!open_) {
-    const auto opened = open();
-    if (!opened.ok)
-      return opened;
+    auto opened = open();
+    if (!opened.ok) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(400));
+      opened = open();
+      if (!opened.ok)
+        return opened;
+    }
   }
 
   auto result =

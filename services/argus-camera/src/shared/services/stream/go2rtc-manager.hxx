@@ -42,6 +42,7 @@ public:
   bool removeSource(const std::string& name);
 
   std::string apiBase();
+  std::string rtspBase();
   static std::string streamName(int64_t cameraId);
 
   // Rejects anything that could break out of the generated YAML or argument vector.

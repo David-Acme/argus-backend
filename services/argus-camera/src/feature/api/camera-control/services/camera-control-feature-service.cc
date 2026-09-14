@@ -14,8 +14,9 @@ drogon::Task<CameraControlResult> CameraControlFeatureService::onDevice(
   if (!driver)
     co_return DriverResult::failure("This camera driver is not supported yet");
 
-  const auto result =
+  DriverResult result =
       co_await BlockingTask<DriverResult>([driver, work]() { return work(*driver); });
+  result.attempted = true;
 
   if (!result.ok)
     CameraDriverRegistry::instance().forget(cameraId);

@@ -13,6 +13,9 @@ struct DriverResult
   bool ok{false};
   std::string error;
   Json::Value data;
+  // True once a command may have reached the hardware; a failure with this
+  // clear is proven to have sent nothing.
+  bool attempted{false};
 
   static DriverResult failure(const std::string& message)
   {
@@ -20,7 +23,8 @@ struct DriverResult
   }
 };
 
-// PTZ move input; `angle` is the Tapo protocol direction in degrees and wins over x/y.
+// PTZ move input; `angle` is the Tapo protocol direction in degrees and wins
+// over x/y.
 struct DriverMoveInput
 {
   std::optional<int64_t> x;
@@ -81,7 +85,8 @@ public:
   void forget(int64_t cameraId);
 };
 
-// Test hook (same pattern as VoiceSessionTestAccess): seeds a stub driver for unit tests.
+// Test hook (same pattern as VoiceSessionTestAccess): seeds a stub driver for
+// unit tests.
 struct CameraDriverTestAccess
 {
   static void install(int64_t cameraId,
