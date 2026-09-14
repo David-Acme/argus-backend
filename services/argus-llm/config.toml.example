@@ -48,3 +48,7 @@ client_max_memory_body_size = "8M"
 reuse_port = false
 handle_sig_term = true
 relaunch_on_error = false
+
+[memory]
+# Camera events become system episodes for the owner.
+observe_camera_events = false

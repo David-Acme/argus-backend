@@ -37,6 +37,14 @@ and instead call it over the internal wire.
   `[server]` (loopback listener, default 7029) only. No database, no NATS,
   no JWT/device keys.
 
+## Synthesis cache
+
+Repeated short lines are served from a bounded in-memory cache (64 entries,
+text up to 300 chars) keyed by text/voice/lang/steps/speed. The first call
+pays the engine (~3.3 s per greeting on CPU); every repeat is a memory copy
+(sub-millisecond), which is what makes the guard's fixed greetings and
+announcements feel immediate.
+
 ## What it did NOT change
 
 - The mobile app never talks to this service; `/camera/{id}/talk` keeps

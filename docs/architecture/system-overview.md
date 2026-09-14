@@ -140,9 +140,11 @@ Provision only the detector and go2rtc artifacts with:
 ./scripts/setup.sh camera
 ```
 
-The operator is read-only toward camera hardware. It never arms an alarm or
-siren. Overlay output is disabled by default and is intended only for local
-diagnostics.
+The operator is read-only toward camera hardware. Audible intervention
+(announcement, alarm tone, opt-in siren arming) runs only through
+argus-guard's fleet-secret gated `argus.camera.v1.CameraActionService` and the
+camera's `[actions].enabled` gate. Overlay output is disabled by default and is
+intended only for local diagnostics.
 
 ## API invariants
 
@@ -170,7 +172,8 @@ NATS, models, cameras or downstream services are degraded.
 - Smart ownership and bounded queues; no raw owning pointers or unbounded
   transport buffers.
 - English-only source, comments, documentation and commits.
-- Never trigger camera alarms or sirens during development or tests.
+- Never trigger camera alarms or sirens by hand or in tests; the only audible
+  path is argus-guard's fleet-gated action surface under its flags and caps.
 
 The binding rules live in the root `AGENTS.md`; service-specific constraints
 live in each owner folder's `AGENTS.md` and architectural decisions in its

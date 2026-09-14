@@ -8,9 +8,20 @@ include(${CMAKE_CURRENT_SOURCE_DIR}/../../cmake/argus-module.cmake)
 argus_module(NAME audio
     SOURCES
         src/shared/wrapper/audio/audio-resampler.cc
+        src/shared/wrapper/audio/endpoint-detector.cc
     INCLUDES
         src
     DEPENDS
         argus_common)
 
 target_compile_options(argus_audio PRIVATE -Wall -Wextra)
+
+enable_testing()
+find_package(doctest REQUIRED)
+
+add_executable(endpoint-detector-test
+    tests/unit/endpoint-detector-test.cc)
+target_link_libraries(endpoint-detector-test PRIVATE argus::audio
+    doctest::doctest)
+target_compile_options(endpoint-detector-test PRIVATE -Wall -Wextra)
+add_test(NAME endpoint-detector-test COMMAND endpoint-detector-test)

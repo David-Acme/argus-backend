@@ -1,0 +1,111 @@
+# argus-guard deploy configuration. Copy to config.guard.toml (gitignored).
+
+[server]
+host = "0.0.0.0"
+port = 7039
+
+[drogon.app]
+number_of_threads = 0
+enable_session = false
+document_root = "./"
+use_sendfile = true
+use_gzip = true
+use_brotli = false
+static_files_cache_time = 5
+idle_connection_timeout = 60
+enable_server_header = true
+enable_date_header = true
+client_max_body_size = "1M"
+reuse_port = false
+enable_request_stream = false
+handle_sig_term = true
+relaunch_on_error = false
+
+[database]
+db = "guard/guard.db"
+schema = "database/schema.sql"
+
+[guard]
+enabled = false
+profile = "home"
+default_mode = "home"
+notify_level = 2
+announce_level = 3
+alarm_level = 4
+announce_text = "Hola, ¿necesitas algo?"
+announce_lang = "es"
+greet_enabled = true
+greet_known = true
+greet_text = "Hola, ¿necesitas algo?"
+greet_texts = "Hola, ¿necesitas algo? | Hola, ¿en qué puedo ayudarte? | Hola, ¿te ayudo en algo? | Hola, ¿todo bien?"
+greet_known_text = "Hola {name}, ¿necesitas algo?"
+greet_lang = "es"
+greet_listen_seconds = 6
+greet_reply_enabled = true
+greet_reply_text = "Perfecto, dime, ¿en qué te ayudo?"
+greet_reply_texts = "Perfecto, dime, ¿en qué te ayudo? | Muy bien, te escucho. | Claro, te ayudo."
+greet_reply_lang = "es"
+greet_repair_text = "No te escuché bien. ¿Puedes repetirlo?"
+alarm_seconds = 6
+arm_siren = false
+siren_seconds = 20
+veto_scope = "soft_only"
+action_cooldown_s = 120
+repeat_window_s = 86400
+max_actions_per_hour = 4
+expected_guests = true
+cross_camera_window_s = 60
+continuity_window_s = 20
+signature_min_similarity = 0.82
+loiter_checks = 3
+staging = true
+encounter_timeout_s = 300
+heartbeat_s = 10
+consumer_durable = "argus-guard"
+
+[guard.assess]
+enabled = true
+mode = "agent"
+vlm_url = "http://argus-vlm:7031"
+llm_url = "argus-llm:7032"
+timeout_ms = 8000
+max_tool_rounds = 2
+
+[camera]
+actions_target = "argus-camera:7036"
+actions_credential = "CHANGE_ME_GUARD_CAMERA"
+
+[notifications]
+grpc_target = "argus-notification:7038"
+credential = "CHANGE_ME_GUARD_NOTIFICATION"
+
+[jwt]
+secret = ""
+refresh_secret = ""
+access_ttl_minutes = 15
+refresh_ttl_days = 30
+
+[device]
+fingerprint_secret = ""
+identity_mode = "ip"
+trust_forwarded_for = true
+trusted_proxy_ips = ""
+
+[identity]
+target = "172.19.0.1:7040"
+rpc_secret = "CHANGE_ME_SAME_IN_EVERY_SERVICE"
+
+[nats]
+url = "nats://nats:4222"
+
+[storage]
+# Private object storage (RustFS) for incident evidence records.
+# provision-host.sh fills the endpoint and credentials.
+mode = "s3"
+
+[storage.s3]
+endpoint = "http://rustfs:9000"
+region = "us-east-1"
+bucket = ""
+access_key = ""
+secret_key = ""

@@ -24,6 +24,15 @@ inline constexpr std::string_view INSERT =
     "expires_at) "
     "VALUES (?, ?, ?, ?, ?, ?)";
 
+inline constexpr std::string_view COUNT_ACTIVE_SESSIONS =
+    "SELECT COUNT(*) AS total FROM refresh_token "
+    "WHERE user_id = ? AND is_valid = 1 AND is_used = 0 AND expires_at > ?";
+
+inline constexpr std::string_view COUNT_ACTIVE_SESSIONS_FOR_DEVICE =
+    "SELECT COUNT(*) AS total FROM refresh_token "
+    "WHERE user_id = ? AND device_hash = ? AND is_valid = 1 AND is_used = 0 "
+    "AND expires_at > ?";
+
 inline constexpr std::string_view INVALIDATE =
     "UPDATE refresh_token SET is_valid = 0 WHERE id = ?";
 

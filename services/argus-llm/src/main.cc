@@ -6,7 +6,9 @@
 #include <identity/identity-client.hxx>
 #include <memory/catalog-replica.hxx>
 #include <server/listener-config.hxx>
+#include <shared/repositories/memory-graph/memory-graph-repository.hxx>
 #include <shared/services/config-service/config-service.hxx>
+#include <shared/services/encounter-closed/encounter-closed-consumer.hxx>
 #include <shared/services/memory/in-process-memory-chat.hxx>
 #include <shared/services/memory/memory-service.hxx>
 #include <shared/services/memory/sqlite-graph.hxx>
@@ -15,13 +17,18 @@
 #include <shared/services/tools/tool-registry.hxx>
 #include <shared/wrapper/blocking-task/blocking-task.hxx>
 #include <shared/wrapper/nats/nats-bus.hxx>
+#include <shared/wrapper/nats/nats-subject.hxx>
 
 #include <chrono>
+#include <ctime>
 #include <json/value.h>
 #include <llama.h>
+#include <map>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <thread>
+#include <vector>
 
 namespace
 {
@@ -81,6 +88,27 @@ bool hasCatalogRows(const CatalogReplica::Snapshot& snapshot)
 {
   return !snapshot.persons.empty() || !snapshot.cameras.empty() ||
          !snapshot.zones.empty() || !snapshot.streams.empty();
+}
+
+// Finalized guard encounters enter memory as system episodes, scoped to a real
+// owner; raw object events never reach memory.
+struct EncounterSummaryInput
+{
+  int64_t cameraId{0};
+  int64_t durationS{0};
+  std::string grade;
+  std::string lang;
+};
+
+std::string summarizeEncounter(const EncounterSummaryInput& input)
+{
+  if (input.lang == "en")
+    return "Camera " + std::to_string(input.cameraId) +
+           ": person observed for " + std::to_string(input.durationS) +
+           " s (risk " + input.grade + ")";
+  return "Cámara " + std::to_string(input.cameraId) +
+         ": persona observada durante " + std::to_string(input.durationS) +
+         " s (riesgo " + input.grade + ")";
 }
 
 CatalogReplica::Snapshot fetchCatalogSnapshotWithRetry()
@@ -161,6 +189,72 @@ int main()
     }
   }
 
+  std::unique_ptr<EncounterClosedConsumer> encounterConsumer;
+  MemoryGraphRepository encounterRepository;
+  if (bus && memory.isLoaded() &&
+      ConfigService::getBool("memory.observe_camera_events")) {
+    const std::string identityTarget = ConfigService::getString("identity.target");
+    if (identityTarget.empty()) {
+      LOG_WARN << "argus-llm: camera memory enabled but [identity].target is "
+                  "empty";
+    }
+    else {
+      const IdentityClient identity(identityTarget,
+                                    ConfigService::getString("identity.rpc_secret"));
+      int64_t ownerUserId = 0;
+      std::string ownerLang = "es";
+      if (const auto ids = identity.listNotifiableUsers();
+          ids && !ids->empty()) {
+        ownerUserId = ids->front();
+        if (const auto user = identity.getUser(ownerUserId);
+            user && user->has_user())
+          ownerLang = user->user().lang();
+      }
+      if (ownerUserId > 0) {
+        encounterConsumer = std::make_unique<EncounterClosedConsumer>(
+            EncounterClosedConsumer::Dependencies{
+                .bus = bus.get(),
+                .graph = &static_cast<SqliteGraph&>(memory.graph()),
+                .repository = &encounterRepository,
+                .capture =
+                    [&memory, ownerUserId, ownerLang](
+                        const EncounterCaptureInput& capture) {
+                      std::vector<int64_t> persons;
+                      if (capture.personId > 0)
+                        persons.push_back(capture.personId);
+                      const int64_t now =
+                          static_cast<int64_t>(std::time(nullptr));
+                      return memory.observeSystemEvent(
+                          {.channel = "camera",
+                           .summary = summarizeEncounter(
+                               {.cameraId = capture.cameraId,
+                                .durationS = capture.durationS,
+                                .grade = capture.grade,
+                                .lang = ownerLang}),
+                           .actor = "argus-guard",
+                           .at = capture.closedAt > 0 ? capture.closedAt : now,
+                           .userId = ownerUserId,
+                           .lang = ownerLang,
+                           .entitiesHint = persons});
+                    }},
+            EncounterClosedConsumer::Config{
+                .stream = std::string(nats_subject::kGuardStream),
+                .durable = "argus-llm-encounters",
+                .subject = std::string(nats_subject::kGuardEncounterClosed),
+                .maxDeliver = 10,
+                .poisonMaxAttempts = 3,
+                .ownerUserId = ownerUserId,
+                .lang = ownerLang});
+        encounterConsumer->start();
+        LOG_INFO << "argus-llm: camera events feed memory (user "
+                 << ownerUserId << ")";
+      }
+      else {
+        LOG_WARN << "argus-llm: camera memory enabled but no notifiable user";
+      }
+    }
+  }
+
   drogon::app().registerBeginningAdvice([&memory, &replica]() {
     drogon::async_run([&memory,
                        &replica]() -> drogon::Task<void> {
@@ -183,6 +277,8 @@ int main()
       .setThreadNum(0)
       .run();
 
+  if (encounterConsumer)
+    encounterConsumer->stop();
   memory.shutdown();
   llm->shutdownEngine();
   llama_backend_free();

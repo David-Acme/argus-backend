@@ -22,7 +22,9 @@ that apply to gateway code; when in doubt, the root file wins.
    `LOG_FATAL`); no spdlog.
 8. **Health safety** — `GET /health` must never fail or block on NATS or any
    downstream service; degraded dependencies degrade logs, not health.
-9. **Never trigger setAlarm/siren paths.**
+9. **No direct audible/hardware paths** — the gateway never calls
+   setAlarm/siren or camera action RPCs; audible intervention belongs to
+   argus-guard's fleet-secret gated action surface.
 10. **No std::future** — plain `std::thread` + join when parallelism is
     needed.
 11. **Build gate** — 0 errors AND 0 warnings (`-Wall -Wextra`) in gateway

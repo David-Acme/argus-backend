@@ -8,6 +8,7 @@
 #include <filter/valid-json/valid-json-filter.hxx>
 #include <grpcpp/grpcpp.h>
 #include <notification/nats-notification-change-sink.hxx>
+#include <notification/nats-notification-delivery-sink.hxx>
 #include <shared/wrapper/nats/nats-bus.hxx>
 #include <shared/wrapper/nats/nats-push-intent-sink.hxx>
 #include <shared/wrapper/nats/nats-subject.hxx>
@@ -59,19 +60,6 @@ int main()
   const ListenerConfig listener = ListenerConfig::resolve(7028);
   const GrpcListenerConfig grpcListener = GrpcListenerConfig::resolve(7038);
 
-  NotificationRpcService notificationRpc;
-
-  grpc::ServerBuilder grpcBuilder;
-  const std::string grpcAddress =
-      grpcListener.host + ":" + std::to_string(grpcListener.port);
-  grpcBuilder.AddListeningPort(grpcAddress, grpc::InsecureServerCredentials());
-  grpcBuilder.RegisterService(&notificationRpc);
-  std::unique_ptr<grpc::Server> grpcServer(grpcBuilder.BuildAndStart());
-  if (!grpcServer) {
-    LOG_FATAL << "gRPC server failed to listen on " << grpcAddress;
-    return 1;
-  }
-
   drogon::app().registerController(std::make_shared<HealthController>(HealthStatus{.serviceName = "argus-notification", .extras = {}}));
 
   drogon::app().registerFilter(std::make_shared<DeviceFilter>());
@@ -105,8 +93,9 @@ int main()
       });
 
   LOG_INFO << "Listening on " << listener.host << ":" << listener.port
-           << " (plain); notification database " << notificationDb.dbPath
-           << "; gRPC NotificationService on " << grpcAddress;
+            << " (plain); notification database " << notificationDb.dbPath
+            << "; gRPC NotificationService on " << grpcListener.host << ":"
+            << grpcListener.port;
 
   drogon::app().registerBeginningAdvice([&notificationDb]() {
     if (!DbService::runScriptFile(notificationDb.schemaPath)) {
@@ -115,12 +104,31 @@ int main()
       _exit(1);
     }
 
+    const auto hasColumn = [](const std::string& table,
+                              const std::string& column) {
+      const auto rows = DbService::client()->execSqlSync(
+          "SELECT COUNT(*) AS total FROM pragma_table_info('" + table +
+              "') WHERE name = ?",
+          column);
+      return !rows.empty() && rows.front()["total"].as<int>() > 0;
+    };
+    if (!hasColumn("notification_command", "expected_count"))
+      DbService::client()->execSqlSync(
+          "ALTER TABLE notification_command ADD COLUMN expected_count INTEGER "
+          "NOT NULL DEFAULT 0");
+    if (!hasColumn("notification_command", "fingerprint"))
+      DbService::client()->execSqlSync(
+          "ALTER TABLE notification_command ADD COLUMN fingerprint TEXT NOT "
+          "NULL DEFAULT ''");
+
     DbService::applyPragmas();
     DbService::client()->execSqlSync("PRAGMA foreign_keys = OFF");
   });
 
   std::shared_ptr<NatsNotificationChangeSink> changeSink;
+  std::shared_ptr<NatsNotificationDeliverySink> deliverySink;
   std::shared_ptr<NatsBus> natsBus;
+  std::shared_ptr<NatsPushIntentSink> pushIntentSink;
   const std::string natsUrl = ConfigService::getString("nats.url");
   if (natsUrl.empty()) {
     LOG_INFO << "NATS not configured; notification change funnel disabled";
@@ -133,13 +141,17 @@ int main()
       user_change::setNotificationSink(changeSink.get());
     }
     else {
-      natsBus.reset();
       LOG_WARN << "NATS unavailable at " << natsUrl
-               << "; notification change funnel disabled";
+               << "; funnels stay pending until the supervisor reconnects";
     }
+    deliverySink = std::make_shared<NatsNotificationDeliverySink>(
+        natsBus, NatsNotificationDeliverySink::Config{
+                     .stream = std::string(
+                         nats_subject::kNotificationDeliveryStream),
+                     .subject = std::string(
+                         nats_subject::kNotificationDelivery)});
   }
 
-  std::shared_ptr<NatsPushIntentSink> pushIntentSink;
   if (push_intent::enabledFromConfig()) {
     if (natsBus) {
       pushIntentSink = std::make_shared<NatsPushIntentSink>(natsBus);
@@ -150,6 +162,24 @@ int main()
       LOG_WARN << "[push] enabled but NATS unavailable; push intents disabled";
     }
   }
+
+  NotificationRpcService notificationRpc(
+      {.deliverySink = deliverySink,
+       .pushSink = pushIntentSink,
+       .pushRequired = push_intent::enabledFromConfig()});
+
+  grpc::ServerBuilder grpcBuilder;
+  const std::string grpcAddress =
+      grpcListener.host + ":" + std::to_string(grpcListener.port);
+  grpcBuilder.AddListeningPort(grpcAddress, grpc::InsecureServerCredentials());
+  grpcBuilder.RegisterService(&notificationRpc);
+  std::unique_ptr<grpc::Server> grpcServer(grpcBuilder.BuildAndStart());
+  if (!grpcServer) {
+    LOG_FATAL << "gRPC server failed to listen on " << grpcAddress;
+    return 1;
+  }
+
+  notificationRpc.startDeliveryReconciler();
 
   drogon::app()
       .setThreadNum(0)

@@ -212,6 +212,26 @@ TEST_CASE("table name strings round-trip")
     CHECK(tableNameToString(TableName::PersonEvent) == "person_event");
 }
 
+TEST_CASE("guard intent status strings round-trip without a silent default")
+{
+    const std::vector<GuardIntentStatus> values = {
+        GuardIntentStatus::Pending,      GuardIntentStatus::InFlight,
+        GuardIntentStatus::RetryableFailed, GuardIntentStatus::Succeeded,
+        GuardIntentStatus::DuplicateSucceeded, GuardIntentStatus::Rejected,
+        GuardIntentStatus::Conflict,     GuardIntentStatus::Indeterminate};
+    const std::vector<std::string> names = {
+        "pending",      "in_flight",     "retryable_failed", "succeeded",
+        "duplicate_succeeded", "rejected", "conflict",       "indeterminate"};
+    REQUIRE(values.size() == names.size());
+    for (size_t i = 0; i < values.size(); ++i) {
+        CHECK(guardIntentStatusToString(values[i]) == names[i]);
+        CHECK(guardIntentStatusFromString(names[i]) == values[i]);
+    }
+    CHECK_FALSE(guardIntentStatusFromString("bogus").has_value());
+    CHECK_FALSE(guardIntentStatusFromString("").has_value());
+    CHECK_FALSE(guardIntentStatusFromString("unknown").has_value());
+}
+
 TEST_CASE("unknown strings fall back to documented defaults")
 {
     CHECK(userRoleFromString("bogus") == UserRole::Guest);

@@ -26,13 +26,13 @@ services:
         bind:
           create_host_path: false
       - type: bind
-        source: ../certs
+        source: ${ARGUS_CERTS_DIR:-../certs}
         target: /opt/argus/certs
         read_only: true
         bind:
           create_host_path: false
       - type: bind
-        source: ${ARGUS_DATA_DIR:-./data}
+        source: ${ARGUS_DATA_DIR:-./data}/identity
         target: /opt/argus/database
         bind:
           create_host_path: false
@@ -43,7 +43,7 @@ services:
         bind:
           create_host_path: false
       - type: bind
-        source: ../models
+        source: ${ARGUS_MODELS_DIR:-../models}
         target: /opt/argus/models
         read_only: true
         bind:
@@ -54,6 +54,8 @@ services:
     depends_on:
       nats:
         condition: service_healthy
+      rustfs-init:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD-SHELL", "curl -kfs https://127.0.0.1:7024/health >/dev/null"]
       interval: 10s
@@ -103,7 +105,7 @@ services:
         read_only: true
         bind:
           create_host_path: false
-      - camera-db:/opt/argus/camera
+      - ${ARGUS_DATA_DIR:-./data}/camera:/opt/argus/camera
       - camera-stream:/opt/argus/stream
       - type: bind
         source: ../services/argus-camera/database/schema.sql
@@ -112,13 +114,13 @@ services:
         bind:
           create_host_path: false
       - type: bind
-        source: ../models
+        source: ${ARGUS_MODELS_DIR:-../models}
         target: /opt/argus/models
         read_only: true
         bind:
           create_host_path: false
       - type: bind
-        source: ../third_party/go2rtc
+        source: ${ARGUS_GO2RTC_DIR:-../third_party/go2rtc}
         target: /opt/argus/third_party/go2rtc
         read_only: true
         bind:
@@ -130,6 +132,8 @@ services:
     depends_on:
       nats:
         condition: service_healthy
+      rustfs-init:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD-SHELL", "curl -fs http://127.0.0.1:7026/health >/dev/null"]
       interval: 10s
@@ -181,7 +185,7 @@ services:
         read_only: true
         bind:
           create_host_path: false
-      - productivity-db:/opt/argus/productivity
+      - ${ARGUS_DATA_DIR:-./data}/productivity:/opt/argus/productivity
     depends_on:
       nats:
         condition: service_healthy
@@ -234,7 +238,7 @@ services:
         read_only: true
         bind:
           create_host_path: false
-      - notification-db:/opt/argus/notification
+      - ${ARGUS_DATA_DIR:-./data}/notification:/opt/argus/notification
     depends_on:
       nats:
         condition: service_healthy
@@ -247,6 +251,58 @@ services:
     mem_limit: "${ARGUS_NOTIFICATION_MEMORY_LIMIT:-1g}"
     cpus: "${ARGUS_NOTIFICATION_CPU_LIMIT:-1.00}"
     pids_limit: 512
+    restart: unless-stopped
+
+  # Autonomous camera guard: consumes object_detected, classifies danger and
+  # raises security notifications. Owns guard.db; identity and notifications
+  # are reached through their SDKs (rules 23/27).
+  argus-guard:
+    build:
+      context: ..
+      dockerfile: services/argus-guard/Dockerfile
+      args:
+        ARGUS_UID: "${ARGUS_UID:-1000}"
+        ARGUS_GID: "${ARGUS_GID:-1000}"
+    image: argus-guard:local
+    pull_policy: never
+    user: "${ARGUS_UID:-1000}:${ARGUS_GID:-1000}"
+    networks:
+      internal:
+        aliases:
+          - argus-guard
+    ports:
+      - "127.0.0.1:${GUARD_PORT:-7039}:7039"
+    entrypoint: ["/opt/argus/argus-guard"]
+    volumes:
+      - type: bind
+        source: ./config.guard.toml
+        target: /opt/argus/config.toml
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ../services/argus-guard/database/schema.sql
+        target: /opt/argus/database/schema.sql
+        read_only: true
+        bind:
+          create_host_path: false
+      - ${ARGUS_DATA_DIR:-./data}/guard:/opt/argus/guard
+    depends_on:
+      nats:
+        condition: service_healthy
+      argus-notification:
+        condition: service_started
+      rustfs-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://127.0.0.1:7039/health >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    mem_limit: "${ARGUS_GUARD_MEMORY_LIMIT:-512m}"
+    cpus: "${ARGUS_GUARD_CPU_LIMIT:-0.50}"
+    pids_limit: 256
     restart: unless-stopped
 
   # AI engine services (Fase 4): internal-wire RPC servers; the config
@@ -277,7 +333,7 @@ services:
         bind:
           create_host_path: false
       - type: bind
-        source: ../models/tts
+        source: ${ARGUS_MODELS_DIR:-../models}/tts
         target: /opt/argus/models/tts
         read_only: true
         bind:
@@ -319,7 +375,7 @@ services:
         bind:
           create_host_path: false
       - type: bind
-        source: ../models/stt
+        source: ${ARGUS_MODELS_DIR:-../models}/stt
         target: /opt/argus/models/stt
         read_only: true
         bind:
@@ -365,7 +421,7 @@ services:
         bind:
           create_host_path: false
       - type: bind
-        source: ../models/vision
+        source: ${ARGUS_MODELS_DIR:-../models}/vision
         target: /opt/argus/models/vision
         read_only: true
         bind:
@@ -407,14 +463,14 @@ services:
         bind:
           create_host_path: false
       - type: bind
-        source: ../models/llm
+        source: ${ARGUS_MODELS_DIR:-../models}/llm
         target: /opt/argus/models/llm
         read_only: true
         bind:
           create_host_path: false
       # The hosted memory stack (f8-b4): the store it owns rw plus the schema
       # SQL the repo ships; identity/camera data arrives over the SDK clients.
-      - memory-db:/opt/argus/memory
+      - ${ARGUS_DATA_DIR:-./data}/memory:/opt/argus/memory
       - type: bind
         source: ../packages/argus-memory/database/schema.sql
         target: /opt/argus/database/schema.sql
@@ -422,13 +478,13 @@ services:
         bind:
           create_host_path: false
       - type: bind
-        source: ../models/memory
+        source: ${ARGUS_MODELS_DIR:-../models}/memory
         target: /opt/argus/models/memory
         read_only: true
         bind:
           create_host_path: false
       - type: bind
-        source: ../models/extract
+        source: ${ARGUS_MODELS_DIR:-../models}/extract
         target: /opt/argus/models/extract
         read_only: true
         bind:
@@ -481,7 +537,7 @@ services:
         bind:
           create_host_path: false
       - type: bind
-        source: ../models/vad
+        source: ${ARGUS_MODELS_DIR:-../models}/vad
         target: /opt/argus/models/vad
         read_only: true
         bind:
@@ -582,18 +638,90 @@ services:
     pids_limit: 128
     restart: unless-stopped
 
+  # Private S3 object store (RustFS) for every media/evidence producer and
+  # consumer. Objects bind to the host data dir; root, RPC and the
+  # least-privilege application credentials live in 0600 secret files
+  # generated by scripts/provision-host.sh. The console is disabled and the
+  # API is published on host loopback only, so the gateway (host networking)
+  # reaches it at 127.0.0.1:9000 while the internal services use
+  # http://rustfs:9000.
+  rustfs:
+    image: rustfs/rustfs:1.0.0-beta.12
+    user: "${ARGUS_UID:-1000}:${ARGUS_GID:-1000}"
+    entrypoint: ["/bin/sh", "/opt/argus/s3-entrypoint.sh"]
+    environment:
+      RUSTFS_ADDRESS: "0.0.0.0:9000"
+      RUSTFS_CONSOLE_ENABLE: "false"
+      RUSTFS_ACCESS_KEY_FILE: /run/secrets/rustfs_access_key
+      RUSTFS_SECRET_KEY_FILE: /run/secrets/rustfs_secret_key
+      RUSTFS_RPC_SECRET_FILE_PATH: /run/secrets/rustfs_rpc_secret
+    ports:
+      - "127.0.0.1:${RUSTFS_API_PORT:-9000}:9000"
+    volumes:
+      - ${ARGUS_DATA_DIR:-./data}/rustfs/objects:/data
+      - ../scripts/lib/s3-entrypoint.sh:/opt/argus/s3-entrypoint.sh:ro
+    secrets:
+      - rustfs_access_key
+      - rustfs_secret_key
+      - rustfs_rpc_secret
+    networks:
+      internal:
+        aliases:
+          - rustfs
+    healthcheck:
+      test: ["CMD-SHELL", "curl --fail --silent http://127.0.0.1:9000/health/ready >/dev/null"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
+    mem_limit: "${RUSTFS_MEMORY_LIMIT:-512m}"
+    cpus: "${RUSTFS_CPU_LIMIT:-1.00}"
+    pids_limit: 128
+    restart: unless-stopped
+
+  # One-shot bootstrapper: creates/verifies the private bucket and the
+  # bucket-scoped argus-backend service account. Idempotent; only this
+  # container ever sees the root credentials.
+  rustfs-init:
+    image: rustfs/rc:v0.1.31
+    user: "0:0"
+    entrypoint: ["/bin/sh", "/opt/argus/s3-init.sh"]
+    environment:
+      HOME: /tmp
+      RUSTFS_ENDPOINT: http://rustfs:9000
+      RUSTFS_REGION: "${RUSTFS_REGION:-us-east-1}"
+      RUSTFS_BUCKET_FILE: /run/argus/rustfs-bucket
+    volumes:
+      - ../scripts/lib/s3-init.sh:/opt/argus/s3-init.sh:ro
+      - ${ARGUS_DATA_DIR:-./data}/rustfs/secrets/rustfs-bucket:/run/argus/rustfs-bucket:ro
+    secrets:
+      - rustfs_access_key
+      - rustfs_secret_key
+      - argus_s3_access_key
+      - argus_s3_secret_key
+    depends_on:
+      rustfs:
+        condition: service_healthy
+    networks:
+      - internal
+    restart: "no"
+
   nats:
     image: nats:2.11.14-alpine
-    command: ["-m", "8222"]
+    # JetStream is mandatory: the camera stores observations in ARGUS_CAMERA
+    # and argus-guard consumes them through a durable acknowledged consumer.
+    command: ["-js", "-m", "8222", "-sd", "/data"]
     ports:
       - "127.0.0.1:${NATS_CLIENT_PORT:-4222}:4222"
       - "127.0.0.1:${NATS_MONITOR_PORT:-8222}:8222"
+    volumes:
+      - nats-data:/data
     networks:
       internal:
         aliases:
           - nats
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8222/healthz >/dev/null"]
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8222/healthz >/dev/null && wget -qO- http://127.0.0.1:8222/jsz >/dev/null"]
       interval: 5s
       timeout: 3s
       retries: 12
@@ -613,7 +741,7 @@ services:
         if [ -f /opt/argus/database/argus.db ]; then /opt/argus/argus-migrate-identity --source /opt/argus/database/argus.db --target /opt/argus/database/identity.db --schema /opt/argus/database/schema.sql; else echo 'No argus.db yet; the gateway creates identity.db at boot.'; fi
     volumes:
       - type: bind
-        source: ${ARGUS_DATA_DIR:-./data}
+        source: ${ARGUS_DATA_DIR:-./data}/identity
         target: /opt/argus/database
         bind:
           create_host_path: false
@@ -645,7 +773,7 @@ services:
         if [ -f /opt/argus/database/argus.db ]; then /opt/argus/argus-migrate-camera --source /opt/argus/database/argus.db --target /opt/argus/camera/camera.db --schema /opt/argus/database/schema.sql; else echo 'No argus.db yet; argus-camera applies the camera schema at boot.'; fi
     volumes:
       - type: bind
-        source: ${ARGUS_DATA_DIR:-./data}
+        source: ${ARGUS_DATA_DIR:-./data}/identity
         target: /opt/argus/database
         bind:
           create_host_path: false
@@ -657,7 +785,7 @@ services:
         read_only: true
         bind:
           create_host_path: false
-      - camera-db:/opt/argus/camera
+      - ${ARGUS_DATA_DIR:-./data}/camera:/opt/argus/camera
     restart: "no"
 
   # Productivity migration init (Ruling AU): opt-in one-shot tool copying the
@@ -679,7 +807,7 @@ services:
         if [ -f /opt/argus/database/argus.db ]; then /opt/argus/argus-migrate-productivity --source /opt/argus/database/argus.db --target /opt/argus/productivity/productivity.db --schema /opt/argus/database/schema.sql; else echo 'No argus.db yet; argus-productivity applies the productivity schema at boot.'; fi
     volumes:
       - type: bind
-        source: ${ARGUS_DATA_DIR:-./data}
+        source: ${ARGUS_DATA_DIR:-./data}/identity
         target: /opt/argus/database
         bind:
           create_host_path: false
@@ -692,7 +820,7 @@ services:
         read_only: true
         bind:
           create_host_path: false
-      - productivity-db:/opt/argus/productivity
+      - ${ARGUS_DATA_DIR:-./data}/productivity:/opt/argus/productivity
     restart: "no"
 
   # Notification migration init (Ruling AU): opt-in one-shot tool copying
@@ -710,7 +838,7 @@ services:
         if [ -f /opt/argus/database/argus.db ]; then /opt/argus/argus-migrate-notification --source /opt/argus/database/argus.db --target /opt/argus/notification/notification.db --schema /opt/argus/database/schema.sql; else echo 'No argus.db yet; argus-notification applies the notification schema at boot.'; fi
     volumes:
       - type: bind
-        source: ${ARGUS_DATA_DIR:-./data}
+        source: ${ARGUS_DATA_DIR:-./data}/identity
         target: /opt/argus/database
         bind:
           create_host_path: false
@@ -720,7 +848,7 @@ services:
         read_only: true
         bind:
           create_host_path: false
-      - notification-db:/opt/argus/notification
+      - ${ARGUS_DATA_DIR:-./data}/notification:/opt/argus/notification
     restart: "no"
 
   # RADV validation probe (Fase 2 gate): runs argus-vulkan-probe against the
@@ -740,19 +868,23 @@ services:
       - /dev/dri:/dev/dri
     restart: "no"
 
+secrets:
+  rustfs_access_key:
+    file: ${ARGUS_DATA_DIR:-./data}/rustfs/secrets/rustfs_access_key
+  rustfs_secret_key:
+    file: ${ARGUS_DATA_DIR:-./data}/rustfs/secrets/rustfs_secret_key
+  rustfs_rpc_secret:
+    file: ${ARGUS_DATA_DIR:-./data}/rustfs/secrets/rustfs_rpc_secret
+  argus_s3_access_key:
+    file: ${ARGUS_DATA_DIR:-./data}/rustfs/secrets/argus_s3_access_key
+  argus_s3_secret_key:
+    file: ${ARGUS_DATA_DIR:-./data}/rustfs/secrets/argus_s3_secret_key
+
 volumes:
-  camera-db:
-    name: argus-cutover-camera-db
   camera-stream:
     name: argus-cutover-camera-stream
-  productivity-db:
-    name: argus-cutover-productivity-db
-  notification-db:
-    name: argus-cutover-notification-db
-  # Unmounted since f8-b3 (the argus-memory container is retired); argus-llm
-  # takes the volume over at f8-b4 when it hosts the memory package.
-  memory-db:
-    name: argus-cutover-memory-db
+  nats-data:
+    name: argus-cutover-nats-data
 
 networks:
   internal:

@@ -99,3 +99,22 @@ The compose mounts the shared `models/` subpaths (`models/memory` +
 `models/extract`) and the memory database into the HOST's working
 directory — the ONNX/GGUF artifacts and `memory.db` are read relative to
 the config keys.
+
+## Stranger isolation (camera guard)
+
+The memory stack serves authenticated users. A person the camera sees is
+foreign to the system: their speech, intents and recall requests must never
+become facts, preferences, reminders or episodes. `captureExplicit`,
+`captureImplicit`, `observeSystemEvent` and every tool handler reject
+`userId <= 0`; camera events are written only as episodes through
+`observeSystemEvent` with the owner's scope and never pass through the rule
+parser, so a stranger can never teach the assistant anything. See
+`docs/history/plans/camera-guard-automation-plan.md` (6b).
+
+## Camera event episodes
+
+With `[memory] observe_camera_events` argus-llm subscribes
+`argus.camera.v1.object_detected` and records one episode per camera+rule (120 s
+throttle) through `observeSystemEvent`, scoped to the first notifiable user and
+carrying the person ids as entities. Episodes only: no rule parsing, no facts,
+and never anything a camera-only person said (see stranger isolation).

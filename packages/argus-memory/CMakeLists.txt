@@ -182,6 +182,20 @@ set_target_properties(memory-reminder-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
 add_test(NAME memory-reminder-test COMMAND memory-reminder-test)
 
+add_executable(encounter-inbox-test tests/unit/encounter-inbox-test.cc)
+
+target_link_libraries(encounter-inbox-test PRIVATE memory-core
+    doctest::doctest)
+
+target_compile_definitions(encounter-inbox-test PRIVATE
+    ARGUS_TEST_MEMORY_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql")
+
+target_compile_options(encounter-inbox-test PRIVATE -Wall -Wextra)
+
+set_target_properties(encounter-inbox-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+
+add_test(NAME encounter-inbox-test COMMAND encounter-inbox-test)
+
 # F9 Tarea 12: how much of the real memory_save traffic the microsecond
 # lexicon tier carries, which is what decides whether a heavier NER is
 # worth evaluating.

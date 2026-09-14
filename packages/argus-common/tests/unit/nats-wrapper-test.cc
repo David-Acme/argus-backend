@@ -12,6 +12,7 @@
 #include <iostream>
 #include <string>
 #include <thread>
+#include <unistd.h>
 #include <vector>
 
 namespace
@@ -19,6 +20,23 @@ namespace
 
 using nats_subject::SubjectKind;
 using nats_subject::isValidSubject;
+
+int streamCounter()
+{
+  static std::atomic<int> counter{0};
+  return counter.fetch_add(1);
+}
+
+std::string isolatedStream()
+{
+  return "argus-test-stream-" + std::to_string(::getpid()) + "-" +
+         std::to_string(streamCounter());
+}
+
+std::string isolatedSubject(const std::string& stream)
+{
+  return stream + ".events";
+}
 
 } // namespace
 
@@ -174,4 +192,65 @@ TEST_CASE("live roundtrip against a running nats-server")
   CHECK(bus.unsubscribe(*id));
   bus.drain();
   CHECK_FALSE(bus.isConnected());
+}
+
+TEST_CASE("ensureStream reconciles an existing stream instead of assuming it")
+{
+  const char* url = std::getenv("ARGUS_TEST_NATS_URL");
+  if (url == nullptr || std::string(url).empty()) {
+    std::cout << "SKIP: ARGUS_TEST_NATS_URL not provided\n";
+    return;
+  }
+
+  NatsBus bus;
+  NatsBus::Options options;
+  options.url = url;
+  REQUIRE(bus.connect(options));
+
+  const std::string stream = isolatedStream();
+  const std::string subject = isolatedSubject(stream);
+  const NatsBus::StreamInput create{.name = stream,
+                                    .subjects = {subject},
+                                    .maxAgeNs = 60LL * 1000000000,
+                                    .duplicatesNs = 60LL * 1000000000};
+  REQUIRE(bus.ensureStream(create));
+
+  const auto created = bus.streamInfo(stream);
+  REQUIRE(created.has_value());
+  REQUIRE(created->subjects.size() == 1);
+  CHECK(created->subjects.front() == subject);
+  CHECK(created->maxAgeNs == 60LL * 1000000000);
+
+  // Same config is accepted without changes.
+  CHECK(bus.ensureStream(create));
+
+  // A compatible maxAge difference is updated on the existing stream.
+  const NatsBus::StreamInput aged{.name = stream,
+                                  .subjects = {subject},
+                                  .maxAgeNs = 120LL * 1000000000,
+                                  .duplicatesNs = 60LL * 1000000000};
+  CHECK(bus.ensureStream(aged));
+  const auto updated = bus.streamInfo(stream);
+  REQUIRE(updated.has_value());
+  CHECK(updated->maxAgeNs == 120LL * 1000000000);
+
+  // A different subject set is refused explicitly, never assumed.
+  const NatsBus::StreamInput foreign{.name = stream,
+                                     .subjects = {subject + "-other"},
+                                     .maxAgeNs = 120LL * 1000000000,
+                                     .duplicatesNs = 60LL * 1000000000};
+  CHECK_FALSE(bus.ensureStream(foreign));
+  const auto intact = bus.streamInfo(stream);
+  REQUIRE(intact.has_value());
+  REQUIRE(intact->subjects.size() == 1);
+  CHECK(intact->subjects.front() == subject);
+
+  bus.drain();
+}
+
+TEST_CASE("streamInfo reports a missing stream without a server roundtrip lie")
+{
+  NatsBus bus;
+  CHECK_FALSE(bus.streamInfo("argus-test-stream-that-cannot-exist").has_value());
+  bus.drain();
 }

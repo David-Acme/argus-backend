@@ -31,10 +31,15 @@ message CreateNotificationsRequest {
   string title = 3;
   string body = 4;
   string data = 5; // serialized JSON payload
+  // Sender idempotency key; the receiver drops a repeated batch.
+  string command_id = 6;
 }
 
 message CreateNotificationsResponse {
   int32 created = 1;
+  // True when the command was already committed; created repeats the
+  // original persisted batch size.
+  bool duplicate = 2;
 }
 
 // Pull of one user's notification rows; only the created leg is serverable.

@@ -42,13 +42,14 @@ TEST_CASE("camera schema applies cleanly to an in-memory database")
 
   const auto tables = queryColumn(db.get(),
       "SELECT name FROM sqlite_master WHERE type = 'table' AND name IN "
-      "('camera', 'camera_stream', 'zone')");
-  REQUIRE(tables.size() == 3);
+      "('camera', 'camera_stream', 'zone', 'action_command', 'siren_lease', "
+      "'camera_evidence')");
+  REQUIRE(tables.size() == 6);
 
   const auto indexes = queryColumn(db.get(),
       "SELECT name FROM sqlite_master WHERE type = 'index' AND "
       "(name LIKE 'idx_camera%' OR name LIKE 'idx_zone%') ORDER BY name");
-  CHECK(indexes.size() == 8);
+  CHECK(indexes.size() == 9);
 }
 
 TEST_CASE("camera schema application is idempotent")

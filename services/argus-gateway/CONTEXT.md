@@ -52,7 +52,11 @@ monolith's build set was retired (F6-4).
 - **NATS event bus client**: connects to the shared event bus (`[nats]` in
   config) so later phases can fan sync-change events without touching the
   legacy backend. Connecting is optional: with no `nats.url` configured the
-  gateway logs and continues.
+  gateway logs and continues. The bus supervises its own reconnection
+  (backoff up to 30 s) and re-attaches every subscription, so handlers are
+  registered before the first successful connect. `/health` stays 200 and
+  reports `nats.enabled`/`nats.connected` as data; per the health-safety rule
+  the check never fails on a degraded bus.
 - **FaceService**: config-gated on `[face] enabled` (absent section or
   `false` boots without face models). Enabled with models present it loads
   like the backend; with models missing it degrades to a warn and facial

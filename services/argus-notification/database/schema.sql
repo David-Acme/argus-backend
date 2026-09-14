@@ -49,4 +49,29 @@ CREATE TABLE IF NOT EXISTS notification_token (
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_notification_token_uniq
     ON notification_token (user_id, device_hash);
+
+-- Sender idempotency inbox: one row per accepted notifications command id.
+CREATE TABLE IF NOT EXISTS notification_command (
+    command_id     TEXT    NOT NULL  PRIMARY KEY,
+    expected_count INTEGER NOT NULL  DEFAULT 0,
+    fingerprint    TEXT    NOT NULL  DEFAULT '',
+    created_at     INTEGER NOT NULL  DEFAULT (strftime('%s', 'now'))
+);
+
+-- One durable delivery intent per notification; settled after WS/push fan-out.
+CREATE TABLE IF NOT EXISTS notification_delivery (
+    id              INTEGER NOT NULL  PRIMARY KEY AUTOINCREMENT,
+    notification_id INTEGER NOT NULL  REFERENCES notification(id) ON DELETE CASCADE,
+    user_id         INTEGER NOT NULL  DEFAULT 0,
+    status          TEXT    NOT NULL  DEFAULT 'pending'
+                            CHECK (status IN ('pending', 'sent')),
+    attempts        INTEGER NOT NULL  DEFAULT 0,
+    created_at      INTEGER NOT NULL  DEFAULT (strftime('%s', 'now')),
+    sent_at         INTEGER NOT NULL  DEFAULT 0
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_notification_delivery_notification
+    ON notification_delivery (notification_id);
+CREATE INDEX IF NOT EXISTS idx_notification_delivery_status
+    ON notification_delivery (status, id);
 CREATE INDEX IF NOT EXISTS idx_notification_token_user ON notification_token (user_id);

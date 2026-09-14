@@ -58,3 +58,8 @@ trusted_proxy_ips = ""
 target = "172.19.0.1:7040"
 # Must match the gateway's [identity] rpc_secret, or every request 401s.
 rpc_secret = "CHANGE_ME_SAME_IN_EVERY_SERVICE"
+
+[grpc]
+# Capability credentials, each paired with its single caller.
+caller_guard = "CHANGE_ME_GUARD_NOTIFICATION"
+caller_gateway = "CHANGE_ME_GATEWAY_NOTIFICATION"

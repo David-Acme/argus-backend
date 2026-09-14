@@ -118,6 +118,8 @@ argus_module(NAME identity
         src/shared/repositories/device-login-challenge/device-login-challenge-repository.cc
         src/shared/repositories/face-embedding/face-embedding-repository.cc
         src/shared/repositories/person/person-repository.cc
+        src/shared/repositories/person-snapshot/person-snapshot-repository.cc
+        src/shared/repositories/person-tag/person-tag-repository.cc
         src/shared/repositories/portrait-preview-capability/portrait-preview-capability-repository.cc
         src/shared/repositories/refresh-token/refresh-token-repository.cc
         src/shared/repositories/stored-file/stored-file-repository.cc

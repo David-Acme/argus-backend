@@ -1,5 +1,22 @@
 #include "person-schema.hxx"
 
+namespace
+{
+
+PersonStatus readStatus(const drogon::orm::Row& row)
+{
+  try {
+    const auto field = row["status"];
+    return field.isNull() ? PersonStatus::Known
+                          : personStatusFromString(field.as<std::string>());
+  }
+  catch (...) {
+    return PersonStatus::Known;
+  }
+}
+
+} // namespace
+
 PersonSchema::PersonSchema(const drogon::orm::Row& row)
 {
   id = static_cast<int64_t>(row["id"].as<long long>());
@@ -8,6 +25,7 @@ PersonSchema::PersonSchema(const drogon::orm::Row& row)
   name = row["name"].as<std::string>();
   alias = row["alias"].as<std::string>();
   observation = row["observation"].as<std::string>();
+  status = readStatus(row);
   firstSeenAt = static_cast<int64_t>(row["first_seen_at"].as<long long>());
   lastSeenAt = static_cast<int64_t>(row["last_seen_at"].as<long long>());
   createdAt = static_cast<int64_t>(row["created_at"].as<long long>());
@@ -25,6 +43,7 @@ Json::Value PersonSchema::toJson() const
   json["name"] = name;
   json["alias"] = alias;
   json["observation"] = observation;
+  json["status"] = personStatusToString(status);
   json["firstSeenAt"] = Json::Int64(firstSeenAt);
   json["lastSeenAt"] = Json::Int64(lastSeenAt);
   json["createdAt"] = Json::Int64(createdAt);

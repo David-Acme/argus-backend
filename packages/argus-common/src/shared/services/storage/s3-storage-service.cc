@@ -159,6 +159,27 @@ bool S3StorageService::isConfigured() const
 }
 
 drogon::Task<S3StoredObject>
+S3StorageService::put(const S3PutInput& input) const
+{
+  if (input.objectKey.empty() || input.body.empty())
+    throw ResponseException({.message = "Invalid object upload",
+                             .statusCode = 422,
+                             .errorCode = AppConfig::ERROR_CODE_BAD_REQUEST});
+
+  const auto config = loadConfig();
+  static_cast<void>(co_await send({.config = config,
+                                   .method = "PUT",
+                                   .objectKey = input.objectKey,
+                                   .body = input.body,
+                                   .contentType = input.contentType}));
+  co_return S3StoredObject{
+      .objectKey = input.objectKey,
+      .sha256 = s3_signing::sha256Hex(input.body),
+      .byteSize = static_cast<int64_t>(input.body.size()),
+  };
+}
+
+drogon::Task<S3StoredObject>
 S3StorageService::putPortrait(int64_t userId, const std::string& image) const
 {
   if (userId <= 0 || image.empty())
@@ -166,18 +187,10 @@ S3StorageService::putPortrait(int64_t userId, const std::string& image) const
                              .statusCode = 422,
                              .errorCode = AppConfig::ERROR_CODE_BAD_REQUEST});
 
-  const auto config = loadConfig();
-  const auto key = "portraits/" + std::to_string(userId) + "/" + randomKeyPart() + ".jpg";
-  static_cast<void>(co_await send({.config = config,
-                                   .method = "PUT",
-                                   .objectKey = key,
-                                   .body = image,
-                                   .contentType = "image/jpeg"}));
-  co_return S3StoredObject{
-      .objectKey = key,
-      .sha256 = s3_signing::sha256Hex(image),
-      .byteSize = static_cast<int64_t>(image.size()),
-  };
+  co_return co_await put({.objectKey = "portraits/" + std::to_string(userId) +
+                                       "/" + randomKeyPart() + ".jpg",
+                          .body = image,
+                          .contentType = "image/jpeg"});
 }
 
 drogon::Task<std::string>

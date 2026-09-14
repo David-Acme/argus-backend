@@ -61,7 +61,7 @@ max_total_viewers = 8
 relay_chunk_bytes = 32768
 
 [tts]
-remote_url = "127.0.0.1:7029"
+remote_url = "argus-tts:7029"
 remote_timeout_ms = 30000
 
 [nats]
@@ -85,22 +85,81 @@ target = "172.19.0.1:7040"
 # Must match the gateway's [identity] rpc_secret, or every request 401s.
 rpc_secret = "CHANGE_ME_SAME_IN_EVERY_SERVICE"
 
+[grpc]
+# Capability credential for the guard -> camera edge (paired with guard's
+# camera.actions_credential).
+caller_guard = "CHANGE_ME_GUARD_CAMERA"
+# Camera guard recognition; enroll/capture stay off until you enable them.
+identify = false
+auto_enroll = false
+capture_clear_faces = true
+min_face_box_px = 48
+identify_interval_ms = 2000
+enroll_cooldown_ms = 600000
+best_shot_ms = 10000
+improve_margin = 0.15
+
 [objects]
 enabled = false
 model = "models/objects"
 input_size = 640
 conf = 0.45
 max_fps_inference = 2.0
+active_fps = 6.0
+burst_fps = 10.0
+burst_ms = 3000
 use_vulkan = true
 # classes = "person,bicycle,car,..." (COCO-80 default when empty)
 
 [operator]
-aggregation_window_ms = 5000
+aggregation_window_ms = 1000
+dwell_alert_ms = 3000
+dwell_monitor_ms = 12000
+dwell_night_ms = 8000
 cooldown_ms = 30000
 night_start = 22
 night_end = 6
 presence_escalation_frames = 3
+# Enabled zones live in camera.db (the app editor); false uses the JSON below only.
+zones_from_db = true
+zones_refresh_ms = 30000
+camera_rescan_ms = 15000
+motion_gate = false
+motion_min_ratio = 0.002
+ignore_static_persons = false
+static_box_frames = 8
 overlay = false
 overlay_dir = "bench-results/operator-overlay"
 # ignored_classes = "bird,cat"
 # zones = '[{"cameraId":1,"kind":"alert","name":"door","points":[[0.0,0.0],[1.0,0.0],[1.0,1.0]]}]'
+
+[actions]
+# Audible/device actions from argus-guard; off until you enable them.
+enabled = false
+
+[health]
+# Occlusion/blur/moved detection from periodic image stats.
+enabled = true
+interval_ms = 60000
+dark_threshold = 25.0
+bright_threshold = 235.0
+blur_threshold = 18.0
+scene_diff = 0.35
+
+[stt]
+# Camera listen (guard agent) transcription through argus-stt.
+remote_url = "argus-stt:7030"
+remote_timeout_ms = 30000
+language = "es"
+
+[storage]
+# Private object storage (RustFS) for detection evidence snapshots.
+# provision-host.sh fills the endpoint and credentials.
+mode = "s3"
+
+[storage.s3]
+endpoint = "http://rustfs:9000"
+region = "us-east-1"
+bucket = ""
+access_key = ""
+secret_key = ""

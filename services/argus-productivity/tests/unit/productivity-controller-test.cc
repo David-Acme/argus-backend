@@ -591,5 +591,9 @@ TEST_CASE("productivity contracts hold on the argus-productivity surface")
   runner.join();
 
   std::remove(kIdentityDb);
+  std::remove((std::string(kIdentityDb) + "-wal").c_str());
+  std::remove((std::string(kIdentityDb) + "-shm").c_str());
   std::remove(kProductivityDb);
+  std::remove((std::string(kProductivityDb) + "-wal").c_str());
+  std::remove((std::string(kProductivityDb) + "-shm").c_str());
 }

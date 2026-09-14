@@ -74,7 +74,10 @@ argus_module(NAME common
         src/shared/utils/json-diff/json-diff.cc
         src/shared/utils/json-diff/json-diff.hxx
         src/shared/utils/json-util/json-util.hxx
+        src/shared/utils/base64/base64.cc
+        src/shared/utils/base64/base64.hxx
         src/shared/utils/fnv-hash/fnv-hash.hxx
+        src/shared/utils/sha256/sha256.hxx
         src/shared/utils/sql-escape/sql-escape.hxx
         src/shared/utils/text-norm/text-norm.cc
         src/shared/utils/text-norm/text-norm.hxx
@@ -122,7 +125,7 @@ find_package(doctest REQUIRED)
 
 foreach(TEST_NAME IN ITEMS api-response-test enums-test role-access-test
                            thread-budget-test validation-dsl-test
-                           nats-wrapper-test)
+                           nats-wrapper-test sha256-test)
     add_executable(${TEST_NAME} tests/unit/${TEST_NAME}.cc)
     target_link_libraries(${TEST_NAME} PRIVATE argus_common doctest::doctest)
     target_compile_options(${TEST_NAME} PRIVATE -Wall -Wextra)

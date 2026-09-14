@@ -262,6 +262,7 @@ void MemoryService::processCompact(const MemoryJob& job)
       .temperature = 0.0F,
       .resetContext = true,
       .stop = {},
+      .grammar = {},
   };
   const std::string summary = chat_.chat(req);
   if (summary.empty()) {
@@ -493,10 +494,15 @@ void MemoryService::deferCapture(const InlineCapture& capture)
               .episode = false});
 }
 
+bool MemoryService::hasUserScope(int64_t userId)
+{
+  return userId > 0;
+}
+
 CaptureResult MemoryService::captureExplicit(const CaptureInput& input)
 {
   const RuleParseInput parsed{.text = input.text, .lang = input.lang};
-  if (input.userId < 0 || ruleParser_.isCancellation(parsed) ||
+  if (!hasUserScope(input.userId) || ruleParser_.isCancellation(parsed) ||
       ruleParser_.isVacuous(parsed))
     return {};
 
@@ -522,7 +528,7 @@ CaptureResult MemoryService::captureExplicit(const CaptureInput& input)
 CaptureResult MemoryService::captureImplicit(const CaptureInput& input)
 {
   const RuleParseInput parsed{.text = input.text, .lang = input.lang};
-  if (input.userId < 0 || ruleParser_.isQuestion(parsed) ||
+  if (!hasUserScope(input.userId) || ruleParser_.isQuestion(parsed) ||
       ruleParser_.isCancellation(parsed) || ruleParser_.isVacuous(parsed))
     return {};
 
@@ -776,6 +782,7 @@ void MemoryService::processProfile(const MemoryJob& job)
       .temperature = 0.0F,
       .resetContext = true,
       .stop = {},
+      .grammar = {},
   };
   const std::string polished = chat_.chat(req);
   if (polished.empty())
@@ -935,7 +942,7 @@ void MemoryService::registerTools(ToolRegistry& registry)
 
 int64_t MemoryService::observeSystemEvent(const SystemEventInput& input)
 {
-  if (input.summary.empty())
+  if (input.summary.empty() || !hasUserScope(input.userId))
     return 0;
   std::scoped_lock lock(graph_->mutex());
   return graph_->recordEpisode({.kind = input.channel,
@@ -960,6 +967,10 @@ int64_t MemoryService::recordProcedure(const ProcedureRecordInput& input)
 tools::ToolResult MemoryService::handleProcedureRun(const tools::ToolCall& call)
 {
   tools::ToolResult result;
+  if (!hasUserScope(call.context.userId)) {
+    result.output = "memoria solo disponible para usuarios autenticados";
+    return result;
+  }
   const std::string goal = call.arguments.get("goal", "").asString();
   std::optional<std::string> steps;
   {
@@ -978,6 +989,10 @@ tools::ToolResult MemoryService::handleProcedureRun(const tools::ToolCall& call)
 tools::ToolResult MemoryService::handleRemember(const tools::ToolCall& call)
 {
   tools::ToolResult result;
+  if (!hasUserScope(call.context.userId)) {
+    result.output = "memoria solo disponible para usuarios autenticados";
+    return result;
+  }
   const Json::Value& args = call.arguments;
   const std::string subject = args.get("subject", "").asString();
   const std::string predicate = args.get("predicate", "").asString();
@@ -1032,6 +1047,10 @@ tools::ToolResult MemoryService::handleRemember(const tools::ToolCall& call)
 tools::ToolResult MemoryService::handleRemind(const tools::ToolCall& call)
 {
   tools::ToolResult result;
+  if (!hasUserScope(call.context.userId)) {
+    result.output = "memoria solo disponible para usuarios autenticados";
+    return result;
+  }
   std::string text = call.arguments.get("text", "").asString();
   if (text.empty())
     text = call.context.utterance;
@@ -1078,6 +1097,10 @@ tools::ToolResult MemoryService::handleRemind(const tools::ToolCall& call)
 tools::ToolResult MemoryService::handleRecall(const tools::ToolCall& call)
 {
   tools::ToolResult result;
+  if (!hasUserScope(call.context.userId)) {
+    result.output = "memoria solo disponible para usuarios autenticados";
+    return result;
+  }
   const std::string query = call.arguments.get("query", "").asString();
   const auto recalled = graphRecall_.recall({.text = query,
                                              .lang = call.context.lang,
@@ -1103,6 +1126,10 @@ tools::ToolResult MemoryService::handleRecall(const tools::ToolCall& call)
 tools::ToolResult MemoryService::handleForget(const tools::ToolCall& call)
 {
   tools::ToolResult result;
+  if (!hasUserScope(call.context.userId)) {
+    result.output = "memoria solo disponible para usuarios autenticados";
+    return result;
+  }
   const int64_t factId =
       static_cast<int64_t>(call.arguments.get("fact_id", 0).asInt64());
   if (factId <= 0) {

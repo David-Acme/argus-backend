@@ -37,6 +37,7 @@ ProxyConfig ProxyConfig::resolve()
       ConfigService::getString("productivity.proxy_url");
   config.notificationProxyUrl =
       ConfigService::getString("notifications.proxy_url");
+  config.guardProxyUrl = ConfigService::getString("guard.proxy_url");
   config.exclusions = gatewayNativePaths();
   return config;
 }

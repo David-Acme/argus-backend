@@ -34,6 +34,7 @@ gpu_layers = -1
 
 # The hosted memory stack; the memory-db volume mounts at /opt/argus/memory.
 [memory]
+observe_camera_events = false
 db_file = "memory/memory.db"
 schema_file = "database/schema.sql"
 catalog_person_table = "catalog_person"

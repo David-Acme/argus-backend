@@ -3,6 +3,7 @@
 #include <json/reader.h>
 #include <json/value.h>
 #include <json/writer.h>
+#include <memory>
 #include <sstream>
 #include <string>
 
@@ -15,6 +16,19 @@ inline std::string toString(const Json::Value& value)
   Json::StreamWriterBuilder builder;
   builder["indentation"] = "";
   return Json::writeString(builder, value);
+}
+
+// True only when the payload is valid JSON; empty is not valid here so
+// callers keep treating empty as "absent".
+inline bool isValid(const std::string& raw)
+{
+  if (raw.empty())
+    return false;
+  Json::CharReaderBuilder builder;
+  std::unique_ptr<Json::CharReader> reader(builder.newCharReader());
+  Json::Value value;
+  std::string errors;
+  return reader->parse(raw.data(), raw.data() + raw.size(), &value, &errors);
 }
 
 inline Json::Value fromString(const std::string& raw)

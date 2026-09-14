@@ -41,6 +41,13 @@ memory code; when in doubt, the root file wins.
     the shared `models/memory/` tree through config keys.
 14. **Build gate** — 0 errors AND 0 warnings (`-Wall -Wextra`) in Argus's
     own code; third-party includes are SYSTEM.
+15. **Stranger isolation** — memory belongs to authenticated users only.
+    A person the system sees through a camera is foreign: their words,
+    intents and recall requests can never create facts, preferences,
+    reminders or episodes. Camera events enter memory only as system
+    observations (`observeSystemEvent`, episode-only, never rule-parsed
+    facts) scoped to a real user. Every capture and tool path must reject
+    `userId <= 0`.
 
 ## Layout
 

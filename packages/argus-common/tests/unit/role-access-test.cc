@@ -242,3 +242,18 @@ TEST_CASE("hasHttpAccess applies kAuthAccess to /auth paths")
                                             .path = "/auth/logout",
                                             .method = drogon::Delete}));
 }
+
+TEST_CASE("guard administration is Owner-only")
+{
+  CHECK(role_access::hasHttpAccess(
+      {.role = UserRole::Owner, .path = "/guard/mode", .method = drogon::Post}));
+  CHECK(role_access::hasHttpAccess({.role = UserRole::Owner,
+                                    .path = "/guard/expected-guests",
+                                    .method = drogon::Delete}));
+  CHECK_FALSE(role_access::hasHttpAccess(
+      {.role = UserRole::Resident, .path = "/guard/mode", .method = drogon::Get}));
+  CHECK_FALSE(role_access::hasHttpAccess(
+      {.role = UserRole::Guard, .path = "/guard/incidents", .method = drogon::Get}));
+  CHECK_FALSE(role_access::hasHttpAccess(
+      {.role = UserRole::Guest, .path = "/guard/mode", .method = drogon::Post}));
+}

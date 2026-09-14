@@ -5,6 +5,7 @@
 #include <drogon/orm/Row.h>
 #include <json/value.h>
 #include <optional>
+#include <shared/enums.hxx>
 #include <string>
 
 struct PersonSchema
@@ -14,6 +15,7 @@ struct PersonSchema
   std::string name;
   std::string alias;
   std::string observation;
+  PersonStatus status{PersonStatus::Known};
   int64_t firstSeenAt{0};
   int64_t lastSeenAt{0};
   int64_t createdAt{0};

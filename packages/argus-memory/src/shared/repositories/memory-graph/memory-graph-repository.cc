@@ -817,3 +817,134 @@ int64_t MemoryGraphRepository::migrateLegacy(sqlite3* db)
   }
   return migrated;
 }
+
+EncounterClosedClaim MemoryGraphRepository::claimEncounterClosed(
+    sqlite3* db, const EncounterClosedReceiptInput& input)
+{
+  EncounterClosedClaim claim{.duplicate = true};
+  if (!db || input.eventId.empty())
+    return claim;
+  SqliteStmt select;
+  if (!select.prepare(db, SELECT_ENCOUNTER_RECEIPT))
+    return claim;
+  select.bindText(1, input.eventId);
+  if (select.step() == SQLITE_ROW) {
+    const auto status = encounterClosedReceiptFromString(
+        select.columnText(0));
+    if (!status.has_value()) {
+      LOG_ERROR << "Encounter inbox: unknown persisted status for "
+                << input.eventId << "; dead-lettering closed";
+      SqliteStmt force;
+      if (force.prepare(db, FORCE_ENCOUNTER_DEAD_LETTERED)) {
+        force.bindInt64(1, input.at);
+        force.bindText(2, input.eventId);
+        force.step();
+      }
+      return claim;
+    }
+    if (*status != EncounterClosedReceipt::Received) {
+      if (*status == EncounterClosedReceipt::Dispatched) {
+        const std::string seen = select.columnText(1);
+        if (!seen.empty() && seen != input.fingerprint) {
+          LOG_ERROR << "Encounter inbox: fingerprint conflict for "
+                    << input.eventId << "; never captured again";
+          SqliteStmt conflict;
+          if (conflict.prepare(db, MARK_ENCOUNTER_CONFLICT)) {
+            conflict.bindText(1, input.fingerprint);
+            conflict.bindInt64(2, input.at);
+            conflict.bindText(3, input.eventId);
+            conflict.step();
+          }
+        }
+        else if (seen.empty()) {
+          SqliteStmt adopt;
+          if (adopt.prepare(db, ADOPT_ENCOUNTER_FINGERPRINT)) {
+            adopt.bindText(1, input.fingerprint);
+            adopt.bindInt64(2, input.at);
+            adopt.bindText(3, input.eventId);
+            adopt.step();
+          }
+        }
+      }
+      return claim;
+    }
+    const std::string stored = select.columnText(1);
+    if (stored.empty()) {
+      SqliteStmt adopt;
+      if (adopt.prepare(db, ADOPT_ENCOUNTER_FINGERPRINT)) {
+        adopt.bindText(1, input.fingerprint);
+        adopt.bindInt64(2, input.at);
+        adopt.bindText(3, input.eventId);
+        adopt.step();
+      }
+      claim.duplicate = false;
+      return claim;
+    }
+    if (stored == input.fingerprint) {
+      claim.duplicate = false;
+      return claim;
+    }
+    LOG_ERROR << "Encounter inbox: fingerprint conflict for "
+              << input.eventId << "; never captured";
+    SqliteStmt conflict;
+    if (conflict.prepare(db, MARK_ENCOUNTER_CONFLICT)) {
+      conflict.bindText(1, input.fingerprint);
+      conflict.bindInt64(2, input.at);
+      conflict.bindText(3, input.eventId);
+      conflict.step();
+    }
+    return claim;
+  }
+  SqliteStmt insert;
+  if (!insert.prepare(db, INSERT_ENCOUNTER_RECEIPT))
+    return claim;
+  insert.bindText(1, input.eventId);
+  insert.bindText(2, input.fingerprint);
+  insert.bindInt64(3, input.at);
+  insert.bindInt64(4, input.at);
+  if (insert.step() != SQLITE_DONE)
+    return claim;
+  claim.duplicate = sqlite3_changes(db) == 0;
+  return claim;
+}
+
+int64_t MemoryGraphRepository::noteEncounterAttempt(
+    sqlite3* db, const EncounterAttemptInput& input)
+{
+  if (!db || input.eventId.empty())
+    return -1;
+  SqliteStmt stmt;
+  if (!stmt.prepare(db, NOTE_ENCOUNTER_ATTEMPT))
+    return -1;
+  stmt.bindInt64(1, input.at);
+  stmt.bindText(2, input.eventId);
+  if (stmt.step() != SQLITE_ROW)
+    return -1;
+  return stmt.columnInt64(0);
+}
+
+bool MemoryGraphRepository::markEncounterDispatched(
+    sqlite3* db, const EncounterSettleInput& input)
+{
+  if (!db || input.eventId.empty())
+    return false;
+  SqliteStmt stmt;
+  if (!stmt.prepare(db, MARK_ENCOUNTER_DISPATCHED))
+    return false;
+  stmt.bindInt64(1, input.at);
+  stmt.bindText(2, input.eventId);
+  return stmt.step() == SQLITE_DONE && sqlite3_changes(db) > 0;
+}
+
+bool MemoryGraphRepository::markEncounterDeadLettered(
+    sqlite3* db, const EncounterSettleInput& input)
+{
+  if (!db || input.eventId.empty())
+    return false;
+  SqliteStmt stmt;
+  if (!stmt.prepare(db, MARK_ENCOUNTER_DEAD_LETTERED))
+    return false;
+  stmt.bindInt64(1, input.at);
+  stmt.bindText(2, input.eventId);
+  return stmt.step() == SQLITE_DONE && sqlite3_changes(db) > 0;
+}

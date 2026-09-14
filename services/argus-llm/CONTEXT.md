@@ -34,8 +34,11 @@ scaffolds.
   observable.
 - **The internal wire (Ruling BT)**:
   - `POST /llm/v1/chat` — JSON `{messages, max_tokens?, temperature?,
-    reset_context?}` → frozen app-envelope with `info.text` = the full
-    completion. Inference runs off the event loop (`chatAsync`).
+    reset_context?, tools?}` → frozen app-envelope with `info.text` = the full
+    completion. Inference runs off the event loop (`chatAsync`). `tools:false`
+    keeps the request on the direct engine path even when the process has
+    tools registered; raw JSON callers (argus-guard) use it to avoid the
+    memory-tool preamble (~400 tokens of prefill on every call).
   - `POST /llm/v1/chat-stream` — same body; `Transfer-Encoding: chunked`
     text stream: every token callback flushed AS PRODUCED (arrival order
     preserved — the voice session's sentence chunker depends on it),

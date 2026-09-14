@@ -99,6 +99,8 @@ db = "database/notification.db"
 budget_per_hour = 6
 silent_start = -1
 silent_end = -1
+# Caller capability credential for the gateway -> notification edge.
+credential = ""
 
 [remote]
 tunnel_port = 0
@@ -111,3 +113,6 @@ window_seconds = 60
 max_requests = 10
 lockout_threshold = 5
 lockout_seconds = 300
+
+[guard]
+proxy_url = "http://127.0.0.1:7039"

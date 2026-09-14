@@ -63,6 +63,15 @@ private:
   std::unique_ptr<TtsEngine> engine_;
   std::unique_ptr<UnicodeProcessor> processor_;
   std::unordered_map<std::string, std::unique_ptr<Style>> voiceCache_;
+
+  // Repeated short lines (greetings, announcements) are served from memory.
+  struct CachedAudio
+  {
+    std::string key;
+    std::vector<float> samples;
+  };
+  std::vector<CachedAudio> synthCache_;
+  size_t synthCacheNext_{0};
   Ort::Env env_{ORT_LOGGING_LEVEL_ERROR, "Argus-TTS"};
   TtsQuality defaultQuality_{TtsQuality::Auto};
   float defaultSpeed_{1.0F};

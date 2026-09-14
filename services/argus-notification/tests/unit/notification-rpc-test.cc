@@ -1,20 +1,22 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
-#include <doctest/doctest.h>
-
 #include <argus/notification/v1/notification.grpc.pb.h>
-#include <drogon/drogon.h>
-#include <feature/rpc/notification-rpc-service.hxx>
-#include <grpcpp/grpcpp.h>
-#include <notification/notification-client.hxx>
-#include <shared/contracts/user-change-sink.hxx>
-#include <shared/services/sqlite/db-service.hxx>
-
+#include <atomic>
 #include <chrono>
 #include <cstdio>
+#include <doctest/doctest.h>
+#include <drogon/drogon.h>
+#include <feature/rpc/notification-rpc-service.hxx>
+#include <fstream>
+#include <grpcpp/grpcpp.h>
 #include <memory>
 #include <mutex>
+#include <notification/notification-client.hxx>
+#include <shared/contracts/notification-delivery-sink.hxx>
+#include <shared/services/config-service/config-service.hxx>
+#include <shared/services/sqlite/db-service.hxx>
 #include <string>
 #include <thread>
+#include <unistd.h>
 #include <vector>
 
 #ifndef ARGUS_NOTIFICATION_SCHEMA
@@ -23,7 +25,60 @@
 
 namespace
 {
-constexpr const char* kNotificationDb = "notification-rpc-test.db";
+constexpr const char* kGuardCredential = "guard-notif-cred";
+constexpr const char* kGatewayCredential = "gateway-notif-cred";
+
+int tempCounter()
+{
+  static std::atomic<int> counter{0};
+  return counter.fetch_add(1);
+}
+
+class TempDb
+{
+public:
+  explicit TempDb(const char* stem)
+      : path_(std::string(stem) + "-" + std::to_string(::getpid()) + "-" +
+              std::to_string(tempCounter()) + ".db")
+  {
+  }
+
+  ~TempDb()
+  {
+    std::remove(path_.c_str());
+    std::remove((path_ + "-wal").c_str());
+    std::remove((path_ + "-shm").c_str());
+  }
+
+  const std::string& path() const { return path_; }
+
+private:
+  std::string path_;
+};
+
+class TempFile
+{
+public:
+  TempFile(const char* stem, const char* extension)
+      : path_(std::string(stem) + "-" + std::to_string(::getpid()) + "-" +
+              std::to_string(tempCounter()) + extension)
+  {
+  }
+
+  ~TempFile() { std::remove(path_.c_str()); }
+
+  const std::string& path() const { return path_; }
+
+private:
+  std::string path_;
+};
+
+void writeConfig(const std::string& path)
+{
+  std::ofstream out(path, std::ios::trunc);
+  out << "[grpc]\ncaller_guard = \"" << kGuardCredential
+      << "\"\ncaller_gateway = \"" << kGatewayCredential << "\"\n";
+}
 
 bool waitForBoot(std::chrono::milliseconds timeout)
 {
@@ -36,44 +91,39 @@ bool waitForBoot(std::chrono::milliseconds timeout)
   return drogon::app().isRunning();
 }
 
-struct RecordedEmit
+struct RecordedDelivery
 {
-  int operation{0};
-  std::string option;
-  Json::Value body;
-  std::vector<int64_t> users;
+  int64_t deliveryId{0};
+  int64_t notificationId{0};
+  int64_t userId{0};
+  std::string title;
 };
 
-// Records the emits the notification service hands to the funnel.
-class RecordingSink final : public UserChangeSink
+// Records the durable publishes the RPC service settles its intents with.
+class RecordingDeliverySink final : public NotificationDeliverySink
 {
 public:
-  void emitUser(int64_t userId, const SocketEmitDto& body) const override
-  {
-    emitUsers({userId}, body);
-  }
+  bool ensureStream() const override { return true; }
 
-  void emitUsers(const std::vector<int64_t>& userIds,
-                 const SocketEmitDto& body) const override
+  bool publish(const NotificationDeliveryEvent& event) const override
   {
     std::lock_guard lock(mutex_);
-    emits.push_back({static_cast<int>(body.operation),
-                     tableNameToString(body.option), body.obj, userIds});
-  }
-
-  drogon::Task<void> publishAudit(const UserAuditInput&) const override
-  {
-    co_return;
+    published.push_back({.deliveryId = event.deliveryId,
+                         .notificationId = event.notificationId,
+                         .userId = event.userId,
+                         .title = event.title});
+    return true;
   }
 
   mutable std::mutex mutex_;
-  mutable std::vector<RecordedEmit> emits;
+  mutable std::vector<RecordedDelivery> published;
 };
 
 class RpcHarness
 {
 public:
-  RpcHarness()
+  explicit RpcHarness(NotificationRpcService::Dependencies dependencies)
+      : service_(std::move(dependencies))
   {
     int port = 0;
     grpc::ServerBuilder builder;
@@ -113,73 +163,84 @@ argus::notification::v1::CreateNotificationsRequest createRequest()
   request.set_title("Front door: person");
   request.set_body("Severity critical; detected person");
   request.set_data("{\"cameraId\":1}");
+  request.set_command_id("cmd-1");
   return request;
 }
 
-struct WaitForEmitsInput
+struct WaitForPublishesInput
 {
-  const RecordingSink& sink;
+  const RecordingDeliverySink& sink;
   size_t expected{0};
   std::chrono::milliseconds timeout{};
 };
 
-bool waitForEmits(const WaitForEmitsInput& input)
+bool waitForPublishes(const WaitForPublishesInput& input)
 {
   const auto deadline = std::chrono::steady_clock::now() + input.timeout;
   while (std::chrono::steady_clock::now() < deadline) {
     {
       std::lock_guard lock(input.sink.mutex_);
-      if (input.sink.emits.size() >= input.expected)
+      if (input.sink.published.size() >= input.expected)
         return true;
     }
     std::this_thread::sleep_for(std::chrono::milliseconds(20));
   }
   std::lock_guard lock(input.sink.mutex_);
-  return input.sink.emits.size() >= input.expected;
+  return input.sink.published.size() >= input.expected;
 }
 } // namespace
 
 TEST_CASE("notification RPC creates fan-out rows and serves user pulls")
 {
-  std::remove(kNotificationDb);
-
+  const TempDb db("notification-rpc-test");
+  const TempFile config("notification-rpc-test", ".toml");
   drogon::app().setLogLevel(trantor::Logger::kWarn);
   drogon::app().addDbClient(
-      drogon::orm::Sqlite3Config{1, kNotificationDb, "default", -1});
+      drogon::orm::Sqlite3Config{1, db.path(), "default", -1});
 
   std::thread runner([] { drogon::app().run(); });
   REQUIRE(waitForBoot(std::chrono::seconds(30)));
 
   REQUIRE(DbService::runScriptFile(ARGUS_NOTIFICATION_SCHEMA));
 
-  RecordingSink sink;
-  user_change::setNotificationSink(&sink);
+  auto deliverySink = std::make_shared<RecordingDeliverySink>();
 
-  RpcHarness harness;
+  writeConfig(config.path());
+  ConfigService::load(config.path());
+
+  RpcHarness harness({.deliverySink = deliverySink,
+                      .pushSink = {},
+                      .pushRequired = false});
   REQUIRE(harness.listening());
-  NotificationClient sdk(harness.target());
+  NotificationClient sdk(
+      NotificationClientConfig{.target = harness.target(),
+                               .credential = kGuardCredential});
+  NotificationClient pullSdk(
+      NotificationClientConfig{.target = harness.target(),
+                               .credential = kGatewayCredential});
 
   {
-    // Create fan-out writes one row per user and emits Add.
-    const auto created = sdk.createNotifications(createRequest(),
-                                                identityFor(0));
-    REQUIRE(created);
-    CHECK(created->created() == 2);
-    REQUIRE(waitForEmits({.sink = sink,
-                         .expected = 2,
-                         .timeout = std::chrono::seconds(5)}));
+    const auto created =
+        sdk.createNotifications(createRequest(), identityFor(0));
+    REQUIRE(created.outcome == NotificationRpcOutcome::Success);
+    CHECK(created.created == 2);
+    CHECK_FALSE(created.duplicate);
+    REQUIRE(waitForPublishes({.sink = *deliverySink,
+                              .expected = 2,
+                              .timeout = std::chrono::seconds(5)}));
 
     {
-      std::lock_guard lock(sink.mutex_);
-      REQUIRE(sink.emits.size() == 2);
-      for (const auto& emit : sink.emits) {
-        CHECK(emit.operation == static_cast<int>(SyncOperation::Add));
-        CHECK(emit.option == "notification");
-        CHECK(emit.body["title"].asString() == "Front door: person");
-        CHECK(emit.users.size() == 1);
+      std::lock_guard lock(deliverySink->mutex_);
+      REQUIRE(deliverySink->published.size() == 2);
+      for (const auto& delivery : deliverySink->published) {
+        CHECK(delivery.deliveryId > 0);
+        CHECK(delivery.notificationId > 0);
+        CHECK(delivery.title == "Front door: person");
       }
-      CHECK(sink.emits[0].users[0] == 7);
-      CHECK(sink.emits[1].users[0] == 8);
+      CHECK(deliverySink->published[0].userId == 7);
+      CHECK(deliverySink->published[1].userId == 8);
+      CHECK(deliverySink->published[0].notificationId !=
+            deliverySink->published[1].notificationId);
     }
 
     const auto rows = DbService::client()->execSqlSync(
@@ -190,38 +251,211 @@ TEST_CASE("notification RPC creates fan-out rows and serves user pulls")
   }
 
   {
-    // Pull is user-scoped and exposes the last created row.
     argus::notification::v1::PullNotificationsRequest pull;
     pull.mutable_notification()->set_required_create(true);
     pull.mutable_notification()->set_find_last_created(true);
 
-    const auto mine = sdk.pullNotifications(pull, identityFor(7));
-    REQUIRE(mine);
-    REQUIRE(mine->created_size() == 1);
-    CHECK(mine->created(0).user_id() == 7);
-    CHECK(mine->created(0).title() == "Front door: person");
-    REQUIRE(mine->has_last_created());
-    CHECK(mine->last_created().id() == mine->created(0).id());
+    const auto mine = pullSdk.pullNotifications(pull, identityFor(7));
+    REQUIRE(mine.outcome == NotificationRpcOutcome::Success);
+    REQUIRE(mine.response.created_size() == 1);
+    CHECK(mine.response.created(0).user_id() == 7);
+    CHECK(mine.response.created(0).title() == "Front door: person");
+    REQUIRE(mine.response.has_last_created());
+    CHECK(mine.response.last_created().id() == mine.response.created(0).id());
 
-    const auto others = sdk.pullNotifications(pull, identityFor(9));
-    REQUIRE(others);
-    CHECK(others->created_size() == 0);
-    CHECK_FALSE(others->has_last_created());
+    const auto others = pullSdk.pullNotifications(pull, identityFor(9));
+    REQUIRE(others.outcome == NotificationRpcOutcome::Success);
+    CHECK(others.response.created_size() == 0);
+    CHECK_FALSE(others.response.has_last_created());
   }
 
   {
-    // Missing caller identity is unauthenticated.
+    auto raw = argus::notification::v1::NotificationService::NewStub(
+        argus::sdk::makeChannel(harness.target()));
+    const auto tryCreate = [&raw](const std::string& credential) {
+      grpc::ClientContext context;
+      if (!credential.empty())
+        argus::sdk::addCallerCredential(context, credential);
+      argus::sdk::addCallerIdentity(context, identityFor(0));
+      context.AddMetadata("x-argus-role", "owner");
+      argus::notification::v1::CreateNotificationsResponse response;
+      return raw->CreateNotifications(&context, createRequest(), &response)
+          .error_code();
+    };
+    CHECK(tryCreate({}) == grpc::StatusCode::UNAUTHENTICATED);
+    CHECK(tryCreate("wrong") == grpc::StatusCode::UNAUTHENTICATED);
+    CHECK(tryCreate("fleet-test") == grpc::StatusCode::UNAUTHENTICATED);
+    CHECK(tryCreate(kGatewayCredential) == grpc::StatusCode::UNAUTHENTICATED);
+    CHECK(tryCreate(kGuardCredential) == grpc::StatusCode::OK);
+  }
+
+  {
     auto raw = argus::notification::v1::NotificationService::NewStub(
         argus::sdk::makeChannel(harness.target()));
     grpc::ClientContext context;
-    argus::notification::v1::CreateNotificationsResponse response;
-    const grpc::Status status =
-        raw->CreateNotifications(&context, createRequest(), &response);
-    CHECK(status.error_code() == grpc::StatusCode::UNAUTHENTICATED);
+    argus::sdk::addCallerCredential(context, kGuardCredential);
+    argus::sdk::addCallerIdentity(context, identityFor(7));
+    argus::notification::v1::PullNotificationsRequest pull;
+    argus::notification::v1::PullNotificationsResponse response;
+    CHECK(raw->PullNotifications(&context, pull, &response).error_code() ==
+          grpc::StatusCode::UNAUTHENTICATED);
   }
 
-  user_change::setNotificationSink(nullptr);
+  {
+    auto raw = argus::notification::v1::NotificationService::NewStub(
+        argus::sdk::makeChannel(harness.target()));
+    struct SendCreateInput
+    {
+      std::string commandId;
+      std::vector<int64_t> users;
+      std::string title;
+      std::string body;
+      std::string data;
+    };
+    const auto sendCreate = [&raw](const SendCreateInput& input) {
+      grpc::ClientContext context;
+      argus::sdk::addCallerCredential(context, kGuardCredential);
+      argus::sdk::addCallerIdentity(context, identityFor(0));
+      argus::notification::v1::CreateNotificationsRequest request;
+      for (const int64_t user : input.users)
+        request.add_user_ids(user);
+      request.set_command_id(input.commandId);
+      request.set_type("camera");
+      request.set_title(input.title);
+      request.set_body(input.body);
+      request.set_data(input.data);
+      argus::notification::v1::CreateNotificationsResponse response;
+      return raw->CreateNotifications(&context, request, &response);
+    };
+
+    CHECK(sendCreate({.commandId = "cmd-fp-reorder",
+                      .users = {7, 8},
+                      .title = "t",
+                      .body = "b",
+                      .data = "{\"cameraId\":1,\"zone\":\"a\"}"})
+              .ok());
+    CHECK(sendCreate({.commandId = "cmd-fp-reorder",
+                      .users = {8, 7},
+                      .title = "t",
+                      .body = "b",
+                      .data = "{\"zone\":\"a\",\"cameraId\":1}"})
+              .ok());
+
+    CHECK(sendCreate({.commandId = "cmd-fp-dup",
+                      .users = {7, 7, 8},
+                      .title = "t",
+                      .body = "b",
+                      .data = "{}"})
+              .ok());
+    CHECK(sendCreate({.commandId = "cmd-fp-dup",
+                      .users = {7, 8},
+                      .title = "t",
+                      .body = "b",
+                      .data = "{}"})
+              .ok());
+
+    CHECK(sendCreate({.commandId = "cmd-fp-change",
+                      .users = {7, 8},
+                      .title = "t",
+                      .body = "b",
+                      .data = "{}"})
+              .ok());
+    CHECK(sendCreate({.commandId = "cmd-fp-change",
+                      .users = {7, 9},
+                      .title = "t",
+                      .body = "b",
+                      .data = "{}"})
+              .error_code() == grpc::StatusCode::ALREADY_EXISTS);
+    CHECK(sendCreate({.commandId = "cmd-fp-change",
+                      .users = {7, 8},
+                      .title = "other",
+                      .body = "b",
+                      .data = "{}"})
+              .error_code() == grpc::StatusCode::ALREADY_EXISTS);
+    CHECK(sendCreate({.commandId = "cmd-fp-change",
+                      .users = {7, 8},
+                      .title = "t",
+                      .body = "b",
+                      .data = "{\"x\":1}"})
+              .error_code() == grpc::StatusCode::ALREADY_EXISTS);
+
+    CHECK(sendCreate({.commandId = "cmd-fp-newline",
+                      .users = {7},
+                      .title = "a\\nb",
+                      .body = "c",
+                      .data = "{}"})
+              .ok());
+    CHECK(sendCreate({.commandId = "cmd-fp-newline",
+                      .users = {7},
+                      .title = "a",
+                      .body = "b\\nc",
+                      .data = "{}"})
+              .error_code() == grpc::StatusCode::ALREADY_EXISTS);
+
+    CHECK(sendCreate({.commandId = "cmd-bad-json",
+                      .users = {7},
+                      .title = "t",
+                      .body = "b",
+                      .data = "{not-json}"})
+              .error_code() == grpc::StatusCode::INVALID_ARGUMENT);
+  }
+
+  {
+    auto raw = argus::notification::v1::NotificationService::NewStub(
+        argus::sdk::makeChannel(harness.target()));
+    struct SendRawInput
+    {
+      std::string commandId;
+      std::vector<int64_t> users;
+      std::string title;
+    };
+    const auto sendRaw = [&raw](const SendRawInput& input) {
+      grpc::ClientContext context;
+      argus::sdk::addCallerCredential(context, kGuardCredential);
+      argus::sdk::addCallerIdentity(context, identityFor(0));
+      argus::notification::v1::CreateNotificationsRequest request;
+      for (const int64_t user : input.users)
+        request.add_user_ids(user);
+      request.set_command_id(input.commandId);
+      request.set_type("camera");
+      request.set_title(input.title);
+      request.set_body("b");
+      request.set_data("{}");
+      argus::notification::v1::CreateNotificationsResponse response;
+      return raw->CreateNotifications(&context, request, &response);
+    };
+    CHECK(sendRaw({.commandId = "cmd-bounds-empty", .users = {}, .title = "t"})
+              .error_code() == grpc::StatusCode::INVALID_ARGUMENT);
+    CHECK(sendRaw({.commandId = "cmd-bounds-neg", .users = {-1}, .title = "t"})
+              .error_code() == grpc::StatusCode::INVALID_ARGUMENT);
+    CHECK(sendRaw({.commandId = "cmd-bounds-title",
+                   .users = {7},
+                   .title = std::string(201, 'x')})
+              .error_code() == grpc::StatusCode::INVALID_ARGUMENT);
+    std::vector<int64_t> tooMany;
+    for (int64_t index = 0; index < 1001; ++index)
+      tooMany.push_back(index + 1);
+    CHECK(sendRaw({.commandId = "cmd-bounds-many",
+                   .users = tooMany,
+                   .title = "t"})
+              .error_code() == grpc::StatusCode::INVALID_ARGUMENT);
+  }
+
+  {
+    grpc::ClientContext context;
+    argus::sdk::addCallerCredential(context, kGuardCredential);
+    argus::sdk::addCallerIdentity(context, identityFor(0));
+    argus::notification::v1::CreateNotificationsRequest noCommand =
+        createRequest();
+    noCommand.clear_command_id();
+    argus::notification::v1::CreateNotificationsResponse response;
+    auto raw = argus::notification::v1::NotificationService::NewStub(
+        argus::sdk::makeChannel(harness.target()));
+    CHECK(
+        raw->CreateNotifications(&context, noCommand, &response).error_code() ==
+        grpc::StatusCode::INVALID_ARGUMENT);
+  }
+
   drogon::app().quit();
   runner.join();
-  std::remove(kNotificationDb);
 }

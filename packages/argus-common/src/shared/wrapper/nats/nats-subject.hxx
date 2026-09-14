@@ -28,6 +28,25 @@ inline constexpr const char* kIdentityChange = "argus.identity.v1.change";
 inline constexpr const char* kCameraObjectDetected =
     "argus.camera.v1.object_detected";
 
+// Camera health (occlusion, blur, moved) from argus-camera's monitor.
+inline constexpr const char* kCameraHealth = "argus.camera.v1.health";
+
+// argus-guard readiness heartbeat; the gateway's raw fallback yields while fresh.
+inline constexpr const char* kGuardHeartbeat = "argus.guard.v1.heartbeat";
+
+// Finalized encounter summary; the only camera feed long-term memory may read.
+inline constexpr const char* kGuardEncounterClosed =
+    "argus.guard.v1.encounter_closed";
+
+// Guard-owned JetStream stream for argus.guard.v1.* domain events.
+inline constexpr const char* kGuardStream = "ARGUS_GUARD";
+
+// Durable per-recipient notification delivery; the notification service owns
+// the ARGUS_NOTIFICATION stream and the gateway consumes it durably.
+inline constexpr const char* kNotificationDeliveryStream = "ARGUS_NOTIFICATION";
+inline constexpr const char* kNotificationDelivery =
+    "argus.notification.v1.delivery";
+
 // Push intents fanned to the home client through the tunnel; never re-emitted to /sync.
 inline constexpr const char* kNotificationPushIntent =
     "argus.notification.v1.push_intent";

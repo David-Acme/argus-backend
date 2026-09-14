@@ -74,6 +74,11 @@ EventIntelligenceInput baseInput(std::vector<DetectedObject> objects)
   input.objects = std::move(objects);
   input.frameWidth = 640;
   input.frameHeight = 480;
+  for (const auto& object : input.objects) {
+    if (object.name == "person")
+      input.persons.push_back(
+          {.trackId = object.trackId, .due = true, .canEmit = true});
+  }
   return input;
 }
 
@@ -81,12 +86,36 @@ EventIntelligenceInput baseInput(std::vector<DetectedObject> objects)
 class KnownPerson7Matcher final : public IKnownPersonMatcher
 {
 public:
-  std::optional<int64_t> match(const PersonCrop&) const override
+  std::optional<PersonMatch> match(const PersonCrop&) const override
   {
-    return int64_t{7};
+    return PersonMatch{.identity = PersonIdentity::Known,
+                       .personId = 7,
+                       .confidence = 0.9F};
+  }
+};
+
+// A stub matcher that enrolls every person crop as an unknown person 9.
+class UnknownPerson9Matcher final : public IKnownPersonMatcher
+{
+public:
+  std::optional<PersonMatch> match(const PersonCrop&) const override
+  {
+    return PersonMatch{.identity = PersonIdentity::Unknown,
+                       .personId = 9,
+                       .confidence = 0.8F};
   }
 };
 } // namespace
+
+TEST_CASE("a person below the dwell gate never reaches the person rules")
+{
+  auto input = baseInput({personAt({.x = 280, .y = 200, .w = 80, .h = 160})});
+  for (auto& verdict : input.persons)
+    verdict.due = false;
+
+  const auto outcome = EventIntelligence::evaluate(input);
+  CHECK_FALSE(outcome.publish);
+}
 
 TEST_CASE("rule 1: an object centered in an exclude zone drops the event")
 {
@@ -238,6 +267,27 @@ TEST_CASE("the no-match matcher keeps the zone rule severity")
   CHECK_FALSE(outcome.knownPersonId.has_value());
 }
 
+TEST_CASE("an enrolled unknown keeps the zone severity and carries its person id")
+{
+  UnknownPerson9Matcher matcher;
+  auto input = baseInput({personAt({.x = 280, .y = 200, .w = 80, .h = 160})});
+  input.zones.push_back(squareZone({.kind = "alert", .fromX = 0.25f,
+            .fromY = 0.25f, .toX = 0.75f, .toY = 0.75f}));
+  input.matcher = &matcher;
+  static std::vector<uint8_t> frame(640 * 480 * 3, 128);
+  input.frameRgb = frame.data();
+
+  const auto outcome = EventIntelligence::evaluate(input);
+  CHECK(outcome.publish);
+  CHECK(outcome.rule == "person_in_alert_zone");
+  CHECK(outcome.severity == EventSeverity::Critical);
+  CHECK_FALSE(outcome.knownPersonId.has_value());
+  REQUIRE(outcome.objects.size() == 1);
+  CHECK(outcome.objects.front().personId.has_value());
+  CHECK(*outcome.objects.front().personId == 9);
+  CHECK_FALSE(outcome.objects.front().known);
+}
+
 TEST_CASE("a vehicle arriving before a person keeps the person rule dominant")
 {
   auto input = baseInput({vehicleAt(10, 10), personAt({.x = 0, .y = 0, .w = 80, .h = 160})});
@@ -246,4 +296,110 @@ TEST_CASE("a vehicle arriving before a person keeps the person rule dominant")
   const auto outcome = EventIntelligence::evaluate(input);
   CHECK(outcome.publish);
   CHECK(outcome.rule == "person_day");
+}
+
+TEST_CASE("a companion in an exclude zone cannot veto the primary")
+{
+  DetectedObject primary = personAt({.x = 0, .y = 0, .w = 64, .h = 64});
+  primary.trackId = 1;
+  DetectedObject companion = personAt({.x = 400, .y = 0, .w = 64, .h = 64});
+  companion.trackId = 2;
+
+  auto input = baseInput({primary, companion});
+  input.primaryTrackId = 1;
+  input.zones.push_back(squareZone({.kind = "alert", .fromX = 0.0f,
+            .fromY = 0.0f, .toX = 0.2f, .toY = 0.3f}));
+  input.zones.push_back(squareZone({.kind = "exclude", .fromX = 0.5f,
+            .fromY = 0.0f, .toX = 0.8f, .toY = 0.3f}));
+
+  const auto outcome = EventIntelligence::evaluate(input);
+  CHECK(outcome.publish);
+  CHECK(outcome.rule == "person_in_alert_zone");
+  CHECK(outcome.severity == EventSeverity::Critical);
+}
+
+TEST_CASE("the primary's zone decides even when a companion is in alert")
+{
+  DetectedObject primary = personAt({.x = 0, .y = 0, .w = 64, .h = 64});
+  primary.trackId = 1;
+  DetectedObject companion = personAt({.x = 400, .y = 0, .w = 64, .h = 64});
+  companion.trackId = 2;
+
+  auto input = baseInput({primary, companion});
+  input.primaryTrackId = 1;
+  input.zones.push_back(squareZone({.kind = "monitor", .fromX = 0.0f,
+            .fromY = 0.0f, .toX = 0.2f, .toY = 0.3f}));
+  input.zones.push_back(squareZone({.kind = "alert", .fromX = 0.5f,
+            .fromY = 0.0f, .toX = 0.8f, .toY = 0.3f}));
+
+  const auto outcome = EventIntelligence::evaluate(input);
+  CHECK(outcome.publish);
+  CHECK(outcome.rule == "person_in_monitor_zone");
+  CHECK(outcome.severity == EventSeverity::Warning);
+}
+
+TEST_CASE("legacy frames without a primary keep the frame-wide exclude")
+{
+  DetectedObject person = personAt({.x = 0, .y = 0, .w = 64, .h = 64});
+  person.trackId = 1;
+  DetectedObject companion = personAt({.x = 400, .y = 0, .w = 64, .h = 64});
+  companion.trackId = 2;
+
+  auto input = baseInput({person, companion});
+  input.primaryTrackId = 0;
+  input.zones.push_back(squareZone({.kind = "exclude", .fromX = 0.5f,
+            .fromY = 0.0f, .toX = 0.8f, .toY = 0.3f}));
+
+  const auto outcome = EventIntelligence::evaluate(input);
+  CHECK_FALSE(outcome.publish);
+  CHECK(outcome.rule == "exclude_zone");
+}
+
+// Recognizes only the right-hand companion crop as known person 9.
+class RightCompanionKnownMatcher final : public IKnownPersonMatcher
+{
+public:
+  std::optional<PersonMatch> match(const PersonCrop& crop) const override
+  {
+    if (crop.x <= 300.0F)
+      return std::nullopt;
+    return PersonMatch{.identity = PersonIdentity::Known,
+                       .personId = 9,
+                       .confidence = 0.9F};
+  }
+};
+
+TEST_CASE("an unknown primary intruder ignores a known companion in exclude")
+{
+  DetectedObject primary = personAt({.x = 0, .y = 0, .w = 64, .h = 64});
+  primary.trackId = 1;
+  DetectedObject companion = personAt({.x = 400, .y = 0, .w = 64, .h = 64});
+  companion.trackId = 2;
+
+  RightCompanionKnownMatcher matcher;
+  auto input = baseInput({primary, companion});
+  input.primaryTrackId = 1;
+  input.matcher = &matcher;
+  static std::vector<uint8_t> frame(640 * 480 * 3, 128);
+  input.frameRgb = frame.data();
+  input.zones.push_back(squareZone({.kind = "alert", .fromX = 0.0f,
+            .fromY = 0.0f, .toX = 0.2f, .toY = 0.3f}));
+  input.zones.push_back(squareZone({.kind = "exclude", .fromX = 0.5f,
+            .fromY = 0.0f, .toX = 0.8f, .toY = 0.3f}));
+
+  const auto outcome = EventIntelligence::evaluate(input);
+  CHECK(outcome.publish);
+  CHECK(outcome.rule == "person_in_alert_zone");
+  CHECK(outcome.severity == EventSeverity::Critical);
+  CHECK_FALSE(outcome.knownPersonId.has_value());
+  bool companionIdentified = false;
+  bool primaryUnknown = false;
+  for (const auto& entry : outcome.objects) {
+    if (entry.object.trackId == 2 && entry.personId.has_value())
+      companionIdentified = true;
+    if (entry.object.trackId == 1 && !entry.known)
+      primaryUnknown = true;
+  }
+  CHECK(companionIdentified);
+  CHECK(primaryUnknown);
 }

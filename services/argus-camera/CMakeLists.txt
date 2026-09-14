@@ -70,6 +70,10 @@ if(NOT TARGET argus_common)
                      ${CMAKE_BINARY_DIR}/argus-audio)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/argus-tts-client
                      ${CMAKE_BINARY_DIR}/argus-tts-client)
+    if(NOT TARGET argus::stt-client)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/argus-stt-client
+                         ${CMAKE_BINARY_DIR}/argus-stt-client)
+    endif()
 endif()
 
 find_package(doctest REQUIRED)
@@ -97,6 +101,9 @@ argus_module(NAME camera-rpc
         argus_common)
 
 target_compile_options(argus_camera-rpc PRIVATE -Wall -Wextra)
+
+add_subdirectory(src/shared/repositories/action-command)
+add_subdirectory(src/shared/repositories/object-event-outbox)
 
 # ncnn is THE objects capacity of this service (F2-3): the detector is the
 # only AI linkage here — no face/llm/vlm/tts/stt/vad code is compiled.
@@ -129,12 +136,17 @@ add_library(camera-core STATIC
     ${CAMERA_SRC_ROOT}/camera/camera-config.cc
     ${CAMERA_SRC_ROOT}/camera/nats-camera-change-sink.cc
     ${CAMERA_SRC_ROOT}/objects/ncnn-object-detector.cc
+    ${CAMERA_SRC_ROOT}/monitor/camera-health-monitor.cc
+    ${CAMERA_SRC_ROOT}/monitor/nats-health-event-sink.cc
     ${CAMERA_SRC_ROOT}/operator/camera-operator-service.cc
     ${CAMERA_SRC_ROOT}/operator/event-intelligence.cc
     ${CAMERA_SRC_ROOT}/operator/go2rtc-frame-source.cc
+    ${CAMERA_SRC_ROOT}/operator/identity-known-person-matcher.cc
     ${CAMERA_SRC_ROOT}/operator/nats-object-event-sink.cc
     ${CAMERA_SRC_ROOT}/operator/object-event.cc
     ${CAMERA_SRC_ROOT}/operator/operator-config.cc
+    ${CAMERA_SRC_ROOT}/operator/zone-provider.cc
+    ${CAMERA_SRC_ROOT}/operator/zone-source.cc
     # Camera-domain CRUD, compiled from the shared tree: this service is the
     # sole owner since F6-2 (the legacy binary no longer compiles it).
     ${CAMERA_SRC_ROOT}/feature/api/camera/controllers/camera-controller.cc
@@ -145,12 +157,18 @@ add_library(camera-core STATIC
     ${CAMERA_SRC_ROOT}/feature/api/zone/dtos/create-zone-dto.cc
     ${CAMERA_SRC_ROOT}/feature/api/zone/dtos/update-zone-dto.cc
     ${CAMERA_SRC_ROOT}/feature/api/zone/services/zone-feature-service.cc
+    # Fleet-gated audible/device actions for argus-guard (announce/alarm/siren).
+    ${CAMERA_SRC_ROOT}/feature/actions/audio-capture.cc
+    ${CAMERA_SRC_ROOT}/feature/actions/camera-action-rpc-service.cc
+    ${CAMERA_SRC_ROOT}/feature/actions/stt-transcriber.cc
     # Stream lifecycle: go2rtc supervision and the fMP4 StreamHub relay.
     ${CAMERA_SRC_ROOT}/shared/services/stream/camera-source-registrar.cc
     ${CAMERA_SRC_ROOT}/shared/services/stream/go2rtc-manager.cc
     ${CAMERA_SRC_ROOT}/shared/services/stream/stream-hub.cc
+    ${CAMERA_SRC_ROOT}/shared/services/stream/snapshot-store.cc
     ${CAMERA_SRC_ROOT}/shared/services/stream/upstream-http.cc
     ${CAMERA_SRC_ROOT}/shared/services/stream/ws-frame.cc
+    ${CAMERA_SRC_ROOT}/shared/services/evidence/evidence-uploader.cc
 )
 
 target_include_directories(camera-core SYSTEM PUBLIC
@@ -160,8 +178,11 @@ target_include_directories(camera-core SYSTEM PUBLIC
 target_include_directories(camera-core PUBLIC ${CAMERA_SRC_ROOT})
 
 target_link_libraries(camera-core PUBLIC argus_sync argus::sqlite
-    argus::socket argus::room argus::audio argus::tts-client sqlite-vec
+    argus::camera-action-command argus::camera-object-event-outbox
+    argus::socket argus::room argus::audio argus::tts-client
+    argus::stt-client argus::sdk-camera-actions sqlite-vec
     opencv::opencv ${ARGUS_NCNN_TARGET} argus::hardware-profile-gpu
+    argus_common
     OpenSSL::SSL OpenSSL::Crypto)
 
 target_compile_options(camera-core PRIVATE -Wall -Wextra)
@@ -192,6 +213,7 @@ set(CAMERA_UNIT_TESTS
     camera-config-test
     camera-controller-test
     camera-operator-test
+    camera-health-test
     event-intelligence-test
     camera-source-registrar-test
 )
@@ -228,6 +250,7 @@ target_link_libraries(camera-migration-test PRIVATE camera-migration)
 target_link_libraries(camera-config-test PRIVATE camera-core)
 target_link_libraries(camera-controller-test PRIVATE camera-core)
 target_link_libraries(camera-operator-test PRIVATE camera-core)
+target_link_libraries(camera-health-test PRIVATE camera-core)
 target_link_libraries(event-intelligence-test PRIVATE camera-core)
 target_link_libraries(camera-source-registrar-test PRIVATE camera-core)
 
@@ -273,3 +296,86 @@ target_compile_options(camera-talk-cutover-test PRIVATE -Wall -Wextra)
 add_test(NAME camera-talk-cutover-test COMMAND camera-talk-cutover-test)
 
 # The schema, migration and config suites run from src/test/unit.
+
+# The camera action surface: the RPC drives the stub driver for announce,
+# alarm and siren, and serves the snapshot crop, all behind the fleet gate.
+add_executable(camera-action-rpc-test
+    tests/unit/camera-action-rpc-test.cc
+    ${CAMERA_SRC_ROOT}/feature/actions/audio-capture.cc
+    ${CAMERA_SRC_ROOT}/feature/actions/camera-action-rpc-service.cc
+    ${CAMERA_SRC_ROOT}/feature/actions/stt-transcriber.cc
+    ${CAMERA_SRC_ROOT}/feature/api/camera-control/controllers/camera-control-controller.cc
+    ${CAMERA_SRC_ROOT}/feature/api/camera-control/services/camera-control-feature-service.cc
+    ${CAMERA_SRC_ROOT}/feature/api/camera-control/dtos/camera-talk-dto.cc
+    ${CAMERA_SRC_ROOT}/feature/api/camera-control/dtos/camera-ptz-dto.cc
+    ${CAMERA_SRC_ROOT}/feature/api/camera-control/dtos/camera-preset-dto.cc
+    ${CAMERA_SRC_ROOT}/feature/api/camera-control/dtos/camera-settings-dto.cc
+    ${CAMERA_SRC_ROOT}/shared/services/camera-driver/camera-driver-registry.cc
+    ${CAMERA_SRC_ROOT}/shared/services/camera-driver/tapo-driver.cc
+    ${CAMERA_SRC_ROOT}/shared/services/tapo/tapo-crypto.cc
+    ${CAMERA_SRC_ROOT}/shared/services/tapo/tapo-http.cc
+    ${CAMERA_SRC_ROOT}/shared/services/tapo/tapo-audio.cc
+    ${CAMERA_SRC_ROOT}/shared/services/tapo/tapo-ts-muxer.cc
+    ${CAMERA_SRC_ROOT}/shared/services/tapo/secure-passthrough-transport.cc
+    ${CAMERA_SRC_ROOT}/shared/services/tapo/legacy-stok-transport.cc
+    ${CAMERA_SRC_ROOT}/shared/services/tapo/tapo-client.cc
+    ${CAMERA_SRC_ROOT}/shared/services/tapo/tapo-api.cc
+    ${CAMERA_SRC_ROOT}/shared/services/tapo/tapo-talk-client.cc
+    ${CAMERA_SRC_ROOT}/shared/services/stream/go2rtc-manager.cc
+    ${CAMERA_SRC_ROOT}/shared/services/stream/snapshot-store.cc)
+
+target_include_directories(camera-action-rpc-test PRIVATE
+    ${CAMERA_SRC_ROOT}
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../packages/argus-tts-client/tests/support
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../packages/argus-stt-client/tests/support)
+
+target_link_libraries(camera-action-rpc-test PRIVATE argus_sync
+    argus::camera-action-command
+    argus_common argus::audio argus::tts-client argus::stt-client
+    argus::sdk-camera-actions OpenSSL::SSL OpenSSL::Crypto doctest::doctest)
+
+target_compile_options(camera-action-rpc-test PRIVATE -Wall -Wextra)
+
+set_target_properties(camera-action-rpc-test PROPERTIES
+    EXCLUDE_FROM_ALL FALSE)
+
+add_test(NAME camera-action-rpc-test COMMAND camera-action-rpc-test)
+
+# The legacy action_command migration: pre-Round-5 rows must never re-execute.
+add_executable(camera-action-migration-test
+    tests/unit/camera-action-migration-test.cc)
+target_include_directories(camera-action-migration-test PRIVATE
+    ${CAMERA_SRC_ROOT})
+target_link_libraries(camera-action-migration-test PRIVATE argus::sqlite
+    argus::camera-action-command argus_common doctest::doctest)
+target_compile_options(camera-action-migration-test PRIVATE -Wall -Wextra)
+set_target_properties(camera-action-migration-test PROPERTIES
+    EXCLUDE_FROM_ALL FALSE)
+add_test(NAME camera-action-migration-test COMMAND camera-action-migration-test)
+
+# The durable observation outbox: transactional enqueue, cooldown dedup and
+# explicit overflow accounting.
+add_executable(object-event-outbox-test
+    tests/unit/object-event-outbox-test.cc
+    ${CAMERA_SRC_ROOT}/shared/repositories/object-event-outbox/object-event-outbox-repository.cc)
+target_include_directories(object-event-outbox-test PRIVATE ${CAMERA_SRC_ROOT})
+target_link_libraries(object-event-outbox-test PRIVATE argus::sqlite
+    argus_common doctest::doctest)
+target_compile_definitions(object-event-outbox-test PRIVATE
+    ARGUS_CAMERA_SCHEMA_PATH="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql")
+target_compile_options(object-event-outbox-test PRIVATE -Wall -Wextra)
+set_target_properties(object-event-outbox-test PROPERTIES
+    EXCLUDE_FROM_ALL FALSE)
+add_test(NAME object-event-outbox-test COMMAND object-event-outbox-test)
+
+# The publisher sink: exact health counters against the durable outbox.
+add_executable(object-event-outbox-sink-test
+    tests/unit/object-event-outbox-sink-test.cc)
+target_link_libraries(object-event-outbox-sink-test PRIVATE camera-core
+    doctest::doctest)
+target_compile_definitions(object-event-outbox-sink-test PRIVATE
+    ARGUS_CAMERA_SCHEMA_PATH="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql")
+target_compile_options(object-event-outbox-sink-test PRIVATE -Wall -Wextra)
+set_target_properties(object-event-outbox-sink-test PROPERTIES
+    EXCLUDE_FROM_ALL FALSE)
+add_test(NAME object-event-outbox-sink-test COMMAND object-event-outbox-sink-test)

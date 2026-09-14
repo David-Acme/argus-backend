@@ -2,13 +2,16 @@
 
 #include <ctime>
 #include <grpc-client-base.hxx>
+#include <map>
 #include <drogon/drogon.h>
 #include <optional>
 #include <shared/contracts/sync-operation.hxx>
 #include <shared/dtos/socket-emit/socket-emit-dto.hxx>
 #include <shared/enums.hxx>
+#include <shared/services/face/face-service.hxx>
 #include <shared/services/socket/sync-change.hxx>
 #include <shared/utils/json-util/json-util.hxx>
+#include <shared/wrapper/blocking-task/blocking-task.hxx>
 #include <shared/wrapper/nats/nats-subject.hxx>
 #include <trantor/utils/Logger.h>
 
@@ -29,6 +32,29 @@ std::optional<int64_t> scopedUserId(const grpc::CallbackServerContext* context)
     }
   }
   return std::nullopt;
+}
+
+std::string deviceHash(const grpc::CallbackServerContext* context)
+{
+  for (const auto& [key, value] : context->client_metadata()) {
+    if (key == "x-argus-device")
+      return std::string(value.begin(), value.end());
+  }
+  return {};
+}
+
+// Bearer access token forwarded by the SDK; the server verifies it itself.
+std::string accessToken(const grpc::CallbackServerContext* context)
+{
+  for (const auto& [key, value] : context->client_metadata()) {
+    if (key != "authorization")
+      continue;
+    const std::string header(value.begin(), value.end());
+    constexpr std::string_view kPrefix = "Bearer ";
+    if (header.rfind(kPrefix, 0) == 0)
+      return header.substr(kPrefix.size());
+  }
+  return {};
 }
 
 // Secret comparison that does not return early on the first differing byte.
@@ -380,5 +406,532 @@ grpc::ServerUnaryReactor* IdentityRpcService::CheckDeviceCredential(
       co_return;
     });
   });
+  return reactor;
+}
+
+namespace
+{
+std::optional<std::pair<int64_t, float>> searchFace(
+    const std::optional<FaceService::FaceResult>& face)
+{
+  if (!face)
+    return std::nullopt;
+  return FaceService::instance().faceDb().search(face->embedding.data());
+}
+} // namespace
+
+grpc::ServerUnaryReactor* IdentityRpcService::IdentifyPerson(
+    grpc::CallbackServerContext* context,
+    const argus::identity::v1::IdentifyPersonRequest* request,
+    argus::identity::v1::IdentifyPersonResponse* response)
+{
+  if (!fleetAuthorized(context)) {
+    auto* reactor = context->DefaultReactor();
+    reactor->Finish(grpc::Status(grpc::StatusCode::UNAUTHENTICATED,
+                                 "Fleet secret missing or invalid"));
+    return reactor;
+  }
+
+  const std::string image = request->image();
+  if (image.empty()) {
+    auto* reactor = context->DefaultReactor();
+    reactor->Finish(grpc::Status(grpc::StatusCode::INVALID_ARGUMENT,
+                                 "image is required"));
+    return reactor;
+  }
+
+  auto* reactor = context->DefaultReactor();
+  auto* responseWriter = response;
+  drogon::app().getLoop()->queueInLoop([this, reactor, image,
+                                        responseWriter]() {
+    drogon::async_run([this, reactor, image,
+                       responseWriter]() -> drogon::Task<void> {
+      try {
+        const auto face =
+            co_await FaceService::instance().extractImageAsync(image);
+        const auto match = co_await BlockingTask<
+            std::optional<std::pair<int64_t, float>>>(
+            [&face]() { return searchFace(face); });
+        if (!match) {
+          reactor->Finish(grpc::Status::OK);
+          co_return;
+        }
+
+        responseWriter->set_matched(true);
+        responseWriter->set_person_id(match->first);
+        responseWriter->set_confidence(match->second);
+        const auto person = co_await personRepository_.findById(match->first);
+        if (person) {
+          responseWriter->set_trusted(person->status == PersonStatus::Known);
+        }
+        if (person && person->userId) {
+          const auto user = co_await userRepository_.findById(*person->userId);
+          if (user && user->isActive) {
+            responseWriter->set_user_id(user->id);
+            responseWriter->set_role(userRoleToString(user->role));
+            responseWriter->set_name(user->name);
+          }
+        }
+        reactor->Finish(grpc::Status::OK);
+      }
+      catch (const std::exception& e) {
+        LOG_WARN << "Identity RPC: IdentifyPerson failed: " << e.what();
+        reactor->Finish(grpc::Status(grpc::StatusCode::INTERNAL, e.what()));
+      }
+      co_return;
+    });
+  });
+  return reactor;
+}
+
+grpc::ServerUnaryReactor* IdentityRpcService::EnrollPerson(
+    grpc::CallbackServerContext* context,
+    const argus::identity::v1::EnrollPersonRequest* request,
+    argus::identity::v1::EnrollPersonResponse* response)
+{
+  if (!fleetAuthorized(context)) {
+    auto* reactor = context->DefaultReactor();
+    reactor->Finish(grpc::Status(grpc::StatusCode::UNAUTHENTICATED,
+                                 "Fleet secret missing or invalid"));
+    return reactor;
+  }
+
+  const std::string image = request->image();
+  if (image.empty()) {
+    auto* reactor = context->DefaultReactor();
+    reactor->Finish(grpc::Status(grpc::StatusCode::INVALID_ARGUMENT,
+                                 "image is required"));
+    return reactor;
+  }
+
+  const int64_t cameraId = request->camera_id();
+  const bool captureSnapshot = request->capture_snapshot();
+  auto* reactor = context->DefaultReactor();
+  auto* responseWriter = response;
+  drogon::app().getLoop()->queueInLoop(
+      [this, reactor, image, cameraId, captureSnapshot, responseWriter]() {
+        drogon::async_run([this, reactor, image, cameraId, captureSnapshot,
+                           responseWriter]() -> drogon::Task<void> {
+          try {
+            const auto face =
+                co_await FaceService::instance().extractImageAsync(image);
+            if (!face) {
+              reactor->Finish(grpc::Status(grpc::StatusCode::INVALID_ARGUMENT,
+                                           "no face detected in the crop"));
+              co_return;
+            }
+            const auto existing = co_await BlockingTask<
+                std::optional<std::pair<int64_t, float>>>(
+                [&face]() { return searchFace(face); });
+            if (existing) {
+              responseWriter->set_person_id(existing->first);
+              responseWriter->set_created(false);
+              responseWriter->set_confidence(existing->second);
+              reactor->Finish(grpc::Status::OK);
+              co_return;
+            }
+
+            const auto person = co_await personRepository_.create(
+                {.userId = std::nullopt,
+                 .name = "",
+                 .alias = "",
+                 .observation = "",
+                 .status = PersonStatus::Candidate});
+            if (person.id <= 0) {
+              reactor->Finish(grpc::Status(grpc::StatusCode::INTERNAL,
+                                           "person insert failed"));
+              co_return;
+            }
+
+            if (face) {
+              const std::string embedding(
+                  reinterpret_cast<const char*>(face->embedding.data()),
+                  face->embedding.size() * sizeof(float));
+              const auto row = co_await faceEmbeddingRepository_.create(
+                  {.personId = person.id,
+                   .embedding = embedding,
+                   .angleLabel = "frontal",
+                   .quality = 1.0});
+              if (row.id > 0) {
+                co_await BlockingTask<void>([&face, personId = person.id,
+                                             faceEmbeddingId = row.id]() {
+                  FaceService::instance().faceDb().insert(
+                      {.embedding = face->embedding.data(),
+                       .personId = personId,
+                       .faceEmbeddingId = faceEmbeddingId});
+                });
+              }
+            }
+            if (captureSnapshot)
+              co_await personSnapshotRepository_.store(
+                  {.personId = person.id, .image = image});
+
+            if (bus_) {
+              SocketEmitDto emit;
+              emit.operation = SyncOperation::Add;
+              emit.option = TableName::Person;
+              emit.obj = person.toJson();
+              const Json::Value payload = sync_change::emitPayload(emit);
+              bus_->publish(nats_subject::kSyncChange,
+                            json_util::toString(payload));
+            }
+            LOG_INFO << "Identity RPC: enrolled person " << person.id
+                     << " from camera " << cameraId;
+            responseWriter->set_person_id(person.id);
+            responseWriter->set_created(true);
+            responseWriter->set_confidence(face ? face->confidence : 0.0F);
+            reactor->Finish(grpc::Status::OK);
+          }
+          catch (const std::exception& e) {
+            LOG_WARN << "Identity RPC: EnrollPerson failed: " << e.what();
+            reactor->Finish(
+                grpc::Status(grpc::StatusCode::INTERNAL, e.what()));
+          }
+          co_return;
+        });
+      });
+  return reactor;
+}
+
+grpc::ServerUnaryReactor* IdentityRpcService::TouchPerson(
+    grpc::CallbackServerContext* context,
+    const argus::identity::v1::TouchPersonRequest* request,
+    argus::identity::v1::TouchPersonResponse* response)
+{
+  if (!fleetAuthorized(context)) {
+    auto* reactor = context->DefaultReactor();
+    reactor->Finish(grpc::Status(grpc::StatusCode::UNAUTHENTICATED,
+                                 "Fleet secret missing or invalid"));
+    return reactor;
+  }
+
+  const int64_t personId = request->person_id();
+  if (personId <= 0) {
+    auto* reactor = context->DefaultReactor();
+    reactor->Finish(grpc::Status(grpc::StatusCode::INVALID_ARGUMENT,
+                                 "person_id is required"));
+    return reactor;
+  }
+
+  const int64_t at =
+      request->at() > 0 ? request->at() : static_cast<int64_t>(std::time(nullptr));
+  auto* reactor = context->DefaultReactor();
+  auto* responseWriter = response;
+  drogon::app().getLoop()->queueInLoop(
+      [this, reactor, personId, at, responseWriter]() {
+        drogon::async_run([this, reactor, personId, at,
+                           responseWriter]() -> drogon::Task<void> {
+          try {
+            const auto person = co_await personRepository_.update(
+                personId,
+                {.name = std::nullopt,
+                 .alias = std::nullopt,
+                 .observation = std::nullopt,
+                 .lastSeenAt = at});
+            responseWriter->set_updated(person.id > 0);
+            reactor->Finish(grpc::Status::OK);
+          }
+          catch (const std::exception& e) {
+            LOG_WARN << "Identity RPC: TouchPerson failed: " << e.what();
+            reactor->Finish(
+                grpc::Status(grpc::StatusCode::INTERNAL, e.what()));
+          }
+          co_return;
+        });
+      });
+  return reactor;
+}
+
+grpc::ServerUnaryReactor* IdentityRpcService::TagPerson(
+    grpc::CallbackServerContext* context,
+    const argus::identity::v1::TagPersonRequest* request,
+    argus::identity::v1::TagPersonResponse* response)
+{
+  if (!fleetAuthorized(context)) {
+    auto* reactor = context->DefaultReactor();
+    reactor->Finish(grpc::Status(grpc::StatusCode::UNAUTHENTICATED,
+                                 "Fleet secret missing or invalid"));
+    return reactor;
+  }
+
+  const int64_t personId = request->person_id();
+  if (personId <= 0) {
+    auto* reactor = context->DefaultReactor();
+    reactor->Finish(grpc::Status(grpc::StatusCode::INVALID_ARGUMENT,
+                                 "person_id is required"));
+    return reactor;
+  }
+
+  const std::vector<std::string> tags(request->tags().begin(),
+                                      request->tags().end());
+  const std::string source =
+      request->source().empty() ? "llm" : request->source();
+  const std::string observation = request->observation();
+  auto* reactor = context->DefaultReactor();
+  auto* responseWriter = response;
+  drogon::app().getLoop()->queueInLoop(
+      [this, reactor, personId, tags, source, observation,
+       responseWriter]() {
+        drogon::async_run([this, reactor, personId, tags, source, observation,
+                           responseWriter]() -> drogon::Task<void> {
+          try {
+            const int added = co_await personTagRepository_.addMany(
+                {.personId = personId, .tags = tags, .source = source});
+            if (!observation.empty()) {
+              co_await personRepository_.update(
+                  personId,
+                  {.name = std::nullopt,
+                   .alias = std::nullopt,
+                   .observation = observation,
+                   .lastSeenAt = std::nullopt});
+            }
+            responseWriter->set_added(added);
+            reactor->Finish(grpc::Status::OK);
+          }
+          catch (const std::exception& e) {
+            LOG_WARN << "Identity RPC: TagPerson failed: " << e.what();
+            reactor->Finish(
+                grpc::Status(grpc::StatusCode::INTERNAL, e.what()));
+          }
+          co_return;
+        });
+      });
+  return reactor;
+}
+
+grpc::ServerUnaryReactor* IdentityRpcService::ListNotifiableUsers(
+    grpc::CallbackServerContext* context,
+    const argus::identity::v1::ListNotifiableUsersRequest* request,
+    argus::identity::v1::ListNotifiableUsersResponse* response)
+{
+  (void)request;
+  if (!fleetAuthorized(context)) {
+    auto* reactor = context->DefaultReactor();
+    reactor->Finish(grpc::Status(grpc::StatusCode::UNAUTHENTICATED,
+                                 "Fleet secret missing or invalid"));
+    return reactor;
+  }
+
+  auto* reactor = context->DefaultReactor();
+  auto* responseWriter = response;
+  drogon::app().getLoop()->queueInLoop([this, reactor, responseWriter]() {
+    drogon::async_run([this, reactor, responseWriter]() -> drogon::Task<void> {
+      try {
+        for (const int64_t userId :
+             co_await userRepository_.findNotifiableIds())
+          responseWriter->add_user_ids(userId);
+        reactor->Finish(grpc::Status::OK);
+      }
+      catch (const std::exception& e) {
+        LOG_WARN << "Identity RPC: ListNotifiableUsers failed: " << e.what();
+        reactor->Finish(grpc::Status(grpc::StatusCode::INTERNAL, e.what()));
+      }
+      co_return;
+    });
+  });
+  return reactor;
+}
+
+grpc::ServerUnaryReactor* IdentityRpcService::GetPersonTags(
+    grpc::CallbackServerContext* context,
+    const argus::identity::v1::PersonTagsRequest* request,
+    argus::identity::v1::PersonTagsResponse* response)
+{
+  if (!fleetAuthorized(context)) {
+    auto* reactor = context->DefaultReactor();
+    reactor->Finish(grpc::Status(grpc::StatusCode::UNAUTHENTICATED,
+                                 "Fleet secret missing or invalid"));
+    return reactor;
+  }
+
+  const int64_t personId = request->person_id();
+  if (personId <= 0) {
+    auto* reactor = context->DefaultReactor();
+    reactor->Finish(grpc::Status(grpc::StatusCode::INVALID_ARGUMENT,
+                                 "person_id is required"));
+    return reactor;
+  }
+
+  auto* reactor = context->DefaultReactor();
+  auto* responseWriter = response;
+  drogon::app().getLoop()->queueInLoop([this, reactor, personId,
+                                        responseWriter]() {
+    drogon::async_run([this, reactor, personId,
+                       responseWriter]() -> drogon::Task<void> {
+      try {
+        for (const auto& tag :
+             co_await personTagRepository_.findByPerson(personId))
+          responseWriter->add_tags(tag);
+        reactor->Finish(grpc::Status::OK);
+      }
+      catch (const std::exception& e) {
+        LOG_WARN << "Identity RPC: GetPersonTags failed: " << e.what();
+        reactor->Finish(grpc::Status(grpc::StatusCode::INTERNAL, e.what()));
+      }
+      co_return;
+    });
+  });
+  return reactor;
+}
+
+grpc::ServerUnaryReactor* IdentityRpcService::GetPerson(
+    grpc::CallbackServerContext* context,
+    const argus::identity::v1::GetPersonRequest* request,
+    argus::identity::v1::GetPersonResponse* response)
+{
+  if (!fleetAuthorized(context)) {
+    auto* reactor = context->DefaultReactor();
+    reactor->Finish(grpc::Status(grpc::StatusCode::UNAUTHENTICATED,
+                                 "Fleet secret missing or invalid"));
+    return reactor;
+  }
+
+  const int64_t personId = request->person_id();
+  if (personId <= 0) {
+    auto* reactor = context->DefaultReactor();
+    reactor->Finish(grpc::Status(grpc::StatusCode::INVALID_ARGUMENT,
+                                 "person_id is required"));
+    return reactor;
+  }
+
+  auto* reactor = context->DefaultReactor();
+  auto* responseWriter = response;
+  drogon::app().getLoop()->queueInLoop([this, reactor, personId,
+                                        responseWriter]() {
+    drogon::async_run([this, reactor, personId,
+                       responseWriter]() -> drogon::Task<void> {
+      try {
+        const auto person = co_await personRepository_.findById(personId);
+        if (person) {
+          auto* payload = responseWriter->mutable_person();
+          payload->set_person_id(person->id);
+          if (person->userId)
+            payload->set_user_id(*person->userId);
+          payload->set_name(person->name);
+          payload->set_alias(person->alias);
+          payload->set_observation(person->observation);
+          payload->set_trusted(person->status == PersonStatus::Known);
+          if (person->userId) {
+            const auto user =
+                co_await userRepository_.findById(*person->userId);
+            if (user && user->isActive)
+              payload->set_role(userRoleToString(user->role));
+          }
+          for (const auto& tag :
+               co_await personTagRepository_.findByPerson(personId))
+            payload->add_tags(tag);
+        }
+        reactor->Finish(grpc::Status::OK);
+      }
+      catch (const std::exception& e) {
+        LOG_WARN << "Identity RPC: GetPerson failed: " << e.what();
+        reactor->Finish(grpc::Status(grpc::StatusCode::INTERNAL, e.what()));
+      }
+      co_return;
+    });
+  });
+  return reactor;
+}
+
+grpc::ServerUnaryReactor* IdentityRpcService::PromotePerson(
+    grpc::CallbackServerContext* context,
+    const argus::identity::v1::PromotePersonRequest* request,
+    argus::identity::v1::PromotePersonResponse* response)
+{
+  if (!fleetAuthorized(context)) {
+    auto* reactor = context->DefaultReactor();
+    reactor->Finish(grpc::Status(grpc::StatusCode::UNAUTHENTICATED,
+                                 "Fleet secret missing or invalid"));
+    return reactor;
+  }
+
+  const std::string token = accessToken(context);
+  if (token.empty()) {
+    auto* reactor = context->DefaultReactor();
+    reactor->Finish(grpc::Status(grpc::StatusCode::PERMISSION_DENIED,
+                                 "owner access token required"));
+    return reactor;
+  }
+  const std::string device = deviceHash(context);
+
+  const int64_t personId = request->person_id();
+  if (personId <= 0) {
+    auto* reactor = context->DefaultReactor();
+    reactor->Finish(grpc::Status(grpc::StatusCode::INVALID_ARGUMENT,
+                                 "person_id is required"));
+    return reactor;
+  }
+
+  auto* reactor = context->DefaultReactor();
+  auto* responseWriter = response;
+  drogon::app().getLoop()->queueInLoop(
+      [this, reactor, responseWriter, personId, token, device]() {
+        drogon::async_run([this, reactor, responseWriter, personId, token,
+                           device]() -> drogon::Task<void> {
+          try {
+            std::map<std::string, std::string> claims;
+            try {
+              claims = jwtService_.verifyAccess(token);
+            }
+            catch (const std::exception&) {
+              reactor->Finish(grpc::Status(grpc::StatusCode::UNAUTHENTICATED,
+                                           "invalid access token"));
+              co_return;
+            }
+            int64_t actorId = 0;
+            try {
+              actorId = std::stoll(claims["sub"]);
+            }
+            catch (const std::exception&) {
+              reactor->Finish(grpc::Status(grpc::StatusCode::UNAUTHENTICATED,
+                                           "invalid token subject"));
+              co_return;
+            }
+            const auto actorUser =
+                co_await userRepository_.findById(actorId);
+            if (!actorUser || !actorUser->isActive ||
+                actorUser->role != UserRole::Owner) {
+              reactor->Finish(grpc::Status(grpc::StatusCode::PERMISSION_DENIED,
+                                           "owner role required"));
+              co_return;
+            }
+            if (!co_await refreshTokenRepository_.hasActiveSession(actorId,
+                                                                  device)) {
+              reactor->Finish(
+                  grpc::Status(grpc::StatusCode::PERMISSION_DENIED,
+                               "no active session for this owner"));
+              co_return;
+            }
+
+            const auto before = co_await personRepository_.findById(personId);
+            if (!before) {
+              reactor->Finish(grpc::Status(grpc::StatusCode::NOT_FOUND,
+                                           "person not found"));
+              co_return;
+            }
+            const bool promoted =
+                co_await personRepository_.promote(personId);
+            if (promoted) {
+              const auto after =
+                  co_await personRepository_.findById(personId);
+              if (after)
+                co_await auditService_.publishModule(
+                    {.recordId = personId,
+                     .tableName = TableName::Person,
+                     .before = before->toJson(),
+                     .after = after->toJson(),
+                     .actorId = actorId});
+            }
+            responseWriter->set_promoted(promoted);
+            reactor->Finish(grpc::Status::OK);
+          }
+          catch (const std::exception& e) {
+            LOG_WARN << "Identity RPC: PromotePerson failed: " << e.what();
+            reactor->Finish(
+                grpc::Status(grpc::StatusCode::INTERNAL, e.what()));
+          }
+          co_return;
+        });
+      });
   return reactor;
 }

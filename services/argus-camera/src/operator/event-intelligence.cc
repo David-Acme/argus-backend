@@ -3,23 +3,13 @@
 #include <algorithm>
 #include <string>
 
-namespace
-{
-struct CenterInZoneInput
-{
-  const DetectedObject& object;
-  const OperatorZone& zone;
-  int frameWidth{0};
-  int frameHeight{0};
-};
-
-bool centerInZone(const CenterInZoneInput& input)
+bool objectCenterInZone(const ObjectZoneInput& input)
 {
   const DetectedObject& object = input.object;
   const OperatorZone& zone = input.zone;
   const int frameWidth = input.frameWidth;
   const int frameHeight = input.frameHeight;
-  if (zone.points.size() < 3)
+  if (zone.points.size() < 3 || frameWidth <= 0 || frameHeight <= 0)
     return false;
 
   const double cx = (object.x + object.w / 2) / frameWidth;
@@ -38,6 +28,13 @@ bool centerInZone(const CenterInZoneInput& input)
       inside = !inside;
   }
   return inside;
+}
+
+namespace
+{
+bool centerInZone(const ObjectZoneInput& input)
+{
+  return objectCenterInZone(input);
 }
 
 struct ObjectInZoneKindInput
@@ -90,101 +87,194 @@ EventIntelligence::evaluate(const EventIntelligenceInput& input)
   if (input.objects.empty())
     return {};
 
-  for (const auto& object : input.objects) {
-    if (objectInZoneKind({.object = object, .zones = input.zones,
-                          .kind = "exclude",
-                          .frameWidth = input.frameWidth,
-                          .frameHeight = input.frameHeight})) {
+  const auto isExcluded = [&input](const DetectedObject& object) {
+    return objectInZoneKind({.object = object,
+                             .zones = input.zones,
+                             .kind = "exclude",
+                             .frameWidth = input.frameWidth,
+                             .frameHeight = input.frameHeight});
+  };
+
+  if (input.primaryTrackId != 0) {
+    const auto primaryObject = std::find_if(
+        input.objects.begin(), input.objects.end(),
+        [&input](const DetectedObject& object) {
+          return object.trackId == input.primaryTrackId;
+        });
+    if (primaryObject != input.objects.end() && isExcluded(*primaryObject)) {
       EventIntelligenceOutcome dropped;
       dropped.publish = false;
       dropped.rule = "exclude_zone";
       return dropped;
     }
   }
+  else {
+    for (const auto& object : input.objects) {
+      if (isExcluded(object)) {
+        EventIntelligenceOutcome dropped;
+        dropped.publish = false;
+        dropped.rule = "exclude_zone";
+        return dropped;
+      }
+    }
+  }
 
   const bool hasPerson = containsClass(input.objects, "person");
+  const auto verdictFor =
+      [&input](int64_t trackId) -> const PersonDwellVerdict* {
+    const auto found = std::find_if(
+        input.persons.begin(), input.persons.end(),
+        [trackId](const PersonDwellVerdict& verdict) {
+          return verdict.trackId == trackId;
+        });
+    return found == input.persons.end() ? nullptr : &*found;
+  };
+  const auto dueFor = [&verdictFor](int64_t trackId) {
+    const PersonDwellVerdict* verdict = verdictFor(trackId);
+    return verdict != nullptr && verdict->due;
+  };
+  const auto isPrimary = [&input](int64_t trackId) {
+    return input.primaryTrackId == 0 || trackId == input.primaryTrackId;
+  };
+  const bool personDue =
+      hasPerson &&
+      (input.primaryTrackId != 0
+           ? dueFor(input.primaryTrackId)
+           : std::any_of(input.persons.begin(), input.persons.end(),
+                         [](const PersonDwellVerdict& verdict) {
+                           return verdict.due;
+                         }));
   const bool hasVehicle = containsClass(input.objects, "car") ||
                           containsClass(input.objects, "truck") ||
                           containsClass(input.objects, "bus") ||
                           containsClass(input.objects, "motorcycle");
 
-  if (input.matcher && hasPerson && input.frameRgb) {
-    for (const auto& object : input.objects) {
-      if (object.name != "person")
+  std::vector<EvaluatedObject> evaluated;
+  evaluated.reserve(input.objects.size());
+  for (const auto& object : input.objects)
+    evaluated.push_back({.object = object,
+                         .personId = std::nullopt,
+                         .known = false,
+                         .identityConfidence = 0.0F,
+                         .zoneKind = {}});
+
+  std::optional<int64_t> knownPersonId;
+  if (input.matcher && personDue && input.frameRgb) {
+    for (auto& entry : evaluated) {
+      if (entry.object.name != "person" || !dueFor(entry.object.trackId))
         continue;
-      const PersonCrop crop{.rgb = input.frameRgb,
+      const PersonCrop crop{.cameraId = input.cameraId,
+                            .trackId = entry.object.trackId,
+                            .firstSeenMs = entry.object.firstSeenMs,
+                            .rgb = input.frameRgb,
                             .width = input.frameWidth,
                             .height = input.frameHeight,
-                            .x = object.x,
-                            .y = object.y,
-                            .w = object.w,
-                            .h = object.h};
-      if (const auto personId = input.matcher->match(crop)) {
-        EventIntelligenceOutcome known;
-        known.publish = true;
-        known.rule = "known_person";
-        known.severity = EventSeverity::Info;
-        known.knownPersonId = personId;
-        return known;
+                            .x = entry.object.x,
+                            .y = entry.object.y,
+                            .w = entry.object.w,
+                            .h = entry.object.h};
+      const auto match = input.matcher->match(crop);
+      if (!match)
+        continue;
+      entry.personId = match->personId;
+      entry.known = match->identity == PersonIdentity::Known;
+      entry.identityConfidence = match->confidence;
+      if (entry.known && isPrimary(entry.object.trackId) && !knownPersonId)
+        knownPersonId = match->personId;
+    }
+  }
+
+  for (auto& entry : evaluated) {
+    if (entry.object.name != "person")
+      continue;
+    if (objectInZoneKind({.object = entry.object,
+                          .zones = input.zones,
+                          .kind = "alert",
+                          .frameWidth = input.frameWidth,
+                          .frameHeight = input.frameHeight}))
+      entry.zoneKind = "alert";
+    else if (objectInZoneKind({.object = entry.object,
+                               .zones = input.zones,
+                               .kind = "monitor",
+                               .frameWidth = input.frameWidth,
+                               .frameHeight = input.frameHeight}))
+      entry.zoneKind = "monitor";
+  }
+
+  const auto finalize = [&](EventIntelligenceOutcome outcome) {
+    outcome.knownPersonId = knownPersonId;
+    outcome.objects = evaluated;
+    return outcome;
+  };
+
+  const EvaluatedObject* primary = nullptr;
+  if (input.primaryTrackId != 0) {
+    const auto found = std::find_if(
+        evaluated.begin(), evaluated.end(), [&input](const EvaluatedObject& e) {
+          return e.object.name == "person" &&
+                 e.object.trackId == input.primaryTrackId;
+        });
+    if (found != evaluated.end())
+      primary = &*found;
+  }
+  else {
+    double bestArea = -1.0;
+    for (const auto& entry : evaluated) {
+      if (entry.object.name != "person")
+        continue;
+      const double area = entry.object.w * entry.object.h;
+      if (area >= bestArea) {
+        bestArea = area;
+        primary = &entry;
+      }
+    }
+  }
+  if (primary != nullptr && primary->known && knownPersonId)
+    return finalize({.publish = true,
+                     .rule = "known_person",
+                     .severity = EventSeverity::Info});
+
+  if (personDue) {
+    for (const auto& entry : evaluated) {
+      if (entry.object.name == "person" && isPrimary(entry.object.trackId) &&
+          dueFor(entry.object.trackId) && entry.zoneKind == "alert") {
+        return finalize({.publish = true,
+                         .rule = "person_in_alert_zone",
+                         .severity = EventSeverity::Critical});
       }
     }
   }
 
-  if (hasPerson) {
-    for (const auto& object : input.objects) {
-      if (object.name == "person" &&
-          objectInZoneKind({.object = object, .zones = input.zones,
-                            .kind = "alert",
-                            .frameWidth = input.frameWidth,
-                            .frameHeight = input.frameHeight})) {
-        EventIntelligenceOutcome alert;
-        alert.publish = true;
-        alert.rule = "person_in_alert_zone";
-        alert.severity = EventSeverity::Critical;
-        return alert;
+  if (personDue) {
+    for (const auto& entry : evaluated) {
+      if (entry.object.name == "person" && isPrimary(entry.object.trackId) &&
+          dueFor(entry.object.trackId) && entry.zoneKind == "monitor") {
+        return finalize({.publish = true,
+                         .rule = "person_in_monitor_zone",
+                         .severity = EventSeverity::Warning});
       }
     }
   }
 
-  if (hasPerson) {
-    for (const auto& object : input.objects) {
-      if (object.name == "person" &&
-          objectInZoneKind({.object = object, .zones = input.zones,
-                            .kind = "monitor",
-                            .frameWidth = input.frameWidth,
-                            .frameHeight = input.frameHeight})) {
-        EventIntelligenceOutcome monitor;
-        monitor.publish = true;
-        monitor.rule = "person_in_monitor_zone";
-        monitor.severity = EventSeverity::Warning;
-        return monitor;
-      }
-    }
-  }
-
-  if (hasPerson) {
-    EventIntelligenceOutcome person;
-    person.publish = true;
-    person.rule = input.night ? "person_night" : "person_day";
-    person.severity = input.night ? EventSeverity::Warning : EventSeverity::Info;
-    return person;
+  if (personDue) {
+    return finalize(
+        {.publish = true,
+         .rule = input.night ? "person_night" : "person_day",
+         .severity = input.night ? EventSeverity::Warning : EventSeverity::Info});
   }
 
   if (hasVehicle && input.state.vehiclePreviouslyAbsent && !input.night) {
-    EventIntelligenceOutcome arrival;
-    arrival.publish = true;
-    arrival.rule = "vehicle_arrival";
-    arrival.severity = EventSeverity::Info;
-    return arrival;
+    return finalize({.publish = true,
+                     .rule = "vehicle_arrival",
+                     .severity = EventSeverity::Info});
   }
 
   if (hasVehicle && (input.night || input.state.presenceEscalating)) {
-    EventIntelligenceOutcome vehicle;
-    vehicle.publish = true;
-    vehicle.rule = input.night ? "vehicle_night" : "presence_escalating";
-    vehicle.severity = EventSeverity::Warning;
-    vehicle.escalated = input.state.presenceEscalating;
-    return vehicle;
+    return finalize({.publish = true,
+                     .rule = input.night ? "vehicle_night"
+                                         : "presence_escalating",
+                     .severity = EventSeverity::Warning,
+                     .escalated = input.state.presenceEscalating});
   }
 
   if (isIgnored(input.objects, input.ignoredClasses)) {

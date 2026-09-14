@@ -49,16 +49,7 @@ bool SqliteGraph::open(const std::string& dbPath)
   sqlite3_busy_timeout(db_.get(), 5000);
   execUnlocked(db_.get(), "PRAGMA journal_mode = WAL");
   execUnlocked(db_.get(), "PRAGMA synchronous = NORMAL");
-  {
-    SqliteStmt stmt;
-    const bool hasGraph =
-        stmt.prepare(db_.get(),
-                     "SELECT 1 FROM sqlite_master WHERE type = 'table' AND "
-                     "name = 'memory_entity'") &&
-        stmt.step() == SQLITE_ROW;
-    if (!hasGraph)
-      runSchemaFile(db_.get(), memory_graph_query::schemaFile());
-  }
+  runSchemaFile(db_.get(), memory_graph_query::schemaFile());
   return true;
 }
 

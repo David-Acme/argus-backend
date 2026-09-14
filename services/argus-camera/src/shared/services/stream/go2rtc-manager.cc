@@ -107,6 +107,11 @@ std::string Go2rtcManager::apiBase()
   return "http://" + apiAddr_;
 }
 
+std::string Go2rtcManager::rtspBase()
+{
+  return "rtsp://" + rtspAddr_;
+}
+
 std::string Go2rtcManager::streamName(int64_t cameraId)
 {
   return "cam" + std::to_string(cameraId);

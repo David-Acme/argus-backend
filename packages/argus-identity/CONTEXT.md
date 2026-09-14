@@ -104,3 +104,12 @@ by row verification) and `device-credential-test` (the DeviceFilter gate,
 the credential repository, the auth-service issuance flow) register in the
 package's standalone CTest graph. No e2e suite exists yet; the folder gains
 `tests/e2e/` when the package has one.
+
+## Camera guard surface (camera-guard phase 2)
+
+`IdentifyPerson`, `EnrollPerson`, `TouchPerson`, `TagPerson` and
+`ListNotifiableUsers` are fleet-secret gated RPCs. Enrollment creates a person
+without user (empty name), persists the embedding and its `face_vec` row,
+optionally stores the JPEG crop in `person_snapshot`, and emits the `person`
+sync add. `person_tag` holds LLM tags. The face engine stays inside this
+process; argus-camera only ships crops.

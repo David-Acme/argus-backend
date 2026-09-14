@@ -70,6 +70,8 @@ int deadPort()
 void seedCameraDb()
 {
   std::remove(kCameraDb);
+  std::remove((std::string(kCameraDb) + "-wal").c_str());
+  std::remove((std::string(kCameraDb) + "-shm").c_str());
   auto client =
       drogon::orm::DbClient::newSqlite3Client(std::string("filename=") +
                                                   kCameraDb,
@@ -188,4 +190,6 @@ TEST_CASE("the camera-talk route synthesizes over the argus-tts wire")
   drogon::app().quit();
   runner.join();
   std::remove(kCameraDb);
+  std::remove((std::string(kCameraDb) + "-wal").c_str());
+  std::remove((std::string(kCameraDb) + "-shm").c_str());
 }

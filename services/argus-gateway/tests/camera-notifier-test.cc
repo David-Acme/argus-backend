@@ -87,18 +87,22 @@ bool waitForBoot(std::chrono::milliseconds timeout)
 class RecordingNotificationClient final : public NotificationClient
 {
 public:
-  RecordingNotificationClient() : NotificationClient("127.0.0.1:1") {}
+  RecordingNotificationClient()
+      : NotificationClient(
+            {.target = "127.0.0.1:1", .credential = "gateway-notif"})
+  {
+  }
 
-  std::optional<argus::notification::v1::CreateNotificationsResponse>
-  createNotifications(
+  NotificationCreateResult createNotifications(
       const argus::notification::v1::CreateNotificationsRequest& request,
       const argus::sdk::CallerIdentity&) const override
   {
     std::lock_guard lock(mutex_);
     requests.push_back(request);
-    argus::notification::v1::CreateNotificationsResponse response;
-    response.set_created(request.user_ids_size());
-    return response;
+    NotificationCreateResult result;
+    result.outcome = NotificationRpcOutcome::Success;
+    result.created = request.user_ids_size();
+    return result;
   }
 
   int totalUsers() const
@@ -129,7 +133,7 @@ public:
 
 TEST_CASE("the notification budget allows budget_per_hour then suppresses")
 {
-  CameraNotificationPolicy policy({2, -1, -1});
+  CameraNotificationPolicy policy({2, -1, -1, 30000});
   const int64_t start = atLocalHour({.hour = 12, .minute = 0, .day = 15});
 
   CHECK(policy.shouldNotify(1, start));
@@ -143,7 +147,7 @@ TEST_CASE("the notification budget allows budget_per_hour then suppresses")
 
 TEST_CASE("silent hours suppress and support wrapping")
 {
-  CameraNotificationPolicy policy({6, 22, 6});
+  CameraNotificationPolicy policy({6, 22, 6, 30000});
   CHECK_FALSE(policy.shouldNotify(1, atLocalHour({.hour = 23, .minute = 0, .day = 15})));
   CHECK_FALSE(policy.shouldNotify(1, atLocalHour({.hour = 2, .minute = 0, .day = 15})));
   CHECK(policy.shouldNotify(1, atLocalHour({.hour = 12, .minute = 0, .day = 15})));
@@ -151,13 +155,13 @@ TEST_CASE("silent hours suppress and support wrapping")
   CHECK(policy.shouldNotify(1, atLocalHour({.hour = 21, .minute = 59, .day = 15})));
   CHECK(policy.shouldNotify(1, atLocalHour({.hour = 6, .minute = 0, .day = 15})));
 
-  CameraNotificationPolicy disabled({6, -1, -1});
+  CameraNotificationPolicy disabled({6, -1, -1, 30000});
   CHECK(disabled.shouldNotify(1, atLocalHour({.hour = 23, .minute = 0, .day = 15})));
 }
 
 TEST_CASE("the digest summarizes suppressed events after the window closes")
 {
-  CameraNotificationPolicy policy({1, -1, -1});
+  CameraNotificationPolicy policy({1, -1, -1, 30000});
   const int64_t start = atLocalHour({.hour = 12, .minute = 0, .day = 15});
 
   CHECK(policy.shouldNotify(1, start));
@@ -179,7 +183,7 @@ TEST_CASE("the digest summarizes suppressed events after the window closes")
 
 TEST_CASE("a digest flushes when the silent window ends")
 {
-  CameraNotificationPolicy policy({6, 22, 6});
+  CameraNotificationPolicy policy({6, 22, 6, 30000});
   const int64_t night = atLocalHour({.hour = 23, .minute = 0, .day = 15});
 
   CHECK_FALSE(policy.shouldNotify(1, night));
@@ -213,7 +217,7 @@ TEST_CASE("a pending digest survives the hour-roll race")
 
 TEST_CASE("counts suppressed inside silent hours carry until the window ends")
 {
-  CameraNotificationPolicy policy({6, 22, 6});
+  CameraNotificationPolicy policy({6, 22, 6, 30000});
   const int64_t night = atLocalHour({.hour = 23, .minute = 0, .day = 15});
 
   CHECK_FALSE(policy.shouldNotify(1, night));
@@ -231,9 +235,21 @@ TEST_CASE("counts suppressed inside silent hours carry until the window ends")
   CHECK(digest.find("1 car") != std::string::npos);
 }
 
+TEST_CASE("the guard heartbeat gates the raw fallback window")
+{
+  CameraNotificationPolicy policy({6, -1, -1, 30000});
+  CHECK_FALSE(policy.guardReady(1000));
+  policy.markGuardHeartbeat(1000);
+  CHECK(policy.guardReady(1000));
+  CHECK(policy.guardReady(31000));
+  CHECK_FALSE(policy.guardReady(31001));
+}
+
 TEST_CASE("the consumer applies the budget and creates camera notifications")
 {
   std::remove(kIdentityDb);
+  std::remove((std::string(kIdentityDb) + "-wal").c_str());
+  std::remove((std::string(kIdentityDb) + "-shm").c_str());
   auto client =
       drogon::orm::DbClient::newSqlite3Client(std::string("filename=") +
                                                   kIdentityDb,
@@ -266,7 +282,7 @@ TEST_CASE("the consumer applies the budget and creates camera notifications")
   REQUIRE(waitForBoot(std::chrono::seconds(30)));
 
   auto notificationClient = std::make_shared<RecordingNotificationClient>();
-  CameraObjectNotifier notifier({6, -1, -1}, notificationClient);
+  CameraObjectNotifier notifier({6, -1, -1, 30000}, notificationClient);
 
   notifier.handle(eventJson({.cameraId = 1,
                              .rule = "person_in_alert_zone",
@@ -287,11 +303,21 @@ TEST_CASE("the consumer applies the budget and creates camera notifications")
 
   // Budget 6 per hour: the next five pass, the seventh is suppressed.
   for (int i = 0; i < 5; ++i)
-    notifier.handle(eventJson({.cameraId = 1, .rule = "person_day", .severity = "info"}));
+    notifier.handle(eventJson({.cameraId = 1,
+                               .rule = "person_in_alert_zone",
+                               .severity = "critical"}));
   REQUIRE(notificationClient->waitForUsers(12, std::chrono::seconds(10)));
-  notifier.handle(eventJson({.cameraId = 1, .rule = "person_day", .severity = "info"}));
+  notifier.handle(eventJson({.cameraId = 1,
+                             .rule = "person_in_alert_zone",
+                             .severity = "critical"}));
 
   // Wait past any in-flight delivery, then confirm the count stopped at 12.
+  std::this_thread::sleep_for(std::chrono::milliseconds(300));
+  CHECK(notificationClient->totalUsers() == 12);
+
+  // Without a guard heartbeat only hard signals reach the raw fallback.
+  notifier.handle(
+      eventJson({.cameraId = 1, .rule = "person_day", .severity = "info"}));
   std::this_thread::sleep_for(std::chrono::milliseconds(300));
   CHECK(notificationClient->totalUsers() == 12);
 
@@ -303,4 +329,6 @@ TEST_CASE("the consumer applies the budget and creates camera notifications")
   drogon::app().quit();
   runner.join();
   std::remove(kIdentityDb);
+  std::remove((std::string(kIdentityDb) + "-wal").c_str());
+  std::remove((std::string(kIdentityDb) + "-shm").c_str());
 }

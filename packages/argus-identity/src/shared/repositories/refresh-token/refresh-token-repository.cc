@@ -69,6 +69,23 @@ RefreshTokenRepository::findByRefreshToken(
   co_return RefreshTokenSchema(result.front());
 }
 
+drogon::Task<bool> RefreshTokenRepository::hasActiveSession(
+    int64_t userId, const std::string& deviceHash) const
+{
+  if (userId <= 0)
+    co_return false;
+  auto client = DbService::client();
+  const int64_t now = static_cast<int64_t>(std::time(nullptr));
+  const auto result =
+      deviceHash.empty()
+          ? co_await client->execSqlCoro(COUNT_ACTIVE_SESSIONS.data(), userId,
+                                         now)
+          : co_await client->execSqlCoro(
+                COUNT_ACTIVE_SESSIONS_FOR_DEVICE.data(), userId, deviceHash,
+                now);
+  co_return !result.empty() && result.front()["total"].as<int64_t>() > 0;
+}
+
 drogon::Task<bool> RefreshTokenRepository::invalidate(int64_t id) const
 {
   auto client = DbService::client();

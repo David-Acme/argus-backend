@@ -14,6 +14,10 @@
 
 namespace
 {
+// Bounded synthesis cache for repeated short lines; long text always runs.
+constexpr size_t kSynthCacheSlots = 64;
+constexpr size_t kSynthCacheMaxChars = 300;
+
 // Root of the on-disk TTS models (models/tts by default).
 std::string modelsDir()
 {
@@ -118,6 +122,8 @@ void TtsService::shutdown()
   engine_.reset();
   processor_.reset();
   voiceCache_.clear();
+  synthCache_.clear();
+  synthCacheNext_ = 0;
   loaded_ = false;
 }
 
@@ -134,12 +140,34 @@ std::vector<float> TtsService::synthesize(const TtsRequest& req)
   TtsQuality quality = resolveQuality(req);
   int steps = resolveSteps(quality);
 
+  std::string key;
+  const bool cacheable = req.text.size() <= kSynthCacheMaxChars;
+  if (cacheable)
+    key = req.voiceId + '\x1f' + langStr + '\x1f' + std::to_string(steps) +
+          '\x1f' + std::to_string(req.speed) + '\x1f' + req.text;
+
   std::lock_guard<std::mutex> lock(synthMutex_);
+  if (cacheable) {
+    for (const auto& entry : synthCache_) {
+      if (entry.key == key)
+        return entry.samples;
+    }
+  }
+
   auto result = engine_->synthesize({.text = req.text,
                                      .lang = langStr,
                                      .style = style,
                                      .totalStep = steps,
                                      .speed = req.speed});
+
+  if (cacheable && !result.wav.empty()) {
+    if (synthCache_.size() < kSynthCacheSlots)
+      synthCache_.push_back({.key = key, .samples = result.wav});
+    else {
+      synthCache_[synthCacheNext_] = {.key = key, .samples = result.wav};
+      synthCacheNext_ = (synthCacheNext_ + 1) % kSynthCacheSlots;
+    }
+  }
   return result.wav;
 }
 

@@ -171,7 +171,8 @@ int main(int argc, char** argv)
                             .maxTokens = 512,
                             .temperature = 0.0F,
                             .resetContext = false,
-                            .stop = {}};
+                            .stop = {},
+                            .grammar = {}};
       std::cout << gLlm.chat(req) << "\n---\n";
     }
     return 0;
@@ -233,7 +234,8 @@ int main(int argc, char** argv)
                .maxTokens = 1,
                .temperature = 0.0F,
                .resetContext = true,
-               .stop = {}});
+               .stop = {},
+               .grammar = {}});
     return static_cast<double>(nowMs() - t0);
   };
   const double bareMs = timeFirst(bare);

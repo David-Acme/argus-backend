@@ -4,10 +4,14 @@
 #include <grpcpp/grpcpp.h>
 #include <memory>
 #include <shared/repositories/device-credential/device-credential-repository.hxx>
+#include <shared/repositories/face-embedding/face-embedding-repository.hxx>
+#include <shared/repositories/person-snapshot/person-snapshot-repository.hxx>
+#include <shared/repositories/person-tag/person-tag-repository.hxx>
 #include <shared/repositories/person/person-repository.hxx>
 #include <shared/repositories/refresh-token/refresh-token-repository.hxx>
 #include <shared/repositories/user/user-repository.hxx>
 #include <shared/services/jwt/jwt-service.hxx>
+#include <shared/services/sync-audit/sync-audit-service.hxx>
 #include <shared/wrapper/nats/nats-bus.hxx>
 
 // IdentityService controller: UpdateUser is metadata-authoritative, the rest self-authoritative.
@@ -44,6 +48,47 @@ public:
       const argus::identity::v1::CheckDeviceCredentialRequest* request,
       argus::identity::v1::CheckDeviceCredentialResponse* response) override;
 
+  grpc::ServerUnaryReactor*
+  IdentifyPerson(grpc::CallbackServerContext* context,
+                 const argus::identity::v1::IdentifyPersonRequest* request,
+                 argus::identity::v1::IdentifyPersonResponse* response) override;
+
+  grpc::ServerUnaryReactor*
+  EnrollPerson(grpc::CallbackServerContext* context,
+               const argus::identity::v1::EnrollPersonRequest* request,
+               argus::identity::v1::EnrollPersonResponse* response) override;
+
+  grpc::ServerUnaryReactor*
+  TouchPerson(grpc::CallbackServerContext* context,
+              const argus::identity::v1::TouchPersonRequest* request,
+              argus::identity::v1::TouchPersonResponse* response) override;
+
+  grpc::ServerUnaryReactor*
+  TagPerson(grpc::CallbackServerContext* context,
+            const argus::identity::v1::TagPersonRequest* request,
+            argus::identity::v1::TagPersonResponse* response) override;
+
+  grpc::ServerUnaryReactor*
+  GetPersonTags(grpc::CallbackServerContext* context,
+                const argus::identity::v1::PersonTagsRequest* request,
+                argus::identity::v1::PersonTagsResponse* response) override;
+
+  grpc::ServerUnaryReactor*
+  GetPerson(grpc::CallbackServerContext* context,
+            const argus::identity::v1::GetPersonRequest* request,
+            argus::identity::v1::GetPersonResponse* response) override;
+
+  grpc::ServerUnaryReactor*
+  PromotePerson(grpc::CallbackServerContext* context,
+                const argus::identity::v1::PromotePersonRequest* request,
+                argus::identity::v1::PromotePersonResponse* response) override;
+
+  grpc::ServerUnaryReactor*
+  ListNotifiableUsers(
+      grpc::CallbackServerContext* context,
+      const argus::identity::v1::ListNotifiableUsersRequest* request,
+      argus::identity::v1::ListNotifiableUsersResponse* response) override;
+
 private:
   struct TokenRejectionInput
   {
@@ -61,8 +106,12 @@ private:
   JwtService jwtService_;
   UserRepository userRepository_;
   PersonRepository personRepository_;
+  FaceEmbeddingRepository faceEmbeddingRepository_;
+  PersonTagRepository personTagRepository_;
+  PersonSnapshotRepository personSnapshotRepository_;
   RefreshTokenRepository refreshTokenRepository_;
   DeviceCredentialRepository deviceCredentialRepository_;
+  SyncAuditService auditService_;
   std::shared_ptr<NatsBus> bus_;
   std::string fleetSecret_;
 };

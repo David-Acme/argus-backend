@@ -11,6 +11,8 @@ struct ProxyConfig
   std::string productivityProxyUrl;
   // Base URL of argus-notification (Ruling AP); empty leaves it unrouted.
   std::string notificationProxyUrl;
+  // Base URL of argus-guard's owner API; empty leaves it unrouted.
+  std::string guardProxyUrl;
   // Path prefixes served natively by the gateway: never forwarded.
   std::vector<std::string> exclusions;
 

@@ -20,6 +20,7 @@ PROJECTS=(
   services/argus-camera
   services/argus-productivity
   services/argus-notification
+  services/argus-guard
   services/argus-tts
   services/argus-stt
   services/argus-vlm

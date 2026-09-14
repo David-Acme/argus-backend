@@ -68,6 +68,15 @@ ObjectsConfig operator_config::resolveObjects()
   config.maxFpsInference = ConfigService::getDouble("objects.max_fps_inference");
   if (config.maxFpsInference <= 0)
     config.maxFpsInference = 2.0;
+  config.activeFps = ConfigService::getDouble("objects.active_fps");
+  if (config.activeFps <= 0)
+    config.activeFps = 6.0;
+  config.burstFps = ConfigService::getDouble("objects.burst_fps");
+  if (config.burstFps <= 0)
+    config.burstFps = 10.0;
+  config.burstMs = ConfigService::getInt("objects.burst_ms");
+  if (config.burstMs <= 0)
+    config.burstMs = 3000;
   config.useVulkan = ConfigService::getBool("objects.use_vulkan");
   return config;
 }
@@ -97,6 +106,49 @@ OperatorConfig operator_config::resolveOperator()
   config.ignoredClasses =
       splitCsv(ConfigService::getString("operator.ignored_classes"));
 
+  config.zonesFromDb =
+      !ConfigService::hasKey("operator.zones_from_db") ||
+      ConfigService::getBool("operator.zones_from_db");
+  config.zonesRefreshMs = ConfigService::getInt("operator.zones_refresh_ms");
+  if (config.zonesRefreshMs <= 0)
+    config.zonesRefreshMs = 30000;
+  config.cameraRescanMs = ConfigService::getInt("operator.camera_rescan_ms");
+  if (config.cameraRescanMs <= 0)
+    config.cameraRescanMs = 15000;
+  config.motionGate = ConfigService::getBool("operator.motion_gate");
+  config.motionMinRatio = ConfigService::getDouble("operator.motion_min_ratio");
+  if (config.motionMinRatio <= 0)
+    config.motionMinRatio = 0.002;
+  config.ignoreStaticPersons =
+      ConfigService::getBool("operator.ignore_static_persons");
+  config.staticBoxFrames = ConfigService::getInt("operator.static_box_frames");
+  if (config.staticBoxFrames <= 0)
+    config.staticBoxFrames = 8;
+  config.dwellAlertMs = ConfigService::getInt("operator.dwell_alert_ms");
+  if (config.dwellAlertMs < 0)
+    config.dwellAlertMs = 3000;
+  if (ConfigService::hasKey("operator.dwell_monitor_ms")) {
+    const int value = ConfigService::getInt("operator.dwell_monitor_ms");
+    config.dwellMonitorMs = value >= 0 ? value : 12000;
+  }
+  else
+    config.dwellMonitorMs = 12000;
+  if (ConfigService::hasKey("operator.dwell_night_ms")) {
+    const int value = ConfigService::getInt("operator.dwell_night_ms");
+    config.dwellNightMs = value >= 0 ? value : 8000;
+  }
+  else
+    config.dwellNightMs = 8000;
+  config.personRecheckMs = ConfigService::getInt("operator.person_recheck_ms");
+  if (config.personRecheckMs <= 0)
+    config.personRecheckMs = 30000;
+  config.trackTtlMs = ConfigService::getInt("operator.track_ttl_ms");
+  if (config.trackTtlMs <= 0)
+    config.trackTtlMs = 3000;
+  config.trackIouMin = ConfigService::getDouble("operator.track_iou_min");
+  if (config.trackIouMin <= 0)
+    config.trackIouMin = 0.3;
+
   const std::string zonesJson = ConfigService::getString("operator.zones");
   if (!zonesJson.empty()) {
     const Json::Value zones = json_util::fromString(zonesJson);
@@ -118,5 +170,35 @@ OperatorConfig operator_config::resolveOperator()
       }
     }
   }
+  return config;
+}
+
+IdentityConfig operator_config::resolveIdentity()
+{
+  IdentityConfig config;
+  config.identify = ConfigService::getBool("identity.identify");
+  config.autoEnroll = ConfigService::getBool("identity.auto_enroll");
+  config.captureClearFaces =
+      !ConfigService::hasKey("identity.capture_clear_faces") ||
+      ConfigService::getBool("identity.capture_clear_faces");
+  config.minFaceBoxPx = ConfigService::getInt("identity.min_face_box_px");
+  if (config.minFaceBoxPx <= 0)
+    config.minFaceBoxPx = 48;
+  config.identifyIntervalMs =
+      ConfigService::getInt("identity.identify_interval_ms");
+  if (config.identifyIntervalMs <= 0)
+    config.identifyIntervalMs = 2000;
+  config.enrollCooldownMs =
+      ConfigService::getInt("identity.enroll_cooldown_ms");
+  if (config.enrollCooldownMs <= 0)
+    config.enrollCooldownMs = 600000;
+  config.bestShotMs = ConfigService::getInt("identity.best_shot_ms");
+  if (config.bestShotMs <= 0)
+    config.bestShotMs = 10000;
+  config.improveMargin = ConfigService::getDouble("identity.improve_margin");
+  if (config.improveMargin <= 0)
+    config.improveMargin = 0.15;
+  config.target = ConfigService::getString("identity.target");
+  config.rpcSecret = ConfigService::getString("identity.rpc_secret");
   return config;
 }

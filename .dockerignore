@@ -1,0 +1,10 @@
+.git
+.github
+**/build
+models
+argus-deploy/data
+docs
+**/*.gguf
+frontend
+node_modules
+**/node_modules

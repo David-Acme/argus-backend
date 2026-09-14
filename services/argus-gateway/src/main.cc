@@ -19,6 +19,7 @@
 #include <shared/services/room/room-manager.hxx>
 #include <shared/services/sqlite/db-service.hxx>
 #include <shared/wrapper/nats/nats-bus.hxx>
+#include <shared/wrapper/nats/nats-subject.hxx>
 #include <shared/services/socket/nats-identity-change-sink.hxx>
 #include <sync/camera-fan-out.hxx>
 #include <sync/camera-notifier.hxx>
@@ -26,6 +27,7 @@
 #include <sync/camera-stream-socket.hxx>
 #include <sync/camera-sync-source.hxx>
 #include <sync/notification-sync-source.hxx>
+#include <sync/notification-delivery-consumer.hxx>
 #include <sync/productivity-sync-source.hxx>
 #include <sync/sync-registrar.hxx>
 #include <sync/voice-grpc-relay.hxx>
@@ -74,7 +76,8 @@ Json::Value drogonConfig(const DrogonConfigInput& input)
   config["listeners"] = listeners;
 
   if (!proxy.cameraProxyUrl.empty() || !proxy.productivityProxyUrl.empty()
-      || !proxy.notificationProxyUrl.empty()) {
+      || !proxy.notificationProxyUrl.empty() ||
+      !proxy.guardProxyUrl.empty()) {
     Json::Value plugins(Json::arrayValue);
     Json::Value proxyPlugin(Json::objectValue);
     proxyPlugin["name"] = "gateway_proxy::SimpleReverseProxy";
@@ -110,6 +113,16 @@ Json::Value drogonConfig(const DrogonConfigInput& input)
         productivityRoute["max_segments"] = 8;
         productivityRoute["backend"] = proxy.productivityProxyUrl;
         routes.append(productivityRoute);
+      }
+      if (!proxy.guardProxyUrl.empty()) {
+        // The owner-only guard API: mode, incidents and expected guests.
+        Json::Value guardRoute(Json::objectValue);
+        Json::Value prefixes(Json::arrayValue);
+        prefixes.append("/guard");
+        guardRoute["prefixes"] = prefixes;
+        guardRoute["max_segments"] = 5;
+        guardRoute["backend"] = proxy.guardProxyUrl;
+        routes.append(guardRoute);
       }
       if (!proxy.notificationProxyUrl.empty()) {
         // The write-side notification surface goes to argus-notification.
@@ -190,7 +203,6 @@ int main()
   // One database drives the whole identity domain.
   ConfigService::setRuntimeString("database.file", identityDb.dbPath);
 
-  drogon::app().registerController(std::make_shared<HealthController>(HealthStatus{.serviceName = "argus-gateway", .extras = {}}));
   const IdentityRegistrationStats identity =
       registerIdentitySurface();
   LOG_INFO << "Identity surface registered: " << identity.controllers
@@ -306,24 +318,56 @@ int main()
 
   const std::string natsUrl = ConfigService::getString("nats.url");
   std::shared_ptr<NatsBus> natsBus;
+  std::shared_ptr<NotificationDeliveryConsumer> deliveryConsumer;
   if (natsUrl.empty()) {
     LOG_INFO << "NATS not configured; event bus disabled";
   } else {
+    // Handlers register before the first successful connection; the bus
+    // supervises reconnects and re-attaches every subscription.
     natsBus = std::make_shared<NatsBus>();
-    if (natsBus->connect()) {
+    const bool connected = natsBus->connect();
+    camera_fan_out::subscribeChangeFanOut(*natsBus);
+    camera_notifier::subscribeObjectDetected(
+        *natsBus,
+        std::make_shared<NotificationClient>(NotificationClientConfig{
+            .target = notificationGrpcTarget,
+            .credential = ConfigService::getString("notifications.credential")}));
+    // User rows change here, so the catalog replica feed publishes from here.
+    static const NatsIdentityChangeSink identitySink(natsBus);
+    identity_change::setSink(&identitySink);
+    deliveryConsumer = std::make_shared<NotificationDeliveryConsumer>(
+        NotificationDeliveryConsumer::Dependencies{.bus = natsBus.get(),
+                                                   .dispatch = {}},
+        NotificationDeliveryConsumer::Config{
+            .stream = std::string(nats_subject::kNotificationDeliveryStream),
+            .durable = "argus-gateway-delivery",
+            .subject = std::string(nats_subject::kNotificationDelivery),
+            .maxDeliver = 10,
+            .poisonMaxAttempts = 3});
+    deliveryConsumer->start();
+    if (connected)
       LOG_INFO << "NATS event bus connected to " << natsBus->options().url;
-      camera_fan_out::subscribeChangeFanOut(*natsBus);
-      camera_notifier::subscribeObjectDetected(
-          *natsBus, std::make_shared<NotificationClient>(
-                        notificationGrpcTarget));
-      // User rows change here, so the catalog replica feed publishes from here.
-      static const NatsIdentityChangeSink identitySink(natsBus);
-      identity_change::setSink(&identitySink);
-    }
     else
       LOG_WARN << "NATS unavailable at " << natsUrl
-               << "; continuing without it";
+               << "; subscriptions stay pending until reconnected";
   }
+
+  const std::weak_ptr<NatsBus> healthBus = natsBus;
+  drogon::app().registerController(std::make_shared<HealthController>(
+      HealthStatus{.serviceName = "argus-gateway",
+                   .extras = {{"nats",
+                               [healthBus]() {
+                                 Json::Value status(Json::objectValue);
+                                 const auto bus = healthBus.lock();
+                                 if (!bus) {
+                                   status["enabled"] = false;
+                                   status["connected"] = false;
+                                   return status;
+                                 }
+                                 status["enabled"] = true;
+                                 status["connected"] = bus->isConnected();
+                                 return status;
+                               }}}}));
 
   const IdentityRpcConfig identityRpcConfig = IdentityRpcConfig::resolve();
   if (identityRpcConfig.reachableBeyondLoopback() &&
@@ -358,7 +402,6 @@ int main()
   roomManagerLifecycle.init();
 
   std::unique_ptr<MdnsService> mdnsService;
-
   drogon::app().registerBeginningAdvice([&identityDb = identityDb,
                                          &mdnsService]() {
     DbService::installExtensions();
@@ -367,6 +410,14 @@ int main()
       LOG_FATAL << "Identity database schema failed to apply — aborting startup";
       _exit(1);
     }
+
+    const auto personColumns = DbService::client()->execSqlSync(
+        "SELECT COUNT(*) AS total FROM pragma_table_info('person') "
+        "WHERE name = 'status'");
+    if (personColumns.empty() ||
+        personColumns.front()["total"].as<int>() == 0)
+      DbService::client()->execSqlSync(
+          "ALTER TABLE person ADD COLUMN status TEXT NOT NULL DEFAULT 'known'");
 
     DbService::applyPragmas();
 
