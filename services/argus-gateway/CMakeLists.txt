@@ -107,6 +107,8 @@ add_library(gateway-core STATIC
     ${GATEWAY_SRC_ROOT}/sync/camera-stream-socket.cc
     ${GATEWAY_SRC_ROOT}/sync/camera-sync-source.cc
     ${GATEWAY_SRC_ROOT}/sync/notification-sync-source.cc
+    ${GATEWAY_SRC_ROOT}/sync/notification-delivery-consumer.cc
+    ${GATEWAY_SRC_ROOT}/shared/repositories/delivery-inbox/delivery-inbox-repository.cc
     ${GATEWAY_SRC_ROOT}/sync/productivity-sync-source.cc
     ${GATEWAY_SRC_ROOT}/sync/sync-fan-out.cc
     ${GATEWAY_SRC_ROOT}/sync/sync-registrar.cc
@@ -158,6 +160,19 @@ target_compile_options(audit-sync-read-test PRIVATE -Wall -Wextra)
 add_executable(camera-notifier-test
                ${CMAKE_CURRENT_SOURCE_DIR}/tests/camera-notifier-test.cc)
 
+add_executable(notification-delivery-inbox-test
+               ${CMAKE_CURRENT_SOURCE_DIR}/tests/notification-delivery-inbox-test.cc)
+
+target_include_directories(notification-delivery-inbox-test PRIVATE ${GATEWAY_SRC_ROOT})
+
+target_compile_definitions(notification-delivery-inbox-test PRIVATE
+    ARGUS_IDENTITY_SCHEMA_PATH="${CMAKE_CURRENT_SOURCE_DIR}/../../packages/argus-identity/database/schema.sql")
+
+target_link_libraries(notification-delivery-inbox-test PRIVATE gateway-core
+                                                    doctest::doctest)
+
+target_compile_options(notification-delivery-inbox-test PRIVATE -Wall -Wextra)
+
 target_include_directories(camera-notifier-test PRIVATE ${GATEWAY_SRC_ROOT})
 
 target_link_libraries(camera-notifier-test PRIVATE gateway-core
@@ -178,8 +193,29 @@ endif()
 set_target_properties(gateway-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 set_target_properties(audit-sync-read-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 set_target_properties(camera-notifier-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+set_target_properties(notification-delivery-inbox-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
 enable_testing()
 add_test(NAME gateway-test COMMAND gateway-test)
 add_test(NAME audit-sync-read-test COMMAND audit-sync-read-test)
 add_test(NAME camera-notifier-test COMMAND camera-notifier-test)
+add_test(NAME notification-delivery-inbox-test COMMAND notification-delivery-inbox-test)
+
+# Opt-in live check against a real NATS; skips without ARGUS_NATS_URL.
+add_executable(notification-delivery-live-test
+               ${CMAKE_CURRENT_SOURCE_DIR}/tests/notification-delivery-live-test.cc)
+
+set_target_properties(notification-delivery-live-test PROPERTIES
+    EXCLUDE_FROM_ALL FALSE)
+
+target_include_directories(notification-delivery-live-test PRIVATE ${GATEWAY_SRC_ROOT})
+
+target_compile_definitions(notification-delivery-live-test PRIVATE
+    ARGUS_IDENTITY_SCHEMA_PATH="${CMAKE_CURRENT_SOURCE_DIR}/../../packages/argus-identity/database/schema.sql")
+
+target_link_libraries(notification-delivery-live-test PRIVATE gateway-core
+                                                    doctest::doctest)
+
+target_compile_options(notification-delivery-live-test PRIVATE -Wall -Wextra)
+
+add_test(NAME notification-delivery-live-test COMMAND notification-delivery-live-test)
