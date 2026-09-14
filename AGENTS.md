@@ -468,9 +468,21 @@ Raw pointers only for non-owning access (`.get()`).
   container per service. Packages are reusable libraries compiled into the
   service images — no package has an image of its own. There is no separate
   local compose stack.
-- Object storage is opt-in through `S3StorageService`
-  (`storage.mode = "s3"` in `config.toml`); no object store ships with the
-  repository. Use the service, never direct ad-hoc HTTP from feature code.
+- `scripts/provision-host.sh` prepares a deployment host (Docker + Compose,
+  PKI, per-service deploy configs with unique shared secrets) and writes the
+  gitignored `argus-deploy/.env`. State (`ARGUS_DATA_DIR`, certs, models,
+  go2rtc) lives on the host and is bind-mounted, so updating is a rebuild plus
+  `docker compose up -d`; never `down -v`.
+- Object storage is the RustFS service in `argus-deploy/docker-compose.yml`
+  (`rustfs` + one-shot `rustfs-init`), consumed through `S3StorageService`
+  (`storage.mode = "s3"` plus the `[storage.s3]` keys in each service's
+  config). `provision-host.sh` generates the 0600 root/RPC/application
+  credentials under `${ARGUS_DATA_DIR}/rustfs/secrets`, creates the private
+  bucket and writes the bucket-scoped application pair into the
+  gateway/camera/guard configs. Objects live in
+  `${ARGUS_DATA_DIR}/rustfs/objects`; the gateway (host networking) uses
+  `http://127.0.0.1:9000` and the internal services `http://rustfs:9000`.
+  Use the service, never direct ad-hoc HTTP from feature code.
 - Development uses a fresh schema when the developer explicitly resets the
   local DB. Do not silently delete, migrate or recreate a user's database as a
   side effect of a feature; ask/require an explicit development reset.

@@ -12,8 +12,19 @@
 6. generates the local PKI and the hardware profile;
 7. delegates the build to `build-all.sh`.
 
-Flags: `--no-build` / `SKIP_BUILD=1` (install only) and `camera` (camera
-artifacts only).
+Flags: `--no-build` / `SKIP_BUILD=1` (install only), `camera` (camera
+artifacts only), `--no-docker` (skip the Docker check) and `-y`/`--yes`
+(non-interactive package installs).
+
+## Deployment host provisioning
+
+`scripts/provision-host.sh` prepares a Linux or macOS deployment host without
+compiling: it installs/validates Docker + Compose v2, creates the external
+data tree and `argus-deploy/.env`, generates the instance PKI and fills the
+per-service deploy configs with unique shared secrets. `--with-models`
+downloads the weights through the same owner `provision.sh` scripts, and
+`--start` builds and starts the stack. Re-running it is safe: existing certs,
+secrets and databases are reused.
 
 ## Model provisioning per owner
 

@@ -97,6 +97,7 @@ enabled = true
 [notifications]
 proxy_url = "http://127.0.0.1:7028"
 grpc_target = "127.0.0.1:7038"
+credential = "CHANGE_ME_GATEWAY_NOTIFICATION"
 budget_per_hour = 6
 silent_start = -1
 silent_end = -1
@@ -112,3 +113,19 @@ window_seconds = 60
 max_requests = 10
 lockout_threshold = 5
 lockout_seconds = 300
+
+[storage]
+# Private object storage (RustFS). provision-host.sh fills the [storage.s3]
+# keys with the generated bucket and application credentials; the endpoint is
+# the host loopback publish because the gateway runs host-networked.
+mode = "s3"
+
+[storage.s3]
+endpoint = "http://127.0.0.1:9000"
+region = "us-east-1"
+bucket = ""
+access_key = ""
+secret_key = ""
+
+[guard]
+proxy_url = "http://127.0.0.1:7039"

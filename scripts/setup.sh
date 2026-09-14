@@ -15,15 +15,21 @@
 #   ./scripts/setup.sh dev                 # dev profile
 #   ./scripts/setup.sh prod                # prod profile
 #   ./scripts/setup.sh dev --no-build      # install deps only (no compile)
+#   ./scripts/setup.sh dev --no-docker     # do not install/validate Docker
+#   ./scripts/setup.sh dev -y              # non-interactive package installs
 #   ./scripts/setup.sh camera              # camera artifacts only (detector + go2rtc)
 #   SKIP_BUILD=1 ./scripts/setup.sh prod
 #
 set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
+source "$(dirname "${BASH_SOURCE[0]}")/lib/pki.sh"
+source "$(dirname "${BASH_SOURCE[0]}")/lib/docker.sh"
 
 PROFILE="dev"
 SKIP_BUILD="${SKIP_BUILD:-0}"
 CAMERA_ONLY=0
+WITH_DOCKER=1
+ASSUME_YES="${ARGUS_ASSUME_YES:+1}"
 ARGS=()
 
 for a in "$@"; do
@@ -31,6 +37,8 @@ for a in "$@"; do
     -h|--help)
       grep '^#' "$0" | sed 's/^#\{1,2\} //'; exit 0 ;;
     --no-build) SKIP_BUILD=1 ;;
+    --no-docker) WITH_DOCKER=0 ;;
+    -y|--yes)   ASSUME_YES=1 ;;
     camera)     CAMERA_ONLY=1 ;;
     dev|prod)   PROFILE="$a" ;;
     *)          ARGS+=("$a") ;;
@@ -170,76 +178,13 @@ build_project() {
   log "Standalone projects built and tested."
 }
 
-setup_certs() {
-  log "Setting up local PKI (instance CA + server certificate)..."
-
-  local ROOT
-  ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-  local CERT_DIR="$ROOT/certs"
-
-  need_cmd openssl
-  mkdir -p "$CERT_DIR"
-
-  if [ ! -f "$CERT_DIR/ca.pem" ]; then
-    log "Generating instance CA (10 years) and server leaf (90 days)..."
-
-    # Instance CA: EC P-256 key + self-signed cert (the per-instance identity).
-    # 25 years validity, matching the long-lived root CAs Google ships in
-    # Android. The CA never rotates; only the server leaf does.
-    openssl ecparam -name prime256v1 -genkey -noout -out "$CERT_DIR/ca.key"
-    openssl req -x509 -new -key "$CERT_DIR/ca.key" -sha256 -days 9125 \
-      -subj "/CN=Argus Instance CA" -out "$CERT_DIR/ca.pem"
-
-    # Server leaf key.
-    openssl ecparam -name prime256v1 -genkey -noout -out "$CERT_DIR/server.key"
-
-    # SANs: advertised hostname, configurable mdns.name, localhost/loopback.
-    local MDNS_NAME=""
-    local GW_CONFIG="$ROOT/services/argus-gateway/config.toml"
-    if [ -f "$GW_CONFIG" ]; then
-      MDNS_NAME="$(sed -n 's/^[[:space:]]*name *= *"\([^"]*\)".*/\1/p' "$GW_CONFIG" | head -1)"
-    fi
-    [ -z "$MDNS_NAME" ] && MDNS_NAME="Argus"
-    local SAN="DNS:argus.local,DNS:localhost,IP:127.0.0.1,IP:::1"
-    local HN="$(hostname 2>/dev/null)"
-    [ -n "$HN" ] && SAN="$SAN,DNS:$HN"
-    case "x$MDNS_NAME" in
-      x[A-Za-z0-9_-]*) SAN="$SAN,DNS:${MDNS_NAME}" ;;
-    esac
-
-    openssl req -new -key "$CERT_DIR/server.key" \
-      -subj "/CN=${MDNS_NAME}.local" -out "$CERT_DIR/server.csr"
-    openssl x509 -req -in "$CERT_DIR/server.csr" \
-      -CA "$CERT_DIR/ca.pem" -CAkey "$CERT_DIR/ca.key" -CAcreateserial \
-      -sha256 -days 90 -extfile <(printf "subjectAltName=%s" "$SAN") \
-      -out "$CERT_DIR/server.pem"
-    rm -f "$CERT_DIR/server.csr"
-
-    # Chain file: leaf + CA, so Drogon sends the full chain in the handshake.
-    cat "$CERT_DIR/ca.pem" >> "$CERT_DIR/server.pem"
-
-    chmod 600 "$CERT_DIR/ca.key" "$CERT_DIR/server.key"
-  else
-    log "PKI already present."
-  fi
-
-  # Pairing code = first 8 hex chars of the CA SHA-256 fingerprint. Both the
-  # server (CertService) and the clients derive it; it gates POST /pairing.
-  local FP
-  FP="$(openssl x509 -in "$CERT_DIR/ca.pem" -noout -fingerprint -sha256 | sed 's/.*=//; s/://g')"
-  echo "${FP:0:8}" > "$CERT_DIR/pairing.code"
-  chmod 600 "$CERT_DIR/pairing.code"
-
-  log "CA fingerprint (SHA-256): $FP"
-  log "Pairing code: ${FP:0:8}"
-}
-
 ensure_local_config() {
   need_cmd openssl
   local dir
   for dir in \
       services/argus-gateway \
       services/argus-camera \
+      services/argus-guard \
       services/argus-productivity \
       services/argus-notification \
       services/argus-tts \
@@ -266,16 +211,20 @@ main() {
   # host and writes scripts/.hw-profile. It asks for sudo only if something is
   # actually missing. install_system_deps stays as the minimal fallback.
   if [ -x "$(dirname "$0")/detect-hardware.sh" ]; then
-    "$(dirname "$0")/detect-hardware.sh" ${ARGUS_ASSUME_YES:+-y} || \
+    "$(dirname "$0")/detect-hardware.sh" ${ASSUME_YES:+-y} || \
       warn "Hardware detection failed; falling back to the base dependency set."
   fi
   install_system_deps
+  if [ "$WITH_DOCKER" -eq 1 ]; then
+    ensure_docker "$ASSUME_YES" || \
+      warn "Docker not ready; run ./scripts/provision-host.sh later."
+  fi
   ensure_conan
   configure_conan_profile
   need_cmd git
   need_cmd cmake
   setup_submodules
-  setup_certs
+  ensure_instance_certs "$ROOT" "$ROOT/certs" "$ROOT/services/argus-gateway/config.toml"
   "$ROOT/services/argus-tts/scripts/provision.sh"
   "$ROOT/services/argus-llm/scripts/provision.sh"
   "$ROOT/services/argus-vlm/scripts/provision.sh"
@@ -286,6 +235,7 @@ main() {
   "$ROOT/services/argus-camera/scripts/provision.sh"
   build_project
   log "All setup tasks completed (profile: $PROFILE)."
+  log "Deployment host prep: ./scripts/provision-host.sh [--start]"
 }
 
 main "$@"
