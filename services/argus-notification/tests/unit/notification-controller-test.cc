@@ -245,6 +245,8 @@ TEST_CASE("notification contracts hold on the argus-notification surface")
   runner.join();
 
   std::remove(kNotificationDb);
+  std::remove((std::string(kNotificationDb) + "-wal").c_str());
+  std::remove((std::string(kNotificationDb) + "-shm").c_str());
   std::remove("notification-controller-test.db-wal");
   std::remove("notification-controller-test.db-shm");
 }
