@@ -21,8 +21,13 @@ struct ChatCompletionDto
   std::optional<int32_t> maxTokens;
   std::optional<float> temperature;
   bool resetContext{false};
+  // False keeps the direct path even when the process has tools registered.
+  bool toolsEnabled{true};
   // Whose memory a tool call writes to and reads from (D4).
   std::optional<int64_t> userId;
+  // Optional GBNF grammar constraining generation; empty keeps free sampling.
+  std::string grammar;
+  bool grammarRequired{false};
 
   static ChatCompletionDto fromJson(const Json::Value& json);
 

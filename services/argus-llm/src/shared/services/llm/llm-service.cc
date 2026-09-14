@@ -425,6 +425,20 @@ void LlmService::generateStream(const GenerateInput& input,
                                                        penaltyRepeat_,
                                                        penaltyFreq_,
                                                        penaltyPresent_));
+  if (!input.grammar.empty()) {
+    auto* grammar =
+        llama_sampler_init_grammar(vocab, input.grammar.c_str(), "root");
+    if (grammar != nullptr)
+      llama_sampler_chain_add(smpl.get(), grammar);
+    else {
+      LOG_WARN << "LLM: invalid grammar supplied";
+      if (input.grammarRequired) {
+        onToken("", true);
+        return;
+      }
+      LOG_WARN << "LLM: sampling unconstrained";
+    }
+  }
   llama_sampler_chain_add(smpl.get(), llama_sampler_init_top_k(topK_));
   llama_sampler_chain_add(smpl.get(), llama_sampler_init_top_p(topP_, 1));
   llama_sampler_chain_add(smpl.get(), llama_sampler_init_temp(temperature));
@@ -504,7 +518,9 @@ std::string LlmService::chat(const ChatRequest& req)
                    .temperature = temp,
                    .maxTokens = maxTokens,
                    .resetContext = req.resetContext,
-                   .stop = req.stop});
+                   .stop = req.stop,
+                   .grammar = req.grammar,
+                   .grammarRequired = req.grammarRequired});
 }
 
 void LlmService::chatStream(const ChatRequest& req, TokenCallback onToken)
@@ -518,7 +534,9 @@ void LlmService::chatStream(const ChatRequest& req, TokenCallback onToken)
                   .temperature = temp,
                   .maxTokens = maxTokens,
                   .resetContext = req.resetContext,
-                  .stop = req.stop},
+                  .stop = req.stop,
+                  .grammar = req.grammar,
+                  .grammarRequired = req.grammarRequired},
                  std::move(onToken));
 }
 
@@ -547,7 +565,9 @@ drogon::Task<void> LlmService::chatStreamAsync(const ChatRequest& req,
                         .temperature = temp,
                         .maxTokens = maxTokens,
                         .resetContext = req.resetContext,
-                        .stop = req.stop},
+                        .stop = req.stop,
+                        .grammar = req.grammar,
+                        .grammarRequired = req.grammarRequired},
                        std::move(wrapped));
       });
   co_return;

@@ -7,6 +7,7 @@ constexpr size_t kMaxMessages = 64;
 constexpr size_t kMaxRoleLength = 32;
 constexpr int kMaxTokensBound = 4096;
 constexpr size_t kMaxMessageLength = 32 * 1024;
+constexpr size_t kMaxGrammarLength = 8 * 1024;
 
 } // namespace
 
@@ -27,8 +28,14 @@ ChatCompletionDto ChatCompletionDto::fromJson(const Json::Value& json)
     dto.temperature = json["temperature"].asFloat();
   if (json.isMember("reset_context") && json["reset_context"].isBool())
     dto.resetContext = json["reset_context"].asBool();
+  if (json.isMember("tools") && json["tools"].isBool())
+    dto.toolsEnabled = json["tools"].asBool();
   if (json.isMember("user_id") && json["user_id"].isIntegral())
     dto.userId = json["user_id"].asInt64();
+  if (json.isMember("grammar") && json["grammar"].isString())
+    dto.grammar = json["grammar"].asString();
+  if (json.isMember("grammar_required") && json["grammar_required"].isBool())
+    dto.grammarRequired = json["grammar_required"].asBool();
 
   START_VALIDATION(ChatCompletionDto, dto)
   ARRAY_NOT_EMPTY(messages, ChatMessageDto)
@@ -64,6 +71,12 @@ ChatCompletionDto ChatCompletionDto::fromJson(const Json::Value& json)
       return "user_id must not be negative";
     return std::nullopt;
   })
+  CUSTOM_LAMBDA(grammar, [](const ChatCompletionDto& value)
+                    -> std::optional<std::string> {
+    if (value.grammar.size() > kMaxGrammarLength)
+      return "grammar is too long";
+    return std::nullopt;
+  })
   END_VALIDATION()
   return dto;
 }
@@ -77,5 +90,7 @@ ChatRequest ChatCompletionDto::request() const
   req.maxTokens = maxTokens.value_or(0);
   req.temperature = temperature.value_or(-1.0F);
   req.resetContext = resetContext;
+  req.grammar = grammar;
+  req.grammarRequired = grammarRequired;
   return req;
 }

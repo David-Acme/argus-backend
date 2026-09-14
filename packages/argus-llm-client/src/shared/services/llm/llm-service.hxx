@@ -26,8 +26,15 @@ struct ChatRequest
   int32_t maxTokens{0};
   float temperature{-1.0F};
   bool resetContext{false};
+  // False skips the server-side tool loop (raw JSON callers like argus-guard).
+  bool toolsEnabled{true};
   // Generation ends once one of these appears; the matched text is kept.
   std::vector<std::string> stop;
+  // Optional GBNF grammar constraining the output; empty keeps free sampling.
+  // grammarRequired turns an unusable grammar into an empty generation instead
+  // of unconstrained sampling.
+  std::string grammar;
+  bool grammarRequired{false};
 };
 
 using TokenCallback = std::function<void(const std::string& token, bool done)>;
@@ -46,6 +53,8 @@ struct GenerateInput
   int32_t maxTokens{0};
   bool resetContext{false};
   std::vector<std::string> stop;
+  std::string grammar;
+  bool grammarRequired{false};
 };
 
 class LlmService

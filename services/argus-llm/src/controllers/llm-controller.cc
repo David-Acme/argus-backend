@@ -176,7 +176,9 @@ LlmController::chat(drogon::HttpRequestPtr req)
   size_t toolCalls = 0;
   int64_t generateMs = 0;
   int64_t toolMs = 0;
-  const auto tools = registeredTools();
+  const auto tools =
+      body.toolsEnabled ? registeredTools()
+                        : std::vector<const tools::ToolDescriptor*>{};
   if (tools.empty()) {
     text = co_await service_.chatAsync(body.request());
   }
@@ -226,7 +228,9 @@ LlmController::chatStream(drogon::HttpRequestPtr req)
 
   auto job = std::make_shared<ChatStreamJob>();
   job->owner = this;
-  const auto tools = registeredTools();
+  const auto tools =
+      body.toolsEnabled ? registeredTools()
+                        : std::vector<const tools::ToolDescriptor*>{};
   if (tools.empty())
     job->request = body.request();
   else {

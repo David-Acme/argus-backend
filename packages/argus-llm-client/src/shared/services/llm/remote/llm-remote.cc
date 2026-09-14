@@ -303,6 +303,12 @@ std::string LlmHttpClient::chatBody(const ChatRequest& request) const
     body["temperature"] = request.temperature;
   if (request.resetContext)
     body["reset_context"] = true;
+  if (!request.toolsEnabled)
+    body["tools"] = false;
+  if (!request.grammar.empty()) {
+    body["grammar"] = request.grammar;
+    body["grammar_required"] = request.grammarRequired;
+  }
 
   Json::StreamWriterBuilder builder;
   builder["indentation"] = "";
