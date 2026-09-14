@@ -96,6 +96,8 @@ argus::productivity::v1::PullTableRequest taskPull(bool deleted)
 TEST_CASE("productivity sync RPC scopes pulls by caller and serves tombstones")
 {
   std::remove(kProductivityDb);
+  std::remove((std::string(kProductivityDb) + "-wal").c_str());
+  std::remove((std::string(kProductivityDb) + "-shm").c_str());
 
   drogon::app().setLogLevel(trantor::Logger::kWarn);
   drogon::app().addDbClient(
@@ -208,4 +210,6 @@ TEST_CASE("productivity sync RPC scopes pulls by caller and serves tombstones")
   drogon::app().quit();
   runner.join();
   std::remove(kProductivityDb);
+  std::remove((std::string(kProductivityDb) + "-wal").c_str());
+  std::remove((std::string(kProductivityDb) + "-shm").c_str());
 }
