@@ -132,12 +132,26 @@ target_link_libraries(llm-core PUBLIC
 
 target_compile_options(llm-core PRIVATE -Wall -Wextra)
 
+add_library(encounter-consumer STATIC
+    ${SHARED_ROOT}/services/encounter-closed/encounter-closed-consumer.cc
+)
+
+target_include_directories(encounter-consumer PUBLIC
+    ${LLM_SRC_ROOT})
+
+target_link_libraries(encounter-consumer PUBLIC
+    argus_common
+    memory-core)
+
+target_compile_options(encounter-consumer PRIVATE -Wall -Wextra)
+
 add_executable(argus-llm ${LLM_SRC_ROOT}/main.cc)
 
 # memory-catalog: the hosted stack's replica leg (NATS subscription plus the
 # identity/camera SDK snapshot seeds) — the brain owns the retired
 # process's role.
 target_link_libraries(argus-llm PRIVATE llm-core memory-catalog
+    encounter-consumer
     argus::sdk-identity argus::sdk-camera)
 
 target_compile_options(argus-llm PRIVATE -Wall -Wextra)
@@ -216,3 +230,37 @@ target_compile_options(llm-tool-parse-test PRIVATE -Wall -Wextra)
 set_target_properties(llm-tool-parse-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
 add_test(NAME llm-tool-parse-test COMMAND llm-tool-parse-test)
+
+add_executable(encounter-closed-consumer-test
+    tests/unit/encounter-closed-consumer-test.cc)
+
+target_link_libraries(encounter-closed-consumer-test PRIVATE
+    encounter-consumer memory-core doctest::doctest)
+
+target_compile_definitions(encounter-closed-consumer-test PRIVATE
+    ARGUS_TEST_MEMORY_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/../../packages/argus-memory/database/schema.sql")
+
+target_compile_options(encounter-closed-consumer-test PRIVATE -Wall -Wextra)
+
+set_target_properties(encounter-closed-consumer-test PROPERTIES
+    EXCLUDE_FROM_ALL FALSE)
+
+add_test(NAME encounter-closed-consumer-test
+    COMMAND encounter-closed-consumer-test)
+
+# Opt-in live check against a real NATS; skips without ARGUS_NATS_URL.
+add_executable(encounter-closed-live-test
+    tests/unit/encounter-closed-live-test.cc)
+
+target_link_libraries(encounter-closed-live-test PRIVATE
+    encounter-consumer memory-core doctest::doctest)
+
+target_compile_definitions(encounter-closed-live-test PRIVATE
+    ARGUS_TEST_MEMORY_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/../../packages/argus-memory/database/schema.sql")
+
+target_compile_options(encounter-closed-live-test PRIVATE -Wall -Wextra)
+
+set_target_properties(encounter-closed-live-test PROPERTIES
+    EXCLUDE_FROM_ALL FALSE)
+
+add_test(NAME encounter-closed-live-test COMMAND encounter-closed-live-test)
