@@ -11,10 +11,18 @@ struct S3StoredObject
   int64_t byteSize{0};
 };
 
+struct S3PutInput
+{
+  std::string objectKey;
+  std::string body;
+  std::string contentType;
+};
+
 class S3StorageService
 {
 public:
   [[nodiscard]] bool isConfigured() const;
+  drogon::Task<S3StoredObject> put(const S3PutInput& input) const;
   drogon::Task<S3StoredObject> putPortrait(int64_t userId,
                                             const std::string& image) const;
   drogon::Task<std::string> get(const std::string& objectKey) const;

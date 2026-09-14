@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <unordered_map>
 
@@ -38,7 +39,8 @@ inline UserRole userRoleFromString(const std::string& s)
   return UserRole::Guest;
 }
 
-// Private objects stay out of the sync stream; the category drives retention and access policy.
+// Private objects stay out of the sync stream; the category drives retention
+// and access policy.
 enum class StoredFileCategory : uint8_t
 {
   Portrait = 0,
@@ -551,7 +553,8 @@ inline ShareAccess shareAccessFromString(const std::string& s)
   return s == "edit" ? ShareAccess::Edit : ShareAccess::View;
 }
 
-// Why a share could not be granted; the controller maps each case to its own status.
+// Why a share could not be granted; the controller maps each case to its own
+// status.
 enum class MembershipError : uint8_t
 {
   None = 0,
@@ -561,7 +564,451 @@ enum class MembershipError : uint8_t
   SelfShare
 };
 
-// Canonical voice interaction languages (STT + TTS + prompts); the DB stores the string code.
+// How far a person row is trusted: auto-enrolled sightings are candidates only.
+enum class PersonStatus : uint8_t
+{
+  Candidate = 0,
+  Known
+};
+
+inline std::string personStatusToString(PersonStatus status)
+{
+  return status == PersonStatus::Known ? "known" : "candidate";
+}
+
+inline PersonStatus personStatusFromString(const std::string& value)
+{
+  return value == "known" ? PersonStatus::Known : PersonStatus::Candidate;
+}
+
+// Encounter lifecycle; every transition is a deterministic command, never model
+// output.
+enum class EncounterState : uint8_t
+{
+  Observing = 0,
+  Verifying,
+  Challenging,
+  Listening,
+  Interpreting,
+  Resolved,
+  Escalating,
+  Degraded,
+  Closed
+};
+
+inline std::string encounterStateToString(EncounterState state)
+{
+  switch (state) {
+    case EncounterState::Observing:
+      return "observing";
+    case EncounterState::Verifying:
+      return "verifying";
+    case EncounterState::Challenging:
+      return "challenging";
+    case EncounterState::Listening:
+      return "listening";
+    case EncounterState::Interpreting:
+      return "interpreting";
+    case EncounterState::Resolved:
+      return "resolved";
+    case EncounterState::Escalating:
+      return "escalating";
+    case EncounterState::Degraded:
+      return "degraded";
+    case EncounterState::Closed:
+      return "closed";
+  }
+  return "closed";
+}
+
+inline EncounterState encounterStateFromString(const std::string& value)
+{
+  static const std::unordered_map<std::string, EncounterState> kMap = {
+      {"observing", EncounterState::Observing},
+      {"verifying", EncounterState::Verifying},
+      {"challenging", EncounterState::Challenging},
+      {"listening", EncounterState::Listening},
+      {"interpreting", EncounterState::Interpreting},
+      {"resolved", EncounterState::Resolved},
+      {"escalating", EncounterState::Escalating},
+      {"degraded", EncounterState::Degraded},
+      {"closed", EncounterState::Closed},
+  };
+  const auto found = kMap.find(value);
+  return found == kMap.end() ? EncounterState::Closed : found->second;
+}
+
+// Site occupancy profile; only the matrix decides what each mode means.
+enum class GuardMode : uint8_t
+{
+  Home = 0,
+  Away,
+  Night,
+  Armed
+};
+
+inline std::string guardModeToString(GuardMode mode)
+{
+  switch (mode) {
+    case GuardMode::Home:
+      return "home";
+    case GuardMode::Away:
+      return "away";
+    case GuardMode::Night:
+      return "night";
+    case GuardMode::Armed:
+      return "armed";
+  }
+  return "home";
+}
+
+inline GuardMode guardModeFromString(const std::string& value)
+{
+  if (value == "away")
+    return GuardMode::Away;
+  if (value == "night")
+    return GuardMode::Night;
+  if (value == "armed")
+    return GuardMode::Armed;
+  return GuardMode::Home;
+}
+
+// Deterministic danger tiers; the model may inform but never assigns this
+// value.
+enum class GuardDanger : uint8_t
+{
+  None = 0,
+  Low,
+  Medium,
+  High,
+  Critical
+};
+
+inline std::string guardDangerToString(GuardDanger danger)
+{
+  switch (danger) {
+    case GuardDanger::None:
+      return "none";
+    case GuardDanger::Low:
+      return "low";
+    case GuardDanger::Medium:
+      return "medium";
+    case GuardDanger::High:
+      return "high";
+    case GuardDanger::Critical:
+      return "critical";
+  }
+  return "none";
+}
+
+inline GuardDanger guardDangerFromString(const std::string& value)
+{
+  if (value == "low")
+    return GuardDanger::Low;
+  if (value == "medium")
+    return GuardDanger::Medium;
+  if (value == "high")
+    return GuardDanger::High;
+  if (value == "critical")
+    return GuardDanger::Critical;
+  return GuardDanger::None;
+}
+
+inline int guardDangerRank(GuardDanger danger)
+{
+  return static_cast<int>(danger);
+}
+
+// Notification delivery intent lifecycle; the CHECK constraint mirrors it.
+enum class NotificationDeliveryStatus : uint8_t
+{
+  Pending = 0,
+  Sent
+};
+
+inline std::string
+notificationDeliveryStatusToString(NotificationDeliveryStatus status)
+{
+  switch (status) {
+    case NotificationDeliveryStatus::Pending:
+      return "pending";
+    case NotificationDeliveryStatus::Sent:
+      return "sent";
+  }
+  return "pending";
+}
+
+inline NotificationDeliveryStatus
+notificationDeliveryStatusFromString(const std::string& value)
+{
+  return value == "sent" ? NotificationDeliveryStatus::Sent
+                         : NotificationDeliveryStatus::Pending;
+}
+
+// Gateway-side delivery receipt lifecycle; the CHECK constraint mirrors it.
+// Unknown persisted values fail closed at the call site: fromString returns
+// nullopt instead of defaulting to a re-executable state.
+enum class NotificationDeliveryReceipt : uint8_t
+{
+  Received = 0,
+  Dispatched,
+  Conflict,
+  DeadLettered
+};
+
+inline std::string
+notificationDeliveryReceiptToString(NotificationDeliveryReceipt status)
+{
+  switch (status) {
+    case NotificationDeliveryReceipt::Received:
+      return "received";
+    case NotificationDeliveryReceipt::Dispatched:
+      return "dispatched";
+    case NotificationDeliveryReceipt::Conflict:
+      return "conflict";
+    case NotificationDeliveryReceipt::DeadLettered:
+      return "dead_lettered";
+  }
+  return "received";
+}
+
+inline std::optional<NotificationDeliveryReceipt>
+notificationDeliveryReceiptFromString(const std::string& value)
+{
+  if (value == "received")
+    return NotificationDeliveryReceipt::Received;
+  if (value == "dispatched")
+    return NotificationDeliveryReceipt::Dispatched;
+  if (value == "conflict")
+    return NotificationDeliveryReceipt::Conflict;
+  if (value == "dead_lettered")
+    return NotificationDeliveryReceipt::DeadLettered;
+  return std::nullopt;
+}
+
+// LLM-side encounter receipt lifecycle; the CHECK constraint mirrors it.
+// Unknown persisted values fail closed at the call site.
+enum class EncounterClosedReceipt : uint8_t
+{
+  Received = 0,
+  Dispatched,
+  Conflict,
+  DeadLettered
+};
+
+inline std::string
+encounterClosedReceiptToString(EncounterClosedReceipt status)
+{
+  switch (status) {
+    case EncounterClosedReceipt::Received:
+      return "received";
+    case EncounterClosedReceipt::Dispatched:
+      return "dispatched";
+    case EncounterClosedReceipt::Conflict:
+      return "conflict";
+    case EncounterClosedReceipt::DeadLettered:
+      return "dead_lettered";
+  }
+  return "received";
+}
+
+inline std::optional<EncounterClosedReceipt>
+encounterClosedReceiptFromString(const std::string& value)
+{
+  if (value == "received")
+    return EncounterClosedReceipt::Received;
+  if (value == "dispatched")
+    return EncounterClosedReceipt::Dispatched;
+  if (value == "conflict")
+    return EncounterClosedReceipt::Conflict;
+  if (value == "dead_lettered")
+    return EncounterClosedReceipt::DeadLettered;
+  return std::nullopt;
+}
+
+// Camera observation outbox lifecycle; the CHECK constraint mirrors it.
+enum class ObjectEventStatus : uint8_t
+{
+  Pending = 0,
+  Sent,
+  OverflowDropped
+};
+
+inline std::string objectEventStatusToString(ObjectEventStatus status)
+{
+  switch (status) {
+    case ObjectEventStatus::Pending:
+      return "pending";
+    case ObjectEventStatus::Sent:
+      return "sent";
+    case ObjectEventStatus::OverflowDropped:
+      return "overflow_dropped";
+  }
+  return "pending";
+}
+
+inline ObjectEventStatus objectEventStatusFromString(const std::string& value)
+{
+  if (value == "sent")
+    return ObjectEventStatus::Sent;
+  if (value == "overflow_dropped")
+    return ObjectEventStatus::OverflowDropped;
+  return ObjectEventStatus::Pending;
+}
+
+// Durable inbox lifecycle of one observation; the CHECK constraint mirrors it.
+enum class ObservationStatus : uint8_t
+{
+  Processing = 0,
+  Completed,
+  DeadLettered
+};
+
+inline std::string observationStatusToString(ObservationStatus status)
+{
+  switch (status) {
+    case ObservationStatus::Processing:
+      return "processing";
+    case ObservationStatus::Completed:
+      return "completed";
+    case ObservationStatus::DeadLettered:
+      return "dead_lettered";
+  }
+  return "processing";
+}
+
+inline ObservationStatus observationStatusFromString(const std::string& value)
+{
+  if (value == "completed")
+    return ObservationStatus::Completed;
+  if (value == "dead_lettered")
+    return ObservationStatus::DeadLettered;
+  return ObservationStatus::Processing;
+}
+
+// Durable lifecycle of one guard action intent; resumable states are replayed
+// under the same command id, terminal states carry their distinct meaning.
+enum class GuardIntentStatus : uint8_t
+{
+  Pending = 0,
+  InFlight,
+  RetryableFailed,
+  Succeeded,
+  DuplicateSucceeded,
+  Rejected,
+  Conflict,
+  Indeterminate
+};
+
+inline std::string guardIntentStatusToString(GuardIntentStatus status)
+{
+  switch (status) {
+    case GuardIntentStatus::Pending:
+      return "pending";
+    case GuardIntentStatus::InFlight:
+      return "in_flight";
+    case GuardIntentStatus::RetryableFailed:
+      return "retryable_failed";
+    case GuardIntentStatus::Succeeded:
+      return "succeeded";
+    case GuardIntentStatus::DuplicateSucceeded:
+      return "duplicate_succeeded";
+    case GuardIntentStatus::Rejected:
+      return "rejected";
+    case GuardIntentStatus::Conflict:
+      return "conflict";
+    case GuardIntentStatus::Indeterminate:
+      return "indeterminate";
+  }
+  return "pending";
+}
+
+inline std::optional<GuardIntentStatus>
+guardIntentStatusFromString(const std::string& value)
+{
+  static const std::unordered_map<std::string, GuardIntentStatus> kMap = {
+      {"pending", GuardIntentStatus::Pending},
+      {"in_flight", GuardIntentStatus::InFlight},
+      {"retryable_failed", GuardIntentStatus::RetryableFailed},
+      {"succeeded", GuardIntentStatus::Succeeded},
+      {"duplicate_succeeded", GuardIntentStatus::DuplicateSucceeded},
+      {"rejected", GuardIntentStatus::Rejected},
+      {"conflict", GuardIntentStatus::Conflict},
+      {"indeterminate", GuardIntentStatus::Indeterminate},
+  };
+  const auto found = kMap.find(value);
+  if (found == kMap.end())
+    return std::nullopt;
+  return found->second;
+}
+
+inline bool guardIntentStatusIsResumable(GuardIntentStatus status)
+{
+  return status == GuardIntentStatus::Pending ||
+         status == GuardIntentStatus::InFlight ||
+         status == GuardIntentStatus::RetryableFailed;
+}
+
+inline bool guardIntentStatusIsTerminal(GuardIntentStatus status)
+{
+  return !guardIntentStatusIsResumable(status);
+}
+
+// One physical or user-visible effect the guard may raise; the authorizer owns
+// the mapping.
+enum class GuardActionKind : uint8_t
+{
+  Greet = 0,
+  Listen,
+  Reply,
+  Announce,
+  Alarm,
+  SirenArm,
+  SirenDisarm,
+  Notify
+};
+
+inline std::string guardActionKindToString(GuardActionKind kind)
+{
+  switch (kind) {
+    case GuardActionKind::Greet:
+      return "greet";
+    case GuardActionKind::Listen:
+      return "greet_listen";
+    case GuardActionKind::Reply:
+      return "greet_reply";
+    case GuardActionKind::Announce:
+      return "announce";
+    case GuardActionKind::Alarm:
+      return "alarm";
+    case GuardActionKind::SirenArm:
+      return "siren_arm";
+    case GuardActionKind::SirenDisarm:
+      return "siren_disarm";
+    case GuardActionKind::Notify:
+      return "notify";
+  }
+  return "notify";
+}
+
+inline GuardActionKind guardActionKindFromString(const std::string& value)
+{
+  static const std::unordered_map<std::string, GuardActionKind> kMap = {
+      {"greet", GuardActionKind::Greet},
+      {"greet_listen", GuardActionKind::Listen},
+      {"greet_reply", GuardActionKind::Reply},
+      {"announce", GuardActionKind::Announce},
+      {"alarm", GuardActionKind::Alarm},
+      {"siren_arm", GuardActionKind::SirenArm},
+      {"siren_disarm", GuardActionKind::SirenDisarm},
+      {"notify", GuardActionKind::Notify},
+  };
+  const auto found = kMap.find(value);
+  return found == kMap.end() ? GuardActionKind::Notify : found->second;
+}
+
+// Canonical voice interaction languages (STT + TTS + prompts); the DB stores
+// the string code.
 enum class VoiceLang : uint8_t
 {
   System = 0,
