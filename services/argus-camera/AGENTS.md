@@ -26,9 +26,13 @@ that apply to camera-service code; when in doubt, the root file wins.
 9. **Health safety** — `GET /health` must never fail or block on NATS, the
    cameras or any downstream service; degraded dependencies degrade logs,
    not health.
-10. **Never trigger setAlarm/siren paths** — the operator is read-only
-    toward hardware; the audible alarm test is the user's personal task, so
-    no code path here may ever arm the siren.
+10. **Audible actions only from argus-guard** — the operator stays read-only
+    toward hardware. Announcing, the alarm tone and arming the siren are
+    capability-credential gated `argus.camera.v1.CameraActionService` calls
+    made by argus-guard behind `[actions].enabled`; never from the operator
+    loop or EventIntelligence. Tests may stub the action RPC service and its
+    camera driver, but must never drive real audible hardware (no live siren,
+    alarm tone or speaker playback in any build).
 11. **No argus.db migrations** — this service owns `camera.db` only
     (`argus-camera/database/schema.sql`); it never writes or migrates `argus.db`.
 12. **Frozen contracts** — HTTP paths, the `{status, info, errors}`
