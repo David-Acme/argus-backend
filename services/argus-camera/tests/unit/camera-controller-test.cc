@@ -350,5 +350,7 @@ TEST_CASE("camera and zone contracts hold on the argus-camera surface")
   runner.join();
 
   std::remove(kCameraDb);
+  std::remove((std::string(kCameraDb) + "-wal").c_str());
+  std::remove((std::string(kCameraDb) + "-shm").c_str());
   std::filesystem::remove_all("/tmp/argus-camera-controller-test-upload");
 }

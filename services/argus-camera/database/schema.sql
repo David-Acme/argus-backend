@@ -88,3 +88,68 @@ CREATE INDEX IF NOT EXISTS idx_camera_stream_deleted  ON camera_stream (deleted_
 CREATE INDEX IF NOT EXISTS idx_zone_camera_id   ON zone (camera_id);
 CREATE INDEX IF NOT EXISTS idx_zone_created_at  ON zone (created_at);
 CREATE INDEX IF NOT EXISTS idx_zone_deleted_at  ON zone (deleted_at);
+
+-- Guard action idempotency inbox: one row per executed command id.
+CREATE TABLE IF NOT EXISTS action_command (
+    command_id TEXT    NOT NULL  PRIMARY KEY,
+    kind       TEXT    NOT NULL  DEFAULT '',
+    camera_id  INTEGER NOT NULL  DEFAULT 0,
+    status     TEXT    NOT NULL  DEFAULT 'executing',
+    detail     TEXT    NOT NULL  DEFAULT '',
+    response   TEXT    NOT NULL  DEFAULT '',
+    fingerprint TEXT   NOT NULL  DEFAULT '',
+    attempts   INTEGER NOT NULL  DEFAULT 0,
+    generation INTEGER NOT NULL  DEFAULT 0,
+    created_at INTEGER NOT NULL  DEFAULT (strftime('%s', 'now')),
+    updated_at INTEGER NOT NULL  DEFAULT (strftime('%s', 'now'))
+);
+
+-- Siren lease: the hardware alarm stays armed only until expires_at.
+CREATE TABLE IF NOT EXISTS siren_lease (
+    camera_id  INTEGER NOT NULL  PRIMARY KEY,
+    command_id TEXT    NOT NULL  DEFAULT '',
+    expires_at INTEGER NOT NULL,
+    created_at INTEGER NOT NULL  DEFAULT (strftime('%s', 'now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_action_command_created
+    ON action_command (created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_siren_lease_expires
+    ON siren_lease (expires_at);
+
+-- Detection evidence retention manifest for the private object store.
+CREATE TABLE IF NOT EXISTS camera_evidence (
+    id           INTEGER NOT NULL  PRIMARY KEY AUTOINCREMENT,
+    camera_id    INTEGER NOT NULL  DEFAULT 0,
+    object_key   TEXT    NOT NULL  DEFAULT '',
+    content_type TEXT    NOT NULL  DEFAULT '',
+    created_at   INTEGER NOT NULL  DEFAULT (strftime('%s', 'now')),
+    expires_at   INTEGER NOT NULL  DEFAULT 0,
+    deleted_at   INTEGER NOT NULL  DEFAULT 0
+);
+
+CREATE INDEX IF NOT EXISTS idx_camera_evidence_expires
+    ON camera_evidence (expires_at) WHERE deleted_at = 0;
+
+-- Durable observation outbox: a row leaves 'pending' only after the
+-- JetStream PubAck, so restarts and broker outages cannot drop detections.
+CREATE TABLE IF NOT EXISTS object_event_outbox (
+    event_id   TEXT    NOT NULL  PRIMARY KEY,
+    payload    TEXT    NOT NULL,
+    status     TEXT    NOT NULL  DEFAULT 'pending'
+                       CHECK (status IN ('pending', 'sent', 'overflow_dropped')),
+    attempts   INTEGER NOT NULL  DEFAULT 0,
+    created_at INTEGER NOT NULL  DEFAULT 0,
+    sent_at    INTEGER NOT NULL  DEFAULT 0
+);
+
+CREATE INDEX IF NOT EXISTS idx_object_event_outbox_status
+    ON object_event_outbox (status, created_at);
+
+-- Per-class emit cooldown, advanced in the same transaction as the enqueue.
+CREATE TABLE IF NOT EXISTS camera_event_cooldown (
+    camera_id    INTEGER NOT NULL,
+    class        TEXT    NOT NULL,
+    last_emit_ms INTEGER NOT NULL  DEFAULT 0,
+    PRIMARY KEY (camera_id, class)
+);
