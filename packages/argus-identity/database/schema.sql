@@ -3,6 +3,9 @@
 -- The 7 identity tables plus the audit and portrait substrate they write to,
 -- all copied verbatim from database/schema.sql (source of truth). Applied by
 -- tools/migrate-identity and by the gateway.
+-- The gateway delivery inbox below is gateway runtime state in the same file:
+-- the gateway opens identity.db and applies this schema at every boot, so a
+-- CREATE TABLE IF NOT EXISTS here migrates existing installations additively.
 -- Structure: pragmas → table creation → indexes (grouped by table).
 -- ─────────────────────────────────────────────────────────────────────────────
 
@@ -35,6 +38,8 @@ CREATE TABLE IF NOT EXISTS person (
     name           TEXT    NOT NULL  DEFAULT '',
     alias          TEXT    NOT NULL  DEFAULT '',
     observation    TEXT    NOT NULL  DEFAULT '',
+    status         TEXT    NOT NULL  DEFAULT 'known'
+                           CHECK (status IN ('candidate', 'known')),
     first_seen_at  INTEGER NOT NULL  DEFAULT (strftime('%s', 'now')),
     last_seen_at   INTEGER NOT NULL  DEFAULT (strftime('%s', 'now')),
     created_at     INTEGER NOT NULL  DEFAULT (strftime('%s', 'now')),
@@ -49,6 +54,22 @@ CREATE TABLE IF NOT EXISTS face_embedding (
     angle_label TEXT    NOT NULL  DEFAULT 'frontal',
     quality     REAL    NOT NULL  DEFAULT 1.0,
     created_at  INTEGER NOT NULL  DEFAULT (strftime('%s', 'now'))
+);
+
+CREATE TABLE IF NOT EXISTS person_tag (
+    id         INTEGER NOT NULL  PRIMARY KEY AUTOINCREMENT,
+    person_id  INTEGER NOT NULL  REFERENCES person(id) ON DELETE CASCADE,
+    tag        TEXT    NOT NULL,
+    source     TEXT    NOT NULL  DEFAULT 'llm',
+    created_at INTEGER NOT NULL  DEFAULT (strftime('%s', 'now')),
+    UNIQUE (person_id, tag)
+);
+
+CREATE TABLE IF NOT EXISTS person_snapshot (
+    id         INTEGER NOT NULL  PRIMARY KEY AUTOINCREMENT,
+    person_id  INTEGER NOT NULL  UNIQUE REFERENCES person(id) ON DELETE CASCADE,
+    image      BLOB    NOT NULL,
+    created_at INTEGER NOT NULL  DEFAULT (strftime('%s', 'now'))
 );
 
 CREATE TABLE IF NOT EXISTS refresh_token (
@@ -186,10 +207,35 @@ CREATE TABLE IF NOT EXISTS user_action_log (
     created_at INTEGER NOT NULL  DEFAULT (strftime('%s', 'now'))
 );
 
+-- ── Tables · Gateway delivery inbox ──────────────────────────────────────────
+
+-- Durable receipts for argus.notification.v1.delivery, written only by the
+-- gateway delivery consumer in this same database. The insert wins the
+-- dispatch lease; a 'dispatched' row drops redeliveries, a 'received' row
+-- replays them. fingerprint is the canonical payload hash: the same id plus
+-- the same fingerprint is a replay, the same id plus a different fingerprint
+-- is a conflict that is never dispatched. 'dead_lettered' rows are poison
+-- the broker must not resend.
+CREATE TABLE IF NOT EXISTS notification_delivery_inbox (
+    delivery_id     INTEGER NOT NULL  PRIMARY KEY,
+    notification_id INTEGER NOT NULL  DEFAULT 0,
+    user_id         INTEGER NOT NULL  DEFAULT 0,
+    fingerprint     TEXT    NOT NULL  DEFAULT '',
+    attempts        INTEGER NOT NULL  DEFAULT 0,
+    status          TEXT    NOT NULL  DEFAULT 'received'
+                    CHECK (status IN ('received', 'dispatched', 'conflict',
+                                      'dead_lettered')),
+    created_at      INTEGER NOT NULL  DEFAULT (strftime('%s', 'now')),
+    updated_at      INTEGER NOT NULL  DEFAULT (strftime('%s', 'now'))
+);
+
 -- ── Indexes ──────────────────────────────────────────────────────────────────
 
 -- face_embedding
 CREATE INDEX IF NOT EXISTS idx_face_embedding_person ON face_embedding (person_id);
+
+-- person_tag
+CREATE INDEX IF NOT EXISTS idx_person_tag_person ON person_tag (person_id);
 
 -- user
 CREATE INDEX IF NOT EXISTS idx_user_created_at  ON user (created_at);
@@ -235,3 +281,7 @@ CREATE INDEX IF NOT EXISTS idx_audit_log_table_ts ON audit_log (table_name, even
 -- user_audit_log
 CREATE INDEX IF NOT EXISTS idx_user_audit_log_user_ts ON user_audit_log (user_id, event_timestamp);
 CREATE INDEX IF NOT EXISTS idx_user_audit_log_record   ON user_audit_log (record_id, table_name);
+
+-- notification_delivery_inbox
+CREATE INDEX IF NOT EXISTS idx_notification_delivery_inbox_status
+    ON notification_delivery_inbox (status, delivery_id);

@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <optional>
+#include <shared/enums.hxx>
 #include <string>
 #include <string_view>
 
@@ -18,9 +19,13 @@ inline constexpr std::string_view FIND_ALL_CATALOG =
     "SELECT * FROM person WHERE deleted_at IS NULL";
 
 inline constexpr std::string_view INSERT =
-    "INSERT INTO person (user_id, name, alias, observation, "
-    "first_seen_at, last_seen_at) VALUES (?, ?, ?, ?, "
+    "INSERT INTO person (user_id, name, alias, observation, status, "
+    "first_seen_at, last_seen_at) VALUES (?, ?, ?, ?, ?, "
     "strftime('%s','now'), strftime('%s','now'))";
+
+inline constexpr std::string_view PROMOTE =
+    "UPDATE person SET status = 'known', updated_at = strftime('%s', 'now') "
+    "WHERE id = ? AND deleted_at IS NULL";
 
 inline constexpr std::string_view UPDATE_PREFIX = "UPDATE person SET ";
 inline constexpr std::string_view UPDATE_COL_NAME = "name = ?";
@@ -96,6 +101,7 @@ struct PersonCreateInput
   std::string name;
   std::string alias;
   std::string observation;
+  PersonStatus status{PersonStatus::Known};
 };
 
 struct PersonUpdateInput

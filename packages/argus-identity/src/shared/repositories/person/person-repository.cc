@@ -46,11 +46,10 @@ drogon::Task<PersonSchema>
 PersonRepository::create(const PersonCreateInput& input) const
 {
   auto client = DbService::client();
-  const auto result =
-      co_await client->execSqlCoro(INSERT.data(),
-                                   input.userId ? *input.userId
-                                                : std::optional<int64_t>{},
-                                   input.name, input.alias, input.observation);
+  const auto result = co_await client->execSqlCoro(
+      INSERT.data(),
+      input.userId ? *input.userId : std::optional<int64_t>{}, input.name,
+      input.alias, input.observation, personStatusToString(input.status));
 
   PersonSchema schema;
   schema.id = result.insertId();
@@ -58,10 +57,18 @@ PersonRepository::create(const PersonCreateInput& input) const
   schema.name = input.name;
   schema.alias = input.alias;
   schema.observation = input.observation;
+  schema.status = input.status;
   schema.firstSeenAt = std::time(nullptr);
   schema.lastSeenAt = std::time(nullptr);
   schema.createdAt = std::time(nullptr);
   co_return schema;
+}
+
+drogon::Task<bool> PersonRepository::promote(int64_t id) const
+{
+  auto client = DbService::client();
+  const auto result = co_await client->execSqlCoro(PROMOTE.data(), id);
+  co_return result.affectedRows() > 0;
 }
 
 drogon::Task<PersonSchema>

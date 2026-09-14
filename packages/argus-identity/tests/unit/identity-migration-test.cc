@@ -116,14 +116,20 @@ TEST_CASE("identity schema applies cleanly to an in-memory database")
 
   const auto tables = queryColumn(db.get(),
       "SELECT name FROM sqlite_master WHERE type = 'table' AND name IN "
-      "('user', 'person', 'face_embedding', 'refresh_token', "
+      "('user', 'person', 'face_embedding', 'person_tag', 'person_snapshot', "
+      "'refresh_token', "
       "'device_login_challenge', 'user_invitation', 'invitation_redemption')");
-  REQUIRE(tables.size() == 7);
+  REQUIRE(tables.size() == 9);
 
   const auto indexes = queryColumn(db.get(),
       "SELECT name FROM sqlite_master WHERE type = 'index' AND name LIKE "
       "'idx_%' ORDER BY name");
-  CHECK(indexes.size() == 19);
+  CHECK(indexes.size() == 21);
+
+  const auto inbox = queryColumn(db.get(),
+      "SELECT name FROM sqlite_master WHERE type = 'table' AND name = "
+      "'notification_delivery_inbox'");
+  REQUIRE(inbox.size() == 1);
 }
 
 TEST_CASE("migration copies identity tables and verifies them")
@@ -141,12 +147,14 @@ TEST_CASE("migration copies identity tables and verifies them")
                                        .targetPath = fixture.targetPath,
                                        .schemaPath = ARGUS_IDENTITY_SCHEMA_PATH});
   REQUIRE_MESSAGE(report.ok, report.error);
-  REQUIRE(report.tables.size() == 7);
+  REQUIRE(report.tables.size() == 9);
 
   const std::vector<std::pair<std::string, int64_t>> expectedCounts = {
       std::pair<std::string, int64_t>{"user", 2},
       std::pair<std::string, int64_t>{"person", 1},
       std::pair<std::string, int64_t>{"face_embedding", 1},
+      std::pair<std::string, int64_t>{"person_tag", 0},
+      std::pair<std::string, int64_t>{"person_snapshot", 0},
       std::pair<std::string, int64_t>{"refresh_token", 1},
       std::pair<std::string, int64_t>{"device_login_challenge", 1},
       std::pair<std::string, int64_t>{"user_invitation", 1},
