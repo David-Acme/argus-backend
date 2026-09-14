@@ -44,6 +44,15 @@ std::string bodyFor(const Json::Value& event)
   return "Severity " + severity +
          (classes.empty() ? "" : "; detected " + classes);
 }
+
+// Raw fallback only carries protected-zone hard signals while guard is absent.
+bool isHardSignal(const Json::Value& event)
+{
+  if (event.get("severity", "").asString() == "critical")
+    return true;
+  const std::string rule = event.get("rule", "").asString();
+  return rule == "person_in_alert_zone";
+}
 } // namespace
 
 CameraNotificationPolicy::CameraNotificationPolicy(Config config)
@@ -59,6 +68,17 @@ bool CameraNotificationPolicy::inSilentHours(const Config& config, int hour)
     return false;
   return start < end ? (hour >= start && hour < end)
                      : (hour >= start || hour < end);
+}
+
+bool CameraNotificationPolicy::guardReady(int64_t nowMs) const
+{
+  return lastGuardHeartbeatMs_ > 0 &&
+         nowMs - lastGuardHeartbeatMs_ <= config_.guardTimeoutMs;
+}
+
+void CameraNotificationPolicy::markGuardHeartbeat(int64_t nowMs)
+{
+  lastGuardHeartbeatMs_ = nowMs;
 }
 
 bool CameraNotificationPolicy::shouldNotify(int64_t cameraId, int64_t nowMs)
@@ -149,6 +169,17 @@ void CameraObjectNotifier::handle(const Json::Value& json)
                          std::chrono::system_clock::now().time_since_epoch())
                          .count();
 
+  if (policy_.guardReady(nowMs)) {
+    LOG_INFO << "Camera notifier: guard owns notifications; raw camera "
+             << cameraId << " event suppressed";
+    return;
+  }
+  if (!isHardSignal(json)) {
+    LOG_INFO << "Camera notifier: guard absent; non-hard camera " << cameraId
+             << " event ignored by the fallback";
+    return;
+  }
+
   if (!policy_.shouldNotify(cameraId, nowMs)) {
     for (const auto& object : json.get("objects", Json::Value()))
       policy_.countSuppressed(cameraId, object.get("class", "").asString());
@@ -201,16 +232,15 @@ void CameraObjectNotifier::deliver(const DeliverInput& input)
       request.set_body(body);
       request.set_data(json_util::toString(json));
 
-      const auto response = co_await BlockingTask<
-          std::optional<argus::notification::v1::CreateNotificationsResponse>>(
-          [this, request]() {
+      const auto response =
+          co_await BlockingTask<NotificationCreateResult>([this, request]() {
             return notificationClient_->createNotifications(
                 request,
                 {.userId = 0, .role = "system", .device = "argus-gateway"});
           });
-      if (!response) {
-        LOG_WARN << "Camera notifier: notification service unavailable ("
-                 << title << ")";
+      if (response.outcome != NotificationRpcOutcome::Success) {
+        LOG_WARN << "Camera notifier: notification delivery failed ("
+                 << title << "): " << response.status.error_message();
         co_return;
       }
       LOG_INFO << "Camera notifier: notification delivered (" << title << ")";
@@ -233,6 +263,10 @@ CameraNotificationPolicy::Config resolveConfig()
   config.silentStartHour =
       ConfigService::getInt("notifications.silent_start");
   config.silentEndHour = ConfigService::getInt("notifications.silent_end");
+  const int timeoutS =
+      ConfigService::getInt("notifications.guard_heartbeat_timeout_s");
+  config.guardTimeoutMs =
+      (timeoutS > 0 ? static_cast<int64_t>(timeoutS) : 30) * 1000;
   return config;
 }
 
@@ -240,6 +274,23 @@ void subscribeObjectDetected(NatsBus& bus,
                              std::shared_ptr<NotificationClient> client)
 {
   static CameraObjectNotifier notifier(resolveConfig(), std::move(client));
+  bus.subscribe(nats_subject::kGuardHeartbeat,
+                [](std::string_view, std::string_view payload) {
+                  const Json::Value heartbeat =
+                      json_util::fromString(std::string(payload));
+                  if (!heartbeat.isObject() ||
+                      heartbeat.get("service", "").asString() !=
+                          "argus-guard" ||
+                      !heartbeat.get("enabled", false).asBool())
+                    return;
+                  drogon::app().getIOLoop(0)->runInLoop([]() {
+                    const auto nowMs =
+                        std::chrono::duration_cast<std::chrono::milliseconds>(
+                            std::chrono::system_clock::now().time_since_epoch())
+                            .count();
+                    notifier.policy().markGuardHeartbeat(nowMs);
+                  });
+                });
   bus.subscribe(nats_subject::kCameraObjectDetected,
                 [](std::string_view, std::string_view payload) {
                   // cnats dispatcher thread: marshal into the Drogon loop.

@@ -1,5 +1,7 @@
 #include "notification-sync-source.hxx"
 
+#include <shared/services/config-service/config-service.hxx>
+
 #include <config/app-config.hxx>
 #include <shared/enums.hxx>
 #include <shared/exceptions/response-exception.hxx>
@@ -12,7 +14,6 @@ namespace
 {
 using argus::notification::v1::NotificationRow;
 using argus::notification::v1::PullNotificationsRequest;
-using argus::notification::v1::PullNotificationsResponse;
 
 argus::sdk::CallerIdentity identityFor(const JwtContext& ctx)
 {
@@ -59,7 +60,9 @@ ResponseException unavailable()
 } // namespace
 
 NotificationSyncGateway::NotificationSyncGateway(std::string target)
-    : client_(std::make_shared<NotificationClient>(std::move(target)))
+    : client_(std::make_shared<NotificationClient>(NotificationClientConfig{
+          .target = std::move(target),
+          .credential = ConfigService::getString("notifications.credential")}))
 {
 }
 
@@ -75,16 +78,15 @@ NotificationSyncGateway::find(const JwtContext& ctx,
   *notification->mutable_created() = toRange(filter);
 
   const auto response =
-      co_await BlockingTask<std::optional<PullNotificationsResponse>>(
-          [this, request, identity]() {
-            return client_->pullNotifications(request, identity);
-          });
-  if (!response)
+      co_await BlockingTask<NotificationPullResult>([this, request, identity]() {
+        return client_->pullNotifications(request, identity);
+      });
+  if (response.outcome != NotificationRpcOutcome::Success)
     throw unavailable();
 
   std::vector<Json::Value> rows;
-  rows.reserve(response->created_size());
-  for (const auto& row : response->created())
+  rows.reserve(response.response.created_size());
+  for (const auto& row : response.response.created())
     rows.push_back(rowToJson(row));
   co_return rows;
 }
@@ -98,13 +100,12 @@ NotificationSyncGateway::findLast(const JwtContext& ctx) const
   request.mutable_notification()->set_find_last_created(true);
 
   const auto response =
-      co_await BlockingTask<std::optional<PullNotificationsResponse>>(
-          [this, request, identity]() {
-            return client_->pullNotifications(request, identity);
-          });
-  if (!response)
+      co_await BlockingTask<NotificationPullResult>([this, request, identity]() {
+        return client_->pullNotifications(request, identity);
+      });
+  if (response.outcome != NotificationRpcOutcome::Success)
     throw unavailable();
-  if (!response->has_last_created())
+  if (!response.response.has_last_created())
     co_return std::nullopt;
-  co_return rowToJson(response->last_created());
+  co_return rowToJson(response.response.last_created());
 }

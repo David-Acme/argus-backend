@@ -23,18 +23,45 @@
 #include <sync/camera-fan-out.hxx>
 #include <sync/user-change-fan-out.hxx>
 
+#include <atomic>
 #include <chrono>
 #include <cstdio>
 #include <filesystem>
 #include <string>
 #include <thread>
+#include <unistd.h>
 #include <vector>
 
 namespace
 {
-constexpr const char* kIdentityDb = "audit-sync-read-test-identity.db";
-constexpr const char* kLegacyDb = "audit-sync-read-test-legacy.db";
-constexpr const char* kCameraDb = "audit-sync-read-test-camera.db";
+int tempCounter()
+{
+  static std::atomic<int> counter{0};
+  return counter.fetch_add(1);
+}
+
+class TempDb
+{
+public:
+  explicit TempDb(const char* stem)
+      : path_(std::string(stem) + "-" + std::to_string(::getpid()) + "-" +
+              std::to_string(tempCounter()) + ".db")
+  {
+  }
+
+  ~TempDb()
+  {
+    std::remove(path_.c_str());
+    std::remove((path_ + "-wal").c_str());
+    std::remove((path_ + "-shm").c_str());
+  }
+
+  const std::string& path() const { return path_; }
+
+private:
+  std::string path_;
+};
+
 
 struct SeedAuditTablesInput
 {
@@ -293,21 +320,26 @@ TEST_CASE("audit sync reads resolve to the default identity client on the "
   // The gateway calls this first in main; URI filenames must precede client init.
   DbService::enableUriFilenames();
 
-  seedAuditTables({.path = kLegacyDb, .auditId = 1, .userAuditId = 1});
-  seedAuditTables({.path = kIdentityDb, .auditId = 2, .userAuditId = 2});
+  const TempDb legacyDbFile("audit-sync-read-legacy");
+  const TempDb identityDbFile("audit-sync-read-identity");
+  const TempDb cameraDbFile("audit-sync-read-camera");
+  seedAuditTables(
+      {.path = legacyDbFile.path().c_str(), .auditId = 1, .userAuditId = 1});
+  seedAuditTables(
+      {.path = identityDbFile.path().c_str(), .auditId = 2, .userAuditId = 2});
 
   std::filesystem::remove_all("/tmp/argus-audit-sync-read-test-upload");
   drogon::app().setUploadPath("/tmp/argus-audit-sync-read-test-upload");
   drogon::app().setLogLevel(trantor::Logger::kWarn);
   drogon::app().addDbClient(
-      drogon::orm::Sqlite3Config{1, kIdentityDb, "default", -1});
+      drogon::orm::Sqlite3Config{1, identityDbFile.path(), "default", -1});
 
   std::thread runner([] { drogon::app().run(); });
   REQUIRE(waitForBoot(std::chrono::seconds(30)));
 
   // The client object must outlive the in-flight callbacks on its own loop.
   const auto legacyDb = drogon::orm::DbClient::newSqlite3Client(
-      std::string("filename=file:") + kLegacyDb + "?mode=ro", 1);
+      std::string("filename=file:") + legacyDbFile.path() + "?mode=ro", 1);
   DbService::setReadOnlyClient(legacyDb);
 
   const AuditLogRepository auditRepository;
@@ -401,11 +433,13 @@ TEST_CASE("audit sync reads resolve to the default identity client on the "
   CHECK(funnelRows.front()["eventTimestamp"].asInt64() == 1735689600000);
 
   // ── Phase: named camera client resolution (Ruling Z) ─────────────────────
-  createCameraTable({.path = kIdentityDb, .id = 1, .name = "default row"});
-  seedCameraTable({.path = kCameraDb, .id = 2, .name = "camera-db row"});
+  createCameraTable(
+      {.path = identityDbFile.path().c_str(), .id = 1, .name = "default row"});
+  seedCameraTable(
+      {.path = cameraDbFile.path().c_str(), .id = 2, .name = "camera-db row"});
 
   const auto cameraDb = drogon::orm::DbClient::newSqlite3Client(
-      std::string("filename=") + kCameraDb, 1);
+      std::string("filename=") + cameraDbFile.path(), 1);
   DbService::setCameraClient(cameraDb);
 
   const CameraRepository cameraRepository;
@@ -575,10 +609,5 @@ TEST_CASE("audit sync reads resolve to the default identity client on the "
   runner.join();
   DbService::setReadOnlyClient(nullptr);
   DbService::setCameraClient(nullptr);
-  std::remove(kLegacyDb);
-  std::remove(kIdentityDb);
-  std::remove(kCameraDb);
-  std::remove("audit-sync-read-test-notification.db-wal");
-  std::remove("audit-sync-read-test-notification.db-shm");
   std::filesystem::remove_all("/tmp/argus-audit-sync-read-test-upload");
 }

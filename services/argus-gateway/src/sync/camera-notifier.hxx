@@ -22,6 +22,8 @@ public:
     // Local hours; both set (-1 off) and wrapping (23 -> 7) supported.
     int silentStartHour{-1};
     int silentEndHour{-1};
+    // How long a guard heartbeat keeps the raw notifier in fallback mode.
+    int64_t guardTimeoutMs{30000};
   };
 
   explicit CameraNotificationPolicy(Config config);
@@ -37,6 +39,11 @@ public:
   // Digest for suppressed events, flushed only outside silent hours; resets counters.
   std::string takeDigest(int64_t cameraId, int64_t nowMs);
 
+  // True while argus-guard published a heartbeat inside the configured window.
+  bool guardReady(int64_t nowMs) const;
+
+  void markGuardHeartbeat(int64_t nowMs);
+
   static bool inSilentHours(const Config& config, int hour);
 
 private:
@@ -51,6 +58,7 @@ private:
 
   Config config_;
   std::map<int64_t, CameraWindow> windows_;
+  int64_t lastGuardHeartbeatMs_{0};
 };
 
 // Applies the policy to object_detected and delivers through the notification SDK.
