@@ -14,6 +14,9 @@ struct DetectedObject
   float y{0};
   float w{0};
   float h{0};
+  // Filled by the per-camera tracker; 0 until assigned.
+  int64_t trackId{0};
+  int64_t firstSeenMs{0};
 };
 
 // rgb is a tightly packed RGB8 buffer of width*height*3 bytes.
