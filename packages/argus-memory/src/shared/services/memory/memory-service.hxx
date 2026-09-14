@@ -197,6 +197,9 @@ private:
   void embedAndStore(int64_t factId, bool episode);
   void rebuildAll();
 
+  // Memory belongs to authenticated users: camera-only persons are foreign and can never write it.
+  static bool hasUserScope(int64_t userId);
+
   tools::ToolResult handleRemember(const tools::ToolCall& call);
   tools::ToolResult handleRemind(const tools::ToolCall& call);
   tools::ToolResult handleRecall(const tools::ToolCall& call);
