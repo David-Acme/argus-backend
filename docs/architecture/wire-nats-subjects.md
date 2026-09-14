@@ -25,9 +25,12 @@ argus.<domain>.v1.<event>
 |------------------------|----------------------|----------|----------------------------------------------|
 | `argus.sync.v1.change` | every mutating service | gateway  | a persisted change that must reach `/sync` |
 | `argus.camera.v1.change` | argus-camera (F2-2) | gateway  | a camera-domain persisted change (same payload as `argus.sync.v1.change`) |
-| `argus.camera.v1.object_detected` | argus-camera (F2-3) | gateway  | an evaluated detection event (not a persisted change; never re-emitted to `/sync`) |
+| `argus.camera.v1.object_detected` | argus-camera (F2-3) | argus-guard (durable JetStream), gateway (degraded fallback) | an immutable per-object observation (schemaVersion 2: track/observation ids, evidence binding); never re-emitted to `/sync` |
+| `argus.guard.v1.heartbeat` | argus-guard | gateway | readiness heartbeat; while fresh the gateway's raw camera notifier yields to guard |
+| `argus.guard.v1.encounter_closed` | argus-guard | argus-llm (durable JetStream) | finalized, redacted encounter summary; the only camera feed long-term memory reads. Published with `Nats-Msg-Id = <eventId>` on the guard-owned stream `ARGUS_GUARD` (7 days, file storage, 2-minute duplicate window); argus-llm receipts each event in `encounter_closed_inbox` and captures exactly one memory episode per receipt |
 | `argus.productivity.v1.change` | argus-productivity (F3-2) | gateway  | a productivity-domain change: user-scoped emits plus `kind: audit` user_audit_log diffs the gateway persists before fanning the rows out |
-| `argus.notification.v1.change` | argus-notification (F3-2) | gateway  | a notification-domain change: user-scoped emits plus the `kind: audit` markAsRead rows (same payload contract as the productivity subject) |
+| `argus.notification.v1.change` | argus-notification (F3-2) | gateway  | a notification-domain change: user-scoped emits plus the `kind: audit` markAsRead rows (same payload contract as the productivity subject); Add emits move to the durable delivery subject below when its sink is installed |
+| `argus.notification.v1.delivery` | argus-notification | gateway (durable JetStream) | one event per pending delivery intent (`deliveryId`, `notificationId`, `userId`, row fields); published with `Nats-Msg-Id = notification-delivery:<deliveryId>` on the notification-owned stream `ARGUS_NOTIFICATION` (7 days, file storage, 2-minute duplicate window); an intent settles only on PubAck; the gateway receipts each delivery in `notification_delivery_inbox` and drops receipted redeliveries. Delivery guarantee is at-least-once, not exactly-once: a crash between socket dispatch and inbox settlement replays the dispatch on redelivery (one receipt row, possibly two socket emits). Same delivery id plus same canonical payload fingerprint is a replay and dispatches at most once per receipt; same id plus a different fingerprint is a conflict that is never dispatched; persistently failing dispatches dead-letter after a bounded attempt count with a broker Term. |
 | `argus.identity.v1.change` | legacy backend (F4-6) | argus-memory | the memory catalog replica feed: person/user rows written by the identity surface; the gateway's wildcard subscription drops it (the gateway owns `/user` fan-out natively) |
 | `argus.notification.v1.push_intent` | argus-notification / gateway (F5-5) | argus-relay | a notification push intent carried to the home client through the tunnel transport (not a persisted change; never re-emitted to `/sync`) |
 
@@ -77,47 +80,142 @@ the legacy backend only — the gateway is subscriber-only and must not publish
 | `user`     | `disconnect`, `replace_role_rooms` | the user id the action applies to. |
 | `old_role` / `new_role` | `replace_role_rooms` | `UserRole` string values (`owner`, `resident`, `guard`, `guest`). |
 
-## Payload of `argus.camera.v1.object_detected` (F2-3)
+## Payload of `argus.camera.v1.object_detected` (schemaVersion 2)
 
 Published by argus-camera's operator after `EventIntelligence` evaluates the
 detections of one aggregation window. Unlike the change subjects it is not a
-persisted change: the gateway's `camera-notifier` consumes it, applies the
-notification budget and turns it into `notification` rows — it never reaches
-`/sync`. The subject is retained on the JetStream stream `ARGUS_CAMERA`
-(7 days, file storage) together with `argus.camera.v1.change`; stream creation
-is best-effort (core NATS publish works without it). That retention is
-server-side only: the gateway's consumer is an ephemeral core-NATS subscriber,
-so events published while the gateway is down are not replayed when it
-restarts — the stream exists for later inspection, not for redelivery.
+persisted change: argus-guard consumes it through a durable JetStream consumer
+(explicit ack after commit, `Nats-Msg-Id` = `eventId` so the stream's duplicate
+window suppresses redeliveries), while the gateway's `camera-notifier` keeps a
+budgeted raw fallback that yields whenever a fresh `argus.guard.v1.heartbeat`
+is present. It never reaches `/sync`. The subject is retained on the JetStream
+stream `ARGUS_CAMERA` (7 days, file storage, 2-minute duplicate window)
+together with `argus.camera.v1.change`.
 
 ```json
 {
+  "schemaVersion": 2,
+  "eventId": "1:1735689600123:4",
   "cameraId": 1,
   "cameraName": "Front door",
   "rule": "person_in_alert_zone",
   "severity": "critical",
   "escalated": false,
   "knownPersonId": 7,
+  "capturedAt": 1735689600000,
   "detectedAt": 1735689600123,
+  "publishedAt": 1735689600123,
+  "trackId": 4,
+  "dwellMs": 4200,
   "frame": { "width": 1920, "height": 1080 },
   "objects": [
-    { "class": "person", "confidence": 0.91, "bbox": { "x": 120, "y": 40, "w": 300, "h": 800 } }
+    {
+      "class": "person",
+      "confidence": 0.91,
+      "bbox": { "x": 120, "y": 40, "w": 300, "h": 800 },
+      "personId": 12,
+      "identity": "unknown",
+      "identityConfidence": 0.72,
+      "trackId": 4,
+      "firstSeenMs": 1735689595000,
+      "lastSeenMs": 1735689600120,
+      "dwellMs": 4200,
+      "observationId": "1:4:1735689595000",
+      "zoneKind": "alert",
+      "signature": "base64-lab-histogram"
+    }
   ]
 }
 ```
 
+- `schemaVersion` — 2; v1 consumers that ignore unknown keys keep working.
+- `eventId` — producer-unique id (`cameraId:publishedAtMs:sequence`); the guard
+  inbox deduplicates by it and JetStream deduplicates redeliveries with it.
+- `capturedAt` — first frame of the aggregation window, in ms.
 - `rule` — one of the EventIntelligence rules: `known_person`,
   `person_in_alert_zone`, `person_in_monitor_zone`, `person_night`,
   `person_day`, `vehicle_arrival`, `vehicle_night` (or
   `presence_escalating` when presence repeats instead of a vehicle).
 - `severity` — `critical`, `warning` or `info`; the gateway notification
   carries it verbatim in the body.
-- `knownPersonId` — present only when the `known_person` rule matched (Fase 4
-  fills the real matcher; until then it never appears).
+- `knownPersonId` — present when the `known_person` rule matched through the
+  real identity matcher (`[identity].identify`).
+- `objects[].trackId` / `firstSeenMs` / `lastSeenMs` / `dwellMs` — per-person
+  track, kept separately for every physical person (no class dedup).
+- `objects[].observationId` — `cameraId:trackId:firstSeenMs`; the guard asks
+  the camera for exactly this crop and rejects a stale or unbound capture.
+- `objects[].zoneKind` — `alert` or `monitor` when the object center sits in
+  that zone; absent otherwise.
+- `objects[].identityConfidence` — matcher confidence for the person id.
+- `objects[].signature` — compact Lab histogram for cross-camera correlation;
+  never persisted in guard incidents (redacted before evidence upload).
+- `objects[].personId` / `objects[].identity` — added when the identity
+  matcher answered for a person box: `identity` is `known` (trusted person),
+  `unknown` (stranger or auto-enrolled candidate). Absent when identity is
+  disabled.
 - `objects` — every detection of the window that survived the rules; bbox is
   frame pixels, top-left origin.
 - The gateway tolerates unknown extra keys and unknown rule/severity values
   (it treats them as data, never as commands).
+
+## Payload of `argus.guard.v1.heartbeat`
+
+Published by argus-guard every `guard.heartbeat_s` (and immediately at boot).
+While a heartbeat fresher than `notifications.guard_heartbeat_timeout_s`
+(default 30 s) exists, the gateway's raw `camera-notifier` suppresses its own
+notifications and lets guard own the incident. Without a fresh heartbeat the
+fallback only forwards protected-zone hard signals (`critical` severity or
+`person_in_alert_zone`).
+
+```json
+{ "service": "argus-guard", "enabled": true, "at": 1735689600 }
+```
+
+## Payload of `argus.guard.v1.encounter_closed`
+
+Published by argus-guard when an encounter reaches its terminal summary (stale
+sweep or a known resident closing the case). This is the only camera feed
+long-term memory may ingest: a finalized, redacted summary — never raw
+detections, transcripts or captions.
+
+```json
+{
+  "eventId": "encounter:42:high:1735689600",
+  "encounterId": 42,
+  "cameraId": 1,
+  "personId": 12,
+  "grade": "high",
+  "durationS": 18,
+  "closedAt": 1735689600
+}
+```
+
+Delivery guarantee is exactly-one capture per receipt, at-least-once across
+a process crash inside the capture-settlement micro-window: same event id
+plus same canonical payload fingerprint is a replay and captures at most
+once; same id plus a different fingerprint is a conflict that is never
+captured; persistently failing captures dead-letter after a bounded attempt
+count with a broker Term.
+
+## Payload of `argus.camera.v1.health`
+
+Published by argus-camera's health monitor on a transition only (occlusion,
+blur, moved camera, stream down). argus-guard consumes it as data; it never
+reaches `/sync`.
+
+```json
+{
+  "cameraId": 1,
+  "cameraName": "Front door",
+  "status": "blurred",
+  "metrics": { "brightness": 118.2, "blur": 4.1, "sceneDiff": 0.62 },
+  "detectedAt": 1735689600123
+}
+```
+
+- `status` — `ok`, `dark`, `bright`, `blurred`, `moved` or `unreachable`.
+- `metrics` — brightness mean, Laplacian-variance sharpness and normalized
+  scene difference against the first reference frame.
 
 ## Payload of `argus.identity.v1.change` (F4-6)
 
