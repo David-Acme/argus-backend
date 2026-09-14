@@ -39,6 +39,13 @@ if(NOT TARGET argus::sdk-camera)
       INCLUDES sdk)
 endif()
 
+if(NOT TARGET argus::sdk-camera-actions)
+  argus_sdk_module(NAME camera-actions
+      PROTO argus/camera/v1/actions.proto
+      SOURCES sdk/camera/camera-action-client.cc
+      INCLUDES sdk)
+endif()
+
 if(NOT TARGET argus::sdk-productivity)
   argus_sdk_module(NAME productivity
       PROTO argus/productivity/v1/sync.proto

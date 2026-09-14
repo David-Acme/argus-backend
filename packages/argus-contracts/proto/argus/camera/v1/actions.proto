@@ -1,0 +1,102 @@
+syntax = "proto3";
+
+package argus.camera.v1;
+
+option cc_enable_arenas = true;
+
+message AnnounceRequest
+{
+  int64 camera_id = 1;
+  string text = 2;
+  string lang = 3;
+  string command_id = 4;
+  int64 encounter_id = 5;
+  int64 expires_at = 6;
+}
+
+message AlarmRequest
+{
+  int64 camera_id = 1;
+  int32 seconds = 2;
+  string command_id = 3;
+  int64 encounter_id = 4;
+  int64 expires_at = 5;
+}
+
+message SirenRequest
+{
+  int64 camera_id = 1;
+  bool enabled = 2;
+  string command_id = 3;
+  int64 encounter_id = 4;
+  int64 expires_at = 5;
+  // Positive arms a self-expiring lease; the camera disarms on expiry.
+  int32 lease_seconds = 6;
+}
+
+// Closed command outcome; the authoritative result of every command.
+enum CommandOutcome
+{
+  COMMAND_OUTCOME_UNSPECIFIED = 0;
+  SUCCEEDED = 1;
+  DUPLICATE_SUCCEEDED = 2;
+  IN_FLIGHT = 3;
+  INDETERMINATE = 4;
+  REJECTED = 5;
+  RETRYABLE_FAILED = 6;
+  CONFLICT = 7;
+}
+
+message ActionAck
+{
+  bool accepted = 1;
+  string detail = 2;
+  // True when the command id was already executed; nothing ran again.
+  bool duplicate = 3;
+  CommandOutcome outcome = 4;
+}
+
+message PersonCropRequest
+{
+  int64 camera_id = 1;
+  // Exact track to bind the evidence to; 0 keeps the legacy latest crop.
+  int64 track_id = 2;
+  int64 first_seen_ms = 3;
+}
+
+message PersonCropResponse
+{
+  bytes jpeg = 1;
+  int64 captured_at = 2;
+}
+
+message ListenRequest
+{
+  int64 camera_id = 1;
+  int32 seconds = 2;
+  string lang = 3;
+  string command_id = 4;
+  int64 encounter_id = 5;
+  int64 expires_at = 6;
+}
+
+message ListenResponse
+{
+  bool captured = 1;
+  string text = 2;
+  bool speech_detected = 3;
+  bool endpointed = 4;
+  // True when the command id was already executed; nothing recorded again.
+  bool duplicate = 5;
+  CommandOutcome outcome = 6;
+}
+
+// Fleet-secret gated audible/device actions owned by argus-guard.
+service CameraActionService
+{
+  rpc Announce(AnnounceRequest) returns (ActionAck) {}
+  rpc Alarm(AlarmRequest) returns (ActionAck) {}
+  rpc SetSiren(SirenRequest) returns (ActionAck) {}
+  rpc GetPersonCrop(PersonCropRequest) returns (PersonCropResponse) {}
+  rpc Listen(ListenRequest) returns (ListenResponse) {}
+}

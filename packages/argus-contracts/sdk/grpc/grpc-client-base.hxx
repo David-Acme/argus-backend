@@ -1,8 +1,7 @@
 #pragma once
 
-#include <grpcpp/grpcpp.h>
-
 #include <cstdint>
+#include <grpcpp/grpcpp.h>
 #include <memory>
 #include <optional>
 #include <string>
@@ -10,7 +9,8 @@
 namespace argus::sdk
 {
 
-// The caller the RPC acts for, carried as x-argus-* metadata; receivers gate on presence.
+// The caller the RPC acts for, carried as x-argus-* metadata; receivers gate on
+// presence.
 struct CallerIdentity
 {
   int64_t userId{0};
@@ -33,7 +33,15 @@ void addCallerIdentity(grpc::ClientContext& context,
 // The fleet-shared secret proving the caller is part of this installation.
 void addFleetSecret(grpc::ClientContext& context, const std::string& secret);
 
+// The capability credential a caller presents for exactly one directed edge;
+// it is known only by that caller and that receiver.
+void addCallerCredential(grpc::ClientContext& context,
+                         const std::string& secret);
+
 // The metadata key the fleet secret travels in, shared by both ends.
 inline constexpr const char* kFleetSecretKey = "x-argus-fleet";
+
+// The metadata key the capability credential travels in.
+inline constexpr const char* kCallerCredentialKey = "x-argus-credential";
 
 } // namespace argus::sdk

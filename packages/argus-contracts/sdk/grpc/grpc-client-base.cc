@@ -48,4 +48,11 @@ void addFleetSecret(grpc::ClientContext& context, const std::string& secret)
     context.AddMetadata(kFleetSecretKey, secret);
 }
 
+void addCallerCredential(grpc::ClientContext& context,
+                         const std::string& secret)
+{
+  if (!secret.empty())
+    context.AddMetadata(kCallerCredentialKey, secret);
+}
+
 } // namespace argus::sdk
