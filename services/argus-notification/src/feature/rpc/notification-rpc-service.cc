@@ -2,16 +2,16 @@
 
 #include <drogon/drogon.h>
 #include <grpc-server-identity.hxx>
+#include <shared/services/config-service/config-service.hxx>
 #include <shared/utils/json-util/json-util.hxx>
 #include <trantor/utils/Logger.h>
-
 #include <vector>
 
 namespace
 {
 
-NotificationSyncFilter filterOf(
-    const argus::notification::v1::NotificationPull& pull, int64_t userId)
+NotificationSyncFilter
+filterOf(const argus::notification::v1::NotificationPull& pull, int64_t userId)
 {
   NotificationSyncFilter filter;
   filter.userId = userId;
@@ -44,40 +44,95 @@ void toProto(const Json::Value& row,
 
 } // namespace
 
+NotificationRpcService::NotificationRpcService(Dependencies dependencies)
+    : guardCallers_(
+          {argus::sdk::CallerCredential{.service = "argus-guard",
+                                        .secret = ConfigService::getString(
+                                            "grpc.caller_guard")}}),
+      gatewayCallers_(
+          {argus::sdk::CallerCredential{.service = "argus-gateway",
+                                        .secret = ConfigService::getString(
+                                            "grpc.caller_gateway")}}),
+      notificationService_(
+          {.deliverySink = std::move(dependencies.deliverySink),
+           .pushSink = std::move(dependencies.pushSink),
+           .pushRequired = dependencies.pushRequired})
+{
+}
+
+void NotificationRpcService::startDeliveryReconciler()
+{
+  drogon::app().getLoop()->runAfter(0.0, [this]() {
+    drogon::async_run([this]() -> drogon::Task<void> {
+      co_await notificationService_.deliverPending();
+      co_return;
+    });
+  });
+  drogon::app().getLoop()->runEvery(60.0, [this]() {
+    drogon::async_run([this]() -> drogon::Task<void> {
+      co_await notificationService_.deliverPending();
+      co_return;
+    });
+  });
+}
+
 grpc::ServerUnaryReactor* NotificationRpcService::CreateNotifications(
     grpc::CallbackServerContext* context,
     const argus::notification::v1::CreateNotificationsRequest* request,
     argus::notification::v1::CreateNotificationsResponse* response)
 {
-  if (!argus::sdk::callerUserId(context)) {
+  if (!argus::sdk::authorizeCaller(context, guardCallers_).has_value()) {
     auto* reactor = context->DefaultReactor();
     reactor->Finish(grpc::Status(grpc::StatusCode::UNAUTHENTICATED,
-                                 "identity metadata missing or invalid"));
+                                 "argus-guard caller credential required"));
+    return reactor;
+  }
+  if (request->command_id().empty()) {
+    auto* reactor = context->DefaultReactor();
+    reactor->Finish(grpc::Status(grpc::StatusCode::INVALID_ARGUMENT,
+                                 "command_id is required"));
+    return reactor;
+  }
+  if (!request->data().empty() && !json_util::isValid(request->data())) {
+    auto* reactor = context->DefaultReactor();
+    reactor->Finish(grpc::Status(grpc::StatusCode::INVALID_ARGUMENT,
+                                 "data must be valid JSON"));
     return reactor;
   }
 
   const argus::notification::v1::CreateNotificationsRequest create = *request;
   auto* reactor = context->DefaultReactor();
   auto* responseWriter = response;
-  drogon::app().getLoop()->queueInLoop([this, reactor, create, responseWriter]() {
+  drogon::app().getLoop()->queueInLoop([this, reactor, create,
+                                        responseWriter]() {
     drogon::async_run([this, reactor, create,
                        responseWriter]() -> drogon::Task<void> {
       try {
-        NotificationCreateInput input;
-        input.type = create.type();
-        input.title = create.title();
-        input.body = create.body();
-        input.data = json_util::fromString(create.data());
+        NotificationBatchInput batch;
+        batch.notification.type = create.type();
+        batch.notification.title = create.title();
+        batch.notification.body = create.body();
+        batch.notification.data = json_util::fromString(create.data());
+        batch.commandId = create.command_id();
 
-        std::vector<int64_t> userIds;
-        userIds.reserve(create.user_ids_size());
+        batch.userIds.reserve(create.user_ids_size());
         for (const int64_t userId : create.user_ids())
-          userIds.push_back(userId);
+          batch.userIds.push_back(userId);
 
-        const auto created =
-            co_await notificationService_.createManyAndEmit(userIds, input);
-        responseWriter->set_created(static_cast<int32_t>(created.size()));
+        const NotificationCreateOutcome outcome =
+            co_await notificationService_.createManyAndEmit(batch);
+        responseWriter->set_created(static_cast<int32_t>(outcome.createdCount));
+        responseWriter->set_duplicate(outcome.duplicate);
         reactor->Finish(grpc::Status::OK);
+      }
+      catch (const NotificationCommandConflict& e) {
+        LOG_WARN << "Notification RPC: command conflict: " << e.what();
+        reactor->Finish(
+            grpc::Status(grpc::StatusCode::ALREADY_EXISTS, e.what()));
+      }
+      catch (const NotificationValidationError& e) {
+        reactor->Finish(
+            grpc::Status(grpc::StatusCode::INVALID_ARGUMENT, e.what()));
       }
       catch (const std::exception& e) {
         LOG_WARN << "Notification RPC: CreateNotifications failed: "
@@ -95,6 +150,12 @@ grpc::ServerUnaryReactor* NotificationRpcService::PullNotifications(
     const argus::notification::v1::PullNotificationsRequest* request,
     argus::notification::v1::PullNotificationsResponse* response)
 {
+  if (!argus::sdk::authorizeCaller(context, gatewayCallers_).has_value()) {
+    auto* reactor = context->DefaultReactor();
+    reactor->Finish(grpc::Status(grpc::StatusCode::UNAUTHENTICATED,
+                                 "argus-gateway caller credential required"));
+    return reactor;
+  }
   const auto userId = argus::sdk::callerUserId(context);
   if (!userId) {
     auto* reactor = context->DefaultReactor();
@@ -112,7 +173,8 @@ grpc::ServerUnaryReactor* NotificationRpcService::PullNotifications(
     drogon::async_run([this, reactor, pull, responseWriter,
                        sub]() -> drogon::Task<void> {
       try {
-        const NotificationSyncFilter filter = filterOf(pull.notification(), sub);
+        const NotificationSyncFilter filter =
+            filterOf(pull.notification(), sub);
         if (pull.notification().required_create()) {
           for (const auto& row : co_await repository_.findSync(filter))
             toProto(row, responseWriter->add_created());
@@ -125,8 +187,7 @@ grpc::ServerUnaryReactor* NotificationRpcService::PullNotifications(
         reactor->Finish(grpc::Status::OK);
       }
       catch (const std::exception& e) {
-        LOG_WARN << "Notification RPC: PullNotifications failed: "
-                 << e.what();
+        LOG_WARN << "Notification RPC: PullNotifications failed: " << e.what();
         reactor->Finish(grpc::Status(grpc::StatusCode::INTERNAL, e.what()));
       }
       co_return;

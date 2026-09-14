@@ -83,6 +83,7 @@ endif()
 
 add_library(notification-core STATIC
     ${NOTIFICATION_SRC_ROOT}/notification/nats-notification-change-sink.cc
+    ${NOTIFICATION_SRC_ROOT}/notification/nats-notification-delivery-sink.cc
     ${NOTIFICATION_SRC_ROOT}/notification/notification-config.cc
 )
 
@@ -194,6 +195,40 @@ target_link_libraries(notification-rpc-test PRIVATE argus_sync
 target_compile_options(notification-rpc-test PRIVATE -Wall -Wextra)
 
 add_test(NAME notification-rpc-test COMMAND notification-rpc-test)
+
+# Durable delivery seam: intents settle only after the broker stores them.
+add_executable(notification-delivery-test
+    tests/unit/notification-delivery-test.cc)
+
+set_target_properties(notification-delivery-test PROPERTIES
+    EXCLUDE_FROM_ALL FALSE)
+
+target_link_libraries(notification-delivery-test PRIVATE argus_sync
+    argus_common doctest::doctest)
+
+target_compile_options(notification-delivery-test PRIVATE -Wall -Wextra)
+
+add_test(NAME notification-delivery-test COMMAND notification-delivery-test)
+
+# Opt-in live check against a real NATS; skips without ARGUS_NATS_URL.
+add_executable(notification-delivery-live-test
+    tests/unit/notification-delivery-live-test.cc)
+
+set_target_properties(notification-delivery-live-test PROPERTIES
+    EXCLUDE_FROM_ALL FALSE)
+
+target_include_directories(notification-delivery-live-test PRIVATE
+    ${NOTIFICATION_SRC_ROOT})
+
+target_compile_definitions(notification-delivery-live-test PRIVATE
+    ARGUS_NOTIFICATION_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql")
+
+target_link_libraries(notification-delivery-live-test PRIVATE notification-core
+    argus_sync argus_common doctest::doctest)
+
+target_compile_options(notification-delivery-live-test PRIVATE -Wall -Wextra)
+
+add_test(NAME notification-delivery-live-test COMMAND notification-delivery-live-test)
 
 # The push-intent publish seam rides the owner: the camera-notifier create
 # enters here, so the sink hook is tested here.
