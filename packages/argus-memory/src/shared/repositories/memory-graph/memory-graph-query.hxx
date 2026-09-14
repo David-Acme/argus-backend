@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <shared/enums.hxx>
 #include <shared/services/config-service/config-service.hxx>
 
 #include <string>
@@ -266,5 +267,55 @@ struct ProfileFactRow
 {
   std::string canonical;
   std::string type;
+};
+
+inline constexpr const char* SELECT_ENCOUNTER_RECEIPT =
+    "SELECT status, fingerprint FROM encounter_closed_inbox WHERE event_id = ?";
+inline constexpr const char* INSERT_ENCOUNTER_RECEIPT =
+    "INSERT OR IGNORE INTO encounter_closed_inbox "
+    "(event_id, fingerprint, attempts, status, created_at, updated_at) "
+    "VALUES (?, ?, 0, 'received', ?, ?)";
+inline constexpr const char* ADOPT_ENCOUNTER_FINGERPRINT =
+    "UPDATE encounter_closed_inbox SET fingerprint = ?, updated_at = ? "
+    "WHERE event_id = ? AND status IN ('received', 'dispatched')";
+inline constexpr const char* NOTE_ENCOUNTER_ATTEMPT =
+    "UPDATE encounter_closed_inbox SET attempts = attempts + 1, "
+    "updated_at = ? WHERE event_id = ? RETURNING attempts";
+inline constexpr const char* MARK_ENCOUNTER_DISPATCHED =
+    "UPDATE encounter_closed_inbox SET status = 'dispatched', updated_at = ? "
+    "WHERE event_id = ? AND status = 'received'";
+inline constexpr const char* MARK_ENCOUNTER_DEAD_LETTERED =
+    "UPDATE encounter_closed_inbox SET status = 'dead_lettered', "
+    "updated_at = ? WHERE event_id = ? AND status = 'received'";
+inline constexpr const char* MARK_ENCOUNTER_CONFLICT =
+    "UPDATE encounter_closed_inbox SET status = 'conflict', fingerprint = ?, "
+    "updated_at = ? WHERE event_id = ? AND status IN ('received', "
+    "'dispatched')";
+inline constexpr const char* FORCE_ENCOUNTER_DEAD_LETTERED =
+    "UPDATE encounter_closed_inbox SET status = 'dead_lettered', "
+    "updated_at = ? WHERE event_id = ?";
+
+struct EncounterClosedReceiptInput
+{
+  std::string eventId;
+  std::string fingerprint;
+  int64_t at{0};
+};
+
+struct EncounterClosedClaim
+{
+  bool duplicate{false};
+};
+
+struct EncounterAttemptInput
+{
+  std::string eventId;
+  int64_t at{0};
+};
+
+struct EncounterSettleInput
+{
+  std::string eventId;
+  int64_t at{0};
 };
 

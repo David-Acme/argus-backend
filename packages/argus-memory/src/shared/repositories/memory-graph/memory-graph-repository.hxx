@@ -156,5 +156,14 @@ public:
   std::vector<CatalogRow> catalogZones(sqlite3* db);
   std::vector<CatalogRow> catalogStreams(sqlite3* db);
 
+  EncounterClosedClaim claimEncounterClosed(
+      sqlite3* db, const EncounterClosedReceiptInput& input);
+  int64_t noteEncounterAttempt(sqlite3* db,
+                               const EncounterAttemptInput& input);
+  bool markEncounterDispatched(sqlite3* db,
+                               const EncounterSettleInput& input);
+  bool markEncounterDeadLettered(sqlite3* db,
+                                 const EncounterSettleInput& input);
+
   int64_t migrateLegacy(sqlite3* db);
 };

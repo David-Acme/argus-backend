@@ -124,6 +124,24 @@ CREATE TABLE IF NOT EXISTS catalog_stream (
   label TEXT NOT NULL DEFAULT ''
 );
 
+-- Durable receipts for argus.guard.v1.encounter_closed, written only by the
+-- encounter consumer in this same database. The insert wins the capture
+-- lease; a 'dispatched' row drops redeliveries, a 'received' row replays
+-- them. fingerprint is the canonical payload hash: the same id plus the same
+-- fingerprint is a replay, the same id plus a different fingerprint is a
+-- conflict that is never captured. 'dead_lettered' rows are poison the
+-- broker must not resend.
+CREATE TABLE IF NOT EXISTS encounter_closed_inbox (
+  event_id        TEXT    NOT NULL  PRIMARY KEY,
+  fingerprint     TEXT    NOT NULL  DEFAULT '',
+  attempts        INTEGER NOT NULL  DEFAULT 0,
+  status          TEXT    NOT NULL  DEFAULT 'received'
+                  CHECK (status IN ('received', 'dispatched', 'conflict',
+                                    'dead_lettered')),
+  created_at      INTEGER NOT NULL  DEFAULT (strftime('%s', 'now')),
+  updated_at      INTEGER NOT NULL  DEFAULT (strftime('%s', 'now'))
+);
+
 -- ── Virtual tables · Memory FTS5 (external content) ─────────────────────────
 
 
@@ -161,3 +179,7 @@ CREATE INDEX IF NOT EXISTS idx_memory_edge_dst    ON memory_edge (kind, dst_id);
 -- memory_episode
 CREATE INDEX IF NOT EXISTS idx_memory_episode_time ON memory_episode (occurred_at);
 CREATE INDEX IF NOT EXISTS idx_memory_episode_scope ON memory_episode (scope, ref_id);
+
+-- encounter_closed_inbox
+CREATE INDEX IF NOT EXISTS idx_encounter_closed_inbox_status
+    ON encounter_closed_inbox (status, event_id);
