@@ -17,11 +17,14 @@ consumers. The gateway is the only public entry point.
 | `argus-vlm` | LFM2.5-VL image understanding | HTTP 7031 | — |
 | `argus-llm` | LFM2.5 chat, intent router, tool loop, hosted memory | HTTP 7032 | `memory.db` |
 | `argus-voice` | Voice-session orchestration over gRPC | gRPC 7034, health 7035 | — |
+| `argus-guard` | Autonomous camera security: danger policy, incidents, gated actions | HTTP 7039 | `guard.db` |
 | `argus-tunnel` | Byte-transparent client and relay transport | per config | — |
 
 Every service binds loopback or the deployment's private network; the gateway
-proxies the public surface. Core NATS (`4222`) carries change events; typed
-gRPC covers camera/productivity/notification sync, voice sessions and
+proxies the public surface. Core NATS (`4222`) carries change events; the
+durable delivery legs (guard observations, encounter summaries, notification
+delivery) run on JetStream streams with PubAck settlement. Typed gRPC covers
+camera/productivity/notification sync, voice sessions, camera actions and
 identity operations. Each database volume is mounted by its owner only
 (rule 27): cross-domain reads go through the SDK clients.
 
@@ -44,9 +47,11 @@ These own a Conan/CMake graph and build on their own:
 ## Direct-import packages
 
 `argus-auth`, `argus-audio`, `argus-audit`, `argus-room`, `argus-phrase`,
-`argus-llm-client`, `argus-stt-client`, `argus-tts-client`. These have no
-Conan graph of their own: the service that links them provides the build
-context. They are declared once in their folder and linked by target name.
+`argus-llm-client`, `argus-stt-client`, `argus-tts-client`, `argus-vlm-client`.
+These have no Conan graph of their own: the service that links them provides
+the build context. They are declared once in their folder and linked by target
+name. `argus-vlm-client` is the thin HTTP client for the internal
+`/vlm/v1/describe` wire, linked today only by `argus-guard`.
 
 ## Dependency direction
 

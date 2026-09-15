@@ -12,6 +12,13 @@ is no shared monolith database: `argus.db` is retired and must not appear.
 | `productivity.db` | `argus-productivity` | `services/argus-productivity/database/schema.sql` | `database/productivity.db` |
 | `notification.db` | `argus-notification` | `services/argus-notification/database/schema.sql` | `database/notification.db` |
 | `memory.db` | `argus-llm` (`packages/argus-memory`) | `packages/argus-memory/database/schema.sql` | `database/memory.db` |
+| `guard.db` | `argus-guard` | `services/argus-guard/database/schema.sql` | `database/guard.db` |
+
+`guard.db` holds incidents, encounters and their transitions, assessments,
+expected guests, the observation inbox, the action outbox, the
+`encounter_closed` fan-out outbox, dead letters and the evidence retention
+manifest. It has no migration CLI: `guard_schema::migrate()` applies the
+additive schema in-process at boot.
 
 Runtime paths are relative to each process working directory. In the Compose
 stack the working directory is `/opt/argus`, so they resolve under
@@ -22,6 +29,31 @@ Each owner applies its schema at boot and owns a migration CLI
 (`argus-migrate-identity`, `-camera`, `-productivity`, `-notification`) that
 migrates legacy `argus.db` data when present. Migrations run from the owner
 service images as opt-in Compose init profiles.
+
+## Durable-delivery tables
+
+Every JetStream durable consumer receipts messages in an inbox table owned by
+the consuming database, so redeliveries settle without re-executing effects:
+
+- `notification_command` + `notification_delivery` (`notification.db`):
+  idempotent fan-out creates (SHA-256 fingerprint per `command_id`) and the
+  pending/sent delivery intents the broker must acknowledge.
+- `notification_delivery_inbox` (`identity.db` schema, written by the
+  gateway): per-delivery receipts (`received`/`dispatched`/`conflict`/
+  `dead_lettered`) with the canonical payload fingerprint. A conflicting
+  fingerprint for a known id is never dispatched; an unknown status fails
+  closed to `dead_lettered`.
+- `encounter_closed_inbox` (`memory.db`): per-encounter receipts with the
+  same states, so each `encounter_closed` event captures exactly one memory
+  episode.
+- `object_event_outbox` (`camera.db`) and `guard_observation_inbox` /
+  `guard_action_outbox` / `guard_encounter_outbox` (`guard.db`): the producer
+  and consumer sides of the camera→guard leg, keyed by `eventId` and by
+  deterministic `commandId`.
+
+Incident evidence binaries live in the private object store (RustFS over S3),
+referenced by `guard_evidence` / `camera_evidence` retention manifests; only
+the manifests are database rows.
 
 ## Access rules
 
