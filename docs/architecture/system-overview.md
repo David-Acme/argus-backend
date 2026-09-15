@@ -19,22 +19,29 @@ data.
 | VLM | `argus-vlm` | LFM2.5-VL image understanding |
 | LLM | `argus-llm` | LFM2.5 chat, intent routing, tool execution and hosted memory |
 | Voice | `argus-voice` | Pure-gRPC voice-session orchestration |
+| Guard | `argus-guard` | Autonomous camera security: danger policy, incidents, gated actions |
 | Tunnel | `argus-tunnel-client`, `argus-tunnel-relay` | Byte-transparent remote transport |
 | Contracts | `argus-contracts` | Versioned protobuf contracts and typed internal SDKs |
 
 The gateway is the only public surface. Internal services bind to loopback or
 the deployment's private network. Core NATS carries change and object events;
-typed gRPC contracts cover health, sync, voice and identity operations.
+the durable delivery legs (`object_detected` to guard, `encounter_closed` to
+the LLM host, notification `delivery` to the gateway) run as JetStream streams
+with PubAck settlement and inbox receipts — see
+[wire-nats-subjects.md](wire-nats-subjects.md). Typed gRPC contracts cover
+health, sync, voice, camera actions and identity operations. Fleet-secret
+caller credentials (`x-argus-credential`) authorize the service-to-service
+edges; authority comes from the matched secret, never from declared metadata.
 
 SQLite ownership is split by domain. Identity, camera, productivity,
-notification and memory each own their data; the retired `argus.db` is not a
+notification, memory and guard each own their data; the retired `argus.db` is not a
 runtime database. Cross-owner access is read-only or goes through a typed
 service contract, as recorded in each owner's `CONTEXT.md`.
 
 ## Build model
 
 The repository root intentionally has no `CMakeLists.txt`,
-`CMakePresets.json` or `conanfile.txt`. Nineteen standalone owner projects
+`CMakePresets.json` or `conanfile.txt`. Twenty standalone owner projects
 each carry their own Conan graph and `dev`/`prod` CMake presets.
 
 Build and test all projects:
@@ -89,6 +96,7 @@ Each process reads its own ignored `config.toml`, generated from the adjacent
 | VLM | HTTP `7031` |
 | LLM | HTTP `7032` |
 | Voice | gRPC `7034`, health HTTP `7035` |
+| Guard | HTTP `7039` |
 
 Standalone binaries are produced inside their owner folder, for example:
 
@@ -145,6 +153,20 @@ The operator is read-only toward camera hardware. Audible intervention
 argus-guard's fleet-secret gated `argus.camera.v1.CameraActionService` and the
 camera's `[actions].enabled` gate. Overlay output is disabled by default and is
 intended only for local diagnostics.
+
+## Autonomous guard
+
+`argus-guard` consumes `argus.camera.v1.object_detected` through a durable
+JetStream consumer, evaluates a deterministic danger matrix (hard floors for
+unknown-while-away/armed, alert zones, night, escalation and repeats) with
+bounded read-only model evidence, and raises only policy-authorized actions
+through the single `guard-action.cc` enforcement point and the persisted
+`guard_action_outbox`. It publishes a readiness `heartbeat` (the gateway's raw
+camera notifier yields while it is fresh) and `encounter_closed` summaries —
+the only camera feed long-term memory reads. Details live in
+`services/argus-guard/CONTEXT.md`, the
+[camera-guardian deep analysis](camera-guardian-deep-analysis.md) and the
+[camera-guard automation plan](../history/plans/camera-guard-automation-plan.md).
 
 ## API invariants
 

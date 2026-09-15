@@ -2,7 +2,7 @@
 
 ## Standalone projects
 
-The repository root has no CMake project. Nineteen owner projects build
+The repository root has no CMake project. Twenty owner projects build
 independently, each with its own Conan graph and `dev`/`prod` presets:
 
 ```
@@ -10,7 +10,8 @@ packages/argus-common      packages/argus-identity   services/argus-gateway
 packages/argus-contracts   packages/argus-sync       services/argus-camera
 packages/argus-cert        packages/argus-memory     services/argus-productivity
 packages/argus-socket      packages/argus-intent     services/argus-notification
-packages/argus-sqlite                                services/argus-tts
+packages/argus-sqlite                                services/argus-guard
+                                                     services/argus-tts
                                                      services/argus-stt
                                                      services/argus-vlm
                                                      services/argus-llm
@@ -35,7 +36,7 @@ at build time. Pins come from `.gitmodules` and `git submodule status`.
 
 | Dependency | Type | Pin | Compiled by |
 |---|---|---|---|
-| `sqlite-vec` | vendored | v0.1.10-alpha.4 | gateway, camera, productivity, notification, cert, sync, identity, memory, sqlite, llm |
+| `sqlite-vec` | vendored | v0.1.10-alpha.4 | gateway, camera, productivity, notification, guard, cert, sync, identity, memory, sqlite, llm |
 | `ncnn` | submodule | `4c1110c9` | gateway, camera, productivity, notification, cert, sync, identity |
 | `llama.cpp` | submodule | `31558dbb` | memory, llm, vlm |
 | `sherpa-onnx` | submodule | `dc130227` | stt |

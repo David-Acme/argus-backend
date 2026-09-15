@@ -3,7 +3,7 @@
 ## Orchestrator
 
 ```bash
-./scripts/build-all.sh dev                 # Debug + ctest for all 19 projects
+./scripts/build-all.sh dev                 # Debug + ctest for all 20 projects
 ./scripts/build-all.sh prod                # Release + ctest
 ./scripts/build-all.sh prod --no-tests     # Release only (image build)
 ./scripts/build-all.sh dev --only argus-camera
@@ -38,5 +38,5 @@ ctest --test-dir build/dev --output-on-failure
 
 ## Current scale
 
-19 projects and 206 CTest tests in `dev`. Gateway doctest assertions
-367/78/48/20 and tunnel 106/50/19/28/2/26/24.
+20 projects in `dev`. Per-suite test and assertion counts move with the
+suites — read them from `ctest -N` inside each project.

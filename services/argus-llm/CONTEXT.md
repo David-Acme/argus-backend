@@ -99,3 +99,34 @@ untouched.
 The docker compose must mount the shared `models/` tree (at least
 `models/llm`) into this service's working directory — the engine reads the
 GGUF relative to the `[llm]` config keys.
+
+## Constrained generation (chat path)
+
+- The chat DTO carries `tools` (default true), `grammar` (GBNF source, max 8
+  KiB) and `grammar_required`. `tools:false` keeps the request on the direct
+  engine path even when tools are registered; raw JSON callers (argus-guard)
+  use it to avoid the memory-tool preamble (~400 tokens of prefill on every
+  call). A `grammar` installs a `llama_sampler_init_grammar` sampler rooted
+  at `root`; when the grammar fails to compile, `grammar_required` aborts the
+  generation instead of sampling free. Off-turn memory workers
+  (`processCompact`/`processProfile`) pass an empty grammar explicitly.
+- `user_id` (D4) scopes tool execution to the authenticated caller.
+
+## Encounter-closed consumer (camera guard feed)
+
+With `[memory] observe_camera_events = true`, `main.cc` wires an
+`EncounterClosedConsumer`
+(`src/shared/services/encounter-closed/encounter-closed-consumer.cc`): a
+durable JetStream pull on `argus.guard.v1.encounter_closed`
+(`ARGUS_GUARD`, durable `argus-llm-encounters`, `maxDeliver = 10`, poison
+`Term` after 3 failed attempts). Each event is receipted in
+`encounter_closed_inbox` (same states as the gateway delivery inbox:
+`received`/`dispatched`/`conflict`/`dead_lettered`, SHA-256 canonical
+fingerprint, conflict never captured) and captured exactly once through the
+injected `capture`, which calls `observeSystemEvent` with the owner's scope —
+never rule-parsed, never a fact. The owner resolves through
+`IdentityClient::listNotifiableUsers` (first notifiable user, their language
+for the summary line). The consumer stops before `memory.shutdown()` in the
+teardown order, waiting in-flight handlers out. This is the only camera feed
+long-term memory reads; the raw `object_detected` subscription stays an
+episodic throttle beside it.

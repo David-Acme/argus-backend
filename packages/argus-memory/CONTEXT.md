@@ -118,3 +118,15 @@ With `[memory] observe_camera_events` argus-llm subscribes
 throttle) through `observeSystemEvent`, scoped to the first notifiable user and
 carrying the person ids as entities. Episodes only: no rule parsing, no facts,
 and never anything a camera-only person said (see stranger isolation).
+
+## Encounter-closed inbox (camera guard feed)
+
+`encounter_closed_inbox` receipts the durable `argus.guard.v1.encounter_closed`
+feed in `memory.db` (`MemoryGraphRepository::claimEncounterClosed` and
+settles): `received` replays, `dispatched` drops redeliveries, `conflict`
+(same id, different canonical fingerprint) never captures, `dead_lettered`
+parks poison, and an unknown persisted status fails closed to `dead_lettered`.
+The inbox DDL is additive and `SqliteGraph::open` now always applies the
+schema file, so existing stores gain the table without losing a row. Each
+receipt captures exactly one owner-scoped episode through `observeSystemEvent`
+— this is the only camera feed that survives as long-term memory.

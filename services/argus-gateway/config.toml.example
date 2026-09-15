@@ -101,6 +101,9 @@ silent_start = -1
 silent_end = -1
 # Caller capability credential for the gateway -> notification edge.
 credential = ""
+# Freshness window for the argus-guard heartbeat: while a heartbeat is
+# newer than this, the raw camera notifier yields to guard (seconds).
+guard_heartbeat_timeout_s = 30
 
 [remote]
 tunnel_port = 0

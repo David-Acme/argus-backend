@@ -22,6 +22,22 @@ Wire contracts documented under `docs/architecture/`:
 `wire-sync-golden-frames.md`, `wire-camera-media.md` and
 `wire-nats-subjects.md`.
 
+## Service-to-service auth and the camera action surface
+
+- `sdk/grpc/grpc-server-identity.hxx` types the caller-credential edge:
+  `x-argus-credential` matched against the receiver's configured caller set
+  (`CallerCredential{service, secret}`); authority comes from the matched
+  secret, never from declared user/role metadata. Comparison is
+  constant-time.
+- `proto/argus/camera/v1/actions.proto` (`CameraActionService`) is the only
+  audible/physical surface: `Announce`, `Alarm`, `SetSiren`, `GetPersonCrop`,
+  `Listen`, with `CommandOutcome` (`SUCCEEDED`, `DUPLICATE_SUCCEEDED`,
+  `IN_FLIGHT`, `INDETERMINATE`, `REJECTED`, `RETRYABLE_FAILED`, `CONFLICT`).
+  The thin wrapper is `argus::sdk-camera-actions`
+  (`sdk/camera/camera-action-client.cc`).
+- `command_id` is the idempotency key on the notification
+  `CreateNotifications` fan-out and on every camera action command.
+
 ## Validation
 
 ```sh

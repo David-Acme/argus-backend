@@ -456,3 +456,36 @@ table. The app keeps working without any update.
   The same listener gained `ValidateToken` and `CheckDeviceCredential`,
   which the whole fleet's filter chain calls instead of reading identity.db:
   the gateway is the only process that still touches those rows.
+
+## Camera guard edge (F11): heartbeat fallback, guard proxy, durable delivery
+
+- **Guard heartbeat fallback**: `camera_notifier` also subscribes
+  `argus.guard.v1.heartbeat` and tracks the last fresh beat
+  (`[notifications] guard_heartbeat_timeout_s`, default 30 s). While guard is
+  fresh the raw `object_detected` path suppresses itself ("guard owns
+  notifications"); when guard is down or disabled only hard signals
+  (`severity == critical`, `rule == person_in_alert_zone`) still create
+  notifications through `argus.notification.v1`. Budget, silent hours and the
+  per-minute digest apply unchanged to whatever the fallback emits.
+- **`/guard` proxy**: `[guard] proxy_url` (default `http://127.0.0.1:7039`)
+  routes `/guard` (up to 5 segments) to argus-guard's owner-only
+  administrative API (mode, incidents, expected guests, person promotion).
+  Rule 9 holds: the gateway never calls camera action RPCs itself; audible
+  intervention belongs to guard.
+- **Durable delivery consumer**: `NotificationDeliveryConsumer`
+  (`src/sync/notification-delivery-consumer.cc`) is a durable JetStream pull
+  on `argus.notification.v1.delivery` (`ARGUS_NOTIFICATION`, durable
+  `argus-gateway-delivery`, `maxDeliver = 10`, poison `Term` after 3 failed
+  attempts). Each event is receipted first in `notification_delivery_inbox`
+  (DDL owned by `packages/argus-identity/database/schema.sql`, applied by the
+  gateway at boot): same id plus same canonical SHA-256 fingerprint is a
+  replay (dispatched at most once per receipt), same id plus a different
+  fingerprint is a conflict that is never dispatched, an unknown persisted
+  status fails closed to `dead_lettered`. Dispatch rebuilds the notification
+  row and emits the `Add` frame into the recipient's user room; a crash
+  between dispatch and settlement replays the emit on redelivery
+  (at-least-once — one receipt row, possibly two socket emits).
+- **Credential sync sources**: the camera/productivity/notification sync legs
+  authenticate with per-edge caller credentials (`[notifications] credential`
+  for the notification edge); authority comes from the matched fleet secret,
+  never from declared metadata.

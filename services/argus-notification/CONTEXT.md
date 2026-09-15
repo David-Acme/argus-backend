@@ -123,3 +123,31 @@ service is the only writer and reader of those rows: the gateway's
 camera-notifier creates through `argus.notification.v1` and its `/sync`
 page pulls through the same contract. Only the notification-TOKEN side is
 exclusively this service's.
+
+## Durable command inbox and delivery intents (F11 / R5)
+
+- **`notification_command`** makes `CreateNotifications` idempotent: one row
+  per `command_id` with the expected fan-out count and the SHA-256
+  fingerprint of the normalized batch. A reused id with the same payload
+  replays the persisted outcome; a reused id with a different payload raises
+  `NotificationCommandConflict` (`ALREADY_EXISTS`). The whole fan-out commits
+  in one `IMMEDIATE` transaction (multi-row `INSERT ... RETURNING id` plus
+  multi-row delivery intent rows), so the emit mirrors strictly persisted
+  rows.
+- **`notification_delivery`** holds one intent row per recipient
+  (`pending`/`sent`). `NotificationService` takes its sinks as injected
+  `Dependencies` (`deliverySink`, `pushSink`, `pushRequired`) — no sink
+  singletons, no Core-NATS fallback. `deliverPending` ensures the
+  `ARGUS_NOTIFICATION` stream, then drains pending intents in 200-row pages:
+  each publishes through `NatsNotificationDeliverySink` (JetStream
+  `publishWithMsgId`, `Nats-Msg-Id = notification-delivery:<deliveryId>`,
+  settle only on PubAck), fires the best-effort push intent, and marks the
+  row sent. A refused publish leaves the intent `pending` for the 60-second
+  delivery reconciler (`startDeliveryReconciler`); nothing is ever lost on a
+  broker outage, and a restart replays from the table.
+- **`markAsRead`** still publishes per-change user audits over
+  `argus.notification.v1.change`; the `Add` leg moved to the durable
+  delivery subject once the sink is installed.
+- **Push intents** (`[push].enabled`, default off) stay at-most-once
+  fire-and-forget accelerators toward `argus-relay`; the `/sync` fan-out
+  after durable delivery is the guarantee.

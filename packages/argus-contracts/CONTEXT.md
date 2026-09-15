@@ -108,3 +108,32 @@ metadata contract: every owner handler reads the caller through
 RPC) instead of re-parsing the metadata per service.
 The contracts subdirectory guards are per-module now, so a build that adds
 `argus-contracts` twice still defines whichever SDK targets are missing.
+
+## Caller credentials and the camera action surface (camera guard)
+
+Service-to-service authority no longer rides declared metadata.
+`sdk/grpc/grpc-client-base` attaches `x-argus-credential`
+(`addCallerCredential`); `sdk/grpc/grpc-server-identity.hxx` matches it
+against the receiver's configured `CallerCredential{service, secret}` set
+(`authorizeCaller`, constant-time compare) and the matched secret is the
+authority — a forged `x-argus-user`/`x-argus-role` pair without the secret
+authenticates as nobody. Each RPC declares its own accepted caller set.
+
+`proto/argus/camera/v1/actions.proto` (`CameraActionService`) is the single
+audible/physical surface, served by argus-camera on 7036 and called only by
+argus-guard: `Announce` (remote TTS + talk), `Alarm` (procedural tone),
+`SetSiren` (arming as an expiring `lease_seconds` lease), `GetPersonCrop`
+(bounded per-track snapshot ring) and `Listen` (endpointed capture + STT).
+Outcomes are `CommandOutcome` (`SUCCEEDED`, `DUPLICATE_SUCCEEDED`,
+`IN_FLIGHT`, `INDETERMINATE`, `REJECTED`, `RETRYABLE_FAILED`, `CONFLICT`);
+the thin wrapper is `argus::sdk-camera-actions`
+(`sdk/camera/camera-action-client.cc`, 60 s call timeout). Commands are
+idempotent by `command_id` (length-prefixed SHA-256 fingerprint, fenced
+settle, expired claims reconciled to `indeterminate`), and the RPC requires
+both the fleet secret and the `[actions].enabled` gate.
+
+The notification `CreateNotifications` fan-out is idempotent the same way:
+`command_id` plus the persisted payload fingerprint — a reused id with a
+different payload answers `ALREADY_EXISTS`, a reused id with the same payload
+replays the persisted counts. The SDK result type carries
+`Success`/`Conflict`/`Rejected`/`Unavailable` instead of an optional.

@@ -3215,3 +3215,88 @@ ordered.
 - Verified: all 10 service images build and contain their binaries, the full
   dev/prod orchestrator stays green, and the Spanish sweep covers every
   tracked Markdown file.
+
+## F11 — the autonomous camera guard (2026-09-11/14)
+
+The camera-guardian deep analysis (`docs/architecture/camera-guardian-deep-analysis.md`,
+audit 2026-09-12) and the automation plan
+(`docs/history/plans/camera-guard-automation-plan.md`) called for an autonomous
+security service, and F11 builds it plus the fleet edges it needs.
+
+- `services/argus-guard/` is the twentieth standalone project: own binary,
+  Conan graph, presets, image and `guard.db` (12 tables — incidents,
+  encounters and transitions, assessments, expected guests, the observation
+  inbox, the action and encounter-closed outboxes, dead letters, evidence).
+  It consumes `argus.camera.v1.object_detected` through a durable JetStream
+  consumer, evaluates the deterministic danger matrix (hard floors for
+  unknown-while-away/armed, alert zones, night, escalation, repeats) with
+  bounded read-only model evidence (`GuardAssessment`: VLM caption plus an
+  optional LLM tool loop constrained by GBNF, never a physical tool), and
+  raises actions only through the single `guard-action.cc` enforcement point
+  and the persisted outbox. A 7-stage inbox saga (incident, encounter,
+  dialogue, assessment, resolve, effects, evidence) with idempotent keys
+  makes redeliveries resume instead of repeat; the second-to-last broker
+  delivery parks to `guard_dead_letter`. It publishes `heartbeat` (the
+  gateway raw notifier yields while fresh) and `encounter_closed` summaries —
+  the only camera feed memory reads. Siren arming defaults off and is a
+  camera-side expiring lease; the `/guard` owner-only API (mode, incidents,
+  expected guests, person promotion) proxies through the gateway.
+- Service-to-service authority moves to caller credentials:
+  `x-argus-credential` matched against the receiver's configured caller set,
+  authority from the matched secret, never from declared metadata
+  (`sdk/grpc/grpc-server-identity.hxx`).
+- `argus.camera.v1.CameraActionService` (port 7036) is the only
+  audible/physical surface: `Announce`, `Alarm`, `SetSiren`, `GetPersonCrop`,
+  `Listen` — fleet-secret gated, idempotent by `command_id`, siren as a
+  lease. The camera side gains the durable `object_event_outbox` (PubAck
+  settle), per-track dwell with adaptive inference cadence, best-shot
+  identity matching, the image health monitor and the `SnapshotStore` ring.
+- Identity grows the fleet-gated person RPC (`Identify`/`Enroll`/`Touch`/
+  `Tag`/`Promote`/`ListNotifiableUsers`), `person.status`
+  (`candidate`/`known`), `person_tag`/`person_snapshot`, and a human-gated
+  `PromotePerson` (owner bearer plus active bound session on the device).
+- argus-notification stays policy owner but the camera-notifier create moves
+  to `argus.notification.v1` (rule 27); push intents remain best-effort
+  accelerators. TTS caches repeated short syntheses (the guard greetings);
+  `argus-audio` gains the energy+ZCR `EndpointDetector` the camera `Listen`
+  path uses; `argus-vlm-client` is the thin remote-vision client guard links
+  instead of hand-rolling the wire.
+- Deploy: `argus-guard` and RustFS (`rustfs` + one-shot `rustfs-init`) join
+  the Compose stack; per-owner bind mounts replace the named DB volumes;
+  `scripts/provision-host.sh` prepares a host idempotently (Docker, PKI,
+  per-service configs with unique shared secrets, S3 credentials, optional
+  volume migration); evidence binaries live in the private bucket under
+  `cameras/<id>/` and `guard/incidents/<id>/`.
+- Verified: the full `dev` orchestrator green across all 20 projects with 0
+  errors and 0 warnings; the wire map (`wire-nats-subjects.md`) extended for
+  every new subject and stream.
+
+## R5 — durable delivery (2026-09-14)
+
+F11 shipped the guard and its edges; R5 hardens every at-least-once leg so a
+broker outage, a restart or a crash replays state instead of losing or
+duplicating effects.
+
+- `NatsBus::ensureStream` reconciles instead of assuming: identical config
+  accepted, `MaxAge`/`Duplicates` updated, subject/retention/storage mismatch
+  refused explicitly; `publishWithMsgId` stays JetStream-only with PubAck
+  and never falls back to core NATS.
+- Notification delivery is injected, not global: `NotificationService` takes
+  its delivery/push sinks as `Dependencies`, the `notification_command`
+  inbox makes creates idempotent by fingerprint, the `notification_delivery`
+  intent table drains only on PubAck through a 60-second reconciler, and the
+  gateway's `NotificationDeliveryConsumer` receipts each delivery in
+  `notification_delivery_inbox` (canonical fingerprint replays dispatch at
+  most once per receipt; conflicts never dispatch; unknown states fail
+  closed to `dead_lettered`).
+- The LLM host consumes `encounter_closed` durably into
+  `encounter_closed_inbox` (`memory.db`) and captures exactly one
+  owner-scoped episode per receipt; chat gains `tools` opt-out plus
+  `grammar`/`grammar_required` constrained generation. The guard lifecycle
+  (`LifecycleGuard` + per-event `ExecutionLease`) survives destroy races and
+  teardown.
+- Verified red-green: the full `dev` orchestrator stays green, the live
+  JetStream suites (notification producer/consumer, encounter feed, guard
+  DLQ, camera outbox) pass against a real broker across outage, restart,
+  duplicate, crash-before-commit and max-deliver scenarios. Landed as small
+  commits on `round5/reliability` and merged to `master`.

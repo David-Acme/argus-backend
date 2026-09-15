@@ -41,7 +41,7 @@ preset and CTest commands from that project folder.
 ## Runtime
 
 The gateway is the only public entry point. Camera, productivity,
-notification, TTS, STT, VLM, LLM, voice and tunnel capacities run as separate
+notification, TTS, STT, VLM, LLM, voice, guard and tunnel capacities run as separate
 processes behind it, each from its own image. See
 `argus-deploy/docker-compose.yml` for the complete topology and
 `docs/operations/deployment-docker.md` for the image build.
