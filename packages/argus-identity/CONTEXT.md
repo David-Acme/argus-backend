@@ -113,3 +113,18 @@ without user (empty name), persists the embedding and its `face_vec` row,
 optionally stores the JPEG crop in `person_snapshot`, and emits the `person`
 sync add. `person_tag` holds LLM tags. The face engine stays inside this
 process; argus-camera only ships crops.
+
+`PromotePerson` (candidate → known) is the one mutating call with a human
+gate: the owner bearer token plus the device fingerprint travel in the call,
+the service verifies the access token, requires an Owner actor with an
+active bound session on that device (`hasActiveSession`), promotes, and
+publishes the `person` module audit. `person.status` (`candidate`/`known`)
+defaults to `known` for legacy rows; `IdentifyPerson` reports
+`trusted = (status == known)` and attaches the linked user only for active
+users.
+
+The schema also carries `notification_delivery_inbox` — the gateway's durable
+delivery receipt table (see `services/argus-gateway/CONTEXT.md`). It lives
+here because the gateway applies this schema file at boot and the receipts
+belong to the gateway-owned identity database; argus-notification never
+touches it.

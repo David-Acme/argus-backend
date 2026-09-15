@@ -191,3 +191,33 @@ and `argus-gateway`, which all repoint that block at `../argus-common` as of
 this step. Those six projects later gained complete standalone dependency
 closures in F8 C2. The repository root build was removed in F8 C4, so this
 paragraph remains only as the history behind those fallback blocks.
+
+## Camera-guard and durable-delivery additions (f11 / r5)
+
+- **Guard/notification enums** (`src/shared/enums.hxx`): `PersonStatus`,
+  `EncounterState`, `GuardMode`, `GuardDanger` (+ rank), `GuardIntentStatus`
+  (+ resumable/terminal), `GuardActionKind`, `ObservationStatus`,
+  `ObjectEventStatus`, `NotificationDeliveryStatus`,
+  `NotificationDeliveryReceipt` and `EncounterClosedReceipt` — every
+  `fromString` returns `std::optional` and fails closed on unknown input.
+- **Self-contained hashes** (`src/shared/utils/sha256/`): `argus::hash::Sha256`
+  and `sha256Hex` with no crypto dependency; every inbox fingerprint and
+  command fingerprint in the fleet hashes through it (length-prefixed field
+  encoding, canonical JSON for wire payloads). `base64` encode/decode and
+  `json-util::isValid` ride alongside.
+- **Durable NATS bus** (`src/shared/wrapper/nats/`): `publishWithMsgId` is
+  JetStream-only with PubAck — it never falls back to core NATS, so an
+  unstored intent stays pending. `ensureStream` reconciles an existing stream
+  (identical config accepted, `MaxAge`/`Duplicates` updated, subject or
+  retention/storage mismatch refused explicitly) and `streamInfo` exposes the
+  live config. `subscribeDurable` attaches explicit-ack consumers
+  (`AckWait 60 s`) with `Ack`/`Nak`/`Term` settlement; every durable consumer
+  marshals the cnats callback into the Drogon loop before touching the
+  database. Subject constants live in `nats-subject.hxx`.
+- **Delivery contract** (`src/shared/contracts/notification-delivery-sink.hxx`):
+  `NotificationDeliveryEvent` (`deliveryId`, `notificationId`, `userId`, row
+  fields, `fromJson` rejecting non-positive ids) and the
+  `NotificationDeliverySink` interface (`ensureStream`, `publish`);
+  `notification_delivery::messageId` is the `Nats-Msg-Id` for dedup.
+- **Storage** (`src/shared/services/storage/`): generic `S3PutInput`/`put`
+  beside the portrait helper, backing guard/camera evidence uploads.
