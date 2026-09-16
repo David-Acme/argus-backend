@@ -4,6 +4,9 @@
 #include <guard-policy.hxx>
 #include <shared/utils/base64/base64.hxx>
 
+#include <array>
+#include <iomanip>
+#include <iostream>
 #include <vector>
 
 namespace
@@ -394,4 +397,197 @@ TEST_CASE("greeting variants rotate by encounter and stay empty when unset")
   CHECK(guard_policy::pickGreeting(6, variants) == "one");
   CHECK(guard_policy::pickGreeting(-7, variants) == "two");
   CHECK(guard_policy::pickGreeting(3, {}) == "");
+}
+
+namespace
+{
+Json::Value personObject()
+{
+  Json::Value object(Json::objectValue);
+  object["class"] = "person";
+  object["trackId"] = Json::Int64(4);
+  Json::Value bbox(Json::objectValue);
+  bbox["w"] = 40.0;
+  bbox["h"] = 40.0;
+  object["bbox"] = bbox;
+  return object;
+}
+
+Json::Value singlePersonEvent(Json::Value person)
+{
+  Json::Value event(Json::objectValue);
+  event["cameraId"] = Json::Int64(1);
+  event["rule"] = "person_in_alert_zone";
+  event["severity"] = "critical";
+  event["trackId"] = Json::Int64(4);
+  Json::Value objects(Json::arrayValue);
+  objects.append(std::move(person));
+  event["objects"] = objects;
+  return event;
+}
+} // namespace
+
+TEST_CASE("a schemaVersion 2 event without identityState maps to unrecognized")
+{
+  Json::Value person = personObject();
+  person["identity"] = "unknown";
+  const auto signals = guard_policy::parseObjectEvent(singlePersonEvent(person));
+  CHECK(signals.hasUnknown);
+  CHECK_FALSE(signals.hasKnown);
+  CHECK(signals.identityState == IdentityState::Unrecognized);
+  CHECK_FALSE(signals.identityAvailable);
+  CHECK(signals.identifyAttempts == 0);
+  CHECK(signals.scoreSamples == 0);
+}
+
+TEST_CASE("an explicit unobservable state lowers nothing by itself")
+{
+  Json::Value person = personObject();
+  person["identity"] = "unknown";
+  person["identityState"] = "unobservable";
+  person["identifyAttempts"] = 0;
+  person["scoreMedian"] = 0.3;
+  person["scoreSamples"] = 3;
+  person["zoneWindows"] = 1;
+  person["trackWindows"] = 2;
+  person["areaSpread"] = 1.2;
+  const auto signals = guard_policy::parseObjectEvent(singlePersonEvent(person));
+  CHECK(signals.hasUnknown);
+  CHECK(signals.identityState == IdentityState::Unobservable);
+  CHECK(signals.identityAvailable);
+  CHECK(signals.scoreMedian == doctest::Approx(0.3));
+  CHECK(signals.scoreSamples == 3);
+  CHECK(signals.zoneWindows == 1);
+  CHECK(signals.trackWindows == 2);
+  CHECK(signals.areaSpread == doctest::Approx(1.2));
+}
+
+TEST_CASE("an unknown identityState string fails closed to unrecognized")
+{
+  Json::Value person = personObject();
+  person["identity"] = "unknown";
+  person["identityState"] = "maybe";
+  const auto signals = guard_policy::parseObjectEvent(singlePersonEvent(person));
+  CHECK(signals.hasUnknown);
+  CHECK_FALSE(signals.hasKnown);
+  CHECK(signals.identityState == IdentityState::Unrecognized);
+}
+
+TEST_CASE("a contradictory known claim never grants the known reading")
+{
+  Json::Value person = personObject();
+  person["identity"] = "known";
+  person["personId"] = Json::Int64(7);
+  person["identityState"] = "unobservable";
+  const auto signals = guard_policy::parseObjectEvent(singlePersonEvent(person));
+  CHECK(signals.hasUnknown);
+  CHECK_FALSE(signals.hasKnown);
+  CHECK(signals.identityState == IdentityState::Unobservable);
+}
+
+TEST_CASE("an agreeing known claim keeps the known reading")
+{
+  Json::Value person = personObject();
+  person["identity"] = "known";
+  person["personId"] = Json::Int64(7);
+  person["identityState"] = "known";
+  const auto signals = guard_policy::parseObjectEvent(singlePersonEvent(person));
+  CHECK(signals.hasKnown);
+  CHECK_FALSE(signals.hasUnknown);
+  CHECK(signals.identityState == IdentityState::Known);
+}
+
+TEST_CASE("an empty bucket is fully novel and a written one is not")
+{
+  CHECK(guard_policy::baselineNovelty(guard_policy::decayBaseline(0.0, 0)) ==
+        doctest::Approx(1.0));
+  CHECK(guard_policy::baselineNovelty(guard_policy::decayBaseline(0.0, 99999)) ==
+        doctest::Approx(1.0));
+  CHECK(guard_policy::baselineNovelty(1.0) == doctest::Approx(0.5));
+  CHECK(guard_policy::baselineNovelty(9.0) == doctest::Approx(0.1));
+}
+
+TEST_CASE("a stored baseline ages with the elapsed half-life")
+{
+  const auto week = static_cast<int64_t>(guard_policy::kBaselineHalfLifeS);
+  CHECK(guard_policy::decayBaseline(4.0, 0) == doctest::Approx(4.0));
+  CHECK(guard_policy::decayBaseline(4.0, week) == doctest::Approx(2.0));
+  CHECK(guard_policy::decayBaseline(4.0, week * 2) == doctest::Approx(1.0));
+  CHECK(guard_policy::decayBaseline(4.0, week * 4) == doctest::Approx(0.25));
+  CHECK(guard_policy::decayBaseline(4.0, -week) == doctest::Approx(4.0));
+  CHECK(guard_policy::decayBaseline(0.0, week * 4) == doctest::Approx(0.0));
+}
+
+TEST_CASE("novelty falls monotonically and never pins to one value")
+{
+  double previous = 2.0;
+  for (int agedRate = 0; agedRate <= 100; ++agedRate) {
+    const double novelty =
+        guard_policy::baselineNovelty(static_cast<double>(agedRate));
+    CHECK(novelty < previous);
+    CHECK(novelty > 0.0);
+    CHECK(novelty <= 1.0);
+    previous = novelty;
+  }
+}
+
+TEST_CASE("a simulated week keeps novelty informative")
+{
+  constexpr int kHours = 168;
+  std::array<int, kHours> routine{};
+  routine.fill(0);
+  for (int day = 0; day < 7; ++day) {
+    routine[day * 24 + 7] = 2;
+    routine[day * 24 + 12] = 1;
+    routine[day * 24 + 18] = 4;
+  }
+
+  std::array<double, kHours> stored{};
+  std::array<int64_t, kHours> updatedAt{};
+  std::array<double, kHours> novelty{};
+  std::array<bool, kHours> seen{};
+  for (int64_t hour = 0; hour < 2 * kHours; ++hour) {
+    const int bucket = static_cast<int>(hour % kHours);
+    for (int index = 0; index < routine[bucket]; ++index) {
+      const double decayed = guard_policy::decayBaseline(
+          stored[bucket], hour * 3600 - updatedAt[bucket]);
+      if (hour >= kHours && !seen[bucket]) {
+        novelty[bucket] = guard_policy::baselineNovelty(decayed);
+        seen[bucket] = true;
+      }
+      stored[bucket] = decayed + 1.0;
+      updatedAt[bucket] = hour * 3600;
+    }
+  }
+
+  std::cout << "novelty across a simulated week (week 2, per observed hour)\n";
+  std::cout << std::fixed << std::setprecision(3);
+  std::cout << "hour  ";
+  for (int day = 0; day < 7; ++day)
+    std::cout << "day" << day << "    ";
+  std::cout << "\n";
+  for (int hour = 0; hour < 24; ++hour) {
+    std::cout << (hour < 10 ? " " : "") << hour << "   ";
+    for (int day = 0; day < 7; ++day) {
+      const int bucket = day * 24 + hour;
+      if (!seen[bucket])
+        std::cout << "   --   ";
+      else
+        std::cout << " " << novelty[bucket] << " ";
+    }
+    std::cout << "\n";
+  }
+
+  const double neverSeen =
+      guard_policy::baselineNovelty(guard_policy::decayBaseline(0.0, 0));
+  CHECK(neverSeen == doctest::Approx(1.0));
+  for (int day = 0; day < 7; ++day) {
+    const double busy = novelty[day * 24 + 18];
+    const double regular = novelty[day * 24 + 7];
+    const double rare = novelty[day * 24 + 12];
+    CHECK(busy > 0.0);
+    CHECK(busy < regular);
+    CHECK(regular < rare);
+    CHECK(rare < neverSeen);
+  }
 }

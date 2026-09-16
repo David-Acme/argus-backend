@@ -2,6 +2,7 @@ argus_module(NAME guard
     SOURCES
         guard-action.cc
         guard-assessment.cc
+        guard-belief.cc
         guard-dialogue.cc
         guard-policy.cc
         guard-repository.cc

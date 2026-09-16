@@ -19,47 +19,14 @@
 #include <unistd.h>
 #include <vector>
 
+#include "temp-db.hxx"
+#include "wait-for-boot.hxx"
+
+using guard_test::TempDb;
+using guard_test::waitForBoot;
+
 namespace
 {
-int tempCounter()
-{
-  static std::atomic<int> counter{0};
-  return counter.fetch_add(1);
-}
-
-class TempDb
-{
-public:
-  explicit TempDb(const char* stem)
-      : path_(std::string(stem) + "-" + std::to_string(::getpid()) + "-" +
-              std::to_string(tempCounter()) + ".db")
-  {
-  }
-
-  ~TempDb()
-  {
-    std::remove(path_.c_str());
-    std::remove((path_ + "-wal").c_str());
-    std::remove((path_ + "-shm").c_str());
-  }
-
-  const std::string& path() const { return path_; }
-
-private:
-  std::string path_;
-};
-
-bool waitForBoot(std::chrono::milliseconds timeout)
-{
-  const auto deadline = std::chrono::steady_clock::now() + timeout;
-  while (std::chrono::steady_clock::now() < deadline) {
-    if (drogon::app().isRunning())
-      return true;
-    std::this_thread::sleep_for(std::chrono::milliseconds(10));
-  }
-  return drogon::app().isRunning();
-}
-
 std::string scalar(const std::string& sql)
 {
   const auto rows = DbService::client()->execSqlSync(sql);

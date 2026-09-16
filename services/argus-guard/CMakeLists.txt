@@ -98,7 +98,8 @@ foreach(TEST_NAME IN ITEMS guard-policy-test guard-assessment-test
         guard-risk-test guard-schema-test guard-migration-test
         guard-adversarial-test guard-dialogue-test guard-saga-test
         guard-dialogue-service-test guard-dlq-crash-test
-        guard-retry-lifecycle-test)
+        guard-retry-lifecycle-test guard-belief-test
+        guard-belief-scope-test)
     add_executable(${TEST_NAME} tests/unit/${TEST_NAME}.cc)
 
     # This folder is added EXCLUDE_FROM_ALL, so the suites have to opt back
@@ -107,12 +108,15 @@ foreach(TEST_NAME IN ITEMS guard-policy-test guard-assessment-test
     set_target_properties(${TEST_NAME} PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
     target_link_libraries(${TEST_NAME} PRIVATE argus::guard doctest::doctest)
+    target_include_directories(${TEST_NAME} PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/support)
     target_compile_options(${TEST_NAME} PRIVATE -Wall -Wextra)
     if(TEST_NAME STREQUAL "guard-schema-test"
        OR TEST_NAME STREQUAL "guard-migration-test"
        OR TEST_NAME STREQUAL "guard-saga-test"
        OR TEST_NAME STREQUAL "guard-retry-lifecycle-test"
        OR TEST_NAME STREQUAL "guard-dialogue-service-test"
+       OR TEST_NAME STREQUAL "guard-belief-scope-test"
        OR TEST_NAME STREQUAL "guard-dlq-crash-test")
         target_compile_definitions(${TEST_NAME} PRIVATE
             ARGUS_GUARD_SCHEMA_PATH="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql")
@@ -127,6 +131,8 @@ set_target_properties(guard-dlq-service-live-test PROPERTIES
     EXCLUDE_FROM_ALL FALSE)
 target_link_libraries(guard-dlq-service-live-test PRIVATE argus::guard
     argus_common doctest::doctest)
+target_include_directories(guard-dlq-service-live-test PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/tests/support)
 target_compile_definitions(guard-dlq-service-live-test PRIVATE
     ARGUS_GUARD_SCHEMA_PATH="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql")
 target_compile_options(guard-dlq-service-live-test PRIVATE -Wall -Wextra)
@@ -147,6 +153,8 @@ set_target_properties(vlm-client-live-test PROPERTIES
     EXCLUDE_FROM_ALL FALSE)
 target_link_libraries(vlm-client-live-test PRIVATE argus::vlm-client
     argus_common Drogon::Drogon doctest::doctest)
+target_include_directories(vlm-client-live-test PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/tests/support)
 target_compile_options(vlm-client-live-test PRIVATE -Wall -Wextra)
 add_test(NAME vlm-client-live-test COMMAND vlm-client-live-test)
 
@@ -158,5 +166,7 @@ set_target_properties(guard-assessment-live-test PROPERTIES
 target_link_libraries(guard-assessment-live-test PRIVATE argus::guard
     argus::vlm-client argus::sdk-camera-actions argus_common Drogon::Drogon
     doctest::doctest)
+target_include_directories(guard-assessment-live-test PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/tests/support)
 target_compile_options(guard-assessment-live-test PRIVATE -Wall -Wextra)
 add_test(NAME guard-assessment-live-test COMMAND guard-assessment-live-test)

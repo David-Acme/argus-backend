@@ -24,47 +24,14 @@
 #error "ARGUS_GUARD_SCHEMA_PATH must point at database/schema.sql"
 #endif
 
+#include "temp-db.hxx"
+#include "wait-for-boot.hxx"
+
+using guard_test::TempDb;
+using guard_test::waitForBoot;
+
 namespace
 {
-bool waitForBoot(std::chrono::milliseconds timeout)
-{
-  const auto deadline = std::chrono::steady_clock::now() + timeout;
-  while (std::chrono::steady_clock::now() < deadline) {
-    if (drogon::app().isRunning())
-      return true;
-    std::this_thread::sleep_for(std::chrono::milliseconds(10));
-  }
-  return drogon::app().isRunning();
-}
-
-int nameCounter()
-{
-  static std::atomic<int> counter{0};
-  return counter.fetch_add(1);
-}
-
-class TempDb
-{
-public:
-  TempDb()
-      : path_("guard-retry-lifecycle-" + std::to_string(::getpid()) + "-" +
-              std::to_string(nameCounter()) + ".db")
-  {
-  }
-
-  ~TempDb()
-  {
-    std::remove(path_.c_str());
-    std::remove((path_ + "-wal").c_str());
-    std::remove((path_ + "-shm").c_str());
-  }
-
-  const std::string& path() const { return path_; }
-
-private:
-  std::string path_;
-};
-
 std::string scalar(const std::string& sql)
 {
   const auto rows = DbService::client()->execSqlSync(sql);
@@ -256,7 +223,7 @@ GuardService::Config baseConfig()
 
 TEST_CASE("durable retries survive destroy, races and teardown")
 {
-  const TempDb db;
+  const TempDb db("guard-retry-lifecycle-test");
   drogon::app().setLogLevel(trantor::Logger::kWarn);
   drogon::app().addDbClient(
       drogon::orm::Sqlite3Config{1, db.path(), "default", -1});

@@ -3,7 +3,9 @@
 #include <shared/utils/base64/base64.hxx>
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
+#include <numbers>
 
 namespace guard_policy
 {
@@ -79,12 +81,29 @@ GuardEventSignals parseObjectEvent(const Json::Value& event)
 
   if (primary != nullptr) {
     const int64_t personId = primary->get("personId", 0).asInt64();
-    const bool known =
-        primary->get("identity", "").asString() == "known" && personId > 0;
+    const std::string legacyIdentity =
+        primary->get("identity", "").asString();
+    const std::string stateName =
+        primary->get("identityState", "").asString();
+    IdentityState state = IdentityState::Unrecognized;
+    if (stateName == "known")
+      state = IdentityState::Known;
+    else if (stateName == "unobservable")
+      state = IdentityState::Unobservable;
+    const bool known = legacyIdentity == "known" && personId > 0 &&
+                       (stateName.empty() || state == IdentityState::Known);
     signals.hasKnown = known;
     signals.hasUnknown = !known;
     signals.personId = personId;
     signals.knownPersonId = known ? personId : 0;
+    signals.identityState = known ? IdentityState::Known : state;
+    signals.identityAvailable = primary->isMember("identityState");
+    signals.identifyAttempts = primary->get("identifyAttempts", 0).asInt();
+    signals.scoreMedian = primary->get("scoreMedian", 0.0).asDouble();
+    signals.scoreSamples = primary->get("scoreSamples", 0).asInt();
+    signals.zoneWindows = primary->get("zoneWindows", 0).asInt();
+    signals.trackWindows = primary->get("trackWindows", 0).asInt();
+    signals.areaSpread = primary->get("areaSpread", 1.0).asDouble();
     signals.trackId = primary->get("trackId", 0).asInt64();
     signals.firstSeenMs = primary->get("firstSeenMs", 0).asInt64();
     signals.dwellMs = primary->get("dwellMs", 0).asInt64();
@@ -196,6 +215,21 @@ GuardDanger dangerFromString(const std::string& value)
 int dangerRank(GuardDanger danger)
 {
   return guardDangerRank(danger);
+}
+
+double decayBaseline(double stored, int64_t elapsedS)
+{
+  if (stored <= 0.0)
+    return 0.0;
+  const double elapsed =
+      static_cast<double>(std::max<int64_t>(0, elapsedS));
+  return stored *
+         std::exp(-std::numbers::ln2 * elapsed / kBaselineHalfLifeS);
+}
+
+double baselineNovelty(double decayed)
+{
+  return 1.0 / (1.0 + std::max(0.0, decayed));
 }
 
 } // namespace guard_policy
