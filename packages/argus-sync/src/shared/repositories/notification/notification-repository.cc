@@ -1,6 +1,7 @@
 #include "notification-repository.hxx"
 
 #include <algorithm>
+#include <chrono>
 #include <config/app-config.hxx>
 #include <ctime>
 #include <shared/services/sqlite/db-service.hxx>
@@ -15,6 +16,12 @@ using namespace notification_query;
 
 namespace
 {
+int64_t nowMillis()
+{
+  return std::chrono::duration_cast<std::chrono::milliseconds>(
+             std::chrono::system_clock::now().time_since_epoch())
+      .count();
+}
 // Commits in the transaction destructor; the callback resumes the awaiter.
 class TransactionCommitAwaiter
 {
@@ -268,18 +275,20 @@ NotificationRepository::createManyWithCommand(
 
       std::string deliverySql =
           "INSERT OR IGNORE INTO notification_delivery (notification_id, "
-          "user_id, status, created_at) VALUES ";
+          "user_id, status, created_at, created_ms) VALUES ";
       std::vector<std::string> deliveryArgs;
       deliveryArgs.reserve(ids.size() * 4);
+      const int64_t createdMs = nowMillis();
       for (std::size_t index = 0; index < ids.size(); ++index) {
         if (index > 0)
           deliverySql += ", ";
-        deliverySql += "(?, ?, ?, ?)";
+        deliverySql += "(?, ?, ?, ?, ?)";
         deliveryArgs.push_back(std::to_string(ids[index]));
         deliveryArgs.push_back(std::to_string(normalized[index].userId));
         deliveryArgs.push_back(notificationDeliveryStatusToString(
             NotificationDeliveryStatus::Pending));
         deliveryArgs.push_back(std::to_string(input.at));
+        deliveryArgs.push_back(std::to_string(createdMs));
       }
       const auto& deliveryArgsRef = deliveryArgs;
       co_await transaction->execSqlCoro(deliverySql, deliveryArgsRef);
@@ -341,10 +350,155 @@ drogon::Task<bool> NotificationRepository::markDelivered(int64_t deliveryId,
       co_await client->execSqlCoro(MARK_DELIVERED.data(),
                                    notificationDeliveryStatusToString(
                                        NotificationDeliveryStatus::Sent),
-                                   at, deliveryId,
+                                   at, nowMillis(), deliveryId,
                                    notificationDeliveryStatusToString(
                                        NotificationDeliveryStatus::Pending));
   co_return result.affectedRows() > 0;
+}
+
+drogon::Task<int64_t> NotificationRepository::ackDeliveries(
+    const AckDeliveriesInput& input) const
+{
+  if (input.notificationIds.empty())
+    co_return 0;
+  std::string placeholders;
+  std::vector<std::string> args;
+  args.reserve(input.notificationIds.size() + 3);
+  args.push_back(std::to_string(input.at));
+  args.push_back(std::to_string(input.atMs));
+  args.push_back(std::to_string(input.userId));
+  for (size_t index = 0; index < input.notificationIds.size(); ++index) {
+    if (index > 0)
+      placeholders += ", ";
+    placeholders += '?';
+    args.push_back(std::to_string(input.notificationIds[index]));
+  }
+  std::string query{ACK_DELIVERIES};
+  const auto position = query.find("%1%");
+  if (position != std::string::npos)
+    query.replace(position, 3, placeholders);
+  auto client = DbService::client();
+  const auto& argsRef = args;
+  const auto result = co_await client->execSqlCoro(query, argsRef);
+  co_return result.affectedRows();
+}
+
+drogon::Task<DeliverySummary> NotificationRepository::deliverySummary(
+    const DeliverySummaryInput& input) const
+{
+  DeliverySummary summary;
+  auto client = DbService::client();
+  const auto counts = co_await client->execSqlCoro(DELIVERY_COUNTS.data(),
+                                                   input.since);
+  if (!counts.empty()) {
+    summary.pending = counts.front()["pending"].as<int64_t>();
+    summary.unacked = counts.front()["unacked"].as<int64_t>();
+    summary.sent = counts.front()["sent"].as<int64_t>();
+    summary.acked = counts.front()["acked"].as<int64_t>();
+  }
+  const int64_t oldBound = input.now - input.ackWindowS;
+  const auto old = co_await client->execSqlCoro(DELIVERY_UNACKED_OLD.data(),
+                                                oldBound);
+  if (!old.empty())
+    summary.unackedOld = old.front()["rows"].as<int64_t>();
+  const auto latencyCount = co_await client->execSqlCoro(
+      DELIVERY_LATENCY_COUNT.data(), input.since * 1000);
+  const int64_t samples = latencyCount.empty()
+                              ? 0
+                              : latencyCount.front()["rows"].as<int64_t>();
+  if (samples > 0) {
+    const auto percentile = [&](double fraction) -> drogon::Task<int64_t> {
+      const int64_t offset = std::min<int64_t>(
+          samples - 1,
+          static_cast<int64_t>(fraction * static_cast<double>(samples)));
+      const auto rows = co_await client->execSqlCoro(
+          DELIVERY_LATENCY_SAMPLE.data(), input.since * 1000, offset);
+      co_return rows.empty() ? 0 : rows.front()["ms"].as<int64_t>();
+    };
+    summary.latencyMsP50 = co_await percentile(0.50);
+    summary.latencyMsP95 = co_await percentile(0.95);
+    const auto max = co_await client->execSqlCoro(DELIVERY_LATENCY_MAX.data(),
+                                                  input.since * 1000);
+    if (!max.empty())
+      summary.latencyMsMax = max.front()["ms"].as<int64_t>();
+  }
+  const auto probe = co_await client->execSqlCoro(SELECT_SELFTEST.data());
+  if (!probe.empty()) {
+    summary.probeAt = probe.front()["last_at"].as<int64_t>();
+    summary.probeOk = probe.front()["last_ok"].as<int>() != 0;
+    summary.probeMs = probe.front()["last_ms"].as<int64_t>();
+  }
+  co_return summary;
+}
+
+drogon::Task<ProbeInsertResult> NotificationRepository::insertProbe(
+    int64_t at, int64_t atMs) const
+{
+  ProbeInsertResult inserted;
+  auto client = DbService::client();
+  const auto notification =
+      co_await client->execSqlCoro(INSERT_PROBE.data());
+  if (notification.insertId() <= 0)
+    co_return inserted;
+  inserted.notificationId = notification.insertId();
+  const auto delivery = co_await client->execSqlCoro(
+      INSERT_PROBE_DELIVERY.data(), inserted.notificationId, at, atMs);
+  inserted.deliveryId = delivery.insertId();
+  co_return inserted;
+}
+
+drogon::Task<std::string> NotificationRepository::deliveryState(
+    int64_t deliveryId) const
+{
+  auto client = DbService::client();
+  const auto rows =
+      co_await client->execSqlCoro(DELIVERY_STATE.data(), deliveryId);
+  if (rows.empty())
+    co_return std::string{};
+  co_return rows.front()["status"].as<std::string>();
+}
+
+drogon::Task<SelfTestState> NotificationRepository::probeState() const
+{
+  SelfTestState state;
+  auto client = DbService::client();
+  const auto rows = co_await client->execSqlCoro(SELECT_SELFTEST.data());
+  if (rows.empty())
+    co_return state;
+  state.at = rows.front()["last_at"].as<int64_t>();
+  state.ok = rows.front()["last_ok"].as<int>() != 0;
+  state.ms = rows.front()["last_ms"].as<int64_t>();
+  co_return state;
+}
+
+drogon::Task<bool> NotificationRepository::recordProbe(
+    const ProbeRecordInput& input) const
+{
+  auto client = DbService::client();
+  const auto result = co_await client->execSqlCoro(
+      UPSERT_SELFTEST.data(), input.at, input.ok ? 1 : 0, input.ms);
+  co_return result.affectedRows() > 0;
+}
+
+drogon::Task<int64_t> NotificationRepository::purgeProbes(
+    int64_t olderThan) const
+{
+  auto client = DbService::client();
+  co_await client->execSqlCoro(PURGE_PROBE_DELIVERIES.data(), olderThan);
+  const auto result =
+      co_await client->execSqlCoro(PURGE_PROBES.data(), olderThan);
+  co_return result.affectedRows();
+}
+
+drogon::Task<int64_t> NotificationRepository::pendingDeliveryCount() const
+{
+  auto client = DbService::client();
+  const auto rows = co_await client->execSqlCoro(
+      PENDING_DELIVERY_COUNT.data(),
+      notificationDeliveryStatusToString(NotificationDeliveryStatus::Pending));
+  if (rows.empty())
+    co_return 0;
+  co_return rows.front()["total"].as<int64_t>();
 }
 
 drogon::Task<std::vector<Json::Value>>

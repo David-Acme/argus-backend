@@ -21,6 +21,29 @@ struct NotificationCreateOutcome
   int64_t createdCount{0};
 };
 
+enum class DeliverPendingOutcome
+{
+  Settled,
+  NoSinkInstalled,
+  StreamUnavailable,
+  PublishRefused
+};
+
+inline std::string deliverPendingOutcomeToString(DeliverPendingOutcome outcome)
+{
+  switch (outcome) {
+  case DeliverPendingOutcome::Settled:
+    return "settled";
+  case DeliverPendingOutcome::NoSinkInstalled:
+    return "no_sink_installed";
+  case DeliverPendingOutcome::StreamUnavailable:
+    return "stream_unavailable";
+  case DeliverPendingOutcome::PublishRefused:
+    return "publish_refused";
+  }
+  return "settled";
+}
+
 class NotificationService
 {
 public:
@@ -37,10 +60,26 @@ public:
   drogon::Task<NotificationCreateOutcome> createManyAndEmit(
       const NotificationBatchInput& input) const;
 
-  drogon::Task<void> deliverPending() const;
+  bool hasDeliverySink() const
+  {
+    return dependencies_.deliverySink != nullptr;
+  }
+
+  // Drain pending intents, naming a missing sink instead of throwing.
+  [[nodiscard]] drogon::Task<DeliverPendingOutcome> deliverPending() const;
+
+  drogon::Task<int64_t> pendingBacklog() const;
 
   drogon::Task<void> markAsRead(int64_t userId,
                                 const std::vector<int64_t>& ids) const;
+
+  drogon::Task<int64_t> ackDeliveries(
+      int64_t userId, const std::vector<int64_t>& notificationIds) const;
+
+  drogon::Task<DeliverySummary> deliverySummary(int64_t since,
+                                                int64_t ackWindowS) const;
+
+  drogon::Task<SelfTestState> runSelfTest() const;
 
 private:
   struct DeliverDurableInput
@@ -51,10 +90,7 @@ private:
     bool pushRequired{false};
   };
 
-  // Publishes each intent through the durable sink; only broker-stored
-  // intents are settled, the rest stay pending for the reconciler. True when
-  // at least one intent settled, so the caller stops when no progress is
-  // made instead of spinning on refused rows.
+  // Settles broker-stored intents; the rest stay pending for the reconciler.
   drogon::Task<bool> deliverDurable(DeliverDurableInput input) const;
 
   Dependencies dependencies_;
