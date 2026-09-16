@@ -826,6 +826,132 @@ encounterClosedReceiptFromString(const std::string& value)
   return std::nullopt;
 }
 
+// Decision-journal suppression reason; the CHECK constraint mirrors it.
+// Unknown persisted values fail closed at the call site.
+enum class DecisionSuppression : uint8_t
+{
+  None = 0,
+  BeliefGate,
+  Budget,
+  LegacySilent,
+  ThreadSuppressed,
+  Staging
+};
+
+inline std::string decisionSuppressionToString(DecisionSuppression reason)
+{
+  switch (reason) {
+    case DecisionSuppression::None:
+      return "none";
+    case DecisionSuppression::BeliefGate:
+      return "belief_gate";
+    case DecisionSuppression::Budget:
+      return "budget";
+    case DecisionSuppression::LegacySilent:
+      return "legacy_silent";
+    case DecisionSuppression::ThreadSuppressed:
+      return "thread_suppressed";
+    case DecisionSuppression::Staging:
+      return "staging";
+  }
+  return "none";
+}
+
+inline std::optional<DecisionSuppression>
+decisionSuppressionFromString(const std::string& value)
+{
+  if (value == "none")
+    return DecisionSuppression::None;
+  if (value == "belief_gate")
+    return DecisionSuppression::BeliefGate;
+  if (value == "budget")
+    return DecisionSuppression::Budget;
+  if (value == "legacy_silent")
+    return DecisionSuppression::LegacySilent;
+  if (value == "thread_suppressed")
+    return DecisionSuppression::ThreadSuppressed;
+  if (value == "staging")
+    return DecisionSuppression::Staging;
+  return std::nullopt;
+}
+
+// Resident label on a decision-journal row; the CHECK constraint mirrors it.
+// Labels are collected for offline calibration only and never retune live.
+enum class FeedbackLabel : uint8_t
+{
+  Useful = 0,
+  FalseAlarm,
+  NotNow
+};
+
+inline std::string feedbackLabelToString(FeedbackLabel label)
+{
+  switch (label) {
+    case FeedbackLabel::Useful:
+      return "useful";
+    case FeedbackLabel::FalseAlarm:
+      return "false_alarm";
+    case FeedbackLabel::NotNow:
+      return "not_now";
+  }
+  return "useful";
+}
+
+inline std::optional<FeedbackLabel>
+feedbackLabelFromString(const std::string& value)
+{
+  if (value == "useful")
+    return FeedbackLabel::Useful;
+  if (value == "false_alarm")
+    return FeedbackLabel::FalseAlarm;
+  if (value == "not_now")
+    return FeedbackLabel::NotNow;
+  return std::nullopt;
+}
+
+// Gateway fallback drop reason; the CHECK constraint mirrors it.
+enum class FallbackDropReason : uint8_t
+{
+  NonHardSignal = 0,
+  DropKnown,
+  DropWeakScore,
+  DropShortDwell,
+  BudgetSilent
+};
+
+inline std::string fallbackDropReasonToString(FallbackDropReason reason)
+{
+  switch (reason) {
+    case FallbackDropReason::NonHardSignal:
+      return "non_hard_signal";
+    case FallbackDropReason::DropKnown:
+      return "drop_known";
+    case FallbackDropReason::DropWeakScore:
+      return "drop_weak_score";
+    case FallbackDropReason::DropShortDwell:
+      return "drop_short_dwell";
+    case FallbackDropReason::BudgetSilent:
+      return "budget_silent";
+  }
+  return "non_hard_signal";
+}
+
+inline std::optional<FallbackDropReason>
+fallbackDropReasonFromString(const std::string& value)
+{
+  if (value == "non_hard_signal")
+    return FallbackDropReason::NonHardSignal;
+  if (value == "drop_known")
+    return FallbackDropReason::DropKnown;
+  if (value == "drop_weak_score")
+    return FallbackDropReason::DropWeakScore;
+  if (value == "drop_short_dwell")
+    return FallbackDropReason::DropShortDwell;
+  if (value == "budget_silent")
+    return FallbackDropReason::BudgetSilent;
+  return std::nullopt;
+}
+
 // Camera observation outbox lifecycle; the CHECK constraint mirrors it.
 enum class ObjectEventStatus : uint8_t
 {
