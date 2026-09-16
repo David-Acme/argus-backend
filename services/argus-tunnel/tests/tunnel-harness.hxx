@@ -24,7 +24,7 @@ struct StubConn
 {
   TcpPeer::Ptr peer;
   std::string received;
-  bool eof{false};
+  std::atomic<bool> eof{false};
 };
 
 // Test-side endpoint (device behind the relay, or the remote app).
@@ -217,7 +217,7 @@ struct Harness
   std::thread loopThread;
   std::unique_ptr<TunnelRelay> relay;
   std::unique_ptr<TunnelClient> client;
-  std::unique_ptr<TcpListener> gatewayListener;
+  std::shared_ptr<TcpListener> gatewayListener;
 
 private:
   std::mutex gatewayMutex_;

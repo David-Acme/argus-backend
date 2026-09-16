@@ -20,8 +20,9 @@ public:
         onAccept;
   };
 
-  // Returns nullptr when the bind fails.
-  static std::unique_ptr<TcpListener> create(const Params& params);
+  // Returns nullptr when the bind fails. Shared ownership: the poll loop
+  // keeps only a weak handle and skips events whose listener is gone.
+  static std::shared_ptr<TcpListener> create(const Params& params);
 
   uint16_t boundPort() const;
   void handleEvents(uint32_t events) override;

@@ -38,7 +38,7 @@ TcpPeer::Ptr TcpPeer::adopt(const Params& params)
   }
   Ptr peer(new TcpPeer(params));
   peer->connected_ = true;
-  peer->loop_.watch(peer->fd_.get(), peer.get());
+  peer->loop_.watch(peer->fd_.get(), peer);
   int one = 1;
   ::setsockopt(peer->fd_.get(), IPPROTO_TCP, TCP_NODELAY, &one, sizeof(one));
   return peer;
@@ -50,8 +50,8 @@ TcpPeer::Ptr TcpPeer::connect(const Params& params)
   updated.fd = openSocket(params, true);
   Ptr peer(new TcpPeer(updated));
   peer->connecting_ = true;
-  peer->loop_.watch(peer->fd_.get(), peer.get());
-  peer->loop_.update({.fd = peer->fd_.get(), .events = EPOLLOUT, .actor = peer.get()});
+  peer->loop_.watch(peer->fd_.get(), peer);
+  peer->loop_.update({.fd = peer->fd_.get(), .events = EPOLLOUT, .actor = peer});
   return peer;
 }
 
@@ -257,7 +257,8 @@ void TcpPeer::updateInterest()
 {
   if (closed_)
     return;
-  loop_.update({.fd = fd_.get(), .events = interestEvents(), .actor = this});
+  loop_.update(
+      {.fd = fd_.get(), .events = interestEvents(), .actor = weak_from_this()});
 }
 
 uint32_t TcpPeer::interestEvents() const

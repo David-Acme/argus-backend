@@ -27,13 +27,14 @@ TcpListener::TcpListener(const Params& params)
     throw std::runtime_error("bind failed");
   if (::listen(fd_.get(), 64) < 0)
     throw std::runtime_error("listen failed");
-  loop_.watch(fd_.get(), this);
 }
 
-std::unique_ptr<TcpListener> TcpListener::create(const Params& params)
+std::shared_ptr<TcpListener> TcpListener::create(const Params& params)
 {
   try {
-    return std::unique_ptr<TcpListener>(new TcpListener(params));
+    auto listener = std::shared_ptr<TcpListener>(new TcpListener(params));
+    listener->loop_.watch(listener->fd_.get(), listener);
+    return listener;
   } catch (const std::exception&) {
     return nullptr;
   }

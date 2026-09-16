@@ -27,7 +27,7 @@ public:
   {
     int fd{-1};
     uint32_t events{0};
-    LoopActor* actor{};
+    std::weak_ptr<LoopActor> actor;
   };
 
   PollLoop();
@@ -40,7 +40,10 @@ public:
   void post(Task task);
   void runAfter(int milliseconds, Task task);
 
-  void watch(int fd, LoopActor* actor);
+  // The loop keeps only a weak handle: dispatching an event whose actor is
+  // gone skips it instead of touching freed memory. Callers keep shared
+  // ownership until unwatch.
+  void watch(int fd, std::weak_ptr<LoopActor> actor);
   void update(const UpdateInput& input);
   void unwatch(int fd);
 
@@ -56,8 +59,11 @@ private:
   int wakeFd_{-1};
   bool running_{false};
   std::multimap<std::chrono::steady_clock::time_point, Task> timers_;
-  std::vector<std::shared_ptr<void>> retained_;
 
   std::mutex postedMutex_;
   std::vector<Task> posted_;
+  std::mutex watchedMutex_;
+  std::map<int, std::weak_ptr<LoopActor>> watched_;
+  std::mutex retainedMutex_;
+  std::vector<std::shared_ptr<void>> retained_;
 };

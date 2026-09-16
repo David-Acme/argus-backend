@@ -42,31 +42,38 @@ PollLoop::~PollLoop()
     ::close(wakeFd_);
 }
 
-void PollLoop::watch(int fd, LoopActor* actor)
+void PollLoop::watch(int fd, std::weak_ptr<LoopActor> actor)
 {
   epoll_event event{};
   event.events = EPOLLIN | EPOLLRDHUP;
-  event.data.ptr = actor;
+  event.data.fd = fd;
   if (::epoll_ctl(epollFd_, EPOLL_CTL_ADD, fd, &event) < 0)
     throw std::runtime_error("epoll_ctl add failed");
+  std::lock_guard<std::mutex> lock(watchedMutex_);
+  watched_[fd] = std::move(actor);
 }
 
 void PollLoop::update(const UpdateInput& input)
 {
   epoll_event event{};
   event.events = input.events | EPOLLRDHUP;
-  event.data.ptr = input.actor;
+  event.data.fd = input.fd;
   if (::epoll_ctl(epollFd_, EPOLL_CTL_MOD, input.fd, &event) < 0)
     throw std::runtime_error("epoll_ctl mod failed");
+  std::lock_guard<std::mutex> lock(watchedMutex_);
+  watched_[input.fd] = input.actor;
 }
 
 void PollLoop::unwatch(int fd)
 {
   ::epoll_ctl(epollFd_, EPOLL_CTL_DEL, fd, nullptr);
+  std::lock_guard<std::mutex> lock(watchedMutex_);
+  watched_.erase(fd);
 }
 
 void PollLoop::retain(std::shared_ptr<void> object)
 {
+  std::lock_guard<std::mutex> lock(retainedMutex_);
   retained_.push_back(std::move(object));
 }
 
@@ -114,15 +121,29 @@ void PollLoop::run()
         (void)ignored;
         runPostedTasks();
       } else {
-        static_cast<LoopActor*>(events[i].data.ptr)
-            ->handleEvents(events[i].events);
+        std::shared_ptr<LoopActor> actor;
+        {
+          std::lock_guard<std::mutex> lock(watchedMutex_);
+          const auto watched = watched_.find(events[i].data.fd);
+          if (watched == watched_.end())
+            continue;
+          actor = watched->second.lock();
+        }
+        if (actor)
+          actor->handleEvents(events[i].events);
       }
     }
     runDueTimers();
-    retained_.clear();
+    {
+      std::lock_guard<std::mutex> lock(retainedMutex_);
+      retained_.clear();
+    }
   }
   runPostedTasks();
-  retained_.clear();
+  {
+    std::lock_guard<std::mutex> lock(retainedMutex_);
+    retained_.clear();
+  }
 }
 
 void PollLoop::runPostedTasks()

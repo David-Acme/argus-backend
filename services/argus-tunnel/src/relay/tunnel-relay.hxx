@@ -80,8 +80,8 @@ private:
   TunnelMux mux_;
   std::shared_ptr<bool> alive_{std::make_shared<bool>(true)};
   std::weak_ptr<bool> aliveToken_{alive_};
-  std::unique_ptr<TcpListener> homeListener_;
-  std::unique_ptr<TcpListener> deviceListener_;
+  std::shared_ptr<TcpListener> homeListener_;
+  std::shared_ptr<TcpListener> deviceListener_;
   uint16_t devicePort_{0};
   uint16_t homePort_{0};
   std::atomic<bool> stopped_{false};

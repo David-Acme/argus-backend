@@ -111,8 +111,13 @@ TEST_CASE("idle streams are swept with a bounded close")
     return harness.relay->streamCount() == 0 &&
            harness.client->streamCount() == 0;
   }, 8000));
-  CHECK(device->eof.load());
-  CHECK(harness.gatewayConnections().front()->eof);
+  CHECK(waitFor([&] { return device->eof.load(); }, 5000));
+  CHECK(waitFor(
+      [&] {
+        return !harness.gatewayConnections().empty() &&
+               harness.gatewayConnections().front()->eof;
+      },
+      5000));
   harness.stop();
 }
 

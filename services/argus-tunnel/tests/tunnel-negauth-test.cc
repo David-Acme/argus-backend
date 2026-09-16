@@ -19,7 +19,7 @@ namespace
 struct FakeRelay
 {
   std::function<void(TcpPeer&)> script;
-  std::unique_ptr<TcpListener> listener;
+  std::shared_ptr<TcpListener> listener;
   TcpPeer::Ptr peer;
   std::atomic<int> acceptCount{0};
 
@@ -69,7 +69,7 @@ struct FakeRelay
 // Counts the gateway dials the client attempts (the exploit's observable).
 struct GatewayCounter
 {
-  std::unique_ptr<TcpListener> listener;
+  std::shared_ptr<TcpListener> listener;
   std::atomic<int> dials{0};
 
   void start(PollLoop& loop)
@@ -116,11 +116,11 @@ struct RogueRig
   ~RogueRig()
   {
     client->stop();
+    loop.stop();
+    loopThread.join();
     relay.peer.reset();
     relay.listener.reset();
     gateway.listener.reset();
-    loop.stop();
-    loopThread.join();
   }
 
   PollLoop loop;
