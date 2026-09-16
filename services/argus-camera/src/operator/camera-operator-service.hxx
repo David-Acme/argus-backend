@@ -77,6 +77,12 @@ private:
     int frames{0};
   };
 
+  struct TrackWindowSample
+  {
+    float confidence{0.0F};
+    float area{0.0F};
+  };
+
   struct PersonTrack
   {
     int64_t id{0};
@@ -88,6 +94,9 @@ private:
     int64_t lastSeenMs{0};
     int64_t lastEmitMs{0};
     int staticFrames{0};
+    int trackWindows{0};
+    int zoneWindows{0};
+    std::vector<TrackWindowSample> windowHistory;
     double bestScore{0.0};
     std::string signature;
   };
@@ -175,6 +184,9 @@ private:
     CameraState& state;
     int64_t stamp{0};
   };
+
+  static double trackScoreMedian(const std::vector<TrackWindowSample>& history);
+  static double trackAreaSpread(const std::vector<TrackWindowSample>& history);
 
   drogon::Task<void> runCamera(CameraRef camera,
                                std::shared_ptr<std::atomic<bool>> stop);

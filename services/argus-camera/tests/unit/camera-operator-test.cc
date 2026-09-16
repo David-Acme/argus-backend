@@ -3,15 +3,89 @@
 
 #include <operator/camera-operator-service.hxx>
 #include <operator/frame-source.hxx>
+#include <operator/identity-known-person-matcher.hxx>
 #include <operator/known-person-matcher.hxx>
 #include <operator/object-event-sink.hxx>
+#include <operator/object-event.hxx>
 #include <operator/operator-config.hxx>
 #include <operator/zone-source.hxx>
 
 #include <chrono>
+#include <memory>
+#include <optional>
 #include <string>
 #include <thread>
 #include <vector>
+
+#include <identity/identity-client.hxx>
+#include <shared/services/stream/snapshot-store.hxx>
+
+void checkGuardKnownEvent(const Json::Value& event);
+
+class MutablePersonMatcher final : public IKnownPersonMatcher
+{
+public:
+  std::optional<PersonMatch> match(const PersonCrop&) const override
+  {
+    return next;
+  }
+
+  PersonMatch next;
+};
+
+class RecognizingIdentityClient final : public IdentityClient
+{
+public:
+  RecognizingIdentityClient() : IdentityClient("localhost:1") {}
+
+  std::optional<argus::identity::v1::IdentifyPersonResponse>
+  identifyPerson(const std::string& image) const override
+  {
+    CHECK_FALSE(image.empty());
+    ++calls;
+    argus::identity::v1::IdentifyPersonResponse response;
+    response.set_matched(true);
+    response.set_trusted(true);
+    response.set_person_id(7);
+    response.set_confidence(0.95F);
+    return response;
+  }
+
+  mutable int calls{0};
+};
+
+namespace
+{
+IdentityConfig matchConfig(int64_t bestShotMs = 10000)
+{
+  return IdentityConfig{.identify = true,
+                        .autoEnroll = false,
+                        .captureClearFaces = true,
+                        .minFaceBoxPx = 8,
+                        .identifyIntervalMs = 2000,
+                        .enrollCooldownMs = 600000,
+                        .bestShotMs = bestShotMs,
+                        .improveMargin = 0.15,
+                        .target = {},
+                        .rpcSecret = {}};
+}
+
+PersonCrop cropOn(const std::vector<uint8_t>& rgb, int64_t trackId,
+                  float x = 10.0F, float y = 10.0F, float w = 20.0F,
+                  float h = 30.0F)
+{
+  return {.cameraId = 1,
+          .trackId = trackId,
+          .firstSeenMs = 0,
+          .rgb = const_cast<uint8_t*>(rgb.data()),
+          .width = 64,
+          .height = 48,
+          .x = x,
+          .y = y,
+          .w = w,
+          .h = h};
+}
+} // namespace
 
 namespace
 {
@@ -90,6 +164,272 @@ DetectedObject carObject()
   return object;
 }
 } // namespace
+
+TEST_CASE("an unusable later crop keeps the cached known verdict")
+{
+  static std::vector<uint8_t> rgb(64 * 48 * 3, 100);
+  auto client = std::make_unique<RecognizingIdentityClient>();
+  const auto* clientPtr = client.get();
+  IdentityKnownPersonMatcher matcher(matchConfig(), std::move(client));
+
+  const PersonCrop good{.cameraId = 1,
+                        .trackId = 5,
+                        .firstSeenMs = 0,
+                        .rgb = const_cast<uint8_t*>(rgb.data()),
+                        .width = 64,
+                        .height = 48,
+                        .x = 10.0F,
+                        .y = 10.0F,
+                        .w = 40.0F,
+                        .h = 40.0F};
+  const auto known = matcher.match(good);
+  REQUIRE(known.has_value());
+  CHECK(known->identity == PersonIdentity::Known);
+  CHECK(known->personId == 7);
+  CHECK(clientPtr->calls == 1);
+
+  const auto knownAgain = matcher.match(good);
+  REQUIRE(knownAgain.has_value());
+  CHECK(knownAgain->identity == PersonIdentity::Known);
+  CHECK(knownAgain->state == IdentityState::Known);
+  CHECK(knownAgain->personId == 7);
+  CHECK(clientPtr->calls == 1);
+
+  const auto unusable = matcher.match(cropOn(rgb, 5, 10.0F, 10.0F, 6.0F, 6.0F));
+  REQUIRE(unusable.has_value());
+  CHECK(unusable->identity == PersonIdentity::Known);
+  CHECK(unusable->state == IdentityState::Known);
+  CHECK(unusable->personId == 7);
+  CHECK(unusable->identifyAttempts >= 1);
+  CHECK(clientPtr->calls == 1);
+}
+
+TEST_CASE("an unknown verdict can upgrade to known on a better crop")
+{
+  static std::vector<uint8_t> rgb(64 * 48 * 3, 100);
+  class LateRecognizer final : public IdentityClient
+  {
+  public:
+    LateRecognizer() : IdentityClient("localhost:1") {}
+
+    std::optional<argus::identity::v1::IdentifyPersonResponse>
+    identifyPerson(const std::string&) const override
+    {
+      ++calls;
+      argus::identity::v1::IdentifyPersonResponse response;
+      if (calls >= 2) {
+        response.set_matched(true);
+        response.set_trusted(true);
+        response.set_person_id(9);
+        response.set_confidence(0.91F);
+      }
+      return response;
+    }
+
+    mutable int calls{0};
+  };
+  auto client = std::make_unique<LateRecognizer>();
+  IdentityKnownPersonMatcher matcher(matchConfig(60000), std::move(client));
+
+  const PersonCrop blurry{.cameraId = 1,
+                          .trackId = 6,
+                          .firstSeenMs = 0,
+                          .rgb = const_cast<uint8_t*>(rgb.data()),
+                          .width = 64,
+                          .height = 48,
+                          .x = 8.0F,
+                          .y = 8.0F,
+                          .w = 20.0F,
+                          .h = 24.0F};
+  const auto unknown = matcher.match(blurry);
+  REQUIRE(unknown.has_value());
+  CHECK(unknown->identity == PersonIdentity::Unknown);
+  CHECK(unknown->state == IdentityState::Unrecognized);
+  CHECK(unknown->personId == 0);
+
+  std::vector<uint8_t> detailed(64 * 48 * 3);
+  for (size_t row = 0; row < 48; ++row)
+    for (size_t column = 0; column < 64; ++column)
+      detailed[(row * 64 + column) * 3] = static_cast<uint8_t>((row * 7 + column * 5) % 256);
+  const PersonCrop sharp{.cameraId = 1,
+                         .trackId = 6,
+                         .firstSeenMs = 0,
+                         .rgb = detailed.data(),
+                         .width = 64,
+                         .height = 48,
+                         .x = 8.0F,
+                         .y = 8.0F,
+                         .w = 30.0F,
+                         .h = 36.0F};
+  const auto upgraded = matcher.match(sharp);
+  REQUIRE(upgraded.has_value());
+  CHECK(upgraded->identity == PersonIdentity::Known);
+  CHECK(upgraded->state == IdentityState::Known);
+  CHECK(upgraded->personId == 9);
+  CHECK(upgraded->identifyAttempts == 2);
+}
+
+ObjectDetectedEvent recognizedThenUnusableCrop()
+{
+  StubDetector detector;
+  RecordingSink sink;
+  static std::vector<uint8_t> rgb(64 * 48 * 3, 100);
+  auto client = std::make_unique<RecognizingIdentityClient>();
+  IdentityKnownPersonMatcher matcher(matchConfig(), std::move(client));
+
+  CameraOperatorService::Inputs inputs;
+  inputs.dependencies = {&detector, nullptr, &sink, &matcher};
+  inputs.operator_.aggregationWindowMs = 80;
+  inputs.operator_.dwellMonitorMs = 0;
+  inputs.operator_.dwellNightMs = 0;
+  inputs.operator_.dwellAlertMs = 0;
+  inputs.operator_.cooldownMs = 60000;
+  inputs.operator_.nightStartHour = 22;
+  inputs.operator_.nightEndHour = 22;
+
+  CameraOperatorService service(inputs);
+  auto frame = rgbFrame();
+  DetectedObject identified = personObject();
+  identified.w = 8.0F;
+  identified.h = 8.0F;
+  detector.next = {identified};
+  service.processFrame({.cameraId = 1, .cameraName = "Front", .frame = frame});
+  sleepMs(100);
+  DetectedObject small = personObject();
+  small.w = 6.0F;
+  small.h = 6.0F;
+  detector.next = {small};
+  service.processFrame({.cameraId = 1, .cameraName = "Front", .frame = frame});
+
+  REQUIRE(sink.events.size() == 1);
+  return sink.events.front();
+}
+
+TEST_CASE("processFrame recognized then small crop publishes a consistent triple")
+{
+  const ObjectDetectedEvent event = recognizedThenUnusableCrop();
+  CHECK(event.rule == "known_person");
+  REQUIRE(event.objects.size() == 1);
+  const auto& object = event.objects.front();
+  CHECK(object.identity == "known");
+  CHECK(object.personId == 7);
+  CHECK(object.identityState == "known");
+}
+
+TEST_CASE("guard treats the camera's recognised triple as known")
+{
+  const ObjectDetectedEvent event = recognizedThenUnusableCrop();
+  checkGuardKnownEvent(object_event::toJson(event));
+}
+
+TEST_CASE("the aggregation keeps identity stable across a match downgrade")
+{
+  class KnownThenUnobservableMatcher final : public IKnownPersonMatcher
+  {
+  public:
+    std::optional<PersonMatch> match(const PersonCrop&) const override
+    {
+      ++calls;
+      if (calls == 1)
+        return PersonMatch{.identity = PersonIdentity::Known,
+                           .state = IdentityState::Known,
+                           .personId = 3,
+                           .confidence = 0.9F,
+                           .identifyAttempts = 1};
+      return PersonMatch{.identity = PersonIdentity::Unknown,
+                         .state = IdentityState::Unobservable,
+                         .personId = 0,
+                         .confidence = 0.0F,
+                         .identifyAttempts = 1};
+    }
+
+    mutable int calls{0};
+  } matcher;
+
+  StubDetector detector;
+  RecordingSink sink;
+  CameraOperatorService::Inputs inputs;
+  inputs.dependencies = {&detector, nullptr, &sink, &matcher};
+  inputs.operator_.aggregationWindowMs = 80;
+  inputs.operator_.dwellMonitorMs = 0;
+  inputs.operator_.dwellNightMs = 0;
+  inputs.operator_.dwellAlertMs = 0;
+  inputs.operator_.cooldownMs = 60000;
+  inputs.operator_.nightStartHour = 22;
+  inputs.operator_.nightEndHour = 22;
+
+  CameraOperatorService service(inputs);
+  auto frame = rgbFrame();
+  DetectedObject identified = personObject();
+  identified.w = 20.0F;
+  identified.h = 20.0F;
+  detector.next = {identified};
+  service.processFrame({.cameraId = 1, .cameraName = "Front", .frame = frame});
+  sleepMs(100);
+  DetectedObject smaller = personObject();
+  smaller.w = 14.0F;
+  smaller.h = 14.0F;
+  detector.next = {smaller};
+  service.processFrame({.cameraId = 1, .cameraName = "Front", .frame = frame});
+
+  REQUIRE(sink.events.size() == 1);
+  const auto& event = sink.events.front();
+  REQUIRE(event.objects.size() == 1);
+  CHECK(event.objects.front().personId == 3);
+  CHECK(event.objects.front().identity == "known");
+  CHECK(event.objects.front().identityState == "known");
+}
+
+TEST_CASE("an unknown entry can upgrade to known inside one window")
+{
+  class UnknownThenKnownMatcher final : public IKnownPersonMatcher
+  {
+  public:
+    std::optional<PersonMatch> match(const PersonCrop&) const override
+    {
+      ++calls;
+      if (calls == 1)
+        return PersonMatch{.identity = PersonIdentity::Unknown,
+                           .state = IdentityState::Unrecognized,
+                           .personId = 0,
+                           .confidence = 0.0F,
+                           .identifyAttempts = 1};
+      return PersonMatch{.identity = PersonIdentity::Known,
+                         .state = IdentityState::Known,
+                         .personId = 4,
+                         .confidence = 0.9F,
+                         .identifyAttempts = 2};
+    }
+
+    mutable int calls{0};
+  } matcher;
+
+  StubDetector detector;
+  RecordingSink sink;
+  CameraOperatorService::Inputs inputs;
+  inputs.dependencies = {&detector, nullptr, &sink, &matcher};
+  inputs.operator_.aggregationWindowMs = 80;
+  inputs.operator_.dwellMonitorMs = 0;
+  inputs.operator_.dwellNightMs = 0;
+  inputs.operator_.dwellAlertMs = 0;
+  inputs.operator_.cooldownMs = 60000;
+  inputs.operator_.nightStartHour = 22;
+  inputs.operator_.nightEndHour = 22;
+
+  CameraOperatorService service(inputs);
+  auto frame = rgbFrame();
+  detector.next = {personObject()};
+  service.processFrame({.cameraId = 1, .cameraName = "Front", .frame = frame});
+  sleepMs(100);
+  service.processFrame({.cameraId = 1, .cameraName = "Front", .frame = frame});
+
+  REQUIRE(sink.events.size() == 1);
+  const auto& event = sink.events.front();
+  REQUIRE(event.objects.size() == 1);
+  CHECK(event.objects.front().personId == 4);
+  CHECK(event.objects.front().identity == "known");
+  CHECK(event.objects.front().identityState == "known");
+}
 
 TEST_CASE("processFrame aggregates detections over the window")
 {
@@ -522,4 +862,166 @@ TEST_CASE("the operator evaluates zones from its zone source")
   REQUIRE(sink.events.size() == 1);
   CHECK(sink.events.front().rule == "person_in_alert_zone");
   CHECK(sink.events.front().severity == "critical");
+}
+
+class UnrecognizedStubMatcher final : public IKnownPersonMatcher
+{
+public:
+  std::optional<PersonMatch> match(const PersonCrop&) const override
+  {
+    return PersonMatch{.identity = PersonIdentity::Unknown,
+                       .state = IdentityState::Unrecognized,
+                       .personId = 0,
+                       .confidence = 0.0F,
+                       .identifyAttempts = 3};
+  }
+};
+
+TEST_CASE("identity tri-state and track history flow to the published event")
+{
+  StubDetector detector;
+  RecordingSink sink;
+  UnrecognizedStubMatcher matcher;
+  FakeZoneSource zones;
+  OperatorZone zone;
+  zone.cameraId = 1;
+  zone.name = "yard";
+  zone.kind = "monitor";
+  zone.points = {{0.0, 0.0}, {1.0, 0.0}, {1.0, 1.0}, {0.0, 1.0}};
+  zones.all.push_back(zone);
+
+  CameraOperatorService::Inputs inputs;
+  inputs.dependencies = {&detector, nullptr, &sink, &matcher, &zones};
+  inputs.operator_.aggregationWindowMs = 1;
+  inputs.operator_.cooldownMs = 60000;
+  inputs.operator_.dwellMonitorMs = 0;
+  inputs.operator_.dwellNightMs = 0;
+  inputs.operator_.dwellAlertMs = 0;
+
+  CameraOperatorService service(inputs);
+  auto frame = rgbFrame();
+  detector.next = {personObject()};
+  service.processFrame({.cameraId = 1, .cameraName = "Front", .frame = frame});
+  sleepMs(5);
+  service.processFrame({.cameraId = 1, .cameraName = "Front", .frame = frame});
+
+  REQUIRE(sink.events.size() == 1);
+  const auto& event = sink.events.front();
+  CHECK(event.schemaVersion == 3);
+  REQUIRE(event.objects.size() == 1);
+  const auto& object = event.objects.front();
+  CHECK(object.identityState == "unrecognized");
+  CHECK(object.identifyAttempts == 3);
+  CHECK(object.identity == "unknown");
+  CHECK(object.scoreSamples >= 1);
+  CHECK(object.trackWindows >= 1);
+  CHECK(object.zoneWindows >= 1);
+  CHECK(object.scoreMedian > 0.0);
+  CHECK(object.areaSpread >= 1.0);
+}
+
+TEST_CASE("schemaVersion 3 serializes the observation contract additively")
+{
+  ObjectDetectedEvent event;
+  event.eventId = "1:2:3";
+  event.cameraId = 1;
+  event.rule = "person_day";
+  event.severity = "info";
+  DetectedEventObject object;
+  object.name = "person";
+  object.confidence = 0.9F;
+  object.personId = 0;
+  object.identityState = "unobservable";
+  object.identifyAttempts = 0;
+  object.scoreMedian = 0.9;
+  object.scoreSamples = 2;
+  object.zoneWindows = 1;
+  object.trackWindows = 2;
+  object.areaSpread = 1.1;
+  object.trackId = 4;
+  object.firstSeenMs = 100;
+  object.lastSeenMs = 200;
+  object.dwellMs = 100;
+  object.zoneKind = "monitor";
+  object.observationId = "1:4:100";
+  event.objects.push_back(object);
+
+  const Json::Value json = object_event::toJson(event);
+  CHECK(json["schemaVersion"].asInt() == 3);
+  const Json::Value& entry = json["objects"][0];
+  CHECK(entry["identityState"].asString() == "unobservable");
+  CHECK(entry["identifyAttempts"].asInt() == 0);
+  CHECK(entry["scoreMedian"].asDouble() == doctest::Approx(0.9));
+  CHECK(entry["scoreSamples"].asInt() == 2);
+  CHECK(entry["zoneWindows"].asInt() == 1);
+  CHECK(entry["trackWindows"].asInt() == 2);
+  CHECK(entry["areaSpread"].asDouble() == doctest::Approx(1.1));
+  CHECK_FALSE(entry.isMember("identity"));
+  CHECK_FALSE(entry.isMember("personId"));
+}
+
+TEST_CASE("an encode failure reports unobservable without scanning")
+{
+  static std::vector<uint8_t> rgb(64 * 48 * 3, 100);
+  IdentityKnownPersonMatcher matcher({.identify = true,
+                                      .autoEnroll = false,
+                                      .captureClearFaces = true,
+                                      .minFaceBoxPx = 48,
+                                      .identifyIntervalMs = 2000,
+                                      .enrollCooldownMs = 600000,
+                                      .bestShotMs = 10000,
+                                      .improveMargin = 0.15,
+                                      .target = {},
+                                      .rpcSecret = {}});
+  const PersonCrop crop{.cameraId = 1,
+                        .trackId = 3,
+                        .firstSeenMs = 0,
+                        .rgb = rgb.data(),
+                        .width = 64,
+                        .height = 48,
+                        .x = 63.0F,
+                        .y = 10.0F,
+                        .w = 50.0F,
+                        .h = 50.0F};
+  const auto match = matcher.match(crop);
+  REQUIRE(match.has_value());
+  CHECK(match->identity == PersonIdentity::Unknown);
+  CHECK(match->state == IdentityState::Unobservable);
+  CHECK(match->personId == 0);
+  CHECK(match->identifyAttempts == 0);
+  const auto again = matcher.match(crop);
+  REQUIRE(again.has_value());
+  CHECK(again->state == IdentityState::Unobservable);
+}
+
+TEST_CASE("disabled identity reports unobservable without scanning")
+{
+  static std::vector<uint8_t> rgb(64 * 48 * 3, 100);
+  IdentityKnownPersonMatcher matcher({.identify = false,
+                                      .autoEnroll = false,
+                                      .captureClearFaces = true,
+                                      .minFaceBoxPx = 48,
+                                      .identifyIntervalMs = 2000,
+                                      .enrollCooldownMs = 600000,
+                                      .bestShotMs = 10000,
+                                      .improveMargin = 0.15,
+                                      .target = {},
+                                      .rpcSecret = {}});
+  const PersonCrop crop{.cameraId = 1,
+                        .trackId = 2,
+                        .firstSeenMs = 0,
+                        .rgb = rgb.data(),
+                        .width = 64,
+                        .height = 48,
+                        .x = 10.0F,
+                        .y = 10.0F,
+                        .w = 20.0F,
+                        .h = 30.0F};
+  const auto match = matcher.match(crop);
+  REQUIRE(match.has_value());
+  CHECK(match->identity == PersonIdentity::Unknown);
+  CHECK(match->state == IdentityState::Unobservable);
+  CHECK(match->personId == 0);
+  CHECK(match->identifyAttempts == 0);
+  CHECK(identityStateToString(match->state) == "unobservable");
 }

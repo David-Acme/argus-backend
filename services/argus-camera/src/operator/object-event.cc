@@ -47,6 +47,19 @@ Json::Value object_event::toJson(const ObjectDetectedEvent& event)
       entry["lastSeenMs"] = Json::Int64(object.lastSeenMs);
       entry["dwellMs"] = Json::Int64(object.dwellMs);
       entry["observationId"] = object.observationId;
+      if (!object.identityState.empty()) {
+        entry["identityState"] = object.identityState;
+        entry["identifyAttempts"] = object.identifyAttempts;
+      }
+      if (object.scoreSamples > 0) {
+        entry["scoreMedian"] = object.scoreMedian;
+        entry["scoreSamples"] = object.scoreSamples;
+      }
+      if (object.trackWindows > 0) {
+        entry["zoneWindows"] = object.zoneWindows;
+        entry["trackWindows"] = object.trackWindows;
+        entry["areaSpread"] = object.areaSpread;
+      }
     }
     if (!object.zoneKind.empty())
       entry["zoneKind"] = object.zoneKind;

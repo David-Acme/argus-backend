@@ -85,7 +85,39 @@ std::string personSignature(const cv::Mat& rgb, const DetectedObject& object)
     quantized[i] = static_cast<char>(bins[i] * 255 / peak);
   return base64::encode(quantized);
 }
+
+constexpr int kTrackHistoryWindows = 10;
 } // namespace
+
+double CameraOperatorService::trackScoreMedian(
+    const std::vector<TrackWindowSample>& history)
+{
+  std::vector<float> scores;
+  scores.reserve(history.size());
+  for (const auto& sample : history)
+    scores.push_back(sample.confidence);
+  if (scores.empty())
+    return 0.0;
+  const size_t middle = scores.size() / 2;
+  std::nth_element(scores.begin(), scores.begin() + middle, scores.end());
+  return scores[middle];
+}
+
+double CameraOperatorService::trackAreaSpread(
+    const std::vector<TrackWindowSample>& history)
+{
+  float smallest = 0.0F;
+  float largest = 0.0F;
+  for (const auto& sample : history) {
+    if (sample.area <= 0.0F)
+      continue;
+    smallest = smallest == 0.0F ? sample.area : std::min(smallest, sample.area);
+    largest = std::max(largest, sample.area);
+  }
+  if (smallest <= 0.0F)
+    return 1.0;
+  return static_cast<double>(largest) / smallest;
+}
 
 CameraOperatorService::CameraOperatorService(Inputs inputs)
     : inputs_(std::move(inputs))
@@ -100,7 +132,16 @@ void CameraOperatorService::start()
   rescan();
 
   drogon::async_run([this]() -> drogon::Task<void> {
-    co_await supervise();
+    try {
+      co_await supervise();
+    }
+    catch (const std::exception& error) {
+      LOG_WARN << "Camera operator: supervise loop failed: " << error.what();
+    }
+    catch (...) {
+      LOG_WARN << "Camera operator: supervise loop failed with unknown error";
+    }
+    co_return;
   });
 }
 
@@ -151,7 +192,16 @@ void CameraOperatorService::rescan()
     cameraStop_[camera.id] = stop;
     added.push_back(camera);
     drogon::async_run([this, camera, stop]() -> drogon::Task<void> {
-      co_await runCamera(camera, stop);
+      try {
+        co_await runCamera(camera, stop);
+      }
+      catch (const std::exception& error) {
+        LOG_WARN << "Camera operator: camera loop failed: " << error.what();
+      }
+      catch (...) {
+        LOG_WARN << "Camera operator: camera loop failed with unknown error";
+      }
+      co_return;
     });
   }
 
@@ -407,6 +457,24 @@ CameraOperatorService::PersonDwell CameraOperatorService::updatePersonTracks(
                                      .frameWidth = frameWidth,
                                      .frameHeight = frameHeight});
         });
+    const bool inAnyZone =
+        inAlertZone || std::any_of(zones.begin(), zones.end(),
+                                   [&](const OperatorZone& zone) {
+                                     return zone.kind == "monitor" &&
+                                            objectCenterInZone(
+                                                {.object = objects[index],
+                                                 .zone = zone,
+                                                 .frameWidth = frameWidth,
+                                                 .frameHeight = frameHeight});
+                                   });
+    track.trackWindows += 1;
+    if (inAnyZone)
+      track.zoneWindows += 1;
+    track.windowHistory.push_back({.confidence = objects[index].confidence,
+                                   .area = objects[index].w *
+                                           objects[index].h});
+    if (track.windowHistory.size() > kTrackHistoryWindows)
+      track.windowHistory.erase(track.windowHistory.begin());
     const int64_t threshold =
         inAlertZone ? inputs_.operator_.dwellAlertMs
                     : (night ? inputs_.operator_.dwellNightMs
@@ -673,6 +741,8 @@ void CameraOperatorService::processFrame(const ProcessFrameInput& input)
                                  .personId = std::nullopt,
                                  .known = false,
                                  .identityConfidence = 0.0F,
+                                 .identityState = {},
+                                 .identifyAttempts = 0,
                                  .zoneKind = {}},
                    .state = state,
                    .stamp = stamp});
@@ -719,7 +789,9 @@ void CameraOperatorService::mergeObject(const MergeObjectInput& input)
       track = &found->second;
   }
   if (existing != event.objects.end()) {
-    if (existing->personId == 0 && input.evaluated.personId &&
+    const bool identitySettled =
+        existing->personId > 0 && existing->identity == "known";
+    if (!identitySettled && input.evaluated.personId &&
         *input.evaluated.personId > 0) {
       existing->personId = *input.evaluated.personId;
       existing->identity = input.evaluated.known ? "known" : "unknown";
@@ -730,11 +802,23 @@ void CameraOperatorService::mergeObject(const MergeObjectInput& input)
     existing->y = object.y;
     existing->w = object.w;
     existing->h = object.h;
+    if (!identitySettled && !input.evaluated.identityState.empty()) {
+      existing->identityState = input.evaluated.identityState;
+      existing->identifyAttempts = input.evaluated.identifyAttempts;
+    }
     if (track) {
       existing->lastSeenMs = track->lastSeenMs;
       existing->dwellMs = input.stamp - track->firstSeenMs;
       if (!track->signature.empty())
         existing->signature = track->signature;
+      if (!track->windowHistory.empty()) {
+        existing->scoreMedian = trackScoreMedian(track->windowHistory);
+        existing->scoreSamples =
+            static_cast<int>(track->windowHistory.size());
+        existing->zoneWindows = track->zoneWindows;
+        existing->trackWindows = track->trackWindows;
+        existing->areaSpread = trackAreaSpread(track->windowHistory);
+      }
     }
     if (!input.evaluated.zoneKind.empty())
       existing->zoneKind = input.evaluated.zoneKind;
@@ -752,6 +836,8 @@ void CameraOperatorService::mergeObject(const MergeObjectInput& input)
   if (person)
     entry.identity = input.evaluated.known ? "known" : "unknown";
   entry.identityConfidence = input.evaluated.identityConfidence;
+  entry.identityState = input.evaluated.identityState;
+  entry.identifyAttempts = input.evaluated.identifyAttempts;
   entry.zoneKind = input.evaluated.zoneKind;
   entry.trackId = object.trackId;
   if (track) {
@@ -762,6 +848,13 @@ void CameraOperatorService::mergeObject(const MergeObjectInput& input)
     entry.observationId = std::to_string(event.cameraId) + ":" +
                           std::to_string(object.trackId) + ":" +
                           std::to_string(track->firstSeenMs);
+    if (!track->windowHistory.empty()) {
+      entry.scoreMedian = trackScoreMedian(track->windowHistory);
+      entry.scoreSamples = static_cast<int>(track->windowHistory.size());
+      entry.zoneWindows = track->zoneWindows;
+      entry.trackWindows = track->trackWindows;
+      entry.areaSpread = trackAreaSpread(track->windowHistory);
+    }
   }
   event.objects.push_back(std::move(entry));
 }

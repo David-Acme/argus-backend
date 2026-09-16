@@ -46,6 +46,8 @@ struct EvaluatedObject
   std::optional<int64_t> personId;
   bool known{false};
   float identityConfidence{0.0F};
+  std::string identityState;
+  int identifyAttempts{0};
   std::string zoneKind;
 };
 

@@ -89,8 +89,10 @@ public:
   std::optional<PersonMatch> match(const PersonCrop&) const override
   {
     return PersonMatch{.identity = PersonIdentity::Known,
+                       .state = IdentityState::Known,
                        .personId = 7,
-                       .confidence = 0.9F};
+                       .confidence = 0.9F,
+                       .identifyAttempts = 1};
   }
 };
 
@@ -101,8 +103,10 @@ public:
   std::optional<PersonMatch> match(const PersonCrop&) const override
   {
     return PersonMatch{.identity = PersonIdentity::Unknown,
+                       .state = IdentityState::Unrecognized,
                        .personId = 9,
-                       .confidence = 0.8F};
+                       .confidence = 0.8F,
+                       .identifyAttempts = 2};
   }
 };
 } // namespace
@@ -402,4 +406,42 @@ TEST_CASE("an unknown primary intruder ignores a known companion in exclude")
   }
   CHECK(companionIdentified);
   CHECK(primaryUnknown);
+}
+
+TEST_CASE("the identity tri-state reaches the evaluated objects")
+{
+  static std::vector<uint8_t> frame(640 * 480 * 3, 128);
+
+  {
+    UnknownPerson9Matcher matcher;
+    auto input = baseInput({personAt({.x = 280, .y = 200, .w = 80, .h = 160})});
+    input.matcher = &matcher;
+    input.frameRgb = frame.data();
+    const auto outcome = EventIntelligence::evaluate(input);
+    REQUIRE(outcome.objects.size() == 1);
+    CHECK(outcome.objects.front().identityState == "unrecognized");
+    CHECK(outcome.objects.front().identifyAttempts == 2);
+  }
+
+  {
+    KnownPerson7Matcher matcher;
+    auto input = baseInput({personAt({.x = 280, .y = 200, .w = 80, .h = 160})});
+    input.matcher = &matcher;
+    input.frameRgb = frame.data();
+    const auto outcome = EventIntelligence::evaluate(input);
+    REQUIRE(outcome.objects.size() == 1);
+    CHECK(outcome.objects.front().identityState == "known");
+    CHECK(outcome.objects.front().identifyAttempts == 1);
+  }
+
+  {
+    NoKnownPersonMatcher matcher;
+    auto input = baseInput({personAt({.x = 280, .y = 200, .w = 80, .h = 160})});
+    input.matcher = &matcher;
+    input.frameRgb = frame.data();
+    const auto outcome = EventIntelligence::evaluate(input);
+    REQUIRE(outcome.objects.size() == 1);
+    CHECK(outcome.objects.front().identityState.empty());
+    CHECK(outcome.objects.front().identifyAttempts == 0);
+  }
 }

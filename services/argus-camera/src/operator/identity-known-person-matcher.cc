@@ -38,6 +38,32 @@ CropRect cropRect(const PersonCrop& crop)
           .width = std::clamp(static_cast<int>(crop.w), 1, crop.width - x),
           .height = std::clamp(static_cast<int>(crop.h), 1, crop.height - y)};
 }
+
+struct ObservedAsInput
+{
+  std::optional<PersonMatch> verdict;
+  int scans{0};
+  bool everScanned{false};
+};
+
+// Names the observation state for a scan outcome.
+PersonMatch observedAs(const ObservedAsInput& input)
+{
+  if (input.verdict) {
+    PersonMatch match = *input.verdict;
+    match.state = match.identity == PersonIdentity::Known
+                      ? IdentityState::Known
+                      : IdentityState::Unrecognized;
+    match.identifyAttempts = input.scans;
+    return match;
+  }
+  return {.identity = PersonIdentity::Unknown,
+          .state = input.everScanned ? IdentityState::Unrecognized
+                                     : IdentityState::Unobservable,
+          .personId = 0,
+          .confidence = 0.0F,
+          .identifyAttempts = input.scans};
+}
 } // namespace
 
 IdentityKnownPersonMatcher::IdentityKnownPersonMatcher(IdentityConfig config)
@@ -47,18 +73,32 @@ IdentityKnownPersonMatcher::IdentityKnownPersonMatcher(IdentityConfig config)
 {
 }
 
+IdentityKnownPersonMatcher::IdentityKnownPersonMatcher(
+    IdentityConfig config, std::unique_ptr<IdentityClient> client)
+    : config_(std::move(config)), client_(std::move(client))
+{
+}
+
 IdentityKnownPersonMatcher::~IdentityKnownPersonMatcher() = default;
 
 std::optional<PersonMatch> IdentityKnownPersonMatcher::match(
     const PersonCrop& crop) const
 {
+  const std::pair<int64_t, int64_t> key{crop.cameraId, crop.trackId};
   if (!config_.identify || crop.rgb == nullptr ||
-      crop.w < config_.minFaceBoxPx || crop.h < config_.minFaceBoxPx)
-    return std::nullopt;
+      crop.w < config_.minFaceBoxPx || crop.h < config_.minFaceBoxPx) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    const auto found = cache_.find(key);
+    if (found == cache_.end())
+      return observedAs(
+          {.verdict = std::nullopt, .scans = 0, .everScanned = false});
+    return observedAs({.verdict = found->second.result,
+                       .scans = found->second.scans,
+                       .everScanned = found->second.scanned});
+  }
 
   const int64_t stamp = nowMs();
   const double score = cropQuality(crop);
-  const std::pair<int64_t, int64_t> key{crop.cameraId, crop.trackId};
   {
     std::lock_guard<std::mutex> lock(mutex_);
     if (cache_.size() > 256) {
@@ -77,12 +117,15 @@ std::optional<PersonMatch> IdentityKnownPersonMatcher::match(
     if (found != cache_.end()) {
       const CacheEntry& entry = found->second;
       if (entry.result && entry.result->identity == PersonIdentity::Known)
-        return entry.result;
+        return observedAs(
+            {.verdict = entry.result, .scans = entry.scans, .everScanned = true});
       const bool improved = entry.score <= 0.0 ||
                             score > entry.score * (1.0 + config_.improveMargin);
       if (!improved && (entry.scanned ||
                         stamp - entry.lastScanMs < config_.identifyIntervalMs))
-        return entry.result;
+        return observedAs({.verdict = entry.result,
+                           .scans = entry.scans,
+                           .everScanned = entry.scanned});
     }
   }
 
@@ -91,14 +134,24 @@ std::optional<PersonMatch> IdentityKnownPersonMatcher::match(
     SnapshotStore::instance().putPersonCrop(crop.cameraId, crop.trackId, image,
                                             stamp);
   std::optional<PersonMatch> result;
+  int scans = 0;
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    const auto found = cache_.find(key);
+    if (found != cache_.end())
+      scans = found->second.scans;
+  }
   if (!image.empty()) {
+    ++scans;
     const auto identified = client_->identifyPerson(image);
     if (identified && identified->matched() && identified->person_id() > 0) {
       result = PersonMatch{.identity = identified->trusted()
-                                           ? PersonIdentity::Known
-                                           : PersonIdentity::Unknown,
+                                            ? PersonIdentity::Known
+                                            : PersonIdentity::Unknown,
+                           .state = IdentityState::Unrecognized,
                            .personId = identified->person_id(),
-                           .confidence = identified->confidence()};
+                           .confidence = identified->confidence(),
+                           .identifyAttempts = 0};
     }
     else if (config_.autoEnroll && canEnroll(crop.cameraId, stamp)) {
       const auto enrolled = client_->enrollPerson(
@@ -109,8 +162,10 @@ std::optional<PersonMatch> IdentityKnownPersonMatcher::match(
         result = PersonMatch{
             .identity = enrolled->created() ? PersonIdentity::Unknown
                                             : PersonIdentity::Known,
+            .state = IdentityState::Unrecognized,
             .personId = enrolled->person_id(),
-            .confidence = enrolled->confidence()};
+            .confidence = enrolled->confidence(),
+            .identifyAttempts = 0};
         std::lock_guard<std::mutex> lock(mutex_);
         lastEnrollMs_[crop.cameraId] = stamp;
       }
@@ -127,10 +182,13 @@ std::optional<PersonMatch> IdentityKnownPersonMatcher::match(
       entry.score = score;
       entry.result = result;
     }
+    entry.scans = std::max(entry.scans, scans);
     entry.lastScanMs = stamp;
-    entry.scanned = true;
+    if (!image.empty())
+      entry.scanned = true;
+    return observedAs(
+        {.verdict = result, .scans = entry.scans, .everScanned = entry.scanned});
   }
-  return result;
 }
 
 std::string IdentityKnownPersonMatcher::encodeCrop(const PersonCrop& crop) const

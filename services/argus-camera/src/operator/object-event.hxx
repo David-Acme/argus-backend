@@ -18,6 +18,13 @@ struct DetectedEventObject
   float h{0};
   int64_t personId{0};
   std::string identity;
+  std::string identityState;
+  int identifyAttempts{0};
+  double scoreMedian{0.0};
+  int scoreSamples{0};
+  int zoneWindows{0};
+  int trackWindows{0};
+  double areaSpread{1.0};
   std::string signature;
   int64_t trackId{0};
   int64_t firstSeenMs{0};
@@ -30,7 +37,7 @@ struct DetectedEventObject
 
 struct ObjectDetectedEvent
 {
-  int schemaVersion{2};
+  int schemaVersion{3};
   std::string eventId;
   int64_t cameraId{0};
   std::string cameraName;

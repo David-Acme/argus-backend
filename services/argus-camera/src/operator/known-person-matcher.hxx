@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <optional>
+#include <string>
 
 // Person crop for the identity seam; x/y/w/h is the box in pixels.
 struct PersonCrop
@@ -24,11 +25,34 @@ enum class PersonIdentity
   Known,
 };
 
+// Face-observation state reported for one match() call.
+enum class IdentityState
+{
+  Known,
+  Unrecognized,
+  Unobservable,
+};
+
+inline std::string identityStateToString(IdentityState state)
+{
+  switch (state) {
+  case IdentityState::Known:
+    return "known";
+  case IdentityState::Unrecognized:
+    return "unrecognized";
+  case IdentityState::Unobservable:
+    return "unobservable";
+  }
+  return "unobservable";
+}
+
 struct PersonMatch
 {
   PersonIdentity identity{PersonIdentity::Unknown};
+  IdentityState state{IdentityState::Unobservable};
   int64_t personId{0};
   float confidence{0.0F};
+  int identifyAttempts{0};
 };
 
 class IKnownPersonMatcher
@@ -36,7 +60,7 @@ class IKnownPersonMatcher
 public:
   virtual ~IKnownPersonMatcher() = default;
 
-  // Nullopt when there is no usable face; identity distinguishes known from unknown.
+  // Nullopt only when the matcher is absent; a present matcher always answers.
   virtual std::optional<PersonMatch> match(const PersonCrop& crop) const = 0;
 };
 

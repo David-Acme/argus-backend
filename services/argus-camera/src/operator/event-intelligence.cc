@@ -156,6 +156,8 @@ EventIntelligence::evaluate(const EventIntelligenceInput& input)
                          .personId = std::nullopt,
                          .known = false,
                          .identityConfidence = 0.0F,
+                         .identityState = {},
+                         .identifyAttempts = 0,
                          .zoneKind = {}});
 
   std::optional<int64_t> knownPersonId;
@@ -179,6 +181,8 @@ EventIntelligence::evaluate(const EventIntelligenceInput& input)
       entry.personId = match->personId;
       entry.known = match->identity == PersonIdentity::Known;
       entry.identityConfidence = match->confidence;
+      entry.identityState = identityStateToString(match->state);
+      entry.identifyAttempts = match->identifyAttempts;
       if (entry.known && isPrimary(entry.object.trackId) && !knownPersonId)
         knownPersonId = match->personId;
     }
