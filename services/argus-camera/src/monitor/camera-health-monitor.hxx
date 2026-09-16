@@ -41,12 +41,15 @@ public:
 
   void start();
   void stop();
+  drogon::Task<void> tick(CameraRef camera);
 
 private:
   struct CameraState
   {
     std::vector<uint8_t> reference;
     CameraHealthState lastStatus{CameraHealthState::Ok};
+    int64_t lastPublishMs{0};
+    bool published{false};
   };
 
   struct TickInput

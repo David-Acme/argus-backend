@@ -18,6 +18,7 @@ enum class CameraHealthState
   Blurred,
   Moved,
   Unreachable,
+  Covered,
 };
 
 struct HealthThresholds

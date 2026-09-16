@@ -31,7 +31,8 @@ CameraHealthState health_monitor::classify(const HealthMetrics& metrics,
                                       const HealthThresholds& thresholds)
 {
   if (metrics.brightness < thresholds.dark)
-    return CameraHealthState::Dark;
+    return metrics.blur < thresholds.blur ? CameraHealthState::Covered
+                                          : CameraHealthState::Dark;
   if (metrics.brightness > thresholds.bright)
     return CameraHealthState::Bright;
   if (metrics.blur < thresholds.blur)
@@ -56,6 +57,8 @@ std::string health_monitor::statusName(CameraHealthState status)
       return "moved";
     case CameraHealthState::Unreachable:
       return "unreachable";
+    case CameraHealthState::Covered:
+      return "covered";
   }
   return "ok";
 }
@@ -78,7 +81,16 @@ void CameraHealthMonitor::start()
   LOG_INFO << "Camera health monitor: every " << config_.intervalMs
            << " ms per camera";
   drogon::async_run([this]() -> drogon::Task<void> {
-    co_await run();
+    try {
+      co_await run();
+    }
+    catch (const std::exception& error) {
+      LOG_WARN << "Camera health monitor: run loop failed: " << error.what();
+    }
+    catch (...) {
+      LOG_WARN << "Camera health monitor: run loop failed with unknown error";
+    }
+    co_return;
   });
 }
 
@@ -163,6 +175,18 @@ drogon::Task<void> CameraHealthMonitor::run()
     for (const auto& camera : cameras) {
       if (!running_.load())
         break;
+      co_await tick(camera);
+    }
+    co_await BlockingTask<void>([this]() {
+      std::this_thread::sleep_for(
+          std::chrono::milliseconds(config_.intervalMs));
+    });
+  }
+  co_return;
+}
+
+drogon::Task<void> CameraHealthMonitor::tick(CameraRef camera)
+{
       auto frame = co_await dependencies_.source->grab(
           {.cameraId = camera.id, .cameraName = camera.name});
 
@@ -197,6 +221,7 @@ drogon::Task<void> CameraHealthMonitor::run()
       }
 
       bool transitioned = false;
+      bool heartbeatDue = false;
       {
         std::lock_guard<std::mutex> lock(stateMutex_);
         CameraState& state = states_[camera.id];
@@ -204,9 +229,19 @@ drogon::Task<void> CameraHealthMonitor::run()
           state.lastStatus = status;
           transitioned = true;
         }
+        else if (!state.published ||
+                 capturedAt - state.lastPublishMs >= config_.intervalMs) {
+          heartbeatDue = true;
+        }
       }
-      if (!transitioned)
-        continue;
+      if (!transitioned && !heartbeatDue)
+        co_return;
+      {
+        std::lock_guard<std::mutex> lock(stateMutex_);
+        CameraState& state = states_[camera.id];
+        state.lastPublishMs = capturedAt;
+        state.published = true;
+      }
 
       if (status == CameraHealthState::Ok)
         LOG_INFO << "Camera health: " << camera.id << " recovered";
@@ -220,12 +255,5 @@ drogon::Task<void> CameraHealthMonitor::run()
                                      .metrics = metrics,
                                      .detectedAtMs = capturedAt});
       }
-    }
-
-    co_await BlockingTask<void>([this]() {
-      std::this_thread::sleep_for(
-          std::chrono::milliseconds(config_.intervalMs));
-    });
-  }
   co_return;
 }
