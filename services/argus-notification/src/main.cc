@@ -120,6 +120,22 @@ int main()
       DbService::client()->execSqlSync(
           "ALTER TABLE notification_command ADD COLUMN fingerprint TEXT NOT "
           "NULL DEFAULT ''");
+    if (!hasColumn("notification_delivery", "acked_at"))
+      DbService::client()->execSqlSync(
+          "ALTER TABLE notification_delivery ADD COLUMN acked_at INTEGER NOT "
+          "NULL DEFAULT 0");
+    if (!hasColumn("notification_delivery", "created_ms"))
+      DbService::client()->execSqlSync(
+          "ALTER TABLE notification_delivery ADD COLUMN created_ms INTEGER "
+          "NOT NULL DEFAULT 0");
+    if (!hasColumn("notification_delivery", "sent_ms"))
+      DbService::client()->execSqlSync(
+          "ALTER TABLE notification_delivery ADD COLUMN sent_ms INTEGER NOT "
+          "NULL DEFAULT 0");
+    if (!hasColumn("notification_delivery", "acked_ms"))
+      DbService::client()->execSqlSync(
+          "ALTER TABLE notification_delivery ADD COLUMN acked_ms INTEGER NOT "
+          "NULL DEFAULT 0");
 
     DbService::applyPragmas();
     DbService::client()->execSqlSync("PRAGMA foreign_keys = OFF");
@@ -131,7 +147,8 @@ int main()
   std::shared_ptr<NatsPushIntentSink> pushIntentSink;
   const std::string natsUrl = ConfigService::getString("nats.url");
   if (natsUrl.empty()) {
-    LOG_INFO << "NATS not configured; notification change funnel disabled";
+    LOG_INFO << "NATS not configured; change funnel and delivery reconciler "
+                "disabled, intents stay pending";
   }
   else {
     natsBus = std::make_shared<NatsBus>();
@@ -180,6 +197,7 @@ int main()
   }
 
   notificationRpc.startDeliveryReconciler();
+  notificationRpc.startSelfTestProber();
 
   drogon::app()
       .setThreadNum(0)

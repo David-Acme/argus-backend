@@ -106,6 +106,8 @@ set(NOTIFICATION_FEATURE_SOURCES
     ${NOTIFICATION_SRC_ROOT}/feature/api/notification/controllers/notification-controller.cc
     ${NOTIFICATION_SRC_ROOT}/feature/api/notification/controllers/notification-token-controller.cc
     ${NOTIFICATION_SRC_ROOT}/feature/api/notification/dtos/notification-read-dto.cc
+    ${NOTIFICATION_SRC_ROOT}/feature/api/notification/dtos/notification-ack-dto.cc
+    ${NOTIFICATION_SRC_ROOT}/feature/api/notification/dtos/delivery-summary-dto.cc
     ${NOTIFICATION_SRC_ROOT}/feature/api/notification/dtos/register-notification-token-dto.cc
     ${NOTIFICATION_SRC_ROOT}/feature/api/notification/services/notification-feature-service.cc
     ${NOTIFICATION_SRC_ROOT}/feature/api/notification/services/notification-token-feature-service.cc
@@ -196,6 +198,28 @@ target_compile_options(notification-rpc-test PRIVATE -Wall -Wextra)
 
 add_test(NAME notification-rpc-test COMMAND notification-rpc-test)
 
+# No-NATS survival: with no sink installed the service stays alive, names
+# the outcome and leaves intents pending instead of terminating.
+add_executable(notification-no-nats-test
+    tests/unit/notification-no-nats-test.cc
+    ${NOTIFICATION_SRC_ROOT}/feature/rpc/notification-rpc-service.cc)
+
+set_target_properties(notification-no-nats-test PROPERTIES
+    EXCLUDE_FROM_ALL FALSE)
+
+target_include_directories(notification-no-nats-test PRIVATE
+    ${NOTIFICATION_SRC_ROOT})
+
+target_compile_definitions(notification-no-nats-test PRIVATE
+    ARGUS_NOTIFICATION_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql")
+
+target_link_libraries(notification-no-nats-test PRIVATE argus_sync
+    argus::sdk-notification argus_common doctest::doctest)
+
+target_compile_options(notification-no-nats-test PRIVATE -Wall -Wextra)
+
+add_test(NAME notification-no-nats-test COMMAND notification-no-nats-test)
+
 # Durable delivery seam: intents settle only after the broker stores them.
 add_executable(notification-delivery-test
     tests/unit/notification-delivery-test.cc)
@@ -209,6 +233,18 @@ target_link_libraries(notification-delivery-test PRIVATE argus_sync
 target_compile_options(notification-delivery-test PRIVATE -Wall -Wextra)
 
 add_test(NAME notification-delivery-test COMMAND notification-delivery-test)
+
+add_executable(notification-ack-test tests/unit/notification-ack-test.cc)
+
+set_target_properties(notification-ack-test PROPERTIES
+    EXCLUDE_FROM_ALL FALSE)
+
+target_link_libraries(notification-ack-test PRIVATE argus_sync
+    argus_common doctest::doctest)
+
+target_compile_options(notification-ack-test PRIVATE -Wall -Wextra)
+
+add_test(NAME notification-ack-test COMMAND notification-ack-test)
 
 # Opt-in live check against a real NATS; skips without ARGUS_NATS_URL.
 add_executable(notification-delivery-live-test

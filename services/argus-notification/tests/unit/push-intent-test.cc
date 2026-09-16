@@ -182,6 +182,10 @@ TEST_CASE("the create path publishes one intent per row")
       "attempts INTEGER NOT NULL DEFAULT 0, "
       "created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')), "
       "sent_at INTEGER NOT NULL DEFAULT 0, "
+      "acked_at INTEGER NOT NULL DEFAULT 0, "
+      "created_ms INTEGER NOT NULL DEFAULT 0, "
+      "sent_ms INTEGER NOT NULL DEFAULT 0, "
+      "acked_ms INTEGER NOT NULL DEFAULT 0, "
       "UNIQUE (notification_id))");
   drogon::app().setLogLevel(trantor::Logger::kWarn);
   drogon::app().addDbClient(

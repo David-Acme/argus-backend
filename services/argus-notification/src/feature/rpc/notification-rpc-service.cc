@@ -62,18 +62,81 @@ NotificationRpcService::NotificationRpcService(Dependencies dependencies)
 
 void NotificationRpcService::startDeliveryReconciler()
 {
-  drogon::app().getLoop()->runAfter(0.0, [this]() {
-    drogon::async_run([this]() -> drogon::Task<void> {
-      co_await notificationService_.deliverPending();
-      co_return;
-    });
+  if (!notificationService_.hasDeliverySink()) {
+    LOG_INFO << "delivery reconciler disabled: no delivery sink installed; "
+                "intents stay pending";
+    return;
+  }
+  const auto reconcile = [this]() -> drogon::Task<void> {
+    try {
+      const DeliverPendingOutcome outcome =
+          co_await notificationService_.deliverPending();
+      if (outcome == DeliverPendingOutcome::StreamUnavailable) {
+        const int64_t backlog =
+            co_await notificationService_.pendingBacklog();
+        LOG_WARN << "delivery reconciler deferred (stream_unavailable) with "
+                 << backlog << " intent(s) pending";
+      }
+      else if (outcome != DeliverPendingOutcome::Settled) {
+        const int64_t backlog =
+            co_await notificationService_.pendingBacklog();
+        LOG_WARN << "delivery reconciler deferred ("
+                 << deliverPendingOutcomeToString(outcome) << ") with "
+                 << backlog << " intent(s) pending";
+      }
+    }
+    catch (const std::exception& e) {
+      LOG_WARN << "delivery reconciler failed; intents stay pending: "
+               << e.what();
+    }
+    catch (...) {
+      LOG_WARN << "delivery reconciler failed with an unknown error; "
+                  "intents stay pending";
+    }
+    co_return;
+  };
+  drogon::app().getLoop()->runAfter(0.0,
+                                    [this, reconcile]() {
+                                      drogon::async_run(reconcile);
+                                    });
+  drogon::app().getLoop()->runEvery(60.0,
+                                    [this, reconcile]() {
+                                      drogon::async_run(reconcile);
+                                    });
+}
+
+void NotificationRpcService::startSelfTestProber()
+{
+  if (!notificationService_.hasDeliverySink()) {
+    LOG_INFO << "delivery self-test disabled: no delivery sink installed";
+    return;
+  }
+  int64_t intervalS = 300;
+  if (ConfigService::hasKey("notifications.selftest_interval_s"))
+    intervalS = ConfigService::getInt("notifications.selftest_interval_s");
+  if (intervalS <= 0) {
+    LOG_INFO << "delivery self-test disabled by configuration";
+    return;
+  }
+  const auto probe = [this]() -> drogon::Task<void> {
+    try {
+      co_await notificationService_.runSelfTest();
+    }
+    catch (const std::exception& e) {
+      LOG_WARN << "delivery self-test failed: " << e.what();
+    }
+    catch (...) {
+      LOG_WARN << "delivery self-test failed with an unknown error";
+    }
+    co_return;
+  };
+  drogon::app().getLoop()->runAfter(0.0, [this, probe]() {
+    drogon::async_run(probe);
   });
-  drogon::app().getLoop()->runEvery(60.0, [this]() {
-    drogon::async_run([this]() -> drogon::Task<void> {
-      co_await notificationService_.deliverPending();
-      co_return;
-    });
-  });
+  drogon::app().getLoop()->runEvery(static_cast<double>(intervalS),
+                                    [this, probe]() {
+                                      drogon::async_run(probe);
+                                    });
 }
 
 grpc::ServerUnaryReactor* NotificationRpcService::CreateNotifications(

@@ -151,3 +151,45 @@ exclusively this service's.
 - **Push intents** (`[push].enabled`, default off) stay at-most-once
   fire-and-forget accelerators toward `argus-relay`; the `/sync` fan-out
   after durable delivery is the guarantee.
+
+## Delivery proof (Round 11)
+
+The chain used to end at gateway dispatch. Clients now confirm display
+with `PATCH /notification/ack {"notification_ids": [...]}` (same role
+shape as `/notification/read`); the confirmation lands on the delivery
+row (`acked_at`, millisecond legs beside the legacy second stamps), only
+for sent rows, idempotent. `GET /notification/delivery-summary` reports
+pending/unacked/unacked-old (past `ack_window_s`, default 24h),
+dispatch-to-settle latency percentiles and the synthetic probe. The probe
+(`startSelfTestProber`, every `selftest_interval_s`, default 300s) pushes
+one user-0 `probe` row through create, broker publish and settle and
+records the outcome in `notification_selftest`; no device can see it, and
+a failed probe is a warn plus a row, never silent. Probe rows older than
+seven days are purged with their deliveries.
+
+## No-NATS survival (Round 6, Gate A)
+
+A deployment with no `[nats].url` starts, serves RPCs and leaves intents
+pending — the missing delivery sink is a configuration state, never a fatal
+error. Three layers hold that contract:
+
+- `deliverPending()` returns `DeliverPendingOutcome` (`Settled`,
+  `NoSinkInstalled`, `StreamUnavailable`) instead of throwing for a missing
+  sink; every intent stays pending for a later reconciler or a configured
+  restart.
+- `startDeliveryReconciler()` refuses to schedule when no sink is installed
+  and wraps the drain in `try/catch`, so a database failure degrades to a
+  warn instead of feeding `AsyncTask::unhandled_exception` (LOG_FATAL +
+  `std::terminate`).
+- A missing push sink no longer aborts the drain: push is a best-effort
+  accelerator, so the delivery settles with a warn while push stays silent.
+  A sink that exists but cannot reach the broker still keeps intents pending
+  (settle only on PubAck) — that guarantee is unchanged.
+
+## Live tests (opt-in, never green by default)
+
+`notification-delivery-live-test` skips silently without `ARGUS_NATS_URL`
+(e.g. `nats://127.0.0.1:4222`); it runs the fan-out against an isolated
+stream, subject, durable name and temporary database. A default run passing
+means nothing about the wire — every live-test claim must state the variable
+that was set. Never point it at deployment streams.

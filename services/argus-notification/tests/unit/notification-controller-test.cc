@@ -6,6 +6,7 @@
 #include <feature/api/notification/controllers/notification-controller.hxx>
 #include <feature/api/notification/controllers/notification-token-controller.hxx>
 #include <feature/api/notification/dtos/notification-read-dto.hxx>
+#include <feature/api/notification/dtos/notification-ack-dto.hxx>
 #include <feature/api/notification/dtos/register-notification-token-dto.hxx>
 #include <filter/device/device-filter.hxx>
 #include <filter/jwt/jwt-filter.hxx>
@@ -102,6 +103,26 @@ void seedNotificationDb(const char* path)
       "CREATE UNIQUE INDEX IF NOT EXISTS idx_notification_token_uniq "
       "ON notification_token (user_id, device_hash)");
   client->execSqlSync(
+      "CREATE TABLE notification_delivery ("
+      "id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, "
+      "notification_id INTEGER NOT NULL, "
+      "user_id INTEGER NOT NULL DEFAULT 0, "
+      "status TEXT NOT NULL DEFAULT 'pending', "
+      "attempts INTEGER NOT NULL DEFAULT 0, "
+      "created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')), "
+      "sent_at INTEGER NOT NULL DEFAULT 0, "
+      "acked_at INTEGER NOT NULL DEFAULT 0, "
+      "created_ms INTEGER NOT NULL DEFAULT 0, "
+      "sent_ms INTEGER NOT NULL DEFAULT 0, "
+      "acked_ms INTEGER NOT NULL DEFAULT 0, "
+      "UNIQUE (notification_id))");
+  client->execSqlSync(
+      "CREATE TABLE notification_selftest ("
+      "id INTEGER NOT NULL PRIMARY KEY CHECK (id = 1), "
+      "last_at INTEGER NOT NULL DEFAULT 0, "
+      "last_ok INTEGER NOT NULL DEFAULT 0, "
+      "last_ms INTEGER NOT NULL DEFAULT 0)");
+  client->execSqlSync(
       "CREATE INDEX IF NOT EXISTS idx_notification_token_user "
       "ON notification_token (user_id)");
   for (const auto id : {1, 2}) {
@@ -109,6 +130,11 @@ void seedNotificationDb(const char* path)
         "INSERT INTO notification (id, user_id, type, title, body) "
         "VALUES (?, 7, 'event', ?, 'someone rang the bell')",
         id, ("Bell " + std::to_string(id)));
+    client->execSqlSync(
+        "INSERT INTO notification_delivery (notification_id, user_id, status, "
+        "created_at, sent_at, created_ms, sent_ms) VALUES (?, 7, 'sent', "
+        "1700000000, 1700000001, 1700000000000, 1700000001500)",
+        id);
   }
 }
 
@@ -197,6 +223,54 @@ TEST_CASE("notification contracts hold on the argus-notification surface")
       drogon::sync_wait(notificationController.markAsRead(readReq({1, 2})));
   CHECK(body(remarkedAgain)["status"].asInt() == 200);
   CHECK(sink.audits.size() == 2);
+
+  auto ackReq = [&](std::vector<int64_t> ids) {
+    Json::Value idArray(Json::arrayValue);
+    for (const auto id : ids)
+      idArray.append(Json::Int64(id));
+    Json::Value payload;
+    payload["notification_ids"] = idArray;
+    auto req = drogon::HttpRequest::newHttpJsonRequest(payload);
+    req->getAttributes()->insert(
+        AppConfig::JWT_CTX_KEY,
+        JwtContext{7, "Resident", UserRole::Resident, true, {}});
+    return req;
+  };
+
+  bool ackValidationThrown = false;
+  try {
+    const auto dto = NotificationAckDto::fromJson(Json::Value());
+    (void)dto;
+  }
+  catch (const ValidationException& e) {
+    ackValidationThrown = true;
+    CHECK(e.statusCode() == 422);
+  }
+  CHECK(ackValidationThrown);
+
+  const auto acked =
+      drogon::sync_wait(notificationController.ack(ackReq({1, 2})));
+  REQUIRE(acked);
+  CHECK(body(acked)["info"]["acked"].asInt64() == 2);
+
+  const auto reacked =
+      drogon::sync_wait(notificationController.ack(ackReq({1, 2})));
+  CHECK(body(reacked)["info"]["acked"].asInt64() == 0);
+
+  auto summaryReq = drogon::HttpRequest::newHttpJsonRequest(Json::Value());
+  summaryReq->setParameter("since", "1");
+  summaryReq->getAttributes()->insert(
+      AppConfig::JWT_CTX_KEY,
+      JwtContext{7, "Resident", UserRole::Resident, true, {}});
+  const auto summary =
+      drogon::sync_wait(notificationController.deliverySummary(summaryReq));
+  REQUIRE(summary);
+  const Json::Value summaryJson = body(summary);
+  CHECK(summaryJson["info"]["sent"].asInt64() == 2);
+  CHECK(summaryJson["info"]["acked"].asInt64() == 2);
+  CHECK(summaryJson["info"]["unacked"].asInt64() == 0);
+  CHECK(summaryJson["info"]["latencyMsMax"].asInt64() == 1500);
+  CHECK(summaryJson["info"]["probeAt"].asInt64() == 0);
 
   NotificationTokenController tokenController;
 

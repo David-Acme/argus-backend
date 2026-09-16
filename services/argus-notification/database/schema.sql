@@ -59,6 +59,9 @@ CREATE TABLE IF NOT EXISTS notification_command (
 );
 
 -- One durable delivery intent per notification; settled after WS/push fan-out.
+-- acked_at records the client's display confirmation (0 = unacknowledged);
+-- the *_ms columns give millisecond latency legs alongside the legacy
+-- second-resolution stamps.
 CREATE TABLE IF NOT EXISTS notification_delivery (
     id              INTEGER NOT NULL  PRIMARY KEY AUTOINCREMENT,
     notification_id INTEGER NOT NULL  REFERENCES notification(id) ON DELETE CASCADE,
@@ -67,7 +70,19 @@ CREATE TABLE IF NOT EXISTS notification_delivery (
                             CHECK (status IN ('pending', 'sent')),
     attempts        INTEGER NOT NULL  DEFAULT 0,
     created_at      INTEGER NOT NULL  DEFAULT (strftime('%s', 'now')),
-    sent_at         INTEGER NOT NULL  DEFAULT 0
+    sent_at         INTEGER NOT NULL  DEFAULT 0,
+    acked_at        INTEGER NOT NULL  DEFAULT 0,
+    created_ms      INTEGER NOT NULL  DEFAULT 0,
+    sent_ms         INTEGER NOT NULL  DEFAULT 0,
+    acked_ms        INTEGER NOT NULL  DEFAULT 0
+);
+
+-- Latest synthetic delivery-probe outcome; one row, id always 1.
+CREATE TABLE IF NOT EXISTS notification_selftest (
+    id      INTEGER NOT NULL  PRIMARY KEY CHECK (id = 1),
+    last_at INTEGER NOT NULL  DEFAULT 0,
+    last_ok INTEGER NOT NULL  DEFAULT 0,
+    last_ms INTEGER NOT NULL  DEFAULT 0
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_notification_delivery_notification

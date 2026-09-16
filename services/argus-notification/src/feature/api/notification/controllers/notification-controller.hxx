@@ -14,9 +14,20 @@ public:
   ADD_METHOD_TO(NotificationController::markAsRead, "/notification/read",
                 drogon::Patch, "DeviceFilter", "ValidJsonFilter", "JwtFilter",
                 "RoleFilter");
+  ADD_METHOD_TO(NotificationController::ack, "/notification/ack",
+                drogon::Patch, "DeviceFilter", "ValidJsonFilter", "JwtFilter",
+                "RoleFilter");
+  ADD_METHOD_TO(NotificationController::deliverySummary,
+                "/notification/delivery-summary", drogon::Get, "DeviceFilter",
+                "ValidJsonFilter", "JwtFilter", "RoleFilter");
   METHOD_LIST_END
 
   drogon::Task<drogon::HttpResponsePtr> markAsRead(drogon::HttpRequestPtr req);
+
+  drogon::Task<drogon::HttpResponsePtr> ack(drogon::HttpRequestPtr req);
+
+  drogon::Task<drogon::HttpResponsePtr> deliverySummary(
+      drogon::HttpRequestPtr req);
 
 private:
   NotificationFeatureService service_;

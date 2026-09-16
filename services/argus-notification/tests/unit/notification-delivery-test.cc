@@ -84,7 +84,17 @@ void createTables()
       "attempts INTEGER NOT NULL DEFAULT 0, "
       "created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')), "
       "sent_at INTEGER NOT NULL DEFAULT 0, "
+      "acked_at INTEGER NOT NULL DEFAULT 0, "
+      "created_ms INTEGER NOT NULL DEFAULT 0, "
+      "sent_ms INTEGER NOT NULL DEFAULT 0, "
+      "acked_ms INTEGER NOT NULL DEFAULT 0, "
       "UNIQUE (notification_id))");
+  client->execSqlSync(
+      "CREATE TABLE notification_selftest ("
+      "id INTEGER NOT NULL PRIMARY KEY CHECK (id = 1), "
+      "last_at INTEGER NOT NULL DEFAULT 0, "
+      "last_ok INTEGER NOT NULL DEFAULT 0, "
+      "last_ms INTEGER NOT NULL DEFAULT 0)");
 }
 
 int64_t scalarCount(const std::string& sql)
@@ -173,7 +183,8 @@ TEST_CASE("durable delivery keeps intents pending until the broker stores them")
   }
 
   deliverySink->armed = true;
-  drogon::sync_wait(service.deliverPending());
+  CHECK(drogon::sync_wait(service.deliverPending()) ==
+        DeliverPendingOutcome::Settled);
   CHECK(scalarCount("SELECT COUNT(*) AS total FROM notification_delivery "
                     "WHERE status = 'pending'") == 0);
   CHECK(scalarCount("SELECT COUNT(*) AS total FROM notification_delivery "
@@ -187,6 +198,7 @@ TEST_CASE("durable delivery keeps intents pending until the broker stores them")
 
   {
     const NotificationService unsinked;
+    CHECK_FALSE(unsinked.hasDeliverySink());
     NotificationBatchInput batch;
     batch.userIds = {3};
     batch.notification.type = "camera";
@@ -200,17 +212,22 @@ TEST_CASE("durable delivery keeps intents pending until the broker stores them")
     catch (const std::exception&) {
       threw = true;
     }
-    CHECK(threw);
+    CHECK_FALSE(threw);
     CHECK(scalarCount("SELECT COUNT(*) AS total FROM notification") == 3);
     CHECK(scalarCount("SELECT COUNT(*) AS total FROM notification_delivery "
                       "WHERE status = 'pending'") == 1);
     CHECK(changeSink.emits == 0);
+    CHECK(drogon::sync_wait(unsinked.deliverPending()) ==
+          DeliverPendingOutcome::NoSinkInstalled);
+    CHECK(scalarCount("SELECT COUNT(*) AS total FROM notification_delivery "
+                      "WHERE status = 'pending'") == 1);
   }
 
   {
     deliverySink->streamOk = false;
     const size_t publishedBefore = deliverySink->published.size();
-    drogon::sync_wait(service.deliverPending());
+    CHECK(drogon::sync_wait(service.deliverPending()) ==
+          DeliverPendingOutcome::StreamUnavailable);
     CHECK(deliverySink->published.size() == publishedBefore);
     CHECK(scalarCount("SELECT COUNT(*) AS total FROM notification_delivery "
                       "WHERE status = 'pending'") == 1);
@@ -231,7 +248,8 @@ TEST_CASE("durable delivery keeps intents pending until the broker stores them")
   {
     CHECK(deliverySink.use_count() >= 2);
     deliverySink.reset();
-    drogon::sync_wait(service.deliverPending());
+    CHECK(drogon::sync_wait(service.deliverPending()) ==
+          DeliverPendingOutcome::Settled);
     CHECK(scalarCount("SELECT COUNT(*) AS total FROM notification_delivery "
                       "WHERE status = 'pending'") == 0);
   }

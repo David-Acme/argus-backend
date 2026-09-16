@@ -13,6 +13,11 @@ public:
   drogon::Task<void> markAsRead(int64_t userId,
                                 const std::vector<int64_t>& ids) const;
 
+  drogon::Task<int64_t> ackDeliveries(
+      int64_t userId, const std::vector<int64_t>& notificationIds) const;
+
+  drogon::Task<Json::Value> deliverySummary(int64_t since) const;
+
 private:
   NotificationService notificationService_;
 };

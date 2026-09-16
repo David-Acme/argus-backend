@@ -39,6 +39,9 @@ public:
   // Startup + periodic reconciliation of durable delivery intents.
   void startDeliveryReconciler();
 
+  // Periodic synthetic probe through create, broker publish and settle.
+  void startSelfTestProber();
+
 private:
   std::vector<argus::sdk::CallerCredential> guardCallers_;
   std::vector<argus::sdk::CallerCredential> gatewayCallers_;
