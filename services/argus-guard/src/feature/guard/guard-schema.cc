@@ -230,6 +230,49 @@ bool migrateActionColumns()
               "ON guard_action (command_id) WHERE command_id != ''");
 }
 
+bool actionTableIsCurrent()
+{
+  if (!tableExists("guard_action"))
+    return true;
+  const std::string sql = tableSql("guard_action");
+  return sql.find("greet_listen") != std::string::npos;
+}
+
+bool rebuildActionTable(const std::string& schemaPath)
+{
+  const auto statements = schemaStatements(schemaPath, "guard_action");
+  if (statements.empty()) {
+    LOG_WARN << "Guard schema migration: guard_action DDL not found";
+    return false;
+  }
+  if (!exec("BEGIN IMMEDIATE"))
+    return false;
+  bool ok =
+      exec("DROP INDEX IF EXISTS idx_guard_action_camera_created") &&
+      exec("DROP INDEX IF EXISTS idx_guard_action_encounter_created") &&
+      exec("DROP INDEX IF EXISTS idx_guard_action_command") &&
+      exec("ALTER TABLE guard_action RENAME TO guard_action_legacy");
+  for (const auto& statement : statements)
+    ok = ok && exec(statement);
+  ok = ok &&
+       exec("INSERT INTO guard_action (id, incident_id, encounter_id, "
+            "camera_id, person_id, command_id, kind, status, detail, "
+            "created_at) SELECT id, incident_id, encounter_id, camera_id, "
+            "person_id, command_id, CASE "
+            "WHEN kind IN ('greet', 'greet_listen', 'greet_reply', "
+            "'announce', 'alarm', 'siren_arm', 'siren_disarm', 'notify') "
+            "THEN kind "
+            "WHEN kind LIKE 'agent\\_%' ESCAPE '\\' THEN kind "
+            "ELSE 'agent_legacy' END, status, detail, created_at FROM "
+            "guard_action_legacy") &&
+       exec("DROP TABLE guard_action_legacy");
+  if (!ok) {
+    exec("ROLLBACK");
+    return false;
+  }
+  return exec("COMMIT");
+}
+
 bool migrateAssessmentColumns()
 {
   if (!tableExists("guard_assessment"))
@@ -272,6 +315,75 @@ bool migrateEncounterDialogueColumns()
     return false;
   if (!columnExists("guard_encounter", "last_heard_at") &&
       !exec("ALTER TABLE guard_encounter ADD COLUMN last_heard_at INTEGER "
+            "NOT NULL DEFAULT 0"))
+    return false;
+  return true;
+}
+
+bool migrateEncounterNotifyColumns()
+{
+  if (!tableExists("guard_encounter"))
+    return true;
+  if (!columnExists("guard_encounter", "notify_command_id") &&
+      !exec("ALTER TABLE guard_encounter ADD COLUMN notify_command_id TEXT "
+            "NOT NULL DEFAULT ''"))
+    return false;
+  if (!columnExists("guard_encounter", "notify_count") &&
+      !exec("ALTER TABLE guard_encounter ADD COLUMN notify_count INTEGER "
+            "NOT NULL DEFAULT 0"))
+    return false;
+  if (!columnExists("guard_encounter", "notify_highest_rank") &&
+      !exec("ALTER TABLE guard_encounter ADD COLUMN notify_highest_rank "
+            "INTEGER NOT NULL DEFAULT 0"))
+    return false;
+  return true;
+}
+
+bool migrateJournalDispatchColumn()
+{
+  if (!tableExists("guard_decision_journal"))
+    return true;
+  if (!columnExists("guard_decision_journal", "dispatch_attempts") &&
+      !exec("ALTER TABLE guard_decision_journal ADD COLUMN dispatch_attempts "
+            "INTEGER NOT NULL DEFAULT 0"))
+    return false;
+  return true;
+}
+
+bool migrateJournalRound11Columns()
+{
+  if (!tableExists("guard_decision_journal"))
+    return true;
+  if (!columnExists("guard_decision_journal", "suppressed_kinds") &&
+      !exec("ALTER TABLE guard_decision_journal ADD COLUMN suppressed_kinds "
+            "TEXT NOT NULL DEFAULT '[]'"))
+    return false;
+  if (!columnExists("guard_decision_journal", "novelty_score") &&
+      !exec("ALTER TABLE guard_decision_journal ADD COLUMN novelty_score REAL "
+            "NOT NULL DEFAULT 0"))
+    return false;
+  if (!columnExists("guard_decision_journal", "repeat_visits") &&
+      !exec("ALTER TABLE guard_decision_journal ADD COLUMN repeat_visits "
+            "INTEGER NOT NULL DEFAULT 0"))
+    return false;
+  if (!columnExists("guard_decision_journal", "quiet_hold") &&
+      !exec("ALTER TABLE guard_decision_journal ADD COLUMN quiet_hold INTEGER "
+            "NOT NULL DEFAULT 0"))
+    return false;
+  if (!columnExists("guard_decision_journal", "budget_hold") &&
+      !exec("ALTER TABLE guard_decision_journal ADD COLUMN budget_hold INTEGER "
+            "NOT NULL DEFAULT 0"))
+    return false;
+  if (!columnExists("guard_decision_journal", "assess_ms") &&
+      !exec("ALTER TABLE guard_decision_journal ADD COLUMN assess_ms INTEGER "
+            "NOT NULL DEFAULT 0"))
+    return false;
+  if (!columnExists("guard_decision_journal", "feedback_label") &&
+      !exec("ALTER TABLE guard_decision_journal ADD COLUMN feedback_label TEXT "
+            "NOT NULL DEFAULT ''"))
+    return false;
+  if (!columnExists("guard_decision_journal", "feedback_at") &&
+      !exec("ALTER TABLE guard_decision_journal ADD COLUMN feedback_at INTEGER "
             "NOT NULL DEFAULT 0"))
     return false;
   return true;
@@ -337,6 +449,22 @@ bool rebuildActionOutboxTable(const std::string& schemaPath)
   return exec("COMMIT");
 }
 
+bool ensureBaselineTables()
+{
+  return exec("CREATE TABLE IF NOT EXISTS guard_hourly_baseline ("
+              "camera_id INTEGER NOT NULL, "
+              "dow_hour INTEGER NOT NULL CHECK (dow_hour >= 0 AND "
+              "dow_hour < 168), "
+              "events_ema REAL NOT NULL DEFAULT 0, "
+              "updated_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')), "
+              "PRIMARY KEY (camera_id, dow_hour))") &&
+         exec("CREATE TABLE IF NOT EXISTS guard_signature_visit ("
+              "signature TEXT NOT NULL PRIMARY KEY, "
+              "visits INTEGER NOT NULL DEFAULT 0, "
+              "first_seen INTEGER NOT NULL DEFAULT (strftime('%s', 'now')), "
+              "last_seen INTEGER NOT NULL DEFAULT (strftime('%s', 'now')))");
+}
+
 bool ensureDeadLetterTable()
 {
   return exec("CREATE TABLE IF NOT EXISTS guard_dead_letter ("
@@ -369,6 +497,56 @@ bool ensureEvidenceIndex()
     return true;
   return exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_guard_evidence_object "
               "ON guard_evidence (object_key) WHERE object_key != ''");
+}
+
+bool journalTableIsCurrent()
+{
+  if (!tableExists("guard_decision_journal"))
+    return true;
+  const std::string sql = tableSql("guard_decision_journal");
+  return sql.find("suppressed_kinds") != std::string::npos &&
+         sql.find("'staging'") != std::string::npos;
+}
+
+bool rebuildJournalTable(const std::string& schemaPath)
+{
+  const auto statements = schemaStatements(schemaPath, "guard_decision_journal");
+  if (statements.empty()) {
+    LOG_WARN << "Guard schema migration: guard_decision_journal DDL not found";
+    return false;
+  }
+  if (!exec("BEGIN IMMEDIATE"))
+    return false;
+  bool ok =
+      exec("DROP INDEX IF EXISTS idx_guard_decision_journal_encounter") &&
+      exec("DROP INDEX IF EXISTS idx_guard_decision_journal_cursor") &&
+      exec("DROP INDEX IF EXISTS idx_guard_decision_journal_camera_time") &&
+      exec("ALTER TABLE guard_decision_journal RENAME TO "
+           "guard_decision_journal_legacy");
+  for (const auto& statement : statements)
+    ok = ok && exec(statement);
+  ok = ok &&
+       exec("INSERT INTO guard_decision_journal (event_id, encounter_id, "
+            "incident_id, camera_id, observation_id, severity, severity_rank, "
+            "hard_floor, belief_score, belief_signals, belief_threshold, "
+            "legacy_would_notify, belief_would_notify, did_notify, "
+            "decision_mode, suppression_reason, suppressed_kinds, "
+            "dispatch_attempts, novelty_score, repeat_visits, quiet_hold, "
+            "budget_hold, assess_ms, feedback_label, feedback_at, created_at) "
+            "SELECT event_id, encounter_id, incident_id, camera_id, "
+            "observation_id, severity, severity_rank, hard_floor, belief_score, "
+            "belief_signals, belief_threshold, legacy_would_notify, "
+            "belief_would_notify, did_notify, decision_mode, "
+            "suppression_reason, suppressed_kinds, dispatch_attempts, "
+            "novelty_score, repeat_visits, quiet_hold, budget_hold, assess_ms, "
+            "feedback_label, feedback_at, created_at FROM "
+            "guard_decision_journal_legacy") &&
+       exec("DROP TABLE guard_decision_journal_legacy");
+  if (!ok) {
+    exec("ROLLBACK");
+    return false;
+  }
+  return exec("COMMIT");
 }
 
 bool migrateGuestColumns()
@@ -415,10 +593,16 @@ bool guard_schema::migrate(const std::string& schemaPath)
   if (!migrateGuestColumns() || !migrateInboxColumns() ||
       !migrateIncidentColumns() || !migrateActionColumns() ||
       !migrateEncounterDialogueColumns() || !migrateAssessmentColumns() ||
-      !migrateOutboxColumns() || !ensureDeadLetterTable() ||
+      !migrateEncounterNotifyColumns() || !migrateJournalDispatchColumn() ||
+      !migrateJournalRound11Columns() || !migrateOutboxColumns() ||
+      !ensureDeadLetterTable() || !ensureBaselineTables() ||
       !ensureEncounterOutboxTable() || !ensureEvidenceIndex())
     return false;
   if (!encounterTableIsCurrent() && !rebuildEncounterTable(schemaPath))
+    return false;
+  if (!actionTableIsCurrent() && !rebuildActionTable(schemaPath))
+    return false;
+  if (!journalTableIsCurrent() && !rebuildJournalTable(schemaPath))
     return false;
   if (!inboxCheckIsCurrent() && !rebuildInboxTable(schemaPath))
     return false;

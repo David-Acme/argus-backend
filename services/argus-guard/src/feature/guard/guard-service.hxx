@@ -2,6 +2,7 @@
 
 #include "guard-action.hxx"
 #include "guard-assessment.hxx"
+#include "guard-belief.hxx"
 #include "guard-policy.hxx"
 #include "guard-repository.hxx"
 
@@ -10,6 +11,7 @@
 #include <drogon/utils/coroutine.h>
 #include <functional>
 #include <json/value.h>
+#include <map>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -91,6 +93,25 @@ public:
     std::string eventSubject;
     // Guard-owned JetStream stream for argus.guard.v1.* domain events.
     std::string guardStream{"ARGUS_GUARD"};
+    // Belief-gate mode: "shadow" journals only, "enforce" can suppress.
+    std::string decisionMode{"shadow"};
+    // Effect kinds the belief gate may suppress in enforce mode.
+    BeliefGateScope beliefGateScope{BeliefGateScope::Notify};
+    // Belief-config refresh window; resolved per camera and cached.
+    int64_t beliefRefreshS{300};
+    // Decision-journal retention in days; <= 0 keeps every row.
+    int journalRetentionDays{90};
+    // Quiet-hours demotion markers, journal-only and default off so shadow
+    // data stays clean; held rows still notify exactly as before.
+    bool quietHoursEnabled{false};
+    int quietStartHour{22};
+    int quietEndHour{7};
+    int quietDailyBudget{30};
+    // Sustained-tamper escalation window; a tamper-ish health state held this
+    // long raises its own notification through the durable intent path.
+    int64_t tamperSustainedS{300};
+    // Freshness window for camera health readings used by the belief gate.
+    int64_t healthStaleS{300};
     // Deterministic test failpoints; empty in production.
     std::function<bool(const std::string&)> failPoint;
   };
@@ -105,6 +126,12 @@ public:
 
   // Local scheduler entry point for a retry the reconciler already leased.
   drogon::Task<bool> handleLocalRetry(const Json::Value& event);
+
+  // Health ingestion shared by the NATS subscriber and tests.
+  void ingestHealth(int64_t cameraId, const std::string& status, int64_t atMs);
+
+  // Sustained-tamper sweep step, driven by the encounter sweep timer.
+  drogon::Task<void> checkTamperSweep(int64_t now);
 
 private:
   struct QueueEntry
@@ -133,7 +160,11 @@ private:
   struct NotifyInput
   {
     std::string commandId;
+    std::string eventId;
     std::string payload;
+    std::string title;
+    std::string body;
+    Json::Value data;
     int64_t cameraId{0};
     std::string cameraName;
     std::string rule;
@@ -141,6 +172,14 @@ private:
     int64_t incidentId{0};
     int64_t encounterId{0};
     int64_t now{0};
+  };
+
+  // Prebuilt notification content from persisted observables.
+  struct NotifyContent
+  {
+    std::string title;
+    std::string body;
+    Json::Value data;
   };
 
   // One requested autonomous effect with everything authorization needs.
@@ -162,6 +201,7 @@ private:
     int seconds{0};
     std::string correlationId;
     int sequence{0};
+    NotifyContent notifyContent;
   };
 
   // Honest effect state; a physical action that may have run is never failed.
@@ -270,8 +310,78 @@ private:
     int64_t at{0};
   };
 
+  // One belief verdict for the decision journal; written at the effects
+  // stage and never allowed to fail the saga.
+  struct JournalDecisionInput
+  {
+    std::string eventId;
+    int64_t encounterId{0};
+    int64_t incidentId{0};
+    int64_t cameraId{0};
+    std::string observationId;
+    GuardDanger danger{GuardDanger::None};
+    bool hardFloor{false};
+    int beliefScore{0};
+    std::vector<std::string> beliefSignals;
+    int beliefThreshold{0};
+    bool legacyWouldNotify{false};
+    bool beliefWouldNotify{false};
+    std::string decisionMode;
+    DecisionSuppression suppression{DecisionSuppression::None};
+    std::vector<std::string> suppressedKinds;
+    double noveltyScore{0.0};
+    int repeatVisits{0};
+    bool quietHold{false};
+    bool budgetHold{false};
+    int assessMs{0};
+    int64_t at{0};
+  };
+
+  // Offline-calibration signals collected alongside the journal write; they
+  // never influence the verdict and never fail the saga.
+  struct CollectionInput
+  {
+    int64_t cameraId{0};
+    std::string signature;
+    bool hasUnknown{false};
+    int64_t now{0};
+  };
+
+  struct CollectionResult
+  {
+    double noveltyScore{0.0};
+    int repeatVisits{0};
+  };
+
+  drogon::Task<CollectionResult> collectSignals(const CollectionInput& input);
+
+  // Journal-only quiet-hours and budget markers; enforcement stays off, so a
+  // held row still notifies exactly as before.
+  struct HoldInput
+  {
+    GuardDanger danger{GuardDanger::None};
+    bool legacyWouldNotify{false};
+    int64_t now{0};
+  };
+
+  struct HoldResult
+  {
+    bool quiet{false};
+    bool budget{false};
+  };
+
+  drogon::Task<HoldResult> computeHolds(const HoldInput& input);
+
   // Persists the checkpoint and advances the durable saga stage.
   drogon::Task<bool> advanceObservation(const AdvanceInput& input);
+
+  void subscribeHealth();
+
+  std::string cameraHealthStatus(int64_t cameraId) const;
+
+  drogon::Task<bool> journalDecision(const JournalDecisionInput& input);
+
+  BeliefConfig beliefConfig(int64_t cameraId) const;
 
   void startHeartbeat();
 
@@ -350,10 +460,29 @@ private:
 
   bool subscribed_{false};
   bool advisoriesSubscribed_{false};
+  bool healthSubscribed_{false};
   bool sweepsStarted_{false};
   bool heartbeatStarted_{false};
   int subscribeAttempts_{0};
   std::shared_ptr<ObservationRetryPump> retryPump_;
   std::optional<uint64_t> durableSubscription_;
   std::optional<uint64_t> advisorySubscription_;
+  std::optional<uint64_t> healthSubscription_;
+
+  struct CameraHealth
+  {
+    std::string status;
+    int64_t firstSeenMs{0};
+    int64_t lastSeenMs{0};
+  };
+  mutable std::mutex healthMutex_;
+  std::map<int64_t, CameraHealth> healthByCamera_;
+
+  struct BeliefCacheEntry
+  {
+    BeliefConfig config;
+    int64_t resolvedAt{0};
+  };
+  mutable std::mutex beliefMutex_;
+  mutable std::map<int64_t, BeliefCacheEntry> beliefCache_;
 };

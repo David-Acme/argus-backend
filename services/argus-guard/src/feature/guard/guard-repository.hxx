@@ -36,6 +36,8 @@ public:
 
   drogon::Task<bool> setState(const GuardStateInput& input) const;
 
+  drogon::Task<bool> clearState(const std::string& key) const;
+
   drogon::Task<std::vector<Json::Value>> recentIncidents(int limit) const;
 
   drogon::Task<int64_t> insertGuest(const GuardGuestInput& input) const;
@@ -124,6 +126,25 @@ public:
   drogon::Task<std::optional<GuardEncounter>>
   findEncounter(int64_t encounterId) const;
 
+  drogon::Task<bool>
+  insertDecisionJournal(const DecisionJournalInput& input) const;
+
+  drogon::Task<bool>
+  recordNotificationDispatch(const RecordNotificationDispatchInput& input) const;
+
+  drogon::Task<bool> bumpDispatchAttempts(const std::string& eventId) const;
+
+  drogon::Task<std::vector<DecisionJournalRow>>
+  listDecisions(int limit) const;
+
+  drogon::Task<DecisionsPage>
+  listDecisionsFiltered(const DecisionsFilterInput& input) const;
+
+  drogon::Task<DecisionSummary>
+  summarizeDecisions(const DecisionsSummaryInput& input) const;
+
+  drogon::Task<int64_t> purgeDecisions(int64_t olderThan) const;
+
   drogon::Task<int64_t> insertEvidence(const GuardEvidenceInput& input) const;
 
   drogon::Task<std::vector<GuardEvidenceRow>> expiredEvidence(int64_t at) const;
@@ -134,8 +155,19 @@ public:
   canActEncounter(const GuardEncounterActionInput& input) const;
 
   drogon::Task<bool>
-  closeStaleEncounters(const GuardStaleEncountersInput& input) const;
+  setDecisionFeedback(const DecisionFeedbackInput& input) const;
 
-  drogon::Task<bool> closeEncountersForPerson(int64_t personId,
-                                              int64_t at) const;
+  drogon::Task<int64_t> firedSince(int64_t since) const;
+
+  drogon::Task<BaselineEmaRow> baselineEma(int64_t cameraId, int dowHour) const;
+
+  drogon::Task<bool> upsertBaselineEma(const BaselineEmaInput& input) const;
+
+  drogon::Task<int> touchSignatureVisit(const std::string& signature,
+                                        int64_t at) const;
+
+  drogon::Task<bool> decisionJournalExists(const std::string& eventId) const;
+
+  drogon::Task<bool>
+  closeStaleEncounters(const GuardStaleEncountersInput& input) const;
 };

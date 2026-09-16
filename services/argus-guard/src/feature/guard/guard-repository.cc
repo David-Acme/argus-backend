@@ -5,6 +5,7 @@
 #include <shared/services/sqlite/db-service.hxx>
 #include <shared/utils/json-util/json-util.hxx>
 #include <string>
+#include <trantor/utils/Logger.h>
 
 using namespace guard_query;
 
@@ -61,7 +62,10 @@ GuardEncounter encounterFromRow(const drogon::orm::Row& row)
           .lastHeard = row["last_heard"].as<std::string>(),
           .lastHeardAt = row["last_heard_at"].as<int64_t>(),
           .firstSeen = row["first_seen"].as<int64_t>(),
-          .lastSeen = row["last_seen"].as<int64_t>()};
+          .lastSeen = row["last_seen"].as<int64_t>(),
+          .notifyCommandId = row["notify_command_id"].as<std::string>(),
+          .notifyCount = row["notify_count"].as<int>(),
+          .notifyHighestRank = row["notify_highest_rank"].as<int>()};
 }
 
 int64_t inboxNowMillis()
@@ -69,6 +73,18 @@ int64_t inboxNowMillis()
   return std::chrono::duration_cast<std::chrono::milliseconds>(
              std::chrono::system_clock::now().time_since_epoch())
       .count();
+}
+
+std::string escapeLikePrefix(const std::string& prefix)
+{
+  std::string escaped;
+  escaped.reserve(prefix.size());
+  for (const char step : prefix) {
+    if (step == '\\' || step == '%' || step == '_')
+      escaped.push_back('\\');
+    escaped.push_back(step);
+  }
+  return escaped;
 }
 
 constexpr int64_t kInboxRetryLeaseMs = 60000;
@@ -193,6 +209,17 @@ drogon::Task<bool> GuardRepository::setState(const GuardStateInput& input) const
   const auto result =
       co_await client->execSqlCoro(UPSERT_STATE.data(), input.key, input.value,
                                    input.updatedAt);
+  co_return result.affectedRows() > 0;
+}
+
+drogon::Task<bool>
+GuardRepository::clearState(const std::string& key) const
+{
+  if (key.empty())
+    co_return false;
+  auto client = DbService::client();
+  const auto result =
+      co_await client->execSqlCoro(DELETE_STATE.data(), key);
   co_return result.affectedRows() > 0;
 }
 
@@ -770,12 +797,38 @@ GuardRepository::planIntent(const GuardOutboxInput& input) const
   if (input.commandId.empty())
     co_return std::nullopt;
   auto client = DbService::client();
-  co_await client->execSqlCoro(INSERT_OUTBOX.data(), input.commandId,
-                               input.encounterId, input.incidentId,
-                               input.cameraId, input.personId, input.kind,
-                               input.payload, input.at, input.at);
-  const auto row =
+  std::string effectiveId = input.commandId;
+  auto row =
       co_await client->execSqlCoro(SELECT_OUTBOX.data(), input.commandId);
+  if (row.empty()) {
+    const auto parts = splitCommandId(input.commandId);
+    const bool renumberedKind =
+        parts && (parts->kind == guardActionKindToString(GuardActionKind::Notify) ||
+                  parts->kind == guardActionKindToString(GuardActionKind::Announce) ||
+                  parts->kind == guardActionKindToString(GuardActionKind::Alarm) ||
+                  parts->kind == guardActionKindToString(GuardActionKind::SirenArm));
+    if (renumberedKind) {
+      const auto legacy = co_await client->execSqlCoro(
+          SELECT_OUTBOX_SIBLING.data(),
+          escapeLikePrefix(parts->correlation + ":" + parts->kind + ":") +
+              "%",
+          input.commandId);
+      if (!legacy.empty()) {
+        LOG_WARN << "Guard outbox: adopting legacy-numbered intent for "
+                 << parts->correlation << ":" << parts->kind;
+        effectiveId =
+            legacy.front()["command_id"].as<std::string>();
+        row = legacy;
+      }
+    }
+  }
+  if (row.empty()) {
+    co_await client->execSqlCoro(INSERT_OUTBOX.data(), input.commandId,
+                                 input.encounterId, input.incidentId,
+                                 input.cameraId, input.personId, input.kind,
+                                 input.payload, input.at, input.at);
+    row = co_await client->execSqlCoro(SELECT_OUTBOX.data(), input.commandId);
+  }
   if (row.empty())
     co_return std::nullopt;
   const auto status = guardIntentStatusFromString(
@@ -785,7 +838,8 @@ GuardRepository::planIntent(const GuardOutboxInput& input) const
              << input.commandId << "; refusing to replay it";
     co_return std::nullopt;
   }
-  co_return GuardIntent{.status = *status,
+  co_return GuardIntent{.commandId = effectiveId,
+                        .status = *status,
                         .detail = row.front()["detail"].as<std::string>(),
                         .response = row.front()["response"].as<std::string>(),
                         .payload = row.front()["payload"].as<std::string>(),
@@ -842,6 +896,454 @@ GuardRepository::markEncounterSent(const std::string& eventId, int64_t at) const
   const auto result =
       co_await client->execSqlCoro(MARK_ENCOUNTER_SENT.data(), at, eventId);
   co_return result.affectedRows() > 0;
+}
+
+drogon::Task<bool> GuardRepository::insertDecisionJournal(
+    const DecisionJournalInput& input) const
+{
+  if (input.eventId.empty())
+    co_return false;
+  auto client = DbService::client();
+  try {
+    const auto result = co_await client->execSqlCoro(
+        INSERT_DECISION_JOURNAL.data(), input.eventId, input.encounterId,
+        input.incidentId, input.cameraId, input.observationId, input.severity,
+        input.severityRank, input.hardFloor ? 1 : 0, input.beliefScore,
+        input.beliefSignals, input.beliefThreshold,
+        input.legacyWouldNotify ? 1 : 0, input.beliefWouldNotify ? 1 : 0,
+        input.didNotify ? 1 : 0, input.decisionMode,
+        decisionSuppressionToString(input.suppression), input.suppressedKinds,
+        input.noveltyScore, input.repeatVisits, input.quietHold ? 1 : 0,
+        input.budgetHold ? 1 : 0, input.assessMs, input.createdAt);
+    co_return result.affectedRows() > 0;
+  }
+  catch (const std::exception& error) {
+    LOG_WARN << "Guard repository: decision journal insert failed: "
+             << error.what();
+    co_return false;
+  }
+}
+
+drogon::Task<bool> GuardRepository::recordNotificationDispatch(
+    const RecordNotificationDispatchInput& input) const
+{
+  if (input.eventId.empty() || input.commandId.empty())
+    co_return false;
+  auto client = DbService::client();
+  std::shared_ptr<drogon::orm::Transaction> transaction;
+  try {
+    transaction = co_await client->newTransactionCoro(
+        drogon::orm::TransactionType::Immediate);
+  }
+  catch (const std::exception&) {
+    co_return false;
+  }
+  try {
+    const auto flipped = co_await transaction->execSqlCoro(
+        MARK_DECISION_NOTIFIED.data(), input.eventId);
+    if (input.failPoint && input.failPoint("between_flip_and_thread"))
+      throw std::runtime_error("failpoint: between_flip_and_thread");
+    bool recorded = flipped.affectedRows() > 0;
+    if (!recorded && input.encounterId > 0) {
+      const auto encounter = co_await transaction->execSqlCoro(
+          FIND_ENCOUNTER.data(), input.encounterId);
+      recorded = !encounter.empty() &&
+                 encounter.front()["notify_count"].as<int>() <= 0;
+    }
+    if (recorded && input.encounterId > 0) {
+      co_await transaction->execSqlCoro(RECORD_ENCOUNTER_NOTIFICATION.data(),
+                                        input.commandId, input.rank,
+                                        input.rank, input.encounterId);
+    }
+    co_return co_await TransactionCommitAwaiter(std::move(transaction));
+  }
+  catch (const std::exception& e) {
+    transaction->rollback();
+    LOG_WARN << "Guard dispatch record failed, rolled back: " << e.what();
+    throw;
+  }
+}
+
+drogon::Task<bool>
+GuardRepository::setDecisionFeedback(const DecisionFeedbackInput& input) const
+{
+  if (input.eventId.empty() ||
+      !feedbackLabelFromString(input.label).has_value())
+    co_return false;
+  auto client = DbService::client();
+  const auto result = co_await client->execSqlCoro(
+      SET_DECISION_FEEDBACK.data(), input.label, input.at, input.eventId);
+  co_return result.affectedRows() > 0;
+}
+
+drogon::Task<int64_t> GuardRepository::firedSince(int64_t since) const
+{
+  auto client = DbService::client();
+  const auto result =
+      co_await client->execSqlCoro(COUNT_FIRED_SINCE.data(), since);
+  if (result.empty())
+    co_return 0;
+  co_return result.front()["rows"].as<int64_t>();
+}
+
+drogon::Task<BaselineEmaRow> GuardRepository::baselineEma(int64_t cameraId,
+                                                         int dowHour) const
+{
+  auto client = DbService::client();
+  const auto result = co_await client->execSqlCoro(SELECT_BASELINE_EMA.data(),
+                                                   cameraId, dowHour);
+  if (result.empty())
+    co_return BaselineEmaRow{};
+  co_return BaselineEmaRow{
+      .ema = result.front()["events_ema"].as<double>(),
+      .updatedAt = result.front()["updated_at"].as<int64_t>()};
+}
+
+drogon::Task<bool>
+GuardRepository::upsertBaselineEma(const BaselineEmaInput& input) const
+{
+  auto client = DbService::client();
+  const auto result =
+      co_await client->execSqlCoro(UPSERT_BASELINE_EMA.data(), input.cameraId,
+                                   input.dowHour, input.ema, input.at);
+  co_return result.affectedRows() > 0;
+}
+
+drogon::Task<bool>
+GuardRepository::decisionJournalExists(const std::string& eventId) const
+{
+  if (eventId.empty())
+    co_return false;
+  auto client = DbService::client();
+  const auto result = co_await client->execSqlCoro(
+      DECISION_JOURNAL_EXISTS.data(), eventId);
+  co_return !result.empty() && result.front()["rows"].as<int>() > 0;
+}
+
+drogon::Task<int> GuardRepository::touchSignatureVisit(
+    const std::string& signature, int64_t at) const
+{
+  if (signature.empty())
+    co_return 0;
+  auto client = DbService::client();
+  const auto result = co_await client->execSqlCoro(TOUCH_SIGNATURE_VISIT.data(),
+                                                   signature, at, at);
+  if (result.empty())
+    co_return 0;
+  co_return result.front()["visits"].as<int>();
+}
+
+drogon::Task<bool> GuardRepository::bumpDispatchAttempts(
+    const std::string& eventId) const
+{
+  if (eventId.empty())
+    co_return false;
+  auto client = DbService::client();
+  const auto result =
+      co_await client->execSqlCoro(BUMP_DISPATCH_ATTEMPTS.data(), eventId);
+  co_return result.affectedRows() > 0;
+}
+
+drogon::Task<std::vector<DecisionJournalRow>>
+GuardRepository::listDecisions(int limit) const
+{
+  DecisionsFilterInput filter;
+  filter.limit = limit;
+  const DecisionsPage page = co_await listDecisionsFiltered(filter);
+  co_return page.rows;
+}
+
+std::optional<DecisionJournalRow>
+decisionRowFromRow(const drogon::orm::Row& row)
+{
+  const auto suppression = decisionSuppressionFromString(
+      row["suppression_reason"].as<std::string>());
+  if (!suppression) {
+    LOG_ERROR << "Guard repository: decision journal row with unknown "
+                 "suppression reason skipped";
+    return std::nullopt;
+  }
+  DecisionJournalRow mapped;
+  mapped.eventId = row["event_id"].as<std::string>();
+  mapped.encounterId = row["encounter_id"].as<int64_t>();
+  mapped.incidentId = row["incident_id"].as<int64_t>();
+  mapped.cameraId = row["camera_id"].as<int64_t>();
+  mapped.observationId = row["observation_id"].as<std::string>();
+  mapped.severity = row["severity"].as<std::string>();
+  mapped.severityRank = row["severity_rank"].as<int>();
+  mapped.hardFloor = row["hard_floor"].as<int>() != 0;
+  mapped.beliefScore = row["belief_score"].as<int>();
+  mapped.beliefSignals = row["belief_signals"].as<std::string>();
+  mapped.beliefThreshold = row["belief_threshold"].as<int>();
+  mapped.legacyWouldNotify = row["legacy_would_notify"].as<int>() != 0;
+  mapped.beliefWouldNotify = row["belief_would_notify"].as<int>() != 0;
+  mapped.didNotify = row["did_notify"].as<int>() != 0;
+  mapped.decisionMode = row["decision_mode"].as<std::string>();
+  mapped.suppressionReason = decisionSuppressionToString(*suppression);
+  mapped.suppressedKinds = row["suppressed_kinds"].as<std::string>();
+  mapped.dispatchAttempts = row["dispatch_attempts"].as<int>();
+  mapped.noveltyScore = row["novelty_score"].as<double>();
+  mapped.repeatVisits = row["repeat_visits"].as<int>();
+  mapped.quietHold = row["quiet_hold"].as<int>() != 0;
+  mapped.budgetHold = row["budget_hold"].as<int>() != 0;
+  mapped.assessMs = row["assess_ms"].as<int>();
+  mapped.feedbackLabel = row["feedback_label"].as<std::string>();
+  mapped.feedbackAt = row["feedback_at"].as<int64_t>();
+  mapped.createdAt = row["created_at"].as<int64_t>();
+  return mapped;
+}
+
+drogon::Task<DecisionsPage> GuardRepository::listDecisionsFiltered(
+    const DecisionsFilterInput& input) const
+{
+  DecisionsPage page;
+  const int limit = std::max(1, input.limit);
+  std::string sql{"SELECT "};
+  sql += DECISION_JOURNAL_COLUMNS;
+  std::vector<std::string> clauses;
+  std::vector<std::string> args;
+  if (input.from > 0) {
+    clauses.emplace_back(DECISIONS_WHERE_CREATED_FROM);
+    args.push_back(std::to_string(input.from));
+  }
+  if (input.to > 0) {
+    clauses.emplace_back(DECISIONS_WHERE_CREATED_TO);
+    args.push_back(std::to_string(input.to));
+  }
+  if (input.cameraId > 0) {
+    clauses.emplace_back(DECISIONS_WHERE_CAMERA);
+    args.push_back(std::to_string(input.cameraId));
+  }
+  if (!input.severity.empty()) {
+    clauses.emplace_back(DECISIONS_WHERE_SEVERITY);
+    args.push_back(input.severity);
+  }
+  if (!input.decisionMode.empty()) {
+    clauses.emplace_back(DECISIONS_WHERE_MODE);
+    args.push_back(input.decisionMode);
+  }
+  if (!input.suppressionReason.empty()) {
+    clauses.emplace_back(DECISIONS_WHERE_REASON);
+    args.push_back(input.suppressionReason);
+  }
+  if (input.divergentOnly)
+    clauses.emplace_back(DECISIONS_WHERE_DIVERGENT);
+  if (input.nearMissMargin > 0) {
+    clauses.emplace_back(DECISIONS_WHERE_NEAR_MISS);
+    args.push_back(std::to_string(input.nearMissMargin));
+  }
+  if (!input.afterEventId.empty()) {
+    clauses.emplace_back(DECISIONS_WHERE_CURSOR);
+    args.push_back(std::to_string(input.afterCreatedAt));
+    args.push_back(std::to_string(input.afterCreatedAt));
+    args.push_back(input.afterEventId);
+  }
+  if (!clauses.empty()) {
+    sql += "WHERE ";
+    for (size_t index = 0; index < clauses.size(); ++index) {
+      if (index > 0)
+        sql += " AND ";
+      sql += clauses[index];
+    }
+    sql += " ";
+  }
+  sql += DECISIONS_ORDER_CURSOR;
+  args.push_back(std::to_string(limit + 1));
+  auto client = DbService::client();
+  const auto& argsRef = args;
+  const auto result = co_await client->execSqlCoro(sql, argsRef);
+  for (const auto& row : result) {
+    const auto mapped = decisionRowFromRow(row);
+    if (mapped)
+      page.rows.push_back(*mapped);
+  }
+  if (static_cast<int>(page.rows.size()) > limit) {
+    page.rows.pop_back();
+    page.hasMore = true;
+    const DecisionJournalRow& last = page.rows.back();
+    page.nextCreatedAt = last.createdAt;
+    page.nextEventId = last.eventId;
+  }
+  co_return page;
+}
+
+drogon::Task<DecisionSummary> GuardRepository::summarizeDecisions(
+    const DecisionsSummaryInput& input) const
+{
+  DecisionSummary summary;
+  auto client = DbService::client();
+  std::string timeFilter;
+  std::vector<std::string> timeArgs;
+  if (input.from > 0) {
+    timeFilter += "WHERE created_at >= ? ";
+    timeArgs.push_back(std::to_string(input.from));
+  }
+  if (input.to > 0) {
+    timeFilter += timeFilter.empty() ? "WHERE " : "AND ";
+    timeFilter += "created_at <= ? ";
+    timeArgs.push_back(std::to_string(input.to));
+  }
+  const auto& timeRef = timeArgs;
+  const auto totals = co_await client->execSqlCoro(
+      std::string(SUMMARY_TOTALS) + timeFilter, timeRef);
+  if (!totals.empty()) {
+    summary.totalRows = totals.front()["rows"].as<int64_t>();
+    summary.fired = totals.front()["fired"].as<int64_t>();
+    summary.legacyWould = totals.front()["legacy_would"].as<int64_t>();
+    summary.beliefWould = totals.front()["belief_would"].as<int64_t>();
+    summary.since = totals.front()["since"].as<int64_t>();
+    summary.until = totals.front()["until"].as<int64_t>();
+  }
+  const auto readGroups = [&](const std::string_view base) ->
+      drogon::Task<std::vector<DecisionSummaryCount>> {
+    std::vector<DecisionSummaryCount> groups;
+    const auto rows = co_await client->execSqlCoro(
+        std::string(base) + timeFilter + std::string(SUMMARY_GROUP_KEY),
+        timeRef);
+    for (const auto& row : rows)
+      groups.push_back({.key = row["key"].as<std::string>(),
+                        .rows = row["rows"].as<int64_t>(),
+                        .fired = row["fired"].as<int64_t>()});
+    co_return groups;
+  };
+  summary.bySeverity = co_await readGroups(SUMMARY_BY_SEVERITY);
+  summary.byReason = co_await readGroups(SUMMARY_BY_REASON);
+  summary.byMode = co_await readGroups(SUMMARY_BY_MODE);
+  const auto histogram = co_await client->execSqlCoro(
+      std::string(SUMMARY_SCORE_HISTOGRAM) + timeFilter +
+          std::string(SUMMARY_GROUP_SCORE),
+      timeRef);
+  for (const auto& row : histogram)
+    summary.scoreHistogram.push_back(
+        {.severity = row["severity"].as<std::string>(),
+         .score = row["score"].as<int>(),
+         .rows = row["rows"].as<int64_t>(),
+         .fired = row["fired"].as<int64_t>(),
+         .beliefWould = row["belief_would"].as<int64_t>()});
+  const auto readCameraBuckets = [&](const std::string_view base) ->
+      drogon::Task<std::vector<DecisionCameraBucket>> {
+    std::vector<DecisionCameraBucket> buckets;
+    const auto rows = co_await client->execSqlCoro(
+        std::string(base) + timeFilter + std::string(SUMMARY_GROUP_CAMERA),
+        timeRef);
+    for (const auto& row : rows)
+      buckets.push_back(
+          {.cameraId = row["camera_id"].as<int64_t>(),
+           .bucket = row["bucket"].as<std::string>(),
+           .events = row["rows"].as<int64_t>(),
+           .notified = row["fired"].as<int64_t>()});
+    co_return buckets;
+  };
+  summary.byCameraDay = co_await readCameraBuckets(SUMMARY_CAMERA_DAY);
+  summary.byCameraHour = co_await readCameraBuckets(SUMMARY_CAMERA_HOUR);
+  std::string signalFilter;
+  std::vector<std::string> signalArgs;
+  if (input.from > 0) {
+    signalFilter += "AND journal.created_at >= ? ";
+    signalArgs.push_back(std::to_string(input.from));
+  }
+  if (input.to > 0) {
+    signalFilter += "AND journal.created_at <= ? ";
+    signalArgs.push_back(std::to_string(input.to));
+  }
+  const auto& signalRef = signalArgs;
+  const auto signals = co_await client->execSqlCoro(
+      std::string(SUMMARY_SIGNALS) + signalFilter +
+          std::string(SUMMARY_GROUP_SIGNAL),
+      signalRef);
+  for (const auto& row : signals)
+    summary.signals.push_back({.signal = row["signal"].as<std::string>(),
+                               .count = row["rows"].as<int64_t>()});
+  const auto unparseable = co_await client->execSqlCoro(
+      std::string(SUMMARY_UNPARSEABLE_SIGNALS) + signalFilter, signalRef);
+  if (!unparseable.empty())
+    summary.unparseableSignalRows = unparseable.front()["rows"].as<int64_t>();
+  std::string ambiguousFilter;
+  std::vector<std::string> ambiguousArgs;
+  if (input.from > 0) {
+    ambiguousFilter += "AND created_at >= ? ";
+    ambiguousArgs.push_back(std::to_string(input.from));
+  }
+  if (input.to > 0) {
+    ambiguousFilter += "AND created_at <= ? ";
+    ambiguousArgs.push_back(std::to_string(input.to));
+  }
+  const auto& ambiguousRef = ambiguousArgs;
+  const auto ambiguous = co_await client->execSqlCoro(
+      std::string(SUMMARY_AMBIGUOUS) + ambiguousFilter, ambiguousRef);
+  if (!ambiguous.empty())
+    summary.ambiguousNotifications = ambiguous.front()["rows"].as<int64_t>();
+  const auto quietBudget = co_await client->execSqlCoro(
+      std::string(SUMMARY_QUIET_BUDGET) + timeFilter, timeRef);
+  if (!quietBudget.empty()) {
+    summary.quietHeld = quietBudget.front()["quiet_held"].as<int64_t>();
+    summary.budgetHeld = quietBudget.front()["budget_held"].as<int64_t>();
+  }
+  if (input.nearMissMargin > 0) {
+    std::vector<std::string> nearArgs{std::to_string(input.nearMissMargin)};
+    if (input.from > 0) {
+      nearArgs.push_back(std::to_string(input.from));
+    }
+    if (input.to > 0) {
+      nearArgs.push_back(std::to_string(input.to));
+    }
+    std::string nearSql = std::string(SUMMARY_NEAR_MISS);
+    if (input.from > 0) {
+      nearSql += "AND created_at >= ? ";
+    }
+    if (input.to > 0) {
+      nearSql += "AND created_at <= ? ";
+    }
+    const auto& nearRef = nearArgs;
+    const auto near = co_await client->execSqlCoro(nearSql, nearRef);
+    if (!near.empty())
+      summary.nearMisses = near.front()["rows"].as<int64_t>();
+  }
+  std::string assessFilter;
+  std::vector<std::string> assessArgs;
+  if (input.from > 0) {
+    assessFilter += "WHERE created_at >= ? ";
+    assessArgs.push_back(std::to_string(input.from));
+  }
+  if (input.to > 0) {
+    assessFilter += assessFilter.empty() ? "WHERE " : "AND ";
+    assessFilter += "created_at <= ? ";
+    assessArgs.push_back(std::to_string(input.to));
+  }
+  assessFilter += assessFilter.empty() ? "WHERE " : "AND ";
+  assessFilter += "assess_ms > 0 ";
+  const auto& assessRef = assessArgs;
+  const auto assessCount = co_await client->execSqlCoro(
+      std::string(SUMMARY_ASSESS_COUNT) + assessFilter, assessRef);
+  const int64_t assessRows =
+      assessCount.empty() ? 0 : assessCount.front()["rows"].as<int64_t>();
+  if (assessRows > 0) {
+    const auto percentile = [&](double fraction) -> drogon::Task<int64_t> {
+      const int64_t offset = std::min<int64_t>(
+          assessRows - 1,
+          static_cast<int64_t>(fraction * static_cast<double>(assessRows)));
+      std::vector<std::string> percentileArgs = assessArgs;
+      percentileArgs.push_back(std::to_string(offset));
+      const std::string percentileSql = std::string(SUMMARY_ASSESS_P50) +
+                                        assessFilter +
+                                        std::string(SUMMARY_ASSESS_ORDER_LIMIT);
+      const auto& percentileRef = percentileArgs;
+      const auto rows =
+          co_await client->execSqlCoro(percentileSql, percentileRef);
+      co_return rows.empty() ? 0 : rows.front()["ms"].as<int64_t>();
+    };
+    summary.assessMsP50 = co_await percentile(0.50);
+    summary.assessMsP95 = co_await percentile(0.95);
+  }
+  co_return summary;
+}
+
+drogon::Task<int64_t> GuardRepository::purgeDecisions(int64_t olderThan) const
+{
+  auto client = DbService::client();
+  const auto result =
+      co_await client->execSqlCoro(PURGE_DECISIONS.data(), olderThan);
+  co_return result.affectedRows();
 }
 
 drogon::Task<bool>
@@ -964,6 +1466,15 @@ drogon::Task<bool> GuardRepository::closeStaleEncounters(
                                         encounterClosedPayload(encounter,
                                                                input.closedAt),
                                         input.closedAt, input.closedAt);
+      const GuardDanger grade =
+          guardDangerFromString(encounter.grade);
+      co_await transaction->execSqlCoro(
+          INSERT_DECISION_JOURNAL.data(),
+          encounterClosedEventId(encounter, input.closedAt), encounter.id, 0,
+          encounter.bestCameraId, "", encounter.grade,
+          guardDangerRank(grade), 0, 0, "[]", 0, 0, 0, 0, input.decisionMode,
+          decisionSuppressionToString(DecisionSuppression::LegacySilent),
+          "[]", 0.0, 0, 0, 0, 0, input.closedAt);
     }
   }
   catch (const std::exception& e) {
@@ -972,17 +1483,4 @@ drogon::Task<bool> GuardRepository::closeStaleEncounters(
     co_return false;
   }
   co_return co_await TransactionCommitAwaiter(std::move(transaction));
-}
-
-drogon::Task<bool> GuardRepository::closeEncountersForPerson(int64_t personId,
-                                                             int64_t at) const
-{
-  if (personId <= 0)
-    co_return false;
-  auto client = DbService::client();
-  co_await client->execSqlCoro(CLOSE_PERSON_TRANSITIONS.data(), at, personId);
-  const auto result =
-      co_await client->execSqlCoro(CLOSE_ENCOUNTERS_FOR_PERSON.data(), at,
-                                   personId);
-  co_return result.affectedRows() > 0;
 }

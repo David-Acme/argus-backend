@@ -1,6 +1,8 @@
 #pragma once
 #include <cstdint>
+#include <functional>
 #include <json/value.h>
+#include <optional>
 #include <shared/enums.hxx>
 #include <shared/utils/json-util/json-util.hxx>
 #include <string>
@@ -59,6 +61,9 @@ inline constexpr std::string_view UPSERT_STATE =
     "ON CONFLICT(key) DO UPDATE SET value = excluded.value, "
     "updated_at = excluded.updated_at";
 
+inline constexpr std::string_view DELETE_STATE =
+    "DELETE FROM guard_state WHERE key = ?";
+
 inline constexpr std::string_view SELECT_RECENT_INCIDENTS =
     "SELECT camera_id, camera_name, rule, danger, severity, person_id, "
     "identity, "
@@ -96,26 +101,30 @@ inline constexpr std::string_view INSERT_ENCOUNTER =
 inline constexpr std::string_view OPEN_ENCOUNTERS =
     "SELECT id, person_id, signature, state, grade, checks, best_camera_id, "
     "best_score, dialogue_turns, dialogue_goal, listening_until, last_line, "
-    "last_heard, last_heard_at, first_seen, last_seen FROM guard_encounter "
+    "last_heard, last_heard_at, first_seen, last_seen, notify_command_id, "
+    "notify_count, notify_highest_rank FROM guard_encounter "
     "WHERE state != 'closed' AND last_seen >= ? ORDER BY last_seen DESC LIMIT "
     "50";
 
 inline constexpr std::string_view STALE_ENCOUNTERS =
     "SELECT id, person_id, signature, state, grade, checks, best_camera_id, "
     "best_score, dialogue_turns, dialogue_goal, listening_until, last_line, "
-    "last_heard, last_heard_at, first_seen, last_seen FROM guard_encounter "
+    "last_heard, last_heard_at, first_seen, last_seen, notify_command_id, "
+    "notify_count, notify_highest_rank FROM guard_encounter "
     "WHERE state != 'closed' AND last_seen < ?";
 
 inline constexpr std::string_view ENCOUNTERS_FOR_PERSON =
     "SELECT id, person_id, signature, state, grade, checks, best_camera_id, "
     "best_score, dialogue_turns, dialogue_goal, listening_until, last_line, "
-    "last_heard, last_heard_at, first_seen, last_seen FROM guard_encounter "
+    "last_heard, last_heard_at, first_seen, last_seen, notify_command_id, "
+    "notify_count, notify_highest_rank FROM guard_encounter "
     "WHERE person_id = ? AND state != 'closed'";
 
 inline constexpr std::string_view FIND_ENCOUNTER =
     "SELECT id, person_id, signature, state, grade, checks, best_camera_id, "
     "best_score, dialogue_turns, dialogue_goal, listening_until, last_line, "
-    "last_heard, last_heard_at, first_seen, last_seen FROM guard_encounter "
+    "last_heard, last_heard_at, first_seen, last_seen, notify_command_id, "
+    "notify_count, notify_highest_rank FROM guard_encounter "
     "WHERE id = ?";
 
 inline constexpr std::string_view SET_DIALOGUE_GOAL =
@@ -258,6 +267,15 @@ inline constexpr std::string_view SELECT_OUTBOX =
     "SELECT status, detail, response, payload, attempts, next_attempt_at "
     "FROM guard_action_outbox WHERE command_id = ?";
 
+// Upgrade adoption: a row planned under the old positional numbering for the
+// same observation and kind. The pattern is escaped; command ids never carry
+// LIKE metacharacters beyond the fixed kind vocabulary.
+inline constexpr std::string_view SELECT_OUTBOX_SIBLING =
+    "SELECT command_id, status, detail, response, payload, attempts, "
+    "next_attempt_at "
+    "FROM guard_action_outbox WHERE command_id LIKE ? ESCAPE '\\' AND "
+    "command_id != ? ORDER BY command_id ASC LIMIT 1";
+
 // Compare-and-set: only fills an empty payload or accepts an identical one.
 inline constexpr std::string_view SET_OUTBOX_PAYLOAD =
     "UPDATE guard_action_outbox SET payload = ?, updated_at = ? "
@@ -284,7 +302,170 @@ inline constexpr std::string_view EXPIRED_EVIDENCE =
 
 inline constexpr std::string_view MARK_EVIDENCE_DELETED =
     "UPDATE guard_evidence SET deleted_at = ? WHERE id = ?";
+
+inline constexpr std::string_view INSERT_DECISION_JOURNAL =
+    "INSERT OR IGNORE INTO guard_decision_journal (event_id, encounter_id, "
+    "incident_id, camera_id, observation_id, severity, severity_rank, "
+    "hard_floor, belief_score, belief_signals, belief_threshold, "
+    "legacy_would_notify, belief_would_notify, did_notify, decision_mode, "
+    "suppression_reason, suppressed_kinds, dispatch_attempts, novelty_score, "
+    "repeat_visits, quiet_hold, budget_hold, assess_ms, created_at) VALUES "
+    "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?)";
+
+inline constexpr std::string_view MARK_DECISION_NOTIFIED =
+    "UPDATE guard_decision_journal SET did_notify = 1 WHERE event_id = ? AND "
+    "did_notify = 0";
+
+inline constexpr std::string_view BUMP_DISPATCH_ATTEMPTS =
+    "UPDATE guard_decision_journal SET dispatch_attempts = "
+    "dispatch_attempts + 1 WHERE event_id = ?";
+
+inline constexpr std::string_view SUMMARY_AMBIGUOUS =
+    "SELECT COUNT(*) AS rows FROM guard_decision_journal WHERE did_notify = 0 "
+    "AND dispatch_attempts > 0 AND legacy_would_notify = 1 ";
+
+inline constexpr std::string_view SELECT_DECISIONS =
+    "SELECT event_id, encounter_id, incident_id, camera_id, observation_id, "
+    "severity, severity_rank, hard_floor, belief_score, belief_signals, "
+    "belief_threshold, legacy_would_notify, belief_would_notify, did_notify, "
+    "decision_mode, suppression_reason, suppressed_kinds, dispatch_attempts, "
+    "novelty_score, repeat_visits, quiet_hold, budget_hold, assess_ms, "
+    "feedback_label, feedback_at, created_at FROM guard_decision_journal "
+    "ORDER BY created_at DESC, event_id DESC LIMIT ?";
+
+inline constexpr std::string_view DECISIONS_WHERE_CREATED_FROM =
+    "created_at >= ?";
+inline constexpr std::string_view DECISIONS_WHERE_CREATED_TO =
+    "created_at <= ?";
+inline constexpr std::string_view DECISIONS_WHERE_CAMERA =
+    "camera_id = ?";
+inline constexpr std::string_view DECISIONS_WHERE_SEVERITY = "severity = ?";
+inline constexpr std::string_view DECISIONS_WHERE_MODE =
+    "decision_mode = ?";
+inline constexpr std::string_view DECISIONS_WHERE_REASON =
+    "suppression_reason = ?";
+inline constexpr std::string_view DECISIONS_WHERE_DIVERGENT =
+    "legacy_would_notify != belief_would_notify";
+inline constexpr std::string_view DECISIONS_WHERE_NEAR_MISS =
+    "belief_would_notify = 0 AND belief_score >= belief_threshold - ?";
+inline constexpr std::string_view DECISIONS_WHERE_CURSOR =
+    "(created_at < ? OR (created_at = ? AND event_id < ?))";
+inline constexpr std::string_view DECISIONS_ORDER_CURSOR =
+    "ORDER BY created_at DESC, event_id DESC LIMIT ?";
+
+inline constexpr std::string_view DECISION_JOURNAL_COLUMNS =
+    "event_id, encounter_id, incident_id, camera_id, observation_id, "
+    "severity, severity_rank, hard_floor, belief_score, belief_signals, "
+    "belief_threshold, legacy_would_notify, belief_would_notify, did_notify, "
+    "decision_mode, suppression_reason, suppressed_kinds, dispatch_attempts, "
+    "novelty_score, repeat_visits, quiet_hold, budget_hold, assess_ms, "
+    "feedback_label, feedback_at, created_at FROM guard_decision_journal ";
+
+inline constexpr std::string_view SUMMARY_TOTALS =
+    "SELECT COUNT(*) AS rows, COALESCE(SUM(did_notify), 0) AS fired, "
+    "COALESCE(SUM(legacy_would_notify), 0) AS legacy_would, "
+    "COALESCE(SUM(belief_would_notify), 0) AS belief_would, "
+    "COALESCE(MIN(created_at), 0) AS since, "
+    "COALESCE(MAX(created_at), 0) AS until FROM guard_decision_journal ";
+
+inline constexpr std::string_view SUMMARY_BY_SEVERITY =
+    "SELECT severity AS key, COUNT(*) AS rows, COALESCE(SUM(did_notify), 0) "
+    "AS fired FROM guard_decision_journal ";
+inline constexpr std::string_view SUMMARY_BY_REASON =
+    "SELECT suppression_reason AS key, COUNT(*) AS rows, "
+    "COALESCE(SUM(did_notify), 0) AS fired FROM guard_decision_journal ";
+inline constexpr std::string_view SUMMARY_BY_MODE =
+    "SELECT decision_mode AS key, COUNT(*) AS rows, "
+    "COALESCE(SUM(did_notify), 0) AS fired FROM guard_decision_journal ";
+inline constexpr std::string_view SUMMARY_GROUP_KEY =
+    "GROUP BY key ORDER BY key";
+
+inline constexpr std::string_view SUMMARY_SCORE_HISTOGRAM =
+    "SELECT severity, belief_score AS score, COUNT(*) AS rows, "
+    "COALESCE(SUM(did_notify), 0) AS fired, "
+    "COALESCE(SUM(belief_would_notify), 0) AS belief_would "
+    "FROM guard_decision_journal ";
+inline constexpr std::string_view SUMMARY_GROUP_SCORE =
+    "GROUP BY severity, belief_score ORDER BY severity, belief_score";
+
+inline constexpr std::string_view SUMMARY_CAMERA_DAY =
+    "SELECT camera_id, date(created_at, 'unixepoch') AS bucket, COUNT(*) AS "
+    "rows, COALESCE(SUM(did_notify), 0) AS fired FROM guard_decision_journal ";
+inline constexpr std::string_view SUMMARY_CAMERA_HOUR =
+    "SELECT camera_id, strftime('%Y-%m-%d %H:00', created_at, 'unixepoch') AS "
+    "bucket, COUNT(*) AS rows, COALESCE(SUM(did_notify), 0) AS fired FROM "
+    "guard_decision_journal ";
+inline constexpr std::string_view SUMMARY_GROUP_CAMERA =
+    "GROUP BY camera_id, bucket ORDER BY camera_id, bucket";
+
+inline constexpr std::string_view SUMMARY_SIGNALS =
+    "SELECT value AS signal, COUNT(*) AS rows FROM guard_decision_journal AS "
+    "journal, json_each(journal.belief_signals) "
+    "WHERE json_valid(journal.belief_signals) ";
+
+inline constexpr std::string_view SUMMARY_UNPARSEABLE_SIGNALS =
+    "SELECT COUNT(*) AS rows FROM guard_decision_journal AS journal WHERE "
+    "NOT json_valid(journal.belief_signals) ";
+inline constexpr std::string_view SUMMARY_GROUP_SIGNAL =
+    "GROUP BY signal ORDER BY rows DESC";
+
+inline constexpr std::string_view PURGE_DECISIONS =
+    "DELETE FROM guard_decision_journal WHERE created_at < ?";
+
+inline constexpr std::string_view SET_DECISION_FEEDBACK =
+    "UPDATE guard_decision_journal SET feedback_label = ?, feedback_at = ? "
+    "WHERE event_id = ?";
+
+inline constexpr std::string_view SUMMARY_QUIET_BUDGET =
+    "SELECT COALESCE(SUM(quiet_hold), 0) AS quiet_held, "
+    "COALESCE(SUM(budget_hold), 0) AS budget_held FROM guard_decision_journal ";
+
+inline constexpr std::string_view SUMMARY_NEAR_MISS =
+    "SELECT COUNT(*) AS rows FROM guard_decision_journal WHERE "
+    "belief_would_notify = 0 AND belief_score >= belief_threshold - ? ";
+
+inline constexpr std::string_view SUMMARY_ASSESS_P50 =
+    "SELECT assess_ms AS ms FROM guard_decision_journal ";
+inline constexpr std::string_view SUMMARY_ASSESS_ORDER_LIMIT =
+    "ORDER BY assess_ms ASC LIMIT 1 OFFSET ?";
+
+inline constexpr std::string_view SUMMARY_ASSESS_COUNT =
+    "SELECT COUNT(*) AS rows FROM guard_decision_journal ";
+
+inline constexpr std::string_view COUNT_FIRED_SINCE =
+    "SELECT COUNT(*) AS rows FROM guard_decision_journal WHERE did_notify = 1 "
+    "AND created_at >= ?";
+
+inline constexpr std::string_view SELECT_BASELINE_EMA =
+    "SELECT events_ema, updated_at FROM guard_hourly_baseline WHERE "
+    "camera_id = ? AND dow_hour = ?";
+
+inline constexpr std::string_view DECISION_JOURNAL_EXISTS =
+    "SELECT COUNT(*) AS rows FROM guard_decision_journal WHERE event_id = ?";
+
+inline constexpr std::string_view UPSERT_BASELINE_EMA =
+    "INSERT INTO guard_hourly_baseline (camera_id, dow_hour, events_ema, "
+    "updated_at) VALUES (?, ?, ?, ?) ON CONFLICT(camera_id, dow_hour) DO "
+    "UPDATE SET events_ema = excluded.events_ema, "
+    "updated_at = excluded.updated_at";
+
+inline constexpr std::string_view TOUCH_SIGNATURE_VISIT =
+    "INSERT INTO guard_signature_visit (signature, visits, first_seen, "
+    "last_seen) VALUES (?, 1, ?, ?) ON CONFLICT(signature) DO UPDATE SET "
+    "visits = visits + 1, last_seen = excluded.last_seen RETURNING visits";
+
+inline constexpr std::string_view RECORD_ENCOUNTER_NOTIFICATION =
+    "UPDATE guard_encounter SET notify_command_id = CASE WHEN "
+    "notify_command_id = '' THEN ? ELSE notify_command_id END, notify_count = "
+    "notify_count + 1, notify_highest_rank = CASE WHEN ? > "
+    "notify_highest_rank THEN ? ELSE notify_highest_rank END WHERE id = ?";
 } // namespace guard_query
+
+struct BaselineEmaRow
+{
+  double ema{0.0};
+  int64_t updatedAt{0};
+};
 
 struct GuardIncidentInput
 {
@@ -384,6 +565,9 @@ struct GuardEncounter
   int64_t lastHeardAt{0};
   int64_t firstSeen{0};
   int64_t lastSeen{0};
+  std::string notifyCommandId;
+  int notifyCount{0};
+  int notifyHighestRank{0};
 };
 
 // Stable event id and immutable payload for a closed encounter.
@@ -449,10 +633,177 @@ struct GuardEncounterActionInput
   int64_t maxPerHour{0};
 };
 
+struct DecisionJournalInput
+{
+  std::string eventId;
+  int64_t encounterId{0};
+  int64_t incidentId{0};
+  int64_t cameraId{0};
+  std::string observationId;
+  std::string severity;
+  int severityRank{0};
+  bool hardFloor{false};
+  int beliefScore{0};
+  std::string beliefSignals;
+  int beliefThreshold{0};
+  bool legacyWouldNotify{false};
+  bool beliefWouldNotify{false};
+  bool didNotify{false};
+  std::string decisionMode;
+  DecisionSuppression suppression{DecisionSuppression::None};
+  std::string suppressedKinds{"[]"};
+  double noveltyScore{0.0};
+  int repeatVisits{0};
+  bool quietHold{false};
+  bool budgetHold{false};
+  int assessMs{0};
+  int64_t createdAt{0};
+};
+
+struct DecisionJournalRow
+{
+  std::string eventId;
+  int64_t encounterId{0};
+  int64_t incidentId{0};
+  int64_t cameraId{0};
+  std::string observationId;
+  std::string severity;
+  int severityRank{0};
+  bool hardFloor{false};
+  int beliefScore{0};
+  std::string beliefSignals;
+  int beliefThreshold{0};
+  bool legacyWouldNotify{false};
+  bool beliefWouldNotify{false};
+  bool didNotify{false};
+  std::string decisionMode;
+  std::string suppressionReason;
+  std::string suppressedKinds;
+  int dispatchAttempts{0};
+  double noveltyScore{0.0};
+  int repeatVisits{0};
+  bool quietHold{false};
+  bool budgetHold{false};
+  int assessMs{0};
+  std::string feedbackLabel;
+  int64_t feedbackAt{0};
+  int64_t createdAt{0};
+};
+
+struct RecordNotificationDispatchInput
+{
+  std::string eventId;
+  int64_t encounterId{0};
+  std::string commandId;
+  int rank{0};
+  // Fault-injection hook evaluated inside the transaction; null in production.
+  std::function<bool(const std::string&)> failPoint;
+};
+
+struct DecisionsFilterInput
+{
+  int limit{20};
+  int64_t from{0};
+  int64_t to{0};
+  int64_t cameraId{0};
+  std::string severity;
+  std::string decisionMode;
+  std::string suppressionReason;
+  bool divergentOnly{false};
+  int nearMissMargin{0};
+  int64_t afterCreatedAt{0};
+  std::string afterEventId;
+};
+
+struct DecisionsPage
+{
+  std::vector<DecisionJournalRow> rows;
+  bool hasMore{false};
+  int64_t nextCreatedAt{0};
+  std::string nextEventId;
+};
+
+struct DecisionsSummaryInput
+{
+  int64_t from{0};
+  int64_t to{0};
+  int nearMissMargin{0};
+};
+
+struct DecisionSummaryCount
+{
+  std::string key;
+  int64_t rows{0};
+  int64_t fired{0};
+};
+
+struct DecisionScoreBucket
+{
+  std::string severity;
+  int score{0};
+  int64_t rows{0};
+  int64_t fired{0};
+  int64_t beliefWould{0};
+};
+
+struct DecisionCameraBucket
+{
+  int64_t cameraId{0};
+  std::string bucket;
+  int64_t events{0};
+  int64_t notified{0};
+};
+
+struct DecisionSignalCount
+{
+  std::string signal;
+  int64_t count{0};
+};
+
+struct DecisionSummary
+{
+  int64_t totalRows{0};
+  int64_t fired{0};
+  int64_t legacyWould{0};
+  int64_t beliefWould{0};
+  int64_t since{0};
+  int64_t until{0};
+  std::vector<DecisionSummaryCount> bySeverity;
+  std::vector<DecisionSummaryCount> byReason;
+  std::vector<DecisionSummaryCount> byMode;
+  std::vector<DecisionScoreBucket> scoreHistogram;
+  std::vector<DecisionCameraBucket> byCameraDay;
+  std::vector<DecisionCameraBucket> byCameraHour;
+  std::vector<DecisionSignalCount> signals;
+  int64_t unparseableSignalRows{0};
+  int64_t ambiguousNotifications{0};
+  int64_t nearMisses{0};
+  int64_t quietHeld{0};
+  int64_t budgetHeld{0};
+  int64_t assessMsP50{0};
+  int64_t assessMsP95{0};
+};
+
 struct GuardStaleEncountersInput
 {
   int64_t olderThan{0};
   int64_t closedAt{0};
+  std::string decisionMode{"shadow"};
+};
+
+struct DecisionFeedbackInput
+{
+  std::string eventId;
+  std::string label;
+  int64_t at{0};
+};
+
+struct BaselineEmaInput
+{
+  int64_t cameraId{0};
+  int dowHour{0};
+  double ema{0.0};
+  int64_t at{0};
 };
 
 struct GuardInboxInput
@@ -558,6 +909,7 @@ struct GuardEncounterPhaseResult
 
 struct GuardIntent
 {
+  std::string commandId;
   GuardIntentStatus status{GuardIntentStatus::Pending};
   std::string detail;
   std::string response;
@@ -622,6 +974,32 @@ struct GuardOutboxInput
   std::string payload;
   int64_t at{0};
 };
+
+struct CommandIdParts
+{
+  std::string correlation;
+  std::string kind;
+};
+
+// Splits "correlation:kind:seq" from the right; the kind vocabulary carries
+// no colon, the correlation may carry any.
+inline std::optional<CommandIdParts> splitCommandId(const std::string& commandId)
+{
+  const size_t seqAt = commandId.rfind(':');
+  if (seqAt == std::string::npos || seqAt == 0 ||
+      seqAt + 1 >= commandId.size())
+    return std::nullopt;
+  for (size_t index = seqAt + 1; index < commandId.size(); ++index) {
+    if (commandId[index] < '0' || commandId[index] > '9')
+      return std::nullopt;
+  }
+  const size_t kindAt = commandId.rfind(':', seqAt - 1);
+  if (kindAt == std::string::npos || kindAt == 0 || kindAt + 1 >= seqAt)
+    return std::nullopt;
+  return CommandIdParts{.correlation = commandId.substr(0, kindAt),
+                        .kind = commandId.substr(kindAt + 1,
+                                                 seqAt - kindAt - 1)};
+}
 
 struct GuardOutboxPayloadInput
 {

@@ -43,7 +43,10 @@ CREATE TABLE IF NOT EXISTS guard_action (
     camera_id   INTEGER NOT NULL  DEFAULT 0,
     person_id   INTEGER NOT NULL  DEFAULT 0,
     command_id  TEXT    NOT NULL  DEFAULT '',
-    kind        TEXT    NOT NULL  DEFAULT '',
+    kind        TEXT    NOT NULL  DEFAULT ''
+                  CHECK (kind IN ('greet', 'greet_listen', 'greet_reply',
+                         'announce', 'alarm', 'siren_arm', 'siren_disarm',
+                         'notify') OR kind LIKE 'agent\_%' ESCAPE '\'),
     status      TEXT    NOT NULL  DEFAULT '',
     detail      TEXT    NOT NULL  DEFAULT '',
     created_at  INTEGER NOT NULL  DEFAULT (strftime('%s', 'now'))
@@ -120,7 +123,10 @@ CREATE TABLE IF NOT EXISTS guard_encounter (
     last_heard_at    INTEGER NOT NULL  DEFAULT 0,
     first_seen     INTEGER NOT NULL,
     last_seen      INTEGER NOT NULL,
-    last_action_at INTEGER NOT NULL  DEFAULT 0
+    last_action_at INTEGER NOT NULL  DEFAULT 0,
+    notify_command_id TEXT NOT NULL DEFAULT '',
+    notify_count      INTEGER NOT NULL DEFAULT 0,
+    notify_highest_rank INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE INDEX IF NOT EXISTS idx_guard_encounter_last_seen
@@ -228,3 +234,72 @@ CREATE INDEX IF NOT EXISTS idx_guard_evidence_expires
     ON guard_evidence (expires_at) WHERE deleted_at = 0;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_guard_evidence_object
     ON guard_evidence (object_key) WHERE object_key != '';
+
+-- Per-camera, per-hour-of-week decayed event-rate baseline. Read-only input
+-- for a journaled novelty score; never an input to any live decision.
+CREATE TABLE IF NOT EXISTS guard_hourly_baseline (
+    camera_id    INTEGER NOT NULL,
+    dow_hour     INTEGER NOT NULL CHECK (dow_hour >= 0 AND dow_hour < 168),
+    events_ema   REAL    NOT NULL DEFAULT 0,
+    updated_at   INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
+    PRIMARY KEY (camera_id, dow_hour)
+);
+
+-- Appearance-signature visit clusters for unrecognized repeat visitors.
+-- Identity-matched persons keep their existing repeat counting; this table
+-- only accumulates the unknowns the old path ignored.
+CREATE TABLE IF NOT EXISTS guard_signature_visit (
+    signature  TEXT    NOT NULL PRIMARY KEY,
+    visits     INTEGER NOT NULL DEFAULT 0,
+    first_seen INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
+    last_seen  INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
+);
+-- recording the legacy rule verdict next to the belief verdict. The journal
+-- never fails the saga; writes are idempotent by event_id.
+CREATE TABLE IF NOT EXISTS guard_decision_journal (
+    event_id            TEXT    NOT NULL PRIMARY KEY,
+    encounter_id        INTEGER NOT NULL DEFAULT 0,
+    incident_id         INTEGER NOT NULL DEFAULT 0,
+    camera_id           INTEGER NOT NULL DEFAULT 0,
+    observation_id      TEXT    NOT NULL DEFAULT '',
+    severity            TEXT    NOT NULL DEFAULT 'none'
+                          CHECK (severity IN ('none', 'low', 'medium', 'high',
+                                 'critical')),
+    severity_rank       INTEGER NOT NULL DEFAULT 0,
+    hard_floor          INTEGER NOT NULL DEFAULT 0,
+    belief_score        INTEGER NOT NULL DEFAULT 0,
+    belief_signals      TEXT    NOT NULL DEFAULT '[]',
+    belief_threshold    INTEGER NOT NULL DEFAULT 0,
+    legacy_would_notify INTEGER NOT NULL DEFAULT 0,
+    belief_would_notify INTEGER NOT NULL DEFAULT 0,
+    did_notify          INTEGER NOT NULL DEFAULT 0,
+    decision_mode       TEXT    NOT NULL DEFAULT 'shadow'
+                          CHECK (decision_mode IN ('shadow', 'enforce')),
+    suppression_reason  TEXT    NOT NULL DEFAULT 'none'
+                          CHECK (suppression_reason IN ('none', 'belief_gate',
+                                 'budget', 'legacy_silent',
+                                 'thread_suppressed', 'staging')),
+    suppressed_kinds    TEXT    NOT NULL DEFAULT '[]',
+    dispatch_attempts   INTEGER NOT NULL DEFAULT 0,
+    novelty_score       REAL    NOT NULL DEFAULT 0,
+    repeat_visits       INTEGER NOT NULL DEFAULT 0,
+    quiet_hold          INTEGER NOT NULL DEFAULT 0,
+    budget_hold         INTEGER NOT NULL DEFAULT 0,
+    assess_ms           INTEGER NOT NULL DEFAULT 0,
+    feedback_label      TEXT    NOT NULL DEFAULT ''
+                          CHECK (feedback_label IN ('', 'useful', 'false_alarm',
+                                 'not_now')),
+    feedback_at         INTEGER NOT NULL DEFAULT 0,
+    created_at          INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_guard_decision_journal_encounter
+    ON guard_decision_journal (encounter_id, event_id);
+
+-- Cursor pagination and time-range scans (decisions pages, summary bounds).
+CREATE INDEX IF NOT EXISTS idx_guard_decision_journal_cursor
+    ON guard_decision_journal (created_at DESC, event_id DESC);
+
+-- Per-camera time aggregates (byCameraDay, byCameraHour).
+CREATE INDEX IF NOT EXISTS idx_guard_decision_journal_camera_time
+    ON guard_decision_journal (camera_id, created_at DESC);

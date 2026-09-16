@@ -2,6 +2,7 @@
 #include <drogon/drogon.h>
 #include <feature/api/guard/controllers/guard-controller.hxx>
 #include <feature/guard/guard-assessment.hxx>
+#include <feature/guard/guard-belief.hxx>
 #include <feature/guard/guard-policy.hxx>
 #include <feature/guard/guard-repository.hxx>
 #include <feature/guard/guard-schema.hxx>
@@ -245,7 +246,48 @@ int main()
   guardConfig.eventStream =
       configOr("guard.event_stream", "ARGUS_CAMERA");
   guardConfig.eventSubject = ConfigService::getString("guard.event_subject");
-
+  guardConfig.decisionMode = configOr("guard.decision_mode", "shadow");
+  if (guardConfig.decisionMode != "shadow" &&
+      guardConfig.decisionMode != "enforce") {
+    LOG_WARN << "Unknown guard.decision_mode '"
+             << guardConfig.decisionMode << "'; using shadow";
+    guardConfig.decisionMode = "shadow";
+  }
+  const auto gateScope = beliefGateScopeFromString(
+      configOr("guard.belief.gate_scope", "notify"));
+  if (!gateScope) {
+    LOG_WARN << "Unknown guard.belief.gate_scope '"
+             << configOr("guard.belief.gate_scope", "notify")
+             << "'; using notify";
+    guardConfig.beliefGateScope = BeliefGateScope::Notify;
+  }
+  else {
+    guardConfig.beliefGateScope = *gateScope;
+  }
+  guardConfig.healthStaleS = configIntOr("guard.health_stale_s", 300);
+  if (guardConfig.healthStaleS <= 0)
+    guardConfig.healthStaleS = 300;
+  guardConfig.beliefRefreshS = configIntOr("guard.belief_refresh_s", 300);
+  if (guardConfig.beliefRefreshS <= 0)
+    guardConfig.beliefRefreshS = 300;
+  guardConfig.journalRetentionDays =
+      configIntOr("guard.journal_retention_days", 90);
+  guardConfig.quietHoursEnabled =
+      configBoolOr("guard.quiet_hours.enabled", false);
+  guardConfig.quietStartHour = configIntOr("guard.quiet_hours.start_hour", 22);
+  if (guardConfig.quietStartHour < 0 || guardConfig.quietStartHour > 23)
+    guardConfig.quietStartHour = 22;
+  guardConfig.quietEndHour = configIntOr("guard.quiet_hours.end_hour", 7);
+  if (guardConfig.quietEndHour < 0 || guardConfig.quietEndHour > 23)
+    guardConfig.quietEndHour = 7;
+  guardConfig.quietDailyBudget =
+      configIntOr("guard.quiet_hours.daily_budget", 30);
+  if (guardConfig.quietDailyBudget <= 0)
+    guardConfig.quietDailyBudget = 30;
+  guardConfig.tamperSustainedS =
+      configIntOr("guard.tamper_sustained_s", 300);
+  if (guardConfig.tamperSustainedS <= 0)
+    guardConfig.tamperSustainedS = 300;
   std::shared_ptr<NatsBus> natsBus;
   const std::string natsUrl = ConfigService::getString("nats.url");
   if (natsUrl.empty()) {
