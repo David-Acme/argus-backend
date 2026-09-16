@@ -65,7 +65,7 @@ GO2RTC_DIR="$(abs_path "${ARGUS_GO2RTC_DIR:-third_party/go2rtc}")"
 ensure_data_tree() {
   local sub
   mkdir -p "$DATA_DIR"
-  for sub in identity camera productivity notification guard memory; do
+  for sub in identity camera productivity notification guard memory gateway; do
     mkdir -p "$DATA_DIR/$sub"
   done
   chmod 700 "$DATA_DIR" "$DATA_DIR"/* 2>/dev/null || true

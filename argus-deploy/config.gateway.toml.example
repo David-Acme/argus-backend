@@ -8,6 +8,11 @@ host = "0.0.0.0"
 port = 7024
 plain = false
 min_protocol = "TLSv1.2"
+# Gateway-owned fallback record; identity and sync state stay in their owners.
+# database/schema.sql stays the identity schema; the gateway schema mounts
+# separately because this container hosts both databases.
+db = "gateway/gateway.db"
+schema = "gateway/schema.sql"
 
 [drogon.app]
 number_of_threads = 0

@@ -37,8 +37,19 @@ services:
         bind:
           create_host_path: false
       - type: bind
+        source: ${ARGUS_DATA_DIR:-./data}/gateway
+        target: /opt/argus/gateway
+        bind:
+          create_host_path: false
+      - type: bind
         source: ../packages/argus-identity/database/schema.sql
         target: /opt/argus/database/schema.sql
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ../services/argus-gateway/database/schema.sql
+        target: /opt/argus/gateway/schema.sql
         read_only: true
         bind:
           create_host_path: false

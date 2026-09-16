@@ -34,6 +34,8 @@ relaunch_on_error = false
 [notifications]
 db = "notification/notification.db"
 schema = "database/schema.sql"
+ack_window_s = 86400
+selftest_interval_s = 300
 
 [nats]
 url = "nats://nats:4222"
