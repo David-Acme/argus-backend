@@ -264,14 +264,28 @@ grpc::ServerUnaryReactor* CameraActionRpcService::Announce(
       const std::string fingerprint =
           commandFingerprint({"announce", std::to_string(cameraId),
                               std::to_string(encounterId), text, lang});
-      const auto verdict =
-          co_await beginCommand({.commandId = commandId,
-                                 .kind = "announce",
-                                 .cameraId = cameraId,
-                                 .encounterId = encounterId,
-                                 .expiresAt = expiresAt,
-                                 .leaseSeconds = kCommandLeaseSeconds,
-                                 .fingerprint = fingerprint});
+      CommandVerdict verdict;
+      try {
+        verdict = co_await beginCommand({.commandId = commandId,
+                                         .kind = "announce",
+                                         .cameraId = cameraId,
+                                         .encounterId = encounterId,
+                                         .expiresAt = expiresAt,
+                                         .leaseSeconds = kCommandLeaseSeconds,
+                                         .fingerprint = fingerprint});
+      }
+      catch (const std::exception& error) {
+        LOG_WARN << "Camera action: Announce claim failed: " << error.what();
+        reactor->Finish(
+            grpc::Status(grpc::StatusCode::INTERNAL, error.what()));
+        co_return;
+      }
+      catch (...) {
+        LOG_WARN << "Camera action: Announce claim failed with unknown error";
+        reactor->Finish(grpc::Status(grpc::StatusCode::INTERNAL,
+                                     "command claim failed"));
+        co_return;
+      }
       if (!verdict.proceed) {
         finishAck({.response = responseWriter,
                    .outcome = verdict.outcome,
@@ -327,12 +341,29 @@ grpc::ServerUnaryReactor* CameraActionRpcService::Announce(
       }
       if (failed) {
         const bool ambiguous = dispatched;
-        const auto fence = co_await settleFenced(
-            {.commandId = commandId,
-             .generation = verdict.generation,
-             .status = ambiguous ? "indeterminate" : "retryable_failed",
-             .detail = failure,
-             .response = {}});
+        SettleVerdict fence;
+        try {
+          fence = co_await settleFenced(
+              {.commandId = commandId,
+               .generation = verdict.generation,
+               .status = ambiguous ? "indeterminate" : "retryable_failed",
+               .detail = failure,
+               .response = {}});
+        }
+        catch (const std::exception& error) {
+          LOG_WARN << "Camera action: Announce failure settle failed: "
+                   << error.what();
+          reactor->Finish(grpc::Status(grpc::StatusCode::INTERNAL,
+                                       error.what()));
+          co_return;
+        }
+        catch (...) {
+          LOG_WARN << "Camera action: Announce failure settle failed with "
+                      "unknown error";
+          reactor->Finish(grpc::Status(grpc::StatusCode::INTERNAL,
+                                       "command settle failed"));
+          co_return;
+        }
         const CameraCommandOutcome intended =
             ambiguous ? CameraCommandOutcome::INDETERMINATE
                       : CameraCommandOutcome::RETRYABLE_FAILED;
@@ -387,14 +418,28 @@ CameraActionRpcService::Alarm(grpc::CallbackServerContext* context,
       const std::string fingerprint = commandFingerprint(
           {"alarm", std::to_string(cameraId), std::to_string(encounterId),
            std::to_string(seconds)});
-      const auto verdict =
-          co_await beginCommand({.commandId = commandId,
-                                 .kind = "alarm",
-                                 .cameraId = cameraId,
-                                 .encounterId = encounterId,
-                                 .expiresAt = expiresAt,
-                                 .leaseSeconds = kCommandLeaseSeconds,
-                                 .fingerprint = fingerprint});
+      CommandVerdict verdict;
+      try {
+        verdict = co_await beginCommand({.commandId = commandId,
+                                         .kind = "alarm",
+                                         .cameraId = cameraId,
+                                         .encounterId = encounterId,
+                                         .expiresAt = expiresAt,
+                                         .leaseSeconds = kCommandLeaseSeconds,
+                                         .fingerprint = fingerprint});
+      }
+      catch (const std::exception& error) {
+        LOG_WARN << "Camera action: Alarm claim failed: " << error.what();
+        reactor->Finish(
+            grpc::Status(grpc::StatusCode::INTERNAL, error.what()));
+        co_return;
+      }
+      catch (...) {
+        LOG_WARN << "Camera action: Alarm claim failed with unknown error";
+        reactor->Finish(grpc::Status(grpc::StatusCode::INTERNAL,
+                                     "command claim failed"));
+        co_return;
+      }
       if (!verdict.proceed) {
         finishAck({.response = responseWriter,
                    .outcome = verdict.outcome,
@@ -454,12 +499,29 @@ CameraActionRpcService::Alarm(grpc::CallbackServerContext* context,
       }
       if (failed) {
         const bool ambiguous = dispatched;
-        const auto fence = co_await settleFenced(
-            {.commandId = commandId,
-             .generation = verdict.generation,
-             .status = ambiguous ? "indeterminate" : "retryable_failed",
-             .detail = failure,
-             .response = {}});
+        SettleVerdict fence;
+        try {
+          fence = co_await settleFenced(
+              {.commandId = commandId,
+               .generation = verdict.generation,
+               .status = ambiguous ? "indeterminate" : "retryable_failed",
+               .detail = failure,
+               .response = {}});
+        }
+        catch (const std::exception& error) {
+          LOG_WARN << "Camera action: Alarm failure settle failed: "
+                   << error.what();
+          reactor->Finish(grpc::Status(grpc::StatusCode::INTERNAL,
+                                       error.what()));
+          co_return;
+        }
+        catch (...) {
+          LOG_WARN << "Camera action: Alarm failure settle failed with "
+                      "unknown error";
+          reactor->Finish(grpc::Status(grpc::StatusCode::INTERNAL,
+                                       "command settle failed"));
+          co_return;
+        }
         const CameraCommandOutcome intended =
             ambiguous ? CameraCommandOutcome::INDETERMINATE
                       : CameraCommandOutcome::RETRYABLE_FAILED;
@@ -522,14 +584,28 @@ CameraActionRpcService::SetSiren(grpc::CallbackServerContext* context,
       const std::string fingerprint = commandFingerprint(
           {"siren", std::to_string(cameraId), std::to_string(encounterId),
            enabled ? "1" : "0", std::to_string(leaseSeconds)});
-      const auto verdict =
-          co_await beginCommand({.commandId = commandId,
-                                 .kind = "siren",
-                                 .cameraId = cameraId,
-                                 .encounterId = encounterId,
-                                 .expiresAt = expiresAt,
-                                 .leaseSeconds = kCommandLeaseSeconds,
-                                 .fingerprint = fingerprint});
+      CommandVerdict verdict;
+      try {
+        verdict = co_await beginCommand({.commandId = commandId,
+                                         .kind = "siren",
+                                         .cameraId = cameraId,
+                                         .encounterId = encounterId,
+                                         .expiresAt = expiresAt,
+                                         .leaseSeconds = kCommandLeaseSeconds,
+                                         .fingerprint = fingerprint});
+      }
+      catch (const std::exception& error) {
+        LOG_WARN << "Camera action: SetSiren claim failed: " << error.what();
+        reactor->Finish(
+            grpc::Status(grpc::StatusCode::INTERNAL, error.what()));
+        co_return;
+      }
+      catch (...) {
+        LOG_WARN << "Camera action: SetSiren claim failed with unknown error";
+        reactor->Finish(grpc::Status(grpc::StatusCode::INTERNAL,
+                                     "command claim failed"));
+        co_return;
+      }
       if (!verdict.proceed) {
         finishAck({.response = responseWriter,
                    .outcome = verdict.outcome,
@@ -627,12 +703,29 @@ CameraActionRpcService::SetSiren(grpc::CallbackServerContext* context,
       }
       if (failed) {
         const bool ambiguous = dispatched;
-        const auto fence = co_await settleFenced(
-            {.commandId = commandId,
-             .generation = verdict.generation,
-             .status = ambiguous ? "indeterminate" : "retryable_failed",
-             .detail = failure,
-             .response = {}});
+        SettleVerdict fence;
+        try {
+          fence = co_await settleFenced(
+              {.commandId = commandId,
+               .generation = verdict.generation,
+               .status = ambiguous ? "indeterminate" : "retryable_failed",
+               .detail = failure,
+               .response = {}});
+        }
+        catch (const std::exception& error) {
+          LOG_WARN << "Camera action: SetSiren failure settle failed: "
+                   << error.what();
+          reactor->Finish(grpc::Status(grpc::StatusCode::INTERNAL,
+                                       error.what()));
+          co_return;
+        }
+        catch (...) {
+          LOG_WARN << "Camera action: SetSiren failure settle failed with "
+                      "unknown error";
+          reactor->Finish(grpc::Status(grpc::StatusCode::INTERNAL,
+                                       "command settle failed"));
+          co_return;
+        }
         const CameraCommandOutcome intended =
             ambiguous ? CameraCommandOutcome::INDETERMINATE
                       : CameraCommandOutcome::RETRYABLE_FAILED;
@@ -720,14 +813,28 @@ CameraActionRpcService::Listen(grpc::CallbackServerContext* context,
       const std::string fingerprint = commandFingerprint(
           {"greet_listen", std::to_string(cameraId),
            std::to_string(encounterId), std::to_string(seconds), lang});
-      const auto verdict =
-          co_await beginCommand({.commandId = commandId,
-                                 .kind = "greet_listen",
-                                 .cameraId = cameraId,
-                                 .encounterId = encounterId,
-                                 .expiresAt = expiresAt,
-                                 .leaseSeconds = kCommandLeaseSeconds,
-                                 .fingerprint = fingerprint});
+      CommandVerdict verdict;
+      try {
+        verdict = co_await beginCommand({.commandId = commandId,
+                                         .kind = "greet_listen",
+                                         .cameraId = cameraId,
+                                         .encounterId = encounterId,
+                                         .expiresAt = expiresAt,
+                                         .leaseSeconds = kCommandLeaseSeconds,
+                                         .fingerprint = fingerprint});
+      }
+      catch (const std::exception& error) {
+        LOG_WARN << "Camera action: Listen claim failed: " << error.what();
+        reactor->Finish(
+            grpc::Status(grpc::StatusCode::INTERNAL, error.what()));
+        co_return;
+      }
+      catch (...) {
+        LOG_WARN << "Camera action: Listen claim failed with unknown error";
+        reactor->Finish(grpc::Status(grpc::StatusCode::INTERNAL,
+                                     "command claim failed"));
+        co_return;
+      }
       if (!verdict.proceed) {
         if (verdict.outcome == CameraCommandOutcome::DUPLICATE_SUCCEEDED)
           applyListenResponse(responseWriter, verdict.response);
@@ -796,12 +903,29 @@ CameraActionRpcService::Listen(grpc::CallbackServerContext* context,
       }
       if (failed) {
         const bool ambiguous = dispatched;
-        const auto fence = co_await settleFenced(
-            {.commandId = commandId,
-             .generation = verdict.generation,
-             .status = ambiguous ? "indeterminate" : "retryable_failed",
-             .detail = failure,
-             .response = {}});
+        SettleVerdict fence;
+        try {
+          fence = co_await settleFenced(
+              {.commandId = commandId,
+               .generation = verdict.generation,
+               .status = ambiguous ? "indeterminate" : "retryable_failed",
+               .detail = failure,
+               .response = {}});
+        }
+        catch (const std::exception& error) {
+          LOG_WARN << "Camera action: Listen failure settle failed: "
+                   << error.what();
+          reactor->Finish(grpc::Status(grpc::StatusCode::INTERNAL,
+                                       error.what()));
+          co_return;
+        }
+        catch (...) {
+          LOG_WARN << "Camera action: Listen failure settle failed with "
+                      "unknown error";
+          reactor->Finish(grpc::Status(grpc::StatusCode::INTERNAL,
+                                       "command settle failed"));
+          co_return;
+        }
         responseWriter->set_outcome(
             fence.won ? (ambiguous ? CameraCommandOutcome::INDETERMINATE
                                    : CameraCommandOutcome::RETRYABLE_FAILED)
@@ -818,9 +942,10 @@ void CameraActionRpcService::startLeaseSweeper()
 {
   drogon::app().getLoop()->runEvery(5.0, [this]() {
     drogon::async_run([this]() -> drogon::Task<void> {
-      const int64_t recovered =
-          co_await commandRepository_.reconcileExpired(nowSeconds(),
-                                                       kCommandLeaseSeconds);
+      try {
+        const int64_t recovered =
+            co_await commandRepository_.reconcileExpired(nowSeconds(),
+                                                         kCommandLeaseSeconds);
       if (recovered > 0)
         LOG_WARN << "Camera action: marked " << recovered
                  << " lost in-flight command(s) indeterminate";
@@ -862,6 +987,13 @@ void CameraActionRpcService::startLeaseSweeper()
         }
         LOG_WARN << "Camera action: siren lease expired for camera " << cameraId
                  << "; disarmed";
+      }
+      }
+      catch (const std::exception& error) {
+        LOG_WARN << "Camera action: lease sweep failed: " << error.what();
+      }
+      catch (...) {
+        LOG_WARN << "Camera action: lease sweep failed with unknown error";
       }
       co_return;
     });
