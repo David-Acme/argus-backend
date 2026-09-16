@@ -24,6 +24,7 @@ order below.
 9. [Configuration](operations/configuration.md)
 10. [Docker deployment](operations/deployment-docker.md)
 11. [Hardware tiers](operations/hardware-tiers.md)
+12. [Shadow-mode runbook](operations/shadow-mode-runbook.md)
 
 ## Contract reference
 

@@ -25,7 +25,7 @@ argus.<domain>.v1.<event>
 |------------------------|----------------------|----------|----------------------------------------------|
 | `argus.sync.v1.change` | every mutating service | gateway  | a persisted change that must reach `/sync` |
 | `argus.camera.v1.change` | argus-camera (F2-2) | gateway  | a camera-domain persisted change (same payload as `argus.sync.v1.change`) |
-| `argus.camera.v1.object_detected` | argus-camera (F2-3) | argus-guard (durable JetStream), gateway (degraded fallback) | an immutable per-object observation (schemaVersion 2: track/observation ids, evidence binding); never re-emitted to `/sync` |
+| `argus.camera.v1.object_detected` | argus-camera (F2-3) | argus-guard (durable JetStream), gateway (degraded fallback) | an immutable per-object observation (schemaVersion 3: track/observation ids, identity tri-state, score history, evidence binding); never re-emitted to `/sync` |
 | `argus.guard.v1.heartbeat` | argus-guard | gateway | readiness heartbeat; while fresh the gateway's raw camera notifier yields to guard |
 | `argus.guard.v1.encounter_closed` | argus-guard | argus-llm (durable JetStream) | finalized, redacted encounter summary; the only camera feed long-term memory reads. Published with `Nats-Msg-Id = <eventId>` on the guard-owned stream `ARGUS_GUARD` (7 days, file storage, 2-minute duplicate window); argus-llm receipts each event in `encounter_closed_inbox` and captures exactly one memory episode per receipt |
 | `argus.productivity.v1.change` | argus-productivity (F3-2) | gateway  | a productivity-domain change: user-scoped emits plus `kind: audit` user_audit_log diffs the gateway persists before fanning the rows out |
@@ -80,7 +80,7 @@ the legacy backend only — the gateway is subscriber-only and must not publish
 | `user`     | `disconnect`, `replace_role_rooms` | the user id the action applies to. |
 | `old_role` / `new_role` | `replace_role_rooms` | `UserRole` string values (`owner`, `resident`, `guard`, `guest`). |
 
-## Payload of `argus.camera.v1.object_detected` (schemaVersion 2)
+## Payload of `argus.camera.v1.object_detected` (schemaVersion 3)
 
 Published by argus-camera's operator after `EventIntelligence` evaluates the
 detections of one aggregation window. Unlike the change subjects it is not a
@@ -94,7 +94,7 @@ together with `argus.camera.v1.change`.
 
 ```json
 {
-  "schemaVersion": 2,
+  "schemaVersion": 3,
   "eventId": "1:1735689600123:4",
   "cameraId": 1,
   "cameraName": "Front door",
@@ -115,7 +115,14 @@ together with `argus.camera.v1.change`.
       "bbox": { "x": 120, "y": 40, "w": 300, "h": 800 },
       "personId": 12,
       "identity": "unknown",
+      "identityState": "unrecognized",
+      "identifyAttempts": 2,
       "identityConfidence": 0.72,
+      "scoreMedian": 0.88,
+      "scoreSamples": 4,
+      "zoneWindows": 3,
+      "trackWindows": 4,
+      "areaSpread": 1.2,
       "trackId": 4,
       "firstSeenMs": 1735689595000,
       "lastSeenMs": 1735689600120,
@@ -128,7 +135,8 @@ together with `argus.camera.v1.change`.
 }
 ```
 
-- `schemaVersion` — 2; v1 consumers that ignore unknown keys keep working.
+- `schemaVersion` — 3; v2 consumers that ignore unknown keys keep working
+  (the gateway and guard parsers read every key with a default).
 - `eventId` — producer-unique id (`cameraId:publishedAtMs:sequence`); the guard
   inbox deduplicates by it and JetStream deduplicates redeliveries with it.
 - `capturedAt` — first frame of the aggregation window, in ms.
@@ -149,10 +157,26 @@ together with `argus.camera.v1.change`.
 - `objects[].identityConfidence` — matcher confidence for the person id.
 - `objects[].signature` — compact Lab histogram for cross-camera correlation;
   never persisted in guard incidents (redacted before evidence upload).
-- `objects[].personId` / `objects[].identity` — added when the identity
-  matcher answered for a person box: `identity` is `known` (trusted person),
-  `unknown` (stranger or auto-enrolled candidate). Absent when identity is
-  disabled.
+- `objects[].personId` / `objects[].identity` — unchanged from v2:
+  `identity` is `known` (trusted person) or `unknown` (stranger or
+  auto-enrolled candidate), present only when `personId > 0`. Absent when
+  identity is disabled.
+- `objects[].identityState` — `known`, `unrecognized` (a face was analysed
+  and matched nobody) or `unobservable` (no analysable face was ever
+  observed). Present on track-bound person objects even when `personId` is 0;
+  absent when no matcher ran. Consumers map a missing key to `unrecognized`;
+  an unknown string value must never read as `known`. A missing key additionally
+  means identity was unavailable, which the belief engine scores at zero
+  rather than as an unrecognized face.
+- `objects[].identifyAttempts` — identification scans performed for this
+  track; present alongside `identityState`.
+- `objects[].scoreMedian` / `objects[].scoreSamples` — median detector
+  confidence over the track's bounded window history and the sample count;
+  present when the track was seen in at least one window.
+- `objects[].zoneWindows` / `objects[].trackWindows` — windows the track was
+  observed in a configured zone / in any window; present with the history.
+- `objects[].areaSpread` — max/min box-area ratio over the same history (1.0
+  means a perfectly stable box); present with the history.
 - `objects` — every detection of the window that survived the rules; bbox is
   frame pixels, top-left origin.
 - The gateway tolerates unknown extra keys and unknown rule/severity values
@@ -165,7 +189,9 @@ While a heartbeat fresher than `notifications.guard_heartbeat_timeout_s`
 (default 30 s) exists, the gateway's raw `camera-notifier` suppresses its own
 notifications and lets guard own the incident. Without a fresh heartbeat the
 fallback only forwards protected-zone hard signals (`critical` severity or
-`person_in_alert_zone`).
+`person_in_alert_zone`) through its own sanity gate (minimum score median and
+dwell from the v3 observation keys, matched-known suppression; absent keys
+fail open).
 
 ```json
 { "service": "argus-guard", "enabled": true, "at": 1735689600 }

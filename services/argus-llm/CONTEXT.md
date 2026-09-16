@@ -117,7 +117,7 @@ GGUF relative to the `[llm]` config keys.
 With `[memory] observe_camera_events = true`, `main.cc` wires an
 `EncounterClosedConsumer`
 (`src/shared/services/encounter-closed/encounter-closed-consumer.cc`): a
-durable JetStream pull on `argus.guard.v1.encounter_closed`
+durable JetStream consumer on `argus.guard.v1.encounter_closed`
 (`ARGUS_GUARD`, durable `argus-llm-encounters`, `maxDeliver = 10`, poison
 `Term` after 3 failed attempts). Each event is receipted in
 `encounter_closed_inbox` (same states as the gateway delivery inbox:

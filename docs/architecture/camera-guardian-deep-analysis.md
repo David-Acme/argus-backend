@@ -1167,3 +1167,11 @@ out of scope for this pass).
   tests and an idempotent observation-saga suite ship; the private replay
   corpus, shadow-mode rollout and hardware-in-the-loop lease tests require the
   installed camera and are the next operational step.
+
+- **Round 7 — decision-mode contract.** `guard.decision_mode` governs the
+  belief gate only and must not be confused with the rollout shadow above:
+  `shadow` journals the belief verdict without enforcing it, while
+  per-encounter notification threading applies in both modes. The belief gate
+  scope (`guard.belief.gate_scope`: `notify`, `communication`, `all`) selects
+  which effect kinds enforce mode may suppress; a hard floor always lets
+  alarm and siren-arm through regardless of scope.

@@ -15,6 +15,7 @@ where used):
 | camera | `[server]`, `[database]`, `[camera]`, `[streaming]`, `[objects]`, `[tapo]`, `[tts]` |
 | productivity | `[server]`, `[database]` |
 | notification | `[server]`, `[database]` |
+| guard | `[guard]` (`decision_mode`, `health_stale_s`, `belief_refresh_s`), `[guard.belief]` (thresholds, weights, `gate_scope`, per-camera `[guard.belief.camera."<id>"]` overrides), `[guard.assess]`, `[camera]`, `[notifications]` |
 | tts / stt / vlm / llm / voice | their engine section plus `[server]` |
 | memory (hosted) | `[memory]`, `[extract]` |
 

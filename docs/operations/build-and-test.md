@@ -36,6 +36,18 @@ ctest --test-dir build/dev --output-on-failure
   `COMPOSE_PARALLEL_LIMIT=1 docker compose -f argus-deploy/docker-compose.yml
   --profile tunnel --profile identity-init build`.
 
+## Stability protocol
+
+A single green run proves nothing about timing-sensitive suites. After any
+change to timing, retry, networking or lifecycle code — and before certifying
+a round — repeat the affected binaries: 20 consecutive runs per binary, plus
+50 per ordering (`--order-by=name`, `--order-by=name --reverse`, random seeds)
+for any case that ever flaked. A skipped test is not a pass; an assertion
+count that varies with execution order is a coverage hole, not stability.
+Every test binary must clean up its own TempDb files; a `.db*` file left in a
+build directory after a run is a failure to investigate, whatever the exit
+code says.
+
 ## Current scale
 
 20 projects in `dev`. Per-suite test and assertion counts move with the

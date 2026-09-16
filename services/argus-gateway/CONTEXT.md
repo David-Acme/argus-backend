@@ -467,13 +467,55 @@ table. The app keeps working without any update.
   (`severity == critical`, `rule == person_in_alert_zone`) still create
   notifications through `argus.notification.v1`. Budget, silent hours and the
   per-minute digest apply unchanged to whatever the fallback emits.
+- **Fallback sanity gate (Round 7)**: hard signals that reach the fallback
+  pass one more self-contained filter before the budget — a minimum detector
+  score median (`fallback_min_score_median`, default 0.3), a minimum dwell
+  (`fallback_min_dwell_ms`, default 1000) and a matched-known suppression
+  (`fallback_suppress_known`, default true). Absent wire keys fail open, so
+  older cameras behave exactly as before. It is deliberately not the guard
+  belief engine: a degraded path with its own config, no shared module, no
+  guard state. Every fallback drop is logged with its reason and counted
+  toward the digest.
+- **Fallback durable record (Round 12)**: every fallback-path non-delivery
+  (non-hard ignore, gate drops, budget/silent suppress) also lands a row in
+  `gateway_fallback_event` in the gateway-owned `gateway.db`
+  (`services/argus-gateway/database/schema.sql`; `database/schema.sql` stays
+  the identity schema because this container hosts both). Guard-ready
+  handoffs are recorded by guard, malformed payloads carry nothing to
+  record. Best-effort fire-and-forget write; a missing store degrades to
+  the counters, never to a failure. Query per outage window by
+  `created_at`, grouped by `reason`.
+- **Fallback record, revisited (Round 13)**: the earlier decision to keep
+  fallback drops out of any table no longer applies — process-lifetime
+  counters cannot reconstruct a past outage window across a restart, and
+  that window is exactly when visibility matters most. The table above is
+  deliberately minimal (camera, rule, severity, reason, timestamp), carries
+  no sync or endpoint surface, and is bounded by
+  `notifications.fallback_retention_days` (default 90, purged on the
+  per-minute digest tick). If the gateway store cannot be applied at boot,
+  the gateway keeps serving with a loud error naming the missing
+  `data/gateway` host directory; fallback drops fall back to counters only.
+  Fresh deploys need no action (SQLite creates the file); existing deploys
+  add the `data/gateway` bind (see the upgrade note in
+  docs/operations/shadow-mode-runbook.md).
+- **Fallback measurement decision (Round 8)**: fallback drops are counted
+  per reason (`fallbackCounts`, exposed on `/health` under
+  `notifications_fallback` alongside a pass counter) and logged with their
+  reason, but they are deliberately NOT written to `guard_decision_journal`.
+  The journal is the calibration population for the belief gate: guard-
+  observed events with belief scores. Fallback events carry no belief score
+  and come from a different population (guard absent), so mixing them in
+  would corrupt threshold calibration. A separate fallback table was rejected
+  as speculative structure with no Round 9 consumer: the per-reason counters,
+  the reason logs and the digest volumes are the fallback record.
 - **`/guard` proxy**: `[guard] proxy_url` (default `http://127.0.0.1:7039`)
   routes `/guard` (up to 5 segments) to argus-guard's owner-only
-  administrative API (mode, incidents, expected guests, person promotion).
+  administrative API (mode, incidents, decisions, expected guests, person
+  promotion).
   Rule 9 holds: the gateway never calls camera action RPCs itself; audible
   intervention belongs to guard.
 - **Durable delivery consumer**: `NotificationDeliveryConsumer`
-  (`src/sync/notification-delivery-consumer.cc`) is a durable JetStream pull
+  (`src/sync/notification-delivery-consumer.cc`) is a durable JetStream consumer
   on `argus.notification.v1.delivery` (`ARGUS_NOTIFICATION`, durable
   `argus-gateway-delivery`, `maxDeliver = 10`, poison `Term` after 3 failed
   attempts). Each event is receipted first in `notification_delivery_inbox`

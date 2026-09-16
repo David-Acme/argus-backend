@@ -254,9 +254,17 @@ left in this folder, and it goes away when the sync split lands.
 
 - `CameraHealthMonitor` samples each enabled camera every `[health].interval_ms`
   and classifies brightness, Laplacian sharpness and normalized scene diff
-  against the first reference frame: `dark`, `bright`, `blurred`, `moved` or
-  `unreachable`. Transitions publish `argus.camera.v1.health`; `GET /health`
-  never touches this path.
+  against the first reference frame: `dark`, `bright`, `blurred`, `moved`,
+  `unreachable`, plus `covered` (dark and featureless). Transitions
+  publish `argus.camera.v1.health`; `GET /health` never touches this path.
+- Steady states republish every tick (Round 12 heartbeat): guard's
+  sustained-tamper check needs a continuous sample stream, and a
+  transition-only feed goes permanently stale. One small JSON per camera
+  per minute; no new key.
+- The `insect` state was dropped (Round 14): whole-frame
+  variance-of-Laplacian cannot separate an insect on the lens from a sharp
+  static background, so the state fired on every healthy camera. Tape,
+  sticker and web occlusions remain covered by `covered`/`blurred`/`moved`.
 - `SnapshotStore` keeps the latest full frame and the latest identity person
   crop per camera (bounded, TTL-free, overwritten). `CameraActionService`
   exposes `GetPersonCrop` so argus-guard can assess without touching frames
@@ -301,3 +309,22 @@ when a clearly better frame arrives.
   `siren_lease`; a sweeper disarms expired leases even when guard is gone.
 - Detection evidence uploads record a `camera_evidence` retention manifest and
   a daily worker deletes expired objects.
+
+## Observation identity v3 and track history (Round 6)
+
+Events are `schemaVersion: 3`. The matcher reports a tri-state per track
+instead of collapsing everything into `unknown`: `known` (matched),
+`unrecognized` (a face was analysed and matched nobody) or `unobservable`
+(no analysable face was ever observed — gate reject, encode failure or
+identification disabled). The legacy `identity` string keeps its v2 meaning
+for compatibility and is still emitted only when `personId > 0`; the new
+`identityState`/`identifyAttempts` ride on every track-bound person object.
+Identification scans are counted per track in the matcher cache, so the
+attempt count is instrumentation, not a heuristic.
+
+Each track also carries a bounded window history (10 samples of detector
+confidence and box area) with in-zone and total window counters. The event
+publishes the median confidence with its sample count plus the area spread,
+so guard's belief engine reads real history instead of an instantaneous
+score. Additive keys only: v2 consumers that ignore unknown keys keep
+working.

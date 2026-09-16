@@ -161,8 +161,16 @@ JetStream consumer, evaluates a deterministic danger matrix (hard floors for
 unknown-while-away/armed, alert zones, night, escalation and repeats) with
 bounded read-only model evidence, and raises only policy-authorized actions
 through the single `guard-action.cc` enforcement point and the persisted
-`guard_action_outbox`. It publishes a readiness `heartbeat` (the gateway's raw
-camera notifier yields while it is fresh) and `encounter_closed` summaries —
+`guard_action_outbox`. Severity (code-owned) and belief (a deterministic,
+model-free score over the observation contract's identity tri-state, score
+history and camera health) gate notifications separately: `shadow` mode
+journals the belief verdict without enforcing it — per-encounter notification
+threading still applies — while `enforce` mode suppresses
+below-threshold effects within the configured gate scope. Every effects-stage observation lands in
+`guard_decision_journal` (readable at `GET /guard/decisions`), and one
+encounter owns one notification thread (first crossing, then strictly higher
+tiers only). It publishes a readiness `heartbeat` (the gateway's raw camera
+notifier yields while it is fresh) and `encounter_closed` summaries —
 the only camera feed long-term memory reads. Details live in
 `services/argus-guard/CONTEXT.md`, the
 [camera-guardian deep analysis](camera-guardian-deep-analysis.md) and the
