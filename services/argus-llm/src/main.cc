@@ -258,14 +258,24 @@ int main()
   drogon::app().registerBeginningAdvice([&memory, &replica]() {
     drogon::async_run([&memory,
                        &replica]() -> drogon::Task<void> {
-      const auto snapshot = co_await BlockingTask<CatalogReplica::Snapshot>(
-          [] { return fetchCatalogSnapshotWithRetry(); });
-      if (replica)
-        replica->seedFromSnapshot(snapshot);
-      else
-        CatalogReplica::seedSnapshot(
-            {static_cast<SqliteGraph&>(memory.graph()), memory.resolver(),
-             snapshot});
+      try {
+        const auto snapshot = co_await BlockingTask<CatalogReplica::Snapshot>(
+            [] { return fetchCatalogSnapshotWithRetry(); });
+        if (replica)
+          replica->seedFromSnapshot(snapshot);
+        else
+          CatalogReplica::seedSnapshot(
+              {static_cast<SqliteGraph&>(memory.graph()), memory.resolver(),
+               snapshot});
+      }
+      catch (const std::exception& error) {
+        LOG_WARN << "argus-llm: catalog snapshot seed failed: "
+                 << error.what();
+      }
+      catch (...) {
+        LOG_WARN << "argus-llm: catalog snapshot seed failed with unknown "
+                    "error";
+      }
       co_return;
     });
   });
