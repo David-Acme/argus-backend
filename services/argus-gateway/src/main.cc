@@ -43,6 +43,7 @@ namespace
 struct DrogonConfigInput
 {
   const IdentityDbConfig& identityDb;
+  const std::string& gatewayDbPath;
   const ListenerConfig& listener;
   const RemoteConfig& remote;
   const ProxyConfig& proxy;
@@ -51,6 +52,7 @@ struct DrogonConfigInput
 Json::Value drogonConfig(const DrogonConfigInput& input)
 {
   const IdentityDbConfig& identityDb = input.identityDb;
+  const std::string& gatewayDbPath = input.gatewayDbPath;
   const ListenerConfig& listener = input.listener;
   const RemoteConfig& remote = input.remote;
   const ProxyConfig& proxy = input.proxy;
@@ -68,6 +70,14 @@ Json::Value drogonConfig(const DrogonConfigInput& input)
   client["number_of_connections"] = 1;
   client["timeout"] = -1.0;
   clients.append(client);
+  Json::Value gatewayClient(Json::objectValue);
+  gatewayClient["name"] = "gateway";
+  gatewayClient["rdbms"] = "sqlite3";
+  gatewayClient["filename"] = gatewayDbPath;
+  gatewayClient["is_fast"] = false;
+  gatewayClient["number_of_connections"] = 1;
+  gatewayClient["timeout"] = -1.0;
+  clients.append(gatewayClient);
   config["db_clients"] = clients;
 
   Json::Value listeners = listenerJson(listener);
@@ -115,7 +125,7 @@ Json::Value drogonConfig(const DrogonConfigInput& input)
         routes.append(productivityRoute);
       }
       if (!proxy.guardProxyUrl.empty()) {
-        // The owner-only guard API: mode, incidents and expected guests.
+        // The owner-only guard API: mode, incidents, decisions and guests.
         Json::Value guardRoute(Json::objectValue);
         Json::Value prefixes(Json::arrayValue);
         prefixes.append("/guard");
@@ -203,6 +213,13 @@ int main()
   // One database drives the whole identity domain.
   ConfigService::setRuntimeString("database.file", identityDb.dbPath);
 
+  std::string gatewayDbPath = ConfigService::getString("gateway.db");
+  if (gatewayDbPath.empty())
+    gatewayDbPath = "database/gateway.db";
+  std::string gatewaySchemaPath = ConfigService::getString("gateway.schema");
+  if (gatewaySchemaPath.empty())
+    gatewaySchemaPath = "services/argus-gateway/database/schema.sql";
+
   const IdentityRegistrationStats identity =
       registerIdentitySurface();
   LOG_INFO << "Identity surface registered: " << identity.controllers
@@ -264,6 +281,7 @@ int main()
 
   drogon::app().loadConfigJson(
       drogonConfig({.identityDb = identityDb,
+                    .gatewayDbPath = gatewayDbPath,
                     .listener = listener,
                     .remote = remote,
                     .proxy = proxy}));
@@ -319,6 +337,7 @@ int main()
   const std::string natsUrl = ConfigService::getString("nats.url");
   std::shared_ptr<NatsBus> natsBus;
   std::shared_ptr<NotificationDeliveryConsumer> deliveryConsumer;
+  CameraNotificationPolicy* fallbackPolicy = nullptr;
   if (natsUrl.empty()) {
     LOG_INFO << "NATS not configured; event bus disabled";
   } else {
@@ -327,11 +346,11 @@ int main()
     natsBus = std::make_shared<NatsBus>();
     const bool connected = natsBus->connect();
     camera_fan_out::subscribeChangeFanOut(*natsBus);
-    camera_notifier::subscribeObjectDetected(
-        *natsBus,
-        std::make_shared<NotificationClient>(NotificationClientConfig{
-            .target = notificationGrpcTarget,
-            .credential = ConfigService::getString("notifications.credential")}));
+    fallbackPolicy = camera_notifier::subscribeObjectDetected(
+        *natsBus, std::make_shared<NotificationClient>(NotificationClientConfig{
+                       .target = notificationGrpcTarget,
+                       .credential = ConfigService::getString(
+                           "notifications.credential")}));
     // User rows change here, so the catalog replica feed publishes from here.
     static const NatsIdentityChangeSink identitySink(natsBus);
     identity_change::setSink(&identitySink);
@@ -366,6 +385,25 @@ int main()
                                  }
                                  status["enabled"] = true;
                                  status["connected"] = bus->isConnected();
+                                 return status;
+                               }},
+                              {"notifications_fallback",
+                               [fallbackPolicy]() {
+                                 Json::Value status(Json::objectValue);
+                                 if (fallbackPolicy == nullptr) {
+                                   status["subscribed"] = false;
+                                   return status;
+                                 }
+                                 status["subscribed"] = true;
+                                 const auto counts =
+                                     fallbackPolicy->fallbackCounts();
+                                 status["passed"] = Json::Int64(counts.passed);
+                                 status["dropped_known"] =
+                                     Json::Int64(counts.droppedKnown);
+                                 status["dropped_weak_score"] =
+                                     Json::Int64(counts.droppedWeakScore);
+                                 status["dropped_short_dwell"] =
+                                     Json::Int64(counts.droppedShortDwell);
                                  return status;
                                }}}}));
 
@@ -403,6 +441,9 @@ int main()
 
   std::unique_ptr<MdnsService> mdnsService;
   drogon::app().registerBeginningAdvice([&identityDb = identityDb,
+                                         &gatewayDbPath = gatewayDbPath,
+                                         &gatewaySchemaPath =
+                                             gatewaySchemaPath,
                                          &mdnsService]() {
     DbService::installExtensions();
 
@@ -420,6 +461,19 @@ int main()
           "ALTER TABLE person ADD COLUMN status TEXT NOT NULL DEFAULT 'known'");
 
     DbService::applyPragmas();
+
+    DbService::setGatewayClient(drogon::app().getDbClient("gateway"));
+    if (!DbService::runScriptFile(gatewaySchemaPath,
+                                  DbService::gatewayClient())) {
+      LOG_ERROR << "Gateway fallback record unavailable: could not apply "
+                << gatewaySchemaPath << " to " << gatewayDbPath
+                << " (create the data/gateway host directory and restart); "
+                   "the gateway keeps serving, fallback drops will only be "
+                   "counted, not recorded";
+    }
+    else {
+      DbService::applyPragmas(DbService::gatewayClient());
+    }
 
     if (ConfigService::getBool("face.enabled")) {
       FaceService::instance().init();

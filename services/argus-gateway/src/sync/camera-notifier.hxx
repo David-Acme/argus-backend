@@ -3,7 +3,9 @@
 #include <json/value.h>
 #include <notification/notification-client.hxx>
 #include <shared/repositories/user/user-repository.hxx>
+#include <sync/fallback/fallback-log-repository.hxx>
 
+#include <atomic>
 #include <cstdint>
 #include <map>
 #include <memory>
@@ -24,9 +26,26 @@ public:
     int silentEndHour{-1};
     // How long a guard heartbeat keeps the raw notifier in fallback mode.
     int64_t guardTimeoutMs{30000};
+    // Degraded fallback sanity gate; absent wire keys fail open.
+    double fallbackMinScoreMedian{0.3};
+    int64_t fallbackMinDwellMs{1000};
+    bool fallbackSuppressKnown{true};
+    // Fallback-record retention in days; <= 0 keeps every row.
+    int fallbackRetentionDays{90};
+  };
+
+  // Degraded-path verdict for one hard signal; every drop names its reason.
+  enum class FallbackDecision
+  {
+    Notify,
+    DropKnown,
+    DropWeakScore,
+    DropShortDwell
   };
 
   explicit CameraNotificationPolicy(Config config);
+
+  const Config& config() const { return config_; }
 
   // Rolls stale windows; true when a notification may go out now.
   bool shouldNotify(int64_t cameraId, int64_t nowMs);
@@ -44,6 +63,23 @@ public:
 
   void markGuardHeartbeat(int64_t nowMs);
 
+  // Sanity filter for fallback notifications from the event payload alone.
+  FallbackDecision fallbackDecision(const Json::Value& event) const;
+
+  // Per-reason fallback gate counters, exposed on /health.
+  struct FallbackCounts
+  {
+    int64_t passed{0};
+    int64_t droppedKnown{0};
+    int64_t droppedWeakScore{0};
+    int64_t droppedShortDwell{0};
+  };
+
+  FallbackCounts fallbackCounts() const;
+
+  void countFallbackPass();
+  void countFallbackDrop(FallbackDecision decision);
+
   static bool inSilentHours(const Config& config, int hour);
 
 private:
@@ -59,6 +95,10 @@ private:
   Config config_;
   std::map<int64_t, CameraWindow> windows_;
   int64_t lastGuardHeartbeatMs_{0};
+  std::atomic<int64_t> fallbackPassed_{0};
+  std::atomic<int64_t> fallbackDroppedKnown_{0};
+  std::atomic<int64_t> fallbackDroppedWeakScore_{0};
+  std::atomic<int64_t> fallbackDroppedShortDwell_{0};
 };
 
 // Applies the policy to object_detected and delivers through the notification SDK.
@@ -86,8 +126,13 @@ private:
 
   void deliver(const DeliverInput& input);
 
+  void logFallback(const FallbackLogInput& input);
+
+  void purgeFallbackLog(int64_t nowS);
+
   std::shared_ptr<NotificationClient> notificationClient_;
   UserRepository userRepository_;
+  FallbackLogRepository fallbackLogRepository_;
   CameraNotificationPolicy policy_;
 };
 
@@ -97,6 +142,7 @@ namespace camera_notifier
 CameraNotificationPolicy::Config resolveConfig();
 
 // Subscribes object_detected; events marshal into the Drogon loop first.
-void subscribeObjectDetected(NatsBus& bus,
-                             std::shared_ptr<NotificationClient> client);
+// Returns the process-lifetime policy for operational inspection.
+CameraNotificationPolicy* subscribeObjectDetected(
+    NatsBus& bus, std::shared_ptr<NotificationClient> client);
 } // namespace camera_notifier

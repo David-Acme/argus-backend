@@ -105,6 +105,7 @@ add_library(gateway-core STATIC
     ${GATEWAY_SRC_ROOT}/sync/camera-notifier.cc
     ${GATEWAY_SRC_ROOT}/sync/camera-stream-relay.cc
     ${GATEWAY_SRC_ROOT}/sync/camera-stream-socket.cc
+    ${GATEWAY_SRC_ROOT}/sync/fallback/fallback-log-repository.cc
     ${GATEWAY_SRC_ROOT}/sync/camera-sync-source.cc
     ${GATEWAY_SRC_ROOT}/sync/notification-sync-source.cc
     ${GATEWAY_SRC_ROOT}/sync/notification-delivery-consumer.cc
@@ -174,6 +175,9 @@ target_link_libraries(notification-delivery-inbox-test PRIVATE gateway-core
 target_compile_options(notification-delivery-inbox-test PRIVATE -Wall -Wextra)
 
 target_include_directories(camera-notifier-test PRIVATE ${GATEWAY_SRC_ROOT})
+
+target_compile_definitions(camera-notifier-test PRIVATE
+    ARGUS_GATEWAY_SCHEMA_PATH="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql")
 
 target_link_libraries(camera-notifier-test PRIVATE gateway-core
                                                    doctest::doctest)

@@ -7,6 +7,9 @@ host = "0.0.0.0"
 port = 7024
 plain = false
 min_protocol = "TLSv1.2"
+# Gateway-owned fallback record; identity and sync state stay in their owners.
+db = "database/gateway.db"
+schema = "services/argus-gateway/database/schema.sql"
 
 # The listeners, db_clients and plugins are built by the gateway itself.
 [drogon.app]
@@ -104,6 +107,14 @@ credential = ""
 # Freshness window for the argus-guard heartbeat: while a heartbeat is
 # newer than this, the raw camera notifier yields to guard (seconds).
 guard_heartbeat_timeout_s = 30
+# Degraded fallback sanity gate for hard signals while guard is absent.
+# Absent wire keys fail open; a matched known identity never pages.
+fallback_min_score_median = 0.3
+fallback_min_dwell_ms = 1000
+fallback_suppress_known = true
+# Fallback-record retention in days, matching the guard decision journal.
+# Values <= 0 keep every row.
+fallback_retention_days = 90
 
 [remote]
 tunnel_port = 0

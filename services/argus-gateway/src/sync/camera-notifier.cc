@@ -2,6 +2,7 @@
 
 #include <drogon/drogon.h>
 #include <shared/services/config-service/config-service.hxx>
+#include <shared/services/sqlite/db-service.hxx>
 #include <shared/utils/json-util/json-util.hxx>
 #include <shared/wrapper/blocking-task/blocking-task.hxx>
 #include <shared/wrapper/nats/nats-bus.hxx>
@@ -53,6 +54,76 @@ bool isHardSignal(const Json::Value& event)
   const std::string rule = event.get("rule", "").asString();
   return rule == "person_in_alert_zone";
 }
+
+struct FallbackSignals
+{
+  std::string identityState;
+  double scoreMedian{0.0};
+  int scoreSamples{0};
+  int64_t dwellMs{0};
+  bool hasScore{false};
+  bool hasDwell{false};
+};
+
+FallbackSignals fallbackSignals(const Json::Value& event)
+{
+  FallbackSignals signals;
+  const Json::Value& objects = event["objects"];
+  const int64_t primaryTrackId = event.get("trackId", 0).asInt64();
+  const Json::Value* primary = nullptr;
+  const Json::Value* largest = nullptr;
+  double largestArea = -1.0;
+  if (objects.isArray()) {
+    for (const auto& object : objects) {
+      if (object.get("class", "").asString() != "person")
+        continue;
+      const double area = object["bbox"].get("w", 0.0).asDouble() *
+                          object["bbox"].get("h", 0.0).asDouble();
+      if (area > largestArea) {
+        largestArea = area;
+        largest = &object;
+      }
+      if (primaryTrackId > 0 &&
+          object.get("trackId", 0).asInt64() == primaryTrackId)
+        primary = &object;
+    }
+  }
+  if (primary == nullptr)
+    primary = largest;
+  if (primary != nullptr) {
+    signals.identityState = primary->get("identityState", "").asString();
+    if (primary->isMember("scoreMedian")) {
+      signals.scoreMedian = primary->get("scoreMedian", 0.0).asDouble();
+      signals.scoreSamples = primary->get("scoreSamples", 0).asInt();
+      signals.hasScore = true;
+    }
+    if (primary->isMember("dwellMs")) {
+      signals.dwellMs = primary->get("dwellMs", 0).asInt64();
+      signals.hasDwell = true;
+    }
+  }
+  if (!signals.hasDwell && event.isMember("dwellMs")) {
+    signals.dwellMs = event.get("dwellMs", 0).asInt64();
+    signals.hasDwell = true;
+  }
+  return signals;
+}
+
+const char* fallbackReason(
+    CameraNotificationPolicy::FallbackDecision decision)
+{
+  switch (decision) {
+  case CameraNotificationPolicy::FallbackDecision::Notify:
+    return "pass";
+  case CameraNotificationPolicy::FallbackDecision::DropKnown:
+    return "known identity";
+  case CameraNotificationPolicy::FallbackDecision::DropWeakScore:
+    return "weak detector score";
+  case CameraNotificationPolicy::FallbackDecision::DropShortDwell:
+    return "short dwell";
+  }
+  return "pass";
+}
 } // namespace
 
 CameraNotificationPolicy::CameraNotificationPolicy(Config config)
@@ -79,6 +150,50 @@ bool CameraNotificationPolicy::guardReady(int64_t nowMs) const
 void CameraNotificationPolicy::markGuardHeartbeat(int64_t nowMs)
 {
   lastGuardHeartbeatMs_ = nowMs;
+}
+
+CameraNotificationPolicy::FallbackDecision
+CameraNotificationPolicy::fallbackDecision(const Json::Value& event) const
+{
+  const FallbackSignals signals = fallbackSignals(event);
+  if (config_.fallbackSuppressKnown && signals.identityState == "known")
+    return FallbackDecision::DropKnown;
+  if (signals.hasScore && signals.scoreMedian < config_.fallbackMinScoreMedian)
+    return FallbackDecision::DropWeakScore;
+  if (signals.hasDwell && signals.dwellMs < config_.fallbackMinDwellMs)
+    return FallbackDecision::DropShortDwell;
+  return FallbackDecision::Notify;
+}
+
+CameraNotificationPolicy::FallbackCounts
+CameraNotificationPolicy::fallbackCounts() const
+{
+  return {.passed = fallbackPassed_.load(),
+          .droppedKnown = fallbackDroppedKnown_.load(),
+          .droppedWeakScore = fallbackDroppedWeakScore_.load(),
+          .droppedShortDwell = fallbackDroppedShortDwell_.load()};
+}
+
+void CameraNotificationPolicy::countFallbackPass()
+{
+  fallbackPassed_.fetch_add(1);
+}
+
+void CameraNotificationPolicy::countFallbackDrop(FallbackDecision decision)
+{
+  switch (decision) {
+  case FallbackDecision::DropKnown:
+    fallbackDroppedKnown_.fetch_add(1);
+    break;
+  case FallbackDecision::DropWeakScore:
+    fallbackDroppedWeakScore_.fetch_add(1);
+    break;
+  case FallbackDecision::DropShortDwell:
+    fallbackDroppedShortDwell_.fetch_add(1);
+    break;
+  case FallbackDecision::Notify:
+    break;
+  }
 }
 
 bool CameraNotificationPolicy::shouldNotify(int64_t cameraId, int64_t nowMs)
@@ -177,25 +292,88 @@ void CameraObjectNotifier::handle(const Json::Value& json)
   if (!isHardSignal(json)) {
     LOG_INFO << "Camera notifier: guard absent; non-hard camera " << cameraId
              << " event ignored by the fallback";
+    logFallback({.cameraId = cameraId,
+                 .rule = json.get("rule", "").asString(),
+                 .severity = json.get("severity", "").asString(),
+                 .reason = FallbackDropReason::NonHardSignal,
+                 .createdAt = nowMs / 1000});
     return;
   }
+  const auto fallback = policy_.fallbackDecision(json);
+  if (fallback != CameraNotificationPolicy::FallbackDecision::Notify) {
+    for (const auto& object : json.get("objects", Json::Value()))
+      policy_.countSuppressed(cameraId, object.get("class", "").asString());
+    policy_.countFallbackDrop(fallback);
+    LOG_INFO << "Camera notifier: fallback gate dropped camera " << cameraId
+             << " event (" << fallbackReason(fallback) << ")";
+    logFallback({.cameraId = cameraId,
+                 .rule = json.get("rule", "").asString(),
+                 .severity = json.get("severity", "").asString(),
+                 .reason = fallback == CameraNotificationPolicy::
+                                           FallbackDecision::DropKnown
+                               ? FallbackDropReason::DropKnown
+                           : fallback == CameraNotificationPolicy::
+                                             FallbackDecision::DropWeakScore
+                               ? FallbackDropReason::DropWeakScore
+                               : FallbackDropReason::DropShortDwell,
+                 .createdAt = nowMs / 1000});
+    return;
+  }
+  policy_.countFallbackPass();
 
   if (!policy_.shouldNotify(cameraId, nowMs)) {
     for (const auto& object : json.get("objects", Json::Value()))
       policy_.countSuppressed(cameraId, object.get("class", "").asString());
     LOG_INFO << "Camera notifier: budget or silent hours suppressed camera "
              << cameraId;
+    logFallback({.cameraId = cameraId,
+                 .rule = json.get("rule", "").asString(),
+                 .severity = json.get("severity", "").asString(),
+                 .reason = FallbackDropReason::BudgetSilent,
+                 .createdAt = nowMs / 1000});
     return;
   }
 
   deliver({.json = json, .title = titleFor(json), .body = bodyFor(json)});
 }
 
+void CameraObjectNotifier::logFallback(const FallbackLogInput& input)
+{
+  if (!DbService::gatewayClient())
+    return;
+  drogon::async_run([this, input]() -> drogon::Task<void> {
+    try {
+      co_await fallbackLogRepository_.log(input);
+    }
+    catch (...) {
+    }
+    co_return;
+  });
+}
+
+void CameraObjectNotifier::purgeFallbackLog(int64_t nowS)
+{
+  if (policy_.config().fallbackRetentionDays <= 0)
+    return;
+  const int64_t cutoff =
+      nowS - static_cast<int64_t>(policy_.config().fallbackRetentionDays) *
+                 86400;
+  drogon::async_run([this, cutoff]() -> drogon::Task<void> {
+    try {
+      co_await fallbackLogRepository_.purgeOlderThan(cutoff);
+    }
+    catch (...) {
+    }
+    co_return;
+  });
+}
+
 void CameraObjectNotifier::flushDigests()
 {
-  const auto nowMs = std::chrono::duration_cast<std::chrono::milliseconds>(
-                         std::chrono::system_clock::now().time_since_epoch())
-                         .count();
+  const int64_t nowMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+                          std::chrono::system_clock::now().time_since_epoch())
+                          .count();
+  purgeFallbackLog(nowMs / 1000);
   for (const auto cameraId : policy_.trackedCameras()) {
     const std::string summary = policy_.takeDigest(cameraId, nowMs);
     if (summary.empty())
@@ -267,11 +445,23 @@ CameraNotificationPolicy::Config resolveConfig()
       ConfigService::getInt("notifications.guard_heartbeat_timeout_s");
   config.guardTimeoutMs =
       (timeoutS > 0 ? static_cast<int64_t>(timeoutS) : 30) * 1000;
+  if (ConfigService::hasKey("notifications.fallback_min_score_median"))
+    config.fallbackMinScoreMedian =
+        ConfigService::getDouble("notifications.fallback_min_score_median");
+  if (ConfigService::hasKey("notifications.fallback_min_dwell_ms"))
+    config.fallbackMinDwellMs =
+        ConfigService::getInt("notifications.fallback_min_dwell_ms");
+  if (ConfigService::hasKey("notifications.fallback_suppress_known"))
+    config.fallbackSuppressKnown =
+        ConfigService::getBool("notifications.fallback_suppress_known");
+  if (ConfigService::hasKey("notifications.fallback_retention_days"))
+    config.fallbackRetentionDays =
+        ConfigService::getInt("notifications.fallback_retention_days");
   return config;
 }
 
-void subscribeObjectDetected(NatsBus& bus,
-                             std::shared_ptr<NotificationClient> client)
+CameraNotificationPolicy* subscribeObjectDetected(
+    NatsBus& bus, std::shared_ptr<NotificationClient> client)
 {
   static CameraObjectNotifier notifier(resolveConfig(), std::move(client));
   bus.subscribe(nats_subject::kGuardHeartbeat,
@@ -301,5 +491,6 @@ void subscribeObjectDetected(NatsBus& bus,
                 });
   drogon::app().getLoop()->runEvery(
       std::chrono::minutes(1), []() { notifier.flushDigests(); });
+  return &notifier.policy();
 }
 } // namespace camera_notifier
