@@ -20,6 +20,14 @@ public:
                 "DeviceFilter", "ValidJsonFilter", "JwtFilter", "RoleFilter");
   ADD_METHOD_TO(GuardController::incidents, "/guard/incidents", drogon::Get,
                 "DeviceFilter", "ValidJsonFilter", "JwtFilter", "RoleFilter");
+  ADD_METHOD_TO(GuardController::decisions, "/guard/decisions", drogon::Get,
+                "DeviceFilter", "ValidJsonFilter", "JwtFilter", "RoleFilter");
+  ADD_METHOD_TO(GuardController::decisionsSummary, "/guard/decisions/summary",
+                drogon::Get, "DeviceFilter", "ValidJsonFilter", "JwtFilter",
+                "RoleFilter");
+  ADD_METHOD_TO(GuardController::feedback, "/guard/decisions/{1}/feedback",
+                drogon::Post, "DeviceFilter", "ValidJsonFilter", "JwtFilter",
+                "RoleFilter");
   ADD_METHOD_TO(GuardController::createGuest, "/guard/expected-guests",
                 drogon::Post, "DeviceFilter", "ValidJsonFilter", "JwtFilter",
                 "RoleFilter");
@@ -37,6 +45,11 @@ public:
   drogon::Task<drogon::HttpResponsePtr> mode(drogon::HttpRequestPtr req);
   drogon::Task<drogon::HttpResponsePtr> setMode(drogon::HttpRequestPtr req);
   drogon::Task<drogon::HttpResponsePtr> incidents(drogon::HttpRequestPtr req);
+  drogon::Task<drogon::HttpResponsePtr> decisions(drogon::HttpRequestPtr req);
+  drogon::Task<drogon::HttpResponsePtr> decisionsSummary(
+      drogon::HttpRequestPtr req);
+  drogon::Task<drogon::HttpResponsePtr> feedback(drogon::HttpRequestPtr req,
+                                                 const std::string& eventId);
   drogon::Task<drogon::HttpResponsePtr> createGuest(
       drogon::HttpRequestPtr req);
   drogon::Task<drogon::HttpResponsePtr> listGuests(drogon::HttpRequestPtr req);

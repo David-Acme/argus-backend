@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <drogon/utils/coroutine.h>
 #include <feature/api/guard/dtos/create-expected-guest-dto.hxx>
+#include <feature/api/guard/dtos/list-decisions-dto.hxx>
 #include <guard-repository.hxx>
 #include <json/value.h>
 #include <string>
@@ -30,6 +31,14 @@ public:
   drogon::Task<std::string> setMode(const std::string& mode) const;
 
   drogon::Task<Json::Value> incidents(int limit) const;
+
+  drogon::Task<Json::Value> decisions(const ListDecisionsDto& query) const;
+
+  drogon::Task<Json::Value>
+  decisionsSummary(const DecisionsSummaryInput& input) const;
+
+  drogon::Task<bool> setFeedback(const std::string& eventId,
+                                 const std::string& label) const;
 
   drogon::Task<int64_t> createGuest(
       const CreateExpectedGuestDto& input) const;

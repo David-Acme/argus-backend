@@ -4,7 +4,10 @@
 #include <filter/device/device-filter.hxx>
 #include <identity/identity-client.hxx>
 #include <feature/api/guard/dtos/create-expected-guest-dto.hxx>
+#include <feature/api/guard/dtos/feedback-decision-dto.hxx>
+#include <feature/api/guard/dtos/list-decisions-dto.hxx>
 #include <feature/api/guard/dtos/list-incidents-dto.hxx>
+#include <feature/api/guard/dtos/summary-decisions-dto.hxx>
 #include <feature/api/guard/dtos/remove-expected-guest-dto.hxx>
 #include <feature/api/guard/dtos/update-guard-mode-dto.hxx>
 #include <shared/wrapper/api-response/api-response.hxx>
@@ -64,6 +67,32 @@ drogon::Task<drogon::HttpResponsePtr> GuardController::incidents(
 {
   const auto query = ListIncidentsDto::fromRequest(req);
   co_return ApiResponse::ok(co_await service_.incidents(query.limit));
+}
+
+drogon::Task<drogon::HttpResponsePtr> GuardController::decisions(
+    drogon::HttpRequestPtr req)
+{
+  const auto query = ListDecisionsDto::fromRequest(req);
+  co_return ApiResponse::ok(co_await service_.decisions(query));
+}
+
+drogon::Task<drogon::HttpResponsePtr> GuardController::decisionsSummary(
+    drogon::HttpRequestPtr req)
+{
+  const auto query = SummaryDecisionsDto::fromRequest(req);
+  co_return ApiResponse::ok(co_await service_.decisionsSummary(
+      {.from = query.from,
+       .to = query.to,
+       .nearMissMargin = query.nearMissMargin}));
+}
+
+drogon::Task<drogon::HttpResponsePtr> GuardController::feedback(
+    drogon::HttpRequestPtr req, const std::string& eventId)
+{
+  const auto body = FeedbackDecisionDto::fromJson(*req->getJsonObject());
+  if (!co_await service_.setFeedback(eventId, body.label))
+    co_return AppConfig::get404Response("Decision not found");
+  co_return ApiResponse::ok(Json::Value(Json::objectValue));
 }
 
 drogon::Task<drogon::HttpResponsePtr> GuardController::createGuest(

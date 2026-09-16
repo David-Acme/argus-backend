@@ -99,6 +99,7 @@ foreach(TEST_NAME IN ITEMS guard-policy-test guard-assessment-test
         guard-adversarial-test guard-dialogue-test guard-saga-test
         guard-dialogue-service-test guard-dlq-crash-test
         guard-retry-lifecycle-test guard-belief-test
+        guard-decision-journal-test guard-notify-thread-test
         guard-belief-scope-test guard-outbox-adopt-test)
     add_executable(${TEST_NAME} tests/unit/${TEST_NAME}.cc)
 
@@ -111,11 +112,17 @@ foreach(TEST_NAME IN ITEMS guard-policy-test guard-assessment-test
     target_include_directories(${TEST_NAME} PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/support)
     target_compile_options(${TEST_NAME} PRIVATE -Wall -Wextra)
+    if(TEST_NAME STREQUAL "guard-decision-journal-test"
+       OR TEST_NAME STREQUAL "guard-notify-thread-test")
+        target_link_libraries(${TEST_NAME} PRIVATE argus::guard-api)
+    endif()
     if(TEST_NAME STREQUAL "guard-schema-test"
        OR TEST_NAME STREQUAL "guard-migration-test"
        OR TEST_NAME STREQUAL "guard-saga-test"
        OR TEST_NAME STREQUAL "guard-retry-lifecycle-test"
        OR TEST_NAME STREQUAL "guard-dialogue-service-test"
+       OR TEST_NAME STREQUAL "guard-decision-journal-test"
+       OR TEST_NAME STREQUAL "guard-notify-thread-test"
        OR TEST_NAME STREQUAL "guard-belief-scope-test"
        OR TEST_NAME STREQUAL "guard-outbox-adopt-test"
        OR TEST_NAME STREQUAL "guard-dlq-crash-test")
