@@ -26,21 +26,31 @@ void handleCameraChange(const Json::Value& json)
 
     // Drogon loop coroutine: insert first, fan the DB-assigned row out second.
     drogon::async_run([event = *event]() -> drogon::Task<void> {
-      AuditLogService auditLogService;
-      const auto schema = co_await auditLogService.create({
-          .recordId = event.recordId,
-          .tableName = event.tableName,
-          .changes = event.changes,
-          .priority = event.priority,
-          .createUserId = event.createUserId,
-          .eventTimestamp = event.eventTimestamp,
-      });
+      try {
+        AuditLogService auditLogService;
+        const auto schema = co_await auditLogService.create({
+            .recordId = event.recordId,
+            .tableName = event.tableName,
+            .changes = event.changes,
+            .priority = event.priority,
+            .createUserId = event.createUserId,
+            .eventTimestamp = event.eventTimestamp,
+        });
 
-      sync_fan_out::Event fanout;
-      fanout.emit.operation = SyncOperation::Log;
-      fanout.emit.option = schema.tableName;
-      fanout.emit.obj = schema.toJson();
-      sync_fan_out::dispatchEvent(fanout);
+        sync_fan_out::Event fanout;
+        fanout.emit.operation = SyncOperation::Log;
+        fanout.emit.option = schema.tableName;
+        fanout.emit.obj = schema.toJson();
+        sync_fan_out::dispatchEvent(fanout);
+      }
+      catch (const std::exception& error) {
+        LOG_WARN << "Camera fan-out: audit insert failed, event dropped: "
+                 << error.what();
+      }
+      catch (...) {
+        LOG_WARN << "Camera fan-out: audit insert failed with unknown error; "
+                    "event dropped";
+      }
       co_return;
     });
     return;

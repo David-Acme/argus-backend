@@ -23,25 +23,35 @@ void handleUserChange(const Json::Value& json)
 
     // Per recipient: insert first, fan the DB-assigned row out second.
     drogon::async_run([event = *event]() -> drogon::Task<void> {
-      UserAuditLogService auditLogService;
-      std::unordered_set<int64_t> recipients;
-      for (const auto userId : event.users) {
-        if (userId <= 0 || !recipients.insert(userId).second)
-          continue;
-        const auto schema = co_await auditLogService.create(
-            {.userId = userId,
-             .recordId = event.recordId,
-             .tableName = event.tableName,
-             .changes = event.changes,
-             .priority = event.priority,
-             .eventTimestamp = event.eventTimestamp});
+      try {
+        UserAuditLogService auditLogService;
+        std::unordered_set<int64_t> recipients;
+        for (const auto userId : event.users) {
+          if (userId <= 0 || !recipients.insert(userId).second)
+            continue;
+          const auto schema = co_await auditLogService.create(
+              {.userId = userId,
+               .recordId = event.recordId,
+               .tableName = event.tableName,
+               .changes = event.changes,
+               .priority = event.priority,
+               .eventTimestamp = event.eventTimestamp});
 
-        sync_fan_out::Event fanout;
-        fanout.emit.operation = SyncOperation::Log;
-        fanout.emit.option = TableName::UserAuditLog;
-        fanout.emit.obj = schema.toJson();
-        fanout.users = std::vector<int64_t>{userId};
-        sync_fan_out::dispatchEvent(fanout);
+          sync_fan_out::Event fanout;
+          fanout.emit.operation = SyncOperation::Log;
+          fanout.emit.option = TableName::UserAuditLog;
+          fanout.emit.obj = schema.toJson();
+          fanout.users = std::vector<int64_t>{userId};
+          sync_fan_out::dispatchEvent(fanout);
+        }
+      }
+      catch (const std::exception& error) {
+        LOG_WARN << "User change fan-out: audit insert failed, event dropped: "
+                 << error.what();
+      }
+      catch (...) {
+        LOG_WARN << "User change fan-out: audit insert failed with unknown "
+                    "error; event dropped";
       }
       co_return;
     });

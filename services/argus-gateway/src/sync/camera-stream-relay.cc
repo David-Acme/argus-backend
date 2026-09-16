@@ -118,7 +118,18 @@ drogon::Task<bool> CameraStreamRelay::forwardText(const SyncFrameInput& input)
   if (!session->connecting) {
     session->connecting = true;
     drogon::async_run([this, conn, session]() -> drogon::Task<void> {
-      co_await openSession(conn, session);
+      try {
+        co_await openSession(conn, session);
+      }
+      catch (const std::exception& error) {
+        LOG_WARN << "Camera stream relay: session open failed: "
+                 << error.what();
+      }
+      catch (...) {
+        LOG_WARN << "Camera stream relay: session open failed with unknown "
+                    "error";
+      }
+      co_return;
     });
   }
   co_return true;
