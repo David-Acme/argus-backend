@@ -36,6 +36,13 @@ drogon::orm::DbClientPtr& g_productivityClient()
   static drogon::orm::DbClientPtr client;
   return client;
 }
+
+// Gateway-domain client, installed by the host at boot.
+drogon::orm::DbClientPtr& g_gatewayClient()
+{
+  static drogon::orm::DbClientPtr client;
+  return client;
+}
 } // namespace
 
 namespace
@@ -128,6 +135,17 @@ drogon::orm::DbClientPtr DbService::productivityClient()
   return client();
 }
 
+void DbService::setGatewayClient(drogon::orm::DbClientPtr client)
+{
+  g_gatewayClient() = std::move(client);
+}
+
+drogon::orm::DbClientPtr DbService::gatewayClient()
+{
+  // Uninstalled means the gateway database is absent; callers degrade.
+  return g_gatewayClient();
+}
+
 void DbService::enableUriFilenames()
 {
   sqlite3_config(SQLITE_CONFIG_URI, 1);
@@ -145,9 +163,10 @@ void DbService::installExtensions()
   }
 }
 
-void DbService::applyPragmas()
+void DbService::applyPragmas(drogon::orm::DbClientPtr client)
 {
-  auto client = DbService::client();
+  if (!client)
+    client = DbService::client();
   for (const auto& pragma : kPerBootPragmas) {
     try {
       client->execSqlSync(pragma);
@@ -158,7 +177,8 @@ void DbService::applyPragmas()
   }
 }
 
-bool DbService::runScriptFile(const std::string& path)
+bool DbService::runScriptFile(const std::string& path,
+                              drogon::orm::DbClientPtr client)
 {
   std::ifstream file(path);
   if (!file.is_open()) {
@@ -169,7 +189,8 @@ bool DbService::runScriptFile(const std::string& path)
   std::stringstream buffer;
   buffer << file.rdbuf();
 
-  auto client = DbService::client();
+  if (!client)
+    client = DbService::client();
   bool ok = true;
   for (const auto& statement : splitStatements(buffer.str())) {
     try {

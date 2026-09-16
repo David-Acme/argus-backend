@@ -37,10 +37,17 @@ public:
   // Installs the named productivity client; once at boot, before app().run().
   static void setProductivityClient(drogon::orm::DbClientPtr client);
 
+  // Client of the gateway database (gateway-owned fallback record).
+  static drogon::orm::DbClientPtr gatewayClient();
+
+  // Installs the named gateway client; once at boot, before app().run().
+  static void setGatewayClient(drogon::orm::DbClientPtr client);
+
   // Enables SQLite URI filenames process-wide, before the first sqlite3_open.
   static void enableUriFilenames();
 
-  static bool runScriptFile(const std::string& path);
-  static void applyPragmas();
+  static bool runScriptFile(const std::string& path,
+                            drogon::orm::DbClientPtr client = nullptr);
+  static void applyPragmas(drogon::orm::DbClientPtr client = nullptr);
   static void installExtensions();
 };
