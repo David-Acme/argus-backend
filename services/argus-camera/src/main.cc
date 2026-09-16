@@ -291,14 +291,24 @@ int main()
       healthMonitor->start();
 
     drogon::async_run([]() -> drogon::Task<void> {
-      CameraRepository repository;
-      auto cameras = co_await repository.findEnabled();
-      if (cameras.empty())
-        co_return;
-      co_await BlockingTask<void>([cameras = std::move(cameras)] {
-        for (const auto& camera : cameras)
-          cameraSourceRegistrar().apply(camera);
-      });
+      try {
+        CameraRepository repository;
+        auto cameras = co_await repository.findEnabled();
+        if (cameras.empty())
+          co_return;
+        co_await BlockingTask<void>([cameras = std::move(cameras)] {
+          for (const auto& camera : cameras)
+            cameraSourceRegistrar().apply(camera);
+        });
+      }
+      catch (const std::exception& error) {
+        LOG_WARN << "Camera source registrar: initial apply failed: "
+                 << error.what();
+      }
+      catch (...) {
+        LOG_WARN << "Camera source registrar: initial apply failed with "
+                    "unknown error";
+      }
       co_return;
     });
   });

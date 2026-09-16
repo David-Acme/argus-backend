@@ -75,23 +75,32 @@ void EvidenceUploader::uploadDetection(int64_t cameraId, int64_t atMs)
               catch (const std::exception& error) {
                 LOG_WARN << "Camera evidence upload failed: " << error.what();
               }
+              catch (...) {
+                LOG_WARN << "Camera evidence upload failed with unknown error";
+              }
             });
       });
 }
 
 void EvidenceUploader::scheduleRetentionSweep()
 {
-  drogon::app().getLoop()->runAfter(45.0, [this]() {
-    drogon::async_run([this]() -> drogon::Task<void> {
+  const auto sweepOnce = [this]() -> drogon::Task<void> {
+    try {
       co_await runRetentionSweep();
-      co_return;
-    });
+    }
+    catch (const std::exception& error) {
+      LOG_WARN << "Camera evidence retention sweep failed: " << error.what();
+    }
+    catch (...) {
+      LOG_WARN << "Camera evidence retention sweep failed with unknown error";
+    }
+    co_return;
+  };
+  drogon::app().getLoop()->runAfter(45.0, [this, sweepOnce]() {
+    drogon::async_run(sweepOnce);
   });
-  drogon::app().getLoop()->runEvery(24.0 * 3600.0, [this]() {
-    drogon::async_run([this]() -> drogon::Task<void> {
-      co_await runRetentionSweep();
-      co_return;
-    });
+  drogon::app().getLoop()->runEvery(24.0 * 3600.0, [this, sweepOnce]() {
+    drogon::async_run(sweepOnce);
   });
 }
 
@@ -115,6 +124,10 @@ drogon::Task<void> EvidenceUploader::runRetentionSweep()
       }
       catch (const std::exception& error) {
         LOG_WARN << "Camera evidence removal failed: " << error.what();
+        continue;
+      }
+      catch (...) {
+        LOG_WARN << "Camera evidence removal failed with unknown error";
         continue;
       }
       co_await DbService::client()->execSqlCoro(
