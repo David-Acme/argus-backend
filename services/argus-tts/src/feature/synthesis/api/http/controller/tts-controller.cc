@@ -1,9 +1,10 @@
 #include "tts-controller.hxx"
 
-#include <tts/synthesize-dto.hxx>
+#include <feature/synthesis/api/http/dto/synthesize-dto.hxx>
 
-#include <shared/services/tts/tts-service.hxx>
-#include <config/app-config.hxx>
+#include <feature/synthesis/domain/tts-service.hxx>
+#include <response-exception.hxx>
+#include <tts-errors.hxx>
 #include <shared/wrapper/api-response/api-response.hxx>
 
 #include <chrono>
@@ -15,12 +16,6 @@
 namespace
 {
 constexpr const char* kPcmMime = "audio/x-argus-pcm-f32";
-
-drogon::HttpResponsePtr notLoaded()
-{
-  return AppConfig::get503Response("Text-to-speech engine is not loaded",
-                                   "TTS_NOT_LOADED");
-}
 
 std::string pcmBytes(const std::vector<float>& pcm)
 {
@@ -79,7 +74,7 @@ TtsController::synthesize(drogon::HttpRequestPtr req)
   const auto body = SynthesizeDto::fromJson(*req->getJsonObject());
   auto& tts = TtsService::instance();
   if (!tts.isLoaded())
-    co_return notLoaded();
+    throw ResponseException(503, TtsErrors::TtsNotLoaded);
 
   const auto t0 = std::chrono::steady_clock::now();
   auto pcm = co_await tts.synthesizeAsync(body.request());
@@ -106,7 +101,7 @@ TtsController::synthesizeStream(drogon::HttpRequestPtr req)
   const auto body = SynthesizeDto::fromJson(*req->getJsonObject());
   auto& tts = TtsService::instance();
   if (!tts.isLoaded())
-    co_return notLoaded();
+    throw ResponseException(503, TtsErrors::TtsNotLoaded);
 
   auto job = std::make_shared<PcmStreamJob>();
   job->request = body.request();

@@ -3,6 +3,8 @@
 #include <shared/services/tts/tts-wire.hxx>
 
 #include <drogon/utils/coroutine.h>
+#include <atomic>
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <mutex>
@@ -14,6 +16,13 @@
 class TtsEngine;
 class UnicodeProcessor;
 class Style;
+
+struct TtsStreamInput
+{
+  TtsRequest request;
+  std::function<void(std::vector<float>)> onChunk;
+  std::function<bool()> stopRequested;
+};
 
 class TtsService
 {
@@ -32,6 +41,7 @@ public:
 
   std::vector<float> synthesize(const TtsRequest& req);
   void synthesizeStream(const TtsRequest& req, TtsChunkCallback onChunk);
+  void synthesizeStream(TtsStreamInput input);
 
   // Coroutine variants: run synthesis off the event loop.
   drogon::Task<std::vector<float>> synthesizeAsync(const TtsRequest& req);
@@ -77,6 +87,8 @@ private:
   float defaultSpeed_{1.0F};
   int maxChunkLen_{300};
   bool loaded_ = false;
-  mutable std::mutex synthMutex_;
-  mutable std::mutex voiceMutex_;
+  std::atomic<bool> stopping_{true};
+  std::atomic<std::uint64_t> generation_{0};
+  std::mutex lifecycleMutex_;
+  mutable std::timed_mutex synthMutex_;
 };

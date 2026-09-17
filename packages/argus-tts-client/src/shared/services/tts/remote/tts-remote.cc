@@ -1,4 +1,6 @@
 #include "tts-remote.hxx"
+#include <tts-client.hxx>
+#include <atomic>
 
 #include <shared/services/config-service/config-service.hxx>
 
@@ -483,8 +485,29 @@ void TtsHttpClient::synthesizeStream(const TtsRequest& req,
          });
 }
 
+std::shared_ptr<argus::tts::Client> TtsClient::rpcClient() const
+{
+  const auto target = ConfigService::getString("tts.grpc_target");
+  if (target.empty())
+    return {};
+  auto client = rpcClient_.load();
+  if (!client) {
+    const auto timeout = TtsRemoteConfig::resolve().timeoutMs;
+    client = std::make_shared<argus::tts::Client>(argus::tts::ClientConfig{
+        .target = target,
+        .credential = ConfigService::getString("tts.grpc_credential"),
+        .timeout = std::chrono::milliseconds(timeout)});
+    std::shared_ptr<argus::tts::Client> empty;
+    if (!rpcClient_.compare_exchange_strong(empty, client))
+      client = std::move(empty);
+  }
+  return client;
+}
+
 float TtsClient::defaultSpeed() const
 {
+  if (const auto client = rpcClient())
+    return client->capabilities().defaultSpeed;
   const auto config = TtsRemoteConfig::resolve();
   if (!config.enabled())
     throw std::runtime_error("tts.remote_url is not configured");
@@ -493,6 +516,8 @@ float TtsClient::defaultSpeed() const
 
 int TtsClient::sampleRate() const
 {
+  if (const auto client = rpcClient())
+    return client->capabilities().sampleRate;
   const auto config = TtsRemoteConfig::resolve();
   if (!config.enabled())
     throw std::runtime_error("tts.remote_url is not configured");
@@ -501,6 +526,13 @@ int TtsClient::sampleRate() const
 
 std::vector<float> TtsClient::synthesize(const TtsRequest& req) const
 {
+  if (!ConfigService::getString("tts.grpc_target").empty()) {
+    std::vector<float> samples;
+    synthesizeStream(req, [&samples](const std::vector<float>& chunk) {
+      samples.insert(samples.end(), chunk.begin(), chunk.end());
+    });
+    return samples;
+  }
   const auto config = TtsRemoteConfig::resolve();
   if (!config.enabled())
     throw std::runtime_error("tts.remote_url is not configured");
@@ -510,6 +542,19 @@ std::vector<float> TtsClient::synthesize(const TtsRequest& req) const
 void TtsClient::synthesizeStream(const TtsRequest& req,
                                  TtsChunkCallback onChunk) const
 {
+  if (const auto client = rpcClient()) {
+    client->synthesize({.text = req.text,
+                        .voice = req.voiceId,
+                        .language = langCode(req.lang),
+                        .speed = req.speed,
+                        .quality = static_cast<argus::tts::Quality>(req.quality),
+                        .cancellation = {},
+                        .onChunk = [callback = std::move(onChunk)](argus::tts::AudioChunk chunk) {
+                          callback(chunk.samples);
+                          return true;
+                        }});
+    return;
+  }
   const auto config = TtsRemoteConfig::resolve();
   if (!config.enabled())
     throw std::runtime_error("tts.remote_url is not configured");
@@ -519,5 +564,6 @@ void TtsClient::synthesizeStream(const TtsRequest& req,
 
 bool TtsClient::remote() const
 {
-  return TtsRemoteConfig::resolve().enabled();
+  return !ConfigService::getString("tts.grpc_target").empty() ||
+         TtsRemoteConfig::resolve().enabled();
 }

@@ -2,9 +2,13 @@
 
 #include <shared/services/tts/tts-wire.hxx>
 
+#include <atomic>
+#include <memory>
 #include <cstdint>
 #include <string>
 #include <vector>
+
+namespace argus::tts { class Client; }
 
 // Remote TTS endpoint settings; every synthesis is an HTTP call once tts.remote_url is set.
 struct TtsRemoteConfig
@@ -62,4 +66,8 @@ public:
   std::vector<float> synthesize(const TtsRequest& req) const;
   void synthesizeStream(const TtsRequest& req, TtsChunkCallback onChunk) const;
   bool remote() const;
+
+private:
+  std::shared_ptr<argus::tts::Client> rpcClient() const;
+  mutable std::atomic<std::shared_ptr<argus::tts::Client>> rpcClient_;
 };

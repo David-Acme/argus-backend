@@ -2,7 +2,9 @@
 
 The root `AGENTS.md` (at the monorepo root) is binding for
 every change in this service. The MUST-FOLLOW rules below restate the ones
-that apply to tts-service code; when in doubt, the root file wins.
+that apply to tts-service code. The explicitly approved singular
+`app/feature/shared` pilot layout below overrides the root's legacy layout
+for this service only; other root rules remain binding.
 
 ## MUST-FOLLOW Rules
 
@@ -44,13 +46,49 @@ argus-tts/
   CMakeLists.txt        add_subdirectory-compatible AND standalone buildable
   conanfile.txt         Drogon + onnxruntime (same versions as root)
   CMakePresets.json     dev preset, binaryDir build/dev inside the folder
-  src/main.cc           config load, engine boot gate, app run
-  src/controllers/      HTTP controllers (health + /tts/v1/* wire)
-  src/tts/              wire DTOs
-  src/server/           internal listener resolution
-  config.toml.example   [tts] engine keys + [server] only; no other domains
+  src/app/main.cc       config load, engine boot gate, HTTP + gRPC composition, app run
+  src/app/rpc/          argus.tts.v1 Synthesis gRPC listener (TtsRpcServer)
+  src/feature/synthesis/
+    CMakeLists.txt      owns each production source once
+    api/http/
+      controller/       transitional /tts/v1/* HTTP controller
+      dto/              internal HTTP request DTO
+    domain/             TtsService facade, lifecycle, cache, async synthesis
+    infra/supertonic/   ONNX engine, model/style loading, Unicode processing
+  config.toml.example   [tts] engine keys, [rpc] gRPC gate, [server]; no other domains
   CONTEXT.md            purpose, ownership, wiring decisions
 ```
+
+This is the canonical internal-layout pilot; the repository's `services/`
+root is not renamed. `src/shared/` is reserved for genuinely cross-feature
+service-local code and currently has no files. Health, listener resolution,
+configuration and validation still come from the existing shared packages.
+
+The top-level CMake auto-discovers feature folders and links
+`argus::tts-rpc` + `argus::tts-synthesis-http` by name. The synthesis feature
+declares each production source once: `argus::tts-synthesis` owns the domain
+facade and Supertonic infrastructure; `argus::tts-synthesis-http` owns the
+controller and DTO and links the synthesis target. `argus::tts-rpc`
+(`src/app/rpc/`) owns the `argus.tts.v1.Synthesis` gRPC listener and links the
+shared `argus::tts-rpc-client` module (`package/clients/tts`). The
+executable and wire tests reuse these targets rather than compiling
+duplicate production source lists.
+
+HTTP is transitional, not the target transport architecture. The existing
+`/tts/v1/*` routes, envelopes, PCM format, singleton lifecycle and synthesis
+behavior remain unchanged (retained for consumers not yet converted; do not
+claim the HTTP fallback removed). The service still consumes
+`<shared/services/tts/tts-wire.hxx>` from `packages/argus-tts-client` via its
+exported include path. `TtsClient` (that package) now delegates to
+`argus::tts::Client` over gRPC whenever `tts.grpc_target` is set, and falls
+back to the original HTTP wire otherwise — both wire shapes are live.
+Service-local consumers use `<feature/synthesis/domain/tts-service.hxx>`;
+there is no duplicate implementation or old-path forwarding header.
+The gRPC transport (typed unary `Capabilities` + server-streaming
+`Synthesize`, credential-gated, float32 at the engine's own rate) is served
+by this pilot when `[rpc]` is configured; the Pocket engine is NOT
+implemented, and Supertonic remains the running engine with unchanged model
+settings.
 
 ## Build commands
 

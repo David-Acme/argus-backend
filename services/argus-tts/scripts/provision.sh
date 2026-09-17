@@ -81,4 +81,24 @@ TTS_NOTICE_EOF
   log "TTS model ready (~415 MB)."
 }
 
+case "${1:-}" in
+  --help|-h)
+    printf '%s\n' \
+      'Usage: provision.sh [--validate-pocket <manifest> <root>]' \
+      'No arguments: provision Supertonic 3 (unchanged default).' \
+      '--validate-pocket: offline SHA256 and schema validation only; no downloads or engine switch.' \
+      'Checksum manifest format and required layout:' \
+      '  python3 services/argus-tts/tools/validate-pocket.py --help'
+    exit 0
+    ;;
+  --validate-pocket)
+    if [ "$#" -ne 3 ]; then
+      err 'Usage: provision.sh --validate-pocket <manifest> <root>'
+      exit 2
+    fi
+    need_cmd python3
+    exec python3 "$(dirname "${BASH_SOURCE[0]}")/../tools/validate-pocket.py" "$3" "$2"
+    ;;
+esac
+
 setup_tts_model

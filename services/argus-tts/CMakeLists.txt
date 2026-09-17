@@ -7,8 +7,9 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 include(${CMAKE_CURRENT_SOURCE_DIR}/../../cmake/argus-module.cmake)
 
+argus_contracts_substrate()
+
 set(TTS_SRC_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/src)
-set(SHARED_ROOT ${TTS_SRC_ROOT}/shared)
 
 if(NOT TARGET Drogon::Drogon)
     # Standalone build (outside the root project's configure): add the
@@ -25,41 +26,30 @@ if(NOT TARGET Drogon::Drogon)
                      ${CMAKE_BINARY_DIR}/argus-auth)
 endif()
 
+if(NOT TARGET contract::tts)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../package/contracts/tts
+                     ${CMAKE_CURRENT_BINARY_DIR}/package/contracts/tts)
+endif()
+
+if(NOT TARGET argus::tts-rpc-client)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../package/clients/tts
+                     ${CMAKE_BINARY_DIR}/package/clients/tts)
+endif()
+
 find_package(doctest REQUIRED)
 
-# onnxruntime is THE capacity of this service (F4-2, Ruling BG): no face/llm/
-# vlm/stt/vad code is compiled, so the binary carries no other AI symbols.
-add_library(tts-core STATIC
-    ${TTS_SRC_ROOT}/controllers/tts-controller.cc
-    ${TTS_SRC_ROOT}/tts/synthesize-dto.cc
-    # The engine compiled from the shared tree (F2-1 PORTED pattern), so the
-    # legacy binary and this service synthesize byte-identically.
-    ${TTS_SRC_ROOT}/shared/services/tts/tts-service.cc
-    ${TTS_SRC_ROOT}/shared/services/tts/tts-engine.cc
-    ${TTS_SRC_ROOT}/shared/services/tts/onnx-utils.cc
-    ${TTS_SRC_ROOT}/shared/services/tts/style.cc
-    ${TTS_SRC_ROOT}/shared/services/tts/unicode-processor.cc
-)
+file(GLOB TTS_FEATURE_MODULES CONFIGURE_DEPENDS
+    "${TTS_SRC_ROOT}/feature/*/CMakeLists.txt")
+foreach(module IN LISTS TTS_FEATURE_MODULES)
+    get_filename_component(module_dir "${module}" DIRECTORY)
+    add_subdirectory("${module_dir}")
+endforeach()
 
-target_include_directories(tts-core PUBLIC
-    ${TTS_SRC_ROOT})
+add_subdirectory(src/app/rpc)
 
-target_link_libraries(tts-core PUBLIC
-    argus_common
-    argus::auth
-    argus::tts-client
-    argus::hardware-profile
-    Drogon::Drogon
-    onnxruntime::onnxruntime
-    nlohmann_json::nlohmann_json)
-
-target_compile_options(tts-core PRIVATE -Wall -Wextra)
-
-add_executable(argus-tts ${TTS_SRC_ROOT}/main.cc)
-
-target_link_libraries(argus-tts PRIVATE tts-core)
-
-target_compile_options(argus-tts PRIVATE -Wall -Wextra)
+argus_service(NAME argus-tts
+    MAIN ${TTS_SRC_ROOT}/app/main.cc
+    MODULES argus::tts-rpc argus::tts-synthesis-http)
 
 get_target_property(DOCTEST_INCLUDE_DIRS doctest::doctest
                     INTERFACE_INCLUDE_DIRECTORIES)
@@ -71,44 +61,38 @@ endif()
 set_target_properties(argus-tts PROPERTIES
     BUILD_RPATH "$ORIGIN"
     INSTALL_RPATH "$ORIGIN")
+argus_runtime_rpath(argus-tts)
 
 add_custom_command(TARGET argus-tts POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E create_symlink
             ${CMAKE_CURRENT_SOURCE_DIR}/../../models
             $<TARGET_FILE_DIR:argus-tts>/models)
 
-# The wire suite opts back into the default build: this folder is added
-# EXCLUDE_FROM_ALL.
 enable_testing()
-find_package(doctest REQUIRED)
 
-
-# The argus-tts wire contract (F4-2, Ruling BH): the real engine serves the
-# synthesize/config legs from the shared models tree.
-add_executable(tts-wire-test tests/unit/tts-wire-test.cc
-    ${TTS_SRC_ROOT}/controllers/tts-controller.cc
-    ${TTS_SRC_ROOT}/tts/synthesize-dto.cc
-    ${SHARED_ROOT}/services/tts/tts-service.cc
-    ${SHARED_ROOT}/services/tts/tts-engine.cc
-    ${SHARED_ROOT}/services/tts/onnx-utils.cc
-    ${SHARED_ROOT}/services/tts/style.cc
-    ${SHARED_ROOT}/services/tts/unicode-processor.cc)
-
-target_include_directories(tts-wire-test PRIVATE
-    ${TTS_SRC_ROOT})
+add_executable(tts-wire-test tests/unit/tts-wire-test.cc)
 
 target_compile_definitions(tts-wire-test PRIVATE
     ARGUS_TEST_TTS_MODELS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../../models/tts")
 
-target_link_libraries(tts-wire-test PRIVATE argus_common argus::auth
-    argus::tts-client argus::hardware-profile onnxruntime::onnxruntime
-    doctest::doctest)
-
-target_include_directories(tts-wire-test PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../packages/argus-tts-client/tests/support)
+target_link_libraries(tts-wire-test PRIVATE
+    argus::tts-synthesis-http doctest::doctest)
 
 target_compile_options(tts-wire-test PRIVATE -Wall -Wextra)
 
 set_target_properties(tts-wire-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
 add_test(NAME tts-wire-test COMMAND tts-wire-test)
+
+add_executable(tts-rpc-test tests/unit/tts-rpc-test.cc)
+
+target_link_libraries(tts-rpc-test PRIVATE argus::tts-rpc argus::tts-synthesis doctest::doctest)
+target_compile_definitions(tts-rpc-test PRIVATE
+    ARGUS_TEST_TTS_MODELS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../../models/tts")
+argus_runtime_rpath(tts-rpc-test)
+
+target_compile_options(tts-rpc-test PRIVATE -Wall -Wextra)
+
+set_target_properties(tts-rpc-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+
+add_test(NAME tts-rpc-test COMMAND tts-rpc-test)

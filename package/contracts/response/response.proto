@@ -1,0 +1,20 @@
+syntax = "proto3";
+
+package argus.response.v1;
+
+message ErrorRecord {
+  string code = 1;
+  string message = 2;
+}
+
+message ErrorList {
+  repeated ErrorRecord errors = 1;
+}
+
+message ErrorResponse {
+  uint32 status = 1;
+  oneof errors {
+    ErrorRecord single = 2;
+    ErrorList list = 3;
+  }
+}

@@ -8,6 +8,11 @@ include(${CMAKE_CURRENT_SOURCE_DIR}/../../cmake/argus-module.cmake)
 
 find_package(Drogon CONFIG REQUIRED)
 
+if(NOT TARGET argus::tts-rpc-client)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../package/clients/tts
+                     ${CMAKE_CURRENT_BINARY_DIR}/rpc-client)
+endif()
+
 argus_module(NAME tts-client
     SOURCES
         src/shared/services/tts/remote/tts-remote.cc
@@ -17,4 +22,5 @@ argus_module(NAME tts-client
         argus_common
         Drogon::Drogon)
 
+target_link_libraries(argus_tts-client PRIVATE argus::tts-rpc-client)
 target_compile_options(argus_tts-client PRIVATE -Wall -Wextra)

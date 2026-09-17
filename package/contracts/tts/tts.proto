@@ -1,0 +1,47 @@
+syntax = "proto3";
+
+package argus.tts.v1;
+
+service Synthesis {
+  rpc Capabilities(CapabilitiesRequest) returns (CapabilitiesResponse);
+  rpc Synthesize(SynthesisRequest) returns (stream AudioChunk);
+}
+
+message CapabilitiesRequest {}
+
+enum SampleFormat {
+  SAMPLE_FORMAT_UNSPECIFIED = 0;
+  SAMPLE_FORMAT_FLOAT32 = 1;
+}
+
+enum Quality {
+  QUALITY_AUTO = 0;
+  QUALITY_LOW = 1;
+  QUALITY_MEDIUM = 2;
+  QUALITY_HIGH = 3;
+}
+
+message CapabilitiesResponse {
+  uint32 sample_rate = 1;
+  uint32 channels = 2;
+  SampleFormat format = 3;
+  float default_speed = 4;
+  repeated string voices = 5;
+  repeated string languages = 6;
+}
+
+message SynthesisRequest {
+  string text = 1;
+  string voice = 2;
+  string language = 3;
+  float speed = 4;
+  Quality quality = 5;
+}
+
+message AudioChunk {
+  uint32 sample_rate = 1;
+  uint32 channels = 2;
+  SampleFormat format = 3;
+  uint64 sequence = 4;
+  repeated float samples = 5;
+}

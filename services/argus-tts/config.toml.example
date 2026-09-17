@@ -4,6 +4,13 @@
 host = "127.0.0.1"
 port = 7029
 
+[rpc]
+address = ""
+
+[rpc.callers]
+voice = ""
+camera = ""
+
 [tts]
 threads = 0
 quality = "auto"

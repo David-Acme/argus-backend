@@ -1,15 +1,17 @@
 #include "tts-service.hxx"
 
-#include "onnx-utils.hxx"
-#include "style.hxx"
-#include "tts-engine.hxx"
-#include "unicode-processor.hxx"
+#include <feature/synthesis/infra/supertonic/onnx-utils.hxx>
+#include <feature/synthesis/infra/supertonic/style.hxx>
+#include <feature/synthesis/infra/supertonic/tts-engine.hxx>
+#include <feature/synthesis/infra/supertonic/unicode-processor.hxx>
 
 #include <drogon/drogon.h>
 #include <shared/services/config-service/config-service.hxx>
 #include <shared/wrapper/blocking-task/blocking-task.hxx>
 #include <shared/wrapper/hardware-profile/hardware-profile.hxx>
 #include <shared/wrapper/thread-budget/thread-budget.hxx>
+#include <chrono>
+#include <stdexcept>
 #include <thread>
 
 namespace
@@ -43,6 +45,10 @@ TtsService& TtsService::instance()
 
 void TtsService::init()
 {
+  std::lock_guard lifecycleLock(lifecycleMutex_);
+  std::lock_guard lock(synthMutex_);
+  if (loaded_)
+    return;
   try {
     const std::string onnxDir = modelsDir() + "/onnx";
 
@@ -89,6 +95,7 @@ void TtsService::init()
                         .memoryInfo = std::move(memoryInfo)});
 
     loaded_ = true;
+    stopping_.store(false);
 
     std::string qName = "auto";
     switch (defaultQuality_) {
@@ -112,13 +119,19 @@ void TtsService::init()
   }
   catch (const std::exception& e) {
     LOG_FATAL << "TTS init failed: " << e.what();
-    shutdown();
+    engine_.reset();
+    processor_.reset();
+    loaded_ = false;
+    stopping_.store(true);
   }
 }
 
 void TtsService::shutdown()
 {
-  std::lock_guard<std::mutex> lock(synthMutex_);
+  std::lock_guard lifecycleLock(lifecycleMutex_);
+  stopping_.store(true);
+  generation_.fetch_add(1);
+  std::lock_guard lock(synthMutex_);
   engine_.reset();
   processor_.reset();
   voiceCache_.clear();
@@ -129,12 +142,17 @@ void TtsService::shutdown()
 
 bool TtsService::isLoaded() const
 {
-  return loaded_;
+  std::lock_guard lock(synthMutex_);
+  return loaded_ && !stopping_.load();
 }
 
 
 std::vector<float> TtsService::synthesize(const TtsRequest& req)
 {
+  const auto generation = generation_.load();
+  std::lock_guard lock(synthMutex_);
+  if (stopping_.load() || generation != generation_.load() || !loaded_)
+    throw std::runtime_error("TTS engine is not loaded");
   const auto& style = resolveVoice(req.voiceId);
   std::string langStr = langCode(req.lang);
   TtsQuality quality = resolveQuality(req);
@@ -146,7 +164,6 @@ std::vector<float> TtsService::synthesize(const TtsRequest& req)
     key = req.voiceId + '\x1f' + langStr + '\x1f' + std::to_string(steps) +
           '\x1f' + std::to_string(req.speed) + '\x1f' + req.text;
 
-  std::lock_guard<std::mutex> lock(synthMutex_);
   if (cacheable) {
     for (const auto& entry : synthCache_) {
       if (entry.key == key)
@@ -174,27 +191,68 @@ std::vector<float> TtsService::synthesize(const TtsRequest& req)
 void TtsService::synthesizeStream(const TtsRequest& req,
                                   TtsChunkCallback onChunk)
 {
-  if (!onChunk)
+  synthesizeStream({.request = req,
+                    .onChunk = std::move(onChunk),
+                    .stopRequested = {}});
+}
+
+void TtsService::synthesizeStream(TtsStreamInput input)
+{
+  if (!input.onChunk)
     return;
+  const auto generation = generation_.load();
+  const auto stopped = [&] {
+    return stopping_.load() || generation != generation_.load() ||
+           (input.stopRequested && input.stopRequested());
+  };
+  const auto acquire = [&] {
+    std::unique_lock lock(synthMutex_, std::defer_lock);
+    while (!stopped()) {
+      if (lock.try_lock_for(std::chrono::milliseconds(10))) {
+        if (stopped())
+          lock.unlock();
+        return lock;
+      }
+    }
+    return lock;
+  };
 
-  const auto& style = resolveVoice(req.voiceId);
-  std::string langStr = langCode(req.lang);
-  TtsQuality quality = resolveQuality(req);
-  int steps = resolveSteps(quality);
+  const auto& req = input.request;
+  const std::string langStr = langCode(req.lang);
+  std::vector<std::string> textList;
+  int steps;
+  {
+    auto lock = acquire();
+    if (!lock.owns_lock())
+      return;
+    if (!loaded_)
+      throw std::runtime_error("TTS engine is not loaded");
+    steps = resolveSteps(resolveQuality(req));
+    const int maxLen =
+        (req.lang == TtsLang::KO || req.lang == TtsLang::JA) ? 120 : maxChunkLen_;
+    textList = chunkText(req.text, maxLen);
+  }
 
-  int maxLen =
-      (req.lang == TtsLang::KO || req.lang == TtsLang::JA) ? 120 : maxChunkLen_;
-  auto textList = chunkText(req.text, maxLen);
-
-  std::lock_guard<std::mutex> lock(synthMutex_);
   for (const auto& chunk : textList) {
-    auto result = engine_->synthesize({.text = chunk,
-                                       .lang = langStr,
-                                       .style = style,
-                                       .totalStep = steps,
-                                       .speed = req.speed});
-    if (!result.wav.empty())
-      onChunk(result.wav);
+    std::vector<float> audio;
+    {
+      auto lock = acquire();
+      if (!lock.owns_lock())
+        return;
+      const auto& style = resolveVoice(req.voiceId);
+      if (stopped())
+        return;
+      auto result = engine_->synthesize({.text = chunk,
+                                         .lang = langStr,
+                                         .style = style,
+                                         .totalStep = steps,
+                                         .speed = req.speed});
+      audio = std::move(result.wav);
+    }
+    if (stopped())
+      return;
+    if (!audio.empty())
+      input.onChunk(std::move(audio));
   }
 }
 
@@ -224,14 +282,16 @@ drogon::Task<void> TtsService::synthesizeStreamAsync(const TtsRequest& req,
 void TtsService::loadVoice(const std::string& voiceId)
 {
   std::string path = modelsDir() + "/voice_styles/" + voiceId + ".json";
-  std::lock_guard<std::mutex> lock(voiceMutex_);
+  std::lock_guard lock(synthMutex_);
+  if (stopping_.load() || !loaded_)
+    return;
   voiceCache_[voiceId] = loadVoiceStyle(path);
 }
 
 
 int TtsService::sampleRate() const
 {
-  std::lock_guard<std::mutex> lock(synthMutex_);
+  std::lock_guard lock(synthMutex_);
   return engine_ ? engine_->sampleRate() : 0;
 }
 
@@ -242,16 +302,19 @@ std::vector<std::string> TtsService::availableVoices() const
 
 void TtsService::setDefaultQuality(TtsQuality q)
 {
+  std::lock_guard lock(synthMutex_);
   defaultQuality_ = q;
 }
 
 TtsQuality TtsService::defaultQuality() const
 {
+  std::lock_guard lock(synthMutex_);
   return defaultQuality_;
 }
 
 float TtsService::defaultSpeed() const
 {
+  std::lock_guard lock(synthMutex_);
   return defaultSpeed_;
 }
 
@@ -327,18 +390,13 @@ TtsQuality TtsService::autoQuality(const std::string& text)
 
 const Style& TtsService::resolveVoice(const std::string& voiceId)
 {
-  {
-    std::lock_guard<std::mutex> lock(voiceMutex_);
-    auto it = voiceCache_.find(voiceId);
-    if (it != voiceCache_.end()) {
-      return *it->second;
-    }
-  }
+  const auto it = voiceCache_.find(voiceId);
+  if (it != voiceCache_.end())
+    return *it->second;
 
   std::string path = modelsDir() + "/voice_styles/" + voiceId + ".json";
   auto style = loadVoiceStyle(path);
 
-  std::lock_guard<std::mutex> lock(voiceMutex_);
   auto [inserted, _] = voiceCache_.emplace(voiceId, std::move(style));
   return *inserted->second;
 }

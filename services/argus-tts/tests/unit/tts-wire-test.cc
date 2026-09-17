@@ -3,11 +3,11 @@
 
 #include <config/app-config.hxx>
 #include <controllers/health-controller.hxx>
-#include <controllers/tts-controller.hxx>
+#include <feature/synthesis/api/http/controller/tts-controller.hxx>
 #include <drogon/drogon.h>
 #include <filter/valid-json/valid-json-filter.hxx>
 #include <shared/services/config-service/config-service.hxx>
-#include <shared/services/tts/tts-service.hxx>
+#include <feature/synthesis/domain/tts-service.hxx>
 #include <shared/wrapper/hardware-profile/hardware-profile.hxx>
 
 #include <arpa/inet.h>
@@ -353,8 +353,23 @@ TEST_CASE("the argus-tts internal wire serves the legacy adapters")
   CHECK(notAllowed.status == 405);
   CHECK(envelope(notAllowed)["errors"]["code"] == "METHOD_NOT_ALLOWED");
 
+  TtsService::instance().shutdown();
+  const auto expectedUnloaded = AppConfig::get503Response(
+      "Text-to-speech engine is not loaded", "TTS_NOT_LOADED");
+  for (const auto* path : {"/tts/v1/synthesize", "/tts/v1/synthesize-stream"}) {
+    const auto unloaded = request({.port = port,
+                                   .method = "POST",
+                                   .path = path,
+                                   .body = R"({"text":"Hola argus","lang":"es"})",
+                                   .closeConnection = true});
+    CHECK(unloaded.status == 503);
+    CHECK(unloaded.body == expectedUnloaded->getBody());
+    CHECK(toLower(unloaded.headers.at("content-type")).find(
+              "application/json") != std::string::npos);
+    CHECK(unloaded.headers.count("x-argus-sample-rate") == 0);
+  }
+
   drogon::app().quit();
   runner.join();
-  TtsService::instance().shutdown();
   std::remove(kScratchConfig);
 }
