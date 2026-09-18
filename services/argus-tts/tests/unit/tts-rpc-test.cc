@@ -83,6 +83,49 @@ TEST_CASE("legacy production client delegates to gRPC")
   ConfigService::setRuntimeString("tts.grpc_credential", "");
 }
 
+TEST_CASE("legacy production client propagates cancellation to gRPC")
+{
+  auto input = serverInput();
+  std::atomic<bool> entered{false};
+  std::atomic<bool> cancelled{false};
+  input.synthesize = [&](TtsStreamInput stream) {
+    entered.store(true);
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(3);
+    while (!stream.stopRequested() && std::chrono::steady_clock::now() < deadline)
+      std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    cancelled.store(stream.stopRequested());
+  };
+  TtsRpcServer server(std::move(input));
+  ConfigService::setRuntimeString("tts.grpc_target", "127.0.0.1:" + std::to_string(server.port()));
+  ConfigService::setRuntimeString("tts.grpc_credential", kSecret);
+  TtsClient client;
+  std::stop_source stop;
+  std::jthread canceller([&] {
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(1);
+    while (!entered.load() && std::chrono::steady_clock::now() < deadline)
+      std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    stop.request_stop();
+  });
+  bool stopped = false;
+  try {
+    client.synthesizeStream({
+        .request = {.text = "hello", .lang = TtsLang::EN, .voiceId = "M3",
+                    .quality = TtsQuality::Auto, .speed = 1.0F},
+        .onChunk = [](const std::vector<float>&) {},
+        .cancellation = stop.get_token()});
+  }
+  catch (const ResponseException& error) {
+    stopped = error.statusCode() == 499;
+  }
+  canceller.join();
+  server.shutdown();
+  CHECK(entered.load());
+  CHECK(cancelled.load());
+  CHECK(stopped);
+  ConfigService::setRuntimeString("tts.grpc_target", "");
+  ConfigService::setRuntimeString("tts.grpc_credential", "");
+}
+
 TEST_CASE("capabilities reports engine metadata")
 {
   TtsRpcServer server(serverInput());

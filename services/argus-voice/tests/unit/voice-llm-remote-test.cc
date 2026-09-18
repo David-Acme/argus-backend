@@ -15,12 +15,12 @@ namespace
 
 struct FakeTts final : IVoiceTts
 {
-  float defaultSpeed() const override { return 1.25F; }
-  int sampleRate() const override { return 22050; }
+  float defaultSpeed(std::stop_token = {}) const override { return 1.25F; }
+  int sampleRate(std::stop_token = {}) const override { return 22050; }
 
-  void synthesizeStream(const TtsRequest&, TtsChunkCallback onChunk) override
+  void synthesizeStream(TtsRemoteStreamInput input) override
   {
-    onChunk(std::vector<float>(512, 0.25F));
+    input.onChunk(std::vector<float>(512, 0.25F));
   }
 };
 

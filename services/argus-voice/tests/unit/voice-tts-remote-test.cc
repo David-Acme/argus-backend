@@ -6,8 +6,11 @@
 #include <test-support/fake-voice-sink.hxx>
 #include <shared/services/config-service/config-service.hxx>
 
+#include <atomic>
 #include <cmath>
+#include <chrono>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace
@@ -67,6 +70,166 @@ TEST_CASE("RemoteVoiceTts serves the IVoiceTts seam over the argus-tts wire")
   CHECK(requests.at("POST /tts/v1/synthesize-stream") == 1);
   CHECK(requests.at("GET /tts/v1/config") == 2);
 
+  pointAt("");
+}
+
+TEST_CASE("RemoteVoiceTts propagates cancellation through HTTP")
+{
+  FakeTtsServer server;
+  pointAt("http://127.0.0.1:" + std::to_string(server.port()));
+  RemoteVoiceTts adapter;
+  std::stop_source stop;
+  int chunks = 0;
+  TtsRemoteStreamInput input{
+      .request = {.text = "hello", .lang = TtsLang::EN, .voiceId = "M3",
+                  .quality = TtsQuality::Auto, .speed = 1.0F},
+      .onChunk = [&](const std::vector<float>&) {
+        ++chunks;
+        stop.request_stop();
+      },
+      .cancellation = stop.get_token()};
+  CHECK_THROWS(adapter.synthesizeStream(input));
+  CHECK(chunks == 1);
+  CHECK_THROWS(adapter.synthesizeStream(input));
+  CHECK(chunks == 1);
+  pointAt("");
+}
+
+TEST_CASE("An externally cancelled stream interrupts a blocked HTTP receive")
+{
+  FakeTtsServer server(200, {{.delay = std::chrono::milliseconds(0)},
+                             {.delay = std::chrono::milliseconds(1500)}});
+  pointAt("http://127.0.0.1:" + std::to_string(server.port()));
+  RemoteVoiceTts adapter;
+  std::stop_source stop;
+  std::atomic<int> chunks{0};
+  std::atomic<bool> finished{false};
+  std::chrono::steady_clock::time_point started;
+  std::jthread worker([&] {
+    TtsRemoteStreamInput input{
+        .request = {.text = "hello", .lang = TtsLang::EN, .voiceId = "M3",
+                    .quality = TtsQuality::Auto, .speed = 1.0F},
+        .onChunk = [&](const std::vector<float>&) { ++chunks; },
+        .cancellation = stop.get_token()};
+    started = std::chrono::steady_clock::now();
+    try {
+      adapter.synthesizeStream(input);
+    }
+    catch (const std::exception&) {
+    }
+    finished.store(true);
+  });
+  const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+  while (chunks.load() < 1 && std::chrono::steady_clock::now() < deadline)
+    std::this_thread::sleep_for(std::chrono::milliseconds(2));
+  REQUIRE(chunks.load() == 1);
+  stop.request_stop();
+  const auto cancelledAt = std::chrono::steady_clock::now();
+  while (!finished.load() && std::chrono::steady_clock::now() < deadline)
+    std::this_thread::yield();
+  CHECK(finished.load());
+  CHECK(std::chrono::steady_clock::now() - cancelledAt <
+        std::chrono::milliseconds(1000));
+  CHECK(std::chrono::steady_clock::now() - started < std::chrono::milliseconds(1500));
+  worker.join();
+  pointAt("");
+}
+
+TEST_CASE("Cancellation at the final chunk still reports failure, not success")
+{
+  FakeTtsServer server(200, {{.delay = std::chrono::milliseconds(0)},
+                             {.delay = std::chrono::milliseconds(0), .stop = true}});
+  pointAt("http://127.0.0.1:" + std::to_string(server.port()));
+  RemoteVoiceTts adapter;
+  std::stop_source stop;
+  std::atomic<int> chunks{0};
+  TtsRemoteStreamInput input{
+      .request = {.text = "hello", .lang = TtsLang::EN, .voiceId = "M3",
+                  .quality = TtsQuality::Auto, .speed = 1.0F},
+      .onChunk = [&](const std::vector<float>&) {
+        ++chunks;
+        stop.request_stop();
+      },
+      .cancellation = stop.get_token()};
+  bool cancelled = false;
+  try {
+    adapter.synthesizeStream(input);
+  }
+  catch (const std::exception& error) {
+    cancelled = std::string(error.what()).find("cancel") != std::string::npos;
+  }
+  CHECK(chunks.load() == 1);
+  CHECK(cancelled);
+  pointAt("");
+}
+
+TEST_CASE("A pre-stopped token never reaches the remote")
+{
+  int probe = ::socket(AF_INET, SOCK_STREAM, 0);
+  sockaddr_in addr{};
+  addr.sin_family = AF_INET;
+  addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+  addr.sin_port = 0;
+  ::bind(probe, reinterpret_cast<sockaddr*>(&addr), sizeof(addr));
+  socklen_t len = sizeof(addr);
+  ::getsockname(probe, reinterpret_cast<sockaddr*>(&addr), &len);
+  const int deadPort = ntohs(addr.sin_port);
+  ::close(probe);
+  pointAt("http://127.0.0.1:" + std::to_string(deadPort));
+
+  RemoteVoiceTts adapter;
+  std::stop_source stop;
+  stop.request_stop();
+  TtsRemoteStreamInput input{
+      .request = {.text = "hello", .lang = TtsLang::EN, .voiceId = "M3",
+                  .quality = TtsQuality::Auto, .speed = 1.0F},
+      .onChunk = [](const std::vector<float>&) {},
+      .cancellation = stop.get_token()};
+  CHECK_THROWS(adapter.synthesizeStream(input));
+  CHECK_THROWS(adapter.defaultSpeed(stop.get_token()));
+  CHECK_THROWS(adapter.sampleRate(stop.get_token()));
+  pointAt("");
+}
+
+TEST_CASE("An externally cancelled config fetch interrupts a blocked receive")
+{
+  FakeTtsServer server;
+  server.delayConfig(std::chrono::milliseconds(1500));
+  pointAt("http://127.0.0.1:" + std::to_string(server.port()));
+  RemoteVoiceTts adapter;
+  std::stop_source stop;
+  std::atomic<bool> finished{false};
+  std::jthread worker([&] {
+    try {
+      adapter.defaultSpeed(stop.get_token());
+    }
+    catch (const std::exception&) {
+    }
+    finished.store(true);
+  });
+  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+  stop.request_stop();
+  const auto cancelledAt = std::chrono::steady_clock::now();
+  const auto deadline = cancelledAt + std::chrono::seconds(2);
+  while (!finished.load() && std::chrono::steady_clock::now() < deadline)
+    std::this_thread::yield();
+  CHECK(finished.load());
+  CHECK(std::chrono::steady_clock::now() - cancelledAt <
+        std::chrono::milliseconds(1000));
+  worker.join();
+  pointAt("");
+}
+
+TEST_CASE("A live token with stop state still fetches config")
+{
+  FakeTtsServer server;
+  pointAt("http://127.0.0.1:" + std::to_string(server.port()));
+  RemoteVoiceTts adapter;
+  std::stop_source stop;
+  CHECK(stop.get_token().stop_possible());
+  CHECK_FALSE(stop.get_token().stop_requested());
+  CHECK(adapter.defaultSpeed(stop.get_token()) == doctest::Approx(1.25F));
+  CHECK(adapter.sampleRate(stop.get_token()) == 22050);
   pointAt("");
 }
 

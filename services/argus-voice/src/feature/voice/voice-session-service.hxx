@@ -15,6 +15,7 @@
 #include <shared/wrapper/audio/audio-resampler.hxx>
 #include <feature/voice/voice-engine-seam.hxx>
 #include <voice/voice-client.hxx>
+#include <stop_token>
 #include <string>
 #include <thread>
 #include <unordered_map>
@@ -65,6 +66,8 @@ private:
     std::atomic<bool> speaking{false};
     std::atomic<bool> interrupt{false};
     std::atomic<bool> active{true};
+    std::mutex ttsMutex;
+    std::stop_source ttsStop;
     std::thread worker;
     std::mutex pcmMutex;
     std::condition_variable pcmCv;

@@ -6,6 +6,7 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
+#include <array>
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
@@ -13,7 +14,9 @@
 #include <map>
 #include <mutex>
 #include <string>
+#include <string_view>
 #include <thread>
+#include <utility>
 #include <vector>
 
 namespace
@@ -21,12 +24,20 @@ namespace
 constexpr const char* kConfigBody =
     R"({"status":200,"info":{"sampleRate":22050,"defaultSpeed":1.25},"errors":null})";
 
+struct FakeTtsStreamChunk
+{
+  std::chrono::milliseconds delay{0};
+  bool stop{false};
+};
+
 // Minimal in-process HTTP server standing in for the argus-tts wire in unit tests.
 class FakeTtsServer
 {
 public:
-  explicit FakeTtsServer(int status = 200)
-      : status_(status)
+  explicit FakeTtsServer(int status = 200,
+                         std::vector<FakeTtsStreamChunk> streamChunks = {})
+      : status_(status),
+        streamChunks_(std::move(streamChunks))
   {
     listen_ = ::socket(AF_INET, SOCK_STREAM, 0);
     sockaddr_in addr{};
@@ -54,29 +65,44 @@ public:
     return requests_;
   }
 
+  void delayConfig(std::chrono::milliseconds delay)
+  {
+    configDelayMs_.store(delay.count());
+  }
+
   void stop()
   {
     if (listen_ < 0)
       return;
-    ::close(listen_);
-    listen_ = -1;
-    const int fd = ::socket(AF_INET, SOCK_STREAM, 0);
-    sockaddr_in addr{};
-    addr.sin_family = AF_INET;
-    addr.sin_port = htons(static_cast<uint16_t>(port_));
-    addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-    ::connect(fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr));
-    ::close(fd);
+    stopping_.store(true);
+    ::shutdown(listen_, SHUT_RDWR);
     if (thread_.joinable())
       thread_.join();
+    ::close(listen_);
+    listen_ = -1;
   }
 
 private:
+  static bool sendResponse(int fd, std::string_view response)
+  {
+    size_t sent = 0;
+    while (sent < response.size()) {
+      const auto n = ::send(fd, response.data() + sent,
+                            response.size() - sent, MSG_NOSIGNAL);
+      if (n < 0 && errno == EINTR)
+        continue;
+      if (n <= 0)
+        return false;
+      sent += static_cast<size_t>(n);
+    }
+    return true;
+  }
+
   // Reads until the head terminator, then the Content-Length body if any.
   static std::string readRequest(int fd)
   {
     std::string data;
-    char buffer[4096];
+    std::array<char, 4096> buffer{};
     const auto bodyStart = [&] {
       const auto split = data.find("\r\n\r\n");
       if (split == std::string::npos)
@@ -89,26 +115,26 @@ private:
              std::stoul(data.substr(cl + 16, eol - cl - 16));
     };
     while (data.find("\r\n\r\n") == std::string::npos) {
-      const auto n = ::recv(fd, buffer, sizeof(buffer), 0);
+      const auto n = ::recv(fd, buffer.data(), buffer.size(), 0);
       if (n <= 0)
         break;
-      data.append(buffer, static_cast<size_t>(n));
+      data.append(buffer.data(), static_cast<size_t>(n));
     }
     for (;;) {
       const auto need = bodyStart();
       if (need == std::string::npos || data.size() >= need)
         break;
-      const auto n = ::recv(fd, buffer, sizeof(buffer), 0);
+      const auto n = ::recv(fd, buffer.data(), buffer.size(), 0);
       if (n <= 0)
         break;
-      data.append(buffer, static_cast<size_t>(n));
+      data.append(buffer.data(), static_cast<size_t>(n));
     }
     return data;
   }
 
   void serve()
   {
-    while (listen_ >= 0) {
+    while (!stopping_.load()) {
       const int fd = ::accept(listen_, nullptr, nullptr);
       if (fd < 0)
         continue;
@@ -142,6 +168,7 @@ private:
                    "\r\nConnection: close\r\n\r\n" + bodyJson;
       }
       else if (path == "/tts/v1/config" && method == "GET") {
+        std::this_thread::sleep_for(std::chrono::milliseconds(configDelayMs_.load()));
         response = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n"
                    "Content-Length: " +
                    std::to_string(std::strlen(kConfigBody)) +
@@ -164,11 +191,81 @@ private:
           const float sample = 0.25F;
           std::memcpy(chunkData.data() + i * 4, &sample, sizeof(sample));
         }
-        response =
+        std::string header =
             "HTTP/1.1 200 OK\r\nContent-Type: audio/x-argus-pcm-f32\r\n"
             "X-Argus-Sample-Rate: 22050\r\nTransfer-Encoding: chunked\r\n"
-            "Connection: close\r\n\r\n100\r\n" +
-            chunkData + "\r\n100\r\n" + chunkData + "\r\n0\r\n\r\n";
+            "Connection: close\r\n\r\n";
+        if (streamChunks_.empty()) {
+          std::string body = "100\r\n" + chunkData + "\r\n100\r\n" + chunkData + "\r\n0\r\n\r\n";
+          std::string response = header + body;
+          size_t sent = 0;
+          while (sent < response.size()) {
+            const auto n = ::send(fd, response.data() + sent,
+                                  response.size() - sent, MSG_NOSIGNAL);
+            if (n < 0 && errno == EINTR)
+              continue;
+            if (n <= 0)
+              break;
+            sent += static_cast<size_t>(n);
+          }
+          ::close(fd);
+          continue;
+        }
+        // Send headers first, then each chunk with its delay.
+        {
+          size_t sent = 0;
+          while (sent < header.size()) {
+            const auto n = ::send(fd, header.data() + sent,
+                                  header.size() - sent, MSG_NOSIGNAL);
+            if (n < 0 && errno == EINTR)
+              continue;
+            if (n <= 0)
+              break; // peer closed; nothing more to send
+            sent += static_cast<size_t>(n);
+          }
+          if (sent < header.size()) {
+            ::close(fd);
+            continue;
+          }
+        }
+        for (size_t i = 0; i < streamChunks_.size(); ++i) {
+          const auto& spec = streamChunks_[i];
+          if (spec.delay.count() > 0)
+            std::this_thread::sleep_for(spec.delay);
+          if (spec.stop)
+            break;
+          std::string chunkBody = "64\r\n" + chunkData.substr(0, 64 * 4) + "\r\n";
+          size_t sent = 0;
+          bool peerClosed = false;
+          while (sent < chunkBody.size()) {
+            const auto n = ::send(fd, chunkBody.data() + sent,
+                                  chunkBody.size() - sent, MSG_NOSIGNAL);
+            if (n < 0 && errno == EINTR)
+              continue;
+            if (n <= 0) {
+              peerClosed = true;
+              break;
+            }
+            sent += static_cast<size_t>(n);
+          }
+          if (peerClosed)
+            break;
+        }
+        if (!streamChunks_.back().stop) {
+          std::string terminal = "0\r\n\r\n";
+          size_t sent = 0;
+          while (sent < terminal.size()) {
+            const auto n = ::send(fd, terminal.data() + sent,
+                                  terminal.size() - sent, MSG_NOSIGNAL);
+            if (n < 0 && errno == EINTR)
+              continue;
+            if (n <= 0)
+              break; // peer closed
+            sent += static_cast<size_t>(n);
+          }
+        }
+        ::close(fd);
+        continue;
       }
       else {
         const std::string bodyJson =
@@ -196,6 +293,9 @@ private:
   int listen_{-1};
   int port_{0};
   int status_{200};
+  std::vector<FakeTtsStreamChunk> streamChunks_;
+  std::atomic<std::chrono::milliseconds::rep> configDelayMs_{0};
+  std::atomic<bool> stopping_{false};
   std::map<std::string, int> requests_;
   mutable std::mutex mutex_;
   std::thread thread_;

@@ -371,7 +371,13 @@ void VoiceSessionService::stop(VoiceSessionSink& sink)
     session = it->second;
     sessions_.erase(it);
   }
-  session->active.store(false);
+  std::stop_source cancellation;
+  {
+    std::lock_guard lock(session->ttsMutex);
+    session->active.store(false);
+    cancellation = session->ttsStop;
+  }
+  cancellation.request_stop();
   session->pcmCv.notify_all();
   if (session->worker.joinable())
     session->worker.join();
@@ -443,7 +449,13 @@ void VoiceSessionService::workerLoop(std::shared_ptr<Session> session)
 void VoiceSessionService::processTurn(Session& session,
                                       const std::vector<float>& samples)
 {
-  session.interrupt.store(false);
+  {
+    std::lock_guard lock(session.ttsMutex);
+    if (!session.active.load())
+      return;
+    session.interrupt.store(false);
+    session.ttsStop = std::stop_source{};
+  }
 
   std::string userText;
   try {
@@ -567,6 +579,13 @@ void VoiceSessionService::speak(Session& session, const std::string& text)
 {
   if (text.empty() || !session.sink || !session.sink->connected())
     return;
+  std::stop_token cancellation;
+  {
+    std::lock_guard lock(session.ttsMutex);
+    if (!session.active.load() || session.interrupt.load())
+      return;
+    cancellation = session.ttsStop.get_token();
+  }
   LOG_INFO << "Voice: speaking -> " << text.substr(0, 80);
 
   TtsRequest treq;
@@ -575,8 +594,8 @@ void VoiceSessionService::speak(Session& session, const std::string& text)
   treq.quality = TtsQuality::Auto;
   int ttsRate = kTargetRate;
   try {
-    treq.speed = tts_.defaultSpeed();
-    ttsRate = tts_.sampleRate();
+    treq.speed = tts_.defaultSpeed(cancellation);
+    ttsRate = tts_.sampleRate(cancellation);
   }
   catch (const std::exception& e) {
     LOG_WARN << "Voice: TTS unavailable: " << e.what();
@@ -589,7 +608,8 @@ void VoiceSessionService::speak(Session& session, const std::string& text)
   argus::voice::v1::ServerFrame assistantFrame;
   assistantFrame.mutable_assistant()->set_text(text);
   try {
-    tts_.synthesizeStream(treq, [&](const std::vector<float>& chunk) {
+    tts_.synthesizeStream({.request = treq,
+                           .onChunk = [&](const std::vector<float>& chunk) {
       if (!session.sink || !session.sink->connected())
         return;
       if (session.interrupt.load())
@@ -604,7 +624,8 @@ void VoiceSessionService::speak(Session& session, const std::string& text)
             static_cast<size_t>(resampled.size()) * sizeof(int16_t));
         sendFrame(session, std::move(chunkFrame));
       }
-    });
+    },
+                           .cancellation = cancellation});
   }
   catch (const std::exception& e) {
     LOG_WARN << "Voice: TTS failed: " << e.what();
@@ -626,7 +647,13 @@ void VoiceSessionService::skip(VoiceSessionSink& sink)
     session = it->second;
   }
   LOG_INFO << "Voice: skip";
-  session->interrupt.store(true);
+  std::stop_source cancellation;
+  {
+    std::lock_guard lock(session->ttsMutex);
+    session->interrupt.store(true);
+    cancellation = session->ttsStop;
+  }
+  cancellation.request_stop();
 }
 
 void VoiceSessionService::sendFrame(Session& session,

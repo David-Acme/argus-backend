@@ -41,14 +41,20 @@ Client::Client(ClientConfig config)
 
 Client::~Client() = default;
 
-Capabilities Client::capabilities() const
+Capabilities Client::capabilities(std::stop_token cancellation) const
 {
+  if (cancellation.stop_requested())
+    throw ResponseException(499, TtsErrors::Cancelled);
   grpc::ClientContext context;
   context.set_deadline(std::chrono::system_clock::now() + impl_->config.timeout);
   argus::sdk::addCallerCredential(context, impl_->config.credential);
   v1::CapabilitiesRequest request;
   v1::CapabilitiesResponse response;
-  check(impl_->stub->Capabilities(&context, request, &response));
+  std::stop_callback cancel(cancellation, [&context] { context.TryCancel(); });
+  const auto status = impl_->stub->Capabilities(&context, request, &response);
+  if (cancellation.stop_requested())
+    throw ResponseException(499, TtsErrors::Cancelled);
+  check(status);
   if (!validRate(response.sample_rate()) || response.channels() != 1 ||
       response.format() != v1::SAMPLE_FORMAT_FLOAT32 ||
       !std::isfinite(response.default_speed()) || response.default_speed() <= 0)

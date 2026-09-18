@@ -54,7 +54,7 @@ public:
   ~Client();
   Client(const Client&) = delete;
   Client& operator=(const Client&) = delete;
-  Capabilities capabilities() const;
+  Capabilities capabilities(std::stop_token cancellation = {}) const;
   void synthesize(const SynthesisInput& input) const;
 private:
   struct Impl;

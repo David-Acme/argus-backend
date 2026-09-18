@@ -3,6 +3,11 @@
 
 #include <test-support/fake-voice-sink.hxx>
 
+#include <atomic>
+#include <chrono>
+#include <condition_variable>
+#include <mutex>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -35,14 +40,59 @@ struct FakeTts final : IVoiceTts
   int synthesizeCalls{0};
   std::string lastText;
 
-  float defaultSpeed() const override { return 1.25F; }
-  int sampleRate() const override { return 22050; }
+  float defaultSpeed(std::stop_token = {}) const override { return 1.25F; }
+  int sampleRate(std::stop_token = {}) const override { return 22050; }
 
-  void synthesizeStream(const TtsRequest& req, TtsChunkCallback onChunk) override
+  void synthesizeStream(TtsRemoteStreamInput input) override
   {
     ++synthesizeCalls;
-    lastText = req.text;
-    onChunk(std::vector<float>(512, 0.25F));
+    lastText = input.request.text;
+    input.onChunk(std::vector<float>(512, 0.25F));
+  }
+};
+
+struct BlockingTts final : IVoiceTts
+{
+  std::atomic<bool> entered{false};
+  std::atomic<bool> cancelled{false};
+
+  float defaultSpeed(std::stop_token = {}) const override { return 1.0F; }
+  int sampleRate(std::stop_token = {}) const override { return 16000; }
+
+  void synthesizeStream(TtsRemoteStreamInput input) override
+  {
+    std::mutex mutex;
+    std::condition_variable_any ready;
+    std::unique_lock lock(mutex);
+    entered.store(true);
+    ready.wait_for(lock, input.cancellation, std::chrono::seconds(3), [] { return false; });
+    cancelled.store(input.cancellation.stop_requested());
+  }
+};
+
+struct ConfigBlockingTts final : IVoiceTts
+{
+  mutable std::atomic<bool> entered{false};
+  mutable std::atomic<bool> cancelled{false};
+
+  float defaultSpeed(std::stop_token cancellation = {}) const override
+  {
+    std::mutex mutex;
+    std::condition_variable_any ready;
+    std::unique_lock lock(mutex);
+    entered.store(true);
+    ready.wait_for(lock, cancellation, std::chrono::seconds(3),
+                   [] { return false; });
+    cancelled.store(cancellation.stop_requested());
+    if (cancellation.stop_requested())
+      throw std::runtime_error("synthesis cancelled");
+    return 1.0F;
+  }
+  int sampleRate(std::stop_token = {}) const override { return 16000; }
+
+  void synthesizeStream(TtsRemoteStreamInput input) override
+  {
+    input.onChunk(std::vector<float>(512, 0.25F));
   }
 };
 
@@ -202,6 +252,55 @@ TEST_CASE("A turn runs STT, LLM and TTS against the injected fakes")
   CHECK(sess->history[3].content == "Hola de nuevo.");
 
   session.stop(sink);
+}
+
+TEST_CASE("Skip and stop cancel blocked voice synthesis")
+{
+  BlockingTts tts;
+  FakeStt stt;
+  FakeLlm llm;
+  FakeIdentity identity;
+  VoiceSessionService service({.stt = stt, .tts = tts, .llm = llm, .identity = identity});
+  FakeVoiceSink sink;
+  argus::voice::v1::VoiceIdentity voiceIdentity;
+  voiceIdentity.set_role(argus::voice::v1::VOICE_ROLE_OWNER);
+  voiceIdentity.set_language(argus::voice::v1::VOICE_LANGUAGE_ES);
+  service.start(sink, voiceIdentity);
+  CHECK(waitFor([&] { return tts.entered.load(); }, 1000));
+
+  SUBCASE("skip cancels before another chunk arrives")
+  {
+    service.skip(sink);
+    CHECK(waitFor([&] { return tts.cancelled.load(); }, 1000));
+    service.stop(sink);
+  }
+  SUBCASE("disconnect and stop cancel before joining the worker")
+  {
+    sink.close();
+    const auto start = std::chrono::steady_clock::now();
+    service.stop(sink);
+    CHECK(std::chrono::steady_clock::now() - start < std::chrono::seconds(1));
+    CHECK(tts.cancelled.load());
+  }
+  CHECK(sink.of(true).empty());
+}
+
+TEST_CASE("Skip cancels a blocked voice config fetch")
+{
+  ConfigBlockingTts tts;
+  FakeStt stt;
+  FakeLlm llm;
+  FakeIdentity identity;
+  VoiceSessionService service({.stt = stt, .tts = tts, .llm = llm, .identity = identity});
+  FakeVoiceSink sink;
+  argus::voice::v1::VoiceIdentity voiceIdentity;
+  voiceIdentity.set_role(argus::voice::v1::VOICE_ROLE_OWNER);
+  voiceIdentity.set_language(argus::voice::v1::VOICE_LANGUAGE_ES);
+  service.start(sink, voiceIdentity);
+  CHECK(waitFor([&] { return tts.entered.load(); }, 1000));
+  service.skip(sink);
+  CHECK(waitFor([&] { return tts.cancelled.load(); }, 1000));
+  service.stop(sink);
 }
 
 TEST_CASE("The spoken name is written once through the identity seam")

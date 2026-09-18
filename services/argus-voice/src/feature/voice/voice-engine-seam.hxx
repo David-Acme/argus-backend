@@ -9,6 +9,7 @@
 #include <shared/services/llm/remote/llm-remote.hxx>
 #include <shared/services/stt/remote/stt-remote.hxx>
 #include <shared/services/tts/remote/tts-remote.hxx>
+#include <stop_token>
 #include <string>
 #include <vector>
 
@@ -28,10 +29,13 @@ class IVoiceTts
 public:
   virtual ~IVoiceTts() = default;
 
-  virtual float defaultSpeed() const = 0;
-  virtual int sampleRate() const = 0;
-  virtual void synthesizeStream(const TtsRequest& req,
-                                TtsChunkCallback onChunk) = 0;
+  virtual float defaultSpeed(std::stop_token cancellation = {}) const = 0;
+  virtual int sampleRate(std::stop_token cancellation = {}) const = 0;
+  void synthesizeStream(const TtsRequest& req, TtsChunkCallback onChunk)
+  {
+    synthesizeStream({.request = req, .onChunk = std::move(onChunk), .cancellation = {}});
+  }
+  virtual void synthesizeStream(TtsRemoteStreamInput input) = 0;
 };
 
 class IVoiceLlm
@@ -78,13 +82,21 @@ private:
 class RemoteVoiceTts final : public IVoiceTts
 {
 public:
-  float defaultSpeed() const override { return client_.defaultSpeed(); }
+  using IVoiceTts::synthesizeStream;
 
-  int sampleRate() const override { return client_.sampleRate(); }
-
-  void synthesizeStream(const TtsRequest& req, TtsChunkCallback onChunk) override
+  float defaultSpeed(std::stop_token cancellation = {}) const override
   {
-    client_.synthesizeStream(req, std::move(onChunk));
+    return client_.defaultSpeed(cancellation);
+  }
+
+  int sampleRate(std::stop_token cancellation = {}) const override
+  {
+    return client_.sampleRate(cancellation);
+  }
+
+  void synthesizeStream(TtsRemoteStreamInput input) override
+  {
+    client_.synthesizeStream(std::move(input));
   }
 
 private:

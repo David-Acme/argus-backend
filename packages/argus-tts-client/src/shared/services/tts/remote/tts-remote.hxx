@@ -6,9 +6,23 @@
 #include <memory>
 #include <cstdint>
 #include <string>
+#include <stop_token>
 #include <vector>
 
 namespace argus::tts { class Client; }
+
+struct TtsRemoteStreamInput
+{
+  TtsRequest request;
+  TtsChunkCallback onChunk;
+  std::stop_token cancellation;
+};
+
+struct TtsHttpStreamInput
+{
+  std::function<void(const char*, size_t)> onChunk;
+  std::stop_token cancellation;
+};
 
 // Remote TTS endpoint settings; every synthesis is an HTTP call once tts.remote_url is set.
 struct TtsRemoteConfig
@@ -37,10 +51,14 @@ class TtsHttpClient
 public:
   TtsHttpClient(std::string baseUrl, int timeoutMs);
 
-  float defaultSpeed() const;
-  int sampleRate() const;
-  std::vector<float> synthesize(const TtsRequest& req) const;
+  float defaultSpeed(std::stop_token cancellation = {}) const;
+  int sampleRate(std::stop_token cancellation = {}) const;
+  std::vector<float> synthesize(const TtsRequest& req,
+                                 std::stop_token cancellation = {}) const;
   void synthesizeStream(const TtsRequest& req, TtsChunkCallback onChunk) const;
+  void synthesizeStream(const TtsRequest& req, TtsChunkCallback onChunk,
+                         std::stop_token cancellation) const;
+  void synthesizeStream(TtsRemoteStreamInput input) const;
 
 private:
   struct RawResponse
@@ -49,9 +67,9 @@ private:
     std::string body;
   };
 
-  RawResponse exchange(const WireRequest& request) const;
-  void stream(const WireRequest& request,
-              const std::function<void(const char*, size_t)>& onChunk) const;
+  RawResponse exchange(const WireRequest& request,
+                       std::stop_token cancellation = {}) const;
+  void stream(const WireRequest& request, const TtsHttpStreamInput& input) const;
 
   std::string baseUrl_;
   int timeoutMs_;
@@ -61,10 +79,14 @@ private:
 class TtsClient
 {
 public:
-  float defaultSpeed() const;
-  int sampleRate() const;
-  std::vector<float> synthesize(const TtsRequest& req) const;
+  float defaultSpeed(std::stop_token cancellation = {}) const;
+  int sampleRate(std::stop_token cancellation = {}) const;
+  std::vector<float> synthesize(const TtsRequest& req,
+                                 std::stop_token cancellation = {}) const;
   void synthesizeStream(const TtsRequest& req, TtsChunkCallback onChunk) const;
+  void synthesizeStream(const TtsRequest& req, TtsChunkCallback onChunk,
+                         std::stop_token cancellation) const;
+  void synthesizeStream(TtsRemoteStreamInput input) const;
   bool remote() const;
 
 private:

@@ -1,6 +1,10 @@
 #include "tts-remote.hxx"
 #include <tts-client.hxx>
 #include <atomic>
+#include <algorithm>
+#include <array>
+#include <utility>
+#include <tts-errors.hxx>
 
 #include <shared/services/config-service/config-service.hxx>
 
@@ -89,16 +93,24 @@ public:
   SocketGuard(const SocketGuard&) = delete;
   SocketGuard& operator=(const SocketGuard&) = delete;
   int get() const { return fd_; }
+  int release() { return std::exchange(fd_, -1); }
 
 private:
   int fd_;
 };
+
+void checkCancellation(std::stop_token cancellation)
+{
+  if (cancellation.stop_requested())
+    throw ResponseException(499, TtsErrors::Cancelled);
+}
 
 struct ConnectLoopbackInput
 {
   const std::string& host;
   int port;
   int timeoutMs;
+  std::stop_token cancellation;
 };
 
 int connectLoopback(const ConnectLoopbackInput& input)
@@ -107,41 +119,50 @@ int connectLoopback(const ConnectLoopbackInput& input)
   const int port = input.port;
   const int timeoutMs = input.timeoutMs;
 
-  const int fd = ::socket(AF_INET, SOCK_STREAM, 0);
+  checkCancellation(input.cancellation);
+  SocketGuard socket(::socket(AF_INET, SOCK_STREAM, 0));
+  const int fd = socket.get();
   if (fd < 0)
     return -1;
+  std::stop_callback cancel(input.cancellation, [fd] { ::shutdown(fd, SHUT_RDWR); });
 
   sockaddr_in addr{};
   addr.sin_family = AF_INET;
   addr.sin_port = htons(static_cast<uint16_t>(port));
-  if (::inet_pton(AF_INET, host.c_str(), &addr.sin_addr) != 1) {
-    ::close(fd);
+  if (::inet_pton(AF_INET, host.c_str(), &addr.sin_addr) != 1)
     return -1;
-  }
 
-  // Non-blocking connect + poll; the timeout bounds the connect phase too.
   const int flags = ::fcntl(fd, F_GETFL, 0);
-  ::fcntl(fd, F_SETFL, flags | O_NONBLOCK);
-  if (::connect(fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) != 0 &&
-      errno != EINPROGRESS) {
-    ::close(fd);
+  if (flags < 0 || ::fcntl(fd, F_SETFL, flags | O_NONBLOCK) != 0)
     return -1;
-  }
-  pollfd pfd{};
-  pfd.fd = fd;
-  pfd.events = POLLOUT;
-  if (::poll(&pfd, 1, timeoutMs) != 1) {
-    ::close(fd);
+  const int connected = ::connect(fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr));
+  const int connectError = errno;
+  checkCancellation(input.cancellation);
+  if (connected != 0 && connectError != EINPROGRESS)
     return -1;
+  pollfd pfd{.fd = fd, .events = POLLOUT, .revents = 0};
+  const auto deadline = std::chrono::steady_clock::now() +
+                        std::chrono::milliseconds(timeoutMs);
+  for (;;) {
+    checkCancellation(input.cancellation);
+    const auto remaining = std::chrono::ceil<std::chrono::milliseconds>(
+        deadline - std::chrono::steady_clock::now()).count();
+    if (remaining <= 0)
+      return -1;
+    const auto ready = ::poll(&pfd, 1, static_cast<int>(std::min<std::int64_t>(remaining, 20)));
+    const int pollError = errno;
+    checkCancellation(input.cancellation);
+    if (ready > 0)
+      break;
+    if (ready < 0 && pollError != EINTR)
+      return -1;
   }
   int soError = 0;
   socklen_t len = sizeof(soError);
-  if (::getsockopt(fd, SOL_SOCKET, SO_ERROR, &soError, &len) != 0 ||
-      soError != 0) {
-    ::close(fd);
+  const int result = ::getsockopt(fd, SOL_SOCKET, SO_ERROR, &soError, &len);
+  checkCancellation(input.cancellation);
+  if (result != 0 || soError != 0 || ::fcntl(fd, F_SETFL, flags) != 0)
     return -1;
-  }
-  ::fcntl(fd, F_SETFL, flags);
 
   timeval tv{};
   tv.tv_sec = timeoutMs / 1000;
@@ -150,7 +171,8 @@ int connectLoopback(const ConnectLoopbackInput& input)
   ::setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
   const int one = 1;
   ::setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof(one));
-  return fd;
+  checkCancellation(input.cancellation);
+  return socket.release();
 }
 
 struct Address
@@ -195,28 +217,53 @@ std::string requestHead(const WireRequest& request, const Address& address)
   return head;
 }
 
-void sendAll(int fd, const std::string& data)
+struct SendInput
+{
+  int fd;
+  const std::string& data;
+  std::stop_token cancellation;
+};
+
+void sendAll(const SendInput& input)
 {
   size_t sent = 0;
-  while (sent < data.size()) {
-    const auto n = ::send(fd, data.data() + sent, data.size() - sent, 0);
+  while (sent < input.data.size()) {
+    checkCancellation(input.cancellation);
+    const auto n = ::send(input.fd, input.data.data() + sent,
+                          input.data.size() - sent, MSG_NOSIGNAL);
+    const int error = errno;
+    checkCancellation(input.cancellation);
+    if (n < 0 && error == EINTR)
+      continue;
     if (n <= 0)
       throw std::runtime_error("argus-tts request send failed");
     sent += static_cast<size_t>(n);
   }
 }
 
-// Reads until the peer closes or the recv timeout fires; `deadline` bounds the whole exchange.
-std::string readAll(int fd, const std::chrono::steady_clock::time_point& deadline)
+struct ReadInput
+{
+  int fd;
+  std::chrono::steady_clock::time_point deadline;
+  std::stop_token cancellation;
+};
+
+std::string readAll(const ReadInput& input)
 {
   std::string data;
-  char buffer[16384];
-  while (std::chrono::steady_clock::now() < deadline) {
-    const auto n = ::recv(fd, buffer, sizeof(buffer), 0);
+  std::array<char, 16384> buffer{};
+  while (std::chrono::steady_clock::now() < input.deadline) {
+    checkCancellation(input.cancellation);
+    const auto n = ::recv(input.fd, buffer.data(), buffer.size(), 0);
+    const int error = errno;
+    checkCancellation(input.cancellation);
+    if (n < 0 && error == EINTR)
+      continue;
     if (n <= 0)
       break;
-    data.append(buffer, static_cast<size_t>(n));
+    data.append(buffer.data(), static_cast<size_t>(n));
   }
+  checkCancellation(input.cancellation);
   return data;
 }
 
@@ -321,23 +368,27 @@ TtsHttpClient::TtsHttpClient(std::string baseUrl, int timeoutMs)
 }
 
 TtsHttpClient::RawResponse TtsHttpClient::exchange(
-    const WireRequest& request) const
+    const WireRequest& request, std::stop_token cancellation) const
 {
+  checkCancellation(cancellation);
   const Address address = parseUrl(baseUrl_);
   const SocketGuard fd(
       connectLoopback({.host = address.host,
                        .port = address.port,
-                       .timeoutMs = timeoutMs_}));
+                       .timeoutMs = timeoutMs_,
+                       .cancellation = cancellation}));
+  checkCancellation(cancellation);
   if (fd.get() < 0)
     throw std::runtime_error("argus-tts unreachable at " + baseUrl_);
+  std::stop_callback cancel(cancellation, [&fd] { ::shutdown(fd.get(), SHUT_RDWR); });
 
   const std::string head = requestHead(request, address);
-  sendAll(fd.get(), head + request.body);
+  sendAll({.fd = fd.get(), .data = head + request.body, .cancellation = cancellation});
 
   const auto deadline =
       std::chrono::steady_clock::now() +
       std::chrono::milliseconds(timeoutMs_);
-  const std::string wire = readAll(fd.get(), deadline);
+  const std::string wire = readAll({.fd = fd.get(), .deadline = deadline, .cancellation = cancellation});
   if (wire.empty())
     throw std::runtime_error("argus-tts closed the connection before answering");
 
@@ -358,19 +409,23 @@ TtsHttpClient::RawResponse TtsHttpClient::exchange(
 }
 
 void TtsHttpClient::stream(
-    const WireRequest& request,
-    const std::function<void(const char*, size_t)>& onChunk) const
+    const WireRequest& request, const TtsHttpStreamInput& input) const
 {
+  const auto& cancellation = input.cancellation;
+  const auto& onChunk = input.onChunk;
+  checkCancellation(cancellation);
   const Address address = parseUrl(baseUrl_);
   const SocketGuard fd(
       connectLoopback({.host = address.host,
                        .port = address.port,
-                       .timeoutMs = timeoutMs_}));
+                       .timeoutMs = timeoutMs_,
+                       .cancellation = cancellation}));
   if (fd.get() < 0)
     throw std::runtime_error("argus-tts unreachable at " + baseUrl_);
+  std::stop_callback cancel(cancellation, [&fd] { ::shutdown(fd.get(), SHUT_RDWR); });
 
   const std::string head = requestHead(request, address);
-  sendAll(fd.get(), head + request.body);
+  sendAll({.fd = fd.get(), .data = head + request.body, .cancellation = cancellation});
 
   const auto deadline =
       std::chrono::steady_clock::now() +
@@ -378,14 +433,21 @@ void TtsHttpClient::stream(
 
   std::string wire;
   auto recvMore = [&]() -> bool {
-    if (std::chrono::steady_clock::now() >= deadline)
-      return false;
-    char buffer[16384];
-    const auto n = ::recv(fd.get(), buffer, sizeof(buffer), 0);
-    if (n <= 0)
-      return false;
-    wire.append(buffer, static_cast<size_t>(n));
-    return true;
+    std::array<char, 16384> buffer{};
+    for (;;) {
+      checkCancellation(cancellation);
+      if (std::chrono::steady_clock::now() >= deadline)
+        return false;
+      const auto n = ::recv(fd.get(), buffer.data(), buffer.size(), 0);
+      const int error = errno;
+      checkCancellation(cancellation);
+      if (n < 0 && error == EINTR)
+        continue;
+      if (n <= 0)
+        return false;
+      wire.append(buffer.data(), static_cast<size_t>(n));
+      return true;
+    }
   };
 
   while (wire.find("\r\n\r\n") == std::string::npos) {
@@ -403,6 +465,7 @@ void TtsHttpClient::stream(
 
   std::string::size_type cursor = parsed.bodyStart;
   for (;;) {
+    checkCancellation(cancellation);
     std::string::size_type lineEnd = wire.find("\r\n", cursor);
     while (lineEnd == std::string::npos) {
       if (!recvMore())
@@ -426,16 +489,19 @@ void TtsHttpClient::stream(
       if (!recvMore())
         throw std::runtime_error("argus-tts chunked body truncated");
     }
+    checkCancellation(cancellation);
     onChunk(wire.data() + dataStart, size);
+    checkCancellation(cancellation);
     cursor = dataStart + size + 2;
   }
 }
 
-float TtsHttpClient::defaultSpeed() const
+float TtsHttpClient::defaultSpeed(std::stop_token cancellation) const
 {
   const RawResponse response = exchange(
       {.method = "GET", .path = "/tts/v1/config", .body = "",
-       .closeConnection = true});
+       .closeConnection = true},
+      cancellation);
   Json::Value json;
   Json::Reader reader;
   if (!reader.parse(response.body, json) || !json["info"].isObject() ||
@@ -444,11 +510,12 @@ float TtsHttpClient::defaultSpeed() const
   return json["info"]["defaultSpeed"].asFloat();
 }
 
-int TtsHttpClient::sampleRate() const
+int TtsHttpClient::sampleRate(std::stop_token cancellation) const
 {
   const RawResponse response = exchange(
       {.method = "GET", .path = "/tts/v1/config", .body = "",
-       .closeConnection = true});
+       .closeConnection = true},
+      cancellation);
   Json::Value json;
   Json::Reader reader;
   if (!reader.parse(response.body, json) || !json["info"].isObject() ||
@@ -457,32 +524,55 @@ int TtsHttpClient::sampleRate() const
   return json["info"]["sampleRate"].asInt();
 }
 
-std::vector<float> TtsHttpClient::synthesize(const TtsRequest& req) const
+std::vector<float> TtsHttpClient::synthesize(const TtsRequest& req,
+                                             std::stop_token cancellation) const
 {
+  checkCancellation(cancellation);
   const RawResponse response =
       exchange({.method = "POST",
                 .path = "/tts/v1/synthesize",
                 .body = jsonBody(req),
-                .closeConnection = true});
+                .closeConnection = true},
+               cancellation);
+  checkCancellation(cancellation);
   return pcmFromBytes(response.body);
 }
 
 void TtsHttpClient::synthesizeStream(const TtsRequest& req,
                                      TtsChunkCallback onChunk) const
 {
+  synthesizeStream({.request = req, .onChunk = std::move(onChunk), .cancellation = {}});
+}
+
+void TtsHttpClient::synthesizeStream(const TtsRequest& req,
+                                     TtsChunkCallback onChunk,
+                                     std::stop_token cancellation) const
+{
+  synthesizeStream({.request = req, .onChunk = std::move(onChunk), .cancellation = cancellation});
+}
+
+void TtsHttpClient::synthesizeStream(TtsRemoteStreamInput input) const
+{
+  const auto& req = input.request;
+  const auto& onChunk = input.onChunk;
+  const auto& cancellation = input.cancellation;
+  checkCancellation(cancellation);
   std::vector<float> pending;
   stream({.method = "POST",
           .path = "/tts/v1/synthesize-stream",
           .body = jsonBody(req),
           .closeConnection = false},
-         [&pending, &onChunk](const char* data, size_t size) {
+         {.onChunk = [&pending, &onChunk, &cancellation](const char* data, size_t size) {
+           checkCancellation(cancellation);
            if (size % sizeof(float) != 0)
              throw std::runtime_error(
                  "argus-tts stream chunk is not float32-aligned");
            pending.resize(size / sizeof(float));
            std::memcpy(pending.data(), data, size);
+           checkCancellation(cancellation);
            onChunk(pending);
-         });
+         },
+          .cancellation = cancellation});
 }
 
 std::shared_ptr<argus::tts::Client> TtsClient::rpcClient() const
@@ -504,51 +594,72 @@ std::shared_ptr<argus::tts::Client> TtsClient::rpcClient() const
   return client;
 }
 
-float TtsClient::defaultSpeed() const
+float TtsClient::defaultSpeed(std::stop_token cancellation) const
 {
+  checkCancellation(cancellation);
   if (const auto client = rpcClient())
-    return client->capabilities().defaultSpeed;
+    return client->capabilities(cancellation).defaultSpeed;
   const auto config = TtsRemoteConfig::resolve();
   if (!config.enabled())
     throw std::runtime_error("tts.remote_url is not configured");
-  return TtsHttpClient(config.url, config.timeoutMs).defaultSpeed();
+  return TtsHttpClient(config.url, config.timeoutMs).defaultSpeed(cancellation);
 }
 
-int TtsClient::sampleRate() const
+int TtsClient::sampleRate(std::stop_token cancellation) const
 {
+  checkCancellation(cancellation);
   if (const auto client = rpcClient())
-    return client->capabilities().sampleRate;
+    return client->capabilities(cancellation).sampleRate;
   const auto config = TtsRemoteConfig::resolve();
   if (!config.enabled())
     throw std::runtime_error("tts.remote_url is not configured");
-  return TtsHttpClient(config.url, config.timeoutMs).sampleRate();
+  return TtsHttpClient(config.url, config.timeoutMs).sampleRate(cancellation);
 }
 
-std::vector<float> TtsClient::synthesize(const TtsRequest& req) const
+std::vector<float> TtsClient::synthesize(const TtsRequest& req,
+                                           std::stop_token cancellation) const
 {
+  checkCancellation(cancellation);
   if (!ConfigService::getString("tts.grpc_target").empty()) {
     std::vector<float> samples;
     synthesizeStream(req, [&samples](const std::vector<float>& chunk) {
       samples.insert(samples.end(), chunk.begin(), chunk.end());
-    });
+    }, cancellation);
+    checkCancellation(cancellation);
     return samples;
   }
   const auto config = TtsRemoteConfig::resolve();
   if (!config.enabled())
     throw std::runtime_error("tts.remote_url is not configured");
-  return TtsHttpClient(config.url, config.timeoutMs).synthesize(req);
+  return TtsHttpClient(config.url, config.timeoutMs).synthesize(req, cancellation);
 }
 
 void TtsClient::synthesizeStream(const TtsRequest& req,
                                  TtsChunkCallback onChunk) const
 {
+  synthesizeStream({.request = req, .onChunk = std::move(onChunk), .cancellation = {}});
+}
+
+void TtsClient::synthesizeStream(const TtsRequest& req,
+                                 TtsChunkCallback onChunk,
+                                 std::stop_token cancellation) const
+{
+  synthesizeStream({.request = req, .onChunk = std::move(onChunk), .cancellation = cancellation});
+}
+
+void TtsClient::synthesizeStream(TtsRemoteStreamInput input) const
+{
+  const auto& req = input.request;
+  auto& onChunk = input.onChunk;
+  const auto& cancellation = input.cancellation;
+  checkCancellation(cancellation);
   if (const auto client = rpcClient()) {
     client->synthesize({.text = req.text,
                         .voice = req.voiceId,
                         .language = langCode(req.lang),
                         .speed = req.speed,
                         .quality = static_cast<argus::tts::Quality>(req.quality),
-                        .cancellation = {},
+                        .cancellation = cancellation,
                         .onChunk = [callback = std::move(onChunk)](argus::tts::AudioChunk chunk) {
                           callback(chunk.samples);
                           return true;
@@ -559,7 +670,7 @@ void TtsClient::synthesizeStream(const TtsRequest& req,
   if (!config.enabled())
     throw std::runtime_error("tts.remote_url is not configured");
   TtsHttpClient(config.url, config.timeoutMs)
-      .synthesizeStream(req, std::move(onChunk));
+      .synthesizeStream(std::move(input));
 }
 
 bool TtsClient::remote() const
