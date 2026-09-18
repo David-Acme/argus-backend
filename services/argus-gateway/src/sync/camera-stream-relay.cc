@@ -1,6 +1,6 @@
 #include "camera-stream-relay.hxx"
 
-#include <config/app-config.hxx>
+#include <gateway-errors.hxx>
 #include <filter/jwt/jwt-filter.hxx>
 #include <shared/exceptions/response-exception.hxx>
 #include <shared/services/config-service/config-service.hxx>
@@ -94,10 +94,7 @@ drogon::Task<bool> CameraStreamRelay::forwardText(const SyncFrameInput& input)
 
   auto session = sessionFor(conn);
   if (session->failed)
-    throw ResponseException(
-        {.message = "Camera stream unavailable",
-         .statusCode = 503,
-         .errorCode = AppConfig::ERROR_CODE_SERVICE_UNAVAILABLE});
+    throw ResponseException(503, GatewayErrors::CameraStreamUnavailable);
   if (session->closing)
     co_return true;
 
@@ -109,10 +106,7 @@ drogon::Task<bool> CameraStreamRelay::forwardText(const SyncFrameInput& input)
 
   if (session->pending.size() >= kPendingLimit) {
     session->failed = true;
-    throw ResponseException(
-        {.message = "Camera stream queue overflow",
-         .statusCode = 503,
-         .errorCode = AppConfig::ERROR_CODE_SERVICE_UNAVAILABLE});
+    throw ResponseException(503, GatewayErrors::CameraStreamQueueOverflow);
   }
   session->pending.push_back(std::string(raw));
   if (!session->connecting) {

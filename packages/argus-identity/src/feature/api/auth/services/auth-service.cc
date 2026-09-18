@@ -1,6 +1,5 @@
 #include "auth-service.hxx"
 
-#include <config/app-config.hxx>
 #include <array>
 #include <ctime>
 #include <drogon/drogon.h>
@@ -16,7 +15,9 @@
 #include <string_view>
 #include <shared/contracts/identity-change-sink.hxx>
 #include <shared/contracts/sync-operation.hxx>
+#include <identity-errors.hxx>
 #include <shared/exceptions/response-exception.hxx>
+
 #include <shared/services/config-service/config-service.hxx>
 #include <shared/services/face/face-service.hxx>
 #include <shared/services/sqlite/db-service.hxx>
@@ -106,22 +107,16 @@ AuthService::login(LoginDto body, const LoginDeviceInput& device) const
   auto personId =
       co_await FaceService::instance().identifyAsync(std::move(body.image));
   if (!personId) {
-    throw ResponseException({.message = "Face not recognized",
-                             .statusCode = 401,
-                             .errorCode = AppConfig::ERROR_CODE_UNAUTHORIZED});
+    throw ResponseException(401, IdentityErrors::FaceNotRecognized);
   }
 
   auto person = co_await personRepository_.findById(*personId);
   if (!person || !person->userId)
-    throw ResponseException({.message = "Face not recognized",
-                             .statusCode = 401,
-                             .errorCode = AppConfig::ERROR_CODE_UNAUTHORIZED});
+    throw ResponseException(401, IdentityErrors::FaceNotRecognized);
 
   auto user = co_await userRepository_.findById(*person->userId);
   if (!user || !user->isActive)
-    throw ResponseException({.message = "Face not recognized",
-                             .statusCode = 401,
-                             .errorCode = AppConfig::ERROR_CODE_UNAUTHORIZED});
+    throw ResponseException(401, IdentityErrors::FaceNotRecognized);
 
   co_return co_await issueSession({.userId = user->id,
                                    .personId = *personId,
@@ -134,17 +129,13 @@ AuthService::registerUser(RegisterDto body,
                           const LoginDeviceInput& device) const
 {
   if (!ConfigService::getBool("pairing.paired"))
-    throw ResponseException({.message = "Server is not paired yet",
-                             .statusCode = 409,
-                             .errorCode = AppConfig::ERROR_CODE_CONFLICT});
+    throw ResponseException(409, IdentityErrors::ServerNotPaired);
 
   const auto portraitImage = body.image;
   auto face =
       co_await FaceService::instance().extractImageAsync(std::move(body.image));
   if (!face) {
-    throw ResponseException({.message = "Face could not be extracted",
-                             .statusCode = 422,
-                             .errorCode = AppConfig::ERROR_CODE_BAD_REQUEST});
+    throw ResponseException(422, IdentityErrors::FaceExtractionFailed);
   }
 
   auto existing =
@@ -153,16 +144,11 @@ AuthService::registerUser(RegisterDto body,
   if (existing && existing->second >= 0.80F) {
     auto person = co_await personRepository_.findById(existing->first);
     if (!person || !person->userId)
-      throw ResponseException({.message = "Face already registered",
-                               .statusCode = 409,
-                               .errorCode = AppConfig::ERROR_CODE_CONFLICT});
+      throw ResponseException(409, IdentityErrors::FaceAlreadyRegistered);
 
     auto user = co_await userRepository_.findById(*person->userId);
     if (!user || !user->isActive)
-      throw ResponseException(
-          {.message = "Face not recognized",
-           .statusCode = 401,
-           .errorCode = AppConfig::ERROR_CODE_UNAUTHORIZED});
+      throw ResponseException(401, IdentityErrors::FaceNotRecognized);
 
     auto session = co_await issueSession({.userId = user->id,
                                           .personId = person->id,
@@ -183,17 +169,13 @@ AuthService::registerUser(RegisterDto body,
   UserRole role = UserRole::Owner;
   if (!isInitialOwner) {
     if (body.inviteCode.empty())
-      throw ResponseException({.message = "A valid invitation is required",
-                               .statusCode = 403,
-                               .errorCode = AppConfig::ERROR_CODE_FORBIDDEN});
+      throw ResponseException(403, IdentityErrors::InvitationRequired);
     invitationHash = InvitationFeatureService::hashToken(body.inviteCode);
     invitation = co_await invitationRepository_.findByTokenHash(invitationHash);
     const int64_t now = std::time(nullptr);
     if (!invitation || invitation->revokedAt || invitation->expiresAt <= now ||
         invitation->redemptionCount >= invitation->maxRedemptions) {
-      throw ResponseException({.message = "Invitation is invalid or expired",
-                               .statusCode = 404,
-                               .errorCode = AppConfig::ERROR_CODE_NOT_FOUND});
+      throw ResponseException(404, IdentityErrors::InvitationInvalidOrExpired);
     }
     role = invitation->role;
   }
@@ -241,18 +223,14 @@ AuthService::registerUser(RegisterDto body,
     if (isInitialOwner && !userCount.empty() &&
         userCount.front()[0].as<int64_t>() > 0) {
       transaction->rollback();
-      throw ResponseException({.message = "An owner already exists",
-                               .statusCode = 409,
-                               .errorCode = AppConfig::ERROR_CODE_CONFLICT});
+      throw ResponseException(409, IdentityErrors::OwnerAlreadyExists);
     }
     if (!isInitialOwner) {
       const auto consumed = co_await transaction->execSqlCoro(
           user_enrollment_query::TRY_CONSUME.data(), invitationHash, now);
       if (consumed.affectedRows() != 1) {
         transaction->rollback();
-        throw ResponseException({.message = "Invitation is invalid or expired",
-                                 .statusCode = 404,
-                                 .errorCode = AppConfig::ERROR_CODE_NOT_FOUND});
+        throw ResponseException(404, IdentityErrors::InvitationInvalidOrExpired);
       }
     }
 
@@ -282,10 +260,7 @@ AuthService::registerUser(RegisterDto body,
   const bool indexed = co_await BlockingTask<bool>(
       [indexFuture] { return indexFuture->get(); });
   if (!indexed)
-    throw ResponseException(
-        {.message = "Could not index enrolled face",
-         .statusCode = 503,
-         .errorCode = AppConfig::ERROR_CODE_SERVICE_UNAVAILABLE});
+    throw ResponseException(503, IdentityErrors::EnrolledFaceIndexFailed);
 
   co_await privatePortraitService_.store(userId, portraitImage);
 
@@ -351,10 +326,7 @@ AuthService::createDeviceLogin(const LoginDeviceInput& device) const
 {
   std::array<unsigned char, 32> buf{};
   if (RAND_bytes(buf.data(), buf.size()) != 1)
-    throw ResponseException(
-        {.message = "Failed to generate login challenge",
-         .statusCode = 500,
-         .errorCode = AppConfig::ERROR_CODE_SERVICE_UNAVAILABLE});
+    throw ResponseException(500, IdentityErrors::LoginChallengeGenerationFailed);
 
   std::ostringstream hex;
   for (unsigned char b : buf)
@@ -380,21 +352,15 @@ AuthService::approveDeviceLogin(const std::string& challengeId,
 {
   auto challenge = co_await challengeRepository_.findByChallengeId(challengeId);
   if (!challenge || challenge->status != "pending")
-    throw ResponseException({.message = "Challenge not found",
-                             .statusCode = 404,
-                             .errorCode = AppConfig::ERROR_CODE_NOT_FOUND});
+    throw ResponseException(404, IdentityErrors::ChallengeNotFound);
   if (challenge->expiresAt <= std::time(nullptr)) {
     co_await challengeRepository_.remove(challengeId);
-    throw ResponseException({.message = "Challenge expired",
-                             .statusCode = 404,
-                             .errorCode = AppConfig::ERROR_CODE_NOT_FOUND});
+    throw ResponseException(404, IdentityErrors::ChallengeExpired);
   }
 
   auto user = co_await userRepository_.findById(approvingUserId);
   if (!user || !user->isActive)
-    throw ResponseException({.message = "Face not recognized",
-                             .statusCode = 401,
-                             .errorCode = AppConfig::ERROR_CODE_UNAUTHORIZED});
+    throw ResponseException(401, IdentityErrors::FaceNotRecognized);
 
   std::map<std::string, std::string> claims;
   claims["sub"] = std::to_string(approvingUserId);
@@ -486,9 +452,7 @@ AuthService::refreshToken(const RefreshTokenInput& input) const
 
   auto claims = jwtService_.verifyRefresh(body.refreshToken);
   if (claims.empty())
-    throw ResponseException({.message = "Invalid or expired refresh token",
-                             .statusCode = 401,
-                             .errorCode = AppConfig::ERROR_CODE_UNAUTHORIZED});
+    throw ResponseException(401, IdentityErrors::RefreshTokenInvalidOrExpired);
 
   int64_t userId = 0;
   auto it = claims.find("sub");
@@ -500,37 +464,27 @@ AuthService::refreshToken(const RefreshTokenInput& input) const
     }
   }
   if (userId == 0)
-    throw ResponseException({.message = "Invalid or expired refresh token",
-                             .statusCode = 401,
-                             .errorCode = AppConfig::ERROR_CODE_UNAUTHORIZED});
+    throw ResponseException(401, IdentityErrors::RefreshTokenInvalidOrExpired);
 
   auto existing =
       co_await refreshTokenRepository_.findByRefreshToken(userId,
                                                           body.refreshToken);
   if (!existing || !existing->isValid || existing->isUsed)
-    throw ResponseException({.message = "Invalid or expired refresh token",
-                             .statusCode = 401,
-                             .errorCode = AppConfig::ERROR_CODE_UNAUTHORIZED});
+    throw ResponseException(401, IdentityErrors::RefreshTokenInvalidOrExpired);
 
   if (existing->expiresAt <= std::time(nullptr)) {
     LOG_WARN << "AuthService: expired refresh token for user " << userId;
-    throw ResponseException({.message = "Invalid or expired refresh token",
-                             .statusCode = 401,
-                             .errorCode = AppConfig::ERROR_CODE_UNAUTHORIZED});
+    throw ResponseException(401, IdentityErrors::RefreshTokenInvalidOrExpired);
   }
 
   if (!existing->userAgent.empty() && !userAgent.empty() &&
       existing->userAgent != userAgent) {
     LOG_WARN << "AuthService: user agent mismatch on refresh for user " << userId;
-    throw ResponseException({.message = "Invalid or expired refresh token",
-                             .statusCode = 401,
-                             .errorCode = AppConfig::ERROR_CODE_UNAUTHORIZED});
+    throw ResponseException(401, IdentityErrors::RefreshTokenInvalidOrExpired);
   }
 
   if (!co_await refreshTokenRepository_.markUsed(existing->id))
-    throw ResponseException({.message = "Invalid or expired refresh token",
-                             .statusCode = 401,
-                             .errorCode = AppConfig::ERROR_CODE_UNAUTHORIZED});
+    throw ResponseException(401, IdentityErrors::RefreshTokenInvalidOrExpired);
   co_await refreshTokenRepository_.pruneStale(userId);
 
   std::map<std::string, std::string> newClaims;
@@ -587,9 +541,7 @@ AuthService::updateMe(int64_t userId,
 {
   const auto before = co_await userRepository_.findById(userId);
   if (!before)
-    throw ResponseException({.message = "User not found",
-                             .statusCode = 404,
-                             .errorCode = AppConfig::ERROR_CODE_NOT_FOUND});
+    throw ResponseException(404, IdentityErrors::UserNotFound);
   auto user = co_await userRepository_.update(
       userId, {.name = name, .lastName = std::nullopt, .role = std::nullopt,
                .isActive = std::nullopt});
@@ -618,10 +570,7 @@ AuthService::issueDeviceCredential(int64_t userId,
 
   std::array<unsigned char, 32> buf{};
   if (RAND_bytes(buf.data(), buf.size()) != 1)
-    throw ResponseException(
-        {.message = "Failed to issue device credential",
-         .statusCode = 500,
-         .errorCode = AppConfig::ERROR_CODE_SERVICE_UNAVAILABLE});
+    throw ResponseException(500, IdentityErrors::DeviceCredentialIssuanceFailed);
 
   std::ostringstream hex;
   for (unsigned char b : buf)

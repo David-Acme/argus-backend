@@ -1,6 +1,6 @@
 #include "productivity-sync-source.hxx"
 
-#include <config/app-config.hxx>
+#include <gateway-errors.hxx>
 #include <json/value.h>
 #include <shared/contracts/sync-filter.hxx>
 #include <shared/enums.hxx>
@@ -265,10 +265,7 @@ std::optional<Json::Value> lastDeletedOf(const Rows& rows)
 
 ResponseException unavailable()
 {
-  return ResponseException({.message = "Productivity sync unavailable",
-                            .statusCode = 503,
-                            .errorCode =
-                                AppConfig::ERROR_CODE_SERVICE_UNAVAILABLE});
+  return ResponseException(503, GatewayErrors::ProductivitySyncUnavailable);
 }
 
 std::vector<Json::Value> createdRows(const PullTableResponse& response)

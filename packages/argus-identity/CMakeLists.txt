@@ -79,6 +79,11 @@ if(NOT TARGET argus::sdk-identity)
                      ${CMAKE_BINARY_DIR}/argus-contracts EXCLUDE_FROM_ALL)
 endif()
 
+if(NOT TARGET contract::identity)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../package/contracts/identity
+                     ${CMAKE_CURRENT_BINARY_DIR}/contracts/identity)
+endif()
+
 find_package(Drogon CONFIG REQUIRED)
 find_package(jwt-cpp REQUIRED)
 find_package(nlohmann_json REQUIRED)
@@ -165,6 +170,7 @@ if(ARGUS_NCNN_TARGET AND TARGET ${ARGUS_NCNN_TARGET})
         ${CMAKE_BINARY_DIR}/third_party/ncnn/src)
 endif()
 
+target_link_libraries(argus_identity PRIVATE contract::identity)
 target_compile_options(argus_identity PRIVATE -Wall -Wextra)
 
 # The unit suites ride identity-migration: the root tree adds the tool

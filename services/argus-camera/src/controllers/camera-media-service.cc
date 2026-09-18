@@ -1,6 +1,6 @@
 #include "camera-media-service.hxx"
 
-#include <config/app-config.hxx>
+#include <camera-errors.hxx>
 #include <filter/jwt/jwt-filter.hxx>
 #include <shared/access/role-access.hxx>
 #include <shared/exceptions/response-exception.hxx>
@@ -50,22 +50,16 @@ drogon::Task<bool> CameraMediaService::handleText(const SyncFrameInput& input)
             {.role = ctx.role,
              .table = TableName::Camera,
              .perm = RolePermission::Read}))
-      throw ResponseException({.message = "Forbidden",
-                               .statusCode = 403,
-                               .errorCode = AppConfig::ERROR_CODE_FORBIDDEN});
+      throw ResponseException(403, CameraErrors::Forbidden);
 
     const int64_t cameraId = payload.get("cameraId", 0).asInt64();
     if (cameraId <= 0)
-      throw ResponseException({.message = "Invalid cameraId",
-                               .statusCode = 400,
-                               .errorCode = AppConfig::ERROR_CODE_BAD_REQUEST});
+      throw ResponseException(400, CameraErrors::InvalidCameraId);
     const std::string quality = payload.get("quality", "main").asString();
 
     const auto camera = co_await cameraRepository_.findById(cameraId);
     if (!camera)
-      throw ResponseException({.message = "Camera not found",
-                               .statusCode = 404,
-                               .errorCode = AppConfig::ERROR_CODE_NOT_FOUND});
+      throw ResponseException(404, CameraErrors::CameraNotFound);
 
     auto sink = sinkFor(conn);
     if (!sink) {
@@ -77,10 +71,7 @@ drogon::Task<bool> CameraMediaService::handleText(const SyncFrameInput& input)
       storeSink(conn, sink);
     }
     if (sink->subscriptions() >= maxSubsPerClient_)
-      throw ResponseException(
-          {.message = "Too many camera subscriptions",
-           .statusCode = 429,
-           .errorCode = AppConfig::ERROR_CODE_TOO_MANY_REQUESTS});
+      throw ResponseException(429, CameraErrors::TooManyCameraSubscriptions);
 
     StreamHub::SubscribeInput input;
     input.sink = sink;
@@ -90,11 +81,11 @@ drogon::Task<bool> CameraMediaService::handleText(const SyncFrameInput& input)
     const uint16_t subId = StreamHub::instance().subscribe(input, error);
     if (subId == 0) {
       const bool viewerLimit = error.rfind("too_many_viewers", 0) == 0;
-      throw ResponseException(
-          {.message = error.empty() ? "subscribe_failed" : error,
-           .statusCode = viewerLimit ? 429 : 503,
-           .errorCode = viewerLimit ? AppConfig::ERROR_CODE_TOO_MANY_REQUESTS
-                                    : AppConfig::ERROR_CODE_SERVICE_UNAVAILABLE});
+      auto subscriptionError = viewerLimit ? CameraErrors::TooManyViewers
+                                           : CameraErrors::SubscribeFailed;
+      if (!error.empty())
+        subscriptionError.message = error;
+      throw ResponseException(viewerLimit ? 429 : 503, subscriptionError);
     }
     sink->addSubscription();
 

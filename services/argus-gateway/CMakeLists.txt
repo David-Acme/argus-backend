@@ -91,6 +91,11 @@ endif()
 
 find_package(doctest REQUIRED)
 
+if(NOT TARGET contract::gateway)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../package/contracts/gateway
+                     ${CMAKE_CURRENT_BINARY_DIR}/contracts/gateway)
+endif()
+
 add_library(gateway-core STATIC
     ${GATEWAY_SRC_ROOT}/identity/identity-config.cc
     # mdns is gateway-only, so it is a source here rather than a module.
@@ -123,6 +128,7 @@ target_link_libraries(gateway-core PUBLIC argus_identity argus_sync
     argus::cert mdns::mdns argus::room argus::socket
     argus::sdk-voice argus::sdk-identity argus::sdk-camera
     argus::sdk-productivity argus::sdk-notification)
+target_link_libraries(gateway-core PRIVATE contract::gateway)
 
 target_compile_options(gateway-core PRIVATE -Wall -Wextra)
 

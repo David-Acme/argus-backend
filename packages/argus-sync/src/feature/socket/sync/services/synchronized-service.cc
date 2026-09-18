@@ -1,6 +1,6 @@
 #include "synchronized-service.hxx"
 
-#include <config/app-config.hxx>
+#include <sync-errors.hxx>
 #include <shared/access/role-access.hxx>
 #include <shared/contracts/sync-operation.hxx>
 #include <shared/exceptions/response-exception.hxx>
@@ -152,10 +152,7 @@ drogon::Task<Json::Value> SynchronizedService::syncUserNotification(
     const SynchronizedBodyDto& dto, const JwtContext& ctx) const
 {
   if (!notificationSyncSource_)
-    throw ResponseException(
-        {.message = "Notification sync unavailable",
-         .statusCode = 503,
-         .errorCode = AppConfig::ERROR_CODE_SERVICE_UNAVAILABLE});
+    throw ResponseException(503, SyncErrors::NotificationSyncUnavailable);
 
   Json::Value node(Json::objectValue);
 
@@ -254,10 +251,7 @@ drogon::Task<Json::Value> SynchronizedService::sync(const SynchronizedDto& body,
 
     if (const auto cameraTable = cameraSyncTableFor(table)) {
       if (!cameraSyncSource_ || !cameraSyncSource_->serves(*cameraTable))
-        throw ResponseException(
-            {.message = "Camera sync unavailable",
-             .statusCode = 503,
-             .errorCode = AppConfig::ERROR_CODE_SERVICE_UNAVAILABLE});
+        throw ResponseException(503, SyncErrors::CameraSyncUnavailable);
       const auto source = cameraSyncSource_->sourceFor(*cameraTable, ctx);
       out[name] =
           co_await syncWithRepo({.repo = *source, .dto = *(body.*member)}, {});
@@ -267,10 +261,7 @@ drogon::Task<Json::Value> SynchronizedService::sync(const SynchronizedDto& body,
     if (const auto productivityTable = productivitySyncTableFor(table)) {
       if (!productivitySyncSource_ ||
           !productivitySyncSource_->serves(*productivityTable))
-        throw ResponseException(
-            {.message = "Productivity sync unavailable",
-             .statusCode = 503,
-             .errorCode = AppConfig::ERROR_CODE_SERVICE_UNAVAILABLE});
+        throw ResponseException(503, SyncErrors::ProductivitySyncUnavailable);
       const auto source =
           productivitySyncSource_->sourceFor(*productivityTable, ctx);
       out[name] =

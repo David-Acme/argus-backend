@@ -143,6 +143,18 @@ static FormatProbe validFormat()
     return probe;
 }
 
+TEST_CASE("ValidationException owns field errors independently of the validator")
+{
+    ValidationErrors errors{{"name", {"Name is required"}}};
+    const ValidationException exception(errors);
+    errors.clear();
+    const auto copy = exception;
+    CHECK(copy.statusCode() == 422);
+    CHECK(std::string(copy.what()) == "Validation failed");
+    REQUIRE(copy.errors().contains("name"));
+    CHECK(copy.errors().at("name").front() == "Name is required");
+}
+
 TEST_CASE("validation-dsl accepts a fully valid dto")
 {
     CHECK_FALSE(probeErrors(validProbe()).has_value());

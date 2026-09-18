@@ -124,10 +124,7 @@ void AppConfig::handleException(
   }
 
   if (const auto* re = dynamic_cast<const ResponseException*>(&e)) {
-    respCallback(
-        ApiResponse::error({.statusCode = re->statusCode(),
-                            .errorCode = re->errorCode(),
-                            .message = re->what()}));
+    respCallback(ApiResponse::error(*re));
     return;
   }
 

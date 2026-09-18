@@ -1,6 +1,9 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
 
+#include <config/app-config.hxx>
+#include <response-exception.hxx>
+#include <tts-errors.hxx>
 #include <drogon/HttpResponse.h>
 #include <drogon/HttpTypes.h>
 #include <json/json.h>
@@ -82,6 +85,79 @@ TEST_CASE("ApiResponse::error carries the status, code and message")
     CHECK(body["info"].isNull());
     CHECK(body["errors"]["code"] == "NOT_FOUND");
     CHECK(body["errors"]["message"] == "Path not found");
+}
+
+TEST_CASE("ApiResponse::error serializes single and array ResponseException errors")
+{
+    const auto single = bodyOf(ApiResponse::error(ResponseException(
+        503, TtsErrors::TtsNotLoaded)));
+    CHECK(single["status"] == 503);
+    CHECK(single["errors"]["code"] == "TTS_NOT_LOADED");
+    CHECK(single["errors"]["message"] == "Text-to-speech engine is not loaded");
+
+    const auto multiple = bodyOf(ApiResponse::error(ResponseException(
+        422, std::vector<ResponseError>{
+                 {.code = "UNSUPPORTED_LANGUAGE", .message = "Unsupported language"},
+                 {.code = "VOICE_UNKNOWN", .message = "Unknown voice"}})));
+    CHECK(multiple["status"] == 422);
+    CHECK(multiple["errors"].isArray());
+    CHECK(multiple["errors"][0]["code"] == "UNSUPPORTED_LANGUAGE");
+    CHECK(multiple["errors"][1]["message"] == "Unknown voice");
+}
+
+TEST_CASE("ResponseException owns definition messages and preserves legacy codes")
+{
+    std::string message = "Temporary message";
+    const ErrorDefinition definition{.code = ErrorCode::BadRequest,
+                                     .message = message};
+    const ResponseException error(400, definition);
+    message.assign("Changed message");
+    const auto copy = error;
+    CHECK(std::string(copy.what()) == "Temporary message");
+    CHECK(copy.errorCode() == "BAD_REQUEST");
+    CHECK(copy.statusCode() == 400);
+    CHECK(std::get<ResponseError>(copy.errors()).message == "Temporary message");
+
+    const ResponseException legacy({.message = "Domain failure",
+                                    .statusCode = 409,
+                                    .errorCode = "EXISTING_DOMAIN_CODE"});
+    CHECK(legacy.errorCode() == "EXISTING_DOMAIN_CODE");
+    CHECK(legacy.statusCode() == 409);
+    const ResponseException plain(std::string("Default failure"));
+    CHECK(plain.errorCode() == "ERROR");
+    CHECK(plain.statusCode() == 400);
+}
+
+TEST_CASE("ResponseException owns error lists and rejects empty lists")
+{
+    std::vector<ResponseError> errors{
+        {.code = "FIRST", .message = "First failure"},
+        {.code = "SECOND", .message = "Second failure"}};
+    const ResponseException error(422, errors);
+    errors.clear();
+    const auto copy = error;
+    CHECK(copy.errorCode() == "FIRST");
+    CHECK(std::string(copy.what()) == "First failure");
+    CHECK(std::get<std::vector<ResponseError>>(copy.errors()).size() == 2);
+    CHECK_THROWS_AS((ResponseException(422, std::vector<ResponseError>{})),
+                    std::invalid_argument);
+}
+
+TEST_CASE("AppConfig preserves ResponseException arrays at the HTTP boundary")
+{
+    const ResponseException error(422, std::vector<ResponseError>{
+        {.code = "FIRST", .message = "First failure"},
+        {.code = "SECOND", .message = "Second failure"}});
+    drogon::HttpResponsePtr response;
+    AppConfig::handleException(error, {}, [&](const auto& result) {
+        response = result;
+    });
+    REQUIRE(response);
+    CHECK(response->getStatusCode() == drogon::k422UnprocessableEntity);
+    const auto body = bodyOf(response);
+    CHECK(body["errors"].isArray());
+    CHECK(body["errors"].size() == 2);
+    CHECK(body["info"].isNull());
 }
 
 TEST_CASE("ApiResponse::validationError returns 422 with the field errors")

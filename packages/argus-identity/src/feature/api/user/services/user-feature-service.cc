@@ -1,7 +1,7 @@
 #include "user-feature-service.hxx"
 
-#include <config/app-config.hxx>
 #include <shared/contracts/identity-change-sink.hxx>
+#include <identity-errors.hxx>
 #include <shared/contracts/sync-operation.hxx>
 #include <shared/dtos/socket-emit/socket-emit-dto.hxx>
 #include <shared/exceptions/response-exception.hxx>
@@ -27,9 +27,7 @@ UserFeatureService::list(int64_t actorId, UserRole actorRole) const
 
   const auto user = co_await repository_.findById(actorId);
   if (!user)
-    throw ResponseException({.message = "User not found",
-                             .statusCode = 404,
-                             .errorCode = AppConfig::ERROR_CODE_NOT_FOUND});
+    throw ResponseException(404, IdentityErrors::UserNotFound);
   co_return std::vector<UserSchema>{*user};
 }
 
@@ -38,15 +36,11 @@ UserFeatureService::update(const UserManagementUpdateInput& input) const
 {
   const auto existing = co_await repository_.findById(input.targetUserId);
   if (!existing)
-    throw ResponseException({.message = "User not found",
-                             .statusCode = 404,
-                             .errorCode = AppConfig::ERROR_CODE_NOT_FOUND});
+    throw ResponseException(404, IdentityErrors::UserNotFound);
 
   if (removesLastActiveOwner(*existing, input) &&
       !co_await repository_.hasOtherActiveOwner(existing->id)) {
-    throw ResponseException({.message = "At least one active owner is required",
-                             .statusCode = 409,
-                             .errorCode = AppConfig::ERROR_CODE_CONFLICT});
+    throw ResponseException(409, IdentityErrors::ActiveOwnerRequired);
   }
 
   const auto updated = co_await repository_.update(
@@ -56,9 +50,7 @@ UserFeatureService::update(const UserManagementUpdateInput& input) const
        .role = input.body.role,
        .isActive = input.body.isActive});
   if (updated.id == 0)
-    throw ResponseException({.message = "User not found",
-                             .statusCode = 404,
-                             .errorCode = AppConfig::ERROR_CODE_NOT_FOUND});
+    throw ResponseException(404, IdentityErrors::UserNotFound);
 
   if (updated.role != existing->role) {
     socketService_.replaceRoleRooms({
@@ -112,9 +104,7 @@ UserFeatureService::deactivate(int64_t targetUserId, int64_t actorId) const
 {
   const auto existing = co_await repository_.findById(targetUserId);
   if (!existing)
-    throw ResponseException({.message = "User not found",
-                             .statusCode = 404,
-                             .errorCode = AppConfig::ERROR_CODE_NOT_FOUND});
+    throw ResponseException(404, IdentityErrors::UserNotFound);
   if (!existing->isActive)
     co_return;
 

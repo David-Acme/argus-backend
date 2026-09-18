@@ -84,6 +84,11 @@ if(PROJECT_IS_TOP_LEVEL)
     endif()
 endif()
 
+if(NOT TARGET contract::sync)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../package/contracts/sync
+                     ${CMAKE_CURRENT_BINARY_DIR}/contracts/sync)
+endif()
+
 set(ARGUS_SYNC_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/feature/socket/sync/socket/sync-forwarder.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/src/feature/socket/sync/socket/sync-socket.cc
@@ -133,6 +138,8 @@ target_link_libraries(argus_sync
         argus::room
         argus_common
         Drogon::Drogon)
+
+target_link_libraries(argus_sync PRIVATE contract::sync)
 
 target_compile_options(argus_sync PRIVATE -Wall -Wextra)
 

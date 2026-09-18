@@ -1,6 +1,6 @@
 #include "camera-sync-source.hxx"
 
-#include <config/app-config.hxx>
+#include <gateway-errors.hxx>
 #include <json/value.h>
 #include <shared/contracts/sync-filter.hxx>
 #include <shared/enums.hxx>
@@ -128,10 +128,7 @@ Json::Value deletedRowToJson(const argus::camera::v1::DeletedRow& row)
 
 ResponseException unavailable()
 {
-  return ResponseException({.message = "Camera sync unavailable",
-                            .statusCode = 503,
-                            .errorCode =
-                                AppConfig::ERROR_CODE_SERVICE_UNAVAILABLE});
+  return ResponseException(503, GatewayErrors::CameraSyncUnavailable);
 }
 } // namespace
 

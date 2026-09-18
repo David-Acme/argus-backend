@@ -6,6 +6,7 @@
 #include <shared/contracts/user-directory.hxx>
 #include <shared/dtos/socket-emit/socket-emit-dto.hxx>
 #include <shared/exceptions/response-exception.hxx>
+#include <sync-errors.hxx>
 
 drogon::Task<void>
 SyncService::refreshContext(const drogon::WebSocketConnectionPtr& conn) const
@@ -24,9 +25,7 @@ SyncService::refreshContext(const drogon::WebSocketConnectionPtr& conn) const
                              .isActive = user->isActive};
 
   if (!resolved || !resolved->isActive)
-    throw ResponseException({.message = "User account is disabled",
-                             .statusCode = 401,
-                             .errorCode = AppConfig::ERROR_CODE_UNAUTHORIZED});
+    throw ResponseException(401, SyncErrors::UserAccountDisabled);
 
   ctx.name = resolved->name + " " + resolved->lastName;
   ctx.role = resolved->role;
@@ -71,9 +70,7 @@ SyncService::handleMessage(const SyncFrameInput& input) const
   const Json::Value& obj = input.message;
 
   if (!obj.isMember("type") || !obj["type"].isString())
-    throw ResponseException({.message = "Missing message type",
-                             .statusCode = 400,
-                             .errorCode = AppConfig::ERROR_CODE_BAD_REQUEST});
+    throw ResponseException(400, SyncErrors::MissingMessageType);
 
   co_await refreshContext(conn);
 
@@ -100,15 +97,11 @@ SyncService::handleMessage(const SyncFrameInput& input) const
   if (type.rfind("camera:", 0) == 0 || type.rfind("voice:", 0) == 0) {
     const bool handled = forwarder_ && co_await forwarder_->forwardText(input);
     if (!handled)
-      throw ResponseException({.message = "Unknown message type",
-                               .statusCode = 400,
-                               .errorCode = AppConfig::ERROR_CODE_BAD_REQUEST});
+      throw ResponseException(400, SyncErrors::UnknownMessageType);
     co_return;
   }
 
-  throw ResponseException({.message = "Unknown message type",
-                           .statusCode = 400,
-                           .errorCode = AppConfig::ERROR_CODE_BAD_REQUEST});
+  throw ResponseException(400, SyncErrors::UnknownMessageType);
 }
 
 void SyncService::handleBinary(const drogon::WebSocketConnectionPtr& conn,

@@ -78,6 +78,11 @@ endif()
 
 find_package(doctest REQUIRED)
 
+if(NOT TARGET contract::camera)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../package/contracts/camera
+                     ${CMAKE_CURRENT_BINARY_DIR}/contracts/camera)
+endif()
+
 # The camera-domain sync contract (argus.camera.v1.SyncService); consumers
 # link argus::sdk-camera.
 if(NOT TARGET argus::sdk-camera)
@@ -184,6 +189,7 @@ target_link_libraries(camera-core PUBLIC argus_sync argus::sqlite
     opencv::opencv ${ARGUS_NCNN_TARGET} argus::hardware-profile-gpu
     argus_common
     OpenSSL::SSL OpenSSL::Crypto)
+target_link_libraries(camera-core PRIVATE contract::camera)
 
 target_compile_options(camera-core PRIVATE -Wall -Wextra)
 

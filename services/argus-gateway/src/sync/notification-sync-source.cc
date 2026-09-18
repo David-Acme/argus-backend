@@ -2,7 +2,7 @@
 
 #include <shared/services/config-service/config-service.hxx>
 
-#include <config/app-config.hxx>
+#include <gateway-errors.hxx>
 #include <shared/enums.hxx>
 #include <shared/exceptions/response-exception.hxx>
 #include <shared/utils/json-util/json-util.hxx>
@@ -52,10 +52,7 @@ Json::Value rowToJson(const NotificationRow& row)
 
 ResponseException unavailable()
 {
-  return ResponseException({.message = "Notification sync unavailable",
-                            .statusCode = 503,
-                            .errorCode =
-                                AppConfig::ERROR_CODE_SERVICE_UNAVAILABLE});
+  return ResponseException(503, GatewayErrors::NotificationSyncUnavailable);
 }
 } // namespace
 

@@ -40,6 +40,16 @@ endif()
 # ncnn-free for every service that links it.
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/src/shared/wrapper/hardware-profile)
 
+if(NOT TARGET pkg::response)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../package/response
+                     ${CMAKE_CURRENT_BINARY_DIR}/package/response)
+endif()
+
+if(NOT TARGET pkg::response-http)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../package/response/src/http
+                     ${CMAKE_CURRENT_BINARY_DIR}/package/response/src/http)
+endif()
+
 argus_module(NAME common
     SOURCES
         src/config/app-config.cc
@@ -55,7 +65,6 @@ argus_module(NAME common
         src/shared/validation/validation_dsl.hxx
         src/shared/validation/validator.hxx
         src/shared/exceptions/response-exception.hxx
-        src/shared/wrapper/api-response/api-response.cc
         src/shared/wrapper/api-response/api-response.hxx
         src/shared/wrapper/thread-budget/thread-budget.cc
         src/shared/wrapper/thread-budget/thread-budget.hxx
@@ -92,6 +101,7 @@ argus_module(NAME common
 
 target_link_libraries(argus_common
     PUBLIC
+        pkg::response-http
         Drogon::Drogon
         tomlplusplus::tomlplusplus
         cnats::nats_static
@@ -131,6 +141,12 @@ foreach(TEST_NAME IN ITEMS api-response-test enums-test role-access-test
     target_compile_options(${TEST_NAME} PRIVATE -Wall -Wextra)
     add_test(NAME ${TEST_NAME} COMMAND ${TEST_NAME})
 endforeach()
+
+if(NOT TARGET contract::tts)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../package/contracts/tts
+                     ${CMAKE_CURRENT_BINARY_DIR}/package/contracts/tts)
+endif()
+target_link_libraries(api-response-test PRIVATE contract::tts)
 
 get_target_property(DOCTEST_INCLUDE_DIRS doctest::doctest
                     INTERFACE_INCLUDE_DIRECTORIES)

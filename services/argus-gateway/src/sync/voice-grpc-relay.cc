@@ -2,6 +2,7 @@
 
 #include <config/app-config.hxx>
 #include <filter/jwt/jwt-filter.hxx>
+#include <gateway-errors.hxx>
 #include <shared/exceptions/response-exception.hxx>
 #include <shared/repositories/user/user-repository.hxx>
 #include <shared/services/config-service/config-service.hxx>
@@ -190,10 +191,7 @@ drogon::Task<bool> VoiceGrpcRelay::forwardText(const SyncFrameInput& input)
   if (!session)
     co_return false;
   if (session->failed)
-    throw ResponseException(
-        {.message = "Legacy sync unavailable",
-         .statusCode = 503,
-         .errorCode = AppConfig::ERROR_CODE_SERVICE_UNAVAILABLE});
+    throw ResponseException(503, GatewayErrors::LegacySyncUnavailable);
   if (session->closing)
     co_return true;
 
@@ -213,10 +211,7 @@ drogon::Task<bool> VoiceGrpcRelay::forwardText(const SyncFrameInput& input)
     const bool up = co_await BlockingTask<bool>{
         [this] { return client_->waitConnected(kConnectProbeTimeoutMs); }};
     if (!up)
-      throw ResponseException(
-          {.message = "Legacy sync unavailable",
-           .statusCode = 503,
-           .errorCode = AppConfig::ERROR_CODE_SERVICE_UNAVAILABLE});
+      throw ResponseException(503, GatewayErrors::LegacySyncUnavailable);
 
     session->stream = client_->connect(
         identity, std::make_shared<StreamObserver>(conn, session));

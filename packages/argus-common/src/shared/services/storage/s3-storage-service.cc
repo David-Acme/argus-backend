@@ -1,9 +1,9 @@
 #include "s3-storage-service.hxx"
 
 #include "s3-signing.hxx"
+#include "storage-errors.hxx"
 
 #include <array>
-#include <config/app-config.hxx>
 #include <chrono>
 #include <ctime>
 #include <drogon/HttpClient.h>
@@ -162,9 +162,7 @@ drogon::Task<S3StoredObject>
 S3StorageService::put(const S3PutInput& input) const
 {
   if (input.objectKey.empty() || input.body.empty())
-    throw ResponseException({.message = "Invalid object upload",
-                             .statusCode = 422,
-                             .errorCode = AppConfig::ERROR_CODE_BAD_REQUEST});
+    throw ResponseException(400, StorageErrors::InvalidObjectUpload);
 
   const auto config = loadConfig();
   static_cast<void>(co_await send({.config = config,
@@ -183,9 +181,7 @@ drogon::Task<S3StoredObject>
 S3StorageService::putPortrait(int64_t userId, const std::string& image) const
 {
   if (userId <= 0 || image.empty())
-    throw ResponseException({.message = "Invalid portrait upload",
-                             .statusCode = 422,
-                             .errorCode = AppConfig::ERROR_CODE_BAD_REQUEST});
+    throw ResponseException(400, StorageErrors::InvalidPortraitUpload);
 
   co_return co_await put({.objectKey = "portraits/" + std::to_string(userId) +
                                        "/" + randomKeyPart() + ".jpg",
@@ -197,9 +193,7 @@ drogon::Task<std::string>
 S3StorageService::get(const std::string& objectKey) const
 {
   if (objectKey.empty())
-    throw ResponseException({.message = "Invalid portrait object",
-                             .statusCode = 422,
-                             .errorCode = AppConfig::ERROR_CODE_BAD_REQUEST});
+    throw ResponseException(400, StorageErrors::InvalidPortraitObject);
   co_return co_await send({.config = loadConfig(),
                            .method = "GET",
                            .objectKey = objectKey,
