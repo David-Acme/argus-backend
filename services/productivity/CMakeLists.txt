@@ -62,9 +62,9 @@ if(PROJECT_IS_TOP_LEVEL)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/config
                          ${CMAKE_BINARY_DIR}/config)
     endif()
-    if(NOT TARGET argus::json)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/json
-                         ${CMAKE_BINARY_DIR}/json)
+    if(NOT TARGET argus::text)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/text
+                         ${CMAKE_BINARY_DIR}/text)
     endif()
     if(NOT TARGET argus::nats)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/nats
@@ -206,8 +206,7 @@ foreach(TEST_NAME IN ITEMS productivity-schema-test productivity-migration-test)
     argus::audit
     argus::auth
     argus::config
-    argus::hash
-    argus::json
+    argus::text
     argus::nats
     argus::socket
     argus::sqlite
@@ -239,7 +238,7 @@ target_link_libraries(productivity-controller-test PRIVATE
     argus::auth
     argus::access
     argus::config
-    argus::json
+    argus::text
     argus::socket
     argus::sqlite
     argus::validation

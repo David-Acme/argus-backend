@@ -11,9 +11,9 @@ if(NOT TARGET argus::access)
                      ${CMAKE_CURRENT_BINARY_DIR}/access)
 endif()
 
-if(NOT TARGET argus::json)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../json
-                     ${CMAKE_CURRENT_BINARY_DIR}/json)
+if(NOT TARGET argus::text)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../text
+                     ${CMAKE_CURRENT_BINARY_DIR}/text)
 endif()
 
 if(NOT TARGET pkg::response)
@@ -54,7 +54,7 @@ target_link_libraries(argus_audit PUBLIC
     argus::socket
     argus::sqlite
     argus::access
-    argus::json
+    argus::text
     pkg::response
     Drogon::Drogon
     nlohmann_json::nlohmann_json)

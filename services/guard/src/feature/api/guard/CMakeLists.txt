@@ -11,7 +11,7 @@ argus_module(NAME guard-api
         dtos/update-guard-mode-dto.cc
     DEPENDS
         argus::access
-        argus::json
+        argus::text
         argus::threading
         argus::validation
         pkg::response

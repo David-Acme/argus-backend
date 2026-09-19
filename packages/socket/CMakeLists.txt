@@ -28,9 +28,9 @@ if(NOT TARGET argus::access)
                      ${CMAKE_BINARY_DIR}/access)
 endif()
 
-if(NOT TARGET argus::json)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../json
-                     ${CMAKE_BINARY_DIR}/json)
+if(NOT TARGET argus::text)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../text
+                     ${CMAKE_BINARY_DIR}/text)
 endif()
 
 if(NOT TARGET argus::room)
@@ -62,7 +62,7 @@ target_link_libraries(argus_socket PUBLIC
     argus::nats
     contract::sync
     argus::access
-    argus::json
+    argus::text
     Drogon::Drogon
     nlohmann_json::nlohmann_json)
 
@@ -74,7 +74,7 @@ find_package(doctest REQUIRED)
 add_executable(sync-change-test tests/unit/sync-change-test.cc)
 target_link_libraries(sync-change-test PRIVATE
     argus::socket
-    argus::json
+    argus::text
     argus::nats
     doctest::doctest)
 target_compile_options(sync-change-test PRIVATE -Wall -Wextra)

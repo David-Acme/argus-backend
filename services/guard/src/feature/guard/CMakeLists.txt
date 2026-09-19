@@ -12,8 +12,7 @@ argus_module(NAME guard
     DEPENDS
         argus::access
         argus::config
-        argus::hash
-        argus::json
+        argus::text
         argus::nats
         argus::storage
         argus::threading

@@ -16,9 +16,9 @@ if(NOT TARGET argus::config)
                      ${CMAKE_CURRENT_BINARY_DIR}/config)
 endif()
 
-if(NOT TARGET argus::json)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../json
-                     ${CMAKE_CURRENT_BINARY_DIR}/json)
+if(NOT TARGET argus::text)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../text
+                     ${CMAKE_CURRENT_BINARY_DIR}/text)
 endif()
 
 argus_module(NAME nats
@@ -33,7 +33,7 @@ argus_module(NAME nats
         cnats::nats_static
         Drogon::Drogon
         argus::config
-        argus::json)
+        argus::text)
 
 target_compile_options(argus_nats PRIVATE -Wall -Wextra)
 

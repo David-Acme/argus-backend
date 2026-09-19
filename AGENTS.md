@@ -707,8 +707,8 @@ Run the full orchestrator when changing shared build infrastructure.
 | `packages/audit/src/shared/services/sync-audit/` | Central facade to publish module/user diffs after feature mutations |
 | `packages/sync/src/shared/services/notification/` | Per-user notifications: `Add` on create and granular user-audit on mark-as-read |
 | `services/notification/src/shared/services/notification-token/` | Push tokens per session |
-| `packages/json/src/shared/utils/json-diff/` | Diff JSON + snapshot (`JsonDiff`) |
-| `packages/json/src/shared/utils/json-util/` | `jsonToString`/`jsonFromString` |
+| `packages/text/src/shared/utils/json-diff/` | Diff JSON + snapshot (`JsonDiff`) |
+| `packages/text/src/shared/utils/json-util/` | `jsonToString`/`jsonFromString` |
 | `packages/sync/src/feature/socket/sync/` | `SyncSocket` + `SyncService` + `SynchronizedService` + DTOs |
 | `packages/response/src/http/` | Standardized API response builder |
 | `packages/threading/src/shared/wrapper/blocking-task/` | Coroutine awaiter for off-loop heavy work |

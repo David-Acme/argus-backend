@@ -57,13 +57,9 @@ if(PROJECT_IS_TOP_LEVEL)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/config
                          ${CMAKE_BINARY_DIR}/config)
     endif()
-    if(NOT TARGET argus::hash)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/hash
-                         ${CMAKE_BINARY_DIR}/hash)
-    endif()
-    if(NOT TARGET argus::json)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/json
-                         ${CMAKE_BINARY_DIR}/json)
+    if(NOT TARGET argus::text)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/text
+                         ${CMAKE_BINARY_DIR}/text)
     endif()
     if(NOT TARGET argus::nats)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/nats
@@ -205,7 +201,7 @@ set_target_properties(guard-dlq-service-live-test PROPERTIES
     EXCLUDE_FROM_ALL FALSE)
 target_link_libraries(guard-dlq-service-live-test PRIVATE
     argus::guard
-    argus::json
+    argus::text
     argus::nats
     argus::sqlite
     doctest::doctest)
@@ -233,8 +229,7 @@ target_link_libraries(vlm-client-live-test PRIVATE
     argus::access
     argus::auth
     argus::config
-    argus::hash
-    argus::json
+    argus::text
     argus::nats
     argus::sqlite
     argus::storage
@@ -260,8 +255,7 @@ target_link_libraries(guard-assessment-live-test PRIVATE
     argus::access
     argus::auth
     argus::config
-    argus::hash
-    argus::json
+    argus::text
     argus::nats
     argus::sqlite
     argus::storage

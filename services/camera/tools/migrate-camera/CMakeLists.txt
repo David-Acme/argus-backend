@@ -9,7 +9,7 @@ add_library(camera-migration STATIC
 target_include_directories(camera-migration
     PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}
-        ${CMAKE_CURRENT_SOURCE_DIR}/../../../../packages/hash/src
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../../../packages/text/src
         ${CMAKE_CURRENT_SOURCE_DIR}/../../../../packages/sqlite/src
 )
 

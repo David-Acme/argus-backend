@@ -59,13 +59,9 @@ if(PROJECT_IS_TOP_LEVEL)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/config
                          ${CMAKE_BINARY_DIR}/config)
     endif()
-    if(NOT TARGET argus::hash)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/hash
-                         ${CMAKE_BINARY_DIR}/hash)
-    endif()
-    if(NOT TARGET argus::json)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/json
-                         ${CMAKE_BINARY_DIR}/json)
+    if(NOT TARGET argus::text)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/text
+                         ${CMAKE_BINARY_DIR}/text)
     endif()
     if(NOT TARGET argus::nats)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/nats
@@ -275,8 +271,7 @@ target_link_libraries(camera-core PUBLIC
     argus::auth
     argus::config
     argus::hardware-profile
-    argus::hash
-    argus::json
+    argus::text
     argus::nats
     argus::storage
     argus::threading
@@ -333,8 +328,7 @@ foreach(TEST_NAME IN LISTS CAMERA_UNIT_TESTS)
     argus::auth
     argus::config
     argus::hardware-profile
-    argus::hash
-    argus::json
+    argus::text
     argus::nats
     argus::room
     argus::socket
@@ -419,7 +413,7 @@ target_link_libraries(camera-talk-cutover-test PRIVATE
     argus_sync
     argus::audio
     argus::config
-    argus::json
+    argus::text
     argus::threading
     argus::validation
     pkg::response
@@ -474,8 +468,7 @@ target_link_libraries(camera-action-rpc-test PRIVATE
     argus::camera-action-command
     argus::audio
     argus::config
-    argus::hash
-    argus::json
+    argus::text
     argus::sqlite
     argus::threading
     argus::validation

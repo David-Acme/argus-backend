@@ -49,9 +49,9 @@ if(NOT TARGET argus::config)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../config
                      ${CMAKE_BINARY_DIR}/config)
 endif()
-if(NOT TARGET argus::json)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../json
-                     ${CMAKE_BINARY_DIR}/json)
+if(NOT TARGET argus::text)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../text
+                     ${CMAKE_BINARY_DIR}/text)
 endif()
 if(NOT TARGET argus::nats)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../nats
@@ -203,7 +203,7 @@ argus_module(NAME identity
                 argus::access
         argus::config
         argus::hardware-profile
-        argus::json
+        argus::text
         argus::nats
         argus::storage
         argus::threading

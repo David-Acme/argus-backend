@@ -9,7 +9,7 @@ add_library(identity-migration STATIC
 target_include_directories(identity-migration
     PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}
-        ${CMAKE_CURRENT_SOURCE_DIR}/../../../hash/src
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../../text/src
         ${CMAKE_CURRENT_SOURCE_DIR}/../../../sqlite/src
 )
 

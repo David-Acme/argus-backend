@@ -29,17 +29,13 @@ if(NOT TARGET argus::config)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../config
                      ${CMAKE_CURRENT_BINARY_DIR}/config)
 endif()
-if(NOT TARGET argus::json)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../json
-                     ${CMAKE_CURRENT_BINARY_DIR}/json)
+if(NOT TARGET argus::text)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../text
+                     ${CMAKE_CURRENT_BINARY_DIR}/text)
 endif()
 if(NOT TARGET argus::nats)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../nats
                      ${CMAKE_CURRENT_BINARY_DIR}/nats)
-endif()
-if(NOT TARGET argus::text)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../text
-                     ${CMAKE_CURRENT_BINARY_DIR}/text)
 endif()
 if(NOT TARGET argus::threading)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../threading

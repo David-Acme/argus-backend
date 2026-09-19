@@ -29,13 +29,9 @@ if(NOT TARGET argus::access)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../access
                      ${CMAKE_BINARY_DIR}/access)
 endif()
-if(NOT TARGET argus::hash)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../hash
-                     ${CMAKE_BINARY_DIR}/hash)
-endif()
-if(NOT TARGET argus::json)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../json
-                     ${CMAKE_BINARY_DIR}/json)
+if(NOT TARGET argus::text)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../text
+                     ${CMAKE_BINARY_DIR}/text)
 endif()
 if(NOT TARGET argus::nats)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../nats
@@ -171,8 +167,7 @@ target_link_libraries(argus_sync PUBLIC
     argus::auth
     contract::sync
     argus::access
-    argus::hash
-    argus::json
+    argus::text
     argus::nats
     argus::sqlite
     argus::validation

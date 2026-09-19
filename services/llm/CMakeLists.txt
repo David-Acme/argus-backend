@@ -68,13 +68,9 @@ if(NOT TARGET Drogon::Drogon)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/config
                          ${CMAKE_BINARY_DIR}/config)
     endif()
-    if(NOT TARGET argus::hash)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/hash
-                         ${CMAKE_BINARY_DIR}/hash)
-    endif()
-    if(NOT TARGET argus::json)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/json
-                         ${CMAKE_BINARY_DIR}/json)
+    if(NOT TARGET argus::text)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/text
+                         ${CMAKE_BINARY_DIR}/text)
     endif()
     if(NOT TARGET argus::nats)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/nats
@@ -182,8 +178,7 @@ target_include_directories(encounter-consumer PUBLIC
     ${LLM_SRC_ROOT})
 
 target_link_libraries(encounter-consumer PUBLIC
-    argus::hash
-    argus::json
+    argus::text
     argus::nats
     memory-core)
 

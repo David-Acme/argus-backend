@@ -10,9 +10,9 @@ if(NOT TARGET argus::access)
                      ${CMAKE_CURRENT_BINARY_DIR}/access)
 endif()
 
-if(NOT TARGET argus::json)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../json
-                     ${CMAKE_CURRENT_BINARY_DIR}/json)
+if(NOT TARGET argus::text)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../text
+                     ${CMAKE_CURRENT_BINARY_DIR}/text)
 endif()
 
 if(NOT TARGET Drogon::Drogon)
@@ -28,4 +28,4 @@ target_sources(contract-sync INTERFACE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/shared/contracts/sync-filter.hxx
     ${CMAKE_CURRENT_SOURCE_DIR}/src/shared/contracts/syncable.hxx)
 target_link_libraries(contract-sync INTERFACE pkg::response argus::access
-    argus::json Drogon::Drogon)
+    argus::text Drogon::Drogon)
