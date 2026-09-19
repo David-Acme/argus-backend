@@ -1,6 +1,11 @@
 cmake_minimum_required(VERSION 3.25)
 project(argus-tunnel VERSION 1.0.0 LANGUAGES CXX)
 
+# enable_testing() must precede the first add_subdirectory: the flag
+# propagates into every subtree, and a directory that misses it gets no
+# CTestTestfile — the tests of anything added beneath it then never run.
+enable_testing()
+
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -8,14 +13,24 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 set(TUNNEL_SRC_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
 if(NOT TARGET Drogon::Drogon)
-    # Standalone build (outside the root project's configure): add the
-    # shared foundation tunnel-core links, argus-common.
+    # Standalone configure: this service owns the whole build, so it adds the
+    # packages it links (the leaves that used to arrive through argus-common).
     find_package(Drogon CONFIG REQUIRED)
     find_package(tomlplusplus REQUIRED)
     find_package(nlohmann_json REQUIRED)
     find_package(cnats CONFIG REQUIRED)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/common
-                     ${CMAKE_BINARY_DIR}/common)
+    if(NOT TARGET argus::config)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/config
+                         ${CMAKE_BINARY_DIR}/config)
+    endif()
+    if(NOT TARGET argus::nats)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/nats
+                         ${CMAKE_BINARY_DIR}/nats)
+    endif()
+    if(NOT TARGET pkg::response)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/response
+                         ${CMAKE_BINARY_DIR}/response)
+    endif()
 endif()
 
 find_package(doctest REQUIRED)
@@ -36,7 +51,7 @@ add_library(tunnel-core STATIC
 
 target_include_directories(tunnel-core PUBLIC ${TUNNEL_SRC_ROOT})
 
-target_link_libraries(tunnel-core PUBLIC argus_common)
+target_link_libraries(tunnel-core PUBLIC argus::config)
 
 target_compile_options(tunnel-core PRIVATE -Wall -Wextra)
 
@@ -45,7 +60,7 @@ target_link_libraries(argus-tunnel-client PRIVATE tunnel-core)
 target_compile_options(argus-tunnel-client PRIVATE -Wall -Wextra)
 
 add_executable(argus-tunnel-relay ${TUNNEL_SRC_ROOT}/main-relay.cc)
-target_link_libraries(argus-tunnel-relay PRIVATE tunnel-core)
+target_link_libraries(argus-tunnel-relay PRIVATE tunnel-core argus::nats)
 target_compile_options(argus-tunnel-relay PRIVATE -Wall -Wextra)
 
 get_target_property(DOCTEST_INCLUDE_DIRS doctest::doctest
@@ -114,7 +129,6 @@ set_target_properties(service-config-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 set_target_properties(tunnel-push-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 set_target_properties(tunnel-health-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
-enable_testing()
 add_test(NAME framing-test COMMAND framing-test)
 add_test(NAME tunnel-integration-test COMMAND tunnel-integration-test)
 add_test(NAME tunnel-reconnect-test COMMAND tunnel-reconnect-test)

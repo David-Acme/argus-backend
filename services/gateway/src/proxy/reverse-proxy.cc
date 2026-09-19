@@ -1,7 +1,7 @@
 #include "reverse-proxy.hxx"
 
 #include <config/app-config.hxx>
-#include <shared/wrapper/api-response/api-response.hxx>
+#include <http/api-response.hxx>
 
 using namespace drogon;
 using namespace gateway_proxy;

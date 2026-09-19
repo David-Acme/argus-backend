@@ -1,7 +1,7 @@
 #include "camera-control-controller.hxx"
 
 #include <config/app-config.hxx>
-#include <shared/wrapper/api-response/api-response.hxx>
+#include <http/api-response.hxx>
 
 namespace
 {

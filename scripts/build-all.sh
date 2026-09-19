@@ -7,7 +7,6 @@ set -E
 source "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
 
 PROJECTS=(
-  packages/common
   packages/cert
   packages/socket
   packages/sqlite

@@ -1,6 +1,11 @@
 cmake_minimum_required(VERSION 3.25)
 project(argus-identity VERSION 1.0.0 LANGUAGES CXX)
 
+# enable_testing() must precede the first add_subdirectory: the flag
+# propagates into every subtree, and a directory that misses it gets no
+# CTestTestfile — the tests of anything added beneath it then never run.
+enable_testing()
+
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -14,35 +19,65 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 include(${CMAKE_CURRENT_SOURCE_DIR}/../../cmake/argus-module.cmake)
 
-# Standalone configure (top level): add the sibling packages the identity
-# module links, the vendored sqlite-vec the vec repositories ride and the
-# ncnn build the face services compile against. Every guard keeps the root
-# and consumer builds in charge. The empty cq-bridge stand-ins skip the
-# bridge: standalone protobuf comes from the system, not from conan, so the
-# bridge entry symbol would interpose libgrpc's own callbacks (see
-# argus-contracts/CONTEXT.md).
+# The packages this module links, the vendored sqlite-vec the vec repositories
+# ride and the ncnn build the face services compile against. The leaves are
+# declared here rather than by the consumer: they are a DAG, so their guards
+# keep the root tree and every other consumer in charge. The sibling packages
+# stay behind PROJECT_IS_TOP_LEVEL because this module and argus_cert link each
+# other: only the project at the top of the configure provides them. The empty
+# cq-bridge stand-ins skip the bridge: standalone protobuf comes from the
+# system, not from conan, so the bridge entry symbol would interpose libgrpc's
+# own callbacks (see argus-contracts/CONTEXT.md).
 if(NOT TARGET argus::hardware-profile-gpu)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../hardware/src/shared/wrapper/hardware-profile
                      ${CMAKE_BINARY_DIR}/hardware-profile)
 endif()
+if(NOT TARGET argus_client_grpc_bridge_entry)
+    add_library(argus_client_grpc_bridge_entry INTERFACE)
+    add_library(argus_client_grpc_bridge_exit INTERFACE)
+endif()
+if(NOT TARGET sqlite-vec)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../third_party/sqlite-vec
+                     ${CMAKE_BINARY_DIR}/third_party/sqlite-vec)
+endif()
+set(ARGUS_SQLITE_VEC_TARGET sqlite-vec)
+if(NOT TARGET argus::access)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../access
+                     ${CMAKE_BINARY_DIR}/access)
+endif()
+if(NOT TARGET argus::config)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../config
+                     ${CMAKE_BINARY_DIR}/config)
+endif()
+if(NOT TARGET argus::json)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../json
+                     ${CMAKE_BINARY_DIR}/json)
+endif()
+if(NOT TARGET argus::nats)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../nats
+                     ${CMAKE_BINARY_DIR}/nats)
+endif()
+if(NOT TARGET argus::storage)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../storage
+                     ${CMAKE_BINARY_DIR}/storage)
+endif()
+if(NOT TARGET argus::threading)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../threading
+                     ${CMAKE_BINARY_DIR}/threading)
+endif()
+if(NOT TARGET argus::validation)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../validation
+                     ${CMAKE_BINARY_DIR}/validation)
+endif()
+if(NOT TARGET pkg::response)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../response
+                     ${CMAKE_BINARY_DIR}/response)
+endif()
 if(PROJECT_IS_TOP_LEVEL)
-    if(NOT TARGET argus_client_grpc_bridge_entry)
-        add_library(argus_client_grpc_bridge_entry INTERFACE)
-        add_library(argus_client_grpc_bridge_exit INTERFACE)
-    endif()
-    if(NOT TARGET argus_common)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../common
-                         ${CMAKE_BINARY_DIR}/common)
-    endif()
     if(NOT TARGET argus::room)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../room
                          ${CMAKE_BINARY_DIR}/room)
     endif()
-    if(NOT TARGET sqlite-vec)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../third_party/sqlite-vec
-                         ${CMAKE_BINARY_DIR}/third_party/sqlite-vec)
-    endif()
-    set(ARGUS_SQLITE_VEC_TARGET sqlite-vec)
     if(NOT TARGET argus::sqlite)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../sqlite
                          ${CMAKE_BINARY_DIR}/sqlite)
@@ -63,18 +98,24 @@ if(PROJECT_IS_TOP_LEVEL)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../auth
                          ${CMAKE_BINARY_DIR}/auth)
     endif()
-    set(NCNN_BUILD_BENCHMARK OFF CACHE BOOL "" FORCE)
-    set(NCNN_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
-    set(NCNN_BUILD_TOOLS OFF CACHE BOOL "" FORCE)
-    set(NCNN_BUILD_TESTS OFF CACHE BOOL "" FORCE)
-    set(NCNN_OPENMP ON CACHE BOOL "" FORCE)
-    set(NCNN_AVX2 ON CACHE BOOL "" FORCE)
-    set(NCNN_VULKAN ON CACHE BOOL "" FORCE)
-    set(NCNN_ENABLE_PIC ON CACHE BOOL "" FORCE)
+endif()
+set(NCNN_BUILD_BENCHMARK OFF CACHE BOOL "" FORCE)
+set(NCNN_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(NCNN_BUILD_TOOLS OFF CACHE BOOL "" FORCE)
+set(NCNN_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(NCNN_OPENMP ON CACHE BOOL "" FORCE)
+set(NCNN_AVX2 ON CACHE BOOL "" FORCE)
+set(NCNN_VULKAN ON CACHE BOOL "" FORCE)
+set(NCNN_ENABLE_PIC ON CACHE BOOL "" FORCE)
+# Guarded, not conditional on being top level: every consumer that adds this
+# package adds ncnn first (cert and sync above the identity add, the services
+# in their standalone blocks), so the guard is what keeps this from binding
+# the same binary directory twice.
+if(NOT TARGET ncnn)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../third_party/ncnn
                      ${CMAKE_BINARY_DIR}/third_party/ncnn EXCLUDE_FROM_ALL)
-    set(ARGUS_NCNN_TARGET ncnn)
 endif()
+set(ARGUS_NCNN_TARGET ncnn)
 
 # The identity RPC contract (argus.identity.v1) this service serves.
 if(NOT TARGET argus::client-identity)
@@ -92,6 +133,13 @@ find_package(jwt-cpp REQUIRED)
 find_package(nlohmann_json REQUIRED)
 find_package(OpenCV CONFIG REQUIRED)
 find_package(OpenSSL REQUIRED)
+
+# After the find_package block: the tool links Drogon from this scope, so it
+# cannot be declared before Drogon is found.
+if(NOT TARGET identity-migration)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/tools/migrate-identity
+                     ${CMAKE_BINARY_DIR}/identity/tools/migrate-identity)
+endif()
 
 argus_module(NAME identity
     SOURCES
@@ -152,7 +200,15 @@ argus_module(NAME identity
         ../../third_party
         ../../third_party/stb
     DEPENDS
-        argus_common
+                argus::access
+        argus::config
+        argus::hardware-profile
+        argus::json
+        argus::nats
+        argus::storage
+        argus::threading
+        argus::validation
+        pkg::response
         contract::sync
         argus::auth
         argus::client-identity
@@ -177,14 +233,10 @@ endif()
 target_link_libraries(argus_identity PRIVATE contract::identity)
 target_compile_options(argus_identity PRIVATE -Wall -Wextra)
 
-# The unit suites ride identity-migration: the root tree adds the tool
-# folder EXCLUDE_FROM_ALL via its discovery glob, the standalone build adds
-# it here (the CLI executable stays EXCLUDE_FROM_ALL on its own).
-if(PROJECT_IS_TOP_LEVEL AND NOT TARGET identity-migration)
-    add_subdirectory(tools/migrate-identity)
-endif()
+# The unit suites ride identity-migration, so the tool is added in the
+# preamble above, before anything that can reach this line (the CLI executable
+# stays EXCLUDE_FROM_ALL on its own).
 
-enable_testing()
 find_package(doctest REQUIRED)
 
 # The migration suite: schema apply + argus.db -> identity.db verified

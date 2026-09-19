@@ -10,7 +10,13 @@ argus_module(NAME guard
         guard-schema.cc
         guard-service.cc
     DEPENDS
-        argus_common
+        argus::access
+        argus::config
+        argus::hash
+        argus::json
+        argus::nats
+        argus::storage
+        argus::threading
         argus::sqlite
         argus::client-identity
         argus::client-notification

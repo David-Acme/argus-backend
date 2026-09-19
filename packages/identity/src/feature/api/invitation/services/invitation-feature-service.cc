@@ -5,7 +5,7 @@
 #include <openssl/evp.h>
 #include <openssl/rand.h>
 #include <identity-errors.hxx>
-#include <shared/exceptions/response-exception.hxx>
+#include <response-exception.hxx>
 #include <string_view>
 #include <shared/services/cert/cert-service.hxx>
 #include <shared/services/config-service/config-service.hxx>

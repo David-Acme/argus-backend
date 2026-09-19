@@ -5,7 +5,7 @@
 #include <feature/synthesis/domain/tts-service.hxx>
 #include <response-exception.hxx>
 #include <tts-errors.hxx>
-#include <shared/wrapper/api-response/api-response.hxx>
+#include <http/api-response.hxx>
 
 #include <chrono>
 #include <cstring>

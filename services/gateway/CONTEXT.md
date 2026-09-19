@@ -114,7 +114,7 @@ monolith's build set was retired (F6-4).
 - The gateway's standalone Conan/CMake graph is the only build shape. From
   the repository root use `scripts/build-all.sh dev --only argus-gateway`;
   direct builds run Conan, the matching preset and CTest inside the service.
-- Shared packages such as `argus-common`, `argus-identity`, auth, sync and the
+- Shared packages such as `argus-identity`, auth, sync and the
   internal SDKs keep their source declarations in their owner folders. The
   gateway adds those folders and links their named targets rather than
   duplicating source lists.

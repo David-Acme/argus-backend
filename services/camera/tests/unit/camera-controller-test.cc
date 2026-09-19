@@ -9,7 +9,7 @@
 #include <feature/api/zone/controllers/zone-controller.hxx>
 #include <feature/api/zone/dtos/create-zone-dto.hxx>
 #include <filter/jwt/jwt-filter.hxx>
-#include <shared/exceptions/response-exception.hxx>
+#include <response-exception.hxx>
 #include <shared/utils/json-util/json-util.hxx>
 #include <shared/validation/validator.hxx>
 

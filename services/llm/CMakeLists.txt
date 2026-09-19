@@ -1,6 +1,11 @@
 cmake_minimum_required(VERSION 3.25)
 project(argus-llm VERSION 1.0.0 LANGUAGES CXX)
 
+# enable_testing() must precede the first add_subdirectory: the flag
+# propagates into every subtree, and a directory that misses it gets no
+# CTestTestfile — the tests of anything added beneath it then never run.
+enable_testing()
+
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -53,14 +58,43 @@ if(NOT TARGET llama)
 endif()
 
 if(NOT TARGET Drogon::Drogon)
-    # Standalone build (outside the root project's configure): add the
-    # sibling packages the llm module links, argus-common first.
+    # Standalone configure: this service owns the whole build, so it adds
+    # the packages it links — the leaves it uses directly and the sibling
+    # packages that used to arrive through argus-common.
     find_package(Drogon CONFIG REQUIRED)
     find_package(tomlplusplus REQUIRED)
     find_package(nlohmann_json REQUIRED)
-    if(NOT TARGET argus_common)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/common
-                         ${CMAKE_BINARY_DIR}/common)
+    if(NOT TARGET argus::config)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/config
+                         ${CMAKE_BINARY_DIR}/config)
+    endif()
+    if(NOT TARGET argus::hash)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/hash
+                         ${CMAKE_BINARY_DIR}/hash)
+    endif()
+    if(NOT TARGET argus::json)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/json
+                         ${CMAKE_BINARY_DIR}/json)
+    endif()
+    if(NOT TARGET argus::nats)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/nats
+                         ${CMAKE_BINARY_DIR}/nats)
+    endif()
+    if(NOT TARGET argus::threading)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/threading
+                         ${CMAKE_BINARY_DIR}/threading)
+    endif()
+    if(NOT TARGET argus::validation)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/validation
+                         ${CMAKE_BINARY_DIR}/validation)
+    endif()
+    if(NOT TARGET pkg::response)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/response
+                         ${CMAKE_BINARY_DIR}/response)
+    endif()
+    if(NOT TARGET argus::hardware-profile)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/hardware/src/shared/wrapper/hardware-profile
+                         ${CMAKE_BINARY_DIR}/hardware-profile)
     endif()
     if(NOT TARGET argus::phrase)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/phrase
@@ -125,9 +159,13 @@ target_include_directories(llm-core PUBLIC
 # memory-core makes this the brain: the tool loop needs the memory tools in
 # process, and the memory worker gets LlmService without a wire hop.
 target_link_libraries(llm-core PUBLIC
-    argus_common
-    argus::llm-client
+    argus::config
     argus::hardware-profile
+    argus::phrase
+    argus::threading
+    argus::validation
+    pkg::response
+    argus::llm-client
     argus::intent
     memory-core
     Drogon::Drogon
@@ -144,7 +182,9 @@ target_include_directories(encounter-consumer PUBLIC
     ${LLM_SRC_ROOT})
 
 target_link_libraries(encounter-consumer PUBLIC
-    argus_common
+    argus::hash
+    argus::json
+    argus::nats
     memory-core)
 
 target_compile_options(encounter-consumer PRIVATE -Wall -Wextra)
@@ -193,7 +233,6 @@ set_target_properties(argus-tool-bench PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
 # The LLM wire suite opts back into the default build: this folder is added
 # EXCLUDE_FROM_ALL.
-enable_testing()
 find_package(doctest REQUIRED)
 
 add_executable(llm-wire-test tests/unit/llm-wire-test.cc
@@ -213,9 +252,18 @@ target_include_directories(llm-wire-test PRIVATE
 target_compile_definitions(llm-wire-test PRIVATE
     ARGUS_TEST_LLM_MODELS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../../models/llm")
 
-target_link_libraries(llm-wire-test PRIVATE argus_common argus::llm-client
-    argus::hardware-profile argus::intent memory-core
-    ${ARGUS_LLAMA_TARGETS} doctest::doctest)
+target_link_libraries(llm-wire-test PRIVATE
+    argus::config
+    argus::hardware-profile
+    argus::phrase
+    argus::threading
+    argus::validation
+    pkg::response
+    argus::llm-client
+    argus::intent
+    memory-core
+    ${ARGUS_LLAMA_TARGETS}
+    doctest::doctest)
 
 target_compile_options(llm-wire-test PRIVATE -Wall -Wextra)
 

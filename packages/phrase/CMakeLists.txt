@@ -6,6 +6,11 @@
 
 include(${CMAKE_CURRENT_SOURCE_DIR}/../../cmake/argus-module.cmake)
 
+if(NOT TARGET argus::access)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../access
+                     ${CMAKE_CURRENT_BINARY_DIR}/access)
+endif()
+
 argus_module(NAME phrase
     SOURCES
         src/shared/services/memory/phrase-catalog.cc
@@ -14,6 +19,6 @@ argus_module(NAME phrase
     INCLUDES
         src
     DEPENDS
-        argus_common)
+        argus::access)
 
 target_compile_options(argus_phrase PRIVATE -Wall -Wextra)

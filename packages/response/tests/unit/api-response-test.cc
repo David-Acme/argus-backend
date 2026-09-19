@@ -2,12 +2,13 @@
 #include <doctest/doctest.h>
 
 #include <config/app-config.hxx>
+#include <http/api-response.hxx>
 #include <response-exception.hxx>
-#include <tts-errors.hxx>
+
 #include <drogon/HttpResponse.h>
 #include <drogon/HttpTypes.h>
 #include <json/json.h>
-#include <shared/wrapper/api-response/api-response.hxx>
+
 #include <sstream>
 #include <string>
 
@@ -89,11 +90,14 @@ TEST_CASE("ApiResponse::error carries the status, code and message")
 
 TEST_CASE("ApiResponse::error serializes single and array ResponseException errors")
 {
+    // A definition-backed error keeps its catalog code. The wire contracts
+    // assert their own definitions where they live (services/tts).
     const auto single = bodyOf(ApiResponse::error(ResponseException(
-        503, TtsErrors::TtsNotLoaded)));
+        503, ErrorDefinition{.code = ErrorCode::ServiceUnavailable,
+                             .message = "Engine is not loaded"})));
     CHECK(single["status"] == 503);
-    CHECK(single["errors"]["code"] == "TTS_NOT_LOADED");
-    CHECK(single["errors"]["message"] == "Text-to-speech engine is not loaded");
+    CHECK(single["errors"]["code"] == "SERVICE_UNAVAILABLE");
+    CHECK(single["errors"]["message"] == "Engine is not loaded");
 
     const auto multiple = bodyOf(ApiResponse::error(ResponseException(
         422, std::vector<ResponseError>{

@@ -4,7 +4,7 @@
 #include <feature/api/invitation/dtos/create-invitation-dto.hxx>
 #include <feature/api/invitation/dtos/resolve-invitation-dto.hxx>
 #include <filter/jwt/jwt-filter.hxx>
-#include <shared/wrapper/api-response/api-response.hxx>
+#include <http/api-response.hxx>
 
 drogon::Task<drogon::HttpResponsePtr>
 InvitationController::resolve(drogon::HttpRequestPtr req)

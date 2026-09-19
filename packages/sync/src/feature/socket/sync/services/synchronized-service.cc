@@ -3,7 +3,7 @@
 #include <sync-errors.hxx>
 #include <shared/access/role-access.hxx>
 #include <shared/contracts/sync-operation.hxx>
-#include <shared/exceptions/response-exception.hxx>
+#include <response-exception.hxx>
 #include <stdexcept>
 
 namespace

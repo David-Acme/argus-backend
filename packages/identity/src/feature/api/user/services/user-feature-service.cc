@@ -4,7 +4,7 @@
 #include <identity-errors.hxx>
 #include <shared/contracts/sync-operation.hxx>
 #include <shared/dtos/socket-emit/socket-emit-dto.hxx>
-#include <shared/exceptions/response-exception.hxx>
+#include <response-exception.hxx>
 
 namespace
 {

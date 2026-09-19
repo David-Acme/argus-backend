@@ -6,6 +6,16 @@
 
 include(${CMAKE_CURRENT_SOURCE_DIR}/../../../cmake/argus-module.cmake)
 
+if(NOT TARGET argus::config)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../config
+                     ${CMAKE_CURRENT_BINARY_DIR}/config)
+endif()
+
+if(NOT TARGET pkg::response)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../response
+                     ${CMAKE_CURRENT_BINARY_DIR}/response)
+endif()
+
 find_package(Drogon CONFIG REQUIRED)
 
 set(CMAKE_FIND_PACKAGE_TARGETS_GLOBAL TRUE)
@@ -27,7 +37,7 @@ argus_module(NAME tts-client
         .
         src
     DEPENDS
-        argus_common
+        argus::config pkg::response
         contract::tts
         Drogon::Drogon)
 

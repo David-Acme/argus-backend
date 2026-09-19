@@ -1,6 +1,11 @@
 cmake_minimum_required(VERSION 3.25)
 project(argus-productivity VERSION 1.0.0 LANGUAGES CXX)
 
+# enable_testing() must precede the first add_subdirectory: the flag
+# propagates into every subtree, and a directory that misses it gets no
+# CTestTestfile — the tests of anything added beneath it then never run.
+enable_testing()
+
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -9,10 +14,12 @@ include(${CMAKE_CURRENT_SOURCE_DIR}/../../cmake/argus-module.cmake)
 
 set(PRODUCTIVITY_SRC_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
-if(NOT TARGET argus_common)
-    # Standalone build: reuse the root project's libraries and third-party
-    # sqlite-vec so the productivity service links the same objects as the
-    # root-tree build.
+if(PROJECT_IS_TOP_LEVEL)
+    # Standalone configure: this service owns the whole build, so it adds the
+    # packages it links — the leaves it uses directly and the sibling packages
+    # that used to arrive through argus-common — plus the third-party
+    # sqlite-vec, so the productivity service links the same objects as any other
+    # consumer.
     # The substrate still finds the vendored gRPC and would build the cq
     # bridge, whose entry symbol then interposes the identically-named
     # implementation inside libgrpc. Empty stand-ins skip it.
@@ -47,28 +54,66 @@ if(NOT TARGET argus_common)
                      ${CMAKE_BINARY_DIR}/third_party/ncnn EXCLUDE_FROM_ALL)
     set(ARGUS_NCNN_TARGET ncnn)
 
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/common
-                     ${CMAKE_BINARY_DIR}/common)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/sqlite
-                     ${CMAKE_BINARY_DIR}/sqlite)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/audit
-                     ${CMAKE_BINARY_DIR}/audit)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/cert
-                     ${CMAKE_BINARY_DIR}/cert)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/room
-                     ${CMAKE_BINARY_DIR}/room)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/socket
-                     ${CMAKE_BINARY_DIR}/socket)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/auth
-                     ${CMAKE_BINARY_DIR}/auth)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/identity
-                     ${CMAKE_BINARY_DIR}/identity)
+    if(NOT TARGET argus::access)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/access
+                         ${CMAKE_BINARY_DIR}/access)
+    endif()
+    if(NOT TARGET argus::config)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/config
+                         ${CMAKE_BINARY_DIR}/config)
+    endif()
+    if(NOT TARGET argus::json)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/json
+                         ${CMAKE_BINARY_DIR}/json)
+    endif()
+    if(NOT TARGET argus::nats)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/nats
+                         ${CMAKE_BINARY_DIR}/nats)
+    endif()
+    if(NOT TARGET argus::validation)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/validation
+                         ${CMAKE_BINARY_DIR}/validation)
+    endif()
+    if(NOT TARGET pkg::response)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/response
+                         ${CMAKE_BINARY_DIR}/response)
+    endif()
+    if(NOT TARGET argus::sqlite)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/sqlite
+                         ${CMAKE_BINARY_DIR}/sqlite)
+    endif()
+    if(NOT TARGET argus::audit)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/audit
+                         ${CMAKE_BINARY_DIR}/audit)
+    endif()
+    if(NOT TARGET argus::cert)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/cert
+                         ${CMAKE_BINARY_DIR}/cert)
+    endif()
+    if(NOT TARGET argus::room)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/room
+                         ${CMAKE_BINARY_DIR}/room)
+    endif()
+    if(NOT TARGET argus::socket)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/socket
+                         ${CMAKE_BINARY_DIR}/socket)
+    endif()
+    if(NOT TARGET argus::auth)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/auth
+                         ${CMAKE_BINARY_DIR}/auth)
+    endif()
+    if(NOT TARGET argus::identity)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/identity
+                         ${CMAKE_BINARY_DIR}/identity)
+    endif()
     if(NOT TARGET identity-migration)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/identity/tools/migrate-identity
                          ${CMAKE_BINARY_DIR}/identity/tools/migrate-identity)
     endif()
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/sync
-                     ${CMAKE_BINARY_DIR}/sync)
+    if(NOT TARGET argus_sync)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/sync
+                         ${CMAKE_BINARY_DIR}/sync)
+    endif()
 endif()
 
 find_package(doctest REQUIRED)
@@ -151,14 +196,26 @@ endif()
 
 # The unit suites opt back into the default build: this folder is added
 # EXCLUDE_FROM_ALL, and productivity-migration (tools/) stays out of it.
-enable_testing()
 find_package(doctest REQUIRED)
 
 foreach(TEST_NAME IN ITEMS productivity-schema-test productivity-migration-test)
     add_executable(${TEST_NAME} tests/unit/${TEST_NAME}.cc)
     set_target_properties(${TEST_NAME} PROPERTIES EXCLUDE_FROM_ALL FALSE)
-    target_link_libraries(${TEST_NAME} PRIVATE argus_common
-        productivity-migration doctest::doctest)
+        target_link_libraries(${TEST_NAME} PRIVATE
+    argus::access
+    argus::audit
+    argus::auth
+    argus::config
+    argus::hash
+    argus::json
+    argus::nats
+    argus::socket
+    argus::sqlite
+    argus::validation
+    contract::sync
+    pkg::response
+    productivity-migration
+    doctest::doctest)
     target_compile_options(${TEST_NAME} PRIVATE -Wall -Wextra)
     add_test(NAME ${TEST_NAME} COMMAND ${TEST_NAME})
 endforeach()
@@ -176,8 +233,18 @@ set_target_properties(productivity-controller-test PROPERTIES
 target_include_directories(productivity-controller-test PRIVATE
     ${PRODUCTIVITY_SRC_ROOT})
 
-target_link_libraries(productivity-controller-test PRIVATE argus_sync
-    argus_identity argus::auth argus_common doctest::doctest)
+target_link_libraries(productivity-controller-test PRIVATE
+    argus_sync
+    argus_identity
+    argus::auth
+    argus::access
+    argus::config
+    argus::json
+    argus::socket
+    argus::sqlite
+    argus::validation
+    pkg::response
+    doctest::doctest)
 
 target_compile_options(productivity-controller-test PRIVATE -Wall -Wextra)
 
@@ -198,8 +265,12 @@ target_include_directories(productivity-sync-rpc-test PRIVATE
 target_compile_definitions(productivity-sync-rpc-test PRIVATE
     ARGUS_PRODUCTIVITY_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql")
 
-target_link_libraries(productivity-sync-rpc-test PRIVATE argus_sync
-    argus::client-productivity argus_common doctest::doctest)
+target_link_libraries(productivity-sync-rpc-test PRIVATE
+    argus_sync
+    argus::client-productivity
+    argus::sqlite
+    contract::sync
+    doctest::doctest)
 
 target_compile_options(productivity-sync-rpc-test PRIVATE -Wall -Wextra)
 

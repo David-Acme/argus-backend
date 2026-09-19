@@ -5,7 +5,7 @@
 #include <feature/api/pairing/dtos/response-pairing-dto.hxx>
 #include <shared/services/cert/cert-service.hxx>
 #include <shared/services/config-service/config-service.hxx>
-#include <shared/wrapper/api-response/api-response.hxx>
+#include <http/api-response.hxx>
 
 drogon::Task<drogon::HttpResponsePtr>
 PairingController::pair(drogon::HttpRequestPtr req)

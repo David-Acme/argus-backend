@@ -10,9 +10,7 @@ argus_module(NAME audio
         src/shared/wrapper/audio/audio-resampler.cc
         src/shared/wrapper/audio/endpoint-detector.cc
     INCLUDES
-        src
-    DEPENDS
-        argus_common)
+        src)
 
 target_compile_options(argus_audio PRIVATE -Wall -Wextra)
 

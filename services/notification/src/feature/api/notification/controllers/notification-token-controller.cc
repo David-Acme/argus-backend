@@ -5,7 +5,7 @@
 #include <filter/device/device-filter.hxx>
 #include <filter/jwt/jwt-filter.hxx>
 #include <shared/repositories/notification-token/notification-token-query.hxx>
-#include <shared/wrapper/api-response/api-response.hxx>
+#include <http/api-response.hxx>
 
 drogon::Task<drogon::HttpResponsePtr>
 NotificationTokenController::registerToken(drogon::HttpRequestPtr req)

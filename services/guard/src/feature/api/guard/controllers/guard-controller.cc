@@ -10,7 +10,7 @@
 #include <feature/api/guard/dtos/summary-decisions-dto.hxx>
 #include <feature/api/guard/dtos/remove-expected-guest-dto.hxx>
 #include <feature/api/guard/dtos/update-guard-mode-dto.hxx>
-#include <shared/wrapper/api-response/api-response.hxx>
+#include <http/api-response.hxx>
 
 GuardController::GuardController(IdentityClient* identity)
     : service_(identity)

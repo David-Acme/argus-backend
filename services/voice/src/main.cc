@@ -5,7 +5,7 @@
 #include <grpcpp/grpcpp.h>
 #include <server/listener-config.hxx>
 #include <shared/services/config-service/config-service.hxx>
-#include <shared/wrapper/api-response/api-response.hxx>
+#include <http/api-response.hxx>
 
 #include <drogon/drogon.h>
 

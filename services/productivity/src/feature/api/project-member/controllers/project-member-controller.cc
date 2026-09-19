@@ -4,7 +4,7 @@
 #include <feature/api/project-member/dtos/create-project-member-dto.hxx>
 #include <feature/api/project-member/dtos/update-project-member-dto.hxx>
 #include <filter/jwt/jwt-filter.hxx>
-#include <shared/wrapper/api-response/api-response.hxx>
+#include <http/api-response.hxx>
 
 namespace
 {

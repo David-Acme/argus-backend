@@ -1,6 +1,11 @@
 cmake_minimum_required(VERSION 3.25)
 project(argus-cert VERSION 1.0.0 LANGUAGES CXX)
 
+# enable_testing() must precede the first add_subdirectory: the flag
+# propagates into every subtree, and a directory that misses it gets no
+# CTestTestfile — the tests of anything added beneath it then never run.
+enable_testing()
+
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -16,22 +21,26 @@ find_package(Drogon CONFIG REQUIRED)
 find_package(nlohmann_json REQUIRED)
 find_package(OpenSSL REQUIRED)
 
+# The leaf this module links: a DAG, so its guard carries it into every build.
+if(NOT TARGET argus::config)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../config
+                     ${CMAKE_BINARY_DIR}/config)
+endif()
+
 # Standalone configure (top level): the cert test rides argus_identity, so
 # add the sibling packages identity and cert link, the vendored sqlite-vec
 # and ncnn, and identity's migration tool the sibling suites ride. Identity
-# lands after the ncnn block so its face services see the ncnn target. Every
-# guard keeps the root and consumer builds in charge. The empty cq-bridge
-# stand-ins skip the bridge: standalone protobuf comes from the system, so
-# the bridge entry symbol would interpose libgrpc's own callbacks (see
+# lands after the ncnn block so its face services see the ncnn target. The
+# sibling list is what PROJECT_IS_TOP_LEVEL is for here: argus_cert and
+# argus_identity link each other, so the project at the top of the configure
+# is the one that provides them. The empty cq-bridge stand-ins skip the
+# bridge: standalone protobuf comes from the system, so the bridge entry
+# symbol would interpose libgrpc's own callbacks (see
 # argus-contracts/CONTEXT.md).
 if(PROJECT_IS_TOP_LEVEL)
     if(NOT TARGET argus_client_grpc_bridge_entry)
         add_library(argus_client_grpc_bridge_entry INTERFACE)
         add_library(argus_client_grpc_bridge_exit INTERFACE)
-    endif()
-    if(NOT TARGET argus_common)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../common
-                         ${CMAKE_BINARY_DIR}/common)
     endif()
     if(NOT TARGET argus::room)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../room
@@ -85,23 +94,24 @@ argus_module(NAME cert
         src/shared/services/cert/cert-service.cc
     INCLUDES src)
 
-target_link_libraries(argus_cert
-    PUBLIC
-        argus_common
-        Drogon::Drogon
-        nlohmann_json::nlohmann_json
-        OpenSSL::SSL
-        OpenSSL::Crypto)
+target_link_libraries(argus_cert PUBLIC
+    argus::config
+    Drogon::Drogon
+    nlohmann_json::nlohmann_json
+    OpenSSL::SSL
+    OpenSSL::Crypto)
 
 target_compile_options(argus_cert PRIVATE -Wall -Wextra)
 
 # CertService rotation and the in-process TLS listener that proves the hot
 # reload. It rides the identity domain, which is why it links argus_identity.
-enable_testing()
 find_package(doctest REQUIRED)
 
 add_executable(cert-san-test tests/unit/cert-san-test.cc)
-target_link_libraries(cert-san-test PRIVATE argus::cert argus_identity
-    argus_common doctest::doctest)
+target_link_libraries(cert-san-test PRIVATE
+    argus::cert
+    argus_identity
+    argus::config
+    doctest::doctest)
 target_compile_options(cert-san-test PRIVATE -Wall -Wextra)
 add_test(NAME cert-san-test COMMAND cert-san-test)

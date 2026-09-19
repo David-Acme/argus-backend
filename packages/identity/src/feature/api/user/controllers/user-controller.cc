@@ -3,7 +3,7 @@
 #include <config/app-config.hxx>
 #include <feature/api/user/dtos/update-user-dto.hxx>
 #include <filter/jwt/jwt-filter.hxx>
-#include <shared/wrapper/api-response/api-response.hxx>
+#include <http/api-response.hxx>
 
 drogon::Task<drogon::HttpResponsePtr>
 UserController::list(drogon::HttpRequestPtr req)

@@ -1,6 +1,11 @@
 cmake_minimum_required(VERSION 3.25)
 project(argus-sqlite VERSION 1.0.0 LANGUAGES CXX)
 
+# enable_testing() must precede the first add_subdirectory: the flag
+# propagates into every subtree, and a directory that misses it gets no
+# CTestTestfile — the tests of anything added beneath it then never run.
+enable_testing()
+
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -21,19 +26,18 @@ if(NOT TARGET SQLite::SQLite3)
     find_package(SQLite CONFIG REQUIRED)
 endif()
 
-# Standalone configure (top level): the sqlite module links argus_common and
-# the vendored sqlite-vec the vec repositories ride. Every guard keeps the
-# root and consumer builds in charge.
-if(PROJECT_IS_TOP_LEVEL)
-    if(NOT TARGET argus_common)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../common
-                         ${CMAKE_BINARY_DIR}/common)
-    endif()
-    if(NOT TARGET sqlite-vec)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../third_party/sqlite-vec
-                         ${CMAKE_BINARY_DIR}/third_party/sqlite-vec)
-    endif()
-    set(ARGUS_SQLITE_VEC_TARGET sqlite-vec)
+# The vendored sqlite-vec the vec repositories ride and the sibling package the
+# module links, declared here rather than by the consumer: the guards keep the
+# root tree and every other consumer in charge.
+if(NOT TARGET sqlite-vec)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../third_party/sqlite-vec
+                     ${CMAKE_BINARY_DIR}/third_party/sqlite-vec)
+endif()
+set(ARGUS_SQLITE_VEC_TARGET sqlite-vec)
+
+if(NOT TARGET argus::config)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../config
+                     ${CMAKE_BINARY_DIR}/config)
 endif()
 
 argus_module(NAME sqlite
@@ -47,10 +51,7 @@ argus_module(NAME sqlite
         src/shared/utils/schema-runner/schema-runner.hxx
     INCLUDES src)
 
-target_link_libraries(argus_sqlite
-    PUBLIC
-        argus_common
-        Drogon::Drogon)
+target_link_libraries(argus_sqlite PUBLIC argus::config Drogon::Drogon)
 
 if(TARGET SQLite::SQLite3)
     target_link_libraries(argus_sqlite PRIVATE SQLite::SQLite3)
@@ -64,11 +65,14 @@ target_compile_options(argus_sqlite PRIVATE -Wall -Wextra)
 
 # The named identity client slot: installed at boot, falling back to the
 # default client when the host installs none.
-enable_testing()
 find_package(doctest REQUIRED)
 
 add_executable(identity-client-test tests/unit/identity-client-test.cc)
-target_link_libraries(identity-client-test PRIVATE argus::sqlite
-    argus_common Drogon::Drogon sqlite-vec doctest::doctest)
+target_link_libraries(identity-client-test PRIVATE
+    argus::sqlite
+    argus::config
+    Drogon::Drogon
+    sqlite-vec
+    doctest::doctest)
 target_compile_options(identity-client-test PRIVATE -Wall -Wextra)
 add_test(NAME identity-client-test COMMAND identity-client-test)

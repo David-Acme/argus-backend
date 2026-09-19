@@ -1,6 +1,11 @@
 cmake_minimum_required(VERSION 3.25)
 project(argus-notification VERSION 1.0.0 LANGUAGES CXX)
 
+# enable_testing() must precede the first add_subdirectory: the flag
+# propagates into every subtree, and a directory that misses it gets no
+# CTestTestfile — the tests of anything added beneath it then never run.
+enable_testing()
+
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -9,10 +14,12 @@ include(${CMAKE_CURRENT_SOURCE_DIR}/../../cmake/argus-module.cmake)
 
 set(NOTIFICATION_SRC_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
-if(NOT TARGET argus_common)
-    # Standalone build: reuse the root project's libraries and third-party
-    # sqlite-vec so the notification service links the same objects as the
-    # root-tree build.
+if(PROJECT_IS_TOP_LEVEL)
+    # Standalone configure: this service owns the whole build, so it adds the
+    # packages it links — the leaves it uses directly and the sibling packages
+    # that used to arrive through argus-common — plus the third-party
+    # sqlite-vec, so the notification service links the same objects as any other
+    # consumer.
     # The substrate still finds the vendored gRPC and would build the cq
     # bridge, whose entry symbol then interposes the identically-named
     # implementation inside libgrpc. Empty stand-ins skip it.
@@ -47,28 +54,62 @@ if(NOT TARGET argus_common)
                      ${CMAKE_BINARY_DIR}/third_party/ncnn EXCLUDE_FROM_ALL)
     set(ARGUS_NCNN_TARGET ncnn)
 
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/common
-                     ${CMAKE_BINARY_DIR}/common)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/sqlite
-                     ${CMAKE_BINARY_DIR}/sqlite)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/audit
-                     ${CMAKE_BINARY_DIR}/audit)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/cert
-                     ${CMAKE_BINARY_DIR}/cert)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/room
-                     ${CMAKE_BINARY_DIR}/room)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/socket
-                     ${CMAKE_BINARY_DIR}/socket)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/auth
-                     ${CMAKE_BINARY_DIR}/auth)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/identity
-                     ${CMAKE_BINARY_DIR}/identity)
+    if(NOT TARGET argus::config)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/config
+                         ${CMAKE_BINARY_DIR}/config)
+    endif()
+    if(NOT TARGET argus::json)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/json
+                         ${CMAKE_BINARY_DIR}/json)
+    endif()
+    if(NOT TARGET argus::nats)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/nats
+                         ${CMAKE_BINARY_DIR}/nats)
+    endif()
+    if(NOT TARGET argus::validation)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/validation
+                         ${CMAKE_BINARY_DIR}/validation)
+    endif()
+    if(NOT TARGET pkg::response)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/response
+                         ${CMAKE_BINARY_DIR}/response)
+    endif()
+    if(NOT TARGET argus::sqlite)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/sqlite
+                         ${CMAKE_BINARY_DIR}/sqlite)
+    endif()
+    if(NOT TARGET argus::audit)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/audit
+                         ${CMAKE_BINARY_DIR}/audit)
+    endif()
+    if(NOT TARGET argus::cert)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/cert
+                         ${CMAKE_BINARY_DIR}/cert)
+    endif()
+    if(NOT TARGET argus::room)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/room
+                         ${CMAKE_BINARY_DIR}/room)
+    endif()
+    if(NOT TARGET argus::socket)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/socket
+                         ${CMAKE_BINARY_DIR}/socket)
+    endif()
+    if(NOT TARGET argus::auth)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/auth
+                         ${CMAKE_BINARY_DIR}/auth)
+    endif()
+    if(NOT TARGET argus::identity)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/identity
+                         ${CMAKE_BINARY_DIR}/identity)
+    endif()
     if(NOT TARGET identity-migration)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/identity/tools/migrate-identity
                          ${CMAKE_BINARY_DIR}/identity/tools/migrate-identity)
     endif()
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/sync
-                     ${CMAKE_BINARY_DIR}/sync)
+    if(NOT TARGET argus_sync)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/sync
+                         ${CMAKE_BINARY_DIR}/sync)
+    endif()
 endif()
 
 find_package(doctest REQUIRED)
@@ -145,14 +186,24 @@ endif()
 
 # The unit suites opt back into the default build: this folder is added
 # EXCLUDE_FROM_ALL, and notification-migration (tools/) stays out of it.
-enable_testing()
 find_package(doctest REQUIRED)
 
 foreach(TEST_NAME IN ITEMS notification-schema-test notification-migration-test)
     add_executable(${TEST_NAME} tests/unit/${TEST_NAME}.cc)
     set_target_properties(${TEST_NAME} PROPERTIES EXCLUDE_FROM_ALL FALSE)
-    target_link_libraries(${TEST_NAME} PRIVATE argus_common
-        notification-migration doctest::doctest)
+        target_link_libraries(${TEST_NAME} PRIVATE
+    argus::audit
+    argus::auth
+    argus::config
+    argus::hash
+    argus::json
+    argus::nats
+    argus::socket
+    argus::sqlite
+    argus::validation
+    pkg::response
+    notification-migration
+    doctest::doctest)
     target_compile_options(${TEST_NAME} PRIVATE -Wall -Wextra)
     add_test(NAME ${TEST_NAME} COMMAND ${TEST_NAME})
 endforeach()
@@ -169,8 +220,16 @@ set_target_properties(notification-controller-test PROPERTIES
 target_include_directories(notification-controller-test PRIVATE
     ${NOTIFICATION_SRC_ROOT})
 
-target_link_libraries(notification-controller-test PRIVATE argus_sync
-    argus_common doctest::doctest)
+target_link_libraries(notification-controller-test PRIVATE
+    argus_sync
+    argus::auth
+    argus::config
+    argus::json
+    argus::socket
+    argus::sqlite
+    argus::validation
+    pkg::response
+    doctest::doctest)
 
 target_compile_options(notification-controller-test PRIVATE -Wall -Wextra)
 
@@ -191,8 +250,14 @@ target_include_directories(notification-rpc-test PRIVATE
 target_compile_definitions(notification-rpc-test PRIVATE
     ARGUS_NOTIFICATION_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql")
 
-target_link_libraries(notification-rpc-test PRIVATE argus_sync
-    argus::client-notification argus_common doctest::doctest)
+target_link_libraries(notification-rpc-test PRIVATE
+    argus_sync
+    argus::client-notification
+    argus::config
+    argus::json
+    argus::nats
+    argus::sqlite
+    doctest::doctest)
 
 target_compile_options(notification-rpc-test PRIVATE -Wall -Wextra)
 
@@ -213,8 +278,14 @@ target_include_directories(notification-no-nats-test PRIVATE
 target_compile_definitions(notification-no-nats-test PRIVATE
     ARGUS_NOTIFICATION_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql")
 
-target_link_libraries(notification-no-nats-test PRIVATE argus_sync
-    argus::client-notification argus_common doctest::doctest)
+target_link_libraries(notification-no-nats-test PRIVATE
+    argus_sync
+    argus::client-notification
+    argus::config
+    argus::json
+    argus::nats
+    argus::sqlite
+    doctest::doctest)
 
 target_compile_options(notification-no-nats-test PRIVATE -Wall -Wextra)
 
@@ -227,8 +298,11 @@ add_executable(notification-delivery-test
 set_target_properties(notification-delivery-test PROPERTIES
     EXCLUDE_FROM_ALL FALSE)
 
-target_link_libraries(notification-delivery-test PRIVATE argus_sync
-    argus_common doctest::doctest)
+target_link_libraries(notification-delivery-test PRIVATE
+    argus_sync
+    argus::socket
+    argus::sqlite
+    doctest::doctest)
 
 target_compile_options(notification-delivery-test PRIVATE -Wall -Wextra)
 
@@ -239,8 +313,11 @@ add_executable(notification-ack-test tests/unit/notification-ack-test.cc)
 set_target_properties(notification-ack-test PROPERTIES
     EXCLUDE_FROM_ALL FALSE)
 
-target_link_libraries(notification-ack-test PRIVATE argus_sync
-    argus_common doctest::doctest)
+target_link_libraries(notification-ack-test PRIVATE
+    argus_sync
+    argus::socket
+    argus::sqlite
+    doctest::doctest)
 
 target_compile_options(notification-ack-test PRIVATE -Wall -Wextra)
 
@@ -259,8 +336,12 @@ target_include_directories(notification-delivery-live-test PRIVATE
 target_compile_definitions(notification-delivery-live-test PRIVATE
     ARGUS_NOTIFICATION_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql")
 
-target_link_libraries(notification-delivery-live-test PRIVATE notification-core
-    argus_sync argus_common doctest::doctest)
+target_link_libraries(notification-delivery-live-test PRIVATE
+    notification-core
+    argus_sync
+    argus::nats
+    argus::sqlite
+    doctest::doctest)
 
 target_compile_options(notification-delivery-live-test PRIVATE -Wall -Wextra)
 
@@ -272,8 +353,11 @@ add_executable(push-intent-test tests/unit/push-intent-test.cc)
 
 set_target_properties(push-intent-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
-target_link_libraries(push-intent-test PRIVATE argus_sync
-    argus_common doctest::doctest)
+target_link_libraries(push-intent-test PRIVATE
+    argus_sync
+    argus::nats
+    argus::sqlite
+    doctest::doctest)
 
 target_compile_options(push-intent-test PRIVATE -Wall -Wextra)
 

@@ -1,4 +1,13 @@
-# CONTEXT.md — why this folder exists
+# f7-1b — the argus-common extraction
+
+> Written when `packages/common` existed as a package. That package was
+> deleted in Phase 1 step 2 of the v4 plan
+> (`docs/history/plans/architecture-plan.md`), once every consumer linked
+> the package that owns each piece: the two include redirects it still held
+> were repointed at `<http/api-response.hxx>` and `<response-exception.hxx>`,
+> and its envelope suite moved to `packages/response/tests/unit/`. The
+> reasoning below is what the extraction established, and it is why the leaf
+> packages declare their own dependencies.
 
 ## Origin
 

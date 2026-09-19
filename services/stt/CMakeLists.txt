@@ -1,6 +1,11 @@
 cmake_minimum_required(VERSION 3.25)
 project(argus-stt VERSION 1.0.0 LANGUAGES CXX)
 
+# enable_testing() must precede the first add_subdirectory: the flag
+# propagates into every subtree, and a directory that misses it gets no
+# CTestTestfile — the tests of anything added beneath it then never run.
+enable_testing()
+
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -11,15 +16,24 @@ set(STT_SRC_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/src)
 set(SHARED_ROOT ${STT_SRC_ROOT}/shared)
 
 if(NOT TARGET Drogon::Drogon)
-    # Standalone build (outside the root project's configure): add the
-    # sibling packages the stt module links, argus-common first.
+    # Standalone configure: this service owns the whole build, so it adds
+    # the packages it links — the leaves it uses directly and the client
+    # that used to arrive through argus-common.
     find_package(Drogon CONFIG REQUIRED)
     find_package(onnxruntime CONFIG REQUIRED)
     find_package(tomlplusplus REQUIRED)
     find_package(nlohmann_json REQUIRED)
-    if(NOT TARGET argus_common)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/common
-                         ${CMAKE_BINARY_DIR}/common)
+    if(NOT TARGET argus::config)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/config
+                         ${CMAKE_BINARY_DIR}/config)
+    endif()
+    if(NOT TARGET argus::threading)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/threading
+                         ${CMAKE_BINARY_DIR}/threading)
+    endif()
+    if(NOT TARGET pkg::response)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/response
+                         ${CMAKE_BINARY_DIR}/response)
     endif()
     if(NOT TARGET argus::stt-client)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/stt-client
@@ -76,7 +90,9 @@ target_include_directories(stt-core PUBLIC
     ${STT_SRC_ROOT})
 
 target_link_libraries(stt-core PUBLIC
-    argus_common
+    argus::config
+    argus::threading
+    pkg::response
     argus::stt-client
     Drogon::Drogon
     onnxruntime::onnxruntime
@@ -109,7 +125,6 @@ add_custom_command(TARGET argus-stt POST_BUILD
 
 # The wire suite opts back into the default build: this folder is added
 # EXCLUDE_FROM_ALL.
-enable_testing()
 find_package(doctest REQUIRED)
 
 
@@ -128,8 +143,14 @@ target_include_directories(stt-wire-test SYSTEM PRIVATE
 target_compile_definitions(stt-wire-test PRIVATE
     ARGUS_TEST_STT_MODELS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../../models/stt")
 
-target_link_libraries(stt-wire-test PRIVATE argus_common argus::stt-client
-    onnxruntime::onnxruntime ${ARGUS_SHERPA_ONNX_TARGET} doctest::doctest)
+target_link_libraries(stt-wire-test PRIVATE
+    argus::config
+    argus::threading
+    pkg::response
+    argus::stt-client
+    onnxruntime::onnxruntime
+    ${ARGUS_SHERPA_ONNX_TARGET}
+    doctest::doctest)
 
 target_include_directories(stt-wire-test PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/stt-client/tests/support)

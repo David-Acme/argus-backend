@@ -3,7 +3,7 @@
 #include <config/app-config.hxx>
 #include <feature/api/zone/dtos/create-zone-dto.hxx>
 #include <feature/api/zone/dtos/update-zone-dto.hxx>
-#include <shared/wrapper/api-response/api-response.hxx>
+#include <http/api-response.hxx>
 
 drogon::Task<drogon::HttpResponsePtr>
 ZoneController::create(drogon::HttpRequestPtr req)

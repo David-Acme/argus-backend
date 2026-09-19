@@ -3,7 +3,7 @@
 #include <config/app-config.hxx>
 #include <feature/api/camera/dtos/create-camera-dto.hxx>
 #include <feature/api/camera/dtos/update-camera-dto.hxx>
-#include <shared/wrapper/api-response/api-response.hxx>
+#include <http/api-response.hxx>
 
 drogon::Task<drogon::HttpResponsePtr>
 CameraController::create(drogon::HttpRequestPtr req)

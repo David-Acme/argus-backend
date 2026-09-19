@@ -10,7 +10,7 @@
 #include <feature/api/auth/dtos/update-me-dto.hxx>
 #include <filter/device/device-filter.hxx>
 #include <filter/jwt/jwt-filter.hxx>
-#include <shared/wrapper/api-response/api-response.hxx>
+#include <http/api-response.hxx>
 
 drogon::Task<drogon::HttpResponsePtr>
 AuthController::login(drogon::HttpRequestPtr req)

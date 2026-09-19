@@ -59,7 +59,7 @@ device-credential suite caught it; the contract now carries presence
 `IdentityUserDirectory` (rule 27) exposes the identity domain's read-only
 user row over the same cached client: `findById` calls
 `argus.identity.v1.GetUser` and returns the DB-free `DirectoryUser`
-(`shared/contracts/user-directory.hxx` in argus-common). Consumers install
+(`shared/contracts/user-directory.hxx` in this package). Consumers install
 it where they own a seam — argus-camera injects it into the sync socket,
 argus-productivity holds it as a private member — so no service opens
 another domain's database for a user row.

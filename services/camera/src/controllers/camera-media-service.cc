@@ -3,7 +3,7 @@
 #include <camera-errors.hxx>
 #include <filter/jwt/jwt-filter.hxx>
 #include <shared/access/role-access.hxx>
-#include <shared/exceptions/response-exception.hxx>
+#include <response-exception.hxx>
 #include <shared/services/config-service/config-service.hxx>
 
 CameraMediaService::CameraMediaService()

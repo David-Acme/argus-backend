@@ -3,7 +3,7 @@
 #include <shared/services/stt/remote/stt-remote.hxx>
 #include <shared/services/stt/stt-service.hxx>
 #include <config/app-config.hxx>
-#include <shared/wrapper/api-response/api-response.hxx>
+#include <http/api-response.hxx>
 
 #include <chrono>
 #include <cstring>

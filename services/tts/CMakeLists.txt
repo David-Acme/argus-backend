@@ -1,6 +1,11 @@
 cmake_minimum_required(VERSION 3.25)
 project(argus-tts VERSION 1.0.0 LANGUAGES CXX)
 
+# enable_testing() must precede the first add_subdirectory: the flag
+# propagates into every subtree, and a directory that misses it gets no
+# CTestTestfile — the tests of anything added beneath it then never run.
+enable_testing()
+
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -12,18 +17,38 @@ argus_contracts_substrate()
 set(TTS_SRC_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
 if(NOT TARGET Drogon::Drogon)
-    # Standalone build (outside the root project's configure): add the
-    # sibling packages the tts module links, argus-common first.
+    # Standalone configure: this service owns the whole build, so it adds
+    # the packages it links — the leaves it uses directly and the sibling
+    # packages that used to arrive through argus-common.
     find_package(Drogon CONFIG REQUIRED)
     find_package(onnxruntime CONFIG REQUIRED)
     find_package(tomlplusplus REQUIRED)
     find_package(nlohmann_json REQUIRED)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/common
-                     ${CMAKE_BINARY_DIR}/common)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/tts-client
-                     ${CMAKE_BINARY_DIR}/tts-client)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/auth
-                     ${CMAKE_BINARY_DIR}/auth)
+    if(NOT TARGET argus::config)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/config
+                         ${CMAKE_BINARY_DIR}/config)
+    endif()
+    if(NOT TARGET argus::threading)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/threading
+                         ${CMAKE_BINARY_DIR}/threading)
+    endif()
+    # The synthesis HTTP DTOs validate through argus::validation.
+    if(NOT TARGET argus::validation)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/validation
+                         ${CMAKE_BINARY_DIR}/validation)
+    endif()
+    if(NOT TARGET pkg::response)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/response
+                         ${CMAKE_BINARY_DIR}/response)
+    endif()
+    if(NOT TARGET argus::tts-client)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/tts-client
+                         ${CMAKE_BINARY_DIR}/tts-client)
+    endif()
+    if(NOT TARGET argus::auth)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/auth
+                         ${CMAKE_BINARY_DIR}/auth)
+    endif()
     # The synthesis feature sizes its pool from argus::hardware-profile, which
     # used to arrive through argus-common; it is its own package now.
     if(NOT TARGET argus::hardware-profile)
@@ -68,8 +93,6 @@ add_custom_command(TARGET argus-tts POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E create_symlink
             ${CMAKE_CURRENT_SOURCE_DIR}/../../models
             $<TARGET_FILE_DIR:argus-tts>/models)
-
-enable_testing()
 
 add_executable(tts-wire-test tests/unit/tts-wire-test.cc)
 

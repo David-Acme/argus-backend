@@ -1,6 +1,11 @@
 cmake_minimum_required(VERSION 3.25)
 project(argus-guard VERSION 1.0.0 LANGUAGES CXX)
 
+# enable_testing() must precede the first add_subdirectory: the flag
+# propagates into every subtree, and a directory that misses it gets no
+# CTestTestfile — the tests of anything added beneath it then never run.
+enable_testing()
+
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -9,9 +14,12 @@ include(${CMAKE_CURRENT_SOURCE_DIR}/../../cmake/argus-module.cmake)
 
 set(GUARD_SRC_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
-if(NOT TARGET argus_common)
-    # Standalone build: reuse the root project's libraries and third-party
-    # sqlite-vec so the guard service links the same objects as the root tree.
+if(PROJECT_IS_TOP_LEVEL)
+    # Standalone configure: this service owns the whole build, so it adds the
+    # packages it links — the leaves it uses directly and the sibling packages
+    # that used to arrive through argus-common — plus the third-party
+    # sqlite-vec, so the guard service links the same objects as any other
+    # consumer.
     if(NOT TARGET argus_client_grpc_bridge_entry)
         add_library(argus_client_grpc_bridge_entry INTERFACE)
         add_library(argus_client_grpc_bridge_exit INTERFACE)
@@ -41,10 +49,38 @@ if(NOT TARGET argus_common)
                      ${CMAKE_BINARY_DIR}/third_party/ncnn EXCLUDE_FROM_ALL)
     set(ARGUS_NCNN_TARGET ncnn)
 
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/common
-                     ${CMAKE_BINARY_DIR}/common)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/sqlite
-                     ${CMAKE_BINARY_DIR}/sqlite)
+    if(NOT TARGET argus::access)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/access
+                         ${CMAKE_BINARY_DIR}/access)
+    endif()
+    if(NOT TARGET argus::config)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/config
+                         ${CMAKE_BINARY_DIR}/config)
+    endif()
+    if(NOT TARGET argus::hash)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/hash
+                         ${CMAKE_BINARY_DIR}/hash)
+    endif()
+    if(NOT TARGET argus::json)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/json
+                         ${CMAKE_BINARY_DIR}/json)
+    endif()
+    if(NOT TARGET argus::nats)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/nats
+                         ${CMAKE_BINARY_DIR}/nats)
+    endif()
+    if(NOT TARGET argus::validation)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/validation
+                         ${CMAKE_BINARY_DIR}/validation)
+    endif()
+    if(NOT TARGET pkg::response)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/response
+                         ${CMAKE_BINARY_DIR}/response)
+    endif()
+    if(NOT TARGET argus::sqlite)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/sqlite
+                         ${CMAKE_BINARY_DIR}/sqlite)
+    endif()
     if(NOT TARGET argus::client-identity)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/identity
                          ${CMAKE_BINARY_DIR}/clients/identity EXCLUDE_FROM_ALL)
@@ -57,26 +93,42 @@ if(NOT TARGET argus_common)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/camera-actions
                          ${CMAKE_BINARY_DIR}/clients/camera-actions EXCLUDE_FROM_ALL)
     endif()
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/audit
-                     ${CMAKE_BINARY_DIR}/audit)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/cert
-                     ${CMAKE_BINARY_DIR}/cert)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/room
-                     ${CMAKE_BINARY_DIR}/room)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/socket
-                     ${CMAKE_BINARY_DIR}/socket)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/auth
-                     ${CMAKE_BINARY_DIR}/auth)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/identity
-                     ${CMAKE_BINARY_DIR}/identity)
+    if(NOT TARGET argus::audit)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/audit
+                         ${CMAKE_BINARY_DIR}/audit)
+    endif()
+    if(NOT TARGET argus::cert)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/cert
+                         ${CMAKE_BINARY_DIR}/cert)
+    endif()
+    if(NOT TARGET argus::room)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/room
+                         ${CMAKE_BINARY_DIR}/room)
+    endif()
+    if(NOT TARGET argus::socket)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/socket
+                         ${CMAKE_BINARY_DIR}/socket)
+    endif()
+    if(NOT TARGET argus::auth)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/auth
+                         ${CMAKE_BINARY_DIR}/auth)
+    endif()
+    if(NOT TARGET argus::identity)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/identity
+                         ${CMAKE_BINARY_DIR}/identity)
+    endif()
     if(NOT TARGET identity-migration)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/identity/tools/migrate-identity
                          ${CMAKE_BINARY_DIR}/identity/tools/migrate-identity)
     endif()
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/llm-client
-                     ${CMAKE_BINARY_DIR}/llm-client)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/vlm-client
-                     ${CMAKE_BINARY_DIR}/vlm-client)
+    if(NOT TARGET argus::llm-client)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/llm-client
+                         ${CMAKE_BINARY_DIR}/llm-client)
+    endif()
+    if(NOT TARGET argus::vlm-client)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/vlm-client
+                         ${CMAKE_BINARY_DIR}/vlm-client)
+    endif()
 endif()
 
 find_package(doctest REQUIRED)
@@ -86,10 +138,18 @@ add_subdirectory(src/feature/api/guard)
 
 add_executable(argus-guard ${GUARD_SRC_ROOT}/main.cc)
 target_include_directories(argus-guard PRIVATE ${GUARD_SRC_ROOT})
-target_link_libraries(argus-guard PRIVATE argus::guard argus::guard-api
-    argus::auth argus_common
-    argus::sqlite argus::client-identity argus::client-notification
-    argus::client-camera-actions argus::llm-client argus::vlm-client
+target_link_libraries(argus-guard PRIVATE
+    argus::guard
+    argus::guard-api
+    argus::auth
+    argus::config
+    argus::nats
+    argus::sqlite
+    argus::client-identity
+    argus::client-notification
+    argus::client-camera-actions
+    argus::llm-client
+    argus::vlm-client
     ${ARGUS_SQLITE_VEC_TARGET})
 target_compile_options(argus-guard PRIVATE -Wall -Wextra)
 
@@ -99,8 +159,6 @@ if(DOCTEST_INCLUDE_DIRS)
     set_target_properties(doctest::doctest PROPERTIES
         INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${DOCTEST_INCLUDE_DIRS}")
 endif()
-
-enable_testing()
 
 foreach(TEST_NAME IN ITEMS guard-policy-test guard-assessment-test
         guard-risk-test guard-schema-test guard-migration-test
@@ -145,8 +203,12 @@ add_executable(guard-dlq-service-live-test
     tests/unit/guard-dlq-service-live-test.cc)
 set_target_properties(guard-dlq-service-live-test PROPERTIES
     EXCLUDE_FROM_ALL FALSE)
-target_link_libraries(guard-dlq-service-live-test PRIVATE argus::guard
-    argus_common doctest::doctest)
+target_link_libraries(guard-dlq-service-live-test PRIVATE
+    argus::guard
+    argus::json
+    argus::nats
+    argus::sqlite
+    doctest::doctest)
 target_include_directories(guard-dlq-service-live-test PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/support)
 target_compile_definitions(guard-dlq-service-live-test PRIVATE
@@ -158,8 +220,7 @@ add_test(NAME guard-dlq-service-live-test COMMAND guard-dlq-service-live-test)
 add_executable(guard-dlq-live-test tests/unit/guard-dlq-live-test.cc)
 set_target_properties(guard-dlq-live-test PROPERTIES
     EXCLUDE_FROM_ALL FALSE)
-target_link_libraries(guard-dlq-live-test PRIVATE argus_common
-    doctest::doctest)
+target_link_libraries(guard-dlq-live-test PRIVATE argus::nats doctest::doctest)
 target_compile_options(guard-dlq-live-test PRIVATE -Wall -Wextra)
 add_test(NAME guard-dlq-live-test COMMAND guard-dlq-live-test)
 
@@ -167,8 +228,21 @@ add_test(NAME guard-dlq-live-test COMMAND guard-dlq-live-test)
 add_executable(vlm-client-live-test tests/unit/vlm-client-live-test.cc)
 set_target_properties(vlm-client-live-test PROPERTIES
     EXCLUDE_FROM_ALL FALSE)
-target_link_libraries(vlm-client-live-test PRIVATE argus::vlm-client
-    argus_common Drogon::Drogon doctest::doctest)
+target_link_libraries(vlm-client-live-test PRIVATE
+    argus::vlm-client
+    argus::access
+    argus::auth
+    argus::config
+    argus::hash
+    argus::json
+    argus::nats
+    argus::sqlite
+    argus::storage
+    argus::threading
+    argus::validation
+    pkg::response
+    Drogon::Drogon
+    doctest::doctest)
 target_include_directories(vlm-client-live-test PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/support)
 target_compile_options(vlm-client-live-test PRIVATE -Wall -Wextra)
@@ -179,8 +253,22 @@ add_executable(guard-assessment-live-test
     tests/unit/guard-assessment-live-test.cc)
 set_target_properties(guard-assessment-live-test PROPERTIES
     EXCLUDE_FROM_ALL FALSE)
-target_link_libraries(guard-assessment-live-test PRIVATE argus::guard
-    argus::vlm-client argus::client-camera-actions argus_common Drogon::Drogon
+target_link_libraries(guard-assessment-live-test PRIVATE
+    argus::guard
+    argus::vlm-client
+    argus::client-camera-actions
+    argus::access
+    argus::auth
+    argus::config
+    argus::hash
+    argus::json
+    argus::nats
+    argus::sqlite
+    argus::storage
+    argus::threading
+    argus::validation
+    pkg::response
+    Drogon::Drogon
     doctest::doctest)
 target_include_directories(guard-assessment-live-test PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/support)

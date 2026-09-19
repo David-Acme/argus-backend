@@ -5,6 +5,11 @@
 
 include(${CMAKE_CURRENT_SOURCE_DIR}/../../../cmake/argus-module.cmake)
 
+if(NOT TARGET argus::config)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../config
+                     ${CMAKE_CURRENT_BINARY_DIR}/config)
+endif()
+
 find_package(Drogon CONFIG REQUIRED)
 
 argus_module(NAME stt-client
@@ -13,7 +18,7 @@ argus_module(NAME stt-client
     INCLUDES
         src
     DEPENDS
-        argus_common
+        argus::config
         Drogon::Drogon)
 
 target_compile_options(argus_stt-client PRIVATE -Wall -Wextra)

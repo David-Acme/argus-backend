@@ -16,7 +16,7 @@
 #include <shared/services/socket/sync-change.hxx>
 #include <shared/services/sqlite/db-service.hxx>
 #include <shared/utils/json-util/json-util.hxx>
-#include <shared/wrapper/api-response/api-response.hxx>
+#include <http/api-response.hxx>
 #include <proxy/reverse-proxy.hxx>
 #include <sync/camera-fan-out.hxx>
 #include <sync/camera-stream-relay.hxx>

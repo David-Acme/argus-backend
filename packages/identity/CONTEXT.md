@@ -65,8 +65,9 @@ each include of a file that stayed in `src/` was audited to resolve
 through a declared module edge — `argus::socket` (socket-service,
 identity-change-sink), `argus::cert`, `argus::audit` (sync-audit,
 user-action-log), `argus::sqlite` (db-service, vec-db), `argus::auth`
-(jwt-service, the filters), `argus_common` (config, validation, wrapper,
-contracts, s3-storage).
+(jwt-service, the filters), `argus::config`, `argus::validation`,
+`argus::threading`, `argus::storage` and `contract::sync` (config, validation,
+wrapper, s3-storage, sync contracts).
 
 ## The auth⇄identity cycle is gone (f7-3)
 

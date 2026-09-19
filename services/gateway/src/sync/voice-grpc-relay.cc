@@ -3,7 +3,7 @@
 #include <config/app-config.hxx>
 #include <filter/jwt/jwt-filter.hxx>
 #include <gateway-errors.hxx>
-#include <shared/exceptions/response-exception.hxx>
+#include <response-exception.hxx>
 #include <shared/repositories/user/user-repository.hxx>
 #include <shared/services/config-service/config-service.hxx>
 #include <voice/reaction-contracts.hxx>

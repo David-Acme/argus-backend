@@ -2,7 +2,7 @@
 
 #include <vlm/describe-dto.hxx>
 #include <config/app-config.hxx>
-#include <shared/wrapper/api-response/api-response.hxx>
+#include <http/api-response.hxx>
 
 #include <drogon/drogon.h>
 #include <opencv2/imgcodecs.hpp>

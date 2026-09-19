@@ -4,7 +4,7 @@
 #include <shared/services/llm/lfm-adapter.hxx>
 #include <shared/services/tools/tool-registry.hxx>
 #include <config/app-config.hxx>
-#include <shared/wrapper/api-response/api-response.hxx>
+#include <http/api-response.hxx>
 #include <shared/wrapper/blocking-task/blocking-task.hxx>
 
 #include <drogon/drogon.h>

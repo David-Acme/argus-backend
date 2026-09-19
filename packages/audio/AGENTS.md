@@ -20,6 +20,6 @@ engine seam) both resample audio, and neither may reach into the other's
 - Include prefixes are load-bearing: consumers include
   `<shared/wrapper/audio/audio-resampler.hxx>`, so the path under `src/`
   keeps that shape.
-- Keep it dependency-light. It links `argus_common` and nothing else; a
+- Keep it dependency-light. It links nothing but the leaves it needs; a
   service-specific dependency here would push that closure into every
   consumer.

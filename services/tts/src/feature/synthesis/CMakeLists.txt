@@ -7,7 +7,7 @@ argus_module(NAME tts-synthesis
         infra/supertonic/unicode-processor.cc
     INCLUDES ../..
     DEPENDS
-        argus_common
+        argus::config argus::threading
         argus::tts-client
         argus::hardware-profile
         Drogon::Drogon
@@ -24,6 +24,7 @@ argus_module(NAME tts-synthesis-http
     DEPENDS
         argus::tts-synthesis
         argus::auth
+        argus::validation
         contract::tts)
 
 target_compile_options(argus_tts-synthesis-http PRIVATE -Wall -Wextra)

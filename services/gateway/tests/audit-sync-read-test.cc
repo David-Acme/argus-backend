@@ -9,7 +9,7 @@
 #include <shared/contracts/camera-audit-event.hxx>
 #include <shared/contracts/notification-sync-source.hxx>
 #include <shared/contracts/productivity-sync-source.hxx>
-#include <shared/exceptions/response-exception.hxx>
+#include <response-exception.hxx>
 #include <shared/contracts/sync-operation.hxx>
 #include <shared/enums.hxx>
 #include <shared/repositories/audit-log/audit-log-repository.hxx>

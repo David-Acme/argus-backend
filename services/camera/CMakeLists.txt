@@ -1,6 +1,11 @@
 cmake_minimum_required(VERSION 3.25)
 project(argus-camera VERSION 1.0.0 LANGUAGES CXX)
 
+# enable_testing() must precede the first add_subdirectory: the flag
+# propagates into every subtree, and a directory that misses it gets no
+# CTestTestfile — the tests of anything added beneath it then never run.
+enable_testing()
+
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -9,10 +14,12 @@ include(${CMAKE_CURRENT_SOURCE_DIR}/../../cmake/argus-module.cmake)
 
 set(CAMERA_SRC_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
-if(NOT TARGET argus_common)
-    # Standalone build: reuse the root project's libraries and third-party
-    # sqlite-vec so the camera service links the same objects as the
-    # root-tree build.
+if(PROJECT_IS_TOP_LEVEL)
+    # Standalone configure: this service owns the whole build, so it adds the
+    # packages it links — the leaves it uses directly and the sibling packages
+    # that used to arrive through argus-common — plus the third-party
+    # sqlite-vec, so the camera service links the same objects as any other
+    # consumer.
     # The substrate still finds the vendored gRPC and would build the cq
     # bridge, whose entry symbol then interposes the identically-named
     # implementation inside libgrpc. Empty stand-ins skip it.
@@ -44,36 +51,90 @@ if(NOT TARGET argus_common)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../third_party/ncnn
                      ${CMAKE_BINARY_DIR}/third_party/ncnn EXCLUDE_FROM_ALL)
     set(ARGUS_NCNN_TARGET ncnn)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/common
-                     ${CMAKE_BINARY_DIR}/common)
+    if(NOT TARGET argus::access)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/access
+                         ${CMAKE_BINARY_DIR}/access)
+    endif()
+    if(NOT TARGET argus::config)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/config
+                         ${CMAKE_BINARY_DIR}/config)
+    endif()
+    if(NOT TARGET argus::hash)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/hash
+                         ${CMAKE_BINARY_DIR}/hash)
+    endif()
+    if(NOT TARGET argus::json)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/json
+                         ${CMAKE_BINARY_DIR}/json)
+    endif()
+    if(NOT TARGET argus::nats)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/nats
+                         ${CMAKE_BINARY_DIR}/nats)
+    endif()
+    if(NOT TARGET argus::storage)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/storage
+                         ${CMAKE_BINARY_DIR}/storage)
+    endif()
+    if(NOT TARGET argus::threading)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/threading
+                         ${CMAKE_BINARY_DIR}/threading)
+    endif()
+    if(NOT TARGET argus::validation)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/validation
+                         ${CMAKE_BINARY_DIR}/validation)
+    endif()
+    if(NOT TARGET pkg::response)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/response
+                         ${CMAKE_BINARY_DIR}/response)
+    endif()
     if(NOT TARGET argus::hardware-profile-gpu)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/hardware/src/shared/wrapper/hardware-profile
                          ${CMAKE_BINARY_DIR}/hardware-profile)
     endif()
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/sqlite
-                     ${CMAKE_BINARY_DIR}/sqlite)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/audit
-                     ${CMAKE_BINARY_DIR}/audit)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/cert
-                     ${CMAKE_BINARY_DIR}/cert)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/room
-                     ${CMAKE_BINARY_DIR}/room)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/socket
-                     ${CMAKE_BINARY_DIR}/socket)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/auth
-                     ${CMAKE_BINARY_DIR}/auth)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/identity
-                     ${CMAKE_BINARY_DIR}/identity)
+    if(NOT TARGET argus::sqlite)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/sqlite
+                         ${CMAKE_BINARY_DIR}/sqlite)
+    endif()
+    if(NOT TARGET argus::audit)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/audit
+                         ${CMAKE_BINARY_DIR}/audit)
+    endif()
+    if(NOT TARGET argus::cert)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/cert
+                         ${CMAKE_BINARY_DIR}/cert)
+    endif()
+    if(NOT TARGET argus::room)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/room
+                         ${CMAKE_BINARY_DIR}/room)
+    endif()
+    if(NOT TARGET argus::socket)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/socket
+                         ${CMAKE_BINARY_DIR}/socket)
+    endif()
+    if(NOT TARGET argus::auth)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/auth
+                         ${CMAKE_BINARY_DIR}/auth)
+    endif()
+    if(NOT TARGET argus::identity)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/identity
+                         ${CMAKE_BINARY_DIR}/identity)
+    endif()
     if(NOT TARGET identity-migration)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/identity/tools/migrate-identity
                          ${CMAKE_BINARY_DIR}/identity/tools/migrate-identity)
     endif()
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/sync
-                     ${CMAKE_BINARY_DIR}/sync)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/audio
-                     ${CMAKE_BINARY_DIR}/audio)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/tts-client
-                     ${CMAKE_BINARY_DIR}/tts-client)
+    if(NOT TARGET argus_sync)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/sync
+                         ${CMAKE_BINARY_DIR}/sync)
+    endif()
+    if(NOT TARGET argus::audio)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/audio
+                         ${CMAKE_BINARY_DIR}/audio)
+    endif()
+    if(NOT TARGET argus::tts-client)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/tts-client
+                         ${CMAKE_BINARY_DIR}/tts-client)
+    endif()
     if(NOT TARGET argus::stt-client)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/stt-client
                          ${CMAKE_BINARY_DIR}/stt-client)
@@ -115,7 +176,7 @@ argus_module(NAME camera-rpc
         argus_sync
         argus::client-camera
         argus::client-health
-        argus_common)
+        contract::sync)
 
 target_compile_options(argus_camera-rpc PRIVATE -Wall -Wextra)
 
@@ -194,14 +255,35 @@ target_include_directories(camera-core SYSTEM PUBLIC
 
 target_include_directories(camera-core PUBLIC ${CAMERA_SRC_ROOT})
 
-target_link_libraries(camera-core PUBLIC argus_sync argus::sqlite
-    argus::camera-action-command argus::camera-object-event-outbox
-    argus::socket argus::room argus::audio argus::tts-client
-    argus::stt-client argus::client-camera-actions sqlite-vec
-    opencv::opencv ${ARGUS_NCNN_TARGET} argus::hardware-profile-gpu
-    argus_common
+target_link_libraries(camera-core PUBLIC
+    argus_sync
+    argus::sqlite
+    argus::camera-action-command
+    argus::camera-object-event-outbox
+    argus::socket
+    argus::room
+    argus::audio
+    argus::tts-client
+    argus::stt-client
+    argus::client-camera-actions
+    sqlite-vec
+    opencv::opencv
+    ${ARGUS_NCNN_TARGET}
+    argus::hardware-profile-gpu
+    argus::access
     argus::audit
-    OpenSSL::SSL OpenSSL::Crypto)
+    argus::auth
+    argus::config
+    argus::hardware-profile
+    argus::hash
+    argus::json
+    argus::nats
+    argus::storage
+    argus::threading
+    argus::validation
+    pkg::response
+    OpenSSL::SSL
+    OpenSSL::Crypto)
 target_link_libraries(camera-core PRIVATE contract::camera)
 
 target_compile_options(camera-core PRIVATE -Wall -Wextra)
@@ -225,7 +307,6 @@ endif()
 
 # The unit suites opt into the default build: this folder is added
 # EXCLUDE_FROM_ALL, and camera-migration (tools/) stays out of it.
-enable_testing()
 set(CAMERA_UNIT_TESTS
     camera-schema-test
     camera-migration-test
@@ -245,7 +326,25 @@ foreach(TEST_NAME IN LISTS CAMERA_UNIT_TESTS)
     # binaries never get built.
     set_target_properties(${TEST_NAME} PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
-    target_link_libraries(${TEST_NAME} PRIVATE argus_common doctest::doctest)
+        target_link_libraries(${TEST_NAME} PRIVATE
+    argus::access
+    argus::audio
+    argus::audit
+    argus::auth
+    argus::config
+    argus::hardware-profile
+    argus::hash
+    argus::json
+    argus::nats
+    argus::room
+    argus::socket
+    argus::sqlite
+    argus::storage
+    argus::threading
+    argus::validation
+    contract::sync
+    pkg::response
+    doctest::doctest)
 
     target_compile_options(${TEST_NAME} PRIVATE -Wall -Wextra)
 
@@ -316,9 +415,18 @@ target_include_directories(camera-talk-cutover-test PRIVATE
     ${CAMERA_SRC_ROOT}
     ${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/tts-client/tests/support)
 
-target_link_libraries(camera-talk-cutover-test PRIVATE argus_sync
-    argus_common argus::audio argus::tts-client OpenSSL::SSL
-    OpenSSL::Crypto doctest::doctest)
+target_link_libraries(camera-talk-cutover-test PRIVATE
+    argus_sync
+    argus::audio
+    argus::config
+    argus::json
+    argus::threading
+    argus::validation
+    pkg::response
+    argus::tts-client
+    OpenSSL::SSL
+    OpenSSL::Crypto
+    doctest::doctest)
 
 set_target_properties(camera-talk-cutover-test PROPERTIES
     EXCLUDE_FROM_ALL FALSE)
@@ -361,10 +469,23 @@ target_include_directories(camera-action-rpc-test PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/tts-client/tests/support
     ${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/stt-client/tests/support)
 
-target_link_libraries(camera-action-rpc-test PRIVATE argus_sync
+target_link_libraries(camera-action-rpc-test PRIVATE
+    argus_sync
     argus::camera-action-command
-    argus_common argus::audio argus::tts-client argus::stt-client
-    argus::client-camera-actions OpenSSL::SSL OpenSSL::Crypto doctest::doctest)
+    argus::audio
+    argus::config
+    argus::hash
+    argus::json
+    argus::sqlite
+    argus::threading
+    argus::validation
+    pkg::response
+    argus::tts-client
+    argus::stt-client
+    argus::client-camera-actions
+    OpenSSL::SSL
+    OpenSSL::Crypto
+    doctest::doctest)
 
 target_compile_options(camera-action-rpc-test PRIVATE -Wall -Wextra)
 
@@ -378,8 +499,10 @@ add_executable(camera-action-migration-test
     tests/unit/camera-action-migration-test.cc)
 target_include_directories(camera-action-migration-test PRIVATE
     ${CAMERA_SRC_ROOT})
-target_link_libraries(camera-action-migration-test PRIVATE argus::sqlite
-    argus::camera-action-command argus_common doctest::doctest)
+target_link_libraries(camera-action-migration-test PRIVATE
+    argus::sqlite
+    argus::camera-action-command
+    doctest::doctest)
 target_compile_options(camera-action-migration-test PRIVATE -Wall -Wextra)
 set_target_properties(camera-action-migration-test PROPERTIES
     EXCLUDE_FROM_ALL FALSE)
@@ -391,8 +514,10 @@ add_executable(object-event-outbox-test
     tests/unit/object-event-outbox-test.cc
     ${CAMERA_SRC_ROOT}/shared/repositories/object-event-outbox/object-event-outbox-repository.cc)
 target_include_directories(object-event-outbox-test PRIVATE ${CAMERA_SRC_ROOT})
-target_link_libraries(object-event-outbox-test PRIVATE argus::sqlite
-    argus_common doctest::doctest)
+target_link_libraries(object-event-outbox-test PRIVATE
+    argus::sqlite
+    argus::access
+    doctest::doctest)
 target_compile_definitions(object-event-outbox-test PRIVATE
     ARGUS_CAMERA_SCHEMA_PATH="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql")
 target_compile_options(object-event-outbox-test PRIVATE -Wall -Wextra)

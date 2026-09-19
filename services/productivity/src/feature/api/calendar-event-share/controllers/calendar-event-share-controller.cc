@@ -4,7 +4,7 @@
 #include <feature/api/calendar-event-share/dtos/create-calendar-event-share-dto.hxx>
 #include <feature/api/calendar-event-share/dtos/update-calendar-event-share-dto.hxx>
 #include <filter/jwt/jwt-filter.hxx>
-#include <shared/wrapper/api-response/api-response.hxx>
+#include <http/api-response.hxx>
 
 namespace
 {

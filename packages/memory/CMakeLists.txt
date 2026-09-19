@@ -1,6 +1,11 @@
 cmake_minimum_required(VERSION 3.25)
 project(argus-memory VERSION 1.0.0 LANGUAGES CXX)
 
+# enable_testing() must precede the first add_subdirectory: the flag
+# propagates into every subtree, and a directory that misses it gets no
+# CTestTestfile — the tests of anything added beneath it then never run.
+enable_testing()
+
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -14,18 +19,44 @@ if(NOT TARGET argus::hardware-profile)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../hardware/src/shared/wrapper/hardware-profile
                      ${CMAKE_CURRENT_BINARY_DIR}/hardware-profile)
 endif()
+# The leaves this module links: a DAG, so their guards carry them into every
+# build, standalone or consumed.
+if(NOT TARGET argus::access)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../access
+                     ${CMAKE_CURRENT_BINARY_DIR}/access)
+endif()
+if(NOT TARGET argus::config)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../config
+                     ${CMAKE_CURRENT_BINARY_DIR}/config)
+endif()
+if(NOT TARGET argus::json)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../json
+                     ${CMAKE_CURRENT_BINARY_DIR}/json)
+endif()
+if(NOT TARGET argus::nats)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../nats
+                     ${CMAKE_CURRENT_BINARY_DIR}/nats)
+endif()
+if(NOT TARGET argus::text)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../text
+                     ${CMAKE_CURRENT_BINARY_DIR}/text)
+endif()
+if(NOT TARGET argus::threading)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../threading
+                     ${CMAKE_CURRENT_BINARY_DIR}/threading)
+endif()
+if(NOT TARGET argus::validation)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../validation
+                     ${CMAKE_CURRENT_BINARY_DIR}/validation)
+endif()
 if(NOT TARGET Drogon::Drogon)
     # Standalone build (outside the root project's configure): add the
-    # sibling packages memory-core links, argus-common first.
+    # sibling packages memory-core links.
     find_package(Drogon CONFIG REQUIRED)
     find_package(tomlplusplus REQUIRED)
     find_package(nlohmann_json REQUIRED)
     find_package(onnxruntime CONFIG REQUIRED)
     find_package(cnats CONFIG REQUIRED)
-    if(NOT TARGET argus_common)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/common
-                         ${CMAKE_BINARY_DIR}/common)
-    endif()
     if(NOT TARGET argus::phrase)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/phrase
                          ${CMAKE_BINARY_DIR}/phrase)
@@ -126,13 +157,17 @@ target_include_directories(memory-core SYSTEM PUBLIC
 target_include_directories(memory-core PUBLIC ${MEMORY_SRC_ROOT})
 
 target_link_libraries(memory-core PUBLIC
-    argus_common
+    argus::access
+    argus::config
+    argus::hardware-profile
+    argus::phrase
+    argus::sqlite
+    argus::text
+    argus::threading
+    argus::validation
     contract::sync
     argus::audit
-    argus::sqlite
     argus::llm-client
-    argus::phrase
-    argus::hardware-profile
     Drogon::Drogon
     nlohmann_json::nlohmann_json
     llama
@@ -160,7 +195,6 @@ endif()
 
 # The unit suites opt back into the default build: this folder is added
 # EXCLUDE_FROM_ALL.
-enable_testing()
 # The catalog replica replay (Ruling BX): identity and camera change events
 # land in the replicas and the gazetteer rebuilds; the snapshot fill only
 # fires on empty tables.

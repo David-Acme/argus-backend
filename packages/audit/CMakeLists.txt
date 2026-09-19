@@ -2,6 +2,35 @@
 # user_action_log), the SyncAudit entry every feature writes through, and
 # the socket-backed user-change sink. Consumers link argus::audit.
 
+include(${CMAKE_CURRENT_SOURCE_DIR}/../../cmake/argus-module.cmake)
+
+# The sibling packages this module links, declared here rather than by the
+# consumer: the guards keep the root tree and every other consumer in charge.
+if(NOT TARGET argus::access)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../access
+                     ${CMAKE_CURRENT_BINARY_DIR}/access)
+endif()
+
+if(NOT TARGET argus::json)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../json
+                     ${CMAKE_CURRENT_BINARY_DIR}/json)
+endif()
+
+if(NOT TARGET pkg::response)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../response
+                     ${CMAKE_CURRENT_BINARY_DIR}/response)
+endif()
+
+if(NOT TARGET argus::sqlite)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../sqlite
+                     ${CMAKE_CURRENT_BINARY_DIR}/sqlite)
+endif()
+
+if(NOT TARGET argus::socket)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../socket
+                     ${CMAKE_CURRENT_BINARY_DIR}/socket)
+endif()
+
 find_package(Drogon CONFIG REQUIRED)
 find_package(nlohmann_json REQUIRED)
 
@@ -21,12 +50,13 @@ argus_module(NAME audit
         src/shared/contracts/user-audit-event.hxx
     INCLUDES src)
 
-target_link_libraries(argus_audit
-    PUBLIC
-        argus::socket
-        argus::sqlite
-        argus_common
-        Drogon::Drogon
-        nlohmann_json::nlohmann_json)
+target_link_libraries(argus_audit PUBLIC
+    argus::socket
+    argus::sqlite
+    argus::access
+    argus::json
+    pkg::response
+    Drogon::Drogon
+    nlohmann_json::nlohmann_json)
 
 target_compile_options(argus_audit PRIVATE -Wall -Wextra)

@@ -34,7 +34,7 @@
 
 Every DB column with a CHECK constraint (`role`, `severity`, `record_mode`,
 `zone_type`, `status`, `action`) MUST use its `enum class` from
-`packages/common/src/shared/enums.hxx`. Use `toString()`/`fromString()` at DB boundaries only.
+`packages/access/src/shared/enums.hxx`. Use `toString()`/`fromString()` at DB boundaries only.
 
 ```
 UserRole, EventSeverity, CameraRecordMode, ZoneType,
@@ -119,7 +119,7 @@ Never skip a filter in protected routes.
 
 ### 6. Responses & attribute keys
 
-ALL error responses go through `AppConfig` (in `packages/common/src/config/`):
+ALL error responses go through `AppConfig` (in `packages/response/src/config/app-config.hxx`):
 
 ```cpp
 AppConfig::get401Response();                         // default message
@@ -145,7 +145,7 @@ AppConfig::DEVICE_CTX_KEY = "device_ctx"
 
 ### 7. Role-based access
 
-Roles are checked centrally via `packages/common/src/shared/access/role-access.hxx` (the
+Roles are checked centrally via `packages/access/src/shared/access/role-access.hxx` (the
 `kTableAccess` map: role → table → `RolePermission`). **`RoleFilter` (HTTP) and
 the sync engine share that single source of truth** — to change a permission,
 edit only that file. Never imperative if/else.
@@ -236,7 +236,7 @@ Naming: `ResponseLoginDto`, `ResponseRefreshTokenDto`
 
 ### 11. Validation DSL
 
-All DTO validation uses the macro DSL in `packages/common/src/shared/validation/`:
+All DTO validation uses the macro DSL in `packages/validation/src/shared/validation/`:
 
 ```cpp
 LoginDto LoginDto::fromJson(const Json::Value& json) {
@@ -306,7 +306,7 @@ images (>2048px) are decoded scaled via OpenCV (`IMREAD_REDUCED_COLOR_2/4`).
 ### 13b. Adaptive threading (ThreadBudget)
 
 NEVER hardcode thread counts. All AI services size their thread pools from
-`packages/common/src/shared/wrapper/thread-budget/thread-budget.hxx`:
+`packages/threading/src/shared/wrapper/thread-budget/thread-budget.hxx`:
 `computeThreads()`, `batchThreads()`, `heavyThreads()`, `lightThreads()`,
 `inferenceSlots()`. This keeps the same build fast on 2-core laptops and
 64-core servers. Example: LLM uses `lightThreads()` for token decode and
@@ -317,7 +317,7 @@ NEVER hardcode thread counts. All AI services size their thread pools from
 Every AI service exposes a sync method (`chat`, `describe`, `transcribe`,
 `synthesize`) AND a coroutine variant (`chatAsync`, `describeAsync`,
 `transcribeAsync`, `synthesizeAsync`) that wraps the sync one in
-`BlockingTask` (see `packages/common/src/shared/wrapper/blocking-task/blocking-task.hxx`,
+`BlockingTask` (see `packages/threading/src/shared/wrapper/blocking-task/blocking-task.hxx`,
 which has a `void` specialization). Controllers/services on the event loop
 MUST `co_await` the Async variant — never call the sync method directly.
 Streaming variants marshal callbacks into the loop via `queueInLoop`.
@@ -493,7 +493,7 @@ Raw pointers only for non-owning access (`.get()`).
   enforced on every authenticated transport. Messages are `{type, payload}` and responses use
   `SocketEmitDto` `{operation, option(TableName), info}`.
   Errors: `{type:"<type>_error", status, error}`.
-- Operations (`packages/common/src/shared/contracts/sync-operation.hxx`): `InitialInfo=0`,
+- Operations (`packages/contracts/sync-contract/src/shared/contracts/sync-operation.hxx`): `InitialInfo=0`,
   `Synchronize=1` (initial bootstrap plus creations/deletions; includes
   `notification` per user), `SynchronizeAuditLog=2` (global field diffs; the
   backend selects tables by role), `SynchronizeUserAuditLog=3` (recipient
@@ -670,17 +670,17 @@ Run the full orchestrator when changing shared build infrastructure.
 
 | File | Purpose |
 |------|---------|
-| `packages/common/src/shared/enums.hxx` | All enum types + conversion helpers |
+| `packages/access/src/shared/enums.hxx` | All enum types + conversion helpers |
 | `<owner>/src/shared/schemas/*/` | DB row → C++ struct mapping |
 | `<owner>/src/shared/repositories/*/` | Data access layer |
-| `packages/common/src/shared/contracts/` | `Syncable`, `SyncFilter` base classes + `sync-operation.hxx` |
-| `packages/common/src/shared/access/` | Centralized `RoleAccess` (role → table → permissions), used by `RoleFilter` and sync |
-| `packages/common/src/shared/validation/` | Validation DSL (rules, macros, validator) |
+| `packages/contracts/sync-contract/src/shared/contracts/` | `Syncable`, `SyncFilter` base classes + `sync-operation.hxx` |
+| `packages/access/src/shared/access/` | Centralized `RoleAccess` (role → table → permissions), used by `RoleFilter` and sync |
+| `packages/validation/src/shared/validation/` | Validation DSL (rules, macros, validator) |
 | `packages/auth/src/filter/device/` | Device fingerprint extraction |
 | `packages/auth/src/filter/jwt/` | JWT verification + refresh token validation |
 | `packages/auth/src/filter/role/` | Role-based access control |
 | `packages/auth/src/filter/valid-json/` | JSON body validation for POST/PATCH |
-| `packages/common/src/config/app-config.hxx` | Centralized responses + attribute keys |
+| `packages/response/src/config/app-config.hxx` | Centralized responses + attribute keys |
 | `packages/auth/src/shared/services/jwt/` | JWT sign/verify (HS256, instance class) |
 | `packages/identity/src/shared/services/face/` | Face detection + recognition (ncnn) — FaceDB = vec0 index (sqlite-vec) |
 | `services/llm/src/shared/services/llm/` | LLM inference (llama.cpp) |
@@ -695,11 +695,11 @@ Run the full orchestrator when changing shared build infrastructure.
 | `services/stt/src/shared/services/stt/` | Speech-to-text via sherpa-onnx (default `nemo_transducer` FastConformer RNN-T, es/en; whisper/canary/nemo_ctc/omnilingual selectable) |
 | `services/tts/src/shared/services/tts/` | Text-to-speech (Supertonic 3) |
 | `services/camera/src/shared/services/tapo/` | Tapo camera local protocols: control (`stok` + `securePassthrough`, legacy fallback) and the 8800 talk channel (Digest + MPEG-TS PCMA) |
-| `packages/common/src/shared/services/storage/` | `S3StorageService` (RustFS S3, SigV4 in `s3-signing.hxx`) + `PrivatePortraitService` (private objects, read via one-use capability) |
+| `packages/storage/src/shared/services/storage/` | `S3StorageService` (RustFS S3, SigV4 in `s3-signing.hxx`) + `PrivatePortraitService` (private objects, read via one-use capability) |
 | `services/voice/src/shared/services/reaction/` | `ReactionEngine` — per-turn reactions by signal priority → `voice:event` (meaning, never expression names) |
 | `packages/identity/src/shared/repositories/{user-invitation,portrait-*,device-login-challenge}/` | People domain: invitations (hash-only), portrait capabilities, cross-device login challenges |
-| `packages/common/src/shared/wrapper/cancellation/` | `CancellationToken` shared across streaming AI/audio paths |
-| `packages/common/src/shared/services/config-service/` | `ConfigService` read + runtime writes (`setBool/...` persist to `config.toml`, comments preserved) |
+| `packages/threading/src/shared/wrapper/cancellation/` | `CancellationToken` shared across streaming AI/audio paths |
+| `packages/config/src/shared/services/config-service/` | `ConfigService` read + runtime writes (`setBool/...` persist to `config.toml`, comments preserved) |
 | `packages/room/src/shared/services/room/` | local `RoomManager` (rooms per module/user, `thread_local`) |
 | `packages/socket/src/shared/services/socket/` | `SocketService` (emitModule/emitUser) + `SocketEmitDto` |
 | `packages/audit/src/shared/services/audit-log/` | Global audit: per-field diffs, daily compaction and monotonic id for sync |
@@ -707,12 +707,12 @@ Run the full orchestrator when changing shared build infrastructure.
 | `packages/audit/src/shared/services/sync-audit/` | Central facade to publish module/user diffs after feature mutations |
 | `packages/sync/src/shared/services/notification/` | Per-user notifications: `Add` on create and granular user-audit on mark-as-read |
 | `services/notification/src/shared/services/notification-token/` | Push tokens per session |
-| `packages/common/src/shared/utils/json-diff/` | Diff JSON + snapshot (`JsonDiff`) |
-| `packages/common/src/shared/utils/json-util/` | `jsonToString`/`jsonFromString` |
+| `packages/json/src/shared/utils/json-diff/` | Diff JSON + snapshot (`JsonDiff`) |
+| `packages/json/src/shared/utils/json-util/` | `jsonToString`/`jsonFromString` |
 | `packages/sync/src/feature/socket/sync/` | `SyncSocket` + `SyncService` + `SynchronizedService` + DTOs |
-| `packages/common/src/shared/wrapper/api-response/` | Standardized API response builder |
-| `packages/common/src/shared/wrapper/blocking-task/` | Coroutine awaiter for off-loop heavy work |
-| `packages/common/src/shared/wrapper/thread-budget/` | Adaptive thread sizing for AI services |
+| `packages/response/src/http/` | Standardized API response builder |
+| `packages/threading/src/shared/wrapper/blocking-task/` | Coroutine awaiter for off-loop heavy work |
+| `packages/threading/src/shared/wrapper/thread-budget/` | Adaptive thread sizing for AI services |
 | `docs/README.md` | Documentation index and reading order |
 | `docs/history/project-log.md` | Full project history and decisions |
 | `<project>/config.toml.example` | Per-project template; `setup.sh` generates the gitignored `config.toml` |

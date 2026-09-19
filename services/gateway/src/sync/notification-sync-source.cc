@@ -4,7 +4,7 @@
 
 #include <gateway-errors.hxx>
 #include <shared/enums.hxx>
-#include <shared/exceptions/response-exception.hxx>
+#include <response-exception.hxx>
 #include <shared/utils/json-util/json-util.hxx>
 #include <shared/wrapper/blocking-task/blocking-task.hxx>
 #include <string>

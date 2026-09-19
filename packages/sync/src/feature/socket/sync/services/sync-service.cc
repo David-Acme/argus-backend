@@ -5,7 +5,7 @@
 #include <shared/contracts/sync-operation.hxx>
 #include <shared/contracts/user-directory.hxx>
 #include <shared/dtos/socket-emit/socket-emit-dto.hxx>
-#include <shared/exceptions/response-exception.hxx>
+#include <response-exception.hxx>
 #include <sync-errors.hxx>
 
 drogon::Task<void>

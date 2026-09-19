@@ -10,6 +10,16 @@
 
 include(${CMAKE_CURRENT_SOURCE_DIR}/../../../cmake/argus-module.cmake)
 
+if(NOT TARGET argus::access)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../access
+                     ${CMAKE_CURRENT_BINARY_DIR}/access)
+endif()
+
+if(NOT TARGET argus::config)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../config
+                     ${CMAKE_CURRENT_BINARY_DIR}/config)
+endif()
+
 find_package(Drogon CONFIG REQUIRED)
 find_package(nlohmann_json REQUIRED)
 
@@ -22,7 +32,7 @@ argus_module(NAME llm-client
     INCLUDES
         src
     DEPENDS
-        argus_common
+        argus::access argus::config
         Drogon::Drogon
         nlohmann_json::nlohmann_json)
 

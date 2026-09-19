@@ -4,7 +4,7 @@
 #include <feature/api/project/dtos/create-project-dto.hxx>
 #include <feature/api/project/dtos/update-project-dto.hxx>
 #include <filter/jwt/jwt-filter.hxx>
-#include <shared/wrapper/api-response/api-response.hxx>
+#include <http/api-response.hxx>
 
 drogon::Task<drogon::HttpResponsePtr>
 ProjectController::create(drogon::HttpRequestPtr req)

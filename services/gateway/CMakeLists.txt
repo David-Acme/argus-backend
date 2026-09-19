@@ -1,6 +1,11 @@
 cmake_minimum_required(VERSION 3.25)
 project(argus-gateway VERSION 1.0.0 LANGUAGES CXX)
 
+# enable_testing() must precede the first add_subdirectory: the flag
+# propagates into every subtree, and a directory that misses it gets no
+# CTestTestfile — the tests of anything added beneath it then never run.
+enable_testing()
+
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -10,9 +15,10 @@ set(GATEWAY_SRC_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/src)
 include(${CMAKE_CURRENT_SOURCE_DIR}/../../cmake/argus-module.cmake)
 
 if(NOT TARGET argus_identity)
-    # Standalone build: reuse the root project's argus_common, argus_identity
-    # and third-party sources so the gateway links the same objects as the
-    # root-tree build.
+    # Standalone configure: this service owns the whole build, so it adds the
+    # packages it links — the leaves it uses directly and the sibling packages
+    # that used to arrive through argus-common — plus the third-party sources
+    # so the gateway links the same objects as any other consumer.
     # The substrate still finds the vendored gRPC and would build the cq
     # bridge, whose entry symbol then interposes the identically-named
     # implementation inside libgrpc. Empty stand-ins skip it.
@@ -23,8 +29,34 @@ if(NOT TARGET argus_identity)
     find_package(Drogon CONFIG REQUIRED)
     find_package(cnats CONFIG REQUIRED)
     find_package(tomlplusplus REQUIRED)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/common
-                     ${CMAKE_BINARY_DIR}/common)
+    if(NOT TARGET argus::access)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/access
+                         ${CMAKE_BINARY_DIR}/access)
+    endif()
+    if(NOT TARGET argus::config)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/config
+                         ${CMAKE_BINARY_DIR}/config)
+    endif()
+    if(NOT TARGET argus::hash)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/hash
+                         ${CMAKE_BINARY_DIR}/hash)
+    endif()
+    if(NOT TARGET argus::json)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/json
+                         ${CMAKE_BINARY_DIR}/json)
+    endif()
+    if(NOT TARGET argus::nats)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/nats
+                         ${CMAKE_BINARY_DIR}/nats)
+    endif()
+    if(NOT TARGET argus::threading)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/threading
+                         ${CMAKE_BINARY_DIR}/threading)
+    endif()
+    if(NOT TARGET pkg::response)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/response
+                         ${CMAKE_BINARY_DIR}/response)
+    endif()
 
     if(NOT TARGET sqlite-vec)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../third_party/sqlite-vec
@@ -44,26 +76,42 @@ if(NOT TARGET argus_identity)
                      ${CMAKE_BINARY_DIR}/third_party/ncnn EXCLUDE_FROM_ALL)
     set(ARGUS_NCNN_TARGET ncnn)
 
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/cert
-                     ${CMAKE_BINARY_DIR}/cert)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/room
-                     ${CMAKE_BINARY_DIR}/room)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/sqlite
-                     ${CMAKE_BINARY_DIR}/sqlite)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/socket
-                     ${CMAKE_BINARY_DIR}/socket)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/audit
-                     ${CMAKE_BINARY_DIR}/audit)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/auth
-                     ${CMAKE_BINARY_DIR}/auth)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/identity
-                     ${CMAKE_BINARY_DIR}/identity)
+    if(NOT TARGET argus::cert)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/cert
+                         ${CMAKE_BINARY_DIR}/cert)
+    endif()
+    if(NOT TARGET argus::room)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/room
+                         ${CMAKE_BINARY_DIR}/room)
+    endif()
+    if(NOT TARGET argus::sqlite)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/sqlite
+                         ${CMAKE_BINARY_DIR}/sqlite)
+    endif()
+    if(NOT TARGET argus::socket)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/socket
+                         ${CMAKE_BINARY_DIR}/socket)
+    endif()
+    if(NOT TARGET argus::audit)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/audit
+                         ${CMAKE_BINARY_DIR}/audit)
+    endif()
+    if(NOT TARGET argus::auth)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/auth
+                         ${CMAKE_BINARY_DIR}/auth)
+    endif()
+    if(NOT TARGET argus::identity)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/identity
+                         ${CMAKE_BINARY_DIR}/identity)
+    endif()
     if(NOT TARGET identity-migration)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/identity/tools/migrate-identity
                          ${CMAKE_BINARY_DIR}/identity/tools/migrate-identity)
     endif()
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/sync
-                     ${CMAKE_BINARY_DIR}/sync)
+    if(NOT TARGET argus_sync)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/sync
+                         ${CMAKE_BINARY_DIR}/sync)
+    endif()
 endif()
 
 if(NOT TARGET argus::client-voice)
@@ -219,7 +267,6 @@ set_target_properties(audit-sync-read-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 set_target_properties(camera-notifier-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 set_target_properties(notification-delivery-inbox-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
-enable_testing()
 add_test(NAME gateway-test COMMAND gateway-test)
 add_test(NAME audit-sync-read-test COMMAND audit-sync-read-test)
 add_test(NAME camera-notifier-test COMMAND camera-notifier-test)

@@ -4,6 +4,11 @@
 
 include(${CMAKE_CURRENT_SOURCE_DIR}/../../../cmake/argus-module.cmake)
 
+if(NOT TARGET argus::hash)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../hash
+                     ${CMAKE_CURRENT_BINARY_DIR}/hash)
+endif()
+
 find_package(Drogon CONFIG REQUIRED)
 
 argus_module(NAME vlm-client
@@ -12,7 +17,7 @@ argus_module(NAME vlm-client
     INCLUDES
         src
     DEPENDS
-        argus_common
+        argus::hash
         Drogon::Drogon)
 
 target_compile_options(argus_vlm-client PRIVATE -Wall -Wextra)

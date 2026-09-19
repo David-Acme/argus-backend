@@ -11,6 +11,25 @@
 
 include(${CMAKE_CURRENT_SOURCE_DIR}/../../cmake/argus-module.cmake)
 
+# The leaves this module links: a DAG, so their guards carry them into every
+# build, standalone or consumed.
+if(NOT TARGET argus::access)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../access
+                     ${CMAKE_BINARY_DIR}/access)
+endif()
+if(NOT TARGET argus::config)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../config
+                     ${CMAKE_BINARY_DIR}/config)
+endif()
+if(NOT TARGET argus::threading)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../threading
+                     ${CMAKE_BINARY_DIR}/threading)
+endif()
+if(NOT TARGET pkg::response)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../response
+                     ${CMAKE_BINARY_DIR}/response)
+endif()
+
 # The identity RPC contract (argus.identity.v1) the filter chain validates
 # tokens and device credentials through.
 if(NOT TARGET argus::client-identity)
@@ -37,7 +56,7 @@ argus_module(NAME auth
     INCLUDES
         src
     DEPENDS
-        argus_common
+        argus::access argus::config argus::threading pkg::response
         argus::client-identity
         Drogon::Drogon
         jwt-cpp::jwt-cpp

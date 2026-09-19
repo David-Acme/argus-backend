@@ -2,7 +2,7 @@
 
 #include <config/app-config.hxx>
 #include <filter/jwt/jwt-filter.hxx>
-#include <shared/wrapper/api-response/api-response.hxx>
+#include <http/api-response.hxx>
 #include <utility>
 
 drogon::Task<drogon::HttpResponsePtr>

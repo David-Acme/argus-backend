@@ -1,6 +1,11 @@
 cmake_minimum_required(VERSION 3.25)
 project(argus-sync VERSION 1.0.0 LANGUAGES CXX)
 
+# enable_testing() must precede the first add_subdirectory: the flag
+# propagates into every subtree, and a directory that misses it gets no
+# CTestTestfile — the tests of anything added beneath it then never run.
+enable_testing()
+
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -16,22 +21,46 @@ include(${CMAKE_CURRENT_SOURCE_DIR}/../../cmake/argus-module.cmake)
 # sibling suites ride links Drogon from this scope.
 find_package(Drogon CONFIG REQUIRED)
 
+# The leaves this module links: a DAG, so their guards carry them into every
+# build. The sibling packages stay behind PROJECT_IS_TOP_LEVEL because
+# argus_sync rides argus_identity and its suite: only the project at the top
+# of the configure provides those.
+if(NOT TARGET argus::access)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../access
+                     ${CMAKE_BINARY_DIR}/access)
+endif()
+if(NOT TARGET argus::hash)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../hash
+                     ${CMAKE_BINARY_DIR}/hash)
+endif()
+if(NOT TARGET argus::json)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../json
+                     ${CMAKE_BINARY_DIR}/json)
+endif()
+if(NOT TARGET argus::nats)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../nats
+                     ${CMAKE_BINARY_DIR}/nats)
+endif()
+if(NOT TARGET argus::validation)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../validation
+                     ${CMAKE_BINARY_DIR}/validation)
+endif()
+if(NOT TARGET pkg::response)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../response
+                     ${CMAKE_BINARY_DIR}/response)
+endif()
+
 # Standalone configure (top level): the sync test rides argus_identity, so
 # add the sibling packages sync and identity link, the vendored sqlite-vec
 # and ncnn, and identity's migration tool the sibling suites ride. Identity
-# lands after the ncnn block so its face services see the ncnn target. Every
-# guard keeps the root and consumer builds in charge. The empty cq-bridge
-# stand-ins skip the bridge: standalone protobuf comes from the system, so
-# the bridge entry symbol would interpose libgrpc's own callbacks (see
-# argus-contracts/CONTEXT.md).
+# lands after the ncnn block so its face services see the ncnn target. The
+# empty cq-bridge stand-ins skip the bridge: standalone protobuf comes from
+# the system, so the bridge entry symbol would interpose libgrpc's own
+# callbacks (see argus-contracts/CONTEXT.md).
 if(PROJECT_IS_TOP_LEVEL)
     if(NOT TARGET argus_client_grpc_bridge_entry)
         add_library(argus_client_grpc_bridge_entry INTERFACE)
         add_library(argus_client_grpc_bridge_exit INTERFACE)
-    endif()
-    if(NOT TARGET argus_common)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../common
-                         ${CMAKE_BINARY_DIR}/common)
     endif()
     if(NOT TARGET argus::room)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../room
@@ -134,16 +163,21 @@ target_include_directories(argus_sync
         ${CMAKE_CURRENT_SOURCE_DIR}/../../third_party
         ${CMAKE_CURRENT_SOURCE_DIR}/../../third_party/stb)
 
-target_link_libraries(argus_sync
-    PUBLIC
-        argus_identity
-        argus::audit
-        argus::socket
-        argus::room
-        argus::auth
-        contract::sync
-        argus_common
-        Drogon::Drogon)
+target_link_libraries(argus_sync PUBLIC
+    argus_identity
+    argus::audit
+    argus::socket
+    argus::room
+    argus::auth
+    contract::sync
+    argus::access
+    argus::hash
+    argus::json
+    argus::nats
+    argus::sqlite
+    argus::validation
+    pkg::response
+    Drogon::Drogon)
 
 target_compile_options(argus_sync PRIVATE -Wall -Wextra)
 
@@ -153,12 +187,16 @@ target_compile_options(argus_sync PRIVATE -Wall -Wextra)
 
 # The sync suites: the empty-table contract and the golden /sync transcript
 # whose fixtures are frozen (a re-record is a contract change, not a fix).
-enable_testing()
 find_package(doctest REQUIRED)
 
 add_executable(event-sync-empty-test tests/unit/event-sync-empty-test.cc)
-target_link_libraries(event-sync-empty-test PRIVATE argus_sync
-    argus::sqlite argus_common Drogon::Drogon sqlite-vec doctest::doctest)
+target_link_libraries(event-sync-empty-test PRIVATE
+    argus_sync
+    argus::sqlite
+    contract::sync
+    Drogon::Drogon
+    sqlite-vec
+    doctest::doctest)
 target_compile_options(event-sync-empty-test PRIVATE -Wall -Wextra)
 add_test(NAME event-sync-empty-test COMMAND event-sync-empty-test)
 

@@ -1,16 +1,21 @@
 cmake_minimum_required(VERSION 3.25)
 project(argus-voice VERSION 1.0.0 LANGUAGES CXX)
 
+# enable_testing() must precede the first add_subdirectory: the flag
+# propagates into every subtree, and a directory that misses it gets no
+# CTestTestfile — the tests of anything added beneath it then never run.
+enable_testing()
+
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 include(${CMAKE_CURRENT_SOURCE_DIR}/../../cmake/argus-module.cmake)
 
-if(NOT TARGET argus_common)
-    # Standalone build: reuse the root project's shared foundation so the
-    # voice service links the same objects as the root-tree build, and add
-    # the sibling packages voice-core links, argus-common first.
+if(PROJECT_IS_TOP_LEVEL)
+    # Standalone configure: this service owns the whole build, so it adds the
+    # packages it links — the leaves it uses directly and the sibling packages
+    # that used to arrive through argus-common.
     find_package(Drogon CONFIG REQUIRED)
     find_package(cnats CONFIG REQUIRED)
     find_package(tomlplusplus REQUIRED)
@@ -18,8 +23,18 @@ if(NOT TARGET argus_common)
     find_package(onnxruntime CONFIG REQUIRED)
     find_path(RNNOISE_INCLUDE_DIR NAMES rnnoise.h)
     find_library(RNNOISE_LIBRARY NAMES rnnoise)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/common
-                     ${CMAKE_BINARY_DIR}/common)
+    if(NOT TARGET argus::access)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/access
+                         ${CMAKE_BINARY_DIR}/access)
+    endif()
+    if(NOT TARGET argus::config)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/config
+                         ${CMAKE_BINARY_DIR}/config)
+    endif()
+    if(NOT TARGET pkg::response)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/response
+                         ${CMAKE_BINARY_DIR}/response)
+    endif()
     if(NOT TARGET argus::audio)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/audio
                          ${CMAKE_BINARY_DIR}/audio)
@@ -85,7 +100,7 @@ argus_module(NAME voice-core
         argus::llm-client
         argus::stt-client
         argus::phrase
-        argus_common
+        argus::access argus::config
     SYSTEM_DEPENDS
         Drogon::Drogon
         nlohmann_json::nlohmann_json
@@ -122,7 +137,6 @@ endif()
 
 # The voice suites opt back into the default build: this folder is added
 # EXCLUDE_FROM_ALL.
-enable_testing()
 # The voice suites ride argus-voice's voice-core (F6-3): the typed gRPC
 # session, the remote-only engine seam and the SDK stubs compile there.
 add_executable(voice-session-seam-test tests/unit/voice-session-seam-test.cc)

@@ -16,7 +16,7 @@
 #include <shared/contracts/identity-change-sink.hxx>
 #include <shared/contracts/sync-operation.hxx>
 #include <identity-errors.hxx>
-#include <shared/exceptions/response-exception.hxx>
+#include <response-exception.hxx>
 
 #include <shared/services/config-service/config-service.hxx>
 #include <shared/services/face/face-service.hxx>

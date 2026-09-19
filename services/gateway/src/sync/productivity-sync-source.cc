@@ -4,7 +4,7 @@
 #include <json/value.h>
 #include <shared/contracts/sync-filter.hxx>
 #include <shared/enums.hxx>
-#include <shared/exceptions/response-exception.hxx>
+#include <response-exception.hxx>
 #include <shared/wrapper/blocking-task/blocking-task.hxx>
 #include <string>
 #include <utility>
