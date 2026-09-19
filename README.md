@@ -6,10 +6,10 @@ there is no root CMake project or monolithic backend executable.
 
 ## Layout
 
-- `services/argus-<name>/` — deployable processes, each with its own Conan
+- `services/<name>/` — deployable processes, each with its own Conan
   graph and CMake presets
-- `packages/argus-<name>/` — reusable libraries compiled into their consumers
-- `packages/argus-contracts/` — protobuf contracts and internal gRPC SDKs
+- `packages/<name>/` — reusable libraries compiled into their consumers
+- `packages/clients/` — protobuf contracts and internal gRPC clients
 - `third_party/` — pinned source dependencies maintained as Git submodules
 - `argus-deploy/` — the multi-service Compose stack; every service builds its
   own image
@@ -31,7 +31,7 @@ Build an already provisioned checkout:
 ```bash
 ./scripts/build-all.sh dev
 ./scripts/build-all.sh prod --no-tests
-./scripts/build-all.sh dev --only argus-camera
+./scripts/build-all.sh dev --only camera
 ```
 
 Every orchestrated project owns `CMakeLists.txt`, `conanfile.txt` and

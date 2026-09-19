@@ -7,26 +7,25 @@ set -E
 source "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
 
 PROJECTS=(
-  packages/argus-common
-  packages/argus-contracts
-  packages/argus-cert
-  packages/argus-socket
-  packages/argus-sqlite
-  packages/argus-identity
-  packages/argus-sync
-  packages/argus-memory
-  packages/argus-intent
-  services/argus-gateway
-  services/argus-camera
-  services/argus-productivity
-  services/argus-notification
-  services/argus-guard
-  services/argus-tts
-  services/argus-stt
-  services/argus-vlm
-  services/argus-llm
-  services/argus-voice
-  services/argus-tunnel
+  packages/common
+  packages/cert
+  packages/socket
+  packages/sqlite
+  packages/identity
+  packages/sync
+  packages/memory
+  packages/intent
+  services/gateway
+  services/camera
+  services/productivity
+  services/notification
+  services/guard
+  services/tts
+  services/stt
+  services/vlm
+  services/llm
+  services/voice
+  services/tunnel
 )
 
 PROFILE="dev"
@@ -88,10 +87,10 @@ for dir in "${PROJECTS[@]}"; do
   CURRENT_PROJECT="$name"
   extra_targets=()
   case "$dir" in
-    packages/argus-identity)     extra_targets=(argus-migrate-identity) ;;
-    services/argus-camera)       extra_targets=(argus-migrate-camera argus-vulkan-probe) ;;
-    services/argus-productivity) extra_targets=(argus-migrate-productivity) ;;
-    services/argus-notification) extra_targets=(argus-migrate-notification) ;;
+    packages/identity)     extra_targets=(argus-migrate-identity) ;;
+    services/camera)       extra_targets=(argus-migrate-camera argus-vulkan-probe) ;;
+    services/productivity) extra_targets=(argus-migrate-productivity) ;;
+    services/notification) extra_targets=(argus-migrate-notification) ;;
   esac
   log "=== $name ($PROFILE) ==="
   (

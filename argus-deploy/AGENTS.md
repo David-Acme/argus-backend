@@ -7,7 +7,7 @@ any change; the cutover shape and its exceptions are documented there.
 
 - `docker-compose.yml` — cutover stack: gateway, nats, argus-camera,
   domain services, identity migration init tool.
-- `../services/argus-<name>/Dockerfile` — one image per microservice; packages
+- `../services/<name>/Dockerfile` — one image per microservice; packages
   are compiled into the service images (no package image).
 - `config.gateway.toml.example` and one template per domain service —
   per-installation copies (`config.gateway.toml`, ...) are gitignored and hold
@@ -17,7 +17,7 @@ any change; the cutover shape and its exceptions are documented there.
 
 - Rule 27: never mount one service's database or data directory into another
   service. Cross-domain reads go through the SDK clients
-  (`packages/argus-contracts/sdk`) or NATS events; only the owner gets its own
+  (`packages/clients/<domain>/src`) or NATS events; only the owner gets its own
   DB volume and schema.
 - Never bake secrets into images. Instance secrets live in the gitignored
   config files.

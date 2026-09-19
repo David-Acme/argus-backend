@@ -1,5 +1,5 @@
 # AGENTS.md rule 25 build helpers: the folder IS the module; consumers link
-# by name (argus::<name>, argus::sdk-<name>).
+# by name (argus::<name>, argus::client-<name>).
 
 include_guard(GLOBAL)
 
@@ -38,46 +38,46 @@ function(argus_module)
 endfunction()
 
 # ABI bridge over the vendored gRPC boundary (system vs Conan abseil inline
-# namespaces); the full why lives in argus-contracts/CONTEXT.md.
+# namespaces); the full why lives in packages/contracts/CONTEXT.md.
 function(argus_grpc_absl_bridge)
-  if(TARGET argus_sdk_grpc_bridge_entry)
+  if(TARGET argus_client_grpc_bridge_entry)
     return()
   endif()
   argus_contracts_substrate()
-  set(bridge_dir ${ARGUS_CMAKE_DIR}/../packages/argus-contracts/sdk/grpc)
+  set(bridge_dir ${ARGUS_CMAKE_DIR}/../packages/grpc/src/grpc)
   foreach(side entry exit)
-    add_library(argus_sdk_grpc_bridge_${side} OBJECT
+    add_library(argus_client_grpc_bridge_${side} OBJECT
                 ${bridge_dir}/grpc-cq-bridge-${side}.cc)
-    set_target_properties(argus_sdk_grpc_bridge_${side} PROPERTIES
+    set_target_properties(argus_client_grpc_bridge_${side} PROPERTIES
         POSITION_INDEPENDENT_CODE ON)
-    target_compile_options(argus_sdk_grpc_bridge_${side} PRIVATE -Wall -Wextra)
+    target_compile_options(argus_client_grpc_bridge_${side} PRIVATE -Wall -Wextra)
   endforeach()
   get_property(protobuf_includes GLOBAL PROPERTY ARGUS_PROTOBUF_INCLUDES)
-  target_include_directories(argus_sdk_grpc_bridge_entry SYSTEM PRIVATE
+  target_include_directories(argus_client_grpc_bridge_entry SYSTEM PRIVATE
                              ${protobuf_includes} ${bridge_dir})
   get_property(bridge_protobuf GLOBAL PROPERTY ARGUS_PROTOBUF_TARGET)
   get_property(bridge_grpc GLOBAL PROPERTY ARGUS_GRPC_TARGET)
-  target_link_libraries(argus_sdk_grpc_bridge_entry PRIVATE
+  target_link_libraries(argus_client_grpc_bridge_entry PRIVATE
                         ${bridge_protobuf} ${bridge_grpc})
-  target_link_libraries(argus_sdk_grpc_bridge_exit PRIVATE ${bridge_grpc})
+  target_link_libraries(argus_client_grpc_bridge_exit PRIVATE ${bridge_grpc})
 endfunction()
 
-# The shared client base every SDK wrapper builds on (channel credentials,
+# The shared client base every client wrapper builds on (channel credentials,
 # deadlines, x-argus-* caller metadata) — declared once, linked into each
-# argus_sdk_module the same way the ABI bridge is.
+# argus_client_module the same way the ABI bridge is.
 function(argus_grpc_client_base)
-  if(TARGET argus_sdk_grpc_base)
+  if(TARGET argus_client_grpc_base)
     return()
   endif()
   argus_contracts_substrate()
-  set(base_dir ${ARGUS_CMAKE_DIR}/../packages/argus-contracts/sdk/grpc)
-  add_library(argus_sdk_grpc_base OBJECT ${base_dir}/grpc-client-base.cc)
-  set_target_properties(argus_sdk_grpc_base PROPERTIES
+  set(base_dir ${ARGUS_CMAKE_DIR}/../packages/grpc/src/grpc)
+  add_library(argus_client_grpc_base OBJECT ${base_dir}/grpc-client-base.cc)
+  set_target_properties(argus_client_grpc_base PROPERTIES
       POSITION_INDEPENDENT_CODE ON)
-  target_include_directories(argus_sdk_grpc_base PUBLIC ${base_dir})
+  target_include_directories(argus_client_grpc_base PUBLIC ${base_dir})
   get_property(base_grpc GLOBAL PROPERTY ARGUS_GRPC_TARGET)
-  target_link_libraries(argus_sdk_grpc_base PUBLIC ${base_grpc})
-  target_compile_options(argus_sdk_grpc_base PRIVATE -Wall -Wextra)
+  target_link_libraries(argus_client_grpc_base PUBLIC ${base_grpc})
+  target_compile_options(argus_client_grpc_base PRIVATE -Wall -Wextra)
 endfunction()
 
 # ARGUS_SYSTEM_PROTOBUF swaps the SDK's protobuf/gRPC for the Debian stack.
@@ -89,14 +89,15 @@ function(argus_contracts_substrate)
   find_package(Threads REQUIRED)
   if(ARGUS_SYSTEM_PROTOBUF)
     # The Debian stack is wired by hand from pkg-config (conan shadows the
-    # find_package names); see argus-contracts/CONTEXT.md.
+    # find_package names); see packages/contracts/CONTEXT.md.
     find_program(system_pkgcfg pkg-config REQUIRED)
     execute_process(
       COMMAND ${system_pkgcfg} --libs grpc++
       OUTPUT_VARIABLE system_grpc_libs RESULT_VARIABLE system_grpc_result
       OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
     if(NOT system_grpc_result EQUAL 0)
-      message(FATAL_ERROR "argus-contracts: pkg-config cannot resolve grpc++")
+      message(FATAL_ERROR
+              "argus_contracts_substrate: pkg-config cannot resolve grpc++")
     endif()
     separate_arguments(system_grpc_items NATIVE_COMMAND "${system_grpc_libs}")
     # -l items must resolve inside Debian: a -L path from the conan stack
@@ -147,7 +148,8 @@ function(argus_contracts_substrate)
   else()
     find_package(Protobuf QUIET)
     if(NOT Protobuf_FOUND)
-      message(FATAL_ERROR "argus-contracts: no protobuf substrate found")
+      message(FATAL_ERROR
+              "argus_contracts_substrate: no protobuf substrate found")
     endif()
 
     # The conan module-mode export carries no include dirs; derive them from
@@ -224,16 +226,27 @@ function(argus_runtime_rpath target)
       INSTALL_RPATH "${new_rpath}")
 endfunction()
 
-# argus_sdk_module(NAME <name> [PROTO_ROOT <dir>] PROTO <path>... [SOURCES ...]
-#                  [INCLUDES ...] [DEPENDS ...]) -> argus::sdk-<name>; stubs
-# generate into the build tree, protobuf types stay behind the SDK headers.
-function(argus_sdk_module)
+# argus_client_module(NAME <name> [PROTO_ROOT <dir>] PROTO <path>... [SOURCES ...]
+#                  [INCLUDES ...] [DEPENDS ...]) -> argus::client-<name>; stubs
+# generate into the build tree, protobuf types stay behind the client headers.
+function(argus_client_module)
   cmake_parse_arguments(ARG "" "NAME;PROTO_ROOT"
                         "PROTO;SOURCES;INCLUDES;DEPENDS" ${ARGN})
   if(NOT ARG_NAME OR NOT ARG_PROTO)
-    message(FATAL_ERROR "argus_sdk_module requires NAME and PROTO")
+    message(FATAL_ERROR "argus_client_module requires NAME and PROTO")
   endif()
   argus_contracts_substrate()
+  # Imported gRPC targets are directory-scoped: re-resolve them in the
+  # caller's scope so the stub codegen below sees them, and with them the
+  # Threads::Threads that gRPCTargets names in their link interface — the
+  # substrate early-returns once configured, so its own find_package no
+  # longer runs for a second consumer directory. Cached after first.
+  find_package(Threads REQUIRED)
+  find_package(gRPC CONFIG QUIET)
+  if(NOT gRPC_FOUND)
+    list(APPEND CMAKE_PREFIX_PATH "$ENV{HOME}/.local/argus-thirdparty/grpc")
+    find_package(gRPC CONFIG REQUIRED)
+  endif()
 
   get_property(protoc_bin GLOBAL PROPERTY ARGUS_PROTOC)
   get_property(grpc_target GLOBAL PROPERTY ARGUS_GRPC_TARGET)
@@ -248,7 +261,7 @@ function(argus_sdk_module)
   endif()
   cmake_path(ABSOLUTE_PATH root BASE_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
              NORMALIZE)
-  set(gen_root ${CMAKE_CURRENT_BINARY_DIR}/argus-sdk-${ARG_NAME}/generated)
+  set(gen_root ${CMAKE_CURRENT_BINARY_DIR}/argus-client-${ARG_NAME}/generated)
 
   set(gen_sources "")
   foreach(proto IN LISTS ARG_PROTO)
@@ -282,11 +295,11 @@ function(argus_sdk_module)
     list(APPEND gen_sources ${gen_files})
   endforeach()
 
-  set(sdk_sources "")
+  set(client_sources "")
   foreach(src IN LISTS ARG_SOURCES)
     cmake_path(ABSOLUTE_PATH src BASE_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
                NORMALIZE)
-    list(APPEND sdk_sources ${src})
+    list(APPEND client_sources ${src})
   endforeach()
   set(abs_includes "")
   foreach(inc IN LISTS ARG_INCLUDES)
@@ -295,25 +308,25 @@ function(argus_sdk_module)
     list(APPEND abs_includes ${inc})
   endforeach()
 
-  add_library(argus_sdk_${ARG_NAME} STATIC ${gen_sources} ${sdk_sources})
-  add_library(argus::sdk-${ARG_NAME} ALIAS argus_sdk_${ARG_NAME})
+  add_library(argus_client_${ARG_NAME} STATIC ${gen_sources} ${client_sources})
+  add_library(argus::client-${ARG_NAME} ALIAS argus_client_${ARG_NAME})
   get_property(protobuf_includes GLOBAL PROPERTY ARGUS_PROTOBUF_INCLUDES)
   if(protobuf_includes)
-    target_include_directories(argus_sdk_${ARG_NAME} SYSTEM PUBLIC
+    target_include_directories(argus_client_${ARG_NAME} SYSTEM PUBLIC
                                ${protobuf_includes})
   endif()
-  target_include_directories(argus_sdk_${ARG_NAME} SYSTEM PUBLIC ${gen_root})
+  target_include_directories(argus_client_${ARG_NAME} SYSTEM PUBLIC ${gen_root})
   if(abs_includes)
-    target_include_directories(argus_sdk_${ARG_NAME} PUBLIC ${abs_includes})
+    target_include_directories(argus_client_${ARG_NAME} PUBLIC ${abs_includes})
   endif()
   argus_grpc_client_base()
-  set(bridge argus_sdk_grpc_base)
-  if(TARGET argus_sdk_grpc_bridge_entry)
-    list(APPEND bridge argus_sdk_grpc_bridge_entry argus_sdk_grpc_bridge_exit)
+  set(bridge argus_client_grpc_base)
+  if(TARGET argus_client_grpc_bridge_entry)
+    list(APPEND bridge argus_client_grpc_bridge_entry argus_client_grpc_bridge_exit)
   endif()
   get_property(protobuf_target GLOBAL PROPERTY ARGUS_PROTOBUF_TARGET)
   get_property(grpc_target GLOBAL PROPERTY ARGUS_GRPC_TARGET)
-  target_link_libraries(argus_sdk_${ARG_NAME}
+  target_link_libraries(argus_client_${ARG_NAME}
       PUBLIC ${bridge} ${protobuf_target} ${grpc_target} ${ARG_DEPENDS})
 endfunction()
 

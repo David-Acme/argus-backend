@@ -1,7 +1,0 @@
-add_library(response-http STATIC api-response.cc api-response.hxx)
-add_library(pkg::response-http ALIAS response-http)
-target_compile_features(response-http PUBLIC cxx_std_20)
-set_target_properties(response-http PROPERTIES CXX_EXTENSIONS OFF)
-target_include_directories(response-http PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/..)
-target_link_libraries(response-http PUBLIC pkg::response Drogon::Drogon)
-target_compile_options(response-http PRIVATE -Wall -Wextra)

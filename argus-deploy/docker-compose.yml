@@ -10,7 +10,7 @@ services:
   gateway:
     build:
       context: ..
-      dockerfile: services/argus-gateway/Dockerfile
+      dockerfile: services/gateway/Dockerfile
       args:
         ARGUS_UID: "${ARGUS_UID:-1000}"
         ARGUS_GID: "${ARGUS_GID:-1000}"
@@ -42,13 +42,13 @@ services:
         bind:
           create_host_path: false
       - type: bind
-        source: ../packages/argus-identity/database/schema.sql
+        source: ../packages/identity/database/schema.sql
         target: /opt/argus/database/schema.sql
         read_only: true
         bind:
           create_host_path: false
       - type: bind
-        source: ../services/argus-gateway/database/schema.sql
+        source: ../services/gateway/database/schema.sql
         target: /opt/argus/gateway/schema.sql
         read_only: true
         bind:
@@ -90,7 +90,7 @@ services:
   argus-camera:
     build:
       context: ..
-      dockerfile: services/argus-camera/Dockerfile
+      dockerfile: services/camera/Dockerfile
       args:
         ARGUS_UID: "${ARGUS_UID:-1000}"
         ARGUS_GID: "${ARGUS_GID:-1000}"
@@ -119,7 +119,7 @@ services:
       - ${ARGUS_DATA_DIR:-./data}/camera:/opt/argus/camera
       - camera-stream:/opt/argus/stream
       - type: bind
-        source: ../services/argus-camera/database/schema.sql
+        source: ../services/camera/database/schema.sql
         target: /opt/argus/database/schema.sql
         read_only: true
         bind:
@@ -168,7 +168,7 @@ services:
   argus-productivity:
     build:
       context: ..
-      dockerfile: services/argus-productivity/Dockerfile
+      dockerfile: services/productivity/Dockerfile
       args:
         ARGUS_UID: "${ARGUS_UID:-1000}"
         ARGUS_GID: "${ARGUS_GID:-1000}"
@@ -191,7 +191,7 @@ services:
         bind:
           create_host_path: false
       - type: bind
-        source: ../services/argus-productivity/database/schema.sql
+        source: ../services/productivity/database/schema.sql
         target: /opt/argus/database/schema.sql
         read_only: true
         bind:
@@ -221,7 +221,7 @@ services:
   argus-notification:
     build:
       context: ..
-      dockerfile: services/argus-notification/Dockerfile
+      dockerfile: services/notification/Dockerfile
       args:
         ARGUS_UID: "${ARGUS_UID:-1000}"
         ARGUS_GID: "${ARGUS_GID:-1000}"
@@ -244,7 +244,7 @@ services:
         bind:
           create_host_path: false
       - type: bind
-        source: ../services/argus-notification/database/schema.sql
+        source: ../services/notification/database/schema.sql
         target: /opt/argus/database/schema.sql
         read_only: true
         bind:
@@ -270,7 +270,7 @@ services:
   argus-guard:
     build:
       context: ..
-      dockerfile: services/argus-guard/Dockerfile
+      dockerfile: services/guard/Dockerfile
       args:
         ARGUS_UID: "${ARGUS_UID:-1000}"
         ARGUS_GID: "${ARGUS_GID:-1000}"
@@ -292,7 +292,7 @@ services:
         bind:
           create_host_path: false
       - type: bind
-        source: ../services/argus-guard/database/schema.sql
+        source: ../services/guard/database/schema.sql
         target: /opt/argus/database/schema.sql
         read_only: true
         bind:
@@ -321,7 +321,7 @@ services:
   argus-tts:
     build:
       context: ..
-      dockerfile: services/argus-tts/Dockerfile
+      dockerfile: services/tts/Dockerfile
       args:
         ARGUS_UID: "${ARGUS_UID:-1000}"
         ARGUS_GID: "${ARGUS_GID:-1000}"
@@ -363,7 +363,7 @@ services:
   argus-stt:
     build:
       context: ..
-      dockerfile: services/argus-stt/Dockerfile
+      dockerfile: services/stt/Dockerfile
       args:
         ARGUS_UID: "${ARGUS_UID:-1000}"
         ARGUS_GID: "${ARGUS_GID:-1000}"
@@ -407,7 +407,7 @@ services:
   argus-vlm:
     build:
       context: ..
-      dockerfile: services/argus-vlm/Dockerfile
+      dockerfile: services/vlm/Dockerfile
       args:
         ARGUS_UID: "${ARGUS_UID:-1000}"
         ARGUS_GID: "${ARGUS_GID:-1000}"
@@ -451,7 +451,7 @@ services:
   argus-llm:
     build:
       context: ..
-      dockerfile: services/argus-llm/Dockerfile
+      dockerfile: services/llm/Dockerfile
       args:
         ARGUS_UID: "${ARGUS_UID:-1000}"
         ARGUS_GID: "${ARGUS_GID:-1000}"
@@ -483,7 +483,7 @@ services:
       # SQL the repo ships; identity/camera data arrives over the SDK clients.
       - ${ARGUS_DATA_DIR:-./data}/memory:/opt/argus/memory
       - type: bind
-        source: ../packages/argus-memory/database/schema.sql
+        source: ../packages/memory/database/schema.sql
         target: /opt/argus/database/schema.sql
         read_only: true
         bind:
@@ -524,7 +524,7 @@ services:
   argus-voice:
     build:
       context: ..
-      dockerfile: services/argus-voice/Dockerfile
+      dockerfile: services/voice/Dockerfile
       args:
         ARGUS_UID: "${ARGUS_UID:-1000}"
         ARGUS_GID: "${ARGUS_GID:-1000}"
@@ -578,7 +578,7 @@ services:
     profiles: ["tunnel"]
     build:
       context: ..
-      dockerfile: services/argus-tunnel/Dockerfile
+      dockerfile: services/tunnel/Dockerfile
       args:
         ARGUS_UID: "${ARGUS_UID:-1000}"
         ARGUS_GID: "${ARGUS_GID:-1000}"
@@ -759,7 +759,7 @@ services:
       # The schema SQL ships with the repo, not with every provisioned data
       # dir — bind it into the data-dir path so --schema always resolves.
       - type: bind
-        source: ../packages/argus-identity/database/schema.sql
+        source: ../packages/identity/database/schema.sql
         target: /opt/argus/database/schema.sql
         read_only: true
         bind:
@@ -791,7 +791,7 @@ services:
       # Same repo-shipped schema bind as identity-init: a provisioned data
       # dir without the SQL would fail "schema file not found".
       - type: bind
-        source: ../services/argus-camera/database/schema.sql
+        source: ../services/camera/database/schema.sql
         target: /opt/argus/database/schema.sql
         read_only: true
         bind:
@@ -826,7 +826,7 @@ services:
       # provisioned data dir without the SQL would fail "schema file not
       # found".
       - type: bind
-        source: ../services/argus-productivity/database/schema.sql
+        source: ../services/productivity/database/schema.sql
         target: /opt/argus/database/schema.sql
         read_only: true
         bind:
@@ -854,7 +854,7 @@ services:
         bind:
           create_host_path: false
       - type: bind
-        source: ../services/argus-notification/database/schema.sql
+        source: ../services/notification/database/schema.sql
         target: /opt/argus/database/schema.sql
         read_only: true
         bind:

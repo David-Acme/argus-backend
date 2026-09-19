@@ -1,0 +1,132 @@
+# argus-gateway configuration. Copy to config.toml (gitignored) to run.
+# The gateway owns the public TLS 7024 listener and forwards each extracted
+# domain to its service backend through the proxy route table.
+
+[gateway]
+host = "0.0.0.0"
+port = 7024
+plain = false
+min_protocol = "TLSv1.2"
+# Gateway-owned fallback record; identity and sync state stay in their owners.
+db = "database/gateway.db"
+schema = "services/gateway/database/schema.sql"
+
+# The listeners, db_clients and plugins are built by the gateway itself.
+[drogon.app]
+number_of_threads = 0
+enable_session = false
+document_root = "./"
+use_sendfile = true
+use_gzip = true
+use_brotli = false
+static_files_cache_time = 5
+idle_connection_timeout = 60
+enable_server_header = true
+enable_date_header = true
+keepalive_requests = 0
+pipelining_requests = 0
+gzip_static = true
+br_static = true
+client_max_body_size = "60M"
+client_max_memory_body_size = "16M"
+client_max_websocket_message_size = "128K"
+reuse_port = false
+enabled_compressed_request = false
+enable_request_stream = false
+handle_sig_term = true
+relaunch_on_error = false
+
+[nats]
+url = ""
+reconnect_wait_ms = 2000
+max_reconnects = 60
+
+[push]
+enabled = false
+
+[jwt]
+secret = ""
+refresh_secret = ""
+access_ttl_minutes = 15
+refresh_ttl_days = 30
+
+[device]
+fingerprint_secret = ""
+identity_mode = "ip"
+
+[identity]
+db = "database/identity.db"
+schema = "packages/identity/database/schema.sql"
+rpc_host = "127.0.0.1"
+rpc_port = 7040
+
+[camera]
+stream_url = "ws://127.0.0.1:7026/media"
+proxy_url = "http://127.0.0.1:7026"
+grpc_target = "127.0.0.1:7036"
+
+[voice]
+target = ""
+
+[productivity]
+proxy_url = "http://127.0.0.1:7027"
+db = "database/productivity.db"
+
+[cert]
+dir = "certs"
+ca_cert = "certs/ca.pem"
+ca_key = "certs/ca.key"
+server_cert = "certs/server.pem"
+server_key = "certs/server.key"
+leaf_ttl_days = 90
+rotation_threshold_days = 30
+rotate_check_hours = 24
+
+[mdns]
+enabled = true
+name = "Argus"
+service_type = "_argus._tcp"
+port = 7024
+
+[mdns.txt]
+path = "/"
+https = "true"
+wss = "true"
+
+[face]
+enabled = true
+
+[notifications]
+proxy_url = "http://127.0.0.1:7028"
+db = "database/notification.db"
+budget_per_hour = 6
+silent_start = -1
+silent_end = -1
+# Caller capability credential for the gateway -> notification edge.
+credential = ""
+# Freshness window for the argus-guard heartbeat: while a heartbeat is
+# newer than this, the raw camera notifier yields to guard (seconds).
+guard_heartbeat_timeout_s = 30
+# Degraded fallback sanity gate for hard signals while guard is absent.
+# Absent wire keys fail open; a matched known identity never pages.
+fallback_min_score_median = 0.3
+fallback_min_dwell_ms = 1000
+fallback_suppress_known = true
+# Fallback-record retention in days, matching the guard decision journal.
+# Values <= 0 keep every row.
+fallback_retention_days = 90
+
+[remote]
+tunnel_port = 0
+enabled = false
+hostname = ""
+
+[rate_limit]
+enabled = false
+window_seconds = 60
+max_requests = 10
+lockout_threshold = 5
+lockout_seconds = 300
+
+[guard]
+proxy_url = "http://127.0.0.1:7039"

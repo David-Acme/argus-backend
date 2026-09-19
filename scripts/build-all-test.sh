@@ -25,25 +25,25 @@ run_build_all() {
     "$ROOT/scripts/build-all.sh" "$@"
 }
 
-run_build_all dev --only argus-common --install-only
+run_build_all dev --only common --install-only
 grep -q '^conan install ' "$CALL_LOG"
 if grep -Eq '^(cmake|ctest) ' "$CALL_LOG"; then
   echo "--install-only invoked a build or test command" >&2
   exit 1
 fi
 
-run_build_all prod --only argus-common --no-tests
+run_build_all prod --only common --no-tests
 test "$(grep -c '^cmake ' "$CALL_LOG")" -eq 2
 if grep -q '^ctest ' "$CALL_LOG"; then
   echo "--no-tests invoked ctest" >&2
   exit 1
 fi
 
-run_build_all dev --only argus-identity --no-tests
+run_build_all dev --only identity --no-tests
 test "$(grep -c '^cmake ' "$CALL_LOG")" -eq 3
 grep -q '^cmake --build --preset dev -j 8 --target argus-migrate-identity$' "$CALL_LOG"
 
-run_build_all prod --only argus-camera --no-tests
+run_build_all prod --only camera --no-tests
 test "$(grep -c '^cmake ' "$CALL_LOG")" -eq 3
 grep -q '^cmake --build --preset prod -j 8 --target argus-migrate-camera argus-vulkan-probe$' "$CALL_LOG"
 

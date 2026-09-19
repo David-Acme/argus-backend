@@ -16,7 +16,7 @@ Decisions and traps live here.
 
 ## Images (Ruling N, revised F10)
 
-Every microservice owns `services/argus-<name>/Dockerfile`: a Debian + Conan
+Every microservice owns `services/<name>/Dockerfile`: a Debian + Conan
 2.21.0 build stage runs `scripts/build-all.sh prod --no-tests --only
 argus-<name>` from the repo root, and a slim runtime stage carries only that
 service's binaries. Packages are reusable libraries compiled into the service
@@ -35,7 +35,7 @@ Build all images from the repository root, sequentially:
 
 Parallel builds collide in the shared Conan package cache ("Reference ...
 already exists"), so builds run one at a time. The Dockerfile-specific
-ignores next to each Dockerfile (`services/argus-*/Dockerfile.dockerignore`)
+ignores next to each Dockerfile (`services/*/Dockerfile.dockerignore`)
 keep the nested build trees out of the context. Each project resolves its own
 Conan dependency set. The memory stack needs no
 extra runtime packages: sqlite-vec compiles
@@ -163,7 +163,7 @@ schema-current target before reading the source). An installation that wants
 the legacy camera rows migrated must run `docker compose --profile camera-init
 run --rm camera-init` BEFORE the first boot, while camera.db does not exist
 yet. Every service bind-mounts its own owner `database/schema.sql`
-(`packages/argus-identity`, `services/argus-camera`, ...) at the data-dir
+(`packages/identity`, `services/camera`, ...) at the data-dir
 `database/schema.sql` path, so a data dir provisioned without schema SQLs
 still works (the single-file binds come from the repo). The gateway
 applies `database/schema.sql` at boot and

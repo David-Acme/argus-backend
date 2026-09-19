@@ -182,18 +182,18 @@ ensure_local_config() {
   need_cmd openssl
   local dir
   for dir in \
-      services/argus-gateway \
-      services/argus-camera \
-      services/argus-guard \
-      services/argus-productivity \
-      services/argus-notification \
-      services/argus-tts \
-      services/argus-stt \
-      services/argus-vlm \
-      services/argus-llm \
-      services/argus-voice \
-      services/argus-tunnel \
-      packages/argus-memory; do
+      services/gateway \
+      services/camera \
+      services/guard \
+      services/productivity \
+      services/notification \
+      services/tts \
+      services/stt \
+      services/vlm \
+      services/llm \
+      services/voice \
+      services/tunnel \
+      packages/memory; do
     ensure_project_config "$ROOT/$dir" || exit 1
   done
   log "Per-project configs are ready."
@@ -201,7 +201,7 @@ ensure_local_config() {
 
 main() {
   if [ "$CAMERA_ONLY" -eq 1 ]; then
-    "$ROOT/services/argus-camera/scripts/provision.sh"
+    "$ROOT/services/camera/scripts/provision.sh"
     exit 0
   fi
 
@@ -224,15 +224,15 @@ main() {
   need_cmd git
   need_cmd cmake
   setup_submodules
-  ensure_instance_certs "$ROOT" "$ROOT/certs" "$ROOT/services/argus-gateway/config.toml"
-  "$ROOT/services/argus-tts/scripts/provision.sh"
-  "$ROOT/services/argus-llm/scripts/provision.sh"
-  "$ROOT/services/argus-vlm/scripts/provision.sh"
-  "$ROOT/services/argus-stt/scripts/provision.sh"
-  "$ROOT/packages/argus-identity/scripts/provision.sh"
-  "$ROOT/services/argus-voice/scripts/provision.sh"
-  "$ROOT/packages/argus-memory/scripts/provision.sh"
-  "$ROOT/services/argus-camera/scripts/provision.sh"
+  ensure_instance_certs "$ROOT" "$ROOT/certs" "$ROOT/services/gateway/config.toml"
+  "$ROOT/services/tts/scripts/provision.sh"
+  "$ROOT/services/llm/scripts/provision.sh"
+  "$ROOT/services/vlm/scripts/provision.sh"
+  "$ROOT/services/stt/scripts/provision.sh"
+  "$ROOT/packages/identity/scripts/provision.sh"
+  "$ROOT/services/voice/scripts/provision.sh"
+  "$ROOT/packages/memory/scripts/provision.sh"
+  "$ROOT/services/camera/scripts/provision.sh"
   build_project
   log "All setup tasks completed (profile: $PROFILE)."
   log "Deployment host prep: ./scripts/provision-host.sh [--start]"

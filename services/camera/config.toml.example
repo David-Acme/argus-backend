@@ -1,0 +1,153 @@
+# argus-camera configuration. Copy to config.toml (gitignored) to run.
+
+[server]
+host = "127.0.0.1"
+port = 7026
+grpc_port = 7036
+
+# The listener and db_clients are built by the service itself.
+[drogon.app]
+number_of_threads = 0
+enable_session = false
+document_root = "./"
+use_sendfile = true
+use_gzip = true
+use_brotli = false
+static_files_cache_time = 5
+idle_connection_timeout = 60
+enable_server_header = true
+enable_date_header = true
+keepalive_requests = 0
+pipelining_requests = 0
+gzip_static = true
+br_static = true
+client_max_body_size = "60M"
+client_max_memory_body_size = "16M"
+client_max_websocket_message_size = "128K"
+reuse_port = false
+enabled_compressed_request = false
+enable_request_stream = false
+handle_sig_term = true
+relaunch_on_error = false
+
+[camera]
+db = "database/camera.db"
+schema = "services/camera/database/schema.sql"
+
+[tapo]
+control_port = 443
+media_port = 8800
+connect_timeout_ms = 3000
+request_timeout_ms = 5000
+login_attempts = 2
+transport = "auto"
+talk_framing = "none"
+talk_mode = "aec"
+
+[streaming]
+go2rtc_bin = "third_party/go2rtc/go2rtc"
+go2rtc_config = "go2rtc.yaml"
+go2rtc_api = "127.0.0.1:1984"
+go2rtc_rtsp = "127.0.0.1:8554"
+max_restarts = 8
+hub_window_bytes = 131072
+hub_chunk_bytes = 16384
+hub_grace_ms = 2000
+hub_max_subs_per_client = 8
+max_viewers_per_camera = 4
+max_total_viewers = 8
+relay_chunk_bytes = 32768
+
+# With remote_url empty every /camera/{id}/talk call answers 502 CAMERA_UNREACHABLE.
+[tts]
+remote_url = "127.0.0.1:7029"
+remote_timeout_ms = 30000
+
+# Empty disables the change funnel (events drop with a warning).
+[nats]
+url = "nats://127.0.0.1:4222"
+
+[jwt]
+secret = ""
+refresh_secret = ""
+access_ttl_minutes = 15
+refresh_ttl_days = 30
+
+[device]
+fingerprint_secret = ""
+trust_forwarded_for = true
+trusted_proxy_ips = ""
+
+# identity.db points at the gateway's; the sync socket reads its user table.
+# target is the gateway's internal identity RPC listener.
+# [identity]
+# db = "database/identity.db"
+# target = "127.0.0.1:7040"
+# rpc_secret = ""
+# identify = false
+# auto_enroll = false
+# capture_clear_faces = true
+# min_face_box_px = 48
+# identify_interval_ms = 2000
+# enroll_cooldown_ms = 600000
+
+[objects]
+enabled = false
+model = "models/objects"
+input_size = 640
+conf = 0.45
+max_fps_inference = 2.0
+active_fps = 6.0
+burst_fps = 10.0
+burst_ms = 3000
+use_vulkan = true
+# classes = "person,bicycle,car,..." (COCO-80 default when empty)
+
+[operator]
+aggregation_window_ms = 1000
+dwell_alert_ms = 3000
+dwell_monitor_ms = 12000
+dwell_night_ms = 8000
+cooldown_ms = 30000
+night_start = 22
+night_end = 6
+presence_escalation_frames = 3
+# Enabled zones live in camera.db (the app editor); false uses the JSON below only.
+zones_from_db = true
+zones_refresh_ms = 30000
+camera_rescan_ms = 15000
+motion_gate = false
+motion_min_ratio = 0.002
+ignore_static_persons = false
+static_box_frames = 8
+overlay = false
+overlay_dir = "bench-results/operator-overlay"
+# ignored_classes = "bird,cat"
+# zones = '[{"cameraId":1,"kind":"alert","name":"door","points":[[0.0,0.0],[1.0,0.0],[1.0,1.0]]}]'
+
+[actions]
+# Audible/device actions from argus-guard; off until you enable them.
+# The siren is a lease the camera must be able to release by itself: enabling
+# arm_siren requires a hardware-side alarm timeout or watchdog, because a
+# crashed camera process cannot execute its own sweeper.
+enabled = false
+
+[grpc]
+# Caller capability credential for the guard -> camera edge; generated per
+# installation and shared only with argus-guard.
+caller_guard = ""
+
+[health]
+# Occlusion/blur/moved detection from periodic image stats.
+enabled = true
+interval_ms = 60000
+dark_threshold = 25.0
+bright_threshold = 235.0
+blur_threshold = 18.0
+scene_diff = 0.35
+
+[stt]
+# Camera listen (guard agent) transcription through argus-stt.
+remote_url = "127.0.0.1:7030"
+remote_timeout_ms = 30000
+language = "es"

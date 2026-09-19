@@ -201,14 +201,14 @@ ensure_object_store() {
 
 provision_models() {  local owner script
   for owner in \
-      packages/argus-identity \
-      packages/argus-memory \
-      services/argus-tts \
-      services/argus-llm \
-      services/argus-vlm \
-      services/argus-stt \
-      services/argus-voice \
-      services/argus-camera; do
+      packages/identity \
+      packages/memory \
+      services/tts \
+      services/llm \
+      services/vlm \
+      services/stt \
+      services/voice \
+      services/camera; do
     script="$ROOT/$owner/scripts/provision.sh"
     if [ -f "$script" ]; then
       log "Provisioning models: $owner"

@@ -34,7 +34,7 @@
 
 Every DB column with a CHECK constraint (`role`, `severity`, `record_mode`,
 `zone_type`, `status`, `action`) MUST use its `enum class` from
-`packages/argus-common/src/shared/enums.hxx`. Use `toString()`/`fromString()` at DB boundaries only.
+`packages/common/src/shared/enums.hxx`. Use `toString()`/`fromString()` at DB boundaries only.
 
 ```
 UserRole, EventSeverity, CameraRecordMode, ZoneType,
@@ -119,7 +119,7 @@ Never skip a filter in protected routes.
 
 ### 6. Responses & attribute keys
 
-ALL error responses go through `AppConfig` (in `packages/argus-common/src/config/`):
+ALL error responses go through `AppConfig` (in `packages/common/src/config/`):
 
 ```cpp
 AppConfig::get401Response();                         // default message
@@ -145,7 +145,7 @@ AppConfig::DEVICE_CTX_KEY = "device_ctx"
 
 ### 7. Role-based access
 
-Roles are checked centrally via `packages/argus-common/src/shared/access/role-access.hxx` (the
+Roles are checked centrally via `packages/common/src/shared/access/role-access.hxx` (the
 `kTableAccess` map: role → table → `RolePermission`). **`RoleFilter` (HTTP) and
 the sync engine share that single source of truth** — to change a permission,
 edit only that file. Never imperative if/else.
@@ -232,11 +232,11 @@ Naming: `LoginDto`, `RefreshTokenDto`, `CreateCustomerDto`
 Naming: `ResponseLoginDto`, `ResponseRefreshTokenDto`
 
 **WS/sync DTOs** (header-only, e.g. `synchronized-dto.hxx`): parsed with
-`static {T} fromJson(const Json::Value&)`; declared in `packages/argus-sync/src/feature/socket/sync/dtos/`.
+`static {T} fromJson(const Json::Value&)`; declared in `packages/sync/src/feature/socket/sync/dtos/`.
 
 ### 11. Validation DSL
 
-All DTO validation uses the macro DSL in `packages/argus-common/src/shared/validation/`:
+All DTO validation uses the macro DSL in `packages/common/src/shared/validation/`:
 
 ```cpp
 LoginDto LoginDto::fromJson(const Json::Value& json) {
@@ -306,7 +306,7 @@ images (>2048px) are decoded scaled via OpenCV (`IMREAD_REDUCED_COLOR_2/4`).
 ### 13b. Adaptive threading (ThreadBudget)
 
 NEVER hardcode thread counts. All AI services size their thread pools from
-`packages/argus-common/src/shared/wrapper/thread-budget/thread-budget.hxx`:
+`packages/common/src/shared/wrapper/thread-budget/thread-budget.hxx`:
 `computeThreads()`, `batchThreads()`, `heavyThreads()`, `lightThreads()`,
 `inferenceSlots()`. This keeps the same build fast on 2-core laptops and
 64-core servers. Example: LLM uses `lightThreads()` for token decode and
@@ -317,7 +317,7 @@ NEVER hardcode thread counts. All AI services size their thread pools from
 Every AI service exposes a sync method (`chat`, `describe`, `transcribe`,
 `synthesize`) AND a coroutine variant (`chatAsync`, `describeAsync`,
 `transcribeAsync`, `synthesizeAsync`) that wraps the sync one in
-`BlockingTask` (see `packages/argus-common/src/shared/wrapper/blocking-task/blocking-task.hxx`,
+`BlockingTask` (see `packages/common/src/shared/wrapper/blocking-task/blocking-task.hxx`,
 which has a `void` specialization). Controllers/services on the event loop
 MUST `co_await` the Async variant — never call the sync method directly.
 Streaming variants marshal callbacks into the loop via `queueInLoop`.
@@ -397,13 +397,13 @@ shared file-static behind a mutex.
   Drogon's first connection — see docs/history/project-log.md ordering note). FTS5 (bm25,
   unicode61, trigram) is enabled via the conan option
   `sqlite3/*:enable_fts5=True` (Drogon rebuilt once).
-- **MemoryService** (`packages/argus-memory/src/shared/services/memory/`, a package compiled into its host argus-llm) — long-term memory over a
+- **MemoryService** (`packages/memory/src/shared/services/memory/`, a package compiled into its host argus-llm) — long-term memory over a
   SQLite semantic graph (NOT the legacy `memory_l1`): `memory_entity`/alias
   (person frames), `memory_fact` (upsert closes the previous open fact via
   `supersedes`), `memory_edge`, `memory_episode` (compaction/system-event
   summaries, now recallable), `memory_procedure`. Capture: deterministic
   `RuleParser`+`PhraseCatalog` (vocabulary is static per-language constants in
-  `packages/argus-phrase/src/shared/vocabulary/`, never DB tables) → `TieredExtractor` (lexicon tier
+  `packages/phrase/src/shared/vocabulary/`, never DB tables) → `TieredExtractor` (lexicon tier
   inline, NuExtract tier off-turn).
   Recall (`GraphRecall`): entity-anchored (recursive CTE) → FTS5 → vec0
   semantic tier with store-size-aware margin gates → episode tier; anaphora
@@ -415,7 +415,7 @@ shared file-static behind a mutex.
   (mutex-serialized, prepared statements are RAII `SqliteStmt`). Embeddings:
   `multilingual-e5-small` int8 ONNX, loaded lazily. Full details in docs/history/project-log.md.
 - **fastText as a submodule** (`third_party/fastText`, `1142dc4`) — inference
-  only, built as a static lib by `packages/argus-intent`. It backs the fast
+  only, built as a static lib by `packages/intent`. It backs the fast
   tier of the intent router: rules (`argus::phrase`) decide explicit triggers,
   fastText classifies the rest into six classes (`memory_save`,
   `memory_recall`, `reminder_set`, `memory_forget`, `camera`, `none`), and the
@@ -425,12 +425,12 @@ shared file-static behind a mutex.
   costs one LLM round trip, a false tool call writes a fact nobody stated.
   The model is a published artifact carried in-repo
   (`models/intent/intent.bin`, 12.6 MB) with a configure-time SHA256 pin in
-  `packages/argus-intent/models/`; training lives OUTSIDE this repo, in the
+  `packages/intent/models/`; training lives OUTSIDE this repo, in the
   sibling `intent-training/` project, and only the artifact, its card and the
   frozen eval fixtures cross over. **Degradation is a contract**: no model on
   disk, or a sub-threshold score, and the router abstains so tool calling runs
   byte for byte as it did before. The labelled tool-calling evaluation set
-  stays at `services/argus-llm/tests/fixtures/tools/`.
+  stays at `services/llm/tests/fixtures/tools/`.
 - **NO spdlog** — use Drogon's built-in logging (`LOG_INFO`, `LOG_WARN`, `LOG_FATAL`)
 - **NO libsodium** — auth is face-based
 - **NO ORM** — raw SQL via `DbService::client()->execSqlCoro()`
@@ -461,7 +461,7 @@ Raw pointers only for non-owning access (`.get()`).
 - Native backend development is the default: run `scripts/setup.sh` to create
   the per-installation 0600 per-project `config.toml` files from each
   `config.toml.example`, and then run
-  `services/argus-gateway/build/dev/argus-gateway`. Never commit, print, log
+  `services/gateway/build/dev/argus-gateway`. Never commit, print, log
   or send instance secrets to the frontend.
 - Production-style deployment is container-only: every microservice owns a
   `Dockerfile` and `argus-deploy/docker-compose.yml` builds and runs one
@@ -493,7 +493,7 @@ Raw pointers only for non-owning access (`.get()`).
   enforced on every authenticated transport. Messages are `{type, payload}` and responses use
   `SocketEmitDto` `{operation, option(TableName), info}`.
   Errors: `{type:"<type>_error", status, error}`.
-- Operations (`packages/argus-common/src/shared/contracts/sync-operation.hxx`): `InitialInfo=0`,
+- Operations (`packages/common/src/shared/contracts/sync-operation.hxx`): `InitialInfo=0`,
   `Synchronize=1` (initial bootstrap plus creations/deletions; includes
   `notification` per user), `SynchronizeAuditLog=2` (global field diffs; the
   backend selects tables by role), `SynchronizeUserAuditLog=3` (recipient
@@ -513,7 +513,7 @@ Raw pointers only for non-owning access (`.get()`).
   changed fields with their previous/current values, never a replacement record.
   Daily compaction merges a record's diff and inserts the compacted result as a
   new audit row so its id advances and reconnecting clients converge.
-- `SyncAuditService` (`packages/argus-audit/src/shared/services/sync-audit/`) is the feature-level
+- `SyncAuditService` (`packages/audit/src/shared/services/sync-audit/`) is the feature-level
   publishing facade. Capture `before` before a repository mutation, capture
   `after` once it succeeds, then call `publishModule` or `publishUsers` with the
   correct audience. Do not hand-build `Log` payloads or emit a full `Add` for an
@@ -601,13 +601,13 @@ Every shared feature/repo/SDK piece lives in its OWN folder and is declared
 ONCE, in its home, through the project helpers:
 
 ```cmake
-# services/argus-voice/src/shared/services/vad/CMakeLists.txt — the module declares its sources + deps
+# services/voice/src/shared/services/vad/CMakeLists.txt — the module declares its sources + deps
 argus_module(NAME vad
   SOURCES vad-service.cc
   DEPENDS onnxruntime)
 
 # SDK modules wrap generated gRPC stubs — consumers never see protobuf
-argus_sdk_module(NAME identity PROTO identity.proto)
+argus_client_module(NAME identity PROTO identity.proto)
 ```
 
 - Parents auto-discover modules (a loop over subdirectories) — adding a
@@ -615,7 +615,7 @@ argus_sdk_module(NAME identity PROTO identity.proto)
   NO ONE edits another module's CMakeLists and NO consumer lists `.cc`
   files.
 - Consumers link by name: `target_link_libraries(argus-voice PRIVATE
-  argus::vad argus::sdk-identity)`. Include paths travel with the target.
+  argus::vad argus::client-identity)`. Include paths travel with the target.
 - Services bootstrap through a `argus_service()` helper (presets,
   EXCLUDE_FROM_ALL, ports) instead of copy-pasted CMake blocks.
 - Explicit source lists stay ONLY inside the module's own CMakeLists.
@@ -636,7 +636,7 @@ schema of another service.
 A service may only open its own database. Accessing another domain's data is
 forbidden at the file/SQL level, even read-only. Cross-domain reads travel
 ONLY through the typed gRPC contracts and their SDK clients
-(`packages/argus-contracts/sdk`, linked as `argus::sdk-<domain>`); change
+(`packages/clients/<domain>/src`, linked as `argus::client-<domain>`); change
 feeds travel through NATS events. No compose mount may expose one service's
 DB volume to another. If a domain needs data it does not own, add an SDK
 method on the owner and call it through the client; never reach into its DB
@@ -652,7 +652,7 @@ file. The SDK/client is the whole point of the boundary.
 ./scripts/build-all.sh prod
 
 # One project
-./scripts/build-all.sh dev --only argus-camera
+./scripts/build-all.sh dev --only camera
 ```
 
 Before any commit, verify the affected standalone project with
@@ -670,49 +670,49 @@ Run the full orchestrator when changing shared build infrastructure.
 
 | File | Purpose |
 |------|---------|
-| `packages/argus-common/src/shared/enums.hxx` | All enum types + conversion helpers |
+| `packages/common/src/shared/enums.hxx` | All enum types + conversion helpers |
 | `<owner>/src/shared/schemas/*/` | DB row → C++ struct mapping |
 | `<owner>/src/shared/repositories/*/` | Data access layer |
-| `packages/argus-common/src/shared/contracts/` | `Syncable`, `SyncFilter` base classes + `sync-operation.hxx` |
-| `packages/argus-common/src/shared/access/` | Centralized `RoleAccess` (role → table → permissions), used by `RoleFilter` and sync |
-| `packages/argus-common/src/shared/validation/` | Validation DSL (rules, macros, validator) |
-| `packages/argus-auth/src/filter/device/` | Device fingerprint extraction |
-| `packages/argus-auth/src/filter/jwt/` | JWT verification + refresh token validation |
-| `packages/argus-auth/src/filter/role/` | Role-based access control |
-| `packages/argus-auth/src/filter/valid-json/` | JSON body validation for POST/PATCH |
-| `packages/argus-common/src/config/app-config.hxx` | Centralized responses + attribute keys |
-| `packages/argus-auth/src/shared/services/jwt/` | JWT sign/verify (HS256, instance class) |
-| `packages/argus-identity/src/shared/services/face/` | Face detection + recognition (ncnn) — FaceDB = vec0 index (sqlite-vec) |
-| `services/argus-llm/src/shared/services/llm/` | LLM inference (llama.cpp) |
-| `packages/argus-memory/src/shared/services/embedding/` | `EmbeddingService` (multilingual-e5-small int8 ONNX) + `UnigramTokenizer` |
-| `packages/argus-memory/src/shared/services/memory/` | `MemoryService`/`SemanticGraph`(`SqliteGraph`)/`GraphRecall`/`MemoryFormation`/`RuleParser`/`PhraseCatalog`/`EntityResolver`/`ToolParser` — semantic-graph long-term memory (async worker, episode recall, L3 profile); a package hosted by argus-llm |
-| `packages/argus-phrase/src/shared/vocabulary/` | Static per-language memory vocabulary (es/en): `PhraseSeed`/`LexiconSeed` constants — no DB tables |
-| `packages/argus-sqlite/src/shared/services/sqlite/` | DB client access (`DbService::client()`, extensions) + `VecDb` (vec0 connection) |
-| `services/argus-vlm/src/shared/services/vision/` | VLM inference: LFM2.5-VL-450M via llama.cpp + libmtmd (arbitrary prompts, caption cache) |
-| `services/argus-voice/src/shared/services/vad/` | `VadService` — Silero VAD v5 as an **instance** class (per-stream LSTM, shared ONNX session), with the turn-quality gate |
-| `services/argus-camera/src/shared/services/stream/` | go2rtc manager, `StreamHub` (fMP4 over `/sync`, per-connection credit window, lock order `hubMutex_ → Upstream::mtx`), `Fmp4Reader` (encoding from headers, whole fragments) |
-| `packages/argus-audio/src/shared/wrapper/audio/` | `AudioResampler` (stateful sinc) + `SampleRing` — every block-processed audio path MUST use these, never a custom conversion |
-| `services/argus-stt/src/shared/services/stt/` | Speech-to-text via sherpa-onnx (default `nemo_transducer` FastConformer RNN-T, es/en; whisper/canary/nemo_ctc/omnilingual selectable) |
-| `services/argus-tts/src/shared/services/tts/` | Text-to-speech (Supertonic 3) |
-| `services/argus-camera/src/shared/services/tapo/` | Tapo camera local protocols: control (`stok` + `securePassthrough`, legacy fallback) and the 8800 talk channel (Digest + MPEG-TS PCMA) |
-| `packages/argus-common/src/shared/services/storage/` | `S3StorageService` (RustFS S3, SigV4 in `s3-signing.hxx`) + `PrivatePortraitService` (private objects, read via one-use capability) |
-| `services/argus-voice/src/shared/services/reaction/` | `ReactionEngine` — per-turn reactions by signal priority → `voice:event` (meaning, never expression names) |
-| `packages/argus-identity/src/shared/repositories/{user-invitation,portrait-*,device-login-challenge}/` | People domain: invitations (hash-only), portrait capabilities, cross-device login challenges |
-| `packages/argus-common/src/shared/wrapper/cancellation/` | `CancellationToken` shared across streaming AI/audio paths |
-| `packages/argus-common/src/shared/services/config-service/` | `ConfigService` read + runtime writes (`setBool/...` persist to `config.toml`, comments preserved) |
-| `packages/argus-room/src/shared/services/room/` | local `RoomManager` (rooms per module/user, `thread_local`) |
-| `packages/argus-socket/src/shared/services/socket/` | `SocketService` (emitModule/emitUser) + `SocketEmitDto` |
-| `packages/argus-audit/src/shared/services/audit-log/` | Global audit: per-field diffs, daily compaction and monotonic id for sync |
-| `packages/argus-audit/src/shared/services/user-audit-log/` | Per-recipient audit: per-field diffs, daily compaction and monotonic id for sync |
-| `packages/argus-audit/src/shared/services/sync-audit/` | Central facade to publish module/user diffs after feature mutations |
-| `packages/argus-sync/src/shared/services/notification/` | Per-user notifications: `Add` on create and granular user-audit on mark-as-read |
-| `services/argus-notification/src/shared/services/notification-token/` | Push tokens per session |
-| `packages/argus-common/src/shared/utils/json-diff/` | Diff JSON + snapshot (`JsonDiff`) |
-| `packages/argus-common/src/shared/utils/json-util/` | `jsonToString`/`jsonFromString` |
-| `packages/argus-sync/src/feature/socket/sync/` | `SyncSocket` + `SyncService` + `SynchronizedService` + DTOs |
-| `packages/argus-common/src/shared/wrapper/api-response/` | Standardized API response builder |
-| `packages/argus-common/src/shared/wrapper/blocking-task/` | Coroutine awaiter for off-loop heavy work |
-| `packages/argus-common/src/shared/wrapper/thread-budget/` | Adaptive thread sizing for AI services |
+| `packages/common/src/shared/contracts/` | `Syncable`, `SyncFilter` base classes + `sync-operation.hxx` |
+| `packages/common/src/shared/access/` | Centralized `RoleAccess` (role → table → permissions), used by `RoleFilter` and sync |
+| `packages/common/src/shared/validation/` | Validation DSL (rules, macros, validator) |
+| `packages/auth/src/filter/device/` | Device fingerprint extraction |
+| `packages/auth/src/filter/jwt/` | JWT verification + refresh token validation |
+| `packages/auth/src/filter/role/` | Role-based access control |
+| `packages/auth/src/filter/valid-json/` | JSON body validation for POST/PATCH |
+| `packages/common/src/config/app-config.hxx` | Centralized responses + attribute keys |
+| `packages/auth/src/shared/services/jwt/` | JWT sign/verify (HS256, instance class) |
+| `packages/identity/src/shared/services/face/` | Face detection + recognition (ncnn) — FaceDB = vec0 index (sqlite-vec) |
+| `services/llm/src/shared/services/llm/` | LLM inference (llama.cpp) |
+| `packages/memory/src/shared/services/embedding/` | `EmbeddingService` (multilingual-e5-small int8 ONNX) + `UnigramTokenizer` |
+| `packages/memory/src/shared/services/memory/` | `MemoryService`/`SemanticGraph`(`SqliteGraph`)/`GraphRecall`/`MemoryFormation`/`RuleParser`/`PhraseCatalog`/`EntityResolver`/`ToolParser` — semantic-graph long-term memory (async worker, episode recall, L3 profile); a package hosted by argus-llm |
+| `packages/phrase/src/shared/vocabulary/` | Static per-language memory vocabulary (es/en): `PhraseSeed`/`LexiconSeed` constants — no DB tables |
+| `packages/sqlite/src/shared/services/sqlite/` | DB client access (`DbService::client()`, extensions) + `VecDb` (vec0 connection) |
+| `services/vlm/src/shared/services/vision/` | VLM inference: LFM2.5-VL-450M via llama.cpp + libmtmd (arbitrary prompts, caption cache) |
+| `services/voice/src/shared/services/vad/` | `VadService` — Silero VAD v5 as an **instance** class (per-stream LSTM, shared ONNX session), with the turn-quality gate |
+| `services/camera/src/shared/services/stream/` | go2rtc manager, `StreamHub` (fMP4 over `/sync`, per-connection credit window, lock order `hubMutex_ → Upstream::mtx`), `Fmp4Reader` (encoding from headers, whole fragments) |
+| `packages/audio/src/shared/wrapper/audio/` | `AudioResampler` (stateful sinc) + `SampleRing` — every block-processed audio path MUST use these, never a custom conversion |
+| `services/stt/src/shared/services/stt/` | Speech-to-text via sherpa-onnx (default `nemo_transducer` FastConformer RNN-T, es/en; whisper/canary/nemo_ctc/omnilingual selectable) |
+| `services/tts/src/shared/services/tts/` | Text-to-speech (Supertonic 3) |
+| `services/camera/src/shared/services/tapo/` | Tapo camera local protocols: control (`stok` + `securePassthrough`, legacy fallback) and the 8800 talk channel (Digest + MPEG-TS PCMA) |
+| `packages/common/src/shared/services/storage/` | `S3StorageService` (RustFS S3, SigV4 in `s3-signing.hxx`) + `PrivatePortraitService` (private objects, read via one-use capability) |
+| `services/voice/src/shared/services/reaction/` | `ReactionEngine` — per-turn reactions by signal priority → `voice:event` (meaning, never expression names) |
+| `packages/identity/src/shared/repositories/{user-invitation,portrait-*,device-login-challenge}/` | People domain: invitations (hash-only), portrait capabilities, cross-device login challenges |
+| `packages/common/src/shared/wrapper/cancellation/` | `CancellationToken` shared across streaming AI/audio paths |
+| `packages/common/src/shared/services/config-service/` | `ConfigService` read + runtime writes (`setBool/...` persist to `config.toml`, comments preserved) |
+| `packages/room/src/shared/services/room/` | local `RoomManager` (rooms per module/user, `thread_local`) |
+| `packages/socket/src/shared/services/socket/` | `SocketService` (emitModule/emitUser) + `SocketEmitDto` |
+| `packages/audit/src/shared/services/audit-log/` | Global audit: per-field diffs, daily compaction and monotonic id for sync |
+| `packages/audit/src/shared/services/user-audit-log/` | Per-recipient audit: per-field diffs, daily compaction and monotonic id for sync |
+| `packages/audit/src/shared/services/sync-audit/` | Central facade to publish module/user diffs after feature mutations |
+| `packages/sync/src/shared/services/notification/` | Per-user notifications: `Add` on create and granular user-audit on mark-as-read |
+| `services/notification/src/shared/services/notification-token/` | Push tokens per session |
+| `packages/common/src/shared/utils/json-diff/` | Diff JSON + snapshot (`JsonDiff`) |
+| `packages/common/src/shared/utils/json-util/` | `jsonToString`/`jsonFromString` |
+| `packages/sync/src/feature/socket/sync/` | `SyncSocket` + `SyncService` + `SynchronizedService` + DTOs |
+| `packages/common/src/shared/wrapper/api-response/` | Standardized API response builder |
+| `packages/common/src/shared/wrapper/blocking-task/` | Coroutine awaiter for off-loop heavy work |
+| `packages/common/src/shared/wrapper/thread-budget/` | Adaptive thread sizing for AI services |
 | `docs/README.md` | Documentation index and reading order |
 | `docs/history/project-log.md` | Full project history and decisions |
 | `<project>/config.toml.example` | Per-project template; `setup.sh` generates the gitignored `config.toml` |
