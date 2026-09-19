@@ -2,11 +2,11 @@
 
 #include <gateway-errors.hxx>
 #include <json/value.h>
-#include <shared/contracts/sync-filter.hxx>
-#include <shared/enums.hxx>
 #include <response-exception.hxx>
+#include <shared/contracts/sync-filter.hxx>
 #include <shared/wrapper/blocking-task/blocking-task.hxx>
 #include <string>
+#include <user-role.hxx>
 #include <utility>
 #include <vector>
 

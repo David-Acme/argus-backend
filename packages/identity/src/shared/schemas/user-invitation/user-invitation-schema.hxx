@@ -4,8 +4,8 @@
 #include <drogon/orm/Row.h>
 #include <json/value.h>
 #include <optional>
-#include <shared/enums.hxx>
 #include <string>
+#include <user-role.hxx>
 
 struct UserInvitationSchema
 {

@@ -1,6 +1,6 @@
 #pragma once
 
-#include <shared/enums.hxx>
+#include <vocabulary/guard-danger.hxx>
 
 #include <string>
 #include <vector>

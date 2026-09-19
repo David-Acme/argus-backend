@@ -4,6 +4,7 @@
 #include <drogon/drogon.h>
 #include <shared/contracts/notification-delivery-sink.hxx>
 #include <shared/services/sqlite/db-service.hxx>
+#include <shared/vocabulary/notification-delivery-receipt.hxx>
 #include <shared/wrapper/nats/nats-subject.hxx>
 #include <sync/notification-delivery-consumer.hxx>
 

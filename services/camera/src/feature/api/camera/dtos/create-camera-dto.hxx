@@ -3,7 +3,6 @@
 #include <cstdint>
 #include <json/value.h>
 #include <optional>
-#include <shared/enums.hxx>
 #include <shared/validation/validation_dsl.hxx>
 #include <string>
 

@@ -1,11 +1,12 @@
 #pragma once
 
+#include <camera-driver.hxx>
+#include <camera-record-mode.hxx>
 #include <cstdint>
 #include <drogon/orm/Field.h>
 #include <drogon/orm/Row.h>
 #include <json/value.h>
 #include <optional>
-#include <shared/enums.hxx>
 #include <string>
 
 // Camera row schema; cloudPassword stays server-side, never sent to a client.

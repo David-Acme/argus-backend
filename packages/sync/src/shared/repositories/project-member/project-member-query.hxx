@@ -1,7 +1,7 @@
 #pragma once
 #include <cstdint>
 #include <optional>
-#include <shared/enums.hxx>
+#include <share-access.hxx>
 #include <string>
 #include <string_view>
 

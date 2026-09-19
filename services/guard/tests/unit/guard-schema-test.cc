@@ -1,9 +1,10 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
 
-#include <shared/enums.hxx>
 #include <shared/utils/schema-runner/schema-runner.hxx>
 #include <sqlite3.h>
+#include <vocabulary/encounter-state.hxx>
+#include <vocabulary/guard-action-kind.hxx>
 
 #include <array>
 #include <string>

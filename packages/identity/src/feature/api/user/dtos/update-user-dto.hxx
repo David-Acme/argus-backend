@@ -2,9 +2,9 @@
 
 #include <json/value.h>
 #include <optional>
-#include <shared/enums.hxx>
 #include <shared/validation/validation_dsl.hxx>
 #include <string>
+#include <user-role.hxx>
 
 struct UpdateUserDto
 {

@@ -1,7 +1,6 @@
 #pragma once
 
 #include <cstdint>
-#include <shared/enums.hxx>
 #include <shared/services/config-service/config-service.hxx>
 
 #include <string>

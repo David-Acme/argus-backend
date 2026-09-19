@@ -2,7 +2,6 @@
 
 #include <drogon/utils/coroutine.h>
 #include <shared/contracts/notification-delivery-sink.hxx>
-#include <shared/enums.hxx>
 #include <shared/repositories/delivery-inbox/delivery-inbox-repository.hxx>
 #include <shared/wrapper/nats/nats-subject.hxx>
 

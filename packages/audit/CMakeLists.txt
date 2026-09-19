@@ -6,9 +6,9 @@ include(${CMAKE_CURRENT_SOURCE_DIR}/../../cmake/argus-module.cmake)
 
 # The sibling packages this module links, declared here rather than by the
 # consumer: the guards keep the root tree and every other consumer in charge.
-if(NOT TARGET argus::access)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../access
-                     ${CMAKE_CURRENT_BINARY_DIR}/access)
+if(NOT TARGET contract::sync)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../contracts/sync-contract
+                     ${CMAKE_CURRENT_BINARY_DIR}/sync-contract)
 endif()
 
 if(NOT TARGET argus::text)
@@ -48,12 +48,13 @@ argus_module(NAME audit
         src/shared/services/user-audit-log/user-audit-log-service.cc
         src/shared/contracts/camera-audit-event.hxx
         src/shared/contracts/user-audit-event.hxx
-    INCLUDES src)
+    INCLUDES src
+    DEPENDS
+        contract::sync)
 
 target_link_libraries(argus_audit PUBLIC
     argus::socket
     argus::sqlite
-    argus::access
     argus::text
     pkg::response
     Drogon::Drogon

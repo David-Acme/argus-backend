@@ -23,10 +23,11 @@ if(PROJECT_IS_TOP_LEVEL)
     find_package(onnxruntime CONFIG REQUIRED)
     find_path(RNNOISE_INCLUDE_DIR NAMES rnnoise.h)
     find_library(RNNOISE_LIBRARY NAMES rnnoise)
-    if(NOT TARGET argus::access)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/access
-                         ${CMAKE_BINARY_DIR}/access)
+    if(NOT TARGET contract::voice)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/contracts/voice-contract
+                         ${CMAKE_CURRENT_BINARY_DIR}/voice-contract)
     endif()
+
     if(NOT TARGET argus::config)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/config
                          ${CMAKE_BINARY_DIR}/config)
@@ -100,7 +101,8 @@ argus_module(NAME voice-core
         argus::llm-client
         argus::stt-client
         argus::phrase
-        argus::access argus::config
+        contract::voice
+        argus::config
     SYSTEM_DEPENDS
         Drogon::Drogon
         nlohmann_json::nlohmann_json

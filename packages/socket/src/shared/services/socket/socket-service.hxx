@@ -2,8 +2,8 @@
 
 #include <cstdint>
 #include <memory>
+#include <shared/contracts/table-name.hxx>
 #include <shared/dtos/socket-emit/socket-emit-dto.hxx>
-#include <shared/enums.hxx>
 #include <shared/services/room/room-manager.hxx>
 #include <vector>
 

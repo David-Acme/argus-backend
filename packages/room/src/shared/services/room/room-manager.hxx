@@ -4,11 +4,12 @@
 #include <drogon/WebSocketConnection.h>
 #include <drogon/drogon.h>
 #include <memory>
-#include <shared/enums.hxx>
+#include <shared/contracts/table-name.hxx>
 #include <string>
 #include <string_view>
 #include <unordered_map>
 #include <unordered_set>
+#include <user-role.hxx>
 #include <vector>
 
 using Conn = drogon::WebSocketConnectionPtr;

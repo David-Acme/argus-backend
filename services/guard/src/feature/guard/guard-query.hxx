@@ -3,11 +3,13 @@
 #include <functional>
 #include <json/value.h>
 #include <optional>
-#include <shared/enums.hxx>
 #include <shared/utils/json-util/json-util.hxx>
 #include <string>
 #include <string_view>
 #include <vector>
+#include <vocabulary/decision-suppression.hxx>
+#include <vocabulary/encounter-state.hxx>
+#include <vocabulary/guard-intent-status.hxx>
 
 namespace guard_query
 {

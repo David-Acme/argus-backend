@@ -3,23 +3,23 @@
 #include <argus/voice/v1/voice.pb.h>
 #include <atomic>
 #include <condition_variable>
+#include <feature/voice/voice-engine-seam.hxx>
 #include <memory>
 #include <mutex>
-#include <shared/enums.hxx>
 #include <shared/services/llm/llm-service.hxx>
 #include <shared/services/noise/noise-suppression-service.hxx>
-#include <voice/reaction-contracts.hxx>
 #include <shared/services/reaction/reaction-engine.hxx>
 #include <shared/services/tts/tts-wire.hxx>
 #include <shared/services/vad/vad-service.hxx>
 #include <shared/wrapper/audio/audio-resampler.hxx>
-#include <feature/voice/voice-engine-seam.hxx>
-#include <voice/voice-client.hxx>
 #include <stop_token>
 #include <string>
 #include <thread>
 #include <unordered_map>
 #include <vector>
+#include <voice-lang.hxx>
+#include <voice/reaction-contracts.hxx>
+#include <voice/voice-client.hxx>
 
 // One voice session per bidi gRPC stream; PCM is raw 16 kHz s16le both ways.
 class VoiceSessionSink

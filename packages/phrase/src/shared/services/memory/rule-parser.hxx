@@ -2,7 +2,7 @@
 
 #include <cstdint>
 #include <optional>
-#include <shared/enums.hxx>
+#include <shared/vocabulary/memory-type.hxx>
 #include <string>
 
 class PhraseCatalog;

@@ -1,7 +1,8 @@
 #pragma once
 
 #include <json/value.h>
-#include <shared/enums.hxx>
+#include <shared/contracts/table-name.hxx>
+#include <shared/contracts/user-action.hxx>
 #include <string>
 #include <string_view>
 

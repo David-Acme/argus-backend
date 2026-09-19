@@ -10,9 +10,19 @@
 
 include(${CMAKE_CURRENT_SOURCE_DIR}/../../../cmake/argus-module.cmake)
 
-if(NOT TARGET argus::access)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../access
-                     ${CMAKE_CURRENT_BINARY_DIR}/access)
+if(NOT TARGET argus::auth)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../auth
+                     ${CMAKE_CURRENT_BINARY_DIR}/auth)
+endif()
+
+if(NOT TARGET contract::auth)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../contracts/auth-contract
+                     ${CMAKE_CURRENT_BINARY_DIR}/auth-contract)
+endif()
+
+if(NOT TARGET contract::sync)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../contracts/sync-contract
+                     ${CMAKE_CURRENT_BINARY_DIR}/sync-contract)
 endif()
 
 if(NOT TARGET argus::config)
@@ -32,7 +42,7 @@ argus_module(NAME llm-client
     INCLUDES
         src
     DEPENDS
-        argus::access argus::config
+        argus::auth contract::auth contract::sync argus::config
         Drogon::Drogon
         nlohmann_json::nlohmann_json)
 

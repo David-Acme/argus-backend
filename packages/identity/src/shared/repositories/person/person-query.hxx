@@ -2,7 +2,7 @@
 
 #include <cstdint>
 #include <optional>
-#include <shared/enums.hxx>
+#include <shared/vocabulary/person-status.hxx>
 #include <string>
 #include <string_view>
 

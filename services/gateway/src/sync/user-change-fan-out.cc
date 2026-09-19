@@ -2,8 +2,8 @@
 
 #include <drogon/drogon.h>
 #include <shared/contracts/sync-operation.hxx>
+#include <shared/contracts/table-name.hxx>
 #include <shared/contracts/user-audit-event.hxx>
-#include <shared/enums.hxx>
 #include <shared/services/user-audit-log/user-audit-log-service.hxx>
 #include <sync/sync-fan-out.hxx>
 #include <trantor/utils/Logger.h>

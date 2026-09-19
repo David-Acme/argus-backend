@@ -1,9 +1,9 @@
 #pragma once
 
 #include <cstdint>
-#include <shared/enums.hxx>
 #include <string>
 #include <string_view>
+#include <user-role.hxx>
 
 namespace user_invitation_query
 {

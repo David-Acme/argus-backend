@@ -3,7 +3,7 @@
 #include <cstdint>
 #include <drogon/orm/Row.h>
 #include <optional>
-#include <shared/enums.hxx>
+#include <shared/vocabulary/stored-file-category.hxx>
 #include <string>
 
 struct StoredFileSchema

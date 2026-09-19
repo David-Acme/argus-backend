@@ -25,10 +25,26 @@ find_package(Drogon CONFIG REQUIRED)
 # build. The sibling packages stay behind PROJECT_IS_TOP_LEVEL because
 # argus_sync rides argus_identity and its suite: only the project at the top
 # of the configure provides those.
-if(NOT TARGET argus::access)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../access
-                     ${CMAKE_BINARY_DIR}/access)
+if(NOT TARGET contract::auth)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../contracts/auth-contract
+                     ${CMAKE_CURRENT_BINARY_DIR}/auth-contract)
 endif()
+
+if(NOT TARGET contract::camera)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../contracts/camera-contract
+                     ${CMAKE_CURRENT_BINARY_DIR}/camera-contract)
+endif()
+
+if(NOT TARGET contract::notification)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../contracts/notification-contract
+                     ${CMAKE_CURRENT_BINARY_DIR}/notification-contract)
+endif()
+
+if(NOT TARGET contract::productivity)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../contracts/productivity-contract
+                     ${CMAKE_CURRENT_BINARY_DIR}/productivity-contract)
+endif()
+
 if(NOT TARGET argus::text)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../text
                      ${CMAKE_BINARY_DIR}/text)
@@ -166,7 +182,10 @@ target_link_libraries(argus_sync PUBLIC
     argus::room
     argus::auth
     contract::sync
-    argus::access
+    contract::auth
+    contract::camera
+    contract::notification
+    contract::productivity
     argus::text
     argus::nats
     argus::sqlite

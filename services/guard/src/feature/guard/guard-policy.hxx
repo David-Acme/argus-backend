@@ -1,6 +1,7 @@
 #pragma once
 
-#include <shared/enums.hxx>
+#include <vocabulary/guard-danger.hxx>
+#include <vocabulary/guard-mode.hxx>
 
 #include <cstdint>
 #include <json/value.h>

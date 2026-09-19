@@ -1,9 +1,9 @@
 #include "delivery-inbox-repository.hxx"
 
-#include <shared/enums.hxx>
 #include <shared/services/sqlite/db-service.hxx>
 #include <shared/utils/json-util/json-util.hxx>
 #include <shared/utils/sha256/sha256.hxx>
+#include <shared/vocabulary/notification-delivery-receipt.hxx>
 #include <string>
 #include <trantor/utils/Logger.h>
 

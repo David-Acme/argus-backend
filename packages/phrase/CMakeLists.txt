@@ -6,19 +6,31 @@
 
 include(${CMAKE_CURRENT_SOURCE_DIR}/../../cmake/argus-module.cmake)
 
-if(NOT TARGET argus::access)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../access
-                     ${CMAKE_CURRENT_BINARY_DIR}/access)
-endif()
-
 argus_module(NAME phrase
     SOURCES
         src/shared/services/memory/phrase-catalog.cc
         src/shared/services/memory/rule-parser.cc
         src/shared/utils/text-match/phrase-automaton.cc
     INCLUDES
-        src
-    DEPENDS
-        argus::access)
+        src)
 
 target_compile_options(argus_phrase PRIVATE -Wall -Wextra)
+
+# The round-trip suite for MemoryType, PhraseKind and LexiconKind: the
+# vocabulary moved here with the catalog that consumes it, so the suite moves
+# with it.
+enable_testing()
+find_package(doctest REQUIRED)
+
+add_executable(phrase-vocabulary-test tests/unit/phrase-vocabulary-test.cc)
+target_link_libraries(phrase-vocabulary-test PRIVATE
+    argus::phrase doctest::doctest)
+target_compile_options(phrase-vocabulary-test PRIVATE -Wall -Wextra)
+add_test(NAME phrase-vocabulary-test COMMAND phrase-vocabulary-test)
+
+get_target_property(DOCTEST_INCLUDE_DIRS doctest::doctest
+                    INTERFACE_INCLUDE_DIRECTORIES)
+if(DOCTEST_INCLUDE_DIRS)
+    set_target_properties(doctest::doctest PROPERTIES
+        INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${DOCTEST_INCLUDE_DIRS}")
+endif()

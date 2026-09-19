@@ -41,10 +41,21 @@ if(NOT TARGET sqlite-vec)
                      ${CMAKE_BINARY_DIR}/third_party/sqlite-vec)
 endif()
 set(ARGUS_SQLITE_VEC_TARGET sqlite-vec)
-if(NOT TARGET argus::access)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../access
-                     ${CMAKE_BINARY_DIR}/access)
+if(NOT TARGET contract::auth)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../contracts/auth-contract
+                     ${CMAKE_CURRENT_BINARY_DIR}/auth-contract)
 endif()
+
+if(NOT TARGET contract::sync)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../contracts/sync-contract
+                     ${CMAKE_CURRENT_BINARY_DIR}/sync-contract)
+endif()
+
+if(NOT TARGET contract::voice)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../contracts/voice-contract
+                     ${CMAKE_CURRENT_BINARY_DIR}/voice-contract)
+endif()
+
 if(NOT TARGET argus::config)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../config
                      ${CMAKE_BINARY_DIR}/config)
@@ -200,7 +211,6 @@ argus_module(NAME identity
         ../../third_party
         ../../third_party/stb
     DEPENDS
-                argus::access
         argus::config
         argus::hardware-profile
         argus::text
@@ -209,7 +219,9 @@ argus_module(NAME identity
         argus::threading
         argus::validation
         pkg::response
+        contract::auth
         contract::sync
+        contract::voice
         argus::auth
         argus::client-identity
         argus::audit

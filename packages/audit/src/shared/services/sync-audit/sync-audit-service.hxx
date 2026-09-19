@@ -4,7 +4,7 @@
 #include <drogon/utils/coroutine.h>
 #include <json/value.h>
 #include <optional>
-#include <shared/enums.hxx>
+#include <shared/contracts/table-name.hxx>
 #include <vector>
 
 struct SyncAuditModuleInput

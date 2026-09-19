@@ -23,9 +23,9 @@ find_package(nlohmann_json REQUIRED)
 
 # The packages this module links, declared here rather than by the consumer:
 # every guard keeps the root tree and every other consumer in charge.
-if(NOT TARGET argus::access)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../access
-                     ${CMAKE_BINARY_DIR}/access)
+if(NOT TARGET contract::auth)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../contracts/auth-contract
+                     ${CMAKE_CURRENT_BINARY_DIR}/auth-contract)
 endif()
 
 if(NOT TARGET argus::text)
@@ -61,7 +61,6 @@ target_link_libraries(argus_socket PUBLIC
     argus::room
     argus::nats
     contract::sync
-    argus::access
     argus::text
     Drogon::Drogon
     nlohmann_json::nlohmann_json)
@@ -76,6 +75,8 @@ target_link_libraries(sync-change-test PRIVATE
     argus::socket
     argus::text
     argus::nats
+    contract::auth
+    contract::sync
     doctest::doctest)
 target_compile_options(sync-change-test PRIVATE -Wall -Wextra)
 add_test(NAME sync-change-test COMMAND sync-change-test)

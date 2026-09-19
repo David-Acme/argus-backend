@@ -23,6 +23,16 @@ if(PROJECT_IS_TOP_LEVEL)
     # The substrate still finds the vendored gRPC and would build the cq
     # bridge, whose entry symbol then interposes the identically-named
     # implementation inside libgrpc. Empty stand-ins skip it.
+if(NOT TARGET contract::auth)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/contracts/auth-contract
+                     ${CMAKE_CURRENT_BINARY_DIR}/auth-contract)
+endif()
+
+if(NOT TARGET contract::sync)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/contracts/sync-contract
+                     ${CMAKE_CURRENT_BINARY_DIR}/sync-contract)
+endif()
+
     if(NOT TARGET argus_client_grpc_bridge_entry)
         add_library(argus_client_grpc_bridge_entry INTERFACE)
         add_library(argus_client_grpc_bridge_exit INTERFACE)
@@ -228,6 +238,8 @@ target_link_libraries(notification-controller-test PRIVATE
     argus::sqlite
     argus::validation
     pkg::response
+    contract::auth
+    contract::sync
     doctest::doctest)
 
 target_compile_options(notification-controller-test PRIVATE -Wall -Wextra)

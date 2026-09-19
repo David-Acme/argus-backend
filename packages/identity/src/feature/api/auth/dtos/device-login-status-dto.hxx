@@ -2,8 +2,8 @@
 
 #include <cstdint>
 #include <json/value.h>
-#include <shared/enums.hxx>
 #include <string>
+#include <user-role.hxx>
 
 struct DeviceLoginStatusDto
 {

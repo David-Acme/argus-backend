@@ -2,9 +2,9 @@
 
 #include <cstdint>
 #include <json/value.h>
-#include <shared/enums.hxx>
 #include <shared/validation/validation_dsl.hxx>
 #include <string>
+#include <user-role.hxx>
 
 struct CreateInvitationDto
 {

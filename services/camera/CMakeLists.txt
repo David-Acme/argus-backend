@@ -51,10 +51,16 @@ if(PROJECT_IS_TOP_LEVEL)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../third_party/ncnn
                      ${CMAKE_BINARY_DIR}/third_party/ncnn EXCLUDE_FROM_ALL)
     set(ARGUS_NCNN_TARGET ncnn)
-    if(NOT TARGET argus::access)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/access
-                         ${CMAKE_BINARY_DIR}/access)
+    if(NOT TARGET contract::auth)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/contracts/auth-contract
+                         ${CMAKE_CURRENT_BINARY_DIR}/auth-contract)
     endif()
+
+    if(NOT TARGET contract::sync)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/contracts/sync-contract
+                         ${CMAKE_CURRENT_BINARY_DIR}/sync-contract)
+    endif()
+
     if(NOT TARGET argus::config)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/config
                          ${CMAKE_BINARY_DIR}/config)
@@ -266,7 +272,7 @@ target_link_libraries(camera-core PUBLIC
     opencv::opencv
     ${ARGUS_NCNN_TARGET}
     argus::hardware-profile-gpu
-    argus::access
+    contract::sync
     argus::audit
     argus::auth
     argus::config
@@ -279,7 +285,7 @@ target_link_libraries(camera-core PUBLIC
     pkg::response
     OpenSSL::SSL
     OpenSSL::Crypto)
-target_link_libraries(camera-core PRIVATE contract::camera)
+target_link_libraries(camera-core PRIVATE contract::camera contract::sync)
 
 target_compile_options(camera-core PRIVATE -Wall -Wextra)
 
@@ -322,7 +328,8 @@ foreach(TEST_NAME IN LISTS CAMERA_UNIT_TESTS)
     set_target_properties(${TEST_NAME} PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
         target_link_libraries(${TEST_NAME} PRIVATE
-    argus::access
+    contract::auth
+    contract::camera
     argus::audio
     argus::audit
     argus::auth
@@ -419,7 +426,7 @@ target_link_libraries(camera-talk-cutover-test PRIVATE
     pkg::response
     argus::tts-client
     OpenSSL::SSL
-    OpenSSL::Crypto
+    OpenSSL::Crypto contract::camera
     doctest::doctest)
 
 set_target_properties(camera-talk-cutover-test PROPERTIES
@@ -477,7 +484,7 @@ target_link_libraries(camera-action-rpc-test PRIVATE
     argus::stt-client
     argus::client-camera-actions
     OpenSSL::SSL
-    OpenSSL::Crypto
+    OpenSSL::Crypto contract::camera
     doctest::doctest)
 
 target_compile_options(camera-action-rpc-test PRIVATE -Wall -Wextra)
@@ -509,7 +516,6 @@ add_executable(object-event-outbox-test
 target_include_directories(object-event-outbox-test PRIVATE ${CAMERA_SRC_ROOT})
 target_link_libraries(object-event-outbox-test PRIVATE
     argus::sqlite
-    argus::access
     doctest::doctest)
 target_compile_definitions(object-event-outbox-test PRIVATE
     ARGUS_CAMERA_SCHEMA_PATH="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql")

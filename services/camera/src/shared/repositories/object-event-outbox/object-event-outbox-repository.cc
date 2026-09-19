@@ -1,7 +1,7 @@
 #include "object-event-outbox-repository.hxx"
 
 #include <drogon/orm/DbClient.h>
-#include <shared/enums.hxx>
+#include <objects/object-event-status.hxx>
 #include <shared/services/sqlite/db-service.hxx>
 #include <trantor/utils/Logger.h>
 

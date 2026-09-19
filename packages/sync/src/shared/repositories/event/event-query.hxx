@@ -1,6 +1,6 @@
 #pragma once
 #include <cstdint>
-#include <shared/enums.hxx>
+#include <event-severity.hxx>
 #include <string>
 #include <string_view>
 

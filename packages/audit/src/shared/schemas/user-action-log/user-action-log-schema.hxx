@@ -4,7 +4,8 @@
 #include <drogon/orm/Field.h>
 #include <drogon/orm/Row.h>
 #include <json/value.h>
-#include <shared/enums.hxx>
+#include <shared/contracts/table-name.hxx>
+#include <shared/contracts/user-action.hxx>
 #include <string>
 
 struct UserActionLogSchema

@@ -5,7 +5,8 @@
 #include <drogon/orm/Row.h>
 #include <json/value.h>
 #include <optional>
-#include <shared/enums.hxx>
+#include <shared/contracts/audit-log-priority.hxx>
+#include <shared/contracts/table-name.hxx>
 #include <string>
 
 struct AuditLogSchema

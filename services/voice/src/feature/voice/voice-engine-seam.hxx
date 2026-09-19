@@ -4,7 +4,6 @@
 #include <identity/identity-client.hxx>
 #include <memory>
 #include <mutex>
-#include <shared/enums.hxx>
 #include <shared/services/llm/llm-service.hxx>
 #include <shared/services/llm/remote/llm-remote.hxx>
 #include <shared/services/stt/remote/stt-remote.hxx>

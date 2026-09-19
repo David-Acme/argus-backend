@@ -54,10 +54,21 @@ if(PROJECT_IS_TOP_LEVEL)
                      ${CMAKE_BINARY_DIR}/third_party/ncnn EXCLUDE_FROM_ALL)
     set(ARGUS_NCNN_TARGET ncnn)
 
-    if(NOT TARGET argus::access)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/access
-                         ${CMAKE_BINARY_DIR}/access)
+    if(NOT TARGET contract::auth)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/contracts/auth-contract
+                         ${CMAKE_CURRENT_BINARY_DIR}/auth-contract)
     endif()
+
+    if(NOT TARGET contract::productivity)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/contracts/productivity-contract
+                         ${CMAKE_CURRENT_BINARY_DIR}/productivity-contract)
+    endif()
+
+    if(NOT TARGET contract::sync)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/contracts/sync-contract
+                         ${CMAKE_CURRENT_BINARY_DIR}/sync-contract)
+    endif()
+
     if(NOT TARGET argus::config)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/config
                          ${CMAKE_BINARY_DIR}/config)
@@ -175,7 +186,7 @@ add_executable(argus-productivity
 # The filters validate through argus.identity.v1 (argus::client-identity rides
 # argus::auth); the sync RPC owner serves argus.productivity.v1 via
 # argus::client-productivity.
-target_link_libraries(argus-productivity PRIVATE productivity-core
+target_link_libraries(argus-productivity PRIVATE productivity-core contract::productivity contract::sync
     argus::auth argus::client-productivity)
 
 target_compile_options(argus-productivity PRIVATE -Wall -Wextra)
@@ -202,7 +213,6 @@ foreach(TEST_NAME IN ITEMS productivity-schema-test productivity-migration-test)
     add_executable(${TEST_NAME} tests/unit/${TEST_NAME}.cc)
     set_target_properties(${TEST_NAME} PROPERTIES EXCLUDE_FROM_ALL FALSE)
         target_link_libraries(${TEST_NAME} PRIVATE
-    argus::access
     argus::audit
     argus::auth
     argus::config
@@ -236,7 +246,9 @@ target_link_libraries(productivity-controller-test PRIVATE
     argus_sync
     argus_identity
     argus::auth
-    argus::access
+    contract::auth
+    contract::productivity
+    contract::sync
     argus::config
     argus::text
     argus::socket

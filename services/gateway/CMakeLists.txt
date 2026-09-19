@@ -29,10 +29,16 @@ if(NOT TARGET argus_identity)
     find_package(Drogon CONFIG REQUIRED)
     find_package(cnats CONFIG REQUIRED)
     find_package(tomlplusplus REQUIRED)
-    if(NOT TARGET argus::access)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/access
-                         ${CMAKE_BINARY_DIR}/access)
+    if(NOT TARGET contract::auth)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/contracts/auth-contract
+                         ${CMAKE_CURRENT_BINARY_DIR}/auth-contract)
     endif()
+
+    if(NOT TARGET contract::sync)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/contracts/sync-contract
+                         ${CMAKE_CURRENT_BINARY_DIR}/sync-contract)
+    endif()
+
     if(NOT TARGET argus::config)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/config
                          ${CMAKE_BINARY_DIR}/config)
@@ -184,9 +190,9 @@ target_include_directories(gateway-core PUBLIC ${GATEWAY_SRC_ROOT})
 
 target_link_libraries(gateway-core PUBLIC argus_identity argus_sync
     argus::cert mdns::mdns argus::room argus::socket
-    argus::client-voice argus::client-identity argus::client-camera
+    argus::client-voice argus::client-identity argus::client-camera contract::auth contract::sync
     argus::client-productivity argus::client-notification)
-target_link_libraries(gateway-core PRIVATE contract::gateway)
+target_link_libraries(gateway-core PRIVATE contract::gateway contract::auth contract::sync)
 
 target_compile_options(gateway-core PRIVATE -Wall -Wextra)
 
@@ -206,7 +212,7 @@ add_executable(gateway-test ${CMAKE_CURRENT_SOURCE_DIR}/tests/gateway-test.cc)
 
 target_include_directories(gateway-test PRIVATE ${GATEWAY_SRC_ROOT})
 
-target_link_libraries(gateway-test PRIVATE gateway-core doctest::doctest)
+target_link_libraries(gateway-test PRIVATE gateway-core doctest::doctest contract::auth contract::sync)
 
 target_compile_options(gateway-test PRIVATE -Wall -Wextra)
 
@@ -217,8 +223,11 @@ add_executable(audit-sync-read-test
 
 target_include_directories(audit-sync-read-test PRIVATE ${GATEWAY_SRC_ROOT})
 
-target_link_libraries(audit-sync-read-test PRIVATE gateway-core
-                                                   doctest::doctest)
+target_link_libraries(audit-sync-read-test PRIVATE
+                      gateway-core
+                      contract::auth
+                      contract::sync
+                      doctest::doctest)
 
 target_compile_options(audit-sync-read-test PRIVATE -Wall -Wextra)
 

@@ -5,6 +5,9 @@
 #include <cstdio>
 #include <doctest/doctest.h>
 #include <drogon/drogon.h>
+#include <feature/api/guard/dtos/feedback-decision-dto.hxx>
+#include <feature/api/guard/dtos/summary-decisions-dto.hxx>
+#include <feature/api/guard/services/guard-feature-service.hxx>
 #include <functional>
 #include <guard-repository.hxx>
 #include <guard-schema.hxx>
@@ -13,17 +16,15 @@
 #include <memory>
 #include <notification/notification-client.hxx>
 #include <optional>
-#include <shared/enums.hxx>
 #include <shared/services/sqlite/db-service.hxx>
 #include <shared/utils/json-util/json-util.hxx>
-#include <feature/api/guard/services/guard-feature-service.hxx>
-#include <feature/api/guard/dtos/feedback-decision-dto.hxx>
-#include <feature/api/guard/dtos/summary-decisions-dto.hxx>
 #include <shared/validation/validation_dsl.hxx>
 #include <string>
 #include <thread>
 #include <unistd.h>
 #include <vector>
+#include <vocabulary/decision-suppression.hxx>
+#include <vocabulary/guard-mode.hxx>
 
 #include "temp-db.hxx"
 #include "wait-for-boot.hxx"

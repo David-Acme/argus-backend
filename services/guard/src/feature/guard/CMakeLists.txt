@@ -10,7 +10,6 @@ argus_module(NAME guard
         guard-schema.cc
         guard-service.cc
     DEPENDS
-        argus::access
         argus::config
         argus::text
         argus::nats

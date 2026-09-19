@@ -2,9 +2,9 @@
 
 #include <drogon/HttpFilter.h>
 #include <drogon/utils/coroutine.h>
-#include <shared/enums.hxx>
 #include <shared/services/jwt/jwt-service.hxx>
 #include <string>
+#include <user-role.hxx>
 
 struct JwtContext
 {

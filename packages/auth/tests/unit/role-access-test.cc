@@ -3,7 +3,8 @@
 
 #include <drogon/HttpTypes.h>
 #include <shared/access/role-access.hxx>
-#include <shared/enums.hxx>
+#include <shared/contracts/table-name.hxx>
+#include <user-role.hxx>
 
 TEST_CASE("Owner has every permission on every table")
 {

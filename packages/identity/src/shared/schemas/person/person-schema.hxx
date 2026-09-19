@@ -5,7 +5,7 @@
 #include <drogon/orm/Row.h>
 #include <json/value.h>
 #include <optional>
-#include <shared/enums.hxx>
+#include <shared/vocabulary/person-status.hxx>
 #include <string>
 
 struct PersonSchema

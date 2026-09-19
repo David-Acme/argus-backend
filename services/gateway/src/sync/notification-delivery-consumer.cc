@@ -2,8 +2,8 @@
 
 #include <ctime>
 #include <drogon/drogon.h>
+#include <shared/contracts/table-name.hxx>
 #include <shared/dtos/socket-emit/socket-emit-dto.hxx>
-#include <shared/enums.hxx>
 #include <shared/schemas/notification/notification-schema.hxx>
 #include <shared/services/socket/sync-change.hxx>
 #include <shared/utils/json-util/json-util.hxx>

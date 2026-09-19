@@ -6,6 +6,7 @@
 #include <identity/identity-client.hxx>
 #include <shared/utils/json-util/json-util.hxx>
 #include <shared/wrapper/blocking-task/blocking-task.hxx>
+#include <vocabulary/feedback-label.hxx>
 
 GuardFeatureService::GuardFeatureService(IdentityClient* identity)
     : identity_(identity)

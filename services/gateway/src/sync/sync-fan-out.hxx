@@ -3,8 +3,8 @@
 #include <json/value.h>
 #include <optional>
 #include <shared/dtos/socket-emit/socket-emit-dto.hxx>
-#include <shared/enums.hxx>
 #include <shared/services/room/room-manager.hxx>
+#include <user-role.hxx>
 #include <vector>
 
 

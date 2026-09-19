@@ -2,6 +2,7 @@
 drogon/1.9.13
 cnats/3.13.0
 sqlite3/[>=3.45.0 <4]
+jwt-cpp/0.7.2
 tomlplusplus/3.3.0
 nlohmann_json/3.11.3
 onnxruntime/1.24.4

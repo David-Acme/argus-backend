@@ -1,6 +1,6 @@
 #pragma once
 #include <cstdint>
-#include <shared/enums.hxx>
+#include <shared/vocabulary/fallback-drop-reason.hxx>
 #include <string>
 #include <string_view>
 

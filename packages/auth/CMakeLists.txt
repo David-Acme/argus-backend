@@ -13,10 +13,16 @@ include(${CMAKE_CURRENT_SOURCE_DIR}/../../cmake/argus-module.cmake)
 
 # The leaves this module links: a DAG, so their guards carry them into every
 # build, standalone or consumed.
-if(NOT TARGET argus::access)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../access
-                     ${CMAKE_BINARY_DIR}/access)
+if(NOT TARGET contract::auth)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../contracts/auth-contract
+                     ${CMAKE_CURRENT_BINARY_DIR}/auth-contract)
 endif()
+
+if(NOT TARGET contract::sync)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../contracts/sync-contract
+                     ${CMAKE_CURRENT_BINARY_DIR}/sync-contract)
+endif()
+
 if(NOT TARGET argus::config)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../config
                      ${CMAKE_BINARY_DIR}/config)
@@ -51,12 +57,13 @@ argus_module(NAME auth
         src/filter/valid-json/valid-json-filter.cc
         src/shared/services/jwt/jwt-service.cc
         src/shared/services/user-directory/user-directory-identity.cc
+        src/shared/access/role-access.hxx
         src/shared/contracts/user-directory.hxx
         src/shared/contracts/identity-change-sink.hxx
     INCLUDES
         src
     DEPENDS
-        argus::access argus::config argus::threading pkg::response
+        contract::auth contract::sync argus::config argus::threading pkg::response
         argus::client-identity
         Drogon::Drogon
         jwt-cpp::jwt-cpp
@@ -65,3 +72,21 @@ argus_module(NAME auth
         OpenSSL::Crypto)
 
 target_compile_options(argus_auth PRIVATE -Wall -Wextra)
+
+# The role → table → permission table moved here with the vocabulary it reads
+# (UserRole from contract::auth, TableName from contract::sync), so its suite
+# moves with it.
+enable_testing()
+find_package(doctest REQUIRED)
+
+add_executable(role-access-test tests/unit/role-access-test.cc)
+target_link_libraries(role-access-test PRIVATE argus::auth doctest::doctest)
+target_compile_options(role-access-test PRIVATE -Wall -Wextra)
+add_test(NAME role-access-test COMMAND role-access-test)
+
+get_target_property(DOCTEST_INCLUDE_DIRS doctest::doctest
+                    INTERFACE_INCLUDE_DIRECTORIES)
+if(DOCTEST_INCLUDE_DIRS)
+    set_target_properties(doctest::doctest PROPERTIES
+        INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${DOCTEST_INCLUDE_DIRS}")
+endif()

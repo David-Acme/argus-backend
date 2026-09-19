@@ -10,7 +10,6 @@ argus_module(NAME guard-api
         dtos/remove-expected-guest-dto.cc
         dtos/update-guard-mode-dto.cc
     DEPENDS
-        argus::access
         argus::text
         argus::threading
         argus::validation

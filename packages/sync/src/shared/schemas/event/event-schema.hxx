@@ -3,9 +3,9 @@
 #include <cstdint>
 #include <drogon/orm/Field.h>
 #include <drogon/orm/Row.h>
+#include <event-severity.hxx>
 #include <json/value.h>
 #include <optional>
-#include <shared/enums.hxx>
 #include <string>
 
 struct EventSchema

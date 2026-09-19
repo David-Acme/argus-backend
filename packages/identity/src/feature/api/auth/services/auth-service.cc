@@ -17,6 +17,7 @@
 #include <shared/contracts/sync-operation.hxx>
 #include <identity-errors.hxx>
 #include <response-exception.hxx>
+#include <voice-lang.hxx>
 
 #include <shared/services/config-service/config-service.hxx>
 #include <shared/services/face/face-service.hxx>

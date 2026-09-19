@@ -21,10 +21,11 @@ if(NOT TARGET argus::hardware-profile)
 endif()
 # The leaves this module links: a DAG, so their guards carry them into every
 # build, standalone or consumed.
-if(NOT TARGET argus::access)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../access
-                     ${CMAKE_CURRENT_BINARY_DIR}/access)
+if(NOT TARGET contract::auth)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../contracts/auth-contract
+                     ${CMAKE_CURRENT_BINARY_DIR}/auth-contract)
 endif()
+
 if(NOT TARGET argus::config)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../config
                      ${CMAKE_CURRENT_BINARY_DIR}/config)
@@ -153,7 +154,6 @@ target_include_directories(memory-core SYSTEM PUBLIC
 target_include_directories(memory-core PUBLIC ${MEMORY_SRC_ROOT})
 
 target_link_libraries(memory-core PUBLIC
-    argus::access
     argus::config
     argus::hardware-profile
     argus::phrase
@@ -178,7 +178,7 @@ target_compile_options(memory-core PRIVATE -Wall -Wextra)
 # drag cnats into a consumer that does not want it.
 add_library(memory-catalog STATIC ${MEMORY_SRC_ROOT}/memory/catalog-replica.cc)
 
-target_link_libraries(memory-catalog PUBLIC memory-core cnats::nats_static)
+target_link_libraries(memory-catalog PUBLIC memory-core cnats::nats_static contract::sync)
 
 target_compile_options(memory-catalog PRIVATE -Wall -Wextra)
 
@@ -228,7 +228,7 @@ add_test(NAME memory-backpressure-test COMMAND memory-backpressure-test)
 # and another user's recall never sees it.
 add_executable(memory-reminder-test tests/unit/memory-reminder-test.cc)
 
-target_link_libraries(memory-reminder-test PRIVATE memory-core
+target_link_libraries(memory-reminder-test PRIVATE memory-core contract::auth
     doctest::doctest)
 
 target_compile_definitions(memory-reminder-test PRIVATE

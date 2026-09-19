@@ -6,12 +6,13 @@
 #include <feature/socket/sync/dtos/synchronized-dto.hxx>
 #include <feature/socket/sync/services/synchronized-service.hxx>
 #include <filter/jwt/jwt-filter.hxx>
+#include <response-exception.hxx>
 #include <shared/contracts/camera-audit-event.hxx>
 #include <shared/contracts/notification-sync-source.hxx>
 #include <shared/contracts/productivity-sync-source.hxx>
-#include <response-exception.hxx>
 #include <shared/contracts/sync-operation.hxx>
-#include <shared/enums.hxx>
+#include <shared/contracts/table-name.hxx>
+#include <shared/contracts/user-audit-event.hxx>
 #include <shared/repositories/audit-log/audit-log-repository.hxx>
 #include <shared/repositories/camera/camera-repository.hxx>
 #include <shared/repositories/user-audit-log/user-audit-log-repository.hxx>
@@ -19,9 +20,9 @@
 #include <shared/services/sqlite/db-service.hxx>
 #include <shared/utils/json-diff/json-diff.hxx>
 #include <shared/utils/json-util/json-util.hxx>
-#include <shared/contracts/user-audit-event.hxx>
 #include <sync/camera-fan-out.hxx>
 #include <sync/user-change-fan-out.hxx>
+#include <user-role.hxx>
 
 #include <atomic>
 #include <chrono>

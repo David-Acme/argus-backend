@@ -1,7 +1,6 @@
 #pragma once
 
 #include <drogon/utils/coroutine.h>
-#include <shared/enums.hxx>
 #include <shared/repositories/audit-log/audit-log-query.hxx>
 #include <shared/repositories/audit-log/audit-log-repository.hxx>
 #include <shared/schemas/audit-log/audit-log-schema.hxx>

@@ -2,7 +2,7 @@
 
 #include <json/value.h>
 #include <shared/contracts/sync-operation.hxx>
-#include <shared/enums.hxx>
+#include <shared/contracts/table-name.hxx>
 
 struct SocketEmitDto
 {

@@ -11,6 +11,7 @@
 #include <string>
 #include <string_view>
 #include <vector>
+#include <notification-delivery-status.hxx>
 
 using namespace notification_query;
 

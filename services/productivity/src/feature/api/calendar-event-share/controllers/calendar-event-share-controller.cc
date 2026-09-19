@@ -5,6 +5,7 @@
 #include <feature/api/calendar-event-share/dtos/update-calendar-event-share-dto.hxx>
 #include <filter/jwt/jwt-filter.hxx>
 #include <http/api-response.hxx>
+#include <membership-error.hxx>
 
 namespace
 {

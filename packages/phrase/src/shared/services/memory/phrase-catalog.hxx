@@ -3,8 +3,9 @@
 #include <cstdint>
 #include <memory>
 #include <mutex>
-#include <shared/enums.hxx>
 #include <shared/utils/text-match/phrase-automaton.hxx>
+#include <shared/vocabulary/memory-type.hxx>
+#include <shared/vocabulary/phrase-kind.hxx>
 #include <string>
 #include <string_view>
 #include <vector>

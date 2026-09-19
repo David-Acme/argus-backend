@@ -7,6 +7,7 @@
 #include <shared/wrapper/sqlite-stmt/sqlite-stmt.hxx>
 #include <sqlite3.h>
 #include <utility>
+#include <shared/vocabulary/encounter-closed-receipt.hxx>
 
 using namespace memory_graph_query;
 

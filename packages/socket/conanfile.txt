@@ -1,6 +1,7 @@
 [requires]
 drogon/1.9.13
 sqlite3/[>=3.45.0 <4]
+jwt-cpp/0.7.2
 nlohmann_json/3.11.3
 tomlplusplus/3.3.0
 cnats/3.13.0

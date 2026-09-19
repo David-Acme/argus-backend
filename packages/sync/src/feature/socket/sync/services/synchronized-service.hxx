@@ -4,19 +4,20 @@
 #include <feature/socket/sync/dtos/synchronized-dto.hxx>
 #include <filter/jwt/jwt-filter.hxx>
 #include <json/value.h>
-#include <shared/contracts/syncable.hxx>
 #include <shared/contracts/camera-sync-source.hxx>
 #include <shared/contracts/notification-sync-source.hxx>
 #include <shared/contracts/productivity-sync-source.hxx>
 #include <shared/contracts/sync-filter.hxx>
+#include <shared/contracts/syncable.hxx>
+#include <shared/contracts/table-name.hxx>
 #include <shared/dtos/socket-emit/socket-emit-dto.hxx>
-#include <shared/enums.hxx>
 #include <shared/repositories/audit-log/audit-log-repository.hxx>
 #include <shared/repositories/event/event-repository.hxx>
 #include <shared/repositories/person/person-repository.hxx>
 #include <shared/repositories/user-audit-log/user-audit-log-repository.hxx>
-#include <shared/repositories/user/user-repository.hxx>
 #include <shared/repositories/user-invitation/user-invitation-repository.hxx>
+#include <shared/repositories/user/user-repository.hxx>
+#include <user-role.hxx>
 #include <vector>
 
 struct SyncWithRepoInput

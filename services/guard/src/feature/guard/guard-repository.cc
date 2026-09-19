@@ -1,4 +1,8 @@
 #include "guard-repository.hxx"
+#include <vocabulary/feedback-label.hxx>
+#include <vocabulary/guard-action-kind.hxx>
+#include <vocabulary/guard-danger.hxx>
+#include <vocabulary/observation-status.hxx>
 
 #include <chrono>
 #include <ctime>

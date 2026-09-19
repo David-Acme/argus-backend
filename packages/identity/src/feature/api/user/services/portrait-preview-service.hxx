@@ -3,12 +3,12 @@
 #include <drogon/utils/coroutine.h>
 #include <feature/api/user/dtos/response-portrait-preview-capability-dto.hxx>
 #include <feature/api/user/dtos/response-portrait-preview-image-dto.hxx>
-#include <shared/enums.hxx>
 #include <shared/repositories/portrait-preview-capability/portrait-preview-capability-repository.hxx>
 #include <shared/repositories/user/user-repository.hxx>
 #include <shared/services/storage/private-portrait-service.hxx>
 #include <shared/services/user-action-log/user-action-log-service.hxx>
 #include <string>
+#include <user-role.hxx>
 
 struct PortraitPreviewCreateInput
 {

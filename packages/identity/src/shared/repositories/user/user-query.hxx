@@ -2,9 +2,9 @@
 
 #include <cstdint>
 #include <optional>
-#include <shared/enums.hxx>
 #include <string>
 #include <string_view>
+#include <user-role.hxx>
 
 namespace user_query
 {

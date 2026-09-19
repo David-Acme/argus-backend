@@ -5,6 +5,7 @@
 #include <feature/api/project-member/dtos/update-project-member-dto.hxx>
 #include <filter/jwt/jwt-filter.hxx>
 #include <http/api-response.hxx>
+#include <membership-error.hxx>
 
 namespace
 {

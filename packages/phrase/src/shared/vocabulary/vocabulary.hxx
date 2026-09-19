@@ -2,12 +2,11 @@
 
 #include <array>
 #include <cstdint>
-#include <shared/enums.hxx>
 #include <span>
 #include <string_view>
 
-#include <shared/vocabulary/vocabulary-es.hxx>
 #include <shared/vocabulary/vocabulary-en.hxx>
+#include <shared/vocabulary/vocabulary-es.hxx>
 
 // Static per-language vocabulary; entries live in the language headers.
 namespace vocabulary

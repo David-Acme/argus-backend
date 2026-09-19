@@ -1,19 +1,21 @@
 #include "identity-rpc.hxx"
 
 #include <ctime>
+#include <drogon/drogon.h>
 #include <grpc-client-base.hxx>
 #include <map>
-#include <drogon/drogon.h>
 #include <optional>
 #include <shared/contracts/sync-operation.hxx>
+#include <shared/contracts/table-name.hxx>
 #include <shared/dtos/socket-emit/socket-emit-dto.hxx>
-#include <shared/enums.hxx>
 #include <shared/services/face/face-service.hxx>
 #include <shared/services/socket/sync-change.hxx>
 #include <shared/utils/json-util/json-util.hxx>
+#include <shared/vocabulary/person-status.hxx>
 #include <shared/wrapper/blocking-task/blocking-task.hxx>
 #include <shared/wrapper/nats/nats-subject.hxx>
 #include <trantor/utils/Logger.h>
+#include <user-role.hxx>
 
 namespace
 {

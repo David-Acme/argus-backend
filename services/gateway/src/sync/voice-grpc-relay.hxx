@@ -7,11 +7,11 @@
 #include <json/value.h>
 #include <memory>
 #include <mutex>
-#include <voice/voice-client.hxx>
-#include <shared/enums.hxx>
 #include <shared/repositories/user/user-repository.hxx>
 #include <string>
 #include <unordered_map>
+#include <user-role.hxx>
+#include <voice/voice-client.hxx>
 
 // Internal gRPC endpoint of argus-voice; empty disables the gRPC voice leg.
 struct VoiceGrpcConfig

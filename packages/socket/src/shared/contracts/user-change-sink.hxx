@@ -2,8 +2,8 @@
 
 #include <drogon/utils/coroutine.h>
 #include <json/value.h>
+#include <shared/contracts/table-name.hxx>
 #include <shared/dtos/socket-emit/socket-emit-dto.hxx>
-#include <shared/enums.hxx>
 #include <vector>
 
 // Before/after snapshots of one row plus the recipients of its user_audit_log row.

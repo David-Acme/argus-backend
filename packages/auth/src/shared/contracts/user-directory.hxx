@@ -3,8 +3,8 @@
 #include <cstdint>
 #include <drogon/utils/coroutine.h>
 #include <optional>
-#include <shared/enums.hxx>
 #include <string>
+#include <user-role.hxx>
 
 // One identity-domain user row; no database types cross.
 struct DirectoryUser

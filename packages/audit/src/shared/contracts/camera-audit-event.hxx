@@ -3,7 +3,8 @@
 #include <cstdint>
 #include <json/value.h>
 #include <optional>
-#include <shared/enums.hxx>
+#include <shared/contracts/audit-log-priority.hxx>
+#include <shared/contracts/table-name.hxx>
 #include <shared/utils/json-diff/json-diff.hxx>
 #include <shared/utils/json-util/json-util.hxx>
 #include <string>

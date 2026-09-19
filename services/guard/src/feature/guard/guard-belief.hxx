@@ -1,7 +1,8 @@
 #pragma once
 
 #include <guard-policy.hxx>
-#include <shared/enums.hxx>
+#include <vocabulary/guard-action-kind.hxx>
+#include <vocabulary/guard-danger.hxx>
 
 #include <optional>
 #include <string>

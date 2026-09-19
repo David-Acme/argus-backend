@@ -22,6 +22,16 @@ set(SHARED_ROOT ${LLM_SRC_ROOT}/shared)
 # standalone build re-adds the same submodule directory with the same cache
 # variables. Added before the sibling packages so argus-memory's guarded
 # llama block is skipped and these cache vars win.
+if(NOT TARGET contract::auth)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/contracts/auth-contract
+                     ${CMAKE_CURRENT_BINARY_DIR}/auth-contract)
+endif()
+
+if(NOT TARGET contract::sync)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/contracts/sync-contract
+                     ${CMAKE_CURRENT_BINARY_DIR}/sync-contract)
+endif()
+
 if(NOT TARGET llama)
     set(LLAMA_BUILD_COMMON OFF CACHE BOOL "" FORCE)
     set(LLAMA_BUILD_TESTS OFF CACHE BOOL "" FORCE)
@@ -166,6 +176,7 @@ target_link_libraries(llm-core PUBLIC
     memory-core
     Drogon::Drogon
     nlohmann_json::nlohmann_json
+    contract::auth
     llama)
 
 target_compile_options(llm-core PRIVATE -Wall -Wextra)
@@ -217,7 +228,7 @@ add_custom_command(TARGET argus-llm POST_BUILD
 #   ./build/dev/services/llm/argus-tool-bench [--limit N] [--verbose]
 add_executable(argus-tool-bench tests/bench/tool-calling-bench.cc)
 
-target_link_libraries(argus-tool-bench PRIVATE llm-core)
+target_link_libraries(argus-tool-bench PRIVATE llm-core contract::auth contract::sync)
 
 target_compile_definitions(argus-tool-bench PRIVATE
     ARGUS_BENCH_CASES="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/tools/check.tsv")
@@ -258,6 +269,7 @@ target_link_libraries(llm-wire-test PRIVATE
     argus::intent
     memory-core
     ${ARGUS_LLAMA_TARGETS}
+    contract::auth
     doctest::doctest)
 
 target_compile_options(llm-wire-test PRIVATE -Wall -Wextra)
@@ -270,7 +282,7 @@ add_test(NAME llm-wire-test COMMAND llm-wire-test)
 # of these on live traffic.
 add_executable(llm-tool-parse-test tests/unit/llm-tool-parse-test.cc)
 
-target_link_libraries(llm-tool-parse-test PRIVATE llm-core doctest::doctest)
+target_link_libraries(llm-tool-parse-test PRIVATE llm-core doctest::doctest contract::sync)
 
 target_compile_options(llm-tool-parse-test PRIVATE -Wall -Wextra)
 

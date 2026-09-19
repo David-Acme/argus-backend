@@ -49,10 +49,6 @@ if(PROJECT_IS_TOP_LEVEL)
                      ${CMAKE_BINARY_DIR}/third_party/ncnn EXCLUDE_FROM_ALL)
     set(ARGUS_NCNN_TARGET ncnn)
 
-    if(NOT TARGET argus::access)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/access
-                         ${CMAKE_BINARY_DIR}/access)
-    endif()
     if(NOT TARGET argus::config)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/config
                          ${CMAKE_BINARY_DIR}/config)
@@ -162,7 +158,8 @@ foreach(TEST_NAME IN ITEMS guard-policy-test guard-assessment-test
         guard-dialogue-service-test guard-dlq-crash-test
         guard-retry-lifecycle-test guard-belief-test
         guard-decision-journal-test guard-notify-thread-test
-        guard-belief-scope-test guard-outbox-adopt-test)
+        guard-belief-scope-test guard-outbox-adopt-test
+        guard-vocabulary-test)
     add_executable(${TEST_NAME} tests/unit/${TEST_NAME}.cc)
 
     # This folder is added EXCLUDE_FROM_ALL, so the suites have to opt back
@@ -226,7 +223,6 @@ set_target_properties(vlm-client-live-test PROPERTIES
     EXCLUDE_FROM_ALL FALSE)
 target_link_libraries(vlm-client-live-test PRIVATE
     argus::vlm-client
-    argus::access
     argus::auth
     argus::config
     argus::text
@@ -252,7 +248,6 @@ target_link_libraries(guard-assessment-live-test PRIVATE
     argus::guard
     argus::vlm-client
     argus::client-camera-actions
-    argus::access
     argus::auth
     argus::config
     argus::text

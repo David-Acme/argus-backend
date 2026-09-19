@@ -1,7 +1,6 @@
 #pragma once
 #include <json/value.h>
 #include <optional>
-#include <shared/enums.hxx>
 #include <shared/schemas/notification/notification-schema.hxx>
 #include <stdexcept>
 #include <string>
