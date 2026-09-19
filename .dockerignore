@@ -8,3 +8,5 @@ docs
 frontend
 node_modules
 **/node_modules
+argus-deploy/.env
+argus-deploy/config.*.toml

@@ -52,8 +52,7 @@ COPY --from=build /opt/argus/packages/identity/build/prod/tools/migrate-identity
 RUN groupadd --gid "$ARGUS_GID" argus \
     && useradd --uid "$ARGUS_UID" --gid "$ARGUS_GID" --create-home \
       --shell /usr/sbin/nologin argus \
-    && mkdir -p certs database models third_party/go2rtc camera stream \
-      productivity notification memory \
+    && mkdir -p certs database gateway models \
     && chown -R argus:argus /opt/argus
 
 EXPOSE 7024

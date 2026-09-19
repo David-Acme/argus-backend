@@ -30,8 +30,5 @@
   "buildPresets": [
     { "name": "dev", "configurePreset": "dev", "jobs": 8 },
     { "name": "prod", "configurePreset": "prod", "jobs": 8 }
-  ],
-  "testPresets": [
-    { "name": "dev", "configurePreset": "dev" }
   ]
 }

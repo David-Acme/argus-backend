@@ -44,7 +44,6 @@ trust_forwarded_for = true
 trusted_proxy_ips = ""
 
 [identity]
-db = "database/identity.db"
 target = "127.0.0.1:7040"
 
 [nats]
