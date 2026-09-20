@@ -27,9 +27,9 @@ if(NOT TARGET Drogon::Drogon)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/config
                          ${CMAKE_BINARY_DIR}/config)
     endif()
-    if(NOT TARGET argus::threading)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/threading
-                         ${CMAKE_BINARY_DIR}/threading)
+    if(NOT TARGET argus::runtime)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/runtime
+                         ${CMAKE_BINARY_DIR}/runtime)
     endif()
     if(NOT TARGET pkg::response)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/response
@@ -91,7 +91,7 @@ target_include_directories(stt-core PUBLIC
 
 target_link_libraries(stt-core PUBLIC
     argus::config
-    argus::threading
+    argus::runtime
     pkg::response
     argus::stt-client
     Drogon::Drogon
@@ -145,7 +145,7 @@ target_compile_definitions(stt-wire-test PRIVATE
 
 target_link_libraries(stt-wire-test PRIVATE
     argus::config
-    argus::threading
+    argus::runtime
     pkg::response
     argus::stt-client
     onnxruntime::onnxruntime

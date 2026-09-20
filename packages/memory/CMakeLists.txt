@@ -15,9 +15,9 @@ include(${CMAKE_CURRENT_SOURCE_DIR}/../../cmake/argus-module.cmake)
 set(MEMORY_SRC_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/src)
 set(SHARED_ROOT ${MEMORY_SRC_ROOT}/shared)
 
-if(NOT TARGET argus::hardware-profile)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../hardware/src/shared/wrapper/hardware-profile
-                     ${CMAKE_CURRENT_BINARY_DIR}/hardware-profile)
+if(NOT TARGET argus::runtime)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../runtime
+                     ${CMAKE_CURRENT_BINARY_DIR}/runtime)
 endif()
 # The leaves this module links: a DAG, so their guards carry them into every
 # build, standalone or consumed.
@@ -37,10 +37,6 @@ endif()
 if(NOT TARGET argus::nats)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../nats
                      ${CMAKE_CURRENT_BINARY_DIR}/nats)
-endif()
-if(NOT TARGET argus::threading)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../threading
-                     ${CMAKE_CURRENT_BINARY_DIR}/threading)
 endif()
 if(NOT TARGET argus::validation)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../validation
@@ -159,7 +155,7 @@ target_link_libraries(memory-core PUBLIC
     argus::phrase
     argus::sqlite
     argus::text
-    argus::threading
+    argus::runtime
     argus::validation
     contract::sync
     argus::audit

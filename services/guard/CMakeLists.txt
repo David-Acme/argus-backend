@@ -229,7 +229,7 @@ target_link_libraries(vlm-client-live-test PRIVATE
     argus::nats
     argus::sqlite
     argus::storage
-    argus::threading
+    argus::runtime
     argus::validation
     pkg::response
     Drogon::Drogon
@@ -254,7 +254,7 @@ target_link_libraries(guard-assessment-live-test PRIVATE
     argus::nats
     argus::sqlite
     argus::storage
-    argus::threading
+    argus::runtime
     argus::validation
     pkg::response
     Drogon::Drogon

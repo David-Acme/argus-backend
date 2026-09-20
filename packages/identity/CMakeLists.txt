@@ -28,9 +28,9 @@ include(${CMAKE_CURRENT_SOURCE_DIR}/../../cmake/argus-module.cmake)
 # cq-bridge stand-ins skip the bridge: standalone protobuf comes from the
 # system, not from conan, so the bridge entry symbol would interpose libgrpc's
 # own callbacks (see argus-contracts/CONTEXT.md).
-if(NOT TARGET argus::hardware-profile-gpu)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../hardware/src/shared/wrapper/hardware-profile
-                     ${CMAKE_BINARY_DIR}/hardware-profile)
+if(NOT TARGET argus::runtime)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../runtime
+                     ${CMAKE_BINARY_DIR}/runtime)
 endif()
 if(NOT TARGET argus_client_grpc_bridge_entry)
     add_library(argus_client_grpc_bridge_entry INTERFACE)
@@ -71,10 +71,6 @@ endif()
 if(NOT TARGET argus::storage)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../storage
                      ${CMAKE_BINARY_DIR}/storage)
-endif()
-if(NOT TARGET argus::threading)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../threading
-                     ${CMAKE_BINARY_DIR}/threading)
 endif()
 if(NOT TARGET argus::validation)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../validation
@@ -216,7 +212,7 @@ argus_module(NAME identity
         argus::text
         argus::nats
         argus::storage
-        argus::threading
+        argus::runtime
         argus::validation
         pkg::response
         contract::auth

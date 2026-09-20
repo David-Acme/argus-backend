@@ -86,9 +86,9 @@ if(NOT TARGET Drogon::Drogon)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/nats
                          ${CMAKE_BINARY_DIR}/nats)
     endif()
-    if(NOT TARGET argus::threading)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/threading
-                         ${CMAKE_BINARY_DIR}/threading)
+    if(NOT TARGET argus::runtime)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/runtime
+                         ${CMAKE_BINARY_DIR}/runtime)
     endif()
     if(NOT TARGET argus::validation)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/validation
@@ -97,10 +97,6 @@ if(NOT TARGET Drogon::Drogon)
     if(NOT TARGET pkg::response)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/response
                          ${CMAKE_BINARY_DIR}/response)
-    endif()
-    if(NOT TARGET argus::hardware-profile)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/hardware/src/shared/wrapper/hardware-profile
-                         ${CMAKE_BINARY_DIR}/hardware-profile)
     endif()
     if(NOT TARGET argus::phrase)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/phrase
@@ -168,7 +164,7 @@ target_link_libraries(llm-core PUBLIC
     argus::config
     argus::hardware-profile
     argus::phrase
-    argus::threading
+    argus::runtime
     argus::validation
     pkg::response
     argus::llm-client
@@ -262,7 +258,7 @@ target_link_libraries(llm-wire-test PRIVATE
     argus::config
     argus::hardware-profile
     argus::phrase
-    argus::threading
+    argus::runtime
     argus::validation
     pkg::response
     argus::llm-client

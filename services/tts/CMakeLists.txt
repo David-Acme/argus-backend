@@ -28,9 +28,11 @@ if(NOT TARGET Drogon::Drogon)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/config
                          ${CMAKE_BINARY_DIR}/config)
     endif()
-    if(NOT TARGET argus::threading)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/threading
-                         ${CMAKE_BINARY_DIR}/threading)
+    # The synthesis feature sizes its pool from the hardware profile, and the
+    # service's coroutines from the blocking-task awaiter: both live here.
+    if(NOT TARGET argus::runtime)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/runtime
+                         ${CMAKE_BINARY_DIR}/runtime)
     endif()
     # The synthesis HTTP DTOs validate through argus::validation.
     if(NOT TARGET argus::validation)
@@ -48,12 +50,6 @@ if(NOT TARGET Drogon::Drogon)
     if(NOT TARGET argus::auth)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/auth
                          ${CMAKE_BINARY_DIR}/auth)
-    endif()
-    # The synthesis feature sizes its pool from argus::hardware-profile, which
-    # used to arrive through argus-common; it is its own package now.
-    if(NOT TARGET argus::hardware-profile)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/hardware/src/shared/wrapper/hardware-profile
-                         ${CMAKE_BINARY_DIR}/hardware-profile)
     endif()
 endif()
 

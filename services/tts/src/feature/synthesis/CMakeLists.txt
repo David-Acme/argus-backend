@@ -7,7 +7,7 @@ argus_module(NAME tts-synthesis
         infra/supertonic/unicode-processor.cc
     INCLUDES ../..
     DEPENDS
-        argus::config argus::threading
+        argus::config argus::runtime
         argus::tts-client
         argus::hardware-profile
         Drogon::Drogon

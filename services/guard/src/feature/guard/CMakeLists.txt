@@ -14,7 +14,7 @@ argus_module(NAME guard
         argus::text
         argus::nats
         argus::storage
-        argus::threading
+        argus::runtime
         argus::sqlite
         argus::client-identity
         argus::client-notification

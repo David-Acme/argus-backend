@@ -27,9 +27,9 @@ if(NOT TARGET argus::config)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../config
                      ${CMAKE_BINARY_DIR}/config)
 endif()
-if(NOT TARGET argus::threading)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../threading
-                     ${CMAKE_BINARY_DIR}/threading)
+if(NOT TARGET argus::runtime)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../runtime
+                     ${CMAKE_BINARY_DIR}/runtime)
 endif()
 if(NOT TARGET pkg::response)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../response
@@ -63,7 +63,7 @@ argus_module(NAME auth
     INCLUDES
         src
     DEPENDS
-        contract::auth contract::sync argus::config argus::threading pkg::response
+        contract::auth contract::sync argus::config argus::runtime pkg::response
         argus::client-identity
         Drogon::Drogon
         jwt-cpp::jwt-cpp

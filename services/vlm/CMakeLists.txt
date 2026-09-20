@@ -27,9 +27,9 @@ if(NOT TARGET Drogon::Drogon)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/config
                          ${CMAKE_BINARY_DIR}/config)
     endif()
-    if(NOT TARGET argus::threading)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/threading
-                         ${CMAKE_BINARY_DIR}/threading)
+    if(NOT TARGET argus::runtime)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/runtime
+                         ${CMAKE_BINARY_DIR}/runtime)
     endif()
     if(NOT TARGET argus::validation)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/validation
@@ -38,10 +38,6 @@ if(NOT TARGET Drogon::Drogon)
     if(NOT TARGET pkg::response)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/response
                          ${CMAKE_BINARY_DIR}/response)
-    endif()
-    if(NOT TARGET argus::hardware-profile)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/hardware/src/shared/wrapper/hardware-profile
-                         ${CMAKE_BINARY_DIR}/hardware-profile)
     endif()
 endif()
 
@@ -106,7 +102,7 @@ target_include_directories(vlm-core PUBLIC
 target_link_libraries(vlm-core PUBLIC
     argus::config
     argus::hardware-profile
-    argus::threading
+    argus::runtime
     argus::validation
     pkg::response
     Drogon::Drogon
@@ -163,7 +159,7 @@ target_compile_definitions(vlm-wire-test PRIVATE
 target_link_libraries(vlm-wire-test PRIVATE
     argus::config
     argus::hardware-profile
-    argus::threading
+    argus::runtime
     argus::validation
     pkg::response
     ${ARGUS_LLAMA_TARGETS}
@@ -191,7 +187,7 @@ target_include_directories(vision-remote-adapter-test PRIVATE
 
 target_link_libraries(vision-remote-adapter-test PRIVATE
     argus::config
-    argus::threading
+    argus::runtime
     opencv::opencv
     doctest::doctest)
 

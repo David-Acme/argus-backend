@@ -77,9 +77,9 @@ if(PROJECT_IS_TOP_LEVEL)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/storage
                          ${CMAKE_BINARY_DIR}/storage)
     endif()
-    if(NOT TARGET argus::threading)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/threading
-                         ${CMAKE_BINARY_DIR}/threading)
+    if(NOT TARGET argus::runtime)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/runtime
+                         ${CMAKE_BINARY_DIR}/runtime)
     endif()
     if(NOT TARGET argus::validation)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/validation
@@ -88,10 +88,6 @@ if(PROJECT_IS_TOP_LEVEL)
     if(NOT TARGET pkg::response)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/response
                          ${CMAKE_BINARY_DIR}/response)
-    endif()
-    if(NOT TARGET argus::hardware-profile-gpu)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/hardware/src/shared/wrapper/hardware-profile
-                         ${CMAKE_BINARY_DIR}/hardware-profile)
     endif()
     if(NOT TARGET argus::sqlite)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/sqlite
@@ -280,7 +276,7 @@ target_link_libraries(camera-core PUBLIC
     argus::text
     argus::nats
     argus::storage
-    argus::threading
+    argus::runtime
     argus::validation
     pkg::response
     OpenSSL::SSL
@@ -341,7 +337,7 @@ foreach(TEST_NAME IN LISTS CAMERA_UNIT_TESTS)
     argus::socket
     argus::sqlite
     argus::storage
-    argus::threading
+    argus::runtime
     argus::validation
     contract::sync
     pkg::response
@@ -421,7 +417,7 @@ target_link_libraries(camera-talk-cutover-test PRIVATE
     argus::audio
     argus::config
     argus::text
-    argus::threading
+    argus::runtime
     argus::validation
     pkg::response
     argus::tts-client
@@ -477,7 +473,7 @@ target_link_libraries(camera-action-rpc-test PRIVATE
     argus::config
     argus::text
     argus::sqlite
-    argus::threading
+    argus::runtime
     argus::validation
     pkg::response
     argus::tts-client

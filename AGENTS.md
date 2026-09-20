@@ -306,7 +306,7 @@ images (>2048px) are decoded scaled via OpenCV (`IMREAD_REDUCED_COLOR_2/4`).
 ### 13b. Adaptive threading (ThreadBudget)
 
 NEVER hardcode thread counts. All AI services size their thread pools from
-`packages/threading/src/shared/wrapper/thread-budget/thread-budget.hxx`:
+`packages/runtime/src/shared/wrapper/thread-budget/thread-budget.hxx`:
 `computeThreads()`, `batchThreads()`, `heavyThreads()`, `lightThreads()`,
 `inferenceSlots()`. This keeps the same build fast on 2-core laptops and
 64-core servers. Example: LLM uses `lightThreads()` for token decode and
@@ -317,7 +317,7 @@ NEVER hardcode thread counts. All AI services size their thread pools from
 Every AI service exposes a sync method (`chat`, `describe`, `transcribe`,
 `synthesize`) AND a coroutine variant (`chatAsync`, `describeAsync`,
 `transcribeAsync`, `synthesizeAsync`) that wraps the sync one in
-`BlockingTask` (see `packages/threading/src/shared/wrapper/blocking-task/blocking-task.hxx`,
+`BlockingTask` (see `packages/runtime/src/shared/wrapper/blocking-task/blocking-task.hxx`,
 which has a `void` specialization). Controllers/services on the event loop
 MUST `co_await` the Async variant — never call the sync method directly.
 Streaming variants marshal callbacks into the loop via `queueInLoop`.
@@ -698,7 +698,7 @@ Run the full orchestrator when changing shared build infrastructure.
 | `packages/storage/src/shared/services/storage/` | `S3StorageService` (RustFS S3, SigV4 in `s3-signing.hxx`) + `PrivatePortraitService` (private objects, read via one-use capability) |
 | `services/voice/src/shared/services/reaction/` | `ReactionEngine` — per-turn reactions by signal priority → `voice:event` (meaning, never expression names) |
 | `packages/identity/src/shared/repositories/{user-invitation,portrait-*,device-login-challenge}/` | People domain: invitations (hash-only), portrait capabilities, cross-device login challenges |
-| `packages/threading/src/shared/wrapper/cancellation/` | `CancellationToken` shared across streaming AI/audio paths |
+| `packages/runtime/src/shared/wrapper/cancellation/` | `CancellationToken` shared across streaming AI/audio paths |
 | `packages/config/src/shared/services/config-service/` | `ConfigService` read + runtime writes (`setBool/...` persist to `config.toml`, comments preserved) |
 | `packages/room/src/shared/services/room/` | local `RoomManager` (rooms per module/user, `thread_local`) |
 | `packages/socket/src/shared/services/socket/` | `SocketService` (emitModule/emitUser) + `SocketEmitDto` |
@@ -711,8 +711,9 @@ Run the full orchestrator when changing shared build infrastructure.
 | `packages/text/src/shared/utils/json-util/` | `jsonToString`/`jsonFromString` |
 | `packages/sync/src/feature/socket/sync/` | `SyncSocket` + `SyncService` + `SynchronizedService` + DTOs |
 | `packages/response/src/http/` | Standardized API response builder |
-| `packages/threading/src/shared/wrapper/blocking-task/` | Coroutine awaiter for off-loop heavy work |
-| `packages/threading/src/shared/wrapper/thread-budget/` | Adaptive thread sizing for AI services |
+| `packages/runtime/src/shared/wrapper/blocking-task/` | Coroutine awaiter for off-loop heavy work |
+| `packages/runtime/src/shared/wrapper/thread-budget/` | Adaptive thread sizing for AI services |
+| `packages/runtime/src/shared/wrapper/hardware-profile/` | CPU/RAM/ISA and video-accel probe (`HardwareProfile`), ncnn-free and ncnn variants |
 | `docs/README.md` | Documentation index and reading order |
 | `docs/history/project-log.md` | Full project history and decisions |
 | `<project>/config.toml.example` | Per-project template; `setup.sh` generates the gitignored `config.toml` |

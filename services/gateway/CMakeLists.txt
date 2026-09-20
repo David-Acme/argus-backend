@@ -51,9 +51,9 @@ if(NOT TARGET argus_identity)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/nats
                          ${CMAKE_BINARY_DIR}/nats)
     endif()
-    if(NOT TARGET argus::threading)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/threading
-                         ${CMAKE_BINARY_DIR}/threading)
+    if(NOT TARGET argus::runtime)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/runtime
+                         ${CMAKE_BINARY_DIR}/runtime)
     endif()
     if(NOT TARGET pkg::response)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/response
