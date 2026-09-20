@@ -152,9 +152,11 @@ if(NOT TARGET argus::client-camera)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/camera
                      ${CMAKE_BINARY_DIR}/clients/camera EXCLUDE_FROM_ALL)
 endif()
-if(NOT TARGET argus::client-health)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/health
-                     ${CMAKE_BINARY_DIR}/clients/health EXCLUDE_FROM_ALL)
+# The standard grpc.health.v1 stubs this service answers its health probes
+# with; packages/grpc declares them (argus::grpc-health).
+if(NOT TARGET argus::grpc-health)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/grpc
+                     ${CMAKE_BINARY_DIR}/grpc EXCLUDE_FROM_ALL)
 endif()
 if(NOT TARGET argus::client-camera-actions)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/camera-actions
@@ -173,7 +175,7 @@ argus_module(NAME camera-rpc
     DEPENDS
         argus_sync
         argus::client-camera
-        argus::client-health
+        argus::grpc-health
         contract::sync)
 
 target_compile_options(argus_camera-rpc PRIVATE -Wall -Wextra)

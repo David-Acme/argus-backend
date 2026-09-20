@@ -226,15 +226,23 @@ function(argus_runtime_rpath target)
       INSTALL_RPATH "${new_rpath}")
 endfunction()
 
-# argus_client_module(NAME <name> [PROTO_ROOT <dir>] PROTO <path>... [SOURCES ...]
-#                  [INCLUDES ...] [DEPENDS ...]) -> argus::client-<name>; stubs
-# generate into the build tree, protobuf types stay behind the client headers.
+# argus_client_module(NAME <name> [GROUP <group>] [PROTO_ROOT <dir>] PROTO <path>...
+#                  [SOURCES ...] [INCLUDES ...] [DEPENDS ...])
+#                  -> argus_<group>_<name> / argus::<group>-<name>; stubs
+# generate into the build tree, protobuf types stay behind the module's headers.
+# GROUP defaults to client (the SDK convention); packages/grpc passes GROUP grpc
+# for the standard health stubs, which are served rather than called.
 function(argus_client_module)
-  cmake_parse_arguments(ARG "" "NAME;PROTO_ROOT"
+  cmake_parse_arguments(ARG "" "NAME;PROTO_ROOT;GROUP"
                         "PROTO;SOURCES;INCLUDES;DEPENDS" ${ARGN})
   if(NOT ARG_NAME OR NOT ARG_PROTO)
     message(FATAL_ERROR "argus_client_module requires NAME and PROTO")
   endif()
+  if(NOT ARG_GROUP)
+    set(ARG_GROUP client)
+  endif()
+  set(module argus_${ARG_GROUP}_${ARG_NAME})
+  set(module_alias argus::${ARG_GROUP}-${ARG_NAME})
   argus_contracts_substrate()
   # Imported gRPC targets are directory-scoped: re-resolve them in the
   # caller's scope so the stub codegen below sees them, and with them the
@@ -261,7 +269,7 @@ function(argus_client_module)
   endif()
   cmake_path(ABSOLUTE_PATH root BASE_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
              NORMALIZE)
-  set(gen_root ${CMAKE_CURRENT_BINARY_DIR}/argus-client-${ARG_NAME}/generated)
+  set(gen_root ${CMAKE_CURRENT_BINARY_DIR}/argus-${ARG_GROUP}-${ARG_NAME}/generated)
 
   set(gen_sources "")
   foreach(proto IN LISTS ARG_PROTO)
@@ -308,16 +316,16 @@ function(argus_client_module)
     list(APPEND abs_includes ${inc})
   endforeach()
 
-  add_library(argus_client_${ARG_NAME} STATIC ${gen_sources} ${client_sources})
-  add_library(argus::client-${ARG_NAME} ALIAS argus_client_${ARG_NAME})
+  add_library(${module} STATIC ${gen_sources} ${client_sources})
+  add_library(${module_alias} ALIAS ${module})
   get_property(protobuf_includes GLOBAL PROPERTY ARGUS_PROTOBUF_INCLUDES)
   if(protobuf_includes)
-    target_include_directories(argus_client_${ARG_NAME} SYSTEM PUBLIC
+    target_include_directories(${module} SYSTEM PUBLIC
                                ${protobuf_includes})
   endif()
-  target_include_directories(argus_client_${ARG_NAME} SYSTEM PUBLIC ${gen_root})
+  target_include_directories(${module} SYSTEM PUBLIC ${gen_root})
   if(abs_includes)
-    target_include_directories(argus_client_${ARG_NAME} PUBLIC ${abs_includes})
+    target_include_directories(${module} PUBLIC ${abs_includes})
   endif()
   argus_grpc_client_base()
   set(bridge argus_client_grpc_base)
@@ -326,7 +334,7 @@ function(argus_client_module)
   endif()
   get_property(protobuf_target GLOBAL PROPERTY ARGUS_PROTOBUF_TARGET)
   get_property(grpc_target GLOBAL PROPERTY ARGUS_GRPC_TARGET)
-  target_link_libraries(argus_client_${ARG_NAME}
+  target_link_libraries(${module}
       PUBLIC ${bridge} ${protobuf_target} ${grpc_target} ${ARG_DEPENDS})
 endfunction()
 

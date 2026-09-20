@@ -62,9 +62,11 @@ if(NOT TARGET argus::client-voice)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/voice
                      ${CMAKE_BINARY_DIR}/clients/voice EXCLUDE_FROM_ALL)
 endif()
-if(NOT TARGET argus::client-health)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/health
-                     ${CMAKE_BINARY_DIR}/clients/health EXCLUDE_FROM_ALL)
+# The standard grpc.health.v1 stubs this service answers its health probes
+# with; packages/grpc declares them (argus::grpc-health).
+if(NOT TARGET argus::grpc-health)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/grpc
+                     ${CMAKE_BINARY_DIR}/grpc EXCLUDE_FROM_ALL)
 endif()
 if(NOT TARGET argus::client-identity)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/identity
@@ -94,7 +96,7 @@ argus_module(NAME voice-core
         src
     DEPENDS
         argus::client-voice
-        argus::client-health
+        argus::grpc-health
         argus::client-identity
         argus::audio
         argus::tts-client
