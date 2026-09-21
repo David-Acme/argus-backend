@@ -10,12 +10,12 @@ argus_module(NAME guard-api
         dtos/remove-expected-guest-dto.cc
         dtos/update-guard-mode-dto.cc
     DEPENDS
-        argus::text
-        argus::runtime
-        argus::validation
-        argus::http
+        argus::lib::text
+        argus::lib::runtime
+        argus::lib::validation
+        argus::lib::http
         argus::guard
-        argus::auth
-        argus::client-identity
+        argus::lib::auth
+        argus::clients::identity
     INCLUDES
         ${CMAKE_CURRENT_SOURCE_DIR}/../../..)

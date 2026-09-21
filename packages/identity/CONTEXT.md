@@ -26,7 +26,7 @@ locations.
 The package also configures from its own folder (`conanfile.txt` +
 dev/prod presets): the top-level configure adds the sibling packages the
 module links, the vendored `sqlite-vec` and `ncnn`, and the migration
-tool the unit suites ride. Like argus-contracts standalone, the cq-bridge
+tool the unit suites ride. As in the packages under `packages/contracts`, the cq-bridge
 stand-ins are declared empty: standalone protobuf comes from the system
 (no conan onnxruntime to pull conan protobuf in), so the bridge entry
 symbol would interpose libgrpc's own callbacks and recurse.
@@ -65,22 +65,23 @@ not one `#include` line changed. The module's include root became
 `packages/identity/src` (it no longer exports the old `src/` tree at all):
 each include of a file that stayed in `src/` was audited to resolve
 through a declared module edge — `argus::socket` (socket-service,
-identity-change-sink), `argus::cert`, `argus::audit` (sync-audit,
-user-action-log), `argus::sqlite` (db-service, vec-db), `argus::auth`
-(jwt-service, the filters), `argus::config`, `argus::validation`,
-`argus::threading`, `argus::storage` and `contract::sync` (config, validation,
-wrapper, s3-storage, sync contracts).
+identity-change-sink), `argus::lib::cert`, `argus::audit` (sync-audit,
+user-action-log), `argus::lib::sqlite` (db-service, vec-db), `argus::lib::auth`
+(jwt-service, the filters), `argus::lib::config`, `argus::lib::validation`,
+`argus::lib::runtime` (the cancellation and
+threading wrappers), `argus::lib::storage` and `argus::contracts::sync` (config,
+validation, wrapper, s3-storage, sync contracts).
 
 ## The auth⇄identity cycle is gone (f7-3)
 
-`argus::auth`'s filters used to read this service's repositories (device
+`argus::lib::auth`'s filters used to read this service's repositories (device
 credential by secret hash; user and refresh-token by the JWT chain), which
 made the dependency mutual — this service's AuthService calls JwtService
 and DeviceFilter statics in the other direction. f7-3 deleted the reading
 half: the filters now call `argus.identity.v1` (ValidateToken,
-CheckDeviceCredential) through `argus::sdk-identity`, so `argus::auth`
-depends on argus-contracts, never on this folder. What remains is one
-direction only — argus_identity → argus::auth — and no consumer's link
+CheckDeviceCredential) through `argus::clients::identity`, so `argus::lib::auth`
+depends on the identity wire — contract and client — never on this folder. What remains is one
+direction only — argus_identity → argus::lib::auth — and no consumer's link
 order matters anymore.
 
 ## The RPC surface

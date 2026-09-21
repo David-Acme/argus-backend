@@ -6,23 +6,23 @@ include(${CMAKE_CURRENT_SOURCE_DIR}/../../cmake/argus-module.cmake)
 
 # The sibling packages this module links, declared here rather than by the
 # consumer: the guards keep the root tree and every other consumer in charge.
-if(NOT TARGET contract::sync)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../contracts/sync-contract
-                     ${CMAKE_CURRENT_BINARY_DIR}/sync-contract)
+if(NOT TARGET argus::contracts::sync)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../contracts/sync
+                     ${CMAKE_BINARY_DIR}/contracts/sync)
 endif()
 
-if(NOT TARGET argus::text)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../text
+if(NOT TARGET argus::lib::text)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../lib/text
                      ${CMAKE_CURRENT_BINARY_DIR}/text)
 endif()
 
-if(NOT TARGET argus::errors)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../errors
+if(NOT TARGET argus::lib::errors)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../lib/errors
                      ${CMAKE_CURRENT_BINARY_DIR}/errors)
 endif()
 
-if(NOT TARGET argus::sqlite)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../sqlite
+if(NOT TARGET argus::lib::sqlite)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../lib/sqlite
                      ${CMAKE_CURRENT_BINARY_DIR}/sqlite)
 endif()
 
@@ -50,13 +50,13 @@ argus_module(NAME audit
         src/shared/contracts/user-audit-event.hxx
     INCLUDES src
     DEPENDS
-        contract::sync)
+        argus::contracts::sync)
 
 target_link_libraries(argus_audit PUBLIC
     argus::socket
-    argus::sqlite
-    argus::text
-    argus::errors
+    argus::lib::sqlite
+    argus::lib::text
+    argus::lib::errors
     Drogon::Drogon
     nlohmann_json::nlohmann_json)
 

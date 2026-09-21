@@ -23,14 +23,14 @@ if(PROJECT_IS_TOP_LEVEL)
     # The substrate still finds the vendored gRPC and would build the cq
     # bridge, whose entry symbol then interposes the identically-named
     # implementation inside libgrpc. Empty stand-ins skip it.
-if(NOT TARGET contract::auth)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/contracts/auth-contract
-                     ${CMAKE_CURRENT_BINARY_DIR}/auth-contract)
+if(NOT TARGET argus::contracts::auth)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/contracts/auth
+                     ${CMAKE_BINARY_DIR}/contracts/auth)
 endif()
 
-if(NOT TARGET contract::sync)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/contracts/sync-contract
-                     ${CMAKE_CURRENT_BINARY_DIR}/sync-contract)
+if(NOT TARGET argus::contracts::sync)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/contracts/sync
+                     ${CMAKE_BINARY_DIR}/contracts/sync)
 endif()
 
     if(NOT TARGET argus_client_grpc_bridge_entry)
@@ -64,36 +64,36 @@ endif()
                      ${CMAKE_BINARY_DIR}/third_party/ncnn EXCLUDE_FROM_ALL)
     set(ARGUS_NCNN_TARGET ncnn)
 
-    if(NOT TARGET argus::config)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/config
+    if(NOT TARGET argus::lib::config)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/config
                          ${CMAKE_BINARY_DIR}/config)
     endif()
-    if(NOT TARGET argus::text)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/text
+    if(NOT TARGET argus::lib::text)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/text
                          ${CMAKE_BINARY_DIR}/text)
     endif()
-    if(NOT TARGET argus::nats)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/nats
+    if(NOT TARGET argus::lib::nats)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/nats
                          ${CMAKE_BINARY_DIR}/nats)
     endif()
-    if(NOT TARGET argus::validation)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/validation
+    if(NOT TARGET argus::lib::validation)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/validation
                          ${CMAKE_BINARY_DIR}/validation)
     endif()
-    if(NOT TARGET argus::http)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/http
+    if(NOT TARGET argus::lib::http)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/http
                          ${CMAKE_BINARY_DIR}/http)
     endif()
-    if(NOT TARGET argus::sqlite)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/sqlite
+    if(NOT TARGET argus::lib::sqlite)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/sqlite
                          ${CMAKE_BINARY_DIR}/sqlite)
     endif()
     if(NOT TARGET argus::audit)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/audit
                          ${CMAKE_BINARY_DIR}/audit)
     endif()
-    if(NOT TARGET argus::cert)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/cert
+    if(NOT TARGET argus::lib::cert)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/cert
                          ${CMAKE_BINARY_DIR}/cert)
     endif()
     if(NOT TARGET argus::room)
@@ -104,8 +104,8 @@ endif()
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/socket
                          ${CMAKE_BINARY_DIR}/socket)
     endif()
-    if(NOT TARGET argus::auth)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/auth
+    if(NOT TARGET argus::lib::auth)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/auth
                          ${CMAKE_BINARY_DIR}/auth)
     endif()
     if(NOT TARGET argus::identity)
@@ -126,8 +126,8 @@ find_package(doctest REQUIRED)
 
 # The notification RPC contract (argus.notification.v1.NotificationService);
 # this service is the owner and serves it, consumers link
-# argus::client-notification.
-if(NOT TARGET argus::client-notification)
+# argus::clients::notification.
+if(NOT TARGET argus::clients::notification)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/notification
                      ${CMAKE_BINARY_DIR}/clients/notification EXCLUDE_FROM_ALL)
 endif()
@@ -141,7 +141,7 @@ add_library(notification-core STATIC
 target_include_directories(notification-core PUBLIC
     ${NOTIFICATION_SRC_ROOT})
 
-target_link_libraries(notification-core PUBLIC argus_sync argus::sqlite
+target_link_libraries(notification-core PUBLIC argus_sync argus::lib::sqlite
     ${ARGUS_SQLITE_VEC_TARGET})
 
 target_compile_options(notification-core PRIVATE -Wall -Wextra)
@@ -172,11 +172,11 @@ add_executable(argus-notification
     ${NOTIFICATION_SRC_ROOT}/feature/rpc/notification-rpc-service.cc
     ${NOTIFICATION_FEATURE_SOURCES})
 
-# The filters validate through argus.identity.v1 (argus::client-identity rides
-# argus::auth); the RPC owner serves argus.notification.v1 via
-# argus::client-notification.
+# The filters validate through argus.identity.v1 (argus::clients::identity rides
+# argus::lib::auth); the RPC owner serves argus.notification.v1 via
+# argus::clients::notification.
 target_link_libraries(argus-notification PRIVATE notification-core
-    argus::auth argus::client-notification)
+    argus::lib::auth argus::clients::notification)
 
 target_compile_options(argus-notification PRIVATE -Wall -Wextra)
 
@@ -203,14 +203,14 @@ foreach(TEST_NAME IN ITEMS notification-schema-test notification-migration-test)
     set_target_properties(${TEST_NAME} PROPERTIES EXCLUDE_FROM_ALL FALSE)
         target_link_libraries(${TEST_NAME} PRIVATE
     argus::audit
-    argus::auth
-    argus::config
-    argus::text
-    argus::nats
+    argus::lib::auth
+    argus::lib::config
+    argus::lib::text
+    argus::lib::nats
     argus::socket
-    argus::sqlite
-    argus::validation
-    argus::http
+    argus::lib::sqlite
+    argus::lib::validation
+    argus::lib::http
     notification-migration
     doctest::doctest)
     target_compile_options(${TEST_NAME} PRIVATE -Wall -Wextra)
@@ -231,15 +231,15 @@ target_include_directories(notification-controller-test PRIVATE
 
 target_link_libraries(notification-controller-test PRIVATE
     argus_sync
-    argus::auth
-    argus::config
-    argus::text
+    argus::lib::auth
+    argus::lib::config
+    argus::lib::text
     argus::socket
-    argus::sqlite
-    argus::validation
-    argus::http
-    contract::auth
-    contract::sync
+    argus::lib::sqlite
+    argus::lib::validation
+    argus::lib::http
+    argus::contracts::auth
+    argus::contracts::sync
     doctest::doctest)
 
 target_compile_options(notification-controller-test PRIVATE -Wall -Wextra)
@@ -263,11 +263,11 @@ target_compile_definitions(notification-rpc-test PRIVATE
 
 target_link_libraries(notification-rpc-test PRIVATE
     argus_sync
-    argus::client-notification
-    argus::config
-    argus::text
-    argus::nats
-    argus::sqlite
+    argus::clients::notification
+    argus::lib::config
+    argus::lib::text
+    argus::lib::nats
+    argus::lib::sqlite
     doctest::doctest)
 
 target_compile_options(notification-rpc-test PRIVATE -Wall -Wextra)
@@ -291,11 +291,11 @@ target_compile_definitions(notification-no-nats-test PRIVATE
 
 target_link_libraries(notification-no-nats-test PRIVATE
     argus_sync
-    argus::client-notification
-    argus::config
-    argus::text
-    argus::nats
-    argus::sqlite
+    argus::clients::notification
+    argus::lib::config
+    argus::lib::text
+    argus::lib::nats
+    argus::lib::sqlite
     doctest::doctest)
 
 target_compile_options(notification-no-nats-test PRIVATE -Wall -Wextra)
@@ -312,7 +312,7 @@ set_target_properties(notification-delivery-test PROPERTIES
 target_link_libraries(notification-delivery-test PRIVATE
     argus_sync
     argus::socket
-    argus::sqlite
+    argus::lib::sqlite
     doctest::doctest)
 
 target_compile_options(notification-delivery-test PRIVATE -Wall -Wextra)
@@ -327,7 +327,7 @@ set_target_properties(notification-ack-test PROPERTIES
 target_link_libraries(notification-ack-test PRIVATE
     argus_sync
     argus::socket
-    argus::sqlite
+    argus::lib::sqlite
     doctest::doctest)
 
 target_compile_options(notification-ack-test PRIVATE -Wall -Wextra)
@@ -350,8 +350,8 @@ target_compile_definitions(notification-delivery-live-test PRIVATE
 target_link_libraries(notification-delivery-live-test PRIVATE
     notification-core
     argus_sync
-    argus::nats
-    argus::sqlite
+    argus::lib::nats
+    argus::lib::sqlite
     doctest::doctest)
 
 target_compile_options(notification-delivery-live-test PRIVATE -Wall -Wextra)
@@ -366,8 +366,8 @@ set_target_properties(push-intent-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
 target_link_libraries(push-intent-test PRIVATE
     argus_sync
-    argus::nats
-    argus::sqlite
+    argus::lib::nats
+    argus::lib::sqlite
     doctest::doctest)
 
 target_compile_options(push-intent-test PRIVATE -Wall -Wextra)

@@ -4,7 +4,7 @@ package argus.common.v1;
 
 option cc_enable_arenas = true;
 
-// Frozen error codes mirroring the HTTP envelope codes (packages/errors).
+// Frozen error codes mirroring the HTTP envelope codes (packages/lib/errors).
 enum ErrorCode {
   ERROR_CODE_UNSPECIFIED = 0;
   ERROR_CODE_BAD_REQUEST = 1;

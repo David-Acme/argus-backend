@@ -24,38 +24,38 @@ if(NOT TARGET Drogon::Drogon)
     find_package(onnxruntime CONFIG REQUIRED)
     find_package(tomlplusplus REQUIRED)
     find_package(nlohmann_json REQUIRED)
-    if(NOT TARGET argus::config)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/config
+    if(NOT TARGET argus::lib::config)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/config
                          ${CMAKE_BINARY_DIR}/config)
     endif()
     # The synthesis feature sizes its pool from the hardware profile, and the
     # service's coroutines from the blocking-task awaiter: both live here.
-    if(NOT TARGET argus::runtime)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/runtime
+    if(NOT TARGET argus::lib::runtime)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/runtime
                          ${CMAKE_BINARY_DIR}/runtime)
     endif()
-    # The synthesis HTTP DTOs validate through argus::validation.
-    if(NOT TARGET argus::validation)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/validation
+    # The synthesis HTTP DTOs validate through argus::lib::validation.
+    if(NOT TARGET argus::lib::validation)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/validation
                          ${CMAKE_BINARY_DIR}/validation)
     endif()
-    if(NOT TARGET argus::http)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/http
+    if(NOT TARGET argus::lib::http)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/http
                          ${CMAKE_BINARY_DIR}/http)
     endif()
-    if(NOT TARGET argus::tts-client)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/tts-client
-                         ${CMAKE_BINARY_DIR}/tts-client)
+    if(NOT TARGET argus::clients::tts)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/tts
+                         ${CMAKE_BINARY_DIR}/clients/tts)
     endif()
-    if(NOT TARGET argus::auth)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/auth
+    if(NOT TARGET argus::lib::auth)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/auth
                          ${CMAKE_BINARY_DIR}/auth)
     endif()
 endif()
 
-if(NOT TARGET argus::tts-client)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/tts-client
-                     ${CMAKE_BINARY_DIR}/tts-client)
+if(NOT TARGET argus::clients::tts)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/tts
+                     ${CMAKE_BINARY_DIR}/clients/tts)
 endif()
 
 find_package(doctest REQUIRED)

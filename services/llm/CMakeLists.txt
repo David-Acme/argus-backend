@@ -22,14 +22,14 @@ set(SHARED_ROOT ${LLM_SRC_ROOT}/shared)
 # standalone build re-adds the same submodule directory with the same cache
 # variables. Added before the sibling packages so argus-memory's guarded
 # llama block is skipped and these cache vars win.
-if(NOT TARGET contract::auth)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/contracts/auth-contract
-                     ${CMAKE_CURRENT_BINARY_DIR}/auth-contract)
+if(NOT TARGET argus::contracts::auth)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/contracts/auth
+                     ${CMAKE_BINARY_DIR}/contracts/auth)
 endif()
 
-if(NOT TARGET contract::sync)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/contracts/sync-contract
-                     ${CMAKE_CURRENT_BINARY_DIR}/sync-contract)
+if(NOT TARGET argus::contracts::sync)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/contracts/sync
+                     ${CMAKE_BINARY_DIR}/contracts/sync)
 endif()
 
 if(NOT TARGET llama)
@@ -74,37 +74,37 @@ if(NOT TARGET Drogon::Drogon)
     find_package(Drogon CONFIG REQUIRED)
     find_package(tomlplusplus REQUIRED)
     find_package(nlohmann_json REQUIRED)
-    if(NOT TARGET argus::config)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/config
+    if(NOT TARGET argus::lib::config)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/config
                          ${CMAKE_BINARY_DIR}/config)
     endif()
-    if(NOT TARGET argus::text)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/text
+    if(NOT TARGET argus::lib::text)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/text
                          ${CMAKE_BINARY_DIR}/text)
     endif()
-    if(NOT TARGET argus::nats)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/nats
+    if(NOT TARGET argus::lib::nats)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/nats
                          ${CMAKE_BINARY_DIR}/nats)
     endif()
-    if(NOT TARGET argus::runtime)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/runtime
+    if(NOT TARGET argus::lib::runtime)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/runtime
                          ${CMAKE_BINARY_DIR}/runtime)
     endif()
-    if(NOT TARGET argus::validation)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/validation
+    if(NOT TARGET argus::lib::validation)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/validation
                          ${CMAKE_BINARY_DIR}/validation)
     endif()
-    if(NOT TARGET argus::http)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/http
+    if(NOT TARGET argus::lib::http)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/http
                          ${CMAKE_BINARY_DIR}/http)
     endif()
-    if(NOT TARGET argus::phrase)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/phrase
+    if(NOT TARGET argus::lib::phrase)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/phrase
                          ${CMAKE_BINARY_DIR}/phrase)
     endif()
-    if(NOT TARGET argus::llm-client)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/llm-client
-                         ${CMAKE_BINARY_DIR}/llm-client)
+    if(NOT TARGET argus::clients::llm)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/llm
+                         ${CMAKE_BINARY_DIR}/clients/llm)
     endif()
     # sqlite-vec rides its own vendored folder; added before argus-sqlite so
     # its vec repositories see the target.
@@ -113,8 +113,8 @@ if(NOT TARGET Drogon::Drogon)
                          ${CMAKE_BINARY_DIR}/third_party/sqlite-vec)
     endif()
     set(ARGUS_SQLITE_VEC_TARGET sqlite-vec)
-    if(NOT TARGET argus::sqlite)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/sqlite
+    if(NOT TARGET argus::lib::sqlite)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/sqlite
                          ${CMAKE_BINARY_DIR}/sqlite)
     endif()
     if(NOT TARGET memory-core)
@@ -128,11 +128,11 @@ if(NOT TARGET Drogon::Drogon)
 endif()
 
 # The identity and camera contracts the catalog seed reads through the SDK.
-if(NOT TARGET argus::client-identity)
+if(NOT TARGET argus::clients::identity)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/identity
                      ${CMAKE_BINARY_DIR}/clients/identity EXCLUDE_FROM_ALL)
 endif()
-if(NOT TARGET argus::client-camera)
+if(NOT TARGET argus::clients::camera)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/camera
                      ${CMAKE_BINARY_DIR}/clients/camera EXCLUDE_FROM_ALL)
 endif()
@@ -151,7 +151,7 @@ add_library(llm-core STATIC
     # The runtime the loop drives: the registry services register into, the
     # argument validator and the executor that gates a call on role access.
     # One consumer, so it belongs to this service (D16) and moved here from
-    # packages/clients/llm-client with Phase 1 step 9; the vocabulary it runs
+    # packages/clients/llm with Phase 1 step 9; the vocabulary it runs
     # over stayed in that package, which is the tier argus-memory — the
     # declarer of the descriptors — can also reach.
     ${SHARED_ROOT}/services/tools/tool-registry.cc
@@ -170,18 +170,18 @@ target_include_directories(llm-core PUBLIC
 # memory-core makes this the brain: the tool loop needs the memory tools in
 # process, and the memory worker gets LlmService without a wire hop.
 target_link_libraries(llm-core PUBLIC
-    argus::config
+    argus::lib::config
     argus::hardware-profile
-    argus::phrase
-    argus::runtime
-    argus::validation
-    argus::http
-    argus::llm-client
+    argus::lib::phrase
+    argus::lib::runtime
+    argus::lib::validation
+    argus::lib::http
+    argus::clients::llm
     argus::intent
     memory-core
     Drogon::Drogon
     nlohmann_json::nlohmann_json
-    contract::auth
+    argus::contracts::auth
     llama)
 
 target_compile_options(llm-core PRIVATE -Wall -Wextra)
@@ -194,8 +194,8 @@ target_include_directories(encounter-consumer PUBLIC
     ${LLM_SRC_ROOT})
 
 target_link_libraries(encounter-consumer PUBLIC
-    argus::text
-    argus::nats
+    argus::lib::text
+    argus::lib::nats
     memory-core)
 
 target_compile_options(encounter-consumer PRIVATE -Wall -Wextra)
@@ -207,7 +207,7 @@ add_executable(argus-llm ${LLM_SRC_ROOT}/main.cc)
 # process's role.
 target_link_libraries(argus-llm PRIVATE llm-core memory-catalog
     encounter-consumer
-    argus::client-identity argus::client-camera)
+    argus::clients::identity argus::clients::camera)
 
 target_compile_options(argus-llm PRIVATE -Wall -Wextra)
 
@@ -233,7 +233,7 @@ add_custom_command(TARGET argus-llm POST_BUILD
 #   ./build/dev/services/llm/argus-tool-bench [--limit N] [--verbose]
 add_executable(argus-tool-bench tests/bench/tool-calling-bench.cc)
 
-target_link_libraries(argus-tool-bench PRIVATE llm-core contract::auth contract::sync)
+target_link_libraries(argus-tool-bench PRIVATE llm-core argus::contracts::auth argus::contracts::sync)
 
 target_compile_definitions(argus-tool-bench PRIVATE
     ARGUS_BENCH_CASES="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/tools/check.tsv")
@@ -270,17 +270,17 @@ target_compile_definitions(llm-wire-test PRIVATE
     ARGUS_TEST_LLM_MODELS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../../models/llm")
 
 target_link_libraries(llm-wire-test PRIVATE
-    argus::config
+    argus::lib::config
     argus::hardware-profile
-    argus::phrase
-    argus::runtime
-    argus::validation
-    argus::http
-    argus::llm-client
+    argus::lib::phrase
+    argus::lib::runtime
+    argus::lib::validation
+    argus::lib::http
+    argus::clients::llm
     argus::intent
     memory-core
     ${ARGUS_LLAMA_TARGETS}
-    contract::auth
+    argus::contracts::auth
     doctest::doctest)
 
 target_compile_options(llm-wire-test PRIVATE -Wall -Wextra)
@@ -293,7 +293,7 @@ add_test(NAME llm-wire-test COMMAND llm-wire-test)
 # of these on live traffic.
 add_executable(llm-tool-parse-test tests/unit/llm-tool-parse-test.cc)
 
-target_link_libraries(llm-tool-parse-test PRIVATE llm-core doctest::doctest contract::sync)
+target_link_libraries(llm-tool-parse-test PRIVATE llm-core doctest::doctest argus::contracts::sync)
 
 target_compile_options(llm-tool-parse-test PRIVATE -Wall -Wextra)
 
@@ -308,7 +308,7 @@ add_test(NAME llm-tool-parse-test COMMAND llm-tool-parse-test)
 # the pipeline is covered here, over the descriptors memory really ships.
 add_executable(llm-tool-runtime-test tests/unit/llm-tool-runtime-test.cc)
 
-target_link_libraries(llm-tool-runtime-test PRIVATE llm-core argus::auth
+target_link_libraries(llm-tool-runtime-test PRIVATE llm-core argus::lib::auth
     doctest::doctest)
 
 target_compile_options(llm-tool-runtime-test PRIVATE -Wall -Wextra)

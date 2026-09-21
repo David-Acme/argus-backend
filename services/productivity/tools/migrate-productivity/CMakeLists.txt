@@ -9,8 +9,8 @@ add_library(productivity-migration STATIC
 target_include_directories(productivity-migration
     PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}
-        ${CMAKE_CURRENT_SOURCE_DIR}/../../../../packages/text/src
-        ${CMAKE_CURRENT_SOURCE_DIR}/../../../../packages/sqlite/src
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../../../packages/lib/text/src
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../../../packages/lib/sqlite/src
 )
 
 target_compile_definitions(productivity-migration PUBLIC

@@ -23,13 +23,13 @@ include(${CMAKE_CURRENT_SOURCE_DIR}/../../cmake/argus-module.cmake)
 # ride and the ncnn build the face services compile against. The leaves are
 # declared here rather than by the consumer: they are a DAG, so their guards
 # keep the root tree and every other consumer in charge. The sibling packages
-# stay behind PROJECT_IS_TOP_LEVEL because this module and argus_cert link each
+# stay behind PROJECT_IS_TOP_LEVEL because this module and argus_lib_cert link each
 # other: only the project at the top of the configure provides them. The empty
 # cq-bridge stand-ins skip the bridge: standalone protobuf comes from the
 # system, not from conan, so the bridge entry symbol would interpose libgrpc's
-# own callbacks (see argus-contracts/CONTEXT.md).
-if(NOT TARGET argus::runtime)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../runtime
+# own callbacks (see packages/contracts/CONTEXT.md).
+if(NOT TARGET argus::lib::runtime)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../lib/runtime
                      ${CMAKE_BINARY_DIR}/runtime)
 endif()
 if(NOT TARGET argus_client_grpc_bridge_entry)
@@ -41,43 +41,43 @@ if(NOT TARGET sqlite-vec)
                      ${CMAKE_BINARY_DIR}/third_party/sqlite-vec)
 endif()
 set(ARGUS_SQLITE_VEC_TARGET sqlite-vec)
-if(NOT TARGET contract::auth)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../contracts/auth-contract
-                     ${CMAKE_CURRENT_BINARY_DIR}/auth-contract)
+if(NOT TARGET argus::contracts::auth)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../contracts/auth
+                     ${CMAKE_BINARY_DIR}/contracts/auth)
 endif()
 
-if(NOT TARGET contract::sync)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../contracts/sync-contract
-                     ${CMAKE_CURRENT_BINARY_DIR}/sync-contract)
+if(NOT TARGET argus::contracts::sync)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../contracts/sync
+                     ${CMAKE_BINARY_DIR}/contracts/sync)
 endif()
 
-if(NOT TARGET contract::voice)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../contracts/voice-contract
-                     ${CMAKE_CURRENT_BINARY_DIR}/voice-contract)
+if(NOT TARGET argus::contracts::voice)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../contracts/voice
+                     ${CMAKE_BINARY_DIR}/contracts/voice)
 endif()
 
-if(NOT TARGET argus::config)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../config
+if(NOT TARGET argus::lib::config)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../lib/config
                      ${CMAKE_BINARY_DIR}/config)
 endif()
-if(NOT TARGET argus::text)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../text
+if(NOT TARGET argus::lib::text)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../lib/text
                      ${CMAKE_BINARY_DIR}/text)
 endif()
-if(NOT TARGET argus::nats)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../nats
+if(NOT TARGET argus::lib::nats)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../lib/nats
                      ${CMAKE_BINARY_DIR}/nats)
 endif()
-if(NOT TARGET argus::storage)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../storage
+if(NOT TARGET argus::lib::storage)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../lib/storage
                      ${CMAKE_BINARY_DIR}/storage)
 endif()
-if(NOT TARGET argus::validation)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../validation
+if(NOT TARGET argus::lib::validation)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../lib/validation
                      ${CMAKE_BINARY_DIR}/validation)
 endif()
-if(NOT TARGET argus::http)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../http
+if(NOT TARGET argus::lib::http)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../lib/http
                      ${CMAKE_BINARY_DIR}/http)
 endif()
 if(PROJECT_IS_TOP_LEVEL)
@@ -85,8 +85,8 @@ if(PROJECT_IS_TOP_LEVEL)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../room
                          ${CMAKE_BINARY_DIR}/room)
     endif()
-    if(NOT TARGET argus::sqlite)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../sqlite
+    if(NOT TARGET argus::lib::sqlite)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../lib/sqlite
                          ${CMAKE_BINARY_DIR}/sqlite)
     endif()
     if(NOT TARGET argus::socket)
@@ -97,12 +97,12 @@ if(PROJECT_IS_TOP_LEVEL)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../audit
                          ${CMAKE_BINARY_DIR}/audit)
     endif()
-    if(NOT TARGET argus::cert)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../cert
+    if(NOT TARGET argus::lib::cert)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../lib/cert
                          ${CMAKE_BINARY_DIR}/cert)
     endif()
-    if(NOT TARGET argus::auth)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../auth
+    if(NOT TARGET argus::lib::auth)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../lib/auth
                          ${CMAKE_BINARY_DIR}/auth)
     endif()
 endif()
@@ -125,14 +125,14 @@ endif()
 set(ARGUS_NCNN_TARGET ncnn)
 
 # The identity RPC contract (argus.identity.v1) this service serves.
-if(NOT TARGET argus::client-identity)
+if(NOT TARGET argus::clients::identity)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../clients/identity
                      ${CMAKE_BINARY_DIR}/clients/identity EXCLUDE_FROM_ALL)
 endif()
 
-if(NOT TARGET contract::identity)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../contracts/identity-contract
-                     ${CMAKE_CURRENT_BINARY_DIR}/identity-contract)
+if(NOT TARGET argus::contracts::identity)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../contracts/identity
+                     ${CMAKE_BINARY_DIR}/contracts/identity)
 endif()
 
 find_package(Drogon CONFIG REQUIRED)
@@ -207,22 +207,22 @@ argus_module(NAME identity
         ../../third_party
         ../../third_party/stb
     DEPENDS
-        argus::config
+        argus::lib::config
         argus::hardware-profile
-        argus::text
-        argus::nats
-        argus::storage
-        argus::runtime
-        argus::validation
-        argus::http
-        contract::auth
-        contract::sync
-        contract::voice
-        argus::auth
-        argus::client-identity
+        argus::lib::text
+        argus::lib::nats
+        argus::lib::storage
+        argus::lib::runtime
+        argus::lib::validation
+        argus::lib::http
+        argus::contracts::auth
+        argus::contracts::sync
+        argus::contracts::voice
+        argus::lib::auth
+        argus::clients::identity
         argus::audit
-        argus::sqlite
-        argus::cert
+        argus::lib::sqlite
+        argus::lib::cert
         argus::socket
         argus::hardware-profile-gpu
         Drogon::Drogon
@@ -238,7 +238,7 @@ if(ARGUS_NCNN_TARGET AND TARGET ${ARGUS_NCNN_TARGET})
         ${CMAKE_BINARY_DIR}/third_party/ncnn/src)
 endif()
 
-target_link_libraries(argus_identity PRIVATE contract::identity)
+target_link_libraries(argus_identity PRIVATE argus::contracts::identity)
 target_compile_options(argus_identity PRIVATE -Wall -Wextra)
 
 # The unit suites ride identity-migration, so the tool is added in the

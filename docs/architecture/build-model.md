@@ -6,9 +6,9 @@ The repository root has no CMake project. Eighteen owner projects build
 independently, each with its own Conan graph and `dev`/`prod` presets:
 
 ```
-packages/cert              packages/identity         services/gateway
+packages/lib/cert          packages/identity         services/gateway
 packages/socket            packages/sync             services/camera
-packages/sqlite            packages/memory           services/productivity
+packages/lib/sqlite        packages/memory           services/productivity
                            packages/intent           services/notification
                                                      services/guard
                                                      services/tts
@@ -53,8 +53,10 @@ with a configure-time SHA-256 pin.
 
 ## Wrappers and includes
 
-- `cmake/argus-module.cmake` is the shared build substrate (`argus_module()`,
-  `argus_sdk_module()`, `argus_service()`, protobuf/gRPC resolution). Every
-  project includes it by relative path.
+- `cmake/argus-module.cmake` is the shared build substrate — the group
+  helpers (`argus_lib()`, `argus_contracts()`, `argus_clients()`), the
+  ungrouped `argus_module()` and `argus_client_module()` for service-local and
+  wire modules, `argus_service()`, and protobuf/gRPC resolution. Every project
+  includes it by relative path.
 - Source include prefixes (`argus-*/src/...`) are preserved across the tree,
   so moving a project does not rewrite `#include` lines.

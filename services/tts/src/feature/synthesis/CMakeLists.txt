@@ -7,8 +7,8 @@ argus_module(NAME tts-synthesis
         infra/supertonic/unicode-processor.cc
     INCLUDES ../..
     DEPENDS
-        argus::config argus::runtime
-        argus::tts-client
+        argus::lib::config argus::lib::runtime
+        argus::clients::tts
         argus::hardware-profile
         Drogon::Drogon
         onnxruntime::onnxruntime
@@ -17,7 +17,7 @@ argus_module(NAME tts-synthesis
 target_compile_options(argus_tts-synthesis PRIVATE -Wall -Wextra)
 
 # The HTTP face of synthesis: the controller answers through the shared
-# envelope, so argus::http is on the edge.
+# envelope, so argus::lib::http is on the edge.
 argus_module(NAME tts-synthesis-http
     SOURCES
         api/http/controller/tts-controller.cc
@@ -25,9 +25,9 @@ argus_module(NAME tts-synthesis-http
     INCLUDES ../..
     DEPENDS
         argus::tts-synthesis
-        argus::auth
-        argus::http
-        argus::validation
-        contract::tts)
+        argus::lib::auth
+        argus::lib::http
+        argus::lib::validation
+        argus::contracts::tts)
 
 target_compile_options(argus_tts-synthesis-http PRIVATE -Wall -Wextra)

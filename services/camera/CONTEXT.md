@@ -193,7 +193,7 @@ preset, own `camera.db`.
 - **`argus.camera.v1.SyncService.PullTable`** (port 7036, `[server]
   grpc_port`): serves the camera-domain sync tables (camera, camera_stream,
   zone) to the gateway with the frozen /sync semantics typed into
-  `argus-contracts/proto/argus/camera/v1/sync.proto` — per-table
+  `packages/contracts/proto/argus/camera/v1/sync.proto` — per-table
   required_create/required_deleted/find_last legs, (createdAt, id) cursor
   ranges, LIMIT 200 baked into the owner's SQL, tombstones as
   {id, deletedAt}. The implementation calls the same camera/camera_stream/
@@ -218,8 +218,8 @@ camera project's standalone CTest graph.
 
 Two sources could NOT come along, because argus-voice compiles them too:
 the PCM resampler and the TTS HTTP client. They became their own modules
-rather than either service reaching into the other — `argus::audio` and
-`argus::tts-client` (which also carries `tts-wire.hxx`, the contract the
+rather than either service reaching into the other — `argus::lib::audio` and
+`argus::clients::tts` (which also carries `tts-wire.hxx`, the contract the
 client and argus-tts both speak). `media-relay.{cc,hxx}` came with the
 stream folder even though only `labs/` uses it; it is stream-domain code
 and labs is out of scope for this arc.

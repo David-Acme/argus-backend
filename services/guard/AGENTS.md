@@ -9,8 +9,8 @@ this service. The MUST-FOLLOW rules below restate the ones that apply.
    AI engines compile here (face, LLM, VLM, STT, TTS, VAD stay in their
    owners); no media, no stream relay.
 2. **Single-owner database (rule 27)** — this service alone opens `guard.db`.
-   Identity and notifications are reached through `argus::client-identity` and
-   `argus::client-notification`; never read another service's database.
+   Identity and notifications are reached through `argus::clients::identity` and
+   `argus::clients::notification`; never read another service's database.
 3. **Parameter structs for 3+ params** — any function with 3+ parameters must
    take a struct (designated initializers, every member listed).
 4. **Dependency injection** — classes hold dependencies as private members

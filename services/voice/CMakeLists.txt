@@ -23,52 +23,52 @@ if(PROJECT_IS_TOP_LEVEL)
     find_package(onnxruntime CONFIG REQUIRED)
     find_path(RNNOISE_INCLUDE_DIR NAMES rnnoise.h)
     find_library(RNNOISE_LIBRARY NAMES rnnoise)
-    if(NOT TARGET contract::voice)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/contracts/voice-contract
-                         ${CMAKE_CURRENT_BINARY_DIR}/voice-contract)
+    if(NOT TARGET argus::contracts::voice)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/contracts/voice
+                         ${CMAKE_BINARY_DIR}/contracts/voice)
     endif()
 
-    if(NOT TARGET argus::config)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/config
+    if(NOT TARGET argus::lib::config)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/config
                          ${CMAKE_BINARY_DIR}/config)
     endif()
-    if(NOT TARGET argus::http)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/http
+    if(NOT TARGET argus::lib::http)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/http
                          ${CMAKE_BINARY_DIR}/http)
     endif()
-    if(NOT TARGET argus::audio)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/audio
+    if(NOT TARGET argus::lib::audio)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/audio
                          ${CMAKE_BINARY_DIR}/audio)
     endif()
-    if(NOT TARGET argus::tts-client)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/tts-client
-                         ${CMAKE_BINARY_DIR}/tts-client)
+    if(NOT TARGET argus::clients::tts)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/tts
+                         ${CMAKE_BINARY_DIR}/clients/tts)
     endif()
-    if(NOT TARGET argus::llm-client)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/llm-client
-                         ${CMAKE_BINARY_DIR}/llm-client)
+    if(NOT TARGET argus::clients::llm)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/llm
+                         ${CMAKE_BINARY_DIR}/clients/llm)
     endif()
-    if(NOT TARGET argus::stt-client)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/stt-client
-                         ${CMAKE_BINARY_DIR}/stt-client)
+    if(NOT TARGET argus::clients::stt)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/stt
+                         ${CMAKE_BINARY_DIR}/clients/stt)
     endif()
-    if(NOT TARGET argus::phrase)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/phrase
+    if(NOT TARGET argus::lib::phrase)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/phrase
                          ${CMAKE_BINARY_DIR}/phrase)
     endif()
 endif()
 
-if(NOT TARGET argus::client-voice)
+if(NOT TARGET argus::clients::voice)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/voice
                      ${CMAKE_BINARY_DIR}/clients/voice EXCLUDE_FROM_ALL)
 endif()
 # The standard grpc.health.v1 stubs this service answers its health probes
-# with; packages/grpc declares them (argus::grpc-health).
-if(NOT TARGET argus::grpc-health)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/grpc
+# with; packages/lib/grpc declares them (argus::lib::grpc-health).
+if(NOT TARGET argus::lib::grpc-health)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/grpc
                      ${CMAKE_BINARY_DIR}/grpc EXCLUDE_FROM_ALL)
 endif()
-if(NOT TARGET argus::client-identity)
+if(NOT TARGET argus::clients::identity)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/identity
                      ${CMAKE_BINARY_DIR}/clients/identity EXCLUDE_FROM_ALL)
 endif()
@@ -95,17 +95,17 @@ argus_module(NAME voice-core
     INCLUDES
         src
     DEPENDS
-        argus::client-voice
-        argus::grpc-health
-        argus::client-identity
-        argus::audio
-        argus::tts-client
-        argus::llm-client
-        argus::stt-client
-        argus::phrase
-        contract::voice
-        argus::config
-        argus::http
+        argus::clients::voice
+        argus::lib::grpc-health
+        argus::clients::identity
+        argus::lib::audio
+        argus::clients::tts
+        argus::clients::llm
+        argus::clients::stt
+        argus::lib::phrase
+        argus::contracts::voice
+        argus::lib::config
+        argus::lib::http
     SYSTEM_DEPENDS
         Drogon::Drogon
         nlohmann_json::nlohmann_json
@@ -163,7 +163,7 @@ add_executable(voice-tts-remote-test tests/unit/voice-tts-remote-test.cc)
 
 # The TTS wire's fake server moved to the wire module with f7-7a.
 target_include_directories(voice-tts-remote-test PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/tts-client/tests/support)
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/tts/tests/support)
 
 target_link_libraries(voice-tts-remote-test PRIVATE argus::voice-core
     doctest::doctest)
@@ -182,7 +182,7 @@ add_test(NAME voice-tts-remote-test COMMAND voice-tts-remote-test)
 add_executable(voice-stt-remote-test tests/unit/voice-stt-remote-test.cc)
 
 target_include_directories(voice-stt-remote-test PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/stt-client/tests/support)
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/stt/tests/support)
 
 target_link_libraries(voice-stt-remote-test PRIVATE argus::voice-core
     doctest::doctest)
@@ -202,8 +202,8 @@ add_executable(voice-llm-remote-test tests/unit/voice-llm-remote-test.cc)
 
 # This suite drives both the LLM and STT fakes.
 target_include_directories(voice-llm-remote-test PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/llm-client/tests/support
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/stt-client/tests/support)
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/llm/tests/support
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/stt/tests/support)
 
 target_link_libraries(voice-llm-remote-test PRIVATE argus::voice-core
     doctest::doctest)

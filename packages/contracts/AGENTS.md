@@ -1,13 +1,14 @@
-# AGENTS.md — argus-contracts AI Agent Instructions
+# AGENTS.md — packages/contracts AI Agent Instructions
 
 > This file is read by AI coding assistants before any code generation task.
 > It defines the repo's purpose, conventions, and constraints.
 
 ## Project Identity
 
-- **argus-contracts** — the source of truth for Argus wire contracts: protobuf
-  v1 skeletons, capability/package manifests and frozen sync wire values.
-- Top-level folder of the Argus monorepo (rooted at `backend/`), versioned via
+- **packages/contracts** — the source of truth for Argus wire contracts:
+  protobuf v1 skeletons, capability/package manifests and frozen sync wire
+  values.
+- The contract group under `packages/` of the Argus backend, versioned via
   repo tags (`contracts-v*`), not an independent repo. Services (C++20 + Drogon)
   and the mobile app (`frontend/` React Native) coordinate against THIS folder,
   never against a service's local copy.
@@ -37,10 +38,11 @@ review blocker:
 - `proto/argus/{domain}/v1/*.proto` — one package per domain
   (`common`, `camera`, `ai`, `productivity`, `notification`, `memory`, `sync`,
   `identity`, `voice`, plus vendored `grpc/health/v1`).
-- `CMakeLists.txt` — `argus_sdk_module(NAME <domain> PROTO ...)` turns each
-  domain into the `argus::sdk-<domain>` module (generated stubs + the
-  `sdk/<domain>/` wrapper). Consumers link by module name only; generated
-  headers stay in the build tree.
+- `CMakeLists.txt` — `argus_contracts(NAME <domain> ...)` turns each domain's
+  headers into the `argus::contracts::<domain>` vocabulary, an INTERFACE
+  target. The generated stubs and the typed wrapper are a *client* package's
+  job (`packages/clients/<domain>`, `argus::clients::<domain>`). Consumers link
+  by module name only; generated headers stay in the build tree.
 - `manifests/` — JSON Schemas for the typed capability package manifest
   (`package.schema.json`) and the ed25519-signed plugin manifest
   (`plugin.schema.json`).

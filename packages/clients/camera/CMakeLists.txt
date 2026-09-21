@@ -3,12 +3,12 @@ cmake_minimum_required(VERSION 3.25)
 include(${CMAKE_CURRENT_SOURCE_DIR}/../../../cmake/argus-module.cmake)
 
 if(NOT TARGET argus_client_grpc_base)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../grpc
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../lib/grpc
                      ${CMAKE_CURRENT_BINARY_DIR}/grpc)
 endif()
 
-if(NOT TARGET argus::client-camera)
-  argus_client_module(NAME camera
+if(NOT TARGET argus::clients::camera)
+  argus_clients(NAME camera
       PROTO_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../../contracts/proto
       PROTO argus/camera/v1/sync.proto
       SOURCES src/camera/camera-sync-client.cc
@@ -27,7 +27,7 @@ add_executable(client-caller-identity-test
 set_target_properties(client-caller-identity-test PROPERTIES
     EXCLUDE_FROM_ALL FALSE)
 
-target_link_libraries(client-caller-identity-test PRIVATE argus::client-camera
+target_link_libraries(client-caller-identity-test PRIVATE argus::clients::camera
     doctest::doctest)
 
 target_compile_options(client-caller-identity-test PRIVATE -Wall -Wextra)

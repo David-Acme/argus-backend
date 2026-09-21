@@ -1,5 +1,7 @@
 # AGENTS.md rule 25 build helpers: the folder IS the module; consumers link
-# by name (argus::<name>, argus::client-<name>).
+# by name. A package names its group (argus::lib::<name>,
+# argus::contracts::<domain>, argus::clients::<domain>); a service-local
+# module stays argus::<name>.
 
 include_guard(GLOBAL)
 
@@ -8,13 +10,56 @@ include_guard(GLOBAL)
 # sibling folders must be anchored here instead.
 set(ARGUS_CMAKE_DIR ${CMAKE_CURRENT_LIST_DIR})
 
-# argus_module(NAME <name> [SOURCES ...] [INCLUDES ...] [DEPENDS ...]
-#              [SYSTEM_DEPENDS ...]) -> static lib argus_<name> / argus::<name>
-function(argus_module)
-  cmake_parse_arguments(ARG "" "NAME" "SOURCES;INCLUDES;DEPENDS;SYSTEM_DEPENDS"
-                        ${ARGN})
+# A helper's keyword list is its contract, and cmake_parse_arguments does not
+# enforce it. Two ways a misspelling survives, both measured on CMake 3.31:
+#
+#   * with no multi-value keyword open, the stray token lands in
+#     ARG_UNPARSED_ARGUMENTS ('BOGUS;x' for `BOGUS x NAME n ...`);
+#   * with one open, it is appended to THAT list, and ARG_UNPARSED_ARGUMENTS
+#     stays empty -- `NAME n DEPENDS d SYSTEM_DEPEND Foo` parses to
+#     ARG_DEPENDS='d;SYSTEM_DEPEND;Foo', which is the realistic typo and the
+#     one that hurts: the token reaches target_link_libraries as a bare name
+#     it cannot resolve, and the error surfaces at link time, far from the
+#     call that made it. (cmake_parse_arguments' PARSE_ARGV form behaves the
+#     same here.)
+#
+# So the check covers both: the unparsed list, and any element of a value list
+# that is keyword-shaped. Keywords are ALL_CAPS by convention in this file and
+# in CMake, and every legitimate value is a target, an alias, a path or a
+# library name -- none of them all-caps -- so the shape test is precise
+# against this tree rather than merely heuristic. It cannot catch a lowercase
+# misspelling, which is indistinguishable from a library name.
+#
+# A MACRO, not a function: ARG_* are the calling helper's own variables, and a
+# function would not see them.
+macro(argus_reject_unknown_args helper)
+  if(ARG_UNPARSED_ARGUMENTS)
+    message(FATAL_ERROR
+            "${helper}: unknown argument(s) '${ARG_UNPARSED_ARGUMENTS}'")
+  endif()
+  foreach(list IN ITEMS ARG_SOURCES ARG_INCLUDES ARG_DEPENDS ARG_SYSTEM_DEPENDS
+                         ARG_PROTO ARG_MODULES)
+    foreach(item IN LISTS ${list})
+      if(item MATCHES "^[A-Z][A-Z0-9_]+$")
+        message(FATAL_ERROR
+                "${helper}: '${item}' in ${list} looks like a misspelled keyword")
+      endif()
+    endforeach()
+  endforeach()
+endmacro()
+
+# The shared body of the package helpers: the group is part of the target
+# name, so a package cannot declare itself into the wrong tier (§2.5). STATIC
+# unless INTERFACE, which is what a header-only package is. An empty GROUP is
+# a module that names no tier -- a service-local module, or one of the
+# packages §9.1 sends to "--" until the phase that moves it -- and keeps the
+# bare argus_<name> / argus::<name>.
+function(argus_grouped_module)
+  cmake_parse_arguments(ARG "INTERFACE" "NAME;GROUP"
+                        "SOURCES;INCLUDES;DEPENDS;SYSTEM_DEPENDS" ${ARGN})
+  argus_reject_unknown_args(argus_grouped_module)
   if(NOT ARG_NAME)
-    message(FATAL_ERROR "argus_module requires NAME")
+    message(FATAL_ERROR "argus_grouped_module requires NAME")
   endif()
   set(abs_sources "")
   foreach(src IN LISTS ARG_SOURCES)
@@ -28,13 +73,86 @@ function(argus_module)
                NORMALIZE)
     list(APPEND abs_includes ${inc})
   endforeach()
-  add_library(argus_${ARG_NAME} STATIC ${abs_sources})
-  add_library(argus::${ARG_NAME} ALIAS argus_${ARG_NAME})
-  target_include_directories(argus_${ARG_NAME} PUBLIC ${abs_includes})
-  if(ARG_DEPENDS OR ARG_SYSTEM_DEPENDS)
-    target_link_libraries(argus_${ARG_NAME} PUBLIC ${ARG_DEPENDS}
-                                                   ${ARG_SYSTEM_DEPENDS})
+  if(ARG_GROUP)
+    set(module argus_${ARG_GROUP}_${ARG_NAME})
+    set(alias argus::${ARG_GROUP}::${ARG_NAME})
+  else()
+    set(module argus_${ARG_NAME})
+    set(alias argus::${ARG_NAME})
   endif()
+  if(ARG_INTERFACE)
+    add_library(${module} INTERFACE)
+    if(abs_sources)
+      target_sources(${module} INTERFACE ${abs_sources})
+    endif()
+    target_include_directories(${module} INTERFACE ${abs_includes})
+    if(ARG_DEPENDS OR ARG_SYSTEM_DEPENDS)
+      target_link_libraries(${module} INTERFACE ${ARG_DEPENDS}
+                                                 ${ARG_SYSTEM_DEPENDS})
+    endif()
+  else()
+    add_library(${module} STATIC ${abs_sources})
+    target_include_directories(${module} PUBLIC ${abs_includes})
+    if(ARG_DEPENDS OR ARG_SYSTEM_DEPENDS)
+      target_link_libraries(${module} PUBLIC ${ARG_DEPENDS}
+                                             ${ARG_SYSTEM_DEPENDS})
+    endif()
+  endif()
+  add_library(${alias} ALIAS ${module})
+endfunction()
+
+# argus_lib(NAME <name> [HEADER_ONLY] [SOURCES ...] [INCLUDES ...]
+#           [DEPENDS ...] [SYSTEM_DEPENDS ...])
+#           -> argus_lib_<name> / argus::lib::<name>; a header-only package
+#           declares HEADER_ONLY and has no .cc.
+function(argus_lib)
+  cmake_parse_arguments(ARG "HEADER_ONLY" "NAME"
+                        "SOURCES;INCLUDES;DEPENDS;SYSTEM_DEPENDS" ${ARGN})
+  argus_reject_unknown_args(argus_lib)
+  if(NOT ARG_NAME)
+    message(FATAL_ERROR "argus_lib requires NAME")
+  endif()
+  set(kind "")
+  if(ARG_HEADER_ONLY)
+    list(APPEND kind INTERFACE)
+  endif()
+  argus_grouped_module(NAME ${ARG_NAME} GROUP lib ${kind}
+      SOURCES ${ARG_SOURCES} INCLUDES ${ARG_INCLUDES}
+      DEPENDS ${ARG_DEPENDS} SYSTEM_DEPENDS ${ARG_SYSTEM_DEPENDS})
+endfunction()
+
+# argus_contracts(NAME <domain> [SOURCES ...] [INCLUDES ...] [DEPENDS ...])
+#           -> argus_contracts_<domain> / argus::contracts::<domain>, the
+#           INTERFACE target a domain's C++ vocabulary crosses the wire in.
+function(argus_contracts)
+  cmake_parse_arguments(ARG "" "NAME"
+                        "SOURCES;INCLUDES;DEPENDS;SYSTEM_DEPENDS" ${ARGN})
+  argus_reject_unknown_args(argus_contracts)
+  if(NOT ARG_NAME)
+    message(FATAL_ERROR "argus_contracts requires NAME")
+  endif()
+  argus_grouped_module(NAME ${ARG_NAME} GROUP contracts INTERFACE
+      SOURCES ${ARG_SOURCES} INCLUDES ${ARG_INCLUDES}
+      DEPENDS ${ARG_DEPENDS} SYSTEM_DEPENDS ${ARG_SYSTEM_DEPENDS})
+endfunction()
+
+# argus_module(NAME <name> [HEADER_ONLY] [SOURCES ...] [INCLUDES ...]
+#              [DEPENDS ...] [SYSTEM_DEPENDS ...])
+#              -> argus_<name> / argus::<name> -- a module that names no group:
+#              how a service spells its own feature modules, and how the seven
+#              packages §9.1 sends to "--" are spelled until the phase that
+#              moves each of them out of packages/.
+function(argus_module)
+  cmake_parse_arguments(ARG "HEADER_ONLY" "NAME"
+                        "SOURCES;INCLUDES;DEPENDS;SYSTEM_DEPENDS" ${ARGN})
+  argus_reject_unknown_args(argus_module)
+  set(kind "")
+  if(ARG_HEADER_ONLY)
+    list(APPEND kind INTERFACE)
+  endif()
+  argus_grouped_module(NAME ${ARG_NAME} GROUP "" ${kind}
+      SOURCES ${ARG_SOURCES} INCLUDES ${ARG_INCLUDES}
+      DEPENDS ${ARG_DEPENDS} SYSTEM_DEPENDS ${ARG_SYSTEM_DEPENDS})
 endfunction()
 
 # ABI bridge over the vendored gRPC boundary (system vs Conan abseil inline
@@ -44,7 +162,7 @@ function(argus_grpc_absl_bridge)
     return()
   endif()
   argus_contracts_substrate()
-  set(bridge_dir ${ARGUS_CMAKE_DIR}/../packages/grpc/src/grpc)
+  set(bridge_dir ${ARGUS_CMAKE_DIR}/../packages/lib/grpc/src/grpc)
   foreach(side entry exit)
     add_library(argus_client_grpc_bridge_${side} OBJECT
                 ${bridge_dir}/grpc-cq-bridge-${side}.cc)
@@ -70,7 +188,7 @@ function(argus_grpc_client_base)
     return()
   endif()
   argus_contracts_substrate()
-  set(base_dir ${ARGUS_CMAKE_DIR}/../packages/grpc/src/grpc)
+  set(base_dir ${ARGUS_CMAKE_DIR}/../packages/lib/grpc/src/grpc)
   add_library(argus_client_grpc_base OBJECT ${base_dir}/grpc-client-base.cc)
   set_target_properties(argus_client_grpc_base PROPERTIES
       POSITION_INDEPENDENT_CODE ON)
@@ -226,23 +344,25 @@ function(argus_runtime_rpath target)
       INSTALL_RPATH "${new_rpath}")
 endfunction()
 
-# argus_client_module(NAME <name> [GROUP <group>] [PROTO_ROOT <dir>] PROTO <path>...
+# argus_client_module(NAME <name> GROUP <group> [PROTO_ROOT <dir>] PROTO <path>...
 #                  [SOURCES ...] [INCLUDES ...] [DEPENDS ...])
-#                  -> argus_<group>_<name> / argus::<group>-<name>; stubs
+#                  -> argus_<group>_<name> / argus::<group>::<name>; stubs
 # generate into the build tree, protobuf types stay behind the module's headers.
-# GROUP defaults to client (the SDK convention); packages/grpc passes GROUP grpc
-# for the standard health stubs, which are served rather than called.
+# The three wire modules that are not a domain SDK pass the group they live in
+# (packages/lib/grpc's health stubs, the response and tts wire contracts); every
+# domain SDK goes through argus_clients, which fixes the group for it.
 function(argus_client_module)
   cmake_parse_arguments(ARG "" "NAME;PROTO_ROOT;GROUP"
                         "PROTO;SOURCES;INCLUDES;DEPENDS" ${ARGN})
+  argus_reject_unknown_args(argus_client_module)
   if(NOT ARG_NAME OR NOT ARG_PROTO)
     message(FATAL_ERROR "argus_client_module requires NAME and PROTO")
   endif()
   if(NOT ARG_GROUP)
-    set(ARG_GROUP client)
+    set(ARG_GROUP clients)
   endif()
   set(module argus_${ARG_GROUP}_${ARG_NAME})
-  set(module_alias argus::${ARG_GROUP}-${ARG_NAME})
+  set(module_alias argus::${ARG_GROUP}::${ARG_NAME})
   argus_contracts_substrate()
   # Imported gRPC targets are directory-scoped: re-resolve them in the
   # caller's scope so the stub codegen below sees them, and with them the
@@ -338,11 +458,37 @@ function(argus_client_module)
       PUBLIC ${bridge} ${protobuf_target} ${grpc_target} ${ARG_DEPENDS})
 endfunction()
 
+# argus_clients(NAME <domain> [PROTO_ROOT <dir> PROTO <path>...] [SOURCES ...]
+#               [INCLUDES ...] [DEPENDS ...] [SYSTEM_DEPENDS ...])
+#               -> argus_clients_<domain> / argus::clients::<domain>. With
+#               PROTO it is a gRPC SDK and generates its stubs; without one it
+#               is a plain module over an HTTP wire, which is what the four
+#               remote clients are.
+function(argus_clients)
+  cmake_parse_arguments(ARG "" "NAME;PROTO_ROOT"
+                        "PROTO;SOURCES;INCLUDES;DEPENDS;SYSTEM_DEPENDS" ${ARGN})
+  argus_reject_unknown_args(argus_clients)
+  if(NOT ARG_NAME)
+    message(FATAL_ERROR "argus_clients requires NAME")
+  endif()
+  if(ARG_PROTO)
+    argus_client_module(NAME ${ARG_NAME} GROUP clients
+        PROTO_ROOT ${ARG_PROTO_ROOT} PROTO ${ARG_PROTO}
+        SOURCES ${ARG_SOURCES} INCLUDES ${ARG_INCLUDES}
+        DEPENDS ${ARG_DEPENDS} ${ARG_SYSTEM_DEPENDS})
+  else()
+    argus_grouped_module(NAME ${ARG_NAME} GROUP clients
+        SOURCES ${ARG_SOURCES} INCLUDES ${ARG_INCLUDES}
+        DEPENDS ${ARG_DEPENDS} SYSTEM_DEPENDS ${ARG_SYSTEM_DEPENDS})
+  endif()
+endfunction()
+
 # argus_service(NAME <name> MAIN <main.cc> [MODULES ...] [DEPENDS ...]
 #               [PORTS ...]) -> executable + module links + warning gate;
 # PORTS are recorded as a target property (config owns runtime ports).
 function(argus_service)
   cmake_parse_arguments(ARG "" "NAME;MAIN" "MODULES;DEPENDS;PORTS" ${ARGN})
+  argus_reject_unknown_args(argus_service)
   if(NOT ARG_NAME OR NOT ARG_MAIN)
     message(FATAL_ERROR "argus_service requires NAME and MAIN")
   endif()

@@ -23,13 +23,13 @@ find_package(nlohmann_json REQUIRED)
 
 # The packages this module links, declared here rather than by the consumer:
 # every guard keeps the root tree and every other consumer in charge.
-if(NOT TARGET contract::auth)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../contracts/auth-contract
-                     ${CMAKE_CURRENT_BINARY_DIR}/auth-contract)
+if(NOT TARGET argus::contracts::auth)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../contracts/auth
+                     ${CMAKE_BINARY_DIR}/contracts/auth)
 endif()
 
-if(NOT TARGET argus::text)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../text
+if(NOT TARGET argus::lib::text)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../lib/text
                      ${CMAKE_BINARY_DIR}/text)
 endif()
 
@@ -38,14 +38,14 @@ if(NOT TARGET argus::room)
                      ${CMAKE_BINARY_DIR}/room)
 endif()
 
-if(NOT TARGET argus::nats)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../nats
+if(NOT TARGET argus::lib::nats)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../lib/nats
                      ${CMAKE_BINARY_DIR}/nats)
 endif()
 
-if(NOT TARGET contract::sync)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../contracts/sync-contract
-                     ${CMAKE_CURRENT_BINARY_DIR}/sync-contract)
+if(NOT TARGET argus::contracts::sync)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../contracts/sync
+                     ${CMAKE_BINARY_DIR}/contracts/sync)
 endif()
 
 argus_module(NAME socket
@@ -59,9 +59,9 @@ argus_module(NAME socket
 
 target_link_libraries(argus_socket PUBLIC
     argus::room
-    argus::nats
-    contract::sync
-    argus::text
+    argus::lib::nats
+    argus::contracts::sync
+    argus::lib::text
     Drogon::Drogon
     nlohmann_json::nlohmann_json)
 
@@ -73,10 +73,10 @@ find_package(doctest REQUIRED)
 add_executable(sync-change-test tests/unit/sync-change-test.cc)
 target_link_libraries(sync-change-test PRIVATE
     argus::socket
-    argus::text
-    argus::nats
-    contract::auth
-    contract::sync
+    argus::lib::text
+    argus::lib::nats
+    argus::contracts::auth
+    argus::contracts::sync
     doctest::doctest)
 target_compile_options(sync-change-test PRIVATE -Wall -Wextra)
 add_test(NAME sync-change-test COMMAND sync-change-test)

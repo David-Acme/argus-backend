@@ -286,7 +286,7 @@ table. The app keeps working without any update.
   `argus.productivity.v1.SyncService` (`[productivity] grpc_target`, 7037) and
   the notification page over `argus.notification.v1.NotificationService`
   (`[notifications] grpc_target`, 7038), both through the shared SDK clients
-  (`argus::sdk-productivity` / `argus::sdk-notification`) wrapped as
+  (`argus::clients::productivity` / `argus::clients::notification`) wrapped as
   `ProductivitySyncGateway` / `NotificationSyncGateway`. The owner applies the
   personal-table scoping and the role read gate from the forwarded identity
   metadata; the gateway only forwards the range and the caller. An absent or
@@ -312,7 +312,7 @@ table. The app keeps working without any update.
   disabled = the single-listener shape, zero behavior change) adds a SECOND
   listener mirroring the public one's TLS posture (same host, certs, min
   protocol; appended by `appendRemoteListener` in
-  `packages/http/src/http/listener-config.cc`). A request is
+  `packages/lib/http/src/http/listener-config.cc`). A request is
   remote-classified when its connection's LOCAL port equals `tunnel_port`
   (`requestIsRemote`, remote-config.cc — TLS is end-to-end through the
   tunnel relay, so the observed local port is the only honest signal; the

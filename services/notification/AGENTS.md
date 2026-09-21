@@ -13,7 +13,7 @@ that apply to notification-service code; when in doubt, the root file wins.
 2. **Single-owner database (Rulings AN/AR, rule 27)** — this service alone
    owns and opens `notification.db`. The gateway's camera-notifier creates
    notifications through `argus.notification.v1` (CreateNotifications,
-   `argus::client-notification`) and its `/sync` notification pulls use
+   `argus::clients::notification`) and its `/sync` notification pulls use
    PullNotifications; no other service mounts the volume.
 3. **Parameter structs for 3+ params** — any function with 3+ parameters
    must take a struct (designated initializers, every member listed).

@@ -21,7 +21,7 @@ data.
 | Voice | `argus-voice` | Pure-gRPC voice-session orchestration |
 | Guard | `argus-guard` | Autonomous camera security: danger policy, incidents, gated actions |
 | Tunnel | `argus-tunnel-client`, `argus-tunnel-relay` | Byte-transparent remote transport |
-| Contracts | `argus-contracts` | Versioned protobuf contracts and typed internal SDKs |
+| Contracts | `packages/contracts/*`, `packages/clients/*` | Versioned protobuf contracts and typed internal SDKs |
 
 The gateway is the only public surface. Internal services bind to loopback or
 the deployment's private network. Core NATS carries change and object events;

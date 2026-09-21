@@ -8,8 +8,11 @@ there is no root CMake project or monolithic backend executable.
 
 - `services/<name>/` — deployable processes, each with its own Conan
   graph and CMake presets
-- `packages/<name>/` — reusable libraries compiled into their consumers
-- `packages/clients/` — protobuf contracts and internal gRPC clients
+- `packages/lib/` — reusable libraries compiled into their consumers
+- `packages/contracts/` — protobuf and wire contracts, imported directly
+- `packages/clients/` — internal gRPC and HTTP clients for those wires
+- `packages/<name>/` — the packages not yet in a group (`identity`,
+  `memory`, `sync`, …)
 - `third_party/` — pinned source dependencies maintained as Git submodules
 - `argus-deploy/` — the multi-service Compose stack; every service builds its
   own image

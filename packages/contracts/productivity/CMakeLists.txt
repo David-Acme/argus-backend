@@ -1,0 +1,42 @@
+# productivity-contract: the vocabulary that crosses the productivity
+# boundary — a reminder detail's status, the access a shared calendar event
+# carries and the error a membership check reports. Declared once, here, for
+# the service that owns the boundary and for the packages and services that
+# consume it. Header-only; consumers link argus::contracts::productivity.
+
+cmake_minimum_required(VERSION 3.25)
+
+include(${CMAKE_CURRENT_SOURCE_DIR}/../../../cmake/argus-module.cmake)
+
+if(NOT TARGET argus::lib::errors)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../lib/errors
+                     ${CMAKE_CURRENT_BINARY_DIR}/errors)
+endif()
+
+argus_contracts(NAME productivity
+    INCLUDES .
+    SOURCES
+        membership-error.hxx
+        productivity-errors.hxx
+        reminder-detail-status.hxx
+        share-access.hxx
+    DEPENDS argus::lib::errors)
+
+# The round-trip suite: every name is its own spelling and back.
+enable_testing()
+find_package(doctest REQUIRED)
+
+add_executable(productivity-contract-vocabulary-test
+    tests/unit/productivity-contract-vocabulary-test.cc)
+target_link_libraries(productivity-contract-vocabulary-test PRIVATE
+    argus::contracts::productivity doctest::doctest)
+target_compile_options(productivity-contract-vocabulary-test PRIVATE -Wall -Wextra)
+add_test(NAME productivity-contract-vocabulary-test
+         COMMAND productivity-contract-vocabulary-test)
+
+get_target_property(DOCTEST_INCLUDE_DIRS doctest::doctest
+                    INTERFACE_INCLUDE_DIRECTORIES)
+if(DOCTEST_INCLUDE_DIRS)
+    set_target_properties(doctest::doctest PROPERTIES
+        INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${DOCTEST_INCLUDE_DIRS}")
+endif()

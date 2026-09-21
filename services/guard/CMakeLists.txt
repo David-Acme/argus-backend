@@ -49,39 +49,39 @@ if(PROJECT_IS_TOP_LEVEL)
                      ${CMAKE_BINARY_DIR}/third_party/ncnn EXCLUDE_FROM_ALL)
     set(ARGUS_NCNN_TARGET ncnn)
 
-    if(NOT TARGET argus::config)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/config
+    if(NOT TARGET argus::lib::config)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/config
                          ${CMAKE_BINARY_DIR}/config)
     endif()
-    if(NOT TARGET argus::text)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/text
+    if(NOT TARGET argus::lib::text)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/text
                          ${CMAKE_BINARY_DIR}/text)
     endif()
-    if(NOT TARGET argus::nats)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/nats
+    if(NOT TARGET argus::lib::nats)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/nats
                          ${CMAKE_BINARY_DIR}/nats)
     endif()
-    if(NOT TARGET argus::validation)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/validation
+    if(NOT TARGET argus::lib::validation)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/validation
                          ${CMAKE_BINARY_DIR}/validation)
     endif()
-    if(NOT TARGET argus::http)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/http
+    if(NOT TARGET argus::lib::http)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/http
                          ${CMAKE_BINARY_DIR}/http)
     endif()
-    if(NOT TARGET argus::sqlite)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/sqlite
+    if(NOT TARGET argus::lib::sqlite)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/sqlite
                          ${CMAKE_BINARY_DIR}/sqlite)
     endif()
-    if(NOT TARGET argus::client-identity)
+    if(NOT TARGET argus::clients::identity)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/identity
                          ${CMAKE_BINARY_DIR}/clients/identity EXCLUDE_FROM_ALL)
     endif()
-    if(NOT TARGET argus::client-notification)
+    if(NOT TARGET argus::clients::notification)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/notification
                          ${CMAKE_BINARY_DIR}/clients/notification EXCLUDE_FROM_ALL)
     endif()
-    if(NOT TARGET argus::client-camera-actions)
+    if(NOT TARGET argus::clients::camera-actions)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/camera-actions
                          ${CMAKE_BINARY_DIR}/clients/camera-actions EXCLUDE_FROM_ALL)
     endif()
@@ -89,8 +89,8 @@ if(PROJECT_IS_TOP_LEVEL)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/audit
                          ${CMAKE_BINARY_DIR}/audit)
     endif()
-    if(NOT TARGET argus::cert)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/cert
+    if(NOT TARGET argus::lib::cert)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/cert
                          ${CMAKE_BINARY_DIR}/cert)
     endif()
     if(NOT TARGET argus::room)
@@ -101,8 +101,8 @@ if(PROJECT_IS_TOP_LEVEL)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/socket
                          ${CMAKE_BINARY_DIR}/socket)
     endif()
-    if(NOT TARGET argus::auth)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/auth
+    if(NOT TARGET argus::lib::auth)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/auth
                          ${CMAKE_BINARY_DIR}/auth)
     endif()
     if(NOT TARGET argus::identity)
@@ -113,13 +113,13 @@ if(PROJECT_IS_TOP_LEVEL)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/identity/tools/migrate-identity
                          ${CMAKE_BINARY_DIR}/identity/tools/migrate-identity)
     endif()
-    if(NOT TARGET argus::llm-client)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/llm-client
-                         ${CMAKE_BINARY_DIR}/llm-client)
+    if(NOT TARGET argus::clients::llm)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/llm
+                         ${CMAKE_BINARY_DIR}/clients/llm)
     endif()
-    if(NOT TARGET argus::vlm-client)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/vlm-client
-                         ${CMAKE_BINARY_DIR}/vlm-client)
+    if(NOT TARGET argus::clients::vlm)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/vlm
+                         ${CMAKE_BINARY_DIR}/clients/vlm)
     endif()
 endif()
 
@@ -133,15 +133,15 @@ target_include_directories(argus-guard PRIVATE ${GUARD_SRC_ROOT})
 target_link_libraries(argus-guard PRIVATE
     argus::guard
     argus::guard-api
-    argus::auth
-    argus::config
-    argus::nats
-    argus::sqlite
-    argus::client-identity
-    argus::client-notification
-    argus::client-camera-actions
-    argus::llm-client
-    argus::vlm-client
+    argus::lib::auth
+    argus::lib::config
+    argus::lib::nats
+    argus::lib::sqlite
+    argus::clients::identity
+    argus::clients::notification
+    argus::clients::camera-actions
+    argus::clients::llm
+    argus::clients::vlm
     ${ARGUS_SQLITE_VEC_TARGET})
 target_compile_options(argus-guard PRIVATE -Wall -Wextra)
 
@@ -198,9 +198,9 @@ set_target_properties(guard-dlq-service-live-test PROPERTIES
     EXCLUDE_FROM_ALL FALSE)
 target_link_libraries(guard-dlq-service-live-test PRIVATE
     argus::guard
-    argus::text
-    argus::nats
-    argus::sqlite
+    argus::lib::text
+    argus::lib::nats
+    argus::lib::sqlite
     doctest::doctest)
 target_include_directories(guard-dlq-service-live-test PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/support)
@@ -213,7 +213,7 @@ add_test(NAME guard-dlq-service-live-test COMMAND guard-dlq-service-live-test)
 add_executable(guard-dlq-live-test tests/unit/guard-dlq-live-test.cc)
 set_target_properties(guard-dlq-live-test PROPERTIES
     EXCLUDE_FROM_ALL FALSE)
-target_link_libraries(guard-dlq-live-test PRIVATE argus::nats doctest::doctest)
+target_link_libraries(guard-dlq-live-test PRIVATE argus::lib::nats doctest::doctest)
 target_compile_options(guard-dlq-live-test PRIVATE -Wall -Wextra)
 add_test(NAME guard-dlq-live-test COMMAND guard-dlq-live-test)
 
@@ -222,16 +222,16 @@ add_executable(vlm-client-live-test tests/unit/vlm-client-live-test.cc)
 set_target_properties(vlm-client-live-test PROPERTIES
     EXCLUDE_FROM_ALL FALSE)
 target_link_libraries(vlm-client-live-test PRIVATE
-    argus::vlm-client
-    argus::auth
-    argus::config
-    argus::text
-    argus::nats
-    argus::sqlite
-    argus::storage
-    argus::runtime
-    argus::validation
-    argus::http
+    argus::clients::vlm
+    argus::lib::auth
+    argus::lib::config
+    argus::lib::text
+    argus::lib::nats
+    argus::lib::sqlite
+    argus::lib::storage
+    argus::lib::runtime
+    argus::lib::validation
+    argus::lib::http
     Drogon::Drogon
     doctest::doctest)
 target_include_directories(vlm-client-live-test PRIVATE
@@ -246,17 +246,17 @@ set_target_properties(guard-assessment-live-test PROPERTIES
     EXCLUDE_FROM_ALL FALSE)
 target_link_libraries(guard-assessment-live-test PRIVATE
     argus::guard
-    argus::vlm-client
-    argus::client-camera-actions
-    argus::auth
-    argus::config
-    argus::text
-    argus::nats
-    argus::sqlite
-    argus::storage
-    argus::runtime
-    argus::validation
-    argus::http
+    argus::clients::vlm
+    argus::clients::camera-actions
+    argus::lib::auth
+    argus::lib::config
+    argus::lib::text
+    argus::lib::nats
+    argus::lib::sqlite
+    argus::lib::storage
+    argus::lib::runtime
+    argus::lib::validation
+    argus::lib::http
     Drogon::Drogon
     doctest::doctest)
 target_include_directories(guard-assessment-live-test PRIVATE

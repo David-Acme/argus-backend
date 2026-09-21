@@ -35,11 +35,11 @@
 Every DB column with a CHECK constraint (`role`, `severity`, `record_mode`,
 `zone_type`, `status`, `action`) MUST use its `enum class` from the
 contract that owns the domain: `UserRole`
-(`packages/contracts/auth-contract/user-role.hxx`), `EventSeverity`,
-`CameraRecordMode` and `ZoneType` (`packages/contracts/camera-contract/`),
-`ReminderDetailStatus` (`packages/contracts/productivity-contract/`) and
+(`packages/contracts/auth/user-role.hxx`), `EventSeverity`,
+`CameraRecordMode` and `ZoneType` (`packages/contracts/camera/`),
+`ReminderDetailStatus` (`packages/contracts/productivity/`) and
 `UserAction`
-(`packages/contracts/sync-contract/src/shared/contracts/user-action.hxx`).
+(`packages/contracts/sync/src/shared/contracts/user-action.hxx`).
 Each header carries its own `<enum>ToString`/`<enum>FromString` pair, in
 lowerCamelCase (`userRoleToString`, `zoneTypeFromString`), derived from the
 enum's own name; use them at DB boundaries only.
@@ -131,9 +131,9 @@ Never skip a filter in protected routes.
 ### 6. Responses and refusals
 
 Every refusal is **thrown, never built**. The vocabulary lives in
-`packages/errors/src/errors/` (`ErrorCode`, `ErrorDefinition`, `ResponseException`),
+`packages/lib/errors/src/errors/` (`ErrorCode`, `ErrorDefinition`, `ResponseException`),
 and each boundary catalogs its own codes in one header: `auth-errors.hxx`,
-`camera-errors.hxx`, `identity-contract/identity-errors.hxx`, and so on.
+`camera-errors.hxx`, `identity/identity-errors.hxx`, and so on.
 
 ```cpp
 throw ResponseException(CameraErrors::CameraNotFound);          // catalog entry
@@ -143,25 +143,25 @@ throw ResponseException(CameraErrors::CameraUnreachable
 throw ResponseException(422, std::vector<ResponseError>{...});   // wire list
 ```
 
-`ApiResponse` (`packages/http/src/http/api-response.hxx`) is the only place an
+`ApiResponse` (`packages/lib/http/src/http/api-response.hxx`) is the only place an
 envelope is built: `ok`, `created`, `noContent`, `validationError` and the three
 `error` overloads. Handlers return `ApiResponse::ok(...)` and never set a status
 code or a body themselves. The one advice, `ErrorHandler::handleException`
-(`packages/http/src/http/error-handler.hxx`), is registered once per service and
+(`packages/lib/http/src/http/error-handler.hxx`), is registered once per service and
 turns a thrown refusal into the envelope, so a handler needs no try/catch.
 
 Validation errors use `ApiResponse::validationError(fieldErrors)` → 422.
 
 Attribute keys are centralized constants:
 ```
-AuthContext::kJwtKey    = "jwt_ctx"     (packages/contracts/auth-contract/request-context.hxx)
+AuthContext::kJwtKey    = "jwt_ctx"     (packages/contracts/auth/request-context.hxx)
 AuthContext::kDeviceKey = "device_ctx"
 ```
 
 ### 7. Role-based access
 
 Roles are checked centrally via
-`packages/auth/src/shared/access/role-access.hxx` (the `kTableAccess` map:
+`packages/lib/auth/src/shared/access/role-access.hxx` (the `kTableAccess` map:
 role → table → `RolePermission`). **`RoleFilter` (HTTP) and the sync engine
 share that single source of truth** — to change a permission, edit only that
 file. Never imperative if/else.
@@ -254,7 +254,7 @@ package becomes `services/sync` in Phase 3a).
 
 ### 11. Validation DSL
 
-All DTO validation uses the macro DSL in `packages/validation/src/shared/validation/`:
+All DTO validation uses the macro DSL in `packages/lib/validation/src/shared/validation/`:
 
 ```cpp
 LoginDto LoginDto::fromJson(const Json::Value& json) {
@@ -324,7 +324,7 @@ images (>2048px) are decoded scaled via OpenCV (`IMREAD_REDUCED_COLOR_2/4`).
 ### 13b. Adaptive threading (ThreadBudget)
 
 NEVER hardcode thread counts. All AI services size their thread pools from
-`packages/runtime/src/shared/wrapper/thread-budget/thread-budget.hxx`:
+`packages/lib/runtime/src/shared/wrapper/thread-budget/thread-budget.hxx`:
 `computeThreads()`, `batchThreads()`, `heavyThreads()`, `lightThreads()`,
 `inferenceSlots()`. This keeps the same build fast on 2-core laptops and
 64-core servers. Example: LLM uses `lightThreads()` for token decode and
@@ -335,7 +335,7 @@ NEVER hardcode thread counts. All AI services size their thread pools from
 Every AI service exposes a sync method (`chat`, `describe`, `transcribe`,
 `synthesize`) AND a coroutine variant (`chatAsync`, `describeAsync`,
 `transcribeAsync`, `synthesizeAsync`) that wraps the sync one in
-`BlockingTask` (see `packages/runtime/src/shared/wrapper/blocking-task/blocking-task.hxx`,
+`BlockingTask` (see `packages/lib/runtime/src/shared/wrapper/blocking-task/blocking-task.hxx`,
 which has a `void` specialization). Controllers/services on the event loop
 MUST `co_await` the Async variant — never call the sync method directly.
 Streaming variants marshal callbacks into the loop via `queueInLoop`.
@@ -421,7 +421,7 @@ shared file-static behind a mutex.
   `supersedes`), `memory_edge`, `memory_episode` (compaction/system-event
   summaries, now recallable), `memory_procedure`. Capture: deterministic
   `RuleParser`+`PhraseCatalog` (vocabulary is static per-language constants in
-  `packages/phrase/src/shared/vocabulary/`, never DB tables) → `TieredExtractor` (lexicon tier
+  `packages/lib/phrase/src/shared/vocabulary/`, never DB tables) → `TieredExtractor` (lexicon tier
   inline, NuExtract tier off-turn).
   Recall (`GraphRecall`): entity-anchored (recursive CTE) → FTS5 → vec0
   semantic tier with store-size-aware margin gates → episode tier; anaphora
@@ -434,7 +434,7 @@ shared file-static behind a mutex.
   `multilingual-e5-small` int8 ONNX, loaded lazily. Full details in docs/history/project-log.md.
 - **fastText as a submodule** (`third_party/fastText`, `1142dc4`) — inference
   only, built as a static lib by `packages/intent`. It backs the fast
-  tier of the intent router: rules (`argus::phrase`) decide explicit triggers,
+  tier of the intent router: rules (`argus::lib::phrase`) decide explicit triggers,
   fastText classifies the rest into six classes (`memory_save`,
   `memory_recall`, `reminder_set`, `memory_forget`, `camera`, `none`), and the
   LLM's own tool calling keeps every turn the router is not confident about.
@@ -511,7 +511,7 @@ Raw pointers only for non-owning access (`.get()`).
   enforced on every authenticated transport. Messages are `{type, payload}` and responses use
   `SocketEmitDto` `{operation, option(TableName), info}`.
   Errors: `{type:"<type>_error", status, error}`.
-- Operations (`packages/contracts/sync-contract/src/shared/contracts/sync-operation.hxx`): `InitialInfo=0`,
+- Operations (`packages/contracts/sync/src/shared/contracts/sync-operation.hxx`): `InitialInfo=0`,
   `Synchronize=1` (initial bootstrap plus creations/deletions; includes
   `notification` per user), `SynchronizeAuditLog=2` (global field diffs; the
   backend selects tables by role), `SynchronizeUserAuditLog=3` (recipient
@@ -682,17 +682,22 @@ instead.
 
 Build import is by module name, never by listing files in consumers.
 Every shared feature/repo/SDK piece lives in its OWN folder and is declared
-ONCE, in its home, through the project helpers (today's names below; the
-target names are in the group table of the next subsection):
+ONCE, in its home, through the project helpers:
 
 ```cmake
-# services/voice/src/shared/services/vad/CMakeLists.txt — the module declares its sources + deps
-argus_module(NAME vad
-  SOURCES vad-service.cc
+# services/<name>/src/shared/services/<module>/CMakeLists.txt — a service-local
+# module declares its own sources + deps and names no group
+argus_module(NAME <module>
+  SOURCES <module>-service.cc
   DEPENDS onnxruntime)
 
-# SDK modules wrap generated gRPC stubs — consumers never see protobuf
-argus_client_module(NAME identity PROTO identity.proto)
+# A package declares itself through its group's helper, which owns the target
+# name — packages/clients/identity/CMakeLists.txt
+argus_clients(NAME identity
+  PROTO_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../../contracts/proto
+  PROTO argus/identity/v1/identity.proto
+  SOURCES src/identity/identity-client.cc
+  INCLUDES src)
 ```
 
 - Parents auto-discover modules (a loop over subdirectories) — adding a
@@ -700,7 +705,8 @@ argus_client_module(NAME identity PROTO identity.proto)
   NO ONE edits another module's CMakeLists and NO consumer lists `.cc`
   files.
 - Consumers link by name: `target_link_libraries(argus-voice PRIVATE
-  argus::vad argus::client-identity)`. Include paths travel with the target.
+  argus::<module> argus::clients::identity)`. Include paths travel with the
+  target.
 - Services bootstrap through a `argus_service()` helper (presets,
   EXCLUDE_FROM_ALL, ports) instead of copy-pasted CMake blocks.
 - Explicit source lists stay ONLY inside the module's own CMakeLists.
@@ -720,32 +726,34 @@ tree:
 | `packages/contracts/<domain>/` | one domain's `.proto` + the C++ types that cross the wire | `argus_contracts_<domain>` | `argus::contracts::<domain>` | `argus::contracts::camera` |
 | `packages/clients/<domain>/` | the SDK for one service: the only place a stub, a URL or a retry policy exists | `argus_clients_<domain>` | `argus::clients::<domain>` | `argus::clients::camera` |
 
-The folder never repeats the group (`packages/clients/llm`, not
-`clients/llm-client`), and a `DEPENDS`/link line never spells a target name by
-hand — the group helper owns the spelling, so a misplaced package fails at
-configure time instead of linking the wrong thing. A service is not a package:
-it is the executable `argus-<name>`.
+The folder never repeats the group (`packages/clients/llm`, not the flat tree's
+`packages/clients/llm-client`), and a `DEPENDS`/link line never spells a target
+name by hand — the group helper owns the spelling, so a misplaced package fails
+at configure time instead of linking the wrong thing. A service is not a
+package: it is the executable `argus-<name>`.
 
-Today the other half of that rule is not held up by the helpers:
-`argus_module` and `argus_client_module` pass `DEPENDS` through verbatim
-(`cmake/argus-module.cmake:35-36`), so three `CMakeLists.txt` spell `argus::`
-names in a `DEPENDS` list (`packages/validation/CMakeLists.txt:17` and two
-under `packages/contracts/`), and seven contracts link `argus::errors` by hand
-in their own `target_link_libraries`. Phase 2's helpers are where that becomes
-structural.
+The target-name half of that rule is structural: `argus_lib`,
+`argus_contracts` and `argus_clients` build the group into the name, so a
+package cannot declare itself into the wrong tier (rule 25's own names are in
+`cmake/argus-module.cmake`). The dependency half is still prose — 20 grouped
+packages' helper calls name a dependency's `argus::` alias by hand in their own
+`DEPENDS` (the seven contracts that consume `lib/errors`, the `response` and
+`tts` wire modules, five clients, six libs), and the four ungrouped packages
+that do the same add four more (`audit`, `identity`, `intent`, `room`).
+Nothing checks those spellings yet; the edge checker of Phase 2 step 5 is where
+they become checked edges.
 
-**Today** the three groups sit flat (`packages/<name>`, `packages/contracts/`,
-`packages/clients/`) with the pre-migration names: `argus_<name>` /
-`argus::<name>` for a lib, `contract-<domain>` / `contract::<domain>` for a
-contract, `argus_client_<domain>` / `argus::client-<domain>` for a client.
-Every contract folder carries the suffix
-(`packages/contracts/camera-contract/`), and only four of the ten client
-folders do (`llm-client`, `stt-client`, `tts-client`, `vlm-client`) — the rest
-are already bare (`packages/clients/camera/`). Those four are also the four
-clients declared with `argus_module` rather than `argus_client_module`,
-because they wrap no stub, so their alias is `argus::llm-client` and not
-`argus::client-llm`: write the spelling that exists. Phase 2 moves the folders
-and lands `argus_lib`, `argus_contracts` and `argus_clients`.
+The three groups sit where they belong — `packages/lib/<name>`,
+`packages/contracts/<domain>`, `packages/clients/<domain>`, each declared by
+its group's helper: `argus_lib_<name>` / `argus::lib::<name>`,
+`argus_contracts_<domain>` / `argus::contracts::<domain>`,
+`argus_clients_<domain>` / `argus::clients::<domain>`. Six of the ten clients
+wrap a generated gRPC stub and pass `PROTO` to `argus_clients`; the four wire
+clients (`llm`, `stt`, `tts`, `vlm`) speak HTTP and take the helper's
+plain-module branch. Three wire modules are not a domain SDK and call
+`argus_client_module` with the group they live in: `lib/grpc`'s health stubs
+(`GROUP lib`) and the `response` and `tts` wire contracts, which live in
+`packages/contracts/` and are aliased `argus::contracts::…`.
 
 #### The dependency tiers
 
@@ -770,15 +778,14 @@ data (D18):
   source.
 - Interface dependencies (types in public headers) are `PUBLIC`;
   implementation-only dependencies are `PRIVATE`.
-- Header-only where nothing is compiled. Today: nine of the ten contracts are
-  `INTERFACE` (`contract-auth`, `-camera`, `-gateway`, `-identity`,
-  `-notification`, `-productivity`, `-sync`, `-tts`, `-voice`), and the tenth,
-  `response-contract`, is not — it defines `argus_client_response-wire`
-  through `argus_client_module` and compiles `response-rpc.cc`. `validation`
-  has no `.cc` at all but is declared `STATIC` over its three headers with a
-  `LINKER_LANGUAGE CXX` workaround, which goes when `argus_module` grows a
-  `HEADER_ONLY` option (Phase 2). `cert` compiles one `.cc` and is a
-  `STATIC` `argus_module` like any other; `text` and `phrase` compile real
+- Header-only where nothing is compiled: nine of the ten contracts go through
+  `argus_contracts`, which is `INTERFACE` by construction (`auth`, `camera`,
+  `gateway`, `identity`, `notification`, `productivity`, `sync`, `tts`,
+  `voice`), and `validation` declares `HEADER_ONLY` to `argus_lib` for the same
+  result. `response` is the exception under `packages/contracts/`: it carries
+  no vocabulary but the response wire, declared `argus_client_module(NAME
+  response-wire GROUP contracts …)` and compiling `response-rpc.cc`. `cert` is
+  a `STATIC` `argus_lib` over one `.cc`; `text` and `phrase` compile real
   sources and are not candidates for it.
 - **Enums live where they are used.** A service declares its domain enums
   inside the feature that uses them; the vocabulary that crosses the wire
@@ -789,8 +796,7 @@ data (D18):
   why the health controller and the listener config are not in `lib/config`.
 - The tiers are checked mechanically, not by review: Phase 2 step 5 adds
   `scripts/check-deps.sh`, which reads `target_link_libraries` in every
-  `CMakeLists.txt` and fails on a forbidden edge. The tiers above read with
-  today's flat folder names until Phase 2 lands.
+  `CMakeLists.txt` and fails on a forbidden edge.
 
 ### 26. One schema per microservice: `database/schema.sql`
 
@@ -817,13 +823,11 @@ schema it hosts; both go with the gateway in Phase 3d), plus
 A service may only open its own database. Accessing another domain's data is
 forbidden at the file/SQL level, even read-only. Cross-domain reads travel
 ONLY through the typed gRPC contracts and their SDK clients
-(`packages/clients/<domain>/src`, linked as `argus::client-<domain>` today —
-`argus::<name>-client` for the four wire clients, rule 25 — and
-`argus::clients::<domain>` after Phase 2); change feeds travel
-through NATS events. No compose mount may expose one unit's database to
-another. If a domain needs data it does not own, add an SDK method on the
-owner and call it through the client; never reach into its DB file. The
-SDK/client is the whole point of the boundary.
+(`packages/clients/<domain>/src`, linked as `argus::clients::<domain>`, rule
+25) and change feeds travel through NATS events. No compose mount may expose
+one unit's database to another. If a domain needs data it does not own, add an
+SDK method on the owner and call it through the client; never reach into its
+DB file. The SDK/client is the whole point of the boundary.
 
 ## Build Commands
 
@@ -851,11 +855,11 @@ Run the full orchestrator when changing shared build infrastructure.
 
 ## Key Files Reference
 
-Paths are today's spellings; the target group of each unit is the section head
-(rules 23 and 25). Phase 2 prepends `lib/`, `contracts/` and `clients/`, drops
-the `-contract`/`-client` suffixes, and then applies §2.3's interior to each
-package (`src/<name>/` in place of today's `src/shared/...`), so a path below
-can move for two different reasons and says which when it does.
+The group prefixes (`lib/`, `contracts/`, `clients/`) and the dropped
+`-contract`/`-client` suffixes have landed (rule 25); the interiors below are
+still today's `src/shared/...` spellings, because §2.3's layout — Phase 2 step
+2 — replaces them with `src/<name>/`. A path below can therefore move for two
+different reasons, and says which when it does.
 
 **Any owner**
 
@@ -864,49 +868,49 @@ can move for two different reasons and says which when it does.
 | `<owner>/src/shared/schemas/*/` | DB row → C++ struct mapping |
 | `<owner>/src/shared/repositories/*/` | Data access layer — `shared/` when 2+ features of the owner read it, the feature's own `repositories/` otherwise (rule 23) |
 
-**Tier 1 — `lib/` (today `packages/<name>/`)**
+**Tier 1 — `lib/`**
 
 | File | Purpose |
 |------|---------|
-| `packages/validation/src/shared/validation/` | Validation DSL (rules, macros, validator) |
-| `packages/errors/src/errors/` | `ErrorCode`, `ErrorDefinition`, `ResponseException` — the refusals every boundary throws |
-| `packages/http/src/http/` | The `{status, info, errors}` envelope (`ApiResponse`), the one advice (`ErrorHandler`), CORS, health, listener |
-| `packages/audio/src/shared/wrapper/audio/` | `AudioResampler` (stateful sinc) + `EndpointDetector` — every block-processed audio path MUST use these, never a custom conversion |
-| `packages/phrase/src/shared/vocabulary/` | Static per-language memory vocabulary (es/en): `PhraseSeed`/`LexiconSeed` constants — no DB tables |
-| `packages/phrase/src/shared/services/memory/` | `RuleParser` + `PhraseCatalog` — the vocabulary's parser and catalog, read by `packages/memory`, `packages/intent`, `services/llm` and `services/voice` |
-| `packages/sqlite/src/shared/services/sqlite/` | DB client access (`DbService::client()`, extensions) + `VecDb` (vec0 connection) |
-| `packages/storage/src/shared/services/storage/` | `S3StorageService` (RustFS S3, SigV4 in `s3-signing.hxx`) — private objects, read back through a one-use capability |
-| `packages/config/src/shared/services/config-service/` | `ConfigService` read + runtime writes (`setBool/...` persist to `config.toml`, comments preserved) |
-| `packages/runtime/src/shared/wrapper/cancellation/` | `CancellationToken` shared across streaming AI/audio paths |
-| `packages/runtime/src/shared/wrapper/blocking-task/` | Coroutine awaiter for off-loop heavy work |
-| `packages/runtime/src/shared/wrapper/thread-budget/` | Adaptive thread sizing for AI services |
-| `packages/runtime/src/shared/wrapper/hardware-profile/` | CPU/RAM/ISA and video-accel probe (`HardwareProfile`), ncnn-free and ncnn variants |
-| `packages/text/src/shared/utils/json-diff/` | Diff JSON + snapshot (`JsonDiff`) |
-| `packages/text/src/shared/utils/json-util/` | `json_util::toString` (compact, `{}` for null), `isValid` (empty is not valid) and `fromString` |
+| `packages/lib/validation/src/shared/validation/` | Validation DSL (rules, macros, validator) |
+| `packages/lib/errors/src/errors/` | `ErrorCode`, `ErrorDefinition`, `ResponseException` — the refusals every boundary throws |
+| `packages/lib/http/src/http/` | The `{status, info, errors}` envelope (`ApiResponse`), the one advice (`ErrorHandler`), CORS, health, listener |
+| `packages/lib/audio/src/shared/wrapper/audio/` | `AudioResampler` (stateful sinc) + `EndpointDetector` — every block-processed audio path MUST use these, never a custom conversion |
+| `packages/lib/phrase/src/shared/vocabulary/` | Static per-language memory vocabulary (es/en): `PhraseSeed`/`LexiconSeed` constants — no DB tables |
+| `packages/lib/phrase/src/shared/services/memory/` | `RuleParser` + `PhraseCatalog` — the vocabulary's parser and catalog, read by `packages/memory`, `packages/intent`, `services/llm` and `services/voice` |
+| `packages/lib/sqlite/src/shared/services/sqlite/` | DB client access (`DbService::client()`, extensions) + `VecDb` (vec0 connection) |
+| `packages/lib/storage/src/shared/services/storage/` | `S3StorageService` (RustFS S3, SigV4 in `s3-signing.hxx`) — private objects, read back through a one-use capability |
+| `packages/lib/config/src/shared/services/config-service/` | `ConfigService` read + runtime writes (`setBool/...` persist to `config.toml`, comments preserved) |
+| `packages/lib/runtime/src/shared/wrapper/cancellation/` | `CancellationToken` shared across streaming AI/audio paths |
+| `packages/lib/runtime/src/shared/wrapper/blocking-task/` | Coroutine awaiter for off-loop heavy work |
+| `packages/lib/runtime/src/shared/wrapper/thread-budget/` | Adaptive thread sizing for AI services |
+| `packages/lib/runtime/src/shared/wrapper/hardware-profile/` | CPU/RAM/ISA and video-accel probe (`HardwareProfile`), ncnn-free and ncnn variants |
+| `packages/lib/text/src/shared/utils/json-diff/` | Diff JSON + snapshot (`JsonDiff`) |
+| `packages/lib/text/src/shared/utils/json-util/` | `json_util::toString` (compact, `{}` for null), `isValid` (empty is not valid) and `fromString` |
 
-**Tier 2 — `contracts/` (today `packages/contracts/<domain>-contract/`)**
-
-| File | Purpose |
-|------|---------|
-| `packages/contracts/{auth,camera,productivity,sync}-contract/` | Each domain's wire enums, each with its own lowerCamelCase `<enum>ToString`/`<enum>FromString` pair (`packages/contracts/camera-contract/zone-type.hxx`). The enums that mirror a `CHECK` constraint are not all here — `notification-contract` and `packages/identity/src/shared/vocabulary/` each carry their own |
-| `packages/contracts/sync-contract/src/shared/contracts/` | `Syncable`, `SyncFilter` base classes + `sync-operation.hxx` |
-
-**Tier 3 — `clients/` (today `packages/clients/<domain>/`)**
+**Tier 2 — `contracts/`**
 
 | File | Purpose |
 |------|---------|
-| `packages/clients/<domain>/src/<domain>/` (today the four wire clients hold `src/shared/` and `camera-actions` holds `src/camera/`) | The SDK for one service: the only place its stub, URL, envelope parse, retry and auth pass-through exist (`camera`, `identity`, `notification`, `productivity`, `voice`, `camera-actions` + the `llm`/`stt`/`tts`/`vlm` wire clients). Callers link `argus::client-<domain>`, or `argus::<name>-client` for those four (rule 25, rule 27) |
+| `packages/contracts/{auth,camera,productivity,sync}/` | Each domain's wire enums, each with its own lowerCamelCase `<enum>ToString`/`<enum>FromString` pair (`packages/contracts/camera/zone-type.hxx`). The enums that mirror a `CHECK` constraint are not all here — `notification` and `packages/identity/src/shared/vocabulary/` each carry their own |
+| `packages/contracts/sync/src/shared/contracts/` | `Syncable`, `SyncFilter` base classes + `sync-operation.hxx` |
 
-**Tier 4 — `lib/auth` (today `packages/auth/`)**
+**Tier 3 — `clients/`**
 
 | File | Purpose |
 |------|---------|
-| `packages/auth/src/shared/access/role-access.hxx` | Centralized role → table → permission table (`role_access`), used by `RoleFilter` and sync |
-| `packages/auth/src/filter/device/` | Device fingerprint extraction |
-| `packages/auth/src/filter/jwt/` | JWT verification + refresh token validation |
-| `packages/auth/src/filter/role/` | Role-based access control |
-| `packages/auth/src/filter/valid-json/` | JSON body validation for POST/PATCH |
-| `packages/auth/src/shared/services/jwt/` | JWT sign/verify (HS256, instance class) |
+| `packages/clients/<domain>/src/<domain>/` (today the four wire clients hold `src/shared/` and `camera-actions` holds `src/camera/`) | The SDK for one service: the only place its stub, URL, envelope parse, retry and auth pass-through exist (`camera`, `identity`, `notification`, `productivity`, `voice`, `camera-actions` + the `llm`/`stt`/`tts`/`vlm` wire clients). Callers link `argus::clients::<domain>` (rule 25, rule 27) |
+
+**Tier 4 — `lib/auth`**
+
+| File | Purpose |
+|------|---------|
+| `packages/lib/auth/src/shared/access/role-access.hxx` | Centralized role → table → permission table (`role_access`), used by `RoleFilter` and sync |
+| `packages/lib/auth/src/filter/device/` | Device fingerprint extraction |
+| `packages/lib/auth/src/filter/jwt/` | JWT verification + refresh token validation |
+| `packages/lib/auth/src/filter/role/` | Role-based access control |
+| `packages/lib/auth/src/filter/valid-json/` | JSON body validation for POST/PATCH |
+| `packages/lib/auth/src/shared/services/jwt/` | JWT sign/verify (HS256, instance class) |
 
 **Tier 5 — services, and the packages that are on their way to one**
 

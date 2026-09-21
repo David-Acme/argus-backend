@@ -23,20 +23,20 @@ if(NOT TARGET Drogon::Drogon)
     find_package(OpenCV CONFIG REQUIRED)
     find_package(tomlplusplus REQUIRED)
     find_package(nlohmann_json REQUIRED)
-    if(NOT TARGET argus::config)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/config
+    if(NOT TARGET argus::lib::config)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/config
                          ${CMAKE_BINARY_DIR}/config)
     endif()
-    if(NOT TARGET argus::runtime)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/runtime
+    if(NOT TARGET argus::lib::runtime)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/runtime
                          ${CMAKE_BINARY_DIR}/runtime)
     endif()
-    if(NOT TARGET argus::validation)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/validation
+    if(NOT TARGET argus::lib::validation)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/validation
                          ${CMAKE_BINARY_DIR}/validation)
     endif()
-    if(NOT TARGET argus::http)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/http
+    if(NOT TARGET argus::lib::http)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/http
                          ${CMAKE_BINARY_DIR}/http)
     endif()
 endif()
@@ -100,11 +100,11 @@ target_include_directories(vlm-core PUBLIC
     ${VLM_SRC_ROOT})
 
 target_link_libraries(vlm-core PUBLIC
-    argus::config
+    argus::lib::config
     argus::hardware-profile
-    argus::runtime
-    argus::validation
-    argus::http
+    argus::lib::runtime
+    argus::lib::validation
+    argus::lib::http
     Drogon::Drogon
     opencv::opencv
     nlohmann_json::nlohmann_json
@@ -157,11 +157,11 @@ target_compile_definitions(vlm-wire-test PRIVATE
     ARGUS_TEST_VLM_MODELS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../../models/vision/lfm2vl-25")
 
 target_link_libraries(vlm-wire-test PRIVATE
-    argus::config
+    argus::lib::config
     argus::hardware-profile
-    argus::runtime
-    argus::validation
-    argus::http
+    argus::lib::runtime
+    argus::lib::validation
+    argus::lib::http
     ${ARGUS_LLAMA_TARGETS}
     opencv::opencv
     doctest::doctest)
@@ -186,8 +186,8 @@ target_include_directories(vision-remote-adapter-test PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/support)
 
 target_link_libraries(vision-remote-adapter-test PRIVATE
-    argus::config
-    argus::runtime
+    argus::lib::config
+    argus::lib::runtime
     opencv::opencv
     doctest::doctest)
 

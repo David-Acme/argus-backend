@@ -25,40 +25,40 @@ find_package(Drogon CONFIG REQUIRED)
 # build. The sibling packages stay behind PROJECT_IS_TOP_LEVEL because
 # argus_sync rides argus_identity and its suite: only the project at the top
 # of the configure provides those.
-if(NOT TARGET contract::auth)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../contracts/auth-contract
-                     ${CMAKE_CURRENT_BINARY_DIR}/auth-contract)
+if(NOT TARGET argus::contracts::auth)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../contracts/auth
+                     ${CMAKE_BINARY_DIR}/contracts/auth)
 endif()
 
-if(NOT TARGET contract::camera)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../contracts/camera-contract
-                     ${CMAKE_CURRENT_BINARY_DIR}/camera-contract)
+if(NOT TARGET argus::contracts::camera)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../contracts/camera
+                     ${CMAKE_BINARY_DIR}/contracts/camera)
 endif()
 
-if(NOT TARGET contract::notification)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../contracts/notification-contract
-                     ${CMAKE_CURRENT_BINARY_DIR}/notification-contract)
+if(NOT TARGET argus::contracts::notification)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../contracts/notification
+                     ${CMAKE_BINARY_DIR}/contracts/notification)
 endif()
 
-if(NOT TARGET contract::productivity)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../contracts/productivity-contract
-                     ${CMAKE_CURRENT_BINARY_DIR}/productivity-contract)
+if(NOT TARGET argus::contracts::productivity)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../contracts/productivity
+                     ${CMAKE_BINARY_DIR}/contracts/productivity)
 endif()
 
-if(NOT TARGET argus::text)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../text
+if(NOT TARGET argus::lib::text)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../lib/text
                      ${CMAKE_BINARY_DIR}/text)
 endif()
-if(NOT TARGET argus::nats)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../nats
+if(NOT TARGET argus::lib::nats)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../lib/nats
                      ${CMAKE_BINARY_DIR}/nats)
 endif()
-if(NOT TARGET argus::validation)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../validation
+if(NOT TARGET argus::lib::validation)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../lib/validation
                      ${CMAKE_BINARY_DIR}/validation)
 endif()
-if(NOT TARGET argus::errors)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../errors
+if(NOT TARGET argus::lib::errors)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../lib/errors
                      ${CMAKE_BINARY_DIR}/errors)
 endif()
 
@@ -68,7 +68,7 @@ endif()
 # lands after the ncnn block so its face services see the ncnn target. The
 # empty cq-bridge stand-ins skip the bridge: standalone protobuf comes from
 # the system, so the bridge entry symbol would interpose libgrpc's own
-# callbacks (see argus-contracts/CONTEXT.md).
+# callbacks (see packages/contracts/CONTEXT.md).
 if(PROJECT_IS_TOP_LEVEL)
     if(NOT TARGET argus_client_grpc_bridge_entry)
         add_library(argus_client_grpc_bridge_entry INTERFACE)
@@ -83,8 +83,8 @@ if(PROJECT_IS_TOP_LEVEL)
                          ${CMAKE_BINARY_DIR}/third_party/sqlite-vec)
     endif()
     set(ARGUS_SQLITE_VEC_TARGET sqlite-vec)
-    if(NOT TARGET argus::sqlite)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../sqlite
+    if(NOT TARGET argus::lib::sqlite)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../lib/sqlite
                          ${CMAKE_BINARY_DIR}/sqlite)
     endif()
     if(NOT TARGET argus::socket)
@@ -95,12 +95,12 @@ if(PROJECT_IS_TOP_LEVEL)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../audit
                          ${CMAKE_BINARY_DIR}/audit)
     endif()
-    if(NOT TARGET argus::auth)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../auth
+    if(NOT TARGET argus::lib::auth)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../lib/auth
                          ${CMAKE_BINARY_DIR}/auth)
     endif()
-    if(NOT TARGET argus::cert)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../cert
+    if(NOT TARGET argus::lib::cert)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../lib/cert
                          ${CMAKE_BINARY_DIR}/cert)
     endif()
 
@@ -125,9 +125,9 @@ if(PROJECT_IS_TOP_LEVEL)
     endif()
 endif()
 
-if(NOT TARGET contract::sync)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../contracts/sync-contract
-                     ${CMAKE_CURRENT_BINARY_DIR}/sync-contract)
+if(NOT TARGET argus::contracts::sync)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../contracts/sync
+                     ${CMAKE_BINARY_DIR}/contracts/sync)
 endif()
 
 set(ARGUS_SYNC_SOURCES
@@ -180,17 +180,17 @@ target_link_libraries(argus_sync PUBLIC
     argus::audit
     argus::socket
     argus::room
-    argus::auth
-    contract::sync
-    contract::auth
-    contract::camera
-    contract::notification
-    contract::productivity
-    argus::text
-    argus::nats
-    argus::sqlite
-    argus::validation
-    argus::errors
+    argus::lib::auth
+    argus::contracts::sync
+    argus::contracts::auth
+    argus::contracts::camera
+    argus::contracts::notification
+    argus::contracts::productivity
+    argus::lib::text
+    argus::lib::nats
+    argus::lib::sqlite
+    argus::lib::validation
+    argus::lib::errors
     Drogon::Drogon)
 
 target_compile_options(argus_sync PRIVATE -Wall -Wextra)
@@ -206,8 +206,8 @@ find_package(doctest REQUIRED)
 add_executable(event-sync-empty-test tests/unit/event-sync-empty-test.cc)
 target_link_libraries(event-sync-empty-test PRIVATE
     argus_sync
-    argus::sqlite
-    contract::sync
+    argus::lib::sqlite
+    argus::contracts::sync
     Drogon::Drogon
     sqlite-vec
     doctest::doctest)

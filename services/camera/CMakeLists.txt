@@ -51,54 +51,54 @@ if(PROJECT_IS_TOP_LEVEL)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../third_party/ncnn
                      ${CMAKE_BINARY_DIR}/third_party/ncnn EXCLUDE_FROM_ALL)
     set(ARGUS_NCNN_TARGET ncnn)
-    if(NOT TARGET contract::auth)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/contracts/auth-contract
-                         ${CMAKE_CURRENT_BINARY_DIR}/auth-contract)
+    if(NOT TARGET argus::contracts::auth)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/contracts/auth
+                         ${CMAKE_BINARY_DIR}/contracts/auth)
     endif()
 
-    if(NOT TARGET contract::sync)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/contracts/sync-contract
-                         ${CMAKE_CURRENT_BINARY_DIR}/sync-contract)
+    if(NOT TARGET argus::contracts::sync)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/contracts/sync
+                         ${CMAKE_BINARY_DIR}/contracts/sync)
     endif()
 
-    if(NOT TARGET argus::config)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/config
+    if(NOT TARGET argus::lib::config)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/config
                          ${CMAKE_BINARY_DIR}/config)
     endif()
-    if(NOT TARGET argus::text)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/text
+    if(NOT TARGET argus::lib::text)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/text
                          ${CMAKE_BINARY_DIR}/text)
     endif()
-    if(NOT TARGET argus::nats)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/nats
+    if(NOT TARGET argus::lib::nats)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/nats
                          ${CMAKE_BINARY_DIR}/nats)
     endif()
-    if(NOT TARGET argus::storage)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/storage
+    if(NOT TARGET argus::lib::storage)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/storage
                          ${CMAKE_BINARY_DIR}/storage)
     endif()
-    if(NOT TARGET argus::runtime)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/runtime
+    if(NOT TARGET argus::lib::runtime)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/runtime
                          ${CMAKE_BINARY_DIR}/runtime)
     endif()
-    if(NOT TARGET argus::validation)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/validation
+    if(NOT TARGET argus::lib::validation)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/validation
                          ${CMAKE_BINARY_DIR}/validation)
     endif()
-    if(NOT TARGET argus::http)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/http
+    if(NOT TARGET argus::lib::http)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/http
                          ${CMAKE_BINARY_DIR}/http)
     endif()
-    if(NOT TARGET argus::sqlite)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/sqlite
+    if(NOT TARGET argus::lib::sqlite)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/sqlite
                          ${CMAKE_BINARY_DIR}/sqlite)
     endif()
     if(NOT TARGET argus::audit)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/audit
                          ${CMAKE_BINARY_DIR}/audit)
     endif()
-    if(NOT TARGET argus::cert)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/cert
+    if(NOT TARGET argus::lib::cert)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/cert
                          ${CMAKE_BINARY_DIR}/cert)
     endif()
     if(NOT TARGET argus::room)
@@ -109,8 +109,8 @@ if(PROJECT_IS_TOP_LEVEL)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/socket
                          ${CMAKE_BINARY_DIR}/socket)
     endif()
-    if(NOT TARGET argus::auth)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/auth
+    if(NOT TARGET argus::lib::auth)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/auth
                          ${CMAKE_BINARY_DIR}/auth)
     endif()
     if(NOT TARGET argus::identity)
@@ -125,40 +125,40 @@ if(PROJECT_IS_TOP_LEVEL)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/sync
                          ${CMAKE_BINARY_DIR}/sync)
     endif()
-    if(NOT TARGET argus::audio)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/audio
+    if(NOT TARGET argus::lib::audio)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/audio
                          ${CMAKE_BINARY_DIR}/audio)
     endif()
-    if(NOT TARGET argus::tts-client)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/tts-client
-                         ${CMAKE_BINARY_DIR}/tts-client)
+    if(NOT TARGET argus::clients::tts)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/tts
+                         ${CMAKE_BINARY_DIR}/clients/tts)
     endif()
-    if(NOT TARGET argus::stt-client)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/stt-client
-                         ${CMAKE_BINARY_DIR}/stt-client)
+    if(NOT TARGET argus::clients::stt)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/stt
+                         ${CMAKE_BINARY_DIR}/clients/stt)
     endif()
 endif()
 
 find_package(doctest REQUIRED)
 
-if(NOT TARGET contract::camera)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/contracts/camera-contract
-                     ${CMAKE_CURRENT_BINARY_DIR}/camera-contract)
+if(NOT TARGET argus::contracts::camera)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/contracts/camera
+                     ${CMAKE_BINARY_DIR}/contracts/camera)
 endif()
 
 # The camera-domain sync contract (argus.camera.v1.SyncService); consumers
-# link argus::client-camera.
-if(NOT TARGET argus::client-camera)
+# link argus::clients::camera.
+if(NOT TARGET argus::clients::camera)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/camera
                      ${CMAKE_BINARY_DIR}/clients/camera EXCLUDE_FROM_ALL)
 endif()
 # The standard grpc.health.v1 stubs this service answers its health probes
-# with; packages/grpc declares them (argus::grpc-health).
-if(NOT TARGET argus::grpc-health)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/grpc
+# with; packages/lib/grpc declares them (argus::lib::grpc-health).
+if(NOT TARGET argus::lib::grpc-health)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/grpc
                      ${CMAKE_BINARY_DIR}/grpc EXCLUDE_FROM_ALL)
 endif()
-if(NOT TARGET argus::client-camera-actions)
+if(NOT TARGET argus::clients::camera-actions)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/camera-actions
                      ${CMAKE_BINARY_DIR}/clients/camera-actions EXCLUDE_FROM_ALL)
 endif()
@@ -174,9 +174,9 @@ argus_module(NAME camera-rpc
         src
     DEPENDS
         argus_sync
-        argus::client-camera
-        argus::grpc-health
-        contract::sync)
+        argus::clients::camera
+        argus::lib::grpc-health
+        argus::contracts::sync)
 
 target_compile_options(argus_camera-rpc PRIVATE -Wall -Wextra)
 
@@ -257,43 +257,43 @@ target_include_directories(camera-core PUBLIC ${CAMERA_SRC_ROOT})
 
 target_link_libraries(camera-core PUBLIC
     argus_sync
-    argus::sqlite
+    argus::lib::sqlite
     argus::camera-action-command
     argus::camera-object-event-outbox
     argus::socket
     argus::room
-    argus::audio
-    argus::tts-client
-    argus::stt-client
-    argus::client-camera-actions
+    argus::lib::audio
+    argus::clients::tts
+    argus::clients::stt
+    argus::clients::camera-actions
     sqlite-vec
     opencv::opencv
     ${ARGUS_NCNN_TARGET}
     argus::hardware-profile-gpu
-    contract::sync
+    argus::contracts::sync
     argus::audit
-    argus::auth
-    argus::config
+    argus::lib::auth
+    argus::lib::config
     argus::hardware-profile
-    argus::text
-    argus::nats
-    argus::storage
-    argus::runtime
-    argus::validation
-    argus::http
+    argus::lib::text
+    argus::lib::nats
+    argus::lib::storage
+    argus::lib::runtime
+    argus::lib::validation
+    argus::lib::http
     OpenSSL::SSL
     OpenSSL::Crypto)
-target_link_libraries(camera-core PRIVATE contract::camera contract::sync)
+target_link_libraries(camera-core PRIVATE argus::contracts::camera argus::contracts::sync)
 
 target_compile_options(camera-core PRIVATE -Wall -Wextra)
 
 add_executable(argus-camera ${CAMERA_SRC_ROOT}/main.cc)
 
-# The filters validate through argus.identity.v1 (argus::client-identity rides
-# argus::auth); argus_identity arrives transitively through camera-core's
+# The filters validate through argus.identity.v1 (argus::clients::identity rides
+# argus::lib::auth); argus_identity arrives transitively through camera-core's
 # argus_sync pull, with no link-order meaning left.
 target_link_libraries(argus-camera PRIVATE camera-core argus_camera-rpc
-    argus::auth)
+    argus::lib::auth)
 
 target_compile_options(argus-camera PRIVATE -Wall -Wextra)
 
@@ -326,23 +326,23 @@ foreach(TEST_NAME IN LISTS CAMERA_UNIT_TESTS)
     set_target_properties(${TEST_NAME} PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
         target_link_libraries(${TEST_NAME} PRIVATE
-    contract::auth
-    contract::camera
-    argus::audio
+    argus::contracts::auth
+    argus::contracts::camera
+    argus::lib::audio
     argus::audit
-    argus::auth
-    argus::config
+    argus::lib::auth
+    argus::lib::config
     argus::hardware-profile
-    argus::text
-    argus::nats
+    argus::lib::text
+    argus::lib::nats
     argus::room
     argus::socket
-    argus::sqlite
-    argus::storage
-    argus::runtime
-    argus::validation
-    contract::sync
-    argus::http
+    argus::lib::sqlite
+    argus::lib::storage
+    argus::lib::runtime
+    argus::lib::validation
+    argus::contracts::sync
+    argus::lib::http
     doctest::doctest)
 
     target_compile_options(${TEST_NAME} PRIVATE -Wall -Wextra)
@@ -368,9 +368,9 @@ target_link_libraries(camera-config-test PRIVATE camera-core)
 target_link_libraries(camera-controller-test PRIVATE camera-core)
 if(NOT TARGET argus::guard)
     # The guard feature links the notification client, which the split out of
-    # argus-contracts made an explicit dependency of this standalone build.
-    foreach(CLIENT IN ITEMS llm-client vlm-client notification)
-        if(NOT TARGET argus::${CLIENT})
+    # contract packages made an explicit dependency of this standalone build.
+    foreach(CLIENT IN ITEMS llm vlm notification)
+        if(NOT TARGET argus::clients::${CLIENT})
             add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/${CLIENT}
                              ${CMAKE_BINARY_DIR}/${CLIENT} EXCLUDE_FROM_ALL)
         endif()
@@ -412,19 +412,19 @@ add_executable(camera-talk-cutover-test
 # suite and argus-voice's can drive the same fake.
 target_include_directories(camera-talk-cutover-test PRIVATE
     ${CAMERA_SRC_ROOT}
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/tts-client/tests/support)
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/tts/tests/support)
 
 target_link_libraries(camera-talk-cutover-test PRIVATE
     argus_sync
-    argus::audio
-    argus::config
-    argus::text
-    argus::runtime
-    argus::validation
-    argus::http
-    argus::tts-client
+    argus::lib::audio
+    argus::lib::config
+    argus::lib::text
+    argus::lib::runtime
+    argus::lib::validation
+    argus::lib::http
+    argus::clients::tts
     OpenSSL::SSL
-    OpenSSL::Crypto contract::camera
+    OpenSSL::Crypto argus::contracts::camera
     doctest::doctest)
 
 set_target_properties(camera-talk-cutover-test PROPERTIES
@@ -465,24 +465,24 @@ add_executable(camera-action-rpc-test
 
 target_include_directories(camera-action-rpc-test PRIVATE
     ${CAMERA_SRC_ROOT}
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/tts-client/tests/support
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/stt-client/tests/support)
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/tts/tests/support
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/stt/tests/support)
 
 target_link_libraries(camera-action-rpc-test PRIVATE
     argus_sync
     argus::camera-action-command
-    argus::audio
-    argus::config
-    argus::text
-    argus::sqlite
-    argus::runtime
-    argus::validation
-    argus::http
-    argus::tts-client
-    argus::stt-client
-    argus::client-camera-actions
+    argus::lib::audio
+    argus::lib::config
+    argus::lib::text
+    argus::lib::sqlite
+    argus::lib::runtime
+    argus::lib::validation
+    argus::lib::http
+    argus::clients::tts
+    argus::clients::stt
+    argus::clients::camera-actions
     OpenSSL::SSL
-    OpenSSL::Crypto contract::camera
+    OpenSSL::Crypto argus::contracts::camera
     doctest::doctest)
 
 target_compile_options(camera-action-rpc-test PRIVATE -Wall -Wextra)
@@ -498,7 +498,7 @@ add_executable(camera-action-migration-test
 target_include_directories(camera-action-migration-test PRIVATE
     ${CAMERA_SRC_ROOT})
 target_link_libraries(camera-action-migration-test PRIVATE
-    argus::sqlite
+    argus::lib::sqlite
     argus::camera-action-command
     doctest::doctest)
 target_compile_options(camera-action-migration-test PRIVATE -Wall -Wextra)
@@ -513,7 +513,7 @@ add_executable(object-event-outbox-test
     ${CAMERA_SRC_ROOT}/shared/repositories/object-event-outbox/object-event-outbox-repository.cc)
 target_include_directories(object-event-outbox-test PRIVATE ${CAMERA_SRC_ROOT})
 target_link_libraries(object-event-outbox-test PRIVATE
-    argus::sqlite
+    argus::lib::sqlite
     doctest::doctest)
 target_compile_definitions(object-event-outbox-test PRIVATE
     ARGUS_CAMERA_SCHEMA_PATH="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql")

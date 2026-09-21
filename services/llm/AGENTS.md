@@ -37,7 +37,7 @@ that apply to llm-service code; when in doubt, the root file wins.
     TTS controller does.
 13. **Memory database only** — the hosted memory package owns `memory.db`.
     Identity/camera catalog snapshots arrive over the SDK clients
-    (`argus::client-identity`, `argus::client-camera`); this service opens no
+    (`argus::clients::identity`, `argus::clients::camera`); this service opens no
     other domain database.
 14. **Models are never copied** — LLM, memory and intent artifacts are read
     from the shared `models/` tree.

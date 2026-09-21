@@ -11,12 +11,15 @@ single source of truth.
 ## What lives here
 
 - `proto/argus/<domain>/v1/*.proto` — the wire contracts. Since F6-3 they are
-  compiled: `cmake/argus-module.cmake` turns each domain into an
-  `argus::sdk-<domain>` C++ module (protobuf + gRPC stubs plus a thin typed
-  wrapper), and services link the SDK instead of speaking raw strings.
-- `sdk/` — the thin per-domain C++ wrappers over the generated stubs
-  (`sdk/voice/`, `sdk/identity/`), so consumers never see protobuf types
-  directly.
+  compiled: a client package passes its domain's `.proto` to `argus_clients`,
+  which turns it into `argus::clients::<domain>` (protobuf + gRPC stubs plus a
+  thin typed wrapper), and services link the SDK instead of speaking raw
+  strings.
+- `<domain>/` — the C++ vocabulary that crosses the wire, declared by
+  `argus_contracts` as `argus::contracts::<domain>`. The thin per-domain
+  wrappers over the generated stubs live with their client
+  (`packages/clients/<domain>/`), not here, so consumers never see protobuf
+  types directly.
 - `manifests/package.schema.json` — typed per-capability package manifest
   (`model_path`, `accepted_models`, `defaults`) for interchangeable on-device
   models, without a database; consumers pin a version range (e.g. `llm: ^1.2`).
@@ -75,8 +78,8 @@ branches (reminder, reminder_detail, calendar_event, calendar_event_share,
 project, project_member, project_task) with the required-create/required-delete/
 find-last legs and the (createdAt, id) cursor range, and answers typed rows
 plus `{id, deletedAt}` tombstones plus the optional last-row watermarks. The
-SDK wrapper `argus::sdk-productivity`
-(`sdk/productivity/productivity-sync-client.cc`) is the one wire-handling
+SDK wrapper `argus::clients::productivity`
+(`packages/clients/productivity/src/productivity/productivity-sync-client.cc`) is the one wire-handling
 point: a blocking unary pull with the x-argus-user / x-argus-role /
 x-argus-device metadata and a 5s deadline; the owner applies the
 owner-or-membership scoping for the personal tables.
@@ -85,8 +88,8 @@ owner-or-membership scoping for the personal tables.
 domain: `NotificationService.CreateNotifications` is the fan-out create
 (one row per user id, reused by the gateway camera-notifier) and
 `PullNotifications` is the user-scoped `/sync` page (created rows plus the
-last-created watermark). The SDK wrapper `argus::sdk-notification`
-(`sdk/notification/notification-client.cc`) carries the same metadata and
+last-created watermark). The SDK wrapper `argus::clients::notification`
+(`packages/clients/notification/src/notification/notification-client.cc`) carries the same metadata and
 deadline shape. Both owners are the only openers of their databases; the
 gateway links these two SDK targets and never mounts those volumes (rule 27).
 
@@ -99,21 +102,21 @@ branch with the required-create/required-delete/find-last legs and the
 `CameraStreamRow`, `ZoneRow`) plus `{id, deletedAt}` tombstones. The row
 messages mirror the sync-table JSON field sets exactly (driver/record_mode/
 zone_type stay strings like the CRUD contract; secrets never cross it). The
-SDK wrapper `argus::sdk-camera` (`sdk/camera/camera-sync-client.cc`) is the
+SDK wrapper `argus::clients::camera` (`packages/clients/camera/src/camera/camera-sync-client.cc`) is the
 one wire-handling point: a blocking unary pull with the
 x-argus-user / x-argus-role / x-argus-device metadata and a 5s deadline.
-`sdk/grpc/grpc-server-identity.hxx` is the server-side twin of that
+`packages/lib/grpc/src/grpc/grpc-server-identity.hxx` is the server-side twin of that
 metadata contract: every owner handler reads the caller through
-`argus::sdk::callerUserId` (camera sync, productivity sync, notification
+`argus::client::callerUserId` (camera sync, productivity sync, notification
 RPC) instead of re-parsing the metadata per service.
 The contracts subdirectory guards are per-module now, so a build that adds
-`argus-contracts` twice still defines whichever SDK targets are missing.
+the contract group twice still defines whichever SDK targets are missing.
 
 ## Caller credentials and the camera action surface (camera guard)
 
 Service-to-service authority no longer rides declared metadata.
-`sdk/grpc/grpc-client-base` attaches `x-argus-credential`
-(`addCallerCredential`); `sdk/grpc/grpc-server-identity.hxx` matches it
+`packages/lib/grpc/src/grpc/grpc-client-base` attaches `x-argus-credential`
+(`addCallerCredential`); `packages/lib/grpc/src/grpc/grpc-server-identity.hxx` matches it
 against the receiver's configured `CallerCredential{service, secret}` set
 (`authorizeCaller`, constant-time compare) and the matched secret is the
 authority — a forged `x-argus-user`/`x-argus-role` pair without the secret
@@ -126,8 +129,8 @@ argus-guard: `Announce` (remote TTS + talk), `Alarm` (procedural tone),
 (bounded per-track snapshot ring) and `Listen` (endpointed capture + STT).
 Outcomes are `CommandOutcome` (`SUCCEEDED`, `DUPLICATE_SUCCEEDED`,
 `IN_FLIGHT`, `INDETERMINATE`, `REJECTED`, `RETRYABLE_FAILED`, `CONFLICT`);
-the thin wrapper is `argus::sdk-camera-actions`
-(`sdk/camera/camera-action-client.cc`, 60 s call timeout). Commands are
+the thin wrapper is `argus::clients::camera-actions`
+(`packages/clients/camera-actions/src/camera/camera-action-client.cc`, 60 s call timeout). Commands are
 idempotent by `command_id` (length-prefixed SHA-256 fingerprint, fenced
 settle, expired claims reconciled to `indeterminate`), and the RPC requires
 both the fleet secret and the `[actions].enabled` gate.

@@ -15,31 +15,31 @@ include(${CMAKE_CURRENT_SOURCE_DIR}/../../cmake/argus-module.cmake)
 set(MEMORY_SRC_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/src)
 set(SHARED_ROOT ${MEMORY_SRC_ROOT}/shared)
 
-if(NOT TARGET argus::runtime)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../runtime
+if(NOT TARGET argus::lib::runtime)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../lib/runtime
                      ${CMAKE_CURRENT_BINARY_DIR}/runtime)
 endif()
 # The leaves this module links: a DAG, so their guards carry them into every
 # build, standalone or consumed.
-if(NOT TARGET contract::auth)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../contracts/auth-contract
-                     ${CMAKE_CURRENT_BINARY_DIR}/auth-contract)
+if(NOT TARGET argus::contracts::auth)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../contracts/auth
+                     ${CMAKE_BINARY_DIR}/contracts/auth)
 endif()
 
-if(NOT TARGET argus::config)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../config
+if(NOT TARGET argus::lib::config)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../lib/config
                      ${CMAKE_CURRENT_BINARY_DIR}/config)
 endif()
-if(NOT TARGET argus::text)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../text
+if(NOT TARGET argus::lib::text)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../lib/text
                      ${CMAKE_CURRENT_BINARY_DIR}/text)
 endif()
-if(NOT TARGET argus::nats)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../nats
+if(NOT TARGET argus::lib::nats)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../lib/nats
                      ${CMAKE_CURRENT_BINARY_DIR}/nats)
 endif()
-if(NOT TARGET argus::validation)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../validation
+if(NOT TARGET argus::lib::validation)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../lib/validation
                      ${CMAKE_CURRENT_BINARY_DIR}/validation)
 endif()
 if(NOT TARGET Drogon::Drogon)
@@ -50,13 +50,13 @@ if(NOT TARGET Drogon::Drogon)
     find_package(nlohmann_json REQUIRED)
     find_package(onnxruntime CONFIG REQUIRED)
     find_package(cnats CONFIG REQUIRED)
-    if(NOT TARGET argus::phrase)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/phrase
+    if(NOT TARGET argus::lib::phrase)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../lib/phrase
                          ${CMAKE_BINARY_DIR}/phrase)
     endif()
-    if(NOT TARGET argus::llm-client)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../clients/llm-client
-                         ${CMAKE_CURRENT_BINARY_DIR}/llm-client)
+    if(NOT TARGET argus::clients::llm)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../clients/llm
+                         ${CMAKE_BINARY_DIR}/clients/llm)
     endif()
     # sqlite-vec is THE capacity of this service's vector index (Ruling BW):
     # vec0 must register on the service's own connection. Added before
@@ -66,8 +66,8 @@ if(NOT TARGET Drogon::Drogon)
                          ${CMAKE_BINARY_DIR}/third_party/sqlite-vec)
     endif()
     set(ARGUS_SQLITE_VEC_TARGET sqlite-vec)
-    if(NOT TARGET argus::sqlite)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/sqlite
+    if(NOT TARGET argus::lib::sqlite)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../lib/sqlite
                          ${CMAKE_BINARY_DIR}/sqlite)
     endif()
 endif()
@@ -109,9 +109,9 @@ endif()
 # which reaches argus::socket for its change sink. The guards sit outside the
 # standalone branch because a consumer that adds this package as a
 # subdirectory provides the same targets and skips that branch.
-if(NOT TARGET contract::sync)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../contracts/sync-contract
-                     ${CMAKE_CURRENT_BINARY_DIR}/sync-contract)
+if(NOT TARGET argus::contracts::sync)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../contracts/sync
+                     ${CMAKE_BINARY_DIR}/contracts/sync)
 endif()
 if(NOT TARGET argus::room)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../room
@@ -150,17 +150,17 @@ target_include_directories(memory-core SYSTEM PUBLIC
 target_include_directories(memory-core PUBLIC ${MEMORY_SRC_ROOT})
 
 target_link_libraries(memory-core PUBLIC
-    argus::config
+    argus::lib::config
     argus::hardware-profile
-    argus::phrase
-    argus::sqlite
-    argus::text
-    argus::runtime
-    argus::validation
-    argus::errors
-    contract::sync
+    argus::lib::phrase
+    argus::lib::sqlite
+    argus::lib::text
+    argus::lib::runtime
+    argus::lib::validation
+    argus::lib::errors
+    argus::contracts::sync
     argus::audit
-    argus::llm-client
+    argus::clients::llm
     Drogon::Drogon
     nlohmann_json::nlohmann_json
     llama
@@ -175,7 +175,7 @@ target_compile_options(memory-core PRIVATE -Wall -Wextra)
 # drag cnats into a consumer that does not want it.
 add_library(memory-catalog STATIC ${MEMORY_SRC_ROOT}/memory/catalog-replica.cc)
 
-target_link_libraries(memory-catalog PUBLIC memory-core cnats::nats_static contract::sync)
+target_link_libraries(memory-catalog PUBLIC memory-core cnats::nats_static argus::contracts::sync)
 
 target_compile_options(memory-catalog PRIVATE -Wall -Wextra)
 
@@ -225,7 +225,7 @@ add_test(NAME memory-backpressure-test COMMAND memory-backpressure-test)
 # and another user's recall never sees it.
 add_executable(memory-reminder-test tests/unit/memory-reminder-test.cc)
 
-target_link_libraries(memory-reminder-test PRIVATE memory-core contract::auth
+target_link_libraries(memory-reminder-test PRIVATE memory-core argus::contracts::auth
     doctest::doctest)
 
 target_compile_definitions(memory-reminder-test PRIVATE

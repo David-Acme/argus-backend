@@ -45,7 +45,7 @@ These own a Conan/CMake graph and build on their own:
 Seven, and the claim is a build fact: each of them carries a `conanfile.txt` +
 `CMakePresets.json` beside its `CMakeLists.txt` and declares its own project
 name. `packages/contracts/` is **not** one of them — the folder has no
-`CMakeLists.txt` of its own, and its ten `*-contract` subfolders are
+`CMakeLists.txt` of its own, and its ten domain subfolders are
 direct-import packages like the rest.
 
 ## Direct-import packages
@@ -53,11 +53,11 @@ direct-import packages like the rest.
 The remainder of `packages/`: `argus-audio`, `argus-auth`, `argus-audit`,
 `argus-config`, `argus-errors`, `argus-grpc`, `argus-http`, `argus-mdns`,
 `argus-nats`, `argus-phrase`, `argus-room`, `argus-runtime`, `argus-storage`,
-`argus-text`, `argus-validation`, the ten `*-contract` packages under
+`argus-text`, `argus-validation`, the ten contract packages under
 `packages/contracts/` and the ten SDK clients under `packages/clients/`.
 These have no Conan graph of their own: the service that links them provides
 the build context. They are declared once in their folder and linked by target
-name. `argus-vlm-client` is the thin HTTP client for the internal
+name. `argus::clients::vlm` is the thin HTTP client for the internal
 `/vlm/v1/describe` wire, linked today only by `argus-guard`.
 
 ## Dependency direction

@@ -20,7 +20,7 @@ memory code; when in doubt, the root file wins.
    by DDL.
 4. **Database discipline** — this package holds no source DB clients. The
    host reads identity/camera snapshots through the SDK clients
-   (`argus::client-identity`, `argus::client-camera`) and hands the replica typed
+   (`argus::clients::identity`, `argus::clients::camera`) and hands the replica typed
    `Snapshot` rows; never open another domain's database here, and never
    touch the retired `argus.db`.
 5. **Parameter structs for 3+ params** — any function with 3+ parameters

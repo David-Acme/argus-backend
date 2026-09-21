@@ -19,16 +19,16 @@ if(NOT TARGET Drogon::Drogon)
     find_package(tomlplusplus REQUIRED)
     find_package(nlohmann_json REQUIRED)
     find_package(cnats CONFIG REQUIRED)
-    if(NOT TARGET argus::config)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/config
+    if(NOT TARGET argus::lib::config)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/config
                          ${CMAKE_BINARY_DIR}/config)
     endif()
-    if(NOT TARGET argus::nats)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/nats
+    if(NOT TARGET argus::lib::nats)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/nats
                          ${CMAKE_BINARY_DIR}/nats)
     endif()
-    if(NOT TARGET argus::http)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/http
+    if(NOT TARGET argus::lib::http)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/http
                          ${CMAKE_BINARY_DIR}/http)
     endif()
 endif()
@@ -51,7 +51,7 @@ add_library(tunnel-core STATIC
 
 target_include_directories(tunnel-core PUBLIC ${TUNNEL_SRC_ROOT})
 
-target_link_libraries(tunnel-core PUBLIC argus::config argus::http)
+target_link_libraries(tunnel-core PUBLIC argus::lib::config argus::lib::http)
 
 target_compile_options(tunnel-core PRIVATE -Wall -Wextra)
 
@@ -60,7 +60,7 @@ target_link_libraries(argus-tunnel-client PRIVATE tunnel-core)
 target_compile_options(argus-tunnel-client PRIVATE -Wall -Wextra)
 
 add_executable(argus-tunnel-relay ${TUNNEL_SRC_ROOT}/main-relay.cc)
-target_link_libraries(argus-tunnel-relay PRIVATE tunnel-core argus::nats)
+target_link_libraries(argus-tunnel-relay PRIVATE tunnel-core argus::lib::nats)
 target_compile_options(argus-tunnel-relay PRIVATE -Wall -Wextra)
 
 get_target_property(DOCTEST_INCLUDE_DIRS doctest::doctest

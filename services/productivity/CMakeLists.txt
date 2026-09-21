@@ -54,51 +54,51 @@ if(PROJECT_IS_TOP_LEVEL)
                      ${CMAKE_BINARY_DIR}/third_party/ncnn EXCLUDE_FROM_ALL)
     set(ARGUS_NCNN_TARGET ncnn)
 
-    if(NOT TARGET contract::auth)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/contracts/auth-contract
-                         ${CMAKE_CURRENT_BINARY_DIR}/auth-contract)
+    if(NOT TARGET argus::contracts::auth)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/contracts/auth
+                         ${CMAKE_BINARY_DIR}/contracts/auth)
     endif()
 
-    if(NOT TARGET contract::productivity)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/contracts/productivity-contract
-                         ${CMAKE_CURRENT_BINARY_DIR}/productivity-contract)
+    if(NOT TARGET argus::contracts::productivity)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/contracts/productivity
+                         ${CMAKE_BINARY_DIR}/contracts/productivity)
     endif()
 
-    if(NOT TARGET contract::sync)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/contracts/sync-contract
-                         ${CMAKE_CURRENT_BINARY_DIR}/sync-contract)
+    if(NOT TARGET argus::contracts::sync)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/contracts/sync
+                         ${CMAKE_BINARY_DIR}/contracts/sync)
     endif()
 
-    if(NOT TARGET argus::config)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/config
+    if(NOT TARGET argus::lib::config)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/config
                          ${CMAKE_BINARY_DIR}/config)
     endif()
-    if(NOT TARGET argus::text)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/text
+    if(NOT TARGET argus::lib::text)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/text
                          ${CMAKE_BINARY_DIR}/text)
     endif()
-    if(NOT TARGET argus::nats)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/nats
+    if(NOT TARGET argus::lib::nats)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/nats
                          ${CMAKE_BINARY_DIR}/nats)
     endif()
-    if(NOT TARGET argus::validation)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/validation
+    if(NOT TARGET argus::lib::validation)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/validation
                          ${CMAKE_BINARY_DIR}/validation)
     endif()
-    if(NOT TARGET argus::http)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/http
+    if(NOT TARGET argus::lib::http)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/http
                          ${CMAKE_BINARY_DIR}/http)
     endif()
-    if(NOT TARGET argus::sqlite)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/sqlite
+    if(NOT TARGET argus::lib::sqlite)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/sqlite
                          ${CMAKE_BINARY_DIR}/sqlite)
     endif()
     if(NOT TARGET argus::audit)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/audit
                          ${CMAKE_BINARY_DIR}/audit)
     endif()
-    if(NOT TARGET argus::cert)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/cert
+    if(NOT TARGET argus::lib::cert)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/cert
                          ${CMAKE_BINARY_DIR}/cert)
     endif()
     if(NOT TARGET argus::room)
@@ -109,8 +109,8 @@ if(PROJECT_IS_TOP_LEVEL)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/socket
                          ${CMAKE_BINARY_DIR}/socket)
     endif()
-    if(NOT TARGET argus::auth)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/auth
+    if(NOT TARGET argus::lib::auth)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/auth
                          ${CMAKE_BINARY_DIR}/auth)
     endif()
     if(NOT TARGET argus::identity)
@@ -130,8 +130,8 @@ endif()
 find_package(doctest REQUIRED)
 
 # The productivity sync contract (argus.productivity.v1.SyncService); this
-# service is the owner and serves it, consumers link argus::client-productivity.
-if(NOT TARGET argus::client-productivity)
+# service is the owner and serves it, consumers link argus::clients::productivity.
+if(NOT TARGET argus::clients::productivity)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/productivity
                      ${CMAKE_BINARY_DIR}/clients/productivity EXCLUDE_FROM_ALL)
 endif()
@@ -144,7 +144,7 @@ add_library(productivity-core STATIC
 target_include_directories(productivity-core PUBLIC
     ${PRODUCTIVITY_SRC_ROOT})
 
-target_link_libraries(productivity-core PUBLIC argus_sync argus::sqlite
+target_link_libraries(productivity-core PUBLIC argus_sync argus::lib::sqlite
     ${ARGUS_SQLITE_VEC_TARGET})
 
 target_compile_options(productivity-core PRIVATE -Wall -Wextra)
@@ -183,11 +183,11 @@ add_executable(argus-productivity
     ${PRODUCTIVITY_SRC_ROOT}/feature/sync/productivity-sync-rpc-service.cc
     ${PRODUCTIVITY_FEATURE_SOURCES})
 
-# The filters validate through argus.identity.v1 (argus::client-identity rides
-# argus::auth); the sync RPC owner serves argus.productivity.v1 via
-# argus::client-productivity.
-target_link_libraries(argus-productivity PRIVATE productivity-core contract::productivity contract::sync
-    argus::auth argus::client-productivity)
+# The filters validate through argus.identity.v1 (argus::clients::identity rides
+# argus::lib::auth); the sync RPC owner serves argus.productivity.v1 via
+# argus::clients::productivity.
+target_link_libraries(argus-productivity PRIVATE productivity-core argus::contracts::productivity argus::contracts::sync
+    argus::lib::auth argus::clients::productivity)
 
 target_compile_options(argus-productivity PRIVATE -Wall -Wextra)
 
@@ -214,15 +214,15 @@ foreach(TEST_NAME IN ITEMS productivity-schema-test productivity-migration-test)
     set_target_properties(${TEST_NAME} PROPERTIES EXCLUDE_FROM_ALL FALSE)
         target_link_libraries(${TEST_NAME} PRIVATE
     argus::audit
-    argus::auth
-    argus::config
-    argus::text
-    argus::nats
+    argus::lib::auth
+    argus::lib::config
+    argus::lib::text
+    argus::lib::nats
     argus::socket
-    argus::sqlite
-    argus::validation
-    contract::sync
-    argus::http
+    argus::lib::sqlite
+    argus::lib::validation
+    argus::contracts::sync
+    argus::lib::http
     productivity-migration
     doctest::doctest)
     target_compile_options(${TEST_NAME} PRIVATE -Wall -Wextra)
@@ -245,16 +245,16 @@ target_include_directories(productivity-controller-test PRIVATE
 target_link_libraries(productivity-controller-test PRIVATE
     argus_sync
     argus_identity
-    argus::auth
-    contract::auth
-    contract::productivity
-    contract::sync
-    argus::config
-    argus::text
+    argus::lib::auth
+    argus::contracts::auth
+    argus::contracts::productivity
+    argus::contracts::sync
+    argus::lib::config
+    argus::lib::text
     argus::socket
-    argus::sqlite
-    argus::validation
-    argus::http
+    argus::lib::sqlite
+    argus::lib::validation
+    argus::lib::http
     doctest::doctest)
 
 target_compile_options(productivity-controller-test PRIVATE -Wall -Wextra)
@@ -278,9 +278,9 @@ target_compile_definitions(productivity-sync-rpc-test PRIVATE
 
 target_link_libraries(productivity-sync-rpc-test PRIVATE
     argus_sync
-    argus::client-productivity
-    argus::sqlite
-    contract::sync
+    argus::clients::productivity
+    argus::lib::sqlite
+    argus::contracts::sync
     doctest::doctest)
 
 target_compile_options(productivity-sync-rpc-test PRIVATE -Wall -Wextra)

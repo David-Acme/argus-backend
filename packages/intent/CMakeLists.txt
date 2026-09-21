@@ -57,13 +57,13 @@ endif()
 
 # Standalone build (outside the root project's configure): add the sibling
 # packages the intent module links.
-if(NOT TARGET argus::text)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/text
+if(NOT TARGET argus::lib::text)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../lib/text
                      ${CMAKE_BINARY_DIR}/text)
 endif()
 
-if(NOT TARGET argus::phrase)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/phrase
+if(NOT TARGET argus::lib::phrase)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../lib/phrase
                      ${CMAKE_BINARY_DIR}/phrase)
 endif()
 
@@ -76,8 +76,8 @@ argus_module(NAME intent
     INCLUDES
         src
     DEPENDS
-        argus::text
-        argus::phrase
+        argus::lib::text
+        argus::lib::phrase
         fasttext)
 
 target_compile_options(argus_intent PRIVATE -Wall -Wextra)

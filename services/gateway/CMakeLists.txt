@@ -29,34 +29,34 @@ if(NOT TARGET argus_identity)
     find_package(Drogon CONFIG REQUIRED)
     find_package(cnats CONFIG REQUIRED)
     find_package(tomlplusplus REQUIRED)
-    if(NOT TARGET contract::auth)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/contracts/auth-contract
-                         ${CMAKE_CURRENT_BINARY_DIR}/auth-contract)
+    if(NOT TARGET argus::contracts::auth)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/contracts/auth
+                         ${CMAKE_BINARY_DIR}/contracts/auth)
     endif()
 
-    if(NOT TARGET contract::sync)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/contracts/sync-contract
-                         ${CMAKE_CURRENT_BINARY_DIR}/sync-contract)
+    if(NOT TARGET argus::contracts::sync)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/contracts/sync
+                         ${CMAKE_BINARY_DIR}/contracts/sync)
     endif()
 
-    if(NOT TARGET argus::config)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/config
+    if(NOT TARGET argus::lib::config)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/config
                          ${CMAKE_BINARY_DIR}/config)
     endif()
-    if(NOT TARGET argus::text)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/text
+    if(NOT TARGET argus::lib::text)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/text
                          ${CMAKE_BINARY_DIR}/text)
     endif()
-    if(NOT TARGET argus::nats)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/nats
+    if(NOT TARGET argus::lib::nats)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/nats
                          ${CMAKE_BINARY_DIR}/nats)
     endif()
-    if(NOT TARGET argus::runtime)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/runtime
+    if(NOT TARGET argus::lib::runtime)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/runtime
                          ${CMAKE_BINARY_DIR}/runtime)
     endif()
-    if(NOT TARGET argus::http)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/http
+    if(NOT TARGET argus::lib::http)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/http
                          ${CMAKE_BINARY_DIR}/http)
     endif()
 
@@ -78,16 +78,16 @@ if(NOT TARGET argus_identity)
                      ${CMAKE_BINARY_DIR}/third_party/ncnn EXCLUDE_FROM_ALL)
     set(ARGUS_NCNN_TARGET ncnn)
 
-    if(NOT TARGET argus::cert)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/cert
+    if(NOT TARGET argus::lib::cert)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/cert
                          ${CMAKE_BINARY_DIR}/cert)
     endif()
     if(NOT TARGET argus::room)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/room
                          ${CMAKE_BINARY_DIR}/room)
     endif()
-    if(NOT TARGET argus::sqlite)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/sqlite
+    if(NOT TARGET argus::lib::sqlite)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/sqlite
                          ${CMAKE_BINARY_DIR}/sqlite)
     endif()
     if(NOT TARGET argus::socket)
@@ -98,8 +98,8 @@ if(NOT TARGET argus_identity)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/audit
                          ${CMAKE_BINARY_DIR}/audit)
     endif()
-    if(NOT TARGET argus::auth)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/auth
+    if(NOT TARGET argus::lib::auth)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/auth
                          ${CMAKE_BINARY_DIR}/auth)
     endif()
     if(NOT TARGET argus::identity)
@@ -116,39 +116,39 @@ if(NOT TARGET argus_identity)
     endif()
 endif()
 
-if(NOT TARGET argus::client-voice)
+if(NOT TARGET argus::clients::voice)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/voice
                      ${CMAKE_BINARY_DIR}/clients/voice EXCLUDE_FROM_ALL)
 endif()
-if(NOT TARGET argus::client-identity)
+if(NOT TARGET argus::clients::identity)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/identity
                      ${CMAKE_BINARY_DIR}/clients/identity EXCLUDE_FROM_ALL)
 endif()
-if(NOT TARGET argus::client-camera)
+if(NOT TARGET argus::clients::camera)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/camera
                      ${CMAKE_BINARY_DIR}/clients/camera EXCLUDE_FROM_ALL)
 endif()
-if(NOT TARGET argus::client-productivity)
+if(NOT TARGET argus::clients::productivity)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/productivity
                      ${CMAKE_BINARY_DIR}/clients/productivity EXCLUDE_FROM_ALL)
 endif()
-if(NOT TARGET argus::client-notification)
+if(NOT TARGET argus::clients::notification)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/notification
                      ${CMAKE_BINARY_DIR}/clients/notification EXCLUDE_FROM_ALL)
 endif()
 
 # mdns is its own package again (Phase 1 step 10): the source was gateway-only,
-# so gateway-core links argus::mdns, and the vendored mdns.h wiring lives there.
-if(NOT TARGET argus::mdns)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/mdns
+# so gateway-core links argus::lib::mdns, and the vendored mdns.h wiring lives there.
+if(NOT TARGET argus::lib::mdns)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/mdns
                      ${CMAKE_BINARY_DIR}/mdns)
 endif()
 
 find_package(doctest REQUIRED)
 
-if(NOT TARGET contract::gateway)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/contracts/gateway-contract
-                     ${CMAKE_CURRENT_BINARY_DIR}/gateway-contract)
+if(NOT TARGET argus::contracts::gateway)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/contracts/gateway
+                     ${CMAKE_BINARY_DIR}/contracts/gateway)
 endif()
 
 add_library(gateway-core STATIC
@@ -179,10 +179,10 @@ add_library(gateway-core STATIC
 target_include_directories(gateway-core PUBLIC ${GATEWAY_SRC_ROOT})
 
 target_link_libraries(gateway-core PUBLIC argus_identity argus_sync
-    argus::cert argus::mdns argus::room argus::socket argus::http
-    argus::client-voice argus::client-identity argus::client-camera contract::auth contract::sync
-    argus::client-productivity argus::client-notification)
-target_link_libraries(gateway-core PRIVATE contract::gateway contract::auth contract::sync)
+    argus::lib::cert argus::lib::mdns argus::room argus::socket argus::lib::http
+    argus::clients::voice argus::clients::identity argus::clients::camera argus::contracts::auth argus::contracts::sync
+    argus::clients::productivity argus::clients::notification)
+target_link_libraries(gateway-core PRIVATE argus::contracts::gateway argus::contracts::auth argus::contracts::sync)
 
 target_compile_options(gateway-core PRIVATE -Wall -Wextra)
 
@@ -202,7 +202,7 @@ add_executable(gateway-test ${CMAKE_CURRENT_SOURCE_DIR}/tests/gateway-test.cc)
 
 target_include_directories(gateway-test PRIVATE ${GATEWAY_SRC_ROOT})
 
-target_link_libraries(gateway-test PRIVATE gateway-core doctest::doctest contract::auth contract::sync)
+target_link_libraries(gateway-test PRIVATE gateway-core doctest::doctest argus::contracts::auth argus::contracts::sync)
 
 target_compile_options(gateway-test PRIVATE -Wall -Wextra)
 
@@ -215,8 +215,8 @@ target_include_directories(audit-sync-read-test PRIVATE ${GATEWAY_SRC_ROOT})
 
 target_link_libraries(audit-sync-read-test PRIVATE
                       gateway-core
-                      contract::auth
-                      contract::sync
+                      argus::contracts::auth
+                      argus::contracts::sync
                       doctest::doctest)
 
 target_compile_options(audit-sync-read-test PRIVATE -Wall -Wextra)

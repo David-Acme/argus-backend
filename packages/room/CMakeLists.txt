@@ -3,19 +3,19 @@
 
 include(${CMAKE_CURRENT_SOURCE_DIR}/../../cmake/argus-module.cmake)
 
-if(NOT TARGET argus::auth)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../auth
+if(NOT TARGET argus::lib::auth)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../lib/auth
                      ${CMAKE_CURRENT_BINARY_DIR}/auth)
 endif()
 
-if(NOT TARGET contract::auth)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../contracts/auth-contract
-                     ${CMAKE_CURRENT_BINARY_DIR}/auth-contract)
+if(NOT TARGET argus::contracts::auth)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../contracts/auth
+                     ${CMAKE_BINARY_DIR}/contracts/auth)
 endif()
 
-if(NOT TARGET contract::sync)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../contracts/sync-contract
-                     ${CMAKE_CURRENT_BINARY_DIR}/sync-contract)
+if(NOT TARGET argus::contracts::sync)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../contracts/sync
+                     ${CMAKE_BINARY_DIR}/contracts/sync)
 endif()
 
 find_package(Drogon CONFIG REQUIRED)
@@ -25,9 +25,9 @@ argus_module(NAME room
         src/shared/services/room/room-manager.cc
     INCLUDES src
     DEPENDS
-        argus::auth
-        contract::auth
-        contract::sync)
+        argus::lib::auth
+        argus::contracts::auth
+        argus::contracts::sync)
 
 target_link_libraries(argus_room PUBLIC Drogon::Drogon)
 

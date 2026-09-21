@@ -23,21 +23,21 @@ if(NOT TARGET Drogon::Drogon)
     find_package(onnxruntime CONFIG REQUIRED)
     find_package(tomlplusplus REQUIRED)
     find_package(nlohmann_json REQUIRED)
-    if(NOT TARGET argus::config)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/config
+    if(NOT TARGET argus::lib::config)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/config
                          ${CMAKE_BINARY_DIR}/config)
     endif()
-    if(NOT TARGET argus::runtime)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/runtime
+    if(NOT TARGET argus::lib::runtime)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/runtime
                          ${CMAKE_BINARY_DIR}/runtime)
     endif()
-    if(NOT TARGET argus::http)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/http
+    if(NOT TARGET argus::lib::http)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/http
                          ${CMAKE_BINARY_DIR}/http)
     endif()
-    if(NOT TARGET argus::stt-client)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/stt-client
-                         ${CMAKE_BINARY_DIR}/stt-client)
+    if(NOT TARGET argus::clients::stt)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/stt
+                         ${CMAKE_BINARY_DIR}/clients/stt)
     endif()
 endif()
 
@@ -90,10 +90,10 @@ target_include_directories(stt-core PUBLIC
     ${STT_SRC_ROOT})
 
 target_link_libraries(stt-core PUBLIC
-    argus::config
-    argus::runtime
-    argus::http
-    argus::stt-client
+    argus::lib::config
+    argus::lib::runtime
+    argus::lib::http
+    argus::clients::stt
     Drogon::Drogon
     onnxruntime::onnxruntime
     nlohmann_json::nlohmann_json
@@ -144,16 +144,16 @@ target_compile_definitions(stt-wire-test PRIVATE
     ARGUS_TEST_STT_MODELS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../../models/stt")
 
 target_link_libraries(stt-wire-test PRIVATE
-    argus::config
-    argus::runtime
-    argus::http
-    argus::stt-client
+    argus::lib::config
+    argus::lib::runtime
+    argus::lib::http
+    argus::clients::stt
     onnxruntime::onnxruntime
     ${ARGUS_SHERPA_ONNX_TARGET}
     doctest::doctest)
 
 target_include_directories(stt-wire-test PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/stt-client/tests/support)
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/stt/tests/support)
 
 target_compile_options(stt-wire-test PRIVATE -Wall -Wextra)
 

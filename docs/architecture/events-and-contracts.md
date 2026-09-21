@@ -26,7 +26,7 @@ The full subject contract lives in `wire-nats-subjects.md`.
 ## Typed gRPC contracts
 
 - `packages/contracts/proto/argus/<domain>/v1/` holds the protobuf
-  schemas; `argus_sdk_module()` wraps the generated stubs so consumers never
+  schemas; `argus_clients()` wraps the generated stubs so consumers never
   see protobuf directly.
 - Camera sync (`argus.camera.v1.SyncService`, port 7036) serves the camera
   sync tables with the frozen `/sync` semantics.
@@ -41,7 +41,8 @@ The full subject contract lives in `wire-nats-subjects.md`.
   `ListNotifiableUsers`) that feeds camera→guard identity.
 - Notification (`argus.notification.v1`, port 7038) fans out creates by
   idempotent `command_id` and serves the user-scoped sync page.
-- Caller authority (`sdk/grpc/grpc-server-identity.hxx`): service-to-service
+- Caller authority
+  (`packages/lib/grpc/src/grpc/grpc-server-identity.hxx`): service-to-service
   calls present `x-argus-credential`; the receiver matches it against its
   configured caller set and the authority comes from the matched secret, never
   from declared `x-argus-user`/`x-argus-role` metadata.

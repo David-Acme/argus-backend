@@ -75,7 +75,7 @@ own `productivity.db`.
   (calendar_event, calendar_event_share, project, project_member,
   project_task) by owner-or-membership, while reminder/reminder_detail stay
   unscoped exactly as the monolith's gateway did. The gateway consumes it
-  through `argus::sdk-productivity`; no other service opens productivity.db.
+  through `argus::clients::productivity`; no other service opens productivity.db.
 - **CORS**: the legacy answered every preflight in pre-routing and the
   gateway forwards OPTIONS on proxied paths untouched, so this surface keeps
   answering OPTIONS itself (`Cors::handleOptions`).

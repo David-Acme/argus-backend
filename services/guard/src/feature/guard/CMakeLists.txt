@@ -10,16 +10,16 @@ argus_module(NAME guard
         guard-schema.cc
         guard-service.cc
     DEPENDS
-        argus::config
-        argus::text
-        argus::nats
-        argus::storage
-        argus::runtime
-        argus::sqlite
-        argus::client-identity
-        argus::client-notification
-        argus::client-camera-actions
-        argus::llm-client
-        argus::vlm-client
+        argus::lib::config
+        argus::lib::text
+        argus::lib::nats
+        argus::lib::storage
+        argus::lib::runtime
+        argus::lib::sqlite
+        argus::clients::identity
+        argus::clients::notification
+        argus::clients::camera-actions
+        argus::clients::llm
+        argus::clients::vlm
     INCLUDES
         ${CMAKE_CURRENT_SOURCE_DIR})
