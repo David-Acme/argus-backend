@@ -55,9 +55,9 @@ if(NOT TARGET argus_identity)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/runtime
                          ${CMAKE_BINARY_DIR}/runtime)
     endif()
-    if(NOT TARGET pkg::response)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/response
-                         ${CMAKE_BINARY_DIR}/response)
+    if(NOT TARGET argus::http)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/http
+                         ${CMAKE_BINARY_DIR}/http)
     endif()
 
     if(NOT TARGET sqlite-vec)
@@ -137,19 +137,11 @@ if(NOT TARGET argus::client-notification)
                      ${CMAKE_BINARY_DIR}/clients/notification EXCLUDE_FROM_ALL)
 endif()
 
-# mdns is gateway-only since f7-8 (nothing else ever linked argus::mdns), so
-# its source compiles into gateway-core and its third-party wiring lives here.
-find_package(mdns REQUIRED)
-
-# Third-party mdns.h is header-only: treat its include dir as SYSTEM so
-# -Wall -Wextra never reports warnings from the vendored header.
-if(TARGET mdns::mdns)
-    get_target_property(_argus_mdns_dirs mdns::mdns
-                        INTERFACE_INCLUDE_DIRECTORIES)
-    if(_argus_mdns_dirs)
-        set_target_properties(mdns::mdns PROPERTIES
-            INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${_argus_mdns_dirs}")
-    endif()
+# mdns is its own package again (Phase 1 step 10): the source was gateway-only,
+# so gateway-core links argus::mdns, and the vendored mdns.h wiring lives there.
+if(NOT TARGET argus::mdns)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/mdns
+                     ${CMAKE_BINARY_DIR}/mdns)
 endif()
 
 find_package(doctest REQUIRED)
@@ -161,8 +153,6 @@ endif()
 
 add_library(gateway-core STATIC
     ${GATEWAY_SRC_ROOT}/identity/identity-config.cc
-    # mdns is gateway-only, so it is a source here rather than a module.
-    ${GATEWAY_SRC_ROOT}/shared/services/mdns/mdns-service.cc
     ${GATEWAY_SRC_ROOT}/identity/identity-registrar.cc
     ${GATEWAY_SRC_ROOT}/proxy/proxy-config.cc
     ${GATEWAY_SRC_ROOT}/proxy/reverse-proxy.cc
@@ -189,7 +179,7 @@ add_library(gateway-core STATIC
 target_include_directories(gateway-core PUBLIC ${GATEWAY_SRC_ROOT})
 
 target_link_libraries(gateway-core PUBLIC argus_identity argus_sync
-    argus::cert mdns::mdns argus::room argus::socket
+    argus::cert argus::mdns argus::room argus::socket argus::http
     argus::client-voice argus::client-identity argus::client-camera contract::auth contract::sync
     argus::client-productivity argus::client-notification)
 target_link_libraries(gateway-core PRIVATE contract::gateway contract::auth contract::sync)

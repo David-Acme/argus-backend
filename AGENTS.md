@@ -117,30 +117,34 @@ Never skip a filter in protected routes.
 **Exception:** Multipart endpoints (`/auth/login`) skip `ValidJsonFilter` since
 `req->getJsonObject()` returns `nullptr` for `multipart/form-data`.
 
-### 6. Responses & attribute keys
+### 6. Responses and refusals
 
-ALL error responses go through `AppConfig` (in `packages/response/src/config/app-config.hxx`):
+Every refusal is **thrown, never built**. The vocabulary lives in
+`packages/errors/src/errors/` (`ErrorCode`, `ErrorDefinition`, `ResponseException`),
+and each boundary catalogs its own codes in one header: `auth-errors.hxx`,
+`camera-errors.hxx`, `identity-contract/identity-errors.hxx`, and so on.
 
 ```cpp
-AppConfig::get401Response();                         // default message
-AppConfig::get401Response("Custom message");          // custom message
-AppConfig::get403Response();
-AppConfig::get400Response("Bad request");
-AppConfig::get404Response("Path not found");
-AppConfig::get409Response("Server already paired");
-AppConfig::get500Response("...", "INTERNAL_ERROR");   // optional domain code
-AppConfig::get502Response("...", "CAMERA_UNREACHABLE");
-AppConfig::get503Response("...", "LLM_NOT_LOADED");
+throw ResponseException(CameraErrors::CameraNotFound);          // catalog entry
+throw ResponseException(503, TtsErrors::TtsNotLoaded);          // status override
+throw ResponseException(CameraErrors::CameraUnreachable
+                            .withMessage(result->error));        // device's own words
+throw ResponseException(422, std::vector<ResponseError>{...});   // wire list
 ```
 
-Never call `ApiResponse::error()` directly from filters/controllers.
+`ApiResponse` (`packages/http/src/http/api-response.hxx`) is the only place an
+envelope is built: `ok`, `created`, `noContent`, `validationError` and the three
+`error` overloads. Handlers return `ApiResponse::ok(...)` and never set a status
+code or a body themselves. The one advice, `ErrorHandler::handleException`
+(`packages/http/src/http/error-handler.hxx`), is registered once per service and
+turns a thrown refusal into the envelope, so a handler needs no try/catch.
 
 Validation errors use `ApiResponse::validationError(fieldErrors)` → 422.
 
 Attribute keys are centralized constants:
 ```
-AppConfig::JWT_CTX_KEY    = "jwt_ctx"
-AppConfig::DEVICE_CTX_KEY = "device_ctx"
+AuthContext::kJwtKey    = "jwt_ctx"     (packages/contracts/auth-contract/request-context.hxx)
+AuthContext::kDeviceKey = "device_ctx"
 ```
 
 ### 7. Role-based access
@@ -259,7 +263,7 @@ Available macros: `IS_NOT_EMPTY`, `IS_NOT_EMPTY_OPTIONAL`, `IS_EMAIL`, `IS_UUID`
 `IS_BOOLEAN`, `CUSTOM_LAMBDA`.
 
 When validation fails, `END_VALIDATION()` throws `ValidationException(errors, 422)`.
-The global `AppConfig::handleException()` catches it and returns a 422 JSON response.
+The global `ErrorHandler::handleException()` catches it and returns a 422 JSON response.
 **Controllers never need try/catch for validation.**
 
 ### 12. Controller thinness
@@ -273,14 +277,14 @@ Controllers act as pure gateways — **4-8 lines per endpoint**:
 ```cpp
 Task<HttpResponsePtr> login(HttpRequestPtr req) {
     const auto body = LoginDto::form_multipart(parser);
-    const auto& dev = req->getAttributes()->get<DeviceContext>(DEVICE_CTX_KEY);
+    const auto& dev = req->getAttributes()->get<DeviceContext>(AuthContext::kDeviceKey);
     const auto result = co_await service_.login(body, dev.deviceHash, dev.userAgent);
-    if (!result) co_return AppConfig::get401Response("Face not recognized");
+    if (!result) throw ResponseException(IdentityErrors::FaceNotRecognized);
     co_return ApiResponse::ok(result->toJson());
 }
 ```
 
-Never: `if (!json)`, `if (!attrs->find(JWT_CTX_KEY))`, manual field extraction, try/catch.
+Never: `if (!json)`, `if (!attrs->find(AuthContext::kJwtKey))`, manual field extraction, try/catch.
 
 ### 13. Face recognition architecture
 
@@ -680,7 +684,8 @@ Run the full orchestrator when changing shared build infrastructure.
 | `packages/auth/src/filter/jwt/` | JWT verification + refresh token validation |
 | `packages/auth/src/filter/role/` | Role-based access control |
 | `packages/auth/src/filter/valid-json/` | JSON body validation for POST/PATCH |
-| `packages/response/src/config/app-config.hxx` | Centralized responses + attribute keys |
+| `packages/errors/src/errors/` | `ErrorCode`, `ErrorDefinition`, `ResponseException` — the refusals every boundary throws |
+| `packages/http/src/http/` | The `{status, info, errors}` envelope (`ApiResponse`), the one advice (`ErrorHandler`), CORS, health, listener |
 | `packages/auth/src/shared/services/jwt/` | JWT sign/verify (HS256, instance class) |
 | `packages/identity/src/shared/services/face/` | Face detection + recognition (ncnn) — FaceDB = vec0 index (sqlite-vec) |
 | `services/llm/src/shared/services/llm/` | LLM inference (llama.cpp) |
@@ -710,7 +715,6 @@ Run the full orchestrator when changing shared build infrastructure.
 | `packages/text/src/shared/utils/json-diff/` | Diff JSON + snapshot (`JsonDiff`) |
 | `packages/text/src/shared/utils/json-util/` | `jsonToString`/`jsonFromString` |
 | `packages/sync/src/feature/socket/sync/` | `SyncSocket` + `SyncService` + `SynchronizedService` + DTOs |
-| `packages/response/src/http/` | Standardized API response builder |
 | `packages/runtime/src/shared/wrapper/blocking-task/` | Coroutine awaiter for off-loop heavy work |
 | `packages/runtime/src/shared/wrapper/thread-budget/` | Adaptive thread sizing for AI services |
 | `packages/runtime/src/shared/wrapper/hardware-profile/` | CPU/RAM/ISA and video-accel probe (`HardwareProfile`), ncnn-free and ncnn variants |

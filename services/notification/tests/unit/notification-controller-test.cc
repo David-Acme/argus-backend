@@ -1,8 +1,8 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
 
-#include <config/app-config.hxx>
 #include <drogon/drogon.h>
+#include <errors/validation-exception.hxx>
 #include <feature/api/notification/controllers/notification-controller.hxx>
 #include <feature/api/notification/controllers/notification-token-controller.hxx>
 #include <feature/api/notification/dtos/notification-read-dto.hxx>
@@ -18,6 +18,7 @@
 #include <chrono>
 #include <cstdio>
 #include <mutex>
+#include <request-context.hxx>
 #include <string>
 #include <thread>
 #include <vector>
@@ -181,7 +182,7 @@ TEST_CASE("notification contracts hold on the argus-notification surface")
     payload["ids"] = idArray;
     auto req = drogon::HttpRequest::newHttpJsonRequest(payload);
     req->getAttributes()->insert(
-        AppConfig::JWT_CTX_KEY,
+        AuthContext::kJwtKey,
         JwtContext{7, "Resident", UserRole::Resident, true, {}});
     return req;
   };
@@ -232,7 +233,7 @@ TEST_CASE("notification contracts hold on the argus-notification surface")
     payload["notification_ids"] = idArray;
     auto req = drogon::HttpRequest::newHttpJsonRequest(payload);
     req->getAttributes()->insert(
-        AppConfig::JWT_CTX_KEY,
+        AuthContext::kJwtKey,
         JwtContext{7, "Resident", UserRole::Resident, true, {}});
     return req;
   };
@@ -260,7 +261,7 @@ TEST_CASE("notification contracts hold on the argus-notification surface")
   auto summaryReq = drogon::HttpRequest::newHttpJsonRequest(Json::Value());
   summaryReq->setParameter("since", "1");
   summaryReq->getAttributes()->insert(
-      AppConfig::JWT_CTX_KEY,
+      AuthContext::kJwtKey,
       JwtContext{7, "Resident", UserRole::Resident, true, {}});
   const auto summary =
       drogon::sync_wait(notificationController.deliverySummary(summaryReq));
@@ -281,9 +282,9 @@ TEST_CASE("notification contracts hold on the argus-notification surface")
     payload["lang"] = "en";
     auto req = drogon::HttpRequest::newHttpJsonRequest(payload);
     req->getAttributes()->insert(
-        AppConfig::JWT_CTX_KEY,
+        AuthContext::kJwtKey,
         JwtContext{7, "Resident", UserRole::Resident, true, {}});
-    req->getAttributes()->insert(AppConfig::DEVICE_CTX_KEY,
+    req->getAttributes()->insert(AuthContext::kDeviceKey,
                                  DeviceContext{deviceHash, "ua", "127.0.0.1"});
     return req;
   };

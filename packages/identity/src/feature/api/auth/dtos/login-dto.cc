@@ -1,6 +1,6 @@
 #include "login-dto.hxx"
 
-#include <drogon/HttpTypes.h>
+#include <errors/validation-exception.hxx>
 
 LoginDto LoginDto::form_multipart(const drogon::MultiPartParser& parser)
 {

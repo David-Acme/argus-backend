@@ -1,8 +1,10 @@
 #include "vlm-controller.hxx"
 
-#include <vlm/describe-dto.hxx>
-#include <config/app-config.hxx>
+#include "vlm-errors.hxx"
+
+#include <errors/response-exception.hxx>
 #include <http/api-response.hxx>
+#include <vlm/describe-dto.hxx>
 
 #include <drogon/drogon.h>
 #include <opencv2/imgcodecs.hpp>
@@ -14,11 +16,10 @@ drogon::Task<drogon::HttpResponsePtr>
 VlmController::describe(drogon::HttpRequestPtr req)
 {
   if (!service_.isLoaded())
-    co_return AppConfig::get503Response("Vision engine is not loaded",
-                                        "VLM_NOT_LOADED");
+    throw ResponseException(VlmErrors::VisionEngineNotLoaded);
 
   if (!req->getJsonError().empty() || !req->getJsonObject())
-    co_return AppConfig::get400Response("Body must be a JSON object");
+    throw ResponseException(VlmErrors::BodyNotJsonObject);
 
   const auto body = DescribeImageDto::fromJson(*req->getJsonObject());
 

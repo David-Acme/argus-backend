@@ -1,5 +1,6 @@
 #include "remote-config.hxx"
 
+#include <http/listener-config.hxx>
 #include <shared/services/config-service/config-service.hxx>
 #include <stdexcept>
 #include <string>

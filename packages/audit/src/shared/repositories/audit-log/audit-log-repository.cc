@@ -1,6 +1,6 @@
 #include "audit-log-repository.hxx"
 
-#include <config/app-config.hxx>
+#include <shared/contracts/sync-limits.hxx>
 #include <shared/services/sqlite/db-service.hxx>
 #include <shared/utils/json-util/json-util.hxx>
 #include <string>
@@ -126,7 +126,7 @@ AuditLogRepository::findSync(const AuditLogSyncFilter& filter) const
   else {
     query = expand(FIND_SYNC_ALL, placeholders);
   }
-  query += AppConfig::SYNC_LIMIT;
+  query += SyncLimits::kMaxRows;
 
   const auto& argsRef = args;
   const auto result = co_await client->execSqlCoro(query, argsRef);

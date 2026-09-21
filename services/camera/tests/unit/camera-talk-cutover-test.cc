@@ -3,9 +3,9 @@
 
 #include "fake-tts-server.hxx"
 
-#include <config/app-config.hxx>
 #include <feature/api/camera-control/controllers/camera-control-controller.hxx>
 #include <feature/api/camera-control/services/camera-control-feature-service.hxx>
+#include <errors/response-exception.hxx>
 #include <shared/services/camera-driver/camera-driver.hxx>
 #include <shared/services/config-service/config-service.hxx>
 
@@ -13,6 +13,7 @@
 #include <netinet/in.h>
 #include <json/value.h>
 #include <cstdio>
+#include <optional>
 #include <string>
 #include <thread>
 #include <vector>
@@ -120,6 +121,29 @@ Json::Value body(const drogon::HttpResponsePtr& response)
   return *json;
 }
 
+// A refusal is thrown, not returned (architecture plan section 4.7): the advice
+// that formats it into an envelope runs only when the framework drives the
+// controller, so a test that drives the coroutine straight through sync_wait
+// reads the refusal off the exception instead.
+struct Refusal
+{
+  int status;
+  std::string code;
+  std::string message;
+};
+
+std::optional<Refusal> refusalOf(drogon::Task<drogon::HttpResponsePtr> task)
+{
+  try {
+    drogon::sync_wait(std::move(task));
+  }
+  catch (const ResponseException& error) {
+    return Refusal{error.statusCode(), error.errorCode(),
+                   std::string(error.what())};
+  }
+  return std::nullopt;
+}
+
 Json::Value talkBody(const std::string& text)
 {
   Json::Value json;
@@ -168,21 +192,21 @@ TEST_CASE("the camera-talk route synthesizes over the argus-tts wire")
   CHECK(envelope["status"].asInt() == 200);
   CHECK(envelope["errors"].isNull());
 
-  const auto missing = drogon::sync_wait(controller.talk(
+  const auto missing = refusalOf(controller.talk(
       drogon::HttpRequest::newHttpJsonRequest(talkBody("Hola camera")), 99));
-  CHECK(body(missing)["status"].asInt() == 404);
-  CHECK(body(missing)["errors"]["code"] == "NOT_FOUND");
+  REQUIRE(missing);
+  CHECK(missing->status == 404);
+  CHECK(missing->code == "NOT_FOUND");
 
   ConfigService::setRuntimeString("tts.remote_url",
                                   "http://127.0.0.1:" +
                                       std::to_string(deadPort()));
-  const auto dead = drogon::sync_wait(controller.talk(
+  const auto dead = refusalOf(controller.talk(
       drogon::HttpRequest::newHttpJsonRequest(talkBody("Hola camera")), 1));
-  const Json::Value deadEnvelope = body(dead);
-  CHECK(deadEnvelope["status"].asInt() == 502);
-  CHECK(deadEnvelope["errors"]["code"] == "CAMERA_UNREACHABLE");
-  CHECK(deadEnvelope["errors"]["message"].asString().find(
-            "Text-to-speech unavailable") != std::string::npos);
+  REQUIRE(dead);
+  CHECK(dead->status == 502);
+  CHECK(dead->code == "CAMERA_UNREACHABLE");
+  CHECK(dead->message.find("Text-to-speech unavailable") != std::string::npos);
   CHECK(speaker->speakCalls == 2);
 
   ConfigService::setRuntimeString("tts.remote_url", "");

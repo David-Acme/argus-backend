@@ -27,9 +27,9 @@ if(NOT TARGET Drogon::Drogon)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/nats
                          ${CMAKE_BINARY_DIR}/nats)
     endif()
-    if(NOT TARGET pkg::response)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/response
-                         ${CMAKE_BINARY_DIR}/response)
+    if(NOT TARGET argus::http)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/http
+                         ${CMAKE_BINARY_DIR}/http)
     endif()
 endif()
 
@@ -51,7 +51,7 @@ add_library(tunnel-core STATIC
 
 target_include_directories(tunnel-core PUBLIC ${TUNNEL_SRC_ROOT})
 
-target_link_libraries(tunnel-core PUBLIC argus::config)
+target_link_libraries(tunnel-core PUBLIC argus::config argus::http)
 
 target_compile_options(tunnel-core PRIVATE -Wall -Wextra)
 

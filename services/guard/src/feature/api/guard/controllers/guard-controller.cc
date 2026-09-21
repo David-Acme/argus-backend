@@ -1,7 +1,10 @@
 #include "guard-controller.hxx"
 
-#include <config/app-config.hxx>
+#include "guard-errors.hxx"
+
+#include <errors/response-exception.hxx>
 #include <filter/device/device-filter.hxx>
+#include <http/api-response.hxx>
 #include <identity/identity-client.hxx>
 #include <feature/api/guard/dtos/create-expected-guest-dto.hxx>
 #include <feature/api/guard/dtos/feedback-decision-dto.hxx>
@@ -10,7 +13,7 @@
 #include <feature/api/guard/dtos/summary-decisions-dto.hxx>
 #include <feature/api/guard/dtos/remove-expected-guest-dto.hxx>
 #include <feature/api/guard/dtos/update-guard-mode-dto.hxx>
-#include <http/api-response.hxx>
+#include <request-context.hxx>
 
 GuardController::GuardController(IdentityClient* identity)
     : service_(identity)
@@ -35,9 +38,9 @@ drogon::Task<drogon::HttpResponsePtr> GuardController::promotePerson(
 {
   const std::string token = bearerToken(req);
   if (token.empty())
-    co_return AppConfig::get400Response("Owner access token required");
+    throw ResponseException(GuardErrors::OwnerAccessTokenRequired);
   const auto& device =
-      req->getAttributes()->get<DeviceContext>(AppConfig::DEVICE_CTX_KEY);
+      req->getAttributes()->get<DeviceContext>(AuthContext::kDeviceKey);
   const bool promoted = co_await service_.promotePerson(
       {.personId = personId, .accessToken = token, .deviceHash = device.deviceHash});
   Json::Value response;
@@ -91,7 +94,7 @@ drogon::Task<drogon::HttpResponsePtr> GuardController::feedback(
 {
   const auto body = FeedbackDecisionDto::fromJson(*req->getJsonObject());
   if (!co_await service_.setFeedback(eventId, body.label))
-    co_return AppConfig::get404Response("Decision not found");
+    throw ResponseException(GuardErrors::DecisionNotFound);
   co_return ApiResponse::ok(Json::Value(Json::objectValue));
 }
 
@@ -116,7 +119,7 @@ drogon::Task<drogon::HttpResponsePtr> GuardController::removeGuest(
   const auto query = RemoveExpectedGuestDto::fromRequest(req);
   const bool removed = co_await service_.removeGuest(query.id);
   if (!removed)
-    co_return AppConfig::get404Response("Expected guest not found");
+    throw ResponseException(GuardErrors::ExpectedGuestNotFound);
   Json::Value response;
   response["removed"] = true;
   co_return ApiResponse::ok(response);

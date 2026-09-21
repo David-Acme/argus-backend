@@ -3,6 +3,7 @@
 
 #include <map>
 #include <optional>
+#include <errors/validation-exception.hxx>
 #include <shared/validation/validation_dsl.hxx>
 #include <shared/validation/validator.hxx>
 #include <string>

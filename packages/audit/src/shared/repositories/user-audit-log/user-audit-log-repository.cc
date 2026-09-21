@@ -1,7 +1,7 @@
 #include "user-audit-log-repository.hxx"
 
-#include <config/app-config.hxx>
 #include <ctime>
+#include <shared/contracts/sync-limits.hxx>
 #include <shared/services/sqlite/db-service.hxx>
 #include <shared/utils/json-util/json-util.hxx>
 
@@ -63,14 +63,14 @@ UserAuditLogRepository::findSync(const UserAuditLogSyncFilter& filter) const
     std::vector<Json::Value> data;
     if (filter.endId) {
       const auto result = co_await client->execSqlCoro(
-          std::string(FIND_SYNC_AFTER_ID_TO) + AppConfig::SYNC_LIMIT,
+          std::string(FIND_SYNC_AFTER_ID_TO) + SyncLimits::kMaxRows,
           filter.userId, *filter.afterId, *filter.endId);
       for (const auto& row : result)
         data.push_back(UserAuditLogSchema(row).toJson());
       co_return data;
     }
     const auto result = co_await client->execSqlCoro(
-        std::string(FIND_SYNC_AFTER_ID) + AppConfig::SYNC_LIMIT,
+        std::string(FIND_SYNC_AFTER_ID) + SyncLimits::kMaxRows,
         filter.userId, *filter.afterId);
     for (const auto& row : result)
       data.push_back(UserAuditLogSchema(row).toJson());
@@ -78,7 +78,7 @@ UserAuditLogRepository::findSync(const UserAuditLogSyncFilter& filter) const
   }
   if (filter.startTime && filter.endTime) {
     const auto result =
-        co_await client->execSqlCoro(std::string(FIND_SYNC) + AppConfig::SYNC_LIMIT, filter.userId,
+        co_await client->execSqlCoro(std::string(FIND_SYNC) + SyncLimits::kMaxRows, filter.userId,
                                      *filter.startTime, *filter.endTime);
     std::vector<Json::Value> data;
     for (const auto& row : result)
@@ -87,7 +87,7 @@ UserAuditLogRepository::findSync(const UserAuditLogSyncFilter& filter) const
   }
   if (filter.startTime) {
     const auto result =
-        co_await client->execSqlCoro(std::string(FIND_SYNC_FROM) + AppConfig::SYNC_LIMIT, filter.userId,
+        co_await client->execSqlCoro(std::string(FIND_SYNC_FROM) + SyncLimits::kMaxRows, filter.userId,
                                      *filter.startTime);
     std::vector<Json::Value> data;
     for (const auto& row : result)
@@ -96,14 +96,14 @@ UserAuditLogRepository::findSync(const UserAuditLogSyncFilter& filter) const
   }
   if (filter.endTime) {
     const auto result = co_await client->execSqlCoro(
-        std::string(FIND_SYNC_TO) + AppConfig::SYNC_LIMIT, filter.userId, *filter.endTime);
+        std::string(FIND_SYNC_TO) + SyncLimits::kMaxRows, filter.userId, *filter.endTime);
     std::vector<Json::Value> data;
     for (const auto& row : result)
       data.push_back(UserAuditLogSchema(row).toJson());
     co_return data;
   }
   {
-    const auto result = co_await client->execSqlCoro(std::string(FIND_SYNC_ALL) + AppConfig::SYNC_LIMIT,
+    const auto result = co_await client->execSqlCoro(std::string(FIND_SYNC_ALL) + SyncLimits::kMaxRows,
                                                      filter.userId);
     std::vector<Json::Value> data;
     for (const auto& row : result)

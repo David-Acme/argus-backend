@@ -7,7 +7,6 @@
 #include <cstddef>
 #include <cstdlib>
 #include <cstring>
-#include <drogon/drogon.h>
 #include <ifaddrs.h>
 #include <mdns.h>
 #include <net/if.h>
@@ -18,6 +17,7 @@
 #include <string_view>
 #include <strings.h>
 #include <thread>
+#include <trantor/utils/Logger.h>
 #include <utility>
 #include <vector>
 

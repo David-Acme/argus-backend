@@ -5,7 +5,7 @@
 #include <openssl/evp.h>
 #include <openssl/rand.h>
 #include <identity-errors.hxx>
-#include <response-exception.hxx>
+#include <errors/response-exception.hxx>
 #include <string_view>
 
 namespace

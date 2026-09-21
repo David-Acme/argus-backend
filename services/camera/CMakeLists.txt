@@ -85,9 +85,9 @@ if(PROJECT_IS_TOP_LEVEL)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/validation
                          ${CMAKE_BINARY_DIR}/validation)
     endif()
-    if(NOT TARGET pkg::response)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/response
-                         ${CMAKE_BINARY_DIR}/response)
+    if(NOT TARGET argus::http)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/http
+                         ${CMAKE_BINARY_DIR}/http)
     endif()
     if(NOT TARGET argus::sqlite)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/sqlite
@@ -280,7 +280,7 @@ target_link_libraries(camera-core PUBLIC
     argus::storage
     argus::runtime
     argus::validation
-    pkg::response
+    argus::http
     OpenSSL::SSL
     OpenSSL::Crypto)
 target_link_libraries(camera-core PRIVATE contract::camera contract::sync)
@@ -342,7 +342,7 @@ foreach(TEST_NAME IN LISTS CAMERA_UNIT_TESTS)
     argus::runtime
     argus::validation
     contract::sync
-    pkg::response
+    argus::http
     doctest::doctest)
 
     target_compile_options(${TEST_NAME} PRIVATE -Wall -Wextra)
@@ -421,7 +421,7 @@ target_link_libraries(camera-talk-cutover-test PRIVATE
     argus::text
     argus::runtime
     argus::validation
-    pkg::response
+    argus::http
     argus::tts-client
     OpenSSL::SSL
     OpenSSL::Crypto contract::camera
@@ -477,7 +477,7 @@ target_link_libraries(camera-action-rpc-test PRIVATE
     argus::sqlite
     argus::runtime
     argus::validation
-    pkg::response
+    argus::http
     argus::tts-client
     argus::stt-client
     argus::client-camera-actions

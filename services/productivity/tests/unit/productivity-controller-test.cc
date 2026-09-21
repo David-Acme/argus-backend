@@ -1,7 +1,6 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
 
-#include <config/app-config.hxx>
 #include <drogon/drogon.h>
 #include <feature/api/calendar-event-share/controllers/calendar-event-share-controller.hxx>
 #include <feature/api/calendar-event-share/dtos/create-calendar-event-share-dto.hxx>
@@ -21,10 +20,14 @@
 #include <shared/services/sqlite/db-service.hxx>
 #include <shared/utils/json-util/json-util.hxx>
 
+#include <errors/response-exception.hxx>
+
 #include <chrono>
 #include <cstdio>
 #include <memory>
+#include <optional>
 #include <mutex>
+#include <request-context.hxx>
 #include <string>
 #include <thread>
 #include <vector>
@@ -233,6 +236,29 @@ Json::Value body(const drogon::HttpResponsePtr& response)
   return *json;
 }
 
+// A refusal is thrown, not returned (architecture plan section 4.7): the advice
+// that formats it into an envelope runs only when the framework drives the
+// controller, so a test that drives the coroutine straight through sync_wait
+// reads the refusal off the exception instead.
+struct Refusal
+{
+  int status;
+  std::string code;
+  std::string message;
+};
+
+std::optional<Refusal> refusalOf(drogon::Task<drogon::HttpResponsePtr> task)
+{
+  try {
+    drogon::sync_wait(std::move(task));
+  }
+  catch (const ResponseException& error) {
+    return Refusal{error.statusCode(), error.errorCode(),
+                   std::string(error.what())};
+  }
+  return std::nullopt;
+}
+
 struct SetActorInput
 {
   const drogon::HttpRequestPtr& req;
@@ -243,7 +269,7 @@ struct SetActorInput
 void setActor(const SetActorInput& input)
 {
   input.req->getAttributes()->insert(
-      AppConfig::JWT_CTX_KEY,
+      AuthContext::kJwtKey,
       JwtContext{input.sub, "Actor", input.role, true, {}});
 }
 
@@ -318,12 +344,11 @@ TEST_CASE("productivity contracts hold on the argus-productivity surface")
       drogon::HttpRequest::newHttpJsonRequest(projectBody);
   setActor({.req = missingUpdateReq, .sub = 42, .role = UserRole::Owner});
   const auto missingUpdate =
-      drogon::sync_wait(projectController.update(missingUpdateReq, 999));
-  const Json::Value missingUpdateJson = body(missingUpdate);
-  CHECK(missingUpdateJson["status"].asInt() == 404);
-  CHECK(missingUpdateJson["info"].isNull());
-  CHECK(missingUpdateJson["errors"]["code"] == "NOT_FOUND");
-  CHECK(missingUpdateJson["errors"]["message"] == "Project not found");
+      refusalOf(projectController.update(missingUpdateReq, 999));
+  REQUIRE(missingUpdate);
+  CHECK(missingUpdate->status == 404);
+  CHECK(missingUpdate->code == "NOT_FOUND");
+  CHECK(missingUpdate->message == "Project not found");
 
   Json::Value renameBody;
   renameBody["name"] = "Renovation 2";
@@ -356,21 +381,23 @@ TEST_CASE("productivity contracts hold on the argus-productivity surface")
     return req;
   };
 
-  const auto selfShare = drogon::sync_wait(
-      memberController.create(memberReq(42, "view")));
-  CHECK(body(selfShare)["status"].asInt() == 409);
-  CHECK(body(selfShare)["errors"]["message"] == "The owner already has access");
+  const auto selfShare =
+      refusalOf(memberController.create(memberReq(42, "view")));
+  REQUIRE(selfShare);
+  CHECK(selfShare->status == 409);
+  CHECK(selfShare->message == "The owner already has access");
 
-  const auto inactiveShare = drogon::sync_wait(
-      memberController.create(memberReq(8, "view")));
-  CHECK(body(inactiveShare)["status"].asInt() == 404);
-  CHECK(body(inactiveShare)["errors"]["message"] == "User not found");
+  const auto inactiveShare =
+      refusalOf(memberController.create(memberReq(8, "view")));
+  REQUIRE(inactiveShare);
+  CHECK(inactiveShare->status == 404);
+  CHECK(inactiveShare->message == "User not found");
 
-  const auto guardShare = drogon::sync_wait(
-      memberController.create(memberReq(9, "view")));
-  CHECK(body(guardShare)["status"].asInt() == 403);
-  CHECK(body(guardShare)["errors"]["message"]
-        == "That user cannot see projects");
+  const auto guardShare =
+      refusalOf(memberController.create(memberReq(9, "view")));
+  REQUIRE(guardShare);
+  CHECK(guardShare->status == 403);
+  CHECK(guardShare->message == "That user cannot see projects");
 
   const auto memberCreated =
       drogon::sync_wait(memberController.create(memberReq(7, "view")));
@@ -409,9 +436,10 @@ TEST_CASE("productivity contracts hold on the argus-productivity surface")
   CHECK(body(memberGone)["status"].asInt() == 200);
   CHECK(body(memberGone)["info"]["deleted"].asBool());
   const auto memberGoneTwice =
-      drogon::sync_wait(memberController.remove(ownerRequest(), memberId));
-  CHECK(body(memberGoneTwice)["status"].asInt() == 404);
-  CHECK(body(memberGoneTwice)["errors"]["message"] == "Share not found");
+      refusalOf(memberController.remove(ownerRequest(), memberId));
+  REQUIRE(memberGoneTwice);
+  CHECK(memberGoneTwice->status == 404);
+  CHECK(memberGoneTwice->message == "Share not found");
   REQUIRE(sink.emits.size() == 5);
   CHECK(sink.emits.at(3).operation
         == static_cast<int>(SyncOperation::Delete));
@@ -453,9 +481,10 @@ TEST_CASE("productivity contracts hold on the argus-productivity surface")
   CHECK(sink.emits.back().users == std::vector<int64_t>{42});
 
   const auto taskMissing =
-      drogon::sync_wait(taskController.remove(ownerRequest(), 999));
-  CHECK(body(taskMissing)["status"].asInt() == 404);
-  CHECK(body(taskMissing)["errors"]["message"] == "Task not found");
+      refusalOf(taskController.remove(ownerRequest(), 999));
+  REQUIRE(taskMissing);
+  CHECK(taskMissing->status == 404);
+  CHECK(taskMissing->message == "Task not found");
 
   Json::Value taskStatusBody;
   taskStatusBody["status"] = "doing";
@@ -478,9 +507,10 @@ TEST_CASE("productivity contracts hold on the argus-productivity surface")
   orphanTaskBody["priority"] = "none";
   auto orphanReq = drogon::HttpRequest::newHttpJsonRequest(orphanTaskBody);
   setActor({.req = orphanReq, .sub = 42, .role = UserRole::Owner});
-  const auto orphan = drogon::sync_wait(taskController.create(orphanReq));
-  CHECK(body(orphan)["status"].asInt() == 404);
-  CHECK(body(orphan)["errors"]["message"] == "Project not found");
+  const auto orphan = refusalOf(taskController.create(orphanReq));
+  REQUIRE(orphan);
+  CHECK(orphan->status == 404);
+  CHECK(orphan->message == "Project not found");
 
   CalendarEventController eventController;
 
@@ -528,13 +558,14 @@ TEST_CASE("productivity contracts hold on the argus-productivity surface")
   };
 
   const auto eventSelfShare =
-      drogon::sync_wait(shareController.create(shareReq(42)));
-  CHECK(body(eventSelfShare)["status"].asInt() == 409);
+      refusalOf(shareController.create(shareReq(42)));
+  REQUIRE(eventSelfShare);
+  CHECK(eventSelfShare->status == 409);
   const auto eventGuardShare =
-      drogon::sync_wait(shareController.create(shareReq(9)));
-  CHECK(body(eventGuardShare)["status"].asInt() == 403);
-  CHECK(body(eventGuardShare)["errors"]["message"]
-        == "That user cannot see calendar events");
+      refusalOf(shareController.create(shareReq(9)));
+  REQUIRE(eventGuardShare);
+  CHECK(eventGuardShare->status == 403);
+  CHECK(eventGuardShare->message == "That user cannot see calendar events");
 
   const auto shareCreated = drogon::sync_wait(shareController.create(shareReq(7)));
   const Json::Value shareJson = body(shareCreated);
@@ -565,19 +596,20 @@ TEST_CASE("productivity contracts hold on the argus-productivity surface")
       drogon::sync_wait(shareController.remove(ownerRequest(), shareId));
   CHECK(body(shareGone)["status"].asInt() == 200);
   const auto shareGoneTwice =
-      drogon::sync_wait(shareController.remove(ownerRequest(), shareId));
-  CHECK(body(shareGoneTwice)["status"].asInt() == 404);
-  CHECK(body(shareGoneTwice)["errors"]["message"] == "Share not found");
+      refusalOf(shareController.remove(ownerRequest(), shareId));
+  REQUIRE(shareGoneTwice);
+  CHECK(shareGoneTwice->status == 404);
+  CHECK(shareGoneTwice->message == "Share not found");
 
   const auto eventGone =
       drogon::sync_wait(eventController.remove(ownerRequest(), eventId));
   CHECK(body(eventGone)["status"].asInt() == 200);
   CHECK(body(eventGone)["info"]["deleted"].asBool());
   const auto eventGoneTwice =
-      drogon::sync_wait(eventController.remove(ownerRequest(), eventId));
-  CHECK(body(eventGoneTwice)["status"].asInt() == 404);
-  CHECK(body(eventGoneTwice)["errors"]["message"]
-        == "Calendar event not found");
+      refusalOf(eventController.remove(ownerRequest(), eventId));
+  REQUIRE(eventGoneTwice);
+  CHECK(eventGoneTwice->status == 404);
+  CHECK(eventGoneTwice->message == "Calendar event not found");
 
   const auto projectGone =
       drogon::sync_wait(projectController.remove(ownerRequest(), projectId));

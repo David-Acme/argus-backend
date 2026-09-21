@@ -1,11 +1,11 @@
 #include <app/rpc/tts-rpc-server.hxx>
+#include <http/error-handler.hxx>
+#include <http/health-controller.hxx>
+#include <http/listener-config.hxx>
 #include <shared/wrapper/thread-budget/thread-budget.hxx>
-#include <config/app-config.hxx>
-#include <controllers/health-controller.hxx>
 #include <feature/synthesis/api/http/controller/tts-controller.hxx>
 #include <drogon/drogon.h>
 #include <filter/valid-json/valid-json-filter.hxx>
-#include <server/listener-config.hxx>
 #include <shared/services/config-service/config-service.hxx>
 #include <feature/synthesis/domain/tts-service.hxx>
 
@@ -38,13 +38,11 @@ int main()
 
   drogon::app().loadConfigJson(drogonConfig(listener));
 
-  drogon::app().setExceptionHandler(AppConfig::handleException);
+  drogon::app().setExceptionHandler(ErrorHandler::handleException);
 
   drogon::app().setCustomErrorHandler(
       [](drogon::HttpStatusCode code, const drogon::HttpRequestPtr&) {
-        if (code == drogon::k405MethodNotAllowed)
-          return AppConfig::get405Response();
-        return AppConfig::get404Response();
+        return ErrorHandler::unmatchedRoute(code);
       });
 
   TtsService::instance().init();

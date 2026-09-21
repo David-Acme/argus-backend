@@ -1,9 +1,9 @@
 #include "notification-sync-source.hxx"
 
+#include <errors/response-exception.hxx>
+#include <gateway-errors.hxx>
 #include <shared/services/config-service/config-service.hxx>
 
-#include <gateway-errors.hxx>
-#include <response-exception.hxx>
 #include <shared/utils/json-util/json-util.hxx>
 #include <shared/wrapper/blocking-task/blocking-task.hxx>
 #include <string>

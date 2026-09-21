@@ -3,6 +3,7 @@
 
 #include <doctest/doctest.h>
 
+#include <http/health-controller.hxx>
 #include <server/health-extras.hxx>
 
 #include <algorithm>

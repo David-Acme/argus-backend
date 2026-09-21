@@ -1,11 +1,12 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
 
-#include <config/app-config.hxx>
-#include <controllers/health-controller.hxx>
 #include <feature/synthesis/api/http/controller/tts-controller.hxx>
 #include <drogon/drogon.h>
 #include <filter/valid-json/valid-json-filter.hxx>
+#include <http/api-response.hxx>
+#include <http/error-handler.hxx>
+#include <http/health-controller.hxx>
 #include <shared/services/config-service/config-service.hxx>
 #include <feature/synthesis/domain/tts-service.hxx>
 #include <shared/wrapper/hardware-profile/hardware-profile.hxx>
@@ -25,6 +26,7 @@
 #include <map>
 #include <string>
 #include <thread>
+#include <tts-errors.hxx>
 
 namespace
 {
@@ -248,12 +250,10 @@ TEST_CASE("the argus-tts internal wire serves the legacy adapters")
       HealthStatus{.serviceName = "argus-tts", .extras = {}}));
   drogon::app().registerController(std::make_shared<TtsController>());
   drogon::app().registerFilter(std::make_shared<ValidJsonFilter>());
-  drogon::app().setExceptionHandler(AppConfig::handleException);
+  drogon::app().setExceptionHandler(ErrorHandler::handleException);
   drogon::app().setCustomErrorHandler(
       [](drogon::HttpStatusCode code, const drogon::HttpRequestPtr&) {
-        if (code == drogon::k405MethodNotAllowed)
-          return AppConfig::get405Response();
-        return AppConfig::get404Response();
+        return ErrorHandler::unmatchedRoute(code);
       });
   drogon::app().addListener("127.0.0.1", 0);
 
@@ -354,8 +354,8 @@ TEST_CASE("the argus-tts internal wire serves the legacy adapters")
   CHECK(envelope(notAllowed)["errors"]["code"] == "METHOD_NOT_ALLOWED");
 
   TtsService::instance().shutdown();
-  const auto expectedUnloaded = AppConfig::get503Response(
-      "Text-to-speech engine is not loaded", "TTS_NOT_LOADED");
+  const auto expectedUnloaded =
+      ApiResponse::error(TtsErrors::TtsNotLoaded);
   for (const auto* path : {"/tts/v1/synthesize", "/tts/v1/synthesize-stream"}) {
     const auto unloaded = request({.port = port,
                                    .method = "POST",

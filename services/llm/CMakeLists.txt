@@ -94,9 +94,9 @@ if(NOT TARGET Drogon::Drogon)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/validation
                          ${CMAKE_BINARY_DIR}/validation)
     endif()
-    if(NOT TARGET pkg::response)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/response
-                         ${CMAKE_BINARY_DIR}/response)
+    if(NOT TARGET argus::http)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/http
+                         ${CMAKE_BINARY_DIR}/http)
     endif()
     if(NOT TARGET argus::phrase)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/phrase
@@ -175,7 +175,7 @@ target_link_libraries(llm-core PUBLIC
     argus::phrase
     argus::runtime
     argus::validation
-    pkg::response
+    argus::http
     argus::llm-client
     argus::intent
     memory-core
@@ -275,7 +275,7 @@ target_link_libraries(llm-wire-test PRIVATE
     argus::phrase
     argus::runtime
     argus::validation
-    pkg::response
+    argus::http
     argus::llm-client
     argus::intent
     memory-core

@@ -1,11 +1,11 @@
 #include "sync-service.hxx"
 
-#include <config/app-config.hxx>
+#include <errors/response-exception.hxx>
+#include <request-context.hxx>
 #include <shared/access/role-access.hxx>
 #include <shared/contracts/sync-operation.hxx>
 #include <shared/contracts/user-directory.hxx>
 #include <shared/dtos/socket-emit/socket-emit-dto.hxx>
-#include <response-exception.hxx>
 #include <sync-errors.hxx>
 
 drogon::Task<void>
@@ -38,7 +38,7 @@ SyncService::handleConnect(const drogon::HttpRequestPtr& req,
                            const drogon::WebSocketConnectionPtr& conn) const
 {
   const auto& ctx =
-      req->getAttributes()->get<JwtContext>(AppConfig::JWT_CTX_KEY);
+      req->getAttributes()->get<JwtContext>(AuthContext::kJwtKey);
 
   conn->setContext(std::make_shared<JwtContext>(ctx));
 

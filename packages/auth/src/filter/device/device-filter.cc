@@ -1,11 +1,11 @@
 #include "device-filter.hxx"
 
-#include <config/app-config.hxx>
 #include <filter/identity-access.hxx>
 #include <identity/identity-client.hxx>
 #include <openssl/evp.h>
 #include <openssl/hmac.h>
 #include <openssl/sha.h>
+#include <request-context.hxx>
 #include <shared/services/config-service/config-service.hxx>
 #include <shared/wrapper/blocking-task/blocking-task.hxx>
 #include <stdexcept>
@@ -75,7 +75,7 @@ DeviceFilter::doFilter(const drogon::HttpRequestPtr& req)
     ctx.deviceHash = hashFingerprint(ua, ip);
   }
 
-  req->getAttributes()->insert(AppConfig::DEVICE_CTX_KEY, ctx);
+  req->getAttributes()->insert(AuthContext::kDeviceKey, ctx);
   co_return drogon::HttpResponsePtr{};
 }
 

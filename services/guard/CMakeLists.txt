@@ -65,9 +65,9 @@ if(PROJECT_IS_TOP_LEVEL)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/validation
                          ${CMAKE_BINARY_DIR}/validation)
     endif()
-    if(NOT TARGET pkg::response)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/response
-                         ${CMAKE_BINARY_DIR}/response)
+    if(NOT TARGET argus::http)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/http
+                         ${CMAKE_BINARY_DIR}/http)
     endif()
     if(NOT TARGET argus::sqlite)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/sqlite
@@ -231,7 +231,7 @@ target_link_libraries(vlm-client-live-test PRIVATE
     argus::storage
     argus::runtime
     argus::validation
-    pkg::response
+    argus::http
     Drogon::Drogon
     doctest::doctest)
 target_include_directories(vlm-client-live-test PRIVATE
@@ -256,7 +256,7 @@ target_link_libraries(guard-assessment-live-test PRIVATE
     argus::storage
     argus::runtime
     argus::validation
-    pkg::response
+    argus::http
     Drogon::Drogon
     doctest::doctest)
 target_include_directories(guard-assessment-live-test PRIVATE

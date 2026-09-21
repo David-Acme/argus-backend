@@ -1,8 +1,8 @@
-#include <config/app-config.hxx>
-#include <controllers/health-controller.hxx>
 #include <controllers/stt-controller.hxx>
 #include <drogon/drogon.h>
-#include <server/listener-config.hxx>
+#include <http/error-handler.hxx>
+#include <http/health-controller.hxx>
+#include <http/listener-config.hxx>
 #include <shared/services/config-service/config-service.hxx>
 #include <shared/services/stt/stt-service.hxx>
 
@@ -33,13 +33,11 @@ int main()
 
   drogon::app().loadConfigJson(drogonConfig(listener));
 
-  drogon::app().setExceptionHandler(AppConfig::handleException);
+  drogon::app().setExceptionHandler(ErrorHandler::handleException);
 
   drogon::app().setCustomErrorHandler(
       [](drogon::HttpStatusCode code, const drogon::HttpRequestPtr&) {
-        if (code == drogon::k405MethodNotAllowed)
-          return AppConfig::get405Response();
-        return AppConfig::get404Response();
+        return ErrorHandler::unmatchedRoute(code);
       });
 
   SttService::instance().init();

@@ -52,8 +52,9 @@ review blocker:
 - Minimal comments: short English one-liners only, no prose blocks in protos.
 - Field numbers are never reused; removal means `reserved`, never renumbering.
 - Enum numeric values mirror the C++ sources verbatim
-  (`sync-operation.hxx`, `enums.hxx`, `app-config.hxx`); when the C++ changes,
-  the proto change must quote the new source lines in its commit message.
+  (`sync-operation.hxx`, `table-name.hxx`, `error-code.hxx`); when the C++
+  changes, the proto change must quote the new source lines in its commit
+  message.
 - Generated code (`gen/`) is never committed.
 - Validation before commit: `buf lint && buf breaking` when buf is available,
   else `protoc --descriptor_set_out=/dev/null -I proto $(git ls-files 'proto/*.proto')`.

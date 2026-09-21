@@ -8,8 +8,8 @@
 #include <ctime>
 #include <drogon/HttpClient.h>
 #include <drogon/drogon.h>
+#include <errors/response-exception.hxx>
 #include <openssl/rand.h>
-#include <response-exception.hxx>
 #include <shared/services/config-service/config-service.hxx>
 #include <stdexcept>
 

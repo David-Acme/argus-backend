@@ -76,9 +76,9 @@ if(NOT TARGET argus::validation)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../validation
                      ${CMAKE_BINARY_DIR}/validation)
 endif()
-if(NOT TARGET pkg::response)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../response
-                     ${CMAKE_BINARY_DIR}/response)
+if(NOT TARGET argus::http)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../http
+                     ${CMAKE_BINARY_DIR}/http)
 endif()
 if(PROJECT_IS_TOP_LEVEL)
     if(NOT TARGET argus::room)
@@ -214,7 +214,7 @@ argus_module(NAME identity
         argus::storage
         argus::runtime
         argus::validation
-        pkg::response
+        argus::http
         contract::auth
         contract::sync
         contract::voice

@@ -20,6 +20,10 @@ enum class ErrorCode
   ValidationError,
   UserNotFound,
   TtsNotLoaded,
+  SttNotLoaded,
+  LlmNotLoaded,
+  VlmNotLoaded,
+  CameraUnreachable,
   Cancelled,
   DeadlineExceeded
 };
@@ -42,6 +46,10 @@ constexpr std::string_view toString(ErrorCode code)
   case ErrorCode::ValidationError: return "VALIDATION_ERROR";
   case ErrorCode::UserNotFound: return "USER_NOT_FOUND";
   case ErrorCode::TtsNotLoaded: return "TTS_NOT_LOADED";
+  case ErrorCode::SttNotLoaded: return "STT_NOT_LOADED";
+  case ErrorCode::LlmNotLoaded: return "LLM_NOT_LOADED";
+  case ErrorCode::VlmNotLoaded: return "VLM_NOT_LOADED";
+  case ErrorCode::CameraUnreachable: return "CAMERA_UNREACHABLE";
   case ErrorCode::Cancelled: return "CANCELLED";
   case ErrorCode::DeadlineExceeded: return "DEADLINE_EXCEEDED";
   }

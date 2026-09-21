@@ -1,5 +1,7 @@
 #include "notification-ack-dto.hxx"
 
+#include <errors/validation-exception.hxx>
+
 NotificationAckDto NotificationAckDto::fromJson(const Json::Value& json)
 {
   NotificationAckDto dto;

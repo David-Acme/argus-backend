@@ -6,14 +6,21 @@
 
 cmake_minimum_required(VERSION 3.25)
 
+if(NOT TARGET argus::errors)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../errors
+                     ${CMAKE_CURRENT_BINARY_DIR}/errors)
+endif()
+
 add_library(contract-productivity INTERFACE)
 add_library(contract::productivity ALIAS contract-productivity)
 target_include_directories(contract-productivity INTERFACE
     ${CMAKE_CURRENT_SOURCE_DIR})
 target_sources(contract-productivity INTERFACE
     ${CMAKE_CURRENT_SOURCE_DIR}/membership-error.hxx
+    ${CMAKE_CURRENT_SOURCE_DIR}/productivity-errors.hxx
     ${CMAKE_CURRENT_SOURCE_DIR}/reminder-detail-status.hxx
     ${CMAKE_CURRENT_SOURCE_DIR}/share-access.hxx)
+target_link_libraries(contract-productivity INTERFACE argus::errors)
 
 # The round-trip suite: every name is its own spelling and back.
 enable_testing()

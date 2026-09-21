@@ -1,10 +1,10 @@
 #include "synchronized-service.hxx"
 
-#include <sync-errors.hxx>
+#include <errors/response-exception.hxx>
 #include <shared/access/role-access.hxx>
 #include <shared/contracts/sync-operation.hxx>
-#include <response-exception.hxx>
 #include <stdexcept>
+#include <sync-errors.hxx>
 
 namespace
 {

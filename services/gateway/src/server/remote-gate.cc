@@ -1,8 +1,10 @@
 #include "remote-gate.hxx"
 
-#include <config/app-config.hxx>
 #include <drogon/drogon.h>
 #include <filter/device/device-filter.hxx>
+#include <gateway-errors.hxx>
+#include <http/api-response.hxx>
+#include <http/cors.hxx>
 
 #include <chrono>
 #include <exception>
@@ -37,19 +39,19 @@ drogon::HttpResponsePtr RemoteGate::check(const drogon::HttpRequestPtr& req,
                                           bool remote)
 {
   if (remote)
-    req->getAttributes()->insert(AppConfig::REMOTE_CTX_KEY, true);
+    req->getAttributes()->insert(RemoteGate::kRemoteContextKey, true);
 
   // Short-circuits bypass the post-handling advice, so CORS goes on here.
   if (limiter_ && limiter_->enabled() && isRateLimitedRoute(req)
       && !limiter_->admit(rateLimitKey(req), now())) {
-    auto resp = AppConfig::get429Response();
-    AppConfig::applyCors(resp);
+    auto resp = ApiResponse::error(GatewayErrors::TooManyRemoteAttempts);
+    Cors::apply(resp);
     return resp;
   }
 
   if (remote && !config_.enabled && isRemoteRestrictedPath(req->path())) {
-    auto resp = AppConfig::getRemoteNotAllowedResponse();
-    AppConfig::applyCors(resp);
+    auto resp = ApiResponse::error(GatewayErrors::RemoteNotAllowed);
+    Cors::apply(resp);
     return resp;
   }
 

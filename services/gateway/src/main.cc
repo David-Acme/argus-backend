@@ -1,21 +1,22 @@
-#include <controllers/health-controller.hxx>
 #include <drogon/drogon.h>
+#include <http/cors.hxx>
+#include <http/error-handler.hxx>
+#include <http/health-controller.hxx>
+#include <http/listener-config.hxx>
 #include <identity/identity-config.hxx>
 #include <identity/identity-registrar.hxx>
 #include <feature/rpc/identity-rpc.hxx>
 #include <proxy/proxy-config.hxx>
 #include <proxy/reverse-proxy.hxx>
-#include <server/listener-config.hxx>
 #include <server/remote-config.hxx>
 #include <server/remote-gate.hxx>
 #include <server/refresh-rate-limiter.hxx>
-#include <config/app-config.hxx>
 #include <json/value.h>
+#include <mdns/mdns-service.hxx>
 #include <memory>
 #include <shared/services/cert/cert-service.hxx>
 #include <shared/services/config-service/config-service.hxx>
 #include <shared/services/face/face-service.hxx>
-#include <shared/services/mdns/mdns-service.hxx>
 #include <shared/services/room/room-manager.hxx>
 #include <shared/services/sqlite/db-service.hxx>
 #include <shared/wrapper/nats/nats-bus.hxx>
@@ -308,7 +309,7 @@ int main()
                drogon::AdviceChainCallback&& chain) {
         if (req->method() == drogon::Options
             && isGatewayNativePath(req->path(), proxy.exclusions)) {
-          AppConfig::handleOptions(req, std::move(cb));
+          Cors::handleOptions(req, std::move(cb));
           return;
         }
         chain();
@@ -316,7 +317,7 @@ int main()
 
   drogon::app().registerPostHandlingAdvice(
       [](const drogon::HttpRequestPtr&, const drogon::HttpResponsePtr& resp) {
-        AppConfig::applyCors(resp);
+        Cors::apply(resp);
       });
 
   drogon::app().registerPostHandlingAdvice(
@@ -325,13 +326,11 @@ int main()
         remoteGate.recordOutcome(req, resp);
       });
 
-  drogon::app().setExceptionHandler(AppConfig::handleException);
+  drogon::app().setExceptionHandler(ErrorHandler::handleException);
 
   drogon::app().setCustomErrorHandler(
       [](drogon::HttpStatusCode code, const drogon::HttpRequestPtr&) {
-        if (code == drogon::k405MethodNotAllowed)
-          return AppConfig::get405Response();
-        return AppConfig::get404Response();
+        return ErrorHandler::unmatchedRoute(code);
       });
 
   const std::string natsUrl = ConfigService::getString("nats.url");

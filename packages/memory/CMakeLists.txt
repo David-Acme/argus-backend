@@ -157,6 +157,7 @@ target_link_libraries(memory-core PUBLIC
     argus::text
     argus::runtime
     argus::validation
+    argus::errors
     contract::sync
     argus::audit
     argus::llm-client

@@ -1,6 +1,10 @@
 #include "response-rpc.hxx"
 
+#include <errors/error-code.hxx>
+#include <errors/error-definition.hxx>
+#include <errors/response-exception.hxx>
 #include <response.pb.h>
+
 #include <algorithm>
 #include <string_view>
 #include <utility>
@@ -12,9 +16,13 @@ namespace
 constexpr std::size_t kMaxDetails = 4096;
 constexpr int kMaxErrors = 16;
 constexpr ErrorDefinition kInternal{
-    .code = ErrorCode::InternalError, .message = "Internal service error"};
+    .code = ErrorCode::InternalError,
+    .status = 500,
+    .message = "Internal service error"};
 constexpr ErrorDefinition kInvalidResponse{
-    .code = ErrorCode::BadGateway, .message = "Invalid service response"};
+    .code = ErrorCode::BadGateway,
+    .status = 502,
+    .message = "Invalid service response"};
 
 grpc::StatusCode rpcCode(int status)
 {
@@ -64,26 +72,53 @@ ResponseException transportError(grpc::StatusCode code)
 {
   switch (code) {
     case grpc::StatusCode::CANCELLED:
-      return ResponseException(499, {.code = ErrorCode::Cancelled, .message = "Request cancelled"});
+      return ResponseException(499,
+                               {.code = ErrorCode::Cancelled,
+                                .status = 499,
+                                .message = "Request cancelled"});
     case grpc::StatusCode::DEADLINE_EXCEEDED:
-      return ResponseException(504, {.code = ErrorCode::DeadlineExceeded, .message = "Request deadline exceeded"});
+      return ResponseException(504,
+                               {.code = ErrorCode::DeadlineExceeded,
+                                .status = 504,
+                                .message = "Request deadline exceeded"});
     case grpc::StatusCode::UNAUTHENTICATED:
-      return ResponseException(401, {.code = ErrorCode::Unauthorized, .message = "Service credential required"});
+      return ResponseException(401,
+                               {.code = ErrorCode::Unauthorized,
+                                .status = 401,
+                                .message = "Service credential required"});
     case grpc::StatusCode::PERMISSION_DENIED:
-      return ResponseException(403, {.code = ErrorCode::Forbidden, .message = "Service access denied"});
+      return ResponseException(403,
+                               {.code = ErrorCode::Forbidden,
+                                .status = 403,
+                                .message = "Service access denied"});
     case grpc::StatusCode::INVALID_ARGUMENT:
     case grpc::StatusCode::OUT_OF_RANGE:
     case grpc::StatusCode::FAILED_PRECONDITION:
-      return ResponseException(400, {.code = ErrorCode::BadRequest, .message = "Invalid service request"});
+      return ResponseException(400,
+                               {.code = ErrorCode::BadRequest,
+                                .status = 400,
+                                .message = "Invalid service request"});
     case grpc::StatusCode::NOT_FOUND:
-      return ResponseException(404, {.code = ErrorCode::NotFound, .message = "Service resource not found"});
+      return ResponseException(404,
+                               {.code = ErrorCode::NotFound,
+                                .status = 404,
+                                .message = "Service resource not found"});
     case grpc::StatusCode::ALREADY_EXISTS:
     case grpc::StatusCode::ABORTED:
-      return ResponseException(409, {.code = ErrorCode::Conflict, .message = "Service request conflict"});
+      return ResponseException(409,
+                               {.code = ErrorCode::Conflict,
+                                .status = 409,
+                                .message = "Service request conflict"});
     case grpc::StatusCode::RESOURCE_EXHAUSTED:
-      return ResponseException(429, {.code = ErrorCode::TooManyRequests, .message = "Service busy"});
+      return ResponseException(429,
+                               {.code = ErrorCode::TooManyRequests,
+                                .status = 429,
+                                .message = "Service busy"});
     case grpc::StatusCode::UNAVAILABLE:
-      return ResponseException(503, {.code = ErrorCode::ServiceUnavailable, .message = "Service unavailable"});
+      return ResponseException(503,
+                               {.code = ErrorCode::ServiceUnavailable,
+                                .status = 503,
+                                .message = "Service unavailable"});
     default:
       return ResponseException(500, kInternal);
   }
@@ -118,9 +153,10 @@ ResponseException fromRpcStatus(const grpc::Status& status)
       !validResponse(response) || rpcCode(static_cast<int>(response.status())) != status.error_code())
     return ResponseException(502, kInvalidResponse);
   if (response.has_single())
-    return ResponseException({.message = response.single().message(),
-                              .statusCode = static_cast<int>(response.status()),
-                              .errorCode = response.single().code()});
+    return ResponseException(
+        {.message = response.single().message(),
+         .statusCode = static_cast<int>(response.status()),
+         .errorCode = response.single().code()});
   std::vector<ResponseError> errors;
   errors.reserve(response.list().errors_size());
   for (const auto& record : response.list().errors())

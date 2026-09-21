@@ -1,6 +1,14 @@
 #include "api-response.hxx"
 
-#include <drogon/HttpTypes.h>
+#include <errors/error-definition.hxx>
+#include <errors/response-exception.hxx>
+#include <http/http-errors.hxx>
+
+#include <drogon/HttpResponse.h>
+#include <json/value.h>
+
+#include <string>
+#include <utility>
 
 drogon::HttpResponsePtr ApiResponse::ok(const Json::Value& data)
 {
@@ -19,14 +27,18 @@ drogon::HttpResponsePtr ApiResponse::noContent()
 
 drogon::HttpResponsePtr ApiResponse::error(const ErrorInput& input)
 {
-  const int statusCode = input.statusCode;
-  const std::string& errorCode = input.errorCode;
-  const std::string& message = input.message;
-
   Json::Value err;
-  err["code"] = errorCode;
-  err["message"] = message;
-  return json({.status = statusCode, .info = nullptr, .errors = &err});
+  err["code"] = input.errorCode;
+  err["message"] = input.message;
+  return json({.status = input.statusCode, .info = nullptr, .errors = &err});
+}
+
+drogon::HttpResponsePtr ApiResponse::error(const ErrorDefinition& error)
+{
+  Json::Value err;
+  err["code"] = std::string(error.wireCode());
+  err["message"] = std::string(error.message);
+  return json({.status = error.status, .info = nullptr, .errors = &err});
 }
 
 drogon::HttpResponsePtr ApiResponse::error(const ResponseException& error)
@@ -54,27 +66,25 @@ drogon::HttpResponsePtr
 ApiResponse::validationError(const Json::Value& fieldErrors)
 {
   Json::Value err;
-  err["code"] = "VALIDATION_ERROR";
-  err["message"] = "Validation failed";
+  err["code"] = std::string(HttpErrors::ValidationFailed.wireCode());
+  err["message"] = std::string(HttpErrors::ValidationFailed.message);
   err["fields"] = fieldErrors;
-  return json({.status = 422, .info = nullptr, .errors = &err});
+  return json(
+      {.status = HttpErrors::ValidationFailed.status, .info = nullptr,
+       .errors = &err});
 }
 
 drogon::HttpResponsePtr ApiResponse::json(const JsonInput& input)
 {
-  const int status = input.status;
-  const Json::Value* info = input.info;
-  const Json::Value* errors = input.errors;
   auto resp = drogon::HttpResponse::newHttpResponse();
-  resp->setStatusCode(static_cast<drogon::HttpStatusCode>(status));
+  resp->setStatusCode(static_cast<drogon::HttpStatusCode>(input.status));
   resp->setContentTypeCode(drogon::CT_APPLICATION_JSON);
 
   Json::Value body;
-  body["status"] = status;
-  body["info"] = info ? *info : Json::Value();
-  body["errors"] = errors ? *errors : Json::Value();
+  body["status"] = input.status;
+  body["info"] = input.info ? *input.info : Json::Value();
+  body["errors"] = input.errors ? *input.errors : Json::Value();
 
-  auto str = body.toStyledString();
-  resp->setBody(std::move(str));
+  resp->setBody(body.toStyledString());
   return resp;
 }

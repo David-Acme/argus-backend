@@ -1,7 +1,6 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
 
-#include <config/app-config.hxx>
 #include <drogon/drogon.h>
 #include <feature/api/auth/services/auth-service.hxx>
 #include <feature/rpc/identity-rpc.hxx>
@@ -17,13 +16,38 @@
 #include <atomic>
 #include <chrono>
 #include <cstdio>
+#include <errors/response-exception.hxx>
 #include <memory>
+#include <optional>
+#include <request-context.hxx>
 #include <string>
 #include <thread>
 #include <unistd.h>
 
 namespace
 {
+// A filter's coroutine driven straight by the test skips the filter advice, so a
+// refusal reaches the caller as the thrown refusal itself: what the advice would
+// have formatted into a status and a body is read off the exception here.
+struct Refusal
+{
+  int status;
+  std::string code;
+  std::string message;
+};
+
+std::optional<Refusal> refusalOf(drogon::Task<drogon::HttpResponsePtr> task)
+{
+  try {
+    drogon::sync_wait(std::move(task));
+  }
+  catch (const ResponseException& error) {
+    return Refusal{error.statusCode(), error.errorCode(),
+                   std::string(error.what())};
+  }
+  return std::nullopt;
+}
+
 int tempCounter()
 {
   static std::atomic<int> counter{0};
@@ -83,7 +107,7 @@ void setSourceIp(const drogon::HttpRequestPtr& req, const std::string& ip)
 
 const DeviceContext& deviceCtx(const drogon::HttpRequestPtr& req)
 {
-  return req->getAttributes()->get<DeviceContext>(AppConfig::DEVICE_CTX_KEY);
+  return req->getAttributes()->get<DeviceContext>(AuthContext::kDeviceKey);
 }
 
 void seedIdentityDb(const char* path)
@@ -285,11 +309,11 @@ TEST_CASE("credential identity mode issues, binds and authenticates devices")
   rejected->addHeader("Authorization", "Bearer " + seededToken);
   drogon::sync_wait(deviceFilter.doFilter(rejected));
   CHECK(deviceCtx(rejected).deviceHash.empty());
-  const auto mismatch = drogon::sync_wait(jwtFilter.doFilter(rejected));
+  const auto mismatch = refusalOf(jwtFilter.doFilter(rejected));
   REQUIRE(mismatch);
-  CHECK(mismatch->getStatusCode() == drogon::HttpStatusCode::k401Unauthorized);
-  CHECK(std::string(mismatch->getBody()).find("Device mismatch") !=
-        std::string::npos);
+  CHECK(mismatch->status == 401);
+  CHECK(mismatch->code == "UNAUTHORIZED");
+  CHECK(mismatch->message == "Device mismatch");
 
   auto boundToEmpty = drogon::HttpRequest::newHttpRequest();
   boundToEmpty->addHeader("User-Agent", kUa);
@@ -297,11 +321,10 @@ TEST_CASE("credential identity mode issues, binds and authenticates devices")
   boundToEmpty->addHeader("X-Argus-Device-Credential", kSecret);
   drogon::sync_wait(deviceFilter.doFilter(boundToEmpty));
   CHECK_FALSE(deviceCtx(boundToEmpty).deviceHash.empty());
-  const auto stillMismatch =
-      drogon::sync_wait(jwtFilter.doFilter(boundToEmpty));
+  const auto stillMismatch = refusalOf(jwtFilter.doFilter(boundToEmpty));
   REQUIRE(stillMismatch);
-  CHECK(stillMismatch->getStatusCode() ==
-        drogon::HttpStatusCode::k401Unauthorized);
+  CHECK(stillMismatch->status == 401);
+  CHECK(stillMismatch->message == "Device mismatch");
   client->execSqlSync("DELETE FROM refresh_token");
 
   client->execSqlSync(
@@ -342,7 +365,7 @@ TEST_CASE("credential identity mode issues, binds and authenticates devices")
   const auto authenticated = drogon::sync_wait(jwtFilter.doFilter(desktop));
   CHECK_FALSE(authenticated);
   CHECK(desktop->getAttributes()
-            ->get<JwtContext>(AppConfig::JWT_CTX_KEY)
+            ->get<JwtContext>(AuthContext::kJwtKey)
             .sub == 1);
 
   const auto replayed =
@@ -373,7 +396,7 @@ TEST_CASE("credential identity mode issues, binds and authenticates devices")
 
   // A/B parity: the RPC path's JwtContext equals the direct repository read.
   const auto& rpcCtx =
-      desktop->getAttributes()->get<JwtContext>(AppConfig::JWT_CTX_KEY);
+      desktop->getAttributes()->get<JwtContext>(AuthContext::kJwtKey);
   const auto directUser = drogon::sync_wait(UserRepository().findById(1));
   REQUIRE(directUser);
   const auto directRt = drogon::sync_wait(
@@ -390,9 +413,10 @@ TEST_CASE("credential identity mode issues, binds and authenticates devices")
   auto unreachable = drogon::HttpRequest::newHttpRequest();
   unreachable->addHeader("User-Agent", kDesktopUa);
   unreachable->addHeader("Authorization", "Bearer " + polled.accessToken);
-  const auto refused = drogon::sync_wait(jwtFilter.doFilter(unreachable));
+  const auto refused = refusalOf(jwtFilter.doFilter(unreachable));
   REQUIRE(refused);
-  CHECK(refused->getStatusCode() == drogon::HttpStatusCode::k401Unauthorized);
+  CHECK(refused->status == 401);
+  CHECK(refused->message == "Authentication required");
 
   // The same request that authenticates with the secret is refused without it.
   {
@@ -407,10 +431,10 @@ TEST_CASE("credential identity mode issues, binds and authenticates devices")
     noSecret->addHeader("Authorization", "Bearer " + polled.accessToken);
     drogon::sync_wait(deviceFilter.doFilter(noSecret));
     CHECK(deviceCtx(noSecret).deviceHash.empty());
-    const auto rejectedCall = drogon::sync_wait(jwtFilter.doFilter(noSecret));
+    const auto rejectedCall = refusalOf(jwtFilter.doFilter(noSecret));
     REQUIRE(rejectedCall);
-    CHECK(rejectedCall->getStatusCode() ==
-          drogon::HttpStatusCode::k401Unauthorized);
+    CHECK(rejectedCall->status == 401);
+    CHECK(rejectedCall->message == "Authentication required");
 
     ConfigService::setRuntimeString("identity.rpc_secret", kFleetSecret);
     auto withSecret = drogon::HttpRequest::newHttpRequest();

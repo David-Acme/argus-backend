@@ -1,8 +1,8 @@
 #include "camera-stream-relay.hxx"
 
-#include <gateway-errors.hxx>
+#include <errors/response-exception.hxx>
 #include <filter/jwt/jwt-filter.hxx>
-#include <response-exception.hxx>
+#include <gateway-errors.hxx>
 #include <shared/services/config-service/config-service.hxx>
 #include <shared/utils/json-util/json-util.hxx>
 #include <trantor/utils/Logger.h>

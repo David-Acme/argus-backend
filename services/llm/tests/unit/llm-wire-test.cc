@@ -1,10 +1,10 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
 
-#include <config/app-config.hxx>
-#include <controllers/health-controller.hxx>
 #include <controllers/llm-controller.hxx>
 #include <drogon/drogon.h>
+#include <http/error-handler.hxx>
+#include <http/health-controller.hxx>
 #include <shared/services/config-service/config-service.hxx>
 
 #include <llama.h>
@@ -313,12 +313,10 @@ TEST_CASE("the argus-llm internal wire serves the chat capacity")
   drogon::app().registerController(std::make_shared<HealthController>(
       HealthStatus{.serviceName = "argus-llm", .extras = {}}));
   drogon::app().registerController(llm);
-  drogon::app().setExceptionHandler(AppConfig::handleException);
+  drogon::app().setExceptionHandler(ErrorHandler::handleException);
   drogon::app().setCustomErrorHandler(
       [](drogon::HttpStatusCode code, const drogon::HttpRequestPtr&) {
-        if (code == drogon::k405MethodNotAllowed)
-          return AppConfig::get405Response();
-        return AppConfig::get404Response();
+        return ErrorHandler::unmatchedRoute(code);
       });
   drogon::app().addListener("127.0.0.1", 0);
 

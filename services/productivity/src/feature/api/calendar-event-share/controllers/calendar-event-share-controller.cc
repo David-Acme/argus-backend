@@ -1,11 +1,13 @@
 #include "calendar-event-share-controller.hxx"
 
-#include <config/app-config.hxx>
+#include <errors/response-exception.hxx>
 #include <feature/api/calendar-event-share/dtos/create-calendar-event-share-dto.hxx>
 #include <feature/api/calendar-event-share/dtos/update-calendar-event-share-dto.hxx>
 #include <filter/jwt/jwt-filter.hxx>
 #include <http/api-response.hxx>
 #include <membership-error.hxx>
+#include <productivity-errors.hxx>
+#include <request-context.hxx>
 
 namespace
 {
@@ -13,13 +15,13 @@ drogon::HttpResponsePtr failureFor(MembershipError error)
 {
   switch (error) {
     case MembershipError::UserNotFound:
-      return AppConfig::get404Response("User not found");
+      throw ResponseException(ProductivityErrors::UserNotFound);
     case MembershipError::UserNotAllowed:
-      return AppConfig::get403Response("That user cannot see calendar events");
+      throw ResponseException(ProductivityErrors::CannotSeeCalendarEvents);
     case MembershipError::SelfShare:
-      return AppConfig::get409Response("The owner already has access");
+      throw ResponseException(ProductivityErrors::OwnerAlreadyHasAccess);
     default:
-      return AppConfig::get404Response("Calendar event not found");
+      throw ResponseException(ProductivityErrors::CalendarEventNotFound);
   }
 }
 } // namespace
@@ -29,7 +31,7 @@ CalendarEventShareController::create(drogon::HttpRequestPtr req)
 {
   const auto body = CreateCalendarEventShareDto::fromJson(*req->getJsonObject());
   const auto& ctx =
-      req->getAttributes()->get<JwtContext>(AppConfig::JWT_CTX_KEY);
+      req->getAttributes()->get<JwtContext>(AuthContext::kJwtKey);
 
   const auto result = co_await service_.create(body, ctx.sub);
   if (!result.row)
@@ -42,7 +44,7 @@ CalendarEventShareController::update(drogon::HttpRequestPtr req, int64_t id)
 {
   const auto body = UpdateCalendarEventShareDto::fromJson(*req->getJsonObject());
   const auto& ctx =
-      req->getAttributes()->get<JwtContext>(AppConfig::JWT_CTX_KEY);
+      req->getAttributes()->get<JwtContext>(AuthContext::kJwtKey);
 
   const auto result = co_await service_.update(
       {.id = id, .body = body, .actorId = ctx.sub});
@@ -55,10 +57,10 @@ drogon::Task<drogon::HttpResponsePtr>
 CalendarEventShareController::remove(drogon::HttpRequestPtr req, int64_t id)
 {
   const auto& ctx =
-      req->getAttributes()->get<JwtContext>(AppConfig::JWT_CTX_KEY);
+      req->getAttributes()->get<JwtContext>(AuthContext::kJwtKey);
 
   if (!co_await service_.remove(id, ctx.sub))
-    co_return AppConfig::get404Response("Share not found");
+    throw ResponseException(ProductivityErrors::ShareNotFound);
 
   Json::Value result;
   result["deleted"] = true;

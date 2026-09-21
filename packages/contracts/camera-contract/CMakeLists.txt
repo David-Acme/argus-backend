@@ -1,8 +1,8 @@
 cmake_minimum_required(VERSION 3.25)
 
-if(NOT TARGET pkg::response)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../response
-                     ${CMAKE_CURRENT_BINARY_DIR}/response)
+if(NOT TARGET argus::errors)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../errors
+                     ${CMAKE_CURRENT_BINARY_DIR}/errors)
 endif()
 
 add_library(contract-camera INTERFACE)
@@ -14,7 +14,7 @@ target_sources(contract-camera INTERFACE
     ${CMAKE_CURRENT_SOURCE_DIR}/camera-record-mode.hxx
     ${CMAKE_CURRENT_SOURCE_DIR}/event-severity.hxx
     ${CMAKE_CURRENT_SOURCE_DIR}/zone-type.hxx)
-target_link_libraries(contract-camera INTERFACE pkg::response)
+target_link_libraries(contract-camera INTERFACE argus::errors)
 
 # The round-trip suite: every name is its own spelling and back.
 enable_testing()

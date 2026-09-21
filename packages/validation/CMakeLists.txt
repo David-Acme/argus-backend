@@ -3,9 +3,9 @@
 
 include(${CMAKE_CURRENT_SOURCE_DIR}/../../cmake/argus-module.cmake)
 
-if(NOT TARGET pkg::response)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../response
-                     ${CMAKE_CURRENT_BINARY_DIR}/response)
+if(NOT TARGET argus::errors)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../errors
+                     ${CMAKE_CURRENT_BINARY_DIR}/errors)
 endif()
 
 argus_module(NAME validation
@@ -14,7 +14,7 @@ argus_module(NAME validation
         src/shared/validation/validation_dsl.hxx
         src/shared/validation/validator.hxx
     INCLUDES src
-    DEPENDS pkg::response)
+    DEPENDS argus::errors)
 
 # Header-only: no compiled source sets the linker language on its own.
 set_target_properties(argus_validation PROPERTIES LINKER_LANGUAGE CXX)

@@ -1,10 +1,12 @@
 #include "tts-remote.hxx"
+
+#include <errors/response-exception.hxx>
 #include <tts-client.hxx>
 #include <atomic>
 #include <algorithm>
 #include <array>
-#include <utility>
 #include <tts-errors.hxx>
+#include <utility>
 
 #include <shared/services/config-service/config-service.hxx>
 

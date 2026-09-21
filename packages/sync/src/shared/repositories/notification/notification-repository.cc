@@ -2,8 +2,8 @@
 
 #include <algorithm>
 #include <chrono>
-#include <config/app-config.hxx>
 #include <ctime>
+#include <shared/contracts/sync-limits.hxx>
 #include <shared/services/sqlite/db-service.hxx>
 #include <shared/utils/json-util/json-util.hxx>
 #include <shared/utils/sha256/sha256.hxx>
@@ -509,7 +509,7 @@ NotificationRepository::findSync(const NotificationSyncFilter& filter) const
   if (filter.startTime && filter.startId && filter.endTime) {
     const auto result =
         co_await client->execSqlCoro(std::string(FIND_SYNC_AFTER) +
-                                         AppConfig::SYNC_LIMIT,
+                                         SyncLimits::kMaxRows,
                                      filter.userId, *filter.startTime,
                                      *filter.startTime, *filter.startId,
                                      *filter.endTime);
@@ -521,7 +521,7 @@ NotificationRepository::findSync(const NotificationSyncFilter& filter) const
   if (filter.startTime && filter.startId) {
     const auto result =
         co_await client->execSqlCoro(std::string(FIND_SYNC_AFTER_FROM) +
-                                         AppConfig::SYNC_LIMIT,
+                                         SyncLimits::kMaxRows,
                                      filter.userId, *filter.startTime,
                                      *filter.startTime, *filter.startId);
     std::vector<Json::Value> data;
@@ -532,7 +532,7 @@ NotificationRepository::findSync(const NotificationSyncFilter& filter) const
   if (filter.startTime && filter.endTime) {
     const auto result =
         co_await client->execSqlCoro(std::string(FIND_SYNC) +
-                                         AppConfig::SYNC_LIMIT,
+                                         SyncLimits::kMaxRows,
                                      filter.userId, *filter.startTime,
                                      *filter.endTime);
     std::vector<Json::Value> data;
@@ -543,7 +543,7 @@ NotificationRepository::findSync(const NotificationSyncFilter& filter) const
   if (filter.startTime) {
     const auto result =
         co_await client->execSqlCoro(std::string(FIND_SYNC_FROM) +
-                                         AppConfig::SYNC_LIMIT,
+                                         SyncLimits::kMaxRows,
                                      filter.userId, *filter.startTime);
     std::vector<Json::Value> data;
     for (const auto& row : result)
@@ -553,7 +553,7 @@ NotificationRepository::findSync(const NotificationSyncFilter& filter) const
   if (filter.endTime) {
     const auto result =
         co_await client->execSqlCoro(std::string(FIND_SYNC_TO) +
-                                         AppConfig::SYNC_LIMIT,
+                                         SyncLimits::kMaxRows,
                                      filter.userId, *filter.endTime);
     std::vector<Json::Value> data;
     for (const auto& row : result)
@@ -563,7 +563,7 @@ NotificationRepository::findSync(const NotificationSyncFilter& filter) const
   {
     const auto result =
         co_await client->execSqlCoro(std::string(FIND_SYNC_ALL) +
-                                         AppConfig::SYNC_LIMIT,
+                                         SyncLimits::kMaxRows,
                                      filter.userId);
     std::vector<Json::Value> data;
     for (const auto& row : result)

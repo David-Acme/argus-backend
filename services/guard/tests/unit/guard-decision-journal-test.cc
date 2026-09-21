@@ -5,6 +5,7 @@
 #include <cstdio>
 #include <doctest/doctest.h>
 #include <drogon/drogon.h>
+#include <errors/validation-exception.hxx>
 #include <feature/api/guard/dtos/feedback-decision-dto.hxx>
 #include <feature/api/guard/dtos/summary-decisions-dto.hxx>
 #include <feature/api/guard/services/guard-feature-service.hxx>

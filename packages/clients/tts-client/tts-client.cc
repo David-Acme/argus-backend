@@ -1,5 +1,6 @@
 #include "tts-client.hxx"
 
+#include <errors/response-exception.hxx>
 #include <grpc-client-base.hxx>
 #include <tts.grpc.pb.h>
 #include <response-rpc.hxx>

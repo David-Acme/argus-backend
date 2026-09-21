@@ -78,7 +78,7 @@ own `productivity.db`.
   through `argus::sdk-productivity`; no other service opens productivity.db.
 - **CORS**: the legacy answered every preflight in pre-routing and the
   gateway forwards OPTIONS on proxied paths untouched, so this surface keeps
-  answering OPTIONS itself (`AppConfig::handleOptions`).
+  answering OPTIONS itself (`Cors::handleOptions`).
 - **Audit recipients**: `publishAudit` keeps the same recipient set the
   legacy `SyncAuditService::publishUsers` kept — non-positive ids out,
   duplicates collapsed.

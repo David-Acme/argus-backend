@@ -1,7 +1,6 @@
 #include "register-dto.hxx"
 
-#include <drogon/HttpTypes.h>
-#include <string>
+#include <errors/validation-exception.hxx>
 
 RegisterDto RegisterDto::form_multipart(const drogon::MultiPartParser& parser)
 {

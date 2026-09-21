@@ -1,9 +1,11 @@
 #include "jwt-filter.hxx"
 
-#include <config/app-config.hxx>
+#include <auth-errors.hxx>
+#include <errors/response-exception.hxx>
 #include <filter/device/device-filter.hxx>
 #include <filter/identity-access.hxx>
 #include <identity/identity-client.hxx>
+#include <request-context.hxx>
 #include <shared/wrapper/blocking-task/blocking-task.hxx>
 #include <trantor/utils/Logger.h>
 
@@ -13,17 +15,17 @@ JwtFilter::doFilter(const drogon::HttpRequestPtr& req)
 {
   const auto token = extractToken(req);
   if (token.empty()) {
-    co_return AppConfig::get401Response("Missing authorization token");
+    throw ResponseException(AuthErrors::MissingToken);
   }
 
   const auto claims = jwtService_.verifyAccess(token);
   if (claims.empty()) {
-    co_return AppConfig::get401Response();
+    throw ResponseException(AuthErrors::AuthenticationRequired);
   }
 
   const auto subIt = claims.find("sub");
   if (subIt == claims.end()) {
-    co_return AppConfig::get401Response();
+    throw ResponseException(AuthErrors::AuthenticationRequired);
   }
 
   int64_t userId = 0;
@@ -31,18 +33,18 @@ JwtFilter::doFilter(const drogon::HttpRequestPtr& req)
     userId = std::stoll(subIt->second);
   }
   catch (const std::exception&) {
-    co_return AppConfig::get401Response();
+    throw ResponseException(AuthErrors::AuthenticationRequired);
   }
   if (userId <= 0) {
-    co_return AppConfig::get401Response();
+    throw ResponseException(AuthErrors::AuthenticationRequired);
   }
 
   const bool hasDeviceContext =
-      req->getAttributes()->find(AppConfig::DEVICE_CTX_KEY);
+      req->getAttributes()->find(AuthContext::kDeviceKey);
   std::string deviceHash;
   if (hasDeviceContext) {
     deviceHash = req->getAttributes()
-                     ->get<DeviceContext>(AppConfig::DEVICE_CTX_KEY)
+                     ->get<DeviceContext>(AuthContext::kDeviceKey)
                      .deviceHash;
   }
 
@@ -57,9 +59,10 @@ JwtFilter::doFilter(const drogon::HttpRequestPtr& req)
 
   if (!verdict || !verdict->valid()) {
     if (verdict && !verdict->reason().empty()) {
-      co_return AppConfig::get401Response(verdict->reason());
+      throw ResponseException(AuthErrors::AuthenticationRequired
+                                  .withMessage(verdict->reason()));
     }
-    co_return AppConfig::get401Response();
+    throw ResponseException(AuthErrors::AuthenticationRequired);
   }
 
   const auto& user = verdict->user();
@@ -70,7 +73,7 @@ JwtFilter::doFilter(const drogon::HttpRequestPtr& req)
   ctx.isActive = user.is_active();
   ctx.deviceHash = deviceHash;
 
-  req->getAttributes()->insert(AppConfig::JWT_CTX_KEY, ctx);
+  req->getAttributes()->insert(AuthContext::kJwtKey, ctx);
   co_return drogon::HttpResponsePtr{};
 }
 

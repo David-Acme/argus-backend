@@ -1,20 +1,23 @@
 #include "camera-control-controller.hxx"
 
-#include <config/app-config.hxx>
+#include <camera-errors.hxx>
+#include <errors/response-exception.hxx>
 #include <http/api-response.hxx>
-
 namespace
 {
 // A device that answers "no" is 502, not a server error; a missing row is 404.
 drogon::HttpResponsePtr respond(const CameraControlResult& result)
 {
   if (!result)
-    return AppConfig::get404Response("Camera not found");
-  if (!result->ok)
-    return AppConfig::get502Response(result->error.empty()
-                                         ? "The camera refused the command"
-                                         : result->error,
-                                     "CAMERA_UNREACHABLE");
+    throw ResponseException(CameraErrors::CameraNotFound);
+  if (!result->ok) {
+    // The device's own words are the detail; the catalog keeps the code and
+    // the status.
+    throw ResponseException(result->error.empty()
+                                ? CameraErrors::CameraUnreachable
+                                : CameraErrors::CameraUnreachable.withMessage(
+                                      result->error));
+  }
   return ApiResponse::ok(result->data);
 }
 } // namespace

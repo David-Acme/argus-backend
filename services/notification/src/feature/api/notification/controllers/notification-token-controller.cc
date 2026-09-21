@@ -1,20 +1,20 @@
 #include "notification-token-controller.hxx"
 
-#include <config/app-config.hxx>
 #include <feature/api/notification/dtos/register-notification-token-dto.hxx>
 #include <filter/device/device-filter.hxx>
 #include <filter/jwt/jwt-filter.hxx>
-#include <shared/repositories/notification-token/notification-token-query.hxx>
 #include <http/api-response.hxx>
+#include <request-context.hxx>
+#include <shared/repositories/notification-token/notification-token-query.hxx>
 
 drogon::Task<drogon::HttpResponsePtr>
 NotificationTokenController::registerToken(drogon::HttpRequestPtr req)
 {
   const auto body = RegisterNotificationTokenDto::fromJson(*req->getJsonObject());
   const auto& ctx =
-      req->getAttributes()->get<JwtContext>(AppConfig::JWT_CTX_KEY);
+      req->getAttributes()->get<JwtContext>(AuthContext::kJwtKey);
   const auto& dev =
-      req->getAttributes()->get<DeviceContext>(AppConfig::DEVICE_CTX_KEY);
+      req->getAttributes()->get<DeviceContext>(AuthContext::kDeviceKey);
 
   co_await service_.registerToken({
       .userId = ctx.sub,

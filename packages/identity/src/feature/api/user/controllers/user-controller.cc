@@ -1,15 +1,17 @@
 #include "user-controller.hxx"
 
-#include <config/app-config.hxx>
+#include <errors/response-exception.hxx>
 #include <feature/api/user/dtos/update-user-dto.hxx>
 #include <filter/jwt/jwt-filter.hxx>
 #include <http/api-response.hxx>
+#include <identity-errors.hxx>
+#include <request-context.hxx>
 
 drogon::Task<drogon::HttpResponsePtr>
 UserController::list(drogon::HttpRequestPtr req)
 {
   const auto& ctx =
-      req->getAttributes()->get<JwtContext>(AppConfig::JWT_CTX_KEY);
+      req->getAttributes()->get<JwtContext>(AuthContext::kJwtKey);
   const auto users = co_await service_.list(ctx.sub, ctx.role);
   Json::Value body(Json::arrayValue);
   for (const auto& user : users)
@@ -21,9 +23,9 @@ drogon::Task<drogon::HttpResponsePtr>
 UserController::update(drogon::HttpRequestPtr req, int64_t userId)
 {
   if (userId <= 0)
-    co_return AppConfig::get400Response("Invalid user id");
+    throw ResponseException(IdentityErrors::InvalidUserId);
   const auto& ctx =
-      req->getAttributes()->get<JwtContext>(AppConfig::JWT_CTX_KEY);
+      req->getAttributes()->get<JwtContext>(AuthContext::kJwtKey);
   const auto body = UpdateUserDto::fromJson(*req->getJsonObject());
   const auto user = co_await service_.update({
       .targetUserId = userId,
@@ -37,9 +39,9 @@ drogon::Task<drogon::HttpResponsePtr>
 UserController::deactivate(drogon::HttpRequestPtr req, int64_t userId)
 {
   if (userId <= 0)
-    co_return AppConfig::get400Response("Invalid user id");
+    throw ResponseException(IdentityErrors::InvalidUserId);
   const auto& ctx =
-      req->getAttributes()->get<JwtContext>(AppConfig::JWT_CTX_KEY);
+      req->getAttributes()->get<JwtContext>(AuthContext::kJwtKey);
   co_await service_.deactivate(userId, ctx.sub);
   co_return ApiResponse::noContent();
 }

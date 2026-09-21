@@ -1,10 +1,12 @@
 #include "llm-controller.hxx"
 
+#include "llm-errors.hxx"
+
+#include <errors/response-exception.hxx>
+#include <http/api-response.hxx>
 #include <llm/chat-dto.hxx>
 #include <shared/services/llm/lfm-adapter.hxx>
 #include <shared/services/tools/tool-registry.hxx>
-#include <config/app-config.hxx>
-#include <http/api-response.hxx>
 #include <shared/wrapper/blocking-task/blocking-task.hxx>
 
 #include <drogon/drogon.h>
@@ -20,13 +22,12 @@ namespace
 
 drogon::HttpResponsePtr notLoaded()
 {
-  return AppConfig::get503Response("LLM engine is not loaded",
-                                   "LLM_NOT_LOADED");
+  throw ResponseException(LlmErrors::LlmEngineNotLoaded);
 }
 
 drogon::HttpResponsePtr badRequest()
 {
-  return AppConfig::get400Response("Body must be a JSON object");
+  throw ResponseException(LlmErrors::BodyNotJsonObject);
 }
 
 // Bench-exact framing from f8-b1; the measured variants live in docs/history/project-log.md.

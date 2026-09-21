@@ -7,6 +7,8 @@
 #include <variant>
 #include <vector>
 
+// One refusal as it travels: what a single error looks like once it is off the
+// catalog and on its way to the wire.
 struct ResponseError
 {
   std::string code;
@@ -15,6 +17,8 @@ struct ResponseError
 
 using ResponseErrors = std::variant<ResponseError, std::vector<ResponseError>>;
 
+// A refusal whose code was already a string: it came off the wire, so there was
+// no catalog entry to look up and only the status was known.
 struct ResponseExceptionInput
 {
   std::string message;
@@ -22,13 +26,18 @@ struct ResponseExceptionInput
   std::string errorCode{"ERROR"};
 };
 
+// The one way to refuse (architecture plan section 4.7). A handler throws and
+// the shared advice formats it; nothing builds a response by hand. The
+// constructors are the ways a refusal arises: from a catalog definition, from a
+// list of wire records, or from a bare text no catalog named.
 class ResponseException : public std::runtime_error
 {
 public:
-  explicit ResponseException(std::string message);
-  explicit ResponseException(const ResponseExceptionInput& input);
+  explicit ResponseException(const ErrorDefinition& error);
   ResponseException(int statusCode, const ErrorDefinition& error);
   ResponseException(int statusCode, std::vector<ResponseError> errors);
+  explicit ResponseException(std::string message);
+  explicit ResponseException(const ResponseExceptionInput& input);
 
   int statusCode() const noexcept;
   const std::string& errorCode() const noexcept;

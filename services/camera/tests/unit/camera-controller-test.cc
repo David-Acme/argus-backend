@@ -4,18 +4,20 @@
 #include <controllers/camera-media-service.hxx>
 #include <drogon/WebSocketConnection.h>
 #include <drogon/drogon.h>
+#include <errors/response-exception.hxx>
+#include <errors/validation-exception.hxx>
 #include <feature/api/camera/controllers/camera-controller.hxx>
 #include <feature/api/camera/dtos/create-camera-dto.hxx>
 #include <feature/api/zone/controllers/zone-controller.hxx>
 #include <feature/api/zone/dtos/create-zone-dto.hxx>
 #include <filter/jwt/jwt-filter.hxx>
-#include <response-exception.hxx>
 #include <shared/utils/json-util/json-util.hxx>
 #include <shared/validation/validator.hxx>
 
 #include <chrono>
 #include <cstdio>
 #include <filesystem>
+#include <optional>
 #include <string>
 #include <thread>
 
@@ -89,6 +91,29 @@ Json::Value body(const drogon::HttpResponsePtr& response)
   const auto json = response->getJsonObject();
   REQUIRE(json);
   return *json;
+}
+
+// A refusal is thrown, not returned (architecture plan section 4.7): the advice
+// that formats it into an envelope runs only when the framework drives the
+// controller, so a test that drives the coroutine straight through sync_wait
+// reads the refusal off the exception instead.
+struct Refusal
+{
+  int status;
+  std::string code;
+  std::string message;
+};
+
+std::optional<Refusal> refusalOf(drogon::Task<drogon::HttpResponsePtr> task)
+{
+  try {
+    drogon::sync_wait(std::move(task));
+  }
+  catch (const ResponseException& error) {
+    return Refusal{error.statusCode(), error.errorCode(),
+                   std::string(error.what())};
+  }
+  return std::nullopt;
 }
 
 // The camera DTO boundary never exposes credentials.
@@ -185,12 +210,11 @@ TEST_CASE("camera and zone contracts hold on the argus-camera surface")
 
   auto updateReq = drogon::HttpRequest::newHttpJsonRequest(createBody);
   const auto missingUpdate =
-      drogon::sync_wait(cameraController.update(updateReq, 999));
-  const Json::Value missingUpdateJson = body(missingUpdate);
-  CHECK(missingUpdateJson["status"].asInt() == 404);
-  CHECK(missingUpdateJson["info"].isNull());
-  CHECK(missingUpdateJson["errors"]["code"] == "NOT_FOUND");
-  CHECK(missingUpdateJson["errors"]["message"] == "Camera not found");
+      refusalOf(cameraController.update(updateReq, 999));
+  REQUIRE(missingUpdate);
+  CHECK(missingUpdate->status == 404);
+  CHECK(missingUpdate->code == "NOT_FOUND");
+  CHECK(missingUpdate->message == "Camera not found");
 
   const auto removed = drogon::sync_wait(cameraController.remove(nullptr,
                                                                  cameraId));
@@ -198,8 +222,9 @@ TEST_CASE("camera and zone contracts hold on the argus-camera surface")
   CHECK(removedJson["status"].asInt() == 200);
   CHECK(removedJson["info"]["deleted"].asBool());
   const auto removedTwice =
-      drogon::sync_wait(cameraController.remove(nullptr, cameraId));
-  CHECK(body(removedTwice)["status"].asInt() == 404);
+      refusalOf(cameraController.remove(nullptr, cameraId));
+  REQUIRE(removedTwice);
+  CHECK(removedTwice->status == 404);
 
   Json::Value invalidBody;
   invalidBody["name"] = "No Ip";
@@ -232,12 +257,11 @@ TEST_CASE("camera and zone contracts hold on the argus-camera surface")
     zoneBody["points"].append(point);
   }
   auto ghostReq = drogon::HttpRequest::newHttpJsonRequest(zoneBody);
-  const auto ghostZone = drogon::sync_wait(zoneController.create(ghostReq));
-  const Json::Value ghostJson = body(ghostZone);
-  CHECK(ghostJson["status"].asInt() == 404);
-  CHECK(ghostJson["info"].isNull());
-  CHECK(ghostJson["errors"]["code"] == "NOT_FOUND");
-  CHECK(ghostJson["errors"]["message"] == "Camera not found");
+  const auto ghostZone = refusalOf(zoneController.create(ghostReq));
+  REQUIRE(ghostZone);
+  CHECK(ghostZone->status == 404);
+  CHECK(ghostZone->code == "NOT_FOUND");
+  CHECK(ghostZone->message == "Camera not found");
 
   zoneBody["cameraId"] = Json::Int64(cameraId2);
   auto zoneReq = drogon::HttpRequest::newHttpJsonRequest(zoneBody);
@@ -260,9 +284,11 @@ TEST_CASE("camera and zone contracts hold on the argus-camera surface")
   const auto zoneGone = drogon::sync_wait(zoneController.remove(nullptr,
                                                                 zoneId));
   CHECK(body(zoneGone)["status"].asInt() == 200);
-  const auto zoneGoneTwice =
-      drogon::sync_wait(zoneController.remove(nullptr, zoneId));
-  CHECK(body(zoneGoneTwice)["status"].asInt() == 404);
+  const auto zoneGoneTwice = refusalOf(zoneController.remove(nullptr, zoneId));
+  REQUIRE(zoneGoneTwice);
+  CHECK(zoneGoneTwice->status == 404);
+  CHECK(zoneGoneTwice->code == "NOT_FOUND");
+  CHECK(zoneGoneTwice->message == "Zone not found");
 
   CameraMediaService mediaService;
   const auto conn = std::make_shared<RecordingConnection>();

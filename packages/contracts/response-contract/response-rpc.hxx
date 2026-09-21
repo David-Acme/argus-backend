@@ -1,6 +1,6 @@
 #pragma once
 
-#include <response-exception.hxx>
+#include <errors/response-exception.hxx>
 #include <grpcpp/support/status.h>
 
 namespace argus::response

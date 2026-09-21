@@ -1,8 +1,8 @@
 cmake_minimum_required(VERSION 3.25)
 
-if(NOT TARGET pkg::response)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../response
-                     ${CMAKE_CURRENT_BINARY_DIR}/response)
+if(NOT TARGET argus::errors)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../errors
+                     ${CMAKE_CURRENT_BINARY_DIR}/errors)
 endif()
 
 if(NOT TARGET argus::text)
@@ -22,10 +22,11 @@ target_sources(contract-sync INTERFACE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/shared/contracts/audit-log-priority.hxx
     ${CMAKE_CURRENT_SOURCE_DIR}/src/shared/contracts/sync-operation.hxx
     ${CMAKE_CURRENT_SOURCE_DIR}/src/shared/contracts/sync-filter.hxx
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/shared/contracts/sync-limits.hxx
     ${CMAKE_CURRENT_SOURCE_DIR}/src/shared/contracts/syncable.hxx
     ${CMAKE_CURRENT_SOURCE_DIR}/src/shared/contracts/table-name.hxx
     ${CMAKE_CURRENT_SOURCE_DIR}/src/shared/contracts/user-action.hxx)
-target_link_libraries(contract-sync INTERFACE pkg::response
+target_link_libraries(contract-sync INTERFACE argus::errors
     argus::text Drogon::Drogon)
 
 # The two enums the old enums-test covered that moved here: TableName and

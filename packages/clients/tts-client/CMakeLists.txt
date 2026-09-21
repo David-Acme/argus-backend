@@ -11,9 +11,9 @@ if(NOT TARGET argus::config)
                      ${CMAKE_CURRENT_BINARY_DIR}/config)
 endif()
 
-if(NOT TARGET pkg::response)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../response
-                     ${CMAKE_CURRENT_BINARY_DIR}/response)
+if(NOT TARGET argus::errors)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../errors
+                     ${CMAKE_CURRENT_BINARY_DIR}/errors)
 endif()
 
 find_package(Drogon CONFIG REQUIRED)
@@ -37,7 +37,7 @@ argus_module(NAME tts-client
         .
         src
     DEPENDS
-        argus::config pkg::response
+        argus::config argus::errors
         contract::tts
         Drogon::Drogon)
 

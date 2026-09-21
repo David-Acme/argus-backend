@@ -1,5 +1,3 @@
-#include <config/app-config.hxx>
-#include <controllers/health-controller.hxx>
 #include <drogon/drogon.h>
 #include <feature/rpc/notification-rpc-service.hxx>
 #include <filter/device/device-filter.hxx>
@@ -7,13 +5,16 @@
 #include <filter/role/role-filter.hxx>
 #include <filter/valid-json/valid-json-filter.hxx>
 #include <grpcpp/grpcpp.h>
+#include <http/cors.hxx>
+#include <http/error-handler.hxx>
+#include <http/health-controller.hxx>
+#include <http/listener-config.hxx>
 #include <notification/nats-notification-change-sink.hxx>
 #include <notification/nats-notification-delivery-sink.hxx>
 #include <shared/wrapper/nats/nats-bus.hxx>
 #include <shared/wrapper/nats/nats-push-intent-sink.hxx>
 #include <shared/wrapper/nats/nats-subject.hxx>
 #include <notification/notification-config.hxx>
-#include <server/listener-config.hxx>
 #include <shared/contracts/user-change-sink.hxx>
 #include <shared/services/config-service/config-service.hxx>
 #include <shared/services/sqlite/db-service.hxx>
@@ -73,23 +74,21 @@ int main()
       [](const drogon::HttpRequestPtr& req, drogon::AdviceCallback&& cb,
          drogon::AdviceChainCallback&& chain) {
         if (req->method() == drogon::Options) {
-          AppConfig::handleOptions(req, std::move(cb));
+          Cors::handleOptions(req, std::move(cb));
           return;
         }
         chain();
       });
   drogon::app().registerPostHandlingAdvice(
       [](const drogon::HttpRequestPtr&, const drogon::HttpResponsePtr& resp) {
-        AppConfig::applyCors(resp);
+        Cors::apply(resp);
       });
 
-  drogon::app().setExceptionHandler(AppConfig::handleException);
+  drogon::app().setExceptionHandler(ErrorHandler::handleException);
 
   drogon::app().setCustomErrorHandler(
       [](drogon::HttpStatusCode code, const drogon::HttpRequestPtr&) {
-        if (code == drogon::k405MethodNotAllowed)
-          return AppConfig::get405Response();
-        return AppConfig::get404Response();
+        return ErrorHandler::unmatchedRoute(code);
       });
 
   LOG_INFO << "Listening on " << listener.host << ":" << listener.port

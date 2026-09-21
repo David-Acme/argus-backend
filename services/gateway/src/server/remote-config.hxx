@@ -2,8 +2,8 @@
 
 #include <cstdint>
 #include <drogon/HttpRequest.h>
+#include <http/listener-config.hxx>
 #include <json/value.h>
-#include <server/listener-config.hxx>
 
 struct RemoteConfig
 {

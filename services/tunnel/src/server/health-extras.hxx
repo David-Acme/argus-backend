@@ -1,7 +1,7 @@
 #pragma once
 
 #include <client/tunnel-client.hxx>
-#include <controllers/health-controller.hxx>
+#include <http/health-controller.hxx>
 #include <relay/tunnel-relay.hxx>
 
 namespace tunnel

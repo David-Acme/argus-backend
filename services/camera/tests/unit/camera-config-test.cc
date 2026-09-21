@@ -2,8 +2,8 @@
 #include <doctest/doctest.h>
 
 #include <camera/camera-config.hxx>
-#include <controllers/health-controller.hxx>
-#include <server/listener-config.hxx>
+#include <http/health-controller.hxx>
+#include <http/listener-config.hxx>
 #include <shared/services/config-service/config-service.hxx>
 #include <http/api-response.hxx>
 

@@ -1,13 +1,12 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
 
-#include <config/app-config.hxx>
-#include <controllers/health-controller.hxx>
 #include <filter/device/device-filter.hxx>
+#include <http/health-controller.hxx>
+#include <http/listener-config.hxx>
 #include <identity/identity-config.hxx>
 #include <identity/identity-registrar.hxx>
 #include <proxy/proxy-config.hxx>
-#include <server/listener-config.hxx>
 #include <server/refresh-rate-limiter.hxx>
 #include <server/remote-config.hxx>
 #include <server/remote-gate.hxx>
@@ -27,6 +26,7 @@
 #include <drogon/utils/coroutine.h>
 #include <json/json.h>
 
+#include <auth-errors.hxx>
 #include <chrono>
 #include <cstdio>
 #include <fstream>
@@ -1018,12 +1018,12 @@ TEST_CASE("remote gate marks tunnel requests with the remote attribute")
 
   auto sync = testRequest(drogon::Get, "/sync");
   CHECK_FALSE(gate.check(sync, true));
-  CHECK(sync->getAttributes()->find(AppConfig::REMOTE_CTX_KEY));
-  CHECK(sync->getAttributes()->get<bool>(AppConfig::REMOTE_CTX_KEY));
+  CHECK(sync->getAttributes()->find(RemoteGate::kRemoteContextKey));
+  CHECK(sync->getAttributes()->get<bool>(RemoteGate::kRemoteContextKey));
 
   auto local = testRequest(drogon::Get, "/sync");
   CHECK_FALSE(gate.check(local, false));
-  CHECK_FALSE(local->getAttributes()->find(AppConfig::REMOTE_CTX_KEY));
+  CHECK_FALSE(local->getAttributes()->find(RemoteGate::kRemoteContextKey));
 }
 
 TEST_CASE("rate limit config resolves defaults and honors overrides")
@@ -1212,12 +1212,12 @@ TEST_CASE("remote gate records outcomes into the lockout counter")
   CHECK_FALSE(gate.check(second, false));
   CHECK_FALSE(gate.check(third, false));
 
-  gate.recordOutcome(first, AppConfig::get401Response());
-  gate.recordOutcome(second, AppConfig::get401Response());
+  gate.recordOutcome(first, ApiResponse::error(AuthErrors::AuthenticationRequired));
+  gate.recordOutcome(second, ApiResponse::error(AuthErrors::AuthenticationRequired));
 
   auto fourth = testRequest(drogon::Patch, "/auth/refresh-token");
   CHECK_FALSE(gate.check(fourth, false));
-  gate.recordOutcome(fourth, AppConfig::get401Response());
+  gate.recordOutcome(fourth, ApiResponse::error(AuthErrors::AuthenticationRequired));
 
   const Json::Value locked = parseBody(
       gate.check(testRequest(drogon::Patch, "/auth/refresh-token"), false));
@@ -1235,7 +1235,7 @@ TEST_CASE("remote gate records outcomes into the lockout counter")
   auto success = testRequest(drogon::Patch, "/auth/refresh-token");
   CHECK_FALSE(resetGate.check(failure, false));
   CHECK_FALSE(resetGate.check(success, false));
-  resetGate.recordOutcome(failure, AppConfig::get401Response());
+  resetGate.recordOutcome(failure, ApiResponse::error(AuthErrors::AuthenticationRequired));
   resetGate.recordOutcome(success, ApiResponse::ok());
   CHECK_FALSE(resetGate.check(
       testRequest(drogon::Patch, "/auth/refresh-token"), false));

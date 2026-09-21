@@ -35,9 +35,9 @@ if(NOT TARGET Drogon::Drogon)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/validation
                          ${CMAKE_BINARY_DIR}/validation)
     endif()
-    if(NOT TARGET pkg::response)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/response
-                         ${CMAKE_BINARY_DIR}/response)
+    if(NOT TARGET argus::http)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/http
+                         ${CMAKE_BINARY_DIR}/http)
     endif()
 endif()
 
@@ -104,7 +104,7 @@ target_link_libraries(vlm-core PUBLIC
     argus::hardware-profile
     argus::runtime
     argus::validation
-    pkg::response
+    argus::http
     Drogon::Drogon
     opencv::opencv
     nlohmann_json::nlohmann_json
@@ -161,7 +161,7 @@ target_link_libraries(vlm-wire-test PRIVATE
     argus::hardware-profile
     argus::runtime
     argus::validation
-    pkg::response
+    argus::http
     ${ARGUS_LLAMA_TARGETS}
     opencv::opencv
     doctest::doctest)

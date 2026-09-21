@@ -1,11 +1,11 @@
 #include <camera/camera-sync-client.hxx>
-#include <config/app-config.hxx>
-#include <controllers/health-controller.hxx>
 #include <controllers/llm-controller.hxx>
 #include <drogon/drogon.h>
+#include <http/error-handler.hxx>
+#include <http/health-controller.hxx>
+#include <http/listener-config.hxx>
 #include <identity/identity-client.hxx>
 #include <memory/catalog-replica.hxx>
-#include <server/listener-config.hxx>
 #include <shared/repositories/memory-graph/memory-graph-repository.hxx>
 #include <shared/services/config-service/config-service.hxx>
 #include <shared/services/encounter-closed/encounter-closed-consumer.hxx>
@@ -140,13 +140,11 @@ int main()
   // A whole-emitting tool loop outruns Drogon's 60 s idle default (f8-b4).
   drogon::app().setIdleConnectionTimeout(600);
 
-  drogon::app().setExceptionHandler(AppConfig::handleException);
+  drogon::app().setExceptionHandler(ErrorHandler::handleException);
 
   drogon::app().setCustomErrorHandler(
       [](drogon::HttpStatusCode code, const drogon::HttpRequestPtr&) {
-        if (code == drogon::k405MethodNotAllowed)
-          return AppConfig::get405Response();
-        return AppConfig::get404Response();
+        return ErrorHandler::unmatchedRoute(code);
       });
 
   llama_backend_init();

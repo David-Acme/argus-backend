@@ -5,11 +5,19 @@
 
 cmake_minimum_required(VERSION 3.25)
 
+if(NOT TARGET argus::errors)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../errors
+                     ${CMAKE_CURRENT_BINARY_DIR}/errors)
+endif()
+
 add_library(contract-auth INTERFACE)
 add_library(contract::auth ALIAS contract-auth)
 target_include_directories(contract-auth INTERFACE ${CMAKE_CURRENT_SOURCE_DIR})
 target_sources(contract-auth INTERFACE
+    ${CMAKE_CURRENT_SOURCE_DIR}/auth-errors.hxx
+    ${CMAKE_CURRENT_SOURCE_DIR}/request-context.hxx
     ${CMAKE_CURRENT_SOURCE_DIR}/user-role.hxx)
+target_link_libraries(contract-auth INTERFACE argus::errors)
 
 # The round-trip suite: every name is its own spelling and back.
 enable_testing()

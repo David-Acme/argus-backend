@@ -1,8 +1,6 @@
 #include <camera/camera-config.hxx>
 #include <camera/nats-camera-change-sink.hxx>
-#include <config/app-config.hxx>
 #include <controllers/camera-media-socket.hxx>
-#include <controllers/health-controller.hxx>
 #include <drogon/drogon.h>
 #include <drogon/utils/coroutine.h>
 #include <feature/api/camera-control/controllers/camera-control-controller.hxx>
@@ -17,6 +15,10 @@
 #include <filter/jwt/jwt-filter.hxx>
 #include <filter/role/role-filter.hxx>
 #include <filter/valid-json/valid-json-filter.hxx>
+#include <http/cors.hxx>
+#include <http/error-handler.hxx>
+#include <http/health-controller.hxx>
+#include <http/listener-config.hxx>
 #include <monitor/camera-health-monitor.hxx>
 #include <monitor/nats-health-event-sink.hxx>
 #include <shared/services/evidence/evidence-uploader.hxx>
@@ -28,7 +30,6 @@
 #include <operator/nats-object-event-sink.hxx>
 #include <operator/operator-config.hxx>
 #include <operator/zone-provider.hxx>
-#include <server/listener-config.hxx>
 #include <shared/repositories/camera/camera-repository.hxx>
 #include <shared/services/config-service/config-service.hxx>
 #include <shared/services/room/room-manager.hxx>
@@ -126,16 +127,14 @@ int main()
 
   drogon::app().registerPostHandlingAdvice(
       [](const drogon::HttpRequestPtr&, const drogon::HttpResponsePtr& resp) {
-        AppConfig::applyCors(resp);
+        Cors::apply(resp);
       });
 
-  drogon::app().setExceptionHandler(AppConfig::handleException);
+  drogon::app().setExceptionHandler(ErrorHandler::handleException);
 
   drogon::app().setCustomErrorHandler(
       [](drogon::HttpStatusCode code, const drogon::HttpRequestPtr&) {
-        if (code == drogon::k405MethodNotAllowed)
-          return AppConfig::get405Response();
-        return AppConfig::get404Response();
+        return ErrorHandler::unmatchedRoute(code);
       });
 
   LOG_INFO << "Listening on " << listener.host << ":" << listener.port

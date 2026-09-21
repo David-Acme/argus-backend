@@ -79,7 +79,7 @@ preset, own `camera.db`.
   explicitly.
 - **OPTIONS divergence attribution (F2-4 review)**: unlike the legacy
   (`src/config/application.cc` pre-routing advice answers every OPTIONS with
-  `AppConfig::handleOptions` before routing), argus-camera registers only the
+  `Cors::handleOptions` before routing), argus-camera registers only the
   post-handling CORS advice, so `OPTIONS /camera` 404s here where the legacy
   answers 200. The gateway proxy forwards OPTIONS fine (F1-5 scoped its own
   pre-routing advice to gateway-native paths); the divergence lives in this

@@ -1,11 +1,12 @@
 #include "pairing-controller.hxx"
 
-#include <config/app-config.hxx>
+#include <errors/response-exception.hxx>
 #include <feature/api/pairing/dtos/pairing-dto.hxx>
 #include <feature/api/pairing/dtos/response-pairing-dto.hxx>
+#include <http/api-response.hxx>
+#include <identity-errors.hxx>
 #include <shared/services/cert/cert-service.hxx>
 #include <shared/services/config-service/config-service.hxx>
-#include <http/api-response.hxx>
 
 drogon::Task<drogon::HttpResponsePtr>
 PairingController::pair(drogon::HttpRequestPtr req)
@@ -13,10 +14,10 @@ PairingController::pair(drogon::HttpRequestPtr req)
   const auto body = PairingDto::fromJson(*req->getJsonObject());
 
   if (ConfigService::getBool("pairing.paired"))
-    co_return AppConfig::get409Response("Server already paired");
+    throw ResponseException(IdentityErrors::ServerAlreadyPaired);
 
   if (!CertService::verifyPairingCode(body.code))
-    co_return AppConfig::get403Response("Invalid pairing code");
+    throw ResponseException(IdentityErrors::InvalidPairingCode);
 
   ConfigService::setBool("pairing.paired", true);
 

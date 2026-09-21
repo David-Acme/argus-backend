@@ -11,9 +11,9 @@ if(NOT TARGET Drogon::Drogon)
     find_package(Drogon CONFIG REQUIRED)
 endif()
 
-if(NOT TARGET pkg::response)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../response
-                     ${CMAKE_CURRENT_BINARY_DIR}/response)
+if(NOT TARGET argus::errors)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../errors
+                     ${CMAKE_CURRENT_BINARY_DIR}/errors)
 endif()
 
 if(NOT TARGET argus::config)
@@ -30,7 +30,7 @@ argus_module(NAME storage
         src/shared/vocabulary/stored-file-category.hxx
     INCLUDES src
     DEPENDS
-        pkg::response
+        argus::errors
         Drogon::Drogon
         argus::config)
 

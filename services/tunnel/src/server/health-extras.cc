@@ -1,5 +1,7 @@
 #include "health-extras.hxx"
 
+#include <http/health-controller.hxx>
+
 namespace tunnel
 {
 

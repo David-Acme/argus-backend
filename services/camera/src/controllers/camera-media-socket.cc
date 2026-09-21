@@ -1,9 +1,9 @@
 #include "camera-media-socket.hxx"
 
-#include <config/app-config.hxx>
+#include <errors/response-exception.hxx>
 #include <feature/socket/sync/socket/sync-forwarder.hxx>
 #include <filter/jwt/jwt-filter.hxx>
-#include <response-exception.hxx>
+#include <request-context.hxx>
 #include <shared/utils/json-util/json-util.hxx>
 
 #include <drogon/utils/coroutine.h>
@@ -21,7 +21,7 @@ void CameraMediaSocket::handleNewConnection(
     const drogon::WebSocketConnectionPtr& conn)
 {
   const auto& ctx =
-      req->getAttributes()->get<JwtContext>(AppConfig::JWT_CTX_KEY);
+      req->getAttributes()->get<JwtContext>(AuthContext::kJwtKey);
   conn->setContext(std::make_shared<JwtContext>(ctx));
 }
 

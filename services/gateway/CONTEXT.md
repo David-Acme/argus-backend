@@ -153,7 +153,7 @@ table. The app keeps working without any update.
   hash still binds the real client — same rule the `/sync` relay applies.
   **Fallback**: a request no route claims also passes through to the normal
   routing chain, which answers unknown paths with the frozen NOT_FOUND
-  envelope (`setCustomErrorHandler` → `AppConfig::get404Response()`) —
+  envelope (`ErrorHandler::unmatchedRoute(drogon::k404NotFound)`) —
   byte-identical to what the retired monolith served.
   **Link lesson**: the plugin self-registers through a `DrObject<T>` template
   static that nothing references by name, so the `gateway-core` static lib
@@ -312,7 +312,7 @@ table. The app keeps working without any update.
   disabled = the single-listener shape, zero behavior change) adds a SECOND
   listener mirroring the public one's TLS posture (same host, certs, min
   protocol; appended by `appendRemoteListener` in
-  `argus-gateway/src/server/listener-config.cc`). A request is
+  `packages/http/src/http/listener-config.cc`). A request is
   remote-classified when its connection's LOCAL port equals `tunnel_port`
   (`requestIsRemote`, remote-config.cc — TLS is end-to-end through the
   tunnel relay, so the observed local port is the only honest signal; the
@@ -328,9 +328,9 @@ table. The app keeps working without any update.
   tunnel, so CIDR matching is meaningless — the deviation from the
   blueprint is this listener marking.
 - **LAN-only gate (Ruling CG)**: `/pairing` and `/auth/register` answer
-  `403 REMOTE_NOT_ALLOWED` (frozen `{status, info, errors}` envelope, new
-  `AppConfig::ERROR_CODE_REMOTE_NOT_ALLOWED` +
-  `getRemoteNotAllowedResponse()`) when the request is remote-classified and
+  `403 REMOTE_NOT_ALLOWED` (frozen `{status, info, errors}` envelope,
+  `GatewayErrors::RemoteNotAllowed` through `ApiResponse::error`) when the
+  request is remote-classified and
   `[remote] enabled = false` (default). `enabled = true` lets them pass
   byte-identical to LAN behavior. Short-circuit responses bypass the
   post-handling advice, so the gate applies CORS itself to keep the
@@ -349,8 +349,8 @@ table. The app keeps working without any update.
   `window_seconds`) and locks a key out for `lockout_seconds` after
   `lockout_threshold` consecutive 4xx handler outcomes; the outcome is fed
   back by a second post-handling advice (`RemoteGate::recordOutcome`).
-  429 uses the frozen envelope (`AppConfig::get429Response`, code
-  `TOO_MANY_REQUESTS`) and is emitted in pre-routing — BEFORE routing,
+  429 uses the frozen envelope (`GatewayErrors::TooManyRemoteAttempts`,
+  code `TOO_MANY_REQUESTS`) and is emitted in pre-routing — BEFORE routing,
   filters and any database access. `[rate_limit] enabled = false` (default)
   never rejects.
 - **Key and honest limits**: the limiter key is the device fingerprint hash

@@ -1,7 +1,8 @@
 #include "sync-socket.hxx"
 
 #include <drogon/utils/coroutine.h>
-#include <response-exception.hxx>
+#include <errors/response-exception.hxx>
+#include <errors/validation-exception.hxx>
 #include <shared/utils/json-util/json-util.hxx>
 #include <shared/validation/validator.hxx>
 #include <trantor/utils/Logger.h>

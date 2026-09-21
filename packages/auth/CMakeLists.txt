@@ -31,9 +31,9 @@ if(NOT TARGET argus::runtime)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../runtime
                      ${CMAKE_BINARY_DIR}/runtime)
 endif()
-if(NOT TARGET pkg::response)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../response
-                     ${CMAKE_BINARY_DIR}/response)
+if(NOT TARGET argus::errors)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../errors
+                     ${CMAKE_BINARY_DIR}/errors)
 endif()
 
 # The identity RPC contract (argus.identity.v1) the filter chain validates
@@ -63,7 +63,7 @@ argus_module(NAME auth
     INCLUDES
         src
     DEPENDS
-        contract::auth contract::sync argus::config argus::runtime pkg::response
+        contract::auth contract::sync argus::config argus::runtime argus::errors
         argus::client-identity
         Drogon::Drogon
         jwt-cpp::jwt-cpp

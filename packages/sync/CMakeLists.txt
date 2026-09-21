@@ -57,9 +57,9 @@ if(NOT TARGET argus::validation)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../validation
                      ${CMAKE_BINARY_DIR}/validation)
 endif()
-if(NOT TARGET pkg::response)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../response
-                     ${CMAKE_BINARY_DIR}/response)
+if(NOT TARGET argus::errors)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../errors
+                     ${CMAKE_BINARY_DIR}/errors)
 endif()
 
 # Standalone configure (top level): the sync test rides argus_identity, so
@@ -190,7 +190,7 @@ target_link_libraries(argus_sync PUBLIC
     argus::nats
     argus::sqlite
     argus::validation
-    pkg::response
+    argus::errors
     Drogon::Drogon)
 
 target_compile_options(argus_sync PRIVATE -Wall -Wextra)

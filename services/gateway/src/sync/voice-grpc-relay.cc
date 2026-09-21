@@ -1,9 +1,9 @@
 #include "voice-grpc-relay.hxx"
 
-#include <config/app-config.hxx>
+#include <errors/response-exception.hxx>
 #include <filter/jwt/jwt-filter.hxx>
 #include <gateway-errors.hxx>
-#include <response-exception.hxx>
+#include <request-context.hxx>
 #include <shared/repositories/user/user-repository.hxx>
 #include <shared/services/config-service/config-service.hxx>
 #include <voice/reaction-contracts.hxx>
@@ -150,9 +150,9 @@ void VoiceGrpcRelay::onConnect(const drogon::HttpRequestPtr& req,
   if (!session->loop)
     session->loop = drogon::app().getIOLoop(0);
 
-  if (req->getAttributes()->find(AppConfig::JWT_CTX_KEY)) {
+  if (req->getAttributes()->find(AuthContext::kJwtKey)) {
     const auto& ctx =
-        req->getAttributes()->get<JwtContext>(AppConfig::JWT_CTX_KEY);
+        req->getAttributes()->get<JwtContext>(AuthContext::kJwtKey);
     session->userId = ctx.sub;
     session->role = ctx.role;
   }

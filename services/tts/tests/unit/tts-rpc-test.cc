@@ -3,7 +3,7 @@
 
 #include <app/rpc/tts-rpc-server.hxx>
 #include <tts-client.hxx>
-#include <response-exception.hxx>
+#include <errors/response-exception.hxx>
 #include <tts-errors.hxx>
 #include <response-rpc.hxx>
 #include <response.pb.h>

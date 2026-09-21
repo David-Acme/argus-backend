@@ -1,11 +1,11 @@
-#include <config/app-config.hxx>
-#include <controllers/health-controller.hxx>
 #include <feature/health/health-rpc-service.hxx>
 #include <feature/voice/voice-rpc-service.hxx>
 #include <grpcpp/grpcpp.h>
-#include <server/listener-config.hxx>
+#include <http/cors.hxx>
+#include <http/error-handler.hxx>
+#include <http/health-controller.hxx>
+#include <http/listener-config.hxx>
 #include <shared/services/config-service/config-service.hxx>
-#include <http/api-response.hxx>
 
 #include <drogon/drogon.h>
 
@@ -59,16 +59,14 @@ int main()
 
   drogon::app().registerPostHandlingAdvice(
       [](const drogon::HttpRequestPtr&, const drogon::HttpResponsePtr& resp) {
-        AppConfig::applyCors(resp);
+        Cors::apply(resp);
       });
 
-  drogon::app().setExceptionHandler(AppConfig::handleException);
+  drogon::app().setExceptionHandler(ErrorHandler::handleException);
 
   drogon::app().setCustomErrorHandler(
       [](drogon::HttpStatusCode code, const drogon::HttpRequestPtr&) {
-        if (code == drogon::k405MethodNotAllowed)
-          return AppConfig::get405Response();
-        return AppConfig::get404Response();
+        return ErrorHandler::unmatchedRoute(code);
       });
 
   LOG_INFO << "gRPC VoiceService on " << hostPort(grpcListener.host,

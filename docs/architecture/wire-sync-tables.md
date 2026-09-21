@@ -16,16 +16,19 @@ The values in `proto/argus/sync/v1/contracts.proto` are **frozen forever**:
   | 6 | `Log` | Live event: audit log |
   | 7 | `AuthContextChanged` | Live event: role/active context must refresh |
 
-- `TableName` 0-23 (from `backend/src/shared/enums.hxx`, backend HEAD `5970173`,
-  includes `Memory = 23`): `User=0, UserInvitation=1, Person=2, PersonEvent=3,
+- `TableName` 0-23 (from
+  `backend/packages/contracts/sync-contract/src/shared/contracts/table-name.hxx`,
+  read at backend HEAD `5970173`; includes `Memory = 23`):
+  `User=0, UserInvitation=1, Person=2, PersonEvent=3,
   Event=4, Reminder=5, ReminderDetail=6, CalendarEvent=7, CalendarEventShare=8,
   Project=9, ProjectMember=10, ProjectTask=11, ContextNote=12, Camera=13,
   CameraStream=14, Zone=15, AuditLog=16, UserAuditLog=17, Notification=18,
   NotificationToken=19, UserActionLog=20, RefreshToken=21, FaceEmbedding=22,
   Memory=23`.
 
-- `SYNC_LIMIT = 200` (from `backend/src/config/app-config.hxx`,
-  `AppConfig::SYNC_LIMIT`): the page size every bounded sync/audit query uses.
+- `SYNC_LIMIT = 200` (from
+  `backend/packages/contracts/sync-contract/src/shared/contracts/sync-limits.hxx`,
+  `SyncLimits::kMaxRows`): the page size every bounded sync/audit query uses.
 
 Rules:
 

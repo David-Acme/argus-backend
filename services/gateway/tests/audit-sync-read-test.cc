@@ -3,10 +3,10 @@
 
 #include <drogon/WebSocketConnection.h>
 #include <drogon/drogon.h>
+#include <errors/response-exception.hxx>
 #include <feature/socket/sync/dtos/synchronized-dto.hxx>
 #include <feature/socket/sync/services/synchronized-service.hxx>
 #include <filter/jwt/jwt-filter.hxx>
-#include <response-exception.hxx>
 #include <shared/contracts/camera-audit-event.hxx>
 #include <shared/contracts/notification-sync-source.hxx>
 #include <shared/contracts/productivity-sync-source.hxx>
@@ -62,7 +62,6 @@ public:
 private:
   std::string path_;
 };
-
 
 struct SeedAuditTablesInput
 {
@@ -313,7 +312,6 @@ bool waitForMessages(const std::shared_ptr<RecordingConnection>& conn,
   return !conn->messages.empty();
 }
 } // namespace
-
 
 TEST_CASE("audit sync reads resolve to the default identity client on the "
           "gateway")

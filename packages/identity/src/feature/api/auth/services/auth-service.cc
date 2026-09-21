@@ -4,9 +4,11 @@
 #include <ctime>
 #include <drogon/drogon.h>
 #include <drogon/orm/DbClient.h>
+#include <errors/response-exception.hxx>
 #include <feature/api/invitation/services/invitation-feature-service.hxx>
 #include <filter/device/device-filter.hxx>
 #include <future>
+#include <identity-errors.hxx>
 #include <iomanip>
 #include <map>
 #include <mutex>
@@ -15,8 +17,6 @@
 #include <string_view>
 #include <shared/contracts/identity-change-sink.hxx>
 #include <shared/contracts/sync-operation.hxx>
-#include <identity-errors.hxx>
-#include <response-exception.hxx>
 #include <voice-lang.hxx>
 
 #include <shared/services/config-service/config-service.hxx>

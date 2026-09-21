@@ -13,7 +13,7 @@ argus_module(NAME guard-api
         argus::text
         argus::runtime
         argus::validation
-        pkg::response
+        argus::http
         argus::guard
         argus::auth
         argus::client-identity

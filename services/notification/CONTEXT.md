@@ -73,7 +73,7 @@ binary, own CMake preset, own `notification.db`.
   symbols). An unreachable identity service means 401, never an open door.
 - **CORS**: the legacy answered every preflight in pre-routing and the
   gateway forwards OPTIONS on proxied paths untouched, so this surface keeps
-  answering OPTIONS itself (`AppConfig::handleOptions`).
+  answering OPTIONS itself (`Cors::handleOptions`).
 - **Foreign keys (Ruling AN)**: the notification tables reference user rows
   that live in identity.db, so foreign-key enforcement stays off on every
   connection.

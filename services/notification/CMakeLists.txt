@@ -80,9 +80,9 @@ endif()
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/validation
                          ${CMAKE_BINARY_DIR}/validation)
     endif()
-    if(NOT TARGET pkg::response)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/response
-                         ${CMAKE_BINARY_DIR}/response)
+    if(NOT TARGET argus::http)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/http
+                         ${CMAKE_BINARY_DIR}/http)
     endif()
     if(NOT TARGET argus::sqlite)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/sqlite
@@ -210,7 +210,7 @@ foreach(TEST_NAME IN ITEMS notification-schema-test notification-migration-test)
     argus::socket
     argus::sqlite
     argus::validation
-    pkg::response
+    argus::http
     notification-migration
     doctest::doctest)
     target_compile_options(${TEST_NAME} PRIVATE -Wall -Wextra)
@@ -237,7 +237,7 @@ target_link_libraries(notification-controller-test PRIVATE
     argus::socket
     argus::sqlite
     argus::validation
-    pkg::response
+    argus::http
     contract::auth
     contract::sync
     doctest::doctest)

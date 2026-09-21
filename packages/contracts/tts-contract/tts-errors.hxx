@@ -1,26 +1,44 @@
 #pragma once
 
-#include <error-definition.hxx>
+#include <errors/error-code.hxx>
+#include <errors/error-definition.hxx>
 
 namespace TtsErrors
 {
 inline constexpr ErrorDefinition TtsNotLoaded{
     .code = ErrorCode::TtsNotLoaded,
+    .status = 503,
     .message = "Text-to-speech engine is not loaded"};
 inline constexpr ErrorDefinition InvalidRequest{
-    .code = ErrorCode::BadRequest, .message = "Invalid synthesis request"};
+    .code = ErrorCode::BadRequest,
+    .status = 400,
+    .message = "Invalid synthesis request"};
 inline constexpr ErrorDefinition Unauthorized{
-    .code = ErrorCode::Unauthorized, .message = "Service credential required"};
+    .code = ErrorCode::Unauthorized,
+    .status = 401,
+    .message = "Service credential required"};
 inline constexpr ErrorDefinition Cancelled{
-    .code = ErrorCode::Cancelled, .message = "Synthesis cancelled"};
+    .code = ErrorCode::Cancelled,
+    .status = 499,
+    .message = "Synthesis cancelled"};
 inline constexpr ErrorDefinition DeadlineExceeded{
-    .code = ErrorCode::DeadlineExceeded, .message = "Synthesis deadline exceeded"};
+    .code = ErrorCode::DeadlineExceeded,
+    .status = 504,
+    .message = "Synthesis deadline exceeded"};
 inline constexpr ErrorDefinition Busy{
-    .code = ErrorCode::TooManyRequests, .message = "Synthesis busy"};
+    .code = ErrorCode::TooManyRequests,
+    .status = 429,
+    .message = "Synthesis busy"};
 inline constexpr ErrorDefinition InternalError{
-    .code = ErrorCode::InternalError, .message = "Synthesis failed"};
+    .code = ErrorCode::InternalError,
+    .status = 500,
+    .message = "Synthesis failed"};
 inline constexpr ErrorDefinition InvalidResponse{
-    .code = ErrorCode::BadGateway, .message = "Invalid synthesis response"};
+    .code = ErrorCode::BadGateway,
+    .status = 502,
+    .message = "Invalid synthesis response"};
 inline constexpr ErrorDefinition Unavailable{
-    .code = ErrorCode::ServiceUnavailable, .message = "Text-to-speech service unavailable"};
-}
+    .code = ErrorCode::ServiceUnavailable,
+    .status = 503,
+    .message = "Text-to-speech service unavailable"};
+} // namespace TtsErrors

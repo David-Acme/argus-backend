@@ -1,8 +1,8 @@
 #include "productivity-sync-source.hxx"
 
+#include <errors/response-exception.hxx>
 #include <gateway-errors.hxx>
 #include <json/value.h>
-#include <response-exception.hxx>
 #include <shared/contracts/sync-filter.hxx>
 #include <shared/wrapper/blocking-task/blocking-task.hxx>
 #include <string>

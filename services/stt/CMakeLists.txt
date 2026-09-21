@@ -31,9 +31,9 @@ if(NOT TARGET Drogon::Drogon)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/runtime
                          ${CMAKE_BINARY_DIR}/runtime)
     endif()
-    if(NOT TARGET pkg::response)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/response
-                         ${CMAKE_BINARY_DIR}/response)
+    if(NOT TARGET argus::http)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/http
+                         ${CMAKE_BINARY_DIR}/http)
     endif()
     if(NOT TARGET argus::stt-client)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/stt-client
@@ -92,7 +92,7 @@ target_include_directories(stt-core PUBLIC
 target_link_libraries(stt-core PUBLIC
     argus::config
     argus::runtime
-    pkg::response
+    argus::http
     argus::stt-client
     Drogon::Drogon
     onnxruntime::onnxruntime
@@ -146,7 +146,7 @@ target_compile_definitions(stt-wire-test PRIVATE
 target_link_libraries(stt-wire-test PRIVATE
     argus::config
     argus::runtime
-    pkg::response
+    argus::http
     argus::stt-client
     onnxruntime::onnxruntime
     ${ARGUS_SHERPA_ONNX_TARGET}

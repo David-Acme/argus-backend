@@ -20,7 +20,7 @@ enum SyncOperation {
   SYNC_OPERATION_AUTH_CONTEXT_CHANGED = 7; // AuthContextChanged = 7, role/active context must refresh
 }
 
-// Frozen table ids: TableName 0-23 from src/shared/enums.hxx (backend HEAD 5970173).
+// Frozen table ids: TableName 0-23 from table-name.hxx (backend HEAD 5970173).
 enum TableName {
   option allow_alias = true;
 
@@ -51,7 +51,7 @@ enum TableName {
   TABLE_NAME_MEMORY = 23;              // Memory = 23
 }
 
-// Frozen page size: AppConfig::SYNC_LIMIT = "200".
+// Frozen page size: SyncLimits::kMaxRows = "200".
 message SyncPage {
   uint32 limit = 1; // always 200
 }

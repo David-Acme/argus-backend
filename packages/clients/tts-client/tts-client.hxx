@@ -4,7 +4,6 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
-#include <response-exception.hxx>
 #include <stop_token>
 #include <string>
 #include <vector>
