@@ -7,6 +7,7 @@
 #include <deque>
 #include <memory>
 #include <mutex>
+#include <shared/contracts/tool-contracts.hxx>
 #include <shared/repositories/memory-graph/memory-graph-repository.hxx>
 #include <shared/services/embedding/embedding-service.hxx>
 #include <shared/services/extract/tiered-extractor.hxx>
@@ -17,7 +18,6 @@
 #include <shared/services/memory/sqlite-graph.hxx>
 #include <shared/services/memory/tool-parser.hxx>
 #include <shared/services/sqlite/vec-db.hxx>
-#include <shared/services/tools/tool-registry.hxx>
 #include <string>
 #include <thread>
 #include <vector>
@@ -104,7 +104,9 @@ public:
   int64_t observeSystemEvent(const SystemEventInput& input);
   int64_t recordProcedure(const ProcedureRecordInput& input);
 
-  void registerTools(ToolRegistry& registry);
+  // The tools this service offers, handlers bound to it; the registry they
+  // land in belongs to the runtime that executes them (D16, Phase 1 step 9).
+  std::vector<tools::ToolDescriptor> toolDescriptors();
 
   SemanticGraph& graph() { return *graph_; }
   MemoryFormation& formation() { return formation_; }

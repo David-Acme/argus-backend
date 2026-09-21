@@ -7,6 +7,10 @@
 #include <vector>
 
 // Tool runtime contracts (COGNITIVE_MEMORY_PLAN.md §6), namespaced so the legacy memory ToolCall stays unambiguous.
+// argus-memory declares descriptors in these shapes and argus-llm executes them; nothing here crosses the chat wire
+// (it carries toolsEnabled, and the declarations are built server-side from the registry), so the header sits in this
+// package only because a tier argus-memory and argus-llm may both reach is where a shared vocabulary can live — the
+// registry, validator and executor that ran over it moved to argus-llm with Phase 1 step 9.
 namespace tools
 {
 

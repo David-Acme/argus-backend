@@ -1,12 +1,11 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
 
+#include <shared/contracts/tool-contracts.hxx>
 #include <shared/services/config-service/config-service.hxx>
 #include <shared/services/memory/memory-chat.hxx>
 #include <shared/services/memory/memory-service.hxx>
 #include <shared/services/sqlite/vec-db.hxx>
-#include <shared/services/tools/tool-executor.hxx>
-#include <shared/services/tools/tool-registry.hxx>
 
 #include <cstdio>
 #include <filesystem>
@@ -83,27 +82,36 @@ TEST_CASE("a reminder is written for the speaking user and no one else")
   service.init({});
   REQUIRE(service.isLoaded());
 
-  ToolRegistry registry;
-  service.registerTools(registry);
-  REQUIRE(registry.find("memory.remind") != nullptr);
-  const ToolExecutor executor(registry);
+  // What the service offers, handlers bound to it. The pipeline that would
+  // gate a call (resolve, validate, role access) belongs to the runtime that
+  // executes the tools — argus-llm's, covered by llm-tool-runtime-test — so
+  // here the handlers answer directly.
+  const auto descriptors = service.toolDescriptors();
+  const auto tool = [&descriptors](const std::string& name) {
+    for (const auto& descriptor : descriptors)
+      if (descriptor.name == name)
+        return &descriptor;
+    return static_cast<const tools::ToolDescriptor*>(nullptr);
+  };
+  REQUIRE(tool("memory.remind") != nullptr);
+  REQUIRE(tool("memory.recall") != nullptr);
 
   auto remind = callFor("memory.remind", kSpeaker);
   remind.arguments["text"] = "recuerdame que mi cita con el dentista es el lunes";
   remind.context.utterance = remind.arguments["text"].asString();
-  const auto stored = executor.execute(remind, UserRole::Resident);
+  const auto stored = tool("memory.remind")->handler(remind);
   INFO("remind output: " << stored.output);
   REQUIRE(stored.ok);
 
   auto mine = callFor("memory.recall", kSpeaker);
   mine.arguments["query"] = "dentista";
-  const auto ownRecall = executor.execute(mine, UserRole::Resident);
+  const auto ownRecall = tool("memory.recall")->handler(mine);
   CHECK(ownRecall.ok);
   CHECK(ownRecall.output.find("dentista") != std::string::npos);
 
   auto theirs = callFor("memory.recall", kOtherUser);
   theirs.arguments["query"] = "dentista";
-  const auto otherRecall = executor.execute(theirs, UserRole::Resident);
+  const auto otherRecall = tool("memory.recall")->handler(theirs);
   CHECK(otherRecall.output.find("dentista") == std::string::npos);
 
   // The routed path: no rule trigger, yet the save must still form.
@@ -111,7 +119,7 @@ TEST_CASE("a reminder is written for the speaking user and no one else")
   routed.arguments["text"] = "mi revision del coche cae el jueves";
   routed.context.utterance = routed.arguments["text"].asString();
   routed.context.decided = true;
-  const auto routedStored = executor.execute(routed, UserRole::Resident);
+  const auto routedStored = tool("memory.remind")->handler(routed);
   INFO("routed output: " << routedStored.output);
   CHECK(routedStored.ok);
 

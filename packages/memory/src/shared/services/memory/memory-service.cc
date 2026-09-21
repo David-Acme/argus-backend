@@ -913,9 +913,10 @@ void MemoryService::rebuildAll()
     embedAndStore(id, false);
 }
 
-void MemoryService::registerTools(ToolRegistry& registry)
+std::vector<tools::ToolDescriptor> MemoryService::toolDescriptors()
 {
-  for (tools::ToolDescriptor descriptor : memoryToolDescriptors()) {
+  std::vector<tools::ToolDescriptor> descriptors = memoryToolDescriptors();
+  for (auto& descriptor : descriptors) {
     if (descriptor.name == "memory.remember")
       descriptor.handler = [this](const tools::ToolCall& call) {
         return handleRemember(call);
@@ -936,8 +937,8 @@ void MemoryService::registerTools(ToolRegistry& registry)
       descriptor.handler = [this](const tools::ToolCall& call) {
         return handleForget(call);
       };
-    registry.registerTool(std::move(descriptor));
   }
+  return descriptors;
 }
 
 int64_t MemoryService::observeSystemEvent(const SystemEventInput& input)

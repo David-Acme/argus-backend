@@ -148,6 +148,15 @@ add_library(llm-core STATIC
     # The tool-calling loop over that engine: hops, call parsing and the
     # declarations the model reads.
     ${SHARED_ROOT}/services/llm/lfm-adapter.cc
+    # The runtime the loop drives: the registry services register into, the
+    # argument validator and the executor that gates a call on role access.
+    # One consumer, so it belongs to this service (D16) and moved here from
+    # packages/clients/llm-client with Phase 1 step 9; the vocabulary it runs
+    # over stayed in that package, which is the tier argus-memory — the
+    # declarer of the descriptors — can also reach.
+    ${SHARED_ROOT}/services/tools/tool-registry.cc
+    ${SHARED_ROOT}/services/tools/tool-validator.cc
+    ${SHARED_ROOT}/services/tools/tool-executor.cc
     # The router's process-lifetime owner: catalog, model and temporal probe.
     ${SHARED_ROOT}/services/llm/intent-gate.cc
 )
@@ -244,6 +253,12 @@ add_executable(llm-wire-test tests/unit/llm-wire-test.cc
     # The controller drives the loop when tools are registered; the test
     # registers none and exercises the direct paths.
     ${SHARED_ROOT}/services/llm/lfm-adapter.cc
+    # lfm-adapter builds an executor over the singleton, so the runtime it
+    # drives compiles here too (this target builds its own copies of the
+    # service's sources, as it does for the engine).
+    ${SHARED_ROOT}/services/tools/tool-registry.cc
+    ${SHARED_ROOT}/services/tools/tool-validator.cc
+    ${SHARED_ROOT}/services/tools/tool-executor.cc
     # The controller owns the router's gate, so the wire test builds it
     # too: with no model on disk it abstains and the paths stay direct.
     ${SHARED_ROOT}/services/llm/intent-gate.cc)
@@ -285,6 +300,22 @@ target_compile_options(llm-tool-parse-test PRIVATE -Wall -Wextra)
 set_target_properties(llm-tool-parse-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
 add_test(NAME llm-tool-parse-test COMMAND llm-tool-parse-test)
+
+# The tool runtime's own rules, no model and no database: what the executor
+# accepts, what it refuses and what the memory descriptors declare. The suite
+# that used to drive memory's tools through this pipeline (memory's
+# reminder test) can no longer reach it — the runtime is a service's now — so
+# the pipeline is covered here, over the descriptors memory really ships.
+add_executable(llm-tool-runtime-test tests/unit/llm-tool-runtime-test.cc)
+
+target_link_libraries(llm-tool-runtime-test PRIVATE llm-core argus::auth
+    doctest::doctest)
+
+target_compile_options(llm-tool-runtime-test PRIVATE -Wall -Wextra)
+
+set_target_properties(llm-tool-runtime-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+
+add_test(NAME llm-tool-runtime-test COMMAND llm-tool-runtime-test)
 
 add_executable(encounter-closed-consumer-test
     tests/unit/encounter-closed-consumer-test.cc)

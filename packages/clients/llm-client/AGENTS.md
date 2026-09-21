@@ -15,8 +15,9 @@ rather than in any one of the three.
 - `src/shared/services/llm/llm-service.hxx` — the chat DTOs
   (ChatMessage, ChatRequest, LlmPrefillStats) and the in-process engine's
   declaration.
-- `src/shared/contracts/tool-contracts.hxx` — the tool-calling shapes
-  that ride a chat request.
+- `src/shared/contracts/tool-contracts.hxx` — the tool-calling shapes a chat
+  request's tool loop passes in process; the machinery that runs them
+  (registry, validator, executor) lives in argus-llm since Phase 1 step 9.
 - `src/shared/services/llm/remote/llm-remote.{cc,hxx}` — the HTTP client.
 
 ## Rules
@@ -27,6 +28,10 @@ rather than in any one of the three.
   `<shared/services/llm/remote/llm-remote.hxx>`.
 - No engine here. `llm-service.cc` (llama.cpp) belongs to argus-llm;
   nothing in this folder may link llama.
+- No tool machinery here either. The registry, validator and executor are
+  argus-llm's (D16); this folder carries the vocabulary they run over,
+  because argus-memory declares its descriptors in it and a package may not
+  include a service's source.
 - A caller that cannot reach argus-llm degrades to a documented envelope,
   never a crash.
 

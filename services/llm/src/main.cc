@@ -169,8 +169,10 @@ int main()
     llama_backend_free();
     return 1;
   }
-  // The stack must register into the singleton the loop reads.
-  memory.registerTools(ToolRegistry::instance());
+  // The stack hands over its tools, handlers bound; the registry they land in
+  // is this service's runtime, which is the only thing that executes them.
+  for (auto& descriptor : memory.toolDescriptors())
+    ToolRegistry::instance().registerTool(std::move(descriptor));
 
   std::unique_ptr<NatsBus> bus;
   std::unique_ptr<CatalogReplica> replica;

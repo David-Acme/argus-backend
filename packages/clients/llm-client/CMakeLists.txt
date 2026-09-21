@@ -3,10 +3,13 @@
 # stream completions through this; argus-llm links it for the contract, the
 # same shape tts-client has for the TTS wire.
 #
-# It also owns the tool vocabulary (contracts, registry, validator, executor):
-# the descriptors travel with the chat contract, every consumer of the wire
-# already links this module, and the pieces used to sit in argus-memory where
-# argus-llm could not reach them.
+# It also carries tool-contracts.hxx, the vocabulary a tool descriptor is
+# written in. That header needs a tier argus-memory and argus-llm may both
+# reach — memory declares the descriptors, llm runs them, and a package may not
+# include a service — so it waits here for the move that takes memory into
+# argus-llm (Phase 4 step 7). The machinery that turns a call into a handler
+# run (registry, validator, executor) had one consumer and left with Phase 1
+# step 9 (D16).
 
 include(${CMAKE_CURRENT_SOURCE_DIR}/../../../cmake/argus-module.cmake)
 
@@ -36,9 +39,6 @@ find_package(nlohmann_json REQUIRED)
 argus_module(NAME llm-client
     SOURCES
         src/shared/services/llm/remote/llm-remote.cc
-        src/shared/services/tools/tool-registry.cc
-        src/shared/services/tools/tool-validator.cc
-        src/shared/services/tools/tool-executor.cc
     INCLUDES
         src
     DEPENDS
