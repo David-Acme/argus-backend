@@ -81,5 +81,5 @@ typed server frames back into the exact JSON/binary the app expects.
 - Cleartext loopback/internal-network gRPC is a documented F6 limitation;
   mTLS arrives with the eventual trust root.
 - The canonical build is the service's standalone graph. From the repository
-  root use `scripts/build-all.sh dev --only argus-voice`; its CTest graph
+  root use `scripts/build-all.sh dev --only voice`; its CTest graph
   compiles the voice suites with `argus::voice-core`.

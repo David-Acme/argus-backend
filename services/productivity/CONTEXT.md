@@ -15,7 +15,7 @@ own `productivity.db`.
   `project_task`, `calendar_event`, `project_member`,
   `calendar_event_share`, `reminder_detail`) plus their 6 indexes, DDL
   copied verbatim from `database/schema.sql:159-280`. The schema lands as
-  `argus-productivity/database/schema.sql` and is applied at boot through
+  `services/productivity/database/schema.sql` and is applied at boot through
   `DbService::runScriptFile` — abort on failure. `argus.db` is never
   touched. `context_note` is NOT recreated (Ruling AK): it was an orphan
   table with no controller and no sync pull, and the frozen argus.db copy
@@ -94,7 +94,7 @@ own `productivity.db`.
 ## Build wiring (decisions)
 
 - The canonical build is the service's standalone graph. From the repository
-  root use `scripts/build-all.sh dev --only argus-productivity`; direct builds
+  root use `scripts/build-all.sh dev --only productivity`; direct builds
   rerun Conan before the matching preset and CTest.
 - The standalone build compiles ncnn only because `argus_identity` compiles
   the face services, whose headers need it; nothing references those objects,

@@ -23,7 +23,7 @@ App ── wss /camera-stream ──> gateway ── wss://argus-camera:7026/syn
   else is dropped (the error envelope below is only used for gateway-side
   relay failures).
 - `argus-camera` serves the same protocol on its internal `/media` socket
-  (`services/argus-camera/src/controllers/camera-media-socket.cc`); no client
+  (`services/camera/src/controllers/camera-media-socket.cc`); no client
   connects to it directly.
 
 ## Text frames (JSON `{type, payload}`)
@@ -42,7 +42,7 @@ Authorisation is enforced by `argus-camera` (`RolePermission::Read` on
 ## Binary frames (server → client)
 
 Every binary frame is one fMP4 fragment with a 12-byte header
-(`services/argus-camera/src/shared/services/stream/ws-frame.hxx`):
+(`services/camera/src/shared/services/stream/ws-frame.hxx`):
 
 | offset | size | field |
 |---|---|---|
@@ -84,6 +84,6 @@ sessions on `/sync` are unaffected. Caps (deploy stack values):
 
 - `docs/architecture/sync-engine.md` — `/sync` operations and bootstrap.
 - `docs/history/plans/camera-media-ws-plan.md` — migration plan and rationale.
-- `packages/argus-sync/src/feature/socket/sync/` — shared `/sync` socket.
-- `services/argus-gateway/src/sync/camera-stream-socket.{hxx,cc}` — endpoint.
-- `services/argus-camera/src/controllers/camera-media-service.cc` — protocol.
+- `packages/sync/src/feature/socket/sync/` — shared `/sync` socket.
+- `services/gateway/src/sync/camera-stream-socket.{hxx,cc}` — endpoint.
+- `services/camera/src/controllers/camera-media-service.cc` — protocol.

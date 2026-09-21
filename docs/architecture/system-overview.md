@@ -41,8 +41,8 @@ service contract, as recorded in each owner's `CONTEXT.md`.
 ## Build model
 
 The repository root intentionally has no `CMakeLists.txt`,
-`CMakePresets.json` or `conanfile.txt`. Twenty standalone owner projects
-each carry their own Conan graph and `dev`/`prod` CMake presets.
+`CMakePresets.json` or `conanfile.txt`. Eighteen standalone owner
+projects each carry their own Conan graph and `dev`/`prod` CMake presets.
 
 Build and test all projects:
 
@@ -54,7 +54,7 @@ Build and test all projects:
 Useful scoped modes:
 
 ```bash
-./scripts/build-all.sh dev --only argus-camera
+./scripts/build-all.sh dev --only camera
 ./scripts/build-all.sh prod --no-tests
 ./scripts/build-all.sh dev --install-only
 ```
@@ -62,7 +62,7 @@ Useful scoped modes:
 Build one project directly:
 
 ```bash
-cd services/argus-camera
+cd services/camera
 conan install . --output-folder=build/dev \
   -s build_type=Debug --build=missing
 cmake --preset dev
@@ -101,9 +101,9 @@ Each process reads its own ignored `config.toml`, generated from the adjacent
 Standalone binaries are produced inside their owner folder, for example:
 
 ```bash
-./services/argus-gateway/build/dev/argus-gateway
-./services/argus-camera/build/dev/argus-camera
-./services/argus-llm/build/dev/argus-llm
+./services/gateway/build/dev/argus-gateway
+./services/camera/build/dev/argus-camera
+./services/llm/build/dev/argus-llm
 ```
 
 Start dependencies before consumers. For the complete topology and health
@@ -172,7 +172,7 @@ encounter owns one notification thread (first crossing, then strictly higher
 tiers only). It publishes a readiness `heartbeat` (the gateway's raw camera
 notifier yields while it is fresh) and `encounter_closed` summaries —
 the only camera feed long-term memory reads. Details live in
-`services/argus-guard/CONTEXT.md`, the
+`services/guard/CONTEXT.md`, the
 [camera-guardian deep analysis](camera-guardian-deep-analysis.md) and the
 [camera-guard automation plan](../history/plans/camera-guard-automation-plan.md).
 

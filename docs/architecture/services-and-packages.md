@@ -25,7 +25,7 @@ proxies the public surface. Core NATS (`4222`) carries change events; the
 durable delivery legs (guard observations, encounter summaries, notification
 delivery) run on JetStream streams with PubAck settlement. Typed gRPC covers
 camera/productivity/notification sync, voice sessions, camera actions and
-identity operations. Each database volume is mounted by its owner only
+identity operations. Each database directory is mounted by its owner only
 (rule 27): cross-domain reads go through the SDK clients.
 
 ## Standalone packages
@@ -34,7 +34,6 @@ These own a Conan/CMake graph and build on their own:
 
 | Package | Responsibility |
 |---|---|
-| `argus-common` | Shared enums, contracts, validation, config, responses, wrappers |
 | `argus-contracts` | Protobuf contracts and typed internal SDKs |
 | `argus-cert` | Instance CA and certificate issuance/rotation |
 | `argus-socket` | Room/socket emission (`SocketService`) |
@@ -57,7 +56,7 @@ name. `argus-vlm-client` is the thin HTTP client for the internal
 
 - Services depend on packages and on internal clients, never on another
   service's source.
-- Cross-service calls go through `packages/argus-contracts` generated SDKs or
+- Cross-service calls go through `packages/contracts` generated SDKs or
   the shared wire clients.
 - A package never depends on a service.
 

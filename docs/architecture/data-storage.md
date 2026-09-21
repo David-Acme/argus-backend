@@ -7,12 +7,12 @@ is no shared monolith database: `argus.db` is retired and must not appear.
 
 | Database | Owner | Schema | Runtime path |
 |---|---|---|---|
-| `identity.db` | `argus-gateway` (`packages/argus-identity`) | `packages/argus-identity/database/schema.sql` | `database/identity.db` |
-| `camera.db` | `argus-camera` | `services/argus-camera/database/schema.sql` | `database/camera.db` |
-| `productivity.db` | `argus-productivity` | `services/argus-productivity/database/schema.sql` | `database/productivity.db` |
-| `notification.db` | `argus-notification` | `services/argus-notification/database/schema.sql` | `database/notification.db` |
-| `memory.db` | `argus-llm` (`packages/argus-memory`) | `packages/argus-memory/database/schema.sql` | `database/memory.db` |
-| `guard.db` | `argus-guard` | `services/argus-guard/database/schema.sql` | `database/guard.db` |
+| `identity.db` | `argus-gateway` (`packages/identity`) | `packages/identity/database/schema.sql` | `database/identity.db` |
+| `camera.db` | `argus-camera` | `services/camera/database/schema.sql` | `database/camera.db` |
+| `productivity.db` | `argus-productivity` | `services/productivity/database/schema.sql` | `database/productivity.db` |
+| `notification.db` | `argus-notification` | `services/notification/database/schema.sql` | `database/notification.db` |
+| `memory.db` | `argus-llm` (`packages/memory`) | `packages/memory/database/schema.sql` | `database/memory.db` |
+| `guard.db` | `argus-guard` | `services/guard/database/schema.sql` | `database/guard.db` |
 
 `guard.db` holds incidents, encounters and their transitions, assessments,
 expected guests, the observation inbox, the action outbox, the

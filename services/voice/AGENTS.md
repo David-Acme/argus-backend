@@ -62,7 +62,7 @@ argus-voice/
 
 ```bash
 # From the monorepo root
-./scripts/build-all.sh dev --only argus-voice
+./scripts/build-all.sh dev --only voice
 
 # From services/voice
 conan install . --output-folder=build/dev -s build_type=Debug --build=missing

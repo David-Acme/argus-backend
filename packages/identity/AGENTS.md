@@ -48,7 +48,7 @@ monolith structure, build-by-module-name). In particular:
   is never a reason to leave a stale or misplaced comment.
 - Rule 25 (the folder IS the module): this service is declared once,
   through `argus_module(NAME identity ...)` in this folder's
-  `CMakeLists.txt`. Never list `argus-identity/src/...` files by raw path
+  `CMakeLists.txt`. Never list `packages/identity/src/...` files by raw path
   in a consumer's CMakeLists — link `argus_identity` (or `argus::identity`)
   instead.
 - Rule 12 (thin controllers): controllers parse and delegate; the feature
@@ -61,9 +61,9 @@ file naming stays hyphenated (`identity-migration-test.cc`).
 
 ```bash
 # From the monorepo root
-./scripts/build-all.sh dev --only argus-identity
+./scripts/build-all.sh dev --only identity
 
-# From packages/argus-identity
+# From packages/identity
 conan install . --output-folder=build/dev -s build_type=Debug --build=missing
 cmake --preset dev
 cmake --build --preset dev -j 8

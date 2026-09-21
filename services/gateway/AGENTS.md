@@ -48,7 +48,7 @@ argus-gateway/
 
 ```bash
 # From the monorepo root
-./scripts/build-all.sh dev --only argus-gateway
+./scripts/build-all.sh dev --only gateway
 
 # From services/gateway
 conan install . --output-folder=build/dev -s build_type=Debug --build=missing

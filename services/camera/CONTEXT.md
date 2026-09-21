@@ -14,8 +14,8 @@ preset, own `camera.db`.
 - **camera.db**: the camera-domain tables (`camera`, `camera_stream`,
   `zone` plus their 8 indexes), DDL copied verbatim from
   `database/schema.sql`. The schema lands as
-  `argus-camera/database/schema.sql` (same pattern as
-  `argus-identity/database/schema.sql`) and
+  `services/camera/database/schema.sql` (same pattern as
+  `packages/identity/database/schema.sql`) and
   is applied at boot through `DbService::runScriptFile` — abort on failure.
   `argus.db` is never touched here.
 - **Wiring**: Drogon boot with the camera domain only — `[server]`
@@ -112,8 +112,8 @@ preset, own `camera.db`.
 ## Build wiring (decisions)
 
 - The canonical camera build is its standalone graph. From the repository
-  root use `scripts/build-all.sh dev --only argus-camera`; direct builds run
-  Conan, the matching preset and CTest inside `services/argus-camera`.
+  root use `scripts/build-all.sh dev --only camera`; direct builds run
+  Conan, the matching preset and CTest inside `services/camera`.
 
 ## Object detection (F2-3): detector, operator, event intelligence
 

@@ -140,9 +140,9 @@ with `scripts/setup.sh` / `scripts/setup.sh camera` on the host.
 | argus-tunnel-client | `argus-tunnel:local` | `profiles: [tunnel]`; host-networked like the gateway (dials the gateway `[remote]` listener and the relay's loopback home publish on 127.0.0.1); no database (Ruling CL); `/health` healthcheck |
 | nats | `nats:2.11.14-alpine` | exact tag pin; core NATS (no JetStream needed) |
 | identity-init | `argus-gateway:local` | `profiles: [identity-init]`, runs `argus-migrate-identity` |
-| camera-init | `argus-camera:local` | `profiles: [camera-init]`, runs `argus-migrate-camera` against the camera.db volume |
-| productivity-init | `argus-productivity:local` | `profiles: [productivity-init]`, runs `argus-migrate-productivity` against the productivity.db volume |
-| notification-init | `argus-notification:local` | `profiles: [notification-init]`, runs `argus-migrate-notification` against the notification.db volume |
+| camera-init | `argus-camera:local` | `profiles: [camera-init]`, runs `argus-migrate-camera` against the camera data directory |
+| productivity-init | `argus-productivity:local` | `profiles: [productivity-init]`, runs `argus-migrate-productivity` against the productivity data directory |
+| notification-init | `argus-notification:local` | `profiles: [notification-init]`, runs `argus-migrate-notification` against the notification data directory |
 | vulkan-probe | `argus-camera:local` | `profiles: [vulkan-probe]`, runs `argus-vulkan-probe` with `/dev/dri` |
 
 Ordering: `nats` goes healthy first and the gateway and argus-camera wait
@@ -177,22 +177,26 @@ either init tool while the services hold its target database open — stop the
 stack first.
 
 Fase 3 (Rulings AT/AU/AV) extends the same shape to productivity.db and
-notification.db, each on its own dedicated named volume:
+notification.db, each in its own data subdirectory bind-mounted from
+`${ARGUS_DATA_DIR:-./data}`:
 
-- `argus-productivity` mounts `argus-cutover-productivity-db` rw and applies
+- `argus-productivity` mounts `${ARGUS_DATA_DIR:-./data}/productivity` rw at
+  `/opt/argus/productivity` and applies
   `database/schema.sql` at boot, then serves `argus.productivity.v1.SyncService`
   on 7037. The gateway mounts nothing of it (rule 27): its `/sync` pulls for
   the 7 tables go over that gRPC leg.
-- `argus-notification` mounts `argus-cutover-notification-db` rw and serves
+- `argus-notification` mounts `${ARGUS_DATA_DIR:-./data}/notification` rw at
+  `/opt/argus/notification` and serves
   `argus.notification.v1.NotificationService` on 7038. The gateway's
   camera-notifier creates through `CreateNotifications` and its `/sync`
-  notification pulls use `PullNotifications`; the volume is mounted by no one
-  else (rule 27).
-- `productivity-init` / `notification-init` are the only migration paths onto
-  those volumes and MUST run BEFORE the first boot (the f8291e4 lesson, same
-  as camera-init): once the owning service has boot-applied the schema the
-  volume is live data and the migrate tool correctly no-ops instead of
-  resurrecting argus.db rows over it. On an existing installation:
+  notification pulls use `PullNotifications`; the directory is mounted by
+  no one else (rule 27).
+- `productivity-init` / `notification-init` are the only migration paths
+  onto those directories and MUST run BEFORE the first boot (the f8291e4
+  lesson, same as camera-init): once the owning service has boot-applied
+  the schema the directory is live data and the migrate tool correctly
+  no-ops instead of resurrecting argus.db rows over it. On an existing
+  installation:
   `docker compose --profile productivity-init run --rm productivity-init`
   (and the notification twin) with the stack stopped; both are idempotent and
   no-op on a schema-current target.
@@ -206,12 +210,16 @@ notification.db, each on its own dedicated named volume:
 
 Fase 4 (Rulings CB/CC/CD/CE, compose v4) adds the four AI engine services:
 
-- `argus-tts` (7029), `argus-stt` (7030), `argus-vlm` (7031) and `argus-llm`
-  (7032) are pure internal-wire RPC servers: no JWT, no bus consumer and —
-  until f8-b4 hands memory.db over — no database. argus-memory (7033) is
-  retired since f8-b3: the memory capacity is a package compiled into
-  argus-llm, the worker chat is an in-process call, and the change-subject
-  subscription returns with f8-b4 inside argus-llm. None of them is
+- `argus-tts` (7029), `argus-stt` (7030) and `argus-vlm` (7031) are pure
+  internal-wire RPC servers: no JWT, no bus consumer and no database.
+  `argus-llm` (7032) speaks the same internal wire, but since f8-b4 it also
+  consumes the bus (the guard encounter-closed stream, durable
+  `argus-llm-encounters`) and hosts the memory stack: memory.db under its
+  `${ARGUS_DATA_DIR:-./data}/memory` mount, plus the
+  `packages/memory/database/schema.sql`, `models/memory` and `models/extract`
+  binds. argus-memory (7033) is retired since f8-b3: the memory capacity is
+  a package compiled into argus-llm and the worker chat is an in-process
+  call. None of them is
   reachable from the gateway — the AI wire is internal-only and the gateway
   proxies NOTHING new (Ruling CE). The in-process engine topology is retired
   (F6-4): the gateway carries no engines and every engine consumer dials a
@@ -252,21 +260,23 @@ Fase 4 (Rulings CB/CC/CD/CE, compose v4) adds the four AI engine services:
 - **Models (Ruling CB).** Per-service read-only subpath binds, never the
   whole tree: `models/tts` → argus-tts, `models/stt` → argus-stt,
   `models/vision` → argus-vlm (the GGUF + its mmproj projector),
-  `models/llm` → argus-llm. `models/memory` + `models/extract` return as
-  argus-llm binds at f8-b4, when argus-llm hosts the memory stack (their
+  `models/llm` → argus-llm. `models/memory` + `models/extract` are
+  argus-llm binds since f8-b4, which hosts the memory stack (their
   argus-memory binds are gone with the process, f8-b3).
-- **memory.db single-owner exception (Ruling CB).** The
-  `argus-cutover-memory-db` volume stays DECLARED but mounts into NO
-  service since f8-b3 (argus-memory's retirement): the declaration keeps
-  the data alive across `down -v` teardowns, and argus-llm takes the rw
-  mount over at f8-b4 when it hosts the memory stack — still into NO other
-  service, the single-owner principle intact (the F4-6 replica architecture
-  means nothing else reads it; the gateway has no memory client at all;
-  argus-voice mounts no databases). This breaks the shared-volume pattern
-  of camera.db / productivity.db / notification.db ON PURPOSE: memory.db
-  is private state of the semantic graph, not a synced projection the
-  gateway reads. There is no `memory-init` profile and no migrate tool:
-  boot-apply of `database/schema.sql` moves to argus-llm at f8-b4,
+- **memory.db single-owner exception (Ruling CB).** memory.db lives in
+  `${ARGUS_DATA_DIR:-./data}/memory` (the old `argus-cutover-memory-db`
+  named volume is copied there by `scripts/provision-host.sh
+  --migrate-volumes`; no `argus-cutover-*-db` volume has been declared
+  since f8-b3, argus-memory's retirement) and argus-llm has held the rw
+  mount since f8-b4, when it took the memory stack over — still into NO
+  other service, the single-owner principle intact (the F4-6 replica
+  architecture means nothing else reads it; the gateway has no memory
+  client at all; argus-voice mounts no databases). This breaks the
+  shared-volume pattern of camera.db / productivity.db / notification.db
+  ON PURPOSE: memory.db is private state of the semantic graph, not a synced
+  projection the gateway reads. There is no `memory-init` profile and no
+  migrate tool:
+  boot-apply of `database/schema.sql` moved to argus-llm at f8-b4,
   and the memory tables in the repo's argus.db are empty schema (nothing
   to migrate). Disclosed honestly:
   no DDL sidecar exists for memory.db and none is needed.
@@ -405,9 +415,11 @@ the matching `*-init` profile is the only migration path onto a volume.
   `device.trusted_proxy_ips` of every
   bridge-networked service (argus-camera, argus-productivity,
   argus-notification — the internal network's gateway IP, see the network
-  section). The gateway's `[productivity] db` /
-  `[notifications] db` point at the volume mounts
-  (`productivity/productivity.db`, `notification/notification.db`).
+  section). The owning services' `[productivity] db` / `[notifications] db`
+  (`config.productivity.toml`, `config.notification.toml`) name
+  `productivity/productivity.db` and `notification/notification.db` inside
+  their bind-mounted data dirs; the gateway holds no `db` key for either —
+  it reaches both over `proxy_url`/`grpc_target`.
   The AI service configs carry NO secrets at all (no JWT, no device
   filter): the instance files are pure engine knobs, the only
   per-install choices being the remote gates (`[stt]/[tts]/[llm] remote_url`

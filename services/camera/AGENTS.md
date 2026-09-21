@@ -34,7 +34,8 @@ that apply to camera-service code; when in doubt, the root file wins.
     camera driver, but must never drive real audible hardware (no live siren,
     alarm tone or speaker playback in any build).
 11. **No argus.db migrations** — this service owns `camera.db` only
-    (`argus-camera/database/schema.sql`); it never writes or migrates `argus.db`.
+    (`services/camera/database/schema.sql`); it never writes or migrates
+    `argus.db`.
 12. **Frozen contracts** — HTTP paths, the `{status, info, errors}`
     envelope, `SyncOperation` 0-7, `SYNC_LIMIT=200` and `TableName` 0-23
     never change here; the mobile app must keep working unmodified.
@@ -62,7 +63,7 @@ argus-camera/
 
 ```bash
 # From the monorepo root
-./scripts/build-all.sh dev --only argus-camera
+./scripts/build-all.sh dev --only camera
 
 # From services/camera
 conan install . --output-folder=build/dev -s build_type=Debug --build=missing

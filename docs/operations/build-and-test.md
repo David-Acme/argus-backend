@@ -3,10 +3,10 @@
 ## Orchestrator
 
 ```bash
-./scripts/build-all.sh dev                 # Debug + ctest for all 20 projects
+./scripts/build-all.sh dev                 # Debug + ctest for all 18 projects
 ./scripts/build-all.sh prod                # Release + ctest
 ./scripts/build-all.sh prod --no-tests     # Release only (image build)
-./scripts/build-all.sh dev --only argus-camera
+./scripts/build-all.sh dev --only camera
 ./scripts/build-all.sh dev --install-only  # conan install only
 ```
 
@@ -17,7 +17,7 @@ owner CLI targets (`argus-migrate-*`, `argus-vulkan-probe`) and `ctest`.
 ## Working inside one project
 
 ```bash
-cd services/argus-camera
+cd services/camera
 conan install . --output-folder=build/dev -s build_type=Debug --build=missing
 cmake --preset dev
 cmake --build --preset dev -j 8
@@ -50,5 +50,5 @@ code says.
 
 ## Current scale
 
-20 projects in `dev`. Per-suite test and assertion counts move with the
+18 projects in `dev`. Per-suite test and assertion counts move with the
 suites — read them from `ctest -N` inside each project.

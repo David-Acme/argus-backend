@@ -88,8 +88,11 @@ untouched.
 
 - The mobile app never talks to this service; no gateway routing, no new
   app-facing contract; voice frames stay byte-identical.
-- No tool loop: `LfmAdapter`/`ToolRegistry`/`chatWithTools` stay legacy-side
-  (Ruling BV) — this service exposes chat/chat-stream only.
+- No tool loop at the time (Ruling BV) — superseded by f8-b4, which landed
+  the loop here: the tool runtime lives in this service at
+  `src/shared/services/tools/` (`ToolRegistry`, `ToolExecutor`,
+  `validateArguments`) and the controller drives
+  `chatWithTools`/`chatWithToolsStream`.
 - Model artifacts stay in the shared `models/llm/` tree — never copied.
 - The legacy `LlmService` stays linked and initialized in the legacy binary
   (Ruling BF); the symbol proof for the legacy is unchanged by this task.

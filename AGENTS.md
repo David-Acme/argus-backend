@@ -33,8 +33,16 @@
 ### 1. Enums, never raw strings for constrained columns
 
 Every DB column with a CHECK constraint (`role`, `severity`, `record_mode`,
-`zone_type`, `status`, `action`) MUST use its `enum class` from
-`packages/access/src/shared/enums.hxx`. Use `toString()`/`fromString()` at DB boundaries only.
+`zone_type`, `status`, `action`) MUST use its `enum class` from the
+contract that owns the domain: `UserRole`
+(`packages/contracts/auth-contract/user-role.hxx`), `EventSeverity`,
+`CameraRecordMode` and `ZoneType` (`packages/contracts/camera-contract/`),
+`ReminderDetailStatus` (`packages/contracts/productivity-contract/`) and
+`UserAction`
+(`packages/contracts/sync-contract/src/shared/contracts/user-action.hxx`).
+Each header carries its own `<enum>ToString`/`<enum>FromString` pair, in
+lowerCamelCase (`userRoleToString`, `zoneTypeFromString`), derived from the
+enum's own name; use them at DB boundaries only.
 
 ```
 UserRole, EventSeverity, CameraRecordMode, ZoneType,
@@ -149,10 +157,11 @@ AuthContext::kDeviceKey = "device_ctx"
 
 ### 7. Role-based access
 
-Roles are checked centrally via `packages/access/src/shared/access/role-access.hxx` (the
-`kTableAccess` map: role → table → `RolePermission`). **`RoleFilter` (HTTP) and
-the sync engine share that single source of truth** — to change a permission,
-edit only that file. Never imperative if/else.
+Roles are checked centrally via
+`packages/auth/src/shared/access/role-access.hxx` (the `kTableAccess` map:
+role → table → `RolePermission`). **`RoleFilter` (HTTP) and the sync engine
+share that single source of truth** — to change a permission, edit only that
+file. Never imperative if/else.
 
 ```
 Owner    → full access. Receives the directory and invitation metadata.
@@ -674,11 +683,11 @@ Run the full orchestrator when changing shared build infrastructure.
 
 | File | Purpose |
 |------|---------|
-| `packages/access/src/shared/enums.hxx` | All enum types + conversion helpers |
+| `packages/contracts/{auth,camera,productivity,sync}-contract/` | The enums every CHECK-constrained column uses, each with its own lowerCamelCase `<enum>ToString`/`<enum>FromString` pair (`packages/contracts/camera-contract/zone-type.hxx`) |
 | `<owner>/src/shared/schemas/*/` | DB row → C++ struct mapping |
 | `<owner>/src/shared/repositories/*/` | Data access layer |
 | `packages/contracts/sync-contract/src/shared/contracts/` | `Syncable`, `SyncFilter` base classes + `sync-operation.hxx` |
-| `packages/access/src/shared/access/` | Centralized `RoleAccess` (role → table → permissions), used by `RoleFilter` and sync |
+| `packages/auth/src/shared/access/role-access.hxx` | Centralized role → table → permission table (`role_access`), used by `RoleFilter` and sync |
 | `packages/validation/src/shared/validation/` | Validation DSL (rules, macros, validator) |
 | `packages/auth/src/filter/device/` | Device fingerprint extraction |
 | `packages/auth/src/filter/jwt/` | JWT verification + refresh token validation |
@@ -696,9 +705,10 @@ Run the full orchestrator when changing shared build infrastructure.
 | `services/vlm/src/shared/services/vision/` | VLM inference: LFM2.5-VL-450M via llama.cpp + libmtmd (arbitrary prompts, caption cache) |
 | `services/voice/src/shared/services/vad/` | `VadService` — Silero VAD v5 as an **instance** class (per-stream LSTM, shared ONNX session), with the turn-quality gate |
 | `services/camera/src/shared/services/stream/` | go2rtc manager, `StreamHub` (fMP4 over `/sync`, per-connection credit window, lock order `hubMutex_ → Upstream::mtx`), `Fmp4Reader` (encoding from headers, whole fragments) |
-| `packages/audio/src/shared/wrapper/audio/` | `AudioResampler` (stateful sinc) + `SampleRing` — every block-processed audio path MUST use these, never a custom conversion |
+| `packages/audio/src/shared/wrapper/audio/` | `AudioResampler` (stateful sinc) + `EndpointDetector` — every block-processed audio path MUST use these, never a custom conversion |
+| `services/voice/src/shared/wrapper/audio/` | `SampleRing` — the fixed-capacity float ring the voice paths carry samples in across calls |
 | `services/stt/src/shared/services/stt/` | Speech-to-text via sherpa-onnx (default `nemo_transducer` FastConformer RNN-T, es/en; whisper/canary/nemo_ctc/omnilingual selectable) |
-| `services/tts/src/shared/services/tts/` | Text-to-speech (Supertonic 3) |
+| `services/tts/src/feature/synthesis/` | `TtsService` (`domain/`) + the Supertonic engine set (`infra/supertonic/`: `TtsEngine`, `Style`, `UnicodeProcessor`, onnx loading) — Supertonic 3 text-to-speech |
 | `services/camera/src/shared/services/tapo/` | Tapo camera local protocols: control (`stok` + `securePassthrough`, legacy fallback) and the 8800 talk channel (Digest + MPEG-TS PCMA) |
 | `packages/storage/src/shared/services/storage/` | `S3StorageService` (RustFS S3, SigV4 in `s3-signing.hxx`) + `PrivatePortraitService` (private objects, read via one-use capability) |
 | `services/voice/src/shared/services/reaction/` | `ReactionEngine` — per-turn reactions by signal priority → `voice:event` (meaning, never expression names) |

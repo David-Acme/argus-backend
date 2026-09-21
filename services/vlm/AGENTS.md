@@ -58,7 +58,7 @@ argus-vlm/
 
 ```bash
 # From the monorepo root
-./scripts/build-all.sh dev --only argus-vlm
+./scripts/build-all.sh dev --only vlm
 
 # From services/vlm
 conan install . --output-folder=build/dev -s build_type=Debug --build=missing

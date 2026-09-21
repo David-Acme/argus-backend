@@ -34,7 +34,9 @@ symbol would interpose libgrpc's own callbacks and recurse.
 ## What moved and what didn't
 
 Moved: 107 source files (26 feature `.cc` + headers, 10 repository
-triplets, 10 schema pairs, `services/face`, `private-portrait-service`),
+triplets, 10 schema pairs,
+`src/shared/services/face/{face-service,face-db}.{hxx,cc}`,
+`src/shared/services/storage/private-portrait-service.{hxx,cc}`),
 `database/schema.sql` (the DDL
 truth for every identity table), and the two identity unit suites
 (`identity-migration-test`, `device-credential-test`).
@@ -53,14 +55,14 @@ Not moved, on purpose:
 - `database/identity.db` — live data. Runtime still opens it from
   `database/` by default (`[identity] db`), so the move touched only the
   schema path default (`[identity] schema` now defaults to
-  `argus-identity/database/schema.sql`) and the deploy bind that ships
+  `packages/identity/database/schema.sql`) and the deploy bind that ships
   the schema into the container.
 
 ## The include-prefix invariant
 
 Every moved file kept its `feature/...` / `shared/...` relative path, so
 not one `#include` line changed. The module's include root became
-`argus-identity/src` (it no longer exports the old `src/` tree at all):
+`packages/identity/src` (it no longer exports the old `src/` tree at all):
 each include of a file that stayed in `src/` was audited to resolve
 through a declared module edge — `argus::socket` (socket-service,
 identity-change-sink), `argus::cert`, `argus::audit` (sync-audit,
@@ -125,7 +127,7 @@ defaults to `known` for legacy rows; `IdentifyPerson` reports
 users.
 
 The schema also carries `notification_delivery_inbox` — the gateway's durable
-delivery receipt table (see `services/argus-gateway/CONTEXT.md`). It lives
+delivery receipt table (see `services/gateway/CONTEXT.md`). It lives
 here because the gateway applies this schema file at boot and the receipts
 belong to the gateway-owned identity database; argus-notification never
 touches it.

@@ -2,7 +2,7 @@
 
 fastText intent classifier, six classes: memory_save, memory_recall,
 reminder_set, memory_forget, camera, none. Loaded in-process inside
-services/argus-llm as the fast tier of the intent router.
+services/llm as the fast tier of the intent router.
 
 Trained by the intent-training project; this file is the only artifact that
 crosses to the backend. Do not edit metrics here - republish.

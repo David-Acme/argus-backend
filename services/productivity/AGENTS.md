@@ -29,7 +29,7 @@ that apply to productivity-service code; when in doubt, the root file wins.
 10. **Never trigger setAlarm/siren paths** — no code path here may ever arm
     the siren.
 11. **No argus.db migrations** — this service owns `productivity.db` only
-    (`argus-productivity/database/schema.sql`); it never writes or migrates
+    (`services/productivity/database/schema.sql`); it never writes or migrates
     `argus.db`.
 12. **Frozen contracts** — HTTP paths, the `{status, info, errors}` envelope,
     `SyncOperation` 0-7, `SYNC_LIMIT=200` and `TableName` 0-23 never change
@@ -63,7 +63,7 @@ shared tree into this executable only; the repositories and schemas ride
 
 ```bash
 # From the monorepo root
-./scripts/build-all.sh dev --only argus-productivity
+./scripts/build-all.sh dev --only productivity
 
 # From services/productivity
 conan install . --output-folder=build/dev -s build_type=Debug --build=missing

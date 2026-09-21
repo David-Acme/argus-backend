@@ -4,7 +4,7 @@ Adapted from https://github.com/skygazer42/yolo26-NCNN
 (python/export_yolo26_end2end_raw_ncnn.py): the end2end head's postprocess
 (torch.topk) is replaced by an identity so PNNX/NCNN keep the raw predictions
 (B, anchors, 4+nc) in XYXY order with no TopK in the graph. The C++ consumer
-(see argus-camera/src/objects/ncnn-object-detector.cc) applies TopK itself.
+(see services/camera/src/objects/ncnn-object-detector.cc) applies TopK itself.
 """
 
 import argparse

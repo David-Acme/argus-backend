@@ -56,7 +56,7 @@ argus-stt/
 
 ```bash
 # From the monorepo root
-./scripts/build-all.sh dev --only argus-stt
+./scripts/build-all.sh dev --only stt
 
 # From services/stt
 conan install . --output-folder=build/dev -s build_type=Debug --build=missing

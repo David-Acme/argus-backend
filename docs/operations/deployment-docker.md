@@ -28,10 +28,10 @@ the stack targets Linux host networking.
 
 ## Images
 
-Each `services/argus-<name>/Dockerfile` is a two-stage Debian trixie build:
+Each `services/<name>/Dockerfile` is a two-stage Debian trixie build:
 
 - build stage: build tools plus Conan 2.21.0, then
-  `./scripts/build-all.sh prod --no-tests --only argus-<name>` from the repo
+  `./scripts/build-all.sh prod --no-tests --only <name>` from the repo
   root, using shared BuildKit caches for the Conan package and build folders;
 - runtime stage: only the shared libraries the binaries need
   (`libvulkan1`, `mesa-vulkan-drivers`, gRPC runtime, OpenMP/stdlib) and the

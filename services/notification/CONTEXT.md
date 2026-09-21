@@ -91,7 +91,7 @@ binary, own CMake preset, own `notification.db`.
 ## Build wiring (decisions)
 
 - The canonical build is the service's standalone graph. From the repository
-  root use `scripts/build-all.sh dev --only argus-notification`; direct builds
+  root use `scripts/build-all.sh dev --only notification`; direct builds
   rerun Conan before the matching preset and CTest.
 - The standalone build compiles ncnn only because `argus_identity` compiles
   the face services, whose headers need it; nothing references those

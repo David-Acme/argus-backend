@@ -47,6 +47,6 @@ routes — gateway, camera, productivity, notification, tts.
 ## Tests
 
 No suite of its own yet. The filter chain is exercised by
-`argus-identity/tests/unit/device-credential-test.cc` (both filters
+`packages/identity/tests/unit/device-credential-test.cc` (both filters
 against a real in-process identity RPC) and by every service's route
 suites.

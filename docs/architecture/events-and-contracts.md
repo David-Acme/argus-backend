@@ -25,7 +25,7 @@ The full subject contract lives in `wire-nats-subjects.md`.
 
 ## Typed gRPC contracts
 
-- `packages/argus-contracts/proto/argus/<domain>/v1/` holds the protobuf
+- `packages/contracts/proto/argus/<domain>/v1/` holds the protobuf
   schemas; `argus_sdk_module()` wraps the generated stubs so consumers never
   see protobuf directly.
 - Camera sync (`argus.camera.v1.SyncService`, port 7036) serves the camera

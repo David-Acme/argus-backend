@@ -32,7 +32,7 @@ gpu_layers = -1
 
 # The compose file binds models/llm, models/memory and models/extract read-only.
 
-# The hosted memory stack; the memory-db volume mounts at /opt/argus/memory.
+# The hosted memory stack; the memory data dir mounts at /opt/argus/memory.
 [memory]
 observe_camera_events = false
 db_file = "memory/memory.db"

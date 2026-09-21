@@ -112,7 +112,7 @@ atomically on first match.
 ## Build
 
 ```bash
-./scripts/build-all.sh dev --only argus-guard
+./scripts/build-all.sh dev --only guard
 ```
 
 ## Belief gate and decision journal (Round 6)

@@ -30,14 +30,14 @@ secrets and databases are reused.
 
 | Owner script | Artifacts |
 |---|---|
-| `services/argus-tts/scripts/provision.sh` | Supertonic 3 |
-| `services/argus-stt/scripts/provision.sh` | sherpa-onnx models |
-| `services/argus-llm/scripts/provision.sh` | LFM2.5-1.2B-Instruct QAD |
-| `services/argus-vlm/scripts/provision.sh` | LFM2.5-VL-450M GGUF + mmproj |
-| `services/argus-voice/scripts/provision.sh` | Silero VAD |
-| `services/argus-camera/scripts/provision.sh` | YOLO26n export + go2rtc |
-| `packages/argus-memory/scripts/provision.sh` | e5-small embeddings, NuExtract |
-| `packages/argus-identity/scripts/provision.sh` | RetinaFace + MobileFaceNet |
+| `services/tts/scripts/provision.sh` | Supertonic 3 |
+| `services/stt/scripts/provision.sh` | sherpa-onnx models |
+| `services/llm/scripts/provision.sh` | LFM2.5-1.2B-Instruct QAD |
+| `services/vlm/scripts/provision.sh` | LFM2.5-VL-450M GGUF + mmproj |
+| `services/voice/scripts/provision.sh` | Silero VAD |
+| `services/camera/scripts/provision.sh` | YOLO26n export + go2rtc |
+| `packages/memory/scripts/provision.sh` | e5-small embeddings, NuExtract |
+| `packages/identity/scripts/provision.sh` | RetinaFace + MobileFaceNet |
 
 Models live in the shared `models/` tree and are never copied into projects or
 the image. Each download uses a `.part` file, SHA-256 verification and an

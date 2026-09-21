@@ -112,7 +112,7 @@ monolith's build set was retired (F6-4).
 ## Build wiring (decisions)
 
 - The gateway's standalone Conan/CMake graph is the only build shape. From
-  the repository root use `scripts/build-all.sh dev --only argus-gateway`;
+  the repository root use `scripts/build-all.sh dev --only gateway`;
   direct builds run Conan, the matching preset and CTest inside the service.
 - Shared packages such as `argus-identity`, auth, sync and the
   internal SDKs keep their source declarations in their owner folders. The
@@ -318,7 +318,7 @@ table. The app keeps working without any update.
   tunnel relay, so the observed local port is the only honest signal; the
   relay cannot inject XFF and the peer address is the tunnel client, not
   the device). The mechanism is one pre-routing advice in
-  `argus-gateway/src/main.cc` (`RemoteGate::check`), the only pre-filter
+  `services/gateway/src/main.cc` (`RemoteGate::check`), the only pre-filter
   hook the gateway has, which also covers the `/sync` WebSocket upgrade
   path (Drogon runs pre-routing advices for WS requests too): remote is
   marked with the `remote_ctx` request attribute on EVERY request, and the
@@ -344,7 +344,7 @@ table. The app keeps working without any update.
   mint sessions with no limiter — still ledgered (F5-2 kept its scope to
   the device credential identity and left the limiter surface untouched).
   `RefreshRateLimiter`
-  (`argus-gateway/src/server/refresh-rate-limiter.cc`) keeps a
+  (`services/gateway/src/server/refresh-rate-limiter.cc`) keeps a
   sliding-window counter (at most `max_requests` admissions per
   `window_seconds`) and locks a key out for `lockout_seconds` after
   `lockout_threshold` consecutive 4xx handler outcomes; the outcome is fed
@@ -450,7 +450,7 @@ table. The app keeps working without any update.
   enforces row scoping: the `x-argus-user` metadata must carry the request's
   `user_id`, otherwise the RPC answers UNAUTHENTICATED.
 - **The service implementation moved out in f7-3**: `IdentityRpcService` now
-  lives in `argus-identity/src/feature/rpc/identity-rpc.cc` — the surface
+  lives in `packages/identity/src/feature/rpc/identity-rpc.cc` — the surface
   belongs to the identity service; the gateway only constructs it and binds
   the listener, so it travels with the folder at the standalone extraction.
   The same listener gained `ValidateToken` and `CheckDeviceCredential`,
@@ -479,7 +479,7 @@ table. The app keeps working without any update.
 - **Fallback durable record (Round 12)**: every fallback-path non-delivery
   (non-hard ignore, gate drops, budget/silent suppress) also lands a row in
   `gateway_fallback_event` in the gateway-owned `gateway.db`
-  (`services/argus-gateway/database/schema.sql`; `database/schema.sql` stays
+  (`services/gateway/database/schema.sql`; `database/schema.sql` stays
   the identity schema because this container hosts both). Guard-ready
   handoffs are recorded by guard, malformed payloads carry nothing to
   record. Best-effort fire-and-forget write; a missing store degrades to
@@ -519,7 +519,7 @@ table. The app keeps working without any update.
   on `argus.notification.v1.delivery` (`ARGUS_NOTIFICATION`, durable
   `argus-gateway-delivery`, `maxDeliver = 10`, poison `Term` after 3 failed
   attempts). Each event is receipted first in `notification_delivery_inbox`
-  (DDL owned by `packages/argus-identity/database/schema.sql`, applied by the
+  (DDL owned by `packages/identity/database/schema.sql`, applied by the
   gateway at boot): same id plus same canonical SHA-256 fingerprint is a
   replay (dispatched at most once per receipt), same id plus a different
   fingerprint is a conflict that is never dispatched, an unknown persisted

@@ -32,5 +32,5 @@ this service. The MUST-FOLLOW rules below restate the ones that apply.
 ## Build
 
 ```bash
-./scripts/build-all.sh dev --only argus-guard
+./scripts/build-all.sh dev --only guard
 ```

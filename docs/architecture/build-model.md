@@ -2,21 +2,21 @@
 
 ## Standalone projects
 
-The repository root has no CMake project. Twenty owner projects build
+The repository root has no CMake project. Eighteen owner projects build
 independently, each with its own Conan graph and `dev`/`prod` presets:
 
 ```
-packages/argus-common      packages/argus-identity   services/argus-gateway
-packages/argus-contracts   packages/argus-sync       services/argus-camera
-packages/argus-cert        packages/argus-memory     services/argus-productivity
-packages/argus-socket      packages/argus-intent     services/argus-notification
-packages/argus-sqlite                                services/argus-guard
-                                                     services/argus-tts
-                                                     services/argus-stt
-                                                     services/argus-vlm
-                                                     services/argus-llm
-                                                     services/argus-voice
-                                                     services/argus-tunnel
+packages/cert              packages/identity         services/gateway
+packages/socket            packages/sync             services/camera
+packages/sqlite            packages/memory           services/productivity
+                           packages/intent           services/notification
+                                                     services/guard
+                                                     services/tts
+                                                     services/stt
+                                                     services/vlm
+                                                     services/llm
+                                                     services/voice
+                                                     services/tunnel
 ```
 
 Each project carries `CMakeLists.txt`, `conanfile.txt` and
@@ -24,7 +24,7 @@ Each project carries `CMakeLists.txt`, `conanfile.txt` and
 `build/prod`). `scripts/build-all.sh` drives all of them; see
 [build-and-test.md](../operations/build-and-test.md).
 
-Every microservice also owns `services/argus-<name>/Dockerfile`, built from
+Every microservice also owns `services/<name>/Dockerfile`, built from
 the repository root; packages are compiled into the service images and never
 get an image of their own. See
 [deployment-docker.md](../operations/deployment-docker.md).

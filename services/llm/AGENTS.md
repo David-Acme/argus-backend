@@ -63,7 +63,7 @@ argus-llm/
 
 ```bash
 # From the monorepo root
-./scripts/build-all.sh dev --only argus-llm
+./scripts/build-all.sh dev --only llm
 
 # From services/llm
 conan install . --output-folder=build/dev -s build_type=Debug --build=missing

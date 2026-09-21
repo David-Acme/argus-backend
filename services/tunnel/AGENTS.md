@@ -68,7 +68,7 @@ argus-tunnel/
 
 ```bash
 # From the monorepo root
-./scripts/build-all.sh dev --only argus-tunnel
+./scripts/build-all.sh dev --only tunnel
 
 # From services/tunnel
 conan install . --output-folder=build/dev -s build_type=Debug --build=missing

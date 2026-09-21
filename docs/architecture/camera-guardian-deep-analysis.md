@@ -939,7 +939,7 @@ The implementation model must preserve the repository rules during every phase:
   private members with `_` suffix; do not instantiate them inside request/event
   paths;
 - keep controllers thin and use the standard filters, DTO validation and
-  `AppConfig` responses;
+  `ResponseException` refusals (the advice renders the envelope);
 - never open another service's database; cross-domain calls use shared typed SDKs;
 - run heavy AI only through async variants or `BlockingTask`, never on event loops;
 - size threads through `ThreadBudget`, never constants;

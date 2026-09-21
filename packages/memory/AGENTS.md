@@ -67,9 +67,9 @@ argus-memory/
 
 ```bash
 # From the monorepo root
-./scripts/build-all.sh dev --only argus-memory
+./scripts/build-all.sh dev --only memory
 
-# From packages/argus-memory
+# From packages/memory
 conan install . --output-folder=build/dev -s build_type=Debug --build=missing
 cmake --preset dev
 cmake --build --preset dev -j 8

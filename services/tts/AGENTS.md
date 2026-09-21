@@ -70,7 +70,7 @@ declares each production source once: `argus::tts-synthesis` owns the domain
 facade and Supertonic infrastructure; `argus::tts-synthesis-http` owns the
 controller and DTO and links the synthesis target. `argus::tts-rpc`
 (`src/app/rpc/`) owns the `argus.tts.v1.Synthesis` gRPC listener and links the
-shared `argus::tts-grpc-client` module (`packages/clients/tts-grpc-client`). The
+shared `argus::tts-client` module (`packages/clients/tts-client`). The
 executable and wire tests reuse these targets rather than compiling
 duplicate production source lists.
 
@@ -78,7 +78,7 @@ HTTP is transitional, not the target transport architecture. The existing
 `/tts/v1/*` routes, envelopes, PCM format, singleton lifecycle and synthesis
 behavior remain unchanged (retained for consumers not yet converted; do not
 claim the HTTP fallback removed). The service still consumes
-`<shared/services/tts/tts-wire.hxx>` from `packages/tts-client` via its
+`<shared/services/tts/tts-wire.hxx>` from `packages/clients/tts-client` via its
 exported include path. `TtsClient` (that package) now delegates to
 `argus::tts::Client` over gRPC whenever `tts.grpc_target` is set, and falls
 back to the original HTTP wire otherwise — both wire shapes are live.
@@ -94,7 +94,7 @@ settings.
 
 ```bash
 # From the monorepo root
-./scripts/build-all.sh dev --only argus-tts
+./scripts/build-all.sh dev --only tts
 
 # From services/tts
 conan install . --output-folder=build/dev -s build_type=Debug --build=missing

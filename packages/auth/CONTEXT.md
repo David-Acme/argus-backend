@@ -68,5 +68,5 @@ another domain's database for a user row.
 
 Anything stateful. No repositories, no schemas, no `DbService`. The
 identity domain (users, sessions, device credentials) is
-`argus-identity/`; the RPC surface that serves this package is
-`argus-identity/src/feature/rpc/`.
+`packages/identity/`; the RPC surface that serves this package is
+`packages/identity/src/feature/rpc/`.
