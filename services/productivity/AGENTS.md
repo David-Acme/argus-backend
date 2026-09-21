@@ -44,8 +44,6 @@ that apply to productivity-service code; when in doubt, the root file wins.
 ```
 argus-productivity/
   CMakeLists.txt        add_subdirectory-compatible AND standalone buildable
-  conanfile.txt         Drogon + transitive needs (same versions as root)
-  CMakePresets.json     dev preset, binaryDir build/dev inside the folder
   src/main.cc           config load, productivity.db wiring, app run
   src/productivity/     productivity-domain config resolution
   src/controllers/      HTTP controllers (health today; CRUD since this task)
@@ -64,12 +62,11 @@ shared tree into this executable only; the repositories and schemas ride
 ```bash
 # From the monorepo root
 ./scripts/build-all.sh dev --only productivity
-
-# From services/productivity
-conan install . --output-folder=build/dev -s build_type=Debug --build=missing
-cmake --preset dev
-cmake --build --preset dev -j 8
-ctest --test-dir build/dev --output-on-failure
 ```
+
+Driving CMake by hand inside the folder means installing the root graph once
+(`./scripts/build-all.sh dev --install-only`) and passing its toolchain; the
+exact flag set is in `docs/operations/build-and-test.md` under "Working
+inside one project".
 
 > Binding cross-service code standards: root `AGENTS.md` MUST-FOLLOW rules 19-24 (modern C++20, comment discipline, efficiency, DB tuning, feature layout + shared SDK, monolith structure).

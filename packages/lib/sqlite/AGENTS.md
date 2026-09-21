@@ -12,9 +12,9 @@ through it (rule 26). Ten units outside `packages/lib` link it — audit,
 identity, memory, sync and six services.
 
 It is one of the two libs declared as a standalone project
-(`project(argus-sqlite)` with its own `conanfile.txt` and `CMakePresets.json`),
-because the vendored `sqlite-vec` extension and the `identity-client-test`
-suite both need a configure that stands on its own.
+(`project(argus-sqlite)`), because the vendored `sqlite-vec` extension and
+the `identity-client-test` suite both need a configure that stands on its
+own.
 
 ## Layout
 

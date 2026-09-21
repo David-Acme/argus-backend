@@ -6,8 +6,8 @@ there is no root CMake project or monolithic backend executable.
 
 ## Layout
 
-- `services/<name>/` — deployable processes, each with its own Conan
-  graph and CMake presets
+- `services/<name>/` — deployable processes, each configuring against the
+  one root Conan graph
 - `packages/lib/` — reusable libraries compiled into their consumers
 - `packages/contracts/` — protobuf and wire contracts, imported directly
 - `packages/clients/` — internal gRPC and HTTP clients for those wires
@@ -37,9 +37,11 @@ Build an already provisioned checkout:
 ./scripts/build-all.sh dev --only camera
 ```
 
-Every orchestrated project owns `CMakeLists.txt`, `conanfile.txt` and
-`CMakePresets.json`. To work directly inside one, run its Conan install, CMake
-preset and CTest commands from that project folder.
+One `conanfile.txt` at the repository root is the whole tree's dependency
+manifest, resolved once by `scripts/build-all.sh`; each orchestrated project
+owns its `CMakeLists.txt` and configures against the toolchain that install
+produced. See [build-and-test.md](docs/operations/build-and-test.md) for
+working inside one project.
 
 ## Runtime
 

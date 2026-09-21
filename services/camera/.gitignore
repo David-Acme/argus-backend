@@ -1,6 +1,4 @@
 build/
-CMakeUserPresets.json
-CMakePresets.json.bak
 config.toml
 certs/
 database/*.db

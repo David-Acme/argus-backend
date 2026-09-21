@@ -23,13 +23,16 @@ locations.
 
 ## Standalone build (f8-c2)
 
-The package also configures from its own folder (`conanfile.txt` +
-dev/prod presets): the top-level configure adds the sibling packages the
-module links, the vendored `sqlite-vec` and `ncnn`, and the migration
-tool the unit suites ride. As in the packages under `packages/contracts`, the cq-bridge
-stand-ins are declared empty: standalone protobuf comes from the system
-(no conan onnxruntime to pull conan protobuf in), so the bridge entry
-symbol would interpose libgrpc's own callbacks and recurse.
+The package also configures from its own folder: the top-level configure adds
+the sibling packages the module links, the vendored `sqlite-vec` and `ncnn`,
+and the migration tool the unit suites ride. There is no per-package Conan
+manifest: the root `conanfile.txt` is the tree's only one, `build-all.sh`
+resolves it once, and a configure inside this folder takes the toolchain that
+install produced (`docs/operations/build-and-test.md`, "Working inside one
+project"). The cq bridge is no longer skipped here, because the root graph
+carries a Conan abseil through onnxruntime's protobuf, so this tree has the
+same two abseil flavors as every other and `argus_grpc_absl_bridge()` joins
+them (see `packages/contracts/CONTEXT.md`).
 
 ## What moved and what didn't
 

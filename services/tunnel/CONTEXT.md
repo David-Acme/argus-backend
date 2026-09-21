@@ -182,8 +182,10 @@ sides and never committed.
 
 ## What was NOT changed
 
-- Zero edits to existing services (root `CMakeLists.txt` /
-  `CMakePresets.json` gained the subdirectory + presets only).
+- Zero edits to existing services: the root `CMakeLists.txt` gained the
+  subdirectory only. (That change also added a preset; the per-project
+  presets are gone now that `scripts/build-all.sh` passes the flags
+  explicitly.)
 - No database, no JWT, no device registry: the relay's device→home mapping
   is in-memory and dies with the process. The push-intent queues are
   in-memory too (F5-5); NATS is subscribe-only on the relay, publisher-side

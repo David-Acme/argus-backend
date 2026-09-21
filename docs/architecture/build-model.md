@@ -2,8 +2,10 @@
 
 ## Standalone projects
 
-The repository root has no CMake project. Eighteen owner projects build
-independently, each with its own Conan graph and `dev`/`prod` presets:
+The repository root has no CMake project; its `conanfile.txt` is the tree's
+single dependency manifest. Eighteen owner projects build independently, each
+with its own `CMakeLists.txt` and binary directory, all configuring against the
+one Conan graph `scripts/build-all.sh` resolves before the first of them:
 
 ```
 packages/lib/cert          packages/identity         services/gateway
@@ -19,10 +21,9 @@ packages/lib/sqlite        packages/memory           services/productivity
                                                      services/tunnel
 ```
 
-Each project carries `CMakeLists.txt`, `conanfile.txt` and
-`CMakePresets.json` (Ninja, Debug under `build/dev`, Release under
-`build/prod`). `scripts/build-all.sh` drives all of them; see
-[build-and-test.md](../operations/build-and-test.md).
+Each project configures against the root graph's toolchain (Ninja, Debug under
+`build/dev`, Release under `build/prod`). `scripts/build-all.sh` drives all of
+them; see [build-and-test.md](../operations/build-and-test.md).
 
 Every microservice also owns `services/<name>/Dockerfile`, built from
 the repository root; packages are compiled into the service images and never

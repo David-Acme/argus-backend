@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build and test every standalone project with its own Conan/CMake presets,
+# Build and test every standalone project against the single root Conan graph,
 # including the on-demand owner CLI tools.
 
 set -euo pipefail
@@ -77,6 +77,20 @@ if [ -n "$ONLY" ]; then
   fi
 fi
 
+# One dependency resolution for the whole tree: the root conanfile.txt is the
+# single manifest (section 2.6), so the graph is installed once and every
+# project configures against the toolchain it produced.
+CONAN_OUT="$ROOT/build/$PROFILE"
+GENERATORS="$CONAN_OUT/build/$BUILD_TYPE/generators"
+
+log "=== conan install (root manifest, $PROFILE) ==="
+conan install "$ROOT" --output-folder="$CONAN_OUT" -s "build_type=$BUILD_TYPE" --build=missing
+
+if [ "$INSTALL_ONLY" -eq 1 ]; then
+  log "Dependencies installed for all selected projects (profile: $PROFILE)."
+  exit 0
+fi
+
 CURRENT_PROJECT=""
 trap 'err "project failed: $CURRENT_PROJECT"' ERR
 
@@ -94,14 +108,15 @@ for dir in "${PROJECTS[@]}"; do
   log "=== $name ($PROFILE) ==="
   (
     cd "$ROOT/$dir"
-    conan install . --output-folder="build/$PROFILE" -s "build_type=$BUILD_TYPE" --build=missing
-    if [ "$INSTALL_ONLY" -eq 1 ]; then
-      exit 0
-    fi
-    cmake --preset "$PROFILE"
-    cmake --build --preset "$PROFILE" -j 8
+    cmake -S . -B "build/$PROFILE" -G Ninja \
+      -DCMAKE_BUILD_TYPE="$BUILD_TYPE" \
+      -DCMAKE_TOOLCHAIN_FILE="$GENERATORS/conan_toolchain.cmake" \
+      -DCMAKE_PREFIX_PATH="$GENERATORS" \
+      -DCMAKE_CXX_STANDARD=20 \
+      -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+    cmake --build "build/$PROFILE" -j 8
     if [ "${#extra_targets[@]}" -gt 0 ]; then
-      cmake --build --preset "$PROFILE" -j 8 --target "${extra_targets[@]}"
+      cmake --build "build/$PROFILE" -j 8 --target "${extra_targets[@]}"
     fi
     if [ "$NO_TESTS" -eq 0 ]; then
       cd "build/$PROFILE"
@@ -111,9 +126,7 @@ for dir in "${PROJECTS[@]}"; do
 done
 
 CURRENT_PROJECT=""
-if [ "$INSTALL_ONLY" -eq 1 ]; then
-  log "Dependencies installed for all selected projects (profile: $PROFILE)."
-elif [ "$NO_TESTS" -eq 1 ]; then
+if [ "$NO_TESTS" -eq 1 ]; then
   log "All selected projects built; tests skipped (profile: $PROFILE)."
 else
   log "All selected projects built and tested (profile: $PROFILE)."

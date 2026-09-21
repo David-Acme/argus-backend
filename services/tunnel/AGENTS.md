@@ -48,8 +48,6 @@ that apply to tunnel code; when in doubt, the root file wins.
 ```
 argus-tunnel/
   CMakeLists.txt        add_subdirectory-compatible AND standalone buildable
-  conanfile.txt         Drogon + tomlplusplus (same versions as root)
-  CMakePresets.json     dev preset, binaryDir build/dev inside the folder
   src/net/              epoll engine (PollLoop, TcpPeer, TcpListener, UniqueFd)
   src/protocol/         frame codec + HMAC auth (frames.hxx/.cc)
   src/core/             home-link stream multiplexer (TunnelMux)
@@ -69,12 +67,11 @@ argus-tunnel/
 ```bash
 # From the monorepo root
 ./scripts/build-all.sh dev --only tunnel
-
-# From services/tunnel
-conan install . --output-folder=build/dev -s build_type=Debug --build=missing
-cmake --preset dev
-cmake --build --preset dev -j 8
-ctest --test-dir build/dev --output-on-failure
 ```
+
+Driving CMake by hand inside the folder means installing the root graph once
+(`./scripts/build-all.sh dev --install-only`) and passing its toolchain; the
+exact flag set is in `docs/operations/build-and-test.md` under "Working
+inside one project".
 
 > Binding cross-service code standards: root `AGENTS.md` MUST-FOLLOW rules 19-24 (modern C++20, comment discipline, efficiency, DB tuning, feature layout + shared SDK, monolith structure).

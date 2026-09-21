@@ -42,9 +42,9 @@ These own a Conan/CMake graph and build on their own:
 | `argus-memory` | Semantic-graph memory (hosted by `argus-llm`) |
 | `argus-intent` | fastText intent router (hosted by `argus-llm`) |
 
-Seven, and the claim is a build fact: each of them carries a `conanfile.txt` +
-`CMakePresets.json` beside its `CMakeLists.txt` and declares its own project
-name. `packages/contracts/` is **not** one of them — the folder has no
+Seven, and the claim is a build fact: each of them carries a `CMakeLists.txt`
+that declares its own project name, so it configures on its own as well as
+under a consumer. `packages/contracts/` is **not** one of them — the folder has no
 `CMakeLists.txt` of its own, and its ten domain subfolders are
 direct-import packages like the rest.
 
@@ -55,8 +55,8 @@ The remainder of `packages/`: `argus-audio`, `argus-auth`, `argus-audit`,
 `argus-nats`, `argus-phrase`, `argus-room`, `argus-runtime`, `argus-storage`,
 `argus-text`, `argus-validation`, the ten contract packages under
 `packages/contracts/` and the ten SDK clients under `packages/clients/`.
-These have no Conan graph of their own: the service that links them provides
-the build context. They are declared once in their folder and linked by target
+These are not standalone projects: the service that links them provides the
+build context. They are declared once in their folder and linked by target
 name. `argus::clients::vlm` is the thin HTTP client for the internal
 `/vlm/v1/describe` wire, linked today only by `argus-guard`.
 

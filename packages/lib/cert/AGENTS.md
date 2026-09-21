@@ -12,10 +12,10 @@ because each one either serves TLS, verifies the CA, or hands a client the
 fingerprint to pin.
 
 It is also one of the two libs declared as a standalone project
-(`project(argus-cert)`, its own `conanfile.txt` and `CMakePresets.json`): its
-suite boots an in-process TLS listener and rotates the certificate underneath
-it, and that listener is an identity route, so the test links `argus_identity`
-and the configure has to be able to bring up identity's own closure.
+(`project(argus-cert)`): its suite boots an in-process TLS listener and
+rotates the certificate underneath it, and that listener is an identity
+route, so the test links `argus_identity` and the configure has to be able
+to bring up identity's own closure.
 
 ## Layout
 

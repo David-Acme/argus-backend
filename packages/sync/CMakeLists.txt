@@ -65,15 +65,8 @@ endif()
 # Standalone configure (top level): the sync test rides argus_identity, so
 # add the sibling packages sync and identity link, the vendored sqlite-vec
 # and ncnn, and identity's migration tool the sibling suites ride. Identity
-# lands after the ncnn block so its face services see the ncnn target. The
-# empty cq-bridge stand-ins skip the bridge: standalone protobuf comes from
-# the system, so the bridge entry symbol would interpose libgrpc's own
-# callbacks (see packages/contracts/CONTEXT.md).
+# lands after the ncnn block so its face services see the ncnn target.
 if(PROJECT_IS_TOP_LEVEL)
-    if(NOT TARGET argus_client_grpc_bridge_entry)
-        add_library(argus_client_grpc_bridge_entry INTERFACE)
-        add_library(argus_client_grpc_bridge_exit INTERFACE)
-    endif()
     if(NOT TARGET argus::room)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../room
                          ${CMAKE_BINARY_DIR}/room)

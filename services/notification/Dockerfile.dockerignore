@@ -6,7 +6,6 @@
 .zed
 build
 **/build
-**/CMakeUserPresets.json
 bench-results
 certs
 database

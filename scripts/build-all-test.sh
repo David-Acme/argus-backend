@@ -41,11 +41,23 @@ fi
 
 run_build_all dev --only identity --no-tests
 test "$(grep -c '^cmake ' "$CALL_LOG")" -eq 3
-grep -q '^cmake --build --preset dev -j 8 --target argus-migrate-identity$' "$CALL_LOG"
+grep -q '^cmake --build build/dev -j 8 --target argus-migrate-identity$' "$CALL_LOG"
 
 run_build_all prod --only camera --no-tests
 test "$(grep -c '^cmake ' "$CALL_LOG")" -eq 3
-grep -q '^cmake --build --preset prod -j 8 --target argus-migrate-camera argus-vulkan-probe$' "$CALL_LOG"
+grep -q '^cmake --build build/prod -j 8 --target argus-migrate-camera argus-vulkan-probe$' "$CALL_LOG"
+
+# One dependency resolution for the whole tree, against the root manifest, and
+# no per-project presets: section 2.6's single manifest is what this locks.
+run_build_all dev --only camera
+test "$(grep -c '^conan install ' "$CALL_LOG")" -eq 1
+grep -Fq "conan install $ROOT --output-folder=$ROOT/build/dev -s build_type=Debug --build=missing" "$CALL_LOG"
+test "$(grep -c '^ctest ' "$CALL_LOG")" -eq 1
+grep -Fq "cmake -S . -B build/dev -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_TOOLCHAIN_FILE=$ROOT/build/dev/build/Debug/generators/conan_toolchain.cmake -DCMAKE_PREFIX_PATH=$ROOT/build/dev/build/Debug/generators -DCMAKE_CXX_STANDARD=20 -DCMAKE_EXPORT_COMPILE_COMMANDS=ON" "$CALL_LOG"
+if grep -q -- '--preset' "$CALL_LOG"; then
+  echo "build-all still drives cmake through a per-project preset" >&2
+  exit 1
+fi
 
 if run_build_all dev --only does-not-exist; then
   echo "unknown --only project unexpectedly succeeded" >&2

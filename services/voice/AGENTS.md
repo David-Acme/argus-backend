@@ -64,10 +64,13 @@ argus-voice/
 # From the monorepo root
 ./scripts/build-all.sh dev --only voice
 
-# From services/voice
-conan install . --output-folder=build/dev -s build_type=Debug --build=missing
-cmake --preset dev
-cmake --build --preset dev -j 8
+# From services/voice: install the root graph once, then configure by hand
+./scripts/build-all.sh dev --install-only
+cmake -S . -B build/dev -G Ninja -DCMAKE_BUILD_TYPE=Debug \
+  -DCMAKE_TOOLCHAIN_FILE=../../build/dev/build/Debug/generators/conan_toolchain.cmake \
+  -DCMAKE_PREFIX_PATH=../../build/dev/build/Debug/generators \
+  -DCMAKE_CXX_STANDARD=20
+cmake --build build/dev -j 8
 ctest --test-dir build/dev --output-on-failure
 ```
 

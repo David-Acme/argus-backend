@@ -7,7 +7,8 @@
 
 - **Argus** — 100% local AI home security + virtual assistant platform.
 - **C++20**, Drogon HTTP/WebSocket, SQLite (async `DbClient`, no ORM).
-- **Conan 2** + **CMake presets** (`dev` = Debug, `prod` = Release).
+- **Conan 2** with one `conanfile.txt` at the repository root; **`dev`** =
+  Debug, **`prod`** = Release.
 
 ## Project layout (whole project)
 
@@ -707,8 +708,9 @@ argus_clients(NAME identity
 - Consumers link by name: `target_link_libraries(argus-voice PRIVATE
   argus::<module> argus::clients::identity)`. Include paths travel with the
   target.
-- Services bootstrap through a `argus_service()` helper (presets,
-  EXCLUDE_FROM_ALL, ports) instead of copy-pasted CMake blocks.
+- Services bootstrap through a `argus_service()` helper (the executable, its
+  module links, the `-Wall -Wextra` gate, the `$ORIGIN` rpath and the
+  `ARGUS_PORTS` property) instead of copy-pasted CMake blocks.
 - Explicit source lists stay ONLY inside the module's own CMakeLists.
   `file(GLOB)` for sources is forbidden (fragile); auto-discovery of
   module folders (GLOB over `*/CMakeLists.txt`) is the only allowed glob.

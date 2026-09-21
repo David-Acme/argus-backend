@@ -24,17 +24,10 @@ include(${CMAKE_CURRENT_SOURCE_DIR}/../../cmake/argus-module.cmake)
 # declared here rather than by the consumer: they are a DAG, so their guards
 # keep the root tree and every other consumer in charge. The sibling packages
 # stay behind PROJECT_IS_TOP_LEVEL because this module and argus_lib_cert link each
-# other: only the project at the top of the configure provides them. The empty
-# cq-bridge stand-ins skip the bridge: standalone protobuf comes from the
-# system, not from conan, so the bridge entry symbol would interpose libgrpc's
-# own callbacks (see packages/contracts/CONTEXT.md).
+# other: only the project at the top of the configure provides them.
 if(NOT TARGET argus::lib::runtime)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../lib/runtime
                      ${CMAKE_BINARY_DIR}/runtime)
-endif()
-if(NOT TARGET argus_client_grpc_bridge_entry)
-    add_library(argus_client_grpc_bridge_entry INTERFACE)
-    add_library(argus_client_grpc_bridge_exit INTERFACE)
 endif()
 if(NOT TARGET sqlite-vec)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../third_party/sqlite-vec

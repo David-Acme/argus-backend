@@ -20,23 +20,17 @@ if(PROJECT_IS_TOP_LEVEL)
     # that used to arrive through argus-common — plus the third-party
     # sqlite-vec, so the notification service links the same objects as any other
     # consumer.
-    # The substrate still finds the vendored gRPC and would build the cq
-    # bridge, whose entry symbol then interposes the identically-named
-    # implementation inside libgrpc. Empty stand-ins skip it.
-if(NOT TARGET argus::contracts::auth)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/contracts/auth
-                     ${CMAKE_BINARY_DIR}/contracts/auth)
-endif()
 
-if(NOT TARGET argus::contracts::sync)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/contracts/sync
-                     ${CMAKE_BINARY_DIR}/contracts/sync)
-endif()
-
-    if(NOT TARGET argus_client_grpc_bridge_entry)
-        add_library(argus_client_grpc_bridge_entry INTERFACE)
-        add_library(argus_client_grpc_bridge_exit INTERFACE)
+    if(NOT TARGET argus::contracts::auth)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/contracts/auth
+                         ${CMAKE_BINARY_DIR}/contracts/auth)
     endif()
+
+    if(NOT TARGET argus::contracts::sync)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/contracts/sync
+                         ${CMAKE_BINARY_DIR}/contracts/sync)
+    endif()
+
     find_package(Drogon CONFIG REQUIRED)
     find_package(cnats CONFIG REQUIRED)
     find_package(tomlplusplus REQUIRED)

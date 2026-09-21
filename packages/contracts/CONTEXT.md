@@ -43,12 +43,20 @@ single source of truth.
 ## Codegen substrate (F6-3)
 
 `CMakeLists.txt` exposes `argus_contracts_substrate()` for every standalone
-consumer to resolve Protobuf + gRPC. The package builds with its own
-`conanfile.txt` and dev/prod presets: with a single abseil flavor the cq bridge entry
-symbol would interpose the identically-named implementation inside
-`libgrpc`, so the standalone configure declares empty bridge stand-ins and
-lets the vendored gRPC resolve its callbacks natively. The
-gRPC toolchain on the development host is vendored under
+consumer to resolve Protobuf + gRPC. The tree has one `conanfile.txt`, at the
+repository root, and one Conan graph: `scripts/build-all.sh` resolves it once
+and every project configures against the toolchain that install produced. When
+that graph carries a Conan abseil — it does, through onnxruntime's protobuf —
+the substrate records `ARGUS_SECOND_ABSEIL_FLAVOR` and
+`argus_grpc_absl_bridge()` builds the two-object cq bridge that joins the
+SDK's abseil inline namespace to the one inside the vendored `libgrpc`: the
+entry defines `grpc_call_run_cq_cb` in the SDK's flavor, the exit calls the
+vendored one, and both reach the binary through the generated client module.
+With a single abseil flavor the entry's definition would instead interpose the
+identically-named implementation inside `libgrpc`, whose callbacks would land
+back on the entry and recurse — measured on `socket`'s suite before the flavor
+count was recorded — so the bridge exists only when the substrate has measured
+two. The gRPC toolchain on the development host is vendored under
 `~/.local/argus-thirdparty/grpc` (Arch grpc 1.83.1 shared libraries); the
 CMake fallback appends that prefix and records the library directory so
 `argus_runtime_rpath()` can add it to every gRPC-linked binary. The service

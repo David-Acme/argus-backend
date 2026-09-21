@@ -12,7 +12,7 @@
   module (`argus::identity` alias).
 - A package folder of the Argus monorepo (rooted at `backend/`), not an
   independent repository or process. It compiles into `argus-gateway` and
-  also owns a standalone Conan/CMake graph for validation.
+  also configures standalone for validation, against the root graph.
 - Authentication IDENTIFIES here; it does not authorize. Role-based
   authorization is the `argus-auth` filter package declared on routes by
   name. Biometrics (faces, embeddings) stay in this service.
@@ -23,8 +23,6 @@
 ```
 argus-identity/
   CMakeLists.txt          argus_module(NAME identity ...) + unit suites
-  conanfile.txt           standalone dependency graph
-  CMakePresets.json       dev/prod standalone presets
   database/schema.sql     the DDL truth for every identity table
   src/feature/api/{auth,invitation,pairing,user}/   moved files, relative
   src/shared/{repositories,schemas,services}/...    paths preserved
@@ -62,13 +60,12 @@ file naming stays hyphenated (`identity-migration-test.cc`).
 ```bash
 # From the monorepo root
 ./scripts/build-all.sh dev --only identity
-
-# From packages/identity
-conan install . --output-folder=build/dev -s build_type=Debug --build=missing
-cmake --preset dev
-cmake --build --preset dev -j 8
-ctest --test-dir build/dev --output-on-failure
 ```
+
+Driving CMake by hand inside this folder means installing the root graph once
+(`./scripts/build-all.sh dev --install-only`) and passing its toolchain; the
+exact flag set is in `docs/operations/build-and-test.md` under "Working inside
+one project".
 
 ## What does NOT live here
 

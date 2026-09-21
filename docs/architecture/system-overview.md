@@ -40,9 +40,10 @@ service contract, as recorded in each owner's `CONTEXT.md`.
 
 ## Build model
 
-The repository root intentionally has no `CMakeLists.txt`,
-`CMakePresets.json` or `conanfile.txt`. Eighteen standalone owner
-projects each carry their own Conan graph and `dev`/`prod` CMake presets.
+The repository root intentionally has no `CMakeLists.txt`: it carries the one
+`conanfile.txt` the whole tree resolves. Eighteen standalone owner projects
+each carry their own `CMakeLists.txt` and configure against that graph's
+toolchain.
 
 Build and test all projects:
 
@@ -59,14 +60,17 @@ Useful scoped modes:
 ./scripts/build-all.sh dev --install-only
 ```
 
-Build one project directly:
+Build one project directly (the root graph first, then the same flags the
+orchestrator passes):
 
 ```bash
+./scripts/build-all.sh dev --install-only
 cd services/camera
-conan install . --output-folder=build/dev \
-  -s build_type=Debug --build=missing
-cmake --preset dev
-cmake --build --preset dev -j 8
+cmake -S . -B build/dev -G Ninja -DCMAKE_BUILD_TYPE=Debug \
+  -DCMAKE_TOOLCHAIN_FILE=../../build/dev/build/Debug/generators/conan_toolchain.cmake \
+  -DCMAKE_PREFIX_PATH=../../build/dev/build/Debug/generators \
+  -DCMAKE_CXX_STANDARD=20 -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+cmake --build build/dev -j 8
 ctest --test-dir build/dev --output-on-failure
 ```
 

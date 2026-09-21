@@ -49,8 +49,6 @@ that apply to llm-service code; when in doubt, the root file wins.
 ```
 argus-llm/
   CMakeLists.txt        add_subdirectory-compatible AND standalone buildable
-  conanfile.txt         Drogon + tomlplusplus + nlohmann_json (same pins)
-  CMakePresets.json     dev preset, binaryDir build/dev inside the folder
   src/main.cc           config load, llama_backend_init/free, engine boot gate
   src/controllers/      HTTP controllers (health + /llm/v1/* wire)
   src/llm/              chat DTO (validation DSL)
@@ -64,12 +62,11 @@ argus-llm/
 ```bash
 # From the monorepo root
 ./scripts/build-all.sh dev --only llm
-
-# From services/llm
-conan install . --output-folder=build/dev -s build_type=Debug --build=missing
-cmake --preset dev
-cmake --build --preset dev -j 8
-ctest --test-dir build/dev --output-on-failure
 ```
+
+Driving CMake by hand inside the folder means installing the root graph once
+(`./scripts/build-all.sh dev --install-only`) and passing its toolchain; the
+exact flag set is in `docs/operations/build-and-test.md` under "Working
+inside one project".
 
 > Binding cross-service code standards: root `AGENTS.md` MUST-FOLLOW rules 19-24 (modern C++20, comment discipline, efficiency, DB tuning, feature layout + shared SDK, monolith structure).

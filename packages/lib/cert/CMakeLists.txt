@@ -33,15 +33,8 @@ endif()
 # lands after the ncnn block so its face services see the ncnn target. The
 # sibling list is what PROJECT_IS_TOP_LEVEL is for here: argus_lib_cert and
 # argus_identity link each other, so the project at the top of the configure
-# is the one that provides them. The empty cq-bridge stand-ins skip the
-# bridge: standalone protobuf comes from the system, so the bridge entry
-# symbol would interpose libgrpc's own callbacks (see
-# packages/contracts/CONTEXT.md).
+# is the one that provides them.
 if(PROJECT_IS_TOP_LEVEL)
-    if(NOT TARGET argus_client_grpc_bridge_entry)
-        add_library(argus_client_grpc_bridge_entry INTERFACE)
-        add_library(argus_client_grpc_bridge_exit INTERFACE)
-    endif()
     if(NOT TARGET argus::room)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../room
                          ${CMAKE_BINARY_DIR}/room)

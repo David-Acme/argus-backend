@@ -37,6 +37,6 @@ one-time flags that must survive restarts without a database table.
 
 `cmake/argus-module.cmake` resolves the protobuf/gRPC stack: Debian
 pkg-config packages when present (image build), otherwise the vendored
-`~/.local/argus-thirdparty/grpc` fallback (Arch hosts). `sqlite3` is a direct
-require in every project's `conanfile.txt`, with `enable_fts5=True` and
-Drogon's `with_sqlite=True`.
+`~/.local/argus-thirdparty/grpc` fallback (Arch hosts). `sqlite3` is a require
+of the root `conanfile.txt`, the tree's only dependency manifest, with
+`enable_fts5=True` and Drogon's `with_sqlite=True`.

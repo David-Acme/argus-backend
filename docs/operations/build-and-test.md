@@ -10,19 +10,33 @@
 ./scripts/build-all.sh dev --install-only  # conan install only
 ```
 
-Per project the script runs `conan install . --output-folder=build/<profile>`,
-`cmake --preset <profile>`, `cmake --build --preset <profile> -j 8`, the
-owner CLI targets (`argus-migrate-*`, `argus-vulkan-probe`) and `ctest`.
+The script resolves the root graph once — `conan install <root>
+--output-folder=build/<profile> -s build_type=<Debug|Release> --build=missing`
+— then, per project, configures with the toolchain that install produced
+(`cmake -S . -B build/<profile> -G Ninja` with `CMAKE_TOOLCHAIN_FILE` and
+`CMAKE_PREFIX_PATH` pointing into
+`build/<profile>/build/<Debug|Release>/generators`), builds with
+`cmake --build build/<profile> -j 8`, builds the owner CLI targets
+(`argus-migrate-*`, `argus-vulkan-probe`) and runs `ctest`.
 
 ## Working inside one project
 
+The root graph has to exist first; `--install-only` is just that step.
+
 ```bash
+./scripts/build-all.sh dev --install-only   # once for the whole tree
 cd services/camera
-conan install . --output-folder=build/dev -s build_type=Debug --build=missing
-cmake --preset dev
-cmake --build --preset dev -j 8
+cmake -S . -B build/dev -G Ninja -DCMAKE_BUILD_TYPE=Debug \
+  -DCMAKE_TOOLCHAIN_FILE=../../build/dev/build/Debug/generators/conan_toolchain.cmake \
+  -DCMAKE_PREFIX_PATH=../../build/dev/build/Debug/generators \
+  -DCMAKE_CXX_STANDARD=20 -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+cmake --build build/dev -j 8
 ctest --test-dir build/dev --output-on-failure
 ```
+
+Those three flag groups — the toolchain, the dependency prefix and the
+language level — are what each project's deleted `CMakePresets.json` used to
+carry.
 
 ## Gates
 
