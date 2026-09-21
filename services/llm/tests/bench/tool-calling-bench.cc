@@ -6,7 +6,7 @@
 #include <map>
 #include <config/config-service.hxx>
 #include <shared/services/llm/lfm-adapter.hxx>
-#include <shared/services/llm/llm-service.hxx>
+#include <llm/llm-service.hxx>
 #include <shared/services/tools/tool-registry.hxx>
 #include <sstream>
 #include <string>

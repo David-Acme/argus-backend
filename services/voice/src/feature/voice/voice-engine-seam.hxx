@@ -4,10 +4,10 @@
 #include <identity/identity-client.hxx>
 #include <memory>
 #include <mutex>
-#include <shared/services/llm/llm-service.hxx>
-#include <shared/services/llm/remote/llm-remote.hxx>
-#include <shared/services/stt/remote/stt-remote.hxx>
-#include <shared/services/tts/remote/tts-remote.hxx>
+#include <llm/llm-service.hxx>
+#include <llm/details/llm-remote.hxx>
+#include <stt/stt-remote.hxx>
+#include <tts/tts-remote.hxx>
 #include <stop_token>
 #include <string>
 #include <vector>

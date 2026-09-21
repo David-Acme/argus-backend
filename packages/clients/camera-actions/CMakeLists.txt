@@ -14,3 +14,20 @@ if(NOT TARGET argus::clients::camera-actions)
       SOURCES src/camera/camera-action-client.cc
       INCLUDES src)
 endif()
+
+enable_testing()
+find_package(doctest REQUIRED)
+
+add_executable(camera-action-client-test tests/unit/camera-action-client-test.cc)
+
+# This folder is pulled in EXCLUDE_FROM_ALL (consumers add it for the client
+# targets), so the suite has to opt back into the default build to be present
+# when ctest runs it.
+set_target_properties(camera-action-client-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+
+target_link_libraries(camera-action-client-test PRIVATE argus::clients::camera-actions
+    doctest::doctest)
+
+target_compile_options(camera-action-client-test PRIVATE -Wall -Wextra)
+
+add_test(NAME camera-action-client-test COMMAND camera-action-client-test)

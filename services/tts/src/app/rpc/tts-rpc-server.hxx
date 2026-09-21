@@ -1,8 +1,8 @@
 #pragma once
 
-#include <tts-client.hxx>
+#include <tts/tts-client.hxx>
 #include <feature/synthesis/domain/tts-service.hxx>
-#include <shared/services/tts/tts-wire.hxx>
+#include <tts/tts-wire.hxx>
 #include <functional>
 #include <memory>
 #include <string>

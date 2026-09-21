@@ -162,6 +162,17 @@ function(argus_grpc_absl_bridge)
     return()
   endif()
   argus_contracts_substrate()
+  # The bridge joins two abseil flavors, and it only exists when there are two:
+  # the entry defines the inline namespace the SDK's own TUs reference, the exit
+  # calls the one inside libgrpc. With a single flavor both names are one
+  # symbol, so the entry would interpose libgrpc's own implementation and the
+  # pair would recurse on the first callback -- the hazard
+  # packages/contracts/CONTEXT.md records for the standalone configure, which is
+  # why a single-flavor tree leaves the bridge out entirely.
+  get_property(second_flavor GLOBAL PROPERTY ARGUS_SECOND_ABSEIL_FLAVOR)
+  if(NOT second_flavor)
+    return()
+  endif()
   set(bridge_dir ${ARGUS_CMAKE_DIR}/../packages/lib/grpc/src/grpc)
   foreach(side entry exit)
     add_library(argus_client_grpc_bridge_${side} OBJECT
@@ -329,6 +340,11 @@ function(argus_contracts_substrate)
   if(abseil_pkg AND EXISTS "${abseil_pkg}/include/absl/strings/str_cat.h")
     set_property(GLOBAL APPEND PROPERTY
                  ARGUS_PROTOBUF_INCLUDES "${abseil_pkg}/include")
+    # A second abseil flavor is in play: the SDK's TUs compile against the Conan
+    # abseil inline namespace while the vendored gRPC carries the host's. That,
+    # and only that, is when the bridge has two symbols to join (measured:
+    # abseil 20260107 in the SDK against 20260526 inside libgrpc).
+    set_property(GLOBAL PROPERTY ARGUS_SECOND_ABSEIL_FLAVOR TRUE)
   endif()
 
   if(ARGUS_VENDORED_GRPC)

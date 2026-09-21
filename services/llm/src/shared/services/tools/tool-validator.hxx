@@ -1,7 +1,7 @@
 #pragma once
 
 #include <optional>
-#include <shared/contracts/tool-contracts.hxx>
+#include <llm/tool-contracts.hxx>
 #include <string>
 
 namespace tools

@@ -6,10 +6,10 @@
 #include <feature/voice/voice-engine-seam.hxx>
 #include <memory>
 #include <mutex>
-#include <shared/services/llm/llm-service.hxx>
+#include <llm/llm-service.hxx>
 #include <shared/services/noise/noise-suppression-service.hxx>
 #include <shared/services/reaction/reaction-engine.hxx>
-#include <shared/services/tts/tts-wire.hxx>
+#include <tts/tts-wire.hxx>
 #include <shared/services/vad/vad-service.hxx>
 #include <audio/audio-resampler.hxx>
 #include <stop_token>

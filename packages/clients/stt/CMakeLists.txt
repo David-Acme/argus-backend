@@ -14,7 +14,7 @@ find_package(Drogon CONFIG REQUIRED)
 
 argus_clients(NAME stt
     SOURCES
-        src/shared/services/stt/remote/stt-remote.cc
+        src/stt/stt-remote.cc
     INCLUDES
         src
     DEPENDS
@@ -22,3 +22,23 @@ argus_clients(NAME stt
         Drogon::Drogon)
 
 target_compile_options(argus_clients_stt PRIVATE -Wall -Wextra)
+
+enable_testing()
+find_package(doctest REQUIRED)
+
+add_executable(stt-client-test tests/unit/stt-client-test.cc)
+
+# This folder is pulled in EXCLUDE_FROM_ALL (consumers add it for the client
+# targets), so the suite has to opt back into the default build to be present
+# when ctest runs it.
+set_target_properties(stt-client-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+
+target_link_libraries(stt-client-test PRIVATE argus::clients::stt
+    doctest::doctest)
+
+target_include_directories(stt-client-test PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/tests/support)
+
+target_compile_options(stt-client-test PRIVATE -Wall -Wextra)
+
+add_test(NAME stt-client-test COMMAND stt-client-test)

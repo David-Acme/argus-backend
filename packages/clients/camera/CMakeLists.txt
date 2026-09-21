@@ -33,3 +33,19 @@ target_link_libraries(client-caller-identity-test PRIVATE argus::clients::camera
 target_compile_options(client-caller-identity-test PRIVATE -Wall -Wextra)
 
 add_test(NAME client-caller-identity-test COMMAND client-caller-identity-test)
+
+add_executable(camera-sync-client-test
+    tests/unit/camera-sync-client-test.cc)
+
+# This folder is pulled in EXCLUDE_FROM_ALL (consumers add it for the client
+# targets), so the suite has to opt back into the default build to be
+# present when ctest runs it.
+set_target_properties(camera-sync-client-test PROPERTIES
+    EXCLUDE_FROM_ALL FALSE)
+
+target_link_libraries(camera-sync-client-test PRIVATE argus::clients::camera
+    doctest::doctest)
+
+target_compile_options(camera-sync-client-test PRIVATE -Wall -Wextra)
+
+add_test(NAME camera-sync-client-test COMMAND camera-sync-client-test)

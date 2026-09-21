@@ -1,6 +1,6 @@
 #pragma once
 
-#include <shared/services/llm/llm-service.hxx>
+#include <llm/llm-service.hxx>
 #include <shared/services/memory/memory-chat.hxx>
 #include <string>
 

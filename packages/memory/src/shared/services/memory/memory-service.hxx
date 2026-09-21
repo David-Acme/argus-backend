@@ -7,7 +7,7 @@
 #include <deque>
 #include <memory>
 #include <mutex>
-#include <shared/contracts/tool-contracts.hxx>
+#include <llm/tool-contracts.hxx>
 #include <shared/repositories/memory-graph/memory-graph-repository.hxx>
 #include <shared/services/embedding/embedding-service.hxx>
 #include <shared/services/extract/tiered-extractor.hxx>

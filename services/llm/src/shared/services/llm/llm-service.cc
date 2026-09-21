@@ -1,4 +1,4 @@
-#include <shared/services/llm/llm-service.hxx>
+#include <llm/llm-service.hxx>
 
 #include <algorithm>
 #include <array>

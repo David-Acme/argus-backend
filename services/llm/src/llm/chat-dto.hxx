@@ -1,7 +1,7 @@
 #pragma once
 
 #include <json/value.h>
-#include <shared/services/llm/llm-service.hxx>
+#include <llm/llm-service.hxx>
 #include <validation/validation_dsl.hxx>
 #include <optional>
 #include <string>

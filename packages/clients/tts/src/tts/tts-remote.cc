@@ -1,7 +1,7 @@
 #include "tts-remote.hxx"
 
 #include <errors/response-exception.hxx>
-#include <tts-client.hxx>
+#include <tts/tts-client.hxx>
 #include <atomic>
 #include <algorithm>
 #include <array>

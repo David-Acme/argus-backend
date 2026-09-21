@@ -14,3 +14,20 @@ if(NOT TARGET argus::clients::identity)
       SOURCES src/identity/identity-client.cc
       INCLUDES src)
 endif()
+
+enable_testing()
+find_package(doctest REQUIRED)
+
+add_executable(identity-grpc-client-test tests/unit/identity-grpc-client-test.cc)
+
+# This folder is pulled in EXCLUDE_FROM_ALL (consumers add it for the client
+# targets), so the suite has to opt back into the default build to be present
+# when ctest runs it.
+set_target_properties(identity-grpc-client-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+
+target_link_libraries(identity-grpc-client-test PRIVATE argus::clients::identity
+    doctest::doctest)
+
+target_compile_options(identity-grpc-client-test PRIVATE -Wall -Wextra)
+
+add_test(NAME identity-grpc-client-test COMMAND identity-grpc-client-test)

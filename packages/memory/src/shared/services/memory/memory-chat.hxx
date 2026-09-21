@@ -1,6 +1,6 @@
 #pragma once
 
-#include <shared/services/llm/llm-service.hxx>
+#include <llm/llm-service.hxx>
 #include <string>
 
 // Chat substrate of the memory workers: in-process engine or the argus-llm wire.

@@ -2,7 +2,7 @@
 
 #include <cstdint>
 #include <optional>
-#include <shared/contracts/tool-contracts.hxx>
+#include <llm/tool-contracts.hxx>
 #include <shared/services/extract/extract-contracts.hxx>
 #include <shared/services/memory/entity-resolver.hxx>
 #include <phrase/rule-parser.hxx>

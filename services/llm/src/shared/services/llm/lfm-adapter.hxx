@@ -1,9 +1,9 @@
 #pragma once
 
 #include <cstdint>
-#include <shared/contracts/tool-contracts.hxx>
+#include <llm/tool-contracts.hxx>
 #include <shared/services/intent/intent-router.hxx>
-#include <shared/services/llm/llm-service.hxx>
+#include <llm/llm-service.hxx>
 #include <shared/services/tools/tool-executor.hxx>
 #include <string>
 #include <vector>

@@ -1,7 +1,7 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
 
-#include <shared/contracts/tool-contracts.hxx>
+#include <llm/tool-contracts.hxx>
 #include <shared/services/memory/memory-tool-descriptors.hxx>
 #include <shared/services/tools/tool-executor.hxx>
 #include <shared/services/tools/tool-registry.hxx>

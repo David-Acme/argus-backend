@@ -1,7 +1,7 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
 
-#include <shared/contracts/tool-contracts.hxx>
+#include <llm/tool-contracts.hxx>
 #include <config/config-service.hxx>
 #include <shared/services/memory/memory-chat.hxx>
 #include <shared/services/memory/memory-service.hxx>

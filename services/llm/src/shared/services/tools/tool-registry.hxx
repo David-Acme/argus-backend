@@ -2,7 +2,7 @@
 
 #include <memory>
 #include <mutex>
-#include <shared/contracts/tool-contracts.hxx>
+#include <llm/tool-contracts.hxx>
 #include <string>
 #include <unordered_map>
 #include <vector>

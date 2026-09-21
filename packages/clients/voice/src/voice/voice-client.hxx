@@ -27,6 +27,8 @@ public:
   virtual void stop() = 0;
   virtual void skip() = 0;
   virtual void sendPcm(const void* data, size_t size) = 0;
+  // Ends the stream: every frame already written goes out, then the sending
+  // side closes and the server sees the end of the request.
   virtual void finish() = 0;
 };
 

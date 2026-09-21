@@ -4,7 +4,7 @@
 
 #include <errors/response-exception.hxx>
 #include <http/api-response.hxx>
-#include <shared/services/stt/remote/stt-remote.hxx>
+#include <stt/stt-remote.hxx>
 #include <shared/services/stt/stt-service.hxx>
 
 #include <chrono>

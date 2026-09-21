@@ -6,9 +6,9 @@
 #include <drogon/drogon.h>
 #include <json/reader.h>
 #include <json/value.h>
-#include <shared/services/llm/llm-service.hxx>
-#include <shared/services/llm/remote/llm-remote.hxx>
-#include <shared/services/vision/remote/vlm-client.hxx>
+#include <llm/llm-service.hxx>
+#include <llm/details/llm-remote.hxx>
+#include <vlm/vlm-client.hxx>
 #include <runtime/blocking-task.hxx>
 #include <trantor/utils/Logger.h>
 

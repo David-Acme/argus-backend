@@ -65,8 +65,12 @@ public:
     std::lock_guard<std::mutex> lock(mutex_);
     if (done_ || writesDone_)
       return;
+    // Frames already queued are part of what the caller asked to send, so the
+    // latch stops new ones entering and the queue is drained under it; the
+    // sending side closes once the last write comes back.
     writesDone_ = true;
-    StartWritesDone();
+    drainLocked();
+    maybeCloseLocked();
   }
 
   void OnReadDone(bool ok) override
@@ -88,18 +92,18 @@ public:
   void OnWriteDone(bool ok) override
   {
     std::lock_guard<std::mutex> lock(mutex_);
-    if (!ok) {
+    if (!ok)
       pending_.clear();
-      writing_ = false;
-      return;
-    }
-    if (!pending_.empty())
+    else if (!pending_.empty())
       pending_.pop_front();
-    if (!writesDone_ && pending_.empty()) {
-      writing_ = false;
+    // The write that just came back is no longer in flight, so the flag clears
+    // before the chain decides whether to send the next frame or close.
+    writing_ = false;
+    if (!pending_.empty()) {
+      drainLocked();
       return;
     }
-    drainLocked();
+    maybeCloseLocked();
   }
 
   void OnDone(const grpc::Status& status) override
@@ -145,10 +149,17 @@ private:
 
   void drainLocked()
   {
-    if (writing_ || pending_.empty() || writesDone_)
+    if (writing_ || pending_.empty())
       return;
     writing_ = true;
     StartWrite(&pending_.front());
+  }
+
+  // Closes the sending side once the queue is empty and nothing is in flight.
+  void maybeCloseLocked()
+  {
+    if (writesDone_ && !writing_ && pending_.empty())
+      StartWritesDone();
   }
 
   argus::voice::v1::VoiceService::StubInterface* stub_;

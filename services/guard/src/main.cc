@@ -14,9 +14,9 @@
 #include <identity/identity-client.hxx>
 #include <notification/notification-client.hxx>
 #include <config/config-service.hxx>
-#include <shared/services/llm/remote/llm-remote.hxx>
+#include <llm/details/llm-remote.hxx>
 #include <sqlite/db-service.hxx>
-#include <shared/services/vision/remote/vlm-client.hxx>
+#include <vlm/vlm-client.hxx>
 #include <nats/nats-bus.hxx>
 #include <unistd.h>
 

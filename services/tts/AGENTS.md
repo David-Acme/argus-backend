@@ -78,7 +78,7 @@ HTTP is transitional, not the target transport architecture. The existing
 `/tts/v1/*` routes, envelopes, PCM format, singleton lifecycle and synthesis
 behavior remain unchanged (retained for consumers not yet converted; do not
 claim the HTTP fallback removed). The service still consumes
-`<shared/services/tts/tts-wire.hxx>` from `packages/clients/tts` via its
+`<tts/tts-wire.hxx>` from `packages/clients/tts` via its
 exported include path. `TtsClient` (that package) now delegates to
 `argus::tts::Client` over gRPC whenever `tts.grpc_target` is set, and falls
 back to the original HTTP wire otherwise — both wire shapes are live.

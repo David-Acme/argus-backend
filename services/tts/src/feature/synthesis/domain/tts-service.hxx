@@ -1,6 +1,6 @@
 #pragma once
 
-#include <shared/services/tts/tts-wire.hxx>
+#include <tts/tts-wire.hxx>
 
 #include <drogon/utils/coroutine.h>
 #include <atomic>

@@ -14,3 +14,20 @@ if(NOT TARGET argus::clients::productivity)
       SOURCES src/productivity/productivity-sync-client.cc
       INCLUDES src)
 endif()
+
+enable_testing()
+find_package(doctest REQUIRED)
+
+add_executable(productivity-sync-client-test tests/unit/productivity-sync-client-test.cc)
+
+# This folder is pulled in EXCLUDE_FROM_ALL (consumers add it for the client
+# targets), so the suite has to opt back into the default build to be present
+# when ctest runs it.
+set_target_properties(productivity-sync-client-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+
+target_link_libraries(productivity-sync-client-test PRIVATE argus::clients::productivity
+    doctest::doctest)
+
+target_compile_options(productivity-sync-client-test PRIVATE -Wall -Wextra)
+
+add_test(NAME productivity-sync-client-test COMMAND productivity-sync-client-test)

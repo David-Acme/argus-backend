@@ -1,7 +1,7 @@
 #pragma once
 
 #include <cstdint>
-#include <shared/services/llm/llm-service.hxx>
+#include <llm/llm-service.hxx>
 #include <string>
 
 // LLM cutover plumbing: the voice session streams from argus-llm once llm.remote_url is set.

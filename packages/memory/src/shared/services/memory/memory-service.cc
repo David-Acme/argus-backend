@@ -14,7 +14,7 @@
 #include <set>
 #include <config/config-service.hxx>
 #include <shared/services/embedding/embedding-service.hxx>
-#include <shared/services/llm/llm-service.hxx>
+#include <llm/llm-service.hxx>
 #include <shared/services/memory/memory-tool-descriptors.hxx>
 #include <shared/services/memory/memory-vec.hxx>
 #include <phrase/rule-parser.hxx>

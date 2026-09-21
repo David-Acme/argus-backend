@@ -1,6 +1,6 @@
 #include "stt-transcriber.hxx"
 
-#include <shared/services/stt/remote/stt-remote.hxx>
+#include <stt/stt-remote.hxx>
 #include <utility>
 
 namespace

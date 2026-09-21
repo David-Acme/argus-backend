@@ -31,10 +31,9 @@ argus_tts_rpc_contract()
 
 argus_clients(NAME tts
     SOURCES
-        tts-client.cc
-        src/shared/services/tts/remote/tts-remote.cc
+        src/tts/tts-client.cc
+        src/tts/tts-remote.cc
     INCLUDES
-        .
         src
     DEPENDS
         argus::lib::config argus::lib::errors
@@ -43,3 +42,20 @@ argus_clients(NAME tts
 
 target_link_libraries(argus_clients_tts PRIVATE argus::contracts::tts-wire)
 target_compile_options(argus_clients_tts PRIVATE -Wall -Wextra)
+
+enable_testing()
+find_package(doctest REQUIRED)
+
+add_executable(tts-client-test tests/unit/tts-client-test.cc)
+
+# This folder is pulled in EXCLUDE_FROM_ALL (consumers add it for the client
+# targets), so the suite has to opt back into the default build to be present
+# when ctest runs it.
+set_target_properties(tts-client-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+
+target_link_libraries(tts-client-test PRIVATE argus::clients::tts
+    doctest::doctest)
+
+target_compile_options(tts-client-test PRIVATE -Wall -Wextra)
+
+add_test(NAME tts-client-test COMMAND tts-client-test)

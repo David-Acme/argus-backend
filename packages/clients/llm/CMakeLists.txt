@@ -38,7 +38,7 @@ find_package(nlohmann_json REQUIRED)
 
 argus_clients(NAME llm
     SOURCES
-        src/shared/services/llm/remote/llm-remote.cc
+        src/llm/details/llm-remote.cc
     INCLUDES
         src
     DEPENDS
@@ -47,3 +47,23 @@ argus_clients(NAME llm
         nlohmann_json::nlohmann_json)
 
 target_compile_options(argus_clients_llm PRIVATE -Wall -Wextra)
+
+enable_testing()
+find_package(doctest REQUIRED)
+
+add_executable(llm-client-test tests/unit/llm-client-test.cc)
+
+# This folder is pulled in EXCLUDE_FROM_ALL (consumers add it for the client
+# targets), so the suite has to opt back into the default build to be present
+# when ctest runs it.
+set_target_properties(llm-client-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+
+target_link_libraries(llm-client-test PRIVATE argus::clients::llm
+    doctest::doctest)
+
+target_include_directories(llm-client-test PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/tests/support)
+
+target_compile_options(llm-client-test PRIVATE -Wall -Wextra)
+
+add_test(NAME llm-client-test COMMAND llm-client-test)

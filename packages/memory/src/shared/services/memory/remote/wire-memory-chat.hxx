@@ -1,7 +1,7 @@
 #pragma once
 
-#include <shared/services/llm/llm-service.hxx>
-#include <shared/services/llm/remote/llm-remote.hxx>
+#include <llm/llm-service.hxx>
+#include <llm/details/llm-remote.hxx>
 #include <shared/services/memory/memory-chat.hxx>
 #include <string>
 #include <utility>

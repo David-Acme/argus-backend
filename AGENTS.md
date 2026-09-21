@@ -747,10 +747,12 @@ The three groups sit where they belong — `packages/lib/<name>`,
 `packages/contracts/<domain>`, `packages/clients/<domain>`, each declared by
 its group's helper: `argus_lib_<name>` / `argus::lib::<name>`,
 `argus_contracts_<domain>` / `argus::contracts::<domain>`,
-`argus_clients_<domain>` / `argus::clients::<domain>`. Six of the ten clients
-wrap a generated gRPC stub and pass `PROTO` to `argus_clients`; the four wire
-clients (`llm`, `stt`, `tts`, `vlm`) speak HTTP and take the helper's
-plain-module branch. Three wire modules are not a domain SDK and call
+`argus_clients_<domain>` / `argus::clients::<domain>`. Seven of the ten clients
+wrap a generated gRPC stub — six of them pass `PROTO` to `argus_clients`, and
+`tts` reaches the same stub through `argus::contracts::tts` instead; the three
+wire clients (`llm`, `stt`, `vlm`) speak HTTP and take the helper's
+plain-module branch, which `tts` also takes because it carries an HTTP
+transport beside the stub. Three wire modules are not a domain SDK and call
 `argus_client_module` with the group they live in: `lib/grpc`'s health stubs
 (`GROUP lib`) and the `response` and `tts` wire contracts, which live in
 `packages/contracts/` and are aliased `argus::contracts::…`.
@@ -900,7 +902,7 @@ for two different reasons, and says which when it does.
 
 | File | Purpose |
 |------|---------|
-| `packages/clients/<domain>/src/<domain>/` (today the four wire clients hold `src/shared/` and `camera-actions` holds `src/camera/`) | The SDK for one service: the only place its stub, URL, envelope parse, retry and auth pass-through exist (`camera`, `identity`, `notification`, `productivity`, `voice`, `camera-actions` + the `llm`/`stt`/`tts`/`vlm` wire clients). Callers link `argus::clients::<domain>` (rule 25, rule 27) |
+| `packages/clients/<domain>/src/<domain>/` (all ten now hold a single `src/<domain>/`; `camera-actions` shares `camera`'s domain folder) | The SDK for one service: the only place its stub, URL, envelope parse, retry and auth pass-through exist (`camera`, `identity`, `notification`, `productivity`, `voice`, `camera-actions` + the `llm`/`stt`/`tts`/`vlm` wire clients). Callers link `argus::clients::<domain>` (rule 25, rule 27) |
 
 **Tier 4 — `lib/auth`**
 

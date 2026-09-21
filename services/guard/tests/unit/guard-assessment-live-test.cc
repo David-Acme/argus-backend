@@ -4,8 +4,8 @@
 #include <argus/camera/v1/actions.grpc.pb.h>
 #include <camera/camera-action-client.hxx>
 #include <guard-assessment.hxx>
-#include <shared/services/llm/remote/llm-remote.hxx>
-#include <shared/services/vision/remote/vlm-client.hxx>
+#include <llm/details/llm-remote.hxx>
+#include <vlm/vlm-client.hxx>
 
 #include <arpa/inet.h>
 #include <chrono>
