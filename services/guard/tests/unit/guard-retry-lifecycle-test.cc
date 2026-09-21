@@ -12,9 +12,9 @@
 #include <json/value.h>
 #include <notification/notification-client.hxx>
 #include <optional>
-#include <shared/services/sqlite/db-service.hxx>
-#include <shared/utils/json-util/json-util.hxx>
-#include <shared/wrapper/nats/nats-bus.hxx>
+#include <sqlite/db-service.hxx>
+#include <text/json-util.hxx>
+#include <nats/nats-bus.hxx>
 #include <string>
 #include <thread>
 #include <unistd.h>

@@ -3,12 +3,12 @@
 
 #include <drogon/drogon.h>
 #include <shared/contracts/notification-delivery-sink.hxx>
-#include <shared/contracts/push-intent-sink.hxx>
+#include <nats/push-intent-sink.hxx>
 #include <shared/services/notification/notification-service.hxx>
-#include <shared/services/sqlite/db-service.hxx>
-#include <shared/wrapper/nats/nats-push-intent-sink.hxx>
-#include <shared/wrapper/nats/nats-subject.hxx>
-#include <shared/wrapper/nats/nats-bus.hxx>
+#include <sqlite/db-service.hxx>
+#include <nats/nats-push-intent-sink.hxx>
+#include <nats/nats-subject.hxx>
+#include <nats/nats-bus.hxx>
 
 #include <atomic>
 #include <filesystem>

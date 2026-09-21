@@ -1,6 +1,6 @@
 #include "tool-executor.hxx"
 
-#include <shared/access/role-access.hxx>
+#include <auth/role-access.hxx>
 #include <shared/services/tools/tool-validator.hxx>
 
 tools::ToolResult ToolExecutor::execute(const tools::ToolCall& call,

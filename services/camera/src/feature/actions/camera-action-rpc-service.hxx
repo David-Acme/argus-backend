@@ -4,7 +4,7 @@
 #include <cstdint>
 #include <feature/actions/stt-transcriber.hxx>
 #include <feature/api/camera-control/services/camera-control-feature-service.hxx>
-#include <grpc-server-identity.hxx>
+#include <grpc/grpc-server-identity.hxx>
 #include <grpcpp/grpcpp.h>
 #include <memory>
 #include <shared/repositories/action-command/action-command-repository.hxx>

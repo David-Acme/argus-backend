@@ -1,7 +1,7 @@
 #include "refresh-token-repository.hxx"
 
 #include <ctime>
-#include <shared/services/sqlite/db-service.hxx>
+#include <sqlite/db-service.hxx>
 
 using namespace refresh_token_query;
 

@@ -171,8 +171,13 @@ function(argus_grpc_absl_bridge)
     target_compile_options(argus_client_grpc_bridge_${side} PRIVATE -Wall -Wextra)
   endforeach()
   get_property(protobuf_includes GLOBAL PROPERTY ARGUS_PROTOBUF_INCLUDES)
+  # The package's include root (section 2.3), not the directory the bridge is
+  # compiled from: the entry object spells its sibling
+  # <grpc/grpc-cq-bridge.hxx>, the same spelling every consumer of this
+  # package uses.
   target_include_directories(argus_client_grpc_bridge_entry SYSTEM PRIVATE
-                             ${protobuf_includes} ${bridge_dir})
+                             ${protobuf_includes}
+                             ${ARGUS_CMAKE_DIR}/../packages/lib/grpc/src)
   get_property(bridge_protobuf GLOBAL PROPERTY ARGUS_PROTOBUF_TARGET)
   get_property(bridge_grpc GLOBAL PROPERTY ARGUS_GRPC_TARGET)
   target_link_libraries(argus_client_grpc_bridge_entry PRIVATE
@@ -192,7 +197,10 @@ function(argus_grpc_client_base)
   add_library(argus_client_grpc_base OBJECT ${base_dir}/grpc-client-base.cc)
   set_target_properties(argus_client_grpc_base PROPERTIES
       POSITION_INDEPENDENT_CODE ON)
-  target_include_directories(argus_client_grpc_base PUBLIC ${base_dir})
+  # The package's include root (section 2.3): consumers spell
+  # <grpc/grpc-client-base.hxx>, so the public dir is src/, not src/grpc/.
+  target_include_directories(argus_client_grpc_base PUBLIC
+                             ${ARGUS_CMAKE_DIR}/../packages/lib/grpc/src)
   get_property(base_grpc GLOBAL PROPERTY ARGUS_GRPC_TARGET)
   target_link_libraries(argus_client_grpc_base PUBLIC ${base_grpc})
   target_compile_options(argus_client_grpc_base PRIVATE -Wall -Wextra)

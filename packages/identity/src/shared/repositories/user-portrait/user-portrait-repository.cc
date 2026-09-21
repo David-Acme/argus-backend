@@ -1,7 +1,7 @@
 #include "user-portrait-repository.hxx"
 
 #include <ctime>
-#include <shared/services/sqlite/db-service.hxx>
+#include <sqlite/db-service.hxx>
 
 using namespace user_portrait_query;
 

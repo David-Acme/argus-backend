@@ -3,7 +3,7 @@
 #include <errors/response-exception.hxx>
 #include <feature/api/project/dtos/create-project-dto.hxx>
 #include <feature/api/project/dtos/update-project-dto.hxx>
-#include <filter/jwt/jwt-filter.hxx>
+#include <auth/jwt-filter.hxx>
 #include <http/api-response.hxx>
 #include <productivity-errors.hxx>
 #include <request-context.hxx>

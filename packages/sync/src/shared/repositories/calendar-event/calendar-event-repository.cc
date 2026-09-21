@@ -1,7 +1,7 @@
 #include "calendar-event-repository.hxx"
 
 #include <ctime>
-#include <shared/services/sqlite/db-service.hxx>
+#include <sqlite/db-service.hxx>
 #include <string>
 #include <string_view>
 #include <vector>

@@ -47,7 +47,7 @@ Not moved, on purpose:
   later step, and it must land after the auth RPC.
 - The audit / sqlite / cert / socket / mdns / room modules — cross-domain
   or gateway-owned; they dissolve into their owner services later.
-- `src/shared/contracts/identity-change-sink.hxx` and the other sink
+- `src/auth/identity-change-sink.hxx` and the other sink
   contracts — consumed through the module links' include roots; they get
   their true home when the socket module does.
 - The migration tool (`tools/migrate-identity`) — the root `tools/`

@@ -3,7 +3,7 @@
 #include <drogon/drogon.h>
 #include <shared/services/tapo/tapo-crypto.hxx>
 #include <shared/services/tapo/tapo-http.hxx>
-#include <shared/utils/json-util/json-util.hxx>
+#include <text/json-util.hxx>
 #include <utility>
 
 namespace

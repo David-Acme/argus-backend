@@ -1,6 +1,6 @@
 #include "guard-policy.hxx"
 
-#include <shared/utils/base64/base64.hxx>
+#include <text/base64.hxx>
 
 #include <algorithm>
 #include <cmath>

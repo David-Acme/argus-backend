@@ -8,7 +8,7 @@
 #include <tts-errors.hxx>
 #include <utility>
 
-#include <shared/services/config-service/config-service.hxx>
+#include <config/config-service.hxx>
 
 #include <arpa/inet.h>
 #include <fcntl.h>

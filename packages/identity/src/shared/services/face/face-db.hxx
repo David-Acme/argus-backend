@@ -4,7 +4,7 @@
 #include <mutex>
 #include <optional>
 #include <shared/repositories/face-embedding/face-embedding-repository.hxx>
-#include <shared/services/sqlite/vec-db.hxx>
+#include <sqlite/vec-db.hxx>
 #include <string>
 #include <utility>
 

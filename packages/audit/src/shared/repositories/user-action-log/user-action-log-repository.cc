@@ -1,7 +1,7 @@
 #include "user-action-log-repository.hxx"
 
-#include <shared/services/sqlite/db-service.hxx>
-#include <shared/utils/json-util/json-util.hxx>
+#include <sqlite/db-service.hxx>
+#include <text/json-util.hxx>
 
 using namespace user_action_log_query;
 

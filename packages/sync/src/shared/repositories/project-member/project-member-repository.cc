@@ -1,6 +1,6 @@
 #include "project-member-repository.hxx"
 
-#include <shared/services/sqlite/db-service.hxx>
+#include <sqlite/db-service.hxx>
 #include <trantor/utils/Logger.h>
 
 using namespace project_member_query;

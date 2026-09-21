@@ -1,6 +1,6 @@
 #include "voice-client.hxx"
 
-#include <grpc-client-base.hxx>
+#include <grpc/grpc-client-base.hxx>
 
 #include <chrono>
 #include <deque>

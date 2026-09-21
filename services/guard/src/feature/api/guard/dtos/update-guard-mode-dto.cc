@@ -1,6 +1,6 @@
 #include "update-guard-mode-dto.hxx"
 
-#include <shared/validation/validation_dsl.hxx>
+#include <validation/validation_dsl.hxx>
 
 UpdateGuardModeDto UpdateGuardModeDto::fromJson(const Json::Value& json)
 {

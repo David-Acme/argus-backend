@@ -1,6 +1,6 @@
 #include "camera-control-feature-service.hxx"
 
-#include <shared/wrapper/blocking-task/blocking-task.hxx>
+#include <runtime/blocking-task.hxx>
 
 drogon::Task<CameraControlResult> CameraControlFeatureService::onDevice(
     int64_t cameraId,

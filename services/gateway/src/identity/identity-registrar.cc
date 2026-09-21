@@ -7,10 +7,10 @@
 #include <feature/api/pairing/controllers/pairing-controller.hxx>
 #include <feature/api/user/controllers/portrait-preview-controller.hxx>
 #include <feature/api/user/controllers/user-controller.hxx>
-#include <filter/device/device-filter.hxx>
-#include <filter/jwt/jwt-filter.hxx>
-#include <filter/role/role-filter.hxx>
-#include <filter/valid-json/valid-json-filter.hxx>
+#include <auth/device-filter.hxx>
+#include <auth/jwt-filter.hxx>
+#include <auth/role-filter.hxx>
+#include <auth/valid-json-filter.hxx>
 #include <memory>
 #include <algorithm>
 #include <set>

@@ -7,17 +7,17 @@
 #include <identity/identity-client.hxx>
 #include <memory/catalog-replica.hxx>
 #include <shared/repositories/memory-graph/memory-graph-repository.hxx>
-#include <shared/services/config-service/config-service.hxx>
+#include <config/config-service.hxx>
 #include <shared/services/encounter-closed/encounter-closed-consumer.hxx>
 #include <shared/services/memory/in-process-memory-chat.hxx>
 #include <shared/services/memory/memory-service.hxx>
 #include <shared/services/memory/sqlite-graph.hxx>
-#include <shared/services/sqlite/db-service.hxx>
-#include <shared/services/sqlite/vec-db.hxx>
+#include <sqlite/db-service.hxx>
+#include <sqlite/vec-db.hxx>
 #include <shared/services/tools/tool-registry.hxx>
-#include <shared/wrapper/blocking-task/blocking-task.hxx>
-#include <shared/wrapper/nats/nats-bus.hxx>
-#include <shared/wrapper/nats/nats-subject.hxx>
+#include <runtime/blocking-task.hxx>
+#include <nats/nats-bus.hxx>
+#include <nats/nats-subject.hxx>
 
 #include <chrono>
 #include <ctime>

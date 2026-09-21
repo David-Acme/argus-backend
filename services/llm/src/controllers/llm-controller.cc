@@ -7,7 +7,7 @@
 #include <llm/chat-dto.hxx>
 #include <shared/services/llm/lfm-adapter.hxx>
 #include <shared/services/tools/tool-registry.hxx>
-#include <shared/wrapper/blocking-task/blocking-task.hxx>
+#include <runtime/blocking-task.hxx>
 
 #include <drogon/drogon.h>
 

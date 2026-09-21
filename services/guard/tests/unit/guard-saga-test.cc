@@ -13,8 +13,8 @@
 #include <notification/notification-client.hxx>
 #include <unistd.h>
 #include <optional>
-#include <shared/utils/json-util/json-util.hxx>
-#include <shared/services/sqlite/db-service.hxx>
+#include <text/json-util.hxx>
+#include <sqlite/db-service.hxx>
 #include <string>
 #include <thread>
 

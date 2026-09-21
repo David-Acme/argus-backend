@@ -1,7 +1,7 @@
 #pragma once
 
 #include <drogon/MultiPart.h>
-#include <shared/validation/validator.hxx>
+#include <validation/validator.hxx>
 #include <string>
 
 struct LoginDto

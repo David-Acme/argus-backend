@@ -5,7 +5,7 @@
 #include <cmath>
 #include <cstring>
 #include <fstream>
-#include <shared/wrapper/audio/audio-resampler.hxx>
+#include <audio/audio-resampler.hxx>
 
 namespace
 {

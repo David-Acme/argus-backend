@@ -5,7 +5,7 @@
 #include <net/poll-loop.hxx>
 #include <server/health-extras.hxx>
 #include <server/service-config.hxx>
-#include <shared/services/config-service/config-service.hxx>
+#include <config/config-service.hxx>
 
 #include <client/tunnel-client.hxx>
 

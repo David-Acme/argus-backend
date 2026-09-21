@@ -4,7 +4,7 @@
 #include <chrono>
 #include <cstring>
 #include <drogon/drogon.h>
-#include <shared/services/config-service/config-service.hxx>
+#include <config/config-service.hxx>
 #include <shared/services/stream/go2rtc-manager.hxx>
 #include <shared/services/stream/upstream-http.hxx>
 #include <shared/services/stream/ws-frame.hxx>

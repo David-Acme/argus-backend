@@ -2,7 +2,7 @@
 #include <doctest/doctest.h>
 
 #include <drogon/HttpTypes.h>
-#include <shared/access/role-access.hxx>
+#include <auth/role-access.hxx>
 #include <shared/contracts/table-name.hxx>
 #include <user-role.hxx>
 

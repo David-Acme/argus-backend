@@ -3,8 +3,8 @@
 #include <ctime>
 #include <drogon/drogon.h>
 #include <shared/repositories/memory-graph/memory-graph-query.hxx>
-#include <shared/utils/text-norm/text-norm.hxx>
-#include <shared/wrapper/sqlite-stmt/sqlite-stmt.hxx>
+#include <text/text-norm.hxx>
+#include <sqlite/sqlite-stmt.hxx>
 #include <sqlite3.h>
 #include <utility>
 #include <shared/vocabulary/encounter-closed-receipt.hxx>

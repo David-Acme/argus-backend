@@ -4,7 +4,7 @@
 #include <shared/services/intent/fasttext-classifier.hxx>
 #include <shared/services/intent/intent-contracts.hxx>
 #include <shared/services/intent/intent-router.hxx>
-#include <shared/services/memory/phrase-catalog.hxx>
+#include <phrase/phrase-catalog.hxx>
 
 #include <fstream>
 #include <map>

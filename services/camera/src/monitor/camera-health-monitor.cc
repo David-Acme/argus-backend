@@ -3,8 +3,8 @@
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/imgproc.hpp>
 #include <operator/frame-source.hxx>
-#include <shared/services/sqlite/db-service.hxx>
-#include <shared/wrapper/blocking-task/blocking-task.hxx>
+#include <sqlite/db-service.hxx>
+#include <runtime/blocking-task.hxx>
 #include <trantor/utils/Logger.h>
 
 #include <algorithm>

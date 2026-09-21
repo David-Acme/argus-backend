@@ -8,9 +8,9 @@ include(${CMAKE_CURRENT_SOURCE_DIR}/../../../cmake/argus-module.cmake)
 
 argus_lib(NAME phrase
     SOURCES
-        src/shared/services/memory/phrase-catalog.cc
-        src/shared/services/memory/rule-parser.cc
-        src/shared/utils/text-match/phrase-automaton.cc
+        src/phrase/phrase-catalog.cc
+        src/phrase/rule-parser.cc
+        src/phrase/phrase-automaton.cc
     INCLUDES
         src)
 

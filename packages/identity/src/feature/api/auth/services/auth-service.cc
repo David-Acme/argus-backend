@@ -6,7 +6,7 @@
 #include <drogon/orm/DbClient.h>
 #include <errors/response-exception.hxx>
 #include <feature/api/invitation/services/invitation-feature-service.hxx>
-#include <filter/device/device-filter.hxx>
+#include <auth/device-filter.hxx>
 #include <future>
 #include <identity-errors.hxx>
 #include <iomanip>
@@ -15,14 +15,14 @@
 #include <openssl/rand.h>
 #include <sstream>
 #include <string_view>
-#include <shared/contracts/identity-change-sink.hxx>
+#include <auth/identity-change-sink.hxx>
 #include <shared/contracts/sync-operation.hxx>
 #include <voice-lang.hxx>
 
-#include <shared/services/config-service/config-service.hxx>
+#include <config/config-service.hxx>
 #include <shared/services/face/face-service.hxx>
-#include <shared/services/sqlite/db-service.hxx>
-#include <shared/wrapper/blocking-task/blocking-task.hxx>
+#include <sqlite/db-service.hxx>
+#include <runtime/blocking-task.hxx>
 
 namespace user_enrollment_query
 {

@@ -5,7 +5,7 @@
 #include "fake-stt-server.hxx"
 
 #include <test-support/fake-voice-sink.hxx>
-#include <shared/services/config-service/config-service.hxx>
+#include <config/config-service.hxx>
 
 #include <string>
 #include <vector>

@@ -14,10 +14,10 @@
 #include <shared/services/memory/graph-recall.hxx>
 #include <shared/services/memory/memory-chat.hxx>
 #include <shared/services/memory/memory-formation.hxx>
-#include <shared/services/memory/phrase-catalog.hxx>
+#include <phrase/phrase-catalog.hxx>
 #include <shared/services/memory/sqlite-graph.hxx>
 #include <shared/services/memory/tool-parser.hxx>
-#include <shared/services/sqlite/vec-db.hxx>
+#include <sqlite/vec-db.hxx>
 #include <string>
 #include <thread>
 #include <vector>

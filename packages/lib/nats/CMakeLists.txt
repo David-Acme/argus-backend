@@ -23,11 +23,11 @@ endif()
 
 argus_lib(NAME nats
     SOURCES
-        src/shared/wrapper/nats/nats-bus.cc
-        src/shared/wrapper/nats/nats-bus.hxx
-        src/shared/wrapper/nats/nats-subject.hxx
-        src/shared/wrapper/nats/nats-push-intent-sink.hxx
-        src/shared/contracts/push-intent-sink.hxx
+        src/nats/nats-bus.cc
+        src/nats/nats-bus.hxx
+        src/nats/nats-subject.hxx
+        src/nats/nats-push-intent-sink.hxx
+        src/nats/push-intent-sink.hxx
     INCLUDES src
     DEPENDS
         cnats::nats_static

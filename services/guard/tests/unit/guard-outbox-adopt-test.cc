@@ -11,7 +11,7 @@
 #include <identity/identity-client.hxx>
 #include <notification/notification-client.hxx>
 #include <optional>
-#include <shared/services/sqlite/db-service.hxx>
+#include <sqlite/db-service.hxx>
 #include <string>
 #include <thread>
 #include <unistd.h>

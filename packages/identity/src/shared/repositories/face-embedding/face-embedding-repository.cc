@@ -1,8 +1,8 @@
 #include "face-embedding-repository.hxx"
 
 #include <ctime>
-#include <shared/services/sqlite/db-service.hxx>
-#include <shared/wrapper/sqlite-stmt/sqlite-stmt.hxx>
+#include <sqlite/db-service.hxx>
+#include <sqlite/sqlite-stmt.hxx>
 #include <sqlite3.h>
 
 using namespace face_embedding_query;

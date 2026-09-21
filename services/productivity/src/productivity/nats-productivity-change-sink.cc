@@ -3,10 +3,10 @@
 #include <chrono>
 #include <shared/contracts/user-audit-event.hxx>
 #include <shared/services/socket/sync-change.hxx>
-#include <shared/utils/json-diff/json-diff.hxx>
-#include <shared/utils/json-util/json-util.hxx>
-#include <shared/wrapper/nats/nats-bus.hxx>
-#include <shared/wrapper/nats/nats-subject.hxx>
+#include <text/json-diff.hxx>
+#include <text/json-util.hxx>
+#include <nats/nats-bus.hxx>
+#include <nats/nats-subject.hxx>
 #include <trantor/utils/Logger.h>
 
 #include <unordered_set>

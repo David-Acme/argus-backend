@@ -4,9 +4,9 @@
 #include <chrono>
 #include <ctime>
 #include <shared/contracts/sync-limits.hxx>
-#include <shared/services/sqlite/db-service.hxx>
-#include <shared/utils/json-util/json-util.hxx>
-#include <shared/utils/sha256/sha256.hxx>
+#include <sqlite/db-service.hxx>
+#include <text/json-util.hxx>
+#include <text/sha256.hxx>
 #include <stdexcept>
 #include <string>
 #include <string_view>

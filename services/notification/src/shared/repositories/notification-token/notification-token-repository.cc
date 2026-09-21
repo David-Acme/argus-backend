@@ -1,6 +1,6 @@
 #include "notification-token-repository.hxx"
 
-#include <shared/services/sqlite/db-service.hxx>
+#include <sqlite/db-service.hxx>
 
 using namespace notification_token_query;
 

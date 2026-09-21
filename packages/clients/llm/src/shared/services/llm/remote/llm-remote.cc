@@ -1,6 +1,6 @@
 #include "llm-remote.hxx"
 
-#include <shared/services/config-service/config-service.hxx>
+#include <config/config-service.hxx>
 
 #include <json/json.h>
 

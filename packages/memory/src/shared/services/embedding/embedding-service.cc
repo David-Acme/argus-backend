@@ -5,9 +5,9 @@
 #include <drogon/drogon.h>
 #include <mutex>
 #include <onnxruntime_cxx_api.h>
-#include <shared/services/config-service/config-service.hxx>
+#include <config/config-service.hxx>
 #include <shared/services/embedding/unigram-tokenizer.hxx>
-#include <shared/wrapper/thread-budget/thread-budget.hxx>
+#include <runtime/thread-budget.hxx>
 #include <string>
 #include <vector>
 

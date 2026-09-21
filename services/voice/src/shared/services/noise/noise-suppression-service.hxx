@@ -6,7 +6,7 @@
 #else
 struct DenoiseState;
 #endif
-#include <shared/wrapper/audio/audio-resampler.hxx>
+#include <audio/audio-resampler.hxx>
 #include <vector>
 
 class NoiseSuppressor

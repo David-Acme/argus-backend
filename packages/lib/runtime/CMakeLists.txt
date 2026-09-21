@@ -11,11 +11,11 @@ endif()
 
 argus_lib(NAME runtime
     SOURCES
-        src/shared/wrapper/thread-budget/thread-budget.cc
-        src/shared/wrapper/thread-budget/thread-budget.hxx
-        src/shared/wrapper/ai-init/ai-init.hxx
-        src/shared/wrapper/blocking-task/blocking-task.hxx
-        src/shared/wrapper/cancellation/cancellation-token.hxx
+        src/runtime/thread-budget.cc
+        src/runtime/thread-budget.hxx
+        src/runtime/ai-init.hxx
+        src/runtime/blocking-task.hxx
+        src/runtime/cancellation-token.hxx
     INCLUDES src
     DEPENDS Drogon::Drogon)
 
@@ -26,8 +26,8 @@ target_compile_options(argus_lib_runtime PRIVATE -Wall -Wextra)
 # between the two targets.
 argus_module(NAME hardware-profile
     SOURCES
-        src/shared/wrapper/hardware-profile/hardware-profile.cc
-        src/shared/wrapper/hardware-profile/hardware-profile.hxx
+        src/runtime/hardware-profile.cc
+        src/runtime/hardware-profile.hxx
     INCLUDES src)
 
 target_compile_definitions(argus_hardware-profile PRIVATE ARGUS_NO_NCNN_GPU=1)
@@ -35,8 +35,8 @@ target_compile_options(argus_hardware-profile PRIVATE -Wall -Wextra)
 
 argus_module(NAME hardware-profile-gpu
     SOURCES
-        src/shared/wrapper/hardware-profile/hardware-profile.cc
-        src/shared/wrapper/hardware-profile/hardware-profile.hxx
+        src/runtime/hardware-profile.cc
+        src/runtime/hardware-profile.hxx
     INCLUDES src)
 
 target_compile_options(argus_hardware-profile-gpu PRIVATE -Wall -Wextra)

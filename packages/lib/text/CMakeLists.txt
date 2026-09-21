@@ -11,15 +11,15 @@ endif()
 
 argus_lib(NAME text
     SOURCES
-        src/shared/utils/base64/base64.cc
-        src/shared/utils/base64/base64.hxx
-        src/shared/utils/fnv-hash/fnv-hash.hxx
-        src/shared/utils/json-diff/json-diff.cc
-        src/shared/utils/json-diff/json-diff.hxx
-        src/shared/utils/json-util/json-util.hxx
-        src/shared/utils/sha256/sha256.hxx
-        src/shared/utils/text-norm/text-norm.cc
-        src/shared/utils/text-norm/text-norm.hxx
+        src/text/base64.cc
+        src/text/base64.hxx
+        src/text/fnv-hash.hxx
+        src/text/json-diff.cc
+        src/text/json-diff.hxx
+        src/text/json-util.hxx
+        src/text/sha256.hxx
+        src/text/text-norm.cc
+        src/text/text-norm.hxx
     INCLUDES src
     DEPENDS Drogon::Drogon)
 

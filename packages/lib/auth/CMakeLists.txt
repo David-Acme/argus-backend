@@ -51,16 +51,16 @@ find_package(OpenSSL REQUIRED)
 
 argus_lib(NAME auth
     SOURCES
-        src/filter/device/device-filter.cc
-        src/filter/identity-access.cc
-        src/filter/jwt/jwt-filter.cc
-        src/filter/role/role-filter.cc
-        src/filter/valid-json/valid-json-filter.cc
-        src/shared/services/jwt/jwt-service.cc
-        src/shared/services/user-directory/user-directory-identity.cc
-        src/shared/access/role-access.hxx
-        src/shared/contracts/user-directory.hxx
-        src/shared/contracts/identity-change-sink.hxx
+        src/auth/device-filter.cc
+        src/auth/details/identity-access.cc
+        src/auth/jwt-filter.cc
+        src/auth/role-filter.cc
+        src/auth/valid-json-filter.cc
+        src/auth/jwt-service.cc
+        src/auth/user-directory-identity.cc
+        src/auth/role-access.hxx
+        src/auth/user-directory.hxx
+        src/auth/identity-change-sink.hxx
     INCLUDES
         src
     DEPENDS

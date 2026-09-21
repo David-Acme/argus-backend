@@ -1,6 +1,6 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
-#include <shared/utils/sha256/sha256.hxx>
+#include <text/sha256.hxx>
 #include <string>
 
 TEST_CASE("sha256 matches the standard known-answer vectors")

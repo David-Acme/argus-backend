@@ -5,8 +5,8 @@
 #include <optional>
 #include <shared/contracts/audit-log-priority.hxx>
 #include <shared/contracts/table-name.hxx>
-#include <shared/utils/json-diff/json-diff.hxx>
-#include <shared/utils/json-util/json-util.hxx>
+#include <text/json-diff.hxx>
+#include <text/json-util.hxx>
 #include <vector>
 
 // User-scoped audit row on the productivity/notification subjects; the gateway inserts it verbatim.

@@ -4,8 +4,8 @@
 #include <drogon/drogon.h>
 #include <notification/nats-notification-delivery-sink.hxx>
 #include <shared/services/notification/notification-service.hxx>
-#include <shared/services/sqlite/db-service.hxx>
-#include <shared/wrapper/nats/nats-bus.hxx>
+#include <sqlite/db-service.hxx>
+#include <nats/nats-bus.hxx>
 
 #include <atomic>
 #include <chrono>

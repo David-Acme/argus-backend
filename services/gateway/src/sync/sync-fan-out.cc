@@ -4,8 +4,8 @@
 #include <shared/contracts/sync-operation.hxx>
 #include <shared/services/room/room-manager.hxx>
 #include <shared/services/socket/sync-change.hxx>
-#include <shared/utils/json-util/json-util.hxx>
-#include <shared/wrapper/nats/nats-subject.hxx>
+#include <text/json-util.hxx>
+#include <nats/nats-subject.hxx>
 #include <trantor/utils/Logger.h>
 
 #include <string>

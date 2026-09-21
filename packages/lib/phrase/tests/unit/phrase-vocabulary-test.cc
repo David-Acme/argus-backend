@@ -1,9 +1,9 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
 
-#include <shared/vocabulary/lexicon-kind.hxx>
-#include <shared/vocabulary/memory-type.hxx>
-#include <shared/vocabulary/phrase-kind.hxx>
+#include <phrase/lexicon-kind.hxx>
+#include <phrase/memory-type.hxx>
+#include <phrase/details/phrase-kind.hxx>
 
 #include <cstddef>
 #include <string>

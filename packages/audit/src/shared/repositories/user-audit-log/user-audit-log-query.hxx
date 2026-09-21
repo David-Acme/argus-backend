@@ -3,7 +3,7 @@
 #include <optional>
 #include <shared/contracts/audit-log-priority.hxx>
 #include <shared/contracts/table-name.hxx>
-#include <shared/utils/json-diff/json-diff.hxx>
+#include <text/json-diff.hxx>
 #include <string>
 #include <string_view>
 

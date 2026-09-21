@@ -4,13 +4,13 @@
 #include <drogon/utils/coroutine.h>
 #include <feature/socket/sync/services/synchronized-service.hxx>
 #include <feature/socket/sync/socket/sync-forwarder.hxx>
-#include <filter/jwt/jwt-filter.hxx>
+#include <auth/jwt-filter.hxx>
 #include <json/value.h>
 #include <memory>
 #include <shared/contracts/camera-sync-source.hxx>
 #include <shared/contracts/notification-sync-source.hxx>
 #include <shared/contracts/productivity-sync-source.hxx>
-#include <shared/contracts/user-directory.hxx>
+#include <auth/user-directory.hxx>
 #include <shared/repositories/user/user-repository.hxx>
 #include <shared/services/room/room-manager.hxx>
 #include <string_view>

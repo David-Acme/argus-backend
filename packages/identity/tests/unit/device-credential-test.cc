@@ -4,14 +4,14 @@
 #include <drogon/drogon.h>
 #include <feature/api/auth/services/auth-service.hxx>
 #include <feature/rpc/identity-rpc.hxx>
-#include <filter/device/device-filter.hxx>
-#include <filter/jwt/jwt-filter.hxx>
+#include <auth/device-filter.hxx>
+#include <auth/jwt-filter.hxx>
 #include <grpcpp/grpcpp.h>
 #include <shared/repositories/refresh-token/refresh-token-repository.hxx>
 #include <shared/repositories/user/user-repository.hxx>
-#include <shared/services/config-service/config-service.hxx>
-#include <shared/services/jwt/jwt-service.hxx>
-#include <shared/services/sqlite/db-service.hxx>
+#include <config/config-service.hxx>
+#include <auth/jwt-service.hxx>
+#include <sqlite/db-service.hxx>
 
 #include <atomic>
 #include <chrono>

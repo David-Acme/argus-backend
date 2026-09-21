@@ -4,7 +4,7 @@
 #include <doctest/doctest.h>
 #include <drogon/drogon.h>
 #include <shared/repositories/action-command/action-command-repository.hxx>
-#include <shared/services/sqlite/db-service.hxx>
+#include <sqlite/db-service.hxx>
 #include <string>
 #include <thread>
 

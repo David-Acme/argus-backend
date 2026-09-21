@@ -2,10 +2,10 @@
 
 #include <errors/response-exception.hxx>
 #include <gateway-errors.hxx>
-#include <shared/services/config-service/config-service.hxx>
+#include <config/config-service.hxx>
 
-#include <shared/utils/json-util/json-util.hxx>
-#include <shared/wrapper/blocking-task/blocking-task.hxx>
+#include <text/json-util.hxx>
+#include <runtime/blocking-task.hxx>
 #include <string>
 #include <user-role.hxx>
 #include <utility>

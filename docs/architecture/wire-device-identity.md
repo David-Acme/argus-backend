@@ -1,8 +1,8 @@
 # Device identity wire contract
 
 The device identity contract has two modes selected by the backend config key
-`device.identity_mode` (gateway and legacy share the gate in
-`backend/src/filter/device/device-filter.cc`):
+`device.identity_mode` (every service shares the one gate in
+`packages/lib/auth/src/auth/device-filter.cc`):
 
 - `ip` (default): the device hash is HMAC-SHA256 over `userAgent|sourceIp`,
   keyed by `device.fingerprint_secret` (fallback `jwt.secret`). No client

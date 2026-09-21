@@ -3,7 +3,7 @@
 #include <errors/response-exception.hxx>
 #include <feature/api/project-member/dtos/create-project-member-dto.hxx>
 #include <feature/api/project-member/dtos/update-project-member-dto.hxx>
-#include <filter/jwt/jwt-filter.hxx>
+#include <auth/jwt-filter.hxx>
 #include <http/api-response.hxx>
 #include <membership-error.hxx>
 #include <productivity-errors.hxx>

@@ -1,12 +1,12 @@
 #include <sync/camera-notifier.hxx>
 
 #include <drogon/drogon.h>
-#include <shared/services/config-service/config-service.hxx>
-#include <shared/services/sqlite/db-service.hxx>
-#include <shared/utils/json-util/json-util.hxx>
-#include <shared/wrapper/blocking-task/blocking-task.hxx>
-#include <shared/wrapper/nats/nats-bus.hxx>
-#include <shared/wrapper/nats/nats-subject.hxx>
+#include <config/config-service.hxx>
+#include <sqlite/db-service.hxx>
+#include <text/json-util.hxx>
+#include <runtime/blocking-task.hxx>
+#include <nats/nats-bus.hxx>
+#include <nats/nats-subject.hxx>
 #include <trantor/utils/Logger.h>
 
 #include <ctime>

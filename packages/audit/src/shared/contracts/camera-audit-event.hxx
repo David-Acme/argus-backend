@@ -5,8 +5,8 @@
 #include <optional>
 #include <shared/contracts/audit-log-priority.hxx>
 #include <shared/contracts/table-name.hxx>
-#include <shared/utils/json-diff/json-diff.hxx>
-#include <shared/utils/json-util/json-util.hxx>
+#include <text/json-diff.hxx>
+#include <text/json-util.hxx>
 #include <string>
 
 // Camera-domain audit row on argus.camera.v1.change; the gateway inserts it verbatim.

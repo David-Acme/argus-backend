@@ -12,10 +12,10 @@
 #include <opencv2/imgproc.hpp>
 #include <pipelinecache.h>
 #include <shared/services/face/face-db.hxx>
-#include <shared/services/sqlite/vec-db.hxx>
-#include <shared/wrapper/hardware-profile/hardware-profile.hxx>
-#include <shared/wrapper/blocking-task/blocking-task.hxx>
-#include <shared/wrapper/thread-budget/thread-budget.hxx>
+#include <sqlite/vec-db.hxx>
+#include <runtime/hardware-profile.hxx>
+#include <runtime/blocking-task.hxx>
+#include <runtime/thread-budget.hxx>
 // Vendored stb_image.h declares unused API functions.
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-function"

@@ -3,7 +3,7 @@
 #include "guard-errors.hxx"
 
 #include <errors/response-exception.hxx>
-#include <filter/device/device-filter.hxx>
+#include <auth/device-filter.hxx>
 #include <http/api-response.hxx>
 #include <identity/identity-client.hxx>
 #include <feature/api/guard/dtos/create-expected-guest-dto.hxx>

@@ -4,7 +4,7 @@
 #include <cctype>
 #include <cmath>
 #include <drogon/drogon.h>
-#include <shared/services/config-service/config-service.hxx>
+#include <config/config-service.hxx>
 
 namespace
 {

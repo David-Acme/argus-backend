@@ -7,7 +7,7 @@
 #include <memory>
 #include <mutex>
 #include <poll.h>
-#include <shared/wrapper/audio/endpoint-detector.hxx>
+#include <audio/endpoint-detector.hxx>
 #include <signal.h>
 #include <sys/wait.h>
 #include <unistd.h>

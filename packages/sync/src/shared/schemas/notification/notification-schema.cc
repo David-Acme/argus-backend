@@ -1,6 +1,6 @@
 #include "notification-schema.hxx"
 
-#include <shared/utils/json-util/json-util.hxx>
+#include <text/json-util.hxx>
 
 NotificationSchema::NotificationSchema(const drogon::orm::Row& row)
 {

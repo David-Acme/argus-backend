@@ -44,3 +44,30 @@ if(NOT TARGET argus::lib::grpc-health)
       PROTO grpc/health/v1/health.proto)
   set_target_properties(argus_lib_grpc-health PROPERTIES EXCLUDE_FROM_ALL TRUE)
 endif()
+
+# The receiving side's own suite: secret comparison and the credential set a
+# server authorizes against. Both are pure, so they need no channel -- the
+# base target is linked for the include root and the gRPC headers it publishes.
+enable_testing()
+find_package(doctest REQUIRED)
+
+add_executable(grpc-server-identity-test tests/unit/grpc-server-identity-test.cc)
+
+# This folder is pulled in EXCLUDE_FROM_ALL (consumers add the client that
+# needs it for the client target), so the suite has to opt back into the
+# default build to be present when ctest runs it.
+set_target_properties(grpc-server-identity-test PROPERTIES
+    EXCLUDE_FROM_ALL FALSE)
+
+target_link_libraries(grpc-server-identity-test PRIVATE
+    argus_client_grpc_base
+    doctest::doctest)
+target_compile_options(grpc-server-identity-test PRIVATE -Wall -Wextra)
+add_test(NAME grpc-server-identity-test COMMAND grpc-server-identity-test)
+
+get_target_property(DOCTEST_INCLUDE_DIRS doctest::doctest
+                    INTERFACE_INCLUDE_DIRECTORIES)
+if(DOCTEST_INCLUDE_DIRS)
+    set_target_properties(doctest::doctest PROPERTIES
+        INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${DOCTEST_INCLUDE_DIRS}")
+endif()

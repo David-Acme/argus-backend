@@ -9,7 +9,7 @@
 #include <format>
 #include <shared/services/tapo/tapo-audio.hxx>
 #include <shared/services/tapo/tapo-crypto.hxx>
-#include <shared/utils/json-util/json-util.hxx>
+#include <text/json-util.hxx>
 #include <thread>
 #include <utility>
 

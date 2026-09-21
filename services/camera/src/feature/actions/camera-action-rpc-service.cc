@@ -10,12 +10,12 @@
 #include <feature/api/camera-control/services/camera-control-feature-service.hxx>
 #include <optional>
 #include <shared/services/camera-driver/camera-driver.hxx>
-#include <shared/services/config-service/config-service.hxx>
+#include <config/config-service.hxx>
 #include <shared/services/stream/go2rtc-manager.hxx>
 #include <shared/services/stream/snapshot-store.hxx>
-#include <shared/utils/json-util/json-util.hxx>
-#include <shared/utils/sha256/sha256.hxx>
-#include <shared/wrapper/blocking-task/blocking-task.hxx>
+#include <text/json-util.hxx>
+#include <text/sha256.hxx>
+#include <runtime/blocking-task.hxx>
 #include <string>
 #include <trantor/utils/Logger.h>
 #include <vector>

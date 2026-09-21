@@ -1,7 +1,7 @@
 #include "remove-expected-guest-dto.hxx"
 
 #include <charconv>
-#include <shared/validation/validation_dsl.hxx>
+#include <validation/validation_dsl.hxx>
 #include <string>
 #include <system_error>
 

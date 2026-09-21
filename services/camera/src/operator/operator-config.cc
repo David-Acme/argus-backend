@@ -1,7 +1,7 @@
 #include <operator/operator-config.hxx>
 
-#include <shared/services/config-service/config-service.hxx>
-#include <shared/utils/json-util/json-util.hxx>
+#include <config/config-service.hxx>
+#include <text/json-util.hxx>
 
 #include <json/value.h>
 

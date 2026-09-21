@@ -42,13 +42,13 @@ endif()
 
 argus_lib(NAME sqlite
     SOURCES
-        src/shared/services/sqlite/db-service.cc
-        src/shared/services/sqlite/vec-db.cc
-        src/shared/repositories/vector-index/vector-index-repository.cc
-        src/shared/wrapper/sqlite-stmt/sqlite-stmt.hxx
-        src/shared/utils/sql-escape/sql-escape.hxx
-        src/shared/utils/schema-runner/schema-runner.cc
-        src/shared/utils/schema-runner/schema-runner.hxx
+        src/sqlite/db-service.cc
+        src/sqlite/vec-db.cc
+        src/sqlite/details/vector-index-repository.cc
+        src/sqlite/sqlite-stmt.hxx
+        src/sqlite/sql-escape.hxx
+        src/sqlite/schema-runner.cc
+        src/sqlite/schema-runner.hxx
     INCLUDES src)
 
 target_link_libraries(argus_lib_sqlite PUBLIC argus::lib::config Drogon::Drogon)

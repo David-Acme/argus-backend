@@ -1,6 +1,6 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <server/service-config.hxx>
-#include <shared/services/config-service/config-service.hxx>
+#include <config/config-service.hxx>
 
 #include <doctest/doctest.h>
 

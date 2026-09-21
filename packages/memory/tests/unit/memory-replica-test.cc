@@ -2,11 +2,11 @@
 #include <doctest/doctest.h>
 
 #include <memory/catalog-replica.hxx>
-#include <shared/services/config-service/config-service.hxx>
+#include <config/config-service.hxx>
 #include <shared/services/memory/entity-resolver.hxx>
 #include <shared/services/memory/sqlite-graph.hxx>
-#include <shared/wrapper/nats/nats-bus.hxx>
-#include <shared/wrapper/sqlite-stmt/sqlite-stmt.hxx>
+#include <nats/nats-bus.hxx>
+#include <sqlite/sqlite-stmt.hxx>
 
 #include <json/json.h>
 #include <sqlite3.h>

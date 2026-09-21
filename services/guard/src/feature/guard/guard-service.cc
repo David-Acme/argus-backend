@@ -15,11 +15,11 @@
 #include <exception>
 #include <identity/identity-client.hxx>
 #include <notification/notification-client.hxx>
-#include <shared/services/storage/s3-storage-service.hxx>
-#include <shared/utils/json-util/json-util.hxx>
-#include <shared/wrapper/blocking-task/blocking-task.hxx>
-#include <shared/wrapper/nats/nats-bus.hxx>
-#include <shared/wrapper/nats/nats-subject.hxx>
+#include <storage/s3-storage-service.hxx>
+#include <text/json-util.hxx>
+#include <runtime/blocking-task.hxx>
+#include <nats/nats-bus.hxx>
+#include <nats/nats-subject.hxx>
 #include <string>
 #include <system_error>
 #include <trantor/utils/Logger.h>

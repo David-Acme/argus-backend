@@ -91,7 +91,7 @@ endif()
 
 argus_lib(NAME cert
     SOURCES
-        src/shared/services/cert/cert-service.cc
+        src/cert/cert-service.cc
     INCLUDES src)
 
 target_link_libraries(argus_lib_cert PUBLIC

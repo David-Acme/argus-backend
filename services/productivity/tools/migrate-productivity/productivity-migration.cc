@@ -1,8 +1,8 @@
 #include "productivity-migration.hxx"
 
-#include <shared/wrapper/sqlite-stmt/sqlite-stmt.hxx>
-#include <shared/utils/fnv-hash/fnv-hash.hxx>
-#include <shared/utils/sql-escape/sql-escape.hxx>
+#include <sqlite/sqlite-stmt.hxx>
+#include <text/fnv-hash.hxx>
+#include <sqlite/sql-escape.hxx>
 
 #include <cstdio>
 #include <cstring>

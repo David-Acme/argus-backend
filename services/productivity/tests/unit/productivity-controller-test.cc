@@ -13,12 +13,12 @@
 #include <feature/api/project/controllers/project-controller.hxx>
 #include <feature/api/project/dtos/create-project-dto.hxx>
 #include <feature/rpc/identity-rpc.hxx>
-#include <filter/jwt/jwt-filter.hxx>
+#include <auth/jwt-filter.hxx>
 #include <grpcpp/grpcpp.h>
 #include <shared/contracts/user-change-sink.hxx>
-#include <shared/services/config-service/config-service.hxx>
-#include <shared/services/sqlite/db-service.hxx>
-#include <shared/utils/json-util/json-util.hxx>
+#include <config/config-service.hxx>
+#include <sqlite/db-service.hxx>
+#include <text/json-util.hxx>
 
 #include <errors/response-exception.hxx>
 

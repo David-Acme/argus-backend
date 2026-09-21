@@ -3,7 +3,7 @@
 #include <cstdint>
 #include <json/value.h>
 #include <optional>
-#include <shared/validation/validation_dsl.hxx>
+#include <validation/validation_dsl.hxx>
 
 // /camera/{id}/ptz body: x/y absolute motor target or the Tapo angle in degrees.
 struct CameraPtzDto

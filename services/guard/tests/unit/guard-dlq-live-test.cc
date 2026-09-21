@@ -1,7 +1,7 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
 
-#include <shared/wrapper/nats/nats-bus.hxx>
+#include <nats/nats-bus.hxx>
 
 #include <chrono>
 #include <condition_variable>

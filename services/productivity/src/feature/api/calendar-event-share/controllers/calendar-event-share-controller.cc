@@ -3,7 +3,7 @@
 #include <errors/response-exception.hxx>
 #include <feature/api/calendar-event-share/dtos/create-calendar-event-share-dto.hxx>
 #include <feature/api/calendar-event-share/dtos/update-calendar-event-share-dto.hxx>
-#include <filter/jwt/jwt-filter.hxx>
+#include <auth/jwt-filter.hxx>
 #include <http/api-response.hxx>
 #include <membership-error.hxx>
 #include <productivity-errors.hxx>

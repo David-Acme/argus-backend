@@ -1,7 +1,7 @@
 #include "synchronized-service.hxx"
 
 #include <errors/response-exception.hxx>
-#include <shared/access/role-access.hxx>
+#include <auth/role-access.hxx>
 #include <shared/contracts/sync-operation.hxx>
 #include <stdexcept>
 #include <sync-errors.hxx>

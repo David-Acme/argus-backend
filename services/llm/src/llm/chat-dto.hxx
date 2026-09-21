@@ -2,7 +2,7 @@
 
 #include <json/value.h>
 #include <shared/services/llm/llm-service.hxx>
-#include <shared/validation/validation_dsl.hxx>
+#include <validation/validation_dsl.hxx>
 #include <optional>
 #include <string>
 #include <vector>

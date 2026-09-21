@@ -2,8 +2,8 @@
 
 #include <algorithm>
 #include <shared/services/memory/sqlite-graph.hxx>
-#include <shared/utils/text-norm/text-norm.hxx>
-#include <shared/wrapper/sqlite-stmt/sqlite-stmt.hxx>
+#include <text/text-norm.hxx>
+#include <sqlite/sqlite-stmt.hxx>
 
 void EntityResolver::build()
 {

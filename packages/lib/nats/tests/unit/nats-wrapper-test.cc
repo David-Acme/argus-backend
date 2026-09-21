@@ -1,8 +1,8 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
 
-#include <shared/wrapper/nats/nats-bus.hxx>
-#include <shared/wrapper/nats/nats-subject.hxx>
+#include <nats/nats-bus.hxx>
+#include <nats/nats-subject.hxx>
 
 #include <json/json.h>
 

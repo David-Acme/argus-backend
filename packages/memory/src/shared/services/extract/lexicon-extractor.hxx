@@ -3,7 +3,7 @@
 #include <memory>
 #include <shared/services/extract/extract-contracts.hxx>
 #include <shared/services/extract/temporal-resolver.hxx>
-#include <shared/utils/text-match/phrase-automaton.hxx>
+#include <phrase/phrase-automaton.hxx>
 #include <string>
 #include <utility>
 #include <vector>

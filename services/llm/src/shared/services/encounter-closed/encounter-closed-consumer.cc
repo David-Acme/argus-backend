@@ -6,9 +6,9 @@
 #include <drogon/drogon.h>
 #include <shared/repositories/memory-graph/memory-graph-repository.hxx>
 #include <shared/services/memory/sqlite-graph.hxx>
-#include <shared/utils/json-util/json-util.hxx>
-#include <shared/utils/sha256/sha256.hxx>
-#include <shared/wrapper/nats/nats-bus.hxx>
+#include <text/json-util.hxx>
+#include <text/sha256.hxx>
+#include <nats/nats-bus.hxx>
 #include <trantor/utils/Logger.h>
 
 namespace

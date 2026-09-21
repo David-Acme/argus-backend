@@ -2,7 +2,7 @@
 
 #include <drogon/orm/DbClient.h>
 #include <objects/object-event-status.hxx>
-#include <shared/services/sqlite/db-service.hxx>
+#include <sqlite/db-service.hxx>
 #include <trantor/utils/Logger.h>
 
 #include <condition_variable>

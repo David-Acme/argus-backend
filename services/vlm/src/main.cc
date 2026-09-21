@@ -3,7 +3,7 @@
 #include <http/error-handler.hxx>
 #include <http/health-controller.hxx>
 #include <http/listener-config.hxx>
-#include <shared/services/config-service/config-service.hxx>
+#include <config/config-service.hxx>
 
 #include <json/value.h>
 #include <llama.h>

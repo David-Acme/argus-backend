@@ -6,7 +6,7 @@
 #include <shared/contracts/user-change-sink.hxx>
 #include <shared/repositories/notification/notification-repository.hxx>
 #include <shared/services/notification/notification-service.hxx>
-#include <shared/services/sqlite/db-service.hxx>
+#include <sqlite/db-service.hxx>
 
 #include <atomic>
 #include <chrono>

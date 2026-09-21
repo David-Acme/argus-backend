@@ -1,7 +1,7 @@
 #pragma once
 
 #include <cstdint>
-#include <shared/vocabulary/lexicon-kind.hxx>
+#include <phrase/lexicon-kind.hxx>
 #include <string>
 #include <string_view>
 #include <vector>

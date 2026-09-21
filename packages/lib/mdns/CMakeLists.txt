@@ -45,3 +45,23 @@ argus_lib(NAME mdns
 target_link_libraries(argus_lib_mdns PRIVATE mdns::mdns)
 
 target_compile_options(argus_lib_mdns PRIVATE -Wall -Wextra)
+
+# The announcement's own suite: the disabled path a boot must survive, and the
+# mdns.* keys as the health report shows them. Nothing here opens a socket or
+# announces on the LAN -- every case runs with advertising off.
+enable_testing()
+find_package(doctest REQUIRED)
+
+add_executable(mdns-service-test tests/unit/mdns-service-test.cc)
+target_link_libraries(mdns-service-test PRIVATE
+    argus::lib::mdns
+    doctest::doctest)
+target_compile_options(mdns-service-test PRIVATE -Wall -Wextra)
+add_test(NAME mdns-service-test COMMAND mdns-service-test)
+
+get_target_property(DOCTEST_INCLUDE_DIRS doctest::doctest
+                    INTERFACE_INCLUDE_DIRECTORIES)
+if(DOCTEST_INCLUDE_DIRS)
+    set_target_properties(doctest::doctest PROPERTIES
+        INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${DOCTEST_INCLUDE_DIRS}")
+endif()

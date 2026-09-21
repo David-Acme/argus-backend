@@ -10,9 +10,9 @@
 #include <shared/repositories/person/person-repository.hxx>
 #include <shared/repositories/refresh-token/refresh-token-repository.hxx>
 #include <shared/repositories/user/user-repository.hxx>
-#include <shared/services/jwt/jwt-service.hxx>
+#include <auth/jwt-service.hxx>
 #include <shared/services/sync-audit/sync-audit-service.hxx>
-#include <shared/wrapper/nats/nats-bus.hxx>
+#include <nats/nats-bus.hxx>
 
 // IdentityService controller: UpdateUser is metadata-authoritative, the rest self-authoritative.
 class IdentityRpcService final

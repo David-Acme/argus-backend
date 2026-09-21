@@ -5,8 +5,8 @@
 #include <net.h>
 #include <opencv2/core.hpp>
 #include <opencv2/imgproc.hpp>
-#include <shared/wrapper/hardware-profile/hardware-profile.hxx>
-#include <shared/wrapper/thread-budget/thread-budget.hxx>
+#include <runtime/hardware-profile.hxx>
+#include <runtime/thread-budget.hxx>
 #include <trantor/utils/Logger.h>
 
 #include <algorithm>

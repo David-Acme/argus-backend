@@ -1,8 +1,8 @@
 #include "nats-notification-delivery-sink.hxx"
 
-#include <shared/utils/json-util/json-util.hxx>
-#include <shared/wrapper/nats/nats-bus.hxx>
-#include <shared/wrapper/nats/nats-subject.hxx>
+#include <text/json-util.hxx>
+#include <nats/nats-bus.hxx>
+#include <nats/nats-subject.hxx>
 #include <trantor/utils/Logger.h>
 
 NatsNotificationDeliverySink::NatsNotificationDeliverySink(

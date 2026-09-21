@@ -1,6 +1,6 @@
 #include "user-action-log-schema.hxx"
 
-#include <shared/utils/json-util/json-util.hxx>
+#include <text/json-util.hxx>
 
 UserActionLogSchema::UserActionLogSchema(const drogon::orm::Row& row)
 {

@@ -24,8 +24,8 @@
 #include <optional>
 #include <shared/repositories/action-command/action-command-repository.hxx>
 #include <shared/services/camera-driver/camera-driver.hxx>
-#include <shared/services/config-service/config-service.hxx>
-#include <shared/services/sqlite/db-service.hxx>
+#include <config/config-service.hxx>
+#include <sqlite/db-service.hxx>
 #include <shared/services/stream/snapshot-store.hxx>
 #include <string>
 #include <thread>

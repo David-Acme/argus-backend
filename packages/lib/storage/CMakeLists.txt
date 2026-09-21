@@ -23,11 +23,11 @@ endif()
 
 argus_lib(NAME storage
     SOURCES
-        src/shared/services/storage/s3-signing.hxx
-        src/shared/services/storage/s3-storage-service.cc
-        src/shared/services/storage/s3-storage-service.hxx
-        src/shared/services/storage/storage-errors.hxx
-        src/shared/vocabulary/stored-file-category.hxx
+        src/storage/details/s3-signing.hxx
+        src/storage/s3-storage-service.cc
+        src/storage/s3-storage-service.hxx
+        src/storage/storage-errors.hxx
+        src/storage/stored-file-category.hxx
     INCLUDES src
     DEPENDS
         argus::lib::errors

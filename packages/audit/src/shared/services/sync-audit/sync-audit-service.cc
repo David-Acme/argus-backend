@@ -2,7 +2,7 @@
 
 #include <shared/services/audit-log/audit-log-service.hxx>
 #include <shared/services/user-audit-log/user-audit-log-service.hxx>
-#include <shared/utils/json-diff/json-diff.hxx>
+#include <text/json-diff.hxx>
 #include <unordered_set>
 
 drogon::Task<void>

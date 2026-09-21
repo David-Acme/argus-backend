@@ -2,7 +2,7 @@
 
 #include <json/value.h>
 #include <optional>
-#include <shared/validation/validation_dsl.hxx>
+#include <validation/validation_dsl.hxx>
 #include <string>
 
 /** Device-side switches. Absent fields are left as the camera has them. */

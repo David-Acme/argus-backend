@@ -6,9 +6,9 @@
 
 #include <drogon/drogon.h>
 #include <shared/services/extract/temporal-resolver.hxx>
-#include <shared/services/memory/rule-parser.hxx>
+#include <phrase/rule-parser.hxx>
 #include <shared/services/memory/sqlite-graph.hxx>
-#include <shared/utils/text-norm/text-norm.hxx>
+#include <text/text-norm.hxx>
 
 namespace
 {

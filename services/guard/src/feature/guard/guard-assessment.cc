@@ -9,7 +9,7 @@
 #include <shared/services/llm/llm-service.hxx>
 #include <shared/services/llm/remote/llm-remote.hxx>
 #include <shared/services/vision/remote/vlm-client.hxx>
-#include <shared/wrapper/blocking-task/blocking-task.hxx>
+#include <runtime/blocking-task.hxx>
 #include <trantor/utils/Logger.h>
 
 #include <algorithm>

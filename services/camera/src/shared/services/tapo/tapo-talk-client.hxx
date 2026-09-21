@@ -5,7 +5,7 @@
 #include <shared/services/tapo/tapo-http.hxx>
 #include <shared/services/tapo/tapo-transport.hxx>
 #include <shared/services/tapo/tapo-ts-muxer.hxx>
-#include <shared/wrapper/cancellation/cancellation-token.hxx>
+#include <runtime/cancellation-token.hxx>
 #include <string>
 #include <vector>
 

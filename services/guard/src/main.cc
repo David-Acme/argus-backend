@@ -7,17 +7,17 @@
 #include <feature/guard/guard-repository.hxx>
 #include <feature/guard/guard-schema.hxx>
 #include <feature/guard/guard-service.hxx>
-#include <filter/device/device-filter.hxx>
-#include <filter/jwt/jwt-filter.hxx>
-#include <filter/role/role-filter.hxx>
-#include <filter/valid-json/valid-json-filter.hxx>
+#include <auth/device-filter.hxx>
+#include <auth/jwt-filter.hxx>
+#include <auth/role-filter.hxx>
+#include <auth/valid-json-filter.hxx>
 #include <identity/identity-client.hxx>
 #include <notification/notification-client.hxx>
-#include <shared/services/config-service/config-service.hxx>
+#include <config/config-service.hxx>
 #include <shared/services/llm/remote/llm-remote.hxx>
-#include <shared/services/sqlite/db-service.hxx>
+#include <sqlite/db-service.hxx>
 #include <shared/services/vision/remote/vlm-client.hxx>
-#include <shared/wrapper/nats/nats-bus.hxx>
+#include <nats/nats-bus.hxx>
 #include <unistd.h>
 
 #include <ctime>

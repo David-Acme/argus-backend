@@ -12,7 +12,7 @@ Vulkan/CUDA/glslc availability, and derives a capability tier (`minimal`,
 
 ## ThreadBudget
 
-`packages/lib/runtime/src/shared/wrapper/thread-budget/` is the single
+`packages/lib/runtime/src/runtime/thread-budget.{cc,hxx}` is the single
 source of thread counts: `computeThreads`, `batchThreads`, `heavyThreads`,
 `lightThreads`, `inferenceSlots`. AI services never hardcode thread counts;
 LLM decode uses `lightThreads`, prefill uses `batchThreads`, and ncnn face

@@ -3,7 +3,7 @@
 #include <cstdint>
 #include <json/value.h>
 #include <shared/services/memory/sqlite-graph.hxx>
-#include <shared/wrapper/nats/nats-bus.hxx>
+#include <nats/nats-bus.hxx>
 #include <string>
 #include <vector>
 

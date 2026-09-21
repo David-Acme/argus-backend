@@ -6,7 +6,7 @@
 #include <feature/sync/productivity-sync-rpc-service.hxx>
 #include <grpcpp/grpcpp.h>
 #include <productivity/productivity-sync-client.hxx>
-#include <shared/services/sqlite/db-service.hxx>
+#include <sqlite/db-service.hxx>
 
 #include <chrono>
 #include <cstdio>

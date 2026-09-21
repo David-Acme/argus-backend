@@ -5,7 +5,7 @@
 #include <shared/repositories/memory-graph/memory-graph-repository.hxx>
 #include <shared/services/embedding/embedding-service.hxx>
 #include <shared/services/memory/entity-resolver.hxx>
-#include <shared/services/sqlite/vec-db.hxx>
+#include <sqlite/vec-db.hxx>
 #include <string>
 #include <vector>
 

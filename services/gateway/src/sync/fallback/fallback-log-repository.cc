@@ -1,6 +1,6 @@
 #include "fallback-log-repository.hxx"
 
-#include <shared/services/sqlite/db-service.hxx>
+#include <sqlite/db-service.hxx>
 #include <trantor/utils/Logger.h>
 
 using namespace fallback_log_query;

@@ -1,6 +1,6 @@
 #include "feedback-decision-dto.hxx"
 
-#include <shared/validation/validation_dsl.hxx>
+#include <validation/validation_dsl.hxx>
 
 FeedbackDecisionDto FeedbackDecisionDto::fromJson(const Json::Value& json)
 {

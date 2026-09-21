@@ -3,8 +3,8 @@
 #include <drogon/utils/coroutine.h>
 #include <errors/response-exception.hxx>
 #include <errors/validation-exception.hxx>
-#include <shared/utils/json-util/json-util.hxx>
-#include <shared/validation/validator.hxx>
+#include <text/json-util.hxx>
+#include <validation/validator.hxx>
 #include <trantor/utils/Logger.h>
 
 namespace

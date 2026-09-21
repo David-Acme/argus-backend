@@ -3,8 +3,8 @@
 #include <drogon/DrClassMap.h>
 #include <drogon/drogon.h>
 #include <feature/socket/sync/socket/sync-socket.hxx>
-#include <filter/device/device-filter.hxx>
-#include <filter/jwt/jwt-filter.hxx>
+#include <auth/device-filter.hxx>
+#include <auth/jwt-filter.hxx>
 #include <algorithm>
 #include <stdexcept>
 #include <string>

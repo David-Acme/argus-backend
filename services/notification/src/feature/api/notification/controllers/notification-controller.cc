@@ -3,7 +3,7 @@
 #include <feature/api/notification/dtos/delivery-summary-dto.hxx>
 #include <feature/api/notification/dtos/notification-ack-dto.hxx>
 #include <feature/api/notification/dtos/notification-read-dto.hxx>
-#include <filter/jwt/jwt-filter.hxx>
+#include <auth/jwt-filter.hxx>
 #include <http/api-response.hxx>
 #include <request-context.hxx>
 

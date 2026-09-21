@@ -1,7 +1,7 @@
 #pragma once
 
 #include <cstdint>
-#include <shared/services/storage/s3-storage-service.hxx>
+#include <storage/s3-storage-service.hxx>
 
 // Uploads detection evidence (full frame and person crop) to the configured
 // private object store, records a retention manifest and sweeps expired rows.

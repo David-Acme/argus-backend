@@ -2,10 +2,13 @@
 
 ## Origin
 
-Extracted in f7-4 from `src/filter/` plus `src/shared/services/jwt/`. A
-pure move: 13 files, zero content edits. The include prefixes (`filter/…`,
+Extracted in f7-4 from the filters and the JWT service. A pure move: 13
+files, zero content edits — the include prefixes of the day (`filter/…`,
 `shared/services/jwt/…`) were preserved inside `src/`, so not one of the
-`#include` lines in the fleet changed.
+`#include` lines in the fleet changed then. Phase 2 step 2 dropped those
+prefixes: the package is flat (`src/auth/<file>`, the private
+`identity-access.hxx` under `src/auth/details/`) and every consumer's include
+was repointed (`<auth/jwt-filter.hxx>`).
 
 The extraction had to wait for f7-3. Until the auth RPC landed, the
 filters read identity's repositories directly, so the package would have
@@ -59,7 +62,7 @@ device-credential suite caught it; the contract now carries presence
 `IdentityUserDirectory` (rule 27) exposes the identity domain's read-only
 user row over the same cached client: `findById` calls
 `argus.identity.v1.GetUser` and returns the DB-free `DirectoryUser`
-(`shared/contracts/user-directory.hxx` in this package). Consumers install
+(`auth/user-directory.hxx` in this package). Consumers install
 it where they own a seam — argus-camera injects it into the sync socket,
 argus-productivity holds it as a private member — so no service opens
 another domain's database for a user row.

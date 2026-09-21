@@ -1,7 +1,7 @@
 #pragma once
 
 #include <memory>
-#include <shared/contracts/identity-change-sink.hxx>
+#include <auth/identity-change-sink.hxx>
 
 class NatsBus;
 

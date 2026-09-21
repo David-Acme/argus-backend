@@ -4,8 +4,8 @@
 #include <drogon/drogon.h>
 #include <operator/nats-object-event-sink.hxx>
 #include <shared/repositories/object-event-outbox/object-event-outbox-repository.hxx>
-#include <shared/services/sqlite/db-service.hxx>
-#include <shared/wrapper/nats/nats-bus.hxx>
+#include <sqlite/db-service.hxx>
+#include <nats/nats-bus.hxx>
 
 #include <atomic>
 #include <barrier>

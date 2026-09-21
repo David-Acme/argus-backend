@@ -3,7 +3,7 @@
 #include <functional>
 #include <json/value.h>
 #include <optional>
-#include <shared/utils/json-util/json-util.hxx>
+#include <text/json-util.hxx>
 #include <string>
 #include <string_view>
 #include <vector>

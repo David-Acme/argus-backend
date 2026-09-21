@@ -1,11 +1,11 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
 
-#include <shared/services/config-service/config-service.hxx>
+#include <config/config-service.hxx>
 #include <shared/services/memory/memory-chat.hxx>
 #include <shared/services/memory/memory-service.hxx>
 #include <shared/services/memory/remote/wire-memory-chat.hxx>
-#include <shared/services/sqlite/vec-db.hxx>
+#include <sqlite/vec-db.hxx>
 
 #include <atomic>
 #include <chrono>

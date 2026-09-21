@@ -1,7 +1,7 @@
 #include <shared/services/vision/remote/vlm-client.hxx>
 
 #include <drogon/drogon.h>
-#include <shared/utils/base64/base64.hxx>
+#include <text/base64.hxx>
 
 #include <string>
 #include <utility>

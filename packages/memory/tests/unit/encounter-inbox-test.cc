@@ -3,8 +3,8 @@
 
 #include <shared/repositories/memory-graph/memory-graph-repository.hxx>
 #include <shared/services/memory/sqlite-graph.hxx>
-#include <shared/services/config-service/config-service.hxx>
-#include <shared/wrapper/sqlite-stmt/sqlite-stmt.hxx>
+#include <config/config-service.hxx>
+#include <sqlite/sqlite-stmt.hxx>
 
 #include <atomic>
 #include <cstdio>

@@ -1,8 +1,8 @@
 #include "reaction-engine.hxx"
 
 #include <memory>
-#include <shared/services/memory/phrase-catalog.hxx>
-#include <shared/services/memory/rule-parser.hxx>
+#include <phrase/phrase-catalog.hxx>
+#include <phrase/rule-parser.hxx>
 
 #include <algorithm>
 

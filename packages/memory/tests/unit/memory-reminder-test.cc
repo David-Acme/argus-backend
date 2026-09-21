@@ -2,10 +2,10 @@
 #include <doctest/doctest.h>
 
 #include <shared/contracts/tool-contracts.hxx>
-#include <shared/services/config-service/config-service.hxx>
+#include <config/config-service.hxx>
 #include <shared/services/memory/memory-chat.hxx>
 #include <shared/services/memory/memory-service.hxx>
-#include <shared/services/sqlite/vec-db.hxx>
+#include <sqlite/vec-db.hxx>
 
 #include <cstdio>
 #include <filesystem>

@@ -4,9 +4,9 @@
 #include <shared/contracts/camera-audit-event.hxx>
 #include <shared/contracts/sync-operation.hxx>
 #include <shared/services/memory/entity-resolver.hxx>
-#include <shared/utils/json-util/json-util.hxx>
-#include <shared/wrapper/nats/nats-subject.hxx>
-#include <shared/wrapper/sqlite-stmt/sqlite-stmt.hxx>
+#include <text/json-util.hxx>
+#include <nats/nats-subject.hxx>
+#include <sqlite/sqlite-stmt.hxx>
 #include <trantor/utils/Logger.h>
 
 #include <ctime>

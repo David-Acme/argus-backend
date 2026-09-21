@@ -1,7 +1,7 @@
 #include "productivity-sync-rpc-service.hxx"
 
 #include <drogon/drogon.h>
-#include <grpc-server-identity.hxx>
+#include <grpc/grpc-server-identity.hxx>
 #include <shared/contracts/sync-filter.hxx>
 #include <trantor/utils/Logger.h>
 

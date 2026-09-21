@@ -4,8 +4,8 @@
 #include <drogon/drogon.h>
 #include <guard-schema.hxx>
 #include <guard-service.hxx>
-#include <shared/services/sqlite/db-service.hxx>
-#include <shared/utils/json-util/json-util.hxx>
+#include <sqlite/db-service.hxx>
+#include <text/json-util.hxx>
 
 #include <atomic>
 #include <chrono>

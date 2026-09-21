@@ -1,7 +1,7 @@
 #pragma once
 
 #include <cstdint>
-#include <shared/vocabulary/memory-type.hxx>
+#include <phrase/memory-type.hxx>
 #include <string>
 #include <vector>
 

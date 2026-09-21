@@ -4,7 +4,7 @@
 #include <gateway-errors.hxx>
 #include <json/value.h>
 #include <shared/contracts/sync-filter.hxx>
-#include <shared/wrapper/blocking-task/blocking-task.hxx>
+#include <runtime/blocking-task.hxx>
 #include <string>
 #include <user-role.hxx>
 #include <utility>

@@ -2,7 +2,7 @@
 
 #include <cstdint>
 #include <optional>
-#include <shared/vocabulary/stored-file-category.hxx>
+#include <storage/stored-file-category.hxx>
 #include <string>
 #include <string_view>
 

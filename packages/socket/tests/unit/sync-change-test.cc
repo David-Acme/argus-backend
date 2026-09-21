@@ -2,8 +2,8 @@
 #include <doctest/doctest.h>
 
 #include <shared/services/socket/sync-change.hxx>
-#include <shared/utils/json-util/json-util.hxx>
-#include <shared/wrapper/nats/nats-subject.hxx>
+#include <text/json-util.hxx>
+#include <nats/nats-subject.hxx>
 
 #include <string>
 

@@ -1,9 +1,9 @@
 #include "notification-rpc-service.hxx"
 
 #include <drogon/drogon.h>
-#include <grpc-server-identity.hxx>
-#include <shared/services/config-service/config-service.hxx>
-#include <shared/utils/json-util/json-util.hxx>
+#include <grpc/grpc-server-identity.hxx>
+#include <config/config-service.hxx>
+#include <text/json-util.hxx>
 #include <trantor/utils/Logger.h>
 #include <vector>
 

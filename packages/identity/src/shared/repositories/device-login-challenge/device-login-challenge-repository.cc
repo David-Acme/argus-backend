@@ -1,7 +1,7 @@
 #include "device-login-challenge-repository.hxx"
 
 #include <ctime>
-#include <shared/services/sqlite/db-service.hxx>
+#include <sqlite/db-service.hxx>
 
 using namespace device_login_challenge_query;
 

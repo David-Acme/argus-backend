@@ -2,9 +2,9 @@
 
 #include <errors/response-exception.hxx>
 #include <request-context.hxx>
-#include <shared/access/role-access.hxx>
+#include <auth/role-access.hxx>
 #include <shared/contracts/sync-operation.hxx>
-#include <shared/contracts/user-directory.hxx>
+#include <auth/user-directory.hxx>
 #include <shared/dtos/socket-emit/socket-emit-dto.hxx>
 #include <sync-errors.hxx>
 

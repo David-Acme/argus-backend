@@ -2,7 +2,7 @@
 
 #include <ctime>
 #include <trantor/utils/Logger.h>
-#include <shared/access/role-access.hxx>
+#include <auth/role-access.hxx>
 #include <membership-error.hxx>
 
 void CalendarEventShareFeatureService::emitMembership(

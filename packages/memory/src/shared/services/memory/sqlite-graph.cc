@@ -3,8 +3,8 @@
 #include <ctime>
 #include <drogon/drogon.h>
 #include <shared/repositories/memory-graph/memory-graph-repository.hxx>
-#include <shared/utils/schema-runner/schema-runner.hxx>
-#include <shared/wrapper/sqlite-stmt/sqlite-stmt.hxx>
+#include <sqlite/schema-runner.hxx>
+#include <sqlite/sqlite-stmt.hxx>
 #include <sqlite3.h>
 #include <utility>
 #include <vector>

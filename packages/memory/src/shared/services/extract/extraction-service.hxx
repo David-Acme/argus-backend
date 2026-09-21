@@ -7,7 +7,7 @@
 #include <mutex>
 #include <optional>
 #include <semaphore>
-#include <shared/wrapper/cancellation/cancellation-token.hxx>
+#include <runtime/cancellation-token.hxx>
 #include <string>
 #include <vector>
 

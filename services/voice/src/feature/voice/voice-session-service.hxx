@@ -11,7 +11,7 @@
 #include <shared/services/reaction/reaction-engine.hxx>
 #include <shared/services/tts/tts-wire.hxx>
 #include <shared/services/vad/vad-service.hxx>
-#include <shared/wrapper/audio/audio-resampler.hxx>
+#include <audio/audio-resampler.hxx>
 #include <stop_token>
 #include <string>
 #include <thread>

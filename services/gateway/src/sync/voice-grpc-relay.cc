@@ -1,13 +1,13 @@
 #include "voice-grpc-relay.hxx"
 
 #include <errors/response-exception.hxx>
-#include <filter/jwt/jwt-filter.hxx>
+#include <auth/jwt-filter.hxx>
 #include <gateway-errors.hxx>
 #include <request-context.hxx>
 #include <shared/repositories/user/user-repository.hxx>
-#include <shared/services/config-service/config-service.hxx>
+#include <config/config-service.hxx>
 #include <voice/reaction-contracts.hxx>
-#include <shared/wrapper/blocking-task/blocking-task.hxx>
+#include <runtime/blocking-task.hxx>
 #include <trantor/utils/Logger.h>
 
 #include <cstdint>

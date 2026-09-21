@@ -2,9 +2,9 @@
 
 #include <errors/response-exception.hxx>
 #include <feature/socket/sync/socket/sync-forwarder.hxx>
-#include <filter/jwt/jwt-filter.hxx>
+#include <auth/jwt-filter.hxx>
 #include <request-context.hxx>
-#include <shared/utils/json-util/json-util.hxx>
+#include <text/json-util.hxx>
 
 #include <drogon/utils/coroutine.h>
 

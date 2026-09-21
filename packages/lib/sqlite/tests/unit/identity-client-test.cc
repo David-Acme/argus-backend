@@ -2,7 +2,7 @@
 #include <doctest/doctest.h>
 
 #include <drogon/drogon.h>
-#include <shared/services/sqlite/db-service.hxx>
+#include <sqlite/db-service.hxx>
 
 // Fallback identity client reads; the read-only sync client has no fallback.
 

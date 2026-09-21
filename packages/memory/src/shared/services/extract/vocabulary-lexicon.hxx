@@ -1,7 +1,7 @@
 #pragma once
 
 #include <shared/services/extract/extract-contracts.hxx>
-#include <shared/vocabulary/vocabulary.hxx>
+#include <phrase/vocabulary.hxx>
 
 #include <string>
 #include <vector>

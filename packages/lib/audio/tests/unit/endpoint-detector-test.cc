@@ -2,7 +2,7 @@
 #include <cmath>
 #include <cstdint>
 #include <doctest/doctest.h>
-#include <shared/wrapper/audio/endpoint-detector.hxx>
+#include <audio/endpoint-detector.hxx>
 #include <vector>
 
 namespace

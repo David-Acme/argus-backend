@@ -12,9 +12,9 @@ endif()
 argus_lib(NAME validation
     HEADER_ONLY
     SOURCES
-        src/shared/validation/rules.hxx
-        src/shared/validation/validation_dsl.hxx
-        src/shared/validation/validator.hxx
+        src/validation/details/rules.hxx
+        src/validation/validation_dsl.hxx
+        src/validation/validator.hxx
     INCLUDES src
     DEPENDS argus::lib::errors)
 

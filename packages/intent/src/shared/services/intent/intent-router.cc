@@ -1,8 +1,8 @@
 #include "intent-router.hxx"
 
-#include <shared/services/memory/phrase-catalog.hxx>
-#include <shared/services/memory/rule-parser.hxx>
-#include <shared/utils/text-norm/text-norm.hxx>
+#include <phrase/phrase-catalog.hxx>
+#include <phrase/rule-parser.hxx>
+#include <text/text-norm.hxx>
 
 #include <algorithm>
 #include <string_view>

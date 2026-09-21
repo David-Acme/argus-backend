@@ -16,16 +16,26 @@ routes — gateway, camera, productivity, notification, tts.
 
 ## Layout
 
-- `src/filter/device/` — DeviceFilter: the per-request device fingerprint
-  (HMAC over user-agent and either the source IP or the device
+- `src/auth/device-filter.{cc,hxx}` — DeviceFilter: the per-request device
+  fingerprint (HMAC over user-agent and either the source IP or the device
   credential, per `device.identity_mode`).
-- `src/filter/jwt/` — JwtFilter: extracts the bearer token, verifies its
-  signature locally, then asks the identity service to validate it.
-- `src/filter/role/` — RoleFilter: the static role/route table. No I/O.
-- `src/filter/valid-json/` — ValidJsonFilter: request body shape. No I/O.
-- `src/filter/identity-access.*` — the shared identity RPC client, cached
-  per resolved target.
-- `src/shared/services/jwt/` — JwtService: HS256 mint and verify.
+- `src/auth/jwt-filter.{cc,hxx}` — JwtFilter: extracts the bearer token,
+  verifies its signature locally, then asks the identity service to validate
+  it.
+- `src/auth/role-filter.{cc,hxx}`, `src/auth/role-access.hxx` — RoleFilter:
+  the static role/route table (`TableName` → permission set). No I/O.
+- `src/auth/valid-json-filter.{cc,hxx}` — ValidJsonFilter: request body shape.
+  No I/O.
+- `src/auth/identity-change-sink.hxx` — the sink interface that republishes
+  identity-domain writes for the memory catalog replicas (the gateway
+  installs the NATS-backed one).
+- `src/auth/user-directory.hxx`, `src/auth/user-directory-identity.{cc,hxx}`
+  — `IUserDirectory` and its RPC-backed implementation: the read-only
+  `DirectoryUser` a service may hold without opening the identity database
+  (rule 27).
+- `src/auth/jwt-service.{cc,hxx}` — JwtService: HS256 mint and verify.
+- `src/auth/details/identity-access.{cc,hxx}` — the shared identity RPC
+  client, cached per resolved target. Private by convention.
 
 ## Rules
 
@@ -41,7 +51,7 @@ routes — gateway, camera, productivity, notification, tts.
   `DbService` call: it asks `argus.identity.v1` instead. A dependency on
   `argus-identity` would recreate the cycle f7-3 dissolved.
 - Include prefixes are load-bearing: consumers include
-  `<filter/jwt/jwt-filter.hxx>` and `<shared/services/jwt/jwt-service.hxx>`,
+  `<auth/jwt-filter.hxx>` and `<auth/jwt-service.hxx>`,
   so the paths under `src/` must keep that shape.
 
 ## Tests

@@ -5,10 +5,10 @@
 #include <shared/repositories/memory-graph/memory-graph-repository.hxx>
 #include <shared/services/encounter-closed/encounter-closed-consumer.hxx>
 #include <shared/services/memory/sqlite-graph.hxx>
-#include <shared/services/config-service/config-service.hxx>
-#include <shared/utils/json-util/json-util.hxx>
-#include <shared/utils/sha256/sha256.hxx>
-#include <shared/wrapper/sqlite-stmt/sqlite-stmt.hxx>
+#include <config/config-service.hxx>
+#include <text/json-util.hxx>
+#include <text/sha256.hxx>
+#include <sqlite/sqlite-stmt.hxx>
 
 #include <atomic>
 #include <chrono>

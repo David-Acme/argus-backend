@@ -1,6 +1,6 @@
 #include "intent-gate.hxx"
 
-#include <shared/services/config-service/config-service.hxx>
+#include <config/config-service.hxx>
 #include <shared/services/extract/extract-contracts.hxx>
 #include <shared/services/extract/temporal-resolver.hxx>
 

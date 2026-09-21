@@ -2,10 +2,10 @@
 
 #include <chrono>
 #include <shared/contracts/camera-audit-event.hxx>
-#include <shared/utils/json-diff/json-diff.hxx>
-#include <shared/utils/json-util/json-util.hxx>
-#include <shared/wrapper/nats/nats-bus.hxx>
-#include <shared/wrapper/nats/nats-subject.hxx>
+#include <text/json-diff.hxx>
+#include <text/json-util.hxx>
+#include <nats/nats-bus.hxx>
+#include <nats/nats-subject.hxx>
 #include <trantor/utils/Logger.h>
 
 NatsCameraChangeSink::NatsCameraChangeSink(std::shared_ptr<NatsBus> bus)

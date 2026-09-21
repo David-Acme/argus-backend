@@ -1,7 +1,7 @@
 #pragma once
 
 #include <argus/productivity/v1/sync.grpc.pb.h>
-#include <grpc-client-base.hxx>
+#include <grpc/grpc-client-base.hxx>
 #include <grpcpp/grpcpp.h>
 
 #include <memory>

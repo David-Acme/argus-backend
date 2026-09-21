@@ -15,7 +15,7 @@
 #include <memory>
 #include <mutex>
 #include <optional>
-#include <shared/services/storage/s3-storage-service.hxx>
+#include <storage/s3-storage-service.hxx>
 #include <string>
 #include <unordered_set>
 #include <vector>

@@ -2,7 +2,7 @@
 
 #include <functional>
 #include <json/value.h>
-#include <shared/access/role-access.hxx>
+#include <auth/role-access.hxx>
 #include <string>
 #include <vector>
 

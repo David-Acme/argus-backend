@@ -1,6 +1,6 @@
 #include "action-command-repository.hxx"
 
-#include <shared/services/sqlite/db-service.hxx>
+#include <sqlite/db-service.hxx>
 #include <string>
 
 using namespace action_command_query;

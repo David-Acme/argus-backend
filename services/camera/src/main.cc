@@ -9,12 +9,12 @@
 #include <feature/actions/camera-action-rpc-service.hxx>
 #include <feature/health/health-rpc-service.hxx>
 #include <feature/sync/camera-sync-rpc-service.hxx>
-#include <grpc-server-identity.hxx>
+#include <grpc/grpc-server-identity.hxx>
 #include <grpcpp/grpcpp.h>
-#include <filter/device/device-filter.hxx>
-#include <filter/jwt/jwt-filter.hxx>
-#include <filter/role/role-filter.hxx>
-#include <filter/valid-json/valid-json-filter.hxx>
+#include <auth/device-filter.hxx>
+#include <auth/jwt-filter.hxx>
+#include <auth/role-filter.hxx>
+#include <auth/valid-json-filter.hxx>
 #include <http/cors.hxx>
 #include <http/error-handler.hxx>
 #include <http/health-controller.hxx>
@@ -31,14 +31,14 @@
 #include <operator/operator-config.hxx>
 #include <operator/zone-provider.hxx>
 #include <shared/repositories/camera/camera-repository.hxx>
-#include <shared/services/config-service/config-service.hxx>
+#include <config/config-service.hxx>
 #include <shared/services/room/room-manager.hxx>
-#include <shared/services/sqlite/db-service.hxx>
+#include <sqlite/db-service.hxx>
 #include <shared/services/stream/go2rtc-manager.hxx>
 #include <shared/services/stream/camera-source-registrar.hxx>
 #include <shared/services/stream/stream-hub.hxx>
-#include <shared/wrapper/blocking-task/blocking-task.hxx>
-#include <shared/wrapper/nats/nats-bus.hxx>
+#include <runtime/blocking-task.hxx>
+#include <nats/nats-bus.hxx>
 #include <unistd.h>
 
 #include <json/value.h>

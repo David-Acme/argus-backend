@@ -1,9 +1,9 @@
 #include "stt-service.hxx"
 
 #include <drogon/drogon.h>
-#include <shared/services/config-service/config-service.hxx>
-#include <shared/wrapper/blocking-task/blocking-task.hxx>
-#include <shared/wrapper/thread-budget/thread-budget.hxx>
+#include <config/config-service.hxx>
+#include <runtime/blocking-task.hxx>
+#include <runtime/thread-budget.hxx>
 #include <sherpa-onnx/c-api/c-api.h>
 #include <thread>
 

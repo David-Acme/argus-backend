@@ -1,9 +1,9 @@
 #include <drogon/drogon.h>
 #include <feature/rpc/notification-rpc-service.hxx>
-#include <filter/device/device-filter.hxx>
-#include <filter/jwt/jwt-filter.hxx>
-#include <filter/role/role-filter.hxx>
-#include <filter/valid-json/valid-json-filter.hxx>
+#include <auth/device-filter.hxx>
+#include <auth/jwt-filter.hxx>
+#include <auth/role-filter.hxx>
+#include <auth/valid-json-filter.hxx>
 #include <grpcpp/grpcpp.h>
 #include <http/cors.hxx>
 #include <http/error-handler.hxx>
@@ -11,13 +11,13 @@
 #include <http/listener-config.hxx>
 #include <notification/nats-notification-change-sink.hxx>
 #include <notification/nats-notification-delivery-sink.hxx>
-#include <shared/wrapper/nats/nats-bus.hxx>
-#include <shared/wrapper/nats/nats-push-intent-sink.hxx>
-#include <shared/wrapper/nats/nats-subject.hxx>
+#include <nats/nats-bus.hxx>
+#include <nats/nats-push-intent-sink.hxx>
+#include <nats/nats-subject.hxx>
 #include <notification/notification-config.hxx>
 #include <shared/contracts/user-change-sink.hxx>
-#include <shared/services/config-service/config-service.hxx>
-#include <shared/services/sqlite/db-service.hxx>
+#include <config/config-service.hxx>
+#include <sqlite/db-service.hxx>
 #include <unistd.h>
 
 #include <memory>

@@ -2,11 +2,11 @@
 #include <http/error-handler.hxx>
 #include <http/health-controller.hxx>
 #include <http/listener-config.hxx>
-#include <shared/wrapper/thread-budget/thread-budget.hxx>
+#include <runtime/thread-budget.hxx>
 #include <feature/synthesis/api/http/controller/tts-controller.hxx>
 #include <drogon/drogon.h>
-#include <filter/valid-json/valid-json-filter.hxx>
-#include <shared/services/config-service/config-service.hxx>
+#include <auth/valid-json-filter.hxx>
+#include <config/config-service.hxx>
 #include <feature/synthesis/domain/tts-service.hxx>
 
 #include <json/value.h>

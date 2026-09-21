@@ -21,7 +21,7 @@ it, because contracts declare errors and this package formats them.
   registers (`handleException`) plus `unmatchedRoute`, the framework's 404/405.
 - `src/http/cors.hxx` — `Cors`: `apply` on a response, `handleOptions` for the
   preflight.
-- `src/http/http-errors.hxx` — the definitions this package refuses with, all of
+- `src/http/details/http-errors.hxx` — the definitions this package refuses with, all of
   them answers no handler produced.
 - `src/http/health-controller.hxx` — `HealthController` (`/health`) and the
   `HealthStatus` a service fills with its own providers.

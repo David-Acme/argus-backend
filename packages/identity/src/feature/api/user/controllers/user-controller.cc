@@ -2,7 +2,7 @@
 
 #include <errors/response-exception.hxx>
 #include <feature/api/user/dtos/update-user-dto.hxx>
-#include <filter/jwt/jwt-filter.hxx>
+#include <auth/jwt-filter.hxx>
 #include <http/api-response.hxx>
 #include <identity-errors.hxx>
 #include <request-context.hxx>

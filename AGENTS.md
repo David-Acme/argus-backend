@@ -161,7 +161,7 @@ AuthContext::kDeviceKey = "device_ctx"
 ### 7. Role-based access
 
 Roles are checked centrally via
-`packages/lib/auth/src/shared/access/role-access.hxx` (the `kTableAccess` map:
+`packages/lib/auth/src/auth/role-access.hxx` (the `kTableAccess` map:
 role → table → `RolePermission`). **`RoleFilter` (HTTP) and the sync engine
 share that single source of truth** — to change a permission, edit only that
 file. Never imperative if/else.
@@ -254,7 +254,7 @@ package becomes `services/sync` in Phase 3a).
 
 ### 11. Validation DSL
 
-All DTO validation uses the macro DSL in `packages/lib/validation/src/shared/validation/`:
+All DTO validation uses the macro DSL in `packages/lib/validation/src/validation/`:
 
 ```cpp
 LoginDto LoginDto::fromJson(const Json::Value& json) {
@@ -324,7 +324,7 @@ images (>2048px) are decoded scaled via OpenCV (`IMREAD_REDUCED_COLOR_2/4`).
 ### 13b. Adaptive threading (ThreadBudget)
 
 NEVER hardcode thread counts. All AI services size their thread pools from
-`packages/lib/runtime/src/shared/wrapper/thread-budget/thread-budget.hxx`:
+`packages/lib/runtime/src/runtime/thread-budget.hxx`:
 `computeThreads()`, `batchThreads()`, `heavyThreads()`, `lightThreads()`,
 `inferenceSlots()`. This keeps the same build fast on 2-core laptops and
 64-core servers. Example: LLM uses `lightThreads()` for token decode and
@@ -335,7 +335,7 @@ NEVER hardcode thread counts. All AI services size their thread pools from
 Every AI service exposes a sync method (`chat`, `describe`, `transcribe`,
 `synthesize`) AND a coroutine variant (`chatAsync`, `describeAsync`,
 `transcribeAsync`, `synthesizeAsync`) that wraps the sync one in
-`BlockingTask` (see `packages/lib/runtime/src/shared/wrapper/blocking-task/blocking-task.hxx`,
+`BlockingTask` (see `packages/lib/runtime/src/runtime/blocking-task.hxx`,
 which has a `void` specialization). Controllers/services on the event loop
 MUST `co_await` the Async variant — never call the sync method directly.
 Streaming variants marshal callbacks into the loop via `queueInLoop`.
@@ -421,7 +421,7 @@ shared file-static behind a mutex.
   `supersedes`), `memory_edge`, `memory_episode` (compaction/system-event
   summaries, now recallable), `memory_procedure`. Capture: deterministic
   `RuleParser`+`PhraseCatalog` (vocabulary is static per-language constants in
-  `packages/lib/phrase/src/shared/vocabulary/`, never DB tables) → `TieredExtractor` (lexicon tier
+  `packages/lib/phrase/src/phrase/details/`, never DB tables) → `TieredExtractor` (lexicon tier
   inline, NuExtract tier off-turn).
   Recall (`GraphRecall`): entity-anchored (recursive CTE) → FTS5 → vec0
   semantic tier with store-size-aware margin gates → episode tier; anaphora
@@ -856,10 +856,11 @@ Run the full orchestrator when changing shared build infrastructure.
 ## Key Files Reference
 
 The group prefixes (`lib/`, `contracts/`, `clients/`) and the dropped
-`-contract`/`-client` suffixes have landed (rule 25); the interiors below are
-still today's `src/shared/...` spellings, because §2.3's layout — Phase 2 step
-2 — replaces them with `src/<name>/`. A path below can therefore move for two
-different reasons, and says which when it does.
+`-contract`/`-client` suffixes have landed (rule 25), and the `lib/` rows below
+already carry §2.3's interior (`src/<name>/`) — Phase 2 step 2 applied it to
+every lib. The contract, client and service rows still show the spellings of
+the pre-layout tree, which steps 2b-2d replace. A path below can therefore move
+for two different reasons, and says which when it does.
 
 **Any owner**
 
@@ -872,21 +873,21 @@ different reasons, and says which when it does.
 
 | File | Purpose |
 |------|---------|
-| `packages/lib/validation/src/shared/validation/` | Validation DSL (rules, macros, validator) |
+| `packages/lib/validation/src/validation/` | Validation DSL (rules, macros, validator) |
 | `packages/lib/errors/src/errors/` | `ErrorCode`, `ErrorDefinition`, `ResponseException` — the refusals every boundary throws |
 | `packages/lib/http/src/http/` | The `{status, info, errors}` envelope (`ApiResponse`), the one advice (`ErrorHandler`), CORS, health, listener |
-| `packages/lib/audio/src/shared/wrapper/audio/` | `AudioResampler` (stateful sinc) + `EndpointDetector` — every block-processed audio path MUST use these, never a custom conversion |
-| `packages/lib/phrase/src/shared/vocabulary/` | Static per-language memory vocabulary (es/en): `PhraseSeed`/`LexiconSeed` constants — no DB tables |
-| `packages/lib/phrase/src/shared/services/memory/` | `RuleParser` + `PhraseCatalog` — the vocabulary's parser and catalog, read by `packages/memory`, `packages/intent`, `services/llm` and `services/voice` |
-| `packages/lib/sqlite/src/shared/services/sqlite/` | DB client access (`DbService::client()`, extensions) + `VecDb` (vec0 connection) |
-| `packages/lib/storage/src/shared/services/storage/` | `S3StorageService` (RustFS S3, SigV4 in `s3-signing.hxx`) — private objects, read back through a one-use capability |
-| `packages/lib/config/src/shared/services/config-service/` | `ConfigService` read + runtime writes (`setBool/...` persist to `config.toml`, comments preserved) |
-| `packages/lib/runtime/src/shared/wrapper/cancellation/` | `CancellationToken` shared across streaming AI/audio paths |
-| `packages/lib/runtime/src/shared/wrapper/blocking-task/` | Coroutine awaiter for off-loop heavy work |
-| `packages/lib/runtime/src/shared/wrapper/thread-budget/` | Adaptive thread sizing for AI services |
-| `packages/lib/runtime/src/shared/wrapper/hardware-profile/` | CPU/RAM/ISA and video-accel probe (`HardwareProfile`), ncnn-free and ncnn variants |
-| `packages/lib/text/src/shared/utils/json-diff/` | Diff JSON + snapshot (`JsonDiff`) |
-| `packages/lib/text/src/shared/utils/json-util/` | `json_util::toString` (compact, `{}` for null), `isValid` (empty is not valid) and `fromString` |
+| `packages/lib/audio/src/audio/` | `AudioResampler` (stateful sinc) + `EndpointDetector` — every block-processed audio path MUST use these, never a custom conversion |
+| `packages/lib/phrase/src/phrase/details/` | Static per-language memory vocabulary (es/en): `PhraseSeed`/`LexiconSeed` constants — no DB tables |
+| `packages/lib/phrase/src/phrase/` | `RuleParser` + `PhraseCatalog` — the vocabulary's parser and catalog, read by `packages/memory`, `packages/intent`, `services/llm` and `services/voice` |
+| `packages/lib/sqlite/src/sqlite/` | DB client access (`DbService::client()`, extensions) + `VecDb` (vec0 connection) |
+| `packages/lib/storage/src/storage/` | `S3StorageService` (RustFS S3, SigV4 in `details/s3-signing.hxx`) — private objects, read back through a one-use capability |
+| `packages/lib/config/src/config/` | `ConfigService` read + runtime writes (`setBool/...` persist to `config.toml`, comments preserved) |
+| `packages/lib/runtime/src/runtime/cancellation-token.hxx` | `CancellationToken` shared across streaming AI/audio paths |
+| `packages/lib/runtime/src/runtime/blocking-task.hxx` | Coroutine awaiter for off-loop heavy work |
+| `packages/lib/runtime/src/runtime/thread-budget.{cc,hxx}` | Adaptive thread sizing for AI services |
+| `packages/lib/runtime/src/runtime/hardware-profile.{cc,hxx}` | CPU/RAM/ISA and video-accel probe (`HardwareProfile`), ncnn-free and ncnn variants |
+| `packages/lib/text/src/text/json-diff.{cc,hxx}` | Diff JSON + snapshot (`JsonDiff`) |
+| `packages/lib/text/src/text/json-util.hxx` | `json_util::toString` (compact, `{}` for null), `isValid` (empty is not valid) and `fromString` |
 
 **Tier 2 — `contracts/`**
 
@@ -905,12 +906,12 @@ different reasons, and says which when it does.
 
 | File | Purpose |
 |------|---------|
-| `packages/lib/auth/src/shared/access/role-access.hxx` | Centralized role → table → permission table (`role_access`), used by `RoleFilter` and sync |
-| `packages/lib/auth/src/filter/device/` | Device fingerprint extraction |
-| `packages/lib/auth/src/filter/jwt/` | JWT verification + refresh token validation |
-| `packages/lib/auth/src/filter/role/` | Role-based access control |
-| `packages/lib/auth/src/filter/valid-json/` | JSON body validation for POST/PATCH |
-| `packages/lib/auth/src/shared/services/jwt/` | JWT sign/verify (HS256, instance class) |
+| `packages/lib/auth/src/auth/role-access.hxx` | Centralized role → table → permission table (`role_access`), used by `RoleFilter` and sync |
+| `packages/lib/auth/src/auth/device-filter.{cc,hxx}` | Device fingerprint extraction |
+| `packages/lib/auth/src/auth/jwt-filter.{cc,hxx}` | JWT verification + refresh token validation |
+| `packages/lib/auth/src/auth/role-filter.{cc,hxx}` | Role-based access control |
+| `packages/lib/auth/src/auth/valid-json-filter.{cc,hxx}` | JSON body validation for POST/PATCH |
+| `packages/lib/auth/src/auth/jwt-service.{cc,hxx}` | JWT sign/verify (HS256, instance class) |
 
 **Tier 5 — services, and the packages that are on their way to one**
 

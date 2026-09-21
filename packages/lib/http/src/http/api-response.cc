@@ -2,7 +2,7 @@
 
 #include <errors/error-definition.hxx>
 #include <errors/response-exception.hxx>
-#include <http/http-errors.hxx>
+#include <http/details/http-errors.hxx>
 
 #include <drogon/HttpResponse.h>
 #include <json/value.h>

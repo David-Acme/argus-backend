@@ -2,7 +2,7 @@
 
 #include <cstdint>
 
-#include <shared/services/config-service/config-service.hxx>
+#include <config/config-service.hxx>
 
 IdentityDbConfig IdentityConfig::resolveDb()
 {

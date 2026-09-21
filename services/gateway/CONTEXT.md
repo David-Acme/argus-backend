@@ -377,7 +377,7 @@ table. The app keeps working without any update.
 ## Leaf SAN for the public relay hostname (F5-3, Ruling CI)
 
 - **`[remote] hostname` appends a DNS SAN**: `CertService::instanceSans()`
-  (`src/shared/services/cert/cert-service.cc`) reads
+  (`src/cert/cert-service.cc`) reads
   `ConfigService::getString("remote.hostname")` after the always-present
   base list (`argus.local`, `localhost`, `127.0.0.1`, `::1`, `[mdns] name`
   when set, host hostname) and pushes a non-empty value as the LAST SAN

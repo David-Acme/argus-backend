@@ -1,6 +1,6 @@
 #include "person-tag-repository.hxx"
 
-#include <shared/services/sqlite/db-service.hxx>
+#include <sqlite/db-service.hxx>
 
 using namespace person_tag_query;
 

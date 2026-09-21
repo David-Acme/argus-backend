@@ -1,7 +1,7 @@
 #pragma once
 
 #include <drogon/utils/coroutine.h>
-#include <filter/jwt/jwt-filter.hxx>
+#include <auth/jwt-filter.hxx>
 #include <json/value.h>
 #include <optional>
 #include <shared/contracts/sync-filter.hxx>

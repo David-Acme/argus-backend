@@ -3,7 +3,7 @@
 
 #include <drogon/drogon.h>
 #include <shared/repositories/object-event-outbox/object-event-outbox-repository.hxx>
-#include <shared/services/sqlite/db-service.hxx>
+#include <sqlite/db-service.hxx>
 
 #include <chrono>
 #include <cstdio>

@@ -7,8 +7,8 @@
 #include <openssl/evp.h>
 #include <openssl/rand.h>
 #include <string_view>
-#include <shared/services/cert/cert-service.hxx>
-#include <shared/services/config-service/config-service.hxx>
+#include <cert/cert-service.hxx>
+#include <config/config-service.hxx>
 #include <shared/contracts/sync-operation.hxx>
 #include <shared/dtos/socket-emit/socket-emit-dto.hxx>
 

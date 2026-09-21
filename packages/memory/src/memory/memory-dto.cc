@@ -1,7 +1,7 @@
 #include "memory-dto.hxx"
 
 #include <errors/validation-exception.hxx>
-#include <shared/validation/validator.hxx>
+#include <validation/validator.hxx>
 
 #include <algorithm>
 #include <array>

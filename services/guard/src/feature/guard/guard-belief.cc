@@ -1,6 +1,6 @@
 #include <guard-belief.hxx>
 
-#include <shared/services/config-service/config-service.hxx>
+#include <config/config-service.hxx>
 
 #include <algorithm>
 #include <limits>

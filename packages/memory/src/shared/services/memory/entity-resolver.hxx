@@ -4,7 +4,7 @@
 #include <memory>
 #include <mutex>
 #include <shared/repositories/memory-graph/memory-graph-repository.hxx>
-#include <shared/utils/text-match/phrase-automaton.hxx>
+#include <phrase/phrase-automaton.hxx>
 #include <string>
 #include <vector>
 

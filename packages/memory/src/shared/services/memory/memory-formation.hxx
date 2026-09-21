@@ -5,7 +5,7 @@
 #include <shared/contracts/tool-contracts.hxx>
 #include <shared/services/extract/extract-contracts.hxx>
 #include <shared/services/memory/entity-resolver.hxx>
-#include <shared/services/memory/rule-parser.hxx>
+#include <phrase/rule-parser.hxx>
 #include <string>
 #include <vector>
 

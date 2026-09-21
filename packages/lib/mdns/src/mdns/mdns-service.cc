@@ -12,7 +12,7 @@
 #include <net/if.h>
 #include <netinet/in.h>
 #include <poll.h>
-#include <shared/services/config-service/config-service.hxx>
+#include <config/config-service.hxx>
 #include <string>
 #include <string_view>
 #include <strings.h>

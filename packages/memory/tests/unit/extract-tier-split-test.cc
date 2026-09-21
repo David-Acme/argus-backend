@@ -3,8 +3,8 @@
 
 #include <shared/services/extract/lexicon-extractor.hxx>
 #include <shared/services/extract/vocabulary-lexicon.hxx>
-#include <shared/services/memory/phrase-catalog.hxx>
-#include <shared/services/memory/rule-parser.hxx>
+#include <phrase/phrase-catalog.hxx>
+#include <phrase/rule-parser.hxx>
 
 #include <fstream>
 #include <string>

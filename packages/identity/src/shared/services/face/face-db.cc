@@ -5,8 +5,8 @@
 #include <drogon/drogon.h>
 #include <map>
 #include <shared/repositories/face-embedding/face-embedding-repository.hxx>
-#include <shared/services/config-service/config-service.hxx>
-#include <shared/services/sqlite/vec-db.hxx>
+#include <config/config-service.hxx>
+#include <sqlite/vec-db.hxx>
 #include <sqlite3.h>
 
 namespace

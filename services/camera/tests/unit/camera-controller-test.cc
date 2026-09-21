@@ -10,9 +10,9 @@
 #include <feature/api/camera/dtos/create-camera-dto.hxx>
 #include <feature/api/zone/controllers/zone-controller.hxx>
 #include <feature/api/zone/dtos/create-zone-dto.hxx>
-#include <filter/jwt/jwt-filter.hxx>
-#include <shared/utils/json-util/json-util.hxx>
-#include <shared/validation/validator.hxx>
+#include <auth/jwt-filter.hxx>
+#include <text/json-util.hxx>
+#include <validation/validator.hxx>
 
 #include <chrono>
 #include <cstdio>

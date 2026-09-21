@@ -8,7 +8,7 @@
 #include <http/api-response.hxx>
 #include <http/cors.hxx>
 #include <http/error-handler.hxx>
-#include <http/http-errors.hxx>
+#include <http/details/http-errors.hxx>
 
 #include <drogon/HttpResponse.h>
 #include <drogon/HttpTypes.h>

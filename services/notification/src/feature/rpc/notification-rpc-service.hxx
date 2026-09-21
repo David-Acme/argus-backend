@@ -1,11 +1,11 @@
 #pragma once
 
 #include <argus/notification/v1/notification.grpc.pb.h>
-#include <grpc-server-identity.hxx>
+#include <grpc/grpc-server-identity.hxx>
 #include <grpcpp/grpcpp.h>
 #include <memory>
 #include <shared/contracts/notification-delivery-sink.hxx>
-#include <shared/contracts/push-intent-sink.hxx>
+#include <nats/push-intent-sink.hxx>
 #include <shared/repositories/notification/notification-repository.hxx>
 #include <shared/services/notification/notification-service.hxx>
 #include <vector>

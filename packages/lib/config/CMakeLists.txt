@@ -18,8 +18,8 @@ endif()
 argus_lib(NAME config
     SOURCES
         src/config/service.hxx
-        src/shared/services/config-service/config-service.cc
-        src/shared/services/config-service/config-service.hxx
+        src/config/config-service.cc
+        src/config/config-service.hxx
     INCLUDES src
     DEPENDS
         Drogon::Drogon
@@ -36,3 +36,23 @@ foreach(_tomlplusplus_include_var
 endforeach()
 
 target_compile_options(argus_lib_config PRIVATE -Wall -Wextra)
+
+# The reader's own suite: the parse, the dotted paths, the defaults, the
+# runtime override and the overlay. Every service's boot depends on those
+# semantics, so they are pinned here rather than through a service's suite.
+enable_testing()
+find_package(doctest REQUIRED)
+
+add_executable(config-service-test tests/unit/config-service-test.cc)
+target_link_libraries(config-service-test PRIVATE
+    argus::lib::config
+    doctest::doctest)
+target_compile_options(config-service-test PRIVATE -Wall -Wextra)
+add_test(NAME config-service-test COMMAND config-service-test)
+
+get_target_property(DOCTEST_INCLUDE_DIRS doctest::doctest
+                    INTERFACE_INCLUDE_DIRECTORIES)
+if(DOCTEST_INCLUDE_DIRS)
+    set_target_properties(doctest::doctest PROPERTIES
+        INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${DOCTEST_INCLUDE_DIRS}")
+endif()

@@ -6,8 +6,8 @@
 
 #include <chrono>
 #include <ctime>
-#include <shared/services/sqlite/db-service.hxx>
-#include <shared/utils/json-util/json-util.hxx>
+#include <sqlite/db-service.hxx>
+#include <text/json-util.hxx>
 #include <string>
 #include <trantor/utils/Logger.h>
 

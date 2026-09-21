@@ -1,7 +1,7 @@
 #include "event-repository.hxx"
 
 #include <ctime>
-#include <shared/services/sqlite/db-service.hxx>
+#include <sqlite/db-service.hxx>
 #include <vector>
 
 using namespace event_query;

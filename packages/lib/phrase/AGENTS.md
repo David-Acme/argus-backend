@@ -11,11 +11,12 @@ cluster lives here rather than in either service.
 
 ## Layout
 
-- `src/shared/utils/text-match/phrase-automaton.{cc,hxx}` — the matcher.
-- `src/shared/services/memory/phrase-catalog.{cc,hxx}` — the catalog that
+- `src/phrase/phrase-automaton.{cc,hxx}` — the matcher.
+- `src/phrase/phrase-catalog.{cc,hxx}` — the catalog that
   loads the vocabulary into the automaton.
-- `src/shared/services/memory/rule-parser.{cc,hxx}` — the rule syntax.
-- `src/shared/vocabulary/` — the Spanish and English seed data.
+- `src/phrase/rule-parser.{cc,hxx}` — the rule syntax.
+- `src/phrase/details/` — the seed data the vocabulary loads:
+  `vocabulary-{en,es}.hxx`, `vocabulary-types.hxx`, `phrase-kind.hxx`.
 
 ## Rules
 

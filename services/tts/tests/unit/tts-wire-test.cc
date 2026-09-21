@@ -3,13 +3,13 @@
 
 #include <feature/synthesis/api/http/controller/tts-controller.hxx>
 #include <drogon/drogon.h>
-#include <filter/valid-json/valid-json-filter.hxx>
+#include <auth/valid-json-filter.hxx>
 #include <http/api-response.hxx>
 #include <http/error-handler.hxx>
 #include <http/health-controller.hxx>
-#include <shared/services/config-service/config-service.hxx>
+#include <config/config-service.hxx>
 #include <feature/synthesis/domain/tts-service.hxx>
-#include <shared/wrapper/hardware-profile/hardware-profile.hxx>
+#include <runtime/hardware-profile.hxx>
 
 #include <arpa/inet.h>
 #include <netinet/in.h>

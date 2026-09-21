@@ -3,7 +3,7 @@
 #include <errors/response-exception.hxx>
 #include <feature/api/invitation/dtos/create-invitation-dto.hxx>
 #include <feature/api/invitation/dtos/resolve-invitation-dto.hxx>
-#include <filter/jwt/jwt-filter.hxx>
+#include <auth/jwt-filter.hxx>
 #include <http/api-response.hxx>
 #include <identity-errors.hxx>
 #include <request-context.hxx>

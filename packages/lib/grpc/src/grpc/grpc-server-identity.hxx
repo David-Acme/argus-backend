@@ -1,7 +1,7 @@
 #pragma once
 
 #include <cstdint>
-#include <grpc-client-base.hxx>
+#include <grpc/grpc-client-base.hxx>
 #include <grpcpp/grpcpp.h>
 #include <optional>
 #include <span>

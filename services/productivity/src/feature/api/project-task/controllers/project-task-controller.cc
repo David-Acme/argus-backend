@@ -3,7 +3,7 @@
 #include <errors/response-exception.hxx>
 #include <feature/api/project-task/dtos/create-project-task-dto.hxx>
 #include <feature/api/project-task/dtos/update-project-task-dto.hxx>
-#include <filter/jwt/jwt-filter.hxx>
+#include <auth/jwt-filter.hxx>
 #include <http/api-response.hxx>
 #include <productivity-errors.hxx>
 #include <request-context.hxx>

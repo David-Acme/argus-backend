@@ -1,0 +1,243 @@
+#pragma once
+
+#include <validation/details/rules.hxx>
+#include <validation/validator.hxx>
+
+#define START_VALIDATION(DtoType, objRef)                                      \
+  Validator<DtoType> __v;                                                      \
+  using __D = DtoType;                                                         \
+  auto& __d = (objRef);
+
+
+#define IS_NOT_EMPTY(field)                                                    \
+  __v.template add<IsNotEmptyRule<__D>>(                                       \
+      FieldAccessor<__D>{#field, [](const __D& d) -> const std::string& {      \
+                           return d.field;                                     \
+                         }});
+
+#define IS_NOT_EMPTY_OPTIONAL(field)                                           \
+  __v.template add<IsOptionalNotEmptyRule<__D>>(                               \
+      OptionalFieldAccessor<__D>{#field,                                       \
+                                 [](const __D& d)                              \
+                                     -> const std::optional<std::string>& {    \
+                                   return d.field;                             \
+                                 }});
+
+
+#define IS_ALPHA(field)                                                        \
+  __v.template add<IsAlphaRule<__D>>(                                          \
+      FieldAccessor<__D>{#field, [](const __D& d) -> const std::string& {      \
+                           return d.field;                                     \
+                         }});
+
+#define IS_ALNUM(field)                                                        \
+  __v.template add<IsAlnumRule<__D>>(                                          \
+      FieldAccessor<__D>{#field, [](const __D& d) -> const std::string& {      \
+                           return d.field;                                     \
+                         }});
+
+#define HAS_NO_SPACES(field)                                                   \
+  __v.template add<HasNoSpacesRule<__D>>(                                      \
+      FieldAccessor<__D>{#field, [](const __D& d) -> const std::string& {      \
+                           return d.field;                                     \
+                         }});
+
+
+#define IS_EMAIL(field)                                                        \
+  __v.template add<IsEmailRule<__D>>(                                          \
+      FieldAccessor<__D>{#field, [](const __D& d) -> const std::string& {      \
+                           return d.field;                                     \
+                         }});
+
+#define IS_UUID(field)                                                         \
+  __v.template add<IsUuidRule<__D>>(                                           \
+      FieldAccessor<__D>{#field, [](const __D& d) -> const std::string& {      \
+                           return d.field;                                     \
+                         }});
+
+#define IS_URL(field)                                                          \
+  __v.template add<IsUrlRule<__D>>(                                            \
+      FieldAccessor<__D>{#field, [](const __D& d) -> const std::string& {      \
+                           return d.field;                                     \
+                         }});
+
+#define IS_HEX(field)                                                          \
+  __v.template add<IsHexRule<__D>>(                                            \
+      FieldAccessor<__D>{#field, [](const __D& d) -> const std::string& {      \
+                           return d.field;                                     \
+                         }});
+
+#define IS_SLUG(field)                                                         \
+  __v.template add<IsSlugRule<__D>>(                                           \
+      FieldAccessor<__D>{#field, [](const __D& d) -> const std::string& {      \
+                           return d.field;                                     \
+                         }});
+
+#define IS_BASE64(field)                                                       \
+  __v.template add<IsBase64Rule<__D>>(                                         \
+      FieldAccessor<__D>{#field, [](const __D& d) -> const std::string& {      \
+                           return d.field;                                     \
+                         }});
+
+#define MATCHES_REGEX(field, expr, text)                                       \
+  __v.template add<MatchesRegexRule<__D>>(                                     \
+      RegexMatchInput<__D>{                                                    \
+          .accessor = FieldAccessor<__D>{#field,                               \
+                                         [](const __D& d)                      \
+                                             -> const std::string& {           \
+                                           return d.field;                     \
+                                         }},                                   \
+          .pattern = expr,                                                     \
+          .message = text});
+
+
+#define IS_IN(field, ...)                                                      \
+  __v.template add<IsInRule<__D>>(                                             \
+      FieldAccessor<__D>{#field,                                               \
+                         [](const __D& d) -> const std::string& {              \
+                           return d.field;                                     \
+                         }},                                                   \
+      std::initializer_list<std::string>{__VA_ARGS__});
+
+
+#define MIN_LENGTH(field, n)                                                   \
+  __v.template add<MinLengthRule<__D>>(                                        \
+      FieldAccessor<__D>{#field,                                               \
+                         [](const __D& d) -> const std::string& {              \
+                           return d.field;                                     \
+                         }},                                                   \
+      n);
+
+#define MAX_LENGTH(field, n)                                                   \
+  __v.template add<MaxLengthRule<__D>>(                                        \
+      FieldAccessor<__D>{#field,                                               \
+                         [](const __D& d) -> const std::string& {              \
+                           return d.field;                                     \
+                         }},                                                   \
+      n);
+
+#define MIN_LENGTH_OPTIONAL(field, n)                                          \
+  __v.template add<MinLengthOptionalRule<__D>>(                                \
+      OptionalFieldAccessor<__D>{#field,                                       \
+                                 [](const __D& d)                              \
+                                     -> const std::optional<std::string>& {    \
+                                   return d.field;                             \
+                                 }},                                           \
+      n);
+
+#define MAX_LENGTH_OPTIONAL(field, n)                                          \
+  __v.template add<MaxLengthOptionalRule<__D>>(                                \
+      OptionalFieldAccessor<__D>{#field,                                       \
+                                 [](const __D& d)                              \
+                                     -> const std::optional<std::string>& {    \
+                                   return d.field;                             \
+                                 }},                                           \
+      n);
+
+
+#define IS_POSITIVE(field)                                                     \
+  __v.template add<IsPositiveRule<__D>>(                                       \
+      IntFieldAccessor<__D>{#field,                                            \
+                            [](const __D& d) -> int64_t { return d.field; }});
+
+#define IS_NON_NEGATIVE(field)                                                 \
+  __v.template add<IsNonNegativeRule<__D>>(                                    \
+      IntFieldAccessor<__D>{#field,                                            \
+                            [](const __D& d) -> int64_t { return d.field; }});
+
+#define MIN_INT(field, n)                                                      \
+  __v.template add<MinIntRule<__D>>(IntFieldAccessor<__D>{#field,              \
+                                                          [](const __D& d)     \
+                                                              -> int64_t {     \
+                                                            return d.field;    \
+                                                          }},                  \
+                                    n);
+
+#define MAX_INT(field, n)                                                      \
+  __v.template add<MaxIntRule<__D>>(IntFieldAccessor<__D>{#field,              \
+                                                          [](const __D& d)     \
+                                                              -> int64_t {     \
+                                                            return d.field;    \
+                                                          }},                  \
+                                    n);
+
+#define BETWEEN(field, lo, hi)                                                 \
+  __v.template add<BetweenRule<__D>>(                                          \
+      IntRangeInput<__D>{                                                      \
+          .accessor = IntFieldAccessor<__D>{#field, [](const __D& d)           \
+                                                     -> int64_t {              \
+                                                       return d.field;         \
+                                                     }},                       \
+          .min = lo,                                                           \
+          .max = hi});
+
+
+#define EQUALS_FIELD(field1, field2)                                           \
+  __v.template add<EqualsFieldRule<__D>>(                                      \
+      FieldMatchInput<__D>{                                                    \
+          .first = FieldAccessor<__D>{#field1,                                 \
+                                      [](const __D& d) -> const std::string& { \
+                                        return d.field1;                       \
+                                      }},                                      \
+          .second = FieldAccessor<__D>{#field2,                                \
+                                       [](const __D& d) -> const std::string& {\
+                                         return d.field2;                      \
+                                       }},                                     \
+          .secondName = std::string{#field2}});
+
+
+#define ARRAY_NOT_EMPTY(field, ElementType)                                    \
+  __v.template add<ArrayNotEmptyRule<__D, ElementType>>(                       \
+      ArrayFieldAccessor<__D, ElementType>{                                    \
+          #field, [](const __D& d) -> const std::vector<ElementType>& {        \
+            return d.field;                                                    \
+          }});
+
+#define MIN_ELEMENTS(field, ElementType, n)                                    \
+  __v.template add<MinElementsRule<__D, ElementType>>(                         \
+      ArrayFieldAccessor<__D, ElementType>{                                    \
+          #field,                                                              \
+          [](const __D& d) -> const std::vector<ElementType>& {                \
+            return d.field;                                                    \
+          }},                                                                  \
+      n);
+
+#define MAX_ELEMENTS(field, ElementType, n)                                    \
+  __v.template add<MaxElementsRule<__D, ElementType>>(                         \
+      ArrayFieldAccessor<__D, ElementType>{                                    \
+          #field,                                                              \
+          [](const __D& d) -> const std::vector<ElementType>& {                \
+            return d.field;                                                    \
+          }},                                                                  \
+      n);
+
+
+#define IS_VALID_TIMESTAMP(field)                                              \
+  __v.template add<IsValidTimestampRule<__D>>(                                 \
+      IntFieldAccessor<__D>{#field,                                            \
+                            [](const __D& d) -> int64_t { return d.field; }});
+
+#define IS_POSITIVE_TIMESTAMP(field)                                           \
+  __v.template add<IsPositiveTimestampRule<__D>>(                              \
+      IntFieldAccessor<__D>{#field,                                            \
+                            [](const __D& d) -> int64_t { return d.field; }});
+
+#define IS_POSITIVE_TIMESTAMP_OPTIONAL(field)                                  \
+  __v.template add<IsPositiveTimestampOptionalRule<__D>>(                      \
+      OptionalIntFieldAccessor<__D>{                                           \
+          #field,                                                              \
+          [](const __D& d) -> const std::optional<int64_t>& {                  \
+            return d.field;                                                    \
+          }});
+
+
+#define IS_BOOLEAN(field)                                                      \
+  __v.template add<IsBooleanRule<__D>>(                                        \
+      BoolFieldAccessor<__D>{#field, [](const __D& d) -> bool { return d.field; }});
+
+
+#define CUSTOM_LAMBDA(field, fn)                                               \
+  __v.template add<LambdaRule<__D>>(std::string{#field}, fn);
+
+
+#define END_VALIDATION() __v.validateOrThrow(__d);

@@ -4,9 +4,9 @@
 #include <shared/contracts/camera-audit-event.hxx>
 #include <shared/contracts/sync-operation.hxx>
 #include <shared/services/audit-log/audit-log-service.hxx>
-#include <shared/utils/json-util/json-util.hxx>
-#include <shared/wrapper/nats/nats-bus.hxx>
-#include <shared/wrapper/nats/nats-subject.hxx>
+#include <text/json-util.hxx>
+#include <nats/nats-bus.hxx>
+#include <nats/nats-subject.hxx>
 #include <sync/sync-fan-out.hxx>
 #include <sync/user-change-fan-out.hxx>
 #include <trantor/utils/Logger.h>

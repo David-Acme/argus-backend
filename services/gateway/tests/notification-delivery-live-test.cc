@@ -3,10 +3,10 @@
 
 #include <drogon/drogon.h>
 #include <shared/contracts/notification-delivery-sink.hxx>
-#include <shared/services/sqlite/db-service.hxx>
-#include <shared/utils/json-util/json-util.hxx>
-#include <shared/wrapper/nats/nats-bus.hxx>
-#include <shared/wrapper/nats/nats-subject.hxx>
+#include <sqlite/db-service.hxx>
+#include <text/json-util.hxx>
+#include <nats/nats-bus.hxx>
+#include <nats/nats-subject.hxx>
 #include <sync/notification-delivery-consumer.hxx>
 
 #include <atomic>

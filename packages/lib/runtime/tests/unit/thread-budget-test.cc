@@ -1,7 +1,7 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
 
-#include <shared/wrapper/thread-budget/thread-budget.hxx>
+#include <runtime/thread-budget.hxx>
 #include <algorithm>
 #include <string>
 #include <vector>

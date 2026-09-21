@@ -2,7 +2,7 @@
 
 #include <json/value.h>
 #include <feature/synthesis/domain/tts-service.hxx>
-#include <shared/validation/validation_dsl.hxx>
+#include <validation/validation_dsl.hxx>
 #include <string>
 
 // Internal wire request: {text, style_id?, speed?, lang?}.

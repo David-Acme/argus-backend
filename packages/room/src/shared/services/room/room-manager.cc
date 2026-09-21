@@ -2,7 +2,7 @@
 
 #include <atomic>
 #include <drogon/drogon.h>
-#include <shared/access/role-access.hxx>
+#include <auth/role-access.hxx>
 #include <trantor/utils/Logger.h>
 
 namespace

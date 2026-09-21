@@ -7,7 +7,7 @@
 #include <feature/api/camera-control/services/camera-control-feature-service.hxx>
 #include <errors/response-exception.hxx>
 #include <shared/services/camera-driver/camera-driver.hxx>
-#include <shared/services/config-service/config-service.hxx>
+#include <config/config-service.hxx>
 
 #include <arpa/inet.h>
 #include <netinet/in.h>

@@ -5,13 +5,13 @@
 #include <span>
 #include <string_view>
 #include <utility>
-#include <shared/services/config-service/config-service.hxx>
+#include <config/config-service.hxx>
 #include <shared/services/embedding/embedding-service.hxx>
 #include <shared/services/memory/memory-vec.hxx>
 #include <shared/services/memory/sqlite-graph.hxx>
-#include <shared/services/sqlite/vec-db.hxx>
-#include <shared/utils/text-norm/text-norm.hxx>
-#include <shared/wrapper/sqlite-stmt/sqlite-stmt.hxx>
+#include <sqlite/vec-db.hxx>
+#include <text/text-norm.hxx>
+#include <sqlite/sqlite-stmt.hxx>
 #include <sqlite3.h>
 
 namespace

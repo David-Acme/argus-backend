@@ -2,7 +2,7 @@
 
 #include <drogon/utils/coroutine.h>
 #include <feature/socket/sync/dtos/synchronized-dto.hxx>
-#include <filter/jwt/jwt-filter.hxx>
+#include <auth/jwt-filter.hxx>
 #include <json/value.h>
 #include <shared/contracts/camera-sync-source.hxx>
 #include <shared/contracts/notification-sync-source.hxx>

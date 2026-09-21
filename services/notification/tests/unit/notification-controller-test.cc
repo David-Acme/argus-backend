@@ -8,12 +8,12 @@
 #include <feature/api/notification/dtos/notification-read-dto.hxx>
 #include <feature/api/notification/dtos/notification-ack-dto.hxx>
 #include <feature/api/notification/dtos/register-notification-token-dto.hxx>
-#include <filter/device/device-filter.hxx>
-#include <filter/jwt/jwt-filter.hxx>
+#include <auth/device-filter.hxx>
+#include <auth/jwt-filter.hxx>
 #include <shared/contracts/user-change-sink.hxx>
 #include <shared/repositories/notification-token/notification-token-repository.hxx>
-#include <shared/utils/json-util/json-util.hxx>
-#include <shared/validation/validator.hxx>
+#include <text/json-util.hxx>
+#include <validation/validator.hxx>
 
 #include <chrono>
 #include <cstdio>

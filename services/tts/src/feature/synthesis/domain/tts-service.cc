@@ -6,10 +6,10 @@
 #include <feature/synthesis/infra/supertonic/unicode-processor.hxx>
 
 #include <drogon/drogon.h>
-#include <shared/services/config-service/config-service.hxx>
-#include <shared/wrapper/blocking-task/blocking-task.hxx>
-#include <shared/wrapper/hardware-profile/hardware-profile.hxx>
-#include <shared/wrapper/thread-budget/thread-budget.hxx>
+#include <config/config-service.hxx>
+#include <runtime/blocking-task.hxx>
+#include <runtime/hardware-profile.hxx>
+#include <runtime/thread-budget.hxx>
 #include <chrono>
 #include <stdexcept>
 #include <thread>

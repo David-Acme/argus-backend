@@ -1,7 +1,7 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
 
-#include <filter/device/device-filter.hxx>
+#include <auth/device-filter.hxx>
 #include <http/health-controller.hxx>
 #include <http/listener-config.hxx>
 #include <identity/identity-config.hxx>
@@ -10,11 +10,11 @@
 #include <server/refresh-rate-limiter.hxx>
 #include <server/remote-config.hxx>
 #include <server/remote-gate.hxx>
-#include <shared/services/config-service/config-service.hxx>
+#include <config/config-service.hxx>
 #include <shared/services/room/room-manager.hxx>
 #include <shared/services/socket/sync-change.hxx>
-#include <shared/services/sqlite/db-service.hxx>
-#include <shared/utils/json-util/json-util.hxx>
+#include <sqlite/db-service.hxx>
+#include <text/json-util.hxx>
 #include <http/api-response.hxx>
 #include <proxy/reverse-proxy.hxx>
 #include <sync/camera-fan-out.hxx>

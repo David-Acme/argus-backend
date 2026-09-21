@@ -1,8 +1,8 @@
 #include "tapo-driver.hxx"
 
-#include <shared/services/config-service/config-service.hxx>
+#include <config/config-service.hxx>
 #include <shared/services/tapo/tapo-talk-client.hxx>
-#include <shared/wrapper/cancellation/cancellation-token.hxx>
+#include <runtime/cancellation-token.hxx>
 
 namespace
 {

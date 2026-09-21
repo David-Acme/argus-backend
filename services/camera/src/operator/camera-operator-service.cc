@@ -2,11 +2,11 @@
 
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/imgproc.hpp>
-#include <shared/services/sqlite/db-service.hxx>
-#include <shared/utils/base64/base64.hxx>
+#include <sqlite/db-service.hxx>
+#include <text/base64.hxx>
 #include <shared/services/evidence/evidence-uploader.hxx>
 #include <shared/services/stream/snapshot-store.hxx>
-#include <shared/wrapper/blocking-task/blocking-task.hxx>
+#include <runtime/blocking-task.hxx>
 #include <trantor/utils/Logger.h>
 
 #include <algorithm>

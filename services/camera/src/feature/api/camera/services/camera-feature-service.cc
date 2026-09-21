@@ -2,7 +2,7 @@
 
 #include <ctime>
 #include <shared/services/stream/camera-source-registrar.hxx>
-#include <shared/wrapper/blocking-task/blocking-task.hxx>
+#include <runtime/blocking-task.hxx>
 #include <trantor/utils/Logger.h>
 
 namespace

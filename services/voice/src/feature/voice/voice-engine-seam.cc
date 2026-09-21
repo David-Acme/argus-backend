@@ -3,7 +3,7 @@
 #include <chrono>
 #include <drogon/drogon.h>
 #include <identity/identity-client.hxx>
-#include <shared/services/config-service/config-service.hxx>
+#include <config/config-service.hxx>
 
 namespace
 {

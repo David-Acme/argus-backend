@@ -1,7 +1,7 @@
 #pragma once
 
 #include <json/value.h>
-#include <shared/validation/validation_dsl.hxx>
+#include <validation/validation_dsl.hxx>
 #include <string>
 
 // /camera/{id}/talk body: lang is `es` or `en` and picks the TTS voice.

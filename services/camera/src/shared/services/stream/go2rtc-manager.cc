@@ -11,7 +11,7 @@
 #include <fcntl.h>
 #include <fstream>
 #include <netinet/in.h>
-#include <shared/services/config-service/config-service.hxx>
+#include <config/config-service.hxx>
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/types.h>

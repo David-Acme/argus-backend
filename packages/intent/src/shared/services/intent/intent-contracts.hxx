@@ -1,6 +1,6 @@
 #pragma once
 
-#include <shared/utils/text-norm/text-norm.hxx>
+#include <text/text-norm.hxx>
 
 #include <array>
 #include <cstdint>

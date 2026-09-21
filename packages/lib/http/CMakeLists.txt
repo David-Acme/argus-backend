@@ -36,7 +36,7 @@ argus_lib(NAME http
         src/http/cors.hxx
         src/http/error-handler.hxx
         src/http/health-controller.hxx
-        src/http/http-errors.hxx
+        src/http/details/http-errors.hxx
         src/http/listener-config.hxx
     INCLUDES src
     DEPENDS

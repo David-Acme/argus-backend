@@ -1,8 +1,8 @@
 #include "notification-token-controller.hxx"
 
 #include <feature/api/notification/dtos/register-notification-token-dto.hxx>
-#include <filter/device/device-filter.hxx>
-#include <filter/jwt/jwt-filter.hxx>
+#include <auth/device-filter.hxx>
+#include <auth/jwt-filter.hxx>
 #include <http/api-response.hxx>
 #include <request-context.hxx>
 #include <shared/repositories/notification-token/notification-token-query.hxx>

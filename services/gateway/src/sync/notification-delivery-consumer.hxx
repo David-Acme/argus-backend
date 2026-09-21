@@ -3,7 +3,7 @@
 #include <drogon/utils/coroutine.h>
 #include <shared/contracts/notification-delivery-sink.hxx>
 #include <shared/repositories/delivery-inbox/delivery-inbox-repository.hxx>
-#include <shared/wrapper/nats/nats-subject.hxx>
+#include <nats/nats-subject.hxx>
 
 #include <cstdint>
 #include <functional>

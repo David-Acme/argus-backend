@@ -1,6 +1,6 @@
 #include <operator/zone-source.hxx>
 
-#include <shared/utils/json-util/json-util.hxx>
+#include <text/json-util.hxx>
 
 #include <json/value.h>
 #include <utility>

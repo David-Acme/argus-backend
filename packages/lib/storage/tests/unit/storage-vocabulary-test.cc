@@ -1,7 +1,7 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
 
-#include <shared/vocabulary/stored-file-category.hxx>
+#include <storage/stored-file-category.hxx>
 
 #include <cstddef>
 #include <string>

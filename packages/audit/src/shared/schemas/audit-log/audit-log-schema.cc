@@ -1,6 +1,6 @@
 #include "audit-log-schema.hxx"
 
-#include <shared/utils/json-util/json-util.hxx>
+#include <text/json-util.hxx>
 
 AuditLogSchema::AuditLogSchema(const drogon::orm::Row& row)
 {

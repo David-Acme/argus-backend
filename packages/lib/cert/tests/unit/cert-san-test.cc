@@ -2,8 +2,8 @@
 #include <doctest/doctest.h>
 
 #include <drogon/drogon.h>
-#include <shared/services/cert/cert-service.hxx>
-#include <shared/services/config-service/config-service.hxx>
+#include <cert/cert-service.hxx>
+#include <config/config-service.hxx>
 
 #include <openssl/bio.h>
 #include <openssl/bn.h>

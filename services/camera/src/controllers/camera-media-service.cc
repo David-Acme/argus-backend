@@ -2,9 +2,9 @@
 
 #include <camera-errors.hxx>
 #include <errors/response-exception.hxx>
-#include <filter/jwt/jwt-filter.hxx>
-#include <shared/access/role-access.hxx>
-#include <shared/services/config-service/config-service.hxx>
+#include <auth/jwt-filter.hxx>
+#include <auth/role-access.hxx>
+#include <config/config-service.hxx>
 
 CameraMediaService::CameraMediaService()
 {

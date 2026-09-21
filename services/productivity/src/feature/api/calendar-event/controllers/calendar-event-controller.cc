@@ -3,7 +3,7 @@
 #include <errors/response-exception.hxx>
 #include <feature/api/calendar-event/dtos/create-calendar-event-dto.hxx>
 #include <feature/api/calendar-event/dtos/update-calendar-event-dto.hxx>
-#include <filter/jwt/jwt-filter.hxx>
+#include <auth/jwt-filter.hxx>
 #include <http/api-response.hxx>
 #include <productivity-errors.hxx>
 #include <request-context.hxx>

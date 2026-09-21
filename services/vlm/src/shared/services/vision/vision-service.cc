@@ -8,12 +8,12 @@
 #include <mtmd-helper.h>
 #include <mtmd.h>
 #include <opencv2/imgproc.hpp>
-#include <shared/services/config-service/config-service.hxx>
+#include <config/config-service.hxx>
 #include <shared/services/vision/vision-hash.hxx>
-#include <shared/wrapper/ai-init/ai-init.hxx>
-#include <shared/wrapper/blocking-task/blocking-task.hxx>
-#include <shared/wrapper/hardware-profile/hardware-profile.hxx>
-#include <shared/wrapper/thread-budget/thread-budget.hxx>
+#include <runtime/ai-init.hxx>
+#include <runtime/blocking-task.hxx>
+#include <runtime/hardware-profile.hxx>
+#include <runtime/thread-budget.hxx>
 
 namespace
 {

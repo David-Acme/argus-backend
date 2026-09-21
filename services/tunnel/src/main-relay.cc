@@ -5,9 +5,9 @@
 #include <net/poll-loop.hxx>
 #include <server/health-extras.hxx>
 #include <server/service-config.hxx>
-#include <shared/services/config-service/config-service.hxx>
-#include <shared/wrapper/nats/nats-bus.hxx>
-#include <shared/wrapper/nats/nats-subject.hxx>
+#include <config/config-service.hxx>
+#include <nats/nats-bus.hxx>
+#include <nats/nats-subject.hxx>
 
 #include <relay/tunnel-relay.hxx>
 

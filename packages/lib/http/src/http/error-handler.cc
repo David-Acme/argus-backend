@@ -3,7 +3,7 @@
 #include <errors/response-exception.hxx>
 #include <errors/validation-exception.hxx>
 #include <http/api-response.hxx>
-#include <http/http-errors.hxx>
+#include <http/details/http-errors.hxx>
 
 #include <json/value.h>
 #include <string>

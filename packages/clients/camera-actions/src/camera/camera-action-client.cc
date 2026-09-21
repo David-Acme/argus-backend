@@ -1,6 +1,6 @@
 #include "camera-action-client.hxx"
 
-#include <grpc-client-base.hxx>
+#include <grpc/grpc-client-base.hxx>
 #include <utility>
 
 namespace

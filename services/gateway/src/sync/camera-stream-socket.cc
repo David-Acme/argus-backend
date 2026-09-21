@@ -2,7 +2,7 @@
 
 #include <errors/response-exception.hxx>
 #include <feature/socket/sync/socket/sync-forwarder.hxx>
-#include <shared/utils/json-util/json-util.hxx>
+#include <text/json-util.hxx>
 
 #include <drogon/utils/coroutine.h>
 

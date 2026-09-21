@@ -1,7 +1,7 @@
 #include "remote-gate.hxx"
 
 #include <drogon/drogon.h>
-#include <filter/device/device-filter.hxx>
+#include <auth/device-filter.hxx>
 #include <gateway-errors.hxx>
 #include <http/api-response.hxx>
 #include <http/cors.hxx>

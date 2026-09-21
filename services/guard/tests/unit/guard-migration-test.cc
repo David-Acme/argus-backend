@@ -4,7 +4,7 @@
 #include <drogon/drogon.h>
 #include <guard-repository.hxx>
 #include <guard-schema.hxx>
-#include <shared/services/sqlite/db-service.hxx>
+#include <sqlite/db-service.hxx>
 
 #include <atomic>
 #include <chrono>

@@ -8,8 +8,8 @@
 #include <feature/api/auth/dtos/response-login-dto.hxx>
 #include <feature/api/auth/dtos/response-refresh-token-dto.hxx>
 #include <feature/api/auth/dtos/update-me-dto.hxx>
-#include <filter/device/device-filter.hxx>
-#include <filter/jwt/jwt-filter.hxx>
+#include <auth/device-filter.hxx>
+#include <auth/jwt-filter.hxx>
 #include <http/api-response.hxx>
 #include <identity-errors.hxx>
 #include <request-context.hxx>

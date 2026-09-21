@@ -7,8 +7,8 @@ include(${CMAKE_CURRENT_SOURCE_DIR}/../../../cmake/argus-module.cmake)
 
 argus_lib(NAME audio
     SOURCES
-        src/shared/wrapper/audio/audio-resampler.cc
-        src/shared/wrapper/audio/endpoint-detector.cc
+        src/audio/audio-resampler.cc
+        src/audio/endpoint-detector.cc
     INCLUDES
         src)
 

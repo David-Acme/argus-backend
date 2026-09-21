@@ -1,5 +1,5 @@
 #include <grpc/impl/call.h>
-#include <grpc-cq-bridge.hxx>
+#include <grpc/grpc-cq-bridge.hxx>
 
 #include <memory>
 #include <utility>

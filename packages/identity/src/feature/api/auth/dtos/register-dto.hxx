@@ -1,7 +1,7 @@
 #pragma once
 
 #include <drogon/MultiPart.h>
-#include <shared/validation/validation_dsl.hxx>
+#include <validation/validation_dsl.hxx>
 #include <string>
 
 struct RegisterDto

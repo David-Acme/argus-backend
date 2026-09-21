@@ -1,9 +1,9 @@
 #include <monitor/nats-health-event-sink.hxx>
 
 #include <json/value.h>
-#include <shared/utils/json-util/json-util.hxx>
-#include <shared/wrapper/nats/nats-bus.hxx>
-#include <shared/wrapper/nats/nats-subject.hxx>
+#include <text/json-util.hxx>
+#include <nats/nats-bus.hxx>
+#include <nats/nats-subject.hxx>
 
 #include <utility>
 
