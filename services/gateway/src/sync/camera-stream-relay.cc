@@ -2,7 +2,7 @@
 
 #include <errors/response-exception.hxx>
 #include <auth/jwt-filter.hxx>
-#include <gateway-errors.hxx>
+#include <gateway/gateway-errors.hxx>
 #include <config/config-service.hxx>
 #include <text/json-util.hxx>
 #include <trantor/utils/Logger.h>

@@ -1,6 +1,6 @@
 #include "valid-json-filter.hxx"
 
-#include <auth-errors.hxx>
+#include <auth/auth-errors.hxx>
 #include <errors/response-exception.hxx>
 
 drogon::Task<drogon::HttpResponsePtr>

@@ -18,16 +18,16 @@ endif()
 
 argus_contracts(NAME sync
     INCLUDES
-        .
         src
     SOURCES
-        src/shared/contracts/audit-log-priority.hxx
-        src/shared/contracts/sync-operation.hxx
-        src/shared/contracts/sync-filter.hxx
-        src/shared/contracts/sync-limits.hxx
-        src/shared/contracts/syncable.hxx
-        src/shared/contracts/table-name.hxx
-        src/shared/contracts/user-action.hxx
+        src/sync/sync-errors.hxx
+        src/sync/audit-log-priority.hxx
+        src/sync/sync-operation.hxx
+        src/sync/sync-filter.hxx
+        src/sync/sync-limits.hxx
+        src/sync/syncable.hxx
+        src/sync/table-name.hxx
+        src/sync/user-action.hxx
     DEPENDS
         argus::lib::errors
         argus::lib::text
@@ -45,6 +45,15 @@ target_link_libraries(sync-contract-vocabulary-test PRIVATE
     argus::contracts::sync doctest::doctest)
 target_compile_options(sync-contract-vocabulary-test PRIVATE -Wall -Wextra)
 add_test(NAME sync-contract-vocabulary-test COMMAND sync-contract-vocabulary-test)
+
+# The catalog suite: the six refusals the sync boundary throws, pinned as a
+# table and checked against what the response serializer accepts.
+add_executable(sync-contract-catalog-test
+    tests/unit/sync-contract-catalog-test.cc)
+target_link_libraries(sync-contract-catalog-test PRIVATE
+    argus::contracts::sync doctest::doctest)
+target_compile_options(sync-contract-catalog-test PRIVATE -Wall -Wextra)
+add_test(NAME sync-contract-catalog-test COMMAND sync-contract-catalog-test)
 
 get_target_property(DOCTEST_INCLUDE_DIRS doctest::doctest
                     INTERFACE_INCLUDE_DIRECTORIES)

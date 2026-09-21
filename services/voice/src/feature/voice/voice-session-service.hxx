@@ -17,7 +17,7 @@
 #include <thread>
 #include <unordered_map>
 #include <vector>
-#include <voice-lang.hxx>
+#include <voice/voice-lang.hxx>
 #include <voice/reaction-contracts.hxx>
 #include <voice/voice-client.hxx>
 

@@ -2,9 +2,9 @@
 
 #include <errors/response-exception.hxx>
 #include <auth/role-access.hxx>
-#include <shared/contracts/sync-operation.hxx>
+#include <sync/sync-operation.hxx>
 #include <stdexcept>
-#include <sync-errors.hxx>
+#include <sync/sync-errors.hxx>
 
 namespace
 {

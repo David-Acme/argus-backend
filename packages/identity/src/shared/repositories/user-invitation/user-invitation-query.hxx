@@ -3,7 +3,7 @@
 #include <cstdint>
 #include <string>
 #include <string_view>
-#include <user-role.hxx>
+#include <auth/user-role.hxx>
 
 namespace user_invitation_query
 {

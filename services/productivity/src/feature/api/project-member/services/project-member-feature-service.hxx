@@ -10,7 +10,7 @@
 #include <shared/schemas/project-member/project-member-schema.hxx>
 #include <shared/contracts/user-change-sink.hxx>
 #include <auth/user-directory-identity.hxx>
-#include <membership-error.hxx>
+#include <productivity/membership-error.hxx>
 
 struct ProjectMemberResult
 {

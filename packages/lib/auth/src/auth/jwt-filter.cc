@@ -1,11 +1,11 @@
 #include "jwt-filter.hxx"
 
-#include <auth-errors.hxx>
+#include <auth/auth-errors.hxx>
 #include <errors/response-exception.hxx>
 #include <auth/device-filter.hxx>
 #include <auth/details/identity-access.hxx>
 #include <identity/identity-client.hxx>
-#include <request-context.hxx>
+#include <auth/request-context.hxx>
 #include <runtime/blocking-task.hxx>
 #include <trantor/utils/Logger.h>
 

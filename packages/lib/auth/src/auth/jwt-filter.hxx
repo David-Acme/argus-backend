@@ -4,7 +4,7 @@
 #include <drogon/utils/coroutine.h>
 #include <auth/jwt-service.hxx>
 #include <string>
-#include <user-role.hxx>
+#include <auth/user-role.hxx>
 
 struct JwtContext
 {

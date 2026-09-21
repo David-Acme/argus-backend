@@ -3,7 +3,8 @@
 The WebSocket sync stream (`/sync`) and its gRPC successor share this wire format.
 The values in `proto/argus/sync/v1/contracts.proto` are **frozen forever**:
 
-- `SyncOperation` 0-7 (from `backend/src/shared/contracts/sync-operation.hxx`):
+- `SyncOperation` 0-7 (from
+  `backend/packages/contracts/sync/src/sync/sync-operation.hxx`):
 
   | Value | Name | Meaning |
   |---|---|---|
@@ -17,7 +18,7 @@ The values in `proto/argus/sync/v1/contracts.proto` are **frozen forever**:
   | 7 | `AuthContextChanged` | Live event: role/active context must refresh |
 
 - `TableName` 0-23 (from
-  `backend/packages/contracts/sync/src/shared/contracts/table-name.hxx`,
+  `backend/packages/contracts/sync/src/sync/table-name.hxx`,
   read at backend HEAD `5970173`; includes `Memory = 23`):
   `User=0, UserInvitation=1, Person=2, PersonEvent=3,
   Event=4, Reminder=5, ReminderDetail=6, CalendarEvent=7, CalendarEventShare=8,
@@ -27,7 +28,7 @@ The values in `proto/argus/sync/v1/contracts.proto` are **frozen forever**:
   Memory=23`.
 
 - `SYNC_LIMIT = 200` (from
-  `backend/packages/contracts/sync/src/shared/contracts/sync-limits.hxx`,
+  `backend/packages/contracts/sync/src/sync/sync-limits.hxx`,
   `SyncLimits::kMaxRows`): the page size every bounded sync/audit query uses.
 
 Rules:

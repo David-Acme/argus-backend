@@ -1,7 +1,7 @@
 #include "user-audit-log-repository.hxx"
 
 #include <ctime>
-#include <shared/contracts/sync-limits.hxx>
+#include <sync/sync-limits.hxx>
 #include <sqlite/db-service.hxx>
 #include <text/json-util.hxx>
 

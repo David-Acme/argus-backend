@@ -3,11 +3,11 @@
 #include <cstdint>
 #include <drogon/HttpTypes.h>
 #include <optional>
-#include <shared/contracts/table-name.hxx>
+#include <sync/table-name.hxx>
 #include <string_view>
 #include <unordered_map>
 #include <unordered_set>
-#include <user-role.hxx>
+#include <auth/user-role.hxx>
 #include <vector>
 
 enum class RolePermission : uint8_t

@@ -4,7 +4,7 @@
 
 #include <drogon/utils/coroutine.h>
 #include <json/value.h>
-#include <shared/contracts/syncable.hxx>
+#include <sync/syncable.hxx>
 #include <optional>
 #include <shared/schemas/person/person-schema.hxx>
 

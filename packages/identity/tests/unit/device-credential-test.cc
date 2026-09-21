@@ -19,7 +19,7 @@
 #include <errors/response-exception.hxx>
 #include <memory>
 #include <optional>
-#include <request-context.hxx>
+#include <auth/request-context.hxx>
 #include <string>
 #include <thread>
 #include <unistd.h>

@@ -1,12 +1,12 @@
 #include "sync-service.hxx"
 
 #include <errors/response-exception.hxx>
-#include <request-context.hxx>
+#include <auth/request-context.hxx>
 #include <auth/role-access.hxx>
-#include <shared/contracts/sync-operation.hxx>
+#include <sync/sync-operation.hxx>
 #include <auth/user-directory.hxx>
 #include <shared/dtos/socket-emit/socket-emit-dto.hxx>
-#include <sync-errors.hxx>
+#include <sync/sync-errors.hxx>
 
 drogon::Task<void>
 SyncService::refreshContext(const drogon::WebSocketConnectionPtr& conn) const

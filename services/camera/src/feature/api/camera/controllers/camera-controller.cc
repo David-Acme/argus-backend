@@ -1,6 +1,6 @@
 #include "camera-controller.hxx"
 
-#include <camera-errors.hxx>
+#include <camera/camera-errors.hxx>
 #include <errors/response-exception.hxx>
 #include <feature/api/camera/dtos/create-camera-dto.hxx>
 #include <feature/api/camera/dtos/update-camera-dto.hxx>

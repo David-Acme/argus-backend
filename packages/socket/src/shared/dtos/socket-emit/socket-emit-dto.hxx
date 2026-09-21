@@ -1,8 +1,8 @@
 #pragma once
 
 #include <json/value.h>
-#include <shared/contracts/sync-operation.hxx>
-#include <shared/contracts/table-name.hxx>
+#include <sync/sync-operation.hxx>
+#include <sync/table-name.hxx>
 
 struct SocketEmitDto
 {

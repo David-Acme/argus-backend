@@ -8,7 +8,7 @@
 #include <feature/api/invitation/services/invitation-feature-service.hxx>
 #include <auth/device-filter.hxx>
 #include <future>
-#include <identity-errors.hxx>
+#include <identity/identity-errors.hxx>
 #include <iomanip>
 #include <map>
 #include <mutex>
@@ -16,8 +16,8 @@
 #include <sstream>
 #include <string_view>
 #include <auth/identity-change-sink.hxx>
-#include <shared/contracts/sync-operation.hxx>
-#include <voice-lang.hxx>
+#include <sync/sync-operation.hxx>
+#include <voice/voice-lang.hxx>
 
 #include <config/config-service.hxx>
 #include <shared/services/face/face-service.hxx>

@@ -4,7 +4,7 @@
 #include <drogon/utils/coroutine.h>
 #include <optional>
 #include <string>
-#include <user-role.hxx>
+#include <auth/user-role.hxx>
 
 // One identity-domain user row; no database types cross.
 struct DirectoryUser

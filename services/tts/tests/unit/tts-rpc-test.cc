@@ -4,8 +4,8 @@
 #include <app/rpc/tts-rpc-server.hxx>
 #include <tts-client.hxx>
 #include <errors/response-exception.hxx>
-#include <tts-errors.hxx>
-#include <response-rpc.hxx>
+#include <tts/tts-errors.hxx>
+#include <response/response-rpc.hxx>
 #include <response.pb.h>
 #include <shared/services/tts/remote/tts-remote.hxx>
 #include <config/config-service.hxx>

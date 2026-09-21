@@ -3,7 +3,7 @@
 #include <errors/response-exception.hxx>
 #include <feature/socket/sync/socket/sync-forwarder.hxx>
 #include <auth/jwt-filter.hxx>
-#include <request-context.hxx>
+#include <auth/request-context.hxx>
 #include <text/json-util.hxx>
 
 #include <drogon/utils/coroutine.h>

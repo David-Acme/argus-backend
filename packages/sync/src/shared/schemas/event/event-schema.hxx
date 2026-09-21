@@ -3,7 +3,7 @@
 #include <cstdint>
 #include <drogon/orm/Field.h>
 #include <drogon/orm/Row.h>
-#include <event-severity.hxx>
+#include <camera/event-severity.hxx>
 #include <json/value.h>
 #include <optional>
 #include <string>

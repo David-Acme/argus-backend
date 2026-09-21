@@ -4,7 +4,7 @@
 #include <auth/jwt-filter.hxx>
 #include <json/value.h>
 #include <optional>
-#include <shared/contracts/sync-filter.hxx>
+#include <sync/sync-filter.hxx>
 #include <vector>
 
 // User-scoped notification pull source (owner: argus-notification).

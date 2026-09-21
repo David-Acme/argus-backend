@@ -18,7 +18,7 @@
 #include <chrono>
 #include <cstdio>
 #include <mutex>
-#include <request-context.hxx>
+#include <auth/request-context.hxx>
 #include <string>
 #include <thread>
 #include <vector>

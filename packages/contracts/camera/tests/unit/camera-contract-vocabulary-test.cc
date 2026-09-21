@@ -1,10 +1,10 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
 
-#include <camera-driver.hxx>
-#include <camera-record-mode.hxx>
-#include <event-severity.hxx>
-#include <zone-type.hxx>
+#include <camera/camera-driver.hxx>
+#include <camera/camera-record-mode.hxx>
+#include <camera/event-severity.hxx>
+#include <camera/zone-type.hxx>
 
 #include <cstddef>
 #include <string>

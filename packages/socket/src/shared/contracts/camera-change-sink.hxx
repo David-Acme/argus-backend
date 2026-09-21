@@ -3,7 +3,7 @@
 #include <drogon/utils/coroutine.h>
 #include <json/value.h>
 #include <optional>
-#include <shared/contracts/table-name.hxx>
+#include <sync/table-name.hxx>
 #include <shared/dtos/socket-emit/socket-emit-dto.hxx>
 
 // Before/after snapshots of one camera or zone row; the sink diffs them.

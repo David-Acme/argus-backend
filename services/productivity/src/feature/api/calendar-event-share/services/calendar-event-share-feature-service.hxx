@@ -10,7 +10,7 @@
 #include <shared/schemas/calendar-event-share/calendar-event-share-schema.hxx>
 #include <shared/contracts/user-change-sink.hxx>
 #include <auth/user-directory-identity.hxx>
-#include <membership-error.hxx>
+#include <productivity/membership-error.hxx>
 
 struct CalendarEventShareResult
 {

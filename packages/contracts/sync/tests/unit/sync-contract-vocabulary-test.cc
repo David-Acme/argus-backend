@@ -1,9 +1,9 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
 
-#include <shared/contracts/audit-log-priority.hxx>
-#include <shared/contracts/table-name.hxx>
-#include <shared/contracts/user-action.hxx>
+#include <sync/audit-log-priority.hxx>
+#include <sync/table-name.hxx>
+#include <sync/user-action.hxx>
 
 #include <cstddef>
 #include <string>

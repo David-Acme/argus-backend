@@ -4,8 +4,8 @@
 #include <feature/api/user/dtos/update-user-dto.hxx>
 #include <auth/jwt-filter.hxx>
 #include <http/api-response.hxx>
-#include <identity-errors.hxx>
-#include <request-context.hxx>
+#include <identity/identity-errors.hxx>
+#include <auth/request-context.hxx>
 
 drogon::Task<drogon::HttpResponsePtr>
 UserController::list(drogon::HttpRequestPtr req)

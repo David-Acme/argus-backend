@@ -3,7 +3,7 @@
 #include "user-invitation-query.hxx"
 
 #include <drogon/utils/coroutine.h>
-#include <shared/contracts/syncable.hxx>
+#include <sync/syncable.hxx>
 #include <optional>
 #include <shared/schemas/user-invitation/user-invitation-schema.hxx>
 #include <vector>

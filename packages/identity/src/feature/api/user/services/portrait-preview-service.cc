@@ -4,7 +4,7 @@
 #include <ctime>
 #include <openssl/evp.h>
 #include <openssl/rand.h>
-#include <identity-errors.hxx>
+#include <identity/identity-errors.hxx>
 #include <errors/response-exception.hxx>
 #include <string_view>
 

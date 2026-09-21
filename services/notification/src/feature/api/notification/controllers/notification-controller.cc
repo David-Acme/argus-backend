@@ -5,7 +5,7 @@
 #include <feature/api/notification/dtos/notification-read-dto.hxx>
 #include <auth/jwt-filter.hxx>
 #include <http/api-response.hxx>
-#include <request-context.hxx>
+#include <auth/request-context.hxx>
 
 drogon::Task<drogon::HttpResponsePtr>
 NotificationController::markAsRead(drogon::HttpRequestPtr req)

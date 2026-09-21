@@ -5,7 +5,7 @@
 
 #include <memory>
 #include <string>
-#include <user-role.hxx>
+#include <auth/user-role.hxx>
 
 // Observer of one voice stream's server side; callbacks fire on gRPC threads.
 class VoiceStreamObserver

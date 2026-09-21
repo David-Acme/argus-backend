@@ -5,8 +5,8 @@
 #include <feature/api/project-task/dtos/update-project-task-dto.hxx>
 #include <auth/jwt-filter.hxx>
 #include <http/api-response.hxx>
-#include <productivity-errors.hxx>
-#include <request-context.hxx>
+#include <productivity/productivity-errors.hxx>
+#include <auth/request-context.hxx>
 
 drogon::Task<drogon::HttpResponsePtr>
 ProjectTaskController::create(drogon::HttpRequestPtr req)

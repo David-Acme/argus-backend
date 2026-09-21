@@ -16,9 +16,38 @@ function(argus_response_rpc_contract)
         argus_client_module(NAME response-wire GROUP contracts
             PROTO_ROOT ${CMAKE_CURRENT_FUNCTION_LIST_DIR}
             PROTO ${CMAKE_CURRENT_FUNCTION_LIST_DIR}/response.proto
-            SOURCES ${CMAKE_CURRENT_FUNCTION_LIST_DIR}/response-rpc.cc
-            INCLUDES ${CMAKE_CURRENT_FUNCTION_LIST_DIR}
+            SOURCES ${CMAKE_CURRENT_FUNCTION_LIST_DIR}/src/response/response-rpc.cc
+                    ${CMAKE_CURRENT_FUNCTION_LIST_DIR}/src/response/response-rpc.hxx
+            INCLUDES ${CMAKE_CURRENT_FUNCTION_LIST_DIR}/src
             DEPENDS argus::lib::errors)
         target_compile_options(argus_contracts_response-wire PRIVATE -Wall -Wextra)
     endif()
 endfunction()
+
+# The wire module belongs to the package that owns the two functions in it, so
+# the package builds it here rather than leaving the first consumer to do it.
+set(CMAKE_FIND_PACKAGE_TARGETS_GLOBAL TRUE)
+argus_contracts_substrate()
+if(NOT ARGUS_SYSTEM_PROTOBUF AND NOT TARGET gRPC::grpc++)
+    find_package(gRPC CONFIG REQUIRED)
+endif()
+argus_response_rpc_contract()
+
+# The RPC suite: toRpcStatus and fromRpcStatus are the pair every gRPC boundary
+# in the tree refuses through, and nothing tested them until now.
+enable_testing()
+find_package(doctest REQUIRED)
+
+add_executable(response-contract-rpc-test
+    tests/unit/response-contract-rpc-test.cc)
+target_link_libraries(response-contract-rpc-test PRIVATE
+    argus::contracts::response-wire doctest::doctest)
+target_compile_options(response-contract-rpc-test PRIVATE -Wall -Wextra)
+add_test(NAME response-contract-rpc-test COMMAND response-contract-rpc-test)
+
+get_target_property(DOCTEST_INCLUDE_DIRS doctest::doctest
+                    INTERFACE_INCLUDE_DIRECTORIES)
+if(DOCTEST_INCLUDE_DIRS)
+    set_target_properties(doctest::doctest PROPERTIES
+        INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${DOCTEST_INCLUDE_DIRS}")
+endif()

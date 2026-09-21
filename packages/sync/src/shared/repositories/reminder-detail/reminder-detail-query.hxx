@@ -1,7 +1,7 @@
 #pragma once
 #include <cstdint>
 #include <optional>
-#include <reminder-detail-status.hxx>
+#include <productivity/reminder-detail-status.hxx>
 #include <string>
 #include <string_view>
 

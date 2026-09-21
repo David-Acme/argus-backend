@@ -3,7 +3,7 @@
 #include <cstdint>
 #include <json/value.h>
 #include <string>
-#include <user-role.hxx>
+#include <auth/user-role.hxx>
 
 struct ResponseLoginDto
 {

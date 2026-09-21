@@ -4,7 +4,7 @@
 #include <optional>
 #include <shared/dtos/socket-emit/socket-emit-dto.hxx>
 #include <shared/services/room/room-manager.hxx>
-#include <user-role.hxx>
+#include <auth/user-role.hxx>
 #include <vector>
 
 

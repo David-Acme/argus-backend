@@ -26,7 +26,7 @@
 #include <map>
 #include <string>
 #include <thread>
-#include <tts-errors.hxx>
+#include <tts/tts-errors.hxx>
 
 namespace
 {

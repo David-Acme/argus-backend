@@ -10,8 +10,8 @@
 #include <shared/contracts/camera-audit-event.hxx>
 #include <shared/contracts/notification-sync-source.hxx>
 #include <shared/contracts/productivity-sync-source.hxx>
-#include <shared/contracts/sync-operation.hxx>
-#include <shared/contracts/table-name.hxx>
+#include <sync/sync-operation.hxx>
+#include <sync/table-name.hxx>
 #include <shared/contracts/user-audit-event.hxx>
 #include <shared/repositories/audit-log/audit-log-repository.hxx>
 #include <shared/repositories/camera/camera-repository.hxx>
@@ -22,7 +22,7 @@
 #include <text/json-util.hxx>
 #include <sync/camera-fan-out.hxx>
 #include <sync/user-change-fan-out.hxx>
-#include <user-role.hxx>
+#include <auth/user-role.hxx>
 
 #include <atomic>
 #include <chrono>

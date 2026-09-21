@@ -9,9 +9,9 @@ cmake_minimum_required(VERSION 3.25)
 include(${CMAKE_CURRENT_SOURCE_DIR}/../../../cmake/argus-module.cmake)
 
 argus_contracts(NAME voice
-    INCLUDES .
+    INCLUDES src
     SOURCES
-        voice-lang.hxx)
+        src/voice/voice-lang.hxx)
 
 # The round-trip suite: every name is its own spelling and back.
 enable_testing()
@@ -22,7 +22,8 @@ add_executable(voice-contract-vocabulary-test
 target_link_libraries(voice-contract-vocabulary-test PRIVATE
     argus::contracts::voice doctest::doctest)
 target_compile_options(voice-contract-vocabulary-test PRIVATE -Wall -Wextra)
-add_test(NAME voice-contract-vocabulary-test COMMAND voice-contract-vocabulary-test)
+add_test(NAME voice-contract-vocabulary-test
+         COMMAND voice-contract-vocabulary-test)
 
 get_target_property(DOCTEST_INCLUDE_DIRS doctest::doctest
                     INTERFACE_INCLUDE_DIRECTORIES)

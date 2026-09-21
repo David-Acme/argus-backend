@@ -1,6 +1,6 @@
 #include "camera-control-controller.hxx"
 
-#include <camera-errors.hxx>
+#include <camera/camera-errors.hxx>
 #include <errors/response-exception.hxx>
 #include <http/api-response.hxx>
 namespace

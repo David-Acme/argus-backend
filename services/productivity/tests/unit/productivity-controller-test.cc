@@ -27,7 +27,7 @@
 #include <memory>
 #include <optional>
 #include <mutex>
-#include <request-context.hxx>
+#include <auth/request-context.hxx>
 #include <string>
 #include <thread>
 #include <vector>

@@ -3,10 +3,10 @@
 #include <chrono>
 #include <ctime>
 #include <drogon/utils/coroutine.h>
-#include <notification-delivery-status.hxx>
+#include <notification/notification-delivery-status.hxx>
 #include <shared/contracts/notification-delivery-sink.hxx>
 #include <nats/push-intent-sink.hxx>
-#include <shared/contracts/table-name.hxx>
+#include <sync/table-name.hxx>
 #include <trantor/utils/Logger.h>
 
 namespace

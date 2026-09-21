@@ -1,8 +1,8 @@
 #pragma once
 
 #include <json/value.h>
-#include <shared/contracts/table-name.hxx>
-#include <shared/contracts/user-action.hxx>
+#include <sync/table-name.hxx>
+#include <sync/user-action.hxx>
 #include <string>
 #include <string_view>
 

@@ -8,7 +8,7 @@
 #include <shared/services/storage/private-portrait-service.hxx>
 #include <shared/services/user-action-log/user-action-log-service.hxx>
 #include <string>
-#include <user-role.hxx>
+#include <auth/user-role.hxx>
 
 struct PortraitPreviewCreateInput
 {

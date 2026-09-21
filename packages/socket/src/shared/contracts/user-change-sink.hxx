@@ -2,7 +2,7 @@
 
 #include <drogon/utils/coroutine.h>
 #include <json/value.h>
-#include <shared/contracts/table-name.hxx>
+#include <sync/table-name.hxx>
 #include <shared/dtos/socket-emit/socket-emit-dto.hxx>
 #include <vector>
 

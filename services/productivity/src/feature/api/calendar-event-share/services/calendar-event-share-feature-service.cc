@@ -3,7 +3,7 @@
 #include <ctime>
 #include <trantor/utils/Logger.h>
 #include <auth/role-access.hxx>
-#include <membership-error.hxx>
+#include <productivity/membership-error.hxx>
 
 void CalendarEventShareFeatureService::emitMembership(
     const EmitMembershipInput& input) const

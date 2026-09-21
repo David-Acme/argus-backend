@@ -1,9 +1,9 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
 
-#include <membership-error.hxx>
-#include <reminder-detail-status.hxx>
-#include <share-access.hxx>
+#include <productivity/membership-error.hxx>
+#include <productivity/reminder-detail-status.hxx>
+#include <productivity/share-access.hxx>
 
 #include <cstddef>
 #include <string>

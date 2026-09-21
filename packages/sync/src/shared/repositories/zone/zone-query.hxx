@@ -3,7 +3,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
-#include <zone-type.hxx>
+#include <camera/zone-type.hxx>
 
 namespace zone_query
 {

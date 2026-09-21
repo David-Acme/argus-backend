@@ -2,7 +2,7 @@
 
 #include <drogon/drogon.h>
 #include <shared/contracts/camera-audit-event.hxx>
-#include <shared/contracts/sync-operation.hxx>
+#include <sync/sync-operation.hxx>
 #include <shared/services/audit-log/audit-log-service.hxx>
 #include <text/json-util.hxx>
 #include <nats/nats-bus.hxx>

@@ -10,7 +10,7 @@
 #include <shared/repositories/user/user-repository.hxx>
 #include <string>
 #include <unordered_map>
-#include <user-role.hxx>
+#include <auth/user-role.hxx>
 #include <voice/voice-client.hxx>
 
 // Internal gRPC endpoint of argus-voice; empty disables the gRPC voice leg.

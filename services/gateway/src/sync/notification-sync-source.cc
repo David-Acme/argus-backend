@@ -1,13 +1,13 @@
 #include "notification-sync-source.hxx"
 
 #include <errors/response-exception.hxx>
-#include <gateway-errors.hxx>
+#include <gateway/gateway-errors.hxx>
 #include <config/config-service.hxx>
 
 #include <text/json-util.hxx>
 #include <runtime/blocking-task.hxx>
 #include <string>
-#include <user-role.hxx>
+#include <auth/user-role.hxx>
 #include <utility>
 
 namespace

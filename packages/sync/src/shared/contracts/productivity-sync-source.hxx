@@ -2,7 +2,7 @@
 
 #include <auth/jwt-filter.hxx>
 #include <memory>
-#include <shared/contracts/syncable.hxx>
+#include <sync/syncable.hxx>
 
 enum class ProductivitySyncTable
 {

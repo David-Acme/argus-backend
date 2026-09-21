@@ -4,7 +4,7 @@
 #include <optional>
 #include <validation/validation_dsl.hxx>
 #include <string>
-#include <user-role.hxx>
+#include <auth/user-role.hxx>
 
 struct UpdateUserDto
 {

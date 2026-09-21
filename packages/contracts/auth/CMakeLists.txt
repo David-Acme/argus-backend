@@ -13,11 +13,11 @@ if(NOT TARGET argus::lib::errors)
 endif()
 
 argus_contracts(NAME auth
-    INCLUDES .
+    INCLUDES src
     SOURCES
-        auth-errors.hxx
-        request-context.hxx
-        user-role.hxx
+        src/auth/auth-errors.hxx
+        src/auth/request-context.hxx
+        src/auth/user-role.hxx
     DEPENDS argus::lib::errors)
 
 # The round-trip suite: every name is its own spelling and back.
@@ -30,6 +30,15 @@ target_link_libraries(auth-contract-vocabulary-test PRIVATE
     argus::contracts::auth doctest::doctest)
 target_compile_options(auth-contract-vocabulary-test PRIVATE -Wall -Wextra)
 add_test(NAME auth-contract-vocabulary-test COMMAND auth-contract-vocabulary-test)
+
+# The catalog suite: the four refusals the auth boundary throws, pinned as a
+# table and checked against what the response serializer accepts.
+add_executable(auth-contract-catalog-test
+    tests/unit/auth-contract-catalog-test.cc)
+target_link_libraries(auth-contract-catalog-test PRIVATE
+    argus::contracts::auth doctest::doctest)
+target_compile_options(auth-contract-catalog-test PRIVATE -Wall -Wextra)
+add_test(NAME auth-contract-catalog-test COMMAND auth-contract-catalog-test)
 
 get_target_property(DOCTEST_INCLUDE_DIRS doctest::doctest
                     INTERFACE_INCLUDE_DIRECTORIES)

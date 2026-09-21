@@ -5,9 +5,9 @@
 #include <feature/api/project-member/dtos/update-project-member-dto.hxx>
 #include <auth/jwt-filter.hxx>
 #include <http/api-response.hxx>
-#include <membership-error.hxx>
-#include <productivity-errors.hxx>
-#include <request-context.hxx>
+#include <productivity/membership-error.hxx>
+#include <productivity/productivity-errors.hxx>
+#include <auth/request-context.hxx>
 
 namespace
 {

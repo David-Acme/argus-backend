@@ -2,7 +2,7 @@
 
 #include <drogon/drogon.h>
 #include <grpc/grpc-server-identity.hxx>
-#include <shared/contracts/sync-filter.hxx>
+#include <sync/sync-filter.hxx>
 #include <trantor/utils/Logger.h>
 
 namespace

@@ -5,7 +5,7 @@
 #include <atomic>
 #include <algorithm>
 #include <array>
-#include <tts-errors.hxx>
+#include <tts/tts-errors.hxx>
 #include <utility>
 
 #include <config/config-service.hxx>

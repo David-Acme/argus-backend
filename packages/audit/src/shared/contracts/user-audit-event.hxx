@@ -3,8 +3,8 @@
 #include <cstdint>
 #include <json/value.h>
 #include <optional>
-#include <shared/contracts/audit-log-priority.hxx>
-#include <shared/contracts/table-name.hxx>
+#include <sync/audit-log-priority.hxx>
+#include <sync/table-name.hxx>
 #include <text/json-diff.hxx>
 #include <text/json-util.hxx>
 #include <vector>

@@ -1,12 +1,12 @@
 #include "camera-sync-source.hxx"
 
 #include <errors/response-exception.hxx>
-#include <gateway-errors.hxx>
+#include <gateway/gateway-errors.hxx>
 #include <json/value.h>
-#include <shared/contracts/sync-filter.hxx>
+#include <sync/sync-filter.hxx>
 #include <runtime/blocking-task.hxx>
 #include <string>
-#include <user-role.hxx>
+#include <auth/user-role.hxx>
 #include <utility>
 #include <vector>
 

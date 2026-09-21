@@ -46,7 +46,10 @@ review blocker:
 - `manifests/` — JSON Schemas for the typed capability package manifest
   (`package.schema.json`) and the ed25519-signed plugin manifest
   (`plugin.schema.json`).
-- `sync/` — frozen sync values + golden-frame fixtures.
+- `sync/` — the frozen sync wire values (`SyncOperation` 0-7, `TableName` 0-23,
+  `SYNC_LIMIT = 200`) as a C++ vocabulary under `sync/src/sync/`. The golden
+  /sync fixtures live with the engine that replays them,
+  `packages/sync/tests/fixtures/sync/`.
 - `buf.yaml` (lint STANDARD, breaking FILE) and `buf.gen.yaml` (C++ codegen).
 
 ## Conventions

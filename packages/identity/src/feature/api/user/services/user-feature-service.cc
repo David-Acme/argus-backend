@@ -1,9 +1,9 @@
 #include "user-feature-service.hxx"
 
 #include <errors/response-exception.hxx>
-#include <identity-errors.hxx>
+#include <identity/identity-errors.hxx>
 #include <auth/identity-change-sink.hxx>
-#include <shared/contracts/sync-operation.hxx>
+#include <sync/sync-operation.hxx>
 #include <shared/dtos/socket-emit/socket-emit-dto.hxx>
 
 namespace

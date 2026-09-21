@@ -3,8 +3,8 @@
 #include <errors/response-exception.hxx>
 #include <grpc/grpc-client-base.hxx>
 #include <tts.grpc.pb.h>
-#include <response-rpc.hxx>
-#include <tts-errors.hxx>
+#include <response/response-rpc.hxx>
+#include <tts/tts-errors.hxx>
 #include <cmath>
 #include <utility>
 

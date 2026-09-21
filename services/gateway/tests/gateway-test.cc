@@ -26,7 +26,7 @@
 #include <drogon/utils/coroutine.h>
 #include <json/json.h>
 
-#include <auth-errors.hxx>
+#include <auth/auth-errors.hxx>
 #include <chrono>
 #include <cstdio>
 #include <fstream>

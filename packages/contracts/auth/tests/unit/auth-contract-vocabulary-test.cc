@@ -1,7 +1,7 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
 
-#include <user-role.hxx>
+#include <auth/user-role.hxx>
 
 #include <cstddef>
 #include <string>

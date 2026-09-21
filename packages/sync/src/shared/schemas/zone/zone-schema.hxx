@@ -6,7 +6,7 @@
 #include <json/value.h>
 #include <optional>
 #include <string>
-#include <zone-type.hxx>
+#include <camera/zone-type.hxx>
 
 struct ZoneSchema
 {

@@ -5,7 +5,7 @@
 #include <drogon/utils/coroutine.h>
 #include <json/value.h>
 #include <optional>
-#include <shared/contracts/syncable.hxx>
+#include <sync/syncable.hxx>
 #include <shared/schemas/zone/zone-schema.hxx>
 #include <vector>
 

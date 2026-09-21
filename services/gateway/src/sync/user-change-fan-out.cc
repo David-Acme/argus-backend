@@ -1,8 +1,8 @@
 #include "user-change-fan-out.hxx"
 
 #include <drogon/drogon.h>
-#include <shared/contracts/sync-operation.hxx>
-#include <shared/contracts/table-name.hxx>
+#include <sync/sync-operation.hxx>
+#include <sync/table-name.hxx>
 #include <shared/contracts/user-audit-event.hxx>
 #include <shared/services/user-audit-log/user-audit-log-service.hxx>
 #include <sync/sync-fan-out.hxx>

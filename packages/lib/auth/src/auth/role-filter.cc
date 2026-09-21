@@ -1,9 +1,9 @@
 #include "role-filter.hxx"
 
-#include <auth-errors.hxx>
+#include <auth/auth-errors.hxx>
 #include <errors/response-exception.hxx>
 #include <auth/jwt-filter.hxx>
-#include <request-context.hxx>
+#include <auth/request-context.hxx>
 #include <auth/role-access.hxx>
 
 drogon::Task<drogon::HttpResponsePtr>

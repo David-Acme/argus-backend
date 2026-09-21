@@ -2,7 +2,7 @@
 #include <doctest/doctest.h>
 
 #include <drogon/drogon.h>
-#include <shared/contracts/sync-filter.hxx>
+#include <sync/sync-filter.hxx>
 #include <shared/repositories/event/event-repository.hxx>
 #include <sqlite/db-service.hxx>
 

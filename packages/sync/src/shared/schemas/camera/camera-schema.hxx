@@ -1,7 +1,7 @@
 #pragma once
 
-#include <camera-driver.hxx>
-#include <camera-record-mode.hxx>
+#include <camera/camera-driver.hxx>
+#include <camera/camera-record-mode.hxx>
 #include <cstdint>
 #include <drogon/orm/Field.h>
 #include <drogon/orm/Row.h>

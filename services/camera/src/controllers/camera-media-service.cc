@@ -1,6 +1,6 @@
 #include "camera-media-service.hxx"
 
-#include <camera-errors.hxx>
+#include <camera/camera-errors.hxx>
 #include <errors/response-exception.hxx>
 #include <auth/jwt-filter.hxx>
 #include <auth/role-access.hxx>

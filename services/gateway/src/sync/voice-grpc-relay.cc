@@ -2,8 +2,8 @@
 
 #include <errors/response-exception.hxx>
 #include <auth/jwt-filter.hxx>
-#include <gateway-errors.hxx>
-#include <request-context.hxx>
+#include <gateway/gateway-errors.hxx>
+#include <auth/request-context.hxx>
 #include <shared/repositories/user/user-repository.hxx>
 #include <config/config-service.hxx>
 #include <voice/reaction-contracts.hxx>

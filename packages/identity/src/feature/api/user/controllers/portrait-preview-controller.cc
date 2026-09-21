@@ -3,8 +3,8 @@
 #include <errors/response-exception.hxx>
 #include <auth/jwt-filter.hxx>
 #include <http/api-response.hxx>
-#include <identity-errors.hxx>
-#include <request-context.hxx>
+#include <identity/identity-errors.hxx>
+#include <auth/request-context.hxx>
 #include <utility>
 
 drogon::Task<drogon::HttpResponsePtr>

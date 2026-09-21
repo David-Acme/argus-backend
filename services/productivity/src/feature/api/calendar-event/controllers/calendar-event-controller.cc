@@ -5,8 +5,8 @@
 #include <feature/api/calendar-event/dtos/update-calendar-event-dto.hxx>
 #include <auth/jwt-filter.hxx>
 #include <http/api-response.hxx>
-#include <productivity-errors.hxx>
-#include <request-context.hxx>
+#include <productivity/productivity-errors.hxx>
+#include <auth/request-context.hxx>
 
 drogon::Task<drogon::HttpResponsePtr>
 CalendarEventController::create(drogon::HttpRequestPtr req)

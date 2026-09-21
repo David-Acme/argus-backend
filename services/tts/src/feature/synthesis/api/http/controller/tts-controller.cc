@@ -3,7 +3,7 @@
 #include <errors/response-exception.hxx>
 #include <feature/synthesis/api/http/dto/synthesize-dto.hxx>
 #include <http/api-response.hxx>
-#include <tts-errors.hxx>
+#include <tts/tts-errors.hxx>
 
 #include <feature/synthesis/domain/tts-service.hxx>
 

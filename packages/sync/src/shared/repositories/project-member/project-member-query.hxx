@@ -1,7 +1,7 @@
 #pragma once
 #include <cstdint>
 #include <optional>
-#include <share-access.hxx>
+#include <productivity/share-access.hxx>
 #include <string>
 #include <string_view>
 

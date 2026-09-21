@@ -1,10 +1,10 @@
 #pragma once
 
 #include <json/value.h>
-#include <shared/contracts/table-name.hxx>
+#include <sync/table-name.hxx>
 #include <shared/dtos/socket-emit/socket-emit-dto.hxx>
 #include <shared/services/room/room-manager.hxx>
-#include <user-role.hxx>
+#include <auth/user-role.hxx>
 #include <vector>
 
 // Wire contract of the argus.sync.v1.change fan-out (see docs/architecture/wire-nats-subjects.md): the SocketEmitDto triple plus gateway routing metadata.

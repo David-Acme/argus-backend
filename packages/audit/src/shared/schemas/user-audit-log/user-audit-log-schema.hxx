@@ -4,8 +4,8 @@
 #include <drogon/orm/Field.h>
 #include <drogon/orm/Row.h>
 #include <json/value.h>
-#include <shared/contracts/audit-log-priority.hxx>
-#include <shared/contracts/table-name.hxx>
+#include <sync/audit-log-priority.hxx>
+#include <sync/table-name.hxx>
 #include <string>
 
 struct UserAuditLogSchema

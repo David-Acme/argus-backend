@@ -35,11 +35,11 @@
 Every DB column with a CHECK constraint (`role`, `severity`, `record_mode`,
 `zone_type`, `status`, `action`) MUST use its `enum class` from the
 contract that owns the domain: `UserRole`
-(`packages/contracts/auth/user-role.hxx`), `EventSeverity`,
-`CameraRecordMode` and `ZoneType` (`packages/contracts/camera/`),
-`ReminderDetailStatus` (`packages/contracts/productivity/`) and
-`UserAction`
-(`packages/contracts/sync/src/shared/contracts/user-action.hxx`).
+(`packages/contracts/auth/src/auth/user-role.hxx`), `EventSeverity`,
+`CameraRecordMode` and `ZoneType`
+(`packages/contracts/camera/src/camera/`), `ReminderDetailStatus`
+(`packages/contracts/productivity/src/productivity/`) and `UserAction`
+(`packages/contracts/sync/src/sync/user-action.hxx`).
 Each header carries its own `<enum>ToString`/`<enum>FromString` pair, in
 lowerCamelCase (`userRoleToString`, `zoneTypeFromString`), derived from the
 enum's own name; use them at DB boundaries only.
@@ -154,7 +154,7 @@ Validation errors use `ApiResponse::validationError(fieldErrors)` → 422.
 
 Attribute keys are centralized constants:
 ```
-AuthContext::kJwtKey    = "jwt_ctx"     (packages/contracts/auth/request-context.hxx)
+AuthContext::kJwtKey    = "jwt_ctx"     (packages/contracts/auth/src/auth/request-context.hxx)
 AuthContext::kDeviceKey = "device_ctx"
 ```
 
@@ -511,7 +511,7 @@ Raw pointers only for non-owning access (`.get()`).
   enforced on every authenticated transport. Messages are `{type, payload}` and responses use
   `SocketEmitDto` `{operation, option(TableName), info}`.
   Errors: `{type:"<type>_error", status, error}`.
-- Operations (`packages/contracts/sync/src/shared/contracts/sync-operation.hxx`): `InitialInfo=0`,
+- Operations (`packages/contracts/sync/src/sync/sync-operation.hxx`): `InitialInfo=0`,
   `Synchronize=1` (initial bootstrap plus creations/deletions; includes
   `notification` per user), `SynchronizeAuditLog=2` (global field diffs; the
   backend selects tables by role), `SynchronizeUserAuditLog=3` (recipient
@@ -893,8 +893,8 @@ for two different reasons, and says which when it does.
 
 | File | Purpose |
 |------|---------|
-| `packages/contracts/{auth,camera,productivity,sync}/` | Each domain's wire enums, each with its own lowerCamelCase `<enum>ToString`/`<enum>FromString` pair (`packages/contracts/camera/zone-type.hxx`). The enums that mirror a `CHECK` constraint are not all here — `notification` and `packages/identity/src/shared/vocabulary/` each carry their own |
-| `packages/contracts/sync/src/shared/contracts/` | `Syncable`, `SyncFilter` base classes + `sync-operation.hxx` |
+| `packages/contracts/{auth,camera,productivity,sync}/src/<domain>/` | Each domain's wire enums, each with its own lowerCamelCase `<enum>ToString`/`<enum>FromString` pair (`packages/contracts/camera/src/camera/zone-type.hxx`). The enums that mirror a `CHECK` constraint are not all here — `notification` and `packages/identity/src/shared/vocabulary/` each carry their own |
+| `packages/contracts/sync/src/sync/` | `Syncable`, `SyncFilter` base classes + `sync-operation.hxx` |
 
 **Tier 3 — `clients/`**
 

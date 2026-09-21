@@ -8,13 +8,13 @@ if(NOT TARGET argus::lib::errors)
 endif()
 
 argus_contracts(NAME camera
-    INCLUDES .
+    INCLUDES src
     SOURCES
-        camera-driver.hxx
-        camera-errors.hxx
-        camera-record-mode.hxx
-        event-severity.hxx
-        zone-type.hxx
+        src/camera/camera-driver.hxx
+        src/camera/camera-errors.hxx
+        src/camera/camera-record-mode.hxx
+        src/camera/event-severity.hxx
+        src/camera/zone-type.hxx
     DEPENDS argus::lib::errors)
 
 # The round-trip suite: every name is its own spelling and back.
@@ -27,6 +27,15 @@ target_link_libraries(camera-contract-vocabulary-test PRIVATE
     argus::contracts::camera doctest::doctest)
 target_compile_options(camera-contract-vocabulary-test PRIVATE -Wall -Wextra)
 add_test(NAME camera-contract-vocabulary-test COMMAND camera-contract-vocabulary-test)
+
+# The catalog suite: the eight refusals the camera boundary throws, pinned as a
+# table and checked against what the response serializer accepts.
+add_executable(camera-contract-catalog-test
+    tests/unit/camera-contract-catalog-test.cc)
+target_link_libraries(camera-contract-catalog-test PRIVATE
+    argus::contracts::camera doctest::doctest)
+target_compile_options(camera-contract-catalog-test PRIVATE -Wall -Wextra)
+add_test(NAME camera-contract-catalog-test COMMAND camera-contract-catalog-test)
 
 get_target_property(DOCTEST_INCLUDE_DIRS doctest::doctest
                     INTERFACE_INCLUDE_DIRECTORIES)

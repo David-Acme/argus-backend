@@ -5,7 +5,7 @@
 #include <json/value.h>
 #include <optional>
 #include <string>
-#include <user-role.hxx>
+#include <auth/user-role.hxx>
 
 struct UserInvitationSchema
 {

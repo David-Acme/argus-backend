@@ -1,7 +1,7 @@
 #include "sync-fan-out.hxx"
 
 #include <drogon/drogon.h>
-#include <shared/contracts/sync-operation.hxx>
+#include <sync/sync-operation.hxx>
 #include <shared/services/room/room-manager.hxx>
 #include <shared/services/socket/sync-change.hxx>
 #include <text/json-util.hxx>

@@ -4,7 +4,7 @@
 #include <feature/api/pairing/dtos/pairing-dto.hxx>
 #include <feature/api/pairing/dtos/response-pairing-dto.hxx>
 #include <http/api-response.hxx>
-#include <identity-errors.hxx>
+#include <identity/identity-errors.hxx>
 #include <cert/cert-service.hxx>
 #include <config/config-service.hxx>
 

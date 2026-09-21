@@ -15,9 +15,10 @@ single source of truth.
   which turns it into `argus::clients::<domain>` (protobuf + gRPC stubs plus a
   thin typed wrapper), and services link the SDK instead of speaking raw
   strings.
-- `<domain>/` — the C++ vocabulary that crosses the wire, declared by
-  `argus_contracts` as `argus::contracts::<domain>`. The thin per-domain
-  wrappers over the generated stubs live with their client
+- `<domain>/src/<domain>/` — the C++ vocabulary that crosses the wire, declared
+  by `argus_contracts` as `argus::contracts::<domain>`. The include root is
+  `src/`, so a consumer writes `<domain>/<header>.hxx` and links by module name.
+  The thin per-domain wrappers over the generated stubs live with their client
   (`packages/clients/<domain>/`), not here, so consumers never see protobuf
   types directly.
 - `manifests/package.schema.json` — typed per-capability package manifest
@@ -26,8 +27,9 @@ single source of truth.
 - `manifests/plugin.schema.json` — plugin `manifest.json` (declarative views,
   permissions, `requires`), ed25519-signed and verified before install.
 - `sync/` — the frozen sync wire values (`SyncOperation` 0-7, `TableName`
-  0-23, `SYNC_LIMIT = 200`) extracted verbatim from the backend, plus golden
-  fixtures.
+  0-23, `SYNC_LIMIT = 200`) extracted verbatim from the backend, as a C++
+  vocabulary under `sync/src/sync/`. The golden /sync fixtures live with the
+  engine that replays them, `packages/sync/tests/fixtures/sync/`.
 
 ## Invariants the migration depends on
 

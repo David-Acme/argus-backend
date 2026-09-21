@@ -5,7 +5,7 @@
 #include <openssl/evp.h>
 #include <openssl/hmac.h>
 #include <openssl/sha.h>
-#include <request-context.hxx>
+#include <auth/request-context.hxx>
 #include <config/config-service.hxx>
 #include <runtime/blocking-task.hxx>
 #include <stdexcept>

@@ -1,6 +1,6 @@
 #include "reverse-proxy.hxx"
 
-#include <gateway-errors.hxx>
+#include <gateway/gateway-errors.hxx>
 #include <http/api-response.hxx>
 using namespace drogon;
 using namespace gateway_proxy;

@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <chrono>
 #include <ctime>
-#include <shared/contracts/sync-limits.hxx>
+#include <sync/sync-limits.hxx>
 #include <sqlite/db-service.hxx>
 #include <text/json-util.hxx>
 #include <text/sha256.hxx>
@@ -11,7 +11,7 @@
 #include <string>
 #include <string_view>
 #include <vector>
-#include <notification-delivery-status.hxx>
+#include <notification/notification-delivery-status.hxx>
 
 using namespace notification_query;
 

@@ -4,7 +4,7 @@
 #include <auth/device-filter.hxx>
 #include <auth/jwt-filter.hxx>
 #include <http/api-response.hxx>
-#include <request-context.hxx>
+#include <auth/request-context.hxx>
 #include <shared/repositories/notification-token/notification-token-query.hxx>
 
 drogon::Task<drogon::HttpResponsePtr>

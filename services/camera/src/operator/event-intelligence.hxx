@@ -3,7 +3,7 @@
 #include <objects/object-detector.hxx>
 #include <operator/known-person-matcher.hxx>
 
-#include <event-severity.hxx>
+#include <camera/event-severity.hxx>
 
 #include <optional>
 #include <string>

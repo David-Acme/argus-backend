@@ -1,6 +1,6 @@
 #include "zone-controller.hxx"
 
-#include <camera-errors.hxx>
+#include <camera/camera-errors.hxx>
 #include <errors/response-exception.hxx>
 #include <feature/api/zone/dtos/create-zone-dto.hxx>
 #include <feature/api/zone/dtos/update-zone-dto.hxx>

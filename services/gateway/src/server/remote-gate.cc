@@ -2,7 +2,7 @@
 
 #include <drogon/drogon.h>
 #include <auth/device-filter.hxx>
-#include <gateway-errors.hxx>
+#include <gateway/gateway-errors.hxx>
 #include <http/api-response.hxx>
 #include <http/cors.hxx>
 

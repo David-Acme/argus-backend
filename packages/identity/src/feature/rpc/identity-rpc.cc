@@ -5,8 +5,8 @@
 #include <grpc/grpc-client-base.hxx>
 #include <map>
 #include <optional>
-#include <shared/contracts/sync-operation.hxx>
-#include <shared/contracts/table-name.hxx>
+#include <sync/sync-operation.hxx>
+#include <sync/table-name.hxx>
 #include <shared/dtos/socket-emit/socket-emit-dto.hxx>
 #include <shared/services/face/face-service.hxx>
 #include <shared/services/socket/sync-change.hxx>
@@ -15,7 +15,7 @@
 #include <runtime/blocking-task.hxx>
 #include <nats/nats-subject.hxx>
 #include <trantor/utils/Logger.h>
-#include <user-role.hxx>
+#include <auth/user-role.hxx>
 
 namespace
 {

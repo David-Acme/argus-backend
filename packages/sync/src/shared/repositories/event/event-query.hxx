@@ -1,6 +1,6 @@
 #pragma once
 #include <cstdint>
-#include <event-severity.hxx>
+#include <camera/event-severity.hxx>
 #include <string>
 #include <string_view>
 

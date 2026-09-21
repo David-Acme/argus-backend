@@ -14,12 +14,12 @@ if(NOT TARGET argus::lib::errors)
 endif()
 
 argus_contracts(NAME productivity
-    INCLUDES .
+    INCLUDES src
     SOURCES
-        membership-error.hxx
-        productivity-errors.hxx
-        reminder-detail-status.hxx
-        share-access.hxx
+        src/productivity/membership-error.hxx
+        src/productivity/productivity-errors.hxx
+        src/productivity/reminder-detail-status.hxx
+        src/productivity/share-access.hxx
     DEPENDS argus::lib::errors)
 
 # The round-trip suite: every name is its own spelling and back.
@@ -33,6 +33,16 @@ target_link_libraries(productivity-contract-vocabulary-test PRIVATE
 target_compile_options(productivity-contract-vocabulary-test PRIVATE -Wall -Wextra)
 add_test(NAME productivity-contract-vocabulary-test
          COMMAND productivity-contract-vocabulary-test)
+
+# The catalog suite: the eight refusals the productivity boundary throws,
+# pinned as a table and checked against what the response serializer accepts.
+add_executable(productivity-contract-catalog-test
+    tests/unit/productivity-contract-catalog-test.cc)
+target_link_libraries(productivity-contract-catalog-test PRIVATE
+    argus::contracts::productivity doctest::doctest)
+target_compile_options(productivity-contract-catalog-test PRIVATE -Wall -Wextra)
+add_test(NAME productivity-contract-catalog-test
+         COMMAND productivity-contract-catalog-test)
 
 get_target_property(DOCTEST_INCLUDE_DIRS doctest::doctest
                     INTERFACE_INCLUDE_DIRECTORIES)

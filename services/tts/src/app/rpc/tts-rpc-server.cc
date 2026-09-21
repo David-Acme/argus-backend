@@ -2,9 +2,9 @@
 
 #include <errors/response-exception.hxx>
 #include <grpc/grpc-server-identity.hxx>
-#include <tts-errors.hxx>
+#include <tts/tts-errors.hxx>
 #include <tts.grpc.pb.h>
-#include <response-rpc.hxx>
+#include <response/response-rpc.hxx>
 #include <runtime/cancellation-token.hxx>
 #include <algorithm>
 #include <chrono>

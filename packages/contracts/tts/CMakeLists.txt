@@ -8,7 +8,9 @@ if(NOT TARGET argus::lib::errors)
 endif()
 
 argus_contracts(NAME tts
-    INCLUDES .
+    INCLUDES src
+    SOURCES
+        src/tts/tts-errors.hxx
     DEPENDS argus::lib::errors)
 
 if(NOT COMMAND argus_response_rpc_contract)
@@ -28,3 +30,22 @@ function(argus_tts_rpc_contract)
             DEPENDS argus::contracts::response-wire)
     endif()
 endfunction()
+
+# The catalog suite: the nine refusals the text-to-speech boundary throws,
+# pinned as a table and checked against what the response serializer accepts.
+enable_testing()
+find_package(doctest REQUIRED)
+
+add_executable(tts-contract-catalog-test
+    tests/unit/tts-contract-catalog-test.cc)
+target_link_libraries(tts-contract-catalog-test PRIVATE
+    argus::contracts::tts doctest::doctest)
+target_compile_options(tts-contract-catalog-test PRIVATE -Wall -Wextra)
+add_test(NAME tts-contract-catalog-test COMMAND tts-contract-catalog-test)
+
+get_target_property(DOCTEST_INCLUDE_DIRS doctest::doctest
+                    INTERFACE_INCLUDE_DIRECTORIES)
+if(DOCTEST_INCLUDE_DIRS)
+    set_target_properties(doctest::doctest PROPERTIES
+        INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${DOCTEST_INCLUDE_DIRS}")
+endif()
