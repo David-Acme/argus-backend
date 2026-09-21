@@ -1,5 +1,6 @@
 #pragma once
 
+#include <camera/identity-state.hxx>
 #include <vocabulary/guard-danger.hxx>
 #include <vocabulary/guard-mode.hxx>
 
@@ -25,28 +26,9 @@ struct GuardContext
   int visitCount{0};
 };
 
-// Tri-state face observation carried by one object_detected object.
-enum class IdentityState
-{
-  Known,
-  Unrecognized,
-  Unobservable,
-};
-
-inline std::string identityStateToString(IdentityState state)
-{
-  switch (state) {
-  case IdentityState::Known:
-    return "known";
-  case IdentityState::Unrecognized:
-    return "unrecognized";
-  case IdentityState::Unobservable:
-    return "unobservable";
-  }
-  return "unrecognized";
-}
-
-// Identity signals derived from one object_detected payload.
+// Tri-state face observation carried by one object_detected object: the
+// contract's wire enum (contracts/camera), beside the object_detected payload
+// it arrives in -- camera writes the spelling, this service reads it.
 struct GuardEventSignals
 {
   int64_t cameraId{0};

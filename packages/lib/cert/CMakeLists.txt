@@ -15,71 +15,17 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 include(${CMAKE_CURRENT_SOURCE_DIR}/../../../cmake/argus-module.cmake)
 
-# Found before the sibling add_subdirectory block: the migration tool the
-# sibling suites ride links Drogon from this scope.
+# The leaves this module links: a DAG, so their guards carry them into every
+# build, standalone or consumed. The cert suite stands its own Drogon listener
+# up and links nothing above tier 1, so this package's standalone configure is
+# this one sibling.
 find_package(Drogon CONFIG REQUIRED)
 find_package(nlohmann_json REQUIRED)
 find_package(OpenSSL REQUIRED)
 
-# The leaf this module links: a DAG, so its guard carries it into every build.
 if(NOT TARGET argus::lib::config)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../config
                      ${CMAKE_BINARY_DIR}/config)
-endif()
-
-# Standalone configure (top level): the cert test rides argus_identity, so
-# add the sibling packages identity and cert link, the vendored sqlite-vec
-# and ncnn, and identity's migration tool the sibling suites ride. Identity
-# lands after the ncnn block so its face services see the ncnn target. The
-# sibling list is what PROJECT_IS_TOP_LEVEL is for here: argus_lib_cert and
-# argus_identity link each other, so the project at the top of the configure
-# is the one that provides them.
-if(PROJECT_IS_TOP_LEVEL)
-    if(NOT TARGET argus::room)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../room
-                         ${CMAKE_BINARY_DIR}/room)
-    endif()
-    if(NOT TARGET sqlite-vec)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../../third_party/sqlite-vec
-                         ${CMAKE_BINARY_DIR}/third_party/sqlite-vec)
-    endif()
-    set(ARGUS_SQLITE_VEC_TARGET sqlite-vec)
-    if(NOT TARGET argus::lib::sqlite)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../sqlite
-                         ${CMAKE_BINARY_DIR}/sqlite)
-    endif()
-    if(NOT TARGET argus::socket)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../socket
-                         ${CMAKE_BINARY_DIR}/socket)
-    endif()
-    if(NOT TARGET argus::audit)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../audit
-                         ${CMAKE_BINARY_DIR}/audit)
-    endif()
-    if(NOT TARGET argus::lib::auth)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../auth
-                         ${CMAKE_BINARY_DIR}/auth)
-    endif()
-
-    set(NCNN_BUILD_BENCHMARK OFF CACHE BOOL "" FORCE)
-    set(NCNN_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
-    set(NCNN_BUILD_TOOLS OFF CACHE BOOL "" FORCE)
-    set(NCNN_BUILD_TESTS OFF CACHE BOOL "" FORCE)
-    set(NCNN_OPENMP ON CACHE BOOL "" FORCE)
-    set(NCNN_AVX2 ON CACHE BOOL "" FORCE)
-    set(NCNN_VULKAN ON CACHE BOOL "" FORCE)
-    set(NCNN_ENABLE_PIC ON CACHE BOOL "" FORCE)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../../third_party/ncnn
-                     ${CMAKE_BINARY_DIR}/third_party/ncnn EXCLUDE_FROM_ALL)
-    set(ARGUS_NCNN_TARGET ncnn)
-    if(NOT TARGET identity-migration)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../identity/tools/migrate-identity
-                         ${CMAKE_BINARY_DIR}/identity/tools/migrate-identity)
-    endif()
-    if(NOT TARGET argus::identity)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../identity
-                         ${CMAKE_BINARY_DIR}/identity)
-    endif()
 endif()
 
 argus_lib(NAME cert
@@ -97,13 +43,13 @@ target_link_libraries(argus_lib_cert PUBLIC
 target_compile_options(argus_lib_cert PRIVATE -Wall -Wextra)
 
 # CertService rotation and the in-process TLS listener that proves the hot
-# reload. It rides the identity domain, which is why it links argus_identity.
+# reload: Drogon's own listener over the rotated pair, so the suite reads the
+# cert package and the TOML reader and nothing else.
 find_package(doctest REQUIRED)
 
 add_executable(cert-san-test tests/unit/cert-san-test.cc)
 target_link_libraries(cert-san-test PRIVATE
     argus::lib::cert
-    argus_identity
     argus::lib::config
     doctest::doctest)
 target_compile_options(cert-san-test PRIVATE -Wall -Wextra)

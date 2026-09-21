@@ -163,9 +163,11 @@ AuthContext::kDeviceKey = "device_ctx"
 
 Roles are checked centrally via
 `packages/lib/auth/src/auth/role-access.hxx` (the `kTableAccess` map:
-role → table → `RolePermission`). **`RoleFilter` (HTTP) and the sync engine
-share that single source of truth** — to change a permission, edit only that
-file. Never imperative if/else.
+role → table → `RolePermission`; the enum itself is declared in
+`packages/contracts/sync/src/sync/role-permission.hxx`, beside the table it
+names, because the tier-3 llm client spells it in tool descriptors).
+**`RoleFilter` (HTTP) and the sync engine share that single source of truth**
+— to change a permission, edit only that file. Never imperative if/else.
 
 ```
 Owner    → full access. Receives the directory and invitation metadata.

@@ -14,6 +14,7 @@ argus_contracts(NAME camera
         src/camera/camera-errors.hxx
         src/camera/camera-record-mode.hxx
         src/camera/event-severity.hxx
+        src/camera/identity-state.hxx
         src/camera/zone-type.hxx
     DEPENDS argus::lib::errors)
 

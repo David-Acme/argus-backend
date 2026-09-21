@@ -359,20 +359,7 @@ target_link_libraries(camera-migration-test PRIVATE camera-migration)
 
 target_link_libraries(camera-config-test PRIVATE camera-core)
 target_link_libraries(camera-controller-test PRIVATE camera-core)
-if(NOT TARGET argus::guard)
-    # The guard feature links the notification client, which the split out of
-    # contract packages made an explicit dependency of this standalone build.
-    foreach(CLIENT IN ITEMS llm vlm notification)
-        if(NOT TARGET argus::clients::${CLIENT})
-            add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/${CLIENT}
-                             ${CMAKE_BINARY_DIR}/${CLIENT} EXCLUDE_FROM_ALL)
-        endif()
-    endforeach()
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../guard/src/feature/guard
-                     ${CMAKE_BINARY_DIR}/guard-regression EXCLUDE_FROM_ALL)
-endif()
-target_sources(camera-operator-test PRIVATE tests/unit/guard-consumer-check.cc)
-target_link_libraries(camera-operator-test PRIVATE camera-core argus::guard)
+target_link_libraries(camera-operator-test PRIVATE camera-core)
 target_link_libraries(camera-health-test PRIVATE camera-core)
 target_link_libraries(event-intelligence-test PRIVATE camera-core)
 target_link_libraries(camera-source-registrar-test PRIVATE camera-core)

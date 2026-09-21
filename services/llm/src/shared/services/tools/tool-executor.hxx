@@ -1,5 +1,6 @@
 #pragma once
 
+#include <auth/user-role.hxx>
 #include <llm/tool-contracts.hxx>
 #include <shared/services/tools/tool-registry.hxx>
 #include <string>

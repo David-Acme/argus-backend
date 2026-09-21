@@ -3,20 +3,13 @@
 #include <cstdint>
 #include <drogon/HttpTypes.h>
 #include <optional>
+#include <sync/role-permission.hxx>
 #include <sync/table-name.hxx>
 #include <string_view>
 #include <unordered_map>
 #include <unordered_set>
 #include <auth/user-role.hxx>
 #include <vector>
-
-enum class RolePermission : uint8_t
-{
-  Read = 0,
-  Create,
-  Update,
-  Delete
-};
 
 namespace role_access
 {

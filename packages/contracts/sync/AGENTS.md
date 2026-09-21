@@ -31,6 +31,14 @@ here is a table some repository syncs.
   `Memory = 23`, with its round-trip helpers, `kLastTableName` for the sweeps
   that must not miss a new table, and a lookup map; 24 files, the
   second-most-included header of the ten after `<auth/user-role.hxx>`'s 26.
+- `src/sync/role-permission.hxx` — `RolePermission` (`Read = 0`, `Create`,
+  `Update`, `Delete`), the third element of the gate's `(role, table,
+  permission)` triple and the requirement a tool descriptor declares. No
+  round-trip helpers: it never crosses the wire, so nothing parses it back.
+  It sits here, beside the table it needs, because the units that name it are
+  three tiers apart -- `lib/auth` owns the role table, the tier-3 llm client
+  declares tool descriptors, and `sync`, `camera` and `productivity` each gate
+  a route by hand (Phase 2 step 4 moved it out of `lib/auth`).
 - `src/sync/user-action.hxx` — `UserAction` (`Create = 0`, `Read`, `Update`,
   `Delete`) with `"create"`, `"read"`, `"update"`, `"delete"`; 3 files.
 - `src/sync/audit-log-priority.hxx` — `AuditLogPriority` (`Low = 0`, `Medium`,

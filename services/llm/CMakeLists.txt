@@ -102,6 +102,13 @@ if(NOT TARGET Drogon::Drogon)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/phrase
                          ${CMAKE_BINARY_DIR}/phrase)
     endif()
+    # The tool executor gates a tool call through role_access::hasAccess, which
+    # is the auth lib's; the llm client no longer carries it, so this service
+    # declares the package it reads.
+    if(NOT TARGET argus::lib::auth)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/auth
+                         ${CMAKE_BINARY_DIR}/auth)
+    endif()
     if(NOT TARGET argus::clients::llm)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/llm
                          ${CMAKE_BINARY_DIR}/clients/llm)
@@ -171,6 +178,7 @@ target_include_directories(llm-core PUBLIC
 # process, and the memory worker gets LlmService without a wire hop.
 target_link_libraries(llm-core PUBLIC
     argus::lib::config
+    argus::lib::auth
     argus::hardware-profile
     argus::lib::phrase
     argus::lib::runtime

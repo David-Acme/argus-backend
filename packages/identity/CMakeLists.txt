@@ -22,9 +22,11 @@ include(${CMAKE_CURRENT_SOURCE_DIR}/../../cmake/argus-module.cmake)
 # The packages this module links, the vendored sqlite-vec the vec repositories
 # ride and the ncnn build the face services compile against. The leaves are
 # declared here rather than by the consumer: they are a DAG, so their guards
-# keep the root tree and every other consumer in charge. The sibling packages
-# stay behind PROJECT_IS_TOP_LEVEL because this module and argus_lib_cert link each
-# other: only the project at the top of the configure provides them.
+# keep the root tree and every other consumer in charge. The six in-transit
+# siblings below stay behind PROJECT_IS_TOP_LEVEL: Phase 2 step 4 removed the
+# mutual link with argus_lib_cert that put them there -- cert's suite no longer
+# links this module -- and unwrapping them is a configure-scope call for the
+# phase that moves the packages themselves.
 if(NOT TARGET argus::lib::runtime)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../lib/runtime
                      ${CMAKE_BINARY_DIR}/runtime)

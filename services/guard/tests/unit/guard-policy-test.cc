@@ -497,6 +497,64 @@ TEST_CASE("an agreeing known claim keeps the known reading")
   CHECK(signals.identityState == IdentityState::Known);
 }
 
+TEST_CASE("a known person in an alert zone is not escalated")
+{
+  // The one payload shape that reaches this matrix from another service is the
+  // camera's recognised triple: `identity`, `personId` and the `identityState`
+  // spelling camera's matcher writes. Camera's own suite pins that it
+  // serialises exactly that shape; this is the other end of it -- parsed here,
+  // then evaluated. A known person stays at None even in an alert zone, while
+  // away, on an event the camera marked critical.
+  Json::Value person = personObject();
+  person["identity"] = "known";
+  person["personId"] = Json::Int64(7);
+  person["identityState"] = "known";
+  person["zoneKind"] = "alert";
+  const auto signals = guard_policy::parseObjectEvent(singlePersonEvent(person));
+  CHECK(signals.hasKnown);
+  CHECK_FALSE(signals.hasUnknown);
+  CHECK(signals.personId == 7);
+  CHECK(signals.knownPersonId == 7);
+  CHECK(signals.identityState == IdentityState::Known);
+
+  GuardContext context;
+  context.mode = GuardMode::Away;
+  context.rule = signals.rule;
+  context.severity = signals.severity;
+  context.hasKnown = signals.hasKnown;
+  context.hasUnknown = signals.hasUnknown;
+  context.inAlertZone = signals.zoneKind == "alert";
+  CHECK(context.inAlertZone);
+  CHECK(context.severity == "critical");
+  CHECK(guard_policy::evaluate(context) == GuardDanger::None);
+}
+
+TEST_CASE("that same payload contradicted escalates to critical")
+{
+  // The other half of the pair, and the reason the parse fails closed: an
+  // event that claims `identity: known` while its identityState says the face
+  // was never observed is read as an unknown person, and while away that is
+  // critical whatever severity the camera put on the event itself.
+  Json::Value person = personObject();
+  person["identity"] = "known";
+  person["personId"] = Json::Int64(7);
+  person["identityState"] = "unobservable";
+  person["zoneKind"] = "alert";
+  const auto signals = guard_policy::parseObjectEvent(singlePersonEvent(person));
+  CHECK_FALSE(signals.hasKnown);
+  CHECK(signals.hasUnknown);
+  CHECK(signals.identityState == IdentityState::Unobservable);
+
+  GuardContext context;
+  context.mode = GuardMode::Away;
+  context.rule = signals.rule;
+  context.severity = signals.severity;
+  context.hasKnown = signals.hasKnown;
+  context.hasUnknown = signals.hasUnknown;
+  context.inAlertZone = signals.zoneKind == "alert";
+  CHECK(guard_policy::evaluate(context) == GuardDanger::Critical);
+}
+
 TEST_CASE("an empty bucket is fully novel and a written one is not")
 {
   CHECK(guard_policy::baselineNovelty(guard_policy::decayBaseline(0.0, 0)) ==

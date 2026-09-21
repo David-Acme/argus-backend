@@ -85,11 +85,7 @@ GuardEventSignals parseObjectEvent(const Json::Value& event)
         primary->get("identity", "").asString();
     const std::string stateName =
         primary->get("identityState", "").asString();
-    IdentityState state = IdentityState::Unrecognized;
-    if (stateName == "known")
-      state = IdentityState::Known;
-    else if (stateName == "unobservable")
-      state = IdentityState::Unobservable;
+    const IdentityState state = identityStateFromString(stateName);
     const bool known = legacyIdentity == "known" && personId > 0 &&
                        (stateName.empty() || state == IdentityState::Known);
     signals.hasKnown = known;

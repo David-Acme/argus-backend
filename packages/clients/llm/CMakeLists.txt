@@ -4,24 +4,15 @@
 # same shape tts-client has for the TTS wire.
 #
 # It also carries tool-contracts.hxx, the vocabulary a tool descriptor is
-# written in. That header needs a tier argus-memory and argus-llm may both
-# reach — memory declares the descriptors, llm runs them, and a package may not
-# include a service — so it waits here for the move that takes memory into
-# argus-llm (Phase 4 step 7). The machinery that turns a call into a handler
-# run (registry, validator, executor) had one consumer and left with Phase 1
-# step 9 (D16).
+# written in: memory declares the descriptors, llm runs them, and the tier both
+# reach is this client. That header reads TableName and RolePermission -- the
+# two halves of the gate a tool declares -- from contracts/sync, so the client
+# links tier-1 and tier-2 packages only and the header waits here for the move
+# that takes memory into argus-llm (Phase 4 step 7). The machinery that turns a
+# call into a handler run (registry, validator, executor) had one consumer and
+# left with Phase 1 step 9 (D16).
 
 include(${CMAKE_CURRENT_SOURCE_DIR}/../../../cmake/argus-module.cmake)
-
-if(NOT TARGET argus::lib::auth)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../lib/auth
-                     ${CMAKE_CURRENT_BINARY_DIR}/auth)
-endif()
-
-if(NOT TARGET argus::contracts::auth)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../contracts/auth
-                     ${CMAKE_BINARY_DIR}/contracts/auth)
-endif()
 
 if(NOT TARGET argus::contracts::sync)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../contracts/sync
@@ -42,7 +33,7 @@ argus_clients(NAME llm
     INCLUDES
         src
     DEPENDS
-        argus::lib::auth argus::contracts::auth argus::contracts::sync argus::lib::config
+        argus::contracts::sync argus::lib::config
         Drogon::Drogon
         nlohmann_json::nlohmann_json)
 

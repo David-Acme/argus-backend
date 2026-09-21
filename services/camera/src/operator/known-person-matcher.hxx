@@ -1,5 +1,7 @@
 #pragma once
 
+#include <camera/identity-state.hxx>
+
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -25,27 +27,9 @@ enum class PersonIdentity
   Known,
 };
 
-// Face-observation state reported for one match() call.
-enum class IdentityState
-{
-  Known,
-  Unrecognized,
-  Unobservable,
-};
-
-inline std::string identityStateToString(IdentityState state)
-{
-  switch (state) {
-  case IdentityState::Known:
-    return "known";
-  case IdentityState::Unrecognized:
-    return "unrecognized";
-  case IdentityState::Unobservable:
-    return "unobservable";
-  }
-  return "unobservable";
-}
-
+// Face-observation state reported for one match() call: the contract's wire
+// enum, declared once in contracts/camera because guard reads the same field
+// out of the object_detected payload.
 struct PersonMatch
 {
   PersonIdentity identity{PersonIdentity::Unknown};

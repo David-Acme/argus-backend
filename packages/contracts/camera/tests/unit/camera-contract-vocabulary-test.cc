@@ -4,6 +4,7 @@
 #include <camera/camera-driver.hxx>
 #include <camera/camera-record-mode.hxx>
 #include <camera/event-severity.hxx>
+#include <camera/identity-state.hxx>
 #include <camera/zone-type.hxx>
 
 #include <cstddef>
@@ -60,6 +61,21 @@ TEST_CASE("zone type strings round-trip")
         .names = {"monitor", "alert", "exclude"},
         .toString = zoneTypeToString,
         .fromString = zoneTypeFromString});
+}
+
+TEST_CASE("identity state strings round-trip and fail closed")
+{
+    checkRoundTrip(CheckRoundTripInput{
+        .values = {IdentityState::Known, IdentityState::Unrecognized,
+                   IdentityState::Unobservable},
+        .names = {"known", "unrecognized", "unobservable"},
+        .toString = identityStateToString,
+        .fromString = identityStateFromString});
+
+    // Anything a producer invents reads as unrecognized, never as known.
+    CHECK(identityStateFromString("") == IdentityState::Unrecognized);
+    CHECK(identityStateFromString("KNOWN") == IdentityState::Unrecognized);
+    CHECK(identityStateFromString("identified") == IdentityState::Unrecognized);
 }
 
 TEST_CASE("camera driver strings round-trip")

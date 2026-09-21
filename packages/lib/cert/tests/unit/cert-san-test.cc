@@ -220,6 +220,26 @@ PeerInfo servedPeer(uint16_t port)
   return info;
 }
 
+// The reload is not synchronous with the rotation: rotateServerCertificate()
+// calls drogon::app().reloadSSLFiles() from this thread, and
+// trantor::TcpServer::reloadSSL() queues the new context into the listener's
+// loop whenever the caller is not on it (TcpServer.cc:238-256). A handshake
+// started right after the call can therefore still be served by the previous
+// leaf, so wait for a new one instead of reading the first answer and calling
+// the hot reload broken.
+PeerInfo servedPeerAfterReload(uint16_t port, const std::string& previous)
+{
+  const auto deadline =
+      std::chrono::steady_clock::now() + std::chrono::seconds(5);
+  PeerInfo info = servedPeer(port);
+  while (info.fingerprint == previous &&
+         std::chrono::steady_clock::now() < deadline) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    info = servedPeer(port);
+  }
+  return info;
+}
+
 uint16_t freePort()
 {
   const int fd = ::socket(AF_INET, SOCK_STREAM, 0);
@@ -344,7 +364,7 @@ TEST_CASE("remote.hostname drives the leaf SAN list and the hot reload")
   CHECK(before.sans.back() == kRemoteHost);
 
   REQUIRE(CertService::rotateServerCertificate());
-  const PeerInfo after = servedPeer(port);
+  const PeerInfo after = servedPeerAfterReload(port, before.fingerprint);
   CHECK_FALSE(after.fingerprint.empty());
   CHECK(after.fingerprint != before.fingerprint);
   CHECK(after.fingerprint != absentFingerprint);

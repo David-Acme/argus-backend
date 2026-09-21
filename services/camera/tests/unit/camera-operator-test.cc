@@ -20,8 +20,6 @@
 #include <identity/identity-client.hxx>
 #include <shared/services/stream/snapshot-store.hxx>
 
-void checkGuardKnownEvent(const Json::Value& event);
-
 class MutablePersonMatcher final : public IKnownPersonMatcher
 {
 public:
@@ -314,12 +312,6 @@ TEST_CASE("processFrame recognized then small crop publishes a consistent triple
   CHECK(object.identity == "known");
   CHECK(object.personId == 7);
   CHECK(object.identityState == "known");
-}
-
-TEST_CASE("guard treats the camera's recognised triple as known")
-{
-  const ObjectDetectedEvent event = recognizedThenUnusableCrop();
-  checkGuardKnownEvent(object_event::toJson(event));
 }
 
 TEST_CASE("the aggregation keeps identity stable across a match downgrade")

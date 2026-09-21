@@ -2,8 +2,9 @@
 
 #include <functional>
 #include <json/value.h>
-#include <auth/role-access.hxx>
 #include <string>
+#include <sync/role-permission.hxx>
+#include <sync/table-name.hxx>
 #include <vector>
 
 // Tool runtime contracts (COGNITIVE_MEMORY_PLAN.md §6), namespaced so the legacy memory ToolCall stays unambiguous.

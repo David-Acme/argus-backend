@@ -10,6 +10,7 @@ argus_module(NAME guard
         guard-schema.cc
         guard-service.cc
     DEPENDS
+        argus::contracts::camera
         argus::lib::config
         argus::lib::text
         argus::lib::nats

@@ -13,9 +13,11 @@ fingerprint to pin.
 
 It is also one of the two libs declared as a standalone project
 (`project(argus-cert)`): its suite boots an in-process TLS listener and
-rotates the certificate underneath it, and that listener is an identity
-route, so the test links `argus_identity` and the configure has to be able
-to bring up identity's own closure.
+rotates the certificate underneath it. That listener is Drogon's own, over
+the rotated pair, so the suite links this package and the TOML reader and
+nothing above tier 1 — it used to link `argus_identity` for an identity
+route it no longer stands up, and that dead link (plus the identity, ncnn
+and migration closure it dragged into this project) went in Phase 2 step 4.
 
 ## Layout
 

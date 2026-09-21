@@ -24,6 +24,12 @@ sync leg as the same four enums.
   `Continuous`); 3 files.
 - `src/camera/event-severity.hxx` — `EventSeverity` (`Info`, `Warning`,
   `Critical`); 4 files.
+- `src/camera/identity-state.hxx` — `IdentityState` (`Known`, `Unrecognized`,
+  `Unobservable`) with its round-trip pair and a fail-closed parse: this is the
+  `identityState` field of every track-bound person object, camera's matcher
+  writes the spelling and guard's policy reads it back, so the enum is named by
+  two services -- and until Phase 2 step 4 each of them carried a private copy,
+  which is the drift section 2.4 rule 6 exists to stop. 2 files.
 - `src/camera/zone-type.hxx` — `ZoneType` (`Monitor`, `Alert`, `Exclude`); 3
   files.
 - `src/camera/camera-errors.hxx` — the eight refusals (`Forbidden`,
@@ -48,8 +54,9 @@ sync leg as the same four enums.
 
 ## Tests
 
-- `tests/unit/camera-contract-vocabulary-test.cc` — the four enums'
-  round-trips, name by name.
+- `tests/unit/camera-contract-vocabulary-test.cc` — the five enums'
+  round-trips, name by name, plus the fail-closed half of `IdentityState`: an
+  absent or invented spelling reads as `unrecognized`, never as `known`.
 - `tests/unit/camera-contract-catalog-test.cc` — the eight refusals as a
   pinned table, each entry's wire legality, and that no two say the same
   thing.

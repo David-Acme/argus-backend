@@ -27,6 +27,7 @@ argus_contracts(NAME sync
         src/sync/sync-limits.hxx
         src/sync/syncable.hxx
         src/sync/table-name.hxx
+        src/sync/role-permission.hxx
         src/sync/user-action.hxx
     DEPENDS
         argus::lib::errors

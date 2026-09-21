@@ -1,5 +1,6 @@
 #pragma once
 
+#include <auth/user-role.hxx>
 #include <cstdint>
 #include <llm/tool-contracts.hxx>
 #include <shared/services/intent/intent-router.hxx>
