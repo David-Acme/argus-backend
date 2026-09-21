@@ -70,7 +70,7 @@ builders; the tree says:
 | `JWT_CTX_KEY`, `DEVICE_CTX_KEY` | `AuthContext::kJwtKey`, `AuthContext::kDeviceKey` — `packages/contracts/auth-contract/request-context.hxx` |
 | `REMOTE_CTX_KEY` | `RemoteGate::kRemoteContextKey` — `services/gateway/src/server/remote-gate.hxx` |
 | `SYNC_LIMIT{"200"}` | `SyncLimits::kMaxRows` — `packages/contracts/sync-contract/src/shared/contracts/sync-limits.hxx` |
-| the 13 `ERROR_CODE_*` strings | `ErrorCode` — `packages/errors/src/errors/error-code.hxx` |
+| the 11 `ERROR_CODE_*` strings | `ErrorCode` — `packages/errors/src/errors/error-code.hxx` |
 
 Counted at `HEAD`, the sweep had to move **188 `AppConfig::` mentions across 50 files** and
 **92 `getNNNResponse(...)` call sites across 38 files** (both counts exclude `packages/response`
