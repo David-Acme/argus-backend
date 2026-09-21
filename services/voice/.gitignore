@@ -9,3 +9,4 @@ database/*.db-shm
 *.log
 __pycache__/
 gen/
+uploads/
