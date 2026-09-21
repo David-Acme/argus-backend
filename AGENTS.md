@@ -75,12 +75,15 @@ order and always list every member (avoids `-Wmissing-field-initializers`).
 ### 3. Repository structure
 
 ```
-<owner>/src/shared/repositories/{entity}/
+<home>/repositories/{entity}/
   {entity}-query.hxx      — SQL strings (namespace) + param structs (global)
   {entity}-repository.hxx — class declaration (uses structs from query file)
   {entity}-repository.cc  — implementations (uses `using namespace *_query`)
 ```
 
+- Home: `<home>` is `<owner>/src/shared/` when 2+ features of the same owner
+  read the repository, and `<owner>/src/feature/<feature>/` when only one
+  does — rule 23's 2+ rule. The shape inside is the same either way.
 - `using namespace {entity}_query;` ALWAYS in `.cc` files.
 - `create()` builds the schema from the input + `insertId()` (NO extra query).
 - `update()` is PATCH semantics: `{Entity}UpdateInput` fields are
@@ -228,7 +231,7 @@ JSON factories/serializers use **camelCase**: `fromJson()` (parse) and
 
 **Request DTOs** — self-validating, header + cc file:
 ```
-<owner>/src/feature/api/{resource}/dtos/
+<owner>/src/feature/{feature}/dtos/
   {action}-dto.hxx     — struct + fromJson() / form_multipart() factory
   {action}-dto.cc       — implementation + validation DSL
 ```
@@ -237,7 +240,7 @@ Naming: `LoginDto`, `RefreshTokenDto`, `CreateCustomerDto`
 
 **Response DTOs** — header + cc file, with `toJson()`:
 ```
-<owner>/src/feature/api/{resource}/dtos/
+<owner>/src/feature/{feature}/dtos/
   response-{action}-dto.hxx
   response-{action}-dto.cc
 ```
@@ -245,7 +248,9 @@ Naming: `LoginDto`, `RefreshTokenDto`, `CreateCustomerDto`
 Naming: `ResponseLoginDto`, `ResponseRefreshTokenDto`
 
 **WS/sync DTOs** (header-only, e.g. `synchronized-dto.hxx`): parsed with
-`static {T} fromJson(const Json::Value&)`; declared in `packages/sync/src/feature/socket/sync/dtos/`.
+`static {T} fromJson(const Json::Value&)`; declared beside the sync engine
+that reads them (`packages/sync/src/feature/socket/sync/dtos/` today; that
+package becomes `services/sync` in Phase 3a).
 
 ### 11. Validation DSL
 
@@ -585,10 +590,38 @@ existing schema shape or extend it additively.
 
 ### 23. Feature-based architecture + shared SDK
 
-- Every service follows the same layout inside its own folder
-  (`<service>/src/feature/...`, `<service>/src/shared/...`,
-  `<service>/src/server/...`, plus `database/`, `tests/unit`, `tests/e2e`).
-  Do not invent a new layout per service.
+Every service follows the same layout inside its own folder:
+
+```
+<service>/
+├── src/
+│   ├── app/                    composition only: main.cc + rpc/
+│   ├── config/                 this service's typed config (D20)
+│   ├── feature/<feature>/      a vertical slice, never a layer
+│   │   ├── controllers/   dtos/         repositories/
+│   │   ├── schemas/       services/     infra/
+│   └── shared/                 ONLY what 2+ features of THIS service use
+├── database/schema.sql
+├── scripts/                    migrations and provisioning
+├── tools/                      dev utilities
+└── tests/{unit,e2e}
+```
+
+- **`feature/<feature>/` owns everything the capability needs** — controllers,
+  DTOs, repositories, schemas, services and its own `infra/` adapters. That
+  folder is the home: there is no `feature/api/<resource>/` level (the `api/`
+  segment is the pre-migration spelling) and no `feature/rpc/` — gRPC belongs
+  to `app/rpc/`, infrastructure rather than a capability.
+- **`shared/` is earned, not default — the 2+ rule.** A repository, schema or
+  service moves to `shared/` only when a second feature of the same service
+  reads it; until then it lives in its feature. `shared/repositories/`
+  therefore holds exactly the repositories 2+ features read, which is what
+  makes rule 24's "no directory without a consumer" checkable and sharpens
+  rule 3.
+- **`app/` is process composition only** — `main.cc` and `rpc/`. No domain
+  logic, no controller, no repository, no config resolution: that is
+  `src/config/`, a sibling of `feature/` (D20). `src/server/` and a `main.cc`
+  at the service root are the pre-migration spellings.
 - Cross-service calls go through the SHARED client/SDK layer, never through
   per-service hand-rolled clients. Wire handling (URL/connect/envelope parse/
   retry/auth token pass-through) lives in one place.
@@ -598,20 +631,59 @@ existing schema shape or extend it additively.
 - Dead code, unused folders and duplicated copies are removed in the same
   change that introduces their replacement.
 
-### 24. Respect the monolith structure, never speculative structure
+**Today, against that target** (Phase 4 of
+`docs/history/plans/architecture-plan.md` lands it): `services/tts` is the
+only service with `src/app/`; `notification`, `productivity` and `guard`
+already have the `{controllers,services,dtos}` interior, one level deeper
+under `feature/api/<resource>/` (`notification` also carries `feature/rpc/`,
+which Phase 4 step 2 moves to `app/rpc/`). The other nine services keep a
+single `main.cc` at their `src/` root; `tunnel`, exempt by design (D19),
+instead has two entry points there, `main-client.cc` and `main-relay.cc`.
 
-Folder architecture, naming and ordering mirror the shape the monolith
-established (`src/feature`, `src/shared`, `src/server`, `database/`,
-`tools/`) — now repeated inside each service folder rather than once at the
-repo root, which holds no source tree of its own since f7-8. Do not
-implement structure for its own sake: no abstraction, layer or directory
-that has no current consumer.
+Five services have no `feature/` at all today — `gateway`, `llm`, `stt`,
+`tunnel` and `vlm` — and keep their code at `src/` level instead:
+`src/controllers/` in `llm`, `stt` and `vlm`, a `src/llm/` and a `src/vlm/`
+beside it, and `gateway`'s four domain folders. Of the six services that do
+have a `feature/`, four still keep code beside it: `camera`
+(`src/controllers/` and `src/camera/`, `monitor/`, `objects/`, `operator/`),
+`notification` (`src/notification/`), `productivity`
+(`src/productivity/`) and `voice` (`src/test-support/`). `guard` and `tts`
+keep everything inside `feature/` (plus `app/` in `tts`).
+
+No service has `src/config/` yet: the per-service typed config that step 9
+moves there lives today under that same domain folder
+(`camera-config.{hxx,cc}`, `notification-config.{hxx,cc}`,
+`productivity-config.{hxx,cc}`, `operator-config.{hxx,cc}`). No service has
+`tests/e2e/` yet — the only first-party one in the tree is
+`packages/sync/tests/e2e/`, the frozen-frame suite that moves with the service
+in Phase 3a. `gateway` is
+deleted in Phase 3d.
+
+### 24. One shape for every unit, never speculative structure
+
+The folder architecture, naming and ordering are settled and shared: a service
+is `src/{app,config,feature,shared}` + `database/` + `tests/` + `scripts/` +
+`tools/` (rule 23), a package is `src/<name>/`, its own name as the include
+root (rule 25). They
+repeat the shape the legacy monolith established (`src/feature`, `src/shared`,
+`src/server`, `database/`, `tools/`) once per unit rather than once at the
+repo root, which holds no source tree of its own since f7-8. The one rename
+inside that shape is `src/server/` → `src/app/` (rule 23); do not invent a
+layout per service, and do not carry a spelling forward because a file
+happened to have it.
+
+Do not implement structure for its own sake: no abstraction, layer or
+directory that has no current consumer. A `shared/` folder with one reader, a
+module declared but linked by nothing, a `tools/` directory with no tool —
+each is structure ahead of its consumer, and rule 23 says where the code goes
+instead.
 
 ### 25. Build ergonomics: the folder IS the module
 
 Build import is by module name, never by listing files in consumers.
 Every shared feature/repo/SDK piece lives in its OWN folder and is declared
-ONCE, in its home, through the project helpers:
+ONCE, in its home, through the project helpers (today's names below; the
+target names are in the group table of the next subsection):
 
 ```cmake
 # services/voice/src/shared/services/vad/CMakeLists.txt — the module declares its sources + deps
@@ -635,25 +707,123 @@ argus_client_module(NAME identity PROTO identity.proto)
   `file(GLOB)` for sources is forbidden (fragile); auto-discovery of
   module folders (GLOB over `*/CMakeLists.txt`) is the only allowed glob.
 
+#### The three package groups, and the name a group gives a target
+
+A package is one of three things, and its group is the first segment of its
+path — a lib, a contract or a client. The group is part of the target name, so
+a link line says what a package is and where it lives without consulting the
+tree:
+
+| Group | Holds | Target | Alias | Consumed as |
+|---|---|---|---|---|
+| `packages/lib/<name>/` | reusable infrastructure: no domain data, no wire | `argus_lib_<name>` | `argus::lib::<name>` | `argus::lib::validation` |
+| `packages/contracts/<domain>/` | one domain's `.proto` + the C++ types that cross the wire | `argus_contracts_<domain>` | `argus::contracts::<domain>` | `argus::contracts::camera` |
+| `packages/clients/<domain>/` | the SDK for one service: the only place a stub, a URL or a retry policy exists | `argus_clients_<domain>` | `argus::clients::<domain>` | `argus::clients::camera` |
+
+The folder never repeats the group (`packages/clients/llm`, not
+`clients/llm-client`), and a `DEPENDS`/link line never spells a target name by
+hand — the group helper owns the spelling, so a misplaced package fails at
+configure time instead of linking the wrong thing. A service is not a package:
+it is the executable `argus-<name>`.
+
+Today the other half of that rule is not held up by the helpers:
+`argus_module` and `argus_client_module` pass `DEPENDS` through verbatim
+(`cmake/argus-module.cmake:35-36`), so three `CMakeLists.txt` spell `argus::`
+names in a `DEPENDS` list (`packages/validation/CMakeLists.txt:17` and two
+under `packages/contracts/`), and seven contracts link `argus::errors` by hand
+in their own `target_link_libraries`. Phase 2's helpers are where that becomes
+structural.
+
+**Today** the three groups sit flat (`packages/<name>`, `packages/contracts/`,
+`packages/clients/`) with the pre-migration names: `argus_<name>` /
+`argus::<name>` for a lib, `contract-<domain>` / `contract::<domain>` for a
+contract, `argus_client_<domain>` / `argus::client-<domain>` for a client.
+Every contract folder carries the suffix
+(`packages/contracts/camera-contract/`), and only four of the ten client
+folders do (`llm-client`, `stt-client`, `tts-client`, `vlm-client`) — the rest
+are already bare (`packages/clients/camera/`). Those four are also the four
+clients declared with `argus_module` rather than `argus_client_module`,
+because they wrap no stub, so their alias is `argus::llm-client` and not
+`argus::client-llm`: write the spelling that exists. Phase 2 moves the folders
+and lands `argus_lib`, `argus_contracts` and `argus_clients`.
+
+#### The dependency tiers
+
+Dependencies run in tiers, and the permitted edges are explicit. A package may
+consume contracts and clients; what it may NEVER do is query another owner's
+data (D18):
+
+| Tier | Packages | May depend on | May never depend on |
+|---|---|---|---|
+| 1 · foundation | `lib/`: audio, cert, config, errors, grpc, mdns, nats, phrase, runtime, sqlite, storage, text, validation | third-party, other tier-1 `lib` packages | contracts, clients, services |
+| 2 · wire | `contracts/*`, `lib/http` | tier 1 (`lib/errors`, `lib/grpc`), third-party (Drogon), generated protobuf | clients, services |
+| 3 · transport | `clients/*` | tier 1 + tier 2 | other clients, services |
+| 4 · service-aware lib | `lib/auth` | tiers 1–3 | services |
+| 5 · services | `services/*` | everything above | another service's `src/` |
+
+- A tier never points back up and the graph has no cycles. Two units that need
+  each other are one unit.
+- A contract cannot call a service: if a domain's data is needed, it is needed
+  through a client, and the client is the only place a stub, a URL or a retry
+  policy exists.
+- A service depends on packages and clients, never on another service's
+  source.
+- Interface dependencies (types in public headers) are `PUBLIC`;
+  implementation-only dependencies are `PRIVATE`.
+- Header-only where nothing is compiled. Today: nine of the ten contracts are
+  `INTERFACE` (`contract-auth`, `-camera`, `-gateway`, `-identity`,
+  `-notification`, `-productivity`, `-sync`, `-tts`, `-voice`), and the tenth,
+  `response-contract`, is not — it defines `argus_client_response-wire`
+  through `argus_client_module` and compiles `response-rpc.cc`. `validation`
+  has no `.cc` at all but is declared `STATIC` over its three headers with a
+  `LINKER_LANGUAGE CXX` workaround, which goes when `argus_module` grows a
+  `HEADER_ONLY` option (Phase 2). `cert` compiles one `.cc` and is a
+  `STATIC` `argus_module` like any other; `text` and `phrase` compile real
+  sources and are not candidates for it.
+- **Enums live where they are used.** A service declares its domain enums
+  inside the feature that uses them; the vocabulary that crosses the wire
+  (`UserRole`, `SyncOperation`, `TableName`, priorities) is declared once in
+  the contract that owns it. There is no shared enum package, and no service
+  keeps a copy of a wire enum — a copy drifts and breaks the frozen wire.
+- `lib/http` is tier 2, not tier 4: no tier-1 package may reach it, which is
+  why the health controller and the listener config are not in `lib/config`.
+- The tiers are checked mechanically, not by review: Phase 2 step 5 adds
+  `scripts/check-deps.sh`, which reads `target_link_libraries` in every
+  `CMakeLists.txt` and fails on a forbidden edge. The tiers above read with
+  today's flat folder names until Phase 2 lands.
+
 ### 26. One schema per microservice: `database/schema.sql`
 
 Every owner keeps exactly one schema file named `database/schema.sql` inside
-its own project (`packages/<owner>/database/schema.sql` for packages). Never
-introduce `<domain>-schema.sql` aliases. The deploy stack bind-mounts each
-owner's file at `database/schema.sql` in its container and every config points
-at `database/schema.sql`; a service applies only its own schema, never the
-schema of another service.
+its own project — `services/<name>/database/schema.sql`, or
+`packages/<owner>/database/schema.sql` while the owner is still a package
+(`identity` and `memory` are the two left, and they move in Phase 3c and
+Phase 4 step 7). Never introduce `<domain>-schema.sql` aliases. The deploy
+stack bind-mounts each owner's file at `database/schema.sql` in its container
+and every config points at `database/schema.sql`; a unit applies only its own
+schema, never the schema of another. The gateway is the one owner that is not
+at that path: it mounts its own file at `/opt/argus/gateway/schema.sql` and
+its config says `gateway/schema.sql`, which is also the only place a second
+schema appears — the identity one it hosts, at `database/schema.sql`. Seven
+units carry one today:
+`camera`, `gateway`, `guard`, `notification` and `productivity` (the gateway's
+own 32-line file is its `gateway.db` degraded-fallback record — it holds no
+table of another domain and says so — and it additionally applies the identity
+schema it hosts; both go with the gateway in Phase 3d), plus
+`packages/identity` and `packages/memory`.
 
 ### 27. Database isolation between microservices
 
 A service may only open its own database. Accessing another domain's data is
 forbidden at the file/SQL level, even read-only. Cross-domain reads travel
 ONLY through the typed gRPC contracts and their SDK clients
-(`packages/clients/<domain>/src`, linked as `argus::client-<domain>`); change
-feeds travel through NATS events. No compose mount may expose one service's
-DB volume to another. If a domain needs data it does not own, add an SDK
-method on the owner and call it through the client; never reach into its DB
-file. The SDK/client is the whole point of the boundary.
+(`packages/clients/<domain>/src`, linked as `argus::client-<domain>` today —
+`argus::<name>-client` for the four wire clients, rule 25 — and
+`argus::clients::<domain>` after Phase 2); change feeds travel
+through NATS events. No compose mount may expose one unit's database to
+another. If a domain needs data it does not own, add an SDK method on the
+owner and call it through the client; never reach into its DB file. The
+SDK/client is the whole point of the boundary.
 
 ## Build Commands
 
@@ -681,53 +851,94 @@ Run the full orchestrator when changing shared build infrastructure.
 
 ## Key Files Reference
 
+Paths are today's spellings; the target group of each unit is the section head
+(rules 23 and 25). Phase 2 prepends `lib/`, `contracts/` and `clients/`, drops
+the `-contract`/`-client` suffixes, and then applies §2.3's interior to each
+package (`src/<name>/` in place of today's `src/shared/...`), so a path below
+can move for two different reasons and says which when it does.
+
+**Any owner**
+
 | File | Purpose |
 |------|---------|
-| `packages/contracts/{auth,camera,productivity,sync}-contract/` | The enums every CHECK-constrained column uses, each with its own lowerCamelCase `<enum>ToString`/`<enum>FromString` pair (`packages/contracts/camera-contract/zone-type.hxx`) |
 | `<owner>/src/shared/schemas/*/` | DB row → C++ struct mapping |
-| `<owner>/src/shared/repositories/*/` | Data access layer |
-| `packages/contracts/sync-contract/src/shared/contracts/` | `Syncable`, `SyncFilter` base classes + `sync-operation.hxx` |
-| `packages/auth/src/shared/access/role-access.hxx` | Centralized role → table → permission table (`role_access`), used by `RoleFilter` and sync |
+| `<owner>/src/shared/repositories/*/` | Data access layer — `shared/` when 2+ features of the owner read it, the feature's own `repositories/` otherwise (rule 23) |
+
+**Tier 1 — `lib/` (today `packages/<name>/`)**
+
+| File | Purpose |
+|------|---------|
 | `packages/validation/src/shared/validation/` | Validation DSL (rules, macros, validator) |
+| `packages/errors/src/errors/` | `ErrorCode`, `ErrorDefinition`, `ResponseException` — the refusals every boundary throws |
+| `packages/http/src/http/` | The `{status, info, errors}` envelope (`ApiResponse`), the one advice (`ErrorHandler`), CORS, health, listener |
+| `packages/audio/src/shared/wrapper/audio/` | `AudioResampler` (stateful sinc) + `EndpointDetector` — every block-processed audio path MUST use these, never a custom conversion |
+| `packages/phrase/src/shared/vocabulary/` | Static per-language memory vocabulary (es/en): `PhraseSeed`/`LexiconSeed` constants — no DB tables |
+| `packages/phrase/src/shared/services/memory/` | `RuleParser` + `PhraseCatalog` — the vocabulary's parser and catalog, read by `packages/memory`, `packages/intent`, `services/llm` and `services/voice` |
+| `packages/sqlite/src/shared/services/sqlite/` | DB client access (`DbService::client()`, extensions) + `VecDb` (vec0 connection) |
+| `packages/storage/src/shared/services/storage/` | `S3StorageService` (RustFS S3, SigV4 in `s3-signing.hxx`) — private objects, read back through a one-use capability |
+| `packages/config/src/shared/services/config-service/` | `ConfigService` read + runtime writes (`setBool/...` persist to `config.toml`, comments preserved) |
+| `packages/runtime/src/shared/wrapper/cancellation/` | `CancellationToken` shared across streaming AI/audio paths |
+| `packages/runtime/src/shared/wrapper/blocking-task/` | Coroutine awaiter for off-loop heavy work |
+| `packages/runtime/src/shared/wrapper/thread-budget/` | Adaptive thread sizing for AI services |
+| `packages/runtime/src/shared/wrapper/hardware-profile/` | CPU/RAM/ISA and video-accel probe (`HardwareProfile`), ncnn-free and ncnn variants |
+| `packages/text/src/shared/utils/json-diff/` | Diff JSON + snapshot (`JsonDiff`) |
+| `packages/text/src/shared/utils/json-util/` | `json_util::toString` (compact, `{}` for null), `isValid` (empty is not valid) and `fromString` |
+
+**Tier 2 — `contracts/` (today `packages/contracts/<domain>-contract/`)**
+
+| File | Purpose |
+|------|---------|
+| `packages/contracts/{auth,camera,productivity,sync}-contract/` | Each domain's wire enums, each with its own lowerCamelCase `<enum>ToString`/`<enum>FromString` pair (`packages/contracts/camera-contract/zone-type.hxx`). The enums that mirror a `CHECK` constraint are not all here — `notification-contract` and `packages/identity/src/shared/vocabulary/` each carry their own |
+| `packages/contracts/sync-contract/src/shared/contracts/` | `Syncable`, `SyncFilter` base classes + `sync-operation.hxx` |
+
+**Tier 3 — `clients/` (today `packages/clients/<domain>/`)**
+
+| File | Purpose |
+|------|---------|
+| `packages/clients/<domain>/src/<domain>/` (today the four wire clients hold `src/shared/` and `camera-actions` holds `src/camera/`) | The SDK for one service: the only place its stub, URL, envelope parse, retry and auth pass-through exist (`camera`, `identity`, `notification`, `productivity`, `voice`, `camera-actions` + the `llm`/`stt`/`tts`/`vlm` wire clients). Callers link `argus::client-<domain>`, or `argus::<name>-client` for those four (rule 25, rule 27) |
+
+**Tier 4 — `lib/auth` (today `packages/auth/`)**
+
+| File | Purpose |
+|------|---------|
+| `packages/auth/src/shared/access/role-access.hxx` | Centralized role → table → permission table (`role_access`), used by `RoleFilter` and sync |
 | `packages/auth/src/filter/device/` | Device fingerprint extraction |
 | `packages/auth/src/filter/jwt/` | JWT verification + refresh token validation |
 | `packages/auth/src/filter/role/` | Role-based access control |
 | `packages/auth/src/filter/valid-json/` | JSON body validation for POST/PATCH |
-| `packages/errors/src/errors/` | `ErrorCode`, `ErrorDefinition`, `ResponseException` — the refusals every boundary throws |
-| `packages/http/src/http/` | The `{status, info, errors}` envelope (`ApiResponse`), the one advice (`ErrorHandler`), CORS, health, listener |
 | `packages/auth/src/shared/services/jwt/` | JWT sign/verify (HS256, instance class) |
-| `packages/identity/src/shared/services/face/` | Face detection + recognition (ncnn) — FaceDB = vec0 index (sqlite-vec) |
+
+**Tier 5 — services, and the packages that are on their way to one**
+
+| File | Purpose |
+|------|---------|
 | `services/llm/src/shared/services/llm/` | LLM inference (llama.cpp) |
-| `packages/memory/src/shared/services/embedding/` | `EmbeddingService` (multilingual-e5-small int8 ONNX) + `UnigramTokenizer` |
-| `packages/memory/src/shared/services/memory/` | `MemoryService`/`SemanticGraph`(`SqliteGraph`)/`GraphRecall`/`MemoryFormation`/`RuleParser`/`PhraseCatalog`/`EntityResolver`/`ToolParser` — semantic-graph long-term memory (async worker, episode recall, L3 profile); a package hosted by argus-llm |
-| `packages/phrase/src/shared/vocabulary/` | Static per-language memory vocabulary (es/en): `PhraseSeed`/`LexiconSeed` constants — no DB tables |
-| `packages/sqlite/src/shared/services/sqlite/` | DB client access (`DbService::client()`, extensions) + `VecDb` (vec0 connection) |
+| `packages/memory/src/shared/services/embedding/` | `EmbeddingService` (multilingual-e5-small int8 ONNX) + `UnigramTokenizer`; becomes a feature of `services/llm` (Phase 4 step 7) |
+| `packages/memory/src/shared/services/memory/` | `MemoryService`/`SemanticGraph`(`SqliteGraph`)/`GraphRecall`/`MemoryFormation`/`EntityResolver`/`ToolParser`/`MemoryChat` — semantic-graph long-term memory (async worker, episode recall, L3 profile); a package hosted by argus-llm, and a feature of it after Phase 4 step 7 |
+| `packages/identity/src/shared/services/face/` | Face detection + recognition (ncnn) — FaceDB = vec0 index (sqlite-vec); becomes `services/identity` (Phase 3c) |
+| `packages/identity/src/shared/services/storage/` | `PrivatePortraitService` — a user's private portrait bytes (`store`/`has`/`read` by `userId`), served onward by the `user` feature's portrait-preview capability; same move |
+| `packages/identity/src/shared/repositories/{user-invitation,portrait-*,device-login-challenge}/` | People domain: invitations (hash-only), portrait capabilities, cross-device login challenges; same move |
 | `services/vlm/src/shared/services/vision/` | VLM inference: LFM2.5-VL-450M via llama.cpp + libmtmd (arbitrary prompts, caption cache) |
-| `services/voice/src/shared/services/vad/` | `VadService` — Silero VAD v5 as an **instance** class (per-stream LSTM, shared ONNX session), with the turn-quality gate |
-| `services/camera/src/shared/services/stream/` | go2rtc manager, `StreamHub` (fMP4 over `/sync`, per-connection credit window, lock order `hubMutex_ → Upstream::mtx`), `Fmp4Reader` (encoding from headers, whole fragments) |
-| `packages/audio/src/shared/wrapper/audio/` | `AudioResampler` (stateful sinc) + `EndpointDetector` — every block-processed audio path MUST use these, never a custom conversion |
-| `services/voice/src/shared/wrapper/audio/` | `SampleRing` — the fixed-capacity float ring the voice paths carry samples in across calls |
 | `services/stt/src/shared/services/stt/` | Speech-to-text via sherpa-onnx (default `nemo_transducer` FastConformer RNN-T, es/en; whisper/canary/nemo_ctc/omnilingual selectable) |
-| `services/tts/src/feature/synthesis/` | `TtsService` (`domain/`) + the Supertonic engine set (`infra/supertonic/`: `TtsEngine`, `Style`, `UnicodeProcessor`, onnx loading) — Supertonic 3 text-to-speech |
-| `services/camera/src/shared/services/tapo/` | Tapo camera local protocols: control (`stok` + `securePassthrough`, legacy fallback) and the 8800 talk channel (Digest + MPEG-TS PCMA) |
-| `packages/storage/src/shared/services/storage/` | `S3StorageService` (RustFS S3, SigV4 in `s3-signing.hxx`) + `PrivatePortraitService` (private objects, read via one-use capability) |
+| `services/tts/src/feature/synthesis/` | `TtsService` (`domain/` → `services/` in Phase 4 step 1) + the Supertonic engine set (`infra/supertonic/`: `TtsEngine`, `Style`, `UnicodeProcessor`, onnx loading) — Supertonic 3 text-to-speech |
+| `services/voice/src/shared/services/vad/` | `VadService` — Silero VAD v5 as an **instance** class (per-stream LSTM, shared ONNX session), with the turn-quality gate |
+| `services/voice/src/shared/wrapper/audio/` | `SampleRing` — the fixed-capacity float ring the voice paths carry samples in across calls |
 | `services/voice/src/shared/services/reaction/` | `ReactionEngine` — per-turn reactions by signal priority → `voice:event` (meaning, never expression names) |
-| `packages/identity/src/shared/repositories/{user-invitation,portrait-*,device-login-challenge}/` | People domain: invitations (hash-only), portrait capabilities, cross-device login challenges |
-| `packages/runtime/src/shared/wrapper/cancellation/` | `CancellationToken` shared across streaming AI/audio paths |
-| `packages/config/src/shared/services/config-service/` | `ConfigService` read + runtime writes (`setBool/...` persist to `config.toml`, comments preserved) |
-| `packages/room/src/shared/services/room/` | local `RoomManager` (rooms per module/user, `thread_local`) |
-| `packages/socket/src/shared/services/socket/` | `SocketService` (emitModule/emitUser) + `SocketEmitDto` |
+| `services/camera/src/shared/services/stream/` | go2rtc manager, `StreamHub` (fMP4 over `/sync`, per-connection credit window, lock order `hubMutex_ → Upstream::mtx`), `Fmp4Reader` (encoding from headers, whole fragments) |
+| `services/camera/src/shared/services/tapo/` | Tapo camera local protocols: control (`stok` + `securePassthrough`, legacy fallback) and the 8800 talk channel (Digest + MPEG-TS PCMA) |
+| `services/notification/src/shared/services/notification-token/` | Push tokens per session |
+| `packages/sync/src/feature/socket/sync/` | `SyncSocket` + `SyncService` + `SynchronizedService` + DTOs; becomes `services/sync` (Phase 3a) |
+| `packages/sync/src/shared/services/notification/` | Per-user notifications: `Add` on create and granular user-audit on mark-as-read; same move |
+| `packages/socket/src/shared/services/socket/` | `SocketService` (emitModule/emitUser) + `SocketEmitDto`; dies in Phase 3a — its vocabulary goes to `contracts/sync` and its transport to `services/sync` |
+| `packages/room/src/shared/services/room/` | local `RoomManager` (rooms per module/user, `thread_local`); dies with `socket` in Phase 3a |
 | `packages/audit/src/shared/services/audit-log/` | Global audit: per-field diffs, daily compaction and monotonic id for sync |
 | `packages/audit/src/shared/services/user-audit-log/` | Per-recipient audit: per-field diffs, daily compaction and monotonic id for sync |
-| `packages/audit/src/shared/services/sync-audit/` | Central facade to publish module/user diffs after feature mutations |
-| `packages/sync/src/shared/services/notification/` | Per-user notifications: `Add` on create and granular user-audit on mark-as-read |
-| `services/notification/src/shared/services/notification-token/` | Push tokens per session |
-| `packages/text/src/shared/utils/json-diff/` | Diff JSON + snapshot (`JsonDiff`) |
-| `packages/text/src/shared/utils/json-util/` | `jsonToString`/`jsonFromString` |
-| `packages/sync/src/feature/socket/sync/` | `SyncSocket` + `SyncService` + `SynchronizedService` + DTOs |
-| `packages/runtime/src/shared/wrapper/blocking-task/` | Coroutine awaiter for off-loop heavy work |
-| `packages/runtime/src/shared/wrapper/thread-budget/` | Adaptive thread sizing for AI services |
-| `packages/runtime/src/shared/wrapper/hardware-profile/` | CPU/RAM/ISA and video-accel probe (`HardwareProfile`), ncnn-free and ncnn variants |
+| `packages/audit/src/shared/services/sync-audit/` | Central facade to publish module/user diffs after feature mutations. All three become `services/sync`, which owns the three tables and is the only writer (Phase 3a) |
+
+**Docs and templates**
+
+| File | Purpose |
+|------|---------|
 | `docs/README.md` | Documentation index and reading order |
 | `docs/history/project-log.md` | Full project history and decisions |
 | `<project>/config.toml.example` | Per-project template; `setup.sh` generates the gitignored `config.toml` |
