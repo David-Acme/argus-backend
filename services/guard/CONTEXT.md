@@ -73,6 +73,28 @@ result so a replayed `sent` intent reconstructs the listen transcript and
 `speechDetected` without touching the camera. The incident phase (incident,
 one-time guest consumption, checkpoint) commits in one SQLite transaction.
 
+The closed-encounter feed is a durable outbox on its own stream. The row is
+enqueued inside the encounter-close transaction and published by
+`flushEncounterOutbox`, which drains up to 100 pending rows in one bounded
+statement and marks a row `sent` only after the JetStream PubAck — so a row the
+broker stored but the database could not mark is republished under the same
+event id, which the stream's duplicate window and the consumer's idempotent keys
+absorb. The mark is an assertion rather than a repair: nothing deletes an outbox
+row, so `markEncounterSent` can only fail for a row that is not there, and a
+write error arrives as a thrown exception, which both call sites catch so the
+rows left in the pass stay pending. Guard owns `ARGUS_GUARD`
+(`argus.guard.v1.>`, 7-day retention, 2-minute duplicate window) so a closed
+encounter survives a restart for a durable consumer, and the drain re-runs that
+ensure on the pass after a refused publish, which is what lets the feed heal a
+stream deleted broker-side instead of latching at boot. A stream that exists but
+declares other subjects is refused by the reconcile on purpose, so it stays
+broken until an operator reconciles it. Guard's drain has no worker and no
+progress cadence — it runs from the close path and the encounter sweep — so its
+own refusal line counts the rows of that pass, on top of the one `NatsBus` emits
+per refused publish, and unlike the sibling sinks it never breaks the pass: a
+missing stream costs every pending row at once rather than stalling the ones
+behind a head row.
+
 ## Action safety
 
 `arm_siren` defaults to false. Siren arming is a camera-side lease
@@ -232,9 +254,17 @@ The `*-live-test` suites skip silently without their variables; a default
 run passing means nothing about the wire:
 
 - `ARGUS_NATS_URL` (e.g. `nats://127.0.0.1:4222`) arms
-  `guard-dlq-live-test` and `guard-dlq-service-live-test` against isolated
-  streams, subjects, durable names and temporary databases. Never point them
-  at deployment streams.
+  `guard-dlq-live-test`, `guard-dlq-service-live-test` and
+  `guard-encounter-drain-live-test` against temporary databases and, for the
+  path each one drives, an isolated stream, subject and durable name;
+  `guard-dlq-service-live-test` still ensures the production `ARGUS_GUARD` on
+  start, as it always has. Never point them at deployment streams. The drain
+  suite names its stream and its subject family after the process and its start,
+  because a stream whose subjects another stream already claims is refused
+  rather than created — the production family, which a broker that has run guard
+  already carries, could not show that the drain creates its own stream. The
+  stream it creates is never reclaimed: `maxAge` bounds the messages, not the
+  stream, and `NatsBus` has no stream-delete, so each run leaves one behind.
 - `ARGUS_VLM_TEST_URL` plus `ARGUS_VLM_TEST_IMAGE` arm
   `vlm-client-live-test` and `guard-assessment-live-test` against a real VLM
   listener and a real image file.

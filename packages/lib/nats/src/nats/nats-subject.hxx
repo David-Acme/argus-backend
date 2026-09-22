@@ -47,6 +47,9 @@ inline constexpr const char* kGuardEncounterClosed =
 // Guard-owned JetStream stream for argus.guard.v1.* domain events.
 inline constexpr const char* kGuardStream = "ARGUS_GUARD";
 
+// Subject family that stream declares; the encounter summary lives inside it.
+inline constexpr const char* kGuardSubjectFilter = "argus.guard.v1.>";
+
 // Durable per-recipient notification delivery; the notification service owns
 // the ARGUS_NOTIFICATION stream and the gateway consumes it durably.
 inline constexpr const char* kNotificationDeliveryStream = "ARGUS_NOTIFICATION";

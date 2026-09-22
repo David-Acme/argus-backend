@@ -398,16 +398,22 @@ drogon::Task<void> GuardService::reconcileObservations()
   co_return;
 }
 
-bool GuardService::trySubscribe()
+bool GuardService::ensureGuardStream() const
 {
   constexpr int64_t kGuardStreamRetentionNs = 7LL * 24 * 60 * 60 * 1000000000;
   constexpr int64_t kGuardStreamDuplicatesNs = 2LL * 60 * 1000000000;
-  // Owned here so encounter_closed survives restarts for a durable consumer.
-  if (!dependencies_.bus->ensureStream(
-          {.name = config_.guardStream,
-           .subjects = {"argus.guard.v1.>"},
-           .maxAgeNs = kGuardStreamRetentionNs,
-           .duplicatesNs = kGuardStreamDuplicatesNs}))
+  return dependencies_.bus->ensureStream(
+      {.name = config_.guardStream,
+       .subjects = {config_.guardSubjectFilter.empty()
+                        ? std::string(nats_subject::kGuardSubjectFilter)
+                        : config_.guardSubjectFilter},
+       .maxAgeNs = kGuardStreamRetentionNs,
+       .duplicatesNs = kGuardStreamDuplicatesNs});
+}
+
+bool GuardService::trySubscribe()
+{
+  if (!ensureGuardStream())
     return false;
   const auto subscription = dependencies_.bus->subscribeDurable(
       {.stream = config_.eventStream,
@@ -975,18 +981,31 @@ drogon::Task<void> GuardService::flushEncounterOutbox()
 {
   if (!dependencies_.bus)
     co_return;
+  if (!encounterStreamReady_.load(std::memory_order_acquire))
+    encounterStreamReady_.store(ensureGuardStream(), std::memory_order_release);
+  const std::string subject = config_.guardEncounterSubject.empty()
+                                  ? std::string(nats_subject::kGuardEncounterClosed)
+                                  : config_.guardEncounterSubject;
   const auto pending = co_await repository_.pendingEncounterClosed();
   const int64_t now = static_cast<int64_t>(std::time(nullptr));
+  int refused = 0;
   for (const auto& row : pending) {
     const bool published = dependencies_.bus->publishWithMsgId(
-        {.subject = nats_subject::kGuardEncounterClosed,
-         .payload = row.payload,
-         .msgId = row.eventId});
-    if (published)
-      co_await repository_.markEncounterSent(row.eventId, now);
-    else
+        {.subject = subject, .payload = row.payload, .msgId = row.eventId});
+    if (!published) {
+      encounterStreamReady_.store(false, std::memory_order_relaxed);
       co_await repository_.recordEncounterAttempt(row.eventId, now);
+      ++refused;
+      continue;
+    }
+    if (!co_await repository_.markEncounterSent(row.eventId, now))
+      LOG_WARN << "Guard encounter outbox: " << row.eventId
+               << " was stored but could not be marked sent; it stays pending";
   }
+  if (refused > 0)
+    LOG_WARN << "Guard encounter outbox: " << refused
+             << " closed encounter(s) could not be published; they stay "
+                "pending for the next pass";
   co_return;
 }
 

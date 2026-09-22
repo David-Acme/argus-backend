@@ -6,6 +6,7 @@
 #include "guard-policy.hxx"
 #include "guard-repository.hxx"
 
+#include <atomic>
 #include <cstdint>
 #include <deque>
 #include <drogon/utils/coroutine.h>
@@ -14,6 +15,7 @@
 #include <map>
 #include <memory>
 #include <mutex>
+#include <nats/nats-subject.hxx>
 #include <optional>
 #include <storage/s3-storage-service.hxx>
 #include <string>
@@ -92,7 +94,10 @@ public:
     std::string eventStream{"ARGUS_CAMERA"};
     std::string eventSubject;
     // Guard-owned JetStream stream for argus.guard.v1.* domain events.
-    std::string guardStream{"ARGUS_GUARD"};
+    std::string guardStream{nats_subject::kGuardStream};
+    // Stream subject family and the encounter subject; empty keeps production.
+    std::string guardSubjectFilter;
+    std::string guardEncounterSubject;
     // Belief-gate mode: "shadow" journals only, "enforce" can suppress.
     std::string decisionMode{"shadow"};
     // Effect kinds the belief gate may suppress in enforce mode.
@@ -133,6 +138,10 @@ public:
   // Sustained-tamper sweep step, driven by the encounter sweep timer.
   drogon::Task<void> checkTamperSweep(int64_t now);
 
+  // Encounter outbox drain step; driven by the close path, the encounter sweep
+  // and the live suite.
+  drogon::Task<void> flushEncounterOutbox();
+
 private:
   struct QueueEntry
   {
@@ -145,6 +154,10 @@ private:
   };
 
   bool trySubscribe();
+
+  // Creates the guard-owned stream when missing and reconciles it when present;
+  // false when the broker refused it.
+  [[nodiscard]] bool ensureGuardStream() const;
 
   void scheduleSubscribeRetry();
 
@@ -432,8 +445,6 @@ private:
 
   void publishEncounterClosed(const GuardEncounter& encounter, int64_t at);
 
-  drogon::Task<void> flushEncounterOutbox();
-
   void publishHeartbeat();
 
   // Shared destruction quorum: every loop callback holds one, the destructor
@@ -459,6 +470,7 @@ private:
   std::unordered_set<std::string> executing_;
 
   bool subscribed_{false};
+  std::atomic<bool> encounterStreamReady_{false};
   bool advisoriesSubscribed_{false};
   bool healthSubscribed_{false};
   bool sweepsStarted_{false};
