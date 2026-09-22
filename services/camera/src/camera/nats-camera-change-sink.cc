@@ -3,6 +3,7 @@
 #include <chrono>
 #include <exception>
 #include <shared/repositories/change-outbox/change-outbox-key.hxx>
+#include <shared/services/event-stream/event-stream.hxx>
 #include <sync/module-audit-event.hxx>
 #include <text/json-diff.hxx>
 #include <text/json-util.hxx>
@@ -24,6 +25,8 @@ int64_t nowMs()
 constexpr int64_t kStuckLogEvery = 100;
 constexpr int kEnqueueAttempts = 3;
 constexpr int kEnqueueRetryMs = 25;
+constexpr int kDrainBatch = 64;
+constexpr int kProgressMs = 50;
 } // namespace
 
 NatsCameraChangeSink::NatsCameraChangeSink(std::shared_ptr<NatsBus> bus,
@@ -125,25 +128,37 @@ void NatsCameraChangeSink::reconcile()
     worker_ = std::thread([this]() { flushLoop(); });
 }
 
-bool NatsCameraChangeSink::flushOnce()
+bool NatsCameraChangeSink::ensureStream() const
 {
-  const auto row = outbox_.nextPending();
-  if (!row)
-    return false;
+  return camera_event_stream::ensure(
+      bus_, {.streamName = config_.streamName,
+             .changeSubject = config_.publishSubject,
+             .objectSubject = {}});
+}
+
+bool NatsCameraChangeSink::flush(const ChangeOutboxRow& row)
+{
   if (!bus_ || !bus_->isConnected())
     return false;
+  if (!streamReady_.load(std::memory_order_acquire))
+    streamReady_.store(ensureStream(), std::memory_order_release);
 
   if (bus_->publishWithMsgId(
-          {.subject = subject_, .payload = row->payload, .msgId = row->eventId})) {
-    static_cast<void>(outbox_.markSent(row->eventId, nowMs()));
+          {.subject = subject_, .payload = row.payload, .msgId = row.eventId})) {
+    if (!outbox_.markSent(row.eventId, nowMs())) {
+      LOG_WARN << "Camera change outbox: " << row.eventId
+               << " was stored but could not be marked sent; it stays pending";
+      return false;
+    }
     return true;
   }
-  static_cast<void>(outbox_.recordAttempt(row->eventId));
-  const int64_t attempts = row->attempts + 1;
+  streamReady_.store(false, std::memory_order_relaxed);
+  static_cast<void>(outbox_.recordAttempt(row.eventId));
+  const int64_t attempts = row.attempts + 1;
   // The first refusal is the operator's only early signal that the whole feed
   // has stopped moving; after that the log follows the retry cadence.
   if (attempts <= 1 || attempts % kStuckLogEvery == 0)
-    LOG_WARN << "Camera change outbox: " << row->eventId
+    LOG_WARN << "Camera change outbox: " << row.eventId
              << " is still unpublished after " << attempts
              << " attempts; every later change waits behind it";
   return false;
@@ -154,7 +169,11 @@ void NatsCameraChangeSink::flushLoop()
   while (!stopping_.load(std::memory_order_acquire)) {
     bool progressed = false;
     try {
-      progressed = flushOnce();
+      for (const auto& row : outbox_.pendingBatch(kDrainBatch)) {
+        if (stopping_.load(std::memory_order_acquire) || !flush(row))
+          break;
+        progressed = true;
+      }
     }
     catch (const std::exception& e) {
       LOG_WARN << "Camera change outbox: flush failed (" << e.what()
@@ -162,6 +181,7 @@ void NatsCameraChangeSink::flushLoop()
     }
     std::unique_lock lock(wakeMutex_);
     wake_.wait_for(lock,
-                   std::chrono::milliseconds(progressed ? 50 : config_.retryMs));
+                   std::chrono::milliseconds(progressed ? kProgressMs
+                                                        : config_.retryMs));
   }
 }

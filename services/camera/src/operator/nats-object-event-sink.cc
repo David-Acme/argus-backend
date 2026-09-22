@@ -1,5 +1,6 @@
 #include <operator/nats-object-event-sink.hxx>
 
+#include <shared/services/event-stream/event-stream.hxx>
 #include <text/json-util.hxx>
 #include <nats/nats-bus.hxx>
 #include <nats/nats-subject.hxx>
@@ -9,10 +10,6 @@
 #include <iomanip>
 #include <random>
 #include <sstream>
-
-// 7 days of server-side retention, in nanoseconds.
-constexpr int64_t kJetStreamRetentionNs = 7LL * 24 * 60 * 60 * 1000000000;
-constexpr int64_t kJetStreamDuplicatesNs = 2LL * 60 * 1000000000;
 
 namespace
 {
@@ -138,7 +135,11 @@ Json::Value NatsObjectEventSink::health() const
 bool NatsObjectEventSink::flushOnce()
 {
   if (!streamReady_.load(std::memory_order_acquire) && bus_->isConnected())
-    streamReady_.store(ensureStream(bus_, config_), std::memory_order_release);
+    streamReady_.store(camera_event_stream::ensure(
+                           bus_, {.streamName = config_.streamName,
+                                  .changeSubject = {},
+                                  .objectSubject = config_.publishSubject}),
+                       std::memory_order_release);
 
   const auto row = outbox_.nextPending();
   if (!row)
@@ -153,13 +154,17 @@ bool NatsObjectEventSink::flushOnce()
   if (bus_->publishWithMsgId({.subject = subject,
                               .payload = row->payload,
                               .msgId = row->eventId})) {
-    if (outbox_.markSent(row->eventId, nowMs())) {
-      if (syncHook)
-        syncHook("flush_post_mark_sent");
-      refreshCounters();
+    if (!outbox_.markSent(row->eventId, nowMs())) {
+      LOG_WARN << "Camera object outbox: " << row->eventId
+               << " was stored but could not be marked sent; it stays pending";
+      return false;
     }
+    if (syncHook)
+      syncHook("flush_post_mark_sent");
+    refreshCounters();
     return true;
   }
+  streamReady_.store(false, std::memory_order_relaxed);
   outbox_.recordAttempt(row->eventId);
   return false;
 }
@@ -181,30 +186,3 @@ void NatsObjectEventSink::flushLoop()
   }
 }
 
-bool NatsObjectEventSink::ensureStream(const std::shared_ptr<NatsBus>& bus,
-                                       const Config& config)
-{
-  if (!bus)
-    return false;
-  const std::string subject =
-      config.publishSubject.empty()
-          ? std::string(nats_subject::kCameraObjectDetected)
-          : config.publishSubject;
-  const std::string stream =
-      config.streamName.empty() ? std::string("ARGUS_CAMERA")
-                                : config.streamName;
-  std::vector<std::string> subjects;
-  if (config.streamName.empty() && config.publishSubject.empty())
-    subjects = {"argus.camera.v1.change", subject};
-  else
-    subjects = {subject};
-  if (bus->ensureStream({.name = stream,
-                         .subjects = subjects,
-                         .maxAgeNs = kJetStreamRetentionNs,
-                         .duplicatesNs = kJetStreamDuplicatesNs})) {
-    LOG_INFO << "Camera JetStream: stream " << stream
-             << " ready (7d retention)";
-    return true;
-  }
-  return false;
-}

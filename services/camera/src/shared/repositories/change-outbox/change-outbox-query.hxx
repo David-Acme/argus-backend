@@ -13,9 +13,9 @@ inline constexpr const char* INSERT_EVENT =
 inline constexpr const char* FIND_FINGERPRINT =
     "SELECT fingerprint FROM change_outbox WHERE event_id = ?";
 
-inline constexpr const char* NEXT_PENDING =
+inline constexpr const char* PENDING_BATCH =
     "SELECT event_id, payload, attempts FROM change_outbox "
-    "WHERE status = ? ORDER BY created_at ASC, rowid ASC LIMIT 1";
+    "WHERE status = ? ORDER BY created_at ASC, rowid ASC LIMIT ?";
 
 inline constexpr const char* MARK_SENT =
     "UPDATE change_outbox SET status = ?, sent_at = ?, attempts = attempts + 1 "

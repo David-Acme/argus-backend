@@ -48,10 +48,6 @@ public:
   // the schema is applied.
   void reconcile();
 
-  // Creates the JetStream stream when missing; true on success.
-  static bool ensureStream(const std::shared_ptr<NatsBus>& bus,
-                           const Config& config);
-
   // Test-only interleaving hook; empty in production.
   std::function<void(const std::string&)> syncHook;
 

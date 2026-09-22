@@ -15,10 +15,10 @@
 #include <cstdlib>
 #include <memory>
 #include <mutex>
-#include <optional>
 #include <string>
 #include <thread>
 #include <unistd.h>
+#include <vector>
 
 namespace
 {
@@ -69,11 +69,17 @@ bool waitForBoot(std::chrono::milliseconds timeout)
   return drogon::app().isRunning();
 }
 
-// The pending row, reported as a failed assertion when the outbox holds none.
-ChangeOutboxRow pendingRow(const std::optional<ChangeOutboxRow>& row)
+// The head pending row, reported as a failed assertion when the outbox holds none.
+ChangeOutboxRow pendingRow(const std::vector<ChangeOutboxRow>& rows)
 {
-  REQUIRE(row.has_value());
-  return row.value_or(ChangeOutboxRow{});
+  REQUIRE(!rows.empty());
+  return rows.empty() ? ChangeOutboxRow{} : rows.front();
+}
+
+// Whether the outbox holds anything, for the polls that watch a backlog drain.
+bool hasPending(const ChangeOutboxRepository& outbox)
+{
+  return !outbox.pendingBatch(1).empty();
 }
 
 SocketEmitDto addCamera(int64_t id, const std::string& name)
@@ -108,10 +114,11 @@ TEST_CASE("the change sink lands every transition in the durable outbox")
   {
     NatsCameraChangeSink sink(
         nullptr, NatsCameraChangeSink::Config{.retryMs = 20,
-                                              .publishSubject = {}});
+                                              .publishSubject = {},
+                                              .streamName = {}});
     drogon::sync_wait(sink.emitModule(TableName::Camera, add));
 
-    const ChangeOutboxRow created = pendingRow(outbox.nextPending());
+    const ChangeOutboxRow created = pendingRow(outbox.pendingBatch(1));
     CHECK(created.eventId ==
           change_outbox_key::eventId(
               {.table = "camera",
@@ -124,7 +131,7 @@ TEST_CASE("the change sink lands every transition in the durable outbox")
     // A replayed transition writes nothing, and so does an unchanged row.
     CHECK(outbox.markSent(created.eventId, 1000));
     drogon::sync_wait(sink.emitModule(TableName::Camera, add));
-    CHECK_FALSE(outbox.nextPending().has_value());
+    CHECK_FALSE(hasPending(outbox));
 
     ModuleAuditInput audit;
     audit.recordId = 7;
@@ -135,7 +142,7 @@ TEST_CASE("the change sink lands every transition in the durable outbox")
     audit.after["name"] = "porch";
     drogon::sync_wait(sink.publishAudit(audit));
 
-    const ChangeOutboxRow audited = pendingRow(outbox.nextPending());
+    const ChangeOutboxRow audited = pendingRow(outbox.pendingBatch(1));
     // The id is the payload's own name, so a second audit of the same
     // before/after is a second event unless its timestamp matches as well.
     CHECK(audited.eventId.rfind("camera-change:", 0) == 0);
@@ -152,12 +159,12 @@ TEST_CASE("the change sink lands every transition in the durable outbox")
     bool repeated = false;
     for (int attempt = 0; attempt < 50 && !repeated; ++attempt) {
       drogon::sync_wait(sink.publishAudit(audit));
-      repeated = outbox.nextPending().has_value();
+      repeated = hasPending(outbox);
       if (!repeated)
         std::this_thread::sleep_for(std::chrono::milliseconds(2));
     }
     REQUIRE(repeated);
-    const ChangeOutboxRow cycled = pendingRow(outbox.nextPending());
+    const ChangeOutboxRow cycled = pendingRow(outbox.pendingBatch(1));
     CHECK(cycled.eventId != audited.eventId);
     CHECK(cycled.payload.find("porch") != std::string::npos);
     CHECK(outbox.markSent(cycled.eventId, 2500));
@@ -168,7 +175,7 @@ TEST_CASE("the change sink lands every transition in the durable outbox")
     unchanged.before["id"] = 7;
     unchanged.after = unchanged.before;
     drogon::sync_wait(sink.publishAudit(unchanged));
-    CHECK_FALSE(outbox.nextPending().has_value());
+    CHECK_FALSE(hasPending(outbox));
 
     // A payload past the broker's budget is refused rather than written: one
     // such row would stop every change queued behind it for ever.
@@ -176,14 +183,15 @@ TEST_CASE("the change sink lands every transition in the durable outbox")
     oversized.obj["config"] =
         std::string(NatsCameraChangeSink::kMaxPayloadBytes + 1, 'x');
     drogon::sync_wait(sink.emitModule(TableName::Camera, oversized));
-    CHECK_FALSE(outbox.nextPending().has_value());
+    CHECK_FALSE(hasPending(outbox));
   }
 
   {
     // No bus at all: the row waits in the outbox rather than being lost.
     NatsCameraChangeSink sink(
         nullptr, NatsCameraChangeSink::Config{.retryMs = 20,
-                                              .publishSubject = {}});
+                                              .publishSubject = {},
+                                              .streamName = {}});
     sink.reconcile();
     SocketEmitDto removal;
     removal.operation = SyncOperation::Delete;
@@ -193,7 +201,7 @@ TEST_CASE("the change sink lands every transition in the durable outbox")
     drogon::sync_wait(sink.emitModule(TableName::Zone, removal));
     std::this_thread::sleep_for(std::chrono::milliseconds(150));
 
-    const ChangeOutboxRow waiting = pendingRow(outbox.nextPending());
+    const ChangeOutboxRow waiting = pendingRow(outbox.pendingBatch(1));
     CHECK(waiting.eventId ==
           change_outbox_key::eventId(
               {.table = "zone",
@@ -256,7 +264,8 @@ TEST_CASE("the change sink lands every transition in the durable outbox")
       NatsCameraChangeSink liveSink(
           liveBus,
           NatsCameraChangeSink::Config{.retryMs = 20,
-                                       .publishSubject = subject});
+                                       .publishSubject = subject,
+                                       .streamName = stream});
       liveSink.reconcile();
       drogon::sync_wait(liveSink.emitModule(TableName::Camera, live));
 
@@ -266,9 +275,9 @@ TEST_CASE("the change sink lands every transition in the durable outbox")
                     [&received, &expected]() { return received == expected; });
       }
       for (int attempt = 0;
-           attempt < 200 && outbox.nextPending().has_value(); ++attempt)
+           attempt < 200 && hasPending(outbox); ++attempt)
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
-      CHECK_FALSE(outbox.nextPending().has_value());
+      CHECK_FALSE(hasPending(outbox));
 
       std::string seen;
       {
@@ -278,13 +287,59 @@ TEST_CASE("the change sink lands every transition in the durable outbox")
       CHECK(seen == expected);
     }
 
+    // A backlog is one pass and not one tick per row: more changes than a
+    // single batch holds all settle, and they are written before the drain
+    // starts so that a drain fallen back to one row per pass cannot hide
+    // behind the wake each enqueue gives it -- 100 rows at a 50 ms tick is
+    // five seconds.
+    {
+      NatsCameraChangeSink bursts(
+          liveBus,
+          NatsCameraChangeSink::Config{.retryMs = 20,
+                                       .publishSubject = subject,
+                                       .streamName = stream});
+      const auto started = std::chrono::steady_clock::now();
+      for (int64_t recordId = 200; recordId < 300; ++recordId)
+        drogon::sync_wait(
+            bursts.emitModule(TableName::Camera, addCamera(recordId, "hall")));
+      bursts.reconcile();
+      for (int attempt = 0;
+           attempt < 200 && hasPending(outbox); ++attempt)
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+      CHECK_FALSE(hasPending(outbox));
+      CHECK(std::chrono::steady_clock::now() - started <
+            std::chrono::seconds(3));
+    }
+
+    // The sink declares the stream it publishes into: a subject no stream
+    // covers yet settles only because the sink reconciled one, which is the
+    // state a broker-side wipe leaves the feed in.
+    {
+      const std::string freshStream = "argus-test-heal-" + run;
+      const std::string freshSubject = "argus.test.heal.change." + run;
+      REQUIRE_FALSE(liveBus->streamInfo(freshStream).has_value());
+      NatsCameraChangeSink healing(
+          liveBus,
+          NatsCameraChangeSink::Config{.retryMs = 20,
+                                       .publishSubject = freshSubject,
+                                       .streamName = freshStream});
+      healing.reconcile();
+      drogon::sync_wait(
+          healing.emitModule(TableName::Camera, addCamera(300, "gate")));
+      for (int attempt = 0; attempt < 200 && hasPending(outbox); ++attempt)
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+      CHECK_FALSE(hasPending(outbox));
+      CHECK(liveBus->streamInfo(freshStream).has_value());
+    }
+
     // A publish that cannot succeed leaves its row pending with the attempt
     // counted, and the change queued behind it waits instead of overtaking it:
     // a wildcard is not a publishable subject, so the broker is never asked.
     NatsCameraChangeSink stranded(
         liveBus,
         NatsCameraChangeSink::Config{.retryMs = 20,
-                                     .publishSubject = "argus.test.change.*"});
+                                     .publishSubject = "argus.test.change.*",
+                                     .streamName = stream});
     stranded.reconcile();
     const SocketEmitDto attic = addCamera(100, "attic");
     const SocketEmitDto cellar = addCamera(101, "cellar");
@@ -294,11 +349,11 @@ TEST_CASE("the change sink lands every transition in the durable outbox")
     bool attempted = false;
     for (int attempt = 0; attempt < 100 && !attempted; ++attempt) {
       std::this_thread::sleep_for(std::chrono::milliseconds(20));
-      const auto stuck = outbox.nextPending();
-      attempted = stuck.has_value() && stuck->attempts > 0;
+      const auto stuck = outbox.pendingBatch(1);
+      attempted = !stuck.empty() && stuck.front().attempts > 0;
     }
     CHECK(attempted);
-    CHECK(pendingRow(outbox.nextPending()).eventId ==
+    CHECK(pendingRow(outbox.pendingBatch(1)).eventId ==
           change_outbox_key::eventId(
               {.table = "camera",
                .recordId = 100,

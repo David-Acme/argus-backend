@@ -235,9 +235,12 @@ preset, own `camera.db`.
   since a broker outage fails all rows equally but one poisoned row would
   cost real changes. The first refusal is logged, so an operator sees the
   feed stop instead of reading about it every 100 attempts.
-- The sink never ensures the stream: `ARGUS_CAMERA` and its subjects are
-  created and healed by the object-event sink, and `NatsBus::ensureStream`
-  refuses to repurpose a stream carrying different subjects.
+- Both sinks declare the stream: the change sink and the object-event sink each
+  ensure `ARGUS_CAMERA` through `shared/services/event-stream`, so a refused
+  publish re-arms from whichever feed refused. `NatsBus::ensureStream` refuses
+  to repurpose a stream carrying different subjects, so the default
+  configuration's subject pair has one declaration rather than two that could
+  disagree with each other.
 - A PubAck is storage, not delivery. The subject's only live consumer today
   is memory's catalog replica, snapshot-filled at boot by design; app
   convergence runs through the sync engine's own paging over the camera sync

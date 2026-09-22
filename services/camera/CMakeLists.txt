@@ -226,6 +226,7 @@ add_library(camera-core STATIC
     ${CAMERA_SRC_ROOT}/shared/services/stream/upstream-http.cc
     ${CAMERA_SRC_ROOT}/shared/services/stream/ws-frame.cc
     ${CAMERA_SRC_ROOT}/shared/services/evidence/evidence-uploader.cc
+    ${CAMERA_SRC_ROOT}/shared/services/event-stream/event-stream.cc
 )
 
 target_include_directories(camera-core SYSTEM PUBLIC

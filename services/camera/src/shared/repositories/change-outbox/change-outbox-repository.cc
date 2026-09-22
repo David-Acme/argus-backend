@@ -39,17 +39,22 @@ ChangeOutboxRepository::enqueue(const ChangeOutboxEnqueueInput& input) const
   }
 }
 
-std::optional<ChangeOutboxRow> ChangeOutboxRepository::nextPending() const
+std::vector<ChangeOutboxRow>
+ChangeOutboxRepository::pendingBatch(int limit) const
 {
+  if (limit <= 0)
+    return {};
   auto client = DbService::cameraClient();
   const auto rows = client->execSqlSync(
-      NEXT_PENDING,
-      changeOutboxStatusToString(ChangeOutboxStatus::Pending));
-  if (rows.empty())
-    return std::nullopt;
-  return ChangeOutboxRow{.eventId = rows.front()["event_id"].as<std::string>(),
-                         .payload = rows.front()["payload"].as<std::string>(),
-                         .attempts = rows.front()["attempts"].as<int>()};
+      PENDING_BATCH,
+      changeOutboxStatusToString(ChangeOutboxStatus::Pending), limit);
+  std::vector<ChangeOutboxRow> pending;
+  pending.reserve(rows.size());
+  for (const auto& row : rows)
+    pending.push_back({.eventId = row["event_id"].as<std::string>(),
+                       .payload = row["payload"].as<std::string>(),
+                       .attempts = row["attempts"].as<int>()});
+  return pending;
 }
 
 bool ChangeOutboxRepository::markSent(const std::string& eventId,

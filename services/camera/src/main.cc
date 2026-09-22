@@ -21,6 +21,7 @@
 #include <http/listener-config.hxx>
 #include <monitor/camera-health-monitor.hxx>
 #include <monitor/nats-health-event-sink.hxx>
+#include <shared/services/event-stream/event-stream.hxx>
 #include <shared/services/evidence/evidence-uploader.hxx>
 #include <objects/ncnn-object-detector.hxx>
 #include <operator/camera-operator-service.hxx>
@@ -167,7 +168,7 @@ int main()
                      .sessionTag = {},
                      .streamName = {},
                      .publishSubject = {}});
-    NatsObjectEventSink::ensureStream(natsBus, {});
+    static_cast<void>(camera_event_stream::ensure(natsBus, {}));
   }
 
   const ObjectsConfig objectsConfig = operator_config::resolveObjects();

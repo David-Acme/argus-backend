@@ -8,9 +8,9 @@
 
 #include <chrono>
 #include <cstdio>
-#include <optional>
 #include <string>
 #include <thread>
+#include <vector>
 
 namespace
 {
@@ -61,11 +61,11 @@ bool waitForBoot(std::chrono::milliseconds timeout)
   return drogon::app().isRunning();
 }
 
-// The pending row, reported as a failed assertion when the outbox holds none.
-ChangeOutboxRow pendingRow(const std::optional<ChangeOutboxRow>& row)
+// The head pending row, reported as a failed assertion when the outbox holds none.
+ChangeOutboxRow pendingRow(const std::vector<ChangeOutboxRow>& rows)
 {
-  REQUIRE(row.has_value());
-  return row.value_or(ChangeOutboxRow{});
+  REQUIRE(!rows.empty());
+  return rows.empty() ? ChangeOutboxRow{} : rows.front();
 }
 } // namespace
 
@@ -158,7 +158,7 @@ TEST_CASE("the change outbox replays one transition and refuses a conflict")
   CHECK(drogon::sync_wait(repository.enqueue(second)) ==
         ChangeOutboxDisposition::Enqueued);
 
-  const ChangeOutboxRow oldest = pendingRow(repository.nextPending());
+  const ChangeOutboxRow oldest = pendingRow(repository.pendingBatch(1));
   CHECK(oldest.eventId == "camera-change:a");
 
   const ChangeOutboxEnqueueInput raced = {.eventId = "camera-change:a",
@@ -170,7 +170,7 @@ TEST_CASE("the change outbox replays one transition and refuses a conflict")
   CHECK(drogon::sync_wait(repository.enqueue(raced)) ==
         ChangeOutboxDisposition::Conflict);
 
-  const ChangeOutboxRow kept = pendingRow(repository.nextPending());
+  const ChangeOutboxRow kept = pendingRow(repository.pendingBatch(1));
   CHECK(kept.eventId == "camera-change:a");
   CHECK(kept.payload == R"({"info":1})");
   CHECK(kept.attempts == 0);
@@ -178,12 +178,12 @@ TEST_CASE("the change outbox replays one transition and refuses a conflict")
   CHECK(repository.markSent("camera-change:a", 4000));
   CHECK_FALSE(repository.markSent("camera-change:a", 4001));
 
-  CHECK(pendingRow(repository.nextPending()).eventId == "camera-change:b");
+  CHECK(pendingRow(repository.pendingBatch(1)).eventId == "camera-change:b");
   CHECK(repository.recordAttempt("camera-change:b"));
   CHECK_FALSE(repository.recordAttempt("camera-change:a"));
-  CHECK(pendingRow(repository.nextPending()).attempts == 1);
+  CHECK(pendingRow(repository.pendingBatch(1)).attempts == 1);
   CHECK(repository.recordAttempt("camera-change:b"));
-  CHECK(pendingRow(repository.nextPending()).attempts == 2);
+  CHECK(pendingRow(repository.pendingBatch(1)).attempts == 2);
 
   // Two changes made in the same millisecond are ordered by the id the insert
   // gave them, so the drain keeps following the order they were made in.
@@ -200,9 +200,9 @@ TEST_CASE("the change outbox replays one transition and refuses a conflict")
   CHECK(drogon::sync_wait(repository.enqueue(fourth)) ==
         ChangeOutboxDisposition::Enqueued);
   CHECK(repository.markSent("camera-change:b", 5100));
-  CHECK(pendingRow(repository.nextPending()).eventId == "camera-change:c");
+  CHECK(pendingRow(repository.pendingBatch(1)).eventId == "camera-change:c");
   CHECK(repository.markSent("camera-change:c", 5200));
-  CHECK(pendingRow(repository.nextPending()).eventId == "camera-change:d");
+  CHECK(pendingRow(repository.pendingBatch(1)).eventId == "camera-change:d");
 
   std::remove(kOutboxDb);
   std::remove((std::string(kOutboxDb) + "-wal").c_str());
