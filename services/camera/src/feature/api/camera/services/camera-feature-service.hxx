@@ -19,7 +19,8 @@ public:
 
 private:
   // Emits camera changes through the domain's sink so subscribers see them.
-  void emit(SyncOperation operation, const CameraSchema& row) const;
+  [[nodiscard]] drogon::Task<void> emit(SyncOperation operation,
+                                        const CameraSchema& row) const;
 
   CameraRepository repository_;
 };

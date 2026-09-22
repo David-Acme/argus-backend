@@ -177,10 +177,7 @@ void NatsObjectEventSink::flushLoop()
     }
     std::unique_lock lock(wakeMutex_);
     wake_.wait_for(lock,
-                   std::chrono::milliseconds(progressed ? 50 : config_.retryMs),
-                   [this]() {
-                     return stopping_.load(std::memory_order_acquire);
-                   });
+                   std::chrono::milliseconds(progressed ? 50 : config_.retryMs));
   }
 }
 

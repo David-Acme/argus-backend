@@ -13,9 +13,10 @@ class CameraChangeSink
 public:
   virtual ~CameraChangeSink() = default;
 
-  virtual void emitModule(TableName table, const SocketEmitDto& body) const = 0;
+  [[nodiscard]] virtual drogon::Task<void>
+  emitModule(TableName table, const SocketEmitDto& body) const = 0;
 
-  virtual drogon::Task<void>
+  [[nodiscard]] virtual drogon::Task<void>
   publishAudit(const ModuleAuditInput& input) const = 0;
 };
 

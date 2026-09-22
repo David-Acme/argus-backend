@@ -153,3 +153,20 @@ CREATE TABLE IF NOT EXISTS camera_event_cooldown (
     last_emit_ms INTEGER NOT NULL  DEFAULT 0,
     PRIMARY KEY (camera_id, class)
 );
+
+-- Durable change-feed outbox: one row per camera or zone change, addressed by
+-- the transition it records, and a row leaves 'pending' only after the
+-- JetStream PubAck, so a broker outage or a restart cannot drop a change.
+CREATE TABLE IF NOT EXISTS change_outbox (
+    event_id    TEXT    NOT NULL  PRIMARY KEY,
+    fingerprint TEXT    NOT NULL  DEFAULT '',
+    payload     TEXT    NOT NULL,
+    status      TEXT    NOT NULL  DEFAULT 'pending'
+                        CHECK (status IN ('pending', 'sent')),
+    attempts    INTEGER NOT NULL  DEFAULT 0,
+    created_at  INTEGER NOT NULL  DEFAULT 0,
+    sent_at     INTEGER NOT NULL  DEFAULT 0
+);
+
+CREATE INDEX IF NOT EXISTS idx_change_outbox_status
+    ON change_outbox (status, created_at);

@@ -21,8 +21,9 @@ drogon::Task<void> dropSource(int64_t cameraId)
 }
 } // namespace
 
-void CameraFeatureService::emit(SyncOperation operation,
-                                const CameraSchema& row) const
+drogon::Task<void>
+CameraFeatureService::emit(SyncOperation operation,
+                          const CameraSchema& row) const
 {
   SocketEmitDto body;
   body.operation = operation;
@@ -39,9 +40,9 @@ void CameraFeatureService::emit(SyncOperation operation,
   const auto* sink = camera_change::getSink();
   if (!sink) {
     LOG_WARN << "camera change sink not installed; drop camera emit";
-    return;
+    co_return;
   }
-  sink->emitModule(TableName::Camera, body);
+  co_await sink->emitModule(TableName::Camera, body);
 }
 
 drogon::Task<CameraSchema>
@@ -64,7 +65,7 @@ CameraFeatureService::create(const CreateCameraDto& body) const
       .capabilities = "[]",
       .config = "{}",
   });
-  emit(SyncOperation::Add, row);
+  co_await emit(SyncOperation::Add, row);
   co_await syncSource(row);
   co_return row;
 }
@@ -122,7 +123,7 @@ drogon::Task<bool> CameraFeatureService::remove(int64_t id) const
 
   const bool removed = co_await repository_.remove(id);
   if (removed) {
-    emit(SyncOperation::Delete, *existing);
+    co_await emit(SyncOperation::Delete, *existing);
     co_await dropSource(id);
   }
   co_return removed;

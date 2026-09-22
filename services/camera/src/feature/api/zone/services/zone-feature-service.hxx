@@ -20,7 +20,8 @@ public:
 
 private:
   // Zones travel the camera's sink, the channel the camera domain owns.
-  void emit(SyncOperation operation, const ZoneSchema& row) const;
+  [[nodiscard]] drogon::Task<void> emit(SyncOperation operation,
+                                        const ZoneSchema& row) const;
 
   ZoneRepository repository_;
   CameraRepository cameraRepository_;

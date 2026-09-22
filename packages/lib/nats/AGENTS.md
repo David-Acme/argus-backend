@@ -7,8 +7,9 @@ install at boot.
 ## What this is
 
 A PACKAGE, not a service: no route, no `main`, no database. Eleven units
-outside `packages/lib` link it — identity, memory, socket, sync and seven
-services — because the change stream is how a domain tells the others that a
+outside `packages/lib` link it — `contracts/sync`, `identity`, `memory` and
+eight services (camera, gateway, guard, llm, notification, productivity, sync,
+tunnel) — because the change stream is how a domain tells the others that a
 row moved.
 
 `docs/architecture/wire-nats-subjects.md` is the contract this package

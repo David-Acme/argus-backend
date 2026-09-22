@@ -154,7 +154,8 @@ int main()
     else
       LOG_WARN << "NATS unavailable at " << natsUrl
                << "; bus reconnects in background, events retained locally";
-    changeSink = std::make_shared<NatsCameraChangeSink>(natsBus);
+    changeSink = std::make_shared<NatsCameraChangeSink>(
+        natsBus, NatsCameraChangeSink::Config{});
     camera_change::setSink(changeSink.get());
     const int cooldownMs = ConfigService::getInt("operator.cooldown_ms");
     const int maxPending = ConfigService::getInt("operator.outbox_max_pending");
@@ -256,7 +257,7 @@ int main()
 
   drogon::app().registerBeginningAdvice(
       [&cameraDb, &operatorService, &healthMonitor, &cameraActionRpc,
-       &objectSink]() {
+       &objectSink, &changeSink]() {
     DbService::installExtensions();
 
     if (!DbService::runScriptFile(cameraDb.schemaPath)) {
@@ -271,6 +272,8 @@ int main()
 
     if (objectSink)
       objectSink->reconcile();
+    if (changeSink)
+      changeSink->reconcile();
 
     DbService::applyPragmas();
 

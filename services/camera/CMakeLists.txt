@@ -141,11 +141,12 @@ if(NOT TARGET argus::clients::camera-actions)
 endif()
 
 # The camera domain's row code: the tables' repositories and schemas as one
-# module, plus the two single-repository modules beside it. Added before the
+# module, plus the three single-repository modules beside it. Added before the
 # targets that name them.
 add_subdirectory(src/shared/repositories)
 add_subdirectory(src/shared/repositories/action-command)
 add_subdirectory(src/shared/repositories/object-event-outbox)
+add_subdirectory(src/shared/repositories/change-outbox)
 
 argus_module(NAME camera-rpc
     SOURCES
@@ -240,6 +241,7 @@ target_link_libraries(camera-core PUBLIC
     argus::lib::sqlite
     argus::camera-action-command
     argus::camera-object-event-outbox
+    argus::camera-change-outbox
     argus::lib::audio
     argus::clients::tts
     argus::clients::stt
@@ -470,11 +472,9 @@ add_test(NAME camera-action-migration-test COMMAND camera-action-migration-test)
 # The durable observation outbox: transactional enqueue, cooldown dedup and
 # explicit overflow accounting.
 add_executable(object-event-outbox-test
-    tests/unit/object-event-outbox-test.cc
-    ${CAMERA_SRC_ROOT}/shared/repositories/object-event-outbox/object-event-outbox-repository.cc)
-target_include_directories(object-event-outbox-test PRIVATE ${CAMERA_SRC_ROOT})
+    tests/unit/object-event-outbox-test.cc)
 target_link_libraries(object-event-outbox-test PRIVATE
-    argus::lib::sqlite
+    argus::camera-object-event-outbox
     doctest::doctest)
 target_compile_definitions(object-event-outbox-test PRIVATE
     ARGUS_CAMERA_SCHEMA_PATH="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql")
@@ -494,3 +494,30 @@ target_compile_options(object-event-outbox-sink-test PRIVATE -Wall -Wextra)
 set_target_properties(object-event-outbox-sink-test PROPERTIES
     EXCLUDE_FROM_ALL FALSE)
 add_test(NAME object-event-outbox-sink-test COMMAND object-event-outbox-sink-test)
+
+# The change outbox: the transition-addressed key rules and the replay/conflict
+# dispositions over a real schema.
+add_executable(change-outbox-test
+    tests/unit/change-outbox-test.cc)
+target_link_libraries(change-outbox-test PRIVATE
+    argus::camera-change-outbox
+    doctest::doctest)
+target_compile_definitions(change-outbox-test PRIVATE
+    ARGUS_CAMERA_SCHEMA_PATH="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql")
+target_compile_options(change-outbox-test PRIVATE -Wall -Wextra)
+set_target_properties(change-outbox-test PROPERTIES
+    EXCLUDE_FROM_ALL FALSE)
+add_test(NAME change-outbox-test COMMAND change-outbox-test)
+
+# The change sink: every emit and audit lands in the outbox, and a broker-less
+# sink leaves the row pending instead of dropping it.
+add_executable(change-outbox-sink-test
+    tests/unit/change-outbox-sink-test.cc)
+target_link_libraries(change-outbox-sink-test PRIVATE camera-core
+    doctest::doctest)
+target_compile_definitions(change-outbox-sink-test PRIVATE
+    ARGUS_CAMERA_SCHEMA_PATH="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql")
+target_compile_options(change-outbox-sink-test PRIVATE -Wall -Wextra)
+set_target_properties(change-outbox-sink-test PROPERTIES
+    EXCLUDE_FROM_ALL FALSE)
+add_test(NAME change-outbox-sink-test COMMAND change-outbox-sink-test)

@@ -209,6 +209,40 @@ preset, own `camera.db`.
   from the gateway config and the camera-db compose mount is gateway-only
   history. argus-camera stays the single owner of the file.
 
+## The camera change feed (3a-2b)
+
+- Every camera or zone change lands in `change_outbox` in camera.db before
+  it is published to `argus.camera.v1.change`: the mutation commits first,
+  the change row is written after it, and a worker publishes from the table
+  and marks a row `sent` only on the JetStream PubAck. A crash between the
+  two leaves the row pending and the change is retried at the next boot. The
+  object-event sink's bounded in-process queue (see Ruling AF) survives a
+  broker outage but not a restart, which is the gap this closes.
+- **The event id names the event, not the record.** JetStream dedups on
+  `Nats-Msg-Id`, so an id derived from the record alone would swallow a
+  record's second change as a replay. Deriving it from the transition's own
+  payload makes a redelivery the same id while a record that moves again —
+  or returns to a state it already held — is its own row. Rows and audits
+  share that rule: `a→b→a→b` is four events, and the audit service merges a
+  repeated same-day diff anyway, so a duplicate converges instead of
+  double-counting.
+- **A refused enqueue does not fail the request.** The mutation has already
+  committed, so a 500 would make a retrying client create a second row; the
+  write is retried a few times over the one shared connection and then
+  logged loudly. A payload past the broker's budget (256 KB) is refused at
+  the door instead, because a row the broker would refuse for ever parks
+  every change behind it — the drain is oldest-first and retries for ever,
+  since a broker outage fails all rows equally but one poisoned row would
+  cost real changes. The first refusal is logged, so an operator sees the
+  feed stop instead of reading about it every 100 attempts.
+- The sink never ensures the stream: `ARGUS_CAMERA` and its subjects are
+  created and healed by the object-event sink, and `NatsBus::ensureStream`
+  refuses to repurpose a stream carrying different subjects.
+- A PubAck is storage, not delivery. The subject's only live consumer today
+  is memory's catalog replica, snapshot-filled at boot by design; app
+  convergence runs through the sync engine's own paging over the camera sync
+  RPC, so the producer's durability boundary is the right one.
+
 ## The folder owns its domain (f7-7a)
 
 The camera CRUD features, the Tapo driver stack, the stream lifecycle and

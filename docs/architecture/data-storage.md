@@ -46,10 +46,17 @@ the consuming database, so redeliveries settle without re-executing effects:
 - `encounter_closed_inbox` (`memory.db`): per-encounter receipts with the
   same states, so each `encounter_closed` event captures exactly one memory
   episode.
-- `object_event_outbox` (`camera.db`) and `guard_observation_inbox` /
-  `guard_action_outbox` / `guard_encounter_outbox` (`guard.db`): the producer
-  and consumer sides of the camera→guard leg, keyed by `eventId` and by
-  deterministic `commandId`.
+- `object_event_outbox` (`camera.db`) and `guard_observation_inbox`
+  (`guard.db`): the two sides of the camera→guard leg, keyed by `eventId`.
+- `change_outbox` (`camera.db`, written by `argus-camera`): the camera
+  domain's change-feed producer side. One row per transition — a camera or
+  zone add, delete or audit — keyed by an id derived from the table, the
+  record and the transition's own payload, so a redelivered event is a replay
+  while a record that moves again, or returns to a state it already held, is
+  its own row; a row is marked `sent` only on the JetStream PubAck.
+- `guard_action_outbox` (`guard.db`): the guard→camera direction, keyed by the
+  deterministic `commandId`. `guard_encounter_outbox` (`guard.db`) is the
+  guard's own `encounter_closed` producer leg, keyed by `eventId`.
 
 Incident evidence binaries live in the private object store (RustFS over S3),
 referenced by `guard_evidence` / `camera_evidence` retention manifests; only

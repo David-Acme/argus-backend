@@ -85,7 +85,7 @@ package, and argus-sync's fan-out that reads the payloads back; sub-step
   `user_change::notificationSink`; 14 files, the third-most-included header
   here.
 - `src/sync/camera-change-sink.hxx` — the camera domain's pair: `CameraChangeSink`
-  (`emitModule`, `publishAudit`), `CameraAuditInput`, and the single
+  (`emitModule`, `publishAudit`), `ModuleAuditInput`, and the single
   `camera_change` slot `argus-camera` installs; 3 files.
 - `src/sync/user-audit-event.hxx` — `UserAuditEvent`, the row a user-scoped
   producer puts on the wire: record id, table, the `ChangesDiff`, the priority,

@@ -3,8 +3,8 @@
 #include <ctime>
 #include <trantor/utils/Logger.h>
 
-void ZoneFeatureService::emit(SyncOperation operation,
-                              const ZoneSchema& row) const
+drogon::Task<void>
+ZoneFeatureService::emit(SyncOperation operation, const ZoneSchema& row) const
 {
   SocketEmitDto body;
   body.operation = operation;
@@ -21,9 +21,9 @@ void ZoneFeatureService::emit(SyncOperation operation,
   const auto* sink = camera_change::getSink();
   if (!sink) {
     LOG_WARN << "camera change sink not installed; drop zone emit";
-    return;
+    co_return;
   }
-  sink->emitModule(TableName::Zone, body);
+  co_await sink->emitModule(TableName::Zone, body);
 }
 
 drogon::Task<std::optional<ZoneSchema>>
@@ -41,7 +41,7 @@ ZoneFeatureService::create(const CreateZoneDto& body) const
       .color = body.color,
       .isEnabled = body.isEnabled,
   });
-  emit(SyncOperation::Add, row);
+  co_await emit(SyncOperation::Add, row);
   co_return row;
 }
 
@@ -87,6 +87,6 @@ drogon::Task<bool> ZoneFeatureService::remove(int64_t id) const
 
   const bool removed = co_await repository_.remove(id);
   if (removed)
-    emit(SyncOperation::Delete, *existing);
+    co_await emit(SyncOperation::Delete, *existing);
   co_return removed;
 }
