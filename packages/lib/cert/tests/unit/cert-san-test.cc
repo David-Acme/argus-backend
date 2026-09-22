@@ -256,6 +256,43 @@ uint16_t freePort()
   return ntohs(addr.sin_port);
 }
 
+// Runs the app and stops it however the case body leaves. A joinable
+// std::thread destroyed while the body unwinds calls std::terminate, which
+// reports an ordinary failing REQUIRE as a SIGABRT with no assertion behind it.
+class AppRunner
+{
+public:
+  AppRunner() : runner_([] { drogon::app().run(); }) {}
+
+  ~AppRunner()
+  {
+    if (!runner_.joinable())
+      return;
+    // Drogon reports the app running before its main loop is looping, and a
+    // loop that has not begun cannot be stopped: trantor's loop() clears the
+    // quit flag again as it starts. Waiting for it to loop is what makes the
+    // quit below take effect — detaching in that window left the app's thread
+    // running past the end of the process, measured as SIGSEGV inside
+    // EventLoop::loop() in 3 of 20 runs of a forced constructor throw.
+    for (int i = 0; i < 3000 && !drogon::app().getLoop()->isRunning(); ++i)
+      std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    if (drogon::app().getLoop()->isRunning()) {
+      drogon::app().quit();
+      runner_.join();
+      return;
+    }
+    // A boot that never reached the loop at all is left to the process: it
+    // cannot be asked to stop, and joining it would block for ever.
+    runner_.detach();
+  }
+
+  AppRunner(const AppRunner&) = delete;
+  AppRunner& operator=(const AppRunner&) = delete;
+
+private:
+  std::thread runner_;
+};
+
 bool waitForBoot(std::chrono::milliseconds timeout)
 {
   const auto deadline = std::chrono::steady_clock::now() + timeout;
@@ -355,7 +392,7 @@ TEST_CASE("remote.hostname drives the leaf SAN list and the hot reload")
   drogon::app().setSSLFiles((dir / "server.pem").string(),
                             (dir / "server.key").string());
   drogon::app().addListener("127.0.0.1", port, true);
-  std::thread runner([] { drogon::app().run(); });
+  AppRunner runner;
   REQUIRE(waitForBoot(std::chrono::seconds(10)));
 
   const PeerInfo before = servedPeer(port);
@@ -370,7 +407,6 @@ TEST_CASE("remote.hostname drives the leaf SAN list and the hot reload")
   CHECK(after.fingerprint != absentFingerprint);
   CHECK(after.sans.back() == kRemoteHost);
 
-  drogon::app().quit();
-  runner.join();
+  // Joined while the app is still up: the runner quits and joins at scope exit.
   CertService::shutdown();
 }

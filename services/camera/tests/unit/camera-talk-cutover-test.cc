@@ -14,6 +14,8 @@
 #include <json/value.h>
 #include <cstdio>
 #include <optional>
+#include <sqlite3.h>
+#include <stdexcept>
 #include <string>
 #include <thread>
 #include <vector>
@@ -68,16 +70,43 @@ int deadPort()
   return port;
 }
 
+using DbHandle = std::unique_ptr<sqlite3, int (*)(sqlite3*)>;
+
+// The seeding fixture writes through the sqlite3 C API: a throwaway drogon
+// client released while a statement lambda is still queued on the connection's
+// own loop thread self-joins that thread — SIGABRT with no assertion behind
+// it. These seeding calls could only throw before, so the helpers throw too.
+DbHandle openFile(const std::string& path)
+{
+  sqlite3* raw = nullptr;
+  if (sqlite3_open(path.c_str(), &raw) == SQLITE_OK)
+    return {raw, sqlite3_close_v2};
+  const std::string message =
+      raw != nullptr ? std::string(sqlite3_errmsg(raw)) : std::string("failed");
+  sqlite3_close_v2(raw);
+  throw std::runtime_error("sqlite3_open " + path + ": " + message);
+}
+
+void exec(sqlite3* db, const std::string& sql)
+{
+  char* error = nullptr;
+  if (sqlite3_exec(db, sql.c_str(), nullptr, nullptr, &error) == SQLITE_OK) {
+    sqlite3_free(error);
+    return;
+  }
+  const std::string message =
+      error != nullptr ? std::string(error) : std::string("failed");
+  sqlite3_free(error);
+  throw std::runtime_error("sqlite3_exec: " + message);
+}
+
 void seedCameraDb()
 {
   std::remove(kCameraDb);
   std::remove((std::string(kCameraDb) + "-wal").c_str());
   std::remove((std::string(kCameraDb) + "-shm").c_str());
-  auto client =
-      drogon::orm::DbClient::newSqlite3Client(std::string("filename=") +
-                                                  kCameraDb,
-                                              1);
-  client->execSqlSync(
+  const auto db = openFile(kCameraDb);
+  exec(db.get(),
       "CREATE TABLE camera ("
       "id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, "
       "name TEXT NOT NULL, manufacturer TEXT NOT NULL DEFAULT '', "
@@ -98,10 +127,43 @@ void seedCameraDb()
       "is_online INTEGER NOT NULL DEFAULT 0, "
       "created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')), "
       "updated_at INTEGER, deleted_at INTEGER)");
-  client->execSqlSync(
-      "INSERT INTO camera (id, name, ip, driver) "
-      "VALUES (1, 'Talk Cam', '127.0.0.1', 'tapo')");
+  exec(db.get(), "INSERT INTO camera (id, name, ip, driver) "
+                 "VALUES (1, 'Talk Cam', '127.0.0.1', 'tapo')");
 }
+
+class AppRunner
+{
+public:
+  AppRunner() : runner_([] { drogon::app().run(); }) {}
+
+  ~AppRunner()
+  {
+    if (!runner_.joinable())
+      return;
+    // Drogon reports the app running before its main loop is looping, and a
+    // loop that has not begun cannot be stopped: trantor's loop() clears the
+    // quit flag again as it starts. Waiting for it to loop is what makes the
+    // quit below take effect — detaching in that window left the app's thread
+    // running past the end of the process, measured as SIGSEGV inside
+    // EventLoop::loop() in 3 of 20 runs of a forced constructor throw.
+    for (int i = 0; i < 3000 && !drogon::app().getLoop()->isRunning(); ++i)
+      std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    if (drogon::app().getLoop()->isRunning()) {
+      drogon::app().quit();
+      runner_.join();
+      return;
+    }
+    // A boot that never reached the loop at all is left to the process: it
+    // cannot be asked to stop, and joining it would block for ever.
+    runner_.detach();
+  }
+
+  AppRunner(const AppRunner&) = delete;
+  AppRunner& operator=(const AppRunner&) = delete;
+
+private:
+  std::thread runner_;
+};
 
 bool waitForBoot(std::chrono::milliseconds timeout)
 {
@@ -160,7 +222,7 @@ TEST_CASE("the camera-talk route synthesizes over the argus-tts wire")
   drogon::app().setLogLevel(trantor::Logger::kWarn);
   drogon::app().addDbClient(
       drogon::orm::Sqlite3Config{1, kCameraDb, "default", -1});
-  std::thread runner([] { drogon::app().run(); });
+  AppRunner runner;
   REQUIRE(waitForBoot(std::chrono::seconds(30)));
 
   FakeTtsServer server;
@@ -211,8 +273,6 @@ TEST_CASE("the camera-talk route synthesizes over the argus-tts wire")
 
   ConfigService::setRuntimeString("tts.remote_url", "");
 
-  drogon::app().quit();
-  runner.join();
   std::remove(kCameraDb);
   std::remove((std::string(kCameraDb) + "-wal").c_str());
   std::remove((std::string(kCameraDb) + "-shm").c_str());

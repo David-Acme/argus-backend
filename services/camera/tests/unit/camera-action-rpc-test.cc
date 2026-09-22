@@ -27,6 +27,8 @@
 #include <config/config-service.hxx>
 #include <sqlite/db-service.hxx>
 #include <shared/services/stream/snapshot-store.hxx>
+#include <sqlite3.h>
+#include <stdexcept>
 #include <string>
 #include <thread>
 #include <vector>
@@ -136,16 +138,43 @@ void writeConfig(bool actionsEnabled)
       << "\"\n\n[grpc]\ncaller_guard = \"" << kGuardCredential << "\"\n";
 }
 
+using DbHandle = std::unique_ptr<sqlite3, int (*)(sqlite3*)>;
+
+// The seeding fixture writes through the sqlite3 C API: a throwaway drogon
+// client released while a statement lambda is still queued on the connection's
+// own loop thread self-joins that thread — SIGABRT with no assertion behind
+// it. These seeding calls could only throw before, so the helpers throw too.
+DbHandle openFile(const std::string& path)
+{
+  sqlite3* raw = nullptr;
+  if (sqlite3_open(path.c_str(), &raw) == SQLITE_OK)
+    return {raw, sqlite3_close_v2};
+  const std::string message =
+      raw != nullptr ? std::string(sqlite3_errmsg(raw)) : std::string("failed");
+  sqlite3_close_v2(raw);
+  throw std::runtime_error("sqlite3_open " + path + ": " + message);
+}
+
+void exec(sqlite3* db, const std::string& sql)
+{
+  char* error = nullptr;
+  if (sqlite3_exec(db, sql.c_str(), nullptr, nullptr, &error) == SQLITE_OK) {
+    sqlite3_free(error);
+    return;
+  }
+  const std::string message =
+      error != nullptr ? std::string(error) : std::string("failed");
+  sqlite3_free(error);
+  throw std::runtime_error("sqlite3_exec: " + message);
+}
+
 void seedCameraDb()
 {
   std::remove(kCameraDb);
   std::remove((std::string(kCameraDb) + "-wal").c_str());
   std::remove((std::string(kCameraDb) + "-shm").c_str());
-  auto client =
-      drogon::orm::DbClient::newSqlite3Client(std::string("filename=") +
-                                                  kCameraDb,
-                                              1);
-  client->execSqlSync(
+  const auto db = openFile(kCameraDb);
+  exec(db.get(),
       "CREATE TABLE camera ("
       "id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, "
       "name TEXT NOT NULL, manufacturer TEXT NOT NULL DEFAULT '', "
@@ -166,9 +195,9 @@ void seedCameraDb()
       "is_online INTEGER NOT NULL DEFAULT 0, "
       "created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')), "
       "updated_at INTEGER, deleted_at INTEGER)");
-  client->execSqlSync("INSERT INTO camera (id, name, ip, driver) "
-                      "VALUES (1, 'Action Cam', '127.0.0.1', 'tapo')");
-  client->execSqlSync(
+  exec(db.get(), "INSERT INTO camera (id, name, ip, driver) "
+                 "VALUES (1, 'Action Cam', '127.0.0.1', 'tapo')");
+  exec(db.get(),
       "CREATE TABLE action_command ("
       "command_id TEXT NOT NULL PRIMARY KEY, "
       "kind TEXT NOT NULL DEFAULT '', camera_id INTEGER NOT NULL DEFAULT 0, "
@@ -180,13 +209,86 @@ void seedCameraDb()
       "generation INTEGER NOT NULL DEFAULT 0, "
       "created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')), "
       "updated_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')))");
-  client->execSqlSync(
+  exec(db.get(),
       "CREATE TABLE siren_lease ("
       "camera_id INTEGER NOT NULL PRIMARY KEY, "
       "command_id TEXT NOT NULL DEFAULT '', "
       "expires_at INTEGER NOT NULL, "
       "created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')))");
 }
+
+// Runs the app and stops it however the case body leaves. A joinable
+// std::thread destroyed by unwinding calls std::terminate, which reports an
+// ordinary statement failure as a SIGABRT with no assertion behind it.
+class AppRunner
+{
+public:
+  AppRunner() : runner_([] { drogon::app().run(); }) {}
+
+  ~AppRunner()
+  {
+    if (!runner_.joinable())
+      return;
+    // Drogon reports the app running before its main loop is looping, and a
+    // loop that has not begun cannot be stopped: trantor's loop() clears the
+    // quit flag again as it starts. Waiting for it to loop is what makes the
+    // quit below take effect — detaching in that window left the app's thread
+    // running past the end of the process, measured as SIGSEGV inside
+    // EventLoop::loop() in 3 of 20 runs of a forced constructor throw.
+    for (int i = 0; i < 3000 && !drogon::app().getLoop()->isRunning(); ++i)
+      std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    if (drogon::app().getLoop()->isRunning()) {
+      drogon::app().quit();
+      runner_.join();
+      return;
+    }
+    // A boot that never reached the loop at all is left to the process: it
+    // cannot be asked to stop, and joining it would block for ever.
+    runner_.detach();
+  }
+
+  AppRunner(const AppRunner&) = delete;
+  AppRunner& operator=(const AppRunner&) = delete;
+
+private:
+  std::thread runner_;
+};
+
+// A case-local worker thread. Destroying a joinable std::thread by unwinding
+// calls std::terminate, so a failing assertion between the worker's creation
+// and its join aborts with no assertion behind it; this owner joins it
+// wherever the case body leaves. The release runs first where the worker is
+// parked on a stub gate the body would have opened — it can only finish once
+// it is released, and a bare join would block for ever.
+class Worker
+{
+public:
+  explicit Worker(std::function<void()> body) : worker_(std::move(body)) {}
+
+  // The release the case body would have performed before joining.
+  Worker(std::function<void()> release, std::function<void()> body)
+      : release_(std::move(release)), worker_(std::move(body))
+  {
+  }
+
+  void join()
+  {
+    if (!worker_.joinable())
+      return;
+    if (release_)
+      release_();
+    worker_.join();
+  }
+
+  ~Worker() { join(); }
+
+  Worker(const Worker&) = delete;
+  Worker& operator=(const Worker&) = delete;
+
+private:
+  std::function<void()> release_;
+  std::thread worker_;
+};
 
 bool waitForBoot(std::chrono::milliseconds timeout)
 {
@@ -208,7 +310,7 @@ TEST_CASE("the camera action RPC drives the driver behind the fleet gate")
   drogon::app().setLogLevel(trantor::Logger::kWarn);
   drogon::app().addDbClient(
       drogon::orm::Sqlite3Config{1, kCameraDb, "default", -1});
-  std::thread runner([] { drogon::app().run(); });
+  AppRunner runner;
   REQUIRE(waitForBoot(std::chrono::seconds(30)));
 
   auto actuator = std::make_shared<StubActuator>();
@@ -383,14 +485,15 @@ TEST_CASE("the camera action RPC drives the driver behind the fleet gate")
   blocking->speakReleased = false;
   CameraDriverTestAccess::install(1, blocking);
   CameraCommandResult fencedAck;
-  std::thread firstCall([&]() {
-    fencedAck = client.announce({.cameraId = 1,
-                                 .text = "Fence",
-                                 .lang = "es",
-                                 .commandId = "cmd-fence",
-                                 .encounterId = 9,
-                                 .expiresAt = 0});
-  });
+  Worker firstCall([&blocking]() { blocking->releaseSpeak(); },
+                   [&]() {
+                     fencedAck = client.announce({.cameraId = 1,
+                                                  .text = "Fence",
+                                                  .lang = "es",
+                                                  .commandId = "cmd-fence",
+                                                  .encounterId = 9,
+                                                  .expiresAt = 0});
+                   });
   while (blocking->speakCalls.load() == 0)
     std::this_thread::sleep_for(std::chrono::milliseconds(1));
   const auto inFlight = client.announce({.cameraId = 1,
@@ -403,7 +506,6 @@ TEST_CASE("the camera action RPC drives the driver behind the fleet gate")
   CHECK_FALSE(inFlight.succeeded());
   CHECK(inFlight.detail == "in_flight");
   CHECK(blocking->speakCalls.load() == 1);
-  blocking->releaseSpeak();
   firstCall.join();
   CHECK(fencedAck.succeeded());
   const auto fenceReplay = client.announce({.cameraId = 1,
@@ -476,14 +578,22 @@ TEST_CASE("the camera action RPC drives the driver behind the fleet gate")
     return result;
   });
   CameraCommandResult firstListen;
-  std::thread listenThread([&]() {
-    firstListen = client.listen({.cameraId = 1,
-                                 .seconds = 1,
-                                 .lang = "es",
-                                 .commandId = "cmd-listen-fence",
-                                 .encounterId = 9,
-                                 .expiresAt = 0});
-  });
+  Worker listenThread(
+      [&]() {
+        {
+          std::scoped_lock lock(captureMutex);
+          captureReleased = true;
+        }
+        captureCv.notify_all();
+      },
+      [&]() {
+        firstListen = client.listen({.cameraId = 1,
+                                     .seconds = 1,
+                                     .lang = "es",
+                                     .commandId = "cmd-listen-fence",
+                                     .encounterId = 9,
+                                     .expiresAt = 0});
+      });
   const auto blockedOnce = [&]() {
     std::lock_guard lock(captureMutex);
     return blockingCaptures > 0;
@@ -500,9 +610,7 @@ TEST_CASE("the camera action RPC drives the driver behind the fleet gate")
   {
     std::lock_guard lock(captureMutex);
     CHECK(blockingCaptures == 1);
-    captureReleased = true;
   }
-  captureCv.notify_all();
   listenThread.join();
   CHECK(firstListen.captured);
   const auto fenceListenReplay = client.listen({.cameraId = 1,
@@ -535,11 +643,13 @@ TEST_CASE("the camera action RPC drives the driver behind the fleet gate")
     else if (outcome.kind == ActionClaimKind::InFlight)
       ++inFlightClaims;
   };
-  std::thread claimA([&]() {
+  // No release: the gate's third arrival is the case body's own, and it
+  // arrives before the case can reach another assertion.
+  Worker claimA([&]() {
     claimGate.arrive_and_wait();
     raceClaim();
   });
-  std::thread claimB([&]() {
+  Worker claimB([&]() {
     claimGate.arrive_and_wait();
     raceClaim();
   });
@@ -692,19 +802,20 @@ TEST_CASE("the camera action RPC drives the driver behind the fleet gate")
     fenced->speakReleased = false;
     CameraDriverTestAccess::install(1, fenced);
     CameraCommandResult settleAck;
-    std::thread settleThread([&]() {
-      settleAck = client.announce({.cameraId = 1,
-                                   .text = "Fence settle",
-                                   .lang = "es",
-                                   .commandId = "cmd-settle-fence",
-                                   .encounterId = 9,
-                                   .expiresAt = 0});
-    });
+    Worker settleThread([&fenced]() { fenced->releaseSpeak(); },
+                        [&]() {
+                          settleAck =
+                              client.announce({.cameraId = 1,
+                                               .text = "Fence settle",
+                                               .lang = "es",
+                                               .commandId = "cmd-settle-fence",
+                                               .encounterId = 9,
+                                               .expiresAt = 0});
+                        });
     while (fenced->speakCalls.load() == 0)
       std::this_thread::sleep_for(std::chrono::milliseconds(1));
     const int64_t future = static_cast<int64_t>(std::time(nullptr)) + 100;
     CHECK(drogon::sync_wait(commands.reconcileExpired(future, 0)) == 1);
-    fenced->releaseSpeak();
     settleThread.join();
     CHECK_FALSE(settleAck.succeeded());
     CHECK(settleAck.indeterminate());
@@ -723,18 +834,18 @@ TEST_CASE("the camera action RPC drives the driver behind the fleet gate")
     blocked->blockSpeak = true;
     CameraDriverTestAccess::install(1, blocked);
     CameraCommandResult ack;
-    std::thread thread([&]() {
-      ack = client.alarm({.cameraId = 1,
-                          .seconds = 1,
-                          .commandId = "cmd-alarm-fence",
-                          .encounterId = 9,
-                          .expiresAt = 0});
-    });
+    Worker thread([&blocked]() { blocked->releaseSpeak(); },
+                  [&]() {
+                    ack = client.alarm({.cameraId = 1,
+                                        .seconds = 1,
+                                        .commandId = "cmd-alarm-fence",
+                                        .encounterId = 9,
+                                        .expiresAt = 0});
+                  });
     while (blocked->speakCalls.load() == 0)
       std::this_thread::sleep_for(std::chrono::milliseconds(1));
     const int64_t alarmFuture = static_cast<int64_t>(std::time(nullptr)) + 100;
     CHECK(drogon::sync_wait(commands.reconcileExpired(alarmFuture, 0)) == 1);
-    blocked->releaseSpeak();
     thread.join();
     CHECK(ack.indeterminate());
     CHECK(blocked->speakCalls.load() == 1);
@@ -747,19 +858,19 @@ TEST_CASE("the camera action RPC drives the driver behind the fleet gate")
     blocked->blockSettings = true;
     CameraDriverTestAccess::install(1, blocked);
     CameraCommandResult ack;
-    std::thread thread([&]() {
-      ack = client.setSiren({.cameraId = 1,
-                             .enabled = true,
-                             .commandId = "cmd-siren-fence",
-                             .encounterId = 9,
-                             .expiresAt = 0,
-                             .leaseSeconds = 20});
-    });
+    Worker thread([&blocked]() { blocked->releaseSettings(); },
+                  [&]() {
+                    ack = client.setSiren({.cameraId = 1,
+                                           .enabled = true,
+                                           .commandId = "cmd-siren-fence",
+                                           .encounterId = 9,
+                                           .expiresAt = 0,
+                                           .leaseSeconds = 20});
+                  });
     while (!blocked->settingsCalled)
       std::this_thread::sleep_for(std::chrono::milliseconds(1));
     const int64_t sirenFuture = static_cast<int64_t>(std::time(nullptr)) + 100;
     CHECK(drogon::sync_wait(commands.reconcileExpired(sirenFuture, 0)) == 1);
-    blocked->releaseSettings();
     thread.join();
     CHECK(ack.indeterminate());
   }
@@ -788,14 +899,22 @@ TEST_CASE("the camera action RPC drives the driver behind the fleet gate")
     });
     CameraDriverTestAccess::install(1, std::make_shared<StubActuator>());
     CameraCommandResult ack;
-    std::thread thread([&]() {
-      ack = client.listen({.cameraId = 1,
-                           .seconds = 1,
-                           .lang = "es",
-                           .commandId = "cmd-listen-fence-race",
-                           .encounterId = 9,
-                           .expiresAt = 0});
-    });
+    Worker thread(
+        [&]() {
+          {
+            std::scoped_lock lock(captureMutex);
+            captureReleased = true;
+          }
+          captureCv.notify_all();
+        },
+        [&]() {
+          ack = client.listen({.cameraId = 1,
+                               .seconds = 1,
+                               .lang = "es",
+                               .commandId = "cmd-listen-fence-race",
+                               .encounterId = 9,
+                               .expiresAt = 0});
+        });
     while (true) {
       std::lock_guard lock(captureMutex);
       if (captureStarted)
@@ -803,11 +922,6 @@ TEST_CASE("the camera action RPC drives the driver behind the fleet gate")
     }
     const int64_t listenFuture = static_cast<int64_t>(std::time(nullptr)) + 100;
     CHECK(drogon::sync_wait(commands.reconcileExpired(listenFuture, 0)) == 1);
-    {
-      std::lock_guard lock(captureMutex);
-      captureReleased = true;
-    }
-    captureCv.notify_all();
     thread.join();
     CHECK(ack.indeterminate());
     CHECK_FALSE(ack.captured);
@@ -921,8 +1035,6 @@ TEST_CASE("the camera action RPC drives the driver behind the fleet gate")
             .rejected());
 
   server->Shutdown();
-  drogon::app().quit();
-  runner.join();
   std::remove(kCameraDb);
   std::remove((std::string(kCameraDb) + "-wal").c_str());
   std::remove((std::string(kCameraDb) + "-shm").c_str());

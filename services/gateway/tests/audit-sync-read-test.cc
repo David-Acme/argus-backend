@@ -28,8 +28,13 @@
 #include <chrono>
 #include <cstdio>
 #include <filesystem>
+#include <future>
+#include <memory>
+#include <sqlite3.h>
+#include <stdexcept>
 #include <string>
 #include <thread>
+#include <trantor/net/EventLoop.h>
 #include <unistd.h>
 #include <vector>
 
@@ -70,6 +75,39 @@ struct SeedAuditTablesInput
   int64_t userAuditId{0};
 };
 
+using DbHandle = std::unique_ptr<sqlite3, int (*)(sqlite3*)>;
+
+// The drogon calls these replace all threw on failure, so a throwing helper
+// keeps the suite's assertion count where it was.
+void exec(sqlite3* db, const std::string& sql)
+{
+  char* error = nullptr;
+  if (sqlite3_exec(db, sql.c_str(), nullptr, nullptr, &error) != SQLITE_OK) {
+    const std::string message = error ? error : "exec failed";
+    sqlite3_free(error);
+    throw std::runtime_error(message);
+  }
+  sqlite3_free(error);
+}
+
+DbHandle openFile(const std::string& path)
+{
+  sqlite3* raw = nullptr;
+  if (sqlite3_open(path.c_str(), &raw) != SQLITE_OK) {
+    const std::string message = raw ? sqlite3_errmsg(raw) : "open failed";
+    sqlite3_close_v2(raw);
+    throw std::runtime_error(message);
+  }
+  return {raw, sqlite3_close_v2};
+}
+
+// Seeded through the sqlite3 C API, the way this unit's sibling suites seed
+// theirs: a throwaway drogon client keeps a loop thread of its own, and a
+// connection whose queued statement lambda still holds the last reference is
+// destroyed on that thread, where ~EventLoopThread then joins the thread it is
+// running on (EDEADLK -> SIGABRT, no assertion reported). The default rollback
+// journal is kept on purpose: a read-only client opens one of these files
+// afterwards, and a WAL database needs write access for its -shm.
 void seedAuditTables(const SeedAuditTablesInput& input)
 {
   const char* path = input.path;
@@ -77,31 +115,28 @@ void seedAuditTables(const SeedAuditTablesInput& input)
   const int64_t userAuditId = input.userAuditId;
 
   std::remove(path);
-  auto client =
-      drogon::orm::DbClient::newSqlite3Client(std::string("filename=") + path,
-                                              1);
-  client->execSqlSync(
-      "CREATE TABLE audit_log ("
-      "id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, "
-      "create_user_id INTEGER, record_id INTEGER NOT NULL, "
-      "table_name TEXT NOT NULL, changes TEXT NOT NULL DEFAULT '{}', "
-      "priority INTEGER NOT NULL DEFAULT 1, event_timestamp INTEGER NOT NULL, "
-      "created_at INTEGER NOT NULL DEFAULT 0)");
-  client->execSqlSync(
-      "CREATE TABLE user_audit_log ("
-      "id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, "
-      "user_id INTEGER NOT NULL, record_id INTEGER NOT NULL, "
-      "table_name TEXT NOT NULL, changes TEXT NOT NULL DEFAULT '{}', "
-      "priority INTEGER NOT NULL DEFAULT 1, event_timestamp INTEGER NOT NULL, "
-      "created_at INTEGER NOT NULL DEFAULT 0)");
-  client->execSqlSync("INSERT INTO audit_log (id, record_id, table_name, "
-                      "changes, priority, event_timestamp) "
-                      "VALUES (?, 1, 'camera', '{}', 1, 100)",
-                      auditId);
-  client->execSqlSync("INSERT INTO user_audit_log (id, user_id, record_id, "
-                      "table_name, changes, priority, event_timestamp) "
-                      "VALUES (?, 7, 1, 'camera', '{}', 1, 100)",
-                      userAuditId);
+  const DbHandle db = openFile(path);
+  exec(db.get(),
+       "CREATE TABLE audit_log ("
+       "id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, "
+       "create_user_id INTEGER, record_id INTEGER NOT NULL, "
+       "table_name TEXT NOT NULL, changes TEXT NOT NULL DEFAULT '{}', "
+       "priority INTEGER NOT NULL DEFAULT 1, event_timestamp INTEGER NOT NULL, "
+       "created_at INTEGER NOT NULL DEFAULT 0)");
+  exec(db.get(),
+       "CREATE TABLE user_audit_log ("
+       "id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, "
+       "user_id INTEGER NOT NULL, record_id INTEGER NOT NULL, "
+       "table_name TEXT NOT NULL, changes TEXT NOT NULL DEFAULT '{}', "
+       "priority INTEGER NOT NULL DEFAULT 1, event_timestamp INTEGER NOT NULL, "
+       "created_at INTEGER NOT NULL DEFAULT 0)");
+  exec(db.get(), "INSERT INTO audit_log (id, record_id, table_name, changes, "
+                 "priority, event_timestamp) VALUES (" +
+                     std::to_string(auditId) + ", 1, 'camera', '{}', 1, 100)");
+  exec(db.get(),
+       "INSERT INTO user_audit_log (id, user_id, record_id, table_name, "
+       "changes, priority, event_timestamp) VALUES (" +
+           std::to_string(userAuditId) + ", 7, 1, 'camera', '{}', 1, 100)");
 }
 
 bool waitForBoot(std::chrono::milliseconds timeout)
@@ -113,6 +148,74 @@ bool waitForBoot(std::chrono::milliseconds timeout)
     std::this_thread::sleep_for(std::chrono::milliseconds(10));
   }
   return drogon::app().isRunning();
+}
+
+// Runs the app and stops it however the case body leaves. A joinable
+// std::thread destroyed by unwinding calls std::terminate, which reports an
+// ordinary statement failure as a SIGABRT with no assertion behind it.
+class AppRunner
+{
+public:
+  AppRunner() : runner_([] { drogon::app().run(); }) {}
+
+  ~AppRunner()
+  {
+    if (!runner_.joinable())
+      return;
+    // Drogon reports the app running before its main loop is looping, and a
+    // loop that has not begun cannot be stopped: trantor's loop() clears the
+    // quit flag again as it starts. Waiting for it to loop is what makes the
+    // quit below take effect — detaching in that window left the app's thread
+    // running past the end of the process, measured as SIGSEGV inside
+    // EventLoop::loop() in 3 of 20 runs of a forced constructor throw.
+    for (int i = 0; i < 3000 && !drogon::app().getLoop()->isRunning(); ++i)
+      std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    if (drogon::app().getLoop()->isRunning()) {
+      drogon::app().quit();
+      runner_.join();
+      return;
+    }
+    // A boot that never reached the loop at all is left to the process: it
+    // cannot be asked to stop, and joining it would block for ever.
+    runner_.detach();
+  }
+
+  AppRunner(const AppRunner&) = delete;
+  AppRunner& operator=(const AppRunner&) = delete;
+
+private:
+  std::thread runner_;
+};
+
+// One async statement whose callback queues a sentinel on the connection's own
+// loop. Callbacks run on that loop, and trantor destroys each queued functor as
+// it dequeues the next, so the reference the statement lambda held is gone
+// before the sentinel runs: after this returns no thread but this one holds the
+// connection, and the client's destructor joins an idle loop thread from
+// outside instead of its own. The callback must not capture the client: a
+// reference released on that loop re-opens the window. No assertion here by
+// design (a timeout throws): the suites' counts must not move.
+void drain(const drogon::orm::DbClientPtr& client)
+{
+  auto drained = std::make_shared<std::promise<void>>();
+  auto done = drained->get_future();
+  client->execSqlAsync(
+      "SELECT 1",
+      [drained](const drogon::orm::Result&) {
+        trantor::EventLoop::getEventLoopOfCurrentThread()->queueInLoop(
+            [drained]() { drained->set_value(); });
+      },
+      [drained](const std::exception_ptr& e) {
+        try {
+          std::rethrow_exception(e);
+        }
+        catch (const std::exception& ex) {
+          std::fprintf(stderr, "drain statement failed: %s\n", ex.what());
+        }
+        drained->set_value();
+      });
+  if (done.wait_for(std::chrono::seconds(10)) != std::future_status::ready)
+    throw std::runtime_error("the client's loop did not drain");
 }
 
 // Camera table (camera.db shape) for the named-camera-client resolution test.
@@ -129,30 +232,33 @@ void createCameraTable(const CreateCameraTableInput& input)
   const int64_t id = input.id;
   const char* name = input.name;
 
-  auto client =
-      drogon::orm::DbClient::newSqlite3Client(std::string("filename=") + path,
-                                              1);
-  client->execSqlSync(
-      "CREATE TABLE camera ("
-      "id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, "
-      "name TEXT NOT NULL, manufacturer TEXT NOT NULL DEFAULT '', "
-      "model TEXT NOT NULL DEFAULT '', ip TEXT NOT NULL, "
-      "port INTEGER NOT NULL DEFAULT 554, "
-      "username TEXT NOT NULL DEFAULT 'admin', "
-      "password TEXT NOT NULL DEFAULT '', "
-      "cloud_username TEXT NOT NULL DEFAULT '', "
-      "cloud_password TEXT NOT NULL DEFAULT '', "
-      "driver TEXT NOT NULL DEFAULT 'tapo', "
-      "icon TEXT NOT NULL DEFAULT 'video', "
-      "record_mode TEXT NOT NULL DEFAULT 'events', "
-      "retention_days INTEGER, capabilities TEXT NOT NULL DEFAULT '[]', "
-      "config TEXT NOT NULL DEFAULT '{}', "
-      "is_enabled INTEGER NOT NULL DEFAULT 1, "
-      "is_online INTEGER NOT NULL DEFAULT 0, "
-      "created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')), "
-      "updated_at INTEGER, deleted_at INTEGER)");
-  client->execSqlSync(
-      "INSERT INTO camera (id, name, ip) VALUES (?, ?, '127.0.0.1')", id, name);
+  const DbHandle db = openFile(path);
+  // The app's default client holds this file while the identity database is
+  // seeded, so take the tree's bootstrap and wait out a lock instead of
+  // answering SQLITE_BUSY at once.
+  exec(db.get(), "PRAGMA busy_timeout = 5000");
+  exec(db.get(), "PRAGMA journal_mode = WAL");
+  exec(db.get(),
+       "CREATE TABLE camera ("
+       "id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, "
+       "name TEXT NOT NULL, manufacturer TEXT NOT NULL DEFAULT '', "
+       "model TEXT NOT NULL DEFAULT '', ip TEXT NOT NULL, "
+       "port INTEGER NOT NULL DEFAULT 554, "
+       "username TEXT NOT NULL DEFAULT 'admin', "
+       "password TEXT NOT NULL DEFAULT '', "
+       "cloud_username TEXT NOT NULL DEFAULT '', "
+       "cloud_password TEXT NOT NULL DEFAULT '', "
+       "driver TEXT NOT NULL DEFAULT 'tapo', "
+       "icon TEXT NOT NULL DEFAULT 'video', "
+       "record_mode TEXT NOT NULL DEFAULT 'events', "
+       "retention_days INTEGER, capabilities TEXT NOT NULL DEFAULT '[]', "
+       "config TEXT NOT NULL DEFAULT '{}', "
+       "is_enabled INTEGER NOT NULL DEFAULT 1, "
+       "is_online INTEGER NOT NULL DEFAULT 0, "
+       "created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')), "
+       "updated_at INTEGER, deleted_at INTEGER)");
+  exec(db.get(), "INSERT INTO camera (id, name, ip) VALUES (" +
+                     std::to_string(id) + ", '" + name + "', '127.0.0.1')");
 }
 
 struct SeedCameraTableInput
@@ -333,7 +439,7 @@ TEST_CASE("audit sync reads resolve to the default identity client on the "
   drogon::app().addDbClient(
       drogon::orm::Sqlite3Config{1, identityDbFile.path(), "default", -1});
 
-  std::thread runner([] { drogon::app().run(); });
+  AppRunner runner;
   REQUIRE(waitForBoot(std::chrono::seconds(30)));
 
   // The client object must outlive the in-flight callbacks on its own loop.
@@ -604,8 +710,10 @@ TEST_CASE("audit sync reads resolve to the default identity client on the "
   }
   CHECK(unavailable);
 
-  drogon::app().quit();
-  runner.join();
+  // Both handover clients die with this scope, so empty their loops first: the
+  // release that reaches zero must not land on a connection's own loop thread.
+  drain(legacyDb);
+  drain(cameraDb);
   DbService::setReadOnlyClient(nullptr);
   DbService::setCameraClient(nullptr);
   std::filesystem::remove_all("/tmp/argus-audit-sync-read-test-upload");

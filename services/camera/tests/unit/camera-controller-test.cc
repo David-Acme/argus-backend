@@ -18,6 +18,8 @@
 #include <cstdio>
 #include <filesystem>
 #include <optional>
+#include <sqlite3.h>
+#include <stdexcept>
 #include <string>
 #include <thread>
 
@@ -25,13 +27,41 @@ namespace
 {
 constexpr const char* kCameraDb = "camera-controller-test.db";
 
+using DbHandle = std::unique_ptr<sqlite3, int (*)(sqlite3*)>;
+
+// The seeding fixture writes through the sqlite3 C API: a throwaway drogon
+// client released while a statement lambda is still queued on the connection's
+// own loop thread self-joins that thread — SIGABRT with no assertion behind
+// it. These seeding calls could only throw before, so the helpers throw too.
+DbHandle openFile(const std::string& path)
+{
+  sqlite3* raw = nullptr;
+  if (sqlite3_open(path.c_str(), &raw) == SQLITE_OK)
+    return {raw, sqlite3_close_v2};
+  const std::string message =
+      raw != nullptr ? std::string(sqlite3_errmsg(raw)) : std::string("failed");
+  sqlite3_close_v2(raw);
+  throw std::runtime_error("sqlite3_open " + path + ": " + message);
+}
+
+void exec(sqlite3* db, const std::string& sql)
+{
+  char* error = nullptr;
+  if (sqlite3_exec(db, sql.c_str(), nullptr, nullptr, &error) == SQLITE_OK) {
+    sqlite3_free(error);
+    return;
+  }
+  const std::string message =
+      error != nullptr ? std::string(error) : std::string("failed");
+  sqlite3_free(error);
+  throw std::runtime_error("sqlite3_exec: " + message);
+}
+
 void seedCameraDb(const char* path)
 {
   std::remove(path);
-  auto client =
-      drogon::orm::DbClient::newSqlite3Client(std::string("filename=") + path,
-                                              1);
-  client->execSqlSync(
+  const auto db = openFile(path);
+  exec(db.get(),
       "CREATE TABLE camera ("
       "id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, "
       "name TEXT NOT NULL, manufacturer TEXT NOT NULL DEFAULT '', "
@@ -52,7 +82,7 @@ void seedCameraDb(const char* path)
       "is_online INTEGER NOT NULL DEFAULT 0, "
       "created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')), "
       "updated_at INTEGER, deleted_at INTEGER)");
-  client->execSqlSync(
+  exec(db.get(),
       "CREATE TABLE camera_stream ("
       "id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, "
       "camera_id INTEGER NOT NULL REFERENCES camera(id) ON DELETE CASCADE, "
@@ -62,7 +92,7 @@ void seedCameraDb(const char* path)
       "is_enabled INTEGER NOT NULL DEFAULT 1, "
       "created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')), "
       "updated_at INTEGER, deleted_at INTEGER)");
-  client->execSqlSync(
+  exec(db.get(),
       "CREATE TABLE zone ("
       "id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, "
       "camera_id INTEGER NOT NULL REFERENCES camera(id) ON DELETE CASCADE, "
@@ -74,6 +104,40 @@ void seedCameraDb(const char* path)
       "created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')), "
       "updated_at INTEGER, deleted_at INTEGER)");
 }
+
+class AppRunner
+{
+public:
+  AppRunner() : runner_([] { drogon::app().run(); }) {}
+
+  ~AppRunner()
+  {
+    if (!runner_.joinable())
+      return;
+    // Drogon reports the app running before its main loop is looping, and a
+    // loop that has not begun cannot be stopped: trantor's loop() clears the
+    // quit flag again as it starts. Waiting for it to loop is what makes the
+    // quit below take effect — detaching in that window left the app's thread
+    // running past the end of the process, measured as SIGSEGV inside
+    // EventLoop::loop() in 3 of 20 runs of a forced constructor throw.
+    for (int i = 0; i < 3000 && !drogon::app().getLoop()->isRunning(); ++i)
+      std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    if (drogon::app().getLoop()->isRunning()) {
+      drogon::app().quit();
+      runner_.join();
+      return;
+    }
+    // A boot that never reached the loop at all is left to the process: it
+    // cannot be asked to stop, and joining it would block for ever.
+    runner_.detach();
+  }
+
+  AppRunner(const AppRunner&) = delete;
+  AppRunner& operator=(const AppRunner&) = delete;
+
+private:
+  std::thread runner_;
+};
 
 bool waitForBoot(std::chrono::milliseconds timeout)
 {
@@ -172,7 +236,7 @@ TEST_CASE("camera and zone contracts hold on the argus-camera surface")
   drogon::app().addDbClient(
       drogon::orm::Sqlite3Config{1, kCameraDb, "default", -1});
 
-  std::thread runner([] { drogon::app().run(); });
+  AppRunner runner;
   REQUIRE(waitForBoot(std::chrono::seconds(30)));
 
   CameraController cameraController;
@@ -371,9 +435,6 @@ TEST_CASE("camera and zone contracts hold on the argus-camera surface")
   const bool voiceIgnored = drogon::sync_wait(mediaService.handleText(
       {.conn = conn, .message = unknownMessage, .raw = std::string_view{}}));
   CHECK_FALSE(voiceIgnored);
-
-  drogon::app().quit();
-  runner.join();
 
   std::remove(kCameraDb);
   std::remove((std::string(kCameraDb) + "-wal").c_str());

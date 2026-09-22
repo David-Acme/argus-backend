@@ -17,8 +17,11 @@
 
 #include <chrono>
 #include <cstdio>
+#include <memory>
 #include <mutex>
 #include <auth/request-context.hxx>
+#include <sqlite3.h>
+#include <stdexcept>
 #include <string>
 #include <thread>
 #include <vector>
@@ -75,69 +78,139 @@ public:
   mutable std::vector<RecordedAudit> audits;
 };
 
-// Seeds both notification tables and the notification_token indexes.
+using DbHandle = std::unique_ptr<sqlite3, int (*)(sqlite3*)>;
+
+// Reports failure by throwing, as the drogon client calls these replace do:
+// this suite's assertion count is fixed, and doctest reports an escaping
+// exception either way.
+DbHandle openFile(const char* path)
+{
+  sqlite3* raw = nullptr;
+  if (sqlite3_open(path, &raw) != SQLITE_OK) {
+    const std::string error = raw ? sqlite3_errmsg(raw) : "open failed";
+    sqlite3_close_v2(raw);
+    throw std::runtime_error("cannot open " + std::string(path) + ": " + error);
+  }
+  return {raw, sqlite3_close_v2};
+}
+
+void exec(sqlite3* db, const std::string& sql)
+{
+  char* error = nullptr;
+  if (sqlite3_exec(db, sql.c_str(), nullptr, nullptr, &error) != SQLITE_OK) {
+    const std::string message = error ? error : "exec failed";
+    sqlite3_free(error);
+    throw std::runtime_error(message + " <- " + sql);
+  }
+  sqlite3_free(error);
+}
+
+// Seeds both notification tables and the notification_token indexes. Written
+// through the sqlite3 C API rather than a throwaway drogon client: that
+// client's release can land on the connection's own loop thread, whose
+// destructor then joins the loop it runs on and aborts with no assertion
+// behind it. This runs before the app boots, so no other connection holds the
+// file and the raw connection needs no bootstrap pragmas.
 void seedNotificationDb(const char* path)
 {
   std::remove(path);
-  auto client =
-      drogon::orm::DbClient::newSqlite3Client(std::string("filename=") + path,
-                                              1);
-  client->execSqlSync(
-      "CREATE TABLE notification ("
-      "id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, "
-      "user_id INTEGER NOT NULL REFERENCES user(id) ON DELETE CASCADE, "
-      "type TEXT NOT NULL DEFAULT 'system', title TEXT NOT NULL DEFAULT '', "
-      "body TEXT NOT NULL DEFAULT '', data TEXT NOT NULL DEFAULT '{}', "
-      "is_read INTEGER NOT NULL DEFAULT 0 CHECK (is_read IN (0, 1)), "
-      "read_at INTEGER, "
-      "created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')))");
-  client->execSqlSync(
-      "CREATE TABLE notification_token ("
-      "id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, "
-      "user_id INTEGER NOT NULL REFERENCES user(id) ON DELETE CASCADE, "
-      "device_hash TEXT NOT NULL DEFAULT '', token TEXT NOT NULL, "
-      "platform TEXT NOT NULL DEFAULT '', lang TEXT NOT NULL DEFAULT '', "
-      "is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)), "
-      "created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')), "
-      "updated_at INTEGER)");
-  client->execSqlSync(
-      "CREATE UNIQUE INDEX IF NOT EXISTS idx_notification_token_uniq "
-      "ON notification_token (user_id, device_hash)");
-  client->execSqlSync(
-      "CREATE TABLE notification_delivery ("
-      "id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, "
-      "notification_id INTEGER NOT NULL, "
-      "user_id INTEGER NOT NULL DEFAULT 0, "
-      "status TEXT NOT NULL DEFAULT 'pending', "
-      "attempts INTEGER NOT NULL DEFAULT 0, "
-      "created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')), "
-      "sent_at INTEGER NOT NULL DEFAULT 0, "
-      "acked_at INTEGER NOT NULL DEFAULT 0, "
-      "created_ms INTEGER NOT NULL DEFAULT 0, "
-      "sent_ms INTEGER NOT NULL DEFAULT 0, "
-      "acked_ms INTEGER NOT NULL DEFAULT 0, "
-      "UNIQUE (notification_id))");
-  client->execSqlSync(
-      "CREATE TABLE notification_selftest ("
-      "id INTEGER NOT NULL PRIMARY KEY CHECK (id = 1), "
-      "last_at INTEGER NOT NULL DEFAULT 0, "
-      "last_ok INTEGER NOT NULL DEFAULT 0, "
-      "last_ms INTEGER NOT NULL DEFAULT 0)");
-  client->execSqlSync(
-      "CREATE INDEX IF NOT EXISTS idx_notification_token_user "
-      "ON notification_token (user_id)");
-  for (const auto id : {1, 2}) {
-    client->execSqlSync(
-        "INSERT INTO notification (id, user_id, type, title, body) "
-        "VALUES (?, 7, 'event', ?, 'someone rang the bell')",
-        id, ("Bell " + std::to_string(id)));
-    client->execSqlSync(
-        "INSERT INTO notification_delivery (notification_id, user_id, status, "
-        "created_at, sent_at, created_ms, sent_ms) VALUES (?, 7, 'sent', "
-        "1700000000, 1700000001, 1700000000000, 1700000001500)",
-        id);
-  }
+  const auto db = openFile(path);
+  exec(db.get(),
+       "CREATE TABLE notification ("
+       "id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, "
+       "user_id INTEGER NOT NULL REFERENCES user(id) ON DELETE CASCADE, "
+       "type TEXT NOT NULL DEFAULT 'system', title TEXT NOT NULL DEFAULT '', "
+       "body TEXT NOT NULL DEFAULT '', data TEXT NOT NULL DEFAULT '{}', "
+       "is_read INTEGER NOT NULL DEFAULT 0 CHECK (is_read IN (0, 1)), "
+       "read_at INTEGER, "
+       "created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')))");
+  exec(db.get(),
+       "CREATE TABLE notification_token ("
+       "id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, "
+       "user_id INTEGER NOT NULL REFERENCES user(id) ON DELETE CASCADE, "
+       "device_hash TEXT NOT NULL DEFAULT '', token TEXT NOT NULL, "
+       "platform TEXT NOT NULL DEFAULT '', lang TEXT NOT NULL DEFAULT '', "
+       "is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)), "
+       "created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')), "
+       "updated_at INTEGER)");
+  exec(db.get(),
+       "CREATE UNIQUE INDEX IF NOT EXISTS idx_notification_token_uniq "
+       "ON notification_token (user_id, device_hash)");
+  exec(db.get(),
+       "CREATE TABLE notification_delivery ("
+       "id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, "
+       "notification_id INTEGER NOT NULL, "
+       "user_id INTEGER NOT NULL DEFAULT 0, "
+       "status TEXT NOT NULL DEFAULT 'pending', "
+       "attempts INTEGER NOT NULL DEFAULT 0, "
+       "created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')), "
+       "sent_at INTEGER NOT NULL DEFAULT 0, "
+       "acked_at INTEGER NOT NULL DEFAULT 0, "
+       "created_ms INTEGER NOT NULL DEFAULT 0, "
+       "sent_ms INTEGER NOT NULL DEFAULT 0, "
+       "acked_ms INTEGER NOT NULL DEFAULT 0, "
+       "UNIQUE (notification_id))");
+  exec(db.get(),
+       "CREATE TABLE notification_selftest ("
+       "id INTEGER NOT NULL PRIMARY KEY CHECK (id = 1), "
+       "last_at INTEGER NOT NULL DEFAULT 0, "
+       "last_ok INTEGER NOT NULL DEFAULT 0, "
+       "last_ms INTEGER NOT NULL DEFAULT 0)");
+  exec(db.get(),
+       "CREATE INDEX IF NOT EXISTS idx_notification_token_user "
+       "ON notification_token (user_id)");
+  exec(db.get(),
+       "INSERT INTO notification (id, user_id, type, title, body) "
+       "VALUES (1, 7, 'event', 'Bell 1', 'someone rang the bell')");
+  exec(db.get(),
+       "INSERT INTO notification_delivery (notification_id, user_id, status, "
+       "created_at, sent_at, created_ms, sent_ms) VALUES (1, 7, 'sent', "
+       "1700000000, 1700000001, 1700000000000, 1700000001500)");
+  exec(db.get(),
+       "INSERT INTO notification (id, user_id, type, title, body) "
+       "VALUES (2, 7, 'event', 'Bell 2', 'someone rang the bell')");
+  exec(db.get(),
+       "INSERT INTO notification_delivery (notification_id, user_id, status, "
+       "created_at, sent_at, created_ms, sent_ms) VALUES (2, 7, 'sent', "
+       "1700000000, 1700000001, 1700000000000, 1700000001500)");
 }
+
+// Runs the app and stops it however the case body leaves. A joinable
+// std::thread destroyed by unwinding calls std::terminate, which reports an
+// ordinary statement failure as a SIGABRT with no assertion behind it.
+class AppRunner
+{
+public:
+  AppRunner() : runner_([] { drogon::app().run(); }) {}
+
+  ~AppRunner()
+  {
+    if (!runner_.joinable())
+      return;
+    // Drogon reports the app running before its main loop is looping, and a
+    // loop that has not begun cannot be stopped: trantor's loop() clears the
+    // quit flag again as it starts. Waiting for it to loop is what makes the
+    // quit below take effect — detaching in that window left the app's thread
+    // running past the end of the process, measured as SIGSEGV inside
+    // EventLoop::loop() in 3 of 20 runs of a forced constructor throw.
+    for (int i = 0; i < 3000 && !drogon::app().getLoop()->isRunning(); ++i)
+      std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    if (drogon::app().getLoop()->isRunning()) {
+      drogon::app().quit();
+      runner_.join();
+      return;
+    }
+    // A boot that never reached the loop at all is left to the process: it
+    // cannot be asked to stop, and joining it would block for ever.
+    runner_.detach();
+  }
+
+  AppRunner(const AppRunner&) = delete;
+  AppRunner& operator=(const AppRunner&) = delete;
+
+private:
+  std::thread runner_;
+};
 
 bool waitForBoot(std::chrono::milliseconds timeout)
 {
@@ -165,7 +238,7 @@ TEST_CASE("notification contracts hold on the argus-notification surface")
   drogon::app().addDbClient(
       drogon::orm::Sqlite3Config{1, kNotificationDb, "default", -1});
 
-  std::thread runner([] { drogon::app().run(); });
+  const AppRunner app;
   REQUIRE(waitForBoot(std::chrono::seconds(30)));
 
   RecordingSink sink;
@@ -315,9 +388,6 @@ TEST_CASE("notification contracts hold on the argus-notification surface")
   CHECK(rotatedTokens.front().token == "token-b");
 
   user_change::setNotificationSink(nullptr);
-
-  drogon::app().quit();
-  runner.join();
 
   std::remove(kNotificationDb);
   std::remove((std::string(kNotificationDb) + "-wal").c_str());

@@ -19,6 +19,8 @@
 #include <errors/response-exception.hxx>
 #include <memory>
 #include <optional>
+#include <sqlite3.h>
+#include <stdexcept>
 #include <auth/request-context.hxx>
 #include <string>
 #include <thread>
@@ -110,54 +112,121 @@ const DeviceContext& deviceCtx(const drogon::HttpRequestPtr& req)
   return req->getAttributes()->get<DeviceContext>(AuthContext::kDeviceKey);
 }
 
+// Seed through the sqlite3 C API. A throwaway drogon client keeps a loop thread
+// of its own, and a statement lambda it queues holds the connection's last
+// reference -- released while that lambda is still queued, ~Sqlite3Connection
+// runs on that very thread and ~EventLoopThread joins the thread it is running
+// on: EDEADLK, SIGABRT with no assertion reported.
+using DbHandle = std::unique_ptr<sqlite3, int (*)(sqlite3*)>;
+
+// Throws on failure, as the client calls these replace did: this suite's
+// assertion count is fixed, and doctest reports an escaping exception either
+// way.
+DbHandle openFile(const char* path)
+{
+  sqlite3* raw = nullptr;
+  if (sqlite3_open(path, &raw) != SQLITE_OK) {
+    const std::string error = raw ? sqlite3_errmsg(raw) : "open failed";
+    sqlite3_close_v2(raw);
+    throw std::runtime_error("cannot open " + std::string(path) + ": " + error);
+  }
+  return {raw, sqlite3_close_v2};
+}
+
+void exec(sqlite3* db, const std::string& sql)
+{
+  char* error = nullptr;
+  if (sqlite3_exec(db, sql.c_str(), nullptr, nullptr, &error) != SQLITE_OK) {
+    const std::string message = error ? error : "exec failed";
+    sqlite3_free(error);
+    throw std::runtime_error(message + " <- " + sql);
+  }
+  sqlite3_free(error);
+}
+
 void seedIdentityDb(const char* path)
 {
   std::remove(path);
-  auto client =
-      drogon::orm::DbClient::newSqlite3Client(std::string("filename=") + path,
-                                              1);
-  client->execSqlSync(
-      "CREATE TABLE user ("
-      "id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, "
-      "name TEXT NOT NULL, last_name TEXT NOT NULL DEFAULT '', "
-      "role TEXT NOT NULL CHECK (role IN ('owner', 'resident', 'guard', "
-      "'guest')), lang TEXT NOT NULL DEFAULT 'es' "
-      "CHECK (lang IN ('es', 'en')), "
-      "is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)), "
-      "created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')), "
-      "updated_at INTEGER, deleted_at INTEGER)");
-  client->execSqlSync(
-      "INSERT INTO user (id, name, role, is_active) "
-      "VALUES (1, 'Owner', 'owner', 1)");
-  client->execSqlSync(
-      "CREATE TABLE refresh_token ("
-      "id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, "
-      "user_id INTEGER NOT NULL REFERENCES user(id) ON DELETE CASCADE, "
-      "access_token TEXT NOT NULL, refresh_token TEXT NOT NULL, "
-      "device_hash TEXT NOT NULL, user_agent TEXT NOT NULL DEFAULT '', "
-      "is_valid INTEGER NOT NULL DEFAULT 1, is_used INTEGER NOT NULL DEFAULT 0, "
-      "expires_at INTEGER NOT NULL, "
-      "created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')))");
-  client->execSqlSync(
-      "CREATE TABLE device_credential ("
-      "id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, "
-      "user_id INTEGER NOT NULL REFERENCES user(id) ON DELETE CASCADE, "
-      "device_hash TEXT NOT NULL, secret_hash TEXT NOT NULL UNIQUE, "
-      "is_active INTEGER NOT NULL DEFAULT 1, "
-      "created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')))");
-  client->execSqlSync(
-      "INSERT INTO device_credential (user_id, device_hash, secret_hash) "
-      "VALUES (1, '', ?)",
-      DeviceFilter::sha256Hex(kSecret));
-  client->execSqlSync(
-      "CREATE TABLE device_login_challenge ("
-      "id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, "
-      "challenge_id TEXT NOT NULL UNIQUE, device_hash TEXT NOT NULL, "
-      "user_agent TEXT NOT NULL DEFAULT '', "
-      "status TEXT NOT NULL DEFAULT 'pending', user_id INTEGER, "
-      "access_token TEXT, refresh_token TEXT, expires_at INTEGER NOT NULL, "
-      "created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')))");
+  const auto db = openFile(path);
+  exec(db.get(),
+       "CREATE TABLE user ("
+       "id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, "
+       "name TEXT NOT NULL, last_name TEXT NOT NULL DEFAULT '', "
+       "role TEXT NOT NULL CHECK (role IN ('owner', 'resident', 'guard', "
+       "'guest')), lang TEXT NOT NULL DEFAULT 'es' "
+       "CHECK (lang IN ('es', 'en')), "
+       "is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)), "
+       "created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')), "
+       "updated_at INTEGER, deleted_at INTEGER)");
+  exec(db.get(), "INSERT INTO user (id, name, role, is_active) "
+                 "VALUES (1, 'Owner', 'owner', 1)");
+  exec(db.get(),
+       "CREATE TABLE refresh_token ("
+       "id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, "
+       "user_id INTEGER NOT NULL REFERENCES user(id) ON DELETE CASCADE, "
+       "access_token TEXT NOT NULL, refresh_token TEXT NOT NULL, "
+       "device_hash TEXT NOT NULL, user_agent TEXT NOT NULL DEFAULT '', "
+       "is_valid INTEGER NOT NULL DEFAULT 1, is_used INTEGER NOT NULL DEFAULT 0, "
+       "expires_at INTEGER NOT NULL, "
+       "created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')))");
+  exec(db.get(),
+       "CREATE TABLE device_credential ("
+       "id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, "
+       "user_id INTEGER NOT NULL REFERENCES user(id) ON DELETE CASCADE, "
+       "device_hash TEXT NOT NULL, secret_hash TEXT NOT NULL UNIQUE, "
+       "is_active INTEGER NOT NULL DEFAULT 1, "
+       "created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')))");
+  // sha256Hex is lowercase hex, so the literal carries nothing to escape.
+  exec(db.get(),
+       "INSERT INTO device_credential (user_id, device_hash, secret_hash) "
+       "VALUES (1, '', '" +
+           DeviceFilter::sha256Hex(kSecret) + "')");
+  exec(db.get(),
+       "CREATE TABLE device_login_challenge ("
+       "id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, "
+       "challenge_id TEXT NOT NULL UNIQUE, device_hash TEXT NOT NULL, "
+       "user_agent TEXT NOT NULL DEFAULT '', "
+       "status TEXT NOT NULL DEFAULT 'pending', user_id INTEGER, "
+       "access_token TEXT, refresh_token TEXT, expires_at INTEGER NOT NULL, "
+       "created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')))");
 }
+
+// Runs the app and stops it however the case body leaves. A joinable
+// std::thread destroyed by unwinding calls std::terminate, which reports an
+// ordinary statement failure as a SIGABRT with no assertion behind it.
+class AppRunner
+{
+public:
+  AppRunner() : runner_([] { drogon::app().run(); }) {}
+
+  ~AppRunner()
+  {
+    if (!runner_.joinable())
+      return;
+    // Drogon reports the app running before its main loop is looping, and a
+    // loop that has not begun cannot be stopped: trantor's loop() clears the
+    // quit flag again as it starts. Waiting for it to loop is what makes the
+    // quit below take effect — detaching in that window left the app's thread
+    // running past the end of the process, measured as SIGSEGV inside
+    // EventLoop::loop() in 3 of 20 runs of a forced constructor throw.
+    for (int i = 0; i < 3000 && !drogon::app().getLoop()->isRunning(); ++i)
+      std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    if (drogon::app().getLoop()->isRunning()) {
+      drogon::app().quit();
+      runner_.join();
+      return;
+    }
+    // A boot that never reached the loop at all is left to the process: it
+    // cannot be asked to stop, and joining it would block for ever.
+    runner_.detach();
+  }
+
+  AppRunner(const AppRunner&) = delete;
+  AppRunner& operator=(const AppRunner&) = delete;
+
+private:
+  std::thread runner_;
+};
 
 bool waitForBoot(std::chrono::milliseconds timeout)
 {
@@ -251,7 +320,7 @@ TEST_CASE("credential identity mode issues, binds and authenticates devices")
   drogon::app().setLogLevel(trantor::Logger::kWarn);
   drogon::app().addDbClient(
       drogon::orm::Sqlite3Config{1, db.path(), "default", -1});
-  std::thread runner([] { drogon::app().run(); });
+  AppRunner runner;
   REQUIRE(waitForBoot(std::chrono::seconds(30)));
 
   IdentityRpcHarness identityRpc;
@@ -447,7 +516,4 @@ TEST_CASE("credential identity mode issues, binds and authenticates devices")
     CHECK_FALSE(admittedCall);
     ConfigService::setRuntimeString("identity.rpc_secret", "");
   }
-
-  drogon::app().quit();
-  runner.join();
 }

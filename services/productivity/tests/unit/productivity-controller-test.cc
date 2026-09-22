@@ -2,6 +2,7 @@
 #include <doctest/doctest.h>
 
 #include <drogon/drogon.h>
+#include <trantor/net/EventLoop.h>
 #include <feature/api/calendar-event-share/controllers/calendar-event-share-controller.hxx>
 #include <feature/api/calendar-event-share/dtos/create-calendar-event-share-dto.hxx>
 #include <feature/api/calendar-event/controllers/calendar-event-controller.hxx>
@@ -24,9 +25,13 @@
 
 #include <chrono>
 #include <cstdio>
+#include <exception>
+#include <future>
 #include <memory>
 #include <optional>
 #include <mutex>
+#include <sqlite3.h>
+#include <stdexcept>
 #include <auth/request-context.hxx>
 #include <string>
 #include <thread>
@@ -39,33 +44,59 @@ constexpr const char* kProductivityDb = "productivity-controller-test.db";
 constexpr const char* kTestSecret =
     "productivity-controller-test-secret-0123456789";
 
-void seedIdentityDb(const char* path)
+using DbHandle = std::unique_ptr<sqlite3, int (*)(sqlite3*)>;
+
+// Both seeds write through the sqlite3 C API, the way the four sibling migration
+// suites write theirs: a throwaway drogon client keeps a loop thread of its own,
+// and releasing it with a statement lambda still queued on that loop destroys
+// the connection on the very thread it would join (EDEADLK, SIGABRT with no
+// assertion behind it). Errors are raised, not asserted, because these helpers
+// replace calls that threw (a failing execSqlSync propagates SqlError) and the
+// suite's assertion count must stay at its recorded pre-state.
+DbHandle openFile(const std::string& path)
 {
-  std::remove(path);
-  auto client =
-      drogon::orm::DbClient::newSqlite3Client(std::string("filename=") + path,
-                                              1);
-  client->execSqlSync(
-      "CREATE TABLE user ("
-      "id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, "
-      "name TEXT NOT NULL, last_name TEXT NOT NULL, "
-      "role TEXT NOT NULL CHECK (role IN ('owner', 'resident', 'guard', "
-      "'guest')), lang TEXT NOT NULL DEFAULT 'es' "
-      "CHECK (lang IN ('es', 'en')), "
-      "is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)), "
-      "created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')), "
-      "updated_at INTEGER, deleted_at INTEGER)");
-  for (const auto& [id, name, role, isActive] :
-       std::vector<std::tuple<int64_t, const char*, const char*,
-                              int>>{{42, "Owner", "owner", 1},
-                                    {7, "Resident", "resident", 1},
-                                    {9, "Guard", "guard", 1},
-                                    {8, "Inactive", "resident", 0}}) {
-    client->execSqlSync(
-        "INSERT INTO user (id, name, last_name, role, is_active) "
-        "VALUES (?, ?, 'Test', ?, ?)",
-        id, name, role, isActive);
+  sqlite3* raw = nullptr;
+  if (sqlite3_open(path.c_str(), &raw) != SQLITE_OK) {
+    const std::string message = raw ? sqlite3_errmsg(raw) : "open failed";
+    sqlite3_close_v2(raw);
+    throw std::runtime_error(message);
   }
+  return {raw, sqlite3_close_v2};
+}
+
+void exec(sqlite3* db, const std::string& sql)
+{
+  char* error = nullptr;
+  if (sqlite3_exec(db, sql.c_str(), nullptr, nullptr, &error) != SQLITE_OK) {
+    const std::string message = error ? error : "exec failed";
+    sqlite3_free(error);
+    throw std::runtime_error(message);
+  }
+  sqlite3_free(error);
+}
+
+// Seeding only, and before any drogon client opens the file: no bootstrap
+// pragmas are needed because no other connection can hold it.
+void seedIdentityDb(const std::string& path)
+{
+  std::remove(path.c_str());
+  const auto db = openFile(path);
+  exec(db.get(),
+       "CREATE TABLE user ("
+       "id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, "
+       "name TEXT NOT NULL, last_name TEXT NOT NULL, "
+       "role TEXT NOT NULL CHECK (role IN ('owner', 'resident', 'guard', "
+       "'guest')), lang TEXT NOT NULL DEFAULT 'es' "
+       "CHECK (lang IN ('es', 'en')), "
+       "is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)), "
+       "created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')), "
+       "updated_at INTEGER, deleted_at INTEGER)");
+  exec(db.get(),
+       "INSERT INTO user (id, name, last_name, role, is_active) VALUES "
+       "(42, 'Owner', 'Test', 'owner', 1), "
+       "(7, 'Resident', 'Test', 'resident', 1), "
+       "(9, 'Guard', 'Test', 'guard', 1), "
+       "(8, 'Inactive', 'Test', 'resident', 0)");
 }
 
 // Hosts the real identity RPC over the seeded database for the directory reads.
@@ -97,14 +128,13 @@ private:
   std::unique_ptr<grpc::Server> server_;
 };
 
-// Seeds the five write-domain tables and the sharing indexes.
-void seedProductivityDb(const char* path)
+// Seeds the five write-domain tables and the sharing indexes. Seeding only,
+// and before the handover client opens the file, so no bootstrap pragmas.
+void seedProductivityDb(const std::string& path)
 {
-  std::remove(path);
-  auto client =
-      drogon::orm::DbClient::newSqlite3Client(std::string("filename=") + path,
-                                              1);
-  client->execSqlSync(
+  std::remove(path.c_str());
+  const auto db = openFile(path);
+  exec(db.get(),
       "CREATE TABLE project ("
       "id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, "
       "owner_id INTEGER NOT NULL REFERENCES user(id) ON DELETE CASCADE, "
@@ -114,7 +144,7 @@ void seedProductivityDb(const char* path)
       "color TEXT NOT NULL DEFAULT '', starts_at INTEGER, target_at INTEGER, "
       "created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')), "
       "updated_at INTEGER, deleted_at INTEGER)");
-  client->execSqlSync(
+  exec(db.get(),
       "CREATE TABLE project_task ("
       "id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, "
       "project_id INTEGER NOT NULL REFERENCES project(id) ON DELETE CASCADE, "
@@ -128,7 +158,7 @@ void seedProductivityDb(const char* path)
       "due_at INTEGER, sort_order REAL NOT NULL DEFAULT 0, "
       "created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')), "
       "updated_at INTEGER, deleted_at INTEGER)");
-  client->execSqlSync(
+  exec(db.get(),
       "CREATE TABLE calendar_event ("
       "id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, "
       "created_by INTEGER REFERENCES user(id) ON DELETE SET NULL, "
@@ -142,7 +172,7 @@ void seedProductivityDb(const char* path)
       "recurrence_rule TEXT, "
       "created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')), "
       "updated_at INTEGER, deleted_at INTEGER)");
-  client->execSqlSync(
+  exec(db.get(),
       "CREATE TABLE project_member ("
       "id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, "
       "project_id INTEGER NOT NULL REFERENCES project(id) ON DELETE CASCADE, "
@@ -151,7 +181,7 @@ void seedProductivityDb(const char* path)
       "CHECK (access IN ('view', 'edit')), "
       "created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')), "
       "updated_at INTEGER, deleted_at INTEGER)");
-  client->execSqlSync(
+  exec(db.get(),
       "CREATE TABLE calendar_event_share ("
       "id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, "
       "calendar_event_id INTEGER NOT NULL "
@@ -161,10 +191,10 @@ void seedProductivityDb(const char* path)
       "CHECK (access IN ('view', 'edit')), "
       "created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')), "
       "updated_at INTEGER, deleted_at INTEGER)");
-  client->execSqlSync(
+  exec(db.get(),
       "CREATE UNIQUE INDEX IF NOT EXISTS idx_project_member_unique "
       "ON project_member(project_id, user_id) WHERE deleted_at IS NULL");
-  client->execSqlSync(
+  exec(db.get(),
       "CREATE UNIQUE INDEX IF NOT EXISTS idx_calendar_event_share_unique "
       "ON calendar_event_share(calendar_event_id, user_id) "
       "WHERE deleted_at IS NULL");
@@ -218,6 +248,43 @@ public:
   mutable std::vector<RecordedAudit> audits;
 };
 
+// Runs the app and stops it however the case body leaves. A joinable
+// std::thread destroyed by unwinding calls std::terminate, which reports an
+// ordinary statement failure as a SIGABRT with no assertion behind it.
+class AppRunner
+{
+public:
+  AppRunner() : runner_([] { drogon::app().run(); }) {}
+
+  ~AppRunner()
+  {
+    if (!runner_.joinable())
+      return;
+    // Drogon reports the app running before its main loop is looping, and a
+    // loop that has not begun cannot be stopped: trantor's loop() clears the
+    // quit flag again as it starts. Waiting for it to loop is what makes the
+    // quit below take effect — detaching in that window left the app's thread
+    // running past the end of the process, measured as SIGSEGV inside
+    // EventLoop::loop() in 3 of 20 runs of a forced constructor throw.
+    for (int i = 0; i < 3000 && !drogon::app().getLoop()->isRunning(); ++i)
+      std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    if (drogon::app().getLoop()->isRunning()) {
+      drogon::app().quit();
+      runner_.join();
+      return;
+    }
+    // A boot that never reached the loop at all is left to the process: it
+    // cannot be asked to stop, and joining it would block for ever.
+    runner_.detach();
+  }
+
+  AppRunner(const AppRunner&) = delete;
+  AppRunner& operator=(const AppRunner&) = delete;
+
+private:
+  std::thread runner_;
+};
+
 bool waitForBoot(std::chrono::milliseconds timeout)
 {
   const auto deadline = std::chrono::steady_clock::now() + timeout;
@@ -227,6 +294,36 @@ bool waitForBoot(std::chrono::milliseconds timeout)
     std::this_thread::sleep_for(std::chrono::milliseconds(10));
   }
   return drogon::app().isRunning();
+}
+
+// One async statement whose callback queues a sentinel on the connection's own
+// loop. Callbacks run on that loop, and trantor destroys each queued functor as
+// it dequeues the next (EventLoop::doRunInLoopFuncs), so the reference the
+// statement lambda held is gone before the sentinel runs: after this returns no
+// thread but this one holds the connection, and the client's destructor joins
+// an idle loop thread from outside instead of its own. The callbacks must not
+// capture the client: a reference released on that loop re-opens the window.
+void drain(const drogon::orm::DbClientPtr& client)
+{
+  auto drained = std::make_shared<std::promise<void>>();
+  auto done = drained->get_future();
+  client->execSqlAsync(
+      "SELECT 1",
+      [drained](const drogon::orm::Result&) {
+        trantor::EventLoop::getEventLoopOfCurrentThread()->queueInLoop(
+            [drained]() { drained->set_value(); });
+      },
+      [drained](const std::exception_ptr& e) {
+        try {
+          std::rethrow_exception(e);
+        }
+        catch (const std::exception& ex) {
+          std::fprintf(stderr, "drain statement failed: %s\n", ex.what());
+        }
+        drained->set_value();
+      });
+  if (done.wait_for(std::chrono::seconds(10)) != std::future_status::ready)
+    throw std::runtime_error("the client's loop did not drain");
 }
 
 Json::Value body(const drogon::HttpResponsePtr& response)
@@ -296,10 +393,10 @@ TEST_CASE("productivity contracts hold on the argus-productivity surface")
   drogon::app().addDbClient(
       drogon::orm::Sqlite3Config{1, kIdentityDb, "default", -1});
 
-  std::thread runner([] { drogon::app().run(); });
+  AppRunner runner;
   REQUIRE(waitForBoot(std::chrono::seconds(30)));
 
-  const auto productivityDb = drogon::orm::DbClient::newSqlite3Client(
+  auto productivityDb = drogon::orm::DbClient::newSqlite3Client(
       std::string("filename=") + kProductivityDb, 1);
   DbService::setProductivityClient(productivityDb);
 
@@ -619,8 +716,10 @@ TEST_CASE("productivity contracts hold on the argus-productivity surface")
   user_change::setProductivitySink(nullptr);
   DbService::setProductivityClient(nullptr);
 
-  drogon::app().quit();
-  runner.join();
+  // The service's reference is gone, so the next release is the last one: drain
+  // the connection's loop before it, and before the runner's quit().
+  drain(productivityDb);
+  productivityDb.reset();
 
   std::remove(kIdentityDb);
   std::remove((std::string(kIdentityDb) + "-wal").c_str());

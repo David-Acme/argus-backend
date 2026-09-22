@@ -26,6 +26,43 @@ using guard_test::waitForBoot;
 
 namespace
 {
+// Runs the app and stops it however the case body leaves. A joinable
+// std::thread destroyed by unwinding calls std::terminate, which reports an
+// ordinary statement failure as a SIGABRT with no assertion behind it.
+class AppRunner
+{
+public:
+  AppRunner() : runner_([] { drogon::app().run(); }) {}
+
+  ~AppRunner()
+  {
+    if (!runner_.joinable())
+      return;
+    // Drogon reports the app running before its main loop is looping, and a
+    // loop that has not begun cannot be stopped: trantor's loop() clears the
+    // quit flag again as it starts. Waiting for it to loop is what makes the
+    // quit below take effect — detaching in that window left the app's thread
+    // running past the end of the process, measured as SIGSEGV inside
+    // EventLoop::loop() in 3 of 20 runs of a forced constructor throw.
+    for (int i = 0; i < 3000 && !drogon::app().getLoop()->isRunning(); ++i)
+      std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    if (drogon::app().getLoop()->isRunning()) {
+      drogon::app().quit();
+      runner_.join();
+      return;
+    }
+    // A boot that never reached the loop at all is left to the process: it
+    // cannot be asked to stop, and joining it would block for ever.
+    runner_.detach();
+  }
+
+  AppRunner(const AppRunner&) = delete;
+  AppRunner& operator=(const AppRunner&) = delete;
+
+private:
+  std::thread runner_;
+};
+
 std::string scalar(const std::string& sql)
 {
   const auto rows = DbService::client()->execSqlSync(sql);
@@ -151,7 +188,7 @@ TEST_CASE("the observation saga is idempotent across redeliveries")
   drogon::app().setLogLevel(trantor::Logger::kWarn);
   drogon::app().addDbClient(
       drogon::orm::Sqlite3Config{1, db.path(), "default", -1});
-  std::thread runner([] { drogon::app().run(); });
+  AppRunner runner;
   REQUIRE(waitForBoot(std::chrono::seconds(30)));
   REQUIRE(DbService::runScriptFile(ARGUS_GUARD_SCHEMA_PATH));
 
@@ -827,7 +864,4 @@ TEST_CASE("the observation saga is idempotent across redeliveries")
     CHECK(scalar("SELECT status FROM guard_action_outbox WHERE command_id = "
                  "'replay-listen:1:greet_listen:2'") == "rejected");
   }
-
-  drogon::app().quit();
-  runner.join();
 }

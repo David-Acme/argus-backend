@@ -12,6 +12,7 @@
 #include <chrono>
 #include <cstdio>
 #include <ctime>
+#include <optional>
 #include <string>
 #include <thread>
 #include <unistd.h>
@@ -47,6 +48,43 @@ private:
   std::string path_;
 };
 
+// Runs the app and stops it however the owning scope leaves it. A joinable
+// std::thread destroyed by unwinding calls std::terminate, which reports an
+// ordinary statement failure as a SIGABRT with no assertion behind it.
+class AppRunner
+{
+public:
+  AppRunner() : runner_([] { drogon::app().run(); }) {}
+
+  ~AppRunner()
+  {
+    if (!runner_.joinable())
+      return;
+    // Drogon reports the app running before its main loop is looping, and a
+    // loop that has not begun cannot be stopped: trantor's loop() clears the
+    // quit flag again as it starts. Waiting for it to loop is what makes the
+    // quit below take effect — detaching in that window left the app's thread
+    // running past the end of the process, measured as SIGSEGV inside
+    // EventLoop::loop() in 3 of 20 runs of a forced constructor throw.
+    for (int i = 0; i < 3000 && !drogon::app().getLoop()->isRunning(); ++i)
+      std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    if (drogon::app().getLoop()->isRunning()) {
+      drogon::app().quit();
+      runner_.join();
+      return;
+    }
+    // A boot that never reached the loop at all is left to the process: it
+    // cannot be asked to stop, and joining it would block for ever.
+    runner_.detach();
+  }
+
+  AppRunner(const AppRunner&) = delete;
+  AppRunner& operator=(const AppRunner&) = delete;
+
+private:
+  std::thread runner_;
+};
+
 bool waitForBoot(std::chrono::milliseconds timeout)
 {
   const auto deadline = std::chrono::steady_clock::now() + timeout;
@@ -61,14 +99,20 @@ bool waitForBoot(std::chrono::milliseconds timeout)
 struct SharedBoot
 {
   TempDb db{"notification-ack-test"};
-  std::thread runner;
+  // The app's thread is held by an owner that stops it on destruction, so the
+  // throws below unwind into a safe teardown: quit and join a live loop, or
+  // detach a boot that never reached one, instead of destroying a joinable
+  // std::thread and terminating.
+  std::optional<AppRunner> runner;
 
   SharedBoot()
   {
     drogon::app().setLogLevel(trantor::Logger::kWarn);
     drogon::app().addDbClient(
         drogon::orm::Sqlite3Config{1, db.path(), "default", -1});
-    runner = std::thread([] { drogon::app().run(); });
+    // The app must be configured before it runs, so the owner is emplaced here
+    // rather than in a member initialiser.
+    runner.emplace();
     if (!waitForBoot(std::chrono::seconds(30)))
       throw std::runtime_error("drogon loop did not boot");
     auto client = DbService::client();
@@ -112,9 +156,9 @@ struct SharedBoot
 
   ~SharedBoot()
   {
-    drogon::app().quit();
-    if (runner.joinable())
-      runner.join();
+    // The owner stops the app; releasing it in the body keeps that stop ahead
+    // of the database files the TempDb member removes after this body.
+    runner.reset();
   }
 };
 

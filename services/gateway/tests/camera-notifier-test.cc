@@ -10,11 +10,13 @@
 #include <chrono>
 #include <cstdio>
 #include <ctime>
+#include <future>
 #include <memory>
 #include <mutex>
 #include <optional>
 #include <string>
 #include <thread>
+#include <trantor/net/EventLoop.h>
 #include <vector>
 
 namespace
@@ -116,9 +118,81 @@ void removeDbFiles(const char* base)
   std::remove((std::string(base) + "-shm").c_str());
 }
 
+// One async statement whose callback queues a sentinel on the connection's own
+// loop. Callbacks run on that loop, and trantor destroys each queued functor as
+// it dequeues the next, so the reference the statement lambda held is gone
+// before the sentinel runs: after this returns no thread but this one holds the
+// connection, and the client's destructor joins an idle loop thread from
+// outside instead of its own. The callback must not capture the client: a
+// reference released on that loop re-opens the window. No assertion here by
+// design (a timeout throws): the suites' counts must not move.
+void drain(const drogon::orm::DbClientPtr& client)
+{
+  auto drained = std::make_shared<std::promise<void>>();
+  auto done = drained->get_future();
+  client->execSqlAsync(
+      "SELECT 1",
+      [drained](const drogon::orm::Result&) {
+        trantor::EventLoop::getEventLoopOfCurrentThread()->queueInLoop(
+            [drained]() { drained->set_value(); });
+      },
+      [drained](const std::exception_ptr& e) {
+        try {
+          std::rethrow_exception(e);
+        }
+        catch (const std::exception& ex) {
+          std::fprintf(stderr, "drain statement failed: %s\n", ex.what());
+        }
+        drained->set_value();
+      });
+  if (done.wait_for(std::chrono::seconds(10)) != std::future_status::ready)
+    throw std::runtime_error("the client's loop did not drain");
+}
+
+// Runs the app and stops it however the owning scope leaves. A joinable
+// std::thread destroyed by unwinding calls std::terminate, which reports an
+// ordinary statement failure as a SIGABRT with no assertion behind it.
+class AppRunner
+{
+public:
+  AppRunner() : runner_([] { drogon::app().run(); }) {}
+
+  ~AppRunner()
+  {
+    if (!runner_.joinable())
+      return;
+    // Drogon reports the app running before its main loop is looping, and a
+    // loop that has not begun cannot be stopped: trantor's loop() clears the
+    // quit flag again as it starts. Waiting for it to loop is what makes the
+    // quit below take effect — detaching in that window left the app's thread
+    // running past the end of the process, measured as SIGSEGV inside
+    // EventLoop::loop() in 3 of 20 runs of a forced constructor throw.
+    for (int i = 0; i < 3000 && !drogon::app().getLoop()->isRunning(); ++i)
+      std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    if (drogon::app().getLoop()->isRunning()) {
+      drogon::app().quit();
+      runner_.join();
+      return;
+    }
+    // A boot that never reached the loop at all is left to the process: it
+    // cannot be asked to stop, and joining it would block for ever.
+    runner_.detach();
+  }
+
+  AppRunner(const AppRunner&) = delete;
+  AppRunner& operator=(const AppRunner&) = delete;
+
+private:
+  std::thread runner_;
+};
+
 struct SharedBoot
 {
-  std::thread runner;
+  // The app's thread is held by an owner that stops it on destruction, so the
+  // throws below unwind into a safe teardown: quit and join a live loop, or
+  // detach a boot that never reached one, instead of destroying a joinable
+  // std::thread and terminating.
+  std::optional<AppRunner> runner;
 
   SharedBoot()
   {
@@ -129,7 +203,9 @@ struct SharedBoot
         drogon::orm::Sqlite3Config{1, kIdentityDb, "default", -1});
     drogon::app().addDbClient(
         drogon::orm::Sqlite3Config{1, kGatewayDb, "gateway", -1});
-    runner = std::thread([] { drogon::app().run(); });
+    // The app must be configured before it runs, so the owner is emplaced here
+    // rather than in a member initialiser.
+    runner.emplace();
     if (!waitForBoot(std::chrono::seconds(30)))
       throw std::runtime_error("drogon loop did not boot");
     DbService::setGatewayClient(drogon::app().getDbClient("gateway"));
@@ -140,9 +216,9 @@ struct SharedBoot
 
   ~SharedBoot()
   {
-    drogon::app().quit();
-    if (runner.joinable())
-      runner.join();
+    // The owner stops the app, and releasing it here keeps that stop ahead of
+    // the file removal below, the order this teardown always had.
+    runner.reset();
     removeDbFiles(kIdentityDb);
     removeDbFiles(kGatewayDb);
   }
@@ -656,8 +732,12 @@ TEST_CASE("fallback logging degrades when the store is unavailable")
   const std::string bare = "camera-notifier-test-bare.db";
   std::remove(bare.c_str());
   auto saved = DbService::gatewayClient();
-  DbService::setGatewayClient(
-      drogon::orm::DbClient::newSqlite3Client("filename=" + bare, 1));
+  // The replacement is what the service calls below run on, and restoring the
+  // saved client drops its last reference: empty its loop first, or the
+  // connection is destroyed on that loop and joins itself.
+  auto replacement =
+      drogon::orm::DbClient::newSqlite3Client("filename=" + bare, 1);
+  DbService::setGatewayClient(replacement);
   FallbackLogRepository repository;
   CHECK_FALSE(drogon::sync_wait(repository.log(
       {.cameraId = 1,
@@ -666,6 +746,8 @@ TEST_CASE("fallback logging degrades when the store is unavailable")
        .reason = FallbackDropReason::DropKnown,
        .createdAt = 1})));
   CHECK(drogon::sync_wait(repository.purgeOlderThan(2)) == 0);
+  drain(replacement);
+  replacement.reset();
   DbService::setGatewayClient(saved);
   std::remove(bare.c_str());
   std::remove((bare + "-wal").c_str());

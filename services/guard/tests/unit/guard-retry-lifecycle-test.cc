@@ -32,6 +32,43 @@ using guard_test::waitForBoot;
 
 namespace
 {
+// Runs the app and stops it however the case body leaves. A joinable
+// std::thread destroyed by unwinding calls std::terminate, which reports an
+// ordinary statement failure as a SIGABRT with no assertion behind it.
+class AppRunner
+{
+public:
+  AppRunner() : runner_([] { drogon::app().run(); }) {}
+
+  ~AppRunner()
+  {
+    if (!runner_.joinable())
+      return;
+    // Drogon reports the app running before its main loop is looping, and a
+    // loop that has not begun cannot be stopped: trantor's loop() clears the
+    // quit flag again as it starts. Waiting for it to loop is what makes the
+    // quit below take effect — detaching in that window left the app's thread
+    // running past the end of the process, measured as SIGSEGV inside
+    // EventLoop::loop() in 3 of 20 runs of a forced constructor throw.
+    for (int i = 0; i < 3000 && !drogon::app().getLoop()->isRunning(); ++i)
+      std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    if (drogon::app().getLoop()->isRunning()) {
+      drogon::app().quit();
+      runner_.join();
+      return;
+    }
+    // A boot that never reached the loop at all is left to the process: it
+    // cannot be asked to stop, and joining it would block for ever.
+    runner_.detach();
+  }
+
+  AppRunner(const AppRunner&) = delete;
+  AppRunner& operator=(const AppRunner&) = delete;
+
+private:
+  std::thread runner_;
+};
+
 std::string scalar(const std::string& sql)
 {
   const auto rows = DbService::client()->execSqlSync(sql);
@@ -227,7 +264,7 @@ TEST_CASE("durable retries survive destroy, races and teardown")
   drogon::app().setLogLevel(trantor::Logger::kWarn);
   drogon::app().addDbClient(
       drogon::orm::Sqlite3Config{1, db.path(), "default", -1});
-  std::thread runner([] { drogon::app().run(); });
+  AppRunner runner;
   REQUIRE(waitForBoot(std::chrono::seconds(30)));
   REQUIRE(DbService::runScriptFile(ARGUS_GUARD_SCHEMA_PATH));
 
@@ -351,14 +388,16 @@ TEST_CASE("durable retries survive destroy, races and teardown")
     const Json::Value second = retryObservation("retry-race:1", 3);
     std::atomic<bool> firstOk{false};
     std::atomic<bool> secondOk{false};
-    std::thread left([&] {
+    // jthread joins in its destructor, so a failure between here and the join
+    // below cannot destroy a joinable thread and abort without a report.
+    std::jthread left([&] {
       try {
         firstOk.store(drogon::sync_wait(service.handle(first, 1)));
       }
       catch (const std::exception&) {
       }
     });
-    std::thread right([&] {
+    std::jthread right([&] {
       try {
         secondOk.store(drogon::sync_wait(service.handle(second, 2)));
       }
@@ -377,7 +416,9 @@ TEST_CASE("durable retries survive destroy, races and teardown")
   {
     SlowNotifications slow;
     const int callsBefore = notifications.calls.load();
-    std::thread worker;
+    // Same owner: joins in its destructor if the case leaves before the join
+    // below, and is assigned once the service it drives exists.
+    std::jthread worker;
     {
       GuardService::Config config = baseConfig();
       GuardService service({.bus = nullptr,
@@ -386,7 +427,7 @@ TEST_CASE("durable retries survive destroy, races and teardown")
                             .actions = &actions,
                             .assessment = nullptr},
                            config);
-      worker = std::thread([&service] {
+      worker = std::jthread([&service] {
         try {
           drogon::sync_wait(
               service.handle(retryObservation("retry-teardown:1", 4), 1));
@@ -443,7 +484,4 @@ TEST_CASE("durable retries survive destroy, races and teardown")
         service.handle(retryObservation("retry-post-teardown:1", 5), 1)));
     bus.drain();
   }
-
-  drogon::app().quit();
-  runner.join();
 }

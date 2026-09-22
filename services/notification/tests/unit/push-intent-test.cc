@@ -2,6 +2,7 @@
 #include <doctest/doctest.h>
 
 #include <drogon/drogon.h>
+#include <trantor/net/EventLoop.h>
 #include <shared/contracts/notification-delivery-sink.hxx>
 #include <nats/push-intent-sink.hxx>
 #include <shared/services/notification/notification-service.hxx>
@@ -11,12 +12,15 @@
 #include <nats/nats-bus.hxx>
 
 #include <atomic>
+#include <cstdio>
 #include <filesystem>
+#include <future>
 #include <memory>
 #include <stdexcept>
 #include <string>
 #include <thread>
 #include <unistd.h>
+#include <utility>
 #include <vector>
 
 namespace
@@ -61,14 +65,21 @@ public:
   {
     if (!runner_.joinable())
       return;
+    // Drogon reports the app running before its main loop is looping, and a
+    // loop that has not begun cannot be stopped: trantor's loop() clears the
+    // quit flag again as it starts. Waiting for it to loop is what makes the
+    // quit below take effect — detaching in that window left the app's thread
+    // running past the end of the process, measured as SIGSEGV inside
+    // EventLoop::loop() in 3 of 20 runs of a forced constructor throw.
+    for (int i = 0; i < 3000 && !drogon::app().getLoop()->isRunning(); ++i)
+      std::this_thread::sleep_for(std::chrono::milliseconds(10));
     if (drogon::app().getLoop()->isRunning()) {
       drogon::app().quit();
       runner_.join();
       return;
     }
-    // Drogon's quit() is ignored until the loop is looping, so a boot that
-    // never got that far cannot be reached and joining it would block for
-    // ever; the process ends with it instead.
+    // A boot that never reached the loop at all is left to the process: it
+    // cannot be asked to stop, and joining it would block for ever.
     runner_.detach();
   }
 
@@ -89,6 +100,67 @@ bool waitForBoot(std::chrono::milliseconds timeout)
   }
   return drogon::app().isRunning();
 }
+
+// Empties the connection's loop before its client is released. A drogon sqlite
+// connection runs on a loop thread of its own, so a last reference dropped
+// while a statement lambda is still queued there destroys the connection on
+// that very thread and ~EventLoopThread joins the thread it runs on. The
+// callback must not capture the client: a reference released on the loop
+// re-opens the window this closes.
+void drain(const drogon::orm::DbClientPtr& client)
+{
+  auto drained = std::make_shared<std::promise<void>>();
+  auto done = drained->get_future();
+  client->execSqlAsync(
+      "SELECT 1",
+      [drained](const drogon::orm::Result&) {
+        trantor::EventLoop::getEventLoopOfCurrentThread()->queueInLoop(
+            [drained]() { drained->set_value(); });
+      },
+      [drained](const std::exception_ptr& e) {
+        try {
+          std::rethrow_exception(e);
+        }
+        catch (const std::exception& ex) {
+          std::fprintf(stderr, "drain statement failed: %s\n", ex.what());
+        }
+        drained->set_value();
+      });
+  if (done.wait_for(std::chrono::seconds(10)) != std::future_status::ready)
+    throw std::runtime_error("the client's loop did not drain");
+}
+
+// Empties the client's loop when the scope ends, on every path out of the
+// case: a failing REQUIRE unwinds past the end of the body, and a release that
+// takes the last reference while a statement is still queued destroys the
+// connection on its own loop thread (EDEADLK -> SIGABRT with no report).
+class ScopeDrain
+{
+public:
+  explicit ScopeDrain(drogon::orm::DbClientPtr client)
+      : client_(std::move(client))
+  {
+  }
+
+  ~ScopeDrain()
+  {
+    // This runs during unwinding as well, where an escaping exception is a
+    // terminate that would replace the failure being reported, so a drain that
+    // times out is reported on stderr instead of thrown.
+    try {
+      drain(client_);
+    }
+    catch (const std::exception& ex) {
+      std::fprintf(stderr, "scope drain failed: %s\n", ex.what());
+    }
+  }
+
+  ScopeDrain(const ScopeDrain&) = delete;
+  ScopeDrain& operator=(const ScopeDrain&) = delete;
+
+private:
+  drogon::orm::DbClientPtr client_;
+};
 
 class ArmedDeliverySink final : public NotificationDeliverySink
 {
@@ -187,6 +259,9 @@ TEST_CASE("the create path publishes one intent per row")
   auto client =
       drogon::orm::DbClient::newSqlite3Client(
           std::string("filename=") + db.path(), 1);
+  // Declared after the client so it is destroyed before it, which is what
+  // makes the drain cover a body that unwinds early as well as one that ends.
+  const ScopeDrain guard(client);
   // WAL and a busy timeout are the tree's per-connection bootstrap, not
   // drogon's. Without them a statement that meets the service's transaction on
   // the same file is answered at once with SQLITE_BUSY — "database is locked"
@@ -351,4 +426,10 @@ TEST_CASE("the create path publishes one intent per row")
   CHECK(client->execSqlSync("SELECT COUNT(*) AS total FROM notification")
             .front()["total"]
             .as<int64_t>() == 6);
+
+  // The case's own client may only be released once its loop holds no queued
+  // statement, so this drains it before the scope ends, reporting a drain that
+  // fails here as a case failure. The guard declared beside the client covers
+  // the paths that leave the body before this line.
+  drain(client);
 }
