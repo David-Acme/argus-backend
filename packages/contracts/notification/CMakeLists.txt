@@ -1,7 +1,8 @@
 # notification-contract: the vocabulary that crosses the notification
 # boundary — the delivery status a notification reports back through the sync
-# leg. Declared once, here, for the service that owns the boundary and for the
-# packages and services that consume it. Header-only; consumers link
+# leg, and the two delivery sinks the notification service and the gateway
+# implement. Declared once, here, for the service that owns the boundary and
+# for the packages and services that consume it. Header-only; consumers link
 # argus::contracts::notification.
 
 cmake_minimum_required(VERSION 3.25)
@@ -11,6 +12,7 @@ include(${CMAKE_CURRENT_SOURCE_DIR}/../../../cmake/argus-module.cmake)
 argus_contracts(NAME notification
     INCLUDES src
     SOURCES
+        src/notification/notification-delivery-sink.hxx
         src/notification/notification-delivery-status.hxx)
 
 # The vocabulary suite: the two spellings the delivery column's CHECK accepts,

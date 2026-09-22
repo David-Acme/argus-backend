@@ -3,7 +3,7 @@
 
 #include <drogon/drogon.h>
 #include <trantor/net/EventLoop.h>
-#include <shared/contracts/notification-delivery-sink.hxx>
+#include <notification/notification-delivery-sink.hxx>
 #include <nats/push-intent-sink.hxx>
 #include <shared/services/notification/notification-service.hxx>
 #include <sqlite/db-service.hxx>

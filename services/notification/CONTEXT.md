@@ -26,9 +26,9 @@ binary, own CMake preset, own `notification.db`.
 - **Write-side feature surface, registered in THIS binary only**: the
   notification and notification-token controllers, their feature services
   (markAsRead, registerToken) and DTOs compile from the shared tree into the
-  `argus-notification` executable; the notification schema/repository ride
-  `argus_sync`, and the notification-token repository/service compile from
-  the shared tree (they are not part of `argus_sync`). The controllers are
+  `argus-notification` executable; the notification schema/repository, the
+  delivery service and the notification-token repository/service compile into
+  `notification-core`. The controllers are
   Drogon `AutoCreation` controllers: their routes register during static
   init, exactly like the legacy binary registers them, and they cannot be
   registered explicitly (Drogon static-asserts against it), so the
@@ -117,12 +117,12 @@ write-side source list is one `NOTIFICATION_FEATURE_SOURCES` variable
 shared by the executable and the controller suite, replacing the two
 hand-kept copies.
 
-What did NOT move: the `notification` table's own repository and schema,
-which `argus_sync` compiles instead of duplicating. Since rule 27 this
-service is the only writer and reader of those rows: the gateway's
-camera-notifier creates through `argus.notification.v1` and its `/sync`
-page pulls through the same contract. Only the notification-TOKEN side is
-exclusively this service's.
+What did NOT move: the `notification` table's own repository, schema and
+delivery service, which `notification-core` compiles here since sub-step
+3a-1b. Since rule 27 this service is the only writer and reader of those rows:
+the gateway's camera-notifier creates through `argus.notification.v1` and its
+`/sync` page pulls through the same contract. Both sides of the table are
+exclusively this service's, the notification-token side as before.
 
 ## Durable command inbox and delivery intents (F11 / R5)
 

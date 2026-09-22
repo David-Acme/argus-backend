@@ -10,10 +10,13 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-# argus_sync: the sync WebSocket surface (socket, native sync-table service and
-# the sync-path repositories). The legacy backend and the argus-gateway both
-# consume this one definition; the gateway never pulls the media objects
-# because nothing it links references them.
+# argus_sync: the sync WebSocket surface (socket, native sync-table service, the
+# event repository and the pull-source contracts the host implements). The
+# legacy backend and the argus-gateway both consume this one definition; the
+# gateway never pulls the media objects because nothing it links references
+# them. The cross-domain repositories this module used to carry are their
+# owners' now (sub-step 3a-1b): the camera, productivity and notification
+# services compile their own tables, and this module keeps the engine.
 
 include(${CMAKE_CURRENT_SOURCE_DIR}/../../cmake/argus-module.cmake)
 
@@ -128,36 +131,12 @@ set(ARGUS_SYNC_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/feature/socket/sync/socket/sync-socket.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/src/feature/socket/sync/services/sync-service.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/src/feature/socket/sync/services/synchronized-service.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/shared/repositories/camera/camera-repository.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/shared/repositories/camera-stream/camera-stream-repository.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/shared/repositories/zone/zone-repository.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/shared/repositories/reminder/reminder-repository.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/shared/repositories/reminder-detail/reminder-detail-repository.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/shared/repositories/calendar-event/calendar-event-repository.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/shared/repositories/calendar-event-share/calendar-event-share-repository.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/shared/repositories/project/project-repository.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/shared/repositories/project-member/project-member-repository.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/shared/repositories/project-task/project-task-repository.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/src/shared/repositories/event/event-repository.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/shared/repositories/notification/notification-repository.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/shared/schemas/camera/camera-schema.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/shared/schemas/camera-stream/camera-stream-schema.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/shared/schemas/zone/zone-schema.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/shared/schemas/reminder/reminder-schema.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/shared/schemas/reminder-detail/reminder-detail-schema.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/shared/schemas/calendar-event/calendar-event-schema.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/shared/schemas/calendar-event-share/calendar-event-share-schema.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/shared/schemas/project/project-schema.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/shared/schemas/project-member/project-member-schema.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/shared/schemas/project-task/project-task-schema.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/src/shared/schemas/event/event-schema.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/src/shared/schemas/person-event/person-event-schema.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/shared/schemas/notification/notification-schema.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/shared/services/notification/notification-service.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/src/shared/contracts/camera-sync-source.hxx
     ${CMAKE_CURRENT_SOURCE_DIR}/src/shared/contracts/productivity-sync-source.hxx
     ${CMAKE_CURRENT_SOURCE_DIR}/src/shared/contracts/notification-sync-source.hxx
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/shared/contracts/notification-delivery-sink.hxx
 )
 
 add_library(argus_sync STATIC ${ARGUS_SYNC_SOURCES})
@@ -178,7 +157,6 @@ target_link_libraries(argus_sync PUBLIC
     argus::contracts::auth
     argus::contracts::camera
     argus::contracts::notification
-    argus::contracts::productivity
     argus::lib::text
     argus::lib::nats
     argus::lib::sqlite

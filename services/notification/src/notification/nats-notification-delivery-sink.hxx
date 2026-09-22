@@ -1,7 +1,7 @@
 #pragma once
 
 #include <memory>
-#include <shared/contracts/notification-delivery-sink.hxx>
+#include <notification/notification-delivery-sink.hxx>
 #include <string>
 
 class NatsBus;

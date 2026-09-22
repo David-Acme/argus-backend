@@ -31,7 +31,7 @@ own `productivity.db`.
   calendar-event, calendar-event-share, project, project-member and
   project-task controllers + feature services + DTOs compile from the shared
   tree into the `argus-productivity` executable, and their repositories and
-  schemas ride `argus_sync`. The controllers are Drogon `AutoCreation`
+  schemas into `productivity-core`. The controllers are Drogon `AutoCreation`
   controllers: their routes register during static init, exactly like the
   legacy binary registers them, and they cannot be registered explicitly
   (Drogon static-asserts against it), so the executable-target compilation is
@@ -86,10 +86,10 @@ own `productivity.db`.
   `{status: 200 (int), info: {service: argus-productivity, uptimeSeconds},
   errors: null}`; never depends on any downstream service.
 - **What stays away**: no reminder/reminder_detail write path anywhere
-  (sync-read-only, Ruling AL — the repositories/schemas exist in `argus_sync`
-  and nothing more), no context_note table, no /sync socket (reads ride the
-  gateway's `/sync` pull over this service's gRPC leg), no identity.db, no AI
-  symbols (verified with `nm -C`), no alarm-triggering code.
+  (sync-read-only, Ruling AL — the repositories/schemas compile into
+  `productivity-core` and nothing more), no context_note table, no /sync socket
+  (reads ride the gateway's `/sync` pull over this service's gRPC leg), no
+  identity.db, no AI symbols (verified with `nm -C`), no alarm-triggering code.
 
 ## Build wiring (decisions)
 
@@ -124,5 +124,5 @@ hand-kept copies (one here, one in the root test tree) that could drift.
 The suites register in the service's standalone CTest graph.
 
 What did NOT move: the productivity repositories and schemas, which
-`argus_sync` still compiles because the gateway's `/sync` reads the same
-rows through the productivity sync RPC.
+`productivity-core` compiles here since sub-step 3a-1b — the gateway's `/sync`
+still reads the same rows, through the productivity sync RPC.

@@ -14,7 +14,6 @@
 #include <sync/table-name.hxx>
 #include <sync/user-audit-event.hxx>
 #include <shared/repositories/audit-log/audit-log-repository.hxx>
-#include <shared/repositories/camera/camera-repository.hxx>
 #include <shared/repositories/user-audit-log/user-audit-log-repository.hxx>
 #include <shared/services/room/room-manager.hxx>
 #include <sqlite/db-service.hxx>
@@ -218,66 +217,6 @@ void drain(const drogon::orm::DbClientPtr& client)
     throw std::runtime_error("the client's loop did not drain");
 }
 
-// Camera table (camera.db shape) for the named-camera-client resolution test.
-struct CreateCameraTableInput
-{
-  const char* path;
-  int64_t id{0};
-  const char* name;
-};
-
-void createCameraTable(const CreateCameraTableInput& input)
-{
-  const char* path = input.path;
-  const int64_t id = input.id;
-  const char* name = input.name;
-
-  const DbHandle db = openFile(path);
-  // The app's default client holds this file while the identity database is
-  // seeded, so take the tree's bootstrap and wait out a lock instead of
-  // answering SQLITE_BUSY at once.
-  exec(db.get(), "PRAGMA busy_timeout = 5000");
-  exec(db.get(), "PRAGMA journal_mode = WAL");
-  exec(db.get(),
-       "CREATE TABLE camera ("
-       "id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, "
-       "name TEXT NOT NULL, manufacturer TEXT NOT NULL DEFAULT '', "
-       "model TEXT NOT NULL DEFAULT '', ip TEXT NOT NULL, "
-       "port INTEGER NOT NULL DEFAULT 554, "
-       "username TEXT NOT NULL DEFAULT 'admin', "
-       "password TEXT NOT NULL DEFAULT '', "
-       "cloud_username TEXT NOT NULL DEFAULT '', "
-       "cloud_password TEXT NOT NULL DEFAULT '', "
-       "driver TEXT NOT NULL DEFAULT 'tapo', "
-       "icon TEXT NOT NULL DEFAULT 'video', "
-       "record_mode TEXT NOT NULL DEFAULT 'events', "
-       "retention_days INTEGER, capabilities TEXT NOT NULL DEFAULT '[]', "
-       "config TEXT NOT NULL DEFAULT '{}', "
-       "is_enabled INTEGER NOT NULL DEFAULT 1, "
-       "is_online INTEGER NOT NULL DEFAULT 0, "
-       "created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')), "
-       "updated_at INTEGER, deleted_at INTEGER)");
-  exec(db.get(), "INSERT INTO camera (id, name, ip) VALUES (" +
-                     std::to_string(id) + ", '" + name + "', '127.0.0.1')");
-}
-
-struct SeedCameraTableInput
-{
-  const char* path;
-  int64_t id{0};
-  const char* name;
-};
-
-void seedCameraTable(const SeedCameraTableInput& input)
-{
-  const char* path = input.path;
-  const int64_t id = input.id;
-  const char* name = input.name;
-
-  std::remove(path);
-  createCameraTable({.path = path, .id = id, .name = name});
-}
-
 // Routes productivity/notification tables to a source, as production does.
 class FakeProductivitySource final : public ProductivitySyncSource
 {
@@ -427,7 +366,6 @@ TEST_CASE("audit sync reads resolve to the default identity client on the "
 
   const TempDb legacyDbFile("audit-sync-read-legacy");
   const TempDb identityDbFile("audit-sync-read-identity");
-  const TempDb cameraDbFile("audit-sync-read-camera");
   seedAuditTables(
       {.path = legacyDbFile.path().c_str(), .auditId = 1, .userAuditId = 1});
   seedAuditTables(
@@ -536,32 +474,6 @@ TEST_CASE("audit sync reads resolve to the default identity client on the "
   CHECK(funnelRows.front()["recordId"].asInt64() == 7);
   CHECK(funnelRows.front()["createUserId"].asInt64() == 42);
   CHECK(funnelRows.front()["eventTimestamp"].asInt64() == 1735689600000);
-
-  // ── Phase: named camera client resolution (Ruling Z) ─────────────────────
-  createCameraTable(
-      {.path = identityDbFile.path().c_str(), .id = 1, .name = "default row"});
-  seedCameraTable(
-      {.path = cameraDbFile.path().c_str(), .id = 2, .name = "camera-db row"});
-
-  const auto cameraDb = drogon::orm::DbClient::newSqlite3Client(
-      std::string("filename=") + cameraDbFile.path(), 1);
-  DbService::setCameraClient(cameraDb);
-
-  const CameraRepository cameraRepository;
-  const auto fromCamera = drogon::sync_wait(cameraRepository.findById(2));
-  REQUIRE(fromCamera);
-  CHECK(fromCamera->name == "camera-db row");
-
-  const auto notShared = drogon::sync_wait(cameraRepository.findById(1));
-  CHECK_FALSE(notShared);
-
-  DbService::setCameraClient(nullptr);
-  const auto fallback = drogon::sync_wait(cameraRepository.findById(1));
-  REQUIRE(fallback);
-  CHECK(fallback->name == "default row");
-
-  const auto cameraGone = drogon::sync_wait(cameraRepository.findById(2));
-  CHECK_FALSE(cameraGone);
 
   // ── Phase: productivity audit funnel (Ruling AQ) ─────────────────────────
   const auto userConn = std::make_shared<RecordingConnection>();
@@ -710,11 +622,9 @@ TEST_CASE("audit sync reads resolve to the default identity client on the "
   }
   CHECK(unavailable);
 
-  // Both handover clients die with this scope, so empty their loops first: the
+  // The handover client dies with this scope, so empty its loop first: the
   // release that reaches zero must not land on a connection's own loop thread.
   drain(legacyDb);
-  drain(cameraDb);
   DbService::setReadOnlyClient(nullptr);
-  DbService::setCameraClient(nullptr);
   std::filesystem::remove_all("/tmp/argus-audit-sync-read-test-upload");
 }

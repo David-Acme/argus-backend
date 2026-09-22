@@ -12,14 +12,14 @@ compiles one proto (`argus/camera/v1/sync.proto`) and one source
 (`src/camera/camera-sync-client.cc`), so the generated `SyncService` stubs
 belong to this package and no consumer reaches
 `argus.camera.v1.SyncService` without them. Three CMakeLists name it:
-`gateway-core` (`services/gateway/CMakeLists.txt:183`) and `argus-llm`
-(`services/llm/CMakeLists.txt:210`) link it, and `services/camera` lists it in
-the `camera-rpc` module's `DEPENDS` (`services/camera:177`) although no source
+`gateway-core` (`services/gateway/CMakeLists.txt:176`) and `argus-llm`
+(`services/llm/CMakeLists.txt:218`) link it, and `services/camera` lists it in
+the `camera-rpc` module's `DEPENDS` (`services/camera:174`) although no source
 of that service includes the header. All three also add the package to their
-own standalone tree by path (gateway `:128`, llm `:136`, camera `:152`). The
+own standalone tree by path (gateway `:121`, llm `:143`, camera `:145`). The
 two readers that really use this client are the gateway's `/sync` surface
 (`CameraSyncGateway`) and argus-llm's catalog seed (`fetchCatalogSnapshot`);
-the sync repositories themselves are `argus_sync`'s.
+the sync repositories themselves are argus-camera's since sub-step 3a-1b.
 
 ## Layout
 

@@ -1,4 +1,5 @@
 #include "notification-sync-source.hxx"
+#include "notification-row-json.hxx"
 
 #include <errors/response-exception.hxx>
 #include <gateway/gateway-errors.hxx>
@@ -36,18 +37,18 @@ argus::notification::v1::SyncRange toRange(const SyncFilter& filter)
 
 Json::Value rowToJson(const NotificationRow& row)
 {
-  Json::Value json(Json::objectValue);
-  json["id"] = Json::Int64(row.id());
-  json["userId"] = Json::Int64(row.user_id());
-  json["type"] = row.type();
-  json["title"] = row.title();
-  json["body"] = row.body();
-  json["data"] = json_util::fromString(row.data());
-  json["isRead"] = row.is_read();
-  json["readAt"] = row.has_read_at() ? Json::Value(Json::Int64(row.read_at()))
-                                     : Json::Value();
-  json["createdAt"] = Json::Int64(row.created_at());
-  return json;
+  const std::optional<int64_t> readAt =
+      row.has_read_at() ? std::optional<int64_t>(row.read_at()) : std::nullopt;
+  return NotificationRowJson{.id = row.id(),
+                             .userId = row.user_id(),
+                             .type = row.type(),
+                             .title = row.title(),
+                             .body = row.body(),
+                             .data = json_util::fromString(row.data()),
+                             .isRead = row.is_read(),
+                             .readAt = readAt,
+                             .createdAt = row.created_at()}
+      .toJson();
 }
 
 ResponseException unavailable()

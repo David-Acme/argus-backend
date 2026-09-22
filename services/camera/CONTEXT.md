@@ -225,10 +225,10 @@ stream folder even though only `labs/` uses it; it is stream-domain code
 and labs is out of scope for this arc.
 
 What did NOT move: the camera-domain repositories and schemas
-(`camera`, `camera_stream`, `zone`), which `argus_sync` still compiles
-because the gateway's `/sync` reads the same rows. `argus_camera-rpc`
-therefore still carries `../src` on its include path — the one raw reach
-left in this folder, and it goes away when the sync split lands.
+(`camera`, `camera_stream`, `zone`), which `src/shared/repositories` declares
+as the folder's own `argus::camera-repositories` module since sub-step 3a-1b —
+the gateway's `/sync` still reads the same rows, through the camera sync RPC.
+`argus_camera-rpc` therefore still carries `src` on its include path.
 
 ## Operator automation extensions (camera-guard phase 1-2)
 

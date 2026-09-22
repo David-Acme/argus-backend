@@ -1,10 +1,10 @@
 #include "notification-delivery-consumer.hxx"
+#include "notification-row-json.hxx"
 
 #include <ctime>
 #include <drogon/drogon.h>
 #include <sync/table-name.hxx>
 #include <sync/socket-emit-dto.hxx>
-#include <shared/schemas/notification/notification-schema.hxx>
 #include <sync/sync-change.hxx>
 #include <text/json-util.hxx>
 #include <nats/nats-bus.hxx>
@@ -16,19 +16,22 @@ namespace
 // Same row the legacy change funnel fanned out, rebuilt from the event.
 void dispatchToSockets(const NotificationDeliveryEvent& event)
 {
-  NotificationSchema notification;
-  notification.id = event.notificationId;
-  notification.userId = event.userId;
-  notification.type = event.type;
-  notification.title = event.title;
-  notification.body = event.body;
-  notification.data = event.data;
-  notification.createdAt = event.createdAt;
+  const Json::Value row =
+      NotificationRowJson{.id = event.notificationId,
+                          .userId = event.userId,
+                          .type = event.type,
+                          .title = event.title,
+                          .body = event.body,
+                          .data = event.data,
+                          .isRead = false,
+                          .readAt = std::nullopt,
+                          .createdAt = event.createdAt}
+          .toJson();
 
   SocketEmitDto emit;
   emit.operation = SyncOperation::Add;
   emit.option = TableName::Notification;
-  emit.obj = notification.toJson();
+  emit.obj = row;
   user_change_fan_out::handleUserChange(
       sync_change::userEmitPayload(emit, {event.userId}));
 }

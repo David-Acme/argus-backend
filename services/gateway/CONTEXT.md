@@ -245,10 +245,11 @@ table. The app keeps working without any update.
 - **This subject is NOT a sync change**: payloads never reach `/sync`; the
   consumer turns them into `notification` rows via the existing
   NotificationService (type `camera`) for active owner/guard users only.
-- **NotificationService compiles into argus_sync** (moved from the legacy
-  target list): its repository/schema live there and it links argus_identity
-  for SocketService — the gateway gets it through the argus_sync
-  dependency it already had.
+- **NotificationService is the notification service's own** (sub-step 3a-1b):
+  its repository/schema and the delivery service compile into
+  argus-notification's `notification-core`, so the gateway never compiles it —
+  the consumer turns camera events into rows over `argus.notification.v1`
+  (`argus::clients::notification`), the same leg the `/sync` page pull uses.
 - **Ruling AD budget**: 6 notifications per camera per rolling hour
   (`[notifications] budget_per_hour`), silent local-hour window
   (`silent_start`/`silent_end`, both -1 off, wrapping supported). Suppressed
@@ -524,7 +525,10 @@ table. The app keeps working without any update.
   replay (dispatched at most once per receipt), same id plus a different
   fingerprint is a conflict that is never dispatched, an unknown persisted
   status fails closed to `dead_lettered`. Dispatch rebuilds the notification
-  row and emits the `Add` frame into the recipient's user room; a crash
+  row — `src/sync/notification-row-json.hxx`, the one nine-field rendering
+  both this consumer and the `/sync` pulls use, from the wire and never from
+  the notification owner's schema — and emits the `Add` frame into the
+  recipient's user room; a crash
   between dispatch and settlement replays the emit on redelivery
   (at-least-once — one receipt row, possibly two socket emits).
 - **Credential sync sources**: the camera/productivity/notification sync legs

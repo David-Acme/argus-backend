@@ -1,6 +1,6 @@
 #pragma once
 
-#include <shared/contracts/notification-delivery-sink.hxx>
+#include <notification/notification-delivery-sink.hxx>
 
 #include <cstdint>
 #include <string>

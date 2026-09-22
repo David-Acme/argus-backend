@@ -1,7 +1,7 @@
 # argus_contracts_notification
 
 The notification boundary's vocabulary: the two delivery states a push or a
-socket frame settles into.
+socket frame settles into, and the sink a delivery is published through.
 
 ## What this is
 
@@ -9,15 +9,22 @@ A CONTRACT, not a service and not a library: one `argus_contracts`
 declaration, an INTERFACE target with no translation unit. The include root is
 `src/`, so a consumer writes
 `<notification/notification-delivery-status.hxx>` and links
-`argus::contracts::notification`. `packages/sync` is the only consumer: the
-notification repository and the delivery service live there, and they are what
-writes the column and reads it back.
+`argus::contracts::notification`. Its consumers are the notification service
+(the repository, the delivery service and the NATS sink), the gateway (the
+delivery consumer, its inbox and two suites) and this package's own suite. The
+delivery sink moved here in sub-step 3a-1b from `packages/sync`, which was the
+wrong owner: it carries the notification domain's wire and no sync type at all.
 
 ## Layout
 
 - `src/notification/notification-delivery-status.hxx` —
   `NotificationDeliveryStatus` (`Pending = 0`, `Sent`) with
   `notificationDeliveryStatusToString`/`FromString`. 3 files include it.
+- `src/notification/notification-delivery-sink.hxx` — `NotificationDeliveryEvent`
+  (delivery id, notification and user ids, type, title, body, `data`,
+  `createdAt`), the two-virtual `NotificationDeliverySink` a push backend
+  implements (`ensureStream`, `publish`) and `notification_delivery::messageId`,
+  the JetStream dedup id. 13 files include it.
 
 ## Rules
 

@@ -156,9 +156,13 @@ if(NOT TARGET argus::clients::camera-actions)
                      ${CMAKE_BINARY_DIR}/clients/camera-actions EXCLUDE_FROM_ALL)
 endif()
 
-# The camera sync tables' repositories and schemas belong to argus_sync (the
-# gateway's /sync reads the same rows), so this target depends on the module
-# rather than reaching into a shared source tree.
+# The camera domain's row code: the tables' repositories and schemas as one
+# module, plus the two single-repository modules beside it. Added before the
+# targets that name them.
+add_subdirectory(src/shared/repositories)
+add_subdirectory(src/shared/repositories/action-command)
+add_subdirectory(src/shared/repositories/object-event-outbox)
+
 argus_module(NAME camera-rpc
     SOURCES
         src/feature/sync/camera-sync-rpc-service.cc
@@ -166,15 +170,12 @@ argus_module(NAME camera-rpc
     INCLUDES
         src
     DEPENDS
-        argus_sync
+        argus::camera-repositories
         argus::clients::camera
         argus::lib::grpc-health
         argus::contracts::sync)
 
 target_compile_options(argus_camera-rpc PRIVATE -Wall -Wextra)
-
-add_subdirectory(src/shared/repositories/action-command)
-add_subdirectory(src/shared/repositories/object-event-outbox)
 
 # ncnn is THE objects capacity of this service (F2-3): the detector is the
 # only AI linkage here — no face/llm/vlm/tts/stt/vad code is compiled.
@@ -248,7 +249,10 @@ target_include_directories(camera-core SYSTEM PUBLIC
 
 target_include_directories(camera-core PUBLIC ${CAMERA_SRC_ROOT})
 
+# The engine is still linked for the /media socket's SyncFrameInput alone: the
+# camera repositories are this service's since sub-step 3a-1b.
 target_link_libraries(camera-core PUBLIC
+    argus::camera-repositories
     argus_sync
     argus::lib::sqlite
     argus::camera-action-command
@@ -395,7 +399,7 @@ target_include_directories(camera-talk-cutover-test PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/tts/tests/support)
 
 target_link_libraries(camera-talk-cutover-test PRIVATE
-    argus_sync
+    argus::camera-repositories
     argus::lib::audio
     argus::lib::config
     argus::lib::text
@@ -449,7 +453,7 @@ target_include_directories(camera-action-rpc-test PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/stt/tests/support)
 
 target_link_libraries(camera-action-rpc-test PRIVATE
-    argus_sync
+    argus::camera-repositories
     argus::camera-action-command
     argus::lib::audio
     argus::lib::config

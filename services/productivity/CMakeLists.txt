@@ -114,10 +114,6 @@ if(PROJECT_IS_TOP_LEVEL)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/identity/tools/migrate-identity
                          ${CMAKE_BINARY_DIR}/identity/tools/migrate-identity)
     endif()
-    if(NOT TARGET argus_sync)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/sync
-                         ${CMAKE_BINARY_DIR}/sync)
-    endif()
 endif()
 
 find_package(doctest REQUIRED)
@@ -129,15 +125,37 @@ if(NOT TARGET argus::clients::productivity)
                      ${CMAKE_BINARY_DIR}/clients/productivity EXCLUDE_FROM_ALL)
 endif()
 
+# This service owns the productivity tables' row code since sub-step 3a-1b: the
+# repositories, their schemas and the NATS change sink compile here, and the
+# sync RPC owner reads the same definitions through this library.
 add_library(productivity-core STATIC
     ${PRODUCTIVITY_SRC_ROOT}/productivity/nats-productivity-change-sink.cc
     ${PRODUCTIVITY_SRC_ROOT}/productivity/productivity-config.cc
+    ${PRODUCTIVITY_SRC_ROOT}/shared/repositories/calendar-event/calendar-event-repository.cc
+    ${PRODUCTIVITY_SRC_ROOT}/shared/repositories/calendar-event-share/calendar-event-share-repository.cc
+    ${PRODUCTIVITY_SRC_ROOT}/shared/repositories/project/project-repository.cc
+    ${PRODUCTIVITY_SRC_ROOT}/shared/repositories/project-member/project-member-repository.cc
+    ${PRODUCTIVITY_SRC_ROOT}/shared/repositories/project-task/project-task-repository.cc
+    ${PRODUCTIVITY_SRC_ROOT}/shared/repositories/reminder/reminder-repository.cc
+    ${PRODUCTIVITY_SRC_ROOT}/shared/repositories/reminder-detail/reminder-detail-repository.cc
+    ${PRODUCTIVITY_SRC_ROOT}/shared/schemas/calendar-event/calendar-event-schema.cc
+    ${PRODUCTIVITY_SRC_ROOT}/shared/schemas/calendar-event-share/calendar-event-share-schema.cc
+    ${PRODUCTIVITY_SRC_ROOT}/shared/schemas/project/project-schema.cc
+    ${PRODUCTIVITY_SRC_ROOT}/shared/schemas/project-member/project-member-schema.cc
+    ${PRODUCTIVITY_SRC_ROOT}/shared/schemas/project-task/project-task-schema.cc
+    ${PRODUCTIVITY_SRC_ROOT}/shared/schemas/reminder/reminder-schema.cc
+    ${PRODUCTIVITY_SRC_ROOT}/shared/schemas/reminder-detail/reminder-detail-schema.cc
 )
 
 target_include_directories(productivity-core PUBLIC
     ${PRODUCTIVITY_SRC_ROOT})
 
-target_link_libraries(productivity-core PUBLIC argus_sync argus::lib::sqlite
+target_link_libraries(productivity-core PUBLIC
+    argus::contracts::productivity
+    argus::contracts::sync
+    argus::lib::nats
+    argus::lib::text
+    argus::lib::sqlite
     ${ARGUS_SQLITE_VEC_TARGET})
 
 target_compile_options(productivity-core PRIVATE -Wall -Wextra)
@@ -147,7 +165,7 @@ target_compile_options(productivity-core PRIVATE -Wall -Wextra)
 # compiles from the shared tree into THIS executable only: the controllers are
 # AutoCreation and register their routes during static init, exactly like the
 # legacy binary does. The legacy keeps its own registration until F3-2; the
-# repositories and schemas ride argus_sync.
+# repositories and schemas are productivity-core's.
 set(PRODUCTIVITY_FEATURE_SOURCES
     ${PRODUCTIVITY_SRC_ROOT}/feature/api/calendar-event/controllers/calendar-event-controller.cc
     ${PRODUCTIVITY_SRC_ROOT}/feature/api/calendar-event/dtos/create-calendar-event-dto.cc
@@ -178,9 +196,11 @@ add_executable(argus-productivity
 
 # The filters validate through argus.identity.v1 (argus::clients::identity rides
 # argus::lib::auth); the sync RPC owner serves argus.productivity.v1 via
-# argus::clients::productivity.
+# argus::clients::productivity. The DTOs validate through argus::lib::validation
+# and the controllers answer through argus::lib::http, both of which rode
+# argus_sync until sub-step 3a-1b.
 target_link_libraries(argus-productivity PRIVATE productivity-core argus::contracts::productivity argus::contracts::sync
-    argus::lib::auth argus::clients::productivity)
+    argus::lib::auth argus::lib::validation argus::lib::http argus::clients::productivity)
 
 target_compile_options(argus-productivity PRIVATE -Wall -Wextra)
 
@@ -223,8 +243,8 @@ foreach(TEST_NAME IN ITEMS productivity-schema-test productivity-migration-test)
 endforeach()
 
 # The controller suite compiles the same write-side feature sources the
-# service compiles and rides the sync layer for the repositories,
-# schemas and boot plumbing.
+# service compiles and rides productivity-core for the repositories, schemas
+# and boot plumbing.
 add_executable(productivity-controller-test
     tests/unit/productivity-controller-test.cc
     ${PRODUCTIVITY_FEATURE_SOURCES})
@@ -236,7 +256,7 @@ target_include_directories(productivity-controller-test PRIVATE
     ${PRODUCTIVITY_SRC_ROOT})
 
 target_link_libraries(productivity-controller-test PRIVATE
-    argus_sync
+    productivity-core
     argus_identity
     argus::lib::auth
     argus::contracts::auth
@@ -270,7 +290,7 @@ target_compile_definitions(productivity-sync-rpc-test PRIVATE
     ARGUS_PRODUCTIVITY_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql")
 
 target_link_libraries(productivity-sync-rpc-test PRIVATE
-    argus_sync
+    productivity-core
     argus::clients::productivity
     argus::lib::sqlite
     argus::contracts::sync

@@ -4,7 +4,7 @@
 #include <ctime>
 #include <drogon/utils/coroutine.h>
 #include <notification/notification-delivery-status.hxx>
-#include <shared/contracts/notification-delivery-sink.hxx>
+#include <notification/notification-delivery-sink.hxx>
 #include <nats/push-intent-sink.hxx>
 #include <sync/table-name.hxx>
 #include <trantor/utils/Logger.h>

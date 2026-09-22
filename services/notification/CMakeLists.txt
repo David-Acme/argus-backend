@@ -31,6 +31,11 @@ if(PROJECT_IS_TOP_LEVEL)
                          ${CMAKE_BINARY_DIR}/contracts/sync)
     endif()
 
+    if(NOT TARGET argus::contracts::notification)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/contracts/notification
+                         ${CMAKE_BINARY_DIR}/contracts/notification)
+    endif()
+
     find_package(Drogon CONFIG REQUIRED)
     find_package(cnats CONFIG REQUIRED)
     find_package(tomlplusplus REQUIRED)
@@ -110,10 +115,6 @@ if(PROJECT_IS_TOP_LEVEL)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/identity/tools/migrate-identity
                          ${CMAKE_BINARY_DIR}/identity/tools/migrate-identity)
     endif()
-    if(NOT TARGET argus_sync)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/sync
-                         ${CMAKE_BINARY_DIR}/sync)
-    endif()
 endif()
 
 find_package(doctest REQUIRED)
@@ -126,16 +127,28 @@ if(NOT TARGET argus::clients::notification)
                      ${CMAKE_BINARY_DIR}/clients/notification EXCLUDE_FROM_ALL)
 endif()
 
+# This service owns the notification table's row code since sub-step 3a-1b: the
+# repository, its schema, the delivery service and the two NATS sinks compile
+# here, and the RPC owner and the suites read the same definitions through this
+# library.
 add_library(notification-core STATIC
     ${NOTIFICATION_SRC_ROOT}/notification/nats-notification-change-sink.cc
     ${NOTIFICATION_SRC_ROOT}/notification/nats-notification-delivery-sink.cc
     ${NOTIFICATION_SRC_ROOT}/notification/notification-config.cc
+    ${NOTIFICATION_SRC_ROOT}/shared/repositories/notification/notification-repository.cc
+    ${NOTIFICATION_SRC_ROOT}/shared/schemas/notification/notification-schema.cc
+    ${NOTIFICATION_SRC_ROOT}/shared/services/notification/notification-service.cc
 )
 
 target_include_directories(notification-core PUBLIC
     ${NOTIFICATION_SRC_ROOT})
 
-target_link_libraries(notification-core PUBLIC argus_sync argus::lib::sqlite
+target_link_libraries(notification-core PUBLIC
+    argus::contracts::notification
+    argus::contracts::sync
+    argus::lib::nats
+    argus::lib::text
+    argus::lib::sqlite
     ${ARGUS_SQLITE_VEC_TARGET})
 
 target_compile_options(notification-core PRIVATE -Wall -Wextra)
@@ -144,9 +157,9 @@ target_compile_options(notification-core PRIVATE -Wall -Wextra)
 # feature services, DTOs) compiles from the shared tree into THIS executable
 # only: the controllers are AutoCreation and register their routes during
 # static init, exactly like the legacy binary does. The legacy keeps its own
-# registration until F3-2; the notification repository and schema ride
-# argus_sync, the notification-token repository/service are not in argus_sync
-# and compile from the shared tree too.
+# registration until F3-2; the notification repository, schema and delivery
+# service are notification-core's, and so are the notification-token
+# repository/service the feature surface reads.
 set(NOTIFICATION_FEATURE_SOURCES
     ${NOTIFICATION_SRC_ROOT}/feature/api/notification/controllers/notification-controller.cc
     ${NOTIFICATION_SRC_ROOT}/feature/api/notification/controllers/notification-token-controller.cc
@@ -168,9 +181,12 @@ add_executable(argus-notification
 
 # The filters validate through argus.identity.v1 (argus::clients::identity rides
 # argus::lib::auth); the RPC owner serves argus.notification.v1 via
-# argus::clients::notification.
+# argus::clients::notification. The DTOs validate through argus::lib::validation
+# and the controllers answer through argus::lib::http, both of which rode
+# argus_sync until sub-step 3a-1b.
 target_link_libraries(argus-notification PRIVATE notification-core
-    argus::lib::auth argus::clients::notification)
+    argus::lib::auth argus::lib::validation argus::lib::http
+    argus::clients::notification)
 
 target_compile_options(argus-notification PRIVATE -Wall -Wextra)
 
@@ -212,7 +228,7 @@ foreach(TEST_NAME IN ITEMS notification-schema-test notification-migration-test)
 endforeach()
 
 # The controller suite compiles the same write-side sources the service
-# compiles and rides the sync layer for repositories and boot plumbing.
+# compiles and rides notification-core for repositories and boot plumbing.
 add_executable(notification-controller-test
     tests/unit/notification-controller-test.cc
     ${NOTIFICATION_FEATURE_SOURCES})
@@ -224,7 +240,7 @@ target_include_directories(notification-controller-test PRIVATE
     ${NOTIFICATION_SRC_ROOT})
 
 target_link_libraries(notification-controller-test PRIVATE
-    argus_sync
+    notification-core
     argus::lib::auth
     argus::lib::config
     argus::lib::text
@@ -256,7 +272,7 @@ target_compile_definitions(notification-rpc-test PRIVATE
     ARGUS_NOTIFICATION_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql")
 
 target_link_libraries(notification-rpc-test PRIVATE
-    argus_sync
+    notification-core
     argus::clients::notification
     argus::lib::config
     argus::lib::text
@@ -284,7 +300,7 @@ target_compile_definitions(notification-no-nats-test PRIVATE
     ARGUS_NOTIFICATION_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql")
 
 target_link_libraries(notification-no-nats-test PRIVATE
-    argus_sync
+    notification-core
     argus::clients::notification
     argus::lib::config
     argus::lib::text
@@ -304,7 +320,7 @@ set_target_properties(notification-delivery-test PROPERTIES
     EXCLUDE_FROM_ALL FALSE)
 
 target_link_libraries(notification-delivery-test PRIVATE
-    argus_sync
+    notification-core
     argus::socket
     argus::lib::sqlite
     doctest::doctest)
@@ -319,7 +335,7 @@ set_target_properties(notification-ack-test PROPERTIES
     EXCLUDE_FROM_ALL FALSE)
 
 target_link_libraries(notification-ack-test PRIVATE
-    argus_sync
+    notification-core
     argus::socket
     argus::lib::sqlite
     doctest::doctest)
@@ -343,7 +359,6 @@ target_compile_definitions(notification-delivery-live-test PRIVATE
 
 target_link_libraries(notification-delivery-live-test PRIVATE
     notification-core
-    argus_sync
     argus::lib::nats
     argus::lib::sqlite
     doctest::doctest)
@@ -359,7 +374,7 @@ add_executable(push-intent-test tests/unit/push-intent-test.cc)
 set_target_properties(push-intent-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
 target_link_libraries(push-intent-test PRIVATE
-    argus_sync
+    notification-core
     argus::lib::nats
     argus::lib::sqlite
     doctest::doctest)

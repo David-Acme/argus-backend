@@ -54,8 +54,8 @@ argus-productivity/
 ```
 
 The write-side feature sources (controllers, services, DTOs) compile from the
-shared tree into this executable only; the repositories and schemas ride
-`argus_sync`.
+shared tree into this executable only; the repositories and schemas are
+`productivity-core`'s, which this service owns.
 
 ## Build commands
 

@@ -8,7 +8,7 @@
 #include <feature/rpc/notification-rpc-service.hxx>
 #include <fstream>
 #include <optional>
-#include <shared/contracts/notification-delivery-sink.hxx>
+#include <notification/notification-delivery-sink.hxx>
 #include <config/config-service.hxx>
 #include <shared/services/notification/notification-service.hxx>
 #include <sqlite/db-service.hxx>

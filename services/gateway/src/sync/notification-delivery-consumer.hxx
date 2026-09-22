@@ -1,7 +1,7 @@
 #pragma once
 
 #include <drogon/utils/coroutine.h>
-#include <shared/contracts/notification-delivery-sink.hxx>
+#include <notification/notification-delivery-sink.hxx>
 #include <shared/repositories/delivery-inbox/delivery-inbox-repository.hxx>
 #include <nats/nats-subject.hxx>
 

@@ -61,9 +61,9 @@ argus-notification/
 ```
 
 The write-side feature sources (controllers, services, DTOs) compile from the
-shared tree into this executable only; the notification schema rides
-`argus_sync` and the notification-token repository/service compile from the
-shared tree.
+shared tree into this executable only; the notification repository, schema and
+delivery service, and the notification-token repository/service, are
+`notification-core`'s.
 
 ## Build commands
 

@@ -959,7 +959,7 @@ for two different reasons, and says which when it does.
 | `services/camera/src/shared/services/tapo/` | Tapo camera local protocols: control (`stok` + `securePassthrough`, legacy fallback) and the 8800 talk channel (Digest + MPEG-TS PCMA) |
 | `services/notification/src/shared/services/notification-token/` | Push tokens per session |
 | `packages/sync/src/feature/socket/sync/` | `SyncSocket` + `SyncService` + `SynchronizedService` + DTOs; becomes `services/sync` (Phase 3a) |
-| `packages/sync/src/shared/services/notification/` | Per-user notifications: `Add` on create and granular user-audit on mark-as-read; same move |
+| `services/notification/src/shared/services/notification/` | Per-user notifications: `Add` on create and granular user-audit on mark-as-read; this service's own code since sub-step 3a-1b |
 | `packages/socket/src/shared/services/socket/` | `SocketService` (emitModule/emitUser) + `SocketEmitDto`; dies in Phase 3a — its vocabulary goes to `contracts/sync` and its transport to `services/sync` |
 | `packages/room/src/shared/services/room/` | local `RoomManager` (rooms per module/user, `thread_local`); dies with `socket` in Phase 3a |
 | `packages/audit/src/shared/services/audit-log/` | Global audit: per-field diffs, daily compaction and monotonic id for sync |

@@ -4,7 +4,7 @@
 #include <grpc/grpc-server-identity.hxx>
 #include <grpcpp/grpcpp.h>
 #include <memory>
-#include <shared/contracts/notification-delivery-sink.hxx>
+#include <notification/notification-delivery-sink.hxx>
 #include <nats/push-intent-sink.hxx>
 #include <shared/repositories/notification/notification-repository.hxx>
 #include <shared/services/notification/notification-service.hxx>

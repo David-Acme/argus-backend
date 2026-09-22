@@ -8,10 +8,10 @@ access level, the membership refusal enum and the eight service refusals.
 A CONTRACT, not a service and not a library: one `argus_contracts`
 declaration, an INTERFACE target with no translation unit. The include root is
 `src/`, so a consumer writes `<productivity/share-access.hxx>` and links
-`argus::contracts::productivity`. Two CMakeLists link it —
-`services/productivity`, which owns the boundary, and `packages/sync`, because
-a project, a task and a calendar event each cross the sync leg carrying the
-same access level and detail state.
+`argus::contracts::productivity`. One CMakeLists links it —
+`services/productivity`, which owns the boundary; `packages/sync` linked it
+until sub-step 3a-1b, when the repositories that carried this vocabulary on the
+sync leg moved into the owning services.
 
 ## Layout
 
