@@ -124,12 +124,15 @@ TEST_CASE("identity schema applies cleanly to an in-memory database")
   const auto indexes = queryColumn(db.get(),
       "SELECT name FROM sqlite_master WHERE type = 'index' AND name LIKE "
       "'idx_%' ORDER BY name");
-  CHECK(indexes.size() == 21);
+  // Five fewer than the 21 this schema carried while /sync lived here: the
+  // audit tables and the delivery inbox are services/sync's schema now.
+  CHECK(indexes.size() == 16);
 
-  const auto inbox = queryColumn(db.get(),
-      "SELECT name FROM sqlite_master WHERE type = 'table' AND name = "
-      "'notification_delivery_inbox'");
-  REQUIRE(inbox.size() == 1);
+  const auto moved = queryColumn(db.get(),
+      "SELECT name FROM sqlite_master WHERE type = 'table' AND name IN "
+      "('audit_log', 'user_audit_log', 'user_action_log', "
+      "'notification_delivery_inbox')");
+  REQUIRE(moved.empty());
 }
 
 TEST_CASE("migration copies identity tables and verifies them")

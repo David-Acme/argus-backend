@@ -3,19 +3,9 @@
 #include <cstdint>
 #include <drogon/utils/coroutine.h>
 #include <json/value.h>
-#include <optional>
-#include <sync/table-name.hxx>
+#include <sync/module-audit-event.hxx>
 #include <sync/socket-emit-dto.hxx>
-
-// Before/after snapshots of one camera or zone row; the sink diffs them.
-struct CameraAuditInput
-{
-  int64_t recordId{0};
-  TableName tableName{TableName::Camera};
-  Json::Value before;
-  Json::Value after;
-  std::optional<int64_t> actorId;
-};
+#include <sync/table-name.hxx>
 
 // Camera-domain change sink; argus-camera installs the NATS funnel at boot.
 class CameraChangeSink
@@ -26,7 +16,7 @@ public:
   virtual void emitModule(TableName table, const SocketEmitDto& body) const = 0;
 
   virtual drogon::Task<void>
-  publishAudit(const CameraAuditInput& input) const = 0;
+  publishAudit(const ModuleAuditInput& input) const = 0;
 };
 
 namespace camera_change

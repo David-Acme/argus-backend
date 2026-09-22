@@ -10,7 +10,6 @@ const std::vector<std::string>& gatewayNativePaths()
       "/pairing",
       "/portrait-preview",
       "/user",
-      "/sync",
       "/camera-stream",
       "/health",
   };

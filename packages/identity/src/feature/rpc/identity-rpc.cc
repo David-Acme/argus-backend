@@ -9,11 +9,9 @@
 #include <sync/table-name.hxx>
 #include <sync/socket-emit-dto.hxx>
 #include <shared/services/face/face-service.hxx>
-#include <sync/sync-change.hxx>
-#include <text/json-util.hxx>
+#include <sync/identity-change-sink.hxx>
 #include <shared/vocabulary/person-status.hxx>
 #include <runtime/blocking-task.hxx>
-#include <nats/nats-subject.hxx>
 #include <trantor/utils/Logger.h>
 #include <auth/user-role.hxx>
 
@@ -151,13 +149,8 @@ grpc::ServerUnaryReactor* IdentityRpcService::UpdateUser(
         emit.operation = SyncOperation::Add;
         emit.option = TableName::User;
         emit.obj = user.toJson();
-        if (bus_) {
-          const Json::Value payload = sync_change::emitPayload(emit);
-          bus_->publish(nats_subject::kSyncChange, json_util::toString(payload));
-        }
-        else {
-          LOG_WARN << "Identity RPC: no NATS bus; user change not fanned out";
-        }
+        if (const auto* sink = identity_change::getSink())
+          sink->emitModule(TableName::User, emit);
 
         responseWriter->mutable_user()->set_user_id(user.id);
         responseWriter->mutable_user()->set_name(user.name);
@@ -568,15 +561,12 @@ grpc::ServerUnaryReactor* IdentityRpcService::EnrollPerson(
               co_await personSnapshotRepository_.store(
                   {.personId = person.id, .image = image});
 
-            if (bus_) {
-              SocketEmitDto emit;
-              emit.operation = SyncOperation::Add;
-              emit.option = TableName::Person;
-              emit.obj = person.toJson();
-              const Json::Value payload = sync_change::emitPayload(emit);
-              bus_->publish(nats_subject::kSyncChange,
-                            json_util::toString(payload));
-            }
+            SocketEmitDto emit;
+            emit.operation = SyncOperation::Add;
+            emit.option = TableName::Person;
+            emit.obj = person.toJson();
+            if (const auto* sink = identity_change::getSink())
+              sink->emitModule(TableName::Person, emit);
             LOG_INFO << "Identity RPC: enrolled person " << person.id
                      << " from camera " << cameraId;
             responseWriter->set_person_id(person.id);
@@ -916,13 +906,16 @@ grpc::ServerUnaryReactor* IdentityRpcService::PromotePerson(
             if (promoted) {
               const auto after =
                   co_await personRepository_.findById(personId);
-              if (after)
-                co_await auditService_.publishModule(
-                    {.recordId = personId,
-                     .tableName = TableName::Person,
-                     .before = before->toJson(),
-                     .after = after->toJson(),
-                     .actorId = actorId});
+              if (after) {
+                if (const auto* sink = identity_change::getSink()) {
+                  co_await sink->publishModuleAudit(
+                      {.recordId = personId,
+                       .tableName = TableName::Person,
+                       .before = before->toJson(),
+                       .after = after->toJson(),
+                       .actorId = actorId});
+                }
+              }
             }
             responseWriter->set_promoted(promoted);
             reactor->Finish(grpc::Status::OK);

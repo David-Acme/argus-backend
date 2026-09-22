@@ -48,7 +48,7 @@ own `productivity.db`.
   the exact USER-SCOPED `user_audit_log` rows the legacy would have written
   (same `changes` JSON via `JsonDiff::createFlatDiff`, same per-user
   `userIds` expansion) and emits them over NATS (`argus.productivity.v1.change`,
-  `docs/architecture/wire-nats-subjects.md`). The gateway persists them verbatim into
+  `docs/architecture/wire-nats-subjects.md`). `argus-sync` persists them verbatim into
   identity.db; nothing audit-shaped is ever written to productivity.db.
 - **Serving live traffic (F3-2, Ruling AP)**: the gateway relays
   `/calendar-event`, `/calendar-event-share`, `/project`,
@@ -74,7 +74,7 @@ own `productivity.db`.
   x-argus-user/role/device metadata and scopes the personal tables
   (calendar_event, calendar_event_share, project, project_member,
   project_task) by owner-or-membership, while reminder/reminder_detail stay
-  unscoped exactly as the monolith's gateway did. The gateway consumes it
+  unscoped exactly as the monolith's gateway did. `argus-sync` consumes it
   through `argus::clients::productivity`; no other service opens productivity.db.
 - **CORS**: the legacy answered every preflight in pre-routing and the
   gateway forwards OPTIONS on proxied paths untouched, so this surface keeps
@@ -88,7 +88,7 @@ own `productivity.db`.
 - **What stays away**: no reminder/reminder_detail write path anywhere
   (sync-read-only, Ruling AL — the repositories/schemas compile into
   `productivity-core` and nothing more), no context_note table, no /sync socket
-  (reads ride the gateway's `/sync` pull over this service's gRPC leg), no
+  (reads ride `argus-sync`'s `/sync` pull over this service's gRPC leg), no
   identity.db, no AI symbols (verified with `nm -C`), no alarm-triggering code.
 
 ## Build wiring (decisions)
@@ -124,5 +124,5 @@ hand-kept copies (one here, one in the root test tree) that could drift.
 The suites register in the service's standalone CTest graph.
 
 What did NOT move: the productivity repositories and schemas, which
-`productivity-core` compiles here since sub-step 3a-1b — the gateway's `/sync`
+`productivity-core` compiles here since sub-step 3a-1b — `argus-sync`'s `/sync`
 still reads the same rows, through the productivity sync RPC.

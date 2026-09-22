@@ -11,8 +11,9 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 # argus_sync: the sync WebSocket surface (socket, native sync-table service, the
-# event repository and the pull-source contracts the host implements). The
-# legacy backend and the argus-gateway both consume this one definition; the
+# event repository and the pull-source contracts the host implements) plus the
+# three audit tables it alone writes and the room registry its fan-out reads.
+# The legacy backend and the argus-gateway both consume this one definition; the
 # gateway never pulls the media objects because nothing it links references
 # them. The cross-domain repositories this module used to carry are their
 # owners' now (sub-step 3a-1b): the camera, productivity and notification
@@ -70,10 +71,6 @@ endif()
 # and ncnn, and identity's migration tool the sibling suites ride. Identity
 # lands after the ncnn block so its face services see the ncnn target.
 if(PROJECT_IS_TOP_LEVEL)
-    if(NOT TARGET argus::room)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../room
-                         ${CMAKE_BINARY_DIR}/room)
-    endif()
     if(NOT TARGET sqlite-vec)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../third_party/sqlite-vec
                          ${CMAKE_BINARY_DIR}/third_party/sqlite-vec)
@@ -82,14 +79,6 @@ if(PROJECT_IS_TOP_LEVEL)
     if(NOT TARGET argus::lib::sqlite)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../lib/sqlite
                          ${CMAKE_BINARY_DIR}/sqlite)
-    endif()
-    if(NOT TARGET argus::socket)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../socket
-                         ${CMAKE_BINARY_DIR}/socket)
-    endif()
-    if(NOT TARGET argus::audit)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../audit
-                         ${CMAKE_BINARY_DIR}/audit)
     endif()
     if(NOT TARGET argus::lib::auth)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../lib/auth
@@ -131,9 +120,18 @@ set(ARGUS_SYNC_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/feature/socket/sync/socket/sync-socket.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/src/feature/socket/sync/services/sync-service.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/src/feature/socket/sync/services/synchronized-service.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/shared/repositories/audit-log/audit-log-repository.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/src/shared/repositories/event/event-repository.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/shared/repositories/user-action-log/user-action-log-repository.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/shared/repositories/user-audit-log/user-audit-log-repository.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/shared/schemas/audit-log/audit-log-schema.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/src/shared/schemas/event/event-schema.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/src/shared/schemas/person-event/person-event-schema.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/shared/schemas/user-action-log/user-action-log-schema.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/shared/schemas/user-audit-log/user-audit-log-schema.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/shared/services/audit-log/audit-log-service.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/shared/services/room/room-manager.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/shared/services/user-audit-log/user-audit-log-service.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/src/shared/contracts/camera-sync-source.hxx
     ${CMAKE_CURRENT_SOURCE_DIR}/src/shared/contracts/productivity-sync-source.hxx
     ${CMAKE_CURRENT_SOURCE_DIR}/src/shared/contracts/notification-sync-source.hxx
@@ -149,17 +147,14 @@ target_include_directories(argus_sync
 
 target_link_libraries(argus_sync PUBLIC
     argus_identity
-    argus::audit
-    argus::socket
-    argus::room
     argus::lib::auth
     argus::contracts::sync
     argus::contracts::auth
     argus::contracts::camera
     argus::contracts::notification
+    argus::lib::sqlite
     argus::lib::text
     argus::lib::nats
-    argus::lib::sqlite
     argus::lib::validation
     argus::lib::errors
     Drogon::Drogon)
@@ -170,24 +165,7 @@ target_compile_options(argus_sync PRIVATE -Wall -Wextra)
 # argus_sync_media library is argus-voice's voice-core now; the gateway relays
 # the frames to the owner service instead of linking any of this.
 
-# The sync suites: the empty-table contract and the golden /sync transcript
-# whose fixtures are frozen (a re-record is a contract change, not a fix).
-find_package(doctest REQUIRED)
-
-add_executable(event-sync-empty-test tests/unit/event-sync-empty-test.cc)
-target_link_libraries(event-sync-empty-test PRIVATE
-    argus_sync
-    argus::lib::sqlite
-    argus::contracts::sync
-    Drogon::Drogon
-    sqlite-vec
-    doctest::doctest)
-target_compile_options(event-sync-empty-test PRIVATE -Wall -Wextra)
-add_test(NAME event-sync-empty-test COMMAND event-sync-empty-test)
-
-add_executable(golden-sync-test tests/e2e/golden-sync-test.cc)
-target_compile_definitions(golden-sync-test PRIVATE
-    ARGUS_TEST_SYNC_FIXTURES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/sync")
-target_link_libraries(golden-sync-test PRIVATE Drogon::Drogon)
-target_compile_options(golden-sync-test PRIVATE -Wall -Wextra)
-add_test(NAME golden-sync-test COMMAND golden-sync-test)
+# The suites went with the surface (sub-step 3a-1c): services/sync owns the
+# five that exercise the socket, the fan-out, the audit reads and the delivery
+# inbox, and their fixtures. This package compiles the engine only, until
+# sub-step d moves it too.

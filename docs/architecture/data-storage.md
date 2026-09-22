@@ -7,7 +7,7 @@ is no shared monolith database: `argus.db` is retired and must not appear.
 
 | Database | Owner | Schema | Runtime path |
 |---|---|---|---|
-| `identity.db` | `argus-gateway` (`packages/identity`) | `packages/identity/database/schema.sql` | `database/identity.db` |
+| `identity.db` | `argus-gateway` (`packages/identity`) and `argus-sync` (the four sync tables) | `packages/identity/database/schema.sql`, `services/sync/database/schema.sql` | `database/identity.db` |
 | `camera.db` | `argus-camera` | `services/camera/database/schema.sql` | `database/camera.db` |
 | `productivity.db` | `argus-productivity` | `services/productivity/database/schema.sql` | `database/productivity.db` |
 | `notification.db` | `argus-notification` | `services/notification/database/schema.sql` | `database/notification.db` |
@@ -38,8 +38,8 @@ the consuming database, so redeliveries settle without re-executing effects:
 - `notification_command` + `notification_delivery` (`notification.db`):
   idempotent fan-out creates (SHA-256 fingerprint per `command_id`) and the
   pending/sent delivery intents the broker must acknowledge.
-- `notification_delivery_inbox` (`identity.db` schema, written by the
-  gateway): per-delivery receipts (`received`/`dispatched`/`conflict`/
+- `notification_delivery_inbox` (`identity.db`, written by `argus-sync`):
+  per-delivery receipts (`received`/`dispatched`/`conflict`/
   `dead_lettered`) with the canonical payload fingerprint. A conflicting
   fingerprint for a known id is never dispatched; an unknown status fails
   closed to `dead_lettered`.
@@ -60,7 +60,7 @@ the manifests are database rows.
 - Every query lives in `src/shared/repositories/`; no ad-hoc SQL in features.
 - `DbService` opens Drogon's async client and reapplies pragmas at every boot
   (WAL, `synchronous=NORMAL`, busy timeout, mmap, foreign keys).
-- The sync engine reads identity rows through the gateway and other owner
+- The sync engine reads identity rows from `identity.db` and other owner
   tables through typed contracts; see [sync-engine.md](sync-engine.md).
 - `DbService::installExtensions()` registers `sqlite-vec` (vec0) after
   Drogon's first connection; `VecDb` owns the vector tables.

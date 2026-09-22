@@ -85,21 +85,9 @@ if(PROJECT_IS_TOP_LEVEL)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/camera-actions
                          ${CMAKE_BINARY_DIR}/clients/camera-actions EXCLUDE_FROM_ALL)
     endif()
-    if(NOT TARGET argus::audit)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/audit
-                         ${CMAKE_BINARY_DIR}/audit)
-    endif()
     if(NOT TARGET argus::lib::cert)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/cert
                          ${CMAKE_BINARY_DIR}/cert)
-    endif()
-    if(NOT TARGET argus::room)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/room
-                         ${CMAKE_BINARY_DIR}/room)
-    endif()
-    if(NOT TARGET argus::socket)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/socket
-                         ${CMAKE_BINARY_DIR}/socket)
     endif()
     if(NOT TARGET argus::lib::auth)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/auth

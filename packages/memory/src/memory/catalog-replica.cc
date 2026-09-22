@@ -1,7 +1,7 @@
 #include "catalog-replica.hxx"
 
 #include <drogon/drogon.h>
-#include <sync/camera-audit-event.hxx>
+#include <sync/module-audit-event.hxx>
 #include <sync/sync-operation.hxx>
 #include <shared/services/memory/entity-resolver.hxx>
 #include <text/json-util.hxx>
@@ -152,7 +152,7 @@ void CatalogReplica::applyCamera(const Json::Value& event)
     return;
 
   if (event.get("kind", "").asString() == "audit") {
-    const auto audit = CameraAuditEvent::fromJson(event);
+    const auto audit = ModuleAuditEvent::fromJson(event);
     if (!audit)
       return;
     const std::string table = tableNameToString(audit->tableName);

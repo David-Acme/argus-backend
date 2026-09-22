@@ -6,9 +6,10 @@ F6-3 v2 of the `migracion-microservicios` plan makes argus-voice the pilot
 pure-gRPC service: the voice orchestration stack (one voice session per
 client: VAD turn detection → STT → LLM chat → TTS synthesis, plus the
 reaction engine and the noise/RNNoise path) leaves the legacy monolith and
-speaks only `argus.voice.v1`. The mobile app keeps talking to the gateway
-unchanged — the `/sync` voice wire is frozen, and the gateway renders the
-typed server frames back into the exact JSON/binary the app expects.
+speaks only `argus.voice.v1`. The `/sync` voice wire is frozen, and since
+sub-step 3a-1c the forwarder that renders the typed server frames back into the
+exact JSON/binary the app expects is argus-sync's
+(`services/sync/src/feature/transport/infra/voice-grpc-relay.cc`).
 
 ## What it owns
 
@@ -16,7 +17,7 @@ typed server frames back into the exact JSON/binary the app expects.
   `VoiceService/Connect` stream: `VoiceStart` (typed identity), `VoiceStop`,
   `VoiceSkip`, raw PCM bytes; server side `VoiceStt`, `VoiceAssistant`,
   `VoiceEvent`, `VoiceDone`, `TtsChunk`. PCM is raw 16 kHz s16le in both
-  directions, exactly the WS binary frame the gateway forwards.
+  directions, exactly the WS binary frame the `/sync` forwarder relays.
 - **The engine seam** (`voice-engine-seam`): remote-only. There is no
   in-process engine registry in argus-voice — STT/TTS/LLM compile to the
   remote HTTP adapters only (argus-stt 7030, argus-tts 7029, argus-llm 7032
@@ -26,9 +27,10 @@ typed server frames back into the exact JSON/binary the app expects.
 - **The identity write** (`GrpcVoiceIdentity`): the spoken-name persist is a
   typed `IdentityService.UpdateUser` call to the gateway's internal identity
   listener (`identity.target`). argus-voice owns NO database — zero DB
-  clients. The gateway owns identity.db and re-fans the change out on
-  `argus.sync.v1.change` (the publisher of that emit is the gateway, not
-  this service). An empty `identity.target` or a failed call logs and the
+  clients. The identity feature owns identity.db and emits the change through
+  its own NATS sink, whose payloads argus-sync's fan-out dispatches onto
+  `/sync` (the publisher of that emit is the identity surface, not this
+  service). An empty `identity.target` or a failed call logs and the
   session continues (best effort, as the legacy async persist was).
 
 ## Session behavior decisions (moved from code comments)
@@ -59,8 +61,9 @@ typed server frames back into the exact JSON/binary the app expects.
 ## Stream lifecycle decisions
 
 - Identity metadata `x-argus-user` / `x-argus-role` must be present at
-  `Connect` (UNAUTHENTICATED otherwise). Role validation happened ONCE at
-  the gateway; the service only requires presence and applies row scoping.
+  `Connect` (UNAUTHENTICATED otherwise). Role validation happened ONCE on the
+  `/sync` edge (the gateway's before sub-step 3a-1c, argus-sync's filter chain
+  now); the service only requires presence and applies row scoping.
 - The client SDK holds one write in flight with a bounded queue (frames drop
   past the cap) and a self-hold so the reactor outlives the consumer's
   handle until `OnDone`; the observer is owned by the stream for the same

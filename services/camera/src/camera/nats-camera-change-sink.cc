@@ -1,7 +1,7 @@
 #include "nats-camera-change-sink.hxx"
 
 #include <chrono>
-#include <sync/camera-audit-event.hxx>
+#include <sync/module-audit-event.hxx>
 #include <text/json-diff.hxx>
 #include <text/json-util.hxx>
 #include <nats/nats-bus.hxx>
@@ -21,13 +21,13 @@ void NatsCameraChangeSink::emitModule(TableName table,
 }
 
 drogon::Task<void> NatsCameraChangeSink::publishAudit(
-    const CameraAuditInput& input) const
+    const ModuleAuditInput& input) const
 {
   const auto changes = JsonDiff::createFlatDiff(input.before, input.after);
   if (changes.empty())
     co_return;
 
-  CameraAuditEvent event;
+  ModuleAuditEvent event;
   event.recordId = input.recordId;
   event.tableName = input.tableName;
   event.changes = changes;

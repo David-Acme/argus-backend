@@ -29,7 +29,7 @@ single source of truth.
 - `sync/` — the frozen sync wire values (`SyncOperation` 0-7, `TableName`
   0-23, `SYNC_LIMIT = 200`) extracted verbatim from the backend, as a C++
   vocabulary under `sync/src/sync/`. The golden /sync fixtures live with the
-  engine that replays them, `packages/sync/tests/fixtures/sync/`.
+  engine that replays them, `services/sync/tests/fixtures/sync/`.
 
 ## Invariants the migration depends on
 
@@ -101,7 +101,8 @@ domain: `NotificationService.CreateNotifications` is the fan-out create
 last-created watermark). The SDK wrapper `argus::clients::notification`
 (`packages/clients/notification/src/notification/notification-client.cc`) carries the same metadata and
 deadline shape. Both owners are the only openers of their databases; the
-gateway links these two SDK targets and never mounts those volumes (rule 27).
+gateway links the notification target (its camera-notifier) and `argus-sync`
+the productivity one, and neither mounts those volumes (rule 27).
 
 ## Camera sync contract (F6-5)
 

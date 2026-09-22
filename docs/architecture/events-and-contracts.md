@@ -13,12 +13,12 @@
 - Durable JetStream legs (PubAck settlement, inbox receipts, at-least-once):
   `argus.camera.v1.object_detected` → guard (`ARGUS_CAMERA`),
   `argus.guard.v1.encounter_closed` → argus-llm (`ARGUS_GUARD`),
-  `argus.notification.v1.delivery` → gateway (`ARGUS_NOTIFICATION`).
+  `argus.notification.v1.delivery` → `argus-sync` (`argus-sync-delivery`).
   Same id plus same canonical fingerprint is a replay; same id plus a
   different fingerprint is a conflict that is never dispatched.
 - Readiness and health signals: `argus.guard.v1.heartbeat` (the gateway's raw
   camera notifier yields while fresh) and `argus.camera.v1.health`.
-- The gateway subscribes the frozen wildcard `argus.*.v1.change` and routes
+- `argus-sync` subscribes the frozen wildcard `argus.*.v1.change` and routes
   by concrete subject; camera audit diffs are persisted before fan-out.
 
 The full subject contract lives in `wire-nats-subjects.md`.
@@ -51,5 +51,5 @@ The full subject contract lives in `wire-nats-subjects.md`.
 ## Stability rules
 
 Wire contracts are frozen: public paths, the `{status, info, errors}`
-envelope, error codes and `SyncOperation` values 0–6 do not change. New
+envelope, error codes and `SyncOperation` values 0–7 do not change. New
 capabilities are additive; retired protobuf fields are `reserved`.

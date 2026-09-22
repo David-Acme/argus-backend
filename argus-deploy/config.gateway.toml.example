@@ -66,14 +66,16 @@ rpc_secret = "CHANGE_ME_SAME_IN_EVERY_SERVICE"
 [camera]
 stream_url = "ws://127.0.0.1:7026/media"
 proxy_url = "http://127.0.0.1:7026"
-grpc_target = "127.0.0.1:7036"
 
-[voice]
-target = "127.0.0.1:7034"
+[sync]
+# The sync service's control plane (unary gRPC); empty disables the
+# imperative leg, leaving role changes and disconnects undelivered.
+control_target = "127.0.0.1:7041"
+# Required whenever the control target is set; same value in every service.
+control_secret = "CHANGE_ME_SAME_IN_EVERY_SERVICE"
 
 [productivity]
 proxy_url = "http://127.0.0.1:7027"
-grpc_target = "127.0.0.1:7037"
 
 [cert]
 dir = "certs"

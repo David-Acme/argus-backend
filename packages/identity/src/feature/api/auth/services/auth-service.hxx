@@ -18,9 +18,6 @@
 #include <shared/services/storage/private-portrait-service.hxx>
 #include <shared/repositories/user-invitation/user-invitation-repository.hxx>
 #include <auth/jwt-service.hxx>
-#include <shared/services/socket/socket-service.hxx>
-#include <shared/services/sync-audit/sync-audit-service.hxx>
-#include <shared/services/user-action-log/user-action-log-service.hxx>
 #include <string>
 
 struct LoginDeviceInput
@@ -97,7 +94,4 @@ private:
   FaceEmbeddingRepository faceEmbeddingRepository_;
   UserInvitationRepository invitationRepository_;
   DeviceLoginChallengeRepository challengeRepository_;
-  UserActionLogService userActionLogService_;
-  SocketService socketService_;
-  SyncAuditService syncAuditService_;
 };

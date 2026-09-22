@@ -18,7 +18,7 @@ public:
   drogon::Task<bool> remove(int64_t id) const;
 
 private:
-  // Emits camera changes to the module room so every reader session sees them.
+  // Emits camera changes through the domain's sink so subscribers see them.
   void emit(SyncOperation operation, const CameraSchema& row) const;
 
   CameraRepository repository_;

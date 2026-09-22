@@ -13,7 +13,7 @@ proto/argus/{common,camera,ai,identity,voice,productivity,notification,
              memory,sync}/v1/*.proto
 manifests/package.schema.json   typed capability package manifest
 manifests/plugin.schema.json    ed25519-signed plugin manifest
-../sync/tests/fixtures/sync/    golden /sync frames
+../../services/sync/tests/fixtures/sync/ golden /sync frames
 identity/                       device identity contract
 buf.yaml  buf.gen.yaml          lint + C++ codegen
 ```

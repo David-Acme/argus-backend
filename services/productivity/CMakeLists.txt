@@ -86,21 +86,9 @@ if(PROJECT_IS_TOP_LEVEL)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/sqlite
                          ${CMAKE_BINARY_DIR}/sqlite)
     endif()
-    if(NOT TARGET argus::audit)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/audit
-                         ${CMAKE_BINARY_DIR}/audit)
-    endif()
     if(NOT TARGET argus::lib::cert)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/cert
                          ${CMAKE_BINARY_DIR}/cert)
-    endif()
-    if(NOT TARGET argus::room)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/room
-                         ${CMAKE_BINARY_DIR}/room)
-    endif()
-    if(NOT TARGET argus::socket)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/socket
-                         ${CMAKE_BINARY_DIR}/socket)
     endif()
     if(NOT TARGET argus::lib::auth)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/auth
@@ -226,12 +214,10 @@ foreach(TEST_NAME IN ITEMS productivity-schema-test productivity-migration-test)
     add_executable(${TEST_NAME} tests/unit/${TEST_NAME}.cc)
     set_target_properties(${TEST_NAME} PROPERTIES EXCLUDE_FROM_ALL FALSE)
         target_link_libraries(${TEST_NAME} PRIVATE
-    argus::audit
     argus::lib::auth
     argus::lib::config
     argus::lib::text
     argus::lib::nats
-    argus::socket
     argus::lib::sqlite
     argus::lib::validation
     argus::contracts::sync
@@ -264,7 +250,6 @@ target_link_libraries(productivity-controller-test PRIVATE
     argus::contracts::sync
     argus::lib::config
     argus::lib::text
-    argus::socket
     argus::lib::sqlite
     argus::lib::validation
     argus::lib::http

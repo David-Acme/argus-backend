@@ -5,13 +5,13 @@
 # behind it. The counts belong to the clang-tidy named
 # on the tool line, and a different major is refused.
 tool 22.1.8
-tus 479
-modernize-use-nodiscard 790
+tus 482
+modernize-use-nodiscard 780
 modernize-avoid-c-style-cast 362
-modernize-use-designated-initializers 305
-bugprone-suspicious-stringview-data-usage 302
+modernize-use-designated-initializers 302
+bugprone-suspicious-stringview-data-usage 301
 modernize-use-scoped-lock 295
-bugprone-unchecked-optional-access 225
+bugprone-unchecked-optional-access 224
 modernize-avoid-c-arrays 81
 bugprone-implicit-widening-of-multiplication-result 72
 bugprone-narrowing-conversions 68

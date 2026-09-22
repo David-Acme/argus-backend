@@ -1,7 +1,7 @@
 # argus_contracts_gateway
 
-The gateway's own refusals: the six backend-unavailable answers, the remote
-gate, the rate limiter and the unreachable route.
+The gateway's own refusals: the two camera-stream answers, the remote gate,
+the rate limiter and the unreachable route.
 
 ## What this is
 
@@ -17,10 +17,10 @@ wire is the envelope it forwards, not a message it defines.
 
 ## Layout
 
-- `src/gateway/gateway-errors.hxx` — the nine definitions in `GatewayErrors`:
-  the six `*SyncUnavailable`/`CameraStreamUnavailable` answers (503 each), the
-  two gates (`RemoteNotAllowed` 403, `TooManyRemoteAttempts` 429) and
-  `RouteUnreachable` (500). 8 files include it.
+- `src/gateway/gateway-errors.hxx` — the five definitions in `GatewayErrors`:
+  the two camera-stream answers (503 each), the two gates (`RemoteNotAllowed`
+  403, `TooManyRemoteAttempts` 429) and `RouteUnreachable` (500). 3 files
+  include it.
 
 ## Rules
 
@@ -34,6 +34,6 @@ wire is the envelope it forwards, not a message it defines.
 
 ## Tests
 
-- `tests/unit/gateway-contract-catalog-test.cc` — the nine refusals as a
+- `tests/unit/gateway-contract-catalog-test.cc` — the five refusals as a
   pinned table, each entry's wire legality, and that no two say the same
   thing.

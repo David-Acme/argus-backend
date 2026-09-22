@@ -279,6 +279,7 @@ target_compile_definitions(llm-wire-test PRIVATE
 
 target_link_libraries(llm-wire-test PRIVATE
     argus::lib::config
+    argus::lib::auth
     argus::hardware-profile
     argus::lib::phrase
     argus::lib::runtime

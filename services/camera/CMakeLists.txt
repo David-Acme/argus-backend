@@ -86,21 +86,9 @@ if(PROJECT_IS_TOP_LEVEL)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/sqlite
                          ${CMAKE_BINARY_DIR}/sqlite)
     endif()
-    if(NOT TARGET argus::audit)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/audit
-                         ${CMAKE_BINARY_DIR}/audit)
-    endif()
     if(NOT TARGET argus::lib::cert)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/cert
                          ${CMAKE_BINARY_DIR}/cert)
-    endif()
-    if(NOT TARGET argus::room)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/room
-                         ${CMAKE_BINARY_DIR}/room)
-    endif()
-    if(NOT TARGET argus::socket)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/socket
-                         ${CMAKE_BINARY_DIR}/socket)
     endif()
     if(NOT TARGET argus::lib::auth)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/auth
@@ -257,8 +245,6 @@ target_link_libraries(camera-core PUBLIC
     argus::lib::sqlite
     argus::camera-action-command
     argus::camera-object-event-outbox
-    argus::socket
-    argus::room
     argus::lib::audio
     argus::clients::tts
     argus::clients::stt
@@ -268,7 +254,6 @@ target_link_libraries(camera-core PUBLIC
     ${ARGUS_NCNN_TARGET}
     argus::hardware-profile-gpu
     argus::contracts::sync
-    argus::audit
     argus::lib::auth
     argus::lib::config
     argus::hardware-profile
@@ -326,14 +311,11 @@ foreach(TEST_NAME IN LISTS CAMERA_UNIT_TESTS)
     argus::contracts::auth
     argus::contracts::camera
     argus::lib::audio
-    argus::audit
     argus::lib::auth
     argus::lib::config
     argus::hardware-profile
     argus::lib::text
     argus::lib::nats
-    argus::room
-    argus::socket
     argus::lib::sqlite
     argus::lib::storage
     argus::lib::runtime

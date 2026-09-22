@@ -11,6 +11,7 @@ data.
 | Owner | Process or package | Primary responsibility |
 |---|---|---|
 | Gateway | `argus-gateway` | Public TLS API, WebSocket relay, identity host and routing |
+| Sync | `argus-sync` | `/sync` WebSocket surface, rooms, change fan-out, audit persistence and the sync control RPC |
 | Camera | `argus-camera` | Camera/zone data, go2rtc media, YOLO26n object events |
 | Productivity | `argus-productivity` | Reminders, projects and calendar data |
 | Notification | `argus-notification` | Notifications and device push tokens |
@@ -23,11 +24,13 @@ data.
 | Tunnel | `argus-tunnel-client`, `argus-tunnel-relay` | Byte-transparent remote transport |
 | Contracts | `packages/contracts/*`, `packages/clients/*` | Versioned protobuf contracts and typed internal SDKs |
 
-The gateway is the only public surface. Internal services bind to loopback or
-the deployment's private network. Core NATS carries change and object events;
+The gateway is the only public HTTP surface; `argus-sync` terminates the
+`/sync` WebSocket upgrade itself, on its own TLS listener. Internal services
+bind to loopback or the deployment's private network. Core NATS carries change
+and object events;
 the durable delivery legs (`object_detected` to guard, `encounter_closed` to
-the LLM host, notification `delivery` to the gateway) run as JetStream streams
-with PubAck settlement and inbox receipts — see
+the LLM host, notification `delivery` to the sync service) run as JetStream
+streams with PubAck settlement and inbox receipts — see
 [wire-nats-subjects.md](wire-nats-subjects.md). Typed gRPC contracts cover
 health, sync, voice, camera actions and identity operations. Fleet-secret
 caller credentials (`x-argus-credential`) authorize the service-to-service
@@ -41,7 +44,7 @@ service contract, as recorded in each owner's `CONTEXT.md`.
 ## Build model
 
 The repository root intentionally has no `CMakeLists.txt`: it carries the one
-`conanfile.txt` the whole tree resolves. Eighteen standalone owner projects
+`conanfile.txt` the whole tree resolves. Seventeen standalone owner projects
 each carry their own `CMakeLists.txt` and configure against that graph's
 toolchain.
 
@@ -92,6 +95,7 @@ Each process reads its own ignored `config.toml`, generated from the adjacent
 | Service | Listener |
 |---|---|
 | Gateway | HTTPS `7024` |
+| Sync | HTTPS `7025`, gRPC `7041` |
 | Camera | HTTP `7026`, gRPC `7036` |
 | Productivity | HTTP `7027` |
 | Notification | HTTP `7028` |
@@ -106,6 +110,7 @@ Standalone binaries are produced inside their owner folder, for example:
 
 ```bash
 ./services/gateway/build/dev/argus-gateway
+./services/sync/build/dev/argus-sync
 ./services/camera/build/dev/argus-camera
 ./services/llm/build/dev/argus-llm
 ```

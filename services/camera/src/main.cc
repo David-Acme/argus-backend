@@ -32,7 +32,6 @@
 #include <operator/zone-provider.hxx>
 #include <shared/repositories/camera/camera-repository.hxx>
 #include <config/config-service.hxx>
-#include <shared/services/room/room-manager.hxx>
 #include <sqlite/db-service.hxx>
 #include <shared/services/stream/go2rtc-manager.hxx>
 #include <shared/services/stream/camera-source-registrar.hxx>
@@ -255,9 +254,6 @@ int main()
                                  return sinkHealth->health();
                                }}}}));
 
-  RoomManager roomManagerLifecycle;
-  roomManagerLifecycle.init();
-
   drogon::app().registerBeginningAdvice(
       [&cameraDb, &operatorService, &healthMonitor, &cameraActionRpc,
        &objectSink]() {
@@ -324,6 +320,5 @@ int main()
     healthMonitor->stop();
   StreamHub::instance().shutdown();
   Go2rtcManager::instance().shutdown();
-  roomManagerLifecycle.shutdown();
   return 0;
 }

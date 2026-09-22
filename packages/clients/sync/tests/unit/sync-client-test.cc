@@ -164,8 +164,8 @@ SocketEmitDto authContextRow(int64_t userId, bool resync)
   return row;
 }
 
-// The per-recipient audit row UserAuditLogService::createAndEmit hands to one
-// user: the directed emit whose operation and table are both not zero.
+// The per-recipient audit row the sync fan-out hands to one user: the directed
+// emit whose operation and table are both not zero.
 SocketEmitDto auditLogRow(int64_t userId)
 {
   SocketEmitDto row;

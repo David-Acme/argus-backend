@@ -17,22 +17,13 @@
 #include <cert/cert-service.hxx>
 #include <config/config-service.hxx>
 #include <shared/services/face/face-service.hxx>
-#include <shared/services/room/room-manager.hxx>
 #include <sqlite/db-service.hxx>
 #include <nats/nats-bus.hxx>
-#include <nats/nats-subject.hxx>
-#include <shared/services/socket/nats-identity-change-sink.hxx>
-#include <sync/camera-fan-out.hxx>
+#include <feature/api/user/services/nats-identity-change-sink.hxx>
 #include <sync/camera-notifier.hxx>
 #include <sync/camera-stream-relay.hxx>
 #include <sync/camera-stream-socket.hxx>
-#include <sync/camera-sync-source.hxx>
-#include <sync/notification-sync-source.hxx>
-#include <sync/notification-delivery-consumer.hxx>
-#include <sync/productivity-sync-source.hxx>
-#include <sync/sync-registrar.hxx>
-#include <sync/voice-grpc-relay.hxx>
-#include <sync/user-change-fan-out.hxx>
+#include <sync/sync-client.hxx>
 #include <unistd.h>
 
 #include <stdexcept>
@@ -227,40 +218,23 @@ int main()
            << " controllers, " << identity.filters << " filters";
 
   const CameraStreamConfig cameraStream = CameraStreamConfig::resolve();
-  const VoiceGrpcConfig voiceGrpc = VoiceGrpcConfig::resolve();
-  const bool voiceCutover = !voiceGrpc.target.empty();
-  std::shared_ptr<SyncForwarder> relay;
-  if (voiceCutover)
-    relay = std::make_shared<VoiceGrpcRelay>(voiceGrpc);
-  const std::string cameraGrpcTarget =
-      ConfigService::getString("camera.grpc_target");
-  const std::string productivityGrpcTarget =
-      ConfigService::getString("productivity.grpc_target");
   const std::string notificationGrpcTarget =
       ConfigService::getString("notifications.grpc_target");
-  const auto cameraSource = std::make_shared<CameraSyncGateway>(cameraGrpcTarget);
-  const auto productivitySource =
-      std::make_shared<ProductivitySyncGateway>(productivityGrpcTarget);
-  const auto notificationSource =
-      std::make_shared<NotificationSyncGateway>(notificationGrpcTarget);
-  const SyncRegistrationStats sync =
-      registerSyncSurface({.forwarder = relay,
-                           .cameraSource = cameraSource,
-                           .productivitySource = productivitySource,
-                           .notificationSource = notificationSource});
-  LOG_INFO << "Sync surface registered: " << sync.controllers << " controller, "
-           << sync.filters << " filters"
-           << (voiceCutover ? "; voice leg -> gRPC " + voiceGrpc.target
-                            : "; voice leg -> unconfigured (503)")
-           << (cameraGrpcTarget.empty()
-                   ? "; camera tables -> unconfigured source (503)"
-                   : "; camera tables -> gRPC " + cameraGrpcTarget)
-           << (productivityGrpcTarget.empty()
-                   ? "; productivity leg -> unconfigured source (503)"
-                   : "; productivity leg -> gRPC " + productivityGrpcTarget)
-           << (notificationGrpcTarget.empty()
-                   ? "; notification leg -> unconfigured source (503)"
-                   : "; notification leg -> gRPC " + notificationGrpcTarget);
+
+  const std::string controlTarget =
+      ConfigService::getString("sync.control_target");
+  std::shared_ptr<SyncClient> controlClient;
+  if (controlTarget.empty()) {
+    LOG_INFO << "Sync control leg unconfigured; the imperative leg stays "
+                "uninstalled";
+  }
+  else {
+    controlClient = std::make_shared<SyncClient>(SyncClientConfig{
+        .target = controlTarget,
+        .fleetSecret = ConfigService::getString("sync.control_secret")});
+    sync_control::setSink(controlClient.get());
+    LOG_INFO << "Sync control leg -> gRPC " << controlTarget;
+  }
 
   if (!cameraStream.streamUrl.empty()) {
     const auto socket = std::make_shared<CameraStreamSocket>();
@@ -335,7 +309,6 @@ int main()
 
   const std::string natsUrl = ConfigService::getString("nats.url");
   std::shared_ptr<NatsBus> natsBus;
-  std::shared_ptr<NotificationDeliveryConsumer> deliveryConsumer;
   CameraNotificationPolicy* fallbackPolicy = nullptr;
   if (natsUrl.empty()) {
     LOG_INFO << "NATS not configured; event bus disabled";
@@ -344,7 +317,6 @@ int main()
     // supervises reconnects and re-attaches every subscription.
     natsBus = std::make_shared<NatsBus>();
     const bool connected = natsBus->connect();
-    camera_fan_out::subscribeChangeFanOut(*natsBus);
     fallbackPolicy = camera_notifier::subscribeObjectDetected(
         *natsBus, std::make_shared<NotificationClient>(NotificationClientConfig{
                        .target = notificationGrpcTarget,
@@ -353,16 +325,6 @@ int main()
     // User rows change here, so the catalog replica feed publishes from here.
     static const NatsIdentityChangeSink identitySink(natsBus);
     identity_change::setSink(&identitySink);
-    deliveryConsumer = std::make_shared<NotificationDeliveryConsumer>(
-        NotificationDeliveryConsumer::Dependencies{.bus = natsBus.get(),
-                                                   .dispatch = {}},
-        NotificationDeliveryConsumer::Config{
-            .stream = std::string(nats_subject::kNotificationDeliveryStream),
-            .durable = "argus-gateway-delivery",
-            .subject = std::string(nats_subject::kNotificationDelivery),
-            .maxDeliver = 10,
-            .poisonMaxAttempts = 3});
-    deliveryConsumer->start();
     if (connected)
       LOG_INFO << "NATS event bus connected to " << natsBus->options().url;
     else
@@ -433,10 +395,6 @@ int main()
   else
     LOG_WARN << "Identity RPC failed to listen on " << identityRpcConfig.host
              << ":" << identityRpcConfig.port;
-
-  // Prune timers for the sync socket's rooms.
-  RoomManager roomManagerLifecycle;
-  roomManagerLifecycle.init();
 
   std::unique_ptr<MdnsService> mdnsService;
   drogon::app().registerBeginningAdvice([&identityDb = identityDb,

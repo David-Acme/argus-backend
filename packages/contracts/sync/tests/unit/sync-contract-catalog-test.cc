@@ -31,6 +31,8 @@ const std::vector<CatalogEntry> kCatalog{
      ErrorCode::ServiceUnavailable, 503, "Camera sync unavailable"},
     {"ProductivitySyncUnavailable", &SyncErrors::ProductivitySyncUnavailable,
      ErrorCode::ServiceUnavailable, 503, "Productivity sync unavailable"},
+    {"VoiceUnavailable", &SyncErrors::VoiceUnavailable,
+     ErrorCode::ServiceUnavailable, 503, "Voice unavailable"},
 };
 
 // What response-rpc.cc's validRecord accepts before a refusal can be
@@ -54,7 +56,7 @@ TEST_CASE("the sync catalog matches the table pinned here")
   // A new entry in the header compiles and fails nothing above, because
   // nothing above knows the catalog grew. This is the tripwire: the count
   // only holds once the entry is in the table too.
-  CHECK(kCatalog.size() == 6);
+  CHECK(kCatalog.size() == 7);
 }
 
 TEST_CASE("every sync entry is legal on the wire")

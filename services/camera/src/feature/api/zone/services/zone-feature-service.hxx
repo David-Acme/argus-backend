@@ -19,7 +19,7 @@ public:
   drogon::Task<bool> remove(int64_t id) const;
 
 private:
-  // Zones share the camera's module room.
+  // Zones travel the camera's sink, the channel the camera domain owns.
   void emit(SyncOperation operation, const ZoneSchema& row) const;
 
   ZoneRepository repository_;

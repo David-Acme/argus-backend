@@ -183,6 +183,7 @@ ensure_local_config() {
   local dir
   for dir in \
       services/gateway \
+      services/sync \
       services/camera \
       services/guard \
       services/productivity \

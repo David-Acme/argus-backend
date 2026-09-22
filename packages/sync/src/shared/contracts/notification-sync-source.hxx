@@ -13,9 +13,9 @@ class NotificationSyncSource
 public:
   virtual ~NotificationSyncSource() = default;
 
-  virtual drogon::Task<std::vector<Json::Value>>
+  [[nodiscard]] virtual drogon::Task<std::vector<Json::Value>>
   find(const JwtContext& ctx, const SyncFilter& filter) const = 0;
 
-  virtual drogon::Task<std::optional<Json::Value>>
+  [[nodiscard]] virtual drogon::Task<std::optional<Json::Value>>
   findLast(const JwtContext& ctx) const = 0;
 };

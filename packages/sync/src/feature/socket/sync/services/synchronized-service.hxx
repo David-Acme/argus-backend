@@ -14,6 +14,7 @@
 #include <shared/repositories/audit-log/audit-log-repository.hxx>
 #include <shared/repositories/event/event-repository.hxx>
 #include <shared/repositories/person/person-repository.hxx>
+#include <shared/repositories/user-action-log/user-action-log-repository.hxx>
 #include <shared/repositories/user-audit-log/user-audit-log-repository.hxx>
 #include <shared/repositories/user-invitation/user-invitation-repository.hxx>
 #include <shared/repositories/user/user-repository.hxx>
@@ -61,6 +62,7 @@ private:
   const NotificationSyncSource* notificationSyncSource_{nullptr};
   EventRepository eventRepository_;
   PersonRepository personRepository_;
+  UserActionLogRepository userActionLogRepository_;
   AuditLogRepository auditLogRepository_;
   UserAuditLogRepository userAuditLogRepository_;
 

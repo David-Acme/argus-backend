@@ -31,9 +31,8 @@ from collections import defaultdict
 # contracts/* plus lib/http, tier 3 is clients/*, tier 4 is lib/auth alone,
 # tier 5 is services/*. Anything else under packages/ is a package section 9.1
 # has not moved yet and has no tier until it does.
-IN_TRANSIT = ("packages/audit", "packages/identity", "packages/intent",
-              "packages/memory", "packages/room", "packages/socket",
-              "packages/sync")
+IN_TRANSIT = ("packages/identity", "packages/intent",
+              "packages/memory", "packages/sync")
 
 # What each tier may depend on -- rule 1 read together with the table's "may
 # never" column: a tier never points back up, tier 3 never reaches another

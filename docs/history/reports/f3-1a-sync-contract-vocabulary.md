@@ -209,8 +209,8 @@ new control wire with its client — so it runs as **a1** and **a2** rather than
 |---|---|---|
 | **a1** | vocabulary → `contracts/sync`: the emit DTO, the change builders, the two sinks, the two audit events, the change suite; every consumer repointed; `packages/socket` reduced to its transport | this report |
 | **a2** | the control wire: `argus/sync/v1/sync.proto` and `packages/clients/sync` | `build: add the sync control wire and its client` |
-| **b** | the twelve cross-domain repositories and their schemas to their owner services; `packages/sync` sheds them | |
-| **c** | `services/sync` created (WS, rooms, fan-out, audit persistence, journal, control RPC server and client); gateway's sync surface removed; identity's audit and journal writes onto the wire; `packages/{socket,room,audit}` deleted; the gate's array 18 → 17 | |
+| **b** | the twelve cross-domain repositories and their schemas to their owner services; `packages/sync` sheds them | `build: move the twelve cross-domain repositories to their owner services` |
+| **c** | `services/sync` created (WS, rooms, fan-out, audit persistence, journal, control RPC server and client); gateway's sync surface removed; identity's audit and journal writes onto the wire; `packages/{socket,room,audit}` deleted; the gate's array 18 → 17 | `build: serve /sync from argus-sync and retire socket, room and audit` |
 | **d** | `packages/sync` deleted; `memory` repointed; the doc sweep; the gate; the review | |
 
 ## Sub-step a2, designed against what the imperative leg actually is

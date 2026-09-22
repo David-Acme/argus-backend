@@ -44,7 +44,7 @@ binary, own CMake preset, own `notification.db`.
   per-change rows the legacy `markAsRead` published (`userIds={userId}`,
   `changes` JSON via `JsonDiff::createFlatDiff`, TableName::Notification)
   and emits them over NATS (`argus.notification.v1.change`,
-  `docs/architecture/wire-nats-subjects.md`). The gateway persists them verbatim into
+  `docs/architecture/wire-nats-subjects.md`). `argus-sync` persists them verbatim into
   identity.db `user_audit_log`; nothing audit-shaped is written to
   notification.db.
 - **Serving live traffic (F3-2, Ruling AR)**: the gateway relays
@@ -61,8 +61,8 @@ binary, own CMake preset, own `notification.db`.
   create+emit path (the whole fan-out is one multi-row INSERT with
   `RETURNING id`, so the emit mirrors strictly persisted rows), and
   `PullNotifications` serves the user-scoped `/sync` page from the identity
-  metadata. The gateway's camera-notifier and `/sync` pulls are the only
-  clients; no other service opens notification.db.
+  metadata. `argus-sync`'s `/sync` pulls and the gateway's camera-notifier are
+  the only clients; no other service opens notification.db.
 - **Identity validation (f7-3)**: the JWT filter validates the caller over
   `argus.identity.v1.ValidateToken` at `[identity] target` — the user row,
   the bound refresh-token session and the device binding are resolved by the
@@ -84,7 +84,7 @@ binary, own CMake preset, own `notification.db`.
   `{status: 200 (int), info: {service: argus-notification, uptimeSeconds},
   errors: null}`; never depends on any downstream service.
 - **What stays away**: no read-path controller (notification list/read
-  snapshots keep flowing through the gateway's `/sync` pulls over
+  snapshots keep flowing through `argus-sync`'s `/sync` pulls over
   `argus.notification.v1`), no /sync socket, no AI symbols (verified
   with `nm -C`), no alarm-triggering code.
 
@@ -120,8 +120,8 @@ hand-kept copies.
 What did NOT move: the `notification` table's own repository, schema and
 delivery service, which `notification-core` compiles here since sub-step
 3a-1b. Since rule 27 this service is the only writer and reader of those rows:
-the gateway's camera-notifier creates through `argus.notification.v1` and its
-`/sync` page pulls through the same contract. Both sides of the table are
+the gateway's camera-notifier creates through `argus.notification.v1` and
+`argus-sync`'s `/sync` page pulls through the same contract. Both sides of the table are
 exclusively this service's, the notification-token side as before.
 
 ## Durable command inbox and delivery intents (F11 / R5)

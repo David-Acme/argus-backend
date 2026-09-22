@@ -24,6 +24,12 @@ inline constexpr const char* kNotificationChange =
 // Identity-domain user and person writes, funneled to the memory catalog replicas.
 inline constexpr const char* kIdentityChange = "argus.identity.v1.change";
 
+// Identity-domain journal rows (invitations, enrollment, roles, deactivation,
+// portrait views), inserted verbatim by the fan-out; not a `argus.*.v1.change`
+// subject, so the journal subscriber is its own consumer.
+inline constexpr const char* kIdentityUserAction =
+    "argus.identity.v1.user-action";
+
 // Object-detection events from the argus-camera operator; never re-emitted to /sync.
 inline constexpr const char* kCameraObjectDetected =
     "argus.camera.v1.object_detected";

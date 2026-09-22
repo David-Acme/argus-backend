@@ -4,9 +4,7 @@
 #include <feature/api/user/dtos/update-user-dto.hxx>
 #include <shared/repositories/refresh-token/refresh-token-repository.hxx>
 #include <shared/repositories/user/user-repository.hxx>
-#include <shared/services/socket/socket-service.hxx>
-#include <shared/services/sync-audit/sync-audit-service.hxx>
-#include <shared/services/user-action-log/user-action-log-service.hxx>
+#include <sync/user-action.hxx>
 #include <vector>
 
 struct UserManagementUpdateInput
@@ -39,7 +37,4 @@ private:
 
   UserRepository repository_;
   RefreshTokenRepository refreshTokenRepository_;
-  UserActionLogService userActionLogService_;
-  SocketService socketService_;
-  SyncAuditService syncAuditService_;
 };

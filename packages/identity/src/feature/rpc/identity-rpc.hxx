@@ -11,7 +11,6 @@
 #include <shared/repositories/refresh-token/refresh-token-repository.hxx>
 #include <shared/repositories/user/user-repository.hxx>
 #include <auth/jwt-service.hxx>
-#include <shared/services/sync-audit/sync-audit-service.hxx>
 #include <nats/nats-bus.hxx>
 
 // IdentityService controller: UpdateUser is metadata-authoritative, the rest self-authoritative.
@@ -111,7 +110,6 @@ private:
   PersonSnapshotRepository personSnapshotRepository_;
   RefreshTokenRepository refreshTokenRepository_;
   DeviceCredentialRepository deviceCredentialRepository_;
-  SyncAuditService auditService_;
   std::shared_ptr<NatsBus> bus_;
   std::string fleetSecret_;
 };

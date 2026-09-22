@@ -6,7 +6,6 @@
 #include <shared/repositories/portrait-preview-capability/portrait-preview-capability-repository.hxx>
 #include <shared/repositories/user/user-repository.hxx>
 #include <shared/services/storage/private-portrait-service.hxx>
-#include <shared/services/user-action-log/user-action-log-service.hxx>
 #include <string>
 #include <auth/user-role.hxx>
 
@@ -40,5 +39,4 @@ private:
   PortraitPreviewCapabilityRepository capabilityRepository_;
   UserRepository userRepository_;
   PrivatePortraitService privatePortraitService_;
-  UserActionLogService userActionLogService_;
 };

@@ -23,14 +23,6 @@ const std::vector<CatalogEntry> kCatalog{
      ErrorCode::ServiceUnavailable, 503, "Camera stream unavailable"},
     {"CameraStreamQueueOverflow", &GatewayErrors::CameraStreamQueueOverflow,
      ErrorCode::ServiceUnavailable, 503, "Camera stream queue overflow"},
-    {"LegacySyncUnavailable", &GatewayErrors::LegacySyncUnavailable,
-     ErrorCode::ServiceUnavailable, 503, "Legacy sync unavailable"},
-    {"CameraSyncUnavailable", &GatewayErrors::CameraSyncUnavailable,
-     ErrorCode::ServiceUnavailable, 503, "Camera sync unavailable"},
-    {"NotificationSyncUnavailable", &GatewayErrors::NotificationSyncUnavailable,
-     ErrorCode::ServiceUnavailable, 503, "Notification sync unavailable"},
-    {"ProductivitySyncUnavailable", &GatewayErrors::ProductivitySyncUnavailable,
-     ErrorCode::ServiceUnavailable, 503, "Productivity sync unavailable"},
     {"RemoteNotAllowed", &GatewayErrors::RemoteNotAllowed,
      ErrorCode::RemoteNotAllowed, 403, "Remote requests are not allowed"},
     {"TooManyRemoteAttempts", &GatewayErrors::TooManyRemoteAttempts,
@@ -60,7 +52,7 @@ TEST_CASE("the gateway catalog matches the table pinned here")
   // A new entry in the header compiles and fails nothing above, because
   // nothing above knows the catalog grew. This is the tripwire: the count
   // only holds once the entry is in the table too.
-  CHECK(kCatalog.size() == 9);
+  CHECK(kCatalog.size() == 5);
 }
 
 TEST_CASE("every gateway entry is legal on the wire")

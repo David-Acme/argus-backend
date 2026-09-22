@@ -75,21 +75,9 @@ if(NOT TARGET argus_identity)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/cert
                          ${CMAKE_BINARY_DIR}/cert)
     endif()
-    if(NOT TARGET argus::room)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/room
-                         ${CMAKE_BINARY_DIR}/room)
-    endif()
     if(NOT TARGET argus::lib::sqlite)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/sqlite
                          ${CMAKE_BINARY_DIR}/sqlite)
-    endif()
-    if(NOT TARGET argus::socket)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/socket
-                         ${CMAKE_BINARY_DIR}/socket)
-    endif()
-    if(NOT TARGET argus::audit)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/audit
-                         ${CMAKE_BINARY_DIR}/audit)
     endif()
     if(NOT TARGET argus::lib::auth)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/auth
@@ -109,25 +97,17 @@ if(NOT TARGET argus_identity)
     endif()
 endif()
 
-if(NOT TARGET argus::clients::voice)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/voice
-                     ${CMAKE_BINARY_DIR}/clients/voice EXCLUDE_FROM_ALL)
-endif()
 if(NOT TARGET argus::clients::identity)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/identity
                      ${CMAKE_BINARY_DIR}/clients/identity EXCLUDE_FROM_ALL)
 endif()
-if(NOT TARGET argus::clients::camera)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/camera
-                     ${CMAKE_BINARY_DIR}/clients/camera EXCLUDE_FROM_ALL)
-endif()
-if(NOT TARGET argus::clients::productivity)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/productivity
-                     ${CMAKE_BINARY_DIR}/clients/productivity EXCLUDE_FROM_ALL)
-endif()
 if(NOT TARGET argus::clients::notification)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/notification
                      ${CMAKE_BINARY_DIR}/clients/notification EXCLUDE_FROM_ALL)
+endif()
+if(NOT TARGET argus::clients::sync)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/sync
+                     ${CMAKE_BINARY_DIR}/clients/sync EXCLUDE_FROM_ALL)
 endif()
 
 # mdns is its own package again (Phase 1 step 10): the source was gateway-only,
@@ -152,29 +132,18 @@ add_library(gateway-core STATIC
     ${GATEWAY_SRC_ROOT}/server/refresh-rate-limiter.cc
     ${GATEWAY_SRC_ROOT}/server/remote-config.cc
     ${GATEWAY_SRC_ROOT}/server/remote-gate.cc
-    ${GATEWAY_SRC_ROOT}/sync/camera-fan-out.cc
     ${GATEWAY_SRC_ROOT}/sync/camera-notifier.cc
     ${GATEWAY_SRC_ROOT}/sync/camera-stream-relay.cc
     ${GATEWAY_SRC_ROOT}/sync/camera-stream-socket.cc
     ${GATEWAY_SRC_ROOT}/sync/fallback/fallback-log-repository.cc
-    ${GATEWAY_SRC_ROOT}/sync/camera-sync-source.cc
-    ${GATEWAY_SRC_ROOT}/sync/notification-sync-source.cc
-    ${GATEWAY_SRC_ROOT}/sync/notification-delivery-consumer.cc
-    ${GATEWAY_SRC_ROOT}/shared/services/socket/nats-identity-change-sink.cc
-    ${GATEWAY_SRC_ROOT}/shared/repositories/delivery-inbox/delivery-inbox-repository.cc
-    ${GATEWAY_SRC_ROOT}/sync/productivity-sync-source.cc
-    ${GATEWAY_SRC_ROOT}/sync/sync-fan-out.cc
-    ${GATEWAY_SRC_ROOT}/sync/sync-registrar.cc
-    ${GATEWAY_SRC_ROOT}/sync/voice-grpc-relay.cc
-    ${GATEWAY_SRC_ROOT}/sync/user-change-fan-out.cc
 )
 
 target_include_directories(gateway-core PUBLIC ${GATEWAY_SRC_ROOT})
 
 target_link_libraries(gateway-core PUBLIC argus_identity argus_sync
-    argus::lib::cert argus::lib::mdns argus::room argus::socket argus::lib::http
-    argus::clients::voice argus::clients::identity argus::clients::camera argus::contracts::auth argus::contracts::sync
-    argus::clients::productivity argus::clients::notification)
+    argus::lib::cert argus::lib::mdns argus::lib::http
+    argus::clients::identity argus::contracts::auth argus::contracts::sync
+    argus::clients::notification argus::clients::sync)
 target_link_libraries(gateway-core PRIVATE argus::contracts::gateway argus::contracts::auth argus::contracts::sync)
 
 target_compile_options(gateway-core PRIVATE -Wall -Wextra)
@@ -195,40 +164,14 @@ add_executable(gateway-test ${CMAKE_CURRENT_SOURCE_DIR}/tests/gateway-test.cc)
 
 target_include_directories(gateway-test PRIVATE ${GATEWAY_SRC_ROOT})
 
-target_link_libraries(gateway-test PRIVATE gateway-core doctest::doctest argus::contracts::auth argus::contracts::sync)
+target_link_libraries(gateway-test PRIVATE gateway-core doctest::doctest argus::contracts::auth)
 
 target_compile_options(gateway-test PRIVATE -Wall -Wextra)
 
 argus_runtime_rpath(gateway-test)
 
-add_executable(audit-sync-read-test
-               ${CMAKE_CURRENT_SOURCE_DIR}/tests/audit-sync-read-test.cc)
-
-target_include_directories(audit-sync-read-test PRIVATE ${GATEWAY_SRC_ROOT})
-
-target_link_libraries(audit-sync-read-test PRIVATE
-                      gateway-core
-                      argus::contracts::auth
-                      argus::contracts::sync
-                      doctest::doctest)
-
-target_compile_options(audit-sync-read-test PRIVATE -Wall -Wextra)
-
 add_executable(camera-notifier-test
                ${CMAKE_CURRENT_SOURCE_DIR}/tests/camera-notifier-test.cc)
-
-add_executable(notification-delivery-inbox-test
-               ${CMAKE_CURRENT_SOURCE_DIR}/tests/notification-delivery-inbox-test.cc)
-
-target_include_directories(notification-delivery-inbox-test PRIVATE ${GATEWAY_SRC_ROOT})
-
-target_compile_definitions(notification-delivery-inbox-test PRIVATE
-    ARGUS_IDENTITY_SCHEMA_PATH="${CMAKE_CURRENT_SOURCE_DIR}/../../packages/identity/database/schema.sql")
-
-target_link_libraries(notification-delivery-inbox-test PRIVATE gateway-core
-                                                    doctest::doctest)
-
-target_compile_options(notification-delivery-inbox-test PRIVATE -Wall -Wextra)
 
 target_include_directories(camera-notifier-test PRIVATE ${GATEWAY_SRC_ROOT})
 
@@ -251,30 +194,7 @@ endif()
 # EXCLUDE_FROM_ALL, and a registered test whose binary never builds is a
 # ctest "Not Run", not a pass.
 set_target_properties(gateway-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
-set_target_properties(audit-sync-read-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 set_target_properties(camera-notifier-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
-set_target_properties(notification-delivery-inbox-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
 add_test(NAME gateway-test COMMAND gateway-test)
-add_test(NAME audit-sync-read-test COMMAND audit-sync-read-test)
 add_test(NAME camera-notifier-test COMMAND camera-notifier-test)
-add_test(NAME notification-delivery-inbox-test COMMAND notification-delivery-inbox-test)
-
-# Opt-in live check against a real NATS; skips without ARGUS_NATS_URL.
-add_executable(notification-delivery-live-test
-               ${CMAKE_CURRENT_SOURCE_DIR}/tests/notification-delivery-live-test.cc)
-
-set_target_properties(notification-delivery-live-test PROPERTIES
-    EXCLUDE_FROM_ALL FALSE)
-
-target_include_directories(notification-delivery-live-test PRIVATE ${GATEWAY_SRC_ROOT})
-
-target_compile_definitions(notification-delivery-live-test PRIVATE
-    ARGUS_IDENTITY_SCHEMA_PATH="${CMAKE_CURRENT_SOURCE_DIR}/../../packages/identity/database/schema.sql")
-
-target_link_libraries(notification-delivery-live-test PRIVATE gateway-core
-                                                    doctest::doctest)
-
-target_compile_options(notification-delivery-live-test PRIVATE -Wall -Wextra)
-
-add_test(NAME notification-delivery-live-test COMMAND notification-delivery-live-test)

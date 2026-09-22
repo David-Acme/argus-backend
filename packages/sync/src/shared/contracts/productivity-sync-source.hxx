@@ -21,8 +21,8 @@ class ProductivitySyncSource
 public:
   virtual ~ProductivitySyncSource() = default;
 
-  virtual bool serves(ProductivitySyncTable table) const = 0;
+  [[nodiscard]] virtual bool serves(ProductivitySyncTable table) const = 0;
 
-  virtual std::unique_ptr<Syncable>
+  [[nodiscard]] virtual std::unique_ptr<Syncable>
   sourceFor(ProductivitySyncTable table, const JwtContext& ctx) const = 0;
 };

@@ -12,12 +12,15 @@ links `argus::clients::sync` (D8's imperative leg, §3.5). It is the only
 CMakeLists that **compiles** `argus/sync/v1/contracts.proto` — the contract
 package is an INTERFACE target and ships no translation unit — so the control
 schema's `SyncFrame` symbols are generated here, in
-`argus-clients-sync/generated/`. Two CMakeLists name the target —
-`packages/identity/CMakeLists.txt`, which adds the folder `EXCLUDE_FROM_ALL` and
-links it as the future home of its four control call sites (three of them
-carrying a frame), and this package's own suite. No file outside the package
-includes the header yet: the `.cc` reaches it relatively and the suite by
-prefix, and sub-step c is where identity's four call sites move onto it.
+`argus-clients-sync/generated/`. Five link lines across four CMakeLists:
+`packages/identity/CMakeLists.txt:217` and `services/gateway/CMakeLists.txt:146`
+(each adds the folder to its own standalone tree first), `services/sync` for the
+RPC it serves (`services/sync/CMakeLists.txt:152` and its `sync-control-rpc`
+module, `src/app/rpc/CMakeLists.txt:8`), and this package's own suite. One file
+outside the package includes the header — `services/gateway/src/main.cc:226`,
+which builds the client at boot and installs it through `sync_control::setSink`;
+identity's four call sites reach it through `<sync/sync-control-sink.hxx>`, the
+interface that keeps a domain package from linking the transport.
 
 ## Layout
 
@@ -87,11 +90,14 @@ prefix, and sub-step c is where identity's four call sites move onto it.
   §3.5 is the change leg's, not this one's). `ControlAck.reason` is written by
   the server for diagnosability on the wire; this client's surface is the
   bool.
-- Config: none yet. The target and the fleet secret arrive in
-  `SyncClientConfig`, and the `sync.*` keys land with the service that answers
-  these calls
-  (sub-step c). Nothing in `argus-deploy/` or a service `config.toml` names a
-  sync endpoint today: the gateway is where `/sync` lives until then.
+- Config, since sub-step 3a-1c: the target and the fleet secret arrive in
+  `SyncClientConfig`, resolved from `sync.control_target` and
+  `sync.control_secret` — the caller's `[sync]` block
+  (`services/gateway/config.toml.example:67-71`) and, on the answering side,
+  `services/sync/config.toml.example:40-43`. The deploy stack pairs them under
+  the same keys (`argus-deploy/config.gateway.toml.example:70-75`,
+  `config.sync.toml.example:44-46`), and an empty target leaves the leg
+  uninstalled rather than failing a call.
 
 ## Tests
 

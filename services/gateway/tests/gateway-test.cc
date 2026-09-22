@@ -11,17 +11,11 @@
 #include <server/remote-config.hxx>
 #include <server/remote-gate.hxx>
 #include <config/config-service.hxx>
-#include <shared/services/room/room-manager.hxx>
-#include <sync/sync-change.hxx>
 #include <sqlite/db-service.hxx>
 #include <text/json-util.hxx>
 #include <http/api-response.hxx>
 #include <proxy/reverse-proxy.hxx>
-#include <sync/camera-fan-out.hxx>
 #include <sync/camera-stream-relay.hxx>
-#include <sync/sync-fan-out.hxx>
-#include <sync/sync-registrar.hxx>
-#include <sync/voice-grpc-relay.hxx>
 
 #include <drogon/utils/coroutine.h>
 #include <json/json.h>
@@ -288,162 +282,6 @@ TEST_CASE("camera stream frames are the only ones on the media socket")
     CHECK(isCameraStreamFrame(row.type) == row.allowed);
 }
 
-TEST_CASE("fan-out parses the sync-change wire contract")
-{
-  const Json::Value moduleEmit = json_util::fromString(
-      R"({"operation":4,"option":"camera","info":{"id":3}})");
-  const auto module = sync_fan_out::parseEvent(moduleEmit);
-  REQUIRE(module);
-  CHECK(module->emit.operation == SyncOperation::Add);
-  CHECK(module->users == std::nullopt);
-  CHECK(moduleRoom(module->emit.option) == moduleRoom(TableName::Camera));
-
-  const Json::Value userEmit = json_util::fromString(
-      R"({"operation":4,"option":"user","info":{},"users":[42,43]})");
-  const auto user = sync_fan_out::parseEvent(userEmit);
-  REQUIRE(user);
-  REQUIRE(user->users);
-  CHECK(user->users->size() == 2);
-  CHECK(userRoom((*user->users)[0]) == userRoom(42));
-
-  const Json::Value userEmitEmpty = json_util::fromString(
-      R"({"operation":4,"option":"user","info":{},"users":[]})");
-  const auto empty = sync_fan_out::parseEvent(userEmitEmpty);
-  REQUIRE(empty);
-  REQUIRE(empty->users);
-  CHECK(empty->users->empty());
-  // An explicit empty users list must not fall back to the module room.
-  CHECK(empty->user == std::nullopt);
-
-  const Json::Value disconnect = json_util::fromString(
-      R"({"operation":7,"option":"user","info":{},"users":[7],"user":7,"action":"disconnect"})");
-  const auto disconnection = sync_fan_out::parseEvent(disconnect);
-  REQUIRE(disconnection);
-  CHECK(disconnection->user == 7);
-
-  // The room-control action must round-trip the payload the legacy publishes.
-  // The wire carries the role names, so the publisher does the conversion --
-  // the same step SocketService::replaceRoleRooms performs in production.
-  RoleRoomReplaceInput input;
-  input.userId = 7;
-  input.oldRole = UserRole::Resident;
-  input.newRole = UserRole::Guest;
-  const auto replacement = sync_fan_out::parseEvent(
-      sync_change::roleRoomsPayload({.userId = input.userId,
-                                     .oldRole = userRoleToString(input.oldRole),
-                                     .newRole = userRoleToString(input.newRole)}));
-  REQUIRE(replacement);
-  CHECK(replacement->emit.operation == SyncOperation::AuthContextChanged);
-  CHECK(replacement->emit.option == TableName::User);
-  CHECK(replacement->user == 7);
-  CHECK(replacement->oldRole == UserRole::Resident);
-  CHECK(replacement->newRole == UserRole::Guest);
-
-  CHECK_FALSE(sync_fan_out::parseEvent(json_util::fromString(
-      R"({"option":"camera","info":{}})")));
-  CHECK_FALSE(sync_fan_out::parseEvent(json_util::fromString("null")));
-  CHECK_FALSE(sync_fan_out::parseEvent(
-      json_util::fromString(R"({"action":"disconnect","operation":7,"option":"user","info":{}})")));
-}
-
-TEST_CASE("identity change events never fan out to the client sockets")
-{
-  // Its wire contract is an identity row diff, not a sync-change (Ruling BX).
-  const Json::Value identity = json_util::fromString(
-      R"({"kind":"identity","table":"person","id":7,"deleted":false,
-          "row":{"id":7,"user_id":42,"name":"Ana Garcia"}})");
-  CHECK(sync_fan_out::parseEvent(identity) == std::nullopt);
-
-  const Json::Value tombstone = json_util::fromString(
-      R"({"kind":"identity","table":"person","id":7,"deleted":true,
-          "row":{}})");
-  CHECK(sync_fan_out::parseEvent(tombstone) == std::nullopt);
-}
-
-TEST_CASE("fan-out routing table matches the legacy SocketService mapping")
-{
-  const auto emit = [](SyncOperation operation, TableName table) {
-    SocketEmitDto body;
-    body.operation = operation;
-    body.option = table;
-    body.obj["id"] = 7;
-    return body;
-  };
-
-  // Absent users: the module room of the table.
-  const auto module =
-      sync_fan_out::parseEvent(sync_change::emitPayload(emit(SyncOperation::Add,
-                                                             TableName::Camera)));
-  REQUIRE(module);
-  const sync_fan_out::FanOutPlan modulePlan = sync_fan_out::planEvent(*module);
-  CHECK(modulePlan.kind == sync_fan_out::FanOutPlan::Kind::ModuleEmit);
-  CHECK(modulePlan.room == moduleRoom(TableName::Camera));
-  CHECK(modulePlan.rooms.empty());
-
-  // Explicit users: the user rooms of the ids, never the module room.
-  const auto scoped =
-      sync_fan_out::parseEvent(sync_change::userEmitPayload(
-          emit(SyncOperation::Add, TableName::Notification), {42, 43}));
-  REQUIRE(scoped);
-  const sync_fan_out::FanOutPlan scopedPlan = sync_fan_out::planEvent(*scoped);
-  CHECK(scopedPlan.kind == sync_fan_out::FanOutPlan::Kind::UserEmit);
-  REQUIRE(scopedPlan.rooms.size() == 2);
-  CHECK(scopedPlan.rooms[0] == userRoom(42));
-  CHECK(scopedPlan.rooms[1] == userRoom(43));
-
-  // Explicit empty users: user emit with no rooms, no module-room fallback.
-  const auto unscoped =
-      sync_fan_out::parseEvent(sync_change::userEmitPayload(
-          emit(SyncOperation::Add, TableName::Notification), {}));
-  REQUIRE(unscoped);
-  const sync_fan_out::FanOutPlan unscopedPlan = sync_fan_out::planEvent(*unscoped);
-  CHECK(unscopedPlan.kind == sync_fan_out::FanOutPlan::Kind::UserEmit);
-  CHECK(unscopedPlan.rooms.empty());
-
-  // Room-control actions take precedence over the emit fields.
-  const auto disconnection =
-      sync_fan_out::parseEvent(sync_change::disconnectPayload(
-          emit(SyncOperation::AuthContextChanged, TableName::User), 42));
-  REQUIRE(disconnection);
-  const sync_fan_out::FanOutPlan disconnectPlan = sync_fan_out::planEvent(*disconnection);
-  CHECK(disconnectPlan.kind == sync_fan_out::FanOutPlan::Kind::Disconnect);
-  CHECK(disconnectPlan.userId == 42);
-
-  RoleRoomReplaceInput input;
-  input.userId = 42;
-  input.oldRole = UserRole::Resident;
-  input.newRole = UserRole::Guest;
-  const auto replacement = sync_fan_out::parseEvent(
-      sync_change::roleRoomsPayload({.userId = input.userId,
-                                     .oldRole = userRoleToString(input.oldRole),
-                                     .newRole = userRoleToString(input.newRole)}));
-  REQUIRE(replacement);
-  const sync_fan_out::FanOutPlan replacePlan = sync_fan_out::planEvent(*replacement);
-  CHECK(replacePlan.kind == sync_fan_out::FanOutPlan::Kind::ReplaceRoleRooms);
-  CHECK(replacePlan.replaceInput.userId == 42);
-  CHECK(replacePlan.replaceInput.oldRole == UserRole::Resident);
-  CHECK(replacePlan.replaceInput.newRole == UserRole::Guest);
-}
-
-TEST_CASE("fan-out re-emits the exact legacy wire triple")
-{
-  const Json::Value payload = json_util::fromString(
-      R"({"operation":5,"option":"reminder","info":{"id":9,"title":"x"},"users":[]})");
-  const auto event = sync_fan_out::parseEvent(payload);
-  REQUIRE(event);
-
-  SocketEmitDto body;
-  body.operation = SyncOperation::Delete;
-  body.option = TableName::Reminder;
-  Json::Value info;
-  info["id"] = 9;
-  info["title"] = "x";
-  body.obj = info;
-
-  CHECK(json_util::toString(event->emit.toJson()) ==
-        json_util::toString(body.toJson()));
-}
-
 TEST_CASE("read-only legacy database rejects writes and serves reads")
 {
   const char* dbPath = "gateway-test-readonly.db";
@@ -484,27 +322,6 @@ TEST_CASE("read-only legacy database rejects writes and serves reads")
   drain(readOnly);
   DbService::setReadOnlyClient(nullptr);
   std::remove(dbPath);
-}
-
-TEST_CASE("sync surface registers the socket with the relay forwarder")
-{
-  const char* path = "gateway-test-config-sync.toml";
-  {
-    std::ofstream file(path);
-    file << "[jwt]\n"
-         << "secret = \"0123456789abcdef0123456789abcdef0123456789\"\n"
-         << "refresh_secret = \"fedcba9876543210fedcba9876543210fedcba98\"\n"
-         << "access_ttl_minutes = 15\n"
-         << "refresh_ttl_days = 30\n";
-  }
-
-  ConfigService::load(path);
-  std::remove(path);
-
-  const SyncRegistrationStats stats = registerSyncSurface({});
-
-  CHECK(stats.controllers == 1);
-  CHECK(stats.filters == 2);
 }
 
 TEST_CASE("listener config resolves the cutover TLS listener by default")
@@ -578,10 +395,10 @@ TEST_CASE("proxy config resolves the native paths")
   ConfigService::load(path);
   const ProxyConfig config = ProxyConfig::resolve();
 
-  REQUIRE(config.exclusions.size() == 8);
+  REQUIRE(config.exclusions.size() == 7);
   const std::vector<std::string> expected = {
       "/auth", "/invitation", "/pairing", "/portrait-preview",
-      "/user", "/sync", "/camera-stream", "/health",
+      "/user", "/camera-stream", "/health",
   };
   CHECK(config.exclusions == expected);
   CHECK(config.cameraProxyUrl.empty());
@@ -643,75 +460,6 @@ TEST_CASE("camera stream config resolves the media target")
   CHECK(fallback.streamUrl.empty());
 
   std::remove(path);
-}
-
-TEST_CASE("voice gRPC config resolves the typed voice leg target")
-{
-  const char* path = "gateway-test-config-voice-grpc.toml";
-  {
-    std::ofstream file(path);
-    file << "[voice]\n"
-         << "target = \"127.0.0.1:7034\"\n";
-  }
-
-  ConfigService::load(path);
-  const VoiceGrpcConfig cutover = VoiceGrpcConfig::resolve();
-  CHECK(cutover.target == "127.0.0.1:7034");
-
-  {
-    std::ofstream file(path);
-    file << "[gateway]\n"
-         << "port = 7024\n";
-  }
-
-  ConfigService::load(path);
-  const VoiceGrpcConfig fallback = VoiceGrpcConfig::resolve();
-  CHECK(fallback.target.empty());
-
-  std::remove(path);
-}
-
-TEST_CASE("renderServerFrame reproduces the frozen voice wire JSON")
-{
-  argus::voice::v1::ServerFrame stt;
-  stt.mutable_stt()->set_text("hola argus");
-  stt.mutable_stt()->set_final(true);
-  const Json::Value sttJson =
-      json_util::fromString(json_util::toString(
-          VoiceGrpcRelay::renderServerFrame(stt)));
-  CHECK(sttJson["type"] == "voice:stt");
-  CHECK(sttJson["payload"]["text"] == "hola argus");
-  CHECK(sttJson["payload"]["final"] == true);
-
-  argus::voice::v1::ServerFrame assistant;
-  assistant.mutable_assistant()->set_text("Hola de nuevo.");
-  const Json::Value assistantJson =
-      json_util::fromString(json_util::toString(
-          VoiceGrpcRelay::renderServerFrame(assistant)));
-  CHECK(assistantJson["type"] == "voice:assistant");
-  CHECK(assistantJson["payload"]["text"] == "Hola de nuevo.");
-
-  argus::voice::v1::ServerFrame event;
-  event.mutable_event()->set_reaction(
-      argus::voice::v1::REACTION_RECOGNIZING);
-  event.mutable_event()->set_intensity(0.5F);
-  event.mutable_event()->set_because("stt_failed");
-  const Json::Value eventJson =
-      json_util::fromString(json_util::toString(
-          VoiceGrpcRelay::renderServerFrame(event)));
-  CHECK(eventJson["type"] == "voice:event");
-  CHECK(eventJson["payload"]["reaction"] == "recognizing");
-  CHECK(eventJson["payload"]["intensity"].asDouble() ==
-        doctest::Approx(0.5));
-  CHECK(eventJson["payload"]["because"] == "stt_failed");
-
-  argus::voice::v1::ServerFrame done;
-  done.mutable_done()->set_session_id(0);
-  const Json::Value doneJson =
-      json_util::fromString(json_util::toString(
-          VoiceGrpcRelay::renderServerFrame(done)));
-  CHECK(doneJson["type"] == "voice:done");
-  CHECK(doneJson["payload"]["sessionId"].asInt64() == 0);
 }
 
 TEST_CASE("camera stream relay rejects every non-camera frame")
@@ -864,12 +612,10 @@ TEST_CASE("route table sends the productivity and notification domains to the fa
 
 TEST_CASE("native path match keeps segment boundaries")
 {
-  const std::vector<std::string> exclusions = {"/user", "/sync",
-                                               "/camera-stream"};
+  const std::vector<std::string> exclusions = {"/user", "/camera-stream"};
 
   CHECK(isGatewayNativePath("/user", exclusions));
   CHECK(isGatewayNativePath("/user/1", exclusions));
-  CHECK(isGatewayNativePath("/sync", exclusions));
   CHECK(isGatewayNativePath("/camera-stream", exclusions));
   CHECK_FALSE(isGatewayNativePath("/camera-streamx", exclusions));
   CHECK_FALSE(isGatewayNativePath("/userx", exclusions));
@@ -893,7 +639,6 @@ TEST_CASE("proxy exclusion set covers every registered gateway route")
   drogon::app().registerController(std::make_shared<HealthController>(
       HealthStatus{.serviceName = "argus-gateway", .extras = {}}));
   registerIdentitySurface();
-  registerSyncSurface({});
 
   const ProxyConfig proxy = ProxyConfig::resolve();
   REQUIRE_FALSE(proxy.exclusions.empty());

@@ -76,7 +76,7 @@ public:
   }
 
 private:
-  // Metadata presence only; roles were validated at the gateway.
+  // Metadata presence only; roles were validated on the /sync edge.
   bool authorized() const
   {
     bool user = false;

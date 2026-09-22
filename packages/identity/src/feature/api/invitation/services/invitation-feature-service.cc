@@ -9,6 +9,7 @@
 #include <string_view>
 #include <cert/cert-service.hxx>
 #include <config/config-service.hxx>
+#include <sync/identity-change-sink.hxx>
 #include <sync/sync-operation.hxx>
 #include <sync/socket-emit-dto.hxx>
 
@@ -119,13 +120,15 @@ InvitationFeatureService::revoke(int64_t invitationId, int64_t actorId) const
   const auto after = co_await repository_.findById(invitationId);
   if (!after)
     throw ResponseException(404, IdentityErrors::InvitationNotFound);
-  co_await syncAuditService_.publishModule({
-      .recordId = after->id,
-      .tableName = TableName::UserInvitation,
-      .before = before->toJson(),
-      .after = after->toJson(),
-      .actorId = actorId,
-  });
+  if (const auto* sink = identity_change::getSink()) {
+    co_await sink->publishModuleAudit({
+        .recordId = after->id,
+        .tableName = TableName::UserInvitation,
+        .before = before->toJson(),
+        .after = after->toJson(),
+        .actorId = actorId,
+    });
+  }
   co_await recordInvitationAction({
       .actorId = actorId,
       .before = *before,
@@ -142,21 +145,24 @@ void InvitationFeatureService::emitInvitation(
   body.operation = SyncOperation::Add;
   body.option = TableName::UserInvitation;
   body.obj = invitation.toJson();
-  socketService_.emitModule(TableName::UserInvitation, body);
+  if (const auto* sink = identity_change::getSink())
+    sink->emitModule(TableName::UserInvitation, body);
 }
 
 drogon::Task<void> InvitationFeatureService::recordInvitationAction(
     const InvitationActionLogInput& input) const
 {
-  co_await userActionLogService_.record({
-      .userId = input.actorId,
-      .recordId = input.after.id,
-      .tableName = TableName::UserInvitation,
-      .action = input.action,
-      .oldData = input.before.id == 0 ? Json::Value() : input.before.toJson(),
-      .newData = input.after.toJson(),
-      .ipAddress = "",
-  });
+  if (const auto* sink = identity_change::getSink()) {
+    co_await sink->publishAction({
+        .userId = input.actorId,
+        .recordId = input.after.id,
+        .tableName = TableName::UserInvitation,
+        .action = input.action,
+        .oldData = input.before.id == 0 ? Json::Value() : input.before.toJson(),
+        .newData = input.after.toJson(),
+        .ipAddress = "",
+    });
+  }
   co_return;
 }
 

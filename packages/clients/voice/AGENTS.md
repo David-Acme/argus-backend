@@ -9,15 +9,16 @@ A module, not a service: one `argus_clients(NAME voice ...)`, a STATIC library
 whose include root is `src/`, so a consumer writes `<voice/voice-client.hxx>`
 and links `argus::clients::voice`. 370 lines of source (`voice-client.hxx` 59,
 `voice-client.cc` 221, `reaction-contracts.hxx` 90) behind a 40-line
-CMakeLists. Two link lines in two CMakeLists: `gateway-core` (PUBLIC,
-`services/gateway/CMakeLists.txt:183`) and `argus::voice-core`
-(`services/voice/CMakeLists.txt:98`). The gateway is the caller — it relays one
-app WebSocket onto one gRPC stream — and argus-voice is the receiver, which
-links the package for the frames it serves. `argus/voice/v1/voice.proto` is
-compiled here and in no other CMakeLists of the tree.
+CMakeLists. Two link lines in two CMakeLists: `argus-sync`'s `sync-transport`
+module (`services/sync/src/feature/transport/CMakeLists.txt:14`) and
+`argus::voice-core` (`services/voice/CMakeLists.txt:98`). argus-sync is the
+caller — it relays one app WebSocket onto one gRPC stream — and argus-voice is
+the receiver, which links the package for the frames it serves.
+`argus/voice/v1/voice.proto` is compiled here and in no other CMakeLists of the
+tree.
 
-Three files include `voice-client.hxx`: the gateway's
-`services/gateway/src/sync/voice-grpc-relay.hxx`, argus-voice's
+Three files include `voice-client.hxx`: argus-sync's
+`services/sync/src/feature/transport/infra/voice-grpc-relay.hxx`, argus-voice's
 `voice-session-service.hxx` and this package's own suite. Three include
 `reaction-contracts.hxx` and all three are outside the package: the same two
 services, plus `reaction-engine.hxx`.
@@ -65,7 +66,7 @@ This is the one client package with a `DEPENDS` edge of its own:
   frame, and the two may differ. No device and no credential are ever sent —
   there is no field for either — and the receiver asks for exactly the two
   headers the client attaches ("Metadata presence only; roles were validated at
-  the gateway", `services/voice/src/feature/voice/voice-rpc-service.cc:79-91`).
+  the /sync edge", `services/voice/src/feature/voice/voice-rpc-service.cc:79-91`).
   That is the opposite of the productivity edge, where the receiver demands
   all three legs.
 - `voiceRoleToString` is the whole role vocabulary: `"owner"`, `"resident"`,
@@ -76,11 +77,11 @@ This is the one client package with a `DEPENDS` edge of its own:
   answer, by construction rather than by a case of its own.
 - The endpoint is runtime config: `voice.target`, read by
   `VoiceGrpcConfig::resolve` at
-  `services/gateway/src/sync/voice-grpc-relay.cc:56`.
-  `argus-deploy/config.gateway.toml.example:72` declares it
-  (`127.0.0.1:7034`, the `grpc_port` argus-voice listens on); the gateway's own
-  tree leaves it empty (`services/gateway/config.toml.example:69`), where the
-  relay is not built at all and the leg logs "voice leg -> unconfigured (503)".
+  `services/sync/src/feature/transport/infra/voice-grpc-relay.cc:56`.
+  `argus-deploy/config.sync.toml.example:58-60` declares it
+  (`argus-voice:7034`, the `grpc_port` argus-voice listens on), as does
+  `services/sync/config.toml.example:55-57` for the native tree; an empty
+  target leaves the leg logging "voice leg -> unconfigured (503)".
 - §2.3 gives a client `AGENTS.md`, `CMakeLists.txt`,
   `src/<name>/<name>-*-client.{hxx,cc}`, a `details/` and a unit suite. This
   package has **no `details/` directory** and a second public header the shape

@@ -10,16 +10,17 @@ library whose include root is `src/`, so a consumer writes
 `<productivity/productivity-sync-client.hxx>` and links
 `argus::clients::productivity`. 59 lines of source (`.hxx` 29, `.cc` 30)
 behind a 33-line CMakeLists. Three link lines in two CMakeLists:
-`gateway-core` (PUBLIC, `services/gateway/CMakeLists.txt:184`), and
+`argus-sync`'s `sync-transport` module
+(`services/sync/src/feature/transport/CMakeLists.txt:13`), and
 `argus-productivity` with its `productivity-sync-rpc-test` in
-`services/productivity` (`:190`, `:281`). The gateway is the caller; the
+`services/productivity` (`:191`, `:279`). argus-sync is the caller; the
 service that owns the contract links the package for its own server side, so
 `argus/productivity/v1/sync.proto` is compiled here and in no other
 CMakeLists of the tree.
 
-Three files include the header: the gateway's
-`services/gateway/src/sync/productivity-sync-source.hxx`, the RPC test above
-and this package's own suite.
+Three files include the header: argus-sync's
+`services/sync/src/feature/transport/infra/productivity-sync-source.hxx`, the
+RPC test above and this package's own suite.
 
 ## Layout
 
@@ -47,8 +48,8 @@ and this package's own suite.
 - An empty optional is the only failure value: `pullTable` maps **every**
   non-OK status to `nullopt`, so a refusal the receiver chose and an
   unreachable receiver are the same answer. There is no outcome enum here, and
-  no way for a caller to tell them apart — deliberate for a pull the gateway
-  can serve stale, and the point where this client differs most from
+  no way for a caller to tell them apart — deliberate for a pull `/sync` can
+  serve stale, and the point where this client differs most from
   `clients/notification`. The receiver agrees:
   `services/productivity/src/feature/sync/productivity-sync-rpc-service.cc`
   refuses `TABLE_NOT_SET` with INVALID_ARGUMENT at line 228, so a caller that
@@ -64,13 +65,12 @@ and this package's own suite.
   field and never sends `x-argus-credential`, and the receiver never asks for
   one.
 - The endpoint is runtime config: `productivity.grpc_target`, read at
-  `services/gateway/src/main.cc:238`. Only
-  `argus-deploy/config.gateway.toml.example:76` declares it
-  (`127.0.0.1:7037`); the gateway's own tree declares the endpoint
-  of no leg but the camera's (`services/gateway/config.toml.example:71-73` has
-  proxy_url and db only), so a gateway started from that tree logs
-  "productivity leg -> unconfigured source (503)" and never builds the client.
-  With no target the client is not constructed at all rather than pointed
+  `services/sync/src/config/sync-config.cc:55` into `SyncUpstreams`. Two files
+  declare it — `services/sync/config.toml.example:52-53` and
+  `argus-deploy/config.sync.toml.example:55-56` (`argus-productivity:7037`) —
+  and a sync service whose key is empty logs
+  "productivity leg -> unconfigured source (503)": the source is constructed
+  either way and the empty target fails the dial rather than pointing
   somewhere default.
 - §2.3 gives a client a `details/` for channel, credentials, retry and envelope
   parsing. This package has **no `details/` directory**: there is no retry, no

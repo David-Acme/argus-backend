@@ -11,7 +11,8 @@ hosted by argus-llm), the Fase 5 tunnel
 transport pair — argus-relay + argus-tunnel-client — behind the opt-in
 `tunnel` profile and the F6-3 argus-voice pure-gRPC service. The Fase 1
 legacy service and the RustFS storage pair are retired (F6-4): the gateway is
-the only public surface and every domain is served by its own service.
+the only public HTTP surface (the `/sync` socket published its own TLS
+listener on 7025 in Phase 3a) and every domain is served by its own service.
 Decisions and traps live here.
 
 ## Images (Ruling N, revised F10)
@@ -86,7 +87,8 @@ with `scripts/setup.sh` / `scripts/setup.sh camera` on the host.
   listener on HOST loopback (127.0.0.1) — a bridge-networked gateway cannot
   reach a host loopback bind. That is why there is no `edge` bridge network in
   this phase. Only the gateway binds a public port, which is the ruling's
-  intent.
+  intent; `argus-sync` excepts itself since Phase 3a, its 7025 listening on
+  all interfaces because a WebSocket upgrade cannot ride the gateway's proxy.
 - **nats** (`nats:2.11.14-alpine`, core NATS, monitor port 8222) lives on the
   `internal` bridge network, published on host loopback (4222/8222, overridable
   via `NATS_CLIENT_PORT`, `NATS_MONITOR_PORT`) for the host-networked gateway.
@@ -127,7 +129,7 @@ with `scripts/setup.sh` / `scripts/setup.sh camera` on the host.
 
 | Service | Image | Notes |
 |---|---|---|
-| gateway | `argus-gateway:local` | TLS 7024, `/health` healthcheck; mounts only identity.db and pulls camera/productivity/notification sync over the 7036/7037/7038 gRPC legs |
+| gateway | `argus-gateway:local` | TLS 7024, `/health` healthcheck; mounts only identity.db |
 | argus-camera | `argus-camera:local` | internal network, loopback 7026 + 7036 (sync gRPC) publishes; owns camera.db; `/health` healthcheck; `/dev/dri` |
 | argus-productivity | `argus-productivity:local` | internal network, loopback 7027 + 7037 (sync gRPC) publishes; owns productivity.db; `/health` healthcheck |
 | argus-notification | `argus-notification:local` | internal network, loopback 7028 + 7038 (RPC) publishes; owns notification.db; `/health` healthcheck |
@@ -183,14 +185,14 @@ notification.db, each in its own data subdirectory bind-mounted from
 - `argus-productivity` mounts `${ARGUS_DATA_DIR:-./data}/productivity` rw at
   `/opt/argus/productivity` and applies
   `database/schema.sql` at boot, then serves `argus.productivity.v1.SyncService`
-  on 7037. The gateway mounts nothing of it (rule 27): its `/sync` pulls for
-  the 7 tables go over that gRPC leg.
+  on 7037. The gateway mounts nothing of it (rule 27): `argus-sync`'s `/sync`
+  pulls for the 7 tables go over that gRPC leg.
 - `argus-notification` mounts `${ARGUS_DATA_DIR:-./data}/notification` rw at
   `/opt/argus/notification` and serves
   `argus.notification.v1.NotificationService` on 7038. The gateway's
-  camera-notifier creates through `CreateNotifications` and its `/sync`
-  notification pulls use `PullNotifications`; the directory is mounted by
-  no one else (rule 27).
+  camera-notifier creates through `CreateNotifications` and `argus-sync`'s
+  `/sync` notification pulls use `PullNotifications`; the directory is mounted
+  by no one else (rule 27).
 - `productivity-init` / `notification-init` are the only migration paths
   onto those directories and MUST run BEFORE the first boot (the f8291e4
   lesson, same as camera-init): once the owning service has boot-applied
@@ -368,7 +370,7 @@ secrets are read at runtime, never printed; the refresh token lands in a
 
 | Mount | Mounted into | Content |
 |---|---|---|
-| `${ARGUS_DATA_DIR}/identity` | gateway (rw, owner) — at `/opt/argus/database` | identity.db (+ WAL files) |
+| `${ARGUS_DATA_DIR}/identity` | gateway (rw, owner) and argus-sync (rw, its four sync tables) — at `/opt/argus/database` | identity.db (+ WAL files) |
 | `${ARGUS_DATA_DIR}/camera` | argus-camera (rw, owner) — at `/opt/argus/camera` | camera.db (+ WAL files) |
 | `${ARGUS_DATA_DIR}/productivity` | argus-productivity (rw, owner) — at `/opt/argus/productivity` | productivity.db (+ WAL files) |
 | `${ARGUS_DATA_DIR}/notification` | argus-notification (rw, owner) — at `/opt/argus/notification` | notification.db (+ WAL files) |
@@ -380,7 +382,9 @@ secrets are read at runtime, never printed; the refresh token lands in a
 Every database directory is bind-mounted from `${ARGUS_DATA_DIR:-./data}`
 (default `argus-deploy/data/`, gitignored; `scripts/provision-host.sh` creates
 it and writes the gitignored `.env` with absolute host paths) and is mounted
-by its owner only (rule 27): cross-domain
+by its owner only (rule 27), the declared exception being identity.db, whose
+four sync tables `argus-sync` also opens there until Phase 3c splits them out:
+cross-domain
 reads travel through the typed gRPC legs (camera/productivity/notification)
 and NATS change feeds, never through another service's file. Each owner
 applies WAL + busy_timeout 5000 at boot; the `*-init` one-shot tools are the
@@ -390,7 +394,8 @@ the matching `*-init` profile is the only migration path onto a volume.
 
 ## Configuration and secrets (Ruling Q)
 
-- `config.gateway.toml.example` / `config.camera.toml.example` /
+- `config.gateway.toml.example` / `config.sync.toml.example` /
+  `config.camera.toml.example` /
   `config.productivity.toml.example` /
   `config.notification.toml.example` / `config.tts.toml.example` /
   `config.stt.toml.example` / `config.vlm.toml.example` /
@@ -399,6 +404,7 @@ the matching `*-init` profile is the only migration path onto a volume.
   cutover keys (`config.memory.toml.example` is deleted since f8-b3: the
   memory package's keys ride the host's config.llm.toml from f8-b4); copy
   to `config.gateway.toml` /
+  `config.sync.toml` /
   `config.camera.toml` / `config.productivity.toml` /
   `config.notification.toml` / `config.tts.toml` / `config.stt.toml` /
   `config.vlm.toml` / `config.llm.toml` /

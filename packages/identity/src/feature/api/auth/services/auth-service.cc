@@ -15,7 +15,9 @@
 #include <openssl/rand.h>
 #include <sstream>
 #include <string_view>
-#include <auth/identity-change-sink.hxx>
+#include <sync/identity-change-sink.hxx>
+#include <sync/socket-emit-dto.hxx>
+#include <sync/sync-control-sink.hxx>
 #include <sync/sync-operation.hxx>
 #include <voice/voice-lang.hxx>
 
@@ -265,14 +267,15 @@ AuthService::registerUser(RegisterDto body,
 
   co_await privatePortraitService_.store(userId, portraitImage);
 
-  if (identity_change::getSink()) {
+  if (const auto* sink = identity_change::getSink()) {
     Json::Value row(Json::objectValue);
     row["id"] = static_cast<Json::Int64>(personId);
     row["user_id"] = static_cast<Json::Int64>(userId);
     row["name"] = name;
     row["alias"] = "";
-    identity_change::getSink()->publish(
-        {.table = "person", .id = personId, .deleted = false, .row = row});
+    sink->publishCatalog(
+        {.table = TableName::Person, .id = personId, .deleted = false,
+         .row = row});
   }
 
   UserSchema user;
@@ -288,33 +291,38 @@ AuthService::registerUser(RegisterDto body,
   emit.operation = SyncOperation::Add;
   emit.option = TableName::User;
   emit.obj = user.toJson();
-  socketService_.emitModule(TableName::User, emit);
+  if (const auto* sink = identity_change::getSink())
+    sink->emitModule(TableName::User, emit);
 
   if (invitation) {
     const auto consumedInvitation =
         co_await invitationRepository_.findById(invitation->id);
     if (consumedInvitation) {
-      co_await syncAuditService_.publishModule({
-          .recordId = consumedInvitation->id,
-          .tableName = TableName::UserInvitation,
-          .before = invitation->toJson(),
-          .after = consumedInvitation->toJson(),
-          .actorId = user.id,
-      });
+      if (const auto* sink = identity_change::getSink()) {
+        co_await sink->publishModuleAudit({
+            .recordId = consumedInvitation->id,
+            .tableName = TableName::UserInvitation,
+            .before = invitation->toJson(),
+            .after = consumedInvitation->toJson(),
+            .actorId = user.id,
+        });
+      }
 
       Json::Value enrollment(Json::objectValue);
       enrollment["event"] = "invitation_enrollment";
       enrollment["invitationId"] = invitation->id;
       enrollment["userId"] = userId;
-      co_await userActionLogService_.record({
-          .userId = userId,
-          .recordId = invitation->id,
-          .tableName = TableName::UserInvitation,
-          .action = UserAction::Create,
-          .oldData = Json::Value(),
-          .newData = enrollment,
-          .ipAddress = "",
-      });
+      if (const auto* sink = identity_change::getSink()) {
+        co_await sink->publishAction({
+            .userId = userId,
+            .recordId = invitation->id,
+            .tableName = TableName::UserInvitation,
+            .action = UserAction::Create,
+            .oldData = Json::Value(),
+            .newData = enrollment,
+            .ipAddress = "",
+        });
+      }
     }
   }
 
@@ -523,15 +531,21 @@ drogon::Task<void> AuthService::logout(int64_t userId) const
   context.obj["id"] = userId;
   context.obj["isActive"] = false;
   context.obj["resync"] = false;
-  socketService_.disconnectUser(userId, context);
+  if (const auto* control = sync_control::getSink()) {
+    const bool disconnected = control->disconnectUser(userId, context);
+    if (!disconnected)
+      LOG_WARN << "AuthService: disconnect failed for user " << userId;
+  }
 
-  co_await userActionLogService_.record({.userId = userId,
-                                         .recordId = userId,
-                                         .tableName = TableName::User,
-                                         .action = UserAction::Delete,
-                                         .oldData = Json::Value(),
-                                         .newData = Json::Value(),
-                                         .ipAddress = ""});
+  if (const auto* sink = identity_change::getSink()) {
+    co_await sink->publishAction({.userId = userId,
+                                  .recordId = userId,
+                                  .tableName = TableName::User,
+                                  .action = UserAction::Delete,
+                                  .oldData = Json::Value(),
+                                  .newData = Json::Value(),
+                                  .ipAddress = ""});
+  }
 
   LOG_INFO << "AuthService: logged out user " << userId;
 }
@@ -552,13 +566,15 @@ AuthService::updateMe(int64_t userId,
     if (recipient.role == UserRole::Owner || recipient.role == UserRole::Guard)
       recipients.push_back(recipient.id);
   }
-  co_await syncAuditService_.publishUsers({
-      .recordId = user.id,
-      .tableName = TableName::User,
-      .before = before->toJson(),
-      .after = user.toJson(),
-      .userIds = std::move(recipients),
-  });
+  if (const auto* sink = identity_change::getSink()) {
+    co_await sink->publishUsersAudit({
+        .recordId = user.id,
+        .tableName = TableName::User,
+        .before = before->toJson(),
+        .after = user.toJson(),
+        .userIds = std::move(recipients),
+    });
+  }
 }
 
 drogon::Task<IssuedDeviceCredential>
@@ -630,13 +646,15 @@ AuthService::issueSession(const IssueSessionInput& input) const
   session["deviceHash"] = deviceHash;
   session["userAgent"] = device.userAgent;
 
-  co_await userActionLogService_.record({.userId = userId,
-                                         .recordId = userId,
-                                         .tableName = TableName::User,
-                                         .action = UserAction::Create,
-                                         .oldData = Json::Value(),
-                                         .newData = session,
-                                         .ipAddress = ""});
+  if (const auto* sink = identity_change::getSink()) {
+    co_await sink->publishAction({.userId = userId,
+                                  .recordId = userId,
+                                  .tableName = TableName::User,
+                                  .action = UserAction::Create,
+                                  .oldData = Json::Value(),
+                                  .newData = session,
+                                  .ipAddress = ""});
+  }
 
   co_return result;
 }

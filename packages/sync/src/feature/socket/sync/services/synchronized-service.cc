@@ -56,6 +56,8 @@ const Syncable& SynchronizedService::repoFor(TableName table) const
       return eventRepository_;
     case TableName::Person:
       return personRepository_;
+    case TableName::UserActionLog:
+      return userActionLogRepository_;
     default:
       throw std::invalid_argument("table is not syncable");
   }
@@ -230,6 +232,7 @@ drogon::Task<Json::Value> SynchronizedService::sync(const SynchronizedDto& body,
       {"event", &SynchronizedDto::event},
       {"person", &SynchronizedDto::person},
       {"notification", &SynchronizedDto::notification},
+      {"user_action_log", &SynchronizedDto::userActionLog},
   };
 
   Json::Value out(Json::objectValue);

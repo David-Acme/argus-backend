@@ -50,8 +50,9 @@ preset, own `camera.db`.
 - **Camera/zone CRUD**: the shared `CameraController`/`ZoneController` and
   their feature services/DTOs compile into this binary (same sources as the
   legacy, byte-identical contracts), reading/writing the default client on
-  `[camera] db`. Camera and zone updates emit the exact SyncAuditService
-  diff as a `CameraAuditEvent` (`kind: audit`) over
+  `[camera] db`. Camera and zone updates publish the before/after pair
+  through `camera_change::sink()->publishAudit`, emitted as a
+  `ModuleAuditEvent` (`kind: audit`) over
   `argus.camera.v1.change` (Ruling Y) — no audit rows are persisted locally.
   Creates/deletes emit `Add`/`Delete` change events on the same subject.
 - **Media**: `CameraMediaService` handles the native `camera:*` frames of
@@ -192,7 +193,7 @@ preset, own `camera.db`.
 
 - **`argus.camera.v1.SyncService.PullTable`** (port 7036, `[server]
   grpc_port`): serves the camera-domain sync tables (camera, camera_stream,
-  zone) to the gateway with the frozen /sync semantics typed into
+  zone) to `argus-sync` with the frozen /sync semantics typed into
   `packages/contracts/proto/argus/camera/v1/sync.proto` — per-table
   required_create/required_deleted/find_last legs, (createdAt, id) cursor
   ranges, LIMIT 200 baked into the owner's SQL, tombstones as
@@ -200,7 +201,8 @@ preset, own `camera.db`.
   zone repositories the CRUD surface uses, so the served rows are the exact
   JSON the sync tables always produced. The caller identity rides
   x-argus-user / x-argus-role / x-argus-device metadata: presence is
-  required, the role was validated once at the gateway before the call, and
+  required, the role was validated once upstream by `argus-sync` before the
+  call, and
   the camera tables carry no userId row scoping. A grpc.health.v1 Health
   service shares the listener (F6-3 shape).
 - The gateway no longer opens camera.db read-only: `[camera] db` is gone
@@ -227,7 +229,7 @@ and labs is out of scope for this arc.
 What did NOT move: the camera-domain repositories and schemas
 (`camera`, `camera_stream`, `zone`), which `src/shared/repositories` declares
 as the folder's own `argus::camera-repositories` module since sub-step 3a-1b —
-the gateway's `/sync` still reads the same rows, through the camera sync RPC.
+`argus-sync`'s `/sync` still reads the same rows, through the camera sync RPC.
 `argus_camera-rpc` therefore still carries `src` on its include path.
 
 ## Operator automation extensions (camera-guard phase 1-2)

@@ -21,9 +21,11 @@ own server side too, so the package that serves an RPC links the package that
 calls it. `argus/notification/v1/notification.proto` is compiled here and in no
 other CMakeLists of the tree.
 
-14 files include the header: this suite, three in `services/gateway` (the
-camera notifier, the notification sync source and its test), nine in
-`services/guard` (`guard-service.cc`, `main.cc` and seven unit suites) and
+14 files include the header: this suite, two in `services/gateway` (the
+camera notifier and its test), nine in `services/guard` (`guard-service.cc`,
+`main.cc` and seven unit suites),
+`services/sync/src/feature/transport/infra/notification-sync-source.hxx` (the
+`/sync` pull leg since sub-step 3a-1c) and
 `services/notification/tests/unit/notification-rpc-test.cc`.
 
 ## Layout
@@ -65,9 +67,9 @@ camera notifier, the notification sync source and its test), nine in
   all rather than an empty one, and the receiver reads absence as refusal.
 - The endpoint and the credential are runtime config, not constants:
   `notifications.grpc_target` and `notifications.credential`, read by
-  `services/gateway/src/main.cc` (`:240`, `:351-352`),
-  `services/gateway/src/sync/notification-sync-source.cc:62` and
-  `services/guard/src/main.cc` (`:135`, `:141`).
+  `services/gateway/src/main.cc` (`:222`, `:324`),
+  `services/sync/src/feature/transport/infra/notification-sync-source.cc:63`
+  and `services/guard/src/main.cc` (`:135`, `:141`).
   `argus-deploy/config.gateway.toml.example:104`
   and `config.guard.toml.example:138` declare both, each under a
   `[notifications]` section; the receiver's matching

@@ -27,7 +27,7 @@ single WebSocket route.
 
 Normal rows are creation-only after bootstrap: `Synchronize` pages by
 `created_at`. Every persisted update or revocation is published as a granular
-audit diff through `SyncAuditService`, never as a full `Add`.
+audit diff through the change sink its domain declares, never as a full `Add`.
 
 Audit requests use monotonic SQLite ids: `{findLast:true}` returns a watermark
 id, then clients page `afterId < id <= endId` in ascending order. Daily
@@ -39,7 +39,7 @@ reconnecting clients converge.
 - `RoomManager` keeps module rooms (`1 + TableName`) and one user room per
   user id, with `thread_local` state.
 - Services publish persisted changes to NATS (`argus.sync.v1.change` and
-  domain subjects); the gateway subscribes `argus.*.v1.change` and fans out.
+  domain subjects); `argus-sync` subscribes `argus.*.v1.change` and fans out.
 - Camera sync tables are served by `argus-camera` through the typed
-  `argus.camera.v1.SyncService.PullTable` gRPC contract; the gateway applies
+  `argus.camera.v1.SyncService.PullTable` gRPC contract; `argus-sync` applies
   role gating and maps each leg with the same cursor semantics.

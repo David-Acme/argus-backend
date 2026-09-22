@@ -14,7 +14,7 @@ public:
 
   void emitModule(TableName table, const SocketEmitDto& body) const override;
   drogon::Task<void>
-  publishAudit(const CameraAuditInput& input) const override;
+  publishAudit(const ModuleAuditInput& input) const override;
 
 private:
   std::shared_ptr<NatsBus> bus_;

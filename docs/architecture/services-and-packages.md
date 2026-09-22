@@ -2,13 +2,15 @@
 
 Argus is a set of independent processes (services) plus reusable libraries
 (packages). Services own listeners and data; packages are compiled into their
-consumers. The gateway is the only public entry point.
+consumers. The gateway is the only public HTTP entry point; the `/sync`
+WebSocket is served by `argus-sync` on its own TLS listener.
 
 ## Runtime services
 
 | Service | Role | Listeners | Owns data |
 |---|---|---|---|
 | `argus-gateway` | Public TLS API, WebSocket relay, identity host | HTTPS 7024 | `identity.db` |
+| `argus-sync` | `/sync` WebSocket surface, rooms and change fan-out, audit persistence, sync control RPC | HTTPS 7025, gRPC 7041 | `identity.db` (the audit tables; `sync.db` in Phase 3c) |
 | `argus-camera` | Camera/zone data, go2rtc streaming, object events | HTTP 7026, gRPC 7036 | `camera.db` |
 | `argus-productivity` | Reminders, projects, calendar | HTTP 7027, gRPC 7037 | `productivity.db` |
 | `argus-notification` | Notifications and push tokens | HTTP 7028, gRPC 7038 | `notification.db` |
@@ -21,12 +23,18 @@ consumers. The gateway is the only public entry point.
 | `argus-tunnel` | Byte-transparent client and relay transport | per config | — |
 
 Every service binds loopback or the deployment's private network; the gateway
-proxies the public surface. Core NATS (`4222`) carries change events; the
-durable delivery legs (guard observations, encounter summaries, notification
-delivery) run on JetStream streams with PubAck settlement. Typed gRPC covers
-camera/productivity/notification sync, voice sessions, camera actions and
-identity operations. Each database directory is mounted by its owner only
-(rule 27): cross-domain reads go through the SDK clients.
+proxies the public surface. `argus-sync` serves the `/sync` WebSocket on its
+own TLS listener (7025) — the upgrade's 101 is not something the gateway's HTTP
+proxy can relay — with the sync control RPC beside it on 7041. It is the single
+writer of the four audit tables (`audit_log`, `user_audit_log`,
+`user_action_log`, `notification_delivery_inbox`) while those still live in
+`identity.db`; Phase 3c splits them into `sync.db`. Core NATS (`4222`) carries
+change events; the durable delivery legs (guard observations, encounter
+summaries, notification delivery) run on JetStream streams with PubAck
+settlement. Typed gRPC covers camera/productivity/notification sync, voice
+sessions, camera actions and identity operations. Each database directory is
+mounted by its owner only (rule 27): cross-domain reads go through the SDK
+clients.
 
 ## Standalone packages
 
@@ -35,14 +43,13 @@ These own a Conan/CMake graph and build on their own:
 | Package | Responsibility |
 |---|---|
 | `argus-cert` | Instance CA and certificate issuance/rotation |
-| `argus-socket` | Room/socket emission (`SocketService`) |
 | `argus-sqlite` | Database client access and vec0 (`DbService`, `VecDb`) |
 | `argus-identity` | Users, persons, invitations, portraits, face stack |
-| `argus-sync` | Sync engine and notifications |
+| `argus-sync` | Sync engine and notifications; the `/sync` socket, the fan-out and the audit writes already run in `services/sync`, and the package itself is deleted in the next sub-step of the extraction |
 | `argus-memory` | Semantic-graph memory (hosted by `argus-llm`) |
 | `argus-intent` | fastText intent router (hosted by `argus-llm`) |
 
-Seven, and the claim is a build fact: each of them carries a `CMakeLists.txt`
+Six, and the claim is a build fact: each of them carries a `CMakeLists.txt`
 that declares its own project name, so it configures on its own as well as
 under a consumer. `packages/contracts/` is **not** one of them — the folder has no
 `CMakeLists.txt` of its own, and its ten domain subfolders are
@@ -50,15 +57,22 @@ direct-import packages like the rest.
 
 ## Direct-import packages
 
-The remainder of `packages/`: `argus-audio`, `argus-auth`, `argus-audit`,
+The remainder of `packages/`: `argus-audio`, `argus-auth`,
 `argus-config`, `argus-errors`, `argus-grpc`, `argus-http`, `argus-mdns`,
-`argus-nats`, `argus-phrase`, `argus-room`, `argus-runtime`, `argus-storage`,
+`argus-nats`, `argus-phrase`, `argus-runtime`, `argus-storage`,
 `argus-text`, `argus-validation`, the ten contract packages under
 `packages/contracts/` and the eleven SDK clients under `packages/clients/`.
 These are not standalone projects: the service that links them provides the
 build context. They are declared once in their folder and linked by target
 name. `argus::clients::vlm` is the thin HTTP client for the internal
 `/vlm/v1/describe` wire, linked today only by `argus-guard`.
+
+Three packages left this list in the sync extraction: `argus-socket`'s payload
+vocabulary had already moved to `contracts/sync`, its transport and fan-out
+went to `services/sync`, and every domain now publishes through its own sink;
+`argus-room`'s rooms moved with the `/sync` sockets; and `argus-audit`'s
+repositories, schemas and log services are what the sync service persists
+through.
 
 ## Dependency direction
 

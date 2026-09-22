@@ -11,8 +11,10 @@
   portrait/private-portrait storage. Declared as the `argus_identity`
   module (`argus::identity` alias).
 - A package folder of the Argus monorepo (rooted at `backend/`), not an
-  independent repository or process. It compiles into `argus-gateway` and
-  also configures standalone for validation, against the root graph.
+  independent repository or process. It compiles into `argus-gateway` (which
+  serves its RPC surface) and into `argus-sync` (whose engine pages its user
+  and person tables), and also configures standalone for validation, against
+  the root graph.
 - Authentication IDENTIFIES here; it does not authorize. Role-based
   authorization is the `argus-auth` filter package declared on routes by
   name. Biometrics (faces, embeddings) stay in this service.

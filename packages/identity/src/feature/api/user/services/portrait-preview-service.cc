@@ -7,6 +7,7 @@
 #include <identity/identity-errors.hxx>
 #include <errors/response-exception.hxx>
 #include <string_view>
+#include <sync/identity-change-sink.hxx>
 
 namespace
 {
@@ -134,15 +135,17 @@ PortraitPreviewService::consume(const PortraitPreviewConsumeInput& input) const
   Json::Value event;
   event["event"] = "portrait_preview";
   event["portraitUserId"] = Json::Int64(capability->portraitUserId);
-  co_await userActionLogService_.record({
-      .userId = input.requesterUserId,
-      .recordId = capability->portraitUserId,
-      .tableName = TableName::User,
-      .action = UserAction::Read,
-      .oldData = Json::Value(),
-      .newData = event,
-      .ipAddress = "",
-  });
+  if (const auto* sink = identity_change::getSink()) {
+    co_await sink->publishAction({
+        .userId = input.requesterUserId,
+        .recordId = capability->portraitUserId,
+        .tableName = TableName::User,
+        .action = UserAction::Read,
+        .oldData = Json::Value(),
+        .newData = event,
+        .ipAddress = "",
+    });
+  }
   co_return {
       .mimeType = portrait->mimeType,
       .base64 = base64(portrait->bytes),

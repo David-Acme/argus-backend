@@ -60,7 +60,6 @@ argus_lib(NAME auth
         src/auth/user-directory-identity.cc
         src/auth/role-access.hxx
         src/auth/user-directory.hxx
-        src/auth/identity-change-sink.hxx
     INCLUDES
         src
     DEPENDS

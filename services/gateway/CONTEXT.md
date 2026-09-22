@@ -66,8 +66,10 @@ monolith's build set was retired (F6-4).
 
 ## `/sync` surface (F1-4)
 
-- **`/sync` socket (F1-4)**: the gateway owns the `/sync` WebSocket end to end.
-  It serves the sync protocol natively (`sync`, `sync_audit_log`,
+- **`/sync` socket (F1-4)**: the gateway owned the `/sync` WebSocket end to end
+  until sub-step 3a-1c moved the surface — socket, rooms, change fan-out, audit
+  writers and voice relay — to `argus-sync`. It serves the sync protocol
+  natively (`sync`, `sync_audit_log`,
   `sync_user_audit_log`, identity rooms, `initial_info`) from
   `argus_sync`: the productivity sync tables pull from argus-productivity
   over the `argus.productivity.v1.SyncService` leg
@@ -161,7 +163,8 @@ table. The app keeps working without any update.
   "Plugin ... undefined!" and every proxied request 404s.
 - **Proxy exclusion table (Ruling I — who serves what)**: gateway-native and
   therefore NEVER proxied: `/auth/*` (identity), `/pairing`, `/invitation/*`,
-  `/user`, `/portrait-preview/*`, `/sync` (native WS + relay), `/health`.
+  `/user`, `/portrait-preview/*`, `/sync` (moved to `argus-sync` in sub-step
+  3a-1c), `/health`.
   The extracted domains go through the route table:
   `/camera/*` + `/zone/*` (up to 8 segments) → argus-camera,
   `/calendar-event*` + `/project*` (up to 8 segments) → argus-productivity,
@@ -210,20 +213,21 @@ table. The app keeps working without any update.
   `/camera/{id}/ptz|preset|settings|status|presets|capabilities|talk`. Only
   deeper paths than the cap and foreign prefixes fall through to the
   gateway-native routing chain.
-- **Voice `/sync` relay**: `voice:*` frames relay to argus-voice over
-  argus.voice.v1 (`[voice] target`, see the F6-3 section); an empty key
-  leaves `/sync` with no forwarder. Same client credentials and XFF rule as
-  the camera media relay.
+- **Voice `/sync` relay (moved to `argus-sync` in sub-step 3a-1c)**: `voice:*`
+  frames relay to argus-voice over argus.voice.v1 (`[voice] target`, see the
+  F6-3 section); an empty key leaves `/sync` with no forwarder. Same client
+  credentials and XFF rule as the camera media relay.
 - **Camera media socket (`/camera-stream`)**: a dedicated client socket with
   the same `DeviceFilter`+`JwtFilter` chain relays `camera:*` frames and fMP4
   binary to argus-camera's internal `/media` socket (`[camera] stream_url`),
   keeping best-effort video off the `/sync` egress queue. Gateway-native path
   (never proxied); only camera frames cross it.
-- **Camera change funnel (`camera_fan_out`)**: the NATS subscription is the
-  wildcard `argus.*.v1.change`; the concrete subject routes the payload —
-  `argus.camera.v1.change` goes to `camera_fan_out::handleCameraChange`,
-  anything else to the sync fan-out parser. An audit-kind payload
-  (`CameraAuditEvent`, Ruling Y) is inserted into identity.db `audit_log`
+- **Camera change funnel (moved to `argus-sync` in sub-step 3a-1c)**: the NATS
+  subscription is the wildcard `argus.*.v1.change`; the concrete subject routes
+  the payload — `argus.camera.v1.change` takes the audit branch
+  (`audit_fan_out::handleAuditChange`), anything else the emit dispatcher
+  (`sync_fan_out::dispatchEvent`). An audit-kind payload (`ModuleAuditEvent`,
+  Ruling Y) is inserted into identity.db `audit_log`
   via `AuditLogService::create` first, then the DB-assigned row is fanned out
   as a `Log` event; a plain change payload fans out directly. The funnel
   handler runs on the Drogon IO loop (RoomManager is thread-local).
@@ -235,8 +239,8 @@ table. The app keeps working without any update.
 
 ## Camera object_detected consumer (F2-3): budget, silent hours, digest
 
-- **`camera_notifier`** subscribes `argus.camera.v1.object_detected` (F2-3)
-  next to the camera change fan-out. Events marshal from the cnats
+- **`camera_notifier`** subscribes `argus.camera.v1.object_detected` (F2-3).
+  Events marshal from the cnats
   dispatcher into the Drogon IO loop before touching policy or database —
   same discipline as the change funnel. The subscription is an ephemeral
   core-NATS consumer: no replay after a gateway restart, so events published
@@ -274,23 +278,23 @@ table. The app keeps working without any update.
   relayed identical (no rewrite); exclusion coverage is enforced at boot
   like every route target. Everything not routed falls through to the
   gateway-native routing chain.
-- **User change funnel (Ruling AQ/Y)**: the `argus.*.v1.change` wildcard now
-  also routes `argus.productivity.v1.change` /
-  `argus.notification.v1.change` payloads to
-  `user_change_fan_out::handleUserChange`, which inserts each user-scoped
-  audit row VERBATIM into identity.db `user_audit_log` via
-  `DbService::client()` (identity client) BEFORE fanning the row out as a
-  `Log` sync event. The F3 services never persist audit rows locally — the
-  gateway is the only writer. Daily compaction of `user_audit_log` stays
-  gateway-side.
-- **Domain pull sources (rule 27)**: the 7 productivity sync tables pull over
-  `argus.productivity.v1.SyncService` (`[productivity] grpc_target`, 7037) and
+- **User change funnel (Ruling AQ/Y; moved to `argus-sync` in sub-step
+  3a-1c)**: the `argus.*.v1.change` wildcard now also routes
+  `argus.productivity.v1.change` / `argus.notification.v1.change` payloads to
+  `AuditFanOut::handleAuditChange`, which inserts each user-scoped audit row
+  VERBATIM into identity.db `user_audit_log` via `DbService::client()` (identity
+  client) BEFORE fanning the row out as a `Log` sync event. The F3 services
+  never persist audit rows locally — `argus-sync` is the only writer. Daily
+  compaction of `user_audit_log` stays `argus-sync`'s.
+- **Domain pull sources (rule 27; moved to `argus-sync` in sub-step 3a-1c)**:
+  the 7 productivity sync tables pull over `argus.productivity.v1.SyncService`
+  (`[productivity] grpc_target`, 7037) and
   the notification page over `argus.notification.v1.NotificationService`
   (`[notifications] grpc_target`, 7038), both through the shared SDK clients
   (`argus::clients::productivity` / `argus::clients::notification`) wrapped as
   `ProductivitySyncGateway` / `NotificationSyncGateway`. The owner applies the
   personal-table scoping and the role read gate from the forwarded identity
-  metadata; the gateway only forwards the range and the caller. An absent or
+  metadata; `argus-sync` only forwards the range and the caller. An absent or
   unreachable target answers 503 for that domain — there is no fallback client
   and no local database read. `/sync` pull pages for the moved tables are
   byte-identical with the monolith's (golden-sync evidence).
@@ -320,8 +324,8 @@ table. The app keeps working without any update.
   relay cannot inject XFF and the peer address is the tunnel client, not
   the device). The mechanism is one pre-routing advice in
   `services/gateway/src/main.cc` (`RemoteGate::check`), the only pre-filter
-  hook the gateway has, which also covers the `/sync` WebSocket upgrade
-  path (Drogon runs pre-routing advices for WS requests too): remote is
+  hook the gateway has, which also covers the `/camera-stream` WebSocket
+  upgrade path (Drogon runs pre-routing advices for WS requests too): remote is
   marked with the `remote_ctx` request attribute on EVERY request, and the
   whole gateway surface works unchanged remotely except the two bootstrap
   routes. `network.lan_cidrs` from the blueprint is deliberately NOT
@@ -426,17 +430,18 @@ table. The app keeps working without any update.
 
 ## Voice cutover (F6-3): argus.voice.v1 leg, typed identity, UpdateUser RPC
 
-- **`[voice] target` leg**: with `voice.target` set, `voice:*` frames no longer
+- **`[voice] target` leg (moved to `argus-sync` in sub-step 3a-1c)**: with
+  `voice.target` set, `voice:*` frames no longer
   relay to the old WS leg — `VoiceGrpcRelay` speaks `argus.voice.v1`
   VoiceService bidi to argus-voice (default 127.0.0.1:7034): text frames map
   to VoiceStart/VoiceStop/VoiceSkip, PCM binary frames to the `pcm` oneof
   field of `ClientFrame`. An empty `target` answers voice frames with the
   503 unconfigured-relay envelope.
-  The frozen mobile app `/sync` contract is untouched: the gateway still
+  The frozen mobile app `/sync` contract is untouched: `argus-sync` still
   renders every app frame as JSON — `voice:stt`, `voice:assistant`,
-  `voice:event`, `voice:done`, plus TTS binary chunks — so byte-identity is a
-  gateway concern, not argus-voice's.
-- **Typed identity on VoiceStart**: the gateway resolves the session's user in
+  `voice:event`, `voice:done`, plus TTS binary chunks — so byte-identity is
+  `argus-sync`'s concern, not argus-voice's.
+- **Typed identity on VoiceStart**: `argus-sync` resolves the session's user in
   identity.db and sends `identity{user_id, name, lang, role}` inside the first
   proto message, so argus-voice never reads a database — it greets from the
   typed fields and answers in the user's language.
@@ -445,7 +450,7 @@ table. The app keeps working without any update.
   compose binds 0.0.0.0 because argus-voice is on the bridge network). When a
   user says their name mid-session, argus-voice writes the spoken name back
   through this RPC; the gateway persists it via `UserRepository` and
-  re-fans-out `argus.sync.v1.change` on NATS (the same user-change fan-out
+  publishes it through the identity change sink on NATS (the same path
   every other identity write already uses) so every connected device sees
   the renamed user. Role rides the `x-argus-role` metadata. UpdateUser
   enforces row scoping: the `x-argus-user` metadata must carry the request's
@@ -515,23 +520,26 @@ table. The app keeps working without any update.
   promotion).
   Rule 9 holds: the gateway never calls camera action RPCs itself; audible
   intervention belongs to guard.
-- **Durable delivery consumer**: `NotificationDeliveryConsumer`
-  (`src/sync/notification-delivery-consumer.cc`) is a durable JetStream consumer
-  on `argus.notification.v1.delivery` (`ARGUS_NOTIFICATION`, durable
-  `argus-gateway-delivery`, `maxDeliver = 10`, poison `Term` after 3 failed
+- **Durable delivery consumer (moved to `argus-sync` in sub-step 3a-1c)**:
+  `NotificationDeliveryConsumer`
+  (`src/feature/fanout/services/notification-delivery-consumer.cc`) is a
+  durable JetStream consumer on `argus.notification.v1.delivery`
+  (`ARGUS_NOTIFICATION`, durable
+  `argus-sync-delivery`, `maxDeliver = 10`, poison `Term` after 3 failed
   attempts). Each event is receipted first in `notification_delivery_inbox`
-  (DDL owned by `packages/identity/database/schema.sql`, applied by the
-  gateway at boot): same id plus same canonical SHA-256 fingerprint is a
+  (DDL owned by `services/sync/database/schema.sql`, applied by
+  `argus-sync` at boot): same id plus same canonical SHA-256 fingerprint is a
   replay (dispatched at most once per receipt), same id plus a different
   fingerprint is a conflict that is never dispatched, an unknown persisted
   status fails closed to `dead_lettered`. Dispatch rebuilds the notification
-  row — `src/sync/notification-row-json.hxx`, the one nine-field rendering
-  both this consumer and the `/sync` pulls use, from the wire and never from
-  the notification owner's schema — and emits the `Add` frame into the
-  recipient's user room; a crash
+  row — `src/shared/infra/notification-row-json.hxx`, the one nine-field
+  rendering both this consumer and the `/sync` pulls use, from the wire and
+  never from the notification owner's schema — and emits the `Add` frame into
+  the recipient's user room; a crash
   between dispatch and settlement replays the emit on redelivery
   (at-least-once — one receipt row, possibly two socket emits).
-- **Credential sync sources**: the camera/productivity/notification sync legs
-  authenticate with per-edge caller credentials (`[notifications] credential`
-  for the notification edge); authority comes from the matched fleet secret,
+- **Credential sync sources (moved to `argus-sync` in sub-step 3a-1c)**: the
+  camera/productivity/notification sync legs authenticate with per-edge caller
+  credentials (`[notifications] credential` in `services/sync/config.toml` for
+  the notification edge); authority comes from the matched fleet secret,
   never from declared metadata.

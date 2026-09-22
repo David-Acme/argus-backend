@@ -63,10 +63,13 @@ rpc_port = 7040
 [camera]
 stream_url = "ws://127.0.0.1:7026/media"
 proxy_url = "http://127.0.0.1:7026"
-grpc_target = "127.0.0.1:7036"
 
-[voice]
-target = ""
+[sync]
+# The sync service's control plane (unary gRPC); empty disables the
+# imperative leg, leaving role changes and disconnects undelivered.
+control_target = "127.0.0.1:7041"
+# Fleet secret every control call carries; same value in every service.
+control_secret = ""
 
 [productivity]
 proxy_url = "http://127.0.0.1:7027"

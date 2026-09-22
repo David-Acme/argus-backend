@@ -49,10 +49,15 @@ Not moved, on purpose:
 - The auth filter package (`src/filter/`) — `argus-auth` extraction is a
   later step, and it must land after the auth RPC.
 - The audit / sqlite / cert / socket / mdns / room modules — cross-domain
-  or gateway-owned; they dissolve into their owner services later.
+  or gateway-owned; they dissolve into their owner services later. `socket`,
+  `room` and `audit` did, into `services/sync` in Phase 3a-1c; `sqlite`, `cert`
+  and `mdns` are the `lib` packages this service still links.
 - `src/auth/identity-change-sink.hxx` and the other sink
   contracts — consumed through the module links' include roots; they get
-  their true home when the socket module does.
+  their true home when the socket module does. The socket module did not
+  survive to take them: the contracts now live in `argus::contracts::sync` and
+  the identity sink is this service's own
+  (`src/feature/api/user/services/nats-identity-change-sink.{hxx,cc}`).
 - The migration tool (`tools/migrate-identity`) — the root `tools/`
   dissolution owns it.
 - `database/identity.db` — live data. Runtime still opens it from
@@ -67,13 +72,16 @@ Every moved file kept its `feature/...` / `shared/...` relative path, so
 not one `#include` line changed. The module's include root became
 `packages/identity/src` (it no longer exports the old `src/` tree at all):
 each include of a file that stayed in `src/` was audited to resolve
-through a declared module edge — `argus::socket` (socket-service,
-identity-change-sink), `argus::lib::cert`, `argus::audit` (sync-audit,
-user-action-log), `argus::lib::sqlite` (db-service, vec-db), `argus::lib::auth`
+through a declared module edge — `argus::lib::cert`, `argus::lib::sqlite`
+(db-service, vec-db), `argus::lib::auth`
 (jwt-service, the filters), `argus::lib::config`, `argus::lib::validation`,
 `argus::lib::runtime` (the cancellation and
 threading wrappers), `argus::lib::storage` and `argus::contracts::sync` (config,
-validation, wrapper, s3-storage, sync contracts).
+validation, wrapper, s3-storage, sync contracts). Two edges of that audit are
+gone since Phase 3a-1c: `argus::socket` and `argus::audit` were deleted with
+their packages, the sink contract moved into `argus::contracts::sync` and the
+sink that implements it into this service's own feature tree, so identity now
+publishes onto the feed instead of writing the audit tables.
 
 ## The auth⇄identity cycle is gone (f7-3)
 
@@ -130,8 +138,9 @@ defaults to `known` for legacy rows; `IdentifyPerson` reports
 `trusted = (status == known)` and attaches the linked user only for active
 users.
 
-The schema also carries `notification_delivery_inbox` — the gateway's durable
-delivery receipt table (see `services/gateway/CONTEXT.md`). It lives
-here because the gateway applies this schema file at boot and the receipts
-belong to the gateway-owned identity database; argus-notification never
-touches it.
+The schema used to carry `notification_delivery_inbox` and the three audit
+tables — the gateway's durable delivery receipts and its audit trail. Phase
+3a-1c moved all four into `services/sync/database/schema.sql`, whose owner
+applies and writes them; this file is identity's tables and nothing else. The
+four rows still *live* in `database/identity.db` until Phase 3c-2 splits them
+out, which is the transitory state `services/sync` declares in `[sync] db`.

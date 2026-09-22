@@ -46,7 +46,10 @@ argus_contracts(NAME sync
         src/sync/user-change-sink.hxx
         src/sync/camera-change-sink.hxx
         src/sync/user-audit-event.hxx
-        src/sync/camera-audit-event.hxx
+        src/sync/module-audit-event.hxx
+        src/sync/user-action-event.hxx
+        src/sync/identity-change-sink.hxx
+        src/sync/sync-control-sink.hxx
     DEPENDS
         argus::lib::errors
         argus::lib::text

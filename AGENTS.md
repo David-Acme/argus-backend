@@ -13,8 +13,9 @@
 ## Project layout (whole project)
 
 - **`backend/`** (this repo) — C++20 + Drogon server: all AI on-device (face
-  auth, LLM, vision, STT/TTS), JWT dual secrets, WebSocket sync on `/sync`.
-  Listens on `0.0.0.0:7024`.
+  auth, LLM, vision, STT/TTS), JWT dual secrets, WebSocket sync on `/sync`
+  (argus-sync's own TLS listener, 7025). The gateway keeps the public API
+  on `0.0.0.0:7024`.
 - **`frontend/`** (sibling) — React Native app (Expo SDK 57 + Expo Router +
   Tailwind v4 via Uniwind). Its HTTP, auth, WatermelonDB (15 tables) and
   autonomous `/sync` layers are implemented, plus the full screen set
@@ -197,7 +198,7 @@ Helpers: `hasAccess(role, table, perm)`, `readableTables(role)`,
   the frontend closes/unmounts is revoked, so it cannot be reused from a prior
   preview.
 - A role update is not a logout: persist first, call
-  `SocketService::replaceRoleRooms`, then emit `AuthContextChanged` with
+  `sync_control::sink()->replaceRoleRooms`, then emit `AuthContextChanged` with
   `resync=true` to the user's room. Preserve the socket and user room. Only
   account deactivation invalidates refresh tokens and disconnects the device.
 - Portrait objects are private server storage, never sync tables. Guard/Owner
@@ -518,7 +519,8 @@ Raw pointers only for non-owning access (`.get()`).
   `Synchronize=1` (initial bootstrap plus creations/deletions; includes
   `notification` per user), `SynchronizeAuditLog=2` (global field diffs; the
   backend selects tables by role), `SynchronizeUserAuditLog=3` (recipient
-  field diffs, filtered by `sub`). Live events: `Add=4`, `Delete=5`, `Log=6`.
+  field diffs, filtered by `sub`). Live events: `Add=4`, `Delete=5`, `Log=6`,
+  `AuthContextChanged=7`.
 - **Normal rows are creation-only after bootstrap**: `Synchronize` pages by
   `created_at`; do not switch it to `updated_at`/`syncAt` to represent an
   update. Every persisted update/revocation must instead publish a granular
@@ -534,11 +536,13 @@ Raw pointers only for non-owning access (`.get()`).
   changed fields with their previous/current values, never a replacement record.
   Daily compaction merges a record's diff and inserts the compacted result as a
   new audit row so its id advances and reconnecting clients converge.
-- `SyncAuditService` (`packages/audit/src/shared/services/sync-audit/`) is the feature-level
-  publishing facade. Capture `before` before a repository mutation, capture
-  `after` once it succeeds, then call `publishModule` or `publishUsers` with the
-  correct audience. Do not hand-build `Log` payloads or emit a full `Add` for an
-  update. Recipient lists must be deduplicated and must never contain a secret.
+- A feature publishes its diff through the domain sink the sync contract
+  declares (`packages/contracts/sync/src/sync/`), and `services/sync`'s
+  fan-out (`src/feature/fanout/services/`) is the only writer of the audit
+  tables. Capture `before` before a repository mutation, capture `after` once it
+  succeeds, then publish the pair with the correct audience. Do not hand-build
+  `Log` payloads or emit a full `Add` for an update. Recipient lists must be
+  deduplicated and must never contain a secret.
 - `PATCH /notification/read` follows the same rule: select the unread rows
   before mutation, update only those rows, and publish their user audit diffs.
 - Sync queries: use `sync_query::buildSyncQuery(filter, Q1, Q2, Q3)` (a
@@ -547,8 +551,9 @@ Raw pointers only for non-owning access (`.get()`).
   in an inner `[&]() -> Task` coroutine lambda that suspends: the frame lands
   on a reused stack and causes a use-after-free (crash). Do not pass
   temporaries to coroutines that store references either — use named locals.
-- `RoomManager` is an instance class with file-level `thread_local` state; its
-  lifecycle goes through `RoomManagerServiceAdapter` (IService).
+- `RoomManager` (`packages/sync/src/shared/services/room/`) is an instance class
+  with file-level `thread_local` state; `services/sync`'s `main.cc` holds the
+  boot-time `init()` object for the process's lifetime.
 
 ### 19. Modern C++20 everywhere
 
@@ -643,8 +648,9 @@ Every service follows the same layout inside its own folder:
   change that introduces their replacement.
 
 **Today, against that target** (Phase 4 of
-`docs/history/plans/architecture-plan.md` lands it): `services/tts` is the
-only service with `src/app/`; `notification`, `productivity` and `guard`
+`docs/history/plans/architecture-plan.md` lands it): `services/tts` and
+`services/sync` are the only services with `src/app/`; `notification`,
+`productivity` and `guard`
 already have the `{controllers,services,dtos}` interior, one level deeper
 under `feature/api/<resource>/` (`notification` also carries `feature/rpc/`,
 which Phase 4 step 2 moves to `app/rpc/`). The other nine services keep a
@@ -654,20 +660,19 @@ instead has two entry points there, `main-client.cc` and `main-relay.cc`.
 Five services have no `feature/` at all today — `gateway`, `llm`, `stt`,
 `tunnel` and `vlm` — and keep their code at `src/` level instead:
 `src/controllers/` in `llm`, `stt` and `vlm`, a `src/llm/` and a `src/vlm/`
-beside it, and `gateway`'s four domain folders. Of the six services that do
+beside it, and `gateway`'s four domain folders. Of the seven services that do
 have a `feature/`, four still keep code beside it: `camera`
 (`src/controllers/` and `src/camera/`, `monitor/`, `objects/`, `operator/`),
 `notification` (`src/notification/`), `productivity`
-(`src/productivity/`) and `voice` (`src/test-support/`). `guard` and `tts`
-keep everything inside `feature/` (plus `app/` in `tts`).
+(`src/productivity/`) and `voice` (`src/test-support/`). `guard`, `tts` and
+`sync` keep everything inside `feature/` (plus `app/` in `tts` and `sync`).
 
-No service has `src/config/` yet: the per-service typed config that step 9
-moves there lives today under that same domain folder
+Only `services/sync` has `src/config/` yet: the per-service typed config that
+step 9 moves there still lives elsewhere under that same domain folder
 (`camera-config.{hxx,cc}`, `notification-config.{hxx,cc}`,
-`productivity-config.{hxx,cc}`, `operator-config.{hxx,cc}`). No service has
-`tests/e2e/` yet — the only first-party one in the tree is
-`packages/sync/tests/e2e/`, the frozen-frame suite that moves with the service
-in Phase 3a. `gateway` is
+`productivity-config.{hxx,cc}`, `operator-config.{hxx,cc}`). `services/sync`
+is the one service with `tests/e2e/`, the tree's only first-party one — the
+frozen-frame suite that moved with the surface it pins. `gateway` is
 deleted in Phase 3d.
 
 ### 24. One shape for every unit, never speculative structure
@@ -829,13 +834,14 @@ and every config points at `database/schema.sql`; a unit applies only its own
 schema, never the schema of another. The gateway is the one owner that is not
 at that path: it mounts its own file at `/opt/argus/gateway/schema.sql` and
 its config says `gateway/schema.sql`, which is also the only place a second
-schema appears — the identity one it hosts, at `database/schema.sql`. Seven
+schema appears — the identity one it hosts, at `database/schema.sql`. Eight
 units carry one today:
 `camera`, `gateway`, `guard`, `notification` and `productivity` (the gateway's
 own 32-line file is its `gateway.db` degraded-fallback record — it holds no
 table of another domain and says so — and it additionally applies the identity
 schema it hosts; both go with the gateway in Phase 3d), plus
-`packages/identity` and `packages/memory`.
+`packages/identity`, `packages/memory` and `services/sync` (the four sync
+tables it applies onto identity.db until Phase 3c splits them into `sync.db`).
 
 ### 27. Database isolation between microservices
 
@@ -865,7 +871,7 @@ Before any commit, verify the affected standalone project with
 `./scripts/build-all.sh dev --only <project>` and **0 errors, 0 warnings**.
 Run the full orchestrator when changing shared build infrastructure.
 
-The orchestrator runs two gates of its own, beyond the eighteen projects:
+The orchestrator runs two gates of its own, beyond the seventeen projects:
 `scripts/check-deps.sh` before anything is built (§2.4's tiers), and, at the
 end of a full run only, `scripts/check-tidy.sh` (rules 16 and 19). `--only`,
 `--no-tests` and `--install-only` skip the clang-tidy scan deliberately: it
@@ -958,13 +964,13 @@ for two different reasons, and says which when it does.
 | `services/camera/src/shared/services/stream/` | go2rtc manager, `StreamHub` (fMP4 over `/sync`, per-connection credit window, lock order `hubMutex_ → Upstream::mtx`), `Fmp4Reader` (encoding from headers, whole fragments) |
 | `services/camera/src/shared/services/tapo/` | Tapo camera local protocols: control (`stok` + `securePassthrough`, legacy fallback) and the 8800 talk channel (Digest + MPEG-TS PCMA) |
 | `services/notification/src/shared/services/notification-token/` | Push tokens per session |
-| `packages/sync/src/feature/socket/sync/` | `SyncSocket` + `SyncService` + `SynchronizedService` + DTOs; becomes `services/sync` (Phase 3a) |
+| `packages/sync/src/feature/socket/sync/` | `SyncSocket` (formerly `SocketService`) + `SyncService` + `SynchronizedService` + DTOs; becomes `services/sync` (Phase 3a) |
 | `services/notification/src/shared/services/notification/` | Per-user notifications: `Add` on create and granular user-audit on mark-as-read; this service's own code since sub-step 3a-1b |
-| `packages/socket/src/shared/services/socket/` | `SocketService` (emitModule/emitUser) + `SocketEmitDto`; dies in Phase 3a — its vocabulary goes to `contracts/sync` and its transport to `services/sync` |
-| `packages/room/src/shared/services/room/` | local `RoomManager` (rooms per module/user, `thread_local`); dies with `socket` in Phase 3a |
-| `packages/audit/src/shared/services/audit-log/` | Global audit: per-field diffs, daily compaction and monotonic id for sync |
-| `packages/audit/src/shared/services/user-audit-log/` | Per-recipient audit: per-field diffs, daily compaction and monotonic id for sync |
-| `packages/audit/src/shared/services/sync-audit/` | Central facade to publish module/user diffs after feature mutations. All three become `services/sync`, which owns the three tables and is the only writer (Phase 3a) |
+| `packages/sync/src/feature/socket/sync/socket/` | the socket module: `SyncSocket`, the `/sync` WebSocket controller over `SyncService`, plus `SyncForwarder`, the `voice:*` + raw PCM leg; becomes `services/sync` (Phase 3a) |
+| `packages/sync/src/shared/services/room/` | local `RoomManager` (rooms per module/user, `thread_local`) + `RoleRoomReplaceInput`; becomes `services/sync` (Phase 3a) |
+| `packages/sync/src/shared/services/audit-log/` | Global audit: per-field diffs, daily compaction and monotonic id for sync; becomes `services/sync` (Phase 3a) |
+| `packages/sync/src/shared/services/user-audit-log/` | Per-recipient audit: per-field diffs, daily compaction and monotonic id for sync; becomes `services/sync` (Phase 3a) |
+| `services/sync/src/feature/fanout/services/` | The change feed's fan-out: `SyncFanOut` routes room emits and the imperative frames, `AuditFanOut` persists the audit and journal rows — `services/sync` owns its four tables and is their only writer |
 
 **Docs and templates**
 

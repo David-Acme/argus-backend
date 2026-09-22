@@ -5,10 +5,8 @@
 #include <feature/api/invitation/dtos/response-invitation-dto.hxx>
 #include <feature/api/invitation/dtos/response-invitation-resolve-dto.hxx>
 #include <shared/repositories/user-invitation/user-invitation-repository.hxx>
-#include <shared/services/socket/socket-service.hxx>
-#include <shared/services/sync-audit/sync-audit-service.hxx>
-#include <shared/services/user-action-log/user-action-log-service.hxx>
 #include <string>
+#include <sync/user-action.hxx>
 #include <vector>
 
 class InvitationFeatureService
@@ -37,7 +35,4 @@ private:
   recordInvitationAction(const InvitationActionLogInput& input) const;
 
   UserInvitationRepository repository_;
-  SocketService socketService_;
-  UserActionLogService userActionLogService_;
-  SyncAuditService syncAuditService_;
 };

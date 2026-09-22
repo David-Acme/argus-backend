@@ -11,6 +11,9 @@
 // routing metadata the transport reads. Every key here is frozen.
 namespace sync_change
 {
+inline constexpr const char* kKindField = "kind";
+inline constexpr const char* kKindAudit = "audit";
+inline constexpr const char* kKindIdentity = "identity";
 inline constexpr const char* kUsersField = "users";
 inline constexpr const char* kActionField = "action";
 inline constexpr const char* kActionEmit = "emit";
@@ -21,12 +24,10 @@ inline constexpr const char* kOldRoleField = "old_role";
 inline constexpr const char* kNewRoleField = "new_role";
 
 // One actor changing role, as the wire carries it: the role *names*, because
-// old_role/new_role travel as strings and the consumer parses them back. This
-// is deliberately not packages/room's RoleRoomReplaceInput -- that one is the
-// room manager's own call argument and carries the UserRole enum, and this row
-// deletes packages/room, so a contract cannot be spelled in a type that dies
-// with the row. The enum-to-name conversion belongs to the caller holding the
-// enum (SocketService::replaceRoleRooms).
+// old_role/new_role travel as strings and the consumer parses them back. Not
+// the room manager's RoleRoomReplaceInput, which carries the UserRole enum:
+// this contract cannot be spelled in a type the consuming engine owns, and the
+// enum-to-name conversion belongs to the change fan-out's dispatch.
 struct RoleRoomChange
 {
   int64_t userId{0};

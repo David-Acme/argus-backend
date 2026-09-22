@@ -45,7 +45,8 @@ Rules:
 
 ## Fixtures
 
-`fixtures/` holds golden frames recorded from the backend (`/sync` traffic):
+`services/sync/tests/fixtures/sync/` holds golden frames recorded from the
+backend (`/sync` traffic):
 one JSON file per scenario, used by backend and frontend tests to detect any
 accidental wire drift. Record with the backend golden-frame recorder and commit
 the exact bytes.

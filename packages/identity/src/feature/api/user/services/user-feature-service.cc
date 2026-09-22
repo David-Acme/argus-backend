@@ -1,10 +1,13 @@
 #include "user-feature-service.hxx"
 
+#include <auth/user-role.hxx>
 #include <errors/response-exception.hxx>
 #include <identity/identity-errors.hxx>
-#include <auth/identity-change-sink.hxx>
-#include <sync/sync-operation.hxx>
+#include <sync/identity-change-sink.hxx>
 #include <sync/socket-emit-dto.hxx>
+#include <sync/sync-control-sink.hxx>
+#include <sync/sync-operation.hxx>
+#include <trantor/utils/Logger.h>
 
 namespace
 {
@@ -53,11 +56,15 @@ UserFeatureService::update(const UserManagementUpdateInput& input) const
     throw ResponseException(404, IdentityErrors::UserNotFound);
 
   if (updated.role != existing->role) {
-    socketService_.replaceRoleRooms({
-        .userId = updated.id,
-        .oldRole = existing->role,
-        .newRole = updated.role,
-    });
+    if (const auto* control = sync_control::getSink()) {
+      const bool replaced = control->replaceRoleRooms(
+          {.userId = updated.id,
+           .oldRole = userRoleToString(existing->role),
+           .newRole = userRoleToString(updated.role)});
+      if (!replaced)
+        LOG_WARN << "Identity: role room replace failed for user "
+                 << updated.id;
+    }
     emitAuthContextChanged(updated);
   }
 
@@ -67,18 +74,21 @@ UserFeatureService::update(const UserManagementUpdateInput& input) const
     if (recipient.role == UserRole::Owner || recipient.role == UserRole::Guard)
       recipientIds.push_back(recipient.id);
   }
-  co_await syncAuditService_.publishUsers({
-      .recordId = updated.id,
-      .tableName = TableName::User,
-      .before = existing->toJson(),
-      .after = updated.toJson(),
-      .userIds = std::move(recipientIds),
-  });
+  if (const auto* sink = identity_change::getSink()) {
+    co_await sink->publishUsersAudit({
+        .recordId = updated.id,
+        .tableName = TableName::User,
+        .before = existing->toJson(),
+        .after = updated.toJson(),
+        .userIds = std::move(recipientIds),
+    });
+  }
 
-  if (identity_change::getSink()) {
-    identity_change::getSink()->publish(
-        {.table = "user", .id = updated.id, .deleted = false,
-         .row = updated.toJson()});
+  if (const auto* sink = identity_change::getSink()) {
+    sink->publishCatalog({.table = TableName::User,
+                          .id = updated.id,
+                          .deleted = false,
+                          .row = updated.toJson()});
   }
   co_await recordChange({
       .actorId = input.actorId,
@@ -94,7 +104,11 @@ UserFeatureService::update(const UserManagementUpdateInput& input) const
     context.option = TableName::User;
     context.obj = updated.toJson();
     context.obj["resync"] = false;
-    socketService_.disconnectUser(updated.id, context);
+    if (const auto* control = sync_control::getSink()) {
+      const bool disconnected = control->disconnectUser(updated.id, context);
+      if (!disconnected)
+        LOG_WARN << "Identity: disconnect failed for user " << updated.id;
+    }
   }
   co_return updated;
 }
@@ -125,20 +139,26 @@ void UserFeatureService::emitAuthContextChanged(const UserSchema& user) const
   body.option = TableName::User;
   body.obj = user.toJson();
   body.obj["resync"] = true;
-  socketService_.emitUser(user.id, body);
+  if (const auto* control = sync_control::getSink()) {
+    const bool emitted = control->emitToUser(user.id, body);
+    if (!emitted)
+      LOG_WARN << "Identity: auth context emit failed for user " << user.id;
+  }
 }
 
 drogon::Task<void>
 UserFeatureService::recordChange(const UserChangeLogInput& input) const
 {
-  co_await userActionLogService_.record({
-      .userId = input.actorId,
-      .recordId = input.after.id,
-      .tableName = TableName::User,
-      .action = input.action,
-      .oldData = input.before.toJson(),
-      .newData = input.after.toJson(),
-      .ipAddress = "",
-  });
+  if (const auto* sink = identity_change::getSink()) {
+    co_await sink->publishAction({
+        .userId = input.actorId,
+        .recordId = input.after.id,
+        .tableName = TableName::User,
+        .action = input.action,
+        .oldData = input.before.toJson(),
+        .newData = input.after.toJson(),
+        .ipAddress = "",
+    });
+  }
   co_return;
 }

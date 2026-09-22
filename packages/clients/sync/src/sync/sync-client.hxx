@@ -7,6 +7,7 @@
 #include <string>
 #include <sync/socket-emit-dto.hxx>
 #include <sync/sync-change.hxx>
+#include <sync/sync-control-sink.hxx>
 
 // Where the control leg dials and the secret every call carries, named the way
 // NotificationClientConfig names its target beside its credential: the two are
@@ -25,30 +26,30 @@ struct SyncClientConfig
 // {operation, table, info} triple in its typed spelling -- the table as the
 // number, the row as JSON text -- and the service converts it back into the
 // envelope's {operation, option, info} at the far end.
-class SyncClient
+class SyncClient : public SyncControlSink
 {
 public:
   explicit SyncClient(SyncClientConfig config);
 
   SyncClient(const SyncClient&) = delete;
   SyncClient& operator=(const SyncClient&) = delete;
-  virtual ~SyncClient() = default;
+  ~SyncClient() override = default;
 
   // One actor changing role. The role *names* cross, because the caller holds
   // the enum (C3): sync builds the room-control payload from them, so no
   // caller spells the routing keys by hand. Every method answers an ack, so
   // dropping one silently is a refusal nobody reads -- hence [[nodiscard]].
-  [[nodiscard]] virtual bool
-  replaceRoleRooms(const sync_change::RoleRoomChange& change) const;
+  [[nodiscard]] bool
+  replaceRoleRooms(const sync_change::RoleRoomChange& change) const override;
 
   // Drop the user's sockets and refresh their auth context; the frame is the
   // AuthContextChanged row the socket renders, resync flag included.
-  [[nodiscard]] virtual bool disconnectUser(int64_t userId,
-                                            const SocketEmitDto& frame) const;
+  [[nodiscard]] bool disconnectUser(int64_t userId,
+                                    const SocketEmitDto& frame) const override;
 
   // Directed emit to one user's room: the same frame, one recipient.
-  [[nodiscard]] virtual bool emitToUser(int64_t userId,
-                                        const SocketEmitDto& frame) const;
+  [[nodiscard]] bool emitToUser(int64_t userId,
+                                const SocketEmitDto& frame) const override;
 
 private:
   std::shared_ptr<grpc::Channel> channel_;

@@ -264,6 +264,68 @@ services:
     pids_limit: 512
     restart: unless-stopped
 
+  # Sync engine (Phase 3a): the /sync WebSocket surface on its own TLS
+  # listener — a WebSocket upgrade cannot ride the gateway's HTTP proxy — its
+  # rooms, change fan-out and the control RPC producers call. The four audit
+  # tables are still identity's, so this is a second writer of the gateway's
+  # data dir until Phase 3c splits them into sync.db.
+  argus-sync:
+    build:
+      context: ..
+      dockerfile: services/sync/Dockerfile
+      args:
+        ARGUS_UID: "${ARGUS_UID:-1000}"
+        ARGUS_GID: "${ARGUS_GID:-1000}"
+    image: argus-sync:local
+    pull_policy: never
+    user: "${ARGUS_UID:-1000}:${ARGUS_GID:-1000}"
+    networks:
+      internal:
+        aliases:
+          - argus-sync
+    ports:
+      - "${SYNC_PORT:-7025}:7025"
+      # Loopback only: the control RPC injects frames into any user's room.
+      - "127.0.0.1:${SYNC_CONTROL_PORT:-7041}:7041"
+    entrypoint: ["/opt/argus/argus-sync"]
+    volumes:
+      - type: bind
+        source: ./config.sync.toml
+        target: /opt/argus/config.toml
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${ARGUS_CERTS_DIR:-../certs}
+        target: /opt/argus/certs
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${ARGUS_DATA_DIR:-./data}/identity
+        target: /opt/argus/database
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ../services/sync/database/schema.sql
+        target: /opt/argus/database/schema.sql
+        read_only: true
+        bind:
+          create_host_path: false
+    depends_on:
+      nats:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -kfs https://127.0.0.1:7025/health >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    mem_limit: "${ARGUS_SYNC_MEMORY_LIMIT:-1g}"
+    cpus: "${ARGUS_SYNC_CPU_LIMIT:-1.00}"
+    pids_limit: 512
+    restart: unless-stopped
+
   # Autonomous camera guard: consumes object_detected, classifies danger and
   # raises security notifications. Owns guard.db; identity and notifications
   # are reached through their SDKs (rules 23/27).

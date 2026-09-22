@@ -4,12 +4,14 @@
 #include <json/value.h>
 #include <optional>
 #include <sync/audit-log-priority.hxx>
+#include <sync/sync-change.hxx>
 #include <sync/table-name.hxx>
 #include <text/json-diff.hxx>
 #include <text/json-util.hxx>
 #include <vector>
 
-// User-scoped audit row on the productivity/notification subjects; the gateway inserts it verbatim.
+// User-scoped audit row on the productivity/notification subjects; the sync
+// service persists it before the row fans out.
 struct UserAuditEvent
 {
   int64_t recordId{0};
@@ -22,7 +24,7 @@ struct UserAuditEvent
   Json::Value toJson() const
   {
     Json::Value json;
-    json["kind"] = "audit";
+    json[sync_change::kKindField] = sync_change::kKindAudit;
     json["record_id"] = recordId;
     json["table_name"] = tableNameToString(tableName);
     json["changes"] = JsonDiff::toJson(changes);

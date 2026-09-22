@@ -17,8 +17,8 @@ class CameraSyncSource
 public:
   virtual ~CameraSyncSource() = default;
 
-  virtual bool serves(CameraSyncTable table) const = 0;
+  [[nodiscard]] virtual bool serves(CameraSyncTable table) const = 0;
 
-  virtual std::unique_ptr<Syncable>
+  [[nodiscard]] virtual std::unique_ptr<Syncable>
   sourceFor(CameraSyncTable table, const JwtContext& ctx) const = 0;
 };

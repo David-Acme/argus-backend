@@ -12,14 +12,16 @@ compiles one proto (`argus/camera/v1/sync.proto`) and one source
 (`src/camera/camera-sync-client.cc`), so the generated `SyncService` stubs
 belong to this package and no consumer reaches
 `argus.camera.v1.SyncService` without them. Three CMakeLists name it:
-`gateway-core` (`services/gateway/CMakeLists.txt:176`) and `argus-llm`
-(`services/llm/CMakeLists.txt:218`) link it, and `services/camera` lists it in
-the `camera-rpc` module's `DEPENDS` (`services/camera:174`) although no source
-of that service includes the header. All three also add the package to their
-own standalone tree by path (gateway `:121`, llm `:143`, camera `:145`). The
-two readers that really use this client are the gateway's `/sync` surface
-(`CameraSyncGateway`) and argus-llm's catalog seed (`fetchCatalogSnapshot`);
-the sync repositories themselves are argus-camera's since sub-step 3a-1b.
+`argus-llm` (`services/llm/CMakeLists.txt:218`) and the `camera-rpc` module of
+`services/camera` (`services/camera/CMakeLists.txt:162`, which links it for the
+generated stub although no source of that service includes the client header)
+link it, and `argus-sync`'s `sync-transport` module does too
+(`services/sync/src/feature/transport/CMakeLists.txt:11`) — the leg that pages
+this domain over `/sync` since sub-step 3a-1c. All three also add the package to
+their own standalone tree by path (llm `:143`, camera `:132`, sync `:116`). The
+two readers that really use this client are argus-sync's `CameraSyncGateway`
+and argus-llm's catalog seed (`fetchCatalogSnapshot`); the sync repositories
+themselves are argus-camera's since sub-step 3a-1b.
 
 ## Layout
 
@@ -28,7 +30,7 @@ the sync repositories themselves are argus-camera's since sub-step 3a-1b.
   `CameraSyncClient` with `pullTable(request, identity)` and
   `listCatalog(identity)`, both returning `std::optional`; 4 files include it —
   the two suites under `tests/unit/`,
-  `services/gateway/src/sync/camera-sync-source.hxx` and
+  `services/sync/src/feature/transport/infra/camera-sync-source.hxx` and
   `services/llm/src/main.cc`.
 - Nothing else: `find packages/clients/camera -type f` returns CMakeLists.txt,
   the two sources, the two suites and this file.
@@ -57,14 +59,15 @@ the sync repositories themselves are argus-camera's since sub-step 3a-1b.
   `constexpr` in the `.cc` and not exported. No credential and no fleet secret:
   the sync client calls `setDeadline` and `addCallerIdentity` only.
 - Config: the endpoint is runtime config, never a constant —
-  `camera.grpc_target`, read by the gateway
-  (`services/gateway/src/main.cc:235-236`, the source constructed
-  unconditionally at line 241 with no empty check measured in
-  `camera-sync-source.cc`) and by argus-llm (`services/llm/src/main.cc:64-65`,
-  the read then `if (!cameraTarget.empty())`). Three files declare it:
-  `services/gateway/config.toml:63` and `argus-deploy/config.gateway.toml:63`
-  (`127.0.0.1:7036`), and `argus-deploy/config.llm.toml:75`
-  (`argus-camera:7036`).
+  `camera.grpc_target`, read by argus-sync
+  (`services/sync/src/config/sync-config.cc:54`, resolved once into
+  `SyncUpstreams`; the source is constructed either way and an empty target
+  fails the dial, which the pull turns into the 503
+  `SyncErrors::CameraSyncUnavailable`) and by argus-llm
+  (`services/llm/src/main.cc:65`, the read then `if (!cameraTarget.empty())`).
+  Three files declare it: `services/sync/config.toml.example:49-50`,
+  `argus-deploy/config.sync.toml.example:52-53` and
+  `argus-deploy/config.llm.toml.example:86-87` (both `argus-camera:7036`).
 - The channel is plaintext: `argus::client::makeChannel` is
   `InsecureChannelCredentials`, so what protects this edge is the network, not
   this package.

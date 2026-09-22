@@ -8,13 +8,12 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
 
 PROJECTS=(
   packages/lib/cert
-  packages/socket
   packages/lib/sqlite
   packages/identity
-  packages/sync
   packages/memory
   packages/intent
   services/gateway
+  services/sync
   services/camera
   services/productivity
   services/notification

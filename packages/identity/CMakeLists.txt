@@ -76,21 +76,9 @@ if(NOT TARGET argus::lib::http)
                      ${CMAKE_BINARY_DIR}/http)
 endif()
 if(PROJECT_IS_TOP_LEVEL)
-    if(NOT TARGET argus::room)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../room
-                         ${CMAKE_BINARY_DIR}/room)
-    endif()
     if(NOT TARGET argus::lib::sqlite)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../lib/sqlite
                          ${CMAKE_BINARY_DIR}/sqlite)
-    endif()
-    if(NOT TARGET argus::socket)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../socket
-                         ${CMAKE_BINARY_DIR}/socket)
-    endif()
-    if(NOT TARGET argus::audit)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../audit
-                         ${CMAKE_BINARY_DIR}/audit)
     endif()
     if(NOT TARGET argus::lib::cert)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../lib/cert
@@ -180,6 +168,7 @@ argus_module(NAME identity
         src/feature/api/user/dtos/response-portrait-preview-capability-dto.cc
         src/feature/api/user/dtos/response-portrait-preview-image-dto.cc
         src/feature/api/user/dtos/update-user-dto.cc
+        src/feature/api/user/services/nats-identity-change-sink.cc
         src/feature/api/user/services/portrait-preview-service.cc
         src/feature/api/user/services/user-feature-service.cc
         src/shared/repositories/device-credential/device-credential-repository.cc
@@ -226,10 +215,8 @@ argus_module(NAME identity
         argus::lib::auth
         argus::clients::identity
         argus::clients::sync
-        argus::audit
         argus::lib::sqlite
         argus::lib::cert
-        argus::socket
         argus::hardware-profile-gpu
         Drogon::Drogon
         jwt-cpp::jwt-cpp
