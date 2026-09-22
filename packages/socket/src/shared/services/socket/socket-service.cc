@@ -1,9 +1,10 @@
 #include "socket-service.hxx"
 
+#include <auth/user-role.hxx>
 #include <text/json-util.hxx>
 #include <nats/nats-bus.hxx>
 #include <nats/nats-subject.hxx>
-#include "sync-change.hxx"
+#include <sync/sync-change.hxx>
 
 namespace
 {
@@ -55,7 +56,12 @@ void SocketService::emitUsers(const std::vector<int64_t>& userIds,
 void SocketService::replaceRoleRooms(const RoleRoomReplaceInput& input) const
 {
   roomManager_.replaceRoleRooms(input);
-  publishChange(sync_change::roleRoomsPayload(input));
+  // The room manager takes the enum; the wire carries the names, so the
+  // conversion is this transport's job.
+  publishChange(sync_change::roleRoomsPayload(
+      {.userId = input.userId,
+       .oldRole = userRoleToString(input.oldRole),
+       .newRole = userRoleToString(input.newRole)}));
 }
 
 void SocketService::disconnectUser(int64_t userId,

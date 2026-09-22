@@ -12,7 +12,7 @@
 #include <productivity/productivity-config.hxx>
 #include <productivity/nats-productivity-change-sink.hxx>
 #include <nats/nats-bus.hxx>
-#include <shared/contracts/user-change-sink.hxx>
+#include <sync/user-change-sink.hxx>
 #include <config/config-service.hxx>
 #include <sqlite/db-service.hxx>
 #include <unistd.h>

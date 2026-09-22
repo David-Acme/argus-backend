@@ -5,7 +5,7 @@
 #include <feature/api/zone/dtos/create-zone-dto.hxx>
 #include <feature/api/zone/dtos/update-zone-dto.hxx>
 #include <optional>
-#include <shared/contracts/camera-change-sink.hxx>
+#include <sync/camera-change-sink.hxx>
 #include <shared/repositories/camera/camera-repository.hxx>
 #include <shared/repositories/zone/zone-repository.hxx>
 #include <shared/schemas/zone/zone-schema.hxx>

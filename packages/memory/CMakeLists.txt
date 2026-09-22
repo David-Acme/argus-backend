@@ -104,11 +104,15 @@ if(NOT TARGET cnats::nats_static)
 endif()
 
 # memory-core links the sync vocabulary (TableName, SyncOperation) and the
-# audit event contract (CameraAuditEvent), both their own packages since the
-# split: the sync contract directly, the audit event through argus::audit,
-# which reaches argus::socket for its change sink. The guards sit outside the
-# standalone branch because a consumer that adds this package as a
-# subdirectory provides the same targets and skips that branch.
+# camera audit event (CameraAuditEvent) -- both from argus::contracts::sync,
+# which is where the event contracts live since row 3a-1a moved them out of
+# argus::audit. The argus::audit link below is NOT that contract: it is kept
+# for the <nats/...> include roots catalog-replica compiles against, which
+# reach this target only through its PUBLIC chain to argus::socket and from
+# there to argus::lib::nats. Dropping it means linking argus::lib::nats here
+# first. The guards sit outside the standalone branch because a consumer that
+# adds this package as a subdirectory provides the same targets and skips that
+# branch.
 if(NOT TARGET argus::contracts::sync)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../contracts/sync
                      ${CMAKE_BINARY_DIR}/contracts/sync)

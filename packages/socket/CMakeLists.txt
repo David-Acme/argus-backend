@@ -10,9 +10,10 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-# argus_socket: the per-service WebSocket emitter (SocketService) and the
-# socket event shapes (emit DTO plus user/camera change sinks). Consumers
-# link argus::socket.
+# argus_socket: the per-service WebSocket emitter (SocketService) and nothing
+# else. The payload vocabulary, the change sinks and the audit events moved to
+# argus::contracts::sync (row 3a-1a), so what is left is transport: the room
+# fan-out plus the argus.sync.v1.change publish. Consumers link argus::socket.
 
 include(${CMAKE_CURRENT_SOURCE_DIR}/../../cmake/argus-module.cmake)
 
@@ -51,32 +52,16 @@ endif()
 argus_module(NAME socket
     SOURCES
         src/shared/services/socket/socket-service.cc
-        src/shared/dtos/socket-emit/socket-emit-dto.cc
-        src/shared/dtos/socket-emit/socket-emit-dto.hxx
-        src/shared/contracts/user-change-sink.hxx
-        src/shared/contracts/camera-change-sink.hxx
+        src/shared/services/socket/socket-service.hxx
     INCLUDES src)
 
 target_link_libraries(argus_socket PUBLIC
     argus::room
     argus::lib::nats
     argus::contracts::sync
+    argus::contracts::auth
     argus::lib::text
     Drogon::Drogon
     nlohmann_json::nlohmann_json)
 
 target_compile_options(argus_socket PRIVATE -Wall -Wextra)
-
-# The sync-change payload shape the socket module owns.
-find_package(doctest REQUIRED)
-
-add_executable(sync-change-test tests/unit/sync-change-test.cc)
-target_link_libraries(sync-change-test PRIVATE
-    argus::socket
-    argus::lib::text
-    argus::lib::nats
-    argus::contracts::auth
-    argus::contracts::sync
-    doctest::doctest)
-target_compile_options(sync-change-test PRIVATE -Wall -Wextra)
-add_test(NAME sync-change-test COMMAND sync-change-test)

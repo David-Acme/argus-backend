@@ -12,7 +12,7 @@
 #include <server/remote-gate.hxx>
 #include <config/config-service.hxx>
 #include <shared/services/room/room-manager.hxx>
-#include <shared/services/socket/sync-change.hxx>
+#include <sync/sync-change.hxx>
 #include <sqlite/db-service.hxx>
 #include <text/json-util.hxx>
 #include <http/api-response.hxx>
@@ -322,12 +322,16 @@ TEST_CASE("fan-out parses the sync-change wire contract")
   CHECK(disconnection->user == 7);
 
   // The room-control action must round-trip the payload the legacy publishes.
+  // The wire carries the role names, so the publisher does the conversion --
+  // the same step SocketService::replaceRoleRooms performs in production.
   RoleRoomReplaceInput input;
   input.userId = 7;
   input.oldRole = UserRole::Resident;
   input.newRole = UserRole::Guest;
   const auto replacement = sync_fan_out::parseEvent(
-      sync_change::roleRoomsPayload(input));
+      sync_change::roleRoomsPayload({.userId = input.userId,
+                                     .oldRole = userRoleToString(input.oldRole),
+                                     .newRole = userRoleToString(input.newRole)}));
   REQUIRE(replacement);
   CHECK(replacement->emit.operation == SyncOperation::AuthContextChanged);
   CHECK(replacement->emit.option == TableName::User);
@@ -409,8 +413,10 @@ TEST_CASE("fan-out routing table matches the legacy SocketService mapping")
   input.userId = 42;
   input.oldRole = UserRole::Resident;
   input.newRole = UserRole::Guest;
-  const auto replacement =
-      sync_fan_out::parseEvent(sync_change::roleRoomsPayload(input));
+  const auto replacement = sync_fan_out::parseEvent(
+      sync_change::roleRoomsPayload({.userId = input.userId,
+                                     .oldRole = userRoleToString(input.oldRole),
+                                     .newRole = userRoleToString(input.newRole)}));
   REQUIRE(replacement);
   const sync_fan_out::FanOutPlan replacePlan = sync_fan_out::planEvent(*replacement);
   CHECK(replacePlan.kind == sync_fan_out::FanOutPlan::Kind::ReplaceRoleRooms);

@@ -3,9 +3,9 @@
 #include <ctime>
 #include <drogon/drogon.h>
 #include <sync/table-name.hxx>
-#include <shared/dtos/socket-emit/socket-emit-dto.hxx>
+#include <sync/socket-emit-dto.hxx>
 #include <shared/schemas/notification/notification-schema.hxx>
-#include <shared/services/socket/sync-change.hxx>
+#include <sync/sync-change.hxx>
 #include <text/json-util.hxx>
 #include <nats/nats-bus.hxx>
 #include <sync/user-change-fan-out.hxx>

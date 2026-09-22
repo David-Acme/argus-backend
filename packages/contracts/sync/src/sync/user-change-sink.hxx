@@ -1,9 +1,10 @@
 #pragma once
 
+#include <cstdint>
 #include <drogon/utils/coroutine.h>
 #include <json/value.h>
 #include <sync/table-name.hxx>
-#include <shared/dtos/socket-emit/socket-emit-dto.hxx>
+#include <sync/socket-emit-dto.hxx>
 #include <vector>
 
 // Before/after snapshots of one row plus the recipients of its user_audit_log row.

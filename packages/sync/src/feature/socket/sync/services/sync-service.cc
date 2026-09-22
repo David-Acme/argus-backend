@@ -5,7 +5,7 @@
 #include <auth/role-access.hxx>
 #include <sync/sync-operation.hxx>
 #include <auth/user-directory.hxx>
-#include <shared/dtos/socket-emit/socket-emit-dto.hxx>
+#include <sync/socket-emit-dto.hxx>
 #include <sync/sync-errors.hxx>
 
 drogon::Task<void>

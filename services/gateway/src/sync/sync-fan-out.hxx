@@ -2,7 +2,7 @@
 
 #include <json/value.h>
 #include <optional>
-#include <shared/dtos/socket-emit/socket-emit-dto.hxx>
+#include <sync/socket-emit-dto.hxx>
 #include <shared/services/room/room-manager.hxx>
 #include <auth/user-role.hxx>
 #include <vector>

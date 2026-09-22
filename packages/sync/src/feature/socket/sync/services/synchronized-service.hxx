@@ -10,7 +10,7 @@
 #include <sync/sync-filter.hxx>
 #include <sync/syncable.hxx>
 #include <sync/table-name.hxx>
-#include <shared/dtos/socket-emit/socket-emit-dto.hxx>
+#include <sync/socket-emit-dto.hxx>
 #include <shared/repositories/audit-log/audit-log-repository.hxx>
 #include <shared/repositories/event/event-repository.hxx>
 #include <shared/repositories/person/person-repository.hxx>

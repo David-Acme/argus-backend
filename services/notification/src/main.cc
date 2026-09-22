@@ -15,7 +15,7 @@
 #include <nats/nats-push-intent-sink.hxx>
 #include <nats/nats-subject.hxx>
 #include <notification/notification-config.hxx>
-#include <shared/contracts/user-change-sink.hxx>
+#include <sync/user-change-sink.hxx>
 #include <config/config-service.hxx>
 #include <sqlite/db-service.hxx>
 #include <unistd.h>

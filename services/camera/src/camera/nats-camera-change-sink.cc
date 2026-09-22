@@ -1,7 +1,7 @@
 #include "nats-camera-change-sink.hxx"
 
 #include <chrono>
-#include <shared/contracts/camera-audit-event.hxx>
+#include <sync/camera-audit-event.hxx>
 #include <text/json-diff.hxx>
 #include <text/json-util.hxx>
 #include <nats/nats-bus.hxx>

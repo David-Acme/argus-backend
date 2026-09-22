@@ -1,8 +1,8 @@
 #include "nats-notification-change-sink.hxx"
 
 #include <chrono>
-#include <shared/contracts/user-audit-event.hxx>
-#include <shared/services/socket/sync-change.hxx>
+#include <sync/user-audit-event.hxx>
+#include <sync/sync-change.hxx>
 #include <text/json-diff.hxx>
 #include <text/json-util.hxx>
 #include <nats/nats-bus.hxx>

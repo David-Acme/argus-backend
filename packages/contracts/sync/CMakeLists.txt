@@ -12,6 +12,18 @@ if(NOT TARGET argus::lib::text)
                      ${CMAKE_CURRENT_BINARY_DIR}/text)
 endif()
 
+# Only the change-payload suite needs these two: it pins the role names through
+# the enum's own spelling and the subject the payloads travel on.
+if(NOT TARGET argus::contracts::auth)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../auth
+                     ${CMAKE_CURRENT_BINARY_DIR}/auth)
+endif()
+
+if(NOT TARGET argus::lib::nats)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../lib/nats
+                     ${CMAKE_CURRENT_BINARY_DIR}/nats)
+endif()
+
 if(NOT TARGET Drogon::Drogon)
     find_package(Drogon CONFIG REQUIRED)
 endif()
@@ -29,6 +41,12 @@ argus_contracts(NAME sync
         src/sync/table-name.hxx
         src/sync/role-permission.hxx
         src/sync/user-action.hxx
+        src/sync/socket-emit-dto.hxx
+        src/sync/sync-change.hxx
+        src/sync/user-change-sink.hxx
+        src/sync/camera-change-sink.hxx
+        src/sync/user-audit-event.hxx
+        src/sync/camera-audit-event.hxx
     DEPENDS
         argus::lib::errors
         argus::lib::text
@@ -55,6 +73,19 @@ target_link_libraries(sync-contract-catalog-test PRIVATE
     argus::contracts::sync doctest::doctest)
 target_compile_options(sync-contract-catalog-test PRIVATE -Wall -Wextra)
 add_test(NAME sync-contract-catalog-test COMMAND sync-contract-catalog-test)
+
+# The change-payload suite: the SocketEmitDto triple, the room-control actions
+# and the subject they travel on, moved here from packages/socket with the
+# vocabulary.
+add_executable(sync-change-test tests/unit/sync-change-test.cc)
+target_link_libraries(sync-change-test PRIVATE
+    argus::contracts::sync
+    argus::contracts::auth
+    argus::lib::text
+    argus::lib::nats
+    doctest::doctest)
+target_compile_options(sync-change-test PRIVATE -Wall -Wextra)
+add_test(NAME sync-change-test COMMAND sync-change-test)
 
 get_target_property(DOCTEST_INCLUDE_DIRS doctest::doctest
                     INTERFACE_INCLUDE_DIRECTORIES)

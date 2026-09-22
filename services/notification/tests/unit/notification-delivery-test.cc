@@ -3,7 +3,7 @@
 
 #include <drogon/drogon.h>
 #include <shared/contracts/notification-delivery-sink.hxx>
-#include <shared/contracts/user-change-sink.hxx>
+#include <sync/user-change-sink.hxx>
 #include <shared/services/notification/notification-service.hxx>
 #include <sqlite/db-service.hxx>
 

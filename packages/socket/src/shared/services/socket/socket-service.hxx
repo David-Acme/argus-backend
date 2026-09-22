@@ -3,7 +3,7 @@
 #include <cstdint>
 #include <memory>
 #include <sync/table-name.hxx>
-#include <shared/dtos/socket-emit/socket-emit-dto.hxx>
+#include <sync/socket-emit-dto.hxx>
 #include <shared/services/room/room-manager.hxx>
 #include <vector>
 

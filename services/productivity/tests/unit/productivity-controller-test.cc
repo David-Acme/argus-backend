@@ -16,7 +16,7 @@
 #include <feature/rpc/identity-rpc.hxx>
 #include <auth/jwt-filter.hxx>
 #include <grpcpp/grpcpp.h>
-#include <shared/contracts/user-change-sink.hxx>
+#include <sync/user-change-sink.hxx>
 #include <config/config-service.hxx>
 #include <sqlite/db-service.hxx>
 #include <text/json-util.hxx>

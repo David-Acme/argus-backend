@@ -1,7 +1,7 @@
 #include "catalog-replica.hxx"
 
 #include <drogon/drogon.h>
-#include <shared/contracts/camera-audit-event.hxx>
+#include <sync/camera-audit-event.hxx>
 #include <sync/sync-operation.hxx>
 #include <shared/services/memory/entity-resolver.hxx>
 #include <text/json-util.hxx>

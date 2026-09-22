@@ -7,12 +7,12 @@
 #include <feature/socket/sync/dtos/synchronized-dto.hxx>
 #include <feature/socket/sync/services/synchronized-service.hxx>
 #include <auth/jwt-filter.hxx>
-#include <shared/contracts/camera-audit-event.hxx>
+#include <sync/camera-audit-event.hxx>
 #include <shared/contracts/notification-sync-source.hxx>
 #include <shared/contracts/productivity-sync-source.hxx>
 #include <sync/sync-operation.hxx>
 #include <sync/table-name.hxx>
-#include <shared/contracts/user-audit-event.hxx>
+#include <sync/user-audit-event.hxx>
 #include <shared/repositories/audit-log/audit-log-repository.hxx>
 #include <shared/repositories/camera/camera-repository.hxx>
 #include <shared/repositories/user-audit-log/user-audit-log-repository.hxx>

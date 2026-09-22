@@ -1,24 +1,31 @@
 # argus_contracts_sync
 
 The sync boundary's frozen wire values: the message types, the table names, the
-two audit enums, the filter that pages them and the six refusals.
+two audit enums, the filter that pages them, the six refusals, and the
+change-payload vocabulary the producers and the transport share.
 
 ## What this is
 
 A CONTRACT, not a service and not a library, and the largest fan-in of the ten:
-13 CMakeLists link `argus::contracts::sync`. Most of it is headers only, but
-this is the one contract whose headers are not free of dependencies —
-`syncable.hxx` declares virtuals returning `drogon::Task` and `Json::Value`,
-which is why the package depends on Drogon. `sync-errors.hxx` is what pulls in
-`lib/errors`. The declaration also carries `lib/text`, which no header here
-includes: a pre-existing transitive link edge, left in place because consumers
-may be reaching `text` through it, and flagged in the step's report. The
-include root is `src/`, so a consumer writes `<sync/sync-operation.hxx>`.
+14 CMakeLists name `argus::contracts::sync` — 13 consumers plus this package's
+own test links. Most of it is headers only, but this is the one contract whose
+headers are not free of dependencies — `syncable.hxx` declares virtuals
+returning `drogon::Task` and `Json::Value`, and the two change sinks add
+`publishAudit` returning `drogon::Task<void>`, which is why the package depends
+on Drogon. `sync-errors.hxx` is what pulls in `lib/errors`. The declaration
+also carries `lib/text`, and since sub-step 3a-1a1 that edge is no longer
+transitive only: `sync-change-test` includes `<text/json-util.hxx>` and the two
+audit-event headers include `<text/json-diff.hxx>`. The include root is `src/`,
+so a consumer writes `<sync/sync-operation.hxx>`.
 
 The consumers are the sync engine (`packages/sync`), the audit package, the
 identity, memory, room, socket and `lib/auth` packages, `clients/llm`, and the
 camera, gateway, llm, notification and productivity services. A table named
-here is a table some repository syncs.
+here is a table some repository syncs. The change vocabulary's consumers are the
+producers that hold a sink — camera, productivity and notification — the
+identity and memory packages, and the gateway's fan-out that reads the payloads
+back; sub-step 3a-1a1 moved it here out of `packages/socket`, which keeps only
+its transport.
 
 ## Layout
 
@@ -56,6 +63,32 @@ here is a table some repository syncs.
 - `src/sync/sync-errors.hxx` — the six refusals: `UserAccountDisabled` 401,
   `MissingMessageType` and `UnknownMessageType` 400, and the three
   `*SyncUnavailable` answers at 503; 3 files.
+- `src/sync/socket-emit-dto.hxx` — `SocketEmitDto`, the triple the transport
+  sends: the `SyncOperation`, the `TableName` it is scoped to, and the row as
+  `Json`, with the `toJson()` that was a `.cc` in `packages/socket` until
+  sub-step 3a-1a1. It is inline here because a contract is an interface target
+  and compiles no source of its own; 11 files include it.
+- `src/sync/sync-change.hxx` — the `argus.<domain>.v1.change` payload contract:
+  the eight frozen routing keys (`users`, `action`, `emit`, `disconnect`,
+  `replace_role_rooms`, `user`, `old_role`, `new_role`) and the four builders
+  `emitPayload`, `userEmitPayload`, `disconnectPayload` and `roleRoomsPayload`
+  over `RoleRoomChange`, which carries the role *names* because the two role
+  keys travel as strings; 8 files.
+- `src/sync/user-change-sink.hxx` — `UserChangeSink` (`emitUser`, `emitUsers`,
+  `publishAudit`) with `UserAuditInput`, plus the two process-wide slots the
+  services fill at boot: `user_change::productivitySink` and
+  `user_change::notificationSink`; 14 files, the third-most-included header
+  here.
+- `src/sync/camera-change-sink.hxx` — the camera domain's pair: `CameraChangeSink`
+  (`emitModule`, `publishAudit`), `CameraAuditInput`, and the single
+  `camera_change` slot `argus-camera` installs; 3 files.
+- `src/sync/user-audit-event.hxx` — `UserAuditEvent`, the row a user-scoped
+  producer puts on the wire: record id, table, the `ChangesDiff`, the priority,
+  the recipients and the timestamp, with `toJson`/`fromJson` over the
+  `kind: "audit"` envelope; 4 files.
+- `src/sync/camera-audit-event.hxx` — the same shape for the camera domain,
+  carrying one optional `create_user_id` where the user-scoped event carries a
+  recipient list; 4 files.
 
 ## Rules
 
@@ -73,6 +106,10 @@ here is a table some repository syncs.
   `contracts/camera` and `contracts/productivity` use in one header each; the
   errors vocabulary's exhaustive-switch rule is the stricter convention, and
   the three files are flagged rather than fixed.
+- The change feed's keys are app-visible vocabulary like the spellings above:
+  the transport switches on `emit`/`disconnect`/`replace_role_rooms` and reads
+  `users`, `user`, `old_role` and `new_role` off the payload, so the eight
+  constants are declared once here and no producer spells one by hand.
 - No `.proto` lives here. The wire schema is
   `argus/sync/v1/contracts.proto` under `packages/contracts/proto/`, and no
   CMakeLists compiles it today: the sync-capable clients each build their own
@@ -88,3 +125,9 @@ here is a table some repository syncs.
   the documented fallbacks.
 - `tests/unit/sync-contract-catalog-test.cc` — the six refusals as a pinned
   table, each entry's wire legality, and that no two say the same thing.
+- `tests/unit/sync-change-test.cc` — the change vocabulary, moved here from
+  `packages/socket` with sub-step 3a-1a1: the emit triple's three keys and the
+  absence of routing metadata on the module-wide form, the user-scoped variant
+  with and without recipients, the two control actions on their frames, the
+  round trip back to a `SocketEmitDto`, and the `argus.*.v1.change` subject the
+  payloads travel on. 5 cases, 25 assertions.

@@ -9,7 +9,7 @@
 #include <shared/repositories/project-member/project-member-repository.hxx>
 #include <shared/repositories/project/project-repository.hxx>
 #include <shared/schemas/project-task/project-task-schema.hxx>
-#include <shared/contracts/user-change-sink.hxx>
+#include <sync/user-change-sink.hxx>
 
 class ProjectTaskFeatureService
 {

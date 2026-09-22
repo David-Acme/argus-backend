@@ -2,7 +2,7 @@
 
 #include <drogon/utils/coroutine.h>
 #include <memory>
-#include <shared/contracts/camera-change-sink.hxx>
+#include <sync/camera-change-sink.hxx>
 
 class NatsBus;
 

@@ -1,7 +1,8 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
 
-#include <shared/services/socket/sync-change.hxx>
+#include <sync/sync-change.hxx>
+#include <auth/user-role.hxx>
 #include <text/json-util.hxx>
 #include <nats/nats-subject.hxx>
 
@@ -55,11 +56,12 @@ TEST_CASE("disconnect and role-room payloads carry the room-control action")
   CHECK(disconnect["operation"] == 7);
   CHECK(disconnect["user"] == 42);
 
-  RoleRoomReplaceInput input;
-  input.userId = 42;
-  input.oldRole = UserRole::Resident;
-  input.newRole = UserRole::Guest;
-  const Json::Value roleRooms = sync_change::roleRoomsPayload(input);
+  // The wire carries the role *names*, so the enum-to-name step belongs to the
+  // caller -- which is where the transport keeps it as well.
+  const Json::Value roleRooms = sync_change::roleRoomsPayload(
+      {.userId = 42,
+       .oldRole = userRoleToString(UserRole::Resident),
+       .newRole = userRoleToString(UserRole::Guest)});
   CHECK(roleRooms["action"] == "replace_role_rooms");
   CHECK(roleRooms["operation"] == 7);
   CHECK(roleRooms["option"] == "user");

@@ -10,7 +10,7 @@
 #include <cert/cert-service.hxx>
 #include <config/config-service.hxx>
 #include <sync/sync-operation.hxx>
-#include <shared/dtos/socket-emit/socket-emit-dto.hxx>
+#include <sync/socket-emit-dto.hxx>
 
 namespace
 {

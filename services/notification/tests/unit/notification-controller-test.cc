@@ -10,7 +10,7 @@
 #include <feature/api/notification/dtos/register-notification-token-dto.hxx>
 #include <auth/device-filter.hxx>
 #include <auth/jwt-filter.hxx>
-#include <shared/contracts/user-change-sink.hxx>
+#include <sync/user-change-sink.hxx>
 #include <shared/repositories/notification-token/notification-token-repository.hxx>
 #include <text/json-util.hxx>
 #include <validation/validator.hxx>

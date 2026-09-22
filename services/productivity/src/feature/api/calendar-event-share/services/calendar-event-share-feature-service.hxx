@@ -8,7 +8,7 @@
 #include <shared/repositories/calendar-event-share/calendar-event-share-repository.hxx>
 #include <shared/repositories/calendar-event/calendar-event-repository.hxx>
 #include <shared/schemas/calendar-event-share/calendar-event-share-schema.hxx>
-#include <shared/contracts/user-change-sink.hxx>
+#include <sync/user-change-sink.hxx>
 #include <auth/user-directory-identity.hxx>
 #include <productivity/membership-error.hxx>
 

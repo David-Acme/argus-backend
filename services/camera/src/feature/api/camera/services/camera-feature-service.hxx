@@ -5,7 +5,7 @@
 #include <feature/api/camera/dtos/create-camera-dto.hxx>
 #include <feature/api/camera/dtos/update-camera-dto.hxx>
 #include <optional>
-#include <shared/contracts/camera-change-sink.hxx>
+#include <sync/camera-change-sink.hxx>
 #include <shared/repositories/camera/camera-repository.hxx>
 #include <shared/schemas/camera/camera-schema.hxx>
 

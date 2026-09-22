@@ -1,10 +1,11 @@
 #pragma once
 
+#include <cstdint>
 #include <drogon/utils/coroutine.h>
 #include <json/value.h>
 #include <optional>
 #include <sync/table-name.hxx>
-#include <shared/dtos/socket-emit/socket-emit-dto.hxx>
+#include <sync/socket-emit-dto.hxx>
 
 // Before/after snapshots of one camera or zone row; the sink diffs them.
 struct CameraAuditInput

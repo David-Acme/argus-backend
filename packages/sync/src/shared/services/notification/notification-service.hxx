@@ -4,7 +4,7 @@
 #include <shared/contracts/notification-delivery-sink.hxx>
 #include <nats/push-intent-sink.hxx>
 #include <shared/repositories/notification/notification-repository.hxx>
-#include <shared/contracts/user-change-sink.hxx>
+#include <sync/user-change-sink.hxx>
 #include <memory>
 #include <vector>
 

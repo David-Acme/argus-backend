@@ -3,7 +3,7 @@
 #include <drogon/drogon.h>
 #include <sync/sync-operation.hxx>
 #include <sync/table-name.hxx>
-#include <shared/contracts/user-audit-event.hxx>
+#include <sync/user-audit-event.hxx>
 #include <shared/services/user-audit-log/user-audit-log-service.hxx>
 #include <sync/sync-fan-out.hxx>
 #include <trantor/utils/Logger.h>

@@ -3,7 +3,7 @@
 #include <drogon/drogon.h>
 #include <sync/sync-operation.hxx>
 #include <shared/services/room/room-manager.hxx>
-#include <shared/services/socket/sync-change.hxx>
+#include <sync/sync-change.hxx>
 #include <text/json-util.hxx>
 #include <nats/nats-subject.hxx>
 #include <trantor/utils/Logger.h>

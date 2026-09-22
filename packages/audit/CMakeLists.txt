@@ -46,8 +46,6 @@ argus_module(NAME audit
         src/shared/services/sync-audit/sync-audit-service.cc
         src/shared/services/user-action-log/user-action-log-service.cc
         src/shared/services/user-audit-log/user-audit-log-service.cc
-        src/shared/contracts/camera-audit-event.hxx
-        src/shared/contracts/user-audit-event.hxx
     INCLUDES src
     DEPENDS
         argus::contracts::sync)

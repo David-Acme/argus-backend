@@ -7,9 +7,9 @@
 #include <optional>
 #include <sync/sync-operation.hxx>
 #include <sync/table-name.hxx>
-#include <shared/dtos/socket-emit/socket-emit-dto.hxx>
+#include <sync/socket-emit-dto.hxx>
 #include <shared/services/face/face-service.hxx>
-#include <shared/services/socket/sync-change.hxx>
+#include <sync/sync-change.hxx>
 #include <text/json-util.hxx>
 #include <shared/vocabulary/person-status.hxx>
 #include <runtime/blocking-task.hxx>

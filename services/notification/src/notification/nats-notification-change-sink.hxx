@@ -2,7 +2,7 @@
 
 #include <drogon/utils/coroutine.h>
 #include <memory>
-#include <shared/contracts/user-change-sink.hxx>
+#include <sync/user-change-sink.hxx>
 
 class NatsBus;
 
