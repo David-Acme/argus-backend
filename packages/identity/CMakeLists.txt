@@ -125,6 +125,16 @@ if(NOT TARGET argus::clients::identity)
                      ${CMAKE_BINARY_DIR}/clients/identity EXCLUDE_FROM_ALL)
 endif()
 
+# The control leg's client (D8, row 3a-1 sub-step a2). Identity holds the four
+# imperative call sites measured in this package, three of them carrying a
+# frame, and they move onto it in sub-step c, when services/sync exists to
+# answer them. Until then this add is what keeps the client's suite in the gate:
+# a client no project pulls in has no CTestTestfile to register in.
+if(NOT TARGET argus::clients::sync)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../clients/sync
+                     ${CMAKE_BINARY_DIR}/clients/sync EXCLUDE_FROM_ALL)
+endif()
+
 if(NOT TARGET argus::contracts::identity)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../contracts/identity
                      ${CMAKE_BINARY_DIR}/contracts/identity)
@@ -215,6 +225,7 @@ argus_module(NAME identity
         argus::contracts::voice
         argus::lib::auth
         argus::clients::identity
+        argus::clients::sync
         argus::audit
         argus::lib::sqlite
         argus::lib::cert

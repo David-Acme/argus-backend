@@ -7,25 +7,26 @@ change-payload vocabulary the producers and the transport share.
 ## What this is
 
 A CONTRACT, not a service and not a library, and the largest fan-in of the ten:
-14 CMakeLists name `argus::contracts::sync` — 13 consumers plus this package's
-own test links. Most of it is headers only, but this is the one contract whose
-headers are not free of dependencies — `syncable.hxx` declares virtuals
-returning `drogon::Task` and `Json::Value`, and the two change sinks add
-`publishAudit` returning `drogon::Task<void>`, which is why the package depends
-on Drogon. `sync-errors.hxx` is what pulls in `lib/errors`. The declaration
-also carries `lib/text`, and since sub-step 3a-1a1 that edge is no longer
-transitive only: `sync-change-test` includes `<text/json-util.hxx>` and the two
-audit-event headers include `<text/json-diff.hxx>`. The include root is `src/`,
-so a consumer writes `<sync/sync-operation.hxx>`.
+15 CMakeLists name `argus::contracts::sync` — 14 consumers plus this package's
+own test links (the newest is `packages/clients/sync`, which links it as the
+home of the frame its control leg carries). Most of it is headers only, but this
+is the one contract whose headers are not free of dependencies — `syncable.hxx`
+declares virtuals returning `drogon::Task` and `Json::Value`, and the two change
+sinks add `publishAudit` returning `drogon::Task<void>`, which is why the package
+depends on Drogon. `sync-errors.hxx` is what pulls in `lib/errors`. The
+declaration also carries `lib/text`, and since sub-step 3a-1a1 that edge is no
+longer transitive only: `sync-change-test` includes `<text/json-util.hxx>` and
+the two audit-event headers include `<text/json-diff.hxx>`. The include root is
+`src/`, so a consumer writes `<sync/sync-operation.hxx>`.
 
 The consumers are the sync engine (`packages/sync`), the audit package, the
-identity, memory, room, socket and `lib/auth` packages, `clients/llm`, and the
-camera, gateway, llm, notification and productivity services. A table named
-here is a table some repository syncs. The change vocabulary's consumers are the
-producers that hold a sink — camera, productivity and notification — the
-identity and memory packages, and the gateway's fan-out that reads the payloads
-back; sub-step 3a-1a1 moved it here out of `packages/socket`, which keeps only
-its transport.
+identity, memory, room, socket and `lib/auth` packages, `clients/llm` and
+`clients/sync`, and the camera, gateway, llm, notification and productivity
+services. A table named here is a table some repository syncs. The change
+vocabulary's consumers are the producers that hold a sink — camera, productivity
+and notification — the identity and memory packages, and the gateway's fan-out
+that reads the payloads back; sub-step 3a-1a1 moved it here out of
+`packages/socket`, which keeps only its transport.
 
 ## Layout
 
@@ -111,9 +112,13 @@ its transport.
   `users`, `user`, `old_role` and `new_role` off the payload, so the eight
   constants are declared once here and no producer spells one by hand.
 - No `.proto` lives here. The wire schema is
-  `argus/sync/v1/contracts.proto` under `packages/contracts/proto/`, and no
-  CMakeLists compiles it today: the sync-capable clients each build their own
-  domain's proto, and this one is schema with no generator.
+  `argus/sync/v1/contracts.proto` under `packages/contracts/proto/`, and it is
+  compiled by exactly one CMakeLists: `packages/clients/sync`, which lists it
+  beside its own `sync.proto` because the control schema imports it. That is
+  what makes the frozen enums and `SyncFrame` reachable as C++ at all — a
+  contract ships no generator of its own — and it is why the service that will
+  serve these calls links the client package, the way `services/camera` links
+  `clients/camera-actions` for `actions.proto`.
 - Rule 25: the folder IS the module. One `argus_contracts(NAME sync ...)` with
   an explicit source list, never `file(GLOB)`.
 

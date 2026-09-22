@@ -177,6 +177,26 @@ the list was incomplete. **Closed by sub-step a1**: `socket-service.hxx` is now 
 beside its `.cc`, and `sync-change.hxx` left the package entirely (the new
 `contracts/sync/CMakeLists.txt` lists every header it owns, `sync-change.hxx` included).
 
+**C8 — the frame does change spelling in transit, and this report said twice that it did
+not.** Both the design paragraph above and the first draft of "as executed" asserted that
+`info` stays the JSON string the WS envelope carries and that "no frame changes shape in
+transit". Measured, the two spellings differ on two of the three fields. The envelope,
+`SocketEmitDto::toJson()` (`contracts/sync/src/sync/socket-emit-dto.hxx:22-31`, emitted via
+`json_util::toString` at `socket-service.cc:33,40,52,70`), writes
+`{operation: <int>, option: <table name>, info: <object>}`; the gRPC frame
+`SyncFrame{operation, table, info}` carries the *number* where the envelope carries the
+name and the *text* where the envelope carries the object. Same triple, different
+spelling — which is exactly why the service that answers these calls rebuilds the payload
+at the far end rather than handing a `SocketEmitDto` back by assignment, and why the
+mapping's job is a conversion and not a copy. Three artefacts carried the old claim and
+were corrected in place: `argus/sync/v1/sync.proto`'s preamble, `sync-client.hxx`'s class
+comment and `sync-client.cc`'s `toFrame` comment. The service is named
+**`SyncControlService`**, not `SyncControl`: buf lint's STANDARD rules require a service
+name to end in `Service`, every one of the nineteen sibling services under
+`packages/contracts/proto/` obeys it, and the plan never spells this one — so the name
+follows the tree's convention rather than a plan silence. Roles are the one field that
+does *not* need a conversion at the far end: they already cross as names (C3).
+
 ## The sub-steps this row runs as
 
 The row covers four packages and 613 reference sites across nine units, so it runs as
@@ -188,7 +208,7 @@ new control wire with its client — so it runs as **a1** and **a2** rather than
 | Sub-step | Scope | Commit |
 |---|---|---|
 | **a1** | vocabulary → `contracts/sync`: the emit DTO, the change builders, the two sinks, the two audit events, the change suite; every consumer repointed; `packages/socket` reduced to its transport | this report |
-| **a2** | the control wire: `argus/sync/v1/sync.proto` and `packages/clients/sync` | |
+| **a2** | the control wire: `argus/sync/v1/sync.proto` and `packages/clients/sync` | `build: add the sync control wire and its client` |
 | **b** | the twelve cross-domain repositories and their schemas to their owner services; `packages/sync` sheds them | |
 | **c** | `services/sync` created (WS, rooms, fan-out, audit persistence, journal, control RPC server and client); gateway's sync surface removed; identity's audit and journal writes onto the wire; `packages/{socket,room,audit}` deleted; the gate's array 18 → 17 | |
 | **d** | `packages/sync` deleted; `memory` repointed; the doc sweep; the gate; the review | |
@@ -220,16 +240,20 @@ The wire reuses the frozen vocabulary instead of inventing a second one:
 `argus/sync/v1/sync.proto` imports `argus/sync/v1/contracts.proto` and carries
 `SyncFrame{operation, table, info}` as the frame, `string`/`int64` elsewhere, and answers
 with `ControlAck`. Role names cross as strings for the reason C3 records — the caller
-holds the enum, the wire holds the name — and `info` stays the JSON string the WS envelope
-already carries, so no frame changes shape in transit.
+holds the enum, the wire holds the name — and `info` crosses as the row's JSON text. The
+sentence that stood here claimed that spelling *was* the WS envelope's and that "no frame
+changes shape in transit": measurement refuted both halves (C8), and the frame's typed
+spelling is converted back at the far end instead.
 
 `packages/clients/sync` follows `packages/clients/identity` file for file (rule 23): the
 `argus_clients(NAME sync PROTO_ROOT … PROTO argus/sync/v1/sync.proto …)` macro, a thin
-wrapper over `argus::sync::v1::SyncControl::StubInterface` built on `lib/grpc`'s
+wrapper over `argus::sync::v1::SyncControlService::StubInterface` built on `lib/grpc`'s
 `makeChannel` + `setDeadline` + `addFleetSecret`, `virtual` methods that return `bool`
 (false when unreachable — the house spelling for an ack with no payload), and a doctest
 suite that opts back into the default build because the folder arrives through
-`EXCLUDE_FROM_ALL`.
+`EXCLUDE_FROM_ALL`. The file-for-file claim does not survive in one place — the
+constructor's parameter shape, which the tidy ratchet forced into a config struct; the
+measurement that chose it is in "as executed" below.
 
 ## Sub-step a1, as executed
 
@@ -322,7 +346,7 @@ they are legal (2 → 1, 2 → 1, 2 → 2). Three departures offset three arriva
 edges the transport itself keeps (`room`, `nats`, `contracts::sync`, `contracts::auth`,
 `lib::text`) keep `packages/socket` deferred wholesale.
 
-## The review of this sub-step
+## The review of sub-step a1
 
 An independent reviewer read the whole diff against the row and the package conventions
 (read-only, and told not to build because the gate was using the same `build/dev` trees).
@@ -360,6 +384,294 @@ describes the pre-cutover layout and stays), the socket's PUBLIC link set still 
 target its two files use, and `packages/socket` keeps `enable_testing()` so the subprojects
 it adds still register their suites.
 
+## Sub-step a2, as executed
+
+**The wire is new, and it is additive.** `argus/sync/v1/sync.proto` declares one service,
+`SyncControlService`, over four messages: the three requests and `ControlAck{ok, reason}`. It
+imports `contracts.proto` and carries `SyncFrame` for the two row-carrying calls, which is
+the whole reason the row exists in this order — a2 could not be written before a1 had put
+the frozen triple in a package the client can reach. §1.8 is satisfied by construction:
+nothing in the new file names an existing subject, frame key or enum value, and
+`contracts.proto` is not touched. Roles cross as `string` (C3's rule: the caller holds the
+enum, the wire holds the name), and `info` crosses as the row's JSON *text*, which the
+service converts back into the envelope's object at the far end (C8 — the frame's two
+spellings are recorded there rather than conflated). The reply is a message rather
+than a bare `bool` because gRPC has no other way to say it; `reason` is written by the
+server for diagnosability on the wire, and the client's surface is the bool — recorded
+below as the one piece of this leg that has no reader until c's server exists.
+
+**`packages/clients/sync` follows `clients/identity` and `clients/voice` file for file.**
+`argus_clients(NAME sync …)` with **two** protos listed, not one: the macro generates per
+file, so an imported schema has to be compiled in the same call or `SyncFrame`,
+`SyncOperation` and `TableName` are missing at compile time — and this package is now the
+**only** CMakeLists in the tree that compiles `contracts.proto` (measured:
+`/bin/grep -rn "sync/v1/contracts.proto\|sync/v1/sync.proto" --include=CMakeLists.txt`
+returns these two lines and nothing else). The surface is three `[[nodiscard]] virtual
+bool` methods, all `const`, and no local DTO: the two frame-carrying calls take the
+`SocketEmitDto` the caller already holds and the role call takes
+`sync_change::RoleRoomChange`, both from `contracts/sync`. The `.cc` holds the channel, the
+one deadline (`kCallTimeoutMs` = 5000), the fleet secret and `toFrame`, the single mapping
+this leg needs. Refusals stay local where they can be proved: a non-positive `userId` never
+opens a socket, and role names are deliberately **not** validated here — the names arrive
+from `userRoleToString`, and `userRoleFromString` is the authority on what they mean.
+
+**Two of a2's own design decisions changed while writing it, both measured.**
+
+- The design table above spells the role call `replaceRoleRooms(id, oldRole, newRole)`.
+  Written as **`replaceRoleRooms(const sync_change::RoleRoomChange&)`** instead: the struct
+  is the contract's own spelling of exactly this wire message — the one C3 created in a1 —
+  and `clients/identity` sets the house precedent that a multi-field input is a struct
+  (`UpdateUserNameInput`, `PromotePersonInput`, …), not loose arguments. The fields map 1:1
+  onto the request either way; using the frozen type keeps a second spelling of the same
+  three fields out of the tree.
+- The three methods are `[[nodiscard]]`, which the design did not say.
+  `modernize-use-nodiscard` is in `.clang-tidy`'s set and `scripts/lib/tidy-baseline.txt`
+  holds it at **790**; `check-tidy` fails on any count that rises, so three new unmarked
+  ack-returning declarations would have failed the gate by themselves. The alternative —
+  writing a raised ceiling into the baseline — is what the ratchet exists to prevent, and
+  rule 19's own reading settles it: an ack nobody reads is a refusal nobody sees.
+
+**One behaviour difference is carried by the mapping, and it is unreachable from the call
+sites that will use it.** Today the transport hands the room the text of
+`SocketEmitDto::toJson()`, whose `info` is the row object as-is; over gRPC the row is
+serialised with `json_util::toString` and parsed back at the far end. For every object row
+the two are byte-identical, but a **null** `obj` would cross as `"info": {}` where
+`toJson()` renders `"info": null`. Measured, the corner is unreachable: both identity sites
+that build a disconnect frame assign an object (`updated.toJson()` at
+`user-feature-service.cc:95`, a `Json::objectValue` with two assigned keys at
+`auth-service.cc:522-525`), and a1's `sync-change-test` pins the builders' own shapes. It is
+recorded here rather than papered over because c's server rebuilds the payload from the
+wire, and that is where the equality will finally be checkable end to end.
+
+**The suite reaches the gate through `packages/identity`, which is the only place it
+can.** A client package that no project adds is configured by nobody, so its `add_test`
+registers in no project and the gate cannot see it — and `services/sync`, the consumer that
+will serve this schema, does not exist until c. The wiring added to
+`packages/identity/CMakeLists.txt` is therefore two lines of the same shape as the block
+above them: a guarded `add_subdirectory(../clients/sync … EXCLUDE_FROM_ALL)` at `:133-136`
+and `argus::clients::sync` in the link list at `:228`. It is justified by measurement, not
+by hope — identity is the sole owner of the four imperative call sites, three of them
+carrying a frame (this report's table) — and c turns the link from a registration vehicle
+into the real dependency, while the folder's `EXCLUDE_FROM_ALL` and the suite's opt-back-in
+stay exactly as `clients/identity` has them.
+
+**Measured effects.** `packages/clients/sync` is five files (this report's `Layout` claim is
+checkable with `find`). Two CMakeLists name `argus::clients::sync` (identity's guard and
+link; its own suite). **15** CMakeLists now name `argus::contracts::sync`, up from 14, the
+addition being this client's `DEPENDS`. In the identity project, whose tree registers the
+suite first, the ledger moved **22 → 23** tests with `sync-client-test` passing in 0.03 s.
+
+**The gate measured the unit and rejected it, and the corrections below come out of that
+measurement.** `./scripts/build-all.sh dev` over the tree as first written built all 18
+projects and passed every suite — identity's ledger at 23, the suite's own cases among them —
+and then failed at `check-tidy` with exactly three risen counts:
+
+| check | with a2 | baseline | delta |
+|---|---|---|---|
+| `modernize-use-scoped-lock` | 302 | 295 | +7 |
+| `bugprone-easily-swappable-parameters` | 53 | 52 | +1 |
+| `performance-unnecessary-value-param` | 50 | 49 | +1 |
+
+Nine findings, and the totals reconcile arithmetically: 3165 reported against 3156
+baselined, the difference being exactly these nine. The seven are `std::lock_guard` in the
+new suite, which `std::scoped_lock` replaces one for one. The other two sit on
+`SyncClient`'s constructor — the `(std::string target, std::string fleetSecret = {})` shape
+copied from `IdentityClient`, which carries both findings in the baseline already and
+therefore may not be copied into a new file. Seven candidate shapes were measured with the
+gate's own check set before one was chosen:
+
+| shape | `...swappable-parameters` | `...unnecessary-value-param` |
+|---|---|---|
+| `(std::string, std::string)`, target not moved | fires | fires |
+| `(const std::string&, std::string)` | fires | silent |
+| `(std::string, std::string)`, both moved | silent | silent |
+| `(const std::string&, std::string_view)` | silent | silent |
+| `(std::string, std::string_view)` | silent | fires |
+| inline definition carrying the default argument | fires | fires |
+| `(SyncClientConfig config)` | silent | silent |
+
+Two rows corrected an inference rather than confirming it: the default argument excuses
+nothing (the sixth row is what an inline definition in the header would have been), and the
+one escape needing no type change is moving both parameters — which here would mean
+`makeChannel(std::move(target))` into a `const std::string&` that moves nothing, a cast
+telling the reader the callee consumes a string it only borrows. The chosen shape is the
+last row, and it is not an invention: `NotificationClientConfig{target, credential}` is the
+same pair of strings declared the same way, and
+`services/gateway/src/sync/notification-sync-source.cc:58-61` shows the call site it
+produces — `.target = …`, `.credential = …`, a swap that cannot be written. `SyncClient`
+therefore takes `SyncClientConfig`, with an omitted secret still meaning no secret.
+
+**The measurement after the fixes.** clang-tidy over the two new translation units reports
+three findings each — `modernize-use-nodiscard` at `socket-emit-dto.hxx:19` and
+`modernize-return-braced-init-list` at `json-util.hxx:37` and `:43` — every one of them in a
+pre-existing header whose location the baseline already counts, so the unit's own
+contribution is zero, which is what rule 19 asks of a change. `clang-format -i` was applied
+to the three sources (it had wanted different wrapping in three places) and
+`clang-format --dry-run -Werror` is clean over all five files.
+
+**The reviewer's documentation findings were folded in**, each verified before it was
+accepted: the null-`obj` caveat now stands in `packages/clients/sync/AGENTS.md`'s frame rule
+and not only here; "missing at link time" reads "at compile time"; the measured count is
+four call sites carrying three frames, in the identity comment and in the client's
+AGENTS.md; and `docs/architecture/services-and-packages.md:57` counted ten SDK clients where
+`ls packages/clients` returns eleven.
+
+## The review of sub-step a2
+
+An independent reviewer read the whole diff against the row and the package conventions: the
+wire, the client, the suite and the wiring. Its verdict was that the unit is structurally
+sound, with one finding that would have failed the gate, one design risk, three
+documentation errors and one informational note. Every one was verified against the tree
+before anything was done with it, and two of those verifications moved what this report
+believed:
+
+- **The tidy rise, which would have failed the gate.** Reproduced independently and then by
+  the gate itself — the table above is that measurement — and fixed, with the fix measured
+  rather than reasoned because both of the first two guesses about what a check excuses were
+  wrong: copying `IdentityClient`'s shape raises the ratchet, and the default argument (which
+  the header carries) excuses nothing.
+- **The generation order inside `argus_client_module` — claimed missing, measured present.**
+  The finding was that `:419-435` runs one `add_custom_command` per proto inside a `foreach`,
+  so the importer's generated files carry no edge ordering them after the imported proto's.
+  The first half is true of the macro; the conclusion is false of the build. CMake gives
+  every object of a target an order-only dependency on
+  `cmake_object_order_depends_target_<target>`, a phony that lists **all** of the target's
+  generated files. Measured in the tree this unit's gate built:
+  `packages/identity/build/dev/build.ninja:14194` is that phony for `argus_clients_sync` and
+  it names all eight generated files — both protos' `.pb.{cc,h}` and `.grpc.pb.{cc,h}` — and
+  the five object rules that follow carry it after `||`: `contracts.pb.cc.o`,
+  `contracts.grpc.pb.cc.o`, `sync.pb.cc.o`, `sync.grpc.pb.cc.o` and `sync-client.cc.o`. So
+  there is no clean-tree race to fix: every object of this library waits for both protos to
+  be generated, and the two `protoc` runs are unordered relative to each other only in a way
+  that cannot matter, because `protoc` reads the imported `.proto` from the source tree and
+  not its generated output. **Both this bullet's original claim and the Open item that
+  recorded it are withdrawn**, and the `cmake/` change the finding proposed is not made —
+  the absence it described does not exist, so patching the macro would have been a fix for
+  nothing. The repeated-regeneration attempt recorded in the superseded bullet is what a
+  finding looks like before it is read down to the ninja file it is about.
+- **The three documentation errors**, each verified before being accepted: "unchanged by
+  having travelled over gRPC" was too strong for the null-`obj` corner this report records a
+  few paragraphs above; "missing at link time" described a failure that happens at compile
+  time; and the call sites are four, three of them carrying a frame. **Fixed in place**, in
+  the package's AGENTS.md, in identity's comment and in `docs/architecture/`. The first fix
+  was a sweep and the sweep was not total: re-reading the tree for the phrase afterwards
+  found it in two places the fix had walked past — the comment above `argus_clients` in this
+  client's own `CMakeLists.txt` and the paragraph above — both corrected, so
+  `/bin/grep -rn "link time" packages/` is empty and the only remaining mentions are the
+  three quotes on this page that name the error while describing the fix.
+- **The informational note** — the client is unused by construction, the identity link is a
+  registration vehicle until c, and `ControlAck.reason` has no reader — is disclosed above
+  rather than acted on, because c is the sub-step that gives all three a consumer.
+  Re-measured rather than believed: `nm` over the **13** production executives the gate
+  builds finds zero `SyncClientConfig` symbols, and the near-misses are worth the sentence
+  because they are how the claim was almost got wrong twice — `SyncClient` as a substring
+  matches `CameraSyncClient` and `ProductivitySyncClient` (in the gateway and in llm), and
+  `replaceRoleRooms` matches the pre-existing `SocketService` and `RoomManager` methods that
+  share the name with this client's and move to `services/sync` in step c.
+
+## The second review of sub-step a2
+
+A second independent reviewer read the corrected unit — the tree as it stood after the first
+review's fixes, with the gate green. Its verdict was that the unit is sound and that **the
+suite could not fail on two of the defects it exists to prevent**, plus five smaller
+findings. Each one was reproduced or refuted against the tree before anything was changed
+with it:
+
+- **Two mutants the suite let through.** Deleting `frame.set_table(...)` from `toFrame`, and
+  deleting `*request.mutable_frame() = toFrame(frame)` from `disconnectUser`, each leave the
+  suite green. Established by reading the assertions rather than by running the mutants:
+  the only frame a case inspected was the one `emitToUser` carried, and every assertion on
+  it compared against a value the proto3 default already equals (`TableName::User` is 0 and
+  `TABLE_NAME_USER` is 0), so the table assertion held whether or not the field was ever
+  set — and no case read the `DisconnectUser` frame at all. **Fixed in the suite**, and the
+  fix was designed to fail under exactly those two mutants: the two row-carrying calls now
+  send *different* rows, the `emitToUser` leg the per-user audit row (`Log`, `UserAuditLog`
+  — operation 6, table 17) so both of its fields are non-default, the `disconnectUser` leg's
+  frame asserted separately against its own text, and the landing proof moved off the single
+  shared header map and onto per-RPC call counters, so "the calls landed" covers all three
+  calls instead of the last one. **Both mutants were then executed against the fixed suite**
+  rather than only reasoned about: dropping `set_table` fails one assertion
+  (`CHECK(0 == 17)` — the non-default table), dropping `mutable_frame()` in
+  `disconnectUser` fails two (the frame's JSON text and its `resync` flag), and the suite is
+  green again at 5 cases and 71 assertions with the mutated file's md5 identical to the hash
+  recorded before the mutation.
+- **`ControlAck` was written across threads with no lock.** The scripted service assigned
+  `ack` from the RPC's thread while the test thread read it. Benign in practice — the write
+  happens before the call is issued — and still a data race under the standard, so it was
+  removed rather than argued about: `setAck(ok, reason)` locks, `answer()` copies under that
+  same lock, and the fields it records were already guarded.
+- **The service name.** `SyncControl` breaks buf lint's STANDARD `SERVICE_SUFFIX` and would
+  have been the only one of the twenty services under `packages/contracts/proto/` not ending
+  in `Service`. Renamed to `SyncControlService` in the proto, in the client's stub type and
+  in both comments; the plan never names this service, so the tree's own convention decides
+  (C8).
+- **The frame spelling, which this report and the package's `AGENTS.md` both got wrong.**
+  C8 records the measurement and the three source artefacts it corrected; the AGENTS.md
+  paragraph that called the typed spelling "the spelling the WS envelope already uses" was
+  rewritten to state the conversion instead.
+- **`AGENTS.md` overclaimed the suite.** It said the suite pins the enum mirroring, which the
+  old assertions did not. The suite now does: a new case compares all 24 `TableName` and all
+  8 `SyncOperation` enumerators against their proto constants value for value, and pins
+  `kLastTableName`, so a renumbering on either side fails and a table added beyond the
+  mirrored set has to be listed. The same section records what the suite does **not** reach —
+  the 5000 ms deadline and the empty-secret branch of `addFleetSecret` — because a coverage
+  claim is worth only what it excludes.
+- **Three smaller corrections.** The suite's target is now guarded like the client's, so a
+  second consumer pulling this folder in cannot register the executable twice; identity's
+  comment no longer reads "Identity is its only consumer" in the present tense, since the
+  four call sites move onto the client in sub-step c and not in this one; and three citations
+  in this report were off by a line or two (`user-feature-service.cc:93` → `:95`,
+  `auth-service.cc:518-522` → `:522-525`, `packages/identity/CMakeLists.txt:133-139` →
+  `:133-136`), each re-measured here rather than corrected by arithmetic.
+
+Every one of those is a change to this unit, so the gate was run again over the corrected
+tree — the section below is that run, and the numbers it prints are the corrected suite's.
+
+## The gate of sub-step a2
+
+**The run that stands is the second one — after both review passes — and it is green, with a
+ledger identical to the first green run's, project for project.**
+`./scripts/build-all.sh dev` **exit 0** on 18/18 projects with **416** reached tests — cert 2,
+socket 13, sqlite 2, identity 23, sync 30, memory 22, intent 4, gateway 42, camera 51,
+productivity 35, notification 40, guard 50, tts 20, stt 6, vlm 7, llm 32, voice 25,
+tunnel 12 — no `***Failed` and no `Not Run`. The seven-test difference from the previous
+gate's 409 is the new suite and nothing else: `sync-client-test` registers in exactly the
+seven trees that add `packages/identity` (identity 22 → 23, sync 29 → 30, gateway 41 → 42,
+camera 50 → 51, productivity 34 → 35, notification 39 → 40, guard 49 → 50), and the other
+eleven counts are that run's line for line — `llm` included, whose own pre-existing
+`camera-sync-client-test` shares the substring without being this suite. Running the tree
+twice is what makes that checkable: `diff` over the two runs' per-project ledgers prints
+nothing. The suite was also run by hand, outside ctest:
+`packages/identity/build/dev/clients/sync/sync-client-test`
+prints **5 test cases, 71 assertions**, all passing. `check-tidy: 481 TUs, 3156 findings
+over 45 checks, baseline 3156` — the two translation units the unit adds — with no check
+risen and none below it either, so the ratchet stands where measurement put it. The run
+*before* the corrections is the one that failed at that step, which is what the table above
+records; the two runs after them differ only in the suite's own case count (4 cases and 26
+assertions → 5 and 71), because a case is not a ctest test.
+
+**The dependency checker moved by exactly the edges the unit adds, and the deferred set by
+exactly one.** Measured with the scanner itself over a `git worktree` of `HEAD` (the a1
+tree): that tree reads `54 declarations, 424 edges, 0 forbidden, 0 cycles, 0 unresolved, 107
+edges deferred to phase 3 (207 third-party mentions over 22 roots)`, this one reads `55,
+427, 0, 0, 0, 108 (208 over 22 roots)`. The three new edges are the client's two —
+`argus::contracts::sync` (3 → 2) and `argus::lib::text` (3 → 1), both legal and therefore
+classified, which is why they raise the total and not the deferred count — plus identity's
+link to `argus::clients::sync`, deferred because identity still has no tier.
+`--list-deferred` diffed between the two trees adds exactly that one triple, printed at
+`packages/identity/CMakeLists.txt:156`, and the third-party roots are unchanged.
+
+**The contract package's own pre-commit validation was run, including the file
+`git ls-files` cannot see.** `buf` is absent from this machine, so the fallback the package's
+`AGENTS.md` documents is the one that stands: `protoc --descriptor_set_out=/dev/null -I
+proto $(git ls-files 'proto/*.proto')` exits 0 over the nineteen tracked protos — and does
+**not** see the new file, because it is still untracked and the command is written for a
+tree whose protos are already staged. Run with `proto/argus/sync/v1/sync.proto` named
+explicitly it exits 0 as well, and `--include_imports` over that one file emits a descriptor
+set holding both `argus/sync/v1/contracts.proto` and `argus/sync/v1/sync.proto`, the
+`SyncControlService` service among them — so the import resolves and the new schema is validated,
+not merely imported by something that was.
+
 ## Destinations, file by file
 
 `packages/socket` (10 files): `dtos/socket-emit/socket-emit-dto.{hxx,cc}` and
@@ -382,9 +694,10 @@ notification, productivity **and `packages/memory`**, which is the one consumer 
 cannot follow them into a service).
 
 `packages/sync` (98 files): the engine, the `/sync` socket, the forwarder and the three
-page sources → `services/sync`; the twelve domain repositories and thirteen schemas →
-their owners (C1); the four identity-owned reads it serves locally (`user`,
-`user_invitation`, `person`, `event`) stay with it and keep reading through
+page sources → `services/sync`; eleven of the twelve domain repositories and twelve of the
+thirteen schemas → their owners (C1), the exception being the `event`/`person_event` pair no
+owner can be found for (measured below); the three identity-owned reads it serves locally
+(`user`, `user_invitation`, `person`) stay with it and keep reading through
 `packages/identity` — the §3.4 debt row 4 recorded as "left to 3a/3c", discharged by 3c
 when identity becomes a service and the read becomes a `clients/identity` call.
 
@@ -394,6 +707,22 @@ when identity becomes a service and the read becomes a `clients/identity` call.
   `packages/identity/database/schema.sql:219` while a **gateway** repository writes it
   (`services/gateway/src/shared/repositories/delivery-inbox/`). §3.4 gives it to
   notification; no row in Phase 3 names it.
+- Where `event` and `person_event` go, since **no owner exists for them**: neither name has
+  a `CREATE TABLE` anywhere in the tree (measured: `/bin/grep -rlE "CREATE TABLE (IF NOT
+  EXISTS )?(event|person_event)\b" --include=*.sql --include=*.cc` over the working tree
+  returns nothing outside `build/`, and `.superpowers/sdd/progress/` keeps the historical
+  diff in which the old repo-root `database/schema.sql` was deleted — the pair went with
+  it), `packages/identity/database/schema.sql` declares neither, and the census of every
+  owner's schema (`camera`, `productivity`, `notification`, `guard`, `gateway`, `identity`,
+  `memory`) finds no table either name could belong to. Both names are still frozen wire
+  vocabulary (`table-name.hxx:19-20`, pinned by the contract suite), `Event` is granted to
+  Owner in `role-access.hxx:38`, and the engine still holds `EventRepository eventRepository_`
+  at `synchronized-service.hxx:62`, preparing statements against a table that has never
+  existed. Sub-step b must therefore decide between keeping the pair with the engine (they
+  are nobody else's data) and deleting a repository whose only exercise is
+  `event-sync-empty-test.cc`; the earlier sentence in this report that grouped `event` with
+  identity's reads was wrong and is corrected above — its three reads are `user`,
+  `user_invitation` and `person`.
 - Whether the gateway's `notification-delivery-consumer` (JetStream durable
   `argus-gateway-delivery`) moves to `services/sync` with the rest of the fan-out, or to
   `services/notification`, which owns delivery. It sits under `src/sync/` and consumes a
