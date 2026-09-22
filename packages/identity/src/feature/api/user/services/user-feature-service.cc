@@ -85,10 +85,11 @@ UserFeatureService::update(const UserManagementUpdateInput& input) const
   }
 
   if (const auto* sink = identity_change::getSink()) {
-    sink->publishCatalog({.table = TableName::User,
-                          .id = updated.id,
-                          .deleted = false,
-                          .row = updated.toJson()});
+    const IdentityCatalogInput catalog{.table = TableName::User,
+                                       .id = updated.id,
+                                       .deleted = false,
+                                       .row = updated.toJson()};
+    co_await sink->publishCatalog(catalog);
   }
   co_await recordChange({
       .actorId = input.actorId,

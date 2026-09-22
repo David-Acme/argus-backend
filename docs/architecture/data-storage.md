@@ -63,6 +63,17 @@ the consuming database, so redeliveries settle without re-executing effects:
   productivity domain's producer side of the same shape, one row per
   transition — a project, task, member, calendar event or share row emit, or
   the audit diff of one — keyed and settled the same way.
+- `change_outbox` (`identity.db`, written by `packages/identity`): the identity
+  domain's producer side of the same shape, one row per transition — a
+  person/user catalog row, a row emit or the audit diff of one. It is the one
+  copy that publishes on **two** subjects (the catalog change subject and the
+  action journal), so the row carries the `subject` it goes to rather than the
+  drain inferring it from a payload that need not name its own kind — and its
+  journal rows are the variant within the variant: an action addresses
+  `identity-action:<id>`, the row's own position, because a portrait view
+  changes no row and a content-derived id would merge two views of one
+  portrait into a single audit row. Those rows leave `event_id` NULL, so
+  settlement is a status-guarded compare-and-set over the row id instead.
 - `guard_action_outbox` (`guard.db`): the guard→camera direction, keyed by the
   deterministic `commandId`. `guard_encounter_outbox` (`guard.db`) is the
   guard's own `encounter_closed` producer leg, keyed by `eventId`.

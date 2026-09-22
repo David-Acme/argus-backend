@@ -84,7 +84,7 @@ InvitationFeatureService::create(const CreateInvitationDto& body,
       .expiresAt = body.expiresAt,
       .createdBy = actorId,
   });
-  emitInvitation(invitation);
+  co_await emitInvitation(invitation);
   co_await recordInvitationAction({
       .actorId = actorId,
       .before = {},
@@ -138,7 +138,7 @@ InvitationFeatureService::revoke(int64_t invitationId, int64_t actorId) const
   co_return;
 }
 
-void InvitationFeatureService::emitInvitation(
+drogon::Task<void> InvitationFeatureService::emitInvitation(
     const UserInvitationSchema& invitation) const
 {
   SocketEmitDto body;
@@ -146,7 +146,8 @@ void InvitationFeatureService::emitInvitation(
   body.option = TableName::UserInvitation;
   body.obj = invitation.toJson();
   if (const auto* sink = identity_change::getSink())
-    sink->emitModule(TableName::UserInvitation, body);
+    co_await sink->emitModule(TableName::UserInvitation, body);
+  co_return;
 }
 
 drogon::Task<void> InvitationFeatureService::recordInvitationAction(

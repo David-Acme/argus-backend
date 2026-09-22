@@ -284,8 +284,10 @@ re-emitting it to `/sync`.
   `catalog_person` via `deleted_at`; the camera subject handles its own rows
   on `argus.camera.v1.change`).
 - `row` — the post-write snapshot; the replica upserts `user_id`, `name` and
-  `alias` for person rows. Publication failure logs a WARN and is dropped
-  (best-effort feed; the boot snapshot fill recovers the catalog).
+  `alias` for person rows. A publish the broker refuses no longer drops the
+  change: the row stays in the identity-owned `change_outbox` and is retried,
+  so this feed is best-effort only up to the enqueue, and the boot snapshot
+  fill still recovers the catalog.
 
 ## Payload of `argus.notification.v1.push_intent` (F5-5)
 

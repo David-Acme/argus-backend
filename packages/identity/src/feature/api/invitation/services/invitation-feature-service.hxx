@@ -30,7 +30,7 @@ private:
     UserAction action{UserAction::Create};
   };
 
-  void emitInvitation(const UserInvitationSchema& invitation) const;
+  drogon::Task<void> emitInvitation(const UserInvitationSchema& invitation) const;
   drogon::Task<void>
   recordInvitationAction(const InvitationActionLogInput& input) const;
 

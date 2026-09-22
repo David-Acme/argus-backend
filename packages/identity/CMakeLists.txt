@@ -141,6 +141,11 @@ if(NOT TARGET identity-migration)
                      ${CMAKE_BINARY_DIR}/identity/tools/migrate-identity)
 endif()
 
+# The identity change feed's durable outbox (3a-2e): its own module, the fifth
+# of its kind in the tree and the only one that is a variant of the other four
+# — this feed carries two subjects, so a row states its own.
+add_subdirectory(src/shared/repositories/change-outbox)
+
 argus_module(NAME identity
     SOURCES
         src/feature/api/auth/controllers/auth-controller.cc
@@ -201,6 +206,7 @@ argus_module(NAME identity
         ../../third_party
         ../../third_party/stb
     DEPENDS
+        argus::identity-change-outbox
         argus::lib::config
         argus::hardware-profile
         argus::lib::text
@@ -261,6 +267,49 @@ target_link_libraries(device-credential-test PRIVATE argus_identity
 target_compile_options(device-credential-test PRIVATE -Wall -Wextra)
 
 add_test(NAME device-credential-test COMMAND device-credential-test)
+
+# The change outbox: the transition-addressed key rules, the replay/conflict
+# dispositions and the journal leg's own-id addressing, over the real schema.
+add_executable(identity-change-outbox-test
+    tests/unit/identity-change-outbox-test.cc)
+
+set_target_properties(identity-change-outbox-test PROPERTIES
+    EXCLUDE_FROM_ALL FALSE)
+
+target_link_libraries(identity-change-outbox-test PRIVATE
+    argus::identity-change-outbox
+    doctest::doctest)
+
+target_compile_definitions(identity-change-outbox-test PRIVATE
+    ARGUS_IDENTITY_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql")
+
+target_compile_options(identity-change-outbox-test PRIVATE -Wall -Wextra)
+
+add_test(NAME identity-change-outbox-test
+         COMMAND identity-change-outbox-test)
+
+# The change sink: every catalog row, emit, audit and journal row lands in the
+# outbox, a broker-less sink leaves both subjects' rows pending instead of
+# dropping them, and over a broker the journal's two identical reads stay two
+# rows.
+add_executable(identity-change-outbox-sink-test
+    tests/unit/identity-change-outbox-sink-test.cc)
+
+set_target_properties(identity-change-outbox-sink-test PROPERTIES
+    EXCLUDE_FROM_ALL FALSE)
+
+target_link_libraries(identity-change-outbox-sink-test PRIVATE
+    argus_identity
+    doctest::doctest)
+
+target_compile_definitions(identity-change-outbox-sink-test PRIVATE
+    ARGUS_IDENTITY_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql")
+
+target_compile_options(identity-change-outbox-sink-test
+                       PRIVATE -Wall -Wextra)
+
+add_test(NAME identity-change-outbox-sink-test
+         COMMAND identity-change-outbox-sink-test)
 
 get_target_property(DOCTEST_INCLUDE_DIRS doctest::doctest
                     INTERFACE_INCLUDE_DIRECTORIES)

@@ -309,6 +309,7 @@ int main()
 
   const std::string natsUrl = ConfigService::getString("nats.url");
   std::shared_ptr<NatsBus> natsBus;
+  std::shared_ptr<NatsIdentityChangeSink> identitySink;
   CameraNotificationPolicy* fallbackPolicy = nullptr;
   if (natsUrl.empty()) {
     LOG_INFO << "NATS not configured; event bus disabled";
@@ -323,8 +324,12 @@ int main()
                        .credential = ConfigService::getString(
                            "notifications.credential")}));
     // User rows change here, so the catalog replica feed publishes from here.
-    static const NatsIdentityChangeSink identitySink(natsBus);
-    identity_change::setSink(&identitySink);
+    // Installed whether or not the first connect succeeded: identity writes
+    // every change into its own outbox first, and a sink that is never
+    // installed drops them instead of retaining them.
+    identitySink = std::make_shared<NatsIdentityChangeSink>(
+        natsBus, NatsIdentityChangeSink::Config{});
+    identity_change::setSink(identitySink.get());
     if (connected)
       LOG_INFO << "NATS event bus connected to " << natsBus->options().url;
     else
@@ -401,6 +406,7 @@ int main()
                                          &gatewayDbPath = gatewayDbPath,
                                          &gatewaySchemaPath =
                                              gatewaySchemaPath,
+                                         &identitySink,
                                          &mdnsService]() {
     DbService::installExtensions();
 
@@ -418,6 +424,9 @@ int main()
           "ALTER TABLE person ADD COLUMN status TEXT NOT NULL DEFAULT 'known'");
 
     DbService::applyPragmas();
+
+    if (identitySink)
+      identitySink->reconcile();
 
     DbService::setGatewayClient(drogon::app().getDbClient("gateway"));
     if (!DbService::runScriptFile(gatewaySchemaPath,

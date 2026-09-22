@@ -273,9 +273,11 @@ AuthService::registerUser(RegisterDto body,
     row["user_id"] = static_cast<Json::Int64>(userId);
     row["name"] = name;
     row["alias"] = "";
-    sink->publishCatalog(
-        {.table = TableName::Person, .id = personId, .deleted = false,
-         .row = row});
+    const IdentityCatalogInput catalog{.table = TableName::Person,
+                                       .id = personId,
+                                       .deleted = false,
+                                       .row = row};
+    co_await sink->publishCatalog(catalog);
   }
 
   UserSchema user;
@@ -292,7 +294,7 @@ AuthService::registerUser(RegisterDto body,
   emit.option = TableName::User;
   emit.obj = user.toJson();
   if (const auto* sink = identity_change::getSink())
-    sink->emitModule(TableName::User, emit);
+    co_await sink->emitModule(TableName::User, emit);
 
   if (invitation) {
     const auto consumedInvitation =

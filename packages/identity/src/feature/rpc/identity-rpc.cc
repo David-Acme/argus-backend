@@ -150,7 +150,7 @@ grpc::ServerUnaryReactor* IdentityRpcService::UpdateUser(
         emit.option = TableName::User;
         emit.obj = user.toJson();
         if (const auto* sink = identity_change::getSink())
-          sink->emitModule(TableName::User, emit);
+          co_await sink->emitModule(TableName::User, emit);
 
         responseWriter->mutable_user()->set_user_id(user.id);
         responseWriter->mutable_user()->set_name(user.name);
@@ -566,7 +566,7 @@ grpc::ServerUnaryReactor* IdentityRpcService::EnrollPerson(
             emit.option = TableName::Person;
             emit.obj = person.toJson();
             if (const auto* sink = identity_change::getSink())
-              sink->emitModule(TableName::Person, emit);
+              co_await sink->emitModule(TableName::Person, emit);
             LOG_INFO << "Identity RPC: enrolled person " << person.id
                      << " from camera " << cameraId;
             responseWriter->set_person_id(person.id);

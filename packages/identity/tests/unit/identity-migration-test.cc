@@ -123,9 +123,12 @@ TEST_CASE("identity schema applies cleanly to an in-memory database")
 
   const auto indexes = queryColumn(db.get(),
       "SELECT name FROM sqlite_master WHERE type = 'index' AND name LIKE "
-      "'idx_%' ORDER BY name");
+      "'idx_%' AND name NOT LIKE 'idx_change_outbox%' ORDER BY name");
   // Five fewer than the 21 this schema carried while /sync lived here: the
-  // audit tables and the delivery inbox are services/sync's schema now.
+  // audit tables and the delivery inbox are services/sync's schema now. The
+  // outbox's own drain index is excluded the way camera's and productivity's
+  // suites exclude theirs: this assertion is about the identity domain's
+  // indexes, and the outbox is a module that happens to share the file.
   CHECK(indexes.size() == 16);
 
   const auto moved = queryColumn(db.get(),

@@ -28,7 +28,10 @@ argus-identity/
   database/schema.sql     the DDL truth for every identity table
   src/feature/api/{auth,invitation,pairing,user}/   moved files, relative
   src/shared/{repositories,schemas,services}/...    paths preserved
-  tests/unit/             identity migration and device credential suites
+  src/shared/repositories/change-outbox/            the identity feed's durable
+                                                    outbox (its own module)
+  tests/unit/             identity migration, device credential, change outbox
+                          and change sink suites
   tools/migrate-identity/ identity migration CLI and library
 ```
 
@@ -56,8 +59,17 @@ monolith structure, build-by-module-name). In particular:
 
 ## Tests
 
-The two unit suites register in this package's standalone CTest graph. Test
+The four unit suites register in this package's standalone CTest graph. Test
 file naming stays hyphenated (`identity-migration-test.cc`).
+
+`identity-change-outbox-sink-test` skips its live block unless
+`ARGUS_NATS_URL` names a broker; run it with one to exercise the publish,
+the self-ensured stream and the journal's two identical reads:
+
+```bash
+ARGUS_NATS_URL=nats://127.0.0.1:4222 \
+  packages/identity/build/dev/identity-change-outbox-sink-test
+```
 
 ```bash
 # From the monorepo root

@@ -5,7 +5,8 @@
 -- tools/migrate-identity and by the service that hosts the identity surface.
 -- The sync-owned tables that share this file until Phase 3c-2 — audit_log,
 -- user_audit_log, user_action_log and notification_delivery_inbox — are
--- argus-sync's and are applied by it at boot.
+-- argus-sync's and are applied by it at boot. `change_outbox` is neither: it is
+-- this package's own (3a-2e), the identity feed's durable outbox.
 -- Structure: pragmas → table creation → indexes (grouped by table).
 -- ─────────────────────────────────────────────────────────────────────────────
 
@@ -173,6 +174,25 @@ CREATE TABLE IF NOT EXISTS portrait_preview_capability (
     created_at          INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
 );
 
+-- Durable outbox of identity-domain change events: the sink writes every
+-- catalog row, module emit, audit diff and action-journal row here and a worker
+-- publishes it, marking a row sent only after the JetStream PubAck. A variant
+-- of the shape the other producers carry: this feed has two subjects, so a row
+-- states its own, and the journal leg keys on `id` (`event_id` stays NULL)
+-- because a read changes no row for a content hash to name.
+CREATE TABLE IF NOT EXISTS change_outbox (
+    id          INTEGER NOT NULL  PRIMARY KEY AUTOINCREMENT,
+    event_id    TEXT              UNIQUE,
+    subject     TEXT    NOT NULL,
+    fingerprint TEXT    NOT NULL  DEFAULT '',
+    payload     TEXT    NOT NULL,
+    status      TEXT    NOT NULL  DEFAULT 'pending'
+                        CHECK (status IN ('pending', 'sent')),
+    attempts    INTEGER NOT NULL  DEFAULT 0,
+    created_at  INTEGER NOT NULL  DEFAULT 0,
+    sent_at     INTEGER NOT NULL  DEFAULT 0
+);
+
 -- ── Indexes ──────────────────────────────────────────────────────────────────
 
 -- face_embedding
@@ -217,3 +237,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_user_portrait_user_current
 -- portrait_preview_capability
 CREATE INDEX IF NOT EXISTS idx_portrait_preview_capability_lookup
     ON portrait_preview_capability (token_hash, expires_at, consumed_at);
+
+-- change_outbox
+CREATE INDEX IF NOT EXISTS idx_change_outbox_status
+    ON change_outbox (status, id);

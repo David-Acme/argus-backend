@@ -115,10 +115,42 @@ filter fail closed.
 ## The unit suites
 
 `identity-migration-test` (schema apply + the argus.db → identity.db row
-by row verification) and `device-credential-test` (the DeviceFilter gate,
-the credential repository, the auth-service issuance flow) register in the
-package's standalone CTest graph. No e2e suite exists yet; the folder gains
-`tests/e2e/` when the package has one.
+by row verification), `device-credential-test` (the DeviceFilter gate,
+the credential repository, the auth-service issuance flow),
+`identity-change-outbox-test` (the outbox's own key rules and
+dispositions) and `identity-change-outbox-sink-test` (every leg of the
+sink, plus the live round trip when `ARGUS_NATS_URL` names a broker)
+register in the package's standalone CTest graph. No e2e suite exists yet;
+the folder gains `tests/e2e/` when the package has one.
+
+## The change feed's durable outbox (3a-2e)
+
+This feed publishes on two subjects — the change subject the memory catalog
+replicas follow and the action subject the journal subscriber reads — where
+camera, notification and productivity each publish on one. The copied module
+therefore carries a `subject` column: a row states where it goes instead of the
+drain inferring it from a payload that does not always name its own kind (a
+journal row has no `kind` field at all).
+
+The two legs are addressed differently, and the difference is the whole reason
+the row's own `id` is what the drain publishes under. A change leg names a
+*transition*: its `event_id` is the hash of the table, the record and the
+payload, so a redelivered transition is a replay and the same record cannot be
+published twice for one move. A journal leg names an *action*: a portrait view
+changes no row, so two views of one portrait carry byte-identical payloads and a
+content-derived id would collapse them into one audit row — the kind of loss
+nobody would notice. Those rows leave `event_id` NULL and travel as
+`identity-action:<id>`, the row's own position, which the broker's duplicate
+window still protects against a redelivery without merging two distinct
+actions. Settlement is a status-guarded CAS over that same id, because a NULL
+`event_id` cannot guard anything.
+
+`identity.db` is also the one database two owners write — this package and
+`services/sync`, which applies its own four tables into the same file until
+Phase 3c-2. Both would be free to call their table `change_outbox`, and
+`CREATE TABLE IF NOT EXISTS` would silently let whoever boots second adopt the
+first one's shape; a `sync` outbox must take a different name until the files
+split.
 
 ## Camera guard surface (camera-guard phase 2)
 

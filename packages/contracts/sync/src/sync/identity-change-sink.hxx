@@ -27,9 +27,11 @@ class IdentityChangeSink
 public:
   virtual ~IdentityChangeSink() = default;
 
-  virtual void publishCatalog(const IdentityCatalogInput& input) const = 0;
+  virtual drogon::Task<void> publishCatalog(
+      const IdentityCatalogInput& input) const = 0;
 
-  virtual void emitModule(TableName table, const SocketEmitDto& body) const = 0;
+  virtual drogon::Task<void> emitModule(TableName table,
+                                        const SocketEmitDto& body) const = 0;
 
   virtual drogon::Task<void>
   publishModuleAudit(const ModuleAuditInput& input) const = 0;
