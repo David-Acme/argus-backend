@@ -27,7 +27,7 @@ CalendarEventFeatureService::emit(SyncOperation operation,
     LOG_WARN << "user change sink not installed; drop calendar event emit";
     co_return;
   }
-  sink->emitUsers(recipients, body);
+  co_await sink->emitUsers(recipients, body);
   co_return;
 }
 

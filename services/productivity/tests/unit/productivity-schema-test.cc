@@ -48,7 +48,8 @@ TEST_CASE("productivity schema applies cleanly to an in-memory database")
 
   const auto indexes = queryColumn(db.get(),
       "SELECT name FROM sqlite_master WHERE type = 'index' AND "
-      "name LIKE 'idx_%' ORDER BY name");
+      "(name LIKE 'idx_project%' OR name LIKE 'idx_calendar_event%' OR "
+      "name LIKE 'idx_reminder%') ORDER BY name");
   CHECK(indexes.size() == 13);
 }
 

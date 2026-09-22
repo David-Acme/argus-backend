@@ -105,17 +105,6 @@ int main()
            << " (plain); productivity database " << productivityDb.dbPath
            << "; gRPC SyncService on " << grpcAddress;
 
-  drogon::app().registerBeginningAdvice([&productivityDb]() {
-    if (!DbService::runScriptFile(productivityDb.schemaPath)) {
-      LOG_FATAL
-          << "Productivity database schema failed to apply — aborting startup";
-      _exit(1);
-    }
-
-    DbService::applyPragmas();
-    DbService::client()->execSqlSync("PRAGMA foreign_keys = OFF");
-  });
-
   std::shared_ptr<NatsProductivityChangeSink> changeSink;
   std::shared_ptr<NatsBus> natsBus;
   const std::string natsUrl = ConfigService::getString("nats.url");
@@ -124,17 +113,29 @@ int main()
   }
   else {
     natsBus = std::make_shared<NatsBus>();
-    if (natsBus->connect()) {
+    if (natsBus->connect())
       LOG_INFO << "NATS event bus connected to " << natsBus->options().url;
-      changeSink = std::make_shared<NatsProductivityChangeSink>(natsBus);
-      user_change::setProductivitySink(changeSink.get());
-    }
-    else {
-      natsBus.reset();
+    else
       LOG_WARN << "NATS unavailable at " << natsUrl
-               << "; productivity change funnel disabled";
-    }
+               << "; bus reconnects in background, changes retained locally";
+    changeSink = std::make_shared<NatsProductivityChangeSink>(
+        natsBus, NatsProductivityChangeSink::Config{});
+    user_change::setProductivitySink(changeSink.get());
   }
+
+  drogon::app().registerBeginningAdvice([&productivityDb, &changeSink]() {
+    if (!DbService::runScriptFile(productivityDb.schemaPath)) {
+      LOG_FATAL
+          << "Productivity database schema failed to apply — aborting startup";
+      _exit(1);
+    }
+
+    DbService::applyPragmas();
+    DbService::client()->execSqlSync("PRAGMA foreign_keys = OFF");
+
+    if (changeSink)
+      changeSink->reconcile();
+  });
 
   drogon::app()
       .setThreadNum(0)

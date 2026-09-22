@@ -47,8 +47,10 @@ own `productivity.db`.
   through the `user_change` sink, whose argus-productivity binding produces
   the exact USER-SCOPED `user_audit_log` rows the legacy would have written
   (same `changes` JSON via `JsonDiff::createFlatDiff`, same per-user
-  `userIds` expansion) and emits them over NATS (`argus.productivity.v1.change`,
-  `docs/architecture/wire-nats-subjects.md`). `argus-sync` persists them verbatim into
+  `userIds` expansion) and hands them to the durable outbox that publishes them
+  over NATS (`argus.productivity.v1.change`,
+  `docs/architecture/wire-nats-subjects.md`; the change feed is below).
+  `argus-sync` persists them verbatim into
   identity.db; nothing audit-shaped is ever written to productivity.db.
 - **Serving live traffic (F3-2, Ruling AP)**: the gateway relays
   `/calendar-event`, `/calendar-event-share`, `/project`,
@@ -90,6 +92,58 @@ own `productivity.db`.
   `productivity-core` and nothing more), no context_note table, no /sync socket
   (reads ride `argus-sync`'s `/sync` pull over this service's gRPC leg), no
   identity.db, no AI symbols (verified with `nm -C`), no alarm-triggering code.
+
+## The productivity change feed (3a-2d)
+
+- Every emit and every audit diff lands in `change_outbox` in productivity.db
+  before it is published: the row mutation commits first, the change row is
+  written after it, and a worker publishes from the table and marks a row
+  `sent` only on the JetStream PubAck. A broker outage, a crash in between or a
+  restart leaves the rows pending and they drain at the next boot; before this
+  both legs were fire-and-forget core publishes that a broker outage dropped
+  without a trace. An enqueue the shared database connection refuses is retried
+  before it is given up on: the mutation it records has already committed, and
+  no later event repairs a change that was recorded nowhere.
+- **Both legs go through the same table.** The emit leg (`emitUser`,
+  `emitUsers`) writes the `SocketEmitDto` triple plus `users` — the row event
+  the fan-out routes into the recipients' rooms — and the audit leg
+  (`publishAudit`) writes the `kind: audit` diff; the fan-out reads a missing
+  `kind` as a row event. An emit's recipients travel exactly as the feature
+  service named them, because that leg *is* the client's own row: only the
+  audit leg collapses duplicates and drops non-positive ids, which is the set
+  the legacy `publishUsers` kept.
+- **The event id names the transition, not the record.** It is the hash of the
+  table, the record id and the payload's own canonical JSON, so a redelivery
+  recomputes the same id while a record that moves again, or returns to a state
+  it already held, is its own event. An emit carries its record id under
+  `info.id`; one that carries none, or one that is not integral, has nothing to
+  be keyed by and is logged and dropped rather than recorded under a wrong
+  name.
+- **The change leg owns its own stream.** `publishWithMsgId` is a JetStream
+  publish with no core-NATS fallback, and nothing else in the tree captures
+  `argus.productivity.v1.change` — no other service ensures a stream over it —
+  so the subject is retained on `ARGUS_PRODUCTIVITY_CHANGE`, created
+  self-healing by the drain: an ensure that fails is retried on the next tick
+  instead of latching, and a publish the broker refuses clears the latch,
+  because a stream that disappears under a running process looks exactly like
+  that. `argus-sync` and the memory catalog replica read the subject over core
+  NATS, so the stream exists for the PubAck. The name lives in the sink's own
+  `Config`, not in `lib/nats`: nothing outside this service names it.
+- **The emits became `[[nodiscard]] drogon::Task<void>`.** Routing an emit
+  through the outbox makes it awaitable and rule 21 keeps blocking IO off the
+  event loop, so the contract's two emits return a `Task` like `publishAudit`
+  already did; the `emitMembership` helper of the project-member and
+  calendar-event-share services became a coroutine with them.
+- **Installed whenever NATS is configured**, not only when the first connect
+  succeeds: the outbox is what makes a broker that is down survivable, so the
+  sink is bound at boot and its drain reconciles once the schema is applied.
+- **One pass drains a batch.** A create-with-share is one burst of changes, so
+  the drain reads up to 64 pending rows per pass, publishes them oldest-first
+  and waits 50 ms while it is progressing, the retry cadence otherwise. A
+  refused publish still stops the pass at the oldest pending row, so nothing
+  behind it is overtaken; a row the broker stored but the service could not
+  mark `sent` also stays at the head rather than being republished on every
+  tick.
 
 ## Build wiring (decisions)
 

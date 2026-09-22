@@ -33,10 +33,12 @@ public:
 class UserChangeSink : public AuditSink
 {
 public:
-  virtual void emitUser(int64_t userId, const SocketEmitDto& body) const = 0;
+  [[nodiscard]] virtual drogon::Task<void>
+  emitUser(int64_t userId, const SocketEmitDto& body) const = 0;
 
-  virtual void emitUsers(const std::vector<int64_t>& userIds,
-                         const SocketEmitDto& body) const = 0;
+  [[nodiscard]] virtual drogon::Task<void>
+  emitUsers(const std::vector<int64_t>& userIds,
+            const SocketEmitDto& body) const = 0;
 };
 
 namespace user_change

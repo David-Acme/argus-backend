@@ -50,7 +50,7 @@ private:
   };
 
   // Emits the membership row to both sides and the parent record to the member.
-  void emitMembership(const EmitMembershipInput& input) const;
+  drogon::Task<void> emitMembership(const EmitMembershipInput& input) const;
   drogon::Task<void> emitParent(const EmitParentInput& input) const;
 
   ProjectMemberRepository repository_;

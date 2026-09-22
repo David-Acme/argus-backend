@@ -59,6 +59,10 @@ the consuming database, so redeliveries settle without re-executing effects:
   mark-as-read transition, keyed the same way and settled the same way. The
   table carries the same name in every producer's database on purpose: it is
   the same thing in each, and an operator should find it under one name.
+- `change_outbox` (`productivity.db`, written by `argus-productivity`): the
+  productivity domain's producer side of the same shape, one row per
+  transition — a project, task, member, calendar event or share row emit, or
+  the audit diff of one — keyed and settled the same way.
 - `guard_action_outbox` (`guard.db`): the guard→camera direction, keyed by the
   deterministic `commandId`. `guard_encounter_outbox` (`guard.db`) is the
   guard's own `encounter_closed` producer leg, keyed by `eventId`.

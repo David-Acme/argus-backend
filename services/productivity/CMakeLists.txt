@@ -116,6 +116,8 @@ endif()
 # This service owns the productivity tables' row code since sub-step 3a-1b: the
 # repositories, their schemas and the NATS change sink compile here, and the
 # sync RPC owner reads the same definitions through this library.
+add_subdirectory(src/shared/repositories/change-outbox)
+
 add_library(productivity-core STATIC
     ${PRODUCTIVITY_SRC_ROOT}/productivity/nats-productivity-change-sink.cc
     ${PRODUCTIVITY_SRC_ROOT}/productivity/productivity-config.cc
@@ -144,6 +146,7 @@ target_link_libraries(productivity-core PUBLIC
     argus::lib::nats
     argus::lib::text
     argus::lib::sqlite
+    argus::productivity-change-outbox
     ${ARGUS_SQLITE_VEC_TARGET})
 
 target_compile_options(productivity-core PRIVATE -Wall -Wextra)
@@ -226,6 +229,48 @@ foreach(TEST_NAME IN ITEMS productivity-schema-test productivity-migration-test)
     target_compile_options(${TEST_NAME} PRIVATE -Wall -Wextra)
     add_test(NAME ${TEST_NAME} COMMAND ${TEST_NAME})
 endforeach()
+
+# The change outbox: the transition-addressed key rules and the replay/conflict
+# dispositions over the real schema.
+add_executable(productivity-change-outbox-test
+    tests/unit/productivity-change-outbox-test.cc)
+
+set_target_properties(productivity-change-outbox-test PROPERTIES
+    EXCLUDE_FROM_ALL FALSE)
+
+target_link_libraries(productivity-change-outbox-test PRIVATE
+    argus::productivity-change-outbox
+    doctest::doctest)
+
+target_compile_definitions(productivity-change-outbox-test PRIVATE
+    ARGUS_PRODUCTIVITY_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql")
+
+target_compile_options(productivity-change-outbox-test PRIVATE -Wall -Wextra)
+
+add_test(NAME productivity-change-outbox-test
+         COMMAND productivity-change-outbox-test)
+
+# The change sink: every emit and audit lands in the outbox, and a broker-less
+# sink leaves the row pending instead of dropping it.
+add_executable(productivity-change-outbox-sink-test
+    tests/unit/productivity-change-outbox-sink-test.cc)
+
+set_target_properties(productivity-change-outbox-sink-test PROPERTIES
+    EXCLUDE_FROM_ALL FALSE)
+
+target_link_libraries(productivity-change-outbox-sink-test PRIVATE
+    productivity-core
+    argus::lib::nats
+    doctest::doctest)
+
+target_compile_definitions(productivity-change-outbox-sink-test PRIVATE
+    ARGUS_PRODUCTIVITY_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql")
+
+target_compile_options(productivity-change-outbox-sink-test
+                       PRIVATE -Wall -Wextra)
+
+add_test(NAME productivity-change-outbox-sink-test
+         COMMAND productivity-change-outbox-sink-test)
 
 # The controller suite compiles the same write-side feature sources the
 # service compiles and rides productivity-core for the repositories, schemas

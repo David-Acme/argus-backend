@@ -221,20 +221,26 @@ struct RecordedAudit
 class RecordingSink final : public UserChangeSink
 {
 public:
-  void emitUser(int64_t userId, const SocketEmitDto& body) const override
+  [[nodiscard]] drogon::Task<void>
+  emitUser(int64_t userId, const SocketEmitDto& body) const override
   {
-    emitUsers({userId}, body);
+    const std::vector<int64_t> recipients{userId};
+    co_await emitUsers(recipients, body);
+    co_return;
   }
 
-  void emitUsers(const std::vector<int64_t>& userIds,
-                 const SocketEmitDto& body) const override
+  [[nodiscard]] drogon::Task<void>
+  emitUsers(const std::vector<int64_t>& userIds,
+            const SocketEmitDto& body) const override
   {
     std::lock_guard lock(mutex_);
     emits.push_back({static_cast<int>(body.operation),
                      tableNameToString(body.option), body.obj, userIds});
+    co_return;
   }
 
-  drogon::Task<void> publishAudit(const UserAuditInput& input) const override
+  [[nodiscard]] drogon::Task<void>
+  publishAudit(const UserAuditInput& input) const override
   {
     std::lock_guard lock(mutex_);
     audits.push_back({input.recordId, tableNameToString(input.tableName),

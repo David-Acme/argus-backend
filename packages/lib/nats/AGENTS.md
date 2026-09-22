@@ -40,10 +40,15 @@ not in that document is a subject nobody consumes.
   literal for a subject is the duplication that breaks the stream the first
   time the two copies disagree, and it hides the subject from the wire
   document.
-- The bus is fire-and-forget by design: a publish that fails logs and returns
-  false, it never throws into the caller's request path. A caller that must
-  know the message landed asks for a reply subject, it does not read the
-  publish result as an acknowledgement.
+- A core publish is fire-and-forget by design: a publish that fails logs and
+  returns false, it never throws into the caller's request path. A caller that
+  must know the message landed asks for a reply subject, it does not read a
+  core publish result as an acknowledgement.
+- `publishWithMsgId` is the JetStream publish and is the opposite: it waits for
+  the broker's PubAck and never degrades to core NATS, so its false means the
+  broker did not store the message and the caller must retain and retry it. The
+  durable outboxes settle a row on exactly that return value — there the publish
+  result IS the acknowledgement.
 - Handlers must not block: a subscription that needs to do real work hands it
   to `BlockingTask` (argus-runtime) rather than doing it on the cnats thread.
 

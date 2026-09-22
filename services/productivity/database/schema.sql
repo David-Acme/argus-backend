@@ -3,6 +3,7 @@
 -- The 7 productivity tables plus their 13 indexes, copied verbatim from
 -- database/schema.sql (source of truth): reminder, project, project_task,
 -- calendar_event, project_member, calendar_event_share, reminder_detail.
+-- change_outbox is this service's own (3a-2d), not a copy of anything.
 -- context_note is NOT recreated here (Ruling AK): the frozen argus.db copy
 -- was an orphan and was dropped from database/schema.sql in F6-1. Applied by
 -- tools/migrate-productivity and by argus-productivity at boot. argus.db is
@@ -154,3 +155,21 @@ CREATE TABLE IF NOT EXISTS reminder_detail (
 CREATE INDEX IF NOT EXISTS idx_reminder_detail_reminder  ON reminder_detail (reminder_id);
 CREATE INDEX IF NOT EXISTS idx_reminder_detail_created   ON reminder_detail (created_at);
 CREATE INDEX IF NOT EXISTS idx_reminder_detail_deleted   ON reminder_detail (deleted_at);
+
+-- Durable outbox of productivity-domain change events: the sink writes every
+-- emit and audit payload here and a worker publishes it, marking a row sent
+-- only after the JetStream PubAck. Same table, same shape in every producer's
+-- database.
+CREATE TABLE IF NOT EXISTS change_outbox (
+    event_id    TEXT    NOT NULL  PRIMARY KEY,
+    fingerprint TEXT    NOT NULL  DEFAULT '',
+    payload     TEXT    NOT NULL,
+    status      TEXT    NOT NULL  DEFAULT 'pending'
+                        CHECK (status IN ('pending', 'sent')),
+    attempts    INTEGER NOT NULL  DEFAULT 0,
+    created_at  INTEGER NOT NULL  DEFAULT 0,
+    sent_at     INTEGER NOT NULL  DEFAULT 0
+);
+
+CREATE INDEX IF NOT EXISTS idx_change_outbox_status
+    ON change_outbox (status, created_at);
