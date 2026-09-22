@@ -115,6 +115,10 @@ if(NOT TARGET argus::clients::notification)
                      ${CMAKE_BINARY_DIR}/clients/notification EXCLUDE_FROM_ALL)
 endif()
 
+# The notification domain's durable change outbox: its own module, added before
+# the targets that name it.
+add_subdirectory(src/shared/repositories/change-outbox)
+
 # This service owns the notification table's row code since sub-step 3a-1b: the
 # repository, its schema, the delivery service and the two NATS sinks compile
 # here, and the RPC owner and the suites read the same definitions through this
@@ -137,6 +141,7 @@ target_link_libraries(notification-core PUBLIC
     argus::lib::nats
     argus::lib::text
     argus::lib::sqlite
+    argus::notification-change-outbox
     ${ARGUS_SQLITE_VEC_TARGET})
 
 target_compile_options(notification-core PRIVATE -Wall -Wextra)
@@ -311,6 +316,48 @@ target_link_libraries(notification-delivery-test PRIVATE
 target_compile_options(notification-delivery-test PRIVATE -Wall -Wextra)
 
 add_test(NAME notification-delivery-test COMMAND notification-delivery-test)
+
+# The change outbox: the transition-addressed key rules and the replay/conflict
+# dispositions over the real schema.
+add_executable(notification-change-outbox-test
+    tests/unit/notification-change-outbox-test.cc)
+
+set_target_properties(notification-change-outbox-test PROPERTIES
+    EXCLUDE_FROM_ALL FALSE)
+
+target_link_libraries(notification-change-outbox-test PRIVATE
+    argus::notification-change-outbox
+    doctest::doctest)
+
+target_compile_definitions(notification-change-outbox-test PRIVATE
+    ARGUS_NOTIFICATION_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql")
+
+target_compile_options(notification-change-outbox-test PRIVATE -Wall -Wextra)
+
+add_test(NAME notification-change-outbox-test
+         COMMAND notification-change-outbox-test)
+
+# The change sink: every audit lands in the outbox, and a broker-less sink
+# leaves the row pending instead of dropping it.
+add_executable(notification-change-outbox-sink-test
+    tests/unit/notification-change-outbox-sink-test.cc)
+
+set_target_properties(notification-change-outbox-sink-test PROPERTIES
+    EXCLUDE_FROM_ALL FALSE)
+
+target_link_libraries(notification-change-outbox-sink-test PRIVATE
+    notification-core
+    argus::lib::nats
+    doctest::doctest)
+
+target_compile_definitions(notification-change-outbox-sink-test PRIVATE
+    ARGUS_NOTIFICATION_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql")
+
+target_compile_options(notification-change-outbox-sink-test
+                       PRIVATE -Wall -Wextra)
+
+add_test(NAME notification-change-outbox-sink-test
+         COMMAND notification-change-outbox-sink-test)
 
 add_executable(notification-ack-test tests/unit/notification-ack-test.cc)
 

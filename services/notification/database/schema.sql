@@ -90,3 +90,20 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_notification_delivery_notification
 CREATE INDEX IF NOT EXISTS idx_notification_delivery_status
     ON notification_delivery (status, id);
 CREATE INDEX IF NOT EXISTS idx_notification_token_user ON notification_token (user_id);
+
+-- Durable outbox of notification-domain change events: the sink writes the
+-- audit payload here and a worker publishes it, marking a row sent only after
+-- the JetStream PubAck. Same table, same shape in every producer's database.
+CREATE TABLE IF NOT EXISTS change_outbox (
+    event_id    TEXT    NOT NULL  PRIMARY KEY,
+    fingerprint TEXT    NOT NULL  DEFAULT '',
+    payload     TEXT    NOT NULL,
+    status      TEXT    NOT NULL  DEFAULT 'pending'
+                        CHECK (status IN ('pending', 'sent')),
+    attempts    INTEGER NOT NULL  DEFAULT 0,
+    created_at  INTEGER NOT NULL  DEFAULT 0,
+    sent_at     INTEGER NOT NULL  DEFAULT 0
+);
+
+CREATE INDEX IF NOT EXISTS idx_change_outbox_status
+    ON change_outbox (status, created_at);

@@ -131,7 +131,7 @@ NotificationService::markAsRead(int64_t userId,
       LOG_WARN << "user change sink not installed; drop notification audit";
     co_return;
   }
-  const UserChangeSink& sink = *user_change::getNotificationSink();
+  const AuditSink& sink = *user_change::getNotificationSink();
   for (const auto& change : changes) {
     co_await sink.publishAudit(UserAuditInput{
         .recordId = change.after.id,

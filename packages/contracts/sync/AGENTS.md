@@ -79,11 +79,13 @@ package, and argus-sync's fan-out that reads the payloads back; sub-step
   `emitPayload`, `userEmitPayload`, `disconnectPayload` and `roleRoomsPayload`
   over `RoleRoomChange`, which carries the role *names* because the two role
   keys travel as strings; 12 files.
-- `src/sync/user-change-sink.hxx` — `UserChangeSink` (`emitUser`, `emitUsers`,
-  `publishAudit`) with `UserAuditInput`, plus the two process-wide slots the
-  services fill at boot: `user_change::productivitySink` and
-  `user_change::notificationSink`; 14 files, the third-most-included header
-  here.
+- `src/sync/user-change-sink.hxx` — `AuditSink` (`publishAudit`) with
+  `UserAuditInput`, and `UserChangeSink`, which derives from it and adds the
+  two emits (`emitUser`, `emitUsers`), plus the two process-wide slots the
+  services fill at boot: `user_change::productivitySink` (a `UserChangeSink`)
+  and `user_change::notificationSink` (an `AuditSink`, because the
+  notification domain publishes diffs and never emits rows); 14 files, the
+  third-most-included header here.
 - `src/sync/camera-change-sink.hxx` — the camera domain's pair: `CameraChangeSink`
   (`emitModule`, `publishAudit`), `ModuleAuditInput`, and the single
   `camera_change` slot `argus-camera` installs; 3 files.

@@ -145,12 +145,55 @@ exclusively this service's, the notification-token side as before.
   row sent. A refused publish leaves the intent `pending` for the 60-second
   delivery reconciler (`startDeliveryReconciler`); nothing is ever lost on a
   broker outage, and a restart replays from the table.
-- **`markAsRead`** still publishes per-change user audits over
-  `argus.notification.v1.change`; the `Add` leg moved to the durable
-  delivery subject once the sink is installed.
+- **`markAsRead`** now lands its per-change user audits in the service's own
+  `change_outbox` before they are published over `argus.notification.v1.change`
+  (see the change-feed section below). The sink carries audit diffs only: a
+  notification row reaches its user through the durable delivery leg, not
+  through the change subject.
 - **Push intents** (`[push].enabled`, default off) stay at-most-once
   fire-and-forget accelerators toward `argus-relay`; the `/sync` fan-out
   after durable delivery is the guarantee.
+
+## The notification change feed (3a-2c)
+
+- Every mark-as-read audit lands in `change_outbox` in notification.db before
+  it is published: the row updates commit first, one change row per moved
+  notification is written after them, and a worker publishes from the table
+  and marks a row `sent` only on the JetStream PubAck. A broker outage, a
+  crash in between or a restart leaves the rows pending and they drain at the
+  next boot; before this the audit was a fire-and-forget core publish that a
+  broker outage dropped without a trace. An enqueue the shared database
+  connection refuses is retried before it is given up on: the mutation it
+  records has already committed, and no later event repairs a change that was
+  recorded nowhere.
+- **The event id names the transition, not the record** — the same rule as the
+  camera feed. It is the hash of the table, the record id and the payload's
+  own canonical JSON, so a redelivery recomputes the same id while a record
+  that moves again, or returns to a state it already held, is its own event.
+  Recipients are deduplicated and a non-positive user id is not a recipient,
+  because the wire event is addressed to the users it names.
+- **The change leg owns its own stream.** `publishWithMsgId` is a JetStream
+  publish with no core-NATS fallback, and `ARGUS_NOTIFICATION` carries the
+  delivery subject alone — `NatsBus::reconcileStream` refuses to repurpose a
+  stream whose subject set differs — so the change subject is retained on
+  `ARGUS_NOTIFICATION_CHANGE`, created self-healing by the drain: an ensure
+  that fails is retried on the next tick instead of latching, and a publish
+  the broker refuses clears the latch, because a stream that disappears under
+  a running process looks exactly like that. The name lives in the sink's own
+  `Config`, not in `lib/nats`: nothing outside this service names it.
+- **One pass drains a batch.** A `PATCH /notification/read` is one burst of
+  audits, so the drain reads up to 64 pending rows per pass, publishes them
+  oldest-first and waits 50 ms while it is progressing, the retry cadence
+  otherwise. A refused publish still stops the pass at the oldest pending row,
+  so nothing behind it is overtaken; a row the broker stored but the service
+  could not mark `sent` also stays at the head rather than being republished on
+  every tick. The batch is one read and not one per row: settlement is per row
+  by construction, the PubAck is the whole point, but the read is not.
+- **The sink is installed whenever NATS is configured**, connected or not: a
+  broker that is down at boot is the case the outbox exists for, so the audit
+  must be recorded then too. The drain waits out the disconnected bus and
+  ensures its stream on the first tick after the reconnect, which is why it
+  does not ride the delivery reconciler's 60-second rhythm.
 
 ## Delivery proof (Round 11)
 

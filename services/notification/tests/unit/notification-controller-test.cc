@@ -30,14 +30,6 @@ namespace
 {
 constexpr const char* kNotificationDb = "notification-controller-test.db";
 
-struct RecordedEmit
-{
-  int operation{0};
-  std::string option;
-  Json::Value body;
-  std::vector<int64_t> users;
-};
-
 struct RecordedAudit
 {
   int64_t recordId{0};
@@ -47,23 +39,10 @@ struct RecordedAudit
   std::vector<int64_t> users;
 };
 
-// Records the emits and audit diffs the feature services hand to the funnel.
-class RecordingSink final : public UserChangeSink
+// Records the audit diffs the feature services hand to the funnel.
+class RecordingSink final : public AuditSink
 {
 public:
-  void emitUser(int64_t userId, const SocketEmitDto& body) const override
-  {
-    emitUsers({userId}, body);
-  }
-
-  void emitUsers(const std::vector<int64_t>& userIds,
-                 const SocketEmitDto& body) const override
-  {
-    std::lock_guard lock(mutex_);
-    emits.push_back({static_cast<int>(body.operation),
-                     tableNameToString(body.option), body.obj, userIds});
-  }
-
   drogon::Task<void> publishAudit(const UserAuditInput& input) const override
   {
     std::lock_guard lock(mutex_);
@@ -74,7 +53,6 @@ public:
   }
 
   mutable std::mutex mutex_;
-  mutable std::vector<RecordedEmit> emits;
   mutable std::vector<RecordedAudit> audits;
 };
 
@@ -291,7 +269,6 @@ TEST_CASE("notification contracts hold on the argus-notification surface")
     CHECK(after["isRead"].asInt() == 1);
     CHECK(after["readAt"].asInt64() > 0);
   }
-  CHECK(sink.emits.empty());
 
   const auto remarkedAgain =
       drogon::sync_wait(notificationController.markAsRead(readReq({1, 2})));

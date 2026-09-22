@@ -96,7 +96,45 @@ int main()
             << "; gRPC NotificationService on " << grpcListener.host << ":"
             << grpcListener.port;
 
-  drogon::app().registerBeginningAdvice([&notificationDb]() {
+  std::shared_ptr<NatsNotificationChangeSink> changeSink;
+  std::shared_ptr<NatsNotificationDeliverySink> deliverySink;
+  std::shared_ptr<NatsBus> natsBus;
+  std::shared_ptr<NatsPushIntentSink> pushIntentSink;
+  const std::string natsUrl = ConfigService::getString("nats.url");
+  if (natsUrl.empty()) {
+    LOG_INFO << "NATS not configured; change funnel and delivery reconciler "
+                "disabled, intents stay pending";
+  }
+  else {
+    natsBus = std::make_shared<NatsBus>();
+    if (natsBus->connect())
+      LOG_INFO << "NATS event bus connected to " << natsBus->options().url;
+    else
+      LOG_WARN << "NATS unavailable at " << natsUrl
+               << "; bus reconnects in background, changes retained locally";
+    changeSink = std::make_shared<NatsNotificationChangeSink>(
+        natsBus, NatsNotificationChangeSink::Config{});
+    user_change::setNotificationSink(changeSink.get());
+    deliverySink = std::make_shared<NatsNotificationDeliverySink>(
+        natsBus, NatsNotificationDeliverySink::Config{
+                     .stream = std::string(
+                         nats_subject::kNotificationDeliveryStream),
+                     .subject = std::string(
+                         nats_subject::kNotificationDelivery)});
+  }
+
+  if (push_intent::enabledFromConfig()) {
+    if (natsBus) {
+      pushIntentSink = std::make_shared<NatsPushIntentSink>(natsBus);
+      push_intent::setSink(pushIntentSink.get());
+      LOG_INFO << "Push intents enabled (" << nats_subject::kNotificationPushIntent
+               << ")";
+    } else {
+      LOG_WARN << "[push] enabled but NATS unavailable; push intents disabled";
+    }
+  }
+
+  drogon::app().registerBeginningAdvice([&notificationDb, &changeSink]() {
     if (!DbService::runScriptFile(notificationDb.schemaPath)) {
       LOG_FATAL
           << "Notification database schema failed to apply — aborting startup";
@@ -138,46 +176,10 @@ int main()
 
     DbService::applyPragmas();
     DbService::client()->execSqlSync("PRAGMA foreign_keys = OFF");
+
+    if (changeSink)
+      changeSink->reconcile();
   });
-
-  std::shared_ptr<NatsNotificationChangeSink> changeSink;
-  std::shared_ptr<NatsNotificationDeliverySink> deliverySink;
-  std::shared_ptr<NatsBus> natsBus;
-  std::shared_ptr<NatsPushIntentSink> pushIntentSink;
-  const std::string natsUrl = ConfigService::getString("nats.url");
-  if (natsUrl.empty()) {
-    LOG_INFO << "NATS not configured; change funnel and delivery reconciler "
-                "disabled, intents stay pending";
-  }
-  else {
-    natsBus = std::make_shared<NatsBus>();
-    if (natsBus->connect()) {
-      LOG_INFO << "NATS event bus connected to " << natsBus->options().url;
-      changeSink = std::make_shared<NatsNotificationChangeSink>(natsBus);
-      user_change::setNotificationSink(changeSink.get());
-    }
-    else {
-      LOG_WARN << "NATS unavailable at " << natsUrl
-               << "; funnels stay pending until the supervisor reconnects";
-    }
-    deliverySink = std::make_shared<NatsNotificationDeliverySink>(
-        natsBus, NatsNotificationDeliverySink::Config{
-                     .stream = std::string(
-                         nats_subject::kNotificationDeliveryStream),
-                     .subject = std::string(
-                         nats_subject::kNotificationDelivery)});
-  }
-
-  if (push_intent::enabledFromConfig()) {
-    if (natsBus) {
-      pushIntentSink = std::make_shared<NatsPushIntentSink>(natsBus);
-      push_intent::setSink(pushIntentSink.get());
-      LOG_INFO << "Push intents enabled (" << nats_subject::kNotificationPushIntent
-               << ")";
-    } else {
-      LOG_WARN << "[push] enabled but NATS unavailable; push intents disabled";
-    }
-  }
 
   NotificationRpcService notificationRpc(
       {.deliverySink = deliverySink,

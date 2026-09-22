@@ -159,21 +159,13 @@ public:
   mutable bool streamOk{true};
 };
 
-class SilentChangeSink final : public UserChangeSink
+class SilentChangeSink final : public AuditSink
 {
 public:
-  void emitUser(int64_t, const SocketEmitDto&) const override { ++emits; }
-  void emitUsers(const std::vector<int64_t>&,
-                 const SocketEmitDto&) const override
-  {
-    ++emits;
-  }
   drogon::Task<void> publishAudit(const UserAuditInput&) const override
   {
     co_return;
   }
-
-  mutable int emits{0};
 };
 } // namespace
 
@@ -253,7 +245,6 @@ TEST_CASE("durable delivery keeps intents pending until the broker stores them")
     CHECK(scalarCount("SELECT COUNT(*) AS total FROM notification") == 3);
     CHECK(scalarCount("SELECT COUNT(*) AS total FROM notification_delivery "
                       "WHERE status = 'pending'") == 1);
-    CHECK(changeSink.emits == 0);
     CHECK(drogon::sync_wait(unsinked.deliverPending()) ==
           DeliverPendingOutcome::NoSinkInstalled);
     CHECK(scalarCount("SELECT COUNT(*) AS total FROM notification_delivery "

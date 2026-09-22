@@ -54,6 +54,11 @@ the consuming database, so redeliveries settle without re-executing effects:
   record and the transition's own payload, so a redelivered event is a replay
   while a record that moves again, or returns to a state it already held, is
   its own row; a row is marked `sent` only on the JetStream PubAck.
+- `change_outbox` (`notification.db`, written by `argus-notification`): the
+  notification domain's producer side of the same shape, one row per
+  mark-as-read transition, keyed the same way and settled the same way. The
+  table carries the same name in every producer's database on purpose: it is
+  the same thing in each, and an operator should find it under one name.
 - `guard_action_outbox` (`guard.db`): the guard→camera direction, keyed by the
   deterministic `commandId`. `guard_encounter_outbox` (`guard.db`) is the
   guard's own `encounter_closed` producer leg, keyed by `eventId`.

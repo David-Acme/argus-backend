@@ -17,19 +17,26 @@ struct UserAuditInput
   std::vector<int64_t> userIds;
 };
 
-// Sink for productivity and notification change events; each service installs its own at boot.
-class UserChangeSink
+// The audit half of a user-scoped change funnel, which is all a service that
+// only ever publishes diffs needs to implement.
+class AuditSink
 {
 public:
-  virtual ~UserChangeSink() = default;
+  virtual ~AuditSink() = default;
 
+  [[nodiscard]] virtual drogon::Task<void>
+  publishAudit(const UserAuditInput& input) const = 0;
+};
+
+// Sink for a user-scoped producer that also emits rows; each service installs
+// its own at boot.
+class UserChangeSink : public AuditSink
+{
+public:
   virtual void emitUser(int64_t userId, const SocketEmitDto& body) const = 0;
 
   virtual void emitUsers(const std::vector<int64_t>& userIds,
                          const SocketEmitDto& body) const = 0;
-
-  virtual drogon::Task<void>
-  publishAudit(const UserAuditInput& input) const = 0;
 };
 
 namespace user_change
@@ -50,18 +57,18 @@ inline const UserChangeSink* getProductivitySink()
   return productivitySink();
 }
 
-inline const UserChangeSink*& notificationSink()
+inline const AuditSink*& notificationSink()
 {
-  static const UserChangeSink* instance = nullptr;
+  static const AuditSink* instance = nullptr;
   return instance;
 }
 
-inline void setNotificationSink(const UserChangeSink* value)
+inline void setNotificationSink(const AuditSink* value)
 {
   notificationSink() = value;
 }
 
-inline const UserChangeSink* getNotificationSink()
+inline const AuditSink* getNotificationSink()
 {
   return notificationSink();
 }
