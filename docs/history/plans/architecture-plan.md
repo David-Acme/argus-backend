@@ -745,6 +745,28 @@ a copied wire enum          a hand-rolled gRPC client outside packages/clients
 Ordering rule: finish what is mechanical before starting what is structural. Phases 1–2
 do not move a single domain; phases 3–5 do, and each one is independently revertible.
 
+**Where the execution stands (2026-09-22).** A row annotated **Done** is committed, and
+carries its report under `docs/history/reports/` (`f<phase>-<step>-*.md`); a row
+annotated **Done, except …** is committed with a named remainder; a row with no
+annotation has not started. The one deviation from the row order is that 3a ran its
+sub-steps as their own units (`3a-1a`…`1d`, `2a`…`2h`), which is what the report names
+say.
+
+| Phase | Sub-steps | State |
+|---|---|---|
+| 1 — mechanical cleanup | 14 | **done** (0–13: step 0 is recorded in Phase 0's prose, step 13 was absorbed by step 10, and the other 12 carry reports) |
+| 2 — package tree and build | 6 | **done** (1–6; step 2 ran as four sub-steps, one report each — `f2-2-layout-{libs,contracts,clients,services}.md`) |
+| 3a — the transport: `sync` | 3 | step 1 **done**; step 2 **done except its nine closure items** (below); step 3 **not started** |
+| 3b — `auth` | 2 | **not started** |
+| 3c — `identity` | 2 | **not started** |
+| 3d — the edge comes down | 5 | **not started** |
+| 4 — service layouts | 9 | **not started** |
+| 5 — verification | 6 | **not started** |
+
+The tree today, measured: 17 projects, **401 tests, 0 failures, 0 compiler warnings**;
+`check-tidy` 495 TUs / 3140 findings against a 3141 baseline; `check-deps`
+481 edges, 0 forbidden, 0 cycles.
+
 ### Phase 0 — already executed (context, not work)
 
 The strangler migration is done: 11 services, per-domain databases, NATS with durable
@@ -831,9 +853,31 @@ proven. Each sub-phase is independently revertible and ships with its own tests.
 
 | Step | Action |
 |---|---|
-| 1 | Extract `services/sync` from the gateway: `/sync`, rooms, fan-out, audit persistence, the action journal (`user_action_log`, §3.5), control RPC. Create `contracts/sync` — including the payload vocabulary that leaves `packages/socket` (§3.6) and the audit/action vocabulary — and `clients/sync`; delete `packages/sync`, `packages/socket`, `packages/room`, `packages/audit` |
-| 2 | Producers (`camera`, `guard`, `notification`, `productivity`, `identity`) move to `contracts/sync` + `lib/nats` + their own durable outbox with fingerprints; `sync` becomes the single audit writer. `identity` also moves its six `user_action_log` writes onto the additive action subject (§3.5), declared as a **new row** in `wire-nats-subjects.md` — existing rows and payloads untouched |
+| 1 | **Done** — `build: lift the sync payload vocabulary into packages/contracts/sync` (a1), `build: add the sync control wire and its client` (a2), `build: move the twelve cross-domain repositories to their owner services` (b), `build: serve /sync from argus-sync and retire socket, room and audit` (c), `build: retire the sync package into argus-sync` (d). `contracts/sync` owns the payload vocabulary `packages/socket` used to (a1) and the control surface §3.5 asks for (a2, with `clients/sync`); the eleven cross-domain repositories went to their owners rather than to `sync` (b, D1/D2 of the report); `argus-sync` serves `/sync` over its own TLS listener on 7025 and `packages/{socket,room,audit}` die with it (c); `packages/sync` follows (d). The row's report, which doubles as the design for b–d, is `docs/history/reports/f3-1a-sync-contract-vocabulary.md`, continued by `f3-1b-sync-repositories-home.md`, `f3-1c-sync-service.md` and `f3-1d-sync-package-retired.md`. |
+| 2 | **Done, except its closure items** — `docs: decide the producer-outbox shape from the measured precedents` (2a), `feat: give the camera change feed a durable outbox` (2b), `feat: give the notification change feed a durable outbox` (2c), `feat: give the productivity change feed a durable outbox` (2d), `feat: give the identity change feed a durable outbox` (2e), `fix: bring camera's sinks up to the checked drain shape` (2g) and `fix: give guard's encounter drain a stream it heals itself` (2h). All five producers publish through `lib/nats` with a durable per-owner outbox that carries a fingerprint, and `services/sync` is the single audit writer; identity's six `user_action_log` writes moved onto the additive action subject, declared as a new row in `wire-nats-subjects.md` with existing rows and payloads untouched. The four change producers share one drain shape at one bound (2g) and guard, whose encounter outbox is a different table on a different stream drained inline, carries the same publish leg (2h). Reports: `f3-2a-producer-outbox-decision.md` (the decision all five cite), `f3-2b`/`2c`/`2d`/`2e-…-change-outbox.md`, `f3-2g-camera-drain-parity.md`, `f3-2h-guard-stream-heal.md`. **The nine items in "Step 2's closure" below are what the five units recorded instead of fixing, and the step is not closed until they are.** |
 | 3 | Apply the 90-day TTL and its compaction (D15); `contracts/sync` declares the resync semantics |
+
+##### Step 2's closure — the nine items the five units recorded instead of fixing
+
+None of the nine has started. Each is its own unit — report, gate, adversarial review,
+commit — exactly like the units that recorded it, and step 2 is not closed and step 3
+does not start until they are done. They are ordered here as they should be executed.
+
+| # | Item | What it is | Recorded in |
+|---|---|---|---|
+| 1 | **S8 — a drain tick can outlive Drogon's database manager** | `app().quit()` resets `dbClientManagerPtr_` before the IO loops stop, and `DbService::client()` reaches it through an unguarded `dbClientManagerPtr_->getDbClient(...)`, so a tick landing in that window is a null dereference on the ordinary `SIGTERM`/`docker stop` path. The window is the whole remaining shutdown, not one retry cadence, and the drain worker is joined only by the sink's destructor, after `run()` has returned. Closing it means stopping the drain as part of Drogon's shutdown for the four producers **and** guard at once. This is the only item that is a crash in normal operation | 3a-2c C6, sharpened in 3a-2d; guard's variant is the same shape (3a-2h) |
+| 2 | **S1 — the enqueue is not in the domain write's transaction** | The row mutation commits, then the change row is written; a crash between the two loses that change. Measured for three of the four producers. The repair is the same transaction the plan defers | 3a-2b, 3a-2c, 3a-2d |
+| 3 | **S1b — the enqueue's own give-up loses the change** | The retry is bounded (`kEnqueueAttempts = 3`, 25 ms apart) and loud, but a write that fails all three times — `SQLITE_FULL`, `SQLITE_IOERR`, a corrupt page — leaves the row absent from `change_outbox` for ever: the mutation committed, the handler answered `ok`, and no later boot, drain pass or gRPC pull can discover a change that was never recorded. The one sink path that can lose a real change in normal operation; a lock needs sustained contention for ~15 s to reach it, so the fail-fast storage errors are the real window | 3a-2d |
+| 4 | **S5 — no retention policy for settled rows** | `sent` rows stay for ever, so every outbox table grows with its feed. The decision has to be the same for all five outboxes (four producers + guard) | 3a-2c B4 |
+| 5 | **S4 — no durable consumer for any change subject** | Recorded as a limitation in every producer unit, never as a decision. Either a consumer exists or the plan says why none is owed. The API `NatsBus` exposes cannot detect a lost durable consumer (no callback, no query), which is also why the stream re-arm of 3a-2g/2h deliberately did not un-gate the *subscription* | 3a-2b, 3a-2c, 3a-2d, 3a-2g, 3a-2h |
+| 6 | **The burst-cardinality precondition in the four live suites** | Every producer's live suite drains a burst without asserting how many rows the burst produced, so a suite that silently wrote nothing still passes. All four share the omission, so it is applied to all four together, the way item 8 treats the comments | 3a-2g |
+| 7 | **The object-event drain's rate against `maxPending` / `overflowDropped`** | Its repository drops the *oldest* pending row on overflow while its drain reads one row per pass: the table exists because a backlog is expected, and the drain is sized as if one were not. The asymmetry is recorded, not batched | 3a-2g |
+| 8 | **S7 — rule 20's statement-level comments in the test suites** | The idiom is tree-wide (measured: 57 of 132 `*-test.cc`, ~518 lines), so stripping only one unit's suites would leave them unlike every other one. The sweep is step-level and needs one reading of the rule for tests before it starts | 3a-2c C2, 3a-2d, 3a-2g |
+| 9 | **S6 — the tidy baseline is not the tree's** | One `--write-baseline` run at the close of the step, once items 1–8 have moved the tree, so the ratchet and the tree agree | 3a-2c |
+
+Two of the nine are decisions rather than repairs (S4, and S5's policy), and one is a
+measurement sweep (S7); the other six are code. Item 1 first, because it is the only one
+that fails on the deployment path rather than on an unlikely one.
 
 #### 3b — `auth`
 
