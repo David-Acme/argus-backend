@@ -232,6 +232,11 @@ TEST_CASE("the argus-vlm internal wire serves the vision capacity")
 
   drogon::app().setLogLevel(trantor::Logger::kWarn);
   drogon::app().setClientMaxBodySize(64 * 1024 * 1024);
+  // A describe is tens of seconds here (47 s measured for one caption at
+  // 384 px, and longer the more the answer generates), which outruns Drogon's
+  // 60 s idle default (f8-b4): the connection has no read or write while the
+  // engine works and trantor's idle wheel force-closes it.
+  drogon::app().setIdleConnectionTimeout(600);
   drogon::app().registerController(std::make_shared<HealthController>(
       HealthStatus{.serviceName = "argus-vlm", .extras = {}}));
   drogon::app().registerController(vlm);

@@ -77,6 +77,12 @@ if [ -n "$ONLY" ]; then
   fi
 fi
 
+# Section 2.4's tier table before anything is built: the check reads the
+# CMakeLists.txt files, so it costs nothing and an edge the table forbids stops
+# the run before a long build starts (section 4.13).
+log "=== dependencies (section 2.4) ==="
+"$ROOT/scripts/check-deps.sh"
+
 # One dependency resolution for the whole tree: the root conanfile.txt is the
 # single manifest (section 2.6), so the graph is installed once and every
 # project configures against the toolchain it produced.
@@ -126,6 +132,14 @@ for dir in "${PROJECTS[@]}"; do
 done
 
 CURRENT_PROJECT=""
+# Rules 16 and 19, measured over the whole tree (section 4.13): the scan needs
+# every project's compile database, so it runs once at the end of a full gate
+# and never for a --only selection.
+if [ "$NO_TESTS" -eq 0 ] && [ -z "$ONLY" ]; then
+  log "=== rules 16 and 19 (clang-tidy) ==="
+  "$ROOT/scripts/check-tidy.sh"
+fi
+
 if [ "$NO_TESTS" -eq 1 ]; then
   log "All selected projects built; tests skipped (profile: $PROFILE)."
 else

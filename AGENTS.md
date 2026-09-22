@@ -561,6 +561,14 @@ structured bindings, ranges/algorithms over manual index loops, and
 normal part of any task that touches it — do not preserve old idioms out of
 consistency with their file.
 
+Rules 16 and 19 are measured, not reviewed: `.clang-tidy` declares the check
+set, and a full `./scripts/build-all.sh dev` runs `scripts/check-tidy.sh` over
+every first-party translation unit, comparing the per-check counts with
+`scripts/lib/tidy-baseline.txt`. The gate fails when a count rises or when the
+scan sees fewer translation units than the baseline records — a check that
+cannot be run is not a check that passed. Bring a baseline count down in the
+same change that fixes what stands behind it.
+
 ### 20. Comment discipline
 
 Comments exist ONLY at class, namespace or function scope, short and direct.
@@ -800,9 +808,14 @@ data (D18):
   keeps a copy of a wire enum — a copy drifts and breaks the frozen wire.
 - `lib/http` is tier 2, not tier 4: no tier-1 package may reach it, which is
   why the health controller and the listener config are not in `lib/config`.
-- The tiers are checked mechanically, not by review: Phase 2 step 5 adds
-  `scripts/check-deps.sh`, which reads `target_link_libraries` in every
-  `CMakeLists.txt` and fails on a forbidden edge.
+- The tiers are checked mechanically, not by review: `scripts/check-deps.sh`
+  reads every `CMakeLists.txt` under `packages/` and `services/` and fails on a
+  forbidden edge. It reads the edges from **both** places one can be written —
+  the `DEPENDS`, `SYSTEM_DEPENDS` and `MODULES` lists of the `argus_*` helpers,
+  where a first-party dependency actually lives, and literal
+  `target_link_libraries` calls — because a scan of `target_link_libraries`
+  alone sees almost none of the graph. `./scripts/build-all.sh` runs it before
+  it builds anything.
 
 ### 26. One schema per microservice: `database/schema.sql`
 
@@ -851,6 +864,13 @@ DB file. The SDK/client is the whole point of the boundary.
 Before any commit, verify the affected standalone project with
 `./scripts/build-all.sh dev --only <project>` and **0 errors, 0 warnings**.
 Run the full orchestrator when changing shared build infrastructure.
+
+The orchestrator runs two gates of its own, beyond the eighteen projects:
+`scripts/check-deps.sh` before anything is built (§2.4's tiers), and, at the
+end of a full run only, `scripts/check-tidy.sh` (rules 16 and 19). `--only`,
+`--no-tests` and `--install-only` skip the clang-tidy scan deliberately: it
+needs every project's compile database, and a per-project run has to stay
+quick.
 
 ## File Naming
 

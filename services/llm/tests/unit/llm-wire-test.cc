@@ -310,6 +310,11 @@ TEST_CASE("the argus-llm internal wire serves the chat capacity")
 
   drogon::app().setLogLevel(trantor::Logger::kWarn);
   drogon::app().setClientMaxBodySize(8 * 1024 * 1024);
+  // A chat is tens of seconds here, and a whole-emitting handler writes
+  // nothing until it is done, which outruns Drogon's 60 s idle default
+  // (f8-b4): the connection has no read or write while the engine works and
+  // trantor's idle wheel force-closes it. The service sets this too.
+  drogon::app().setIdleConnectionTimeout(600);
   drogon::app().registerController(std::make_shared<HealthController>(
       HealthStatus{.serviceName = "argus-llm", .extras = {}}));
   drogon::app().registerController(llm);
@@ -347,8 +352,12 @@ TEST_CASE("the argus-llm internal wire serves the chat capacity")
   CHECK(configJson["info"]["defaultTemperature"].asFloat() == doctest::Approx(0.3F));
   CHECK(configJson["info"]["contextSize"].asInt64() == 4096);
 
+  const auto firstStart = std::chrono::steady_clock::now();
   const std::string firstBody = chatBody("Di exactamente: hola");
   const Json::Value firstJson = envelope({0, postChat(port, firstBody)});
+  const auto firstMs = std::chrono::duration<double, std::milli>(
+                          std::chrono::steady_clock::now() - firstStart)
+                          .count();
   CHECK(firstJson["status"].asInt() == 200);
   CHECK(firstJson["info"].isMember("text"));
   const std::string firstText = firstJson["info"]["text"].asString();
@@ -363,13 +372,18 @@ TEST_CASE("the argus-llm internal wire serves the chat capacity")
   CHECK(afterFirst["info"]["lastReusedTokens"].asInt() == 0);
   CHECK(afterFirst["info"]["lastPromptTokens"].asInt() > 0);
   MESSAGE("first chat: \"" << firstText << "\" prompt="
-           << afterFirst["info"]["lastPromptTokens"].asInt() << " tokens");
+           << afterFirst["info"]["lastPromptTokens"].asInt() << " tokens ("
+           << static_cast<int>(firstMs) << " ms)");
 
+  const auto historyStart = std::chrono::steady_clock::now();
   const std::string historyBodyWire =
       historyBody({.first = "Di exactamente: hola",
                    .answer = firstText,
                    .followUp = "Y ahora despidete"});
   const Json::Value historyJson = envelope({0, postChat(port, historyBodyWire)});
+  const auto historyMs = std::chrono::duration<double, std::milli>(
+                            std::chrono::steady_clock::now() - historyStart)
+                            .count();
   CHECK(historyJson["status"].asInt() == 200);
   CHECK_FALSE(historyJson["info"]["text"].asString().empty());
   const Json::Value afterHistory = envelope(request(
@@ -380,7 +394,7 @@ TEST_CASE("the argus-llm internal wire serves the chat capacity")
        .contentType = ""}));
   MESSAGE("history chat reused " << afterHistory["info"]["lastReusedTokens"].asInt()
            << " of " << afterHistory["info"]["lastPromptTokens"].asInt()
-           << " tokens");
+           << " tokens (" << static_cast<int>(historyMs) << " ms)");
   CHECK(afterHistory["info"]["lastReusedTokens"].asInt() > 0);
 
   const std::string divergentBody = chatBody("Cuantos dias tiene una semana?");

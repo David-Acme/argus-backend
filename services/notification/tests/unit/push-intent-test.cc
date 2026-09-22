@@ -49,6 +49,36 @@ private:
   std::string path_;
 };
 
+// Runs the app and stops it however the case body leaves. A joinable
+// std::thread destroyed by unwinding calls std::terminate, which reports an
+// ordinary statement failure as a SIGABRT with no assertion behind it.
+class AppRunner
+{
+public:
+  AppRunner() : runner_([] { drogon::app().run(); }) {}
+
+  ~AppRunner()
+  {
+    if (!runner_.joinable())
+      return;
+    if (drogon::app().getLoop()->isRunning()) {
+      drogon::app().quit();
+      runner_.join();
+      return;
+    }
+    // Drogon's quit() is ignored until the loop is looping, so a boot that
+    // never got that far cannot be reached and joining it would block for
+    // ever; the process ends with it instead.
+    runner_.detach();
+  }
+
+  AppRunner(const AppRunner&) = delete;
+  AppRunner& operator=(const AppRunner&) = delete;
+
+private:
+  std::thread runner_;
+};
+
 bool waitForBoot(std::chrono::milliseconds timeout)
 {
   const auto deadline = std::chrono::steady_clock::now() + timeout;
@@ -157,6 +187,11 @@ TEST_CASE("the create path publishes one intent per row")
   auto client =
       drogon::orm::DbClient::newSqlite3Client(
           std::string("filename=") + db.path(), 1);
+  // WAL and a busy timeout are the tree's per-connection bootstrap, not
+  // drogon's. Without them a statement that meets the service's transaction on
+  // the same file is answered at once with SQLITE_BUSY — "database is locked"
+  // — instead of waiting, and that error is what made this case flaky.
+  DbService::applyPragmas(client);
   client->execSqlSync(
       "CREATE TABLE notification ("
       "id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, "
@@ -190,9 +225,14 @@ TEST_CASE("the create path publishes one intent per row")
   drogon::app().setLogLevel(trantor::Logger::kWarn);
   drogon::app().addDbClient(
       drogon::orm::Sqlite3Config{1, db.path(), "default", -1});
+  // The service's client is created when the app runs, so its pragmas go on at
+  // boot — the way the service itself puts them on.
+  drogon::app().registerBeginningAdvice([] { DbService::applyPragmas(); });
 
-  std::thread runner([] { drogon::app().run(); });
+  const AppRunner app;
   REQUIRE(waitForBoot(std::chrono::seconds(30)));
+  CHECK(client->execSqlSync("PRAGMA busy_timeout").front()["timeout"]
+            .as<int64_t>() == 5000);
 
   const auto deliverySink = std::make_shared<ArmedDeliverySink>();
   const auto sink = std::make_shared<RecordingPushIntentSink>();
@@ -311,7 +351,4 @@ TEST_CASE("the create path publishes one intent per row")
   CHECK(client->execSqlSync("SELECT COUNT(*) AS total FROM notification")
             .front()["total"]
             .as<int64_t>() == 6);
-
-  drogon::app().quit();
-  runner.join();
 }

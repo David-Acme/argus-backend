@@ -1,0 +1,53 @@
+# clang-tidy findings per check, measured by
+# scripts/check-tidy.sh under the .clang-tidy check set
+# (plan section 4.13, rules 16 and 19). The gate fails
+# when a count rises; lower one when you fix what is
+# behind it. The counts belong to the clang-tidy named
+# on the tool line, and a different major is refused.
+tool 22.1.8
+tus 480
+modernize-use-nodiscard 790
+modernize-avoid-c-style-cast 362
+modernize-use-designated-initializers 305
+bugprone-suspicious-stringview-data-usage 302
+modernize-use-scoped-lock 296
+bugprone-unchecked-optional-access 225
+modernize-avoid-c-arrays 81
+bugprone-implicit-widening-of-multiplication-result 72
+bugprone-narrowing-conversions 68
+modernize-use-auto 61
+modernize-use-ranges 61
+bugprone-easily-swappable-parameters 52
+modernize-return-braced-init-list 49
+performance-unnecessary-value-param 49
+modernize-use-emplace 46
+modernize-use-starts-ends-with 45
+bugprone-throwing-static-initialization 39
+bugprone-optional-value-conversion 31
+performance-enum-size 25
+performance-unnecessary-copy-initialization 23
+bugprone-unused-return-value 21
+modernize-raw-string-literal 20
+modernize-use-integer-sign-comparison 18
+performance-inefficient-string-concatenation 17
+performance-move-const-arg 14
+bugprone-empty-catch 11
+performance-no-automatic-move 11
+bugprone-branch-clone 7
+bugprone-macro-parentheses 7
+bugprone-unchecked-string-to-number-conversion 7
+cppcoreguidelines-owning-memory 6
+bugprone-exception-escape 5
+modernize-loop-convert 5
+bugprone-misplaced-widening-cast 4
+modernize-pass-by-value 4
+modernize-use-nullptr 4
+bugprone-nondeterministic-pointer-iteration-order 3
+bugprone-use-after-move 3
+performance-no-int-to-ptr 2
+bugprone-invalid-enum-default-initialization 1
+bugprone-throw-keyword-missing 1
+modernize-deprecated-headers 1
+modernize-make-shared 1
+modernize-redundant-void-arg 1
+performance-inefficient-vector-operation 1

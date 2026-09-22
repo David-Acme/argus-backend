@@ -5,13 +5,13 @@
 #include <guard-repository.hxx>
 #include <guard-schema.hxx>
 #include <sqlite/db-service.hxx>
+#include <sqlite3.h>
 
-#include <atomic>
 #include <chrono>
-#include <cstdio>
+#include <memory>
 #include <string>
 #include <thread>
-#include <unistd.h>
+#include <utility>
 
 #include "temp-db.hxx"
 #include "wait-for-boot.hxx"
@@ -107,58 +107,74 @@ std::string scalar(const std::string& sql)
   return rows.front()[0].as<std::string>();
 }
 
+using DbHandle = std::unique_ptr<sqlite3, int (*)(sqlite3*)>;
+
+void exec(sqlite3* db, const char* sql)
+{
+  char* error = nullptr;
+  REQUIRE_MESSAGE(sqlite3_exec(db, sql, nullptr, nullptr, &error) == SQLITE_OK,
+                  (error ? std::string(error) : std::string("exec failed")));
+  sqlite3_free(error);
+}
+
+// The legacy database is written through the sqlite3 C API, the way the four
+// sibling migration suites write theirs. A throwaway drogon client keeps a loop
+// thread of its own, and a connection whose queued statement lambda holds the
+// last reference is destroyed on that very thread: ~Sqlite3Connection then
+// joins the thread it is running on, and the process aborts (EDEADLK). The
+// fixture must not race the client stack it is about to hand the database to.
 void seedLegacyDb(const std::string& path)
 {
-  auto client =
-      drogon::orm::DbClient::newSqlite3Client(std::string("filename=") + path,
-                                              1);
-  client->execSqlSync(kLegacyEncounter);
-  client->execSqlSync(kLegacyAction);
-  client->execSqlSync(kLegacyInbox);
-  client->execSqlSync(kLegacyGuest);
-  client->execSqlSync(kLegacyOutbox);
-  client->execSqlSync(kLegacyJournal);
-  client->execSqlSync(
-      "CREATE INDEX idx_guard_decision_journal_cursor ON "
-      "guard_decision_journal (created_at DESC, event_id DESC)");
-  client->execSqlSync(
-      "CREATE INDEX idx_guard_decision_journal_camera_time ON "
-      "guard_decision_journal (camera_id, created_at DESC)");
-  client->execSqlSync(
-      "INSERT INTO guard_action_outbox (command_id, encounter_id, "
-      "incident_id, camera_id, person_id, kind, status, detail, response, "
-      "payload, attempts, created_at, updated_at) VALUES "
-      "('legacy-sent', 0, 0, 1, 0, 'notify', 'sent', '', '{}', '', 1, 100, "
-      "100), "
-      "('legacy-denied', 0, 0, 1, 0, 'notify', 'denied', '', '{}', '', 1, 100, "
-      "100), "
-      "('legacy-failed', 0, 0, 1, 0, 'notify', 'failed', '', '{}', '', 2, 100, "
-      "100), "
-      "('legacy-unknown', 0, 0, 1, 0, 'notify', 'unknown', '', '{}', '', 1, "
-      "100, 100), "
-      "('legacy-pending', 0, 0, 1, 0, 'notify', 'pending', '', '{}', '', 0, "
-      "100, 100)");
-  client->execSqlSync(
-      "INSERT INTO guard_encounter (person_id, signature, state, grade, "
-      "checks, best_camera_id, best_score, first_seen, last_seen) "
-      "VALUES (5, 'sig', 'assessing', 'medium', 3, 1, 12.5, 100, 140)");
-  client->execSqlSync(
-      "INSERT INTO guard_action (incident_id, camera_id, person_id, kind, "
-      "status, detail, created_at) VALUES (1, 1, 5, 'notify', 'sent', '', 100), "
-      "(1, 1, 5, 'agent_vision', 'sent', '', 101), "
+  sqlite3* raw = nullptr;
+  REQUIRE(sqlite3_open(path.c_str(), &raw) == SQLITE_OK);
+  const DbHandle db(raw, sqlite3_close_v2);
+  exec(db.get(), kLegacyEncounter);
+  exec(db.get(), kLegacyAction);
+  exec(db.get(), kLegacyInbox);
+  exec(db.get(), kLegacyGuest);
+  exec(db.get(), kLegacyOutbox);
+  exec(db.get(), kLegacyJournal);
+  exec(db.get(),
+       "CREATE INDEX idx_guard_decision_journal_cursor ON "
+       "guard_decision_journal (created_at DESC, event_id DESC)");
+  exec(db.get(),
+       "CREATE INDEX idx_guard_decision_journal_camera_time ON "
+       "guard_decision_journal (camera_id, created_at DESC)");
+  exec(db.get(),
+       "INSERT INTO guard_action_outbox (command_id, encounter_id, "
+       "incident_id, camera_id, person_id, kind, status, detail, response, "
+       "payload, attempts, created_at, updated_at) VALUES "
+       "('legacy-sent', 0, 0, 1, 0, 'notify', 'sent', '', '{}', '', 1, 100, "
+       "100), "
+       "('legacy-denied', 0, 0, 1, 0, 'notify', 'denied', '', '{}', '', 1, 100, "
+       "100), "
+       "('legacy-failed', 0, 0, 1, 0, 'notify', 'failed', '', '{}', '', 2, 100, "
+       "100), "
+       "('legacy-unknown', 0, 0, 1, 0, 'notify', 'unknown', '', '{}', '', 1, "
+       "100, 100), "
+       "('legacy-pending', 0, 0, 1, 0, 'notify', 'pending', '', '{}', '', 0, "
+       "100, 100)");
+  exec(db.get(),
+       "INSERT INTO guard_encounter (person_id, signature, state, grade, "
+       "checks, best_camera_id, best_score, first_seen, last_seen) "
+       "VALUES (5, 'sig', 'assessing', 'medium', 3, 1, 12.5, 100, 140)");
+  exec(db.get(),
+       "INSERT INTO guard_action (incident_id, camera_id, person_id, kind, "
+       "status, detail, created_at) VALUES (1, 1, 5, 'notify', 'sent', '', 100), "
+       "(1, 1, 5, 'agent_vision', 'sent', '', 101), "
        "(1, 1, 5, 'agent_listen', 'sent', '', 102), "
        "(1, 1, 5, 'obsolete_action', 'sent', 'historical detail', 103), "
        "(1, 1, 5, '', 'sent', '', 104)");
-  client->execSqlSync(
-      "INSERT INTO guard_observation_inbox (event_id, camera_id, "
-      "observation_id, received_at) VALUES ('old-event', 1, 'obs', 100)");
-  client->execSqlSync(
-      "INSERT INTO guard_decision_journal (event_id, encounter_id, "
-      "incident_id, camera_id, observation_id, severity, severity_rank, "
-      "hard_floor, belief_score, belief_signals, belief_threshold, "
-      "legacy_would_notify, belief_would_notify, did_notify, decision_mode, "
-      "suppression_reason, created_at) VALUES ('legacy-journal', 9, 8, 7, "
-      "'obs', 'high', 3, 1, -2, '[]', 3, 1, 0, 0, 'shadow', 'none', 100)");
+  exec(db.get(),
+       "INSERT INTO guard_observation_inbox (event_id, camera_id, "
+       "observation_id, received_at) VALUES ('old-event', 1, 'obs', 100)");
+  exec(db.get(),
+       "INSERT INTO guard_decision_journal (event_id, encounter_id, "
+       "incident_id, camera_id, observation_id, severity, severity_rank, "
+       "hard_floor, belief_score, belief_signals, belief_threshold, "
+       "legacy_would_notify, belief_would_notify, did_notify, decision_mode, "
+       "suppression_reason, created_at) VALUES ('legacy-journal', 9, 8, 7, "
+       "'obs', 'high', 3, 1, -2, '[]', 3, 1, 0, 0, 'shadow', 'none', 100)");
 }
 } // namespace
 

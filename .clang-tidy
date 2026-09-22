@@ -1,0 +1,30 @@
+---
+# Section 4.13's enforcement: rules 16 and 19, checked mechanically. The check
+# set is the plan's -- cppcoreguidelines-owning-memory, modernize-*,
+# performance-*, bugprone-* -- and one check is dropped, measured:
+#
+#   modernize-use-trailing-return-type  5,206 findings, the largest family in
+#     the tree by a factor of six, and every one of them is the same complaint:
+#     the tree writes `Type name(...)`, which is what .clang-format's LLVM base
+#     and the 488 first-party headers all do. Rule 19's list (no owning raw
+#     pointers, no C-style casts, no typedef, no NULL, no C arrays, no
+#     std::bind, no printf) does not reach return-type placement, so the check
+#     is an opinion about style the project has already decided.
+#
+# scripts/check-tidy.sh runs this set over every first-party translation unit
+# and compares the counts with scripts/lib/tidy-baseline.txt.
+Checks: >
+  -*,
+  cppcoreguidelines-owning-memory,
+  modernize-*,
+  performance-*,
+  bugprone-*,
+  -modernize-use-trailing-return-type
+
+# A finding inside a first-party header is reported once per translation unit
+# that includes it; check-tidy.sh deduplicates them by file, line and check.
+HeaderFilterRegex: '/(packages|services)/.*\.hxx$'
+
+# The tree's format is .clang-format's; a tidy fix that reformats is noise.
+FormatStyle: file
+WarningsAsErrors: ''
