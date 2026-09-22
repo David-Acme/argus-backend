@@ -185,8 +185,7 @@ add_executable(argus-productivity
 # The filters validate through argus.identity.v1 (argus::clients::identity rides
 # argus::lib::auth); the sync RPC owner serves argus.productivity.v1 via
 # argus::clients::productivity. The DTOs validate through argus::lib::validation
-# and the controllers answer through argus::lib::http, both of which rode
-# argus_sync until sub-step 3a-1b.
+# and the controllers answer through argus::lib::http.
 target_link_libraries(argus-productivity PRIVATE productivity-core argus::contracts::productivity argus::contracts::sync
     argus::lib::auth argus::lib::validation argus::lib::http argus::clients::productivity)
 

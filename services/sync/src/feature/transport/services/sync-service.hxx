@@ -2,14 +2,14 @@
 
 #include <drogon/WebSocketController.h>
 #include <drogon/utils/coroutine.h>
-#include <feature/socket/sync/services/synchronized-service.hxx>
-#include <feature/socket/sync/socket/sync-forwarder.hxx>
+#include <feature/transport/services/synchronized-service.hxx>
+#include <sync/sync-forwarder.hxx>
 #include <auth/jwt-filter.hxx>
 #include <json/value.h>
 #include <memory>
-#include <shared/contracts/camera-sync-source.hxx>
-#include <shared/contracts/notification-sync-source.hxx>
-#include <shared/contracts/productivity-sync-source.hxx>
+#include <feature/transport/infra/camera-sync-source.hxx>
+#include <feature/transport/infra/notification-sync-source.hxx>
+#include <feature/transport/infra/productivity-sync-source.hxx>
 #include <auth/user-directory.hxx>
 #include <shared/repositories/user/user-repository.hxx>
 #include <shared/services/room/room-manager.hxx>

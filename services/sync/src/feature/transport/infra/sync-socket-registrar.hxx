@@ -1,11 +1,11 @@
 #pragma once
 
 #include <cstddef>
-#include <feature/socket/sync/socket/sync-forwarder.hxx>
+#include <sync/sync-forwarder.hxx>
 #include <memory>
-#include <shared/contracts/camera-sync-source.hxx>
-#include <shared/contracts/notification-sync-source.hxx>
-#include <shared/contracts/productivity-sync-source.hxx>
+#include <feature/transport/infra/camera-sync-source.hxx>
+#include <feature/transport/infra/notification-sync-source.hxx>
+#include <feature/transport/infra/productivity-sync-source.hxx>
 
 struct SyncRegistrationStats
 {

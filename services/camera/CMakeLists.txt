@@ -102,10 +102,6 @@ if(PROJECT_IS_TOP_LEVEL)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/identity/tools/migrate-identity
                          ${CMAKE_BINARY_DIR}/identity/tools/migrate-identity)
     endif()
-    if(NOT TARGET argus_sync)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/sync
-                         ${CMAKE_BINARY_DIR}/sync)
-    endif()
     if(NOT TARGET argus::lib::audio)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/audio
                          ${CMAKE_BINARY_DIR}/audio)
@@ -237,11 +233,10 @@ target_include_directories(camera-core SYSTEM PUBLIC
 
 target_include_directories(camera-core PUBLIC ${CAMERA_SRC_ROOT})
 
-# The engine is still linked for the /media socket's SyncFrameInput alone: the
-# camera repositories are this service's since sub-step 3a-1b.
+# The /media socket's SyncFrameInput vocabulary, which is the sync contract's
+# (sub-step 3a-1d) — the camera repositories are this service's since 3a-1b.
 target_link_libraries(camera-core PUBLIC
     argus::camera-repositories
-    argus_sync
     argus::lib::sqlite
     argus::camera-action-command
     argus::camera-object-event-outbox
@@ -271,9 +266,9 @@ target_compile_options(camera-core PRIVATE -Wall -Wextra)
 
 add_executable(argus-camera ${CAMERA_SRC_ROOT}/main.cc)
 
-# The filters validate through argus.identity.v1 (argus::clients::identity rides
-# argus::lib::auth); argus_identity arrives transitively through camera-core's
-# argus_sync pull, with no link-order meaning left.
+# The filters validate through argus.identity.v1: argus::clients::identity rides
+# argus::lib::auth, which is the whole of what this executable needs of the
+# identity domain since the cross-domain repositories left in 3a-1b.
 target_link_libraries(argus-camera PRIVATE camera-core argus_camera-rpc
     argus::lib::auth)
 

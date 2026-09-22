@@ -2,7 +2,7 @@
 
 #include <drogon/WebSocketController.h>
 #include <drogon/utils/coroutine.h>
-#include <feature/socket/sync/socket/sync-forwarder.hxx>
+#include <sync/sync-forwarder.hxx>
 #include <json/value.h>
 #include <memory>
 #include <mutex>

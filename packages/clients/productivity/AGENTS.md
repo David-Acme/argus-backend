@@ -11,15 +11,15 @@ library whose include root is `src/`, so a consumer writes
 `argus::clients::productivity`. 59 lines of source (`.hxx` 29, `.cc` 30)
 behind a 33-line CMakeLists. Three link lines in two CMakeLists:
 `argus-sync`'s `sync-transport` module
-(`services/sync/src/feature/transport/CMakeLists.txt:13`), and
+(`services/sync/src/feature/transport/CMakeLists.txt:21`), and
 `argus-productivity` with its `productivity-sync-rpc-test` in
-`services/productivity` (`:191`, `:279`). argus-sync is the caller; the
+`services/productivity` (`:190`, `:278`). argus-sync is the caller; the
 service that owns the contract links the package for its own server side, so
 `argus/productivity/v1/sync.proto` is compiled here and in no other
 CMakeLists of the tree.
 
 Three files include the header: argus-sync's
-`services/sync/src/feature/transport/infra/productivity-sync-source.hxx`, the
+`services/sync/src/feature/transport/infra/productivity-sync-gateway.hxx`, the
 RPC test above and this package's own suite.
 
 ## Layout

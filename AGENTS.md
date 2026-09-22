@@ -253,8 +253,7 @@ Naming: `ResponseLoginDto`, `ResponseRefreshTokenDto`
 
 **WS/sync DTOs** (header-only, e.g. `synchronized-dto.hxx`): parsed with
 `static {T} fromJson(const Json::Value&)`; declared beside the sync engine
-that reads them (`packages/sync/src/feature/socket/sync/dtos/` today; that
-package becomes `services/sync` in Phase 3a).
+that reads them (`services/sync/src/feature/transport/dtos/`).
 
 ### 11. Validation DSL
 
@@ -551,7 +550,7 @@ Raw pointers only for non-owning access (`.get()`).
   in an inner `[&]() -> Task` coroutine lambda that suspends: the frame lands
   on a reused stack and causes a use-after-free (crash). Do not pass
   temporaries to coroutines that store references either — use named locals.
-- `RoomManager` (`packages/sync/src/shared/services/room/`) is an instance class
+- `RoomManager` (`services/sync/src/shared/services/room/`) is an instance class
   with file-level `thread_local` state; `services/sync`'s `main.cc` holds the
   boot-time `init()` object for the process's lifetime.
 
@@ -926,7 +925,7 @@ for two different reasons, and says which when it does.
 | File | Purpose |
 |------|---------|
 | `packages/contracts/{auth,camera,productivity,sync}/src/<domain>/` | Each domain's wire enums, each with its own lowerCamelCase `<enum>ToString`/`<enum>FromString` pair (`packages/contracts/camera/src/camera/zone-type.hxx`). The enums that mirror a `CHECK` constraint are not all here — `notification` and `packages/identity/src/shared/vocabulary/` each carry their own |
-| `packages/contracts/sync/src/sync/` | `Syncable`, `SyncFilter` base classes + `sync-operation.hxx` |
+| `packages/contracts/sync/src/sync/` | `Syncable`, `SyncFilter` base classes + `sync-operation.hxx` + `sync-forwarder.hxx` (the `{conn, message, raw}` frame vocabulary and `SyncForwarder`, which `services/camera` and `services/gateway` implement) |
 
 **Tier 3 — `clients/`**
 
@@ -964,12 +963,12 @@ for two different reasons, and says which when it does.
 | `services/camera/src/shared/services/stream/` | go2rtc manager, `StreamHub` (fMP4 over `/sync`, per-connection credit window, lock order `hubMutex_ → Upstream::mtx`), `Fmp4Reader` (encoding from headers, whole fragments) |
 | `services/camera/src/shared/services/tapo/` | Tapo camera local protocols: control (`stok` + `securePassthrough`, legacy fallback) and the 8800 talk channel (Digest + MPEG-TS PCMA) |
 | `services/notification/src/shared/services/notification-token/` | Push tokens per session |
-| `packages/sync/src/feature/socket/sync/` | `SyncSocket` (formerly `SocketService`) + `SyncService` + `SynchronizedService` + DTOs; becomes `services/sync` (Phase 3a) |
+| `services/sync/src/feature/transport/` | `SyncSocket` (formerly `SocketService`) + `SyncService` + `SynchronizedService` + the `synchronized-dto.hxx` sync DTOs: the `/sync` engine, over `argus::contracts::sync`'s `SyncForwarder` vocabulary |
 | `services/notification/src/shared/services/notification/` | Per-user notifications: `Add` on create and granular user-audit on mark-as-read; this service's own code since sub-step 3a-1b |
-| `packages/sync/src/feature/socket/sync/socket/` | the socket module: `SyncSocket`, the `/sync` WebSocket controller over `SyncService`, plus `SyncForwarder`, the `voice:*` + raw PCM leg; becomes `services/sync` (Phase 3a) |
-| `packages/sync/src/shared/services/room/` | local `RoomManager` (rooms per module/user, `thread_local`) + `RoleRoomReplaceInput`; becomes `services/sync` (Phase 3a) |
-| `packages/sync/src/shared/services/audit-log/` | Global audit: per-field diffs, daily compaction and monotonic id for sync; becomes `services/sync` (Phase 3a) |
-| `packages/sync/src/shared/services/user-audit-log/` | Per-recipient audit: per-field diffs, daily compaction and monotonic id for sync; becomes `services/sync` (Phase 3a) |
+| `services/sync/src/feature/transport/infra/` | The pull-source ports (`{camera,notification,productivity}-sync-source.hxx`, held by `SynchronizedService` and the socket the registrar wires), their adapters (`{camera,notification,productivity}-sync-gateway.{hxx,cc}`, which reach the owner services through `argus::clients::…`), the socket registrar and the voice gRPC relay |
+| `services/sync/src/shared/services/room/` | local `RoomManager` (rooms per module/user, `thread_local`) + `RoleRoomReplaceInput` |
+| `services/sync/src/feature/fanout/services/audit-log-service.{hxx,cc}` | Global audit: per-field diffs, daily compaction and monotonic id for sync |
+| `services/sync/src/feature/fanout/services/user-audit-log-service.{hxx,cc}` | Per-recipient audit: per-field diffs, daily compaction and monotonic id for sync |
 | `services/sync/src/feature/fanout/services/` | The change feed's fan-out: `SyncFanOut` routes room emits and the imperative frames, `AuditFanOut` persists the audit and journal rows — `services/sync` owns its four tables and is their only writer |
 
 **Docs and templates**

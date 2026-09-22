@@ -9,9 +9,9 @@ A CONTRACT, not a service and not a library: one `argus_contracts`
 declaration, an INTERFACE target with no translation unit. The include root is
 `src/`, so a consumer writes `<productivity/share-access.hxx>` and links
 `argus::contracts::productivity`. One CMakeLists links it —
-`services/productivity`, which owns the boundary; `packages/sync` linked it
-until sub-step 3a-1b, when the repositories that carried this vocabulary on the
-sync leg moved into the owning services.
+`services/productivity`, which owns the boundary; the repositories that carried
+this vocabulary on the sync leg moved into the owning services in sub-step
+3a-1b, and the sync leg's adapter in `services/sync` reads it since.
 
 ## Layout
 

@@ -1,4 +1,4 @@
-#include "camera-sync-source.hxx"
+#include "camera-sync-gateway.hxx"
 
 #include <errors/response-exception.hxx>
 #include <sync/sync-errors.hxx>

@@ -2,8 +2,7 @@
 # repositories and the schemas they map rows through. Declared here rather than
 # inside a repository folder because the three are one readership — the whole
 # service writes them and no target reads one without the others — and because
-# the schemas' translation units have no other compiler (they rode argus_sync
-# until sub-step 3a-1b).
+# the schemas' translation units have no other compiler.
 argus_module(NAME camera-repositories
     SOURCES
         camera/camera-repository.cc

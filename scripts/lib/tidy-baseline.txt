@@ -5,7 +5,7 @@
 # behind it. The counts belong to the clang-tidy named
 # on the tool line, and a different major is refused.
 tool 22.1.8
-tus 482
+tus 481
 modernize-use-nodiscard 780
 modernize-avoid-c-style-cast 362
 modernize-use-designated-initializers 302

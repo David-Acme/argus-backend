@@ -42,10 +42,13 @@ that apply to sync-service code; when in doubt, the root file wins.
    tables are paged through `argus::clients::{camera,productivity,notification}`
    and the voice leg relays through `argus::clients::voice`. This service opens
    exactly one SQLite file.
-9. **The engine is a package until sub-step 3a-1d** — `packages/sync`
-   (`argus_sync`) still holds `SyncSocket`/`SyncService`/`SynchronizedService`,
-   the forwarder vocabulary and the three pull-source contracts, and this
-   binary composes it. Do not edit the engine here; d moves it.
+9. **The engine lives here** — `transport` holds `SyncSocket`/`SyncService`/
+   `SynchronizedService`, the `synchronized-dto.hxx` DTOs and the three
+   pull-source contracts; the audit, user-audit and action-journal rows are
+   `src/shared/repositories/` and `src/shared/schemas/` because both features
+   read them (rule 23's 2+ rule), while the two writers over them,
+   `audit-log-service` and `user-audit-log-service`, sit in `fanout`, their one
+   reader. The forwarder vocabulary is `argus::contracts::sync`'s, never a copy.
 10. **Portrait and invitation privacy** — Guard never receives invitation data
    or portrait bytes, and Resident/Guest receive only their own user row. The
    scope lives in `role_access` and `SynchronizedService`; route permission
@@ -82,12 +85,21 @@ argus-sync/
   src/app/rpc/          argus.sync.v1.SyncControlService (fleet-secret gated)
   src/config/           this service's typed config ([sync], [cert], upstreams)
   src/feature/transport/
+    controllers/        SyncSocket, the /sync WebSocket controller
+    dtos/               the sync DTOs (synchronized-dto.hxx)
+    services/           SyncService, SynchronizedService
+    repositories/       the event rows SynchronizedService pages
+    schemas/            event and person-event row mapping
     infra/              the three domain pull sources, the socket registrar
                         and the voice gRPC relay the forwarder rides
   src/feature/fanout/
     repositories/       delivery inbox (query + repository + receipt)
     services/           sync fan-out, audit fan-out, delivery consumer
-  src/shared/infra/     the notification row JSON both features render
+                        and the two audit writers they persist through
+  src/shared/repositories/  audit_log, user_audit_log, user_action_log
+  src/shared/schemas/       their three row mappings
+  src/shared/services/      RoomManager
+  src/shared/infra/         the notification row JSON both features render
   database/schema.sql   this owner's four tables and their five indexes
   config.toml.example   sync keys + the upstream targets; no AI keys
   tests/{unit,e2e,fixtures}
@@ -96,17 +108,17 @@ argus-sync/
 
 Two features, not four: `transport` owns the socket, the engine's composition
 and the three pull-source adapters; `fanout` owns everything a change event or
-a delivery does on arrival. The audit repositories, schemas and services sit in
-`packages/sync/src/shared/` today because the paging leg and the fan-out both
-read them — rule 23's 2+ rule, applied inside the service — and move under
-`src/shared/` in sub-step d. The one `src/shared/` folder here,
-`infra/notification-row-json.hxx`, is read by both features.
+a delivery does on arrival, the two audit writers included. Between them sit
+`src/shared/`'s repositories and schemas (the paging leg and the fan-out both
+read them), `src/shared/services/room/` (the transport, the fan-out and
+`main.cc` all hold the registry) and the one `src/shared/infra/` header,
+`notification-row-json.hxx`, which both features render rows through.
 
 The top-level CMake auto-discovers feature folders and links
-`argus::sync-transport`, `argus::sync-fanout`, `argus::sync-config` and
-`argus::sync-control-rpc` by name. The engine arrives as the `argus_sync`
-package (sub-step d inlines it) and the control leg as `argus::clients::sync`,
-which is also what compiles `argus/sync/v1/sync.proto`.
+`argus::sync-transport`, `argus::sync-fanout`, `argus::sync-config`,
+`argus::sync-control-rpc`, `argus::sync-repositories` and
+`argus::sync-services` by name. The control leg arrives as
+`argus::clients::sync`, which is also what compiles `argus/sync/v1/sync.proto`.
 
 ## Endpoint and ports
 

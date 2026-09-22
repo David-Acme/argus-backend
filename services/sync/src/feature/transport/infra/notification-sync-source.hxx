@@ -1,24 +1,21 @@
 #pragma once
 
-#include <memory>
-#include <notification/notification-client.hxx>
-#include <shared/contracts/notification-sync-source.hxx>
+#include <drogon/utils/coroutine.h>
+#include <auth/jwt-filter.hxx>
+#include <json/value.h>
+#include <optional>
+#include <sync/sync-filter.hxx>
+#include <vector>
 
-// User-scoped pull source backed by argus-notification's gRPC leg.
-class NotificationSyncGateway : public NotificationSyncSource
+// User-scoped notification pull source (owner: argus-notification).
+class NotificationSyncSource
 {
 public:
-  explicit NotificationSyncGateway(std::string target);
+  virtual ~NotificationSyncSource() = default;
 
-  NotificationSyncGateway(const NotificationSyncGateway&) = delete;
-  NotificationSyncGateway& operator=(const NotificationSyncGateway&) = delete;
+  [[nodiscard]] virtual drogon::Task<std::vector<Json::Value>>
+  find(const JwtContext& ctx, const SyncFilter& filter) const = 0;
 
-  [[nodiscard]] drogon::Task<std::vector<Json::Value>>
-  find(const JwtContext& ctx, const SyncFilter& filter) const override;
-
-  [[nodiscard]] drogon::Task<std::optional<Json::Value>>
-  findLast(const JwtContext& ctx) const override;
-
-private:
-  std::shared_ptr<NotificationClient> client_;
+  [[nodiscard]] virtual drogon::Task<std::optional<Json::Value>>
+  findLast(const JwtContext& ctx) const = 0;
 };

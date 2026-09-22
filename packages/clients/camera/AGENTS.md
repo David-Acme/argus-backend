@@ -13,12 +13,12 @@ compiles one proto (`argus/camera/v1/sync.proto`) and one source
 belong to this package and no consumer reaches
 `argus.camera.v1.SyncService` without them. Three CMakeLists name it:
 `argus-llm` (`services/llm/CMakeLists.txt:218`) and the `camera-rpc` module of
-`services/camera` (`services/camera/CMakeLists.txt:162`, which links it for the
+`services/camera` (`services/camera/CMakeLists.txt:158`, which links it for the
 generated stub although no source of that service includes the client header)
 link it, and `argus-sync`'s `sync-transport` module does too
-(`services/sync/src/feature/transport/CMakeLists.txt:11`) — the leg that pages
+(`services/sync/src/feature/transport/CMakeLists.txt:19`) — the leg that pages
 this domain over `/sync` since sub-step 3a-1c. All three also add the package to
-their own standalone tree by path (llm `:143`, camera `:132`, sync `:116`). The
+their own standalone tree by path (llm `:143`, camera `:129`, sync `:125`). The
 two readers that really use this client are argus-sync's `CameraSyncGateway`
 and argus-llm's catalog seed (`fetchCatalogSnapshot`); the sync repositories
 themselves are argus-camera's since sub-step 3a-1b.
@@ -30,7 +30,7 @@ themselves are argus-camera's since sub-step 3a-1b.
   `CameraSyncClient` with `pullTable(request, identity)` and
   `listCatalog(identity)`, both returning `std::optional`; 4 files include it —
   the two suites under `tests/unit/`,
-  `services/sync/src/feature/transport/infra/camera-sync-source.hxx` and
+  `services/sync/src/feature/transport/infra/camera-sync-gateway.hxx` and
   `services/llm/src/main.cc`.
 - Nothing else: `find packages/clients/camera -type f` returns CMakeLists.txt,
   the two sources, the two suites and this file.

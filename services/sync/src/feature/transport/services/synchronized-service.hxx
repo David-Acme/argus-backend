@@ -1,18 +1,18 @@
 #pragma once
 
 #include <drogon/utils/coroutine.h>
-#include <feature/socket/sync/dtos/synchronized-dto.hxx>
+#include <feature/transport/dtos/synchronized-dto.hxx>
 #include <auth/jwt-filter.hxx>
 #include <json/value.h>
-#include <shared/contracts/camera-sync-source.hxx>
-#include <shared/contracts/notification-sync-source.hxx>
-#include <shared/contracts/productivity-sync-source.hxx>
+#include <feature/transport/infra/camera-sync-source.hxx>
+#include <feature/transport/infra/notification-sync-source.hxx>
+#include <feature/transport/infra/productivity-sync-source.hxx>
 #include <sync/sync-filter.hxx>
 #include <sync/syncable.hxx>
 #include <sync/table-name.hxx>
 #include <sync/socket-emit-dto.hxx>
 #include <shared/repositories/audit-log/audit-log-repository.hxx>
-#include <shared/repositories/event/event-repository.hxx>
+#include <feature/transport/repositories/event/event-repository.hxx>
 #include <shared/repositories/person/person-repository.hxx>
 #include <shared/repositories/user-action-log/user-action-log-repository.hxx>
 #include <shared/repositories/user-audit-log/user-audit-log-repository.hxx>

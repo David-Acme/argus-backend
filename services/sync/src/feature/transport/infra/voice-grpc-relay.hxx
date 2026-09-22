@@ -2,7 +2,7 @@
 
 #include <argus/voice/v1/voice.grpc.pb.h>
 #include <drogon/WebSocketController.h>
-#include <feature/socket/sync/socket/sync-forwarder.hxx>
+#include <sync/sync-forwarder.hxx>
 #include <grpcpp/grpcpp.h>
 #include <json/value.h>
 #include <memory>

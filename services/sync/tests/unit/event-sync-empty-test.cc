@@ -3,7 +3,7 @@
 
 #include <drogon/drogon.h>
 #include <sync/sync-filter.hxx>
-#include <shared/repositories/event/event-repository.hxx>
+#include <feature/transport/repositories/event/event-repository.hxx>
 #include <sqlite/db-service.hxx>
 
 TEST_CASE("event sync serves empty with no read-only client installed")

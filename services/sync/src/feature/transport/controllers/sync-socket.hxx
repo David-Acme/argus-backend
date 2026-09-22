@@ -1,12 +1,12 @@
 #pragma once
 
 #include <drogon/WebSocketController.h>
-#include <feature/socket/sync/socket/sync-forwarder.hxx>
-#include <feature/socket/sync/services/sync-service.hxx>
+#include <sync/sync-forwarder.hxx>
+#include <feature/transport/services/sync-service.hxx>
 #include <memory>
-#include <shared/contracts/camera-sync-source.hxx>
-#include <shared/contracts/notification-sync-source.hxx>
-#include <shared/contracts/productivity-sync-source.hxx>
+#include <feature/transport/infra/camera-sync-source.hxx>
+#include <feature/transport/infra/notification-sync-source.hxx>
+#include <feature/transport/infra/productivity-sync-source.hxx>
 
 class SyncSocket : public drogon::WebSocketController<SyncSocket, false>
 {

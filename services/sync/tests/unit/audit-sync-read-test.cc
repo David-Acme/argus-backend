@@ -4,12 +4,12 @@
 #include <drogon/WebSocketConnection.h>
 #include <drogon/drogon.h>
 #include <errors/response-exception.hxx>
-#include <feature/socket/sync/dtos/synchronized-dto.hxx>
-#include <feature/socket/sync/services/synchronized-service.hxx>
+#include <feature/transport/dtos/synchronized-dto.hxx>
+#include <feature/transport/services/synchronized-service.hxx>
 #include <auth/jwt-filter.hxx>
 #include <sync/module-audit-event.hxx>
-#include <shared/contracts/notification-sync-source.hxx>
-#include <shared/contracts/productivity-sync-source.hxx>
+#include <feature/transport/infra/notification-sync-source.hxx>
+#include <feature/transport/infra/productivity-sync-source.hxx>
 #include <sync/sync-operation.hxx>
 #include <sync/table-name.hxx>
 #include <sync/user-audit-event.hxx>

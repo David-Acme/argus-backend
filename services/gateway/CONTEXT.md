@@ -70,8 +70,9 @@ monolith's build set was retired (F6-4).
   until sub-step 3a-1c moved the surface — socket, rooms, change fan-out, audit
   writers and voice relay — to `argus-sync`. It serves the sync protocol
   natively (`sync`, `sync_audit_log`,
-  `sync_user_audit_log`, identity rooms, `initial_info`) from
-  `argus_sync`: the productivity sync tables pull from argus-productivity
+  `sync_user_audit_log`, identity rooms, `initial_info`) from argus-sync,
+  which holds that engine as its own modules: the productivity
+  sync tables pull from argus-productivity
   over the `argus.productivity.v1.SyncService` leg
   (`[productivity] grpc_target`), the notification page from
   argus-notification over `argus.notification.v1.NotificationService`

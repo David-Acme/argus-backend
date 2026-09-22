@@ -24,7 +24,7 @@ other CMakeLists of the tree.
 14 files include the header: this suite, two in `services/gateway` (the
 camera notifier and its test), nine in `services/guard` (`guard-service.cc`,
 `main.cc` and seven unit suites),
-`services/sync/src/feature/transport/infra/notification-sync-source.hxx` (the
+`services/sync/src/feature/transport/infra/notification-sync-gateway.hxx` (the
 `/sync` pull leg since sub-step 3a-1c) and
 `services/notification/tests/unit/notification-rpc-test.cc`.
 
@@ -68,7 +68,7 @@ camera notifier and its test), nine in `services/guard` (`guard-service.cc`,
 - The endpoint and the credential are runtime config, not constants:
   `notifications.grpc_target` and `notifications.credential`, read by
   `services/gateway/src/main.cc` (`:222`, `:324`),
-  `services/sync/src/feature/transport/infra/notification-sync-source.cc:63`
+  `services/sync/src/feature/transport/infra/notification-sync-gateway.cc:63`
   and `services/guard/src/main.cc` (`:135`, `:141`).
   `argus-deploy/config.gateway.toml.example:104`
   and `config.guard.toml.example:138` declare both, each under a

@@ -6,8 +6,8 @@
 #include <json/value.h>
 #include <sync/syncable.hxx>
 #include <optional>
-#include <shared/schemas/event/event-schema.hxx>
-#include <shared/schemas/person-event/person-event-schema.hxx>
+#include <feature/transport/schemas/event/event-schema.hxx>
+#include <feature/transport/schemas/person-event/person-event-schema.hxx>
 #include <vector>
 
 class EventRepository : public Syncable

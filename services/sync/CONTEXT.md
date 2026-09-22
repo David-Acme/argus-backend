@@ -11,12 +11,13 @@ and then reacts to live sync, so the transport, the audit trail and the room
 routing are the product's state machine, not a gateway feature. A service owns
 them the way a service owns a domain.
 
-Sub-step 3a-1c created this binary and flipped who serves `/sync`. It composes
-the engine package (`packages/sync`, `argus_sync`) as it stands; sub-step 3a-1d
-inlines the engine here and deletes the package. The split is deliberate: c
-changes *behaviour* (who persists, who serves, who reaches live connections),
-d changes only file placement, so the WebSocket protocol cannot regress by
-accident in the commit that changes the endpoint.
+Sub-step 3a-1c created this binary and flipped who serves `/sync`. It composed
+the engine as it then stood, still a package (`packages/sync`, `argus_sync`);
+sub-step 3a-1d inlined it here — its features, repositories, schemas and
+services are modules of this service (rule 23) — and deleted the package. The
+split was deliberate: c changed *behaviour* (who persists, who serves, who
+reaches live connections), d changed only file placement, so the WebSocket
+protocol could not regress by accident in the commit that changed the endpoint.
 
 ## What it owns
 

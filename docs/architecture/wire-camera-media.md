@@ -84,6 +84,9 @@ sessions on `/sync` are unaffected. Caps (deploy stack values):
 
 - `docs/architecture/sync-engine.md` — `/sync` operations and bootstrap.
 - `docs/history/plans/camera-media-ws-plan.md` — migration plan and rationale.
-- `packages/sync/src/feature/socket/sync/` — shared `/sync` socket.
+- `packages/contracts/sync/src/sync/sync-forwarder.hxx` — the shared
+  `SyncForwarder` vocabulary both sockets implement.
+- `services/sync/src/feature/transport/controllers/sync-socket.hxx` — the
+  engine side of that vocabulary.
 - `services/gateway/src/sync/camera-stream-socket.{hxx,cc}` — endpoint.
 - `services/camera/src/controllers/camera-media-service.cc` — protocol.

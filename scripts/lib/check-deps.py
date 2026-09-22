@@ -12,12 +12,11 @@ sees almost none of the graph (measured in phase 2 step 4).
 The exit status is the gate: non-zero when an edge the table can classify is
 forbidden, when the unit graph has a cycle, or when an item names the
 first-party ``argus::`` namespace and no declaration answers it. Edges that
-touch a package section 9.1 has not moved yet (``audit``, ``identity``,
-``intent``, ``memory``, ``room``, ``socket``, ``sync``) are outside the table's
-reach today: they are counted, grouped by the step that owns each move, and
-never fail the build -- the phase that moves them is the one that makes them
-legal or illegal. A run that read nothing exits 2 rather than reporting the
-zeroes that look like a clean tree.
+touch a package section 9.1 has not moved yet (``identity``, ``intent``,
+``memory``) are outside the table's reach today: they are counted, grouped by
+the step that owns each move, and never fail the build -- the phase that moves
+them is the one that makes them legal or illegal. A run that read nothing exits
+2 rather than reporting the zeroes that look like a clean tree.
 """
 
 import argparse
@@ -32,7 +31,7 @@ from collections import defaultdict
 # tier 5 is services/*. Anything else under packages/ is a package section 9.1
 # has not moved yet and has no tier until it does.
 IN_TRANSIT = ("packages/identity", "packages/intent",
-              "packages/memory", "packages/sync")
+              "packages/memory")
 
 # What each tier may depend on -- rule 1 read together with the table's "may
 # never" column: a tier never points back up, tier 3 never reaches another

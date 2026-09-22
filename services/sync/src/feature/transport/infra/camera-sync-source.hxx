@@ -1,24 +1,24 @@
 #pragma once
 
-#include <camera/camera-sync-client.hxx>
+#include <auth/jwt-filter.hxx>
 #include <memory>
-#include <shared/contracts/camera-sync-source.hxx>
+#include <sync/syncable.hxx>
 
-// Pull source backed by argus-camera's argus.camera.v1.SyncService leg.
-class CameraSyncGateway : public CameraSyncSource
+enum class CameraSyncTable
+{
+  Camera,
+  CameraStream,
+  Zone,
+};
+
+// Pull source for the camera-domain sync tables.
+class CameraSyncSource
 {
 public:
-  explicit CameraSyncGateway(std::string target);
+  virtual ~CameraSyncSource() = default;
 
-  CameraSyncGateway(const CameraSyncGateway&) = delete;
-  CameraSyncGateway& operator=(const CameraSyncGateway&) = delete;
+  [[nodiscard]] virtual bool serves(CameraSyncTable table) const = 0;
 
-  [[nodiscard]] bool serves(CameraSyncTable table) const override;
-  [[nodiscard]] std::unique_ptr<Syncable>
-  sourceFor(CameraSyncTable table, const JwtContext& ctx) const override;
-
-private:
-  class Pull;
-
-  std::shared_ptr<CameraSyncClient> client_;
+  [[nodiscard]] virtual std::unique_ptr<Syncable>
+  sourceFor(CameraSyncTable table, const JwtContext& ctx) const = 0;
 };

@@ -91,10 +91,6 @@ if(NOT TARGET argus_identity)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/identity/tools/migrate-identity
                          ${CMAKE_BINARY_DIR}/identity/tools/migrate-identity)
     endif()
-    if(NOT TARGET argus_sync)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/sync
-                         ${CMAKE_BINARY_DIR}/sync)
-    endif()
 endif()
 
 if(NOT TARGET argus::clients::identity)
@@ -140,7 +136,7 @@ add_library(gateway-core STATIC
 
 target_include_directories(gateway-core PUBLIC ${GATEWAY_SRC_ROOT})
 
-target_link_libraries(gateway-core PUBLIC argus_identity argus_sync
+target_link_libraries(gateway-core PUBLIC argus_identity
     argus::lib::cert argus::lib::mdns argus::lib::http
     argus::clients::identity argus::contracts::auth argus::contracts::sync
     argus::clients::notification argus::clients::sync)

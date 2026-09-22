@@ -5,9 +5,9 @@
 #include <feature/fanout/services/audit-fan-out.hxx>
 #include <feature/fanout/services/notification-delivery-consumer.hxx>
 #include <feature/fanout/services/sync-fan-out.hxx>
-#include <feature/transport/infra/camera-sync-source.hxx>
-#include <feature/transport/infra/notification-sync-source.hxx>
-#include <feature/transport/infra/productivity-sync-source.hxx>
+#include <feature/transport/infra/camera-sync-gateway.hxx>
+#include <feature/transport/infra/notification-sync-gateway.hxx>
+#include <feature/transport/infra/productivity-sync-gateway.hxx>
 #include <feature/transport/infra/sync-socket-registrar.hxx>
 #include <feature/transport/infra/voice-grpc-relay.hxx>
 #include <grpcpp/grpcpp.h>

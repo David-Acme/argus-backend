@@ -1,7 +1,7 @@
 #include "camera-media-socket.hxx"
 
 #include <errors/response-exception.hxx>
-#include <feature/socket/sync/socket/sync-forwarder.hxx>
+#include <sync/sync-forwarder.hxx>
 #include <auth/jwt-filter.hxx>
 #include <auth/request-context.hxx>
 #include <text/json-util.hxx>

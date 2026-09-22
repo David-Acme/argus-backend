@@ -1,7 +1,7 @@
 #include "camera-stream-socket.hxx"
 
 #include <errors/response-exception.hxx>
-#include <feature/socket/sync/socket/sync-forwarder.hxx>
+#include <sync/sync-forwarder.hxx>
 #include <text/json-util.hxx>
 
 #include <drogon/utils/coroutine.h>

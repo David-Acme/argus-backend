@@ -2,7 +2,7 @@
 
 #include <drogon/DrClassMap.h>
 #include <drogon/drogon.h>
-#include <feature/socket/sync/socket/sync-socket.hxx>
+#include <feature/transport/controllers/sync-socket.hxx>
 #include <auth/device-filter.hxx>
 #include <auth/jwt-filter.hxx>
 #include <algorithm>

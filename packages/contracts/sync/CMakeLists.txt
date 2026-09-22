@@ -50,6 +50,7 @@ argus_contracts(NAME sync
         src/sync/user-action-event.hxx
         src/sync/identity-change-sink.hxx
         src/sync/sync-control-sink.hxx
+        src/sync/sync-forwarder.hxx
     DEPENDS
         argus::lib::errors
         argus::lib::text

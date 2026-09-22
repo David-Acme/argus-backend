@@ -1,24 +1,28 @@
 #pragma once
 
+#include <auth/jwt-filter.hxx>
 #include <memory>
-#include <productivity/productivity-sync-client.hxx>
-#include <shared/contracts/productivity-sync-source.hxx>
+#include <sync/syncable.hxx>
 
-// Pull source backed by argus-productivity's argus.productivity.v1.SyncService.
-class ProductivitySyncGateway : public ProductivitySyncSource
+enum class ProductivitySyncTable
+{
+  Reminder,
+  ReminderDetail,
+  CalendarEvent,
+  CalendarEventShare,
+  Project,
+  ProjectMember,
+  ProjectTask,
+};
+
+// Pull source for the productivity-domain sync tables.
+class ProductivitySyncSource
 {
 public:
-  explicit ProductivitySyncGateway(std::string target);
+  virtual ~ProductivitySyncSource() = default;
 
-  ProductivitySyncGateway(const ProductivitySyncGateway&) = delete;
-  ProductivitySyncGateway& operator=(const ProductivitySyncGateway&) = delete;
+  [[nodiscard]] virtual bool serves(ProductivitySyncTable table) const = 0;
 
-  [[nodiscard]] bool serves(ProductivitySyncTable table) const override;
-  [[nodiscard]] std::unique_ptr<Syncable>
-  sourceFor(ProductivitySyncTable table, const JwtContext& ctx) const override;
-
-private:
-  class Pull;
-
-  std::shared_ptr<ProductivitySyncClient> client_;
+  [[nodiscard]] virtual std::unique_ptr<Syncable>
+  sourceFor(ProductivitySyncTable table, const JwtContext& ctx) const = 0;
 };

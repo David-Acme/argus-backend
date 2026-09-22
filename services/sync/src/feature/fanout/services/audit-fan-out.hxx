@@ -1,9 +1,9 @@
 #pragma once
 
+#include <feature/fanout/services/audit-log-service.hxx>
+#include <feature/fanout/services/user-audit-log-service.hxx>
 #include <json/value.h>
 #include <shared/repositories/user-action-log/user-action-log-repository.hxx>
-#include <shared/services/audit-log/audit-log-service.hxx>
-#include <shared/services/user-audit-log/user-audit-log-service.hxx>
 #include <sync/module-audit-event.hxx>
 #include <sync/user-action-event.hxx>
 #include <sync/user-audit-event.hxx>

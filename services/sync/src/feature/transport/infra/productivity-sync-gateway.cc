@@ -1,4 +1,4 @@
-#include "productivity-sync-source.hxx"
+#include "productivity-sync-gateway.hxx"
 
 #include <errors/response-exception.hxx>
 #include <sync/sync-errors.hxx>

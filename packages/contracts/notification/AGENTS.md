@@ -12,8 +12,9 @@ declaration, an INTERFACE target with no translation unit. The include root is
 `argus::contracts::notification`. Its consumers are the notification service
 (the repository, the delivery service and the NATS sink), the gateway (the
 delivery consumer, its inbox and two suites) and this package's own suite. The
-delivery sink moved here in sub-step 3a-1b from `packages/sync`, which was the
-wrong owner: it carries the notification domain's wire and no sync type at all.
+delivery sink moved here in sub-step 3a-1b from the engine package, which was
+the wrong owner: it carries the notification domain's wire and no sync type at
+all.
 
 ## Layout
 

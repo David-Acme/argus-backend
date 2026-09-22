@@ -23,9 +23,16 @@ struct SocketFrameError
 };
 
 // Sends the {type:"<type>_error", status, error} envelope for a failed frame.
-void sendSocketFrameError(const SocketFrameError& input);
+inline void sendSocketFrameError(const SocketFrameError& input)
+{
+  Json::Value envelope;
+  envelope["type"] = input.type + "_error";
+  envelope["status"] = input.status;
+  envelope["error"] = input.error;
+  input.conn->sendJson(envelope);
+}
 
-// Side channel of SyncService for the frame types the sync tables do not serve themselves.
+// Side channel of the /sync socket for the frame types the sync tables do not serve themselves.
 class SyncForwarder
 {
 public:

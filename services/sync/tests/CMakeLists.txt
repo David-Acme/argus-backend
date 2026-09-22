@@ -1,7 +1,7 @@
 # The suites this service owns: the WS surface and its fan-out routing, the
 # audit read path, the delivery inbox and its opt-in live broker check, and the
 # frozen golden /sync transcript. The engine's own suites came here in sub-step
-# 3a-1c; packages/sync keeps none.
+# 3a-1c; the package it then lived in keeps none since 3a-1d deleted it.
 
 # The service root declares the doctest include dirs SYSTEM before adding this
 # directory, so the property is already set here.
@@ -10,7 +10,7 @@ add_executable(sync-surface-test unit/sync-surface-test.cc)
 target_link_libraries(sync-surface-test PRIVATE
     argus::sync-transport
     argus::sync-fanout
-    argus_sync
+    argus::sync-repositories
     argus::lib::config
     argus::lib::sqlite
     argus::lib::text
@@ -25,7 +25,8 @@ add_test(NAME sync-surface-test COMMAND sync-surface-test)
 add_executable(audit-sync-read-test unit/audit-sync-read-test.cc)
 target_link_libraries(audit-sync-read-test PRIVATE
     argus::sync-fanout
-    argus_sync
+    argus::sync-transport
+    argus::sync-repositories
     argus::lib::sqlite
     argus::lib::text
     argus::lib::errors
@@ -65,7 +66,8 @@ add_test(NAME voice-leg-test COMMAND voice-leg-test)
 
 add_executable(event-sync-empty-test unit/event-sync-empty-test.cc)
 target_link_libraries(event-sync-empty-test PRIVATE
-    argus_sync
+    argus::sync-transport
+    argus::sync-repositories
     argus::lib::sqlite
     argus::contracts::sync
     Drogon::Drogon

@@ -170,8 +170,7 @@ add_executable(argus-notification
 # The filters validate through argus.identity.v1 (argus::clients::identity rides
 # argus::lib::auth); the RPC owner serves argus.notification.v1 via
 # argus::clients::notification. The DTOs validate through argus::lib::validation
-# and the controllers answer through argus::lib::http, both of which rode
-# argus_sync until sub-step 3a-1b.
+# and the controllers answer through argus::lib::http.
 target_link_libraries(argus-notification PRIVATE notification-core
     argus::lib::auth argus::lib::validation argus::lib::http
     argus::clients::notification)

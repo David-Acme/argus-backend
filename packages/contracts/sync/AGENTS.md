@@ -7,9 +7,10 @@ change-payload vocabulary the producers and the transport share.
 ## What this is
 
 A CONTRACT, not a service and not a library, and the largest fan-in of the ten:
-17 CMakeLists name `argus::contracts::sync` — 16 consumers plus this package's
-own test links (the newest is `packages/clients/sync`, which links it as the
-home of the frame its control leg carries). Most of it is headers only, but this
+18 CMakeLists name `argus::contracts::sync` — 17 consumers plus this package's
+own test links, and five of the 17 are argus-sync's modules since sub-step
+3a-1d (the newest of the others is `packages/clients/sync`, which links it as
+the home of the frame its control leg carries). Most of it is headers only, but this
 is the one contract whose headers are not free of dependencies — `syncable.hxx`
 declares virtuals returning `drogon::Task` and `Json::Value`, and the two change
 sinks add `publishAudit` returning `drogon::Task<void>`, which is why the package
@@ -19,14 +20,15 @@ longer transitive only: `sync-change-test` includes `<text/json-util.hxx>` and
 the two audit-event headers include `<text/json-diff.hxx>`. The include root is
 `src/`, so a consumer writes `<sync/sync-operation.hxx>`.
 
-The consumers are the sync engine (`packages/sync`), the identity, memory and
+The consumers are argus-sync — the engine's home since sub-step 3a-1d, the
+package it used to live in having been deleted — the identity, memory and
 `lib/auth` packages, `clients/llm` and `clients/sync`, and the camera, gateway,
 llm, notification, productivity and sync services. A table named here is a table
 some repository syncs. The change vocabulary's consumers are the producers that
 hold a sink — camera, productivity, notification and identity — the memory
-package, and `services/sync`'s fan-out that reads the payloads back; sub-step
+package, and argus-sync's fan-out that reads the payloads back; sub-step
 3a-1a1 moved it here out of `packages/socket`, whose transport is now
-`packages/sync`'s `SyncSocket`.
+`services/sync`'s `SyncSocket`.
 
 ## Layout
 
@@ -93,6 +95,15 @@ package, and `services/sync`'s fan-out that reads the payloads back; sub-step
   event (camera and identity produce it today), carrying one optional
   `create_user_id` where the user-scoped event carries a recipient list;
   6 files.
+- `src/sync/sync-forwarder.hxx` — `SyncFrameInput` (`conn`, `message`, `raw`),
+  the `SocketFrameError` refusal the transport sends back, the
+  `sendSocketFrameError` helper (inline, because a contract compiles no source)
+  and `SyncForwarder`, the four-call side-channel interface (`onConnect`,
+  `forwardText`, `forwardBinary`, `onClose`) a service implements when it
+  carries frame types the sync tables do not serve themselves. It moved here in
+  sub-step 3a-1d from `packages/sync`, because `services/camera` and
+  `services/gateway` implement it and rule 27 forbids a service including
+  another service's source; 8 files.
 
 ## Rules
 

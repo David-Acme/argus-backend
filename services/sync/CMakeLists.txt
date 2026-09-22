@@ -16,10 +16,11 @@ set(SYNC_SRC_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
 if(PROJECT_IS_TOP_LEVEL)
     # Standalone configure: this service owns the whole build, so it adds the
-    # packages it links — the leaves it uses directly, the engine package
-    # (argus_sync, still a package until sub-step d) and the sibling packages
+    # packages it links — the leaves it uses directly and the sibling packages
     # that used to arrive through argus-common — plus the third-party
     # sqlite-vec, so this service links the same objects as any other consumer.
+    # The engine itself is no longer one of them: its features are modules of
+    # this service (rule 23).
 
     find_package(Drogon CONFIG REQUIRED)
     find_package(cnats CONFIG REQUIRED)
@@ -84,6 +85,22 @@ if(PROJECT_IS_TOP_LEVEL)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/contracts/voice
                          ${CMAKE_BINARY_DIR}/contracts/voice)
     endif()
+    # The four domains whose vocabulary the transport and the repositories
+    # name: the three table domains and voice, whose enums ride the same
+    # headers. In the root build each arrives through its owner; standalone,
+    # this service is the only one that can add them.
+    if(NOT TARGET argus::contracts::camera)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/contracts/camera
+                         ${CMAKE_BINARY_DIR}/contracts/camera)
+    endif()
+    if(NOT TARGET argus::contracts::notification)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/contracts/notification
+                         ${CMAKE_BINARY_DIR}/contracts/notification)
+    endif()
+    if(NOT TARGET argus::contracts::productivity)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/contracts/productivity
+                         ${CMAKE_BINARY_DIR}/contracts/productivity)
+    endif()
     if(NOT TARGET argus::identity)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/identity
                          ${CMAKE_BINARY_DIR}/identity)
@@ -92,14 +109,6 @@ if(PROJECT_IS_TOP_LEVEL)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/identity/tools/migrate-identity
                          ${CMAKE_BINARY_DIR}/identity/tools/migrate-identity)
     endif()
-endif()
-
-# The engine still lives in packages/sync until sub-step d moves it here: this
-# binary composes it, so the WebSocket protocol code is literally untouched by
-# the commit that changes who serves /sync.
-if(NOT TARGET argus_sync)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/sync
-                     ${CMAKE_BINARY_DIR}/packages/sync)
 endif()
 
 # The control leg's proto (argus.sync.v1.SyncControlService): this service
@@ -140,6 +149,8 @@ endforeach()
 
 add_subdirectory(src/config)
 add_subdirectory(src/app/rpc)
+add_subdirectory(src/shared/repositories)
+add_subdirectory(src/shared/services)
 
 argus_service(NAME argus-sync
     MAIN ${SYNC_SRC_ROOT}/app/main.cc
@@ -147,6 +158,8 @@ argus_service(NAME argus-sync
             argus::sync-transport
             argus::sync-fanout
             argus::sync-control-rpc
+            argus::sync-repositories
+            argus::sync-services
     DEPENDS argus::lib::http
             argus::lib::auth
             argus::clients::sync

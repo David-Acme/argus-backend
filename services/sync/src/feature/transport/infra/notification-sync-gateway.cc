@@ -1,4 +1,4 @@
-#include "notification-sync-source.hxx"
+#include "notification-sync-gateway.hxx"
 #include <shared/infra/notification-row-json.hxx>
 
 #include <errors/response-exception.hxx>
