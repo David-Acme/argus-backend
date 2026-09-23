@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# Model provisioning for argus-llm (moved verbatim from scripts/setup.sh).
 set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/../../../scripts/lib/common.sh"
 
@@ -64,8 +63,6 @@ setup_llm_model() {
     fi
   fi
 
-  # License compliance for the LFM Open License v1.0: ship the license text
-  # and an attribution notice next to the model weights.
   local LICENSE_URL="https://huggingface.co/LiquidAI/LFM2.5-1.2B-Instruct-GGUF/raw/main/LICENSE"
   if [ ! -f "$MODEL_DIR/LICENSE.lfm1.0" ]; then
     log "Downloading LFM Open License v1.0..."

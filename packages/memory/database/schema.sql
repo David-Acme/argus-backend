@@ -1,15 +1,3 @@
--- memory.db schema (F4-6, Ruling BW): the memory tables VERBATIM from
--- database/schema.sql (the legacy keeps applying the full schema.sql) plus
--- the catalog replica tables argus-memory feeds from the change subjects
--- (Ruling BX). memory_vec/face_vec are vec0 virtual tables created by
--- VectorIndexRepository on the service's own connection.
-
--- ── Tables · Memory graph ────────────────────────────────────────────────────
--- Entity-anchored facts, alias frames, typed edges
--- (about/related/supersedes/mentions/derived/rolled_up), episodic memory and
--- provenance. Embeddings reuse memory_vec (vec0) with partitions
--- 'graph:fact:<scope>' / 'graph:episode:<scope>'.
-
 CREATE TABLE IF NOT EXISTS memory_entity (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   kind TEXT NOT NULL CHECK (kind IN ('person', 'place', 'device', 'pet', 'thing', 'concept')),
@@ -94,12 +82,6 @@ CREATE TABLE IF NOT EXISTS memory_procedure (
   updated_at INTEGER NOT NULL
 );
 
--- ── Tables · Catalog replicas (Ruling BX) ────────────────────────────────────
--- Local mirrors of the cross-domain gazetteer sources. argus-memory rebuilds
--- them from boot snapshots and replays argus.camera.v1.change plus
--- argus.identity.v1.change upsert/delete style; EntityResolver::build()
--- re-runs on every applied change.
-
 CREATE TABLE IF NOT EXISTS catalog_person (
   id         INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id    INTEGER,
@@ -124,13 +106,6 @@ CREATE TABLE IF NOT EXISTS catalog_stream (
   label TEXT NOT NULL DEFAULT ''
 );
 
--- Durable receipts for argus.guard.v1.encounter_closed, written only by the
--- encounter consumer in this same database. The insert wins the capture
--- lease; a 'dispatched' row drops redeliveries, a 'received' row replays
--- them. fingerprint is the canonical payload hash: the same id plus the same
--- fingerprint is a replay, the same id plus a different fingerprint is a
--- conflict that is never captured. 'dead_lettered' rows are poison the
--- broker must not resend.
 CREATE TABLE IF NOT EXISTS encounter_closed_inbox (
   event_id        TEXT    NOT NULL  PRIMARY KEY,
   fingerprint     TEXT    NOT NULL  DEFAULT '',
@@ -141,9 +116,6 @@ CREATE TABLE IF NOT EXISTS encounter_closed_inbox (
   created_at      INTEGER NOT NULL  DEFAULT (strftime('%s', 'now')),
   updated_at      INTEGER NOT NULL  DEFAULT (strftime('%s', 'now'))
 );
-
--- ── Virtual tables · Memory FTS5 (external content) ─────────────────────────
-
 
 CREATE VIRTUAL TABLE IF NOT EXISTS memory_fact_fts USING fts5(
   canonical, content = 'memory_fact', content_rowid = 'id',
@@ -160,26 +132,18 @@ CREATE VIRTUAL TABLE IF NOT EXISTS memory_alias_fts USING fts5(
   tokenize = 'unicode61 remove_diacritics 2'
 );
 
--- ── Indexes ──────────────────────────────────────────────────────────────────
-
-
--- memory_fact
 CREATE INDEX IF NOT EXISTS idx_memory_fact_entity ON memory_fact (entity_id, predicate);
 CREATE INDEX IF NOT EXISTS idx_memory_fact_scope  ON memory_fact (scope, ref_id);
 CREATE INDEX IF NOT EXISTS idx_memory_fact_valid  ON memory_fact (valid_to);
 
--- memory_alias
 CREATE INDEX IF NOT EXISTS idx_memory_alias_norm  ON memory_alias (norm);
 CREATE INDEX IF NOT EXISTS idx_memory_alias_entity ON memory_alias (entity_id);
 
--- memory_edge
 CREATE INDEX IF NOT EXISTS idx_memory_edge_kind   ON memory_edge (kind, src_id);
 CREATE INDEX IF NOT EXISTS idx_memory_edge_dst    ON memory_edge (kind, dst_id);
 
--- memory_episode
 CREATE INDEX IF NOT EXISTS idx_memory_episode_time ON memory_episode (occurred_at);
 CREATE INDEX IF NOT EXISTS idx_memory_episode_scope ON memory_episode (scope, ref_id);
 
--- encounter_closed_inbox
 CREATE INDEX IF NOT EXISTS idx_encounter_closed_inbox_status
     ON encounter_closed_inbox (status, event_id);

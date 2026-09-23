@@ -948,7 +948,7 @@ The implementation model must preserve the repository rules during every phase:
 - use one module folder and its own `CMakeLists.txt`; consumers link by module;
 - extend schemas additively and never reset a user's database as a feature side
   effect;
-- use short function/class comments only; put design rationale in this document;
+- write no comments in code; put design rationale in this document;
 - keep the frontend's persisted-local-first and granular sync semantics intact;
 - remove replaced paths in the same change, especially the duplicate notification
   authority and direct model action path.

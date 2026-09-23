@@ -80,7 +80,7 @@ void writeConfig(const std::string& path, const std::string& dbPath)
       << "[memory]\nschema_file = \"" << ARGUS_TEST_MEMORY_SCHEMA << "\"\n"
       << "create_face_vec = false\n";
 }
-} // namespace
+}
 
 TEST_CASE("the encounter inbox is durable, exact and fail-closed")
 {

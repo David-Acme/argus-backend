@@ -22,7 +22,6 @@ bool execUnlocked(sqlite3* db, const char* sql)
   return true;
 }
 
-// The face index belongs to the legacy process only; the TOML boolean reads in both shapes.
 bool createFaceVec()
 {
   if (!ConfigService::hasKey("memory.create_face_vec"))
@@ -34,7 +33,7 @@ bool createFaceVec()
   return ConfigService::getBool("memory.create_face_vec");
 }
 
-} // namespace
+}
 
 bool VectorIndexRepository::createTables(sqlite3* db, int dims)
 {

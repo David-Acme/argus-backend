@@ -26,7 +26,6 @@ std::string jsonType(const tools::ToolArgumentSpec& spec)
   return "string";
 }
 
-// Bare pythonic tokens keep the schema's types: a full number parse becomes one.
 Json::Value bareValue(const std::string& token)
 {
   try {
@@ -47,7 +46,6 @@ Json::Value bareValue(const std::string& token)
   return Json::Value(token);
 }
 
-// Model emissions trail separators into keys; strip the junk so arguments land.
 std::string trimKey(const std::string& raw)
 {
   static const std::string junk = " \t\",";
@@ -58,7 +56,6 @@ std::string trimKey(const std::string& raw)
   return raw.substr(begin, end - begin + 1);
 }
 
-// Parses pythonic `[name(arg="v", ...)]` calls, one or more.
 std::vector<tools::ToolCall> parsePythonic(const std::string& text)
 {
   std::vector<tools::ToolCall> out;
@@ -168,7 +165,6 @@ std::optional<tools::ToolCall> tryJson(const TryJsonInput& input)
   return call;
 }
 
-// Balanced-brace scan for a JSON object at/open positions.
 std::vector<tools::ToolCall> parseJsonCalls(const std::string& text)
 {
   std::vector<tools::ToolCall> out;
@@ -222,7 +218,6 @@ std::vector<tools::ToolCall> parseJsonCalls(const std::string& text)
   return out;
 }
 
-// One hop's prompt: the tool policy rides the caller's own system message.
 struct HopMessagesInput
 {
   const std::vector<ChatMessage>& history;
@@ -248,7 +243,7 @@ std::vector<ChatMessage> hopMessages(const HopMessagesInput& input)
   return msgs;
 }
 
-} // namespace
+}
 
 std::string LfmAdapter::buildToolDeclarations(
     const std::vector<const tools::ToolDescriptor*>& tools)
@@ -389,7 +384,6 @@ std::string LfmAdapter::streamHop(const StreamHopInput& input)
 namespace
 {
 
-// Handlers fall back to it when the model's arguments are incomplete.
 std::string lastUserMessage(const std::vector<ChatMessage>& history)
 {
   const auto found = std::find_if(
@@ -398,7 +392,6 @@ std::string lastUserMessage(const std::vector<ChatMessage>& history)
   return found == history.rend() ? std::string() : found->content;
 }
 
-// The router picks the tool and the utterance is its only argument.
 std::optional<tools::ToolCall> routedCall(intent::ToolIntent decided,
                                           const std::string& utterance)
 {
@@ -423,7 +416,7 @@ std::optional<tools::ToolCall> routedCall(intent::ToolIntent decided,
   return call;
 }
 
-} // namespace
+}
 
 bool LfmAdapter::routedTurn(ToolHopContext ctx)
 {
@@ -533,7 +526,6 @@ bool LfmAdapter::toolHops(ToolHopContext ctx, const std::string& declarations)
                              .count();
     history.push_back({.role = "assistant", .content = reply});
 
-    // Once a byte is on the wire the hop is prose.
     const auto calls =
         streamed ? std::vector<tools::ToolCall>{} : parseToolCalls(reply);
     if (calls.empty()) {
@@ -610,7 +602,6 @@ ToolChatOutput LfmAdapter::chatWithToolsStream(
                                        ? std::string()
                                        : buildToolDeclarations(input.tools);
   if (toolHops(ctx, declarations)) {
-    // The final hop held its tokens back to guard the call boundary.
     if (!output.emitted) {
       onToken(output.reply, false);
       onToken("", true);

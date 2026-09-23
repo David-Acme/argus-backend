@@ -39,7 +39,6 @@ enum class ReadOutcome : uint8_t
   Error
 };
 
-// Reads the child's stdout until EOF, the deadline or an endpoint.
 ReadOutcome readPipe(const ReadLoopInput& input)
 {
   const auto start = std::chrono::steady_clock::now();
@@ -110,13 +109,13 @@ ReadOutcome readPipe(const ReadLoopInput& input)
     return ReadOutcome::Error;
   }
 }
-} // namespace
+}
 
 namespace
 {
 std::mutex gCaptureMutex;
 audio_capture::CaptureFunction gCaptureOverride;
-} // namespace
+}
 
 void audio_capture::setCaptureFunctionForTest(CaptureFunction function)
 {

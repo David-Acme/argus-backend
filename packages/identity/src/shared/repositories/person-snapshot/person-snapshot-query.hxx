@@ -12,7 +12,7 @@ inline constexpr std::string_view UPSERT =
 
 inline constexpr std::string_view FIND_BY_PERSON =
     "SELECT image FROM person_snapshot WHERE person_id = ?";
-} // namespace person_snapshot_query
+}
 
 struct PersonSnapshotStoreInput
 {

@@ -12,7 +12,6 @@ struct CameraSnapshot
   int64_t atMs{0};
 };
 
-// Latest full frame and per-track person crops per camera, for guard assessment.
 class SnapshotStore
 {
 public:

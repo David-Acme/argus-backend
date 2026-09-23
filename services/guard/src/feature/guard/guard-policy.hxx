@@ -10,7 +10,6 @@
 #include <string>
 #include <vector>
 
-// Everything the danger matrix needs to know about one camera event.
 struct GuardContext
 {
   GuardMode mode{GuardMode::Home};
@@ -26,9 +25,6 @@ struct GuardContext
   int visitCount{0};
 };
 
-// Tri-state face observation carried by one object_detected object: the
-// contract's wire enum (contracts/camera), beside the object_detected payload
-// it arrives in -- camera writes the spelling, this service reads it.
 struct GuardEventSignals
 {
   int64_t cameraId{0};
@@ -59,7 +55,6 @@ struct GuardEventSignals
   std::string zoneKind;
 };
 
-// Open encounter seen by another camera, used for cross-camera correlation.
 struct GuardEncounterCandidate
 {
   int64_t id{0};
@@ -84,20 +79,14 @@ struct GuardEncounterMatchInput
 namespace guard_policy
 {
 
-// Hard floors first: the matrix never lowers a floor, the severity only raises it.
 GuardDanger evaluate(const GuardContext& context);
 
-// Binds the event to its root primary track; only that object decides
-// known/unknown and the risk signals. Companions are context.
 GuardEventSignals parseObjectEvent(const Json::Value& event);
 
-// Histogram-intersection similarity between two encoded appearance signatures.
 double signatureSimilarity(const std::string& left, const std::string& right);
 
-// Identity wins, then the closest fresh signature, then same-camera continuity.
 std::optional<int64_t> matchEncounter(const GuardEncounterMatchInput& input);
 
-// Rotates the configured greeting variants by encounter; empty input yields "".
 std::string pickGreeting(int64_t seed, const std::vector<std::string>& variants);
 
 GuardMode modeFromString(const std::string& value);
@@ -106,15 +95,10 @@ std::string dangerToString(GuardDanger danger);
 GuardDanger dangerFromString(const std::string& value);
 int dangerRank(GuardDanger danger);
 
-// Half-life of the per-hour-of-week event rate: one week, so a bucket remembers
-// the same hour seven days back at half strength and forgets stale activity.
 inline constexpr double kBaselineHalfLifeS = 7.0 * 24.0 * 3600.0;
 
-// Ages a stored event count by the elapsed real time since it was written.
 double decayBaseline(double stored, int64_t elapsedS);
 
-// Turns an aged event count into novelty: an empty bucket is fully novel, a
-// busy one is routine, and the score never sticks at a single value.
 double baselineNovelty(double decayed);
 
-} // namespace guard_policy
+}

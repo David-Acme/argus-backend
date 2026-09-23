@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# Model provisioning for argus-identity (moved verbatim from scripts/setup.sh).
 set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/../../../scripts/lib/common.sh"
 
@@ -24,14 +23,12 @@ setup_face_model() {
 
   local BASE="https://raw.githubusercontent.com/Qengineering/Face-Recognition-Jetson-Nano/main/models"
 
-  # RetinaFace (detector)
   if [ ! -f "$MODEL_DIR/detector.param" ] || [ "$(wc -c < "$MODEL_DIR/detector.param")" -lt 100 ]; then
     log "Downloading RetinaFace detector..."
     $DL "$MODEL_DIR/detector.param" "$BASE/retina/mnet.25-opt.param" || warn "Failed: detector.param"
     $DL "$MODEL_DIR/detector.bin"   "$BASE/retina/mnet.25-opt.bin"   || warn "Failed: detector.bin"
   fi
 
-  # MobileFaceNet (recognizer)
   if [ ! -f "$MODEL_DIR/recognizer.param" ] || [ "$(wc -c < "$MODEL_DIR/recognizer.param")" -lt 100 ]; then
     log "Downloading MobileFaceNet recognizer..."
     $DL "$MODEL_DIR/recognizer.param" "$BASE/mobilefacenet/mobilefacenet.param" || warn "Failed: recognizer.param"

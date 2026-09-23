@@ -1,9 +1,6 @@
 cmake_minimum_required(VERSION 3.25)
 project(argus-memory VERSION 1.0.0 LANGUAGES CXX)
 
-# enable_testing() must precede the first add_subdirectory: the flag
-# propagates into every subtree, and a directory that misses it gets no
-# CTestTestfile — the tests of anything added beneath it then never run.
 enable_testing()
 
 set(CMAKE_CXX_STANDARD 20)
@@ -19,8 +16,6 @@ if(NOT TARGET argus::lib::runtime)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../lib/runtime
                      ${CMAKE_CURRENT_BINARY_DIR}/runtime)
 endif()
-# The leaves this module links: a DAG, so their guards carry them into every
-# build, standalone or consumed.
 if(NOT TARGET argus::contracts::auth)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../contracts/auth
                      ${CMAKE_BINARY_DIR}/contracts/auth)
@@ -43,8 +38,6 @@ if(NOT TARGET argus::lib::validation)
                      ${CMAKE_CURRENT_BINARY_DIR}/validation)
 endif()
 if(NOT TARGET Drogon::Drogon)
-    # Standalone build (outside the root project's configure): add the
-    # sibling packages memory-core links.
     find_package(Drogon CONFIG REQUIRED)
     find_package(tomlplusplus REQUIRED)
     find_package(nlohmann_json REQUIRED)
@@ -58,9 +51,6 @@ if(NOT TARGET Drogon::Drogon)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../clients/llm
                          ${CMAKE_BINARY_DIR}/clients/llm)
     endif()
-    # sqlite-vec is THE capacity of this service's vector index (Ruling BW):
-    # vec0 must register on the service's own connection. Added before
-    # argus-sqlite so its vec repositories see the target.
     if(NOT TARGET sqlite-vec)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../third_party/sqlite-vec
                          ${CMAKE_BINARY_DIR}/third_party/sqlite-vec)
@@ -74,8 +64,6 @@ endif()
 
 find_package(doctest REQUIRED)
 
-# llama.cpp for the extract model (NuExtract): the same vendored engine the
-# legacy links, WITHOUT mtmd (text extraction only).
 if(NOT TARGET llama)
     set(LLAMA_BUILD_COMMON OFF CACHE BOOL "" FORCE)
     set(LLAMA_BUILD_TESTS OFF CACHE BOOL "" FORCE)
@@ -103,14 +91,6 @@ if(NOT TARGET cnats::nats_static)
     find_package(cnats CONFIG REQUIRED)
 endif()
 
-# memory-core links the sync vocabulary (TableName, SyncOperation) and the
-# module audit event (ModuleAuditEvent) -- both from argus::contracts::sync,
-# which is where the event contracts live since row 3a-1a moved them out of
-# argus::audit. argus::lib::nats is linked for the <nats/...> include roots
-# catalog-replica compiles against, which used to arrive through argus::socket.
-# The guard sits outside the standalone branch because a consumer that adds
-# this package as a subdirectory provides the same target and skips that
-# branch.
 if(NOT TARGET argus::contracts::sync)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../contracts/sync
                      ${CMAKE_BINARY_DIR}/contracts/sync)
@@ -159,10 +139,6 @@ target_link_libraries(memory-core PUBLIC
 
 target_compile_options(memory-core PRIVATE -Wall -Wextra)
 
-# The catalog replica is the one piece that assumes a running process: it
-# subscribes to NATS change subjects and seeds from read-only identity/camera
-# clients. It stays a separate target so linking the memory package does not
-# drag cnats into a consumer that does not want it.
 add_library(memory-catalog STATIC ${MEMORY_SRC_ROOT}/memory/catalog-replica.cc)
 
 target_link_libraries(memory-catalog PUBLIC memory-core cnats::nats_static argus::contracts::sync)
@@ -176,11 +152,6 @@ if(DOCTEST_INCLUDE_DIRS)
         INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${DOCTEST_INCLUDE_DIRS}")
 endif()
 
-# The unit suites opt back into the default build: this folder is added
-# EXCLUDE_FROM_ALL.
-# The catalog replica replay (Ruling BX): identity and camera change events
-# land in the replicas and the gazetteer rebuilds; the snapshot fill only
-# fires on empty tables.
 add_executable(memory-replica-test tests/unit/memory-replica-test.cc)
 
 target_link_libraries(memory-replica-test PRIVATE memory-catalog doctest::doctest)
@@ -194,8 +165,6 @@ set_target_properties(memory-replica-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
 add_test(NAME memory-replica-test COMMAND memory-replica-test)
 
-# The queue back-pressure (Ruling BZ): waitForIdle rides the chat port and
-# the bounded queue drops derived-data jobs instead of growing.
 add_executable(memory-backpressure-test tests/unit/memory-backpressure-test.cc)
 
 target_link_libraries(memory-backpressure-test PRIVATE memory-core
@@ -211,8 +180,6 @@ set_target_properties(memory-backpressure-test PROPERTIES EXCLUDE_FROM_ALL FALSE
 
 add_test(NAME memory-backpressure-test COMMAND memory-backpressure-test)
 
-# D4: memory.remind writes in the speaking user's own memory, in process,
-# and another user's recall never sees it.
 add_executable(memory-reminder-test tests/unit/memory-reminder-test.cc)
 
 target_link_libraries(memory-reminder-test PRIVATE memory-core argus::contracts::auth
@@ -242,9 +209,6 @@ set_target_properties(encounter-inbox-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
 add_test(NAME encounter-inbox-test COMMAND encounter-inbox-test)
 
-# F9 Tarea 12: how much of the real memory_save traffic the microsecond
-# lexicon tier carries, which is what decides whether a heavier NER is
-# worth evaluating.
 add_executable(extract-tier-split-test tests/unit/extract-tier-split-test.cc)
 
 target_link_libraries(extract-tier-split-test PRIVATE memory-core

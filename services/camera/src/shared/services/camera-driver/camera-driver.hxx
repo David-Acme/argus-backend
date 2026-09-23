@@ -7,14 +7,11 @@
 #include <string>
 #include <vector>
 
-/** What a camera integration can be asked to do. Blocking by nature. */
 struct DriverResult
 {
   bool ok{false};
   std::string error;
   Json::Value data;
-  // True once a command may have reached the hardware; a failure with this
-  // clear is proven to have sent nothing.
   bool attempted{false};
 
   static DriverResult failure(const std::string& message)
@@ -23,8 +20,6 @@ struct DriverResult
   }
 };
 
-// PTZ move input; `angle` is the Tapo protocol direction in degrees and wins
-// over x/y.
 struct DriverMoveInput
 {
   std::optional<int64_t> x;
@@ -51,20 +46,17 @@ struct DriverSettingsInput
   std::optional<int> alarmVolume;
 };
 
-// Speak input: 16-bit PCM mono, already synthesized.
 struct DriverSpeakInput
 {
   std::vector<int16_t> samples;
   int sampleRate{16000};
 };
 
-/** Everything the control layer knows about a camera, whoever makes it. */
 class ICameraDriver
 {
 public:
   virtual ~ICameraDriver() = default;
 
-  /** Feature flags, so the UI can hide what a model cannot do. */
   virtual Json::Value capabilities() const = 0;
 
   virtual DriverResult status() = 0;
@@ -75,7 +67,6 @@ public:
   virtual DriverResult speak(const DriverSpeakInput& input) = 0;
 };
 
-/** Picks and caches the driver a camera row asks for. */
 class CameraDriverRegistry
 {
 public:
@@ -85,8 +76,6 @@ public:
   void forget(int64_t cameraId);
 };
 
-// Test hook (same pattern as VoiceSessionTestAccess): seeds a stub driver for
-// unit tests.
 struct CameraDriverTestAccess
 {
   static void install(int64_t cameraId,

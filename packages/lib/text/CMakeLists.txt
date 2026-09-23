@@ -1,8 +1,3 @@
-# text: the text and payload utilities — normalization, JSON helpers
-# (parse/serialize plus flat object diffs) and hashing/encoding (SHA-256,
-# FNV-1a, base64). It absorbs the json and hash packages; consumers link
-# argus::lib::text.
-
 include(${CMAKE_CURRENT_SOURCE_DIR}/../../../cmake/argus-module.cmake)
 
 if(NOT TARGET Drogon::Drogon)

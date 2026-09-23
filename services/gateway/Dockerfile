@@ -1,8 +1,5 @@
 # syntax=docker/dockerfile:1.7
 
-# argus-gateway service image. Build from the repository root:
-#   docker build -f services/gateway/Dockerfile -t argus-gateway:local .
-
 FROM debian:trixie-slim AS build
 
 ENV DEBIAN_FRONTEND=noninteractive

@@ -18,7 +18,6 @@ public:
   drogon::Task<bool> remove(int64_t id) const;
 
 private:
-  // Emits camera changes through the domain's sink so subscribers see them.
   [[nodiscard]] drogon::Task<void> emit(SyncOperation operation,
                                         const CameraSchema& row) const;
 

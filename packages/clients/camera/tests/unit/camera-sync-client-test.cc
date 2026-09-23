@@ -8,7 +8,6 @@
 #include <memory>
 #include <string>
 
-// Pins the pull the sync client puts on the wire, and the deadline it carries.
 namespace
 {
 
@@ -17,7 +16,6 @@ namespace v1 = argus::camera::v1;
 using Ctx = grpc::CallbackServerContext;
 using Reactor = grpc::ServerUnaryReactor;
 
-// Serves one row per call, and records what the request arrived with.
 class ScriptedSyncService final : public v1::SyncService::CallbackService
 {
 public:
@@ -72,7 +70,7 @@ std::unique_ptr<grpc::Server> startServer(ScriptedSyncService& service,
   return server;
 }
 
-} // namespace
+}
 
 TEST_CASE("a pull carries the caller's branch and cursor onto the wire")
 {
@@ -126,13 +124,6 @@ TEST_CASE("every call carries a deadline, and a refusal is not an empty table")
   request.mutable_zone()->set_find_last_deleted(true);
   REQUIRE(client.pullTable(request, identity));
   CHECK(service.zoneBranch);
-  // The client's constant is 5 s (camera-sync-client.cc:7). The wire carries a
-  // deadline as a relative timeout and the server rebuilds the absolute one, so
-  // what arrives lands a few ms either side of the constant (measured here:
-  // 5009). Both bounds are stated with room rather than pinned to the
-  // millisecond: the floor catches a constant that shrank, and 4000 leaves a
-  // second for clock skew. The ceiling is what tells a deadline apart from none
-  // at all, which reads as ~9.2e15.
   CHECK_MESSAGE(service.deadlineMs.load() >= 4000,
                 "pull deadlineMs=" << service.deadlineMs.load());
   CHECK_MESSAGE(service.deadlineMs.load() <= 6000,

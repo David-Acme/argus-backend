@@ -362,7 +362,7 @@ void appendTrimmed(const AppendTrimmedInput& input)
              src.begin() + static_cast<long>(end));
 }
 
-} // namespace
+}
 
 TtsEngine::Result TtsEngine::synthesize(const SynthesizeInput& input) const
 {

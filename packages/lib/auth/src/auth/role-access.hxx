@@ -201,4 +201,4 @@ inline bool hasHttpAccess(const HasHttpAccessInput& input)
       {.role = role, .table = *table, .perm = permissionForMethod(method)});
 }
 
-} // namespace role_access
+}

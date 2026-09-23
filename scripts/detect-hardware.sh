@@ -1,13 +1,4 @@
 #!/usr/bin/env bash
-# Detects the host (CPU, RAM, GPU, video decode, OS) and installs everything
-# Argus needs to use that hardware to its full extent. Writes the result to
-# scripts/.hw-profile so setup.sh and CMake can consume it.
-#
-# sudo is requested ONLY when a package actually has to be installed.
-#
-# Deliberately NOT using `set -e`: this script's whole job is probing things
-# that may legitimately be absent (no /dev/dri, no lspci, no nvidia-smi), and
-# every `[ test ] && assignment` would abort the run under -e.
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -37,8 +28,6 @@ USAGE
   esac
 done
 
-# ── sudo, only when something is actually missing ────────────────────────────
-
 SUDO=""
 need_sudo() {
   if [ "$(id -u)" -eq 0 ]; then
@@ -59,8 +48,6 @@ confirm() {
   read -r reply </dev/tty || return 1
   case "$reply" in [nN]*) return 1 ;; *) return 0 ;; esac
 }
-
-# ── OS / package manager ─────────────────────────────────────────────────────
 
 OS_NAME="unknown"; OS_VERSION=""; PKG=""
 detect_os() {
@@ -126,8 +113,6 @@ pkg_install() {
   esac
 }
 
-# ── CPU / RAM ────────────────────────────────────────────────────────────────
-
 CPU_MODEL="unknown"; CPU_CORES=1; CPU_THREADS=1
 CPU_AVX2=0; CPU_AVX512=0; CPU_F16C=0; CPU_NEON=0
 RAM_MB=0; SWAP_MB=0
@@ -159,8 +144,6 @@ detect_cpu() {
     SWAP_MB=$(( $(awk '/^SwapTotal/{print $2}' /proc/meminfo) / 1024 ))
   }
 }
-
-# ── GPU / Vulkan / video decode ──────────────────────────────────────────────
 
 GPU_VENDOR="none"; GPU_MODEL=""; GPU_DRIVER=""; GPU_DISCRETE=0
 VIDEO_ACCEL="none"; VIDEO_DEVICE=""
@@ -201,8 +184,6 @@ detect_gpu() {
   [ -x /usr/local/cuda/bin/nvcc ] && HAS_NVCC=1
   command -v rocminfo   >/dev/null 2>&1 && HAS_ROCM=1
 
-  # One `ls` over several globs returns non-zero if ANY glob fails to match,
-  # so each candidate is probed on its own.
   for lib in /usr/lib/libvulkan.so* /usr/lib64/libvulkan.so* \
              /usr/lib/*/libvulkan.so* /usr/local/lib/libvulkan.so*; do
     [ -e "$lib" ] && { HAS_VULKAN_LOADER=1; break; }
@@ -214,14 +195,10 @@ detect_gpu() {
   done
   [ -e /usr/include/vulkan/vulkan.h ] && HAS_VULKAN_HEADERS=1
 
-  # Files existing is not the same as Vulkan working: a missing or broken ICD
-  # enumerates zero devices and every GPU path silently falls back to CPU.
   if command -v vulkaninfo >/dev/null 2>&1; then
     VULKAN_DEVICES="$(vulkaninfo --summary 2>/dev/null | grep -c 'deviceName' || echo 0)"
   fi
 }
-
-# ── package name mapping ─────────────────────────────────────────────────────
 
 want_packages() {
   local -n out=$1
@@ -243,7 +220,6 @@ want_packages() {
     brew)   out+=("${base_brew[@]}") ;;
   esac
 
-  # ffmpeg: needed for hardware-accelerated H.264 decode of the camera stream.
   case "$PKG" in
     pacman) out+=(ffmpeg) ;;
     apt)    out+=(libavcodec-dev libavformat-dev libavutil-dev libswscale-dev) ;;
@@ -253,7 +229,6 @@ want_packages() {
     brew)   out+=(ffmpeg) ;;
   esac
 
-  # Vulkan toolchain: unlocks GPU offload for the LLM and the VLM.
   if [ "$OS_NAME" != "macos" ]; then
     case "$PKG" in
       pacman) out+=(vulkan-headers spirv-headers shaderc vulkan-icd-loader) ;;
@@ -262,7 +237,6 @@ want_packages() {
       apk)    out+=(vulkan-headers vulkan-loader-dev shaderc) ;;
       zypper) out+=(vulkan-headers spirv-headers shaderc vulkan-loader) ;;
     esac
-    # Vendor userspace driver, so Vulkan actually finds a device.
     case "$GPU_VENDOR:$PKG" in
       amd:pacman)    out+=(vulkan-radeon libva-mesa-driver) ;;
       amd:apt)       out+=(mesa-vulkan-drivers va-driver-all) ;;
@@ -281,7 +255,6 @@ want_packages() {
       nvidia:zypper) out+=(nvidia-video-G06) ;;
     esac
 
-    # Diagnostics: vulkaninfo is how a failing GPU path gets diagnosed.
     case "$PKG" in
       pacman) out+=(vulkan-tools) ;;
       apt)    out+=(vulkan-tools) ;;
@@ -290,8 +263,6 @@ want_packages() {
       zypper) out+=(vulkan-tools) ;;
     esac
 
-    # CUDA toolkit: on NVIDIA, llama.cpp built with GGML_CUDA beats the Vulkan
-    # path by a wide margin, so the toolkit is worth installing.
     if [ "$GPU_VENDOR" = "nvidia" ]; then
       case "$PKG" in
         pacman) out+=(cuda) ;;
@@ -302,7 +273,6 @@ want_packages() {
     fi
   fi
 
-  # Microphone capture for the voice pipeline.
   case "$PKG" in
     pacman) out+=(portaudio) ;;
     apt)    out+=(portaudio19-dev) ;;
@@ -313,13 +283,8 @@ want_packages() {
   esac
 }
 
-# ── report + profile ─────────────────────────────────────────────────────────
-
 TIER="minimal"; GPU_BACKEND="cpu"
 
-# Picks the single best backend the host can actually run, mirroring the
-# precedence in the vendored llama.cpp integration: CUDA > Vulkan > CPU. Never mixes
-# vendors: only the driver stack matching the detected GPU gets installed.
 derive_backend() {
   if [ "$HAS_NVCC" -eq 1 ] && [ "$GPU_VENDOR" = "nvidia" ]; then
     GPU_BACKEND="cuda"
@@ -335,7 +300,6 @@ derive_tier() {
   local vulkan_ready=0
   { [ "$HAS_VULKAN_LOADER" -eq 1 ] && [ "$HAS_GLSLC" -eq 1 ] && \
     [ "$HAS_SPIRV_HEADERS" -eq 1 ]; } && vulkan_ready=1
-  # An enumerated device is what actually matters; headers alone prove nothing.
   [ "${VULKAN_DEVICES:-0}" -eq 0 ] && [ "$HAS_NVCC" -eq 0 ] && vulkan_ready=0
 
   if [ "$CPU_CORES" -le 2 ] || [ "$RAM_MB" -lt 4096 ]; then
@@ -414,8 +378,6 @@ print_report() {
     high)    echo "  detector 640@12fps on Vulkan, VLM on, 1.2B LLM fully offloaded, KV f16" ;;
   esac
 }
-
-# ── main ─────────────────────────────────────────────────────────────────────
 
 detect_os
 detect_cpu

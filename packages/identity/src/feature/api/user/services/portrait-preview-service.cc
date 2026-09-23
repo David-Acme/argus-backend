@@ -39,7 +39,7 @@ std::string base64(const std::string& input)
   output.resize(static_cast<size_t>(written));
   return output;
 }
-} // namespace
+}
 
 void PortraitPreviewService::requireAccess(UserRole role)
 {

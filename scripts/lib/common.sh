@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# Shared shell helpers for the setup and per-project provision scripts.
 
 set -euo pipefail
 
@@ -176,8 +175,6 @@ shared_deploy_secret() {
   openssl rand -hex "$bytes"
 }
 
-# Fills the single capability secret of one directed edge into both of its
-# configs, reusing whichever side already holds a real value.
 fill_deploy_pair() {
   local a_config="$1"
   local a_table="$2"
@@ -214,10 +211,6 @@ fill_deploy_placeholder() {
   esac
 }
 
-# Copies argus-deploy/config.<name>.toml.example into the gitignored 0600
-# instance files and fills the shared instance secrets. Updates reuse the
-# first existing value for each secret, so tokens, device hashes and the
-# identity RPC secret survive every image update.
 ensure_deploy_configs() {
   local deploy_dir="$1"
   local template config

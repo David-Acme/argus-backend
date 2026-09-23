@@ -1,9 +1,6 @@
 cmake_minimum_required(VERSION 3.25)
 project(argus-tts VERSION 1.0.0 LANGUAGES CXX)
 
-# enable_testing() must precede the first add_subdirectory: the flag
-# propagates into every subtree, and a directory that misses it gets no
-# CTestTestfile — the tests of anything added beneath it then never run.
 enable_testing()
 
 set(CMAKE_CXX_STANDARD 20)
@@ -17,9 +14,6 @@ argus_contracts_substrate()
 set(TTS_SRC_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
 if(NOT TARGET Drogon::Drogon)
-    # Standalone configure: this service owns the whole build, so it adds
-    # the packages it links — the leaves it uses directly and the sibling
-    # packages that used to arrive through argus-common.
     find_package(Drogon CONFIG REQUIRED)
     find_package(onnxruntime CONFIG REQUIRED)
     find_package(tomlplusplus REQUIRED)
@@ -28,13 +22,10 @@ if(NOT TARGET Drogon::Drogon)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/config
                          ${CMAKE_BINARY_DIR}/config)
     endif()
-    # The synthesis feature sizes its pool from the hardware profile, and the
-    # service's coroutines from the blocking-task awaiter: both live here.
     if(NOT TARGET argus::lib::runtime)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/runtime
                          ${CMAKE_BINARY_DIR}/runtime)
     endif()
-    # The synthesis HTTP DTOs validate through argus::lib::validation.
     if(NOT TARGET argus::lib::validation)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/validation
                          ${CMAKE_BINARY_DIR}/validation)

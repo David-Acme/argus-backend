@@ -25,7 +25,6 @@ constexpr const char* kDefaultVisionPrompt =
     "Describe the person in one short paragraph: clothing, what they carry, "
     "posture and whether they look aggressive, masked or suspicious.";
 
-// Closed GBNF for the guard decision; the model cannot emit arbitrary keys or tools.
 constexpr const char* kGuardGrammar = R"GBNF(root ::= final | vision | listen
 final ::= "{" ws "\"tool\":" ws "\"final\"" "," ws threat "," ws veto "," ws tags "," ws summary "," ws announce "," ws reason "}" ws
 vision ::= "{" ws "\"tool\":" ws "\"vision.describe\"" "," ws prompt "}" ws
@@ -191,7 +190,7 @@ void fillFinal(GuardAssessmentResult& result, const GuardFinalDecision& final,
   }
 }
 
-} // namespace
+}
 
 GuardDecision guard_assessment::parseDecision(const std::string& text)
 {

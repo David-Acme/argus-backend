@@ -42,7 +42,7 @@ void toProto(const Json::Value& row,
   out->set_created_at(row["createdAt"].asInt64());
 }
 
-} // namespace
+}
 
 NotificationRpcService::NotificationRpcService(Dependencies dependencies)
     : guardCallers_(

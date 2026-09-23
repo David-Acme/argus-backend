@@ -7,7 +7,6 @@
 #include <sync/socket-emit-dto.hxx>
 #include <sync/table-name.hxx>
 
-// Camera-domain change sink; argus-camera installs the NATS funnel at boot.
 class CameraChangeSink
 {
 public:
@@ -37,4 +36,4 @@ inline const CameraChangeSink* getSink()
 {
   return sink();
 }
-} // namespace camera_change
+}

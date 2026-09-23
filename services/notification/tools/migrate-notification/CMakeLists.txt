@@ -1,7 +1,3 @@
-# Notification database migration tool (argus.db -> notification.db). The
-# library builds only as a dependency of notification-migration-test; the CLI
-# executable is excluded from the default backend build.
-
 add_library(notification-migration STATIC
     notification-migration.cc
 )

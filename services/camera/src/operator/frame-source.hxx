@@ -7,7 +7,6 @@
 #include <string>
 #include <vector>
 
-// A frame captured for analysis: go2rtc JPEG or a lab-injected RGB buffer.
 struct CameraFrame
 {
   std::vector<uint8_t> jpeg;
@@ -23,7 +22,6 @@ struct FrameGrabRequest
   std::string cameraName;
 };
 
-// Frames come from go2rtc, never a device driver.
 class IFrameSource
 {
 public:

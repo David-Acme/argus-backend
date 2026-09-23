@@ -71,14 +71,13 @@ Json::Value drogonConfig(const CameraDbConfig& cameraDb,
   return config;
 }
 
-// Static lifetime: per-camera coroutines hold these non-owning pointers.
 Go2rtcFrameSource& frameSource()
 {
   static Go2rtcFrameSource source;
   return source;
 }
 
-} // namespace
+}
 
 int main()
 {

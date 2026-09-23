@@ -4,7 +4,6 @@
 #include <shared/schemas/camera/camera-schema.hxx>
 #include <string>
 
-// Test seam for the source sink; production rides Go2rtcManager.
 class ICameraSourceSink
 {
 public:
@@ -13,7 +12,6 @@ public:
   virtual bool removeSource(const std::string& name) = 0;
 };
 
-// Keeps go2rtc's cam<id>/-sub sources aligned with a camera row.
 class CameraSourceRegistrar
 {
 public:
@@ -29,5 +27,4 @@ private:
   ICameraSourceSink& sink_;
 };
 
-// Process-wide registrar backed by the Go2rtcManager singleton.
 CameraSourceRegistrar& cameraSourceRegistrar();

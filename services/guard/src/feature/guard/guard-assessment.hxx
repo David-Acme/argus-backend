@@ -44,7 +44,6 @@ enum class GuardDecisionKind
   Final,
 };
 
-// One perception tool invocation requested by the model; read-only by design.
 struct GuardToolCall
 {
   std::string tool;
@@ -78,10 +77,9 @@ struct GuardToolLog
 namespace guard_assessment
 {
 
-// Parses one LLM turn into a tool call or a final decision.
 GuardDecision parseDecision(const std::string& text);
 
-} // namespace guard_assessment
+}
 
 struct GuardAssessmentResult
 {
@@ -98,8 +96,6 @@ struct GuardAssessmentResult
   std::vector<GuardToolLog> toolLogs;
 };
 
-// LLM-orchestrated perception: the model may request vision or listening to
-// ground its proposal, but never holds physical authority.
 class GuardAssessment
 {
 public:

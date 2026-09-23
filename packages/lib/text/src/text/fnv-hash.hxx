@@ -3,7 +3,6 @@
 #include <cstdint>
 #include <string>
 
-// FNV-1a content checksum shared by the database migration tools.
 class Fnv1a
 {
 public:

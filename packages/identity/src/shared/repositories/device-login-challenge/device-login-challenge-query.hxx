@@ -27,7 +27,7 @@ inline constexpr std::string_view DELETE_BY_CHALLENGE_ID =
 inline constexpr std::string_view DELETE_EXPIRED =
     "DELETE FROM device_login_challenge WHERE expires_at < ?";
 
-} // namespace device_login_challenge_query
+}
 
 struct DeviceLoginChallengeCreateInput
 {

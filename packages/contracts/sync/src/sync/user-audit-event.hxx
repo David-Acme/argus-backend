@@ -10,8 +10,6 @@
 #include <text/json-util.hxx>
 #include <vector>
 
-// User-scoped audit row on the productivity/notification subjects; the sync
-// service persists it before the row fans out.
 struct UserAuditEvent
 {
   int64_t recordId{0};

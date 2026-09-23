@@ -13,11 +13,6 @@
 
 class IdentityClient;
 
-// Recognizes and enrolls person crops through argus.identity (fleet-gated RPC).
-// Best-shot selection is per (camera, track): a cached verdict never leaks
-// between people and only a clearly better frame re-identifies. A crop that
-// cannot be identified carries no new information, so it reports the cached
-// verdict instead of contradicting it with a fresh unobservable reading.
 class IdentityKnownPersonMatcher final : public IKnownPersonMatcher
 {
 public:

@@ -17,7 +17,6 @@
 namespace
 {
 
-// Options for FakeLlmServer's canned chat/stream responses.
 struct FakeLlmOptions
 {
   std::vector<std::string> tokens;
@@ -27,7 +26,6 @@ struct FakeLlmOptions
   int tokenDelayMs{0};
 };
 
-// Minimal in-process HTTP server standing in for the argus-llm wire in unit tests.
 class FakeLlmServer
 {
 public:
@@ -78,7 +76,6 @@ public:
   }
 
 private:
-  // Reads until the head terminator, then the Content-Length body if any.
   static std::string readRequest(int fd)
   {
     std::string data;
@@ -236,4 +233,4 @@ private:
   std::thread thread_;
 };
 
-} // namespace
+}

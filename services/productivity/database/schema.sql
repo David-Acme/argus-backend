@@ -1,26 +1,9 @@
--- ─────────────────────────────────────────────────────────────────────────────
--- Argus productivity  ·  Productivity schema (productivity.db)
--- The 7 productivity tables plus their 13 indexes, copied verbatim from
--- database/schema.sql (source of truth): reminder, project, project_task,
--- calendar_event, project_member, calendar_event_share, reminder_detail.
--- change_outbox is this service's own (3a-2d), not a copy of anything.
--- context_note is NOT recreated here (Ruling AK): the frozen argus.db copy
--- was an orphan and was dropped from database/schema.sql in F6-1. Applied by
--- tools/migrate-productivity and by argus-productivity at boot. argus.db is
--- never touched.
--- Structure: pragmas → table creation → indexes (inline, verbatim order).
--- ─────────────────────────────────────────────────────────────────────────────
-
 PRAGMA journal_mode       = WAL;
 PRAGMA synchronous        = NORMAL;
 PRAGMA busy_timeout       = 5000;
 PRAGMA cache_size         = -64000;
 PRAGMA temp_store         = MEMORY;
 PRAGMA mmap_size          = 268435456;
--- The user rows live in identity.db, not here: foreign keys stay off and the
--- share/member targets are validated in code against the identity client
--- (Ruling AM). The REFERENCES clauses below are kept verbatim from
--- schema.sql.
 PRAGMA foreign_keys       = OFF;
 PRAGMA journal_size_limit = 67108864;
 
@@ -70,7 +53,6 @@ CREATE TABLE IF NOT EXISTS project_task (
     priority    TEXT    NOT NULL  DEFAULT 'none'
                                   CHECK (priority IN ('none', 'low', 'medium', 'high', 'urgent')),
     due_at      INTEGER,
-    -- Float so reordering touches one row instead of rewriting the list.
     sort_order  REAL    NOT NULL  DEFAULT 0,
     created_at  INTEGER NOT NULL  DEFAULT (strftime('%s', 'now')),
     updated_at  INTEGER,
@@ -90,7 +72,6 @@ CREATE TABLE IF NOT EXISTS calendar_event (
     location        TEXT    NOT NULL  DEFAULT '',
     color           TEXT    NOT NULL  DEFAULT '',
     starts_at       INTEGER NOT NULL,
-    -- NULL means a point in time (a reminder-like mark), not a span.
     ends_at         INTEGER,
     is_all_day      INTEGER NOT NULL  DEFAULT 0  CHECK (is_all_day IN (0, 1)),
     recurrence_rule TEXT,
@@ -102,11 +83,6 @@ CREATE TABLE IF NOT EXISTS calendar_event (
 CREATE INDEX IF NOT EXISTS idx_calendar_event_owner_start
     ON calendar_event(owner_id, starts_at);
 
--- ── Tables · Sharing ────────────────────────────────────────────────────────
--- A calendar and a project belong to one user. Sharing is explicit membership
--- with a per-member access level, so "share with Ana, read-only" is a row and
--- not a flag that widens the record to the whole house.
-
 CREATE TABLE IF NOT EXISTS project_member (
     id         INTEGER NOT NULL  PRIMARY KEY AUTOINCREMENT,
     project_id INTEGER NOT NULL  REFERENCES project(id) ON DELETE CASCADE,
@@ -117,8 +93,6 @@ CREATE TABLE IF NOT EXISTS project_member (
     deleted_at INTEGER
 );
 
--- Partial unique: a revoked membership stays as history and must not block a
--- later re-share of the same project with the same person.
 CREATE UNIQUE INDEX IF NOT EXISTS idx_project_member_unique
     ON project_member(project_id, user_id) WHERE deleted_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_project_member_user
@@ -156,10 +130,6 @@ CREATE INDEX IF NOT EXISTS idx_reminder_detail_reminder  ON reminder_detail (rem
 CREATE INDEX IF NOT EXISTS idx_reminder_detail_created   ON reminder_detail (created_at);
 CREATE INDEX IF NOT EXISTS idx_reminder_detail_deleted   ON reminder_detail (deleted_at);
 
--- Durable outbox of productivity-domain change events: the sink writes every
--- emit and audit payload here and a worker publishes it, marking a row sent
--- only after the JetStream PubAck. Same table, same shape in every producer's
--- database.
 CREATE TABLE IF NOT EXISTS change_outbox (
     event_id    TEXT    NOT NULL  PRIMARY KEY,
     fingerprint TEXT    NOT NULL  DEFAULT '',

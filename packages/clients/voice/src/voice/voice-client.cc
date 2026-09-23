@@ -8,7 +8,6 @@
 
 namespace
 {
-// One write in flight; frames beyond the cap are dropped.
 constexpr size_t kMaxPendingWrites = 1024;
 
 struct VoiceStreamInput
@@ -65,9 +64,6 @@ public:
     std::lock_guard<std::mutex> lock(mutex_);
     if (done_ || writesDone_)
       return;
-    // Frames already queued are part of what the caller asked to send, so the
-    // latch stops new ones entering and the queue is drained under it; the
-    // sending side closes once the last write comes back.
     writesDone_ = true;
     drainLocked();
     maybeCloseLocked();
@@ -96,8 +92,6 @@ public:
       pending_.clear();
     else if (!pending_.empty())
       pending_.pop_front();
-    // The write that just came back is no longer in flight, so the flag clears
-    // before the chain decides whether to send the next frame or close.
     writing_ = false;
     if (!pending_.empty()) {
       drainLocked();
@@ -155,7 +149,6 @@ private:
     StartWrite(&pending_.front());
   }
 
-  // Closes the sending side once the queue is empty and nothing is in flight.
   void maybeCloseLocked()
   {
     if (writesDone_ && !writing_ && pending_.empty())
@@ -177,7 +170,7 @@ private:
   argus::voice::v1::ServerFrame read_;
 };
 
-} // namespace
+}
 
 VoiceClient::VoiceClient(std::string target)
     : channel_(argus::client::makeStreamingChannel(target)),

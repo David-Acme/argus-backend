@@ -1,8 +1,5 @@
 # syntax=docker/dockerfile:1.7
 
-# argus-voice service image. Build from the repository root:
-#   docker build -f services/voice/Dockerfile -t argus-voice:local .
-
 FROM debian:trixie-slim AS build
 
 ENV DEBIAN_FRONTEND=noninteractive

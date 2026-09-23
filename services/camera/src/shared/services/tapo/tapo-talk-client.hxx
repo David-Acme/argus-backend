@@ -99,7 +99,6 @@ public:
   void close();
 
   bool isOpen() const;
-  // Duration of audio actually written to the talk channel, in milliseconds.
   int64_t sentDurationMs() const;
   Json::Value state() const;
 

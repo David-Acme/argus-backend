@@ -18,7 +18,7 @@ GuardContext unknownPerson()
   context.rule = "person_day";
   return context;
 }
-} // namespace
+}
 
 TEST_CASE("a known person alone is safe")
 {
@@ -272,7 +272,7 @@ std::string histogramSignature(const std::vector<int>& bins)
     bytes[i] = static_cast<char>(bins[i]);
   return base64::encode(bytes);
 }
-} // namespace
+}
 
 TEST_CASE("cross-camera correlation falls back to the appearance signature")
 {
@@ -425,7 +425,7 @@ Json::Value singlePersonEvent(Json::Value person)
   event["objects"] = objects;
   return event;
 }
-} // namespace
+}
 
 TEST_CASE("a schemaVersion 2 event without identityState maps to unrecognized")
 {
@@ -499,12 +499,6 @@ TEST_CASE("an agreeing known claim keeps the known reading")
 
 TEST_CASE("a known person in an alert zone is not escalated")
 {
-  // The one payload shape that reaches this matrix from another service is the
-  // camera's recognised triple: `identity`, `personId` and the `identityState`
-  // spelling camera's matcher writes. Camera's own suite pins that it
-  // serialises exactly that shape; this is the other end of it -- parsed here,
-  // then evaluated. A known person stays at None even in an alert zone, while
-  // away, on an event the camera marked critical.
   Json::Value person = personObject();
   person["identity"] = "known";
   person["personId"] = Json::Int64(7);
@@ -531,10 +525,6 @@ TEST_CASE("a known person in an alert zone is not escalated")
 
 TEST_CASE("that same payload contradicted escalates to critical")
 {
-  // The other half of the pair, and the reason the parse fails closed: an
-  // event that claims `identity: known` while its identityState says the face
-  // was never observed is read as an unknown person, and while away that is
-  // critical whatever severity the camera put on the event itself.
   Json::Value person = personObject();
   person["identity"] = "known";
   person["personId"] = Json::Int64(7);

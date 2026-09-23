@@ -28,9 +28,9 @@ that apply to voice-service code; when in doubt, the root file wins.
    non-owning access.
 8. **File naming** — `.hxx` headers, `.cc` sources, hyphenated `*-test.cc`
    tests. No `.h`/`.cpp`.
-9. **100% English** — code, comments, identifiers, docs, commits.
-10. **Minimal comments** — small "what it does" comments only; "why" goes to
-    CONTEXT.md.
+9. **100% English** — code, identifiers, docs, commits.
+10. **No comments** — none in code, of any kind (root rule 20); the "why"
+    goes to CONTEXT.md.
 11. **Logging** — Drogon built-ins only (`LOG_INFO`, `LOG_WARN`,
     `LOG_FATAL`); no spdlog.
 12. **Health safety** — `/health` and the gRPC health service never block on
@@ -75,5 +75,5 @@ ctest --test-dir build/dev --output-on-failure
 ```
 
 > Binding cross-service code standards: root `AGENTS.md` MUST-FOLLOW rules
-> 19-25 (modern C++20, comment discipline, efficiency, DB tuning, feature
+> 19-25 (modern C++20, no comments in code, efficiency, DB tuning, feature
 > layout + shared SDK, monolith structure, build ergonomics).

@@ -65,7 +65,6 @@ public:
     return dependencies_.deliverySink != nullptr;
   }
 
-  // Drain pending intents, naming a missing sink instead of throwing.
   [[nodiscard]] drogon::Task<DeliverPendingOutcome> deliverPending() const;
 
   drogon::Task<int64_t> pendingBacklog() const;
@@ -90,7 +89,6 @@ private:
     bool pushRequired{false};
   };
 
-  // Settles broker-stored intents; the rest stay pending for the reconciler.
   drogon::Task<bool> deliverDurable(DeliverDurableInput input) const;
 
   Dependencies dependencies_;

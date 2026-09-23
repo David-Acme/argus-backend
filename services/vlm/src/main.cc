@@ -20,7 +20,7 @@ Json::Value drogonConfig(const ListenerConfig& listener)
   return config;
 }
 
-} // namespace
+}
 
 int main()
 {
@@ -34,9 +34,6 @@ int main()
 
   drogon::app().loadConfigJson(drogonConfig(listener));
 
-  // A describe outruns Drogon's 60 s idle default (f8-b4): the handler awaits
-  // the engine, so the connection has no read or write while it works, and
-  // trantor's idle wheel force-closes it before its response exists.
   drogon::app().setIdleConnectionTimeout(600);
 
   drogon::app().setExceptionHandler(ErrorHandler::handleException);

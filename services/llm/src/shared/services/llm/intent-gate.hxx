@@ -6,7 +6,6 @@
 
 #include <string>
 
-// Owns, for the process lifetime, everything the router needs.
 class IntentGate
 {
 public:

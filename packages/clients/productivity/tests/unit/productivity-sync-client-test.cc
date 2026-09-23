@@ -7,8 +7,6 @@
 #include <productivity/productivity-sync-client.hxx>
 #include <string>
 
-// Pins the SDK edge: the table branch and its ranges go out untouched, the
-// identity rides along, and a refusal answers with no rows at all.
 namespace
 {
 namespace v1 = argus::productivity::v1;
@@ -16,8 +14,6 @@ namespace v1 = argus::productivity::v1;
 using Ctx = grpc::CallbackServerContext;
 using Reactor = grpc::ServerUnaryReactor;
 
-// Serves whatever the case canned and keeps the request that arrived; a case
-// reads the recorded fields once its call returned.
 class ScriptedSyncService final : public v1::SyncService::CallbackService
 {
 public:
@@ -60,7 +56,7 @@ argus::client::CallerIdentity identityFor(int64_t userId)
 {
   return {.userId = userId, .role = "owner", .device = "abc123"};
 }
-} // namespace
+}
 
 TEST_CASE("a pull sends the requested branch and the identity untouched")
 {
@@ -93,8 +89,6 @@ TEST_CASE("a pull sends the requested branch and the identity untouched")
   CHECK(rows->project_task().deleted(0).deleted_at() == 900);
   CHECK(rows->project_task().last_created().id() == 88);
 
-  // Another request pulls another table: the branch is the caller's, and the
-  // client adds nothing of its own to it.
   service.rows.clear_project_task();
   service.rows.mutable_reminder()->add_created()->set_id(3);
   v1::PullTableRequest other;
@@ -127,8 +121,6 @@ TEST_CASE("a refusal and an unreachable receiver both answer no rows")
   service.status = grpc::Status(grpc::StatusCode::UNAVAILABLE, "down");
   CHECK_FALSE(client.pullTable(request, identityFor(7)).has_value());
 
-  // The same body with an OK status does come back, so the empty results above
-  // are the status's doing and not rows the client dropped.
   service.status = grpc::Status::OK;
   const auto rows = client.pullTable(request, identityFor(7));
   REQUIRE(rows.has_value());

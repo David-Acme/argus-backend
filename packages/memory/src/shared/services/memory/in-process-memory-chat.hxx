@@ -4,7 +4,6 @@
 #include <shared/services/memory/memory-chat.hxx>
 #include <string>
 
-// The memory worker's chat goes straight to the host engine's LlmService.
 class InProcessMemoryChat final : public IMemoryChat
 {
 public:

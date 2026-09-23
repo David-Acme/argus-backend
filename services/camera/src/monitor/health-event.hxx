@@ -43,9 +43,8 @@ namespace health_monitor
 CameraHealthState classify(const HealthMetrics& metrics,
                       const HealthThresholds& thresholds);
 std::string statusName(CameraHealthState status);
-} // namespace health_monitor
+}
 
-// Sink for health transitions; NATS is the production implementation.
 class IHealthEventSink
 {
 public:

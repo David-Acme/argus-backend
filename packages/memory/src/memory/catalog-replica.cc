@@ -15,7 +15,6 @@
 namespace
 {
 
-// Replica upsert/delete replay of the identity and camera change subjects.
 constexpr const char* UPSERT_PERSON =
     "INSERT INTO catalog_person (id, user_id, name, alias, deleted_at) "
     "VALUES (?, ?, ?, ?, NULL) "
@@ -61,7 +60,6 @@ bool execStmt(sqlite3* db, const StmtExecInput& input)
   return stmt.step() == SQLITE_DONE;
 }
 
-// Per-table emptiness: only tables that booted empty get a snapshot fill.
 bool replicaPopulated(sqlite3* db, const char* table)
 {
   SqliteStmt probe;
@@ -71,7 +69,7 @@ bool replicaPopulated(sqlite3* db, const char* table)
   return probe.step() == SQLITE_ROW && probe.columnInt64(0) > 0;
 }
 
-} // namespace
+}
 
 CatalogReplica::CatalogReplica(const Deps& deps)
     : bus_(deps.bus), graph_(deps.graph), resolver_(deps.resolver)

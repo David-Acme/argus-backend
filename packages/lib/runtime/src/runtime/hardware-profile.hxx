@@ -70,4 +70,4 @@ enum class ExtractionTier : uint8_t
 };
 ExtractionTier extractionTier();
 
-} // namespace HardwareProbe
+}

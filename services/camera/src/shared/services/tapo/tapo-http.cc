@@ -57,7 +57,7 @@ bool waitReady(const WaitReadyInput& input)
   }
 }
 
-} // namespace
+}
 
 struct TapoConnection::Impl
 {

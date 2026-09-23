@@ -25,7 +25,6 @@ std::string pcmBytes(const std::vector<float>& pcm)
   return bytes;
 }
 
-// Producer state for the chunked stream leg.
 struct PcmStreamJob
 {
   TtsRequest request;
@@ -66,7 +65,7 @@ void runStreamJob(const std::shared_ptr<PcmStreamJob>& job)
            << job->byteCount << " ms=" << static_cast<int>(ms);
 }
 
-} // namespace
+}
 
 drogon::Task<drogon::HttpResponsePtr>
 TtsController::synthesize(drogon::HttpRequestPtr req)

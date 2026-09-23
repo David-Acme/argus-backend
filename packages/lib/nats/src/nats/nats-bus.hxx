@@ -14,11 +14,9 @@
 #include <unordered_map>
 #include <vector>
 
-// NATS event bus over cnats; handlers run on cnats worker threads and must not block.
 class NatsBus
 {
 public:
-  // Delivers the concrete subject a wildcard matched plus the payload.
   using MessageHandler =
       std::function<void(std::string_view subject, std::string_view payload)>;
 
@@ -34,11 +32,8 @@ public:
   NatsBus(const NatsBus&) = delete;
   NatsBus& operator=(const NatsBus&) = delete;
 
-  // Resolves [nats] url/reconnect_wait_ms/max_reconnects with sane defaults.
   static Options optionsFromConfig();
 
-  // Connects and starts the reconnect supervisor; a failed first attempt keeps
-  // retrying in the background, so handlers registered meanwhile stay pending.
   bool connect(const Options& options);
   bool connect() { return connect(optionsFromConfig()); }
 
@@ -51,9 +46,6 @@ public:
     std::string msgId;
   };
 
-  // Publishes through JetStream and waits for the PubAck. False means the
-  // broker did not store the message: the caller must retain and retry it.
-  // Never degrades to core NATS.
   bool publishWithMsgId(const PublishWithIdInput& input);
 
   struct StreamInput
@@ -64,7 +56,6 @@ public:
     int64_t duplicatesNs{0};
   };
 
-  // Creates the JetStream stream when missing; safe to call repeatedly.
   bool ensureStream(const StreamInput& input);
 
   struct StreamStatus
@@ -75,8 +66,6 @@ public:
     int64_t duplicatesNs{0};
   };
 
-  // Reads back the live stream configuration; nullopt when the stream is
-  // missing or unreachable.
   std::optional<StreamStatus> streamInfo(const std::string& name);
 
   struct DurableMessage
@@ -86,7 +75,6 @@ public:
     int delivered{0};
   };
 
-  // Settle once: ack (done), nak (redeliver) or term (drop without redelivery).
   struct DurableSettlement
   {
     std::function<void()> ack;
@@ -94,7 +82,6 @@ public:
     std::function<void()> term;
   };
 
-  // Durable JetStream consumer; the message views stay valid only for the call.
   using DurableHandler =
       std::function<void(const DurableMessage&, DurableSettlement)>;
   struct DurableInput
@@ -108,16 +95,13 @@ public:
   };
   std::optional<uint64_t> subscribeDurable(const DurableInput& input);
 
-  // Handlers registered before connect() become pending and activate once connected.
   std::optional<uint64_t> subscribe(const std::string& subject,
                                     MessageHandler handler);
   bool unsubscribe(uint64_t id);
 
-  // Idempotent: releases every handler, subscription and connection; safe from a message callback.
   void drain();
 
   bool isConnected() const;
-  // Unynchronized; call from the thread that owns the bus lifecycle.
   const Options& options() const { return options_; }
 
 private:
@@ -168,25 +152,19 @@ private:
     SubscriptionPtr raw;
   };
 
-  // Creates the JetStream context on first use; call with mutex_ held.
   bool ensureJetStream();
 
-  // True only while cnats reports the connection as CONNECTED; call with mutex_ held.
   bool connectedLocked() const;
 
-  // One connection attempt plus re-attachment of every logical subscription.
   bool connectOnce();
 
   void startSupervisor();
   void supervise();
 
-  // Call with mutex_ held; the raw handle is created against connection_.
   bool attach(const PendingSubscription& pending, uint64_t id);
   bool attachDurable(const DurableInput& input, uint64_t id);
-  // Call with mutex_ held; retries every durable that was not attached yet.
   void attachPendingDurable();
 
-  // Reconciles an existing stream against the wanted config; call unlocked.
   bool reconcileStream(const StreamInput& input);
 
   static void onDisconnected(natsConnection* connection, void* closure);
@@ -206,7 +184,6 @@ private:
   mutable std::mutex mutex_;
   uint64_t nextSubscriptionId_{1};
   std::unordered_map<uint64_t, PendingSubscription> pending_;
-  // Keyed by the cnats handle so the callback can resolve its handler.
   std::unordered_map<natsSubscription*, ActiveSubscription> active_;
   std::unordered_map<natsSubscription*, DurableSubscription> durable_;
   std::unordered_map<uint64_t, DurableInput> pendingDurable_;

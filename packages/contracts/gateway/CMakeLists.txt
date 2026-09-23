@@ -13,8 +13,6 @@ argus_contracts(NAME gateway
         src/gateway/gateway-errors.hxx
     DEPENDS argus::lib::errors)
 
-# The catalog suite: the nine refusals the gateway's gates throw, pinned as a
-# table and checked against what the response serializer will accept.
 enable_testing()
 find_package(doctest REQUIRED)
 

@@ -1,7 +1,3 @@
-# Identity database migration tool (argus.db -> identity.db). The library
-# builds only as a dependency of identity-migration-test; the CLI executable
-# is excluded from the default backend build.
-
 add_library(identity-migration STATIC
     identity-migration.cc
 )

@@ -38,7 +38,7 @@ int errorCodeOf(const Json::Value& response)
   return 0;
 }
 
-} // namespace
+}
 
 LegacyStokTransport::LegacyStokTransport(TapoCredentials credentials)
     : credentials_(std::move(credentials))

@@ -14,7 +14,7 @@ inline constexpr std::string_view UPSERT_CURRENT =
     "ON CONFLICT(user_id) DO UPDATE SET file_id = excluded.file_id, "
     "updated_at = strftime('%s', 'now')";
 
-} // namespace user_portrait_query
+}
 
 struct UserPortraitUpsertInput
 {

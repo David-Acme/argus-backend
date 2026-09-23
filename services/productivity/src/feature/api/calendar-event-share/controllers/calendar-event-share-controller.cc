@@ -24,7 +24,7 @@ drogon::HttpResponsePtr failureFor(MembershipError error)
       throw ResponseException(ProductivityErrors::CalendarEventNotFound);
   }
 }
-} // namespace
+}
 
 drogon::Task<drogon::HttpResponsePtr>
 CalendarEventShareController::create(drogon::HttpRequestPtr req)

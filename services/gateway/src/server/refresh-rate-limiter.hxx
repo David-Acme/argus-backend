@@ -14,11 +14,9 @@ struct RateLimitConfig
   int lockoutThreshold{5};
   int lockoutSeconds{300};
 
-  // Ruling CJ: resolves [rate_limit]; enabled=false (default) never rejects.
   static RateLimitConfig resolve();
 };
 
-// Ruling CJ: in-memory sliding window plus lockout; single-instance state.
 class RefreshRateLimiter
 {
 public:
@@ -26,7 +24,6 @@ public:
 
   bool enabled() const { return config_.enabled; }
 
-  // Returns false when the request must be rejected with 429.
   bool admit(const std::string& key,
              std::chrono::steady_clock::time_point now);
 
@@ -36,7 +33,6 @@ public:
     bool success{false};
     std::chrono::steady_clock::time_point now{};
   };
-  // Returns true when this failure just locked the key.
   bool recordResult(const RecordResultInput& input);
 
 private:

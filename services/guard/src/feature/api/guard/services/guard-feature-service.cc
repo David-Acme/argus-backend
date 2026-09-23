@@ -163,7 +163,7 @@ Json::Value decisionEntry(const DecisionJournalRow& row)
   entry["createdAt"] = Json::Int64(row.createdAt);
   return entry;
 }
-} // namespace
+}
 
 drogon::Task<Json::Value> GuardFeatureService::decisions(
     const ListDecisionsDto& query) const

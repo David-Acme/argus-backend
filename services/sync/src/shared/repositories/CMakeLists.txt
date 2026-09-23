@@ -1,9 +1,3 @@
-# The three audit tables' row code as one module: the repositories and the
-# schemas they map rows through. Declared together rather than inside a
-# repository folder because the transport's audit pages and the fan-out's writes
-# read them as one set, and because the schemas' translation units have no other
-# compiler. The fourth table, the delivery inbox, has one reader — its consumer
-# in `fanout` — so that repository is compiled there (rule 23).
 argus_module(NAME sync-repositories
     SOURCES
         audit-log/audit-log-repository.cc

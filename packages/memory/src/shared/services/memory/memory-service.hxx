@@ -60,7 +60,6 @@ struct CaptureResult
   int64_t factId = 0;
 };
 
-// Store setup deferral: open it from drogon's beginning advice, never before sqlite3 is initialized.
 struct MemoryInitOptions
 {
   bool deferStore = false;
@@ -76,7 +75,6 @@ public:
   MemoryService& operator=(const MemoryService&) = delete;
 
   void init(const MemoryInitOptions& options = {});
-  // Opens the graph/vec store and starts the worker. Idempotent.
   void openStore();
   void shutdown();
   bool isLoaded() const;
@@ -89,23 +87,18 @@ public:
   int64_t resolveAddresseeEntity(const std::string& lang);
   std::string profileFor(int64_t userId, const std::string& lang);
 
-  // Drops transient turns and their bound answers, so small talk never becomes an episode.
   std::string durableTranscript(const std::string& transcript,
                                 const std::string& lang) const;
 
   void enqueueSummary(const TranscriptJobInput& input);
   void enqueueCompaction(const TranscriptJobInput& input);
-  // Waits for the worker queue to drain; false when it gave up with work pending.
   bool flushPending(int timeoutMs = 0);
 
-  // Blocks while the chat port reports busy; the queue itself is bounded by memory.queue_bound.
   void waitForIdle(int waitMs);
 
   int64_t observeSystemEvent(const SystemEventInput& input);
   int64_t recordProcedure(const ProcedureRecordInput& input);
 
-  // The tools this service offers, handlers bound to it; the registry they
-  // land in belongs to the runtime that executes them (D16, Phase 1 step 9).
   std::vector<tools::ToolDescriptor> toolDescriptors();
 
   SemanticGraph& graph() { return *graph_; }
@@ -169,7 +162,6 @@ private:
   std::mutex queueMutex_;
   std::condition_variable queueCv_;
   std::deque<MemoryJob> queue_;
-  // Back-pressure bound: past it, job intake stops instead of isBusy polling.
   size_t queueBound_ = 64;
   bool stop_ = false;
   bool running_ = false;
@@ -199,7 +191,6 @@ private:
   void embedAndStore(int64_t factId, bool episode);
   void rebuildAll();
 
-  // Memory belongs to authenticated users: camera-only persons are foreign and can never write it.
   static bool hasUserScope(int64_t userId);
 
   tools::ToolResult handleRemember(const tools::ToolCall& call);

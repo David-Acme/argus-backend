@@ -9,7 +9,6 @@
 #include <mutex>
 #include <vector>
 
-// Event-loop actor registered in the poll loop; owns no fd lifecycle itself.
 class LoopActor : public std::enable_shared_from_this<LoopActor>
 {
 public:
@@ -17,7 +16,6 @@ public:
   virtual void handleEvents(uint32_t events) = 0;
 };
 
-// Single-threaded epoll loop: level-triggered I/O, timers, cross-thread posts, deferred release.
 class PollLoop
 {
 public:
@@ -40,14 +38,10 @@ public:
   void post(Task task);
   void runAfter(int milliseconds, Task task);
 
-  // The loop keeps only a weak handle: dispatching an event whose actor is
-  // gone skips it instead of touching freed memory. Callers keep shared
-  // ownership until unwatch.
   void watch(int fd, std::weak_ptr<LoopActor> actor);
   void update(const UpdateInput& input);
   void unwatch(int fd);
 
-  // Keeps an object alive until the end of the loop iteration so a callback may destroy it safely.
   void retain(std::shared_ptr<void> object);
 
 private:

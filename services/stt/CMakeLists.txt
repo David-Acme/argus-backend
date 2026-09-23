@@ -1,9 +1,6 @@
 cmake_minimum_required(VERSION 3.25)
 project(argus-stt VERSION 1.0.0 LANGUAGES CXX)
 
-# enable_testing() must precede the first add_subdirectory: the flag
-# propagates into every subtree, and a directory that misses it gets no
-# CTestTestfile — the tests of anything added beneath it then never run.
 enable_testing()
 
 set(CMAKE_CXX_STANDARD 20)
@@ -16,9 +13,6 @@ set(STT_SRC_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/src)
 set(SHARED_ROOT ${STT_SRC_ROOT}/shared)
 
 if(NOT TARGET Drogon::Drogon)
-    # Standalone configure: this service owns the whole build, so it adds
-    # the packages it links — the leaves it uses directly and the client
-    # that used to arrive through argus-common.
     find_package(Drogon CONFIG REQUIRED)
     find_package(onnxruntime CONFIG REQUIRED)
     find_package(tomlplusplus REQUIRED)
@@ -43,12 +37,7 @@ endif()
 
 find_package(doctest REQUIRED)
 
-# sherpa-onnx is THE capacity of this service (F4-3, Ruling BK): no face/llm/
-# vlm/tts/vad code is compiled, so the binary carries no other AI symbols.
 if(NOT TARGET sherpa-onnx-c-api)
-    # Standalone build: integrate the submodule exactly as the root
-    # third_party does, redirecting sherpa's FetchContent onnxruntime to the
-    # Conan-provided target.
     set(json_POPULATED TRUE CACHE BOOL "" FORCE)
     set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
     set(SHERPA_ONNX_ENABLE_PYTHON OFF CACHE BOOL "" FORCE)
@@ -77,8 +66,6 @@ endif()
 
 add_library(stt-core STATIC
     ${STT_SRC_ROOT}/controllers/stt-controller.cc
-    # The engine compiled from the shared tree (PORTED pattern), so the
-    # legacy binary and this service transcribe identically.
     ${SHARED_ROOT}/services/stt/stt-service.cc
 )
 
@@ -123,13 +110,9 @@ add_custom_command(TARGET argus-stt POST_BUILD
             ${CMAKE_CURRENT_SOURCE_DIR}/../../models
             $<TARGET_FILE_DIR:argus-stt>/models)
 
-# The wire suite opts back into the default build: this folder is added
-# EXCLUDE_FROM_ALL.
 find_package(doctest REQUIRED)
 
 
-# The argus-stt wire contract (F4-3, Ruling BL): the real engine serves the
-# transcribe/config legs from the shared models tree.
 add_executable(stt-wire-test tests/unit/stt-wire-test.cc
     ${STT_SRC_ROOT}/controllers/stt-controller.cc
     ${SHARED_ROOT}/services/stt/stt-service.cc)

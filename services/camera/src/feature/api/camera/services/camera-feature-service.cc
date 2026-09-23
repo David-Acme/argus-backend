@@ -19,7 +19,7 @@ drogon::Task<void> dropSource(int64_t cameraId)
   co_await BlockingTask<void>(
       [cameraId] { cameraSourceRegistrar().remove(cameraId); });
 }
-} // namespace
+}
 
 drogon::Task<void>
 CameraFeatureService::emit(SyncOperation operation,

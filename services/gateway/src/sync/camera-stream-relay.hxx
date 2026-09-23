@@ -10,7 +10,6 @@
 #include <string_view>
 #include <unordered_map>
 
-// Internal camera media socket; empty disables the /camera-stream endpoint.
 struct CameraStreamConfig
 {
   std::string streamUrl;
@@ -18,11 +17,8 @@ struct CameraStreamConfig
   static CameraStreamConfig resolve();
 };
 
-// Camera media frames are the only ones this socket carries.
 bool isCameraStreamFrame(std::string_view type);
 
-// Byte-transparent relay from the /camera-stream socket to argus-camera,
-// carrying the client's own credentials and transport identity.
 class CameraStreamRelay
 {
 public:

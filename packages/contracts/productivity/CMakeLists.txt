@@ -1,9 +1,3 @@
-# productivity-contract: the vocabulary that crosses the productivity
-# boundary — a reminder detail's status, the access a shared calendar event
-# carries and the error a membership check reports. Declared once, here, for
-# the service that owns the boundary and for the packages and services that
-# consume it. Header-only; consumers link argus::contracts::productivity.
-
 cmake_minimum_required(VERSION 3.25)
 
 include(${CMAKE_CURRENT_SOURCE_DIR}/../../../cmake/argus-module.cmake)
@@ -22,7 +16,6 @@ argus_contracts(NAME productivity
         src/productivity/share-access.hxx
     DEPENDS argus::lib::errors)
 
-# The round-trip suite: every name is its own spelling and back.
 enable_testing()
 find_package(doctest REQUIRED)
 
@@ -34,8 +27,6 @@ target_compile_options(productivity-contract-vocabulary-test PRIVATE -Wall -Wext
 add_test(NAME productivity-contract-vocabulary-test
          COMMAND productivity-contract-vocabulary-test)
 
-# The catalog suite: the eight refusals the productivity boundary throws,
-# pinned as a table and checked against what the response serializer accepts.
 add_executable(productivity-contract-catalog-test
     tests/unit/productivity-contract-catalog-test.cc)
 target_link_libraries(productivity-contract-catalog-test PRIVATE

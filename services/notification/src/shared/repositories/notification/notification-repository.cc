@@ -23,7 +23,6 @@ int64_t nowMillis()
              std::chrono::system_clock::now().time_since_epoch())
       .count();
 }
-// Commits in the transaction destructor; the callback resumes the awaiter.
 class TransactionCommitAwaiter
 {
 public:
@@ -77,7 +76,6 @@ std::string batchInsertSql(const std::vector<NotificationCreateInput>& inputs,
   return sql;
 }
 
-// Length-prefixed so adjacent fields can never collide.
 void addFingerprintField(argus::hash::Sha256& hasher, std::string_view value)
 {
   hasher.update(std::to_string(value.size()));
@@ -158,7 +156,7 @@ schemasFromIds(const NotificationSchemaBuildInput& input)
   }
   return schemas;
 }
-} // namespace
+}
 
 drogon::Task<NotificationSchema>
 NotificationRepository::create(const NotificationCreateInput& input) const

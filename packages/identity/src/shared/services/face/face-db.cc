@@ -15,7 +15,7 @@ namespace
 constexpr int kEmbeddingDim = 128;
 constexpr float kMinConfidence = 0.80F;
 
-} // namespace
+}
 
 std::mutex& FaceDB::vecMutex()
 {

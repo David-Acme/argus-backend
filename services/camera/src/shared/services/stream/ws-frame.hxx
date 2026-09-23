@@ -41,4 +41,4 @@ struct FrameInput
 
 std::string frame(const FrameInput& input);
 
-} // namespace ws_frame
+}

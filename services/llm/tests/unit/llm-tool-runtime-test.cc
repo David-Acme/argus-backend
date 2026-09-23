@@ -15,9 +15,6 @@
 namespace
 {
 
-// A descriptor whose handler records that it ran, so a refusal can be told
-// apart from a dispatch. Its schema is all-optional, memory's own convention:
-// a fired call must reach the gate, never die on the way there.
 struct Probe
 {
   bool ran = false;
@@ -42,7 +39,6 @@ tools::ToolDescriptor probeDescriptor(const std::string& name, Probe& probe,
             tools::ToolResult result;
             result.ok = true;
             result.output = "ran " + call.name;
-            // Deliberately not the call's name: the executor stamps that.
             result.tool = "probe";
             result.data["seen"] = probe.seen;
             return result;
@@ -56,7 +52,6 @@ tools::ToolCall callFor(const std::string& name)
   call.arguments = Json::Value(Json::objectValue);
   call.context.userId = 7;
   call.context.utterance = "recuerdame algo";
-  // The arguments memory's tools require, so a call reaches the gate.
   if (name == "memory.recall")
     call.arguments["query"] = "dentista";
   if (name == "procedure.run")
@@ -66,8 +61,6 @@ tools::ToolCall callFor(const std::string& name)
   return call;
 }
 
-// The same call with nothing filled in: what a model emits when it fires a
-// tool with no arguments.
 tools::ToolCall bareCall(const std::string& name)
 {
   tools::ToolCall call = callFor(name);
@@ -75,7 +68,6 @@ tools::ToolCall bareCall(const std::string& name)
   return call;
 }
 
-// The descriptors memory really ships, not a copy of them.
 const tools::ToolDescriptor* declaredByMemory(const std::string& name)
 {
   static const std::vector<tools::ToolDescriptor> declared =
@@ -86,16 +78,13 @@ const tools::ToolDescriptor* declaredByMemory(const std::string& name)
   return nullptr;
 }
 
-// Memory's declarations, registered the way main.cc registers them; the
-// handlers stay null, so a call the gate let through would abort here instead
-// of answering — which is the point of the refusal cases below.
 void registerMemoryTools(ToolRegistry& registry)
 {
   for (auto descriptor : memoryToolDescriptors())
     registry.registerTool(std::move(descriptor));
 }
 
-} // namespace
+}
 
 TEST_CASE("the executor dispatches a registered tool and refuses a name it "
           "does not hold")
@@ -106,7 +95,6 @@ TEST_CASE("the executor dispatches a registered tool and refuses a name it "
   registry.registerTool(
       probeDescriptor("probe.remember", probe, TableName::Memory,
                       RolePermission::Create));
-  // A near miss of the registered name: resolution is a lookup, not a prefix.
   registry.registerTool(
       probeDescriptor("probe.forget", never, TableName::Memory,
                       RolePermission::Delete));
@@ -134,27 +122,23 @@ TEST_CASE("a call the schema rejects never reaches the handler")
   registerMemoryTools(registry);
   const ToolExecutor executor(registry);
 
-  // A required argument is missing.
   const auto missing =
       executor.execute(bareCall("memory.recall"), UserRole::Resident);
   CHECK_FALSE(missing.ok);
   CHECK(missing.output == "missing required argument 'query'");
 
-  // An enum argument carries a value the schema does not list.
   auto wrongEnum = callFor("memory.remember");
   wrongEnum.arguments["type"] = "inventado";
   const auto enumRefused = executor.execute(wrongEnum, UserRole::Resident);
   CHECK_FALSE(enumRefused.ok);
   CHECK(enumRefused.output == "argument 'type' has an invalid value");
 
-  // A number argument that is not a number.
   auto wrongType = callFor("memory.forget");
   wrongType.arguments["fact_id"] = "cuarenta y dos";
   const auto typeRefused = executor.execute(wrongType, UserRole::Resident);
   CHECK_FALSE(typeRefused.ok);
   CHECK(typeRefused.output == "argument 'fact_id' must be a number");
 
-  // Arguments that are not an object at all.
   auto notObject = callFor("memory.remember");
   notObject.arguments = Json::Value("guardalo");
   const auto shapeRefused = executor.execute(notObject, UserRole::Resident);
@@ -171,9 +155,6 @@ TEST_CASE("a role the table does not grant never reaches the handler")
                       RolePermission::Create));
   const ToolExecutor executor(registry);
 
-  // A guest holds no Memory row, so the gate stops the call; the same call
-  // clears it for a resident, which is what makes the refusal the gate's and
-  // not the schema's.
   const auto refused =
       executor.execute(callFor("probe.remember"), UserRole::Guest);
   CHECK_FALSE(refused.ok);
@@ -249,8 +230,6 @@ TEST_CASE("the memory descriptors declare their required arguments")
                     .has_value());
   }
 
-  // remember and remind take everything optionally on purpose: a fired call
-  // must always reach the handler.
   for (const char* name : {"memory.remember", "memory.remind"}) {
     const auto* descriptor = declaredByMemory(name);
     REQUIRE(descriptor != nullptr);

@@ -39,7 +39,6 @@ struct RecordedAudit
   std::vector<int64_t> users;
 };
 
-// Records the audit diffs the feature services hand to the funnel.
 class RecordingSink final : public AuditSink
 {
 public:
@@ -58,9 +57,6 @@ public:
 
 using DbHandle = std::unique_ptr<sqlite3, int (*)(sqlite3*)>;
 
-// Reports failure by throwing, as the drogon client calls these replace do:
-// this suite's assertion count is fixed, and doctest reports an escaping
-// exception either way.
 DbHandle openFile(const char* path)
 {
   sqlite3* raw = nullptr;
@@ -83,12 +79,6 @@ void exec(sqlite3* db, const std::string& sql)
   sqlite3_free(error);
 }
 
-// Seeds both notification tables and the notification_token indexes. Written
-// through the sqlite3 C API rather than a throwaway drogon client: that
-// client's release can land on the connection's own loop thread, whose
-// destructor then joins the loop it runs on and aborts with no assertion
-// behind it. This runs before the app boots, so no other connection holds the
-// file and the raw connection needs no bootstrap pragmas.
 void seedNotificationDb(const char* path)
 {
   std::remove(path);
@@ -153,9 +143,6 @@ void seedNotificationDb(const char* path)
        "1700000000, 1700000001, 1700000000000, 1700000001500)");
 }
 
-// Runs the app and stops it however the case body leaves. A joinable
-// std::thread destroyed by unwinding calls std::terminate, which reports an
-// ordinary statement failure as a SIGABRT with no assertion behind it.
 class AppRunner
 {
 public:
@@ -165,12 +152,6 @@ public:
   {
     if (!runner_.joinable())
       return;
-    // Drogon reports the app running before its main loop is looping, and a
-    // loop that has not begun cannot be stopped: trantor's loop() clears the
-    // quit flag again as it starts. Waiting for it to loop is what makes the
-    // quit below take effect — detaching in that window left the app's thread
-    // running past the end of the process, measured as SIGSEGV inside
-    // EventLoop::loop() in 3 of 20 runs of a forced constructor throw.
     for (int i = 0; i < 3000 && !drogon::app().getLoop()->isRunning(); ++i)
       std::this_thread::sleep_for(std::chrono::milliseconds(10));
     if (drogon::app().getLoop()->isRunning()) {
@@ -178,8 +159,6 @@ public:
       runner_.join();
       return;
     }
-    // A boot that never reached the loop at all is left to the process: it
-    // cannot be asked to stop, and joining it would block for ever.
     runner_.detach();
   }
 
@@ -207,7 +186,7 @@ Json::Value body(const drogon::HttpResponsePtr& response)
   REQUIRE(json);
   return *json;
 }
-} // namespace
+}
 
 TEST_CASE("notification contracts hold on the argus-notification surface")
 {

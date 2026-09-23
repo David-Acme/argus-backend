@@ -15,7 +15,7 @@ guard_dialogue::LineInput plain(std::string text, int maxWords = 12)
           .maxWords = maxWords,
           .privateTokens = {}};
 }
-} // namespace
+}
 
 TEST_CASE("lines over the word cap are never spoken")
 {

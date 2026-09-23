@@ -14,7 +14,6 @@ struct llama_model;
 struct llama_context;
 struct mtmd_context;
 
-// Describe request; empty prompt and maxTokens 0 keep the configured defaults.
 struct VisionRequest
 {
   std::vector<unsigned char> imageRgb;
@@ -54,7 +53,6 @@ public:
   std::string describe(const VisionRequest& req);
   std::string describeMat(const VisionDescribeMatInput& input);
 
-  // Coroutine variants: run inference off the event loop.
   drogon::Task<std::string> describeAsync(const VisionRequest& req);
   drogon::Task<std::string> describeMatAsync(const VisionDescribeMatInput& input);
 

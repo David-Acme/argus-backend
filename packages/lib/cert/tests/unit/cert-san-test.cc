@@ -165,7 +165,6 @@ std::string fingerprintOf(X509* cert)
   return out;
 }
 
-// The SAN list cert-service produces with remote.hostname unset.
 std::vector<std::string> baseSans()
 {
   std::vector<std::string> names{"argus.local", "localhost", "127.0.0.1",
@@ -220,13 +219,6 @@ PeerInfo servedPeer(uint16_t port)
   return info;
 }
 
-// The reload is not synchronous with the rotation: rotateServerCertificate()
-// calls drogon::app().reloadSSLFiles() from this thread, and
-// trantor::TcpServer::reloadSSL() queues the new context into the listener's
-// loop whenever the caller is not on it (TcpServer.cc:238-256). A handshake
-// started right after the call can therefore still be served by the previous
-// leaf, so wait for a new one instead of reading the first answer and calling
-// the hot reload broken.
 PeerInfo servedPeerAfterReload(uint16_t port, const std::string& previous)
 {
   const auto deadline =
@@ -256,9 +248,6 @@ uint16_t freePort()
   return ntohs(addr.sin_port);
 }
 
-// Runs the app and stops it however the case body leaves. A joinable
-// std::thread destroyed while the body unwinds calls std::terminate, which
-// reports an ordinary failing REQUIRE as a SIGABRT with no assertion behind it.
 class AppRunner
 {
 public:
@@ -268,12 +257,6 @@ public:
   {
     if (!runner_.joinable())
       return;
-    // Drogon reports the app running before its main loop is looping, and a
-    // loop that has not begun cannot be stopped: trantor's loop() clears the
-    // quit flag again as it starts. Waiting for it to loop is what makes the
-    // quit below take effect — detaching in that window left the app's thread
-    // running past the end of the process, measured as SIGSEGV inside
-    // EventLoop::loop() in 3 of 20 runs of a forced constructor throw.
     for (int i = 0; i < 3000 && !drogon::app().getLoop()->isRunning(); ++i)
       std::this_thread::sleep_for(std::chrono::milliseconds(10));
     if (drogon::app().getLoop()->isRunning()) {
@@ -281,8 +264,6 @@ public:
       runner_.join();
       return;
     }
-    // A boot that never reached the loop at all is left to the process: it
-    // cannot be asked to stop, and joining it would block for ever.
     runner_.detach();
   }
 
@@ -304,7 +285,7 @@ bool waitForBoot(std::chrono::milliseconds timeout)
   return drogon::app().isRunning();
 }
 
-} // namespace
+}
 
 TEST_CASE("remote.hostname drives the leaf SAN list and the hot reload")
 {
@@ -407,6 +388,5 @@ TEST_CASE("remote.hostname drives the leaf SAN list and the hot reload")
   CHECK(after.fingerprint != absentFingerprint);
   CHECK(after.sans.back() == kRemoteHost);
 
-  // Joined while the app is still up: the runner quits and joins at scope exit.
   CertService::shutdown();
 }

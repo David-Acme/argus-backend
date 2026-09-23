@@ -7,7 +7,6 @@
 #include <sync/sync-filter.hxx>
 #include <vector>
 
-// User-scoped notification pull source (owner: argus-notification).
 class NotificationSyncSource
 {
 public:

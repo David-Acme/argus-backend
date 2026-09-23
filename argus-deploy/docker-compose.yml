@@ -1,11 +1,5 @@
 name: argus-cutover
 
-# Cutover deployment stack (Fase 6, compose v7): the legacy service and the
-# RustFS storage pair are retired — the gateway is the only public surface
-# and every domain is served by its own argus-<domain> image, with the
-# argus-voice pure-gRPC cutover (argus.voice.v1 on 7034, /health on 7035)
-# and the gateway identity RPC the spoken-name write goes through.
-
 services:
   gateway:
     build:
@@ -59,9 +53,6 @@ services:
         read_only: true
         bind:
           create_host_path: false
-    # The NatsBus connects once at boot with no retry: without this gate a
-    # lost boot race silently drops every fan-out subscription (all green
-    # healthchecks, zero events consumed).
     depends_on:
       nats:
         condition: service_healthy
@@ -78,15 +69,6 @@ services:
     pids_limit: 512
     restart: unless-stopped
 
-  # Camera-domain service (Fase 2 cutover, Rulings X/Y/Z): owns camera.db, the
-  # /camera+/zone CRUD surface, the camera:* sync frames and the go2rtc it
-  # spawns itself (Ruling AH). Internal network only; the gateway reaches it
-  # through the loopback-published 7026 HTTP listener and the 7036
-  # argus.camera.v1 sync leg. /dev/dri engages the
-  # RADV detector (Ruling AI): a host without /dev/dri must drop this device
-  # line via a compose override — `devices: !override []` (a plain `[]` merge
-  # silently keeps the device) — and the detector then degrades to CPU
-  # in-binary.
   argus-camera:
     build:
       context: ..
@@ -103,8 +85,6 @@ services:
           - argus-camera
     ports:
       - "127.0.0.1:${CAMERA_PORT:-7026}:7026"
-      # argus.camera.v1 SyncService leg the gateway pulls the camera sync
-      # tables from.
       - "127.0.0.1:${CAMERA_GRPC_PORT:-7036}:7036"
     devices:
       - /dev/dri:/dev/dri
@@ -136,10 +116,6 @@ services:
         read_only: true
         bind:
           create_host_path: false
-    # The gateway pulls the camera sync tables over the 7036 gRPC leg once
-    # this service is up; this service validates its callers and resolves the
-    # sync socket's user reads over the gateway's identity RPC (7040), so both
-    # boot in parallel after nats with no circular health dependency.
     depends_on:
       nats:
         condition: service_healthy
@@ -156,15 +132,6 @@ services:
     pids_limit: 512
     restart: unless-stopped
 
-  # Productivity-domain service (Fase 3 cutover, Rulings AP/AQ/AT): owns
-  # productivity.db (reminder, project, project_task, calendar_event,
-  # project_member, calendar_event_share, reminder_detail), serves the five
-  # productivity route prefixes the gateway proxies to it, and publishes its
-  # change events to the gateway over NATS. Its only host exposure is the
-  # loopback-published 7027 listener. Its JWT filter validates over the
-  # gateway's identity RPC (7040); it still opens identity.db read-only for
-  # the share/member target validation (Ruling AM), so it mounts the same
-  # data dir the gateway writes.
   argus-productivity:
     build:
       context: ..
@@ -211,13 +178,6 @@ services:
     pids_limit: 512
     restart: unless-stopped
 
-  # Notification-domain service (Fase 3 cutover, Rulings AP/AR/AT): owns
-  # notification.db as the single notification substrate, serves the
-  # /notification and /notification-token write paths the gateway proxies to
-  # it plus the argus.notification.v1 RPC leg (7038) the gateway's
-  # camera-notifier and /sync pulls go through. Same NATS/data-dir shape as
-  # argus-productivity, but no identity.db of its own — its filters validate
-  # over the gateway's identity RPC (7040).
   argus-notification:
     build:
       context: ..
@@ -264,11 +224,6 @@ services:
     pids_limit: 512
     restart: unless-stopped
 
-  # Sync engine (Phase 3a): the /sync WebSocket surface on its own TLS
-  # listener — a WebSocket upgrade cannot ride the gateway's HTTP proxy — its
-  # rooms, change fan-out and the control RPC producers call. The four audit
-  # tables are still identity's, so this is a second writer of the gateway's
-  # data dir until Phase 3c splits them into sync.db.
   argus-sync:
     build:
       context: ..
@@ -285,7 +240,6 @@ services:
           - argus-sync
     ports:
       - "${SYNC_PORT:-7025}:7025"
-      # Loopback only: the control RPC injects frames into any user's room.
       - "127.0.0.1:${SYNC_CONTROL_PORT:-7041}:7041"
     entrypoint: ["/opt/argus/argus-sync"]
     volumes:
@@ -326,9 +280,6 @@ services:
     pids_limit: 512
     restart: unless-stopped
 
-  # Autonomous camera guard: consumes object_detected, classifies danger and
-  # raises security notifications. Owns guard.db; identity and notifications
-  # are reached through their SDKs (rules 23/27).
   argus-guard:
     build:
       context: ..
@@ -378,8 +329,6 @@ services:
     pids_limit: 256
     restart: unless-stopped
 
-  # AI engine services (Fase 4): internal-wire RPC servers; the config
-  # remote_url gates dial the loopback publishes (Rulings CB/CC/CD).
   argus-tts:
     build:
       context: ..
@@ -464,8 +413,6 @@ services:
     pids_limit: 512
     restart: unless-stopped
 
-  # /dev/dri enables the Vulkan backend; a GPU-less host drops it via
-  # `devices: !override []` and the engine degrades to CPU (Ruling CD).
   argus-vlm:
     build:
       context: ..
@@ -541,8 +488,6 @@ services:
         read_only: true
         bind:
           create_host_path: false
-      # The hosted memory stack (f8-b4): the store it owns rw plus the schema
-      # SQL the repo ships; identity/camera data arrives over the SDK clients.
       - ${ARGUS_DATA_DIR:-./data}/memory:/opt/argus/memory
       - type: bind
         source: ../packages/memory/database/schema.sql
@@ -562,7 +507,6 @@ services:
         read_only: true
         bind:
           create_host_path: false
-    # The hosted catalog replica subscribes to the NATS change subjects.
     depends_on:
       nats:
         condition: service_healthy
@@ -577,12 +521,6 @@ services:
     pids_limit: 512
     restart: unless-stopped
 
-  # Voice-orchestration service (F6-3 v2 cutover, the pure-gRPC pilot): owns
-  # the voice session (VAD → STT → LLM → TTS) and serves argus.voice.v1 on
-  # its gRPC listener; the gateway relays the frozen /sync voice wire to it.
-  # STT/TTS/LLM are remote ([stt]/[tts]/[llm] point at argus-stt/tts/llm) and
-  # the spoken-name write is the typed UpdateUser RPC to the gateway, so it
-  # mounts no databases — only the in-process silero VAD model.
   argus-voice:
     build:
       context: ..
@@ -629,13 +567,6 @@ services:
     pids_limit: 512
     restart: unless-stopped
 
-  # Tunnel relay (Fase 5, Rulings CF/CI/CL): the device-facing entry point of
-  # the byte-transparent transport. Standalone-deployable: lift this block
-  # (plus its config.relay.toml and the argus-tunnel image) onto a US server
-  # unchanged — it needs no other service unless [push] intents are wanted.
-  # Opt-in via the "tunnel" profile so the default stack stays the v4 shape;
-  # an empty [tunnel] secret refuses to boot, which keeps it off until the
-  # instance config is filled.
   argus-relay:
     profiles: ["tunnel"]
     build:
@@ -677,10 +608,6 @@ services:
     pids_limit: 128
     restart: unless-stopped
 
-  # Tunnel client (Fase 5): the home-side half of the transport. Host-networked
-  # like the gateway (transitional Ruling O exception) so it dials the
-  # gateway's [remote] tunnel_port and the relay's loopback-published home
-  # listener on 127.0.0.1. Same "tunnel" profile as the relay.
   argus-tunnel-client:
     profiles: ["tunnel"]
     image: argus-tunnel:local
@@ -711,13 +638,6 @@ services:
     pids_limit: 128
     restart: unless-stopped
 
-  # Private S3 object store (RustFS) for every media/evidence producer and
-  # consumer. Objects bind to the host data dir; root, RPC and the
-  # least-privilege application credentials live in 0600 secret files
-  # generated by scripts/provision-host.sh. The console is disabled and the
-  # API is published on host loopback only, so the gateway (host networking)
-  # reaches it at 127.0.0.1:9000 while the internal services use
-  # http://rustfs:9000.
   rustfs:
     image: rustfs/rustfs:1.0.0-beta.12
     user: "${ARGUS_UID:-1000}:${ARGUS_GID:-1000}"
@@ -752,9 +672,6 @@ services:
     pids_limit: 128
     restart: unless-stopped
 
-  # One-shot bootstrapper: creates/verifies the private bucket and the
-  # bucket-scoped argus-backend service account. Idempotent; only this
-  # container ever sees the root credentials.
   rustfs-init:
     image: rustfs/rc:v0.1.31
     user: "0:0"
@@ -781,8 +698,6 @@ services:
 
   nats:
     image: nats:2.11.14-alpine
-    # JetStream is mandatory: the camera stores observations in ARGUS_CAMERA
-    # and argus-guard consumes them through a durable acknowledged consumer.
     command: ["-js", "-m", "8222", "-sd", "/data"]
     ports:
       - "127.0.0.1:${NATS_CLIENT_PORT:-4222}:4222"
@@ -818,8 +733,6 @@ services:
         target: /opt/argus/database
         bind:
           create_host_path: false
-      # The schema SQL ships with the repo, not with every provisioned data
-      # dir — bind it into the data-dir path so --schema always resolves.
       - type: bind
         source: ../packages/identity/database/schema.sql
         target: /opt/argus/database/schema.sql
@@ -828,12 +741,6 @@ services:
           create_host_path: false
     restart: "no"
 
-  # Camera migration init (Ruling AG): opt-in one-shot tool copying the camera
-  # tables from argus.db onto the camera.db volume. Idempotent no-op on a
-  # schema-current target; run it with the stack stopped so the tool does not
-  # race argus-camera on camera.db, and BEFORE the first boot (once
-  # argus-camera has applied the camera schema the target is live data and
-  # the tool refuses to resurrect argus.db rows over it).
   camera-init:
     profiles: ["camera-init"]
     image: argus-camera:local
@@ -850,8 +757,6 @@ services:
         target: /opt/argus/database
         bind:
           create_host_path: false
-      # Same repo-shipped schema bind as identity-init: a provisioned data
-      # dir without the SQL would fail "schema file not found".
       - type: bind
         source: ../services/camera/database/schema.sql
         target: /opt/argus/database/schema.sql
@@ -861,13 +766,6 @@ services:
       - ${ARGUS_DATA_DIR:-./data}/camera:/opt/argus/camera
     restart: "no"
 
-  # Productivity migration init (Ruling AU): opt-in one-shot tool copying the
-  # 7 productivity tables from argus.db onto the productivity.db volume.
-  # Idempotent no-op on a schema-current target; run it with the stack stopped
-  # and BEFORE the first boot — once argus-productivity has applied the
-  # productivity schema the target is live data and the tool correctly no-ops
-  # instead of resurrecting argus.db rows over it (the f8291e4 ordering
-  # lesson, same as camera-init).
   productivity-init:
     profiles: ["productivity-init"]
     image: argus-productivity:local
@@ -884,9 +782,6 @@ services:
         target: /opt/argus/database
         bind:
           create_host_path: false
-      # Same repo-shipped schema bind as the other init services: a
-      # provisioned data dir without the SQL would fail "schema file not
-      # found".
       - type: bind
         source: ../services/productivity/database/schema.sql
         target: /opt/argus/database/schema.sql
@@ -896,9 +791,6 @@ services:
       - ${ARGUS_DATA_DIR:-./data}/productivity:/opt/argus/productivity
     restart: "no"
 
-  # Notification migration init (Ruling AU): opt-in one-shot tool copying
-  # notification + notification_token from argus.db onto the notification.db
-  # volume. Same before-first-boot rule as productivity-init.
   notification-init:
     profiles: ["notification-init"]
     image: argus-notification:local
@@ -924,12 +816,6 @@ services:
       - ${ARGUS_DATA_DIR:-./data}/notification:/opt/argus/notification
     restart: "no"
 
-  # RADV validation probe (Fase 2 gate): runs argus-vulkan-probe against the
-  # host GPU with /dev/dri mounted. Opt-in because a host without /dev/dri
-  # fails the device attach (or drops it with `devices: !override []`, which
-  # then exercises the same llvmpipe degradation argus-camera would see).
-  # Hosts with restrictive device ACLs may need to add their host
-  # video/render group gid via group_add.
   vulkan-probe:
     profiles: ["vulkan-probe"]
     image: argus-camera:local
@@ -962,9 +848,6 @@ volumes:
 networks:
   internal:
     name: argus-cutover-internal
-    # Pinned subnet: static AI-service IPv4s (raw-socket wires resolve
-    # literals only) and a stable 172.19.0.1 relay source for trusted-proxy
-    # checks.
     ipam:
       config:
         - subnet: 172.19.0.0/24

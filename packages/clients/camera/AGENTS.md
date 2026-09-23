@@ -12,8 +12,8 @@ compiles one proto (`argus/camera/v1/sync.proto`) and one source
 (`src/camera/camera-sync-client.cc`), so the generated `SyncService` stubs
 belong to this package and no consumer reaches
 `argus.camera.v1.SyncService` without them. Three CMakeLists name it:
-`argus-llm` (`services/llm/CMakeLists.txt:218`) and the `camera-rpc` module of
-`services/camera` (`services/camera/CMakeLists.txt:158`, which links it for the
+`argus-llm` (`services/llm/CMakeLists.txt:183`) and the `camera-rpc` module of
+`services/camera` (`services/camera/CMakeLists.txt:143`, which links it for the
 generated stub although no source of that service includes the client header)
 link it, and `argus-sync`'s `sync-transport` module does too
 (`services/sync/src/feature/transport/CMakeLists.txt:19`) — the leg that pages
@@ -65,9 +65,9 @@ themselves are argus-camera's since sub-step 3a-1b.
   fails the dial, which the pull turns into the 503
   `SyncErrors::CameraSyncUnavailable`) and by argus-llm
   (`services/llm/src/main.cc:65`, the read then `if (!cameraTarget.empty())`).
-  Three files declare it: `services/sync/config.toml.example:49-50`,
-  `argus-deploy/config.sync.toml.example:52-53` and
-  `argus-deploy/config.llm.toml.example:86-87` (both `argus-camera:7036`).
+  Three files declare it: `services/sync/config.toml.example:42-43`,
+  `argus-deploy/config.sync.toml.example:42-43` and
+  `argus-deploy/config.llm.toml.example:74-75` (both `argus-camera:7036`).
 - The channel is plaintext: `argus::client::makeChannel` is
   `InsecureChannelCredentials`, so what protects this edge is the network, not
   this package.

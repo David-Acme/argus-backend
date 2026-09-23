@@ -1,8 +1,3 @@
-# argus-deploy argus-llm configuration. Copy to config.llm.toml (gitignored);
-# the compose file bind-mounts it as the service's config.toml. Since f8-b4
-# this is the brain: the [llm] engine block drives both the wire and the tool
-# loop, and the blocks below carry the hosted memory stack.
-
 [server]
 host = "0.0.0.0"
 port = 7032
@@ -27,12 +22,8 @@ penalty_freq = 0.0
 penalty_present = 0.0
 seed = 0
 chat_template = "chatml"
-# The compose service ships without /dev/dri, so the engine runs CPU.
 gpu_layers = -1
 
-# The compose file binds models/llm, models/memory and models/extract read-only.
-
-# The hosted memory stack; the memory data dir mounts at /opt/argus/memory.
 [memory]
 observe_camera_events = false
 db_file = "memory/memory.db"
@@ -41,7 +32,6 @@ catalog_person_table = "catalog_person"
 catalog_camera_table = "catalog_camera"
 catalog_zone_table = "catalog_zone"
 catalog_stream_table = "catalog_stream"
-# The face recognition index belongs to the face service.
 create_face_vec = false
 queue_bound = 64
 recall_max_tokens = 512
@@ -71,14 +61,12 @@ extract_wait_ms = 15000
 [extract]
 model_path = "models/extract/NuExtract-1.5-tiny-Q4_K_M.gguf"
 prompt_format = "v1.5"
-# CPU only in the container (no /dev/dri on this service).
 gpu_layers = -1
 lexicon_min_coverage = 0.6
 threads = 0
 n_ctx = 2048
 max_tokens = 512
 
-# Read-only snapshot sources for the catalog replica boot fill.
 [identity]
 target = "172.19.0.1:7040"
 rpc_secret = "CHANGE_ME_SAME_IN_EVERY_SERVICE"
@@ -87,7 +75,6 @@ rpc_secret = "CHANGE_ME_SAME_IN_EVERY_SERVICE"
 grpc_target = "argus-camera:7036"
 
 [nats]
-# Empty skips the hosted catalog replica (the snapshot fill still runs).
 url = "nats://nats:4222"
 reconnect_wait_ms = 2000
 max_reconnects = 60

@@ -79,7 +79,7 @@ bool isIgnored(const std::vector<DetectedObject>& objects,
                                         object.name) != ignoredClasses.end();
                      });
 }
-} // namespace
+}
 
 EventIntelligenceOutcome
 EventIntelligence::evaluate(const EventIntelligenceInput& input)

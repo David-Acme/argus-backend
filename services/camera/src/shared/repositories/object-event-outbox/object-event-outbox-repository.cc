@@ -25,8 +25,6 @@ struct CommitState
   bool committed{false};
 };
 
-// Drogon commits in the transaction destructor on the client loop; wait for
-// the callback so the caller only continues once the write is durable.
 bool commitAndWait(std::shared_ptr<drogon::orm::Transaction> transaction)
 {
   if (!transaction)
@@ -47,7 +45,7 @@ bool commitAndWait(std::shared_ptr<drogon::orm::Transaction> transaction)
   return state->done && state->committed;
 }
 
-} // namespace
+}
 
 ObjectEventEnqueueOutcome
 ObjectEventOutboxRepository::enqueue(const ObjectEventEnqueueInput& input) const

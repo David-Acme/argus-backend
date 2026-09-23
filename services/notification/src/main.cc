@@ -49,7 +49,7 @@ Json::Value drogonConfig(const NotificationDbConfig& notificationDb,
   return config;
 }
 
-} // namespace
+}
 
 int main()
 {

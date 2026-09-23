@@ -14,7 +14,7 @@ inline constexpr std::string_view INSERT =
     "INSERT INTO device_credential (user_id, device_hash, secret_hash) "
     "VALUES (?, ?, ?)";
 
-} // namespace device_credential_query
+}
 
 struct DeviceCredentialCreateInput
 {

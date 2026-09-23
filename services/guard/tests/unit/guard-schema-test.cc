@@ -49,7 +49,7 @@ struct TempDb
   }
 };
 
-} // namespace
+}
 
 TEST_CASE("every encounter state is accepted by the guard schema")
 {

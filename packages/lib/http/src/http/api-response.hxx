@@ -8,8 +8,6 @@
 
 #include <string>
 
-// An envelope built from strings that were never a catalog entry: the gateway
-// relays a downstream service's own code, so there is nothing to look up.
 struct ErrorInput
 {
   int statusCode;
@@ -24,9 +22,6 @@ struct JsonInput
   const Json::Value* errors;
 };
 
-// The one envelope every service answers with: {status, info, errors}. Nothing
-// outside this class sets a status code or a body, so the wire shape cannot
-// drift service by service (architecture plan section 4.7).
 class ApiResponse
 {
 public:

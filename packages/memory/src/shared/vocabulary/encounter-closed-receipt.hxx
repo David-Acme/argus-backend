@@ -4,8 +4,6 @@
 #include <optional>
 #include <string>
 
-// LLM-side encounter receipt lifecycle; the CHECK constraint mirrors it.
-// Unknown persisted values fail closed at the call site.
 enum class EncounterClosedReceipt : uint8_t
 {
   Received = 0,

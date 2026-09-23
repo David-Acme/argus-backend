@@ -3,8 +3,6 @@
 #include <cstdint>
 #include <string>
 
-// Deterministic danger tiers; the model may inform but never assigns this
-// value.
 enum class GuardDanger : uint8_t
 {
   None = 0,

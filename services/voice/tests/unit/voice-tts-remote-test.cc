@@ -40,7 +40,7 @@ void pointAt(const std::string& url)
   ConfigService::setRuntimeString("tts.remote_url", url);
 }
 
-} // namespace
+}
 
 TEST_CASE("RemoteVoiceTts serves the IVoiceTts seam over the argus-tts wire")
 {

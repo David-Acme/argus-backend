@@ -41,4 +41,4 @@ inline constexpr ErrorDefinition Unavailable{
     .code = ErrorCode::ServiceUnavailable,
     .status = 503,
     .message = "Text-to-speech service unavailable"};
-} // namespace TtsErrors
+}

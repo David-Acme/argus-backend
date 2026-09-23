@@ -1,7 +1,3 @@
-# argus_clients_vlm: the argus-vlm internal wire seen from the caller's side.
-# argus-guard is the only consumer; the client owns the envelope and the
-# base64 request encoding so no service hand-rolls the wire (rule 23).
-
 include(${CMAKE_CURRENT_SOURCE_DIR}/../../../cmake/argus-module.cmake)
 
 if(NOT TARGET argus::lib::text)
@@ -27,9 +23,6 @@ find_package(doctest REQUIRED)
 
 add_executable(vlm-client-test tests/unit/vlm-client-test.cc)
 
-# This folder is pulled in EXCLUDE_FROM_ALL (consumers add it for the client
-# targets), so the suite has to opt back into the default build to be present
-# when ctest runs it.
 set_target_properties(vlm-client-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
 target_link_libraries(vlm-client-test PRIVATE argus::clients::vlm

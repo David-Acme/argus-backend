@@ -6,13 +6,12 @@ import "argus/common/v1/base.proto";
 
 option cc_enable_arenas = true;
 
-// Zone row matching the current /zone CRUD endpoints.
 message Zone {
   string id = 1;
   string camera_id = 2;
   string name = 3;
-  string type = 4; // monitor | alert | exclude
-  string polygon = 5; // JSON point list
+  string type = 4;
+  string polygon = 5;
   int64 created_at = 6;
 }
 

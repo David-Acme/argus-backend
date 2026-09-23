@@ -1,23 +1,9 @@
--- ─────────────────────────────────────────────────────────────────────────────
--- Argus notification  ·  Notification schema (notification.db)
--- The 2 notification tables, copied verbatim from database/schema.sql (source
--- of truth): notification, notification_token, plus the 3 indexes schema.sql
--- defines — the unique notification_token one backs the ON CONFLICT target of
--- the token upsert, so without it the legacy registerToken statement fails to
--- prepare. Applied by tools/migrate-notification and by argus-notification at
--- boot. argus.db is never touched.
--- Structure: pragmas → table creation → indexes (inline, verbatim order).
--- ─────────────────────────────────────────────────────────────────────────────
-
 PRAGMA journal_mode       = WAL;
 PRAGMA synchronous        = NORMAL;
 PRAGMA busy_timeout       = 5000;
 PRAGMA cache_size         = -64000;
 PRAGMA temp_store         = MEMORY;
 PRAGMA mmap_size          = 268435456;
--- The user rows live in identity.db, not here: foreign keys stay off and the
--- recipient user is validated in code (JWT context). The REFERENCES clauses
--- below are kept verbatim from schema.sql.
 PRAGMA foreign_keys       = OFF;
 PRAGMA journal_size_limit = 67108864;
 
@@ -50,7 +36,6 @@ CREATE TABLE IF NOT EXISTS notification_token (
 CREATE UNIQUE INDEX IF NOT EXISTS idx_notification_token_uniq
     ON notification_token (user_id, device_hash);
 
--- Sender idempotency inbox: one row per accepted notifications command id.
 CREATE TABLE IF NOT EXISTS notification_command (
     command_id     TEXT    NOT NULL  PRIMARY KEY,
     expected_count INTEGER NOT NULL  DEFAULT 0,
@@ -58,10 +43,6 @@ CREATE TABLE IF NOT EXISTS notification_command (
     created_at     INTEGER NOT NULL  DEFAULT (strftime('%s', 'now'))
 );
 
--- One durable delivery intent per notification; settled after WS/push fan-out.
--- acked_at records the client's display confirmation (0 = unacknowledged);
--- the *_ms columns give millisecond latency legs alongside the legacy
--- second-resolution stamps.
 CREATE TABLE IF NOT EXISTS notification_delivery (
     id              INTEGER NOT NULL  PRIMARY KEY AUTOINCREMENT,
     notification_id INTEGER NOT NULL  REFERENCES notification(id) ON DELETE CASCADE,
@@ -77,7 +58,6 @@ CREATE TABLE IF NOT EXISTS notification_delivery (
     acked_ms        INTEGER NOT NULL  DEFAULT 0
 );
 
--- Latest synthetic delivery-probe outcome; one row, id always 1.
 CREATE TABLE IF NOT EXISTS notification_selftest (
     id      INTEGER NOT NULL  PRIMARY KEY CHECK (id = 1),
     last_at INTEGER NOT NULL  DEFAULT 0,
@@ -91,9 +71,6 @@ CREATE INDEX IF NOT EXISTS idx_notification_delivery_status
     ON notification_delivery (status, id);
 CREATE INDEX IF NOT EXISTS idx_notification_token_user ON notification_token (user_id);
 
--- Durable outbox of notification-domain change events: the sink writes the
--- audit payload here and a worker publishes it, marking a row sent only after
--- the JetStream PubAck. Same table, same shape in every producer's database.
 CREATE TABLE IF NOT EXISTS change_outbox (
     event_id    TEXT    NOT NULL  PRIMARY KEY,
     fingerprint TEXT    NOT NULL  DEFAULT '',

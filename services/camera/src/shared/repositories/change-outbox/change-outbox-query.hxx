@@ -25,7 +25,7 @@ inline constexpr const char* RECORD_ATTEMPT =
     "UPDATE change_outbox SET attempts = attempts + 1 "
     "WHERE event_id = ? AND status = ?";
 
-} // namespace change_outbox_query
+}
 
 enum class ChangeOutboxDisposition : uint8_t
 {

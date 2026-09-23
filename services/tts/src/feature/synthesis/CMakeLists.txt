@@ -16,8 +16,6 @@ argus_module(NAME tts-synthesis
 
 target_compile_options(argus_tts-synthesis PRIVATE -Wall -Wextra)
 
-# The HTTP face of synthesis: the controller answers through the shared
-# envelope, so argus::lib::http is on the edge.
 argus_module(NAME tts-synthesis-http
     SOURCES
         api/http/controller/tts-controller.cc

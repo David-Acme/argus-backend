@@ -16,7 +16,6 @@
 #include <runtime/hardware-profile.hxx>
 #include <runtime/blocking-task.hxx>
 #include <runtime/thread-budget.hxx>
-// Vendored stb_image.h declares unused API functions.
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-function"
 #define STB_IMAGE_IMPLEMENTATION
@@ -470,7 +469,7 @@ DecodedImage decodeToRgb(const std::string& imageBytes)
           .height = height};
 }
 
-} // namespace
+}
 
 std::optional<int64_t> FaceService::identify(std::string imageBytes)
 {

@@ -10,8 +10,6 @@
 
 class IdentityClient;
 
-// Guard feature gateway: mode, incident reads, expected-guest windows and the
-// owner-token promotion forwarder.
 class GuardFeatureService
 {
 public:

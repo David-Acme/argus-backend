@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# Model provisioning for argus-memory (moved verbatim from scripts/setup.sh).
 set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/../../../scripts/lib/common.sh"
 
@@ -78,8 +77,6 @@ setup_extract_model() {
   local EXPECTED_BYTES=491400416
   local DL=""
 
-  # HTTP/1.1 with resume: the CDN drops HTTP/2 streams on files this size, and
-  # a truncated GGUF fails at load time instead of at download time.
   if command -v curl >/dev/null 2>&1; then
     DL="curl -L --http1.1 --retry 5 --retry-delay 2 -C - --progress-bar -o"
   elif command -v wget >/dev/null 2>&1; then

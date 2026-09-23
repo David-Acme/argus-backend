@@ -6,7 +6,7 @@ namespace
 {
 constexpr int kMaxDescriptionLength = 200;
 constexpr int kMaxWindowHours = 24;
-} // namespace
+}
 
 CreateExpectedGuestDto CreateExpectedGuestDto::fromJson(
     const Json::Value& json)

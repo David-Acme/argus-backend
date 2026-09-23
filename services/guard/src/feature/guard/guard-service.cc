@@ -29,7 +29,6 @@
 
 constexpr double kRetryReconcileSeconds = 0.5;
 
-// Owns the retry timer so delayed callbacks never hold a raw service pointer.
 class ObservationRetryPump
     : public std::enable_shared_from_this<ObservationRetryPump>
 {
@@ -77,9 +76,6 @@ int64_t nowMillis()
       .count();
 }
 
-// Health states evidencing physical interference rather than environment:
-// re-aimed, occluded or defocused. Darkness alone is a normal night
-// condition and never qualifies.
 bool tamperIndicating(const std::string& status)
 {
   return status == "moved" || status == "covered" || status == "blurred";
@@ -109,8 +105,6 @@ struct CommandIdInput
   int64_t now{0};
 };
 
-// Deterministic per observation so a redelivery reuses the same camera command
-// id.
 std::string makeCommandId(const CommandIdInput& input)
 {
   const std::string kind = guardActionKindToString(input.kind);
@@ -189,7 +183,7 @@ NotifyBody buildNotifyBody(const NotifyBodyInput& input)
   note.data["identityState"] = identityStateToString(input.identity);
   return note;
 }
-} // namespace
+}
 
 struct GuardLifecycle
 {
@@ -199,8 +193,6 @@ struct GuardLifecycle
   std::condition_variable idle;
 };
 
-// One hold per loop callback and event-loop coroutine; the destructor flips
-// the flag and waits the holders out, so destruction never races a resume.
 class LifecycleGuard
 {
 public:
@@ -231,9 +223,6 @@ private:
   std::shared_ptr<GuardLifecycle> lifecycle_;
 };
 
-// One event id executes at a time: a concurrent redelivery defers to the
-// owner instead of repeating the saga. The queue already serializes broker
-// traffic; this closes the remaining thread-level race.
 struct ExecutionLeaseInput
 {
   std::mutex& mutex;
@@ -951,7 +940,6 @@ void GuardService::scheduleEncounterSweep()
 void GuardService::publishEncounterClosed(const GuardEncounter& encounter,
                                           int64_t at)
 {
-  // Enqueue is durable and bus-independent; only the publish needs the bus.
   const EncounterOutboxInput input{.eventId =
                                        encounterClosedEventId(encounter, at),
                                    .payload =
@@ -2399,7 +2387,6 @@ void GuardService::scheduleRetentionSweep()
   }));
 }
 
-// Map a camera command outcome onto the durable guard intent lifecycle.
 GuardIntentStatus cameraIntentStatus(const CameraCommandResult& ack)
 {
   if (ack.succeeded())
@@ -2812,9 +2799,6 @@ GuardService::notify(const NotifyInput& input)
   request.set_body(body);
   request.set_data(json_util::toString(data));
 
-  // Counted before the RPC so a crash or hang during the call still flags
-  // the row as ambiguous. Attempts that never reach the service are counted
-  // too; that is the conservative watch metric.
   if (!input.eventId.empty())
     co_await repository_.bumpDispatchAttempts(input.eventId);
 
@@ -2850,8 +2834,6 @@ GuardService::notify(const NotifyInput& input)
            << input.cameraId << " (danger " << guardDangerToString(input.danger)
            << ")";
   if (!input.eventId.empty())
-    // Flip and thread slot commit atomically; a crash between them rolls
-    // both back, and a retry heals a previously diverged slot.
     co_await repository_.recordNotificationDispatch(
         {.eventId = input.eventId,
          .encounterId = input.encounterId,

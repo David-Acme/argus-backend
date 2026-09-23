@@ -24,7 +24,7 @@ drogon::HttpResponsePtr failureFor(MembershipError error)
       throw ResponseException(ProductivityErrors::ProjectNotFound);
   }
 }
-} // namespace
+}
 
 drogon::Task<drogon::HttpResponsePtr>
 ProjectMemberController::create(drogon::HttpRequestPtr req)

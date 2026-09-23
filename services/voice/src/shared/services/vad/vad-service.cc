@@ -43,7 +43,7 @@ std::mutex& vadSessionMutex()
   return mutex;
 }
 
-} // namespace
+}
 
 VadService::VadService() : VadService(VadConfig{}) {}
 

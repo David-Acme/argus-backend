@@ -3,7 +3,6 @@
 #include <cstdint>
 #include <string>
 
-// Camera observation outbox lifecycle; the CHECK constraint mirrors it.
 enum class ObjectEventStatus : uint8_t
 {
   Pending = 0,

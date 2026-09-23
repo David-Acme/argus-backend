@@ -3,7 +3,6 @@
 #include <cstdint>
 #include <string>
 
-// Durable inbox lifecycle of one observation; the CHECK constraint mirrors it.
 enum class ObservationStatus : uint8_t
 {
   Processing = 0,

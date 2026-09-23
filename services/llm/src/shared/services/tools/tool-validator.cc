@@ -40,4 +40,4 @@ std::optional<std::string> validateArguments(const ToolDescriptor& descriptor,
   return std::nullopt;
 }
 
-} // namespace tools
+}

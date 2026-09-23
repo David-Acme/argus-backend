@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# Model provisioning for argus-stt (moved verbatim from scripts/setup.sh).
 set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/../../../scripts/lib/common.sh"
 
@@ -42,7 +41,6 @@ setup_stt_model() {
       if [ -z "$TMPDIR" ]; then
         TMPDIR="$MODEL_DIR/tmp"
       fi
-      # Rename to the names SttService::createRecognizer() expects.
       if [ -f "$TMPDIR/encoder.int8.onnx" ]; then
         mv "$TMPDIR/encoder.int8.onnx" \
            "$MODEL_DIR/nemo-transducer-encoder.int8.onnx"

@@ -13,7 +13,6 @@
 namespace
 {
 
-// Padded, so a first-person marker that opens or closes the sentence matches too.
 bool mentionsFirstPerson(const std::string& text)
 {
   const std::string norm = " " + text_norm::whitespace(text) + " ";
@@ -84,7 +83,6 @@ FoldedView foldClause(std::string_view source)
   return out;
 }
 
-// Finds a folded needle at word boundaries; returns offsets into the original clause.
 std::optional<std::pair<size_t, size_t>>
 findSpanInClause(const FoldedView& view, const std::string& needle)
 {
@@ -105,7 +103,7 @@ findSpanInClause(const FoldedView& view, const std::string& needle)
   return std::nullopt;
 }
 
-} // namespace
+}
 
 int64_t
 MemoryFormation::resolveOrCreateEntity(const EntityResolveInput& input)
@@ -185,7 +183,6 @@ MemoryFormation::observe(const Observation& obs,
   int priority = 85;
   float confidence = 0.8F;
 
-  // The model's triple is honored only when complete; otherwise rule-parse.
   const Json::Value* toolArgs = nullptr;
   if (toolCall && toolCall->name == "memory.remember")
     toolArgs = &toolCall->arguments;

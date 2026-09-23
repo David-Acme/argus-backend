@@ -18,7 +18,7 @@
 - Authentication IDENTIFIES here; it does not authorize. Role-based
   authorization is the `argus-auth` filter package declared on routes by
   name. Biometrics (faces, embeddings) stay in this service.
-- English only: file contents, comments, commit messages.
+- English only: file contents, commit messages.
 
 ## Layout
 
@@ -43,12 +43,12 @@ CONTEXT.md for why.
 ## Binding rules
 
 Root `AGENTS.md` MUST-FOLLOW rules 19-25 apply in full (modern C++20,
-comment discipline, efficiency, DB tuning, feature layout, shared SDK,
+no comments in code, efficiency, DB tuning, feature layout, shared SDK,
 monolith structure, build-by-module-name). In particular:
 
-- Rule 20 (comment discipline) applies to every file here regardless of
-  how long it predates this folder — a file's age or its having been moved
-  is never a reason to leave a stale or misplaced comment.
+- Rule 20 (no comments in code) applies to every file here regardless of
+  how long it predates this folder: a file's age or its having been moved
+  is never a reason to keep a comment.
 - Rule 25 (the folder IS the module): this service is declared once,
   through `argus_module(NAME identity ...)` in this folder's
   `CMakeLists.txt`. Never list `packages/identity/src/...` files by raw path

@@ -9,8 +9,6 @@
 #include <sync/user-action-event.hxx>
 #include <sync/user-change-sink.hxx>
 
-// Post-write snapshot of one user or person row; `deleted` marks a soft delete
-// and `table` names the row's table the way the frozen feed spells it.
 struct IdentityCatalogInput
 {
   TableName table{TableName::User};
@@ -19,9 +17,6 @@ struct IdentityCatalogInput
   Json::Value row;
 };
 
-// The identity domain's whole outbound wire: the catalog rows the memory
-// replicas follow, the module and user audit rows, the action journal and the
-// imperative emits. The host installs its NATS funnel at boot.
 class IdentityChangeSink
 {
 public:
@@ -60,4 +55,4 @@ inline const IdentityChangeSink* getSink()
 {
   return sink();
 }
-} // namespace identity_change
+}

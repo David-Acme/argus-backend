@@ -19,20 +19,14 @@ struct ChatMessage
   std::string content;
 };
 
-// Inference request; maxTokens 0 and temperature < 0 keep the configured defaults.
 struct ChatRequest
 {
   std::vector<ChatMessage> messages;
   int32_t maxTokens{0};
   float temperature{-1.0F};
   bool resetContext{false};
-  // False skips the server-side tool loop (raw JSON callers like argus-guard).
   bool toolsEnabled{true};
-  // Generation ends once one of these appears; the matched text is kept.
   std::vector<std::string> stop;
-  // Optional GBNF grammar constraining the output; empty keeps free sampling.
-  // grammarRequired turns an unusable grammar into an empty generation instead
-  // of unconstrained sampling.
   std::string grammar;
   bool grammarRequired{false};
 };
@@ -74,7 +68,6 @@ public:
   std::string chat(const ChatRequest& req);
   void chatStream(const ChatRequest& req, TokenCallback onToken);
 
-  // Coroutine variants: run inference off the event loop.
   drogon::Task<std::string> chatAsync(const ChatRequest& req);
   drogon::Task<void> chatStreamAsync(const ChatRequest& req,
                                      TokenCallback onToken);
@@ -83,7 +76,6 @@ public:
   bool isBusy();
   LlmPrefillStats lastPrefillStats();
 
-  // Read-only config views for the internal wire's config leg.
   int32_t defaultMaxTokens() const { return defaultMaxTokens_; }
   float defaultTemperature() const { return defaultTemperature_; }
   int64_t contextSize() const { return contextSize_; }

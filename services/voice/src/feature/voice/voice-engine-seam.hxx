@@ -12,7 +12,6 @@
 #include <string>
 #include <vector>
 
-// Engine seams behind the voice session; argus-voice is remote-only.
 class IVoiceStt
 {
 public:
@@ -45,7 +44,6 @@ public:
   virtual void chatStream(const ChatRequest& req, TokenCallback onToken) = 0;
 };
 
-// Spoken-name write input: the role is the x-argus-role metadata value.
 struct VoiceNameWrite
 {
   int64_t userId{0};
@@ -53,7 +51,6 @@ struct VoiceNameWrite
   std::string name;
 };
 
-// The typed spoken-name write: IdentityService.UpdateUser on the gateway.
 class IVoiceIdentity
 {
 public:
@@ -62,7 +59,6 @@ public:
   virtual void updateUserName(const VoiceNameWrite& write) = 0;
 };
 
-// IdentityClient-backed adapter over identity.target.
 class GrpcVoiceIdentity final : public IVoiceIdentity
 {
 public:
@@ -77,7 +73,6 @@ private:
   std::shared_ptr<const IdentityClient> client_;
 };
 
-// IVoiceTts over the argus-tts internal wire.
 class RemoteVoiceTts final : public IVoiceTts
 {
 public:
@@ -102,7 +97,6 @@ private:
   TtsClient client_;
 };
 
-// IVoiceStt over the argus-stt internal wire.
 class RemoteVoiceStt final : public IVoiceStt
 {
 public:
@@ -122,7 +116,6 @@ private:
   std::string lang_;
 };
 
-// IVoiceLlm over the argus-llm internal wire.
 class RemoteVoiceLlm final : public IVoiceLlm
 {
 public:
@@ -138,13 +131,11 @@ private:
   std::shared_ptr<const LlmHttpClient> client_;
 };
 
-// Process-wide seam adapters.
 IVoiceStt& voiceStt();
 IVoiceTts& voiceTts();
 IVoiceLlm& voiceLlm();
 IVoiceIdentity& voiceIdentity();
 
-// The engine set backing one voice session.
 struct VoiceEngineSeam
 {
   IVoiceStt& stt = voiceStt();

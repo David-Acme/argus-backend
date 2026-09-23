@@ -8,7 +8,6 @@
 #include <shared/services/llm/lfm-adapter.hxx>
 #include <llm/llm-service.hxx>
 
-// Owns the LLM engine by value; no singleton.
 class LlmController : public drogon::HttpController<LlmController, false>
 {
 public:
@@ -28,7 +27,6 @@ public:
 
   LfmAdapter& adapter() { return adapter_; }
 
-  // The fast tier in front of the tool loop.
   const IntentRouter& router() const { return intentGate_.router(); }
 
   drogon::Task<drogon::HttpResponsePtr> chat(drogon::HttpRequestPtr req);

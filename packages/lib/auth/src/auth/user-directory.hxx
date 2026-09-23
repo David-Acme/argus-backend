@@ -6,7 +6,6 @@
 #include <string>
 #include <auth/user-role.hxx>
 
-// One identity-domain user row; no database types cross.
 struct DirectoryUser
 {
   int64_t id{0};
@@ -17,7 +16,6 @@ struct DirectoryUser
   bool isActive{false};
 };
 
-// Read-only user directory backed by the identity RPC contract.
 class IUserDirectory
 {
 public:

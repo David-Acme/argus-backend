@@ -7,7 +7,6 @@
 
 namespace project_query
 {
-/** `?` the ownership predicate spends in every sync query of this table. */
 inline constexpr int OWNERSHIP_PLACEHOLDERS = 2;
 
 
@@ -122,7 +121,7 @@ inline constexpr std::string_view REMOVE =
     "updated_at = strftime('%s', 'now') "
     "WHERE id = ? AND deleted_at IS NULL";
 
-} // namespace project_query
+}
 
 struct ProjectCreateInput
 {

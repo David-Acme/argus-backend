@@ -28,9 +28,6 @@
 
 namespace
 {
-// A filter's coroutine driven straight by the test skips the filter advice, so a
-// refusal reaches the caller as the thrown refusal itself: what the advice would
-// have formatted into a status and a body is read off the exception here.
 struct Refusal
 {
   int status;
@@ -101,7 +98,6 @@ void setConfig()
       drogon::HttpRequest::newHttpRequest()->getPeerAddr().toIp());
 }
 
-// Varies the source IP the filter resolves through the trusted proxy path.
 void setSourceIp(const drogon::HttpRequestPtr& req, const std::string& ip)
 {
   req->addHeader("X-Forwarded-For", ip);
@@ -112,16 +108,8 @@ const DeviceContext& deviceCtx(const drogon::HttpRequestPtr& req)
   return req->getAttributes()->get<DeviceContext>(AuthContext::kDeviceKey);
 }
 
-// Seed through the sqlite3 C API. A throwaway drogon client keeps a loop thread
-// of its own, and a statement lambda it queues holds the connection's last
-// reference -- released while that lambda is still queued, ~Sqlite3Connection
-// runs on that very thread and ~EventLoopThread joins the thread it is running
-// on: EDEADLK, SIGABRT with no assertion reported.
 using DbHandle = std::unique_ptr<sqlite3, int (*)(sqlite3*)>;
 
-// Throws on failure, as the client calls these replace did: this suite's
-// assertion count is fixed, and doctest reports an escaping exception either
-// way.
 DbHandle openFile(const char* path)
 {
   sqlite3* raw = nullptr;
@@ -176,7 +164,6 @@ void seedIdentityDb(const char* path)
        "device_hash TEXT NOT NULL, secret_hash TEXT NOT NULL UNIQUE, "
        "is_active INTEGER NOT NULL DEFAULT 1, "
        "created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')))");
-  // sha256Hex is lowercase hex, so the literal carries nothing to escape.
   exec(db.get(),
        "INSERT INTO device_credential (user_id, device_hash, secret_hash) "
        "VALUES (1, '', '" +
@@ -191,9 +178,6 @@ void seedIdentityDb(const char* path)
        "created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')))");
 }
 
-// Runs the app and stops it however the case body leaves. A joinable
-// std::thread destroyed by unwinding calls std::terminate, which reports an
-// ordinary statement failure as a SIGABRT with no assertion behind it.
 class AppRunner
 {
 public:
@@ -203,12 +187,6 @@ public:
   {
     if (!runner_.joinable())
       return;
-    // Drogon reports the app running before its main loop is looping, and a
-    // loop that has not begun cannot be stopped: trantor's loop() clears the
-    // quit flag again as it starts. Waiting for it to loop is what makes the
-    // quit below take effect — detaching in that window left the app's thread
-    // running past the end of the process, measured as SIGSEGV inside
-    // EventLoop::loop() in 3 of 20 runs of a forced constructor throw.
     for (int i = 0; i < 3000 && !drogon::app().getLoop()->isRunning(); ++i)
       std::this_thread::sleep_for(std::chrono::milliseconds(10));
     if (drogon::app().getLoop()->isRunning()) {
@@ -216,8 +194,6 @@ public:
       runner_.join();
       return;
     }
-    // A boot that never reached the loop at all is left to the process: it
-    // cannot be asked to stop, and joining it would block for ever.
     runner_.detach();
   }
 
@@ -239,7 +215,6 @@ bool waitForBoot(std::chrono::milliseconds timeout)
   return drogon::app().isRunning();
 }
 
-// Hosts the real service over the seeded database and points identity.target at it.
 class IdentityRpcHarness
 {
 public:
@@ -281,7 +256,7 @@ bool hexShape(const std::string& value, size_t length)
   return true;
 }
 
-} // namespace
+}
 
 TEST_CASE("device credential fingerprints are pinned and IP-free")
 {
@@ -463,7 +438,6 @@ TEST_CASE("credential identity mode issues, binds and authenticates devices")
   CHECK(ipRows.back()["device_hash"].as<std::string>() ==
         "1975e81a234fd02f4ae788a8fdb0911b1a1f15dd6d5d6d21d311fe4bbe130ceb");
 
-  // A/B parity: the RPC path's JwtContext equals the direct repository read.
   const auto& rpcCtx =
       desktop->getAttributes()->get<JwtContext>(AuthContext::kJwtKey);
   const auto directUser = drogon::sync_wait(UserRepository().findById(1));
@@ -477,7 +451,6 @@ TEST_CASE("credential identity mode issues, binds and authenticates devices")
   CHECK(rpcCtx.isActive == directUser->isActive);
   CHECK(rpcCtx.deviceHash == directRt->deviceHash);
 
-  // Fail closed: an unreachable identity service rejects, it does not admit.
   ConfigService::setRuntimeString("identity.target", "127.0.0.1:1");
   auto unreachable = drogon::HttpRequest::newHttpRequest();
   unreachable->addHeader("User-Agent", kDesktopUa);
@@ -487,7 +460,6 @@ TEST_CASE("credential identity mode issues, binds and authenticates devices")
   CHECK(refused->status == 401);
   CHECK(refused->message == "Authentication required");
 
-  // The same request that authenticates with the secret is refused without it.
   {
     IdentityRpcHarness guarded(kFleetSecret);
     REQUIRE(guarded.listening());

@@ -83,7 +83,7 @@ std::string pytapoJson(const Json::Value& value)
   return json_util::toString(value);
 }
 
-} // namespace
+}
 
 SecurePassthroughTransport::SecurePassthroughTransport(
     TapoCredentials credentials)

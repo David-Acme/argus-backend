@@ -28,7 +28,6 @@ public:
   drogon::Task<bool> remove(int64_t id, int64_t actorId) const;
 
 private:
-  // Permission check and emit targets both resolve through the parent project.
   drogon::Task<bool> canWorkOn(int64_t projectId, int64_t actorId) const;
   drogon::Task<void> emit(SyncOperation operation,
                           const ProjectTaskSchema& row) const;

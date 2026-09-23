@@ -1,5 +1,3 @@
-# argus-sync configuration. Copy to config.toml (gitignored) to run.
-
 [server]
 host = "127.0.0.1"
 grpc_port = 7041
@@ -29,17 +27,12 @@ handle_sig_term = true
 relaunch_on_error = false
 
 [sync]
-# The TLS listener /sync terminates on: clients dial it directly, because a
-# WebSocket upgrade cannot ride the gateway's reverse proxy.
 host = "0.0.0.0"
 port = 7025
 plain = false
 min_protocol = "TLSv1.2"
 db = "database/identity.db"
 schema = "services/sync/database/schema.sql"
-# Fleet secret for the control RPC. Required whenever its listener is
-# reachable beyond loopback: an unauthenticated caller injects frames into any
-# user's room.
 control_secret = ""
 
 [cert]
@@ -53,12 +46,10 @@ grpc_target = "127.0.0.1:7036"
 grpc_target = "127.0.0.1:7037"
 
 [voice]
-# The voice service the /sync forwarder relays voice:* frames and PCM to.
 target = "127.0.0.1:7034"
 
 [notifications]
 grpc_target = "127.0.0.1:7038"
-# Caller capability credential for the sync -> notification pull edge.
 credential = ""
 
 [jwt]

@@ -44,7 +44,6 @@ DetectedObject vehicleAt(float x, float y)
   return object;
 }
 
-// Full-frame square polygon in normalized coordinates.
 struct SquareZoneInput
 {
   const char* kind{nullptr};
@@ -82,7 +81,6 @@ EventIntelligenceInput baseInput(std::vector<DetectedObject> objects)
   return input;
 }
 
-// A stub matcher that matches every person crop as person 7.
 class KnownPerson7Matcher final : public IKnownPersonMatcher
 {
 public:
@@ -96,7 +94,6 @@ public:
   }
 };
 
-// A stub matcher that enrolls every person crop as an unknown person 9.
 class UnknownPerson9Matcher final : public IKnownPersonMatcher
 {
 public:
@@ -109,7 +106,7 @@ public:
                        .identifyAttempts = 2};
   }
 };
-} // namespace
+}
 
 TEST_CASE("a person below the dwell gate never reaches the person rules")
 {
@@ -359,7 +356,6 @@ TEST_CASE("legacy frames without a primary keep the frame-wide exclude")
   CHECK(outcome.rule == "exclude_zone");
 }
 
-// Recognizes only the right-hand companion crop as known person 9.
 class RightCompanionKnownMatcher final : public IKnownPersonMatcher
 {
 public:

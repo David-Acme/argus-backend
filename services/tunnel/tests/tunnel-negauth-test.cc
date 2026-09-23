@@ -15,7 +15,6 @@ using namespace tunnel::test;
 
 namespace
 {
-// Scripted relay stand-in: replays its script on every accepted link and records the client's replies.
 struct FakeRelay
 {
   std::function<void(TcpPeer&)> script;
@@ -66,7 +65,6 @@ struct FakeRelay
   std::string received;
 };
 
-// Counts the gateway dials the client attempts (the exploit's observable).
 struct GatewayCounter
 {
   std::shared_ptr<TcpListener> listener;
@@ -89,7 +87,6 @@ struct GatewayCounter
   uint16_t port() const { return listener->boundPort(); }
 };
 
-// Relay stand-in + client + gateway counter on one PollLoop thread; the 1 s auth timeout re-runs each scenario.
 struct RogueRig
 {
   explicit RogueRig(const std::function<void(TcpPeer&)>& script)
@@ -141,7 +138,7 @@ std::string authFrame(const std::string& secret, const std::string& challenge)
                       .payload = mac.data(),
                       .size = mac.size()});
 }
-} // namespace
+}
 
 TEST_CASE("OPEN before any AUTH never dials the gateway")
 {
@@ -210,7 +207,6 @@ TEST_CASE("AUTH_OK without a valid relay proof does not activate the link")
   }, kAcceptTimeoutMs));
   CHECK_FALSE(rig.client->homeActive());
   CHECK(rig.gateway.dials.load() == 0);
-  // The client bound its AUTH mac to the per-link challenge.
   CHECK(rig.relay.bytes().find(authFrame(secret, challenge)) !=
         std::string::npos);
 }

@@ -19,7 +19,7 @@ int64_t nowMs()
              std::chrono::system_clock::now().time_since_epoch())
       .count();
 }
-} // namespace
+}
 
 namespace
 {
@@ -32,7 +32,7 @@ std::string makeSessionTag()
       << std::setw(16) << distribution(device);
   return out.str();
 }
-} // namespace
+}
 
 NatsObjectEventSink::NatsObjectEventSink(std::shared_ptr<NatsBus> bus,
                                          Config config)
@@ -99,7 +99,6 @@ NatsObjectEventSink::publish(const ObjectDetectedEvent& event)
 
 void NatsObjectEventSink::refreshCounters()
 {
-  // Serialized so a stale read can never overwrite a fresher snapshot.
   const std::lock_guard refreshLock(refreshMutex_);
   const ObjectEventOutboxStats stats = outbox_.stats();
   const std::lock_guard lock(countersMutex_);
@@ -185,4 +184,3 @@ void NatsObjectEventSink::flushLoop()
                    std::chrono::milliseconds(progressed ? 50 : config_.retryMs));
   }
 }
-

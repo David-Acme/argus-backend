@@ -3,7 +3,6 @@
 #include <cstdint>
 #include <string>
 
-// What a member may do with a record shared with them; `View` is the default.
 enum class ShareAccess : uint8_t
 {
   View = 0,

@@ -19,9 +19,7 @@ public:
 
   std::mutex& mutex();
   sqlite3* handle();
-  // Empty keeps the [database] file fallback.
   void setDbFile(std::string file);
-  // The vector database is domain-neutral and names no table itself.
   void applySchema(const std::string& schemaFile);
   int embeddingDims() const;
   bool schemaOutdated();

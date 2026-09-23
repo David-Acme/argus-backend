@@ -13,7 +13,7 @@ bool isWeakSecret(const std::string& secret)
   return secret.size() < 32 || secret == "secret" ||
          secret == "refresh_secret" || secret == "change-me";
 }
-} // namespace
+}
 
 JwtService::JwtService()
     : accessSecret_(ConfigService::getString("jwt.secret")),

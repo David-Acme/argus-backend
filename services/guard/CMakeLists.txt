@@ -1,9 +1,6 @@
 cmake_minimum_required(VERSION 3.25)
 project(argus-guard VERSION 1.0.0 LANGUAGES CXX)
 
-# enable_testing() must precede the first add_subdirectory: the flag
-# propagates into every subtree, and a directory that misses it gets no
-# CTestTestfile — the tests of anything added beneath it then never run.
 enable_testing()
 
 set(CMAKE_CXX_STANDARD 20)
@@ -15,11 +12,6 @@ include(${CMAKE_CURRENT_SOURCE_DIR}/../../cmake/argus-module.cmake)
 set(GUARD_SRC_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
 if(PROJECT_IS_TOP_LEVEL)
-    # Standalone configure: this service owns the whole build, so it adds the
-    # packages it links — the leaves it uses directly and the sibling packages
-    # that used to arrive through argus-common — plus the third-party
-    # sqlite-vec, so the guard service links the same objects as any other
-    # consumer.
     find_package(Drogon CONFIG REQUIRED)
     find_package(cnats CONFIG REQUIRED)
     find_package(tomlplusplus REQUIRED)
@@ -150,9 +142,6 @@ foreach(TEST_NAME IN ITEMS guard-policy-test guard-assessment-test
         guard-vocabulary-test)
     add_executable(${TEST_NAME} tests/unit/${TEST_NAME}.cc)
 
-    # This folder is added EXCLUDE_FROM_ALL, so the suites have to opt back
-    # into the default build or ctest registers tests whose binaries never
-    # get built.
     set_target_properties(${TEST_NAME} PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
     target_link_libraries(${TEST_NAME} PRIVATE argus::guard doctest::doctest)
@@ -179,7 +168,6 @@ foreach(TEST_NAME IN ITEMS guard-policy-test guard-assessment-test
     add_test(NAME ${TEST_NAME} COMMAND ${TEST_NAME})
 endforeach()
 
-# Opt-in live check driving the real GuardService against a real NATS.
 add_executable(guard-dlq-service-live-test
     tests/unit/guard-dlq-service-live-test.cc)
 set_target_properties(guard-dlq-service-live-test PROPERTIES
@@ -197,7 +185,6 @@ target_compile_definitions(guard-dlq-service-live-test PRIVATE
 target_compile_options(guard-dlq-service-live-test PRIVATE -Wall -Wextra)
 add_test(NAME guard-dlq-service-live-test COMMAND guard-dlq-service-live-test)
 
-# Opt-in live check driving the real encounter outbox drain against a real NATS.
 add_executable(guard-encounter-drain-live-test
     tests/unit/guard-encounter-drain-live-test.cc)
 set_target_properties(guard-encounter-drain-live-test PROPERTIES
@@ -215,7 +202,6 @@ target_compile_options(guard-encounter-drain-live-test PRIVATE -Wall -Wextra)
 add_test(NAME guard-encounter-drain-live-test
          COMMAND guard-encounter-drain-live-test)
 
-# Opt-in live check against a real NATS; skips without ARGUS_NATS_URL.
 add_executable(guard-dlq-live-test tests/unit/guard-dlq-live-test.cc)
 set_target_properties(guard-dlq-live-test PROPERTIES
     EXCLUDE_FROM_ALL FALSE)
@@ -223,7 +209,6 @@ target_link_libraries(guard-dlq-live-test PRIVATE argus::lib::nats doctest::doct
 target_compile_options(guard-dlq-live-test PRIVATE -Wall -Wextra)
 add_test(NAME guard-dlq-live-test COMMAND guard-dlq-live-test)
 
-# Opt-in live check against a real argus-vlm; skips without the env vars.
 add_executable(vlm-client-live-test tests/unit/vlm-client-live-test.cc)
 set_target_properties(vlm-client-live-test PROPERTIES
     EXCLUDE_FROM_ALL FALSE)
@@ -245,7 +230,6 @@ target_include_directories(vlm-client-live-test PRIVATE
 target_compile_options(vlm-client-live-test PRIVATE -Wall -Wextra)
 add_test(NAME vlm-client-live-test COMMAND vlm-client-live-test)
 
-# Opt-in live check: fake camera RPC + real VLM exercise the assessment path.
 add_executable(guard-assessment-live-test
     tests/unit/guard-assessment-live-test.cc)
 set_target_properties(guard-assessment-live-test PROPERTIES

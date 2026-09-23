@@ -28,7 +28,7 @@ constexpr int kEnqueueAttempts = 3;
 constexpr int kEnqueueRetryMs = 25;
 constexpr int kDrainBatch = 64;
 constexpr int kProgressMs = 50;
-} // namespace
+}
 
 NatsNotificationChangeSink::NatsNotificationChangeSink(
     std::shared_ptr<NatsBus> bus, Config config)

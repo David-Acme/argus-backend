@@ -20,7 +20,7 @@ sync_query::SyncQueryParts scopedToUser(sync_query::SyncQueryParts parts,
   parts.args.push_back(std::to_string(*userId));
   return parts;
 }
-} // namespace
+}
 
 drogon::Task<std::optional<UserSchema>>
 UserRepository::findById(int64_t id) const

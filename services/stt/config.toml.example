@@ -1,5 +1,3 @@
-# argus-stt configuration. Copy to config.toml (gitignored) to run.
-
 [server]
 host = "127.0.0.1"
 port = 7030
@@ -10,7 +8,6 @@ language = "es"
 
 models_dir = "models/stt"
 
-# The body limit covers long PCM turns.
 [drogon.app]
 number_of_threads = 0
 enable_session = false

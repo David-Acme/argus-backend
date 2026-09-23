@@ -1,10 +1,3 @@
--- ─────────────────────────────────────────────────────────────────────────────
--- Argus gateway  ·  Gateway schema (gateway.db)
--- Degraded-fallback record only. Identity, notification and sync state live
--- in their owners' databases; this file must never gain their tables.
--- Structure: pragmas → table creation → indexes.
--- ─────────────────────────────────────────────────────────────────────────────
-
 PRAGMA journal_mode       = WAL;
 PRAGMA synchronous        = NORMAL;
 PRAGMA busy_timeout       = 5000;
@@ -14,8 +7,6 @@ PRAGMA mmap_size          = 268435456;
 PRAGMA foreign_keys       = OFF;
 PRAGMA journal_size_limit = 67108864;
 
--- Every fallback-path non-delivery while guard is absent: what was dropped
--- and why. Guard-ready handoffs are recorded by guard, never here.
 CREATE TABLE IF NOT EXISTS gateway_fallback_event (
     id         INTEGER NOT NULL  PRIMARY KEY AUTOINCREMENT,
     camera_id  INTEGER NOT NULL  DEFAULT 0,

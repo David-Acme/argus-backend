@@ -6,9 +6,6 @@
 #include <string>
 #include <vector>
 
-// The identity boundary, pinned as a table. Naming every entry here is the
-// point: an edited status, or a message that quietly loses a word, has to be
-// edited twice -- here and in the header -- so the diff shows it.
 struct CatalogEntry
 {
   const char* name;
@@ -88,9 +85,6 @@ const std::vector<CatalogEntry> kCatalog{
      ErrorCode::Forbidden, 403, "Invalid pairing code"},
 };
 
-// What response-rpc.cc's validRecord accepts before a refusal can be
-// serialized: an entry outside these limits can never reach a client, the
-// serializer would answer 502 for it instead.
 constexpr std::size_t kMaxMessageBytes = 1024;
 constexpr std::size_t kMaxCodeBytes = 128;
 
@@ -98,17 +92,11 @@ TEST_CASE("the identity catalog matches the table pinned here")
 {
   for (const auto& entry : kCatalog) {
     CAPTURE(entry.name);
-    // The code column is compared as its wire string, which is the value
-    // the errors package pins one-to-one for every enumerator: the same
-    // assertion, and a failure that prints NOT_FOUND instead of a number.
     CHECK(std::string(entry.definition->wireCode()) ==
           std::string(toString(entry.code)));
     CHECK(entry.definition->status == entry.status);
     CHECK(std::string(entry.definition->message) == entry.message);
   }
-  // A new entry in the header compiles and fails nothing above, because
-  // nothing above knows the catalog grew. This is the tripwire: the count
-  // only holds once the entry is in the table too.
   CHECK(kCatalog.size() == 30);
 }
 
@@ -120,10 +108,6 @@ TEST_CASE("every identity entry is legal on the wire")
     const std::string wire(entry.definition->wireCode());
     CHECK(entry.definition->status >= 400);
     CHECK(entry.definition->status <= 599);
-    // The serializer's rule for a message, mirrored exactly: non-empty, at
-    // most 1024 bytes, no NUL. Deliberately not restricted to ASCII -- a
-    // UTF-8 message is legal on the wire, and a suite that forbade one would
-    // block a legitimate translation.
     CHECK(!message.empty());
     CHECK(message.size() <= kMaxMessageBytes);
     CHECK(message.find('\0') == std::string::npos);
@@ -150,13 +134,6 @@ TEST_CASE("no two identity entries say the same thing")
 TEST_CASE(
     "the identity entries that contradict their own code are the known ones")
 {
-  // Five catalogs in the tree carry a SERVICE_UNAVAILABLE entry and four of
-  // them answer 503. These two answer 500. Measured, recorded, and left alone
-  // -- both call sites pass 500 explicitly, so the catalog is not what a
-  // client sees
-  // (packages/identity/src/feature/api/auth/services/auth-service.cc:330 and
-  // :574). Flagged in the step's report rather than fixed in a layout step;
-  // the list fails the suite the day a third one arrives.
   std::vector<std::string> offenders;
   for (const auto& entry : kCatalog) {
     if (entry.definition->wireCode() != "SERVICE_UNAVAILABLE")

@@ -1,4 +1,14 @@
-"""Seed the golden /sync verify state into a scratch database copy.
+import argparse
+import base64
+import hashlib
+import hmac
+import json
+import os
+import sqlite3
+import time
+import tomllib
+
+DESCRIPTION = """Seed the golden /sync verify state into a scratch database copy.
 
 Inserts the fixture-shaped rows the golden-sync test fixtures expect:
 the camera/zone rows (Golden Cam / Golden Zone) plus the calendar_event
@@ -17,17 +27,8 @@ correctly no-ops).
 Usage: seed-golden.py --argus argus.db --identity identity.db \
          --config argus-deploy/config.gateway.toml [--device-ip 127.0.0.1]
 """
-import argparse
-import base64
-import hashlib
-import hmac
-import json
-import os
-import sqlite3
-import time
-import tomllib
 
-parser = argparse.ArgumentParser(description=__doc__)
+parser = argparse.ArgumentParser(description=DESCRIPTION)
 parser.add_argument("--argus", required=True)
 parser.add_argument("--identity", required=True)
 parser.add_argument("--config", required=True)
@@ -63,9 +64,6 @@ try:
     cur = con.cursor()
     if cur.execute("SELECT COUNT(*) FROM camera WHERE name='Golden Cam'"
                    ).fetchone()[0] == 0:
-        # Fixture-shape rows: calendar_event.ends_at stays NULL and
-        # project_task.assignee_id is 1 — the normalized fixtures mask
-        # exactly these and nothing else.
         cur.execute(
             "INSERT INTO calendar_event(created_by,owner_id,project_id,"
             "title,description,location,color,starts_at,ends_at,is_all_day,"
@@ -125,7 +123,6 @@ try:
             "INSERT INTO person(user_id,name,alias,observation,"
             "first_seen_at,last_seen_at,created_at)"
             " VALUES(1,'Golden','Rec','',?,?,?)", (now, now, now))
-        # Golden audit rows exactly as the sync fixtures expect (priority 1).
         cur.execute(
             "INSERT INTO audit_log(create_user_id,record_id,table_name,"
             "changes,priority,event_timestamp,created_at)"

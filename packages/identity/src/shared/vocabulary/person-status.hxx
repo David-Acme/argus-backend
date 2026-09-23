@@ -3,7 +3,6 @@
 #include <cstdint>
 #include <string>
 
-// How far a person row is trusted: auto-enrolled sightings are candidates only.
 enum class PersonStatus : uint8_t
 {
   Candidate = 0,

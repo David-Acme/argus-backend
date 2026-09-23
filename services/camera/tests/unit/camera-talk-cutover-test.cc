@@ -54,7 +54,6 @@ struct StubSpeaker final : ICameraDriver
   }
 };
 
-// A bound-then-closed port: every connect is refused on the loopback.
 int deadPort()
 {
   int probe = ::socket(AF_INET, SOCK_STREAM, 0);
@@ -72,10 +71,6 @@ int deadPort()
 
 using DbHandle = std::unique_ptr<sqlite3, int (*)(sqlite3*)>;
 
-// The seeding fixture writes through the sqlite3 C API: a throwaway drogon
-// client released while a statement lambda is still queued on the connection's
-// own loop thread self-joins that thread — SIGABRT with no assertion behind
-// it. These seeding calls could only throw before, so the helpers throw too.
 DbHandle openFile(const std::string& path)
 {
   sqlite3* raw = nullptr;
@@ -140,12 +135,6 @@ public:
   {
     if (!runner_.joinable())
       return;
-    // Drogon reports the app running before its main loop is looping, and a
-    // loop that has not begun cannot be stopped: trantor's loop() clears the
-    // quit flag again as it starts. Waiting for it to loop is what makes the
-    // quit below take effect — detaching in that window left the app's thread
-    // running past the end of the process, measured as SIGSEGV inside
-    // EventLoop::loop() in 3 of 20 runs of a forced constructor throw.
     for (int i = 0; i < 3000 && !drogon::app().getLoop()->isRunning(); ++i)
       std::this_thread::sleep_for(std::chrono::milliseconds(10));
     if (drogon::app().getLoop()->isRunning()) {
@@ -153,8 +142,6 @@ public:
       runner_.join();
       return;
     }
-    // A boot that never reached the loop at all is left to the process: it
-    // cannot be asked to stop, and joining it would block for ever.
     runner_.detach();
   }
 
@@ -183,10 +170,6 @@ Json::Value body(const drogon::HttpResponsePtr& response)
   return *json;
 }
 
-// A refusal is thrown, not returned (architecture plan section 4.7): the advice
-// that formats it into an envelope runs only when the framework drives the
-// controller, so a test that drives the coroutine straight through sync_wait
-// reads the refusal off the exception instead.
 struct Refusal
 {
   int status;
@@ -214,7 +197,7 @@ Json::Value talkBody(const std::string& text)
   return json;
 }
 
-} // namespace
+}
 
 TEST_CASE("the camera-talk route synthesizes over the argus-tts wire")
 {

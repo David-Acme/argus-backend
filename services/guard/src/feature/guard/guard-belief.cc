@@ -33,7 +33,6 @@ std::string cameraLeafKey(int64_t cameraId, const std::string& leaf)
   return "guard.belief.camera." + std::to_string(cameraId) + "." + leaf;
 }
 
-// Effective key for one leaf: the per-camera override wins when present.
 std::string beliefLeafKey(int64_t cameraId, const std::string& leaf)
 {
   const std::string overrideKey = cameraLeafKey(cameraId, leaf);
@@ -41,7 +40,7 @@ std::string beliefLeafKey(int64_t cameraId, const std::string& leaf)
     return overrideKey;
   return "guard.belief." + leaf;
 }
-} // namespace
+}
 
 namespace guard_belief
 {
@@ -206,4 +205,4 @@ BeliefConfig resolveBeliefConfig(int64_t cameraId)
       beliefLeafKey(cameraId, "threshold_low"), defaults.thresholdLow);
   return config;
 }
-} // namespace guard_belief
+}

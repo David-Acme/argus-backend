@@ -15,9 +15,6 @@
 
 class NatsBus;
 
-// Enqueues observations into the camera-owned SQLite outbox and publishes them
-// from a worker; a row is marked sent only after the JetStream PubAck, so a
-// restart resumes whatever is still pending.
 class NatsObjectEventSink final : public IObjectEventSink
 {
 public:
@@ -26,9 +23,7 @@ public:
     int64_t cooldownMs{1000};
     int64_t maxPending{5000};
     int retryMs{500};
-    // Boot-scoped tag: person cooldown keys never collide across restarts.
     std::string sessionTag;
-    // JetStream target; empty keeps the production camera stream/subject.
     std::string streamName;
     std::string publishSubject;
   };
@@ -41,14 +36,10 @@ public:
   ObjectEventPublishResult
   publish(const ObjectDetectedEvent& event) override;
 
-  // Non-blocking health view backed by counters, never by a DB query.
   Json::Value health() const;
 
-  // Hydrates counters from SQLite and starts the publisher; call once after
-  // the schema is applied.
   void reconcile();
 
-  // Test-only interleaving hook; empty in production.
   std::function<void(const std::string&)> syncHook;
 
 private:

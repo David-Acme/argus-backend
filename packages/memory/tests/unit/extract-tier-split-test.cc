@@ -17,7 +17,6 @@ namespace
 #define ARGUS_TEST_MEMORY_FIXTURES_DIR "packages/memory/tests/fixtures"
 #endif
 
-// Regression floor: every point it loses wakes the 1.2 s model tier instead.
 constexpr double kMinLexiconHitRate = 0.60;
 
 std::vector<std::string> savedUtterances(const std::string& path)
@@ -35,9 +34,8 @@ std::vector<std::string> savedUtterances(const std::string& path)
   return rows;
 }
 
-} // namespace
+}
 
-// Reports the share of real memory_save utterances that would wake the model tier.
 TEST_CASE("the lexicon tier carries most real memory_save turns")
 {
   const auto rows = savedUtterances(
@@ -60,7 +58,6 @@ TEST_CASE("the lexicon tier carries most real memory_save turns")
     if (!parsed && !statement)
       ++noClause;
 
-    // A routed turn is salient, so the whole utterance is the clause then.
     const std::string clause =
         parser.stripFillers({.text = parsed    ? parsed->content
                                      : statement ? statement->content

@@ -6,7 +6,6 @@
 #include <optional>
 #include <string>
 
-// Person crop for the identity seam; x/y/w/h is the box in pixels.
 struct PersonCrop
 {
   int64_t cameraId{0};
@@ -27,9 +26,6 @@ enum class PersonIdentity
   Known,
 };
 
-// Face-observation state reported for one match() call: the contract's wire
-// enum, declared once in contracts/camera because guard reads the same field
-// out of the object_detected payload.
 struct PersonMatch
 {
   PersonIdentity identity{PersonIdentity::Unknown};
@@ -44,7 +40,6 @@ class IKnownPersonMatcher
 public:
   virtual ~IKnownPersonMatcher() = default;
 
-  // Nullopt only when the matcher is absent; a present matcher always answers.
   virtual std::optional<PersonMatch> match(const PersonCrop& crop) const = 0;
 };
 

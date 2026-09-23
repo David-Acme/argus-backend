@@ -44,7 +44,7 @@ bool isPrivateHost(const std::string& host)
   return false;
 }
 
-} // namespace
+}
 
 Go2rtcManager::Go2rtcManager()
     : binPath_(kDefaultBin), configPath_(kDefaultConfig), apiAddr_(kDefaultApi),

@@ -9,7 +9,6 @@
 #include <optional>
 #include <string>
 
-// Camera row schema; cloudPassword stays server-side, never sent to a client.
 struct CameraSchema
 {
   int64_t id{0};

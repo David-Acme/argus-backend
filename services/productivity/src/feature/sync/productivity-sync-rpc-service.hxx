@@ -10,7 +10,6 @@
 #include <shared/repositories/reminder-detail/reminder-detail-repository.hxx>
 #include <shared/repositories/reminder/reminder-repository.hxx>
 
-// argus.productivity.v1.SyncService: productivity-domain sync-table pulls.
 class ProductivitySyncRpcService final
     : public argus::productivity::v1::SyncService::CallbackService
 {

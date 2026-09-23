@@ -10,7 +10,7 @@ namespace
 {
 std::mutex gMutex;
 std::unordered_map<int64_t, std::shared_ptr<ICameraDriver>> gDrivers;
-} // namespace
+}
 
 CameraDriverRegistry& CameraDriverRegistry::instance()
 {

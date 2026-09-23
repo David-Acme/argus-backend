@@ -7,12 +7,6 @@ namespace
 {
 constexpr int kCallTimeoutMs = 5000;
 
-// The caller holds a SocketEmitDto -- operation, table, row -- and the wire
-// carries it typed: the two enums as the numbers they carry, the row as JSON
-// text. The numbers agree because contracts.proto mirrors sync-operation.hxx
-// and table-name.hxx value for value, and the suite pins that equality. The
-// envelope's own spelling (`option` as the table's name, `info` as the object)
-// is rebuilt at the far end, where the frame is rendered.
 argus::sync::v1::SyncFrame toFrame(const SocketEmitDto& dto)
 {
   argus::sync::v1::SyncFrame frame;
@@ -23,13 +17,11 @@ argus::sync::v1::SyncFrame toFrame(const SocketEmitDto& dto)
   return frame;
 }
 
-// The ack leg every method shares: false when the call never landed, and the
-// server's own refusal when it did.
 bool answer(const grpc::Status& status, const argus::sync::v1::ControlAck& ack)
 {
   return status.ok() && ack.ok();
 }
-} // namespace
+}
 
 SyncClient::SyncClient(SyncClientConfig config)
     : channel_(argus::client::makeChannel(config.target)),

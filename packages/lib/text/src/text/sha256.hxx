@@ -10,7 +10,6 @@
 namespace argus::hash
 {
 
-// Self-contained SHA-256 so no service needs a crypto dependency for hashing.
 class Sha256
 {
 public:
@@ -165,4 +164,4 @@ inline std::string sha256Hex(std::string_view data)
   return hex(hasher.digest());
 }
 
-} // namespace argus::hash
+}

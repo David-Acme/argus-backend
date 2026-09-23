@@ -8,7 +8,6 @@
 #include <optional>
 #include <string>
 
-// Thin SDK wrapper over argus.productivity.v1.SyncService (rule 23).
 class ProductivitySyncClient
 {
 public:
@@ -18,7 +17,6 @@ public:
   ProductivitySyncClient& operator=(const ProductivitySyncClient&) = delete;
   virtual ~ProductivitySyncClient() = default;
 
-  // Sync-table pull; nullopt when argus-productivity refuses or is unreachable.
   virtual std::optional<argus::productivity::v1::PullTableResponse>
   pullTable(const argus::productivity::v1::PullTableRequest& request,
             const argus::client::CallerIdentity& identity) const;

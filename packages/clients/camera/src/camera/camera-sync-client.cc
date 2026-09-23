@@ -5,7 +5,7 @@
 namespace
 {
 constexpr int kPullTimeoutMs = 5000;
-} // namespace
+}
 
 CameraSyncClient::CameraSyncClient(std::string target)
     : channel_(argus::client::makeChannel(target)),

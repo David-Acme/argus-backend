@@ -19,9 +19,6 @@ enum class DeliveryDisposition : uint8_t
   Term
 };
 
-// Durable consumer over the notification-owned delivery stream. stop() is
-// idempotent and runs from the destructor; destroy only while the loop that
-// started it is still running.
 class NotificationDeliveryConsumer
 {
 public:
@@ -46,11 +43,8 @@ public:
   void start();
   void stop();
 
-  // Parses, validates and handles one raw payload for the broker settlement.
   drogon::Task<DeliveryDisposition> handlePayload(const std::string& payload);
 
-  // Receipts first, dispatches when new: Ack settles, Nak redelivers, Term
-  // drops poison without redelivery.
   drogon::Task<DeliveryDisposition> handle(
       const NotificationDeliveryEvent& event);
 

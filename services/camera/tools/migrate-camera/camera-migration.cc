@@ -271,7 +271,6 @@ CameraResult validateSource(const std::string& sourcePath)
   return result;
 }
 
-// No-op report for a schema-current live target; nothing is copied or wiped.
 CameraMigrationReport noOpReport(sqlite3* target)
 {
   CameraMigrationReport report;
@@ -293,7 +292,6 @@ CameraMigrationReport noOpReport(sqlite3* target)
   return report;
 }
 
-// In-memory schema reference for comparing an existing target's column shape.
 CameraHandleResult schemaReference(const std::string& schemaPath)
 {
   auto reference = openHandle(":memory:", SQLITE_OPEN_READWRITE);
@@ -325,7 +323,7 @@ CameraMigrationReport verifyForeignKeyIntegrity(sqlite3* target)
   return report;
 }
 
-} // namespace
+}
 
 CameraResult applyCameraSchema(const CameraSchemaInput& input)
 {

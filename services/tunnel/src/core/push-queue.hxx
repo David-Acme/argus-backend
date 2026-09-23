@@ -9,7 +9,6 @@
 
 namespace tunnel
 {
-// Bounded push-intent queue with drop accounting; reject-new, nothing persists.
 class PushQueue
 {
 public:
@@ -50,4 +49,4 @@ private:
   std::atomic<uint64_t> received_{0};
   std::atomic<uint64_t> dropped_{0};
 };
-} // namespace tunnel
+}

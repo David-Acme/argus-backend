@@ -228,4 +228,4 @@ double baselineNovelty(double decayed)
   return 1.0 / (1.0 + std::max(0.0, decayed));
 }
 
-} // namespace guard_policy
+}

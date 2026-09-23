@@ -20,7 +20,7 @@
 namespace cv
 {
 class Mat;
-} // namespace cv
+}
 
 struct CameraRef
 {
@@ -28,7 +28,6 @@ struct CameraRef
   std::string name;
 };
 
-// Per-camera operator loop on the Drogon event loop.
 class CameraOperatorService
 {
 public:
@@ -50,7 +49,6 @@ public:
 
   explicit CameraOperatorService(Inputs inputs);
 
-  // Resolves the enabled cameras and launches one loop per camera.
   void start();
 
   void stop();
@@ -64,7 +62,6 @@ public:
     CameraFrame& frame;
   };
 
-  // One synchronous pipeline step (decode -> detect -> rules -> aggregate -> publish).
   void processFrame(const ProcessFrameInput& input);
 
 private:
@@ -101,7 +98,6 @@ private:
     std::string signature;
   };
 
-  // Per-person dwell verdict; one entry per tracked person this frame.
   struct PersonTrackDwell
   {
     int64_t trackId{0};
@@ -121,8 +117,6 @@ private:
 
   struct CameraState
   {
-    // One pending event per eligible person track: rule, identity, zone,
-    // crop and cooldown all belong to that same track.
     std::map<int64_t, ObjectDetectedEvent> pendingPersons;
     std::map<int64_t, int64_t> pendingPersonStartMs;
     std::optional<ObjectDetectedEvent> pendingOther;
@@ -197,14 +191,11 @@ private:
 
   bool cameraHasMotion(const cv::Mat& rgb, CameraState& state) const;
 
-  // Per-object frozen-box verdict for one frame; no box track is reused.
   std::vector<bool> staticBoxMask(
       CameraState& state, const std::vector<DetectedObject>& objects) const;
 
   PersonDwell updatePersonTracks(const PersonTrackInput& input) const;
 
-  // Content-adaptive cadence: burst while a person is present, active while
-  // motion is processed, idle otherwise.
   double currentInferenceFps(int64_t cameraId);
 
   void mergePersonPending(const PersonPendingInput& input);

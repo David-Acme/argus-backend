@@ -75,9 +75,6 @@ void writeConfig(const std::string& path)
          "caller_gateway = \"no-nats-gateway\"\n";
 }
 
-// Runs the app and stops it however the owning scope leaves it. A joinable
-// std::thread destroyed by unwinding calls std::terminate, which reports an
-// ordinary statement failure as a SIGABRT with no assertion behind it.
 class AppRunner
 {
 public:
@@ -87,12 +84,6 @@ public:
   {
     if (!runner_.joinable())
       return;
-    // Drogon reports the app running before its main loop is looping, and a
-    // loop that has not begun cannot be stopped: trantor's loop() clears the
-    // quit flag again as it starts. Waiting for it to loop is what makes the
-    // quit below take effect — detaching in that window left the app's thread
-    // running past the end of the process, measured as SIGSEGV inside
-    // EventLoop::loop() in 3 of 20 runs of a forced constructor throw.
     for (int i = 0; i < 3000 && !drogon::app().getLoop()->isRunning(); ++i)
       std::this_thread::sleep_for(std::chrono::milliseconds(10));
     if (drogon::app().getLoop()->isRunning()) {
@@ -100,8 +91,6 @@ public:
       runner_.join();
       return;
     }
-    // A boot that never reached the loop at all is left to the process: it
-    // cannot be asked to stop, and joining it would block for ever.
     runner_.detach();
   }
 
@@ -173,10 +162,6 @@ struct SharedBoot
 {
   TempDb db{"notification-no-nats-test"};
   TempFile config{"notification-no-nats-test", ".toml"};
-  // The app's thread is held by an owner that stops it on destruction, so the
-  // throws below unwind into a safe teardown: quit and join a live loop, or
-  // detach a boot that never reached one, instead of destroying a joinable
-  // std::thread and terminating.
   std::optional<AppRunner> runner;
 
   SharedBoot()
@@ -184,8 +169,6 @@ struct SharedBoot
     drogon::app().setLogLevel(trantor::Logger::kWarn);
     drogon::app().addDbClient(
         drogon::orm::Sqlite3Config{1, db.path(), "default", -1});
-    // The app must be configured before it runs, so the owner is emplaced here
-    // rather than in a member initialiser.
     runner.emplace();
     if (!waitForBoot(std::chrono::seconds(30)))
       throw std::runtime_error("drogon loop did not boot");
@@ -197,9 +180,6 @@ struct SharedBoot
 
   ~SharedBoot()
   {
-    // The owner stops the app; releasing it in the body keeps that stop ahead
-    // of the database and config files the TempDb and TempFile members remove
-    // after this body.
     runner.reset();
   }
 };
@@ -209,7 +189,7 @@ SharedBoot& sharedBoot()
   static SharedBoot boot;
   return boot;
 }
-} // namespace
+}
 
 TEST_CASE("no NATS configured keeps intents pending without terminating")
 {

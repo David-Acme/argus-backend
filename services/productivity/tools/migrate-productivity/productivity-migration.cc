@@ -275,7 +275,6 @@ ProductivityResult validateSource(const std::string& sourcePath)
   return result;
 }
 
-// No-op report for a schema-current live target; nothing is copied or wiped.
 ProductivityMigrationReport noOpReport(sqlite3* target)
 {
   ProductivityMigrationReport report;
@@ -297,7 +296,6 @@ ProductivityMigrationReport noOpReport(sqlite3* target)
   return report;
 }
 
-// In-memory schema reference for comparing an existing target's column shape.
 ProductivityHandleResult schemaReference(const std::string& schemaPath)
 {
   auto reference = openHandle(":memory:", SQLITE_OPEN_READWRITE);
@@ -333,7 +331,7 @@ ProductivityMigrationReport verifyForeignKeyIntegrity(sqlite3* target)
   return report;
 }
 
-} // namespace
+}
 
 ProductivityResult applyProductivitySchema(const ProductivitySchemaInput& input)
 {

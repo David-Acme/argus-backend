@@ -220,21 +220,15 @@ inline constexpr std::string_view ADVANCE_INBOX =
     "encounter_id = ?, danger = ?, checkpoint = ?, updated_at = ? "
     "WHERE event_id = ?";
 
-// Broker deliveries drive the dead-letter threshold; local retries never
-// increment this count.
 inline constexpr std::string_view REVIVE_INBOX =
     "UPDATE guard_observation_inbox SET status = 'processing', "
     "attempts = MAX(attempts, ?), payload = CASE WHEN ? = '' THEN payload ELSE ? END "
     "WHERE event_id = ? AND status = 'processing'";
 
-// A broker redelivery while the local retry owns the row records the delivery
-// without disturbing the scheduled retry or its local-retry count.
 inline constexpr std::string_view TOUCH_SCHEDULED_INBOX =
     "UPDATE guard_observation_inbox SET attempts = MAX(attempts, ?), "
     "updated_at = ? WHERE event_id = ? AND status = 'processing'";
 
-// Durable local retry: the payload and the due time are persisted before the
-// broker message is acknowledged, so a crash cannot strand the observation.
 inline constexpr std::string_view SET_INBOX_RETRY =
     "UPDATE guard_observation_inbox SET retry_at = ?, "
     "local_retries = local_retries + 1, payload = ?, updated_at = ? "
@@ -245,7 +239,6 @@ inline constexpr std::string_view DUE_INBOX =
     "WHERE status = 'processing' AND retry_at > 0 AND retry_at <= ? "
     "ORDER BY retry_at ASC LIMIT 100";
 
-// Leases a due row so a crash mid-retry is recovered by the next reconcile.
 inline constexpr std::string_view CLAIM_INBOX_RETRY =
     "UPDATE guard_observation_inbox SET retry_at = ? "
     "WHERE event_id = ? AND status = 'processing' AND retry_at > 0 "
@@ -269,16 +262,12 @@ inline constexpr std::string_view SELECT_OUTBOX =
     "SELECT status, detail, response, payload, attempts, next_attempt_at "
     "FROM guard_action_outbox WHERE command_id = ?";
 
-// Upgrade adoption: a row planned under the old positional numbering for the
-// same observation and kind. The pattern is escaped; command ids never carry
-// LIKE metacharacters beyond the fixed kind vocabulary.
 inline constexpr std::string_view SELECT_OUTBOX_SIBLING =
     "SELECT command_id, status, detail, response, payload, attempts, "
     "next_attempt_at "
     "FROM guard_action_outbox WHERE command_id LIKE ? ESCAPE '\\' AND "
     "command_id != ? ORDER BY command_id ASC LIMIT 1";
 
-// Compare-and-set: only fills an empty payload or accepts an identical one.
 inline constexpr std::string_view SET_OUTBOX_PAYLOAD =
     "UPDATE guard_action_outbox SET payload = ?, updated_at = ? "
     "WHERE command_id = ? AND (payload = '' OR payload = ?)";
@@ -461,7 +450,7 @@ inline constexpr std::string_view RECORD_ENCOUNTER_NOTIFICATION =
     "notify_command_id = '' THEN ? ELSE notify_command_id END, notify_count = "
     "notify_count + 1, notify_highest_rank = CASE WHEN ? > "
     "notify_highest_rank THEN ? ELSE notify_highest_rank END WHERE id = ?";
-} // namespace guard_query
+}
 
 struct BaselineEmaRow
 {
@@ -572,7 +561,6 @@ struct GuardEncounter
   int notifyHighestRank{0};
 };
 
-// Stable event id and immutable payload for a closed encounter.
 inline std::string encounterClosedEventId(const GuardEncounter& encounter,
                                           int64_t at)
 {
@@ -698,7 +686,6 @@ struct RecordNotificationDispatchInput
   int64_t encounterId{0};
   std::string commandId;
   int rank{0};
-  // Fault-injection hook evaluated inside the transaction; null in production.
   std::function<bool(const std::string&)> failPoint;
 };
 
@@ -815,7 +802,6 @@ struct GuardInboxInput
   std::string observationId;
   int64_t receivedAt{0};
   std::string payload;
-  // Broker JetStream delivery count; local retries leave it unchanged.
   int delivered{0};
 };
 
@@ -876,7 +862,6 @@ struct GuardObservationAdvanceInput
 struct GuardIncidentPhaseInput
 {
   GuardIncidentInput incident;
-  // One-time guest consumed atomically with the incident and the checkpoint.
   int64_t consumeGuestId{0};
   int64_t consumeGuestAt{0};
   GuardObservationAdvanceInput advance;
@@ -890,7 +875,6 @@ struct GuardIncidentPhaseResult
 
 struct GuardEncounterPhaseInput
 {
-  // Precomputed policy decision: create a new encounter or touch a matched one.
   bool create{false};
   int64_t encounterIdToTouch{0};
   GuardEncounterCreateInput createInput;
@@ -940,7 +924,6 @@ struct GuardDialogueInput
   int64_t at{0};
 };
 
-// Goal/window transition that does not consume a dialogue turn.
 struct GuardDialogueGoalInput
 {
   int64_t encounterId{0};
@@ -983,8 +966,6 @@ struct CommandIdParts
   std::string kind;
 };
 
-// Splits "correlation:kind:seq" from the right; the kind vocabulary carries
-// no colon, the correlation may carry any.
 inline std::optional<CommandIdParts> splitCommandId(const std::string& commandId)
 {
   const size_t seqAt = commandId.rfind(':');

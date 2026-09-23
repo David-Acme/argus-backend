@@ -30,12 +30,10 @@ drogon::HttpResponsePtr badRequest()
   throw ResponseException(LlmErrors::BodyNotJsonObject);
 }
 
-// Bench-exact framing from f8-b1; the measured variants live in docs/history/project-log.md.
 constexpr const char* kToolPolicy =
     "Eres Argus. Si el usuario pide guardar o recordar algo, usa "
     "memory.remember. Si no, responde brevemente.";
 
-// Processes that register no tools (the bench, the wire test) keep the direct paths.
 std::vector<const tools::ToolDescriptor*> registeredTools()
 {
   std::vector<const tools::ToolDescriptor*> out;
@@ -55,7 +53,6 @@ std::vector<ChatMessage> toChatMessages(const ChatCompletionDto& body)
   return messages;
 }
 
-// Mirrors the direct path's wire semantics for max_tokens and reset_context.
 struct ToolLoopInputArgs
 {
   const ChatCompletionDto& body;
@@ -85,7 +82,6 @@ ToolChatInput toolLoopInput(const ToolLoopInputArgs& args)
   return input;
 }
 
-// Producer state for the chunked stream leg.
 struct ChatStreamJob
 {
   LlmController* owner{nullptr};
@@ -159,7 +155,7 @@ void runStreamJob(const std::shared_ptr<ChatStreamJob>& job)
            << job->charCount << " ms=" << static_cast<int>(ms);
 }
 
-} // namespace
+}
 
 drogon::Task<drogon::HttpResponsePtr>
 LlmController::chat(drogon::HttpRequestPtr req)

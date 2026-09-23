@@ -44,11 +44,6 @@ enum class EncounterDisposition : uint8_t
   Term
 };
 
-// Durable consumer over the guard-owned encounter stream. The inbox issues
-// exactly one capture call per receipt: redeliveries after settlement are
-// dropped, replays only follow an unsettled row, and poison dead-letters
-// with a broker Term. stop() is idempotent and runs from the destructor;
-// destroy only while the loop that started it is still running.
 class EncounterClosedConsumer
 {
 public:
@@ -76,16 +71,10 @@ public:
 
   void start();
 
-  // Unsubscribes, cancels the retry timer and waits in-flight handlers out.
-  // Idempotent; call before tearing down the graph. Destroy only while the
-  // loop that started it is still running.
   void stop();
 
-  // Parses, validates and handles one raw payload for the broker settlement.
   drogon::Task<EncounterDisposition> handlePayload(const std::string& payload);
 
-  // Receipts first, captures when new: Ack settles, Nak redelivers, Term
-  // drops poison without redelivery.
   drogon::Task<EncounterDisposition> handle(
       const EncounterClosedEvent& event, const std::string& fingerprint);
 

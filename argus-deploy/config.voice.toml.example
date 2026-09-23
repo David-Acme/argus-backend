@@ -1,15 +1,10 @@
-# argus-deploy argus-voice configuration. Copy to config.voice.toml
-# (gitignored) next to this file.
-
 [server]
 host = "0.0.0.0"
 grpc_port = 7034
 health_port = 7035
 
-# Gateway internal identity RPC; empty disables the spoken-name persist.
 [identity]
 target = "172.19.0.1:7040"
-# Must match the gateway's [identity] rpc_secret, or every request 401s.
 rpc_secret = "CHANGE_ME_SAME_IN_EVERY_SERVICE"
 
 [stt]

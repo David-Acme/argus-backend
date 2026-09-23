@@ -65,7 +65,7 @@ std::string classNameFor(const std::vector<std::string>& classes, int cls)
     return classes[cls];
   return "class_" + std::to_string(cls);
 }
-} // namespace
+}
 
 struct ObjectDetectorService::Impl
 {

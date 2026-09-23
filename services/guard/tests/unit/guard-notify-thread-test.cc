@@ -31,9 +31,6 @@ using guard_test::waitForBoot;
 
 namespace
 {
-// Runs the app and stops it however the case body leaves. A joinable
-// std::thread destroyed by unwinding calls std::terminate, which reports an
-// ordinary statement failure as a SIGABRT with no assertion behind it.
 class AppRunner
 {
 public:
@@ -43,12 +40,6 @@ public:
   {
     if (!runner_.joinable())
       return;
-    // Drogon reports the app running before its main loop is looping, and a
-    // loop that has not begun cannot be stopped: trantor's loop() clears the
-    // quit flag again as it starts. Waiting for it to loop is what makes the
-    // quit below take effect — detaching in that window left the app's thread
-    // running past the end of the process, measured as SIGSEGV inside
-    // EventLoop::loop() in 3 of 20 runs of a forced constructor throw.
     for (int i = 0; i < 3000 && !drogon::app().getLoop()->isRunning(); ++i)
       std::this_thread::sleep_for(std::chrono::milliseconds(10));
     if (drogon::app().getLoop()->isRunning()) {
@@ -56,8 +47,6 @@ public:
       runner_.join();
       return;
     }
-    // A boot that never reached the loop at all is left to the process: it
-    // cannot be asked to stop, and joining it would block for ever.
     runner_.detach();
   }
 
@@ -79,9 +68,6 @@ std::string scalar(const std::string& sql)
 struct SharedBoot
 {
   TempDb db{"guard-notify-thread-test"};
-  // The app must be configured before it runs, so the owner is emplaced in the
-  // constructor body, after the last addDbClient; the throws below it then
-  // unwind into a stop instead of destroying a joinable thread.
   std::optional<AppRunner> runner;
 
   SharedBoot()
@@ -367,7 +353,7 @@ int64_t testNowMs()
              std::chrono::system_clock::now().time_since_epoch())
       .count();
 }
-} // namespace
+}
 
 TEST_CASE("first crossing notifies with a deterministic body")
 {
@@ -542,9 +528,6 @@ TEST_CASE("persist-then-fail retries to success and records the thread once")
       "UPDATE guard_action_outbox SET next_attempt_at = 0 WHERE command_id = "
       "'ntf:1:notify:1'");
 
-  // Leased redelivery, the same path the retry pump drives: it converts a
-  // scheduled retry deterministically instead of racing the retry clock.
-  // The backoff above is expired by hand so no wall-clock wait is needed.
   REQUIRE(drogon::sync_wait(service->handleLocalRetry(
       threadObservation({.eventId = "ntf:1",
                          .cameraId = 26,
@@ -985,7 +968,6 @@ TEST_CASE("a restart mid-window still fires once the window completes")
                           .actions = &harness.camera,
                           .assessment = nullptr},
                          harness.config);
-  // Sim-time continuation past the restart: the 150 s earned before it count.
   for (int64_t step = 151; step <= 301; step += 50) {
     restarted.ingestHealth(152, "moved", (wall + step) * 1000);
     drogon::sync_wait(restarted.checkTamperSweep(wall + step));

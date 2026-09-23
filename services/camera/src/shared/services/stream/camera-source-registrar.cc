@@ -49,7 +49,7 @@ public:
   }
 };
 
-} // namespace
+}
 
 std::string CameraSourceRegistrar::sourceUrl(const CameraSchema& camera,
                                              const std::string& path)

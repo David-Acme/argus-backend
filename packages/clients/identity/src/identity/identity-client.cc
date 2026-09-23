@@ -5,7 +5,7 @@
 namespace
 {
 constexpr int kCallTimeoutMs = 5000;
-} // namespace
+}
 
 IdentityClient::IdentityClient(std::string target, std::string fleetSecret)
     : channel_(argus::client::makeChannel(target)),

@@ -140,7 +140,7 @@ bool nameEquals(const NameEqualsInput& input)
          strncasecmp(input.name.str, input.expected, input.name.length) == 0;
 }
 
-} // namespace
+}
 
 struct MdnsService::Impl
 {

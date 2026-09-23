@@ -3,12 +3,11 @@
 namespace
 {
 
-// Cap on the base64 JPEG body (~24 MB decoded).
 constexpr size_t kMaxImageB64Length = 32 * 1024 * 1024;
 constexpr size_t kMaxPromptLength = 512;
 constexpr size_t kMaxCameraIdLength = 64;
 
-} // namespace
+}
 
 DescribeImageDto DescribeImageDto::fromJson(const Json::Value& json)
 {

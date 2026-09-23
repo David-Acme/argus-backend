@@ -1274,4 +1274,4 @@ inline constexpr std::array<LexiconSeed, 468> kESLexicon = {
   LexiconSeed{.kind = LexiconKind::Stopword, .surface = "ya", .canonical = ""},
 };
 
-} // namespace vocabulary
+}

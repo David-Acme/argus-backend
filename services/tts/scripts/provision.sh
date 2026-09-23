@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# Model provisioning for argus-tts (moved verbatim from scripts/setup.sh).
 set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/../../../scripts/lib/common.sh"
 
@@ -52,8 +51,6 @@ setup_tts_model() {
     fi
   done
 
-  # License compliance for the Open RAIL-M license (Section 4): ship the
-  # license text and an attribution/restrictions notice with the weights.
   if [ ! -f "$MODEL_DIR/LICENSE.openrail-m" ]; then
     log "Downloading Open RAIL-M license..."
     $DL "$MODEL_DIR/LICENSE.openrail-m" \

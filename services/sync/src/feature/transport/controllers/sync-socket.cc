@@ -10,7 +10,7 @@
 namespace
 {
 constexpr size_t kMaxMessageSize = 65536;
-} // namespace
+}
 
 void SyncSocket::handleNewMessage(const drogon::WebSocketConnectionPtr& conn,
                                   std::string&& message,

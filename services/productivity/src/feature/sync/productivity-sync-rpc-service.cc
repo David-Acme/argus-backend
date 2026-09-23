@@ -208,7 +208,7 @@ drogon::Task<void> fill(const FillInput<TableRows, Repo>& input)
   co_return;
 }
 
-} // namespace
+}
 
 grpc::ServerUnaryReactor* ProductivitySyncRpcService::PullTable(
     grpc::CallbackServerContext* context,

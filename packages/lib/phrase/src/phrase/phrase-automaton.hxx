@@ -80,4 +80,4 @@ private:
   std::vector<Pattern> patterns_;
 };
 
-} // namespace text_match
+}

@@ -28,7 +28,6 @@ public:
     int64_t actorId{0};
   };
 
-  /** Only the owner of the parent record may share it. */
   drogon::Task<ProjectMemberResult> create(const CreateProjectMemberDto& body,
                                     int64_t actorId) const;
   drogon::Task<ProjectMemberResult> update(const UpdateInput& input) const;
@@ -49,7 +48,6 @@ private:
     int64_t userId{0};
   };
 
-  // Emits the membership row to both sides and the parent record to the member.
   drogon::Task<void> emitMembership(const EmitMembershipInput& input) const;
   drogon::Task<void> emitParent(const EmitParentInput& input) const;
 

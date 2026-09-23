@@ -67,7 +67,7 @@ std::optional<ToolCall> parseBlock(const std::string& block)
   };
 }
 
-} // namespace
+}
 
 ToolParser::ToolParser(std::string start, std::string end)
     : start_(std::move(start)), end_(std::move(end))

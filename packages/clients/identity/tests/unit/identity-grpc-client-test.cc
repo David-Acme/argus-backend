@@ -8,8 +8,6 @@
 #include <mutex>
 #include <string>
 
-// Pins what the identity client refuses on its own, what it presents to the
-// gateway, and what it reads back out of an answer.
 namespace
 {
 
@@ -20,7 +18,6 @@ namespace v1 = argus::identity::v1;
 using Ctx = grpc::CallbackServerContext;
 using Reactor = grpc::ServerUnaryReactor;
 
-// Answers with what the case scripted, and records what the caller presented.
 class ScriptedIdentityService final
     : public v1::IdentityService::CallbackService
 {
@@ -81,7 +78,7 @@ std::unique_ptr<grpc::Server> startServer(ScriptedIdentityService& service,
   return server;
 }
 
-} // namespace
+}
 
 TEST_CASE("an id the client cannot resolve never reaches the gateway")
 {
@@ -90,8 +87,6 @@ TEST_CASE("an id the client cannot resolve never reaches the gateway")
   auto server = startServer(service, target);
   REQUIRE(server);
   const IdentityClient client(target, kFleetSecret);
-  // Both answers below are successes, so a value coming back would prove the
-  // client dialled: only a local refusal can make these calls fail.
   service.promote.set_promoted(true);
   service.person.mutable_person()->set_person_id(12);
 

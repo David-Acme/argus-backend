@@ -21,7 +21,7 @@ bool boundaryAt(std::string_view lowered, size_t index)
          kWordBoundary.find(lowered[index]) != std::string_view::npos;
 }
 
-} // namespace
+}
 
 IntentRouter::IntentRouter(IntentRouterInput input)
     : catalog_(input.catalog), model_(input.model),
@@ -86,7 +86,6 @@ intent::IntentDecision IntentRouter::decide(const std::string& text,
   if (top.score < kThreshold || decision.margin < kMargin)
     return decision;
 
-  // Inside the margin the model cannot separate fact from reminder; rubric does.
   if (top.intent == intent::ToolIntent::MemorySave && runner > 0.0F &&
       hits[1].intent == intent::ToolIntent::ReminderSet) {
     decision.intent = factOrReminder(text, lang);

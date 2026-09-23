@@ -16,18 +16,16 @@
 
 namespace
 {
-// Bounded synthesis cache for repeated short lines; long text always runs.
 constexpr size_t kSynthCacheSlots = 64;
 constexpr size_t kSynthCacheMaxChars = 300;
 
-// Root of the on-disk TTS models (models/tts by default).
 std::string modelsDir()
 {
   const std::string dir = ConfigService::getString("tts.models_dir");
   return dir.empty() ? std::string("models/tts") : dir;
 }
 
-} // namespace
+}
 
 
 TtsService::TtsService() = default;

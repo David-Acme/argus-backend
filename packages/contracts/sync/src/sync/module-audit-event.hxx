@@ -9,8 +9,6 @@
 #include <text/json-diff.hxx>
 #include <text/json-util.hxx>
 
-// Before/after snapshots of one row; the producer diffs them and the module audit
-// row is what the change feed carries, so no consumer ever sees this struct.
 struct ModuleAuditInput
 {
   int64_t recordId{0};
@@ -20,8 +18,6 @@ struct ModuleAuditInput
   std::optional<int64_t> actorId;
 };
 
-// Module-scoped audit row on the argus.<domain>.v1.change subject (camera and
-// identity produce it today); the sync service inserts it verbatim.
 struct ModuleAuditEvent
 {
   int64_t recordId{0};

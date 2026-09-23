@@ -66,7 +66,7 @@ inline constexpr std::string_view UPDATE_SUFFIX =
 inline constexpr std::string_view REMOVE =
     "UPDATE reminder_detail SET deleted_at = strftime('%s', 'now'), "
     "updated_at = strftime('%s', 'now') WHERE id = ? AND deleted_at IS NULL";
-} // namespace reminder_detail_query
+}
 
 struct ReminderDetailCreateInput
 {

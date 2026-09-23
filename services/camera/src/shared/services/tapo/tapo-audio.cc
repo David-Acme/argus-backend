@@ -50,7 +50,7 @@ uint16_t readLe16(const char* data)
   return value;
 }
 
-} // namespace
+}
 
 namespace tapo_audio
 {
@@ -147,7 +147,7 @@ constexpr int16_t kULawDecodeTable[256] = {
      24, 16, 8, 0,
 };
 
-} // namespace tapo_audio
+}
 
 std::vector<int16_t> decodeALaw(const std::vector<uint8_t>& samples)
 {
@@ -216,4 +216,4 @@ TapoWavAudio readWav(const std::string& path)
   return audio;
 }
 
-} // namespace tapo_audio
+}

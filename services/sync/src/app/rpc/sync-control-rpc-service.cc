@@ -13,9 +13,6 @@
 
 namespace
 {
-// The wire carries the frame typed -- both enums as the numbers their C++
-// counterparts carry, the row as JSON text -- while the fan-out reads the
-// envelope's own spelling: option as the table's name, info as the object.
 SocketEmitDto fromFrame(const argus::sync::v1::SyncFrame& frame)
 {
   SocketEmitDto dto;
@@ -25,16 +22,11 @@ SocketEmitDto fromFrame(const argus::sync::v1::SyncFrame& frame)
   return dto;
 }
 
-// A role name that does not survive the round trip through the enum is not a
-// role: refusing beats letting the parser's fallback silently change the
-// caller's rooms.
 bool isRoleName(const std::string& name)
 {
   return userRoleToString(userRoleFromString(name)) == name;
 }
 
-// Both legs end here: the payload the change feed would have carried is parsed
-// and dispatched exactly as a NATS frame is.
 bool dispatchPayload(const Json::Value& payload)
 {
   const auto event = sync_fan_out::parseEvent(payload);
@@ -69,7 +61,7 @@ rejectUnauthenticated(grpc::CallbackServerContext* context)
                                "Fleet secret missing or invalid"));
   return reactor;
 }
-} // namespace
+}
 
 SyncControlRpcService::SyncControlRpcService(std::string fleetSecret)
     : fleetSecret_(std::move(fleetSecret))

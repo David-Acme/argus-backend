@@ -1,8 +1,3 @@
-# argus-deploy argus-notification configuration. Copy to config.notification.toml
-# (gitignored) next to this file and fill the instance secrets (the same
-# jwt/device values as config.gateway.toml); the compose file bind-mounts it as
-# argus-notification's config.toml.
-
 [server]
 host = "0.0.0.0"
 port = 7028
@@ -58,10 +53,8 @@ trusted_proxy_ips = ""
 
 [identity]
 target = "172.19.0.1:7040"
-# Must match the gateway's [identity] rpc_secret, or every request 401s.
 rpc_secret = "CHANGE_ME_SAME_IN_EVERY_SERVICE"
 
 [grpc]
-# Capability credentials, each paired with its single caller.
 caller_guard = "CHANGE_ME_GUARD_NOTIFICATION"
 caller_gateway = "CHANGE_ME_GATEWAY_NOTIFICATION"

@@ -26,7 +26,6 @@ struct LoginDeviceInput
   std::string userAgent;
 };
 
-// Plaintext device secret shown once to the client plus its device hash.
 struct IssuedDeviceCredential
 {
   std::string secret;
@@ -81,7 +80,6 @@ private:
   drogon::Task<ResponseLoginDto>
   issueSession(const IssueSessionInput& input) const;
 
-  // Issues the per-device secret in credential identity mode; empty in ip mode.
   drogon::Task<IssuedDeviceCredential>
   issueDeviceCredential(int64_t userId, const std::string& userAgent) const;
 

@@ -11,11 +11,9 @@ namespace fasttext
 class FastText;
 }
 
-// fastText wrapper: load once, score per call; unloaded leaves routing to the LLM tier.
 class FastTextClassifier final : public intent::IIntentClassifier
 {
 public:
-  // Absence or a load failure leaves the classifier unloaded; never throws.
   explicit FastTextClassifier(const std::string& modelPath);
   ~FastTextClassifier() override;
 

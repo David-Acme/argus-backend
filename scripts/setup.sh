@@ -1,25 +1,4 @@
 #!/usr/bin/env bash
-#
-# Argus backend - setup script (Linux).
-#
-# Provisions local dependencies and builds every standalone project:
-#   1. Install system build dependencies (distro aware)
-#   2. Install Conan (if missing) and configure the profile for C++20
-#   3. Download the Supertonic 3 TTS model (~415 MB)
-#   4. Download the LFM2.5-1.2B-Instruct QAD LLM (~696 MB)
-#   5. Install, configure, build and test every standalone project
-#   6. Create per-project local configs
-#
-# Usage:
-#   ./scripts/setup.sh                     # default: dev
-#   ./scripts/setup.sh dev                 # dev profile
-#   ./scripts/setup.sh prod                # prod profile
-#   ./scripts/setup.sh dev --no-build      # install deps only (no compile)
-#   ./scripts/setup.sh dev --no-docker     # do not install/validate Docker
-#   ./scripts/setup.sh dev -y              # non-interactive package installs
-#   ./scripts/setup.sh camera              # camera artifacts only (detector + go2rtc)
-#   SKIP_BUILD=1 ./scripts/setup.sh prod
-#
 set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
 source "$(dirname "${BASH_SOURCE[0]}")/lib/pki.sh"
@@ -32,10 +11,34 @@ WITH_DOCKER=1
 ASSUME_YES="${ARGUS_ASSUME_YES:+1}"
 ARGS=()
 
+usage() {
+  cat <<'USAGE'
+Argus backend - setup script (Linux).
+
+Provisions local dependencies and builds every standalone project:
+  1. Install system build dependencies (distro aware)
+  2. Install Conan (if missing) and configure the profile for C++20
+  3. Download the Supertonic 3 TTS model (~415 MB)
+  4. Download the LFM2.5-1.2B-Instruct QAD LLM (~696 MB)
+  5. Install, configure, build and test every standalone project
+  6. Create per-project local configs
+
+Usage:
+  ./scripts/setup.sh                     default: dev
+  ./scripts/setup.sh dev                 dev profile
+  ./scripts/setup.sh prod                prod profile
+  ./scripts/setup.sh dev --no-build      install deps only (no compile)
+  ./scripts/setup.sh dev --no-docker     do not install/validate Docker
+  ./scripts/setup.sh dev -y              non-interactive package installs
+  ./scripts/setup.sh camera              camera artifacts only (detector + go2rtc)
+  SKIP_BUILD=1 ./scripts/setup.sh prod
+USAGE
+}
+
 for a in "$@"; do
   case "$a" in
     -h|--help)
-      grep '^#' "$0" | sed 's/^#\{1,2\} //'; exit 0 ;;
+      usage; exit 0 ;;
     --no-build) SKIP_BUILD=1 ;;
     --no-docker) WITH_DOCKER=0 ;;
     -y|--yes)   ASSUME_YES=1 ;;
@@ -150,9 +153,6 @@ setup_submodules() {
     fi
   done
 
-  # Local build tweaks for third-party submodules. The submodules point at
-  # upstream repos (no push access), so these one-line patches are re-applied
-  # on every setup run (idempotent) to keep the build reproducible.
   local F
 
   F=third_party/ncnn/CMakeLists.txt
@@ -208,9 +208,6 @@ main() {
 
   ensure_local_config
 
-  # Hardware detection installs the GPU/video/audio stack for this specific
-  # host and writes scripts/.hw-profile. It asks for sudo only if something is
-  # actually missing. install_system_deps stays as the minimal fallback.
   if [ -x "$(dirname "$0")/detect-hardware.sh" ]; then
     "$(dirname "$0")/detect-hardware.sh" ${ASSUME_YES:+-y} || \
       warn "Hardware detection failed; falling back to the base dependency set."

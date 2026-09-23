@@ -16,7 +16,6 @@
 namespace
 {
 
-// Bounded wait off the event loop so a dead voice leg still 503s at voice:start.
 constexpr int kConnectProbeTimeoutMs = 500;
 
 ReactionKind reactionKindFromProto(argus::voice::v1::ReactionKind reaction)
@@ -48,7 +47,7 @@ argus::voice::v1::VoiceLanguage voiceLangToProto(const std::string& lang)
   return argus::voice::v1::VOICE_LANGUAGE_SYSTEM;
 }
 
-} // namespace
+}
 
 VoiceGrpcConfig VoiceGrpcConfig::resolve()
 {
@@ -86,7 +85,6 @@ Json::Value VoiceGrpcRelay::renderServerFrame(
   return msg;
 }
 
-// Per-session observer: marshals gRPC frames onto the connection's loop.
 class VoiceGrpcRelay::StreamObserver final : public VoiceStreamObserver
 {
 public:

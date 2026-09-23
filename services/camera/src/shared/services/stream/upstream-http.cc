@@ -210,7 +210,7 @@ bool moofIsKeyframe(const std::string& moof)
   return found ? sync : true;
 }
 
-} // namespace
+}
 
 Fmp4Reader::Fmp4Reader(Fmp4ReaderInput input) : chunked_(input.chunked) {}
 
@@ -329,4 +329,4 @@ void Fmp4Reader::consume()
   }
 }
 
-} // namespace upstream_http
+}

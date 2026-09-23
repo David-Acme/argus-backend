@@ -7,9 +7,6 @@
 #include <string>
 #include <vector>
 
-// Durable outbox of identity-domain change events: the sink enqueues on the
-// event loop and a drain thread publishes the pending rows oldest-first,
-// marking each sent only after the JetStream PubAck.
 class ChangeOutboxRepository
 {
 public:

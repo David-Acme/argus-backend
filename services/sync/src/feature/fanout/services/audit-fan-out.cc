@@ -15,7 +15,7 @@ bool namesRecipients(const Json::Value& json)
   return json.isMember("users") && json["users"].isArray() &&
          !json["users"].empty();
 }
-} // namespace
+}
 
 void AuditFanOut::insertModuleAudit(const ModuleAuditEvent& event)
 {

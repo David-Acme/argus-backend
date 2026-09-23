@@ -19,7 +19,6 @@ bool isWordChar(unsigned char c)
   return (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_';
 }
 
-// Span edges only: a UTF-8 byte belongs to the word, surrounding-byte checks stay ASCII.
 bool isSpanEdge(unsigned char c)
 {
   return isWordChar(c) || c >= 0x80;
@@ -32,7 +31,7 @@ struct ScratchNode
   uint32_t fail = 0;
 };
 
-} // namespace
+}
 
 std::shared_ptr<const PhraseAutomaton>
 PhraseAutomaton::build(const std::vector<PatternRef>& refs)
@@ -194,4 +193,4 @@ size_t PhraseAutomaton::bytesUsed() const
          patterns_.capacity() * sizeof(Pattern);
 }
 
-} // namespace text_match
+}

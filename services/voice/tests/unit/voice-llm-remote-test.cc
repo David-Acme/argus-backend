@@ -24,7 +24,6 @@ struct FakeTts final : IVoiceTts
   }
 };
 
-// In-process STT so the tests below isolate the LLM leg.
 struct LocalFakeStt final : IVoiceStt
 {
   std::string transcribe(const std::vector<float>&, int32_t) override
@@ -40,9 +39,8 @@ void pointLlmAt(const std::string& url)
   ConfigService::setRuntimeString("llm.remote_url", url);
 }
 
-} // namespace
+}
 
-// Must match the friend declaration inside VoiceSessionService (global scope).
 struct VoiceSessionTestAccess
 {
   static std::shared_ptr<VoiceSessionService::Session>
@@ -86,7 +84,7 @@ assistantFrames(const FakeVoiceSink& sink)
   return out;
 }
 
-} // namespace
+}
 
 TEST_CASE("RemoteVoiceLlm serves the IVoiceLlm seam over the argus-llm wire")
 {

@@ -131,4 +131,4 @@ inline SignedRequest sign(const SigV4Input& input)
   };
 }
 
-} // namespace s3_signing
+}

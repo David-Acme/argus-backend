@@ -4,7 +4,6 @@
 #include <shared/services/camera-driver/camera-driver.hxx>
 #include <shared/services/tapo/tapo-api.hxx>
 
-/** TP-Link Tapo, over the local HTTPS control port plus the 8800 talk channel. */
 class TapoDriver final : public ICameraDriver
 {
 public:

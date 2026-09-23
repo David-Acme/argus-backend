@@ -18,7 +18,7 @@ SocketEmitDto emitDto(SyncOperation operation, TableName table)
   body.obj["id"] = 7;
   return body;
 }
-} // namespace
+}
 
 TEST_CASE("module emit payload carries the bare SocketEmitDto triple")
 {
@@ -56,8 +56,6 @@ TEST_CASE("disconnect and role-room payloads carry the room-control action")
   CHECK(disconnect["operation"] == 7);
   CHECK(disconnect["user"] == 42);
 
-  // The wire carries the role *names*, so the enum-to-name step belongs to the
-  // caller -- which is where the transport keeps it as well.
   const Json::Value roleRooms = sync_change::roleRoomsPayload(
       {.userId = 42,
        .oldRole = userRoleToString(UserRole::Resident),

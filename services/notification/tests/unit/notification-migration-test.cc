@@ -92,7 +92,7 @@ NotificationMigrationReport migrateSeeded(const NotificationFixture& fixture)
                               .schemaPath = ARGUS_NOTIFICATION_SCHEMA_PATH});
 }
 
-} // namespace
+}
 
 TEST_CASE("migration copies the notification tables and verifies them")
 {

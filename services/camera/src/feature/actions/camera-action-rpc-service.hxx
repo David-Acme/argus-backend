@@ -14,14 +14,12 @@
 
 using CameraCommandOutcome = argus::camera::v1::CommandOutcome;
 
-// Composition input for the action surface; the transcriber is owned here.
 struct CameraActionServiceConfig
 {
   std::vector<argus::client::CallerCredential> callers;
   std::unique_ptr<SttTranscriber> transcriber;
 };
 
-// argus.camera.v1.CameraActionService: capability-gated audible/device actions.
 class CameraActionRpcService final
     : public argus::camera::v1::CameraActionService::CallbackService
 {
@@ -53,10 +51,8 @@ public:
          const argus::camera::v1::ListenRequest* request,
          argus::camera::v1::ListenResponse* response) override;
 
-  // Boot-only additive migration of the action_command table; true on success.
   bool migrateActionSchema();
 
-  // Disarms cameras whose siren lease expired and re-reconciles lost claims.
   void startLeaseSweeper();
 
 private:
@@ -90,7 +86,6 @@ private:
     std::string response;
   };
 
-  // The durable authoritative outcome read after a settle loses its fence.
   struct SettleVerdict
   {
     bool won{false};

@@ -14,12 +14,12 @@ carries no configuration of its own: the endpoint arrives as a constructor
 argument.
 
 argus-guard is its only consumer, through four link lines in two CMakeLists —
-`argus-guard` PRIVATE (`services/guard/CMakeLists.txt:144`), the `guard`
+`argus-guard` PRIVATE (`services/guard/CMakeLists.txt:136`), the `guard`
 feature module that calls it (`src/feature/guard/CMakeLists.txt:23`), and two
 live suites (`vlm-client-live-test`, `guard-assessment-live-test`, :225 and
-:249). `services/guard/CMakeLists.txt:120` also adds the package by path
+:249). `services/guard/CMakeLists.txt:112` also adds the package by path
 (`if(NOT TARGET argus::clients::vlm)`) so guard builds standalone. The
-assessment calls it in two places, `guard-assessment.cc:299` and `:363`, to
+assessment calls it in two places, `guard-assessment.cc:298` and `:363`, to
 describe a person crop before an optional LLM classification.
 
 ## Layout
@@ -64,7 +64,7 @@ describe a person crop before an optional LLM classification.
   `drogon::HttpException` through the coroutine, and `drogon::sync_wait`
   rethrows it (`lib/inc/drogon/utils/coroutine.h:500`). So a caller that only
   checks the optional will see the exception escape; the one consumer does
-  exactly that, at `guard-assessment.cc:299` and `:363`. `CONTEXT.md` said
+  exactly that, at `guard-assessment.cc:298` and `:363`. `CONTEXT.md` said
   "nullopt covers transport, status and empty-caption failures" and now names
   the two cases itself, the same two the suite pins.
 - No config of its own, by design: argus-guard reads `guard.assess.vlm_url`

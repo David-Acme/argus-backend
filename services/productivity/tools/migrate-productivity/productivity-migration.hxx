@@ -51,13 +51,10 @@ struct ProductivityVerificationInput
   sqlite3* target = nullptr;
 };
 
-// Creates the productivity tables on db from the schema file, failing on the first statement error.
 ProductivityResult applyProductivitySchema(const ProductivitySchemaInput& input);
 
-// Verifies the attached read-only source ("src") against the target per productivity table.
 ProductivityMigrationReport verifyProductivityTables(
     const ProductivityVerificationInput& input);
 
-// Full migration: schema, transactional copy in FK-safe order, verification; schema-current targets no-op.
 ProductivityMigrationReport migrateProductivity(
     const ProductivityMigrationOptions& options);

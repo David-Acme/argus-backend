@@ -1,8 +1,3 @@
-# argus-deploy argus-productivity configuration. Copy to config.productivity.toml
-# (gitignored) next to this file and fill the instance secrets (the same
-# jwt/device values as config.gateway.toml); the compose file bind-mounts it as
-# argus-productivity's config.toml.
-
 [server]
 host = "0.0.0.0"
 port = 7027
@@ -53,5 +48,4 @@ trusted_proxy_ips = ""
 
 [identity]
 target = "172.19.0.1:7040"
-# Must match the gateway's [identity] rpc_secret, or every request 401s.
 rpc_secret = "CHANGE_ME_SAME_IN_EVERY_SERVICE"

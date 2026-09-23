@@ -14,7 +14,7 @@
 namespace
 {
 constexpr size_t kMaxMessageSize = 65536;
-} // namespace
+}
 
 void CameraMediaSocket::handleNewConnection(
     const drogon::HttpRequestPtr& req,

@@ -1,6 +1,3 @@
-# storage: private-object storage over S3 (RustFS backing): signed uploads,
-# portrait objects and capability-gated reads. Consumers link argus::lib::storage.
-
 include(${CMAKE_CURRENT_SOURCE_DIR}/../../../cmake/argus-module.cmake)
 
 if(NOT TARGET OpenSSL::SSL)
@@ -37,8 +34,6 @@ argus_lib(NAME storage
 target_link_libraries(argus_lib_storage PRIVATE OpenSSL::SSL OpenSSL::Crypto)
 target_compile_options(argus_lib_storage PRIVATE -Wall -Wextra)
 
-# The round-trip suite for StoredFileCategory: the vocabulary moved here with
-# the package that owns the stored objects, so the suite moves with it.
 enable_testing()
 find_package(doctest REQUIRED)
 

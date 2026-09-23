@@ -35,7 +35,6 @@ void throwEnvelopeError(int status, const std::string& body)
   throw std::runtime_error("argus-vlm " + detail);
 }
 
-// Socket guard: the fd is closed on scope exit, never leaked.
 class SocketGuard
 {
 public:
@@ -156,7 +155,6 @@ void sendAll(int fd, const std::string& data)
   }
 }
 
-// Reads until the peer closes or the deadline fires.
 std::string readAll(int fd, const std::chrono::steady_clock::time_point& deadline)
 {
   std::string data;
@@ -194,7 +192,7 @@ Head parseHead(const std::string& wire)
   return head;
 }
 
-} // namespace
+}
 
 VlmRemoteConfig VlmRemoteConfig::resolve()
 {

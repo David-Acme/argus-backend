@@ -57,7 +57,7 @@ bool isUsable(const UserInvitationSchema& invitation, int64_t now)
   return !invitation.revokedAt && invitation.expiresAt > now &&
          invitation.redemptionCount < invitation.maxRedemptions;
 }
-} // namespace
+}
 
 std::string InvitationFeatureService::hashToken(const std::string& token)
 {

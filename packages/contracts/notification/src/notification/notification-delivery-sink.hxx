@@ -6,10 +6,6 @@
 #include <optional>
 #include <string>
 
-// Durable per-recipient delivery event for argus.notification.v1.delivery.
-// The deliveryId is the stable identity: the notification service publishes
-// each pending delivery intent exactly under it, and the gateway-side inbox
-// receipts it before dispatching.
 struct NotificationDeliveryEvent
 {
   int64_t deliveryId{0};
@@ -56,27 +52,20 @@ struct NotificationDeliveryEvent
   }
 };
 
-// Durable delivery sink owned by argus-notification and injected into the
-// notification service; never a process-global.
 class NotificationDeliverySink
 {
 public:
   virtual ~NotificationDeliverySink() = default;
 
-  // Reconciles the notification-owned stream; false leaves every intent
-  // pending without attempting a publish.
   virtual bool ensureStream() const = 0;
 
-  // True only after the broker stored the event (JetStream PubAck). False
-  // leaves the delivery intent pending for the reconciler.
   virtual bool publish(const NotificationDeliveryEvent& event) const = 0;
 };
 
 namespace notification_delivery
 {
-// Deterministic JetStream message id: redeliveries of one intent dedup.
 inline std::string messageId(int64_t deliveryId)
 {
   return "notification-delivery:" + std::to_string(deliveryId);
 }
-} // namespace notification_delivery
+}

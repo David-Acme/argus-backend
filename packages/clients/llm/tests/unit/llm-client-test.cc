@@ -12,8 +12,6 @@
 namespace
 {
 
-// The timeout a shipped config carries; pointAt restores it after every case
-// so no case leaks a knob into its neighbours.
 constexpr const char* kDefaultTimeoutMs = "120000";
 
 void pointAt(const std::string& url)
@@ -22,8 +20,6 @@ void pointAt(const std::string& url)
   ConfigService::setRuntimeString("llm.remote_timeout_ms", kDefaultTimeoutMs);
 }
 
-// Returns what `call` threw, or "" when it returned: a case pins the message,
-// not merely that something was thrown.
 template <typename Call>
 std::string thrownBy(Call call)
 {
@@ -49,7 +45,6 @@ std::vector<std::string> greetingTokens()
   return {"Hola", " de", " nuevo", ".", " Otra", " frase", "."};
 }
 
-// One streamed call with a no-op sink: the case asserts what it threw.
 void streamOnce(const LlmHttpClient& client)
 {
   LlmStreamInput input;
@@ -58,7 +53,7 @@ void streamOnce(const LlmHttpClient& client)
   client.chatStream(input);
 }
 
-} // namespace
+}
 
 TEST_CASE("The llm client chats and streams over the argus-llm wire")
 {
@@ -94,8 +89,6 @@ TEST_CASE("The llm client chats and streams over the argus-llm wire")
   CHECK(stats.decodedTokens == 7);
   CHECK(server.requests().at("POST /llm/v1/chat-stream") == 1);
 
-  // A coalescing server sends the whole generation in one chunk; the sentinel
-  // is still stripped out of it.
   FakeLlmServer coalesced({.tokens = tokens, .coalesce = true});
   const std::string coalescedUrl =
       "http://127.0.0.1:" + std::to_string(coalesced.port());
@@ -112,7 +105,6 @@ TEST_CASE("The llm client chats and streams over the argus-llm wire")
   CHECK(coalescedTokens.front() == "Hola de nuevo. Otra frase.");
   CHECK(coalesced.requests().at("POST /llm/v1/chat-stream") == 1);
 
-  // The shipped configs spell the endpoint without a scheme.
   const LlmHttpClient bare("127.0.0.1:" + std::to_string(server.port()),
                            config.timeoutMs);
   CHECK(bare.chat(greeting()) == "Hola de nuevo. Otra frase.");
@@ -123,8 +115,6 @@ TEST_CASE("The llm client chats and streams over the argus-llm wire")
 
 TEST_CASE("The llm client maps a refusal and a truncated stream into errors")
 {
-  // Both servers below are dialled through an explicit url, so no config
-  // knob is consulted here.
   FakeLlmServer down({.tokens = greetingTokens(), .status = 503});
   const std::string downUrl = "http://127.0.0.1:" + std::to_string(down.port());
   const LlmHttpClient refused(downUrl, 1000);
@@ -147,7 +137,6 @@ TEST_CASE("The llm client refuses a hostless url and an unreachable one")
   CHECK(thrownBy([&] { (void)LlmHttpClient("", 1000); }) ==
         "argus-llm remote_url has no host");
 
-  // An unset knob is a disabled config, never a silent dial to port 80.
   CHECK_FALSE(LlmRemoteConfig{}.enabled());
 
   const std::string deadUrl = "http://127.0.0.1:1";
@@ -172,7 +161,6 @@ TEST_CASE("The llm remote config reads its knobs and keeps its defaults")
   ConfigService::setRuntimeString("llm.remote_timeout_ms", "5000");
   CHECK(LlmRemoteConfig::resolve().timeoutMs == 5000);
 
-  // A non-positive timeout keeps the documented default.
   ConfigService::setRuntimeString("llm.remote_timeout_ms", "0");
   CHECK(LlmRemoteConfig::resolve().timeoutMs == 120000);
 

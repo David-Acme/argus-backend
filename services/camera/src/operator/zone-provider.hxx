@@ -7,7 +7,6 @@
 #include <mutex>
 #include <vector>
 
-// Reads enabled zones from camera.db and caches them for refreshMs.
 class ZoneProvider final : public IZoneSource
 {
 public:

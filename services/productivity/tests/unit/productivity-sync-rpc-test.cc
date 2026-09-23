@@ -22,9 +22,6 @@ namespace
 {
 constexpr const char* kProductivityDb = "productivity-sync-rpc-test.db";
 
-// Runs the app and stops it however the case body leaves. A joinable
-// std::thread destroyed by unwinding calls std::terminate, which reports an
-// ordinary statement failure as a SIGABRT with no assertion behind it.
 class AppRunner
 {
 public:
@@ -34,12 +31,6 @@ public:
   {
     if (!runner_.joinable())
       return;
-    // Drogon reports the app running before its main loop is looping, and a
-    // loop that has not begun cannot be stopped: trantor's loop() clears the
-    // quit flag again as it starts. Waiting for it to loop is what makes the
-    // quit below take effect — detaching in that window left the app's thread
-    // running past the end of the process, measured as SIGSEGV inside
-    // EventLoop::loop() in 3 of 20 runs of a forced constructor throw.
     for (int i = 0; i < 3000 && !drogon::app().getLoop()->isRunning(); ++i)
       std::this_thread::sleep_for(std::chrono::milliseconds(10));
     if (drogon::app().getLoop()->isRunning()) {
@@ -47,8 +38,6 @@ public:
       runner_.join();
       return;
     }
-    // A boot that never reached the loop at all is left to the process: it
-    // cannot be asked to stop, and joining it would block for ever.
     runner_.detach();
   }
 
@@ -128,7 +117,7 @@ argus::productivity::v1::PullTableRequest taskPull(bool deleted)
     body->set_required_create(true);
   return request;
 }
-} // namespace
+}
 
 TEST_CASE("productivity sync RPC scopes pulls by caller and serves tombstones")
 {
@@ -182,7 +171,6 @@ TEST_CASE("productivity sync RPC scopes pulls by caller and serves tombstones")
   ProductivitySyncClient sdk(harness.target());
 
   {
-    // Personal tables scope by owner and membership.
     const auto owner = sdk.pullTable(projectPull(), identityFor(42));
     REQUIRE(owner);
     REQUIRE(owner->has_project());
@@ -197,7 +185,6 @@ TEST_CASE("productivity sync RPC scopes pulls by caller and serves tombstones")
   }
 
   {
-    // Reminder tables are not user-scoped.
     const auto rows = sdk.pullTable(reminderPull(), identityFor(7));
     REQUIRE(rows);
     REQUIRE(rows->has_reminder());
@@ -206,7 +193,6 @@ TEST_CASE("productivity sync RPC scopes pulls by caller and serves tombstones")
   }
 
   {
-    // Tombstones and last rows round-trip.
     const auto created = sdk.pullTable(taskPull(false), identityFor(42));
     REQUIRE(created);
     REQUIRE(created->project_task().created_size() == 1);
@@ -235,7 +221,6 @@ TEST_CASE("productivity sync RPC scopes pulls by caller and serves tombstones")
   }
 
   {
-    // Missing caller identity is unauthenticated.
     auto raw = argus::productivity::v1::SyncService::NewStub(
         argus::client::makeChannel(harness.target()));
     grpc::ClientContext context;

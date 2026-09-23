@@ -30,7 +30,7 @@ constexpr int kEnqueueAttempts = 3;
 constexpr int kEnqueueRetryMs = 25;
 constexpr int kDrainBatch = 64;
 constexpr int kProgressMs = 50;
-} // namespace
+}
 
 NatsIdentityChangeSink::NatsIdentityChangeSink(std::shared_ptr<NatsBus> bus,
                                                Config config)
@@ -239,9 +239,6 @@ bool NatsIdentityChangeSink::flush(const ChangeOutboxRow& row)
   if (!streamReady_.load(std::memory_order_acquire))
     streamReady_.store(ensureStream(), std::memory_order_release);
 
-  // The journal leg names the row's own position, because the transition it
-  // records has no content of its own to be keyed by: two reads of one record
-  // are two audit rows.
   const std::string msgId = row.eventId.empty()
                                 ? change_outbox_key::actionMsgId(row.id)
                                 : row.eventId;

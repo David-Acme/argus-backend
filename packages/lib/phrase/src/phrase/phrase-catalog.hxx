@@ -18,7 +18,6 @@ struct PhraseHit
   uint32_t end;
 };
 
-// Aho-Corasick automaton over the static per-language vocabulary.
 class PhraseCatalog
 {
 public:

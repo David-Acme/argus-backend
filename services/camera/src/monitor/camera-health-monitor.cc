@@ -25,7 +25,7 @@ int64_t nowMs()
              std::chrono::system_clock::now().time_since_epoch())
       .count();
 }
-} // namespace
+}
 
 CameraHealthState health_monitor::classify(const HealthMetrics& metrics,
                                       const HealthThresholds& thresholds)

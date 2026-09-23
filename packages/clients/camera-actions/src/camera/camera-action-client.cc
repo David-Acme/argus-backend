@@ -9,8 +9,6 @@ constexpr int kCallTimeoutMs = 60000;
 
 using CameraCommandOutcome = argus::camera::v1::CommandOutcome;
 
-// A transport failure is retryable only when the request never reached the
-// owner; anything ambiguous stays indeterminate so it is never repeated.
 CameraCommandOutcome outcomeForStatus(grpc::StatusCode code)
 {
   switch (code) {
@@ -84,7 +82,7 @@ fromListen(const grpc::Status& status,
   }
   return result;
 }
-} // namespace
+}
 
 CameraActionClient::CameraActionClient(CameraActionClientConfig config)
     : channel_(argus::client::makeChannel(config.target)),

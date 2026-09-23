@@ -1,10 +1,5 @@
 cmake_minimum_required(VERSION 3.25)
 
-# config: service boot helpers — the TOML config-service reader and the IService
-# interface every service boot wires. It answers nothing over HTTP and owns no
-# refusal, so it depends on neither argus::lib::http nor argus::lib::errors; the health
-# controller and the listener resolution moved to argus::lib::http.
-
 include(${CMAKE_CURRENT_SOURCE_DIR}/../../../cmake/argus-module.cmake)
 
 if(NOT TARGET Drogon::Drogon)
@@ -37,9 +32,6 @@ endforeach()
 
 target_compile_options(argus_lib_config PRIVATE -Wall -Wextra)
 
-# The reader's own suite: the parse, the dotted paths, the defaults, the
-# runtime override and the overlay. Every service's boot depends on those
-# semantics, so they are pinned here rather than through a service's suite.
 enable_testing()
 find_package(doctest REQUIRED)
 

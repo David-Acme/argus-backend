@@ -7,7 +7,6 @@
 #include <optional>
 #include <string>
 
-// Caller identity forwarded as x-argus-* metadata; presence is required.
 struct SyncIdentity
 {
   int64_t userId{0};
@@ -15,7 +14,6 @@ struct SyncIdentity
   std::string device;
 };
 
-// Thin SDK wrapper over argus.camera.v1.SyncService (rule 23).
 class CameraSyncClient
 {
 public:
@@ -25,12 +23,10 @@ public:
   CameraSyncClient& operator=(const CameraSyncClient&) = delete;
   virtual ~CameraSyncClient() = default;
 
-  // Sync-table pull; nullopt when argus-camera refuses or is unreachable.
   virtual std::optional<argus::camera::v1::PullTableResponse> pullTable(
       const argus::camera::v1::PullTableRequest& request,
       const SyncIdentity& identity) const;
 
-  // Catalog snapshot read; nullopt when argus-camera refuses or is unreachable.
   virtual std::optional<argus::camera::v1::ListCatalogResponse>
   listCatalog(const SyncIdentity& identity) const;
 

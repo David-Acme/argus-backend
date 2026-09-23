@@ -17,10 +17,6 @@ struct ChangeOutboxKeyInput
   std::string_view discriminator;
 };
 
-// The event id names the event: a transition is discriminated by its own
-// payload, so replaying it is the same id while a record that moves again — or
-// returns to a state it already held — is a new one. 32 hex digits keep the
-// JetStream MsgId inside the broker's header budget.
 [[nodiscard]] inline std::string eventId(const ChangeOutboxKeyInput& input)
 {
   std::string key(input.table);
@@ -31,8 +27,6 @@ struct ChangeOutboxKeyInput
   return "camera-change:" + argus::hash::sha256Hex(key).substr(0, 32);
 }
 
-// The canonical payload, so one id reaching the outbox twice under two
-// fingerprints is two writers racing over one prior state.
 [[nodiscard]] inline std::string fingerprintJson(std::string_view payload)
 {
   return argus::hash::sha256Hex(payload);
@@ -43,4 +37,4 @@ struct ChangeOutboxKeyInput
   return fingerprintJson(json_util::toString(payload));
 }
 
-} // namespace change_outbox_key
+}

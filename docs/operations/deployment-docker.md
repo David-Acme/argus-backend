@@ -85,8 +85,15 @@ They are idempotent and never touch a live database.
     `${ARGUS_GO2RTC_DIR:-../third_party/go2rtc}` mount read-only; images
     never bake weights or binaries.
 - `argus-deploy/.env` (created by `provision-host.sh`, `chmod 600`) carries
-  those absolute paths, `ARGUS_UID`/`ARGUS_GID` and the port overrides;
-  `.env.example` documents every supported key.
+  those absolute paths, `ARGUS_UID`/`ARGUS_GID` and the port overrides.
+  `.env.example` lists the path keys, the ids and the loopback ports; the
+  compose file also reads `SYNC_PORT`, `SYNC_CONTROL_PORT`, `RELAY_HOME_PORT`,
+  `RELAY_DEVICE_PORT`, `RELAY_HEALTH_PORT`, `RUSTFS_REGION`, one
+  `ARGUS_<SERVICE>_MEMORY_LIMIT`/`ARGUS_<SERVICE>_CPU_LIMIT` pair per service,
+  `NATS_MEMORY_LIMIT` and `RUSTFS_MEMORY_LIMIT`/`RUSTFS_CPU_LIMIT`, each with
+  the default written beside it in `docker-compose.yml`, and any of them can
+  be set in `.env`. Instance secrets stay in the `config.*.toml` files, never
+  in `.env`.
 - Schema SQL is bind-mounted from the owner folders, so migration tools always
   resolve `--schema` even from a freshly provisioned data dir.
 - `camera-stream` stays a named volume: go2rtc writes its 0600 credential

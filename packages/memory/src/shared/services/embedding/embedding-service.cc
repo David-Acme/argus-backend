@@ -59,7 +59,7 @@ std::vector<float> meanPool(const MeanPoolInput& input)
   return pooled;
 }
 
-} // namespace
+}
 
 EmbeddingService::EmbeddingService() = default;
 

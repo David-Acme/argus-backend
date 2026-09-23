@@ -30,11 +30,9 @@ message SirenRequest
   string command_id = 3;
   int64 encounter_id = 4;
   int64 expires_at = 5;
-  // Positive arms a self-expiring lease; the camera disarms on expiry.
   int32 lease_seconds = 6;
 }
 
-// Closed command outcome; the authoritative result of every command.
 enum CommandOutcome
 {
   COMMAND_OUTCOME_UNSPECIFIED = 0;
@@ -51,7 +49,6 @@ message ActionAck
 {
   bool accepted = 1;
   string detail = 2;
-  // True when the command id was already executed; nothing ran again.
   bool duplicate = 3;
   CommandOutcome outcome = 4;
 }
@@ -59,7 +56,6 @@ message ActionAck
 message PersonCropRequest
 {
   int64 camera_id = 1;
-  // Exact track to bind the evidence to; 0 keeps the legacy latest crop.
   int64 track_id = 2;
   int64 first_seen_ms = 3;
 }
@@ -86,12 +82,10 @@ message ListenResponse
   string text = 2;
   bool speech_detected = 3;
   bool endpointed = 4;
-  // True when the command id was already executed; nothing recorded again.
   bool duplicate = 5;
   CommandOutcome outcome = 6;
 }
 
-// Fleet-secret gated audible/device actions owned by argus-guard.
 service CameraActionService
 {
   rpc Announce(AnnounceRequest) returns (ActionAck) {}

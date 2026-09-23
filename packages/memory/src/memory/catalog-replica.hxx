@@ -9,7 +9,6 @@
 
 class EntityResolver;
 
-// Catalog replica feed over the identity and camera change subjects.
 class CatalogReplica
 {
 public:
@@ -56,13 +55,10 @@ public:
 
   explicit CatalogReplica(const Deps& deps);
 
-  // Subscribes the change feed: identity + camera subjects and the sync wildcard.
   void subscribe();
 
-  // One snapshot fill per replica table that booted empty.
   void seedFromSnapshot(const Snapshot& snapshot);
 
-  // Boot fill shared with the no-NATS path.
   struct SnapshotSources
   {
     SqliteGraph& graph;

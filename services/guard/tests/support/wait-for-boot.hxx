@@ -18,4 +18,4 @@ inline bool waitForBoot(std::chrono::milliseconds timeout)
   return drogon::app().isRunning();
 }
 
-} // namespace guard_test
+}

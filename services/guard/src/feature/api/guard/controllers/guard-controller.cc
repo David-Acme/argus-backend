@@ -22,7 +22,6 @@ GuardController::GuardController(IdentityClient* identity)
 
 namespace
 {
-// Owner bearer token and device fingerprint forwarded to argus-identity.
 std::string bearerToken(const drogon::HttpRequestPtr& request)
 {
   const std::string header = request->getHeader("authorization");
@@ -31,7 +30,7 @@ std::string bearerToken(const drogon::HttpRequestPtr& request)
     return {};
   return header.substr(kPrefix.size());
 }
-} // namespace
+}
 
 drogon::Task<drogon::HttpResponsePtr> GuardController::promotePerson(
     drogon::HttpRequestPtr req, int64_t personId)

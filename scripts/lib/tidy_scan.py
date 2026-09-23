@@ -1,20 +1,4 @@
 #!/usr/bin/env python3
-"""Rule 16 and 19, measured with clang-tidy (plan section 4.13).
-
-Every first-party translation unit of every project is tidied once, against a
-``compile_commands.json`` the build produced, and the findings are deduplicated:
-a header's finding is reported again by every TU that includes it, and only the
-distinct findings count. The check set comes from the tree's ``.clang-tidy`` --
-the same file an editor and a ``clang-tidy`` invocation read.
-
-The numbers are compared against ``scripts/lib/tidy-baseline.txt``: the
-repository carries thousands of findings today, so the gate is a ratchet rather
-than a clean sheet. Rule 19 makes modernising the code a change touches part of
-the change, which is what the ratchet enforces -- new findings fail, and the
-baseline comes down as the old ones are fixed. A finding count belongs to the
-clang-tidy that produced it, so the baseline records its version and the scan
-refuses to compare across majors.
-"""
 
 import argparse
 import glob
@@ -33,7 +17,6 @@ VERSION = re.compile(r"version (\d+)\.(\d+)\.(\d+)")
 
 
 def database_dirs(root):
-    """Every project's compile database, wherever its build tree sits."""
     pattern = f"{root}/*/build/*/compile_commands.json"
     deeper = f"{root}/*/*/build/*/compile_commands.json"
     return sorted(set(glob.glob(pattern) + glob.glob(deeper) +
@@ -41,16 +24,6 @@ def database_dirs(root):
 
 
 def translation_units(root):
-    """The union of first-party TUs, each paired with a database holding it, and
-    the stale entries skipped on the way.
-
-    A compile database can outlive the files it names: a build tree left behind
-    by a phase that renamed or deleted a package still lists its sources (one
-    such database in this tree predates the ``common`` and ``-socket``
-    spellings), and clang-tidy cannot be handed a file that is not there. Those
-    entries are skipped and reported -- a database that is stale is build
-    residue to delete, not a finding about the source tree.
-    """
     pairs, seen, stale = [], set(), Counter()
     for database in database_dirs(root):
         try:
@@ -72,7 +45,6 @@ def translation_units(root):
 
 
 def checks_of(root):
-    """The .clang-tidy check list, so the scan and the editor cannot disagree."""
     config = os.path.join(root, ".clang-tidy")
     if not os.path.exists(config):
         return None
@@ -80,16 +52,11 @@ def checks_of(root):
     match = re.search(r"^Checks:(.*?)(?=^\S|\Z)", text, re.S | re.M)
     if not match:
         return None
-    # The value is a folded block scalar, so the text the pattern captures
-    # starts with the indicator (`>`, or `|`) rather than with the list. It is
-    # not part of a check name: stripped, the string handed to clang-tidy is the
-    # same one an editor reads out of the file.
     body = re.sub(r"^\s*[|>][-+]?", "", match.group(1), count=1)
     return "".join(body.split())
 
 
 def tool_version(path):
-    """The version of one clang-tidy binary, and its major."""
     try:
         done = subprocess.run([path, "--version"], capture_output=True,
                               text=True, timeout=60)
@@ -102,12 +69,6 @@ def tool_version(path):
 
 
 def find_tool(major):
-    """clang-tidy from PATH, preferring the major the baseline records.
-
-    A distribution's plain `clang-tidy` and LLVM's own versioned package can
-    both be installed -- Ubuntu's is 18 and the baseline's is 22 -- and the
-    counts belong to one of them, so the versioned name is tried too.
-    """
     fallback = None
     names = ["clang-tidy"]
     if major is not None:
@@ -159,12 +120,11 @@ def scan(root, jobs, checks, header_filter, tool):
 
 
 def read_baseline(path):
-    """The recorded counts, and the clang-tidy they were measured with."""
     baseline, tool = {}, None
     if not os.path.exists(path):
         return baseline, tool
     for line in open(path, encoding="utf-8"):
-        line = line.split("#")[0].strip()
+        line = line.strip()
         if not line:
             continue
         name, _, value = line.partition(" ")
@@ -224,12 +184,6 @@ def main():
                                    tool)
 
     if arguments.write_baseline:
-        # A baseline is what every later run is measured against, so one
-        # measured over a tree clang-tidy could not read is worse than none: it
-        # would record fewer TUs and fewer findings than the tree has, and every
-        # run after it would compare against a floor that is too low -- the
-        # `tus` ratchet included, since a TU that failed to load is not a TU the
-        # baseline knows about.
         if failures:
             for path, failure in failures[:20]:
                 print(f"unread: {path}  {failure}", file=sys.stderr)
@@ -238,12 +192,6 @@ def main():
             return 1
         os.makedirs(os.path.dirname(baseline_path), exist_ok=True)
         with open(baseline_path, "w", encoding="utf-8") as out:
-            out.write("# clang-tidy findings per check, measured by\n"
-                      "# scripts/check-tidy.sh under the .clang-tidy check set\n"
-                      "# (plan section 4.13, rules 16 and 19). The gate fails\n"
-                      "# when a count rises; lower one when you fix what is\n"
-                      "# behind it. The counts belong to the clang-tidy named\n"
-                      "# on the tool line, and a different major is refused.\n")
             out.write(f"tool {version}\n")
             out.write(f"tus {len(jobs)}\n")
             for check, count in sorted(counts.items(), key=lambda kv: (-kv[1],

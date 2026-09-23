@@ -1,15 +1,3 @@
--- ─────────────────────────────────────────────────────────────────────────────
--- Argus identity  ·  Identity schema (identity.db)
--- The 13 identity tables and the portrait substrate they write to, all copied
--- verbatim from database/schema.sql (source of truth). Applied by
--- tools/migrate-identity and by the service that hosts the identity surface.
--- The sync-owned tables that share this file until Phase 3c-2 — audit_log,
--- user_audit_log, user_action_log and notification_delivery_inbox — are
--- argus-sync's and are applied by it at boot. `change_outbox` is neither: it is
--- this package's own (3a-2e), the identity feed's durable outbox.
--- Structure: pragmas → table creation → indexes (grouped by table).
--- ─────────────────────────────────────────────────────────────────────────────
-
 PRAGMA journal_mode       = WAL;
 PRAGMA synchronous        = NORMAL;
 PRAGMA busy_timeout       = 5000;
@@ -18,8 +6,6 @@ PRAGMA temp_store         = MEMORY;
 PRAGMA mmap_size          = 268435456;
 PRAGMA foreign_keys       = ON;
 PRAGMA journal_size_limit = 67108864;
-
--- ── Tables · Identity ────────────────────────────────────────────────────────
 
 CREATE TABLE IF NOT EXISTS user (
     id             INTEGER NOT NULL  PRIMARY KEY AUTOINCREMENT,
@@ -86,9 +72,6 @@ CREATE TABLE IF NOT EXISTS refresh_token (
     created_at    INTEGER NOT NULL  DEFAULT (strftime('%s', 'now'))
 );
 
--- A pending challenge lets a desktop pair with the mobile owner: the desktop
--- creates it, the mobile approves it, the desktop polls it for tokens. Tokens
--- are bound to the desktop's device_hash so its DeviceFilter matches.
 CREATE TABLE IF NOT EXISTS device_login_challenge (
     id            INTEGER NOT NULL  PRIMARY KEY AUTOINCREMENT,
     challenge_id  TEXT    NOT NULL  UNIQUE,
@@ -103,9 +86,6 @@ CREATE TABLE IF NOT EXISTS device_login_challenge (
     created_at    INTEGER NOT NULL  DEFAULT (strftime('%s', 'now'))
 );
 
--- A per-device secret presented via the X-Argus-Device-Credential header
--- (credential identity mode) replaces the source IP in the device hash. Only
--- its SHA-256 is stored; the plaintext is returned once at issuance.
 CREATE TABLE IF NOT EXISTS device_credential (
     id            INTEGER NOT NULL  PRIMARY KEY AUTOINCREMENT,
     user_id       INTEGER NOT NULL  REFERENCES user(id) ON DELETE CASCADE,
@@ -115,8 +95,6 @@ CREATE TABLE IF NOT EXISTS device_credential (
     created_at    INTEGER NOT NULL  DEFAULT (strftime('%s', 'now'))
 );
 
--- Invitation tokens are stored only as hashes. A QR code contains the opaque
--- token, while this database can safely retain the invitation audit trail.
 CREATE TABLE IF NOT EXISTS user_invitation (
     id                INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
     token_hash        TEXT    NOT NULL UNIQUE,
@@ -133,16 +111,12 @@ CREATE TABLE IF NOT EXISTS user_invitation (
     CHECK (revoked_at IS NULL OR revoked_at >= created_at)
 );
 
--- The unique user key makes an accepted enrollment traceable to exactly one
--- invitation. The service records this in the same transaction as enrollment.
 CREATE TABLE IF NOT EXISTS invitation_redemption (
     id              INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
     invitation_id   INTEGER NOT NULL REFERENCES user_invitation(id) ON DELETE CASCADE,
     user_id         INTEGER NOT NULL UNIQUE REFERENCES user(id) ON DELETE RESTRICT,
     redeemed_at     INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
 );
-
--- ── Tables · Audit and portrait substrate ────────────────────────────────────
 
 CREATE TABLE IF NOT EXISTS stored_file (
     id              INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
@@ -174,12 +148,6 @@ CREATE TABLE IF NOT EXISTS portrait_preview_capability (
     created_at          INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
 );
 
--- Durable outbox of identity-domain change events: the sink writes every
--- catalog row, module emit, audit diff and action-journal row here and a worker
--- publishes it, marking a row sent only after the JetStream PubAck. A variant
--- of the shape the other producers carry: this feed has two subjects, so a row
--- states its own, and the journal leg keys on `id` (`event_id` stays NULL)
--- because a read changes no row for a content hash to name.
 CREATE TABLE IF NOT EXISTS change_outbox (
     id          INTEGER NOT NULL  PRIMARY KEY AUTOINCREMENT,
     event_id    TEXT              UNIQUE,
@@ -193,24 +161,17 @@ CREATE TABLE IF NOT EXISTS change_outbox (
     sent_at     INTEGER NOT NULL  DEFAULT 0
 );
 
--- ── Indexes ──────────────────────────────────────────────────────────────────
-
--- face_embedding
 CREATE INDEX IF NOT EXISTS idx_face_embedding_person ON face_embedding (person_id);
 
--- person_tag
 CREATE INDEX IF NOT EXISTS idx_person_tag_person ON person_tag (person_id);
 
--- user
 CREATE INDEX IF NOT EXISTS idx_user_created_at  ON user (created_at);
 CREATE INDEX IF NOT EXISTS idx_user_deleted_at  ON user (deleted_at);
 
--- refresh_token
 CREATE INDEX IF NOT EXISTS idx_refresh_token_user_id   ON refresh_token (user_id);
 CREATE INDEX IF NOT EXISTS idx_refresh_token_access    ON refresh_token (access_token);
 CREATE INDEX IF NOT EXISTS idx_refresh_token_refresh   ON refresh_token (refresh_token);
 
--- user_invitation
 CREATE UNIQUE INDEX IF NOT EXISTS idx_user_invitation_token_hash
     ON user_invitation (token_hash);
 CREATE INDEX IF NOT EXISTS idx_user_invitation_active
@@ -218,26 +179,21 @@ CREATE INDEX IF NOT EXISTS idx_user_invitation_active
 CREATE INDEX IF NOT EXISTS idx_user_invitation_creator
     ON user_invitation (created_by, created_at DESC);
 
--- invitation_redemption
 CREATE INDEX IF NOT EXISTS idx_invitation_redemption_invitation
     ON invitation_redemption (invitation_id, redeemed_at DESC);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_invitation_redemption_user
     ON invitation_redemption (user_id);
 
--- stored_file
 CREATE UNIQUE INDEX IF NOT EXISTS idx_stored_file_object_key
     ON stored_file (object_key);
 CREATE INDEX IF NOT EXISTS idx_stored_file_category_created
     ON stored_file (category, created_at DESC) WHERE deleted_at IS NULL;
 
--- user_portrait
 CREATE UNIQUE INDEX IF NOT EXISTS idx_user_portrait_user_current
     ON user_portrait (user_id);
 
--- portrait_preview_capability
 CREATE INDEX IF NOT EXISTS idx_portrait_preview_capability_lookup
     ON portrait_preview_capability (token_hash, expires_at, consumed_at);
 
--- change_outbox
 CREATE INDEX IF NOT EXISTS idx_change_outbox_status
     ON change_outbox (status, id);

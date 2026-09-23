@@ -1,6 +1,3 @@
-# nats: the NATS event bus wrapper (connections, subjects, push-intent sink)
-# every service publishes and consumes through. Consumers link argus::lib::nats.
-
 include(${CMAKE_CURRENT_SOURCE_DIR}/../../../cmake/argus-module.cmake)
 
 if(NOT TARGET cnats::nats_static)

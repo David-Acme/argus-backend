@@ -43,7 +43,6 @@ public:
   void synthesizeStream(const TtsRequest& req, TtsChunkCallback onChunk);
   void synthesizeStream(TtsStreamInput input);
 
-  // Coroutine variants: run synthesis off the event loop.
   drogon::Task<std::vector<float>> synthesizeAsync(const TtsRequest& req);
   drogon::Task<void> synthesizeStreamAsync(const TtsRequest& req,
                                            TtsChunkCallback onChunk);
@@ -52,7 +51,6 @@ public:
   void setDefaultQuality(TtsQuality q);
   TtsQuality defaultQuality() const;
 
-  // Configured base speech speed (config.toml [tts] speed).
   float defaultSpeed() const;
 
   int sampleRate() const;
@@ -60,21 +58,18 @@ public:
 
   static const std::vector<std::string>& supportedLangs();
 
-  // Denoising-steps ceiling; tts.steps_cap pins it for extracted deployments.
   static int effectiveStepsCap();
 
 private:
   static int resolveSteps(TtsQuality quality);
   const Style& resolveVoice(const std::string& voiceId);
   static TtsQuality autoQuality(const std::string& text);
-  // Effective quality: request wins, then tts.quality, then autoQuality() by text length.
   TtsQuality resolveQuality(const TtsRequest& req) const;
 
   std::unique_ptr<TtsEngine> engine_;
   std::unique_ptr<UnicodeProcessor> processor_;
   std::unordered_map<std::string, std::unique_ptr<Style>> voiceCache_;
 
-  // Repeated short lines (greetings, announcements) are served from memory.
   struct CachedAudio
   {
     std::string key;

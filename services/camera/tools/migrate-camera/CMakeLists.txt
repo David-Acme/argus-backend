@@ -1,7 +1,3 @@
-# Camera database migration tool (argus.db -> camera.db). The library builds
-# only as a dependency of camera-migration-test; the CLI executable is
-# excluded from the default backend build.
-
 add_library(camera-migration STATIC
     camera-migration.cc
 )

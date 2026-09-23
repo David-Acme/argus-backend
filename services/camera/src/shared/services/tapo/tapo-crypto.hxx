@@ -65,4 +65,4 @@ std::string buildDigestHeader(const DigestInput& input);
 std::vector<uint8_t> toBytes(const std::string& text);
 std::string toText(const std::vector<uint8_t>& data);
 
-} // namespace tapo_crypto
+}

@@ -21,7 +21,7 @@ public:
     return SttHttpClient(config.url, config.timeoutMs).transcribe(floats, lang);
   }
 };
-} // namespace
+}
 
 std::unique_ptr<SttTranscriber> makeHttpSttTranscriber()
 {

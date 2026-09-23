@@ -8,7 +8,6 @@
 #include <nats/nats-subject.hxx>
 #include <trantor/utils/Logger.h>
 
-// Shared push-intent publisher over argus.notification.v1.push_intent; both publishers install it at boot.
 class NatsPushIntentSink : public push_intent::PushIntentSink
 {
 public:
@@ -32,9 +31,8 @@ private:
 
 namespace push_intent
 {
-// Gate: [push] enabled, default false.
 inline bool enabledFromConfig()
 {
   return ConfigService::getBool("push.enabled");
 }
-} // namespace push_intent
+}

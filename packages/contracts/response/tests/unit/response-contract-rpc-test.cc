@@ -22,15 +22,13 @@ constexpr ErrorDefinition kBadRequest{.code = ErrorCode::BadRequest,
                                       .status = 400,
                                       .message = "Nope"};
 
-// A status as a transport hands it over: a code, a message and no payload.
 grpc::Status transportStatus(grpc::StatusCode code)
 {
   return {code, "transport said no", std::string{}};
 }
 
-// The ceiling response-rpc.cc puts on the details it will parse.
 constexpr std::size_t kMaxDetailsBytes = 4096;
-} // namespace
+}
 
 TEST_CASE("a single refusal round-trips through the rpc status")
 {
@@ -117,8 +115,6 @@ TEST_CASE("a transport failure with no payload becomes the documented refusal")
     CHECK(back.errors().index() == 0);
   }
 
-  // A status that says OK while carrying nothing is a caller's mistake, not
-  // a refusal, and it is answered as one rather than passed through.
   const ResponseException ok = fromRpcStatus(grpc::Status{});
   CHECK(ok.statusCode() == 500);
   CHECK(ok.errorCode() == "INTERNAL_ERROR");
@@ -154,9 +150,6 @@ TEST_CASE("a payload that does not match its rpc code is refused, not trusted")
   CHECK(mismatched.errorCode() == "BAD_GATEWAY");
   CHECK(std::string(mismatched.what()) == "Invalid service response");
 
-  // Two ways the details cannot be read: bytes that are not an ErrorResponse
-  // at all (a length-delimited field whose length runs past the end), and a
-  // payload larger than the ceiling.
   const ResponseException truncated{
       fromRpcStatus({grpc::StatusCode::UNKNOWN, "transport said no",
                      std::string("\x0a\xff", 2)})};

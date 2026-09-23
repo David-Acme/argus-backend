@@ -5,8 +5,6 @@
 #include <string>
 #include <unordered_map>
 
-// Durable lifecycle of one guard action intent; resumable states are replayed
-// under the same command id, terminal states carry their distinct meaning.
 enum class GuardIntentStatus : uint8_t
 {
   Pending = 0,

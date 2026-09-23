@@ -74,7 +74,6 @@ std::string whitespace(const std::string& text, bool toLower)
   return out;
 }
 
-// Multi-byte aware: a byte-wise pass would split the two-byte fold sequences.
 std::string stripAccents(std::string text)
 {
   static constexpr std::array<std::pair<std::string_view, char>, 35> kFolds{{
@@ -146,4 +145,4 @@ std::string intent(const std::string& text)
   return out;
 }
 
-} // namespace text_norm
+}

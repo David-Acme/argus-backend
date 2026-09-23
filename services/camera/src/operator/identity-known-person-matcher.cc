@@ -46,7 +46,6 @@ struct ObservedAsInput
   bool everScanned{false};
 };
 
-// Names the observation state for a scan outcome.
 PersonMatch observedAs(const ObservedAsInput& input)
 {
   if (input.verdict) {
@@ -64,7 +63,7 @@ PersonMatch observedAs(const ObservedAsInput& input)
           .confidence = 0.0F,
           .identifyAttempts = input.scans};
 }
-} // namespace
+}
 
 IdentityKnownPersonMatcher::IdentityKnownPersonMatcher(IdentityConfig config)
     : config_(std::move(config)),

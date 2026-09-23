@@ -14,7 +14,6 @@ public:
   DeviceCredentialRepository() = default;
   ~DeviceCredentialRepository() = default;
 
-  // Identity-database rows: writes use the default client, lookups the JwtFilter's client.
   drogon::Task<DeviceCredentialSchema>
   create(const DeviceCredentialCreateInput& input) const;
 

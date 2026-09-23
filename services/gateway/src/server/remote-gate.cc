@@ -27,7 +27,7 @@ std::chrono::steady_clock::time_point now()
 {
   return std::chrono::steady_clock::now();
 }
-} // namespace
+}
 
 RemoteGate::RemoteGate(RemoteConfig config,
                        std::shared_ptr<RefreshRateLimiter> limiter)
@@ -41,7 +41,6 @@ drogon::HttpResponsePtr RemoteGate::check(const drogon::HttpRequestPtr& req,
   if (remote)
     req->getAttributes()->insert(RemoteGate::kRemoteContextKey, true);
 
-  // Short-circuits bypass the post-handling advice, so CORS goes on here.
   if (limiter_ && limiter_->enabled() && isRateLimitedRoute(req)
       && !limiter_->admit(rateLimitKey(req), now())) {
     auto resp = ApiResponse::error(GatewayErrors::TooManyRemoteAttempts);
@@ -72,7 +71,6 @@ void RemoteGate::recordOutcome(const drogon::HttpRequestPtr& req,
 
 std::string RemoteGate::rateLimitKey(const drogon::HttpRequestPtr& req)
 {
-  // The same fingerprint hash DeviceFilter stores; the peer IP bounds the limiter.
   try {
     return DeviceFilter::deviceKey(req);
   }

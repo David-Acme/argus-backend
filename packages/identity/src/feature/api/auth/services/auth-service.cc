@@ -47,12 +47,11 @@ inline constexpr std::string_view TRY_CONSUME =
     "AND redemption_count < max_redemptions";
 inline constexpr std::string_view INSERT_REDEMPTION =
     "INSERT INTO invitation_redemption (invitation_id, user_id) VALUES (?, ?)";
-} // namespace user_enrollment_query
+}
 
 namespace
 {
 
-// Login challenges live 2 minutes to bound a stolen QR code window.
 constexpr int64_t kDeviceLoginTtlSeconds = 120;
 
 struct PendingDeviceSecret
@@ -68,7 +67,6 @@ struct PendingDeviceSecretInput
   int64_t expiresAt{0};
 };
 
-// Pending device secrets live in memory only and expire with their challenge.
 std::map<std::string, PendingDeviceSecret>& pendingDeviceSecrets()
 {
   static std::map<std::string, PendingDeviceSecret> secrets;
@@ -102,7 +100,7 @@ std::string takePendingDeviceSecret(const std::string& challengeId)
   return secret;
 }
 
-} // namespace
+}
 
 drogon::Task<ResponseLoginDto>
 AuthService::login(LoginDto body, const LoginDeviceInput& device) const

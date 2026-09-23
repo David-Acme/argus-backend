@@ -99,7 +99,7 @@ ProductivityMigrationReport migrateSeeded(const ProductivityFixture& fixture)
                               .schemaPath = ARGUS_PRODUCTIVITY_SCHEMA_PATH});
 }
 
-} // namespace
+}
 
 TEST_CASE("migration copies the productivity tables and verifies them")
 {

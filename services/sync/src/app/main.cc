@@ -50,7 +50,7 @@ Json::Value drogonConfig(const SyncDbConfig& syncDb,
   return config;
 }
 
-} // namespace
+}
 
 int main()
 {

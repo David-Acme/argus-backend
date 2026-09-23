@@ -9,7 +9,6 @@
 #include <runtime/blocking-task.hxx>
 #include <trantor/utils/Logger.h>
 
-// One server-authoritative validation per request, fail closed.
 drogon::Task<drogon::HttpResponsePtr>
 JwtFilter::doFilter(const drogon::HttpRequestPtr& req)
 {

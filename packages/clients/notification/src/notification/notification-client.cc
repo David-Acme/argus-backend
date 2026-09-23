@@ -19,7 +19,7 @@ NotificationRpcOutcome outcomeForStatus(grpc::StatusCode code)
       return NotificationRpcOutcome::Rejected;
   }
 }
-} // namespace
+}
 
 NotificationClient::NotificationClient(NotificationClientConfig config)
     : channel_(argus::client::makeChannel(config.target)),

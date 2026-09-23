@@ -50,11 +50,8 @@ struct IdentityVerificationInput
   sqlite3* target = nullptr;
 };
 
-// Creates the identity tables on db from the schema file, failing on the first statement error.
 IdentityResult applyIdentitySchema(const IdentitySchemaInput& input);
 
-// Verifies the attached read-only source ("src") against the target per identity table.
 IdentityMigrationReport verifyIdentityTables(const IdentityVerificationInput& input);
 
-// Full migration: schema, transactional copy, verification; the target file is recreated.
 IdentityMigrationReport migrateIdentity(const IdentityMigrationOptions& options);

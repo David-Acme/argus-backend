@@ -18,7 +18,6 @@ public:
   virtual drogon::Task<std::vector<Json::Value>>
   findDeleted(const SyncFilter& filter) const = 0;
 
-  // Newest row and newest tombstone the caller may see; same filter as find.
   virtual drogon::Task<std::optional<Json::Value>>
   findLast(const SyncFilter& filter) const = 0;
 

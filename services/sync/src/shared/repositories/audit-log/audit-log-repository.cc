@@ -37,7 +37,7 @@ void appendTableNames(std::vector<std::string>& args,
   for (const auto table : tables)
     args.push_back(tableNameToString(table));
 }
-} // namespace
+}
 
 drogon::Task<AuditLogSchema>
 AuditLogRepository::create(const AuditLogCreateInput& input) const

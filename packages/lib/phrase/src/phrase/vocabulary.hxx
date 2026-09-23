@@ -8,7 +8,6 @@
 #include <phrase/details/vocabulary-en.hxx>
 #include <phrase/details/vocabulary-es.hxx>
 
-// Static per-language vocabulary; entries live in the language headers.
 namespace vocabulary
 {
 
@@ -32,4 +31,4 @@ inline std::span<const LexiconSeed> englishLexicon()
   return kENLexicon;
 }
 
-} // namespace vocabulary
+}

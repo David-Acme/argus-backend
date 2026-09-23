@@ -15,7 +15,7 @@ PersonStatus readStatus(const drogon::orm::Row& row)
   }
 }
 
-} // namespace
+}
 
 PersonSchema::PersonSchema(const drogon::orm::Row& row)
 {

@@ -126,4 +126,4 @@ public:
                        std::vector<ExtractedFact>& out) const = 0;
 };
 
-} // namespace extract
+}

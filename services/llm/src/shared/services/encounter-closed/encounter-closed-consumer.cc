@@ -13,14 +13,12 @@
 
 namespace
 {
-// Canonical payload identity: JsonCpp sorts object keys, so semantically
-// identical payloads hash identically regardless of wire order.
 std::string encounterFingerprint(const std::string& payload)
 {
   return argus::hash::sha256Hex(
       json_util::toString(json_util::fromString(payload)));
 }
-} // namespace
+}
 
 struct EncounterLifecycle
 {

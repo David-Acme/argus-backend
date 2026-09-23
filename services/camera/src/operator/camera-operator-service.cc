@@ -48,7 +48,6 @@ std::string severityName(EventSeverity severity)
   return "info";
 }
 
-// Compact Lab color histogram (8 bins per channel) for cross-camera matching.
 std::string personSignature(const cv::Mat& rgb, const DetectedObject& object)
 {
   const int x = std::clamp(static_cast<int>(object.x), 0,
@@ -87,7 +86,7 @@ std::string personSignature(const cv::Mat& rgb, const DetectedObject& object)
 }
 
 constexpr int kTrackHistoryWindows = 10;
-} // namespace
+}
 
 double CameraOperatorService::trackScoreMedian(
     const std::vector<TrackWindowSample>& history)

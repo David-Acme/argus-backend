@@ -21,9 +21,6 @@ using guard_test::waitForBoot;
 
 namespace
 {
-// Runs the app and stops it however the case body leaves. A joinable
-// std::thread destroyed by unwinding calls std::terminate, which reports an
-// ordinary statement failure as a SIGABRT with no assertion behind it.
 class AppRunner
 {
 public:
@@ -33,12 +30,6 @@ public:
   {
     if (!runner_.joinable())
       return;
-    // Drogon reports the app running before its main loop is looping, and a
-    // loop that has not begun cannot be stopped: trantor's loop() clears the
-    // quit flag again as it starts. Waiting for it to loop is what makes the
-    // quit below take effect — detaching in that window left the app's thread
-    // running past the end of the process, measured as SIGSEGV inside
-    // EventLoop::loop() in 3 of 20 runs of a forced constructor throw.
     for (int i = 0; i < 3000 && !drogon::app().getLoop()->isRunning(); ++i)
       std::this_thread::sleep_for(std::chrono::milliseconds(10));
     if (drogon::app().getLoop()->isRunning()) {
@@ -46,8 +37,6 @@ public:
       runner_.join();
       return;
     }
-    // A boot that never reached the loop at all is left to the process: it
-    // cannot be asked to stop, and joining it would block for ever.
     runner_.detach();
   }
 
@@ -154,12 +143,6 @@ void exec(sqlite3* db, const char* sql)
   sqlite3_free(error);
 }
 
-// The legacy database is written through the sqlite3 C API, the way the four
-// sibling migration suites write theirs. A throwaway drogon client keeps a loop
-// thread of its own, and a connection whose queued statement lambda holds the
-// last reference is destroyed on that very thread: ~Sqlite3Connection then
-// joins the thread it is running on, and the process aborts (EDEADLK). The
-// fixture must not race the client stack it is about to hand the database to.
 void seedLegacyDb(const std::string& path)
 {
   sqlite3* raw = nullptr;
@@ -213,7 +196,7 @@ void seedLegacyDb(const std::string& path)
        "suppression_reason, created_at) VALUES ('legacy-journal', 9, 8, 7, "
        "'obs', 'high', 3, 1, -2, '[]', 3, 1, 0, 0, 'shadow', 'none', 100)");
 }
-} // namespace
+}
 
 TEST_CASE("a legacy guard database migrates in place without data loss")
 {

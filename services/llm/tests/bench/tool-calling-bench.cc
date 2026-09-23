@@ -63,7 +63,7 @@ long long nowMs()
       .count();
 }
 
-} // namespace
+}
 
 int main(int argc, char** argv)
 {
@@ -126,7 +126,6 @@ int main(int argc, char** argv)
             << (filter.empty() ? "" : ", filter=" + filter) << ")\n";
 
   ToolRegistry& registry = ToolRegistry::instance();
-  // Mirrors packages/memory memoryToolDescriptors(): all arguments optional.
   tools::ToolDescriptor remember;
   remember.name = "memory.remember";
   remember.accessTable = TableName::Memory;
@@ -218,7 +217,6 @@ int main(int argc, char** argv)
   std::sort(latencies.begin(), latencies.end());
   const double p50 = latencies[latencies.size() / 2];
   const double p95 = latencies[static_cast<size_t>(latencies.size() * 0.95)];
-  // The schema cost this arc has to justify (numbers in docs/history/project-log.md).
   const std::string probe = "hola, como estas?";
   std::vector<ChatMessage> bare{{.role = "system", .content = systemPrompt},
                                 {.role = "user", .content = probe}};

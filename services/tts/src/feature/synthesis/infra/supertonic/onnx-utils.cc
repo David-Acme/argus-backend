@@ -319,7 +319,7 @@ std::vector<std::string> splitSentences(const std::string& paragraph)
   return out;
 }
 
-} // namespace
+}
 
 size_t completeSentenceEnd(const std::string& buffer, size_t minChars)
 {

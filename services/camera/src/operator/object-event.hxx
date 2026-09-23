@@ -7,7 +7,6 @@
 #include <string>
 #include <vector>
 
-// Payload of the argus.camera.v1.object_detected NATS event.
 struct DetectedEventObject
 {
   std::string name;
@@ -58,4 +57,4 @@ struct ObjectDetectedEvent
 namespace object_event
 {
 Json::Value toJson(const ObjectDetectedEvent& event);
-} // namespace object_event
+}

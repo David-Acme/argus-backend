@@ -4,10 +4,6 @@
 #include <sync/socket-emit-dto.hxx>
 #include <sync/sync-change.hxx>
 
-// The imperative leg of the change feed: the operations that change no row and
-// therefore cannot travel as an event. contracts/sync holds the interface so a
-// domain package can call it without linking the transport; the host installs
-// clients/sync's SyncClient at boot.
 class SyncControlSink
 {
 public:
@@ -40,4 +36,4 @@ inline const SyncControlSink* getSink()
 {
   return sink();
 }
-} // namespace sync_control
+}

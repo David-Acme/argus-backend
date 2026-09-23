@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# Model provisioning for argus-voice (moved verbatim from scripts/setup.sh).
 set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/../../../scripts/lib/common.sh"
 

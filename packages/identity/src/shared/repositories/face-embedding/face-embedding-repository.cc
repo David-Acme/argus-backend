@@ -26,7 +26,7 @@ bool bindFloatVector(const BindFloatVectorInput& input)
        .size = static_cast<size_t>(input.count) * sizeof(float)});
 }
 
-} // namespace
+}
 
 drogon::Task<std::optional<FaceEmbeddingSchema>>
 FaceEmbeddingRepository::findById(int64_t id) const

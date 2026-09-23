@@ -53,9 +53,6 @@ private:
   std::string path_;
 };
 
-// Runs the app and stops it however the case body leaves. A joinable
-// std::thread destroyed by unwinding calls std::terminate, which reports an
-// ordinary statement failure as a SIGABRT with no assertion behind it.
 class AppRunner
 {
 public:
@@ -65,12 +62,6 @@ public:
   {
     if (!runner_.joinable())
       return;
-    // Drogon reports the app running before its main loop is looping, and a
-    // loop that has not begun cannot be stopped: trantor's loop() clears the
-    // quit flag again as it starts. Waiting for it to loop is what makes the
-    // quit below take effect — detaching in that window left the app's thread
-    // running past the end of the process, measured as SIGSEGV inside
-    // EventLoop::loop() in 3 of 20 runs of a forced constructor throw.
     for (int i = 0; i < 3000 && !drogon::app().getLoop()->isRunning(); ++i)
       std::this_thread::sleep_for(std::chrono::milliseconds(10));
     if (drogon::app().getLoop()->isRunning()) {
@@ -78,8 +69,6 @@ public:
       runner_.join();
       return;
     }
-    // A boot that never reached the loop at all is left to the process: it
-    // cannot be asked to stop, and joining it would block for ever.
     runner_.detach();
   }
 
@@ -101,12 +90,6 @@ bool waitForBoot(std::chrono::milliseconds timeout)
   return drogon::app().isRunning();
 }
 
-// Empties the connection's loop before its client is released. A drogon sqlite
-// connection runs on a loop thread of its own, so a last reference dropped
-// while a statement lambda is still queued there destroys the connection on
-// that very thread and ~EventLoopThread joins the thread it runs on. The
-// callback must not capture the client: a reference released on the loop
-// re-opens the window this closes.
 void drain(const drogon::orm::DbClientPtr& client)
 {
   auto drained = std::make_shared<std::promise<void>>();
@@ -130,10 +113,6 @@ void drain(const drogon::orm::DbClientPtr& client)
     throw std::runtime_error("the client's loop did not drain");
 }
 
-// Empties the client's loop when the scope ends, on every path out of the
-// case: a failing REQUIRE unwinds past the end of the body, and a release that
-// takes the last reference while a statement is still queued destroys the
-// connection on its own loop thread (EDEADLK -> SIGABRT with no report).
 class ScopeDrain
 {
 public:
@@ -144,9 +123,6 @@ public:
 
   ~ScopeDrain()
   {
-    // This runs during unwinding as well, where an escaping exception is a
-    // terminate that would replace the failure being reported, so a drain that
-    // times out is reported on stderr instead of thrown.
     try {
       drain(client_);
     }
@@ -210,7 +186,7 @@ bool waitForIntents(const WaitForIntentsInput& input)
   }
   return sink.recordedIntents().size() >= expected;
 }
-} // namespace
+}
 
 TEST_CASE("the push_intent gate defaults to off with no sink installed")
 {
@@ -259,13 +235,7 @@ TEST_CASE("the create path publishes one intent per row")
   auto client =
       drogon::orm::DbClient::newSqlite3Client(
           std::string("filename=") + db.path(), 1);
-  // Declared after the client so it is destroyed before it, which is what
-  // makes the drain cover a body that unwinds early as well as one that ends.
   const ScopeDrain guard(client);
-  // WAL and a busy timeout are the tree's per-connection bootstrap, not
-  // drogon's. Without them a statement that meets the service's transaction on
-  // the same file is answered at once with SQLITE_BUSY — "database is locked"
-  // — instead of waiting, and that error is what made this case flaky.
   DbService::applyPragmas(client);
   client->execSqlSync(
       "CREATE TABLE notification ("
@@ -300,8 +270,6 @@ TEST_CASE("the create path publishes one intent per row")
   drogon::app().setLogLevel(trantor::Logger::kWarn);
   drogon::app().addDbClient(
       drogon::orm::Sqlite3Config{1, db.path(), "default", -1});
-  // The service's client is created when the app runs, so its pragmas go on at
-  // boot — the way the service itself puts them on.
   drogon::app().registerBeginningAdvice([] { DbService::applyPragmas(); });
 
   const AppRunner app;
@@ -427,9 +395,5 @@ TEST_CASE("the create path publishes one intent per row")
             .front()["total"]
             .as<int64_t>() == 6);
 
-  // The case's own client may only be released once its loop holds no queued
-  // statement, so this drains it before the scope ends, reporting a drain that
-  // fails here as a case failure. The guard declared beside the client covers
-  // the paths that leave the body before this line.
   drain(client);
 }

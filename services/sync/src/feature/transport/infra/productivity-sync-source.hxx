@@ -15,7 +15,6 @@ enum class ProductivitySyncTable
   ProjectTask,
 };
 
-// Pull source for the productivity-domain sync tables.
 class ProductivitySyncSource
 {
 public:

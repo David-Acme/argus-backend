@@ -1,17 +1,11 @@
-# argus-gateway configuration. Copy to config.toml (gitignored) to run.
-# The gateway owns the public TLS 7024 listener and forwards each extracted
-# domain to its service backend through the proxy route table.
-
 [gateway]
 host = "0.0.0.0"
 port = 7024
 plain = false
 min_protocol = "TLSv1.2"
-# Gateway-owned fallback record; identity and sync state stay in their owners.
 db = "database/gateway.db"
 schema = "services/gateway/database/schema.sql"
 
-# The listeners, db_clients and plugins are built by the gateway itself.
 [drogon.app]
 number_of_threads = 0
 enable_session = false
@@ -65,10 +59,7 @@ stream_url = "ws://127.0.0.1:7026/media"
 proxy_url = "http://127.0.0.1:7026"
 
 [sync]
-# The sync service's control plane (unary gRPC); empty disables the
-# imperative leg, leaving role changes and disconnects undelivered.
 control_target = "127.0.0.1:7041"
-# Fleet secret every control call carries; same value in every service.
 control_secret = ""
 
 [productivity]
@@ -105,18 +96,11 @@ db = "database/notification.db"
 budget_per_hour = 6
 silent_start = -1
 silent_end = -1
-# Caller capability credential for the gateway -> notification edge.
 credential = ""
-# Freshness window for the argus-guard heartbeat: while a heartbeat is
-# newer than this, the raw camera notifier yields to guard (seconds).
 guard_heartbeat_timeout_s = 30
-# Degraded fallback sanity gate for hard signals while guard is absent.
-# Absent wire keys fail open; a matched known identity never pages.
 fallback_min_score_median = 0.3
 fallback_min_dwell_ms = 1000
 fallback_suppress_known = true
-# Fallback-record retention in days, matching the guard decision journal.
-# Values <= 0 keep every row.
 fallback_retention_days = 90
 
 [remote]

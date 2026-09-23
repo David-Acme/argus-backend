@@ -61,7 +61,7 @@ std::vector<std::string> words(const std::string& text)
   return out;
 }
 
-} // namespace
+}
 
 std::string TemporalResolver::normalize(std::string_view text)
 {

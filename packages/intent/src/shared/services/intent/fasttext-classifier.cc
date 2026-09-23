@@ -13,7 +13,6 @@ namespace
 
 constexpr std::string_view kLabelPrefix = "__label__";
 
-// fastText hands back the raw training label, "__label__memory_save".
 intent::ToolIntent intentFromLabel(std::string_view label)
 {
   if (label.starts_with(kLabelPrefix))
@@ -21,7 +20,7 @@ intent::ToolIntent intentFromLabel(std::string_view label)
   return intent::toolIntentFromString(label);
 }
 
-} // namespace
+}
 
 FastTextClassifier::FastTextClassifier(const std::string& modelPath)
 {
@@ -44,7 +43,6 @@ bool FastTextClassifier::isLoaded() const
   return model_ != nullptr;
 }
 
-// Appends the trailing newline Python's predict() does; without it scores drift.
 std::vector<intent::IntentHit>
 FastTextClassifier::score(const std::string& normalized) const
 {

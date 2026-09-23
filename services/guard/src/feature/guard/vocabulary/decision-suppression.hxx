@@ -4,8 +4,6 @@
 #include <optional>
 #include <string>
 
-// Decision-journal suppression reason; the CHECK constraint mirrors it.
-// Unknown persisted values fail closed at the call site.
 enum class DecisionSuppression : uint8_t
 {
   None = 0,

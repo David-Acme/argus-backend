@@ -11,7 +11,7 @@ namespace Ort
 {
 struct Env;
 struct Session;
-} // namespace Ort
+}
 
 class EmbeddingService
 {

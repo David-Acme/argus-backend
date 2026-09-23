@@ -1,10 +1,7 @@
-// Identity domain seed (F6-3); F6-5 extracts the full identity surface.
 syntax = "proto3";
 
 package argus.identity.v1;
 
-// The identity service's user payload. UpdateUser fills the spoken-name
-// fields; ValidateToken fills every field.
 message UserIdentity
 {
   int64 user_id = 1;
@@ -15,7 +12,6 @@ message UserIdentity
   optional bool is_active = 6;
 }
 
-// Patch semantics: only the provided fields change.
 message UpdateUserRequest
 {
   int64 user_id = 1;
@@ -27,30 +23,22 @@ message UpdateUserResponse
   UserIdentity user = 1;
 }
 
-// Full token validation, server-authoritative: the service verifies the
-// signature itself and always reads the live user row (no cached verdicts,
-// so a disabled user or a revoked session fails on the next request).
 message ValidateTokenRequest
 {
   string access_token = 1;
-  // The caller's device fingerprint; present when the route runs the
-  // device filter, making the validation device-bound.
   optional string device_hash = 2;
 }
 
 message ValidateTokenResponse
 {
   bool valid = 1;
-  // The 401 body the caller must emit when invalid; empty means a plain 401.
   string reason = 2;
   UserIdentity user = 3;
-  // Refresh-token row expiry (unix seconds); 0 when no device binding ran.
   int64 expires_at = 4;
 }
 
 message CheckDeviceCredentialRequest
 {
-  // SHA-256 hex of the credential plaintext; the raw secret never crosses.
   string secret_hash = 1;
 }
 
@@ -59,7 +47,6 @@ message CheckDeviceCredentialResponse
   bool active = 1;
 }
 
-// Typed directory read for services that validate another user's row.
 message GetUserRequest
 {
   int64 user_id = 1;
@@ -67,11 +54,9 @@ message GetUserRequest
 
 message GetUserResponse
 {
-  // Absent when the user does not exist.
   UserIdentity user = 1;
 }
 
-// Minimal person row for the memory catalog gazetteer.
 message CatalogPerson
 {
   int64 id = 1;
@@ -89,7 +74,6 @@ message ListPersonsResponse
   repeated CatalogPerson persons = 1;
 }
 
-// Camera guard: identify one face crop against the enrolled vectors.
 message IdentifyPersonRequest
 {
   bytes image = 1;
@@ -100,15 +84,12 @@ message IdentifyPersonResponse
   bool matched = 1;
   int64 person_id = 2;
   float confidence = 3;
-  // Present when the person is linked to an active user.
   optional int64 user_id = 4;
   optional string role = 5;
   optional string name = 6;
-  // False for an auto-enrolled candidate; only trusted persons are known.
   bool trusted = 7;
 }
 
-// Camera guard: persist an unknown face as a person without user.
 message EnrollPersonRequest
 {
   bytes image = 1;
@@ -119,7 +100,6 @@ message EnrollPersonRequest
 message EnrollPersonResponse
 {
   int64 person_id = 1;
-  // False when the face already matched an enrolled person.
   bool created = 2;
   float confidence = 3;
 }
@@ -135,7 +115,6 @@ message TouchPersonResponse
   bool updated = 1;
 }
 
-// Camera guard: append LLM tags and an observation to a person.
 message TagPersonRequest
 {
   int64 person_id = 1;
@@ -159,7 +138,6 @@ message PersonTagsResponse
   repeated string tags = 1;
 }
 
-// Full person view for the camera guard: identity plus accumulated tags.
 message PersonIdentity
 {
   int64 person_id = 1;
@@ -182,7 +160,6 @@ message GetPersonResponse
   optional PersonIdentity person = 1;
 }
 
-// Owner action: turn an auto-enrolled candidate into a trusted person.
 message PromotePersonRequest
 {
   int64 person_id = 1;
@@ -204,16 +181,12 @@ message ListNotifiableUsersResponse
 
 service IdentityService
 {
-  // Requires x-argus-user matching user_id (x-argus-role rides along).
   rpc UpdateUser(UpdateUserRequest) returns (UpdateUserResponse) {}
 
-  // Fleet-secret gated; carries the live row, never a cached verdict.
   rpc GetUser(GetUserRequest) returns (GetUserResponse) {}
 
-  // Fleet-secret gated snapshot read for the memory catalog seed.
   rpc ListPersons(ListPersonsRequest) returns (ListPersonsResponse) {}
 
-  // Fleet-secret gated camera guard surface: the face engine stays here.
   rpc IdentifyPerson(IdentifyPersonRequest) returns (IdentifyPersonResponse) {}
 
   rpc EnrollPerson(EnrollPersonRequest) returns (EnrollPersonResponse) {}
@@ -222,16 +195,12 @@ service IdentityService
 
   rpc TagPerson(TagPersonRequest) returns (TagPersonResponse) {}
 
-  // Fleet-secret gated: prior LLM tags for one person.
   rpc GetPersonTags(PersonTagsRequest) returns (PersonTagsResponse) {}
 
-  // Fleet-secret gated: identity + tags for one person.
   rpc GetPerson(GetPersonRequest) returns (GetPersonResponse) {}
 
-  // Fleet-secret gated: promote an auto-enrolled candidate to trusted.
   rpc PromotePerson(PromotePersonRequest) returns (PromotePersonResponse) {}
 
-  // Fleet-secret gated: owner+guard ids for security notifications.
   rpc ListNotifiableUsers(ListNotifiableUsersRequest)
       returns (ListNotifiableUsersResponse) {}
 

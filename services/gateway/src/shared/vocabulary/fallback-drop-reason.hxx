@@ -4,7 +4,6 @@
 #include <optional>
 #include <string>
 
-// Gateway fallback drop reason; the CHECK constraint mirrors it.
 enum class FallbackDropReason : uint8_t
 {
   NonHardSignal = 0,

@@ -18,7 +18,6 @@
 namespace
 {
 
-// Row scoping: x-argus-user must carry the updated user's id.
 std::optional<int64_t> scopedUserId(const grpc::CallbackServerContext* context)
 {
   for (const auto& [key, value] : context->client_metadata()) {
@@ -43,7 +42,6 @@ std::string deviceHash(const grpc::CallbackServerContext* context)
   return {};
 }
 
-// Bearer access token forwarded by the SDK; the server verifies it itself.
 std::string accessToken(const grpc::CallbackServerContext* context)
 {
   for (const auto& [key, value] : context->client_metadata()) {
@@ -57,7 +55,6 @@ std::string accessToken(const grpc::CallbackServerContext* context)
   return {};
 }
 
-// Secret comparison that does not return early on the first differing byte.
 bool constantTimeEquals(const std::string& a, const std::string& b)
 {
   if (a.size() != b.size())
@@ -68,7 +65,7 @@ bool constantTimeEquals(const std::string& a, const std::string& b)
   return diff == 0;
 }
 
-} // namespace
+}
 
 IdentityRpcService::IdentityRpcService(std::shared_ptr<NatsBus> bus,
                                        std::string fleetSecret)
@@ -167,7 +164,6 @@ grpc::ServerUnaryReactor* IdentityRpcService::UpdateUser(
   return reactor;
 }
 
-// Device binding keys on request-field PRESENCE, not on the hash being non-empty.
 grpc::ServerUnaryReactor* IdentityRpcService::ValidateToken(
     grpc::CallbackServerContext* context,
     const argus::identity::v1::ValidateTokenRequest* request,
@@ -413,7 +409,7 @@ std::optional<std::pair<int64_t, float>> searchFace(
     return std::nullopt;
   return FaceService::instance().faceDb().search(face->embedding.data());
 }
-} // namespace
+}
 
 grpc::ServerUnaryReactor* IdentityRpcService::IdentifyPerson(
     grpc::CallbackServerContext* context,

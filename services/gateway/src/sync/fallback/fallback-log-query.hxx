@@ -12,7 +12,7 @@ inline constexpr std::string_view INSERT_FALLBACK_EVENT =
 
 inline constexpr std::string_view PURGE_FALLBACK_EVENTS =
     "DELETE FROM gateway_fallback_event WHERE created_at < ?";
-} // namespace fallback_log_query
+}
 
 struct FallbackLogInput
 {

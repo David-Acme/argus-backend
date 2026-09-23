@@ -31,9 +31,9 @@ that apply to tunnel code; when in doubt, the root file wins.
    (`UniqueFd`), peers and listeners are `unique_ptr`/`shared_ptr`.
 10. **File naming** — `.hxx` headers, `.cc` sources, hyphenated
     `*-test.cc` tests. No `.h`/`.cpp`.
-11. **100% English** — code, comments, identifiers, docs, commits.
-12. **Minimal comments** — small "what it does" comments only; project-level
-    "why" goes to CONTEXT.md.
+11. **100% English** — code, identifiers, docs, commits.
+12. **No comments** — none in code, of any kind (root rule 20); the "why"
+    goes to CONTEXT.md.
 13. **Logging** — Drogon built-ins only (`LOG_INFO`, `LOG_WARN`,
     `LOG_FATAL`); no spdlog.
 14. **No alarms/sirens** — this service never triggers `setAlarm` or any
@@ -74,4 +74,4 @@ Driving CMake by hand inside the folder means installing the root graph once
 exact flag set is in `docs/operations/build-and-test.md` under "Working
 inside one project".
 
-> Binding cross-service code standards: root `AGENTS.md` MUST-FOLLOW rules 19-24 (modern C++20, comment discipline, efficiency, DB tuning, feature layout + shared SDK, monolith structure).
+> Binding cross-service code standards: root `AGENTS.md` MUST-FOLLOW rules 19-24 (modern C++20, no comments in code, efficiency, DB tuning, feature layout + shared SDK, monolith structure).

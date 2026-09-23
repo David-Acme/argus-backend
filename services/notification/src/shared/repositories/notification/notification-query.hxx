@@ -55,7 +55,7 @@ inline constexpr std::string_view FIND_UNREAD_BY_IDS =
     "SELECT * FROM notification WHERE user_id = ? AND is_read = 0 AND id IN "
     "(%1%) "
     "ORDER BY id ASC";
-} // namespace notification_query
+}
 
 inline constexpr std::string_view CLAIM_COMMAND =
     "INSERT OR IGNORE INTO notification_command (command_id, expected_count, "

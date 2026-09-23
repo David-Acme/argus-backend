@@ -179,4 +179,4 @@ void TunnelClient::schedulePing()
     schedulePing();
   });
 }
-} // namespace tunnel
+}

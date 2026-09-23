@@ -44,7 +44,6 @@ struct CameraCrop
   int64_t capturedAt{0};
 };
 
-// Exact observation crop request; trackId 0 keeps the legacy latest crop.
 struct CameraPersonCropInput
 {
   int64_t cameraId{0};
@@ -62,9 +61,6 @@ struct CameraListenInput
   int64_t expiresAt{0};
 };
 
-// One command result: the transport status is preserved separately from the
-// command outcome, so a retryable transport failure is never mistaken for a
-// rejected command or for a completed one.
 struct CameraCommandResult
 {
   grpc::Status status;
@@ -104,8 +100,6 @@ struct CameraCommandResult
            outcome == CameraCommandOutcome::CONFLICT;
   }
 
-  // Only genuinely transient transport failures may be retried; an asserted
-  // rejection, conflict or indeterminate outcome never is.
   bool retryable() const
   {
     if (!transportOk())
@@ -115,14 +109,12 @@ struct CameraCommandResult
   }
 };
 
-// The caller-side capability credential for the guard -> camera edge.
 struct CameraActionClientConfig
 {
   std::string target;
   std::string credential;
 };
 
-// Thin SDK wrapper over argus.camera.v1.CameraActionService (rule 23).
 class CameraActionClient
 {
 public:
@@ -138,11 +130,9 @@ public:
 
   virtual CameraCommandResult setSiren(const CameraSirenInput& input) const;
 
-  // Bound person crop for one observation; nullopt when unavailable or stale.
   virtual std::optional<CameraCrop>
   personCrop(const CameraPersonCropInput& input) const;
 
-  // Bounded listen through the camera microphone, transcribed by argus-stt.
   virtual CameraCommandResult listen(const CameraListenInput& input) const;
 
 private:

@@ -7,7 +7,6 @@
 #include <optional>
 #include <string>
 
-// Calendar event row; endsAt absent means a point in time, not a span.
 struct CalendarEventSchema
 {
   int64_t id{0};

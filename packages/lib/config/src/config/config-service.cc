@@ -119,7 +119,6 @@ std::string escapeTomlString(const std::string& value)
   return out;
 }
 
-// Patches `key = literal` inside `[section]`, preserving every other line.
 struct PatchContentInput
 {
   const std::string& content;
@@ -216,7 +215,7 @@ bool applyValue(const std::string& keyPath, const std::string& literal)
   return out.good();
 }
 
-} // namespace
+}
 
 void ConfigService::load(const std::string& path)
 {

@@ -133,7 +133,7 @@ bool hasUnsafeCharacters(const std::string& value)
   return false;
 }
 
-} // namespace
+}
 
 std::string guard_dialogue::sanitizeLine(const LineInput& input)
 {

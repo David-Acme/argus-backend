@@ -1,9 +1,3 @@
-# argus_clients_tts: the argus-tts wire seen from the caller's side — the
-# modern gRPC client plus the adaptive remote client that speaks it, with the
-# transitional HTTP fallback. Both argus-camera (the Tapo talk path) and
-# argus-voice synthesize through this, and argus-tts links it for the
-# contract, the shape `packages/contracts` gives the gRPC services.
-
 include(${CMAKE_CURRENT_SOURCE_DIR}/../../../cmake/argus-module.cmake)
 
 if(NOT TARGET argus::lib::config)
@@ -48,9 +42,6 @@ find_package(doctest REQUIRED)
 
 add_executable(tts-client-test tests/unit/tts-client-test.cc)
 
-# This folder is pulled in EXCLUDE_FROM_ALL (consumers add it for the client
-# targets), so the suite has to opt back into the default build to be present
-# when ctest runs it.
 set_target_properties(tts-client-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
 target_link_libraries(tts-client-test PRIVATE argus::clients::tts

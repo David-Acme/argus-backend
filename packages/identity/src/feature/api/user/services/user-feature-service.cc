@@ -20,7 +20,7 @@ bool removesLastActiveOwner(const UserSchema& before,
   const auto nextActive = input.body.isActive.value_or(before.isActive);
   return nextRole != UserRole::Owner || !nextActive;
 }
-} // namespace
+}
 
 drogon::Task<std::vector<UserSchema>>
 UserFeatureService::list(int64_t actorId, UserRole actorRole) const

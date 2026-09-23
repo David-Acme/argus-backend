@@ -59,15 +59,15 @@ RPC test above and this package's own suite.
   receiver reads its caller through
   `argus::client::callerUserId`, which requires all three legs — the gate is
   `if (!(user && role && device))` at
-  `packages/lib/grpc/src/grpc/grpc-server-identity.hxx:101` — and answers
+  `packages/lib/grpc/src/grpc/grpc-server-identity.hxx:94` — and answers
   UNAUTHENTICATED "identity metadata missing or invalid" without them. There is
   no capability credential on this edge at all: the client has no credential
   field and never sends `x-argus-credential`, and the receiver never asks for
   one.
 - The endpoint is runtime config: `productivity.grpc_target`, read at
   `services/sync/src/config/sync-config.cc:55` into `SyncUpstreams`. Two files
-  declare it — `services/sync/config.toml.example:52-53` and
-  `argus-deploy/config.sync.toml.example:55-56` (`argus-productivity:7037`) —
+  declare it — `services/sync/config.toml.example:45-46` and
+  `argus-deploy/config.sync.toml.example:45-46` (`argus-productivity:7037`) —
   and a sync service whose key is empty logs
   "productivity leg -> unconfigured source (503)": the source is constructed
   either way and the empty target fails the dial rather than pointing

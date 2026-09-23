@@ -17,10 +17,8 @@ public:
 
   drogon::Task<std::optional<CalendarEventShareSchema>> findById(int64_t id) const;
   drogon::Task<std::vector<CalendarEventShareSchema>> findByParent(int64_t parentId) const;
-  /** Access level of one member, or nullopt when the record is not shared with them. */
   drogon::Task<std::optional<ShareAccess>> findAccess(int64_t parentId,
                                                       int64_t userId) const;
-  /** Ids the record is shared with, so a write can be emitted to all of them. */
   drogon::Task<std::vector<int64_t>> memberIds(int64_t parentId) const;
   drogon::Task<std::optional<CalendarEventShareSchema>> findExisting(int64_t parentId,
                                                          int64_t userId) const;

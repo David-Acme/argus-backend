@@ -4,8 +4,6 @@
 #include <string>
 #include <unordered_map>
 
-// One physical or user-visible effect the guard may raise; the authorizer owns
-// the mapping.
 enum class GuardActionKind : uint8_t
 {
   Greet = 0,

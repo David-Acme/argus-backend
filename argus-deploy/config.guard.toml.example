@@ -1,5 +1,3 @@
-# argus-guard deploy configuration. Copy to config.guard.toml (gitignored).
-
 [server]
 host = "0.0.0.0"
 port = 7039
@@ -62,34 +60,17 @@ staging = true
 encounter_timeout_s = 300
 heartbeat_s = 10
 consumer_durable = "argus-guard"
-# Belief-gate mode: "shadow" journals the verdict without enforcing it,
-# "enforce" lets the belief gate suppress effects. Unknown values fall back
-# to shadow. decision_mode governs the belief gate only; per-encounter
-# notification threading applies in both modes.
 decision_mode = "shadow"
 health_stale_s = 300
 belief_refresh_s = 300
-# Sustained-tamper escalation window in seconds; a tamper-ish camera health
-# state (moved, covered, blurred) held this long raises its own
-# high-danger notification through the durable intent path.
 tamper_sustained_s = 300
 
-# Quiet-hours demotion markers. Journal-only and default off: held rows still
-# notify exactly as before, the journal only records what a future enforce
-# mode would have held back.
 [guard.quiet_hours]
 enabled = false
 start_hour = 22
 end_hour = 7
 daily_budget = 30
 
-# Deterministic belief engine: closed signal vocabulary with bounded integer
-# weights summed into a score, compared against the asymmetric severity
-# thresholds (critical 1 < high 3 < medium 5 < low 7).
-# gate_scope selects which effect kinds enforce mode may suppress:
-# "notify" (default), "communication" (notify + announce) or "all".
-# Alarm and siren-arm additionally require no hard floor, so a hard floor
-# always lets physical effects through regardless of scope.
 [guard.belief]
 gate_scope = "notify"
 threshold_critical = 1
@@ -117,10 +98,6 @@ weight_identity_unobservable = -2
 weight_identity_unavailable = 0
 weight_identity_known = -3
 weight_camera_health_degraded = -2
-
-# Per-camera overrides: any leaf above may be redefined per camera id.
-# [guard.belief.camera."1"]
-# threshold_medium = 6
 
 [guard.assess]
 enabled = true
@@ -158,8 +135,6 @@ rpc_secret = "CHANGE_ME_SAME_IN_EVERY_SERVICE"
 url = "nats://nats:4222"
 
 [storage]
-# Private object storage (RustFS) for incident evidence records.
-# provision-host.sh fills the endpoint and credentials.
 mode = "s3"
 
 [storage.s3]

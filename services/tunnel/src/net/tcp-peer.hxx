@@ -8,7 +8,6 @@
 #include <memory>
 #include <string>
 
-// Non-blocking stream socket on a PollLoop: bounded send buffer, pausable reads, congestion notifications.
 class TcpPeer : public LoopActor
 {
 public:
@@ -36,9 +35,7 @@ public:
     Callbacks callbacks;
   };
 
-  // Adopts an accepted socket; the fd becomes owned by the peer.
   static Ptr adopt(const Params& params);
-  // Starts a non-blocking connect; onConnected fires on success, onClosed on failure.
   static Ptr connect(const Params& params);
 
   ~TcpPeer() override;

@@ -1,8 +1,3 @@
-# argus-deploy argus-sync configuration. Copy to config.sync.toml (gitignored)
-# next to this file and fill the instance secrets (the same jwt/device values as
-# config.gateway.toml); the compose file bind-mounts it as argus-sync's
-# config.toml.
-
 [server]
 host = "0.0.0.0"
 grpc_port = 7041
@@ -36,13 +31,8 @@ host = "0.0.0.0"
 port = 7025
 plain = false
 min_protocol = "TLSv1.2"
-# The four sync-owned audit tables still live in identity's file (Phase 3c
-# splits them into sync.db); the schema mount below is this service's own.
 db = "database/identity.db"
 schema = "database/schema.sql"
-# Must match the same key in every producer service's config: the control RPC
-# injects frames into any user's room, and the service refuses to start when
-# this listener is reachable beyond loopback without it.
 control_secret = "CHANGE_ME_SAME_IN_EVERY_SERVICE"
 
 [cert]
@@ -56,13 +46,10 @@ grpc_target = "argus-camera:7036"
 grpc_target = "argus-productivity:7037"
 
 [voice]
-# The voice service the /sync forwarder relays voice:* frames and PCM to.
 target = "argus-voice:7034"
 
 [notifications]
 grpc_target = "argus-notification:7038"
-# Caller capability credential for the sync -> notification pull edge; must
-# match argus-notification's [grpc] caller_gateway.
 credential = "CHANGE_ME_GATEWAY_NOTIFICATION"
 
 [jwt]

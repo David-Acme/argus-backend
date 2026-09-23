@@ -11,7 +11,7 @@ library whose include root is `src/`, so a consumer writes
 `<identity/identity-client.hxx>` and links `argus::clients::identity`. It
 compiles one proto (`argus/identity/v1/identity.proto`) and one source
 (`src/identity/identity-client.cc`). Eight packages link it — `gateway-core`
-(`services/gateway/CMakeLists.txt:183`), `argus-guard` (`services/guard:140`),
+(`services/gateway/CMakeLists.txt:171`), `argus-guard` (`services/guard:140`),
 `argus_guard` (`services/guard/src/feature/guard/CMakeLists.txt:19`),
 `argus_guard-api` (`services/guard/src/feature/api/guard/CMakeLists.txt:19`),
 `argus-llm` (`services/llm:210`), `argus_voice-core` (`services/voice:100`),
@@ -23,7 +23,7 @@ furthest: four of its files include the header (`details/identity-access.cc`,
 `.hxx` forward-declares `IdentityClient` only), so a service that links
 `argus::lib::auth` — argus-camera and argus-notification among them — reaches
 the identity RPC through this package without a link line of its own (measured:
-those two services mention it in comments only). 21 C++ files include the
+neither `CMakeLists.txt` names `argus::clients::identity`). 21 C++ files include the
 header: the in-package suite, four in `packages/lib/auth`, two in
 `services/camera`, eleven in `services/guard`, one in `services/llm` and two in
 `services/voice`.
@@ -76,7 +76,7 @@ header: the in-package suite, four in `packages/lib/auth`, two in
   `argus-deploy/config.gateway.toml:56-57`, both 7040 — the gateway is the one
   consumer that never sets `identity.target`), and `resolveTarget` defaults to
   `127.0.0.1:7040` when the port is not positive.
-- The service links its own client (`packages/identity/CMakeLists.txt:222`): the
+- The service links its own client (`packages/identity/CMakeLists.txt:189`): the
   wire vocabulary is shared between the two ends, not copied.
 
 ## Tests

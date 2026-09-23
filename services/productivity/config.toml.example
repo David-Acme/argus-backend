@@ -1,5 +1,3 @@
-# argus-productivity configuration. Copy to config.toml (gitignored) to run.
-
 [server]
 host = "127.0.0.1"
 port = 7027

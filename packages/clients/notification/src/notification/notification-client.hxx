@@ -6,8 +6,6 @@
 #include <memory>
 #include <string>
 
-// Transport result kept distinct from a durable command conflict, so a reused
-// command id is never retried as if the service were merely unreachable.
 enum class NotificationRpcOutcome
 {
   Success,
@@ -31,14 +29,12 @@ struct NotificationPullResult
   argus::notification::v1::PullNotificationsResponse response;
 };
 
-// The caller-side capability credential for the caller -> notification edge.
 struct NotificationClientConfig
 {
   std::string target;
   std::string credential;
 };
 
-// Thin SDK wrapper over argus.notification.v1.NotificationService (rule 23).
 class NotificationClient
 {
 public:

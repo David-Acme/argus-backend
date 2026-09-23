@@ -28,7 +28,7 @@ size_t resolvePushQueueCapacity()
   const int capacity = ConfigService::getInt("push.queue_capacity");
   return capacity > 0 ? static_cast<size_t>(capacity) : 256;
 }
-} // namespace
+}
 
 ClientConfig ClientConfig::resolve()
 {

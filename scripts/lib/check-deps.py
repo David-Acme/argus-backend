@@ -1,23 +1,4 @@
 #!/usr/bin/env python3
-"""Section 2.4's tier table, checked mechanically (plan section 4.13, rule 7).
-
-Every ``CMakeLists.txt`` that belongs to the tree under ``packages/`` and
-``services/`` is read and the first-party edges are collected from **both**
-places one can be written: the ``DEPENDS`` / ``SYSTEM_DEPENDS`` / ``MODULES``
-keyword lists of the ``argus_*`` helpers -- where a first-party dependency
-actually lives in this tree -- and literal ``target_link_libraries()`` calls,
-which is what rule 7 names. A scan that reads only ``target_link_libraries``
-sees almost none of the graph (measured in phase 2 step 4).
-
-The exit status is the gate: non-zero when an edge the table can classify is
-forbidden, when the unit graph has a cycle, or when an item names the
-first-party ``argus::`` namespace and no declaration answers it. Edges that
-touch a package section 9.1 has not moved yet (``identity``, ``intent``,
-``memory``) are outside the table's reach today: they are counted, grouped by
-the step that owns each move, and never fail the build -- the phase that moves
-them is the one that makes them legal or illegal. A run that read nothing exits
-2 rather than reporting the zeroes that look like a clean tree.
-"""
 
 import argparse
 import os
@@ -26,16 +7,9 @@ import subprocess
 import sys
 from collections import defaultdict
 
-# Section 2.4's table. Tier 1 is lib/ (thirteen packages), tier 2 is
-# contracts/* plus lib/http, tier 3 is clients/*, tier 4 is lib/auth alone,
-# tier 5 is services/*. Anything else under packages/ is a package section 9.1
-# has not moved yet and has no tier until it does.
 IN_TRANSIT = ("packages/identity", "packages/intent",
               "packages/memory")
 
-# What each tier may depend on -- rule 1 read together with the table's "may
-# never" column: a tier never points back up, tier 3 never reaches another
-# client, tier 5 never reaches another service.
 ALLOWED = {1: {1}, 2: {1, 2}, 3: {1, 2}, 4: {1, 2, 3}, 5: {1, 2, 3, 4}}
 
 HELPERS = {
@@ -44,7 +18,7 @@ HELPERS = {
     "argus_clients": "clients",
     "argus_client_module": "clients",
     "argus_module": "",
-    "argus_service": None,  # an executable named by NAME, no argus:: alias
+    "argus_service": None,
 }
 
 KEYWORDS = {"NAME", "GROUP", "MAIN", "PROTO_ROOT", "PROTO", "SOURCES",
@@ -69,14 +43,12 @@ def tier_of_package(pkg):
 
 
 def unit_of(pkg):
-    """The unit rule 1 is about: the package for tiers 1-4, the service for 5."""
     if pkg.startswith("services/"):
         return "/".join(pkg.split("/")[:2])
     return pkg
 
 
 def is_in_transit(pkg):
-    """A package section 9.1 has not moved yet -- including its nested tools."""
     return any(pkg == name or pkg.startswith(name + "/") for name in IN_TRANSIT)
 
 
@@ -85,7 +57,6 @@ def same_unit(one, other):
 
 
 def balanced(src, start):
-    """src[start] is '(' -> return the body up to its matching ')'."""
     index, depth = start, 0
     while index < len(src):
         if src[index] == "(":
@@ -99,17 +70,6 @@ def balanced(src, start):
 
 
 def cmake_lists(root):
-    """Every CMakeLists.txt that belongs to the tree under packages/ and
-    services/: the tracked ones, and any new ones not committed yet.
-
-    Tracked files are the repository's own; the ignored ones are build trees.
-    A package that has just been written but not staged belongs to the tree as
-    well, and the phases that add packages would otherwise be checked only
-    after a commit -- so untracked-but-not-ignored files are read too, and the
-    two directories that hold foreign sources are filtered out whatever the
-    ignore rules say. Outside a checkout (a Docker build context, a test
-    fixture) the tree is walked instead.
-    """
     try:
         listed = subprocess.run(["git", "ls-files", "--cached", "--others",
                                  "--exclude-standard", "--", "packages",
@@ -140,15 +100,6 @@ def read(path):
 
 
 def tokens_of(body):
-    """The list items in a helper body.
-
-    CMake separates list items with whitespace or a semicolon and both are
-    legal here, so ``DEPENDS a;b`` names two dependencies: a tokeniser that
-    split on whitespace alone would hand the resolver ``a;b`` as one name, and
-    a first-party edge written that way would be counted as a mention of some
-    foreign library instead of judged. A generator expression is one item
-    however many semicolons it holds, so one is never split.
-    """
     items = []
     for token in body.split():
         if token.startswith("$<") and token.endswith(">"):
@@ -159,7 +110,6 @@ def tokens_of(body):
 
 
 def collect(root, files):
-    """Returns the declarations, the alias table and the raw target table."""
     alias_pkg, alias_tier, target_pkg = {}, {}, defaultdict(set)
     declarations = []
     for name in files:
@@ -178,11 +128,6 @@ def collect(root, files):
                     continue
                 line = src[:match.start()].count("\n") + 1
                 if default_group is None:
-                    # argus_service creates the executable the NAME gives, inside
-                    # the helper, so the package's own file never says
-                    # add_executable: without this line the one spelling a
-                    # tier-3 -> tier-5 edge is written in (a bare service name)
-                    # would be counted as a third-party mention instead.
                     alias, raw = args["NAME"][0], args["NAME"][0]
                     target_pkg[raw].add(package)
                 else:
@@ -204,18 +149,6 @@ def collect(root, files):
 
 def resolve(item, package, alias_pkg, alias_tier, target_pkg, edges, foreign,
             unresolved, where):
-    """One link item -> one edge, or one third-party mention.
-
-    A link item can be wrapped: ``$<LINK_LIBRARY:feature,libs>`` asks for the
-    libraries with a linking feature, and the libraries inside it are edges like
-    any other (services/gateway links its own core that way).
-
-    An item that spells the first-party namespace and resolves to nothing is an
-    error rather than a mention of something foreign: ``argus::`` is this
-    tree's own namespace, so a name it does not declare is a typo or a name
-    that changed, and counting it quietly would hide exactly the edge this
-    check exists to judge.
-    """
     wrapped = re.match(r"^\$<LINK_LIBRARY:[^,]+,(.*)>$", item)
     if wrapped:
         for piece in re.split(r"[,;]", wrapped.group(1)):
@@ -276,7 +209,6 @@ def scan(root):
 
 
 def find_cycles(graph):
-    """Every cycle in a directed graph, as unit paths."""
     WHITE, GREY, BLACK = 0, 1, 2
     colour, stack, cycles = defaultdict(int), [], []
 
@@ -311,9 +243,6 @@ def main():
         return 2
 
     files, declarations, edges, foreign, unresolved, site = scan(root)
-    # A run that examined nothing is not a run that passed: a floor of zero
-    # makes every count below it zero too, which reads exactly like a green
-    # tree.
     if not files:
         print(f"check-deps: no CMakeLists.txt under {root} -- nothing was "
               f"checked", file=sys.stderr)
@@ -334,12 +263,6 @@ def main():
             forbidden.append((package, item, dependency, linker_tier,
                               dependency_tier))
 
-    # Rule 1 forbids a cycle whatever the tier of its ends, so the graph is
-    # built from every edge rather than from the classified ones: the tier
-    # decides whether an edge is *allowed*, never whether it may exist, and a
-    # cycle through a package section 9.1 has not moved yet violates the same
-    # rule. Measured on this tree, which is why the wider graph costs nothing:
-    # 39 units and 217 edges instead of 32 and 141, and 0 cycles either way.
     graph = defaultdict(set)
     for package, item, dependency, dependency_tier in edges:
         one, other = unit_of(package), unit_of(dependency)

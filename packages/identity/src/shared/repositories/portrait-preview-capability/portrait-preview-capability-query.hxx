@@ -17,7 +17,7 @@ inline constexpr std::string_view INSERT =
 inline constexpr std::string_view TRY_CONSUME =
     "UPDATE portrait_preview_capability SET consumed_at = strftime('%s', 'now') "
     "WHERE id = ? AND requester_user_id = ? AND consumed_at IS NULL AND expires_at > ?";
-} // namespace portrait_preview_capability_query
+}
 
 struct PortraitPreviewCapabilityCreateInput
 {

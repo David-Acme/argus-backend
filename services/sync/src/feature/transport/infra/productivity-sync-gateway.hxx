@@ -4,7 +4,6 @@
 #include <productivity/productivity-sync-client.hxx>
 #include <feature/transport/infra/productivity-sync-source.hxx>
 
-// Pull source backed by argus-productivity's argus.productivity.v1.SyncService.
 class ProductivitySyncGateway : public ProductivitySyncSource
 {
 public:

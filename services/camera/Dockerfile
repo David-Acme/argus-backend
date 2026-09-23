@@ -1,8 +1,5 @@
 # syntax=docker/dockerfile:1.7
 
-# argus-camera service image. Build from the repository root:
-#   docker build -f services/camera/Dockerfile -t argus-camera:local .
-
 FROM debian:trixie-slim AS build
 
 ENV DEBIAN_FRONTEND=noninteractive

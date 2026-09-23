@@ -7,7 +7,6 @@
 #include <memory>
 #include <string>
 
-// Accepting TCP socket on a PollLoop.
 class TcpListener : public LoopActor
 {
 public:
@@ -20,8 +19,6 @@ public:
         onAccept;
   };
 
-  // Returns nullptr when the bind fails. Shared ownership: the poll loop
-  // keeps only a weak handle and skips events whose listener is gone.
   static std::shared_ptr<TcpListener> create(const Params& params);
 
   uint16_t boundPort() const;

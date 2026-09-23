@@ -8,11 +8,6 @@
 #include <json/value.h>
 #include <text/json-util.hxx>
 
-// The voice leg's two frozen halves: which target it dials, and the JSON the
-// app receives. Both moved here from the gateway's suite in sub-step 3a-1c,
-// because the leg itself moved: the forwarder rides the /sync socket, and the
-// socket is this service's.
-
 TEST_CASE("voice gRPC config resolves the typed voice leg target")
 {
   const char* path = "voice-leg-test-config.toml";

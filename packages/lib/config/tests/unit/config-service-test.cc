@@ -14,8 +14,6 @@
 namespace
 {
 
-// The service keeps its state static, so every case writes its own file and
-// loads it; nothing here depends on the case that ran before.
 std::string writeTemp(const std::string& name, const std::string& body)
 {
   std::ofstream out(name);
@@ -30,7 +28,7 @@ std::string readFile(const std::string& name)
                      std::istreambuf_iterator<char>());
 }
 
-} // namespace
+}
 
 TEST_CASE("dotted paths resolve through the nested tables")
 {
@@ -72,9 +70,7 @@ port = 7040
 
   CHECK(ConfigService::hasKey("server.port"));
   CHECK_FALSE(ConfigService::hasKey("server.absent"));
-  // A path that walks through a scalar is absent, not a crash.
   CHECK_FALSE(ConfigService::hasKey("server.port.deeper"));
-  // And an unloaded-looking key is absent rather than zero-with-a-value.
   CHECK_FALSE(ConfigService::hasKey("nothing.here"));
 
   std::remove(path.c_str());
@@ -82,8 +78,6 @@ port = 7040
 
 TEST_CASE("the runtime override wins over the file and hasKey sees it")
 {
-  // Keys no other case in this file reads: an override is process-wide and
-  // outlives the case that set it.
   const std::string path = writeTemp("config-service-override.toml", R"(
 [override]
 demo = "from-file"
@@ -96,13 +90,11 @@ demo = "from-file"
   CHECK(ConfigService::getString("override.demo") == "from-override");
   CHECK(ConfigService::hasKey("override.demo"));
 
-  // A key the file never carried is present while the override stands.
   CHECK_FALSE(ConfigService::hasKey("storage.s3.bucket"));
   ConfigService::setRuntimeString("storage.s3.bucket", "argus-test");
   CHECK(ConfigService::hasKey("storage.s3.bucket"));
   CHECK(ConfigService::getString("storage.s3.bucket") == "argus-test");
 
-  // The override is read as the type the caller asked for, not as text.
   ConfigService::setRuntimeString("feature.enabled", "true");
   CHECK(ConfigService::getBool("feature.enabled"));
 
@@ -123,8 +115,6 @@ port = 7040
 )");
   CHECK_THROWS_AS(ConfigService::load(bad), std::runtime_error);
 
-  // The parse throws before the loaded document is replaced: a typo fails the
-  // boot instead of silently defaulting every key it broke.
   CHECK(ConfigService::getInt("server.port") == 7040);
 
   std::remove(good.c_str());
@@ -150,12 +140,9 @@ name = "overlay"
   ConfigService::loadOverlay(overlay);
 
   CHECK(ConfigService::getString("server.name") == "overlay");
-  // The table came from the overlay whole: the base's port is gone with it.
   CHECK_FALSE(ConfigService::hasKey("server.port"));
-  // A top-level table the overlay does not carry still comes from the base.
   CHECK(ConfigService::getString("mdns.name") == "base-mdns");
 
-  // Reloading the base drops the overlay again.
   ConfigService::load(base);
   CHECK(ConfigService::getInt("server.port") == 7040);
   CHECK(ConfigService::getString("server.name") == "base");
@@ -177,16 +164,12 @@ gamma = 7
 
   const std::vector<std::pair<std::string, std::string>> pairs =
       ConfigService::getStringPairs("peers");
-  // The order is the TOML table's, which is by key and NOT the file's: a list
-  // whose order carries meaning cannot be a table.
   REQUIRE(pairs.size() == 2);
   CHECK(pairs[0].first == "alpha");
   CHECK(pairs[0].second == "127.0.0.1:7040");
   CHECK(pairs[1].first == "beta");
   CHECK(pairs[1].second == "127.0.0.1:7041");
 
-  // A non-string value is skipped, and a path that is not a table answers
-  // nothing rather than throwing.
   CHECK(ConfigService::getStringPairs("server").empty());
   CHECK(ConfigService::getStringPairs("nothing.here").empty());
 
@@ -208,8 +191,6 @@ port = 7040
 
 TEST_CASE("a persisting setter rewrites the file and keeps its comments")
 {
-  // Declared last: the persisting family edits the loaded file in place, so a
-  // case that runs after this one would read a file this one has rewritten.
   const std::string path = writeTemp("config-service-persist.toml", R"(
 # Written once by the provisioning script; the comments are the operator's.
 [storage]
@@ -228,20 +209,14 @@ enabled = false
   CHECK(ConfigService::setBool("feature.enabled", true));
 
   const std::string written = readFile(path);
-  // A key the file carries is replaced where it stands, and the comment lines
-  // and the key's neighbours survive the edit.
   CHECK(written.find("bucket = \"new-bucket\"") != std::string::npos);
   CHECK(written.find("old-bucket") == std::string::npos);
   CHECK(written.find("# Written once by the provisioning script") !=
         std::string::npos);
   CHECK(written.find("# where the objects live") != std::string::npos);
   CHECK(written.find("region = \"eu-west-1\"") != std::string::npos);
-  // A key the file does not carry joins the section it names, and a flag is
-  // written as a flag rather than as a quoted string.
   CHECK(written.find("retries = 3") != std::string::npos);
   CHECK(written.find("enabled = true") != std::string::npos);
-  // The in-memory view moved with the file, so the next reader of the same
-  // process sees the value the file now holds.
   CHECK(ConfigService::getString("storage.bucket") == "new-bucket");
   CHECK(ConfigService::getInt("storage.retries") == 3);
   CHECK(ConfigService::getBool("feature.enabled"));

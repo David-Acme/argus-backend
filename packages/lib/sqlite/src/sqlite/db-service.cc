@@ -9,41 +9,36 @@
 
 namespace
 {
-// Read-only client of the sync domain, installed by the host at boot.
 drogon::orm::DbClientPtr& g_readOnlyClient()
 {
   static drogon::orm::DbClientPtr client;
   return client;
 }
 
-// Identity client of the auth reads, installed by the host at boot.
 drogon::orm::DbClientPtr& g_identityClient()
 {
   static drogon::orm::DbClientPtr client;
   return client;
 }
 
-// Camera-domain client (Rulings X/Z), installed by the host at boot.
 drogon::orm::DbClientPtr& g_cameraClient()
 {
   static drogon::orm::DbClientPtr client;
   return client;
 }
 
-// Productivity-domain client (Ruling AQ), installed by the host at boot.
 drogon::orm::DbClientPtr& g_productivityClient()
 {
   static drogon::orm::DbClientPtr client;
   return client;
 }
 
-// Gateway-domain client, installed by the host at boot.
 drogon::orm::DbClientPtr& g_gatewayClient()
 {
   static drogon::orm::DbClientPtr client;
   return client;
 }
-} // namespace
+}
 
 namespace
 {
@@ -83,7 +78,7 @@ const std::vector<std::string> kPerBootPragmas = {
     "PRAGMA temp_store = MEMORY",
 };
 
-} // namespace
+}
 
 void DbService::setReadOnlyClient(drogon::orm::DbClientPtr client)
 {
@@ -92,7 +87,6 @@ void DbService::setReadOnlyClient(drogon::orm::DbClientPtr client)
 
 drogon::orm::DbClientPtr DbService::readOnlyClient()
 {
-  // Uninstalled means the tables it serves do not exist; repositories answer empty.
   return g_readOnlyClient();
 }
 
@@ -103,7 +97,6 @@ void DbService::setIdentityClient(drogon::orm::DbClientPtr client)
 
 drogon::orm::DbClientPtr DbService::identityClient()
 {
-  // Installed at boot, before any IO thread exists: no synchronization.
   if (auto client = g_identityClient())
     return client;
   return client();
@@ -116,7 +109,6 @@ void DbService::setCameraClient(drogon::orm::DbClientPtr client)
 
 drogon::orm::DbClientPtr DbService::cameraClient()
 {
-  // Installed at boot, before any IO thread exists: no synchronization.
   if (auto client = g_cameraClient())
     return client;
   return client();
@@ -129,7 +121,6 @@ void DbService::setProductivityClient(drogon::orm::DbClientPtr client)
 
 drogon::orm::DbClientPtr DbService::productivityClient()
 {
-  // Installed at boot, before any IO thread exists: no synchronization.
   if (auto client = g_productivityClient())
     return client;
   return client();
@@ -142,7 +133,6 @@ void DbService::setGatewayClient(drogon::orm::DbClientPtr client)
 
 drogon::orm::DbClientPtr DbService::gatewayClient()
 {
-  // Uninstalled means the gateway database is absent; callers degrade.
   return g_gatewayClient();
 }
 

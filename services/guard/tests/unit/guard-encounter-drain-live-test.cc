@@ -27,12 +27,6 @@ using namespace guard_query;
 
 namespace
 {
-// Runs the app for the case body and stops it on the way out. Drogon reports
-// the app running before its loop is looping and a loop that has not begun
-// cannot be stopped, so waiting for it is what makes the quit take effect; a
-// boot that never reached the loop is left to the process. Measured: detaching
-// in that window left the app's thread running past the end of the process
-// (SIGSEGV inside EventLoop::loop() in 3 of 20 runs of a forced throw).
 class AppRunner
 {
 public:
@@ -67,7 +61,6 @@ std::string scalar(const std::string& sql)
   return rows.front()[0].as<std::string>();
 }
 
-// The live stream, reported as a failed assertion when the broker holds none.
 NatsBus::StreamStatus
 streamStatus(const std::optional<NatsBus::StreamStatus>& status)
 {
@@ -82,8 +75,6 @@ struct EncounterCloseRequest
   std::string stageId;
 };
 
-// Closes one encounter through the repository, so the outbox row the drain
-// publishes is the row production writes.
 std::string closeEncounter(GuardRepository& repository,
                            const EncounterCloseRequest& request)
 {
@@ -134,14 +125,8 @@ std::string closeEncounter(GuardRepository& repository,
   REQUIRE(closed.closed.size() == 1);
   return encounterClosedEventId(closed.closed.front(), closedAt);
 }
-} // namespace
+}
 
-// Opt-in live check against a real NATS + JetStream (ARGUS_NATS_URL). The drain
-// is driven directly, so no durable consumer and no sweep timer are in play,
-// and the stream it publishes into is one nothing has declared yet: the pass
-// that settles the row is therefore also the pass that created the stream.
-// streamInfo answers with nothing at all for a stream that is not there, so an
-// absent stream is the empty optional and never exists == false.
 TEST_CASE("the encounter drain creates its own stream and settles what it publishes")
 {
   const char* url = std::getenv("ARGUS_NATS_URL");

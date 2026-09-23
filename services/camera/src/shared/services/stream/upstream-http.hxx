@@ -64,4 +64,4 @@ private:
   bool inChunkData_{false};
 };
 
-} // namespace upstream_http
+}

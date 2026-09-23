@@ -145,7 +145,7 @@ drogon::Task<std::string> send(const SendInput& input)
   }
   co_return std::string(response->getBody());
 }
-} // namespace
+}
 
 bool S3StorageService::isConfigured() const
 {

@@ -8,7 +8,6 @@ std::vector<tools::ToolDescriptor> memoryToolDescriptors()
        .description = "Almacena un hecho sobre una persona, dispositivo o "
                       "lugar de la casa. El hecho completo va en el argumento "
                       "text, tal cual lo pidió el usuario",
-       // No required arguments: a fired call must always reach the handler.
        .arguments = {{.name = "text",
                       .type = "string",
                       .required = false,
@@ -48,7 +47,6 @@ std::vector<tools::ToolDescriptor> memoryToolDescriptors()
        .description = "Guarda un recordatorio del usuario que habla: un hecho "
                       "con un momento concreto. No suena ninguna alarma; el "
                       "recordatorio se recupera al preguntar por él",
-       // Same all-optional shape as memory.remember, for the same reason.
        .arguments = {{.name = "text",
                       .type = "string",
                       .required = false,

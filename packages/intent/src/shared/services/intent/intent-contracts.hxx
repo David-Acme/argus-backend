@@ -9,7 +9,6 @@
 #include <utility>
 #include <vector>
 
-// The fast tier of the intent router: what the turn is for, in microseconds.
 namespace intent
 {
 
@@ -24,7 +23,6 @@ enum class ToolIntent : uint8_t
   Unknown
 };
 
-// The training labels, in the enum's own order.
 inline constexpr std::array<std::pair<std::string_view, ToolIntent>, 6> kIntentNames{{
     {"none", ToolIntent::None},
     {"memory_save", ToolIntent::MemorySave},
@@ -58,7 +56,6 @@ struct IntentHit
   float score = 0.0F;
 };
 
-// Unknown and not confident means the fast tier abstains; the LLM keeps the turn.
 struct IntentDecision
 {
   ToolIntent intent = ToolIntent::Unknown;
@@ -68,14 +65,12 @@ struct IntentDecision
   bool confident = false;
 };
 
-// The normalisation the published model was trained on; both sides must agree.
 inline std::string normalizeInput(const std::string& text)
 {
   return text_norm::whitespace(
       text_norm::stripAccents(text_norm::intent(text)), true);
 }
 
-// Scores already-normalised text, top-k so the router can measure a margin.
 class IIntentClassifier
 {
 public:
@@ -91,4 +86,4 @@ public:
   virtual std::vector<IntentHit> score(const std::string& normalized) const = 0;
 };
 
-} // namespace intent
+}

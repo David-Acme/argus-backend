@@ -4,8 +4,6 @@
 #include <optional>
 #include <string>
 
-// Resident label on a decision-journal row; the CHECK constraint mirrors it.
-// Labels are collected for offline calibration only and never retune live.
 enum class FeedbackLabel : uint8_t
 {
   Useful = 0,

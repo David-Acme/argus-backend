@@ -10,7 +10,6 @@
 #include <shared/services/notification/notification-service.hxx>
 #include <vector>
 
-// argus.notification.v1.NotificationService: create fan-out and user pulls.
 class NotificationRpcService final
     : public argus::notification::v1::NotificationService::CallbackService
 {
@@ -22,7 +21,6 @@ public:
     bool pushRequired{false};
   };
 
-  // Each RPC is gated by the capability credential of its single caller.
   NotificationRpcService() = default;
   explicit NotificationRpcService(Dependencies dependencies);
 
@@ -36,10 +34,8 @@ public:
       const argus::notification::v1::PullNotificationsRequest* request,
       argus::notification::v1::PullNotificationsResponse* response) override;
 
-  // Startup + periodic reconciliation of durable delivery intents.
   void startDeliveryReconciler();
 
-  // Periodic synthetic probe through create, broker publish and settle.
   void startSelfTestProber();
 
 private:

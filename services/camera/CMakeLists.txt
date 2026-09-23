@@ -1,9 +1,6 @@
 cmake_minimum_required(VERSION 3.25)
 project(argus-camera VERSION 1.0.0 LANGUAGES CXX)
 
-# enable_testing() must precede the first add_subdirectory: the flag
-# propagates into every subtree, and a directory that misses it gets no
-# CTestTestfile — the tests of anything added beneath it then never run.
 enable_testing()
 
 set(CMAKE_CXX_STANDARD 20)
@@ -15,11 +12,6 @@ include(${CMAKE_CURRENT_SOURCE_DIR}/../../cmake/argus-module.cmake)
 set(CAMERA_SRC_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
 if(PROJECT_IS_TOP_LEVEL)
-    # Standalone configure: this service owns the whole build, so it adds the
-    # packages it links — the leaves it uses directly and the sibling packages
-    # that used to arrive through argus-common — plus the third-party
-    # sqlite-vec, so the camera service links the same objects as any other
-    # consumer.
     find_package(Drogon CONFIG REQUIRED)
     find_package(cnats CONFIG REQUIRED)
     find_package(tomlplusplus REQUIRED)
@@ -123,14 +115,10 @@ if(NOT TARGET argus::contracts::camera)
                      ${CMAKE_BINARY_DIR}/contracts/camera)
 endif()
 
-# The camera-domain sync contract (argus.camera.v1.SyncService); consumers
-# link argus::clients::camera.
 if(NOT TARGET argus::clients::camera)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/camera
                      ${CMAKE_BINARY_DIR}/clients/camera EXCLUDE_FROM_ALL)
 endif()
-# The standard grpc.health.v1 stubs this service answers its health probes
-# with; packages/lib/grpc declares them (argus::lib::grpc-health).
 if(NOT TARGET argus::lib::grpc-health)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/grpc
                      ${CMAKE_BINARY_DIR}/grpc EXCLUDE_FROM_ALL)
@@ -140,9 +128,6 @@ if(NOT TARGET argus::clients::camera-actions)
                      ${CMAKE_BINARY_DIR}/clients/camera-actions EXCLUDE_FROM_ALL)
 endif()
 
-# The camera domain's row code: the tables' repositories and schemas as one
-# module, plus the three single-repository modules beside it. Added before the
-# targets that name them.
 add_subdirectory(src/shared/repositories)
 add_subdirectory(src/shared/repositories/action-command)
 add_subdirectory(src/shared/repositories/object-event-outbox)
@@ -162,17 +147,11 @@ argus_module(NAME camera-rpc
 
 target_compile_options(argus_camera-rpc PRIVATE -Wall -Wextra)
 
-# ncnn is THE objects capacity of this service (F2-3): the detector is the
-# only AI linkage here — no face/llm/vlm/tts/stt/vad code is compiled.
 set(NCNN_SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../third_party/ncnn/src)
 
 add_library(camera-core STATIC
     ${CAMERA_SRC_ROOT}/controllers/camera-media-service.cc
     ${CAMERA_SRC_ROOT}/controllers/camera-media-socket.cc
-    # Device control: camera-control feature (moved from the legacy in F6-2)
-    # plus the camera-driver stack it dispatches through. TTS synthesis is
-    # remote-only (TtsClient -> argus-tts wire); no in-process TTS engine is
-    # compiled here.
     ${CAMERA_SRC_ROOT}/feature/api/camera-control/controllers/camera-control-controller.cc
     ${CAMERA_SRC_ROOT}/feature/api/camera-control/dtos/camera-preset-dto.cc
     ${CAMERA_SRC_ROOT}/feature/api/camera-control/dtos/camera-ptz-dto.cc
@@ -204,8 +183,6 @@ add_library(camera-core STATIC
     ${CAMERA_SRC_ROOT}/operator/operator-config.cc
     ${CAMERA_SRC_ROOT}/operator/zone-provider.cc
     ${CAMERA_SRC_ROOT}/operator/zone-source.cc
-    # Camera-domain CRUD, compiled from the shared tree: this service is the
-    # sole owner since F6-2 (the legacy binary no longer compiles it).
     ${CAMERA_SRC_ROOT}/feature/api/camera/controllers/camera-controller.cc
     ${CAMERA_SRC_ROOT}/feature/api/camera/dtos/create-camera-dto.cc
     ${CAMERA_SRC_ROOT}/feature/api/camera/dtos/update-camera-dto.cc
@@ -214,11 +191,9 @@ add_library(camera-core STATIC
     ${CAMERA_SRC_ROOT}/feature/api/zone/dtos/create-zone-dto.cc
     ${CAMERA_SRC_ROOT}/feature/api/zone/dtos/update-zone-dto.cc
     ${CAMERA_SRC_ROOT}/feature/api/zone/services/zone-feature-service.cc
-    # Fleet-gated audible/device actions for argus-guard (announce/alarm/siren).
     ${CAMERA_SRC_ROOT}/feature/actions/audio-capture.cc
     ${CAMERA_SRC_ROOT}/feature/actions/camera-action-rpc-service.cc
     ${CAMERA_SRC_ROOT}/feature/actions/stt-transcriber.cc
-    # Stream lifecycle: go2rtc supervision and the fMP4 StreamHub relay.
     ${CAMERA_SRC_ROOT}/shared/services/stream/camera-source-registrar.cc
     ${CAMERA_SRC_ROOT}/shared/services/stream/go2rtc-manager.cc
     ${CAMERA_SRC_ROOT}/shared/services/stream/stream-hub.cc
@@ -235,8 +210,6 @@ target_include_directories(camera-core SYSTEM PUBLIC
 
 target_include_directories(camera-core PUBLIC ${CAMERA_SRC_ROOT})
 
-# The /media socket's SyncFrameInput vocabulary, which is the sync contract's
-# (sub-step 3a-1d) — the camera repositories are this service's since 3a-1b.
 target_link_libraries(camera-core PUBLIC
     argus::camera-repositories
     argus::lib::sqlite
@@ -269,9 +242,6 @@ target_compile_options(camera-core PRIVATE -Wall -Wextra)
 
 add_executable(argus-camera ${CAMERA_SRC_ROOT}/main.cc)
 
-# The filters validate through argus.identity.v1: argus::clients::identity rides
-# argus::lib::auth, which is the whole of what this executable needs of the
-# identity domain since the cross-domain repositories left in 3a-1b.
 target_link_libraries(argus-camera PRIVATE camera-core argus_camera-rpc
     argus::lib::auth)
 
@@ -284,8 +254,6 @@ if(DOCTEST_INCLUDE_DIRS)
         INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${DOCTEST_INCLUDE_DIRS}")
 endif()
 
-# The unit suites opt into the default build: this folder is added
-# EXCLUDE_FROM_ALL, and camera-migration (tools/) stays out of it.
 set(CAMERA_UNIT_TESTS
     camera-schema-test
     camera-migration-test
@@ -300,9 +268,6 @@ set(CAMERA_UNIT_TESTS
 foreach(TEST_NAME IN LISTS CAMERA_UNIT_TESTS)
     add_executable(${TEST_NAME} tests/unit/${TEST_NAME}.cc)
 
-    # This folder is added EXCLUDE_FROM_ALL, so the suites have to opt
-    # back into the default build or ctest registers tests whose
-    # binaries never get built.
     set_target_properties(${TEST_NAME} PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
         target_link_libraries(${TEST_NAME} PRIVATE
@@ -327,14 +292,10 @@ foreach(TEST_NAME IN LISTS CAMERA_UNIT_TESTS)
     add_test(NAME ${TEST_NAME} COMMAND ${TEST_NAME})
 endforeach()
 
-# camera-migration builds only as a dependency of these two. The standalone
-# build adds its folder here; the root tree finds it via the discovery glob.
 if(PROJECT_IS_TOP_LEVEL AND NOT TARGET camera-migration)
     add_subdirectory(tools/migrate-camera)
 endif()
 
-# The Vulkan probe reuses ncnn's Vulkan init; on-demand like the root tree's
-# discovery glob.
 if(PROJECT_IS_TOP_LEVEL AND TARGET ncnn)
     add_subdirectory(tools/vulkan-probe)
 endif()
@@ -348,10 +309,6 @@ target_link_libraries(camera-health-test PRIVATE camera-core)
 target_link_libraries(event-intelligence-test PRIVATE camera-core)
 target_link_libraries(camera-source-registrar-test PRIVATE camera-core)
 
-# The camera-talk cutover: speak() reaches the wire before the device,
-# degrading to the 502 envelope when argus-tts is down. It compiles the
-# control feature and the driver stack directly rather than linking
-# camera-core, which would drag ncnn into a suite that needs none of it.
 add_executable(camera-talk-cutover-test
     tests/unit/camera-talk-cutover-test.cc
     ${CAMERA_SRC_ROOT}/feature/api/camera-control/controllers/camera-control-controller.cc
@@ -372,8 +329,6 @@ add_executable(camera-talk-cutover-test
     ${CAMERA_SRC_ROOT}/shared/services/tapo/tapo-api.cc
     ${CAMERA_SRC_ROOT}/shared/services/tapo/tapo-talk-client.cc)
 
-# The TTS wire's fake server ships with the wire module, so both this
-# suite and argus-voice's can drive the same fake.
 target_include_directories(camera-talk-cutover-test PRIVATE
     ${CAMERA_SRC_ROOT}
     ${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/tts/tests/support)
@@ -398,10 +353,6 @@ target_compile_options(camera-talk-cutover-test PRIVATE -Wall -Wextra)
 
 add_test(NAME camera-talk-cutover-test COMMAND camera-talk-cutover-test)
 
-# The schema, migration and config suites run from src/test/unit.
-
-# The camera action surface: the RPC drives the stub driver for announce,
-# alarm and siren, and serves the snapshot crop, all behind the fleet gate.
 add_executable(camera-action-rpc-test
     tests/unit/camera-action-rpc-test.cc
     ${CAMERA_SRC_ROOT}/feature/actions/audio-capture.cc
@@ -456,7 +407,6 @@ set_target_properties(camera-action-rpc-test PROPERTIES
 
 add_test(NAME camera-action-rpc-test COMMAND camera-action-rpc-test)
 
-# The legacy action_command migration: pre-Round-5 rows must never re-execute.
 add_executable(camera-action-migration-test
     tests/unit/camera-action-migration-test.cc)
 target_include_directories(camera-action-migration-test PRIVATE
@@ -470,8 +420,6 @@ set_target_properties(camera-action-migration-test PROPERTIES
     EXCLUDE_FROM_ALL FALSE)
 add_test(NAME camera-action-migration-test COMMAND camera-action-migration-test)
 
-# The durable observation outbox: transactional enqueue, cooldown dedup and
-# explicit overflow accounting.
 add_executable(object-event-outbox-test
     tests/unit/object-event-outbox-test.cc)
 target_link_libraries(object-event-outbox-test PRIVATE
@@ -484,7 +432,6 @@ set_target_properties(object-event-outbox-test PROPERTIES
     EXCLUDE_FROM_ALL FALSE)
 add_test(NAME object-event-outbox-test COMMAND object-event-outbox-test)
 
-# The publisher sink: exact health counters against the durable outbox.
 add_executable(object-event-outbox-sink-test
     tests/unit/object-event-outbox-sink-test.cc)
 target_link_libraries(object-event-outbox-sink-test PRIVATE camera-core
@@ -496,8 +443,6 @@ set_target_properties(object-event-outbox-sink-test PROPERTIES
     EXCLUDE_FROM_ALL FALSE)
 add_test(NAME object-event-outbox-sink-test COMMAND object-event-outbox-sink-test)
 
-# The change outbox: the transition-addressed key rules and the replay/conflict
-# dispositions over a real schema.
 add_executable(change-outbox-test
     tests/unit/change-outbox-test.cc)
 target_link_libraries(change-outbox-test PRIVATE
@@ -510,8 +455,6 @@ set_target_properties(change-outbox-test PROPERTIES
     EXCLUDE_FROM_ALL FALSE)
 add_test(NAME change-outbox-test COMMAND change-outbox-test)
 
-# The change sink: every emit and audit lands in the outbox, and a broker-less
-# sink leaves the row pending instead of dropping it.
 add_executable(change-outbox-sink-test
     tests/unit/change-outbox-sink-test.cc)
 target_link_libraries(change-outbox-sink-test PRIVATE camera-core

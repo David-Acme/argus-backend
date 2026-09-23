@@ -12,7 +12,7 @@ inline constexpr std::string_view FIND_BY_PERSON =
 
 inline constexpr std::string_view INSERT =
     "INSERT OR IGNORE INTO person_tag (person_id, tag, source) VALUES (?, ?, ?)";
-} // namespace person_tag_query
+}
 
 struct PersonTagAddInput
 {

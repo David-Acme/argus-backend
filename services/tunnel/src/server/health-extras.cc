@@ -62,4 +62,4 @@ HealthStatus clientHealthStatus(TunnelClient& client)
   return status;
 }
 
-} // namespace tunnel
+}

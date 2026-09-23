@@ -21,7 +21,6 @@ public:
   drogon::Task<drogon::HttpResponsePtr>
   doFilter(const drogon::HttpRequestPtr& req) override;
 
-  // Token extraction order shared with the /sync relay.
   static std::string extractToken(const drogon::HttpRequestPtr& req);
 
 private:

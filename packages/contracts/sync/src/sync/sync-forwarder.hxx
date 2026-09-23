@@ -22,7 +22,6 @@ struct SocketFrameError
   const std::string& error;
 };
 
-// Sends the {type:"<type>_error", status, error} envelope for a failed frame.
 inline void sendSocketFrameError(const SocketFrameError& input)
 {
   Json::Value envelope;
@@ -32,19 +31,16 @@ inline void sendSocketFrameError(const SocketFrameError& input)
   input.conn->sendJson(envelope);
 }
 
-// Side channel of the /sync socket for the frame types the sync tables do not serve themselves.
 class SyncForwarder
 {
 public:
   virtual ~SyncForwarder() = default;
 
-  // Client connection established; the implementation may capture the transport identity.
   virtual void onConnect(const drogon::HttpRequestPtr&,
                          const drogon::WebSocketConnectionPtr&)
   {
   }
 
-  // One text frame of a relayed type; false means it was not handled.
   virtual drogon::Task<bool> forwardText(const SyncFrameInput& input) = 0;
 
   virtual void forwardBinary(const drogon::WebSocketConnectionPtr& conn,

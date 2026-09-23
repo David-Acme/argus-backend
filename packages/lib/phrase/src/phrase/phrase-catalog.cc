@@ -19,7 +19,7 @@ text_match::PatternClass classFor(PhraseKind kind)
   }
 }
 
-} // namespace
+}
 
 void PhraseCatalog::build()
 {

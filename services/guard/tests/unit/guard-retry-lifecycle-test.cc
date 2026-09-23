@@ -32,9 +32,6 @@ using guard_test::waitForBoot;
 
 namespace
 {
-// Runs the app and stops it however the case body leaves. A joinable
-// std::thread destroyed by unwinding calls std::terminate, which reports an
-// ordinary statement failure as a SIGABRT with no assertion behind it.
 class AppRunner
 {
 public:
@@ -44,12 +41,6 @@ public:
   {
     if (!runner_.joinable())
       return;
-    // Drogon reports the app running before its main loop is looping, and a
-    // loop that has not begun cannot be stopped: trantor's loop() clears the
-    // quit flag again as it starts. Waiting for it to loop is what makes the
-    // quit below take effect — detaching in that window left the app's thread
-    // running past the end of the process, measured as SIGSEGV inside
-    // EventLoop::loop() in 3 of 20 runs of a forced constructor throw.
     for (int i = 0; i < 3000 && !drogon::app().getLoop()->isRunning(); ++i)
       std::this_thread::sleep_for(std::chrono::milliseconds(10));
     if (drogon::app().getLoop()->isRunning()) {
@@ -57,8 +48,6 @@ public:
       runner_.join();
       return;
     }
-    // A boot that never reached the loop at all is left to the process: it
-    // cannot be asked to stop, and joining it would block for ever.
     runner_.detach();
   }
 
@@ -256,7 +245,7 @@ GuardService::Config baseConfig()
   config.retryLeaseMs = 300;
   return config;
 }
-} // namespace
+}
 
 TEST_CASE("durable retries survive destroy, races and teardown")
 {
@@ -388,8 +377,6 @@ TEST_CASE("durable retries survive destroy, races and teardown")
     const Json::Value second = retryObservation("retry-race:1", 3);
     std::atomic<bool> firstOk{false};
     std::atomic<bool> secondOk{false};
-    // jthread joins in its destructor, so a failure between here and the join
-    // below cannot destroy a joinable thread and abort without a report.
     std::jthread left([&] {
       try {
         firstOk.store(drogon::sync_wait(service.handle(first, 1)));
@@ -416,8 +403,6 @@ TEST_CASE("durable retries survive destroy, races and teardown")
   {
     SlowNotifications slow;
     const int callsBefore = notifications.calls.load();
-    // Same owner: joins in its destructor if the case leaves before the join
-    // below, and is assigned once the service it drives exists.
     std::jthread worker;
     {
       GuardService::Config config = baseConfig();

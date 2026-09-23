@@ -59,7 +59,7 @@ int64_t nowSeconds()
       .count();
 }
 
-} // namespace
+}
 
 Json::Value TapoStatusBatch::toJson() const
 {

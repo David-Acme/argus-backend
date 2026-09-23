@@ -17,7 +17,6 @@ struct VlmDescribeResult
   std::string caption;
 };
 
-// Client for the argus-vlm internal wire (POST /vlm/v1/describe).
 class VlmClient
 {
 public:

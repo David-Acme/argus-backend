@@ -21,9 +21,6 @@ find_package(doctest REQUIRED)
 add_executable(client-caller-identity-test
     tests/unit/client-caller-identity-test.cc)
 
-# This folder is pulled in EXCLUDE_FROM_ALL (consumers add it for the client
-# targets), so the suite has to opt back into the default build to be
-# present when ctest runs it.
 set_target_properties(client-caller-identity-test PROPERTIES
     EXCLUDE_FROM_ALL FALSE)
 
@@ -37,9 +34,6 @@ add_test(NAME client-caller-identity-test COMMAND client-caller-identity-test)
 add_executable(camera-sync-client-test
     tests/unit/camera-sync-client-test.cc)
 
-# This folder is pulled in EXCLUDE_FROM_ALL (consumers add it for the client
-# targets), so the suite has to opt back into the default build to be
-# present when ctest runs it.
 set_target_properties(camera-sync-client-test PROPERTIES
     EXCLUDE_FROM_ALL FALSE)
 

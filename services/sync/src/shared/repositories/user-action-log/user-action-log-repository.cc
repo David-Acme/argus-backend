@@ -49,7 +49,6 @@ UserActionLogRepository::find(const SyncFilter& filter) const
   co_return data;
 }
 
-// Insert-only: the journal has no tombstone, so nothing is ever found deleted.
 drogon::Task<std::vector<Json::Value>>
 UserActionLogRepository::findDeleted(const SyncFilter&) const
 {

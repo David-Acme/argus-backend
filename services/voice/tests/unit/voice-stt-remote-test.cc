@@ -37,9 +37,8 @@ void pointAt(const std::string& url)
   ConfigService::setRuntimeString("stt.remote_url", url);
 }
 
-} // namespace
+}
 
-// Must match the friend declaration inside VoiceSessionService (global scope).
 struct VoiceSessionTestAccess
 {
   static std::shared_ptr<VoiceSessionService::Session>

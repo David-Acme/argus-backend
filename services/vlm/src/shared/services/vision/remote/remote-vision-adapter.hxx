@@ -14,7 +14,6 @@
 #include <string_view>
 #include <vector>
 
-// Remote describe call surface mirroring VisionService::describeMat(Mat, prompt, maxTokens).
 struct RemoteDescribeInput
 {
   cv::Mat bgr;
@@ -23,7 +22,6 @@ struct RemoteDescribeInput
   std::string cameraId;
 };
 
-// Remote stand-in for VisionServiceAdapter: describe over the argus-vlm wire, local caption cache.
 class RemoteVisionServiceAdapter : public IService
 {
 public:
@@ -38,7 +36,6 @@ public:
   drogon::Task<std::string>
   describeMatAsync(const RemoteDescribeInput& input);
 
-  // Cache key: FNV-1 of the encoded JPEG folded with the prompt.
   static uint64_t cacheKey(std::string_view jpeg, const std::string& prompt);
 
 private:

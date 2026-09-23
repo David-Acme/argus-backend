@@ -8,7 +8,7 @@
 namespace
 {
 constexpr int kMaxIncidentLimit = 200;
-} // namespace
+}
 
 ListIncidentsDto ListIncidentsDto::fromRequest(
     const drogon::HttpRequestPtr& request)

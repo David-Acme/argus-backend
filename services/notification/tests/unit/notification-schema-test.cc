@@ -31,7 +31,7 @@ std::vector<std::string> queryColumn(sqlite3* db, const std::string& sql)
   return rows;
 }
 
-} // namespace
+}
 
 TEST_CASE("notification schema applies cleanly to an in-memory database")
 {

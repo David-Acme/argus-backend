@@ -1,5 +1,3 @@
-# argus-llm configuration. Copy to config.toml (gitignored) to run.
-
 [server]
 host = "127.0.0.1"
 port = 7032
@@ -27,7 +25,6 @@ chat_template = "chatml"
 gpu_layers = -1
 
 [intent]
-# An absent file makes the router abstain; every turn stays on tool calling.
 model_file = "models/intent/intent.bin"
 
 [drogon.app]
@@ -50,5 +47,4 @@ handle_sig_term = true
 relaunch_on_error = false
 
 [memory]
-# Camera events become system episodes for the owner.
 observe_camera_events = false

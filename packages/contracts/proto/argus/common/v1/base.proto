@@ -4,7 +4,6 @@ package argus.common.v1;
 
 option cc_enable_arenas = true;
 
-// Frozen error codes mirroring the HTTP envelope codes (packages/lib/errors).
 enum ErrorCode {
   ERROR_CODE_UNSPECIFIED = 0;
   ERROR_CODE_BAD_REQUEST = 1;
@@ -20,7 +19,6 @@ enum ErrorCode {
   ERROR_CODE_CAMERA_UNREACHABLE = 11;
 }
 
-// Always-present response envelope; info and errors stay empty when absent.
 message Envelope {
   int32 status = 1;
   string info = 2;
@@ -34,12 +32,11 @@ message Errors {
 message Error {
   string code = 1;
   string message = 2;
-  string field = 3; // set on VALIDATION_ERROR only
+  string field = 3;
 }
 
-// Caller identity forwarded by the gateway as metadata headers.
 message RequestContext {
-  string x_argus_user = 1;   // header x-argus-user
-  string x_argus_role = 2;   // header x-argus-role
-  string x_argus_device = 3; // header x-argus-device
+  string x_argus_user = 1;
+  string x_argus_role = 2;
+  string x_argus_device = 3;
 }

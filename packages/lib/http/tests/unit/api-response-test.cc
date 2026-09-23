@@ -39,7 +39,6 @@ Json::Value sampleData()
   return data;
 }
 
-// The advice answers through a callback; this captures what it answered with.
 drogon::HttpResponsePtr answerTo(const std::exception& error)
 {
   drogon::HttpResponsePtr response;
@@ -48,7 +47,7 @@ drogon::HttpResponsePtr answerTo(const std::exception& error)
   });
   return response;
 }
-} // namespace
+}
 
 TEST_CASE("ApiResponse::ok wraps data in the status/info/errors envelope")
 {

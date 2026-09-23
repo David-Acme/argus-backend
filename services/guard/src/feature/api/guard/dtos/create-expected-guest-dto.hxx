@@ -4,7 +4,6 @@
 #include <json/value.h>
 #include <string>
 
-// Owner expected-guest window; zero scopes mean any camera/person/host.
 struct CreateExpectedGuestDto
 {
   std::string description;

@@ -6,8 +6,6 @@
 #include <memory>
 #include <string>
 
-// Pins the client's own reading of the action wire: which inputs never leave
-// the process, what an ack becomes, and how a transport failure is read.
 namespace
 {
 
@@ -16,7 +14,6 @@ namespace v1 = argus::camera::v1;
 using Ctx = grpc::CallbackServerContext;
 using Reactor = grpc::ServerUnaryReactor;
 
-// Answers the announced command with whatever the case put in it.
 class ScriptedActionService final
     : public v1::CameraActionService::CallbackService
 {
@@ -49,12 +46,10 @@ std::string loopback(int port)
   return "127.0.0.1:" + std::to_string(port);
 }
 
-} // namespace
+}
 
 TEST_CASE("a bad camera id is refused locally, an unreachable one is not")
 {
-  // The dead target is the control: the same call with a valid id comes back
-  // UNAVAILABLE, so INVALID_ARGUMENT proves the client never dialled out.
   const CameraActionClient client({.target = "127.0.0.1:1", .credential = ""});
 
   const auto refused =
@@ -113,10 +108,6 @@ TEST_CASE("an ack's outcome is read off the wire, never inferred")
         client.announce({.cameraId = 4, .text = "Hola", .commandId = ""});
     CHECK(accepted.outcome == CameraCommandOutcome::SUCCEEDED);
     CHECK(accepted.detail == "spoken");
-    // The detail fallback is for an ack carrying no outcome and no accepted
-    // flag: the service derives `accepted` from an outcome it always sets
-    // (`finishAck`, camera-action-rpc-service.cc:71-80), so "in_flight" never
-    // rides with accepted, and accepted outranks detail in any case.
     service.ack.clear_accepted();
     service.ack.set_detail("in_flight");
     CHECK(client.announce({.cameraId = 4, .text = "Hola", .commandId = ""})

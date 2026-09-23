@@ -1,8 +1,3 @@
-# argus-deploy argus-camera configuration. Copy to config.camera.toml (gitignored)
-# next to this file and fill the instance secrets (the same jwt/device values as
-# config.gateway.toml); the compose file bind-mounts it as argus-camera's
-# config.toml.
-
 [server]
 host = "0.0.0.0"
 port = 7026
@@ -82,14 +77,10 @@ trusted_proxy_ips = ""
 
 [identity]
 target = "172.19.0.1:7040"
-# Must match the gateway's [identity] rpc_secret, or every request 401s.
 rpc_secret = "CHANGE_ME_SAME_IN_EVERY_SERVICE"
 
 [grpc]
-# Capability credential for the guard -> camera edge (paired with guard's
-# camera.actions_credential).
 caller_guard = "CHANGE_ME_GUARD_CAMERA"
-# Camera guard recognition; enroll/capture stay off until you enable them.
 identify = false
 auto_enroll = false
 capture_clear_faces = true
@@ -109,7 +100,6 @@ active_fps = 6.0
 burst_fps = 10.0
 burst_ms = 3000
 use_vulkan = true
-# classes = "person,bicycle,car,..." (COCO-80 default when empty)
 
 [operator]
 aggregation_window_ms = 1000
@@ -120,7 +110,6 @@ cooldown_ms = 30000
 night_start = 22
 night_end = 6
 presence_escalation_frames = 3
-# Enabled zones live in camera.db (the app editor); false uses the JSON below only.
 zones_from_db = true
 zones_refresh_ms = 30000
 camera_rescan_ms = 15000
@@ -130,15 +119,11 @@ ignore_static_persons = false
 static_box_frames = 8
 overlay = false
 overlay_dir = "bench-results/operator-overlay"
-# ignored_classes = "bird,cat"
-# zones = '[{"cameraId":1,"kind":"alert","name":"door","points":[[0.0,0.0],[1.0,0.0],[1.0,1.0]]}]'
 
 [actions]
-# Audible/device actions from argus-guard; off until you enable them.
 enabled = false
 
 [health]
-# Occlusion/blur/moved detection from periodic image stats.
 enabled = true
 interval_ms = 60000
 dark_threshold = 25.0
@@ -147,14 +132,11 @@ blur_threshold = 18.0
 scene_diff = 0.35
 
 [stt]
-# Camera listen (guard agent) transcription through argus-stt.
 remote_url = "argus-stt:7030"
 remote_timeout_ms = 30000
 language = "es"
 
 [storage]
-# Private object storage (RustFS) for detection evidence snapshots.
-# provision-host.sh fills the endpoint and credentials.
 mode = "s3"
 
 [storage.s3]

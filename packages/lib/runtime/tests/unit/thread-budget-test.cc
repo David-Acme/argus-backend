@@ -16,7 +16,7 @@ struct BudgetContract
     int (*scaled)(int hw);
 };
 
-} // namespace
+}
 
 TEST_CASE("every budget stays within its own clamp bounds")
 {

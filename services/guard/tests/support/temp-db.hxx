@@ -20,9 +20,6 @@ inline std::string tempPath(const std::string& name)
   return (std::filesystem::temp_directory_path() / name).string();
 }
 
-// One throwaway SQLite database outside the working tree, removed with its WAL
-// sidecars when the suite ends. Suites run from the repository root, so a
-// relative name would litter the checkout on an aborted run.
 class TempDb
 {
 public:
@@ -45,4 +42,4 @@ private:
   std::string path_;
 };
 
-} // namespace guard_test
+}

@@ -30,7 +30,7 @@ int parseMargin(const std::string& value)
   }
   return parsed;
 }
-} // namespace
+}
 
 SummaryDecisionsDto SummaryDecisionsDto::fromRequest(
     const drogon::HttpRequestPtr& request)

@@ -5,7 +5,6 @@
 #include <phrase/details/phrase-kind.hxx>
 #include <string_view>
 
-// Static per-language vocabulary entries for the memory rule engine.
 struct PhraseSeed
 {
   PhraseKind kind;

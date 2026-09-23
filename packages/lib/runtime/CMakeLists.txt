@@ -1,8 +1,3 @@
-# runtime: the process-runtime primitives — off-loop blocking tasks,
-# cancellation, the adaptive thread budget, the shared AI-engine mutex — and
-# the hardware profile the AI services size their pools from. Consumers link
-# argus::lib::runtime, argus::hardware-profile or argus::hardware-profile-gpu.
-
 include(${CMAKE_CURRENT_SOURCE_DIR}/../../../cmake/argus-module.cmake)
 
 if(NOT TARGET Drogon::Drogon)
@@ -21,9 +16,6 @@ argus_lib(NAME runtime
 
 target_compile_options(argus_lib_runtime PRIVATE -Wall -Wextra)
 
-# The profile probes CPU/RAM/ISA and video accel from the same source, split so
-# most consumers stay ncnn-free (rule 25). Only the Vulkan GPU probe differs
-# between the two targets.
 argus_module(NAME hardware-profile
     SOURCES
         src/runtime/hardware-profile.cc

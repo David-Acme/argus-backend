@@ -59,4 +59,4 @@ int queueWorkers(const std::string& queueName)
   return 1;
 }
 
-} // namespace ThreadBudget
+}

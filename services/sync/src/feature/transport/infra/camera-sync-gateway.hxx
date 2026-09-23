@@ -4,7 +4,6 @@
 #include <memory>
 #include <feature/transport/infra/camera-sync-source.hxx>
 
-// Pull source backed by argus-camera's argus.camera.v1.SyncService leg.
 class CameraSyncGateway : public CameraSyncSource
 {
 public:

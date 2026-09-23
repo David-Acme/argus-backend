@@ -6,7 +6,7 @@ namespace
 {
 constexpr int kRaiseThreshold = 3;
 constexpr int kSoftThreshold = 1;
-} // namespace
+}
 
 bool guard_risk::evidenceFromTag(const std::string& tag, RiskEvidence& evidence)
 {

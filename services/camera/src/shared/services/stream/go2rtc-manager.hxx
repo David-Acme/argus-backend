@@ -45,7 +45,6 @@ public:
   std::string rtspBase();
   static std::string streamName(int64_t cameraId);
 
-  // Rejects anything that could break out of the generated YAML or argument vector.
   static bool isSafeName(const std::string& name);
   static bool isSafeUrl(const std::string& url);
 

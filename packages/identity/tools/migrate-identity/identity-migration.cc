@@ -267,7 +267,7 @@ IdentityResult validateSource(const std::string& sourcePath)
   return result;
 }
 
-} // namespace
+}
 
 IdentityResult applyIdentitySchema(const IdentitySchemaInput& input)
 {

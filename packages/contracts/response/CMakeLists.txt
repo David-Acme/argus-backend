@@ -24,8 +24,6 @@ function(argus_response_rpc_contract)
     endif()
 endfunction()
 
-# The wire module belongs to the package that owns the two functions in it, so
-# the package builds it here rather than leaving the first consumer to do it.
 set(CMAKE_FIND_PACKAGE_TARGETS_GLOBAL TRUE)
 argus_contracts_substrate()
 if(NOT ARGUS_SYSTEM_PROTOBUF AND NOT TARGET gRPC::grpc++)
@@ -33,8 +31,6 @@ if(NOT ARGUS_SYSTEM_PROTOBUF AND NOT TARGET gRPC::grpc++)
 endif()
 argus_response_rpc_contract()
 
-# The RPC suite: toRpcStatus and fromRpcStatus are the pair every gRPC boundary
-# in the tree refuses through, and nothing tested them until now.
 enable_testing()
 find_package(doctest REQUIRED)
 

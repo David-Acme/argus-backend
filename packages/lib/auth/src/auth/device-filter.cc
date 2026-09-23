@@ -12,7 +12,6 @@
 
 namespace
 {
-// Anything over 64 hex chars is treated as an unknown credential.
 constexpr size_t kMaxCredentialLength = 128;
 
 bool trustedProxy(const std::string& peer)
@@ -44,7 +43,7 @@ std::string fingerprintKey()
     throw std::runtime_error("Device fingerprint secret is not configured");
   return key;
 }
-} // namespace
+}
 
 drogon::Task<drogon::HttpResponsePtr>
 DeviceFilter::doFilter(const drogon::HttpRequestPtr& req)
@@ -60,7 +59,6 @@ DeviceFilter::doFilter(const drogon::HttpRequestPtr& req)
     std::string deviceHash;
     if (!credential.empty() && credential.size() <= kMaxCredentialLength) {
       const auto secretHash = sha256Hex(credential);
-      // Unreachable or unknown credential means no device hash (fail closed).
       const auto client = filterIdentityClient();
       const auto active = co_await BlockingTask<bool>(
           [client, secretHash]() {

@@ -20,9 +20,6 @@ find_package(doctest REQUIRED)
 
 add_executable(camera-action-client-test tests/unit/camera-action-client-test.cc)
 
-# This folder is pulled in EXCLUDE_FROM_ALL (consumers add it for the client
-# targets), so the suite has to opt back into the default build to be present
-# when ctest runs it.
 set_target_properties(camera-action-client-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
 target_link_libraries(camera-action-client-test PRIVATE argus::clients::camera-actions

@@ -2,7 +2,6 @@
 
 namespace
 {
-// Maps the wire language code onto the engine enum across the full TtsLang set.
 TtsLang ttsLangFromCode(const std::string& code)
 {
   for (int i = 0; i < kTtsLangCount; ++i) {
@@ -12,7 +11,7 @@ TtsLang ttsLangFromCode(const std::string& code)
   return TtsLang::EN;
 }
 
-} // namespace
+}
 
 SynthesizeDto SynthesizeDto::fromJson(const Json::Value& json)
 {

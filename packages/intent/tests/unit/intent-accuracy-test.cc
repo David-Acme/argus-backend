@@ -27,7 +27,6 @@ struct Counts
   int correct = 0;
 };
 
-// The publish step writes "label\ttext" or "label\tlang\ttext".
 std::vector<FixtureRow> readFixture(const std::string& path)
 {
   std::vector<FixtureRow> rows;
@@ -47,7 +46,6 @@ std::vector<FixtureRow> readFixture(const std::string& path)
   return rows;
 }
 
-// The router's operating point: below-threshold or thin-margin abstains to none.
 std::string_view gatedPrediction(const std::vector<intent::IntentHit>& hits)
 {
   if (hits.empty())
@@ -61,9 +59,8 @@ std::string_view gatedPrediction(const std::vector<intent::IntentHit>& hits)
   return intent::toolIntentToString(hits.front().intent);
 }
 
-} // namespace
+}
 
-// A republished model that regressed on the judges cannot enter the build.
 TEST_CASE("the published model keeps memory_save precision on the judges")
 {
   const FastTextClassifier model(
@@ -93,12 +90,10 @@ TEST_CASE("the published model keeps memory_save precision on the judges")
     MESSAGE(fixture << ": memory_save precision " << save.correct << "/"
                     << save.predicted);
     CHECK(save.predicted > 0);
-    // The 0.90 floor in integers: correct >= ceil(0.9 * predicted).
     CHECK(save.correct * 10 >= save.predicted * 9);
   }
 }
 
-// The same 20 rows the f8-b4 bench under-fired with the LLM's tool calling.
 TEST_CASE("the router covers the judge set the LLM tier under-fired")
 {
   const FastTextClassifier model(

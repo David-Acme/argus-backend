@@ -12,8 +12,6 @@ if(NOT TARGET argus::lib::text)
                      ${CMAKE_CURRENT_BINARY_DIR}/text)
 endif()
 
-# Only the change-payload suite needs these two: it pins the role names through
-# the enum's own spelling and the subject the payloads travel on.
 if(NOT TARGET argus::contracts::auth)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../auth
                      ${CMAKE_CURRENT_BINARY_DIR}/auth)
@@ -56,9 +54,6 @@ argus_contracts(NAME sync
         argus::lib::text
         Drogon::Drogon)
 
-# The two enums the old enums-test covered that moved here: TableName and
-# UserAction. SyncOperation has helpers but no round-trip case — the old suite
-# never had one either — and AuditLogPriority has no helpers to round-trip.
 enable_testing()
 find_package(doctest REQUIRED)
 
@@ -69,8 +64,6 @@ target_link_libraries(sync-contract-vocabulary-test PRIVATE
 target_compile_options(sync-contract-vocabulary-test PRIVATE -Wall -Wextra)
 add_test(NAME sync-contract-vocabulary-test COMMAND sync-contract-vocabulary-test)
 
-# The catalog suite: the six refusals the sync boundary throws, pinned as a
-# table and checked against what the response serializer accepts.
 add_executable(sync-contract-catalog-test
     tests/unit/sync-contract-catalog-test.cc)
 target_link_libraries(sync-contract-catalog-test PRIVATE
@@ -78,9 +71,6 @@ target_link_libraries(sync-contract-catalog-test PRIVATE
 target_compile_options(sync-contract-catalog-test PRIVATE -Wall -Wextra)
 add_test(NAME sync-contract-catalog-test COMMAND sync-contract-catalog-test)
 
-# The change-payload suite: the SocketEmitDto triple, the room-control actions
-# and the subject they travel on, moved here from packages/socket with the
-# vocabulary.
 add_executable(sync-change-test tests/unit/sync-change-test.cc)
 target_link_libraries(sync-change-test PRIVATE
     argus::contracts::sync

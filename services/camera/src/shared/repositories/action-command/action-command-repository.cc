@@ -62,8 +62,6 @@ ActionCommandRepository::claim(const ActionCommandClaimInput& input) const
     claim.response = row["response"].as<std::string>();
     const std::string storedFingerprint = row["fingerprint"].as<std::string>();
     if (storedFingerprint.empty() && !input.fingerprint.empty()) {
-      // Legacy row with no fingerprint evidence: never authorize a new
-      // payload. A completed row still replays its persisted result.
       if (status == "succeeded") {
         claim.kind = ActionClaimKind::Completed;
         co_return claim;

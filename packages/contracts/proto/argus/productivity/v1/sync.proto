@@ -4,14 +4,12 @@ package argus.productivity.v1;
 
 option cc_enable_arenas = true;
 
-// (createdAt, id) cursor window; any subset present narrows the pull.
 message SyncRange {
   optional int64 start_time = 1;
   optional int64 start_id = 2;
   optional int64 end_time = 3;
 }
 
-// Reminder row as the productivity sync table serves it.
 message ReminderRow {
   int64 id = 1;
   optional int64 created_by = 2;
@@ -27,7 +25,6 @@ message ReminderRow {
   optional int64 deleted_at = 12;
 }
 
-// Reminder detail row; status is pending | done | failed.
 message ReminderDetailRow {
   int64 id = 1;
   int64 reminder_id = 2;
@@ -40,7 +37,6 @@ message ReminderDetailRow {
   optional int64 deleted_at = 9;
 }
 
-// Calendar event row; endsAt absent means a point in time, not a span.
 message CalendarEventRow {
   int64 id = 1;
   optional int64 created_by = 2;
@@ -59,7 +55,6 @@ message CalendarEventRow {
   optional int64 deleted_at = 15;
 }
 
-// Calendar event share row (user share of one event).
 message CalendarEventShareRow {
   int64 id = 1;
   int64 calendar_event_id = 2;
@@ -70,7 +65,6 @@ message CalendarEventShareRow {
   optional int64 deleted_at = 7;
 }
 
-// Project row (owner plus shared members scope the pull).
 message ProjectRow {
   int64 id = 1;
   int64 owner_id = 2;
@@ -85,7 +79,6 @@ message ProjectRow {
   optional int64 deleted_at = 11;
 }
 
-// Project member row.
 message ProjectMemberRow {
   int64 id = 1;
   int64 project_id = 2;
@@ -96,7 +89,6 @@ message ProjectMemberRow {
   optional int64 deleted_at = 7;
 }
 
-// Project task row; sort_order is the manual ordering within a column.
 message ProjectTaskRow {
   int64 id = 1;
   int64 project_id = 2;
@@ -112,13 +104,11 @@ message ProjectTaskRow {
   optional int64 deleted_at = 12;
 }
 
-// Tombstone as the deleted legs serve it: identity and deletion time only.
 message DeletedRow {
   int64 id = 1;
   int64 deleted_at = 2;
 }
 
-// Pull of one productivity-domain sync table; created/deleted carry the ranges.
 message TablePull {
   bool required_create = 1;
   bool required_deleted = 2;
@@ -177,7 +167,6 @@ message ProjectTaskTableRows {
   optional DeletedRow last_deleted = 4;
 }
 
-// One productivity-domain sync table per call; exactly one branch set.
 message PullTableRequest {
   oneof table {
     TablePull reminder = 1;
@@ -190,7 +179,6 @@ message PullTableRequest {
   }
 }
 
-// Rows of the requested table; the branch mirrors PullTableRequest.table.
 message PullTableResponse {
   oneof table {
     ReminderTableRows reminder = 1;
@@ -203,9 +191,6 @@ message PullTableResponse {
   }
 }
 
-// Productivity-domain sync-table pulls served by argus-productivity; the
-// caller identity rides the x-argus-user / x-argus-role / x-argus-device
-// metadata and scopes the personal tables.
 service SyncService {
   rpc PullTable(PullTableRequest) returns (PullTableResponse) {}
 }

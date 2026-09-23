@@ -23,10 +23,6 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y ninja-build libssl-dev pkg-config
 
-      # Rules 16 and 19 are checked by ./scripts/build-all.sh at the end of a
-      # full run, and the ratchet's counts belong to a clang-tidy major (22, the
-      # one scripts/lib/tidy-baseline.txt records): the Ubuntu archive's is 18,
-      # so the tool comes from LLVM's own repository.
       - name: Install clang-tidy
         run: |
           curl -fsSL https://apt.llvm.org/llvm-snapshot.gpg.key | sudo tee /etc/apt/trusted.gpg.d/llvm.asc >/dev/null

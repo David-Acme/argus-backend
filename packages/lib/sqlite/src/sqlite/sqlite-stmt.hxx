@@ -11,7 +11,6 @@ struct BindBlobInput
   size_t size;
 };
 
-// RAII wrapper for sqlite3_stmt: statements are always finalized, move-only.
 class SqliteStmt
 {
 public:
@@ -31,7 +30,6 @@ public:
     return *this;
   }
 
-  // Prepares the statement on db; false on failure.
   bool prepare(sqlite3* db, const char* sql)
   {
     finalize();

@@ -30,8 +30,6 @@ class NotificationClient;
 class NatsBus;
 struct GuardLifecycle;
 
-// Consumes object_detected, classifies danger and raises only authorized
-// actions.
 class GuardService
 {
 public:
@@ -83,41 +81,26 @@ public:
     int heartbeatS{10};
     int maxDialogueTurns{3};
     int maxObservationAttempts{5};
-    // Bounded retry backoff for resumable effects (ms).
     int retryBaseMs{1000};
     int retryMaxMs{60000};
-    // Local-retry lease window (ms) claimed by the reconciler.
     int64_t retryLeaseMs{60000};
     int maxAnnounceWords{12};
     std::string consumerDurable{"argus-guard"};
-    // JetStream source of observations; overridable for isolated live tests.
     std::string eventStream{"ARGUS_CAMERA"};
     std::string eventSubject;
-    // Guard-owned JetStream stream for argus.guard.v1.* domain events.
     std::string guardStream{nats_subject::kGuardStream};
-    // Stream subject family and the encounter subject; empty keeps production.
     std::string guardSubjectFilter;
     std::string guardEncounterSubject;
-    // Belief-gate mode: "shadow" journals only, "enforce" can suppress.
     std::string decisionMode{"shadow"};
-    // Effect kinds the belief gate may suppress in enforce mode.
     BeliefGateScope beliefGateScope{BeliefGateScope::Notify};
-    // Belief-config refresh window; resolved per camera and cached.
     int64_t beliefRefreshS{300};
-    // Decision-journal retention in days; <= 0 keeps every row.
     int journalRetentionDays{90};
-    // Quiet-hours demotion markers, journal-only and default off so shadow
-    // data stays clean; held rows still notify exactly as before.
     bool quietHoursEnabled{false};
     int quietStartHour{22};
     int quietEndHour{7};
     int quietDailyBudget{30};
-    // Sustained-tamper escalation window; a tamper-ish health state held this
-    // long raises its own notification through the durable intent path.
     int64_t tamperSustainedS{300};
-    // Freshness window for camera health readings used by the belief gate.
     int64_t healthStaleS{300};
-    // Deterministic test failpoints; empty in production.
     std::function<bool(const std::string&)> failPoint;
   };
 
@@ -126,20 +109,14 @@ public:
 
   void start();
 
-  // Inbound observation entry point; delivered is the JetStream delivery count.
   drogon::Task<bool> handle(const Json::Value& event, int delivered);
 
-  // Local scheduler entry point for a retry the reconciler already leased.
   drogon::Task<bool> handleLocalRetry(const Json::Value& event);
 
-  // Health ingestion shared by the NATS subscriber and tests.
   void ingestHealth(int64_t cameraId, const std::string& status, int64_t atMs);
 
-  // Sustained-tamper sweep step, driven by the encounter sweep timer.
   drogon::Task<void> checkTamperSweep(int64_t now);
 
-  // Encounter outbox drain step; driven by the close path, the encounter sweep
-  // and the live suite.
   drogon::Task<void> flushEncounterOutbox();
 
 private:
@@ -155,15 +132,12 @@ private:
 
   bool trySubscribe();
 
-  // Creates the guard-owned stream when missing and reconciles it when present;
-  // false when the broker refused it.
   [[nodiscard]] bool ensureGuardStream() const;
 
   void scheduleSubscribeRetry();
 
   void subscribeAdvisories();
 
-  // Code-side gate every spoken line must pass, configured or generated.
   std::string sanitizeSpoken(const std::string& text) const;
 
   void failAt(const std::string& name) const;
@@ -187,7 +161,6 @@ private:
     int64_t now{0};
   };
 
-  // Prebuilt notification content from persisted observables.
   struct NotifyContent
   {
     std::string title;
@@ -195,7 +168,6 @@ private:
     Json::Value data;
   };
 
-  // One requested autonomous effect with everything authorization needs.
   struct EffectInput
   {
     GuardActionKind kind{GuardActionKind::Notify};
@@ -217,7 +189,6 @@ private:
     NotifyContent notifyContent;
   };
 
-  // Honest effect state; a physical action that may have run is never failed.
   enum class EffectStatus : uint8_t
   {
     Succeeded = 0,
@@ -248,7 +219,6 @@ private:
     int64_t retryAt{0};
   };
 
-  // Dialogue eligibility resolved from the event and the encounter.
   struct DialogueInput
   {
     const GuardEventSignals& signals;
@@ -285,12 +255,9 @@ private:
     ObservationClaim state;
   };
 
-  // Runs the staged saga; each stage persists its checkpoint before the next. A
-  // non-completed result means a resumable effect must be retried at retryAt.
   drogon::Task<ObservationResult>
   applyObservation(const ObservationInput& input);
 
-  // Durable saga checkpoint so a redelivery resumes instead of repeating.
   struct ObservationCheckpoint
   {
     int encounterChecks{0};
@@ -323,8 +290,6 @@ private:
     int64_t at{0};
   };
 
-  // One belief verdict for the decision journal; written at the effects
-  // stage and never allowed to fail the saga.
   struct JournalDecisionInput
   {
     std::string eventId;
@@ -350,8 +315,6 @@ private:
     int64_t at{0};
   };
 
-  // Offline-calibration signals collected alongside the journal write; they
-  // never influence the verdict and never fail the saga.
   struct CollectionInput
   {
     int64_t cameraId{0};
@@ -368,8 +331,6 @@ private:
 
   drogon::Task<CollectionResult> collectSignals(const CollectionInput& input);
 
-  // Journal-only quiet-hours and budget markers; enforcement stays off, so a
-  // held row still notifies exactly as before.
   struct HoldInput
   {
     GuardDanger danger{GuardDanger::None};
@@ -385,7 +346,6 @@ private:
 
   drogon::Task<HoldResult> computeHolds(const HoldInput& input);
 
-  // Persists the checkpoint and advances the durable saga stage.
   drogon::Task<bool> advanceObservation(const AdvanceInput& input);
 
   void subscribeHealth();
@@ -447,9 +407,6 @@ private:
 
   void publishHeartbeat();
 
-  // Shared destruction quorum: every loop callback holds one, the destructor
-  // flips it and waits the callbacks out, so none ever dereference a dead
-  // service. Destroy only off the loop with the loop running.
   void trackTimer(uint64_t id);
   void stopTimers();
 
@@ -464,7 +421,6 @@ private:
   std::deque<QueueEntry> queue_;
   bool processing_{false};
 
-  // Guards timer ids plus the in-flight execution set below.
   std::mutex lifecycleMutex_;
   std::vector<uint64_t> timerIds_;
   std::unordered_set<std::string> executing_;

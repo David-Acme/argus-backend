@@ -27,7 +27,7 @@ constexpr int kEnqueueAttempts = 3;
 constexpr int kEnqueueRetryMs = 25;
 constexpr int kDrainBatch = 64;
 constexpr int kProgressMs = 50;
-} // namespace
+}
 
 NatsCameraChangeSink::NatsCameraChangeSink(std::shared_ptr<NatsBus> bus,
                                            Config config)
@@ -105,9 +105,6 @@ NatsCameraChangeSink::enqueue(std::string eventId,
       .payload = std::move(payloadJson),
       .at = nowMs(),
   };
-  // The mutation this records has already committed, and no later event repairs
-  // a change that was recorded nowhere, so a write the shared database
-  // connection refused is retried before it is given up on.
   for (int attempt = 0; attempt < kEnqueueAttempts; ++attempt) {
     if (co_await outbox_.enqueue(input) != ChangeOutboxDisposition::Failed) {
       wake_.notify_all();
@@ -155,8 +152,6 @@ bool NatsCameraChangeSink::flush(const ChangeOutboxRow& row)
   streamReady_.store(false, std::memory_order_relaxed);
   static_cast<void>(outbox_.recordAttempt(row.eventId));
   const int64_t attempts = row.attempts + 1;
-  // The first refusal is the operator's only early signal that the whole feed
-  // has stopped moving; after that the log follows the retry cadence.
   if (attempts <= 1 || attempts % kStuckLogEvery == 0)
     LOG_WARN << "Camera change outbox: " << row.eventId
              << " is still unpublished after " << attempts

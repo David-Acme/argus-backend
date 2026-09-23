@@ -4,8 +4,6 @@
 #include <string>
 #include <unordered_map>
 
-// Canonical voice interaction languages (STT + TTS + prompts); the DB stores
-// the string code.
 enum class VoiceLang : uint8_t
 {
   System = 0,

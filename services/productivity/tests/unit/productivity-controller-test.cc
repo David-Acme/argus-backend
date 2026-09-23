@@ -46,13 +46,6 @@ constexpr const char* kTestSecret =
 
 using DbHandle = std::unique_ptr<sqlite3, int (*)(sqlite3*)>;
 
-// Both seeds write through the sqlite3 C API, the way the four sibling migration
-// suites write theirs: a throwaway drogon client keeps a loop thread of its own,
-// and releasing it with a statement lambda still queued on that loop destroys
-// the connection on the very thread it would join (EDEADLK, SIGABRT with no
-// assertion behind it). Errors are raised, not asserted, because these helpers
-// replace calls that threw (a failing execSqlSync propagates SqlError) and the
-// suite's assertion count must stay at its recorded pre-state.
 DbHandle openFile(const std::string& path)
 {
   sqlite3* raw = nullptr;
@@ -75,8 +68,6 @@ void exec(sqlite3* db, const std::string& sql)
   sqlite3_free(error);
 }
 
-// Seeding only, and before any drogon client opens the file: no bootstrap
-// pragmas are needed because no other connection can hold it.
 void seedIdentityDb(const std::string& path)
 {
   std::remove(path.c_str());
@@ -99,7 +90,6 @@ void seedIdentityDb(const std::string& path)
        "(8, 'Inactive', 'Test', 'resident', 0)");
 }
 
-// Hosts the real identity RPC over the seeded database for the directory reads.
 class IdentityRpcHarness
 {
 public:
@@ -128,8 +118,6 @@ private:
   std::unique_ptr<grpc::Server> server_;
 };
 
-// Seeds the five write-domain tables and the sharing indexes. Seeding only,
-// and before the handover client opens the file, so no bootstrap pragmas.
 void seedProductivityDb(const std::string& path)
 {
   std::remove(path.c_str());
@@ -217,7 +205,6 @@ struct RecordedAudit
   std::vector<int64_t> users;
 };
 
-// Records the emits and audit diffs the feature services hand to the funnel.
 class RecordingSink final : public UserChangeSink
 {
 public:
@@ -254,9 +241,6 @@ public:
   mutable std::vector<RecordedAudit> audits;
 };
 
-// Runs the app and stops it however the case body leaves. A joinable
-// std::thread destroyed by unwinding calls std::terminate, which reports an
-// ordinary statement failure as a SIGABRT with no assertion behind it.
 class AppRunner
 {
 public:
@@ -266,12 +250,6 @@ public:
   {
     if (!runner_.joinable())
       return;
-    // Drogon reports the app running before its main loop is looping, and a
-    // loop that has not begun cannot be stopped: trantor's loop() clears the
-    // quit flag again as it starts. Waiting for it to loop is what makes the
-    // quit below take effect — detaching in that window left the app's thread
-    // running past the end of the process, measured as SIGSEGV inside
-    // EventLoop::loop() in 3 of 20 runs of a forced constructor throw.
     for (int i = 0; i < 3000 && !drogon::app().getLoop()->isRunning(); ++i)
       std::this_thread::sleep_for(std::chrono::milliseconds(10));
     if (drogon::app().getLoop()->isRunning()) {
@@ -279,8 +257,6 @@ public:
       runner_.join();
       return;
     }
-    // A boot that never reached the loop at all is left to the process: it
-    // cannot be asked to stop, and joining it would block for ever.
     runner_.detach();
   }
 
@@ -302,13 +278,6 @@ bool waitForBoot(std::chrono::milliseconds timeout)
   return drogon::app().isRunning();
 }
 
-// One async statement whose callback queues a sentinel on the connection's own
-// loop. Callbacks run on that loop, and trantor destroys each queued functor as
-// it dequeues the next (EventLoop::doRunInLoopFuncs), so the reference the
-// statement lambda held is gone before the sentinel runs: after this returns no
-// thread but this one holds the connection, and the client's destructor joins
-// an idle loop thread from outside instead of its own. The callbacks must not
-// capture the client: a reference released on that loop re-opens the window.
 void drain(const drogon::orm::DbClientPtr& client)
 {
   auto drained = std::make_shared<std::promise<void>>();
@@ -339,10 +308,6 @@ Json::Value body(const drogon::HttpResponsePtr& response)
   return *json;
 }
 
-// A refusal is thrown, not returned (architecture plan section 4.7): the advice
-// that formats it into an envelope runs only when the framework drives the
-// controller, so a test that drives the coroutine straight through sync_wait
-// reads the refusal off the exception instead.
 struct Refusal
 {
   int status;
@@ -376,14 +341,13 @@ void setActor(const SetActorInput& input)
       JwtContext{input.sub, "Actor", input.role, true, {}});
 }
 
-// Delete endpoints read the actor from the request attributes the filters leave.
 drogon::HttpRequestPtr ownerRequest(int64_t sub = 42)
 {
   auto req = drogon::HttpRequest::newHttpRequest();
   setActor({.req = req, .sub = sub, .role = UserRole::Owner});
   return req;
 }
-} // namespace
+}
 
 TEST_CASE("productivity contracts hold on the argus-productivity surface")
 {
@@ -722,8 +686,6 @@ TEST_CASE("productivity contracts hold on the argus-productivity surface")
   user_change::setProductivitySink(nullptr);
   DbService::setProductivityClient(nullptr);
 
-  // The service's reference is gone, so the next release is the last one: drain
-  // the connection's loop before it, and before the runner's quit().
   drain(productivityDb);
   productivityDb.reset();
 

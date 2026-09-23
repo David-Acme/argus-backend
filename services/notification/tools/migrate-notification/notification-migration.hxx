@@ -51,13 +51,10 @@ struct NotificationVerificationInput
   sqlite3* target = nullptr;
 };
 
-// Creates the notification tables on db from the schema file, failing on the first statement error.
 NotificationResult applyNotificationSchema(const NotificationSchemaInput& input);
 
-// Verifies the attached read-only source ("src") against the target per notification table.
 NotificationMigrationReport verifyNotificationTables(
     const NotificationVerificationInput& input);
 
-// Full migration: schema, transactional copy, verification; schema-current targets no-op.
 NotificationMigrationReport migrateNotification(
     const NotificationMigrationOptions& options);

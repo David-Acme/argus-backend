@@ -21,7 +21,6 @@ const tools::ToolDescriptor* ToolRegistry::find(const std::string& name) const
   const auto it = tools_.find(name);
   if (it != tools_.end())
     return &it->second;
-  // A case mismatch must not silently answer prose over a save (bench f8-b4).
   const std::string lower = [name] {
     std::string out;
     out.reserve(name.size());

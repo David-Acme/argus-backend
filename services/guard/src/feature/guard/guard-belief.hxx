@@ -8,7 +8,6 @@
 #include <string>
 #include <vector>
 
-// Closed observable belief vocabulary; no model input ever reaches this gate.
 enum class BeliefSignal
 {
   DetectorStrong,
@@ -53,7 +52,6 @@ inline std::string beliefSignalToString(BeliefSignal signal)
   return "camera_health_degraded";
 }
 
-// Resolved weights and thresholds; the struct keeps the engine pure.
 struct BeliefConfig
 {
   int weightDetectorStrong{2};
@@ -105,7 +103,6 @@ struct BeliefResult
   std::vector<BeliefSignal> signals;
 };
 
-// Which effect kinds the belief gate may suppress in enforce mode.
 enum class BeliefGateScope
 {
   Notify,
@@ -145,8 +142,6 @@ struct GateScopeInput
   bool hardFloor{false};
 };
 
-// Human phrasing for one wire signal name, shared by the notification body
-// and the decision-journal read path so both render identical reasons.
 inline std::string beliefSignalPhrase(const std::string& signal)
 {
   if (signal == "detector_strong")
@@ -174,17 +169,11 @@ inline std::string beliefSignalPhrase(const std::string& signal)
 
 namespace guard_belief
 {
-// Pure belief evaluation over resolved inputs; no database, no NATS, no model.
 BeliefResult evaluateBelief(const BeliefInput& input);
 
-// Asymmetric Bayes-risk threshold: critical demands the least belief.
 int beliefThreshold(GuardDanger severity, const BeliefConfig& config);
 
-// Resolves globals then per-camera overrides for one camera.
 BeliefConfig resolveBeliefConfig(int64_t cameraId);
 
-// Whether the belief gate may suppress one effect kind. Notify and announce
-// follow the scope; alarm and siren-arm additionally require no hard floor,
-// so a hard floor always lets physical effects through.
 bool beliefSuppressesKind(const GateScopeInput& input);
-} // namespace guard_belief
+}

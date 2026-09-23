@@ -5,7 +5,7 @@
 namespace
 {
 constexpr std::size_t kMaxSnapshotBytes = 4 * 1024 * 1024;
-} // namespace
+}
 
 SnapshotStore& SnapshotStore::instance()
 {

@@ -6,8 +6,6 @@
 #include <drogon/utils/coroutine.h>
 #include <feature/api/guard/services/guard-feature-service.hxx>
 
-// Owner-only guard API; /guard is outside the sync table map, so RoleFilter
-// admits Owner and denies every other role.
 class GuardController : public drogon::HttpController<GuardController, false>
 {
 public:

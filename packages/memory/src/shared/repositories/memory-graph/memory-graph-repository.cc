@@ -19,7 +19,7 @@ int64_t lastRowId(sqlite3* db)
   return sqlite3_last_insert_rowid(db);
 }
 
-} // namespace
+}
 
 int64_t MemoryGraphRepository::createEntity(sqlite3* db,
                                             const EntityCreateInput& input)

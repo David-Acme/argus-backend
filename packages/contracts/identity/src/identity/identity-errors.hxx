@@ -105,9 +105,6 @@ inline constexpr ErrorDefinition ActiveOwnerRequired{
     .code = ErrorCode::Conflict,
     .status = 409,
     .message = "At least one active owner is required"};
-// What the controllers refuse before any service sees the request: a body that
-// is not the form the endpoint accepts, a challenge or an invitation whose id
-// does not even parse, and the two pairing answers.
 inline constexpr ErrorDefinition InvalidMultipartForm{
     .code = ErrorCode::BadRequest,
     .status = 400,
@@ -128,4 +125,4 @@ inline constexpr ErrorDefinition InvalidPairingCode{
     .code = ErrorCode::Forbidden,
     .status = 403,
     .message = "Invalid pairing code"};
-} // namespace IdentityErrors
+}

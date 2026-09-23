@@ -33,12 +33,6 @@ public:
   {
     if (!runner_.joinable())
       return;
-    // Drogon reports the app running before its main loop is looping, and a
-    // loop that has not begun cannot be stopped: trantor's loop() clears the
-    // quit flag again as it starts. Waiting for it to loop is what makes the
-    // quit below take effect — detaching in that window left the app's thread
-    // running past the end of the process, measured as SIGSEGV inside
-    // EventLoop::loop() in 3 of 20 runs of a forced constructor throw.
     for (int i = 0; i < 3000 && !drogon::app().getLoop()->isRunning(); ++i)
       std::this_thread::sleep_for(std::chrono::milliseconds(10));
     if (drogon::app().getLoop()->isRunning()) {
@@ -46,8 +40,6 @@ public:
       runner_.join();
       return;
     }
-    // A boot that never reached the loop at all is left to the process: it
-    // cannot be asked to stop, and joining it would block for ever.
     runner_.detach();
   }
 
@@ -69,14 +61,12 @@ bool waitForBoot(std::chrono::milliseconds timeout)
   return drogon::app().isRunning();
 }
 
-// The head pending row, reported as a failed assertion when the outbox holds none.
 ChangeOutboxRow pendingRow(const std::vector<ChangeOutboxRow>& rows)
 {
   REQUIRE(!rows.empty());
   return rows.empty() ? ChangeOutboxRow{} : rows.front();
 }
 
-// Whether the outbox holds anything, for the polls that watch a backlog drain.
 bool hasPending(const ChangeOutboxRepository& outbox)
 {
   return !outbox.pendingBatch(1).empty();
@@ -91,7 +81,7 @@ SocketEmitDto addCamera(int64_t id, const std::string& name)
   body.obj["name"] = name;
   return body;
 }
-} // namespace
+}
 
 TEST_CASE("the change sink lands every transition in the durable outbox")
 {
@@ -125,10 +115,8 @@ TEST_CASE("the change sink lands every transition in the durable outbox")
                .recordId = 7,
                .discriminator = json_util::toString(add.toJson())}));
     CHECK(created.payload == json_util::toString(add.toJson()));
-    // The prefix plus 32 hex digits, inside the JetStream header budget.
     CHECK(created.eventId.size() == 46);
 
-    // A replayed transition writes nothing, and so does an unchanged row.
     CHECK(outbox.markSent(created.eventId, 1000));
     drogon::sync_wait(sink.emitModule(TableName::Camera, add));
     CHECK_FALSE(hasPending(outbox));
@@ -143,19 +131,12 @@ TEST_CASE("the change sink lands every transition in the durable outbox")
     drogon::sync_wait(sink.publishAudit(audit));
 
     const ChangeOutboxRow audited = pendingRow(outbox.pendingBatch(1));
-    // The id is the payload's own name, so a second audit of the same
-    // before/after is a second event unless its timestamp matches as well.
     CHECK(audited.eventId.rfind("camera-change:", 0) == 0);
     CHECK(audited.eventId.size() == 46);
     CHECK(audited.payload.find("\"kind\":\"audit\"") != std::string::npos);
     CHECK(audited.payload.find("porch") != std::string::npos);
     CHECK(outbox.markSent(audited.eventId, 2000));
 
-    // The a→b→a→b cycle: a record returns to a state it already held, so the
-    // same diff is audited twice. Both are events and the payload names them,
-    // not the state they moved away from, so the second lands as its own row.
-    // The payload carries a millisecond timestamp, so the loop gives the clock
-    // a millisecond to leave the first call's own reading.
     bool repeated = false;
     for (int attempt = 0; attempt < 50 && !repeated; ++attempt) {
       drogon::sync_wait(sink.publishAudit(audit));
@@ -177,8 +158,6 @@ TEST_CASE("the change sink lands every transition in the durable outbox")
     drogon::sync_wait(sink.publishAudit(unchanged));
     CHECK_FALSE(hasPending(outbox));
 
-    // A payload past the broker's budget is refused rather than written: one
-    // such row would stop every change queued behind it for ever.
     SocketEmitDto oversized = addCamera(11, "loft");
     oversized.obj["config"] =
         std::string(NatsCameraChangeSink::kMaxPayloadBytes + 1, 'x');
@@ -187,7 +166,6 @@ TEST_CASE("the change sink lands every transition in the durable outbox")
   }
 
   {
-    // No bus at all: the row waits in the outbox rather than being lost.
     NatsCameraChangeSink sink(
         nullptr, NatsCameraChangeSink::Config{.retryMs = 20,
                                               .publishSubject = {},
@@ -214,9 +192,6 @@ TEST_CASE("the change sink lands every transition in the durable outbox")
 
   const char* url = std::getenv("ARGUS_NATS_URL");
   if (url != nullptr && *url != '\0') {
-    // A stream, a subject and a payload per run: a fixed event id republished
-    // inside the stream's duplicate window is deduplicated, so a second run
-    // would watch its own publish be accepted and deliver nothing.
     const std::string run = std::to_string(::getpid());
     const std::string stream = "argus-test-change-" + run;
     const std::string subject = "argus.test.change.flush." + run;
@@ -231,10 +206,6 @@ TEST_CASE("the change sink lands every transition in the durable outbox")
                                    .maxAgeNs = 3600000000000LL,
                                    .duplicatesNs = 120000000000LL}));
 
-    // A false mark-sent and a real publish both empty the outbox, so the leg
-    // reads the event back off the broker: draining proves nothing on its own.
-    // Delivering all closes the window between asking for the consumer and the
-    // broker creating it, which a new-only consumer would leave open.
     std::mutex mutex;
     std::condition_variable cv;
     std::string received;
@@ -259,8 +230,6 @@ TEST_CASE("the change sink lands every transition in the durable outbox")
     const SocketEmitDto live = addCamera(99, "hall-" + run);
     const std::string expected = json_util::toString(live.toJson());
     {
-      // Scoped: a live sink left running would publish the rows of the block
-      // below on its own subject, which is what that block measures.
       NatsCameraChangeSink liveSink(
           liveBus,
           NatsCameraChangeSink::Config{.retryMs = 20,
@@ -287,11 +256,6 @@ TEST_CASE("the change sink lands every transition in the durable outbox")
       CHECK(seen == expected);
     }
 
-    // A backlog is one pass and not one tick per row: more changes than a
-    // single batch holds all settle, and they are written before the drain
-    // starts so that a drain fallen back to one row per pass cannot hide
-    // behind the wake each enqueue gives it -- 100 rows at a 50 ms tick is
-    // five seconds.
     {
       NatsCameraChangeSink bursts(
           liveBus,
@@ -311,9 +275,6 @@ TEST_CASE("the change sink lands every transition in the durable outbox")
             std::chrono::seconds(3));
     }
 
-    // The sink declares the stream it publishes into: a subject no stream
-    // covers yet settles only because the sink reconciled one, which is the
-    // state a broker-side wipe leaves the feed in.
     {
       const std::string freshStream = "argus-test-heal-" + run;
       const std::string freshSubject = "argus.test.heal.change." + run;
@@ -332,9 +293,6 @@ TEST_CASE("the change sink lands every transition in the durable outbox")
       CHECK(liveBus->streamInfo(freshStream).has_value());
     }
 
-    // A publish that cannot succeed leaves its row pending with the attempt
-    // counted, and the change queued behind it waits instead of overtaking it:
-    // a wildcard is not a publishable subject, so the broker is never asked.
     NatsCameraChangeSink stranded(
         liveBus,
         NatsCameraChangeSink::Config{.retryMs = 20,

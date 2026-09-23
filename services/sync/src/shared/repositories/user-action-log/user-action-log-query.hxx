@@ -31,7 +31,7 @@ inline constexpr std::string_view SYNC_FIND_ALL =
     "SELECT * FROM user_action_log ORDER BY created_at ASC, id ASC LIMIT 200";
 inline constexpr std::string_view SYNC_FIND_LAST =
     "SELECT * FROM user_action_log ORDER BY created_at DESC LIMIT 1";
-} // namespace user_action_log_query
+}
 
 struct UserActionLogCreateInput
 {

@@ -17,7 +17,7 @@ struct CodeName
   ErrorCode code;
   const char* name;
 };
-} // namespace
+}
 
 TEST_CASE("every error code has exactly one wire string")
 {
@@ -44,9 +44,6 @@ TEST_CASE("every error code has exactly one wire string")
       {ErrorCode::Cancelled, "CANCELLED"},
       {ErrorCode::DeadlineExceeded, "DEADLINE_EXCEEDED"}};
 
-  // The enum has no explicit values, so it is contiguous from zero: a table
-  // covering 0..last has one row per code, and a new enumerator without a
-  // row fails here rather than at the first client that reads the string.
   CHECK(table.size() ==
         static_cast<std::size_t>(ErrorCode::DeadlineExceeded) + 1);
 

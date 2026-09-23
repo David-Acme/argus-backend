@@ -14,7 +14,6 @@ HealthRpcService::Check(grpc::CallbackServerContext* context,
 namespace
 {
 
-// Streams the current status once and holds the stream open until cancel.
 class HealthWatchStream final
     : public grpc::ServerWriteReactor<grpc::health::v1::HealthCheckResponse>
 {
@@ -33,7 +32,7 @@ private:
   grpc::health::v1::HealthCheckResponse message_;
 };
 
-} // namespace
+}
 
 grpc::ServerWriteReactor<grpc::health::v1::HealthCheckResponse>*
 HealthRpcService::Watch(grpc::CallbackServerContext*,

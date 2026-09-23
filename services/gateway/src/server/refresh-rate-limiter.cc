@@ -8,14 +8,13 @@ constexpr int kDefaultWindowSeconds = 60;
 constexpr int kDefaultMaxRequests = 10;
 constexpr int kDefaultLockoutThreshold = 5;
 constexpr int kDefaultLockoutSeconds = 300;
-// Bound on tracked keys so rotated fingerprints cannot grow the map forever.
 constexpr size_t kMaxTrackedKeys = 4096;
 
 int positiveOr(int value, int fallback)
 {
   return value > 0 ? value : fallback;
 }
-} // namespace
+}
 
 RateLimitConfig RateLimitConfig::resolve()
 {

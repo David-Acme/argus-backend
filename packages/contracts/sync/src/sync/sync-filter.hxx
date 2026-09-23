@@ -12,7 +12,6 @@ struct SyncFilter
   std::optional<int64_t> startTime;
   std::optional<int64_t> startId;
   std::optional<int64_t> endTime;
-  // Set for user-scoped tables; the ownership predicate appends it after the range args.
   std::optional<int64_t> userId;
 };
 
@@ -69,7 +68,6 @@ inline SyncQueryParts buildSyncQuery(const BuildSyncQueryInput& input)
   return {std::string(queryAll), {}};
 }
 
-// Appends the user argument once per `?` the ownership predicate spends.
 struct WithUserInput
 {
   SyncQueryParts parts;
@@ -88,4 +86,4 @@ inline SyncQueryParts withUser(const WithUserInput& input)
     parts.args.push_back(value);
   return parts;
 }
-} // namespace sync_query
+}

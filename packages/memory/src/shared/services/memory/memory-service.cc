@@ -34,7 +34,6 @@
 namespace
 {
 
-// [memory] db_file names the memory store; [database] file is the fallback.
 std::string memoryDbFile()
 {
   std::string file = ConfigService::getString("memory.db_file");
@@ -187,7 +186,7 @@ std::string expandForEmbedding(const std::string& content)
   return out;
 }
 
-} // namespace
+}
 
 MemoryService::~MemoryService()
 {
@@ -998,7 +997,6 @@ tools::ToolResult MemoryService::handleRemember(const tools::ToolCall& call)
   const std::string subject = args.get("subject", "").asString();
   const std::string predicate = args.get("predicate", "").asString();
   const std::string value = args.get("value", "").asString();
-  // The echoed text is the model's most faithful output; the triple joins last.
   std::string text = args.get("text", "").asString();
   if (text.empty())
     text = call.context.utterance;
@@ -1020,7 +1018,6 @@ tools::ToolResult MemoryService::handleRemember(const tools::ToolCall& call)
                               call);
   };
   auto formed = observe(text);
-  // The echo drops the trigger the rule layer needs; the utterance carries it.
   if (!formed && !call.context.utterance.empty() &&
       call.context.utterance != text)
     formed = observe(call.context.utterance);
@@ -1044,7 +1041,6 @@ tools::ToolResult MemoryService::handleRemember(const tools::ToolCall& call)
   return result;
 }
 
-// D4: written in the speaking user's own memory. D2: silent — no alarm path.
 tools::ToolResult MemoryService::handleRemind(const tools::ToolCall& call)
 {
   tools::ToolResult result;

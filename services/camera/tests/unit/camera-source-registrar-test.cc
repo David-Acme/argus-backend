@@ -27,7 +27,7 @@ public:
   std::vector<std::pair<std::string, std::string>> added;
   std::vector<std::string> removed;
 };
-} // namespace
+}
 
 TEST_CASE("camera source urls percent-encode credentials")
 {

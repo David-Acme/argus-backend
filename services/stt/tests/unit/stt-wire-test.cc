@@ -142,7 +142,6 @@ Json::Value envelope(const HttpReply& reply)
   return json;
 }
 
-// 16 kHz mono s16 RIFF wav to float samples, int16/32768 mapping.
 std::vector<float> wavSamples(const std::string& path)
 {
   std::ifstream in(path, std::ios::binary);
@@ -188,9 +187,6 @@ std::string pcmBytes(const std::vector<float>& samples)
   return bytes;
 }
 
-// Runs the app and stops it however the case body leaves. A joinable
-// std::thread destroyed by unwinding calls std::terminate, which reports an
-// ordinary statement failure as a SIGABRT with no assertion behind it.
 class AppRunner
 {
 public:
@@ -200,12 +196,6 @@ public:
   {
     if (!runner_.joinable())
       return;
-    // Drogon reports the app running before its main loop is looping, and a
-    // loop that has not begun cannot be stopped: trantor's loop() clears the
-    // quit flag again as it starts. Waiting for it to loop is what makes the
-    // quit below take effect — detaching in that window left the app's thread
-    // running past the end of the process, measured as SIGSEGV inside
-    // EventLoop::loop() in 3 of 20 runs of a forced constructor throw.
     for (int i = 0; i < 3000 && !drogon::app().getLoop()->isRunning(); ++i)
       std::this_thread::sleep_for(std::chrono::milliseconds(10));
     if (drogon::app().getLoop()->isRunning()) {
@@ -213,8 +203,6 @@ public:
       runner_.join();
       return;
     }
-    // A boot that never reached the loop at all is left to the process: it
-    // cannot be asked to stop, and joining it would block for ever.
     runner_.detach();
   }
 
@@ -236,7 +224,7 @@ bool waitForBoot(std::chrono::milliseconds timeout)
   return drogon::app().isRunning();
 }
 
-} // namespace
+}
 
 TEST_CASE("the argus-stt internal wire serves the legacy voice session")
 {

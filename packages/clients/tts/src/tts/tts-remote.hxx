@@ -24,7 +24,6 @@ struct TtsHttpStreamInput
   std::stop_token cancellation;
 };
 
-// Remote TTS endpoint settings; every synthesis is an HTTP call once tts.remote_url is set.
 struct TtsRemoteConfig
 {
   std::string url;
@@ -32,11 +31,9 @@ struct TtsRemoteConfig
 
   bool enabled() const { return !url.empty(); }
 
-  // Reads tts.remote_url / tts.remote_timeout_ms from the loaded config.
   static TtsRemoteConfig resolve();
 };
 
-// One internal-wire exchange; the stream leg keeps the connection open.
 struct WireRequest
 {
   std::string method;
@@ -45,7 +42,6 @@ struct WireRequest
   bool closeConnection{true};
 };
 
-// HTTP client for the argus-tts internal wire; throws std::runtime_error with the frozen envelope error.
 class TtsHttpClient
 {
 public:
@@ -75,7 +71,6 @@ private:
   int timeoutMs_;
 };
 
-// TTS entry point held by consumers; throws when tts.remote_url is not configured.
 class TtsClient
 {
 public:

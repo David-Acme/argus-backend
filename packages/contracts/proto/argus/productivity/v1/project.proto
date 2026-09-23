@@ -6,7 +6,6 @@ import "argus/common/v1/base.proto";
 
 option cc_enable_arenas = true;
 
-// Project, ProjectMember and ProjectTask rows matching the current /project* endpoints.
 message Project {
   string id = 1;
   string name = 2;
@@ -18,7 +17,7 @@ message ProjectMember {
   string id = 1;
   string project_id = 2;
   string user_id = 3;
-  string access = 4; // view | edit
+  string access = 4;
   int64 created_at = 5;
 }
 
@@ -26,7 +25,7 @@ message ProjectTask {
   string id = 1;
   string project_id = 2;
   string title = 3;
-  string status = 4; // pending | in_progress | done | blocked
+  string status = 4;
   int64 due_at = 5;
   int64 created_at = 6;
 }

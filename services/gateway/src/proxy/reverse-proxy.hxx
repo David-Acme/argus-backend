@@ -5,7 +5,6 @@
 #include <string>
 #include <vector>
 
-// Vendored Drogon SimpleReverseProxy with exclusions, XFF and a route table.
 namespace gateway_proxy
 {
 class SimpleReverseProxy : public drogon::Plugin<SimpleReverseProxy>
@@ -23,11 +22,9 @@ class SimpleReverseProxy : public drogon::Plugin<SimpleReverseProxy>
         std::string backend;
     };
 
-    // Route-table resolution, exposed for the gateway test suite.
     static bool segmentPrefixMatch(const std::string &path,
                                    const std::string &prefix);
     static size_t segmentCount(const std::string &path);
-    // Index into routes_, or -1 when the request falls through.
     int matchRoute(const std::string &path) const;
 
   private:
@@ -46,4 +43,4 @@ class SimpleReverseProxy : public drogon::Plugin<SimpleReverseProxy>
     size_t pipeliningDepth_{0};
     size_t connectionFactor_{1};
 };
-}  // namespace gateway_proxy
+}

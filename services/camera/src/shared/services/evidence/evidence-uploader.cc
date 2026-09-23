@@ -23,7 +23,7 @@ constexpr const char* kExpiredEvidence =
 
 constexpr const char* kMarkEvidenceDeleted =
     "UPDATE camera_evidence SET deleted_at = ? WHERE id = ?";
-} // namespace
+}
 
 EvidenceUploader& EvidenceUploader::instance()
 {

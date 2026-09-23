@@ -4,7 +4,6 @@ package argus.ai.v1;
 
 option cc_enable_arenas = true;
 
-// Mirrors TtsService::synthesize / synthesizeStream (PCM int16 chunks).
 service TtsService {
   rpc Synthesize(TtsRequest) returns (stream TtsChunk);
 }
@@ -12,7 +11,7 @@ service TtsService {
 message TtsRequest {
   string text = 1;
   string voice_id = 2;
-  string lang = 3; // "es" | "en"
+  string lang = 3;
   uint32 sample_rate = 4;
 }
 

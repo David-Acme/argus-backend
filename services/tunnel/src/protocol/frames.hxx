@@ -58,7 +58,6 @@ struct EncodeFrameInput
 std::string encodeFrame(const EncodeFrameInput& input);
 std::string encodeFrame(FrameType type, uint32_t streamId);
 
-// Incremental frame parser; failed() marks an unrecoverable desync.
 class FrameParser
 {
 public:
@@ -76,11 +75,8 @@ private:
   bool failed_{false};
 };
 
-// HMAC-SHA256 over the shared secret; both macs bind the per-link relay challenge.
 std::string hmacSha256(const std::string& key, const std::string& message);
-// Client proof: HMAC(secret, challenge || kAuthMessage).
 std::string authMac(const std::string& secret, const std::string& challenge);
-// Relay proof carried by AUTH_OK, verified by the client before link activation.
 std::string relayAuthMac(const std::string& secret,
                          const std::string& challenge);
 std::string randomChallenge();
@@ -88,4 +84,4 @@ bool constantTimeEquals(const std::string& left, const std::string& right);
 
 inline constexpr char kAuthMessage[] = "argus-tunnel-auth-v1";
 inline constexpr char kRelayAuthMessage[] = "argus-tunnel-relay-auth-v1";
-} // namespace tunnel
+}

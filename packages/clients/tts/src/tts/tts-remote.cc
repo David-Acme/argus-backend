@@ -82,7 +82,6 @@ std::string jsonBody(const TtsRequest& req)
   return Json::writeString(builder, json);
 }
 
-// Socket guard: the fd is closed on scope exit, never leaked.
 class SocketGuard
 {
 public:
@@ -313,7 +312,6 @@ Head parseHead(const std::string& wire)
   return head;
 }
 
-// De-chunks a buffered chunked body; calls onChunk for every HTTP chunk.
 struct ForEachHttpChunkInput
 {
   const std::string& wire;
@@ -351,7 +349,7 @@ void forEachHttpChunk(const ForEachHttpChunkInput& input)
   }
 }
 
-} // namespace
+}
 
 TtsRemoteConfig TtsRemoteConfig::resolve()
 {

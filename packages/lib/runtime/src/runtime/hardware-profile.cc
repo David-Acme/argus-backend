@@ -182,7 +182,7 @@ HardwareProfile probeAll()
   return p;
 }
 
-} // namespace
+}
 
 const char* toString(VideoAccel accel)
 {
@@ -338,4 +338,4 @@ ExtractionTier extractionTier()
   return ExtractionTier::Minimal;
 }
 
-} // namespace HardwareProbe
+}

@@ -7,7 +7,6 @@
 namespace
 {
 
-// One bidi stream; doubles as the session's VoiceSessionSink.
 class VoiceSessionStream final
     : public grpc::ServerBidiReactor<argus::voice::v1::ClientFrame,
                                      argus::voice::v1::ServerFrame>,
@@ -76,7 +75,6 @@ public:
   }
 
 private:
-  // Metadata presence only; roles were validated on the /sync edge.
   bool authorized() const
   {
     bool user = false;
@@ -113,7 +111,6 @@ private:
     }
   }
 
-  // Ends the session and closes the RPC; idempotent.
   void endSession()
   {
     sessions_.stop(*this);
@@ -125,7 +122,6 @@ private:
     Finish(grpc::Status::OK);
   }
 
-  // Bounded wait so voice:done is not cut off by Finish.
   void drain()
   {
     std::unique_lock<std::mutex> lock(writeMutex_);
@@ -142,7 +138,6 @@ private:
     StartWrite(&queue_.front());
   }
 
-  // Backpressure cap.
   static constexpr size_t kMaxPendingWrites = 512;
 
   VoiceSessionService& sessions_;
@@ -156,7 +151,7 @@ private:
   argus::voice::v1::ClientFrame read_;
 };
 
-} // namespace
+}
 
 grpc::ServerBidiReactor<argus::voice::v1::ClientFrame,
                         argus::voice::v1::ServerFrame>*

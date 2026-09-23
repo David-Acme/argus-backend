@@ -5,10 +5,6 @@
 #include <cstdint>
 #include <drogon/utils/coroutine.h>
 
-// Durable inbox for argus.notification.v1.delivery, stored in this service's
-// database. Same delivery id plus same fingerprint is a replay;
-// same id plus a different fingerprint is a conflict that is never
-// dispatched. Unknown persisted statuses fail closed into 'dead_lettered'.
 class DeliveryInboxRepository
 {
 public:

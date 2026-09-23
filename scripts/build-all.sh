@@ -1,6 +1,4 @@
 #!/usr/bin/env bash
-# Build and test every standalone project against the single root Conan graph,
-# including the on-demand owner CLI tools.
 
 set -euo pipefail
 set -E
@@ -76,15 +74,16 @@ if [ -n "$ONLY" ]; then
   fi
 fi
 
-# Section 2.4's tier table before anything is built: the check reads the
-# CMakeLists.txt files, so it costs nothing and an edge the table forbids stops
-# the run before a long build starts (section 4.13).
+log "=== comments ==="
+if git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  "$ROOT/scripts/check-comments.sh"
+else
+  log "comments: $ROOT is not a git work tree, so the file list is unknown; the gate runs where the repository is"
+fi
+
 log "=== dependencies (section 2.4) ==="
 "$ROOT/scripts/check-deps.sh"
 
-# One dependency resolution for the whole tree: the root conanfile.txt is the
-# single manifest (section 2.6), so the graph is installed once and every
-# project configures against the toolchain it produced.
 CONAN_OUT="$ROOT/build/$PROFILE"
 GENERATORS="$CONAN_OUT/build/$BUILD_TYPE/generators"
 
@@ -131,9 +130,6 @@ for dir in "${PROJECTS[@]}"; do
 done
 
 CURRENT_PROJECT=""
-# Rules 16 and 19, measured over the whole tree (section 4.13): the scan needs
-# every project's compile database, so it runs once at the end of a full gate
-# and never for a --only selection.
 if [ "$NO_TESTS" -eq 0 ] && [ -z "$ONLY" ]; then
   log "=== rules 16 and 19 (clang-tidy) ==="
   "$ROOT/scripts/check-tidy.sh"

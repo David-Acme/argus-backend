@@ -8,11 +8,6 @@
 #include <sync/user-action-event.hxx>
 #include <sync/user-audit-event.hxx>
 
-// The change feed's audit leg: the row is persisted first and the DB-assigned
-// row is what the fan-out carries (Ruling Y). A frame naming recipients writes
-// one user_audit_log row per recipient; one that does not writes a module
-// audit_log row. The journal is append-only and reaches a client through its
-// own Synchronize page, never through a live frame.
 class AuditFanOut
 {
 public:

@@ -21,9 +21,6 @@ public:
   drogon::Task<std::vector<NotificationSchema>>
   createMany(const std::vector<NotificationCreateInput>& inputs) const;
 
-  // One IMMEDIATE transaction: command claim, the whole batch and one durable
-  // delivery intent per row. Duplicate returns the persisted expected count;
-  // a real failure throws.
   drogon::Task<NotificationCommitResult> createManyWithCommand(
       const NotificationBatchCommitInput& input) const;
 

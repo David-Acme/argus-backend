@@ -11,8 +11,6 @@
 #include <vector>
 #include <vlm/vlm-client.hxx>
 
-// Pins the argus-vlm wire: the base64 request encoding, and which
-// {status, info} envelopes the caller does and does not get an answer from.
 namespace
 {
 
@@ -30,19 +28,12 @@ struct SeenRequest
   std::string body;
 };
 
-// A real drogon server on a loopback port, standing in for argus-vlm. It is
-// one object for the whole suite: the client needs a running event loop, and
-// a drogon app is run once per process.
 class FakeVlmService
 {
 public:
   FakeVlmService()
   {
     drogon::app().setLogLevel(trantor::Logger::kWarn);
-    // drogon makes 256 upload subdirectories (00..FF) under its upload path,
-    // which defaults to the current directory -- so the suite would leave them
-    // in whatever tree it was run from, including the repository root. Point
-    // that path at a temporary directory that outlives the run instead.
     const auto uploads =
         std::filesystem::temp_directory_path() / "argus-vlm-client-test";
     std::error_code ignored;
@@ -66,7 +57,6 @@ public:
     drogon::app().addListener("127.0.0.1", 0);
     runner_ = std::thread([] { drogon::app().run(); });
 
-    // The port is known only once the listener is up.
     for (int tries = 0; tries < 1000 && !drogon::app().isRunning(); ++tries)
       std::this_thread::sleep_for(std::chrono::milliseconds(10));
     const auto listeners = drogon::app().getListeners();
@@ -78,12 +68,6 @@ public:
   {
     if (!runner_.joinable())
       return;
-    // Drogon reports the app running before its main loop is looping, and a
-    // loop that has not begun cannot be stopped: trantor's loop() clears the
-    // quit flag again as it starts. Waiting for it to loop is what makes the
-    // quit below take effect — detaching in that window left the app's thread
-    // running past the end of the process, measured as SIGSEGV inside
-    // EventLoop::loop() in 3 of 20 runs of a forced constructor throw.
     for (int i = 0; i < 3000 && !drogon::app().getLoop()->isRunning(); ++i)
       std::this_thread::sleep_for(std::chrono::milliseconds(10));
     if (drogon::app().getLoop()->isRunning()) {
@@ -91,8 +75,6 @@ public:
       runner_.join();
       return;
     }
-    // A boot that never reached the loop at all is left to the process: it
-    // cannot be asked to stop, and joining it would block for ever.
     runner_.detach();
   }
 
@@ -103,7 +85,6 @@ public:
     return "http://127.0.0.1:" + std::to_string(port_);
   }
 
-  // The answer handed back until a case changes it.
   void answer(drogon::HttpStatusCode status, const std::string& body)
   {
     const std::lock_guard<std::mutex> lock(mutex_);
@@ -126,28 +107,24 @@ private:
   mutable std::mutex mutex_;
 };
 
-// The suite's one server, started the first time a case asks for it.
 FakeVlmService& fakeVlmService()
 {
   static FakeVlmService service;
   return service;
 }
 
-// Parses a body the fake captured; false when it is not JSON at all.
 bool parseBody(const std::string& text, Json::Value& body)
 {
   Json::Reader reader;
   return reader.parse(text, body);
 }
 
-} // namespace
+}
 
 TEST_CASE("the describe request carries the JPEG as base64 on the wire")
 {
   auto& service = fakeVlmService();
   REQUIRE(service.ready());
-  // The fake is one object for the whole process, so this case asks for the
-  // canned success itself: it must not depend on which case ran before it.
   service.answer(drogon::k200OK, kCaptionBody);
 
   const VlmClient client(service.url());
@@ -165,7 +142,6 @@ TEST_CASE("the describe request carries the JPEG as base64 on the wire")
   CHECK(body["prompt"].asString() == "is a person present?");
   CHECK(body["camera_id"].asString() == "cam-1");
 
-  // A bare ask sends the prompt as a present, empty string, and no camera.
   VlmDescribeInput bare = kAsk;
   bare.prompt.clear();
   bare.cameraId.clear();
@@ -182,8 +158,6 @@ TEST_CASE("the describe envelope decides what the caller gets")
   REQUIRE(service.ready());
   const VlmClient client(service.url());
 
-  // Only a 200 carrying a caption is an answer, and the request case pins
-  // that side: every row here must leave the caller without a value.
   struct Envelope
   {
     const char* label;
@@ -203,17 +177,13 @@ TEST_CASE("the describe envelope decides what the caller gets")
     service.answer(one.status, one.body);
     CHECK_FALSE(drogon::sync_wait(client.describe(kAsk)).has_value());
   }
-  // Put the default back: the last scripting here was a 503 envelope, and a
-  // case that ran next would inherit it under doctest's random order.
   service.answer(drogon::k200OK, kCaptionBody);
 }
 
 TEST_CASE("describe stops before the wire, and raises when the wire is dead")
 {
-  // A drogon loop must be running for a doomed request to fail at all.
   REQUIRE(fakeVlmService().ready());
 
-  // Nothing answers on port 1, so a request that left here would fail.
   const VlmClient client("http://127.0.0.1:1");
 
   VlmDescribeInput empty = kAsk;

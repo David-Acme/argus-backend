@@ -17,9 +17,9 @@ this service. The MUST-FOLLOW rules below restate the ones that apply.
    with `_` suffix.
 5. **Smart pointers** — no raw owning pointers.
 6. **File naming** — `.hxx` headers, `.cc` sources, hyphenated `*-test.cc`.
-7. **100% English** — code, comments, identifiers, docs, commits.
-8. **Minimal comments** — small "what it does" comments only; the "why" goes
-   to CONTEXT.md.
+7. **100% English** — code, identifiers, docs, commits.
+8. **No comments** — none in code, of any kind (root rule 20); the "why"
+   goes to CONTEXT.md.
 9. **Logging** — Drogon built-ins only.
 10. **Health safety** — `/health` never fails or blocks on downstream services.
 11. **Audible rule** — any announcement, alarm tone or siren arming is a guard

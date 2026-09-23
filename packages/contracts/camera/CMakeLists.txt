@@ -18,7 +18,6 @@ argus_contracts(NAME camera
         src/camera/zone-type.hxx
     DEPENDS argus::lib::errors)
 
-# The round-trip suite: every name is its own spelling and back.
 enable_testing()
 find_package(doctest REQUIRED)
 
@@ -29,8 +28,6 @@ target_link_libraries(camera-contract-vocabulary-test PRIVATE
 target_compile_options(camera-contract-vocabulary-test PRIVATE -Wall -Wextra)
 add_test(NAME camera-contract-vocabulary-test COMMAND camera-contract-vocabulary-test)
 
-# The catalog suite: the eight refusals the camera boundary throws, pinned as a
-# table and checked against what the response serializer accepts.
 add_executable(camera-contract-catalog-test
     tests/unit/camera-contract-catalog-test.cc)
 target_link_libraries(camera-contract-catalog-test PRIVATE

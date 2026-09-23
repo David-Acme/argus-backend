@@ -210,7 +210,7 @@ NATS, models, cameras or downstream services are degraded.
 - Parameter structs for functions with three or more parameters.
 - Smart ownership and bounded queues; no raw owning pointers or unbounded
   transport buffers.
-- English-only source, comments, documentation and commits.
+- English-only source, documentation and commits; no comments in code.
 - Never trigger camera alarms or sirens by hand or in tests; the only audible
   path is argus-guard's fleet-gated action surface under its flags and caps.
 

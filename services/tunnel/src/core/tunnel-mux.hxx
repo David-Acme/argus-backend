@@ -11,19 +11,15 @@
 
 namespace tunnel
 {
-// Role hooks for the shared home-link multiplexer.
 class MuxDelegate
 {
 public:
   virtual ~MuxDelegate() = default;
   virtual const std::string& authSecret() const = 0;
-  // Relay answers the peer AUTH with its own proof; the client verifies it before activating the link.
   virtual bool validatesAuth() const = 0;
   virtual void onAuthAccepted() {}
   virtual void onAuthRejected() {}
-  // PUSH frame from the relay; dispatched only on an authenticated home link.
   virtual void onPushFrame(const std::string& payload) { (void)payload; }
-  // The remote side opened a stream (client: dial the gateway).
   virtual void onRemoteOpen(uint32_t streamId) { (void)streamId; }
   virtual void onLinkUp() {}
   virtual void onLinkDown() {}
@@ -39,7 +35,6 @@ struct Stream
   bool localReadPaused{false};
 };
 
-// Shared stream multiplexer over the single home link: OPEN/DATA/CLOSE routing, bounded pending buffers with read pausing, idle and dead-link sweeps.
 class TunnelMux
 {
 public:
@@ -66,20 +61,15 @@ public:
 
   explicit TunnelMux(const Deps& deps);
 
-  // Takes ownership of the home-link socket (accepted on the relay, connected on the client).
   void adoptHome(const TcpPeer::Ptr& peer);
-  // Client side: sends the AUTH mac bound to the current link challenge.
   void sendAuth();
-  // Registers a locally-created socket for a stream (device connection on the relay, dialed gateway connection on the client).
   bool openLocal(uint32_t streamId, const TcpPeer::Ptr& peer);
-  // Relay side: allocates a stream id and sends OPEN; returns 0 at the stream cap or on a down link.
   uint32_t openRemote();
   void closeStream(uint32_t streamId, CloseReason reason);
   void dropLink();
   void teardownAll();
   void sweep();
   void sendPing();
-  // Relay side: sends a PUSH frame toward the home client; loop thread only.
   bool sendPush(const std::string& payload);
 
   bool hasHome() const { return homePeer_ != nullptr; }
@@ -142,4 +132,4 @@ private:
   Clock::time_point lastFrameAt_;
   Clock::time_point attachedAt_;
 };
-} // namespace tunnel
+}

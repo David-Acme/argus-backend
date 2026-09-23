@@ -13,7 +13,6 @@
 #include <auth/user-role.hxx>
 #include <voice/voice-client.hxx>
 
-// Internal gRPC endpoint of argus-voice; empty disables the gRPC voice leg.
 struct VoiceGrpcConfig
 {
   std::string target;
@@ -21,7 +20,6 @@ struct VoiceGrpcConfig
   static VoiceGrpcConfig resolve();
 };
 
-// The voice leg: voice:* frames and raw binary ride one bidi stream per client.
 class VoiceGrpcRelay final : public SyncForwarder
 {
 public:
@@ -34,7 +32,6 @@ public:
                      const std::string& data) override;
   void onClose(const drogon::WebSocketConnectionPtr& conn) override;
 
-  // Pure frozen-frame renderer: the app JSON for one typed server frame.
   static Json::Value renderServerFrame(
       const argus::voice::v1::ServerFrame& frame);
 

@@ -5,7 +5,6 @@
 #include <optional>
 #include <string>
 
-// Caller context of the internal wire (mirrors tools::ToolContext).
 struct MemoryToolContext
 {
   int64_t userId{0};
@@ -13,7 +12,6 @@ struct MemoryToolContext
   std::string sessionId;
 };
 
-// POST /memory/v1/remember body: mirrors the memory.remember descriptor.
 struct RememberBody
 {
   std::string subject;
@@ -26,7 +24,6 @@ struct RememberBody
   static RememberBody fromJson(const Json::Value& json);
 };
 
-// POST /memory/v1/recall body: mirrors the memory.recall descriptor.
 struct RecallBody
 {
   std::string query;
@@ -35,7 +32,6 @@ struct RecallBody
   static RecallBody fromJson(const Json::Value& json);
 };
 
-// POST /memory/v1/forget body: mirrors the memory.forget descriptor.
 struct ForgetBody
 {
   int64_t factId{0};
@@ -43,7 +39,6 @@ struct ForgetBody
   static ForgetBody fromJson(const Json::Value& json);
 };
 
-// POST /memory/v1/procedure-run body: mirrors the procedure.run descriptor.
 struct ProcedureBody
 {
   std::string goal;
@@ -51,7 +46,6 @@ struct ProcedureBody
   static ProcedureBody fromJson(const Json::Value& json);
 };
 
-// POST /memory/v1/capture body: the explicit memory-capture surface.
 struct CaptureBody
 {
   std::string text;
@@ -61,7 +55,6 @@ struct CaptureBody
   static CaptureBody fromJson(const Json::Value& json);
 };
 
-// POST /memory/v1/compact body: the enqueueCompaction surface.
 struct CompactBody
 {
   int64_t userId{0};
@@ -71,7 +64,6 @@ struct CompactBody
   static CompactBody fromJson(const Json::Value& json);
 };
 
-// POST /memory/v1/durable-transcript body: the probe-asserted surface.
 struct DurableTranscriptBody
 {
   std::string transcript;

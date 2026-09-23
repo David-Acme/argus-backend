@@ -86,7 +86,7 @@ ResolvedTemplate resolveTemplate(const std::string& requested)
   return {fallback, extract::kFactTemplateEs};
 }
 
-} // namespace
+}
 
 void ExtractionService::llamaModelFree(llama_model* m)
 {

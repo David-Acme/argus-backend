@@ -1,16 +1,10 @@
-# argus-memory package keys (f8-b3). The package has no process and no
-# listener: the host service (argus-llm, the brain) carries these blocks in
-# its own config.toml. Copy the block, not the file.
-
 [memory]
 db_file = "database/memory.db"
 schema_file = "packages/memory/database/schema.sql"
-# Catalog replicas fed by the change subjects.
 catalog_person_table = "catalog_person"
 catalog_camera_table = "catalog_camera"
 catalog_zone_table = "catalog_zone"
 catalog_stream_table = "catalog_stream"
-# The face recognition index belongs to the face service.
 create_face_vec = false
 queue_bound = 64
 recall_max_tokens = 512
@@ -46,7 +40,6 @@ threads = 0
 n_ctx = 2048
 max_tokens = 512
 
-# Read-only snapshot sources for the catalog replica boot fill.
 [identity]
 db = "./database/identity.db"
 

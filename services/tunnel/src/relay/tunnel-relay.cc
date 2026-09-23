@@ -168,4 +168,4 @@ void TunnelRelay::scheduleSweep()
     scheduleSweep();
   });
 }
-} // namespace tunnel
+}

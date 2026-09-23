@@ -5,7 +5,7 @@
 namespace
 {
 constexpr int kPullTimeoutMs = 5000;
-} // namespace
+}
 
 ProductivitySyncClient::ProductivitySyncClient(std::string target)
     : channel_(argus::client::makeChannel(target)),

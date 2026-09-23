@@ -43,7 +43,7 @@ void appendTimestamp(const AppendTimestampInput& input)
   out.push_back(static_cast<uint8_t>(((value << 1) & 0xFE) | 0x01));
 }
 
-} // namespace
+}
 
 TapoTsMuxer::TapoTsMuxer(TapoTsConfig config) : config_(std::move(config)) {}
 

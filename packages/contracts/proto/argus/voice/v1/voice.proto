@@ -1,16 +1,13 @@
-// Voice orchestration wire (F6-3): the typed successor of the frozen /sync voice frames.
 syntax = "proto3";
 
 package argus.voice.v1;
 
-// Gateway-resolved session language; SYSTEM falls back to stt.language.
 enum VoiceLanguage {
   VOICE_LANGUAGE_SYSTEM = 0;
   VOICE_LANGUAGE_ES = 1;
   VOICE_LANGUAGE_EN = 2;
 }
 
-// Gateway-resolved user role (mirrors UserRole: owner, resident, guard, guest).
 enum VoiceRole
 {
   VOICE_ROLE_OWNER = 0;
@@ -19,7 +16,6 @@ enum VoiceRole
   VOICE_ROLE_GUEST = 3;
 }
 
-// Gateway-resolved identity; argus-voice never reads a database.
 message VoiceIdentity
 {
   int64 user_id = 1;
@@ -37,7 +33,6 @@ message VoiceStop {}
 
 message VoiceSkip {}
 
-// One client frame; pcm is raw 16 kHz s16le mono, the WS binary verbatim.
 message ClientFrame
 {
   oneof body
@@ -67,7 +62,6 @@ message VoiceEvent
   string because = 3;
 }
 
-// Avatar reaction meaning (mirrors ReactionKind: 0 = idle, 9 = alarmed).
 enum ReactionKind
 {
   REACTION_IDLE = 0;
@@ -106,6 +100,5 @@ message ServerFrame
 
 service VoiceService
 {
-  // One bidi stream per app voice session; x-argus metadata required.
   rpc Connect(stream ClientFrame) returns (stream ServerFrame) {}
 }

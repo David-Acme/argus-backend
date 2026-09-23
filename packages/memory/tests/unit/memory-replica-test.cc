@@ -59,7 +59,7 @@ bool rowExists(sqlite3* db, const RowExistsInput& input)
   return stmt.step() == SQLITE_ROW;
 }
 
-} // namespace
+}
 
 TEST_CASE("catalog replicas replay identity and camera events and rebuild "
           "the gazetteer")

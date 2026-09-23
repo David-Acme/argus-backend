@@ -48,7 +48,7 @@ ConfigDbResult productivityDbFromConfig(const std::string& configPath)
   return result;
 }
 
-} // namespace
+}
 
 int main(int argc, char** argv)
 {

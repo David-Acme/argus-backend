@@ -20,7 +20,6 @@ struct CameraHealthConfig
   HealthThresholds thresholds;
 };
 
-// Periodic image-health checks: occlusion, blur and moved-camera detection.
 class CameraHealthMonitor
 {
 public:

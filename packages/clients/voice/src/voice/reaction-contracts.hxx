@@ -1,11 +1,8 @@
 #pragma once
 
-// The reaction vocabulary of the argus.voice.v1 wire, shared by voice and gateway.
-
 #include <cstdint>
 #include <string>
 
-// What the assistant is reacting WITH; the client owns how it looks.
 enum class ReactionKind : uint8_t
 {
   Idle = 0,
@@ -69,7 +66,6 @@ inline ReactionKind reactionKindFromString(const std::string& name)
   return ReactionKind::Idle;
 }
 
-// Signals of one turn; every field optional, recallHits < 0 means never consulted.
 struct ReactionSignals
 {
   std::string text;

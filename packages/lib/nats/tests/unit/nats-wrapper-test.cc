@@ -38,7 +38,7 @@ std::string isolatedSubject(const std::string& stream)
   return stream + ".events";
 }
 
-} // namespace
+}
 
 TEST_CASE("publish subjects accept plain dotted tokens only")
 {
@@ -221,10 +221,8 @@ TEST_CASE("ensureStream reconciles an existing stream instead of assuming it")
   CHECK(created->subjects.front() == subject);
   CHECK(created->maxAgeNs == 60LL * 1000000000);
 
-  // Same config is accepted without changes.
   CHECK(bus.ensureStream(create));
 
-  // A compatible maxAge difference is updated on the existing stream.
   const NatsBus::StreamInput aged{.name = stream,
                                   .subjects = {subject},
                                   .maxAgeNs = 120LL * 1000000000,
@@ -234,7 +232,6 @@ TEST_CASE("ensureStream reconciles an existing stream instead of assuming it")
   REQUIRE(updated.has_value());
   CHECK(updated->maxAgeNs == 120LL * 1000000000);
 
-  // A different subject set is refused explicitly, never assumed.
   const NatsBus::StreamInput foreign{.name = stream,
                                      .subjects = {subject + "-other"},
                                      .maxAgeNs = 120LL * 1000000000,

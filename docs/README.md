@@ -21,7 +21,8 @@ order below.
    the one root Conan graph they share and the third-party dependency map.
 7. [Build and test](operations/build-and-test.md)
 8. [Provisioning and models](operations/provisioning-and-models.md)
-9. [Configuration](operations/configuration.md)
+9. [Configuration](operations/configuration.md) — and the per-key notes in
+   [Configuration keys](operations/configuration-keys.md)
 10. [Docker deployment](operations/deployment-docker.md)
 11. [Hardware tiers](operations/hardware-tiers.md)
 12. [Shadow-mode runbook](operations/shadow-mode-runbook.md)

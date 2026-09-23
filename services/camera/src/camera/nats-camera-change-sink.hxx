@@ -14,18 +14,12 @@
 
 class NatsBus;
 
-// Camera-domain change funnel over argus.camera.v1.change: every emit and
-// audit lands in the camera-owned outbox first, and a worker publishes from
-// there, marking a row sent only after the JetStream PubAck. The ARGUS_CAMERA
-// stream it publishes into is the one the event-stream module declares, over
-// the same subject pair the object-event sink declares it with.
 class NatsCameraChangeSink : public CameraChangeSink
 {
 public:
   struct Config
   {
     int retryMs{500};
-    // JetStream targets; empty keeps the production change subject and stream.
     std::string publishSubject;
     std::string streamName;
   };
@@ -40,11 +34,8 @@ public:
   [[nodiscard]] drogon::Task<void>
   publishAudit(const ModuleAuditInput& input) const override;
 
-  // Starts the publisher; call once after the schema is applied.
   void reconcile();
 
-  // A payload the broker would refuse is not written: one such row would stop
-  // every change queued behind it for ever. 256 KiB, past any real frame.
   static constexpr std::size_t kMaxPayloadBytes = std::size_t{256} * 1024;
 
 private:

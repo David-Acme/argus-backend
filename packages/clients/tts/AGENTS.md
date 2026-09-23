@@ -102,7 +102,7 @@ the gRPC one to serve the same protocol.
   service as well as by callers — `tts-rpc-server.hxx`, `tts-service.hxx` and
   `onnx-utils.hxx` in `services/tts`, and `voice-session-service.hxx` in
   `services/voice`; and `supportedLangCodes()` is declared by the client's
-  header at `tts-wire.hxx:127` but defined by the service in
+  header at `tts-wire.hxx:126` but defined by the service in
   `services/tts/src/feature/synthesis/infra/supertonic/onnx-utils.cc:14`, so
   the client promises a symbol only argus-tts can provide.
 

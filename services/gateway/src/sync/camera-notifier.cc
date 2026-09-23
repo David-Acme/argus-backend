@@ -46,7 +46,6 @@ std::string bodyFor(const Json::Value& event)
          (classes.empty() ? "" : "; detected " + classes);
 }
 
-// Raw fallback only carries protected-zone hard signals while guard is absent.
 bool isHardSignal(const Json::Value& event)
 {
   if (event.get("severity", "").asString() == "critical")
@@ -124,7 +123,7 @@ const char* fallbackReason(
   }
   return "pass";
 }
-} // namespace
+}
 
 CameraNotificationPolicy::CameraNotificationPolicy(Config config)
     : config_(config)
@@ -200,7 +199,6 @@ bool CameraNotificationPolicy::shouldNotify(int64_t cameraId, int64_t nowMs)
 {
   auto& state = windows_[cameraId];
   if (state.windowStartMs == 0 || nowMs - state.windowStartMs >= kHourMs) {
-    // The roll marks a pending digest due instead of clearing the counts.
     if (state.windowStartMs != 0 && !state.suppressedByClass.empty())
       state.digestDue = true;
     state.windowStartMs = nowMs;
@@ -241,7 +239,6 @@ std::string CameraNotificationPolicy::takeDigest(int64_t cameraId,
     return {};
 
   auto& state = it->second;
-  // The counts carry into the next active window; nothing delivers in silent hours.
   if (inSilentHours(config_, hourOfDay(nowMs)))
     return {};
 
@@ -483,7 +480,6 @@ CameraNotificationPolicy* subscribeObjectDetected(
                 });
   bus.subscribe(nats_subject::kCameraObjectDetected,
                 [](std::string_view, std::string_view payload) {
-                  // cnats dispatcher thread: marshal into the Drogon loop.
                   drogon::app().getIOLoop(0)->runInLoop(
                       [payload = std::string(payload)]() {
                         notifier.handle(json_util::fromString(payload));
@@ -493,4 +489,4 @@ CameraNotificationPolicy* subscribeObjectDetected(
       std::chrono::minutes(1), []() { notifier.flushDigests(); });
   return &notifier.policy();
 }
-} // namespace camera_notifier
+}

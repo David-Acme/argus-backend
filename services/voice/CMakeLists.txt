@@ -1,9 +1,6 @@
 cmake_minimum_required(VERSION 3.25)
 project(argus-voice VERSION 1.0.0 LANGUAGES CXX)
 
-# enable_testing() must precede the first add_subdirectory: the flag
-# propagates into every subtree, and a directory that misses it gets no
-# CTestTestfile — the tests of anything added beneath it then never run.
 enable_testing()
 
 set(CMAKE_CXX_STANDARD 20)
@@ -13,9 +10,6 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 include(${CMAKE_CURRENT_SOURCE_DIR}/../../cmake/argus-module.cmake)
 
 if(PROJECT_IS_TOP_LEVEL)
-    # Standalone configure: this service owns the whole build, so it adds the
-    # packages it links — the leaves it uses directly and the sibling packages
-    # that used to arrive through argus-common.
     find_package(Drogon CONFIG REQUIRED)
     find_package(cnats CONFIG REQUIRED)
     find_package(tomlplusplus REQUIRED)
@@ -62,8 +56,6 @@ if(NOT TARGET argus::clients::voice)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/voice
                      ${CMAKE_BINARY_DIR}/clients/voice EXCLUDE_FROM_ALL)
 endif()
-# The standard grpc.health.v1 stubs this service answers its health probes
-# with; packages/lib/grpc declares them (argus::lib::grpc-health).
 if(NOT TARGET argus::lib::grpc-health)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/grpc
                      ${CMAKE_BINARY_DIR}/grpc EXCLUDE_FROM_ALL)
@@ -75,10 +67,6 @@ endif()
 
 find_package(doctest REQUIRED)
 
-# The voice engine set compiled from the shared tree (PORTED pattern): the
-# vad/noise/reaction/resampler stack plus the remote stt/tts/llm clients;
-# argus-voice is remote-only, so the in-process stt/tts/llm engines do not
-# compile here.
 set(VOICE_ENGINE_SOURCES
     src/shared/services/vad/vad-service.cc
     src/shared/services/noise/noise-suppression-service.cc
@@ -112,7 +100,6 @@ argus_module(NAME voice-core
         onnxruntime::onnxruntime
 )
 
-# Third-party headers are SYSTEM (AGENTS.md rule 15).
 target_include_directories(argus_voice-core SYSTEM PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/../../third_party
     ${CMAKE_CURRENT_SOURCE_DIR}/../../third_party/stb)
@@ -140,10 +127,6 @@ if(DOCTEST_INCLUDE_DIRS)
         INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${DOCTEST_INCLUDE_DIRS}")
 endif()
 
-# The voice suites opt back into the default build: this folder is added
-# EXCLUDE_FROM_ALL.
-# The voice suites ride argus-voice's voice-core (F6-3): the typed gRPC
-# session, the remote-only engine seam and the SDK stubs compile there.
 add_executable(voice-session-seam-test tests/unit/voice-session-seam-test.cc)
 
 target_link_libraries(voice-session-seam-test PRIVATE argus::voice-core
@@ -157,11 +140,8 @@ set_target_properties(voice-session-seam-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
 add_test(NAME voice-session-seam-test COMMAND voice-session-seam-test)
 
-# The TTS cutover suite: the voice session speaks through the argus-tts
-# internal wire (RemoteVoiceTts) against the in-process fake server.
 add_executable(voice-tts-remote-test tests/unit/voice-tts-remote-test.cc)
 
-# The TTS wire's fake server moved to the wire module with f7-7a.
 target_include_directories(voice-tts-remote-test PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/tts/tests/support)
 
@@ -176,9 +156,6 @@ set_target_properties(voice-tts-remote-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
 add_test(NAME voice-tts-remote-test COMMAND voice-tts-remote-test)
 
-# The STT cutover suite: the voice session transcribes through the
-# argus-stt internal wire (RemoteVoiceStt), degrading to the existing
-# stt_failed error path when the server is down.
 add_executable(voice-stt-remote-test tests/unit/voice-stt-remote-test.cc)
 
 target_include_directories(voice-stt-remote-test PRIVATE
@@ -195,12 +172,8 @@ set_target_properties(voice-stt-remote-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
 add_test(NAME voice-stt-remote-test COMMAND voice-stt-remote-test)
 
-# The LLM cutover suite (F4-5): the voice session streams its replies through
-# the argus-llm internal wire (RemoteVoiceLlm), degrading silently when the
-# server is down.
 add_executable(voice-llm-remote-test tests/unit/voice-llm-remote-test.cc)
 
-# This suite drives both the LLM and STT fakes.
 target_include_directories(voice-llm-remote-test PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/llm/tests/support
     ${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/stt/tests/support)

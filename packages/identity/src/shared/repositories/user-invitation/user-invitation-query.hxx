@@ -58,7 +58,7 @@ inline constexpr std::string_view TRY_CONSUME =
 inline constexpr std::string_view INSERT_REDEMPTION =
     "INSERT INTO invitation_redemption (invitation_id, user_id) VALUES (?, ?)";
 
-} // namespace user_invitation_query
+}
 
 struct UserInvitationCreateInput
 {

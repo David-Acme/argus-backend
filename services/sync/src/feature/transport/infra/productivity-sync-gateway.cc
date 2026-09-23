@@ -362,7 +362,7 @@ std::optional<Json::Value> lastDeleted(const PullTableResponse& response)
   }
 }
 
-} // namespace
+}
 
 class ProductivitySyncGateway::Pull : public Syncable
 {

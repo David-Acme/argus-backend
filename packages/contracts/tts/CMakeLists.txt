@@ -31,8 +31,6 @@ function(argus_tts_rpc_contract)
     endif()
 endfunction()
 
-# The catalog suite: the nine refusals the text-to-speech boundary throws,
-# pinned as a table and checked against what the response serializer accepts.
 enable_testing()
 find_package(doctest REQUIRED)
 

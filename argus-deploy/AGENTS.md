@@ -29,6 +29,6 @@ any change; the cutover shape and its exceptions are documented there.
   networks only; never touch other compose projects or their volumes.
 - No C++ code in this folder: changes here are compose/config only.
   Dockerfiles live in the service folders they build.
-- 100% English; minimal comments.
+- 100% English; no comments (root rule 20).
 
-> Binding cross-service code standards: root `AGENTS.md` MUST-FOLLOW rules 19-24 (modern C++20, comment discipline, efficiency, DB tuning, feature layout + shared SDK, monolith structure).
+> Binding cross-service code standards: root `AGENTS.md` MUST-FOLLOW rules 19-24 (modern C++20, no comments in code, efficiency, DB tuning, feature layout + shared SDK, monolith structure).

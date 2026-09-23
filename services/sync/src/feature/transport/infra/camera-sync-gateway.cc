@@ -130,7 +130,7 @@ ResponseException unavailable()
 {
   return ResponseException(503, SyncErrors::CameraSyncUnavailable);
 }
-} // namespace
+}
 
 class CameraSyncGateway::Pull : public Syncable
 {

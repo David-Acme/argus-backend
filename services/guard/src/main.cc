@@ -117,7 +117,7 @@ void registerHealth()
       {drogon::Get});
 }
 
-} // namespace
+}
 
 int main()
 {

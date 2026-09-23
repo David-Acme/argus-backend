@@ -29,8 +29,6 @@ void ErrorHandler::handleException(
     return;
   }
 
-  // Untyped: the code and the status are the substrate's, the text is the
-  // exception's own.
   respCallback(
       ApiResponse::error(HttpErrors::InternalError.withMessage(e.what())));
 }

@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# Model provisioning for argus-camera (moved verbatim from scripts/setup.sh).
 set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/../../../scripts/lib/common.sh"
 
@@ -65,8 +64,6 @@ setup_camera_model() {
     return
   fi
 
-  # The raw end-to-end NCNN artifacts are exported locally, never downloaded:
-  # the one2one head keeps the raw XYXY output the C++ postprocess decodes.
   local PY=""
   if command -v python3 >/dev/null 2>&1; then
     PY="python3"

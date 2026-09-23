@@ -1,9 +1,3 @@
-# clang-tidy findings per check, measured by
-# scripts/check-tidy.sh under the .clang-tidy check set
-# (plan section 4.13, rules 16 and 19). The gate fails
-# when a count rises; lower one when you fix what is
-# behind it. The counts belong to the clang-tidy named
-# on the tool line, and a different major is refused.
 tool 22.1.8
 tus 481
 modernize-use-nodiscard 780

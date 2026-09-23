@@ -10,7 +10,6 @@
 #include <mutex>
 #include <string>
 
-// Pins that receivers gate on the PRESENCE of the x-argus-* keys, not their values.
 namespace
 {
 
@@ -47,7 +46,7 @@ private:
   std::map<std::string, std::string> seen_;
 };
 
-} // namespace
+}
 
 TEST_CASE("caller identity metadata travels by presence, not by value")
 {

@@ -27,4 +27,4 @@ inline constexpr const char* DROP_FACE_VEC = "DROP TABLE IF EXISTS face_vec";
 inline constexpr const char* TABLE_SQL =
     "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?";
 
-} // namespace vector_index_query
+}

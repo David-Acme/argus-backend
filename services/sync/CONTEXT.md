@@ -57,8 +57,7 @@ protocol could not regress by accident in the commit that changed the endpoint.
 Identity's file. The four tables' DDL moved here verbatim (they were
 `packages/identity`'s schema), and `[sync] db` still points at
 `database/identity.db`; Phase 3c-2 splits them into `sync.db` and the key
-changes with it. Two consequences are accepted for now and are the reason the
-config comment exists: the audit tables' `REFERENCES user(id)` foreign keys
+changes with it. Two consequences are accepted for now: the audit tables' `REFERENCES user(id)` foreign keys
 target a table this owner does not declare, and the deploy binds identity's
 data directory into this container. Both are the transitory price of moving the
 writer before splitting the file; rule 27's shape resumes in 3c-2.

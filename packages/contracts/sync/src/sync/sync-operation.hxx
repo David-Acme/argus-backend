@@ -5,14 +5,14 @@
 
 enum class SyncOperation : uint8_t
 {
-  InitialInfo = 0,         // current user info (on connect)
-  Synchronize = 1,         // sync of created/deleted data (global + user level)
-  SynchronizeAuditLog = 2, // sync of GLOBAL atomic updates
-  SynchronizeUserAuditLog = 3, // sync of atomic updates AT USER LEVEL
-  Add = 4,                     // live event: entity/notification created
-  Delete = 5,                  // live event: entity deleted
-  Log = 6,                     // live event: audit log
-  AuthContextChanged = 7       // live event: role/active context must refresh
+  InitialInfo = 0,
+  Synchronize = 1,
+  SynchronizeAuditLog = 2,
+  SynchronizeUserAuditLog = 3,
+  Add = 4,
+  Delete = 5,
+  Log = 6,
+  AuthContextChanged = 7
 };
 
 inline std::string syncOperationToString(SyncOperation op)

@@ -271,7 +271,6 @@ NotificationResult validateSource(const std::string& sourcePath)
   return result;
 }
 
-// No-op report for a schema-current live target; nothing is copied or wiped.
 NotificationMigrationReport noOpReport(sqlite3* target)
 {
   NotificationMigrationReport report;
@@ -293,7 +292,6 @@ NotificationMigrationReport noOpReport(sqlite3* target)
   return report;
 }
 
-// In-memory schema reference for comparing an existing target's column shape.
 NotificationHandleResult schemaReference(const std::string& schemaPath)
 {
   auto reference = openHandle(":memory:", SQLITE_OPEN_READWRITE);
@@ -329,7 +327,7 @@ NotificationMigrationReport verifyForeignKeyIntegrity(sqlite3* target)
   return report;
 }
 
-} // namespace
+}
 
 NotificationResult applyNotificationSchema(const NotificationSchemaInput& input)
 {

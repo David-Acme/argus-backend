@@ -6,7 +6,7 @@ namespace
 {
 constexpr std::string_view kAlphabet =
     "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-} // namespace
+}
 
 std::string base64::encode(std::string_view bytes)
 {

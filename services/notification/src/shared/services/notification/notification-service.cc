@@ -19,7 +19,7 @@ int64_t nowMillis()
 }
 
 constexpr int64_t kProbeRetentionS = 7LL * 24 * 3600;
-} // namespace
+}
 
 NotificationService::NotificationService(Dependencies dependencies)
     : dependencies_(std::move(dependencies))

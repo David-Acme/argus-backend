@@ -89,7 +89,6 @@ struct HitFilter
   bool requireNearStart = false;
 };
 
-// Only a confirmation detached by punctuation may be cut; npos keeps the phrase.
 size_t tagCut(const std::string& lowered, uint32_t begin)
 {
   size_t i = begin;
@@ -144,7 +143,7 @@ const PhraseHit* bestHit(const BestHitInput& input)
   return best;
 }
 
-} // namespace
+}
 
 std::string RuleParser::stripTrailingConfirmation(std::string text,
                                                   const std::string& lang) const

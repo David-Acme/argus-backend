@@ -1,9 +1,3 @@
-# errors: the refusal vocabulary -- the code enum, the definition that pairs a
-# code with its status and message, and the typed exceptions that carry it
-# (response and validation). No Drogon, no HTTP type, no JSON: a pure leaf, so
-# a domain contract can declare its errors without dragging a framework in.
-# Consumers link argus::lib::errors.
-
 include(${CMAKE_CURRENT_SOURCE_DIR}/../../../cmake/argus-module.cmake)
 
 argus_lib(NAME errors
@@ -17,9 +11,6 @@ argus_lib(NAME errors
 
 target_compile_options(argus_lib_errors PRIVATE -Wall -Wextra)
 
-# The vocabulary's own suite: every code's wire string, and the three shapes a
-# refusal can take. Definition-backed errors are asserted in the contracts that
-# declare them; this package tests the mechanism.
 enable_testing()
 find_package(doctest REQUIRED)
 

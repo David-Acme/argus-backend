@@ -13,12 +13,10 @@
 #include <auth/jwt-service.hxx>
 #include <nats/nats-bus.hxx>
 
-// IdentityService controller: UpdateUser is metadata-authoritative, the rest self-authoritative.
 class IdentityRpcService final
     : public argus::identity::v1::IdentityService::CallbackService
 {
 public:
-  // fleetSecret is required in x-argus-fleet on every call; empty allows only loopback.
   IdentityRpcService(std::shared_ptr<NatsBus> bus, std::string fleetSecret);
 
   grpc::ServerUnaryReactor*
@@ -96,10 +94,8 @@ private:
     const std::string& reason;
   };
 
-  // Rejected validation: RPC OK with valid=false and the caller's 401 body.
   static void finishRejected(const TokenRejectionInput& input);
 
-  // Fleet-secret gate; the listener is cleartext.
   bool fleetAuthorized(const grpc::CallbackServerContext* context) const;
 
   JwtService jwtService_;

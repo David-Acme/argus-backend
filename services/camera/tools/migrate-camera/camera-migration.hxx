@@ -51,11 +51,8 @@ struct CameraVerificationInput
   sqlite3* target = nullptr;
 };
 
-// Creates the camera tables on db from the schema file, failing on the first statement error.
 CameraResult applyCameraSchema(const CameraSchemaInput& input);
 
-// Verifies the attached read-only source ("src") against the target per camera table.
 CameraMigrationReport verifyCameraTables(const CameraVerificationInput& input);
 
-// Full migration: schema, transactional copy in FK-safe order, verification; schema-current targets no-op.
 CameraMigrationReport migrateCamera(const CameraMigrationOptions& options);

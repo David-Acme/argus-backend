@@ -3,10 +3,6 @@
 #include <cstddef>
 #include <cstdint>
 
-// Energy + zero-crossing utterance endpointer over 16 kHz mono PCM; pure DSP.
-// Energy gates loudness against an adaptive noise floor and an absolute floor;
-// the zero-crossing rate rejects stationary low-frequency rumble and broadband
-// hiss so ambient noise is not mistaken for speech.
 struct EndpointConfig
 {
   int sampleRate{16000};
@@ -33,8 +29,6 @@ class EndpointDetector
 public:
   explicit EndpointDetector(EndpointConfig config);
 
-  // Feeds one PCM chunk; state accumulates across calls. Odd sample counts are
-  // fine: framing carries across calls.
   EndpointStatus process(const int16_t* samples, std::size_t count);
 
   bool speechDetected() const { return speechDetected_; }
@@ -63,7 +57,6 @@ private:
 namespace audio_endpoint
 {
 
-// Resolves the camera listen defaults; kept here so tests pin the values.
 EndpointConfig cameraListenDefaults();
 
-} // namespace audio_endpoint
+}

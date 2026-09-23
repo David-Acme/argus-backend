@@ -22,13 +22,12 @@ TEST_CASE("push intents reach the client queue over an authenticated link")
 
 namespace
 {
-// Client created on the loop thread; the mutex guards the pointer for test-thread polls.
 struct ClientHolder
 {
   std::mutex mutex;
   std::unique_ptr<TunnelClient> client;
 };
-} // namespace
+}
 
 TEST_CASE("intents posted while the link is down deliver after reconnect")
 {
@@ -45,7 +44,6 @@ TEST_CASE("intents posted while the link is down deliver after reconnect")
                                     std::to_string(i) + "}");
     });
   }
-  // No active link: the intents buffer at the relay instead of forwarding.
   REQUIRE(waitFor([&] { return harness.relay->pushQueued() == 2; }, 5000));
   CHECK(harness.relay->pushForwarded() == 0);
 

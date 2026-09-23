@@ -94,7 +94,7 @@ HealthMetrics healthy()
 {
   return HealthMetrics{.brightness = 120.0, .blur = 80.0, .sceneDiff = 0.05};
 }
-} // namespace
+}
 
 TEST_CASE("a healthy image is ok")
 {

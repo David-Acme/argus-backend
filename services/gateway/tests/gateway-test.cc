@@ -57,8 +57,6 @@ drogon::HttpRequestPtr testRequest(drogon::HttpMethod method,
 
 using DbHandle = std::unique_ptr<sqlite3, int (*)(sqlite3*)>;
 
-// The drogon calls these replace all threw on failure, so a throwing helper
-// keeps the suite's assertion count where it was.
 void exec(sqlite3* db, const std::string& sql)
 {
   char* error = nullptr;
@@ -81,14 +79,6 @@ DbHandle openFile(const std::string& path)
   return {raw, sqlite3_close_v2};
 }
 
-// One async statement whose callback queues a sentinel on the connection's own
-// loop. Callbacks run on that loop, and trantor destroys each queued functor as
-// it dequeues the next, so the reference the statement lambda held is gone
-// before the sentinel runs: after this returns no thread but this one holds the
-// connection, and the client's destructor joins an idle loop thread from
-// outside instead of its own. The callback must not capture the client: a
-// reference released on that loop re-opens the window. No assertion here by
-// design (a timeout throws): the suites' counts must not move.
 void drain(const drogon::orm::DbClientPtr& client)
 {
   auto drained = std::make_shared<std::promise<void>>();
@@ -112,7 +102,7 @@ void drain(const drogon::orm::DbClientPtr& client)
     throw std::runtime_error("the client's loop did not drain");
 }
 
-} // namespace
+}
 
 TEST_CASE("health envelope conforms to the ApiResponse shape")
 {
@@ -180,7 +170,6 @@ TEST_CASE("identity rpc config gates a non-loopback listener on the secret")
   CHECK(exposed.host == "172.19.0.1");
   CHECK(exposed.port == 7040);
   CHECK(exposed.secret.empty());
-  // main.cc aborts on exactly this pair: beyond loopback with no fleet secret.
   CHECK(exposed.reachableBeyondLoopback());
 
   ConfigService::setRuntimeString("identity.rpc_secret", "fleet-secret");
@@ -288,11 +277,6 @@ TEST_CASE("read-only legacy database rejects writes and serves reads")
   std::remove(dbPath);
 
   DbService::enableUriFilenames();
-  // Seeded through the sqlite3 C API, the way this unit's sibling suites seed
-  // theirs: a throwaway drogon client keeps a loop thread of its own, and a
-  // connection whose queued statement lambda still holds the last reference is
-  // destroyed on that thread, where ~EventLoopThread then joins the thread it
-  // is running on (EDEADLK -> SIGABRT, no assertion reported).
   {
     const DbHandle db = openFile(dbPath);
     exec(db.get(),
@@ -317,8 +301,6 @@ TEST_CASE("read-only legacy database rejects writes and serves reads")
   }
   CHECK(writeFailed);
 
-  // The local and the slot hold this client's last references: empty its loop
-  // first, or the connection is destroyed on that loop and joins itself.
   drain(readOnly);
   DbService::setReadOnlyClient(nullptr);
   std::remove(dbPath);
@@ -422,7 +404,6 @@ TEST_CASE("proxy config routes the camera CRUD to argus-camera")
 
   CHECK(config.cameraProxyUrl == "http://127.0.0.1:7026");
 
-  // Without the [camera] section the camera routes stay unrouted.
   {
     std::ofstream file(path);
     file << "[gateway]\n"
@@ -490,7 +471,6 @@ TEST_CASE("route table sends the whole camera domain to the camera backend")
   routes.append(cameraRoute);
   config["routes"] = routes;
 
-  // initAndStart registers the pre-routing advice.
   proxy.initAndStart(config);
 
   CHECK(proxy.matchRoute("/camera") == 0);
@@ -498,7 +478,6 @@ TEST_CASE("route table sends the whole camera domain to the camera backend")
   CHECK(proxy.matchRoute("/zone") == 0);
   CHECK(proxy.matchRoute("/zone/3") == 0);
 
-  // The device-control paths ride the same route under the domain-wide cap.
   CHECK(proxy.matchRoute("/camera/1/ptz") == 0);
   CHECK(proxy.matchRoute("/camera/1/preset") == 0);
   CHECK(proxy.matchRoute("/camera/1/settings") == 0);
@@ -506,7 +485,6 @@ TEST_CASE("route table sends the whole camera domain to the camera backend")
   CHECK(proxy.matchRoute("/camera/1/presets") == 0);
   CHECK(proxy.matchRoute("/camera/1/capabilities") == 0);
   CHECK(proxy.matchRoute("/camera/1/talk") == 0);
-  // Beyond the cap and foreign prefixes still fall through.
   CHECK(proxy.matchRoute("/camera/1/settings/x/y/z") == 0);
   CHECK(proxy.matchRoute("/camera/1/a/b/c/d/e/f/g/h/i") == -1);
   CHECK(proxy.matchRoute("/cameras/1") == -1);
@@ -537,7 +515,6 @@ TEST_CASE("proxy config routes the productivity and notification domains")
   CHECK(config.productivityProxyUrl == "http://127.0.0.1:7027");
   CHECK(config.notificationProxyUrl == "http://127.0.0.1:7028");
 
-  // Without the sections the domains stay unrouted.
   {
     std::ofstream file(path);
     file << "[gateway]\n"
@@ -583,7 +560,6 @@ TEST_CASE("route table sends the productivity and notification domains to the fa
 
   proxy.initAndStart(config);
 
-  // Segment-boundary matching keeps /calendar-event-share distinct from /calendar-event.
   CHECK(proxy.matchRoute("/calendar-event") == 0);
   CHECK(proxy.matchRoute("/calendar-event/1") == 0);
   CHECK(proxy.matchRoute("/calendar-event-share") == 0);

@@ -92,7 +92,6 @@ Json::Value drogonConfig(const DrogonConfigInput& input)
     {
       Json::Value routes(Json::arrayValue);
       if (!proxy.cameraProxyUrl.empty()) {
-        // The whole camera domain goes to argus-camera, every segment depth.
         Json::Value cameraRoute(Json::objectValue);
         Json::Value prefixes(Json::arrayValue);
         prefixes.append("/camera");
@@ -103,7 +102,6 @@ Json::Value drogonConfig(const DrogonConfigInput& input)
         routes.append(cameraRoute);
       }
       if (!proxy.productivityProxyUrl.empty()) {
-        // The whole productivity domain goes to argus-productivity.
         Json::Value productivityRoute(Json::objectValue);
         Json::Value prefixes(Json::arrayValue);
         prefixes.append("/calendar-event");
@@ -117,7 +115,6 @@ Json::Value drogonConfig(const DrogonConfigInput& input)
         routes.append(productivityRoute);
       }
       if (!proxy.guardProxyUrl.empty()) {
-        // The owner-only guard API: mode, incidents, decisions and guests.
         Json::Value guardRoute(Json::objectValue);
         Json::Value prefixes(Json::arrayValue);
         prefixes.append("/guard");
@@ -127,7 +124,6 @@ Json::Value drogonConfig(const DrogonConfigInput& input)
         routes.append(guardRoute);
       }
       if (!proxy.notificationProxyUrl.empty()) {
-        // The write-side notification surface goes to argus-notification.
         Json::Value notificationRoute(Json::objectValue);
         Json::Value prefixes(Json::arrayValue);
         prefixes.append("/notification");
@@ -149,7 +145,6 @@ Json::Value drogonConfig(const DrogonConfigInput& input)
   return config;
 }
 
-// Every gateway-native route must be covered by the exclusion set, fail fast.
 void requireExclusionCoverage(const ProxyConfig& proxy)
 {
   for (const auto& handlerInfo : drogon::app().getHandlersInfo()) {
@@ -193,7 +188,7 @@ void logRouting(const LogRoutingInput& input)
     LOG_INFO << "  " << prefix;
 }
 
-} // namespace
+}
 
 int main()
 {
@@ -202,7 +197,6 @@ int main()
   ConfigService::load("config.toml");
 
   const IdentityDbConfig identityDb = IdentityConfig::resolveDb();
-  // One database drives the whole identity domain.
   ConfigService::setRuntimeString("database.file", identityDb.dbPath);
 
   std::string gatewayDbPath = ConfigService::getString("gateway.db");
@@ -261,7 +255,6 @@ int main()
                     .remote = remote,
                     .proxy = proxy}));
 
-  // Remote classification and the rate limiter run before filters.
   RemoteGate remoteGate(remote,
                         std::make_shared<RefreshRateLimiter>(
                             RateLimitConfig::resolve()));
@@ -276,7 +269,6 @@ int main()
         chain();
       });
 
-  // OPTIONS on routed paths is forwarded to the backend like any request.
   drogon::app().registerPreRoutingAdvice(
       [&proxy](const drogon::HttpRequestPtr& req,
                drogon::AdviceCallback&& cb,
@@ -314,8 +306,6 @@ int main()
   if (natsUrl.empty()) {
     LOG_INFO << "NATS not configured; event bus disabled";
   } else {
-    // Handlers register before the first successful connection; the bus
-    // supervises reconnects and re-attaches every subscription.
     natsBus = std::make_shared<NatsBus>();
     const bool connected = natsBus->connect();
     fallbackPolicy = camera_notifier::subscribeObjectDetected(
@@ -323,10 +313,6 @@ int main()
                        .target = notificationGrpcTarget,
                        .credential = ConfigService::getString(
                            "notifications.credential")}));
-    // User rows change here, so the catalog replica feed publishes from here.
-    // Installed whether or not the first connect succeeded: identity writes
-    // every change into its own outbox first, and a sink that is never
-    // installed drops them instead of retaining them.
     identitySink = std::make_shared<NatsIdentityChangeSink>(
         natsBus, NatsIdentityChangeSink::Config{});
     identity_change::setSink(identitySink.get());

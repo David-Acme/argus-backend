@@ -11,7 +11,6 @@
 #include <unistd.h>
 #include <vector>
 
-// Opt-in live check against a real NATS + JetStream (ARGUS_NATS_URL).
 TEST_CASE("a durable consumer exhausts MaxDeliver and settles the message")
 {
   const char* url = std::getenv("ARGUS_NATS_URL");

@@ -7,7 +7,6 @@
 
 namespace calendar_event_share_query
 {
-/** `?` the visibility predicate spends in every sync query of this table. */
 inline constexpr int OWNERSHIP_PLACEHOLDERS = 2;
 
 inline constexpr std::string_view FIND_BY_ID =
@@ -99,7 +98,7 @@ inline constexpr std::string_view UPDATE_ACCESS =
 inline constexpr std::string_view REMOVE =
     "UPDATE calendar_event_share SET deleted_at = strftime('%s', 'now'), "
     "updated_at = strftime('%s', 'now') WHERE id = ? AND deleted_at IS NULL";
-} // namespace calendar_event_share_query
+}
 
 struct CalendarEventShareCreateInput
 {

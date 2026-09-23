@@ -1,21 +1,12 @@
-# argus-tunnel configuration. Copy to config.toml (gitignored) to run.
-# One file serves both binaries: argus-relay reads the [server] block's
-# relay keys on the US host, argus-tunnel-client reads the client keys on
-# the home host.
-
 [tunnel]
-# Empty refuses to start (both binaries).
 secret = ""
 
-# Client-only knobs.
 reconnect_wait_ms = 2000
 max_reconnects = 60
 ping_interval_seconds = 30
 
-# Shared link knobs.
 stream_idle_seconds = 300
 max_streams = 256
-# SO_SNDBUF in bytes for every tunnel socket (0 = kernel-managed).
 socket_snd_buf = 0
 
 [server]
@@ -23,17 +14,14 @@ host = "0.0.0.0"
 device_port = 7100
 home_port = 7101
 
-# Client dial targets.
 relay_host = "127.0.0.1"
 relay_port = 7101
 gateway_host = "127.0.0.1"
 gateway_port = 7024
 
-# Defaults differ per binary; the home host's copy sets health_port = 7104.
 health_host = "127.0.0.1"
 health_port = 7103
 
-# Relay-only push-intent gate; default off.
 [push]
 enabled = false
 queue_capacity = 256

@@ -23,9 +23,7 @@ struct Observation
   std::vector<int64_t> entitiesHint;
   bool allowModel = true;
   bool salient = false;
-  // Upstream already decided this is a save; no trigger or extraction needed.
   bool decided = false;
-  // Forces the stored fact type; the reminder tool sets it for scheduled facts.
   std::string typeHint;
 };
 

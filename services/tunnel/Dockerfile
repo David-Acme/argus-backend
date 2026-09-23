@@ -1,8 +1,5 @@
 # syntax=docker/dockerfile:1.7
 
-# argus-tunnel service image. Build from the repository root:
-#   docker build -f services/tunnel/Dockerfile -t argus-tunnel:local .
-
 FROM debian:trixie-slim AS build
 
 ENV DEBIAN_FRONTEND=noninteractive

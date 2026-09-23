@@ -1,6 +1,4 @@
 #!/usr/bin/env bash
-# Docker Engine + Compose v2 provisioning for the deployment host. Callers
-# source lib/common.sh first for log/warn/err/sudo_if_needed.
 
 provision_host_pkg_mgr() {
   case "$(uname -s)" in
@@ -35,8 +33,6 @@ docker_daemon_ok() {
     sudo docker info >/dev/null 2>&1
 }
 
-# Prints the docker invocation with sudo when the current user cannot reach
-# the daemon (fresh group membership needs a re-login).
 docker_client() {
   if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
     printf 'docker'

@@ -7,7 +7,6 @@
 
 namespace project_member_query
 {
-/** `?` the visibility predicate spends in every sync query of this table. */
 inline constexpr int OWNERSHIP_PLACEHOLDERS = 2;
 
 inline constexpr std::string_view FIND_BY_ID =
@@ -99,7 +98,7 @@ inline constexpr std::string_view UPDATE_ACCESS =
 inline constexpr std::string_view REMOVE =
     "UPDATE project_member SET deleted_at = strftime('%s', 'now'), "
     "updated_at = strftime('%s', 'now') WHERE id = ? AND deleted_at IS NULL";
-} // namespace project_member_query
+}
 
 struct ProjectMemberCreateInput
 {

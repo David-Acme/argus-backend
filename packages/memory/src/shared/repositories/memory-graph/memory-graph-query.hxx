@@ -168,7 +168,6 @@ inline constexpr const char* FIND_ALIAS_GAZETTEER =
     "SELECT a.norm, a.surface, a.person_frame, a.entity_id, e.kind "
     "FROM memory_alias a JOIN memory_entity e ON e.id = a.entity_id";
 
-// Catalog reads resolve their physical table from config; empty keeps the domain table.
 inline std::string catalogTable(const char* key, const char* legacy)
 {
   const std::string configured = ConfigService::getString(key);
@@ -201,7 +200,6 @@ inline std::string findCatalogStreams()
          catalogTable("memory.catalog_stream_table", "camera_stream");
 }
 
-// Schema source for the memory stack's own connections.
 inline std::string schemaFile()
 {
   const std::string configured = ConfigService::getString("memory.schema_file");
@@ -230,7 +228,7 @@ inline constexpr const char* INSERT_LEGACY_FACT =
     "valid_to, hit_count, created_at, updated_at) "
     "VALUES (?, 'legacy', ?, ?, ?, ?, 0.5, 'es', ?, ?, ?, 0, ?, ?, ?)";
 
-} // namespace memory_graph_query
+}
 
 struct VecNeighbourInput
 {
@@ -317,4 +315,3 @@ struct EncounterSettleInput
   std::string eventId;
   int64_t at{0};
 };
-

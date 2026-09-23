@@ -101,7 +101,7 @@ CameraMigrationReport migrateSeeded(const CameraFixture& fixture)
                         .schemaPath = ARGUS_CAMERA_SCHEMA_PATH});
 }
 
-} // namespace
+}
 
 TEST_CASE("migration copies camera tables and verifies them")
 {

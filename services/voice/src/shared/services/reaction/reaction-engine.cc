@@ -44,7 +44,7 @@ float intensityFor(ReactionKind kind, const ReactionSignals& signals)
   }
 }
 
-} // namespace
+}
 
 ReactionEngine::ReactionEngine() : impl_(std::make_unique<Impl>()) {}
 

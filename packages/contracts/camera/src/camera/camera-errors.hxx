@@ -33,11 +33,8 @@ inline constexpr ErrorDefinition ZoneNotFound{
     .code = ErrorCode::NotFound,
     .status = 404,
     .message = "Zone not found"};
-// A device that answered "no" is bad gateway, not a server error. The device's
-// own words replace the message when it has any (withMessage); the code and the
-// status are the catalog's.
 inline constexpr ErrorDefinition CameraUnreachable{
     .code = ErrorCode::CameraUnreachable,
     .status = 502,
     .message = "The camera refused the command"};
-} // namespace CameraErrors
+}

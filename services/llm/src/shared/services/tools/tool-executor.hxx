@@ -5,7 +5,6 @@
 #include <shared/services/tools/tool-registry.hxx>
 #include <string>
 
-// Tool call pipeline: resolve -> validate -> role_access::hasAccess -> handler.
 class ToolExecutor
 {
 public:

@@ -46,6 +46,7 @@
 | D18 | **The data rule, refined.** A package may not *query* or own data and may not reach into a service's database — but it **may consume other packages, contracts and clients**. So `lib/auth` validating a credential through `clients/auth` is legal and expected; what is illegal is SQL against another owner's domain, repositories of a domain, or a package that is a service in disguise. |
 | D19 | **The tunnel is deferred.** `services/tunnel` stays exactly as it is — no layout work, no contract work, no phase touches it — until the remote-access work starts. Its own shape (`net`, `protocol`, `client`, `relay`) is accepted for now. |
 | D20 | **Service config lives in `src/config/`; `app/` stays composition-only.** A service's typed configuration resolution (`<svc>-config.{hxx,cc}`: db path, schema path, ports, feature flags, read through `lib/config`) lives in `src/config/` as a sibling of `feature/` and `shared/`, so it is not buried inside the process entry point. `app/` holds `main.cc` and `rpc/` and nothing else, and every service registers the one shared exception advice with a single line. **There is no per-service `AppConfig` subclass** — verified: nobody subclasses `AppConfig` in the tree today. |
+| D21 | **No comments in code, without exception** (2026-09-23). Every first-party file that is not documentation carries no comment of any kind — C++, protos, CMake, shell, Python, SQL, Dockerfiles, YAML, config templates, ignore lists — and no docstring. What remains is what a tool reads as an instruction: shebangs, Dockerfile parser directives, preprocessor directives. The "why" lives in `CONTEXT.md`, the reports and this plan. Enforced by `scripts/check-comments.sh`, which the orchestrator runs before anything is built. Every agent and subagent prompt carries the rule. |
 
 Each decision states the rule; the sections below are where it is implemented, so a decision is
 never repeated in full twice. **Open decisions** are listed in §7 (none), and §9 is the verified
@@ -698,12 +699,18 @@ The order inside a header is fixed, and it is what a reviewer reads:
   denormalisation, no over-indexing. Indices exist for real hot queries (sync cursors, join
   columns).
 
-### 4.10 Comments (rule 20)
+### 4.10 Comments (rule 20, D21)
 
-- Comments only at class, namespace or function scope, short and direct.
-- No comment on an individual statement: if a statement needs one, rewrite the statement.
-- No multi-line doc blocks, no commented-out code, no banner art.
-- The **why** of a design decision goes to the unit's `CONTEXT.md`, never into the code.
+- **No comments in code, of any kind** — not at class, namespace, function or statement
+  scope, not as doc blocks or docstrings, not as annotations recording a decision, a
+  measurement or a plan step, not as commented-out code, and not as lint suppressions
+  (`NOLINT`, `noqa`, `shellcheck disable`, `clang-format off`) — fix what the tool reports.
+- The rule covers every first-party file that is not documentation: C++, protos, CMake,
+  shell, Python, SQL, Dockerfiles, YAML, config templates and ignore lists.
+- If code needs a comment to be understood, rewrite the code. A script's help text is a
+  `usage()` heredoc, never its own header comments.
+- The **why** of a design decision goes to the unit's `CONTEXT.md`, the reports and this
+  plan, never into the code.
 
 ### 4.11 Tests
 
@@ -723,7 +730,7 @@ file(GLOB) for sources      a second type in a file named after the first
 3+ parameter signatures     static controllers / service locator / singleton
 local repository instances  SQL outside {entity}-query.hxx
 cross-service DB access     a package that queries a domain
-comments on statements      commented-out code
+comments of any kind        docstrings
 speculative folders         an empty shared/ waiting for a future consumer
 a copied wire enum          a hand-rolled gRPC client outside packages/clients
 ```
@@ -734,6 +741,7 @@ a copied wire enum          a hand-rolled gRPC client outside packages/clients
 |---|---|---|
 | `.clang-format` | **exists**: LLVM base, Allman braces, 2-space indent, 80 columns, 4-space continuation | formatting is mechanical, never discussed in review |
 | `.clang-tidy` | **exists** (Phase 2): `cppcoreguidelines-owning-memory`, `modernize-*`, `performance-*`, `bugprone-*`, minus `modernize-use-trailing-return-type` | catches rules 16 and 19 mechanically |
+| `scripts/check-comments.sh` | **exists** (3a-2 closure item 0) | lexes every first-party file with a scanner per language and fails on any comment, any docstring and any file type it cannot classify (D21); `--fix` removes them |
 | `scripts/check-deps.sh` | **exists** (Phase 2) | fails the build on a forbidden edge of §2.4 |
 | `scripts/check-tidy.sh` | **exists** (Phase 2) | runs `.clang-tidy` over every first-party TU and holds the counts to `scripts/lib/tidy-baseline.txt` |
 | `build-all.sh dev` | exists | 0 errors, 0 warnings (rules 19, 21) |
@@ -756,7 +764,7 @@ say.
 |---|---|---|
 | 1 — mechanical cleanup | 14 | **done** (0–13: step 0 is recorded in Phase 0's prose, step 13 was absorbed by step 10, and the other 12 carry reports) |
 | 2 — package tree and build | 6 | **done** (1–6; step 2 ran as four sub-steps, one report each — `f2-2-layout-{libs,contracts,clients,services}.md`) |
-| 3a — the transport: `sync` | 3 | step 1 **done**; step 2 **done except its nine closure items** (below); step 3 **not started** |
+| 3a — the transport: `sync` | 3 | step 1 **done**; step 2 **done except its closure items** (below: item 0, added 2026-09-23, **done**; items 1–7 and 9 open, 8 absorbed); step 3 **not started** |
 | 3b — `auth` | 2 | **not started** |
 | 3c — `identity` | 2 | **not started** |
 | 3d — the edge comes down | 5 | **not started** |
@@ -857,27 +865,32 @@ proven. Each sub-phase is independently revertible and ships with its own tests.
 | 2 | **Done, except its closure items** — `docs: decide the producer-outbox shape from the measured precedents` (2a), `feat: give the camera change feed a durable outbox` (2b), `feat: give the notification change feed a durable outbox` (2c), `feat: give the productivity change feed a durable outbox` (2d), `feat: give the identity change feed a durable outbox` (2e), `fix: bring camera's sinks up to the checked drain shape` (2g) and `fix: give guard's encounter drain a stream it heals itself` (2h). All five producers publish through `lib/nats` with a durable per-owner outbox that carries a fingerprint, and `services/sync` is the single audit writer; identity's six `user_action_log` writes moved onto the additive action subject, declared as a new row in `wire-nats-subjects.md` with existing rows and payloads untouched. The four change producers share one drain shape at one bound (2g) and guard, whose encounter outbox is a different table on a different stream drained inline, carries the same publish leg (2h). Reports: `f3-2a-producer-outbox-decision.md` (the decision all five cite), `f3-2b`/`2c`/`2d`/`2e-…-change-outbox.md`, `f3-2g-camera-drain-parity.md`, `f3-2h-guard-stream-heal.md`. **The nine items in "Step 2's closure" below are what the five units recorded instead of fixing, and the step is not closed until they are.** |
 | 3 | Apply the 90-day TTL and its compaction (D15); `contracts/sync` declares the resync semantics |
 
-##### Step 2's closure — the nine items the five units recorded instead of fixing
+##### Step 2's closure — the nine items the five units recorded instead of fixing, and item 0
 
-None of the nine has started. Each is its own unit — report, gate, adversarial review,
-commit — exactly like the units that recorded it, and step 2 is not closed and step 3
-does not start until they are done. They are ordered here as they should be executed.
+Each is its own unit — report, gate, adversarial review, commit — exactly like the units
+that recorded it, and step 2 is not closed and step 3 does not start until they are done.
+They are ordered here as they should be executed. **Item 0 was added on 2026-09-23 as the
+first step of the continuation** (D21): the code carries no comments, and the build proves
+it. It absorbs item 8, whose subject — the statement-level comments of the test suites — is
+a subset of it.
 
 | # | Item | What it is | Recorded in |
 |---|---|---|---|
+| 0 | **Done** — `refactor: remove every comment from the code and gate it`. **D21 — remove every comment from the code, and gate it** | Every first-party file that is not documentation loses its comments and docstrings, and `scripts/check-comments.sh` (a scanner per language: C-family, CMake, shell with heredocs, Python by `tokenize`/`ast`, SQL, Dockerfile, YAML, TOML, hash-line files) fails the build on any comment, any docstring and any file type it cannot classify. Its `--fix` is the strip. The two scripts that printed their own header comments as `--help` get a `usage()` heredoc first, and `tidy_scan.py` stops writing a comment header into the baseline | the user, 2026-09-23; report `f3-2-closure-0-no-comments.md` |
 | 1 | **S8 — a drain tick can outlive Drogon's database manager** | `app().quit()` resets `dbClientManagerPtr_` before the IO loops stop, and `DbService::client()` reaches it through an unguarded `dbClientManagerPtr_->getDbClient(...)`, so a tick landing in that window is a null dereference on the ordinary `SIGTERM`/`docker stop` path. The window is the whole remaining shutdown, not one retry cadence, and the drain worker is joined only by the sink's destructor, after `run()` has returned. Closing it means stopping the drain as part of Drogon's shutdown for the four producers **and** guard at once. This is the only item that is a crash in normal operation | 3a-2c C6, sharpened in 3a-2d; guard's variant is the same shape (3a-2h) |
 | 2 | **S1 — the enqueue is not in the domain write's transaction** | The row mutation commits, then the change row is written; a crash between the two loses that change. Measured for three of the four producers. The repair is the same transaction the plan defers | 3a-2b, 3a-2c, 3a-2d |
 | 3 | **S1b — the enqueue's own give-up loses the change** | The retry is bounded (`kEnqueueAttempts = 3`, 25 ms apart) and loud, but a write that fails all three times — `SQLITE_FULL`, `SQLITE_IOERR`, a corrupt page — leaves the row absent from `change_outbox` for ever: the mutation committed, the handler answered `ok`, and no later boot, drain pass or gRPC pull can discover a change that was never recorded. The one sink path that can lose a real change in normal operation; a lock needs sustained contention for ~15 s to reach it, so the fail-fast storage errors are the real window | 3a-2d |
 | 4 | **S5 — no retention policy for settled rows** | `sent` rows stay for ever, so every outbox table grows with its feed. The decision has to be the same for all five outboxes (four producers + guard) | 3a-2c B4 |
 | 5 | **S4 — no durable consumer for any change subject** | Recorded as a limitation in every producer unit, never as a decision. Either a consumer exists or the plan says why none is owed. The API `NatsBus` exposes cannot detect a lost durable consumer (no callback, no query), which is also why the stream re-arm of 3a-2g/2h deliberately did not un-gate the *subscription* | 3a-2b, 3a-2c, 3a-2d, 3a-2g, 3a-2h |
-| 6 | **The burst-cardinality precondition in the four live suites** | Every producer's live suite drains a burst without asserting how many rows the burst produced, so a suite that silently wrote nothing still passes. All four share the omission, so it is applied to all four together, the way item 8 treats the comments | 3a-2g |
+| 6 | **The burst-cardinality precondition in the four live suites** | Every producer's live suite drains a burst without asserting how many rows the burst produced, so a suite that silently wrote nothing still passes. All four share the omission, so it is applied to all four together, the way item 0 treats the comments | 3a-2g |
 | 7 | **The object-event drain's rate against `maxPending` / `overflowDropped`** | Its repository drops the *oldest* pending row on overflow while its drain reads one row per pass: the table exists because a backlog is expected, and the drain is sized as if one were not. The asymmetry is recorded, not batched | 3a-2g |
-| 8 | **S7 — rule 20's statement-level comments in the test suites** | The idiom is tree-wide (measured: 57 of 132 `*-test.cc`, ~518 lines), so stripping only one unit's suites would leave them unlike every other one. The sweep is step-level and needs one reading of the rule for tests before it starts | 3a-2c C2, 3a-2d, 3a-2g |
+| 8 | **S7 — rule 20's statement-level comments in the test suites** — **absorbed by item 0** | The idiom is tree-wide (measured: 57 of 132 `*-test.cc`, ~518 lines), so stripping only one unit's suites would leave them unlike every other one. D21 answers the reading of the rule for tests (no comments at all), and item 0 removes them with the rest | 3a-2c C2, 3a-2d, 3a-2g |
 | 9 | **S6 — the tidy baseline is not the tree's** | One `--write-baseline` run at the close of the step, once items 1–8 have moved the tree, so the ratchet and the tree agree | 3a-2c |
 
 Two of the nine are decisions rather than repairs (S4, and S5's policy), and one is a
-measurement sweep (S7); the other six are code. Item 1 first, because it is the only one
-that fails on the deployment path rather than on an unlikely one.
+measurement sweep (S7, now absorbed by item 0); the other six are code. Item 0 first, because
+the user put it first; then item 1, because it is the only one that fails on the deployment
+path rather than on an unlikely one.
 
 #### 3b — `auth`
 

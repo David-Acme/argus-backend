@@ -23,18 +23,15 @@ struct RelayOptions
   size_t pushQueueCapacity{256};
 };
 
-// US-side relay: accepts device connections, multiplexes each over the single authenticated home link.
 class TunnelRelay : public MuxDelegate
 {
 public:
   TunnelRelay(PollLoop& loop, RelayOptions options);
   ~TunnelRelay() override;
 
-  // Returns false when a listener bind fails.
   bool start();
   void stop();
 
-  // Force-closes the home link (ops/tests).
   void dropLink() { mux_.dropLink(); }
 
   bool hasHome() const { return mux_.homeActive(); }
@@ -43,7 +40,6 @@ public:
   size_t streamCount() const { return mux_.streamCount(); }
   size_t pendingBytes() const { return mux_.pendingBytes(); }
 
-  // Push-intent ingress: thread-safe post into the loop thread; drains once the link re-authenticates.
   void postPushIntent(std::string payload);
   size_t pushQueued() const { return pushQueue_.size(); }
   uint64_t pushReceived() const { return pushQueue_.received(); }
@@ -54,7 +50,6 @@ public:
   }
 
 private:
-  // MuxDelegate
   const std::string& authSecret() const override { return options_.secret; }
   bool validatesAuth() const override { return true; }
   void onAuthAccepted() override;
@@ -88,4 +83,4 @@ private:
   PushQueue pushQueue_{options_.pushQueueCapacity};
   std::atomic<uint64_t> pushForwarded_{0};
 };
-} // namespace tunnel
+}

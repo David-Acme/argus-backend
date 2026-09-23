@@ -12,7 +12,6 @@
 #include <shared/services/camera-driver/camera-driver.hxx>
 #include <tts/tts-remote.hxx>
 
-/** Outcome of a device call: nullopt means the camera row does not exist. */
 using CameraControlResult = std::optional<DriverResult>;
 
 class CameraControlFeatureService
@@ -26,13 +25,11 @@ public:
                                           const CameraPresetDto& body) const;
   drogon::Task<CameraControlResult> settings(int64_t cameraId,
                                             const CameraSettingsDto& body) const;
-  /** Synthesizes the text and plays it on the camera speaker. */
   drogon::Task<CameraControlResult> speak(int64_t cameraId,
                                           const CameraTalkDto& body) const;
   drogon::Task<CameraControlResult> capabilities(int64_t cameraId) const;
 
 private:
-  /** Every device call is blocking, so it runs off the event loop. */
   drogon::Task<CameraControlResult>
   onDevice(int64_t cameraId,
            const std::function<DriverResult(ICameraDriver&)>& work) const;

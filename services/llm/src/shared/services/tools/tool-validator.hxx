@@ -7,8 +7,7 @@
 namespace tools
 {
 
-// Argument schema check against ToolDescriptor::arguments; nullopt when valid.
 std::optional<std::string> validateArguments(const ToolDescriptor& descriptor,
                                              const ToolCall& call);
 
-} // namespace tools
+}

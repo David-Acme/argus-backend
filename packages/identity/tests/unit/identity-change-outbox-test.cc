@@ -31,12 +31,6 @@ public:
   {
     if (!runner_.joinable())
       return;
-    // Drogon reports the app running before its main loop is looping, and a
-    // loop that has not begun cannot be stopped: trantor's loop() clears the
-    // quit flag again as it starts. Waiting for it to loop is what makes the
-    // quit below take effect -- detaching in that window left the app's thread
-    // running past the end of the process, measured as SIGSEGV inside
-    // EventLoop::loop() in 3 of 20 runs of a forced constructor throw.
     for (int i = 0; i < 3000 && !drogon::app().getLoop()->isRunning(); ++i)
       std::this_thread::sleep_for(std::chrono::milliseconds(10));
     if (drogon::app().getLoop()->isRunning()) {
@@ -44,8 +38,6 @@ public:
       runner_.join();
       return;
     }
-    // A boot that never reached the loop at all is left to the process: it
-    // cannot be asked to stop, and joining it would block for ever.
     runner_.detach();
   }
 
@@ -67,14 +59,12 @@ bool waitForBoot(std::chrono::milliseconds timeout)
   return drogon::app().isRunning();
 }
 
-// The head pending row, reported as a failed assertion when the outbox holds
-// none.
 ChangeOutboxRow pendingRow(const std::vector<ChangeOutboxRow>& rows)
 {
   REQUIRE(!rows.empty());
   return rows.empty() ? ChangeOutboxRow{} : rows.front();
 }
-} // namespace
+}
 
 TEST_CASE("the event id names the transition and the action id its own row")
 {
@@ -93,18 +83,13 @@ TEST_CASE("the event id names the transition and the action id its own row")
                         .recordId = 7,
                         .discriminator = R"({"name":"Ana"})"}));
   CHECK(created.rfind("identity-change:", 0) == 0);
-  // The MsgId travels as a JetStream header and stays inside its budget.
   CHECK(created.size() == 48);
 
-  // The discriminator is joined by a separator, so a record id cannot run into
-  // it and name another record's event.
   CHECK(change_outbox_key::eventId(
             {.table = "user", .recordId = 17, .discriminator = "ana"}) !=
         change_outbox_key::eventId(
             {.table = "user", .recordId = 1, .discriminator = "7ana"}));
 
-  // A transition is discriminated by its own payload, so a record that moves
-  // again -- or returns to a state it already held -- is a new event.
   CHECK(change_outbox_key::eventId({.table = "user",
                                     .recordId = 7,
                                     .discriminator =
@@ -114,8 +99,6 @@ TEST_CASE("the event id names the transition and the action id its own row")
              .recordId = 7,
              .discriminator = R"({"role":"resident"})"}));
 
-  // The journal leg keys on the outbox row's own position: two reads of one
-  // record are two audit rows, and this is what tells them apart.
   CHECK(change_outbox_key::actionMsgId(7) == "identity-action:7");
   CHECK(change_outbox_key::actionMsgId(7) != change_outbox_key::actionMsgId(8));
   CHECK(change_outbox_key::actionMsgId(7).rfind("identity-action:", 0) == 0);
@@ -191,8 +174,6 @@ TEST_CASE("the change outbox replays one transition and refuses a conflict")
   CHECK(kept.payload == R"({"info":1})");
   CHECK(kept.attempts == 0);
 
-  // Settlement is a status-guarded CAS over the row's own id, because a
-  // journal row has no event id to guard on.
   CHECK(repository.markSent(kept.id, 4000));
   CHECK_FALSE(repository.markSent(kept.id, 4001));
 
@@ -204,11 +185,6 @@ TEST_CASE("the change outbox replays one transition and refuses a conflict")
   CHECK(repository.recordAttempt(last.id));
   CHECK(pendingRow(repository.pendingBatch(1)).attempts == 2);
 
-  // Two changes made in the same millisecond drain one at a time in the order
-  // they were enqueued. That both rows are pending at once is what this pins;
-  // the id tiebreak under the query's ORDER BY is not observable from here,
-  // because the (status, id) index hands equal keys back in id order whether
-  // the clause is written or not.
   const ChangeOutboxEnqueueInput third = {.eventId = "identity-change:c",
                                           .subject = kChangeSubject,
                                           .fingerprint = "fp-3",
@@ -229,8 +205,6 @@ TEST_CASE("the change outbox replays one transition and refuses a conflict")
       pendingRow(repository.pendingBatch(1)).id, 5200));
   CHECK(pendingRow(repository.pendingBatch(1)).eventId == "identity-change:d");
 
-  // The journal leg: identical payloads are two rows, not a replay and never a
-  // conflict, and each carries the position the drain derives its MsgId from.
   const ChangeOutboxActionInput read = {.subject = kActionSubject,
                                         .fingerprint = "fp-read",
                                         .payload = R"({"action":"read"})",
@@ -246,8 +220,6 @@ TEST_CASE("the change outbox replays one transition and refuses a conflict")
   CHECK(journal.eventId.empty());
   CHECK(journal.payload == R"({"action":"read"})");
   CHECK(journal.id > 0);
-  // The two rows are one action each: the derived id is what keeps the second
-  // from being deduplicated against the first.
   CHECK(change_outbox_key::actionMsgId(journal.id) !=
         change_outbox_key::actionMsgId(journal.id - 1));
 

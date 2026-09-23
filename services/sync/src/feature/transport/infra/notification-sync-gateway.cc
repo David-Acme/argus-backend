@@ -55,7 +55,7 @@ ResponseException unavailable()
 {
   return ResponseException(503, SyncErrors::NotificationSyncUnavailable);
 }
-} // namespace
+}
 
 NotificationSyncGateway::NotificationSyncGateway(std::string target)
     : client_(std::make_shared<NotificationClient>(NotificationClientConfig{

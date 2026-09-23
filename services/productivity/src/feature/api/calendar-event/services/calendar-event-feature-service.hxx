@@ -33,10 +33,8 @@ public:
   drogon::Task<bool> remove(int64_t id, int64_t actorId) const;
 
 private:
-  // Pushes every mutation to the owner and to everyone the event is shared with.
   drogon::Task<void> emit(SyncOperation operation,
                           const CalendarEventSchema& row) const;
-  /** True for the owner and for a member whose share says `edit`. */
   drogon::Task<bool> canEdit(const CalendarEventSchema& row,
                              int64_t actorId) const;
 

@@ -10,7 +10,6 @@
 namespace
 {
 
-// Root of the on-disk STT models (models/stt by default).
 std::string modelsDir()
 {
   const std::string dir = ConfigService::getString("stt.models_dir");
@@ -99,7 +98,7 @@ createRecognizer(const std::string& lang)
   return {raw, SherpaOnnxDestroyOfflineRecognizer};
 }
 
-} // namespace
+}
 
 SttService::SttService()
     : recognizer_(nullptr, SherpaOnnxDestroyOfflineRecognizer)

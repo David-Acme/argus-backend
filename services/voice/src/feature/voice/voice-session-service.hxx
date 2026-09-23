@@ -21,7 +21,6 @@
 #include <voice/reaction-contracts.hxx>
 #include <voice/voice-client.hxx>
 
-// One voice session per bidi gRPC stream; PCM is raw 16 kHz s16le both ways.
 class VoiceSessionSink
 {
 public:
@@ -31,7 +30,6 @@ public:
   virtual void sendServerFrame(argus::voice::v1::ServerFrame frame) = 0;
 };
 
-// One uplink PCM chunk, raw 16 kHz s16le.
 struct PcmFrame
 {
   const char* data{nullptr};

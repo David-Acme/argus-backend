@@ -35,7 +35,7 @@ void mtmdDeleter(mtmd_context* ctx)
     mtmd_free(ctx);
 }
 
-} // namespace
+}
 
 VisionService::VisionService()
     : model_(nullptr, llama_model_free), context_(nullptr, llama_free),

@@ -1,7 +1,3 @@
-# Vulkan-in-container RADV probe (argus-vulkan-probe): reuses ncnn's own
-# Vulkan init, so it only builds where the ncnn target exists. Built on
-# demand, never as part of the default backend build.
-
 if(NOT TARGET ncnn)
     message(FATAL_ERROR "argus-vulkan-probe needs the ncnn target")
 endif()

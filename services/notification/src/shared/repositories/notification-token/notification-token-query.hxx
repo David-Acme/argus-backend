@@ -14,7 +14,7 @@ inline constexpr std::string_view UPSERT =
 
 inline constexpr std::string_view FIND_BY_USER =
     "SELECT * FROM notification_token WHERE user_id = ? AND is_active = 1";
-} // namespace notification_token_query
+}
 
 struct NotificationTokenCreateInput
 {

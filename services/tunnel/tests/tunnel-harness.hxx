@@ -19,7 +19,6 @@
 
 namespace tunnel::test
 {
-// Accepted gateway-side connection recorded by the stub server.
 struct StubConn
 {
   TcpPeer::Ptr peer;
@@ -27,7 +26,6 @@ struct StubConn
   std::atomic<bool> eof{false};
 };
 
-// Test-side endpoint (device behind the relay, or the remote app).
 struct TestPeer
 {
   TcpPeer::Ptr peer;
@@ -90,7 +88,6 @@ connectTestPeer(const TestPeerConnectInput& input)
   return peer;
 }
 
-// Sends from the test thread must run on the loop thread next to flush().
 struct PostSendInput
 {
   PollLoop& loop;
@@ -105,7 +102,6 @@ inline void postSend(const PostSendInput& input)
   });
 }
 
-// Deterministic LCG payload; no library RNG so failures reproduce.
 inline std::string makePayload(size_t size, uint32_t seed)
 {
   std::string payload;
@@ -131,7 +127,6 @@ bool waitFor(Predicate predicate, int timeoutMs)
   return predicate();
 }
 
-// Loopback harness: relay + client + stub gateway on ephemeral ports, one PollLoop thread.
 struct Harness
 {
   explicit Harness(HarnessOptions options) : options_(std::move(options)) {}
@@ -263,4 +258,4 @@ private:
     gatewayConns_.push_back(conn);
   }
 };
-} // namespace tunnel::test
+}

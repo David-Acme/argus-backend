@@ -1,5 +1,3 @@
-// Golden /sync frame recorder: records fixture frames or verifies a new session.
-
 #include <drogon/HttpClient.h>
 #include <drogon/HttpRequest.h>
 #include <drogon/HttpResponse.h>
@@ -40,7 +38,6 @@ constexpr size_t kHexPreviewBytes = 256;
 
 const std::string kRecorderUserAgent = "argus-golden-recorder/1.0";
 
-// Compiled in by CMake; the fallback keeps manual compiles working.
 #ifndef ARGUS_TEST_SYNC_FIXTURES_DIR
 #define ARGUS_TEST_SYNC_FIXTURES_DIR "src/test/fixtures/sync"
 #endif
@@ -130,7 +127,6 @@ bool containsLower(const std::string& value, const std::string& needle)
   return lower.find(needle) != std::string::npos;
 }
 
-// Masks the per-boot values the fixtures compare around.
 bool isMaskedIdKey(const std::string& key)
 {
   return key == "id" || key == "sub" || key == "subId" ||
@@ -418,7 +414,7 @@ bool verifyScenario(const std::string& fixturesDir, const Scenario& scenario)
   return true;
 }
 
-} // namespace
+}
 
 int main(int argc, char* argv[])
 {

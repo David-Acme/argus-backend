@@ -1,9 +1,6 @@
 cmake_minimum_required(VERSION 3.25)
 project(argus-llm VERSION 1.0.0 LANGUAGES CXX)
 
-# enable_testing() must precede the first add_subdirectory: the flag
-# propagates into every subtree, and a directory that misses it gets no
-# CTestTestfile — the tests of anything added beneath it then never run.
 enable_testing()
 
 set(CMAKE_CXX_STANDARD 20)
@@ -15,13 +12,6 @@ include(${CMAKE_CURRENT_SOURCE_DIR}/../../cmake/argus-module.cmake)
 set(LLM_SRC_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/src)
 set(SHARED_ROOT ${LLM_SRC_ROOT}/shared)
 
-# llama.cpp is THE capacity of this service (Ruling BS): it links the same
-# vendored engine the legacy links (third_party/llama.cpp, tag b10305) — the
-# mtmd projector is NOT needed here (chat only, no multimodal). Within the
-# root build the target is the one third_party already integrates; a
-# standalone build re-adds the same submodule directory with the same cache
-# variables. Added before the sibling packages so argus-memory's guarded
-# llama block is skipped and these cache vars win.
 if(NOT TARGET argus::contracts::auth)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/contracts/auth
                      ${CMAKE_BINARY_DIR}/contracts/auth)
@@ -68,9 +58,6 @@ if(NOT TARGET llama)
 endif()
 
 if(NOT TARGET Drogon::Drogon)
-    # Standalone configure: this service owns the whole build, so it adds
-    # the packages it links — the leaves it uses directly and the sibling
-    # packages that used to arrive through argus-common.
     find_package(Drogon CONFIG REQUIRED)
     find_package(tomlplusplus REQUIRED)
     find_package(nlohmann_json REQUIRED)
@@ -102,9 +89,6 @@ if(NOT TARGET Drogon::Drogon)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/phrase
                          ${CMAKE_BINARY_DIR}/phrase)
     endif()
-    # The tool executor gates a tool call through role_access::hasAccess, which
-    # is the auth lib's; the llm client no longer carries it, so this service
-    # declares the package it reads.
     if(NOT TARGET argus::lib::auth)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/auth
                          ${CMAKE_BINARY_DIR}/auth)
@@ -113,8 +97,6 @@ if(NOT TARGET Drogon::Drogon)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/llm
                          ${CMAKE_BINARY_DIR}/clients/llm)
     endif()
-    # sqlite-vec rides its own vendored folder; added before argus-sqlite so
-    # its vec repositories see the target.
     if(NOT TARGET sqlite-vec)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../third_party/sqlite-vec
                          ${CMAKE_BINARY_DIR}/third_party/sqlite-vec)
@@ -134,7 +116,6 @@ if(NOT TARGET Drogon::Drogon)
     endif()
 endif()
 
-# The identity and camera contracts the catalog seed reads through the SDK.
 if(NOT TARGET argus::clients::identity)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/identity
                      ${CMAKE_BINARY_DIR}/clients/identity EXCLUDE_FROM_ALL)
@@ -149,22 +130,11 @@ find_package(doctest REQUIRED)
 add_library(llm-core STATIC
     ${LLM_SRC_ROOT}/controllers/llm-controller.cc
     ${LLM_SRC_ROOT}/llm/chat-dto.cc
-    # The engine compiled from the shared tree (PORTED pattern), so the
-    # legacy binary and this service generate identically.
     ${SHARED_ROOT}/services/llm/llm-service.cc
-    # The tool-calling loop over that engine: hops, call parsing and the
-    # declarations the model reads.
     ${SHARED_ROOT}/services/llm/lfm-adapter.cc
-    # The runtime the loop drives: the registry services register into, the
-    # argument validator and the executor that gates a call on role access.
-    # One consumer, so it belongs to this service (D16) and moved here from
-    # packages/clients/llm with Phase 1 step 9; the vocabulary it runs
-    # over stayed in that package, which is the tier argus-memory — the
-    # declarer of the descriptors — can also reach.
     ${SHARED_ROOT}/services/tools/tool-registry.cc
     ${SHARED_ROOT}/services/tools/tool-validator.cc
     ${SHARED_ROOT}/services/tools/tool-executor.cc
-    # The router's process-lifetime owner: catalog, model and temporal probe.
     ${SHARED_ROOT}/services/llm/intent-gate.cc
 )
 
@@ -174,8 +144,6 @@ target_include_directories(llm-core SYSTEM PUBLIC
 target_include_directories(llm-core PUBLIC
     ${LLM_SRC_ROOT})
 
-# memory-core makes this the brain: the tool loop needs the memory tools in
-# process, and the memory worker gets LlmService without a wire hop.
 target_link_libraries(llm-core PUBLIC
     argus::lib::config
     argus::lib::auth
@@ -210,9 +178,6 @@ target_compile_options(encounter-consumer PRIVATE -Wall -Wextra)
 
 add_executable(argus-llm ${LLM_SRC_ROOT}/main.cc)
 
-# memory-catalog: the hosted stack's replica leg (NATS subscription plus the
-# identity/camera SDK snapshot seeds) — the brain owns the retired
-# process's role.
 target_link_libraries(argus-llm PRIVATE llm-core memory-catalog
     encounter-consumer
     argus::clients::identity argus::clients::camera)
@@ -235,10 +200,6 @@ add_custom_command(TARGET argus-llm POST_BUILD
             ${CMAKE_CURRENT_SOURCE_DIR}/../../models
             $<TARGET_FILE_DIR:argus-llm>/models)
 
-# Tool-calling accuracy bench. Built with the default target set so it cannot
-# rot, but NOT registered with ctest: it needs the real model and takes
-# minutes. Run it by hand from the repo root:
-#   ./build/dev/services/llm/argus-tool-bench [--limit N] [--verbose]
 add_executable(argus-tool-bench tests/bench/tool-calling-bench.cc)
 
 target_link_libraries(argus-tool-bench PRIVATE llm-core argus::contracts::auth argus::contracts::sync)
@@ -250,25 +211,16 @@ target_compile_options(argus-tool-bench PRIVATE -Wall -Wextra)
 
 set_target_properties(argus-tool-bench PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
-# The LLM wire suite opts back into the default build: this folder is added
-# EXCLUDE_FROM_ALL.
 find_package(doctest REQUIRED)
 
 add_executable(llm-wire-test tests/unit/llm-wire-test.cc
     ${LLM_SRC_ROOT}/controllers/llm-controller.cc
     ${LLM_SRC_ROOT}/llm/chat-dto.cc
     ${SHARED_ROOT}/services/llm/llm-service.cc
-    # The controller drives the loop when tools are registered; the test
-    # registers none and exercises the direct paths.
     ${SHARED_ROOT}/services/llm/lfm-adapter.cc
-    # lfm-adapter builds an executor over the singleton, so the runtime it
-    # drives compiles here too (this target builds its own copies of the
-    # service's sources, as it does for the engine).
     ${SHARED_ROOT}/services/tools/tool-registry.cc
     ${SHARED_ROOT}/services/tools/tool-validator.cc
     ${SHARED_ROOT}/services/tools/tool-executor.cc
-    # The controller owns the router's gate, so the wire test builds it
-    # too: with no model on disk it abstains and the paths stay direct.
     ${SHARED_ROOT}/services/llm/intent-gate.cc)
 
 target_include_directories(llm-wire-test PRIVATE
@@ -298,8 +250,6 @@ set_target_properties(llm-wire-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
 add_test(NAME llm-wire-test COMMAND llm-wire-test)
 
-# Parsing and streaming-gate rules, no model: the f8-b4 probes found each
-# of these on live traffic.
 add_executable(llm-tool-parse-test tests/unit/llm-tool-parse-test.cc)
 
 target_link_libraries(llm-tool-parse-test PRIVATE llm-core doctest::doctest argus::contracts::sync)
@@ -310,11 +260,6 @@ set_target_properties(llm-tool-parse-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
 add_test(NAME llm-tool-parse-test COMMAND llm-tool-parse-test)
 
-# The tool runtime's own rules, no model and no database: what the executor
-# accepts, what it refuses and what the memory descriptors declare. The suite
-# that used to drive memory's tools through this pipeline (memory's
-# reminder test) can no longer reach it — the runtime is a service's now — so
-# the pipeline is covered here, over the descriptors memory really ships.
 add_executable(llm-tool-runtime-test tests/unit/llm-tool-runtime-test.cc)
 
 target_link_libraries(llm-tool-runtime-test PRIVATE llm-core argus::lib::auth
@@ -343,7 +288,6 @@ set_target_properties(encounter-closed-consumer-test PROPERTIES
 add_test(NAME encounter-closed-consumer-test
     COMMAND encounter-closed-consumer-test)
 
-# Opt-in live check against a real NATS; skips without ARGUS_NATS_URL.
 add_executable(encounter-closed-live-test
     tests/unit/encounter-closed-live-test.cc)
 

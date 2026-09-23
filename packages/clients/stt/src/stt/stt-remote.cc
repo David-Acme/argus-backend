@@ -23,7 +23,6 @@ namespace
 {
 constexpr const char* kPcmMime = "audio/x-argus-pcm-s16";
 
-// Inverse of the voice session's int16->float mapping (/32768).
 int16_t sampleFromFloat(float value)
 {
   const float clamped = std::max(-1.0F, std::min(1.0F, value));
@@ -55,7 +54,6 @@ std::string pcmBytes(const std::vector<float>& audioSamples)
   return bytes;
 }
 
-// Socket guard: the fd is closed on scope exit, never leaked.
 class SocketGuard
 {
 public:
@@ -98,7 +96,6 @@ int connectLoopback(const ConnectLoopbackInput& input)
     return -1;
   }
 
-  // Non-blocking connect + poll; the timeout bounds the connect phase too.
   const int flags = ::fcntl(fd, F_GETFL, 0);
   ::fcntl(fd, F_SETFL, flags | O_NONBLOCK);
   if (::connect(fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) != 0 &&
@@ -181,7 +178,6 @@ void sendAll(int fd, const std::string& data)
   }
 }
 
-// Reads until the peer closes or the deadline fires.
 std::string readAll(int fd, const std::chrono::steady_clock::time_point& deadline)
 {
   std::string data;
@@ -219,7 +215,7 @@ Head parseHead(const std::string& wire)
   return head;
 }
 
-} // namespace
+}
 
 SttRemoteConfig SttRemoteConfig::resolve()
 {

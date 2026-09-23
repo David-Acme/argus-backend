@@ -6,9 +6,6 @@
 #include <sync/socket-emit-dto.hxx>
 #include <vector>
 
-// Wire contract of the argus.<domain>.v1.change feed (see
-// docs/architecture/wire-nats-subjects.md): the SocketEmitDto triple plus the
-// routing metadata the transport reads. Every key here is frozen.
 namespace sync_change
 {
 inline constexpr const char* kKindField = "kind";
@@ -23,11 +20,6 @@ inline constexpr const char* kUserField = "user";
 inline constexpr const char* kOldRoleField = "old_role";
 inline constexpr const char* kNewRoleField = "new_role";
 
-// One actor changing role, as the wire carries it: the role *names*, because
-// old_role/new_role travel as strings and the consumer parses them back. Not
-// the room manager's RoleRoomReplaceInput, which carries the UserRole enum:
-// this contract cannot be spelled in a type the consuming engine owns, and the
-// enum-to-name conversion belongs to the change fan-out's dispatch.
 struct RoleRoomChange
 {
   int64_t userId{0};
@@ -81,4 +73,4 @@ inline Json::Value roleRoomsPayload(const RoleRoomChange& change)
   payload[kNewRoleField] = change.newRole;
   return payload;
 }
-} // namespace sync_change
+}

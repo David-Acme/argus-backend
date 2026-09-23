@@ -29,12 +29,6 @@ public:
   {
     if (!runner_.joinable())
       return;
-    // Drogon reports the app running before its main loop is looping, and a
-    // loop that has not begun cannot be stopped: trantor's loop() clears the
-    // quit flag again as it starts. Waiting for it to loop is what makes the
-    // quit below take effect — detaching in that window left the app's thread
-    // running past the end of the process, measured as SIGSEGV inside
-    // EventLoop::loop() in 3 of 20 runs of a forced constructor throw.
     for (int i = 0; i < 3000 && !drogon::app().getLoop()->isRunning(); ++i)
       std::this_thread::sleep_for(std::chrono::milliseconds(10));
     if (drogon::app().getLoop()->isRunning()) {
@@ -42,8 +36,6 @@ public:
       runner_.join();
       return;
     }
-    // A boot that never reached the loop at all is left to the process: it
-    // cannot be asked to stop, and joining it would block for ever.
     runner_.detach();
   }
 
@@ -65,13 +57,12 @@ bool waitForBoot(std::chrono::milliseconds timeout)
   return drogon::app().isRunning();
 }
 
-// The head pending row, reported as a failed assertion when the outbox holds none.
 ChangeOutboxRow pendingRow(const std::vector<ChangeOutboxRow>& rows)
 {
   REQUIRE(!rows.empty());
   return rows.empty() ? ChangeOutboxRow{} : rows.front();
 }
-} // namespace
+}
 
 TEST_CASE("the event id names the transition and the fingerprint its payload")
 {
@@ -88,18 +79,13 @@ TEST_CASE("the event id names the transition and the fingerprint its payload")
                                             .recordId = 7,
                                             .discriminator = R"({"isRead":1})"}));
   CHECK(read.rfind("notification-change:", 0) == 0);
-  // The MsgId travels as a JetStream header and stays inside its budget.
   CHECK(read.size() == 52);
 
-  // The discriminator is joined by a separator, so a record id cannot run into
-  // it and name another record's event.
   CHECK(change_outbox_key::eventId(
             {.table = "notification", .recordId = 17, .discriminator = "read"}) !=
         change_outbox_key::eventId(
             {.table = "notification", .recordId = 1, .discriminator = "7read"}));
 
-  // A transition is discriminated by its own payload, so a record that moves
-  // again — or returns to a state it already held — is a new event.
   CHECK(change_outbox_key::eventId(
             {.table = "notification",
              .recordId = 7,
@@ -184,11 +170,6 @@ TEST_CASE("the change outbox replays one transition and refuses a conflict")
   CHECK(repository.recordAttempt("notification-change:b"));
   CHECK(pendingRow(repository.pendingBatch(1)).attempts == 2);
 
-  // Two changes made in the same millisecond drain one at a time in the order
-  // they were enqueued. That both rows are pending at once is what this pins;
-  // the id tiebreak under the query's ORDER BY is not observable from here,
-  // because the (status, created_at) index hands equal keys back in rowid order
-  // whether the clause is written or not.
   const ChangeOutboxEnqueueInput third = {.eventId = "notification-change:c",
                                           .fingerprint = "fp-3",
                                           .payload = R"({"info":3})",

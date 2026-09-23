@@ -13,7 +13,7 @@ std::string identityTarget()
 {
   return ConfigService::getString("identity.target");
 }
-} // namespace
+}
 
 IVoiceStt& voiceStt()
 {

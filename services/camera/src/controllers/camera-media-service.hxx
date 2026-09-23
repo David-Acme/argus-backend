@@ -10,7 +10,6 @@
 #include <shared/services/stream/stream-hub.hxx>
 #include <unordered_map>
 
-// Binary fMP4 relay sink into one WebSocket connection.
 class CameraStreamSink final : public StreamHub::ISink
 {
 public:
@@ -80,7 +79,6 @@ private:
   mutable std::mutex mutex_;
 };
 
-// Camera media protocol of argus-camera's /media socket.
 class CameraMediaService
 {
 public:

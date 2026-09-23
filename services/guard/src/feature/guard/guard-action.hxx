@@ -5,7 +5,6 @@
 
 #include <string>
 
-// One autonomous effect the guard is considering, before any policy check.
 struct GuardActionRequest
 {
   GuardActionKind kind{GuardActionKind::Notify};
@@ -20,8 +19,6 @@ struct GuardActionDecision
   std::string reason;
 };
 
-// Single policy enforcement point: every autonomous effect is authorized here
-// and nowhere else. Pure and deterministic; persistence stays in the service.
 class GuardActionAuthorizer
 {
 public:

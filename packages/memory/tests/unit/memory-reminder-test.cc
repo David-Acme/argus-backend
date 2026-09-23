@@ -27,7 +27,6 @@ constexpr const char* kScratchDir = "/tmp/f9-memory-reminder";
 constexpr int64_t kSpeaker = 7;
 constexpr int64_t kOtherUser = 9;
 
-// D2: a reminder is silent; any generation attempt fails loudly here.
 class SilentChat final : public IMemoryChat
 {
 public:
@@ -68,7 +67,7 @@ tools::ToolCall callFor(const std::string& name, int64_t userId)
   return call;
 }
 
-} // namespace
+}
 
 TEST_CASE("a reminder is written for the speaking user and no one else")
 {
@@ -82,10 +81,6 @@ TEST_CASE("a reminder is written for the speaking user and no one else")
   service.init({});
   REQUIRE(service.isLoaded());
 
-  // What the service offers, handlers bound to it. The pipeline that would
-  // gate a call (resolve, validate, role access) belongs to the runtime that
-  // executes the tools — argus-llm's, covered by llm-tool-runtime-test — so
-  // here the handlers answer directly.
   const auto descriptors = service.toolDescriptors();
   const auto tool = [&descriptors](const std::string& name) {
     for (const auto& descriptor : descriptors)
@@ -114,7 +109,6 @@ TEST_CASE("a reminder is written for the speaking user and no one else")
   const auto otherRecall = tool("memory.recall")->handler(theirs);
   CHECK(otherRecall.output.find("dentista") == std::string::npos);
 
-  // The routed path: no rule trigger, yet the save must still form.
   auto routed = callFor("memory.remind", kSpeaker);
   routed.arguments["text"] = "mi revision del coche cae el jueves";
   routed.context.utterance = routed.arguments["text"].asString();

@@ -47,7 +47,6 @@ std::vector<int16_t> sirenTone(int seconds)
   return samples;
 }
 
-// Unambiguous length-prefixed digest so adjacent fields cannot collide.
 std::string commandFingerprint(const std::vector<std::string>& fields)
 {
   argus::hash::Sha256 hasher;
@@ -79,7 +78,6 @@ void finishAck(const AckInput& input)
   input.response->set_detail(input.detail);
 }
 
-// Replays a stored ListenResponse for a duplicate command id.
 void applyListenResponse(argus::camera::v1::ListenResponse* response,
                          const std::string& json)
 {
@@ -92,7 +90,7 @@ void applyListenResponse(argus::camera::v1::ListenResponse* response,
   response->set_text(stored.get("text", "").asString());
 }
 
-} // namespace
+}
 
 CameraActionRpcService::CameraActionRpcService(CameraActionServiceConfig config)
     : callers_(std::move(config.callers)),

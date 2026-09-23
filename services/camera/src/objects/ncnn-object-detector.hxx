@@ -14,7 +14,6 @@ namespace ncnn
 class Net;
 }
 
-// ncnn implementation of IObjectDetector (YOLO26n), letterboxed RGB input.
 struct ObjectDetectorOptions
 {
   std::string modelDir;
@@ -44,14 +43,11 @@ public:
     return options_.classes;
   }
 
-  // "vulkan", "cpu" or "disabled" (model not loaded).
   std::string backend() const;
 
 private:
-  // Keeps the net and Vulkan allocators alive; replaced on CPU fallback.
   struct Impl;
 
-  // Letterbox geometry: scale + padding mapping model boxes to frame pixels.
   struct LetterboxPlan
   {
     float scale{1};
@@ -82,7 +78,6 @@ private:
   std::vector<DetectedObject>
   postProcess(const PostProcessInput& input) const;
 
-  // Loads a fresh net; in-flight snapshots keep running on the old instance.
   static std::shared_ptr<Impl> loadImpl(const std::string& modelDir,
                                         bool useVulkan);
 

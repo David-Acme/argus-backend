@@ -26,7 +26,6 @@ struct ClientOptions
   size_t pushQueueCapacity{256};
 };
 
-// Home-side client: one persistent link to the relay, each stream dialed fresh on the gateway listener.
 class TunnelClient : public MuxDelegate
 {
 public:
@@ -36,7 +35,6 @@ public:
   void start();
   void stop();
 
-  // Force-closes the home link (ops/tests); triggers the reconnect loop.
   void dropLink() { mux_.dropLink(); }
 
   bool homeConnected() const { return homeConnected_.load(); }
@@ -46,13 +44,11 @@ public:
   bool gaveUp() const { return gaveUp_.load(); }
   size_t pendingBytes() const { return mux_.pendingBytes(); }
 
-  // Push-intent queue counters for /health.
   size_t pushQueued() const { return pushQueue_.size(); }
   uint64_t pushReceived() const { return pushQueue_.received(); }
   uint64_t pushDropped() const { return pushQueue_.dropped(); }
 
 private:
-  // MuxDelegate
   const std::string& authSecret() const override { return options_.secret; }
   bool validatesAuth() const override { return false; }
   void onAuthAccepted() override;
@@ -81,4 +77,4 @@ private:
   std::atomic<bool> stopped_{false};
   PushQueue pushQueue_{options_.pushQueueCapacity};
 };
-} // namespace tunnel
+}

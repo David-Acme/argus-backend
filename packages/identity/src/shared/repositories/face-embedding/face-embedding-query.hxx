@@ -35,7 +35,7 @@ inline constexpr std::string_view VEC_DELETE =
     "DELETE FROM face_vec WHERE rowid = ?";
 
 inline constexpr std::string_view VEC_COUNT = "SELECT COUNT(*) FROM face_vec";
-} // namespace face_embedding_query
+}
 
 struct FaceEmbeddingCreateInput
 {

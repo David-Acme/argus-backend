@@ -52,7 +52,7 @@ inline constexpr std::string_view FIND_SYNC_AFTER_ID_TO =
 inline constexpr std::string_view FIND_LAST_SYNC =
     "SELECT * FROM user_audit_log WHERE user_id = ? "
     "ORDER BY id DESC LIMIT 1";
-} // namespace user_audit_log_query
+}
 
 struct UserAuditLogCreateInput
 {
@@ -80,7 +80,6 @@ struct UserAuditLogWriteInput
   TableName tableName{TableName::User};
   ChangesDiff changes;
   AuditLogPriority priority{AuditLogPriority::Medium};
-  // Production time of the change; absent means the inserting clock stamps it.
   std::optional<int64_t> eventTimestamp;
 };
 

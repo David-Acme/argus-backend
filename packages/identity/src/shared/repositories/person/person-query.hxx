@@ -93,7 +93,7 @@ inline constexpr std::string_view SYNC_FIND_LAST_DELETED =
     "SELECT * FROM person WHERE deleted_at IS NOT NULL "
     "ORDER BY deleted_at DESC LIMIT 1";
 
-} // namespace person_query
+}
 
 struct PersonCreateInput
 {

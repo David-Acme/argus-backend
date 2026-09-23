@@ -7,7 +7,6 @@
 #include <drogon/WebSocketController.h>
 #include <string>
 
-// argus-camera media socket: camera:* control and fMP4 frames.
 class CameraMediaSocket
     : public drogon::WebSocketController<CameraMediaSocket, false>
 {

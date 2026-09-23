@@ -15,8 +15,6 @@
 #include <text/json-util.hxx>
 #include <utility>
 
-// Pins what the sync client refuses on its own, what it presents to the
-// service, and how the frame it carries maps onto the frozen wire.
 namespace
 {
 
@@ -27,8 +25,6 @@ namespace v1 = argus::sync::v1;
 using Ctx = grpc::CallbackServerContext;
 using Reactor = grpc::ServerUnaryReactor;
 
-// How many calls each RPC took, so a case proves the calls landed instead of
-// inferring it from the one header map the service keeps.
 struct ScriptedCalls
 {
   int replaceRoleRooms = 0;
@@ -36,9 +32,6 @@ struct ScriptedCalls
   int emitToUser = 0;
 };
 
-// Answers with the ack the case scripted and records what the caller
-// presented, each RPC's frame kept apart so a case can tell which of them
-// carried which row.
 class ScriptedSyncService final
     : public v1::SyncControlService::CallbackService
 {
@@ -152,8 +145,6 @@ std::unique_ptr<grpc::Server> startServer(ScriptedSyncService& service,
   return server;
 }
 
-// The AuthContextChanged row the identity call sites build today: the
-// operation, the table and the row, with the resync flag inside the row.
 SocketEmitDto authContextRow(int64_t userId, bool resync)
 {
   SocketEmitDto row;
@@ -164,8 +155,6 @@ SocketEmitDto authContextRow(int64_t userId, bool resync)
   return row;
 }
 
-// The per-recipient audit row the sync fan-out hands to one user: the directed
-// emit whose operation and table are both not zero.
 SocketEmitDto auditLogRow(int64_t userId)
 {
   SocketEmitDto row;
@@ -176,10 +165,8 @@ SocketEmitDto auditLogRow(int64_t userId)
   return row;
 }
 
-} // namespace
+}
 
-// Every ack is a success here, so a true coming back would prove the client
-// dialled and only a local refusal can make these calls answer false.
 TEST_CASE("an id the client cannot resolve never reaches sync")
 {
   ScriptedSyncService service;
@@ -210,9 +197,6 @@ TEST_CASE("an id the client cannot resolve never reaches sync")
   server->Shutdown();
 }
 
-// The row whose operation and table are both not zero is the one that can
-// prove the mapping: a dropped set_operation or set_table leaves proto3's
-// default 0 behind, which the AuthContextChanged row would hide.
 TEST_CASE("the fleet secret and the frozen frame are what this edge sends")
 {
   ScriptedSyncService service;
@@ -251,7 +235,6 @@ TEST_CASE("the fleet secret and the frozen frame are what this edge sends")
   server->Shutdown();
 }
 
-// A refusal from sync is not an unreachable sync: all three calls still land.
 TEST_CASE("the server's refusal is the answer, not the transport")
 {
   ScriptedSyncService service;
@@ -274,8 +257,6 @@ TEST_CASE("the server's refusal is the answer, not the transport")
   server->Shutdown();
 }
 
-// Nothing listens on port 1, so the channel is refused (or the deadline
-// bounds it): either way the client answers false instead of throwing.
 TEST_CASE("an unreachable sync is a refusal, not a crash")
 {
   const SyncClient client(
@@ -284,9 +265,6 @@ TEST_CASE("an unreachable sync is a refusal, not a crash")
   CHECK_FALSE(client.disconnectUser(12, authContextRow(12, false)));
 }
 
-// The numbers are the wire, so an enumerator renumbered on either side has to
-// fail here; a constant missing from the proto is a compile error before this
-// runs. The array sizes are the manual count to update when a value is added.
 TEST_CASE("both frozen enums travel value for value")
 {
   const std::array<std::pair<TableName, v1::TableName>, 24> tables = {{

@@ -11,7 +11,6 @@
 #include <thread>
 #include <vector>
 
-// Thread-safe VoiceSessionSink collecting the typed server frames a session emits.
 class FakeVoiceSink final : public VoiceSessionSink
 {
 public:
@@ -76,7 +75,6 @@ private:
   std::vector<argus::voice::v1::ServerFrame> frames_;
 };
 
-// Test seam identity: every UpdateUser write is recorded, nothing leaves.
 struct FakeIdentity final : IVoiceIdentity
 {
   std::mutex mutex;

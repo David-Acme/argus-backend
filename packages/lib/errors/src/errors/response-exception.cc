@@ -14,7 +14,7 @@ std::string firstMessage(const std::vector<ResponseError>& errors)
     throw std::invalid_argument("Response errors must not be empty");
   return errors.front().message;
 }
-} // namespace
+}
 
 ResponseException::ResponseException(const ErrorDefinition& error)
     : ResponseException(ResponseExceptionInput{

@@ -16,7 +16,6 @@ using namespace guard_query;
 namespace
 {
 
-// Commits in the transaction destructor; the callback resumes the awaiter.
 class TransactionCommitAwaiter
 {
 public:
@@ -92,7 +91,7 @@ std::string escapeLikePrefix(const std::string& prefix)
 }
 
 constexpr int64_t kInboxRetryLeaseMs = 60000;
-} // namespace
+}
 
 drogon::Task<int64_t>
 GuardRepository::insertIncident(const GuardIncidentInput& input) const

@@ -1,12 +1,3 @@
-"""Export YOLO26 raw end-to-end NCNN artifacts (one2one head, XYXY output).
-
-Adapted from https://github.com/skygazer42/yolo26-NCNN
-(python/export_yolo26_end2end_raw_ncnn.py): the end2end head's postprocess
-(torch.topk) is replaced by an identity so PNNX/NCNN keep the raw predictions
-(B, anchors, 4+nc) in XYXY order with no TopK in the graph. The C++ consumer
-(see services/camera/src/objects/ncnn-object-detector.cc) applies TopK itself.
-"""
-
 import argparse
 import sys
 from pathlib import Path
@@ -36,8 +27,8 @@ def main() -> None:
     ap.add_argument("--out-dir", default=None, help="Output directory (default: <weights_stem>_ncnn_e2e_raw_model)")
     args = ap.parse_args()
 
-    from ultralytics import YOLO  # noqa: E402
-    from ultralytics.nn.modules.head import Detect, Segment  # noqa: E402
+    from ultralytics import YOLO
+    from ultralytics.nn.modules.head import Detect, Segment
 
     weights = Path(args.weights)
     out_dir = Path(args.out_dir) if args.out_dir else Path(f"{weights.stem}_ncnn_e2e_raw_model")
@@ -67,7 +58,7 @@ def main() -> None:
 
     im = torch.zeros(1, 3, args.imgsz, args.imgsz)
 
-    import pnnx  # noqa: E402
+    import pnnx
 
     ncnn_args = dict(
         ncnnparam=(out_dir / "model.ncnn.param").as_posix(),
@@ -82,8 +73,6 @@ def main() -> None:
         pnnxonnx=(out_dir / "model.pnnx.onnx").as_posix(),
     )
 
-    # Some Ultralytics models can fail torch.jit trace check (graphs differ
-    # across invocations) even though the trace is valid.
     pnnx.export(model, inputs=im, **ncnn_args, **pnnx_args, fp16=args.half,
                 device="cpu", check_trace=False)
 

@@ -124,7 +124,7 @@ fill(const FillInput<TableRows, Repo>& input)
   co_return;
 }
 
-} // namespace
+}
 
 grpc::ServerUnaryReactor* CameraSyncRpcService::PullTable(
     grpc::CallbackServerContext* context,

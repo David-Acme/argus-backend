@@ -13,7 +13,6 @@
 namespace argus::client
 {
 
-// Secret comparison that does not return early on the first differing byte.
 inline bool constantTimeEquals(const std::string& left,
                                const std::string& right)
 {
@@ -36,8 +35,6 @@ inline std::string metadata(const grpc::CallbackServerContext* context,
   return {};
 }
 
-// One directed capability: the credential is known only by the caller and the
-// receiver of that single edge, and the service name is receiver-side config.
 struct CallerCredential
 {
   std::string service;
@@ -57,8 +54,6 @@ inline std::vector<CallerCredential> callerCredentialsFromPairs(
   return credentials;
 }
 
-// Caller authority comes from the credential that matched, never from declared
-// metadata; the receiver chooses the credential set per RPC.
 inline std::optional<std::string>
 authorizeCaller(const grpc::CallbackServerContext* context,
                 std::span<const CallerCredential> credentials)
@@ -74,8 +69,6 @@ authorizeCaller(const grpc::CallbackServerContext* context,
   return std::nullopt;
 }
 
-// Reads the x-argus-user / x-argus-role / x-argus-device metadata the client
-// base attaches; nullopt when any leg is missing or the user id is invalid.
 inline std::optional<int64_t>
 callerUserId(const grpc::CallbackServerContext* context)
 {
@@ -103,4 +96,4 @@ callerUserId(const grpc::CallbackServerContext* context)
   return id;
 }
 
-} // namespace argus::client
+}

@@ -11,6 +11,5 @@ struct CameraDbConfig
 class CameraConfig
 {
 public:
-  // Resolves the [camera] db and schema with the phase-2 defaults.
   static CameraDbConfig resolveDb();
 };

@@ -1,9 +1,6 @@
 cmake_minimum_required(VERSION 3.25)
 project(argus-sync-service VERSION 1.0.0 LANGUAGES CXX)
 
-# enable_testing() must precede the first add_subdirectory: the flag
-# propagates into every subtree, and a directory that misses it gets no
-# CTestTestfile — the tests of anything added beneath it then never run.
 enable_testing()
 
 set(CMAKE_CXX_STANDARD 20)
@@ -15,12 +12,6 @@ include(${CMAKE_CURRENT_SOURCE_DIR}/../../cmake/argus-module.cmake)
 set(SYNC_SRC_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
 if(PROJECT_IS_TOP_LEVEL)
-    # Standalone configure: this service owns the whole build, so it adds the
-    # packages it links — the leaves it uses directly and the sibling packages
-    # that used to arrive through argus-common — plus the third-party
-    # sqlite-vec, so this service links the same objects as any other consumer.
-    # The engine itself is no longer one of them: its features are modules of
-    # this service (rule 23).
 
     find_package(Drogon CONFIG REQUIRED)
     find_package(cnats CONFIG REQUIRED)
@@ -34,9 +25,6 @@ if(PROJECT_IS_TOP_LEVEL)
     endif()
     set(ARGUS_SQLITE_VEC_TARGET sqlite-vec)
 
-    # argus_identity compiles the face services, whose headers need ncnn; the
-    # objects are dropped at link time because nothing in this service
-    # references them.
     set(NCNN_BUILD_BENCHMARK OFF CACHE BOOL "" FORCE)
     set(NCNN_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
     set(NCNN_BUILD_TOOLS OFF CACHE BOOL "" FORCE)
@@ -85,10 +73,6 @@ if(PROJECT_IS_TOP_LEVEL)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/contracts/voice
                          ${CMAKE_BINARY_DIR}/contracts/voice)
     endif()
-    # The four domains whose vocabulary the transport and the repositories
-    # name: the three table domains and voice, whose enums ride the same
-    # headers. In the root build each arrives through its owner; standalone,
-    # this service is the only one that can add them.
     if(NOT TARGET argus::contracts::camera)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/contracts/camera
                          ${CMAKE_BINARY_DIR}/contracts/camera)
@@ -111,16 +95,11 @@ if(PROJECT_IS_TOP_LEVEL)
     endif()
 endif()
 
-# The control leg's proto (argus.sync.v1.SyncControlService): this service
-# serves it, the fleet's callers reach it through argus::clients::sync.
 if(NOT TARGET argus::clients::sync)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/sync
                      ${CMAKE_BINARY_DIR}/clients/sync EXCLUDE_FROM_ALL)
 endif()
 
-# The three domains whose tables this service pages, and the voice service the
-# /sync forwarder relays to: each leg links its own SDK, so the standalone
-# configure adds all four.
 if(NOT TARGET argus::clients::camera)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/camera
                      ${CMAKE_BINARY_DIR}/clients/camera EXCLUDE_FROM_ALL)

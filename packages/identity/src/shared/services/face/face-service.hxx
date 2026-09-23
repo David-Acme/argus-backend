@@ -16,7 +16,7 @@ class Net;
 class VkBlobAllocator;
 class VkStagingAllocator;
 class PipelineCache;
-} // namespace ncnn
+}
 
 class FaceService
 {
@@ -76,10 +76,8 @@ public:
 
   std::optional<int64_t> identify(std::string imageBytes);
 
-  // Coroutine variant: runs inference off the event loop.
   drogon::Task<std::optional<int64_t>> identifyAsync(std::string imageBytes);
 
-  // Decodes the image and extracts the embedding (face enrollment).
   std::optional<FaceResult> extractImage(std::string imageBytes);
   drogon::Task<std::optional<FaceResult>>
   extractImageAsync(std::string imageBytes);

@@ -9,7 +9,7 @@ constexpr int kMaxTokensBound = 4096;
 constexpr size_t kMaxMessageLength = 32 * 1024;
 constexpr size_t kMaxGrammarLength = 8 * 1024;
 
-} // namespace
+}
 
 ChatCompletionDto ChatCompletionDto::fromJson(const Json::Value& json)
 {

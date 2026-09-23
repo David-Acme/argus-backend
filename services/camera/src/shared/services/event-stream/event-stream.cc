@@ -38,4 +38,4 @@ bool ensure(const std::shared_ptr<NatsBus>& bus, const EnsureInput& input)
   return true;
 }
 
-} // namespace camera_event_stream
+}

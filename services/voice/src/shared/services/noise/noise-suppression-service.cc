@@ -11,20 +11,15 @@ namespace
 
 constexpr int kFrameSize = 480;
 
-// AGC target RMS: soft speech is boosted toward a healthy level (0.12 ~ -18 dBFS).
 constexpr float kAgcTargetRms = 0.12F;
-// AGC gain limits: never amplify past ~24 dB, compress loud frames to 0.25x.
 constexpr float kAgcMaxGain = 16.0F;
 constexpr float kAgcMinGain = 0.25F;
-// Fast attack, slow release: gain follows speech without pumping.
 constexpr float kAgcAttack = 0.25F;
 constexpr float kAgcRelease = 0.008F;
 
-// Voice probability -> original/denoised blend bounds.
 constexpr float kMixLow = 0.35F;
 constexpr float kMixHigh = 0.8F;
 
-// Compact pending48_ once more than this many frames are consumed.
 constexpr size_t kPendingCompactFrames = 32;
 
 float clampS16(float v)
@@ -39,7 +34,7 @@ float clamp01(float v)
 }
 #endif
 
-} // namespace
+}
 
 NoiseSuppressor::NoiseSuppressor()
 {

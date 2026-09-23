@@ -4,9 +4,6 @@
 #include <optional>
 #include <string>
 
-// The delivery receipt lifecycle; the CHECK constraint mirrors it.
-// Unknown persisted values fail closed at the call site: fromString returns
-// nullopt instead of defaulting to a re-executable state.
 enum class NotificationDeliveryReceipt : uint8_t
 {
   Received = 0,

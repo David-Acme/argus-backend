@@ -14,7 +14,7 @@ int64_t ackWindowS()
 }
 
 constexpr int64_t kDefaultSummaryWindowS = 24LL * 3600;
-} // namespace
+}
 
 drogon::Task<void>
 NotificationFeatureService::markAsRead(int64_t userId,

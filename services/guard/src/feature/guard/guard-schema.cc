@@ -576,7 +576,7 @@ bool migrateGuestColumns()
   return true;
 }
 
-} // namespace
+}
 
 bool guard_schema::migrate(const std::string& schemaPath)
 {

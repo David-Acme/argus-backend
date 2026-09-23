@@ -11,12 +11,11 @@ using namespace delivery_inbox_query;
 
 namespace
 {
-// Canonical payload identity for one delivery event.
 std::string deliveryFingerprint(const NotificationDeliveryEvent& event)
 {
   return argus::hash::sha256Hex(json_util::toString(event.toJson()));
 }
-} // namespace
+}
 
 drogon::Task<DeliveryReceipt> DeliveryInboxRepository::receive(
     const DeliveryReceiptInput& input) const

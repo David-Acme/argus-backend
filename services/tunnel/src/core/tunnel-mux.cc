@@ -196,7 +196,6 @@ void TunnelMux::handleHomeRead(const HomeReadInput& input)
   pumpHomeFrames();
 }
 
-// Dispatches parsed frames only while the home-read valve is open.
 void TunnelMux::pumpHomeFrames()
 {
   while (parser_.hasFrame() && !parser_.failed() && !homeReadPaused_)
@@ -477,4 +476,4 @@ void TunnelMux::closeLocal(Stream& stream, CloseReason reason)
     moved.local->close();
   resumeHomeRead();
 }
-} // namespace tunnel
+}

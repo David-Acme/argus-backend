@@ -27,9 +27,6 @@ find_package(doctest REQUIRED)
 
 add_executable(voice-client-test tests/unit/voice-client-test.cc)
 
-# This folder is pulled in EXCLUDE_FROM_ALL (consumers add it for the client
-# targets), so the suite has to opt back into the default build to be present
-# when ctest runs it.
 set_target_properties(voice-client-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
 target_link_libraries(voice-client-test PRIVATE argus::clients::voice

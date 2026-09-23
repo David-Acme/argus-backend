@@ -39,7 +39,7 @@ bool has(const HealthStatus& status, const std::string& key)
   return std::find(names.begin(), names.end(), key) != names.end();
 }
 
-} // namespace
+}
 
 TEST_CASE("relay and client /health carry their frozen field sets")
 {
@@ -62,7 +62,6 @@ TEST_CASE("relay and client /health carry their frozen field sets")
   CHECK(fieldNames(relayStatus) == relayFields);
   CHECK(fieldNames(clientStatus) == clientFields);
 
-  // pushForwarded is the relay's alone: the client never forwards a push on.
   CHECK(has(relayStatus, "pushForwarded"));
   CHECK_FALSE(has(clientStatus, "pushForwarded"));
 
@@ -79,7 +78,6 @@ TEST_CASE("health providers sample live state, not boot state")
   Harness harness{HarnessOptions{}};
   REQUIRE(harness.start());
 
-  // Taken once, before any stream exists, and never rebuilt below.
   const HealthStatus relayStatus = relayHealthStatus(*harness.relay);
   const HealthStatus clientStatus = clientHealthStatus(*harness.client);
 
@@ -92,7 +90,6 @@ TEST_CASE("health providers sample live state, not boot state")
                                  .port = harness.relay->devicePort()});
   REQUIRE(waitFor([device] { return device->connected.load(); }, 5000));
 
-  // A provider frozen at construction would still report zero here.
   CHECK(waitFor(
       [&relayStatus] {
         return valueOf(relayStatus, "activeStreams").asInt() == 1;

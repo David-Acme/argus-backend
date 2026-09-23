@@ -54,7 +54,7 @@ inline constexpr std::string_view OUTBOX_STATS =
     "MIN(CASE WHEN status = ? THEN created_at END) AS oldest "
     "FROM object_event_outbox";
 
-} // namespace object_event_outbox_query
+}
 
 enum class ObjectEventEnqueueResult : uint8_t
 {

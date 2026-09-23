@@ -22,7 +22,7 @@ std::string hex(const std::string& bytes)
   }
   return out;
 }
-} // namespace
+}
 
 TEST_CASE("frame header layout is little-endian on the wire")
 {
@@ -157,7 +157,6 @@ TEST_CASE("HMAC-SHA256 matches RFC 4231 vectors")
         "5bdcc146bf60754e6a042426089575c7"
         "5a003f089d2739839dec58b964ec3843");
 
-  // Key longer than the 64-byte block is hashed first.
   const std::string key3(131, '\xaa');
   CHECK(hex(hmacSha256(key3,
                        "Test Using Larger Than Block-Size Key - Hash Key "

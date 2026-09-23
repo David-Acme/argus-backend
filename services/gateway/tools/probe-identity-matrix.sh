@@ -1,22 +1,4 @@
 #!/usr/bin/env bash
-# Identity route probe matrix for the argus_identity extraction (F1-3b).
-#
-# Runs every identity route against one server (backend or gateway) and writes
-# one normalized capture file per probe. Used for two reviews:
-#   1. A/B byte-identity of the legacy backend before/after the extraction
-#      (unauthenticated probes only, two runs, `diff` of the capture trees).
-#   2. Envelope parity between the gateway (identity.db) and the backend
-#      (argus.db), seeded identically (includes the authenticated and
-#      mutation probes: --jwt + --mutations).
-#
-# Captures are normalized: random tokens, challenge ids and timestamps are
-# replaced by placeholders so two runs of the same route diff to zero when the
-# wire behavior is identical.
-#
-# Usage:
-#   probe-identity-matrix.sh --base https://127.0.0.1:7044 --out /tmp/be \
-#     [--jwt <access-token>] [--ua <user-agent>] [--image <face.jpg>]
-#     [--mutations] [--label backend]
 set -euo pipefail
 
 BASE=""
@@ -73,7 +55,6 @@ except (ValueError, TypeError):
 '
 }
 
-# probe <id> <method> <path> [curl extra args...]
 probe() {
   local id="$1"; shift
   local method="$1"; shift
@@ -99,7 +80,6 @@ AUTH=()
 [[ -n "$JWT" ]] && AUTH=(-H "Authorization: Bearer $JWT")
 UAARG=(-A "$UA")
 
-# ── Unauthenticated matrix: every identity route, validation, 404, 405, CORS ──
 probe 1 GET  /health
 probe 2 POST /auth/login
 probe 3 POST /auth/register
@@ -125,10 +105,6 @@ probe 22 GET  /no-such-route
 probe 23 PATCH /user
 probe 24 OPTIONS /user
 
-# ── Proxied matrix: legacy-owned routes only (F1-5 cutover). ────────────────
-# Stateless probes so two runs (through the gateway and direct against the
-# legacy) diff to zero; gateway-native paths are never sent here because
-# Ruling I forbids the proxy from serving them.
 if [[ "$PROXIED" == "1" ]]; then
   probe 50 GET /camera/1/status "${AUTH[@]}"
   probe 51 GET /camera/999/status "${AUTH[@]}"
@@ -140,8 +116,6 @@ if [[ "$PROXIED" == "1" ]]; then
   probe 57 DELETE /zone/999 "${AUTH[@]}"
   probe 58 POST /calendar-event -H 'Content-Type: application/json' -d '{}'
   probe 59 POST /notification/read -H 'Content-Type: application/json' -d '{}'
-  # Multipart fidelity through the proxy: the same multipart body must reach
-  # the legacy unchanged (identical error envelope direct vs proxied).
   probe 60 POST /camera -F "part=@$IMAGE;type=image/jpeg"
   probe 61 OPTIONS /camera
   probe 62 GET /no-such-route
@@ -153,7 +127,6 @@ if [[ "$MUTATIONS" != "1" ]]; then
 fi
 [[ -n "$JWT" ]] || { echo "--mutations requires --jwt" >&2; exit 2; }
 
-# ── Authenticated happy-path and mutation sequence (mutates server state) ──
 probe 30 GET   /user "${AUTH[@]}"
 probe 31 GET   /auth/status "${AUTH[@]}"
 probe 32 GET   /invitation "${AUTH[@]}"

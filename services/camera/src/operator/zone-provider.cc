@@ -14,7 +14,7 @@ int64_t nowMs()
              std::chrono::system_clock::now().time_since_epoch())
       .count();
 }
-} // namespace
+}
 
 ZoneProvider::ZoneProvider(int64_t refreshMs,
                            std::unique_ptr<IZoneSource> fallback)

@@ -13,15 +13,11 @@
 #include <string>
 #include <trantor/net/EventLoop.h>
 
-// Fallback identity client reads; the read-only sync client has no fallback.
-
 namespace
 {
 
 using DbHandle = std::unique_ptr<sqlite3, int (*)(sqlite3*)>;
 
-// The drogon calls this replaces threw on failure, so a throwing helper keeps
-// the suite's assertion count where it was.
 void exec(sqlite3* db, const char* sql)
 {
   char* error = nullptr;
@@ -33,13 +29,6 @@ void exec(sqlite3* db, const char* sql)
   sqlite3_free(error);
 }
 
-// Seeded through the sqlite3 C API, the way the tree's sibling migration
-// suites seed theirs: a throwaway drogon client keeps a loop thread of its own,
-// and a connection whose queued statement lambda still holds the last reference
-// is destroyed on that thread, where ~EventLoopThread then joins the thread it
-// is running on (EDEADLK -> SIGABRT, no assertion reported). The default
-// rollback journal is kept on purpose: the read-only client opens the file
-// afterwards, and a WAL database needs write access for its -shm.
 void seedDb(const char* path)
 {
   sqlite3* raw = nullptr;
@@ -53,14 +42,6 @@ void seedDb(const char* path)
   exec(db.get(), "INSERT INTO marker (id) VALUES (42)");
 }
 
-// One async statement whose callback queues a sentinel on the connection's own
-// loop. Callbacks run on that loop, and trantor destroys each queued functor as
-// it dequeues the next, so the reference the statement lambda held is gone
-// before the sentinel runs: after this returns no thread but this one holds the
-// connection, and the client's destructor joins an idle loop thread from
-// outside instead of its own. The callback must not capture the client: a
-// reference released on that loop re-opens the window. No assertion here by
-// design (a timeout throws): the suites' counts must not move.
 void drain(const drogon::orm::DbClientPtr& client)
 {
   auto drained = std::make_shared<std::promise<void>>();
@@ -84,7 +65,7 @@ void drain(const drogon::orm::DbClientPtr& client)
     throw std::runtime_error("the client's loop did not drain");
 }
 
-} // namespace
+}
 
 TEST_CASE("installed identity client serves its own database")
 {
@@ -93,9 +74,6 @@ TEST_CASE("installed identity client serves its own database")
   const char* dbPath = "identity-client-test.db";
   std::remove(dbPath);
 
-  // Process-wide and only before the library initializes: sqlite3_config()
-  // takes no effect after the first sqlite3_open(), which the seeding below
-  // performs, and the read-only client needs URI filenames for "?mode=ro".
   DbService::enableUriFilenames();
   seedDb(dbPath);
 
@@ -118,10 +96,6 @@ TEST_CASE("installed identity client serves its own database")
   }
   CHECK(writeFailed);
 
-  // The slot and this local hold the client's last references: empty the
-  // connection's loop first, or the connection is destroyed on that loop
-  // thread, where ~EventLoopThread then joins the thread it is running on
-  // (EDEADLK -> SIGABRT, no assertion reported).
   drain(readOnly);
   DbService::setIdentityClient(nullptr);
   readOnly.reset();

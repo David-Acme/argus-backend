@@ -40,7 +40,7 @@ std::string trim(const std::string& value)
   return value.substr(begin, end - begin + 1);
 }
 
-} // namespace
+}
 
 namespace tapo_crypto
 {
@@ -289,4 +289,4 @@ std::string toText(const std::vector<uint8_t>& data)
   return std::string(data.begin(), data.end());
 }
 
-} // namespace tapo_crypto
+}

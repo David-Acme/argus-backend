@@ -4,7 +4,6 @@
 #include <validation/validation_dsl.hxx>
 #include <string>
 
-// Internal wire request: {image_b64, prompt?, camera_id?}.
 struct DescribeImageDto
 {
   std::string imageB64;

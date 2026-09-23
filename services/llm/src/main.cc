@@ -90,8 +90,6 @@ bool hasCatalogRows(const CatalogReplica::Snapshot& snapshot)
          !snapshot.zones.empty() || !snapshot.streams.empty();
 }
 
-// Finalized guard encounters enter memory as system episodes, scoped to a real
-// owner; raw object events never reach memory.
 struct EncounterSummaryInput
 {
   int64_t cameraId{0};
@@ -123,7 +121,7 @@ CatalogReplica::Snapshot fetchCatalogSnapshotWithRetry()
   return CatalogReplica::Snapshot{};
 }
 
-} // namespace
+}
 
 int main()
 {
@@ -137,7 +135,6 @@ int main()
 
   drogon::app().loadConfigJson(drogonConfig(listener));
 
-  // A whole-emitting tool loop outruns Drogon's 60 s idle default (f8-b4).
   drogon::app().setIdleConnectionTimeout(600);
 
   drogon::app().setExceptionHandler(ErrorHandler::handleException);
@@ -156,7 +153,6 @@ int main()
     return 1;
   }
 
-  // The memory package hosted in process over the same engine the chat rides.
   InProcessMemoryChat chat(llm->service());
   MemoryService memory(VecDb::instance(), chat);
   memory.init({.deferStore = true});
@@ -167,8 +163,6 @@ int main()
     llama_backend_free();
     return 1;
   }
-  // The stack hands over its tools, handlers bound; the registry they land in
-  // is this service's runtime, which is the only thing that executes them.
   for (auto& descriptor : memory.toolDescriptors())
     ToolRegistry::instance().registerTool(std::move(descriptor));
 

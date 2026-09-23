@@ -1,22 +1,4 @@
 #!/usr/bin/env bash
-#
-# Argus host provisioning for the argus-deploy stack.
-#
-# Prepares a Linux or macOS host with the state the deployment needs but never
-# bakes into images: Docker + Compose v2, the instance PKI, the per-service
-# config files with unique shared secrets and the external data tree the
-# compose file links into the containers. Idempotent: an existing CA, secret or
-# database is reused untouched, so an image update is pull/build plus `up -d`.
-#
-# Usage:
-#   ./scripts/provision-host.sh                     # prepare everything, no start
-#   ./scripts/provision-host.sh --start             # build + start the stack
-#   ./scripts/provision-host.sh --data-dir /srv/argus
-#   ./scripts/provision-host.sh --with-models       # download engine weights
-#   ./scripts/provision-host.sh --migrate-volumes   # copy old named volumes
-#   ./scripts/provision-host.sh --no-docker -y
-#   ./scripts/provision-host.sh --no-s3             # skip the object store
-#
 set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
 source "$(dirname "${BASH_SOURCE[0]}")/lib/pki.sh"
@@ -33,7 +15,24 @@ START=0
 MIGRATE_VOLUMES=0
 
 usage() {
-  sed -n '2,18p' "$0" | sed 's/^#\{1,2\} \{0,1\}//'
+  cat <<'USAGE'
+Argus host provisioning for the argus-deploy stack.
+
+Prepares a Linux or macOS host with the state the deployment needs but never
+bakes into images: Docker + Compose v2, the instance PKI, the per-service
+config files with unique shared secrets and the external data tree the
+compose file links into the containers. Idempotent: an existing CA, secret or
+database is reused untouched, so an image update is pull/build plus `up -d`.
+
+Usage:
+  ./scripts/provision-host.sh                     prepare everything, no start
+  ./scripts/provision-host.sh --start             build + start the stack
+  ./scripts/provision-host.sh --data-dir /srv/argus
+  ./scripts/provision-host.sh --with-models       download engine weights
+  ./scripts/provision-host.sh --migrate-volumes   copy old named volumes
+  ./scripts/provision-host.sh --no-docker -y
+  ./scripts/provision-host.sh --no-s3             skip the object store
+USAGE
 }
 
 while [ "$#" -gt 0 ]; do
@@ -199,7 +198,8 @@ ensure_object_store() {
   log "Object store ready: $root/objects"
 }
 
-provision_models() {  local owner script
+provision_models() {
+  local owner script
   for owner in \
       packages/identity \
       packages/memory \

@@ -5,7 +5,6 @@
 #include <optional>
 #include <validation/validation_dsl.hxx>
 
-// /camera/{id}/ptz body: x/y absolute motor target or the Tapo angle in degrees.
 struct CameraPtzDto
 {
   std::optional<int64_t> x;

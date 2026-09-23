@@ -10,7 +10,7 @@ namespace
 constexpr int kKeepaliveTimeMs = 30000;
 constexpr int kKeepaliveTimeoutMs = 10000;
 constexpr int kMaxPingsWithoutData = 0;
-} // namespace
+}
 
 std::shared_ptr<grpc::Channel> makeChannel(const std::string& target)
 {
@@ -55,4 +55,4 @@ void addCallerCredential(grpc::ClientContext& context,
     context.AddMetadata(kCallerCredentialKey, secret);
 }
 
-} // namespace argus::client
+}

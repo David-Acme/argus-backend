@@ -72,7 +72,6 @@ TEST_CASE("identity state strings round-trip and fail closed")
         .toString = identityStateToString,
         .fromString = identityStateFromString});
 
-    // Anything a producer invents reads as unrecognized, never as known.
     CHECK(identityStateFromString("") == IdentityState::Unrecognized);
     CHECK(identityStateFromString("KNOWN") == IdentityState::Unrecognized);
     CHECK(identityStateFromString("identified") == IdentityState::Unrecognized);

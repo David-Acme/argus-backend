@@ -4,7 +4,6 @@
 #include <voice/reaction-contracts.hxx>
 #include <string>
 
-// Turns the signals a turn already produced into the assistant's reaction; every decision is a rule.
 class ReactionEngine
 {
 public:
@@ -19,7 +18,6 @@ public:
 
   Reaction react(const ReactionSignals& signals) const;
 
-  // Short line appended to the tail of the user turn, never to the system prompt.
   static std::string toneNote(const Reaction& reaction,
                               const std::string& lang);
 

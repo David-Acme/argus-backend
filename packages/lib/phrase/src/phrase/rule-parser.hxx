@@ -31,10 +31,8 @@ public:
 
   bool isQuestion(const RuleParseInput& input) const;
 
-  // Cancellation: the turn retracts itself, so nothing in it reaches memory formation.
   bool isCancellation(const RuleParseInput& input) const;
 
-  // Carries no fact: empty, a bare tag or a trigger with nothing after it.
   bool isVacuous(const RuleParseInput& input) const;
 
   std::string stripFillers(const RuleParseInput& input) const;

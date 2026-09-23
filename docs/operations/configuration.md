@@ -7,7 +7,9 @@ committed `config.toml.example` by `setup.sh` (0600, gitignored). There is no
 root monolithic config; secrets never live in the repository.
 
 Service templates expose only their own domain plus `[server]` (and `[nats]`
-where used):
+where used). The templates carry no comments (rule 20): what each key is for,
+and the optional keys a template does not set, are in
+[Configuration keys](configuration-keys.md).
 
 | Project | Notable sections |
 |---|---|

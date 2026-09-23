@@ -7,13 +7,11 @@
 #include <unordered_map>
 #include <vector>
 
-// Boot-time catalog of tool descriptors (COGNITIVE_MEMORY_PLAN.md §6); services self-register at init.
 class ToolRegistry
 {
 public:
   static ToolRegistry& instance();
 
-  // Public so isolated registries can exist alongside the process-wide singleton.
   ToolRegistry() = default;
 
   void registerTool(tools::ToolDescriptor descriptor);

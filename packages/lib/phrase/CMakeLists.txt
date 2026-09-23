@@ -1,9 +1,3 @@
-# argus_lib_phrase: phrase matching and the rule syntax built on it — the
-# automaton, the catalog that wraps it and the rule parser that reads the
-# catalog. argus-memory (formation and recall) and argus-voice (reaction
-# rules) both use the cluster, so it is a module rather than either
-# service's source.
-
 include(${CMAKE_CURRENT_SOURCE_DIR}/../../../cmake/argus-module.cmake)
 
 argus_lib(NAME phrase
@@ -16,9 +10,6 @@ argus_lib(NAME phrase
 
 target_compile_options(argus_lib_phrase PRIVATE -Wall -Wextra)
 
-# The round-trip suite for MemoryType, PhraseKind and LexiconKind: the
-# vocabulary moved here with the catalog that consumes it, so the suite moves
-# with it.
 enable_testing()
 find_package(doctest REQUIRED)
 

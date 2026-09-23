@@ -7,7 +7,6 @@
 #include <sync/socket-emit-dto.hxx>
 #include <vector>
 
-// Before/after snapshots of one row plus the recipients of its user_audit_log row.
 struct UserAuditInput
 {
   int64_t recordId{0};
@@ -17,8 +16,6 @@ struct UserAuditInput
   std::vector<int64_t> userIds;
 };
 
-// The audit half of a user-scoped change funnel, which is all a service that
-// only ever publishes diffs needs to implement.
 class AuditSink
 {
 public:
@@ -28,8 +25,6 @@ public:
   publishAudit(const UserAuditInput& input) const = 0;
 };
 
-// Sink for a user-scoped producer that also emits rows; each service installs
-// its own at boot.
 class UserChangeSink : public AuditSink
 {
 public:
@@ -74,4 +69,4 @@ inline const AuditSink* getNotificationSink()
 {
   return notificationSink();
 }
-} // namespace user_change
+}

@@ -3,8 +3,6 @@
 #include <cstdint>
 #include <string>
 
-// Private objects stay out of the sync stream; the category drives retention
-// and access policy.
 enum class StoredFileCategory : uint8_t
 {
   Portrait = 0,

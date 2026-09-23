@@ -10,53 +10,37 @@ namespace nats_subject
 inline constexpr const char* kSyncChange = "argus.sync.v1.change";
 inline constexpr const char* kSyncChangeWildcard = "argus.*.v1.change";
 
-// Camera-domain changes funneled from argus-camera.
 inline constexpr const char* kCameraChange = "argus.camera.v1.change";
 
-// Productivity-domain changes plus `kind: audit` user_audit_log diffs.
 inline constexpr const char* kProductivityChange =
     "argus.productivity.v1.change";
 
-// Notification-domain markAsRead effects, same payload contract as productivity.
 inline constexpr const char* kNotificationChange =
     "argus.notification.v1.change";
 
-// Identity-domain user and person writes, funneled to the memory catalog replicas.
 inline constexpr const char* kIdentityChange = "argus.identity.v1.change";
 
-// Identity-domain journal rows (invitations, enrollment, roles, deactivation,
-// portrait views), inserted verbatim by the fan-out; not a `argus.*.v1.change`
-// subject, so the journal subscriber is its own consumer.
 inline constexpr const char* kIdentityUserAction =
     "argus.identity.v1.user-action";
 
-// Object-detection events from the argus-camera operator; never re-emitted to /sync.
 inline constexpr const char* kCameraObjectDetected =
     "argus.camera.v1.object_detected";
 
-// Camera health (occlusion, blur, moved) from argus-camera's monitor.
 inline constexpr const char* kCameraHealth = "argus.camera.v1.health";
 
-// argus-guard readiness heartbeat; the gateway's raw fallback yields while fresh.
 inline constexpr const char* kGuardHeartbeat = "argus.guard.v1.heartbeat";
 
-// Finalized encounter summary; the only camera feed long-term memory may read.
 inline constexpr const char* kGuardEncounterClosed =
     "argus.guard.v1.encounter_closed";
 
-// Guard-owned JetStream stream for argus.guard.v1.* domain events.
 inline constexpr const char* kGuardStream = "ARGUS_GUARD";
 
-// Subject family that stream declares; the encounter summary lives inside it.
 inline constexpr const char* kGuardSubjectFilter = "argus.guard.v1.>";
 
-// Durable per-recipient notification delivery; the notification service owns
-// the ARGUS_NOTIFICATION stream and the gateway consumes it durably.
 inline constexpr const char* kNotificationDeliveryStream = "ARGUS_NOTIFICATION";
 inline constexpr const char* kNotificationDelivery =
     "argus.notification.v1.delivery";
 
-// Push intents fanned to the home client through the tunnel; never re-emitted to /sync.
 inline constexpr const char* kNotificationPushIntent =
     "argus.notification.v1.push_intent";
 
@@ -104,4 +88,4 @@ inline bool isValidSubject(std::string_view subject, SubjectKind kind)
   }
 }
 
-} // namespace nats_subject
+}

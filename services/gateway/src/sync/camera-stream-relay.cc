@@ -14,9 +14,8 @@ namespace
 {
 constexpr std::string_view kCameraPrefix = "camera:";
 constexpr std::string_view kMediaPath = "/media";
-// Pending frames are bounded; a stalled upstream leg must not grow unbounded.
 constexpr size_t kPendingLimit = 256;
-} // namespace
+}
 
 struct CameraStreamRelay::Session
 {
@@ -54,8 +53,6 @@ void CameraStreamRelay::onConnect(const drogon::HttpRequestPtr& req,
   auto session = std::make_shared<Session>();
   session->token = JwtFilter::extractToken(req);
   session->userAgent = req->getHeader("User-Agent");
-  // The gateway is the only peer that saw the client, so the device hash uses
-  // the peer IP and never a client-supplied X-Forwarded-For.
   session->forwardedFor = conn->peerAddr().toIp();
 
   std::lock_guard<std::mutex> lock(sessionsMutex_);
@@ -144,7 +141,6 @@ drogon::Task<void>
 CameraStreamRelay::openSession(const drogon::WebSocketConnectionPtr& conn,
                                std::shared_ptr<Session> session)
 {
-  // The client connection's loop: every session callback stays on it.
   auto* loop = trantor::EventLoop::getEventLoopOfCurrentThread();
   if (!loop)
     loop = drogon::app().getIOLoop(0);

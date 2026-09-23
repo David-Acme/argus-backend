@@ -6,7 +6,6 @@ import "argus/common/v1/base.proto";
 
 option cc_enable_arenas = true;
 
-// CalendarEvent row matching the current /calendar-event endpoints.
 message CalendarEvent {
   string id = 1;
   string title = 2;
@@ -17,12 +16,11 @@ message CalendarEvent {
   int64 created_at = 7;
 }
 
-// CalendarEventShare row matching the current /calendar-event-share endpoints.
 message CalendarEventShare {
   string id = 1;
   string event_id = 2;
   string user_id = 3;
-  string access = 4; // view | edit
+  string access = 4;
   int64 created_at = 5;
 }
 

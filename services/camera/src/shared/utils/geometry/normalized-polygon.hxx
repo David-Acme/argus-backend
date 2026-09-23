@@ -7,7 +7,6 @@
 namespace geometry
 {
 
-// Zone polygons travel as normalized [0..1] coordinates, stored as the zone.points JSON array.
 inline constexpr int kMinPolygonPoints = 3;
 inline constexpr int kMaxPolygonPoints = 64;
 
@@ -45,4 +44,4 @@ serializeNormalizedPolygon(const Json::Value& points)
   return Json::writeString(builder, out);
 }
 
-} // namespace geometry
+}

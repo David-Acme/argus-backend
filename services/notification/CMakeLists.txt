@@ -1,9 +1,6 @@
 cmake_minimum_required(VERSION 3.25)
 project(argus-notification VERSION 1.0.0 LANGUAGES CXX)
 
-# enable_testing() must precede the first add_subdirectory: the flag
-# propagates into every subtree, and a directory that misses it gets no
-# CTestTestfile — the tests of anything added beneath it then never run.
 enable_testing()
 
 set(CMAKE_CXX_STANDARD 20)
@@ -15,11 +12,6 @@ include(${CMAKE_CURRENT_SOURCE_DIR}/../../cmake/argus-module.cmake)
 set(NOTIFICATION_SRC_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
 if(PROJECT_IS_TOP_LEVEL)
-    # Standalone configure: this service owns the whole build, so it adds the
-    # packages it links — the leaves it uses directly and the sibling packages
-    # that used to arrive through argus-common — plus the third-party
-    # sqlite-vec, so the notification service links the same objects as any other
-    # consumer.
 
     if(NOT TARGET argus::contracts::auth)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/contracts/auth
@@ -48,9 +40,6 @@ if(PROJECT_IS_TOP_LEVEL)
     endif()
     set(ARGUS_SQLITE_VEC_TARGET sqlite-vec)
 
-    # argus_identity compiles the face services, whose headers need ncnn; the
-    # objects are dropped at link time because nothing in this service
-    # references them (verified with nm -C: zero AI symbols).
     set(NCNN_BUILD_BENCHMARK OFF CACHE BOOL "" FORCE)
     set(NCNN_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
     set(NCNN_BUILD_TOOLS OFF CACHE BOOL "" FORCE)
@@ -107,22 +96,13 @@ endif()
 
 find_package(doctest REQUIRED)
 
-# The notification RPC contract (argus.notification.v1.NotificationService);
-# this service is the owner and serves it, consumers link
-# argus::clients::notification.
 if(NOT TARGET argus::clients::notification)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/notification
                      ${CMAKE_BINARY_DIR}/clients/notification EXCLUDE_FROM_ALL)
 endif()
 
-# The notification domain's durable change outbox: its own module, added before
-# the targets that name it.
 add_subdirectory(src/shared/repositories/change-outbox)
 
-# This service owns the notification table's row code since sub-step 3a-1b: the
-# repository, its schema, the delivery service and the two NATS sinks compile
-# here, and the RPC owner and the suites read the same definitions through this
-# library.
 add_library(notification-core STATIC
     ${NOTIFICATION_SRC_ROOT}/notification/nats-notification-change-sink.cc
     ${NOTIFICATION_SRC_ROOT}/notification/nats-notification-delivery-sink.cc
@@ -146,13 +126,6 @@ target_link_libraries(notification-core PUBLIC
 
 target_compile_options(notification-core PRIVATE -Wall -Wextra)
 
-# The write-side feature surface (markAsRead + registerToken controllers,
-# feature services, DTOs) compiles from the shared tree into THIS executable
-# only: the controllers are AutoCreation and register their routes during
-# static init, exactly like the legacy binary does. The legacy keeps its own
-# registration until F3-2; the notification repository, schema and delivery
-# service are notification-core's, and so are the notification-token
-# repository/service the feature surface reads.
 set(NOTIFICATION_FEATURE_SOURCES
     ${NOTIFICATION_SRC_ROOT}/feature/api/notification/controllers/notification-controller.cc
     ${NOTIFICATION_SRC_ROOT}/feature/api/notification/controllers/notification-token-controller.cc
@@ -172,10 +145,6 @@ add_executable(argus-notification
     ${NOTIFICATION_SRC_ROOT}/feature/rpc/notification-rpc-service.cc
     ${NOTIFICATION_FEATURE_SOURCES})
 
-# The filters validate through argus.identity.v1 (argus::clients::identity rides
-# argus::lib::auth); the RPC owner serves argus.notification.v1 via
-# argus::clients::notification. The DTOs validate through argus::lib::validation
-# and the controllers answer through argus::lib::http.
 target_link_libraries(argus-notification PRIVATE notification-core
     argus::lib::auth argus::lib::validation argus::lib::http
     argus::clients::notification)
@@ -189,15 +158,10 @@ if(DOCTEST_INCLUDE_DIRS)
         INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${DOCTEST_INCLUDE_DIRS}")
 endif()
 
-# notification-migration builds only as a dependency of the migration suite.
-# The standalone build adds its folder here; the root tree finds it via the
-# discovery glob.
 if(PROJECT_IS_TOP_LEVEL AND NOT TARGET notification-migration)
     add_subdirectory(tools/migrate-notification)
 endif()
 
-# The unit suites opt back into the default build: this folder is added
-# EXCLUDE_FROM_ALL, and notification-migration (tools/) stays out of it.
 find_package(doctest REQUIRED)
 
 foreach(TEST_NAME IN ITEMS notification-schema-test notification-migration-test)
@@ -217,8 +181,6 @@ foreach(TEST_NAME IN ITEMS notification-schema-test notification-migration-test)
     add_test(NAME ${TEST_NAME} COMMAND ${TEST_NAME})
 endforeach()
 
-# The controller suite compiles the same write-side sources the service
-# compiles and rides notification-core for repositories and boot plumbing.
 add_executable(notification-controller-test
     tests/unit/notification-controller-test.cc
     ${NOTIFICATION_FEATURE_SOURCES})
@@ -246,7 +208,6 @@ target_compile_options(notification-controller-test PRIVATE -Wall -Wextra)
 add_test(NAME notification-controller-test
          COMMAND notification-controller-test)
 
-# The RPC suite boots the real schema and the real service against it.
 add_executable(notification-rpc-test
     tests/unit/notification-rpc-test.cc
     ${NOTIFICATION_SRC_ROOT}/feature/rpc/notification-rpc-service.cc)
@@ -273,8 +234,6 @@ target_compile_options(notification-rpc-test PRIVATE -Wall -Wextra)
 
 add_test(NAME notification-rpc-test COMMAND notification-rpc-test)
 
-# No-NATS survival: with no sink installed the service stays alive, names
-# the outcome and leaves intents pending instead of terminating.
 add_executable(notification-no-nats-test
     tests/unit/notification-no-nats-test.cc
     ${NOTIFICATION_SRC_ROOT}/feature/rpc/notification-rpc-service.cc)
@@ -301,7 +260,6 @@ target_compile_options(notification-no-nats-test PRIVATE -Wall -Wextra)
 
 add_test(NAME notification-no-nats-test COMMAND notification-no-nats-test)
 
-# Durable delivery seam: intents settle only after the broker stores them.
 add_executable(notification-delivery-test
     tests/unit/notification-delivery-test.cc)
 
@@ -317,8 +275,6 @@ target_compile_options(notification-delivery-test PRIVATE -Wall -Wextra)
 
 add_test(NAME notification-delivery-test COMMAND notification-delivery-test)
 
-# The change outbox: the transition-addressed key rules and the replay/conflict
-# dispositions over the real schema.
 add_executable(notification-change-outbox-test
     tests/unit/notification-change-outbox-test.cc)
 
@@ -337,8 +293,6 @@ target_compile_options(notification-change-outbox-test PRIVATE -Wall -Wextra)
 add_test(NAME notification-change-outbox-test
          COMMAND notification-change-outbox-test)
 
-# The change sink: every audit lands in the outbox, and a broker-less sink
-# leaves the row pending instead of dropping it.
 add_executable(notification-change-outbox-sink-test
     tests/unit/notification-change-outbox-sink-test.cc)
 
@@ -373,7 +327,6 @@ target_compile_options(notification-ack-test PRIVATE -Wall -Wextra)
 
 add_test(NAME notification-ack-test COMMAND notification-ack-test)
 
-# Opt-in live check against a real NATS; skips without ARGUS_NATS_URL.
 add_executable(notification-delivery-live-test
     tests/unit/notification-delivery-live-test.cc)
 
@@ -396,8 +349,6 @@ target_compile_options(notification-delivery-live-test PRIVATE -Wall -Wextra)
 
 add_test(NAME notification-delivery-live-test COMMAND notification-delivery-live-test)
 
-# The push-intent publish seam rides the owner: the camera-notifier create
-# enters here, so the sink hook is tested here.
 add_executable(push-intent-test tests/unit/push-intent-test.cc)
 
 set_target_properties(push-intent-test PROPERTIES EXCLUDE_FROM_ALL FALSE)

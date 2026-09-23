@@ -1,7 +1,3 @@
-# Productivity database migration tool (argus.db -> productivity.db). The
-# library builds only as a dependency of productivity-migration-test; the CLI
-# executable is excluded from the default backend build.
-
 add_library(productivity-migration STATIC
     productivity-migration.cc
 )

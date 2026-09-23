@@ -43,7 +43,7 @@ std::optional<ProductivitySyncTable> productivitySyncTableFor(TableName table)
       return std::nullopt;
   }
 }
-} // namespace
+}
 
 const Syncable& SynchronizedService::repoFor(TableName table) const
 {

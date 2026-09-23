@@ -4,7 +4,6 @@
 #include <feature/voice/voice-session-service.hxx>
 #include <grpcpp/grpcpp.h>
 
-// argus.voice.v1.VoiceService: one bidi stream per app voice session.
 class VoiceRpcService final
     : public argus::voice::v1::VoiceService::CallbackService
 {

@@ -17,11 +17,8 @@
 
 namespace
 {
-// Stateless handle over the room module's thread_local registries, the same
-// object the engine's SyncService holds for the process's life.
 const RoomManager roomManager;
 
-// cnats dispatcher thread: marshal into the Drogon loop first.
 void inLoop(std::string_view message,
             std::function<void(const Json::Value&)> handle)
 {
@@ -36,7 +33,7 @@ std::string kindOf(const Json::Value& json)
   return json.isObject() ? json.get(sync_change::kKindField, "").asString()
                          : std::string{};
 }
-} // namespace
+}
 
 namespace sync_fan_out
 {
@@ -160,4 +157,4 @@ void subscribeActionJournal(NatsBus& bus, AuditFanOut& auditFanOut)
                   });
                 });
 }
-} // namespace sync_fan_out
+}

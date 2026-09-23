@@ -6,18 +6,16 @@ import "argus/common/v1/base.proto";
 
 option cc_enable_arenas = true;
 
-// Camera row matching the current /camera CRUD endpoints.
 message Camera {
   string id = 1;
   string name = 2;
-  string driver = 3;    // tapo | onvif | rtsp
+  string driver = 3;
   string rtsp_url = 4;
-  string record_mode = 5; // events | continuous
+  string record_mode = 5;
   bool enabled = 6;
   int64 created_at = 7;
 }
 
-// Snapshot of a camera's live state.
 message CameraStatus {
   string camera_id = 1;
   bool online = 2;
@@ -25,7 +23,6 @@ message CameraStatus {
   string signal = 4;
 }
 
-// Mirrors the current /camera, /camera/{id} endpoints.
 service CameraService {
   rpc CreateCamera(CreateCameraRequest) returns (argus.common.v1.Envelope);
   rpc UpdateCamera(UpdateCameraRequest) returns (argus.common.v1.Envelope);

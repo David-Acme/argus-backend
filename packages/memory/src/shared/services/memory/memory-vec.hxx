@@ -25,4 +25,4 @@ inline std::string encode(const std::vector<float>& vec)
   return enc;
 }
 
-} // namespace memory_vec
+}

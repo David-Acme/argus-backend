@@ -35,7 +35,7 @@ llama_flash_attn_type flashAttnFromConfig(const std::string& name)
   return LLAMA_FLASH_ATTN_TYPE_AUTO;
 }
 
-} // namespace
+}
 
 LlmService::LlmService()
     : model_(nullptr, llama_model_free), context_(nullptr, llama_free)
@@ -449,7 +449,6 @@ void LlmService::generateStream(const GenerateInput& input,
   llama_pos pos = static_cast<llama_pos>(promptTokens.size());
 
   auto& batch = *genBatch_;
-  // Only the tail can carry a stop match, and a match ends the generation.
   std::string tail;
   size_t tailKeep = 0;
   for (const auto& needle : stop)

@@ -1,5 +1,3 @@
-# argus-notification configuration. Copy to config.toml (gitignored) to run.
-
 [server]
 host = "127.0.0.1"
 port = 7028
@@ -31,11 +29,7 @@ relaunch_on_error = false
 [notifications]
 db = "database/notification.db"
 schema = "services/notification/database/schema.sql"
-# Display-confirmation window in seconds; sent deliveries older than this
-# without an ack surface as unacknowledged-old in the delivery summary.
 ack_window_s = 86400
-# Synthetic delivery-probe period in seconds; <= 0 disables the probe. Each
-# probe creates one user-0 row, publishes it and records the settle outcome.
 selftest_interval_s = 300
 
 [jwt]
@@ -54,7 +48,6 @@ target = "127.0.0.1:7040"
 rpc_secret = ""
 
 [grpc]
-# Caller capability credentials, each shared only with its single caller.
 caller_guard = ""
 caller_gateway = ""
 

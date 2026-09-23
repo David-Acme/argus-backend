@@ -1,9 +1,6 @@
 cmake_minimum_required(VERSION 3.25)
 project(argus-gateway VERSION 1.0.0 LANGUAGES CXX)
 
-# enable_testing() must precede the first add_subdirectory: the flag
-# propagates into every subtree, and a directory that misses it gets no
-# CTestTestfile — the tests of anything added beneath it then never run.
 enable_testing()
 
 set(CMAKE_CXX_STANDARD 20)
@@ -15,10 +12,6 @@ set(GATEWAY_SRC_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/src)
 include(${CMAKE_CURRENT_SOURCE_DIR}/../../cmake/argus-module.cmake)
 
 if(NOT TARGET argus_identity)
-    # Standalone configure: this service owns the whole build, so it adds the
-    # packages it links — the leaves it uses directly and the sibling packages
-    # that used to arrive through argus-common — plus the third-party sources
-    # so the gateway links the same objects as any other consumer.
     find_package(Drogon CONFIG REQUIRED)
     find_package(cnats CONFIG REQUIRED)
     find_package(tomlplusplus REQUIRED)
@@ -106,8 +99,6 @@ if(NOT TARGET argus::clients::sync)
                      ${CMAKE_BINARY_DIR}/clients/sync EXCLUDE_FROM_ALL)
 endif()
 
-# mdns is its own package again (Phase 1 step 10): the source was gateway-only,
-# so gateway-core links argus::lib::mdns, and the vendored mdns.h wiring lives there.
 if(NOT TARGET argus::lib::mdns)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/mdns
                      ${CMAKE_BINARY_DIR}/mdns)
@@ -146,9 +137,6 @@ target_compile_options(gateway-core PRIVATE -Wall -Wextra)
 
 add_executable(argus-gateway ${GATEWAY_SRC_ROOT}/main.cc)
 
-# Whole-archive: the vendored proxy plugin self-registers through a template
-# static initializer that nothing references by name, so a plain static-lib
-# link would drop the registration object.
 target_link_libraries(argus-gateway PRIVATE
     $<LINK_LIBRARY:WHOLE_ARCHIVE,gateway-core>)
 
@@ -186,9 +174,6 @@ if(DOCTEST_INCLUDE_DIRS)
         INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${DOCTEST_INCLUDE_DIRS}")
 endif()
 
-# The suites opt back into the default build: their folder is added
-# EXCLUDE_FROM_ALL, and a registered test whose binary never builds is a
-# ctest "Not Run", not a pass.
 set_target_properties(gateway-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 set_target_properties(camera-notifier-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 

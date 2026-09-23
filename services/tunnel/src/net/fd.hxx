@@ -4,7 +4,6 @@
 
 #include <utility>
 
-// Owning file descriptor; closes on destruction.
 class UniqueFd
 {
 public:

@@ -3,7 +3,6 @@
 #include <json/value.h>
 #include <string>
 
-// Display-only push intent mirrored to the device through the tunnel; never a /sync event.
 struct PushIntent
 {
   int64_t userId{0};
@@ -28,7 +27,6 @@ inline Json::Value toJson(const PushIntent& intent)
   return json;
 }
 
-// Push-intent sink installed once at boot behind [push] enabled (default off).
 class PushIntentSink
 {
 public:
@@ -52,4 +50,4 @@ inline const PushIntentSink* getSink()
 {
   return sink();
 }
-} // namespace push_intent
+}

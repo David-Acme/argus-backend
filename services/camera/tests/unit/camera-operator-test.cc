@@ -83,7 +83,7 @@ PersonCrop cropOn(const std::vector<uint8_t>& rgb, int64_t trackId,
           .w = w,
           .h = h};
 }
-} // namespace
+}
 
 namespace
 {
@@ -161,7 +161,7 @@ DetectedObject carObject()
   object.h = 15;
   return object;
 }
-} // namespace
+}
 
 TEST_CASE("an unusable later crop keeps the cached known verdict")
 {
@@ -463,7 +463,6 @@ TEST_CASE("processFrame aggregates detections over the window")
   CHECK(event.objects[1].name == "car");
 }
 
-// Recognizes only the left (resident) crop; the intruder stays unknown.
 class LeftPersonKnownMatcher final : public IKnownPersonMatcher
 {
 public:
@@ -578,7 +577,6 @@ TEST_CASE("a failed enqueue keeps the pending event and does not advance state")
   service.processFrame({.cameraId = 1, .cameraName = "Front", .frame = frame});
   REQUIRE(sink.events.size() == 1);
   CHECK(sink.events.front().rule == "person_day");
-  // The retry reuses the exact event id and never advances the sequence.
   REQUIRE(sink.attemptedIds.size() == 2);
   CHECK(sink.attemptedIds[1] == sink.attemptedIds[0]);
   CHECK(sink.attemptedIds[1] == sink.events.front().eventId);

@@ -1,9 +1,6 @@
 cmake_minimum_required(VERSION 3.25)
 project(argus-tunnel VERSION 1.0.0 LANGUAGES CXX)
 
-# enable_testing() must precede the first add_subdirectory: the flag
-# propagates into every subtree, and a directory that misses it gets no
-# CTestTestfile — the tests of anything added beneath it then never run.
 enable_testing()
 
 set(CMAKE_CXX_STANDARD 20)
@@ -13,8 +10,6 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 set(TUNNEL_SRC_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
 if(NOT TARGET Drogon::Drogon)
-    # Standalone configure: this service owns the whole build, so it adds the
-    # packages it links (the leaves that used to arrive through argus-common).
     find_package(Drogon CONFIG REQUIRED)
     find_package(tomlplusplus REQUIRED)
     find_package(nlohmann_json REQUIRED)
@@ -35,8 +30,6 @@ endif()
 
 find_package(doctest REQUIRED)
 
-# Tunnel core: epoll engine, framing, multiplexer, client, relay and the
-# /health plumbing. No thread-per-stream: everything runs on one PollLoop.
 add_library(tunnel-core STATIC
     ${TUNNEL_SRC_ROOT}/net/poll-loop.cc
     ${TUNNEL_SRC_ROOT}/net/tcp-listener.cc
@@ -118,9 +111,6 @@ target_include_directories(tunnel-health-test PRIVATE
 target_link_libraries(tunnel-health-test PRIVATE tunnel-core doctest::doctest)
 target_compile_options(tunnel-health-test PRIVATE -Wall -Wextra)
 
-# The suites opt back into the default build: their folder is added
-# EXCLUDE_FROM_ALL, and a registered test whose binary never builds is a
-# ctest "Not Run", not a pass.
 set_target_properties(framing-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 set_target_properties(tunnel-integration-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 set_target_properties(tunnel-reconnect-test PROPERTIES EXCLUDE_FROM_ALL FALSE)

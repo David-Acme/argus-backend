@@ -38,7 +38,7 @@ uint32_t readU32(const char* data)
          static_cast<uint32_t>(bytes[2] << 16) |
          static_cast<uint32_t>(bytes[3] << 24);
 }
-} // namespace
+}
 
 std::string encodeFrame(const EncodeFrameInput& input)
 {
@@ -163,4 +163,4 @@ bool constantTimeEquals(const std::string& left, const std::string& right)
             static_cast<unsigned char>(right[i]);
   return diff == 0;
 }
-} // namespace tunnel
+}

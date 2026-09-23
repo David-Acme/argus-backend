@@ -12,7 +12,7 @@
   repo tags (`contracts-v*`), not an independent repo. Services (C++20 + Drogon)
   and the mobile app (`frontend/` React Native) coordinate against THIS folder,
   never against a service's local copy.
-- English only: file contents, comments, commit messages.
+- English only: file contents, commit messages.
 
 ## Frozen contract policy
 
@@ -54,7 +54,7 @@ review blocker:
 
 ## Conventions
 
-- Minimal comments: short English one-liners only, no prose blocks in protos.
+- No comments in protos (root rule 20).
 - Field numbers are never reused; removal means `reserved`, never renumbering.
 - Enum numeric values mirror the C++ sources verbatim
   (`sync-operation.hxx`, `table-name.hxx`, `error-code.hxx`); when the C++
@@ -73,5 +73,5 @@ review blocker:
 - Dependency injection is manual, no framework: dependencies are private
   members with a `_` suffix (`userRepository_`, `service_`); controllers hold a
   non-static service member.
-- Minimal comments in code too: direct "what it does" one-liners only.
-> Binding cross-service code standards: root `AGENTS.md` MUST-FOLLOW rules 19-24 (modern C++20, comment discipline, efficiency, DB tuning, feature layout + shared SDK, monolith structure).
+- No comments in code either (root rule 20).
+> Binding cross-service code standards: root `AGENTS.md` MUST-FOLLOW rules 19-24 (modern C++20, no comments in code, efficiency, DB tuning, feature layout + shared SDK, monolith structure).

@@ -3,7 +3,6 @@
 #include <cstdint>
 #include <string>
 
-// Change-feed outbox lifecycle; the CHECK constraint mirrors it.
 enum class ChangeOutboxStatus : uint8_t
 {
   Pending = 0,

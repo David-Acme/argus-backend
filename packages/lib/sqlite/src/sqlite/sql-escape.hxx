@@ -5,7 +5,6 @@
 
 namespace sql_util
 {
-// Doubles embedded single quotes so the value is safe inside a SQL literal.
 inline std::string escapeLiteral(std::string_view value)
 {
   std::string out;
@@ -17,4 +16,4 @@ inline std::string escapeLiteral(std::string_view value)
   }
   return out;
 }
-} // namespace sql_util
+}

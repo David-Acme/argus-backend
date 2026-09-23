@@ -311,7 +311,7 @@ void rotationLoop()
   }
 }
 
-} // namespace
+}
 
 bool CertService::init()
 {

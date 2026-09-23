@@ -573,13 +573,34 @@ scan sees fewer translation units than the baseline records — a check that
 cannot be run is not a check that passed. Bring a baseline count down in the
 same change that fixes what stands behind it.
 
-### 20. Comment discipline
+### 20. No comments in code
 
-Comments exist ONLY at class, namespace or function scope, short and direct.
-No comments attached to individual statements, no multi-line doc blocks, no
-commented-out code. If a statement needs a comment to be understood, rewrite
-the statement. The "why" of a design decision goes to CONTEXT.md, not to the
-code.
+There are no comments in the code, without exception: not at class,
+namespace, function or statement scope, not as doc blocks, not as annotations
+that record a decision, a measurement or a plan step, and not as commented-out
+code. The rule covers every first-party file that is not documentation: C++,
+protos, CMake, shell, Python, SQL, Dockerfiles, YAML, config templates and
+ignore lists. If code needs a comment to be understood, rewrite the code (a
+better name, a helper, a type). A script's help text is a `usage()` heredoc,
+never its own header comments, and a Python tool never reads `__doc__`. The
+"why" of a design decision goes to the unit's CONTEXT.md, the reports and the
+plan, never to the code. What stays is what is not a comment at all: a
+shebang, a Dockerfile parser directive (`# syntax=`), a preprocessor
+directive. Lint suppressions are comments and are forbidden too (`NOLINT`,
+`noqa`, `shellcheck disable`, `clang-format off`): fix what the tool reports
+instead, and write `[[fallthrough]];` rather than a fallthrough comment.
+
+Every AI agent and subagent working on this tree writes no comments of any
+kind, and a prompt that delegates work states this rule.
+
+Rule 20 is measured, not reviewed: `scripts/check-comments.sh` lexes every
+first-party file with a scanner per language and fails on any comment, any
+docstring and any file type it cannot classify; `--fix` removes them. It
+skips vendored code (`third_party/`, except the tree's own `.gitignore` and
+`sqlite-vec/CMakeLists.txt`, and the upstream gRPC health proto), and it does
+not look inside a script embedded in another file (a heredoc body, a YAML
+`run:` block, a Dockerfile `RUN` line), so those stay a review item. Outside a
+git work tree (an image build) `build-all.sh` skips it and says so.
 
 ### 21. Efficiency first, architecture intact
 
@@ -870,9 +891,10 @@ Before any commit, verify the affected standalone project with
 `./scripts/build-all.sh dev --only <project>` and **0 errors, 0 warnings**.
 Run the full orchestrator when changing shared build infrastructure.
 
-The orchestrator runs two gates of its own, beyond the seventeen projects:
-`scripts/check-deps.sh` before anything is built (§2.4's tiers), and, at the
-end of a full run only, `scripts/check-tidy.sh` (rules 16 and 19). `--only`,
+The orchestrator runs three gates of its own, beyond the seventeen projects:
+`scripts/check-comments.sh` (rule 20) and `scripts/check-deps.sh` (§2.4's
+tiers) before anything is built, and, at the end of a full run only,
+`scripts/check-tidy.sh` (rules 16 and 19). `--only`,
 `--no-tests` and `--install-only` skip the clang-tidy scan deliberately: it
 needs every project's compile database, and a per-project run has to stay
 quick.

@@ -15,19 +15,12 @@
 
 class NatsBus;
 
-// Identity-domain change funnel over argus.identity.v1.change and
-// argus.identity.v1.user-action: every catalog row, module emit, audit diff and
-// journal row lands in the identity-owned outbox first, and a worker publishes
-// from there, marking a row sent only after the JetStream PubAck. Nothing else
-// in the tree captures either subject, so the sink owns the stream that carries
-// them.
 class NatsIdentityChangeSink : public IdentityChangeSink
 {
 public:
   struct Config
   {
     int retryMs{500};
-    // JetStream targets; empty keeps the production subjects and stream.
     std::string changeSubject;
     std::string actionSubject;
     std::string streamName;
@@ -49,11 +42,8 @@ public:
   [[nodiscard]] drogon::Task<void>
   publishAction(const UserActionEvent& event) const override;
 
-  // Starts the publisher; call once after the schema is applied.
   void reconcile();
 
-  // A payload the broker would refuse is not written: one such row would stop
-  // every change queued behind it for ever. 256 KiB, past any real frame.
   static constexpr std::size_t kMaxPayloadBytes = std::size_t{256} * 1024;
 
 private:
@@ -71,9 +61,6 @@ private:
   const std::string changeSubject_;
   const std::string actionSubject_;
   const std::string stream_;
-  // A publish is a JetStream publish: without the stream the broker stores
-  // nothing, so the row that proves the feed is moving can never settle. A
-  // refused publish clears this, so the ensure runs again instead of latching.
   std::atomic<bool> streamReady_{false};
   std::atomic<bool> stopping_{false};
   std::atomic<bool> workerStarted_{false};

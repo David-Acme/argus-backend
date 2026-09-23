@@ -198,7 +198,7 @@ std::string trimSubject(SubjectTrimInput input)
   return subject;
 }
 
-} // namespace
+}
 
 TieredExtractor::TieredExtractor(ExtractionService& model) : model_(model) {}
 

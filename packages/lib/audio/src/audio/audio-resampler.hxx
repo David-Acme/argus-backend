@@ -35,6 +35,5 @@ private:
   std::vector<int16_t> history_;
   std::vector<double> window_;
 
-  // Sinc-tap tables keyed by the rounded fractional position, computed once.
   mutable std::unordered_map<int64_t, std::vector<double>> tapCache_;
 };

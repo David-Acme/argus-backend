@@ -6,7 +6,6 @@
 
 class NatsBus;
 
-// Publishes health transitions on argus.camera.v1.health.
 class NatsHealthEventSink final : public IHealthEventSink
 {
 public:

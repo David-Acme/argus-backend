@@ -11,7 +11,6 @@ namespace
 
 constexpr int kTargetRate = 16000;
 
-// Root-mean-square of a float sample buffer.
 float rmsOf(const std::vector<float>& samples)
 {
   if (samples.empty())
@@ -22,16 +21,12 @@ float rmsOf(const std::vector<float>& samples)
   return static_cast<float>(std::sqrt(sum / static_cast<double>(samples.size())));
 }
 
-// Sentence flush threshold (chars).
 constexpr size_t kMinSentenceChars = 10;
-// Clause split thresholds (chars).
 constexpr size_t kClauseMinChars = 46;
 constexpr size_t kClauseTailChars = 22;
-// Hard-cap thresholds for run-on text (chars).
 constexpr size_t kHardMaxChars = 110;
 constexpr size_t kHardMinCut = 28;
 
-// Opening lines per language; {name} is substituted when known.
 struct Greeting
 {
   std::string withName;
@@ -120,7 +115,6 @@ argus::voice::v1::ReactionKind reactionKindToProto(ReactionKind kind)
   return argus::voice::v1::REACTION_IDLE;
 }
 
-// Keeps `speaking` false even when TTS synthesis throws.
 class SpeakingGuard
 {
 public:
@@ -185,7 +179,6 @@ std::string stripPrefix(const std::string& text)
   return out;
 }
 
-// Next TTS chunk boundary in bytes (0 = keep buffering).
 size_t nextChunkEnd(const std::string& text, bool firstSentence)
 {
   const size_t len = text.size();
@@ -220,7 +213,6 @@ size_t nextChunkEnd(const std::string& text, bool firstSentence)
   return 0;
 }
 
-// Extracts a name from "me llamo X" / "soy X" / "mi nombre es X" replies.
 std::optional<std::string> extractName(const std::string& text)
 {
   std::string lower = text;
@@ -263,7 +255,7 @@ std::vector<int16_t> floatToInt16(const std::vector<float>& pcm)
   return out;
 }
 
-} // namespace
+}
 
 VoiceLang voiceSystemLang()
 {

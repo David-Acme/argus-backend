@@ -1,7 +1,3 @@
-# validation: the DTO validation DSL (rules, macros, validator) over the
-# shared response errors. Header-only, so the target is INTERFACE; consumers
-# link argus::lib::validation.
-
 include(${CMAKE_CURRENT_SOURCE_DIR}/../../../cmake/argus-module.cmake)
 
 if(NOT TARGET argus::lib::errors)

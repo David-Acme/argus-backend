@@ -19,7 +19,6 @@ public:
   drogon::Task<bool> remove(int64_t id) const;
 
 private:
-  // Zones travel the camera's sink, the channel the camera domain owns.
   [[nodiscard]] drogon::Task<void> emit(SyncOperation operation,
                                         const ZoneSchema& row) const;
 

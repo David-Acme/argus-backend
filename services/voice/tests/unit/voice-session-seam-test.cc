@@ -110,9 +110,8 @@ struct FakeLlm final : IVoiceLlm
   }
 };
 
-} // namespace
+}
 
-// Must match the friend declaration inside VoiceSessionService (global scope).
 struct VoiceSessionTestAccess
 {
   static std::shared_ptr<VoiceSessionService::Session>

@@ -24,7 +24,7 @@ inline constexpr std::string_view REMOVE =
     "UPDATE stored_file SET deleted_at = strftime('%s', 'now') "
     "WHERE id = ? AND deleted_at IS NULL";
 
-} // namespace stored_file_query
+}
 
 struct StoredFileCreateInput
 {

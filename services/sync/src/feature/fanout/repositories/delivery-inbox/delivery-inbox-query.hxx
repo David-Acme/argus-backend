@@ -8,8 +8,6 @@
 
 namespace delivery_inbox_query
 {
-// Receipts live in this service's database: the insert wins the dispatch lease,
-// a 'dispatched' row drops redeliveries, a 'received' row replays them.
 inline constexpr std::string_view SELECT_RECEIPT =
     "SELECT status, fingerprint FROM notification_delivery_inbox "
     "WHERE delivery_id = ?";
@@ -36,7 +34,7 @@ inline constexpr std::string_view MARK_CONFLICT =
 inline constexpr std::string_view FORCE_DEAD_LETTERED =
     "UPDATE notification_delivery_inbox SET status = 'dead_lettered', "
     "updated_at = ? WHERE delivery_id = ?";
-} // namespace delivery_inbox_query
+}
 
 struct DeliveryReceiptInput
 {

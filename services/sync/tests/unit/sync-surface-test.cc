@@ -28,8 +28,6 @@ namespace
 
 using DbHandle = std::unique_ptr<sqlite3, int (*)(sqlite3*)>;
 
-// The drogon calls these replace all threw on failure, so a throwing helper
-// keeps the suite's assertion count where it was.
 void exec(sqlite3* db, const std::string& sql)
 {
   char* error = nullptr;
@@ -52,14 +50,6 @@ DbHandle openFile(const std::string& path)
   return {raw, sqlite3_close_v2};
 }
 
-// One async statement whose callback queues a sentinel on the connection's own
-// loop. Callbacks run on that loop, and trantor destroys each queued functor as
-// it dequeues the next, so the reference the statement lambda held is gone
-// before the sentinel runs: after this returns no thread but this one holds the
-// connection, and the client's destructor joins an idle loop thread from
-// outside instead of its own. The callback must not capture the client: a
-// reference released on that loop re-opens the window. No assertion here by
-// design (a timeout throws): the suites' counts must not move.
 void drain(const drogon::orm::DbClientPtr& client)
 {
   auto drained = std::make_shared<std::promise<void>>();
@@ -83,7 +73,7 @@ void drain(const drogon::orm::DbClientPtr& client)
     throw std::runtime_error("the client's loop did not drain");
 }
 
-} // namespace
+}
 
 TEST_CASE("fan-out parses the sync-change wire contract")
 {
@@ -109,7 +99,6 @@ TEST_CASE("fan-out parses the sync-change wire contract")
   REQUIRE(empty);
   REQUIRE(empty->users);
   CHECK(empty->users->empty());
-  // An explicit empty users list must not fall back to the module room.
   CHECK(empty->user == std::nullopt);
 
   const Json::Value disconnect = json_util::fromString(
@@ -118,9 +107,6 @@ TEST_CASE("fan-out parses the sync-change wire contract")
   REQUIRE(disconnection);
   CHECK(disconnection->user == 7);
 
-  // The room-control action must round-trip the payload the producers publish.
-  // The wire carries the role names, so the publisher does the conversion --
-  // the same step the identity sink performs in production.
   const auto replacement = sync_fan_out::parseEvent(
       sync_change::roleRoomsPayload({.userId = 7,
                                      .oldRole = userRoleToString(UserRole::Resident),
@@ -141,7 +127,6 @@ TEST_CASE("fan-out parses the sync-change wire contract")
 
 TEST_CASE("identity change events never fan out to the client sockets")
 {
-  // Its wire contract is an identity row diff, not a sync-change (Ruling BX).
   const Json::Value identity = json_util::fromString(
       R"({"kind":"identity","table":"person","id":7,"deleted":false,
           "row":{"id":7,"user_id":42,"name":"Ana Garcia"}})");
@@ -163,7 +148,6 @@ TEST_CASE("fan-out routing table matches the legacy SocketService mapping")
     return body;
   };
 
-  // Absent users: the module room of the table.
   const auto module =
       sync_fan_out::parseEvent(sync_change::emitPayload(emit(SyncOperation::Add,
                                                              TableName::Camera)));
@@ -173,7 +157,6 @@ TEST_CASE("fan-out routing table matches the legacy SocketService mapping")
   CHECK(modulePlan.room == moduleRoom(TableName::Camera));
   CHECK(modulePlan.rooms.empty());
 
-  // Explicit users: the user rooms of the ids, never the module room.
   const auto scoped =
       sync_fan_out::parseEvent(sync_change::userEmitPayload(
           emit(SyncOperation::Add, TableName::Notification), {42, 43}));
@@ -184,7 +167,6 @@ TEST_CASE("fan-out routing table matches the legacy SocketService mapping")
   CHECK(scopedPlan.rooms[0] == userRoom(42));
   CHECK(scopedPlan.rooms[1] == userRoom(43));
 
-  // Explicit empty users: user emit with no rooms, no module-room fallback.
   const auto unscoped =
       sync_fan_out::parseEvent(sync_change::userEmitPayload(
           emit(SyncOperation::Add, TableName::Notification), {}));
@@ -193,7 +175,6 @@ TEST_CASE("fan-out routing table matches the legacy SocketService mapping")
   CHECK(unscopedPlan.kind == sync_fan_out::FanOutPlan::Kind::UserEmit);
   CHECK(unscopedPlan.rooms.empty());
 
-  // Room-control actions take precedence over the emit fields.
   const auto disconnection =
       sync_fan_out::parseEvent(sync_change::disconnectPayload(
           emit(SyncOperation::AuthContextChanged, TableName::User), 42));
@@ -239,11 +220,6 @@ TEST_CASE("read-only legacy database rejects writes and serves reads")
   std::remove(dbPath);
 
   DbService::enableUriFilenames();
-  // Seeded through the sqlite3 C API, the way this unit's sibling suites seed
-  // theirs: a throwaway drogon client keeps a loop thread of its own, and a
-  // connection whose queued statement lambda still holds the last reference is
-  // destroyed on that thread, where ~EventLoopThread then joins the thread it
-  // is running on (EDEADLK -> SIGABRT, no assertion reported).
   {
     const DbHandle db = openFile(dbPath);
     exec(db.get(),
@@ -268,8 +244,6 @@ TEST_CASE("read-only legacy database rejects writes and serves reads")
   }
   CHECK(writeFailed);
 
-  // The local and the slot hold this client's last references: empty its loop
-  // first, or the connection is destroyed on that loop and joins itself.
   drain(readOnly);
   DbService::setReadOnlyClient(nullptr);
   std::remove(dbPath);
@@ -290,8 +264,6 @@ TEST_CASE("sync surface registers the socket and both filters")
   ConfigService::load(path);
   std::remove(path);
 
-  // No forwarder and no pull sources: the socket and both filters still
-  // register, which is what a bare compose without configuration must do.
   const SyncRegistrationStats stats = registerSyncSurface({});
 
   CHECK(stats.controllers == 1);

@@ -17,7 +17,6 @@
 namespace
 {
 
-// Minimal in-process HTTP server standing in for the argus-vlm wire in unit tests.
 class FakeVlmServer
 {
 public:
@@ -70,7 +69,6 @@ public:
   }
 
 private:
-  // Reads until the head terminator, then the Content-Length body if any.
   static std::string readRequest(int fd)
   {
     std::string data;
@@ -170,4 +168,4 @@ private:
   std::thread thread_;
 };
 
-} // namespace
+}

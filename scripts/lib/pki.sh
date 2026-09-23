@@ -1,6 +1,4 @@
 #!/usr/bin/env bash
-# Instance PKI: one self-signed EC CA plus a rotating server leaf. Callers
-# source lib/common.sh first for log/warn/need_cmd.
 
 ensure_instance_certs() {
   local root="$1"

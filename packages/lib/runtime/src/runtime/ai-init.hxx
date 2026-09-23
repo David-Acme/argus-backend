@@ -11,4 +11,4 @@ inline std::mutex& llamaMutex()
   return mutex;
 }
 
-} // namespace ai_init
+}

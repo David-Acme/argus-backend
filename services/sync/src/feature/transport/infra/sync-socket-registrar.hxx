@@ -21,5 +21,4 @@ struct SyncSurfaceInput
   std::shared_ptr<NotificationSyncSource> notificationSource;
 };
 
-// Registers the /sync socket with the frame forwarder and the domain gRPC legs.
 SyncRegistrationStats registerSyncSurface(SyncSurfaceInput input);

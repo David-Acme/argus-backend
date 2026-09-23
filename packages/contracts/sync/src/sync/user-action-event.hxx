@@ -8,9 +8,6 @@
 #include <sync/user-action.hxx>
 #include <text/json-util.hxx>
 
-// Server-side action journal row on argus.identity.v1.user-action: one actor
-// doing one thing to one record, whether or not the record changed. Append-only,
-// and the sync service inserts it verbatim.
 struct UserActionEvent
 {
   int64_t userId{0};

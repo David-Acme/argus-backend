@@ -1,12 +1,3 @@
-// The sync boundary's imperative leg (§3.5): the operations a caller cannot
-// express as a change event, because they change no row.
-//
-// The frame carries the change feed's {operation, table, info} triple, typed:
-// both enums as the numbers their C++ counterparts carry, info as the row's
-// JSON text. The envelope spells the same triple {operation, option, info}
-// with option as the table's name and info as the object, so the service
-// converts both back at the far end. Role names cross as strings: the caller
-// holds the enum, the wire holds the name.
 syntax = "proto3";
 
 package argus.sync.v1;
@@ -15,40 +6,31 @@ import "argus/sync/v1/contracts.proto";
 
 option cc_enable_arenas = true;
 
-// One actor changing role. The server builds the room-control payload from
-// these three fields, so the caller never spells the routing keys by hand.
 message ReplaceRoleRoomsRequest
 {
   int64 user_id = 1;
-  string old_role = 2; // frozen spelling, e.g. "resident"
+  string old_role = 2;
   string new_role = 3;
 }
 
-// Drop the user's sockets and refresh their auth context. The frame carries
-// operation 7 with the row in info; resync rides inside info.
 message DisconnectUserRequest
 {
   int64 user_id = 1;
   SyncFrame frame = 2;
 }
 
-// Directed emit to one user's room: the frame plus the single recipient.
 message EmitToUserRequest
 {
   int64 user_id = 1;
   SyncFrame frame = 2;
 }
 
-// An ack with no payload; reason is empty when ok.
 message ControlAck
 {
   bool ok = 1;
   string reason = 2;
 }
 
-// Fleet-secret gated: these calls come from the services of one installation,
-// never from the app. Additive to the frozen wire (§1.8) -- the subjects, the
-// frame shape and SyncOperation 0-7 are untouched.
 service SyncControlService
 {
   rpc ReplaceRoleRooms(ReplaceRoleRoomsRequest) returns (ControlAck) {}

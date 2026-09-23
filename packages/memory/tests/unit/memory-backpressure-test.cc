@@ -29,7 +29,6 @@ namespace
 constexpr const char* kScratchConfig = "memory-backpressure-test.toml";
 constexpr const char* kScratchDir = "/tmp/f46-memory-backpressure";
 
-// Controllable chat substrate: jobs can be held so the worker queues up.
 class FakeChat final : public IMemoryChat
 {
 public:
@@ -85,7 +84,7 @@ void writeConfig(const std::string& dbFile, int queueBound)
          << "model_path = \"/tmp/f46-memory-backpressure/none.gguf\"\n";
 }
 
-} // namespace
+}
 
 TEST_CASE("waitForIdle rides the chat port's busy gate (Ruling BZ)")
 {

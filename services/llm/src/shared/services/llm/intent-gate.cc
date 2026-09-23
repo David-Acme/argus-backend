@@ -17,7 +17,6 @@ std::string modelPath()
   return configured.empty() ? kDefaultModelPath : configured;
 }
 
-// Atemporal or recurring is a fact; a single future instant is a reminder.
 bool atemporalOrRecurring(const std::string& text, const std::string& lang)
 {
   static const TemporalResolver resolver;
@@ -28,7 +27,7 @@ bool atemporalOrRecurring(const std::string& text, const std::string& lang)
          when.recur != extract::Recurrence::None;
 }
 
-} // namespace
+}
 
 IntentGate::IntentGate()
     : classifier_(modelPath()),

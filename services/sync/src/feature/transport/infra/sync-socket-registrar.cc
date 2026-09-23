@@ -12,7 +12,6 @@
 
 namespace
 {
-// Evidence the filter's object code is linked: getSingleInstance would fabricate it.
 template <typename T>
 void requireLinkedFilter()
 {
@@ -22,7 +21,7 @@ void requireLinkedFilter()
     throw std::runtime_error(std::string(T::classTypeName())
                              + " is not linked into this binary");
 }
-} // namespace
+}
 
 SyncRegistrationStats registerSyncSurface(SyncSurfaceInput input)
 {

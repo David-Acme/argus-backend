@@ -6,7 +6,6 @@
 #include <string>
 #include <vector>
 
-// [objects] — the detection capacity.
 struct ObjectsConfig
 {
   bool enabled{false};
@@ -21,7 +20,6 @@ struct ObjectsConfig
   bool useVulkan{true};
 };
 
-// [operator] — per-camera aggregation, cooldowns, zones and schedule.
 struct OperatorConfig
 {
   bool overlay{false};
@@ -48,7 +46,6 @@ struct OperatorConfig
   std::vector<OperatorZone> zones;
 };
 
-// [identity] — person recognition through the identity RPC (fleet-gated).
 struct IdentityConfig
 {
   bool identify{false};
@@ -69,6 +66,5 @@ ObjectsConfig resolveObjects();
 OperatorConfig resolveOperator();
 IdentityConfig resolveIdentity();
 
-// COCO-80, the default class table.
 std::vector<std::string> defaultClasses();
-} // namespace operator_config
+}

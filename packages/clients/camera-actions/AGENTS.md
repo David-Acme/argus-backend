@@ -13,10 +13,10 @@ library whose include root is `src/`, so a consumer writes
 (`src/camera/camera-action-client.cc`) — measured deviation: the source
 directory is `src/camera/`, not `src/camera-actions/`, while the target and the
 include prefix follow the package name. Five link lines in three CMakeLists
-take it: `argus-guard` (`services/guard/CMakeLists.txt:142`) and
+take it: `argus-guard` (`services/guard/CMakeLists.txt:134`) and
 `guard-assessment-live-test` (:250), `argus_guard`
 (`services/guard/src/feature/guard/CMakeLists.txt:21`, the feature module's
-`DEPENDS`), `camera-core` (`services/camera/CMakeLists.txt:268`) and
+`DEPENDS`), `camera-core` (`services/camera/CMakeLists.txt:241`) and
 `camera-action-rpc-test` (:483). The two service CMakeLists also add the
 package to their own tree by path (`services/guard:85`, `services/camera:162`).
 13 C++ files include the header: the in-package suite, `services/camera`'s

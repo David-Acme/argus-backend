@@ -1,5 +1,3 @@
-# argus-vlm configuration. Copy to config.toml (gitignored) to run.
-
 [server]
 host = "127.0.0.1"
 port = 7031
@@ -16,7 +14,6 @@ caption_cache_slots = 8
 threads = 0
 gpu_layers = -1
 
-# The body limit covers base64 JPEG frames.
 [drogon.app]
 number_of_threads = 0
 enable_session = false

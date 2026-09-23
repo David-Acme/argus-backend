@@ -13,9 +13,6 @@ inline constexpr ErrorDefinition CameraStreamQueueOverflow{
     .code = ErrorCode::ServiceUnavailable,
     .status = 503,
     .message = "Camera stream queue overflow"};
-// The three answers the gateway's own gates give: a remote caller on a LAN-only
-// path, a caller that has worn out the rate limiter, and a route whose backend
-// did not answer at all.
 inline constexpr ErrorDefinition RemoteNotAllowed{
     .code = ErrorCode::RemoteNotAllowed,
     .status = 403,
@@ -28,4 +25,4 @@ inline constexpr ErrorDefinition RouteUnreachable{
     .code = ErrorCode::InternalError,
     .status = 500,
     .message = "Route backend is unreachable"};
-} // namespace GatewayErrors
+}

@@ -140,7 +140,7 @@ std::string stripTagChars(std::string text)
   return text;
 }
 
-} // namespace
+}
 
 std::string GraphRecall::render(const AliasRenderInput& input) const
 {
@@ -269,7 +269,6 @@ void GraphRecall::collectSemantic(const GraphRecallInput& input,
   const float strictSim = cfg.strictSim;
   const int maxFacts = cfg.maxFacts;
 
-  // Small stores have no reliable background: the absolute strict floor decides.
   const bool strictGate = distinctFacts < 3;
   const float strictFloor = distinctFacts <= 1 ? strictSim : cfg.smallStoreSim;
 

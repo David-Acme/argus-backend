@@ -1,10 +1,3 @@
--- ─────────────────────────────────────────────────────────────────────────────
--- Argus guard  ·  Guard schema (guard.db)
--- Autonomous camera security: incidents, executed actions and runtime state.
--- Applied by argus-guard at boot. argus.db is never touched.
--- Structure: pragmas → table creation → indexes.
--- ─────────────────────────────────────────────────────────────────────────────
-
 PRAGMA journal_mode       = WAL;
 PRAGMA synchronous        = NORMAL;
 PRAGMA busy_timeout       = 5000;
@@ -202,8 +195,6 @@ CREATE TABLE IF NOT EXISTS guard_action_outbox (
 CREATE INDEX IF NOT EXISTS idx_guard_outbox_status
     ON guard_action_outbox (status, created_at DESC);
 
--- Durable encounter_closed fan-out: enqueued as the encounter closes, then
--- published with PubAck by the sweeper.
 CREATE TABLE IF NOT EXISTS guard_encounter_outbox (
     event_id   TEXT    NOT NULL PRIMARY KEY,
     payload    TEXT    NOT NULL DEFAULT '{}',
@@ -216,7 +207,6 @@ CREATE TABLE IF NOT EXISTS guard_encounter_outbox (
 CREATE INDEX IF NOT EXISTS idx_guard_encounter_outbox_status
     ON guard_encounter_outbox (status, created_at ASC);
 
--- Private evidence objects: one row per uploaded incident record.
 CREATE TABLE IF NOT EXISTS guard_evidence (
     id              INTEGER NOT NULL  PRIMARY KEY AUTOINCREMENT,
     incident_id     INTEGER NOT NULL  DEFAULT 0,
@@ -235,8 +225,6 @@ CREATE INDEX IF NOT EXISTS idx_guard_evidence_expires
 CREATE UNIQUE INDEX IF NOT EXISTS idx_guard_evidence_object
     ON guard_evidence (object_key) WHERE object_key != '';
 
--- Per-camera, per-hour-of-week decayed event-rate baseline. Read-only input
--- for a journaled novelty score; never an input to any live decision.
 CREATE TABLE IF NOT EXISTS guard_hourly_baseline (
     camera_id    INTEGER NOT NULL,
     dow_hour     INTEGER NOT NULL CHECK (dow_hour >= 0 AND dow_hour < 168),
@@ -245,17 +233,12 @@ CREATE TABLE IF NOT EXISTS guard_hourly_baseline (
     PRIMARY KEY (camera_id, dow_hour)
 );
 
--- Appearance-signature visit clusters for unrecognized repeat visitors.
--- Identity-matched persons keep their existing repeat counting; this table
--- only accumulates the unknowns the old path ignored.
 CREATE TABLE IF NOT EXISTS guard_signature_visit (
     signature  TEXT    NOT NULL PRIMARY KEY,
     visits     INTEGER NOT NULL DEFAULT 0,
     first_seen INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
     last_seen  INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
 );
--- recording the legacy rule verdict next to the belief verdict. The journal
--- never fails the saga; writes are idempotent by event_id.
 CREATE TABLE IF NOT EXISTS guard_decision_journal (
     event_id            TEXT    NOT NULL PRIMARY KEY,
     encounter_id        INTEGER NOT NULL DEFAULT 0,
@@ -296,10 +279,8 @@ CREATE TABLE IF NOT EXISTS guard_decision_journal (
 CREATE INDEX IF NOT EXISTS idx_guard_decision_journal_encounter
     ON guard_decision_journal (encounter_id, event_id);
 
--- Cursor pagination and time-range scans (decisions pages, summary bounds).
 CREATE INDEX IF NOT EXISTS idx_guard_decision_journal_cursor
     ON guard_decision_journal (created_at DESC, event_id DESC);
 
--- Per-camera time aggregates (byCameraDay, byCameraHour).
 CREATE INDEX IF NOT EXISTS idx_guard_decision_journal_camera_time
     ON guard_decision_journal (camera_id, created_at DESC);

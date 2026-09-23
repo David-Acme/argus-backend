@@ -1,19 +1,14 @@
-# argus-voice configuration. Copy to config.toml (gitignored) to run.
-# Pure gRPC voice service; no database, the only model is the in-process silero VAD.
-
 [server]
 host = "127.0.0.1"
 grpc_port = 7034
 health_port = 7035
 
-# Empty disables the spoken-name persist (logged, session continues).
 [identity]
 target = "127.0.0.1:7040"
 
 [stt]
 remote_url = "127.0.0.1:7030"
 remote_timeout_ms = 30000
-# Fallback when the stream identity carries VOICE_LANGUAGE_SYSTEM.
 language = "es"
 
 [tts]

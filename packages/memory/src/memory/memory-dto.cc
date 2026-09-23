@@ -44,7 +44,7 @@ MemoryToolContext contextFromJson(const Json::Value& json)
   return context;
 }
 
-} // namespace
+}
 
 RememberBody RememberBody::fromJson(const Json::Value& json)
 {

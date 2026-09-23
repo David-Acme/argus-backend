@@ -6,7 +6,6 @@
 #include <shared/repositories/camera/camera-repository.hxx>
 #include <shared/repositories/zone/zone-repository.hxx>
 
-// argus.camera.v1.SyncService: camera-domain sync-table pulls.
 class CameraSyncRpcService final
     : public argus::camera::v1::SyncService::CallbackService
 {

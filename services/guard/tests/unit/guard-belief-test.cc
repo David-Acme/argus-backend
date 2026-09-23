@@ -44,7 +44,7 @@ bool hasSignal(const BeliefResult& result, BeliefSignal signal)
   return false;
 }
 
-} // namespace
+}
 
 TEST_CASE("each detector signal contributes its bounded weight")
 {

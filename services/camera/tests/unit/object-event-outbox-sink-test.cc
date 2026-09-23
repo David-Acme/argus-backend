@@ -30,12 +30,6 @@ public:
   {
     if (!runner_.joinable())
       return;
-    // Drogon reports the app running before its main loop is looping, and a
-    // loop that has not begun cannot be stopped: trantor's loop() clears the
-    // quit flag again as it starts. Waiting for it to loop is what makes the
-    // quit below take effect — detaching in that window left the app's thread
-    // running past the end of the process, measured as SIGSEGV inside
-    // EventLoop::loop() in 3 of 20 runs of a forced constructor throw.
     for (int i = 0; i < 3000 && !drogon::app().getLoop()->isRunning(); ++i)
       std::this_thread::sleep_for(std::chrono::milliseconds(10));
     if (drogon::app().getLoop()->isRunning()) {
@@ -43,8 +37,6 @@ public:
       runner_.join();
       return;
     }
-    // A boot that never reached the loop at all is left to the process: it
-    // cannot be asked to stop, and joining it would block for ever.
     runner_.detach();
   }
 
@@ -55,18 +47,11 @@ private:
   std::thread runner_;
 };
 
-// A case-local worker thread. Destroying a joinable std::thread by unwinding
-// calls std::terminate, so a failing assertion between the worker's creation
-// and its join aborts with no assertion behind it; this owner joins it
-// wherever the case body leaves. The release runs first where the worker is
-// parked on a stub gate the body would have opened — it can only finish once
-// it is released, and a bare join would block for ever.
 class Worker
 {
 public:
   explicit Worker(std::function<void()> body) : worker_(std::move(body)) {}
 
-  // The release the case body would have performed before joining.
   Worker(std::function<void()> release, std::function<void()> body)
       : release_(std::move(release)), worker_(std::move(body))
   {
@@ -125,7 +110,7 @@ ObjectDetectedEvent personEvent(const std::string& eventId)
   event.objects.push_back(object);
   return event;
 }
-} // namespace
+}
 
 TEST_CASE("the sink health counters equal the durable outbox state")
 {
@@ -214,7 +199,6 @@ TEST_CASE("the sink health counters equal the durable outbox state")
     NatsObjectEventSink liveSink(liveBus, liveConfig);
     liveSink.reconcile();
 
-    // No release: the producer runs a bounded loop and joins right after.
     Worker producer([&liveSink]() {
       for (int index = 0; index < 40; ++index)
         liveSink.publish(personEvent("flush:" + std::to_string(index)));
@@ -238,7 +222,6 @@ TEST_CASE("the sink health counters equal the durable outbox state")
   }
 
   {
-    // A committed enqueue and a concurrent flush must converge on the DB.
     NatsObjectEventSink barrierSink(bus, config);
     barrierSink.reconcile();
     std::barrier gate(2);
@@ -250,9 +233,6 @@ TEST_CASE("the sink health counters equal the durable outbox state")
       }
     };
     const std::string eventId = "race:1";
-    // The release is the gate arrival the body would have made at the end of
-    // the race: the publisher is parked inside syncHook on the gate, so a join
-    // without it would block for ever.
     Worker publisher([&gate]() { gate.arrive_and_wait(); },
                      [&]() { barrierSink.publish(personEvent(eventId)); });
     while (!hookReached.load())

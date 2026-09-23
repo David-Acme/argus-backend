@@ -30,7 +30,6 @@ struct FakeTtsStreamChunk
   bool stop{false};
 };
 
-// Minimal in-process HTTP server standing in for the argus-tts wire in unit tests.
 class FakeTtsServer
 {
 public:
@@ -98,7 +97,6 @@ private:
     return true;
   }
 
-  // Reads until the head terminator, then the Content-Length body if any.
   static std::string readRequest(int fd)
   {
     std::string data;
@@ -211,7 +209,6 @@ private:
           ::close(fd);
           continue;
         }
-        // Send headers first, then each chunk with its delay.
         {
           size_t sent = 0;
           while (sent < header.size()) {
@@ -220,7 +217,7 @@ private:
             if (n < 0 && errno == EINTR)
               continue;
             if (n <= 0)
-              break; // peer closed; nothing more to send
+              break;
             sent += static_cast<size_t>(n);
           }
           if (sent < header.size()) {
@@ -260,7 +257,7 @@ private:
             if (n < 0 && errno == EINTR)
               continue;
             if (n <= 0)
-              break; // peer closed
+              break;
             sent += static_cast<size_t>(n);
           }
         }
@@ -301,4 +298,4 @@ private:
   std::thread thread_;
 };
 
-} // namespace
+}

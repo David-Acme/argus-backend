@@ -8,8 +8,6 @@
 #include <optional>
 #include <string>
 
-// Pins the SDK edge: the headers it attaches, the outcome a receiver status
-// becomes, and the body that outcome delivers.
 namespace
 {
 constexpr const char* kCredential = "guard-notif-cred";
@@ -18,8 +16,6 @@ namespace v1 = argus::notification::v1;
 using Ctx = grpc::CallbackServerContext;
 using Reactor = grpc::ServerUnaryReactor;
 
-// Answers either RPC with whatever the case set, and records the headers that
-// arrived: a case reads the recorded fields once its call returned.
 class ScriptedNotificationService final
     : public v1::NotificationService::CallbackService
 {
@@ -84,7 +80,7 @@ argus::client::CallerIdentity identityFor(int64_t userId)
 {
   return {.userId = userId, .role = "owner", .device = "abc123"};
 }
-} // namespace
+}
 
 TEST_CASE("a create carries the identity and the capability credential")
 {
@@ -105,7 +101,6 @@ TEST_CASE("a create carries the identity and the capability credential")
   CHECK(service.metadata.at("x-argus-device") == "abc123");
   CHECK(service.metadata.at("x-argus-credential") == kCredential);
 
-  // An unconfigured client sends neither the credential nor a device header.
   const NotificationClient anonymous(
       {.target = loopback(port), .credential = ""});
   anonymous.createNotifications(request, {.userId = 7,
@@ -131,8 +126,6 @@ TEST_CASE("a receiver status picks the outcome, and only OK carries a body")
   const auto conflict = client.createNotifications(request, identityFor(0));
   CHECK(conflict.outcome == NotificationRpcOutcome::Conflict);
   CHECK(conflict.status.error_code() == grpc::StatusCode::ALREADY_EXISTS);
-  // A non-OK status delivers no body, so the counters the receiver set never
-  // arrive and a conflict cannot pass for a repeated batch.
   CHECK(conflict.created == 0);
   CHECK_FALSE(conflict.duplicate);
 
@@ -143,7 +136,6 @@ TEST_CASE("a receiver status picks the outcome, and only OK carries a body")
   CHECK(client.createNotifications(request, identityFor(0)).outcome ==
         NotificationRpcOutcome::Rejected);
 
-  // The same failure, this time with no receiver behind the target at all.
   const NotificationClient dead({.target = "127.0.0.1:1", .credential = ""});
   CHECK(dead.createNotifications(request, identityFor(0)).outcome ==
         NotificationRpcOutcome::Unavailable);

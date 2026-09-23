@@ -20,7 +20,7 @@ Json::Value drogonConfig(const ListenerConfig& listener)
   return config;
 }
 
-} // namespace
+}
 
 int main()
 {

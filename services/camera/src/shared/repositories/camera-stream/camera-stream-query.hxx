@@ -67,7 +67,7 @@ inline constexpr std::string_view UPDATE_SUFFIX =
 inline constexpr std::string_view REMOVE =
     "UPDATE camera_stream SET deleted_at = strftime('%s', 'now'), "
     "updated_at = strftime('%s', 'now') WHERE id = ? AND deleted_at IS NULL";
-} // namespace camera_stream_query
+}
 
 struct CameraStreamCreateInput
 {

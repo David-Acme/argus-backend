@@ -5,7 +5,6 @@
 #include <validation/validation_dsl.hxx>
 #include <string>
 
-/** Device-side switches. Absent fields are left as the camera has them. */
 struct CameraSettingsDto
 {
   std::optional<bool> privacy;

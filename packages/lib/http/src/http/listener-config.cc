@@ -17,7 +17,7 @@ uint16_t resolvePort(const char* key, uint16_t fallback)
   return port > 0 ? static_cast<uint16_t>(port) : fallback;
 }
 
-} // namespace
+}
 
 ListenerConfig ListenerConfig::resolve(uint16_t defaultPort,
                                        const char* portKey)

@@ -46,7 +46,7 @@ Json::Value drogonConfig(const ProductivityDbConfig& productivityDb,
   return config;
 }
 
-} // namespace
+}
 
 int main()
 {

@@ -10,8 +10,6 @@ namespace
 constexpr int kSampleRate = 16000;
 constexpr double kTwoPi = 6.283185307179586;
 
-// A speech-like band-limited tone; its zero-crossing rate sits in the speech
-// band, unlike low-frequency rumble or broadband hiss.
 std::vector<int16_t> tone(int milliseconds, int16_t amplitude,
                           double frequency = 300.0)
 {
@@ -30,13 +28,11 @@ std::vector<int16_t> silence(int milliseconds)
                               0);
 }
 
-// Stationary low-frequency rumble: loud but a very low zero-crossing rate.
 std::vector<int16_t> fanNoise(int milliseconds, int16_t amplitude)
 {
   return tone(milliseconds, amplitude, 25.0);
 }
 
-// Broadband hiss: loud but an out-of-band zero-crossing rate.
 std::vector<int16_t> hiss(int milliseconds, int16_t amplitude)
 {
   const int count = kSampleRate * milliseconds / 1000;
@@ -65,7 +61,7 @@ EndpointConfig baseConfig()
   config.minSpeechMs = 120;
   return config;
 }
-} // namespace
+}
 
 TEST_CASE("pure silence never starts an utterance")
 {

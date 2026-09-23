@@ -9,9 +9,6 @@
 #include <string>
 #include <vector>
 
-// Normalized (0..1) zone polygon; kind is "alert", "monitor" or "exclude".
-// The primary track alone decides known/unknown, exclusion and zone; every
-// companion travels as context and never votes on the rule.
 struct OperatorZone
 {
   int64_t cameraId{0};
@@ -20,14 +17,12 @@ struct OperatorZone
   std::vector<std::pair<double, double>> points;
 };
 
-// Operator rule state across aggregation windows.
 struct OperatorState
 {
   bool vehiclePreviouslyAbsent{false};
   bool presenceEscalating{false};
 };
 
-// Normalized polygon hit-test input.
 struct ObjectZoneInput
 {
   const DetectedObject& object;
@@ -36,10 +31,8 @@ struct ObjectZoneInput
   int frameHeight{0};
 };
 
-// True when the object center lies inside the normalized zone polygon.
 bool objectCenterInZone(const ObjectZoneInput& input);
 
-// One detection with its identity verdict; personId is 0 when unknown or unmatched.
 struct EvaluatedObject
 {
   DetectedObject object;
@@ -51,7 +44,6 @@ struct EvaluatedObject
   std::string zoneKind;
 };
 
-// Per-track dwell verdict; identity, zone and cooldown stay per person.
 struct PersonDwellVerdict
 {
   int64_t trackId{0};
@@ -59,7 +51,6 @@ struct PersonDwellVerdict
   bool canEmit{false};
 };
 
-// Operator evaluation input.
 struct EventIntelligenceInput
 {
   int64_t cameraId{0};
@@ -68,7 +59,6 @@ struct EventIntelligenceInput
   std::vector<std::string> ignoredClasses;
   bool night{false};
   std::vector<PersonDwellVerdict> persons;
-  // Eligible track the rule, identity, crop and zone must all refer to.
   int64_t primaryTrackId{0};
   OperatorState state;
   const IKnownPersonMatcher* matcher{nullptr};
@@ -87,7 +77,6 @@ struct EventIntelligenceOutcome
   std::vector<EvaluatedObject> objects{};
 };
 
-// Evaluates the 9-rule table in fixed order.
 class EventIntelligence
 {
 public:

@@ -48,7 +48,6 @@ std::string fallbackReason(int64_t cameraId, const std::string& rule)
   return rows.front()["reason"].as<std::string>();
 }
 
-// A timestamp whose LOCAL hour is the requested one (hourOfDay reads the clock).
 struct AtLocalHourInput
 {
   int hour{0};
@@ -118,14 +117,6 @@ void removeDbFiles(const char* base)
   std::remove((std::string(base) + "-shm").c_str());
 }
 
-// One async statement whose callback queues a sentinel on the connection's own
-// loop. Callbacks run on that loop, and trantor destroys each queued functor as
-// it dequeues the next, so the reference the statement lambda held is gone
-// before the sentinel runs: after this returns no thread but this one holds the
-// connection, and the client's destructor joins an idle loop thread from
-// outside instead of its own. The callback must not capture the client: a
-// reference released on that loop re-opens the window. No assertion here by
-// design (a timeout throws): the suites' counts must not move.
 void drain(const drogon::orm::DbClientPtr& client)
 {
   auto drained = std::make_shared<std::promise<void>>();
@@ -149,9 +140,6 @@ void drain(const drogon::orm::DbClientPtr& client)
     throw std::runtime_error("the client's loop did not drain");
 }
 
-// Runs the app and stops it however the owning scope leaves. A joinable
-// std::thread destroyed by unwinding calls std::terminate, which reports an
-// ordinary statement failure as a SIGABRT with no assertion behind it.
 class AppRunner
 {
 public:
@@ -161,12 +149,6 @@ public:
   {
     if (!runner_.joinable())
       return;
-    // Drogon reports the app running before its main loop is looping, and a
-    // loop that has not begun cannot be stopped: trantor's loop() clears the
-    // quit flag again as it starts. Waiting for it to loop is what makes the
-    // quit below take effect — detaching in that window left the app's thread
-    // running past the end of the process, measured as SIGSEGV inside
-    // EventLoop::loop() in 3 of 20 runs of a forced constructor throw.
     for (int i = 0; i < 3000 && !drogon::app().getLoop()->isRunning(); ++i)
       std::this_thread::sleep_for(std::chrono::milliseconds(10));
     if (drogon::app().getLoop()->isRunning()) {
@@ -174,8 +156,6 @@ public:
       runner_.join();
       return;
     }
-    // A boot that never reached the loop at all is left to the process: it
-    // cannot be asked to stop, and joining it would block for ever.
     runner_.detach();
   }
 
@@ -188,10 +168,6 @@ private:
 
 struct SharedBoot
 {
-  // The app's thread is held by an owner that stops it on destruction, so the
-  // throws below unwind into a safe teardown: quit and join a live loop, or
-  // detach a boot that never reached one, instead of destroying a joinable
-  // std::thread and terminating.
   std::optional<AppRunner> runner;
 
   SharedBoot()
@@ -203,8 +179,6 @@ struct SharedBoot
         drogon::orm::Sqlite3Config{1, kIdentityDb, "default", -1});
     drogon::app().addDbClient(
         drogon::orm::Sqlite3Config{1, kGatewayDb, "gateway", -1});
-    // The app must be configured before it runs, so the owner is emplaced here
-    // rather than in a member initialiser.
     runner.emplace();
     if (!waitForBoot(std::chrono::seconds(30)))
       throw std::runtime_error("drogon loop did not boot");
@@ -216,8 +190,6 @@ struct SharedBoot
 
   ~SharedBoot()
   {
-    // The owner stops the app, and releasing it here keeps that stop ahead of
-    // the file removal below, the order this teardown always had.
     runner.reset();
     removeDbFiles(kIdentityDb);
     removeDbFiles(kGatewayDb);
@@ -230,7 +202,6 @@ SharedBoot& sharedBoot()
   return boot;
 }
 
-// Records the create requests the notifier hands to the notification SDK.
 class RecordingNotificationClient final : public NotificationClient
 {
 public:
@@ -276,7 +247,7 @@ public:
   mutable std::vector<argus::notification::v1::CreateNotificationsRequest>
       requests;
 };
-} // namespace
+}
 
 TEST_CASE("the notification budget allows budget_per_hour then suppresses")
 {
@@ -287,7 +258,6 @@ TEST_CASE("the notification budget allows budget_per_hour then suppresses")
   CHECK(policy.shouldNotify(1, start + 1000));
   CHECK_FALSE(policy.shouldNotify(1, start + 2000));
 
-  // A new rolling hour resets the budget; the other camera is independent.
   CHECK(policy.shouldNotify(1, start + 3600000));
   CHECK(policy.shouldNotify(2, start + 1000));
 }
@@ -298,7 +268,6 @@ TEST_CASE("silent hours suppress and support wrapping")
   CHECK_FALSE(policy.shouldNotify(1, atLocalHour({.hour = 23, .minute = 0, .day = 15})));
   CHECK_FALSE(policy.shouldNotify(1, atLocalHour({.hour = 2, .minute = 0, .day = 15})));
   CHECK(policy.shouldNotify(1, atLocalHour({.hour = 12, .minute = 0, .day = 15})));
-  // 21:59 is still before the silent window opens.
   CHECK(policy.shouldNotify(1, atLocalHour({.hour = 21, .minute = 59, .day = 15})));
   CHECK(policy.shouldNotify(1, atLocalHour({.hour = 6, .minute = 0, .day = 15})));
 
@@ -316,7 +285,6 @@ TEST_CASE("the digest summarizes suppressed events after the window closes")
   policy.countSuppressed(1, "person");
   policy.countSuppressed(1, "car");
 
-  // Still inside the hour: nothing is flushed yet.
   CHECK(policy.takeDigest(1, start + 1000).empty());
 
   const std::string digest = policy.takeDigest(1, start + 3600000);
@@ -324,7 +292,6 @@ TEST_CASE("the digest summarizes suppressed events after the window closes")
   CHECK(digest.find("2 person") != std::string::npos);
   CHECK(digest.find("1 car") != std::string::npos);
 
-  // The counters reset after a digest is taken.
   CHECK(policy.takeDigest(1, start + 7200000).empty());
 }
 
@@ -336,7 +303,6 @@ TEST_CASE("a digest flushes when the silent window ends")
   CHECK_FALSE(policy.shouldNotify(1, night));
   policy.countSuppressed(1, "person");
 
-  // Morning after the silent window [22, 6) closed: the digest goes out.
   const std::string digest = policy.takeDigest(1, atLocalHour({.hour = 6, .minute = 0, .day = 16}));
   CHECK(digest.find("1 events suppressed") != std::string::npos);
   CHECK(digest.find("1 person") != std::string::npos);
@@ -351,14 +317,12 @@ TEST_CASE("a pending digest survives the hour-roll race")
   policy.countSuppressed(1, "person");
   policy.countSuppressed(1, "car");
 
-  // An event arriving right after the roll must not erase the digest.
   CHECK(policy.shouldNotify(1, start + 3600000));
   const std::string digest = policy.takeDigest(1, start + 3600001);
   CHECK(digest.find("2 events suppressed") != std::string::npos);
   CHECK(digest.find("1 person") != std::string::npos);
   CHECK(digest.find("1 car") != std::string::npos);
 
-  // The digest is taken once; a second read finds nothing.
   CHECK(policy.takeDigest(1, start + 3600002).empty());
 }
 
@@ -370,12 +334,10 @@ TEST_CASE("counts suppressed inside silent hours carry until the window ends")
   CHECK_FALSE(policy.shouldNotify(1, night));
   policy.countSuppressed(1, "person");
 
-  // The budget hour rolls inside the silent window; the counts carry.
   CHECK_FALSE(policy.shouldNotify(1, atLocalHour({.hour = 0, .minute = 5, .day = 16})));
   policy.countSuppressed(1, "car");
   CHECK(policy.takeDigest(1, atLocalHour({.hour = 1, .minute = 0, .day = 16})).empty());
 
-  // Morning after the silent window [22, 6) closed: everything flushes.
   const std::string digest = policy.takeDigest(1, atLocalHour({.hour = 6, .minute = 0, .day = 16}));
   CHECK(digest.find("2 events suppressed") != std::string::npos);
   CHECK(digest.find("1 person") != std::string::npos);
@@ -397,7 +359,6 @@ TEST_CASE("the consumer applies the budget and creates camera notifications")
   SharedBoot& boot = sharedBoot();
   (void)boot;
   auto client = DbService::client();
-  // Identity user table only: the notification write leaves through the SDK.
   client->execSqlSync("DROP TABLE IF EXISTS user");
   client->execSqlSync(
       "CREATE TABLE user ("
@@ -408,7 +369,6 @@ TEST_CASE("the consumer applies the budget and creates camera notifications")
       "is_active INTEGER NOT NULL DEFAULT 1, "
       "created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')), "
       "updated_at INTEGER, deleted_at INTEGER)");
-  // One owner and one guard (notified), one resident and one deactivated (skipped).
   client->execSqlSync("INSERT INTO user (name, last_name, role) VALUES "
                       "('Ana', 'Owner', 'owner')");
   client->execSqlSync("INSERT INTO user (name, last_name, role) VALUES "
@@ -439,7 +399,6 @@ TEST_CASE("the consumer applies the budget and creates camera notifications")
     CHECK(json_util::fromString(request.data())["cameraId"].asInt64() == 1);
   }
 
-  // Budget 6 per hour: the next five pass, the seventh is suppressed.
   for (int i = 0; i < 5; ++i)
     notifier.handle(eventJson({.cameraId = 1,
                                .rule = "person_in_alert_zone",
@@ -449,17 +408,14 @@ TEST_CASE("the consumer applies the budget and creates camera notifications")
                              .rule = "person_in_alert_zone",
                              .severity = "critical"}));
 
-  // Wait past any in-flight delivery, then confirm the count stopped at 12.
   std::this_thread::sleep_for(std::chrono::milliseconds(300));
   CHECK(notificationClient->totalUsers() == 12);
 
-  // Without a guard heartbeat only hard signals reach the raw fallback.
   notifier.handle(
       eventJson({.cameraId = 1, .rule = "person_day", .severity = "info"}));
   std::this_thread::sleep_for(std::chrono::milliseconds(300));
   CHECK(notificationClient->totalUsers() == 12);
 
-  // A malformed payload is dropped without touching the SDK.
   notifier.handle(json_util::fromString("[1, 2, 3]"));
   std::this_thread::sleep_for(std::chrono::milliseconds(300));
   CHECK(notificationClient->totalUsers() == 12);
@@ -510,7 +466,7 @@ CameraNotificationPolicy::Config fallbackConfig()
           .fallbackMinDwellMs = 1000,
           .fallbackSuppressKnown = true};
 }
-} // namespace
+}
 
 TEST_CASE("the fallback gate drops a matched known person")
 {
@@ -732,9 +688,6 @@ TEST_CASE("fallback logging degrades when the store is unavailable")
   const std::string bare = "camera-notifier-test-bare.db";
   std::remove(bare.c_str());
   auto saved = DbService::gatewayClient();
-  // The replacement is what the service calls below run on, and restoring the
-  // saved client drops its last reference: empty its loop first, or the
-  // connection is destroyed on that loop and joins itself.
   auto replacement =
       drogon::orm::DbClient::newSqlite3Client("filename=" + bare, 1);
   DbService::setGatewayClient(replacement);

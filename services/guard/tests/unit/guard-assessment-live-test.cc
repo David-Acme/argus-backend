@@ -25,7 +25,6 @@ using guard_test::waitForBoot;
 
 namespace
 {
-// Serves one fixed person crop; the guard assessment is the code under test.
 class FakeCameraService final
     : public argus::camera::v1::CameraActionService::CallbackService
 {
@@ -93,9 +92,6 @@ private:
   std::string jpeg_;
 };
 
-// Runs the app and stops it however the case body leaves. A joinable
-// std::thread destroyed by unwinding calls std::terminate, which reports an
-// ordinary statement failure as a SIGABRT with no assertion behind it.
 class AppRunner
 {
 public:
@@ -105,12 +101,6 @@ public:
   {
     if (!thread_.joinable())
       return;
-    // Drogon reports the app running before its main loop is looping, and a
-    // loop that has not begun cannot be stopped: trantor's loop() clears the
-    // quit flag again as it starts. Waiting for it to loop is what makes the
-    // quit below take effect — detaching in that window left the app's thread
-    // running past the end of the process, measured as SIGSEGV inside
-    // EventLoop::loop() in 3 of 20 runs of a forced constructor throw.
     for (int i = 0; i < 3000 && !drogon::app().getLoop()->isRunning(); ++i)
       std::this_thread::sleep_for(std::chrono::milliseconds(10));
     if (drogon::app().getLoop()->isRunning()) {
@@ -118,8 +108,6 @@ public:
       thread_.join();
       return;
     }
-    // A boot that never reached the loop at all is left to the process: it
-    // cannot be asked to stop, and joining it would block for ever.
     thread_.detach();
   }
 
@@ -143,9 +131,8 @@ int freePort()
   ::close(probe);
   return port;
 }
-} // namespace
+}
 
-// Opt-in live check: ARGUS_VLM_TEST_URL + ARGUS_VLM_TEST_IMAGE enable it.
 TEST_CASE("guard assessment describes the fetched crop with the live VLM")
 {
   const char* vlmUrl = std::getenv("ARGUS_VLM_TEST_URL");

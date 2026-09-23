@@ -110,7 +110,7 @@ std::vector<int16_t> equalizeForSpeaker(const std::vector<int16_t>& samples)
   return out;
 }
 
-} // namespace
+}
 
 std::vector<int16_t> tapoApplySpeakerGain(const TapoSpeakerGainInput& input)
 {

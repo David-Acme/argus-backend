@@ -8,7 +8,6 @@
 namespace
 {
 
-// identity.target when set, else the gateway's own listener keys.
 std::string resolveTarget()
 {
   auto target = ConfigService::getString("identity.target");
@@ -22,7 +21,7 @@ std::string resolveTarget()
   return host + ":" + std::to_string(port > 0 ? port : 7040);
 }
 
-} // namespace
+}
 
 std::shared_ptr<const IdentityClient> filterIdentityClient()
 {

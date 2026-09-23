@@ -4,8 +4,6 @@
 #include <string>
 #include <unordered_map>
 
-// Encounter lifecycle; every transition is a deterministic command, never model
-// output.
 enum class EncounterState : uint8_t
 {
   Observing = 0,

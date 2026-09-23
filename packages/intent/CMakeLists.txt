@@ -1,26 +1,16 @@
 cmake_minimum_required(VERSION 3.25)
 project(argus-intent VERSION 1.0.0 LANGUAGES CXX)
 
-# enable_testing() must precede the first add_subdirectory: the flag
-# propagates into every subtree, and a directory that misses it gets no
-# CTestTestfile — the tests of anything added beneath it then never run.
 enable_testing()
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-# argus_intent: the fast tier of the intent router — the fastText wrapper, the
-# rules-first fusion and the degradation contract. Inference only; the training
-# lives in the sibling intent-training project.
-
 set(INTENT_MODEL ${CMAKE_CURRENT_SOURCE_DIR}/../../models/intent/intent.bin)
 set(INTENT_MODEL_PIN ${CMAKE_CURRENT_SOURCE_DIR}/models/intent.bin.sha256)
 
 if(NOT TARGET fasttext)
-    # Inference-only static build of the vendored fastText: no main, no tests,
-    # none of the targets add_subdirectory would install. Sources are listed
-    # (rule 25) so a vendored-tree change is a visible diff, not a silent one.
     set(FASTTEXT_SRC ${CMAKE_CURRENT_SOURCE_DIR}/../../third_party/fastText/src)
     add_library(fasttext STATIC
         ${FASTTEXT_SRC}/args.cc
@@ -42,8 +32,6 @@ if(NOT TARGET fasttext)
     target_compile_options(fasttext PRIVATE -w)
 endif()
 
-# The model is a published artifact carried in-repo; a corrupt or mismatched
-# one must fail the build rather than production.
 if(EXISTS ${INTENT_MODEL} AND EXISTS ${INTENT_MODEL_PIN})
     file(SHA256 ${INTENT_MODEL} INTENT_MODEL_SHA256)
     file(READ ${INTENT_MODEL_PIN} INTENT_EXPECTED_SHA256)
@@ -55,8 +43,6 @@ if(EXISTS ${INTENT_MODEL} AND EXISTS ${INTENT_MODEL_PIN})
     endif()
 endif()
 
-# Standalone build (outside the root project's configure): add the sibling
-# packages the intent module links.
 if(NOT TARGET argus::lib::text)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../lib/text
                      ${CMAKE_BINARY_DIR}/text)
@@ -82,8 +68,6 @@ argus_module(NAME intent
 
 target_compile_options(argus_intent PRIVATE -Wall -Wextra)
 
-# The router contract (degradation first) and the accuracy gate against the
-# published judges — the same fixtures the training project gated on.
 find_package(doctest REQUIRED)
 
 foreach(TEST_NAME IN ITEMS intent-router-test intent-accuracy-test)

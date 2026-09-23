@@ -3,7 +3,6 @@
 #include <grpc/health/v1/health.grpc.pb.h>
 #include <grpcpp/grpcpp.h>
 
-// grpc.health.v1.Health controller: serves while the process is up.
 class HealthRpcService final : public grpc::health::v1::Health::CallbackService
 {
 public:

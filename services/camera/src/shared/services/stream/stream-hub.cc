@@ -21,7 +21,7 @@ std::string upstreamName(int64_t cameraId, const std::string& quality)
   const std::string base = Go2rtcManager::streamName(cameraId);
   return quality == "sub" ? base + "-sub" : base;
 }
-} // namespace
+}
 
 StreamHub::~StreamHub()
 {

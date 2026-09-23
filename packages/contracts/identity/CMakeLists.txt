@@ -13,8 +13,6 @@ argus_contracts(NAME identity
         src/identity/identity-errors.hxx
     DEPENDS argus::lib::errors)
 
-# The catalog suite: the thirty refusals the identity boundary throws, pinned
-# as a table, plus the two whose status contradicts their own code.
 enable_testing()
 find_package(doctest REQUIRED)
 

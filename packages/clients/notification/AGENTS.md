@@ -10,11 +10,11 @@ library whose include root is `src/`, so a consumer writes
 `<notification/notification-client.hxx>` and links
 `argus::clients::notification`. 132 lines of source (`notification-client.hxx`
 64, `.cc` 68) behind a 33-line CMakeLists. Six link lines in four CMakeLists:
-`gateway-core` (PUBLIC, `services/gateway/CMakeLists.txt:184`), `argus-guard`
-(PRIVATE, `services/guard/CMakeLists.txt:141`), `argus::guard`
+`gateway-core` (PUBLIC, `services/gateway/CMakeLists.txt:172`), `argus-guard`
+(PRIVATE, `services/guard/CMakeLists.txt:133`), `argus::guard`
 (`services/guard/src/feature/guard/CMakeLists.txt:20`) and three in
 `services/notification` — `argus-notification`, `notification-rpc-test` and
-`notification-no-nats-test` (`services/notification/CMakeLists.txt:179`, `:266`,
+`notification-no-nats-test` (`services/notification/CMakeLists.txt:148`, `:266`,
 `:294`). The first three are the callers; the last three are the service that
 owns the contract, which builds the generated code through this package for its
 own server side too, so the package that serves an RPC links the package that
@@ -70,15 +70,15 @@ camera notifier and its test), nine in `services/guard` (`guard-service.cc`,
   `services/gateway/src/main.cc` (`:222`, `:324`),
   `services/sync/src/feature/transport/infra/notification-sync-gateway.cc:63`
   and `services/guard/src/main.cc` (`:135`, `:141`).
-  `argus-deploy/config.gateway.toml.example:104`
-  and `config.guard.toml.example:138` declare both, each under a
+  `argus-deploy/config.gateway.toml.example:91`
+  and `config.guard.toml.example:115` declare both, each under a
   `[notifications]` section; the receiver's matching
   secrets are `[grpc] caller_guard` / `caller_gateway` in
-  `config.notification.toml.example:66-67`, the same placeholder strings, and
-  `scripts/lib/common.sh:254-257` fills each pair with one 32-byte hex secret.
+  `config.notification.toml.example:59-60`, the same placeholder strings, and
+  `scripts/lib/common.sh:247-250` fills each pair with one 32-byte hex secret.
   With no credential configured — the empty default in
   `services/*/config.toml.example` — the receiver's `authorizeCaller`
-  (`packages/lib/grpc/src/grpc/grpc-server-identity.hxx:63`) matches nothing
+  (`packages/lib/grpc/src/grpc/grpc-server-identity.hxx:58`) matches nothing
   and answers UNAUTHENTICATED before reading the request, which this client
   reports as `Rejected`.
 - §2.3 gives a client a `details/` for channel, credentials, retry and envelope

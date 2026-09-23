@@ -6,8 +6,6 @@
 #include <optional>
 #include <string>
 
-// The notification row as this service's /sync clients read it: pull rows
-// decoded from argus.notification.v1 and the Add a durable delivery announces.
 struct NotificationRowJson
 {
   int64_t id{0};

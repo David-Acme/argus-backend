@@ -6,7 +6,6 @@
 #include <drogon/utils/coroutine.h>
 #include <shared/services/vision/vision-service.hxx>
 
-// Owns the vision engine by value; no singleton.
 class VlmController : public drogon::HttpController<VlmController, false>
 {
 public:

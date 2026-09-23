@@ -1,9 +1,3 @@
-# voice-contract: the vocabulary that crosses the voice boundary — VoiceLang,
-# the language a session, a reaction rule and a stored user profile name.
-# Declared once, here, for the service that owns the voice boundary and for
-# the packages and services that consume it. Header-only; consumers link
-# argus::contracts::voice.
-
 cmake_minimum_required(VERSION 3.25)
 
 include(${CMAKE_CURRENT_SOURCE_DIR}/../../../cmake/argus-module.cmake)
@@ -13,7 +7,6 @@ argus_contracts(NAME voice
     SOURCES
         src/voice/voice-lang.hxx)
 
-# The round-trip suite: every name is its own spelling and back.
 enable_testing()
 find_package(doctest REQUIRED)
 

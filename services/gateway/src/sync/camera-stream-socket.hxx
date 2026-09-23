@@ -8,7 +8,6 @@
 #include <memory>
 #include <string>
 
-// Client-facing camera media socket; only camera frames reach the relay.
 class CameraStreamSocket
     : public drogon::WebSocketController<CameraStreamSocket, false>
 {

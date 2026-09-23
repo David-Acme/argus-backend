@@ -52,7 +52,7 @@ struct Classified
   std::vector<const text_match::Match*> before;
 };
 
-} // namespace
+}
 
 std::string LexiconExtractor::normalize(std::string_view text)
 {

@@ -7,25 +7,20 @@
 #include <string>
 #include <vector>
 
-// One chat message on the internal wire: {"role", "content"}.
 struct ChatMessageDto
 {
   std::string role;
   std::string content;
 };
 
-// Internal wire request: {messages, max_tokens?, temperature?, reset_context?, user_id?}.
 struct ChatCompletionDto
 {
   std::vector<ChatMessageDto> messages;
   std::optional<int32_t> maxTokens;
   std::optional<float> temperature;
   bool resetContext{false};
-  // False keeps the direct path even when the process has tools registered.
   bool toolsEnabled{true};
-  // Whose memory a tool call writes to and reads from (D4).
   std::optional<int64_t> userId;
-  // Optional GBNF grammar constraining generation; empty keeps free sampling.
   std::string grammar;
   bool grammarRequired{false};
 

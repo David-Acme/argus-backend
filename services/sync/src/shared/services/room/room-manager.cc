@@ -58,7 +58,7 @@ std::unordered_set<RoomId> moduleRoomsFor(UserRole role)
     rooms.insert(moduleRoom(table));
   return rooms;
 }
-} // namespace
+}
 
 void RoomManager::init()
 {

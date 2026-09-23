@@ -3,7 +3,6 @@
 #include <cstdint>
 #include <operator/object-event.hxx>
 
-// Durable enqueue outcome; only Recorded advances camera-side state.
 enum class ObjectEventPublishResult : uint8_t
 {
   Recorded = 0,
@@ -12,7 +11,6 @@ enum class ObjectEventPublishResult : uint8_t
   Failed,
 };
 
-// The operator's ONLY output channel.
 class IObjectEventSink
 {
 public:

@@ -1,32 +1,14 @@
 cmake_minimum_required(VERSION 3.25)
 project(argus-identity VERSION 1.0.0 LANGUAGES CXX)
 
-# enable_testing() must precede the first add_subdirectory: the flag
-# propagates into every subtree, and a directory that misses it gets no
-# CTestTestfile — the tests of anything added beneath it then never run.
 enable_testing()
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-# argus_identity: the identity service (auth/invitation/pairing/user
-# features, the identity repositories and schemas, faces and portraits).
-# Compiled INTO the argus-gateway binary for now — no new process, no new
-# port; the later standalone extraction is a CMake/deploy change, not a
-# second file move. The root project and every standalone consumer build
-# share this one definition.
-
 include(${CMAKE_CURRENT_SOURCE_DIR}/../../cmake/argus-module.cmake)
 
-# The packages this module links, the vendored sqlite-vec the vec repositories
-# ride and the ncnn build the face services compile against. The leaves are
-# declared here rather than by the consumer: they are a DAG, so their guards
-# keep the root tree and every other consumer in charge. The six in-transit
-# siblings below stay behind PROJECT_IS_TOP_LEVEL: Phase 2 step 4 removed the
-# mutual link with argus_lib_cert that put them there -- cert's suite no longer
-# links this module -- and unwrapping them is a configure-scope call for the
-# phase that moves the packages themselves.
 if(NOT TARGET argus::lib::runtime)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../lib/runtime
                      ${CMAKE_BINARY_DIR}/runtime)
@@ -97,27 +79,17 @@ set(NCNN_OPENMP ON CACHE BOOL "" FORCE)
 set(NCNN_AVX2 ON CACHE BOOL "" FORCE)
 set(NCNN_VULKAN ON CACHE BOOL "" FORCE)
 set(NCNN_ENABLE_PIC ON CACHE BOOL "" FORCE)
-# Guarded, not conditional on being top level: every consumer that adds this
-# package adds ncnn first (cert and sync above the identity add, the services
-# in their standalone blocks), so the guard is what keeps this from binding
-# the same binary directory twice.
 if(NOT TARGET ncnn)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../third_party/ncnn
                      ${CMAKE_BINARY_DIR}/third_party/ncnn EXCLUDE_FROM_ALL)
 endif()
 set(ARGUS_NCNN_TARGET ncnn)
 
-# The identity RPC contract (argus.identity.v1) this service serves.
 if(NOT TARGET argus::clients::identity)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../clients/identity
                      ${CMAKE_BINARY_DIR}/clients/identity EXCLUDE_FROM_ALL)
 endif()
 
-# The control leg's client (D8, row 3a-1 sub-step a2). Identity holds the four
-# imperative call sites measured in this package, three of them carrying a
-# frame, and they move onto it in sub-step c, when services/sync exists to
-# answer them. Until then this add is what keeps the client's suite in the gate:
-# a client no project pulls in has no CTestTestfile to register in.
 if(NOT TARGET argus::clients::sync)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../clients/sync
                      ${CMAKE_BINARY_DIR}/clients/sync EXCLUDE_FROM_ALL)
@@ -134,16 +106,11 @@ find_package(nlohmann_json REQUIRED)
 find_package(OpenCV CONFIG REQUIRED)
 find_package(OpenSSL REQUIRED)
 
-# After the find_package block: the tool links Drogon from this scope, so it
-# cannot be declared before Drogon is found.
 if(NOT TARGET identity-migration)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/tools/migrate-identity
                      ${CMAKE_BINARY_DIR}/identity/tools/migrate-identity)
 endif()
 
-# The identity change feed's durable outbox (3a-2e): its own module, the fifth
-# of its kind in the tree and the only one that is a variant of the other four
-# — this feed carries two subjects, so a row states its own.
 add_subdirectory(src/shared/repositories/change-outbox)
 
 argus_module(NAME identity
@@ -240,14 +207,8 @@ endif()
 target_link_libraries(argus_identity PRIVATE argus::contracts::identity)
 target_compile_options(argus_identity PRIVATE -Wall -Wextra)
 
-# The unit suites ride identity-migration, so the tool is added in the
-# preamble above, before anything that can reach this line (the CLI executable
-# stays EXCLUDE_FROM_ALL on its own).
-
 find_package(doctest REQUIRED)
 
-# The migration suite: schema apply + argus.db -> identity.db verified
-# row by row, against the schema this folder owns.
 add_executable(identity-migration-test tests/unit/identity-migration-test.cc)
 
 target_link_libraries(identity-migration-test PRIVATE identity-migration
@@ -257,8 +218,6 @@ target_compile_options(identity-migration-test PRIVATE -Wall -Wextra)
 
 add_test(NAME identity-migration-test COMMAND identity-migration-test)
 
-# The device credential suite rides the identity domain: the DeviceFilter
-# gate, the credential repository and the auth-service issuance flow.
 add_executable(device-credential-test tests/unit/device-credential-test.cc)
 
 target_link_libraries(device-credential-test PRIVATE argus_identity
@@ -268,8 +227,6 @@ target_compile_options(device-credential-test PRIVATE -Wall -Wextra)
 
 add_test(NAME device-credential-test COMMAND device-credential-test)
 
-# The change outbox: the transition-addressed key rules, the replay/conflict
-# dispositions and the journal leg's own-id addressing, over the real schema.
 add_executable(identity-change-outbox-test
     tests/unit/identity-change-outbox-test.cc)
 
@@ -288,10 +245,6 @@ target_compile_options(identity-change-outbox-test PRIVATE -Wall -Wextra)
 add_test(NAME identity-change-outbox-test
          COMMAND identity-change-outbox-test)
 
-# The change sink: every catalog row, emit, audit and journal row lands in the
-# outbox, a broker-less sink leaves both subjects' rows pending instead of
-# dropping them, and over a broker the journal's two identical reads stay two
-# rows.
 add_executable(identity-change-outbox-sink-test
     tests/unit/identity-change-outbox-sink-test.cc)
 

@@ -31,4 +31,4 @@ std::vector<int16_t> decodeALaw(const std::vector<uint8_t>& samples);
 std::vector<int16_t> decodeULaw(const std::vector<uint8_t>& samples);
 TapoWavAudio readWav(const std::string& path);
 
-} // namespace tapo_audio
+}

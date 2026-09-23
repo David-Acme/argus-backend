@@ -35,7 +35,7 @@ int64_t parseInt64(const std::string& value, int64_t fallback)
   }
   return parsed;
 }
-} // namespace
+}
 
 ListDecisionsDto ListDecisionsDto::fromRequest(
     const drogon::HttpRequestPtr& request)

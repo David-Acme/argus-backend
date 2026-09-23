@@ -21,12 +21,6 @@ public:
   {
     if (!runner_.joinable())
       return;
-    // Drogon reports the app running before its main loop is looping, and a
-    // loop that has not begun cannot be stopped: trantor's loop() clears the
-    // quit flag again as it starts. Waiting for it to loop is what makes the
-    // quit below take effect — detaching in that window left the app's thread
-    // running past the end of the process, measured as SIGSEGV inside
-    // EventLoop::loop() in 3 of 20 runs of a forced constructor throw.
     for (int i = 0; i < 3000 && !drogon::app().getLoop()->isRunning(); ++i)
       std::this_thread::sleep_for(std::chrono::milliseconds(10));
     if (drogon::app().getLoop()->isRunning()) {
@@ -34,8 +28,6 @@ public:
       runner_.join();
       return;
     }
-    // A boot that never reached the loop at all is left to the process: it
-    // cannot be asked to stop, and joining it would block for ever.
     runner_.detach();
   }
 
@@ -65,8 +57,6 @@ std::string scalar(const std::string& sql)
   return rows.front()[0].as<std::string>();
 }
 
-// The exact pre-Round-5 action_command schema: no response, generation or
-// fingerprint columns, and the old status vocabulary.
 void seedLegacySchema()
 {
   auto client = DbService::client();
@@ -87,7 +77,7 @@ void seedLegacySchema()
         std::string("detail:") + status);
   }
 }
-} // namespace
+}
 
 TEST_CASE("legacy action_command rows migrate fail-closed")
 {
@@ -109,7 +99,6 @@ TEST_CASE("legacy action_command rows migrate fail-closed")
   CHECK(scalar("SELECT status FROM action_command "
                "WHERE command_id = 'legacy:sent'") == "succeeded");
 
-  // An indeterminate legacy row stays terminal and never re-executes.
   const ActionClaim indeterminate =
       drogon::sync_wait(repository.claim({.commandId = "legacy:failed",
                                           .kind = "announce",
@@ -119,9 +108,6 @@ TEST_CASE("legacy action_command rows migrate fail-closed")
                                           .leaseSeconds = 120}));
   CHECK(indeterminate.kind == ActionClaimKind::Indeterminate);
 
-  // A completed legacy row replays only its persisted result, even for a
-  // different incoming payload: absence of a fingerprint never authorizes a new
-  // payload.
   const ActionClaim completed = drogon::sync_wait(
       repository.claim({.commandId = "legacy:sent",
                         .kind = "announce",
@@ -131,7 +117,6 @@ TEST_CASE("legacy action_command rows migrate fail-closed")
                         .leaseSeconds = 120}));
   CHECK(completed.kind == ActionClaimKind::Completed);
 
-  // A freshly inserted row keeps the canonical fingerprint behavior.
   const ActionClaim fresh =
       drogon::sync_wait(repository.claim({.commandId = "fresh:1",
                                           .kind = "announce",

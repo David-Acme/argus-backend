@@ -3,7 +3,6 @@
 #include <cstdint>
 #include <string>
 
-// Site occupancy profile; only the matrix decides what each mode means.
 enum class GuardMode : uint8_t
 {
   Home = 0,

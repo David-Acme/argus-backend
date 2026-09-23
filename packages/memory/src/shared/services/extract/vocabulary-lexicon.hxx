@@ -9,7 +9,6 @@
 namespace extract
 {
 
-// The static vocabulary seeds flattened into lexicon entries.
 inline std::vector<LexiconEntry> allLexiconEntries()
 {
   std::vector<LexiconEntry> out;
@@ -29,4 +28,4 @@ inline std::vector<LexiconEntry> allLexiconEntries()
   return out;
 }
 
-} // namespace extract
+}

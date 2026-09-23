@@ -3,8 +3,6 @@
 #include <cstdint>
 #include <storage/s3-storage-service.hxx>
 
-// Uploads detection evidence (full frame and person crop) to the configured
-// private object store, records a retention manifest and sweeps expired rows.
 class EvidenceUploader
 {
 public:

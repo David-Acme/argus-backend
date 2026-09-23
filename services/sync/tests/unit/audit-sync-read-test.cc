@@ -76,8 +76,6 @@ struct SeedAuditTablesInput
 
 using DbHandle = std::unique_ptr<sqlite3, int (*)(sqlite3*)>;
 
-// The drogon calls these replace all threw on failure, so a throwing helper
-// keeps the suite's assertion count where it was.
 void exec(sqlite3* db, const std::string& sql)
 {
   char* error = nullptr;
@@ -100,13 +98,6 @@ DbHandle openFile(const std::string& path)
   return {raw, sqlite3_close_v2};
 }
 
-// Seeded through the sqlite3 C API, the way this unit's sibling suites seed
-// theirs: a throwaway drogon client keeps a loop thread of its own, and a
-// connection whose queued statement lambda still holds the last reference is
-// destroyed on that thread, where ~EventLoopThread then joins the thread it is
-// running on (EDEADLK -> SIGABRT, no assertion reported). The default rollback
-// journal is kept on purpose: a read-only client opens one of these files
-// afterwards, and a WAL database needs write access for its -shm.
 void seedAuditTables(const SeedAuditTablesInput& input)
 {
   const char* path = input.path;
@@ -149,9 +140,6 @@ bool waitForBoot(std::chrono::milliseconds timeout)
   return drogon::app().isRunning();
 }
 
-// Runs the app and stops it however the case body leaves. A joinable
-// std::thread destroyed by unwinding calls std::terminate, which reports an
-// ordinary statement failure as a SIGABRT with no assertion behind it.
 class AppRunner
 {
 public:
@@ -161,12 +149,6 @@ public:
   {
     if (!runner_.joinable())
       return;
-    // Drogon reports the app running before its main loop is looping, and a
-    // loop that has not begun cannot be stopped: trantor's loop() clears the
-    // quit flag again as it starts. Waiting for it to loop is what makes the
-    // quit below take effect — detaching in that window left the app's thread
-    // running past the end of the process, measured as SIGSEGV inside
-    // EventLoop::loop() in 3 of 20 runs of a forced constructor throw.
     for (int i = 0; i < 3000 && !drogon::app().getLoop()->isRunning(); ++i)
       std::this_thread::sleep_for(std::chrono::milliseconds(10));
     if (drogon::app().getLoop()->isRunning()) {
@@ -174,8 +156,6 @@ public:
       runner_.join();
       return;
     }
-    // A boot that never reached the loop at all is left to the process: it
-    // cannot be asked to stop, and joining it would block for ever.
     runner_.detach();
   }
 
@@ -186,14 +166,6 @@ private:
   std::thread runner_;
 };
 
-// One async statement whose callback queues a sentinel on the connection's own
-// loop. Callbacks run on that loop, and trantor destroys each queued functor as
-// it dequeues the next, so the reference the statement lambda held is gone
-// before the sentinel runs: after this returns no thread but this one holds the
-// connection, and the client's destructor joins an idle loop thread from
-// outside instead of its own. The callback must not capture the client: a
-// reference released on that loop re-opens the window. No assertion here by
-// design (a timeout throws): the suites' counts must not move.
 void drain(const drogon::orm::DbClientPtr& client)
 {
   auto drained = std::make_shared<std::promise<void>>();
@@ -217,7 +189,6 @@ void drain(const drogon::orm::DbClientPtr& client)
     throw std::runtime_error("the client's loop did not drain");
 }
 
-// Routes productivity/notification tables to a source, as production does.
 class FakeProductivitySource final : public ProductivitySyncSource
 {
 public:
@@ -356,17 +327,13 @@ bool waitForMessages(const std::shared_ptr<RecordingConnection>& conn,
   }
   return !conn->messages.empty();
 }
-} // namespace
+}
 
 TEST_CASE("audit sync reads resolve to the default client, not the "
           "read-only one")
 {
-  // The service calls this first in main; URI filenames must precede client init.
   DbService::enableUriFilenames();
 
-  // Two files, the same tables, different ids: which one answers says which
-  // client the audit repositories resolved (the default one, never the
-  // read-only handover).
   const TempDb legacyDbFile("audit-sync-read-legacy");
   const TempDb ownDbFile("audit-sync-read-own");
   seedAuditTables(
@@ -383,7 +350,6 @@ TEST_CASE("audit sync reads resolve to the default client, not the "
   AppRunner runner;
   REQUIRE(waitForBoot(std::chrono::seconds(30)));
 
-  // The client object must outlive the in-flight callbacks on its own loop.
   const auto legacyDb = drogon::orm::DbClient::newSqlite3Client(
       std::string("filename=file:") + legacyDbFile.path() + "?mode=ro", 1);
   DbService::setReadOnlyClient(legacyDb);
@@ -412,18 +378,15 @@ TEST_CASE("audit sync reads resolve to the default client, not the "
   REQUIRE(userLast);
   CHECK((*userLast)["id"].asInt64() == 2);
 
-  // Audit repositories never resolve readOnlyClient(); rows come from default.
   DbService::setReadOnlyClient(nullptr);
   const auto auditRowsAfter =
       drogon::sync_wait(auditRepository.findSync(auditFilter));
   REQUIRE(auditRowsAfter.size() == 1);
   CHECK(auditRowsAfter.front()["id"].asInt64() == 2);
 
-  // ── Phase: camera audit funnel (Ruling Y) ────────────────────────────────
   const auto conn = std::make_shared<RecordingConnection>();
   RoomManager rooms;
   AuditFanOut auditFanOut;
-  // Room state is thread-local per IO loop; joins ride the dispatching loop.
   drogon::app().getIOLoop(0)->runInLoop(
       [&] { rooms.join(moduleRoom(TableName::Camera), conn); });
 
@@ -459,7 +422,6 @@ TEST_CASE("audit sync reads resolve to the default client, not the "
 
   REQUIRE(conn->messages.size() == 1);
   const Json::Value fanned = json_util::fromString(conn->messages.front());
-  // The Log operation carries the DB-assigned id: insert happened first.
   CHECK(fanned["operation"].asInt() == static_cast<int>(SyncOperation::Log));
   CHECK(fanned["option"] == "camera");
   const Json::Value info = fanned["info"];
@@ -470,7 +432,6 @@ TEST_CASE("audit sync reads resolve to the default client, not the "
   CHECK(info["eventTimestamp"].asInt64() == 1735689600000);
   CHECK(json_util::toString(info["changes"]) == changesText);
 
-  // The audit row itself is byte-identical to what the camera produced.
   AuditLogSyncFilter funnelFilter;
   funnelFilter.tableNames = {TableName::Camera};
   funnelFilter.afterId = info["id"].asInt64() - 1;
@@ -481,7 +442,6 @@ TEST_CASE("audit sync reads resolve to the default client, not the "
   CHECK(funnelRows.front()["createUserId"].asInt64() == 42);
   CHECK(funnelRows.front()["eventTimestamp"].asInt64() == 1735689600000);
 
-  // ── Phase: productivity audit funnel (Ruling AQ) ─────────────────────────
   const auto userConn = std::make_shared<RecordingConnection>();
   drogon::app().getIOLoop(0)->runInLoop(
       [&] { rooms.join(userRoom(42), userConn); });
@@ -529,7 +489,6 @@ TEST_CASE("audit sync reads resolve to the default client, not the "
   CHECK(userInfo["eventTimestamp"].asInt64() == 1735689600000);
   CHECK(json_util::toString(userInfo["changes"]) == userChangesText);
 
-  // Byte-identical to what the producer sent, with the gateway-assigned id.
   UserAuditLogSyncFilter funnelUserFilter;
   funnelUserFilter.userId = 42;
   funnelUserFilter.afterId = userInfo["id"].asInt64() - 1;
@@ -542,8 +501,6 @@ TEST_CASE("audit sync reads resolve to the default client, not the "
   CHECK(funnelUserRows.front()["tableName"] == "project");
   CHECK(funnelUserRows.front()["eventTimestamp"].asInt64() == 1735689600000);
 
-  // A plain user-scoped change is not an audit event: the subscriber routes
-  // it to the sync fan-out, which re-emits it as-is without an insert.
   const Json::Value plainEvent = [&] {
     Json::Value v;
     v["operation"] = static_cast<int>(SyncOperation::Add);
@@ -574,7 +531,6 @@ TEST_CASE("audit sync reads resolve to the default client, not the "
   CHECK(plainFanned["option"] == "project");
   CHECK(plainFanned["info"]["id"].asInt64() == 9);
 
-  // ── Phase: cross-domain sync routes through installed sources (rule 27) ─
   SynchronizedService synchronizedService;
   FakeProductivitySource productivitySource;
   FakeNotificationSource notificationSource;
@@ -620,7 +576,6 @@ TEST_CASE("audit sync reads resolve to the default client, not the "
   CHECK(ownSync["info"]["notification"]["created"][0]["id"].asInt64() == 1);
   CHECK(notificationSource.lastUser == 7);
 
-  // Without a source the service refuses instead of falling back to a DB.
   SynchronizedService bare;
   bool unavailable = false;
   try {
@@ -632,8 +587,6 @@ TEST_CASE("audit sync reads resolve to the default client, not the "
   }
   CHECK(unavailable);
 
-  // The handover client dies with this scope, so empty its loop first: the
-  // release that reaches zero must not land on a connection's own loop thread.
   drain(legacyDb);
   DbService::setReadOnlyClient(nullptr);
   std::filesystem::remove_all("/tmp/argus-audit-sync-read-test-upload");

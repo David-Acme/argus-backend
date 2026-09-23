@@ -4,7 +4,6 @@
 #include <notification/notification-client.hxx>
 #include <feature/transport/infra/notification-sync-source.hxx>
 
-// User-scoped pull source backed by argus-notification's gRPC leg.
 class NotificationSyncGateway : public NotificationSyncSource
 {
 public:

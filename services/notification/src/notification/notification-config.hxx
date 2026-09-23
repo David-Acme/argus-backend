@@ -11,6 +11,5 @@ struct NotificationDbConfig
 class NotificationConfig
 {
 public:
-  // Resolves the [notifications] db and schema with the phase-3 defaults.
   static NotificationDbConfig resolveDb();
 };

@@ -17,4 +17,4 @@ void bridgeEventEngine(const grpc_call* call, std::function<void()>&& callback)
                                 [callback = std::move(callback)] { callback(); });
 }
 
-} // namespace argus
+}

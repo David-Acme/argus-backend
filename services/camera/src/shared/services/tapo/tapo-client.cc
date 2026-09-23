@@ -20,7 +20,7 @@ TapoCredentials credentialsOf(const TapoClientConfig& config,
           .requestTimeoutMs = config.requestTimeoutMs};
 }
 
-} // namespace
+}
 
 TapoClient::TapoClient(TapoClientConfig config) : config_(std::move(config)) {}
 

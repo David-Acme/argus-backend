@@ -14,7 +14,6 @@
 
 namespace
 {
-// Same row the change funnel fans out, rebuilt from the event.
 void dispatchToSockets(const NotificationDeliveryEvent& event)
 {
   const Json::Value row =
@@ -36,7 +35,7 @@ void dispatchToSockets(const NotificationDeliveryEvent& event)
   fanout.users = std::vector<int64_t>{event.userId};
   sync_fan_out::dispatchEvent(fanout);
 }
-} // namespace
+}
 
 NotificationDeliveryConsumer::NotificationDeliveryConsumer(
     Dependencies dependencies, Config config)

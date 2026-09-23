@@ -52,4 +52,4 @@ std::string frame(const FrameInput& input)
   return out;
 }
 
-} // namespace ws_frame
+}

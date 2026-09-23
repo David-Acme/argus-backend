@@ -37,12 +37,6 @@ public:
   {
     if (!runner_.joinable())
       return;
-    // Drogon reports the app running before its main loop is looping, and a
-    // loop that has not begun cannot be stopped: trantor's loop() clears the
-    // quit flag again as it starts. Waiting for it to loop is what makes the
-    // quit below take effect — detaching in that window left the app's thread
-    // running past the end of the process, measured as SIGSEGV inside
-    // EventLoop::loop() in 3 of 20 runs of a forced constructor throw.
     for (int i = 0; i < 3000 && !drogon::app().getLoop()->isRunning(); ++i)
       std::this_thread::sleep_for(std::chrono::milliseconds(10));
     if (drogon::app().getLoop()->isRunning()) {
@@ -50,8 +44,6 @@ public:
       runner_.join();
       return;
     }
-    // A boot that never reached the loop at all is left to the process: it
-    // cannot be asked to stop, and joining it would block for ever.
     runner_.detach();
   }
 
@@ -73,20 +65,17 @@ bool waitForBoot(std::chrono::milliseconds timeout)
   return drogon::app().isRunning();
 }
 
-// The head pending row, reported as a failed assertion when the outbox holds none.
 ChangeOutboxRow pendingRow(const std::vector<ChangeOutboxRow>& rows)
 {
   REQUIRE(!rows.empty());
   return rows.empty() ? ChangeOutboxRow{} : rows.front();
 }
 
-// Whether the outbox holds anything, for the polls that watch a backlog drain.
 bool hasPending(const ChangeOutboxRepository& outbox)
 {
   return !outbox.pendingBatch(1).empty();
 }
 
-// The live stream, reported as a failed assertion when the broker holds none.
 NatsBus::StreamStatus
 streamStatus(const std::optional<NatsBus::StreamStatus>& status)
 {
@@ -94,7 +83,6 @@ streamStatus(const std::optional<NatsBus::StreamStatus>& status)
   return status.value_or(NatsBus::StreamStatus{});
 }
 
-// One notification row's 0 -> 1 read transition, for the given recipients.
 UserAuditInput readAudit(int64_t recordId, std::vector<int64_t> userIds)
 {
   UserAuditInput input;
@@ -107,7 +95,7 @@ UserAuditInput readAudit(int64_t recordId, std::vector<int64_t> userIds)
   input.userIds = std::move(userIds);
   return input;
 }
-} // namespace
+}
 
 TEST_CASE("the change sink lands every audit in the durable outbox")
 {
@@ -134,14 +122,11 @@ TEST_CASE("the change sink lands every audit in the durable outbox")
     drogon::sync_wait(sink.publishAudit(read));
 
     const ChangeOutboxRow marked = pendingRow(outbox.pendingBatch(1));
-    // The prefix plus 32 hex digits, inside the JetStream header budget.
     CHECK(marked.eventId.rfind("notification-change:", 0) == 0);
     CHECK(marked.eventId.size() == 52);
     CHECK(marked.payload.find("\"kind\":\"audit\"") != std::string::npos);
     CHECK(marked.payload.find("\"table_name\":\"notification\"") !=
           std::string::npos);
-    // The diff is per field and carries both sides of the transition, so the
-    // client can apply it without the row it moved away from.
     CHECK(marked.payload.find("\"isRead\":{") != std::string::npos);
     CHECK(marked.payload.find("\"current\":1") != std::string::npos);
     CHECK(marked.payload.find("\"previous\":0") != std::string::npos);
@@ -149,8 +134,6 @@ TEST_CASE("the change sink lands every audit in the durable outbox")
     CHECK(marked.attempts == 0);
     CHECK(outbox.markSent(marked.eventId, 1000));
 
-    // The id is the payload's own name, so a second audit of the same
-    // before/after is a second event unless its timestamp matches as well.
     bool repeated = false;
     for (int attempt = 0; attempt < 50 && !repeated; ++attempt) {
       drogon::sync_wait(sink.publishAudit(read));
@@ -163,8 +146,6 @@ TEST_CASE("the change sink lands every audit in the durable outbox")
     CHECK(cycled.eventId != marked.eventId);
     CHECK(outbox.markSent(cycled.eventId, 2000));
 
-    // Recipients are deduplicated and a non-positive id is not a recipient,
-    // so a diff with no one left to tell is not an event at all.
     drogon::sync_wait(sink.publishAudit(readAudit(8, {7, 7, 0, -3})));
     const ChangeOutboxRow deduped = pendingRow(outbox.pendingBatch(1));
     CHECK(deduped.payload.find("\"users\":[7]") != std::string::npos);
@@ -174,7 +155,6 @@ TEST_CASE("the change sink lands every audit in the durable outbox")
     drogon::sync_wait(sink.publishAudit(readAudit(9, {})));
     CHECK_FALSE(hasPending(outbox));
 
-    // Nothing moved: an unchanged row has no diff and so no event.
     UserAuditInput unchanged;
     unchanged.recordId = 10;
     unchanged.tableName = TableName::Notification;
@@ -184,8 +164,6 @@ TEST_CASE("the change sink lands every audit in the durable outbox")
     drogon::sync_wait(sink.publishAudit(unchanged));
     CHECK_FALSE(hasPending(outbox));
 
-    // A payload past the broker's budget is refused rather than written: one
-    // such row would stop every change queued behind it for ever.
     UserAuditInput oversized;
     oversized.recordId = 11;
     oversized.tableName = TableName::Notification;
@@ -198,7 +176,6 @@ TEST_CASE("the change sink lands every audit in the durable outbox")
   }
 
   {
-    // No bus at all: the row waits in the outbox rather than being lost.
     NatsNotificationChangeSink sink(
         nullptr, NatsNotificationChangeSink::Config{
                      .retryMs = 20, .publishSubject = {}, .streamName = {}});
@@ -215,9 +192,6 @@ TEST_CASE("the change sink lands every audit in the durable outbox")
 
   const char* url = std::getenv("ARGUS_NATS_URL");
   if (url != nullptr && *url != '\0') {
-    // A stream, a subject and a payload per run: a fixed event id republished
-    // inside the stream's duplicate window is deduplicated, so a second run
-    // would watch its own publish be accepted and deliver nothing.
     const std::string run = std::to_string(::getpid());
     const std::string stream = "argus-test-notification-change-" + run;
     const std::string subject = "argus.test.notification.change.flush." + run;
@@ -232,10 +206,6 @@ TEST_CASE("the change sink lands every audit in the durable outbox")
                                    .maxAgeNs = 3600000000000LL,
                                    .duplicatesNs = 120000000000LL}));
 
-    // A false mark-sent and a real publish both empty the outbox, so the leg
-    // reads the event back off the broker: draining proves nothing on its own.
-    // Delivering all closes the window between asking for the consumer and the
-    // broker creating it, which a new-only consumer would leave open.
     std::mutex mutex;
     std::condition_variable cv;
     std::string received;
@@ -258,14 +228,10 @@ TEST_CASE("the change sink lands every audit in the durable outbox")
     REQUIRE(subscription.has_value());
 
     {
-      // Scoped: a live sink left running would publish the rows of the block
-      // below on its own subject, which is what that block measures.
       NatsNotificationChangeSink liveSink(
           liveBus, NatsNotificationChangeSink::Config{.retryMs = 20,
                                                       .publishSubject = subject,
                                                       .streamName = stream});
-      // The row is read off the outbox before the drain starts: a reconciled
-      // sink may have published and settled it by the time the test looks.
       drogon::sync_wait(liveSink.publishAudit(readAudit(99, {7})));
       const std::string expected = pendingRow(outbox.pendingBatch(1)).payload;
       liveSink.reconcile();
@@ -288,9 +254,6 @@ TEST_CASE("the change sink lands every audit in the durable outbox")
       CHECK(seen == expected);
     }
 
-    // A publish is a JetStream publish, so the change subject needs a stream or
-    // nothing is ever stored: a sink pointed at a stream that does not exist
-    // yet owns creating it, and a row that settles is the proof it did.
     {
       const std::string healed = stream + "-healed";
       const std::string healedSubject = subject + ".healed";
@@ -310,10 +273,6 @@ TEST_CASE("the change sink lands every audit in the durable outbox")
       CHECK(info.subjects.front() == healedSubject);
     }
 
-    // A backlog is one pass and not one tick per row: more changes than a single
-    // batch holds all settle, and they are written before the drain starts so
-    // that a drain fallen back to one row per pass cannot hide behind the wake
-    // each enqueue gives it — 100 rows at a 50 ms tick is five seconds.
     {
       const std::string burstStream = stream + "-burst";
       const std::string burstSubject = subject + ".burst";
@@ -334,9 +293,6 @@ TEST_CASE("the change sink lands every audit in the durable outbox")
             std::chrono::seconds(3));
     }
 
-    // A publish that cannot succeed leaves its row pending with the attempt
-    // counted, and the change queued behind it waits instead of overtaking it:
-    // a wildcard is not a publishable subject, so the broker is never asked.
     NatsNotificationChangeSink stranded(
         liveBus, NatsNotificationChangeSink::Config{
                      .retryMs = 20,

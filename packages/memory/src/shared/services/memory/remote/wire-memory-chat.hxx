@@ -6,7 +6,6 @@
 #include <string>
 #include <utility>
 
-// Extracted-service substrate: worker chats go over the argus-llm wire, never busy.
 class WireMemoryChat final : public IMemoryChat
 {
 public:

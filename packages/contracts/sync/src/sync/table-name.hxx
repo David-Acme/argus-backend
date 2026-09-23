@@ -32,7 +32,6 @@ enum class TableName : uint8_t
   Memory
 };
 
-// Last TableName value; role sets sweeping the enum cannot miss a new table.
 inline constexpr TableName kLastTableName = TableName::Memory;
 
 inline std::string tableNameToString(TableName t)

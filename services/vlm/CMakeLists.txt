@@ -1,9 +1,6 @@
 cmake_minimum_required(VERSION 3.25)
 project(argus-vlm VERSION 1.0.0 LANGUAGES CXX)
 
-# enable_testing() must precede the first add_subdirectory: the flag
-# propagates into every subtree, and a directory that misses it gets no
-# CTestTestfile — the tests of anything added beneath it then never run.
 enable_testing()
 
 set(CMAKE_CXX_STANDARD 20)
@@ -16,9 +13,6 @@ set(VLM_SRC_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/src)
 set(SHARED_ROOT ${VLM_SRC_ROOT}/shared)
 
 if(NOT TARGET Drogon::Drogon)
-    # Standalone configure: this service owns the whole build, so it adds
-    # the packages it links — the leaves it uses directly and the sibling
-    # package that used to arrive through argus-common.
     find_package(Drogon CONFIG REQUIRED)
     find_package(OpenCV CONFIG REQUIRED)
     find_package(tomlplusplus REQUIRED)
@@ -43,12 +37,6 @@ endif()
 
 find_package(doctest REQUIRED)
 
-# llama.cpp + libmtmd are THE capacity of this service (Ruling BO): this is
-# an AI-heavy service like the legacy, so it links the same vendored engines.
-# The mtmd projector must vendor the SAME llama.cpp commit the legacy links
-# (third_party/llama.cpp, tag b10305): within the root build the targets are
-# the ones third_party already integrates; a standalone build re-adds the
-# same submodule directory with the same cache variables.
 if(NOT TARGET llama)
     set(LLAMA_BUILD_COMMON OFF CACHE BOOL "" FORCE)
     set(LLAMA_BUILD_TESTS OFF CACHE BOOL "" FORCE)
@@ -88,8 +76,6 @@ endif()
 add_library(vlm-core STATIC
     ${VLM_SRC_ROOT}/controllers/vlm-controller.cc
     ${VLM_SRC_ROOT}/vlm/describe-dto.cc
-    # The engine compiled from the shared tree (PORTED pattern), so the
-    # legacy binary and this service describe identically.
     ${SHARED_ROOT}/services/vision/vision-service.cc
 )
 
@@ -135,13 +121,8 @@ add_custom_command(TARGET argus-vlm POST_BUILD
             ${CMAKE_CURRENT_SOURCE_DIR}/../../models
             $<TARGET_FILE_DIR:argus-vlm>/models)
 
-# The VLM suites opt back into the default build: this folder is added
-# EXCLUDE_FROM_ALL.
 find_package(doctest REQUIRED)
 
-# The argus-vlm wire contract (F4-4, Ruling BP): the real engine serves
-# the describe/config legs from the shared models tree, with the
-# direct-engine A/B leg on the same JPEG.
 add_executable(vlm-wire-test tests/unit/vlm-wire-test.cc
     ${VLM_SRC_ROOT}/controllers/vlm-controller.cc
     ${VLM_SRC_ROOT}/vlm/describe-dto.cc
@@ -170,9 +151,6 @@ target_compile_options(vlm-wire-test PRIVATE -Wall -Wextra)
 
 add_test(NAME vlm-wire-test COMMAND vlm-wire-test)
 
-# The remote vision adapter (F4-4, Ruling BQ): the JPEG encode, the
-# same-keyed caption cache and the error paths against the in-process
-# fake argus-vlm server.
 add_executable(vision-remote-adapter-test
     tests/unit/vision-remote-adapter-test.cc
     ${SHARED_ROOT}/services/vision/remote/vlm-remote.cc

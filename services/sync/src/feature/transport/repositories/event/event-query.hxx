@@ -72,7 +72,7 @@ inline constexpr std::string_view SYNC_FIND_LAST_DELETED =
     "SELECT * FROM event WHERE deleted_at IS NOT NULL "
     "ORDER BY deleted_at DESC LIMIT 1";
 
-} // namespace event_query
+}
 
 struct EventCreateInput
 {

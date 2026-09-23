@@ -14,7 +14,7 @@ namespace
 constexpr int kJpegQuality = 90;
 constexpr int kDefaultCacheSlots = 8;
 
-} // namespace
+}
 
 uint64_t RemoteVisionServiceAdapter::cacheKey(std::string_view jpeg,
                                               const std::string& prompt)

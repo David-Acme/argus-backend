@@ -11,7 +11,6 @@ enum class CameraSyncTable
   Zone,
 };
 
-// Pull source for the camera-domain sync tables.
 class CameraSyncSource
 {
 public:

@@ -15,7 +15,6 @@
 #include <shared/services/room/room-manager.hxx>
 #include <string_view>
 
-// Serves the sync tables natively and hands every other frame to the installed forwarder.
 class SyncService
 {
 public:

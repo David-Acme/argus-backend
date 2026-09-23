@@ -7,21 +7,16 @@
 #include <server/remote-config.hxx>
 #include <string>
 
-// Rulings CG/CJ: pre-routing gate for remote, LAN-only paths and rate limits.
 class RemoteGate
 {
 public:
-  // What a request that arrived from outside the LAN is marked with, so a later
-  // filter can tell it apart without reading the socket again.
   static inline const std::string kRemoteContextKey{"remote_ctx"};
 
   RemoteGate(RemoteConfig config,
              std::shared_ptr<RefreshRateLimiter> limiter);
 
-  // Returns a CORS-ready response only when the request must short-circuit.
   drogon::HttpResponsePtr check(const drogon::HttpRequestPtr& req,
                                 bool remote);
-  // Feeds the handler outcome into the lockout counter (post-handling).
   void recordOutcome(const drogon::HttpRequestPtr& req,
                      const drogon::HttpResponsePtr& resp);
 

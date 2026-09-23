@@ -17,7 +17,6 @@ namespace
 {
 constexpr const char* kPcmMime = "audio/x-argus-pcm-s16";
 
-// Maps the s16 PCM body back to float samples.
 std::vector<float> pcmFromBytes(std::string_view bytes)
 {
   std::vector<float> samples(bytes.size() / sizeof(int16_t));
@@ -29,7 +28,6 @@ std::vector<float> pcmFromBytes(std::string_view bytes)
   return samples;
 }
 
-// Resolves lang from the query string (?lang=es) or the `lang` header.
 std::string langOf(const drogon::HttpRequestPtr& req)
 {
   std::string lang = req->getParameter("lang");
@@ -38,7 +36,7 @@ std::string langOf(const drogon::HttpRequestPtr& req)
   return lang;
 }
 
-} // namespace
+}
 
 drogon::Task<drogon::HttpResponsePtr>
 SttController::transcribe(drogon::HttpRequestPtr req)

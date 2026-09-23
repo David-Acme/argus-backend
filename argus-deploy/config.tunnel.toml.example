@@ -1,16 +1,10 @@
-# argus-deploy tunnel-client configuration (Fase 5). Copy to
-# config.tunnel.toml (gitignored) next to this file; the compose file
-# bind-mounts it as argus-tunnel-client's config.toml.
-
 [tunnel]
 secret = ""
 
-# Home-host client knobs.
 reconnect_wait_ms = 2000
 max_reconnects = 60
 ping_interval_seconds = 30
 
-# Link knobs shared with the relay.
 stream_idle_seconds = 300
 max_streams = 256
 socket_snd_buf = 0

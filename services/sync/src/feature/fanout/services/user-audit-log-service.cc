@@ -17,7 +17,7 @@ std::pair<int64_t, int64_t> utcDayRangeMs(int64_t nowMs)
   const int64_t start = static_cast<int64_t>(timegm(&tm)) * 1000;
   return {start, start + 86'400'000};
 }
-} // namespace
+}
 
 drogon::Task<UserAuditLogSchema>
 UserAuditLogService::create(const UserAuditLogWriteInput& input) const

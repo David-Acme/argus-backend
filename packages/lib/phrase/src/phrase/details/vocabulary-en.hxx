@@ -935,4 +935,4 @@ inline constexpr std::array<LexiconSeed, 402> kENLexicon = {
   LexiconSeed{.kind = LexiconKind::Stopword, .surface = "yours", .canonical = ""},
 };
 
-} // namespace vocabulary
+}

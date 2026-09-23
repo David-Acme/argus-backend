@@ -1,6 +1,3 @@
-# argus-deploy argus-stt configuration. Copy to config.stt.toml (gitignored);
-# the compose file bind-mounts it as the service's config.toml.
-
 [server]
 host = "0.0.0.0"
 port = 7030

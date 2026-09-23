@@ -32,7 +32,7 @@ DriverResult toDriverResult(const TapoResult& result)
 {
   return {.ok = result.ok, .error = result.error, .data = result.data};
 }
-} // namespace
+}
 
 TapoDriver::TapoDriver(const CameraSchema& camera)
     : camera_(camera), api_(std::make_unique<TapoApi>(controlConfig(camera)))

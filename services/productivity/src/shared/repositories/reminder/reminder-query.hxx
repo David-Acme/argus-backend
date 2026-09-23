@@ -93,7 +93,7 @@ inline constexpr std::string_view REMOVE =
     "updated_at = strftime('%s', 'now') "
     "WHERE id = ? AND deleted_at IS NULL";
 
-} // namespace reminder_query
+}
 
 struct ReminderCreateInput
 {

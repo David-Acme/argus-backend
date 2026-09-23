@@ -7,9 +7,6 @@
 #include <string>
 #include <vector>
 
-// Durable outbox of camera-domain change events: the sink enqueues on the
-// event loop and a drain thread walks the pending rows in one batch, marking
-// each sent only after its own JetStream PubAck.
 class ChangeOutboxRepository
 {
 public:

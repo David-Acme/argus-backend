@@ -23,7 +23,7 @@ bool execUnlocked(sqlite3* db, const char* sql)
   return true;
 }
 
-} // namespace
+}
 
 SqliteGraph::SqliteGraph() : db_(nullptr, &sqlite3_close) {}
 
