@@ -241,6 +241,19 @@ preset, own `camera.db`.
   to repurpose a stream carrying different subjects, so the default
   configuration's subject pair has one declaration rather than two that could
   disagree with each other.
+- **The drain is stopped before Drogon quits, not after.** Both sinks register
+  with `shutdown_signal` at boot, **before `drogon::app().run()`** — which is
+  also before `reconcile()` starts their workers:
+  the SIGTERM/SIGINT
+  handler only requests the stop, the Drogon loop keeps running while the
+  worker finishes its publish pass, and `quit()` follows once it reports
+  drained (a 10-second deadline bounds the wait and names any drain that never
+  reported). The worker is a thread of the sink's own, so nothing in Drogon
+  stops it — and `quit()` destroys the database client manager, which a
+  worker still publishing from the outbox would reach unguarded. The
+  registration comes first because the hook's handlers are what `run()` installs
+  Drogon's `sigaction` over, and because a drain registered after the stop was
+  requested is only stopped at once, never waited for.
 - A PubAck is storage, not delivery. The subject's only live consumer today
   is memory's catalog replica, snapshot-filled at boot by design; app
   convergence runs through the sync engine's own paging over the camera sync

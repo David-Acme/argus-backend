@@ -152,6 +152,20 @@ Phase 3c-2. Both would be free to call their table `change_outbox`, and
 first one's shape; a `sync` outbox must take a different name until the files
 split.
 
+The sink registers with `shutdown_signal` at the boot that installs it — the
+gateway's, which hosts this package until Phase 3c; the package gains its own
+boot when it gains its process — so a
+SIGTERM stops the drain before Drogon's `quit()` destroys the database client
+manager the worker reaches through `DbService::client()`. The drain's worker
+is a thread of the sink's own, so nothing in Drogon stops it, and the hook
+waits for it to report drained rather than quitting underneath it. The
+registration comes before `drogon::app().run()` — the hook's handlers are what
+`run()` installs Drogon's own `sigaction` over, and a signal that arrived
+before the first registration would run Drogon's default quit with no drain
+wait — and therefore before the `reconcile()` that starts the worker, because
+a drain registered after the stop was requested is only stopped at once,
+never waited for.
+
 ## Camera guard surface (camera-guard phase 2)
 
 `IdentifyPerson`, `EnrollPerson`, `TouchPerson`, `TagPerson` and

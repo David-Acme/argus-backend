@@ -47,16 +47,19 @@ public:
     });
   }
 
-  void stop() { tick_ = nullptr; }
+  void stop() { stopping_.store(true, std::memory_order_release); }
 
   void tick()
   {
+    if (stopping_.load(std::memory_order_acquire))
+      return;
     if (tick_)
       tick_();
   }
 
 private:
   std::function<void()> tick_;
+  std::atomic<bool> stopping_{false};
 };
 
 namespace
@@ -208,7 +211,7 @@ public:
     if (!lifecycle_)
       return;
     if (lifecycle_->active.fetch_sub(1, std::memory_order_acq_rel) == 1) {
-      std::lock_guard lock(lifecycle_->mutex);
+      std::scoped_lock lock(lifecycle_->mutex);
       lifecycle_->idle.notify_all();
     }
   }
@@ -236,7 +239,7 @@ public:
   explicit ExecutionLease(ExecutionLeaseInput input)
       : mutex_(input.mutex), running_(input.running), id_(std::move(input.id))
   {
-    std::lock_guard lock(mutex_);
+    std::scoped_lock lock(mutex_);
     owned_ = running_.insert(id_).second;
   }
 
@@ -244,7 +247,7 @@ public:
   {
     if (!owned_)
       return;
-    std::lock_guard lock(mutex_);
+    std::scoped_lock lock(mutex_);
     running_.erase(id_);
   }
 
@@ -271,9 +274,7 @@ GuardService::GuardService(Dependencies dependencies, Config config)
 
 GuardService::~GuardService()
 {
-  lifecycle_->alive.store(false, std::memory_order_release);
-  if (retryPump_)
-    retryPump_->stop();
+  requestStop();
   if (dependencies_.bus) {
     if (durableSubscription_.has_value())
       dependencies_.bus->unsubscribe(*durableSubscription_);
@@ -282,16 +283,28 @@ GuardService::~GuardService()
     if (healthSubscription_.has_value())
       dependencies_.bus->unsubscribe(*healthSubscription_);
   }
-  stopTimers();
   std::unique_lock lock(lifecycle_->mutex);
   lifecycle_->idle.wait(lock, [lifecycle = lifecycle_] {
     return lifecycle->active.load(std::memory_order_acquire) == 0;
   });
 }
 
+void GuardService::requestStop()
+{
+  lifecycle_->alive.store(false, std::memory_order_release);
+  if (retryPump_)
+    retryPump_->stop();
+  stopTimers();
+}
+
+bool GuardService::drained() const
+{
+  return lifecycle_->active.load(std::memory_order_acquire) == 0;
+}
+
 void GuardService::trackTimer(uint64_t id)
 {
-  std::lock_guard lock(lifecycleMutex_);
+  std::scoped_lock lock(lifecycleMutex_);
   timerIds_.push_back(id);
 }
 
@@ -299,7 +312,7 @@ void GuardService::stopTimers()
 {
   std::vector<uint64_t> ids;
   {
-    std::lock_guard lock(lifecycleMutex_);
+    std::scoped_lock lock(lifecycleMutex_);
     ids = std::move(timerIds_);
   }
   if (!drogon::app().isRunning())
@@ -500,7 +513,7 @@ void GuardService::ingestHealth(int64_t cameraId, const std::string& status,
 {
   if (cameraId <= 0)
     return;
-  std::lock_guard lock(healthMutex_);
+  std::scoped_lock lock(healthMutex_);
   CameraHealth& health = healthByCamera_[cameraId];
   if (health.status == status && health.lastSeenMs > 0) {
     health.lastSeenMs = atMs;
@@ -511,7 +524,7 @@ void GuardService::ingestHealth(int64_t cameraId, const std::string& status,
 
 std::string GuardService::cameraHealthStatus(int64_t cameraId) const
 {
-  std::lock_guard lock(healthMutex_);
+  std::scoped_lock lock(healthMutex_);
   const auto found = healthByCamera_.find(cameraId);
   if (found == healthByCamera_.end())
     return {};
@@ -531,7 +544,7 @@ drogon::Task<void> GuardService::checkTamperSweep(int64_t now)
   };
   std::vector<TamperReading> fresh;
   {
-    std::lock_guard lock(healthMutex_);
+    std::scoped_lock lock(healthMutex_);
     for (const auto& [cameraId, health] : healthByCamera_) {
       if (now - health.lastSeenMs / 1000 > config_.healthStaleS)
         continue;
@@ -660,7 +673,7 @@ BeliefConfig GuardService::beliefConfig(int64_t cameraId) const
 {
   const int64_t now = nowMillis();
   {
-    std::lock_guard lock(beliefMutex_);
+    std::scoped_lock lock(beliefMutex_);
     const auto found = beliefCache_.find(cameraId);
     if (found != beliefCache_.end() &&
         now - found->second.resolvedAt < config_.beliefRefreshS * 1000)
@@ -668,7 +681,7 @@ BeliefConfig GuardService::beliefConfig(int64_t cameraId) const
   }
   BeliefConfig resolved = guard_belief::resolveBeliefConfig(cameraId);
   {
-    std::lock_guard lock(beliefMutex_);
+    std::scoped_lock lock(beliefMutex_);
     beliefCache_[cameraId] = {.config = resolved, .resolvedAt = nowMillis()};
   }
   return resolved;
@@ -836,7 +849,7 @@ int64_t GuardService::retryBackoffAt(int attempts, int64_t nowMs) const
 void GuardService::enqueue(QueueEntry entry)
 {
   {
-    std::lock_guard lock(queueMutex_);
+    std::scoped_lock lock(queueMutex_);
     queue_.push_back(std::move(entry));
     if (processing_)
       return;
@@ -852,7 +865,7 @@ drogon::Task<void> GuardService::processQueue()
   while (true) {
     QueueEntry entry;
     {
-      std::lock_guard lock(queueMutex_);
+      std::scoped_lock lock(queueMutex_);
       if (queue_.empty()) {
         processing_ = false;
         co_return;

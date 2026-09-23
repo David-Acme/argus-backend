@@ -194,6 +194,18 @@ exclusively this service's, the notification-token side as before.
   must be recorded then too. The drain waits out the disconnected bus and
   ensures its stream on the first tick after the reconnect, which is why it
   does not ride the delivery reconciler's 60-second rhythm.
+- **The drain is stopped before Drogon quits, not after.** The sink registers
+  with `shutdown_signal` at boot, **before `drogon::app().run()`** — which is
+  also before `reconcile()` starts its worker:
+  SIGTERM/SIGINT only
+  requests the stop, the loop keeps running while the worker leaves its pass,
+  and `quit()` follows once the worker reports drained (a 10-second deadline
+  bounds the wait). The worker is a thread of the sink's own, so Drogon does
+  not stop it, and `quit()` destroys the database client manager the worker
+  reaches through `DbService::client()`. The registration comes first because
+  the hook's handlers are what `run()` installs Drogon's `sigaction` over, and
+  because a drain registered after the stop was requested is only stopped at
+  once, never waited for.
 
 ## Delivery proof (Round 11)
 

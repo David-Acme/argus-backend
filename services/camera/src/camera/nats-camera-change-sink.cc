@@ -41,8 +41,7 @@ NatsCameraChangeSink::NatsCameraChangeSink(std::shared_ptr<NatsBus> bus,
 
 NatsCameraChangeSink::~NatsCameraChangeSink()
 {
-  stopping_.store(true, std::memory_order_release);
-  wake_.notify_all();
+  requestStop();
   if (worker_.joinable())
     worker_.join();
 }
@@ -125,6 +124,18 @@ void NatsCameraChangeSink::reconcile()
     worker_ = std::thread([this]() { flushLoop(); });
 }
 
+void NatsCameraChangeSink::requestStop()
+{
+  stopping_.store(true, std::memory_order_release);
+  wake_.notify_all();
+}
+
+bool NatsCameraChangeSink::drained() const
+{
+  return exited_.load(std::memory_order_acquire) ||
+         !workerStarted_.load(std::memory_order_acquire);
+}
+
 bool NatsCameraChangeSink::ensureStream() const
 {
   return camera_event_stream::ensure(
@@ -179,4 +190,5 @@ void NatsCameraChangeSink::flushLoop()
                    std::chrono::milliseconds(progressed ? kProgressMs
                                                         : config_.retryMs));
   }
+  exited_.store(true, std::memory_order_release);
 }

@@ -44,8 +44,7 @@ NatsNotificationChangeSink::NatsNotificationChangeSink(
 
 NatsNotificationChangeSink::~NatsNotificationChangeSink()
 {
-  stopping_.store(true, std::memory_order_release);
-  wake_.notify_all();
+  requestStop();
   if (worker_.joinable())
     worker_.join();
 }
@@ -120,6 +119,18 @@ void NatsNotificationChangeSink::reconcile()
     worker_ = std::thread([this]() { flushLoop(); });
 }
 
+void NatsNotificationChangeSink::requestStop()
+{
+  stopping_.store(true, std::memory_order_release);
+  wake_.notify_all();
+}
+
+bool NatsNotificationChangeSink::drained() const
+{
+  return exited_.load(std::memory_order_acquire) ||
+         !workerStarted_.load(std::memory_order_acquire);
+}
+
 bool NatsNotificationChangeSink::ensureStream() const
 {
   constexpr int64_t kJetStreamRetentionNs = 7LL * 24 * 60 * 60 * 1000000000;
@@ -180,4 +191,5 @@ void NatsNotificationChangeSink::flushLoop()
                    std::chrono::milliseconds(progressed ? kProgressMs
                                                         : config_.retryMs));
   }
+  exited_.store(true, std::memory_order_release);
 }

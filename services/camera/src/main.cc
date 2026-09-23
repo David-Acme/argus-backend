@@ -38,6 +38,7 @@
 #include <shared/services/stream/camera-source-registrar.hxx>
 #include <shared/services/stream/stream-hub.hxx>
 #include <runtime/blocking-task.hxx>
+#include <runtime/shutdown-signal.hxx>
 #include <nats/nats-bus.hxx>
 #include <unistd.h>
 
@@ -270,10 +271,12 @@ int main()
       _exit(1);
     }
 
-    if (objectSink)
+    if (objectSink) {
       objectSink->reconcile();
-    if (changeSink)
+    }
+    if (changeSink) {
       changeSink->reconcile();
+    }
 
     DbService::applyPragmas();
 
@@ -310,6 +313,15 @@ int main()
       co_return;
     });
   });
+
+  if (objectSink) {
+    shutdown_signal::onStop(
+        shutdown_signal::drainOf(*objectSink, "camera-object-event"));
+  }
+  if (changeSink) {
+    shutdown_signal::onStop(
+        shutdown_signal::drainOf(*changeSink, "camera-change"));
+  }
 
   drogon::app()
       .setThreadNum(0)

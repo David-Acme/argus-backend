@@ -32,6 +32,16 @@ monolith's build set was retired (F6-4).
   `stored_file`, `portrait_preview_capability`), carried verbatim from the
   retired monolith schema — and aborts if it fails; it never touches
   `argus.db` and never runs the backend migrations.
+- **The identity change sink's drain**: `NatsIdentityChangeSink` registers
+  itself with `shutdown_signal` before `drogon::app().run()` and is reconciled
+  from the beginning advice, so a
+  SIGTERM stops the drain before Drogon's `quit()` destroys the database client
+  manager its worker reaches through `DbService::client()`. The registration
+  comes first because the hook's handlers are what `run()` installs Drogon's
+  `sigaction` over, and because a drain registered after the stop was
+  requested is only stopped at once, never waited for. The sink travels
+  with `packages/identity` at the Phase 3c extraction; the registration goes
+  with it.
 - **Device identity modes (F5-2, Ruling CH)**: `DeviceFilter` gained a
   `[device] identity_mode` gate (`ip` default, byte-identical legacy
   behavior | `credential`), shared with the legacy through `argus_identity`.

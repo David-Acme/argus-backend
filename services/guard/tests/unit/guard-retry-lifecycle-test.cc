@@ -2,16 +2,20 @@
 #include <atomic>
 #include <camera/camera-action-client.hxx>
 #include <chrono>
+#include <condition_variable>
 #include <cstdio>
 #include <doctest/doctest.h>
 #include <drogon/drogon.h>
+#include <functional>
 #include <guard-repository.hxx>
 #include <guard-schema.hxx>
 #include <guard-service.hxx>
 #include <identity/identity-client.hxx>
 #include <json/value.h>
+#include <mutex>
 #include <notification/notification-client.hxx>
 #include <optional>
+#include <runtime/shutdown-signal.hxx>
 #include <sqlite/db-service.hxx>
 #include <text/json-util.hxx>
 #include <nats/nats-bus.hxx>
@@ -82,6 +86,18 @@ bool waitForScalar(const WaitForScalarInput& input)
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
   }
   return scalar(input.sql) == input.expected;
+}
+
+bool waitUntil(const std::function<bool()>& ready,
+               std::chrono::milliseconds timeout)
+{
+  const auto deadline = std::chrono::steady_clock::now() + timeout;
+  while (std::chrono::steady_clock::now() < deadline) {
+    if (ready())
+      return true;
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  return ready();
 }
 
 Json::Value retryObservation(const std::string& eventId, int64_t cameraId = 1)
@@ -234,6 +250,46 @@ public:
   }
 
   mutable std::atomic<int> calls{0};
+};
+
+class GatedNotifications final : public NotificationClient
+{
+public:
+  GatedNotifications()
+      : NotificationClient({.target = "127.0.0.1:1", .credential = {}})
+  {
+  }
+
+  NotificationCreateResult createNotifications(
+      const argus::notification::v1::CreateNotificationsRequest& request,
+      const argus::client::CallerIdentity&) const override
+  {
+    calls.fetch_add(1, std::memory_order_acq_rel);
+    std::unique_lock lock(mutex_);
+    gate_.wait_for(lock, std::chrono::seconds(30), [this] {
+      return released.load(std::memory_order_acquire);
+    });
+    NotificationCreateResult result;
+    result.outcome = NotificationRpcOutcome::Success;
+    result.created = request.user_ids_size();
+    return result;
+  }
+
+  void release() const
+  {
+    {
+      std::scoped_lock lock(mutex_);
+      released.store(true, std::memory_order_release);
+    }
+    gate_.notify_all();
+  }
+
+  mutable std::atomic<int> calls{0};
+
+private:
+  mutable std::mutex mutex_;
+  mutable std::condition_variable gate_;
+  mutable std::atomic<bool> released{false};
 };
 
 GuardService::Config baseConfig()
@@ -437,6 +493,48 @@ TEST_CASE("durable retries survive destroy, races and teardown")
     CHECK(drogon::sync_wait(
         rebuilt.handle(retryObservation("retry-teardown:1", 4), 2)));
     CHECK(notifications.calls.load() == callsBefore);
+  }
+
+  {
+    GatedNotifications gated;
+    GuardService::Config config = baseConfig();
+    GuardService service({.bus = nullptr,
+                          .identity = &identity,
+                          .notifications = &gated,
+                          .actions = &actions,
+                          .assessment = nullptr},
+                         config);
+    service.start();
+    const shutdown_signal::Drain drain =
+        shutdown_signal::drainOf(service, "guard");
+    CHECK(drain.name == "guard");
+    CHECK(waitUntil([&drain] { return drain.drained(); },
+                    std::chrono::seconds(10)));
+
+    std::atomic<bool> workerFailed{false};
+    std::jthread worker([&service, &workerFailed] {
+      try {
+        drogon::sync_wait(
+            service.handle(retryObservation("retry-drain:1", 6), 1));
+      }
+      catch (const std::exception&) {
+        workerFailed.store(true, std::memory_order_release);
+      }
+    });
+    CHECK(waitUntil([&gated] { return gated.calls.load() > 0; },
+                    std::chrono::seconds(10)));
+    CHECK_FALSE(drain.drained());
+    drain.requestStop();
+    CHECK_FALSE(drain.drained());
+    gated.release();
+    CHECK(waitUntil([&drain] { return drain.drained(); },
+                    std::chrono::seconds(10)));
+    CHECK(service.drained());
+    worker.join();
+    CHECK_FALSE(workerFailed.load(std::memory_order_acquire));
+    CHECK(gated.calls.load() == 1);
+    CHECK(scalar("SELECT status FROM guard_observation_inbox WHERE event_id "
+                 "= 'retry-drain:1'") == "completed");
   }
 
   {

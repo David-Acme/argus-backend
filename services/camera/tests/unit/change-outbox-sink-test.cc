@@ -72,6 +72,18 @@ bool hasPending(const ChangeOutboxRepository& outbox)
   return !outbox.pendingBatch(1).empty();
 }
 
+bool waitForDrain(const NatsCameraChangeSink& sink,
+                  std::chrono::milliseconds timeout)
+{
+  const auto deadline = std::chrono::steady_clock::now() + timeout;
+  while (std::chrono::steady_clock::now() < deadline) {
+    if (sink.drained())
+      return true;
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  return sink.drained();
+}
+
 SocketEmitDto addCamera(int64_t id, const std::string& name)
 {
   SocketEmitDto body;
@@ -106,6 +118,7 @@ TEST_CASE("the change sink lands every transition in the durable outbox")
         nullptr, NatsCameraChangeSink::Config{.retryMs = 20,
                                               .publishSubject = {},
                                               .streamName = {}});
+    CHECK(sink.drained());
     drogon::sync_wait(sink.emitModule(TableName::Camera, add));
 
     const ChangeOutboxRow created = pendingRow(outbox.pendingBatch(1));
@@ -187,6 +200,11 @@ TEST_CASE("the change sink lands every transition in the durable outbox")
                .discriminator = json_util::toString(removal.toJson())}));
     CHECK(waiting.payload == json_util::toString(removal.toJson()));
     CHECK(waiting.attempts == 0);
+    CHECK_FALSE(sink.drained());
+    sink.requestStop();
+    CHECK(waitForDrain(sink, std::chrono::seconds(5)));
+    sink.requestStop();
+    CHECK(sink.drained());
     CHECK(outbox.markSent(waiting.eventId, 3000));
   }
 

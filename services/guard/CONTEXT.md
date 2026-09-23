@@ -95,6 +95,22 @@ per refused publish, and unlike the sibling sinks it never breaks the pass: a
 missing stream costs every pending row at once rather than stalling the ones
 behind a head row.
 
+Guard registers itself with `shutdown_signal` before `drogon::app().run()` —
+so the hook's handlers are what `run()` installs Drogon's own `sigaction`
+over — and
+its drain is the whole service rather than a worker of its own: `drained()`
+means no coroutine of the service is suspended mid-await, which is what lets a
+SIGTERM finish the guard work already in flight — an observation being
+processed, an encounter sweep — before Drogon's `quit()` destroys the database
+client manager those coroutines reach. `requestStop()` clears the service's
+own `alive` flag, stops the timers and stops the retry pump (an atomic flag,
+because the stop arrives on the signal path while the pump's tick runs on the
+loop); an observation
+that arrives after it is dropped by the queue rather than claimed, so a stop
+never leaves a half-processed observation behind. A run that never reports
+drained is bounded by the hook's 10-second deadline, which quits anyway and
+names the drain in the log.
+
 ## Action safety
 
 `arm_siren` defaults to false. Siren arming is a camera-side lease

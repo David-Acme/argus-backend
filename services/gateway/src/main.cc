@@ -19,6 +19,7 @@
 #include <shared/services/face/face-service.hxx>
 #include <sqlite/db-service.hxx>
 #include <nats/nats-bus.hxx>
+#include <runtime/shutdown-signal.hxx>
 #include <feature/api/user/services/nats-identity-change-sink.hxx>
 #include <sync/camera-notifier.hxx>
 #include <sync/camera-stream-relay.hxx>
@@ -411,8 +412,9 @@ int main()
 
     DbService::applyPragmas();
 
-    if (identitySink)
+    if (identitySink) {
       identitySink->reconcile();
+    }
 
     DbService::setGatewayClient(drogon::app().getDbClient("gateway"));
     if (!DbService::runScriptFile(gatewaySchemaPath,
@@ -443,6 +445,11 @@ int main()
     if (!mdnsService->initialize())
       LOG_WARN << "mDNS advertising failed";
   });
+
+  if (identitySink) {
+    shutdown_signal::onStop(
+        shutdown_signal::drainOf(*identitySink, "identity-change"));
+  }
 
   drogon::app()
       .setThreadNum(0)

@@ -40,6 +40,8 @@ public:
   publishAudit(const UserAuditInput& input) const override;
 
   void reconcile();
+  void requestStop();
+  [[nodiscard]] bool drained() const;
 
   static constexpr std::size_t kMaxPayloadBytes = std::size_t{256} * 1024;
 
@@ -61,6 +63,7 @@ private:
   std::atomic<bool> streamReady_{false};
   std::atomic<bool> stopping_{false};
   std::atomic<bool> workerStarted_{false};
+  std::atomic<bool> exited_{false};
   std::mutex wakeMutex_;
   mutable std::condition_variable wake_;
   std::thread worker_;

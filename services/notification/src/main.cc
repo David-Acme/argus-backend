@@ -14,6 +14,7 @@
 #include <nats/nats-bus.hxx>
 #include <nats/nats-push-intent-sink.hxx>
 #include <nats/nats-subject.hxx>
+#include <runtime/shutdown-signal.hxx>
 #include <notification/notification-config.hxx>
 #include <sync/user-change-sink.hxx>
 #include <config/config-service.hxx>
@@ -177,8 +178,9 @@ int main()
     DbService::applyPragmas();
     DbService::client()->execSqlSync("PRAGMA foreign_keys = OFF");
 
-    if (changeSink)
+    if (changeSink) {
       changeSink->reconcile();
+    }
   });
 
   NotificationRpcService notificationRpc(
@@ -199,6 +201,11 @@ int main()
 
   notificationRpc.startDeliveryReconciler();
   notificationRpc.startSelfTestProber();
+
+  if (changeSink) {
+    shutdown_signal::onStop(
+        shutdown_signal::drainOf(*changeSink, "notification-change"));
+  }
 
   drogon::app()
       .setThreadNum(0)

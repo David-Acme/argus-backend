@@ -12,6 +12,7 @@
 #include <productivity/productivity-config.hxx>
 #include <productivity/nats-productivity-change-sink.hxx>
 #include <nats/nats-bus.hxx>
+#include <runtime/shutdown-signal.hxx>
 #include <sync/user-change-sink.hxx>
 #include <config/config-service.hxx>
 #include <sqlite/db-service.hxx>
@@ -133,9 +134,15 @@ int main()
     DbService::applyPragmas();
     DbService::client()->execSqlSync("PRAGMA foreign_keys = OFF");
 
-    if (changeSink)
+    if (changeSink) {
       changeSink->reconcile();
+    }
   });
+
+  if (changeSink) {
+    shutdown_signal::onStop(
+        shutdown_signal::drainOf(*changeSink, "productivity-change"));
+  }
 
   drogon::app()
       .setThreadNum(0)

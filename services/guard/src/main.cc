@@ -18,6 +18,7 @@
 #include <sqlite/db-service.hxx>
 #include <vlm/vlm-client.hxx>
 #include <nats/nats-bus.hxx>
+#include <runtime/shutdown-signal.hxx>
 #include <unistd.h>
 
 #include <ctime>
@@ -339,6 +340,8 @@ int main()
   drogon::app().registerBeginningAdvice([&guardService]() {
     guardService.start();
   });
+
+  shutdown_signal::onStop(shutdown_signal::drainOf(guardService, "guard"));
 
   drogon::app().setThreadNum(0).run();
   return 0;

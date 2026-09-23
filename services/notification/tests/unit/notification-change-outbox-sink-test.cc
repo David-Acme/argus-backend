@@ -76,6 +76,18 @@ bool hasPending(const ChangeOutboxRepository& outbox)
   return !outbox.pendingBatch(1).empty();
 }
 
+bool waitForDrain(const NatsNotificationChangeSink& sink,
+                  std::chrono::milliseconds timeout)
+{
+  const auto deadline = std::chrono::steady_clock::now() + timeout;
+  while (std::chrono::steady_clock::now() < deadline) {
+    if (sink.drained())
+      return true;
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  return sink.drained();
+}
+
 NatsBus::StreamStatus
 streamStatus(const std::optional<NatsBus::StreamStatus>& status)
 {
@@ -187,6 +199,11 @@ TEST_CASE("the change sink lands every audit in the durable outbox")
     CHECK(waiting.eventId.rfind("notification-change:", 0) == 0);
     CHECK(waiting.payload.find("\"record_id\":12") != std::string::npos);
     CHECK(waiting.attempts == 0);
+    CHECK_FALSE(sink.drained());
+    sink.requestStop();
+    CHECK(waitForDrain(sink, std::chrono::seconds(5)));
+    sink.requestStop();
+    CHECK(sink.drained());
     CHECK(outbox.markSent(waiting.eventId, 3000));
   }
 

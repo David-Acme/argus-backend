@@ -939,6 +939,7 @@ for two different reasons, and says which when it does.
 | `packages/lib/runtime/src/runtime/blocking-task.hxx` | Coroutine awaiter for off-loop heavy work |
 | `packages/lib/runtime/src/runtime/thread-budget.{cc,hxx}` | Adaptive thread sizing for AI services |
 | `packages/lib/runtime/src/runtime/hardware-profile.{cc,hxx}` | CPU/RAM/ISA and video-accel probe (`HardwareProfile`), ncnn-free and ncnn variants |
+| `packages/lib/runtime/src/runtime/shutdown-signal.{cc,hxx}` | `shutdown_signal::onStop(Drain)` — the process-wide stop sequence: a unit registers its drain before `drogon::app().run()`, the module requests the stops and holds Drogon's `quit()` until every drain reports drained (D22, §4.6 of the plan) |
 | `packages/lib/text/src/text/json-diff.{cc,hxx}` | Diff JSON + snapshot (`JsonDiff`) |
 | `packages/lib/text/src/text/json-util.hxx` | `json_util::toString` (compact, `{}` for null), `isValid` (empty is not valid) and `fromString` |
 

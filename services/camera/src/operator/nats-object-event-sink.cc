@@ -45,8 +45,7 @@ NatsObjectEventSink::NatsObjectEventSink(std::shared_ptr<NatsBus> bus,
 
 NatsObjectEventSink::~NatsObjectEventSink()
 {
-  stopping_.store(true, std::memory_order_release);
-  wake_.notify_all();
+  requestStop();
   if (worker_.joinable())
     worker_.join();
 }
@@ -99,9 +98,9 @@ NatsObjectEventSink::publish(const ObjectDetectedEvent& event)
 
 void NatsObjectEventSink::refreshCounters()
 {
-  const std::lock_guard refreshLock(refreshMutex_);
+  const std::scoped_lock refreshLock(refreshMutex_);
   const ObjectEventOutboxStats stats = outbox_.stats();
-  const std::lock_guard lock(countersMutex_);
+  const std::scoped_lock lock(countersMutex_);
   pendingCount_.store(stats.pending, std::memory_order_relaxed);
   sentCount_.store(stats.sent, std::memory_order_relaxed);
   overflowCount_.store(stats.overflowDropped, std::memory_order_relaxed);
@@ -117,9 +116,21 @@ void NatsObjectEventSink::reconcile()
     worker_ = std::thread([this]() { flushLoop(); });
 }
 
+void NatsObjectEventSink::requestStop()
+{
+  stopping_.store(true, std::memory_order_release);
+  wake_.notify_all();
+}
+
+bool NatsObjectEventSink::drained() const
+{
+  return exited_.load(std::memory_order_acquire) ||
+         !workerStarted_.load(std::memory_order_acquire);
+}
+
 Json::Value NatsObjectEventSink::health() const
 {
-  std::lock_guard lock(countersMutex_);
+  std::scoped_lock lock(countersMutex_);
   Json::Value status(Json::objectValue);
   status["pending"] = Json::Int64(pendingCount_.load(std::memory_order_relaxed));
   status["sent"] = Json::Int64(sentCount_.load(std::memory_order_relaxed));
@@ -183,4 +194,5 @@ void NatsObjectEventSink::flushLoop()
     wake_.wait_for(lock,
                    std::chrono::milliseconds(progressed ? 50 : config_.retryMs));
   }
+  exited_.store(true, std::memory_order_release);
 }

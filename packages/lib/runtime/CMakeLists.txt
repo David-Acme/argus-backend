@@ -8,6 +8,8 @@ argus_lib(NAME runtime
     SOURCES
         src/runtime/thread-budget.cc
         src/runtime/thread-budget.hxx
+        src/runtime/shutdown-signal.cc
+        src/runtime/shutdown-signal.hxx
         src/runtime/ai-init.hxx
         src/runtime/blocking-task.hxx
         src/runtime/cancellation-token.hxx
@@ -45,6 +47,12 @@ target_link_libraries(thread-budget-test PRIVATE argus::lib::runtime
     doctest::doctest)
 target_compile_options(thread-budget-test PRIVATE -Wall -Wextra)
 add_test(NAME thread-budget-test COMMAND thread-budget-test)
+
+add_executable(shutdown-signal-test tests/unit/shutdown-signal-test.cc)
+target_link_libraries(shutdown-signal-test PRIVATE argus::lib::runtime
+    doctest::doctest)
+target_compile_options(shutdown-signal-test PRIVATE -Wall -Wextra)
+add_test(NAME shutdown-signal-test COMMAND shutdown-signal-test)
 
 get_target_property(DOCTEST_INCLUDE_DIRS doctest::doctest
                     INTERFACE_INCLUDE_DIRECTORIES)

@@ -35,6 +35,12 @@ both variants have to answer the same numbers.
   ask for (`detectorInputSize`, `analysisFps`, `vlmEnabled`, `toolsEnabled`,
   `llmGpuLayers`, `vlmGpuLayers`). `docs/operations/hardware-tiers.md` is the
   document this implements.
+- `src/runtime/shutdown-signal.{cc,hxx}` — `shutdown_signal::onStop(Drain)`:
+  the process-wide stop sequence. A service registers each drain it owns
+  (`drainOf(unit, name)` adapts a `requestStop()`/`drained()` pair), the
+  module's term/int handler only *requests* stops, and Drogon quits once every
+  registered drain reports drained — or after a 10 s deadline, naming the
+  drains that never finished.
 
 ## Rules
 
@@ -55,8 +61,31 @@ both variants have to answer the same numbers.
   clamp and a row there before it gets a consumer.
 - Nothing here opens a socket, reads config or starts a thread of its own at
   load time. These are values and small types a service's boot wires up.
+- A unit that owns a worker thread writing to the database registers it with
+  `shutdown_signal::onStop` at boot, **before `drogon::app().run()`** — which
+  is also before the call that starts the worker (`reconcile()` in the change
+  sinks, `start()` in guard). The registration is
+  what stores the module's term/int handlers, so registering inside a beginning
+  advice instead leaves a window in which Drogon's own handler quits with no
+  drain wait at all. `requestStop()`
+  must be non-blocking (it runs on the loop thread, and the module calls it
+  from a signal handler's own path), and `drained()` must mean "this unit's own
+  worker will touch the database no more" — a loop-side request handler of the
+  service is not the drain's to report. A registration that lands after the
+  stop was already requested is stopped at once and logged, but the quit does
+  not wait for it — which is why the registration comes first. The `Drain`
+  holds its unit by reference, so the unit outlives shutdown: a boot-time
+  object, never a local. Never call
+  `drogon::app().quit()` from a shutdown path of your own: the module is the
+  only caller, and it quits after the drains, not before. (A test suite ending
+  its own throwaway app is not that path.)
 
 ## Tests
 
 `tests/unit/thread-budget-test.cc` — the clamp bounds, monotonicity in the
 hardware count, and the extraction queue as the one queue work is raised for.
+
+`tests/unit/shutdown-signal-test.cc` — the deferred quit: the hook stops a
+drain registered after the stop without waiting for it, asks every registered
+drain once, holds `app().isRunning()` while one is still draining, and quits
+once all of them report drained.

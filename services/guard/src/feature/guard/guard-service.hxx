@@ -109,6 +109,10 @@ public:
 
   void start();
 
+  void requestStop();
+
+  [[nodiscard]] bool drained() const;
+
   drogon::Task<bool> handle(const Json::Value& event, int delivered);
 
   drogon::Task<bool> handleLocalRetry(const Json::Value& event);

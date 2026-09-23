@@ -137,6 +137,18 @@ own `productivity.db`.
 - **Installed whenever NATS is configured**, not only when the first connect
   succeeds: the outbox is what makes a broker that is down survivable, so the
   sink is bound at boot and its drain reconciles once the schema is applied.
+- **The drain is stopped before Drogon quits, not after.** The sink registers
+  with `shutdown_signal` at boot, **before `drogon::app().run()`** — which is
+  also before `reconcile()` starts its worker:
+  SIGTERM/SIGINT only
+  requests the stop, the loop keeps running while the worker leaves its pass,
+  and `quit()` follows once the worker reports drained (a 10-second deadline
+  bounds the wait). The worker is a thread of the sink's own, so Drogon does
+  not stop it, and `quit()` destroys the database client manager the worker
+  reaches through `DbService::client()`. The registration comes first because
+  the hook's handlers are what `run()` installs Drogon's `sigaction` over, and
+  because a drain registered after the stop was requested is only stopped at
+  once, never waited for.
 - **One pass drains a batch.** A create-with-share is one burst of changes, so
   the drain reads up to 64 pending rows per pass, publishes them oldest-first
   and waits 50 ms while it is progressing, the retry cadence otherwise. A

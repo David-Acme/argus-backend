@@ -78,6 +78,18 @@ bool hasPending(const ChangeOutboxRepository& outbox)
   return !outbox.pendingBatch(1).empty();
 }
 
+bool waitForDrain(const NatsIdentityChangeSink& sink,
+                  std::chrono::milliseconds timeout)
+{
+  const auto deadline = std::chrono::steady_clock::now() + timeout;
+  while (std::chrono::steady_clock::now() < deadline) {
+    if (sink.drained())
+      return true;
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  return sink.drained();
+}
+
 NatsBus::StreamStatus
 streamStatus(const std::optional<NatsBus::StreamStatus>& status)
 {
@@ -334,6 +346,11 @@ TEST_CASE("the change sink lands every catalog row, emit, audit and journal "
     CHECK(action.subject == kActionSubject);
     CHECK(action.eventId.empty());
     CHECK(action.attempts == 0);
+    CHECK_FALSE(sink.drained());
+    sink.requestStop();
+    CHECK(waitForDrain(sink, std::chrono::seconds(5)));
+    sink.requestStop();
+    CHECK(sink.drained());
     CHECK(outbox.markSent(action.id, 3100));
     CHECK_FALSE(hasPending(outbox));
   }

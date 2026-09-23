@@ -39,6 +39,8 @@ public:
   Json::Value health() const;
 
   void reconcile();
+  void requestStop();
+  [[nodiscard]] bool drained() const;
 
   std::function<void(const std::string&)> syncHook;
 
@@ -55,6 +57,7 @@ private:
   std::atomic<int64_t> nextSequence_{1};
   std::atomic<bool> streamReady_{false};
   std::atomic<bool> workerStarted_{false};
+  std::atomic<bool> exited_{false};
   std::atomic<int64_t> pendingCount_{0};
   std::atomic<int64_t> sentCount_{0};
   std::atomic<int64_t> overflowCount_{0};

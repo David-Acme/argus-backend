@@ -95,6 +95,18 @@ bool countersMatch(const Json::Value& health,
          health["overflowDropped"].as<int64_t>() == stats.overflowDropped;
 }
 
+bool waitForDrain(const NatsObjectEventSink& sink,
+                  std::chrono::milliseconds timeout)
+{
+  const auto deadline = std::chrono::steady_clock::now() + timeout;
+  while (std::chrono::steady_clock::now() < deadline) {
+    if (sink.drained())
+      return true;
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  return sink.drained();
+}
+
 ObjectDetectedEvent personEvent(const std::string& eventId)
 {
   ObjectDetectedEvent event;
@@ -154,6 +166,12 @@ TEST_CASE("the sink health counters equal the durable outbox state")
           ObjectEventPublishResult::Recorded);
     CHECK(outbox.stats().overflowDropped == 1);
     CHECK(countersMatch(sink.health(), outbox.stats()));
+
+    CHECK_FALSE(sink.drained());
+    sink.requestStop();
+    CHECK(waitForDrain(sink, std::chrono::seconds(5)));
+    sink.requestStop();
+    CHECK(sink.drained());
   }
 
   {
