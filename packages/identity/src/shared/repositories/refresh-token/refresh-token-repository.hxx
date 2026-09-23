@@ -3,6 +3,7 @@
 #include "refresh-token-query.hxx"
 
 #include <cstdint>
+#include <drogon/orm/DbClient.h>
 #include <drogon/utils/coroutine.h>
 #include <optional>
 #include <shared/schemas/refresh-token/refresh-token-schema.hxx>
@@ -30,6 +31,8 @@ public:
 
   drogon::Task<bool> invalidate(int64_t id) const;
   drogon::Task<bool> markUsed(int64_t id) const;
-  drogon::Task<bool> invalidateAllUser(int64_t userId) const;
+  drogon::Task<bool>
+  invalidateAllUser(int64_t userId,
+                    drogon::orm::DbClient* client = nullptr) const;
   drogon::Task<void> pruneStale(int64_t userId) const;
 };

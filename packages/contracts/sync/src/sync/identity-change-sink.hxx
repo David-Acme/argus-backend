@@ -1,9 +1,11 @@
 #pragma once
 
 #include <cstdint>
+#include <drogon/orm/DbClient.h>
 #include <drogon/utils/coroutine.h>
 #include <json/value.h>
 #include <sync/module-audit-event.hxx>
+#include <sync/module-emit.hxx>
 #include <sync/socket-emit-dto.hxx>
 #include <sync/table-name.hxx>
 #include <sync/user-action-event.hxx>
@@ -15,6 +17,13 @@ struct IdentityCatalogInput
   int64_t id{0};
   bool deleted{false};
   Json::Value row;
+  drogon::orm::DbClient* client{nullptr};
+};
+
+struct ActionPublishInput
+{
+  UserActionEvent event;
+  drogon::orm::DbClient* client{nullptr};
 };
 
 class IdentityChangeSink
@@ -25,8 +34,7 @@ public:
   virtual drogon::Task<void> publishCatalog(
       const IdentityCatalogInput& input) const = 0;
 
-  virtual drogon::Task<void> emitModule(TableName table,
-                                        const SocketEmitDto& body) const = 0;
+  virtual drogon::Task<void> emitModule(const ModuleEmitInput& input) const = 0;
 
   virtual drogon::Task<void>
   publishModuleAudit(const ModuleAuditInput& input) const = 0;
@@ -35,7 +43,7 @@ public:
   publishUsersAudit(const UserAuditInput& input) const = 0;
 
   virtual drogon::Task<void>
-  publishAction(const UserActionEvent& event) const = 0;
+  publishAction(const ActionPublishInput& input) const = 0;
 };
 
 namespace identity_change

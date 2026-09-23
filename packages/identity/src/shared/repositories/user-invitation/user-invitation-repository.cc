@@ -8,7 +8,8 @@ using namespace user_invitation_query;
 drogon::Task<UserInvitationSchema>
 UserInvitationRepository::create(const UserInvitationCreateInput& input) const
 {
-  auto client = DbService::client();
+  const auto pooled = DbService::client();
+  auto* client = input.client ? input.client : pooled.get();
   const auto result = co_await client->execSqlCoro(
       INSERT.data(), input.tokenHash, userRoleToString(input.role),
       input.maxRedemptions, input.expiresAt, input.createdBy);
@@ -25,21 +26,25 @@ UserInvitationRepository::create(const UserInvitationCreateInput& input) const
 }
 
 drogon::Task<std::optional<UserInvitationSchema>>
-UserInvitationRepository::findById(int64_t id) const
+UserInvitationRepository::findById(int64_t id,
+                                   drogon::orm::DbClient* client) const
 {
-  auto client = DbService::client();
-  const auto result = co_await client->execSqlCoro(FIND_BY_ID.data(), id);
+  const auto pooled = DbService::client();
+  auto* resolved = client ? client : pooled.get();
+  const auto result = co_await resolved->execSqlCoro(FIND_BY_ID.data(), id);
   if (result.empty())
     co_return std::nullopt;
   co_return UserInvitationSchema(result.front());
 }
 
 drogon::Task<std::optional<UserInvitationSchema>>
-UserInvitationRepository::findByTokenHash(const std::string& tokenHash) const
+UserInvitationRepository::findByTokenHash(const std::string& tokenHash,
+                                          drogon::orm::DbClient* client) const
 {
-  auto client = DbService::client();
+  const auto pooled = DbService::client();
+  auto* resolved = client ? client : pooled.get();
   const auto result =
-      co_await client->execSqlCoro(FIND_BY_TOKEN_HASH.data(), tokenHash);
+      co_await resolved->execSqlCoro(FIND_BY_TOKEN_HASH.data(), tokenHash);
   if (result.empty())
     co_return std::nullopt;
   co_return UserInvitationSchema(result.front());
@@ -60,7 +65,8 @@ UserInvitationRepository::findAll() const
 drogon::Task<bool>
 UserInvitationRepository::revoke(const UserInvitationRevokeInput& input) const
 {
-  auto client = DbService::client();
+  const auto pooled = DbService::client();
+  auto* client = input.client ? input.client : pooled.get();
   const auto result = co_await client->execSqlCoro(
       REVOKE.data(), input.revokedBy, input.invitationId);
   co_return result.affectedRows() > 0;

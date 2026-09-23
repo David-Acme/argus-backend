@@ -52,5 +52,5 @@ public:
   findLastSync(const NotificationSyncFilter& filter) const;
 
   drogon::Task<std::vector<NotificationReadChange>>
-  markAsRead(int64_t userId, const std::vector<int64_t>& ids) const;
+  markAsRead(const NotificationMarkReadInput& input) const;
 };

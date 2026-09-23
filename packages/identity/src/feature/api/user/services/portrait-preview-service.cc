@@ -6,6 +6,9 @@
 #include <openssl/rand.h>
 #include <identity/identity-errors.hxx>
 #include <errors/response-exception.hxx>
+#include <optional>
+#include <sqlite/db-service.hxx>
+#include <sqlite/transaction.hxx>
 #include <string_view>
 #include <sync/identity-change-sink.hxx>
 
@@ -113,39 +116,55 @@ PortraitPreviewService::consume(const PortraitPreviewConsumeInput& input) const
   if (input.token.empty())
     throw ResponseException(404, IdentityErrors::PortraitPreviewUnavailable);
 
-  const auto capability =
-      co_await capabilityRepository_.findByTokenHash(hashToken(input.token));
-  const auto now = std::time(nullptr);
-  if (!capability || capability->requesterUserId != input.requesterUserId) {
-    throw ResponseException(404, IdentityErrors::PortraitPreviewUnavailable);
+  std::optional<PortraitPreviewCapabilitySchema> capability;
+  auto transaction =
+      co_await db_transaction::begin(DbService::identityClient());
+  try {
+    capability = co_await capabilityRepository_.findByTokenHash(
+        hashToken(input.token), transaction.get());
+    const auto now = std::time(nullptr);
+    if (!capability || capability->requesterUserId != input.requesterUserId)
+      throw ResponseException(404,
+                              IdentityErrors::PortraitPreviewUnavailable);
+
+    const bool consumed = co_await capabilityRepository_.tryConsume({
+        .id = capability->id,
+        .requesterUserId = input.requesterUserId,
+        .now = now,
+        .client = transaction.get(),
+    });
+    if (!consumed)
+      throw ResponseException(404,
+                              IdentityErrors::PortraitPreviewUnavailable);
+
+    Json::Value event;
+    event["event"] = "portrait_preview";
+    event["portraitUserId"] = Json::Int64(capability->portraitUserId);
+    if (const auto* sink = identity_change::getSink()) {
+      co_await sink->publishAction(
+          {.event = {.userId = input.requesterUserId,
+                     .recordId = capability->portraitUserId,
+                     .tableName = TableName::User,
+                     .action = UserAction::Read,
+                     .oldData = Json::Value(),
+                     .newData = event,
+                     .ipAddress = ""},
+           .client = transaction.get()});
+    }
+
+    if (!co_await db_transaction::Commit(std::move(transaction)))
+      throw ResponseException(IdentityErrors::ChangeNotRecorded);
   }
-  const bool consumed = co_await capabilityRepository_.tryConsume({
-      .id = capability->id,
-      .requesterUserId = input.requesterUserId,
-      .now = now,
-  });
-  if (!consumed)
-    throw ResponseException(404, IdentityErrors::PortraitPreviewUnavailable);
+  catch (...) {
+    db_transaction::rollback(transaction);
+    throw;
+  }
 
   const auto portrait =
       co_await privatePortraitService_.read(capability->portraitUserId);
   if (!portrait)
     throw ResponseException(404, IdentityErrors::PortraitUnavailable);
 
-  Json::Value event;
-  event["event"] = "portrait_preview";
-  event["portraitUserId"] = Json::Int64(capability->portraitUserId);
-  if (const auto* sink = identity_change::getSink()) {
-    co_await sink->publishAction({
-        .userId = input.requesterUserId,
-        .recordId = capability->portraitUserId,
-        .tableName = TableName::User,
-        .action = UserAction::Read,
-        .oldData = Json::Value(),
-        .newData = event,
-        .ipAddress = "",
-    });
-  }
   co_return {
       .mimeType = portrait->mimeType,
       .base64 = base64(portrait->bytes),

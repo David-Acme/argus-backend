@@ -1,5 +1,6 @@
 #pragma once
 #include <cstdint>
+#include <drogon/orm/DbClient.h>
 #include <string>
 #include <string_view>
 
@@ -43,6 +44,7 @@ struct FaceEmbeddingCreateInput
   std::string embedding;
   std::string angleLabel{"frontal"};
   double quality{1.0};
+  drogon::orm::DbClient* client{nullptr};
 };
 
 struct FaceVecInsertInput

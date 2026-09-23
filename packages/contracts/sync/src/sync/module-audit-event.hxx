@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <drogon/orm/DbClient.h>
 #include <json/value.h>
 #include <optional>
 #include <sync/audit-log-priority.hxx>
@@ -16,6 +17,7 @@ struct ModuleAuditInput
   Json::Value before;
   Json::Value after;
   std::optional<int64_t> actorId;
+  drogon::orm::DbClient* client{nullptr};
 };
 
 struct ModuleAuditEvent

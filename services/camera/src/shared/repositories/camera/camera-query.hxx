@@ -2,6 +2,7 @@
 #include <camera/camera-driver.hxx>
 #include <camera/camera-record-mode.hxx>
 #include <cstdint>
+#include <drogon/orm/DbClient.h>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -102,6 +103,7 @@ struct CameraCreateInput
   std::optional<int64_t> retentionDays;
   std::string capabilities;
   std::string config;
+  drogon::orm::DbClient* client{nullptr};
 };
 
 struct CameraUpdateInput
@@ -123,4 +125,5 @@ struct CameraUpdateInput
   std::optional<std::string> config;
   std::optional<bool> isEnabled;
   std::optional<bool> isOnline;
+  drogon::orm::DbClient* client{nullptr};
 };

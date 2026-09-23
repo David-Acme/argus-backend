@@ -1,10 +1,10 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <algorithm>
+#include <array>
 #include <cstddef>
 #include <doctest/doctest.h>
 #include <productivity/productivity-errors.hxx>
 #include <string>
-#include <vector>
 
 struct CatalogEntry
 {
@@ -15,24 +15,53 @@ struct CatalogEntry
   const char* message;
 };
 
-const std::vector<CatalogEntry> kCatalog{
-    {"ProjectNotFound", &ProductivityErrors::ProjectNotFound,
-     ErrorCode::NotFound, 404, "Project not found"},
-    {"TaskNotFound", &ProductivityErrors::TaskNotFound, ErrorCode::NotFound,
-     404, "Task not found"},
-    {"CalendarEventNotFound", &ProductivityErrors::CalendarEventNotFound,
-     ErrorCode::NotFound, 404, "Calendar event not found"},
-    {"ShareNotFound", &ProductivityErrors::ShareNotFound, ErrorCode::NotFound,
-     404, "Share not found"},
-    {"UserNotFound", &ProductivityErrors::UserNotFound, ErrorCode::NotFound,
-     404, "User not found"},
-    {"CannotSeeProjects", &ProductivityErrors::CannotSeeProjects,
-     ErrorCode::Forbidden, 403, "That user cannot see projects"},
-    {"CannotSeeCalendarEvents", &ProductivityErrors::CannotSeeCalendarEvents,
-     ErrorCode::Forbidden, 403, "That user cannot see calendar events"},
-    {"OwnerAlreadyHasAccess", &ProductivityErrors::OwnerAlreadyHasAccess,
-     ErrorCode::Conflict, 409, "The owner already has access"},
-};
+constexpr std::array<CatalogEntry, 9> kCatalog{{
+    {.name = "ProjectNotFound",
+     .definition = &ProductivityErrors::ProjectNotFound,
+     .code = ErrorCode::NotFound,
+     .status = 404,
+     .message = "Project not found"},
+    {.name = "TaskNotFound",
+     .definition = &ProductivityErrors::TaskNotFound,
+     .code = ErrorCode::NotFound,
+     .status = 404,
+     .message = "Task not found"},
+    {.name = "CalendarEventNotFound",
+     .definition = &ProductivityErrors::CalendarEventNotFound,
+     .code = ErrorCode::NotFound,
+     .status = 404,
+     .message = "Calendar event not found"},
+    {.name = "ShareNotFound",
+     .definition = &ProductivityErrors::ShareNotFound,
+     .code = ErrorCode::NotFound,
+     .status = 404,
+     .message = "Share not found"},
+    {.name = "UserNotFound",
+     .definition = &ProductivityErrors::UserNotFound,
+     .code = ErrorCode::NotFound,
+     .status = 404,
+     .message = "User not found"},
+    {.name = "CannotSeeProjects",
+     .definition = &ProductivityErrors::CannotSeeProjects,
+     .code = ErrorCode::Forbidden,
+     .status = 403,
+     .message = "That user cannot see projects"},
+    {.name = "CannotSeeCalendarEvents",
+     .definition = &ProductivityErrors::CannotSeeCalendarEvents,
+     .code = ErrorCode::Forbidden,
+     .status = 403,
+     .message = "That user cannot see calendar events"},
+    {.name = "OwnerAlreadyHasAccess",
+     .definition = &ProductivityErrors::OwnerAlreadyHasAccess,
+     .code = ErrorCode::Conflict,
+     .status = 409,
+     .message = "The owner already has access"},
+    {.name = "ChangeNotRecorded",
+     .definition = &ProductivityErrors::ChangeNotRecorded,
+     .code = ErrorCode::InternalError,
+     .status = 500,
+     .message = "The change could not be recorded"},
+}};
 
 constexpr std::size_t kMaxMessageBytes = 1024;
 constexpr std::size_t kMaxCodeBytes = 128;
@@ -46,7 +75,7 @@ TEST_CASE("the productivity catalog matches the table pinned here")
     CHECK(entry.definition->status == entry.status);
     CHECK(std::string(entry.definition->message) == entry.message);
   }
-  CHECK(kCatalog.size() == 8);
+  CHECK(kCatalog.size() == 9);
 }
 
 TEST_CASE("every productivity entry is legal on the wire")

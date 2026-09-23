@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <drogon/orm/DbClient.h>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -145,6 +146,7 @@ struct ProjectTaskCreateInput
   std::string priority;
   std::optional<int64_t> dueAt;
   double sortOrder{0.0};
+  drogon::orm::DbClient* client{nullptr};
 };
 
 struct ProjectTaskUpdateInput
@@ -155,4 +157,5 @@ struct ProjectTaskUpdateInput
   std::optional<int64_t> assigneeId;
   std::optional<int64_t> dueAt;
   std::optional<double> sortOrder;
+  drogon::orm::DbClient* client{nullptr};
 };

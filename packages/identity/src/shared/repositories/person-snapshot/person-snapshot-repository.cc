@@ -8,7 +8,8 @@ using namespace person_snapshot_query;
 drogon::Task<bool> PersonSnapshotRepository::store(
     const PersonSnapshotStoreInput& input) const
 {
-  auto client = DbService::client();
+  const auto pooled = DbService::client();
+  auto* client = input.client ? input.client : pooled.get();
   const auto result = co_await client->execSqlCoro(
       UPSERT.data(), input.personId, input.image,
       static_cast<int64_t>(std::time(nullptr)));

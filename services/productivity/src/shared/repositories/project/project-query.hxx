@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <drogon/orm/DbClient.h>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -132,6 +133,7 @@ struct ProjectCreateInput
   std::string color;
   std::optional<int64_t> startsAt;
   std::optional<int64_t> targetAt;
+  drogon::orm::DbClient* client{nullptr};
 };
 
 struct ProjectUpdateInput
@@ -142,4 +144,5 @@ struct ProjectUpdateInput
   std::optional<std::string> color;
   std::optional<int64_t> startsAt;
   std::optional<int64_t> targetAt;
+  drogon::orm::DbClient* client{nullptr};
 };

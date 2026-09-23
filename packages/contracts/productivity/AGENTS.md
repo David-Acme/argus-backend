@@ -1,7 +1,7 @@
 # argus_contracts_productivity
 
 The productivity boundary's vocabulary: the reminder detail states, the share
-access level, the membership refusal enum and the eight service refusals.
+access level, the membership refusal enum and the nine service refusals.
 
 ## What this is
 
@@ -15,10 +15,11 @@ this vocabulary on the sync leg moved into the owning services in sub-step
 
 ## Layout
 
-- `src/productivity/productivity-errors.hxx` — the eight refusals
-  (`ProjectNotFound`, `TaskNotFound`, `CalendarEventNotFound` and the rest),
-  answered by the service instead of a message string so code, status and text
-  cannot drift apart; 6 files include it.
+- `src/productivity/productivity-errors.hxx` — the nine refusals
+  (`ProjectNotFound`, `TaskNotFound`, `CalendarEventNotFound` and the rest,
+  including the answer a change that could not be recorded gives), answered by
+  the service instead of a message string so code, status and text cannot
+  drift apart; 6 files include it.
 - `src/productivity/reminder-detail-status.hxx` — `ReminderDetailStatus`
   (`Pending`, `InProgress`, `Done`, `Blocked`) with its round-trip pair
   (`"pending"`, `"in_progress"`, `"done"`, `"blocked"`); 3 files.
@@ -49,6 +50,6 @@ this vocabulary on the sync leg moved into the owning services in sub-step
 
 - `tests/unit/productivity-contract-vocabulary-test.cc` — the enums'
   round-trips.
-- `tests/unit/productivity-contract-catalog-test.cc` — the eight refusals as
+- `tests/unit/productivity-contract-catalog-test.cc` — the nine refusals as
   a pinned table, each entry's wire legality, and that no two say the same
   thing.

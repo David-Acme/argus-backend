@@ -3,6 +3,8 @@
 #include <auth/user-role.hxx>
 #include <errors/response-exception.hxx>
 #include <identity/identity-errors.hxx>
+#include <sqlite/db-service.hxx>
+#include <sqlite/transaction.hxx>
 #include <sync/identity-change-sink.hxx>
 #include <sync/socket-emit-dto.hxx>
 #include <sync/sync-control-sink.hxx>
@@ -37,25 +39,86 @@ UserFeatureService::list(int64_t actorId, UserRole actorRole) const
 drogon::Task<UserSchema>
 UserFeatureService::update(const UserManagementUpdateInput& input) const
 {
-  const auto existing = co_await repository_.findById(input.targetUserId);
-  if (!existing)
-    throw ResponseException(404, IdentityErrors::UserNotFound);
+  UserSchema updated;
+  std::optional<UserSchema> existing;
+  bool roleChanged = false;
+  bool deactivated = false;
 
-  if (removesLastActiveOwner(*existing, input) &&
-      !co_await repository_.hasOtherActiveOwner(existing->id)) {
-    throw ResponseException(409, IdentityErrors::ActiveOwnerRequired);
+  auto transaction =
+      co_await db_transaction::begin(DbService::identityClient());
+  try {
+    existing = co_await repository_.findById(input.targetUserId,
+                                             transaction.get());
+    if (!existing)
+      throw ResponseException(404, IdentityErrors::UserNotFound);
+
+    if (removesLastActiveOwner(*existing, input) &&
+        !co_await repository_.hasOtherActiveOwner(existing->id,
+                                                  transaction.get())) {
+      throw ResponseException(409, IdentityErrors::ActiveOwnerRequired);
+    }
+
+    updated = co_await repository_.update(
+        existing->id,
+        {.name = input.body.name,
+         .lastName = input.body.lastName,
+         .role = input.body.role,
+         .isActive = input.body.isActive,
+         .client = transaction.get()});
+    if (updated.id == 0)
+      throw ResponseException(404, IdentityErrors::UserNotFound);
+
+    roleChanged = updated.role != existing->role;
+    deactivated = existing->isActive && !updated.isActive;
+
+    auto recipients = co_await repository_.findAll(transaction.get());
+    std::vector<int64_t> recipientIds{updated.id};
+    for (const auto& recipient : recipients) {
+      if (recipient.role == UserRole::Owner ||
+          recipient.role == UserRole::Guard)
+        recipientIds.push_back(recipient.id);
+    }
+    if (const auto* sink = identity_change::getSink()) {
+      co_await sink->publishUsersAudit({
+          .recordId = updated.id,
+          .tableName = TableName::User,
+          .before = existing->toJson(),
+          .after = updated.toJson(),
+          .userIds = std::move(recipientIds),
+          .client = transaction.get(),
+      });
+    }
+
+    if (const auto* sink = identity_change::getSink()) {
+      const IdentityCatalogInput catalog{.table = TableName::User,
+                                         .id = updated.id,
+                                         .deleted = false,
+                                         .row = updated.toJson(),
+                                         .client = transaction.get()};
+      co_await sink->publishCatalog(catalog);
+    }
+    co_await recordChange({
+        .actorId = input.actorId,
+        .before = *existing,
+        .after = updated,
+        .action = UserAction::Update,
+        .client = transaction.get(),
+    });
+
+    if (deactivated) {
+      co_await refreshTokenRepository_.invalidateAllUser(updated.id,
+                                                         transaction.get());
+    }
+
+    if (!co_await db_transaction::Commit(std::move(transaction)))
+      throw ResponseException(IdentityErrors::ChangeNotRecorded);
+  }
+  catch (...) {
+    db_transaction::rollback(transaction);
+    throw;
   }
 
-  const auto updated = co_await repository_.update(
-      existing->id,
-      {.name = input.body.name,
-       .lastName = input.body.lastName,
-       .role = input.body.role,
-       .isActive = input.body.isActive});
-  if (updated.id == 0)
-    throw ResponseException(404, IdentityErrors::UserNotFound);
-
-  if (updated.role != existing->role) {
+  if (roleChanged) {
     if (const auto* control = sync_control::getSink()) {
       const bool replaced = control->replaceRoleRooms(
           {.userId = updated.id,
@@ -68,38 +131,7 @@ UserFeatureService::update(const UserManagementUpdateInput& input) const
     emitAuthContextChanged(updated);
   }
 
-  auto recipients = co_await repository_.findAll();
-  std::vector<int64_t> recipientIds{updated.id};
-  for (const auto& recipient : recipients) {
-    if (recipient.role == UserRole::Owner || recipient.role == UserRole::Guard)
-      recipientIds.push_back(recipient.id);
-  }
-  if (const auto* sink = identity_change::getSink()) {
-    co_await sink->publishUsersAudit({
-        .recordId = updated.id,
-        .tableName = TableName::User,
-        .before = existing->toJson(),
-        .after = updated.toJson(),
-        .userIds = std::move(recipientIds),
-    });
-  }
-
-  if (const auto* sink = identity_change::getSink()) {
-    const IdentityCatalogInput catalog{.table = TableName::User,
-                                       .id = updated.id,
-                                       .deleted = false,
-                                       .row = updated.toJson()};
-    co_await sink->publishCatalog(catalog);
-  }
-  co_await recordChange({
-      .actorId = input.actorId,
-      .before = *existing,
-      .after = updated,
-      .action = UserAction::Update,
-  });
-
-  if (existing->isActive && !updated.isActive) {
-    co_await refreshTokenRepository_.invalidateAllUser(updated.id);
+  if (deactivated) {
     SocketEmitDto context;
     context.operation = SyncOperation::AuthContextChanged;
     context.option = TableName::User;
@@ -151,15 +183,15 @@ drogon::Task<void>
 UserFeatureService::recordChange(const UserChangeLogInput& input) const
 {
   if (const auto* sink = identity_change::getSink()) {
-    co_await sink->publishAction({
-        .userId = input.actorId,
-        .recordId = input.after.id,
-        .tableName = TableName::User,
-        .action = input.action,
-        .oldData = input.before.toJson(),
-        .newData = input.after.toJson(),
-        .ipAddress = "",
-    });
+    co_await sink->publishAction(
+        {.event = {.userId = input.actorId,
+                   .recordId = input.after.id,
+                   .tableName = TableName::User,
+                   .action = input.action,
+                   .oldData = input.before.toJson(),
+                   .newData = input.after.toJson(),
+                   .ipAddress = ""},
+         .client = input.client});
   }
   co_return;
 }

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <drogon/orm/DbClient.h>
 #include <string>
 #include <string_view>
 
@@ -21,4 +22,5 @@ struct DeviceCredentialCreateInput
   int64_t userId{0};
   std::string deviceHash;
   std::string secretHash;
+  drogon::orm::DbClient* client{nullptr};
 };

@@ -1,14 +1,15 @@
 #include "nats-notification-change-sink.hxx"
 
 #include <chrono>
+#include <errors/response-exception.hxx>
 #include <exception>
+#include <notification/notification-errors.hxx>
 #include <shared/repositories/change-outbox/change-outbox-key.hxx>
 #include <sync/user-audit-event.hxx>
 #include <text/json-diff.hxx>
 #include <text/json-util.hxx>
 #include <nats/nats-bus.hxx>
 #include <nats/nats-subject.hxx>
-#include <trantor/net/EventLoop.h>
 #include <trantor/utils/Logger.h>
 #include <utility>
 
@@ -24,8 +25,6 @@ int64_t nowMs()
 }
 
 constexpr int64_t kStuckLogEvery = 100;
-constexpr int kEnqueueAttempts = 3;
-constexpr int kEnqueueRetryMs = 25;
 constexpr int kDrainBatch = 64;
 constexpr int kProgressMs = 50;
 }
@@ -78,39 +77,24 @@ drogon::Task<void> NatsNotificationChangeSink::publishAudit(
       change_outbox_key::eventId({.table = tableNameToString(input.tableName),
                                   .recordId = input.recordId,
                                   .discriminator = payload});
-  co_await enqueue(id, payload);
+  co_await enqueue(
+      {.eventId = id, .payload = payload, .client = input.client});
 }
 
 drogon::Task<void>
-NatsNotificationChangeSink::enqueue(std::string eventId,
-                                    std::string payloadJson) const
+NatsNotificationChangeSink::enqueue(ChangeOutboxEnqueueInput input) const
 {
-  if (payloadJson.size() > kMaxPayloadBytes) {
-    LOG_ERROR << "Notification change outbox: " << eventId << " carries "
-              << payloadJson.size()
-              << " bytes, past the broker's message budget; not recorded";
-    co_return;
+  if (input.payload.size() > kMaxPayloadBytes) {
+    LOG_ERROR << "Notification change outbox: " << input.eventId << " carries "
+              << input.payload.size()
+              << " bytes, past the broker's message budget; the write is "
+                 "refused";
+    throw ResponseException(NotificationErrors::ChangeNotRecorded);
   }
-  const std::string fingerprint =
-      change_outbox_key::fingerprintJson(payloadJson);
-  const ChangeOutboxEnqueueInput input{
-      .eventId = std::move(eventId),
-      .fingerprint = fingerprint,
-      .payload = std::move(payloadJson),
-      .at = nowMs(),
-  };
-  for (int attempt = 0; attempt < kEnqueueAttempts; ++attempt) {
-    if (co_await outbox_.enqueue(input) != ChangeOutboxDisposition::Failed) {
-      wake_.notify_all();
-      co_return;
-    }
-    co_await drogon::sleepCoro(
-        trantor::EventLoop::getEventLoopOfCurrentThread(),
-        std::chrono::milliseconds(kEnqueueRetryMs));
-  }
-  LOG_ERROR << "Notification change outbox: " << input.eventId
-            << " could not be recorded in " << kEnqueueAttempts
-            << " attempts; the change is lost";
+  input.fingerprint = change_outbox_key::fingerprintJson(input.payload);
+  input.at = nowMs();
+  co_await outbox_.enqueue(input);
+  wake_.notify_all();
 }
 
 void NatsNotificationChangeSink::reconcile()

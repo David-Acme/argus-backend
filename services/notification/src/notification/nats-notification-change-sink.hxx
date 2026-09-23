@@ -40,8 +40,8 @@ public:
   static constexpr std::size_t kMaxPayloadBytes = std::size_t{256} * 1024;
 
 private:
-  [[nodiscard]] drogon::Task<void> enqueue(std::string eventId,
-                                           std::string payloadJson) const;
+  [[nodiscard]] drogon::Task<void>
+  enqueue(ChangeOutboxEnqueueInput input) const;
   bool ensureStream() const;
   void flushLoop();
   bool flush(const ChangeOutboxRow& row);

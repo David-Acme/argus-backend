@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <drogon/orm/DbClient.h>
 #include <drogon/utils/coroutine.h>
 #include <feature/api/auth/dtos/create-device-login-dto.hxx>
 #include <feature/api/auth/dtos/device-login-status-dto.hxx>
@@ -47,6 +48,13 @@ struct IssueSessionInput
   LoginDeviceInput device;
 };
 
+struct IssueDeviceCredentialInput
+{
+  int64_t userId{0};
+  std::string userAgent;
+  drogon::orm::DbClient* client{nullptr};
+};
+
 class AuthService
 {
 public:
@@ -81,7 +89,7 @@ private:
   issueSession(const IssueSessionInput& input) const;
 
   drogon::Task<IssuedDeviceCredential>
-  issueDeviceCredential(int64_t userId, const std::string& userAgent) const;
+  issueDeviceCredential(const IssueDeviceCredentialInput& input) const;
 
   JwtService jwtService_;
   PersonRepository personRepository_;

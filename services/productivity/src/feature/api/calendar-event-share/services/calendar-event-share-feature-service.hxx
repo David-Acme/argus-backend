@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <drogon/orm/DbClient.h>
 #include <drogon/utils/coroutine.h>
 #include <feature/api/calendar-event-share/dtos/create-calendar-event-share-dto.hxx>
 #include <feature/api/calendar-event-share/dtos/update-calendar-event-share-dto.hxx>
@@ -39,6 +40,7 @@ private:
     SyncOperation operation{};
     const CalendarEventShareSchema& row;
     int64_t ownerId{0};
+    drogon::orm::DbClient* client{nullptr};
   };
 
   struct EmitParentInput
@@ -46,6 +48,7 @@ private:
     SyncOperation operation{};
     int64_t parentId{0};
     int64_t userId{0};
+    drogon::orm::DbClient* client{nullptr};
   };
 
   drogon::Task<void> emitMembership(const EmitMembershipInput& input) const;

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <drogon/orm/DbClient.h>
 #include <drogon/utils/coroutine.h>
 #include <memory>
 #include <shared/repositories/change-outbox/change-outbox-repository.hxx>
@@ -34,13 +35,13 @@ public:
   [[nodiscard]] drogon::Task<void>
   publishCatalog(const IdentityCatalogInput& input) const override;
   [[nodiscard]] drogon::Task<void>
-  emitModule(TableName table, const SocketEmitDto& body) const override;
+  emitModule(const ModuleEmitInput& input) const override;
   [[nodiscard]] drogon::Task<void>
   publishModuleAudit(const ModuleAuditInput& input) const override;
   [[nodiscard]] drogon::Task<void>
   publishUsersAudit(const UserAuditInput& input) const override;
   [[nodiscard]] drogon::Task<void>
-  publishAction(const UserActionEvent& event) const override;
+  publishAction(const ActionPublishInput& input) const override;
 
   void reconcile();
   void requestStop();
@@ -49,10 +50,10 @@ public:
   static constexpr std::size_t kMaxPayloadBytes = std::size_t{256} * 1024;
 
 private:
-  [[nodiscard]] drogon::Task<void> enqueueChange(std::string eventId,
-                                                 std::string payloadJson) const;
   [[nodiscard]] drogon::Task<void>
-  enqueueAction(std::string payloadJson) const;
+  enqueue(ChangeOutboxEnqueueInput input) const;
+  [[nodiscard]] drogon::Task<void>
+  enqueueAction(std::string payloadJson, drogon::orm::DbClient* client) const;
   bool ensureStream() const;
   void flushLoop();
   bool flush(const ChangeOutboxRow& row);

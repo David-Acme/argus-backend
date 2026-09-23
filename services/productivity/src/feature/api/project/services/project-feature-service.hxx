@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <drogon/orm/DbClient.h>
 #include <drogon/utils/coroutine.h>
 #include <feature/api/project/dtos/create-project-dto.hxx>
 #include <feature/api/project/dtos/update-project-dto.hxx>
@@ -27,9 +28,22 @@ public:
   drogon::Task<bool> remove(int64_t id, int64_t actorId) const;
 
 private:
-  drogon::Task<void> emit(SyncOperation operation,
-                          const ProjectSchema& row) const;
-  drogon::Task<bool> canEdit(const ProjectSchema& row, int64_t actorId) const;
+  struct EmitInput
+  {
+    SyncOperation operation{};
+    const ProjectSchema& row;
+    drogon::orm::DbClient* client{nullptr};
+  };
+
+  struct CanEditInput
+  {
+    const ProjectSchema& row;
+    int64_t actorId{0};
+    drogon::orm::DbClient* client{nullptr};
+  };
+
+  drogon::Task<void> emit(const EmitInput& input) const;
+  drogon::Task<bool> canEdit(const CanEditInput& input) const;
 
   ProjectRepository repository_;
   ProjectMemberRepository memberRepository_;

@@ -134,7 +134,7 @@ TEST_CASE("productivity sync RPC scopes pulls by caller and serves tombstones")
 
   REQUIRE(DbService::runScriptFile(ARGUS_PRODUCTIVITY_SCHEMA));
 
-  auto client = DbService::client();
+  auto client = DbService::productivityClient();
   client->execSqlSync(
       "INSERT INTO project (id, owner_id, name, status, color, created_at) "
       "VALUES (1, 42, 'Home', 'active', '', 1000)");

@@ -313,6 +313,27 @@ target_compile_options(notification-change-outbox-sink-test
 add_test(NAME notification-change-outbox-sink-test
          COMMAND notification-change-outbox-sink-test)
 
+add_executable(notification-change-transaction-test
+    tests/unit/notification-change-transaction-test.cc)
+
+set_target_properties(notification-change-transaction-test PROPERTIES
+    EXCLUDE_FROM_ALL FALSE)
+
+target_compile_definitions(notification-change-transaction-test PRIVATE
+    ARGUS_NOTIFICATION_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql")
+
+target_link_libraries(notification-change-transaction-test PRIVATE
+    notification-core
+    argus::lib::nats
+    argus::lib::sqlite
+    doctest::doctest)
+
+target_compile_options(notification-change-transaction-test
+                       PRIVATE -Wall -Wextra)
+
+add_test(NAME notification-change-transaction-test
+         COMMAND notification-change-transaction-test)
+
 add_executable(notification-ack-test tests/unit/notification-ack-test.cc)
 
 set_target_properties(notification-ack-test PROPERTIES

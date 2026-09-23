@@ -3,6 +3,7 @@
 
 #include <camera/nats-camera-change-sink.hxx>
 #include <drogon/drogon.h>
+#include <errors/response-exception.hxx>
 #include <shared/repositories/change-outbox/change-outbox-key.hxx>
 #include <shared/repositories/change-outbox/change-outbox-repository.hxx>
 #include <sqlite/db-service.hxx>
@@ -119,7 +120,8 @@ TEST_CASE("the change sink lands every transition in the durable outbox")
                                               .publishSubject = {},
                                               .streamName = {}});
     CHECK(sink.drained());
-    drogon::sync_wait(sink.emitModule(TableName::Camera, add));
+    drogon::sync_wait(sink.emitModule(
+        {.table = TableName::Camera, .body = add, .client = nullptr}));
 
     const ChangeOutboxRow created = pendingRow(outbox.pendingBatch(1));
     CHECK(created.eventId ==
@@ -131,7 +133,8 @@ TEST_CASE("the change sink lands every transition in the durable outbox")
     CHECK(created.eventId.size() == 46);
 
     CHECK(outbox.markSent(created.eventId, 1000));
-    drogon::sync_wait(sink.emitModule(TableName::Camera, add));
+    drogon::sync_wait(sink.emitModule(
+        {.table = TableName::Camera, .body = add, .client = nullptr}));
     CHECK_FALSE(hasPending(outbox));
 
     ModuleAuditInput audit;
@@ -174,7 +177,26 @@ TEST_CASE("the change sink lands every transition in the durable outbox")
     SocketEmitDto oversized = addCamera(11, "loft");
     oversized.obj["config"] =
         std::string(NatsCameraChangeSink::kMaxPayloadBytes + 1, 'x');
-    drogon::sync_wait(sink.emitModule(TableName::Camera, oversized));
+    CHECK_THROWS_AS(
+        drogon::sync_wait(sink.emitModule(
+            {.table = TableName::Camera, .body = oversized, .client = nullptr})),
+        ResponseException);
+    CHECK_FALSE(hasPending(outbox));
+
+    SocketEmitDto idless = addCamera(12, "yard");
+    idless.obj.removeMember("id");
+    CHECK_THROWS_AS(
+        drogon::sync_wait(sink.emitModule(
+            {.table = TableName::Camera, .body = idless, .client = nullptr})),
+        ResponseException);
+    CHECK_FALSE(hasPending(outbox));
+
+    SocketEmitDto misnamed = addCamera(13, "hall");
+    misnamed.obj["id"] = "13";
+    CHECK_THROWS_AS(
+        drogon::sync_wait(sink.emitModule(
+            {.table = TableName::Camera, .body = misnamed, .client = nullptr})),
+        ResponseException);
     CHECK_FALSE(hasPending(outbox));
   }
 
@@ -189,7 +211,8 @@ TEST_CASE("the change sink lands every transition in the durable outbox")
     removal.option = TableName::Zone;
     removal.obj["id"] = static_cast<Json::Int64>(3);
     removal.obj["deletedAt"] = static_cast<Json::Int64>(4242);
-    drogon::sync_wait(sink.emitModule(TableName::Zone, removal));
+    drogon::sync_wait(sink.emitModule(
+        {.table = TableName::Zone, .body = removal, .client = nullptr}));
     std::this_thread::sleep_for(std::chrono::milliseconds(150));
 
     const ChangeOutboxRow waiting = pendingRow(outbox.pendingBatch(1));
@@ -254,7 +277,8 @@ TEST_CASE("the change sink lands every transition in the durable outbox")
                                        .publishSubject = subject,
                                        .streamName = stream});
       liveSink.reconcile();
-      drogon::sync_wait(liveSink.emitModule(TableName::Camera, live));
+      drogon::sync_wait(liveSink.emitModule(
+          {.table = TableName::Camera, .body = live, .client = nullptr}));
 
       {
         std::unique_lock lock(mutex);
@@ -282,8 +306,10 @@ TEST_CASE("the change sink lands every transition in the durable outbox")
                                        .streamName = stream});
       const auto started = std::chrono::steady_clock::now();
       for (int64_t recordId = 200; recordId < 300; ++recordId)
-        drogon::sync_wait(
-            bursts.emitModule(TableName::Camera, addCamera(recordId, "hall")));
+        drogon::sync_wait(bursts.emitModule(
+            {.table = TableName::Camera,
+             .body = addCamera(recordId, "hall"),
+             .client = nullptr}));
       bursts.reconcile();
       for (int attempt = 0;
            attempt < 200 && hasPending(outbox); ++attempt)
@@ -303,8 +329,10 @@ TEST_CASE("the change sink lands every transition in the durable outbox")
                                        .publishSubject = freshSubject,
                                        .streamName = freshStream});
       healing.reconcile();
-      drogon::sync_wait(
-          healing.emitModule(TableName::Camera, addCamera(300, "gate")));
+      drogon::sync_wait(healing.emitModule(
+          {.table = TableName::Camera,
+           .body = addCamera(300, "gate"),
+           .client = nullptr}));
       for (int attempt = 0; attempt < 200 && hasPending(outbox); ++attempt)
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
       CHECK_FALSE(hasPending(outbox));
@@ -319,8 +347,10 @@ TEST_CASE("the change sink lands every transition in the durable outbox")
     stranded.reconcile();
     const SocketEmitDto attic = addCamera(100, "attic");
     const SocketEmitDto cellar = addCamera(101, "cellar");
-    drogon::sync_wait(stranded.emitModule(TableName::Camera, attic));
-    drogon::sync_wait(stranded.emitModule(TableName::Camera, cellar));
+    drogon::sync_wait(stranded.emitModule(
+        {.table = TableName::Camera, .body = attic, .client = nullptr}));
+    drogon::sync_wait(stranded.emitModule(
+        {.table = TableName::Camera, .body = cellar, .client = nullptr}));
 
     bool attempted = false;
     for (int attempt = 0; attempt < 100 && !attempted; ++attempt) {

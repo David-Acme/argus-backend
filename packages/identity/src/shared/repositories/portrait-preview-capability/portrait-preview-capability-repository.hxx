@@ -2,6 +2,7 @@
 
 #include "portrait-preview-capability-query.hxx"
 
+#include <drogon/orm/DbClient.h>
 #include <drogon/utils/coroutine.h>
 #include <optional>
 #include <shared/schemas/portrait-preview-capability/portrait-preview-capability-schema.hxx>
@@ -12,7 +13,8 @@ public:
   drogon::Task<PortraitPreviewCapabilitySchema>
   create(const PortraitPreviewCapabilityCreateInput& input) const;
   drogon::Task<std::optional<PortraitPreviewCapabilitySchema>>
-  findByTokenHash(const std::string& tokenHash) const;
+  findByTokenHash(const std::string& tokenHash,
+                  drogon::orm::DbClient* client = nullptr) const;
   drogon::Task<bool>
   tryConsume(const PortraitPreviewCapabilityConsumeInput& input) const;
 };

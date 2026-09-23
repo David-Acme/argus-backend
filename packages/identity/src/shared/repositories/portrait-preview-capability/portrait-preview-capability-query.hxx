@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <drogon/orm/DbClient.h>
 #include <string>
 #include <string_view>
 
@@ -32,4 +33,5 @@ struct PortraitPreviewCapabilityConsumeInput
   int64_t id{0};
   int64_t requesterUserId{0};
   int64_t now{0};
+  drogon::orm::DbClient* client{nullptr};
 };

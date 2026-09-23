@@ -125,14 +125,15 @@ int main()
   }
 
   drogon::app().registerBeginningAdvice([&productivityDb, &changeSink]() {
-    if (!DbService::runScriptFile(productivityDb.schemaPath)) {
+    if (!DbService::runScriptFile(productivityDb.schemaPath,
+                                  DbService::productivityClient())) {
       LOG_FATAL
           << "Productivity database schema failed to apply — aborting startup";
       _exit(1);
     }
 
-    DbService::applyPragmas();
-    DbService::client()->execSqlSync("PRAGMA foreign_keys = OFF");
+    DbService::applyPragmas(DbService::productivityClient());
+    DbService::productivityClient()->execSqlSync("PRAGMA foreign_keys = OFF");
 
     if (changeSink) {
       changeSink->reconcile();

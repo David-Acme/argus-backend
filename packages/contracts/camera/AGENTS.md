@@ -1,7 +1,7 @@
 # argus_contracts_camera
 
 The camera boundary's vocabulary: the driver, record mode, event severity and
-zone type enums, and the eight refusals the boundary throws.
+zone type enums, and the nine refusals the boundary throws.
 
 ## What this is
 
@@ -35,10 +35,10 @@ or an event crosses the sync leg as the same four enums).
   which is the drift section 2.4 rule 6 exists to stop. 2 files.
 - `src/camera/zone-type.hxx` — `ZoneType` (`Monitor`, `Alert`, `Exclude`); 3
   files.
-- `src/camera/camera-errors.hxx` — the eight refusals (`Forbidden`,
+- `src/camera/camera-errors.hxx` — the nine refusals (`Forbidden`,
   `InvalidCameraId`, `CameraNotFound`, `TooManyCameraSubscriptions`,
-  `TooManyViewers`, `SubscribeFailed`, `ZoneNotFound`, `CameraUnreachable`); 5
-  files.
+  `TooManyViewers`, `SubscribeFailed`, `ZoneNotFound`, `CameraUnreachable`,
+  and the answer a change that could not be recorded gives); 6 files.
 
 ## Rules
 
@@ -60,6 +60,6 @@ or an event crosses the sync leg as the same four enums).
 - `tests/unit/camera-contract-vocabulary-test.cc` — the five enums'
   round-trips, name by name, plus the fail-closed half of `IdentityState`: an
   absent or invented spelling reads as `unrecognized`, never as `known`.
-- `tests/unit/camera-contract-catalog-test.cc` — the eight refusals as a
+- `tests/unit/camera-contract-catalog-test.cc` — the nine refusals as a
   pinned table, each entry's wire legality, and that no two say the same
   thing.

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <drogon/orm/DbClient.h>
 #include <drogon/utils/coroutine.h>
 #include <feature/api/project-member/dtos/create-project-member-dto.hxx>
 #include <feature/api/project-member/dtos/update-project-member-dto.hxx>
@@ -39,6 +40,7 @@ private:
     SyncOperation operation{};
     const ProjectMemberSchema& row;
     int64_t ownerId{0};
+    drogon::orm::DbClient* client{nullptr};
   };
 
   struct EmitParentInput
@@ -46,6 +48,7 @@ private:
     SyncOperation operation{};
     int64_t parentId{0};
     int64_t userId{0};
+    drogon::orm::DbClient* client{nullptr};
   };
 
   drogon::Task<void> emitMembership(const EmitMembershipInput& input) const;

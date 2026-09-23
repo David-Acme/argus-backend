@@ -6,10 +6,11 @@
 using namespace project_member_query;
 
 drogon::Task<std::optional<ProjectMemberSchema>>
-ProjectMemberRepository::findById(int64_t id) const
+ProjectMemberRepository::findById(int64_t id, drogon::orm::DbClient* client) const
 {
-  auto client = DbService::productivityClient();
-  const auto result = co_await client->execSqlCoro(FIND_BY_ID.data(), id);
+  const auto pooled = DbService::productivityClient();
+  auto* effective = client ? client : pooled.get();
+  const auto result = co_await effective->execSqlCoro(FIND_BY_ID.data(), id);
   if (result.empty())
     co_return std::nullopt;
   co_return ProjectMemberSchema(result.front());
@@ -27,22 +28,25 @@ ProjectMemberRepository::findByParent(int64_t parentId) const
 }
 
 drogon::Task<std::optional<ShareAccess>>
-ProjectMemberRepository::findAccess(int64_t parentId, int64_t userId) const
+ProjectMemberRepository::findAccess(const ProjectMemberLookupInput& input) const
 {
-  auto client = DbService::productivityClient();
-  const auto result =
-      co_await client->execSqlCoro(FIND_ACCESS.data(), parentId, userId);
+  const auto pooled = DbService::productivityClient();
+  auto* client = input.client ? input.client : pooled.get();
+  const auto result = co_await client->execSqlCoro(FIND_ACCESS.data(),
+                                                   input.parentId, input.userId);
   if (result.empty())
     co_return std::nullopt;
   co_return shareAccessFromString(result.front()["access"].as<std::string>());
 }
 
 drogon::Task<std::vector<int64_t>>
-ProjectMemberRepository::memberIds(int64_t parentId) const
+ProjectMemberRepository::memberIds(int64_t parentId,
+                                   drogon::orm::DbClient* client) const
 {
-  auto client = DbService::productivityClient();
+  const auto pooled = DbService::productivityClient();
+  auto* effective = client ? client : pooled.get();
   const auto result =
-      co_await client->execSqlCoro(FIND_MEMBER_IDS.data(), parentId);
+      co_await effective->execSqlCoro(FIND_MEMBER_IDS.data(), parentId);
   std::vector<int64_t> ids;
   ids.reserve(result.size());
   for (const auto& row : result)
@@ -51,11 +55,12 @@ ProjectMemberRepository::memberIds(int64_t parentId) const
 }
 
 drogon::Task<std::optional<ProjectMemberSchema>>
-ProjectMemberRepository::findExisting(int64_t parentId, int64_t userId) const
+ProjectMemberRepository::findExisting(const ProjectMemberLookupInput& input) const
 {
-  auto client = DbService::productivityClient();
-  const auto result =
-      co_await client->execSqlCoro(FIND_EXISTING.data(), parentId, userId);
+  const auto pooled = DbService::productivityClient();
+  auto* client = input.client ? input.client : pooled.get();
+  const auto result = co_await client->execSqlCoro(
+      FIND_EXISTING.data(), input.parentId, input.userId);
   if (result.empty())
     co_return std::nullopt;
   co_return ProjectMemberSchema(result.front());
@@ -64,11 +69,12 @@ ProjectMemberRepository::findExisting(int64_t parentId, int64_t userId) const
 drogon::Task<ProjectMemberSchema>
 ProjectMemberRepository::create(const ProjectMemberCreateInput& input) const
 {
-  auto client = DbService::productivityClient();
+  const auto pooled = DbService::productivityClient();
+  auto* client = input.client ? input.client : pooled.get();
   const auto result = co_await client->execSqlCoro(
       INSERT.data(), input.projectId, input.userId,
       shareAccessToString(input.access));
-  const auto row = co_await findById(static_cast<int64_t>(result.insertId()));
+  const auto row = co_await findById(static_cast<int64_t>(result.insertId()), client);
   if (!row) {
     LOG_WARN << "Membership row vanished right after insert";
     co_return ProjectMemberSchema{};
@@ -77,21 +83,24 @@ ProjectMemberRepository::create(const ProjectMemberCreateInput& input) const
 }
 
 drogon::Task<ProjectMemberSchema>
-ProjectMemberRepository::updateAccess(int64_t id, ShareAccess access) const
+ProjectMemberRepository::updateAccess(const ProjectMemberUpdateInput& input) const
 {
-  auto client = DbService::productivityClient();
+  const auto pooled = DbService::productivityClient();
+  auto* client = input.client ? input.client : pooled.get();
   co_await client->execSqlCoro(UPDATE_ACCESS.data(),
-                               shareAccessToString(access), id);
-  const auto row = co_await findById(id);
+                               shareAccessToString(input.access), input.id);
+  const auto row = co_await findById(input.id, client);
   if (!row)
     co_return ProjectMemberSchema{};
   co_return *row;
 }
 
-drogon::Task<bool> ProjectMemberRepository::remove(int64_t id) const
+drogon::Task<bool> ProjectMemberRepository::remove(int64_t id,
+                                                   drogon::orm::DbClient* client) const
 {
-  auto client = DbService::productivityClient();
-  const auto result = co_await client->execSqlCoro(REMOVE.data(), id);
+  const auto pooled = DbService::productivityClient();
+  auto* effective = client ? client : pooled.get();
+  const auto result = co_await effective->execSqlCoro(REMOVE.data(), id);
   co_return result.affectedRows() > 0;
 }
 

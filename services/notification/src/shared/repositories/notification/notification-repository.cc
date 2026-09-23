@@ -582,22 +582,21 @@ NotificationRepository::findLastSync(const NotificationSyncFilter& filter) const
 }
 
 drogon::Task<std::vector<NotificationReadChange>>
-NotificationRepository::markAsRead(int64_t userId,
-                                   const std::vector<int64_t>& ids) const
+NotificationRepository::markAsRead(const NotificationMarkReadInput& input) const
 {
-  if (ids.empty())
+  if (input.ids.empty())
     co_return {};
 
   std::string placeholders;
   std::vector<std::string> args;
-  args.reserve(ids.size() + 1);
-  for (size_t i = 0; i < ids.size(); ++i) {
+  args.reserve(input.ids.size() + 1);
+  for (size_t i = 0; i < input.ids.size(); ++i) {
     if (i > 0)
       placeholders += ", ";
     placeholders += '?';
-    args.push_back(std::to_string(ids[i]));
+    args.push_back(std::to_string(input.ids[i]));
   }
-  args.insert(args.begin(), std::to_string(userId));
+  args.insert(args.begin(), std::to_string(input.userId));
 
   const auto withIds = [&placeholders](std::string_view templateQuery) {
     std::string query{templateQuery};
@@ -607,7 +606,8 @@ NotificationRepository::markAsRead(int64_t userId,
     return query;
   };
 
-  auto client = DbService::client();
+  const auto pooled = DbService::client();
+  auto* client = input.client ? input.client : pooled.get();
   const auto& argsRef = args;
   const auto rows =
       co_await client->execSqlCoro(withIds(FIND_UNREAD_BY_IDS), argsRef);

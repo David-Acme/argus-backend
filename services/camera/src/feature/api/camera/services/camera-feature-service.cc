@@ -1,7 +1,11 @@
 #include "camera-feature-service.hxx"
 
+#include <camera/camera-errors.hxx>
 #include <ctime>
+#include <errors/response-exception.hxx>
 #include <shared/services/stream/camera-source-registrar.hxx>
+#include <sqlite/db-service.hxx>
+#include <sqlite/transaction.hxx>
 #include <runtime/blocking-task.hxx>
 #include <trantor/utils/Logger.h>
 
@@ -19,11 +23,8 @@ drogon::Task<void> dropSource(int64_t cameraId)
   co_await BlockingTask<void>(
       [cameraId] { cameraSourceRegistrar().remove(cameraId); });
 }
-}
 
-drogon::Task<void>
-CameraFeatureService::emit(SyncOperation operation,
-                          const CameraSchema& row) const
+SocketEmitDto cameraBody(SyncOperation operation, const CameraSchema& row)
 {
   SocketEmitDto body;
   body.operation = operation;
@@ -37,35 +38,56 @@ CameraFeatureService::emit(SyncOperation operation,
   else {
     body.obj = row.toJson();
   }
+  return body;
+}
+}
+
+drogon::Task<void>
+CameraFeatureService::emit(const ModuleEmitInput& input) const
+{
   const auto* sink = camera_change::getSink();
   if (!sink) {
     LOG_WARN << "camera change sink not installed; drop camera emit";
     co_return;
   }
-  co_await sink->emitModule(TableName::Camera, body);
+  co_await sink->emitModule(input);
 }
 
 drogon::Task<CameraSchema>
 CameraFeatureService::create(const CreateCameraDto& body) const
 {
-  const auto row = co_await repository_.create({
-      .name = body.name,
-      .manufacturer = body.manufacturer,
-      .model = body.model,
-      .ip = body.ip,
-      .port = body.port,
-      .username = body.username,
-      .password = body.password,
-      .cloudUsername = body.cloudUsername,
-      .cloudPassword = body.cloudPassword,
-      .driver = cameraDriverFromString(body.driver),
-      .icon = body.icon,
-      .recordMode = cameraRecordModeFromString(body.recordMode),
-      .retentionDays = body.retentionDays,
-      .capabilities = "[]",
-      .config = "{}",
-  });
-  co_await emit(SyncOperation::Add, row);
+  auto transaction =
+      co_await db_transaction::begin(DbService::cameraClient());
+  CameraSchema row;
+  try {
+    row = co_await repository_.create({
+        .name = body.name,
+        .manufacturer = body.manufacturer,
+        .model = body.model,
+        .ip = body.ip,
+        .port = body.port,
+        .username = body.username,
+        .password = body.password,
+        .cloudUsername = body.cloudUsername,
+        .cloudPassword = body.cloudPassword,
+        .driver = cameraDriverFromString(body.driver),
+        .icon = body.icon,
+        .recordMode = cameraRecordModeFromString(body.recordMode),
+        .retentionDays = body.retentionDays,
+        .capabilities = "[]",
+        .config = "{}",
+        .client = transaction.get(),
+    });
+    co_await emit({.table = TableName::Camera,
+                   .body = cameraBody(SyncOperation::Add, row),
+                   .client = transaction.get()});
+    if (!co_await db_transaction::Commit(std::move(transaction)))
+      throw ResponseException(CameraErrors::ChangeNotRecorded);
+  }
+  catch (...) {
+    db_transaction::rollback(transaction);
+    throw;
+  }
   co_await syncSource(row);
   co_return row;
 }
@@ -73,43 +95,63 @@ CameraFeatureService::create(const CreateCameraDto& body) const
 drogon::Task<std::optional<CameraSchema>>
 CameraFeatureService::update(int64_t id, const UpdateCameraDto& body) const
 {
-  const auto existing = co_await repository_.findById(id);
-  if (!existing)
-    co_return std::nullopt;
+  auto transaction =
+      co_await db_transaction::begin(DbService::cameraClient());
+  CameraSchema row;
+  CameraSchema before;
+  try {
+    const auto existing = co_await repository_.findById(id, transaction.get());
+    if (!existing) {
+      db_transaction::rollback(transaction);
+      co_return std::nullopt;
+    }
+    before = *existing;
 
-  CameraUpdateInput input;
-  input.name = body.name;
-  input.manufacturer = body.manufacturer;
-  input.model = body.model;
-  input.ip = body.ip;
-  input.port = body.port;
-  input.username = body.username;
-  input.password = body.password;
-  input.cloudUsername = body.cloudUsername;
-  input.cloudPassword = body.cloudPassword;
-  input.retentionDays = body.retentionDays;
-  input.icon = body.icon;
-  if (body.driver)
-    input.driver = cameraDriverFromString(*body.driver);
-  input.isEnabled = body.isEnabled;
-  if (body.recordMode)
-    input.recordMode = cameraRecordModeFromString(*body.recordMode);
+    CameraUpdateInput input;
+    input.name = body.name;
+    input.manufacturer = body.manufacturer;
+    input.model = body.model;
+    input.ip = body.ip;
+    input.port = body.port;
+    input.username = body.username;
+    input.password = body.password;
+    input.cloudUsername = body.cloudUsername;
+    input.cloudPassword = body.cloudPassword;
+    input.retentionDays = body.retentionDays;
+    input.icon = body.icon;
+    if (body.driver)
+      input.driver = cameraDriverFromString(*body.driver);
+    input.isEnabled = body.isEnabled;
+    if (body.recordMode)
+      input.recordMode = cameraRecordModeFromString(*body.recordMode);
+    input.client = transaction.get();
 
-  const auto row = co_await repository_.update(id, input);
-  if (row.id == 0)
-    co_return std::nullopt;
-  const auto* sink = camera_change::getSink();
-  if (!sink) {
-    LOG_WARN << "camera change sink not installed; drop camera audit";
+    row = co_await repository_.update(id, input);
+    if (row.id == 0) {
+      db_transaction::rollback(transaction);
+      co_return std::nullopt;
+    }
+
+    const auto* sink = camera_change::getSink();
+    if (!sink) {
+      LOG_WARN << "camera change sink not installed; drop camera audit";
+    }
+    else {
+      co_await sink->publishAudit({
+          .recordId = row.id,
+          .tableName = TableName::Camera,
+          .before = before.toJson(),
+          .after = row.toJson(),
+          .actorId = std::nullopt,
+          .client = transaction.get(),
+      });
+    }
+    if (!co_await db_transaction::Commit(std::move(transaction)))
+      throw ResponseException(CameraErrors::ChangeNotRecorded);
   }
-  else {
-    co_await sink->publishAudit({
-        .recordId = row.id,
-        .tableName = TableName::Camera,
-        .before = existing->toJson(),
-        .after = row.toJson(),
-        .actorId = std::nullopt,
-    });
+  catch (...) {
+    db_transaction::rollback(transaction);
+    throw;
   }
   co_await syncSource(row);
   co_return row;
@@ -117,14 +159,32 @@ CameraFeatureService::update(int64_t id, const UpdateCameraDto& body) const
 
 drogon::Task<bool> CameraFeatureService::remove(int64_t id) const
 {
-  const auto existing = co_await repository_.findById(id);
-  if (!existing)
-    co_return false;
+  auto transaction =
+      co_await db_transaction::begin(DbService::cameraClient());
+  CameraSchema before;
+  try {
+    const auto existing = co_await repository_.findById(id, transaction.get());
+    if (!existing) {
+      db_transaction::rollback(transaction);
+      co_return false;
+    }
+    before = *existing;
 
-  const bool removed = co_await repository_.remove(id);
-  if (removed) {
-    co_await emit(SyncOperation::Delete, *existing);
-    co_await dropSource(id);
+    if (!co_await repository_.remove(id, transaction.get())) {
+      db_transaction::rollback(transaction);
+      co_return false;
+    }
+
+    co_await emit({.table = TableName::Camera,
+                   .body = cameraBody(SyncOperation::Delete, before),
+                   .client = transaction.get()});
+    if (!co_await db_transaction::Commit(std::move(transaction)))
+      throw ResponseException(CameraErrors::ChangeNotRecorded);
   }
-  co_return removed;
+  catch (...) {
+    db_transaction::rollback(transaction);
+    throw;
+  }
+  co_await dropSource(id);
+  co_return true;
 }

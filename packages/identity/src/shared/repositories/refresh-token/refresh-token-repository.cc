@@ -8,7 +8,8 @@ using namespace refresh_token_query;
 drogon::Task<RefreshTokenSchema>
 RefreshTokenRepository::create(const RefreshTokenCreateInput& input) const
 {
-  auto client = DbService::client();
+  const auto pooled = DbService::client();
+  auto* client = input.client ? input.client : pooled.get();
   const auto result = co_await client->execSqlCoro(
 
       INSERT.data(), input.userId, input.accessToken, input.refreshToken,
@@ -105,10 +106,12 @@ drogon::Task<bool> RefreshTokenRepository::markUsed(int64_t id) const
 }
 
 drogon::Task<bool>
-RefreshTokenRepository::invalidateAllUser(int64_t userId) const
+RefreshTokenRepository::invalidateAllUser(int64_t userId,
+                                          drogon::orm::DbClient* client) const
 {
-  auto client = DbService::client();
-  const auto result = co_await client->execSqlCoro(
+  const auto pooled = DbService::client();
+  auto* resolved = client ? client : pooled.get();
+  const auto result = co_await resolved->execSqlCoro(
 
       INVALIDATE_ALL_USER.data(), userId);
   co_return result.affectedRows() > 0;

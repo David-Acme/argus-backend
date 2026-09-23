@@ -1,5 +1,6 @@
 #pragma once
 #include <cstdint>
+#include <drogon/orm/DbClient.h>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -76,6 +77,7 @@ struct ZoneCreateInput
   ZoneType zoneType{ZoneType::Monitor};
   std::string color;
   bool isEnabled{true};
+  drogon::orm::DbClient* client{nullptr};
 };
 
 struct ZoneUpdateInput
@@ -85,4 +87,5 @@ struct ZoneUpdateInput
   std::optional<ZoneType> zoneType;
   std::optional<std::string> color;
   std::optional<bool> isEnabled;
+  drogon::orm::DbClient* client{nullptr};
 };

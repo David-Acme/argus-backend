@@ -1,10 +1,10 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <algorithm>
+#include <array>
 #include <camera/camera-errors.hxx>
 #include <cstddef>
 #include <doctest/doctest.h>
 #include <string>
-#include <vector>
 
 struct CatalogEntry
 {
@@ -15,24 +15,53 @@ struct CatalogEntry
   const char* message;
 };
 
-const std::vector<CatalogEntry> kCatalog{
-    {"Forbidden", &CameraErrors::Forbidden, ErrorCode::Forbidden, 403,
-     "Forbidden"},
-    {"InvalidCameraId", &CameraErrors::InvalidCameraId, ErrorCode::BadRequest,
-     400, "Invalid cameraId"},
-    {"CameraNotFound", &CameraErrors::CameraNotFound, ErrorCode::NotFound, 404,
-     "Camera not found"},
-    {"TooManyCameraSubscriptions", &CameraErrors::TooManyCameraSubscriptions,
-     ErrorCode::TooManyRequests, 429, "Too many camera subscriptions"},
-    {"TooManyViewers", &CameraErrors::TooManyViewers,
-     ErrorCode::TooManyRequests, 429, "too_many_viewers"},
-    {"SubscribeFailed", &CameraErrors::SubscribeFailed,
-     ErrorCode::ServiceUnavailable, 503, "subscribe_failed"},
-    {"ZoneNotFound", &CameraErrors::ZoneNotFound, ErrorCode::NotFound, 404,
-     "Zone not found"},
-    {"CameraUnreachable", &CameraErrors::CameraUnreachable,
-     ErrorCode::CameraUnreachable, 502, "The camera refused the command"},
-};
+constexpr std::array<CatalogEntry, 9> kCatalog{{
+    {.name = "Forbidden",
+     .definition = &CameraErrors::Forbidden,
+     .code = ErrorCode::Forbidden,
+     .status = 403,
+     .message = "Forbidden"},
+    {.name = "InvalidCameraId",
+     .definition = &CameraErrors::InvalidCameraId,
+     .code = ErrorCode::BadRequest,
+     .status = 400,
+     .message = "Invalid cameraId"},
+    {.name = "CameraNotFound",
+     .definition = &CameraErrors::CameraNotFound,
+     .code = ErrorCode::NotFound,
+     .status = 404,
+     .message = "Camera not found"},
+    {.name = "TooManyCameraSubscriptions",
+     .definition = &CameraErrors::TooManyCameraSubscriptions,
+     .code = ErrorCode::TooManyRequests,
+     .status = 429,
+     .message = "Too many camera subscriptions"},
+    {.name = "TooManyViewers",
+     .definition = &CameraErrors::TooManyViewers,
+     .code = ErrorCode::TooManyRequests,
+     .status = 429,
+     .message = "too_many_viewers"},
+    {.name = "SubscribeFailed",
+     .definition = &CameraErrors::SubscribeFailed,
+     .code = ErrorCode::ServiceUnavailable,
+     .status = 503,
+     .message = "subscribe_failed"},
+    {.name = "ZoneNotFound",
+     .definition = &CameraErrors::ZoneNotFound,
+     .code = ErrorCode::NotFound,
+     .status = 404,
+     .message = "Zone not found"},
+    {.name = "CameraUnreachable",
+     .definition = &CameraErrors::CameraUnreachable,
+     .code = ErrorCode::CameraUnreachable,
+     .status = 502,
+     .message = "The camera refused the command"},
+    {.name = "ChangeNotRecorded",
+     .definition = &CameraErrors::ChangeNotRecorded,
+     .code = ErrorCode::InternalError,
+     .status = 500,
+     .message = "The change could not be recorded"},
+}};
 
 constexpr std::size_t kMaxMessageBytes = 1024;
 constexpr std::size_t kMaxCodeBytes = 128;
@@ -46,7 +75,7 @@ TEST_CASE("the camera catalog matches the table pinned here")
     CHECK(entry.definition->status == entry.status);
     CHECK(std::string(entry.definition->message) == entry.message);
   }
-  CHECK(kCatalog.size() == 8);
+  CHECK(kCatalog.size() == 9);
 }
 
 TEST_CASE("every camera entry is legal on the wire")

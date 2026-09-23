@@ -7,7 +7,6 @@
 #include <errors/response-exception.hxx>
 #include <feature/api/invitation/services/invitation-feature-service.hxx>
 #include <auth/device-filter.hxx>
-#include <future>
 #include <identity/identity-errors.hxx>
 #include <iomanip>
 #include <map>
@@ -24,6 +23,7 @@
 #include <config/config-service.hxx>
 #include <shared/services/face/face-service.hxx>
 #include <sqlite/db-service.hxx>
+#include <sqlite/transaction.hxx>
 #include <runtime/blocking-task.hxx>
 
 namespace user_enrollment_query
@@ -191,95 +191,8 @@ AuthService::registerUser(RegisterDto body,
   int64_t userId = 0;
   int64_t personId = 0;
   int64_t faceEmbeddingId = 0;
-  struct FaceIndexInput
-  {
-    std::vector<float> embedding;
-    int64_t personId{0};
-    int64_t faceEmbeddingId{0};
-  };
-  auto indexInput = std::make_shared<FaceIndexInput>(FaceIndexInput{
-      .embedding = face->embedding,
-  });
-  auto indexResult = std::make_shared<std::promise<bool>>();
-  auto indexFuture =
-      std::make_shared<std::future<bool>>(indexResult->get_future());
-
-  {
-    auto transaction = co_await DbService::client()->newTransactionCoro(
-        drogon::orm::TransactionType::Immediate);
-    transaction->setCommitCallback(
-        [indexResult, indexInput](bool committed) {
-          if (!committed) {
-            indexResult->set_value(false);
-            return;
-          }
-          indexResult->set_value(FaceService::instance().faceDb().insert(
-              {.embedding = indexInput->embedding.data(),
-               .personId = indexInput->personId,
-               .faceEmbeddingId = indexInput->faceEmbeddingId}));
-        });
-    const auto userCount =
-        co_await transaction->execSqlCoro(user_enrollment_query::COUNT_USERS.data());
-
-    if (isInitialOwner && !userCount.empty() &&
-        userCount.front()[0].as<int64_t>() > 0) {
-      transaction->rollback();
-      throw ResponseException(409, IdentityErrors::OwnerAlreadyExists);
-    }
-    if (!isInitialOwner) {
-      const auto consumed = co_await transaction->execSqlCoro(
-          user_enrollment_query::TRY_CONSUME.data(), invitationHash, now);
-      if (consumed.affectedRows() != 1) {
-        transaction->rollback();
-        throw ResponseException(404, IdentityErrors::InvitationInvalidOrExpired);
-      }
-    }
-
-    const auto userResult = co_await transaction->execSqlCoro(
-        user_enrollment_query::INSERT_USER.data(), name, "",
-        userRoleToString(role), voiceLangToString(lang));
-    userId = userResult.insertId();
-
-    const auto personResult = co_await transaction->execSqlCoro(
-        user_enrollment_query::INSERT_PERSON.data(), userId, name);
-    personId = personResult.insertId();
-    indexInput->personId = personId;
-
-    const auto embeddingResult = co_await transaction->execSqlCoro(
-        user_enrollment_query::INSERT_FACE_EMBEDDING.data(), personId,
-        embedding, face->confidence);
-    faceEmbeddingId = embeddingResult.insertId();
-    indexInput->faceEmbeddingId = faceEmbeddingId;
-
-    if (invitation) {
-      co_await transaction->execSqlCoro(
-          user_enrollment_query::INSERT_REDEMPTION.data(), invitation->id,
-          userId);
-    }
-  }
-
-  const bool indexed = co_await BlockingTask<bool>(
-      [indexFuture] { return indexFuture->get(); });
-  if (!indexed)
-    throw ResponseException(503, IdentityErrors::EnrolledFaceIndexFailed);
-
-  co_await privatePortraitService_.store(userId, portraitImage);
-
-  if (const auto* sink = identity_change::getSink()) {
-    Json::Value row(Json::objectValue);
-    row["id"] = static_cast<Json::Int64>(personId);
-    row["user_id"] = static_cast<Json::Int64>(userId);
-    row["name"] = name;
-    row["alias"] = "";
-    const IdentityCatalogInput catalog{.table = TableName::Person,
-                                       .id = personId,
-                                       .deleted = false,
-                                       .row = row};
-    co_await sink->publishCatalog(catalog);
-  }
 
   UserSchema user;
-  user.id = userId;
   user.name = name;
   user.lastName = "";
   user.role = role;
@@ -287,44 +200,121 @@ AuthService::registerUser(RegisterDto body,
   user.isActive = true;
   user.createdAt = now;
 
-  SocketEmitDto emit;
-  emit.operation = SyncOperation::Add;
-  emit.option = TableName::User;
-  emit.obj = user.toJson();
-  if (const auto* sink = identity_change::getSink())
-    co_await sink->emitModule(TableName::User, emit);
+  auto transaction =
+      co_await db_transaction::begin(DbService::identityClient());
+  try {
+    const auto userCount = co_await transaction->execSqlCoro(
+        user_enrollment_query::COUNT_USERS.data());
 
-  if (invitation) {
-    const auto consumedInvitation =
-        co_await invitationRepository_.findById(invitation->id);
-    if (consumedInvitation) {
-      if (const auto* sink = identity_change::getSink()) {
-        co_await sink->publishModuleAudit({
-            .recordId = consumedInvitation->id,
-            .tableName = TableName::UserInvitation,
-            .before = invitation->toJson(),
-            .after = consumedInvitation->toJson(),
-            .actorId = user.id,
-        });
-      }
-
-      Json::Value enrollment(Json::objectValue);
-      enrollment["event"] = "invitation_enrollment";
-      enrollment["invitationId"] = invitation->id;
-      enrollment["userId"] = userId;
-      if (const auto* sink = identity_change::getSink()) {
-        co_await sink->publishAction({
-            .userId = userId,
-            .recordId = invitation->id,
-            .tableName = TableName::UserInvitation,
-            .action = UserAction::Create,
-            .oldData = Json::Value(),
-            .newData = enrollment,
-            .ipAddress = "",
-        });
+    if (isInitialOwner && !userCount.empty() &&
+        userCount.front()[0].as<int64_t>() > 0) {
+      db_transaction::rollback(transaction);
+      throw ResponseException(409, IdentityErrors::OwnerAlreadyExists);
+    }
+    if (!isInitialOwner) {
+      const auto consumed = co_await transaction->execSqlCoro(
+          user_enrollment_query::TRY_CONSUME.data(), invitationHash, now);
+      if (consumed.affectedRows() != 1) {
+        db_transaction::rollback(transaction);
+        throw ResponseException(404,
+                                IdentityErrors::InvitationInvalidOrExpired);
       }
     }
+
+    const auto userResult = co_await transaction->execSqlCoro(
+        user_enrollment_query::INSERT_USER.data(), name, "",
+        userRoleToString(role), voiceLangToString(lang));
+    userId = static_cast<int64_t>(userResult.insertId());
+    user.id = userId;
+
+    const auto personResult = co_await transaction->execSqlCoro(
+        user_enrollment_query::INSERT_PERSON.data(), userId, name);
+    personId = static_cast<int64_t>(personResult.insertId());
+
+    const auto embeddingResult = co_await transaction->execSqlCoro(
+        user_enrollment_query::INSERT_FACE_EMBEDDING.data(), personId,
+        embedding, face->confidence);
+    faceEmbeddingId = static_cast<int64_t>(embeddingResult.insertId());
+
+    if (invitation) {
+      co_await transaction->execSqlCoro(
+          user_enrollment_query::INSERT_REDEMPTION.data(), invitation->id,
+          userId);
+    }
+
+    if (const auto* sink = identity_change::getSink()) {
+      Json::Value personRow(Json::objectValue);
+      personRow["id"] = static_cast<Json::Int64>(personId);
+      personRow["user_id"] = static_cast<Json::Int64>(userId);
+      personRow["name"] = name;
+      personRow["alias"] = "";
+      co_await sink->publishCatalog({.table = TableName::Person,
+                                     .id = personId,
+                                     .deleted = false,
+                                     .row = personRow,
+                                     .client = transaction.get()});
+    }
+
+    SocketEmitDto emit;
+    emit.operation = SyncOperation::Add;
+    emit.option = TableName::User;
+    emit.obj = user.toJson();
+    if (const auto* sink = identity_change::getSink())
+      co_await sink->emitModule(
+          {.table = TableName::User, .body = emit, .client = transaction.get()});
+
+    if (invitation) {
+      const auto consumedInvitation = co_await invitationRepository_.findById(
+          invitation->id, transaction.get());
+      if (consumedInvitation) {
+        if (const auto* sink = identity_change::getSink()) {
+          co_await sink->publishModuleAudit({
+              .recordId = consumedInvitation->id,
+              .tableName = TableName::UserInvitation,
+              .before = invitation->toJson(),
+              .after = consumedInvitation->toJson(),
+              .actorId = user.id,
+              .client = transaction.get(),
+          });
+        }
+
+        Json::Value enrollment(Json::objectValue);
+        enrollment["event"] = "invitation_enrollment";
+        enrollment["invitationId"] = invitation->id;
+        enrollment["userId"] = userId;
+        if (const auto* sink = identity_change::getSink()) {
+          co_await sink->publishAction(
+              {.event = {.userId = userId,
+                         .recordId = invitation->id,
+                         .tableName = TableName::UserInvitation,
+                         .action = UserAction::Create,
+                         .oldData = Json::Value(),
+                         .newData = enrollment,
+                         .ipAddress = ""},
+               .client = transaction.get()});
+        }
+      }
+    }
+
+    if (!co_await db_transaction::Commit(std::move(transaction)))
+      throw ResponseException(IdentityErrors::ChangeNotRecorded);
   }
+  catch (...) {
+    db_transaction::rollback(transaction);
+    throw;
+  }
+
+  const bool indexed = co_await BlockingTask<bool>(
+      [embedding = face->embedding, personId, faceEmbeddingId] {
+        return FaceService::instance().faceDb().insert(
+            {.embedding = embedding.data(),
+             .personId = personId,
+             .faceEmbeddingId = faceEmbeddingId});
+      });
+  if (!indexed)
+    throw ResponseException(503, IdentityErrors::EnrolledFaceIndexFailed);
+
+  co_await privatePortraitService_.store(userId, portraitImage);
 
   co_return co_await issueSession(
       {.userId = userId, .personId = personId, .user = user, .device = device});
@@ -377,7 +367,9 @@ AuthService::approveDeviceLogin(const std::string& challengeId,
   const auto refreshToken = jwtService_.generateRefresh(claims);
 
   const auto credential = co_await issueDeviceCredential(
-      approvingUserId, challenge->userAgent);
+      {.userId = approvingUserId,
+       .userAgent = challenge->userAgent,
+       .client = nullptr});
 
   RefreshTokenCreateInput rtInput;
   rtInput.userId = approvingUserId;
@@ -521,9 +513,35 @@ AuthService::refreshToken(const RefreshTokenInput& input) const
 
 drogon::Task<void> AuthService::logout(int64_t userId) const
 {
-  co_await refreshTokenRepository_.invalidateAllUser(userId);
+  std::optional<UserSchema> user;
+  auto transaction =
+      co_await db_transaction::begin(DbService::identityClient());
+  try {
+    co_await refreshTokenRepository_.invalidateAllUser(userId,
+                                                      transaction.get());
 
-  const auto user = co_await userRepository_.findById(userId);
+    user = co_await userRepository_.findById(userId, transaction.get());
+
+    if (const auto* sink = identity_change::getSink()) {
+      co_await sink->publishAction(
+          {.event = {.userId = userId,
+                     .recordId = userId,
+                     .tableName = TableName::User,
+                     .action = UserAction::Delete,
+                     .oldData = Json::Value(),
+                     .newData = Json::Value(),
+                     .ipAddress = ""},
+           .client = transaction.get()});
+    }
+
+    if (!co_await db_transaction::Commit(std::move(transaction)))
+      throw ResponseException(IdentityErrors::ChangeNotRecorded);
+  }
+  catch (...) {
+    db_transaction::rollback(transaction);
+    throw;
+  }
+
   SocketEmitDto context;
   context.operation = SyncOperation::AuthContextChanged;
   context.option = TableName::User;
@@ -537,16 +555,6 @@ drogon::Task<void> AuthService::logout(int64_t userId) const
       LOG_WARN << "AuthService: disconnect failed for user " << userId;
   }
 
-  if (const auto* sink = identity_change::getSink()) {
-    co_await sink->publishAction({.userId = userId,
-                                  .recordId = userId,
-                                  .tableName = TableName::User,
-                                  .action = UserAction::Delete,
-                                  .oldData = Json::Value(),
-                                  .newData = Json::Value(),
-                                  .ipAddress = ""});
-  }
-
   LOG_INFO << "AuthService: logged out user " << userId;
 }
 
@@ -554,32 +562,50 @@ drogon::Task<void>
 AuthService::updateMe(int64_t userId,
                       const std::optional<std::string>& name) const
 {
-  const auto before = co_await userRepository_.findById(userId);
-  if (!before)
-    throw ResponseException(404, IdentityErrors::UserNotFound);
-  auto user = co_await userRepository_.update(
-      userId, {.name = name, .lastName = std::nullopt, .role = std::nullopt,
-               .isActive = std::nullopt});
-  auto users = co_await userRepository_.findAll();
-  std::vector<int64_t> recipients{user.id};
-  for (const auto& recipient : users) {
-    if (recipient.role == UserRole::Owner || recipient.role == UserRole::Guard)
-      recipients.push_back(recipient.id);
+  auto transaction =
+      co_await db_transaction::begin(DbService::identityClient());
+  try {
+    const auto before =
+        co_await userRepository_.findById(userId, transaction.get());
+    if (!before) {
+      db_transaction::rollback(transaction);
+      throw ResponseException(404, IdentityErrors::UserNotFound);
+    }
+    auto user = co_await userRepository_.update(
+        userId, {.name = name,
+                 .lastName = std::nullopt,
+                 .role = std::nullopt,
+                 .isActive = std::nullopt,
+                 .client = transaction.get()});
+    auto users = co_await userRepository_.findAll(transaction.get());
+    std::vector<int64_t> recipients{user.id};
+    for (const auto& recipient : users) {
+      if (recipient.role == UserRole::Owner ||
+          recipient.role == UserRole::Guard)
+        recipients.push_back(recipient.id);
+    }
+    if (const auto* sink = identity_change::getSink()) {
+      co_await sink->publishUsersAudit({
+          .recordId = user.id,
+          .tableName = TableName::User,
+          .before = before->toJson(),
+          .after = user.toJson(),
+          .userIds = std::move(recipients),
+          .client = transaction.get(),
+      });
+    }
+    if (!co_await db_transaction::Commit(std::move(transaction)))
+      throw ResponseException(IdentityErrors::ChangeNotRecorded);
   }
-  if (const auto* sink = identity_change::getSink()) {
-    co_await sink->publishUsersAudit({
-        .recordId = user.id,
-        .tableName = TableName::User,
-        .before = before->toJson(),
-        .after = user.toJson(),
-        .userIds = std::move(recipients),
-    });
+  catch (...) {
+    db_transaction::rollback(transaction);
+    throw;
   }
 }
 
 drogon::Task<IssuedDeviceCredential>
-AuthService::issueDeviceCredential(int64_t userId,
-                                   const std::string& userAgent) const
+AuthService::issueDeviceCredential(
+    const IssueDeviceCredentialInput& input) const
 {
   IssuedDeviceCredential issued;
   if (ConfigService::getString("device.identity_mode") != "credential")
@@ -596,10 +622,12 @@ AuthService::issueDeviceCredential(int64_t userId,
 
   const auto secretHash = DeviceFilter::sha256Hex(issued.secret);
   issued.deviceHash =
-      DeviceFilter::credentialFingerprint(userAgent, secretHash);
-  co_await deviceCredentialRepository_.create({.userId = userId,
-                                               .deviceHash = issued.deviceHash,
-                                               .secretHash = secretHash});
+      DeviceFilter::credentialFingerprint(input.userAgent, secretHash);
+  co_await deviceCredentialRepository_.create(
+      {.userId = input.userId,
+       .deviceHash = issued.deviceHash,
+       .secretHash = secretHash,
+       .client = input.client});
   co_return issued;
 }
 
@@ -611,49 +639,66 @@ AuthService::issueSession(const IssueSessionInput& input) const
   const UserSchema& user = input.user;
   const LoginDeviceInput& device = input.device;
 
-  const auto credential =
-      co_await issueDeviceCredential(userId, device.userAgent);
-  const std::string deviceHash =
-      credential.deviceHash.empty() ? device.deviceHash : credential.deviceHash;
-
-  std::map<std::string, std::string> claims;
-  claims["sub"] = std::to_string(userId);
-
-  auto accessToken = jwtService_.generateAccess(claims);
-  auto refreshToken = jwtService_.generateRefresh(claims);
-
-  RefreshTokenCreateInput rtInput;
-  rtInput.userId = userId;
-  rtInput.accessToken = accessToken;
-  rtInput.refreshToken = refreshToken;
-  rtInput.deviceHash = deviceHash;
-  rtInput.userAgent = device.userAgent;
-  rtInput.expiresAt = static_cast<int64_t>(std::time(nullptr)) +
-                      jwtService_.refreshTtlSeconds();
-
-  co_await refreshTokenRepository_.create(rtInput);
-
   ResponseLoginDto result;
-  result.accessToken = accessToken;
-  result.refreshToken = refreshToken;
-  result.userId = userId;
-  result.name = user.name + " " + user.lastName;
-  result.role = user.role;
-  result.personId = personId;
-  result.deviceSecret = credential.secret;
+  IssuedDeviceCredential credential;
+  auto transaction =
+      co_await db_transaction::begin(DbService::identityClient());
+  try {
+    credential = co_await issueDeviceCredential(
+        {.userId = userId,
+         .userAgent = device.userAgent,
+         .client = transaction.get()});
+    const std::string deviceHash =
+        credential.deviceHash.empty() ? device.deviceHash : credential.deviceHash;
 
-  Json::Value session;
-  session["deviceHash"] = deviceHash;
-  session["userAgent"] = device.userAgent;
+    std::map<std::string, std::string> claims;
+    claims["sub"] = std::to_string(userId);
 
-  if (const auto* sink = identity_change::getSink()) {
-    co_await sink->publishAction({.userId = userId,
-                                  .recordId = userId,
-                                  .tableName = TableName::User,
-                                  .action = UserAction::Create,
-                                  .oldData = Json::Value(),
-                                  .newData = session,
-                                  .ipAddress = ""});
+    auto accessToken = jwtService_.generateAccess(claims);
+    auto refreshToken = jwtService_.generateRefresh(claims);
+
+    RefreshTokenCreateInput rtInput;
+    rtInput.userId = userId;
+    rtInput.accessToken = accessToken;
+    rtInput.refreshToken = refreshToken;
+    rtInput.deviceHash = deviceHash;
+    rtInput.userAgent = device.userAgent;
+    rtInput.expiresAt = static_cast<int64_t>(std::time(nullptr)) +
+                        jwtService_.refreshTtlSeconds();
+    rtInput.client = transaction.get();
+
+    co_await refreshTokenRepository_.create(rtInput);
+
+    result.accessToken = accessToken;
+    result.refreshToken = refreshToken;
+    result.userId = userId;
+    result.name = user.name + " " + user.lastName;
+    result.role = user.role;
+    result.personId = personId;
+    result.deviceSecret = credential.secret;
+
+    Json::Value session;
+    session["deviceHash"] = deviceHash;
+    session["userAgent"] = device.userAgent;
+
+    if (const auto* sink = identity_change::getSink()) {
+      co_await sink->publishAction(
+          {.event = {.userId = userId,
+                     .recordId = userId,
+                     .tableName = TableName::User,
+                     .action = UserAction::Create,
+                     .oldData = Json::Value(),
+                     .newData = session,
+                     .ipAddress = ""},
+           .client = transaction.get()});
+    }
+
+    if (!co_await db_transaction::Commit(std::move(transaction)))
+      throw ResponseException(IdentityErrors::ChangeNotRecorded);
+  }
+  catch (...) {
+    db_transaction::rollback(transaction);
+    throw;
   }
 
   co_return result;

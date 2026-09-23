@@ -1,5 +1,6 @@
 #pragma once
 #include <cstdint>
+#include <drogon/orm/DbClient.h>
 #include <string>
 #include <string_view>
 
@@ -18,4 +19,5 @@ struct PersonSnapshotStoreInput
 {
   int64_t personId{0};
   std::string image;
+  drogon::orm::DbClient* client{nullptr};
 };

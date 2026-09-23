@@ -2,6 +2,7 @@
 
 #include "project-query.hxx"
 
+#include <drogon/orm/DbClient.h>
 #include <drogon/utils/coroutine.h>
 #include <json/value.h>
 #include <optional>
@@ -15,12 +16,14 @@ public:
   ProjectRepository() = default;
   ~ProjectRepository() override = default;
 
-  drogon::Task<std::optional<ProjectSchema>> findById(int64_t id) const;
+  drogon::Task<std::optional<ProjectSchema>>
+  findById(int64_t id, drogon::orm::DbClient* client = nullptr) const;
   drogon::Task<std::vector<ProjectSchema>> findByOwner(int64_t ownerId) const;
   drogon::Task<ProjectSchema> create(const ProjectCreateInput& input) const;
   drogon::Task<ProjectSchema> update(int64_t id,
                                      const ProjectUpdateInput& input) const;
-  drogon::Task<bool> remove(int64_t id) const;
+  drogon::Task<bool> remove(int64_t id,
+                            drogon::orm::DbClient* client = nullptr) const;
 
   drogon::Task<std::vector<Json::Value>>
   find(const SyncFilter& filter) const override;

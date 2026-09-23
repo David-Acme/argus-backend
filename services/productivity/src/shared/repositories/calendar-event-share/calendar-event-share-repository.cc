@@ -6,10 +6,12 @@
 using namespace calendar_event_share_query;
 
 drogon::Task<std::optional<CalendarEventShareSchema>>
-CalendarEventShareRepository::findById(int64_t id) const
+CalendarEventShareRepository::findById(int64_t id,
+                                       drogon::orm::DbClient* client) const
 {
-  auto client = DbService::productivityClient();
-  const auto result = co_await client->execSqlCoro(FIND_BY_ID.data(), id);
+  const auto pooled = DbService::productivityClient();
+  auto* effective = client ? client : pooled.get();
+  const auto result = co_await effective->execSqlCoro(FIND_BY_ID.data(), id);
   if (result.empty())
     co_return std::nullopt;
   co_return CalendarEventShareSchema(result.front());
@@ -27,22 +29,25 @@ CalendarEventShareRepository::findByParent(int64_t parentId) const
 }
 
 drogon::Task<std::optional<ShareAccess>>
-CalendarEventShareRepository::findAccess(int64_t parentId, int64_t userId) const
+CalendarEventShareRepository::findAccess(const CalendarEventShareLookupInput& input) const
 {
-  auto client = DbService::productivityClient();
-  const auto result =
-      co_await client->execSqlCoro(FIND_ACCESS.data(), parentId, userId);
+  const auto pooled = DbService::productivityClient();
+  auto* client = input.client ? input.client : pooled.get();
+  const auto result = co_await client->execSqlCoro(FIND_ACCESS.data(),
+                                                   input.parentId, input.userId);
   if (result.empty())
     co_return std::nullopt;
   co_return shareAccessFromString(result.front()["access"].as<std::string>());
 }
 
 drogon::Task<std::vector<int64_t>>
-CalendarEventShareRepository::memberIds(int64_t parentId) const
+CalendarEventShareRepository::memberIds(int64_t parentId,
+                                        drogon::orm::DbClient* client) const
 {
-  auto client = DbService::productivityClient();
+  const auto pooled = DbService::productivityClient();
+  auto* effective = client ? client : pooled.get();
   const auto result =
-      co_await client->execSqlCoro(FIND_MEMBER_IDS.data(), parentId);
+      co_await effective->execSqlCoro(FIND_MEMBER_IDS.data(), parentId);
   std::vector<int64_t> ids;
   ids.reserve(result.size());
   for (const auto& row : result)
@@ -51,11 +56,12 @@ CalendarEventShareRepository::memberIds(int64_t parentId) const
 }
 
 drogon::Task<std::optional<CalendarEventShareSchema>>
-CalendarEventShareRepository::findExisting(int64_t parentId, int64_t userId) const
+CalendarEventShareRepository::findExisting(const CalendarEventShareLookupInput& input) const
 {
-  auto client = DbService::productivityClient();
-  const auto result =
-      co_await client->execSqlCoro(FIND_EXISTING.data(), parentId, userId);
+  const auto pooled = DbService::productivityClient();
+  auto* client = input.client ? input.client : pooled.get();
+  const auto result = co_await client->execSqlCoro(
+      FIND_EXISTING.data(), input.parentId, input.userId);
   if (result.empty())
     co_return std::nullopt;
   co_return CalendarEventShareSchema(result.front());
@@ -64,11 +70,12 @@ CalendarEventShareRepository::findExisting(int64_t parentId, int64_t userId) con
 drogon::Task<CalendarEventShareSchema>
 CalendarEventShareRepository::create(const CalendarEventShareCreateInput& input) const
 {
-  auto client = DbService::productivityClient();
+  const auto pooled = DbService::productivityClient();
+  auto* client = input.client ? input.client : pooled.get();
   const auto result = co_await client->execSqlCoro(
       INSERT.data(), input.calendarEventId, input.userId,
       shareAccessToString(input.access));
-  const auto row = co_await findById(static_cast<int64_t>(result.insertId()));
+  const auto row = co_await findById(static_cast<int64_t>(result.insertId()), client);
   if (!row) {
     LOG_WARN << "Membership row vanished right after insert";
     co_return CalendarEventShareSchema{};
@@ -77,21 +84,24 @@ CalendarEventShareRepository::create(const CalendarEventShareCreateInput& input)
 }
 
 drogon::Task<CalendarEventShareSchema>
-CalendarEventShareRepository::updateAccess(int64_t id, ShareAccess access) const
+CalendarEventShareRepository::updateAccess(const CalendarEventShareUpdateInput& input) const
 {
-  auto client = DbService::productivityClient();
+  const auto pooled = DbService::productivityClient();
+  auto* client = input.client ? input.client : pooled.get();
   co_await client->execSqlCoro(UPDATE_ACCESS.data(),
-                               shareAccessToString(access), id);
-  const auto row = co_await findById(id);
+                               shareAccessToString(input.access), input.id);
+  const auto row = co_await findById(input.id, client);
   if (!row)
     co_return CalendarEventShareSchema{};
   co_return *row;
 }
 
-drogon::Task<bool> CalendarEventShareRepository::remove(int64_t id) const
+drogon::Task<bool> CalendarEventShareRepository::remove(int64_t id,
+                                                        drogon::orm::DbClient* client) const
 {
-  auto client = DbService::productivityClient();
-  const auto result = co_await client->execSqlCoro(REMOVE.data(), id);
+  const auto pooled = DbService::productivityClient();
+  auto* effective = client ? client : pooled.get();
+  const auto result = co_await effective->execSqlCoro(REMOVE.data(), id);
   co_return result.affectedRows() > 0;
 }
 

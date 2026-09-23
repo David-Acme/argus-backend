@@ -41,6 +41,7 @@ argus_contracts(NAME sync
         src/sync/user-action.hxx
         src/sync/socket-emit-dto.hxx
         src/sync/sync-change.hxx
+        src/sync/module-emit.hxx
         src/sync/user-change-sink.hxx
         src/sync/camera-change-sink.hxx
         src/sync/user-audit-event.hxx

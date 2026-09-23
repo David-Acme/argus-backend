@@ -13,7 +13,7 @@ struct ErrorDefinition
   [[nodiscard]] constexpr ErrorDefinition
   withMessage(std::string_view detail) const
   {
-    return ErrorDefinition{code, status, detail};
+    return ErrorDefinition{.code = code, .status = status, .message = detail};
   }
 
   [[nodiscard]] constexpr std::string_view wireCode() const

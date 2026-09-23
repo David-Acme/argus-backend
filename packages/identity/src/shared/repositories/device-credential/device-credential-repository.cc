@@ -8,7 +8,8 @@ using namespace device_credential_query;
 drogon::Task<DeviceCredentialSchema>
 DeviceCredentialRepository::create(const DeviceCredentialCreateInput& input) const
 {
-  auto client = DbService::client();
+  const auto pooled = DbService::client();
+  auto* client = input.client ? input.client : pooled.get();
   const auto result = co_await client->execSqlCoro(
       INSERT.data(), input.userId, input.deviceHash, input.secretHash);
 

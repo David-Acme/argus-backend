@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <drogon/orm/DbClient.h>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -141,6 +142,7 @@ struct CalendarEventCreateInput
   std::optional<int64_t> endsAt;
   bool isAllDay{false};
   std::optional<std::string> recurrenceRule;
+  drogon::orm::DbClient* client{nullptr};
 };
 
 struct CalendarEventUpdateInput
@@ -154,4 +156,5 @@ struct CalendarEventUpdateInput
   std::optional<bool> isAllDay;
   std::optional<std::string> recurrenceRule;
   std::optional<int64_t> projectId;
+  drogon::orm::DbClient* client{nullptr};
 };

@@ -8,6 +8,7 @@
 
 #include <chrono>
 #include <cstdio>
+#include <stdexcept>
 #include <string>
 #include <thread>
 #include <vector>
@@ -128,8 +129,8 @@ TEST_CASE("the change outbox replays one transition and refuses a conflict")
                                                .fingerprint = "fp",
                                                .payload = "{}",
                                                .at = 0};
-  CHECK(drogon::sync_wait(repository.enqueue(incomplete)) ==
-        ChangeOutboxDisposition::Failed);
+  CHECK_THROWS_AS(drogon::sync_wait(repository.enqueue(incomplete)),
+                  std::invalid_argument);
 
   const ChangeOutboxEnqueueInput first = {.eventId = "camera-change:a",
                                           .fingerprint = "fp-1",

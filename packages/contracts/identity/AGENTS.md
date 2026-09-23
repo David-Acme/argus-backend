@@ -1,7 +1,7 @@
 # argus_contracts_identity
 
-The identity boundary's refusals: the thirty answers the enrolment, pairing,
-login and portrait flows give.
+The identity boundary's refusals: the thirty-one answers the enrolment,
+pairing, login and portrait flows give.
 
 ## What this is
 
@@ -10,16 +10,17 @@ declaration, an INTERFACE target with no translation unit. The include root is
 `src/`, so a consumer writes `<identity/identity-errors.hxx>` and links
 `argus::contracts::identity`. `packages/identity` is the only consumer, and
 the only owner: the catalog is the identity boundary's own refusal list, and
-its thirty entries are thrown from the auth, invitation, pairing and portrait
-handlers inside that package.
+its thirty-one entries are thrown from the auth, invitation, pairing and
+portrait handlers inside that package.
 
 ## Layout
 
-- `src/identity/identity-errors.hxx` — the thirty definitions in
+- `src/identity/identity-errors.hxx` — the thirty-one definitions in
   `IdentityErrors`, in the header's own order: the face and enrolment answers,
   the pairing and invitation answers, the challenge and refresh-token answers,
-  the portrait answers, and the five the controllers refuse before any service
-  sees the request. 10 files include it.
+  the portrait answers, the five the controllers refuse before any service
+  sees the request, and the answer a change that could not be recorded gives.
+  10 files include it.
 
 ## Rules
 
@@ -38,6 +39,6 @@ handlers inside that package.
 
 ## Tests
 
-- `tests/unit/identity-contract-catalog-test.cc` — the thirty refusals as a
+- `tests/unit/identity-contract-catalog-test.cc` — the thirty-one refusals as a
   pinned table, each entry's wire legality, that no two say the same thing,
   and the two entries whose status contradicts their code.

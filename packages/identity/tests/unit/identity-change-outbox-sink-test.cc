@@ -2,6 +2,7 @@
 #include <doctest/doctest.h>
 
 #include <drogon/drogon.h>
+#include <errors/response-exception.hxx>
 #include <feature/api/user/services/nats-identity-change-sink.hxx>
 #include <shared/repositories/change-outbox/change-outbox-key.hxx>
 #include <shared/repositories/change-outbox/change-outbox-repository.hxx>
@@ -208,8 +209,10 @@ TEST_CASE("the change sink lands every catalog row, emit, audit and journal "
     CHECK(moved.eventId != catalog.eventId);
     CHECK(outbox.markSent(moved.id, 1200));
 
-    drogon::sync_wait(
-        sink.emitModule(TableName::User, userRow(SyncOperation::Add, 42, "Ana")));
+    drogon::sync_wait(sink.emitModule(
+        {.table = TableName::User,
+         .body = userRow(SyncOperation::Add, 42, "Ana"),
+         .client = nullptr}));
     const ChangeOutboxRow emitted = pendingRow(outbox.pendingBatch(1));
     CHECK(emitted.eventId.rfind("identity-change:", 0) == 0);
     CHECK(emitted.payload.find("\"operation\":4") != std::string::npos);
@@ -220,8 +223,10 @@ TEST_CASE("the change sink lands every catalog row, emit, audit and journal "
     CHECK(emitted.payload.find("\"users\"") == std::string::npos);
     CHECK(outbox.markSent(emitted.id, 1300));
 
-    drogon::sync_wait(sink.emitModule(TableName::UserInvitation,
-                                     userRow(SyncOperation::Add, 9, "Ana")));
+    drogon::sync_wait(sink.emitModule(
+        {.table = TableName::UserInvitation,
+         .body = userRow(SyncOperation::Add, 9, "Ana"),
+         .client = nullptr}));
     const ChangeOutboxRow invitation = pendingRow(outbox.pendingBatch(1));
     CHECK(invitation.payload.find("\"option\":\"user_invitation\"") !=
           std::string::npos);
@@ -232,7 +237,8 @@ TEST_CASE("the change sink lands every catalog row, emit, audit and journal "
     tombstone.option = TableName::User;
     tombstone.obj["id"] = static_cast<Json::Int64>(42);
     tombstone.obj["deletedAt"] = static_cast<Json::Int64>(1700000000);
-    drogon::sync_wait(sink.emitModule(TableName::User, tombstone));
+    drogon::sync_wait(sink.emitModule(
+        {.table = TableName::User, .body = tombstone, .client = nullptr}));
     const ChangeOutboxRow removed = pendingRow(outbox.pendingBatch(1));
     CHECK(removed.payload.find("\"operation\":5") != std::string::npos);
     CHECK(removed.payload.find("\"deletedAt\":1700000000") !=
@@ -243,12 +249,18 @@ TEST_CASE("the change sink lands every catalog row, emit, audit and journal "
     anonymous.operation = SyncOperation::Add;
     anonymous.option = TableName::User;
     anonymous.obj["name"] = "Ana";
-    drogon::sync_wait(sink.emitModule(TableName::User, anonymous));
+    CHECK_THROWS_AS(
+        drogon::sync_wait(sink.emitModule(
+            {.table = TableName::User, .body = anonymous, .client = nullptr})),
+        ResponseException);
     CHECK_FALSE(hasPending(outbox));
 
     SocketEmitDto misnamed = anonymous;
     misnamed.obj["id"] = "42";
-    drogon::sync_wait(sink.emitModule(TableName::User, misnamed));
+    CHECK_THROWS_AS(
+        drogon::sync_wait(sink.emitModule(
+            {.table = TableName::User, .body = misnamed, .client = nullptr})),
+        ResponseException);
     CHECK_FALSE(hasPending(outbox));
 
     drogon::sync_wait(sink.publishModuleAudit(invitationAudit(9)));
@@ -290,7 +302,8 @@ TEST_CASE("the change sink lands every catalog row, emit, audit and journal "
     drogon::sync_wait(sink.publishUsersAudit(userAudit(44, {})));
     CHECK_FALSE(hasPending(outbox));
 
-    drogon::sync_wait(sink.publishAction(portraitRead(42)));
+    drogon::sync_wait(
+        sink.publishAction({.event = portraitRead(42), .client = nullptr}));
     const ChangeOutboxRow journal = pendingRow(outbox.pendingBatch(1));
     CHECK(journal.subject == kActionSubject);
     CHECK(journal.subject != kChangeSubject);
@@ -307,7 +320,8 @@ TEST_CASE("the change sink lands every catalog row, emit, audit and journal "
           "identity-action:" + std::to_string(journal.id));
     CHECK(outbox.markSent(journal.id, 1900));
 
-    drogon::sync_wait(sink.publishAction(portraitRead(42)));
+    drogon::sync_wait(
+        sink.publishAction({.event = portraitRead(42), .client = nullptr}));
     const ChangeOutboxRow secondRead = pendingRow(outbox.pendingBatch(1));
     CHECK(secondRead.eventId.empty());
     CHECK(secondRead.id != journal.id);
@@ -319,13 +333,16 @@ TEST_CASE("the change sink lands every catalog row, emit, audit and journal "
     IdentityCatalogInput oversized = userCatalog(8, "Ana");
     oversized.row["portrait"] =
         std::string(NatsIdentityChangeSink::kMaxPayloadBytes + 1, 'x');
-    drogon::sync_wait(sink.publishCatalog(oversized));
+    CHECK_THROWS_AS(drogon::sync_wait(sink.publishCatalog(oversized)),
+                    ResponseException);
     CHECK_FALSE(hasPending(outbox));
 
     UserActionEvent oversizedAction = portraitRead(9);
     oversizedAction.newData["portrait"] =
         std::string(NatsIdentityChangeSink::kMaxPayloadBytes + 1, 'x');
-    drogon::sync_wait(sink.publishAction(oversizedAction));
+    CHECK_THROWS_AS(drogon::sync_wait(sink.publishAction(
+                        {.event = oversizedAction, .client = nullptr})),
+                    ResponseException);
     CHECK_FALSE(hasPending(outbox));
   }
 
@@ -333,7 +350,8 @@ TEST_CASE("the change sink lands every catalog row, emit, audit and journal "
     NatsIdentityChangeSink sink(nullptr, NatsIdentityChangeSink::Config{});
     sink.reconcile();
     drogon::sync_wait(sink.publishCatalog(userCatalog(12, "Ana")));
-    drogon::sync_wait(sink.publishAction(portraitRead(12)));
+    drogon::sync_wait(
+        sink.publishAction({.event = portraitRead(12), .client = nullptr}));
     std::this_thread::sleep_for(std::chrono::milliseconds(150));
 
     const ChangeOutboxRow change = pendingRow(outbox.pendingBatch(1));
@@ -441,7 +459,9 @@ TEST_CASE("the change sink lands every catalog row, emit, audit and journal "
       CHECK(seen == expected);
 
       for (int i = 0; i < 2; ++i)
-        drogon::sync_wait(liveSink.publishAction(portraitRead(99)));
+        drogon::sync_wait(
+            liveSink.publishAction({.event = portraitRead(99),
+                                    .client = nullptr}));
       {
         std::unique_lock lock(mutex);
         cv.wait_for(lock, std::chrono::seconds(10),
@@ -472,7 +492,8 @@ TEST_CASE("the change sink lands every catalog row, emit, audit and journal "
                                          .streamName = healed});
       healer.reconcile();
       drogon::sync_wait(healer.publishCatalog(userCatalog(102, "Ana")));
-      drogon::sync_wait(healer.publishAction(portraitRead(102)));
+      drogon::sync_wait(healer.publishAction(
+          {.event = portraitRead(102), .client = nullptr}));
       for (int attempt = 0; attempt < 400 && hasPending(outbox); ++attempt)
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
       CHECK_FALSE(hasPending(outbox));

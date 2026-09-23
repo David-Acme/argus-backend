@@ -32,10 +32,7 @@ public:
       delete;
 
   [[nodiscard]] drogon::Task<void>
-  emitUser(int64_t userId, const SocketEmitDto& body) const override;
-  [[nodiscard]] drogon::Task<void>
-  emitUsers(const std::vector<int64_t>& userIds,
-            const SocketEmitDto& body) const override;
+  emitUsers(const UserEmitInput& input) const override;
   [[nodiscard]] drogon::Task<void>
   publishAudit(const UserAuditInput& input) const override;
 
@@ -47,10 +44,7 @@ public:
 
 private:
   [[nodiscard]] drogon::Task<void>
-  emit(const std::vector<int64_t>& userIds,
-       const SocketEmitDto& body) const;
-  [[nodiscard]] drogon::Task<void> enqueue(std::string eventId,
-                                           std::string payloadJson) const;
+  enqueue(ChangeOutboxEnqueueInput input) const;
   bool ensureStream() const;
   void flushLoop();
   bool flush(const ChangeOutboxRow& row);

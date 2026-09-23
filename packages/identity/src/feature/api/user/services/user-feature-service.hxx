@@ -1,5 +1,6 @@
 #pragma once
 
+#include <drogon/orm/DbClient.h>
 #include <drogon/utils/coroutine.h>
 #include <feature/api/user/dtos/update-user-dto.hxx>
 #include <shared/repositories/refresh-token/refresh-token-repository.hxx>
@@ -20,6 +21,7 @@ struct UserChangeLogInput
   UserSchema before;
   UserSchema after;
   UserAction action{UserAction::Update};
+  drogon::orm::DbClient* client{nullptr};
 };
 
 class UserFeatureService

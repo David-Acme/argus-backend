@@ -266,6 +266,39 @@ target_compile_options(productivity-controller-test PRIVATE -Wall -Wextra)
 add_test(NAME productivity-controller-test
          COMMAND productivity-controller-test)
 
+add_executable(productivity-change-transaction-test
+    tests/unit/productivity-change-transaction-test.cc
+    ${PRODUCTIVITY_FEATURE_SOURCES})
+
+set_target_properties(productivity-change-transaction-test PROPERTIES
+    EXCLUDE_FROM_ALL FALSE)
+
+target_include_directories(productivity-change-transaction-test PRIVATE
+    ${PRODUCTIVITY_SRC_ROOT})
+
+target_compile_definitions(productivity-change-transaction-test PRIVATE
+    ARGUS_PRODUCTIVITY_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql")
+
+target_link_libraries(productivity-change-transaction-test PRIVATE
+    productivity-core
+    argus::lib::auth
+    argus::contracts::auth
+    argus::contracts::productivity
+    argus::contracts::sync
+    argus::lib::config
+    argus::lib::text
+    argus::lib::nats
+    argus::lib::sqlite
+    argus::lib::validation
+    argus::lib::http
+    doctest::doctest)
+
+target_compile_options(productivity-change-transaction-test
+                       PRIVATE -Wall -Wextra)
+
+add_test(NAME productivity-change-transaction-test
+         COMMAND productivity-change-transaction-test)
+
 add_executable(productivity-sync-rpc-test
     tests/unit/productivity-sync-rpc-test.cc
     ${PRODUCTIVITY_SRC_ROOT}/feature/sync/productivity-sync-rpc-service.cc)

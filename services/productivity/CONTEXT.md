@@ -96,16 +96,29 @@ own `productivity.db`.
 ## The productivity change feed (3a-2d)
 
 - Every emit and every audit diff lands in `change_outbox` in productivity.db
-  before it is published: the row mutation commits first, the change row is
-  written after it, and a worker publishes from the table and marks a row
+  before it is published: the row mutation and the change row commit as one
+  unit of work — the feature service opens a single `db_transaction` and
+  commits it once — and a worker publishes from the table and marks a row
   `sent` only on the JetStream PubAck. A broker outage, a crash in between or a
   restart leaves the rows pending and they drain at the next boot; before this
   both legs were fire-and-forget core publishes that a broker outage dropped
-  without a trace. An enqueue the shared database connection refuses is retried
-  before it is given up on: the mutation it records has already committed, and
-  no later event repairs a change that was recorded nowhere.
-- **Both legs go through the same table.** The emit leg (`emitUser`,
-  `emitUsers`) writes the `SocketEmitDto` triple plus `users` — the row event
+  without a trace. An enqueue the database refuses fails the write it belongs
+  to: the mutation rolls back with the change row, so a change is recorded
+  exactly when the row it names is, and a caller whose change could not be
+  recorded gets `ChangeNotRecorded` instead of a committed write nobody is
+  told about.
+- **One transaction, one owner.** Drogon's `Transaction` has no `commit()`: the
+  commit is the single shared pointer's destructor, so the transaction lives in
+  a local of the coroutine that opened it and is moved into
+  `db_transaction::Commit` exactly once; parking it in a struct field, a lambda
+  capture or a sink argument leaves the caller suspended forever. Everything
+  inside the window — reads included — must name that client, because
+  productivity's pool holds one connection and Drogon hands a second waiter an
+  infinite timeout. The repositories therefore take a borrowed
+  `drogon::orm::DbClient*` (null means "the pooled client") and never a
+  `shared_ptr`: nothing but the opening coroutine may own it.
+- **Both legs go through the same table.** The emit leg (`emitUsers`) writes the
+  `SocketEmitDto` triple plus `users` — the row event
   the fan-out routes into the recipients' rooms — and the audit leg
   (`publishAudit`) writes the `kind: audit` diff; the fan-out reads a missing
   `kind` as a row event. An emit's recipients travel exactly as the feature
@@ -129,11 +142,11 @@ own `productivity.db`.
   that. `argus-sync` and the memory catalog replica read the subject over core
   NATS, so the stream exists for the PubAck. The name lives in the sink's own
   `Config`, not in `lib/nats`: nothing outside this service names it.
-- **The emits became `[[nodiscard]] drogon::Task<void>`.** Routing an emit
+- **The emit became `[[nodiscard]] drogon::Task<void>`.** Routing an emit
   through the outbox makes it awaitable and rule 21 keeps blocking IO off the
-  event loop, so the contract's two emits return a `Task` like `publishAudit`
-  already did; the `emitMembership` helper of the project-member and
-  calendar-event-share services became a coroutine with them.
+  event loop, so the contract's `emitUsers` returns a `Task` like
+  `publishAudit` already did; the `emitMembership` helper of the
+  project-member and calendar-event-share services became a coroutine with it.
 - **Installed whenever NATS is configured**, not only when the first connect
   succeeds: the outbox is what makes a broker that is down survivable, so the
   sink is bound at boot and its drain reconciles once the schema is applied.
@@ -145,7 +158,7 @@ own `productivity.db`.
   and `quit()` follows once the worker reports drained (a 10-second deadline
   bounds the wait). The worker is a thread of the sink's own, so Drogon does
   not stop it, and `quit()` destroys the database client manager the worker
-  reaches through `DbService::client()`. The registration comes first because
+  reaches through `DbService::productivityClient()`. The registration comes first because
   the hook's handlers are what `run()` installs Drogon's `sigaction` over, and
   because a drain registered after the stop was requested is only stopped at
   once, never waited for.

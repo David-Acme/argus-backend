@@ -1,7 +1,9 @@
 #include "nats-identity-change-sink.hxx"
 
 #include <chrono>
+#include <errors/response-exception.hxx>
 #include <exception>
+#include <identity/identity-errors.hxx>
 #include <shared/repositories/change-outbox/change-outbox-key.hxx>
 #include <sync/module-audit-event.hxx>
 #include <sync/sync-change.hxx>
@@ -10,7 +12,6 @@
 #include <text/json-util.hxx>
 #include <nats/nats-bus.hxx>
 #include <nats/nats-subject.hxx>
-#include <trantor/net/EventLoop.h>
 #include <trantor/utils/Logger.h>
 #include <utility>
 
@@ -26,8 +27,6 @@ int64_t nowMs()
 }
 
 constexpr int64_t kStuckLogEvery = 100;
-constexpr int kEnqueueAttempts = 3;
-constexpr int kEnqueueRetryMs = 25;
 constexpr int kDrainBatch = 64;
 constexpr int kProgressMs = 50;
 }
@@ -68,29 +67,34 @@ NatsIdentityChangeSink::publishCatalog(const IdentityCatalogInput& input) const
       change_outbox_key::eventId({.table = tableNameToString(input.table),
                                   .recordId = input.id,
                                   .discriminator = payload});
-  co_await enqueueChange(id, payload);
+  co_await enqueue({.eventId = id,
+                    .subject = changeSubject_,
+                    .payload = payload,
+                    .client = input.client});
 }
 
 drogon::Task<void>
-NatsIdentityChangeSink::emitModule(TableName table,
-                                   const SocketEmitDto& body) const
+NatsIdentityChangeSink::emitModule(const ModuleEmitInput& input) const
 {
-  const Json::Value& recordId = body.obj["id"];
+  const Json::Value& recordId = input.body.obj["id"];
   if (!recordId.isIntegral()) {
     LOG_ERROR << "Identity change outbox: an emit of "
-              << tableNameToString(table)
-              << " carried no record id; not recorded";
-    co_return;
+              << tableNameToString(input.table)
+              << " carried no record id; the write is refused";
+    throw ResponseException(IdentityErrors::ChangeNotRecorded);
   }
-  SocketEmitDto frame = body;
-  frame.option = table;
+  SocketEmitDto frame = input.body;
+  frame.option = input.table;
   const std::string payload =
       json_util::toString(sync_change::emitPayload(frame));
   const std::string id =
-      change_outbox_key::eventId({.table = tableNameToString(table),
+      change_outbox_key::eventId({.table = tableNameToString(input.table),
                                   .recordId = recordId.asInt64(),
                                   .discriminator = payload});
-  co_await enqueueChange(id, payload);
+  co_await enqueue({.eventId = id,
+                    .subject = changeSubject_,
+                    .payload = payload,
+                    .client = input.client});
 }
 
 drogon::Task<void>
@@ -111,7 +115,10 @@ NatsIdentityChangeSink::publishModuleAudit(const ModuleAuditInput& input) const
       change_outbox_key::eventId({.table = tableNameToString(input.tableName),
                                   .recordId = input.recordId,
                                   .discriminator = payload});
-  co_await enqueueChange(id, payload);
+  co_await enqueue({.eventId = id,
+                    .subject = changeSubject_,
+                    .payload = payload,
+                    .client = input.client});
 }
 
 drogon::Task<void>
@@ -142,73 +149,55 @@ NatsIdentityChangeSink::publishUsersAudit(const UserAuditInput& input) const
       change_outbox_key::eventId({.table = tableNameToString(input.tableName),
                                   .recordId = input.recordId,
                                   .discriminator = payload});
-  co_await enqueueChange(id, payload);
+  co_await enqueue({.eventId = id,
+                    .subject = changeSubject_,
+                    .payload = payload,
+                    .client = input.client});
 }
 
 drogon::Task<void>
-NatsIdentityChangeSink::publishAction(const UserActionEvent& event) const
+NatsIdentityChangeSink::publishAction(const ActionPublishInput& input) const
 {
-  co_await enqueueAction(json_util::toString(event.toJson()));
+  co_await enqueueAction(json_util::toString(input.event.toJson()),
+                        input.client);
 }
 
 drogon::Task<void>
-NatsIdentityChangeSink::enqueueChange(std::string eventId,
-                                      std::string payloadJson) const
+NatsIdentityChangeSink::enqueue(ChangeOutboxEnqueueInput input) const
 {
-  if (payloadJson.size() > kMaxPayloadBytes) {
-    LOG_ERROR << "Identity change outbox: " << eventId << " carries "
-              << payloadJson.size()
-              << " bytes, past the broker's message budget; not recorded";
-    co_return;
+  if (input.payload.size() > kMaxPayloadBytes) {
+    LOG_ERROR << "Identity change outbox: " << input.eventId << " carries "
+              << input.payload.size()
+              << " bytes, past the broker's message budget; the write is "
+                 "refused";
+    throw ResponseException(IdentityErrors::ChangeNotRecorded);
   }
-  const ChangeOutboxEnqueueInput input{
-      .eventId = std::move(eventId),
-      .subject = changeSubject_,
-      .fingerprint = change_outbox_key::fingerprintJson(payloadJson),
-      .payload = std::move(payloadJson),
-      .at = nowMs(),
-  };
-  for (int attempt = 0; attempt < kEnqueueAttempts; ++attempt) {
-    if (co_await outbox_.enqueue(input) != ChangeOutboxDisposition::Failed) {
-      wake_.notify_all();
-      co_return;
-    }
-    co_await drogon::sleepCoro(
-        trantor::EventLoop::getEventLoopOfCurrentThread(),
-        std::chrono::milliseconds(kEnqueueRetryMs));
-  }
-  LOG_ERROR << "Identity change outbox: " << input.eventId
-            << " could not be recorded in " << kEnqueueAttempts
-            << " attempts; the change is lost";
+  input.fingerprint = change_outbox_key::fingerprintJson(input.payload);
+  input.at = nowMs();
+  co_await outbox_.enqueue(input);
+  wake_.notify_all();
 }
 
 drogon::Task<void>
-NatsIdentityChangeSink::enqueueAction(std::string payloadJson) const
+NatsIdentityChangeSink::enqueueAction(std::string payloadJson,
+                                      drogon::orm::DbClient* client) const
 {
   if (payloadJson.size() > kMaxPayloadBytes) {
     LOG_ERROR << "Identity change outbox: an action journal row carries "
               << payloadJson.size()
-              << " bytes, past the broker's message budget; not recorded";
-    co_return;
+              << " bytes, past the broker's message budget; the write is "
+                 "refused";
+    throw ResponseException(IdentityErrors::ChangeNotRecorded);
   }
   const ChangeOutboxActionInput input{
       .subject = actionSubject_,
       .fingerprint = change_outbox_key::fingerprintJson(payloadJson),
       .payload = std::move(payloadJson),
       .at = nowMs(),
+      .client = client,
   };
-  for (int attempt = 0; attempt < kEnqueueAttempts; ++attempt) {
-    if (co_await outbox_.enqueueAction(input)) {
-      wake_.notify_all();
-      co_return;
-    }
-    co_await drogon::sleepCoro(
-        trantor::EventLoop::getEventLoopOfCurrentThread(),
-        std::chrono::milliseconds(kEnqueueRetryMs));
-  }
-  LOG_ERROR << "Identity change outbox: an action journal row could not be "
-               "recorded in "
-            << kEnqueueAttempts << " attempts; the action is lost";
+  co_await outbox_.enqueueAction(input);
+  wake_.notify_all();
 }
 
 void NatsIdentityChangeSink::reconcile()

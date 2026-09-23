@@ -1,6 +1,10 @@
 #include "project-member-feature-service.hxx"
 
 #include <ctime>
+#include <errors/response-exception.hxx>
+#include <productivity/productivity-errors.hxx>
+#include <sqlite/db-service.hxx>
+#include <sqlite/transaction.hxx>
 #include <trantor/utils/Logger.h>
 #include <auth/role-access.hxx>
 #include <productivity/membership-error.hxx>
@@ -29,8 +33,10 @@ drogon::Task<void> ProjectMemberFeatureService::emitMembership(
     LOG_WARN << "user change sink not installed; drop project member membership emit";
     co_return;
   }
-  const std::vector<int64_t> recipients{input.ownerId, row.userId};
-  co_await sink->emitUsers(recipients, body);
+  std::vector<int64_t> recipients{input.ownerId, row.userId};
+  co_await sink->emitUsers({.userIds = std::move(recipients),
+                            .body = std::move(body),
+                            .client = input.client});
   co_return;
 }
 
@@ -38,7 +44,8 @@ drogon::Task<void> ProjectMemberFeatureService::emitParent(
     const EmitParentInput& input) const
 {
   const SyncOperation operation = input.operation;
-  const auto parent = co_await parentRepository_.findById(input.parentId);
+  const auto parent =
+      co_await parentRepository_.findById(input.parentId, input.client);
   if (!parent)
     co_return;
 
@@ -59,7 +66,9 @@ drogon::Task<void> ProjectMemberFeatureService::emitParent(
     LOG_WARN << "user change sink not installed; drop project member parent emit";
     co_return;
   }
-  co_await sink->emitUser(input.userId, body);
+  co_await sink->emitUsers({.userIds = {input.userId},
+                            .body = std::move(body),
+                            .client = input.client});
   co_return;
 }
 
@@ -81,88 +90,149 @@ ProjectMemberFeatureService::create(const CreateProjectMemberDto& body, int64_t 
     co_return {.error = MembershipError::UserNotAllowed, .row = std::nullopt};
 
   const auto access = shareAccessFromString(body.access);
-  if (const auto existing = co_await repository_.findExisting(
-          body.projectId, body.userId)) {
-    const auto row = co_await repository_.updateAccess(existing->id, access);
-    if (const auto* sink = user_change::getProductivitySink())
-      co_await sink->publishAudit(UserAuditInput{
-          .recordId = row.id,
-          .tableName = TableName::ProjectMember,
-          .before = existing->toJson(),
-          .after = row.toJson(),
-          .userIds = {parent->ownerId, row.userId},
-      });
-    else
-      LOG_WARN << "user change sink not installed; drop project member audit";
-    co_return {.row = row};
+  auto transaction =
+      co_await db_transaction::begin(DbService::productivityClient());
+  ProjectMemberSchema row;
+  try {
+    if (const auto existing = co_await repository_.findExisting(
+            {.parentId = body.projectId,
+             .userId = body.userId,
+             .client = transaction.get()})) {
+      row = co_await repository_.updateAccess(
+          {.id = existing->id, .access = access, .client = transaction.get()});
+      if (row.id == 0) {
+        db_transaction::rollback(transaction);
+        co_return {.error = MembershipError::ParentNotFound,
+                   .row = std::nullopt};
+      }
+      const auto* sink = user_change::getProductivitySink();
+      if (!sink)
+        LOG_WARN << "user change sink not installed; drop project member audit";
+      else
+        co_await sink->publishAudit({.recordId = row.id,
+                                     .tableName = TableName::ProjectMember,
+                                     .before = existing->toJson(),
+                                     .after = row.toJson(),
+                                     .userIds = {parent->ownerId, row.userId},
+                                     .client = transaction.get()});
+    }
+    else {
+      row = co_await repository_.create({.projectId = body.projectId,
+                                         .userId = body.userId,
+                                         .access = access,
+                                         .client = transaction.get()});
+      co_await emitMembership({.operation = SyncOperation::Add,
+                               .row = row,
+                               .ownerId = parent->ownerId,
+                               .client = transaction.get()});
+      co_await emitParent({.operation = SyncOperation::Add,
+                           .parentId = body.projectId,
+                           .userId = body.userId,
+                           .client = transaction.get()});
+    }
+    if (!co_await db_transaction::Commit(std::move(transaction)))
+      throw ResponseException(ProductivityErrors::ChangeNotRecorded);
   }
-
-  const auto row = co_await repository_.create({
-      .projectId = body.projectId,
-      .userId = body.userId,
-      .access = access,
-  });
-  const EmitMembershipInput membershipInput{.operation = SyncOperation::Add,
-                                             .row = row,
-                                             .ownerId = parent->ownerId};
-  const EmitParentInput parentInput{.operation = SyncOperation::Add,
-                                    .parentId = body.projectId,
-                                    .userId = body.userId};
-  co_await emitMembership(membershipInput);
-  co_await emitParent(parentInput);
+  catch (...) {
+    db_transaction::rollback(transaction);
+    throw;
+  }
   co_return {.row = row};
 }
 
 drogon::Task<ProjectMemberResult>
 ProjectMemberFeatureService::update(const UpdateInput& input) const
 {
-  const auto existing = co_await repository_.findById(input.id);
-  if (!existing)
-    co_return {.error = MembershipError::ParentNotFound, .row = std::nullopt};
+  auto transaction =
+      co_await db_transaction::begin(DbService::productivityClient());
+  ProjectMemberSchema row;
+  Json::Value before;
+  try {
+    const auto existing =
+        co_await repository_.findById(input.id, transaction.get());
+    if (!existing) {
+      db_transaction::rollback(transaction);
+      co_return {.error = MembershipError::ParentNotFound, .row = std::nullopt};
+    }
 
-  const auto parent = co_await parentRepository_.findById(existing->projectId);
-  if (!parent || parent->ownerId != input.actorId)
-    co_return {.error = MembershipError::ParentNotFound, .row = std::nullopt};
+    const auto parent = co_await parentRepository_.findById(
+        existing->projectId, transaction.get());
+    if (!parent || parent->ownerId != input.actorId) {
+      db_transaction::rollback(transaction);
+      co_return {.error = MembershipError::ParentNotFound, .row = std::nullopt};
+    }
+    before = existing->toJson();
 
-  const auto row = co_await repository_.updateAccess(
-      input.id, shareAccessFromString(input.body.access));
-  if (row.id == 0)
-    co_return {.error = MembershipError::ParentNotFound, .row = std::nullopt};
-  if (const auto* sink = user_change::getProductivitySink())
-    co_await sink->publishAudit(UserAuditInput{
-        .recordId = row.id,
-        .tableName = TableName::ProjectMember,
-        .before = existing->toJson(),
-        .after = row.toJson(),
-        .userIds = {parent->ownerId, row.userId},
-    });
-  else
-    LOG_WARN << "user change sink not installed; drop project member audit";
+    row = co_await repository_.updateAccess(
+        {.id = input.id,
+         .access = shareAccessFromString(input.body.access),
+         .client = transaction.get()});
+    if (row.id == 0) {
+      db_transaction::rollback(transaction);
+      co_return {.error = MembershipError::ParentNotFound, .row = std::nullopt};
+    }
+
+    const auto* sink = user_change::getProductivitySink();
+    if (!sink)
+      LOG_WARN << "user change sink not installed; drop project member audit";
+    else
+      co_await sink->publishAudit({.recordId = row.id,
+                                   .tableName = TableName::ProjectMember,
+                                   .before = std::move(before),
+                                   .after = row.toJson(),
+                                   .userIds = {parent->ownerId, row.userId},
+                                   .client = transaction.get()});
+
+    if (!co_await db_transaction::Commit(std::move(transaction)))
+      throw ResponseException(ProductivityErrors::ChangeNotRecorded);
+  }
+  catch (...) {
+    db_transaction::rollback(transaction);
+    throw;
+  }
   co_return {.row = row};
 }
 
 drogon::Task<bool> ProjectMemberFeatureService::remove(int64_t id,
                                                 int64_t actorId) const
 {
-  const auto existing = co_await repository_.findById(id);
-  if (!existing)
-    co_return false;
+  auto transaction =
+      co_await db_transaction::begin(DbService::productivityClient());
+  ProjectMemberSchema before;
+  try {
+    const auto existing = co_await repository_.findById(id, transaction.get());
+    if (!existing) {
+      db_transaction::rollback(transaction);
+      co_return false;
+    }
 
-  const auto parent = co_await parentRepository_.findById(existing->projectId);
-  if (!parent || parent->ownerId != actorId)
-    co_return false;
+    const auto parent = co_await parentRepository_.findById(
+        existing->projectId, transaction.get());
+    if (!parent || parent->ownerId != actorId) {
+      db_transaction::rollback(transaction);
+      co_return false;
+    }
+    before = *existing;
 
-  const bool removed = co_await repository_.remove(id);
-  if (!removed)
-    co_return false;
+    if (!co_await repository_.remove(id, transaction.get())) {
+      db_transaction::rollback(transaction);
+      co_return false;
+    }
 
-  const EmitMembershipInput membershipInput{.operation = SyncOperation::Delete,
-                                             .row = *existing,
-                                             .ownerId = parent->ownerId};
-  const EmitParentInput parentInput{.operation = SyncOperation::Delete,
-                                    .parentId = existing->projectId,
-                                    .userId = existing->userId};
-  co_await emitMembership(membershipInput);
-  co_await emitParent(parentInput);
+    co_await emitMembership({.operation = SyncOperation::Delete,
+                             .row = before,
+                             .ownerId = parent->ownerId,
+                             .client = transaction.get()});
+    co_await emitParent({.operation = SyncOperation::Delete,
+                         .parentId = existing->projectId,
+                         .userId = existing->userId,
+                         .client = transaction.get()});
+    if (!co_await db_transaction::Commit(std::move(transaction)))
+      throw ResponseException(ProductivityErrors::ChangeNotRecorded);
+  }
+  catch (...) {
+    db_transaction::rollback(transaction);
+    throw;
+  }
   co_return true;
 }

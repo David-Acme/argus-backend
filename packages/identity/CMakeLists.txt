@@ -264,6 +264,25 @@ target_compile_options(identity-change-outbox-sink-test
 add_test(NAME identity-change-outbox-sink-test
          COMMAND identity-change-outbox-sink-test)
 
+add_executable(identity-change-transaction-test
+    tests/unit/identity-change-transaction-test.cc)
+
+set_target_properties(identity-change-transaction-test PROPERTIES
+    EXCLUDE_FROM_ALL FALSE)
+
+target_link_libraries(identity-change-transaction-test PRIVATE
+    argus_identity
+    doctest::doctest)
+
+target_compile_definitions(identity-change-transaction-test PRIVATE
+    ARGUS_IDENTITY_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql")
+
+target_compile_options(identity-change-transaction-test
+                       PRIVATE -Wall -Wextra)
+
+add_test(NAME identity-change-transaction-test
+         COMMAND identity-change-transaction-test)
+
 get_target_property(DOCTEST_INCLUDE_DIRS doctest::doctest
                     INTERFACE_INCLUDE_DIRECTORIES)
 if(DOCTEST_INCLUDE_DIRS)

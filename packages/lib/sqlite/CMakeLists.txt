@@ -35,6 +35,8 @@ argus_lib(NAME sqlite
         src/sqlite/sql-escape.hxx
         src/sqlite/schema-runner.cc
         src/sqlite/schema-runner.hxx
+        src/sqlite/transaction.cc
+        src/sqlite/transaction.hxx
     INCLUDES src)
 
 target_link_libraries(argus_lib_sqlite PUBLIC argus::lib::config Drogon::Drogon)

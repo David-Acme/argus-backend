@@ -1,5 +1,6 @@
 #pragma once
 
+#include <drogon/orm/DbClient.h>
 #include <drogon/utils/coroutine.h>
 #include <feature/api/invitation/dtos/create-invitation-dto.hxx>
 #include <feature/api/invitation/dtos/response-invitation-dto.hxx>
@@ -28,9 +29,16 @@ private:
     UserInvitationSchema before;
     UserInvitationSchema after;
     UserAction action{UserAction::Create};
+    drogon::orm::DbClient* client{nullptr};
   };
 
-  drogon::Task<void> emitInvitation(const UserInvitationSchema& invitation) const;
+  struct InvitationEmitInput
+  {
+    UserInvitationSchema invitation;
+    drogon::orm::DbClient* client{nullptr};
+  };
+
+  drogon::Task<void> emitInvitation(const InvitationEmitInput& input) const;
   drogon::Task<void>
   recordInvitationAction(const InvitationActionLogInput& input) const;
 

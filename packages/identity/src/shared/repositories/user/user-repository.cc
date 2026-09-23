@@ -23,10 +23,11 @@ sync_query::SyncQueryParts scopedToUser(sync_query::SyncQueryParts parts,
 }
 
 drogon::Task<std::optional<UserSchema>>
-UserRepository::findById(int64_t id) const
+UserRepository::findById(int64_t id, drogon::orm::DbClient* client) const
 {
-  auto client = DbService::identityClient();
-  const auto result = co_await client->execSqlCoro(FIND_BY_ID.data(), id);
+  const auto pooled = DbService::identityClient();
+  auto* resolved = client ? client : pooled.get();
+  const auto result = co_await resolved->execSqlCoro(FIND_BY_ID.data(), id);
 
   if (result.empty())
     co_return std::nullopt;
@@ -56,7 +57,8 @@ UserRepository::create(const UserCreateInput& input) const
 drogon::Task<UserSchema>
 UserRepository::update(int64_t id, const UserUpdateInput& input) const
 {
-  auto client = DbService::client();
+  const auto pooled = DbService::client();
+  auto* client = input.client ? input.client : pooled.get();
   std::string sql = UPDATE_PREFIX.data();
   std::vector<std::string> args;
 
@@ -86,7 +88,7 @@ UserRepository::update(int64_t id, const UserUpdateInput& input) const
   }
 
   if (args.empty()) {
-    auto existing = co_await findById(id);
+    auto existing = co_await findById(id, client);
     if (!existing) {
       LOG_WARN << "User not found for update";
       co_return {};
@@ -99,7 +101,7 @@ UserRepository::update(int64_t id, const UserUpdateInput& input) const
   const auto& argsRef = args;
   co_await client->execSqlCoro(sql, argsRef);
 
-  auto updated = co_await findById(id);
+  auto updated = co_await findById(id, client);
   if (!updated) {
     LOG_WARN << "User not found after update";
     co_return {};
@@ -133,18 +135,22 @@ drogon::Task<bool> UserRepository::hasAnyUser() const
 }
 
 drogon::Task<bool>
-UserRepository::hasOtherActiveOwner(int64_t excludedUserId) const
+UserRepository::hasOtherActiveOwner(int64_t excludedUserId,
+                                    drogon::orm::DbClient* client) const
 {
-  auto client = DbService::client();
-  const auto result = co_await client->execSqlCoro(
+  const auto pooled = DbService::client();
+  auto* resolved = client ? client : pooled.get();
+  const auto result = co_await resolved->execSqlCoro(
       COUNT_OTHER_ACTIVE_OWNERS.data(), excludedUserId);
   co_return !result.empty() && result.front()[0].as<int64_t>() > 0;
 }
 
-drogon::Task<std::vector<UserSchema>> UserRepository::findAll() const
+drogon::Task<std::vector<UserSchema>>
+UserRepository::findAll(drogon::orm::DbClient* client) const
 {
-  auto client = DbService::client();
-  const auto result = co_await client->execSqlCoro(FIND_ALL.data());
+  const auto pooled = DbService::client();
+  auto* resolved = client ? client : pooled.get();
+  const auto result = co_await resolved->execSqlCoro(FIND_ALL.data());
   std::vector<UserSchema> users;
   users.reserve(result.size());
   for (const auto& row : result)

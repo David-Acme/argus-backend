@@ -57,6 +57,23 @@ own.
 - `details/` is private by convention — nothing outside this package includes
   `sqlite/details/...`, and a service that needs a vec query asks the
   repository the domain owns, not this one.
+- A unit of work's database client is **borrowed, never owned**. The struct a
+  caller fills (`ModuleEmitInput`, `ModuleAuditInput`, `CameraUpdateInput`,
+  `ChangeOutboxEnqueueInput`, ...) carries a `drogon::orm::DbClient*` that the
+  call site resolves with `.get()` from the unit of work's own
+  `std::shared_ptr<drogon::orm::Transaction>`; that local is the transaction's
+  single owner. The field type is the enforcement: `.client = transaction`
+  does not compile, so no struct copy can hold the transaction open. It
+  matters because Drogon has no `commit()` — `~TransactionImpl` is what queues
+  the commit, and any reference that outlives the commit point keeps the
+  caller suspended with no timeout, no error and a leaked connection.
+  `db_transaction::Commit(transaction)` moves the caller's `shared_ptr` in and
+  resets it, and that reset is what drops the last reference and runs the
+  destructor.
+- A read may fall back to the pool, a mutation may not: `findById`/`remove`
+  take the same non-owning pointer and resolve `client() ? client :
+  pooled.get()` themselves, so a caller that names a unit of work gets that
+  transaction and a caller that names nothing gets the service's client.
 - `freezeClient(dbPath)` is the shutdown half of `client()`, and it exists
   because `app().quit()` resets Drogon's database client manager while
   `DbService::client()` dereferences it — a statement landing in that window is

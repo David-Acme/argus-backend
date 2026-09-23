@@ -37,4 +37,8 @@ inline constexpr ErrorDefinition CameraUnreachable{
     .code = ErrorCode::CameraUnreachable,
     .status = 502,
     .message = "The camera refused the command"};
+inline constexpr ErrorDefinition ChangeNotRecorded{
+    .code = ErrorCode::InternalError,
+    .status = 500,
+    .message = "The change could not be recorded"};
 }

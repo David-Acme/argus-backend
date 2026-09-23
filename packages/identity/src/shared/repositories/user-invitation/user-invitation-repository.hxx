@@ -2,6 +2,7 @@
 
 #include "user-invitation-query.hxx"
 
+#include <drogon/orm/DbClient.h>
 #include <drogon/utils/coroutine.h>
 #include <sync/syncable.hxx>
 #include <optional>
@@ -16,9 +17,10 @@ public:
   drogon::Task<UserInvitationSchema>
   create(const UserInvitationCreateInput& input) const;
   drogon::Task<std::optional<UserInvitationSchema>>
-  findById(int64_t id) const;
+  findById(int64_t id, drogon::orm::DbClient* client = nullptr) const;
   drogon::Task<std::optional<UserInvitationSchema>>
-  findByTokenHash(const std::string& tokenHash) const;
+  findByTokenHash(const std::string& tokenHash,
+                  drogon::orm::DbClient* client = nullptr) const;
   drogon::Task<std::vector<UserInvitationSchema>> findAll() const;
   drogon::Task<bool> revoke(const UserInvitationRevokeInput& input) const;
 

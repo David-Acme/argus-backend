@@ -3,9 +3,13 @@
 #include <chrono>
 #include <ctime>
 #include <drogon/utils/coroutine.h>
+#include <errors/response-exception.hxx>
 #include <notification/notification-delivery-status.hxx>
 #include <notification/notification-delivery-sink.hxx>
+#include <notification/notification-errors.hxx>
 #include <nats/push-intent-sink.hxx>
+#include <sqlite/db-service.hxx>
+#include <sqlite/transaction.hxx>
 #include <sync/table-name.hxx>
 #include <trantor/utils/Logger.h>
 
@@ -125,21 +129,33 @@ drogon::Task<void>
 NotificationService::markAsRead(int64_t userId,
                                 const std::vector<int64_t>& ids) const
 {
-  const auto changes = co_await repository_.markAsRead(userId, ids);
-  if (user_change::getNotificationSink() == nullptr) {
-    if (!changes.empty())
-      LOG_WARN << "user change sink not installed; drop notification audit";
-    co_return;
+  auto transaction = co_await db_transaction::begin(DbService::client());
+  try {
+    const auto changes = co_await repository_.markAsRead(
+        {.userId = userId, .ids = ids, .client = transaction.get()});
+    const AuditSink* sink = user_change::getNotificationSink();
+    if (sink == nullptr) {
+      if (!changes.empty())
+        LOG_WARN << "user change sink not installed; drop notification audit";
+    }
+    else {
+      for (const auto& change : changes) {
+        co_await sink->publishAudit(UserAuditInput{
+            .recordId = change.after.id,
+            .tableName = TableName::Notification,
+            .before = change.before.toJson(),
+            .after = change.after.toJson(),
+            .userIds = {userId},
+            .client = transaction.get(),
+        });
+      }
+    }
+    if (!co_await db_transaction::Commit(std::move(transaction)))
+      throw ResponseException(NotificationErrors::ChangeNotRecorded);
   }
-  const AuditSink& sink = *user_change::getNotificationSink();
-  for (const auto& change : changes) {
-    co_await sink.publishAudit(UserAuditInput{
-        .recordId = change.after.id,
-        .tableName = TableName::Notification,
-        .before = change.before.toJson(),
-        .after = change.after.toJson(),
-        .userIds = {userId},
-    });
+  catch (...) {
+    db_transaction::rollback(transaction);
+    throw;
   }
   co_return;
 }

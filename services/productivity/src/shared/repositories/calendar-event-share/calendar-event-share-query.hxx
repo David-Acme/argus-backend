@@ -1,5 +1,6 @@
 #pragma once
 #include <cstdint>
+#include <drogon/orm/DbClient.h>
 #include <optional>
 #include <productivity/share-access.hxx>
 #include <string>
@@ -105,4 +106,19 @@ struct CalendarEventShareCreateInput
   int64_t calendarEventId{0};
   int64_t userId{0};
   ShareAccess access{ShareAccess::View};
+  drogon::orm::DbClient* client{nullptr};
+};
+
+struct CalendarEventShareUpdateInput
+{
+  int64_t id{0};
+  ShareAccess access{ShareAccess::View};
+  drogon::orm::DbClient* client{nullptr};
+};
+
+struct CalendarEventShareLookupInput
+{
+  int64_t parentId{0};
+  int64_t userId{0};
+  drogon::orm::DbClient* client{nullptr};
 };

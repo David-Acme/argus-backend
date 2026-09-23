@@ -30,7 +30,7 @@ public:
   NatsCameraChangeSink& operator=(const NatsCameraChangeSink&) = delete;
 
   [[nodiscard]] drogon::Task<void>
-  emitModule(TableName table, const SocketEmitDto& body) const override;
+  emitModule(const ModuleEmitInput& input) const override;
   [[nodiscard]] drogon::Task<void>
   publishAudit(const ModuleAuditInput& input) const override;
 
@@ -41,8 +41,8 @@ public:
   static constexpr std::size_t kMaxPayloadBytes = std::size_t{256} * 1024;
 
 private:
-  [[nodiscard]] drogon::Task<void> enqueue(std::string eventId,
-                                           std::string payloadJson) const;
+  [[nodiscard]] drogon::Task<void>
+  enqueue(ChangeOutboxEnqueueInput input) const;
   [[nodiscard]] bool ensureStream() const;
   void flushLoop();
   bool flush(const ChangeOutboxRow& row);

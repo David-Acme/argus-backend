@@ -56,7 +56,8 @@ FaceEmbeddingRepository::findByPerson(int64_t personId) const
 drogon::Task<FaceEmbeddingSchema>
 FaceEmbeddingRepository::create(const FaceEmbeddingCreateInput& input) const
 {
-  auto client = DbService::client();
+  const auto pooled = DbService::client();
+  auto* client = input.client ? input.client : pooled.get();
   const auto result =
       co_await client->execSqlCoro(INSERT.data(), input.personId,
                                    input.embedding, input.angleLabel,

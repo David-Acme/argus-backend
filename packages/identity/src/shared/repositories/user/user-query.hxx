@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <drogon/orm/DbClient.h>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -126,4 +127,5 @@ struct UserUpdateInput
   std::optional<std::string> lastName;
   std::optional<UserRole> role;
   std::optional<bool> isActive;
+  drogon::orm::DbClient* client{nullptr};
 };

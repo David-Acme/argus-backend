@@ -25,10 +25,12 @@ PortraitPreviewCapabilityRepository::create(
 
 drogon::Task<std::optional<PortraitPreviewCapabilitySchema>>
 PortraitPreviewCapabilityRepository::findByTokenHash(
-    const std::string& tokenHash) const
+    const std::string& tokenHash, drogon::orm::DbClient* client) const
 {
-  auto client = DbService::client();
-  const auto rows = co_await client->execSqlCoro(FIND_BY_TOKEN_HASH.data(), tokenHash);
+  const auto pooled = DbService::client();
+  auto* resolved = client ? client : pooled.get();
+  const auto rows =
+      co_await resolved->execSqlCoro(FIND_BY_TOKEN_HASH.data(), tokenHash);
   if (rows.empty())
     co_return std::nullopt;
   co_return PortraitPreviewCapabilitySchema(rows.front());
@@ -37,7 +39,8 @@ PortraitPreviewCapabilityRepository::findByTokenHash(
 drogon::Task<bool> PortraitPreviewCapabilityRepository::tryConsume(
     const PortraitPreviewCapabilityConsumeInput& input) const
 {
-  auto client = DbService::client();
+  const auto pooled = DbService::client();
+  auto* client = input.client ? input.client : pooled.get();
   const auto result = co_await client->execSqlCoro(
       TRY_CONSUME.data(), input.id, input.requesterUserId, input.now);
   co_return result.affectedRows() == 1;

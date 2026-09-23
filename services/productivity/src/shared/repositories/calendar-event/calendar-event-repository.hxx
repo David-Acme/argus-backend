@@ -2,6 +2,7 @@
 
 #include "calendar-event-query.hxx"
 
+#include <drogon/orm/DbClient.h>
 #include <drogon/utils/coroutine.h>
 #include <json/value.h>
 #include <optional>
@@ -22,14 +23,16 @@ public:
   CalendarEventRepository() = default;
   ~CalendarEventRepository() override = default;
 
-  drogon::Task<std::optional<CalendarEventSchema>> findById(int64_t id) const;
+  drogon::Task<std::optional<CalendarEventSchema>>
+  findById(int64_t id, drogon::orm::DbClient* client = nullptr) const;
   drogon::Task<std::vector<CalendarEventSchema>>
   findByOwnerRange(const CalendarEventRangeInput& input) const;
   drogon::Task<CalendarEventSchema>
   create(const CalendarEventCreateInput& input) const;
   drogon::Task<CalendarEventSchema>
   update(int64_t id, const CalendarEventUpdateInput& input) const;
-  drogon::Task<bool> remove(int64_t id) const;
+  drogon::Task<bool> remove(int64_t id,
+                            drogon::orm::DbClient* client = nullptr) const;
 
   drogon::Task<std::vector<Json::Value>>
   find(const SyncFilter& filter) const override;

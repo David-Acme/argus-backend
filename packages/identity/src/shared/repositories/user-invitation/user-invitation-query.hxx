@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <drogon/orm/DbClient.h>
 #include <string>
 #include <string_view>
 #include <auth/user-role.hxx>
@@ -67,12 +68,14 @@ struct UserInvitationCreateInput
   int maxRedemptions{1};
   int64_t expiresAt{0};
   int64_t createdBy{0};
+  drogon::orm::DbClient* client{nullptr};
 };
 
 struct UserInvitationRevokeInput
 {
   int64_t invitationId{0};
   int64_t revokedBy{0};
+  drogon::orm::DbClient* client{nullptr};
 };
 
 struct InvitationRedemptionCreateInput

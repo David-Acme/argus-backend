@@ -9,10 +9,11 @@
 using namespace person_query;
 
 drogon::Task<std::optional<PersonSchema>>
-PersonRepository::findById(int64_t id) const
+PersonRepository::findById(int64_t id, drogon::orm::DbClient* client) const
 {
-  auto client = DbService::client();
-  const auto result = co_await client->execSqlCoro(FIND_BY_ID.data(), id);
+  const auto pooled = DbService::client();
+  auto* resolved = client ? client : pooled.get();
+  const auto result = co_await resolved->execSqlCoro(FIND_BY_ID.data(), id);
   if (result.empty())
     co_return std::nullopt;
   co_return PersonSchema(result.front());
@@ -45,7 +46,8 @@ PersonRepository::findAllCatalog() const
 drogon::Task<PersonSchema>
 PersonRepository::create(const PersonCreateInput& input) const
 {
-  auto client = DbService::client();
+  const auto pooled = DbService::client();
+  auto* client = input.client ? input.client : pooled.get();
   const auto result = co_await client->execSqlCoro(
       INSERT.data(),
       input.userId ? *input.userId : std::optional<int64_t>{}, input.name,
@@ -64,10 +66,12 @@ PersonRepository::create(const PersonCreateInput& input) const
   co_return schema;
 }
 
-drogon::Task<bool> PersonRepository::promote(int64_t id) const
+drogon::Task<bool> PersonRepository::promote(int64_t id,
+                                             drogon::orm::DbClient* client) const
 {
-  auto client = DbService::client();
-  const auto result = co_await client->execSqlCoro(PROMOTE.data(), id);
+  const auto pooled = DbService::client();
+  auto* resolved = client ? client : pooled.get();
+  const auto result = co_await resolved->execSqlCoro(PROMOTE.data(), id);
   co_return result.affectedRows() > 0;
 }
 

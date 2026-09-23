@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <drogon/orm/DbClient.h>
 #include <string>
 
 namespace change_outbox_query
@@ -37,16 +38,16 @@ enum class ChangeOutboxDisposition : uint8_t
   Enqueued = 0,
   Replay,
   Conflict,
-  Failed,
 };
 
 struct ChangeOutboxEnqueueInput
 {
   std::string eventId;
   std::string subject;
-  std::string fingerprint;
+  std::string fingerprint{};
   std::string payload;
   int64_t at{0};
+  drogon::orm::DbClient* client{nullptr};
 };
 
 struct ChangeOutboxActionInput
@@ -55,6 +56,7 @@ struct ChangeOutboxActionInput
   std::string fingerprint;
   std::string payload;
   int64_t at{0};
+  drogon::orm::DbClient* client{nullptr};
 };
 
 struct ChangeOutboxRow

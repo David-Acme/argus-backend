@@ -79,16 +79,27 @@ package, and argus-sync's fan-out that reads the payloads back; sub-step
   `emitPayload`, `userEmitPayload`, `disconnectPayload` and `roleRoomsPayload`
   over `RoleRoomChange`, which carries the role *names* because the two role
   keys travel as strings; 12 files.
+- `src/sync/module-emit.hxx` — `ModuleEmitInput`: the `TableName` a
+  module-scoped emit is scoped to, the `SocketEmitDto` body, and the borrowed
+  `DbClient*` of the unit of work the change must be recorded in. It moved out
+  of the two sink headers so both name one input, and the pointer type is what
+  forbids a copy of the transaction; 6 files.
 - `src/sync/user-change-sink.hxx` — `AuditSink` (`publishAudit`) with
   `UserAuditInput`, and `UserChangeSink`, which derives from it and adds the
-  two emits (`emitUser`, `emitUsers`), plus the two process-wide slots the
-  services fill at boot: `user_change::productivitySink` (a `UserChangeSink`)
-  and `user_change::notificationSink` (an `AuditSink`, because the
-  notification domain publishes diffs and never emits rows); 14 files, the
-  third-most-included header here.
+  one user-scoped emit (`emitUsers`, over `UserEmitInput` and the recipient
+  list it carries), plus the two process-wide slots the services fill at boot:
+  `user_change::productivitySink` (a `UserChangeSink`) and
+  `user_change::notificationSink` (an `AuditSink`, because the notification
+  domain publishes diffs and never emits rows); 17 files, the most-included
+  sink header here.
 - `src/sync/camera-change-sink.hxx` — the camera domain's pair: `CameraChangeSink`
   (`emitModule`, `publishAudit`), `ModuleAuditInput`, and the single
-  `camera_change` slot `argus-camera` installs; 3 files.
+  `camera_change` slot `argus-camera` installs; 4 files.
+- `src/sync/identity-change-sink.hxx` — the identity domain's five-call sink:
+  `IdentityChangeSink` (`publishCatalog`, `emitModule`, `publishModuleAudit`,
+  `publishUsersAudit`, `publishAction`) with `IdentityCatalogInput` and
+  `ActionPublishInput`, and the one `identity_change` slot `argus-identity`
+  installs; 7 files.
 - `src/sync/user-audit-event.hxx` — `UserAuditEvent`, the row a user-scoped
   producer puts on the wire: record id, table, the `ChangesDiff`, the priority,
   the recipients and the timestamp, with `toJson`/`fromJson` over the
@@ -96,7 +107,16 @@ package, and argus-sync's fan-out that reads the payloads back; sub-step
 - `src/sync/module-audit-event.hxx` — the same shape for the module-scoped
   event (camera and identity produce it today), carrying one optional
   `create_user_id` where the user-scoped event carries a recipient list;
-  6 files.
+  9 files.
+- `src/sync/user-action-event.hxx` — `UserActionEvent`, the action-journal row:
+  the acting user, the record, the table, the `UserAction`, the before/after
+  data and the request's ip address, with the snake_case `toJson`/`fromJson`
+  the action subject carries (identity publishes them, the audit fan-out reads
+  them back); 2 files.
+- `src/sync/sync-control-sink.hxx` — `SyncControlSink`, the three synchronous
+  room operations a service performs on the socket another service holds
+  (`replaceRoleRooms`, `disconnectUser`, `emitToUser`), and the one
+  `sync_control` slot `argus-sync` installs; 3 files.
 - `src/sync/sync-forwarder.hxx` — `SyncFrameInput` (`conn`, `message`, `raw`),
   the `SocketFrameError` refusal the transport sends back, the
   `sendSocketFrameError` helper (inline, because a contract compiles no source)

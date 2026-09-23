@@ -263,6 +263,7 @@ set(CAMERA_UNIT_TESTS
     camera-health-test
     event-intelligence-test
     camera-source-registrar-test
+    camera-change-transaction-test
 )
 
 foreach(TEST_NAME IN LISTS CAMERA_UNIT_TESTS)
@@ -308,6 +309,9 @@ target_link_libraries(camera-operator-test PRIVATE camera-core)
 target_link_libraries(camera-health-test PRIVATE camera-core)
 target_link_libraries(event-intelligence-test PRIVATE camera-core)
 target_link_libraries(camera-source-registrar-test PRIVATE camera-core)
+target_link_libraries(camera-change-transaction-test PRIVATE camera-core)
+target_compile_definitions(camera-change-transaction-test PRIVATE
+    ARGUS_CAMERA_SCHEMA_PATH="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql")
 
 add_executable(camera-talk-cutover-test
     tests/unit/camera-talk-cutover-test.cc

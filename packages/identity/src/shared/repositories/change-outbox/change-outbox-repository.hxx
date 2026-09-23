@@ -16,7 +16,7 @@ public:
   [[nodiscard]] drogon::Task<ChangeOutboxDisposition>
   enqueue(const ChangeOutboxEnqueueInput& input) const;
 
-  [[nodiscard]] drogon::Task<bool>
+  [[nodiscard]] drogon::Task<void>
   enqueueAction(const ChangeOutboxActionInput& input) const;
 
   [[nodiscard]] std::vector<ChangeOutboxRow> pendingBatch(int limit) const;

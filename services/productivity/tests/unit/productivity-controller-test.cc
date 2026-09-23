@@ -209,20 +209,13 @@ class RecordingSink final : public UserChangeSink
 {
 public:
   [[nodiscard]] drogon::Task<void>
-  emitUser(int64_t userId, const SocketEmitDto& body) const override
-  {
-    const std::vector<int64_t> recipients{userId};
-    co_await emitUsers(recipients, body);
-    co_return;
-  }
-
-  [[nodiscard]] drogon::Task<void>
-  emitUsers(const std::vector<int64_t>& userIds,
-            const SocketEmitDto& body) const override
+  emitUsers(const UserEmitInput& input) const override
   {
     std::lock_guard lock(mutex_);
-    emits.push_back({static_cast<int>(body.operation),
-                     tableNameToString(body.option), body.obj, userIds});
+    emits.push_back({.operation = static_cast<int>(input.body.operation),
+                     .option = tableNameToString(input.body.option),
+                     .body = input.body.obj,
+                     .users = input.userIds});
     co_return;
   }
 

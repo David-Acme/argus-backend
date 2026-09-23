@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <drogon/orm/DbClient.h>
 #include <optional>
 #include <shared/vocabulary/person-status.hxx>
 #include <string>
@@ -102,6 +103,7 @@ struct PersonCreateInput
   std::string alias;
   std::string observation;
   PersonStatus status{PersonStatus::Known};
+  drogon::orm::DbClient* client{nullptr};
 };
 
 struct PersonUpdateInput

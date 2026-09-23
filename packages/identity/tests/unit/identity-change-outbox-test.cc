@@ -8,6 +8,7 @@
 
 #include <chrono>
 #include <cstdio>
+#include <stdexcept>
 #include <string>
 #include <thread>
 #include <vector>
@@ -135,20 +136,23 @@ TEST_CASE("the change outbox replays one transition and refuses a conflict")
                                                .subject = kChangeSubject,
                                                .fingerprint = "fp",
                                                .payload = "{}",
-                                               .at = 0};
-  CHECK(drogon::sync_wait(repository.enqueue(incomplete)) ==
-        ChangeOutboxDisposition::Failed);
+                                               .at = 0,
+                                               .client = nullptr};
+  CHECK_THROWS_AS(drogon::sync_wait(repository.enqueue(incomplete)),
+                  std::invalid_argument);
 
   const ChangeOutboxEnqueueInput first = {.eventId = "identity-change:a",
                                           .subject = kChangeSubject,
                                           .fingerprint = "fp-1",
                                           .payload = R"({"info":1})",
-                                          .at = 1000};
+                                          .at = 1000,
+                                          .client = nullptr};
   const ChangeOutboxEnqueueInput second = {.eventId = "identity-change:b",
                                            .subject = kChangeSubject,
                                            .fingerprint = "fp-2",
                                            .payload = R"({"info":2})",
-                                           .at = 2000};
+                                           .at = 2000,
+                                           .client = nullptr};
   CHECK(drogon::sync_wait(repository.enqueue(first)) ==
         ChangeOutboxDisposition::Enqueued);
   CHECK(drogon::sync_wait(repository.enqueue(second)) ==
@@ -163,7 +167,8 @@ TEST_CASE("the change outbox replays one transition and refuses a conflict")
                                           .subject = kChangeSubject,
                                           .fingerprint = "fp-9",
                                           .payload = R"({"info":9})",
-                                          .at = 3000};
+                                          .at = 3000,
+                                          .client = nullptr};
   CHECK(drogon::sync_wait(repository.enqueue(first)) ==
         ChangeOutboxDisposition::Replay);
   CHECK(drogon::sync_wait(repository.enqueue(raced)) ==
@@ -189,12 +194,14 @@ TEST_CASE("the change outbox replays one transition and refuses a conflict")
                                           .subject = kChangeSubject,
                                           .fingerprint = "fp-3",
                                           .payload = R"({"info":3})",
-                                          .at = 5000};
+                                          .at = 5000,
+                                          .client = nullptr};
   const ChangeOutboxEnqueueInput fourth = {.eventId = "identity-change:d",
                                            .subject = kChangeSubject,
                                            .fingerprint = "fp-4",
                                            .payload = R"({"info":4})",
-                                           .at = 5000};
+                                           .at = 5000,
+                                           .client = nullptr};
   CHECK(drogon::sync_wait(repository.enqueue(third)) ==
         ChangeOutboxDisposition::Enqueued);
   CHECK(drogon::sync_wait(repository.enqueue(fourth)) ==
@@ -208,11 +215,17 @@ TEST_CASE("the change outbox replays one transition and refuses a conflict")
   const ChangeOutboxActionInput read = {.subject = kActionSubject,
                                         .fingerprint = "fp-read",
                                         .payload = R"({"action":"read"})",
-                                        .at = 6000};
-  CHECK(drogon::sync_wait(repository.enqueueAction(read)));
-  CHECK(drogon::sync_wait(repository.enqueueAction(read)));
-  CHECK_FALSE(drogon::sync_wait(repository.enqueueAction(
-      {.subject = kActionSubject, .fingerprint = "fp", .payload = "", .at = 0})));
+                                        .at = 6000,
+                                        .client = nullptr};
+  drogon::sync_wait(repository.enqueueAction(read));
+  drogon::sync_wait(repository.enqueueAction(read));
+  CHECK_THROWS_AS(drogon::sync_wait(repository.enqueueAction(
+                      {.subject = kActionSubject,
+                       .fingerprint = "fp",
+                       .payload = "",
+                       .at = 0,
+                       .client = nullptr})),
+                  std::invalid_argument);
 
   CHECK(repository.markSent(pendingRow(repository.pendingBatch(1)).id, 6100));
   const ChangeOutboxRow journal = pendingRow(repository.pendingBatch(1));

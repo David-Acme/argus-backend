@@ -37,4 +37,8 @@ inline constexpr ErrorDefinition OwnerAlreadyHasAccess{
     .code = ErrorCode::Conflict,
     .status = 409,
     .message = "The owner already has access"};
+inline constexpr ErrorDefinition ChangeNotRecorded{
+    .code = ErrorCode::InternalError,
+    .status = 500,
+    .message = "The change could not be recorded"};
 }

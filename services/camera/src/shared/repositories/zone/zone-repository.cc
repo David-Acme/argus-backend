@@ -9,10 +9,11 @@
 using namespace zone_query;
 
 drogon::Task<std::optional<ZoneSchema>>
-ZoneRepository::findById(int64_t id) const
+ZoneRepository::findById(int64_t id, drogon::orm::DbClient* client) const
 {
-  auto client = DbService::cameraClient();
-  const auto result = co_await client->execSqlCoro(FIND_BY_ID.data(), id);
+  const auto pooled = DbService::cameraClient();
+  auto* effective = client ? client : pooled.get();
+  const auto result = co_await effective->execSqlCoro(FIND_BY_ID.data(), id);
   if (result.empty())
     co_return std::nullopt;
   co_return ZoneSchema(result.front());
@@ -34,7 +35,8 @@ ZoneRepository::findByCamera(int64_t cameraId) const
 drogon::Task<ZoneSchema>
 ZoneRepository::create(const ZoneCreateInput& input) const
 {
-  auto client = DbService::cameraClient();
+  const auto pooled = DbService::cameraClient();
+  auto* client = input.client ? input.client : pooled.get();
   const auto result =
       co_await client->execSqlCoro(INSERT.data(), input.cameraId, input.name,
                                    input.points,
@@ -56,7 +58,8 @@ ZoneRepository::create(const ZoneCreateInput& input) const
 drogon::Task<ZoneSchema>
 ZoneRepository::update(int64_t id, const ZoneUpdateInput& input) const
 {
-  auto client = DbService::cameraClient();
+  const auto pooled = DbService::cameraClient();
+  auto* client = input.client ? input.client : pooled.get();
   std::string sql = UPDATE_PREFIX.data();
   std::vector<std::string> args;
 
@@ -87,7 +90,7 @@ ZoneRepository::update(int64_t id, const ZoneUpdateInput& input) const
   }
 
   if (args.empty()) {
-    auto existing = co_await findById(id);
+    auto existing = co_await findById(id, client);
     if (!existing) {
       LOG_WARN << "Zone not found for update";
       co_return {};
@@ -100,7 +103,7 @@ ZoneRepository::update(int64_t id, const ZoneUpdateInput& input) const
   const auto& argsRef = args;
   co_await client->execSqlCoro(sql, argsRef);
 
-  auto updated = co_await findById(id);
+  auto updated = co_await findById(id, client);
   if (!updated) {
     LOG_WARN << "Zone not found after update";
     co_return {};
@@ -108,10 +111,12 @@ ZoneRepository::update(int64_t id, const ZoneUpdateInput& input) const
   co_return *updated;
 }
 
-drogon::Task<bool> ZoneRepository::remove(int64_t id) const
+drogon::Task<bool> ZoneRepository::remove(int64_t id,
+                                          drogon::orm::DbClient* client) const
 {
-  auto client = DbService::cameraClient();
-  const auto result = co_await client->execSqlCoro(REMOVE.data(), id);
+  const auto pooled = DbService::cameraClient();
+  auto* effective = client ? client : pooled.get();
+  const auto result = co_await effective->execSqlCoro(REMOVE.data(), id);
   co_return result.affectedRows() > 0;
 }
 

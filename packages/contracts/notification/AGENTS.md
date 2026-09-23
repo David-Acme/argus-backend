@@ -1,7 +1,8 @@
 # argus_contracts_notification
 
 The notification boundary's vocabulary: the two delivery states a push or a
-socket frame settles into, and the sink a delivery is published through.
+socket frame settles into, the sink a delivery is published through, and the
+one refusal the boundary answers with.
 
 ## What this is
 
@@ -26,6 +27,11 @@ all.
   `createdAt`), the two-virtual `NotificationDeliverySink` a push backend
   implements (`ensureStream`, `publish`) and `notification_delivery::messageId`,
   the JetStream dedup id. 13 files include it.
+- `src/notification/notification-errors.hxx` — `NotificationErrors`, the one
+  refusal the boundary throws: the answer a notification write gives when the
+  change row that must travel with it could not be recorded, so the write is
+  refused and nothing commits. It is the only header here that depends on
+  `lib/errors`. 3 files include it.
 
 ## Rules
 
@@ -42,6 +48,9 @@ all.
   does not know: this one has to render a row a newer schema version wrote.
 - The wire schema is `argus/notification/v1/notification.proto` under
   `packages/contracts/proto/`, compiled by `packages/clients/notification`.
+- A refusal is thrown, never built (root rule 6), and this boundary's are
+  catalogued in `notification-errors.hxx` so code, status and text cannot
+  drift apart.
 - Rule 25: the folder IS the module. One `argus_contracts(NAME notification
   ...)` with an explicit source list, never `file(GLOB)`.
 
@@ -50,3 +59,5 @@ all.
 - `tests/unit/notification-contract-vocabulary-test.cc` — the two spellings'
   round-trip, the fallback for anything the constraint would reject, and the
   unknown-ordinal path.
+- `tests/unit/notification-contract-catalog-test.cc` — the refusal as a
+  pinned table, its wire legality, and that no two say the same thing.

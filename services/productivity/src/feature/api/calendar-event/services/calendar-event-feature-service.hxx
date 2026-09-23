@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <drogon/orm/DbClient.h>
 #include <drogon/utils/coroutine.h>
 #include <feature/api/calendar-event/dtos/create-calendar-event-dto.hxx>
 #include <feature/api/calendar-event/dtos/update-calendar-event-dto.hxx>
@@ -33,10 +34,22 @@ public:
   drogon::Task<bool> remove(int64_t id, int64_t actorId) const;
 
 private:
-  drogon::Task<void> emit(SyncOperation operation,
-                          const CalendarEventSchema& row) const;
-  drogon::Task<bool> canEdit(const CalendarEventSchema& row,
-                             int64_t actorId) const;
+  struct EmitInput
+  {
+    SyncOperation operation{};
+    const CalendarEventSchema& row;
+    drogon::orm::DbClient* client{nullptr};
+  };
+
+  struct CanEditInput
+  {
+    const CalendarEventSchema& row;
+    int64_t actorId{0};
+    drogon::orm::DbClient* client{nullptr};
+  };
+
+  drogon::Task<void> emit(const EmitInput& input) const;
+  drogon::Task<bool> canEdit(const CanEditInput& input) const;
 
   CalendarEventRepository repository_;
   CalendarEventShareRepository shareRepository_;

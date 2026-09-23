@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <drogon/orm/DbClient.h>
 #include <string>
 #include <string_view>
 
@@ -61,4 +62,5 @@ struct RefreshTokenCreateInput
   std::string deviceHash;
   std::string userAgent;
   int64_t expiresAt{0};
+  drogon::orm::DbClient* client{nullptr};
 };

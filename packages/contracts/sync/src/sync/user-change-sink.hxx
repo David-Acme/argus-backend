@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <drogon/orm/DbClient.h>
 #include <drogon/utils/coroutine.h>
 #include <json/value.h>
 #include <sync/table-name.hxx>
@@ -14,6 +15,14 @@ struct UserAuditInput
   Json::Value before;
   Json::Value after;
   std::vector<int64_t> userIds;
+  drogon::orm::DbClient* client{nullptr};
+};
+
+struct UserEmitInput
+{
+  std::vector<int64_t> userIds;
+  SocketEmitDto body;
+  drogon::orm::DbClient* client{nullptr};
 };
 
 class AuditSink
@@ -29,11 +38,7 @@ class UserChangeSink : public AuditSink
 {
 public:
   [[nodiscard]] virtual drogon::Task<void>
-  emitUser(int64_t userId, const SocketEmitDto& body) const = 0;
-
-  [[nodiscard]] virtual drogon::Task<void>
-  emitUsers(const std::vector<int64_t>& userIds,
-            const SocketEmitDto& body) const = 0;
+  emitUsers(const UserEmitInput& input) const = 0;
 };
 
 namespace user_change

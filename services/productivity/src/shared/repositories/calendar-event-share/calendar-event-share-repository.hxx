@@ -2,6 +2,7 @@
 
 #include "calendar-event-share-query.hxx"
 
+#include <drogon/orm/DbClient.h>
 #include <drogon/utils/coroutine.h>
 #include <json/value.h>
 #include <optional>
@@ -15,16 +16,21 @@ public:
   CalendarEventShareRepository() = default;
   ~CalendarEventShareRepository() override = default;
 
-  drogon::Task<std::optional<CalendarEventShareSchema>> findById(int64_t id) const;
+  drogon::Task<std::optional<CalendarEventShareSchema>>
+  findById(int64_t id, drogon::orm::DbClient* client = nullptr) const;
   drogon::Task<std::vector<CalendarEventShareSchema>> findByParent(int64_t parentId) const;
-  drogon::Task<std::optional<ShareAccess>> findAccess(int64_t parentId,
-                                                      int64_t userId) const;
-  drogon::Task<std::vector<int64_t>> memberIds(int64_t parentId) const;
-  drogon::Task<std::optional<CalendarEventShareSchema>> findExisting(int64_t parentId,
-                                                         int64_t userId) const;
-  drogon::Task<CalendarEventShareSchema> create(const CalendarEventShareCreateInput& input) const;
-  drogon::Task<CalendarEventShareSchema> updateAccess(int64_t id, ShareAccess access) const;
-  drogon::Task<bool> remove(int64_t id) const;
+  drogon::Task<std::optional<ShareAccess>>
+  findAccess(const CalendarEventShareLookupInput& input) const;
+  drogon::Task<std::vector<int64_t>>
+  memberIds(int64_t parentId, drogon::orm::DbClient* client = nullptr) const;
+  drogon::Task<std::optional<CalendarEventShareSchema>>
+  findExisting(const CalendarEventShareLookupInput& input) const;
+  drogon::Task<CalendarEventShareSchema>
+  create(const CalendarEventShareCreateInput& input) const;
+  drogon::Task<CalendarEventShareSchema>
+  updateAccess(const CalendarEventShareUpdateInput& input) const;
+  drogon::Task<bool> remove(int64_t id,
+                            drogon::orm::DbClient* client = nullptr) const;
 
   drogon::Task<std::vector<Json::Value>>
   find(const SyncFilter& filter) const override;

@@ -145,11 +145,12 @@ exclusively this service's, the notification-token side as before.
   row sent. A refused publish leaves the intent `pending` for the 60-second
   delivery reconciler (`startDeliveryReconciler`); nothing is ever lost on a
   broker outage, and a restart replays from the table.
-- **`markAsRead`** now lands its per-change user audits in the service's own
+- **`markAsRead`** lands its per-change user audits in the service's own
   `change_outbox` before they are published over `argus.notification.v1.change`
-  (see the change-feed section below). The sink carries audit diffs only: a
-  notification row reaches its user through the durable delivery leg, not
-  through the change subject.
+  (see the change-feed section below), in the same transaction as the row
+  updates it audits. The sink carries audit diffs only: a notification row
+  reaches its user through the durable delivery leg, not through the change
+  subject.
 - **Push intents** (`[push].enabled`, default off) stay at-most-once
   fire-and-forget accelerators toward `argus-relay`; the `/sync` fan-out
   after durable delivery is the guarantee.
@@ -157,15 +158,17 @@ exclusively this service's, the notification-token side as before.
 ## The notification change feed (3a-2c)
 
 - Every mark-as-read audit lands in `change_outbox` in notification.db before
-  it is published: the row updates commit first, one change row per moved
-  notification is written after them, and a worker publishes from the table
-  and marks a row `sent` only on the JetStream PubAck. A broker outage, a
-  crash in between or a restart leaves the rows pending and they drain at the
-  next boot; before this the audit was a fire-and-forget core publish that a
-  broker outage dropped without a trace. An enqueue the shared database
-  connection refuses is retried before it is given up on: the mutation it
-  records has already committed, and no later event repairs a change that was
-  recorded nowhere.
+  it is published: the row updates, the audit diff and the change row are
+  statements of one `IMMEDIATE` transaction (S1), and a worker publishes from
+  the table and marks a row `sent` only on the JetStream PubAck. A broker
+  outage, a crash in between or a restart leaves the rows pending and they
+  drain at the next boot; before this the audit was a fire-and-forget core
+  publish that a broker outage dropped without a trace. A refused enqueue
+  throws into that transaction instead of being retried and given up on (S1b):
+  the whole read rolls back, the handler answers an error, and no state exists
+  in which a committed mutation has no change row — the fail-fast storage
+  errors (`SQLITE_FULL`, `SQLITE_IOERR`, a corrupt page) are the window the
+  give-up used to leave open, and only the caller can answer them.
 - **The event id names the transition, not the record** — the same rule as the
   camera feed. It is the hash of the table, the record id and the payload's
   own canonical JSON, so a redelivery recomputes the same id while a record

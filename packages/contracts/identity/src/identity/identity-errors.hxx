@@ -125,4 +125,8 @@ inline constexpr ErrorDefinition InvalidPairingCode{
     .code = ErrorCode::Forbidden,
     .status = 403,
     .message = "Invalid pairing code"};
+inline constexpr ErrorDefinition ChangeNotRecorded{
+    .code = ErrorCode::InternalError,
+    .status = 500,
+    .message = "The change could not be recorded"};
 }

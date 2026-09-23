@@ -2,6 +2,7 @@
 
 #include "project-member-query.hxx"
 
+#include <drogon/orm/DbClient.h>
 #include <drogon/utils/coroutine.h>
 #include <json/value.h>
 #include <optional>
@@ -15,16 +16,20 @@ public:
   ProjectMemberRepository() = default;
   ~ProjectMemberRepository() override = default;
 
-  drogon::Task<std::optional<ProjectMemberSchema>> findById(int64_t id) const;
+  drogon::Task<std::optional<ProjectMemberSchema>>
+  findById(int64_t id, drogon::orm::DbClient* client = nullptr) const;
   drogon::Task<std::vector<ProjectMemberSchema>> findByParent(int64_t parentId) const;
-  drogon::Task<std::optional<ShareAccess>> findAccess(int64_t parentId,
-                                                      int64_t userId) const;
-  drogon::Task<std::vector<int64_t>> memberIds(int64_t parentId) const;
-  drogon::Task<std::optional<ProjectMemberSchema>> findExisting(int64_t parentId,
-                                                         int64_t userId) const;
+  drogon::Task<std::optional<ShareAccess>>
+  findAccess(const ProjectMemberLookupInput& input) const;
+  drogon::Task<std::vector<int64_t>>
+  memberIds(int64_t parentId, drogon::orm::DbClient* client = nullptr) const;
+  drogon::Task<std::optional<ProjectMemberSchema>>
+  findExisting(const ProjectMemberLookupInput& input) const;
   drogon::Task<ProjectMemberSchema> create(const ProjectMemberCreateInput& input) const;
-  drogon::Task<ProjectMemberSchema> updateAccess(int64_t id, ShareAccess access) const;
-  drogon::Task<bool> remove(int64_t id) const;
+  drogon::Task<ProjectMemberSchema>
+  updateAccess(const ProjectMemberUpdateInput& input) const;
+  drogon::Task<bool> remove(int64_t id,
+                            drogon::orm::DbClient* client = nullptr) const;
 
   drogon::Task<std::vector<Json::Value>>
   find(const SyncFilter& filter) const override;

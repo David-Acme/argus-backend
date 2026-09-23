@@ -10,10 +10,11 @@
 using namespace project_task_query;
 
 drogon::Task<std::optional<ProjectTaskSchema>>
-ProjectTaskRepository::findById(int64_t id) const
+ProjectTaskRepository::findById(int64_t id, drogon::orm::DbClient* client) const
 {
-  auto client = DbService::productivityClient();
-  const auto result = co_await client->execSqlCoro(FIND_BY_ID.data(), id);
+  const auto pooled = DbService::productivityClient();
+  auto* effective = client ? client : pooled.get();
+  const auto result = co_await effective->execSqlCoro(FIND_BY_ID.data(), id);
   if (result.empty())
     co_return std::nullopt;
   co_return ProjectTaskSchema(result.front());
@@ -35,7 +36,8 @@ ProjectTaskRepository::findByProject(int64_t projectId) const
 drogon::Task<ProjectTaskSchema>
 ProjectTaskRepository::create(const ProjectTaskCreateInput& input) const
 {
-  auto client = DbService::productivityClient();
+  const auto pooled = DbService::productivityClient();
+  auto* client = input.client ? input.client : pooled.get();
   const auto result = co_await client->execSqlCoro(
       INSERT.data(), input.projectId,
       input.createdBy ? *input.createdBy : std::optional<int64_t>{},
@@ -61,7 +63,8 @@ drogon::Task<ProjectTaskSchema>
 ProjectTaskRepository::update(int64_t id,
                               const ProjectTaskUpdateInput& input) const
 {
-  auto client = DbService::productivityClient();
+  const auto pooled = DbService::productivityClient();
+  auto* client = input.client ? input.client : pooled.get();
   std::string sql = UPDATE_PREFIX.data();
   std::vector<std::string> args;
 
@@ -91,7 +94,7 @@ ProjectTaskRepository::update(int64_t id,
     addColumn(UPDATE_COL_SORT_ORDER, std::to_string(*input.sortOrder));
 
   if (args.empty()) {
-    auto existing = co_await findById(id);
+    auto existing = co_await findById(id, client);
     if (!existing) {
       LOG_WARN << "ProjectTask not found for update";
       co_return {};
@@ -104,7 +107,7 @@ ProjectTaskRepository::update(int64_t id,
   const auto& argsRef = args;
   co_await client->execSqlCoro(sql, argsRef);
 
-  auto updated = co_await findById(id);
+  auto updated = co_await findById(id, client);
   if (!updated) {
     LOG_WARN << "ProjectTask not found after update";
     co_return {};
@@ -112,10 +115,12 @@ ProjectTaskRepository::update(int64_t id,
   co_return *updated;
 }
 
-drogon::Task<bool> ProjectTaskRepository::remove(int64_t id) const
+drogon::Task<bool> ProjectTaskRepository::remove(int64_t id,
+                                                 drogon::orm::DbClient* client) const
 {
-  auto client = DbService::productivityClient();
-  const auto result = co_await client->execSqlCoro(REMOVE.data(), id);
+  const auto pooled = DbService::productivityClient();
+  auto* effective = client ? client : pooled.get();
+  const auto result = co_await effective->execSqlCoro(REMOVE.data(), id);
   co_return result.affectedRows() > 0;
 }
 

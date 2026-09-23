@@ -2,6 +2,7 @@
 #include <doctest/doctest.h>
 
 #include <drogon/drogon.h>
+#include <errors/response-exception.hxx>
 #include <notification/nats-notification-change-sink.hxx>
 #include <shared/repositories/change-outbox/change-outbox-key.hxx>
 #include <shared/repositories/change-outbox/change-outbox-repository.hxx>
@@ -183,7 +184,8 @@ TEST_CASE("the change sink lands every audit in the durable outbox")
     oversized.after["body"] =
         std::string(NatsNotificationChangeSink::kMaxPayloadBytes + 1, 'x');
     oversized.userIds = {7};
-    drogon::sync_wait(sink.publishAudit(oversized));
+    CHECK_THROWS_AS(drogon::sync_wait(sink.publishAudit(oversized)),
+                    ResponseException);
     CHECK_FALSE(hasPending(outbox));
   }
 

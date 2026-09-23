@@ -2,6 +2,7 @@
 
 #include "person-query.hxx"
 
+#include <drogon/orm/DbClient.h>
 #include <drogon/utils/coroutine.h>
 #include <json/value.h>
 #include <sync/syncable.hxx>
@@ -14,14 +15,16 @@ public:
   PersonRepository() = default;
   ~PersonRepository() override = default;
 
-  drogon::Task<std::optional<PersonSchema>> findById(int64_t id) const;
+  drogon::Task<std::optional<PersonSchema>>
+  findById(int64_t id, drogon::orm::DbClient* client = nullptr) const;
   drogon::Task<std::vector<PersonSchema>> findByUser(int64_t userId) const;
   drogon::Task<std::vector<PersonSchema>> findAllCatalog() const;
   drogon::Task<PersonSchema> create(const PersonCreateInput& input) const;
   drogon::Task<PersonSchema> update(int64_t id,
                                     const PersonUpdateInput& input) const;
   drogon::Task<bool> linkUser(int64_t id, int64_t userId) const;
-  drogon::Task<bool> promote(int64_t id) const;
+  drogon::Task<bool> promote(int64_t id,
+                             drogon::orm::DbClient* client = nullptr) const;
   drogon::Task<bool> remove(int64_t id) const;
 
   drogon::Task<std::vector<Json::Value>>

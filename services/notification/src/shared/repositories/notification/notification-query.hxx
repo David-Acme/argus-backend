@@ -1,4 +1,5 @@
 #pragma once
+#include <drogon/orm/DbClient.h>
 #include <json/value.h>
 #include <optional>
 #include <shared/schemas/notification/notification-schema.hxx>
@@ -208,6 +209,13 @@ struct NotificationSyncFilter
   std::optional<int64_t> startTime;
   std::optional<int64_t> startId;
   std::optional<int64_t> endTime;
+};
+
+struct NotificationMarkReadInput
+{
+  int64_t userId{0};
+  std::vector<int64_t> ids;
+  drogon::orm::DbClient* client{nullptr};
 };
 
 struct AckDeliveriesInput

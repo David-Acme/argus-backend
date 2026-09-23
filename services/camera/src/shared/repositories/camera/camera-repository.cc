@@ -9,10 +9,11 @@
 using namespace camera_query;
 
 drogon::Task<std::optional<CameraSchema>>
-CameraRepository::findById(int64_t id) const
+CameraRepository::findById(int64_t id, drogon::orm::DbClient* client) const
 {
-  auto client = DbService::cameraClient();
-  const auto result = co_await client->execSqlCoro(FIND_BY_ID.data(), id);
+  const auto pooled = DbService::cameraClient();
+  auto* effective = client ? client : pooled.get();
+  const auto result = co_await effective->execSqlCoro(FIND_BY_ID.data(), id);
 
   if (result.empty())
     co_return std::nullopt;
@@ -36,7 +37,8 @@ CameraRepository::findEnabled() const
 drogon::Task<CameraSchema>
 CameraRepository::create(const CameraCreateInput& input) const
 {
-  auto client = DbService::cameraClient();
+  const auto pooled = DbService::cameraClient();
+  auto* client = input.client ? input.client : pooled.get();
   const auto result =
       co_await client->execSqlCoro(INSERT.data(), input.name,
                                    input.manufacturer, input.model, input.ip,
@@ -74,7 +76,8 @@ CameraRepository::create(const CameraCreateInput& input) const
 drogon::Task<CameraSchema>
 CameraRepository::update(int64_t id, const CameraUpdateInput& input) const
 {
-  auto client = DbService::cameraClient();
+  const auto pooled = DbService::cameraClient();
+  auto* client = input.client ? input.client : pooled.get();
   std::string sql = UPDATE_PREFIX.data();
   std::vector<std::string> args;
 
@@ -137,7 +140,7 @@ CameraRepository::update(int64_t id, const CameraUpdateInput& input) const
   }
 
   if (args.empty()) {
-    auto existing = co_await findById(id);
+    auto existing = co_await findById(id, client);
     if (!existing) {
       LOG_WARN << "Camera not found for update";
       co_return {};
@@ -150,7 +153,7 @@ CameraRepository::update(int64_t id, const CameraUpdateInput& input) const
   const auto& argsRef = args;
   co_await client->execSqlCoro(sql, argsRef);
 
-  auto updated = co_await findById(id);
+  auto updated = co_await findById(id, client);
   if (!updated) {
     LOG_WARN << "Camera not found after update";
     co_return {};
@@ -158,10 +161,12 @@ CameraRepository::update(int64_t id, const CameraUpdateInput& input) const
   co_return *updated;
 }
 
-drogon::Task<bool> CameraRepository::remove(int64_t id) const
+drogon::Task<bool>
+CameraRepository::remove(int64_t id, drogon::orm::DbClient* client) const
 {
-  auto client = DbService::cameraClient();
-  const auto result = co_await client->execSqlCoro(REMOVE.data(), id);
+  const auto pooled = DbService::cameraClient();
+  auto* effective = client ? client : pooled.get();
+  const auto result = co_await effective->execSqlCoro(REMOVE.data(), id);
   co_return result.affectedRows() > 0;
 }
 

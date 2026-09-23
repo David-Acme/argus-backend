@@ -6,6 +6,7 @@
 #include <feature/api/camera/dtos/update-camera-dto.hxx>
 #include <optional>
 #include <sync/camera-change-sink.hxx>
+#include <sync/module-emit.hxx>
 #include <shared/repositories/camera/camera-repository.hxx>
 #include <shared/schemas/camera/camera-schema.hxx>
 
@@ -18,8 +19,7 @@ public:
   drogon::Task<bool> remove(int64_t id) const;
 
 private:
-  [[nodiscard]] drogon::Task<void> emit(SyncOperation operation,
-                                        const CameraSchema& row) const;
+  [[nodiscard]] drogon::Task<void> emit(const ModuleEmitInput& input) const;
 
   CameraRepository repository_;
 };

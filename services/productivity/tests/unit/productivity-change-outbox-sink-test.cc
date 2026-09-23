@@ -2,6 +2,7 @@
 #include <doctest/doctest.h>
 
 #include <drogon/drogon.h>
+#include <errors/response-exception.hxx>
 #include <productivity/nats-productivity-change-sink.hxx>
 #include <shared/repositories/change-outbox/change-outbox-key.hxx>
 #include <shared/repositories/change-outbox/change-outbox-repository.hxx>
@@ -143,7 +144,7 @@ TEST_CASE("the change sink lands every emit and audit in the durable outbox")
                      .retryMs = 20, .publishSubject = {}, .streamName = {}});
 
     const SocketEmitDto created = projectRow(SyncOperation::Add, 42, "Gate");
-    drogon::sync_wait(sink.emitUsers({42, 7}, created));
+    drogon::sync_wait(sink.emitUsers({.userIds = {42, 7}, .body = created}));
     const ChangeOutboxRow emitted = pendingRow(outbox.pendingBatch(1));
     CHECK(emitted.eventId.rfind("productivity-change:", 0) == 0);
     CHECK(emitted.eventId.size() == 52);
@@ -155,17 +156,18 @@ TEST_CASE("the change sink lands every emit and audit in the durable outbox")
     CHECK(emitted.payload.find("\"kind\"") == std::string::npos);
     CHECK(outbox.markSent(emitted.eventId, 1000));
 
-    drogon::sync_wait(sink.emitUsers({42, 42}, created));
+    drogon::sync_wait(sink.emitUsers({.userIds = {42, 42}, .body = created}));
     const ChangeOutboxRow verbatim = pendingRow(outbox.pendingBatch(1));
     CHECK(verbatim.eventId != emitted.eventId);
     CHECK(verbatim.payload.find("\"users\":[42,42]") != std::string::npos);
     CHECK(outbox.markSent(verbatim.eventId, 1100));
 
-    drogon::sync_wait(sink.emitUsers({42, 7}, created));
+    drogon::sync_wait(sink.emitUsers({.userIds = {42, 7}, .body = created}));
     CHECK_FALSE(hasPending(outbox));
 
     drogon::sync_wait(
-        sink.emitUsers({42, 7}, projectRow(SyncOperation::Add, 42, "Fence")));
+        sink.emitUsers({.userIds = {42, 7},
+                    .body = projectRow(SyncOperation::Add, 42, "Fence")}));
     const ChangeOutboxRow moved = pendingRow(outbox.pendingBatch(1));
     CHECK(moved.eventId != emitted.eventId);
     CHECK(outbox.markSent(moved.eventId, 1200));
@@ -175,7 +177,7 @@ TEST_CASE("the change sink lands every emit and audit in the durable outbox")
     tombstone.option = TableName::Project;
     tombstone.obj["id"] = static_cast<Json::Int64>(42);
     tombstone.obj["deletedAt"] = static_cast<Json::Int64>(1700000000);
-    drogon::sync_wait(sink.emitUser(9, tombstone));
+    drogon::sync_wait(sink.emitUsers({.userIds = {9}, .body = tombstone}));
     const ChangeOutboxRow deleted = pendingRow(outbox.pendingBatch(1));
     CHECK(deleted.payload.find("\"operation\":5") != std::string::npos);
     CHECK(deleted.payload.find("\"deletedAt\":1700000000") !=
@@ -187,12 +189,16 @@ TEST_CASE("the change sink lands every emit and audit in the durable outbox")
     anonymous.operation = SyncOperation::Add;
     anonymous.option = TableName::Project;
     anonymous.obj["name"] = "Gate";
-    drogon::sync_wait(sink.emitUsers({42}, anonymous));
+    CHECK_THROWS_AS(
+        drogon::sync_wait(sink.emitUsers({.userIds = {42}, .body = anonymous})),
+        ResponseException);
     CHECK_FALSE(hasPending(outbox));
 
     SocketEmitDto misnamed = anonymous;
     misnamed.obj["id"] = "42";
-    drogon::sync_wait(sink.emitUsers({42}, misnamed));
+    CHECK_THROWS_AS(
+        drogon::sync_wait(sink.emitUsers({.userIds = {42}, .body = misnamed})),
+        ResponseException);
     CHECK_FALSE(hasPending(outbox));
 
     drogon::sync_wait(sink.publishAudit(projectAudit(7, {42, 7})));
@@ -209,7 +215,9 @@ TEST_CASE("the change sink lands every emit and audit in the durable outbox")
     SocketEmitDto oversized = projectRow(SyncOperation::Add, 8, "Gate");
     oversized.obj["description"] =
         std::string(NatsProductivityChangeSink::kMaxPayloadBytes + 1, 'x');
-    drogon::sync_wait(sink.emitUsers({42}, oversized));
+    CHECK_THROWS_AS(
+        drogon::sync_wait(sink.emitUsers({.userIds = {42}, .body = oversized})),
+        ResponseException);
     CHECK_FALSE(hasPending(outbox));
 
     drogon::sync_wait(sink.publishAudit(projectAudit(9, {42, 42, 0, -3})));
@@ -237,7 +245,8 @@ TEST_CASE("the change sink lands every emit and audit in the durable outbox")
                      .retryMs = 20, .publishSubject = {}, .streamName = {}});
     sink.reconcile();
     drogon::sync_wait(
-        sink.emitUsers({42}, projectRow(SyncOperation::Add, 12, "Gate")));
+        sink.emitUsers({.userIds = {42},
+                        .body = projectRow(SyncOperation::Add, 12, "Gate")}));
     std::this_thread::sleep_for(std::chrono::milliseconds(150));
 
     const ChangeOutboxRow waiting = pendingRow(outbox.pendingBatch(1));
@@ -295,8 +304,9 @@ TEST_CASE("the change sink lands every emit and audit in the durable outbox")
                                                       .publishSubject = subject,
                                                       .streamName = stream});
       drogon::sync_wait(
-          liveSink.emitUsers({42, 7}, projectRow(SyncOperation::Add, 99,
-                                                 "Gate")));
+          liveSink.emitUsers({.userIds = {42, 7},
+                              .body = projectRow(SyncOperation::Add, 99,
+                                                 "Gate")}));
       const std::string expected = pendingRow(outbox.pendingBatch(1)).payload;
       liveSink.reconcile();
 
@@ -327,8 +337,9 @@ TEST_CASE("the change sink lands every emit and audit in the durable outbox")
                        .publishSubject = healedSubject,
                        .streamName = healed});
       healer.reconcile();
-      drogon::sync_wait(
-          healer.emitUsers({42}, projectRow(SyncOperation::Add, 102, "Gate")));
+      drogon::sync_wait(healer.emitUsers(
+          {.userIds = {42},
+           .body = projectRow(SyncOperation::Add, 102, "Gate")}));
       for (int attempt = 0;
            attempt < 200 && hasPending(outbox); ++attempt)
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
@@ -349,7 +360,8 @@ TEST_CASE("the change sink lands every emit and audit in the durable outbox")
       const auto started = std::chrono::steady_clock::now();
       for (int64_t recordId = 200; recordId < 300; ++recordId)
         drogon::sync_wait(bursts.emitUsers(
-            {42}, projectRow(SyncOperation::Add, recordId, "Gate")));
+            {.userIds = {42},
+             .body = projectRow(SyncOperation::Add, recordId, "Gate")}));
       bursts.reconcile();
       for (int attempt = 0;
            attempt < 400 && hasPending(outbox); ++attempt)
@@ -365,10 +377,12 @@ TEST_CASE("the change sink lands every emit and audit in the durable outbox")
                      .publishSubject = "argus.test.productivity.change.*",
                      .streamName = stream});
     stranded.reconcile();
-    drogon::sync_wait(
-        stranded.emitUsers({42}, projectRow(SyncOperation::Add, 100, "Gate")));
-    drogon::sync_wait(
-        stranded.emitUsers({42}, projectRow(SyncOperation::Add, 101, "Gate")));
+    drogon::sync_wait(stranded.emitUsers(
+        {.userIds = {42},
+         .body = projectRow(SyncOperation::Add, 100, "Gate")}));
+    drogon::sync_wait(stranded.emitUsers(
+        {.userIds = {42},
+         .body = projectRow(SyncOperation::Add, 101, "Gate")}));
 
     bool attempted = false;
     for (int attempt = 0; attempt < 100 && !attempted; ++attempt) {

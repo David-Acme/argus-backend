@@ -2,13 +2,18 @@
 
 #include <ctime>
 #include <drogon/drogon.h>
+#include <errors/response-exception.hxx>
 #include <grpc/grpc-client-base.hxx>
+#include <identity/identity-errors.hxx>
 #include <map>
+#include <memory>
 #include <optional>
 #include <sync/sync-operation.hxx>
 #include <sync/table-name.hxx>
 #include <sync/socket-emit-dto.hxx>
 #include <shared/services/face/face-service.hxx>
+#include <sqlite/db-service.hxx>
+#include <sqlite/transaction.hxx>
 #include <sync/identity-change-sink.hxx>
 #include <shared/vocabulary/person-status.hxx>
 #include <runtime/blocking-task.hxx>
@@ -129,14 +134,20 @@ grpc::ServerUnaryReactor* IdentityRpcService::UpdateUser(
                                         responseWriter]() {
     drogon::async_run([this, reactor, userId, name,
                        responseWriter]() -> drogon::Task<void> {
+      std::shared_ptr<drogon::orm::Transaction> transaction;
       try {
+        transaction =
+            co_await db_transaction::begin(DbService::identityClient());
+
         auto user = co_await userRepository_.update(
             userId,
             {.name = name,
              .lastName = std::nullopt,
              .role = std::nullopt,
-             .isActive = std::nullopt});
+             .isActive = std::nullopt,
+             .client = transaction.get()});
         if (user.id <= 0) {
+          db_transaction::rollback(transaction);
           reactor->Finish(grpc::Status(grpc::StatusCode::NOT_FOUND,
                                        "user not found"));
           co_return;
@@ -147,7 +158,12 @@ grpc::ServerUnaryReactor* IdentityRpcService::UpdateUser(
         emit.option = TableName::User;
         emit.obj = user.toJson();
         if (const auto* sink = identity_change::getSink())
-          co_await sink->emitModule(TableName::User, emit);
+          co_await sink->emitModule({.table = TableName::User,
+                                     .body = emit,
+                                     .client = transaction.get()});
+
+        if (!co_await db_transaction::Commit(std::move(transaction)))
+          throw ResponseException(IdentityErrors::ChangeNotRecorded);
 
         responseWriter->mutable_user()->set_user_id(user.id);
         responseWriter->mutable_user()->set_name(user.name);
@@ -155,6 +171,7 @@ grpc::ServerUnaryReactor* IdentityRpcService::UpdateUser(
         reactor->Finish(grpc::Status::OK);
       }
       catch (const std::exception& e) {
+        db_transaction::rollback(transaction);
         LOG_WARN << "Identity RPC: UpdateUser failed: " << e.what();
         reactor->Finish(grpc::Status(grpc::StatusCode::INTERNAL, e.what()));
       }
@@ -503,9 +520,12 @@ grpc::ServerUnaryReactor* IdentityRpcService::EnrollPerson(
       [this, reactor, image, cameraId, captureSnapshot, responseWriter]() {
         drogon::async_run([this, reactor, image, cameraId, captureSnapshot,
                            responseWriter]() -> drogon::Task<void> {
+          std::optional<FaceService::FaceResult> face;
+          PersonSchema person;
+          std::shared_ptr<drogon::orm::Transaction> transaction;
+          int64_t faceEmbeddingId = 0;
           try {
-            const auto face =
-                co_await FaceService::instance().extractImageAsync(image);
+            face = co_await FaceService::instance().extractImageAsync(image);
             if (!face) {
               reactor->Finish(grpc::Status(grpc::StatusCode::INVALID_ARGUMENT,
                                            "no face detected in the crop"));
@@ -522,59 +542,78 @@ grpc::ServerUnaryReactor* IdentityRpcService::EnrollPerson(
               co_return;
             }
 
-            const auto person = co_await personRepository_.create(
+            transaction =
+                co_await db_transaction::begin(DbService::identityClient());
+
+            person = co_await personRepository_.create(
                 {.userId = std::nullopt,
                  .name = "",
                  .alias = "",
                  .observation = "",
-                 .status = PersonStatus::Candidate});
+                 .status = PersonStatus::Candidate,
+                 .client = transaction.get()});
             if (person.id <= 0) {
+              db_transaction::rollback(transaction);
               reactor->Finish(grpc::Status(grpc::StatusCode::INTERNAL,
                                            "person insert failed"));
               co_return;
             }
 
-            if (face) {
-              const std::string embedding(
-                  reinterpret_cast<const char*>(face->embedding.data()),
-                  face->embedding.size() * sizeof(float));
-              const auto row = co_await faceEmbeddingRepository_.create(
-                  {.personId = person.id,
-                   .embedding = embedding,
-                   .angleLabel = "frontal",
-                   .quality = 1.0});
-              if (row.id > 0) {
-                co_await BlockingTask<void>([&face, personId = person.id,
-                                             faceEmbeddingId = row.id]() {
-                  FaceService::instance().faceDb().insert(
-                      {.embedding = face->embedding.data(),
-                       .personId = personId,
-                       .faceEmbeddingId = faceEmbeddingId});
-                });
-              }
-            }
+            const std::string embedding(
+                reinterpret_cast<const char*>(face->embedding.data()),
+                face->embedding.size() * sizeof(float));
+            const auto row = co_await faceEmbeddingRepository_.create(
+                {.personId = person.id,
+                 .embedding = embedding,
+                 .angleLabel = "frontal",
+                 .quality = 1.0,
+                 .client = transaction.get()});
+            if (row.id > 0)
+              faceEmbeddingId = row.id;
+
             if (captureSnapshot)
               co_await personSnapshotRepository_.store(
-                  {.personId = person.id, .image = image});
+                  {.personId = person.id,
+                   .image = image,
+                   .client = transaction.get()});
 
             SocketEmitDto emit;
             emit.operation = SyncOperation::Add;
             emit.option = TableName::Person;
             emit.obj = person.toJson();
             if (const auto* sink = identity_change::getSink())
-              co_await sink->emitModule(TableName::Person, emit);
-            LOG_INFO << "Identity RPC: enrolled person " << person.id
-                     << " from camera " << cameraId;
-            responseWriter->set_person_id(person.id);
-            responseWriter->set_created(true);
-            responseWriter->set_confidence(face ? face->confidence : 0.0F);
-            reactor->Finish(grpc::Status::OK);
+              co_await sink->emitModule({.table = TableName::Person,
+                                         .body = emit,
+                                         .client = transaction.get()});
+
+            if (!co_await db_transaction::Commit(std::move(transaction)))
+              throw ResponseException(IdentityErrors::ChangeNotRecorded);
           }
           catch (const std::exception& e) {
+            db_transaction::rollback(transaction);
             LOG_WARN << "Identity RPC: EnrollPerson failed: " << e.what();
             reactor->Finish(
                 grpc::Status(grpc::StatusCode::INTERNAL, e.what()));
+            co_return;
           }
+
+          if (faceEmbeddingId > 0) {
+            co_await BlockingTask<void>([embedding = face->embedding,
+                                         personId = person.id,
+                                         faceEmbeddingId]() {
+              FaceService::instance().faceDb().insert(
+                  {.embedding = embedding.data(),
+                   .personId = personId,
+                   .faceEmbeddingId = faceEmbeddingId});
+            });
+          }
+
+          LOG_INFO << "Identity RPC: enrolled person " << person.id
+                   << " from camera " << cameraId;
+          responseWriter->set_person_id(person.id);
+          responseWriter->set_created(true);
+          responseWriter->set_confidence(face->confidence);
+          reactor->Finish(grpc::Status::OK);
           co_return;
         });
       });
@@ -856,6 +895,9 @@ grpc::ServerUnaryReactor* IdentityRpcService::PromotePerson(
       [this, reactor, responseWriter, personId, token, device]() {
         drogon::async_run([this, reactor, responseWriter, personId, token,
                            device]() -> drogon::Task<void> {
+          std::optional<PersonSchema> before;
+          bool promoted = false;
+          std::shared_ptr<drogon::orm::Transaction> transaction;
           try {
             std::map<std::string, std::string> claims;
             try {
@@ -891,17 +933,22 @@ grpc::ServerUnaryReactor* IdentityRpcService::PromotePerson(
               co_return;
             }
 
-            const auto before = co_await personRepository_.findById(personId);
+            transaction =
+                co_await db_transaction::begin(DbService::identityClient());
+
+            before = co_await personRepository_.findById(personId,
+                                                         transaction.get());
             if (!before) {
+              db_transaction::rollback(transaction);
               reactor->Finish(grpc::Status(grpc::StatusCode::NOT_FOUND,
                                            "person not found"));
               co_return;
             }
-            const bool promoted =
-                co_await personRepository_.promote(personId);
+            promoted = co_await personRepository_.promote(personId,
+                                                          transaction.get());
             if (promoted) {
-              const auto after =
-                  co_await personRepository_.findById(personId);
+              const auto after = co_await personRepository_.findById(
+                  personId, transaction.get());
               if (after) {
                 if (const auto* sink = identity_change::getSink()) {
                   co_await sink->publishModuleAudit(
@@ -909,14 +956,20 @@ grpc::ServerUnaryReactor* IdentityRpcService::PromotePerson(
                        .tableName = TableName::Person,
                        .before = before->toJson(),
                        .after = after->toJson(),
-                       .actorId = actorId});
+                       .actorId = actorId,
+                       .client = transaction.get()});
                 }
               }
             }
+
+            if (!co_await db_transaction::Commit(std::move(transaction)))
+              throw ResponseException(IdentityErrors::ChangeNotRecorded);
+
             responseWriter->set_promoted(promoted);
             reactor->Finish(grpc::Status::OK);
           }
           catch (const std::exception& e) {
+            db_transaction::rollback(transaction);
             LOG_WARN << "Identity RPC: PromotePerson failed: " << e.what();
             reactor->Finish(
                 grpc::Status(grpc::StatusCode::INTERNAL, e.what()));
