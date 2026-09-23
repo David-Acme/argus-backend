@@ -40,7 +40,8 @@ both variants have to answer the same numbers.
   (`drainOf(unit, name)` adapts a `requestStop()`/`drained()` pair), the
   module's term/int handler only *requests* stops, and Drogon quits once every
   registered drain reports drained — or after a 10 s deadline, naming the
-  drains that never finished.
+  drains that never finished. `onQuit(hook)` registers what has to happen
+  *between* that last drain and the quit itself.
 
 ## Rules
 
@@ -79,6 +80,15 @@ both variants have to answer the same numbers.
   `drogon::app().quit()` from a shutdown path of your own: the module is the
   only caller, and it quits after the drains, not before. (A test suite ending
   its own throwaway app is not that path.)
+- `onQuit` is the seam for work that must run after the last drain and before
+  `app().quit()` — quitting is what resets Drogon's database client manager,
+  and `DbService::client()` dereferences it unguarded, so this is the only
+  window where a service can hand the statements still to come to a client of
+  its own (the `argus-sqlite` freeze). Its hooks run **once**, in registration
+  order, on the loop thread, each inside the module's own catch — one that
+  throws is logged and the rest still run. A hook is therefore quick and never
+  waits on a worker the drains were asked to stop, and it is registered at
+  boot beside the drains, not from a request path.
 
 ## Tests
 
@@ -89,3 +99,10 @@ hardware count, and the extraction queue as the one queue work is raised for.
 drain registered after the stop without waiting for it, asks every registered
 drain once, holds `app().isRunning()` while one is still draining, and quits
 once all of them report drained.
+
+`tests/unit/shutdown-quit-hook-test.cc` — the quit hook runs only after the
+last drain reported drained (not before), exactly once, on the loop thread,
+with the app still running — the window the sqlite freeze is armed from.
+
+`tests/unit/app-runner.hxx` — the shared `AppRunner` the two suites above boot
+a throwaway Drogon app with, plus `waitForBoot` and `waitUntil`.

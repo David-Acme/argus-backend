@@ -19,10 +19,11 @@ own.
 ## Layout
 
 - `src/sqlite/db-service.{cc,hxx}` — `DbService`: `client()` for the host's own
-  database; the named clients a service installs at boot (`readOnlyClient`,
-  `identityClient`, `cameraClient`, `productivityClient`, `gatewayClient`,
-  each with its `set*` installer); `enableUriFilenames`, `runScriptFile`,
-  `applyPragmas`, `installExtensions`.
+  database — Drogon's client until `freezeClient(dbPath)` arms the shutdown
+  one, and that one from then on; the named clients a service installs at boot
+  (`readOnlyClient`, `identityClient`, `cameraClient`, `productivityClient`,
+  `gatewayClient`, each with its `set*` installer); `enableUriFilenames`,
+  `runScriptFile`, `applyPragmas`, `installExtensions`.
 - `src/sqlite/vec-db.{cc,hxx}` — `VecDb`: the singleton handle onto the vec
   database plus the mutex that serialises it.
 - `src/sqlite/schema-runner.{cc,hxx}` — `runSchemaFile`: executes every
@@ -56,8 +57,32 @@ own.
 - `details/` is private by convention — nothing outside this package includes
   `sqlite/details/...`, and a service that needs a vec query asks the
   repository the domain owns, not this one.
+- `freezeClient(dbPath)` is the shutdown half of `client()`, and it exists
+  because `app().quit()` resets Drogon's database client manager while
+  `DbService::client()` dereferences it — a statement landing in that window is
+  a null dereference on the ordinary `SIGTERM` path. A service arms it from a
+  `shutdown_signal::onQuit` hook (D23), which runs after the last drain
+  reported drained. The flag and the manager access share one reader/writer
+  lock (`seamMutex`): `client()` holds it shared across the flag read and the
+  `getDbClient()` call while the arming takes it exclusively, so a statement
+  that read an unfrozen flag cannot still be inside `getDbClient()` when the
+  manager goes. Arming does not borrow, keep or close the app's client: the
+  first `client()` after the freeze builds an independent
+  `newSqlite3Client("filename=" + dbPath, 1)` that Drogon's manager never
+  holds, so it survives the reset with its own loop and connection. It is built
+  lazily for that reason — a client created before the freeze has its
+  connections closed under it, and a statement arriving after that is buffered
+  and never runs. That buffering is the freeze's boundary: a caller that hoisted
+  `client()`'s result before the arming holds the app's client across the
+  reset, and no lock can follow a pointer already handed out. One freeze per
+  process: the first path wins and the rest are ignored.
 
 ## Tests
 
 `tests/unit/identity-client-test.cc` — a read-only identity client installed
-at boot serves the identity database and refuses a write.
+at boot serves the identity database and refuses a write; and the frozen
+client, armed on a booted app's own database and used once that database's own
+client reports no available connections — the reset itself, which
+`!isRunning()` alone does not prove — is a different client with live
+connections that reads and writes the same file. The freeze case comes last in
+the file: arming is irreversible for the whole process.

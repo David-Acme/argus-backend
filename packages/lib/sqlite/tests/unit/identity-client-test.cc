@@ -4,13 +4,17 @@
 #include <drogon/drogon.h>
 #include <sqlite/db-service.hxx>
 
+#include <atomic>
 #include <chrono>
 #include <cstdio>
+#include <functional>
 #include <future>
+#include <json/value.h>
 #include <memory>
 #include <sqlite3.h>
 #include <stdexcept>
 #include <string>
+#include <thread>
 #include <trantor/net/EventLoop.h>
 
 namespace
@@ -65,6 +69,68 @@ void drain(const drogon::orm::DbClientPtr& client)
     throw std::runtime_error("the client's loop did not drain");
 }
 
+class AppRunner
+{
+public:
+  AppRunner()
+      : finished_(std::make_shared<std::atomic<bool>>(false)),
+        runner_([flag = finished_] {
+          drogon::app().run();
+          flag->store(true, std::memory_order_release);
+        })
+  {
+  }
+
+  ~AppRunner()
+  {
+    if (!runner_.joinable())
+      return;
+    for (int i = 0; i < 3000 && !finished_->load(std::memory_order_acquire) &&
+                    !drogon::app().isRunning(); ++i)
+      std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    if (drogon::app().isRunning()) {
+      drogon::app().quit();
+      runner_.join();
+      return;
+    }
+    if (finished_->load(std::memory_order_acquire)) {
+      runner_.join();
+      return;
+    }
+    runner_.detach();
+  }
+
+  AppRunner(const AppRunner&) = delete;
+  AppRunner& operator=(const AppRunner&) = delete;
+
+private:
+  std::shared_ptr<std::atomic<bool>> finished_;
+  std::thread runner_;
+};
+
+bool waitForBoot(std::chrono::milliseconds timeout)
+{
+  const auto deadline = std::chrono::steady_clock::now() + timeout;
+  while (std::chrono::steady_clock::now() < deadline) {
+    if (drogon::app().isRunning())
+      return true;
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  return drogon::app().isRunning();
+}
+
+bool waitUntil(const std::function<bool()>& ready,
+               std::chrono::milliseconds timeout)
+{
+  const auto deadline = std::chrono::steady_clock::now() + timeout;
+  while (std::chrono::steady_clock::now() < deadline) {
+    if (ready())
+      return true;
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  return ready();
+}
+
 }
 
 TEST_CASE("installed identity client serves its own database")
@@ -100,4 +166,63 @@ TEST_CASE("installed identity client serves its own database")
   DbService::setIdentityClient(nullptr);
   readOnly.reset();
   std::remove(dbPath);
+}
+
+TEST_CASE("the frozen client serves a statement after the app's clients are reset")
+{
+  const std::string dbPath = "frozen-client-test.db";
+  std::remove(dbPath.c_str());
+  std::remove((dbPath + "-wal").c_str());
+  std::remove((dbPath + "-shm").c_str());
+  seedDb(dbPath.c_str());
+
+  Json::Value config(Json::objectValue);
+  Json::Value clients(Json::arrayValue);
+  Json::Value client(Json::objectValue);
+  client["name"] = "default";
+  client["rdbms"] = "sqlite3";
+  client["filename"] = dbPath;
+  client["is_fast"] = false;
+  client["number_of_connections"] = 1;
+  client["timeout"] = -1.0;
+  clients.append(client);
+  config["db_clients"] = clients;
+  Json::Value listeners(Json::arrayValue);
+  Json::Value listener(Json::objectValue);
+  listener["address"] = "127.0.0.1";
+  listener["port"] = 0;
+  listeners.append(listener);
+  config["listeners"] = listeners;
+  drogon::app().loadConfigJson(config);
+
+  AppRunner runner;
+  REQUIRE(waitForBoot(std::chrono::seconds(30)));
+
+  const auto appClient = DbService::client();
+  REQUIRE(appClient != nullptr);
+
+  DbService::freezeClient(dbPath);
+  drogon::app().quit();
+  const auto closed = [&appClient] {
+    return !appClient->hasAvailableConnections();
+  };
+  REQUIRE(waitUntil(closed, std::chrono::seconds(10)));
+
+  const auto frozen = DbService::client();
+  REQUIRE(frozen != nullptr);
+  CHECK(frozen.get() != appClient.get());
+  CHECK(frozen->hasAvailableConnections());
+
+  const auto rows = frozen->execSqlSync("SELECT id FROM marker");
+  REQUIRE(rows.size() == 1);
+  CHECK(rows.front()["id"].as<int64_t>() == 42);
+
+  frozen->execSqlSync("INSERT INTO marker (id) VALUES (43)");
+  const auto counted = frozen->execSqlSync("SELECT count(*) AS n FROM marker");
+  REQUIRE(counted.size() == 1);
+  CHECK(counted.front()["n"].as<int64_t>() == 2);
+
+  std::remove(dbPath.c_str());
+  std::remove((dbPath + "-wal").c_str());
+  std::remove((dbPath + "-shm").c_str());
 }

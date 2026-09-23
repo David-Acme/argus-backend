@@ -19,6 +19,7 @@
 #include <memory>
 #include <nats/nats-bus.hxx>
 #include <nats/nats-subject.hxx>
+#include <runtime/shutdown-signal.hxx>
 #include <shared/services/room/room-manager.hxx>
 #include <sqlite/db-service.hxx>
 #include <string>
@@ -202,6 +203,9 @@ int main()
 
     DbService::applyPragmas();
   });
+
+  shutdown_signal::onQuit(
+      [dbPath = syncDb.dbPath] { DbService::freezeClient(dbPath); });
 
   drogon::app().setThreadNum(0).run();
 

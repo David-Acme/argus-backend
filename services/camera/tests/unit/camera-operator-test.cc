@@ -10,7 +10,9 @@
 #include <operator/operator-config.hxx>
 #include <operator/zone-source.hxx>
 
+#include <atomic>
 #include <chrono>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -90,6 +92,18 @@ namespace
 void sleepMs(int64_t ms)
 {
   std::this_thread::sleep_for(std::chrono::milliseconds(ms));
+}
+
+bool waitUntil(const std::function<bool()>& ready,
+               std::chrono::milliseconds timeout)
+{
+  const auto deadline = std::chrono::steady_clock::now() + timeout;
+  while (std::chrono::steady_clock::now() < deadline) {
+    if (ready())
+      return true;
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+  }
+  return ready();
 }
 
 class StubDetector final : public IObjectDetector
@@ -1014,4 +1028,66 @@ TEST_CASE("disabled identity reports unobservable without scanning")
   CHECK(match->personId == 0);
   CHECK(match->identifyAttempts == 0);
   CHECK(identityStateToString(match->state) == "unobservable");
+}
+
+class GatedDetector final : public IObjectDetector
+{
+public:
+  [[nodiscard]] bool isLoaded() const override { return true; }
+
+  std::vector<DetectedObject> detect(const DetectInput&) override
+  {
+    entered.store(true, std::memory_order_release);
+    while (!release.load(std::memory_order_acquire))
+      std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    return next;
+  }
+
+  [[nodiscard]] const std::vector<std::string>& classes() const override
+  {
+    return table;
+  }
+
+  std::atomic<bool> entered{false};
+  std::atomic<bool> release{false};
+  std::vector<DetectedObject> next;
+  std::vector<std::string> table{"person", "car"};
+};
+
+TEST_CASE("the operator drain reports drained only while no frame is in flight")
+{
+  GatedDetector detector;
+  RecordingSink sink;
+  NoKnownPersonMatcher matcher;
+
+  CameraOperatorService::Inputs inputs;
+  inputs.dependencies = {.detector = &detector,
+                         .source = nullptr,
+                         .sink = &sink,
+                         .matcher = &matcher,
+                         .zones = nullptr};
+  inputs.operator_.aggregationWindowMs = 60000;
+  inputs.operator_.cooldownMs = 60000;
+
+  CameraOperatorService service(inputs);
+  CHECK(service.drained());
+
+  auto frame = rgbFrame();
+  detector.next = {personObject()};
+  std::thread worker([&service, &frame] {
+    service.processFrame({.cameraId = 1, .cameraName = "Front", .frame = frame});
+  });
+  REQUIRE(waitUntil([&detector] { return detector.entered.load(std::memory_order_acquire); },
+                    std::chrono::seconds(5)));
+  CHECK_FALSE(service.drained());
+
+  detector.release.store(true, std::memory_order_release);
+  worker.join();
+  CHECK(service.drained());
+
+  service.requestStop();
+  CHECK_FALSE(service.running());
+  service.requestStop();
+  CHECK_FALSE(service.running());
+  CHECK(service.drained());
 }

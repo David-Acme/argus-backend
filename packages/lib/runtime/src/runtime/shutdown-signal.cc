@@ -47,6 +47,39 @@ std::vector<Drain> snapshot()
   return registry();
 }
 
+std::mutex& quitHookMutex()
+{
+  static std::mutex mutex;
+  return mutex;
+}
+
+std::vector<QuitHook>& quitHooks()
+{
+  static std::vector<QuitHook> hooks;
+  return hooks;
+}
+
+std::vector<QuitHook> quitHookSnapshot()
+{
+  std::scoped_lock lock(quitHookMutex());
+  return quitHooks();
+}
+
+void runQuitHooks()
+{
+  for (const auto& hook : quitHookSnapshot()) {
+    try {
+      hook();
+    }
+    catch (const std::exception& e) {
+      LOG_ERROR << "Shutdown signal: a quit hook failed: " << e.what();
+    }
+    catch (...) {
+      LOG_ERROR << "Shutdown signal: a quit hook failed with an unknown error";
+    }
+  }
+}
+
 bool drainedOrLog(const Drain& drain)
 {
   try {
@@ -81,6 +114,7 @@ void pollAndQuit()
     LOG_ERROR << "Shutdown signal: quitting with " << pending
               << " drain(s) that never reported drained";
   }
+  runQuitHooks();
   drogon::app().quit();
 }
 
@@ -129,6 +163,15 @@ void onStop(Drain drain)
              << "' was registered after the shutdown request; it is stopped "
                 "at once and the quit does not wait for it";
     stopOrLog(name, requestStop);
+  }
+  installHandlers();
+}
+
+void onQuit(QuitHook hook)
+{
+  {
+    std::scoped_lock lock(quitHookMutex());
+    quitHooks().push_back(std::move(hook));
   }
   installHandlers();
 }

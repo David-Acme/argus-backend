@@ -144,17 +144,19 @@ void CameraOperatorService::start()
   });
 }
 
-void CameraOperatorService::stop()
+void CameraOperatorService::requestStop()
 {
   running_.store(false);
-  std::lock_guard<std::mutex> lock(camerasMutex_);
-  for (auto& [id, stop] : cameraStop_)
-    stop->store(true);
-  cameraStop_.clear();
+}
+
+bool CameraOperatorService::drained() const
+{
+  return inFlight_.load(std::memory_order_acquire) == 0;
 }
 
 void CameraOperatorService::rescan()
 {
+  const in_flight::Guard guard(inFlight_);
   std::vector<CameraRef> cameras;
   try {
     const auto rows = DbService::client()->execSqlSync(
@@ -522,6 +524,8 @@ drogon::Task<void> CameraOperatorService::runCamera(
         static_cast<int64_t>(1000.0 / currentInferenceFps(camera.id));
     auto frame = co_await inputs_.dependencies.source->grab(
         {.cameraId = camera.id, .cameraName = camera.name});
+    if (!running_.load() || stop->load())
+      break;
     if (frame) {
       co_await BlockingTask<void>{[this, &camera, &frame]() {
         processFrame({.cameraId = camera.id, .cameraName = camera.name,
@@ -540,6 +544,7 @@ drogon::Task<void> CameraOperatorService::runCamera(
 
 void CameraOperatorService::processFrame(const ProcessFrameInput& input)
 {
+  const in_flight::Guard guard(inFlight_);
   const int64_t cameraId = input.cameraId;
   const std::string& cameraName = input.cameraName;
   CameraFrame& frame = input.frame;

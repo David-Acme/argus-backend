@@ -202,6 +202,8 @@ int main()
   notificationRpc.startDeliveryReconciler();
   notificationRpc.startSelfTestProber();
 
+  shutdown_signal::onQuit(
+      [dbPath = notificationDb.dbPath] { DbService::freezeClient(dbPath); });
   if (changeSink) {
     shutdown_signal::onStop(
         shutdown_signal::drainOf(*changeSink, "notification-change"));

@@ -3,7 +3,10 @@
 #define SQLITE_CORE
 #include "sqlite-vec.h"
 
+#include <atomic>
 #include <fstream>
+#include <mutex>
+#include <shared_mutex>
 #include <sstream>
 #include <vector>
 
@@ -37,6 +40,43 @@ drogon::orm::DbClientPtr& g_gatewayClient()
 {
   static drogon::orm::DbClientPtr client;
   return client;
+}
+
+drogon::orm::DbClientPtr& g_frozenClient()
+{
+  static drogon::orm::DbClientPtr client;
+  return client;
+}
+
+std::string& g_frozenPath()
+{
+  static std::string path;
+  return path;
+}
+
+std::atomic<bool>& g_clientFrozen()
+{
+  static std::atomic<bool> frozen{false};
+  return frozen;
+}
+
+std::shared_mutex& seamMutex()
+{
+  static std::shared_mutex mutex;
+  return mutex;
+}
+
+drogon::orm::DbClientPtr frozenClient()
+{
+  static std::once_flag once;
+  std::call_once(once, [] {
+    g_frozenClient() = drogon::orm::DbClient::newSqlite3Client(
+        "filename=" + g_frozenPath(), 1);
+    DbService::applyPragmas(g_frozenClient());
+    LOG_INFO << "SQLite: the shutdown client for " << g_frozenPath()
+             << " now serves the work that arrives after the app stops";
+  });
+  return g_frozenClient();
 }
 }
 
@@ -78,6 +118,26 @@ const std::vector<std::string> kPerBootPragmas = {
     "PRAGMA temp_store = MEMORY",
 };
 
+}
+
+drogon::orm::DbClientPtr DbService::client()
+{
+  std::shared_lock<std::shared_mutex> lock(seamMutex());
+  if (g_clientFrozen().load(std::memory_order_acquire))
+    return frozenClient();
+  return drogon::app().getDbClient();
+}
+
+void DbService::freezeClient(const std::string& dbPath)
+{
+  std::unique_lock<std::shared_mutex> lock(seamMutex());
+  static std::once_flag once;
+  std::call_once(once, [&dbPath] {
+    g_frozenPath() = dbPath;
+    g_clientFrozen().store(true, std::memory_order_release);
+    LOG_INFO << "SQLite: " << dbPath << " is armed for the work that arrives "
+             << "after the app's clients are reset";
+  });
 }
 
 void DbService::setReadOnlyClient(drogon::orm::DbClientPtr client)

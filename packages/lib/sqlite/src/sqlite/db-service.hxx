@@ -8,10 +8,9 @@
 class DbService
 {
 public:
-  static drogon::orm::DbClientPtr client()
-  {
-    return drogon::app().getDbClient();
-  }
+  static drogon::orm::DbClientPtr client();
+
+  static void freezeClient(const std::string& dbPath);
 
   static drogon::orm::DbClientPtr readOnlyClient();
 

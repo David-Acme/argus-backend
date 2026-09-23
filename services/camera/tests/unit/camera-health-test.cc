@@ -213,3 +213,23 @@ TEST_CASE("status names are stable")
   CHECK(health_monitor::statusName(CameraHealthState::Unreachable) == "unreachable");
   CHECK(health_monitor::statusName(CameraHealthState::Covered) == "covered");
 }
+
+TEST_CASE("the health monitor reports drained while idle and stops on request")
+{
+  SyntheticHealthSource source;
+  RecordingHealthSink sink;
+  CameraHealthMonitor monitor({.source = &source, .sink = &sink},
+                              {.enabled = true,
+                               .intervalMs = 1000,
+                               .thresholds = {}});
+  CHECK(monitor.drained());
+  CHECK_FALSE(monitor.running());
+
+  monitor.requestStop();
+  CHECK_FALSE(monitor.running());
+  CHECK(monitor.drained());
+
+  monitor.requestStop();
+  CHECK_FALSE(monitor.running());
+  CHECK(monitor.drained());
+}

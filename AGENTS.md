@@ -932,14 +932,14 @@ for two different reasons, and says which when it does.
 | `packages/lib/audio/src/audio/` | `AudioResampler` (stateful sinc) + `EndpointDetector` — every block-processed audio path MUST use these, never a custom conversion |
 | `packages/lib/phrase/src/phrase/details/` | Static per-language memory vocabulary (es/en): `PhraseSeed`/`LexiconSeed` constants — no DB tables |
 | `packages/lib/phrase/src/phrase/` | `RuleParser` + `PhraseCatalog` — the vocabulary's parser and catalog, read by `packages/memory`, `packages/intent`, `services/llm` and `services/voice` |
-| `packages/lib/sqlite/src/sqlite/` | DB client access (`DbService::client()`, extensions) + `VecDb` (vec0 connection) |
+| `packages/lib/sqlite/src/sqlite/` | DB client access (`DbService::client()`, extensions) + `VecDb` (vec0 connection); `freezeClient(dbPath)` arms the private client the work arriving after the app's clients are reset goes to, because `quit()` resets Drogon's manager under `client()` — the flag and that dereference share a reader/writer lock, so the arming cannot land between them |
 | `packages/lib/storage/src/storage/` | `S3StorageService` (RustFS S3, SigV4 in `details/s3-signing.hxx`) — private objects, read back through a one-use capability |
 | `packages/lib/config/src/config/` | `ConfigService` read + runtime writes (`setBool/...` persist to `config.toml`, comments preserved) |
 | `packages/lib/runtime/src/runtime/cancellation-token.hxx` | `CancellationToken` shared across streaming AI/audio paths |
 | `packages/lib/runtime/src/runtime/blocking-task.hxx` | Coroutine awaiter for off-loop heavy work |
 | `packages/lib/runtime/src/runtime/thread-budget.{cc,hxx}` | Adaptive thread sizing for AI services |
 | `packages/lib/runtime/src/runtime/hardware-profile.{cc,hxx}` | CPU/RAM/ISA and video-accel probe (`HardwareProfile`), ncnn-free and ncnn variants |
-| `packages/lib/runtime/src/runtime/shutdown-signal.{cc,hxx}` | `shutdown_signal::onStop(Drain)` — the process-wide stop sequence: a unit registers its drain before `drogon::app().run()`, the module requests the stops and holds Drogon's `quit()` until every drain reports drained (D22, §4.6 of the plan) |
+| `packages/lib/runtime/src/runtime/shutdown-signal.{cc,hxx}` | `shutdown_signal::onStop(Drain)` — the process-wide stop sequence: a unit registers its drain before `drogon::app().run()`, the module requests the stops and holds Drogon's `quit()` until every drain reports drained (D22, §4.6 of the plan); `onQuit(hook)` runs what belongs between that last drain and the quit itself (the database freeze) |
 | `packages/lib/text/src/text/json-diff.{cc,hxx}` | Diff JSON + snapshot (`JsonDiff`) |
 | `packages/lib/text/src/text/json-util.hxx` | `json_util::toString` (compact, `{}` for null), `isValid` (empty is not valid) and `fromString` |
 

@@ -139,6 +139,8 @@ int main()
     }
   });
 
+  shutdown_signal::onQuit(
+      [dbPath = productivityDb.dbPath] { DbService::freezeClient(dbPath); });
   if (changeSink) {
     shutdown_signal::onStop(
         shutdown_signal::drainOf(*changeSink, "productivity-change"));

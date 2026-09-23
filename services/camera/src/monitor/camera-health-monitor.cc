@@ -71,7 +71,7 @@ CameraHealthMonitor::CameraHealthMonitor(Dependencies dependencies,
 
 CameraHealthMonitor::~CameraHealthMonitor()
 {
-  stop();
+  requestStop();
 }
 
 void CameraHealthMonitor::start()
@@ -94,14 +94,20 @@ void CameraHealthMonitor::start()
   });
 }
 
-void CameraHealthMonitor::stop()
+void CameraHealthMonitor::requestStop()
 {
   running_.store(false);
 }
 
-std::vector<CameraHealthMonitor::CameraRef>
-CameraHealthMonitor::loadCameras() const
+bool CameraHealthMonitor::drained() const
 {
+  return inFlight_.load(std::memory_order_acquire) == 0;
+}
+
+std::vector<CameraHealthMonitor::CameraRef>
+CameraHealthMonitor::loadCameras()
+{
+  const in_flight::Guard guard(inFlight_);
   std::vector<CameraRef> cameras;
   try {
     const auto rows = DbService::client()->execSqlSync(

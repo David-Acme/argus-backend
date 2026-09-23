@@ -314,6 +314,8 @@ int main()
     });
   });
 
+  shutdown_signal::onQuit(
+      [dbPath = cameraDb.dbPath] { DbService::freezeClient(dbPath); });
   if (objectSink) {
     shutdown_signal::onStop(
         shutdown_signal::drainOf(*objectSink, "camera-object-event"));
@@ -321,6 +323,14 @@ int main()
   if (changeSink) {
     shutdown_signal::onStop(
         shutdown_signal::drainOf(*changeSink, "camera-change"));
+  }
+  if (operatorService) {
+    shutdown_signal::onStop(
+        shutdown_signal::drainOf(*operatorService, "camera-operator"));
+  }
+  if (healthMonitor) {
+    shutdown_signal::onStop(
+        shutdown_signal::drainOf(*healthMonitor, "camera-health"));
   }
 
   drogon::app()
@@ -330,9 +340,9 @@ int main()
   grpcServer->Shutdown();
 
   if (operatorService)
-    operatorService->stop();
+    operatorService->requestStop();
   if (healthMonitor)
-    healthMonitor->stop();
+    healthMonitor->requestStop();
   StreamHub::instance().shutdown();
   Go2rtcManager::instance().shutdown();
   return 0;

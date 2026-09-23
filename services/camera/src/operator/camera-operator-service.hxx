@@ -6,6 +6,7 @@
 #include <operator/object-event-sink.hxx>
 #include <operator/operator-config.hxx>
 #include <operator/zone-source.hxx>
+#include <shared/utils/in-flight/in-flight.hxx>
 
 #include <atomic>
 #include <cstdint>
@@ -51,9 +52,11 @@ public:
 
   void start();
 
-  void stop();
+  void requestStop();
 
-  bool running() const { return running_.load(); }
+  [[nodiscard]] bool drained() const;
+
+  [[nodiscard]] bool running() const { return running_.load(); }
 
   struct ProcessFrameInput
   {
@@ -208,6 +211,7 @@ private:
 
   Inputs inputs_;
   std::atomic<bool> running_{false};
+  std::atomic<int64_t> inFlight_{0};
   std::mutex stateMutex_;
   std::map<int64_t, CameraState> states_;
   std::mutex camerasMutex_;

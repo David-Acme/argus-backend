@@ -325,6 +325,22 @@ as the folder's own `argus::camera-repositories` module since sub-step 3a-1b —
   audible path: `Announce` runs TTS through the existing control feature,
   `Alarm` plays a procedural siren tone over the talk channel, and `SetSiren`
   arms/disarms the vendor alarm. The operator never calls these.
+- **Stop and drain (D22)**: `CameraOperatorService` and `CameraHealthMonitor`
+  each carry the `requestStop()`/`drained()` pair the `camera-operator` and
+  `camera-health` drains adapt, and `drained()` is counted rather than guessed:
+  the shared `in_flight::Guard` (`src/shared/utils/in-flight/`) is held by
+  exactly the three places that query `camera.db` — the operator's `rescan()`
+  and `processFrame()`, the monitor's `loadCameras()` — so the module waits for
+  the statement in hand and no longer. Neither stop blocks, as D22 requires:
+  each is one `running_` store, and the per-camera stop tokens stay the rescan
+  path's own. A stopped service ends each camera loop at that loop's next check
+  — `runCamera` re-checks after `grab()` resumes and drops the frame in hand —
+  while a frame that starts anyway is served by the freeze (D23). `main`
+  requests both again once `run()` returns, and the monitor's destructor does
+  the same. What `processFrame` enqueues is written by camera's object-event
+  sink, whose own drain covers that leg; the evidence insert that follows an S3
+  upload and the retention sweep are loop work no drain owns, and reach the
+  database through the frozen client.
 
 ## Adaptive cadence and best-shot (guard flow v2)
 

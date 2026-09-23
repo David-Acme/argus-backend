@@ -10,6 +10,7 @@
 
 #include <drogon/utils/coroutine.h>
 #include <monitor/health-event.hxx>
+#include <shared/utils/in-flight/in-flight.hxx>
 
 class IFrameSource;
 
@@ -39,7 +40,12 @@ public:
   ~CameraHealthMonitor();
 
   void start();
-  void stop();
+  void requestStop();
+
+  [[nodiscard]] bool drained() const;
+
+  [[nodiscard]] bool running() const { return running_.load(); }
+
   drogon::Task<void> tick(CameraRef camera);
 
 private:
@@ -62,13 +68,14 @@ private:
 
   drogon::Task<void> run();
 
-  std::vector<CameraRef> loadCameras() const;
+  std::vector<CameraRef> loadCameras();
 
   HealthMetrics measure(const TickInput& input, CameraState& state) const;
 
   Dependencies dependencies_;
   CameraHealthConfig config_;
   std::atomic<bool> running_{false};
+  std::atomic<int64_t> inFlight_{0};
   std::mutex stateMutex_;
   std::map<int64_t, CameraState> states_;
 };

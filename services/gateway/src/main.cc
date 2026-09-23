@@ -446,6 +446,8 @@ int main()
       LOG_WARN << "mDNS advertising failed";
   });
 
+  shutdown_signal::onQuit(
+      [dbPath = identityDb.dbPath] { DbService::freezeClient(dbPath); });
   if (identitySink) {
     shutdown_signal::onStop(
         shutdown_signal::drainOf(*identitySink, "identity-change"));

@@ -54,6 +54,12 @@ target_link_libraries(shutdown-signal-test PRIVATE argus::lib::runtime
 target_compile_options(shutdown-signal-test PRIVATE -Wall -Wextra)
 add_test(NAME shutdown-signal-test COMMAND shutdown-signal-test)
 
+add_executable(shutdown-quit-hook-test tests/unit/shutdown-quit-hook-test.cc)
+target_link_libraries(shutdown-quit-hook-test PRIVATE argus::lib::runtime
+    doctest::doctest)
+target_compile_options(shutdown-quit-hook-test PRIVATE -Wall -Wextra)
+add_test(NAME shutdown-quit-hook-test COMMAND shutdown-quit-hook-test)
+
 get_target_property(DOCTEST_INCLUDE_DIRS doctest::doctest
                     INTERFACE_INCLUDE_DIRECTORIES)
 if(DOCTEST_INCLUDE_DIRS)

@@ -341,6 +341,7 @@ int main()
     guardService.start();
   });
 
+  shutdown_signal::onQuit([dbPath] { DbService::freezeClient(dbPath); });
   shutdown_signal::onStop(shutdown_signal::drainOf(guardService, "guard"));
 
   drogon::app().setThreadNum(0).run();

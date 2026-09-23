@@ -22,7 +22,11 @@ Drain drainOf(T& drain, std::string_view name)
           .drained = [&drain] { return drain.drained(); }};
 }
 
+using QuitHook = std::function<void()>;
+
 void onStop(Drain drain);
+
+void onQuit(QuitHook hook);
 
 void requestStop();
 
