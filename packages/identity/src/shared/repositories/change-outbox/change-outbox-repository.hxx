@@ -24,4 +24,6 @@ public:
   [[nodiscard]] bool markSent(int64_t id, int64_t at) const;
 
   [[nodiscard]] bool recordAttempt(int64_t id) const;
+
+  [[nodiscard]] int64_t purgeSent(int64_t olderThanMs) const;
 };

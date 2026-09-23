@@ -88,3 +88,13 @@ bool ChangeOutboxRepository::recordAttempt(int64_t id) const
              changeOutboxStatusToString(ChangeOutboxStatus::Pending))
              .affectedRows() > 0;
 }
+
+int64_t ChangeOutboxRepository::purgeSent(int64_t olderThanMs) const
+{
+  auto client = DbService::client();
+  const auto result =
+      client->execSqlSync(PURGE_SENT,
+                          changeOutboxStatusToString(ChangeOutboxStatus::Sent),
+                          olderThanMs);
+  return static_cast<int64_t>(result.affectedRows());
+}

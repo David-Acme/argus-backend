@@ -115,6 +115,8 @@ public:
   drogon::Task<bool> recordEncounterAttempt(const std::string& eventId,
                                             int64_t at) const;
 
+  drogon::Task<int64_t> purgeSettledEncounterOutbox(int64_t olderThan) const;
+
   drogon::Task<bool> insertDeadLetter(const GuardDeadLetterInput& input) const;
 
   drogon::Task<bool> recordDialogue(const GuardDialogueInput& input) const;

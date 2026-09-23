@@ -53,6 +53,7 @@ private:
   ObjectEventOutboxRepository outbox_;
   const Config config_;
   const std::string sessionTag_;
+  int64_t nextPurgeMs_{0};
   std::atomic<bool> stopping_{false};
   std::atomic<int64_t> nextSequence_{1};
   std::atomic<bool> streamReady_{false};

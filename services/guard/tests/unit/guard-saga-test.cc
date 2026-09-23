@@ -587,6 +587,24 @@ TEST_CASE("the observation saga is idempotent across redeliveries")
         scalar("SELECT payload FROM guard_encounter_outbox WHERE event_id = '" +
                eventId + "'")
             .find("\"personId\":42") != std::string::npos);
+    CHECK(drogon::sync_wait(repository.markEncounterSent(eventId, 900)));
+    CHECK(drogon::sync_wait(repository.purgeSettledEncounterOutbox(899)) == 0);
+    CHECK(scalar("SELECT status FROM guard_encounter_outbox WHERE event_id = '" +
+                 eventId + "'") == "sent");
+    CHECK(drogon::sync_wait(repository.purgeSettledEncounterOutbox(900)) == 1);
+    CHECK(scalar("SELECT COUNT(*) FROM guard_encounter_outbox WHERE event_id = '" +
+                 eventId + "'") == "0");
+  }
+
+  {
+    const EncounterOutboxInput kept = {
+        .eventId = "enc:kept",
+        .payload = "{}",
+        .at = 1000};
+    CHECK(drogon::sync_wait(repository.enqueueEncounterClosed(kept)));
+    CHECK(drogon::sync_wait(repository.purgeSettledEncounterOutbox(99999)) == 0);
+    CHECK(scalar("SELECT status FROM guard_encounter_outbox WHERE event_id = "
+                 "'enc:kept'") == "pending");
   }
 
   {

@@ -185,6 +185,20 @@ int64_t ObjectEventOutboxRepository::purgeExpiredCooldowns(
   return result.affectedRows();
 }
 
+int64_t ObjectEventOutboxRepository::purgeSettled(int64_t olderThanMs) const
+{
+  auto client = DbService::client();
+  if (!client)
+    return 0;
+  const auto result =
+      client->execSqlSync(std::string(PURGE_SETTLED),
+                          objectEventStatusToString(ObjectEventStatus::Sent),
+                          objectEventStatusToString(
+                              ObjectEventStatus::OverflowDropped),
+                          olderThanMs);
+  return static_cast<int64_t>(result.affectedRows());
+}
+
 ObjectEventOutboxStats ObjectEventOutboxRepository::stats() const
 {
   ObjectEventOutboxStats result;

@@ -187,6 +187,14 @@ TEST_CASE("the object event outbox commits, dedups and survives restarts")
                             .maxPending = 100})
             .result == ObjectEventEnqueueResult::Recorded);
 
+  CHECK(repository.purgeSettled(60000) == 2);
+  CHECK(repository.purgeSettled(60001) == 1);
+  CHECK(repository.purgeSettled(999999) == 0);
+  const ObjectEventOutboxStats settled = repository.stats();
+  CHECK(settled.sent == 0);
+  CHECK(settled.overflowDropped == 0);
+  CHECK(settled.pending == 5);
+
   std::remove(kOutboxDb);
   std::remove((std::string(kOutboxDb) + "-wal").c_str());
   std::remove((std::string(kOutboxDb) + "-shm").c_str());

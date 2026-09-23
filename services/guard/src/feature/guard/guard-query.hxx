@@ -165,6 +165,10 @@ inline constexpr std::string_view RECORD_ENCOUNTER_ATTEMPT =
     "UPDATE guard_encounter_outbox SET attempts = attempts + 1, updated_at = ? "
     "WHERE event_id = ?";
 
+inline constexpr std::string_view PURGE_ENCOUNTER_OUTBOX =
+    "DELETE FROM guard_encounter_outbox WHERE status = 'sent' "
+    "AND updated_at <= ?";
+
 inline constexpr std::string_view CLOSE_STALE_TRANSITIONS =
     "INSERT INTO guard_encounter_transition (encounter_id, from_state, "
     "to_state, reason, revision, occurred_at) "

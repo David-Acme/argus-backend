@@ -73,3 +73,13 @@ bool ChangeOutboxRepository::recordAttempt(const std::string& eventId) const
              changeOutboxStatusToString(ChangeOutboxStatus::Pending))
              .affectedRows() > 0;
 }
+
+int64_t ChangeOutboxRepository::purgeSent(int64_t olderThanMs) const
+{
+  auto client = DbService::cameraClient();
+  const auto result =
+      client->execSqlSync(PURGE_SENT,
+                          changeOutboxStatusToString(ChangeOutboxStatus::Sent),
+                          olderThanMs);
+  return static_cast<int64_t>(result.affectedRows());
+}

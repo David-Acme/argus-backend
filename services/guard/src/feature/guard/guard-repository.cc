@@ -901,6 +901,15 @@ GuardRepository::markEncounterSent(const std::string& eventId, int64_t at) const
   co_return result.affectedRows() > 0;
 }
 
+drogon::Task<int64_t>
+GuardRepository::purgeSettledEncounterOutbox(int64_t olderThan) const
+{
+  auto client = DbService::client();
+  const auto result = co_await client->execSqlCoro(
+      std::string(PURGE_ENCOUNTER_OUTBOX), olderThan);
+  co_return static_cast<int64_t>(result.affectedRows());
+}
+
 drogon::Task<bool> GuardRepository::insertDecisionJournal(
     const DecisionJournalInput& input) const
 {

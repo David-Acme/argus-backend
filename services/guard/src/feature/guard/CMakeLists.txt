@@ -11,6 +11,7 @@ argus_module(NAME guard
         guard-service.cc
     DEPENDS
         argus::contracts::camera
+        argus::contracts::sync
         argus::lib::config
         argus::lib::text
         argus::lib::nats

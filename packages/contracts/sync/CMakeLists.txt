@@ -41,6 +41,7 @@ argus_contracts(NAME sync
         src/sync/user-action.hxx
         src/sync/socket-emit-dto.hxx
         src/sync/sync-change.hxx
+        src/sync/stream-retention.hxx
         src/sync/module-emit.hxx
         src/sync/user-change-sink.hxx
         src/sync/camera-change-sink.hxx
@@ -81,6 +82,12 @@ target_link_libraries(sync-change-test PRIVATE
     doctest::doctest)
 target_compile_options(sync-change-test PRIVATE -Wall -Wextra)
 add_test(NAME sync-change-test COMMAND sync-change-test)
+
+add_executable(stream-retention-test tests/unit/stream-retention-test.cc)
+target_link_libraries(stream-retention-test PRIVATE
+    argus::contracts::sync doctest::doctest)
+target_compile_options(stream-retention-test PRIVATE -Wall -Wextra)
+add_test(NAME stream-retention-test COMMAND stream-retention-test)
 
 get_target_property(DOCTEST_INCLUDE_DIRS doctest::doctest
                     INTERFACE_INCLUDE_DIRECTORIES)

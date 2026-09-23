@@ -24,4 +24,6 @@ public:
   ObjectEventOutboxStats stats() const;
 
   int64_t purgeExpiredCooldowns(int64_t olderThanMs) const;
+
+  [[nodiscard]] int64_t purgeSettled(int64_t olderThanMs) const;
 };

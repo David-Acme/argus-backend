@@ -47,6 +47,9 @@ inline constexpr std::string_view RECORD_ATTEMPT =
 inline constexpr std::string_view PURGE_COOLDOWNS =
     "DELETE FROM camera_event_cooldown WHERE last_emit_ms < ?";
 
+inline constexpr std::string_view PURGE_SETTLED =
+    "DELETE FROM object_event_outbox WHERE status IN (?, ?) AND sent_at <= ?";
+
 inline constexpr std::string_view OUTBOX_STATS =
     "SELECT SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) AS pending, "
     "SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) AS sent, "

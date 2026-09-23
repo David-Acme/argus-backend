@@ -78,6 +78,24 @@ the consuming database, so redeliveries settle without re-executing effects:
   deterministic `commandId`. `guard_encounter_outbox` (`guard.db`) is the
   guard's own `encounter_closed` producer leg, keyed by `eventId`.
 
+Settled rows are not kept for ever: every producer's `change_outbox`,
+camera's `object_event_outbox` and guard's `guard_encounter_outbox` hold
+their `sent` (and `overflow_dropped`) rows exactly as long as the stream
+that carries them and delete what is older on a daily sweep, so no outbox
+outgrows its feed. The window, the duplicate window and the sweep cadences
+are declared once in `packages/contracts/sync/src/sync/stream-retention.hxx`
+and read by every feed's stream creation — the change feeds, the delivery
+feed and the guard's `ARGUS_GUARD` — and by every outbox sweep. Two
+consequences are deliberate: a fingerprint row's replay guard lasts exactly
+that window, so an identical transition re-derived and re-published after it
+is a second audit row and a second emit rather than a replay; and a
+producer's `change_outbox`/`object_event_outbox` gauges count the retained
+window, not all history. `notification_delivery` and `guard_action_outbox`
+are deliberately outside the policy: they are product records their own
+features read back (a delivery intent, a command's outcome) and not feed
+rows, so their lifetime follows the feature that reads them rather than the
+stream that carries them.
+
 Incident evidence binaries live in the private object store (RustFS over S3),
 referenced by `guard_evidence` / `camera_evidence` retention manifests; only
 the manifests are database rows.

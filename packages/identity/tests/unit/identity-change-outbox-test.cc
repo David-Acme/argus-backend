@@ -236,6 +236,10 @@ TEST_CASE("the change outbox replays one transition and refuses a conflict")
   CHECK(change_outbox_key::actionMsgId(journal.id) !=
         change_outbox_key::actionMsgId(journal.id - 1));
 
+  CHECK(repository.purgeSent(6100) == 4);
+  CHECK(repository.purgeSent(999999) == 0);
+  CHECK(pendingRow(repository.pendingBatch(1)).id == journal.id);
+
   std::remove(kOutboxDb);
   std::remove((std::string(kOutboxDb) + "-wal").c_str());
   std::remove((std::string(kOutboxDb) + "-shm").c_str());

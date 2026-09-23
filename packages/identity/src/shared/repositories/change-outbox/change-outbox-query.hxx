@@ -31,6 +31,9 @@ inline constexpr const char* RECORD_ATTEMPT =
     "UPDATE change_outbox SET attempts = attempts + 1 "
     "WHERE id = ? AND status = ?";
 
+inline constexpr const char* PURGE_SENT =
+    "DELETE FROM change_outbox WHERE status = ? AND sent_at <= ?";
+
 }
 
 enum class ChangeOutboxDisposition : uint8_t

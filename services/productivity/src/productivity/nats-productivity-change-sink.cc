@@ -5,6 +5,7 @@
 #include <exception>
 #include <productivity/productivity-errors.hxx>
 #include <shared/repositories/change-outbox/change-outbox-key.hxx>
+#include <sync/stream-retention.hxx>
 #include <sync/sync-change.hxx>
 #include <sync/user-audit-event.hxx>
 #include <text/json-diff.hxx>
@@ -138,15 +139,12 @@ bool NatsProductivityChangeSink::drained() const
 
 bool NatsProductivityChangeSink::ensureStream() const
 {
-  constexpr int64_t kJetStreamRetentionNs = 7LL * 24 * 60 * 60 * 1000000000;
-  constexpr int64_t kJetStreamDuplicatesNs = 2LL * 60 * 1000000000;
   if (!bus_->ensureStream({.name = stream_,
                            .subjects = {subject_},
-                           .maxAgeNs = kJetStreamRetentionNs,
-                           .duplicatesNs = kJetStreamDuplicatesNs}))
+                           .maxAgeNs = stream_retention::kRetentionNs,
+                           .duplicatesNs = stream_retention::kDuplicatesNs}))
     return false;
-  LOG_INFO << "Productivity change outbox: stream " << stream_
-           << " ready (7d retention)";
+  LOG_INFO << "Productivity change outbox: stream " << stream_ << " ready";
   return true;
 }
 
@@ -190,6 +188,22 @@ void NatsProductivityChangeSink::flushLoop()
     catch (const std::exception& e) {
       LOG_WARN << "Productivity change outbox: flush failed (" << e.what()
                << "); retrying";
+    }
+    const int64_t now = nowMs();
+    if (now >= nextPurgeMs_) {
+      nextPurgeMs_ = now + stream_retention::kSettledPurgeIntervalMs;
+      try {
+        const int64_t purged =
+            outbox_.purgeSent(now - stream_retention::kRetentionMs);
+        if (purged > 0)
+          LOG_INFO << "Productivity change outbox: purged " << purged
+                   << " settled row(s) past the stream's retention";
+      }
+      catch (const std::exception& e) {
+        nextPurgeMs_ = now + stream_retention::kSettledPurgeRetryMs;
+        LOG_WARN << "Productivity change outbox: purge failed (" << e.what()
+                 << "); the settled rows stay and the purge is retried";
+      }
     }
     std::unique_lock lock(wakeMutex_);
     wake_.wait_for(lock,

@@ -193,6 +193,14 @@ TEST_CASE("the change outbox replays one transition and refuses a conflict")
   CHECK(pendingRow(repository.pendingBatch(1)).eventId ==
         "productivity-change:d");
 
+  CHECK(repository.purgeSent(5150) == 2);
+  CHECK(repository.purgeSent(5150) == 0);
+  CHECK(pendingRow(repository.pendingBatch(1)).eventId ==
+        "productivity-change:d");
+  CHECK(repository.purgeSent(999999) == 1);
+  CHECK(pendingRow(repository.pendingBatch(1)).eventId ==
+        "productivity-change:d");
+
   std::remove(kOutboxDb);
   std::remove((std::string(kOutboxDb) + "-wal").c_str());
   std::remove((std::string(kOutboxDb) + "-shm").c_str());

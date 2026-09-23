@@ -64,6 +64,7 @@ private:
   const std::string changeSubject_;
   const std::string actionSubject_;
   const std::string stream_;
+  int64_t nextPurgeMs_{0};
   std::atomic<bool> streamReady_{false};
   std::atomic<bool> stopping_{false};
   std::atomic<bool> workerStarted_{false};

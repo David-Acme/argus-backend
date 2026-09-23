@@ -7,6 +7,7 @@
 #include <shared/repositories/change-outbox/change-outbox-key.hxx>
 #include <shared/services/event-stream/event-stream.hxx>
 #include <sync/module-audit-event.hxx>
+#include <sync/stream-retention.hxx>
 #include <text/json-diff.hxx>
 #include <text/json-util.hxx>
 #include <nats/nats-bus.hxx>
@@ -169,6 +170,22 @@ void NatsCameraChangeSink::flushLoop()
     catch (const std::exception& e) {
       LOG_WARN << "Camera change outbox: flush failed (" << e.what()
                << "); retrying";
+    }
+    const int64_t now = nowMs();
+    if (now >= nextPurgeMs_) {
+      nextPurgeMs_ = now + stream_retention::kSettledPurgeIntervalMs;
+      try {
+        const int64_t purged =
+            outbox_.purgeSent(now - stream_retention::kRetentionMs);
+        if (purged > 0)
+          LOG_INFO << "Camera change outbox: purged " << purged
+                   << " settled row(s) past the stream's retention";
+      }
+      catch (const std::exception& e) {
+        nextPurgeMs_ = now + stream_retention::kSettledPurgeRetryMs;
+        LOG_WARN << "Camera change outbox: purge failed (" << e.what()
+                 << "); the settled rows stay and the purge is retried";
+      }
     }
     std::unique_lock lock(wakeMutex_);
     wake_.wait_for(lock,

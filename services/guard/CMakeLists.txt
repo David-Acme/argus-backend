@@ -65,6 +65,10 @@ if(PROJECT_IS_TOP_LEVEL)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/contracts/camera
                          ${CMAKE_BINARY_DIR}/contracts/camera)
     endif()
+    if(NOT TARGET argus::contracts::sync)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/contracts/sync
+                         ${CMAKE_BINARY_DIR}/contracts/sync)
+    endif()
     if(NOT TARGET argus::clients::identity)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/identity
                          ${CMAKE_BINARY_DIR}/clients/identity EXCLUDE_FROM_ALL)

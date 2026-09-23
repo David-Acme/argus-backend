@@ -21,4 +21,6 @@ public:
   [[nodiscard]] bool markSent(const std::string& eventId, int64_t at) const;
 
   [[nodiscard]] bool recordAttempt(const std::string& eventId) const;
+
+  [[nodiscard]] int64_t purgeSent(int64_t olderThanMs) const;
 };

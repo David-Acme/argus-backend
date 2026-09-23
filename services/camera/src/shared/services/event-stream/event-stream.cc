@@ -2,6 +2,7 @@
 
 #include <nats/nats-bus.hxx>
 #include <nats/nats-subject.hxx>
+#include <sync/stream-retention.hxx>
 #include <trantor/utils/Logger.h>
 
 #include <vector>
@@ -31,10 +32,10 @@ bool ensure(const std::shared_ptr<NatsBus>& bus, const EnsureInput& input)
       input.streamName.empty() ? std::string(kName) : input.streamName;
   if (!bus->ensureStream({.name = stream,
                           .subjects = subjects,
-                          .maxAgeNs = kRetentionNs,
-                          .duplicatesNs = kDuplicatesNs}))
+                          .maxAgeNs = stream_retention::kRetentionNs,
+                          .duplicatesNs = stream_retention::kDuplicatesNs}))
     return false;
-  LOG_INFO << "Camera JetStream: stream " << stream << " ready (7d retention)";
+  LOG_INFO << "Camera JetStream: stream " << stream << " ready";
   return true;
 }
 

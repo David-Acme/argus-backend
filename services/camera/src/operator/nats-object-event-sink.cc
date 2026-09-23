@@ -1,6 +1,7 @@
 #include <operator/nats-object-event-sink.hxx>
 
 #include <shared/services/event-stream/event-stream.hxx>
+#include <sync/stream-retention.hxx>
 #include <text/json-util.hxx>
 #include <nats/nats-bus.hxx>
 #include <nats/nats-subject.hxx>
@@ -109,8 +110,7 @@ void NatsObjectEventSink::refreshCounters()
 
 void NatsObjectEventSink::reconcile()
 {
-  const int64_t retentionMs = 7LL * 24 * 60 * 60 * 1000;
-  outbox_.purgeExpiredCooldowns(nowMs() - retentionMs);
+  outbox_.purgeExpiredCooldowns(nowMs() - stream_retention::kRetentionMs);
   refreshCounters();
   if (!workerStarted_.exchange(true, std::memory_order_acq_rel))
     worker_ = std::thread([this]() { flushLoop(); });
@@ -189,6 +189,22 @@ void NatsObjectEventSink::flushLoop()
     catch (const std::exception& e) {
       LOG_WARN << "Camera outbox: flush failed (" << e.what()
                << "); retrying";
+    }
+    const int64_t now = nowMs();
+    if (now >= nextPurgeMs_) {
+      nextPurgeMs_ = now + stream_retention::kSettledPurgeIntervalMs;
+      try {
+        const int64_t purged =
+            outbox_.purgeSettled(now - stream_retention::kRetentionMs);
+        if (purged > 0)
+          LOG_INFO << "Camera object outbox: purged " << purged
+                   << " settled row(s) past the stream's retention";
+      }
+      catch (const std::exception& e) {
+        nextPurgeMs_ = now + stream_retention::kSettledPurgeRetryMs;
+        LOG_WARN << "Camera object outbox: purge failed (" << e.what()
+                 << "); the settled rows stay and the purge is retried";
+      }
     }
     std::unique_lock lock(wakeMutex_);
     wake_.wait_for(lock,

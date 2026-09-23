@@ -16,6 +16,7 @@
 #include <identity/identity-client.hxx>
 #include <notification/notification-client.hxx>
 #include <storage/s3-storage-service.hxx>
+#include <sync/stream-retention.hxx>
 #include <text/json-util.hxx>
 #include <runtime/blocking-task.hxx>
 #include <nats/nats-bus.hxx>
@@ -402,15 +403,13 @@ drogon::Task<void> GuardService::reconcileObservations()
 
 bool GuardService::ensureGuardStream() const
 {
-  constexpr int64_t kGuardStreamRetentionNs = 7LL * 24 * 60 * 60 * 1000000000;
-  constexpr int64_t kGuardStreamDuplicatesNs = 2LL * 60 * 1000000000;
   return dependencies_.bus->ensureStream(
       {.name = config_.guardStream,
        .subjects = {config_.guardSubjectFilter.empty()
                         ? std::string(nats_subject::kGuardSubjectFilter)
                         : config_.guardSubjectFilter},
-       .maxAgeNs = kGuardStreamRetentionNs,
-       .duplicatesNs = kGuardStreamDuplicatesNs});
+       .maxAgeNs = stream_retention::kRetentionNs,
+       .duplicatesNs = stream_retention::kDuplicatesNs});
 }
 
 bool GuardService::trySubscribe()
@@ -2340,6 +2339,11 @@ drogon::Task<void> GuardService::runRetentionSweep()
       LOG_INFO << "Guard retention: purged " << removed
                << " decision journal row(s)";
   }
+  const int64_t settled = co_await repository_.purgeSettledEncounterOutbox(
+      now - stream_retention::kRetentionSeconds);
+  if (settled > 0)
+    LOG_INFO << "Guard encounter outbox: purged " << settled
+             << " settled row(s) past the stream's retention";
   if (!storage_.isConfigured()) {
     LOG_INFO << "Guard retention: object storage not configured; skipped";
     co_return;

@@ -3,6 +3,7 @@
 #include <text/json-util.hxx>
 #include <nats/nats-bus.hxx>
 #include <nats/nats-subject.hxx>
+#include <sync/stream-retention.hxx>
 #include <trantor/utils/Logger.h>
 
 NatsNotificationDeliverySink::NatsNotificationDeliverySink(
@@ -13,12 +14,10 @@ NatsNotificationDeliverySink::NatsNotificationDeliverySink(
 
 bool NatsNotificationDeliverySink::ensureStream() const
 {
-  constexpr int64_t kRetentionNs = 7LL * 24 * 60 * 60 * 1000000000;
-  constexpr int64_t kDuplicatesNs = 2LL * 60 * 1000000000;
   if (!bus_->ensureStream({.name = config_.stream,
                            .subjects = {config_.subject},
-                           .maxAgeNs = kRetentionNs,
-                           .duplicatesNs = kDuplicatesNs}))
+                           .maxAgeNs = stream_retention::kRetentionNs,
+                           .duplicatesNs = stream_retention::kDuplicatesNs}))
     return false;
   return true;
 }

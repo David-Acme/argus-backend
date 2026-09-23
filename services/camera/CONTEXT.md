@@ -171,7 +171,10 @@ preset, own `camera.db`.
   that track; companions travel only as context and never decide. The
   cooldown advances only after the outbox transaction returns Recorded, so a
   failed enqueue keeps the pending event for the next window. `/health`
-  `objectEvents` hydrates from SQLite at boot and counts real overflow drops.
+  `objectEvents` hydrates from SQLite at boot and counts real overflow drops;
+  both numbers are live counts over the retained window, so they read as
+  gauges — settled rows age out with the feed — and never as accumulating
+  counters.
 - **Siren lease sweeper**: an expired lease is disarmed and deleted only
   after the driver confirms `alarm=false`. If the camera row or its driver
   is unreachable the lease is kept and retried with an error log; a failed
