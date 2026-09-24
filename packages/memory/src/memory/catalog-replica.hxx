@@ -17,6 +17,7 @@ struct Feed
   std::string stream;
   std::string subject;
   std::string durable;
+  int maxAckPending{NatsBus::kOrderedMaxAckPending};
 };
 
 const std::vector<Feed>& defaults();

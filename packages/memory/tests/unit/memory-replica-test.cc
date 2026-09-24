@@ -72,10 +72,12 @@ TEST_CASE("the catalog replica holds one durable per change stream")
   CHECK(feeds[0].stream == std::string(nats_subject::kCameraStream));
   CHECK(feeds[0].subject == std::string(nats_subject::kCameraChange));
   CHECK(feeds[0].durable == "argus-llm-catalog-camera");
+  CHECK(feeds[0].maxAckPending == NatsBus::kOrderedMaxAckPending);
 
   CHECK(feeds[1].stream == std::string(nats_subject::kIdentityChangeStream));
   CHECK(feeds[1].subject == std::string(nats_subject::kIdentityChange));
   CHECK(feeds[1].durable == "argus-llm-catalog-identity");
+  CHECK(feeds[1].maxAckPending == NatsBus::kOrderedMaxAckPending);
 
   std::unordered_set<std::string> durables;
   for (const auto& feed : feeds) {

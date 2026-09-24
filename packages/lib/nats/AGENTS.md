@@ -66,11 +66,29 @@ not in that document is a subject nobody consumes.
   process's bind is refused ("consumer is already bound to a subscription")
   until the first has left, and its retry then resumes from the shared cursor.
   Both refusals reach the log with the broker's own reason.
-- Every durable holds at most 256 unacknowledged messages (`MaxAckPending`,
-  editable, so it reaches existing consumers on their next attach). A consumer
-  that applies in order queues what it has been given, and the queue's wait
-  counts against the 60 s ack window; the bound keeps that window from expiring
-  behind the queue unless an apply averages more than about 230 ms.
+- A durable says how many unacknowledged messages it holds
+  (`DurableInput::maxAckPending`, editable, so a change reaches an existing
+  consumer on its next attach). `kDefaultMaxAckPending` (256) is for a feed
+  keyed by id, where order does not matter: a consumer that applies in order
+  queues what it has been given, the queue's wait counts against the 60 s ack
+  window, and the bound keeps that window from expiring behind the queue unless
+  an apply averages more than about 230 ms. `kOrderedMaxAckPending` (1) is for
+  a feed whose order is its meaning — the change feeds: the broker delivers
+  nothing behind a message until it is acked or given up on, so a redelivery
+  can never land after a newer message. A consumer holding a feed table says
+  per feed which one it wants (`change_feed::Feed::maxAckPending`,
+  `catalog_feed::Feed::maxAckPending`).
+- A nak waits before the redelivery: 1 s, doubling per delivery to 30 s. A
+  message that fails fast therefore spends its `maxDeliver` over minutes rather
+  than milliseconds. The nak of its last delivery does not wait — the broker
+  drops the message then, and a delay would only hold an ordered feed longer —
+  and logs an error, because the broker keeps no dead letter. A last delivery
+  that ends by an expired ack window is dropped without that log.
+- An ordered durable waits out its 60 s ack window only for a delivery lost
+  while its subscription survives (a connection drop cnats reconnects through).
+  A successor process re-attaches through a fresh deliver subject, and the
+  broker redelivers the message its predecessor held at once, ahead of the
+  rest.
 - Attach a durable only once whatever its handler marshals onto exists. A
   durable with a backlog delivers within a millisecond of the bind, on the
   cnats thread, so a handler that reaches `drogon::app().getIOLoop(0)` must be
@@ -83,8 +101,9 @@ not in that document is a subject nobody consumes.
   closure.
 - `tests/unit/nats-wrapper-test.cc` pins the durable rules against a live
   broker (`ARGUS_TEST_NATS_URL`): the backlog survives an unsubscribe and a
-  drain, a second binder is refused while the first is bound, and a changed
-  deliver policy is refused.
+  drain, a second binder is refused while the first is bound, a changed
+  deliver policy is refused, and an ordered durable redelivers a nak'd message
+  before the one behind it, after the backoff.
 - Handlers must not block: a subscription that needs to do real work hands it
   to `BlockingTask` (argus-runtime) rather than doing it on the cnats thread.
 

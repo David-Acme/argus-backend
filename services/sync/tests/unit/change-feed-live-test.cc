@@ -188,7 +188,10 @@ TEST_CASE("a durable change feed drains what arrived while it was detached")
 
   AuditFanOut auditFanOut;
   const std::vector<change_feed::Feed> feeds{
-      {.stream = stream, .subject = subject, .durable = durable}};
+      {.stream = stream,
+       .subject = subject,
+       .durable = durable,
+       .maxAckPending = NatsBus::kOrderedMaxAckPending}};
 
   std::optional<ChangeFeedConsumer> attached;
   attached.emplace(

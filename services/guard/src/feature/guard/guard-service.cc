@@ -424,6 +424,7 @@ bool GuardService::trySubscribe()
                       : config_.eventSubject,
        .deliverAll = true,
        .maxDeliver = config_.maxObservationAttempts,
+       .maxAckPending = NatsBus::kDefaultMaxAckPending,
         .handler = [this, lifecycle = lifecycle_](
                          const NatsBus::DurableMessage& message,
                          NatsBus::DurableSettlement settlement) {

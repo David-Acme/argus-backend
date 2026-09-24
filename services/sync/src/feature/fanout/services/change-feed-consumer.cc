@@ -15,19 +15,24 @@ const std::vector<Feed>& defaults()
   static const std::vector<Feed> feeds{
       {.stream = nats_subject::kCameraStream,
        .subject = nats_subject::kCameraChange,
-       .durable = "argus-sync-camera"},
+       .durable = "argus-sync-camera",
+       .maxAckPending = NatsBus::kOrderedMaxAckPending},
       {.stream = nats_subject::kNotificationChangeStream,
        .subject = nats_subject::kNotificationChange,
-       .durable = "argus-sync-notification"},
+       .durable = "argus-sync-notification",
+       .maxAckPending = NatsBus::kOrderedMaxAckPending},
       {.stream = nats_subject::kProductivityChangeStream,
        .subject = nats_subject::kProductivityChange,
-       .durable = "argus-sync-productivity"},
+       .durable = "argus-sync-productivity",
+       .maxAckPending = NatsBus::kOrderedMaxAckPending},
       {.stream = nats_subject::kIdentityChangeStream,
        .subject = nats_subject::kIdentityChange,
-       .durable = "argus-sync-identity"},
+       .durable = "argus-sync-identity",
+       .maxAckPending = NatsBus::kOrderedMaxAckPending},
       {.stream = nats_subject::kIdentityChangeStream,
        .subject = nats_subject::kIdentityUserAction,
-       .durable = "argus-sync-identity-action"},
+       .durable = "argus-sync-identity-action",
+       .maxAckPending = NatsBus::kDefaultMaxAckPending},
   };
   return feeds;
 }
@@ -92,6 +97,7 @@ bool ChangeFeedConsumer::trySubscribe(Attachment& attachment)
        .subject = attachment.feed.subject,
        .deliverAll = false,
        .maxDeliver = config_.maxDeliver,
+       .maxAckPending = attachment.feed.maxAckPending,
        .handler = durable_delivery::handler(
            "Change feed " + attachment.feed.durable,
            [this](const durable_delivery::Payload& payload) {

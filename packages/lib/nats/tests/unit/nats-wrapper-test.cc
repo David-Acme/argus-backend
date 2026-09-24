@@ -331,12 +331,14 @@ TEST_CASE("a durable consumer outlives the subscriber that bound it")
 
   const std::string stream = isolatedStream();
   const std::string subject = isolatedSubject(stream);
-  const NatsBus::DurableInput feed{.stream = stream,
-                                   .durable = stream + "-durable",
-                                   .subject = subject,
-                                   .deliverAll = false,
-                                   .maxDeliver = 5,
-                                   .handler = {}};
+  const NatsBus::DurableInput feed{
+      .stream = stream,
+      .durable = stream + "-durable",
+      .subject = subject,
+      .deliverAll = false,
+      .maxDeliver = 5,
+      .maxAckPending = NatsBus::kDefaultMaxAckPending,
+      .handler = {}};
   const auto publish = [&subject](NatsBus& bus, const std::string& body) {
     return bus.publishWithMsgId(
         {.subject = subject, .payload = body, .msgId = subject + "-" + body});
@@ -392,6 +394,66 @@ TEST_CASE("a durable consumer outlives the subscriber that bound it")
 
   rival.drain();
   second.drain();
+}
+
+TEST_CASE("an ordered durable redelivers a nak'd message before the next one")
+{
+  const char* url = std::getenv("ARGUS_TEST_NATS_URL");
+  if (url == nullptr || std::string(url).empty()) {
+    std::cout << "SKIP: ARGUS_TEST_NATS_URL not provided\n";
+    return;
+  }
+  NatsBus::Options options;
+  options.url = url;
+  NatsBus bus;
+  REQUIRE(bus.connect(options));
+
+  const std::string stream = isolatedStream();
+  const std::string subject = isolatedSubject(stream);
+  REQUIRE(bus.ensureStream({.name = stream,
+                            .subjects = {subject},
+                            .maxAgeNs = 60LL * 1000000000,
+                            .duplicatesNs = 60LL * 1000000000}));
+  for (const char* body : {"a", "b", "c"})
+    REQUIRE(bus.publishWithMsgId(
+        {.subject = subject, .payload = body, .msgId = subject + "-" + body}));
+
+  Deliveries seen;
+  std::atomic<bool> refusedOnce{false};
+  const auto started = std::chrono::steady_clock::now();
+  std::atomic<int64_t> redeliveredAfterMs{0};
+  const auto attached = bus.subscribeDurable(
+      {.stream = stream,
+       .durable = stream + "-ordered",
+       .subject = subject,
+       .deliverAll = true,
+       .maxDeliver = 5,
+       .maxAckPending = NatsBus::kOrderedMaxAckPending,
+       .handler = [&](const NatsBus::DurableMessage& message,
+                      const NatsBus::DurableSettlement& settlement) {
+         const std::string payload(message.payload);
+         {
+           std::lock_guard lock(seen.mutex);
+           seen.payloads.push_back(payload);
+         }
+         if (payload == "a" && !refusedOnce.exchange(true)) {
+           settlement.nak();
+           return;
+         }
+         if (payload == "a")
+           redeliveredAfterMs = std::chrono::duration_cast<
+                                    std::chrono::milliseconds>(
+                                    std::chrono::steady_clock::now() - started)
+                                    .count();
+         settlement.ack();
+       }});
+  REQUIRE(attached.has_value());
+
+  CHECK(awaitPayloads(seen, 4) ==
+        std::vector<std::string>{"a", "a", "b", "c"});
+  CHECK(redeliveredAfterMs.load() >= 900);
+
+  bus.drain();
 }
 
 TEST_CASE("streamInfo reports a missing stream without a server roundtrip lie")

@@ -15,8 +15,10 @@ inline constexpr std::string_view INSERT =
     "priority, event_timestamp) VALUES (?, ?, ?, ?, ?, ?)";
 
 inline constexpr std::string_view FIND_EXIST =
-    "SELECT * FROM audit_log WHERE record_id = ? AND table_name = ? "
-    "AND event_timestamp >= ? AND event_timestamp <= ? LIMIT 1";
+    "SELECT * FROM audit_log INDEXED BY idx_audit_log_record "
+    "WHERE record_id = ? AND table_name = ? "
+    "AND event_timestamp >= ? AND event_timestamp <= ? "
+    "ORDER BY id DESC LIMIT 1";
 
 inline constexpr std::string_view UPDATE_CHANGES =
     "UPDATE audit_log SET changes = ?, event_timestamp = ? WHERE id = ?";

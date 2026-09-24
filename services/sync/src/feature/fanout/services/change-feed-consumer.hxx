@@ -4,13 +4,13 @@
 #include <feature/fanout/services/audit-fan-out.hxx>
 #include <feature/fanout/services/durable-delivery.hxx>
 #include <feature/fanout/services/durable-disposition.hxx>
+#include <nats/nats-bus.hxx>
 
 #include <cstdint>
 #include <optional>
 #include <string>
 #include <vector>
 
-class NatsBus;
 
 namespace change_feed
 {
@@ -19,6 +19,7 @@ struct Feed
   std::string stream;
   std::string subject;
   std::string durable;
+  int maxAckPending{NatsBus::kOrderedMaxAckPending};
 };
 
 const std::vector<Feed>& defaults();
@@ -36,7 +37,7 @@ public:
   struct Config
   {
     std::vector<change_feed::Feed> feeds{change_feed::defaults()};
-    int maxDeliver{50};
+    int maxDeliver{10};
   };
 
   ChangeFeedConsumer(Dependencies dependencies, Config config);

@@ -131,7 +131,7 @@ int main()
         ChangeFeedConsumer::Dependencies{.bus = natsBus.get(),
                                          .auditFanOut = &auditFanOut},
         ChangeFeedConsumer::Config{.feeds = change_feed::defaults(),
-                                   .maxDeliver = 50});
+                                   .maxDeliver = 10});
     deliveryConsumer = std::make_shared<NotificationDeliveryConsumer>(
         NotificationDeliveryConsumer::Dependencies{.bus = natsBus.get(),
                                                    .dispatch = {}},

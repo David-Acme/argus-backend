@@ -4,6 +4,7 @@
 #include <drogon/drogon.h>
 #include <feature/fanout/services/audit-fan-out.hxx>
 #include <feature/fanout/services/change-feed-consumer.hxx>
+#include <nats/nats-bus.hxx>
 #include <nats/nats-subject.hxx>
 #include <sqlite/db-service.hxx>
 #include <sync/module-audit-event.hxx>
@@ -192,23 +193,28 @@ TEST_CASE("every producer stream carries the durable the change feed holds")
   CHECK(feeds[0].stream == std::string(nats_subject::kCameraStream));
   CHECK(feeds[0].subject == std::string(nats_subject::kCameraChange));
   CHECK(feeds[0].durable == "argus-sync-camera");
+  CHECK(feeds[0].maxAckPending == NatsBus::kOrderedMaxAckPending);
 
   CHECK(feeds[1].stream == std::string(nats_subject::kNotificationChangeStream));
   CHECK(feeds[1].subject == std::string(nats_subject::kNotificationChange));
   CHECK(feeds[1].durable == "argus-sync-notification");
+  CHECK(feeds[1].maxAckPending == NatsBus::kOrderedMaxAckPending);
 
   CHECK(feeds[2].stream ==
         std::string(nats_subject::kProductivityChangeStream));
   CHECK(feeds[2].subject == std::string(nats_subject::kProductivityChange));
   CHECK(feeds[2].durable == "argus-sync-productivity");
+  CHECK(feeds[2].maxAckPending == NatsBus::kOrderedMaxAckPending);
 
   CHECK(feeds[3].stream == std::string(nats_subject::kIdentityChangeStream));
   CHECK(feeds[3].subject == std::string(nats_subject::kIdentityChange));
   CHECK(feeds[3].durable == "argus-sync-identity");
+  CHECK(feeds[3].maxAckPending == NatsBus::kOrderedMaxAckPending);
 
   CHECK(feeds[4].stream == std::string(nats_subject::kIdentityChangeStream));
   CHECK(feeds[4].subject == std::string(nats_subject::kIdentityUserAction));
   CHECK(feeds[4].durable == "argus-sync-identity-action");
+  CHECK(feeds[4].maxAckPending == NatsBus::kDefaultMaxAckPending);
 
   std::unordered_set<std::string> durables;
   for (const auto& feed : feeds) {
@@ -373,4 +379,42 @@ TEST_CASE("the change feed applies, routes and settles every change subject")
   CHECK(scalar("SELECT json_extract(changes, '$.name.current') FROM "
                "audit_log WHERE record_id = 11") ==
         "v" + std::to_string(kBurst));
+
+  const auto applyStep = [&consumer](int step) {
+    return drogon::sync_wait(consumer.handle(
+        {.subject = nats_subject::kCameraChange,
+         .msgId = "camera-change:merge-" + std::to_string(step),
+         .body = json_util::toString(moduleAuditStep(31, step))}));
+  };
+  const auto newestCurrent = [] {
+    return scalar("SELECT json_extract(changes, '$.name.current') FROM "
+                  "audit_log WHERE record_id = 31 ORDER BY id DESC LIMIT 1");
+  };
+  CHECK(applyStep(1) == DurableDisposition::Ack);
+
+  DbService::client()->execSqlSync(
+      "CREATE TEMP TRIGGER refuse_insert BEFORE INSERT ON audit_log "
+      "WHEN NEW.record_id = 31 BEGIN SELECT RAISE(ABORT, 'refused'); END");
+  CHECK_THROWS(applyStep(2));
+  CHECK(scalar("SELECT COUNT(*) FROM audit_log WHERE record_id = 31") == "1");
+  CHECK(newestCurrent() == "v1");
+  DbService::client()->execSqlSync("DROP TRIGGER refuse_insert");
+  CHECK(applyStep(2) == DurableDisposition::Ack);
+  CHECK(scalar("SELECT COUNT(*) FROM audit_log WHERE record_id = 31") == "1");
+  CHECK(newestCurrent() == "v2");
+
+  DbService::client()->execSqlSync(
+      "CREATE TEMP TRIGGER refuse_delete BEFORE DELETE ON audit_log "
+      "WHEN OLD.record_id = 31 BEGIN SELECT RAISE(ABORT, 'refused'); END");
+  CHECK_THROWS(applyStep(3));
+  CHECK(scalar("SELECT COUNT(*) FROM audit_log WHERE record_id = 31") == "2");
+  CHECK(newestCurrent() == "v3");
+  DbService::client()->execSqlSync("DROP TRIGGER refuse_delete");
+  CHECK(applyStep(3) == DurableDisposition::Ack);
+  CHECK(newestCurrent() == "v3");
+  CHECK(applyStep(4) == DurableDisposition::Ack);
+  CHECK(newestCurrent() == "v4");
+  CHECK(scalar("SELECT json_extract(changes, '$.name.previous') FROM "
+               "audit_log WHERE record_id = 31 ORDER BY id DESC LIMIT 1") ==
+        "v0");
 }

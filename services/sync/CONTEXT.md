@@ -139,24 +139,45 @@ object the consumers share is the `AuditFanOut` `main.cc` owns; the fan-out
 itself is a free-function namespace because dispatching holds no state of its
 own.
 
-The time a message waits in that queue counts against its 60 s ack window,
-which is why every durable holds at most 256 unacknowledged messages
-(`MaxAckPending`, set by the bus): the window can only expire behind the queue
-when an apply averages more than about 230 ms, where an audit insert takes a
-millisecond.
+**The four change feeds are ordered consumers** (closure item 5b): each holds
+one unacknowledged message at a time (`NatsBus::kOrderedMaxAckPending`, the
+feed's `maxAckPending` in `change_feed::defaults()`), so the broker delivers
+nothing behind a message until it is acked or given up on. A message that is
+nak'd, whose ack never arrived or whose ack window expired is therefore
+redelivered before anything after it — measured on the dev broker, a nak'd `a`
+of `a b c` is applied `a a b c`, where 256 in flight gives `a b c a` — and the
+audit merge can no longer fold an older diff into a row that already holds a
+newer value. The action journal is the fifth feed and keeps 256 in flight: it
+is keyed by `msg_id` and inserted verbatim, so order buys it nothing, the same
+reason the delivery consumer keeps 256. The serial queue above stays: those
+two rely on it.
 
-What the serial apply does not give is order across a redelivery. A message
-that is nak'd (its write threw), whose ack never arrived (the process stopped
-mid-apply) or whose ack window expired while it waited is redelivered after
-the messages behind it have been applied, and merged into a row that already
-holds a newer value it can regress. A nak is immediate, so a fast-failing write
-spends `maxDeliver` in milliseconds, after which the broker stops redelivering
-without a dead letter; and the merge's delete and insert are separate
-statements, so a failure between them loses the day's merged diff. These are
-recorded as closure item 5b rather than solved here: the fixes — a
-one-in-flight consumer, a merge that compares event timestamps, a delayed nak,
-a merge in one transaction — each put a cost on every message, and choosing
-between them is a decision of its own.
+Three costs come with it, each chosen over a wrong value on a client:
+
+- **Throughput is one round trip per message** — measured at about a thousand
+  a second on a local broker with an empty apply, so a day's backlog drains in
+  seconds.
+- **A failing message holds its feed.** A nak waits before the redelivery,
+  1 s doubling to 30 s (the bus's backoff, not the handler's), and each feed
+  allows 10 deliveries; the nak of the last one does not wait. A message that
+  can never be written therefore stalls its domain's live changes for about two
+  and a half minutes (151 s); the bus logs an error with that last nak, the
+  broker drops the message, and the feed moves on. Before item 5 such a message
+  was lost on the first failure. A last delivery that ends by an expired ack
+  window instead of a nak is dropped without that log.
+- **A delivery lost while its subscription survives waits out the 60 s ack
+  window** — a message in flight when the connection drops and cnats reconnects
+  on the same subscription. A process that stops uncleanly does not wait: its
+  successor re-attaches through a fresh deliver subject and the broker
+  redelivers the in-flight message at once, ahead of the rest.
+
+The merge itself inserts the merged row before it deletes the one it replaces,
+and finds the row to merge into newest first. A failure between the two
+statements therefore leaves an older, redundant row behind the merged one —
+a client pages both in id order and ends on the merged value — instead of
+deleting the day's history, which is what the old delete-then-insert order did.
+`tests/unit/change-feed-consumer-test.cc` forces each statement to fail with a
+temporary trigger and pins both outcomes.
 
 **NATS is load-bearing for audit and journal persistence.** A deployment with
 no `[nats] url` loses live fan-out *and* the audit writes, because the writes

@@ -19,7 +19,7 @@
 namespace
 {
 
-constexpr int kMaxDeliver = 50;
+constexpr int kMaxDeliver = 10;
 
 constexpr const char* UPSERT_PERSON =
     "INSERT INTO catalog_person (id, user_id, name, alias, deleted_at) "
@@ -91,10 +91,12 @@ const std::vector<Feed>& defaults()
   static const std::vector<Feed> feeds{
       {.stream = nats_subject::kCameraStream,
        .subject = nats_subject::kCameraChange,
-       .durable = "argus-llm-catalog-camera"},
+       .durable = "argus-llm-catalog-camera",
+       .maxAckPending = NatsBus::kOrderedMaxAckPending},
       {.stream = nats_subject::kIdentityChangeStream,
        .subject = nats_subject::kIdentityChange,
-       .durable = "argus-llm-catalog-identity"},
+       .durable = "argus-llm-catalog-identity",
+       .maxAckPending = NatsBus::kOrderedMaxAckPending},
   };
   return feeds;
 }
@@ -161,6 +163,7 @@ bool CatalogReplica::trySubscribe(Attachment& attachment)
        .subject = attachment.feed.subject,
        .deliverAll = true,
        .maxDeliver = kMaxDeliver,
+       .maxAckPending = attachment.feed.maxAckPending,
        .handler = [this](const NatsBus::DurableMessage& message,
                          NatsBus::DurableSettlement settlement) {
          ApplyInput input{.subject = std::string(message.subject),

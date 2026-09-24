@@ -120,6 +120,10 @@ void seedAuditTables(const SeedAuditTablesInput& input)
        "table_name TEXT NOT NULL, changes TEXT NOT NULL DEFAULT '{}', "
        "priority INTEGER NOT NULL DEFAULT 1, event_timestamp INTEGER NOT NULL, "
        "created_at INTEGER NOT NULL DEFAULT 0)");
+  exec(db.get(), "CREATE INDEX idx_audit_log_record "
+                 "ON audit_log (record_id, table_name)");
+  exec(db.get(), "CREATE INDEX idx_user_audit_log_record "
+                 "ON user_audit_log (record_id, table_name)");
   exec(db.get(), "INSERT INTO audit_log (id, record_id, table_name, changes, "
                  "priority, event_timestamp) VALUES (" +
                      std::to_string(auditId) + ", 1, 'camera', '{}', 1, 100)");

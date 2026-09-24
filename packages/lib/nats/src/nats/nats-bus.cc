@@ -15,12 +15,22 @@
 namespace
 {
 constexpr const char* kMsgIdHeader = "Nats-Msg-Id";
-constexpr int64_t kMaxAckPending = 256;
 
 const char* lastErrorText()
 {
   const char* text = nats_GetLastError(nullptr);
   return text == nullptr ? "no detail" : text;
+}
+
+int64_t nakDelayMs(int delivered)
+{
+  const int doublings = std::clamp(delivered - 1, 0, 5);
+  return std::min<int64_t>(int64_t{1000} << doublings, 30000);
+}
+
+int effectiveMaxDeliver(const NatsBus::DurableInput& input)
+{
+  return input.maxDeliver > 0 ? input.maxDeliver : 5;
 }
 }
 
@@ -164,8 +174,17 @@ void NatsBus::onDurableMessage(natsConnection* connection,
     return;
   }
 
+  int delivered = 0;
+  jsMsgMetaData* meta = nullptr;
+  if (natsMsg_GetMetaData(&meta, msg) == NATS_OK && meta != nullptr) {
+    delivered = static_cast<int>(meta->NumDelivered);
+    jsMsgMetaData_Destroy(meta);
+  }
+
   DurableHandler handler;
   SharedSubscriptionPtr subscription;
+  std::string lastDeliveryOf;
+  int maxDeliver = 0;
   {
     std::lock_guard lock(bus->mutex_);
     if (!bus->callbacksSuppressed_.load(std::memory_order_acquire)) {
@@ -173,6 +192,9 @@ void NatsBus::onDurableMessage(natsConnection* connection,
       if (it != bus->durable_.end()) {
         handler = it->second.input.handler;
         subscription = it->second.raw;
+        maxDeliver = effectiveMaxDeliver(it->second.input);
+        if (delivered >= maxDeliver)
+          lastDeliveryOf = it->second.input.durable;
       }
     }
   }
@@ -192,9 +214,16 @@ void NatsBus::onDurableMessage(natsConnection* connection,
       return;
     natsMsg_Ack(message.get(), nullptr);
   };
-  auto nak = [message, settled]() {
+  auto nak = [message, settled, delivered, maxDeliver,
+              durable = std::move(lastDeliveryOf)]() {
     if (settled->exchange(true, std::memory_order_acq_rel))
       return;
+    if (durable.empty()) {
+      natsMsg_NakWithDelay(message.get(), nakDelayMs(delivered), nullptr);
+      return;
+    }
+    LOG_ERROR << "NATS durable " << durable << " gave up on a message after "
+              << maxDeliver << " deliveries; the broker drops it";
     natsMsg_Nak(message.get(), nullptr);
   };
   auto term = [message, settled]() {
@@ -202,12 +231,6 @@ void NatsBus::onDurableMessage(natsConnection* connection,
       return;
     natsMsg_Term(message.get(), nullptr);
   };
-  int delivered = 0;
-  jsMsgMetaData* meta = nullptr;
-  if (natsMsg_GetMetaData(&meta, msg) == NATS_OK && meta != nullptr) {
-    delivered = static_cast<int>(meta->NumDelivered);
-    jsMsgMetaData_Destroy(meta);
-  }
   const char* messageId = nullptr;
   if (natsMsgHeader_Get(msg, kMsgIdHeader, &messageId) != NATS_OK)
     messageId = nullptr;
@@ -377,8 +400,9 @@ bool NatsBus::ensureDurable(const DurableInput& input)
   config.DeliverPolicy = input.deliverAll ? js_DeliverAll : js_DeliverNew;
   config.AckPolicy = js_AckExplicit;
   config.AckWait = 60LL * 1000 * 1000 * 1000;
-  config.MaxDeliver = input.maxDeliver > 0 ? input.maxDeliver : 5;
-  config.MaxAckPending = kMaxAckPending;
+  config.MaxDeliver = effectiveMaxDeliver(input);
+  config.MaxAckPending = input.maxAckPending > 0 ? input.maxAckPending
+                                                : kDefaultMaxAckPending;
   config.FilterSubject = input.subject.c_str();
 
   auto errorCode = jsErrCode(0);
@@ -408,7 +432,7 @@ bool NatsBus::attachDurable(const DurableInput& input, uint64_t id)
   subOptions.Consumer = input.durable.c_str();
   subOptions.Config.AckPolicy = js_AckExplicit;
   subOptions.Config.AckWait = 60LL * 1000 * 1000 * 1000;
-  subOptions.Config.MaxDeliver = input.maxDeliver > 0 ? input.maxDeliver : 5;
+  subOptions.Config.MaxDeliver = effectiveMaxDeliver(input);
   subOptions.ManualAck = true;
 
   natsSubscription* rawSub = nullptr;

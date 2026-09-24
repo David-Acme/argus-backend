@@ -399,6 +399,7 @@ TEST_CASE("the change sink lands every catalog row, emit, audit and journal "
          .subject = changeSubject,
          .deliverAll = true,
          .maxDeliver = 3,
+         .maxAckPending = NatsBus::kDefaultMaxAckPending,
          .handler = [&mutex, &cv, &changed](
                         const NatsBus::DurableMessage& message,
                         const NatsBus::DurableSettlement& settlement) {
@@ -419,6 +420,7 @@ TEST_CASE("the change sink lands every catalog row, emit, audit and journal "
          .subject = actionSubject,
          .deliverAll = true,
          .maxDeliver = 3,
+         .maxAckPending = NatsBus::kDefaultMaxAckPending,
          .handler = [&mutex, &cv, &journalDeliveries, &journalPayloads](
                         const NatsBus::DurableMessage& message,
                         const NatsBus::DurableSettlement& settlement) {

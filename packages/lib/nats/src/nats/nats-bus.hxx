@@ -86,6 +86,8 @@ public:
 
   using DurableHandler =
       std::function<void(const DurableMessage&, DurableSettlement)>;
+  static constexpr int kDefaultMaxAckPending = 256;
+  static constexpr int kOrderedMaxAckPending = 1;
   struct DurableInput
   {
     std::string stream;
@@ -93,6 +95,7 @@ public:
     std::string subject;
     bool deliverAll{false};
     int maxDeliver{5};
+    int maxAckPending{kDefaultMaxAckPending};
     DurableHandler handler;
   };
   std::optional<uint64_t> subscribeDurable(const DurableInput& input);

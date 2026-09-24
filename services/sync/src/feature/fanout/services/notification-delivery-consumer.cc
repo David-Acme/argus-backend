@@ -132,6 +132,7 @@ bool NotificationDeliveryConsumer::trySubscribe()
        .subject = config_.subject,
        .deliverAll = true,
        .maxDeliver = config_.maxDeliver,
+       .maxAckPending = NatsBus::kDefaultMaxAckPending,
        .handler = durable_delivery::handler(
            "Delivery consumer", [this](const durable_delivery::Payload& payload) {
              return handlePayload(payload.body);

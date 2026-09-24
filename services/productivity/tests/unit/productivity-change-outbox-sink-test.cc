@@ -286,6 +286,7 @@ TEST_CASE("the change sink lands every emit and audit in the durable outbox")
          .subject = subject,
          .deliverAll = true,
          .maxDeliver = 3,
+         .maxAckPending = NatsBus::kDefaultMaxAckPending,
          .handler = [&mutex, &cv, &received](
                         const NatsBus::DurableMessage& message,
                         const NatsBus::DurableSettlement& settlement) {

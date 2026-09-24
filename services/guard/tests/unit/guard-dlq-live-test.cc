@@ -40,6 +40,7 @@ TEST_CASE("a durable consumer exhausts MaxDeliver and settles the message")
        .subject = "argus.test.guard.dlq",
        .deliverAll = false,
        .maxDeliver = 3,
+       .maxAckPending = NatsBus::kDefaultMaxAckPending,
        .handler = [&mutex, &cv, &deliveries, &settled](
                       const NatsBus::DurableMessage& message,
                       NatsBus::DurableSettlement settlement) {

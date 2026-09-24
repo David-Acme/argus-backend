@@ -53,8 +53,10 @@ loop.
   sink) plus `argus.camera.v1.change` replay camera/person changes into the
   replicas. Since closure item 5 the replica holds one **durable JetStream
   consumer per stream** (`catalog_feed::defaults()`: `argus-llm-catalog-camera`
-  on `ARGUS_CAMERA`, `argus-llm-catalog-identity` on `ARGUS_IDENTITY_CHANGE`)
-  with `deliverAll = true`, which decides where a consumer's cursor starts and
+  on `ARGUS_CAMERA`, `argus-llm-catalog-identity` on `ARGUS_IDENTITY_CHANGE`).
+  Both are ordered — one unacknowledged message at a time, 10 deliveries — so
+  a redelivered row can never land after a newer one and regress the replica,
+  and both use `deliverAll = true`, which decides where a consumer's cursor starts and
   so applies only when that consumer is first created — the broker refuses to
   change an existing consumer's policy, so a changed policy takes a new
   durable name; the cursor itself survives a restart because the bus creates

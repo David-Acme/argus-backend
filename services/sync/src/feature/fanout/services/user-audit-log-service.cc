@@ -51,7 +51,6 @@ UserAuditLogService::create(const UserAuditLogWriteInput& input) const
       JsonDiff::fromJsonString(json_util::toString(existing->changes));
   const auto merged = JsonDiff::compareChanges(prev, input.changes);
   const auto changes = merged.type == "DELETE" ? input.changes : merged.changes;
-  co_await repository_.remove(existing->id);
   schema = co_await repository_.create(
       {.userId = input.userId,
        .recordId = input.recordId,
@@ -59,6 +58,7 @@ UserAuditLogService::create(const UserAuditLogWriteInput& input) const
        .changes = JsonDiff::toJson(changes),
        .priority = input.priority,
        .eventTimestamp = now});
+  co_await repository_.remove(existing->id);
 
   co_return schema;
 }

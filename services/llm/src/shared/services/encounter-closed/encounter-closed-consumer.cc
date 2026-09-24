@@ -204,6 +204,7 @@ bool EncounterClosedConsumer::trySubscribe()
        .subject = config_.subject,
        .deliverAll = true,
        .maxDeliver = config_.maxDeliver,
+       .maxAckPending = NatsBus::kDefaultMaxAckPending,
        .handler = [this, lifecycle = lifecycle_](
                          const NatsBus::DurableMessage& message,
                          NatsBus::DurableSettlement settlement) {
