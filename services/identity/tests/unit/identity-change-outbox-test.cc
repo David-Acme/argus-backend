@@ -6,6 +6,7 @@
 #include <shared/repositories/change-outbox/change-outbox-repository.hxx>
 #include <sqlite/db-service.hxx>
 
+#include <array>
 #include <chrono>
 #include <cstdio>
 #include <stdexcept>
@@ -65,6 +66,13 @@ ChangeOutboxRow pendingRow(const std::vector<ChangeOutboxRow>& rows)
   REQUIRE(!rows.empty());
   return rows.empty() ? ChangeOutboxRow{} : rows.front();
 }
+
+std::string mintedActionId(unsigned char seed)
+{
+  std::array<unsigned char, 16> bytes{};
+  bytes.fill(seed);
+  return change_outbox_key::actionMsgId(bytes);
+}
 }
 
 TEST_CASE("the event id names the transition and the action id its own row")
@@ -100,9 +108,21 @@ TEST_CASE("the event id names the transition and the action id its own row")
              .recordId = 7,
              .discriminator = R"({"role":"resident"})"}));
 
-  CHECK(change_outbox_key::actionMsgId(7) == "identity-action:7");
-  CHECK(change_outbox_key::actionMsgId(7) != change_outbox_key::actionMsgId(8));
-  CHECK(change_outbox_key::actionMsgId(7).rfind("identity-action:", 0) == 0);
+  const std::array<unsigned char, 16> zeroEntropy{};
+  const std::string minted = change_outbox_key::actionMsgId(zeroEntropy);
+  CHECK(minted == "identity-action:00000000000000000000000000000000");
+  CHECK(minted.rfind(change_outbox_key::kActionPrefix, 0) == 0);
+  CHECK(minted.size() == change_outbox_key::kActionPrefix.size() + 32);
+  std::array<unsigned char, 16> fullEntropy{};
+  fullEntropy.fill(0xFF);
+  CHECK(change_outbox_key::actionMsgId(fullEntropy) ==
+        "identity-action:ffffffffffffffffffffffffffffffff");
+  CHECK(change_outbox_key::legacyActionMsgId(7) == "identity-action:7");
+  CHECK(change_outbox_key::legacyActionMsgId(7) !=
+        change_outbox_key::legacyActionMsgId(8));
+  CHECK(change_outbox_key::legacyActionMsgId(7).rfind("identity-action:", 0) ==
+        0);
+  CHECK(minted != change_outbox_key::legacyActionMsgId(7));
 
   Json::Value payload;
   payload["id"] = 7;
@@ -212,17 +232,33 @@ TEST_CASE("the change outbox replays one transition and refuses a conflict")
       pendingRow(repository.pendingBatch(1)).id, 5200));
   CHECK(pendingRow(repository.pendingBatch(1)).eventId == "identity-change:d");
 
-  const ChangeOutboxActionInput read = {.subject = kActionSubject,
+  const ChangeOutboxActionInput read = {.eventId = mintedActionId(7),
+                                        .subject = kActionSubject,
                                         .fingerprint = "fp-read",
                                         .payload = R"({"action":"read"})",
                                         .at = 6000,
                                         .client = nullptr};
+  const ChangeOutboxActionInput readAgain = {.eventId = mintedActionId(8),
+                                             .subject = kActionSubject,
+                                             .fingerprint = "fp-read",
+                                             .payload = R"({"action":"read"})",
+                                             .at = 6000,
+                                             .client = nullptr};
   drogon::sync_wait(repository.enqueueAction(read));
-  drogon::sync_wait(repository.enqueueAction(read));
+  drogon::sync_wait(repository.enqueueAction(readAgain));
   CHECK_THROWS_AS(drogon::sync_wait(repository.enqueueAction(
-                      {.subject = kActionSubject,
+                      {.eventId = mintedActionId(9),
+                       .subject = kActionSubject,
                        .fingerprint = "fp",
                        .payload = "",
+                       .at = 0,
+                       .client = nullptr})),
+                  std::invalid_argument);
+  CHECK_THROWS_AS(drogon::sync_wait(repository.enqueueAction(
+                      {.eventId = "",
+                       .subject = kActionSubject,
+                       .fingerprint = "fp",
+                       .payload = R"({"action":"read"})",
                        .at = 0,
                        .client = nullptr})),
                   std::invalid_argument);
@@ -230,11 +266,10 @@ TEST_CASE("the change outbox replays one transition and refuses a conflict")
   CHECK(repository.markSent(pendingRow(repository.pendingBatch(1)).id, 6100));
   const ChangeOutboxRow journal = pendingRow(repository.pendingBatch(1));
   CHECK(journal.subject == kActionSubject);
-  CHECK(journal.eventId.empty());
+  CHECK(journal.eventId == mintedActionId(7));
   CHECK(journal.payload == R"({"action":"read"})");
   CHECK(journal.id > 0);
-  CHECK(change_outbox_key::actionMsgId(journal.id) !=
-        change_outbox_key::actionMsgId(journal.id - 1));
+  CHECK(journal.eventId != mintedActionId(8));
 
   CHECK(repository.purgeSent(6100) == 4);
   CHECK(repository.purgeSent(999999) == 0);

@@ -72,8 +72,14 @@ interface would hand a reachable host the ungated enrollment path.
 
 Opt-in init profiles run the migration CLIs from the owner service image:
 `identity-init` (identity image), `camera-init` and `vulkan-probe` (camera
-image), `productivity-init` and `notification-init` (their service images).
-They are idempotent and never touch a live database.
+image), `productivity-init` and `notification-init` (their service images), and
+the mirrored pair of the Phase 3c-2 split, `sync-init` and `sync-rollback`
+(sync image). They are idempotent and never touch a live database: each runs
+with `network_mode: none` and the stack stopped. The sync pair is the one place
+a service image sees another owner's data directory, which rule 27 allows only
+as this one-shot tool — `sync-init` mounts identity's directory read-only,
+`sync-rollback` mounts `sync/` read-only — and neither is part of a normal
+`up`.
 
 ```bash
 ./scripts/provision-host.sh --start
@@ -86,7 +92,8 @@ They are idempotent and never touch a live database.
   - `${ARGUS_DATA_DIR:-./data}` (default `argus-deploy/data/`, gitignored)
     holds one directory per owner: `identity/` (argus-identity,
     `identity.db` + WAL), `gateway/` (the gateway's own `gateway.db` + WAL),
-    `auth/` (argus-auth, `auth.db` + WAL), `camera/`, `productivity/`,
+    `auth/` (argus-auth, `auth.db` + WAL), `sync/` (argus-sync, `sync.db` +
+    WAL), `camera/`, `productivity/`,
     `notification/`, `guard/` and `memory/`;
   - `${ARGUS_CERTS_DIR:-../certs}` holds the instance PKI;
   - `${ARGUS_MODELS_DIR:-../models}` and
@@ -113,4 +120,9 @@ They are idempotent and never touch a live database.
   Camera evidence snapshots land under `cameras/<id>/` and guard incident
   records under `guard/incidents/<id>/`.
 - Update flow: `docker compose build && docker compose up -d`. Never
-  `docker compose down -v`; it deletes the camera stream volume.
+  `docker compose down -v`; it deletes the camera stream volume. One upgrade
+  needs its init profile first: an install whose audit rows still live in
+  `identity.db` must run `--profile sync-init` on a stopped stack before
+  `up -d`, because `argus-sync` otherwise applies its schema to an empty
+  `sync.db` and serves an empty audit history, which every client can only
+  answer with a full re-bootstrap. A fresh install needs no profile.

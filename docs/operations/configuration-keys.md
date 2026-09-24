@@ -63,7 +63,7 @@ argus-deploy argus-identity configuration. Copy to config.identity.toml (gitigno
 |---|---|
 | `identity.port` | The TLS HTTP surface (7044). The compose publishes it on 127.0.0.1 only; the gateway proxies the `/user`, `/invitation` and `/portrait-preview` prefixes to it over loopback. |
 | `identity.rpc_secret` | Gates the cleartext `argus.identity.v1` gRPC listener on `[server] grpc_port` (7040). Same value in every service's [identity] rpc_secret, or every call fails. Empty means loopback-only and ungated, and the service refuses to start when the listener is reachable beyond loopback without it. |
-| `identity.db` | `database/identity.db`, this owner's only database (rule 27). Until Phase 3c-2 it also carries the five sync tables, which is why argus-sync's `[sync] db` points at the same file. |
+| `identity.db` | `database/identity.db`, this owner's only database (rule 27). |
 | `face.enabled` | Face detection + recognition in this process; the engine never leaves it and argus-camera only ships crops. |
 | `storage.mode` | Private object storage (RustFS) for the portraits. provision-host.sh fills the endpoint and credentials. |
 | `pairing.paired` | The QR pairing state the frontend's onboarding reads; persisted at runtime, which is why this config bind is not read-only. |
@@ -149,7 +149,7 @@ argus-deploy argus-sync configuration. Copy to config.sync.toml (gitignored) nex
 
 | Key | Notes |
 |---|---|
-| `sync.db` | The five sync-owned tables still live in identity's file (Phase 3c splits them into sync.db); the schema mount below is this service's own. |
+| `sync.db` | `database/sync.db`, this service's own file (Phase 3c-2 split it out of identity's; `argus-migrate-sync` copies the rows across), applied from this owner's `database/schema.sql` at boot. |
 | `sync.audit_retention_days` | The audit TTL: rows older than the window are compacted into the nearest newer old row of the same key and a client whose cursor is older is refused with 409 so it re-bootstraps. Values <= 0 keep every row by stopping the sweep; cursors behind what an earlier sweep already deleted stay refused. |
 | `sync.control_secret` | Must match the same key in every producer service's config: the control RPC injects frames into any user's room, and the service refuses to start when this listener is reachable beyond loopback without it. |
 | `voice.target` | The voice service the /sync forwarder relays voice:* frames and PCM to. |

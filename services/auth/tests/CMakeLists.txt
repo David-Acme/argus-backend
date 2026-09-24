@@ -38,6 +38,19 @@ target_compile_options(device-login-test PRIVATE -Wall -Wextra)
 argus_runtime_rpath(device-login-test)
 add_test(NAME device-login-test COMMAND device-login-test)
 
+add_executable(change-outbox-test unit/change-outbox-test.cc)
+target_compile_definitions(change-outbox-test PRIVATE
+    ARGUS_AUTH_SCHEMA_PATH="${CMAKE_CURRENT_SOURCE_DIR}/../database/schema.sql")
+target_link_libraries(change-outbox-test PRIVATE
+    argus::auth-session
+    argus::lib::sqlite
+    argus::lib::text
+    Drogon::Drogon
+    doctest::doctest)
+target_compile_options(change-outbox-test PRIVATE -Wall -Wextra)
+argus_runtime_rpath(change-outbox-test)
+add_test(NAME change-outbox-test COMMAND change-outbox-test)
+
 add_executable(refresh-rate-gate-test unit/refresh-rate-gate-test.cc)
 target_link_libraries(refresh-rate-gate-test PRIVATE
     argus::auth-auth

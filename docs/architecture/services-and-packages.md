@@ -12,7 +12,7 @@ WebSocket is served by `argus-sync` on its own TLS listener.
 | `argus-gateway` | Public TLS API, WebSocket relay, the domain proxy | HTTPS 7024 | `gateway.db` (the degraded-fallback record) |
 | `argus-auth` | Session and device authority: refresh tokens, device credentials, login challenges, session-verdict RPC | HTTPS 7042, gRPC 7043 | `auth.db` |
 | `argus-identity` | Users, persons, face embeddings, invitations, portraits and pairing | HTTPS 7044, gRPC 7040 | `identity.db` |
-| `argus-sync` | `/sync` WebSocket surface, rooms and change fan-out, audit persistence, sync control RPC | HTTPS 7025, gRPC 7041 | `identity.db` (the audit tables; `sync.db` in Phase 3c-2) |
+| `argus-sync` | `/sync` WebSocket surface, rooms and change fan-out, audit persistence, sync control RPC | HTTPS 7025, gRPC 7041 | `sync.db` |
 | `argus-camera` | Camera/zone data, go2rtc streaming, object events | HTTP 7026, gRPC 7036 | `camera.db` |
 | `argus-productivity` | Reminders, projects, calendar | HTTP 7027, gRPC 7037 | `productivity.db` |
 | `argus-notification` | Notifications and push tokens | HTTP 7028, gRPC 7038 | `notification.db` |
@@ -29,9 +29,8 @@ proxies the public surface. `argus-sync` serves the `/sync` WebSocket on its
 own TLS listener (7025) — the upgrade's 101 is not something the gateway's HTTP
 proxy can relay — with the sync control RPC beside it on 7041. It is the single
 writer of the five sync tables (`audit_log`, `user_audit_log`,
-`audit_compaction_state`, `user_action_log`, `notification_delivery_inbox`)
-while those still live in
-`identity.db`; Phase 3c-2 splits them into `sync.db`. Core NATS (`4222`) carries
+`audit_compaction_state`, `user_action_log`, `notification_delivery_inbox`), in
+its own `sync.db`. Core NATS (`4222`) carries
 change events; the durable delivery legs (guard observations, encounter
 summaries, notification delivery) run on JetStream streams with PubAck
 settlement. Typed gRPC covers camera/productivity/notification sync, voice

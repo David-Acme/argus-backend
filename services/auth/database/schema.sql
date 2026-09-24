@@ -45,6 +45,7 @@ CREATE TABLE IF NOT EXISTS device_credential (
 
 CREATE TABLE IF NOT EXISTS change_outbox (
     id          INTEGER NOT NULL  PRIMARY KEY AUTOINCREMENT,
+    event_id    TEXT    NOT NULL  DEFAULT '',
     subject     TEXT    NOT NULL,
     fingerprint TEXT    NOT NULL  DEFAULT '',
     payload     TEXT    NOT NULL,
@@ -61,3 +62,6 @@ CREATE INDEX IF NOT EXISTS idx_refresh_token_refresh ON refresh_token (refresh_t
 
 CREATE INDEX IF NOT EXISTS idx_change_outbox_status
     ON change_outbox (status, id);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_change_outbox_event_id
+    ON change_outbox (event_id) WHERE event_id <> '';

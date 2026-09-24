@@ -10,6 +10,8 @@
 #include <sqlite/db-service.hxx>
 #include <nats/nats-bus.hxx>
 
+#include <algorithm>
+#include <array>
 #include <chrono>
 #include <condition_variable>
 #include <cstdio>
@@ -18,6 +20,7 @@
 #include <mutex>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <unistd.h>
 #include <vector>
@@ -102,6 +105,19 @@ int64_t sentRowsAfter(int64_t watermark)
   return firstInteger(DbService::client()->execSqlSync(
       "SELECT COUNT(*) FROM change_outbox WHERE rowid > ? AND status = ?",
       watermark, changeOutboxStatusToString(ChangeOutboxStatus::Sent)));
+}
+
+bool isMintedActionId(const std::string& value)
+{
+  if (!value.starts_with(change_outbox_key::kActionPrefix)
+      || value.size() != change_outbox_key::kActionPrefix.size() + 32)
+    return false;
+  const std::string_view hex =
+      std::string_view(value).substr(change_outbox_key::kActionPrefix.size());
+  return std::ranges::all_of(hex, [](char character) {
+    return (character >= '0' && character <= '9')
+           || (character >= 'a' && character <= 'f');
+  });
 }
 
 bool waitForDrain(const NatsIdentityChangeSink& sink,
@@ -332,7 +348,7 @@ TEST_CASE("the change sink lands every catalog row, emit, audit and journal "
     const ChangeOutboxRow journal = pendingRow(outbox.pendingBatch(1));
     CHECK(journal.subject == kActionSubject);
     CHECK(journal.subject != kChangeSubject);
-    CHECK(journal.eventId.empty());
+    CHECK(isMintedActionId(journal.eventId));
     CHECK(journal.payload.find("\"user_id\":7") != std::string::npos);
     CHECK(journal.payload.find("\"record_id\":42") != std::string::npos);
     CHECK(journal.payload.find("\"table_name\":\"user\"") != std::string::npos);
@@ -341,18 +357,15 @@ TEST_CASE("the change sink lands every catalog row, emit, audit and journal "
     CHECK(journal.payload.find("\"event\":\"portrait_preview\"") !=
           std::string::npos);
     CHECK(journal.payload.find("\"kind\"") == std::string::npos);
-    CHECK(change_outbox_key::actionMsgId(journal.id) ==
-          "identity-action:" + std::to_string(journal.id));
     CHECK(outbox.markSent(journal.id, 1900));
 
     drogon::sync_wait(
         sink.publishAction({.event = portraitRead(42), .client = nullptr}));
     const ChangeOutboxRow secondRead = pendingRow(outbox.pendingBatch(1));
-    CHECK(secondRead.eventId.empty());
     CHECK(secondRead.id != journal.id);
     CHECK(secondRead.payload == journal.payload);
-    CHECK(change_outbox_key::actionMsgId(secondRead.id) !=
-          change_outbox_key::actionMsgId(journal.id));
+    CHECK(isMintedActionId(secondRead.eventId));
+    CHECK(secondRead.eventId != journal.eventId);
     CHECK(outbox.markSent(secondRead.id, 2000));
 
     IdentityCatalogInput oversized = userCatalog(8, "Ana");
@@ -387,7 +400,7 @@ TEST_CASE("the change sink lands every catalog row, emit, audit and journal "
 
     const ChangeOutboxRow action = pendingRow(outbox.pendingBatch(1));
     CHECK(action.subject == kActionSubject);
-    CHECK(action.eventId.empty());
+    CHECK(isMintedActionId(action.eventId));
     CHECK(action.attempts == 0);
     CHECK_FALSE(sink.drained());
     sink.requestStop();
@@ -418,6 +431,7 @@ TEST_CASE("the change sink lands every catalog row, emit, audit and journal "
     std::mutex mutex;
     std::condition_variable cv;
     std::string changed;
+    std::string changedMsgId;
     const auto changeSubscription = liveBus->subscribeDurable(
         {.stream = stream,
          .durable = "identity-change-outbox-live-" + run,
@@ -425,12 +439,13 @@ TEST_CASE("the change sink lands every catalog row, emit, audit and journal "
          .deliverAll = true,
          .maxDeliver = 3,
          .maxAckPending = NatsBus::kDefaultMaxAckPending,
-         .handler = [&mutex, &cv, &changed](
+         .handler = [&mutex, &cv, &changed, &changedMsgId](
                         const NatsBus::DurableMessage& message,
                         const NatsBus::DurableSettlement& settlement) {
            {
              std::scoped_lock lock(mutex);
              changed = std::string(message.payload);
+             changedMsgId = std::string(message.msgId);
            }
            settlement.ack();
            cv.notify_all();
@@ -439,6 +454,7 @@ TEST_CASE("the change sink lands every catalog row, emit, audit and journal "
 
     std::size_t journalDeliveries = 0;
     std::vector<std::string> journalPayloads;
+    std::vector<std::string> journalMsgIds;
     const auto actionSubscription = liveBus->subscribeDurable(
         {.stream = stream,
          .durable = "identity-action-journal-live-" + run,
@@ -446,13 +462,15 @@ TEST_CASE("the change sink lands every catalog row, emit, audit and journal "
          .deliverAll = true,
          .maxDeliver = 3,
          .maxAckPending = NatsBus::kDefaultMaxAckPending,
-         .handler = [&mutex, &cv, &journalDeliveries, &journalPayloads](
+         .handler = [&mutex, &cv, &journalDeliveries, &journalPayloads,
+                     &journalMsgIds](
                         const NatsBus::DurableMessage& message,
                         const NatsBus::DurableSettlement& settlement) {
            {
              std::scoped_lock lock(mutex);
              ++journalDeliveries;
              journalPayloads.emplace_back(message.payload);
+             journalMsgIds.emplace_back(message.msgId);
            }
            settlement.ack();
            cv.notify_all();
@@ -467,7 +485,8 @@ TEST_CASE("the change sink lands every catalog row, emit, audit and journal "
                                          .actionSubject = actionSubject,
                                          .streamName = stream});
       drogon::sync_wait(liveSink.publishCatalog(userCatalog(99, "Ana")));
-      const std::string expected = pendingRow(outbox.pendingBatch(1)).payload;
+      const auto catalogRow = pendingRow(outbox.pendingBatch(1));
+      const std::string expected = catalogRow.payload;
       liveSink.reconcile();
 
       {
@@ -479,11 +498,14 @@ TEST_CASE("the change sink lands every catalog row, emit, audit and journal "
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
       CHECK_FALSE(hasPending(outbox));
       std::string seen;
+      std::string seenMsgId;
       {
         std::scoped_lock lock(mutex);
         seen = changed;
+        seenMsgId = changedMsgId;
       }
       CHECK(seen == expected);
+      CHECK(seenMsgId == catalogRow.eventId);
 
       for (int i = 0; i < 2; ++i)
         drogon::sync_wait(
@@ -504,6 +526,11 @@ TEST_CASE("the change sink lands every catalog row, emit, audit and journal "
         CHECK(journalDeliveries == 2);
         if (journalPayloads.size() == 2)
           CHECK(journalPayloads.front() == journalPayloads.back());
+        if (journalMsgIds.size() == 2) {
+          CHECK(isMintedActionId(journalMsgIds.front()));
+          CHECK(isMintedActionId(journalMsgIds.back()));
+          CHECK(journalMsgIds.front() != journalMsgIds.back());
+        }
       }
     }
 

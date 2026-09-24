@@ -1,8 +1,10 @@
 #include "nats-identity-change-sink.hxx"
 
+#include <array>
 #include <chrono>
 #include <errors/response-exception.hxx>
 #include <exception>
+#include <openssl/rand.h>
 #include <identity/identity-errors.hxx>
 #include <shared/repositories/change-outbox/change-outbox-key.hxx>
 #include <sync/module-audit-event.hxx>
@@ -28,6 +30,15 @@ int64_t nowMs()
 }
 
 constexpr int64_t kStuckLogEvery = 100;
+
+std::string mintedActionMsgId()
+{
+  std::array<unsigned char, 16> bytes{};
+  if (RAND_bytes(bytes.data(), static_cast<int>(bytes.size())) != 1)
+    throw ResponseException(503, IdentityErrors::ChangeNotRecorded);
+  return change_outbox_key::actionMsgId(bytes);
+}
+
 constexpr int kDrainBatch = 64;
 constexpr int kProgressMs = 50;
 }
@@ -192,6 +203,7 @@ NatsIdentityChangeSink::enqueueAction(std::string payloadJson,
     throw ResponseException(IdentityErrors::ChangeNotRecorded);
   }
   const ChangeOutboxActionInput input{
+      .eventId = mintedActionMsgId(),
       .subject = actionSubject_,
       .fingerprint = change_outbox_key::fingerprintJson(payloadJson),
       .payload = std::move(payloadJson),
@@ -239,7 +251,7 @@ bool NatsIdentityChangeSink::flush(const ChangeOutboxRow& row)
     streamReady_.store(ensureStream(), std::memory_order_release);
 
   const std::string msgId = row.eventId.empty()
-                                ? change_outbox_key::actionMsgId(row.id)
+                                ? change_outbox_key::legacyActionMsgId(row.id)
                                 : row.eventId;
   if (bus_->publishWithMsgId(
           {.subject = row.subject, .payload = row.payload, .msgId = msgId})) {

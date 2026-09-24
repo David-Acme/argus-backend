@@ -9,7 +9,7 @@ PRAGMA journal_size_limit = 67108864;
 
 CREATE TABLE IF NOT EXISTS audit_log (
     id              INTEGER NOT NULL  PRIMARY KEY AUTOINCREMENT,
-    create_user_id  INTEGER           REFERENCES user(id) ON DELETE SET NULL,
+    create_user_id  INTEGER,
     record_id       INTEGER NOT NULL,
     table_name      TEXT    NOT NULL,
     changes         TEXT    NOT NULL  DEFAULT '{}',
@@ -20,7 +20,7 @@ CREATE TABLE IF NOT EXISTS audit_log (
 
 CREATE TABLE IF NOT EXISTS user_audit_log (
     id              INTEGER NOT NULL  PRIMARY KEY AUTOINCREMENT,
-    user_id         INTEGER NOT NULL  REFERENCES user(id) ON DELETE CASCADE,
+    user_id         INTEGER NOT NULL,
     record_id       INTEGER NOT NULL,
     table_name      TEXT    NOT NULL,
     changes         TEXT    NOT NULL  DEFAULT '{}',
@@ -36,7 +36,7 @@ CREATE TABLE IF NOT EXISTS audit_compaction_state (
 
 CREATE TABLE IF NOT EXISTS user_action_log (
     id         INTEGER NOT NULL  PRIMARY KEY AUTOINCREMENT,
-    user_id    INTEGER NOT NULL  REFERENCES user(id) ON DELETE CASCADE,
+    user_id    INTEGER NOT NULL,
     record_id  INTEGER NOT NULL,
     table_name TEXT    NOT NULL,
     action     TEXT    NOT NULL  CHECK (action IN ('create', 'read', 'update', 'delete')),

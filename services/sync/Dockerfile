@@ -41,6 +41,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /opt/argus
 COPY --from=build /opt/argus/services/sync/build/prod/argus-sync /opt/argus/argus-sync
+COPY --from=build /opt/argus/services/sync/build/prod/tools/migrate-sync/argus-migrate-sync /opt/argus/argus-migrate-sync
 
 RUN groupadd --gid "$ARGUS_GID" argus \
     && useradd --uid "$ARGUS_UID" --gid "$ARGUS_GID" --create-home \

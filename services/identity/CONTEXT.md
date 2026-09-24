@@ -168,18 +168,22 @@ therefore carries a `subject` column: a row states where it goes instead of the
 drain inferring it from a payload that does not always name its own kind (a
 journal row has no `kind` field at all).
 
-The two legs are addressed differently, and the difference is the whole reason
-the row's own `id` is what the drain publishes under. A change leg names a
-*transition*: its `event_id` is the hash of the table, the record and the
-payload, so a redelivered transition is a replay and the same record cannot be
-published twice for one move. A journal leg names an *action*: a portrait view
-changes no row, so two views of one portrait carry byte-identical payloads and
-a content-derived id would collapse them into one audit row — the kind of loss
-nobody would notice. Those rows leave `event_id` NULL and travel as
-`identity-action:<id>`, the row's own position, which the broker's duplicate
-window still protects against a redelivery without merging two distinct
-actions. Settlement is a status-guarded CAS over that same id, because a NULL
-`event_id` cannot guard anything.
+The two legs are addressed differently. A change leg names a *transition*: its
+`event_id` is the hash of the table, the record and the payload, so a
+redelivered transition is a replay and the same record cannot be published
+twice for one move. A journal leg names an *action*: a portrait view changes no
+row, so two views of one portrait carry byte-identical payloads and a
+content-derived id would collapse them into one audit row — the kind of loss
+nobody would notice. A journal row therefore carries a **minted** `event_id`,
+`identity-action:` followed by 32 lowercase hex digits drawn from
+`RAND_bytes` at enqueue, and travels under that id as its `Nats-Msg-Id`. The id
+must be opaque rather than positional: once Phase 3c-2 split the journal into
+`sync.db` its row ids come from a table the identity outbox does not own, so an
+id derived from them would collide with whatever the sibling owner's own rows
+happen to be numbered. Settlement stays a status-guarded CAS over the row id
+(the minted id guards the broker's duplicate window, not the flush), and rows
+enqueued before the minting still flush under the row-derived
+`identity-action:<id>` they were published with.
 
 The sink registers with `shutdown_signal` at this service's boot — it used to
 register with the gateway's, which hosted the package — so a SIGTERM stops the
@@ -193,12 +197,13 @@ would run Drogon's default quit with no drain wait — and therefore before the
 `reconcile()` that starts the worker, because a drain registered after the stop
 was requested is only stopped at once, never waited for.
 
-`identity.db` is also the one database two owners write — this service and
-`services/sync`, which applies its own five tables into the same file until
-Phase 3c-2. Both would be free to call their table `change_outbox`, and
-`CREATE TABLE IF NOT EXISTS` would silently let whoever boots second adopt the
-first one's shape; a `sync` outbox must take a different name until the files
-split.
+`identity.db` used to be the one database two owners wrote — this service and
+`services/sync`, which applied its five tables into the same file between Phase
+3c-1 and 3c-2. Both were free to call their table `change_outbox`, and
+`CREATE TABLE IF NOT EXISTS` would have silently let whoever booted second
+adopt the first one's shape; Phase 3c-2 removed the question by giving the sync
+owner a file of its own, and this service's outbox is the only `change_outbox`
+left here.
 
 ## Camera guard surface (camera-guard phase 2)
 
@@ -221,15 +226,15 @@ users.
 The schema used to carry `notification_delivery_inbox` and the three audit
 tables — the gateway's durable delivery receipts and its audit trail. Phase
 3a-1c moved all four into `services/sync/database/schema.sql`, whose owner
-applies and writes them; this file is identity's tables and nothing else. The
-five rows still *live* in `database/identity.db` until Phase 3c-2 splits them
-out, which is the transitory state `services/sync` declares in `[sync] db`.
+applies and writes them; this file is identity's tables and nothing else.
 
-## Still owed: the file split (Phase 3c-2)
+## The file split (Phase 3c-2)
 
-This service and `services/sync` write one SQLite file. Phase 3c-2 gives the
-sync owner its own `sync.db` (the five tables above, with row-count and
-checksum verification and a documented rollback) and re-keys
-`user_action_log.msg_id`, which the two owners currently share. Until then, no
-change here may rename, re-shape or drop those five tables, and no migration
-may run against `identity.db` that assumes the file is this owner's alone.
+This service and `services/sync` wrote one SQLite file until Phase 3c-2 split
+the five sync tables into argus-sync's own `sync.db`. `argus-migrate-sync`
+copies them (row-count and checksum verification over exactly the keys the run
+copied; the deploy runs it as `--profile sync-init` forward and `--profile
+sync-rollback` with the paths swapped), and
+the journal's redelivery key was re-minted at the same time so
+`user_action_log.msg_id` no longer borrows a row id from a table this owner
+writes. Nothing here owns, renames or drops those five tables any more.

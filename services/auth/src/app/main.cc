@@ -9,6 +9,7 @@
 #include <feature/auth/controllers/auth-controller.hxx>
 #include <feature/auth/infra/refresh-rate-gate.hxx>
 #include <feature/device/repositories/device-credential/device-credential-repository.hxx>
+#include <feature/session/repositories/change-outbox/change-outbox-repository.hxx>
 #include <feature/session/repositories/refresh-token/refresh-token-repository.hxx>
 #include <feature/session/services/auth-action-sink.hxx>
 #include <feature/session/services/identity-change-consumer.hxx>
@@ -85,6 +86,7 @@ int main()
                               .contextCacheSeconds =
                                   AuthConfig::resolveContextCacheSeconds()});
   DeviceCredentialRepository deviceCredentials;
+  ChangeOutboxRepository changeOutbox;
 
   std::shared_ptr<SyncClient> controlClient;
   if (syncControl.target.empty()) {
@@ -238,8 +240,9 @@ int main()
                                        : "gRPC " + identity.target);
 
   drogon::app().registerBeginningAdvice(
-      [&authDb, &identityConsumer, &actionSink]() {
-        if (!DbService::runScriptFile(authDb.schemaPath)) {
+      [&authDb, &changeOutbox, &identityConsumer, &actionSink]() {
+        if (!changeOutbox.migrateLegacySchema() ||
+            !DbService::runScriptFile(authDb.schemaPath)) {
           LOG_FATAL << "Auth database schema failed to apply — aborting startup";
           _exit(1);
         }

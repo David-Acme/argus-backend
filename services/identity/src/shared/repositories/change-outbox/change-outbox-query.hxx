@@ -13,8 +13,8 @@ inline constexpr const char* INSERT_EVENT =
     "?, 0)";
 
 inline constexpr const char* INSERT_ACTION =
-    "INSERT INTO change_outbox (subject, fingerprint, payload, status, "
-    "attempts, created_at, sent_at) VALUES (?, ?, ?, ?, 0, ?, 0)";
+    "INSERT INTO change_outbox (event_id, subject, fingerprint, payload, "
+    "status, attempts, created_at, sent_at) VALUES (?, ?, ?, ?, ?, 0, ?, 0)";
 
 inline constexpr const char* FIND_FINGERPRINT =
     "SELECT fingerprint FROM change_outbox WHERE event_id = ?";
@@ -55,6 +55,7 @@ struct ChangeOutboxEnqueueInput
 
 struct ChangeOutboxActionInput
 {
+  std::string eventId;
   std::string subject;
   std::string fingerprint;
   std::string payload;

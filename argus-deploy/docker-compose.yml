@@ -358,7 +358,7 @@ services:
         bind:
           create_host_path: false
       - type: bind
-        source: ${ARGUS_DATA_DIR:-./data}/identity
+        source: ${ARGUS_DATA_DIR:-./data}/sync
         target: /opt/argus/database
         bind:
           create_host_path: false
@@ -916,6 +916,66 @@ services:
         bind:
           create_host_path: false
       - ${ARGUS_DATA_DIR:-./data}/notification:/opt/argus/notification
+    restart: "no"
+
+  sync-init:
+    profiles: ["sync-init"]
+    image: argus-sync:local
+    pull_policy: never
+    user: "${ARGUS_UID:-1000}:${ARGUS_GID:-1000}"
+    network_mode: none
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - >-
+        if [ -f /opt/argus/identity/identity.db ]; then /opt/argus/argus-migrate-sync --source /opt/argus/identity/identity.db --target /opt/argus/database/sync.db --schema /opt/argus/database/schema.sql; else echo 'No identity.db yet; argus-sync applies the sync schema at boot.'; fi
+    volumes:
+      - type: bind
+        source: ${ARGUS_DATA_DIR:-./data}/sync
+        target: /opt/argus/database
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ../services/sync/database/schema.sql
+        target: /opt/argus/database/schema.sql
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${ARGUS_DATA_DIR:-./data}/identity
+        target: /opt/argus/identity
+        read_only: true
+        bind:
+          create_host_path: false
+    restart: "no"
+
+  sync-rollback:
+    profiles: ["sync-rollback"]
+    image: argus-sync:local
+    pull_policy: never
+    user: "${ARGUS_UID:-1000}:${ARGUS_GID:-1000}"
+    network_mode: none
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - >-
+        if [ -f /opt/argus/database/sync.db ]; then /opt/argus/argus-migrate-sync --source /opt/argus/database/sync.db --target /opt/argus/identity/identity.db --schema /opt/argus/database/schema.sql; else echo 'No sync.db yet; nothing to roll back.'; fi
+    volumes:
+      - type: bind
+        source: ${ARGUS_DATA_DIR:-./data}/sync
+        target: /opt/argus/database
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ../services/sync/database/schema.sql
+        target: /opt/argus/database/schema.sql
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${ARGUS_DATA_DIR:-./data}/identity
+        target: /opt/argus/identity
+        bind:
+          create_host_path: false
     restart: "no"
 
   vulkan-probe:

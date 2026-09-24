@@ -13,6 +13,8 @@ public:
   ChangeOutboxRepository() = default;
   ~ChangeOutboxRepository() = default;
 
+  [[nodiscard]] bool migrateLegacySchema() const;
+
   [[nodiscard]] drogon::Task<void>
   enqueueAction(const ChangeOutboxActionInput& input) const;
 

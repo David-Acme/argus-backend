@@ -16,11 +16,13 @@ that apply to sync-service code; when in doubt, the root file wins.
    `audit_compaction_state` are written here and
    nowhere else. Producers publish an event on NATS; never a second writer,
    never a producer INSERT.
-3. **The transitory database is declared, not hidden** — the schema is
-   `services/sync/database/schema.sql` (this owner's only schema file) and the
-   file it is applied to is identity's `database/identity.db` until Phase 3c-2
-   splits these tables into `sync.db`. Rule 27's exception lives in
-   `[sync] db` and nowhere else; do not "fix" it by copying a foreign schema.
+3. **Its own database** — the schema is
+   `services/sync/database/schema.sql` (this owner's only schema file) and it
+   is applied to this service's own `database/sync.db` (`[sync] db`), which the
+   deploy binds in as `argus-sync`'s data directory. Phase 3c-2 split it out of
+   identity's file: `argus-migrate-sync` copied the five tables across and the
+   audit tables lost their `REFERENCES user(id)` clauses, because a foreign key
+   into a table this file does not declare cannot be prepared here.
 4. **Normal rows are creation-only after bootstrap** — `Synchronize` pages by
    `created_at`; an update or a revocation is published as a granular audit
    change, never as a row the feed re-sends. Never switch the paging leg to
@@ -115,6 +117,7 @@ argus-sync/
   src/shared/infra/         the notification row JSON both features render
   database/schema.sql   this owner's five tables and their six indexes
   config.toml.example   sync keys + the upstream targets; no AI keys
+  tools/migrate-sync/   argus-migrate-sync (identity.db -> sync.db, and back)
   tests/{unit,e2e,fixtures}
   CONTEXT.md            purpose, ownership, wiring decisions
 ```

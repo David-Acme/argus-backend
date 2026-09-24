@@ -23,9 +23,18 @@ any change; the cutover shape and its exceptions are documented there.
   config files.
 - `identity-init` is opt-in (`--profile identity-init`): it runs
   `argus-migrate-identity` (source argus.db → target identity.db) on the
-  argus-identity image and is idempotent. argus-identity applies its own
-  `database/schema.sql` at boot, so a fresh install works without the init
-  profile.
+  argus-identity image and is idempotent. `sync-init` is opt-in the same way
+  (`--profile sync-init`): it runs `argus-migrate-sync` (source identity.db →
+  target sync.db — the five sync tables, including its own mailbox) on the
+  argus-sync image, verifies every row it copied and re-runs as a no-op. The
+  rollback is its own profile (`--profile sync-rollback`), because the forward
+  service mounts identity's directory read-only: the rollback service runs the
+  same tool with the paths swapped, so it mounts `sync/` read-only and
+  identity's directory writable. Both are the one-shot exceptions to rule 27 —
+  one owner's data directory is visible to the other owner's migration tool —
+  and neither runs while the stack is up. argus-identity and
+  argus-sync apply their own `database/schema.sql` at boot, so a fresh install
+  works without either init profile.
 - This stack uses the `argus-cutover` project, `argus-cutover-*` volumes and
   networks only; never touch other compose projects or their volumes.
 - No C++ code in this folder: changes here are compose/config only.

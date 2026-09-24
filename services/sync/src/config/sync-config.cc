@@ -8,7 +8,7 @@ SyncDbConfig SyncConfig::resolveDb()
   SyncDbConfig config;
   config.dbPath = ConfigService::getString("sync.db");
   if (config.dbPath.empty())
-    config.dbPath = "database/identity.db";
+    config.dbPath = "database/sync.db";
   config.schemaPath = ConfigService::getString("sync.schema");
   if (config.schemaPath.empty())
     config.schemaPath = "services/sync/database/schema.sql";

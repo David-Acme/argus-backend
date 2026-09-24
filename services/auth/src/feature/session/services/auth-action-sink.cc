@@ -1,8 +1,10 @@
 #include "auth-action-sink.hxx"
 
+#include <array>
 #include <chrono>
 #include <errors/response-exception.hxx>
 #include <exception>
+#include <openssl/rand.h>
 #include <feature/session/repositories/change-outbox/change-outbox-key.hxx>
 #include <nats/nats-bus.hxx>
 #include <nats/nats-subject.hxx>
@@ -21,6 +23,15 @@ int64_t nowMs()
 }
 
 constexpr int64_t kStuckLogEvery = 100;
+
+std::string mintedActionMsgId()
+{
+  std::array<unsigned char, 16> bytes{};
+  if (RAND_bytes(bytes.data(), static_cast<int>(bytes.size())) != 1)
+    throw ResponseException(503, AuthErrors::ChangeNotRecorded);
+  return change_outbox_key::actionMsgId(bytes);
+}
+
 constexpr int kDrainBatch = 64;
 constexpr int kProgressMs = 50;
 }
@@ -63,6 +74,7 @@ AuthActionSink::enqueueAction(std::string payloadJson,
     throw ResponseException(AuthErrors::ChangeNotRecorded);
   }
   const ChangeOutboxActionInput input{
+      .eventId = mintedActionMsgId(),
       .subject = actionSubject_,
       .fingerprint = change_outbox_key::fingerprintJson(payloadJson),
       .payload = std::move(payloadJson),
@@ -109,7 +121,9 @@ bool AuthActionSink::flush(const ChangeOutboxRow& row)
   if (!streamReady_.load(std::memory_order_acquire))
     streamReady_.store(ensureStream(), std::memory_order_release);
 
-  const std::string msgId = change_outbox_key::actionMsgId(row.id);
+  const std::string msgId = row.eventId.empty()
+                                ? change_outbox_key::legacyActionMsgId(row.id)
+                                : row.eventId;
   if (bus_->publishWithMsgId(
           {.subject = row.subject, .payload = row.payload, .msgId = msgId})) {
     if (!outbox_.markSent(row.id, nowMs())) {

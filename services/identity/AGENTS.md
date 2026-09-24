@@ -18,12 +18,8 @@ identity-service code; when in doubt, the root file wins.
    `database/identity.db`, whose schema is
    `services/identity/database/schema.sql` (this owner's only schema file).
    Sessions and device credentials are read through `argus::clients::auth`,
-   never from another owner's database. Until Phase 3c-2 the file still
-   carries the five `services/sync` tables (`audit_log`, `user_audit_log`,
-   `audit_compaction_state`, `user_action_log`,
-   `notification_delivery_inbox`), which is why that owner's `[sync] db`
-   points at it; the split is Phase 3c-2's work, not something to arrange
-   here.
+   never from another owner's database, and the five sync tables left this
+   file for argus-sync's own `sync.db` in Phase 3c-2.
 3. **Two listeners, one process** — TLS HTTP on `7044` (`[identity] port`) and
    the `argus.identity.v1` gRPC surface on `7040` (`[server] grpc_port`). The
    RPC listener is cleartext and fleet-gated by `[identity] rpc_secret`;

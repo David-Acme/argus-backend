@@ -131,4 +131,6 @@ if(DOCTEST_INCLUDE_DIRS)
         INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${DOCTEST_INCLUDE_DIRS}")
 endif()
 
+add_subdirectory(tools/migrate-sync)
+
 add_subdirectory(tests)

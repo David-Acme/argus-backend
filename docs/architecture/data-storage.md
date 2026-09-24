@@ -7,13 +7,14 @@ is no shared monolith database: `argus.db` is retired and must not appear.
 
 | Database | Owner | Schema | Runtime path |
 |---|---|---|---|
-| `identity.db` | `argus-identity` and `argus-sync` (the five sync tables) | `services/identity/database/schema.sql`, `services/sync/database/schema.sql` | `database/identity.db` |
+| `identity.db` | `argus-identity` | `services/identity/database/schema.sql` | `database/identity.db` |
 | `auth.db` | `argus-auth` | `services/auth/database/schema.sql` | `database/auth.db` |
 | `camera.db` | `argus-camera` | `services/camera/database/schema.sql` | `database/camera.db` |
 | `productivity.db` | `argus-productivity` | `services/productivity/database/schema.sql` | `database/productivity.db` |
 | `notification.db` | `argus-notification` | `services/notification/database/schema.sql` | `database/notification.db` |
 | `memory.db` | `argus-llm` (`packages/memory`) | `packages/memory/database/schema.sql` | `database/memory.db` |
 | `guard.db` | `argus-guard` | `services/guard/database/schema.sql` | `database/guard.db` |
+| `sync.db` | `argus-sync` | `services/sync/database/schema.sql` | `database/sync.db` |
 
 `guard.db` holds incidents, encounters and their transitions, assessments,
 expected guests, the observation inbox, the action outbox, the
@@ -30,6 +31,17 @@ three tables move here from `identity.db` as a copy — same columns, same CHECK
 constraints — in Phase 3b-2, when the `/auth` surface that writes them moves to
 `argus-auth`.
 
+`sync.db` holds the five tables this service is the only writer of:
+`audit_log` and `user_audit_log` (the global and recipient-scoped field diffs),
+`user_action_log` (the action journal), `audit_compaction_state` (the retention
+frontier, one row per audit table) and `notification_delivery_inbox` (the
+durable delivery receipts). They were applied onto `identity.db` between Phase
+3c-1 and the split, and `argus-migrate-sync` copies them into `sync.db` with a
+per-table row count and checksum over exactly the keys that run copied; the
+audit tables' `REFERENCES user(id)` clauses are dropped in this file, because a
+foreign key into another owner's table cannot be prepared where that table does
+not exist.
+
 Runtime paths are relative to each process working directory. In the Compose
 stack the working directory is `/opt/argus`, so they resolve under
 `/opt/argus/database`, bind-mounted from the gitignored `argus-deploy/data/`
@@ -37,8 +49,10 @@ on the host.
 
 Each owner applies its schema at boot and owns a migration CLI
 (`argus-migrate-identity`, `-camera`, `-productivity`, `-notification`) that
-migrates legacy `argus.db` data when present. Migrations run from the owner
-service images as opt-in Compose init profiles.
+migrates legacy `argus.db` data when present, plus `argus-migrate-sync`, which
+copies the five sync tables out of `identity.db` into `sync.db` (`sync-init`)
+and, with the paths swapped, back (`sync-rollback`). Migrations run from the
+owner service images as opt-in Compose init profiles.
 
 ## Durable-delivery tables
 
@@ -48,7 +62,7 @@ the consuming database, so redeliveries settle without re-executing effects:
 - `notification_command` + `notification_delivery` (`notification.db`):
   idempotent fan-out creates (SHA-256 fingerprint per `command_id`) and the
   pending/sent delivery intents the broker must acknowledge.
-- `notification_delivery_inbox` (`identity.db`, written by `argus-sync`):
+- `notification_delivery_inbox` (`sync.db`, written by `argus-sync`):
   per-delivery receipts (`received`/`dispatched`/`conflict`/
   `dead_lettered`) with the canonical payload fingerprint. A conflicting
   fingerprint for a known id is never dispatched; an unknown status fails
@@ -79,11 +93,14 @@ the consuming database, so redeliveries settle without re-executing effects:
   copy that publishes on **two** subjects (the catalog change subject and the
   action journal), so the row carries the `subject` it goes to rather than the
   drain inferring it from a payload that need not name its own kind — and its
-  journal rows are the variant within the variant: an action addresses
-  `identity-action:<id>`, the row's own position, because a portrait view
-  changes no row and a content-derived id would merge two views of one
-  portrait into a single audit row. Those rows leave `event_id` NULL, so
-  settlement is a status-guarded compare-and-set over the row id instead.
+  journal rows are the variant within the variant: an action is keyed by a
+  **minted** id, `identity-action:` followed by 32 lowercase hex digits drawn
+  from the producer's CSPRNG, because a portrait view changes no row and
+  because the key has to stay unique once the journal stops sharing a file with
+  the table whose row ids it used to borrow. The minted id lives in the row's
+  `event_id`, so settlement is a status-guarded compare-and-set over the row id
+  instead. Rows enqueued before the change carry no `event_id` and flush under
+  the row-derived `identity-action:<id>` they were published with.
 - `guard_action_outbox` (`guard.db`): the guard→camera direction, keyed by the
   deterministic `commandId`. `guard_encounter_outbox` (`guard.db`) is the
   guard's own `encounter_closed` producer leg, keyed by `eventId`.
@@ -115,8 +132,8 @@ the manifests are database rows.
 - Every query lives in `src/shared/repositories/`; no ad-hoc SQL in features.
 - `DbService` opens Drogon's async client and reapplies pragmas at every boot
   (WAL, `synchronous=NORMAL`, busy timeout, mmap, foreign keys).
-- The sync engine reads identity rows from `identity.db` and other owner
-  tables through typed contracts; see [sync-engine.md](sync-engine.md).
+- The sync engine opens exactly one SQLite file — `sync.db` — and reads every
+  other owner's rows through typed contracts; see [sync-engine.md](sync-engine.md).
 - `DbService::installExtensions()` registers `sqlite-vec` (vec0) after
   Drogon's first connection; `VecDb` owns the vector tables.
 

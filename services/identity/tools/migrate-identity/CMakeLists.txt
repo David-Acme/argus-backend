@@ -2,12 +2,7 @@ add_library(identity-migration STATIC
     identity-migration.cc
 )
 
-target_include_directories(identity-migration
-    PUBLIC
-        ${CMAKE_CURRENT_SOURCE_DIR}
-        ${CMAKE_CURRENT_SOURCE_DIR}/../../../../packages/lib/text/src
-        ${CMAKE_CURRENT_SOURCE_DIR}/../../../../packages/lib/sqlite/src
-)
+target_include_directories(identity-migration PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
 target_compile_definitions(identity-migration PUBLIC
     ARGUS_IDENTITY_SCHEMA_PATH="${CMAKE_CURRENT_SOURCE_DIR}/../../database/schema.sql"
@@ -15,7 +10,8 @@ target_compile_definitions(identity-migration PUBLIC
 
 target_link_libraries(identity-migration
     PUBLIC
-        Drogon::Drogon
+        argus::lib::sqlite
+        argus::lib::text
 )
 
 if(TARGET SQLite::SQLite3)

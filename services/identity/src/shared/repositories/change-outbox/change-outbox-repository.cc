@@ -40,15 +40,16 @@ ChangeOutboxRepository::enqueue(const ChangeOutboxEnqueueInput& input) const
 drogon::Task<void>
 ChangeOutboxRepository::enqueueAction(const ChangeOutboxActionInput& input) const
 {
-  if (input.payload.empty())
+  if (input.eventId.empty() || input.payload.empty())
     throw std::invalid_argument(
-        "a change outbox action row needs a payload");
+        "a change outbox action row needs a msg id and a payload");
 
   const auto pooled = DbService::identityClient();
   auto* client = input.client ? input.client : pooled.get();
   co_await client->execSqlCoro(
-      INSERT_ACTION, input.subject, input.fingerprint, input.payload,
-      changeOutboxStatusToString(ChangeOutboxStatus::Pending), input.at);
+      INSERT_ACTION, input.eventId, input.subject, input.fingerprint,
+      input.payload, changeOutboxStatusToString(ChangeOutboxStatus::Pending),
+      input.at);
 }
 
 std::vector<ChangeOutboxRow>

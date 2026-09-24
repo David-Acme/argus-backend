@@ -109,6 +109,7 @@ for dir in "${PROJECTS[@]}"; do
     services/camera)       extra_targets=(argus-migrate-camera argus-vulkan-probe) ;;
     services/productivity) extra_targets=(argus-migrate-productivity) ;;
     services/notification) extra_targets=(argus-migrate-notification) ;;
+    services/sync)         extra_targets=(argus-migrate-sync) ;;
   esac
   log "=== $name ($PROFILE) ==="
   (

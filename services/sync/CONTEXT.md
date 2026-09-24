@@ -41,8 +41,13 @@ protocol could not regress by accident in the commit that changed the endpoint.
   key and advances its id, so a burst of changes to one record settles on a
   single row per day — while the
   journal is append-only and non-convergent, so `user_action_log.msg_id` holds
-  the producer's `Nats-Msg-Id` under a partial unique index and the insert is
-  `INSERT OR IGNORE`: a redelivered journal row is ignored instead of doubled.
+  the producer's `Nats-Msg-Id` — `identity-action:` plus 32 hex the producer
+  mints at enqueue, opaque so it survives the split (the journal's row ids now
+  come from this file, not from the producer's) — under a partial unique index
+  and the insert is `INSERT OR IGNORE`: a redelivered journal row is ignored
+  instead of doubled. Rows the producer enqueued before the minting flush under
+  the row-derived `identity-action:<id>` the older builds published, which the
+  index accepts just the same.
 - **The retention window (D15).** `sync` compacts audit rows older than
   `[sync] audit_retention_days` (90 days, `audit_retention::kDefaultDays`). A
   sweep runs ~30 s after boot and every 24 h: it pairs each old row with the
@@ -96,16 +101,22 @@ protocol could not regress by accident in the commit that changed the endpoint.
   (`SyncErrors::VoiceUnavailable`) at `voice:start` instead of dropping frames
   silently.
 
-## Where the state lives, today
+## Where the state lives
 
-Identity's file. The four identity tables' DDL moved here verbatim (they were
-`services/identity`'s schema); `audit_compaction_state` is this service's own,
-and `[sync] db` still points at
-`database/identity.db`; Phase 3c-2 splits them into `sync.db` and the key
-changes with it. Two consequences are accepted for now: the audit tables' `REFERENCES user(id)` foreign keys
-target a table this owner does not declare, and the deploy binds identity's
-data directory into this container. Both are the transitory price of moving the
-writer before splitting the file; rule 27's shape resumes in 3c-2.
+Its own file, `database/sync.db`, resolved from `[sync] db` — the deploy binds
+this service's own data directory in, and no container sees another owner's
+database. The four identity tables' DDL moved here verbatim (they were
+`services/identity`'s schema) and `audit_compaction_state` is this service's
+own; between Phase 3c-1 and Phase 3c-2 those five tables were applied onto
+identity's `identity.db`, which is why `argus-migrate-sync` exists and why the
+audit tables' `REFERENCES user(id)` clauses are gone: a foreign key into a
+table this owner does not declare cannot even be prepared in its own file, so
+the split trades the cross-owner cascade for rule 27's shape — a deleted user
+leaves the audit rows that recorded them, which is what an audit trail is for.
+The copy is row-count and checksum verified over exactly the keys the run
+copied, so a re-run against a live target neither copies nor re-verifies rows
+it already moved, and the documented rollback is the same tool with the source
+and target swapped (`sync-init` forward, `sync-rollback` back).
 
 The schema is applied at every boot (`registerBeginningAdvice` →
 `DbService::runScriptFile`) and `applyPragmas()` follows it, so a fresh
@@ -119,10 +130,8 @@ database that predates it, so the beginning advice first runs
 `AuditFanOut::migrateLegacySchema()`: when the table exists without the column
 it adds it (`ALTER TABLE ... ADD COLUMN msg_id TEXT NOT NULL DEFAULT ''`), the
 same guarded shape camera, notification and guard use for their additive
-columns. A reset is not the remedy here: until Phase 3c-2 this file is
-identity's, and resetting it would take users, persons and faces with it. The
-rows that predate the column keep `msg_id = ''`, which the partial index does
-not constrain.
+columns. The rows that predate the column keep `msg_id = ''`, which the partial
+index does not constrain.
 
 The consumers attach inside that same advice, after the migration, the schema
 and the pragmas. Two reasons, both measured: drogon creates its IO loops only
@@ -273,6 +282,18 @@ and no in-process emit that the control plane cannot also perform.
 ## Compose volume
 
 `config.sync.toml` read-only as `config.toml`; the certs directory read-only;
-identity's data directory read-write as `database/` (the transitory file);
+this service's own data directory read-write as `database/` (`sync.db`);
 `services/sync/database/schema.sql` read-only beside it. State lives on the
 host and is bind-mounted, so updating is a rebuild plus `docker compose up -d`.
+The `sync-init` profile runs `argus-migrate-sync` over those two directories
+with the stack stopped: it is the only writer of `sync.db` besides this service
+and reads `identity.db` read-only through an `ATTACH`. An upgrade from an
+install whose audit rows still live in `identity.db` must run it *before* this
+service starts: without the profile the service applies its schema to an empty
+`sync.db` and serves an empty audit history, which every client can only answer
+with a full re-bootstrap. `sync-rollback` is the mirror (`--profile
+sync-rollback`): the same tool with the paths swapped, so it mounts `sync/`
+read-only and identity's directory writable. The forward service cannot be run
+backwards — identity's directory is read-only there, so a swapped invocation
+could not create its target — and the rollback mounts `sync/` read-only for the
+same reason in the other direction.

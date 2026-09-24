@@ -131,6 +131,14 @@ target_compile_options(change-feed-live-test PRIVATE -Wall -Wextra)
 argus_runtime_rpath(change-feed-live-test)
 add_test(NAME change-feed-live-test COMMAND change-feed-live-test)
 
+add_executable(sync-migration-test unit/sync-migration-test.cc)
+target_link_libraries(sync-migration-test PRIVATE
+    sync-migration
+    doctest::doctest)
+target_compile_options(sync-migration-test PRIVATE -Wall -Wextra)
+argus_runtime_rpath(sync-migration-test)
+add_test(NAME sync-migration-test COMMAND sync-migration-test)
+
 add_executable(golden-sync-test e2e/golden-sync-test.cc)
 target_compile_definitions(golden-sync-test PRIVATE
     ARGUS_TEST_SYNC_FIXTURES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fixtures/sync")

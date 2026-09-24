@@ -863,8 +863,8 @@ own file at `/opt/argus/gateway/schema.sql` and its config says
 `productivity` (the gateway's own 23-line file is its `gateway.db`
 degraded-fallback record — it holds no table of another domain and says so —
 and it goes with the gateway in Phase 3d), plus `packages/memory` and
-`services/sync` (the five sync tables it applies onto identity.db until
-Phase 3c-2 splits them into `sync.db`).
+`services/sync` (`sync.db`, split out of identity's file by `argus-migrate-sync`
+in Phase 3c-2).
 
 ### 27. Database isolation between microservices
 

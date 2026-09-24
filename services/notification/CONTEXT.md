@@ -45,7 +45,7 @@ binary, own CMake preset, own `notification.db`.
   `changes` JSON via `JsonDiff::createFlatDiff`, TableName::Notification)
   and emits them over NATS (`argus.notification.v1.change`,
   `docs/architecture/wire-nats-subjects.md`). `argus-sync` persists them verbatim into
-  identity.db `user_audit_log`; nothing audit-shaped is written to
+  `user_audit_log` in its own `sync.db`; nothing audit-shaped is written to
   notification.db.
 - **Serving live traffic (F3-2, Ruling AR)**: the gateway relays
   `/notification/read` (PATCH) and `/notification-token` (POST) to this

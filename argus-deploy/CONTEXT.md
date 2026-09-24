@@ -22,7 +22,9 @@ Every microservice owns `services/<name>/Dockerfile`: a Debian + Conan
 argus-<name>` from the repo root, and a slim runtime stage carries only that
 service's binaries. Packages are reusable libraries compiled into the service
 images — no package has an image of its own. The identity image carries
-`argus-migrate-identity` (identity is its owner, since Phase 3c-1); argus-camera
+`argus-migrate-identity` (identity is its owner, since Phase 3c-1) and the
+argus-sync image carries `argus-migrate-sync` (the Phase 3c-2 split of the five
+sync tables out of identity's file); argus-camera
 carries `argus-migrate-camera` and `argus-vulkan-probe`; productivity and
 notification carry their migration tools; the argus-tunnel image carries the
 client and the relay. The argus-memory binary is gone since f8-b3: the
@@ -144,6 +146,8 @@ with `scripts/setup.sh` / `scripts/setup.sh camera` on the host.
 | argus-tunnel-client | `argus-tunnel:local` | `profiles: [tunnel]`; host-networked like the gateway (dials the gateway `[remote]` listener and the relay's loopback home publish on 127.0.0.1); no database (Ruling CL); `/health` healthcheck |
 | nats | `nats:2.11.14-alpine` | exact tag pin; core NATS (no JetStream needed) |
 | identity-init | `argus-identity:local` | `profiles: [identity-init]`, runs `argus-migrate-identity` |
+| sync-init | `argus-sync:local` | `profiles: [sync-init]`, runs `argus-migrate-sync` (identity.db → sync.db), identity's directory read-only |
+| sync-rollback | `argus-sync:local` | `profiles: [sync-rollback]`, runs the same tool with the paths swapped (sync.db → identity.db), sync's directory read-only and identity's writable |
 | camera-init | `argus-camera:local` | `profiles: [camera-init]`, runs `argus-migrate-camera` against the camera data directory |
 | productivity-init | `argus-productivity:local` | `profiles: [productivity-init]`, runs `argus-migrate-productivity` against the productivity data directory |
 | notification-init | `argus-notification:local` | `profiles: [notification-init]`, runs `argus-migrate-notification` against the notification data directory |
@@ -373,7 +377,9 @@ secrets are read at runtime, never printed; the refresh token lands in a
 
 | Mount | Mounted into | Content |
 |---|---|---|
-| `${ARGUS_DATA_DIR}/identity` | argus-identity (rw, owner) and argus-sync (rw, its five sync tables) — at `/opt/argus/database` | identity.db (+ WAL files) |
+| `${ARGUS_DATA_DIR}/identity` | argus-identity (rw, owner) — at `/opt/argus/database` | identity.db (+ WAL files) |
+| `${ARGUS_DATA_DIR}/auth` | argus-auth (rw, owner) — at `/opt/argus/database` | auth.db (+ WAL files) |
+| `${ARGUS_DATA_DIR}/sync` | argus-sync (rw, owner) — at `/opt/argus/database` | sync.db (+ WAL files) |
 | `${ARGUS_DATA_DIR}/camera` | argus-camera (rw, owner) — at `/opt/argus/camera` | camera.db (+ WAL files) |
 | `${ARGUS_DATA_DIR}/productivity` | argus-productivity (rw, owner) — at `/opt/argus/productivity` | productivity.db (+ WAL files) |
 | `${ARGUS_DATA_DIR}/notification` | argus-notification (rw, owner) — at `/opt/argus/notification` | notification.db (+ WAL files) |
@@ -385,9 +391,7 @@ secrets are read at runtime, never printed; the refresh token lands in a
 Every database directory is bind-mounted from `${ARGUS_DATA_DIR:-./data}`
 (default `argus-deploy/data/`, gitignored; `scripts/provision-host.sh` creates
 it and writes the gitignored `.env` with absolute host paths) and is mounted
-by its owner only (rule 27), the declared exception being identity.db, whose
-five sync tables `argus-sync` also opens there until Phase 3c-2 splits them
-out:
+by its owner only (rule 27):
 cross-domain
 reads travel through the typed gRPC legs (camera/productivity/notification)
 and NATS change feeds, never through another service's file. Each owner
@@ -499,7 +503,7 @@ the matching `*-init` profile is the only migration path onto a volume.
   repo (overridable through `ARGUS_CERTS_DIR`, `ARGUS_MODELS_DIR` and
   `ARGUS_GO2RTC_DIR`); the data directory (`${ARGUS_DATA_DIR:-./data}`) is
   writable (identity.db, WAL files) and holds one subdirectory per owner DB
-  (`identity/`, `camera/`, `productivity/`, `notification/`, `guard/`,
+  (`identity/`, `sync/`, `camera/`, `productivity/`, `notification/`, `guard/`,
   `memory/`), so no container mounts another owner's data.
   `ARGUS_DATA_DIR` exists for acceptance runs on a scratch copy of the
   real data directory; the default lives in `argus-deploy/data/` and is
