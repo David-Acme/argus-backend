@@ -217,6 +217,7 @@ TEST_CASE("the sink health counters equal the durable outbox state")
     NatsObjectEventSink liveSink(liveBus, liveConfig);
     liveSink.reconcile();
 
+    const ObjectEventOutboxStats rowsBeforeBurst = outbox.stats();
     Worker producer([&liveSink]() {
       for (int index = 0; index < 40; ++index)
         liveSink.publish(personEvent("flush:" + std::to_string(index)));
@@ -228,7 +229,10 @@ TEST_CASE("the sink health counters equal the durable outbox state")
         break;
       std::this_thread::sleep_for(std::chrono::milliseconds(50));
     }
-    CHECK(outbox.stats().pending == 0);
+    const ObjectEventOutboxStats rowsAfterBurst = outbox.stats();
+    CHECK(rowsAfterBurst.pending == 0);
+    CHECK(rowsAfterBurst.pending + rowsAfterBurst.sent ==
+          rowsBeforeBurst.pending + rowsBeforeBurst.sent + 40);
     CHECK(countersMatch(liveSink.health(), outbox.stats()));
 
     {

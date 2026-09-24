@@ -6,6 +6,7 @@
 #include <productivity/nats-productivity-change-sink.hxx>
 #include <shared/repositories/change-outbox/change-outbox-key.hxx>
 #include <shared/repositories/change-outbox/change-outbox-repository.hxx>
+#include <shared/repositories/change-outbox/change-outbox-status.hxx>
 #include <sqlite/db-service.hxx>
 #include <nats/nats-bus.hxx>
 
@@ -75,6 +76,30 @@ ChangeOutboxRow pendingRow(const std::vector<ChangeOutboxRow>& rows)
 bool hasPending(const ChangeOutboxRepository& outbox)
 {
   return !outbox.pendingBatch(1).empty();
+}
+
+int64_t firstInteger(const drogon::orm::Result& rows)
+{
+  return rows.empty() ? 0 : rows.front()[0].as<int64_t>();
+}
+
+int64_t outboxWatermark()
+{
+  return firstInteger(DbService::client()->execSqlSync(
+      "SELECT COALESCE(MAX(rowid), 0) FROM change_outbox"));
+}
+
+int64_t rowsAfter(int64_t watermark)
+{
+  return firstInteger(DbService::client()->execSqlSync(
+      "SELECT COUNT(*) FROM change_outbox WHERE rowid > ?", watermark));
+}
+
+int64_t sentRowsAfter(int64_t watermark)
+{
+  return firstInteger(DbService::client()->execSqlSync(
+      "SELECT COUNT(*) FROM change_outbox WHERE rowid > ? AND status = ?",
+      watermark, changeOutboxStatusToString(ChangeOutboxStatus::Sent)));
 }
 
 bool waitForDrain(const NatsProductivityChangeSink& sink,
@@ -358,16 +383,19 @@ TEST_CASE("the change sink lands every emit and audit in the durable outbox")
                                                       .publishSubject =
                                                           burstSubject,
                                                       .streamName = burstStream});
+      const int64_t watermark = outboxWatermark();
       const auto started = std::chrono::steady_clock::now();
       for (int64_t recordId = 200; recordId < 300; ++recordId)
         drogon::sync_wait(bursts.emitUsers(
             {.userIds = {42},
              .body = projectRow(SyncOperation::Add, recordId, "Gate")}));
+      CHECK(rowsAfter(watermark) == 100);
       bursts.reconcile();
       for (int attempt = 0;
            attempt < 400 && hasPending(outbox); ++attempt)
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
       CHECK_FALSE(hasPending(outbox));
+      CHECK(sentRowsAfter(watermark) == 100);
       CHECK(std::chrono::steady_clock::now() - started <
             std::chrono::seconds(3));
     }
