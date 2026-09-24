@@ -45,6 +45,21 @@ argus_runtime_rpath(notification-delivery-inbox-test)
 add_test(NAME notification-delivery-inbox-test
          COMMAND notification-delivery-inbox-test)
 
+add_executable(change-feed-consumer-test unit/change-feed-consumer-test.cc)
+target_compile_definitions(change-feed-consumer-test PRIVATE
+    ARGUS_SYNC_SCHEMA_PATH="${CMAKE_CURRENT_SOURCE_DIR}/../database/schema.sql")
+target_link_libraries(change-feed-consumer-test PRIVATE
+    argus::sync-fanout
+    argus::lib::sqlite
+    argus::lib::nats
+    argus::lib::text
+    argus::contracts::sync
+    Drogon::Drogon
+    doctest::doctest)
+target_compile_options(change-feed-consumer-test PRIVATE -Wall -Wextra)
+argus_runtime_rpath(change-feed-consumer-test)
+add_test(NAME change-feed-consumer-test COMMAND change-feed-consumer-test)
+
 add_executable(voice-leg-test unit/voice-leg-test.cc)
 target_link_libraries(voice-leg-test PRIVATE
     argus::sync-transport
@@ -85,6 +100,21 @@ target_compile_options(notification-delivery-live-test PRIVATE -Wall -Wextra)
 argus_runtime_rpath(notification-delivery-live-test)
 add_test(NAME notification-delivery-live-test
          COMMAND notification-delivery-live-test)
+
+add_executable(change-feed-live-test unit/change-feed-live-test.cc)
+target_compile_definitions(change-feed-live-test PRIVATE
+    ARGUS_SYNC_SCHEMA_PATH="${CMAKE_CURRENT_SOURCE_DIR}/../database/schema.sql")
+target_link_libraries(change-feed-live-test PRIVATE
+    argus::sync-fanout
+    argus::lib::nats
+    argus::lib::sqlite
+    argus::lib::text
+    argus::contracts::sync
+    Drogon::Drogon
+    doctest::doctest)
+target_compile_options(change-feed-live-test PRIVATE -Wall -Wextra)
+argus_runtime_rpath(change-feed-live-test)
+add_test(NAME change-feed-live-test COMMAND change-feed-live-test)
 
 add_executable(golden-sync-test e2e/golden-sync-test.cc)
 target_compile_definitions(golden-sync-test PRIVATE

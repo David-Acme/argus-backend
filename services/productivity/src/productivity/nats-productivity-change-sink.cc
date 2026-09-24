@@ -38,8 +38,9 @@ NatsProductivityChangeSink::NatsProductivityChangeSink(
       subject_(config_.publishSubject.empty()
                    ? std::string(nats_subject::kProductivityChange)
                    : config_.publishSubject),
-      stream_(config_.streamName.empty() ? std::string("ARGUS_PRODUCTIVITY_CHANGE")
-                                        : config_.streamName)
+      stream_(config_.streamName.empty()
+                  ? std::string(nats_subject::kProductivityChangeStream)
+                  : config_.streamName)
 {
 }
 

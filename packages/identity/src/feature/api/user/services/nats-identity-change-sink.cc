@@ -42,8 +42,9 @@ NatsIdentityChangeSink::NatsIdentityChangeSink(std::shared_ptr<NatsBus> bus,
       actionSubject_(config_.actionSubject.empty()
                          ? std::string(nats_subject::kIdentityUserAction)
                          : config_.actionSubject),
-      stream_(config_.streamName.empty() ? std::string("ARGUS_IDENTITY_CHANGE")
-                                        : config_.streamName)
+      stream_(config_.streamName.empty()
+                  ? std::string(nats_subject::kIdentityChangeStream)
+                  : config_.streamName)
 {
 }
 

@@ -412,10 +412,12 @@ TEST_CASE("audit sync reads resolve to the default client, not the "
   const std::string changesText =
       json_util::toString(JsonDiff::toJson(event.changes));
 
-  drogon::app().getIOLoop(0)->runInLoop(
-      [&event, &auditFanOut] {
-        auditFanOut.handleAuditChange(event.toJson());
-      });
+  drogon::app().getIOLoop(0)->runInLoop([&event, &auditFanOut] {
+    drogon::async_run([&event, &auditFanOut]() -> drogon::Task<void> {
+      co_await auditFanOut.handleAuditChange(event.toJson());
+      co_return;
+    });
+  });
   REQUIRE(waitForMessages(conn, std::chrono::seconds(5)));
   drogon::app().getIOLoop(0)->runInLoop(
       [&] { rooms.leave(moduleRoom(TableName::Camera), conn); });
@@ -468,10 +470,12 @@ TEST_CASE("audit sync reads resolve to the default client, not the "
   const std::string userChangesText =
       json_util::toString(JsonDiff::toJson(userEvent.changes));
 
-  drogon::app().getIOLoop(0)->runInLoop(
-      [&userEvent, &auditFanOut] {
-        auditFanOut.handleAuditChange(userEvent.toJson());
-      });
+  drogon::app().getIOLoop(0)->runInLoop([&userEvent, &auditFanOut] {
+    drogon::async_run([&userEvent, &auditFanOut]() -> drogon::Task<void> {
+      co_await auditFanOut.handleAuditChange(userEvent.toJson());
+      co_return;
+    });
+  });
   REQUIRE(waitForMessages(userConn, std::chrono::seconds(5)));
   drogon::app().getIOLoop(0)->runInLoop(
       [&] { rooms.leave(userRoom(42), userConn); });

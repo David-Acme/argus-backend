@@ -10,6 +10,8 @@
 #include <chrono>
 #include <cstdlib>
 #include <iostream>
+#include <mutex>
+#include <optional>
 #include <string>
 #include <thread>
 #include <unistd.h>
@@ -36,6 +38,59 @@ std::string isolatedStream()
 std::string isolatedSubject(const std::string& stream)
 {
   return stream + ".events";
+}
+
+struct Deliveries
+{
+  std::mutex mutex;
+  std::vector<std::string> payloads;
+  std::vector<std::string> msgIds;
+};
+
+NatsBus::DurableInput collectingInto(NatsBus::DurableInput input,
+                                     Deliveries& deliveries)
+{
+  input.handler = [&deliveries](const NatsBus::DurableMessage& message,
+                                const NatsBus::DurableSettlement& settlement) {
+    {
+      std::lock_guard lock(deliveries.mutex);
+      deliveries.payloads.emplace_back(message.payload);
+      deliveries.msgIds.emplace_back(message.msgId);
+    }
+    settlement.ack();
+  };
+  return input;
+}
+
+std::vector<std::string> awaitPayloads(Deliveries& deliveries, size_t count)
+{
+  for (int attempt = 0; attempt < 150; ++attempt) {
+    {
+      std::lock_guard lock(deliveries.mutex);
+      if (deliveries.payloads.size() >= count)
+        return deliveries.payloads;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+  }
+  std::lock_guard lock(deliveries.mutex);
+  return deliveries.payloads;
+}
+
+std::vector<std::string> msgIdsOf(Deliveries& deliveries)
+{
+  std::lock_guard lock(deliveries.mutex);
+  return deliveries.msgIds;
+}
+
+std::optional<uint64_t> attachWithin(NatsBus& bus,
+                                     const NatsBus::DurableInput& input)
+{
+  for (int attempt = 0; attempt < 40; ++attempt) {
+    if (const auto id = bus.subscribeDurable(input))
+      return id;
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+  }
+  return std::nullopt;
 }
 
 }
@@ -66,13 +121,33 @@ TEST_CASE("subscribe subjects allow NATS wildcards with > tail-only")
   CHECK_FALSE(isValidSubject("argus.v1.*.change", SubjectKind::Publish));
 }
 
-TEST_CASE("frozen sync subjects keep their contract spelling")
+TEST_CASE("the sync change subject keeps its contract spelling")
 {
   CHECK(std::string(nats_subject::kSyncChange) == "argus.sync.v1.change");
-  CHECK(std::string(nats_subject::kSyncChangeWildcard) ==
-        "argus.*.v1.change");
   CHECK(isValidSubject(nats_subject::kSyncChange, SubjectKind::Publish));
-  CHECK(isValidSubject(nats_subject::kSyncChangeWildcard,
+}
+
+TEST_CASE("every change stream carries the name its consumer subscribes to")
+{
+  CHECK(std::string(nats_subject::kCameraStream) == "ARGUS_CAMERA");
+  CHECK(std::string(nats_subject::kNotificationChangeStream) ==
+        "ARGUS_NOTIFICATION_CHANGE");
+  CHECK(std::string(nats_subject::kProductivityChangeStream) ==
+        "ARGUS_PRODUCTIVITY_CHANGE");
+  CHECK(std::string(nats_subject::kIdentityChangeStream) ==
+        "ARGUS_IDENTITY_CHANGE");
+  CHECK(std::string(nats_subject::kNotificationDeliveryStream) ==
+        "ARGUS_NOTIFICATION");
+  CHECK(std::string(nats_subject::kGuardStream) == "ARGUS_GUARD");
+
+  CHECK(isValidSubject(nats_subject::kCameraChange, SubjectKind::Subscribe));
+  CHECK(isValidSubject(nats_subject::kNotificationChange,
+                       SubjectKind::Subscribe));
+  CHECK(isValidSubject(nats_subject::kProductivityChange,
+                       SubjectKind::Subscribe));
+  CHECK(isValidSubject(nats_subject::kIdentityChange,
+                       SubjectKind::Subscribe));
+  CHECK(isValidSubject(nats_subject::kIdentityUserAction,
                        SubjectKind::Subscribe));
 }
 
@@ -161,8 +236,7 @@ TEST_CASE("live roundtrip against a running nats-server")
   REQUIRE(id.has_value());
 
   const auto wildcard = bus.subscribe(
-      nats_subject::kSyncChangeWildcard,
-      [](std::string_view, std::string_view) {});
+      "argus.*.v1.change", [](std::string_view, std::string_view) {});
   CHECK(wildcard.has_value());
 
   Json::Value payload;
@@ -243,6 +317,81 @@ TEST_CASE("ensureStream reconciles an existing stream instead of assuming it")
   CHECK(intact->subjects.front() == subject);
 
   bus.drain();
+}
+
+TEST_CASE("a durable consumer outlives the subscriber that bound it")
+{
+  const char* url = std::getenv("ARGUS_TEST_NATS_URL");
+  if (url == nullptr || std::string(url).empty()) {
+    std::cout << "SKIP: ARGUS_TEST_NATS_URL not provided\n";
+    return;
+  }
+  NatsBus::Options options;
+  options.url = url;
+
+  const std::string stream = isolatedStream();
+  const std::string subject = isolatedSubject(stream);
+  const NatsBus::DurableInput feed{.stream = stream,
+                                   .durable = stream + "-durable",
+                                   .subject = subject,
+                                   .deliverAll = false,
+                                   .maxDeliver = 5,
+                                   .handler = {}};
+  const auto publish = [&subject](NatsBus& bus, const std::string& body) {
+    return bus.publishWithMsgId(
+        {.subject = subject, .payload = body, .msgId = subject + "-" + body});
+  };
+
+  NatsBus first;
+  REQUIRE(first.connect(options));
+  REQUIRE(first.ensureStream({.name = stream,
+                              .subjects = {subject},
+                              .maxAgeNs = 60LL * 1000000000,
+                              .duplicatesNs = 60LL * 1000000000}));
+
+  Deliveries bound;
+  const auto attached = first.subscribeDurable(collectingInto(feed, bound));
+  REQUIRE(attached.has_value());
+  REQUIRE(publish(first, "one"));
+  CHECK(awaitPayloads(bound, 1) == std::vector<std::string>{"one"});
+  CHECK(msgIdsOf(bound) == std::vector<std::string>{subject + "-one"});
+
+  CHECK(first.unsubscribe(attached.value_or(0)));
+  REQUIRE(publish(first, "two"));
+  Deliveries rebound;
+  REQUIRE(attachWithin(first, collectingInto(feed, rebound)).has_value());
+  CHECK(awaitPayloads(rebound, 1) == std::vector<std::string>{"two"});
+  first.drain();
+
+  NatsBus second;
+  REQUIRE(second.connect(options));
+  REQUIRE(publish(second, "three"));
+  Deliveries resumed;
+  const auto resumedId = attachWithin(second, collectingInto(feed, resumed));
+  REQUIRE(resumedId.has_value());
+  CHECK(awaitPayloads(resumed, 1) == std::vector<std::string>{"three"});
+
+  NatsBus rival;
+  REQUIRE(rival.connect(options));
+  Deliveries refused;
+  CHECK_FALSE(rival.subscribeDurable(collectingInto(feed, refused)).has_value());
+  REQUIRE(publish(second, "held"));
+  CHECK(awaitPayloads(resumed, 2) ==
+        std::vector<std::string>{"three", "held"});
+
+  CHECK(second.unsubscribe(resumedId.value_or(0)));
+  NatsBus::DurableInput replayAll = collectingInto(feed, refused);
+  replayAll.deliverAll = true;
+  CHECK_FALSE(rival.subscribeDurable(replayAll).has_value());
+
+  Deliveries takeover;
+  REQUIRE(attachWithin(rival, collectingInto(feed, takeover)).has_value());
+  REQUIRE(publish(rival, "four"));
+  CHECK(awaitPayloads(takeover, 1) == std::vector<std::string>{"four"});
+  CHECK(awaitPayloads(refused, 1).empty());
+
+  rival.drain();
+  second.drain();
 }
 
 TEST_CASE("streamInfo reports a missing stream without a server roundtrip lie")

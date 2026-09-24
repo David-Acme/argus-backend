@@ -37,8 +37,9 @@ NatsNotificationChangeSink::NatsNotificationChangeSink(
       subject_(config_.publishSubject.empty()
                    ? std::string(nats_subject::kNotificationChange)
                    : config_.publishSubject),
-      stream_(config_.streamName.empty() ? std::string("ARGUS_NOTIFICATION_CHANGE")
-                                         : config_.streamName)
+      stream_(config_.streamName.empty()
+                  ? std::string(nats_subject::kNotificationChangeStream)
+                  : config_.streamName)
 {
 }
 

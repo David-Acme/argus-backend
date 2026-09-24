@@ -10,10 +10,16 @@
 #include <trantor/utils/Logger.h>
 
 #include <ctime>
+#include <exception>
 #include <functional>
+#include <stdexcept>
+#include <string>
+#include <utility>
 
 namespace
 {
+
+constexpr int kMaxDeliver = 50;
 
 constexpr const char* UPSERT_PERSON =
     "INSERT INTO catalog_person (id, user_id, name, alias, deleted_at) "
@@ -60,6 +66,13 @@ bool execStmt(sqlite3* db, const StmtExecInput& input)
   return stmt.step() == SQLITE_DONE;
 }
 
+void applyStmt(sqlite3* db, const StmtExecInput& input)
+{
+  if (!execStmt(db, input))
+    throw std::runtime_error(std::string("catalog replica write failed: ") +
+                             sqlite3_errmsg(db));
+}
+
 bool replicaPopulated(sqlite3* db, const char* table)
 {
   SqliteStmt probe;
@@ -71,41 +84,124 @@ bool replicaPopulated(sqlite3* db, const char* table)
 
 }
 
+namespace catalog_feed
+{
+const std::vector<Feed>& defaults()
+{
+  static const std::vector<Feed> feeds{
+      {.stream = nats_subject::kCameraStream,
+       .subject = nats_subject::kCameraChange,
+       .durable = "argus-llm-catalog-camera"},
+      {.stream = nats_subject::kIdentityChangeStream,
+       .subject = nats_subject::kIdentityChange,
+       .durable = "argus-llm-catalog-identity"},
+  };
+  return feeds;
+}
+}
+
 CatalogReplica::CatalogReplica(const Deps& deps)
     : bus_(deps.bus), graph_(deps.graph), resolver_(deps.resolver)
 {
+  attachments_.reserve(catalog_feed::defaults().size());
+  for (const auto& feed : catalog_feed::defaults())
+    attachments_.push_back(Attachment{.feed = feed, .subscription = {}});
+}
+
+CatalogReplica::~CatalogReplica()
+{
+  stop();
 }
 
 void CatalogReplica::subscribe()
 {
-  const auto marshal = [this](const std::function<void(const Json::Value&)>&
-                                  apply,
-                              std::string payload) {
-    drogon::app().getIOLoop(0)->runInLoop([this, apply,
-                                           payload = std::move(payload)]() {
-      const Json::Value json = json_util::fromString(payload);
-      apply(json);
-    });
-  };
+  if (subscribePending())
+    return;
+  LOG_WARN << "Catalog replica: change streams not ready; retrying";
+  scheduleSubscribeRetry();
+}
 
-  bus_.subscribe(nats_subject::kIdentityChange,
-                 [this, marshal](std::string_view, std::string_view payload) {
-                   marshal([this](const Json::Value& json) {
-                     applyIdentity(json);
-                   }, std::string(payload));
-                 });
-  bus_.subscribe(nats_subject::kCameraChange,
-                 [this, marshal](std::string_view, std::string_view payload) {
-                   marshal([this](const Json::Value& json) {
-                     applyCamera(json);
-                   }, std::string(payload));
-                 });
-  bus_.subscribe(nats_subject::kSyncChangeWildcard,
-                 [this, marshal](std::string_view, std::string_view payload) {
-                   marshal([this](const Json::Value& json) {
-                     applyStreamRow(json);
-                   }, std::string(payload));
-                 });
+void CatalogReplica::stop()
+{
+  if (retryTimer_.has_value()) {
+    if (drogon::app().isRunning())
+      drogon::app().getLoop()->invalidateTimer(*retryTimer_);
+    retryTimer_.reset();
+  }
+  for (auto& attachment : attachments_) {
+    if (attachment.subscription.has_value())
+      bus_.unsubscribe(*attachment.subscription);
+    attachment.subscription.reset();
+  }
+}
+
+void CatalogReplica::applyPayload(const ApplyInput& input)
+{
+  try {
+    const Json::Value json = json_util::fromString(input.payload);
+    if (input.subject == nats_subject::kIdentityChange)
+      applyIdentity(json);
+    else
+      applyCamera(json);
+    if (input.settlement.ack)
+      input.settlement.ack();
+  }
+  catch (const std::exception& error) {
+    LOG_WARN << "Catalog replica: redelivering (" << error.what() << ")";
+    if (input.settlement.nak)
+      input.settlement.nak();
+  }
+}
+
+bool CatalogReplica::trySubscribe(Attachment& attachment)
+{
+  const auto subscription = bus_.subscribeDurable(
+      {.stream = attachment.feed.stream,
+       .durable = attachment.feed.durable,
+       .subject = attachment.feed.subject,
+       .deliverAll = true,
+       .maxDeliver = kMaxDeliver,
+       .handler = [this](const NatsBus::DurableMessage& message,
+                         NatsBus::DurableSettlement settlement) {
+         ApplyInput input{.subject = std::string(message.subject),
+                          .payload = std::string(message.payload),
+                          .settlement = std::move(settlement)};
+         drogon::app().getIOLoop(0)->runInLoop(
+             [this, input = std::move(input)]() mutable {
+               applyPayload(input);
+             });
+       }});
+  if (!subscription)
+    return false;
+  attachment.subscription = subscription;
+  return true;
+}
+
+bool CatalogReplica::subscribePending()
+{
+  bool allAttached = true;
+  for (auto& attachment : attachments_) {
+    if (attachment.subscription.has_value())
+      continue;
+    if (trySubscribe(attachment))
+      LOG_INFO << "Catalog replica: durable " << attachment.feed.durable
+               << " connected on " << attachment.feed.subject;
+    else
+      allAttached = false;
+  }
+  return allAttached;
+}
+
+void CatalogReplica::scheduleSubscribeRetry()
+{
+  if (retryTimer_.has_value())
+    return;
+  retryTimer_ = drogon::app().getLoop()->runEvery(5.0, [this]() {
+    if (!subscribePending() || !retryTimer_.has_value())
+      return;
+    drogon::app().getLoop()->invalidateTimer(*retryTimer_);
+    retryTimer_.reset();
+  });
 }
 
 void CatalogReplica::applyIdentity(const Json::Value& event)
@@ -125,13 +221,13 @@ void CatalogReplica::applyIdentity(const Json::Value& event)
   {
     std::scoped_lock lock(graph_.mutex());
     if (deleted) {
-      execStmt(graph_.handle(), {.sql = TOMBSTONE_PERSON, .bind = [&](SqliteStmt& stmt) {
+      applyStmt(graph_.handle(), {.sql = TOMBSTONE_PERSON, .bind = [&](SqliteStmt& stmt) {
                  stmt.bindInt64(1, std::time(nullptr));
                  stmt.bindInt64(2, id);
                }});
     }
     else {
-      execStmt(graph_.handle(), {.sql = UPSERT_PERSON, .bind = [&](SqliteStmt& stmt) {
+      applyStmt(graph_.handle(), {.sql = UPSERT_PERSON, .bind = [&](SqliteStmt& stmt) {
         stmt.bindInt64(1, id);
         stmt.bindInt64(2, row.get("user_id", 0).asInt64());
         stmt.bindText(3, row.get("name", "").asString());
@@ -161,29 +257,29 @@ void CatalogReplica::applyCamera(const Json::Value& event)
       std::scoped_lock lock(graph_.mutex());
       if (deletedIt != audit->changes.end()) {
         if (table == "camera")
-          execStmt(graph_.handle(), {.sql = TOMBSTONE_CAMERA, .bind = [&](SqliteStmt& stmt) {
+          applyStmt(graph_.handle(), {.sql = TOMBSTONE_CAMERA, .bind = [&](SqliteStmt& stmt) {
             stmt.bindInt64(1, std::time(nullptr));
             stmt.bindInt64(2, audit->recordId);
           }});
         else if (table == "zone")
-          execStmt(graph_.handle(), {.sql = DELETE_ZONE, .bind = [&](SqliteStmt& stmt) { stmt.bindInt64(1, audit->recordId); }});
+          applyStmt(graph_.handle(), {.sql = DELETE_ZONE, .bind = [&](SqliteStmt& stmt) { stmt.bindInt64(1, audit->recordId); }});
         else if (table == "camera_stream")
-          execStmt(graph_.handle(), {.sql = DELETE_STREAM, .bind = [&](SqliteStmt& stmt) { stmt.bindInt64(1, audit->recordId); }});
+          applyStmt(graph_.handle(), {.sql = DELETE_STREAM, .bind = [&](SqliteStmt& stmt) { stmt.bindInt64(1, audit->recordId); }});
       }
       else if (table == "camera" && nameIt != audit->changes.end()) {
-        execStmt(graph_.handle(), {.sql = UPSERT_CAMERA, .bind = [&](SqliteStmt& stmt) {
+        applyStmt(graph_.handle(), {.sql = UPSERT_CAMERA, .bind = [&](SqliteStmt& stmt) {
           stmt.bindInt64(1, audit->recordId);
           stmt.bindText(2, nameIt->second.current.asString());
         }});
       }
       else if (table == "zone" && nameIt != audit->changes.end()) {
-        execStmt(graph_.handle(), {.sql = UPSERT_ZONE, .bind = [&](SqliteStmt& stmt) {
+        applyStmt(graph_.handle(), {.sql = UPSERT_ZONE, .bind = [&](SqliteStmt& stmt) {
           stmt.bindInt64(1, audit->recordId);
           stmt.bindText(2, nameIt->second.current.asString());
         }});
       }
       else if (table == "camera_stream" && labelIt != audit->changes.end()) {
-        execStmt(graph_.handle(), {.sql = UPSERT_STREAM, .bind = [&](SqliteStmt& stmt) {
+        applyStmt(graph_.handle(), {.sql = UPSERT_STREAM, .bind = [&](SqliteStmt& stmt) {
           stmt.bindInt64(1, audit->recordId);
           stmt.bindText(2, labelIt->second.current.asString());
         }});
@@ -210,32 +306,32 @@ void CatalogReplica::applyCamera(const Json::Value& event)
     std::scoped_lock lock(graph_.mutex());
     if (operation == SyncOperation::Delete) {
       if (option == "camera")
-        execStmt(graph_.handle(), {.sql = TOMBSTONE_CAMERA, .bind = [&](SqliteStmt& stmt) {
+        applyStmt(graph_.handle(), {.sql = TOMBSTONE_CAMERA, .bind = [&](SqliteStmt& stmt) {
           stmt.bindInt64(1,
                          row.get("deletedAt", std::time(nullptr)).asInt64());
           stmt.bindInt64(2, id);
         }});
       else if (option == "zone")
-        execStmt(graph_.handle(), {.sql = DELETE_ZONE, .bind = [&](SqliteStmt& stmt) { stmt.bindInt64(1, id); }});
+        applyStmt(graph_.handle(), {.sql = DELETE_ZONE, .bind = [&](SqliteStmt& stmt) { stmt.bindInt64(1, id); }});
       else if (option == "camera_stream")
-        execStmt(graph_.handle(), {.sql = DELETE_STREAM, .bind = [&](SqliteStmt& stmt) { stmt.bindInt64(1, id); }});
+        applyStmt(graph_.handle(), {.sql = DELETE_STREAM, .bind = [&](SqliteStmt& stmt) { stmt.bindInt64(1, id); }});
       else
         return;
     }
     else if (option == "camera") {
-      execStmt(graph_.handle(), {.sql = UPSERT_CAMERA, .bind = [&](SqliteStmt& stmt) {
+      applyStmt(graph_.handle(), {.sql = UPSERT_CAMERA, .bind = [&](SqliteStmt& stmt) {
         stmt.bindInt64(1, id);
         stmt.bindText(2, row.get("name", "").asString());
       }});
     }
     else if (option == "zone") {
-      execStmt(graph_.handle(), {.sql = UPSERT_ZONE, .bind = [&](SqliteStmt& stmt) {
+      applyStmt(graph_.handle(), {.sql = UPSERT_ZONE, .bind = [&](SqliteStmt& stmt) {
         stmt.bindInt64(1, id);
         stmt.bindText(2, row.get("name", "").asString());
       }});
     }
     else if (option == "camera_stream") {
-      execStmt(graph_.handle(), {.sql = UPSERT_STREAM, .bind = [&](SqliteStmt& stmt) {
+      applyStmt(graph_.handle(), {.sql = UPSERT_STREAM, .bind = [&](SqliteStmt& stmt) {
         stmt.bindInt64(1, id);
         stmt.bindText(2, row.get("label", "").asString());
       }});
@@ -245,13 +341,6 @@ void CatalogReplica::applyCamera(const Json::Value& event)
     }
   }
   resolver_.build();
-}
-
-void CatalogReplica::applyStreamRow(const Json::Value& event)
-{
-  if (!event.isObject() || event.get("option", "").asString() != "camera_stream")
-    return;
-  applyCamera(event);
 }
 
 void CatalogReplica::seedFromSnapshot(const Snapshot& snapshot)

@@ -2,6 +2,7 @@ argus_module(NAME sync-fanout
     SOURCES
         services/audit-fan-out.cc
         services/audit-log-service.cc
+        services/change-feed-consumer.cc
         services/notification-delivery-consumer.cc
         services/sync-fan-out.cc
         services/user-audit-log-service.cc

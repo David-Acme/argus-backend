@@ -170,17 +170,13 @@ int main()
   std::unique_ptr<CatalogReplica> replica;
   if (!ConfigService::getString("nats.url").empty()) {
     bus = std::make_unique<NatsBus>();
-    if (bus->connect()) {
-      replica = std::make_unique<CatalogReplica>(CatalogReplica::Deps{
-          .bus = *bus,
-          .graph = static_cast<SqliteGraph&>(memory.graph()),
-          .resolver = memory.resolver()});
-      replica->subscribe();
-    }
-    else {
-      LOG_WARN << "argus-llm: NATS unavailable; catalog replicas replay "
-                  "changes only after a reconnect";
-    }
+    if (!bus->connect())
+      LOG_WARN << "argus-llm: NATS unavailable; the catalog replica attaches "
+                  "when the bus reconnects";
+    replica = std::make_unique<CatalogReplica>(CatalogReplica::Deps{
+        .bus = *bus,
+        .graph = static_cast<SqliteGraph&>(memory.graph()),
+        .resolver = memory.resolver()});
   }
 
   std::unique_ptr<EncounterClosedConsumer> encounterConsumer;
@@ -216,7 +212,7 @@ int main()
                       std::vector<int64_t> persons;
                       if (capture.personId > 0)
                         persons.push_back(capture.personId);
-                      const int64_t now =
+                      const auto now =
                           static_cast<int64_t>(std::time(nullptr));
                       return memory.observeSystemEvent(
                           {.channel = "camera",
@@ -239,7 +235,6 @@ int main()
                 .poisonMaxAttempts = 3,
                 .ownerUserId = ownerUserId,
                 .lang = ownerLang});
-        encounterConsumer->start();
         LOG_INFO << "argus-llm: camera events feed memory (user "
                  << ownerUserId << ")";
       }
@@ -249,7 +244,10 @@ int main()
     }
   }
 
-  drogon::app().registerBeginningAdvice([&memory, &replica]() {
+  drogon::app().registerBeginningAdvice([&memory, &replica,
+                                         &encounterConsumer]() {
+    if (encounterConsumer)
+      encounterConsumer->start();
     drogon::async_run([&memory,
                        &replica]() -> drogon::Task<void> {
       try {
@@ -270,6 +268,8 @@ int main()
         LOG_WARN << "argus-llm: catalog snapshot seed failed with unknown "
                     "error";
       }
+      if (replica)
+        replica->subscribe();
       co_return;
     });
   });
@@ -281,6 +281,8 @@ int main()
       .setThreadNum(0)
       .run();
 
+  if (replica)
+    replica->stop();
   if (encounterConsumer)
     encounterConsumer->stop();
   memory.shutdown();

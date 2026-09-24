@@ -1,9 +1,10 @@
 #pragma once
 
 #include <drogon/utils/coroutine.h>
-#include <notification/notification-delivery-sink.hxx>
 #include <feature/fanout/repositories/delivery-inbox/delivery-inbox-repository.hxx>
+#include <feature/fanout/services/durable-disposition.hxx>
 #include <nats/nats-subject.hxx>
+#include <notification/notification-delivery-sink.hxx>
 
 #include <cstdint>
 #include <functional>
@@ -11,13 +12,6 @@
 #include <string>
 
 class NatsBus;
-
-enum class DeliveryDisposition : uint8_t
-{
-  Ack = 0,
-  Nak,
-  Term
-};
 
 class NotificationDeliveryConsumer
 {
@@ -43,9 +37,9 @@ public:
   void start();
   void stop();
 
-  drogon::Task<DeliveryDisposition> handlePayload(const std::string& payload);
+  drogon::Task<DurableDisposition> handlePayload(const std::string& payload);
 
-  drogon::Task<DeliveryDisposition> handle(
+  drogon::Task<DurableDisposition> handle(
       const NotificationDeliveryEvent& event);
 
 private:

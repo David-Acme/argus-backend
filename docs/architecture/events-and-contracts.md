@@ -7,9 +7,10 @@
 - Subject convention: `argus.<domain>.v1.<event>`, lowercase segments and
   `snake_case` event names. Subjects are frozen once published; wildcards are
   subscription-only.
-- Concrete subjects required by `/sync`: `argus.sync.v1.change`,
-  `argus.camera.v1.change`, `argus.camera.v1.object_detected`,
-  `argus.productivity.v1.change`, `argus.notification.v1.change`.
+- Concrete subjects required by `/sync`: `argus.camera.v1.change`,
+  `argus.identity.v1.change`, `argus.productivity.v1.change`,
+  `argus.notification.v1.change` and the action journal
+  `argus.identity.v1.user-action`.
 - Durable JetStream legs (PubAck settlement, inbox receipts, at-least-once):
   `argus.camera.v1.object_detected` → guard (`ARGUS_CAMERA`),
   `argus.guard.v1.encounter_closed` → argus-llm (`ARGUS_GUARD`),
@@ -18,8 +19,9 @@
   different fingerprint is a conflict that is never dispatched.
 - Readiness and health signals: `argus.guard.v1.heartbeat` (the gateway's raw
   camera notifier yields while fresh) and `argus.camera.v1.health`.
-- `argus-sync` subscribes the frozen wildcard `argus.*.v1.change` and routes
-  by concrete subject; camera audit diffs are persisted before fan-out.
+- `argus-sync` holds one durable JetStream consumer per change stream and
+  routes by the feed it arrived on; camera audit diffs are persisted before
+  fan-out.
 
 The full subject contract lives in `wire-nats-subjects.md`.
 

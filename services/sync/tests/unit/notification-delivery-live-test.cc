@@ -294,7 +294,7 @@ TEST_CASE("delivery fan-out is at-least-once with inbox dedup")
   CHECK(first.size() == 3);
   CHECK(first.contains(3));
   REQUIRE(drogon::sync_wait(resumed.handle(deliveryEvent(1))) ==
-          DeliveryDisposition::Ack);
+          DurableDisposition::Ack);
   CHECK(first.size() == 3);
 
   const std::string stream2 = isolatedName("argus-test-delivery");

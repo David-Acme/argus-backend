@@ -38,6 +38,7 @@ CREATE TABLE IF NOT EXISTS user_action_log (
     old_data   TEXT    NOT NULL  DEFAULT '{}',
     new_data   TEXT    NOT NULL  DEFAULT '{}',
     ip_address TEXT    NOT NULL  DEFAULT '',
+    msg_id     TEXT    NOT NULL  DEFAULT '',
     created_at INTEGER NOT NULL  DEFAULT (strftime('%s', 'now'))
 );
 
@@ -62,3 +63,6 @@ CREATE INDEX IF NOT EXISTS idx_user_audit_log_record   ON user_audit_log (record
 
 CREATE INDEX IF NOT EXISTS idx_notification_delivery_inbox_status
     ON notification_delivery_inbox (status, delivery_id);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_user_action_log_msg_id
+    ON user_action_log (msg_id) WHERE msg_id <> '';

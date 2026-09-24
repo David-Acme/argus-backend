@@ -88,8 +88,6 @@ TEST_CASE("sync-change subject follows the argus.<domain>.v1.change contract")
   const std::string subject = nats_subject::kSyncChange;
   CHECK(subject == "argus.sync.v1.change");
 
-  const std::string wildcard = nats_subject::kSyncChangeWildcard;
-  CHECK(wildcard == "argus.*.v1.change");
   CHECK(subject.find("argus.") == 0);
   CHECK(subject.find(".v1.change") == subject.size() - 10);
 }

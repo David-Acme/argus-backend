@@ -3,6 +3,7 @@
 
 #include <ctime>
 #include <drogon/drogon.h>
+#include <feature/fanout/services/durable-delivery.hxx>
 #include <feature/fanout/services/sync-fan-out.hxx>
 #include <nats/nats-bus.hxx>
 #include <sync/socket-emit-dto.hxx>
@@ -10,6 +11,7 @@
 #include <text/json-util.hxx>
 #include <trantor/utils/Logger.h>
 
+#include <string>
 #include <vector>
 
 namespace
@@ -72,30 +74,30 @@ void NotificationDeliveryConsumer::stop()
   subscription_.reset();
 }
 
-drogon::Task<DeliveryDisposition>
+drogon::Task<DurableDisposition>
 NotificationDeliveryConsumer::handlePayload(const std::string& payload)
 {
   const auto event =
       NotificationDeliveryEvent::fromJson(json_util::fromString(payload));
   if (!event) {
     LOG_WARN << "Delivery consumer: dropped malformed payload";
-    co_return DeliveryDisposition::Term;
+    co_return DurableDisposition::Term;
   }
   co_return co_await handle(*event);
 }
 
-drogon::Task<DeliveryDisposition> NotificationDeliveryConsumer::handle(
+drogon::Task<DurableDisposition> NotificationDeliveryConsumer::handle(
     const NotificationDeliveryEvent& event)
 {
   if (event.deliveryId <= 0 || event.notificationId <= 0 || event.userId <= 0) {
     LOG_WARN << "Delivery consumer: dropped malformed delivery event";
-    co_return DeliveryDisposition::Term;
+    co_return DurableDisposition::Term;
   }
-  const int64_t now = static_cast<int64_t>(std::time(nullptr));
+  const auto now = static_cast<int64_t>(std::time(nullptr));
   const DeliveryReceipt receipt =
       co_await repository_.receive({.event = event, .at = now});
   if (receipt.duplicate)
-    co_return DeliveryDisposition::Ack;
+    co_return DurableDisposition::Ack;
   std::string dispatchError;
   try {
     dependencies_.dispatch(event);
@@ -113,13 +115,13 @@ drogon::Task<DeliveryDisposition> NotificationDeliveryConsumer::handle(
         co_await repository_.markDeadLettered(event.deliveryId, now)) {
       LOG_ERROR << "Delivery consumer: dead-lettered poison delivery "
                 << event.deliveryId;
-      co_return DeliveryDisposition::Term;
+      co_return DurableDisposition::Term;
     }
-    co_return DeliveryDisposition::Nak;
+    co_return DurableDisposition::Nak;
   }
   if (!co_await repository_.markDispatched(event.deliveryId, now))
     throw std::runtime_error("delivery receipt settle failed");
-  co_return DeliveryDisposition::Ack;
+  co_return DurableDisposition::Ack;
 }
 
 bool NotificationDeliveryConsumer::trySubscribe()
@@ -130,44 +132,13 @@ bool NotificationDeliveryConsumer::trySubscribe()
        .subject = config_.subject,
        .deliverAll = true,
        .maxDeliver = config_.maxDeliver,
-       .handler = [this](const NatsBus::DurableMessage& message,
-                         NatsBus::DurableSettlement settlement) {
-         const std::string payload(message.payload);
-         drogon::app().getIOLoop(0)->runInLoop(
-             [this, payload = std::move(payload),
-              settlement = std::move(settlement)]() mutable {
-               drogon::async_run(
-                   [this, payload = std::move(payload),
-                    settlement = std::move(settlement)]() mutable
-                       -> drogon::Task<void> {
-                     DeliveryDisposition disposition =
-                         DeliveryDisposition::Nak;
-                     try {
-                       disposition = co_await handlePayload(payload);
-                     }
-                     catch (const std::exception& error) {
-                       LOG_WARN << "Delivery consumer: redelivering ("
-                                << error.what() << ")";
-                       disposition = DeliveryDisposition::Nak;
-                     }
-                     if (disposition == DeliveryDisposition::Term) {
-                       if (settlement.term)
-                         settlement.term();
-                     }
-                     else if (disposition == DeliveryDisposition::Ack) {
-                       if (settlement.ack)
-                         settlement.ack();
-                     }
-                     else if (settlement.nak) {
-                       settlement.nak();
-                     }
-                     co_return;
-                   });
-             });
-       }});
+       .handler = durable_delivery::handler(
+           "Delivery consumer", [this](const durable_delivery::Payload& payload) {
+             return handlePayload(payload.body);
+           })});
   if (!subscription)
     return false;
-  subscription_ = *subscription;
+  subscription_ = subscription;
   return true;
 }
 

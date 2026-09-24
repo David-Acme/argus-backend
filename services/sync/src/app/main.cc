@@ -3,8 +3,8 @@
 #include <config/sync-config.hxx>
 #include <drogon/drogon.h>
 #include <feature/fanout/services/audit-fan-out.hxx>
+#include <feature/fanout/services/change-feed-consumer.hxx>
 #include <feature/fanout/services/notification-delivery-consumer.hxx>
-#include <feature/fanout/services/sync-fan-out.hxx>
 #include <feature/transport/infra/camera-sync-gateway.hxx>
 #include <feature/transport/infra/notification-sync-gateway.hxx>
 #include <feature/transport/infra/productivity-sync-gateway.hxx>
@@ -116,18 +116,22 @@ int main()
         return ErrorHandler::unmatchedRoute(code);
       });
 
-  std::shared_ptr<NotificationDeliveryConsumer> deliveryConsumer;
   AuditFanOut auditFanOut;
   const std::string natsUrl = ConfigService::getString("nats.url");
   std::shared_ptr<NatsBus> natsBus;
+  std::shared_ptr<NotificationDeliveryConsumer> deliveryConsumer;
+  std::shared_ptr<ChangeFeedConsumer> changeFeedConsumer;
   if (natsUrl.empty()) {
     LOG_INFO << "NATS not configured; event bus disabled";
   }
   else {
     natsBus = std::make_shared<NatsBus>();
     const bool connected = natsBus->connect();
-    sync_fan_out::subscribeChangeFanOut(*natsBus, auditFanOut);
-    sync_fan_out::subscribeActionJournal(*natsBus, auditFanOut);
+    changeFeedConsumer = std::make_shared<ChangeFeedConsumer>(
+        ChangeFeedConsumer::Dependencies{.bus = natsBus.get(),
+                                         .auditFanOut = &auditFanOut},
+        ChangeFeedConsumer::Config{.feeds = change_feed::defaults(),
+                                   .maxDeliver = 50});
     deliveryConsumer = std::make_shared<NotificationDeliveryConsumer>(
         NotificationDeliveryConsumer::Dependencies{.bus = natsBus.get(),
                                                    .dispatch = {}},
@@ -137,7 +141,6 @@ int main()
             .subject = std::string(nats_subject::kNotificationDelivery),
             .maxDeliver = 10,
             .poisonMaxAttempts = 3});
-    deliveryConsumer->start();
     if (connected)
       LOG_INFO << "NATS event bus connected to " << natsBus->options().url;
     else
@@ -195,13 +198,21 @@ int main()
   RoomManager roomManagerLifecycle;
   roomManagerLifecycle.init();
 
-  drogon::app().registerBeginningAdvice([&syncDb = syncDb]() {
-    if (!DbService::runScriptFile(syncDb.schemaPath)) {
+  drogon::app().registerBeginningAdvice([&syncDb = syncDb, &auditFanOut,
+                                         &changeFeedConsumer,
+                                         &deliveryConsumer]() {
+    if (!auditFanOut.migrateLegacySchema() ||
+        !DbService::runScriptFile(syncDb.schemaPath)) {
       LOG_FATAL << "Sync database schema failed to apply — aborting startup";
       _exit(1);
     }
 
     DbService::applyPragmas();
+
+    if (changeFeedConsumer)
+      changeFeedConsumer->start();
+    if (deliveryConsumer)
+      deliveryConsumer->start();
   });
 
   shutdown_signal::onQuit(

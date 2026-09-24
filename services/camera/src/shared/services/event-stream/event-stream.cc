@@ -28,8 +28,9 @@ bool ensure(const std::shared_ptr<NatsBus>& bus, const EnsureInput& input)
   else
     subjects = {nats_subject::kCameraObjectDetected};
 
-  const std::string stream =
-      input.streamName.empty() ? std::string(kName) : input.streamName;
+  const std::string stream = input.streamName.empty()
+                                 ? std::string(nats_subject::kCameraStream)
+                                 : input.streamName;
   if (!bus->ensureStream({.name = stream,
                           .subjects = subjects,
                           .maxAgeNs = stream_retention::kRetentionNs,

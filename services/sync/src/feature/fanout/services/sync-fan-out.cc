@@ -1,10 +1,6 @@
 #include "sync-fan-out.hxx"
 
-#include <drogon/drogon.h>
 #include <feature/fanout/services/audit-fan-out.hxx>
-#include <functional>
-#include <nats/nats-bus.hxx>
-#include <nats/nats-subject.hxx>
 #include <shared/services/room/room-manager.hxx>
 #include <string>
 #include <string_view>
@@ -18,15 +14,6 @@
 namespace
 {
 const RoomManager roomManager;
-
-void inLoop(std::string_view message,
-            std::function<void(const Json::Value&)> handle)
-{
-  drogon::app().getIOLoop(0)->runInLoop(
-      [payload = std::string(message), handle = std::move(handle)]() {
-        handle(json_util::fromString(payload));
-      });
-}
 
 std::string kindOf(const Json::Value& json)
 {
@@ -123,38 +110,31 @@ void dispatchEvent(const Event& event)
   }
 }
 
-void subscribeChangeFanOut(NatsBus& bus, AuditFanOut& auditFanOut)
+drogon::Task<DurableDisposition>
+handleChangePayload(const Json::Value& json, AuditFanOut& auditFanOut)
 {
-  bus.subscribe(nats_subject::kSyncChangeWildcard,
-                [fanOut = &auditFanOut](std::string_view,
-                                        std::string_view message) {
-                  inLoop(message, [fanOut](const Json::Value& json) {
-                    const std::string kind = kindOf(json);
-                    if (kind == sync_change::kKindIdentity)
-                      return;
-                    if (kind == sync_change::kKindAudit) {
-                      fanOut->handleAuditChange(json);
-                      return;
-                    }
-                    const auto event = parseEvent(json);
-                    if (!event) {
-                      LOG_WARN
-                          << "Sync fan-out: dropped malformed change event";
-                      return;
-                    }
-                    dispatchEvent(*event);
-                  });
-                });
+  const std::string kind = kindOf(json);
+  if (kind == sync_change::kKindIdentity)
+    co_return DurableDisposition::Ack;
+  if (kind == sync_change::kKindAudit)
+    co_return co_await auditFanOut.handleAuditChange(json)
+                  ? DurableDisposition::Ack
+                  : DurableDisposition::Term;
+
+  const auto event = parseEvent(json);
+  if (!event) {
+    LOG_WARN << "Sync fan-out: malformed change event refused";
+    co_return DurableDisposition::Term;
+  }
+  dispatchEvent(*event);
+  co_return DurableDisposition::Ack;
 }
 
-void subscribeActionJournal(NatsBus& bus, AuditFanOut& auditFanOut)
+drogon::Task<DurableDisposition> handleActionPayload(ActionPayloadInput input)
 {
-  bus.subscribe(nats_subject::kIdentityUserAction,
-                [fanOut = &auditFanOut](std::string_view,
-                                        std::string_view message) {
-                  inLoop(message, [fanOut](const Json::Value& json) {
-                    fanOut->handleActionJournal(json);
-                  });
-                });
+  co_return co_await input.auditFanOut.handleActionJournal(input.json,
+                                                           input.msgId)
+                ? DurableDisposition::Ack
+                : DurableDisposition::Term;
 }
 }

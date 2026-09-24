@@ -174,9 +174,9 @@ TEST_CASE("the sync delivery inbox is durable, exact and fail-closed")
       consumerConfig());
 
   CHECK(drogon::sync_wait(consumer.handle(deliveryEvent(1))) ==
-        DeliveryDisposition::Ack);
+        DurableDisposition::Ack);
   CHECK(drogon::sync_wait(consumer.handle(deliveryEvent(1))) ==
-        DeliveryDisposition::Ack);
+        DurableDisposition::Ack);
   CHECK(dispatched.size() == 1);
   CHECK(dispatched[0] == 1);
   CHECK(scalar("SELECT status FROM notification_delivery_inbox "
@@ -187,7 +187,7 @@ TEST_CASE("the sync delivery inbox is durable, exact and fail-closed")
                                             .at = 1700000001}));
   CHECK_FALSE(receipt.duplicate);
   CHECK(drogon::sync_wait(consumer.handle(deliveryEvent(2))) ==
-        DeliveryDisposition::Ack);
+        DurableDisposition::Ack);
   CHECK(dispatched.size() == 2);
   CHECK(scalar("SELECT COUNT(*) FROM notification_delivery_inbox "
                "WHERE delivery_id = 2") == "1");
@@ -200,7 +200,7 @@ TEST_CASE("the sync delivery inbox is durable, exact and fail-closed")
             .duplicate == false);
   dispatched.push_back(preCrash.deliveryId);
   CHECK(drogon::sync_wait(consumer.handle(preCrash)) ==
-        DeliveryDisposition::Ack);
+        DurableDisposition::Ack);
   CHECK(dispatched.size() == 4);
   CHECK(scalar("SELECT COUNT(*) FROM notification_delivery_inbox "
                "WHERE delivery_id = 3") == "1");
@@ -210,9 +210,9 @@ TEST_CASE("the sync delivery inbox is durable, exact and fail-closed")
   auto tampered = deliveryEvent(11);
   tampered.title = "Tampered title";
   CHECK(drogon::sync_wait(consumer.handle(deliveryEvent(11))) ==
-        DeliveryDisposition::Ack);
+        DurableDisposition::Ack);
   CHECK(drogon::sync_wait(consumer.handle(tampered)) ==
-        DeliveryDisposition::Ack);
+        DurableDisposition::Ack);
   CHECK(dispatched.size() == 5);
   CHECK(scalar("SELECT status FROM notification_delivery_inbox "
                "WHERE delivery_id = 11") == "conflict");
@@ -232,7 +232,7 @@ TEST_CASE("the sync delivery inbox is durable, exact and fail-closed")
       "notification_id, user_id, status, created_at, updated_at) VALUES (12, "
       "1012, 7, 'bogus', 1700000002, 1700000002)");
   CHECK(drogon::sync_wait(consumer.handle(deliveryEvent(12))) ==
-        DeliveryDisposition::Ack);
+        DurableDisposition::Ack);
   CHECK(dispatched.size() == 5);
   CHECK(scalar("SELECT status FROM notification_delivery_inbox "
                "WHERE delivery_id = 12") == "dead_lettered");
@@ -249,16 +249,16 @@ TEST_CASE("the sync delivery inbox is durable, exact and fail-closed")
        .maxDeliver = 10,
        .poisonMaxAttempts = 2});
   CHECK(drogon::sync_wait(poison.handle(deliveryEvent(21))) ==
-        DeliveryDisposition::Nak);
+        DurableDisposition::Nak);
   CHECK(drogon::sync_wait(poison.handle(deliveryEvent(21))) ==
-        DeliveryDisposition::Term);
+        DurableDisposition::Term);
   CHECK(scalar("SELECT status FROM notification_delivery_inbox "
                "WHERE delivery_id = 21") == "dead_lettered");
   CHECK(scalar("SELECT attempts FROM notification_delivery_inbox "
                "WHERE delivery_id = 21") == "2");
 
   CHECK(drogon::sync_wait(consumer.handlePayload("not-json")) ==
-        DeliveryDisposition::Term);
+        DurableDisposition::Term);
   CHECK(drogon::sync_wait(consumer.handlePayload("{\"deliveryId\":0}")) ==
-        DeliveryDisposition::Term);
+        DurableDisposition::Term);
 }

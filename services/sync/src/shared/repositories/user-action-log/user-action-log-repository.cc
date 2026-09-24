@@ -1,12 +1,37 @@
 #include "user-action-log-repository.hxx"
 
+#include <exception>
 #include <sqlite/db-service.hxx>
 #include <string>
+#include <string_view>
 #include <text/json-util.hxx>
+#include <trantor/utils/Logger.h>
 
 using namespace user_action_log_query;
 
-drogon::Task<UserActionLogSchema>
+namespace
+{
+bool counts(std::string_view query)
+{
+  const auto rows = DbService::client()->execSqlSync(std::string(query));
+  return !rows.empty() && rows.front()["total"].as<int64_t>() > 0;
+}
+}
+
+bool UserActionLogRepository::migrateLegacySchema() const
+{
+  try {
+    if (counts(COUNT_TABLE) && !counts(COUNT_MSG_ID_COLUMN))
+      DbService::client()->execSqlSync(std::string(ADD_MSG_ID_COLUMN));
+    return true;
+  }
+  catch (const std::exception& error) {
+    LOG_ERROR << "user_action_log migration failed: " << error.what();
+    return false;
+  }
+}
+
+drogon::Task<std::optional<UserActionLogSchema>>
 UserActionLogRepository::create(const UserActionLogCreateInput& input) const
 {
   auto client = DbService::client();
@@ -14,7 +39,9 @@ UserActionLogRepository::create(const UserActionLogCreateInput& input) const
       std::string(INSERT), input.userId, input.recordId,
       tableNameToString(input.tableName), userActionToString(input.action),
       json_util::toString(input.oldData), json_util::toString(input.newData),
-      input.ipAddress);
+      input.ipAddress, input.msgId);
+  if (result.affectedRows() == 0)
+    co_return std::nullopt;
 
   UserActionLogSchema schema;
   schema.id = result.insertId();

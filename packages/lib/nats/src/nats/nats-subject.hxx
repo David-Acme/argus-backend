@@ -8,20 +8,25 @@ namespace nats_subject
 {
 
 inline constexpr const char* kSyncChange = "argus.sync.v1.change";
-inline constexpr const char* kSyncChangeWildcard = "argus.*.v1.change";
 
 inline constexpr const char* kCameraChange = "argus.camera.v1.change";
+inline constexpr const char* kCameraStream = "ARGUS_CAMERA";
 
 inline constexpr const char* kProductivityChange =
     "argus.productivity.v1.change";
+inline constexpr const char* kProductivityChangeStream =
+    "ARGUS_PRODUCTIVITY_CHANGE";
 
 inline constexpr const char* kNotificationChange =
     "argus.notification.v1.change";
+inline constexpr const char* kNotificationChangeStream =
+    "ARGUS_NOTIFICATION_CHANGE";
 
 inline constexpr const char* kIdentityChange = "argus.identity.v1.change";
 
 inline constexpr const char* kIdentityUserAction =
     "argus.identity.v1.user-action";
+inline constexpr const char* kIdentityChangeStream = "ARGUS_IDENTITY_CHANGE";
 
 inline constexpr const char* kCameraObjectDetected =
     "argus.camera.v1.object_detected";

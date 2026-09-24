@@ -49,6 +49,42 @@ not in that document is a subject nobody consumes.
   broker did not store the message and the caller must retain and retry it. The
   durable outboxes settle a row on exactly that return value — there the publish
   result IS the acknowledgement.
+- A durable consumer is created with `js_AddConsumer` and then bound
+  (`jsSubOptions.Stream` + `.Consumer`), never left to the subscribe call to
+  create. cnats deletes the consumer its own `js_Subscribe` created as soon as
+  the subscription is unsubscribed or drained — durables included — which would
+  reset the cursor to the stream head on every restart and lose exactly the
+  backlog a durable exists to retain. Created-then-bound, the consumer outlives
+  the process and resumes from its stored cursor.
+- `js_AddConsumer` is create-or-update, so an existing durable takes the
+  caller's editable fields on every attach (`maxDeliver`, the ack wait, the
+  filter, and a fresh deliver subject once nothing is bound to the old one).
+  Its deliver policy is fixed at creation: asking for a different `deliverAll`
+  is refused by the broker ("deliver policy can not be updated") and the attach
+  fails on every retry, so a feed whose policy changes takes a new durable name,
+  which is a new cursor. One durable has one bound subscriber: a second
+  process's bind is refused ("consumer is already bound to a subscription")
+  until the first has left, and its retry then resumes from the shared cursor.
+  Both refusals reach the log with the broker's own reason.
+- Every durable holds at most 256 unacknowledged messages (`MaxAckPending`,
+  editable, so it reaches existing consumers on their next attach). A consumer
+  that applies in order queues what it has been given, and the queue's wait
+  counts against the 60 s ack window; the bound keeps that window from expiring
+  behind the queue unless an apply averages more than about 230 ms.
+- Attach a durable only once whatever its handler marshals onto exists. A
+  durable with a backlog delivers within a millisecond of the bind, on the
+  cnats thread, so a handler that reaches `drogon::app().getIOLoop(0)` must be
+  bound from a beginning advice or later — before `run()` that loop is null.
+- A delivered durable message owns its subscription until it is settled and
+  destroyed, so an ack that lands after `unsubscribe` or `drain` fails on a
+  closed connection instead of reaching freed memory. `drain` returns only once
+  every connection the bus opened has reported closed (bounded at 5 s), because
+  cnats delivers that callback later, on its own thread, with the bus as its
+  closure.
+- `tests/unit/nats-wrapper-test.cc` pins the durable rules against a live
+  broker (`ARGUS_TEST_NATS_URL`): the backlog survives an unsubscribe and a
+  drain, a second binder is refused while the first is bound, and a changed
+  deliver policy is refused.
 - Handlers must not block: a subscription that needs to do real work hands it
   to `BlockingTask` (argus-runtime) rather than doing it on the cnats thread.
 

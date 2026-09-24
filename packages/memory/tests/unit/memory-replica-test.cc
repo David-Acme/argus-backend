@@ -6,6 +6,7 @@
 #include <shared/services/memory/entity-resolver.hxx>
 #include <shared/services/memory/sqlite-graph.hxx>
 #include <nats/nats-bus.hxx>
+#include <nats/nats-subject.hxx>
 #include <sqlite/sqlite-stmt.hxx>
 
 #include <json/json.h>
@@ -13,7 +14,9 @@
 
 #include <filesystem>
 #include <fstream>
+#include <stdexcept>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 namespace
@@ -59,6 +62,28 @@ bool rowExists(sqlite3* db, const RowExistsInput& input)
   return stmt.step() == SQLITE_ROW;
 }
 
+}
+
+TEST_CASE("the catalog replica holds one durable per change stream")
+{
+  const auto& feeds = catalog_feed::defaults();
+  REQUIRE(feeds.size() == 2);
+
+  CHECK(feeds[0].stream == std::string(nats_subject::kCameraStream));
+  CHECK(feeds[0].subject == std::string(nats_subject::kCameraChange));
+  CHECK(feeds[0].durable == "argus-llm-catalog-camera");
+
+  CHECK(feeds[1].stream == std::string(nats_subject::kIdentityChangeStream));
+  CHECK(feeds[1].subject == std::string(nats_subject::kIdentityChange));
+  CHECK(feeds[1].durable == "argus-llm-catalog-identity");
+
+  std::unordered_set<std::string> durables;
+  for (const auto& feed : feeds) {
+    CHECK(nats_subject::isValidSubject(feed.subject,
+                                       nats_subject::SubjectKind::Subscribe));
+    CHECK_FALSE(feed.stream.empty());
+    CHECK(durables.insert(feed.durable).second);
+  }
 }
 
 TEST_CASE("catalog replicas replay identity and camera events and rebuild "
@@ -151,22 +176,28 @@ TEST_CASE("catalog replicas replay identity and camera events and rebuild "
           "event_timestamp":1770000000})"));
   CHECK(rowExists(db, {.sql = "SELECT 1 FROM catalog_zone WHERE id = ?", .id = 5}) == false);
 
-  replica.applyStreamRow(eventJson(
+  replica.applyCamera(eventJson(
       R"({"operation":4,"option":"camera_stream",
           "info":{"id":11,"label":"patio"}})"));
   CHECK(rowExists(db, {.sql = "SELECT 1 FROM catalog_stream WHERE id = ?", .id = 11}));
 
-  replica.applyStreamRow(eventJson(
+  replica.applyCamera(eventJson(
       R"({"operation":4,"option":"camera",
           "info":{"id":12,"name":"garaje"}})"));
-  CHECK(rowExists(db, {.sql = "SELECT 1 FROM catalog_camera WHERE id = ?", .id = 12}) ==
-        false);
+  CHECK(rowExists(db, {.sql = "SELECT 1 FROM catalog_camera WHERE id = ?", .id = 12}));
 
-  replica.applyStreamRow(eventJson(
+  replica.applyCamera(eventJson(
       R"({"operation":5,"option":"camera_stream",
           "info":{"id":11,"label":"patio"}})"));
   CHECK(rowExists(db, {.sql = "SELECT 1 FROM catalog_stream WHERE id = ?", .id = 11}) ==
         false);
+
+  REQUIRE(sqlite3_exec(db, "DROP TABLE catalog_zone", nullptr, nullptr,
+                       nullptr) == SQLITE_OK);
+  CHECK_THROWS_AS(replica.applyCamera(eventJson(
+                      R"({"operation":4,"option":"zone",
+                          "info":{"id":6,"name":"garaje"}})")),
+                  std::runtime_error);
 
   graph.close();
   std::remove(kScratchConfig);

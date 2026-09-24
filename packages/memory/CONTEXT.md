@@ -49,12 +49,31 @@ loop.
   (`[memory] schema_file`) so the shared queries and `VecDb` apply the same
   DDL the package ships.
 - **The catalog replica feed (Ruling BX)**: `argus.identity.v1.change`
-  (new subject; the legacy publishes person/user rows through the
-  `identity_change` sink installed in application.cc and the gateway
-  main.cc) plus `argus.camera.v1.change` replay camera/person changes into
-  the replicas. Camera_stream rows are written via `/sync` and only ride
-  `argus.*.v1.change`, so the replica also subscribes the sync wildcard
-  filtered to `option == "camera_stream"`. On boot, replica tables still
+  (`kind == "identity"` person rows, published through the `identity_change`
+  sink) plus `argus.camera.v1.change` replay camera/person changes into the
+  replicas. Since closure item 5 the replica holds one **durable JetStream
+  consumer per stream** (`catalog_feed::defaults()`: `argus-llm-catalog-camera`
+  on `ARGUS_CAMERA`, `argus-llm-catalog-identity` on `ARGUS_IDENTITY_CHANGE`)
+  with `deliverAll = true`, which decides where a consumer's cursor starts and
+  so applies only when that consumer is first created — the broker refuses to
+  change an existing consumer's policy, so a changed policy takes a new
+  durable name; the cursor itself survives a restart because the bus creates
+  the durable and then binds to it.
+  The applies are idempotent upserts and deletes, and a failed statement
+  throws, so the message is nak'd for redelivery instead of acked. The
+  durables attach only after the snapshot fill below has run, from the same
+  beginning advice (and whether the fill succeeded or not): the fill skips any
+  table that already holds a row, so a replay landing first would leave a
+  fresh replica with the few rows the retained window happened to carry
+  instead of the whole catalog. Attached after it, the from-scratch replay is
+  applied on top of the snapshot, and an idempotent upsert of an older row
+  followed by its newer one converges on the snapshot's value. The plain
+  wildcard subscription is gone: it existed for `camera_stream` rows, which
+  nothing publishes today, and a future change to that table is camera's own,
+  on the camera subject the replica already holds. Every apply runs marshalled onto IOLoop 0 so the
+  arrival order is the stream order, and the host builds the replica whenever
+  `nats.url` is set (not only when `connect()` succeeds) so a bus that comes up
+  later still attaches. On boot, replica tables still
   empty get ONE snapshot fill from the typed rows the host fetched over
   `argus.identity.v1.ListPersons` and `argus.camera.v1.ListCatalog`;
   populated tables are never re-seeded. The fill runs even when the

@@ -3,6 +3,7 @@
 #include <nats/nats.h>
 
 #include <atomic>
+#include <condition_variable>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -72,6 +73,7 @@ public:
   {
     std::string_view subject;
     std::string_view payload;
+    std::string_view msgId;
     int delivered{0};
   };
 
@@ -125,11 +127,17 @@ private:
   {
     void operator()(jsStreamInfo* info) const;
   };
+  struct InboxDeleter
+  {
+    void operator()(natsInbox* inbox) const;
+  };
   using ConnectionPtr = std::unique_ptr<natsConnection, ConnectionDeleter>;
   using OptionsPtr = std::unique_ptr<natsOptions, OptionsDeleter>;
   using SubscriptionPtr = std::unique_ptr<natsSubscription, SubscriptionDeleter>;
+  using SharedSubscriptionPtr = std::shared_ptr<natsSubscription>;
   using JsCtxPtr = std::unique_ptr<jsCtx, JsCtxDeleter>;
   using StreamInfoPtr = std::unique_ptr<jsStreamInfo, StreamInfoDeleter>;
+  using InboxPtr = std::unique_ptr<natsInbox, InboxDeleter>;
 
   struct PendingSubscription
   {
@@ -149,7 +157,7 @@ private:
   {
     uint64_t id{0};
     DurableInput input;
-    SubscriptionPtr raw;
+    SharedSubscriptionPtr raw;
   };
 
   bool ensureJetStream();
@@ -162,6 +170,7 @@ private:
   void supervise();
 
   bool attach(const PendingSubscription& pending, uint64_t id);
+  bool ensureDurable(const DurableInput& input);
   bool attachDurable(const DurableInput& input, uint64_t id);
   void attachPendingDurable();
 
@@ -182,6 +191,8 @@ private:
   JsCtxPtr js_;
 
   mutable std::mutex mutex_;
+  std::condition_variable closedSignal_;
+  int openConnections_{0};
   uint64_t nextSubscriptionId_{1};
   std::unordered_map<uint64_t, PendingSubscription> pending_;
   std::unordered_map<natsSubscription*, ActiveSubscription> active_;

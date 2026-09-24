@@ -9,8 +9,6 @@ class NatsBus;
 namespace camera_event_stream
 {
 
-inline constexpr const char* kName = "ARGUS_CAMERA";
-
 struct EnsureInput
 {
   std::string streamName;

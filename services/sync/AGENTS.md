@@ -94,7 +94,9 @@ argus-sync/
                         and the voice gRPC relay the forwarder rides
   src/feature/fanout/
     repositories/       delivery inbox (query + repository + receipt)
-    services/           sync fan-out, audit fan-out, delivery consumer
+    services/           the change-feed consumer (one durable per change
+                        stream), sync fan-out, the durable settlement pair,
+                        audit fan-out, delivery consumer
                         and the two audit writers they persist through
   src/shared/repositories/  audit_log, user_audit_log, user_action_log
   src/shared/schemas/       their three row mappings

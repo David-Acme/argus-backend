@@ -38,8 +38,9 @@ reconnecting clients converge.
 
 - `RoomManager` keeps module rooms (`1 + TableName`) and one user room per
   user id, with `thread_local` state.
-- Services publish persisted changes to NATS (`argus.sync.v1.change` and
-  domain subjects); `argus-sync` subscribes `argus.*.v1.change` and fans out.
+- Services publish persisted changes to NATS on their own domain subject
+  (`argus.<domain>.v1.change`); `argus-sync` holds one durable JetStream
+  consumer per domain change stream and fans the events out.
 - Camera sync tables are served by `argus-camera` through the typed
   `argus.camera.v1.SyncService.PullTable` gRPC contract; `argus-sync` applies
   role gating and maps each leg with the same cursor semantics.

@@ -12,6 +12,18 @@
 #include <config/config-service.hxx>
 #include "nats-subject.hxx"
 
+namespace
+{
+constexpr const char* kMsgIdHeader = "Nats-Msg-Id";
+constexpr int64_t kMaxAckPending = 256;
+
+const char* lastErrorText()
+{
+  const char* text = nats_GetLastError(nullptr);
+  return text == nullptr ? "no detail" : text;
+}
+}
+
 void NatsBus::ConnectionDeleter::operator()(natsConnection* connection) const
 {
   if (connection != nullptr)
@@ -41,6 +53,12 @@ void NatsBus::StreamInfoDeleter::operator()(jsStreamInfo* info) const
 {
   if (info != nullptr)
     jsStreamInfo_Destroy(info);
+}
+
+void NatsBus::InboxDeleter::operator()(natsInbox* inbox) const
+{
+  if (inbox != nullptr)
+    natsInbox_Destroy(inbox);
 }
 
 NatsBus::~NatsBus()
@@ -95,14 +113,14 @@ void NatsBus::onReconnected(natsConnection* connection, void* closure)
 void NatsBus::onClosed(natsConnection* connection, void* closure)
 {
   auto* bus = static_cast<NatsBus*>(closure);
-  if (bus == nullptr ||
-      bus->callbacksSuppressed_.load(std::memory_order_acquire))
+  if (bus == nullptr)
     return;
   std::lock_guard lock(bus->mutex_);
-  if (bus->connection_.get() != connection ||
-      bus->callbacksSuppressed_.load(std::memory_order_acquire))
-    return;
-  bus->connected_ = false;
+  if (bus->connection_.get() == connection &&
+      !bus->callbacksSuppressed_.load(std::memory_order_acquire))
+    bus->connected_ = false;
+  --bus->openConnections_;
+  bus->closedSignal_.notify_all();
 }
 
 void NatsBus::onMessage(natsConnection* connection, natsSubscription* sub,
@@ -147,22 +165,27 @@ void NatsBus::onDurableMessage(natsConnection* connection,
   }
 
   DurableHandler handler;
+  SharedSubscriptionPtr subscription;
   {
     std::lock_guard lock(bus->mutex_);
     if (!bus->callbacksSuppressed_.load(std::memory_order_acquire)) {
       const auto it = bus->durable_.find(sub);
-      if (it != bus->durable_.end())
+      if (it != bus->durable_.end()) {
         handler = it->second.input.handler;
+        subscription = it->second.raw;
+      }
     }
   }
 
-  if (!handler) {
+  if (!handler || subscription == nullptr) {
     natsMsg_Destroy(msg);
     return;
   }
 
   const std::shared_ptr<natsMsg> message(
-      msg, [](natsMsg* value) { natsMsg_Destroy(value); });
+      msg, [subscription = std::move(subscription)](natsMsg* value) {
+        natsMsg_Destroy(value);
+      });
   auto settled = std::make_shared<std::atomic<bool>>(false);
   auto ack = [message, settled]() {
     if (settled->exchange(true, std::memory_order_acq_rel))
@@ -185,11 +208,16 @@ void NatsBus::onDurableMessage(natsConnection* connection,
     delivered = static_cast<int>(meta->NumDelivered);
     jsMsgMetaData_Destroy(meta);
   }
+  const char* messageId = nullptr;
+  if (natsMsgHeader_Get(msg, kMsgIdHeader, &messageId) != NATS_OK)
+    messageId = nullptr;
   const DurableMessage durableMessage{
       .subject = natsMsg_GetSubject(msg),
       .payload = std::string_view(
           natsMsg_GetData(msg),
           static_cast<size_t>(natsMsg_GetDataLength(msg))),
+      .msgId = messageId == nullptr ? std::string_view()
+                                    : std::string_view(messageId),
       .delivered = delivered};
   handler(durableMessage, DurableSettlement{.ack = std::move(ack),
                                             .nak = std::move(nak),
@@ -268,11 +296,12 @@ bool NatsBus::connectOnce()
     return false;
   }
 
-  std::vector<SubscriptionPtr> stale;
+  std::vector<SharedSubscriptionPtr> stale;
   std::unordered_map<natsSubscription*, ActiveSubscription> oldActive;
   std::unordered_map<natsSubscription*, DurableSubscription> oldDurable;
   {
     std::lock_guard lock(mutex_);
+    ++openConnections_;
     if (drained_) {
       ConnectionPtr(raw).reset();
       return false;
@@ -290,7 +319,7 @@ bool NatsBus::connectOnce()
     ensureJetStream();
 
     for (auto& [sub, active] : oldActive)
-      stale.push_back(std::move(active.raw));
+      stale.emplace_back(std::move(active.raw));
     for (auto& [sub, durable] : oldDurable) {
       stale.push_back(std::move(durable.raw));
       pendingDurable_.emplace(durable.id, durable.input);
@@ -332,9 +361,43 @@ bool NatsBus::attach(const PendingSubscription& pending, uint64_t id)
   return true;
 }
 
+bool NatsBus::ensureDurable(const DurableInput& input)
+{
+  natsInbox* rawInbox = nullptr;
+  if (natsInbox_Create(&rawInbox) != NATS_OK || rawInbox == nullptr)
+    return false;
+  const InboxPtr inbox(rawInbox);
+
+  jsOptions options;
+  jsOptions_Init(&options);
+  jsConsumerConfig config;
+  jsConsumerConfig_Init(&config);
+  config.Durable = input.durable.c_str();
+  config.DeliverSubject = inbox.get();
+  config.DeliverPolicy = input.deliverAll ? js_DeliverAll : js_DeliverNew;
+  config.AckPolicy = js_AckExplicit;
+  config.AckWait = 60LL * 1000 * 1000 * 1000;
+  config.MaxDeliver = input.maxDeliver > 0 ? input.maxDeliver : 5;
+  config.MaxAckPending = kMaxAckPending;
+  config.FilterSubject = input.subject.c_str();
+
+  auto errorCode = jsErrCode(0);
+  const natsStatus status = js_AddConsumer(
+      nullptr, js_.get(), input.stream.c_str(), &config, &options, &errorCode);
+
+  if (status == NATS_OK || errorCode == JSConsumerNameExistErr ||
+      errorCode == JSConsumerExistingActiveErr)
+    return true;
+
+  LOG_WARN << "NATS durable consumer " << input.durable << " on "
+           << input.stream << " is not ready: " << natsStatus_GetText(status)
+           << " (err " << errorCode << ": " << lastErrorText() << ")";
+  return false;
+}
+
 bool NatsBus::attachDurable(const DurableInput& input, uint64_t id)
 {
-  if (js_ == nullptr)
+  if (js_ == nullptr || !ensureDurable(input))
     return false;
 
   jsOptions options;
@@ -342,29 +405,28 @@ bool NatsBus::attachDurable(const DurableInput& input, uint64_t id)
   jsSubOptions subOptions;
   jsSubOptions_Init(&subOptions);
   subOptions.Stream = input.stream.c_str();
-  subOptions.Config.Durable = input.durable.c_str();
-  subOptions.Config.DeliverPolicy =
-      input.deliverAll ? js_DeliverAll : js_DeliverNew;
+  subOptions.Consumer = input.durable.c_str();
   subOptions.Config.AckPolicy = js_AckExplicit;
   subOptions.Config.AckWait = 60LL * 1000 * 1000 * 1000;
   subOptions.Config.MaxDeliver = input.maxDeliver > 0 ? input.maxDeliver : 5;
   subOptions.ManualAck = true;
 
   natsSubscription* rawSub = nullptr;
-  jsErrCode errorCode = jsErrCode(0);
+  auto errorCode = jsErrCode(0);
   const natsStatus status =
       js_Subscribe(&rawSub, js_.get(), input.subject.c_str(), onDurableMessage,
                    this, &options, &subOptions, &errorCode);
   if (status != NATS_OK || rawSub == nullptr) {
     LOG_WARN << "NATS durable subscribe to " << input.subject
              << " failed: " << natsStatus_GetText(status) << " (err "
-             << errorCode << ")";
-
+             << errorCode << ": " << lastErrorText() << ")";
     return false;
   }
-  durable_.emplace(rawSub, DurableSubscription{.id = id,
-                                               .input = input,
-                                               .raw = SubscriptionPtr(rawSub)});
+  durable_.emplace(
+      rawSub, DurableSubscription{
+                  .id = id,
+                  .input = input,
+                  .raw = SharedSubscriptionPtr(rawSub, SubscriptionDeleter{})});
   activeIndex_.emplace(id, rawSub);
   return true;
 }
@@ -515,7 +577,7 @@ bool NatsBus::ensureStream(const StreamInput& input)
     config.Storage = js_FileStorage;
     config.Duplicates = input.duplicatesNs;
 
-    jsErrCode errorCode = jsErrCode(0);
+    auto errorCode = jsErrCode(0);
     const natsStatus status =
         js_AddStream(nullptr, js_.get(), &config, nullptr, &errorCode);
     if (status == NATS_OK)
@@ -538,7 +600,7 @@ NatsBus::streamInfo(const std::string& name)
   if (!connectedLocked() || !ensureJetStream())
     return std::nullopt;
   jsStreamInfo* rawInfo = nullptr;
-  jsErrCode errorCode = jsErrCode(0);
+  auto errorCode = jsErrCode(0);
   if (js_GetStreamInfo(&rawInfo, js_.get(), name.c_str(), nullptr,
                        &errorCode) != NATS_OK ||
       rawInfo == nullptr || rawInfo->Config == nullptr) {
@@ -582,7 +644,7 @@ bool NatsBus::reconcileStream(const StreamInput& input)
   if (!connectedLocked() || !ensureJetStream())
     return false;
   jsStreamInfo* rawInfo = nullptr;
-  jsErrCode errorCode = jsErrCode(0);
+  auto errorCode = jsErrCode(0);
   if (js_GetStreamInfo(&rawInfo, js_.get(), input.name.c_str(), nullptr,
                        &errorCode) != NATS_OK ||
       rawInfo == nullptr || rawInfo->Config == nullptr) {
@@ -665,7 +727,7 @@ std::optional<uint64_t> NatsBus::subscribe(const std::string& subject,
 
 bool NatsBus::unsubscribe(uint64_t id)
 {
-  SubscriptionPtr raw;
+  SharedSubscriptionPtr raw;
   {
     std::lock_guard lock(mutex_);
     const auto index = activeIndex_.find(id);
@@ -696,7 +758,7 @@ void NatsBus::drain()
   callbacksSuppressed_.store(true, std::memory_order_release);
   stopping_.store(true, std::memory_order_release);
   std::thread supervisor;
-  std::vector<SubscriptionPtr> subs;
+  std::vector<SharedSubscriptionPtr> subs;
   ConnectionPtr connection;
   OptionsPtr options;
   JsCtxPtr js;
@@ -710,7 +772,7 @@ void NatsBus::drain()
     pendingDurable_.clear();
     subs.reserve(active_.size() + durable_.size());
     for (auto& [sub, active] : active_)
-      subs.push_back(std::move(active.raw));
+      subs.emplace_back(std::move(active.raw));
     for (auto& [sub, durable] : durable_)
       subs.push_back(std::move(durable.raw));
     active_.clear();
@@ -732,6 +794,12 @@ void NatsBus::drain()
 
   if (connection != nullptr)
     natsConnection_Close(connection.get());
+  connection.reset();
+
+  std::unique_lock lock(mutex_);
+  if (!closedSignal_.wait_for(lock, std::chrono::seconds(5),
+                              [this] { return openConnections_ <= 0; }))
+    LOG_WARN << "NATS bus drained before its connection reported closed";
 }
 
 bool NatsBus::isConnected() const

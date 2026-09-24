@@ -1,14 +1,15 @@
 #pragma once
 
 #include <auth/user-role.hxx>
+#include <drogon/utils/coroutine.h>
 #include <feature/fanout/services/audit-fan-out.hxx>
+#include <feature/fanout/services/durable-disposition.hxx>
 #include <json/value.h>
 #include <optional>
 #include <shared/services/room/room-manager.hxx>
+#include <string_view>
 #include <sync/socket-emit-dto.hxx>
 #include <vector>
-
-class NatsBus;
 
 namespace sync_fan_out
 {
@@ -41,7 +42,15 @@ std::optional<Event> parseEvent(const Json::Value& json);
 FanOutPlan planEvent(const Event& event);
 void dispatchEvent(const Event& event);
 
-void subscribeChangeFanOut(NatsBus& bus, AuditFanOut& auditFanOut);
-void subscribeActionJournal(NatsBus& bus, AuditFanOut& auditFanOut);
+drogon::Task<DurableDisposition> handleChangePayload(const Json::Value& json,
+                                                     AuditFanOut& auditFanOut);
+struct ActionPayloadInput
+{
+  const Json::Value& json;
+  std::string_view msgId;
+  AuditFanOut& auditFanOut;
+};
+
+drogon::Task<DurableDisposition> handleActionPayload(ActionPayloadInput input);
 
 }
