@@ -10,7 +10,7 @@ App ── wss /media ──> argus-camera:7026 ──> StreamHub ──> go2rtc
 ```
 
 - Route: `/media` on argus-camera's app-facing TLS listener
-  (`services/camera/src/controllers/camera-media-socket.hxx`,
+  (`services/camera/src/feature/media/camera-media-socket.hxx`,
   `ListenerConfig::resolveServiceTls("camera", 7026)`), filters
   `DeviceFilter` + `JwtFilter`
   (same auth as `/sync`; token is accepted by header, query or cookie via
@@ -88,5 +88,5 @@ sessions on `/sync` are unaffected. Caps (deploy stack values):
   `SyncForwarder` vocabulary both sockets implement.
 - `services/sync/src/feature/transport/controllers/sync-socket.hxx` — the
   engine side of that vocabulary.
-- `services/camera/src/controllers/camera-media-socket.{hxx,cc}` — endpoint.
-- `services/camera/src/controllers/camera-media-service.cc` — protocol.
+- `services/camera/src/feature/media/camera-media-socket.{hxx,cc}` — endpoint.
+- `services/camera/src/feature/media/camera-media-service.cc` — protocol.

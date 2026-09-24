@@ -1,15 +1,15 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
 
-#include <controllers/camera-media-service.hxx>
+#include <feature/media/camera-media-service.hxx>
 #include <drogon/WebSocketConnection.h>
 #include <drogon/drogon.h>
 #include <errors/response-exception.hxx>
 #include <errors/validation-exception.hxx>
-#include <feature/api/camera/controllers/camera-controller.hxx>
-#include <feature/api/camera/dtos/create-camera-dto.hxx>
-#include <feature/api/zone/controllers/zone-controller.hxx>
-#include <feature/api/zone/dtos/create-zone-dto.hxx>
+#include <feature/camera/controllers/camera-controller.hxx>
+#include <feature/camera/dtos/create-camera-dto.hxx>
+#include <feature/zone/controllers/zone-controller.hxx>
+#include <feature/zone/dtos/create-zone-dto.hxx>
 #include <auth/jwt-filter.hxx>
 #include <text/json-util.hxx>
 #include <validation/validator.hxx>

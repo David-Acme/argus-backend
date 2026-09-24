@@ -1,0 +1,39 @@
+#pragma once
+
+#include <cstdint>
+#include <drogon/utils/coroutine.h>
+#include <feature/camera-control/dtos/camera-preset-dto.hxx>
+#include <feature/camera-control/dtos/camera-ptz-dto.hxx>
+#include <feature/camera-control/dtos/camera-settings-dto.hxx>
+#include <feature/camera-control/dtos/camera-talk-dto.hxx>
+#include <json/value.h>
+#include <optional>
+#include <shared/repositories/camera/camera-repository.hxx>
+#include <shared/services/camera-driver/camera-driver.hxx>
+#include <tts/tts-remote.hxx>
+
+using CameraControlResult = std::optional<DriverResult>;
+
+class CameraControlFeatureService
+{
+public:
+  drogon::Task<CameraControlResult> status(int64_t cameraId) const;
+  drogon::Task<CameraControlResult> presets(int64_t cameraId) const;
+  drogon::Task<CameraControlResult> move(int64_t cameraId,
+                                         const CameraPtzDto& body) const;
+  drogon::Task<CameraControlResult> preset(int64_t cameraId,
+                                          const CameraPresetDto& body) const;
+  drogon::Task<CameraControlResult> settings(int64_t cameraId,
+                                            const CameraSettingsDto& body) const;
+  drogon::Task<CameraControlResult> speak(int64_t cameraId,
+                                          const CameraTalkDto& body) const;
+  drogon::Task<CameraControlResult> capabilities(int64_t cameraId) const;
+
+private:
+  drogon::Task<CameraControlResult>
+  onDevice(int64_t cameraId,
+           const std::function<DriverResult(ICameraDriver&)>& work) const;
+
+  CameraRepository repository_;
+  TtsClient tts_;
+};

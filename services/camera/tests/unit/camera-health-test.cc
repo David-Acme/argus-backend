@@ -1,9 +1,9 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
 
-#include <monitor/health-event.hxx>
-#include <monitor/camera-health-monitor.hxx>
-#include <operator/frame-source.hxx>
+#include <feature/monitor/health-event.hxx>
+#include <feature/monitor/camera-health-monitor.hxx>
+#include <feature/operator/frame-source.hxx>
 #include <opencv2/imgcodecs.hpp>
 
 class SyntheticHealthSource final : public IFrameSource

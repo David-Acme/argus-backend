@@ -8,9 +8,13 @@ zone type enums, and the nine refusals the boundary throws.
 A CONTRACT, not a service and not a library: one `argus_contracts`
 declaration, an INTERFACE target with no translation unit. The include root is
 `src/`, so a consumer writes `<camera/zone-type.hxx>` and links
-`argus::contracts::camera`. Four CMakeLists link it — `services/camera`'s
-`camera-core` (`:263`) and the shared repositories that page the camera tables
-(`src/shared/repositories/CMakeLists.txt:15`), `services/guard`'s guard module
+`argus::contracts::camera`. Eleven CMakeLists link it — nine in
+`services/camera`: the executable's own `MODULES` list (`CMakeLists.txt:217`),
+two suites, and the eight modules that page the camera tables or speak the
+vocabulary (`src/camera`, `feature/{camera,camera-control,media,operator,sync,
+zone}` and `src/shared/repositories`, whose link is at
+`src/shared/repositories/CMakeLists.txt:8`) — plus
+`services/guard`'s guard module
 (`src/feature/guard/CMakeLists.txt:13`), and `argus-sync`'s `sync-transport`
 module (`services/sync/src/feature/transport/CMakeLists.txt:24`, where a zone
 or an event crosses the sync leg as the same four enums).

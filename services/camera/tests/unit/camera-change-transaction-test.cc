@@ -3,7 +3,7 @@
 
 #include <camera/nats-camera-change-sink.hxx>
 #include <drogon/drogon.h>
-#include <feature/api/camera/services/camera-feature-service.hxx>
+#include <feature/camera/services/camera-feature-service.hxx>
 #include <shared/repositories/change-outbox/change-outbox-repository.hxx>
 #include <sqlite/db-service.hxx>
 #include <sync/camera-change-sink.hxx>

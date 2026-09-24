@@ -12,13 +12,15 @@ library whose include root is `src/`, so a consumer writes
 (`argus/camera/v1/actions.proto`) and one source
 (`src/camera/camera-action-client.cc`) — measured deviation: the source
 directory is `src/camera/`, not `src/camera-actions/`, while the target and the
-include prefix follow the package name. Five link lines in three CMakeLists
-take it: `argus-guard` (`services/guard/CMakeLists.txt:134`) and
-`guard-assessment-live-test` (:250), `argus_guard`
-(`services/guard/src/feature/guard/CMakeLists.txt:21`, the feature module's
-`DEPENDS`), `camera-core` (`services/camera/CMakeLists.txt:241`) and
-`camera-action-rpc-test` (:483). The two service CMakeLists also add the
-package to their own tree by path (`services/guard:85`, `services/camera:162`).
+include prefix follow the package name. Five link lines in four CMakeLists
+take it: `argus-guard` (`services/guard/CMakeLists.txt:105`) and
+`guard-assessment-live-test` (:223), `argus_guard`
+(`services/guard/src/feature/guard/CMakeLists.txt:23`, the feature module's
+`DEPENDS`), `argus::camera-actions`
+(`services/camera/src/feature/actions/CMakeLists.txt:14`, the feature module's
+`DEPENDS`) and `camera-action-rpc-test` (`services/camera/CMakeLists.txt:271`).
+The two service CMakeLists also add the package to their own tree by path
+(`services/guard:72`, `services/camera:114`).
 13 C++ files include the header: the in-package suite, `services/camera`'s
 action-rpc suite, and eleven guard files (`main.cc`, `guard-service.cc`,
 `guard-assessment.cc` and the eight guard unit suites).

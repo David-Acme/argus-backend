@@ -2,7 +2,7 @@
 #include <doctest/doctest.h>
 
 #include <drogon/drogon.h>
-#include <shared/repositories/object-event-outbox/object-event-outbox-repository.hxx>
+#include <feature/operator/repositories/object-event-outbox/object-event-outbox-repository.hxx>
 #include <sqlite/db-service.hxx>
 
 #include <chrono>

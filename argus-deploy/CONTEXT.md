@@ -114,7 +114,7 @@ against a real client.
   via `NATS_CLIENT_PORT`, `NATS_MONITOR_PORT`) for host-side reachability.
 - **argus-camera** (Fase 2) serves its whole domain itself: `/camera` and
   `/zone` at every segment depth, and the client-facing `/media` socket
-  (`services/camera/src/controllers/camera-media-socket.cc`) that carries
+  (`services/camera/src/feature/media/camera-media-socket.cc`) that carries
   `camera:*` frames and fMP4 over the published 7026 listener; argus-sync
   pulls the camera sync tables from the 7036 gRPC listener (F6-5, repointed at
   the sync split in Phase 3c-2). Its `[nats] url` points at the internal alias

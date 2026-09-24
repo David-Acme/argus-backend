@@ -115,125 +115,49 @@ if(NOT TARGET argus::clients::camera-actions)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/camera-actions
                      ${CMAKE_BINARY_DIR}/clients/camera-actions EXCLUDE_FROM_ALL)
 endif()
-
-add_subdirectory(src/shared/repositories)
-add_subdirectory(src/shared/repositories/action-command)
-add_subdirectory(src/shared/repositories/object-event-outbox)
-add_subdirectory(src/shared/repositories/change-outbox)
-
-argus_module(NAME camera-rpc
-    SOURCES
-        src/feature/sync/camera-sync-rpc-service.cc
-        src/feature/health/health-rpc-service.cc
-    INCLUDES
-        src
-    DEPENDS
-        argus::camera-repositories
-        argus::clients::camera
-        argus::lib::grpc-health
-        argus::contracts::sync)
-
-target_compile_options(argus_camera-rpc PRIVATE -Wall -Wextra)
+if(NOT TARGET argus::clients::identity)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/identity
+                     ${CMAKE_BINARY_DIR}/clients/identity EXCLUDE_FROM_ALL)
+endif()
 
 set(NCNN_SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../third_party/ncnn/src)
 
-add_library(camera-core STATIC
-    ${CAMERA_SRC_ROOT}/controllers/camera-media-service.cc
-    ${CAMERA_SRC_ROOT}/controllers/camera-media-socket.cc
-    ${CAMERA_SRC_ROOT}/feature/api/camera-control/controllers/camera-control-controller.cc
-    ${CAMERA_SRC_ROOT}/feature/api/camera-control/dtos/camera-preset-dto.cc
-    ${CAMERA_SRC_ROOT}/feature/api/camera-control/dtos/camera-ptz-dto.cc
-    ${CAMERA_SRC_ROOT}/feature/api/camera-control/dtos/camera-settings-dto.cc
-    ${CAMERA_SRC_ROOT}/feature/api/camera-control/dtos/camera-talk-dto.cc
-    ${CAMERA_SRC_ROOT}/feature/api/camera-control/services/camera-control-feature-service.cc
-    ${CAMERA_SRC_ROOT}/shared/services/camera-driver/camera-driver-registry.cc
-    ${CAMERA_SRC_ROOT}/shared/services/camera-driver/tapo-driver.cc
-    ${CAMERA_SRC_ROOT}/shared/services/tapo/legacy-stok-transport.cc
-    ${CAMERA_SRC_ROOT}/shared/services/tapo/secure-passthrough-transport.cc
-    ${CAMERA_SRC_ROOT}/shared/services/tapo/tapo-api.cc
-    ${CAMERA_SRC_ROOT}/shared/services/tapo/tapo-audio.cc
-    ${CAMERA_SRC_ROOT}/shared/services/tapo/tapo-client.cc
-    ${CAMERA_SRC_ROOT}/shared/services/tapo/tapo-crypto.cc
-    ${CAMERA_SRC_ROOT}/shared/services/tapo/tapo-http.cc
-    ${CAMERA_SRC_ROOT}/shared/services/tapo/tapo-talk-client.cc
-    ${CAMERA_SRC_ROOT}/shared/services/tapo/tapo-ts-muxer.cc
-    ${CAMERA_SRC_ROOT}/camera/camera-config.cc
-    ${CAMERA_SRC_ROOT}/camera/nats-camera-change-sink.cc
-    ${CAMERA_SRC_ROOT}/objects/ncnn-object-detector.cc
-    ${CAMERA_SRC_ROOT}/monitor/camera-health-monitor.cc
-    ${CAMERA_SRC_ROOT}/monitor/nats-health-event-sink.cc
-    ${CAMERA_SRC_ROOT}/operator/camera-operator-service.cc
-    ${CAMERA_SRC_ROOT}/operator/event-intelligence.cc
-    ${CAMERA_SRC_ROOT}/operator/go2rtc-frame-source.cc
-    ${CAMERA_SRC_ROOT}/operator/identity-known-person-matcher.cc
-    ${CAMERA_SRC_ROOT}/operator/nats-object-event-sink.cc
-    ${CAMERA_SRC_ROOT}/operator/object-event.cc
-    ${CAMERA_SRC_ROOT}/operator/operator-config.cc
-    ${CAMERA_SRC_ROOT}/operator/zone-provider.cc
-    ${CAMERA_SRC_ROOT}/operator/zone-source.cc
-    ${CAMERA_SRC_ROOT}/feature/api/camera/controllers/camera-controller.cc
-    ${CAMERA_SRC_ROOT}/feature/api/camera/dtos/create-camera-dto.cc
-    ${CAMERA_SRC_ROOT}/feature/api/camera/dtos/update-camera-dto.cc
-    ${CAMERA_SRC_ROOT}/feature/api/camera/services/camera-feature-service.cc
-    ${CAMERA_SRC_ROOT}/feature/api/zone/controllers/zone-controller.cc
-    ${CAMERA_SRC_ROOT}/feature/api/zone/dtos/create-zone-dto.cc
-    ${CAMERA_SRC_ROOT}/feature/api/zone/dtos/update-zone-dto.cc
-    ${CAMERA_SRC_ROOT}/feature/api/zone/services/zone-feature-service.cc
-    ${CAMERA_SRC_ROOT}/feature/actions/audio-capture.cc
-    ${CAMERA_SRC_ROOT}/feature/actions/camera-action-rpc-service.cc
-    ${CAMERA_SRC_ROOT}/feature/actions/stt-transcriber.cc
-    ${CAMERA_SRC_ROOT}/shared/services/stream/camera-source-registrar.cc
-    ${CAMERA_SRC_ROOT}/shared/services/stream/go2rtc-manager.cc
-    ${CAMERA_SRC_ROOT}/shared/services/stream/stream-hub.cc
-    ${CAMERA_SRC_ROOT}/shared/services/stream/snapshot-store.cc
-    ${CAMERA_SRC_ROOT}/shared/services/stream/upstream-http.cc
-    ${CAMERA_SRC_ROOT}/shared/services/stream/ws-frame.cc
-    ${CAMERA_SRC_ROOT}/shared/services/evidence/evidence-uploader.cc
-    ${CAMERA_SRC_ROOT}/shared/services/event-stream/event-stream.cc
-)
+add_subdirectory(src/camera)
+add_subdirectory(src/shared/repositories)
+add_subdirectory(src/shared/repositories/change-outbox)
+add_subdirectory(src/shared/services/tapo)
+add_subdirectory(src/shared/services/camera-driver)
+add_subdirectory(src/shared/services/stream)
+add_subdirectory(src/shared/services/event-stream)
 
-target_include_directories(camera-core SYSTEM PUBLIC
-    ${NCNN_SRC_DIR}
-    ${CMAKE_BINARY_DIR}/third_party/ncnn/src)
+file(GLOB CAMERA_FEATURE_MODULES CONFIGURE_DEPENDS
+    "${CAMERA_SRC_ROOT}/feature/*/CMakeLists.txt")
+foreach(module IN LISTS CAMERA_FEATURE_MODULES)
+    get_filename_component(module_dir "${module}" DIRECTORY)
+    add_subdirectory("${module_dir}")
+endforeach()
 
-target_include_directories(camera-core PUBLIC ${CAMERA_SRC_ROOT})
+add_subdirectory(src/app/rpc)
 
-target_link_libraries(camera-core PUBLIC
-    argus::camera-repositories
-    argus::lib::sqlite
-    argus::camera-action-command
-    argus::camera-object-event-outbox
-    argus::camera-change-outbox
-    argus::lib::audio
-    argus::clients::tts
-    argus::clients::stt
-    argus::clients::camera-actions
-    sqlite-vec
-    opencv::opencv
-    ${ARGUS_NCNN_TARGET}
-    argus::hardware-profile-gpu
-    argus::contracts::sync
-    argus::lib::auth
-    argus::lib::config
-    argus::hardware-profile
-    argus::lib::text
-    argus::lib::nats
-    argus::lib::storage
-    argus::lib::runtime
-    argus::lib::validation
-    argus::lib::http
-    OpenSSL::SSL
-    OpenSSL::Crypto)
-target_link_libraries(camera-core PRIVATE argus::contracts::camera argus::contracts::sync)
-
-target_compile_options(camera-core PRIVATE -Wall -Wextra)
-
-add_executable(argus-camera ${CAMERA_SRC_ROOT}/main.cc)
-
-target_link_libraries(argus-camera PRIVATE camera-core argus_camera-rpc
-    argus::lib::auth)
-
-target_compile_options(argus-camera PRIVATE -Wall -Wextra)
+argus_service(NAME argus-camera
+    MAIN ${CAMERA_SRC_ROOT}/app/main.cc
+    MODULES
+        argus::camera-core
+        argus::camera-actions
+        argus::camera-feature
+        argus::camera-control
+        argus::camera-zone
+        argus::camera-media
+        argus::camera-health
+        argus::camera-sync
+        argus::camera-rpc-server
+        argus::camera-monitor
+        argus::camera-operator
+        argus::lib::auth
+        argus::lib::http
+        argus::lib::storage
+        argus::lib::validation
+    PORTS 7026 7036)
 
 get_target_property(DOCTEST_INCLUDE_DIRS doctest::doctest
                     INTERFACE_INCLUDE_DIRECTORIES)
@@ -259,22 +183,7 @@ foreach(TEST_NAME IN LISTS CAMERA_UNIT_TESTS)
 
     set_target_properties(${TEST_NAME} PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
-        target_link_libraries(${TEST_NAME} PRIVATE
-    argus::contracts::auth
-    argus::contracts::camera
-    argus::lib::audio
-    argus::lib::auth
-    argus::lib::config
-    argus::hardware-profile
-    argus::lib::text
-    argus::lib::nats
-    argus::lib::sqlite
-    argus::lib::storage
-    argus::lib::runtime
-    argus::lib::validation
-    argus::contracts::sync
-    argus::lib::http
-    doctest::doctest)
+    target_link_libraries(${TEST_NAME} PRIVATE doctest::doctest)
 
     target_compile_options(${TEST_NAME} PRIVATE -Wall -Wextra)
 
@@ -288,54 +197,58 @@ endif()
 if(PROJECT_IS_TOP_LEVEL AND TARGET ncnn)
     add_subdirectory(tools/vulkan-probe)
 endif()
+
 target_link_libraries(camera-schema-test PRIVATE camera-migration)
 target_link_libraries(camera-migration-test PRIVATE camera-migration)
 
-target_link_libraries(camera-config-test PRIVATE camera-core)
-target_link_libraries(camera-controller-test PRIVATE camera-core)
-target_link_libraries(camera-operator-test PRIVATE camera-core)
-target_link_libraries(camera-health-test PRIVATE camera-core)
-target_link_libraries(event-intelligence-test PRIVATE camera-core)
-target_link_libraries(camera-source-registrar-test PRIVATE camera-core)
-target_link_libraries(camera-change-transaction-test PRIVATE camera-core)
+target_link_libraries(camera-config-test PRIVATE
+    argus::camera-core
+    argus::lib::http)
+
+target_link_libraries(camera-controller-test PRIVATE
+    argus::camera-feature
+    argus::camera-zone
+    argus::camera-media
+    argus::lib::auth
+    argus::lib::errors
+    argus::lib::text
+    argus::lib::validation
+    argus::contracts::auth
+    argus::contracts::camera)
+
+target_link_libraries(camera-operator-test PRIVATE
+    argus::camera-operator
+    argus::camera-stream)
+
+target_link_libraries(camera-health-test PRIVATE
+    argus::camera-monitor
+    argus::camera-operator)
+
+target_link_libraries(event-intelligence-test PRIVATE
+    argus::camera-operator)
+
+target_link_libraries(camera-source-registrar-test PRIVATE
+    argus::camera-stream)
+
+target_link_libraries(camera-change-transaction-test PRIVATE
+    argus::camera-core
+    argus::camera-feature
+    argus::camera-change-outbox)
+
 target_compile_definitions(camera-change-transaction-test PRIVATE
     ARGUS_CAMERA_SCHEMA_PATH="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql")
 
 add_executable(camera-talk-cutover-test
-    tests/unit/camera-talk-cutover-test.cc
-    ${CAMERA_SRC_ROOT}/feature/api/camera-control/controllers/camera-control-controller.cc
-    ${CAMERA_SRC_ROOT}/feature/api/camera-control/services/camera-control-feature-service.cc
-    ${CAMERA_SRC_ROOT}/feature/api/camera-control/dtos/camera-talk-dto.cc
-    ${CAMERA_SRC_ROOT}/feature/api/camera-control/dtos/camera-ptz-dto.cc
-    ${CAMERA_SRC_ROOT}/feature/api/camera-control/dtos/camera-preset-dto.cc
-    ${CAMERA_SRC_ROOT}/feature/api/camera-control/dtos/camera-settings-dto.cc
-    ${CAMERA_SRC_ROOT}/shared/services/camera-driver/camera-driver-registry.cc
-    ${CAMERA_SRC_ROOT}/shared/services/camera-driver/tapo-driver.cc
-    ${CAMERA_SRC_ROOT}/shared/services/tapo/tapo-crypto.cc
-    ${CAMERA_SRC_ROOT}/shared/services/tapo/tapo-http.cc
-    ${CAMERA_SRC_ROOT}/shared/services/tapo/tapo-audio.cc
-    ${CAMERA_SRC_ROOT}/shared/services/tapo/tapo-ts-muxer.cc
-    ${CAMERA_SRC_ROOT}/shared/services/tapo/secure-passthrough-transport.cc
-    ${CAMERA_SRC_ROOT}/shared/services/tapo/legacy-stok-transport.cc
-    ${CAMERA_SRC_ROOT}/shared/services/tapo/tapo-client.cc
-    ${CAMERA_SRC_ROOT}/shared/services/tapo/tapo-api.cc
-    ${CAMERA_SRC_ROOT}/shared/services/tapo/tapo-talk-client.cc)
+    tests/unit/camera-talk-cutover-test.cc)
 
 target_include_directories(camera-talk-cutover-test PRIVATE
-    ${CAMERA_SRC_ROOT}
     ${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/tts/tests/support)
 
 target_link_libraries(camera-talk-cutover-test PRIVATE
-    argus::camera-repositories
-    argus::lib::audio
-    argus::lib::config
-    argus::lib::text
-    argus::lib::runtime
-    argus::lib::validation
-    argus::lib::http
-    argus::clients::tts
-    OpenSSL::SSL
-    OpenSSL::Crypto argus::contracts::camera
+    argus::camera-control
+    argus::camera-driver
+    argus::lib::errors
+    argus::contracts::camera
     doctest::doctest)
 
 set_target_properties(camera-talk-cutover-test PROPERTIES
@@ -346,50 +259,18 @@ target_compile_options(camera-talk-cutover-test PRIVATE -Wall -Wextra)
 add_test(NAME camera-talk-cutover-test COMMAND camera-talk-cutover-test)
 
 add_executable(camera-action-rpc-test
-    tests/unit/camera-action-rpc-test.cc
-    ${CAMERA_SRC_ROOT}/feature/actions/audio-capture.cc
-    ${CAMERA_SRC_ROOT}/feature/actions/camera-action-rpc-service.cc
-    ${CAMERA_SRC_ROOT}/feature/actions/stt-transcriber.cc
-    ${CAMERA_SRC_ROOT}/feature/api/camera-control/controllers/camera-control-controller.cc
-    ${CAMERA_SRC_ROOT}/feature/api/camera-control/services/camera-control-feature-service.cc
-    ${CAMERA_SRC_ROOT}/feature/api/camera-control/dtos/camera-talk-dto.cc
-    ${CAMERA_SRC_ROOT}/feature/api/camera-control/dtos/camera-ptz-dto.cc
-    ${CAMERA_SRC_ROOT}/feature/api/camera-control/dtos/camera-preset-dto.cc
-    ${CAMERA_SRC_ROOT}/feature/api/camera-control/dtos/camera-settings-dto.cc
-    ${CAMERA_SRC_ROOT}/shared/services/camera-driver/camera-driver-registry.cc
-    ${CAMERA_SRC_ROOT}/shared/services/camera-driver/tapo-driver.cc
-    ${CAMERA_SRC_ROOT}/shared/services/tapo/tapo-crypto.cc
-    ${CAMERA_SRC_ROOT}/shared/services/tapo/tapo-http.cc
-    ${CAMERA_SRC_ROOT}/shared/services/tapo/tapo-audio.cc
-    ${CAMERA_SRC_ROOT}/shared/services/tapo/tapo-ts-muxer.cc
-    ${CAMERA_SRC_ROOT}/shared/services/tapo/secure-passthrough-transport.cc
-    ${CAMERA_SRC_ROOT}/shared/services/tapo/legacy-stok-transport.cc
-    ${CAMERA_SRC_ROOT}/shared/services/tapo/tapo-client.cc
-    ${CAMERA_SRC_ROOT}/shared/services/tapo/tapo-api.cc
-    ${CAMERA_SRC_ROOT}/shared/services/tapo/tapo-talk-client.cc
-    ${CAMERA_SRC_ROOT}/shared/services/stream/go2rtc-manager.cc
-    ${CAMERA_SRC_ROOT}/shared/services/stream/snapshot-store.cc)
+    tests/unit/camera-action-rpc-test.cc)
 
 target_include_directories(camera-action-rpc-test PRIVATE
-    ${CAMERA_SRC_ROOT}
     ${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/tts/tests/support
     ${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/stt/tests/support)
 
 target_link_libraries(camera-action-rpc-test PRIVATE
-    argus::camera-repositories
-    argus::camera-action-command
-    argus::lib::audio
-    argus::lib::config
-    argus::lib::text
-    argus::lib::sqlite
-    argus::lib::runtime
-    argus::lib::validation
-    argus::lib::http
-    argus::clients::tts
-    argus::clients::stt
+    argus::camera-actions
+    argus::camera-stream
     argus::clients::camera-actions
-    OpenSSL::SSL
-    OpenSSL::Crypto argus::contracts::camera
+    argus::lib::sqlite
+    argus::contracts::camera
     doctest::doctest)
 
 target_compile_options(camera-action-rpc-test PRIVATE -Wall -Wextra)
@@ -401,11 +282,9 @@ add_test(NAME camera-action-rpc-test COMMAND camera-action-rpc-test)
 
 add_executable(camera-action-migration-test
     tests/unit/camera-action-migration-test.cc)
-target_include_directories(camera-action-migration-test PRIVATE
-    ${CAMERA_SRC_ROOT})
 target_link_libraries(camera-action-migration-test PRIVATE
+    argus::camera-actions
     argus::lib::sqlite
-    argus::camera-action-command
     doctest::doctest)
 target_compile_options(camera-action-migration-test PRIVATE -Wall -Wextra)
 set_target_properties(camera-action-migration-test PROPERTIES
@@ -415,7 +294,7 @@ add_test(NAME camera-action-migration-test COMMAND camera-action-migration-test)
 add_executable(object-event-outbox-test
     tests/unit/object-event-outbox-test.cc)
 target_link_libraries(object-event-outbox-test PRIVATE
-    argus::camera-object-event-outbox
+    argus::camera-operator
     doctest::doctest)
 target_compile_definitions(object-event-outbox-test PRIVATE
     ARGUS_CAMERA_SCHEMA_PATH="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql")
@@ -426,7 +305,8 @@ add_test(NAME object-event-outbox-test COMMAND object-event-outbox-test)
 
 add_executable(object-event-outbox-sink-test
     tests/unit/object-event-outbox-sink-test.cc)
-target_link_libraries(object-event-outbox-sink-test PRIVATE camera-core
+target_link_libraries(object-event-outbox-sink-test PRIVATE
+    argus::camera-operator
     doctest::doctest)
 target_compile_definitions(object-event-outbox-sink-test PRIVATE
     ARGUS_CAMERA_SCHEMA_PATH="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql")
@@ -449,7 +329,9 @@ add_test(NAME change-outbox-test COMMAND change-outbox-test)
 
 add_executable(change-outbox-sink-test
     tests/unit/change-outbox-sink-test.cc)
-target_link_libraries(change-outbox-sink-test PRIVATE camera-core
+target_link_libraries(change-outbox-sink-test PRIVATE
+    argus::camera-core
+    argus::camera-change-outbox
     doctest::doctest)
 target_compile_definitions(change-outbox-sink-test PRIVATE
     ARGUS_CAMERA_SCHEMA_PATH="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql")

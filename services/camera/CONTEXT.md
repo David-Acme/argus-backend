@@ -92,10 +92,11 @@ sibling service: own binary, own CMake preset, own `camera.db`.
 
 ## Device control (F6-2): camera-control routes + the TTS wire
 
-- **camera-control moved out of the legacy**: `feature/api/camera-control/`
+- **camera-control moved out of the legacy**: `feature/camera-control/`
   (routes `/camera/{id}/status|presets|ptz|preset|settings|capabilities|
   talk`) lives here now, same controllers/dtos/services layout as the
-  monolith. This service serves every `/camera` and `/zone` segment depth
+  monolith (the `api/` level it was written under went in Phase 4 step 3).
+  This service serves every `/camera` and `/zone` segment depth
   itself; the legacy serves no camera route anymore.
 - **Talk synthesis is remote-only**: `TtsClient` (tts-remote) is compiled
   into this binary and every synthesis is an HTTP exchange with argus-tts
@@ -106,8 +107,10 @@ sibling service: own binary, own CMake preset, own `camera.db`.
   failed driver session is dropped so the next call logs in again instead of
   reusing a transport the camera has already closed.
 - **Driver stack**: `camera-driver` (registry + Tapo driver) and the tapo
-  transport stack compile into `camera-core` (OpenSSL linked); `[tapo]`
-  config keys are read here, mirroring the legacy block.
+  transport stack are the `src/shared/services/{camera-driver,tapo}` modules
+  since Phase 4 step 3 gave each its own declaration (OpenSSL linked);
+  `camera-core` is this service's typed config and its camera_change sink.
+  `[tapo]` config keys are read here, mirroring the legacy block.
 - **Legacy slimming**: the legacy binary no longer compiles the camera/
   zone features, the camera-driver/tapo/stream stack, nor `camera.db`
   access; `SocketCameraChangeSink` and `CameraAudioSource` were deleted.
@@ -268,24 +271,27 @@ sibling service: own binary, own CMake preset, own `camera.db`.
 
 The camera CRUD features, the Tapo driver stack, the stream lifecycle and
 the camera schema all moved out of the shared `src/` tree into this
-folder, prefixes preserved (`src/feature/api/{camera,zone}`,
-`src/shared/services/{camera-driver,tapo,stream}`), so no include line in
-the fleet changed. The unit suites live in `tests/unit/` and register in the
-camera project's standalone CTest graph.
+folder, prefixes preserved (`src/feature/api/{camera,zone}` then, the
+`api/` level flattened to `src/feature/{camera,zone}` in Phase 4 step 3,
+and `src/shared/services/{camera-driver,tapo,stream}`), so no include line
+in the fleet changed. The unit suites live in `tests/unit/` and register in
+the camera project's standalone CTest graph.
 
 Two sources could NOT come along, because argus-voice compiles them too:
 the PCM resampler and the TTS HTTP client. They became their own modules
 rather than either service reaching into the other — `argus::lib::audio` and
 `argus::clients::tts` (which also carries `tts-wire.hxx`, the contract the
 client and argus-tts both speak). `media-relay.{cc,hxx}` came with the
-stream folder even though only `labs/` uses it; it is stream-domain code
-and labs is out of scope for this arc.
+stream folder then even though only `labs/` used it, and `d2756952` (f8-a2)
+deleted it with the rest of the labs surface.
 
 What did NOT move: the camera-domain repositories and schemas
-(`camera`, `camera_stream`, `zone`), which `src/shared/repositories` declares
+(`camera`, `zone`), which `src/shared/repositories` declares
 as the folder's own `argus::camera-repositories` module since sub-step 3a-1b —
 `argus-sync`'s `/sync` still reads the same rows, through the camera sync RPC.
-`argus_camera-rpc` therefore still carries `src` on its include path.
+`camera_stream` is the one that did move, into `feature/sync` (Phase 4 step 3:
+the sync RPC service is its only reader), so `argus_camera-sync` carries
+`src` on its include path the same way.
 
 ## Operator automation extensions (camera-guard phase 1-2)
 
@@ -401,3 +407,61 @@ publishes the median confidence with its sample count plus the area spread,
 so guard's belief engine reads real history instead of an instantaneous
 score. Additive keys only: v2 consumers that ignore unknown keys keep
 working.
+
+## Phase 4 step 3: one module per folder (f4-3)
+
+The service's build stopped being a single `camera-core` archive that listed
+52 sources by path and handed the same list to the executable and nine test
+targets. Every
+feature, the shared service folders, the domain folder beside them and the
+gRPC listener are now rule-25 modules: each folder declares its own sources
+and dependencies once, the root file discovers `feature/*/CMakeLists.txt`,
+`src/camera`, `src/shared/{repositories,services}` and `src/app/rpc`
+explicitly, and `argus-camera` links `argus::camera-{core,actions,feature,
+camera-control,zone,media,health,sync,rpc-server,monitor,operator}` by name.
+`argus_service()` now bootstraps the executable (so it carries `-Wall
+-Wextra` on the line the old file spelled separately, and the `$ORIGIN` rpath
+and `ARGUS_PORTS 7026 7036` the hand-rolled `add_executable` block never set),
+and no test target lists a `.cc` file any more — each links the module that
+owns the code it exercises.
+
+Two declarations inside the moved repositories were deleted rather than
+carried: `feature/actions/repositories/action-command/CMakeLists.txt` and
+`feature/operator/repositories/object-event-outbox/CMakeLists.txt`. Rule 25
+lets a parent discover modules, but only through the glob the parent actually
+uses (`feature/*/CMakeLists.txt`), so a module nested one level deeper would
+have been a directory nobody builds. The tree keeps no such declaration
+anywhere else: a feature compiles its own repositories in its own module, and
+the two repositories are the feature's own (the notification-token family is
+the same shape).
+
+The gRPC listener left `main.cc`: `src/app/rpc/camera-rpc-server.{hxx,cc}`
+resolves `GrpcListenerConfig` (the `server.grpc_port` key, 7036 by default),
+registers the services it is handed and owns the shutdown, so `main.cc` no
+longer resolves a listener or names a port. The three gRPC services
+themselves stay where their domain is — `argus.camera.v1` in `feature/sync`,
+`CameraActionService` in `feature/actions`, `grpc.health.v1` in
+`feature/health` — because `app/` is process composition only and
+`camera-action-rpc-service` holds a repository and the guard-credential
+policy, which rule 23 keeps out of it. The listener takes `grpc::Service*`
+pointers, so the modules stay independent of each other.
+
+`shared/` was re-measured against the 2+ rule rather than assumed, and four
+families moved into their single reader: `action-command` into
+`feature/actions`, `object-event-outbox` and `evidence` into
+`feature/operator`, and the `camera_stream` repository and schema into
+`feature/sync` (the sync RPC service is their only reader; the shared module
+keeps `camera`, `zone` and `change-outbox`). Three modules stay in `shared/`
+with a measured note instead of a move: `services/tapo` is the protocol
+stack `services/camera-driver` (itself shared, two feature readers) is built
+on, `services/event-stream` is read by `feature/operator`, the change sink
+and `main.cc`, and `utils/geometry` is a header-only helper, not a
+repository, schema or service — rule 23's 2+ rule names those three, and
+`utils/in-flight` does have two feature readers.
+
+The change sink's reader count is the reason `shared/repositories/change-outbox`
+stayed: no feature includes it, because both publishing features reach it
+through `camera_change::getSink()` in `contracts/sync`, whose concrete
+implementation is `src/camera/nats-camera-change-sink.cc` and whose install
+is `main.cc`. That is the same indirect-2 shape the notification service
+documented for its own outbox.

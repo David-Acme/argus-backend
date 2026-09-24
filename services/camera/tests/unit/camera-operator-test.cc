@@ -1,14 +1,14 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
 
-#include <operator/camera-operator-service.hxx>
-#include <operator/frame-source.hxx>
-#include <operator/identity-known-person-matcher.hxx>
-#include <operator/known-person-matcher.hxx>
-#include <operator/object-event-sink.hxx>
-#include <operator/object-event.hxx>
-#include <operator/operator-config.hxx>
-#include <operator/zone-source.hxx>
+#include <feature/operator/camera-operator-service.hxx>
+#include <feature/operator/frame-source.hxx>
+#include <feature/operator/identity-known-person-matcher.hxx>
+#include <feature/operator/known-person-matcher.hxx>
+#include <feature/operator/object-event-sink.hxx>
+#include <feature/operator/object-event.hxx>
+#include <feature/operator/operator-config.hxx>
+#include <feature/operator/zone-source.hxx>
 
 #include <atomic>
 #include <chrono>

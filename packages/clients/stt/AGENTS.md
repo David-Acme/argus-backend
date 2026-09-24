@@ -9,9 +9,10 @@ A module, not a service: one `argus_clients(NAME stt ...)`, a STATIC library
 whose include root is `src/`, so a consumer writes `<stt/stt-remote.hxx>` and
 links `argus::clients::stt`. Three packages link it — `services/stt`
 (`stt-core`, `stt-wire-test`), `services/voice` (`argus::voice-core`) and
-`services/camera` (`camera-core`, `camera-action-rpc-test`): five link lines
-in three CMakeLists, each of which also adds the package to its own standalone
-tree by path. The header IS the contract and both sides include it: argus-voice
+`services/camera` (`argus::camera-actions`, the module that owns the listen
+path): four link lines in three CMakeLists, each of which also adds the package
+to its own standalone tree by path. The header IS the contract and both sides
+include it: argus-voice
 transcribes every turn through it once `stt.remote_url` is set, argus-camera's
 listen path transcribes through it, and argus-stt's own controller includes it
 for the constants. No engine lives here — recognition is `services/stt`'s

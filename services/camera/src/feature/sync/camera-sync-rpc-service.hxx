@@ -2,7 +2,7 @@
 
 #include <argus/camera/v1/sync.grpc.pb.h>
 #include <grpcpp/grpcpp.h>
-#include <shared/repositories/camera-stream/camera-stream-repository.hxx>
+#include <feature/sync/repositories/camera-stream/camera-stream-repository.hxx>
 #include <shared/repositories/camera/camera-repository.hxx>
 #include <shared/repositories/zone/zone-repository.hxx>
 

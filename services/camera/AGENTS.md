@@ -49,13 +49,49 @@ that apply to camera-service code; when in doubt, the root file wins.
 ```
 argus-camera/
   CMakeLists.txt        add_subdirectory-compatible AND standalone buildable
-  src/main.cc           config load, camera.db wiring, app run
-  src/camera/           camera-domain config resolution
-  src/controllers/      HTTP controllers (health today; /camera*, /zone in F2-2)
-  src/server/           internal listener resolution
+  src/app/main.cc       config load, camera.db wiring, app run
+  src/app/rpc/          the gRPC listener — bind, register, shutdown; module
+                        argus::camera-rpc-server
+  src/camera/           camera-domain config resolution and the nats-camera
+                        change sink; module argus::camera-core
+  src/feature/actions/  argus.camera.v1 CameraActionService (guard-gated),
+                        audio capture, STT transcriber and their
+                        action-command repository
+  src/feature/camera/   /camera* HTTP surface
+  src/feature/camera-control/
+                        /camera PTZ, preset, settings and talk surface
+  src/feature/health/   grpc.health.v1 service
+  src/feature/media/    the camera media WebSocket and its service
+  src/feature/monitor/  camera health monitor and its NATS sink
+  src/feature/objects/  YOLO26n ncnn object detector
+  src/feature/operator/ the operator loop, EventIntelligence, zone provider
+                        and evidence upload, with the object-event outbox
+  src/feature/sync/     argus.camera.v1 SyncService owner and the
+                        camera_stream repository and schema
+  src/feature/zone/     /zone* HTTP surface
+  src/shared/           the camera, zone and change-outbox repositories and
+                        schemas plus the stream, camera-driver and in-flight
+                        utils modules 2+ features read (tapo is camera-driver's
+                        own protocol stack, event-stream's one reader is
+                        operator, and geometry is header-only)
   config.toml.example   camera, streaming, YOLO object and operator settings
   CONTEXT.md            purpose, ownership, wiring decisions
 ```
+
+Every feature and the `app/rpc/` listener is a rule-25 module: the folder
+holds its own `CMakeLists.txt` declaring its sources and dependencies once,
+the root file discovers them (`feature/*/CMakeLists.txt`) and `argus-camera`
+links `argus::camera-{core,actions,feature,camera-control,zone,media,health,
+sync,rpc-server,monitor,operator}` by name (`camera-objects` arrives through
+`camera-operator`, its only reader, and is deliberately not repeated). The
+executable links the feature modules
+plainly, not whole-archive: every camera controller declares
+`HttpController<…, false>` and `src/app/main.cc` registers it by hand, so no
+route depends on a static initializer reaching the binary. The three gRPC
+services stay in their features (`argus.camera.v1` in `feature/sync`,
+`argus.camera.v1.CameraActionService` in `feature/actions`, `grpc.health.v1`
+in `feature/health`); `src/app/rpc/` owns only the listener they register
+with.
 
 ## Build commands
 

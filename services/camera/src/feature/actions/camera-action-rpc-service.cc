@@ -6,8 +6,8 @@
 #include <ctime>
 #include <drogon/drogon.h>
 #include <feature/actions/audio-capture.hxx>
-#include <feature/api/camera-control/dtos/camera-talk-dto.hxx>
-#include <feature/api/camera-control/services/camera-control-feature-service.hxx>
+#include <feature/camera-control/dtos/camera-talk-dto.hxx>
+#include <feature/camera-control/services/camera-control-feature-service.hxx>
 #include <optional>
 #include <shared/services/camera-driver/camera-driver.hxx>
 #include <config/config-service.hxx>

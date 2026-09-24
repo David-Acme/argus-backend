@@ -1,8 +1,8 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
 
-#include <operator/event-intelligence.hxx>
-#include <operator/known-person-matcher.hxx>
+#include <feature/operator/event-intelligence.hxx>
+#include <feature/operator/known-person-matcher.hxx>
 
 #include <cstdint>
 #include <optional>

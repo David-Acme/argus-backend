@@ -14,12 +14,12 @@ called in this package's `CMakeLists.txt` — and links
 `argus::contracts::tts-wire` PRIVATE, so no protobuf header reaches a consumer
 through it.
 
-Six link lines in four CMakeLists carry it: `services/tts` twice
+Four link lines in four CMakeLists carry it: `services/tts` twice
 (`argus_tts-rpc` PUBLIC for the RPC server that answers this very protocol,
 and the synthesis feature, which reads the vocabulary), `services/voice`
 (`argus_voice-core`, the session's spoken answers) and `services/camera`
-three times (`camera-core` PUBLIC for the Tapo talk path,
-`camera-talk-cutover-test`, `camera-action-rpc-test`). Three CMakeLists also
+once (`argus::camera-control`, the module that owns the Tapo talk path; the
+two talk suites take it transitively). Three CMakeLists also
 add the package by path — four `if(NOT TARGET argus::clients::tts)` guards in
 all, two in `services/tts` and one each in voice and camera — so each service
 still builds standalone.

@@ -1,10 +1,8 @@
 argus_module(NAME camera-repositories
     SOURCES
         camera/camera-repository.cc
-        camera-stream/camera-stream-repository.cc
         zone/zone-repository.cc
         ../schemas/camera/camera-schema.cc
-        ../schemas/camera-stream/camera-stream-schema.cc
         ../schemas/zone/zone-schema.cc
     DEPENDS
         argus::contracts::camera

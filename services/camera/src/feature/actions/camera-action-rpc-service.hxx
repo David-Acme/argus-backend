@@ -3,11 +3,11 @@
 #include <argus/camera/v1/actions.grpc.pb.h>
 #include <cstdint>
 #include <feature/actions/stt-transcriber.hxx>
-#include <feature/api/camera-control/services/camera-control-feature-service.hxx>
+#include <feature/camera-control/services/camera-control-feature-service.hxx>
 #include <grpc/grpc-server-identity.hxx>
 #include <grpcpp/grpcpp.h>
 #include <memory>
-#include <shared/repositories/action-command/action-command-repository.hxx>
+#include <feature/actions/repositories/action-command/action-command-repository.hxx>
 #include <shared/repositories/camera/camera-repository.hxx>
 #include <string>
 #include <vector>

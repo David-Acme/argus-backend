@@ -22,7 +22,7 @@
 #include <mutex>
 #include <netinet/in.h>
 #include <optional>
-#include <shared/repositories/action-command/action-command-repository.hxx>
+#include <feature/actions/repositories/action-command/action-command-repository.hxx>
 #include <shared/services/camera-driver/camera-driver.hxx>
 #include <config/config-service.hxx>
 #include <sqlite/db-service.hxx>

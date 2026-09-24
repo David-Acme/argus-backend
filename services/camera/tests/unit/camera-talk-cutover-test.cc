@@ -3,8 +3,8 @@
 
 #include "fake-tts-server.hxx"
 
-#include <feature/api/camera-control/controllers/camera-control-controller.hxx>
-#include <feature/api/camera-control/services/camera-control-feature-service.hxx>
+#include <feature/camera-control/controllers/camera-control-controller.hxx>
+#include <feature/camera-control/services/camera-control-feature-service.hxx>
 #include <errors/response-exception.hxx>
 #include <shared/services/camera-driver/camera-driver.hxx>
 #include <config/config-service.hxx>
