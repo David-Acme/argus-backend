@@ -3,14 +3,15 @@
 ## Standalone projects
 
 The repository root has no CMake project; its `conanfile.txt` is the tree's
-single dependency manifest. Seventeen owner projects build independently, each
+single dependency manifest. Eighteen owner projects build independently, each
 with its own `CMakeLists.txt` and binary directory, all configuring against the
 one Conan graph `scripts/build-all.sh` resolves before the first of them:
 
 ```
-packages/lib/cert          packages/identity         services/gateway
-packages/lib/sqlite        packages/memory           services/sync
-                           packages/intent           services/camera
+packages/lib/cert          packages/identity         services/auth
+packages/lib/sqlite        packages/memory           services/gateway
+                           packages/intent           services/sync
+                                                     services/camera
                                                      services/productivity
                                                      services/notification
                                                      services/guard
@@ -38,8 +39,8 @@ at build time. Pins come from `.gitmodules` and `git submodule status`.
 
 | Dependency | Type | Pin | Compiled by |
 |---|---|---|---|
-| `sqlite-vec` | vendored | v0.1.10-alpha.4 | gateway, camera, productivity, notification, guard, cert, sync, identity, memory, sqlite, llm |
-| `ncnn` | submodule | `4c1110c9` | gateway, camera, productivity, notification, cert, sync, identity |
+| `sqlite-vec` | vendored | v0.1.10-alpha.4 | auth, gateway, camera, productivity, notification, guard, sync, identity, memory, sqlite, llm |
+| `ncnn` | submodule | `4c1110c9` | gateway, camera, productivity, notification, guard, sync, identity |
 | `llama.cpp` | submodule | `31558dbb` | memory, llm, vlm |
 | `sherpa-onnx` | submodule | `dc130227` | stt |
 | `fastText` | submodule | `1142dc4` | intent |

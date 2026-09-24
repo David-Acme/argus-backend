@@ -11,6 +11,7 @@ data.
 | Owner | Process or package | Primary responsibility |
 |---|---|---|
 | Gateway | `argus-gateway` | Public TLS API, WebSocket relay, identity host and routing |
+| Auth | `argus-auth` | Session and device authority: refresh tokens, device credentials, login challenges, session-verdict RPC |
 | Sync | `argus-sync` | `/sync` WebSocket surface, rooms, change fan-out, audit persistence and the sync control RPC |
 | Camera | `argus-camera` | Camera/zone data, go2rtc media, YOLO26n object events |
 | Productivity | `argus-productivity` | Reminders, projects and calendar data |
@@ -36,7 +37,7 @@ health, sync, voice, camera actions and identity operations. Fleet-secret
 caller credentials (`x-argus-credential`) authorize the service-to-service
 edges; authority comes from the matched secret, never from declared metadata.
 
-SQLite ownership is split by domain. Identity, camera, productivity,
+SQLite ownership is split by domain. Auth, identity, camera, productivity,
 notification, memory and guard each own their data; the retired `argus.db` is not a
 runtime database. Cross-owner access is read-only or goes through a typed
 service contract, as recorded in each owner's `CONTEXT.md`.
@@ -44,7 +45,7 @@ service contract, as recorded in each owner's `CONTEXT.md`.
 ## Build model
 
 The repository root intentionally has no `CMakeLists.txt`: it carries the one
-`conanfile.txt` the whole tree resolves. Seventeen standalone owner projects
+`conanfile.txt` the whole tree resolves. Eighteen standalone owner projects
 each carry their own `CMakeLists.txt` and configure against that graph's
 toolchain.
 
@@ -95,6 +96,7 @@ Each process reads its own ignored `config.toml`, generated from the adjacent
 | Service | Listener |
 |---|---|
 | Gateway | HTTPS `7024` |
+| Auth | HTTPS `7042`, gRPC `7043` |
 | Sync | HTTPS `7025`, gRPC `7041` |
 | Camera | HTTP `7026`, gRPC `7036` |
 | Productivity | HTTP `7027` |

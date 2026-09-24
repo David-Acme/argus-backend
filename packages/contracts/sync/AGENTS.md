@@ -81,11 +81,14 @@ package, and argus-sync's fan-out that reads the payloads back; sub-step
   sub-step 3a-1a1. It is inline here because a contract is an interface target
   and compiles no source of its own; 17 files include it.
 - `src/sync/sync-change.hxx` — the `argus.<domain>.v1.change` payload contract:
-  the eight frozen routing keys (`users`, `action`, `emit`, `disconnect`,
-  `replace_role_rooms`, `user`, `old_role`, `new_role`) and the four builders
-  `emitPayload`, `userEmitPayload`, `disconnectPayload` and `roleRoomsPayload`
-  over `RoleRoomChange`, which carries the role *names* because the two role
-  keys travel as strings; 12 files.
+  the `kind` triple every payload carries (`kind`, `audit`, `identity`), the
+  four catalog-row envelope keys the catalog consumers read a row out of
+  (`table`, `id`, `deleted`, `row`), the eight frozen routing keys (`users`,
+  `action`, `emit`, `disconnect`, `replace_role_rooms`, `user`, `old_role`,
+  `new_role`) and the four builders `emitPayload`, `userEmitPayload`,
+  `disconnectPayload` and `roleRoomsPayload` over `RoleRoomChange`, which
+  carries the role *names* because the two role keys travel as strings;
+  14 files.
 - `src/sync/module-emit.hxx` — `ModuleEmitInput`: the `TableName` a
   module-scoped emit is scoped to, the `SocketEmitDto` body, and the borrowed
   `DbClient*` of the unit of work the change must be recorded in. It moved out

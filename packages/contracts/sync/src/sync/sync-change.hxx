@@ -11,6 +11,10 @@ namespace sync_change
 inline constexpr const char* kKindField = "kind";
 inline constexpr const char* kKindAudit = "audit";
 inline constexpr const char* kKindIdentity = "identity";
+inline constexpr const char* kTableField = "table";
+inline constexpr const char* kRecordIdField = "id";
+inline constexpr const char* kDeletedField = "deleted";
+inline constexpr const char* kRowField = "row";
 inline constexpr const char* kUsersField = "users";
 inline constexpr const char* kActionField = "action";
 inline constexpr const char* kActionEmit = "emit";

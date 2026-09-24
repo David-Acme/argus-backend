@@ -58,10 +58,15 @@ of the build context.
 
 ## Compose topology
 
-One container per service: `gateway`, `argus-camera`, `argus-productivity`,
-`argus-notification`, `argus-tts`, `argus-stt`, `argus-vlm`, `argus-llm`,
-`argus-voice`, `argus-relay`, `argus-tunnel-client`, plus `nats`. Each
-container runs its service image and mounts its own `config.<service>.toml`.
+One container per service: `gateway`, `argus-auth`, `argus-camera`,
+`argus-productivity`, `argus-notification`, `argus-sync`, `argus-guard`,
+`argus-tts`, `argus-stt`, `argus-vlm`, `argus-llm`, `argus-voice`,
+`argus-relay`, `argus-tunnel-client`, plus `nats`. Each container runs its
+service image and mounts its own `config.<service>.toml`.
+
+`argus-auth` publishes 7042 on every interface and its RPC listener (7043) on
+`127.0.0.1` only — the session verdict is a fleet-internal answer gated by
+`[auth] rpc_secret`.
 
 Opt-in init profiles run the migration CLIs from the owner service image:
 `identity-init` (gateway image), `camera-init` and `vulkan-probe` (camera
@@ -78,8 +83,9 @@ They are idempotent and never touch a live database.
   new image reuses it unchanged:
   - `${ARGUS_DATA_DIR:-./data}` (default `argus-deploy/data/`, gitignored)
     holds one directory per owner: `identity/` (the gateway,
-    `identity.db` + WAL), `camera/`, `productivity/`, `notification/`,
-    `guard/` and `memory/`;
+    `identity.db` + WAL), `gateway/` (the gateway's own `gateway.db` + WAL),
+    `auth/` (argus-auth, `auth.db` + WAL), `camera/`, `productivity/`,
+    `notification/`, `guard/` and `memory/`;
   - `${ARGUS_CERTS_DIR:-../certs}` holds the instance PKI;
   - `${ARGUS_MODELS_DIR:-../models}` and
     `${ARGUS_GO2RTC_DIR:-../third_party/go2rtc}` mount read-only; images

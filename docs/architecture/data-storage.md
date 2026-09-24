@@ -8,6 +8,7 @@ is no shared monolith database: `argus.db` is retired and must not appear.
 | Database | Owner | Schema | Runtime path |
 |---|---|---|---|
 | `identity.db` | `argus-gateway` (`packages/identity`) and `argus-sync` (the five sync tables) | `packages/identity/database/schema.sql`, `services/sync/database/schema.sql` | `database/identity.db` |
+| `auth.db` | `argus-auth` | `services/auth/database/schema.sql` | `database/auth.db` |
 | `camera.db` | `argus-camera` | `services/camera/database/schema.sql` | `database/camera.db` |
 | `productivity.db` | `argus-productivity` | `services/productivity/database/schema.sql` | `database/productivity.db` |
 | `notification.db` | `argus-notification` | `services/notification/database/schema.sql` | `database/notification.db` |
@@ -19,6 +20,15 @@ expected guests, the observation inbox, the action outbox, the
 `encounter_closed` fan-out outbox, dead letters and the evidence retention
 manifest. It has no migration CLI: `guard_schema::migrate()` applies the
 additive schema in-process at boot.
+
+`auth.db` holds `refresh_token` (the single-use rotated sessions),
+`device_login_challenge` (the cross-device pairing handshake) and
+`device_credential` (the per-device secret's SHA-256). It carries no identity
+row: the user context behind a session is resolved through
+`argus::clients::identity` and cached for `[auth] context_cache_seconds`. The
+three tables move here from `identity.db` as a copy — same columns, same CHECK
+constraints — in Phase 3b-2, when the `/auth` surface that writes them moves to
+`argus-auth`.
 
 Runtime paths are relative to each process working directory. In the Compose
 stack the working directory is `/opt/argus`, so they resolve under

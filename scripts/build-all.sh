@@ -10,6 +10,7 @@ PROJECTS=(
   packages/identity
   packages/memory
   packages/intent
+  services/auth
   services/gateway
   services/sync
   services/camera

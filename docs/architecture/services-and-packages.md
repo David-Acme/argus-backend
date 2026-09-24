@@ -10,6 +10,7 @@ WebSocket is served by `argus-sync` on its own TLS listener.
 | Service | Role | Listeners | Owns data |
 |---|---|---|---|
 | `argus-gateway` | Public TLS API, WebSocket relay, identity host | HTTPS 7024 | `identity.db` |
+| `argus-auth` | Session and device authority: refresh tokens, device credentials, login challenges, session-verdict RPC | HTTPS 7042, gRPC 7043 | `auth.db` |
 | `argus-sync` | `/sync` WebSocket surface, rooms and change fan-out, audit persistence, sync control RPC | HTTPS 7025, gRPC 7041 | `identity.db` (the audit tables; `sync.db` in Phase 3c) |
 | `argus-camera` | Camera/zone data, go2rtc streaming, object events | HTTP 7026, gRPC 7036 | `camera.db` |
 | `argus-productivity` | Reminders, projects, calendar | HTTP 7027, gRPC 7037 | `productivity.db` |
@@ -62,7 +63,7 @@ The remainder of `packages/`: `argus-audio`, `argus-auth`,
 `argus-config`, `argus-errors`, `argus-grpc`, `argus-http`, `argus-mdns`,
 `argus-nats`, `argus-phrase`, `argus-runtime`, `argus-storage`,
 `argus-text`, `argus-validation`, the ten contract packages under
-`packages/contracts/` and the eleven SDK clients under `packages/clients/`.
+`packages/contracts/` and the twelve SDK clients under `packages/clients/`.
 These are not standalone projects: the service that links them provides the
 build context. They are declared once in their folder and linked by target
 name. `argus::clients::vlm` is the thin HTTP client for the internal

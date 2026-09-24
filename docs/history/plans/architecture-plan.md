@@ -1,7 +1,9 @@
 # Argus Backend — Architecture Plan v4
 
 > Date: 2026-09-19 · Status: DECIDED (design); migration under way — Phases 1, 2 and
-> 3a done, Phase 3b (`services/auth`) next
+> 3a done, Phase 3b (`services/auth`) under way: step 1 part landed (3b-1 — the
+> service, the wire, `clients/auth`, the session-verdict RPC and its context cache;
+> 3b-2 the `/auth` surface and the row copy, then step 2 = 3b-3 the filter repoint)
 >
 > Supersedes `architecture-plan.md` v3 (2026-09-18). v3 kept the gateway, proposed
 > `sync-tablets`, `packages/contract` (singular) and fused `guard` into `camera` and
@@ -787,16 +789,16 @@ say.
 |---|---|---|
 | 1 — mechanical cleanup | 14 | **done** (0–13: step 0 is recorded in Phase 0's prose, step 13 was absorbed by step 10, and the other 12 carry reports) |
 | 2 — package tree and build | 6 | **done** (1–6; step 2 ran as four sub-steps, one report each — `f2-2-layout-{libs,contracts,clients,services}.md`) |
-| 3a — the transport: `sync` | 3 | step 1 **done**; step 2 **done** (all nine closure items — 0, 1, 1b, 2, 3, 4, 5, 5b, 6, 7 and 9 landed, 8 absorbed by 0); step 3 **not started** |
-| 3b — `auth` | 2 | **not started** |
+| 3a — the transport: `sync` | 3 | step 1 **done**; step 2 **done** (all nine closure items — 0, 1, 1b, 2, 3, 4, 5, 5b, 6, 7 and 9 landed, 8 absorbed by 0); step 3 **done** (`f3-3a-3-audit-retention.md`) |
+| 3b — `auth` | 2 | step 1 **part done** — 3b-1 landed (`services/auth`, `argus.auth.v1`, `clients/auth`, the verdict RPC, its cache and the identity change consumer — `f3-3b-1-auth-service.md`); 3b-2 (the `/auth` HTTP surface, the LAN gate, the refresh-token rate limiter, the row copy off `identity.db`) **not started**; step 2 = **3b-3** (`packages/lib/auth`'s filters onto `argus::clients::auth`) **not started** |
 | 3c — `identity` | 2 | **not started** |
 | 3d — the edge comes down | 5 | **not started** |
 | 4 — service layouts | 9 | **not started** |
 | 5 — verification | 6 | **not started** |
 
-The tree today, measured: 17 projects, **401 tests, 0 failures, 0 compiler warnings**;
-`check-tidy` 495 TUs / 3140 findings against a 3141 baseline; `check-deps`
-481 edges, 0 forbidden, 0 cycles.
+The tree today, measured: 18 projects, **483 tests, 0 failures, 0 compiler warnings**;
+`check-tidy` 524 TUs / 3030 findings against a 3030 baseline; `check-deps`
+544 edges, 0 forbidden, 0 cycles, 49 deferred to phase 3.
 
 ### Phase 0 — already executed (context, not work)
 
@@ -958,15 +960,26 @@ touches, and all five are recorded in `docs/history/reports/f3-3a-3-audit-retent
 
 | Step | Action |
 |---|---|
-| 1 | Extract `services/auth`: sessions, credentials, device credential, LAN-only pairing/registration, rate limiting, credential-validation RPC; create `clients/auth` |
+| 1 | **Done, in three parts** — 3b-1 landed as `feat: extract argus-auth, the session and device authority`: `argus-auth` is the eighteenth owner project, `auth.db` holds the three session tables (moved out of `identity.db` as a copy in 3b-2), `argus.auth.v1.AuthService` answers the session verdict on a fleet-gated loopback RPC (7043) and the device-credential lookup, `SessionContextCache` holds the identity-backed user context for `[auth] context_cache_seconds` and a durable on `argus.identity.v1.change` drops it the moment a `user` row changes, and `packages/clients/auth` is the SDK the filters will reach it through. The verdict is the identity gate's, check for check, and the suite's fixtures pin the order rather than asserting it by prose: a disabled account refuses over a live session row, an expired row refuses before the device hash is compared, and an unreachable identity refuses a token whose row is live. `packages/lib/auth` still asks `argus.identity.v1` (f7-3 did the purge); 3b-2 brings the `/auth` surface, the rate limiter, the LAN gate and the row copy, 3b-3 repoints the filters. Report: `docs/history/reports/f3-3b-1-auth-service.md` |
 | 2 | Purge `lib/auth` of database access; `JwtFilter` validates through `clients/auth`; add the short-TTL context cache invalidated by the identity change event |
+
+##### Step 1's noted items — three things the unit found and did not fix
+
+None is a defect that makes the service wrong; each is owed by a unit that owns the code it
+touches, and all three are recorded in `docs/history/reports/f3-3b-1-auth-service.md`.
+
+| # | Item | What it is |
+|---|---|---|
+| 1 | **The native config generator hands each project its own copy of a shared secret** | `scripts/lib/common.sh:ensure_project_config` fills `jwt secret`, `jwt refresh_secret`, `device fingerprint_secret` and `identity rpc_secret` with an *independent* random value per project (`openssl rand` in its heredoc), while every one of those keys has to hold the same value across services to work at all. Measured on a generated copy of this service's template: `identity.rpc_secret` length 64, `jwt.secret` length 96, `auth.rpc_secret` empty. A freshly generated native install therefore 401s cross-service calls — the JWT leg, since the native gateway template carries no `[identity] rpc_secret` and its gate is open. Build-infrastructure scope, and the fix is one shared value generated once per installation, so `auth.rpc_secret` was deliberately *not* added to that heredoc; the trap is recorded rather than reproduced. |
+| 2 | **Exit-time Drogon teardown corrupts the heap in this suite's shape** | A binary that boots Drogon with a SQLite `DbClient`, connects and drains a `NatsBus`, and then lets Drogon's teardown run during exit-time static destruction aborts on a `DrogonIoLoop` thread with `corrupted double-linked list` (SIGABRT, exit 134) — reproducibly, with or without gRPC or subscriptions in the path, and with the bus leaked rather than destroyed. The same binary that quits Drogon during normal execution is clean on every run, which is what production does and why this suite carries its own `main()` instead of the repo's `SharedBoot` idiom. The defect is the harness's rather than this service's, and every other suite avoids it by not connecting NATS. |
+| 3 | **`device_login_challenge` ships with no reader or writer** | The table is created by this service's schema because it moves here as part of the same ownership change as the other two, and Phase 3b-2 brings the pairing handshake that uses it. Recorded rather than left implicit, so the empty table is not read as an oversight. |
 
 #### 3c — `identity`
 
 | Step | Action |
 |---|---|
 | 1 | Extract `services/identity`: `user`, `person`, `face_embedding`, invitations, portraits, identification RPC. `packages/identity` is consumed here and dies |
-| 2 | Split `identity.db`: sessions and credentials → `auth`, people and faces and invitations and portraits → `identity`, the audit tables (`audit_log`, `user_audit_log`, `user_action_log`) → `sync.db`, with row-count and checksum verification and a documented rollback. The journal's redelivery key (`user_action_log.msg_id`, unique) is `identity-action:<change_outbox id>` today, unique only while both tables share one file: once `identity.db` can be reset alone its ids restart, and the unique index would silently drop real journal rows, so the split re-keys it |
+| 2 | Split `identity.db` — the sessions-and-credentials half is already gone, copied into `auth.db` in 3b-2 with the `/auth` surface that writes it, so what is left is people and faces and invitations and portraits staying in `identity` and the audit tables (`audit_log`, `user_audit_log`, `user_action_log`) moving to `sync.db`, with row-count and checksum verification and a documented rollback. The journal's redelivery key (`user_action_log.msg_id`, unique) is `identity-action:<change_outbox id>` today, unique only while both tables share one file: once `identity.db` can be reset alone its ids restart, and the unique index would silently drop real journal rows, so the split re-keys it |
 
 #### 3d — the edge comes down
 

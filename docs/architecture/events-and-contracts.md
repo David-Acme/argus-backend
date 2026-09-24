@@ -21,7 +21,9 @@
   camera notifier yields while fresh) and `argus.camera.v1.health`.
 - `argus-sync` holds one durable JetStream consumer per change stream and
   routes by the feed it arrived on; camera audit diffs are persisted before
-  fan-out.
+  fan-out. `argus-auth` holds a durable on `argus.identity.v1.change`
+  (`argus-auth-identity`): it drops the cached user context behind a session
+  verdict and revokes every session of a user that arrives disabled.
 
 The full subject contract lives in `wire-nats-subjects.md`.
 
@@ -37,6 +39,13 @@ The full subject contract lives in `wire-nats-subjects.md`.
   `GetPersonCrop`, `Listen`): fleet-secret gated, idempotent by `command_id`,
   siren arming as an expiring lease. The gateway never calls it.
 - Voice (`argus.voice.v1.VoiceService`, port 7034) serves voice sessions.
+- Auth (`argus.auth.v1.AuthService`, port 7043) answers the session verdict
+  (`ValidateToken`: live session, device binding, expiry, user context) and the
+  device-credential lookup (`CheckDeviceCredential`, by secret hash).
+  Fleet-secret gated (`[auth] rpc_secret`), cleartext, bound to loopback in the
+  native config and to every interface behind that secret in the deploy one.
+  Phase 3b-3 points the filter chains at it through the SDK client
+  `argus::clients::auth`, replacing their `argus.identity.v1` call.
 - Identity (`argus.identity.v1`) exposes gateway-owned operations such as the
   spoken-name update, plus the fleet-gated person surface (`IdentifyPerson`,
   `EnrollPerson`, `TouchPerson`, `TagPerson`, `PromotePerson`,

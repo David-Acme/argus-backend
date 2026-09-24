@@ -60,10 +60,10 @@ NatsIdentityChangeSink::publishCatalog(const IdentityCatalogInput& input) const
 {
   Json::Value event(Json::objectValue);
   event[sync_change::kKindField] = sync_change::kKindIdentity;
-  event["table"] = tableNameToString(input.table);
-  event["id"] = static_cast<Json::Int64>(input.id);
-  event["deleted"] = input.deleted;
-  event["row"] = input.row;
+  event[sync_change::kTableField] = tableNameToString(input.table);
+  event[sync_change::kRecordIdField] = static_cast<Json::Int64>(input.id);
+  event[sync_change::kDeletedField] = input.deleted;
+  event[sync_change::kRowField] = input.row;
   const std::string payload = json_util::toString(event);
   const std::string id =
       change_outbox_key::eventId({.table = tableNameToString(input.table),

@@ -41,6 +41,17 @@ argus-deploy gateway configuration. Copy to config.gateway.toml (gitignored) nex
 | `sync.control_secret` | Required whenever the control target is set; same value in every service. |
 | `storage.mode` | Private object storage (RustFS). provision-host.sh fills the [storage.s3] keys with the generated bucket and application credentials; the endpoint is the host loopback publish because the gateway runs host-networked. |
 
+## `argus-deploy/config.auth.toml.example`
+
+argus-deploy argus-auth configuration. Copy to config.auth.toml (gitignored) next to this file and fill the instance secrets (the same jwt/device values as config.gateway.toml); the compose file bind-mounts it as argus-auth's config.toml and its `database/schema.sql` over the mounted data directory.
+
+| Key | Notes |
+|---|---|
+| `auth.db` | The three session tables. They move here from identity.db as a copy in Phase 3b-2, when the `/auth` surface that writes them moves to this service; until then the gateway's identity service still serves the same rows. |
+| `auth.rpc_secret` | Must be the same value in every service's config: the RPC answers session verdicts for the fleet. Empty means loopback-only and ungated, and the service refuses to start when the listener is reachable beyond loopback without it. |
+| `auth.context_cache_seconds` | How long a resolved user context may be reused before identity is asked again (0 disables the cache). A change on the identity feed drops the entry immediately, so this is a load valve, not the invalidation mechanism. |
+| `identity.rpc_secret` | The identity call behind a session verdict; same value as the gateway's [identity] rpc_secret, or every validation of a live session fails. |
+
 ## `argus-deploy/config.guard.toml.example`
 
 argus-guard deploy configuration. Copy to config.guard.toml (gitignored).
@@ -250,6 +261,18 @@ argus-notification configuration. Copy to config.toml (gitignored) to run.
 | `notifications.ack_window_s` | Display-confirmation window in seconds; sent deliveries older than this without an ack surface as unacknowledged-old in the delivery summary. |
 | `notifications.selftest_interval_s` | Synthetic delivery-probe period in seconds; <= 0 disables the probe. Each probe creates one user-0 row, publishes it and records the settle outcome. |
 | `grpc.caller_guard` | Caller capability credentials, each shared only with its single caller. |
+
+## `services/auth/config.toml.example`
+
+argus-auth configuration. Copy to config.toml (gitignored) to run.
+
+| Key | Notes |
+|---|---|
+| `auth.db` | The session database this service alone opens. |
+| `auth.host` | The HTTP listener's bind address; the /auth surface lands on it in Phase 3b-2. |
+| `auth.rpc_secret` | Fleet secret for the session-verdict RPC. Required whenever its listener is reachable beyond loopback: an unauthenticated caller could read any session's verdict. Empty means loopback-only and ungated. |
+| `auth.context_cache_seconds` | How long a resolved user context may be reused before identity is asked again (0 disables the cache); a change on the identity feed drops the entry immediately. |
+| `identity.target` | The identity RPC behind a session verdict; unset makes every verdict a refusal. |
 
 ## `services/productivity/config.toml.example`
 

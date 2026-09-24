@@ -15,7 +15,8 @@
 - **`backend/`** (this repo) — C++20 + Drogon server: all AI on-device (face
   auth, LLM, vision, STT/TTS), JWT dual secrets, WebSocket sync on `/sync`
   (argus-sync's own TLS listener, 7025). The gateway keeps the public API
-  on `0.0.0.0:7024`.
+  on `0.0.0.0:7024`, and `argus-auth` owns the session tables and the
+  session-verdict RPC (7043) the filter chains move onto in Phase 3b-3.
 - **`frontend/`** (sibling) — React Native app (Expo SDK 57 + Expo Router +
   Tailwind v4 via Uniwind). Its HTTP, auth, WatermelonDB (15 tables) and
   autonomous `/sync` layers are implemented, plus the full screen set
@@ -668,8 +669,9 @@ Every service follows the same layout inside its own folder:
   change that introduces their replacement.
 
 **Today, against that target** (Phase 4 of
-`docs/history/plans/architecture-plan.md` lands it): `services/tts` and
-`services/sync` are the only services with `src/app/`; `notification`,
+`docs/history/plans/architecture-plan.md` lands it): `services/auth`,
+`services/tts` and `services/sync` are the only services with `src/app/`;
+`notification`,
 `productivity` and `guard`
 already have the `{controllers,services,dtos}` interior, one level deeper
 under `feature/api/<resource>/` (`notification` also carries `feature/rpc/`,
@@ -680,15 +682,17 @@ instead has two entry points there, `main-client.cc` and `main-relay.cc`.
 Five services have no `feature/` at all today — `gateway`, `llm`, `stt`,
 `tunnel` and `vlm` — and keep their code at `src/` level instead:
 `src/controllers/` in `llm`, `stt` and `vlm`, a `src/llm/` and a `src/vlm/`
-beside it, and `gateway`'s four domain folders. Of the seven services that do
+beside it, and `gateway`'s four domain folders. Of the eight services that do
 have a `feature/`, four still keep code beside it: `camera`
 (`src/controllers/` and `src/camera/`, `monitor/`, `objects/`, `operator/`),
 `notification` (`src/notification/`), `productivity`
-(`src/productivity/`) and `voice` (`src/test-support/`). `guard`, `tts` and
-`sync` keep everything inside `feature/` (plus `app/` in `tts` and `sync`).
+(`src/productivity/`) and `voice` (`src/test-support/`). `auth`, `guard`, `tts`
+and `sync` keep everything inside `feature/` (plus `app/` in `auth`, `tts` and
+`sync`).
 
-Only `services/sync` has `src/config/` yet: the per-service typed config that
-step 9 moves there still lives elsewhere under that same domain folder
+Only `services/auth` and `services/sync` have `src/config/` yet: the
+per-service typed config that step 9 moves there still lives elsewhere under
+that same domain folder
 (`camera-config.{hxx,cc}`, `notification-config.{hxx,cc}`,
 `productivity-config.{hxx,cc}`, `operator-config.{hxx,cc}`). `services/sync`
 is the one service with `tests/e2e/`, the tree's only first-party one — the
@@ -772,11 +776,11 @@ package: it is the executable `argus-<name>`.
 The target-name half of that rule is structural: `argus_lib`,
 `argus_contracts` and `argus_clients` build the group into the name, so a
 package cannot declare itself into the wrong tier (rule 25's own names are in
-`cmake/argus-module.cmake`). The dependency half is still prose — 20 grouped
+`cmake/argus-module.cmake`). The dependency half is still prose — 21 grouped
 packages' helper calls name a dependency's `argus::` alias by hand in their own
-`DEPENDS` (the seven contracts that consume `lib/errors`, the `response` and
-`tts` wire modules, five clients, six libs), and the four ungrouped packages
-that do the same add four more (`audit`, `identity`, `intent`, `room`).
+`DEPENDS` (nine contracts, the `response` and `tts` wire modules among them,
+six clients, six libs), and the two ungrouped packages that do the same add two
+more (`identity`, `intent`).
 Nothing checks those spellings yet; the edge checker of Phase 2 step 5 is where
 they become checked edges.
 
@@ -784,15 +788,16 @@ The three groups sit where they belong — `packages/lib/<name>`,
 `packages/contracts/<domain>`, `packages/clients/<domain>`, each declared by
 its group's helper: `argus_lib_<name>` / `argus::lib::<name>`,
 `argus_contracts_<domain>` / `argus::contracts::<domain>`,
-`argus_clients_<domain>` / `argus::clients::<domain>`. Seven of the ten clients
-wrap a generated gRPC stub — six of them pass `PROTO` to `argus_clients`, and
-`tts` reaches the same stub through `argus::contracts::tts` instead; the three
-wire clients (`llm`, `stt`, `vlm`) speak HTTP and take the helper's
-plain-module branch, which `tts` also takes because it carries an HTTP
-transport beside the stub. Three wire modules are not a domain SDK and call
-`argus_client_module` with the group they live in: `lib/grpc`'s health stubs
-(`GROUP lib`) and the `response` and `tts` wire contracts, which live in
-`packages/contracts/` and are aliased `argus::contracts::…`.
+`argus_clients_<domain>` / `argus::clients::<domain>`. Nine of the twelve
+clients wrap a generated gRPC stub — eight of them pass `PROTO` to
+`argus_clients`, and `tts` reaches the same stub through
+`argus::contracts::tts` instead; the three wire clients (`llm`, `stt`, `vlm`)
+speak HTTP and take the helper's plain-module branch, which `tts` also takes
+because it carries an HTTP transport beside the stub. Three wire modules are
+not a domain SDK and call `argus_client_module` with the group they live in:
+`lib/grpc`'s health stubs (`GROUP lib`) and the `response` and `tts` wire
+contracts, which live in `packages/contracts/` and are aliased
+`argus::contracts::…`.
 
 #### The dependency tiers
 
@@ -854,12 +859,12 @@ and every config points at `database/schema.sql`; a unit applies only its own
 schema, never the schema of another. The gateway is the one owner that is not
 at that path: it mounts its own file at `/opt/argus/gateway/schema.sql` and
 its config says `gateway/schema.sql`, which is also the only place a second
-schema appears — the identity one it hosts, at `database/schema.sql`. Eight
+schema appears — the identity one it hosts, at `database/schema.sql`. Nine
 units carry one today:
-`camera`, `gateway`, `guard`, `notification` and `productivity` (the gateway's
-own 32-line file is its `gateway.db` degraded-fallback record — it holds no
-table of another domain and says so — and it additionally applies the identity
-schema it hosts; both go with the gateway in Phase 3d), plus
+`auth`, `camera`, `gateway`, `guard`, `notification` and `productivity` (the
+gateway's own 32-line file is its `gateway.db` degraded-fallback record — it
+holds no table of another domain and says so — and it additionally applies the
+identity schema it hosts; both go with the gateway in Phase 3d), plus
 `packages/identity`, `packages/memory` and `services/sync` (the five sync
 tables it applies onto identity.db until Phase 3c splits them into `sync.db`).
 
@@ -891,7 +896,7 @@ Before any commit, verify the affected standalone project with
 `./scripts/build-all.sh dev --only <project>` and **0 errors, 0 warnings**.
 Run the full orchestrator when changing shared build infrastructure.
 
-The orchestrator runs three gates of its own, beyond the seventeen projects:
+The orchestrator runs three gates of its own, beyond the eighteen projects:
 `scripts/check-comments.sh` (rule 20) and `scripts/check-deps.sh` (§2.4's
 tiers) before anything is built, and, at the end of a full run only,
 `scripts/check-tidy.sh` (rules 16 and 19). `--only`,
@@ -954,7 +959,7 @@ for two different reasons, and says which when it does.
 
 | File | Purpose |
 |------|---------|
-| `packages/clients/<domain>/src/<domain>/` (all ten now hold a single `src/<domain>/`; `camera-actions` shares `camera`'s domain folder) | The SDK for one service: the only place its stub, URL, envelope parse, retry and auth pass-through exist (`camera`, `identity`, `notification`, `productivity`, `voice`, `camera-actions` + the `llm`/`stt`/`tts`/`vlm` wire clients). Callers link `argus::clients::<domain>` (rule 25, rule 27) |
+| `packages/clients/<domain>/src/<domain>/` (all twelve now hold a single `src/<domain>/`; `camera-actions` shares `camera`'s domain folder) | The SDK for one service: the only place its stub, URL, envelope parse, retry and auth pass-through exist (`auth`, `camera`, `identity`, `notification`, `productivity`, `sync`, `voice`, `camera-actions` + the `llm`/`stt`/`tts`/`vlm` wire clients). Callers link `argus::clients::<domain>` (rule 25, rule 27) |
 
 **Tier 4 — `lib/auth`**
 
@@ -977,6 +982,7 @@ for two different reasons, and says which when it does.
 | `packages/identity/src/shared/services/face/` | Face detection + recognition (ncnn) — FaceDB = vec0 index (sqlite-vec); becomes `services/identity` (Phase 3c) |
 | `packages/identity/src/shared/services/storage/` | `PrivatePortraitService` — a user's private portrait bytes (`store`/`has`/`read` by `userId`), served onward by the `user` feature's portrait-preview capability; same move |
 | `packages/identity/src/shared/repositories/{user-invitation,portrait-*,device-login-challenge}/` | People domain: invitations (hash-only), portrait capabilities, cross-device login challenges; same move |
+| `services/auth/src/feature/session/services/session-service.{hxx,cc}` | The session verdict: token order, the identity-backed user context and the device binding (Phase 3b-1); `SessionContextCache` + `IdentityChangeConsumer` beside it |
 | `services/vlm/src/shared/services/vision/` | VLM inference: LFM2.5-VL-450M via llama.cpp + libmtmd (arbitrary prompts, caption cache) |
 | `services/stt/src/shared/services/stt/` | Speech-to-text via sherpa-onnx (default `nemo_transducer` FastConformer RNN-T, es/en; whisper/canary/nemo_ctc/omnilingual selectable) |
 | `services/tts/src/feature/synthesis/` | `TtsService` (`domain/` → `services/` in Phase 4 step 1) + the Supertonic engine set (`infra/supertonic/`: `TtsEngine`, `Style`, `UnicodeProcessor`, onnx loading) — Supertonic 3 text-to-speech |
