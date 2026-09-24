@@ -9,7 +9,7 @@
 #include <mtmd.h>
 #include <opencv2/imgproc.hpp>
 #include <config/config-service.hxx>
-#include <shared/services/vision/vision-hash.hxx>
+#include <feature/vlm/services/vision-hash.hxx>
 #include <runtime/ai-init.hxx>
 #include <runtime/blocking-task.hxx>
 #include <runtime/hardware-profile.hxx>

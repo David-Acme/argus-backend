@@ -1,7 +1,7 @@
 #pragma once
 
 #include <config/service.hxx>
-#include <shared/services/vision/remote/vlm-remote.hxx>
+#include <feature/vlm/services/remote/vlm-remote.hxx>
 
 #include <drogon/utils/coroutine.h>
 #include <json/value.h>

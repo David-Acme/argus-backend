@@ -1,11 +1,11 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
 
-#include <controllers/vlm-controller.hxx>
+#include <config/config-service.hxx>
 #include <drogon/drogon.h>
+#include <feature/vlm/controllers/vlm-controller.hxx>
 #include <http/error-handler.hxx>
 #include <http/health-controller.hxx>
-#include <config/config-service.hxx>
 
 #include <llama.h>
 #include <opencv2/imgcodecs.hpp>

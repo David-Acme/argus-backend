@@ -43,14 +43,24 @@ that apply to vision-service code; when in doubt, the root file wins.
 
 ```
 argus-vlm/
-  CMakeLists.txt        add_subdirectory-compatible AND standalone buildable
-  src/main.cc           config load, llama_backend_init/free, engine boot gate
-  src/controllers/      HTTP controllers (health + /vlm/v1/* wire)
-  src/vlm/              describe DTO (validation DSL)
-  src/server/           internal listener resolution
+  CMakeLists.txt        standalone buildable: module graph + test targets
+  src/app/main.cc       config load, llama_backend_init/free, engine boot gate
+  src/feature/vlm/      argus::vlm — the whole vertical slice:
+                          controllers/ (the frozen /vlm/v1/* wire),
+                          dtos/ (the describe DTO, validation DSL),
+                          services/ (the LFM2.5-VL engine facade, its
+                                     remote adapter and the caption cache)
   config.toml.example   [vision] engine keys + [server] only; no other domains
   CONTEXT.md            purpose, ownership, wiring decisions
 ```
+
+There is one feature and one module: `argus::vlm` compiles the engine facade,
+the DTOs and the HTTP surface together, and `app/main.cc` registers the
+controller explicitly (a Drogon `HttpController<VlmController, false>`), so no
+route depends on static-init registration. The folder IS the module (root rule
+25) — a consumer links `argus::vlm` and never lists `.cc` files. `src/shared/`
+does not exist: rule 23's 2+ rule earns it, so code moves there only when a
+second feature of this service reads it.
 
 ## Build commands
 

@@ -12,23 +12,23 @@ the legacy's RAM/VRAM with zero functional risk. It mirrors the argus-tts
 
 ## What it owns
 
-- **The vision engine** (shared-tree `VisionService`, compiled into this
-  binary via the PORTED pattern): LiquidAI LFM2.5-VL-450M (GGUF Q8_0 +
-  mmproj F16) through llama.cpp + `libmtmd`, loaded at boot from the shared
-  `models/vision/lfm2vl-25/` tree (`[vision] model_path`/`mmproj_path`; the
-  build symlinks `../models` next to the binary). Boot aborts if the engine
-  fails to load — the service is useless without its capacity. `VisionService`
-  is owned BY VALUE by the controller (the adapter shape — no singleton),
-  and takes `ai_init::llamaMutex()` exactly as the legacy vision-service.cc
-  does; `argus-vlm`'s main owns its own `llama_backend_init/free` (Ruling
-  BR): the process-global llama mutex contention disappears between
-  processes by construction.
+- **The vision engine** (`VisionService`, the vlm feature's own engine
+  compiled into this binary through `argus::vlm`): LiquidAI LFM2.5-VL-450M
+  (GGUF Q8_0 + mmproj F16) through llama.cpp + `libmtmd`, loaded at boot from
+  the shared `models/vision/lfm2vl-25/` tree (`[vision] model_path` and
+  `mmproj_path`; the build symlinks `../models` next to the binary). Boot
+  aborts if the engine fails to load — the service is useless without its
+  capacity. `VisionService` is owned BY VALUE by the controller (the adapter
+  shape — no singleton), and takes `ai_init::llamaMutex()` exactly as the
+  legacy vision-service.cc does; `argus-vlm`'s main owns its own
+  `llama_backend_init/free` (Ruling BR): the process-global llama mutex
+  contention disappears between processes by construction.
 - **llama.cpp vendor constraint**: the mtmd projector must vendor the SAME
   llama.cpp commit the legacy links (`third_party/llama.cpp`, tag b10305 —
   Conan's llama-cpp recipe ships CPU-only with no mtmd and a projector that
   rejects LFM2.5-VL mmproj files). The standalone project links the exact
-  vendored targets (`${ARGUS_LLAMA_TARGETS}` = llama + mtmd) with the pinned
-  cache variables.
+  vendored targets (`llama` and `mtmd`, named in the feature module's
+  `DEPENDS`) with the pinned cache variables.
 - **The internal wire (Ruling BP)**:
   - `POST /vlm/v1/describe` — JSON body `{image_b64, prompt?, camera_id?}`.
     `image_b64` is a base64 JPEG: the in-process API takes a `cv::Mat`, so

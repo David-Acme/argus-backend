@@ -393,8 +393,10 @@ shared file-static behind a mutex.
   the gate result lives in `docs/history/project-log.md`. The memory redesign's
   `SemanticGraph` is backed by the existing SQLite tables.
 - **llama.cpp as a submodule** (`third_party/llama.cpp`, tag `b10305`) — powers
-  the LLM **and** the VLM through `libmtmd`. Targets: `${ARGUS_LLAMA_TARGETS}`
-  (= `llama mtmd`). Built with `LLAMA_BUILD_MTMD=ON`, everything else OFF.
+  the LLM **and** the VLM through `libmtmd`: `services/vlm`'s feature module
+  names `llama` and `mtmd` in its own `DEPENDS`, and `services/llm` keeps
+  `set(ARGUS_LLAMA_TARGETS llama)` — its own targets, the text decoder alone.
+  Built with `LLAMA_BUILD_MTMD=ON`, everything else OFF.
   Vendored instead of taken from Conan because `llama-cpp/b6565` is the newest
   recipe on Conan Center, its `lfm2` projector still requires
   `mm.input_norm.*` (dropped by LFM2.5-VL), it ships CPU-only, and it exposes
@@ -673,22 +675,23 @@ Every service follows the same layout inside its own folder:
 `docs/history/plans/architecture-plan.md` lands it): `services/auth`,
 `services/camera`, `services/guard`, `services/identity`,
 `services/notification`, `services/productivity`, `services/stt`,
-`services/sync` and `services/tts` are the services with `src/app/`, and the
+`services/sync`, `services/tts` and `services/vlm` are the services with
+`src/app/`, and the
 `feature/api/<resource>/` spelling is gone from the tree — Phase 4 step 4
-flattened the last two owners that had it. Three services keep a single
-`main.cc` at their `src/` root — `llm`, `vlm` and `voice` — except
+flattened the last two owners that had it. Two services keep a single
+`main.cc` at their `src/` root — `llm` and `voice` — except
 `tunnel`, exempt by design (D19), which has two entry points there,
 `main-client.cc` and `main-relay.cc`.
 
-Three services have no `feature/` at all today — `llm`, `tunnel` and `vlm` —
+Two services have no `feature/` at all today — `llm` and `tunnel` —
 and keep their code at `src/` level instead:
-`src/controllers/` in `llm` and `vlm`, and a `src/llm/` and a
-`src/vlm/` beside it. Of the ten services that do have a `feature/`, four
+`src/controllers/` in `llm` and a `src/llm/` beside it. Of the eleven
+services that do have a `feature/`, four
 still keep code beside it: `camera` (`src/camera/`), `notification`
 (`src/notification/`), `productivity` (`src/productivity/`) and `voice`
-(`src/test-support/`). `auth`, `guard`, `identity`, `stt`, `tts` and `sync`
-keep everything inside `feature/` (plus `app/` in `auth`, `guard`, `identity`,
-`stt`, `tts` and `sync`).
+(`src/test-support/`). `guard`, `stt`, `tts` and `vlm` keep nothing at `src/`
+level but `app/` and `feature/`; `identity` and `sync` keep a `src/shared/`
+beside those.
 
 `services/auth`, `services/identity` and `services/sync` have `src/config/`;
 the per-service typed config that step 9 moves there still lives elsewhere
@@ -981,7 +984,7 @@ for two different reasons, and says which when it does.
 | `services/identity/src/shared/services/storage/` | `PrivatePortraitService` — a user's private portrait bytes (`store`/`has`/`read` by `userId`), served onward by the `user` feature's portrait-preview capability |
 | `services/identity/src/shared/repositories/{user-invitation,portrait-*,device-login-challenge}/` | People domain: invitations (hash-only), portrait capabilities, cross-device login challenges |
 | `services/auth/src/feature/session/services/session-service.{hxx,cc}` | The session verdict: token order, the identity-backed user context and the device binding (Phase 3b-1); `SessionContextCache` + `IdentityChangeConsumer` beside it |
-| `services/vlm/src/shared/services/vision/` | VLM inference: LFM2.5-VL-450M via llama.cpp + libmtmd (arbitrary prompts, caption cache) |
+| `services/vlm/src/feature/vlm/services/` | VLM inference: LFM2.5-VL-450M via llama.cpp + libmtmd (arbitrary prompts, caption cache) |
 | `services/stt/src/feature/stt/` | Speech-to-text via sherpa-onnx (default `nemo_transducer` FastConformer RNN-T, es/en; whisper/canary/nemo_ctc/omnilingual selectable) |
 | `services/tts/src/feature/synthesis/` | `TtsService` (`services/`) + the Supertonic engine set (`infra/supertonic/`: `TtsEngine`, `Style`, `UnicodeProcessor`, onnx loading) — Supertonic 3 text-to-speech |
 | `services/voice/src/shared/services/vad/` | `VadService` — Silero VAD v5 as an **instance** class (per-stream LSTM, shared ONNX session), with the turn-quality gate |

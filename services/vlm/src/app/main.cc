@@ -1,4 +1,4 @@
-#include <controllers/vlm-controller.hxx>
+#include <feature/vlm/controllers/vlm-controller.hxx>
 #include <drogon/drogon.h>
 #include <http/error-handler.hxx>
 #include <http/health-controller.hxx>

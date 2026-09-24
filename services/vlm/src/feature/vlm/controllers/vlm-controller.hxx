@@ -4,7 +4,7 @@
 #include <drogon/HttpRequest.h>
 #include <drogon/HttpResponse.h>
 #include <drogon/utils/coroutine.h>
-#include <shared/services/vision/vision-service.hxx>
+#include <feature/vlm/services/vision-service.hxx>
 
 class VlmController : public drogon::HttpController<VlmController, false>
 {

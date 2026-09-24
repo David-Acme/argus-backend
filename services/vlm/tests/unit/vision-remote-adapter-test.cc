@@ -4,7 +4,7 @@
 #include "fake-vlm-server.hxx"
 
 #include <config/config-service.hxx>
-#include <shared/services/vision/remote/remote-vision-adapter.hxx>
+#include <feature/vlm/services/remote/remote-vision-adapter.hxx>
 
 #include <drogon/drogon.h>
 #include <opencv2/imgcodecs.hpp>

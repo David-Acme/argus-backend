@@ -4,7 +4,7 @@
 
 #include <errors/response-exception.hxx>
 #include <http/api-response.hxx>
-#include <vlm/describe-dto.hxx>
+#include <feature/vlm/dtos/describe-dto.hxx>
 
 #include <drogon/drogon.h>
 #include <opencv2/imgcodecs.hpp>

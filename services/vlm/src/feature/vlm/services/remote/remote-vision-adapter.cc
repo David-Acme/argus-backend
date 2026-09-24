@@ -1,8 +1,8 @@
 #include "remote-vision-adapter.hxx"
 
 #include <config/config-service.hxx>
-#include <shared/services/vision/vision-hash.hxx>
-#include <shared/services/vision/remote/vlm-remote.hxx>
+#include <feature/vlm/services/remote/vlm-remote.hxx>
+#include <feature/vlm/services/vision-hash.hxx>
 #include <runtime/blocking-task.hxx>
 
 #include <drogon/drogon.h>
