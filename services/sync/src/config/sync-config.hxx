@@ -22,6 +22,8 @@ struct SyncUpstreams
   std::string camera;
   std::string productivity;
   std::string notification;
+  std::string identity;
+  std::string identitySecret;
 };
 
 class SyncConfig

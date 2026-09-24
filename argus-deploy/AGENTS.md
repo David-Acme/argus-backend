@@ -22,9 +22,10 @@ any change; the cutover shape and its exceptions are documented there.
 - Never bake secrets into images. Instance secrets live in the gitignored
   config files.
 - `identity-init` is opt-in (`--profile identity-init`): it runs
-  `argus-migrate-identity` (source argus.db → target identity.db) and is
-  idempotent. The gateway applies `database/schema.sql` at boot, so a fresh
-  install works without the init profile.
+  `argus-migrate-identity` (source argus.db → target identity.db) on the
+  argus-identity image and is idempotent. argus-identity applies its own
+  `database/schema.sql` at boot, so a fresh install works without the init
+  profile.
 - This stack uses the `argus-cutover` project, `argus-cutover-*` volumes and
   networks only; never touch other compose projects or their volumes.
 - No C++ code in this folder: changes here are compose/config only.

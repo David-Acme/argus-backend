@@ -1,12 +1,12 @@
+#include <drogon/DrClassMap.h>
 #include <drogon/drogon.h>
+#include <auth/device-filter.hxx>
+#include <auth/jwt-filter.hxx>
 #include <http/cors.hxx>
 #include <http/error-handler.hxx>
 #include <http/health-controller.hxx>
 #include <http/listener-config.hxx>
-#include <auth/auth-access.hxx>
-#include <identity/identity-config.hxx>
-#include <identity/identity-registrar.hxx>
-#include <feature/rpc/identity-rpc.hxx>
+#include <identity/identity-client.hxx>
 #include <proxy/proxy-config.hxx>
 #include <proxy/reverse-proxy.hxx>
 #include <server/remote-config.hxx>
@@ -16,11 +16,9 @@
 #include <memory>
 #include <cert/cert-service.hxx>
 #include <config/config-service.hxx>
-#include <shared/services/face/face-service.hxx>
 #include <sqlite/db-service.hxx>
 #include <nats/nats-bus.hxx>
 #include <runtime/shutdown-signal.hxx>
-#include <feature/api/user/services/nats-identity-change-sink.hxx>
 #include <sync/camera-notifier.hxx>
 #include <sync/camera-stream-relay.hxx>
 #include <sync/camera-stream-socket.hxx>
@@ -33,9 +31,27 @@
 namespace
 {
 
+template <typename T>
+void requireFilter()
+{
+  if (!drogon::DrClassMap::getSingleInstance<T>())
+    throw std::runtime_error(std::string(T::classTypeName())
+                             + " is not registered");
+}
+
+void registerGatewayFilters()
+{
+  drogon::app().registerFilter(std::make_shared<DeviceFilter>());
+  drogon::app().registerFilter(std::make_shared<JwtFilter>());
+
+  requireFilter<DeviceFilter>();
+  requireFilter<JwtFilter>();
+
+  LOG_INFO << "Gateway filters registered: DeviceFilter, JwtFilter";
+}
+
 struct DrogonConfigInput
 {
-  const IdentityDbConfig& identityDb;
   const std::string& gatewayDbPath;
   const ListenerConfig& listener;
   const RemoteConfig& remote;
@@ -44,7 +60,6 @@ struct DrogonConfigInput
 
 Json::Value drogonConfig(const DrogonConfigInput& input)
 {
-  const IdentityDbConfig& identityDb = input.identityDb;
   const std::string& gatewayDbPath = input.gatewayDbPath;
   const ListenerConfig& listener = input.listener;
   const RemoteConfig& remote = input.remote;
@@ -58,19 +73,11 @@ Json::Value drogonConfig(const DrogonConfigInput& input)
   Json::Value client(Json::objectValue);
   client["name"] = "default";
   client["rdbms"] = "sqlite3";
-  client["filename"] = identityDb.dbPath;
+  client["filename"] = gatewayDbPath;
   client["is_fast"] = false;
   client["number_of_connections"] = 1;
   client["timeout"] = -1.0;
   clients.append(client);
-  Json::Value gatewayClient(Json::objectValue);
-  gatewayClient["name"] = "gateway";
-  gatewayClient["rdbms"] = "sqlite3";
-  gatewayClient["filename"] = gatewayDbPath;
-  gatewayClient["is_fast"] = false;
-  gatewayClient["number_of_connections"] = 1;
-  gatewayClient["timeout"] = -1.0;
-  clients.append(gatewayClient);
   config["db_clients"] = clients;
 
   Json::Value listeners = listenerJson(listener);
@@ -78,7 +85,8 @@ Json::Value drogonConfig(const DrogonConfigInput& input)
       {.listeners = listeners, .remote = remote, .base = listener});
   config["listeners"] = listeners;
 
-  if (!proxy.authProxyUrl.empty() || !proxy.cameraProxyUrl.empty()
+  if (!proxy.authProxyUrl.empty() || !proxy.identityProxyUrl.empty()
+      || !proxy.cameraProxyUrl.empty()
       || !proxy.productivityProxyUrl.empty()
       || !proxy.notificationProxyUrl.empty() ||
       !proxy.guardProxyUrl.empty()) {
@@ -102,6 +110,19 @@ Json::Value drogonConfig(const DrogonConfigInput& input)
         authRoute["backend"] = proxy.authProxyUrl;
         authRoute["validate_cert"] = false;
         routes.append(authRoute);
+      }
+      if (!proxy.identityProxyUrl.empty()) {
+        Json::Value identityRoute(Json::objectValue);
+        Json::Value prefixes(Json::arrayValue);
+        prefixes.append("/invitation");
+        prefixes.append("/pairing");
+        prefixes.append("/portrait-preview");
+        prefixes.append("/user");
+        identityRoute["prefixes"] = prefixes;
+        identityRoute["max_segments"] = 4;
+        identityRoute["backend"] = proxy.identityProxyUrl;
+        identityRoute["validate_cert"] = false;
+        routes.append(identityRoute);
       }
       if (!proxy.cameraProxyUrl.empty()) {
         Json::Value cameraRoute(Json::objectValue);
@@ -191,7 +212,8 @@ void logRouting(const LogRoutingInput& input)
              << remote.tunnelPort << " (pairing/register "
              << (remote.enabled ? "allowed" : "LAN-only") << ")";
   if (proxy.cameraProxyUrl.empty() && proxy.productivityProxyUrl.empty()
-      && proxy.notificationProxyUrl.empty() && proxy.authProxyUrl.empty()) {
+      && proxy.notificationProxyUrl.empty() && proxy.authProxyUrl.empty()
+      && proxy.identityProxyUrl.empty()) {
     LOG_INFO << "Reverse proxy disabled: the gateway serves its routes only";
     return;
   }
@@ -208,8 +230,7 @@ int main()
 
   ConfigService::load("config.toml");
 
-  const IdentityDbConfig identityDb = IdentityConfig::resolveDb();
-  ConfigService::setRuntimeString("database.file", identityDb.dbPath);
+  registerGatewayFilters();
 
   std::string gatewayDbPath = ConfigService::getString("gateway.db");
   if (gatewayDbPath.empty())
@@ -217,11 +238,6 @@ int main()
   std::string gatewaySchemaPath = ConfigService::getString("gateway.schema");
   if (gatewaySchemaPath.empty())
     gatewaySchemaPath = "services/gateway/database/schema.sql";
-
-  const IdentityRegistrationStats identity =
-      registerIdentitySurface();
-  LOG_INFO << "Identity surface registered: " << identity.controllers
-           << " controllers, " << identity.filters << " filters";
 
   const CameraStreamConfig cameraStream = CameraStreamConfig::resolve();
   const std::string notificationGrpcTarget =
@@ -273,8 +289,7 @@ int main()
       });
 
   drogon::app().loadConfigJson(
-      drogonConfig({.identityDb = identityDb,
-                    .gatewayDbPath = gatewayDbPath,
+      drogonConfig({.gatewayDbPath = gatewayDbPath,
                     .listener = listener,
                     .remote = remote,
                     .proxy = proxy}));
@@ -305,21 +320,31 @@ int main()
 
   const std::string natsUrl = ConfigService::getString("nats.url");
   std::shared_ptr<NatsBus> natsBus;
-  std::shared_ptr<NatsIdentityChangeSink> identitySink;
   CameraNotificationPolicy* fallbackPolicy = nullptr;
   if (natsUrl.empty()) {
     LOG_INFO << "NATS not configured; event bus disabled";
   } else {
     natsBus = std::make_shared<NatsBus>();
     const bool connected = natsBus->connect();
+    const std::string identityTarget =
+        ConfigService::getString("identity.target");
+    std::shared_ptr<IdentityClient> identityClient;
+    if (identityTarget.empty()) {
+      LOG_WARN << "Identity target unconfigured; camera notifications keep "
+                  "their fallback record but reach no recipient";
+    }
+    else {
+      identityClient = std::make_shared<IdentityClient>(
+          identityTarget, ConfigService::getString("identity.rpc_secret"));
+    }
     fallbackPolicy = camera_notifier::subscribeObjectDetected(
-        *natsBus, std::make_shared<NotificationClient>(NotificationClientConfig{
-                       .target = notificationGrpcTarget,
-                       .credential = ConfigService::getString(
-                           "notifications.credential")}));
-    identitySink = std::make_shared<NatsIdentityChangeSink>(
-        natsBus, NatsIdentityChangeSink::Config{});
-    identity_change::setSink(identitySink.get());
+        *natsBus,
+        {.notificationClient =
+             std::make_shared<NotificationClient>(NotificationClientConfig{
+                 .target = notificationGrpcTarget,
+                 .credential = ConfigService::getString(
+                     "notifications.credential")}),
+         .identityClient = identityClient});
     if (connected)
       LOG_INFO << "NATS event bus connected to " << natsBus->options().url;
     else
@@ -363,65 +388,14 @@ int main()
                                  return status;
                                }}}}));
 
-  const IdentityRpcConfig identityRpcConfig = IdentityRpcConfig::resolve();
-  if (identityRpcConfig.reachableBeyondLoopback() &&
-      identityRpcConfig.secret.empty()) {
-    LOG_FATAL << "[identity] rpc_host " << identityRpcConfig.host
-              << " is reachable beyond loopback and validates tokens for the "
-                 "whole fleet: set [identity] rpc_secret (and the same value "
-                 "in every service's config) — aborting startup";
-    _exit(1);
-  }
-
-  IdentityRpcService identityRpc({.bus = natsBus,
-                                  .fleetSecret = identityRpcConfig.secret,
-                                  .auth = filterAuthClient()});
-  grpc::ServerBuilder identityBuilder;
-  identityBuilder.AddListeningPort(
-      identityRpcConfig.host + ":" + std::to_string(identityRpcConfig.port),
-      grpc::InsecureServerCredentials());
-  identityBuilder.RegisterService(&identityRpc);
-  std::unique_ptr<grpc::Server> identityServer(identityBuilder.BuildAndStart());
-  if (identityServer)
-    LOG_INFO << "Identity RPC listening on " << identityRpcConfig.host << ":"
-             << identityRpcConfig.port << " (cleartext, "
-             << (identityRpcConfig.secret.empty()
-                     ? "loopback only, no fleet secret"
-                     : "fleet secret required")
-             << ")";
-  else
-    LOG_WARN << "Identity RPC failed to listen on " << identityRpcConfig.host
-             << ":" << identityRpcConfig.port;
-
   std::unique_ptr<MdnsService> mdnsService;
-  drogon::app().registerBeginningAdvice([&identityDb = identityDb,
-                                         &gatewayDbPath = gatewayDbPath,
+  drogon::app().registerBeginningAdvice([&gatewayDbPath = gatewayDbPath,
                                          &gatewaySchemaPath =
                                              gatewaySchemaPath,
-                                         &identitySink,
                                          &mdnsService]() {
     DbService::installExtensions();
 
-    if (!DbService::runScriptFile(identityDb.schemaPath)) {
-      LOG_FATAL << "Identity database schema failed to apply — aborting startup";
-      _exit(1);
-    }
-
-    const auto personColumns = DbService::client()->execSqlSync(
-        "SELECT COUNT(*) AS total FROM pragma_table_info('person') "
-        "WHERE name = 'status'");
-    if (personColumns.empty() ||
-        personColumns.front()["total"].as<int>() == 0)
-      DbService::client()->execSqlSync(
-          "ALTER TABLE person ADD COLUMN status TEXT NOT NULL DEFAULT 'known'");
-
-    DbService::applyPragmas();
-
-    if (identitySink) {
-      identitySink->reconcile();
-    }
-
-    DbService::setGatewayClient(drogon::app().getDbClient("gateway"));
+    DbService::setGatewayClient(drogon::app().getDbClient());
     if (!DbService::runScriptFile(gatewaySchemaPath,
                                   DbService::gatewayClient())) {
       LOG_ERROR << "Gateway fallback record unavailable: could not apply "
@@ -434,15 +408,6 @@ int main()
       DbService::applyPragmas(DbService::gatewayClient());
     }
 
-    if (ConfigService::getBool("face.enabled")) {
-      FaceService::instance().init();
-      if (!FaceService::instance().isLoaded())
-        LOG_WARN << "FaceService not loaded — facial login disabled";
-    }
-    else {
-      LOG_INFO << "FaceService disabled by configuration";
-    }
-
     if (!CertService::init())
       LOG_WARN << "PKI not loaded — pairing disabled";
 
@@ -452,17 +417,11 @@ int main()
   });
 
   shutdown_signal::onQuit(
-      [dbPath = identityDb.dbPath] { DbService::freezeClient(dbPath); });
-  if (identitySink) {
-    shutdown_signal::onStop(
-        shutdown_signal::drainOf(*identitySink, "identity-change"));
-  }
+      [dbPath = gatewayDbPath] { DbService::freezeClient(dbPath); });
 
   drogon::app()
       .setThreadNum(0)
       .run();
 
-  if (identityServer)
-    identityServer->Shutdown();
   return 0;
 }

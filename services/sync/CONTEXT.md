@@ -99,7 +99,7 @@ protocol could not regress by accident in the commit that changed the endpoint.
 ## Where the state lives, today
 
 Identity's file. The four identity tables' DDL moved here verbatim (they were
-`packages/identity`'s schema); `audit_compaction_state` is this service's own,
+`services/identity`'s schema); `audit_compaction_state` is this service's own,
 and `[sync] db` still points at
 `database/identity.db`; Phase 3c-2 splits them into `sync.db` and the key
 changes with it. Two consequences are accepted for now: the audit tables' `REFERENCES user(id)` foreign keys
@@ -230,17 +230,19 @@ The design in the report had `UserChangeSink` gain `emitModule` plus an
 shape: identity's outbound wire is **one five-method `IdentityChangeSink`**
 (`publishCatalog`, `emitModule`, `publishModuleAudit`, `publishUsersAudit`,
 `publishAction`) declared in `contracts/sync`, with the `NatsIdentityChangeSink`
-implementation and the catalog replica payload moved into
-`packages/identity`'s own feature tree. Productivity's and notification's sinks
-are untouched — they never needed a sixth slot, and identity needed a namespace
-of its own.
+implementation and the catalog replica payload living in the identity owner's
+own feature tree (`services/identity/src/feature/user/services/`).
+Productivity's and notification's sinks are untouched — they never needed a
+sixth slot, and identity needed a namespace of its own.
 
-Two properties that shape the code: identity holds *interfaces*, never the
-client, so `packages/identity` stays linkable into a process with no control
-channel (its suites); and each host's `main.cc` constructs and installs the
-funnel at boot. The gateway's `main.cc` still installs the identity sink — the
-identity RPC listener it serves is what publishes — while the socket fan-out,
-the delivery consumer and the `RoomManager` lifecycle moved here.
+Two properties that shape the code: a domain's features hold *interfaces*,
+never the client — that is what the sink declarations in `contracts/sync` are —
+so identity's features stay linkable into a process with no control channel
+(its suites); and each host's `main.cc` constructs and installs the funnel at
+boot. `services/identity`'s `main.cc` is now one of those hosts and the gateway
+is not: the identity RPC listener that publishes belongs to argus-identity,
+while the socket fan-out, the delivery consumer and the `RoomManager` lifecycle
+moved here.
 
 ## Why the voice relay came along
 
@@ -265,7 +267,7 @@ audit writers and the fan-out together rather than in pieces.
 
 No auth surface of its own, no route other than `/health` and the WS upgrade,
 no second writer for any table it owns, no reading of another service's
-database (the three pull sources call their own gRPC contracts), no AI capacity
+database (the four pull sources call their own gRPC contracts), no AI capacity
 and no in-process emit that the control plane cannot also perform.
 
 ## Compose volume

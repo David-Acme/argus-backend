@@ -16,13 +16,6 @@ SyncService::refreshContext(const drogon::WebSocketConnectionPtr& conn) const
   std::optional<DirectoryUser> resolved;
   if (userDirectory_)
     resolved = co_await userDirectory_->findById(ctx.sub);
-  else if (const auto user = co_await userRepository_.findById(ctx.sub))
-    resolved = DirectoryUser{.id = user->id,
-                             .name = user->name,
-                             .lastName = user->lastName,
-                             .lang = user->lang,
-                             .role = user->role,
-                             .isActive = user->isActive};
 
   if (!resolved || !resolved->isActive)
     throw ResponseException(401, SyncErrors::UserAccountDisabled);
@@ -143,6 +136,12 @@ void SyncService::setNotificationSource(
 {
   notificationSource_ = std::move(source);
   synchronizedService_.setNotificationSource(notificationSource_.get());
+}
+
+void SyncService::setIdentitySource(std::shared_ptr<IdentitySyncSource> source)
+{
+  identitySyncSource_ = std::move(source);
+  synchronizedService_.setIdentitySource(identitySyncSource_.get());
 }
 
 void SyncService::setUserDirectory(

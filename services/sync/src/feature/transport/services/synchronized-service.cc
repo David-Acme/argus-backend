@@ -43,19 +43,26 @@ std::optional<ProductivitySyncTable> productivitySyncTableFor(TableName table)
       return std::nullopt;
   }
 }
+std::optional<IdentitySyncTable> identitySyncTableFor(TableName table)
+{
+  switch (table) {
+    case TableName::User:
+      return IdentitySyncTable::User;
+    case TableName::UserInvitation:
+      return IdentitySyncTable::UserInvitation;
+    case TableName::Person:
+      return IdentitySyncTable::Person;
+    default:
+      return std::nullopt;
+  }
+}
 }
 
 const Syncable& SynchronizedService::repoFor(TableName table) const
 {
   switch (table) {
-    case TableName::User:
-      return userRepository_;
-    case TableName::UserInvitation:
-      return userInvitationRepository_;
     case TableName::Event:
       return eventRepository_;
-    case TableName::Person:
-      return personRepository_;
     case TableName::UserActionLog:
       return userActionLogRepository_;
     default:
@@ -237,7 +244,8 @@ drogon::Task<Json::Value> SynchronizedService::sync(const SynchronizedDto& body,
 
   Json::Value out(Json::objectValue);
   for (const auto& [name, member] : kBodyFields) {
-    if (!(body.*member))
+    const auto& field = body.*member;
+    if (!field.has_value())
       continue;
 
     const auto table = tableNameFromString(name);
@@ -248,7 +256,7 @@ drogon::Task<Json::Value> SynchronizedService::sync(const SynchronizedDto& body,
     }
 
     if (table == TableName::Notification) {
-      out[name] = co_await syncUserNotification(*(body.*member), ctx);
+      out[name] = co_await syncUserNotification(*field, ctx);
       continue;
     }
 
@@ -257,7 +265,7 @@ drogon::Task<Json::Value> SynchronizedService::sync(const SynchronizedDto& body,
         throw ResponseException(503, SyncErrors::CameraSyncUnavailable);
       const auto source = cameraSyncSource_->sourceFor(*cameraTable, ctx);
       out[name] =
-          co_await syncWithRepo({.repo = *source, .dto = *(body.*member)}, {});
+          co_await syncWithRepo({.repo = *source, .dto = *field}, {});
       continue;
     }
 
@@ -268,17 +276,21 @@ drogon::Task<Json::Value> SynchronizedService::sync(const SynchronizedDto& body,
       const auto source =
           productivitySyncSource_->sourceFor(*productivityTable, ctx);
       out[name] =
-          co_await syncWithRepo({.repo = *source, .dto = *(body.*member)}, {});
+          co_await syncWithRepo({.repo = *source, .dto = *field}, {});
+      continue;
+    }
+
+    if (const auto identityTable = identitySyncTableFor(table)) {
+      if (!identitySyncSource_ || !identitySyncSource_->serves(*identityTable))
+        throw ResponseException(503, SyncErrors::IdentitySyncUnavailable);
+      const auto source = identitySyncSource_->sourceFor(*identityTable, ctx);
+      out[name] =
+          co_await syncWithRepo({.repo = *source, .dto = *field}, {});
       continue;
     }
 
     const auto& repo = repoFor(table);
-    SyncFilter base{};
-    if (table == TableName::User && ctx.role != UserRole::Owner &&
-        ctx.role != UserRole::Guard)
-      base.userId = ctx.sub;
-    out[name] =
-        co_await syncWithRepo({.repo = repo, .dto = *(body.*member)}, base);
+    out[name] = co_await syncWithRepo({.repo = repo, .dto = *field}, {});
   }
 
   SocketEmitDto response;

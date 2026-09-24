@@ -32,16 +32,15 @@ monolith's build set was retired (F6-4).
   `stored_file`, `portrait_preview_capability`), carried verbatim from the
   retired monolith schema — and aborts if it fails; it never touches
   `argus.db` and never runs the backend migrations.
-- **The identity change sink's drain**: `NatsIdentityChangeSink` registers
-  itself with `shutdown_signal` before `drogon::app().run()` and is reconciled
-  from the beginning advice, so a
-  SIGTERM stops the drain before Drogon's `quit()` destroys the database client
-  manager its worker reaches through `DbService::client()`. The registration
-  comes first because the hook's handlers are what `run()` installs Drogon's
-  `sigaction` over, and because a drain registered after the stop was
-  requested is only stopped at once, never waited for. The sink travels
-  with `packages/identity` at the Phase 3c extraction; the registration goes
-  with it.
+- **The identity change sink's drain left with the identity owner**: the sink
+  and its `shutdown_signal` registration now live in `services/identity`
+  (`src/app/main.cc`, the drain named `identity-change`), where it registers
+  before `drogon::app().run()` and is reconciled from the beginning advice, so
+  a SIGTERM stops the drain before Drogon's `quit()` destroys the database
+  client manager its worker reaches through `DbService::client()`. The
+  registration comes first because the hook's handlers are what `run()`
+  installs Drogon's `sigaction` over, and because a drain registered after the
+  stop was requested is only stopped at once, never waited for.
 - **Device identity modes (F5-2, Ruling CH)**: `DeviceFilter` gained a
   `[device] identity_mode` gate (`ip` default, byte-identical legacy
   behavior | `credential`), shared with the legacy through `argus_identity`.
@@ -458,23 +457,24 @@ table. The app keeps working without any update.
   identity.db and sends `identity{user_id, name, lang, role}` inside the first
   proto message, so argus-voice never reads a database — it greets from the
   typed fields and answers in the user's language.
-- **`argus.identity.v1.IdentityService` listener**: the gateway hosts
-  UpdateUser on `[identity] rpc_host`/`rpc_port` (default loopback 7040;
-  compose binds 0.0.0.0 because argus-voice is on the bridge network). When a
-  user says their name mid-session, argus-voice writes the spoken name back
-  through this RPC; the gateway persists it via `UserRepository` and
-  publishes it through the identity change sink on NATS (the same path
-  every other identity write already uses) so every connected device sees
-  the renamed user. Role rides the `x-argus-role` metadata. UpdateUser
-  enforces row scoping: the `x-argus-user` metadata must carry the request's
-  `user_id`, otherwise the RPC answers UNAUTHENTICATED.
-- **The service implementation moved out in f7-3**: `IdentityRpcService` now
-  lives in `packages/identity/src/feature/rpc/identity-rpc.cc` — the surface
-  belongs to the identity service; the gateway only constructs it and binds
-  the listener, so it travels with the folder at the standalone extraction.
-  The same listener gained `ValidateToken` and `CheckDeviceCredential`,
-  which the whole fleet's filter chain calls instead of reading identity.db:
-  the gateway is the only process that still touches those rows.
+- **`argus.identity.v1.IdentityService`**: the listener is argus-identity's
+  since Phase 3c — `[identity] target` (or the `rpc_host`/`rpc_port`
+  fallback) is where the gateway dials it, and the gateway reaches the
+  person and user surface through `argus::clients::identity` rather than
+  serving it. When a user says their name mid-session, argus-voice writes
+  the spoken name back through the RPC; the identity owner persists it and
+  publishes it through its change sink on NATS (the same path every other
+  identity write already uses) so every connected device sees the renamed
+  user. Role rides the `x-argus-role` metadata. UpdateUser enforces row
+  scoping: the `x-argus-user` metadata must carry the request's `user_id`,
+  otherwise the RPC answers UNAUTHENTICATED.
+- **Where the implementation went**: `IdentityRpcService` left the gateway in
+  f7-3 (to `packages/identity`) and now lives in
+  `services/identity/src/app/rpc/` — the surface belongs to the identity
+  owner. The session verdict (`ValidateToken`) and the device credential
+  (`CheckDeviceCredential`) left that listener in 3b for `argus.auth.v1`,
+  which the whole fleet's filter chain calls instead of reading identity.db;
+  no gateway process touches those rows any more.
 
 ## Camera guard edge (F11): heartbeat fallback, guard proxy, durable delivery
 

@@ -12,10 +12,15 @@ links `argus::clients::auth`. It compiles one proto
 
 Two calls, and they are the whole edge between a filter and the service that
 owns sessions: `validateToken`, the question every authenticated request asks,
-and `checkDeviceCredential`, the one the device credential mode adds. Until
-Phase 3b-3 repoints `packages/lib/auth` they are asked of `argus.identity.v1`;
-after it, of this client. Neither is an HTTP route: the `/auth/*` surface is the
-app's, this is the fleet's.
+and `checkDeviceCredential`, the one the device credential mode adds. The
+identity listener answered both until 3b-3 moved the verdict to `argus-auth`,
+and it answers neither now. Neither is an HTTP route: the `/auth/*` surface is
+the app's, this is the fleet's.
+
+Four trees link it — `packages/lib/auth` (the filters, through
+`filterAuthClient()`), `services/auth` (the stub that implements the server
+side, plus its suites), `services/identity` (whose RPC service asks the same
+verdict for its own callers) and this package's own suite.
 
 `argus.auth.v1` declares its own `SessionUser` rather than importing
 `identity.proto`'s `UserIdentity`, because a client package may not depend on
@@ -52,14 +57,13 @@ identity side never reshapes this wire.
   `kCallTimeoutMs` = 5000 ms, a `constexpr` in the `.cc`. The channel is
   plaintext (`makeChannel` is `InsecureChannelCredentials`), like every other
   gRPC leg in the fleet.
-- Config: this package resolves nothing itself — the constructor takes the
-  target and the fleet secret and the consumer reads them. Phase 3b-3 gives
-  `packages/lib/auth` the consumer that needs it (`details/auth-access.cc`,
-  beside the identity one), resolving `auth.target`, or `auth.rpc_host` and
-  `auth.rpc_port` with `127.0.0.1:7043` as the fallback, plus `auth.rpc_secret`.
-  Until then the only code that builds an `AuthClient` is this package's test:
-  `argus-auth` links the target for the generated stub, which is what
-  implements the server side.
+- Config: this package resolves nothing itself — the constructor takes an
+  `AuthClientConfig` and the consumer reads it. The resolver lives with the
+  first consumer, `filterAuthClient()` in
+  `packages/lib/auth/src/auth/auth-access.cc`, reading `auth.target` (or
+  `auth.rpc_host` / `auth.rpc_port`, `127.0.0.1:7043` as the fallback) plus
+  `auth.rpc_secret`; `argus-identity` holds the same helper's client beside its
+  own RPC service.
 
 ## Tests
 

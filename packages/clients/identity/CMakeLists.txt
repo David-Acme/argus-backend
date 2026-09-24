@@ -11,7 +11,9 @@ if(NOT TARGET argus::clients::identity)
   argus_clients(NAME identity
       PROTO_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../../contracts/proto
       PROTO argus/identity/v1/identity.proto
+            argus/identity/v1/sync.proto
       SOURCES src/identity/identity-client.cc
+              src/identity/identity-sync-client.cc
       INCLUDES src)
 endif()
 

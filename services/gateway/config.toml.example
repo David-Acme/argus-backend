@@ -54,10 +54,9 @@ target = "127.0.0.1:7043"
 rpc_secret = ""
 
 [identity]
-db = "database/identity.db"
-schema = "packages/identity/database/schema.sql"
-rpc_host = "127.0.0.1"
-rpc_port = 7040
+proxy_url = "https://127.0.0.1:7044"
+target = "127.0.0.1:7040"
+rpc_secret = ""
 
 [camera]
 stream_url = "ws://127.0.0.1:7026/media"
@@ -91,9 +90,6 @@ port = 7024
 path = "/"
 https = "true"
 wss = "true"
-
-[face]
-enabled = true
 
 [notifications]
 proxy_url = "http://127.0.0.1:7028"

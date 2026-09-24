@@ -183,6 +183,7 @@ ensure_local_config() {
   local configs=() dir
   for dir in \
       services/auth \
+      services/identity \
       services/gateway \
       services/sync \
       services/camera \
@@ -230,7 +231,7 @@ main() {
   "$ROOT/services/llm/scripts/provision.sh"
   "$ROOT/services/vlm/scripts/provision.sh"
   "$ROOT/services/stt/scripts/provision.sh"
-  "$ROOT/packages/identity/scripts/provision.sh"
+  "$ROOT/services/identity/scripts/provision.sh"
   "$ROOT/services/voice/scripts/provision.sh"
   "$ROOT/packages/memory/scripts/provision.sh"
   "$ROOT/services/camera/scripts/provision.sh"

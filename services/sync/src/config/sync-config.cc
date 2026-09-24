@@ -54,7 +54,9 @@ SyncUpstreams SyncConfig::resolveUpstreams()
 {
   return {.camera = ConfigService::getString("camera.grpc_target"),
           .productivity = ConfigService::getString("productivity.grpc_target"),
-          .notification = ConfigService::getString("notifications.grpc_target")};
+          .notification = ConfigService::getString("notifications.grpc_target"),
+          .identity = ConfigService::getString("identity.target"),
+          .identitySecret = ConfigService::getString("identity.rpc_secret")};
 }
 
 int SyncConfig::resolveAuditRetentionDays()

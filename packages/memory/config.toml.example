@@ -40,12 +40,6 @@ threads = 0
 n_ctx = 2048
 max_tokens = 512
 
-[identity]
-db = "./database/identity.db"
-
-[camera]
-db = "./database/camera.db"
-
 [nats]
 url = "nats://127.0.0.1:4222"
 reconnect_wait_ms = 2000

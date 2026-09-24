@@ -18,24 +18,11 @@ if(PROJECT_IS_TOP_LEVEL)
     find_package(tomlplusplus REQUIRED)
     find_package(jwt-cpp REQUIRED)
     find_package(nlohmann_json REQUIRED)
-    find_package(OpenCV CONFIG REQUIRED)
     if(NOT TARGET sqlite-vec)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../third_party/sqlite-vec
                          ${CMAKE_BINARY_DIR}/third_party/sqlite-vec)
     endif()
     set(ARGUS_SQLITE_VEC_TARGET sqlite-vec)
-
-    set(NCNN_BUILD_BENCHMARK OFF CACHE BOOL "" FORCE)
-    set(NCNN_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
-    set(NCNN_BUILD_TOOLS OFF CACHE BOOL "" FORCE)
-    set(NCNN_BUILD_TESTS OFF CACHE BOOL "" FORCE)
-    set(NCNN_OPENMP ON CACHE BOOL "" FORCE)
-    set(NCNN_AVX2 ON CACHE BOOL "" FORCE)
-    set(NCNN_VULKAN ON CACHE BOOL "" FORCE)
-    set(NCNN_ENABLE_PIC ON CACHE BOOL "" FORCE)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../third_party/ncnn
-                     ${CMAKE_BINARY_DIR}/third_party/ncnn EXCLUDE_FROM_ALL)
-    set(ARGUS_NCNN_TARGET ncnn)
 
     if(NOT TARGET argus::lib::config)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/config
@@ -65,10 +52,6 @@ if(PROJECT_IS_TOP_LEVEL)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/auth
                          ${CMAKE_BINARY_DIR}/auth)
     endif()
-    if(NOT TARGET argus::lib::cert)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/cert
-                         ${CMAKE_BINARY_DIR}/cert)
-    endif()
     if(NOT TARGET argus::contracts::voice)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/contracts/voice
                          ${CMAKE_BINARY_DIR}/contracts/voice)
@@ -85,14 +68,6 @@ if(PROJECT_IS_TOP_LEVEL)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/contracts/productivity
                          ${CMAKE_BINARY_DIR}/contracts/productivity)
     endif()
-    if(NOT TARGET argus::identity)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/identity
-                         ${CMAKE_BINARY_DIR}/identity)
-    endif()
-    if(NOT TARGET identity-migration)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/identity/tools/migrate-identity
-                         ${CMAKE_BINARY_DIR}/identity/tools/migrate-identity)
-    endif()
 endif()
 
 if(NOT TARGET argus::clients::sync)
@@ -103,6 +78,10 @@ endif()
 if(NOT TARGET argus::clients::camera)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/camera
                      ${CMAKE_BINARY_DIR}/clients/camera EXCLUDE_FROM_ALL)
+endif()
+if(NOT TARGET argus::clients::identity)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/identity
+                     ${CMAKE_BINARY_DIR}/clients/identity EXCLUDE_FROM_ALL)
 endif()
 if(NOT TARGET argus::clients::notification)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/notification

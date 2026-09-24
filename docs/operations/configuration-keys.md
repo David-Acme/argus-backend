@@ -11,7 +11,8 @@ argus-deploy argus-camera configuration. Copy to config.camera.toml (gitignored)
 
 | Key | Notes |
 |---|---|
-| `identity.rpc_secret` | Must match the gateway's [identity] rpc_secret, or every request 401s. |
+| `identity.target` | argus-identity's fleet-secret RPC listener (`argus-identity:7040`); the camera guard's face recognition and enrollment ride it. |
+| `identity.rpc_secret` | Must match argus-identity's [identity] rpc_secret, or every identity call fails. |
 | `grpc.caller_guard` | Capability credential for the guard -> camera edge (paired with guard's camera.actions_credential). |
 | `grpc.identify` | Camera guard recognition; enroll/capture stay off until you enable them. |
 | `operator.zones_from_db` | Enabled zones live in camera.db (the app editor); false uses the JSON below only. |
@@ -34,9 +35,10 @@ argus-deploy gateway configuration. Copy to config.gateway.toml (gitignored) nex
 
 | Key | Notes |
 |---|---|
-| `gateway.db` | Gateway-owned fallback record; identity and sync state stay in their owners. database/schema.sql stays the identity schema; the gateway schema mounts separately because this container hosts both databases. |
-| `identity.rpc_host` | Cleartext listener: bind loopback or the pinned bridge address only. |
-| `identity.rpc_secret` | Required whenever rpc_host is not loopback; same value in every service. |
+| `gateway.db` | Gateway-owned degraded-fallback record; identity and sync state stay in their owners, reached through `argus::clients::identity` and the sync control leg. |
+| `identity.proxy_url` | The identity HTTP surface the gateway proxies its identity prefixes to (`https://127.0.0.1:7044`: loopback, because this container is host-networked). |
+| `identity.target` | argus-identity's fleet-secret RPC listener (loopback 7040) behind the identity client. |
+| `identity.rpc_secret` | Required whenever the target is set; same value in every service. |
 | `sync.control_target` | The sync service's control plane (unary gRPC); empty disables the imperative leg, leaving role changes and disconnects undelivered. |
 | `sync.control_secret` | Required whenever the control target is set; same value in every service. |
 | `storage.mode` | Private object storage (RustFS). provision-host.sh fills the [storage.s3] keys with the generated bucket and application credentials; the endpoint is the host loopback publish because the gateway runs host-networked. |
@@ -47,10 +49,37 @@ argus-deploy argus-auth configuration. Copy to config.auth.toml (gitignored) nex
 
 | Key | Notes |
 |---|---|
-| `auth.db` | The three session tables. They move here from identity.db as a copy in Phase 3b-2, when the `/auth` surface that writes them moves to this service; until then the gateway's identity service still serves the same rows. |
+| `auth.db` | The three session tables, moved here from identity.db as a copy in Phase 3b-2 with the `/auth` surface that writes them. |
 | `auth.rpc_secret` | Must be the same value in every service's config: the RPC answers session verdicts for the fleet. Empty means loopback-only and ungated, and the service refuses to start when the listener is reachable beyond loopback without it. |
 | `auth.context_cache_seconds` | How long a resolved user context may be reused before identity is asked again (0 disables the cache). A change on the identity feed drops the entry immediately, so this is a load valve, not the invalidation mechanism. |
-| `identity.rpc_secret` | The identity call behind a session verdict; same value as the gateway's [identity] rpc_secret, or every validation of a live session fails. |
+| `identity.target` | The identity call behind a session verdict; `argus-identity:7040`, the fleet-secret RPC leg. |
+| `identity.rpc_secret` | Must match argus-identity's [identity] rpc_secret, or every validation of a live session fails. |
+
+## `argus-deploy/config.identity.toml.example`
+
+argus-deploy argus-identity configuration. Copy to config.identity.toml (gitignored) next to this file and fill the instance secrets (the same jwt/device values as config.gateway.toml); the compose file bind-mounts it as argus-identity's config.toml, **read-write** because the pairing state persists there, and its `database/schema.sql` over the mounted data directory.
+
+| Key | Notes |
+|---|---|
+| `identity.port` | The TLS HTTP surface (7044). The compose publishes it on 127.0.0.1 only; the gateway proxies the `/user`, `/invitation` and `/portrait-preview` prefixes to it over loopback. |
+| `identity.rpc_secret` | Gates the cleartext `argus.identity.v1` gRPC listener on `[server] grpc_port` (7040). Same value in every service's [identity] rpc_secret, or every call fails. Empty means loopback-only and ungated, and the service refuses to start when the listener is reachable beyond loopback without it. |
+| `identity.db` | `database/identity.db`, this owner's only database (rule 27). Until Phase 3c-2 it also carries the five sync tables, which is why argus-sync's `[sync] db` points at the same file. |
+| `face.enabled` | Face detection + recognition in this process; the engine never leaves it and argus-camera only ships crops. |
+| `storage.mode` | Private object storage (RustFS) for the portraits. provision-host.sh fills the endpoint and credentials. |
+| `pairing.paired` | The QR pairing state the frontend's onboarding reads; persisted at runtime, which is why this config bind is not read-only. |
+| `auth.target` | argus-auth's fleet-secret RPC listener: the session-verdict leg the shared `JwtFilter` asks before it trusts a token. |
+| `sync.control_target` | The sync service's control plane; a role update rides `replaceRoleRooms` before the `AuthContextChanged` emit. |
+| `jwt.secret` / `jwt.refresh_secret` | The same instance secrets as every other service. The shared `JwtService` constructor reads both and refuses to start on a missing, short or default-value one, and this service's routes verify the access token with `jwt.secret`; `argus-auth` remains the only minter and rotator. |
+| `mdns.port` | The installation's public port (`7024`) that the pairing and invitation answers publish. The mobile app requires it to equal the port its discovery reports, so it must match the port the gateway advertises. |
+
+Optional keys the template does not set:
+
+| Key | Example | Notes |
+|---|---|---|
+| `auth.rpc_host` / `auth.rpc_port` | `"127.0.0.1"` / `7043` | The split alternative to `auth.target`; `auth.target` wins when it is non-empty. |
+| `jwt.access_ttl_minutes` / `jwt.refresh_ttl_days` | `60` / `7` | Read by the shared `JwtService` constructor; this service never mints or rotates a token, so the defaults are inert here. |
+| `memory.create_face_vec` | `true` | Whether the face vec0 index is built from the schema's JSON column (unset behaves as true). |
+| `remote.hostname` | `""` | The extra DNS SAN `lib/cert` appends when it rotates the instance leaf. The gateway's config carries it; a leaf this service rotates without the key loses that SAN. |
 
 ## `argus-deploy/config.guard.toml.example`
 
@@ -92,7 +121,6 @@ argus-deploy argus-notification configuration. Copy to config.notification.toml 
 
 | Key | Notes |
 |---|---|
-| `identity.rpc_secret` | Must match the gateway's [identity] rpc_secret, or every request 401s. |
 | `grpc.caller_guard` | Capability credentials, each paired with its single caller. |
 
 ## `argus-deploy/config.productivity.toml.example`
@@ -101,7 +129,8 @@ argus-deploy argus-productivity configuration. Copy to config.productivity.toml 
 
 | Key | Notes |
 |---|---|
-| `identity.rpc_secret` | Must match the gateway's [identity] rpc_secret, or every request 401s. |
+| `identity.target` | argus-identity's fleet-secret RPC listener; the sync socket reads the people rows the projections need. |
+| `identity.rpc_secret` | Must match argus-identity's [identity] rpc_secret, or every identity call fails. |
 
 ## `argus-deploy/config.relay.toml.example`
 
@@ -124,6 +153,8 @@ argus-deploy argus-sync configuration. Copy to config.sync.toml (gitignored) nex
 | `sync.audit_retention_days` | The audit TTL: rows older than the window are compacted into the nearest newer old row of the same key and a client whose cursor is older is refused with 409 so it re-bootstraps. Values <= 0 keep every row by stopping the sweep; cursors behind what an earlier sweep already deleted stay refused. |
 | `sync.control_secret` | Must match the same key in every producer service's config: the control RPC injects frames into any user's room, and the service refuses to start when this listener is reachable beyond loopback without it. |
 | `voice.target` | The voice service the /sync forwarder relays voice:* frames and PCM to. |
+| `identity.target` | argus-identity's fleet-secret RPC listener (`argus-identity:7040`): the user directory the socket resolves names through and the identity pull source beside it. |
+| `identity.rpc_secret` | Must match argus-identity's [identity] rpc_secret, or the directory and the identity pull both fail. |
 | `notifications.credential` | Caller capability credential for the sync -> notification pull edge; must match argus-notification's [grpc] caller_gateway. |
 
 ## `argus-deploy/config.tts.toml.example`
@@ -151,22 +182,54 @@ argus-deploy argus-vlm configuration. Copy to config.vlm.toml (gitignored); the 
 
 argus-deploy argus-voice configuration. Copy to config.voice.toml (gitignored) next to this file.
 
-- **`[identity]`** — Gateway internal identity RPC; empty disables the spoken-name persist.
+- **`[identity]`** — argus-identity's fleet-secret RPC listener; empty disables the spoken-name persist.
 
 | Key | Notes |
 |---|---|
-| `identity.rpc_secret` | Must match the gateway's [identity] rpc_secret, or every request 401s. |
+| `identity.target` | The identity RPC behind the spoken-name lookup (`argus-identity:7040`). |
+| `identity.rpc_secret` | Must match argus-identity's [identity] rpc_secret, or the spoken-name persist fails. |
 
 ## `packages/memory/config.toml.example`
 
 argus-memory package keys (f8-b3). The package has no process and no listener: the host service (argus-llm, the brain) carries these blocks in its own config.toml. Copy the block, not the file.
 
-- **`[identity]`** — Read-only snapshot sources for the catalog replica boot fill.
-
 | Key | Notes |
 |---|---|
 | `memory.catalog_person_table` | Catalog replicas fed by the change subjects. |
 | `memory.create_face_vec` | The face recognition index belongs to the face service. |
+
+The catalog boot fill is fed by the host's own `[identity]` and `[camera] grpc_target` clients, never by a database path: the replica owns no other owner's file (rule 27).
+
+## `services/identity/config.toml.example`
+
+argus-identity configuration. Copy to config.toml (gitignored) to run.
+
+- **`[server]`** — The gRPC listener: `host` is loopback by default, and `grpc_port` must match the port the peers' `identity.target` names.
+- **`[drogon.app]`** — The HTTP listener and db_clients are built by the service itself.
+- **`[cert]`** — The instance CA and server certificate; the HTTPS surface needs both.
+- **`[face]`** — The face engine runs in this process: the vec0 index lives in identity.db and no crop leaves the host.
+- **`[storage]`** — Private object storage for the portraits; `mode = "s3"` with the `[storage.s3]` keys.
+
+| Key | Notes |
+|---|---|
+| `identity.port` | The TLS HTTP surface (7044); the gateway proxies the identity prefixes to it. |
+| `identity.db` / `identity.schema` | `database/identity.db` and this owner's `database/schema.sql`, applied at boot. |
+| `identity.rpc_secret` | Gates the gRPC listener; empty is legal only while `[server] host` is loopback, and the service refuses to start otherwise. |
+| `auth.target` / `auth.rpc_secret` | The session-verdict leg the filter chain asks (`argus-auth:7043`). |
+| `sync.control_target` / `sync.control_secret` | The sync control plane: a role update rides `replaceRoleRooms` before the `AuthContextChanged` emit. |
+| `pairing.paired` | The QR pairing state the frontend's onboarding reads; `ConfigService::setBool` persists it, so this file must stay writable. |
+| `nats.url` | The broker the change feed publishes to; empty disables the publish. |
+| `jwt.secret` / `jwt.refresh_secret` | The shared `JwtService` constructor reads both and refuses to start on a missing, short or default-value one; the routes verify the access token with `jwt.secret`, and `argus-auth` stays the only minter. |
+| `mdns.port` | The installation's public port (`7024`) that the pairing and invitation answers publish; it must match the port the gateway advertises, because the app compares the two. |
+
+Optional keys the template does not set:
+
+| Key | Example | Notes |
+|---|---|---|
+| `auth.rpc_host` / `auth.rpc_port` | `"127.0.0.1"` / `7043` | The split alternative to `auth.target`; `auth.target` wins when it is non-empty. |
+| `jwt.access_ttl_minutes` / `jwt.refresh_ttl_days` | `60` / `7` | Read by the shared `JwtService` constructor; this service never mints or rotates a token, so the defaults are inert here. |
+| `memory.create_face_vec` | `true` | Whether the face vec0 index is built from the schema's JSON column (unset behaves as true). |
+| `remote.hostname` | `""` | The extra DNS SAN `lib/cert` appends when it rotates the instance leaf. The gateway's config carries it; a leaf this service rotates without the key loses that SAN. |
 
 ## `services/camera/config.toml.example`
 
@@ -175,7 +238,7 @@ argus-camera configuration. Copy to config.toml (gitignored) to run.
 - **`[drogon.app]`** — The listener and db_clients are built by the service itself.
 - **`[tts]`** — With remote_url empty every /camera/{id}/talk call answers 502 CAMERA_UNREACHABLE.
 - **`[nats]`** — Empty disables the change funnel (events drop with a warning).
-- **`[identity]`** (optional, not in the template) — identity.db points at the gateway's; the sync socket reads its user table. target is the gateway's internal identity RPC listener.
+- **`[identity]`** (optional, not in the template) — argus-identity's fleet-secret RPC listener: the guard matcher identifies and enrolls a person through it, and camera.db is the only database this service opens.
 
 | Key | Notes |
 |---|---|
@@ -189,9 +252,8 @@ Optional keys the template does not set:
 
 | Key | Example | Notes |
 |---|---|---|
-| `identity.db` | `"database/identity.db"` |  |
-| `identity.target` | `"127.0.0.1:7040"` |  |
-| `identity.rpc_secret` | `""` |  |
+| `identity.target` | `"127.0.0.1:7040"` | The identity RPC the guard matcher calls; unset leaves recognition off. |
+| `identity.rpc_secret` | `""` | Must match argus-identity's [identity] rpc_secret. |
 | `identity.identify` | `false` |  |
 | `identity.auto_enroll` | `false` |  |
 | `identity.capture_clear_faces` | `true` |  |
@@ -210,7 +272,9 @@ argus-gateway configuration. Copy to config.toml (gitignored) to run. The gatewa
 
 | Key | Notes |
 |---|---|
-| `gateway.db` | Gateway-owned fallback record; identity and sync state stay in their owners. |
+| `gateway.db` | Gateway-owned degraded-fallback record; identity and sync state stay in their owners, reached through `argus::clients::identity` and the sync control leg. |
+| `identity.proxy_url` | The identity HTTP surface the gateway proxies its identity prefixes to. |
+| `identity.target` | argus-identity's fleet-secret RPC listener behind the identity client. |
 | `sync.control_target` | The sync service's control plane (unary gRPC); empty disables the imperative leg, leaving role changes and disconnects undelivered. |
 | `sync.control_secret` | Fleet secret every control call carries; same value in every service. |
 | `notifications.credential` | Caller capability credential for the gateway -> notification edge. |
@@ -269,10 +333,10 @@ argus-auth configuration. Copy to config.toml (gitignored) to run.
 | Key | Notes |
 |---|---|
 | `auth.db` | The session database this service alone opens. |
-| `auth.host` | The HTTP listener's bind address; the /auth surface lands on it in Phase 3b-2. |
+| `auth.host` | The HTTP listener's bind address; the `/auth` surface serves on it. |
 | `auth.rpc_secret` | Fleet secret for the session-verdict RPC. Required whenever its listener is reachable beyond loopback: an unauthenticated caller could read any session's verdict. Empty means loopback-only and ungated. |
 | `auth.context_cache_seconds` | How long a resolved user context may be reused before identity is asked again (0 disables the cache); a change on the identity feed drops the entry immediately. |
-| `identity.target` | The identity RPC behind a session verdict; unset makes every verdict a refusal. |
+| `identity.target` | The identity RPC behind a session verdict. An empty value falls back to `identity.rpc_host` / `identity.rpc_port`, which default to `127.0.0.1:7040`, so the leg is always dialled. |
 
 ## `services/productivity/config.toml.example`
 

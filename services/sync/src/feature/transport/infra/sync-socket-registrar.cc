@@ -30,6 +30,8 @@ SyncRegistrationStats registerSyncSurface(SyncSurfaceInput input)
   socket->setCameraSource(std::move(input.cameraSource));
   socket->setProductivitySource(std::move(input.productivitySource));
   socket->setNotificationSource(std::move(input.notificationSource));
+  socket->setIdentitySource(std::move(input.identitySource));
+  socket->setUserDirectory(std::move(input.userDirectory));
   drogon::app().registerController(socket);
 
   bool registered = false;

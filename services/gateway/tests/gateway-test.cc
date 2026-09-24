@@ -1,11 +1,8 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
 
-#include <auth/device-filter.hxx>
 #include <http/health-controller.hxx>
 #include <http/listener-config.hxx>
-#include <identity/identity-config.hxx>
-#include <identity/identity-registrar.hxx>
 #include <proxy/proxy-config.hxx>
 #include <server/remote-config.hxx>
 #include <server/remote-gate.hxx>
@@ -15,6 +12,7 @@
 #include <http/api-response.hxx>
 #include <proxy/reverse-proxy.hxx>
 #include <sync/camera-stream-relay.hxx>
+#include <sync/camera-stream-socket.hxx>
 
 #include <drogon/utils/coroutine.h>
 #include <json/json.h>
@@ -117,72 +115,6 @@ TEST_CASE("health envelope conforms to the ApiResponse shape")
   CHECK(response->getContentType() == drogon::CT_APPLICATION_JSON);
 }
 
-TEST_CASE("identity config resolves database and schema with defaults")
-{
-  const char* path = "gateway-test-config-empty.toml";
-  {
-    std::ofstream file(path);
-    file << "[gateway]\n"
-         << "port = 7024\n";
-  }
-
-  ConfigService::load(path);
-  const IdentityDbConfig config = IdentityConfig::resolveDb();
-
-  CHECK(config.dbPath == "database/identity.db");
-  CHECK(config.schemaPath == "packages/identity/database/schema.sql");
-
-  std::remove(path);
-}
-
-TEST_CASE("identity config honors the identity section overrides")
-{
-  const char* path = "gateway-test-config-identity.toml";
-  {
-    std::ofstream file(path);
-    file << "[identity]\n"
-         << "db = \"/tmp/argus-test/identity.db\"\n"
-         << "schema = \"/tmp/argus-test/identity-schema.sql\"\n";
-  }
-
-  ConfigService::load(path);
-  const IdentityDbConfig config = IdentityConfig::resolveDb();
-
-  CHECK(config.dbPath == "/tmp/argus-test/identity.db");
-  CHECK(config.schemaPath == "/tmp/argus-test/identity-schema.sql");
-
-  std::remove(path);
-}
-
-TEST_CASE("identity rpc config gates a non-loopback listener on the secret")
-{
-  const char* path = "gateway-test-config-identity-rpc.toml";
-  {
-    std::ofstream file(path);
-    file << "[identity]\n"
-         << "rpc_host = \"172.19.0.1\"\n"
-         << "rpc_port = 7040\n";
-  }
-  ConfigService::load(path);
-  const IdentityRpcConfig exposed = IdentityRpcConfig::resolve();
-  CHECK(exposed.host == "172.19.0.1");
-  CHECK(exposed.port == 7040);
-  CHECK(exposed.secret.empty());
-  CHECK(exposed.reachableBeyondLoopback());
-
-  ConfigService::setRuntimeString("identity.rpc_secret", "fleet-secret");
-  const IdentityRpcConfig guarded = IdentityRpcConfig::resolve();
-  CHECK(guarded.secret == "fleet-secret");
-  CHECK(guarded.reachableBeyondLoopback());
-  ConfigService::setRuntimeString("identity.rpc_secret", "");
-
-  ConfigService::setRuntimeString("identity.rpc_host", "127.0.0.1");
-  const IdentityRpcConfig loopback = IdentityRpcConfig::resolve();
-  CHECK_FALSE(loopback.reachableBeyondLoopback());
-
-  std::remove(path);
-}
-
 TEST_CASE("runtime override wins over the config file value")
 {
   const char* path = "gateway-test-config-runtime.toml";
@@ -195,31 +127,10 @@ TEST_CASE("runtime override wins over the config file value")
   ConfigService::load(path);
   CHECK(ConfigService::getString("database.file") == "database/argus.db");
 
-  ConfigService::setRuntimeString("database.file", "database/identity.db");
-  CHECK(ConfigService::getString("database.file") == "database/identity.db");
+  ConfigService::setRuntimeString("database.file", "database/gateway.db");
+  CHECK(ConfigService::getString("database.file") == "database/gateway.db");
 
   std::remove(path);
-}
-
-TEST_CASE("identity surface registers controllers and filters once")
-{
-  const char* path = "gateway-test-config-register.toml";
-  {
-    std::ofstream file(path);
-    file << "[jwt]\n"
-         << "secret = \"0123456789abcdef0123456789abcdef0123456789\"\n"
-         << "refresh_secret = \"fedcba9876543210fedcba9876543210fedcba98\"\n"
-         << "access_ttl_minutes = 15\n"
-         << "refresh_ttl_days = 30\n";
-  }
-
-  ConfigService::load(path);
-  std::remove(path);
-
-  const IdentityRegistrationStats stats = registerIdentitySurface();
-
-  CHECK(stats.controllers == 4);
-  CHECK(stats.filters == 4);
 }
 
 TEST_CASE("gateway config section resolves listener and nats keys")
@@ -375,18 +286,83 @@ TEST_CASE("proxy config resolves the native paths")
   ConfigService::load(path);
   const ProxyConfig config = ProxyConfig::resolve();
 
-  REQUIRE(config.exclusions.size() == 6);
+  REQUIRE(config.exclusions.size() == 2);
   const std::vector<std::string> expected = {
-      "/invitation", "/pairing", "/portrait-preview",
-      "/user",       "/camera-stream", "/health",
+      "/camera-stream",
+      "/health",
   };
   CHECK(config.exclusions == expected);
   CHECK(config.authProxyUrl.empty());
+  CHECK(config.identityProxyUrl.empty());
   CHECK(config.cameraProxyUrl.empty());
   CHECK(config.productivityProxyUrl.empty());
   CHECK(config.notificationProxyUrl.empty());
 
   std::remove(path);
+}
+
+TEST_CASE("proxy config routes the identity domain to argus-identity")
+{
+  const char* path = "gateway-test-config-identity-proxy.toml";
+  {
+    std::ofstream file(path);
+    file << "[identity]\n"
+         << "proxy_url = \"https://127.0.0.1:7044\"\n";
+  }
+
+  ConfigService::load(path);
+  const ProxyConfig config = ProxyConfig::resolve();
+
+  CHECK(config.identityProxyUrl == "https://127.0.0.1:7044");
+
+  {
+    std::ofstream file(path);
+    file << "[gateway]\n"
+         << "port = 7024\n";
+  }
+
+  ConfigService::load(path);
+  const ProxyConfig unrouted = ProxyConfig::resolve();
+  CHECK(unrouted.identityProxyUrl.empty());
+
+  std::remove(path);
+}
+
+TEST_CASE("route table sends the whole identity domain to the identity backend")
+{
+  gateway_proxy::SimpleReverseProxy proxy;
+  Json::Value config;
+  Json::Value routes(Json::arrayValue);
+  Json::Value identityRoute(Json::objectValue);
+  Json::Value prefixes(Json::arrayValue);
+  prefixes.append("/invitation");
+  prefixes.append("/pairing");
+  prefixes.append("/portrait-preview");
+  prefixes.append("/user");
+  identityRoute["prefixes"] = prefixes;
+  identityRoute["max_segments"] = 4;
+  identityRoute["backend"] = "https://127.0.0.1:7044";
+  identityRoute["validate_cert"] = false;
+  routes.append(identityRoute);
+  config["routes"] = routes;
+
+  proxy.initAndStart(config);
+
+  CHECK(proxy.matchRoute("/invitation") == 0);
+  CHECK(proxy.matchRoute("/invitation/resolve") == 0);
+  CHECK(proxy.matchRoute("/invitation/7") == 0);
+  CHECK(proxy.matchRoute("/pairing") == 0);
+  CHECK(proxy.matchRoute("/user") == 0);
+  CHECK(proxy.matchRoute("/user/3") == 0);
+  CHECK(proxy.matchRoute("/portrait-preview/3") == 0);
+  CHECK(proxy.matchRoute("/portrait-preview/token-a/content") == 0);
+  CHECK(proxy.matchRoute("/portrait-preview/token-a/content/x") == 0);
+  CHECK(proxy.matchRoute("/portrait-preview/a/b/c/d/e") == -1);
+  CHECK(proxy.matchRoute("/users/3") == -1);
+  CHECK(proxy.matchRoute("/pairings") == -1);
+  CHECK(proxy.matchRoute("/camera/1") == -1);
+
+  proxy.shutdown();
 }
 
 TEST_CASE("proxy config routes the camera CRUD to argus-camera")
@@ -587,15 +563,16 @@ TEST_CASE("route table sends the productivity and notification domains to the fa
 
 TEST_CASE("native path match keeps segment boundaries")
 {
-  const std::vector<std::string> exclusions = {"/user", "/camera-stream"};
+  const std::vector<std::string> exclusions = {"/camera-stream", "/health"};
 
-  CHECK(isGatewayNativePath("/user", exclusions));
-  CHECK(isGatewayNativePath("/user/1", exclusions));
+  CHECK(isGatewayNativePath("/health", exclusions));
   CHECK(isGatewayNativePath("/camera-stream", exclusions));
   CHECK_FALSE(isGatewayNativePath("/camera-streamx", exclusions));
-  CHECK_FALSE(isGatewayNativePath("/userx", exclusions));
+  CHECK_FALSE(isGatewayNativePath("/healthx", exclusions));
   CHECK_FALSE(isGatewayNativePath("/camera", exclusions));
   CHECK_FALSE(isGatewayNativePath("/camera/1/status", exclusions));
+  CHECK_FALSE(isGatewayNativePath("/user", exclusions));
+  CHECK_FALSE(isGatewayNativePath("/user/1", exclusions));
 }
 
 TEST_CASE("proxy exclusion set covers every registered gateway route")
@@ -603,9 +580,8 @@ TEST_CASE("proxy exclusion set covers every registered gateway route")
   const char* path = "gateway-test-config-coverage.toml";
   {
     std::ofstream file(path);
-    file << "[jwt]\n"
-         << "secret = \"0123456789abcdef0123456789abcdef0123456789\"\n"
-         << "refresh_secret = \"fedcba9876543210fedcba9876543210fedcba98\"\n";
+    file << "[gateway]\n"
+         << "port = 7024\n";
   }
 
   ConfigService::load(path);
@@ -613,18 +589,21 @@ TEST_CASE("proxy exclusion set covers every registered gateway route")
 
   drogon::app().registerController(std::make_shared<HealthController>(
       HealthStatus{.serviceName = "argus-gateway", .extras = {}}));
-  registerIdentitySurface();
+  drogon::app().registerController(std::make_shared<CameraStreamSocket>());
 
   const ProxyConfig proxy = ProxyConfig::resolve();
   REQUIRE_FALSE(proxy.exclusions.empty());
 
+  int routes = 0;
   for (const auto& handlerInfo : drogon::app().getHandlersInfo()) {
     const auto& pattern = std::get<0>(handlerInfo);
     if (pattern.empty() || pattern.front() != '/')
       continue;
+    ++routes;
     CHECK_MESSAGE(isGatewayNativePath(pattern, proxy.exclusions),
                   pattern);
   }
+  CHECK(routes >= 1);
 }
 
 TEST_CASE("remote config resolves disabled by default and honors overrides")

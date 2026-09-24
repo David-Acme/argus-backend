@@ -7,9 +7,9 @@
 #include <json/value.h>
 #include <memory>
 #include <mutex>
-#include <shared/repositories/user/user-repository.hxx>
 #include <string>
 #include <unordered_map>
+#include <auth/user-directory.hxx>
 #include <auth/user-role.hxx>
 #include <voice/voice-client.hxx>
 
@@ -23,7 +23,8 @@ struct VoiceGrpcConfig
 class VoiceGrpcRelay final : public SyncForwarder
 {
 public:
-  explicit VoiceGrpcRelay(VoiceGrpcConfig config);
+  VoiceGrpcRelay(VoiceGrpcConfig config,
+                 std::shared_ptr<const IUserDirectory> directory);
 
   void onConnect(const drogon::HttpRequestPtr& req,
                  const drogon::WebSocketConnectionPtr& conn) override;
@@ -51,7 +52,7 @@ private:
   std::shared_ptr<Session> takeSession(const drogon::WebSocketConnectionPtr& conn);
 
   const std::shared_ptr<VoiceClient> client_;
-  UserRepository userRepository_;
+  const std::shared_ptr<const IUserDirectory> userDirectory_;
   mutable std::mutex sessionsMutex_;
   std::unordered_map<const void*, std::shared_ptr<Session>> sessions_;
 };

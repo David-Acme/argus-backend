@@ -11,7 +11,7 @@ set(GATEWAY_SRC_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
 include(${CMAKE_CURRENT_SOURCE_DIR}/../../cmake/argus-module.cmake)
 
-if(NOT TARGET argus_identity)
+if(PROJECT_IS_TOP_LEVEL)
     find_package(Drogon CONFIG REQUIRED)
     find_package(cnats CONFIG REQUIRED)
     find_package(tomlplusplus REQUIRED)
@@ -46,24 +46,6 @@ if(NOT TARGET argus_identity)
                          ${CMAKE_BINARY_DIR}/http)
     endif()
 
-    if(NOT TARGET sqlite-vec)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../third_party/sqlite-vec
-                         ${CMAKE_BINARY_DIR}/third_party/sqlite-vec)
-    endif()
-    set(ARGUS_SQLITE_VEC_TARGET sqlite-vec)
-
-    set(NCNN_BUILD_BENCHMARK OFF CACHE BOOL "" FORCE)
-    set(NCNN_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
-    set(NCNN_BUILD_TOOLS OFF CACHE BOOL "" FORCE)
-    set(NCNN_BUILD_TESTS OFF CACHE BOOL "" FORCE)
-    set(NCNN_OPENMP ON CACHE BOOL "" FORCE)
-    set(NCNN_AVX2 ON CACHE BOOL "" FORCE)
-    set(NCNN_VULKAN ON CACHE BOOL "" FORCE)
-    set(NCNN_ENABLE_PIC ON CACHE BOOL "" FORCE)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../third_party/ncnn
-                     ${CMAKE_BINARY_DIR}/third_party/ncnn EXCLUDE_FROM_ALL)
-    set(ARGUS_NCNN_TARGET ncnn)
-
     if(NOT TARGET argus::lib::cert)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/cert
                          ${CMAKE_BINARY_DIR}/cert)
@@ -75,14 +57,6 @@ if(NOT TARGET argus_identity)
     if(NOT TARGET argus::lib::auth)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/auth
                          ${CMAKE_BINARY_DIR}/auth)
-    endif()
-    if(NOT TARGET argus::identity)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/identity
-                         ${CMAKE_BINARY_DIR}/identity)
-    endif()
-    if(NOT TARGET identity-migration)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/identity/tools/migrate-identity
-                         ${CMAKE_BINARY_DIR}/identity/tools/migrate-identity)
     endif()
 endif()
 
@@ -112,8 +86,6 @@ if(NOT TARGET argus::contracts::gateway)
 endif()
 
 add_library(gateway-core STATIC
-    ${GATEWAY_SRC_ROOT}/identity/identity-config.cc
-    ${GATEWAY_SRC_ROOT}/identity/identity-registrar.cc
     ${GATEWAY_SRC_ROOT}/proxy/proxy-config.cc
     ${GATEWAY_SRC_ROOT}/proxy/reverse-proxy.cc
     ${GATEWAY_SRC_ROOT}/server/remote-config.cc
@@ -126,12 +98,12 @@ add_library(gateway-core STATIC
 
 target_include_directories(gateway-core PUBLIC ${GATEWAY_SRC_ROOT})
 
-target_link_libraries(gateway-core PUBLIC argus_identity
+target_link_libraries(gateway-core PUBLIC
     argus::lib::auth argus::lib::cert argus::lib::mdns argus::lib::http
-    argus::clients::identity argus::clients::auth
-    argus::contracts::auth argus::contracts::sync
+    argus::lib::nats argus::lib::sqlite argus::contracts::auth
+    argus::contracts::sync argus::clients::identity
     argus::clients::notification argus::clients::sync)
-target_link_libraries(gateway-core PRIVATE argus::contracts::gateway argus::contracts::auth argus::contracts::sync)
+target_link_libraries(gateway-core PRIVATE argus::contracts::gateway)
 
 target_compile_options(gateway-core PRIVATE -Wall -Wextra)
 

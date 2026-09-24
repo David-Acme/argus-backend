@@ -1,6 +1,7 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
 
+#include <argus/identity/v1/identity.grpc.pb.h>
 #include <drogon/drogon.h>
 #include <trantor/net/EventLoop.h>
 #include <feature/api/calendar-event-share/controllers/calendar-event-share-controller.hxx>
@@ -13,7 +14,6 @@
 #include <feature/api/project-task/dtos/create-project-task-dto.hxx>
 #include <feature/api/project/controllers/project-controller.hxx>
 #include <feature/api/project/dtos/create-project-dto.hxx>
-#include <feature/rpc/identity-rpc.hxx>
 #include <auth/jwt-filter.hxx>
 #include <grpcpp/grpcpp.h>
 #include <sync/user-change-sink.hxx>
@@ -27,6 +27,7 @@
 #include <cstdio>
 #include <exception>
 #include <future>
+#include <map>
 #include <memory>
 #include <optional>
 #include <mutex>
@@ -39,7 +40,6 @@
 
 namespace
 {
-constexpr const char* kIdentityDb = "productivity-controller-test-identity.db";
 constexpr const char* kProductivityDb = "productivity-controller-test.db";
 constexpr const char* kTestSecret =
     "productivity-controller-test-secret-0123456789";
@@ -68,33 +68,59 @@ void exec(sqlite3* db, const std::string& sql)
   sqlite3_free(error);
 }
 
-void seedIdentityDb(const std::string& path)
+namespace v1 = argus::identity::v1;
+
+struct DirectoryUserInput
 {
-  std::remove(path.c_str());
-  const auto db = openFile(path);
-  exec(db.get(),
-       "CREATE TABLE user ("
-       "id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, "
-       "name TEXT NOT NULL, last_name TEXT NOT NULL, "
-       "role TEXT NOT NULL CHECK (role IN ('owner', 'resident', 'guard', "
-       "'guest')), lang TEXT NOT NULL DEFAULT 'es' "
-       "CHECK (lang IN ('es', 'en')), "
-       "is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)), "
-       "created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')), "
-       "updated_at INTEGER, deleted_at INTEGER)");
-  exec(db.get(),
-       "INSERT INTO user (id, name, last_name, role, is_active) VALUES "
-       "(42, 'Owner', 'Test', 'owner', 1), "
-       "(7, 'Resident', 'Test', 'resident', 1), "
-       "(9, 'Guard', 'Test', 'guard', 1), "
-       "(8, 'Inactive', 'Test', 'resident', 0)");
-}
+  int64_t userId{0};
+  const char* name{""};
+  const char* role{""};
+  bool active{false};
+};
+
+class ScriptedUserDirectory final : public v1::IdentityService::CallbackService
+{
+public:
+  ScriptedUserDirectory()
+  {
+    add({.userId = 42, .name = "Owner", .role = "owner", .active = true});
+    add({.userId = 7, .name = "Resident", .role = "resident", .active = true});
+    add({.userId = 9, .name = "Guard", .role = "guard", .active = true});
+    add({.userId = 8, .name = "Inactive", .role = "resident", .active = false});
+  }
+
+  grpc::ServerUnaryReactor* GetUser(grpc::CallbackServerContext* context,
+                                    const v1::GetUserRequest* request,
+                                    v1::GetUserResponse* response) override
+  {
+    if (const auto found = users_.find(request->user_id());
+        found != users_.end())
+      *response->mutable_user() = found->second;
+    auto* reactor = context->DefaultReactor();
+    reactor->Finish(grpc::Status::OK);
+    return reactor;
+  }
+
+private:
+  void add(const DirectoryUserInput& input)
+  {
+    v1::UserIdentity user;
+    user.set_user_id(input.userId);
+    user.set_name(input.name);
+    user.set_last_name("Test");
+    user.set_lang("es");
+    user.set_role(input.role);
+    user.set_is_active(input.active);
+    users_.emplace(input.userId, std::move(user));
+  }
+
+  std::map<int64_t, v1::UserIdentity> users_;
+};
 
 class IdentityRpcHarness
 {
 public:
   IdentityRpcHarness()
-      : service_({.bus = nullptr, .fleetSecret = "", .auth = nullptr})
   {
     int port = 0;
     grpc::ServerBuilder builder;
@@ -115,7 +141,7 @@ public:
   bool listening() const { return server_ != nullptr; }
 
 private:
-  IdentityRpcService service_;
+  ScriptedUserDirectory service_;
   std::unique_ptr<grpc::Server> server_;
 };
 
@@ -345,7 +371,6 @@ drogon::HttpRequestPtr ownerRequest(int64_t sub = 42)
 
 TEST_CASE("productivity contracts hold on the argus-productivity surface")
 {
-  seedIdentityDb(kIdentityDb);
   seedProductivityDb(kProductivityDb);
   ConfigService::setRuntimeString("jwt.secret", kTestSecret);
   ConfigService::setRuntimeString("jwt.refresh_secret", kTestSecret);
@@ -354,8 +379,6 @@ TEST_CASE("productivity contracts hold on the argus-productivity surface")
   REQUIRE(identity.listening());
 
   drogon::app().setLogLevel(trantor::Logger::kWarn);
-  drogon::app().addDbClient(
-      drogon::orm::Sqlite3Config{1, kIdentityDb, "default", -1});
 
   AppRunner runner;
   REQUIRE(waitForBoot(std::chrono::seconds(30)));
@@ -683,9 +706,6 @@ TEST_CASE("productivity contracts hold on the argus-productivity surface")
   drain(productivityDb);
   productivityDb.reset();
 
-  std::remove(kIdentityDb);
-  std::remove((std::string(kIdentityDb) + "-wal").c_str());
-  std::remove((std::string(kIdentityDb) + "-shm").c_str());
   std::remove(kProductivityDb);
   std::remove((std::string(kProductivityDb) + "-wal").c_str());
   std::remove((std::string(kProductivityDb) + "-shm").c_str());

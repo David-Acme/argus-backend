@@ -43,10 +43,6 @@ fingerprint_secret = ""
 trust_forwarded_for = true
 trusted_proxy_ips = ""
 
-[identity]
-target = "127.0.0.1:7040"
-rpc_secret = ""
-
 [grpc]
 caller_guard = ""
 caller_gateway = ""

@@ -37,8 +37,8 @@ Each `services/<name>/Dockerfile` is a two-stage Debian trixie build:
   (`libvulkan1`, `mesa-vulkan-drivers`, gRPC runtime, OpenMP/stdlib) and the
   service binaries in `/opt/argus`.
 
-Three images carry extra tools from their own build: the gateway ships
-`argus-migrate-identity` (identity is its package), argus-camera ships
+Three images carry extra tools from their own build: the identity image ships
+`argus-migrate-identity` (identity is its owner since Phase 3c-1), argus-camera ships
 `argus-migrate-camera` and `argus-vulkan-probe`, and the productivity and
 notification images ship their migration tools. The tunnel image ships the
 client and the relay.
@@ -58,11 +58,11 @@ of the build context.
 
 ## Compose topology
 
-One container per service: `gateway`, `argus-auth`, `argus-camera`,
-`argus-productivity`, `argus-notification`, `argus-sync`, `argus-guard`,
-`argus-tts`, `argus-stt`, `argus-vlm`, `argus-llm`, `argus-voice`,
-`argus-relay`, `argus-tunnel-client`, plus `nats`. Each container runs its
-service image and mounts its own `config.<service>.toml`.
+One container per service: `gateway`, `argus-auth`, `argus-identity`,
+`argus-camera`, `argus-productivity`, `argus-notification`, `argus-sync`,
+`argus-guard`, `argus-tts`, `argus-stt`, `argus-vlm`, `argus-llm`,
+`argus-voice`, `argus-relay`, `argus-tunnel-client`, plus `nats`. Each
+container runs its service image and mounts its own `config.<service>.toml`.
 
 `argus-auth` publishes its HTTP surface (7042) and its RPC listener (7043) on
 `127.0.0.1` only. The session verdict is a fleet-internal answer gated by
@@ -71,7 +71,7 @@ proxy dials `https://127.0.0.1:7042`: publishing either port on every
 interface would hand a reachable host the ungated enrollment path.
 
 Opt-in init profiles run the migration CLIs from the owner service image:
-`identity-init` (gateway image), `camera-init` and `vulkan-probe` (camera
+`identity-init` (identity image), `camera-init` and `vulkan-probe` (camera
 image), `productivity-init` and `notification-init` (their service images).
 They are idempotent and never touch a live database.
 
@@ -84,7 +84,7 @@ They are idempotent and never touch a live database.
 - Host state lives outside the images and is linked in by bind mount, so a
   new image reuses it unchanged:
   - `${ARGUS_DATA_DIR:-./data}` (default `argus-deploy/data/`, gitignored)
-    holds one directory per owner: `identity/` (the gateway,
+    holds one directory per owner: `identity/` (argus-identity,
     `identity.db` + WAL), `gateway/` (the gateway's own `gateway.db` + WAL),
     `auth/` (argus-auth, `auth.db` + WAL), `camera/`, `productivity/`,
     `notification/`, `guard/` and `memory/`;

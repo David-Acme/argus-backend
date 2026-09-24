@@ -21,7 +21,6 @@
 
 namespace
 {
-constexpr const char* kIdentityDb = "camera-notifier-test-identity.db";
 constexpr const char* kGatewayDb = "camera-notifier-test-gateway.db";
 
 bool waitForFallbackRows(int64_t expected, std::chrono::milliseconds timeout)
@@ -172,17 +171,17 @@ struct SharedBoot
 
   SharedBoot()
   {
-    removeDbFiles(kIdentityDb);
     removeDbFiles(kGatewayDb);
     drogon::app().setLogLevel(trantor::Logger::kWarn);
     drogon::app().addDbClient(
-        drogon::orm::Sqlite3Config{1, kIdentityDb, "default", -1});
-    drogon::app().addDbClient(
-        drogon::orm::Sqlite3Config{1, kGatewayDb, "gateway", -1});
+        drogon::orm::Sqlite3Config{.connectionNumber = 1,
+                                   .filename = kGatewayDb,
+                                   .name = "default",
+                                   .timeout = -1});
     runner.emplace();
     if (!waitForBoot(std::chrono::seconds(30)))
       throw std::runtime_error("drogon loop did not boot");
-    DbService::setGatewayClient(drogon::app().getDbClient("gateway"));
+    DbService::setGatewayClient(drogon::app().getDbClient());
     if (!DbService::runScriptFile(ARGUS_GATEWAY_SCHEMA_PATH,
                                   DbService::gatewayClient()))
       throw std::runtime_error("gateway schema apply failed");
@@ -191,7 +190,6 @@ struct SharedBoot
   ~SharedBoot()
   {
     runner.reset();
-    removeDbFiles(kIdentityDb);
     removeDbFiles(kGatewayDb);
   }
 };
@@ -247,6 +245,25 @@ public:
   mutable std::vector<argus::notification::v1::CreateNotificationsRequest>
       requests;
 };
+
+class RecordingIdentityClient final : public IdentityClient
+{
+public:
+  explicit RecordingIdentityClient(std::vector<int64_t> userIds)
+      : IdentityClient("127.0.0.1:1", "gateway-identity"),
+        userIds_(std::move(userIds))
+  {
+  }
+
+  [[nodiscard]] std::optional<std::vector<int64_t>>
+  listNotifiableUsers() const override
+  {
+    return userIds_;
+  }
+
+private:
+  std::vector<int64_t> userIds_;
+};
 }
 
 TEST_CASE("the notification budget allows budget_per_hour then suppresses")
@@ -271,7 +288,10 @@ TEST_CASE("silent hours suppress and support wrapping")
   CHECK(policy.shouldNotify(1, atLocalHour({.hour = 21, .minute = 59, .day = 15})));
   CHECK(policy.shouldNotify(1, atLocalHour({.hour = 6, .minute = 0, .day = 15})));
 
-  CameraNotificationPolicy disabled({6, -1, -1, 30000});
+  CameraNotificationPolicy disabled({.budgetPerHour = 6,
+                                     .silentStartHour = -1,
+                                     .silentEndHour = -1,
+                                     .guardTimeoutMs = 30000});
   CHECK(disabled.shouldNotify(1, atLocalHour({.hour = 23, .minute = 0, .day = 15})));
 }
 
@@ -346,7 +366,10 @@ TEST_CASE("counts suppressed inside silent hours carry until the window ends")
 
 TEST_CASE("the guard heartbeat gates the raw fallback window")
 {
-  CameraNotificationPolicy policy({6, -1, -1, 30000});
+  CameraNotificationPolicy policy({.budgetPerHour = 6,
+                                   .silentStartHour = -1,
+                                   .silentEndHour = -1,
+                                   .guardTimeoutMs = 30000});
   CHECK_FALSE(policy.guardReady(1000));
   policy.markGuardHeartbeat(1000);
   CHECK(policy.guardReady(1000));
@@ -358,29 +381,15 @@ TEST_CASE("the consumer applies the budget and creates camera notifications")
 {
   SharedBoot& boot = sharedBoot();
   (void)boot;
-  auto client = DbService::client();
-  client->execSqlSync("DROP TABLE IF EXISTS user");
-  client->execSqlSync(
-      "CREATE TABLE user ("
-      "id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, "
-      "name TEXT NOT NULL, last_name TEXT NOT NULL, "
-      "role TEXT NOT NULL CHECK (role IN ('owner', 'resident', 'guard', 'guest')), "
-      "lang TEXT NOT NULL DEFAULT 'es', "
-      "is_active INTEGER NOT NULL DEFAULT 1, "
-      "created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')), "
-      "updated_at INTEGER, deleted_at INTEGER)");
-  client->execSqlSync("INSERT INTO user (name, last_name, role) VALUES "
-                      "('Ana', 'Owner', 'owner')");
-  client->execSqlSync("INSERT INTO user (name, last_name, role) VALUES "
-                      "('Gus', 'Guard', 'guard')");
-  client->execSqlSync("INSERT INTO user (name, last_name, role) VALUES "
-                      "('Resi', 'Dent', 'resident')");
-  client->execSqlSync("INSERT INTO user (name, last_name, role, is_active) "
-                      "VALUES ('Old', 'Owner', 'owner', 0)");
-
-  drogon::app().setLogLevel(trantor::Logger::kWarn);
   auto notificationClient = std::make_shared<RecordingNotificationClient>();
-  CameraObjectNotifier notifier({6, -1, -1, 30000}, notificationClient);
+  auto identityClient =
+      std::make_shared<RecordingIdentityClient>(std::vector<int64_t>{1, 2});
+  CameraObjectNotifier notifier({.budgetPerHour = 6,
+                                 .silentStartHour = -1,
+                                 .silentEndHour = -1,
+                                 .guardTimeoutMs = 30000},
+                                {.notificationClient = notificationClient,
+                                 .identityClient = identityClient});
 
   notifier.handle(eventJson({.cameraId = 1,
                              .rule = "person_in_alert_zone",
@@ -419,6 +428,52 @@ TEST_CASE("the consumer applies the budget and creates camera notifications")
   notifier.handle(json_util::fromString("[1, 2, 3]"));
   std::this_thread::sleep_for(std::chrono::milliseconds(300));
   CHECK(notificationClient->totalUsers() == 12);
+}
+
+TEST_CASE("delivery needs the identity roster and stops short without it")
+{
+  SharedBoot& boot = sharedBoot();
+  (void)boot;
+  auto notificationClient = std::make_shared<RecordingNotificationClient>();
+  const auto event = eventJson({.cameraId = 8,
+                                .rule = "person_in_alert_zone",
+                                .severity = "critical"});
+
+  CameraObjectNotifier withoutIdentity({.budgetPerHour = 6,
+                                        .silentStartHour = -1,
+                                        .silentEndHour = -1,
+                                        .guardTimeoutMs = 30000},
+                                       {.notificationClient =
+                                            notificationClient,
+                                        .identityClient = nullptr});
+  withoutIdentity.handle(event);
+  std::this_thread::sleep_for(std::chrono::milliseconds(300));
+  CHECK(notificationClient->totalUsers() == 0);
+
+  CameraObjectNotifier
+      withEmptyRoster({.budgetPerHour = 6,
+                       .silentStartHour = -1,
+                       .silentEndHour = -1,
+                       .guardTimeoutMs = 30000},
+                      {.notificationClient = notificationClient,
+                       .identityClient =
+                           std::make_shared<RecordingIdentityClient>(
+                               std::vector<int64_t>{})});
+  withEmptyRoster.handle(event);
+  std::this_thread::sleep_for(std::chrono::milliseconds(300));
+  CHECK(notificationClient->totalUsers() == 0);
+
+  CameraObjectNotifier
+      withRoster({.budgetPerHour = 6,
+                  .silentStartHour = -1,
+                  .silentEndHour = -1,
+                  .guardTimeoutMs = 30000},
+                 {.notificationClient = notificationClient,
+                  .identityClient = std::make_shared<RecordingIdentityClient>(
+                      std::vector<int64_t>{4})});
+  withRoster.handle(event);
+  REQUIRE(notificationClient->waitForUsers(1, std::chrono::seconds(10)));
+  CHECK(notificationClient->totalUsers() == 1);
 }
 
 namespace
@@ -481,7 +536,9 @@ TEST_CASE("the fallback gate drops a matched known person")
   CHECK(verdict == CameraNotificationPolicy::FallbackDecision::DropKnown);
 
   auto client = std::make_shared<RecordingNotificationClient>();
-  CameraObjectNotifier notifier(fallbackConfig(), client);
+  CameraObjectNotifier notifier(
+      fallbackConfig(),
+      {.notificationClient = client, .identityClient = nullptr});
   notifier.handle(fallbackEvent({.cameraId = 1,
                                  .identityState = "known",
                                  .scoreMedian = 0.9,
@@ -552,7 +609,9 @@ TEST_CASE("the fallback gate reads the primary track guard would")
   CHECK(policy.fallbackDecision(briefIntruder) ==
         CameraNotificationPolicy::FallbackDecision::DropShortDwell);
 
-  CameraObjectNotifier notifier(fallbackConfig(), nullptr);
+  CameraObjectNotifier notifier(
+      fallbackConfig(),
+      {.notificationClient = nullptr, .identityClient = nullptr});
   notifier.handle(eventWithPrimary(22));
   const auto counts = notifier.policy().fallbackCounts();
   CHECK(counts.droppedKnown == 0);
@@ -572,7 +631,9 @@ TEST_CASE("the fallback gate drops weak detector scores")
   CHECK(verdict == CameraNotificationPolicy::FallbackDecision::DropWeakScore);
 
   auto client = std::make_shared<RecordingNotificationClient>();
-  CameraObjectNotifier notifier(fallbackConfig(), client);
+  CameraObjectNotifier notifier(
+      fallbackConfig(),
+      {.notificationClient = client, .identityClient = nullptr});
   notifier.handle(fallbackEvent({.cameraId = 1,
                                  .identityState = "unrecognized",
                                  .scoreMedian = 0.2,
@@ -596,7 +657,9 @@ TEST_CASE("the fallback gate drops short dwells")
   CHECK(verdict == CameraNotificationPolicy::FallbackDecision::DropShortDwell);
 
   auto client = std::make_shared<RecordingNotificationClient>();
-  CameraObjectNotifier notifier(fallbackConfig(), client);
+  CameraObjectNotifier notifier(
+      fallbackConfig(),
+      {.notificationClient = client, .identityClient = nullptr});
   notifier.handle(fallbackEvent({.cameraId = 1,
                                  .identityState = "unrecognized",
                                  .scoreMedian = 0.9,
@@ -643,7 +706,9 @@ TEST_CASE("every fallback drop lands a durable row in the gateway store")
   SharedBoot& boot = sharedBoot();
   (void)boot;
   auto client = std::make_shared<RecordingNotificationClient>();
-  CameraObjectNotifier notifier(fallbackConfig(), client);
+  CameraObjectNotifier notifier(
+      fallbackConfig(),
+      {.notificationClient = client, .identityClient = nullptr});
 
   notifier.handle(fallbackEvent({.cameraId = 11,
                                  .identityState = "known",

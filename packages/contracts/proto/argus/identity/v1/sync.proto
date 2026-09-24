@@ -1,0 +1,106 @@
+syntax = "proto3";
+
+package argus.identity.v1;
+
+option cc_enable_arenas = true;
+
+message SyncRange {
+  optional int64 start_time = 1;
+  optional int64 start_id = 2;
+  optional int64 end_time = 3;
+}
+
+message UserRow {
+  int64 id = 1;
+  string name = 2;
+  string last_name = 3;
+  string role = 4;
+  string lang = 5;
+  bool is_active = 6;
+  int64 created_at = 7;
+  optional int64 updated_at = 8;
+  int64 sync_at = 9;
+  optional int64 deleted_at = 10;
+}
+
+message UserInvitationRow {
+  int64 id = 1;
+  string role = 2;
+  int32 max_redemptions = 3;
+  int32 redemption_count = 4;
+  int64 expires_at = 5;
+  int64 created_by = 6;
+  optional int64 revoked_at = 7;
+  int64 created_at = 8;
+  optional int64 updated_at = 9;
+  int64 sync_at = 10;
+}
+
+message PersonRow {
+  int64 id = 1;
+  optional int64 user_id = 2;
+  string name = 3;
+  string alias = 4;
+  string observation = 5;
+  string status = 6;
+  int64 first_seen_at = 7;
+  int64 last_seen_at = 8;
+  int64 created_at = 9;
+  optional int64 updated_at = 10;
+  optional int64 deleted_at = 11;
+}
+
+message DeletedRow {
+  int64 id = 1;
+  int64 deleted_at = 2;
+}
+
+message TablePull {
+  bool required_create = 1;
+  bool required_deleted = 2;
+  bool find_last_created = 3;
+  bool find_last_deleted = 4;
+  optional SyncRange created = 5;
+  optional SyncRange deleted = 6;
+}
+
+message UserTableRows {
+  repeated UserRow created = 1;
+  repeated DeletedRow deleted = 2;
+  optional UserRow last_created = 3;
+  optional DeletedRow last_deleted = 4;
+}
+
+message UserInvitationTableRows {
+  repeated UserInvitationRow created = 1;
+  repeated DeletedRow deleted = 2;
+  optional UserInvitationRow last_created = 3;
+  optional DeletedRow last_deleted = 4;
+}
+
+message PersonTableRows {
+  repeated PersonRow created = 1;
+  repeated DeletedRow deleted = 2;
+  optional PersonRow last_created = 3;
+  optional DeletedRow last_deleted = 4;
+}
+
+message PullTableRequest {
+  oneof table {
+    TablePull user = 1;
+    TablePull user_invitation = 2;
+    TablePull person = 3;
+  }
+}
+
+message PullTableResponse {
+  oneof table {
+    UserTableRows user = 1;
+    UserInvitationTableRows user_invitation = 2;
+    PersonTableRows person = 3;
+  }
+}
+
+service SyncService {
+  rpc PullTable(PullTableRequest) returns (PullTableResponse) {}
+}

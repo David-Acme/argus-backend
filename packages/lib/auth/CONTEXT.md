@@ -16,31 +16,39 @@ depended on `argus-identity` while `argus-identity` depends on this
 package for its own routes — a genuine cycle. It is last in the module
 sequence for that reason.
 
-## Why it depends on the identity wire, not on the identity service
+## Why it depends on two wires and on no service
 
-JwtFilter verifies the token SIGNATURE locally (cheap, no I/O) and then
-calls `argus.identity.v1.ValidateToken`, which is authoritative for
-everything stateful: the user row and its status, the refresh-token
-session, its expiry and its device binding. DeviceFilter calls
-`CheckDeviceCredential` in credential mode. So the only heavy edge is
-`argus::clients::identity` — a generated contract, not a domain library.
+JwtFilter verifies the token SIGNATURE locally (cheap, no I/O) and then asks
+`argus.auth.v1.ValidateToken`, which is authoritative for everything stateful:
+the user row and its status, the refresh-token session, its expiry and its
+device binding. DeviceFilter calls `CheckDeviceCredential` on the same leg in
+credential mode. The user directory is the second, read-only edge
+(`argus.identity.v1.GetUser`, behind `filterIdentityClient()`). So the
+package's heavy edges are `argus::clients::auth` and
+`argus::clients::identity` — generated contracts, not domain libraries, and
+neither of them a database.
+
+The verdict moved off the identity listener in 3b: before that, both filters
+rode the identity client and `services/auth` did not exist. It owns the
+session tables and answers the verdict now.
 
 Two consequences worth keeping in mind:
 
 - The package carries no AI or database closure. `argus-tts` links it and
   stays ncnn-free; that is a standing gate (`nm -C | grep -c 'ncnn::'`).
-- An unreachable identity service means every authenticated request 401s.
-  That is deliberate — failing closed — and it is why the client resolves
-  a target rather than silently falling back to a local database.
+- An unreachable `argus-auth` means every authenticated request 401s. That is
+  deliberate — failing closed — and it is why the client resolves a target
+  rather than silently falling back to a local database.
 
-## The identity target
+## The two targets
 
-`filterIdentityClient()` resolves `identity.target`, and when that is
-empty falls back to `identity.rpc_host` / `identity.rpc_port` (default
-`127.0.0.1:7040`). The fallback is what lets the gateway — which HOSTS the
-listener — need no target key of its own, while every other service names
-one explicitly. The client is cached per resolved target (the
-`voice-engine-seam` precedent), so a config change picks up a new clientand tests can point the chain at a dead port to prove fail-closed.
+`filterAuthClient()` resolves `auth.target` (`auth.rpc_host` /
+`auth.rpc_port` as the fallback, default `127.0.0.1:7043`) and
+`filterIdentityClient()` resolves `identity.target` the same way
+(`identity.rpc_host` / `identity.rpc_port`, default `127.0.0.1:7040`). Each
+client is cached per resolved target (the `voice-engine-seam` precedent), so a
+config change picks up a new client and tests can point the chain at a dead
+port to prove fail-closed.
 
 The call itself rides `BlockingTask`, which moves the blocking stub call
 off the event loop — the `camera-sync-source` pattern. It costs a detached
@@ -70,6 +78,7 @@ another domain's database for a user row.
 ## What does NOT live here
 
 Anything stateful. No repositories, no schemas, no `DbService`. The
-identity domain (users, sessions, device credentials) is
-`packages/identity/`; the RPC surface that serves this package is
-`packages/identity/src/feature/rpc/`.
+identity domain (users, persons, invitations, portraits) is
+`services/identity/`; the RPC surface that serves this package is
+`services/identity/src/app/rpc/`. The sessions and the device credentials
+behind a verdict are `services/auth/`'s.

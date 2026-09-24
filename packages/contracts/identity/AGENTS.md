@@ -8,10 +8,10 @@ pairing, login and portrait flows give.
 A CONTRACT, not a service and not a library: one `argus_contracts`
 declaration, an INTERFACE target with no translation unit. The include root is
 `src/`, so a consumer writes `<identity/identity-errors.hxx>` and links
-`argus::contracts::identity`. `packages/identity` is the only consumer, and
+`argus::contracts::identity`. `services/identity` is the only consumer, and
 the only owner: the catalog is the identity boundary's own refusal list, and
-its thirty-one entries are thrown from the auth, invitation, pairing and
-portrait handlers inside that package.
+its thirty-one entries are thrown from the enrolment, invitation, pairing and
+portrait handlers inside that service.
 
 ## Layout
 

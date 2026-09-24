@@ -852,21 +852,19 @@ data (D18):
 Every owner keeps exactly one schema file named `database/schema.sql` inside
 its own project — `services/<name>/database/schema.sql`, or
 `packages/<owner>/database/schema.sql` while the owner is still a package
-(`identity` and `memory` are the two left, and they move in Phase 3c and
-Phase 4 step 7). Never introduce `<domain>-schema.sql` aliases. The deploy
-stack bind-mounts each owner's file at `database/schema.sql` in its container
-and every config points at `database/schema.sql`; a unit applies only its own
-schema, never the schema of another. The gateway is the one owner that is not
-at that path: it mounts its own file at `/opt/argus/gateway/schema.sql` and
-its config says `gateway/schema.sql`, which is also the only place a second
-schema appears — the identity one it hosts, at `database/schema.sql`. Nine
-units carry one today:
-`auth`, `camera`, `gateway`, `guard`, `notification` and `productivity` (the
-gateway's own 32-line file is its `gateway.db` degraded-fallback record — it
-holds no table of another domain and says so — and it additionally applies the
-identity schema it hosts; both go with the gateway in Phase 3d), plus
-`packages/identity`, `packages/memory` and `services/sync` (the five sync
-tables it applies onto identity.db until Phase 3c splits them into `sync.db`).
+(`memory` is the last one, and it moves in Phase 4 step 7). Never introduce
+`<domain>-schema.sql` aliases. The deploy stack bind-mounts each owner's file
+at `database/schema.sql` in its container and every config points at
+`database/schema.sql`; a unit applies only its own schema, never the schema of
+another. The gateway is the one owner that is not at that path: it mounts its
+own file at `/opt/argus/gateway/schema.sql` and its config says
+`gateway/schema.sql`. Nine units carry one today:
+`auth`, `camera`, `gateway`, `guard`, `identity`, `notification` and
+`productivity` (the gateway's own 23-line file is its `gateway.db`
+degraded-fallback record — it holds no table of another domain and says so —
+and it goes with the gateway in Phase 3d), plus `packages/memory` and
+`services/sync` (the five sync tables it applies onto identity.db until
+Phase 3c-2 splits them into `sync.db`).
 
 ### 27. Database isolation between microservices
 
@@ -952,7 +950,7 @@ for two different reasons, and says which when it does.
 
 | File | Purpose |
 |------|---------|
-| `packages/contracts/{auth,camera,productivity,sync}/src/<domain>/` | Each domain's wire enums, each with its own lowerCamelCase `<enum>ToString`/`<enum>FromString` pair (`packages/contracts/camera/src/camera/zone-type.hxx`). The enums that mirror a `CHECK` constraint are not all here — `notification` and `packages/identity/src/shared/vocabulary/` each carry their own |
+| `packages/contracts/{auth,camera,productivity,sync}/src/<domain>/` | Each domain's wire enums, each with its own lowerCamelCase `<enum>ToString`/`<enum>FromString` pair (`packages/contracts/camera/src/camera/zone-type.hxx`). The enums that mirror a `CHECK` constraint are not all here — `notification` and `services/identity/src/shared/vocabulary/` each carry their own |
 | `packages/contracts/sync/src/sync/` | `Syncable`, `SyncFilter` base classes + `sync-operation.hxx` + `sync-forwarder.hxx` (the `{conn, message, raw}` frame vocabulary and `SyncForwarder`, which `services/camera` and `services/gateway` implement) |
 
 **Tier 3 — `clients/`**
@@ -979,9 +977,9 @@ for two different reasons, and says which when it does.
 | `services/llm/src/shared/services/llm/` | LLM inference (llama.cpp) |
 | `packages/memory/src/shared/services/embedding/` | `EmbeddingService` (multilingual-e5-small int8 ONNX) + `UnigramTokenizer`; becomes a feature of `services/llm` (Phase 4 step 7) |
 | `packages/memory/src/shared/services/memory/` | `MemoryService`/`SemanticGraph`(`SqliteGraph`)/`GraphRecall`/`MemoryFormation`/`EntityResolver`/`ToolParser`/`MemoryChat` — semantic-graph long-term memory (async worker, episode recall, L3 profile); a package hosted by argus-llm, and a feature of it after Phase 4 step 7 |
-| `packages/identity/src/shared/services/face/` | Face detection + recognition (ncnn) — FaceDB = vec0 index (sqlite-vec); becomes `services/identity` (Phase 3c) |
-| `packages/identity/src/shared/services/storage/` | `PrivatePortraitService` — a user's private portrait bytes (`store`/`has`/`read` by `userId`), served onward by the `user` feature's portrait-preview capability; same move |
-| `packages/identity/src/shared/repositories/{user-invitation,portrait-*,device-login-challenge}/` | People domain: invitations (hash-only), portrait capabilities, cross-device login challenges; same move |
+| `services/identity/src/shared/services/face/` | Face detection + recognition (ncnn) — FaceDB = vec0 index (sqlite-vec) |
+| `services/identity/src/shared/services/storage/` | `PrivatePortraitService` — a user's private portrait bytes (`store`/`has`/`read` by `userId`), served onward by the `user` feature's portrait-preview capability |
+| `services/identity/src/shared/repositories/{user-invitation,portrait-*,device-login-challenge}/` | People domain: invitations (hash-only), portrait capabilities, cross-device login challenges |
 | `services/auth/src/feature/session/services/session-service.{hxx,cc}` | The session verdict: token order, the identity-backed user context and the device binding (Phase 3b-1); `SessionContextCache` + `IdentityChangeConsumer` beside it |
 | `services/vlm/src/shared/services/vision/` | VLM inference: LFM2.5-VL-450M via llama.cpp + libmtmd (arbitrary prompts, caption cache) |
 | `services/stt/src/shared/services/stt/` | Speech-to-text via sherpa-onnx (default `nemo_transducer` FastConformer RNN-T, es/en; whisper/canary/nemo_ctc/omnilingual selectable) |

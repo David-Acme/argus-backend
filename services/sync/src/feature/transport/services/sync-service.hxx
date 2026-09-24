@@ -8,10 +8,10 @@
 #include <json/value.h>
 #include <memory>
 #include <feature/transport/infra/camera-sync-source.hxx>
+#include <feature/transport/infra/identity-sync-source.hxx>
 #include <feature/transport/infra/notification-sync-source.hxx>
 #include <feature/transport/infra/productivity-sync-source.hxx>
 #include <auth/user-directory.hxx>
-#include <shared/repositories/user/user-repository.hxx>
 #include <shared/services/room/room-manager.hxx>
 #include <string_view>
 
@@ -30,6 +30,7 @@ public:
   void setCameraSource(std::shared_ptr<CameraSyncSource> source);
   void setProductivitySource(std::shared_ptr<ProductivitySyncSource> source);
   void setNotificationSource(std::shared_ptr<NotificationSyncSource> source);
+  void setIdentitySource(std::shared_ptr<IdentitySyncSource> source);
   void setUserDirectory(std::shared_ptr<const IUserDirectory> directory);
 
 private:
@@ -38,10 +39,10 @@ private:
 
   SynchronizedService synchronizedService_;
   RoomManager roomManager_;
-  UserRepository userRepository_;
   std::shared_ptr<SyncForwarder> forwarder_;
   std::shared_ptr<CameraSyncSource> cameraSource_;
   std::shared_ptr<ProductivitySyncSource> productivitySource_;
   std::shared_ptr<NotificationSyncSource> notificationSource_;
+  std::shared_ptr<IdentitySyncSource> identitySyncSource_;
   std::shared_ptr<const IUserDirectory> userDirectory_;
 };

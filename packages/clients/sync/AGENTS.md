@@ -12,15 +12,19 @@ links `argus::clients::sync` (D8's imperative leg, §3.5). It is the only
 CMakeLists that **compiles** `argus/sync/v1/contracts.proto` — the contract
 package is an INTERFACE target and ships no translation unit — so the control
 schema's `SyncFrame` symbols are generated here, in
-`argus-clients-sync/generated/`. Five link lines across four CMakeLists:
-`packages/identity/CMakeLists.txt:184` and `services/gateway/CMakeLists.txt:137`
-(each adds the folder to its own standalone tree first), `services/sync` for the
-RPC it serves (`services/sync/CMakeLists.txt:131` and its `sync-control-rpc`
-module, `src/app/rpc/CMakeLists.txt:8`), and this package's own suite. One file
-outside the package includes the header — `services/gateway/src/main.cc:220`,
-which builds the client at boot and installs it through `sync_control::setSink`;
-identity's four call sites reach it through `<sync/sync-control-sink.hxx>`, the
-interface that keeps a domain package from linking the transport.
+`argus-clients-sync/generated/`. Six link lines across five trees, each of
+which adds the folder to its own standalone build first:
+`services/auth/CMakeLists.txt:99`, `services/gateway/CMakeLists.txt:105`,
+`services/identity/CMakeLists.txt:146`,
+`services/sync/CMakeLists.txt:136` with its `sync-control-rpc` module
+(`services/sync/src/app/rpc/CMakeLists.txt:9`), and this package's own suite.
+Three files outside the package build the client, each at boot and each
+installing it through `sync_control::setSink` —
+`services/auth/src/app/main.cc:95`, `services/gateway/src/main.cc:254` and
+`services/identity/src/app/main.cc:82`; the emit-only call sites
+(`auth-feature-service`, `user-feature-service`) reach the same sink through
+`<sync/sync-control-sink.hxx>`, the interface that keeps a domain owner from
+linking the transport.
 
 ## Layout
 
@@ -92,12 +96,16 @@ interface that keeps a domain package from linking the transport.
   bool.
 - Config, since sub-step 3a-1c: the target and the fleet secret arrive in
   `SyncClientConfig`, resolved from `sync.control_target` and
-  `sync.control_secret` — the caller's `[sync]` block
-  (`services/gateway/config.toml.example:61-63`) and, on the answering side,
-  `services/sync/config.toml.example:36`. The deploy stack pairs them under
-  the same keys (`argus-deploy/config.gateway.toml.example:60-62`,
-  `config.sync.toml.example:36`), and an empty target leaves the leg
-  uninstalled rather than failing a call.
+  `sync.control_secret` — the caller's `[sync]` block in all three
+  (`services/auth/config.toml.example:59-61`,
+  `services/gateway/config.toml.example:65-67`,
+  `services/identity/config.toml.example:65-67`) and, on the answering side,
+  `services/sync/config.toml.example:37`. The deploy stack pairs them under
+  the same keys (`argus-deploy/config.{auth,gateway,identity}.toml.example`,
+  sync's own at `argus-deploy/config.sync.toml.example:37`), spelling the target
+  `argus-sync:7041` from the compose containers and `127.0.0.1:7041` from the
+  host-networked gateway, and an empty target leaves the leg uninstalled
+  rather than failing a call.
 
 ## Tests
 
@@ -118,4 +126,4 @@ interface that keeps a domain package from linking the transport.
 - The CMakeLists registers it as `sync-client-test`, with `EXCLUDE_FROM_ALL
   FALSE` because the folder is pulled in `EXCLUDE_FROM_ALL`, and guards the
   target so a second consumer still registers exactly one test. It registers in
-  exactly the projects whose trees add `packages/identity`.
+  exactly the projects whose trees add it — auth, gateway and sync.

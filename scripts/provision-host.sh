@@ -192,6 +192,7 @@ ensure_object_store() {
     "argus-$(openssl rand -hex 10)-private"
 
   configure_storage "$DEPLOY_DIR/config.gateway.toml" "http://127.0.0.1:9000"
+  configure_storage "$DEPLOY_DIR/config.identity.toml" "http://rustfs:9000"
   configure_storage "$DEPLOY_DIR/config.camera.toml" "http://rustfs:9000"
   configure_storage "$DEPLOY_DIR/config.guard.toml" "http://rustfs:9000"
 
@@ -201,7 +202,7 @@ ensure_object_store() {
 provision_models() {
   local owner script
   for owner in \
-      packages/identity \
+      services/identity \
       packages/memory \
       services/tts \
       services/llm \

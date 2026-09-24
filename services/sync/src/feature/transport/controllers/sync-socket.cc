@@ -94,6 +94,11 @@ void SyncSocket::setNotificationSource(
   service_.setNotificationSource(std::move(source));
 }
 
+void SyncSocket::setIdentitySource(std::shared_ptr<IdentitySyncSource> source)
+{
+  service_.setIdentitySource(std::move(source));
+}
+
 void SyncSocket::setUserDirectory(
     std::shared_ptr<const IUserDirectory> directory)
 {

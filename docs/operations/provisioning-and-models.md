@@ -37,7 +37,7 @@ secrets and databases are reused.
 | `services/voice/scripts/provision.sh` | Silero VAD |
 | `services/camera/scripts/provision.sh` | YOLO26n export + go2rtc |
 | `packages/memory/scripts/provision.sh` | e5-small embeddings, NuExtract |
-| `packages/identity/scripts/provision.sh` | RetinaFace + MobileFaceNet |
+| `services/identity/scripts/provision.sh` | RetinaFace + MobileFaceNet |
 
 Models live in the shared `models/` tree and are never copied into projects or
 the image. Each download uses a `.part` file, SHA-256 verification and an

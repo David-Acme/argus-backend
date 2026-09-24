@@ -14,7 +14,7 @@ auth-service code; when in doubt, the root file wins.
    `database/auth.db`, whose schema is `services/auth/database/schema.sql`
    (this owner's only schema file). User rows, roles and the person directory
    are read through `argus::clients::identity`; never read another owner's
-   database, and never import `packages/identity`.
+   database, and never reach into `services/identity`'s sources.
 3. **The user context is a cache, never a source of truth** — role, name,
    language and `isActive` come from identity. `SessionContextCache` answers at
    most `[auth] context_cache_seconds` (default 30, `0` disables it) and the

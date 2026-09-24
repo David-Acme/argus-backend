@@ -21,9 +21,9 @@ Every microservice owns `services/<name>/Dockerfile`: a Debian + Conan
 2.21.0 build stage runs `scripts/build-all.sh prod --no-tests --only
 argus-<name>` from the repo root, and a slim runtime stage carries only that
 service's binaries. Packages are reusable libraries compiled into the service
-images — no package has an image of its own. The gateway image also carries
-`argus-migrate-identity` (identity is its package); argus-camera carries
-`argus-migrate-camera` and `argus-vulkan-probe`; productivity and
+images — no package has an image of its own. The identity image carries
+`argus-migrate-identity` (identity is its owner, since Phase 3c-1); argus-camera
+carries `argus-migrate-camera` and `argus-vulkan-probe`; productivity and
 notification carry their migration tools; the argus-tunnel image carries the
 client and the relay. The argus-memory binary is gone since f8-b3: the
 package compiles into argus-llm.
@@ -129,8 +129,9 @@ with `scripts/setup.sh` / `scripts/setup.sh camera` on the host.
 
 | Service | Image | Notes |
 |---|---|---|
-| gateway | `argus-gateway:local` | TLS 7024, `/health` healthcheck; mounts only identity.db |
+| gateway | `argus-gateway:local` | TLS 7024, `/health` healthcheck; owns the 23-line gateway.db record and proxies each domain to its backend; host networking, so it reaches its peers on 127.0.0.1 |
 | argus-auth | `argus-auth:local` | internal network (alias `argus-auth`), loopback 7042 + 7043 publishes; owns auth.db; runs the refresh limiter and mints the device credentials and the sessions every other service validates; `/health` healthcheck |
+| argus-identity | `argus-identity:local` | internal network (alias `argus-identity`), loopback 7044 + 7040 (fleet-secret RPC) publishes; owns identity.db; the users, persons, face embeddings, invitations and private portraits; `/health` healthcheck; config bind rw (the pairing state persists) |
 | argus-camera | `argus-camera:local` | internal network, loopback 7026 + 7036 (sync gRPC) publishes; owns camera.db; `/health` healthcheck; `/dev/dri` |
 | argus-productivity | `argus-productivity:local` | internal network, loopback 7027 + 7037 (sync gRPC) publishes; owns productivity.db; `/health` healthcheck |
 | argus-notification | `argus-notification:local` | internal network, loopback 7028 + 7038 (RPC) publishes; owns notification.db; `/health` healthcheck |
@@ -142,33 +143,34 @@ with `scripts/setup.sh` / `scripts/setup.sh camera` on the host.
 | argus-relay | `argus-tunnel:local` | `profiles: [tunnel]`; internal network, loopback 7100/7101/7103 publishes; no database (Ruling CL); `/health` healthcheck |
 | argus-tunnel-client | `argus-tunnel:local` | `profiles: [tunnel]`; host-networked like the gateway (dials the gateway `[remote]` listener and the relay's loopback home publish on 127.0.0.1); no database (Ruling CL); `/health` healthcheck |
 | nats | `nats:2.11.14-alpine` | exact tag pin; core NATS (no JetStream needed) |
-| identity-init | `argus-gateway:local` | `profiles: [identity-init]`, runs `argus-migrate-identity` |
+| identity-init | `argus-identity:local` | `profiles: [identity-init]`, runs `argus-migrate-identity` |
 | camera-init | `argus-camera:local` | `profiles: [camera-init]`, runs `argus-migrate-camera` against the camera data directory |
 | productivity-init | `argus-productivity:local` | `profiles: [productivity-init]`, runs `argus-migrate-productivity` against the productivity data directory |
 | notification-init | `argus-notification:local` | `profiles: [notification-init]`, runs `argus-migrate-notification` against the notification data directory |
 | vulkan-probe | `argus-camera:local` | `profiles: [vulkan-probe]`, runs `argus-vulkan-probe` with `/dev/dri` |
 
-Ordering: `nats` goes healthy first and the gateway and argus-camera wait
-for `nats: service_healthy` — the gateway's NatsBus connects once at boot with
-no retry, so a lost boot race would leave every fan-out subscription silently
-dead while all healthchecks stay green. The gateway and argus-camera then boot
-in parallel and resolve their database handoff inside each process: since F6-5
-the gateway pulls the camera sync tables over the 7036 gRPC leg (no
-camera.db mount) and only waits bounded for identity.db's own reads, while
-argus-camera opens identity.db read-only only after the gateway's boot schema
-apply has created it (same bounded wait). Neither service waits on the other's
-health, so there is no cycle. A fresh `up -d` without camera-init therefore
-works end to end: argus-camera creates camera.db and serves both the CRUD
-routes and the sync gRPC pulls with live rows — but
+Ordering: `nats` goes healthy first and the gateway, argus-identity and
+argus-camera wait for `nats: service_healthy` — the gateway's NatsBus connects
+once at boot with no retry, so a lost boot race would leave every fan-out
+subscription silently dead while all healthchecks stay green. The three then
+boot in parallel and each opens only its own database: since F6-5 the gateway
+pulls the camera sync tables over the 7036 gRPC leg (no camera.db mount),
+reaches the people domain through `argus::clients::identity` (`identity.target`,
+the fleet-secret 7040 leg) and keeps the 23-line `gateway/gateway.db`
+degraded-fallback record, while argus-identity creates identity.db from its own
+schema. No service waits on another's health, so there is no cycle. A fresh
+`up -d` without camera-init therefore works end to end: argus-camera creates
+camera.db and serves both the CRUD routes and the sync gRPC pulls with live
+rows — but
 argus-camera's boot apply then makes camera.db live data, so `camera-init`
 can no longer migrate the pre-existing argus.db camera rows (it no-ops on any
 schema-current target before reading the source). An installation that wants
 the legacy camera rows migrated must run `docker compose --profile camera-init
 run --rm camera-init` BEFORE the first boot, while camera.db does not exist
 yet. Every service bind-mounts its own owner `database/schema.sql`
-(`packages/identity`, `services/camera`, ...) at the data-dir
+(`services/identity`, `services/camera`, ...) at the data-dir
 `database/schema.sql` path, so a data dir provisioned without schema SQLs
-still works (the single-file binds come from the repo). The gateway
+still works (the single-file binds come from the repo). argus-identity
 applies `database/schema.sql` at boot and
 aborts if it fails, so a fresh install creates `identity.db` without the init
 profile; argus-camera applies its own `database/schema.sql` at boot the same
@@ -371,7 +373,7 @@ secrets are read at runtime, never printed; the refresh token lands in a
 
 | Mount | Mounted into | Content |
 |---|---|---|
-| `${ARGUS_DATA_DIR}/identity` | gateway (rw, owner) and argus-sync (rw, its four sync tables) — at `/opt/argus/database` | identity.db (+ WAL files) |
+| `${ARGUS_DATA_DIR}/identity` | argus-identity (rw, owner) and argus-sync (rw, its five sync tables) — at `/opt/argus/database` | identity.db (+ WAL files) |
 | `${ARGUS_DATA_DIR}/camera` | argus-camera (rw, owner) — at `/opt/argus/camera` | camera.db (+ WAL files) |
 | `${ARGUS_DATA_DIR}/productivity` | argus-productivity (rw, owner) — at `/opt/argus/productivity` | productivity.db (+ WAL files) |
 | `${ARGUS_DATA_DIR}/notification` | argus-notification (rw, owner) — at `/opt/argus/notification` | notification.db (+ WAL files) |
@@ -384,7 +386,8 @@ Every database directory is bind-mounted from `${ARGUS_DATA_DIR:-./data}`
 (default `argus-deploy/data/`, gitignored; `scripts/provision-host.sh` creates
 it and writes the gitignored `.env` with absolute host paths) and is mounted
 by its owner only (rule 27), the declared exception being identity.db, whose
-four sync tables `argus-sync` also opens there until Phase 3c splits them out:
+five sync tables `argus-sync` also opens there until Phase 3c-2 splits them
+out:
 cross-domain
 reads travel through the typed gRPC legs (camera/productivity/notification)
 and NATS change feeds, never through another service's file. Each owner
@@ -396,6 +399,7 @@ the matching `*-init` profile is the only migration path onto a volume.
 ## Configuration and secrets (Ruling Q)
 
 - `config.gateway.toml.example` / `config.auth.toml.example` /
+  `config.identity.toml.example` / `config.guard.toml.example` /
   `config.sync.toml.example` /
   `config.camera.toml.example` /
   `config.productivity.toml.example` /
@@ -407,6 +411,7 @@ the matching `*-init` profile is the only migration path onto a volume.
   memory package's keys ride the host's config.llm.toml from f8-b4); copy
   to `config.gateway.toml` /
   `config.auth.toml` /
+  `config.identity.toml` / `config.guard.toml` /
   `config.sync.toml` /
   `config.camera.toml` / `config.productivity.toml` /
   `config.notification.toml` / `config.tts.toml` / `config.stt.toml` /
@@ -418,7 +423,8 @@ the matching `*-init` profile is the only migration path onto a volume.
   `[jwt] secret/refresh_secret` and
   `[device] fingerprint_secret` (identical in the minting/verifying set —
   argus-auth mints, the gateway, argus-camera, argus-guard,
-  argus-productivity, argus-notification and argus-sync verify, and the
+  argus-productivity, argus-notification, argus-identity and argus-sync
+  verify, and the
   device hash must match across the proxy), the `[auth] target`
   (`argus-auth:7043`) and `[auth] rpc_secret` each of those verifiers
   carries — the fleet gate on the session verdict, so an absent or
@@ -428,8 +434,8 @@ the matching `*-init` profile is the only migration path onto a volume.
   from booting, and it is never baked into any layer or template), and the
   `device.trusted_proxy_ips` of every
   bridge-networked service (argus-auth, argus-camera, argus-productivity,
-  argus-notification, argus-guard, argus-sync — the internal network's
-  gateway IP, see the network section), each of which also needs
+  argus-notification, argus-guard, argus-identity, argus-sync — the internal
+  network's gateway IP, see the network section), each of which also needs
   `device.trust_forwarded_for = true` because the gateway is the only peer
   it sees: the device hash and the refresh limiter's key both include the
   client IP, and only a trusted peer's `X-Forwarded-For` is honoured.

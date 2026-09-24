@@ -25,9 +25,6 @@ RUN conan profile detect --force \
 RUN --mount=type=cache,target=/root/.conan2/p \
     --mount=type=cache,target=/root/.conan2/b \
     ./scripts/build-all.sh prod --no-tests --only gateway
-RUN --mount=type=cache,target=/root/.conan2/p \
-    --mount=type=cache,target=/root/.conan2/b \
-    ./scripts/build-all.sh prod --no-tests --only identity
 
 FROM debian:trixie-slim AS runtime
 
@@ -44,12 +41,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /opt/argus
 COPY --from=build /opt/argus/services/gateway/build/prod/argus-gateway /opt/argus/argus-gateway
-COPY --from=build /opt/argus/packages/identity/build/prod/tools/migrate-identity/argus-migrate-identity /opt/argus/argus-migrate-identity
 
 RUN groupadd --gid "$ARGUS_GID" argus \
     && useradd --uid "$ARGUS_UID" --gid "$ARGUS_GID" --create-home \
       --shell /usr/sbin/nologin argus \
-    && mkdir -p certs database gateway models \
+    && mkdir -p certs gateway \
     && chown -R argus:argus /opt/argus
 
 EXPOSE 7024

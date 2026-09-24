@@ -7,6 +7,7 @@ argus_module(NAME sync-transport
         schemas/event/event-schema.cc
         schemas/person-event/person-event-schema.cc
         infra/camera-sync-gateway.cc
+        infra/identity-sync-gateway.cc
         infra/notification-sync-gateway.cc
         infra/productivity-sync-gateway.cc
         infra/sync-socket-registrar.cc
@@ -15,8 +16,8 @@ argus_module(NAME sync-transport
     DEPENDS
         argus::sync-repositories
         argus::sync-services
-        argus::identity
         argus::clients::camera
+        argus::clients::identity
         argus::clients::notification
         argus::clients::productivity
         argus::clients::voice

@@ -29,6 +29,10 @@ inline constexpr ErrorDefinition ProductivitySyncUnavailable{
     .code = ErrorCode::ServiceUnavailable,
     .status = 503,
     .message = "Productivity sync unavailable"};
+inline constexpr ErrorDefinition IdentitySyncUnavailable{
+    .code = ErrorCode::ServiceUnavailable,
+    .status = 503,
+    .message = "Identity sync unavailable"};
 inline constexpr ErrorDefinition VoiceUnavailable{
     .code = ErrorCode::ServiceUnavailable,
     .status = 503,

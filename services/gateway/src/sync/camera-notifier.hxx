@@ -1,8 +1,8 @@
 #pragma once
 
+#include <identity/identity-client.hxx>
 #include <json/value.h>
 #include <notification/notification-client.hxx>
-#include <shared/repositories/user/user-repository.hxx>
 #include <sync/fallback/fallback-log-repository.hxx>
 
 #include <atomic>
@@ -88,11 +88,17 @@ private:
   std::atomic<int64_t> fallbackDroppedShortDwell_{0};
 };
 
+struct CameraNotifierDependencies
+{
+  std::shared_ptr<NotificationClient> notificationClient;
+  std::shared_ptr<IdentityClient> identityClient;
+};
+
 class CameraObjectNotifier
 {
 public:
   CameraObjectNotifier(CameraNotificationPolicy::Config config,
-                       std::shared_ptr<NotificationClient> client);
+                       CameraNotifierDependencies dependencies);
 
   void handle(const Json::Value& json);
 
@@ -115,7 +121,7 @@ private:
   void purgeFallbackLog(int64_t nowS);
 
   std::shared_ptr<NotificationClient> notificationClient_;
-  UserRepository userRepository_;
+  std::shared_ptr<IdentityClient> identityClient_;
   FallbackLogRepository fallbackLogRepository_;
   CameraNotificationPolicy policy_;
 };
@@ -125,5 +131,5 @@ namespace camera_notifier
 CameraNotificationPolicy::Config resolveConfig();
 
 CameraNotificationPolicy* subscribeObjectDetected(
-    NatsBus& bus, std::shared_ptr<NotificationClient> client);
+    NatsBus& bus, CameraNotifierDependencies dependencies);
 }

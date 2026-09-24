@@ -7,8 +7,7 @@ import subprocess
 import sys
 from collections import defaultdict
 
-IN_TRANSIT = ("packages/identity", "packages/intent",
-              "packages/memory")
+IN_TRANSIT = ("packages/intent", "packages/memory")
 
 ALLOWED = {1: {1}, 2: {1, 2}, 3: {1, 2}, 4: {1, 2, 3}, 5: {1, 2, 3, 4}}
 

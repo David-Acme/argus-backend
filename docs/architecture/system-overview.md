@@ -10,8 +10,9 @@ data.
 
 | Owner | Process or package | Primary responsibility |
 |---|---|---|
-| Gateway | `argus-gateway` | Public TLS API, WebSocket relay, identity host and routing |
+| Gateway | `argus-gateway` | Public TLS API, WebSocket relay and routing |
 | Auth | `argus-auth` | Session and device authority: refresh tokens, device credentials, login challenges, session-verdict RPC |
+| Identity | `argus-identity` | Users, persons, face embeddings, invitations, portraits and pairing |
 | Sync | `argus-sync` | `/sync` WebSocket surface, rooms, change fan-out, audit persistence and the sync control RPC |
 | Camera | `argus-camera` | Camera/zone data, go2rtc media, YOLO26n object events |
 | Productivity | `argus-productivity` | Reminders, projects and calendar data |

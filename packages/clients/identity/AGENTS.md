@@ -1,53 +1,67 @@
 # argus_clients_identity
 
 The `argus.identity.v1` surface seen from the caller's side: the fleet secret
-every call carries, the owner token a promotion adds, and the profile legs a
-read maps back.
+every call carries, the owner token a promotion adds, the profile legs a read
+maps back, and the sync pull that reaches the same service.
 
 ## What this is
 
 A module, not a service: one `argus_clients(NAME identity ...)`, a STATIC
 library whose include root is `src/`, so a consumer writes
 `<identity/identity-client.hxx>` and links `argus::clients::identity`. It
-compiles one proto (`argus/identity/v1/identity.proto`) and one source
-(`src/identity/identity-client.cc`). Eight packages link it — `gateway-core`
-(`services/gateway/CMakeLists.txt:171`), `argus-guard` (`services/guard:140`),
-`argus_guard` (`services/guard/src/feature/guard/CMakeLists.txt:19`),
-`argus_guard-api` (`services/guard/src/feature/api/guard/CMakeLists.txt:19`),
-`argus-llm` (`services/llm:210`), `argus_voice-core` (`services/voice:100`),
-`argus_lib_auth` (`packages/lib/auth:68`) and `argus_identity` itself
-(`packages/identity:222`). Six of those CMakeLists also add the package to their
-own standalone tree by path. The auth library is the one that spreads it
-furthest: four of its files include the header (`details/identity-access.cc`,
-`jwt-filter.cc`, `device-filter.cc`, `user-directory-identity.cc`; the matching
+compiles two protos (`argus/identity/v1/identity.proto` and
+`argus/identity/v1/sync.proto`) and two sources
+(`src/identity/identity-client.cc`, `src/identity/identity-sync-client.cc`).
+Nine owner trees link it — `argus_lib_auth`
+(`packages/lib/auth/CMakeLists.txt:57`), `argus-auth` (`services/auth:98`)
+with its `auth-auth` (`src/feature/auth:19`) and `auth-session`
+(`src/feature/session:20`) modules and its two client-reaching suites
+(`tests:15,34`), `gateway-core` (`services/gateway:104`), the `argus-guard`
+executable (`services/guard:116`) with its `guard` (`src/feature/guard:21`) and
+`guard-api` (`src/feature/api/guard:19`) modules, `argus-llm`
+(`services/llm:183`), `argus_identity-rpc`
+(`services/identity/src/app/rpc/CMakeLists.txt:18`) with its
+`identity-sync-rpc-test` suite (`services/identity/tests:53`), `sync-transport`
+(`services/sync/src/feature/transport:20`) and `voice-core`
+(`services/voice:88`) — plus `services/productivity`, which links it only from
+its `productivity-controller-test` target (`services/productivity:244`). Nine
+of those trees also add the package to their standalone build by path (the
+eight services above and `packages/lib/auth`). The auth library is the one that
+spreads it furthest: two of its files include the header
+(`details/identity-access.cc`, `user-directory-identity.cc`; the matching
 `.hxx` forward-declares `IdentityClient` only), so a service that links
 `argus::lib::auth` — argus-camera and argus-notification among them — reaches
 the identity RPC through this package without a link line of its own (measured:
-neither `CMakeLists.txt` names `argus::clients::identity`). 21 C++ files include the
-header: the in-package suite, four in `packages/lib/auth`, two in
-`services/camera`, eleven in `services/guard`, one in `services/llm` and two in
-`services/voice`.
+neither CMakeLists names `argus::clients::identity`). 26 C++ files include the
+header: the in-package suite, two in `packages/lib/auth`, five in
+`services/auth`, two in `services/camera`, two in `services/gateway`, eleven in
+`services/guard`, one in `services/llm` and two in `services/voice`.
 
 ## Layout
 
 - `src/identity/identity-client.hxx` — the input structs `UpdateUserNameInput`,
-  `ValidateTokenInput`, `EnrollPersonInput`, `TagPersonInput` and
+  `RegisterUserInput`, `EnrollPersonInput`, `TagPersonInput` and
   `PromotePersonInput`, the one local DTO `PersonProfile`, and `IdentityClient`
-  with its thirteen methods (`updateUserName`, `validateToken`, `getUser`,
-  `listPersons`, `checkDeviceCredential`, `identifyPerson`, `enrollPerson`,
-  `touchPerson`, `promotePerson`, `tagPerson`, `personTags`, `getPerson`,
-  `listNotifiableUsers`); 21 files include it.
-- Nothing else: `find packages/clients/identity -type f` returns
-  CMakeLists.txt, the two sources, the suite and this file. No `details/`
-  directory: the channel, deadline, fleet secret and metadata ride inline in the
-  `.cc`.
+  with its twelve methods (`updateUserName`, `registerUser`, `getUser`,
+  `listPersons`, `identifyPerson`, `enrollPerson`, `touchPerson`,
+  `promotePerson`, `tagPerson`, `personTags`, `getPerson`,
+  `listNotifiableUsers`); 26 files include it.
+- `src/identity/identity-sync-client.hxx` — `IdentitySyncClient`, the second
+  stub (`argus.identity.v1.SyncService`), one method `pullTable`. Its one
+  consumer is `services/sync`'s `identity-sync-gateway`.
+- Nothing else: the folder is CMakeLists.txt, the four sources, the suite and
+  this file. No `details/` directory: the channel, deadline, fleet secret and
+  metadata ride inline in the `.cc` files.
 
 ## Rules
 
 - Rule 25: the folder IS the module. One `argus_clients(NAME identity ...)` with
   an explicit source list, never `file(GLOB)`.
 - The include prefix is load-bearing: `<identity/identity-client.hxx>`.
-- What a consumer sees: thirteen methods returning `std::optional` or `bool`,
+- Two stubs, two clients, neither wrapping the other: the identity surface
+  (`IdentityService`) and the sync pull (`SyncService`). A consumer that needs
+  both holds both.
+- What a consumer sees: twelve methods returning `std::optional` or `bool`,
   and `PersonProfile` as the one local DTO — `getPerson` always maps personId,
   name, alias, observation, role and tags, maps `userId` only when the wire
   carries `has_user_id()`, and answers nullopt when the answer has no `person`
@@ -55,29 +69,36 @@ header: the in-package suite, four in `packages/lib/auth`, two in
   Two flagged deviations as measured: most answer types ARE protoc messages, so
   protobuf types cross this surface, and §2.3's `details/` split is absent.
 - The refusals stay local: `getUser`, `touchPerson`, `tagPerson`, `personTags`
-  and `getPerson` refuse a non-positive id; `identifyPerson` and `enrollPerson`
-  refuse an empty image; `promotePerson` refuses a non-positive id or an empty
-  accessToken. None of them opens a socket.
+  and `getPerson` refuse a non-positive id; `identifyPerson`, `enrollPerson` and
+  `registerUser` refuse an empty image; `promotePerson` refuses a non-positive
+  id or an empty accessToken. None of them opens a socket.
+- The session and device-credential legs are NOT here: `validateToken` and
+  `checkDeviceCredential` belong to `packages/clients/auth`, since argus-auth
+  owns the session tables (3b).
 - On the wire: the constructor's fleet secret rides every call as
   `x-argus-fleet` (`addFleetSecret`, skipped when empty, so an unset secret
   sends no header at all); `x-argus-user` and `x-argus-role` ride only
   `updateUserName`; `promotePerson` adds `authorization: Bearer <accessToken>`
-  and `x-argus-device` only when the deviceHash is non-empty, while
-  `validateToken` engages the request's device leg whenever `hasDeviceContext`
-  is set, empty hash included. One deadline, `kCallTimeoutMs` = 5000 ms, a
-  `constexpr` in the `.cc`. The channel is plaintext (`makeChannel` is
+  and `x-argus-device` only when the deviceHash is non-empty. One deadline per
+  call, `kCallTimeoutMs` = 5000 ms (the sync pull's `kPullTimeoutMs` is the
+  same), a `constexpr` in the `.cc`. The channel is plaintext (`makeChannel` is
   `InsecureChannelCredentials`).
-- Config: `identity.target` in nine files — the six
-  `argus-deploy/config.{camera,guard,llm,notification,productivity,voice}.toml`
-  and `services/{notification,productivity,voice}/config.toml` (all `:7040`) —
-  and `identity.rpc_secret` in the seven argus-deploy trees. The auth library
-  falls back to `identity.rpc_host` / `identity.rpc_port`
-  (`services/gateway/config.toml:57-58` and
-  `argus-deploy/config.gateway.toml:56-57`, both 7040 — the gateway is the one
-  consumer that never sets `identity.target`), and `resolveTarget` defaults to
-  `127.0.0.1:7040` when the port is not positive.
-- The service links its own client (`packages/identity/CMakeLists.txt:189`): the
-  wire vocabulary is shared between the two ends, not copied.
+- Config: `identity.target` in the eight `argus-deploy/config.{auth,camera,gateway,guard,llm,productivity,sync,voice}.toml.example`
+  trees (`argus-identity:7040` from the compose containers, `127.0.0.1:7040`
+  in the host-networked gateway) with
+  `identity.rpc_secret` beside it in each, and in six project templates
+  (`services/{auth,gateway,guard,productivity,sync,voice}/config.toml.example`,
+  all `127.0.0.1:7040`). The auth library and argus-auth also accept
+  `identity.rpc_host` / `identity.rpc_port`
+  (`packages/lib/auth/src/auth/details/identity-access.cc:17-18`,
+  `services/auth/src/config/auth-config.cc:74-77`), defaulting to
+  `127.0.0.1:7040` — no template spells those two keys any more. The gateway
+  reads neither: it takes `identity.target` straight from its config and warns
+  instead of dialling when it is empty (`services/gateway/src/main.cc:330`).
+- The service builds and links its own client (`services/identity/CMakeLists.txt:103`
+  adds the folder by path; its `argus_identity-rpc` module links it at
+  `src/app/rpc/CMakeLists.txt:18`): the wire vocabulary is shared between the
+  two ends, not copied.
 
 ## Tests
 
@@ -90,7 +111,8 @@ header: the in-package suite, four in `packages/lib/auth`, two in
   suite called `identity-client-test`; ctest allows the duplicate, and the
   rename keeps the ledger readable.
 - The CMakeLists registers it as `identity-grpc-client-test`, with
-  `EXCLUDE_FROM_ALL FALSE` because the folder is pulled in
-  `EXCLUDE_FROM_ALL`. Because that folder is added by five of the gate's
-  projects, ctest collects the suite five times — once per project that pulls
+  `EXCLUDE_FROM_ALL FALSE` because six of the pulls that reach it are
+  `EXCLUDE_FROM_ALL` (gateway, guard, llm, productivity, sync, voice; auth and
+  identity pull it plainly). Because eight of the gate's projects add the
+  folder, ctest collects the suite eight times — once per project that pulls
   the package in.

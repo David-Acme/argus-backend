@@ -135,6 +135,7 @@ auth rpc_host
 auth rpc_port
 auth rpc_secret
 identity target
+identity proxy_url
 identity rpc_host
 identity rpc_port
 identity rpc_secret

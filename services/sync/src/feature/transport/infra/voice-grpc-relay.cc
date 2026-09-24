@@ -5,12 +5,12 @@
 #include <auth/request-context.hxx>
 #include <config/config-service.hxx>
 #include <runtime/blocking-task.hxx>
-#include <shared/repositories/user/user-repository.hxx>
 #include <sync/sync-errors.hxx>
 #include <trantor/utils/Logger.h>
 #include <voice/reaction-contracts.hxx>
 
 #include <cstdint>
+#include <optional>
 #include <utility>
 
 namespace
@@ -135,8 +135,10 @@ private:
   std::shared_ptr<Session> session_;
 };
 
-VoiceGrpcRelay::VoiceGrpcRelay(VoiceGrpcConfig config)
-    : client_(std::make_shared<VoiceClient>(std::move(config.target)))
+VoiceGrpcRelay::VoiceGrpcRelay(
+    VoiceGrpcConfig config, std::shared_ptr<const IUserDirectory> directory)
+    : client_(std::make_shared<VoiceClient>(std::move(config.target))),
+      userDirectory_(std::move(directory))
 {
 }
 
@@ -197,7 +199,9 @@ drogon::Task<bool> VoiceGrpcRelay::forwardText(const SyncFrameInput& input)
     if (session->stream)
       co_return true;
 
-    const auto user = co_await userRepository_.findById(session->userId);
+    std::optional<DirectoryUser> user;
+    if (userDirectory_)
+      user = co_await userDirectory_->findById(session->userId);
     argus::voice::v1::VoiceIdentity identity;
     identity.set_user_id(session->userId);
     identity.set_role(voiceRoleToProto(session->role));

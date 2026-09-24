@@ -8,9 +8,10 @@ with its own `CMakeLists.txt` and binary directory, all configuring against the
 one Conan graph `scripts/build-all.sh` resolves before the first of them:
 
 ```
-packages/lib/cert          packages/identity         services/auth
-packages/lib/sqlite        packages/memory           services/gateway
-                           packages/intent           services/sync
+packages/lib/cert          packages/memory           services/auth
+packages/lib/sqlite        packages/intent           services/identity
+                                                     services/gateway
+                                                     services/sync
                                                      services/camera
                                                      services/productivity
                                                      services/notification
@@ -40,11 +41,11 @@ at build time. Pins come from `.gitmodules` and `git submodule status`.
 | Dependency | Type | Pin | Compiled by |
 |---|---|---|---|
 | `sqlite-vec` | vendored | v0.1.10-alpha.4 | auth, gateway, camera, productivity, notification, guard, sync, identity, memory, sqlite, llm |
-| `ncnn` | submodule | `4c1110c9` | gateway, camera, productivity, notification, guard, sync, identity |
+| `ncnn` | submodule | `4c1110c9` | camera, identity |
 | `llama.cpp` | submodule | `31558dbb` | memory, llm, vlm |
 | `sherpa-onnx` | submodule | `dc130227` | stt |
 | `fastText` | submodule | `1142dc4` | intent |
-| `stb` | vendored | `stb_image.h` | identity, sync, voice |
+| `stb` | vendored | `stb_image.h` | identity |
 | `go2rtc` | downloaded binary | release artifact | camera provisioning |
 
 ## Shared model artifacts

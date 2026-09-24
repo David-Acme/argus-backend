@@ -26,30 +26,13 @@ services:
         bind:
           create_host_path: false
       - type: bind
-        source: ${ARGUS_DATA_DIR:-./data}/identity
-        target: /opt/argus/database
-        bind:
-          create_host_path: false
-      - type: bind
         source: ${ARGUS_DATA_DIR:-./data}/gateway
         target: /opt/argus/gateway
         bind:
           create_host_path: false
       - type: bind
-        source: ../packages/identity/database/schema.sql
-        target: /opt/argus/database/schema.sql
-        read_only: true
-        bind:
-          create_host_path: false
-      - type: bind
         source: ../services/gateway/database/schema.sql
         target: /opt/argus/gateway/schema.sql
-        read_only: true
-        bind:
-          create_host_path: false
-      - type: bind
-        source: ${ARGUS_MODELS_DIR:-../models}
-        target: /opt/argus/models
         read_only: true
         bind:
           create_host_path: false
@@ -123,6 +106,69 @@ services:
     mem_limit: "${ARGUS_AUTH_MEMORY_LIMIT:-512m}"
     cpus: "${ARGUS_AUTH_CPU_LIMIT:-0.50}"
     pids_limit: 256
+    restart: unless-stopped
+
+  argus-identity:
+    build:
+      context: ..
+      dockerfile: services/identity/Dockerfile
+      args:
+        ARGUS_UID: "${ARGUS_UID:-1000}"
+        ARGUS_GID: "${ARGUS_GID:-1000}"
+    image: argus-identity:local
+    pull_policy: never
+    user: "${ARGUS_UID:-1000}:${ARGUS_GID:-1000}"
+    networks:
+      internal:
+        aliases:
+          - argus-identity
+    ports:
+      - "127.0.0.1:${IDENTITY_PORT:-7044}:7044"
+      - "127.0.0.1:${IDENTITY_RPC_PORT:-7040}:7040"
+    entrypoint: ["/opt/argus/argus-identity"]
+    volumes:
+      - type: bind
+        source: ./config.identity.toml
+        target: /opt/argus/config.toml
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${ARGUS_CERTS_DIR:-../certs}
+        target: /opt/argus/certs
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${ARGUS_DATA_DIR:-./data}/identity
+        target: /opt/argus/database
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ../services/identity/database/schema.sql
+        target: /opt/argus/database/schema.sql
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${ARGUS_MODELS_DIR:-../models}
+        target: /opt/argus/models
+        read_only: true
+        bind:
+          create_host_path: false
+    depends_on:
+      nats:
+        condition: service_healthy
+      rustfs-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "curl -kfs https://127.0.0.1:7044/health >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    mem_limit: "${ARGUS_IDENTITY_MEMORY_LIMIT:-1g}"
+    cpus: "${ARGUS_IDENTITY_CPU_LIMIT:-1.00}"
+    pids_limit: 384
     restart: unless-stopped
 
   argus-camera:
@@ -775,14 +821,14 @@ services:
 
   identity-init:
     profiles: ["identity-init"]
-    image: argus-gateway:local
+    image: argus-identity:local
     pull_policy: never
     user: "${ARGUS_UID:-1000}:${ARGUS_GID:-1000}"
     network_mode: none
     entrypoint: ["/bin/sh", "-ec"]
     command:
       - >-
-        if [ -f /opt/argus/database/argus.db ]; then /opt/argus/argus-migrate-identity --source /opt/argus/database/argus.db --target /opt/argus/database/identity.db --schema /opt/argus/database/schema.sql; else echo 'No argus.db yet; the gateway creates identity.db at boot.'; fi
+        if [ -f /opt/argus/database/argus.db ]; then /opt/argus/argus-migrate-identity --source /opt/argus/database/argus.db --target /opt/argus/database/identity.db --schema /opt/argus/database/schema.sql; else echo 'No argus.db yet; argus-identity creates identity.db at boot.'; fi
     volumes:
       - type: bind
         source: ${ARGUS_DATA_DIR:-./data}/identity
@@ -790,7 +836,7 @@ services:
         bind:
           create_host_path: false
       - type: bind
-        source: ../packages/identity/database/schema.sql
+        source: ../services/identity/database/schema.sql
         target: /opt/argus/database/schema.sql
         read_only: true
         bind:

@@ -28,9 +28,6 @@ routes — gateway, camera, productivity, notification, tts.
   the static role/route table (`TableName` → permission set). No I/O.
 - `src/auth/valid-json-filter.{cc,hxx}` — ValidJsonFilter: request body shape.
   No I/O.
-- `src/auth/identity-change-sink.hxx` — the sink interface that republishes
-  identity-domain writes for the memory catalog replicas (the gateway
-  installs the NATS-backed one).
 - `src/auth/user-directory.hxx`, `src/auth/user-directory-identity.{cc,hxx}`
   — `IUserDirectory` and its RPC-backed implementation: the read-only
   `DirectoryUser` a service may hold without opening the identity database

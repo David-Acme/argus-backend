@@ -55,10 +55,6 @@ trusted_proxy_ips = ""
 target = "argus-auth:7043"
 rpc_secret = "CHANGE_ME_SAME_IN_EVERY_SERVICE"
 
-[identity]
-target = "172.19.0.1:7040"
-rpc_secret = "CHANGE_ME_SAME_IN_EVERY_SERVICE"
-
 [grpc]
 caller_guard = "CHANGE_ME_GUARD_NOTIFICATION"
 caller_gateway = "CHANGE_ME_GATEWAY_NOTIFICATION"

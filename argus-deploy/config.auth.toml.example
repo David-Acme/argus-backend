@@ -41,7 +41,7 @@ server_cert = "certs/server.pem"
 server_key = "certs/server.key"
 
 [identity]
-target = "172.19.0.1:7040"
+target = "argus-identity:7040"
 rpc_secret = "CHANGE_ME_SAME_IN_EVERY_SERVICE"
 
 [jwt]
@@ -55,6 +55,10 @@ fingerprint_secret = ""
 identity_mode = "ip"
 trust_forwarded_for = true
 trusted_proxy_ips = ""
+
+[sync]
+control_target = "argus-sync:7041"
+control_secret = "CHANGE_ME_SAME_IN_EVERY_SERVICE"
 
 [rate_limit]
 enabled = false

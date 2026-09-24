@@ -78,21 +78,9 @@ if(PROJECT_IS_TOP_LEVEL)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/sqlite
                          ${CMAKE_BINARY_DIR}/sqlite)
     endif()
-    if(NOT TARGET argus::lib::cert)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/cert
-                         ${CMAKE_BINARY_DIR}/cert)
-    endif()
     if(NOT TARGET argus::lib::auth)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/auth
                          ${CMAKE_BINARY_DIR}/auth)
-    endif()
-    if(NOT TARGET argus::identity)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/identity
-                         ${CMAKE_BINARY_DIR}/identity)
-    endif()
-    if(NOT TARGET identity-migration)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/identity/tools/migrate-identity
-                         ${CMAKE_BINARY_DIR}/identity/tools/migrate-identity)
     endif()
     if(NOT TARGET argus::lib::audio)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/audio

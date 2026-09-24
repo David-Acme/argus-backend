@@ -1,11 +1,11 @@
 tool 22.1.8
-tus 529
-modernize-use-nodiscard 730
+tus 534
+modernize-use-nodiscard 729
 modernize-avoid-c-style-cast 359
 modernize-use-scoped-lock 279
 bugprone-suspicious-stringview-data-usage 275
-modernize-use-designated-initializers 247
-bugprone-unchecked-optional-access 209
+modernize-use-designated-initializers 241
+bugprone-unchecked-optional-access 205
 modernize-avoid-c-arrays 81
 bugprone-implicit-widening-of-multiplication-result 72
 bugprone-narrowing-conversions 63
@@ -15,7 +15,7 @@ bugprone-easily-swappable-parameters 52
 modernize-return-braced-init-list 49
 performance-unnecessary-value-param 49
 modernize-use-emplace 46
-modernize-use-starts-ends-with 45
+modernize-use-starts-ends-with 44
 bugprone-throwing-static-initialization 36
 bugprone-optional-value-conversion 30
 performance-enum-size 25

@@ -7,10 +7,10 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
 PROJECTS=(
   packages/lib/cert
   packages/lib/sqlite
-  packages/identity
   packages/memory
   packages/intent
   services/auth
+  services/identity
   services/gateway
   services/sync
   services/camera
@@ -105,7 +105,7 @@ for dir in "${PROJECTS[@]}"; do
   CURRENT_PROJECT="$name"
   extra_targets=()
   case "$dir" in
-    packages/identity)     extra_targets=(argus-migrate-identity) ;;
+    services/identity)     extra_targets=(argus-migrate-identity) ;;
     services/camera)       extra_targets=(argus-migrate-camera argus-vulkan-probe) ;;
     services/productivity) extra_targets=(argus-migrate-productivity) ;;
     services/notification) extra_targets=(argus-migrate-notification) ;;

@@ -5,6 +5,7 @@
 #include <auth/jwt-filter.hxx>
 #include <json/value.h>
 #include <feature/transport/infra/camera-sync-source.hxx>
+#include <feature/transport/infra/identity-sync-source.hxx>
 #include <feature/transport/infra/notification-sync-source.hxx>
 #include <feature/transport/infra/productivity-sync-source.hxx>
 #include <sync/sync-filter.hxx>
@@ -13,11 +14,8 @@
 #include <sync/socket-emit-dto.hxx>
 #include <shared/repositories/audit-log/audit-log-repository.hxx>
 #include <feature/transport/repositories/event/event-repository.hxx>
-#include <shared/repositories/person/person-repository.hxx>
 #include <shared/repositories/user-action-log/user-action-log-repository.hxx>
 #include <shared/repositories/user-audit-log/user-audit-log-repository.hxx>
-#include <shared/repositories/user-invitation/user-invitation-repository.hxx>
-#include <shared/repositories/user/user-repository.hxx>
 #include <auth/user-role.hxx>
 #include <vector>
 
@@ -47,6 +45,11 @@ public:
     notificationSyncSource_ = source;
   }
 
+  void setIdentitySource(const IdentitySyncSource* source)
+  {
+    identitySyncSource_ = source;
+  }
+
   drogon::Task<Json::Value> sync(const SynchronizedDto& body,
                                  const JwtContext& ctx) const;
   drogon::Task<Json::Value> syncAuditLog(const SynchronizedLogDto& body,
@@ -55,13 +58,11 @@ public:
                                              const JwtContext& ctx) const;
 
 private:
-  UserRepository userRepository_;
-  UserInvitationRepository userInvitationRepository_;
   const CameraSyncSource* cameraSyncSource_{nullptr};
   const ProductivitySyncSource* productivitySyncSource_{nullptr};
   const NotificationSyncSource* notificationSyncSource_{nullptr};
+  const IdentitySyncSource* identitySyncSource_{nullptr};
   EventRepository eventRepository_;
-  PersonRepository personRepository_;
   UserActionLogRepository userActionLogRepository_;
   AuditLogRepository auditLogRepository_;
   UserAuditLogRepository userAuditLogRepository_;

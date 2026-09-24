@@ -43,12 +43,13 @@ that apply to sync-service code; when in doubt, the root file wins.
    frame into the change feed's envelope and hands it to the same dispatcher
    the NATS leg uses. Never add a second path into `RoomManager`, and never
    hand-build a `Log` payload or emit a full `Add` for an update.
-8. **No other service's database** — camera, productivity and notification
-   tables are paged through `argus::clients::{camera,productivity,notification}`
-   and the voice leg relays through `argus::clients::voice`. This service opens
-   exactly one SQLite file.
+8. **No other service's database** — camera, productivity, notification and
+   identity tables are paged through
+   `argus::clients::{camera,productivity,notification,identity}` and the voice
+   leg relays through `argus::clients::voice`. This service opens exactly one
+   SQLite file.
 9. **The engine lives here** — `transport` holds `SyncSocket`/`SyncService`/
-   `SynchronizedService`, the `synchronized-dto.hxx` DTOs and the three
+   `SynchronizedService`, the `synchronized-dto.hxx` DTOs and the four
    pull-source contracts; the audit, user-audit and action-journal rows are
    `src/shared/repositories/` and `src/shared/schemas/` because both features
    read them (rule 23's 2+ rule), while the writers over them —
@@ -58,8 +59,10 @@ that apply to sync-service code; when in doubt, the root file wins.
    `argus::contracts::sync`'s, never a copy.
 10. **Portrait and invitation privacy** — Guard never receives invitation data
    or portrait bytes, and Resident/Guest receive only their own user row. The
-   scope lives in `role_access` and `SynchronizedService`; route permission
-   alone is not enough.
+   scope lives in `role_access` and, for the three tables this service still
+   pages itself, `SynchronizedService`; the user, invitation and person rows
+   are scoped by the owning service's pull leg before they cross the wire, so
+   route permission alone is not enough there either.
 11. **Parameter structs for 3+ params** — any function with 3+ parameters
     must take a struct (designated initializers, every member listed).
 12. **Dependency injection** — services/filters hold dependencies as private
@@ -97,7 +100,7 @@ argus-sync/
     services/           SyncService, SynchronizedService
     repositories/       the event rows SynchronizedService pages
     schemas/            event and person-event row mapping
-    infra/              the three domain pull sources, the socket registrar
+    infra/              the four domain pull sources, the socket registrar
                         and the voice gRPC relay the forwarder rides
   src/feature/fanout/
     repositories/       delivery inbox (query + repository + receipt)
@@ -117,7 +120,7 @@ argus-sync/
 ```
 
 Two features, not four: `transport` owns the socket, the engine's composition
-and the three pull-source adapters; `fanout` owns everything a change event or
+and the four pull-source adapters; `fanout` owns everything a change event or
 a delivery does on arrival, the two audit writers included. Between them sit
 `src/shared/`'s repositories and schemas (the paging leg and the fan-out both
 read them), `src/shared/services/room/` (the transport, the fan-out and

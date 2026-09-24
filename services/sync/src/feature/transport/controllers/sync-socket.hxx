@@ -4,7 +4,9 @@
 #include <sync/sync-forwarder.hxx>
 #include <feature/transport/services/sync-service.hxx>
 #include <memory>
+#include <auth/user-directory.hxx>
 #include <feature/transport/infra/camera-sync-source.hxx>
+#include <feature/transport/infra/identity-sync-source.hxx>
 #include <feature/transport/infra/notification-sync-source.hxx>
 #include <feature/transport/infra/productivity-sync-source.hxx>
 
@@ -23,6 +25,7 @@ public:
   void setCameraSource(std::shared_ptr<CameraSyncSource> source);
   void setProductivitySource(std::shared_ptr<ProductivitySyncSource> source);
   void setNotificationSource(std::shared_ptr<NotificationSyncSource> source);
+  void setIdentitySource(std::shared_ptr<IdentitySyncSource> source);
   void setUserDirectory(std::shared_ptr<const IUserDirectory> directory);
 
   WS_PATH_LIST_BEGIN

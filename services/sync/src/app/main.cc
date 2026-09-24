@@ -7,10 +7,12 @@
 #include <feature/fanout/services/change-feed-consumer.hxx>
 #include <feature/fanout/services/notification-delivery-consumer.hxx>
 #include <feature/transport/infra/camera-sync-gateway.hxx>
+#include <feature/transport/infra/identity-sync-gateway.hxx>
 #include <feature/transport/infra/notification-sync-gateway.hxx>
 #include <feature/transport/infra/productivity-sync-gateway.hxx>
 #include <feature/transport/infra/sync-socket-registrar.hxx>
 #include <feature/transport/infra/voice-grpc-relay.hxx>
+#include <auth/user-directory-identity.hxx>
 #include <grpcpp/grpcpp.h>
 #include <http/cors.hxx>
 #include <http/error-handler.hxx>
@@ -72,15 +74,21 @@ int main()
       std::make_shared<ProductivitySyncGateway>(upstreams.productivity);
   const auto notificationSource =
       std::make_shared<NotificationSyncGateway>(upstreams.notification);
+  const auto identitySource = std::make_shared<IdentitySyncGateway>(
+      IdentitySyncClientConfig{.target = upstreams.identity,
+                               .fleetSecret = upstreams.identitySecret});
+  const auto userDirectory = std::make_shared<IdentityUserDirectory>();
   const VoiceGrpcConfig voice = VoiceGrpcConfig::resolve();
   std::shared_ptr<SyncForwarder> voiceLeg;
   if (!voice.target.empty())
-    voiceLeg = std::make_shared<VoiceGrpcRelay>(voice);
+    voiceLeg = std::make_shared<VoiceGrpcRelay>(voice, userDirectory);
   const SyncRegistrationStats sync =
       registerSyncSurface({.forwarder = voiceLeg,
                            .cameraSource = cameraSource,
                            .productivitySource = productivitySource,
-                           .notificationSource = notificationSource});
+                           .notificationSource = notificationSource,
+                           .identitySource = identitySource,
+                           .userDirectory = userDirectory});
   LOG_INFO << "Sync surface registered: " << sync.controllers << " controller, "
            << sync.filters << " filters; voice leg -> "
            << (voice.target.empty() ? "unconfigured (503)"
@@ -93,7 +101,10 @@ int main()
                    : "; productivity leg -> gRPC " + upstreams.productivity)
            << (upstreams.notification.empty()
                    ? "; notification leg -> unconfigured source (503)"
-                   : "; notification leg -> gRPC " + upstreams.notification);
+                   : "; notification leg -> gRPC " + upstreams.notification)
+           << (upstreams.identity.empty()
+                   ? "; identity tables -> unconfigured source (503)"
+                   : "; identity tables -> gRPC " + upstreams.identity);
 
   drogon::app().loadConfigJson(drogonConfig(syncDb, listener));
 

@@ -11,6 +11,7 @@
 
 #include <ctime>
 #include <json/value.h>
+#include <optional>
 #include <vector>
 
 namespace
@@ -264,8 +265,10 @@ std::string CameraNotificationPolicy::takeDigest(int64_t cameraId,
 
 CameraObjectNotifier::CameraObjectNotifier(
     CameraNotificationPolicy::Config config,
-    std::shared_ptr<NotificationClient> client)
-    : notificationClient_(std::move(client)), policy_(config)
+    CameraNotifierDependencies dependencies)
+    : notificationClient_(std::move(dependencies.notificationClient)),
+      identityClient_(std::move(dependencies.identityClient)),
+      policy_(config)
 {
 }
 
@@ -390,17 +393,31 @@ void CameraObjectNotifier::deliver(const DeliverInput& input)
     LOG_WARN << "Camera notifier: notification SDK not configured";
     return;
   }
+  if (!identityClient_) {
+    LOG_WARN << "Camera notifier: identity SDK not configured; notification "
+                "skipped ("
+             << title << ")";
+    return;
+  }
 
   drogon::async_run([json, title, body, this]() -> drogon::Task<void> {
     try {
-      const auto userIds = co_await userRepository_.findNotifiableIds();
-      if (userIds.empty()) {
+      const auto userIds =
+          co_await BlockingTask<std::optional<std::vector<int64_t>>>(
+              [this]() { return identityClient_->listNotifiableUsers(); });
+      if (!userIds) {
+        LOG_WARN << "Camera notifier: identity roster unavailable; "
+                    "notification skipped ("
+                 << title << ")";
+        co_return;
+      }
+      if (userIds->empty()) {
         LOG_WARN << "Camera notifier: no owner/guard users to notify";
         co_return;
       }
 
       argus::notification::v1::CreateNotificationsRequest request;
-      for (const auto userId : userIds)
+      for (const auto userId : *userIds)
         request.add_user_ids(userId);
       request.set_type("camera");
       request.set_title(title);
@@ -458,9 +475,9 @@ CameraNotificationPolicy::Config resolveConfig()
 }
 
 CameraNotificationPolicy* subscribeObjectDetected(
-    NatsBus& bus, std::shared_ptr<NotificationClient> client)
+    NatsBus& bus, CameraNotifierDependencies dependencies)
 {
-  static CameraObjectNotifier notifier(resolveConfig(), std::move(client));
+  static CameraObjectNotifier notifier(resolveConfig(), std::move(dependencies));
   bus.subscribe(nats_subject::kGuardHeartbeat,
                 [](std::string_view, std::string_view payload) {
                   const Json::Value heartbeat =

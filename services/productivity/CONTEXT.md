@@ -175,9 +175,11 @@ own `productivity.db`.
 - The canonical build is the service's standalone graph. From the repository
   root use `scripts/build-all.sh dev --only productivity`; direct builds
   rerun Conan before the matching preset and CTest.
-- The standalone build compiles ncnn only because `argus_identity` compiles
-  the face services, whose headers need it; nothing references those objects,
-  so they drop at link time (zero AI symbols).
+- The standalone build compiles no AI code: the `third_party/ncnn` block and
+  the unused `find_package(OpenCV)` belonged to the `argus_identity` package's
+  face services. Phase 3c-1 made identity a service of its own, reached
+  through `argus::clients::identity`, so this project adds neither (zero AI
+  symbols in the binary, verified with `nm -C`).
 
 ## Migration tool
 

@@ -792,14 +792,15 @@ say.
 | 2 — package tree and build | 6 | **done** (1–6; step 2 ran as four sub-steps, one report each — `f2-2-layout-{libs,contracts,clients,services}.md`) |
 | 3a — the transport: `sync` | 3 | step 1 **done**; step 2 **done** (all nine closure items — 0, 1, 1b, 2, 3, 4, 5, 5b, 6, 7 and 9 landed, 8 absorbed by 0); step 3 **done** (`f3-3a-3-audit-retention.md`) |
 | 3b — `auth` | 2 | **done** — step 1 in three parts, 3b-1 landed (`services/auth`, `argus.auth.v1`, `clients/auth`, the verdict RPC, its cache and the identity change consumer — `f3-3b-1-auth-service.md`) and 3b-2 with it (the `/auth` HTTP surface, the LAN gate, the refresh-token rate limiter, the row copy off `identity.db`); step 2 = **3b-3** (`packages/lib/auth`'s filters onto `argus::clients::auth`) landed in the same unit — `f3-3b-2-auth-surface.md` |
-| 3c — `identity` | 2 | **not started** |
+| 3c — `identity` | 2 | step 1 **done** — `services/identity` is the people domain as its own owner project, taking the slot the package held in the gate (the project count is unchanged, eighteen before and after): the package's people domain becomes the service (TLS HTTP on 7044 beside the `argus.identity.v1` gRPC listener on 7040), the gateway keeps the edge and proxies its four former native paths, and the sync engine's in-process read of `user`/`user_invitation`/`person` becomes a fourth gRPC pull leg whose server side owns the rule-7b scope (`f3-3c-1-identity-service.md`); step 2 **not started** |
 | 3d — the edge comes down | 5 | **not started** |
 | 4 — service layouts | 9 | **not started** |
 | 5 — verification | 6 | **not started** |
 
-The tree today, measured: 18 projects, **483 tests, 0 failures, 0 compiler warnings**;
-`check-tidy` 524 TUs / 3030 findings against a 3030 baseline; `check-deps`
-544 edges, 0 forbidden, 0 cycles, 49 deferred to phase 3.
+The tree today, measured: 18 projects, **443 test executables, 0 failures, 0 compiler
+warnings**; `check-tidy` 534 TUs / 2945 findings against a 2945 baseline
+(re-recorded this unit, from 529 TUs / 2957); `check-deps` 658 edges, 0 forbidden,
+0 cycles, 23 deferred to phase 3.
 
 ### Phase 0 — already executed (context, not work)
 

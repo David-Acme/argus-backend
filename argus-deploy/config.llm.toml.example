@@ -68,7 +68,7 @@ n_ctx = 2048
 max_tokens = 512
 
 [identity]
-target = "172.19.0.1:7040"
+target = "argus-identity:7040"
 rpc_secret = "CHANGE_ME_SAME_IN_EVERY_SERVICE"
 
 [camera]
