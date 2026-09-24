@@ -49,10 +49,10 @@ NotificationRpcService::NotificationRpcService(Dependencies dependencies)
           {argus::client::CallerCredential{.service = "argus-guard",
                                         .secret = ConfigService::getString(
                                             "grpc.caller_guard")}}),
-      gatewayCallers_(
-          {argus::client::CallerCredential{.service = "argus-gateway",
+      syncCallers_(
+          {argus::client::CallerCredential{.service = "argus-sync",
                                         .secret = ConfigService::getString(
-                                            "grpc.caller_gateway")}}),
+                                            "grpc.caller_sync")}}),
       notificationService_(
           {.deliverySink = std::move(dependencies.deliverySink),
            .pushSink = std::move(dependencies.pushSink),
@@ -213,10 +213,10 @@ grpc::ServerUnaryReactor* NotificationRpcService::PullNotifications(
     const argus::notification::v1::PullNotificationsRequest* request,
     argus::notification::v1::PullNotificationsResponse* response)
 {
-  if (!argus::client::authorizeCaller(context, gatewayCallers_).has_value()) {
+  if (!argus::client::authorizeCaller(context, syncCallers_).has_value()) {
     auto* reactor = context->DefaultReactor();
     reactor->Finish(grpc::Status(grpc::StatusCode::UNAUTHENTICATED,
-                                 "argus-gateway caller credential required"));
+                                 "argus-sync caller credential required"));
     return reactor;
   }
   const auto userId = argus::client::callerUserId(context);

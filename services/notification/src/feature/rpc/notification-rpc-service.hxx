@@ -35,7 +35,7 @@ public:
 
 private:
   std::vector<argus::client::CallerCredential> guardCallers_;
-  std::vector<argus::client::CallerCredential> gatewayCallers_;
+  std::vector<argus::client::CallerCredential> syncCallers_;
   NotificationService notificationService_;
   NotificationRepository repository_;
 };

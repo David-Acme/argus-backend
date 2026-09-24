@@ -25,11 +25,11 @@ exact JSON/binary the app expects is argus-sync's
   engine code. Failure surfaces as the session's existing degrade paths
   (`stt_failed` reaction, logged TTS/LLM fallbacks), never a crash.
 - **The identity write** (`GrpcVoiceIdentity`): the spoken-name persist is a
-  typed `IdentityService.UpdateUser` call to the gateway's internal identity
-  listener (`identity.target`). argus-voice owns NO database — zero DB
-  clients. The identity feature owns identity.db and emits the change through
-  its own NATS sink, whose payloads argus-sync's fan-out dispatches onto
-  `/sync` (the publisher of that emit is the identity surface, not this
+  typed `IdentityService.UpdateUser` call to argus-identity's gRPC listener
+  (`identity.target`, `argus-identity:7040`). argus-voice owns NO database —
+  zero DB clients. The identity feature owns identity.db and emits the change
+  through its own NATS sink, whose payloads argus-sync's fan-out dispatches
+  onto `/sync` (the publisher of that emit is the identity surface, not this
   service). An empty `identity.target` or a failed call logs and the
   session continues (best effort, as the legacy async persist was).
 
@@ -77,8 +77,8 @@ exact JSON/binary the app expects is argus-sync's
 - `[server].grpc_port` (7034) carries VoiceService + `grpc.health.v1.Health`;
   `[server].health_port` (7035) carries the minimal `/health` HTTP listener
   for the compose healthcheck. No filters, no `/sync`, no db clients.
-- `[identity].target` points at the gateway's internal identity gRPC
-  listener (gateway default `127.0.0.1:7040`).
+- `[identity].target` points at argus-identity's gRPC listener
+  (`argus-identity:7040` in the deploy stack, `127.0.0.1:7040` natively).
 - No alarm/siren trigger path exists here (voice reactions never carry alarm
   triggers); no camera frames, no sync-table CRUD, no schema.
 - Cleartext loopback/internal-network gRPC is a documented F6 limitation;

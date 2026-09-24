@@ -12,9 +12,10 @@ argus.<domain>.v1.<event>
 ```
 
 - Segments are lowercase, separated by `.`; event names use snake_case.
-- The `<domain>` segment matches the protobuf domain packages
-  (`common`, `camera`, `ai`, `productivity`, `notification`, `memory`, `sync`,
-  `gateway`).
+- The `<domain>` segment names the owning domain — `auth`, `camera`,
+  `guard`, `identity`, `notification`, `productivity`, `sync` — and matches
+  the protobuf domain package (`packages/contracts/proto/argus/<domain>/v1/`)
+  where one exists.
 - Subjects are frozen once published: new event names may be added under the
   same domain, but an existing subject never changes meaning or payload shape.
 - Wildcards (`*`, `>`) are for subscriptions only, never for publishing.

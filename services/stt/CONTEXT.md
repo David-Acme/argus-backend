@@ -37,7 +37,7 @@ pattern (F4-2) one engine later.
     success body carries `info.text` (the envelope wraps all JSON
     responses).
   - Trust model: no auth, loopback bind by default — internal-network only,
-    never routed through the gateway.
+    never announced or published.
 - **Config**: `[stt]` (engine knobs, mirroring the legacy block) +
   `[server]` (loopback listener, default 7030) only. No database, no NATS,
   no JWT/device keys (Ruling BN): the dead `voice_session`/`voice_message`
@@ -46,7 +46,7 @@ pattern (F4-2) one engine later.
 ## What it did NOT change
 
 - The mobile app never talks to this service; voice frames and `/sync` are
-  untouched and the gateway routing is untouched.
+  untouched and the internal wire stays loopback-only, unannounced.
 - VAD (Silero) and RNNoise stay in the legacy voice session (Ruling AY) —
   only the transcribe leg moves.
 - Model artifacts stay in the shared `models/stt` paths — never copied.

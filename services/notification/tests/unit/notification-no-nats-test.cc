@@ -72,7 +72,7 @@ void writeConfig(const std::string& path)
 {
   std::ofstream out(path, std::ios::trunc);
   out << "[grpc]\ncaller_guard = \"no-nats-guard\"\n"
-         "caller_gateway = \"no-nats-gateway\"\n";
+         "caller_sync = \"no-nats-sync\"\n";
 }
 
 class AppRunner

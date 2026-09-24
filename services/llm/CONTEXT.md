@@ -57,8 +57,8 @@ scaffolds.
     logged per request.
 - **Config**: `[llm]` (engine knobs, mirroring the legacy block) +
   `[server]` (loopback listener, default 7032) only. The `[server]`
-  listener is internal-network only: the wire is never exposed through the
-  gateway. No database, no NATS,
+  listener is internal-network only: the wire is never announced or
+  published. No database, no NATS,
   no JWT/device keys — nothing here persists anything.
 
 ## Tier note (the F4-2 lesson, applied)
@@ -86,7 +86,7 @@ untouched.
 
 ## What it did NOT change
 
-- The mobile app never talks to this service; no gateway routing, no new
+- The mobile app never talks to this service; no public routing, no new
   app-facing contract; voice frames stay byte-identical.
 - No tool loop at the time (Ruling BV) — superseded by f8-b4, which landed
   the loop here: the tool runtime lives in this service at
@@ -123,10 +123,11 @@ With `[memory] observe_camera_events = true`, `main.cc` wires an
 durable JetStream consumer on `argus.guard.v1.encounter_closed`
 (`ARGUS_GUARD`, durable `argus-llm-encounters`, `maxDeliver = 10`, poison
 `Term` after 3 failed attempts). Each event is receipted in
-`encounter_closed_inbox` (same states as the gateway delivery inbox:
-`received`/`dispatched`/`conflict`/`dead_lettered`, SHA-256 canonical
-fingerprint, conflict never captured) and captured exactly once through the
-injected `capture`, which calls `observeSystemEvent` with the owner's scope —
+`encounter_closed_inbox` (same states as argus-sync's
+`notification_delivery_inbox`: `received`/`dispatched`/`conflict`/
+`dead_lettered`, SHA-256 canonical fingerprint, conflict never captured) and
+captured exactly once through the injected `capture`, which calls
+`observeSystemEvent` with the owner's scope —
 never rule-parsed, never a fact. The owner resolves through
 `IdentityClient::listNotifiableUsers` (first notifiable user, their language
 for the summary line). The consumer stops before `memory.shutdown()` in the

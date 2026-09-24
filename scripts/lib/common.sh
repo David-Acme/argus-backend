@@ -313,8 +313,8 @@ ensure_deploy_configs() {
     "$deploy_dir/config.camera.toml" grpc caller_guard 32
   fill_deploy_pair "$deploy_dir/config.guard.toml" notifications credential \
     "$deploy_dir/config.notification.toml" grpc caller_guard 32
-  fill_deploy_pair "$deploy_dir/config.gateway.toml" notifications credential \
-    "$deploy_dir/config.notification.toml" grpc caller_gateway 32
+  fill_deploy_pair "$deploy_dir/config.sync.toml" notifications credential \
+    "$deploy_dir/config.notification.toml" grpc caller_sync 32
 
   log "Deploy configs ready in $deploy_dir"
 }

@@ -6,11 +6,10 @@ proves once.
 
 ## What this is
 
-A PACKAGE, not a service: no listener, no route, no `main`. Two owners link
-it — `gateway-core` (`services/gateway/CMakeLists.txt:102`), which serves the
-instance's own HTTPS listener, and `argus-identity` (`services/identity:144`)
-with its `identity-invitation` (`src/feature/invitation:13`) and
-`identity-pairing` (`src/feature/pairing:8`) modules — because each one either
+A PACKAGE, not a service: no listener, no route, no `main`. One owner links
+it — `argus-identity` (`services/identity:144`) with its
+`identity-invitation` (`src/feature/invitation:14`) and
+`identity-pairing` (`src/feature/pairing:9`) modules — because it either
 serves TLS, verifies the CA, or hands a client the fingerprint to pin. Every
 other TLS listener reaches Drogon through the `cert.server_cert` /
 `cert.server_key` paths in its own config instead of this package's surface

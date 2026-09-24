@@ -15,7 +15,7 @@ the camera/zone rows (Golden Cam / Golden Zone) plus the calendar_event
 with ends_at NULL and the project_task with assignee_id 1, and the
 identity rows (Golden user/person, one zone audit row, one reminder
 user-audit row) with a fresh recorder refresh session minted from the
-gateway config's JWT secrets. Secrets are read from the config file and
+service config's JWT secrets. Secrets are read from the config file and
 never printed; the rotated refresh token is written 0600 for
 ARGUS_TEST_REFRESH_TOKEN.
 
@@ -25,7 +25,7 @@ before the first boot (after that, camera.db is live data and the tool
 correctly no-ops).
 
 Usage: seed-golden.py --argus argus.db --identity identity.db \
-         --config argus-deploy/config.gateway.toml [--device-ip 127.0.0.1]
+         --config argus-deploy/config.auth.toml [--device-ip 127.0.0.1]
 """
 
 parser = argparse.ArgumentParser(description=DESCRIPTION)

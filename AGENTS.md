@@ -14,9 +14,11 @@
 
 - **`backend/`** (this repo) — C++20 + Drogon server: all AI on-device (face
   auth, LLM, vision, STT/TTS), JWT dual secrets, WebSocket sync on `/sync`
-  (argus-sync's own TLS listener, 7025). The gateway keeps the public API
-  on `0.0.0.0:7024`, and `argus-auth` owns the session tables and the
-  session-verdict RPC (7043) the filter chains move onto in Phase 3b-3.
+  (argus-sync's own TLS listener, 7025). Every app-facing service terminates
+  TLS itself on its own listener and announces its routes over mDNS;
+  `argus-auth` keeps the public auth API on `0.0.0.0:7042` and owns the
+  session tables and the session-verdict RPC (7043) the filter chains ask
+  for their verdict.
 - **`frontend/`** (sibling) — React Native app (Expo SDK 57 + Expo Router +
   Tailwind v4 via Uniwind). Its HTTP, auth, WatermelonDB (15 tables) and
   autonomous `/sync` layers are implemented, plus the full screen set
@@ -379,8 +381,6 @@ shared file-static behind a mutex.
 - `jwt-cpp/0.7.2` via Conan (HS256)
 - `nlohmann_json/3.11.3` (pinned for jwt-cpp)
 - `tomlplusplus/3.3.0` for config
-- `qr-code-generator/1.8.0` (Nayuki, QR codes for the pairing banner).
-  Target: `qr-code-generator::qrcodegencpp`, header `<qrcodegen/qrcodegen.hpp>`.
 - `opencv/4.13.0` (headless, for scaled face image decoding)
 - `onnxruntime/1.24.4` (STT/TTS via sherpa-onnx, VAD via Silero ONNX)
 - **Kùzu — NOT a dependency (removed).** The Phase 0 gate rejected both Kùzu
@@ -482,8 +482,9 @@ Raw pointers only for non-owning access (`.get()`).
   LAN and tunnel endpoints.
 - Native backend development is the default: run `scripts/setup.sh` to create
   the per-installation 0600 per-project `config.toml` files from each
-  `config.toml.example`, and then run
-  `services/gateway/build/dev/argus-gateway`. Never commit, print, log
+  `config.toml.example`, and then run the service you are working on, e.g.
+  `services/auth/build/dev/argus-auth` or
+  `services/sync/build/dev/argus-sync`. Never commit, print, log
   or send instance secrets to the frontend.
 - Production-style deployment is container-only: every microservice owns a
   `Dockerfile` and `argus-deploy/docker-compose.yml` builds and runs one
@@ -501,9 +502,9 @@ Raw pointers only for non-owning access (`.get()`).
   config). `provision-host.sh` generates the 0600 root/RPC/application
   credentials under `${ARGUS_DATA_DIR}/rustfs/secrets`, creates the private
   bucket and writes the bucket-scoped application pair into the
-  gateway/camera/guard configs. Objects live in
-  `${ARGUS_DATA_DIR}/rustfs/objects`; the gateway (host networking) uses
-  `http://127.0.0.1:9000` and the internal services `http://rustfs:9000`.
+  identity/camera/guard configs. Objects live in
+  `${ARGUS_DATA_DIR}/rustfs/objects`; the containerized services use
+  `http://rustfs:9000` and a native run `http://127.0.0.1:9000`.
   Use the service, never direct ad-hoc HTTP from feature code.
 - Development uses a fresh schema when the developer explicitly resets the
   local DB. Do not silently delete, migrate or recreate a user's database as a
@@ -670,8 +671,8 @@ Every service follows the same layout inside its own folder:
 
 **Today, against that target** (Phase 4 of
 `docs/history/plans/architecture-plan.md` lands it): `services/auth`,
-`services/tts` and `services/sync` are the only services with `src/app/`;
-`notification`,
+`services/identity`, `services/tts` and `services/sync` are the only services
+with `src/app/`; `notification`,
 `productivity` and `guard`
 already have the `{controllers,services,dtos}` interior, one level deeper
 under `feature/api/<resource>/` (`notification` also carries `feature/rpc/`,
@@ -679,25 +680,26 @@ which Phase 4 step 2 moves to `app/rpc/`). The other nine services keep a
 single `main.cc` at their `src/` root; `tunnel`, exempt by design (D19),
 instead has two entry points there, `main-client.cc` and `main-relay.cc`.
 
-Five services have no `feature/` at all today — `gateway`, `llm`, `stt`,
+Four services have no `feature/` at all today — `llm`, `stt`,
 `tunnel` and `vlm` — and keep their code at `src/` level instead:
-`src/controllers/` in `llm`, `stt` and `vlm`, a `src/llm/` and a `src/vlm/`
-beside it, and `gateway`'s four domain folders. Of the eight services that do
-have a `feature/`, four still keep code beside it: `camera`
+`src/controllers/` in `llm`, `stt` and `vlm`, and a `src/llm/` and a
+`src/vlm/` beside it. Of the nine services that do have a `feature/`, four
+still keep code beside it: `camera`
 (`src/controllers/` and `src/camera/`, `monitor/`, `objects/`, `operator/`),
 `notification` (`src/notification/`), `productivity`
-(`src/productivity/`) and `voice` (`src/test-support/`). `auth`, `guard`, `tts`
-and `sync` keep everything inside `feature/` (plus `app/` in `auth`, `tts` and
-`sync`).
+(`src/productivity/`) and `voice` (`src/test-support/`). `auth`, `guard`,
+`identity`, `tts` and `sync` keep everything inside `feature/` (plus `app/` in
+`auth`, `identity`, `tts` and `sync`).
 
-Only `services/auth` and `services/sync` have `src/config/` yet: the
-per-service typed config that step 9 moves there still lives elsewhere under
-that same domain folder
+`services/auth`, `services/identity` and `services/sync` have `src/config/`;
+the per-service typed config that step 9 moves there still lives elsewhere
+under that same domain folder
 (`camera-config.{hxx,cc}`, `notification-config.{hxx,cc}`,
 `productivity-config.{hxx,cc}`, `operator-config.{hxx,cc}`). `services/sync`
 is the one service with `tests/e2e/`, the tree's only first-party one — the
-frozen-frame suite that moved with the surface it pins. `gateway` is
-deleted in Phase 3d.
+frozen-frame suite that moved with the surface it pins. `gateway` was deleted
+in Phase 3d step 1c, together with its proxy and `contracts/gateway`: every
+app-facing service terminates TLS itself and announces its own routes.
 
 ### 24. One shape for every unit, never speculative structure
 
@@ -822,9 +824,9 @@ data (D18):
   source.
 - Interface dependencies (types in public headers) are `PUBLIC`;
   implementation-only dependencies are `PRIVATE`.
-- Header-only where nothing is compiled: ten of the eleven contracts go through
+- Header-only where nothing is compiled: nine of the ten contracts go through
   `argus_contracts`, which is `INTERFACE` by construction (`auth`, `camera`,
-  `gateway`, `identity`, `notification`, `productivity`, `routes`, `sync`,
+  `identity`, `notification`, `productivity`, `routes`, `sync`,
   `tts`, `voice`), and `validation` declares `HEADER_ONLY` to `argus_lib` for
   the same result. `response` is the exception under `packages/contracts/`: it
   carries no vocabulary but the response wire, declared
@@ -892,7 +894,7 @@ Before any commit, verify the affected standalone project with
 `./scripts/build-all.sh dev --only <project>` and **0 errors, 0 warnings**.
 Run the full orchestrator when changing shared build infrastructure.
 
-The orchestrator runs three gates of its own, beyond the eighteen projects:
+The orchestrator runs three gates of its own, beyond the seventeen projects:
 `scripts/check-comments.sh` (rule 20) and `scripts/check-deps.sh` (§2.4's
 tiers) before anything is built, and, at the end of a full run only,
 `scripts/check-tidy.sh` (rules 16 and 19). `--only`,
@@ -950,7 +952,7 @@ for two different reasons, and says which when it does.
 | File | Purpose |
 |------|---------|
 | `packages/contracts/{auth,camera,productivity,sync}/src/<domain>/` | Each domain's wire enums, each with its own lowerCamelCase `<enum>ToString`/`<enum>FromString` pair (`packages/contracts/camera/src/camera/zone-type.hxx`). The enums that mirror a `CHECK` constraint are not all here — `notification` and `services/identity/src/shared/vocabulary/` each carry their own |
-| `packages/contracts/sync/src/sync/` | `Syncable`, `SyncFilter` base classes + `sync-operation.hxx` + `sync-forwarder.hxx` (the `{conn, message, raw}` frame vocabulary and `SyncForwarder`, which `services/camera` and `services/gateway` implement) |
+| `packages/contracts/sync/src/sync/` | `Syncable`, `SyncFilter` base classes + `sync-operation.hxx` + `sync-forwarder.hxx` (the `{conn, message, raw}` frame vocabulary and `SyncForwarder`, implemented by `services/sync`'s `VoiceGrpcRelay` — `services/sync/src/feature/transport/infra/`) |
 | `packages/contracts/routes/src/routes/` | The LAN discovery spellings: service type `_argus-route._tcp` and TXT keys `path`/`https`. A service announces one instance per logical route; the app resolves the type and reads the SRV port |
 
 **Tier 3 — `clients/`**

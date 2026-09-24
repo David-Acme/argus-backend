@@ -1,41 +1,6 @@
 name: argus-cutover
 
 services:
-  gateway:
-    build:
-      context: ..
-      dockerfile: services/gateway/Dockerfile
-      args:
-        ARGUS_UID: "${ARGUS_UID:-1000}"
-        ARGUS_GID: "${ARGUS_GID:-1000}"
-    image: argus-gateway:local
-    user: "${ARGUS_UID:-1000}:${ARGUS_GID:-1000}"
-    network_mode: host
-    entrypoint: ["/opt/argus/argus-gateway"]
-    volumes:
-      - type: bind
-        source: ./config.gateway.toml
-        target: /opt/argus/config.toml
-        read_only: true
-        bind:
-          create_host_path: false
-      - type: bind
-        source: ${ARGUS_CERTS_DIR:-../certs}
-        target: /opt/argus/certs
-        read_only: true
-        bind:
-          create_host_path: false
-    healthcheck:
-      test: ["CMD-SHELL", "curl -kfs https://127.0.0.1:7024/health >/dev/null"]
-      interval: 10s
-      timeout: 5s
-      retries: 12
-      start_period: 20s
-    mem_limit: "${ARGUS_GATEWAY_MEMORY_LIMIT:-2g}"
-    cpus: "${ARGUS_GATEWAY_CPU_LIMIT:-2.00}"
-    pids_limit: 512
-    restart: unless-stopped
-
   argus-auth:
     build:
       context: ..
@@ -51,7 +16,7 @@ services:
         aliases:
           - argus-auth
     ports:
-      - "127.0.0.1:${AUTH_PORT:-7042}:7042"
+      - "${AUTH_PORT:-7042}:7042"
       - "127.0.0.1:${AUTH_RPC_PORT:-7043}:7043"
     entrypoint: ["/opt/argus/argus-auth"]
     volumes:
@@ -107,7 +72,7 @@ services:
         aliases:
           - argus-identity
     ports:
-      - "127.0.0.1:${IDENTITY_PORT:-7044}:7044"
+      - "${IDENTITY_PORT:-7044}:7044"
       - "127.0.0.1:${IDENTITY_RPC_PORT:-7040}:7040"
     entrypoint: ["/opt/argus/argus-identity"]
     volumes:
@@ -170,7 +135,7 @@ services:
         aliases:
           - argus-camera
     ports:
-      - "127.0.0.1:${CAMERA_PORT:-7026}:7026"
+      - "${CAMERA_PORT:-7026}:7026"
       - "127.0.0.1:${CAMERA_GRPC_PORT:-7036}:7036"
     devices:
       - /dev/dri:/dev/dri
@@ -239,7 +204,7 @@ services:
         aliases:
           - argus-productivity
     ports:
-      - "127.0.0.1:${PRODUCTIVITY_PORT:-7027}:7027"
+      - "${PRODUCTIVITY_PORT:-7027}:7027"
       - "127.0.0.1:${PRODUCTIVITY_GRPC_PORT:-7037}:7037"
     entrypoint: ["/opt/argus/argus-productivity"]
     volumes:
@@ -291,7 +256,7 @@ services:
         aliases:
           - argus-notification
     ports:
-      - "127.0.0.1:${NOTIFICATION_PORT:-7028}:7028"
+      - "${NOTIFICATION_PORT:-7028}:7028"
       - "127.0.0.1:${NOTIFICATION_GRPC_PORT:-7038}:7038"
     entrypoint: ["/opt/argus/argus-notification"]
     volumes:
@@ -399,7 +364,7 @@ services:
         aliases:
           - argus-guard
     ports:
-      - "127.0.0.1:${GUARD_PORT:-7039}:7039"
+      - "${GUARD_PORT:-7039}:7039"
     entrypoint: ["/opt/argus/argus-guard"]
     volumes:
       - type: bind
@@ -733,8 +698,6 @@ services:
         bind:
           create_host_path: false
     depends_on:
-      gateway:
-        condition: service_started
       argus-relay:
         condition: service_started
     healthcheck:

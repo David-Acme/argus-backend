@@ -55,7 +55,7 @@ target = "argus-voice:7034"
 
 [notifications]
 grpc_target = "argus-notification:7038"
-credential = "CHANGE_ME_GATEWAY_NOTIFICATION"
+credential = "CHANGE_ME_SYNC_NOTIFICATION"
 
 [jwt]
 secret = ""
@@ -81,3 +81,4 @@ max_reconnects = 60
 [mdns]
 enabled = true
 name = "Argus"
+address = ""

@@ -184,7 +184,6 @@ ensure_local_config() {
   for dir in \
       services/auth \
       services/identity \
-      services/gateway \
       services/sync \
       services/camera \
       services/guard \
@@ -226,7 +225,7 @@ main() {
   need_cmd git
   need_cmd cmake
   setup_submodules
-  ensure_instance_certs "$ROOT" "$ROOT/certs" "$ROOT/services/gateway/config.toml"
+  ensure_instance_certs "$ROOT" "$ROOT/certs" "$ROOT/services/identity/config.toml"
   "$ROOT/services/tts/scripts/provision.sh"
   "$ROOT/services/llm/scripts/provision.sh"
   "$ROOT/services/vlm/scripts/provision.sh"

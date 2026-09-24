@@ -7,8 +7,8 @@ change-payload vocabulary the producers and the transport share.
 ## What this is
 
 A CONTRACT, not a service and not a library, and the largest fan-in of the ten:
-21 CMakeLists name `argus::contracts::sync` — 20 consumers plus this package's
-own test links, and seven of the 20 are argus-sync's (its six modules and its
+30 CMakeLists name `argus::contracts::sync` — 29 consumers plus this package's
+own test links, and seven of the 29 are argus-sync's (its six modules and its
 test tree) since sub-step 3a-1d (the newest of the others is
 `packages/clients/sync`, which links it as
 the home of the frame its control leg carries). Most of it is headers only, but this
@@ -23,8 +23,8 @@ the two audit-event headers include `<text/json-diff.hxx>`. The include root is
 
 The consumers are argus-sync — the engine's home since sub-step 3a-1d, the
 package it used to live in having been deleted — the identity, memory and
-`lib/auth` packages, `clients/llm` and `clients/sync`, and the camera, gateway,
-llm, notification, productivity and sync services. A table named here is a table
+`lib/auth` packages, `clients/llm` and `clients/sync`, and the auth, camera,
+guard, identity, llm, notification, productivity and sync services. A table named here is a table
 some repository syncs. The change vocabulary's consumers are the producers that
 hold a sink — camera, productivity, notification and identity — the memory
 package, and argus-sync's fan-out that reads the payloads back; sub-step
@@ -133,9 +133,12 @@ package, and argus-sync's fan-out that reads the payloads back; sub-step
   and `SyncForwarder`, the four-call side-channel interface (`onConnect`,
   `forwardText`, `forwardBinary`, `onClose`) a service implements when it
   carries frame types the sync tables do not serve themselves. It moved here in
-  sub-step 3a-1d from `packages/sync`, because `services/camera` and
-  `services/gateway` implement it and rule 27 forbids a service including
-  another service's source; 8 files.
+  sub-step 3a-1d from `packages/sync`, because more than one service renders its
+  frames and rule 27 forbids a service including another service's source. Its
+  one implementation is `services/sync`'s `VoiceGrpcRelay` (the voice leg
+  installed through `SyncSocket::setForwarder`); `services/camera`'s media
+  socket carries the same `SyncFrameInput` frames and the same
+  `sendSocketFrameError` answer on its own `/media` route. 6 files.
 
 ## Rules
 

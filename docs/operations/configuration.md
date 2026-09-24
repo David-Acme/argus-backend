@@ -13,7 +13,6 @@ and the optional keys a template does not set, are in
 
 | Project | Notable sections |
 |---|---|
-| gateway | `[gateway]`, `[identity]`, `[sync]`, `[nats]`, `[cert]`, `[mdns]` |
 | camera | `[server]`, `[database]`, `[camera]`, `[streaming]`, `[objects]`, `[tapo]`, `[tts]` |
 | productivity | `[server]`, `[database]` |
 | notification | `[server]`, `[database]` |

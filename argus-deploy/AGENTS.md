@@ -5,12 +5,13 @@ any change; the cutover shape and its exceptions are documented there.
 
 ## Scope
 
-- `docker-compose.yml` — cutover stack: gateway, nats, argus-camera,
-  domain services, identity migration init tool.
+- `docker-compose.yml` — the deployment stack: nats and rustfs as the shared
+  infrastructure, the thirteen argus services, the tunnel/relay pair behind the
+  `tunnel` profile, and the one-shot migration init tools.
 - `../services/<name>/Dockerfile` — one image per microservice; packages
   are compiled into the service images (no package image).
-- `config.gateway.toml.example` and one template per domain service —
-  per-installation copies (`config.gateway.toml`, ...) are gitignored and hold
+- One `config.<service>.toml.example` template per service —
+  per-installation copies (`config.auth.toml`, ...) are gitignored and hold
   the instance secrets.
 
 ## MUST-FOLLOW Rules

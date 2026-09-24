@@ -4,8 +4,8 @@
 
 Fase 3 of the `migracion-microservicios` plan splits the productivity domain
 out of the monolith (blueprint :566-569). This task (F3-1) creates the
-substrate WITHOUT cutover — the legacy keeps owning every productivity write
-and the app keeps talking through the gateway unchanged. `argus-productivity`
+substrate WITHOUT cutover — the legacy kept owning every productivity write
+and the app kept talking through the gateway unchanged. `argus-productivity`
 mirrors the proven argus-camera shape (F2-1): own binary, own CMake preset,
 own `productivity.db`.
 
@@ -38,8 +38,8 @@ own `productivity.db`.
   what guarantees the routes exist. The legacy keeps its own registration
   until F3-2 — this task changes NO legacy build input and NO legacy
   behavior. Until the F3-2 cutover, `productivity.db` is a migrate-tool copy,
-  NOT the authoritative store: the gateway never routes here, so the
-  registered routes are out-of-contract before the cutover (same reasoning as
+  NOT the authoritative store: the gateway did not route here yet, so the
+  registered routes were out-of-contract before the cutover (same reasoning as
   argus-camera F2-1, which shipped without routes because its brief
   constrained it — this brief instead directs the port to land now).
 - **Change emission (F3-2 cutover, Rulings AQ/Y)**: the feature services no
@@ -52,13 +52,16 @@ own `productivity.db`.
   `docs/architecture/wire-nats-subjects.md`; the change feed is below).
   `argus-sync` persists them verbatim into
   identity.db; nothing audit-shaped is ever written to productivity.db.
-- **Serving live traffic (F3-2, Ruling AP)**: the gateway relays
+- **Serving live traffic (F3-2, Ruling AP)**: the gateway relayed
   `/calendar-event`, `/calendar-event-share`, `/project`,
   `/project-member`, `/project-task` (all methods + subpaths) to this
   service with identical paths; responses are byte-identical with the
-  legacy (envelope, statuses, CORS headers — verified live). Role checks
-  stay in the gateway; the personal-table scoping moved to this service with
-  the sync RPC (rule 27); JWT resolution uses the identity RPC (Ruling AM).
+  legacy (envelope, statuses, CORS headers — verified live). Since Phase 3d
+  step 1c this service serves those routes itself, on its own TLS listener
+  and announced as one `_argus-route._tcp` instance per logical route, and
+  the role checks run in its own `RoleFilter` over the shared table map. The
+  personal-table scoping moved to this service with the sync RPC (rule 27);
+  JWT resolution uses the identity RPC (Ruling AM).
   The databases open WAL with `busy_timeout`; no DDL runs at boot
   beyond the migrate tool's schema-current check.
 - **Identity reads (RPC-only since rule 27)**: this service opens no
@@ -76,11 +79,10 @@ own `productivity.db`.
   x-argus-user/role/device metadata and scopes the personal tables
   (calendar_event, calendar_event_share, project, project_member,
   project_task) by owner-or-membership, while reminder/reminder_detail stay
-  unscoped exactly as the monolith's gateway did. `argus-sync` consumes it
+  unscoped exactly as the legacy sync pull did. `argus-sync` consumes it
   through `argus::clients::productivity`; no other service opens productivity.db.
-- **CORS**: the legacy answered every preflight in pre-routing and the
-  gateway forwards OPTIONS on proxied paths untouched, so this surface keeps
-  answering OPTIONS itself (`Cors::handleOptions`).
+- **CORS**: the legacy answered every preflight in pre-routing, so this
+  surface keeps answering OPTIONS itself (`Cors::handleOptions`).
 - **Audit recipients**: `publishAudit` keeps the same recipient set the
   legacy `SyncAuditService::publishUsers` kept — non-positive ids out,
   duplicates collapsed.

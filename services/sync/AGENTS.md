@@ -140,8 +140,8 @@ The top-level CMake auto-discovers feature folders and links
 
 `/sync` terminates TLS on `7025` and the control RPC listens on `7041`; both
 are this service's subroute, and the compose publishes 7025 on all interfaces
-because the app dials the socket directly — a WebSocket upgrade cannot ride the
-gateway's reverse proxy. The control port stays loopback-bound.
+because the app dials the socket directly. The control port stays
+loopback-bound.
 
 ## Build commands
 

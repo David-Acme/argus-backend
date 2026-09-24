@@ -26,6 +26,11 @@ ListenerConfig IdentityConfig::resolveListener()
   return ListenerConfig::resolveServiceTls("identity", kDefaultIdentityPort);
 }
 
+uint16_t IdentityConfig::resolveAnnouncedPort()
+{
+  return resolveListener().port;
+}
+
 IdentityRpcConfig IdentityConfig::resolveRpc()
 {
   IdentityRpcConfig config;

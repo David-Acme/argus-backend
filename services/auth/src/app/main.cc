@@ -1,6 +1,8 @@
 #include <app/rpc/auth-rpc-service.hxx>
 #include <auth/device-filter.hxx>
 #include <auth/jwt-filter.hxx>
+#include <auth/remote-config.hxx>
+#include <auth/remote-gate.hxx>
 #include <auth/role-filter.hxx>
 #include <auth/valid-json-filter.hxx>
 #include <config/auth-config.hxx>
@@ -39,9 +41,18 @@ namespace
 
 constexpr int kActionRetryMs = 500;
 
-Json::Value drogonConfig(const AuthDbConfig& authDb,
-                         const ListenerConfig& listener)
+struct DrogonConfigInput
 {
+  const AuthDbConfig& authDb;
+  const ListenerConfig& listener;
+  const RemoteConfig& remote;
+};
+
+Json::Value drogonConfig(const DrogonConfigInput& input)
+{
+  const ListenerConfig& listener = input.listener;
+  const RemoteConfig& remote = input.remote;
+
   Json::Value config = ConfigService::drogonConfig();
   if (config.isNull())
     config = Json::Value(Json::objectValue);
@@ -50,14 +61,17 @@ Json::Value drogonConfig(const AuthDbConfig& authDb,
   Json::Value client(Json::objectValue);
   client["name"] = "default";
   client["rdbms"] = "sqlite3";
-  client["filename"] = authDb.dbPath;
+  client["filename"] = input.authDb.dbPath;
   client["is_fast"] = false;
   client["number_of_connections"] = 1;
   client["timeout"] = -1.0;
   clients.append(client);
   config["db_clients"] = clients;
 
-  config["listeners"] = listenerJson(listener);
+  Json::Value listeners = listenerJson(listener);
+  appendRemoteListener(
+      {.listeners = listeners, .remote = remote, .base = listener});
+  config["listeners"] = listeners;
 
   return config;
 }
@@ -72,9 +86,12 @@ int main()
 
   const AuthDbConfig authDb = AuthConfig::resolveDb();
   const ListenerConfig listener = AuthConfig::resolveListener();
+  const RemoteConfig remote = RemoteConfig::resolve();
   const AuthRpcConfig rpc = AuthConfig::resolveRpc();
   const AuthIdentityConfig identity = AuthConfig::resolveIdentity();
   const AuthSyncControlConfig syncControl = AuthConfig::resolveSyncControl();
+
+  requireDistinctTunnelPort(listener, remote);
 
   std::unique_ptr<IdentityClient> identityClient;
   if (!identity.target.empty())
@@ -102,7 +119,8 @@ int main()
     LOG_INFO << "Sync control leg -> gRPC " << syncControl.target;
   }
 
-  drogon::app().loadConfigJson(drogonConfig(authDb, listener));
+  drogon::app().loadConfigJson(
+      drogonConfig({.authDb = authDb, .listener = listener, .remote = remote}));
 
   drogon::app().registerFilter(std::make_shared<DeviceFilter>());
   drogon::app().registerFilter(std::make_shared<ValidJsonFilter>());
@@ -112,6 +130,18 @@ int main()
       std::make_shared<AuthController>(identityClient.get()));
 
   RefreshRateGate rateGate(AuthConfig::resolveRateLimit());
+  RemoteGate remoteGate(remote);
+
+  drogon::app().registerPreRoutingAdvice(
+      [&remoteGate, &remote](const drogon::HttpRequestPtr& req,
+                             drogon::AdviceCallback&& cb,
+                             drogon::AdviceChainCallback&& chain) {
+        if (auto resp = remoteGate.check(req, requestIsRemote(req, remote))) {
+          cb(resp);
+          return;
+        }
+        chain();
+      });
 
   drogon::app().registerPreRoutingAdvice(
       [&rateGate](const drogon::HttpRequestPtr& req,
@@ -240,6 +270,10 @@ int main()
            << "; session verdicts -> "
            << (identity.target.empty() ? "unconfigured identity (401)"
                                        : "gRPC " + identity.target);
+  if (remote.tunnelPort != 0)
+    LOG_INFO << "Remote tunnel listener on port " << remote.tunnelPort
+             << (remote.enabled ? " (remote requests allowed)"
+                                : " (remote pairing and registration refused)");
 
   drogon::app().registerBeginningAdvice(
       [&authDb, &changeOutbox, &identityConsumer, &actionSink]() {

@@ -28,6 +28,7 @@ Usage:
   ./scripts/provision-host.sh                     prepare everything, no start
   ./scripts/provision-host.sh --start             build + start the stack
   ./scripts/provision-host.sh --data-dir /srv/argus
+  ./scripts/provision-host.sh --mdns-address 192.168.1.20
   ./scripts/provision-host.sh --with-models       download engine weights
   ./scripts/provision-host.sh --migrate-volumes   copy old named volumes
   ./scripts/provision-host.sh --no-docker -y
@@ -45,6 +46,7 @@ while [ "$#" -gt 0 ]; do
     --start) START=1; shift ;;
     --migrate-volumes) MIGRATE_VOLUMES=1; shift ;;
     --data-dir) [ "$#" -ge 2 ] || { err "--data-dir needs a path"; exit 2; }; DATA_DIR_IN="$2"; shift 2 ;;
+    --mdns-address) [ "$#" -ge 2 ] || { err "--mdns-address needs an IP"; exit 2; }; MDNS_ADDRESS_IN="$2"; shift 2 ;;
     *) err "unknown argument: $1"; usage >&2; exit 2 ;;
   esac
 done
@@ -134,6 +136,29 @@ write_env() {
   ensure_env_value "$env_file" ARGUS_MODELS_DIR "$MODELS_DIR"
   ensure_env_value "$env_file" ARGUS_GO2RTC_DIR "$GO2RTC_DIR"
   log "Compose environment ready: $env_file"
+}
+
+detect_lan_address() {
+  local address="${MDNS_ADDRESS_IN:-${ARGUS_MDNS_ADDRESS:-}}"
+
+  if [ -z "$address" ] && command -v ip >/dev/null 2>&1; then
+    address="$(ip route get 1.1.1.1 2>/dev/null \
+      | sed -n 's/.* src \([0-9a-fA-F:.]*\).*/\1/p' | head -1)"
+  fi
+  if [ -z "$address" ] && command -v hostname >/dev/null 2>&1; then
+    address="$(hostname -I 2>/dev/null | awk '{print $1}')"
+  fi
+  printf '%s' "$address"
+}
+
+configure_mdns_address() {
+  local address="$1" config
+
+  for config in "$DEPLOY_DIR"/config.*.toml; do
+    [ -f "$config" ] || continue
+    toml_key_exists "$config" mdns address || continue
+    replace_toml_value mdns address "$address" "$config"
+  done
 }
 
 ensure_secret_file() {
@@ -272,7 +297,7 @@ print_summary() {
   echo
   log "Start : (cd argus-deploy && docker compose up -d)"
   log "Update: docker compose build && docker compose up -d"
-  log "Logs  : docker compose logs -f gateway"
+  log "Logs  : docker compose logs -f"
   log "Never run 'docker compose down -v': it deletes the camera stream volume."
 }
 
@@ -281,7 +306,17 @@ main() {
   ensure_data_tree
   write_env
   ensure_deploy_configs "$DEPLOY_DIR"
-  ensure_instance_certs "$ROOT" "$CERTS_DIR" "$DEPLOY_DIR/config.gateway.toml"
+
+  local lan_address
+  lan_address="$(detect_lan_address)"
+  if [ -n "$lan_address" ]; then
+    configure_mdns_address "$lan_address"
+    log "mDNS announcements carry $lan_address (override with ARGUS_MDNS_ADDRESS)"
+  else
+    warn "No LAN address detected; set ARGUS_MDNS_ADDRESS and re-run, or the"
+    warn "containers announce their own bridge interface and stay undiscoverable"
+  fi
+  ensure_instance_certs "$ROOT" "$CERTS_DIR" "$DEPLOY_DIR/config.identity.toml"
   if [ "$WITH_S3" -eq 1 ]; then
     ensure_object_store
   fi

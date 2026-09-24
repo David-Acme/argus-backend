@@ -792,14 +792,15 @@ say.
 | 2 — package tree and build | 6 | **done** (1–6; step 2 ran as four sub-steps, one report each — `f2-2-layout-{libs,contracts,clients,services}.md`) |
 | 3a — the transport: `sync` | 3 | step 1 **done**; step 2 **done** (all nine closure items — 0, 1, 1b, 2, 3, 4, 5, 5b, 6, 7 and 9 landed, 8 absorbed by 0); step 3 **done** (`f3-3a-3-audit-retention.md`) |
 | 3b — `auth` | 2 | **done** — step 1 in three parts, 3b-1 landed (`services/auth`, `argus.auth.v1`, `clients/auth`, the verdict RPC, its cache and the identity change consumer — `f3-3b-1-auth-service.md`) and 3b-2 with it (the `/auth` HTTP surface, the LAN gate, the refresh-token rate limiter, the row copy off `identity.db`); step 2 = **3b-3** (`packages/lib/auth`'s filters onto `argus::clients::auth`) landed in the same unit — `f3-3b-2-auth-surface.md` |
-| 3c — `identity` | 2 | step 1 **done** — `services/identity` is the people domain as its own owner project, taking the slot the package held in the gate (the project count is unchanged, eighteen before and after): the package's people domain becomes the service (TLS HTTP on 7044 beside the `argus.identity.v1` gRPC listener on 7040), the gateway keeps the edge and proxies its four former native paths, and the sync engine's in-process read of `user`/`user_invitation`/`person` becomes a fourth gRPC pull leg whose server side owns the rule-7b scope (`f3-3c-1-identity-service.md`); step 2 **not started** |
-| 3d — the edge comes down | 5 | **not started** |
+| 3c — `identity` | 2 | step 1 **done** — `services/identity` is the people domain as its own owner project, taking the slot the package held in the gate (the project count is unchanged, eighteen before and after): the package's people domain becomes the service (TLS HTTP on 7044 beside the `argus.identity.v1` gRPC listener on 7040), the gateway keeps the edge and proxies its four former native paths, and the sync engine's in-process read of `user`/`user_invitation`/`person` becomes a fourth gRPC pull leg whose server side owns the rule-7b scope (`f3-3c-1-identity-service.md`); step 2 **done** — `argus-sync` owns `database/sync.db`, the five tables split out of identity's file |
+| 3d — the edge comes down | 5 | steps 1, 2, 3 and 4 **done** — step 1 in three parts (1a the notification policy, 1b per-service TLS and the per-route mDNS announcements, 1c the gateway's deletion), and 1c discharged steps 2, 3 and 4 with it (`f3-3d-1a`, `f3-3d-1b-per-service-tls-mdns.md`, `f3-3d-1c-gateway-deletion.md`); step 5 is the frontend's coordination, open |
 | 4 — service layouts | 9 | **not started** |
 | 5 — verification | 6 | **not started** |
 
-The tree today, measured: 18 projects, **443 test executables, 0 failures, 0 compiler
-warnings**; `check-tidy` 534 TUs / 2945 findings against a 2945 baseline
-(re-recorded this unit, from 529 TUs / 2957); `check-deps` 658 edges, 0 forbidden,
+The tree today, measured: 17 projects, **467 tests, 0 failures, 0 compiler
+warnings**; `check-tidy` 537 TUs / 2902 findings against a 2902 baseline
+(re-recorded in Phase 3d step 1c, from 543 TUs / 2932); `check-comments` 1328
+files, 0 comments; `check-deps` 79 declarations, 670 edges, 0 forbidden,
 0 cycles, 23 deferred to phase 3.
 
 ### Phase 0 — already executed (context, not work)
@@ -987,10 +988,10 @@ touches, and all three are recorded in `docs/history/reports/f3-3b-1-auth-servic
 
 | Step | Action |
 |---|---|
-| 1 | Delete `services/gateway` and the proxy; every service terminates TLS with the single instance certificate (D11), announces host+port over mDNS and registers the filter chain |
-| 2 | Retire the gateway relays: the client talks directly to `voice` and `camera` |
-| 3 | Reassign the edge error vocabulary (`contracts/gateway` dies, D14) and remove the orphan contract |
-| 4 | Rewrite the subscriber and publisher columns in `docs/architecture/wire-nats-subjects.md` and the layout prose of `system-overview.md`, `services-and-packages.md`, `events-and-contracts.md`, `build-model.md`, `data-storage.md`, `sync-engine.md`, `wire-camera-media.md`, `wire-device-identity.md` — payloads untouched, the gateway is simply no longer the consumer (§9.3) |
+| 1 | **Done, in three parts** — 3d-1a moved the camera-object notification policy out of `services/gateway/src/sync/`; 3d-1b gave every app-facing service TLS on the instance certificate (D11) and one `_argus-route._tcp` mDNS instance per logical route (report `docs/history/reports/f3-3d-1b-per-service-tls-mdns.md`); 3d-1c deleted `services/gateway` (217 files), `packages/contracts/gateway` (4), `argus-deploy/config.gateway.toml.example` and the compose service — 222 files — and re-expressed the single door per service: seven app-facing publishes on the LAN, `mdns.address` as the advertised address, identity's pairing port on its own listener (`IdentityConfig::resolveAnnouncedPort()`), `[remote]` + `RemoteGate` as the LAN gate in front of `/pairing` and `/auth/register`, and the notification caller credential renamed `caller_gateway` → `caller_sync` (report `docs/history/reports/f3-3d-1c-gateway-deletion.md`) |
+| 2 | **Done with 3d-1c** — no relay survives the deletion: the app dials argus-camera's own `/media` socket on the `camera` route it resolved over mDNS (`docs/architecture/wire-camera-media.md`), and the voice frames ride argus-sync's `/sync` socket into `VoiceGrpcRelay`, installed as that socket's `SyncForwarder` at boot (`services/sync/src/app/main.cc:86`). The frontend's `ARGUS_DEFAULT_PORT = 7024` is the remaining half, tracked by step 5 |
+| 3 | **Done with 3d-1c** — the orphan contract is deleted with its four refusals, each reassigned or retired by measurement: `RemoteNotAllowed` is now `contracts/auth`'s `AuthErrors` entry (the remote gate is its one producer), D14's named `CAMERA_UNREACHABLE` was already `CameraErrors::CameraUnreachable`, the media socket answers the stream refusals `contracts/camera` already carried (`SubscribeFailed`, `TooManyViewers`), and `RouteUnreachable` with the two `/camera-stream` refusals have no reference left anywhere in the tree |
+| 4 | **Done with 3d-1c** — all nine files were swept in the deletion's documentation pass: every subscriber/publisher row and layout sentence that named the gateway as consumer now names `argus-sync`, `argus-notification` or the service that serves the route, and the gateway is named only as history (the F3-1c tags, "died with the gateway in Phase 3d step 1c") |
 | 5 | Coordination: the frontend moves to N discovered endpoints under the one domain, with the route table from `contracts` |
 
 ### Phase 4 — service layouts

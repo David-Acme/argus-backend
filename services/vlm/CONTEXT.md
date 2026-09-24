@@ -36,8 +36,8 @@ the legacy's RAM/VRAM with zero functional risk. It mirrors the argus-tts
     the semantic reference). `prompt` empty resolves the service's
     configured default (`[vision] prompt`); `camera_id` is caller context,
     logged per request. No streaming (describeMat is synchronous), no auth
-    (loopback bind is the trust boundary, never routed through the
-    gateway). Response is the frozen app-envelope with `info.caption`
+    (loopback bind is the trust boundary, never announced or published).
+    Response is the frozen app-envelope with `info.caption`
     (`ApiResponse::ok` — every response in this codebase goes through
     ApiResponse). Errors: 400 `BAD_REQUEST` (non-JSON body), 422
     VALIDATION_ERROR (`image_b64` empty/not base64/not decodable, prompt or
@@ -64,7 +64,7 @@ legacy reads.
 
 ## What it did NOT change
 
-- The mobile app never talks to this service; no gateway routing, no new
+- The mobile app never talks to this service; no public routing, no new
   app-facing contract.
 - Model artifacts stay in the shared `models/vision/lfm2vl-25/` paths —
   never copied.

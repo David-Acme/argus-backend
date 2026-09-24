@@ -79,8 +79,9 @@ rpc_secret = "CHANGE_ME_SAME_IN_EVERY_SERVICE"
 
 [grpc]
 caller_guard = "CHANGE_ME_GUARD_NOTIFICATION"
-caller_gateway = "CHANGE_ME_GATEWAY_NOTIFICATION"
+caller_sync = "CHANGE_ME_SYNC_NOTIFICATION"
 
 [mdns]
 enabled = true
 name = "Argus"
+address = ""

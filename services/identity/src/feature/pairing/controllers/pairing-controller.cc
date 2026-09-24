@@ -7,6 +7,7 @@
 #include <identity/identity-errors.hxx>
 #include <cert/cert-service.hxx>
 #include <config/config-service.hxx>
+#include <config/identity-config.hxx>
 
 drogon::Task<drogon::HttpResponsePtr>
 PairingController::pair(drogon::HttpRequestPtr req)
@@ -21,7 +22,7 @@ PairingController::pair(drogon::HttpRequestPtr req)
 
   ConfigService::setBool("pairing.paired", true);
 
-  const int port = ConfigService::getInt("mdns.port");
+  const int port = IdentityConfig::resolveAnnouncedPort();
 
   ResponsePairingDto result;
   result.instanceId = CertService::instanceId();

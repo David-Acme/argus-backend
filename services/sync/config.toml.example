@@ -75,3 +75,4 @@ max_reconnects = 60
 [mdns]
 enabled = true
 name = "Argus"
+address = ""

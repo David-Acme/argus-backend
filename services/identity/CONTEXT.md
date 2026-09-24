@@ -8,7 +8,8 @@ becomes a service or a package. This folder was `packages/identity` (step
 f7-2d) and is the identity service's home; Phase 3c step 1 turned it into a
 service — a process with its own boot, listeners and database, instead of a
 module the gateway linked — and the gate's project list swapped the package for
-it, so the tree still counts eighteen projects.
+it, leaving the count at eighteen until Phase 3d step 1c deleted the gateway
+and took it to seventeen.
 
 What the package was: everything `src/identity/CMakeLists.txt` compiled as
 `argus_identity` beyond the cross-domain modules — the invitation, pairing and
@@ -34,28 +35,27 @@ the strangler-pattern state the plan calls "contract now, binary later" — the
 gRPC contract was designed for the standalone shape from the start, so the
 extraction changed CMake, boot and deploy, not file locations. The gateway's
 own `src/identity/identity-config.*` and `src/identity/identity-registrar.*`
-died with it: the gateway keeps the public API on 7024 and reaches this
-service through `identity.proxy_url` (HTTP) and `identity.target` (gRPC), and
-reads the notifiable roster through `argus::clients::identity` instead of the
-tables it used to query.
+died with it: the gateway kept the public API on 7024 and reached this service
+through `identity.proxy_url` (HTTP) and `identity.target` (gRPC), and read the
+notifiable roster through `argus::clients::identity` instead of the tables it
+used to query. Phase 3d step 1c deleted the gateway and `identity.proxy_url`
+with it, so this service's own listener is the public API now.
 
 ## The port the pairing and invitation answers publish
 
 `PairingController` and `InvitationFeatureService::resolve` both answer the
-port a client dials next, and both read it from `mdns.port`. Before step 1 that
-read happened inside the gateway process, whose config carries the key (the
-port it advertises and serves, 7024); after it, the read happens here, so this
-service's own config carries the same key and value. The number is the
-installation's public port, not this service's — the app pairs against it,
-stores it as the paired instance's port and puts it in every later invitation
-QR, and it rejects an answer whose port is not positive or does not match the
-port mDNS advertised. Phase 3d step 1b made identity an advertiser in its own
-right: it announces one `_argus-route._tcp` instance per logical route it
-registers (`invitation`, `pairing`, `portrait-preview`, `user`) at its own
-listener port. The pairing answer still names the installation's public port
-rather than any of those, because the app compares it against the instance it
-paired through — the gateway's legacy `_argus._tcp` record until Phase 3d step
-1c moves the pairing surface onto this service's listener.
+port a client dials next, and both read it from
+`IdentityConfig::resolveAnnouncedPort()`, which is this service's own listener
+port. Until Phase 3d step 1c that read was `mdns.port` — the installation's
+public port, 7024, while the gateway advertised and served it — and the key is
+gone from every config. The app pairs against that port, stores it as the
+paired instance's port and puts it in every later invitation QR, and it rejects
+an answer whose port is not positive or does not match the port mDNS
+advertised. Phase 3d step 1b made identity an advertiser in its own right: it
+announces one `_argus-route._tcp` instance per logical route it registers
+(`invitation`, `pairing`, `portrait-preview`, `user`) at its own listener port,
+so the port the answer publishes is the one the instance the app paired through
+carries.
 
 ## What moved and what didn't
 
@@ -79,7 +79,7 @@ Not moved, on purpose:
   `cert` are the `lib` packages this service still links. `mdns` is not one of
   them either: it is the `lib/mdns` package this service reaches through
   `lib/http`, which announces one `_argus-route._tcp` instance per logical
-  route at this service's listener, beside the `mdns.port` key its pairing and
+  route at this service's listener — the port its pairing and
   invitation answers publish (below).
 - `src/auth/identity-change-sink.hxx` and the other sink contracts — consumed
   through the module links' include roots. The contracts now live in

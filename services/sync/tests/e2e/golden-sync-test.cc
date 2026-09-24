@@ -339,7 +339,7 @@ struct UrlParts
 {
   bool ssl{true};
   std::string host;
-  uint16_t port{7024};
+  uint16_t port{7025};
 };
 
 std::optional<UrlParts> parseUrl(const std::string& baseUrl)

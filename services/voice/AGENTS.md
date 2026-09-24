@@ -12,12 +12,13 @@ that apply to voice-service code; when in doubt, the root file wins.
    WebSocket, no HTTP routes to other services; all inter-service traffic is
    gRPC.
 2. **Zero database** — no db clients, no schema, no repositories. The
-   spoken-name write is the typed `IdentityService.UpdateUser` RPC to the
-   gateway.
+   spoken-name write is the typed `IdentityService.UpdateUser` RPC to
+   argus-identity.
 3. **Identity arrives typed** — the `VoiceIdentity` in `VoiceStart` and the
    `x-argus-user` / `x-argus-role` metadata are the only identity inputs;
-   presence is required at `Connect`, role validation happened at the
-   gateway.
+   presence is required at `Connect`, and the caller and its role are
+   established at the `/sync` edge (argus-sync's `DeviceFilter` + `JwtFilter`
+   chain, which is where the voice session is started).
 4. **Remote-only engines** — STT/TTS/LLM resolve through the remote HTTP
    adapters only; no in-process engine compiles here.
 5. **Parameter structs for 3+ params** — any function with 3+ parameters

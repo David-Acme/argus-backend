@@ -12,8 +12,8 @@ for this service only; other root rules remain binding.
    nothing else (no face/llm/vlm/stt/vad code or symbols; verified with
    `nm -C`). The engine is THE capacity of this service (F4-2, Ruling BG).
 2. **Internal wire only** — the service serves the legacy adapters over
-   loopback plain HTTP (`/tts/v1/*`); no JWT, no CORS, no gateway routing.
-   Never expose it publicly.
+   loopback plain HTTP (`/tts/v1/*`); no JWT, no CORS, no public routing or
+   announcement. Never expose it publicly.
 3. **Frozen envelope** — every JSON error uses the
    `{status, info, errors}` envelope (`ApiResponse`); binary responses carry
    `audio/x-argus-pcm-f32` + `X-Argus-Sample-Rate`.

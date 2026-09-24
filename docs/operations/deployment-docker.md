@@ -58,17 +58,17 @@ of the build context.
 
 ## Compose topology
 
-One container per service: `gateway`, `argus-auth`, `argus-identity`,
+One container per service: `argus-auth`, `argus-identity`,
 `argus-camera`, `argus-productivity`, `argus-notification`, `argus-sync`,
 `argus-guard`, `argus-tts`, `argus-stt`, `argus-vlm`, `argus-llm`,
 `argus-voice`, `argus-relay`, `argus-tunnel-client`, plus `nats`. Each
 container runs its service image and mounts its own `config.<service>.toml`.
 
-`argus-auth` publishes its HTTP surface (7042) and its RPC listener (7043) on
-`127.0.0.1` only. The session verdict is a fleet-internal answer gated by
-`[auth] rpc_secret`, and LAN clients reach `/auth` through the gateway, whose
-proxy dials `https://127.0.0.1:7042`: publishing either port on every
-interface would hand a reachable host the ungated enrollment path.
+`argus-auth` publishes its HTTP surface (7042) on every interface, so the app
+dials `/auth` directly, and its RPC listener (7043) on `127.0.0.1` only. The
+session verdict is a fleet-internal answer gated by `[auth] rpc_secret`:
+publishing that port on every interface would hand a reachable host the
+ungated session verdict.
 
 Opt-in init profiles run the migration CLIs from the owner service image:
 `identity-init` (identity image), `camera-init` and `vulkan-probe` (camera

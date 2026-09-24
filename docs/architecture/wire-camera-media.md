@@ -1,31 +1,28 @@
-# Camera media WebSocket (`/camera-stream`) contract
+# Camera media WebSocket (`/media`) contract
 
 Dedicated client-facing WebSocket for camera live media. It is separate from
 `/sync` so that best-effort fMP4 never sits in the same TCP egress queue as
 low-latency voice PCM and sync frames.
 
 ```
-App ── wss /camera-stream ──> gateway ── wss://argus-camera:7026/sync ──> argus-camera
-                                (DeviceFilter + JwtFilter)      (same filters)
+App ── wss /media ──> argus-camera:7026 ──> StreamHub ──> go2rtc
+                       (DeviceFilter + JwtFilter)
 ```
 
-- Gateway route: `/camera-stream`, filters `DeviceFilter` + `JwtFilter`
+- Route: `/media` on argus-camera's app-facing TLS listener
+  (`services/camera/src/controllers/camera-media-socket.hxx`,
+  `ListenerConfig::resolveServiceTls("camera", 7026)`), filters
+  `DeviceFilter` + `JwtFilter`
   (same auth as `/sync`; token is accepted by header, query or cookie via
   `JwtFilter::extractToken`).
-- The gateway is a byte-transparent relay: it opens one upstream session per
-  client connection with the client's own JWT, User-Agent and a synthesized
-  `X-Forwarded-For` (the peer IP the gateway saw; client-supplied forwarded
-  headers are never trusted).
-- The upstream leg is `[camera] stream_url` in `config.gateway.toml`
-  (`wss://127.0.0.1:7026/media` in the deploy stack, where the gateway shares
-  the host network and argus-camera terminates TLS). Empty disables the
-  endpoint at boot.
-- Only `camera:*` text frames are accepted on the client socket. Anything
-  else is dropped (the error envelope below is only used for gateway-side
-  relay failures).
-- `argus-camera` serves the same protocol on its internal `/media` socket
-  (`services/camera/src/controllers/camera-media-socket.cc`); no client
-  connects to it directly.
+- The app dials argus-camera directly, on the `camera` route it resolved over
+  mDNS (`_argus-route._tcp`, TXT `path=camera`). Nothing relays the socket:
+  the gateway's byte-transparent `/camera-stream` relay died with the gateway
+  in Phase 3d step 1c.
+- Only `camera:*` text frames are accepted on the socket. Anything
+  else is dropped.
+- `argus-camera` serves the same protocol on the same socket for every client;
+  there is no second, internal spelling of it.
 
 ## Text frames (JSON `{type, payload}`)
 
@@ -76,8 +73,10 @@ sessions on `/sync` are unaffected. Caps (deploy stack values):
   screen blur/background.
 - A dropped socket invalidates its `subId`s: subscriptions and credit state
   live on the socket. Reconnect and re-`camera:subscribe`.
-- The gateway closes the upstream leg when the client connection closes; the
-  camera service releases the subscription and its viewer slot.
+- argus-camera releases the subscription and its viewer slot when the
+  connection closes (`StreamHub::closeAll`); once an upstream has no
+  subscribers left for `streaming.hub_grace_ms` (2 s), its go2rtc pull is
+  closed.
 - The endpoint is independent of `/sync` reconnect logic; a camera stream
   never delays sync bootstrap or voice.
 
@@ -89,5 +88,5 @@ sessions on `/sync` are unaffected. Caps (deploy stack values):
   `SyncForwarder` vocabulary both sockets implement.
 - `services/sync/src/feature/transport/controllers/sync-socket.hxx` — the
   engine side of that vocabulary.
-- `services/gateway/src/sync/camera-stream-socket.{hxx,cc}` — endpoint.
+- `services/camera/src/controllers/camera-media-socket.{hxx,cc}` — endpoint.
 - `services/camera/src/controllers/camera-media-service.cc` — protocol.

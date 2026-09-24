@@ -47,10 +47,10 @@ in their own feature and keeps `src/shared/` empty.
 **Schema at boot, not migrations.** `main.cc` applies
 `services/auth/database/schema.sql` in a beginning advice before the listeners
 answer, then `DbService::applyPragmas()`. The file is idempotent (`CREATE TABLE
-IF NOT EXISTS`), so a fresh install and a restart take the same path. Until
-Phase 3b-2 moves the rows, the tables are the ones the gateway's identity
-service has been serving from `identity.db` — same columns, same CHECK
-constraints, so the split is a copy rather than a translation.
+IF NOT EXISTS`), so a fresh install and a restart take the same path. The three
+session tables are the ones `identity.db` served before Phase 3b-2 copied them
+here with the `/auth` surface — same columns, same CHECK constraints, so the
+split was a copy rather than a translation.
 
 **The context cache is keyed by user and dropped by event.** A role change, a
 rename or a deactivation must reach every service's next request; a TTL alone
@@ -98,11 +98,12 @@ which is what lets the peer containers the secret exists for reach
 `argus-auth:7043` — and the compose publishes 7043 on `127.0.0.1` only.
 
 **Ports.** 7042 is this service's HTTP subroute (TLS with the instance
-certificate), 7043 its RPC listener. The compose publishes both on
-`127.0.0.1` only: the gateway's proxy dials `https://127.0.0.1:7042` for
-`/auth`, the fleet dials `argus-auth:7043` over the bridge, and a LAN
-publish of 7042 would hand a reachable host the enrollment path with no
-`RemoteGate` in front of it.
+certificate), 7043 its RPC listener. The compose publishes 7042 on the LAN,
+where the app dials `/auth` directly, and 7043 on `127.0.0.1` only, where the
+fleet reaches it as `argus-auth:7043` over the bridge. `RemoteGate` sits in
+front of the whole surface as a pre-routing advice: a request that arrives on
+the `[remote] tunnel_port` listener is refused `REMOTE_NOT_ALLOWED` for
+`/pairing` and `/auth/register` unless `[remote] enabled` is set.
 
 ## The verdict order
 
@@ -156,18 +157,7 @@ it creates is not reclaimed: `maxAge` bounds the messages, not the stream.
 
 ## Open items
 
-- The dev config generator (`scripts/lib/common.sh:ensure_project_config`)
-  fills `jwt secret`, `jwt refresh_secret`, `device fingerprint_secret` and
-  `identity rpc_secret` with an **independent** random value per project, while
-  every one of those keys has to hold the *same* value across services to work
-  (`docs/operations/configuration-keys.md`: "Must match the gateway's
-  `[identity] rpc_secret`, or every request 401s"). A freshly generated native
-  install therefore 401s cross-service calls; the checked-in configs predate
-  the generator's current behaviour and are empty, which is the value that
-  works. `auth.rpc_secret` is deliberately not in that list. The fix belongs to
-  the build infrastructure, not to this service: one shared value per
-  installation, generated once.
-- Phase 3b-2 brings the `/auth` surface (login, pairing, rate limiting, the LAN
-  gate) and the row migration off `identity.db`; Phase 3b-3 points
-  `packages/lib/auth`'s filters at `argus::clients::auth`, after which the
-  gateway's session code and its `device_login_challenge` handlers are dead.
+- Phase 3b-2 brings the `/auth` surface (login, pairing, rate limiting) and the
+  row migration off `identity.db`; Phase 3b-3 points `packages/lib/auth`'s
+  filters at `argus::clients::auth`, and the `device_login_challenge` handlers
+  are this service's `device` feature.

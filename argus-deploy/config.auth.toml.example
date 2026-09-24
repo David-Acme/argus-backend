@@ -67,6 +67,10 @@ max_requests = 10
 lockout_threshold = 5
 lockout_seconds = 300
 
+[remote]
+tunnel_port = 0
+enabled = false
+
 [nats]
 url = "nats://nats:4222"
 reconnect_wait_ms = 2000
@@ -75,3 +79,4 @@ max_reconnects = 60
 [mdns]
 enabled = true
 name = "Argus"
+address = ""

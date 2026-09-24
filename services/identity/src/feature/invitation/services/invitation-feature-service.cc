@@ -10,6 +10,7 @@
 #include <string_view>
 #include <cert/cert-service.hxx>
 #include <config/config-service.hxx>
+#include <config/identity-config.hxx>
 #include <sqlite/db-service.hxx>
 #include <sqlite/transaction.hxx>
 #include <sync/identity-change-sink.hxx>
@@ -227,6 +228,6 @@ InvitationFeatureService::resolve(const std::string& token) const
   result.serverFingerprint = CertService::serverFingerprint();
   result.caPem = CertService::caPem();
   result.scheme = "https";
-  result.port = ConfigService::getInt("mdns.port");
+  result.port = IdentityConfig::resolveAnnouncedPort();
   co_return result;
 }

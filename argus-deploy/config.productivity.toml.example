@@ -65,3 +65,4 @@ rpc_secret = "CHANGE_ME_SAME_IN_EVERY_SERVICE"
 [mdns]
 enabled = true
 name = "Argus"
+address = ""

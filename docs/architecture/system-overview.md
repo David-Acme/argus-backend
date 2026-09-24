@@ -1,7 +1,8 @@
 # Argus Backend
 
 Argus is a local-first C++20 platform for home security and assistance. The
-backend runs as independent domain and AI services behind one public gateway.
+backend runs as independent domain and AI services, each app-facing one
+terminating TLS on its own listener and announcing its routes over mDNS.
 Media, speech, vision, language-model and biometric processing stay on the
 host; the optional tunnel transports encrypted bytes without processing user
 data.
@@ -10,7 +11,6 @@ data.
 
 | Owner | Process or package | Primary responsibility |
 |---|---|---|
-| Gateway | `argus-gateway` | Public TLS API, WebSocket relay and routing |
 | Auth | `argus-auth` | Session and device authority: refresh tokens, device credentials, login challenges, session-verdict RPC |
 | Identity | `argus-identity` | Users, persons, face embeddings, invitations, portraits and pairing |
 | Sync | `argus-sync` | `/sync` WebSocket surface, rooms, change fan-out, audit persistence and the sync control RPC |
@@ -26,8 +26,13 @@ data.
 | Tunnel | `argus-tunnel-client`, `argus-tunnel-relay` | Byte-transparent remote transport |
 | Contracts | `packages/contracts/*`, `packages/clients/*` | Versioned protobuf contracts and typed internal SDKs |
 
-The gateway is the only public HTTP surface; `argus-sync` terminates the
-`/sync` WebSocket upgrade itself, on its own TLS listener. Internal services
+There is no proxy process and no single public port: `argus-auth`,
+`argus-identity`, `argus-sync`, `argus-camera`, `argus-productivity`,
+`argus-notification` and `argus-guard` each terminate TLS with the instance
+certificate on their own app-facing listener (Phase 3d step 1c deleted the
+gateway that used to hold them behind one door), and `argus-sync` terminates
+the
+`/sync` WebSocket upgrade itself. Internal services
 bind to loopback or the deployment's private network. Core NATS carries change
 and object events;
 the durable delivery legs (`object_detected` to guard, `encounter_closed` to
@@ -46,7 +51,7 @@ service contract, as recorded in each owner's `CONTEXT.md`.
 ## Build model
 
 The repository root intentionally has no `CMakeLists.txt`: it carries the one
-`conanfile.txt` the whole tree resolves. Eighteen standalone owner projects
+`conanfile.txt` the whole tree resolves. Seventeen standalone owner projects
 each carry their own `CMakeLists.txt` and configure against that graph's
 toolchain.
 
@@ -96,8 +101,8 @@ Each process reads its own ignored `config.toml`, generated from the adjacent
 
 | Service | Listener |
 |---|---|
-| Gateway | HTTPS `7024` |
 | Auth | HTTPS `7042`, gRPC `7043` |
+| Identity | HTTPS `7044`, gRPC `7040` |
 | Sync | HTTPS `7025`, gRPC `7041` |
 | Camera | HTTP `7026`, gRPC `7036` |
 | Productivity | HTTP `7027` |
@@ -112,7 +117,7 @@ Each process reads its own ignored `config.toml`, generated from the adjacent
 Standalone binaries are produced inside their owner folder, for example:
 
 ```bash
-./services/gateway/build/dev/argus-gateway
+./services/auth/build/dev/argus-auth
 ./services/sync/build/dev/argus-sync
 ./services/camera/build/dev/argus-camera
 ./services/llm/build/dev/argus-llm
@@ -181,8 +186,8 @@ threading still applies — while `enforce` mode suppresses
 below-threshold effects within the configured gate scope. Every effects-stage observation lands in
 `guard_decision_journal` (readable at `GET /guard/decisions`), and one
 encounter owns one notification thread (first crossing, then strictly higher
-tiers only). It publishes a readiness `heartbeat` (the gateway's raw camera
-notifier yields while it is fresh) and `encounter_closed` summaries —
+tiers only). It publishes a readiness `heartbeat` (argus-notification's raw
+camera notifier yields while it is fresh) and `encounter_closed` summaries —
 the only camera feed long-term memory reads. Details live in
 `services/guard/CONTEXT.md`, the
 [camera-guardian deep analysis](camera-guardian-deep-analysis.md) and the
@@ -201,8 +206,8 @@ Public JSON responses use the envelope:
 ```
 
 Authentication uses device-bound HS256 access and refresh tokens. Public
-routes preserve their pre-migration contracts; the gateway proxies them to
-the owning service. Health endpoints must remain fast and available even when
+routes preserve their pre-migration contracts; each route is served by the
+service that owns its domain, not proxied. Health endpoints must remain fast and available even when
 NATS, models, cameras or downstream services are degraded.
 
 ## Engineering rules

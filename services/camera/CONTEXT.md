@@ -4,10 +4,9 @@
 
 Fase 2 of the `migracion-microservicios` plan starts the service split with a
 pilot: the camera domain leaves the monolith. This task (F2-1) creates the
-substrate WITHOUT cutover — the legacy keeps owning every camera write and
-the app keeps talking through the gateway unchanged. `argus-camera` is a
-sibling service (same shape as `argus-gateway`): own binary, own CMake
-preset, own `camera.db`.
+substrate WITHOUT cutover — the legacy kept owning every camera write and
+the app kept talking through the gateway unchanged. `argus-camera` is a
+sibling service: own binary, own CMake preset, own `camera.db`.
 
 ## What it owns (F2-1)
 
@@ -24,11 +23,13 @@ preset, own `camera.db`.
   (`[server] grpc_port`, 7036) for the sync pulls and the guard's action
   surface, `DbService` default
   client on `[camera] db` (default `database/camera.db`), `[drogon.app]`
-  mirror, CORS/exception/404/405 plumbing identical to the gateway so
-  envelopes are byte-shape-identical. Caller validation rides the identity
-  RPC (`[identity] target`); the config-gated named identity client
-  (`[identity] db`, read-only) now backs only the sync socket's user reads;
-  absent key boots identity-free. No AI service registry is compiled or loaded
+  mirror, CORS/exception/404/405 plumbing from the shared `lib/http` handlers
+  so envelopes are byte-shape-identical. Caller validation rides the callers'
+  own credentials (`[grpc] caller_guard` for the action surface) and the user
+  metadata the sync pull carries; the operator's known-person matcher reaches
+  argus-identity over `[identity] target` behind `[identity] rpc_secret`, and
+  no camera code opens `identity.db`. No AI service registry is compiled
+  or loaded
   (no ncnn/llama/opencv/onnxruntime code paths).
 - **`GET /health`**: standard `ApiResponse` envelope
   `{status: 200 (int), info: {service: argus-camera, uptimeSeconds},
@@ -59,7 +60,7 @@ preset, own `camera.db`.
   `argus.camera.v1.change` (Ruling Y) — no audit rows are persisted locally.
   Creates/deletes emit `Add`/`Delete` change events on the same subject.
 - **Media**: `CameraMediaService` handles the native `camera:*` frames of
-  the `/media` socket (relayed from the gateway's `/camera-stream`):
+  this service's own `/media` WebSocket (TLS, port 7026):
   `camera:subscribe` checks the camera row (404 Camera
   not found), subscribes through StreamHub fMP4 with the `0xA7` frame magic,
   and degrades to the legacy `503 go2rtc_not_running` envelope when go2rtc is
@@ -85,9 +86,7 @@ preset, own `camera.db`.
   (`src/config/application.cc` pre-routing advice answers every OPTIONS with
   `Cors::handleOptions` before routing), argus-camera registers only the
   post-handling CORS advice, so `OPTIONS /camera` 404s here where the legacy
-  answers 200. The gateway proxy forwards OPTIONS fine (F1-5 scoped its own
-  pre-routing advice to gateway-native paths); the divergence lives in this
-  service. App-safe as shipped: the native client sends no preflight.
+  answers 200. App-safe as shipped: the native client sends no preflight.
 - **What stays away**: no voice path, no alarm-triggering code, no AI
   symbols beyond the detector.
 
@@ -96,8 +95,8 @@ preset, own `camera.db`.
 - **camera-control moved out of the legacy**: `feature/api/camera-control/`
   (routes `/camera/{id}/status|presets|ptz|preset|settings|capabilities|
   talk`) lives here now, same controllers/dtos/services layout as the
-  monolith. The gateway routes every `/camera` and `/zone` segment depth to
-  this service; the legacy serves no camera route anymore.
+  monolith. This service serves every `/camera` and `/zone` segment depth
+  itself; the legacy serves no camera route anymore.
 - **Talk synthesis is remote-only**: `TtsClient` (tts-remote) is compiled
   into this binary and every synthesis is an HTTP exchange with argus-tts
   (`[tts] remote_url`, default `127.0.0.1:7029`). No in-process TTS engine
@@ -166,9 +165,9 @@ preset, own `camera.db`.
   cannot store returns false and is retained in a bounded in-process queue
   that the sink retries until it is stored, so an outage never drops it. The
   stream is ensured through the shared `NatsBus`, which supervises its own
-  reconnection. The gateway subscribes ephemerally over core NATS, so events
-  published while it is down are not replayed after a restart; the guard's
-  durable consumer is the replay path.
+  reconnection. `argus-notification` subscribes ephemerally over core NATS,
+  so events published while it is down are not replayed after a restart; the
+  guard's durable consumer is the replay path.
 - **Per-track person events**: each eligible person track produces its own
   event with rule, severity, identity, zone, dwell, crop and cooldown bound to
   that track; companions travel only as context and never decide. The
@@ -183,8 +182,8 @@ preset, own `camera.db`.
   is unreachable the lease is kept and retried with an error log; a failed
   disarm is never treated as "off".
 - **Budget split (Ruling AD)**: camera side = aggregation window +
-  per camera+class cooldown + `max_fps_inference`; gateway side =
-  notification budget/silent hours/digest (see argus-gateway CONTEXT.md).
+  per camera+class cooldown + `max_fps_inference`; notification side =
+  budget/silent hours/digest (see argus-notification CONTEXT.md).
   Inside one aggregation window objects dedupe by class and the pending
   event keeps the dominant severity; a class still cooling down drops the
   whole window and the next window starts fresh. Preprocessing and
@@ -211,9 +210,9 @@ preset, own `camera.db`.
   call, and
   the camera tables carry no userId row scoping. A grpc.health.v1 Health
   service shares the listener (F6-3 shape).
-- The gateway no longer opens camera.db read-only: `[camera] db` is gone
-  from the gateway config and the camera-db compose mount is gateway-only
-  history. argus-camera stays the single owner of the file.
+- No other service opens camera.db: `[camera] db` is this service's own key
+  and no other config resolves it. argus-camera stays the single owner of the
+  file.
 
 ## The camera change feed (3a-2b)
 

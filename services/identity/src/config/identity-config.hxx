@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <http/listener-config.hxx>
 #include <string>
 
@@ -34,6 +35,8 @@ public:
   [[nodiscard]] static IdentityDbConfig resolveDb();
 
   [[nodiscard]] static ListenerConfig resolveListener();
+
+  [[nodiscard]] static uint16_t resolveAnnouncedPort();
 
   [[nodiscard]] static IdentityRpcConfig resolveRpc();
 

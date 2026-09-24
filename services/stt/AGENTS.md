@@ -10,8 +10,8 @@ that apply to stt-service code; when in doubt, the root file wins.
    nothing else (no face/llm/vlm/tts/vad code or symbols; verified with
    `nm -C`). The engine is THE capacity of this service (F4-3, Ruling BK).
 2. **Internal wire only** — the service serves the legacy adapters over
-   loopback plain HTTP (`/stt/v1/*`); no JWT, no CORS, no gateway routing.
-   Never expose it publicly.
+   loopback plain HTTP (`/stt/v1/*`); no JWT, no CORS, no public routing or
+   announcement. Never expose it publicly.
 3. **Frozen envelope** — every JSON response uses the
    `{status, info, errors}` envelope (`ApiResponse`); the transcribe body is
    binary `audio/x-argus-pcm-s16` (16 kHz mono).

@@ -6,9 +6,10 @@ F5-4 of the `migracion-microservicios` plan moves the Argus backend to a US
 host (Rulings CF-CM). The home network cannot accept inbound connections,
 so the home runs `argus-tunnel-client` which holds ONE persistent outbound
 connection to `argus-relay` on the US host; the relay multiplexes every
-device connection over that single link back to the gateway. The carried
-payload is the mobile app's TLS: end-to-end between the app and the gateway,
-unterminated by the tunnel (Ruling CF — byte transparency, not gRPC).
+device connection over that single link back to the home. The carried
+payload is the mobile app's TLS: end-to-end between the app and the home
+service terminating it, unterminated by the tunnel (Ruling CF — byte
+transparency, not gRPC).
 
 ## Wire protocol
 
@@ -51,8 +52,9 @@ complete inside the 10 s auth timeout or the link is dropped.
 
 Stream lifecycle: the relay allocates stream ids (`openRemote`, latest-wins
 home link). A device TCP connection accepted on the relay opens a stream and
-sends OPEN; the client dials a fresh TCP connection to the gateway's remote
-listener (`[remote] tunnel_port`, F5-1) per OPEN and registers it
+sends OPEN; the client dials a fresh TCP connection to the home remote
+listener (`[remote] tunnel_port`, F5-1; argus-auth and argus-identity are the
+services that own one since Phase 3d step 1c) per OPEN and registers it
 (`openLocal`). DATA frames are retransmitted verbatim in both directions;
 frame boundaries never map to carried message boundaries. CLOSE propagates
 the reason; a local EOF closes the stream normally.
@@ -70,7 +72,8 @@ counted and logged; empty or oversized intents are also rejected at the
 ingress with drop accounting (a PUSH frame caps at 256 KiB while NATS accepts
 more, so the bound is enforced before the queue — worst case the capacity
 times 256 KiB of relay RAM) — nothing persists, and the queue never becomes
-the source of truth: the notification row in the gateway's notification.db is.
+the source of truth: the notification row in argus-notification's own
+`notification.db` is.
 This is the deliberate trade-off of Ruling CK as implemented: the NATS leg is
 fire-and-forget (plain core-NATS publish, no ack/redelivery) and therefore
 at-most-once — an intent published while the relay is away from NATS is
@@ -124,7 +127,7 @@ public read-pause on TcpConnection, which the back-pressure valves need.
 The client reconnects with a fixed `reconnect_wait_ms` (default 2000, max
 `max_reconnects` attempts, then gives up until restart). Streams do NOT
 survive a reconnect: dropping the home link tears down every multiplexed
-stream on both sides (device sockets are closed, the gateway dial is
+stream on both sides (device sockets are closed, the home dial is
 dropped) and the app retries at the TLS layer. Why: the relay's stream
 registry is ephemeral in-memory state; re-attaching old stream ids after a
 registry loss would desynchronize id allocation between the two sides, and
@@ -150,14 +153,14 @@ control frames. The client additionally enforces the gate client-side:
 OPEN/PUSH frames received before AUTH completes are ignored, and the frame
 parser dies with the link, so an AUTH_FAIL cannot be followed by pipelined
 frames in the same read burst. A relay that never sends a valid AUTH_OK
-proof cannot get the client to dial the gateway.
+proof cannot get the client to dial the home remote listener.
 
 Everything else — the device port — is unauthenticated by design: a rogue
-device can open streams and reach the gateway's remote listener. The
-defense is the gateway's remote gate (`[remote] tunnel_port`
-classification, 403 `REMOTE_NOT_ALLOWED` for forbidden routes such as
-`/pairing`). Carried TLS means the relay sees ciphertext only; it cannot
-inspect or alter the session.
+device can open streams and reach the home remote listener. The
+defense is the home remote gate (argus-auth's and argus-identity's
+`[remote] tunnel_port` classification, 403 `REMOTE_NOT_ALLOWED` for
+forbidden routes such as `/pairing`). Carried TLS means the relay sees
+ciphertext only; it cannot inspect or alter the session.
 
 The control plane itself is the exception to that last statement (F5-5): the
 home link is plaintext TCP with HMAC challenge auth — it authenticates but
@@ -180,6 +183,13 @@ default 7103 relay / 7104 client); `[push]` (F5-5, relay-only gate) carries
 `nats.url` for the subscription. The secret must be identical on both
 sides and never committed.
 
+`server.gateway_host`/`server.gateway_port` are the client's dial target for
+the home remote listener, and no live listener answers them today: the
+gateway they named is gone (Phase 3d step 1c) and the home remote listener
+belongs to argus-auth and argus-identity. Repointing the client at the
+service whose remote listener it wants is the tunnel's own unit of work
+(D19 defers it).
+
 ## What was NOT changed
 
 - Zero edits to existing services: the root `CMakeLists.txt` gained the
@@ -189,6 +199,6 @@ sides and never committed.
 - No database, no JWT, no device registry: the relay's device→home mapping
   is in-memory and dies with the process. The push-intent queues are
   in-memory too (F5-5); NATS is subscribe-only on the relay, publisher-side
-  policy lives in argus-notification / the gateway.
+  policy lives in argus-notification.
 - The mobile app contracts are untouched: the app keeps talking TLS to the
-  gateway host through the tunnel's device port.
+  host it addresses through the tunnel's device port.

@@ -26,7 +26,7 @@
 namespace
 {
 constexpr const char* kGuardCredential = "guard-notif-cred";
-constexpr const char* kGatewayCredential = "gateway-notif-cred";
+constexpr const char* kSyncCredential = "sync-notif-cred";
 
 int tempCounter()
 {
@@ -77,7 +77,7 @@ void writeConfig(const std::string& path)
 {
   std::ofstream out(path, std::ios::trunc);
   out << "[grpc]\ncaller_guard = \"" << kGuardCredential
-      << "\"\ncaller_gateway = \"" << kGatewayCredential << "\"\n";
+      << "\"\ncaller_sync = \"" << kSyncCredential << "\"\n";
 }
 
 class AppRunner
@@ -242,7 +242,7 @@ TEST_CASE("notification RPC creates fan-out rows and serves user pulls")
                                .credential = kGuardCredential});
   NotificationClient pullSdk(
       NotificationClientConfig{.target = harness.target(),
-                               .credential = kGatewayCredential});
+                               .credential = kSyncCredential});
 
   {
     const auto created =
@@ -310,7 +310,7 @@ TEST_CASE("notification RPC creates fan-out rows and serves user pulls")
     CHECK(tryCreate({}) == grpc::StatusCode::UNAUTHENTICATED);
     CHECK(tryCreate("wrong") == grpc::StatusCode::UNAUTHENTICATED);
     CHECK(tryCreate("fleet-test") == grpc::StatusCode::UNAUTHENTICATED);
-    CHECK(tryCreate(kGatewayCredential) == grpc::StatusCode::UNAUTHENTICATED);
+    CHECK(tryCreate(kSyncCredential) == grpc::StatusCode::UNAUTHENTICATED);
     CHECK(tryCreate(kGuardCredential) == grpc::StatusCode::OK);
   }
 

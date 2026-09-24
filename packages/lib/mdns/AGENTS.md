@@ -15,23 +15,29 @@ Its consumers are every app-facing service, and they reach it through
 `packages/lib/http`'s `routeAnnouncements()`, not directly: that helper walks
 the routes the service registered and builds one `_argus-route._tcp` instance
 per logical route (TXT `path=<segment>`, `https="true"` when the listener
-terminates TLS). The gateway additionally keeps a single legacy `_argus._tcp`
-record until Phase 3d step 1c deletes it, so the deployed app's first-match
-discovery keeps working through the transition.
+terminates TLS).
 
 The tier rules are why the join lives in `lib/http`: this package is tier 1 and
 the route vocabulary is `packages/contracts/routes` (tier 2), so `MdnsService`
 takes the service type, the path and the TXT pairs as parameters and never
 learns where they came from.
 
-The keys are a contract with two other services, not private tuning:
+The keys are a contract with the rest of the installation, not private tuning:
 
 - `mdns.name` is the hostname advertised, and `packages/lib/cert` puts it in the
   instance certificate's SAN (with `argus.local`, which is the name the app
   dials), so a rename without reissuing breaks TLS;
-- `mdns.port` is what `identity` answers pairing and invitation requests with,
-  so the announcement and the pairing port must agree. No other service reads
-  it: a per-route announcement carries its own SRV port.
+- `mdns.address` is the address the A/AAAA records carry, and an empty value
+  enumerates the host's own interfaces. A bridge-networked container's
+  interface IP is unreachable from the LAN, so `scripts/provision-host.sh`
+  detects the host's LAN address (`--mdns-address` / `ARGUS_MDNS_ADDRESS`, else
+  `ip route get 1.1.1.1`, else `hostname -I`) and writes it into every deploy
+  config that carries the key. A value that is not an IP address is logged and
+  dropped in favour of the interfaces;
+- the SRV port is not a key any more. `mdns.port` is gone: a per-route
+  announcement carries the route's own port, and `identity` answers pairing and
+  invitation requests with `IdentityConfig::resolveAnnouncedPort()`, its own
+  listener port, so the announcement and the pairing port agree by construction.
 - `mdns.enabled` gates advertising only. `initialize()` is called either way and
   answers `true` when it is off.
 
@@ -66,9 +72,9 @@ The keys are a contract with two other services, not private tuning:
   sends the goodbye packet and closes the sockets, and it is idempotent. The
   destructor calls it, so a service that never calls it still leaves the LAN
   cleanly.
-- The config is read once, in the constructor: `mdns.enabled` and `mdns.name`.
-  Nothing re-reads it later, so a runtime `setBool("mdns.enabled", ...)` does
-  not start or stop advertising.
+- The config is read once, in the constructor: `mdns.enabled`, `mdns.name` and
+  `mdns.address`. Nothing re-reads it later, so a runtime
+  `setBool("mdns.enabled", ...)` does not start or stop advertising.
 - The service type is the caller's, and an instance that carries none is not
   advertisable: it is skipped rather than defaulted, and a list with nothing
   advertisable leaves advertising off while `initialize()` still answers

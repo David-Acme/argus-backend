@@ -31,9 +31,9 @@ deterministic danger level and raises only policy-authorized actions. It owns
   them.
 - Dialogue is bounded: greeting only with an accepted camera acknowledgement,
   endpointed listening, one repair attempt on silence/noise, then assessment.
-- Publishes `argus.guard.v1.heartbeat` (the gateway raw fallback yields while
-  fresh) and `argus.guard.v1.encounter_closed` with a finalized redacted
-  summary; long-term memory reads only that summary.
+- Publishes `argus.guard.v1.heartbeat` (argus-notification's raw camera
+  notifier yields while fresh) and `argus.guard.v1.encounter_closed` with a
+  finalized redacted summary; long-term memory reads only that summary.
 - Uploads incident evidence with a retention manifest (`guard_evidence`) and a
   daily deletion worker covering SQLite and the private object store.
 
@@ -144,11 +144,10 @@ Every `/guard` route runs the full `DeviceFilter → ValidJsonFilter → JwtFilt
 → RoleFilter` chain; `/guard` is outside the sync table map, so the role checks
 admit Owner and deny every other role. The listener terminates TLS with the
 instance certificate and announces one `_argus-route._tcp` instance per logical
-route; the gateway proxies `/guard` to it (`[guard] proxy_url` over `https`,
-with `validate_cert = false` because the certificate's name is the instance's,
-not the loopback address). Expected guests accept `cameraId`, `personId`,
-`hostUserId`, `oneTime` and an explicit window; one-time windows are consumed
-atomically on first match.
+route; the app reaches it directly, with no proxy in front (Phase 3d step 1c
+removed the gateway that used to relay `/guard`). Expected guests accept
+`cameraId`, `personId`, `hostUserId`, `oneTime` and an explicit window;
+one-time windows are consumed atomically on first match.
 
 ## Build
 

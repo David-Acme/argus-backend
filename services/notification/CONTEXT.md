@@ -4,7 +4,7 @@
 
 Fase 3 of the `migracion-microservicios` plan splits the notification domain
 out of the monolith. This task (F3-1) creates the substrate WITHOUT cutover —
-the legacy keeps owning every notification write and the gateway keeps its
+the legacy kept owning every notification write and the gateway kept its
 read side unchanged. `argus-notification` mirrors the proven argus-camera
 shape (F2-1) and the argus-productivity shape built in the same round: own
 binary, own CMake preset, own `notification.db`.
@@ -38,7 +38,7 @@ binary, own CMake preset, own `notification.db`.
   legacy keeps its own registration until F3-2 — this task changes NO legacy
   build input and NO legacy behavior. Until the F3-2 cutover,
   `notification.db` is a migrate-tool copy, NOT the authoritative store: the
-  gateway never routes here, so the registered routes are out-of-contract
+  gateway never routed here, so the registered routes are out-of-contract
   before the cutover.
 - **Audit emission (F3-2 cutover, Rulings AQ/Y/AR)**: `markAsRead` no longer
   publishes through `SyncAuditService` — each change goes through the
@@ -49,13 +49,13 @@ binary, own CMake preset, own `notification.db`.
   `docs/architecture/wire-nats-subjects.md`). `argus-sync` persists them verbatim into
   `user_audit_log` in its own `sync.db`; nothing audit-shaped is written to
   notification.db.
-- **Serving live traffic (F3-2, Ruling AR)**: the gateway relays
-  `/notification/read` (PATCH) and `/notification-token` (POST) to this
-  service with identical paths; the envelope, statuses and validation
+- **Serving live traffic (F3-2, Ruling AR)**: this service serves
+  `/notification/read` (PATCH) and `/notification-token` (POST) itself on its
+  own TLS listener (7028); the envelope, statuses and validation
   (empty/unknown id handling) are byte-identical with the legacy — verified
   live. notification.db opens WAL with `busy_timeout` and only this service
   opens it (rule 27). The legacy keeps its own markAsRead/token routes
-  registered but they are unreachable through the gateway (Ruling AS — quiet,
+  registered but nothing routes to them any more (Ruling AS — quiet,
   not stripped).
 - **RPC owner (rule 27)**: `feature/rpc/notification-rpc-service.cc` serves
   `argus.notification.v1.NotificationService` on `server.grpc_port` (7038):
@@ -73,9 +73,8 @@ binary, own CMake preset, own `notification.db`.
   a file another service creates (`nm -C` on the binary shows zero
   UserRepository / RefreshTokenRepository / DeviceCredentialRepository
   symbols). An unreachable identity service means 401, never an open door.
-- **CORS**: the legacy answered every preflight in pre-routing and the
-  gateway forwards OPTIONS on proxied paths untouched, so this surface keeps
-  answering OPTIONS itself (`Cors::handleOptions`).
+- **CORS**: the legacy answered every preflight in pre-routing, and this
+  surface keeps answering OPTIONS itself (`Cors::handleOptions`).
 - **Foreign keys (Ruling AN)**: the notification tables reference user rows
   that live in identity.db, so foreign-key enforcement stays off on every
   connection.

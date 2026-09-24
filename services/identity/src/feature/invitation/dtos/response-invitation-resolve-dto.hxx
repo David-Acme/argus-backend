@@ -14,7 +14,7 @@ struct ResponseInvitationResolveDto
   std::string serverFingerprint;
   std::string caPem;
   std::string scheme;
-  int port{7024};
+  int port{7044};
 
   Json::Value toJson() const;
 };

@@ -8,6 +8,7 @@ argus_module(NAME identity-invitation
         services/invitation-feature-service.cc
     INCLUDES ../..
     DEPENDS
+        argus::identity-config
         argus::identity-shared
         argus::lib::auth
         argus::lib::cert

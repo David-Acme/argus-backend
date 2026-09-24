@@ -26,7 +26,8 @@ consumer, proxy hop or controller may forward or log it.
   with the standard `401` `Device mismatch` envelope — never a distinct error.
 - Transport security: the credential is only meaningful end-to-end over TLS.
   The argus-tunnel relay is byte-transparent (it retransmits the client's TLS
-  bytes without decrypting, Ruling CF), so the header arrives at the gateway's
+  bytes without decrypting, Ruling CF), so the header arrives at the
+  app-facing service's
   `DeviceFilter` intact and no intermediate hop can read or rewrite it. No
   proxy, controller or relay may forward or log the header.
 
@@ -45,6 +46,6 @@ match, clients re-login and receive a credential. That single controlled
 re-login is the accepted cost of switching (blueprint ruling).
 
 The frozen envelope metadata `x_argus_device`
-(`proto/argus/common/v1/base.proto` `RequestContext`) is unchanged: it still
-carries the resolved device hash the gateway forwards to the legacy backend,
-whatever mode produced it.
+(`proto/argus/common/v1/base.proto` `RequestContext`) is unchanged: it stays
+declared for wire compatibility, while the resolved device hash travels on
+`ValidateToken`'s `device_hash` to argus-auth, whatever mode produced it.

@@ -10,9 +10,9 @@ that apply to llm-service code; when in doubt, the root file wins.
    tool-calling loop and the in-process memory package. It must not absorb
    camera, face, VLM, STT, TTS or voice-session responsibilities.
 2. **Internal wire only** — the service serves the legacy voice session over
-   loopback plain HTTP (`/llm/v1/*`); no JWT, no CORS, no gateway routing.
-   Never expose it publicly. No auth: the loopback bind is the trust
-   boundary.
+   loopback plain HTTP (`/llm/v1/*`); no JWT, no CORS, no public routing or
+   announcement. Never expose it publicly. No auth: the loopback bind is the
+   trust boundary.
 3. **Frozen envelope** — every JSON response uses the
    `{status, info, errors}` envelope (`ApiResponse`); the chat body is JSON
    `{messages, max_tokens?, temperature?, reset_context?}`.

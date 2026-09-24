@@ -155,3 +155,4 @@ secret_key = ""
 [mdns]
 enabled = true
 name = "Argus"
+address = ""

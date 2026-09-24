@@ -75,6 +75,69 @@ TEST_CASE("a plain instance carries no https key in its txt")
   CHECK_FALSE(txt.isMember("https"));
 }
 
+TEST_CASE("a configured address is the one advertised instead of the host's")
+{
+  ConfigService::setRuntimeString("mdns.enabled", "true");
+  ConfigService::setRuntimeString("mdns.address", "192.168.7.11");
+
+  MdnsService service({routeInstance("camera", 7026, true)});
+
+  CHECK(service.initialize());
+  CHECK(service.health()["address"].asString() == "192.168.7.11");
+
+  const Json::Value addresses = service.health()["addresses"];
+  REQUIRE(addresses.size() == 1);
+  CHECK(addresses[0].asString() == "192.168.7.11");
+
+  service.shutdown();
+}
+
+TEST_CASE("a configured IPv6 address is advertised on its own family")
+{
+  ConfigService::setRuntimeString("mdns.enabled", "true");
+  ConfigService::setRuntimeString("mdns.address", "fd00::11");
+
+  MdnsService service({routeInstance("camera", 7026, true)});
+
+  CHECK(service.initialize());
+
+  const Json::Value addresses = service.health()["addresses"];
+  REQUIRE(addresses.size() == 1);
+  CHECK(addresses[0].asString() == "fd00::11");
+
+  service.shutdown();
+}
+
+TEST_CASE("an address that is not an IP falls back to the host's interfaces")
+{
+  ConfigService::setRuntimeString("mdns.enabled", "true");
+  ConfigService::setRuntimeString("mdns.address", "argus.local");
+
+  MdnsService service({routeInstance("camera", 7026, true)});
+
+  CHECK(service.initialize());
+  CHECK(service.health()["address"].asString() == "argus.local");
+
+  const Json::Value addresses = service.health()["addresses"];
+  for (const Json::Value& address : addresses)
+    CHECK(address.asString() != "argus.local");
+
+  service.shutdown();
+}
+
+TEST_CASE("an unset address leaves the host's interfaces as the announcement")
+{
+  ConfigService::setRuntimeString("mdns.enabled", "true");
+  ConfigService::setRuntimeString("mdns.address", "");
+
+  MdnsService service({routeInstance("camera", 7026, true)});
+
+  CHECK(service.initialize());
+  CHECK(service.health()["address"].asString().empty());
+
+  service.shutdown();
+}
+
 TEST_CASE("an empty name keeps the default the certificate's SAN can carry")
 {
   ConfigService::setRuntimeString("mdns.enabled", "false");

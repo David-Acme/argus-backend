@@ -22,6 +22,10 @@ if(NOT TARGET argus::lib::errors)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../errors
                      ${CMAKE_BINARY_DIR}/errors)
 endif()
+if(NOT TARGET argus::lib::http)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../http
+                     ${CMAKE_BINARY_DIR}/http)
+endif()
 
 if(NOT TARGET argus::clients::identity)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../clients/identity
@@ -45,15 +49,19 @@ argus_lib(NAME auth
         src/auth/details/identity-access.cc
         src/auth/jwt-filter.cc
         src/auth/role-filter.cc
+        src/auth/remote-config.cc
+        src/auth/remote-gate.cc
         src/auth/valid-json-filter.cc
         src/auth/jwt-service.cc
         src/auth/user-directory-identity.cc
         src/auth/role-access.hxx
+        src/auth/remote-config.hxx
+        src/auth/remote-gate.hxx
         src/auth/user-directory.hxx
     INCLUDES
         src
     DEPENDS
-        argus::contracts::auth argus::contracts::sync argus::lib::config argus::lib::runtime argus::lib::errors
+        argus::contracts::auth argus::contracts::sync argus::lib::config argus::lib::runtime argus::lib::errors argus::lib::http
         argus::clients::identity
         argus::clients::auth
         Drogon::Drogon
@@ -71,6 +79,11 @@ add_executable(role-access-test tests/unit/role-access-test.cc)
 target_link_libraries(role-access-test PRIVATE argus::lib::auth doctest::doctest)
 target_compile_options(role-access-test PRIVATE -Wall -Wextra)
 add_test(NAME role-access-test COMMAND role-access-test)
+
+add_executable(remote-gate-test tests/unit/remote-gate-test.cc)
+target_link_libraries(remote-gate-test PRIVATE argus::lib::auth doctest::doctest)
+target_compile_options(remote-gate-test PRIVATE -Wall -Wextra)
+add_test(NAME remote-gate-test COMMAND remote-gate-test)
 
 get_target_property(DOCTEST_INCLUDE_DIRS doctest::doctest
                     INTERFACE_INCLUDE_DIRECTORIES)

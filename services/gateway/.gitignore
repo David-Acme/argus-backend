@@ -1,7 +1,0 @@
-build/
-config.toml
-certs/
-*.log
-__pycache__/
-gen/
-uploads/

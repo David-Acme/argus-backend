@@ -11,8 +11,8 @@ that apply to vision-service code; when in doubt, the root file wins.
    symbols; verified with `nm -C`). The engine is THE capacity of this
    service (F4-4, Ruling BO).
 2. **Internal wire only** — the service serves the legacy adapters over
-   loopback plain HTTP (`/vlm/v1/*`); no JWT, no CORS, no gateway routing.
-   Never expose it publicly.
+   loopback plain HTTP (`/vlm/v1/*`); no JWT, no CORS, no public routing or
+   announcement. Never expose it publicly.
 3. **Frozen envelope** — every JSON response uses the
    `{status, info, errors}` envelope (`ApiResponse`); the describe body is
    JSON `{image_b64, prompt?, camera_id?}` (base64 JPEG).

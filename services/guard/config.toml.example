@@ -145,3 +145,4 @@ url = "nats://127.0.0.1:4222"
 [mdns]
 enabled = true
 name = "Argus"
+address = ""

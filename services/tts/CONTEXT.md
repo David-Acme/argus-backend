@@ -32,7 +32,7 @@ and instead call it over the internal wire.
     shared DSL; errors use the frozen `{status, info, errors}` envelope
     (422 validation, 503 `TTS_NOT_LOADED`).
   - Trust model: no auth, loopback bind by default — internal-network only,
-    never routed through the gateway.
+    never announced or published.
 - **Config**: `[tts]` (engine knobs, mirroring the legacy block) +
   `[server]` (loopback listener, default 7029) only. No database, no NATS,
   no JWT/device keys.
@@ -48,7 +48,8 @@ announcements feel immediate.
 ## What it did NOT change
 
 - The mobile app never talks to this service; `/camera/{id}/talk` keeps
-  legacy ownership (Ruling BC) and the gateway routing is untouched.
+  legacy ownership (Ruling BC) and the internal wire stays loopback-only,
+  unannounced.
 - Model artifacts stay in the shared `models/tts` paths — never copied.
 - The legacy `TtsService` stays linked in the legacy binary: only the boot
   init is gated behind `tts.remote_url` (Ruling BI), so the symbol proof

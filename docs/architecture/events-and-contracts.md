@@ -37,7 +37,7 @@ The full subject contract lives in `wire-nats-subjects.md`.
 - Camera actions (`argus.camera.v1.CameraActionService`, port 7036) serve the
   guard-only audible/physical surface (`Announce`, `Alarm`, `SetSiren`,
   `GetPersonCrop`, `Listen`): fleet-secret gated, idempotent by `command_id`,
-  siren arming as an expiring lease. The gateway never calls it.
+  siren arming as an expiring lease. Only argus-guard calls it.
 - Voice (`argus.voice.v1.VoiceService`, port 7034) serves voice sessions.
 - Auth (`argus.auth.v1.AuthService`, port 7043) answers the session verdict
   (`ValidateToken`: live session, device binding, expiry, user context) and the
@@ -46,8 +46,9 @@ The full subject contract lives in `wire-nats-subjects.md`.
   native config and to every interface behind that secret in the deploy one.
   Phase 3b-3 points the filter chains at it through the SDK client
   `argus::clients::auth`, replacing their `argus.identity.v1` call.
-- Identity (`argus.identity.v1`) exposes gateway-owned operations such as the
-  spoken-name update, plus the fleet-gated person surface (`IdentifyPerson`,
+- Identity (`argus.identity.v1`) exposes the user surface (`UpdateUser`,
+  `RegisterUser`, `GetUser`) that argus-auth drives for the login and
+  spoken-name paths, plus the fleet-gated person surface (`IdentifyPerson`,
   `EnrollPerson`, `TouchPerson`, `TagPerson`, `PromotePerson`,
   `ListNotifiableUsers`) that feeds camera→guard identity.
 - Notification (`argus.notification.v1`, port 7038) fans out creates by

@@ -67,7 +67,7 @@ trusted_proxy_ips = ""
 
 [grpc]
 caller_guard = ""
-caller_gateway = ""
+caller_sync = ""
 
 [nats]
 url = "nats://127.0.0.1:4222"
@@ -78,3 +78,4 @@ enabled = false
 [mdns]
 enabled = true
 name = "Argus"
+address = ""

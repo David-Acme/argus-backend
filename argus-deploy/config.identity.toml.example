@@ -88,7 +88,12 @@ secret_key = ""
 [pairing]
 paired = false
 
+[remote]
+tunnel_port = 0
+enabled = false
+hostname = ""
+
 [mdns]
 enabled = true
 name = "Argus"
-port = 7024
+address = ""

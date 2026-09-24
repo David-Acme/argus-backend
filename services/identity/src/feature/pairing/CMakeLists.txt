@@ -5,6 +5,7 @@ argus_module(NAME identity-pairing
         dtos/response-pairing-dto.cc
     INCLUDES ../..
     DEPENDS
+        argus::identity-config
         argus::lib::cert
         argus::lib::config
         argus::lib::errors

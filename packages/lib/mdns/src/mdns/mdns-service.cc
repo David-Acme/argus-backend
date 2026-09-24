@@ -179,6 +179,22 @@ bool nameEqualsString(const mdns_string_t& name, const std::string& expected)
                      .expectedLength = expected.size()});
 }
 
+std::string ipv4Text(const struct sockaddr_in& address)
+{
+  std::array<char, INET_ADDRSTRLEN> text{};
+  if (!inet_ntop(AF_INET, &address.sin_addr, text.data(), text.size()))
+    return {};
+  return text.data();
+}
+
+std::string ipv6Text(const struct sockaddr_in6& address)
+{
+  std::array<char, INET6_ADDRSTRLEN> text{};
+  if (!inet_ntop(AF_INET6, &address.sin6_addr, text.data(), text.size()))
+    return {};
+  return text.data();
+}
+
 struct AdvertisedInstance
 {
   std::string serviceType;
@@ -198,6 +214,7 @@ struct MdnsService::Impl
   {
     bool enabled{false};
     std::string name{kDefaultName};
+    std::string address;
   };
 
   Config config;
@@ -221,6 +238,7 @@ struct MdnsService::Impl
   mdns_record_t recordAaaa{};
 
   bool resolveAddresses();
+  bool resolveConfiguredAddress(const std::string& text);
   void buildRecords();
   [[nodiscard]] std::vector<mdns_record_t>
   serviceRecords(const AdvertisedInstance& instance) const;
@@ -272,8 +290,38 @@ struct MdnsService::Impl
                             void* user_data);
 };
 
+bool MdnsService::Impl::resolveConfiguredAddress(const std::string& text)
+{
+  struct sockaddr_in ipv4{};
+  if (inet_pton(AF_INET, text.c_str(), &ipv4.sin_addr) == 1) {
+    ipv4.sin_family = AF_INET;
+    ipv4.sin_port = 0;
+    addressIpv4 = ipv4;
+    hasIpv4 = true;
+    return true;
+  }
+
+  struct sockaddr_in6 ipv6{};
+  if (inet_pton(AF_INET6, text.c_str(), &ipv6.sin6_addr) == 1) {
+    ipv6.sin6_family = AF_INET6;
+    ipv6.sin6_port = 0;
+    addressIpv6 = ipv6;
+    hasIpv6 = true;
+    return true;
+  }
+
+  return false;
+}
+
 bool MdnsService::Impl::resolveAddresses()
 {
+  if (!config.address.empty()) {
+    if (resolveConfiguredAddress(config.address))
+      return true;
+    LOG_WARN << "mDNS: mdns.address '" << config.address
+             << "' is not an IP address; falling back to the interfaces";
+  }
+
   struct ifaddrs* ifaddr = nullptr;
   if (getifaddrs(&ifaddr) < 0)
     return false;
@@ -595,6 +643,7 @@ MdnsService::MdnsService(std::vector<MdnsInstance> instances)
   const std::string name = ConfigService::getString("mdns.name");
   if (!name.empty())
     impl_->config.name = name;
+  impl_->config.address = ConfigService::getString("mdns.address");
 }
 
 MdnsService::~MdnsService()
@@ -696,6 +745,14 @@ Json::Value MdnsService::health() const
   Json::Value value(Json::objectValue);
   value["advertising"] = isAdvertising();
   value["name"] = impl_->config.name;
+  value["address"] = impl_->config.address;
+
+  Json::Value addresses(Json::arrayValue);
+  if (impl_->hasIpv4)
+    addresses.append(ipv4Text(impl_->addressIpv4));
+  if (impl_->hasIpv6)
+    addresses.append(ipv6Text(impl_->addressIpv6));
+  value["addresses"] = addresses;
 
   const std::string hostname = hostnameFor(impl_->config.name);
   Json::Value instances(Json::arrayValue);

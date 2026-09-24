@@ -2,14 +2,14 @@
 
 Argus is a set of independent processes (services) plus reusable libraries
 (packages). Services own listeners and data; packages are compiled into their
-consumers. The gateway is the only public HTTP entry point; the `/sync`
-WebSocket is served by `argus-sync` on its own TLS listener.
+consumers. Each app-facing service terminates TLS on its own listener and
+announces its routes over mDNS; the `/sync` WebSocket is served by `argus-sync`
+on its own TLS listener.
 
 ## Runtime services
 
 | Service | Role | Listeners | Owns data |
 |---|---|---|---|
-| `argus-gateway` | Public TLS API, WebSocket relay, the domain proxy | HTTPS 7024 | none (its fallback record moved to argus-notification in Phase 3d step 1) |
 | `argus-auth` | Session and device authority: refresh tokens, device credentials, login challenges, session-verdict RPC | HTTPS 7042, gRPC 7043 | `auth.db` |
 | `argus-identity` | Users, persons, face embeddings, invitations, portraits and pairing | HTTPS 7044, gRPC 7040 | `identity.db` |
 | `argus-sync` | `/sync` WebSocket surface, rooms and change fan-out, audit persistence, sync control RPC | HTTPS 7025, gRPC 7041 | `sync.db` |
@@ -24,10 +24,11 @@ WebSocket is served by `argus-sync` on its own TLS listener.
 | `argus-guard` | Autonomous camera security: danger policy, incidents, gated actions | HTTP 7039 | `guard.db` |
 | `argus-tunnel` | Byte-transparent client and relay transport | per config | — |
 
-Every service binds loopback or the deployment's private network; the gateway
-proxies the public surface. `argus-sync` serves the `/sync` WebSocket on its
-own TLS listener (7025) — the upgrade's 101 is not something the gateway's HTTP
-proxy can relay — with the sync control RPC beside it on 7041. It is the single
+Every app-facing service terminates TLS on its own listener and announces one
+`_argus-route._tcp` instance per logical route (no process proxies another's
+routes since Phase 3d step 1c). `argus-sync` serves the `/sync` WebSocket on its
+own TLS listener (7025), with the sync control RPC beside it on 7041. It is the
+single
 writer of the five sync tables (`audit_log`, `user_audit_log`,
 `audit_compaction_state`, `user_action_log`, `notification_delivery_inbox`), in
 its own `sync.db`. Core NATS (`4222`) carries

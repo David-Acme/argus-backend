@@ -225,7 +225,7 @@ are the fan-out's first act. The producers' durable outbox that removes this
 dependency is row 2's; until it lands the dependency is documented rather than
 hidden.
 
-The delivery leg keeps the gateway's shape with one deliberate change: the
+The delivery leg kept the gateway's shape with one deliberate change: the
 durable name is `argus-sync-delivery`, not `argus-gateway-delivery`, so the new
 consumer starts with its own cursor instead of inheriting the gateway's
 unacknowledged backlog position. Receipts come first — the inbox insert wins
@@ -248,29 +248,26 @@ Two properties that shape the code: a domain's features hold *interfaces*,
 never the client — that is what the sink declarations in `contracts/sync` are —
 so identity's features stay linkable into a process with no control channel
 (its suites); and each host's `main.cc` constructs and installs the funnel at
-boot. `services/identity`'s `main.cc` is now one of those hosts and the gateway
-is not: the identity RPC listener that publishes belongs to argus-identity,
-while the socket fan-out, the delivery consumer and the `RoomManager` lifecycle
-moved here.
+boot. `services/identity`'s `main.cc` is now one of those hosts: the identity
+RPC listener that publishes belongs to argus-identity, while the socket
+fan-out, the delivery consumer and the `RoomManager` lifecycle moved here.
 
 ## Why the voice relay came along
 
 The relay is a `SyncForwarder`: it exists only to serve the `/sync` socket. Had
-it stayed in the gateway it would have been dead code (nothing there holds a
+it stayed in the gateway it would have been dead code (nothing there held a
 socket any more) and a dead app feature in the window between this sub-step and
 the gateway's deletion in Phase 3d. It moved with its socket, and its two
-refusals became `SyncErrors::VoiceUnavailable`, which is why the gateway's
-catalog lost its four sync-adjacent definitions and the `[voice]` block moved
-to `services/sync/config.toml.example` and the deploy example.
+refusals became `SyncErrors::VoiceUnavailable`; the `[voice]` block moved to
+`services/sync/config.toml.example` and the deploy example.
 
 ## The endpoint, and what the app must do
 
 `/sync` is TLS on `7025`, published on all interfaces: the app dials the socket
-directly because a WebSocket upgrade cannot ride the gateway's reverse proxy.
-The endpoint is configuration until Phase 3d step 5 moves discovery, so the
-frontend's switch to 7025 is one coordinated change — the same commit that
-makes the surface complete, which is why this sub-step moves the relay, the
-audit writers and the fan-out together rather than in pieces.
+directly. The endpoint is configuration until Phase 3d step 5 moves discovery,
+so the frontend's switch to 7025 is one coordinated change — the same commit
+that makes the surface complete, which is why this sub-step moves the relay,
+the audit writers and the fan-out together rather than in pieces.
 
 ## What this service must not do
 

@@ -11,7 +11,6 @@ PROJECTS=(
   packages/intent
   services/auth
   services/identity
-  services/gateway
   services/sync
   services/camera
   services/productivity

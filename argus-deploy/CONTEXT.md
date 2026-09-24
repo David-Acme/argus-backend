@@ -1,6 +1,6 @@
 # argus-deploy — CONTEXT
 
-Compose v7 of the migration plan: the Fase 1 cutover stack (gateway + nats +
+Compose v7 of the migration plan: the Fase 1 cutover stack (nats +
 identity init), the Fase 2 argus-camera service (camera.db volume +
 camera-init), the Fase 3 argus-productivity + argus-notification services
 (productivity.db / notification.db volumes + their init profiles), the Fase 4
@@ -10,9 +10,11 @@ f8-b3, when argus-memory stopped being a process and became a package
 hosted by argus-llm), the Fase 5 tunnel
 transport pair — argus-relay + argus-tunnel-client — behind the opt-in
 `tunnel` profile and the F6-3 argus-voice pure-gRPC service. The Fase 1
-legacy service and the RustFS storage pair are retired (F6-4): the gateway is
-the only public HTTP surface (the `/sync` socket published its own TLS
-listener on 7025 in Phase 3a) and every domain is served by its own service.
+legacy service and the root local compose's RustFS pair are retired (F6-4).
+Every domain is served by its own service, and since Phase 3d step 1c no
+process proxies another's routes: each app-facing service terminates TLS
+itself on its own listener and announces its own `_argus-route._tcp`
+instances.
 Decisions and traps live here.
 
 ## Images (Ruling N, revised F10)
@@ -56,7 +58,7 @@ with `glslc` at build time. Without them the ncnn build silently drops its
 Vulkan backend in the container and the argus-camera detector could never
 engage RADV (it would only ever run CPU).
 
-Runtime image adds `curl` (gateway and argus-camera `/health` healthchecks)
+Runtime image adds `curl` (every app-facing service's `/health` healthcheck)
 and `mesa-vulkan-drivers` (RADV, so a container with `/dev/dri` can drive the
 GPU). The argus-camera image also carries
 `argus-vulkan-probe` (Fase 2 Vulkan gate): it reuses ncnn's own Vulkan init
@@ -81,45 +83,49 @@ Model artifacts (GGUF, ncnn blobs) are NOT baked in: `models/` is
 dockerignored out of the build context and bind-mounted read-only; provision
 with `scripts/setup.sh` / `scripts/setup.sh camera` on the host.
 
-## Network shape (Ruling O, transitional exception)
+## Network shape
 
-- **gateway** — `network_mode: host`. The public surface: TLS 0.0.0.0:7024,
-  the port the app's `_argus._tcp` discovery resolves to. Since Phase 3d step
-  1b every app-facing service announces its own `_argus-route._tcp` instances,
-  so this record is the transitional one that Phase 3d step 1c removes along
-  with the gateway itself.
-- The gateway is host-networked because every other service publishes its
-  listener on HOST loopback (127.0.0.1) — a bridge-networked gateway cannot
-  reach a host loopback bind. That is why there is no `edge` bridge network in
-  this phase. Only the gateway binds a public port, which is the ruling's
-  intent; `argus-sync` excepts itself since Phase 3a, its 7025 listening on
-  all interfaces because a WebSocket upgrade cannot ride the gateway's proxy.
+Every service is on the `internal` bridge network. There is no gateway and no
+host-networked public surface: Phase 3d step 1c deleted the process that used
+to hold the only public port, and each app-facing service now terminates TLS
+with the instance certificate on its own listener, announced over mDNS as one
+`_argus-route._tcp` instance per logical route (Phase 3d step 1b). The app
+resolves those instances and dials them directly; Phase 3d step 5 verifies it
+against a real client.
+
+- **The app-facing listeners are published on the LAN**, each under an
+  overridable host port: `"${AUTH_PORT:-7042}:7042"`,
+  `"${IDENTITY_PORT:-7044}:7044"`, `"${SYNC_PORT:-7025}:7025"`,
+  `"${CAMERA_PORT:-7026}:7026"`,
+  `"${PRODUCTIVITY_PORT:-7027}:7027"`,
+  `"${NOTIFICATION_PORT:-7028}:7028"` and
+  `"${GUARD_PORT:-7039}:7039"`. Every one of them serves `/health` over TLS,
+  which is what the healthchecks curl (`curl -kfs https://127.0.0.1:<port>/health`
+  from inside the container).
+- **The internal wires stay `127.0.0.1:`-published**: auth's RPC 7043,
+  identity's gRPC 7040, sync's control 7041, camera's gRPC 7036, productivity's
+  gRPC 7037, notification's RPC 7038, voice's gRPC 7034 and `/health` 7035,
+  camera's go2rtc 1984/8554 (Ruling AH — always INSIDE the container, no
+  compose service and no host publish) and the tunnel set 7100/7101/7103.
+  Loopback-only publishes keep them unreachable from the LAN; the publishes
+  exist for host-side reachability.
 - **nats** (`nats:2.11.14-alpine`, core NATS, monitor port 8222) lives on the
   `internal` bridge network, published on host loopback (4222/8222, overridable
-  via `NATS_CLIENT_PORT`, `NATS_MONITOR_PORT`) for the host-networked gateway.
-- **argus-camera** (Fase 2) lives on the `internal` bridge network too: its
-  only host exposure is the loopback-published 7026 listener the gateway
-  proxies to, plus the 7036 gRPC listener `argus-sync` pulls the camera sync
-  tables from (F6-5, repointed at the sync split in Phase 3c-2). Its go2rtc (1984/8554, Ruling AH) stays INSIDE the container —
-  no compose service and no host publish; the app only ever talks through the
-  gateway. The camera config points `[nats] url` at the internal alias
-  `nats://nats:4222`. The camera domain is wholly served by this service: the
-  gateway routes `/camera` and `/zone` at every segment depth here and relays
-  `/camera-stream` media (`camera:*` frames and fMP4) to the service's `/media`
-  socket (`[camera] stream_url = wss://127.0.0.1:7026/media`). Talk synthesis
-  reaches argus-tts via the camera config's `[tts] remote_url` (host-networked
-  loopback 7029).
-- **argus-productivity / argus-notification** (Fase 3, compose v3) live on
-  the same `internal` bridge network with only their 7027/7028 listeners
-  loopback-published for the host-networked gateway; their `[nats] url`
-  points at the internal alias as well. Since Phase 3d step 1b those two
-  listeners, argus-camera's and argus-guard's terminate TLS with the single
-  instance certificate (bind-mounted from `${ARGUS_CERTS_DIR}`) and announce
-  themselves over mDNS, one `_argus-route._tcp` instance per logical route per
-  service; the app's direct dialing of the discovered routes is Phase 3d
-  step 5.
+  via `NATS_CLIENT_PORT`, `NATS_MONITOR_PORT`) for host-side reachability.
+- **argus-camera** (Fase 2) serves its whole domain itself: `/camera` and
+  `/zone` at every segment depth, and the client-facing `/media` socket
+  (`services/camera/src/controllers/camera-media-socket.cc`) that carries
+  `camera:*` frames and fMP4 over the published 7026 listener; argus-sync
+  pulls the camera sync tables from the 7036 gRPC listener (F6-5, repointed at
+  the sync split in Phase 3c-2). Its `[nats] url` points at the internal alias
+  `nats://nats:4222`. Talk synthesis reaches argus-tts through the camera
+  config's `[tts] remote_url` (loopback 7029).
+- **argus-productivity / argus-notification** (Fase 3, compose v3) live on the
+  same `internal` bridge network with their 7027/7028 app-facing listeners
+  published on the LAN and their gRPC listeners (7037/7038) on host loopback;
+  their `[nats] url` points at the internal alias as well.
 - **The four AI engine services** (Fase 4, compose v4) live on the same
-  `internal` bridge network, which now pins `172.19.0.0/24` so they carry
+  `internal` bridge network, which pins `172.19.0.0/24` so they carry
   static addresses (argus-tts .29, argus-stt .30, argus-vlm .31, argus-llm
   .32, argus-voice .34; .33 left the map with the argus-memory process,
   f8-b3). The remote wires dial the static literals (argus-voice dials
@@ -127,32 +133,37 @@ with `scripts/setup.sh` / `scripts/setup.sh camera` on the host.
   wires resolve IPv4 literals only. Loopback-only publishes keep every AI
   wire unreachable from the LAN — "internal, no host publish" means no
   non-loopback exposure; the publishes exist for host-side reachability.
-- The gateway config therefore points `[nats] url` at the `127.0.0.1` port.
-- Transitional trust note: the camera resolves the caller IP from
-  `X-Forwarded-For` only for trusted peers. Through the docker-proxy the
-  gateway arrives as the internal network's gateway IP (the pinned 172.19.0.1), so
-  `config.camera.toml` must list that address in `device.trusted_proxy_ips`.
-  This dies when the internal identity headers replace the forwarded-for
-  trust (plan §Fase 3+).
+- Trust note, now sharper than when the gateway wrote the header: a service
+  resolves the caller IP from `X-Forwarded-For` only for a trusted peer
+  (loopback always, otherwise `device.trusted_proxy_ips`), and with no HTTP
+  proxy in front of the LAN publishes the only peer a service sees for a
+  remote client is Docker's own forwarding address — the pinned bridge gateway
+  172.19.0.1 — so `device.identity_mode = "ip"` fingerprints that address and
+  the user agent rather than the client. `config.camera.toml` lists
+  172.19.0.1 in `device.trusted_proxy_ips` for exactly this reason. A host
+  that disables Docker's userland proxy preserves the client address instead.
+  Phase 5 step 6's real-client verification is where this is settled; the
+  credential mode (`device.identity_mode = "credential"`, the
+  `X-Argus-Device-Credential` header) is the identity path that does not
+  depend on the peer address at all.
 
 ## Services
 
 | Service | Image | Notes |
 |---|---|---|
-| gateway | `argus-gateway:local` | TLS 7024, `/health` healthcheck; proxies each domain to its backend and holds no database of its own since Phase 3d step 1; host networking, so it reaches its peers on 127.0.0.1 |
-| argus-auth | `argus-auth:local` | internal network (alias `argus-auth`), loopback 7042 + 7043 publishes; owns auth.db; runs the refresh limiter and mints the device credentials and the sessions every other service validates; `/health` healthcheck |
-| argus-identity | `argus-identity:local` | internal network (alias `argus-identity`), loopback 7044 + 7040 (fleet-secret RPC) publishes; owns identity.db; the users, persons, face embeddings, invitations and private portraits; `/health` healthcheck; config bind rw (the pairing state persists) |
-| argus-camera | `argus-camera:local` | internal network, loopback 7026 + 7036 (sync gRPC) publishes; owns camera.db; `/health` healthcheck; `/dev/dri` |
-| argus-productivity | `argus-productivity:local` | internal network, loopback 7027 + 7037 (sync gRPC) publishes; owns productivity.db; `/health` healthcheck |
-| argus-notification | `argus-notification:local` | internal network, loopback 7028 + 7038 (RPC) publishes; owns notification.db; `/health` healthcheck |
-| argus-guard | `argus-guard:local` | internal network, loopback 7039 publish; owns guard.db; no gRPC listener; `/health` healthcheck |
+| argus-auth | `argus-auth:local` | internal network (alias `argus-auth`), LAN 7042 + loopback 7043 publishes; owns auth.db; runs the refresh limiter, gates `/pairing` and `/auth/register` against remote requests (`RemoteGate`) and mints the device credentials and the sessions every other service validates; `/health` healthcheck |
+| argus-identity | `argus-identity:local` | internal network (alias `argus-identity`), LAN 7044 + loopback 7040 (fleet-secret RPC) publishes; owns identity.db; the users, persons, face embeddings, invitations and private portraits; carries the same `RemoteGate` on `/pairing` and `/auth/register`; `/health` healthcheck; config bind rw (the pairing state persists) |
+| argus-camera | `argus-camera:local` | internal network, LAN 7026 + loopback 7036 (sync gRPC) publishes; owns camera.db; `/health` healthcheck; `/dev/dri` |
+| argus-productivity | `argus-productivity:local` | internal network, LAN 7027 + loopback 7037 (sync gRPC) publishes; owns productivity.db; `/health` healthcheck |
+| argus-notification | `argus-notification:local` | internal network, LAN 7028 + loopback 7038 (RPC) publishes; owns notification.db; `/health` healthcheck |
+| argus-guard | `argus-guard:local` | internal network, LAN 7039 publish; owns guard.db; no gRPC listener; `/health` healthcheck |
 | argus-tts | `argus-tts:local` | internal network (172.19.0.29), loopback 7029 publish; models/tts subpath ro; `/health` healthcheck |
 | argus-stt | `argus-stt:local` | internal network (172.19.0.30), loopback 7030 publish; models/stt subpath ro; `/health` healthcheck |
 | argus-vlm | `argus-vlm:local` | internal network (172.19.0.31), loopback 7031 publish; models/vision subpath ro; `/dev/dri`; `/health` healthcheck |
 | argus-llm | `argus-llm:local` | internal network (172.19.0.32), loopback 7032 publish; models/llm subpath ro; links the memory package since f8-b3 (its stack hosting lands at f8-b4); `/health` healthcheck |
 | argus-voice | `argus-voice:local` | internal network (172.19.0.34), loopback 7034 (gRPC) + 7035 (`/health`) publishes; no database; models/vad ro; gated on nats; `/health` healthcheck |
 | argus-relay | `argus-tunnel:local` | `profiles: [tunnel]`; internal network, loopback 7100/7101/7103 publishes; no database (Ruling CL); `/health` healthcheck |
-| argus-tunnel-client | `argus-tunnel:local` | `profiles: [tunnel]`; host-networked like the gateway (dials the gateway `[remote]` listener and the relay's loopback home publish on 127.0.0.1); no database (Ruling CL); `/health` healthcheck |
+| argus-tunnel-client | `argus-tunnel:local` | `profiles: [tunnel]`; host-networked (it dials the remote listener a home service opens and the relay's loopback home publish on 127.0.0.1); no database (Ruling CL); `/health` healthcheck |
 | nats | `nats:2.11.14-alpine` | exact tag pin; core NATS (no JetStream needed) |
 | identity-init | `argus-identity:local` | `profiles: [identity-init]`, runs `argus-migrate-identity` |
 | sync-init | `argus-sync:local` | `profiles: [sync-init]`, runs `argus-migrate-sync` (identity.db → sync.db), identity's directory read-only |
@@ -168,9 +179,9 @@ race would leave the bus disabled, its subscriptions silently absent while all
 healthchecks stay green. They then boot in parallel and each opens only its own
 database: argus-identity creates identity.db from its own schema and serves the
 fleet-secret 7040 leg, argus-sync owns sync.db and pulls the camera,
-notification and productivity sync tables over their owners' gRPC legs, and the
-gateway holds no database, no bus and no client of its own — its camera
-notification policy moved to argus-notification in Phase 3d step 1. No service
+notification and productivity sync tables over their owners' gRPC legs, and
+argus-notification owns the camera notification policy that used to be the
+gateway's (Phase 3d step 1a — there is no gateway since step 1c). No service
 waits on another's health, so there is no cycle. A fresh
 `up -d` without camera-init therefore works end to end: argus-camera creates
 camera.db and serves both the CRUD routes and the sync gRPC pulls with live
@@ -201,7 +212,7 @@ notification.db, each in its own data subdirectory bind-mounted from
 - `argus-productivity` mounts `${ARGUS_DATA_DIR:-./data}/productivity` rw at
   `/opt/argus/productivity` and applies
   `database/schema.sql` at boot, then serves `argus.productivity.v1.SyncService`
-  on 7037. The gateway mounts nothing of it (rule 27): `argus-sync`'s `/sync`
+  on 7037. No one else mounts it (rule 27): `argus-sync`'s `/sync`
   pulls for the 7 tables go over that gRPC leg.
 - `argus-notification` mounts `${ARGUS_DATA_DIR:-./data}/notification` rw at
   `/opt/argus/notification` and serves
@@ -222,7 +233,7 @@ notification.db, each in its own data subdirectory bind-mounted from
   bus then boot in parallel — every one of them gates on
   `nats: service_healthy` because each connects its NatsBus once at boot with
   no retry. argus-productivity and argus-notification no longer wait for an
-  identity.db the gateway created (the people authority is argus-identity's
+  identity.db another process created (the people authority is argus-identity's
   own service, Phase 3b-2), and no service waits on another's health, so
   there is no cycle.
 
@@ -238,9 +249,9 @@ Fase 4 (Rulings CB/CC/CD/CE, compose v4) adds the four AI engine services:
   binds. argus-memory (7033) is retired since f8-b3: the memory capacity is
   a package compiled into argus-llm and the worker chat is an in-process
   call. None of them is
-  reachable from the gateway — the AI wire is internal-only and the gateway
-  proxies NOTHING new (Ruling CE). The in-process engine topology is retired
-  (F6-4): the gateway carries no engines and every engine consumer dials a
+  reachable from the LAN — the AI wire is internal-only and loopback-published.
+  The in-process engine topology is retired
+  (F6-4): no service carries engines and every engine consumer dials a
   remote gate.
 - **Remote gates (Ruling CC, post-retirement shape).** The gates live in the
   consumer instance configs: argus-voice's
@@ -257,8 +268,8 @@ Fase 4 (Rulings CB/CC/CD/CE, compose v4) adds the four AI engine services:
   `nats: service_healthy` (they publish nothing and consume nothing); the
   bus consumer returns with f8-b4, when argus-llm hosts the memory catalog
   replica and gates on nats. argus-voice
-  (F6-3) also carries a bus consumer and gates the same way; the gateway
-  carries no bus and therefore no nats dependency since Phase 3d step 1.
+  (F6-3) also carries a bus consumer and gates the same way; no other
+  app-facing service carries a bus.
 - **Resource limits (Ruling CD).** The per-service mem_limit/cpus pair is
   the engine budget boundary. Derived from the ThreadBudget defaults on this
   reference host (16 hardware threads: compute 8, batch 8, heavy 12, light 4,
@@ -267,7 +278,7 @@ Fase 4 (Rulings CB/CC/CD/CE, compose v4) adds the four AI engine services:
   the process at f8-b3; argus-llm absorbs the memory workload at f8-b4) —
   argus-vlm and argus-llm carry explicit DISTINCT values (they never share
   a cpus pool
-  implicitly). The gateway ships at 2g/2.00 (no engines inside). Every value
+  implicitly). Every value
   is env-overridable (`ARGUS_TTS_MEMORY_LIMIT`, `ARGUS_LLM_CPU_LIMIT`, ...).
 - `/dev/dri` is mounted into `argus-vlm` (llama.cpp Vulkan backend, F2-1
   pattern). A GPU-less host drops the device with a `devices: !override []`
@@ -288,11 +299,11 @@ Fase 4 (Rulings CB/CC/CD/CE, compose v4) adds the four AI engine services:
   since f8-b3, argus-memory's retirement) and argus-llm has held the rw
   mount since f8-b4, when it took the memory stack over — still into NO
   other service, the single-owner principle intact (the F4-6 replica
-  architecture means nothing else reads it; the gateway has no memory
-  client at all; argus-voice mounts no databases). This breaks the
+  architecture means nothing else reads it; no app-facing service has a
+  memory client at all; argus-voice mounts no databases). This breaks the
   shared-volume pattern of camera.db / productivity.db / notification.db
   ON PURPOSE: memory.db is private state of the semantic graph, not a synced
-  projection the gateway reads. There is no `memory-init` profile and no
+  projection a reader pulls. There is no `memory-init` profile and no
   migrate tool:
   boot-apply of `database/schema.sql` moved to argus-llm at f8-b4,
   and the memory tables in the repo's argus.db are empty schema (nothing
@@ -333,9 +344,9 @@ The `tunnel` profile carries the byte-transparent remote transport:
   pinned-CA tunnel toward the relay hostname, whose DNS SAN is baked into
   the leaf via `[remote] hostname`).
 - `argus-tunnel-client` runs on the home topology and dials OUT: the relay's
-  home listener, then the gateway's `[remote] tunnel_port` per stream. It is
-  host-networked like the gateway (same transitional Ruling O exception) so
-  the loopback publishes reach it; it publishes nothing.
+  home listener, then the home service's remote listener per stream. It is
+  host-networked (the transitional Ruling O exception the gateway held before
+  it) so the loopback publishes reach it; it publishes nothing.
 - Both binaries refuse to start with an empty `[tunnel] secret`, which is
   what keeps the pair inert until the instance configs are filled — that, and
   the profile, is the default-off shape.
@@ -344,12 +355,23 @@ The `tunnel` profile carries the byte-transparent remote transport:
   epoll engines are single-threaded and keep no database (Ruling CL).
 - Deviation, documented: the brief's "gateway tunnel listener env-driven"
   is realized as config-file-driven. ConfigService has no env plumbing
-  (the F4-7 Ruling CE adjudication), so the gateway's remote listener port
-  rides the instance `[remote] tunnel_port` in `config.gateway.toml` — the
-  compose environment drives the tunnel pair's published ports instead.
-- The gateway's `[remote]` listener must stay unpublished from the host's
-  other interfaces (it rides the host network with the gateway): it is the
-  remote-facing door, and the relay — not the network — is the entry point.
+  (the F4-7 Ruling CE adjudication), so the remote listener port
+  rides the instance `[remote] tunnel_port` — it was `config.gateway.toml`'s
+  while the gateway held the edge, and since Phase 3d step 1c it is
+  `config.auth.toml`'s and `config.identity.toml`'s, where `RemoteGate` runs
+  — the compose environment drives the tunnel pair's published ports instead.
+- The remote listener must stay unpublished from the host's other interfaces:
+  it is the remote-facing door, and the relay — not the network — is the
+  entry point.
+- Open consequence for the tunnel's own work (D19 defers it): the client's
+  `server.gateway_host`/`server.gateway_port` (`127.0.0.1:7034`) named the
+  gateway's remote listener and now names no live listener, because the
+  gateway is gone and the home remote listener belongs to argus-auth and
+  argus-identity. Nothing in the tree reads those two keys except
+  `services/tunnel/src/server/service-config.cc`, which still defaults them to
+  `127.0.0.1:7024`. An installation that wants the remote transport must
+  repoint the client at the service holding the remote listener it wants, and
+  that is the tunnel's own unit of work, not this phase's.
 
 ## Engine-degradation truth table
 
@@ -368,7 +390,9 @@ secrets are read at runtime, never printed; the refresh token lands in a
 
 ## Healthchecks
 
-- gateway: `curl -kfs https://127.0.0.1:7024/health` (envelope 200).
+- argus-auth: `curl -kfs https://127.0.0.1:7042/health` (envelope 200).
+- argus-identity: `curl -kfs https://127.0.0.1:7044/health` (envelope 200).
+- argus-sync: `curl -kfs https://127.0.0.1:7025/health` (envelope 200).
 - argus-camera: `curl -kfs https://127.0.0.1:7026/health` (envelope 200).
 - argus-productivity: `curl -kfs https://127.0.0.1:7027/health` (envelope 200).
 - argus-notification: `curl -kfs https://127.0.0.1:7028/health` (envelope 200).
@@ -412,7 +436,7 @@ the matching `*-init` profile is the only migration path onto a volume.
 
 ## Configuration and secrets (Ruling Q)
 
-- `config.gateway.toml.example` / `config.auth.toml.example` /
+- `config.auth.toml.example` /
   `config.identity.toml.example` / `config.guard.toml.example` /
   `config.sync.toml.example` /
   `config.camera.toml.example` /
@@ -421,10 +445,10 @@ the matching `*-init` profile is the only migration path onto a volume.
   `config.stt.toml.example` / `config.vlm.toml.example` /
   `config.llm.toml.example` / `config.voice.toml.example` /
   `config.tunnel.toml.example` / `config.relay.toml.example` encode the
-  cutover keys (`config.memory.toml.example` is deleted since f8-b3: the
-  memory package's keys ride the host's config.llm.toml from f8-b4); copy
-  to `config.gateway.toml` /
-  `config.auth.toml` /
+  cutover keys (`config.gateway.toml.example` died with its service in
+  Phase 3d step 1c, and `config.memory.toml.example` is deleted since f8-b3:
+  the memory package's keys ride the host's config.llm.toml from f8-b4); copy
+  to `config.auth.toml` /
   `config.identity.toml` / `config.guard.toml` /
   `config.sync.toml` /
   `config.camera.toml` / `config.productivity.toml` /
@@ -436,31 +460,33 @@ the matching `*-init` profile is the only migration path onto a volume.
   copy with `install -m 600` or `chmod 600` after copying) and fill:
   `[jwt] secret/refresh_secret` and
   `[device] fingerprint_secret` (identical in the minting/verifying set —
-  argus-auth mints, the gateway, argus-camera, argus-guard,
+  argus-auth mints, argus-camera, argus-guard,
   argus-productivity, argus-notification, argus-identity and argus-sync
   verify, and the
-  device hash must match across the proxy), the `[auth] target`
+  device hash must agree across them), the `[auth] target`
   (`argus-auth:7043`) and `[auth] rpc_secret` each of those verifiers
   carries — the fleet gate on the session verdict, so an absent or
   mismatched key makes the authority refuse every call and leaves all their
-  authenticated routes answering 401 — the `[tunnel] secret` (identical
+  authenticated routes answering 401 — and the `[tunnel] secret` (identical
   in the two tunnel templates — the HMAC home-link key; empty keeps the pair
-  from booting, and it is never baked into any layer or template), and the
-  `device.trusted_proxy_ips` of every
-  bridge-networked service (argus-auth, argus-camera, argus-productivity,
-  argus-notification, argus-guard, argus-identity, argus-sync — the internal
-  network's gateway IP, see the network section), each of which also needs
-  `device.trust_forwarded_for = true` because the gateway is the only peer
-  it sees: the device hash and the refresh limiter's key both include the
-  client IP, and only a trusted peer's `X-Forwarded-For` is honoured.
+  from booting, and it is never baked into any layer or template).
+  `device.trusted_proxy_ips` carries the internal network's gateway IP in
+  every bridge-networked service (argus-auth, argus-camera, argus-productivity,
+  argus-notification, argus-guard, argus-identity, argus-sync) together with
+  `device.trust_forwarded_for = true`: since Phase 3d step 1c no first-party
+  peer writes `X-Forwarded-For`, so the address those services fingerprint is
+  the bridge's own forwarding address — read the network section's trust note
+  before relying on either key.
   `scripts/lib/common.sh` adopts the wiring keys a config lacks from its own
   template and fills the shared ones from the first non-placeholder value
   the deploy directory holds, so an existing installation repairs itself on
   the next provisioning run. The owning services' `[productivity] db` / `[notifications] db`
   (`config.productivity.toml`, `config.notification.toml`) name
   `productivity/productivity.db` and `notification/notification.db` inside
-  their bind-mounted data dirs; the gateway holds no `db` key for either —
-  it reaches both over `proxy_url`, as it reaches every other domain.
+  their bind-mounted data dirs; no service holds a `db` key for a domain it
+  does not own — argus-sync reaches the camera, notification and productivity
+  tables through their owners' `grpc_target` legs, as every other
+  cross-domain read does.
   The AI service configs carry NO secrets at all (no JWT, no device
   filter): the instance files are pure engine knobs, the only
   per-install choices being the remote gates (`[stt]/[tts]/[llm] remote_url`
@@ -470,41 +496,39 @@ the matching `*-init` profile is the only migration path onto a volume.
   gains with the hosted memory package.
 - No docker secrets: nothing is baked into images and instance secrets live
   only in the gitignored config files.
-- Fase 5 (Rulings CG/CJ): the gateway template gains `[remote]`
-  (`tunnel_port`, default 0 = disabled) — default-off so the shipped default
-  is
-  behavior-identical. `tunnel_port` opens the SECOND gateway listener that
-  the argus-tunnel client (Fase 5) will forward to; requests landing on it
-  are classified remote (by local-port match, `remote_ctx` request
-  attribute — the blueprint's `network.lan_cidrs` is deliberately NOT
-  introduced because behind the byte-transparent relay every remote peer
-  is the tunnel and CIDR matching is meaningless) and `/pairing` +
+- Fase 5 (Rulings CG/CJ): `[remote]` (`tunnel_port`, default 0 = disabled;
+  `enabled`, default false) lives in `config.auth.toml` and
+  `config.identity.toml` — default-off so the shipped default is
+  behavior-identical. `tunnel_port` appends the SECOND listener to that same
+  service (`appendRemoteListener` over the service's own listener shape, so it
+  mirrors its TLS posture); requests landing on it are classified remote by
+  local-port match (`requestIsRemote` compares `req->localAddr().toPort()`
+  with the configured port — the blueprint's `network.lan_cidrs` is
+  deliberately NOT introduced because behind the byte-transparent relay every
+  remote peer is the tunnel and CIDR matching is meaningless) and `/pairing` +
   `/auth/register` answer `403 REMOTE_NOT_ALLOWED` unless
-  `[remote] enabled = true`. The listener mirrors the public one's TLS
-  posture. Fase 5 (Ruling CI) also adds `[remote] hostname` (default empty
-  = unchanged certificate output): when set it is appended as a DNS SAN to
-  the instance leaf so the app can configure that hostname as its manual
-  remote server; the next leaf rotation bakes it in — a restart alone
-  regenerates the leaf only when it is within
-  `cert.rotation_threshold_days` of expiry, so with a young leaf the SAN
-  waits for the periodic rotation loop (or a forced rotation via
-  `rotateServerCertificate()`), and once the leaf is re-signed the
-  running gateway hot reloads it. The limiter that Ruling CG put beside that
-  gate moved with the surface it guards: `[rate_limit]` now lives in
+  `[remote] enabled = true`. That gate is `RemoteGate`, a pre-routing advice
+  with CORS applied, in both services' `main.cc`, and
+  `requireDistinctTunnelPort` refuses a `tunnel_port` that collides with the
+  service's own listener before the config is even loaded. Fase 5 (Ruling CI)
+  also adds `[remote] hostname` to `config.identity.toml` alone (default empty
+  = unchanged certificate output): identity owns the instance leaf, and
+  `instanceSans()` (`packages/lib/cert/src/cert/cert-service.cc`) appends it as
+  a DNS SAN so the app can configure that hostname as its manual remote server;
+  an invalid hostname is logged and ignored. The next leaf rotation bakes it in
+  — a restart alone regenerates the leaf only when it is within
+  `cert.rotation_threshold_days` of expiry, so with a young leaf the SAN waits
+  for the periodic rotation loop (or a forced rotation via
+  `rotateServerCertificate()`). The limiter that Ruling CG put beside that
+  gate moved with the surface it guards: `[rate_limit]` lives in
   `config.auth.toml` and is argus-auth's
   in-memory limiter + lockout for
   `PATCH /auth/refresh-token` (429 envelope, CORS applied, before any DB
-  access), a pre-routing advice of that service; the gateway template no
-  longer carries the key. All limiter state is process-local and a restart
-  clears it. The gateway
-  template must keep `device.trust_forwarded_for` off: it is host-networked
-  and sees the client itself, so honouring a forwarded header there would let
-  a remote client
-  spoof the IP half of the device hash and of the limiter key; argus-auth is
-  the opposite case and must keep it on, because the gateway's
-  `X-Forwarded-For` is its only view of the client address and only a trusted
-  peer's header is honoured.
-- The gateway links no go2rtc code, so it neither mounts nor spawns go2rtc.
+  access), the `RefreshRateGate` pre-routing advice of that service. All
+  limiter state is process-local and a restart clears it. Neither service is
+  host-networked any more, so `device.trust_forwarded_for` no longer buys a
+  real client address in either of them — the network section's trust note is
+  where that stands until Phase 5 step 6 settles it.
 - argus-camera spawns go2rtc itself (Go2rtcManager fork/exec, Ruling AH) from
   the bind-mounted `third_party/go2rtc` binary and writes its own
   `go2rtc.yaml` (chmod 600, camera credentials) onto the camera-stream
@@ -523,16 +547,17 @@ the matching `*-init` profile is the only migration path onto a volume.
 
 | Port | Bind | Owner |
 |---|---|---|
-| 7024 TLS | 0.0.0.0 | gateway (public) |
+| 7024 TLS | — | gone: the gateway's public port, deleted with the service in Phase 3d step 1c |
 | 7025 TLS | 0.0.0.0 (compose publish) | argus-sync `/sync` WebSocket — the app-facing sync transport, on all interfaces since Phase 3a |
-| 7042 TLS | 127.0.0.1 (compose publish) | argus-auth HTTP surface — the gateway's `[auth] proxy_url` upstream for `/auth`; never published on a LAN interface, so the gateway's LAN gate stays the only way in |
+| 7042 TLS | 0.0.0.0 (compose publish) | argus-auth HTTP surface (`/auth`, `/invitation*`, `/pairing`) — LAN since Phase 3d step 1c |
 | 7043 gRPC | 127.0.0.1 (compose publish) | argus-auth session verdict — the auth filters' `[auth] target` upstream, gated by `[auth] rpc_secret` |
-| 7044 TLS | 127.0.0.1 (compose publish) | argus-identity HTTP surface — the gateway's `[identity] proxy_url` upstream |
-| 7026 TLS | 127.0.0.1 (compose publish) | argus-camera (internal, gateway upstream) |
-| 7027 TLS | 127.0.0.1 (compose publish) | argus-productivity (internal, gateway upstream) |
-| 7028 TLS | 127.0.0.1 (compose publish) | argus-notification (internal, gateway upstream) |
-| 7039 TLS | 127.0.0.1 (compose publish) | argus-guard (internal, gateway upstream) |
-| 7029 plain | 127.0.0.1 (compose publish) | argus-tts (internal, argus-camera `[tts]` gate upstream — never proxied by the gateway) |
+| 7044 TLS | 0.0.0.0 (compose publish) | argus-identity HTTP surface (`/user*`, `/portrait-preview/*`) — LAN since Phase 3d step 1c |
+| 7040 gRPC | 127.0.0.1 (compose publish) | argus-identity people wire — argus-sync's `[identity] target` pull |
+| 7026 TLS | 0.0.0.0 (compose publish) | argus-camera (`/camera`, `/zone`, the `/media` socket) |
+| 7027 TLS | 0.0.0.0 (compose publish) | argus-productivity |
+| 7028 TLS | 0.0.0.0 (compose publish) | argus-notification |
+| 7039 TLS | 0.0.0.0 (compose publish) | argus-guard |
+| 7029 plain | 127.0.0.1 (compose publish) | argus-tts (internal, argus-camera `[tts]` upstream) |
 | 7030 plain | 127.0.0.1 (compose publish) | argus-stt (internal, argus-voice `[stt]` gate upstream) |
 | 7031 plain | 127.0.0.1 (compose publish) | argus-vlm (internal) |
 | 7032 plain | 127.0.0.1 (compose publish) | argus-llm (internal, argus-voice `[llm]` gate upstream) |
@@ -546,12 +571,11 @@ the matching `*-init` profile is the only migration path onto a volume.
 | 8800 | host | Tapo talk channel (camera-side, argus-camera `[tapo]`) |
 | 7034 gRPC + 7035 plain | 127.0.0.1 (compose publish) | argus-voice voice wire + `/health` (F6-3) |
 | 7036 gRPC | 127.0.0.1 (compose publish) | argus-camera camera-domain sync wire (F6-5) |
-| `[remote] tunnel_port` TLS | gateway host/container port | gateway remote listener (default 0 = disabled; the instance sets a port when the tunnel profile is on — the listener is config-file-driven, not env-driven, see the tunnel section) |
+| `[remote] tunnel_port` TLS | argus-auth / argus-identity host port | their second (remote) listener (default 0 = disabled; the instance sets a port when the tunnel profile is on — the listener is config-file-driven, not env-driven, see the tunnel section) |
 
 Since Phase 3d step 1b every app-facing service terminates TLS with the
 instance certificate and announces one `_argus-route._tcp` instance per logical
-route. The rows above still describe the bind: six of them publish on host
-loopback, so the address the announcement carries (the container's bridge IP)
-is not reachable from the LAN, and the app keeps following the gateway's
-`_argus._tcp` record. Phase 3d step 1c flips those publishes and settles the
-advertised address; Phase 5 step 6 verifies discovery against a real client.
+route; since step 1c the seven app-facing publishes above are on the LAN and
+`scripts/provision-host.sh` writes the host's LAN address into every
+`mdns.address`, so the announcement names an address the app can actually
+reach. Phase 5 step 6 verifies discovery against a real client.

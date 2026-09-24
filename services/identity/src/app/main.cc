@@ -3,6 +3,8 @@
 #include <auth/auth-access.hxx>
 #include <auth/device-filter.hxx>
 #include <auth/jwt-filter.hxx>
+#include <auth/remote-config.hxx>
+#include <auth/remote-gate.hxx>
 #include <auth/role-filter.hxx>
 #include <auth/valid-json-filter.hxx>
 #include <cert/cert-service.hxx>
@@ -36,9 +38,18 @@
 namespace
 {
 
-Json::Value drogonConfig(const IdentityDbConfig& identityDb,
-                         const ListenerConfig& listener)
+struct DrogonConfigInput
 {
+  const IdentityDbConfig& identityDb;
+  const ListenerConfig& listener;
+  const RemoteConfig& remote;
+};
+
+Json::Value drogonConfig(const DrogonConfigInput& input)
+{
+  const ListenerConfig& listener = input.listener;
+  const RemoteConfig& remote = input.remote;
+
   Json::Value config = ConfigService::drogonConfig();
   if (config.isNull())
     config = Json::Value(Json::objectValue);
@@ -47,14 +58,17 @@ Json::Value drogonConfig(const IdentityDbConfig& identityDb,
   Json::Value client(Json::objectValue);
   client["name"] = "default";
   client["rdbms"] = "sqlite3";
-  client["filename"] = identityDb.dbPath;
+  client["filename"] = input.identityDb.dbPath;
   client["is_fast"] = false;
   client["number_of_connections"] = 1;
   client["timeout"] = -1.0;
   clients.append(client);
   config["db_clients"] = clients;
 
-  config["listeners"] = listenerJson(listener);
+  Json::Value listeners = listenerJson(listener);
+  appendRemoteListener(
+      {.listeners = listeners, .remote = remote, .base = listener});
+  config["listeners"] = listeners;
 
   return config;
 }
@@ -70,10 +84,13 @@ int main()
   const IdentityDbConfig identityDb = IdentityConfig::resolveDb();
   ConfigService::setRuntimeString("database.file", identityDb.dbPath);
   const ListenerConfig listener = IdentityConfig::resolveListener();
+  const RemoteConfig remote = RemoteConfig::resolve();
   const IdentityRpcConfig rpc = IdentityConfig::resolveRpc();
   const IdentitySyncControlConfig syncControl =
       IdentityConfig::resolveSyncControl();
   const IdentityFaceConfig face = IdentityConfig::resolveFace();
+
+  requireDistinctTunnelPort(listener, remote);
 
   std::shared_ptr<SyncClient> controlClient;
   if (syncControl.target.empty()) {
@@ -87,7 +104,10 @@ int main()
     LOG_INFO << "Sync control leg -> gRPC " << syncControl.target;
   }
 
-  drogon::app().loadConfigJson(drogonConfig(identityDb, listener));
+  drogon::app().loadConfigJson(
+      drogonConfig({.identityDb = identityDb,
+                    .listener = listener,
+                    .remote = remote}));
 
   drogon::app().registerFilter(std::make_shared<DeviceFilter>());
   drogon::app().registerFilter(std::make_shared<ValidJsonFilter>());
@@ -99,6 +119,19 @@ int main()
   drogon::app().registerController(std::make_shared<UserController>());
   drogon::app().registerController(
       std::make_shared<PortraitPreviewController>());
+
+  RemoteGate remoteGate(remote);
+
+  drogon::app().registerPreRoutingAdvice(
+      [&remoteGate, &remote](const drogon::HttpRequestPtr& req,
+                             drogon::AdviceCallback&& cb,
+                             drogon::AdviceChainCallback&& chain) {
+        if (auto resp = remoteGate.check(req, requestIsRemote(req, remote))) {
+          cb(resp);
+          return;
+        }
+        chain();
+      });
 
   drogon::app().registerPreRoutingAdvice(
       [](const drogon::HttpRequestPtr& req, drogon::AdviceCallback&& cb,
@@ -198,6 +231,10 @@ int main()
            << (listener.tls ? " (TLS" : " (plain") << ", cert "
            << listener.certPath << "); identity database " << identityDb.dbPath
            << "; gRPC on " << rpc.listener.host << ":" << rpc.listener.port;
+  if (remote.tunnelPort != 0)
+    LOG_INFO << "Remote tunnel listener on port " << remote.tunnelPort
+             << (remote.enabled ? " (remote requests allowed)"
+                                : " (remote pairing and registration refused)");
 
   drogon::app().registerBeginningAdvice([&identityDb, &identitySink, &face]() {
     DbService::installExtensions();

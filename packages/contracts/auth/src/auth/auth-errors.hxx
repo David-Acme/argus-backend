@@ -17,6 +17,10 @@ inline constexpr ErrorDefinition AccessDenied{
     .code = ErrorCode::Forbidden,
     .status = 403,
     .message = "Access denied"};
+inline constexpr ErrorDefinition RemoteNotAllowed{
+    .code = ErrorCode::RemoteNotAllowed,
+    .status = 403,
+    .message = "Remote requests are not allowed"};
 inline constexpr ErrorDefinition InvalidJsonBody{
     .code = ErrorCode::BadRequest,
     .status = 400,

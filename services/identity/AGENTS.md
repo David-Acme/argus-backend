@@ -86,8 +86,8 @@ argus-identity/
                         control and face); config.toml.example also carries the
                         sections its features and the shared packages read
                         ([stt], [jwt], [device], [cert], [auth], [nats],
-                        [storage], [pairing], [mdns] — the port its pairing and
-                        invitation answers publish)
+                        [storage], [pairing], [mdns] — the announcement's name
+                        and the address it binds)
   src/feature/enrollment/
     repositories/       the enrollment row reads
     services/           EnrollmentFeatureService: RegisterUser's write path
@@ -137,11 +137,12 @@ became `src/app/rpc/identity-rpc-service.hxx` dropped it in the same rename.
 ## Endpoints and ports
 
 The HTTP surface terminates TLS on `7044` and the gRPC surface answers on
-`7040`. The compose publishes both on `127.0.0.1` only: the RPC listener is a
-fleet-internal answer gated by `[identity] rpc_secret` and reached by its peers
-as `argus-identity:7040`, and the HTTP surface is reached by the gateway's
-loopback proxy (`identity.proxy_url` on 7024's route table), so nothing outside
-the host may dial either port past the gateway's LAN gate.
+`7040`. The compose publishes `7044` on the LAN, where the app dials this
+service's routes directly, and `7040` on `127.0.0.1` only, because the RPC
+listener is a fleet-internal answer gated by `[identity] rpc_secret` and
+reached by its peers as `argus-identity:7040`. A request that arrives on the
+`[remote] tunnel_port` listener is what `RemoteGate` refuses for `/pairing`
+(`403 REMOTE_NOT_ALLOWED`) unless `[remote] enabled` is set.
 
 ## Build commands
 
