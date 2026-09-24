@@ -45,7 +45,7 @@ COPY --from=build /opt/argus/services/gateway/build/prod/argus-gateway /opt/argu
 RUN groupadd --gid "$ARGUS_GID" argus \
     && useradd --uid "$ARGUS_UID" --gid "$ARGUS_GID" --create-home \
       --shell /usr/sbin/nologin argus \
-    && mkdir -p certs gateway \
+    && mkdir -p certs \
     && chown -R argus:argus /opt/argus
 
 EXPOSE 7024

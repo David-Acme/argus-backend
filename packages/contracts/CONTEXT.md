@@ -96,13 +96,14 @@ owner-or-membership scoping for the personal tables.
 
 `proto/argus/notification/v1/notification.proto` types the notification
 domain: `NotificationService.CreateNotifications` is the fan-out create
-(one row per user id, reused by the gateway camera-notifier) and
+(one row per user id, the surface a remote caller uses; the service's own
+camera-notifier creates in-process since Phase 3d step 1) and
 `PullNotifications` is the user-scoped `/sync` page (created rows plus the
 last-created watermark). The SDK wrapper `argus::clients::notification`
 (`packages/clients/notification/src/notification/notification-client.cc`) carries the same metadata and
-deadline shape. Both owners are the only openers of their databases; the
-gateway links the notification target (its camera-notifier) and `argus-sync`
-the productivity one, and neither mounts those volumes (rule 27).
+deadline shape. Both owners are the only openers of their databases;
+`argus-sync` links the notification and productivity targets and neither
+mounts those volumes (rule 27).
 
 ## Camera sync contract (F6-5)
 

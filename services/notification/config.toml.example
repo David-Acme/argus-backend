@@ -31,6 +31,18 @@ db = "database/notification.db"
 schema = "services/notification/database/schema.sql"
 ack_window_s = 86400
 selftest_interval_s = 300
+budget_per_hour = 6
+silent_start = -1
+silent_end = -1
+guard_heartbeat_timeout_s = 30
+fallback_min_score_median = 0.3
+fallback_min_dwell_ms = 1000
+fallback_suppress_known = true
+fallback_retention_days = 90
+
+[identity]
+target = "127.0.0.1:7040"
+rpc_secret = ""
 
 [jwt]
 secret = ""

@@ -1,14 +1,14 @@
-#include "fallback-log-repository.hxx"
+#include "camera-fallback-log-repository.hxx"
 
 #include <sqlite/db-service.hxx>
 #include <trantor/utils/Logger.h>
 
-using namespace fallback_log_query;
+using namespace camera_fallback_log_query;
 
 drogon::Task<bool>
-FallbackLogRepository::log(const FallbackLogInput& input) const
+CameraFallbackLogRepository::log(const CameraFallbackLogInput& input) const
 {
-  auto client = DbService::gatewayClient();
+  auto client = DbService::client();
   if (!client)
     co_return false;
   try {
@@ -19,15 +19,15 @@ FallbackLogRepository::log(const FallbackLogInput& input) const
     co_return result.affectedRows() > 0;
   }
   catch (const std::exception& error) {
-    LOG_WARN << "Gateway fallback log write failed: " << error.what();
+    LOG_WARN << "Camera fallback log write failed: " << error.what();
     co_return false;
   }
 }
 
 drogon::Task<int64_t>
-FallbackLogRepository::purgeOlderThan(int64_t olderThan) const
+CameraFallbackLogRepository::purgeOlderThan(int64_t olderThan) const
 {
-  auto client = DbService::gatewayClient();
+  auto client = DbService::client();
   if (!client)
     co_return 0;
   try {
@@ -36,7 +36,7 @@ FallbackLogRepository::purgeOlderThan(int64_t olderThan) const
     co_return result.affectedRows();
   }
   catch (const std::exception& error) {
-    LOG_WARN << "Gateway fallback log purge failed: " << error.what();
+    LOG_WARN << "Camera fallback log purge failed: " << error.what();
     co_return 0;
   }
 }

@@ -76,6 +76,16 @@ if(NOT TARGET argus::clients::notification)
                      ${CMAKE_BINARY_DIR}/clients/notification EXCLUDE_FROM_ALL)
 endif()
 
+if(NOT TARGET argus::clients::identity)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/identity
+                     ${CMAKE_BINARY_DIR}/clients/identity EXCLUDE_FROM_ALL)
+endif()
+
+if(NOT TARGET argus::lib::runtime)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/runtime
+                     ${CMAKE_BINARY_DIR}/runtime)
+endif()
+
 add_subdirectory(src/shared/repositories/change-outbox)
 
 add_library(notification-core STATIC
@@ -101,6 +111,8 @@ target_link_libraries(notification-core PUBLIC
 
 target_compile_options(notification-core PRIVATE -Wall -Wextra)
 
+add_subdirectory(src/feature/camera-notification)
+
 set(NOTIFICATION_FEATURE_SOURCES
     ${NOTIFICATION_SRC_ROOT}/feature/api/notification/controllers/notification-controller.cc
     ${NOTIFICATION_SRC_ROOT}/feature/api/notification/controllers/notification-token-controller.cc
@@ -121,6 +133,7 @@ add_executable(argus-notification
     ${NOTIFICATION_FEATURE_SOURCES})
 
 target_link_libraries(argus-notification PRIVATE notification-core
+    argus::notification-camera-notification
     argus::lib::auth argus::lib::validation argus::lib::http
     argus::clients::notification)
 
@@ -358,6 +371,30 @@ target_link_libraries(push-intent-test PRIVATE
 target_compile_options(push-intent-test PRIVATE -Wall -Wextra)
 
 add_test(NAME push-intent-test COMMAND push-intent-test)
+
+add_executable(camera-notifier-test
+    tests/unit/camera-notifier-test.cc)
+
+set_target_properties(camera-notifier-test PROPERTIES
+    EXCLUDE_FROM_ALL FALSE)
+
+target_include_directories(camera-notifier-test PRIVATE
+    ${NOTIFICATION_SRC_ROOT})
+
+target_compile_definitions(camera-notifier-test PRIVATE
+    ARGUS_NOTIFICATION_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql")
+
+target_link_libraries(camera-notifier-test PRIVATE
+    argus::notification-camera-notification
+    argus::clients::identity
+    argus::lib::config
+    argus::lib::sqlite
+    argus::lib::text
+    doctest::doctest)
+
+target_compile_options(camera-notifier-test PRIVATE -Wall -Wextra)
+
+add_test(NAME camera-notifier-test COMMAND camera-notifier-test)
 
 get_target_property(DOCTEST_INCLUDE_DIRS doctest::doctest
                     INTERFACE_INCLUDE_DIRECTORIES)

@@ -1,18 +1,12 @@
 #pragma once
 
-#include <identity/identity-client.hxx>
 #include <json/value.h>
-#include <notification/notification-client.hxx>
-#include <sync/fallback/fallback-log-repository.hxx>
 
 #include <atomic>
 #include <cstdint>
 #include <map>
-#include <memory>
 #include <string>
 #include <vector>
-
-class NatsBus;
 
 class CameraNotificationPolicy
 {
@@ -87,49 +81,3 @@ private:
   std::atomic<int64_t> fallbackDroppedWeakScore_{0};
   std::atomic<int64_t> fallbackDroppedShortDwell_{0};
 };
-
-struct CameraNotifierDependencies
-{
-  std::shared_ptr<NotificationClient> notificationClient;
-  std::shared_ptr<IdentityClient> identityClient;
-};
-
-class CameraObjectNotifier
-{
-public:
-  CameraObjectNotifier(CameraNotificationPolicy::Config config,
-                       CameraNotifierDependencies dependencies);
-
-  void handle(const Json::Value& json);
-
-  void flushDigests();
-
-  CameraNotificationPolicy& policy() { return policy_; }
-
-private:
-  struct DeliverInput
-  {
-    const Json::Value& json;
-    const std::string& title;
-    const std::string& body;
-  };
-
-  void deliver(const DeliverInput& input);
-
-  void logFallback(const FallbackLogInput& input);
-
-  void purgeFallbackLog(int64_t nowS);
-
-  std::shared_ptr<NotificationClient> notificationClient_;
-  std::shared_ptr<IdentityClient> identityClient_;
-  FallbackLogRepository fallbackLogRepository_;
-  CameraNotificationPolicy policy_;
-};
-
-namespace camera_notifier
-{
-CameraNotificationPolicy::Config resolveConfig();
-
-CameraNotificationPolicy* subscribeObjectDetected(
-    NatsBus& bus, CameraNotifierDependencies dependencies);
-}

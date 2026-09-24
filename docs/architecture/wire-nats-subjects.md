@@ -25,20 +25,22 @@ argus.<domain>.v1.<event>
 |------------------------|----------------------|----------|----------------------------------------------|
 | `argus.sync.v1.change` | — (superseded) | — (none owed) | the pre-3a generic change subject: every domain publishes on its own `argus.<domain>.v1.change` now, so nothing publishes or consumes this one. The constant stays frozen in `nats-subject.hxx`, and the payload shape below is the shape every domain subject carries |
 | `argus.camera.v1.change` | argus-camera (F2-2) | argus-sync (durable `argus-sync-camera`), argus-memory (durable `argus-llm-catalog-camera`) | a camera-domain persisted change (same payload as `argus.sync.v1.change`, plus the module emits); retained on the camera stream `ARGUS_CAMERA` (7 days, file storage, 2-minute duplicate window), which both durables drain |
-| `argus.camera.v1.object_detected` | argus-camera (F2-3) | argus-guard (durable JetStream), gateway (degraded fallback) | an immutable per-object observation (schemaVersion 3: track/observation ids, identity tri-state, score history, evidence binding); never re-emitted to `/sync` |
-| `argus.guard.v1.heartbeat` | argus-guard | gateway | readiness heartbeat; while fresh the gateway's raw camera notifier yields to guard |
+| `argus.camera.v1.object_detected` | argus-camera (F2-3) | argus-guard (durable JetStream), argus-notification (degraded fallback) | an immutable per-object observation (schemaVersion 3: track/observation ids, identity tri-state, score history, evidence binding); never re-emitted to `/sync` |
+| `argus.guard.v1.heartbeat` | argus-guard | argus-notification | readiness heartbeat; while fresh argus-notification's raw camera notifier yields to guard |
 | `argus.guard.v1.encounter_closed` | argus-guard | argus-llm (durable JetStream) | finalized, redacted encounter summary; the only camera feed long-term memory reads. Published with `Nats-Msg-Id = <eventId>` on the guard-owned stream `ARGUS_GUARD` (7 days, file storage, 2-minute duplicate window); argus-llm receipts each event in `encounter_closed_inbox` and captures exactly one memory episode per receipt |
 | `argus.productivity.v1.change` | argus-productivity (F3-2) | argus-sync (durable `argus-sync-productivity`) | a productivity-domain change: the user-scoped row emits (`SocketEmitDto` + `users`) plus the `kind: audit` user_audit_log diffs argus-sync persists before fanning the rows out. Both legs land in the productivity-owned `change_outbox` first and are published with `Nats-Msg-Id = productivity-change:<32 hex>`, a row settling only on PubAck; the subject is retained on the productivity change stream `ARGUS_PRODUCTIVITY_CHANGE` (7 days, file storage, 2-minute duplicate window), which is the sink's own stream — a stream carries one subject set |
 | `argus.notification.v1.change` | argus-notification (F3-2) | argus-sync (durable `argus-sync-notification`) | a notification-domain change: the `kind: audit` markAsRead rows (same payload contract as the productivity subject) and nothing else — the domain's rows reach their users on the delivery subject below, so this sink is the audit-only `AuditSink`. The diffs land in the notification-owned `change_outbox` first and are published with `Nats-Msg-Id = notification-change:<32 hex>`, a row settling only on PubAck; the subject is retained on the notification change stream `ARGUS_NOTIFICATION_CHANGE` (7 days, file storage, 2-minute duplicate window), which is the sink's own stream and not the delivery one — a stream carries one subject set |
 | `argus.notification.v1.delivery` | argus-notification | argus-sync (durable JetStream, F3-1c) | one event per pending delivery intent (`deliveryId`, `notificationId`, `userId`, row fields); published with `Nats-Msg-Id = notification-delivery:<deliveryId>` on the notification-owned stream `ARGUS_NOTIFICATION` (7 days, file storage, 2-minute duplicate window); an intent settles only on PubAck; argus-sync receipts each delivery in `notification_delivery_inbox` and drops receipted redeliveries. Delivery guarantee is at-least-once, not exactly-once: a crash between socket dispatch and inbox settlement replays the dispatch on redelivery (one receipt row, possibly two socket emits). Same delivery id plus same canonical payload fingerprint is a replay and dispatches at most once per receipt; same id plus a different fingerprint is a conflict that is never dispatched; persistently failing dispatches dead-letter after a bounded attempt count with a broker Term. |
 | `argus.identity.v1.change` | identity domain (F4-6; its sink moved into the identity owner in F3-1c) | argus-memory (durable `argus-llm-catalog-identity`), argus-sync (durable `argus-sync-identity`), argus-auth (durable `argus-auth-identity`) | the memory catalog replica feed: person/user rows written by the identity surface; argus-sync's durable receives the same events and drops the catalog kind, because the identity surface's `/sync` frames arrive on the change vocabulary its sinks publish, never on this catalog feed; argus-auth's durable drops the cache entry behind a session verdict and revokes every session of a user that arrives disabled (Phase 3b-1) |
 | `argus.identity.v1.user-action` | identity domain (F3-1c) | argus-sync (durable `argus-sync-identity-action`) | the action journal: one actor doing one thing to one record, whether or not the record changed; argus-sync inserts it verbatim into `user_action_log`, keyed by its `Nats-Msg-Id` — `identity-action:` plus 32 hex the producer mints at enqueue — so a redelivery is ignored and the key is unique without borrowing the journal row's id |
-| `argus.notification.v1.push_intent` | argus-notification / gateway (F5-5) | argus-relay | a notification push intent carried to the home client through the tunnel transport (not a persisted change; never re-emitted to `/sync`) |
+| `argus.notification.v1.push_intent` | argus-notification (F5-5) | argus-relay | a notification push intent carried to the home client through the tunnel transport (not a persisted change; never re-emitted to `/sync`) |
 
 In F3-1c the gateway's sync fan-out moved to `argus-sync` — the F3-1c tags
-above name the rows whose consumer changed with it — and the gateway keeps its
-camera-stream and voice relays and its `camera-notifier` only. Every consumer
-of a change subject is a durable JetStream consumer: `argus-sync` holds one per
+above name the rows whose consumer changed with it — and in Phase 3d step 1 the
+gateway's `camera-notifier` moved to `argus-notification`, which is why the
+object_detected and heartbeat rows name that service as their consumer. Every
+consumer of a change subject is a durable JetStream consumer: `argus-sync`
+holds one per
 change stream (`ARGUS_CAMERA`, `ARGUS_NOTIFICATION_CHANGE`,
 `ARGUS_PRODUCTIVITY_CHANGE`, and `ARGUS_IDENTITY_CHANGE` twice — the change
 subject and the action journal), argus-auth holds one on
@@ -125,9 +127,9 @@ Published by argus-camera's operator after `EventIntelligence` evaluates the
 detections of one aggregation window. Unlike the change subjects it is not a
 persisted change: argus-guard consumes it through a durable JetStream consumer
 (explicit ack after commit, `Nats-Msg-Id` = `eventId` so the stream's duplicate
-window suppresses redeliveries), while the gateway's `camera-notifier` keeps a
-budgeted raw fallback that yields whenever a fresh `argus.guard.v1.heartbeat`
-is present. It never reaches `/sync`. The subject is retained on the JetStream
+window suppresses redeliveries), while argus-notification's `camera-notifier`
+keeps a budgeted raw fallback that yields whenever a fresh
+`argus.guard.v1.heartbeat` is present. It never reaches `/sync`. The subject is retained on the JetStream
 stream `ARGUS_CAMERA` (7 days, file storage, 2-minute duplicate window)
 together with `argus.camera.v1.change`.
 
@@ -175,7 +177,7 @@ together with `argus.camera.v1.change`.
 ```
 
 - `schemaVersion` — 3; v2 consumers that ignore unknown keys keep working
-  (the gateway and guard parsers read every key with a default).
+  (the argus-notification and guard parsers read every key with a default).
 - `eventId` — producer-unique id (`cameraId:publishedAtMs:sequence`); the guard
   inbox deduplicates by it and JetStream deduplicates redeliveries with it.
 - `capturedAt` — first frame of the aggregation window, in ms.
@@ -183,8 +185,8 @@ together with `argus.camera.v1.change`.
   `person_in_alert_zone`, `person_in_monitor_zone`, `person_night`,
   `person_day`, `vehicle_arrival`, `vehicle_night` (or
   `presence_escalating` when presence repeats instead of a vehicle).
-- `severity` — `critical`, `warning` or `info`; the gateway notification
-  carries it verbatim in the body.
+- `severity` — `critical`, `warning` or `info`; argus-notification carries it
+  verbatim in the body.
 - `knownPersonId` — present when the `known_person` rule matched through the
   real identity matcher (`[identity].identify`).
 - `objects[].trackId` / `firstSeenMs` / `lastSeenMs` / `dwellMs` — per-person
@@ -218,15 +220,16 @@ together with `argus.camera.v1.change`.
   means a perfectly stable box); present with the history.
 - `objects` — every detection of the window that survived the rules; bbox is
   frame pixels, top-left origin.
-- The gateway tolerates unknown extra keys and unknown rule/severity values
-  (it treats them as data, never as commands).
+- argus-notification tolerates unknown extra keys and unknown rule/severity
+  values (it treats them as data, never as commands).
 
 ## Payload of `argus.guard.v1.heartbeat`
 
 Published by argus-guard every `guard.heartbeat_s` (and immediately at boot).
 While a heartbeat fresher than `notifications.guard_heartbeat_timeout_s`
-(default 30 s) exists, the gateway's raw `camera-notifier` suppresses its own
-notifications and lets guard own the incident. Without a fresh heartbeat the
+(default 30 s) exists, argus-notification's raw `camera-notifier` suppresses
+its own notifications and lets guard own the incident. Without a fresh
+heartbeat the
 fallback only forwards protected-zone hard signals (`critical` severity or
 `person_in_alert_zone`) through its own sanity gate (minimum score median and
 dwell from the v3 observation keys, matched-known suppression; absent keys

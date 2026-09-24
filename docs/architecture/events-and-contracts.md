@@ -17,8 +17,8 @@
   `argus.notification.v1.delivery` → `argus-sync` (`argus-sync-delivery`).
   Same id plus same canonical fingerprint is a replay; same id plus a
   different fingerprint is a conflict that is never dispatched.
-- Readiness and health signals: `argus.guard.v1.heartbeat` (the gateway's raw
-  camera notifier yields while fresh) and `argus.camera.v1.health`.
+- Readiness and health signals: `argus.guard.v1.heartbeat` (argus-notification's
+  raw camera notifier yields while fresh) and `argus.camera.v1.health`.
 - `argus-sync` holds one durable JetStream consumer per change stream and
   routes by the feed it arrived on; camera audit diffs are persisted before
   fan-out. `argus-auth` holds a durable on `argus.identity.v1.change`

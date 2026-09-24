@@ -2,44 +2,157 @@
 #include <doctest/doctest.h>
 
 #include <drogon/drogon.h>
-#include <notification/notification-client.hxx>
+#include <feature/camera-notification/repositories/camera-fallback-log/camera-fallback-log-repository.hxx>
+#include <feature/camera-notification/services/camera-object-notifier.hxx>
+#include <identity/identity-client.hxx>
 #include <sqlite/db-service.hxx>
 #include <text/json-util.hxx>
-#include <sync/camera-notifier.hxx>
 
+#include <atomic>
 #include <chrono>
 #include <cstdio>
 #include <ctime>
-#include <future>
 #include <memory>
-#include <mutex>
 #include <optional>
 #include <string>
 #include <thread>
-#include <trantor/net/EventLoop.h>
+#include <unistd.h>
 #include <vector>
+
+#ifndef ARGUS_NOTIFICATION_SCHEMA
+#error "ARGUS_NOTIFICATION_SCHEMA must point at the notification schema.sql"
+#endif
 
 namespace
 {
-constexpr const char* kGatewayDb = "camera-notifier-test-gateway.db";
+int tempCounter()
+{
+  static std::atomic<int> counter{0};
+  return counter.fetch_add(1);
+}
 
-bool waitForFallbackRows(int64_t expected, std::chrono::milliseconds timeout)
+class TempDb
+{
+public:
+  explicit TempDb(const char* stem)
+      : path_(std::string(stem) + "-" + std::to_string(::getpid()) + "-" +
+              std::to_string(tempCounter()) + ".db")
+  {
+  }
+
+  ~TempDb()
+  {
+    std::remove(path_.c_str());
+    std::remove((path_ + "-wal").c_str());
+    std::remove((path_ + "-shm").c_str());
+  }
+
+  TempDb(const TempDb&) = delete;
+  TempDb& operator=(const TempDb&) = delete;
+
+  [[nodiscard]] const std::string& path() const { return path_; }
+
+private:
+  std::string path_;
+};
+
+bool waitForBoot(std::chrono::milliseconds timeout)
 {
   const auto deadline = std::chrono::steady_clock::now() + timeout;
   while (std::chrono::steady_clock::now() < deadline) {
-    const auto rows = DbService::gatewayClient()->execSqlSync(
-        "SELECT COUNT(*) AS total FROM gateway_fallback_event");
-    if (!rows.empty() && rows.front()["total"].as<int64_t>() >= expected)
+    if (drogon::app().isRunning())
       return true;
     std::this_thread::sleep_for(std::chrono::milliseconds(10));
   }
-  return false;
+  return drogon::app().isRunning();
+}
+
+class AppRunner
+{
+public:
+  AppRunner() : runner_([] { drogon::app().run(); }) {}
+
+  ~AppRunner()
+  {
+    if (!runner_.joinable())
+      return;
+    for (int i = 0; i < 3000 && !drogon::app().getLoop()->isRunning(); ++i)
+      std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    if (drogon::app().getLoop()->isRunning()) {
+      drogon::app().quit();
+      runner_.join();
+      return;
+    }
+    runner_.detach();
+  }
+
+  AppRunner(const AppRunner&) = delete;
+  AppRunner& operator=(const AppRunner&) = delete;
+
+private:
+  std::thread runner_;
+};
+
+class SharedBoot
+{
+public:
+  SharedBoot()
+  {
+    drogon::app().setLogLevel(trantor::Logger::kWarn);
+    drogon::app().addDbClient(
+        drogon::orm::Sqlite3Config{.connectionNumber = 1,
+                                   .filename = db_.path(),
+                                   .name = "default",
+                                   .timeout = -1});
+    runner_.emplace();
+    if (!waitForBoot(std::chrono::seconds(30)))
+      throw std::runtime_error("drogon loop did not boot");
+  }
+
+  [[nodiscard]] bool applySchema() const
+  {
+    return DbService::runScriptFile(ARGUS_NOTIFICATION_SCHEMA);
+  }
+
+private:
+  TempDb db_{"camera-notifier-test-notification"};
+  std::optional<AppRunner> runner_;
+};
+
+SharedBoot& sharedBoot()
+{
+  static SharedBoot boot;
+  return boot;
+}
+
+int64_t countRows(const std::string& sql)
+{
+  const auto rows = DbService::client()->execSqlSync(sql);
+  return rows.empty() ? 0 : rows.front()["total"].as<int64_t>();
+}
+
+int64_t cameraNotificationCount()
+{
+  return countRows(
+      "SELECT COUNT(*) AS total FROM notification WHERE type = 'camera'");
+}
+
+bool waitForCameraNotifications(int64_t expected,
+                                std::chrono::milliseconds timeout)
+{
+  const auto deadline = std::chrono::steady_clock::now() + timeout;
+  while (std::chrono::steady_clock::now() < deadline) {
+    if (cameraNotificationCount() >= expected)
+      return true;
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  return cameraNotificationCount() >= expected;
 }
 
 std::string fallbackReason(int64_t cameraId, const std::string& rule)
 {
-  const auto rows = DbService::gatewayClient()->execSqlSync(
-      "SELECT reason FROM gateway_fallback_event WHERE camera_id = ? AND "
+  const auto rows = DbService::client()->execSqlSync(
+      "SELECT reason FROM camera_fallback_event WHERE camera_id = ? AND "
       "rule = ? ORDER BY id DESC LIMIT 1",
       cameraId, rule);
   if (rows.empty())
@@ -76,6 +189,7 @@ struct EventJsonInput
   int64_t cameraId{0};
   const char* rule;
   const char* severity;
+  std::string eventId;
 };
 
 Json::Value eventJson(const EventJsonInput& input)
@@ -89,6 +203,8 @@ Json::Value eventJson(const EventJsonInput& input)
   event["cameraName"] = "Front door";
   event["rule"] = rule;
   event["severity"] = severity;
+  if (!input.eventId.empty())
+    event["eventId"] = input.eventId;
   Json::Value objects;
   Json::Value object;
   object["class"] = "person";
@@ -98,159 +214,11 @@ Json::Value eventJson(const EventJsonInput& input)
   return event;
 }
 
-bool waitForBoot(std::chrono::milliseconds timeout)
-{
-  const auto deadline = std::chrono::steady_clock::now() + timeout;
-  while (std::chrono::steady_clock::now() < deadline) {
-    if (drogon::app().isRunning())
-      return true;
-    std::this_thread::sleep_for(std::chrono::milliseconds(10));
-  }
-  return drogon::app().isRunning();
-}
-
-void removeDbFiles(const char* base)
-{
-  std::remove(base);
-  std::remove((std::string(base) + "-wal").c_str());
-  std::remove((std::string(base) + "-shm").c_str());
-}
-
-void drain(const drogon::orm::DbClientPtr& client)
-{
-  auto drained = std::make_shared<std::promise<void>>();
-  auto done = drained->get_future();
-  client->execSqlAsync(
-      "SELECT 1",
-      [drained](const drogon::orm::Result&) {
-        trantor::EventLoop::getEventLoopOfCurrentThread()->queueInLoop(
-            [drained]() { drained->set_value(); });
-      },
-      [drained](const std::exception_ptr& e) {
-        try {
-          std::rethrow_exception(e);
-        }
-        catch (const std::exception& ex) {
-          std::fprintf(stderr, "drain statement failed: %s\n", ex.what());
-        }
-        drained->set_value();
-      });
-  if (done.wait_for(std::chrono::seconds(10)) != std::future_status::ready)
-    throw std::runtime_error("the client's loop did not drain");
-}
-
-class AppRunner
-{
-public:
-  AppRunner() : runner_([] { drogon::app().run(); }) {}
-
-  ~AppRunner()
-  {
-    if (!runner_.joinable())
-      return;
-    for (int i = 0; i < 3000 && !drogon::app().getLoop()->isRunning(); ++i)
-      std::this_thread::sleep_for(std::chrono::milliseconds(10));
-    if (drogon::app().getLoop()->isRunning()) {
-      drogon::app().quit();
-      runner_.join();
-      return;
-    }
-    runner_.detach();
-  }
-
-  AppRunner(const AppRunner&) = delete;
-  AppRunner& operator=(const AppRunner&) = delete;
-
-private:
-  std::thread runner_;
-};
-
-struct SharedBoot
-{
-  std::optional<AppRunner> runner;
-
-  SharedBoot()
-  {
-    removeDbFiles(kGatewayDb);
-    drogon::app().setLogLevel(trantor::Logger::kWarn);
-    drogon::app().addDbClient(
-        drogon::orm::Sqlite3Config{.connectionNumber = 1,
-                                   .filename = kGatewayDb,
-                                   .name = "default",
-                                   .timeout = -1});
-    runner.emplace();
-    if (!waitForBoot(std::chrono::seconds(30)))
-      throw std::runtime_error("drogon loop did not boot");
-    DbService::setGatewayClient(drogon::app().getDbClient());
-    if (!DbService::runScriptFile(ARGUS_GATEWAY_SCHEMA_PATH,
-                                  DbService::gatewayClient()))
-      throw std::runtime_error("gateway schema apply failed");
-  }
-
-  ~SharedBoot()
-  {
-    runner.reset();
-    removeDbFiles(kGatewayDb);
-  }
-};
-
-SharedBoot& sharedBoot()
-{
-  static SharedBoot boot;
-  return boot;
-}
-
-class RecordingNotificationClient final : public NotificationClient
-{
-public:
-  RecordingNotificationClient()
-      : NotificationClient(
-            {.target = "127.0.0.1:1", .credential = "gateway-notif"})
-  {
-  }
-
-  NotificationCreateResult createNotifications(
-      const argus::notification::v1::CreateNotificationsRequest& request,
-      const argus::client::CallerIdentity&) const override
-  {
-    std::lock_guard lock(mutex_);
-    requests.push_back(request);
-    NotificationCreateResult result;
-    result.outcome = NotificationRpcOutcome::Success;
-    result.created = request.user_ids_size();
-    return result;
-  }
-
-  int totalUsers() const
-  {
-    std::lock_guard lock(mutex_);
-    int total = 0;
-    for (const auto& request : requests)
-      total += request.user_ids_size();
-    return total;
-  }
-
-  bool waitForUsers(int expected, std::chrono::milliseconds timeout) const
-  {
-    const auto deadline = std::chrono::steady_clock::now() + timeout;
-    while (std::chrono::steady_clock::now() < deadline) {
-      if (totalUsers() >= expected)
-        return true;
-      std::this_thread::sleep_for(std::chrono::milliseconds(20));
-    }
-    return totalUsers() >= expected;
-  }
-
-  mutable std::mutex mutex_;
-  mutable std::vector<argus::notification::v1::CreateNotificationsRequest>
-      requests;
-};
-
 class RecordingIdentityClient final : public IdentityClient
 {
 public:
   explicit RecordingIdentityClient(std::vector<int64_t> userIds)
-      : IdentityClient("127.0.0.1:1", "gateway-identity"),
+      : IdentityClient("127.0.0.1:1", "notification-identity"),
         userIds_(std::move(userIds))
   {
   }
@@ -264,6 +232,24 @@ public:
 private:
   std::vector<int64_t> userIds_;
 };
+
+CameraNotificationPolicy::Config openConfig()
+{
+  return {.budgetPerHour = 6,
+          .silentStartHour = -1,
+          .silentEndHour = -1,
+          .guardTimeoutMs = 30000};
+}
+
+std::shared_ptr<CameraObjectNotifier> makeNotifier(
+    const CameraNotificationPolicy::Config& config,
+    std::shared_ptr<IdentityClient> identityClient)
+{
+  return std::make_shared<CameraObjectNotifier>(
+      config,
+      CameraNotifierDependencies{.identityClient = std::move(identityClient),
+                                 .delivery = {}});
+}
 }
 
 TEST_CASE("the notification budget allows budget_per_hour then suppresses")
@@ -377,103 +363,108 @@ TEST_CASE("the guard heartbeat gates the raw fallback window")
   CHECK_FALSE(policy.guardReady(31001));
 }
 
-TEST_CASE("the consumer applies the budget and creates camera notifications")
+TEST_CASE("the consumer applies the budget and records camera notifications")
 {
   SharedBoot& boot = sharedBoot();
-  (void)boot;
-  auto notificationClient = std::make_shared<RecordingNotificationClient>();
-  auto identityClient =
-      std::make_shared<RecordingIdentityClient>(std::vector<int64_t>{1, 2});
-  CameraObjectNotifier notifier({.budgetPerHour = 6,
-                                 .silentStartHour = -1,
-                                 .silentEndHour = -1,
-                                 .guardTimeoutMs = 30000},
-                                {.notificationClient = notificationClient,
-                                 .identityClient = identityClient});
+  REQUIRE(boot.applySchema());
+  const int64_t before = cameraNotificationCount();
 
-  notifier.handle(eventJson({.cameraId = 1,
-                             .rule = "person_in_alert_zone",
-                             .severity = "critical"}));
-  REQUIRE(notificationClient->waitForUsers(2, std::chrono::seconds(10)));
+  auto notifier = makeNotifier(
+      openConfig(), std::make_shared<RecordingIdentityClient>(
+                        std::vector<int64_t>{1, 2}));
+
+  const auto hardEvent = [](int index) {
+    return eventJson({.cameraId = 1,
+                      .rule = "person_in_alert_zone",
+                      .severity = "critical",
+                      .eventId = "1:hard:" + std::to_string(index)});
+  };
+
+  notifier->handle(hardEvent(0));
+  REQUIRE(waitForCameraNotifications(before + 2, std::chrono::seconds(10)));
   {
-    std::lock_guard lock(notificationClient->mutex_);
-    REQUIRE(notificationClient->requests.size() == 1);
-    const auto& request = notificationClient->requests.front();
-    REQUIRE(request.user_ids_size() == 2);
-    CHECK(request.user_ids(0) == 1);
-    CHECK(request.user_ids(1) == 2);
-    CHECK(request.type() == "camera");
-    CHECK(request.title() == "Front door: person_in_alert_zone");
-    CHECK(request.body() == "Severity critical; detected person");
-    CHECK(json_util::fromString(request.data())["cameraId"].asInt64() == 1);
+    const auto rows = DbService::client()->execSqlSync(
+        "SELECT title, body, data FROM notification WHERE type = 'camera' "
+        "ORDER BY id DESC LIMIT 1");
+    REQUIRE(rows.size() == 1);
+    CHECK(rows.front()["title"].as<std::string>() ==
+          "Front door: person_in_alert_zone");
+    CHECK(rows.front()["body"].as<std::string>() ==
+          "Severity critical; detected person");
+    CHECK(json_util::fromString(rows.front()["data"].as<std::string>())
+              ["cameraId"].asInt64() == 1);
   }
 
-  for (int i = 0; i < 5; ++i)
-    notifier.handle(eventJson({.cameraId = 1,
-                               .rule = "person_in_alert_zone",
-                               .severity = "critical"}));
-  REQUIRE(notificationClient->waitForUsers(12, std::chrono::seconds(10)));
-  notifier.handle(eventJson({.cameraId = 1,
-                             .rule = "person_in_alert_zone",
-                             .severity = "critical"}));
+  for (int i = 1; i < 6; ++i)
+    notifier->handle(hardEvent(i));
+  REQUIRE(waitForCameraNotifications(before + 12, std::chrono::seconds(10)));
+  notifier->handle(hardEvent(6));
 
   std::this_thread::sleep_for(std::chrono::milliseconds(300));
-  CHECK(notificationClient->totalUsers() == 12);
+  CHECK(cameraNotificationCount() == before + 12);
 
-  notifier.handle(
-      eventJson({.cameraId = 1, .rule = "person_day", .severity = "info"}));
+  notifier->handle(eventJson({.cameraId = 1,
+                              .rule = "person_day",
+                              .severity = "info",
+                              .eventId = "1:soft:1"}));
   std::this_thread::sleep_for(std::chrono::milliseconds(300));
-  CHECK(notificationClient->totalUsers() == 12);
+  CHECK(cameraNotificationCount() == before + 12);
 
-  notifier.handle(json_util::fromString("[1, 2, 3]"));
+  notifier->handle(json_util::fromString("[1, 2, 3]"));
   std::this_thread::sleep_for(std::chrono::milliseconds(300));
-  CHECK(notificationClient->totalUsers() == 12);
+  CHECK(cameraNotificationCount() == before + 12);
+}
+
+TEST_CASE("a redelivered camera event records nothing a second time")
+{
+  SharedBoot& boot = sharedBoot();
+  REQUIRE(boot.applySchema());
+  const int64_t before = cameraNotificationCount();
+
+  auto notifier = makeNotifier(
+      openConfig(), std::make_shared<RecordingIdentityClient>(
+                        std::vector<int64_t>{1, 2}));
+  const auto event = eventJson({.cameraId = 42,
+                                .rule = "person_in_alert_zone",
+                                .severity = "critical",
+                                .eventId = "42:1700000000000:7"});
+
+  notifier->handle(event);
+  REQUIRE(waitForCameraNotifications(before + 2, std::chrono::seconds(10)));
+  notifier->handle(event);
+  notifier->handle(event);
+  std::this_thread::sleep_for(std::chrono::milliseconds(300));
+  CHECK(cameraNotificationCount() == before + 2);
 }
 
 TEST_CASE("delivery needs the identity roster and stops short without it")
 {
   SharedBoot& boot = sharedBoot();
-  (void)boot;
-  auto notificationClient = std::make_shared<RecordingNotificationClient>();
+  REQUIRE(boot.applySchema());
+  const int64_t before = cameraNotificationCount();
   const auto event = eventJson({.cameraId = 8,
                                 .rule = "person_in_alert_zone",
-                                .severity = "critical"});
+                                .severity = "critical",
+                                .eventId = {}});
 
-  CameraObjectNotifier withoutIdentity({.budgetPerHour = 6,
-                                        .silentStartHour = -1,
-                                        .silentEndHour = -1,
-                                        .guardTimeoutMs = 30000},
-                                       {.notificationClient =
-                                            notificationClient,
-                                        .identityClient = nullptr});
-  withoutIdentity.handle(event);
+  auto withoutIdentity = makeNotifier(openConfig(), nullptr);
+  withoutIdentity->handle(event);
   std::this_thread::sleep_for(std::chrono::milliseconds(300));
-  CHECK(notificationClient->totalUsers() == 0);
+  CHECK(cameraNotificationCount() == before);
 
-  CameraObjectNotifier
-      withEmptyRoster({.budgetPerHour = 6,
-                       .silentStartHour = -1,
-                       .silentEndHour = -1,
-                       .guardTimeoutMs = 30000},
-                      {.notificationClient = notificationClient,
-                       .identityClient =
-                           std::make_shared<RecordingIdentityClient>(
-                               std::vector<int64_t>{})});
-  withEmptyRoster.handle(event);
+  auto withEmptyRoster = makeNotifier(
+      openConfig(), std::make_shared<RecordingIdentityClient>(
+                        std::vector<int64_t>{}));
+  withEmptyRoster->handle(event);
   std::this_thread::sleep_for(std::chrono::milliseconds(300));
-  CHECK(notificationClient->totalUsers() == 0);
+  CHECK(cameraNotificationCount() == before);
 
-  CameraObjectNotifier
-      withRoster({.budgetPerHour = 6,
-                  .silentStartHour = -1,
-                  .silentEndHour = -1,
-                  .guardTimeoutMs = 30000},
-                 {.notificationClient = notificationClient,
-                  .identityClient = std::make_shared<RecordingIdentityClient>(
-                      std::vector<int64_t>{4})});
-  withRoster.handle(event);
-  REQUIRE(notificationClient->waitForUsers(1, std::chrono::seconds(10)));
-  CHECK(notificationClient->totalUsers() == 1);
+  auto withRoster = makeNotifier(
+      openConfig(), std::make_shared<RecordingIdentityClient>(
+                        std::vector<int64_t>{4}));
+  withRoster->handle(event);
+  REQUIRE(waitForCameraNotifications(before + 1, std::chrono::seconds(10)));
+  CHECK(cameraNotificationCount() == before + 1);
 }
 
 namespace
@@ -535,18 +526,14 @@ TEST_CASE("the fallback gate drops a matched known person")
                      .withHistory = true}));
   CHECK(verdict == CameraNotificationPolicy::FallbackDecision::DropKnown);
 
-  auto client = std::make_shared<RecordingNotificationClient>();
-  CameraObjectNotifier notifier(
-      fallbackConfig(),
-      {.notificationClient = client, .identityClient = nullptr});
-  notifier.handle(fallbackEvent({.cameraId = 1,
-                                 .identityState = "known",
-                                 .scoreMedian = 0.9,
-                                 .scoreSamples = 4,
-                                 .dwellMs = 5000,
-                                 .withHistory = true}));
-  CHECK(client->totalUsers() == 0);
-  const auto counts = notifier.policy().fallbackCounts();
+  auto notifier = makeNotifier(fallbackConfig(), nullptr);
+  notifier->handle(fallbackEvent({.cameraId = 1,
+                                  .identityState = "known",
+                                  .scoreMedian = 0.9,
+                                  .scoreSamples = 4,
+                                  .dwellMs = 5000,
+                                  .withHistory = true}));
+  const auto counts = notifier->policy().fallbackCounts();
   CHECK(counts.droppedKnown == 1);
   CHECK(counts.passed == 0);
 }
@@ -609,11 +596,9 @@ TEST_CASE("the fallback gate reads the primary track guard would")
   CHECK(policy.fallbackDecision(briefIntruder) ==
         CameraNotificationPolicy::FallbackDecision::DropShortDwell);
 
-  CameraObjectNotifier notifier(
-      fallbackConfig(),
-      {.notificationClient = nullptr, .identityClient = nullptr});
-  notifier.handle(eventWithPrimary(22));
-  const auto counts = notifier.policy().fallbackCounts();
+  auto notifier = makeNotifier(fallbackConfig(), nullptr);
+  notifier->handle(eventWithPrimary(22));
+  const auto counts = notifier->policy().fallbackCounts();
   CHECK(counts.droppedKnown == 0);
   CHECK(counts.passed == 1);
 }
@@ -630,18 +615,14 @@ TEST_CASE("the fallback gate drops weak detector scores")
                      .withHistory = true}));
   CHECK(verdict == CameraNotificationPolicy::FallbackDecision::DropWeakScore);
 
-  auto client = std::make_shared<RecordingNotificationClient>();
-  CameraObjectNotifier notifier(
-      fallbackConfig(),
-      {.notificationClient = client, .identityClient = nullptr});
-  notifier.handle(fallbackEvent({.cameraId = 1,
-                                 .identityState = "unrecognized",
-                                 .scoreMedian = 0.2,
-                                 .scoreSamples = 3,
-                                 .dwellMs = 5000,
-                                 .withHistory = true}));
-  CHECK(client->totalUsers() == 0);
-  CHECK(notifier.policy().fallbackCounts().droppedWeakScore == 1);
+  auto notifier = makeNotifier(fallbackConfig(), nullptr);
+  notifier->handle(fallbackEvent({.cameraId = 1,
+                                  .identityState = "unrecognized",
+                                  .scoreMedian = 0.2,
+                                  .scoreSamples = 3,
+                                  .dwellMs = 5000,
+                                  .withHistory = true}));
+  CHECK(notifier->policy().fallbackCounts().droppedWeakScore == 1);
 }
 
 TEST_CASE("the fallback gate drops short dwells")
@@ -656,18 +637,14 @@ TEST_CASE("the fallback gate drops short dwells")
                      .withHistory = true}));
   CHECK(verdict == CameraNotificationPolicy::FallbackDecision::DropShortDwell);
 
-  auto client = std::make_shared<RecordingNotificationClient>();
-  CameraObjectNotifier notifier(
-      fallbackConfig(),
-      {.notificationClient = client, .identityClient = nullptr});
-  notifier.handle(fallbackEvent({.cameraId = 1,
-                                 .identityState = "unrecognized",
-                                 .scoreMedian = 0.9,
-                                 .scoreSamples = 4,
-                                 .dwellMs = 500,
-                                 .withHistory = true}));
-  CHECK(client->totalUsers() == 0);
-  CHECK(notifier.policy().fallbackCounts().droppedShortDwell == 1);
+  auto notifier = makeNotifier(fallbackConfig(), nullptr);
+  notifier->handle(fallbackEvent({.cameraId = 1,
+                                  .identityState = "unrecognized",
+                                  .scoreMedian = 0.9,
+                                  .scoreSamples = 4,
+                                  .dwellMs = 500,
+                                  .withHistory = true}));
+  CHECK(notifier->policy().fallbackCounts().droppedShortDwell == 1);
 }
 
 TEST_CASE("the fallback gate passes strong evidence and fails open")
@@ -701,33 +678,30 @@ TEST_CASE("the fallback gate passes strong evidence and fails open")
         CameraNotificationPolicy::FallbackDecision::DropWeakScore);
 }
 
-TEST_CASE("every fallback drop lands a durable row in the gateway store")
+TEST_CASE("every fallback drop lands a durable row in the notification store")
 {
   SharedBoot& boot = sharedBoot();
-  (void)boot;
-  auto client = std::make_shared<RecordingNotificationClient>();
-  CameraObjectNotifier notifier(
-      fallbackConfig(),
-      {.notificationClient = client, .identityClient = nullptr});
+  REQUIRE(boot.applySchema());
+  auto notifier = makeNotifier(fallbackConfig(), nullptr);
 
-  notifier.handle(fallbackEvent({.cameraId = 11,
-                                 .identityState = "known",
-                                 .scoreMedian = 0.9,
-                                 .scoreSamples = 4,
-                                 .dwellMs = 5000,
-                                 .withHistory = true}));
-  notifier.handle(fallbackEvent({.cameraId = 12,
-                                 .identityState = "unrecognized",
-                                 .scoreMedian = 0.2,
-                                 .scoreSamples = 3,
-                                 .dwellMs = 5000,
-                                 .withHistory = true}));
-  notifier.handle(fallbackEvent({.cameraId = 13,
-                                 .identityState = "unrecognized",
-                                 .scoreMedian = 0.9,
-                                 .scoreSamples = 4,
-                                 .dwellMs = 500,
-                                 .withHistory = true}));
+  notifier->handle(fallbackEvent({.cameraId = 11,
+                                  .identityState = "known",
+                                  .scoreMedian = 0.9,
+                                  .scoreSamples = 4,
+                                  .dwellMs = 5000,
+                                  .withHistory = true}));
+  notifier->handle(fallbackEvent({.cameraId = 12,
+                                  .identityState = "unrecognized",
+                                  .scoreMedian = 0.2,
+                                  .scoreSamples = 3,
+                                  .dwellMs = 5000,
+                                  .withHistory = true}));
+  notifier->handle(fallbackEvent({.cameraId = 13,
+                                  .identityState = "unrecognized",
+                                  .scoreMedian = 0.9,
+                                  .scoreSamples = 4,
+                                  .dwellMs = 500,
+                                  .withHistory = true}));
   Json::Value soft = fallbackEvent({.cameraId = 14,
                                     .identityState = "unrecognized",
                                     .scoreMedian = 0.9,
@@ -736,27 +710,30 @@ TEST_CASE("every fallback drop lands a durable row in the gateway store")
                                     .withHistory = true});
   soft["rule"] = "person_day";
   soft["severity"] = "info";
-  notifier.handle(soft);
+  notifier->handle(soft);
 
-  REQUIRE(waitForFallbackRows(4, std::chrono::seconds(10)));
+  const std::string scoped =
+      "SELECT COUNT(*) AS total FROM camera_fallback_event WHERE camera_id IN "
+      "(11, 12, 13, 14)";
+  const auto deadline =
+      std::chrono::steady_clock::now() + std::chrono::seconds(10);
+  while (std::chrono::steady_clock::now() < deadline &&
+         countRows(scoped) < 4)
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  CHECK(countRows(scoped) == 4);
   CHECK(fallbackReason(11, "person_in_alert_zone") == "drop_known");
   CHECK(fallbackReason(12, "person_in_alert_zone") == "drop_weak_score");
   CHECK(fallbackReason(13, "person_in_alert_zone") == "drop_short_dwell");
   CHECK(fallbackReason(14, "person_day") == "non_hard_signal");
-  CHECK(client->totalUsers() == 0);
 }
 
-TEST_CASE("fallback logging degrades when the store is unavailable")
+TEST_CASE("fallback logging degrades when its table is unavailable")
 {
   SharedBoot& boot = sharedBoot();
-  (void)boot;
-  const std::string bare = "camera-notifier-test-bare.db";
-  std::remove(bare.c_str());
-  auto saved = DbService::gatewayClient();
-  auto replacement =
-      drogon::orm::DbClient::newSqlite3Client("filename=" + bare, 1);
-  DbService::setGatewayClient(replacement);
-  FallbackLogRepository repository;
+  REQUIRE(boot.applySchema());
+  DbService::client()->execSqlSync(
+      "ALTER TABLE camera_fallback_event RENAME TO camera_fallback_event_hidden");
+  const CameraFallbackLogRepository repository;
   CHECK_FALSE(drogon::sync_wait(repository.log(
       {.cameraId = 1,
        .rule = "person_in_alert_zone",
@@ -764,20 +741,16 @@ TEST_CASE("fallback logging degrades when the store is unavailable")
        .reason = FallbackDropReason::DropKnown,
        .createdAt = 1})));
   CHECK(drogon::sync_wait(repository.purgeOlderThan(2)) == 0);
-  drain(replacement);
-  replacement.reset();
-  DbService::setGatewayClient(saved);
-  std::remove(bare.c_str());
-  std::remove((bare + "-wal").c_str());
-  std::remove((bare + "-shm").c_str());
+  DbService::client()->execSqlSync(
+      "ALTER TABLE camera_fallback_event_hidden RENAME TO camera_fallback_event");
 }
 
 TEST_CASE("fallback retention purges only old rows")
 {
   SharedBoot& boot = sharedBoot();
-  (void)boot;
+  REQUIRE(boot.applySchema());
   CHECK(camera_notifier::resolveConfig().fallbackRetentionDays == 90);
-  FallbackLogRepository repository;
+  const CameraFallbackLogRepository repository;
   const int64_t now = static_cast<int64_t>(std::time(nullptr));
   REQUIRE(drogon::sync_wait(repository.log(
       {.cameraId = 21,
@@ -792,12 +765,8 @@ TEST_CASE("fallback retention purges only old rows")
        .reason = FallbackDropReason::NonHardSignal,
        .createdAt = now})));
   CHECK(drogon::sync_wait(repository.purgeOlderThan(now - 90 * 86400)) == 1);
-  const auto oldRows = DbService::gatewayClient()->execSqlSync(
-      "SELECT COUNT(*) AS total FROM gateway_fallback_event WHERE camera_id = "
-      "21");
-  CHECK(oldRows.front()["total"].as<int64_t>() == 0);
-  const auto freshRows = DbService::gatewayClient()->execSqlSync(
-      "SELECT COUNT(*) AS total FROM gateway_fallback_event WHERE camera_id = "
-      "22");
-  CHECK(freshRows.front()["total"].as<int64_t>() == 1);
+  CHECK(countRows("SELECT COUNT(*) AS total FROM camera_fallback_event WHERE "
+                  "camera_id = 21") == 0);
+  CHECK(countRows("SELECT COUNT(*) AS total FROM camera_fallback_event WHERE "
+                  "camera_id = 22") == 1);
 }

@@ -1,9 +1,6 @@
 build/
 config.toml
 certs/
-database/*.db
-database/*.db-wal
-database/*.db-shm
 *.log
 __pycache__/
 gen/

@@ -13,11 +13,13 @@ binary, own CMake preset, own `notification.db`.
 
 - **notification.db**: the `notification` and `notification_token` tables
   (Ruling AN — single-owner), DDL copied verbatim from
-  `database/schema.sql:428-450`. The schema lands as
+  `database/schema.sql:428-450`, plus `camera_fallback_event` since Phase 3d
+  step 1. The schema lands as
   `database/schema.sql` and is applied at boot through
   `DbService::runScriptFile` — abort on failure. `argus.db` is never
-  touched. No indexes exist on these tables in the legacy schema, so the
-  schema file carries none.
+  touched. No indexes exist on the two legacy tables, so the schema file
+  carries none for them; `camera_fallback_event` carries one on `created_at`
+  for its retention sweep and the per-outage queries.
 - **Foreign keys stay off** (schema file pragma + re-applied after
   `applyPragmas`, which would otherwise turn them on per connection): the
   tables reference `user(id)`, and the user rows live in identity.db, not
@@ -61,8 +63,8 @@ binary, own CMake preset, own `notification.db`.
   create+emit path (the whole fan-out is one multi-row INSERT with
   `RETURNING id`, so the emit mirrors strictly persisted rows), and
   `PullNotifications` serves the user-scoped `/sync` page from the identity
-  metadata. `argus-sync`'s `/sync` pulls and the gateway's camera-notifier are
-  the only clients; no other service opens notification.db.
+  metadata. `argus-sync`'s `/sync` pulls are the only client left outside
+  this service; no other service opens notification.db.
 - **Identity validation (f7-3)**: the JWT filter validates the caller over
   `argus.identity.v1.ValidateToken` at `[identity] target` — the user row,
   the bound refresh-token session and the device binding are resolved by the
@@ -122,9 +124,65 @@ hand-kept copies.
 What did NOT move: the `notification` table's own repository, schema and
 delivery service, which `notification-core` compiles here since sub-step
 3a-1b. Since rule 27 this service is the only writer and reader of those rows:
-the gateway's camera-notifier creates through `argus.notification.v1` and
-`argus-sync`'s `/sync` page pulls through the same contract. Both sides of the table are
+the camera-notifier below creates in-process and `argus-sync`'s `/sync` page
+pulls through `argus.notification.v1`. Both sides of the table are
 exclusively this service's, the notification-token side as before.
+
+## Camera notification policy (Phase 3d step 1)
+
+The camera object policy and its notifier moved here from `argus-gateway`'s
+`src/sync/` (rule 27: policy over this service's own rows belongs where the
+rows are). `src/feature/camera-notification/` now holds
+`CameraNotificationPolicy` — budget per camera per rolling hour, silent hours
+with wrap, the digest produced once the window rolls, guard-heartbeat
+readiness and the fallback gate — `CameraObjectNotifier`, the
+`camera-fallback-log` repository and its `fallback-drop-reason` vocabulary.
+
+- **Delivery is in-process.** `CameraObjectNotifier` calls
+  `NotificationService::createManyAndEmit` with a `commandId` derived from the
+  event, so camera notifications take the same durable
+  `notification_command` idempotency path `CreateNotifications` takes: a
+  redelivered camera event is a `duplicate`, not a second row, and a reused
+  command id with a different fingerprint raises
+  `NotificationCommandConflict`, which the notifier has no caller to answer
+  and therefore logs as a failed delivery. The gateway's route — a gRPC
+  `NotificationClient` presenting the gateway credential and setting no
+  command id — is gone with the gateway.
+- **Inputs over NATS**: `argus.camera.v1.object_detected` feeds the policy and
+  `argus.guard.v1.heartbeat` marks guard readiness
+  (`docs/architecture/wire-nats-subjects.md`); both are marshalled onto the
+  loop. The camera subscription is an ephemeral core-NATS consumer, so events
+  published while this service is down are lost with no replay (the JetStream
+  stream retains them for inspection only) — the fallback path is
+  best-effort by design, and the subject is not a sync change: payloads never
+  reach `/sync`. The notifiable-user roster comes from
+  `argus::clients::identity`, so an unconfigured identity target keeps the
+  fallback record but invents no recipient.
+- **`camera_fallback_event`** is this service's third table: one durable row
+  per dropped event with its reason (`non_hard_signal`, `drop_known`,
+  `drop_weak_score`, `drop_short_dwell`, `budget_silent`), purged on the
+  `fallback_retention_days` window. The gateway's `gateway_fallback_event` and
+  the 23-line `gateway.db` it lived in are gone.
+- **Why the fallback records what it does (Rounds 8/12/13, carried over)**:
+  process-lifetime counters cannot reconstruct a past outage window across a
+  restart, and that window is when visibility matters most — so the drops get
+  a durable row, deliberately minimal (camera, rule, severity, reason,
+  timestamp) and with no sync or endpoint surface. They are still counted per
+  reason (`fallbackCounts`, on `/health` under `notifications_fallback`
+  alongside a pass counter) and logged with their reason, and they are
+  deliberately never written to guard's `guard_decision_journal`: that table is
+  the belief gate's calibration population (guard-observed events carrying
+  belief scores), and fallback events carry no score and come from a different
+  population, so mixing them would corrupt threshold calibration. The write is
+  best-effort: a missing store degrades to the counters, never to a failure,
+  and the sanity gate fails open on absent wire keys so an older camera
+  behaves exactly as before. The gate is not the guard belief engine — a
+  degraded path with its own config, no shared module and no guard state.
+- Config lives under `[notifications]`: `budget_per_hour`, `silent_start`,
+  `silent_end`, `guard_heartbeat_timeout_s` and the `fallback_*` keys.
+- `tests/unit/camera-notifier-test.cc` is the moved suite, with the policy,
+  the notifier, the fallback gate and the retention purge as it was in the
+  gateway.
 
 ## Durable command inbox and delivery intents (F11 / R5)
 

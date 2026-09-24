@@ -13,7 +13,6 @@ include(${CMAKE_CURRENT_SOURCE_DIR}/../../cmake/argus-module.cmake)
 
 if(PROJECT_IS_TOP_LEVEL)
     find_package(Drogon CONFIG REQUIRED)
-    find_package(cnats CONFIG REQUIRED)
     find_package(tomlplusplus REQUIRED)
     if(NOT TARGET argus::contracts::auth)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/contracts/auth
@@ -32,10 +31,6 @@ if(PROJECT_IS_TOP_LEVEL)
     if(NOT TARGET argus::lib::text)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/text
                          ${CMAKE_BINARY_DIR}/text)
-    endif()
-    if(NOT TARGET argus::lib::nats)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/nats
-                         ${CMAKE_BINARY_DIR}/nats)
     endif()
     if(NOT TARGET argus::lib::runtime)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/runtime
@@ -60,14 +55,6 @@ if(PROJECT_IS_TOP_LEVEL)
     endif()
 endif()
 
-if(NOT TARGET argus::clients::identity)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/identity
-                     ${CMAKE_BINARY_DIR}/clients/identity EXCLUDE_FROM_ALL)
-endif()
-if(NOT TARGET argus::clients::notification)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/notification
-                     ${CMAKE_BINARY_DIR}/clients/notification EXCLUDE_FROM_ALL)
-endif()
 if(NOT TARGET argus::clients::sync)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/sync
                      ${CMAKE_BINARY_DIR}/clients/sync EXCLUDE_FROM_ALL)
@@ -90,19 +77,15 @@ add_library(gateway-core STATIC
     ${GATEWAY_SRC_ROOT}/proxy/reverse-proxy.cc
     ${GATEWAY_SRC_ROOT}/server/remote-config.cc
     ${GATEWAY_SRC_ROOT}/server/remote-gate.cc
-    ${GATEWAY_SRC_ROOT}/sync/camera-notifier.cc
     ${GATEWAY_SRC_ROOT}/sync/camera-stream-relay.cc
     ${GATEWAY_SRC_ROOT}/sync/camera-stream-socket.cc
-    ${GATEWAY_SRC_ROOT}/sync/fallback/fallback-log-repository.cc
 )
 
 target_include_directories(gateway-core PUBLIC ${GATEWAY_SRC_ROOT})
 
 target_link_libraries(gateway-core PUBLIC
     argus::lib::auth argus::lib::cert argus::lib::mdns argus::lib::http
-    argus::lib::nats argus::lib::sqlite argus::contracts::auth
-    argus::contracts::sync argus::clients::identity
-    argus::clients::notification argus::clients::sync)
+    argus::contracts::auth argus::contracts::sync argus::clients::sync)
 target_link_libraries(gateway-core PRIVATE argus::contracts::gateway)
 
 target_compile_options(gateway-core PRIVATE -Wall -Wextra)
@@ -120,24 +103,13 @@ add_executable(gateway-test ${CMAKE_CURRENT_SOURCE_DIR}/tests/gateway-test.cc)
 
 target_include_directories(gateway-test PRIVATE ${GATEWAY_SRC_ROOT})
 
-target_link_libraries(gateway-test PRIVATE gateway-core doctest::doctest argus::contracts::auth)
+target_link_libraries(gateway-test PRIVATE gateway-core doctest::doctest
+                                             argus::contracts::auth
+                                             argus::lib::sqlite)
 
 target_compile_options(gateway-test PRIVATE -Wall -Wextra)
 
 argus_runtime_rpath(gateway-test)
-
-add_executable(camera-notifier-test
-               ${CMAKE_CURRENT_SOURCE_DIR}/tests/camera-notifier-test.cc)
-
-target_include_directories(camera-notifier-test PRIVATE ${GATEWAY_SRC_ROOT})
-
-target_compile_definitions(camera-notifier-test PRIVATE
-    ARGUS_GATEWAY_SCHEMA_PATH="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql")
-
-target_link_libraries(camera-notifier-test PRIVATE gateway-core
-                                                   doctest::doctest)
-
-target_compile_options(camera-notifier-test PRIVATE -Wall -Wextra)
 
 get_target_property(DOCTEST_INCLUDE_DIRS doctest::doctest
                     INTERFACE_INCLUDE_DIRECTORIES)
@@ -147,7 +119,5 @@ if(DOCTEST_INCLUDE_DIRS)
 endif()
 
 set_target_properties(gateway-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
-set_target_properties(camera-notifier-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
 add_test(NAME gateway-test COMMAND gateway-test)
-add_test(NAME camera-notifier-test COMMAND camera-notifier-test)

@@ -22,7 +22,7 @@ own.
   database — Drogon's client until `freezeClient(dbPath)` arms the shutdown
   one, and that one from then on; the named clients a service installs at boot
   (`readOnlyClient`, `identityClient`, `cameraClient`, `productivityClient`,
-  `gatewayClient`, each with its `set*` installer); `enableUriFilenames`,
+  each with its `set*` installer); `enableUriFilenames`,
   `runScriptFile`, `applyPragmas`, `installExtensions`.
 - `src/sqlite/vec-db.{cc,hxx}` — `VecDb`: the singleton handle onto the vec
   database plus the mutex that serialises it.
@@ -50,8 +50,8 @@ own.
 - Opening another domain's database directly is rule 27's exception, not the
   default: it happens through the named client the host installs at boot. The
   two families fail differently, and the difference is load-bearing — the
-  identity, camera, productivity and gateway clients fall back to the host's
-  own database, while `readOnlyClient` does NOT: uninstalled there means the
+  identity, camera and productivity clients fall back to the host's own
+  database, while `readOnlyClient` does NOT: uninstalled there means the
   tables it serves do not exist at all, and the repositories answer empty
   rather than opening something else in their place.
 - `details/` is private by convention — nothing outside this package includes

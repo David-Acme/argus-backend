@@ -20,7 +20,7 @@ that apply to gateway code; when in doubt, the root file wins.
    goes to CONTEXT.md.
 7. **Logging** — Drogon built-ins only (`LOG_INFO`, `LOG_WARN`,
    `LOG_FATAL`); no spdlog.
-8. **Health safety** — `GET /health` must never fail or block on NATS or any
+8. **Health safety** — `GET /health` must never fail or block on any
    downstream service; degraded dependencies degrade logs, not health.
 9. **No direct audible/hardware paths** — the gateway never calls
    setAlarm/siren or camera action RPCs; audible intervention belongs to
@@ -35,10 +35,12 @@ that apply to gateway code; when in doubt, the root file wins.
 ```
 argus-gateway/
   CMakeLists.txt        add_subdirectory-compatible AND standalone buildable
-  src/main.cc           config load, NatsBus connect attempt, app run
-  src/controllers/      HTTP controllers (health today; identity domain in F1-3)
+  src/main.cc           config load, filter/proxy wiring, app run
+  src/proxy/            the reverse proxy and its route config
+  src/server/           the listener/remote-tunnel config and LAN gate
+  src/sync/             the `/camera-stream` relay and its control leg
   tests/                doctest suites
-  config.toml.example   minimal [gateway] + [nats] sections
+  config.toml.example   the gateway's own route/TLS/remote keys
   CONTEXT.md            purpose, ownership, wiring decisions
 ```
 

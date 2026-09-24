@@ -1,4 +1,5 @@
 #include <drogon/drogon.h>
+#include <feature/camera-notification/services/camera-object-notifier.hxx>
 #include <feature/rpc/notification-rpc-service.hxx>
 #include <auth/device-filter.hxx>
 #include <auth/jwt-filter.hxx>
@@ -9,6 +10,7 @@
 #include <http/error-handler.hxx>
 #include <http/health-controller.hxx>
 #include <http/listener-config.hxx>
+#include <identity/identity-client.hxx>
 #include <notification/nats-notification-change-sink.hxx>
 #include <notification/nats-notification-delivery-sink.hxx>
 #include <nats/nats-bus.hxx>
@@ -61,8 +63,6 @@ int main()
   const NotificationDbConfig notificationDb = NotificationConfig::resolveDb();
   const ListenerConfig listener = ListenerConfig::resolve(7028);
   const GrpcListenerConfig grpcListener = GrpcListenerConfig::resolve(7038);
-
-  drogon::app().registerController(std::make_shared<HealthController>(HealthStatus{.serviceName = "argus-notification", .extras = {}}));
 
   drogon::app().registerFilter(std::make_shared<DeviceFilter>());
   drogon::app().registerFilter(std::make_shared<ValidJsonFilter>());
@@ -135,6 +135,70 @@ int main()
     }
   }
 
+  const NotificationService::Dependencies deliveryDeps{
+      .deliverySink = deliverySink,
+      .pushSink = pushIntentSink,
+      .pushRequired = push_intent::enabledFromConfig()};
+
+  const std::string identityTarget =
+      ConfigService::getString("identity.target");
+  std::shared_ptr<CameraObjectNotifier> cameraNotifier;
+  if (natsBus) {
+    std::shared_ptr<IdentityClient> identityClient;
+    if (identityTarget.empty()) {
+      LOG_WARN << "Identity target unconfigured; camera notifications keep "
+                  "their fallback record but reach no recipient";
+    }
+    else {
+      identityClient = std::make_shared<IdentityClient>(
+          identityTarget, ConfigService::getString("identity.rpc_secret"));
+    }
+    cameraNotifier = std::make_shared<CameraObjectNotifier>(
+        camera_notifier::resolveConfig(),
+        CameraNotifierDependencies{.identityClient = std::move(identityClient),
+                                   .delivery = deliveryDeps});
+    camera_notifier::subscribe(*natsBus, *cameraNotifier);
+    LOG_INFO << "Camera object fallback subscribed on "
+             << nats_subject::kCameraObjectDetected;
+  }
+
+  const std::weak_ptr<NatsBus> healthBus = natsBus;
+  drogon::app().registerController(std::make_shared<HealthController>(
+      HealthStatus{
+          .serviceName = "argus-notification",
+          .extras = {{"nats",
+                      [healthBus]() {
+                        Json::Value status(Json::objectValue);
+                        const auto bus = healthBus.lock();
+                        if (!bus) {
+                          status["enabled"] = false;
+                          status["connected"] = false;
+                          return status;
+                        }
+                        status["enabled"] = true;
+                        status["connected"] = bus->isConnected();
+                        return status;
+                      }},
+                     {"notifications_fallback",
+                      [cameraNotifier]() {
+                        Json::Value status(Json::objectValue);
+                        if (cameraNotifier == nullptr) {
+                          status["subscribed"] = false;
+                          return status;
+                        }
+                        status["subscribed"] = true;
+                        const auto counts =
+                            cameraNotifier->policy().fallbackCounts();
+                        status["passed"] = Json::Int64(counts.passed);
+                        status["dropped_known"] =
+                            Json::Int64(counts.droppedKnown);
+                        status["dropped_weak_score"] =
+                            Json::Int64(counts.droppedWeakScore);
+                        status["dropped_short_dwell"] =
+                            Json::Int64(counts.droppedShortDwell);
+                        return status;
+                      }}}}));
+
   drogon::app().registerBeginningAdvice([&notificationDb, &changeSink]() {
     if (!DbService::runScriptFile(notificationDb.schemaPath)) {
       LOG_FATAL
@@ -183,10 +247,7 @@ int main()
     }
   });
 
-  NotificationRpcService notificationRpc(
-      {.deliverySink = deliverySink,
-       .pushSink = pushIntentSink,
-       .pushRequired = push_intent::enabledFromConfig()});
+  NotificationRpcService notificationRpc(deliveryDeps);
 
   grpc::ServerBuilder grpcBuilder;
   const std::string grpcAddress =

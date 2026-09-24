@@ -247,36 +247,17 @@ table. The app keeps working without any update.
   gRPC leg (`[camera] grpc_target`), identity tables stay on the default
   client.
 
-## Camera object_detected consumer (F2-3): budget, silent hours, digest
+## Camera object_detected consumer (F2-3): moved out in Phase 3d step 1
 
-- **`camera_notifier`** subscribes `argus.camera.v1.object_detected` (F2-3).
-  Events marshal from the cnats
-  dispatcher into the Drogon IO loop before touching policy or database —
-  same discipline as the change funnel. The subscription is an ephemeral
-  core-NATS consumer: no replay after a gateway restart, so events published
-  while it is down are lost (the JetStream stream retains them for
-  inspection only).
-- **This subject is NOT a sync change**: payloads never reach `/sync`; the
-  consumer turns them into `notification` rows via the existing
-  NotificationService (type `camera`) for active owner/guard users only.
-- **NotificationService is the notification service's own** (sub-step 3a-1b):
-  its repository/schema and the delivery service compile into
-  argus-notification's `notification-core`, so the gateway never compiles it —
-  the consumer turns camera events into rows over `argus.notification.v1`
-  (`argus::clients::notification`), the same leg the `/sync` page pull uses.
-- **Ruling AD budget**: 6 notifications per camera per rolling hour
-  (`[notifications] budget_per_hour`), silent local-hour window
-  (`silent_start`/`silent_end`, both -1 off, wrapping supported). Suppressed
-  events count per class; a cumulative digest flushes every minute once the
-  window or the silent window closes. Event payloads are data, never
-  commands — no notification path can arm or trigger any audible device.
-- **Emission (rule 27)**: notification Add/audit frames are emitted by
-  argus-notification's `NatsNotificationChangeSink` and re-fanned by the
-  gateway's NATS `user_change_fan_out` into the user rooms the sync socket
-  joined. The gateway installs no local user-change sink and performs no
-  local domain writes: `SocketService::publishChange` stays a no-op here by
-  design (the gateway consumes `argus.*.v1.change` and must never publish it,
-  or it would loop through its own sync fan-out).
+- **The consumer left this service**: `argus.camera.v1.object_detected` and
+  `argus.guard.v1.heartbeat` are subscribed, budgeted, digested, gated and
+  turned into `notification` rows by `argus-notification`'s own
+  `camera-notification` feature, which creates in-process. The gateway
+  compiles no notification service, opens no notification database and
+  publishes no camera-path event. The subject's payload contract stays in
+  `docs/architecture/wire-nats-subjects.md`; the policy's semantics, the
+  budget, the digest and the fallback record are in
+  `services/notification/CONTEXT.md`.
 
 ## Productivity + notification cutover (F3-2): routing, funnels, domain gRPC legs
 
@@ -309,14 +290,14 @@ table. The app keeps working without any update.
   and no local database read. `/sync` pull pages for the moved tables are
   byte-identical with the monolith's (golden-sync evidence).
 - **No cross-domain database access (rule 27)**: the gateway mounts and opens
-  only its own identity database. productivity.db and notification.db live
-  exclusively in their owner volumes; schema/DDL and WAL settings belong to the
-  owner services.
-- **camera-notifier retarget (Ruling AR)**: the camera notifier still runs
-  gateway-side but creates rows through
-  `NotificationClient::createNotifications` (`argus.notification.v1`), so
-  argus-notification persists the row, emits the user change and publishes the
-  push intent in its own process.
+  no database at all since Phase 3d step 1 (the 23-line `gateway.db` fallback
+  record was its last one). productivity.db, notification.db and that record
+  live exclusively in their owner volumes; schema/DDL and WAL settings belong
+  to the owner services.
+- **camera-notifier retarget (Ruling AR; superseded in Phase 3d step 1)**: the
+  notifier's RPC retarget is history — the notifier itself now lives in
+  argus-notification and creates in-process there, so no camera-path RPC
+  crosses a process boundary any more.
 - **Ruling AS (legacy stays up, goes quiet)**: historical — the retired
   monolith kept its whole notification/productivity code with the routes
   unreachable through the gateway; the build set died in F6-4.
@@ -476,57 +457,20 @@ table. The app keeps working without any update.
   which the whole fleet's filter chain calls instead of reading identity.db;
   no gateway process touches those rows any more.
 
-## Camera guard edge (F11): heartbeat fallback, guard proxy, durable delivery
+## Camera guard edge (F11): the policy left with its rows (Phase 3d step 1)
 
-- **Guard heartbeat fallback**: `camera_notifier` also subscribes
-  `argus.guard.v1.heartbeat` and tracks the last fresh beat
-  (`[notifications] guard_heartbeat_timeout_s`, default 30 s). While guard is
-  fresh the raw `object_detected` path suppresses itself ("guard owns
-  notifications"); when guard is down or disabled only hard signals
-  (`severity == critical`, `rule == person_in_alert_zone`) still create
-  notifications through `argus.notification.v1`. Budget, silent hours and the
-  per-minute digest apply unchanged to whatever the fallback emits.
-- **Fallback sanity gate (Round 7)**: hard signals that reach the fallback
-  pass one more self-contained filter before the budget — a minimum detector
-  score median (`fallback_min_score_median`, default 0.3), a minimum dwell
-  (`fallback_min_dwell_ms`, default 1000) and a matched-known suppression
-  (`fallback_suppress_known`, default true). Absent wire keys fail open, so
-  older cameras behave exactly as before. It is deliberately not the guard
-  belief engine: a degraded path with its own config, no shared module, no
-  guard state. Every fallback drop is logged with its reason and counted
-  toward the digest.
-- **Fallback durable record (Round 12)**: every fallback-path non-delivery
-  (non-hard ignore, gate drops, budget/silent suppress) also lands a row in
-  `gateway_fallback_event` in the gateway-owned `gateway.db`
-  (`services/gateway/database/schema.sql`; `database/schema.sql` stays
-  the identity schema because this container hosts both). Guard-ready
-  handoffs are recorded by guard, malformed payloads carry nothing to
-  record. Best-effort fire-and-forget write; a missing store degrades to
-  the counters, never to a failure. Query per outage window by
-  `created_at`, grouped by `reason`.
-- **Fallback record, revisited (Round 13)**: the earlier decision to keep
-  fallback drops out of any table no longer applies — process-lifetime
-  counters cannot reconstruct a past outage window across a restart, and
-  that window is exactly when visibility matters most. The table above is
-  deliberately minimal (camera, rule, severity, reason, timestamp), carries
-  no sync or endpoint surface, and is bounded by
-  `notifications.fallback_retention_days` (default 90, purged on the
-  per-minute digest tick). If the gateway store cannot be applied at boot,
-  the gateway keeps serving with a loud error naming the missing
-  `data/gateway` host directory; fallback drops fall back to counters only.
-  Fresh deploys need no action (SQLite creates the file); existing deploys
-  add the `data/gateway` bind (see the upgrade note in
-  docs/operations/shadow-mode-runbook.md).
-- **Fallback measurement decision (Round 8)**: fallback drops are counted
-  per reason (`fallbackCounts`, exposed on `/health` under
-  `notifications_fallback` alongside a pass counter) and logged with their
-  reason, but they are deliberately NOT written to `guard_decision_journal`.
-  The journal is the calibration population for the belief gate: guard-
-  observed events with belief scores. Fallback events carry no belief score
-  and come from a different population (guard absent), so mixing them in
-  would corrupt threshold calibration. A separate fallback table was rejected
-  as speculative structure with no Round 9 consumer: the per-reason counters,
-  the reason logs and the digest volumes are the fallback record.
+- **The camera notification policy moved to `argus-notification`**:
+  `camera_notifier` (budget per camera per rolling hour, silent hours, the
+  per-minute digest, the guard-heartbeat fallback and its sanity gate) and the
+  `argus.guard.v1.heartbeat` / `argus.camera.v1.object_detected` subscriptions
+  now run in `services/notification/src/feature/camera-notification/`, where it
+  creates through the in-process `NotificationService` and keeps its own
+  `camera_fallback_event` table. The gateway's `gateway_fallback_event`,
+  `gateway.db` and its 23-line `database/schema.sql` are gone with it, so this
+  process holds no database of its own. The policy's reasoning — why the
+  fallback table exists at all, why its drops are counted and logged but never
+  written to guard's `guard_decision_journal`, and why the gate fails open —
+  moved to `services/notification/CONTEXT.md`.
 - **`/guard` proxy**: `[guard] proxy_url` (default `http://127.0.0.1:7039`)
   routes `/guard` (up to 5 segments) to argus-guard's owner-only
   administrative API (mode, incidents, decisions, expected guests, person

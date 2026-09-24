@@ -11,10 +11,13 @@ that apply to notification-service code; when in doubt, the root file wins.
    vlm, tts, stt, vad stay in the legacy), no stream/media, no socket relay,
    and takes no labs.
 2. **Single-owner database (Rulings AN/AR, rule 27)** — this service alone
-   owns and opens `notification.db`. The gateway's camera-notifier creates
-   notifications through `argus.notification.v1` (CreateNotifications,
-   `argus::clients::notification`) and its `/sync` notification pulls use
-   PullNotifications; no other service mounts the volume.
+   owns and opens `notification.db`, including its own camera-notification
+   feature (`src/feature/camera-notification/`, moved here by Phase 3d step
+   1): the notifier subscribes to `argus.camera.v1.object_detected` and
+   `argus.guard.v1.heartbeat` and creates through the in-process
+   `NotificationService`, never through a client to itself. `argus-sync`'s
+   `/sync` notification pulls use `argus.notification.v1` PullNotifications;
+   no other service mounts the volume.
 3. **Parameter structs for 3+ params** — any function with 3+ parameters
    must take a struct (designated initializers, every member listed).
 4. **Dependency injection** — services/filters hold dependencies as private
@@ -53,10 +56,13 @@ argus-notification/
   src/notification/     notification-domain config resolution
   src/feature/rpc/      argus.notification.v1 owner (create + pull)
   src/feature/api/      HTTP controllers (health; write-side feature surface)
+  src/feature/camera-notification/
+                        camera object policy + notifier and the fallback log
   src/server/           internal listener resolution
   config.toml.example   notification-domain keys only ([server],
-                        [notifications], [jwt], [device]; no AI keys, no
-                        [identity])
+                        [notifications], [jwt], [device], [identity] — the
+                        roster the camera notifier resolves recipients from;
+                        no AI keys)
   CONTEXT.md            purpose, ownership, wiring decisions
 ```
 

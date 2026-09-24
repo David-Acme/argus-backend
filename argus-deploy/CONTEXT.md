@@ -96,8 +96,8 @@ with `scripts/setup.sh` / `scripts/setup.sh camera` on the host.
   via `NATS_CLIENT_PORT`, `NATS_MONITOR_PORT`) for the host-networked gateway.
 - **argus-camera** (Fase 2) lives on the `internal` bridge network too: its
   only host exposure is the loopback-published 7026 listener the gateway
-  proxies to, plus the 7036 gRPC listener the gateway pulls the camera sync
-  tables from (F6-5). Its go2rtc (1984/8554, Ruling AH) stays INSIDE the container —
+  proxies to, plus the 7036 gRPC listener `argus-sync` pulls the camera sync
+  tables from (F6-5, repointed at the sync split in Phase 3c-2). Its go2rtc (1984/8554, Ruling AH) stays INSIDE the container —
   no compose service and no host publish; the app only ever talks through the
   gateway. The camera config points `[nats] url` at the internal alias
   `nats://nats:4222`. The camera domain is wholly served by this service: the
@@ -131,7 +131,7 @@ with `scripts/setup.sh` / `scripts/setup.sh camera` on the host.
 
 | Service | Image | Notes |
 |---|---|---|
-| gateway | `argus-gateway:local` | TLS 7024, `/health` healthcheck; owns the 23-line gateway.db record and proxies each domain to its backend; host networking, so it reaches its peers on 127.0.0.1 |
+| gateway | `argus-gateway:local` | TLS 7024, `/health` healthcheck; proxies each domain to its backend and holds no database of its own since Phase 3d step 1; host networking, so it reaches its peers on 127.0.0.1 |
 | argus-auth | `argus-auth:local` | internal network (alias `argus-auth`), loopback 7042 + 7043 publishes; owns auth.db; runs the refresh limiter and mints the device credentials and the sessions every other service validates; `/health` healthcheck |
 | argus-identity | `argus-identity:local` | internal network (alias `argus-identity`), loopback 7044 + 7040 (fleet-secret RPC) publishes; owns identity.db; the users, persons, face embeddings, invitations and private portraits; `/health` healthcheck; config bind rw (the pairing state persists) |
 | argus-camera | `argus-camera:local` | internal network, loopback 7026 + 7036 (sync gRPC) publishes; owns camera.db; `/health` healthcheck; `/dev/dri` |
@@ -153,16 +153,16 @@ with `scripts/setup.sh` / `scripts/setup.sh camera` on the host.
 | notification-init | `argus-notification:local` | `profiles: [notification-init]`, runs `argus-migrate-notification` against the notification data directory |
 | vulkan-probe | `argus-camera:local` | `profiles: [vulkan-probe]`, runs `argus-vulkan-probe` with `/dev/dri` |
 
-Ordering: `nats` goes healthy first and the gateway, argus-identity and
-argus-camera wait for `nats: service_healthy` — the gateway's NatsBus connects
-once at boot with no retry, so a lost boot race would leave every fan-out
-subscription silently dead while all healthchecks stay green. The three then
-boot in parallel and each opens only its own database: since F6-5 the gateway
-pulls the camera sync tables over the 7036 gRPC leg (no camera.db mount),
-reaches the people domain through `argus::clients::identity` (`identity.target`,
-the fleet-secret 7040 leg) and keeps the 23-line `gateway/gateway.db`
-degraded-fallback record, while argus-identity creates identity.db from its own
-schema. No service waits on another's health, so there is no cycle. A fresh
+Ordering: `nats` goes healthy first and every service that carries a bus waits
+for `nats: service_healthy` — the initial connect has no retry, so a lost boot
+race would leave the bus disabled, its subscriptions silently absent while all
+healthchecks stay green. They then boot in parallel and each opens only its own
+database: argus-identity creates identity.db from its own schema and serves the
+fleet-secret 7040 leg, argus-sync owns sync.db and pulls the camera,
+notification and productivity sync tables over their owners' gRPC legs, and the
+gateway holds no database, no bus and no client of its own — its camera
+notification policy moved to argus-notification in Phase 3d step 1. No service
+waits on another's health, so there is no cycle. A fresh
 `up -d` without camera-init therefore works end to end: argus-camera creates
 camera.db and serves both the CRUD routes and the sync gRPC pulls with live
 rows — but
@@ -196,8 +196,8 @@ notification.db, each in its own data subdirectory bind-mounted from
   pulls for the 7 tables go over that gRPC leg.
 - `argus-notification` mounts `${ARGUS_DATA_DIR:-./data}/notification` rw at
   `/opt/argus/notification` and serves
-  `argus.notification.v1.NotificationService` on 7038. The gateway's
-  camera-notifier creates through `CreateNotifications` and `argus-sync`'s
+  `argus.notification.v1.NotificationService` on 7038. Its own camera notifier
+  creates through the in-process service (Phase 3d step 1) and `argus-sync`'s
   `/sync` notification pulls use `PullNotifications`; the directory is mounted
   by no one else (rule 27).
 - `productivity-init` / `notification-init` are the only migration paths
@@ -209,13 +209,13 @@ notification.db, each in its own data subdirectory bind-mounted from
   `docker compose --profile productivity-init run --rm productivity-init`
   (and the notification twin) with the stack stopped; both are idempotent and
   no-op on a schema-current target.
-- Boot order (Ruling AV): nats goes healthy first; the gateway, argus-camera,
-  argus-productivity and argus-notification then boot in parallel — every one
-  of them gates on `nats: service_healthy` because each connects its NatsBus
-  once at boot with no retry. argus-productivity/argus-notification wait
-  bounded (30s) for the gateway-created identity.db inside their own boot
-  (read-only open), so there is no compose dependency on the gateway and no
-  cycle.
+- Boot order (Ruling AV): nats goes healthy first; the services that carry a
+  bus then boot in parallel — every one of them gates on
+  `nats: service_healthy` because each connects its NatsBus once at boot with
+  no retry. argus-productivity and argus-notification no longer wait for an
+  identity.db the gateway created (the people authority is argus-identity's
+  own service, Phase 3b-2), and no service waits on another's health, so
+  there is no cycle.
 
 Fase 4 (Rulings CB/CC/CD/CE, compose v4) adds the four AI engine services:
 
@@ -249,7 +249,7 @@ Fase 4 (Rulings CB/CC/CD/CE, compose v4) adds the four AI engine services:
   bus consumer returns with f8-b4, when argus-llm hosts the memory catalog
   replica and gates on nats. argus-voice
   (F6-3) also carries a bus consumer and gates the same way; the gateway
-  gates on nats.
+  carries no bus and therefore no nats dependency since Phase 3d step 1.
 - **Resource limits (Ruling CD).** The per-service mem_limit/cpus pair is
   the engine budget boundary. Derived from the ThreadBudget defaults on this
   reference host (16 hardware threads: compute 8, batch 8, heavy 12, light 4,
@@ -450,7 +450,7 @@ the matching `*-init` profile is the only migration path onto a volume.
   (`config.productivity.toml`, `config.notification.toml`) name
   `productivity/productivity.db` and `notification/notification.db` inside
   their bind-mounted data dirs; the gateway holds no `db` key for either —
-  it reaches both over `proxy_url`/`grpc_target`.
+  it reaches both over `proxy_url`, as it reaches every other domain.
   The AI service configs carry NO secrets at all (no JWT, no device
   filter): the instance files are pure engine knobs, the only
   per-install choices being the remote gates (`[stt]/[tts]/[llm] remote_url`

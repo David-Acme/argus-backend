@@ -84,3 +84,18 @@ CREATE TABLE IF NOT EXISTS change_outbox (
 
 CREATE INDEX IF NOT EXISTS idx_change_outbox_status
     ON change_outbox (status, created_at);
+
+CREATE TABLE IF NOT EXISTS camera_fallback_event (
+    id         INTEGER NOT NULL  PRIMARY KEY AUTOINCREMENT,
+    camera_id  INTEGER NOT NULL  DEFAULT 0,
+    rule       TEXT    NOT NULL  DEFAULT '',
+    severity   TEXT    NOT NULL  DEFAULT '',
+    reason     TEXT    NOT NULL  DEFAULT ''
+                         CHECK (reason IN ('non_hard_signal', 'drop_known',
+                                'drop_weak_score', 'drop_short_dwell',
+                                'budget_silent')),
+    created_at INTEGER NOT NULL  DEFAULT (strftime('%s', 'now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_camera_fallback_created
+    ON camera_fallback_event (created_at DESC);

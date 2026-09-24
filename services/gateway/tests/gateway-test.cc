@@ -120,20 +120,20 @@ TEST_CASE("runtime override wins over the config file value")
   const char* path = "gateway-test-config-runtime.toml";
   {
     std::ofstream file(path);
-    file << "[database]\n"
-         << "file = \"database/argus.db\"\n";
+    file << "[test]\n"
+         << "value = \"file\"\n";
   }
 
   ConfigService::load(path);
-  CHECK(ConfigService::getString("database.file") == "database/argus.db");
+  CHECK(ConfigService::getString("test.value") == "file");
 
-  ConfigService::setRuntimeString("database.file", "database/gateway.db");
-  CHECK(ConfigService::getString("database.file") == "database/gateway.db");
+  ConfigService::setRuntimeString("test.value", "runtime");
+  CHECK(ConfigService::getString("test.value") == "runtime");
 
   std::remove(path);
 }
 
-TEST_CASE("gateway config section resolves listener and nats keys")
+TEST_CASE("gateway config section resolves listener and remote keys")
 {
   const char* path = "gateway-test-config.toml";
   {
@@ -142,15 +142,15 @@ TEST_CASE("gateway config section resolves listener and nats keys")
          << "port = 7024\n"
          << "host = \"127.0.0.1\"\n"
          << "\n"
-         << "[nats]\n"
-         << "url = \"\"\n";
+         << "[remote]\n"
+         << "tunnel_port = 0\n";
   }
 
   ConfigService::load(path);
 
   CHECK(ConfigService::getInt("gateway.port") == 7024);
   CHECK(ConfigService::getString("gateway.host") == "127.0.0.1");
-  CHECK(ConfigService::getString("nats.url").empty());
+  CHECK(ConfigService::getInt("remote.tunnel_port") == 0);
 
   std::remove(path);
 }

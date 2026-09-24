@@ -64,7 +64,7 @@ GO2RTC_DIR="$(abs_path "${ARGUS_GO2RTC_DIR:-third_party/go2rtc}")"
 ensure_data_tree() {
   local sub
   mkdir -p "$DATA_DIR"
-  for sub in identity auth camera productivity notification guard memory gateway sync; do
+  for sub in identity auth camera productivity notification guard memory sync; do
     mkdir -p "$DATA_DIR/$sub"
   done
   chmod 700 "$DATA_DIR" "$DATA_DIR"/* 2>/dev/null || true
@@ -191,7 +191,6 @@ ensure_object_store() {
   ensure_secret_file "$secrets/rustfs-bucket" \
     "argus-$(openssl rand -hex 10)-private"
 
-  configure_storage "$DEPLOY_DIR/config.gateway.toml" "http://127.0.0.1:9000"
   configure_storage "$DEPLOY_DIR/config.identity.toml" "http://rustfs:9000"
   configure_storage "$DEPLOY_DIR/config.camera.toml" "http://rustfs:9000"
   configure_storage "$DEPLOY_DIR/config.guard.toml" "http://rustfs:9000"

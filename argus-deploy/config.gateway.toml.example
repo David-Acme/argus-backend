@@ -3,8 +3,6 @@ host = "0.0.0.0"
 port = 7024
 plain = false
 min_protocol = "TLSv1.2"
-db = "gateway/gateway.db"
-schema = "gateway/schema.sql"
 
 [drogon.app]
 number_of_threads = 0
@@ -30,12 +28,6 @@ enable_request_stream = false
 handle_sig_term = true
 relaunch_on_error = false
 
-[nats]
-url = "nats://127.0.0.1:4222"
-reconnect_wait_ms = 2000
-max_reconnects = 60
-
-
 [jwt]
 secret = ""
 refresh_secret = ""
@@ -53,8 +45,6 @@ rpc_secret = "CHANGE_ME_SAME_IN_EVERY_SERVICE"
 
 [identity]
 proxy_url = "https://127.0.0.1:7044"
-target = "127.0.0.1:7040"
-rpc_secret = "CHANGE_ME_SAME_IN_EVERY_SERVICE"
 
 [camera]
 stream_url = "ws://127.0.0.1:7026/media"
@@ -90,26 +80,12 @@ wss = "true"
 
 [notifications]
 proxy_url = "http://127.0.0.1:7028"
-grpc_target = "127.0.0.1:7038"
 credential = "CHANGE_ME_GATEWAY_NOTIFICATION"
-budget_per_hour = 6
-silent_start = -1
-silent_end = -1
 
 [remote]
 tunnel_port = 0
 enabled = false
 hostname = ""
-
-[storage]
-mode = "s3"
-
-[storage.s3]
-endpoint = "http://127.0.0.1:9000"
-region = "us-east-1"
-bucket = ""
-access_key = ""
-secret_key = ""
 
 [guard]
 proxy_url = "http://127.0.0.1:7039"

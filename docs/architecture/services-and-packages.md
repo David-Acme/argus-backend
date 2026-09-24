@@ -9,7 +9,7 @@ WebSocket is served by `argus-sync` on its own TLS listener.
 
 | Service | Role | Listeners | Owns data |
 |---|---|---|---|
-| `argus-gateway` | Public TLS API, WebSocket relay, the domain proxy | HTTPS 7024 | `gateway.db` (the degraded-fallback record) |
+| `argus-gateway` | Public TLS API, WebSocket relay, the domain proxy | HTTPS 7024 | none (its fallback record moved to argus-notification in Phase 3d step 1) |
 | `argus-auth` | Session and device authority: refresh tokens, device credentials, login challenges, session-verdict RPC | HTTPS 7042, gRPC 7043 | `auth.db` |
 | `argus-identity` | Users, persons, face embeddings, invitations, portraits and pairing | HTTPS 7044, gRPC 7040 | `identity.db` |
 | `argus-sync` | `/sync` WebSocket surface, rooms and change fan-out, audit persistence, sync control RPC | HTTPS 7025, gRPC 7041 | `sync.db` |

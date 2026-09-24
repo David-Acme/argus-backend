@@ -35,13 +35,10 @@ argus-deploy gateway configuration. Copy to config.gateway.toml (gitignored) nex
 
 | Key | Notes |
 |---|---|
-| `gateway.db` | Gateway-owned degraded-fallback record; identity and sync state stay in their owners, reached through `argus::clients::identity` and the sync control leg. |
 | `identity.proxy_url` | The identity HTTP surface the gateway proxies its identity prefixes to (`https://127.0.0.1:7044`: loopback, because this container is host-networked). |
-| `identity.target` | argus-identity's fleet-secret RPC listener (loopback 7040) behind the identity client. |
-| `identity.rpc_secret` | Required whenever the target is set; same value in every service. |
 | `sync.control_target` | The sync service's control plane (unary gRPC); empty disables the imperative leg, leaving role changes and disconnects undelivered. |
 | `sync.control_secret` | Required whenever the control target is set; same value in every service. |
-| `storage.mode` | Private object storage (RustFS). provision-host.sh fills the [storage.s3] keys with the generated bucket and application credentials; the endpoint is the host loopback publish because the gateway runs host-networked. |
+| `notifications.credential` | Dead since Phase 3d step 1: the camera notifier that presented it now lives in argus-notification, and the gateway reaches this domain only through `notifications.proxy_url`. provision-host.sh still mints argus-notification's `[grpc] caller_gateway` from this key; Phase 3d step 1c repoints that pair at config.sync.toml and removes this key. |
 
 ## `argus-deploy/config.auth.toml.example`
 
@@ -121,7 +118,11 @@ argus-deploy argus-notification configuration. Copy to config.notification.toml 
 
 | Key | Notes |
 |---|---|
-| `grpc.caller_guard` | Capability credentials, each paired with its single caller. |
+| `grpc.caller_guard` | Capability credential for the guard -> notification edge (`CreateNotifications`), paired with guard's `notifications.credential`. |
+| `grpc.caller_gateway` | Capability credential for `PullNotifications`; provision-host.sh mints it from the gateway's `notifications.credential`, and no `fill_deploy_pair` writes argus-sync's `notifications.credential`, so on a provisioned installation that side keeps the published placeholder and the pull is refused `UNAUTHENTICATED`. Phase 3d step 1c adds the sync pair. |
+| `notifications.budget_per_hour` and the `silent_*` / `guard_heartbeat_timeout_s` / `fallback_*` keys | The camera object policy (Phase 3d step 1), as documented for `services/notification/config.toml.example` below. |
+| `nats.url` | The bus the camera notifier subscribes on; the deploy endpoint is the `nats` service. |
+| `[push] enabled` | Push intents through the tunnel transport; off in a LAN-only deployment. |
 
 ## `argus-deploy/config.productivity.toml.example`
 
@@ -155,7 +156,7 @@ argus-deploy argus-sync configuration. Copy to config.sync.toml (gitignored) nex
 | `voice.target` | The voice service the /sync forwarder relays voice:* frames and PCM to. |
 | `identity.target` | argus-identity's fleet-secret RPC listener (`argus-identity:7040`): the user directory the socket resolves names through and the identity pull source beside it. |
 | `identity.rpc_secret` | Must match argus-identity's [identity] rpc_secret, or the directory and the identity pull both fail. |
-| `notifications.credential` | Caller capability credential for the sync -> notification pull edge; must match argus-notification's [grpc] caller_gateway. |
+| `notifications.credential` | Caller capability credential for the sync -> notification pull edge; must match argus-notification's [grpc] caller_gateway. Unprovisioned: no `fill_deploy_pair` writes this key, so an installation keeps the published placeholder while the notification side is minted from the gateway's key, and the pull is refused `UNAUTHENTICATED`. Phase 3d step 1c adds the pair. |
 
 ## `argus-deploy/config.tts.toml.example`
 
@@ -268,19 +269,13 @@ Optional keys the template does not set:
 
 argus-gateway configuration. Copy to config.toml (gitignored) to run. The gateway owns the public TLS 7024 listener and forwards each extracted domain to its service backend through the proxy route table.
 
-- **`[drogon.app]`** — The listeners, db_clients and plugins are built by the gateway itself.
+- **`[drogon.app]`** — The listeners and plugins are built by the gateway itself.
 
 | Key | Notes |
 |---|---|
-| `gateway.db` | Gateway-owned degraded-fallback record; identity and sync state stay in their owners, reached through `argus::clients::identity` and the sync control leg. |
 | `identity.proxy_url` | The identity HTTP surface the gateway proxies its identity prefixes to. |
-| `identity.target` | argus-identity's fleet-secret RPC listener behind the identity client. |
 | `sync.control_target` | The sync service's control plane (unary gRPC); empty disables the imperative leg, leaving role changes and disconnects undelivered. |
 | `sync.control_secret` | Fleet secret every control call carries; same value in every service. |
-| `notifications.credential` | Caller capability credential for the gateway -> notification edge. |
-| `notifications.guard_heartbeat_timeout_s` | Freshness window for the argus-guard heartbeat: while a heartbeat is newer than this, the raw camera notifier yields to guard (seconds). |
-| `notifications.fallback_min_score_median` | Degraded fallback sanity gate for hard signals while guard is absent. Absent wire keys fail open; a matched known identity never pages. |
-| `notifications.fallback_retention_days` | Fallback-record retention in days, matching the guard decision journal. Values <= 0 keep every row. |
 
 ## `services/guard/config.toml.example`
 
@@ -324,7 +319,18 @@ argus-notification configuration. Copy to config.toml (gitignored) to run.
 |---|---|
 | `notifications.ack_window_s` | Display-confirmation window in seconds; sent deliveries older than this without an ack surface as unacknowledged-old in the delivery summary. |
 | `notifications.selftest_interval_s` | Synthetic delivery-probe period in seconds; <= 0 disables the probe. Each probe creates one user-0 row, publishes it and records the settle outcome. |
-| `grpc.caller_guard` | Caller capability credentials, each shared only with its single caller. |
+| `notifications.budget_per_hour` | Camera notification budget per camera per rolling hour; the digest reports what the budget held back. |
+| `notifications.silent_start` / `silent_end` | Silent hours (local hour, `-1`/`-1` disables); a window that wraps midnight is honoured, and notifications inside it are counted for the digest. |
+| `notifications.guard_heartbeat_timeout_s` | Freshness window for the argus-guard heartbeat: while a heartbeat is newer than this, the raw camera notifier yields to guard (seconds). |
+| `notifications.fallback_min_score_median` | Degraded fallback sanity gate for hard signals while guard is absent. Absent wire keys fail open; a matched known identity never pages. |
+| `notifications.fallback_min_dwell_ms` | Minimum dwell a hard-signal track must show before the fallback forwards it (milliseconds). |
+| `notifications.fallback_suppress_known` | Whether a matched known identity suppresses a hard signal in the fallback path. |
+| `notifications.fallback_retention_days` | Fallback-record retention in days, matching the guard decision journal. Values <= 0 keep every row. |
+| `identity.target` | The identity roster the camera notifier resolves its recipients from. Empty keeps the fallback record but reaches no recipient. |
+| `identity.rpc_secret` | Fleet secret the roster call carries; same value in every service. |
+| `nats.url` | The event bus the camera notifier subscribes on (`argus.camera.v1.object_detected`, `argus.guard.v1.heartbeat`); empty leaves the bus disabled and camera notifications off. |
+| `grpc.caller_guard` | Capability credential for the guard -> notification edge (`CreateNotifications`). |
+| `grpc.caller_gateway` | Capability credential for `PullNotifications`, which argus-sync presents from its own `notifications.credential`. The key keeps the gateway's name until Phase 3d step 1c renames the edge. |
 
 ## `services/auth/config.toml.example`
 

@@ -91,7 +91,7 @@ as this one-shot tool — `sync-init` mounts identity's directory read-only,
   new image reuses it unchanged:
   - `${ARGUS_DATA_DIR:-./data}` (default `argus-deploy/data/`, gitignored)
     holds one directory per owner: `identity/` (argus-identity,
-    `identity.db` + WAL), `gateway/` (the gateway's own `gateway.db` + WAL),
+    `identity.db` + WAL),
     `auth/` (argus-auth, `auth.db` + WAL), `sync/` (argus-sync, `sync.db` +
     WAL), `camera/`, `productivity/`,
     `notification/`, `guard/` and `memory/`;
@@ -115,8 +115,10 @@ as this one-shot tool — `sync-init` mounts identity's directory read-only,
   file there, never on a host bind.
 - RustFS stores private objects under `${ARGUS_DATA_DIR}/rustfs/objects`
   (bucket-scoped application credentials in
-  `${ARGUS_DATA_DIR}/rustfs/secrets`, 0600). The gateway reaches it at
-  `http://127.0.0.1:9000`; internal services at `http://rustfs:9000`.
+  `${ARGUS_DATA_DIR}/rustfs/secrets`, 0600). argus-identity, argus-camera and
+  argus-guard are its three consumers and reach it at `http://rustfs:9000`;
+  the host-loopback spelling went with the gateway's storage block in Phase 3d
+  step 1, because the gateway read no `storage.` key.
   Camera evidence snapshots land under `cameras/<id>/` and guard incident
   records under `guard/incidents/<id>/`.
 - Update flow: `docker compose build && docker compose up -d`. Never

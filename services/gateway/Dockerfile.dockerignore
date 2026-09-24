@@ -8,7 +8,6 @@ build
 **/build
 bench-results
 certs
-database
 models
 config.toml
 **/config.toml

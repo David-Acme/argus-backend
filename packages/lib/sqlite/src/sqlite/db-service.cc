@@ -36,12 +36,6 @@ drogon::orm::DbClientPtr& g_productivityClient()
   return client;
 }
 
-drogon::orm::DbClientPtr& g_gatewayClient()
-{
-  static drogon::orm::DbClientPtr client;
-  return client;
-}
-
 drogon::orm::DbClientPtr& g_frozenClient()
 {
   static drogon::orm::DbClientPtr client;
@@ -184,16 +178,6 @@ drogon::orm::DbClientPtr DbService::productivityClient()
   if (auto client = g_productivityClient())
     return client;
   return client();
-}
-
-void DbService::setGatewayClient(drogon::orm::DbClientPtr client)
-{
-  g_gatewayClient() = std::move(client);
-}
-
-drogon::orm::DbClientPtr DbService::gatewayClient()
-{
-  return g_gatewayClient();
 }
 
 void DbService::enableUriFilenames()

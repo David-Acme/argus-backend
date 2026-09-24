@@ -14,12 +14,7 @@ class NotificationRpcService final
     : public argus::notification::v1::NotificationService::CallbackService
 {
 public:
-  struct Dependencies
-  {
-    std::shared_ptr<const NotificationDeliverySink> deliverySink;
-    std::shared_ptr<const push_intent::PushIntentSink> pushSink;
-    bool pushRequired{false};
-  };
+  using Dependencies = NotificationService::Dependencies;
 
   NotificationRpcService() = default;
   explicit NotificationRpcService(Dependencies dependencies);

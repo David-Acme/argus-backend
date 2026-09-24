@@ -28,10 +28,6 @@ public:
 
   static void setProductivityClient(drogon::orm::DbClientPtr client);
 
-  static drogon::orm::DbClientPtr gatewayClient();
-
-  static void setGatewayClient(drogon::orm::DbClientPtr client);
-
   static void enableUriFilenames();
 
   static bool runScriptFile(const std::string& path,

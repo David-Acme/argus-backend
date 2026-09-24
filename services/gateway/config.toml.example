@@ -3,8 +3,6 @@ host = "0.0.0.0"
 port = 7024
 plain = false
 min_protocol = "TLSv1.2"
-db = "database/gateway.db"
-schema = "services/gateway/database/schema.sql"
 
 [drogon.app]
 number_of_threads = 0
@@ -30,14 +28,6 @@ enable_request_stream = false
 handle_sig_term = true
 relaunch_on_error = false
 
-[nats]
-url = ""
-reconnect_wait_ms = 2000
-max_reconnects = 60
-
-[push]
-enabled = false
-
 [jwt]
 secret = ""
 refresh_secret = ""
@@ -55,8 +45,6 @@ rpc_secret = ""
 
 [identity]
 proxy_url = "https://127.0.0.1:7044"
-target = "127.0.0.1:7040"
-rpc_secret = ""
 
 [camera]
 stream_url = "ws://127.0.0.1:7026/media"
@@ -68,7 +56,6 @@ control_secret = ""
 
 [productivity]
 proxy_url = "http://127.0.0.1:7027"
-db = "database/productivity.db"
 
 [cert]
 dir = "certs"
@@ -93,16 +80,7 @@ wss = "true"
 
 [notifications]
 proxy_url = "http://127.0.0.1:7028"
-db = "database/notification.db"
-budget_per_hour = 6
-silent_start = -1
-silent_end = -1
 credential = ""
-guard_heartbeat_timeout_s = 30
-fallback_min_score_median = 0.3
-fallback_min_dwell_ms = 1000
-fallback_suppress_known = true
-fallback_retention_days = 90
 
 [remote]
 tunnel_port = 0

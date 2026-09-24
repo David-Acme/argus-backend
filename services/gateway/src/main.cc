@@ -6,7 +6,6 @@
 #include <http/error-handler.hxx>
 #include <http/health-controller.hxx>
 #include <http/listener-config.hxx>
-#include <identity/identity-client.hxx>
 #include <proxy/proxy-config.hxx>
 #include <proxy/reverse-proxy.hxx>
 #include <server/remote-config.hxx>
@@ -16,10 +15,6 @@
 #include <memory>
 #include <cert/cert-service.hxx>
 #include <config/config-service.hxx>
-#include <sqlite/db-service.hxx>
-#include <nats/nats-bus.hxx>
-#include <runtime/shutdown-signal.hxx>
-#include <sync/camera-notifier.hxx>
 #include <sync/camera-stream-relay.hxx>
 #include <sync/camera-stream-socket.hxx>
 #include <sync/sync-client.hxx>
@@ -52,7 +47,6 @@ void registerGatewayFilters()
 
 struct DrogonConfigInput
 {
-  const std::string& gatewayDbPath;
   const ListenerConfig& listener;
   const RemoteConfig& remote;
   const ProxyConfig& proxy;
@@ -60,7 +54,6 @@ struct DrogonConfigInput
 
 Json::Value drogonConfig(const DrogonConfigInput& input)
 {
-  const std::string& gatewayDbPath = input.gatewayDbPath;
   const ListenerConfig& listener = input.listener;
   const RemoteConfig& remote = input.remote;
   const ProxyConfig& proxy = input.proxy;
@@ -68,17 +61,6 @@ Json::Value drogonConfig(const DrogonConfigInput& input)
   Json::Value config = ConfigService::drogonConfig();
   if (config.isNull())
     config = Json::Value(Json::objectValue);
-
-  Json::Value clients(Json::arrayValue);
-  Json::Value client(Json::objectValue);
-  client["name"] = "default";
-  client["rdbms"] = "sqlite3";
-  client["filename"] = gatewayDbPath;
-  client["is_fast"] = false;
-  client["number_of_connections"] = 1;
-  client["timeout"] = -1.0;
-  clients.append(client);
-  config["db_clients"] = clients;
 
   Json::Value listeners = listenerJson(listener);
   appendRemoteListener(
@@ -226,22 +208,11 @@ void logRouting(const LogRoutingInput& input)
 
 int main()
 {
-  DbService::enableUriFilenames();
-
   ConfigService::load("config.toml");
 
   registerGatewayFilters();
 
-  std::string gatewayDbPath = ConfigService::getString("gateway.db");
-  if (gatewayDbPath.empty())
-    gatewayDbPath = "database/gateway.db";
-  std::string gatewaySchemaPath = ConfigService::getString("gateway.schema");
-  if (gatewaySchemaPath.empty())
-    gatewaySchemaPath = "services/gateway/database/schema.sql";
-
   const CameraStreamConfig cameraStream = CameraStreamConfig::resolve();
-  const std::string notificationGrpcTarget =
-      ConfigService::getString("notifications.grpc_target");
 
   const std::string controlTarget =
       ConfigService::getString("sync.control_target");
@@ -289,10 +260,7 @@ int main()
       });
 
   drogon::app().loadConfigJson(
-      drogonConfig({.gatewayDbPath = gatewayDbPath,
-                    .listener = listener,
-                    .remote = remote,
-                    .proxy = proxy}));
+      drogonConfig({.listener = listener, .remote = remote, .proxy = proxy}));
 
   drogon::app().registerPreRoutingAdvice(
       [&proxy](const drogon::HttpRequestPtr& req,
@@ -318,96 +286,11 @@ int main()
         return ErrorHandler::unmatchedRoute(code);
       });
 
-  const std::string natsUrl = ConfigService::getString("nats.url");
-  std::shared_ptr<NatsBus> natsBus;
-  CameraNotificationPolicy* fallbackPolicy = nullptr;
-  if (natsUrl.empty()) {
-    LOG_INFO << "NATS not configured; event bus disabled";
-  } else {
-    natsBus = std::make_shared<NatsBus>();
-    const bool connected = natsBus->connect();
-    const std::string identityTarget =
-        ConfigService::getString("identity.target");
-    std::shared_ptr<IdentityClient> identityClient;
-    if (identityTarget.empty()) {
-      LOG_WARN << "Identity target unconfigured; camera notifications keep "
-                  "their fallback record but reach no recipient";
-    }
-    else {
-      identityClient = std::make_shared<IdentityClient>(
-          identityTarget, ConfigService::getString("identity.rpc_secret"));
-    }
-    fallbackPolicy = camera_notifier::subscribeObjectDetected(
-        *natsBus,
-        {.notificationClient =
-             std::make_shared<NotificationClient>(NotificationClientConfig{
-                 .target = notificationGrpcTarget,
-                 .credential = ConfigService::getString(
-                     "notifications.credential")}),
-         .identityClient = identityClient});
-    if (connected)
-      LOG_INFO << "NATS event bus connected to " << natsBus->options().url;
-    else
-      LOG_WARN << "NATS unavailable at " << natsUrl
-               << "; subscriptions stay pending until reconnected";
-  }
-
-  const std::weak_ptr<NatsBus> healthBus = natsBus;
   drogon::app().registerController(std::make_shared<HealthController>(
-      HealthStatus{.serviceName = "argus-gateway",
-                   .extras = {{"nats",
-                               [healthBus]() {
-                                 Json::Value status(Json::objectValue);
-                                 const auto bus = healthBus.lock();
-                                 if (!bus) {
-                                   status["enabled"] = false;
-                                   status["connected"] = false;
-                                   return status;
-                                 }
-                                 status["enabled"] = true;
-                                 status["connected"] = bus->isConnected();
-                                 return status;
-                               }},
-                              {"notifications_fallback",
-                               [fallbackPolicy]() {
-                                 Json::Value status(Json::objectValue);
-                                 if (fallbackPolicy == nullptr) {
-                                   status["subscribed"] = false;
-                                   return status;
-                                 }
-                                 status["subscribed"] = true;
-                                 const auto counts =
-                                     fallbackPolicy->fallbackCounts();
-                                 status["passed"] = Json::Int64(counts.passed);
-                                 status["dropped_known"] =
-                                     Json::Int64(counts.droppedKnown);
-                                 status["dropped_weak_score"] =
-                                     Json::Int64(counts.droppedWeakScore);
-                                 status["dropped_short_dwell"] =
-                                     Json::Int64(counts.droppedShortDwell);
-                                 return status;
-                               }}}}));
+      HealthStatus{.serviceName = "argus-gateway", .extras = {}}));
 
   std::unique_ptr<MdnsService> mdnsService;
-  drogon::app().registerBeginningAdvice([&gatewayDbPath = gatewayDbPath,
-                                         &gatewaySchemaPath =
-                                             gatewaySchemaPath,
-                                         &mdnsService]() {
-    DbService::installExtensions();
-
-    DbService::setGatewayClient(drogon::app().getDbClient());
-    if (!DbService::runScriptFile(gatewaySchemaPath,
-                                  DbService::gatewayClient())) {
-      LOG_ERROR << "Gateway fallback record unavailable: could not apply "
-                << gatewaySchemaPath << " to " << gatewayDbPath
-                << " (create the data/gateway host directory and restart); "
-                   "the gateway keeps serving, fallback drops will only be "
-                   "counted, not recorded";
-    }
-    else {
-      DbService::applyPragmas(DbService::gatewayClient());
-    }
-
+  drogon::app().registerBeginningAdvice([&mdnsService]() {
     if (!CertService::init())
       LOG_WARN << "PKI not loaded — pairing disabled";
 
@@ -415,9 +298,6 @@ int main()
     if (!mdnsService->initialize())
       LOG_WARN << "mDNS advertising failed";
   });
-
-  shutdown_signal::onQuit(
-      [dbPath = gatewayDbPath] { DbService::freezeClient(dbPath); });
 
   drogon::app()
       .setThreadNum(0)

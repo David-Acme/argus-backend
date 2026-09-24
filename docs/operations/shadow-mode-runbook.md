@@ -57,28 +57,27 @@ encounter produced several same-tier observations. After one week the
 low scores on `belief_would_notify = 0` rows.
 
 Fallback (guard down) suppressions never appear here by design — they carry
-no belief score. They are counted on the gateway `/health` endpoint under
-`notifications_fallback` and logged with their reason. Since Round 12 every
-fallback drop also lands a durable row in `gateway_fallback_event`
-(`gateway.db`, gateway-owned): query `WHERE created_at BETWEEN <outage
-start> AND <outage end>` grouped by `reason` (`non_hard_signal`,
-`drop_known`, `drop_weak_score`, `drop_short_dwell`, `budget_silent`) to
-reconstruct exact fallback volume for a past outage window — the
-process-lifetime counters alone cannot do that across a restart. Treat the
-journal as the complete record of guard decisions, the fallback table as
-the complete record of gateway decisions while guard was absent.
-Fallback rows older than `notifications.fallback_retention_days`
+no belief score. They are counted on argus-notification's `/health` endpoint
+under `notifications_fallback` and logged with their reason. Since Round 12
+every fallback drop also lands a durable row in `camera_fallback_event`
+(`notification.db`, argus-notification-owned — the table and its notifier
+moved there from the gateway in Phase 3d step 1): query `WHERE created_at
+BETWEEN <outage start> AND <outage end>` grouped by `reason`
+(`non_hard_signal`, `drop_known`, `drop_weak_score`, `drop_short_dwell`,
+`budget_silent`) to reconstruct exact fallback volume for a past outage
+window — the process-lifetime counters alone cannot do that across a restart.
+Treat the journal as the complete record of guard decisions, the fallback
+table as the complete record of notification-service decisions while guard
+was absent. Fallback rows older than `notifications.fallback_retention_days`
 (default 90) are purged on the per-minute digest tick.
 
-Upgrade note for existing deploys: the gateway now keeps its fallback
-record in `data/gateway/gateway.db` (new `data/gateway` volume in
-docker-compose, created automatically by `scripts/provision-host.sh` for
-new hosts). If that directory is absent the gateway still boots and
-serves — it logs an error naming the directory and records nothing until
-it exists. The one manual step on an already provisioned host, no
-re-provisioning needed:
-`mkdir -p data/gateway && chmod 700 data/gateway` (same ownership as
-`data/identity`), then restart the gateway; no migration, no re-pairing.
+Upgrade note for existing deploys: the fallback record now lives in
+`notification.db`, inside the argus-notification volume the deploy already
+mounts, so there is no new bind to add and no migration to run — the table is
+created by that service's own schema at boot. The gateway's
+`data/gateway/gateway.db` and its `data/gateway` volume are gone with the
+gateway's database (Phase 3d step 1); a host that still carries the directory
+may delete it.
 
 ## 3. Read the summary endpoint
 

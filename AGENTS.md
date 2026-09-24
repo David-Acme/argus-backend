@@ -856,13 +856,11 @@ its own project — `services/<name>/database/schema.sql`, or
 `<domain>-schema.sql` aliases. The deploy stack bind-mounts each owner's file
 at `database/schema.sql` in its container and every config points at
 `database/schema.sql`; a unit applies only its own schema, never the schema of
-another. The gateway is the one owner that is not at that path: it mounts its
-own file at `/opt/argus/gateway/schema.sql` and its config says
-`gateway/schema.sql`. Nine units carry one today:
-`auth`, `camera`, `gateway`, `guard`, `identity`, `notification` and
-`productivity` (the gateway's own 23-line file is its `gateway.db`
-degraded-fallback record — it holds no table of another domain and says so —
-and it goes with the gateway in Phase 3d), plus `packages/memory` and
+another. The gateway's 23-line file was its `gateway.db` degraded-fallback
+record — it held no table of another domain and said so — and it went away in
+Phase 3d step 1 with the camera notifier that wrote to it. Eight units carry
+one today: `auth`, `camera`, `guard`, `identity`, `notification` and
+`productivity`, plus `packages/memory` and
 `services/sync` (`sync.db`, split out of identity's file by `argus-migrate-sync`
 in Phase 3c-2).
 
