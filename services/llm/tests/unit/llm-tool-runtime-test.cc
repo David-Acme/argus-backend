@@ -3,9 +3,9 @@
 
 #include <llm/tool-contracts.hxx>
 #include <shared/services/memory/memory-tool-descriptors.hxx>
-#include <shared/services/tools/tool-executor.hxx>
-#include <shared/services/tools/tool-registry.hxx>
-#include <shared/services/tools/tool-validator.hxx>
+#include <feature/llm/services/tools/tool-executor.hxx>
+#include <feature/llm/services/tools/tool-registry.hxx>
+#include <feature/llm/services/tools/tool-validator.hxx>
 
 #include <json/value.h>
 #include <optional>

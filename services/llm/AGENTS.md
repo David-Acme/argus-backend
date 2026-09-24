@@ -48,14 +48,31 @@ that apply to llm-service code; when in doubt, the root file wins.
 
 ```
 argus-llm/
-  CMakeLists.txt        add_subdirectory-compatible AND standalone buildable
-  src/main.cc           config load, llama_backend_init/free, engine boot gate
-  src/controllers/      HTTP controllers (health + /llm/v1/* wire)
-  src/llm/              chat DTO (validation DSL)
-  src/server/           internal listener resolution
+  CMakeLists.txt        standalone buildable: module graph + test targets
+  src/app/main.cc       config load, llama_backend_init/free, engine boot gate
+  src/feature/llm/      argus::llm — the brain:
+                          controllers/ (the frozen /llm/v1/* wire),
+                          dtos/ (the chat DTO, validation DSL),
+                          services/ (the LFM2.5 engine facade, the fast
+                                     intent gate, and the tool runtime
+                                     under its own tools/)
+  src/feature/encounter-closed/
+                        argus::encounter-closed — the camera guard feed's
+                          durable JetStream consumer, writing the memory
+                          graph through the injected capture
   config.toml.example   listener, LLM and intent defaults
   CONTEXT.md            purpose, ownership, wiring decisions
 ```
+
+There are two features and two modules: `argus::llm` compiles the engine
+facade, the DTOs, the tool runtime and the HTTP surface together, and
+`argus::encounter-closed` the consumer `app/main.cc` starts on the beginning
+advice and stops before `memory.shutdown()`. `app/main.cc` registers its
+controllers explicitly (Drogon `HttpController<…, false>`), so no route
+depends on static-init registration. The folder IS the module (root rule 25) —
+a consumer links `argus::llm` or `argus::encounter-closed` and never lists
+`.cc` files. `src/shared/` does not exist: rule 23's 2+ rule earns it, so code
+moves there only when a second feature of this service reads it.
 
 ## Build commands
 

@@ -1,7 +1,7 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
 
-#include <shared/services/llm/lfm-adapter.hxx>
+#include <feature/llm/services/lfm-adapter.hxx>
 
 #include <string>
 #include <vector>

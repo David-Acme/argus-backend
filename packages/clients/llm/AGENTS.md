@@ -8,9 +8,9 @@ vocabulary a descriptor is written in, and the HTTP client that speaks it.
 A module, not a service: one `argus_clients(NAME llm ...)`, a STATIC library
 whose include root is `src/`, so a consumer writes `<llm/llm-service.hxx>` and
 links `argus::clients::llm`. Four packages link it — `services/llm`
-(`llm-core`, `llm-wire-test`), `packages/memory` (`memory-core`),
+(`argus::llm`), `packages/memory` (`memory-core`),
 `services/voice` (`argus::voice-core`) and `services/guard` (`argus-guard` and
-its `guard` feature module): six link lines in five CMakeLists, four of which
+its `guard` feature module): five link lines in five CMakeLists, four of which
 also add the package to their own standalone tree by path. It carries no
 engine — `llm-service.cc` (llama.cpp) belongs to `services/llm`, and nothing
 in this package may link llama. argus-memory (formation and chat), argus-voice

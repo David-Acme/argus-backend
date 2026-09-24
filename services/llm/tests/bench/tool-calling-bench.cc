@@ -5,9 +5,9 @@
 #include <iostream>
 #include <map>
 #include <config/config-service.hxx>
-#include <shared/services/llm/lfm-adapter.hxx>
+#include <feature/llm/services/lfm-adapter.hxx>
 #include <llm/llm-service.hxx>
-#include <shared/services/tools/tool-registry.hxx>
+#include <feature/llm/services/tools/tool-registry.hxx>
 #include <sstream>
 #include <string>
 #include <unistd.h>

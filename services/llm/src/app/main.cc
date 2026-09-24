@@ -1,5 +1,5 @@
 #include <camera/camera-sync-client.hxx>
-#include <controllers/llm-controller.hxx>
+#include <feature/llm/controllers/llm-controller.hxx>
 #include <drogon/drogon.h>
 #include <http/error-handler.hxx>
 #include <http/health-controller.hxx>
@@ -8,13 +8,13 @@
 #include <memory/catalog-replica.hxx>
 #include <shared/repositories/memory-graph/memory-graph-repository.hxx>
 #include <config/config-service.hxx>
-#include <shared/services/encounter-closed/encounter-closed-consumer.hxx>
+#include <feature/encounter-closed/services/encounter-closed-consumer.hxx>
 #include <shared/services/memory/in-process-memory-chat.hxx>
 #include <shared/services/memory/memory-service.hxx>
 #include <shared/services/memory/sqlite-graph.hxx>
 #include <sqlite/db-service.hxx>
 #include <sqlite/vec-db.hxx>
-#include <shared/services/tools/tool-registry.hxx>
+#include <feature/llm/services/tools/tool-registry.hxx>
 #include <runtime/blocking-task.hxx>
 #include <nats/nats-bus.hxx>
 #include <nats/nats-subject.hxx>

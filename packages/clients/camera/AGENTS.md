@@ -32,7 +32,7 @@ themselves are argus-camera's since sub-step 3a-1b.
   `listCatalog(identity)`, both returning `std::optional`; 4 files include it —
   the two suites under `tests/unit/`,
   `services/sync/src/feature/transport/infra/camera-sync-gateway.hxx` and
-  `services/llm/src/main.cc`.
+  `services/llm/src/app/main.cc`.
 - Nothing else: `find packages/clients/camera -type f` returns CMakeLists.txt,
   the two sources, the two suites and this file.
 
@@ -65,7 +65,7 @@ themselves are argus-camera's since sub-step 3a-1b.
   `SyncUpstreams`; the source is constructed either way and an empty target
   fails the dial, which the pull turns into the 503
   `SyncErrors::CameraSyncUnavailable`) and by argus-llm
-  (`services/llm/src/main.cc:65`, the read then `if (!cameraTarget.empty())`).
+  (`services/llm/src/app/main.cc:65`, the read then `if (!cameraTarget.empty())`).
   Three files declare it: `services/sync/config.toml.example:42-43`,
   `argus-deploy/config.sync.toml.example:42-43` and
   `argus-deploy/config.llm.toml.example:74-75` (both `argus-camera:7036`).

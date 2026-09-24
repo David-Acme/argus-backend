@@ -5,7 +5,7 @@
 #include <llm/tool-contracts.hxx>
 #include <shared/services/intent/intent-router.hxx>
 #include <llm/llm-service.hxx>
-#include <shared/services/tools/tool-executor.hxx>
+#include <feature/llm/services/tools/tool-executor.hxx>
 #include <string>
 #include <vector>
 

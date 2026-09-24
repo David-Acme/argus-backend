@@ -4,8 +4,8 @@
 #include <drogon/HttpRequest.h>
 #include <drogon/HttpResponse.h>
 #include <drogon/utils/coroutine.h>
-#include <shared/services/llm/intent-gate.hxx>
-#include <shared/services/llm/lfm-adapter.hxx>
+#include <feature/llm/services/intent-gate.hxx>
+#include <feature/llm/services/lfm-adapter.hxx>
 #include <llm/llm-service.hxx>
 
 class LlmController : public drogon::HttpController<LlmController, false>

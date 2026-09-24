@@ -3,7 +3,7 @@
 
 #include <drogon/drogon.h>
 #include <shared/repositories/memory-graph/memory-graph-repository.hxx>
-#include <shared/services/encounter-closed/encounter-closed-consumer.hxx>
+#include <feature/encounter-closed/services/encounter-closed-consumer.hxx>
 #include <shared/services/memory/sqlite-graph.hxx>
 #include <config/config-service.hxx>
 #include <text/json-util.hxx>

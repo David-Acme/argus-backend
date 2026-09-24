@@ -1,7 +1,7 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
 
-#include <controllers/llm-controller.hxx>
+#include <feature/llm/controllers/llm-controller.hxx>
 #include <drogon/drogon.h>
 #include <http/error-handler.hxx>
 #include <http/health-controller.hxx>

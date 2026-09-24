@@ -4,9 +4,9 @@
 
 #include <errors/response-exception.hxx>
 #include <http/api-response.hxx>
-#include <llm/chat-dto.hxx>
-#include <shared/services/llm/lfm-adapter.hxx>
-#include <shared/services/tools/tool-registry.hxx>
+#include <feature/llm/dtos/chat-dto.hxx>
+#include <feature/llm/services/lfm-adapter.hxx>
+#include <feature/llm/services/tools/tool-registry.hxx>
 #include <runtime/blocking-task.hxx>
 
 #include <drogon/drogon.h>

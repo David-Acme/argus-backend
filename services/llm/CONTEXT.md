@@ -14,8 +14,9 @@ scaffolds.
 
 ## What it owns
 
-- **The chat engine** (shared-tree `LlmService`, compiled into this binary
-  via the PORTED pattern): LiquidAI LFM2.5-1.2B-Instruct
+- **The chat engine** (`LlmService`: its interface is the tier-3 client's
+  `packages/clients/llm/src/llm/llm-service.hxx`, its implementation this
+  feature's `services/llm-service.cc`): LiquidAI LFM2.5-1.2B-Instruct
   (`models/llm/LFM2.5-1.2B-Instruct-QAD-Q4_0.gguf`) through llama.cpp
   (vendored `third_party/llama.cpp`, tag b10305; the same commit the legacy
   links — NO mtmd: chat only). Boot aborts if the engine fails to load.
@@ -89,8 +90,8 @@ untouched.
 - The mobile app never talks to this service; no public routing, no new
   app-facing contract; voice frames stay byte-identical.
 - No tool loop at the time (Ruling BV) — superseded by f8-b4, which landed
-  the loop here: the tool runtime lives in this service at
-  `src/shared/services/tools/` (`ToolRegistry`, `ToolExecutor`,
+  the loop here: the tool runtime lives in this feature at
+  `src/feature/llm/services/tools/` (`ToolRegistry`, `ToolExecutor`,
   `validateArguments`) and the controller drives
   `chatWithTools`/`chatWithToolsStream`.
 - Model artifacts stay in the shared `models/llm/` tree — never copied.
@@ -119,7 +120,7 @@ GGUF relative to the `[llm]` config keys.
 
 With `[memory] observe_camera_events = true`, `main.cc` wires an
 `EncounterClosedConsumer`
-(`src/shared/services/encounter-closed/encounter-closed-consumer.cc`): a
+(`src/feature/encounter-closed/services/encounter-closed-consumer.cc`): a
 durable JetStream consumer on `argus.guard.v1.encounter_closed`
 (`ARGUS_GUARD`, durable `argus-llm-encounters`, `maxDeliver = 10`, poison
 `Term` after 3 failed attempts). Each event is receipted in

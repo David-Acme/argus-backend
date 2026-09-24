@@ -393,10 +393,12 @@ shared file-static behind a mutex.
   the gate result lives in `docs/history/project-log.md`. The memory redesign's
   `SemanticGraph` is backed by the existing SQLite tables.
 - **llama.cpp as a submodule** (`third_party/llama.cpp`, tag `b10305`) — powers
-  the LLM **and** the VLM through `libmtmd`: `services/vlm`'s feature module
-  names `llama` and `mtmd` in its own `DEPENDS`, and `services/llm` keeps
-  `set(ARGUS_LLAMA_TARGETS llama)` — its own targets, the text decoder alone.
-  Built with `LLAMA_BUILD_MTMD=ON`, everything else OFF.
+  the LLM **and** the VLM through `libmtmd`: each service's own feature module
+  names the targets it uses in its `DEPENDS` — `llama` for `services/llm` (the
+  text decoder alone), `llama` and `mtmd` for `services/vlm` — so no target
+  name travels between the two, and each project sets its own
+  `LLAMA_BUILD_MTMD` (`ON` in `services/vlm`, `OFF` in `services/llm`).
+  Everything else OFF.
   Vendored instead of taken from Conan because `llama-cpp/b6565` is the newest
   recipe on Conan Center, its `lfm2` projector still requires
   `mm.input_norm.*` (dropped by LFM2.5-VL), it ships CPU-only, and it exposes
@@ -675,23 +677,24 @@ Every service follows the same layout inside its own folder:
 `docs/history/plans/architecture-plan.md` lands it): `services/auth`,
 `services/camera`, `services/guard`, `services/identity`,
 `services/notification`, `services/productivity`, `services/stt`,
-`services/sync`, `services/tts` and `services/vlm` are the services with
-`src/app/`, and the
+`services/sync`, `services/tts`, `services/vlm` and `services/llm` are the
+services with `src/app/`, and the
 `feature/api/<resource>/` spelling is gone from the tree — Phase 4 step 4
-flattened the last two owners that had it. Two services keep a single
-`main.cc` at their `src/` root — `llm` and `voice` — except
-`tunnel`, exempt by design (D19), which has two entry points there,
-`main-client.cc` and `main-relay.cc`.
+flattened the last two owners that had it; step 5 gave `stt`, `vlm` and `llm`
+the reference interior (`app/` composition, `feature/<feature>/` vertical
+slices, the folder as the module). One service keeps a single `main.cc` at
+its `src/` root — `voice` — beside `tunnel`, exempt by design (D19), which
+has two entry points there, `main-client.cc` and `main-relay.cc`.
 
-Two services have no `feature/` at all today — `llm` and `tunnel` —
-and keep their code at `src/` level instead:
-`src/controllers/` in `llm` and a `src/llm/` beside it. Of the eleven
+One service has no `feature/` at all today — `tunnel` — and keeps its code at
+`src/` level instead (`client/`, `core/`, `net/`, `protocol/`, `relay/`,
+`server/` and the two entry points). Of the twelve
 services that do have a `feature/`, four
 still keep code beside it: `camera` (`src/camera/`), `notification`
 (`src/notification/`), `productivity` (`src/productivity/`) and `voice`
-(`src/test-support/`). `guard`, `stt`, `tts` and `vlm` keep nothing at `src/`
-level but `app/` and `feature/`; `identity` and `sync` keep a `src/shared/`
-beside those.
+(`src/test-support/`). `guard`, `llm`, `stt`, `tts` and `vlm` keep nothing at
+`src/` level but `app/` and `feature/`; six keep a `src/shared/` beside them —
+`camera`, `identity`, `notification`, `productivity`, `sync` and `voice`.
 
 `services/auth`, `services/identity` and `services/sync` have `src/config/`;
 the per-service typed config that step 9 moves there still lives elsewhere
@@ -977,7 +980,8 @@ for two different reasons, and says which when it does.
 
 | File | Purpose |
 |------|---------|
-| `services/llm/src/shared/services/llm/` | LLM inference (llama.cpp) |
+| `services/llm/src/feature/llm/services/` | LLM inference (llama.cpp) + the tool runtime under its own `tools/` |
+| `services/llm/src/feature/encounter-closed/` | The camera guard feed's durable JetStream consumer: receipts in `encounter_closed_inbox`, captured once into the memory graph |
 | `packages/memory/src/shared/services/embedding/` | `EmbeddingService` (multilingual-e5-small int8 ONNX) + `UnigramTokenizer`; becomes a feature of `services/llm` (Phase 4 step 7) |
 | `packages/memory/src/shared/services/memory/` | `MemoryService`/`SemanticGraph`(`SqliteGraph`)/`GraphRecall`/`MemoryFormation`/`EntityResolver`/`ToolParser`/`MemoryChat` — semantic-graph long-term memory (async worker, episode recall, L3 profile); a package hosted by argus-llm, and a feature of it after Phase 4 step 7 |
 | `services/identity/src/shared/services/face/` | Face detection + recognition (ncnn) — FaceDB = vec0 index (sqlite-vec) |

@@ -1,7 +1,7 @@
 #include "tool-executor.hxx"
 
 #include <auth/role-access.hxx>
-#include <shared/services/tools/tool-validator.hxx>
+#include <feature/llm/services/tools/tool-validator.hxx>
 
 tools::ToolResult ToolExecutor::execute(const tools::ToolCall& call,
                                         UserRole role) const
