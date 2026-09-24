@@ -29,6 +29,11 @@ CREATE TABLE IF NOT EXISTS user_audit_log (
     created_at      INTEGER NOT NULL  DEFAULT (strftime('%s', 'now'))
 );
 
+CREATE TABLE IF NOT EXISTS audit_compaction_state (
+    table_name           TEXT    NOT NULL PRIMARY KEY,
+    compacted_through_id INTEGER NOT NULL DEFAULT 0
+);
+
 CREATE TABLE IF NOT EXISTS user_action_log (
     id         INTEGER NOT NULL  PRIMARY KEY AUTOINCREMENT,
     user_id    INTEGER NOT NULL  REFERENCES user(id) ON DELETE CASCADE,

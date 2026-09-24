@@ -33,6 +33,7 @@ plain = false
 min_protocol = "TLSv1.2"
 db = "database/identity.db"
 schema = "services/sync/database/schema.sql"
+audit_retention_days = 90
 control_secret = ""
 
 [cert]

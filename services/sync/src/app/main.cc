@@ -3,6 +3,7 @@
 #include <config/sync-config.hxx>
 #include <drogon/drogon.h>
 #include <feature/fanout/services/audit-fan-out.hxx>
+#include <feature/fanout/services/audit-retention-service.hxx>
 #include <feature/fanout/services/change-feed-consumer.hxx>
 #include <feature/fanout/services/notification-delivery-consumer.hxx>
 #include <feature/transport/infra/camera-sync-gateway.hxx>
@@ -63,6 +64,7 @@ int main()
   const ListenerConfig listener = SyncConfig::resolveListener();
   const SyncControlConfig control = SyncConfig::resolveControl();
   const SyncUpstreams upstreams = SyncConfig::resolveUpstreams();
+  const int auditRetentionDays = SyncConfig::resolveAuditRetentionDays();
 
   const auto cameraSource =
       std::make_shared<CameraSyncGateway>(upstreams.camera);
@@ -117,6 +119,7 @@ int main()
       });
 
   AuditFanOut auditFanOut;
+  AuditRetentionService auditRetention;
   const std::string natsUrl = ConfigService::getString("nats.url");
   std::shared_ptr<NatsBus> natsBus;
   std::shared_ptr<NotificationDeliveryConsumer> deliveryConsumer;
@@ -200,7 +203,8 @@ int main()
 
   drogon::app().registerBeginningAdvice([&syncDb = syncDb, &auditFanOut,
                                          &changeFeedConsumer,
-                                         &deliveryConsumer]() {
+                                         &deliveryConsumer, &auditRetention,
+                                         auditRetentionDays]() {
     if (!auditFanOut.migrateLegacySchema() ||
         !DbService::runScriptFile(syncDb.schemaPath)) {
       LOG_FATAL << "Sync database schema failed to apply — aborting startup";
@@ -213,6 +217,7 @@ int main()
       changeFeedConsumer->start();
     if (deliveryConsumer)
       deliveryConsumer->start();
+    auditRetention.start(auditRetentionDays);
   });
 
   shutdown_signal::onQuit(

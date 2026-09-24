@@ -1,8 +1,10 @@
 #include "audit-log-service.hxx"
 
+#include <algorithm>
 #include <chrono>
 #include <ctime>
 #include <text/json-util.hxx>
+#include <unordered_map>
 
 namespace
 {
@@ -61,4 +63,52 @@ AuditLogService::create(const AuditLogWriteInput& input) const
   co_await repository_.remove(existing->id);
 
   co_return schema;
+}
+
+drogon::Task<int64_t> AuditLogService::compact(const int64_t cutoffMs) const
+{
+  const auto pairs = co_await repository_.findCompactionPairs(cutoffMs);
+  if (pairs.empty())
+    co_return 0;
+
+  std::vector<int64_t> ids;
+  ids.reserve(pairs.size() * 2);
+  for (const auto& pair : pairs) {
+    ids.push_back(pair.olderId);
+    ids.push_back(pair.newerId);
+  }
+  const auto stored = co_await repository_.findCompactionChanges(ids);
+
+  std::unordered_map<int64_t, Json::Value> pending;
+  std::vector<int64_t> removeIds;
+  removeIds.reserve(pairs.size());
+  int64_t frontier = 0;
+  for (const auto& pair : pairs) {
+    const auto olderIt = pending.find(pair.olderId);
+    const Json::Value older = olderIt != pending.end()
+                                  ? olderIt->second
+                                  : stored.at(pair.olderId);
+    const auto newerIt = pending.find(pair.newerId);
+    const Json::Value newer = newerIt != pending.end()
+                                  ? newerIt->second
+                                  : stored.at(pair.newerId);
+    const auto merged = JsonDiff::compareChanges(
+        JsonDiff::fromJsonString(json_util::toString(older)),
+        JsonDiff::fromJsonString(json_util::toString(newer)));
+    pending[pair.newerId] =
+        merged.type == "DELETE" ? newer : JsonDiff::toJson(merged.changes);
+    removeIds.push_back(pair.olderId);
+    frontier = std::max(frontier, pair.olderId);
+  }
+
+  for (const auto& [id, changes] : pending) {
+    if (std::ranges::find(removeIds, id) != removeIds.end())
+      continue;
+    co_await repository_.compactRow({.id = id, .changes = changes});
+  }
+  co_await repository_.removeMany(removeIds);
+  if (frontier > 0)
+    co_await repository_.advanceCompactionFrontier(frontier);
+
+  co_return static_cast<int64_t>(removeIds.size());
 }

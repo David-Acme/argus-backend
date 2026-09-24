@@ -109,7 +109,8 @@ argus-deploy argus-sync configuration. Copy to config.sync.toml (gitignored) nex
 
 | Key | Notes |
 |---|---|
-| `sync.db` | The four sync-owned audit tables still live in identity's file (Phase 3c splits them into sync.db); the schema mount below is this service's own. |
+| `sync.db` | The five sync-owned tables still live in identity's file (Phase 3c splits them into sync.db); the schema mount below is this service's own. |
+| `sync.audit_retention_days` | The audit TTL: rows older than the window are compacted into the nearest newer old row of the same key and a client whose cursor is older is refused with 409 so it re-bootstraps. Values <= 0 keep every row by stopping the sweep; cursors behind what an earlier sweep already deleted stay refused. |
 | `sync.control_secret` | Must match the same key in every producer service's config: the control RPC injects frames into any user's room, and the service refuses to start when this listener is reachable beyond loopback without it. |
 | `voice.target` | The voice service the /sync forwarder relays voice:* frames and PCM to. |
 | `notifications.credential` | Caller capability credential for the sync -> notification pull edge; must match argus-notification's [grpc] caller_gateway. |
@@ -267,6 +268,7 @@ argus-sync configuration. Copy to config.toml (gitignored) to run.
 | Key | Notes |
 |---|---|
 | `sync.host` | The TLS listener /sync terminates on: clients dial it directly, because a WebSocket upgrade cannot ride the gateway's reverse proxy. |
+| `sync.audit_retention_days` | The audit TTL: rows older than the window are compacted into the nearest newer old row of the same key and a client whose cursor is older is refused with 409 so it re-bootstraps. Values <= 0 keep every row by stopping the sweep; cursors behind what an earlier sweep already deleted stay refused. |
 | `sync.control_secret` | Fleet secret for the control RPC. Required whenever its listener is reachable beyond loopback: an unauthenticated caller injects frames into any user's room. |
 | `voice.target` | The voice service the /sync forwarder relays voice:* frames and PCM to. |
 | `notifications.credential` | Caller capability credential for the sync -> notification pull edge. |

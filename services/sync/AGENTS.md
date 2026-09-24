@@ -11,8 +11,9 @@ that apply to sync-service code; when in doubt, the root file wins.
    drains the notification delivery stream and answers the control RPC. It runs
    no AI capacity (face, llm, vlm, tts, stt, vad stay elsewhere) and exposes no
    HTTP route other than `/health` and the WebSocket upgrade.
-2. **Single writer of its four tables** — `audit_log`, `user_audit_log`,
-   `user_action_log` and `notification_delivery_inbox` are written here and
+2. **Single writer of its five tables** — `audit_log`, `user_audit_log`,
+   `user_action_log`, `notification_delivery_inbox` and
+   `audit_compaction_state` are written here and
    nowhere else. Producers publish an event on NATS; never a second writer,
    never a producer INSERT.
 3. **The transitory database is declared, not hidden** — the schema is
@@ -28,7 +29,11 @@ that apply to sync-service code; when in doubt, the root file wins.
    `watermarkId`, then `afterId < id <= endId` in ascending order;
    `afterId = 0` establishes an empty baseline and `nextCursorId` is returned
    only after the bounded query shape is accepted. `changes` is a
-   `JsonDiff::createFlatDiff` pair set — never a replacement record.
+   `JsonDiff::createFlatDiff` pair set — never a replacement record. The audit
+   rows are compacted at the window (`[sync] audit_retention_days`, 90 days by
+   default): a cursor older than the frontier the sweep has already deleted is
+   refused with `SyncErrors::ReplicaTooOld` (409), which means re-bootstrap,
+   not replay.
 6. **The control RPC injects frames into any user's room** — it is gated by
    `sync.control_secret` (the same value in every service's config) and the
    service refuses to start when that listener is reachable beyond loopback
@@ -46,9 +51,11 @@ that apply to sync-service code; when in doubt, the root file wins.
    `SynchronizedService`, the `synchronized-dto.hxx` DTOs and the three
    pull-source contracts; the audit, user-audit and action-journal rows are
    `src/shared/repositories/` and `src/shared/schemas/` because both features
-   read them (rule 23's 2+ rule), while the two writers over them,
-   `audit-log-service` and `user-audit-log-service`, sit in `fanout`, their one
-   reader. The forwarder vocabulary is `argus::contracts::sync`'s, never a copy.
+   read them (rule 23's 2+ rule), while the writers over them —
+   `audit-log-service`, `user-audit-log-service` and the
+   `audit-retention-service` sweep that compacts the two audit tables — sit in
+   `fanout`, their one reader. The forwarder vocabulary is
+   `argus::contracts::sync`'s, never a copy.
 10. **Portrait and invitation privacy** — Guard never receives invitation data
    or portrait bytes, and Resident/Guest receive only their own user row. The
    scope lives in `role_access` and `SynchronizedService`; route permission
@@ -96,13 +103,14 @@ argus-sync/
     repositories/       delivery inbox (query + repository + receipt)
     services/           the change-feed consumer (one durable per change
                         stream), sync fan-out, the durable settlement pair,
-                        audit fan-out, delivery consumer
-                        and the two audit writers they persist through
+                        audit fan-out, delivery consumer,
+                        the retention sweep and the two audit writers it
+                        persists through
   src/shared/repositories/  audit_log, user_audit_log, user_action_log
   src/shared/schemas/       their three row mappings
   src/shared/services/      RoomManager
   src/shared/infra/         the notification row JSON both features render
-  database/schema.sql   this owner's four tables and their five indexes
+  database/schema.sql   this owner's five tables and their six indexes
   config.toml.example   sync keys + the upstream targets; no AI keys
   tests/{unit,e2e,fixtures}
   CONTEXT.md            purpose, ownership, wiring decisions

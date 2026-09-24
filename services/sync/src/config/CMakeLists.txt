@@ -4,6 +4,7 @@ argus_module(NAME sync-config
     INCLUDES ..
     DEPENDS
         argus::lib::config
-        argus::lib::http)
+        argus::lib::http
+        argus::contracts::sync)
 
 target_compile_options(argus_sync-config PRIVATE -Wall -Wextra)

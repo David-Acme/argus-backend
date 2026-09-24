@@ -20,9 +20,6 @@ inline constexpr std::string_view FIND_EXIST =
     "AND event_timestamp >= ? AND event_timestamp <= ? "
     "ORDER BY id DESC LIMIT 1";
 
-inline constexpr std::string_view UPDATE_CHANGES =
-    "UPDATE audit_log SET changes = ?, event_timestamp = ? WHERE id = ?";
-
 inline constexpr std::string_view REMOVE =
     "DELETE FROM audit_log WHERE id = ?";
 
@@ -54,6 +51,33 @@ inline constexpr std::string_view FIND_SYNC_AFTER_ID_TO =
 inline constexpr std::string_view FIND_LAST_SYNC =
     "SELECT * FROM audit_log WHERE table_name IN (%1%) "
     "ORDER BY id DESC LIMIT 1";
+
+inline constexpr std::string_view FIND_COMPACTION_PAIRS =
+    "SELECT o.id AS older_id, min(n.id) AS newer_id "
+    "FROM audit_log o JOIN audit_log n "
+    "ON n.record_id = o.record_id AND n.table_name = o.table_name "
+    "AND n.id > o.id AND n.event_timestamp < ? "
+    "WHERE o.event_timestamp < ? "
+    "GROUP BY o.id ORDER BY older_id ASC LIMIT ";
+
+inline constexpr std::string_view FIND_COMPACTION_CHANGES =
+    "SELECT id, changes FROM audit_log WHERE id IN (%1%)";
+
+inline constexpr std::string_view FIND_COMPACTION_FRONTIER =
+    "SELECT compacted_through_id FROM audit_compaction_state "
+    "WHERE table_name = ?";
+
+inline constexpr std::string_view COMPACT_ROW =
+    "UPDATE audit_log SET changes = ? WHERE id = ?";
+
+inline constexpr std::string_view REMOVE_IDS =
+    "DELETE FROM audit_log WHERE id IN (%1%)";
+
+inline constexpr std::string_view ADVANCE_COMPACTION_FRONTIER =
+    "INSERT INTO audit_compaction_state (table_name, compacted_through_id) "
+    "VALUES (?, ?) ON CONFLICT(table_name) DO UPDATE SET "
+    "compacted_through_id = max(compacted_through_id, "
+    "excluded.compacted_through_id)";
 }
 
 struct AuditLogCreateInput
@@ -93,9 +117,14 @@ struct AuditLogFindExistInput
   int64_t dayEnd{0};
 };
 
-struct AuditLogUpdateInput
+struct AuditLogCompactionPair
+{
+  int64_t olderId{0};
+  int64_t newerId{0};
+};
+
+struct AuditLogCompactInput
 {
   int64_t id{0};
   Json::Value changes;
-  int64_t eventTimestamp{0};
 };

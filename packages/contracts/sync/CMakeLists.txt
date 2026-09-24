@@ -42,6 +42,7 @@ argus_contracts(NAME sync
         src/sync/socket-emit-dto.hxx
         src/sync/sync-change.hxx
         src/sync/stream-retention.hxx
+        src/sync/audit-retention.hxx
         src/sync/module-emit.hxx
         src/sync/user-change-sink.hxx
         src/sync/camera-change-sink.hxx
@@ -88,6 +89,12 @@ target_link_libraries(stream-retention-test PRIVATE
     argus::contracts::sync doctest::doctest)
 target_compile_options(stream-retention-test PRIVATE -Wall -Wextra)
 add_test(NAME stream-retention-test COMMAND stream-retention-test)
+
+add_executable(audit-retention-test tests/unit/audit-retention-test.cc)
+target_link_libraries(audit-retention-test PRIVATE
+    argus::contracts::sync doctest::doctest)
+target_compile_options(audit-retention-test PRIVATE -Wall -Wextra)
+add_test(NAME audit-retention-test COMMAND audit-retention-test)
 
 get_target_property(DOCTEST_INCLUDE_DIRS doctest::doctest
                     INTERFACE_INCLUDE_DIRECTORIES)

@@ -33,4 +33,5 @@ public:
 
   static SyncControlConfig resolveControl();
   static SyncUpstreams resolveUpstreams();
+  static int resolveAuditRetentionDays();
 };

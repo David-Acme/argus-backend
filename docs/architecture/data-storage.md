@@ -7,7 +7,7 @@ is no shared monolith database: `argus.db` is retired and must not appear.
 
 | Database | Owner | Schema | Runtime path |
 |---|---|---|---|
-| `identity.db` | `argus-gateway` (`packages/identity`) and `argus-sync` (the four sync tables) | `packages/identity/database/schema.sql`, `services/sync/database/schema.sql` | `database/identity.db` |
+| `identity.db` | `argus-gateway` (`packages/identity`) and `argus-sync` (the five sync tables) | `packages/identity/database/schema.sql`, `services/sync/database/schema.sql` | `database/identity.db` |
 | `camera.db` | `argus-camera` | `services/camera/database/schema.sql` | `database/camera.db` |
 | `productivity.db` | `argus-productivity` | `services/productivity/database/schema.sql` | `database/productivity.db` |
 | `notification.db` | `argus-notification` | `services/notification/database/schema.sql` | `database/notification.db` |

@@ -302,6 +302,12 @@ SynchronizedService::syncAuditLog(const SynchronizedLogDto& body,
   if (body.endTime)
     filter.endTime = *body.endTime;
 
+  if (body.afterId && *body.afterId > 0) {
+    const int64_t frontier = co_await auditLogRepository_.findCompactionFrontier();
+    if (*body.afterId < frontier)
+      throw ResponseException(SyncErrors::ReplicaTooOld);
+  }
+
   Json::Value out(Json::objectValue);
   std::vector<Json::Value> rows;
   if (body.findLast && !body.afterId)
@@ -349,6 +355,13 @@ SynchronizedService::syncUserAuditLog(const SynchronizedLogDto& body,
     filter.startTime = *body.startTime;
   if (body.endTime)
     filter.endTime = *body.endTime;
+
+  if (body.afterId && *body.afterId > 0) {
+    const int64_t frontier =
+        co_await userAuditLogRepository_.findCompactionFrontier();
+    if (*body.afterId < frontier)
+      throw ResponseException(SyncErrors::ReplicaTooOld);
+  }
 
   Json::Value out(Json::objectValue);
   std::vector<Json::Value> rows;

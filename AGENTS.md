@@ -860,7 +860,7 @@ units carry one today:
 own 32-line file is its `gateway.db` degraded-fallback record — it holds no
 table of another domain and says so — and it additionally applies the identity
 schema it hosts; both go with the gateway in Phase 3d), plus
-`packages/identity`, `packages/memory` and `services/sync` (the four sync
+`packages/identity`, `packages/memory` and `services/sync` (the five sync
 tables it applies onto identity.db until Phase 3c splits them into `sync.db`).
 
 ### 27. Database isolation between microservices
@@ -990,9 +990,10 @@ for two different reasons, and says which when it does.
 | `services/notification/src/shared/services/notification/` | Per-user notifications: `Add` on create and granular user-audit on mark-as-read; this service's own code since sub-step 3a-1b |
 | `services/sync/src/feature/transport/infra/` | The pull-source ports (`{camera,notification,productivity}-sync-source.hxx`, held by `SynchronizedService` and the socket the registrar wires), their adapters (`{camera,notification,productivity}-sync-gateway.{hxx,cc}`, which reach the owner services through `argus::clients::…`), the socket registrar and the voice gRPC relay |
 | `services/sync/src/shared/services/room/` | local `RoomManager` (rooms per module/user, `thread_local`) + `RoleRoomReplaceInput` |
-| `services/sync/src/feature/fanout/services/audit-log-service.{hxx,cc}` | Global audit: per-field diffs, daily compaction and monotonic id for sync |
-| `services/sync/src/feature/fanout/services/user-audit-log-service.{hxx,cc}` | Per-recipient audit: per-field diffs, daily compaction and monotonic id for sync |
-| `services/sync/src/feature/fanout/services/` | The change feed's fan-out: `SyncFanOut` routes room emits and the imperative frames, `AuditFanOut` persists the audit and journal rows — `services/sync` owns its four tables and is their only writer |
+| `services/sync/src/feature/fanout/services/audit-log-service.{hxx,cc}` | Global audit: per-field diffs, daily coalesce and monotonic id for sync |
+| `services/sync/src/feature/fanout/services/user-audit-log-service.{hxx,cc}` | Per-recipient audit: per-field diffs, daily coalesce and monotonic id for sync |
+| `services/sync/src/feature/fanout/services/audit-retention-service.{hxx,cc}` | The D15 window: a daily sweep pairs old audit rows with the nearest newer old row of the same key, folds the older diff into it and advances `audit_compaction_state`'s frontier |
+| `services/sync/src/feature/fanout/services/` | The change feed's fan-out: `SyncFanOut` routes room emits and the imperative frames, `AuditFanOut` persists the audit and journal rows — `services/sync` owns its five tables and is their only writer |
 
 **Docs and templates**
 

@@ -1,6 +1,7 @@
 #include "sync-config.hxx"
 
 #include <config/config-service.hxx>
+#include <sync/audit-retention.hxx>
 
 SyncDbConfig SyncConfig::resolveDb()
 {
@@ -54,4 +55,11 @@ SyncUpstreams SyncConfig::resolveUpstreams()
   return {.camera = ConfigService::getString("camera.grpc_target"),
           .productivity = ConfigService::getString("productivity.grpc_target"),
           .notification = ConfigService::getString("notifications.grpc_target")};
+}
+
+int SyncConfig::resolveAuditRetentionDays()
+{
+  if (!ConfigService::hasKey("sync.audit_retention_days"))
+    return audit_retention::kDefaultDays;
+  return ConfigService::getInt("sync.audit_retention_days");
 }

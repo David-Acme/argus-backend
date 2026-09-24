@@ -4,21 +4,34 @@
 #include <drogon/utils/coroutine.h>
 #include <optional>
 #include <shared/schemas/user-audit-log/user-audit-log-schema.hxx>
+#include <unordered_map>
+#include <vector>
 
 class UserAuditLogRepository
 {
 public:
   UserAuditLogRepository() = default;
 
-  drogon::Task<UserAuditLogSchema>
+  [[nodiscard]] drogon::Task<UserAuditLogSchema>
   create(const UserAuditLogCreateInput& input) const;
-  drogon::Task<std::optional<UserAuditLogSchema>>
+  [[nodiscard]] drogon::Task<std::optional<UserAuditLogSchema>>
   findExist(const UserAuditLogFindExistInput& input) const;
-  drogon::Task<void> updateChanges(const UserAuditLogUpdateInput& input) const;
-  drogon::Task<void> remove(int64_t id) const;
+  [[nodiscard]] drogon::Task<void> remove(int64_t id) const;
 
-  drogon::Task<std::vector<Json::Value>>
+  [[nodiscard]] drogon::Task<std::vector<Json::Value>>
   findSync(const UserAuditLogSyncFilter& filter) const;
-  drogon::Task<std::optional<Json::Value>>
+  [[nodiscard]] drogon::Task<std::optional<Json::Value>>
   findLastSync(const UserAuditLogSyncFilter& filter) const;
+
+  [[nodiscard]] drogon::Task<std::vector<UserAuditLogCompactionPair>>
+  findCompactionPairs(int64_t cutoffMs) const;
+  [[nodiscard]] drogon::Task<std::unordered_map<int64_t, Json::Value>>
+  findCompactionChanges(const std::vector<int64_t>& ids) const;
+  [[nodiscard]] drogon::Task<int64_t> findCompactionFrontier() const;
+  [[nodiscard]] drogon::Task<void>
+  compactRow(const UserAuditLogCompactInput& input) const;
+  [[nodiscard]] drogon::Task<void>
+  removeMany(const std::vector<int64_t>& ids) const;
+  [[nodiscard]] drogon::Task<void>
+  advanceCompactionFrontier(int64_t throughId) const;
 };

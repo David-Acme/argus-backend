@@ -44,7 +44,7 @@ AuditLogRepository::create(const AuditLogCreateInput& input) const
 {
   auto client = DbService::client();
   const auto result = co_await client->execSqlCoro(
-      INSERT.data(),
+      std::string(INSERT),
       input.createUserId ? std::optional<int64_t>(*input.createUserId)
                          : std::optional<int64_t>{},
       input.recordId, tableNameToString(input.tableName),
@@ -68,26 +68,17 @@ AuditLogRepository::findExist(const AuditLogFindExistInput& input) const
 {
   auto client = DbService::client();
   const auto result = co_await client->execSqlCoro(
-      FIND_EXIST.data(), input.recordId, tableNameToString(input.tableName),
-      input.dayStart, input.dayEnd);
+      std::string(FIND_EXIST), input.recordId,
+      tableNameToString(input.tableName), input.dayStart, input.dayEnd);
   if (result.empty())
     co_return std::nullopt;
   co_return AuditLogSchema(result.front());
 }
 
-drogon::Task<void>
-AuditLogRepository::updateChanges(const AuditLogUpdateInput& input) const
-{
-  auto client = DbService::client();
-  co_await client->execSqlCoro(UPDATE_CHANGES.data(),
-                               json_util::toString(input.changes),
-                               input.eventTimestamp, input.id);
-}
-
 drogon::Task<void> AuditLogRepository::remove(int64_t id) const
 {
   auto client = DbService::client();
-  co_await client->execSqlCoro(REMOVE.data(), id);
+  co_await client->execSqlCoro(std::string(REMOVE), id);
 }
 
 drogon::Task<std::vector<Json::Value>>
@@ -156,4 +147,94 @@ AuditLogRepository::findLastSync(const AuditLogSyncFilter& filter) const
   if (result.empty())
     co_return std::nullopt;
   co_return AuditLogSchema(result.front()).toJson();
+}
+
+drogon::Task<std::vector<AuditLogCompactionPair>>
+AuditLogRepository::findCompactionPairs(const int64_t cutoffMs) const
+{
+  auto client = DbService::client();
+  const auto result = co_await client->execSqlCoro(
+      std::string(FIND_COMPACTION_PAIRS) + SyncLimits::kMaxRows, cutoffMs,
+      cutoffMs);
+
+  std::vector<AuditLogCompactionPair> pairs;
+  pairs.reserve(result.size());
+  for (const auto& row : result)
+    pairs.push_back(
+        {.olderId = static_cast<int64_t>(row["older_id"].as<long long>()),
+         .newerId = static_cast<int64_t>(row["newer_id"].as<long long>())});
+  co_return pairs;
+}
+
+drogon::Task<std::unordered_map<int64_t, Json::Value>>
+AuditLogRepository::findCompactionChanges(
+    const std::vector<int64_t>& ids) const
+{
+  std::unordered_map<int64_t, Json::Value> changes;
+  if (ids.empty())
+    co_return changes;
+
+  auto client = DbService::client();
+  const std::string query =
+      expand(FIND_COMPACTION_CHANGES, buildInPlaceholders(ids.size()));
+
+  std::vector<std::string> args;
+  args.reserve(ids.size());
+  for (const int64_t id : ids)
+    args.push_back(std::to_string(id));
+
+  const auto& argsRef = args;
+  const auto result = co_await client->execSqlCoro(query, argsRef);
+  for (const auto& row : result)
+    changes[static_cast<int64_t>(row["id"].as<long long>())] =
+        json_util::fromString(row["changes"].as<std::string>());
+  co_return changes;
+}
+
+drogon::Task<int64_t> AuditLogRepository::findCompactionFrontier() const
+{
+  auto client = DbService::client();
+  const auto result = co_await client->execSqlCoro(
+      std::string(FIND_COMPACTION_FRONTIER),
+      tableNameToString(TableName::AuditLog));
+  if (result.empty())
+    co_return 0;
+  co_return static_cast<int64_t>(
+      result.front()["compacted_through_id"].as<long long>());
+}
+
+drogon::Task<void>
+AuditLogRepository::compactRow(const AuditLogCompactInput& input) const
+{
+  auto client = DbService::client();
+  co_await client->execSqlCoro(std::string(COMPACT_ROW),
+                               json_util::toString(input.changes), input.id);
+}
+
+drogon::Task<void>
+AuditLogRepository::removeMany(const std::vector<int64_t>& ids) const
+{
+  if (ids.empty())
+    co_return;
+
+  auto client = DbService::client();
+  const std::string query =
+      expand(REMOVE_IDS, buildInPlaceholders(ids.size()));
+
+  std::vector<std::string> args;
+  args.reserve(ids.size());
+  for (const int64_t id : ids)
+    args.push_back(std::to_string(id));
+
+  const auto& argsRef = args;
+  co_await client->execSqlCoro(query, argsRef);
+}
+
+drogon::Task<void>
+AuditLogRepository::advanceCompactionFrontier(const int64_t throughId) const
+{
+  auto client = DbService::client();
+  co_await client->execSqlCoro(
+      std::string(ADVANCE_COMPACTION_FRONTIER),
+      tableNameToString(TableName::AuditLog), throughId);
 }

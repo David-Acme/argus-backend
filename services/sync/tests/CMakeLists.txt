@@ -30,6 +30,21 @@ target_compile_options(audit-sync-read-test PRIVATE -Wall -Wextra)
 argus_runtime_rpath(audit-sync-read-test)
 add_test(NAME audit-sync-read-test COMMAND audit-sync-read-test)
 
+add_executable(audit-compaction-test unit/audit-compaction-test.cc)
+target_compile_definitions(audit-compaction-test PRIVATE
+    ARGUS_SYNC_SCHEMA_PATH="${CMAKE_CURRENT_SOURCE_DIR}/../database/schema.sql")
+target_link_libraries(audit-compaction-test PRIVATE
+    argus::sync-fanout
+    argus::sync-repositories
+    argus::lib::sqlite
+    argus::lib::text
+    argus::contracts::sync
+    Drogon::Drogon
+    doctest::doctest)
+target_compile_options(audit-compaction-test PRIVATE -Wall -Wextra)
+argus_runtime_rpath(audit-compaction-test)
+add_test(NAME audit-compaction-test COMMAND audit-compaction-test)
+
 add_executable(notification-delivery-inbox-test
                unit/notification-delivery-inbox-test.cc)
 target_compile_definitions(notification-delivery-inbox-test PRIVATE

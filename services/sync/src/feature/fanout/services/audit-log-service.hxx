@@ -10,7 +10,10 @@ class AuditLogService
 public:
   AuditLogService() = default;
 
-  drogon::Task<AuditLogSchema> create(const AuditLogWriteInput& input) const;
+  [[nodiscard]] drogon::Task<AuditLogSchema>
+  create(const AuditLogWriteInput& input) const;
+
+  [[nodiscard]] drogon::Task<int64_t> compact(int64_t cutoffMs) const;
 
 private:
   AuditLogRepository repository_;

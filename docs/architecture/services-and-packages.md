@@ -26,8 +26,9 @@ Every service binds loopback or the deployment's private network; the gateway
 proxies the public surface. `argus-sync` serves the `/sync` WebSocket on its
 own TLS listener (7025) — the upgrade's 101 is not something the gateway's HTTP
 proxy can relay — with the sync control RPC beside it on 7041. It is the single
-writer of the four audit tables (`audit_log`, `user_audit_log`,
-`user_action_log`, `notification_delivery_inbox`) while those still live in
+writer of the five sync tables (`audit_log`, `user_audit_log`,
+`audit_compaction_state`, `user_action_log`, `notification_delivery_inbox`)
+while those still live in
 `identity.db`; Phase 3c splits them into `sync.db`. Core NATS (`4222`) carries
 change events; the durable delivery legs (guard observations, encounter
 summaries, notification delivery) run on JetStream streams with PubAck

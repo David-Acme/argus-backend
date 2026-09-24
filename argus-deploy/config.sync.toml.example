@@ -33,6 +33,7 @@ plain = false
 min_protocol = "TLSv1.2"
 db = "database/identity.db"
 schema = "database/schema.sql"
+audit_retention_days = 90
 control_secret = "CHANGE_ME_SAME_IN_EVERY_SERVICE"
 
 [cert]

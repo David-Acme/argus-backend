@@ -595,6 +595,54 @@ TEST_CASE("audit sync reads resolve to the default client, not the "
   }
   CHECK(unavailable);
 
+  DbService::client()->execSqlSync(
+      "CREATE TABLE audit_compaction_state (table_name TEXT NOT NULL PRIMARY "
+      "KEY, compacted_through_id INTEGER NOT NULL DEFAULT 0)");
+  DbService::client()->execSqlSync(
+      "INSERT INTO audit_compaction_state (table_name, compacted_through_id) "
+      "VALUES ('audit_log', 5), ('user_audit_log', 3)");
+
+  const auto logBody = [](int64_t afterId) {
+    Json::Value body;
+    body["afterId"] = static_cast<Json::Int64>(afterId);
+    return SynchronizedLogDto::fromJson(body);
+  };
+
+  const auto freshBaseline =
+      drogon::sync_wait(synchronizedService.syncAuditLog(logBody(0), ownerCtx));
+  CHECK(freshBaseline["info"]["info"].isArray());
+
+  const auto currentCursor =
+      drogon::sync_wait(synchronizedService.syncAuditLog(logBody(5), ownerCtx));
+  CHECK(currentCursor["info"]["info"].isArray());
+
+  bool moduleRefused = false;
+  try {
+    drogon::sync_wait(synchronizedService.syncAuditLog(logBody(4), ownerCtx));
+  }
+  catch (const ResponseException& error) {
+    moduleRefused = error.statusCode() == 409 && error.errorCode() == "CONFLICT";
+  }
+  CHECK(moduleRefused);
+
+  const auto userBaseline = drogon::sync_wait(
+      synchronizedService.syncUserAuditLog(logBody(0), ownerCtx));
+  CHECK(userBaseline["info"]["info"].isArray());
+
+  const auto userCurrent = drogon::sync_wait(
+      synchronizedService.syncUserAuditLog(logBody(3), ownerCtx));
+  CHECK(userCurrent["info"]["info"].isArray());
+
+  bool userRefused = false;
+  try {
+    drogon::sync_wait(
+        synchronizedService.syncUserAuditLog(logBody(2), ownerCtx));
+  }
+  catch (const ResponseException& error) {
+    userRefused = error.statusCode() == 409 && error.errorCode() == "CONFLICT";
+  }
+  CHECK(userRefused);
+
   drain(legacyDb);
   DbService::setReadOnlyClient(nullptr);
   std::filesystem::remove_all("/tmp/argus-audit-sync-read-test-upload");

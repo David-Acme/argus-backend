@@ -1,8 +1,8 @@
 tool 22.1.8
-tus 508
-modernize-use-nodiscard 759
+tus 511
+modernize-use-nodiscard 749
 modernize-avoid-c-style-cast 362
-bugprone-suspicious-stringview-data-usage 301
+bugprone-suspicious-stringview-data-usage 292
 modernize-use-scoped-lock 283
 modernize-use-designated-initializers 256
 bugprone-unchecked-optional-access 223

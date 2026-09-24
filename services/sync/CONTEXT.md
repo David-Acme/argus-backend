@@ -31,16 +31,46 @@ protocol could not regress by accident in the commit that changed the endpoint.
   `thread_local`) and the lifecycle object `main.cc` holds for as long as the
   process runs. Live frames reach connections through it; the audit *rows*
   never do — a client reads the journal through its own `Synchronize` page.
-- **The audit trail and the journal.** Four tables, one schema file
+- **The audit trail and the journal.** Five tables, one schema file
   (`database/schema.sql`): `audit_log` (module/global field diffs),
   `user_audit_log` (recipient-scoped diffs), `user_action_log` (the §3.5 action
-  journal) and `notification_delivery_inbox` (durable delivery receipts).
+  journal), `notification_delivery_inbox` (durable delivery receipts) and
+  `audit_compaction_state` (the retention frontier, one row per audit table).
   This service is their only writer. The two audit tables are convergent by
   construction — a redelivery merges into the row's `(record, table, UTC day)`
-  key and advances its id, the same compaction the daily job runs — while the
+  key and advances its id, so a burst of changes to one record settles on a
+  single row per day — while the
   journal is append-only and non-convergent, so `user_action_log.msg_id` holds
   the producer's `Nats-Msg-Id` under a partial unique index and the insert is
   `INSERT OR IGNORE`: a redelivered journal row is ignored instead of doubled.
+- **The retention window (D15).** `sync` compacts audit rows older than
+  `[sync] audit_retention_days` (90 days, `audit_retention::kDefaultDays`). A
+  sweep runs ~30 s after boot and every 24 h: it pairs each old row with the
+  nearest newer *old* row of the same key, folds the older diff into the newer
+  one (the chained `JsonDiff::compareChanges` the daily coalesce uses, applied
+  in ascending id order; only `changes` is written, so the survivor keeps its
+  own priority and timestamp and the folded row's are dropped with it), deletes
+  the older row and advances the frontier — the highest deleted id —
+  monotonically through `audit_compaction_state`. Pairwise merging is what makes the sweep always
+  progress: a window of the oldest rows would clog with lone survivors and
+  never reach the long-lived records compaction exists for. Bounded work per
+  round (200 pairs, the sync page size), repeated until a round deletes
+  nothing. A **recent** row (younger than the cutoff) is never a candidate and
+  never a partner, so a live write is out of the sweep's reach and a sweep can
+  suspend as often as it needs to; only a producer's replay of an event older
+  than the window can land a row the sweep may select, which costs that round a
+  retry and nothing else. The summary carries its fold under an id above every
+  row it supersedes, so a replica that paged past the survivor is unaffected; a
+  cursor *older* than the frontier is refused as the window's declared boundary
+  — it would still reach each record's current value, on merged diffs rather
+  than on each individual change — and the audit legs answer
+  `SyncErrors::ReplicaTooOld` (409, frozen `CONFLICT`), which the app handles by
+  re-bootstrapping with a full `Synchronize` — `afterId = 0` stays the legal
+  empty baseline so a fresh client still fills history. The window is read once
+  at boot (`start` ignores a second call, so nothing can re-arm the sweep with
+  a different window). The semantics are declared in
+  `contracts/sync` (`audit-retention.hxx` + the refusal) and in
+  `docs/architecture/wire-sync-tables.md`.
 - **The fan-out.** One NATS **durable JetStream consumer per change stream**
   (`change_feed::defaults()`: `argus-sync-camera` on `ARGUS_CAMERA`,
   `argus-sync-notification`, `argus-sync-productivity`, `argus-sync-identity`
@@ -68,8 +98,9 @@ protocol could not regress by accident in the commit that changed the endpoint.
 
 ## Where the state lives, today
 
-Identity's file. The four tables' DDL moved here verbatim (they were
-`packages/identity`'s schema), and `[sync] db` still points at
+Identity's file. The four identity tables' DDL moved here verbatim (they were
+`packages/identity`'s schema); `audit_compaction_state` is this service's own,
+and `[sync] db` still points at
 `database/identity.db`; Phase 3c-2 splits them into `sync.db` and the key
 changes with it. Two consequences are accepted for now: the audit tables' `REFERENCES user(id)` foreign keys
 target a table this owner does not declare, and the deploy binds identity's

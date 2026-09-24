@@ -1,15 +1,16 @@
 # argus_contracts_sync
 
 The sync boundary's frozen wire values: the message types, the table names, the
-two audit enums, the filter that pages them, the seven refusals, and the
+two audit enums, the filter that pages them, the eight refusals, and the
 change-payload vocabulary the producers and the transport share.
 
 ## What this is
 
 A CONTRACT, not a service and not a library, and the largest fan-in of the ten:
-18 CMakeLists name `argus::contracts::sync` — 17 consumers plus this package's
-own test links, and five of the 17 are argus-sync's modules since sub-step
-3a-1d (the newest of the others is `packages/clients/sync`, which links it as
+21 CMakeLists name `argus::contracts::sync` — 20 consumers plus this package's
+own test links, and seven of the 20 are argus-sync's (its six modules and its
+test tree) since sub-step 3a-1d (the newest of the others is
+`packages/clients/sync`, which links it as
 the home of the frame its control leg carries). Most of it is headers only, but this
 is the one contract whose headers are not free of dependencies — `syncable.hxx`
 declares virtuals returning `drogon::Task` and `Json::Value`, and the two change
@@ -63,11 +64,17 @@ package, and argus-sync's fan-out that reads the payloads back; sub-step
 - `src/sync/syncable.hxx` — `Syncable`, the four virtuals (`find`,
   `findDeleted`, `findLast`, `findLastDeleted`) every synced repository
   implements; 18 files.
-- `src/sync/sync-errors.hxx` — the seven refusals: `UserAccountDisabled` 401,
-  `MissingMessageType` and `UnknownMessageType` 400, and the four
-  `*Unavailable` answers at 503 (`NotificationSyncUnavailable`,
-  `CameraSyncUnavailable`, `ProductivitySyncUnavailable`, `VoiceUnavailable`);
-  7 files.
+- `src/sync/audit-retention.hxx` — `audit_retention::kDefaultDays` (90), the
+  window the audit tables are compacted at and the one value the app's
+  "replica too old" path is derived from: a cursor older than what `sync` has
+  compacted is refused with `ReplicaTooOld`, and `afterId = 0` stays the legal
+  empty baseline. `sync` reads the window from `[sync] audit_retention_days`
+  and falls back to this constant; 3 files.
+- `src/sync/sync-errors.hxx` — the eight refusals: `UserAccountDisabled` 401,
+  `MissingMessageType` and `UnknownMessageType` 400,
+  `ReplicaTooOld` 409, and the four `*Unavailable` answers at 503
+  (`NotificationSyncUnavailable`, `CameraSyncUnavailable`,
+  `ProductivitySyncUnavailable`, `VoiceUnavailable`); 8 files.
 - `src/sync/socket-emit-dto.hxx` — `SocketEmitDto`, the triple the transport
   sends: the `SyncOperation`, the `TableName` it is scoped to, and the row as
   `Json`, with the `toJson()` that was a `.cc` in `packages/socket` until
@@ -136,6 +143,13 @@ package, and argus-sync's fan-out that reads the payloads back; sub-step
   re-asking with a new cursor, so the digits are part of the frozen contract
   and are declared once so the SQL constants in the sync and audit repositories
   concatenate the same ones.
+- The audit window is a contract value, not only a housekeeping one: `sync`
+  compacts rows older than it into the nearest newer old row of the same key,
+  so replay across the window converges on each record's current value, though
+  on merged diffs rather than on each individual change. A client whose cursor
+  is older than what has been compacted is refused with `ReplicaTooOld` and
+  re-bootstraps with a full `Synchronize`; `afterId = 0` keeps establishing an
+  empty baseline.
 - An unknown spelling falls back rather than throwing — `"sync"` for an
   operation, `"user"` for a table, `"create"` for an action — because these
   parse values a newer client may have written. `userActionToString` reaches
@@ -164,8 +178,11 @@ package, and argus-sync's fan-out that reads the payloads back; sub-step
   round-trips (the two the old enums-test covered; `SyncOperation` has helpers
   but never had a round-trip case, and `AuditLogPriority` has none to make) and
   the documented fallbacks.
-- `tests/unit/sync-contract-catalog-test.cc` — the seven refusals as a pinned
+- `tests/unit/sync-contract-catalog-test.cc` — the eight refusals as a pinned
   table, each entry's wire legality, and that no two say the same thing.
+- `tests/unit/audit-retention-test.cc` — the window's default and the refusal
+  the app re-bootstraps on: 90 days, and `ReplicaTooOld` carrying the frozen
+  `CONFLICT` wire code at 409.
 - `tests/unit/sync-change-test.cc` — the change vocabulary, moved here from
   `packages/socket` with sub-step 3a-1a1: the emit triple's three keys and the
   absence of routing metadata on the module-wide form, the user-scoped variant
