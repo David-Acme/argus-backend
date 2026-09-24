@@ -64,9 +64,11 @@ One container per service: `gateway`, `argus-auth`, `argus-camera`,
 `argus-relay`, `argus-tunnel-client`, plus `nats`. Each container runs its
 service image and mounts its own `config.<service>.toml`.
 
-`argus-auth` publishes 7042 on every interface and its RPC listener (7043) on
-`127.0.0.1` only — the session verdict is a fleet-internal answer gated by
-`[auth] rpc_secret`.
+`argus-auth` publishes its HTTP surface (7042) and its RPC listener (7043) on
+`127.0.0.1` only. The session verdict is a fleet-internal answer gated by
+`[auth] rpc_secret`, and LAN clients reach `/auth` through the gateway, whose
+proxy dials `https://127.0.0.1:7042`: publishing either port on every
+interface would hand a reachable host the ungated enrollment path.
 
 Opt-in init profiles run the migration CLIs from the owner service image:
 `identity-init` (gateway image), `camera-init` and `vulkan-probe` (camera

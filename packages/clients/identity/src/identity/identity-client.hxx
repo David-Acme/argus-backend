@@ -15,11 +15,12 @@ struct UpdateUserNameInput
   std::string role;
 };
 
-struct ValidateTokenInput
+struct RegisterUserInput
 {
-  std::string accessToken;
-  std::string deviceHash;
-  bool hasDeviceContext{false};
+  std::string image;
+  std::string name;
+  std::string invitationToken;
+  std::string lang;
 };
 
 struct EnrollPersonInput
@@ -67,16 +68,14 @@ public:
   virtual std::optional<argus::identity::v1::UserIdentity>
   updateUserName(const UpdateUserNameInput& input) const;
 
-  virtual std::optional<argus::identity::v1::ValidateTokenResponse>
-  validateToken(const ValidateTokenInput& input) const;
+  virtual std::optional<argus::identity::v1::RegisterUserResponse>
+  registerUser(const RegisterUserInput& input) const;
 
   virtual std::optional<argus::identity::v1::GetUserResponse>
   getUser(int64_t userId) const;
 
   virtual std::optional<argus::identity::v1::ListPersonsResponse>
   listPersons() const;
-
-  virtual bool checkDeviceCredential(const std::string& secretHash) const;
 
   virtual std::optional<argus::identity::v1::IdentifyPersonResponse>
   identifyPerson(const std::string& image) const;

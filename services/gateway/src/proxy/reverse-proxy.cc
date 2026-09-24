@@ -5,6 +5,11 @@
 using namespace drogon;
 using namespace gateway_proxy;
 
+namespace
+{
+constexpr bool kAllowOldTls = false;
+}
+
 void SimpleReverseProxy::initAndStart(const Json::Value &config)
 {
     if (config.isMember("exclusions") && config["exclusions"].isArray())
@@ -33,6 +38,7 @@ void SimpleReverseProxy::initAndStart(const Json::Value &config)
             }
             target.maxSegments = route.get("max_segments", 0).asInt();
             target.backend = route.get("backend", "").asString();
+            target.validateCert = route.get("validate_cert", true).asBool();
             if (target.prefixes.empty() || target.maxSegments == 0 ||
                 target.backend.empty())
             {
@@ -148,7 +154,9 @@ void SimpleReverseProxy::preRouting(const HttpRequestPtr &req,
     {
         clientPtr = HttpClient::newHttpClient(
             routes_[routeIndex].backend,
-            trantor::EventLoop::getEventLoopOfCurrentThread());
+            trantor::EventLoop::getEventLoopOfCurrentThread(),
+            kAllowOldTls,
+            routes_[routeIndex].validateCert);
         clientPtr->setPipeliningDepth(pipeliningDepth_);
     }
     forward(req, std::move(callback), clientPtr);

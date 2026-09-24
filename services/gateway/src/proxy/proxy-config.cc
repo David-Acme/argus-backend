@@ -5,7 +5,6 @@
 const std::vector<std::string>& gatewayNativePaths()
 {
   static const std::vector<std::string> paths = {
-      "/auth",
       "/invitation",
       "/pairing",
       "/portrait-preview",
@@ -31,6 +30,7 @@ bool isGatewayNativePath(const std::string& path,
 ProxyConfig ProxyConfig::resolve()
 {
   ProxyConfig config;
+  config.authProxyUrl = ConfigService::getString("auth.proxy_url");
   config.cameraProxyUrl = ConfigService::getString("camera.proxy_url");
   config.productivityProxyUrl =
       ConfigService::getString("productivity.proxy_url");

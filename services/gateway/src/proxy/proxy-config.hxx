@@ -5,6 +5,7 @@
 
 struct ProxyConfig
 {
+  std::string authProxyUrl;
   std::string cameraProxyUrl;
   std::string productivityProxyUrl;
   std::string notificationProxyUrl;

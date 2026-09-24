@@ -33,6 +33,10 @@ const std::vector<Feed>& defaults()
        .subject = nats_subject::kIdentityUserAction,
        .durable = "argus-sync-identity-action",
        .maxAckPending = NatsBus::kDefaultMaxAckPending},
+      {.stream = nats_subject::kAuthChangeStream,
+       .subject = nats_subject::kAuthUserAction,
+       .durable = "argus-sync-auth-action",
+       .maxAckPending = NatsBus::kDefaultMaxAckPending},
   };
   return feeds;
 }
@@ -80,7 +84,8 @@ drogon::Task<DurableDisposition>
 ChangeFeedConsumer::handle(const durable_delivery::Payload& message)
 {
   const Json::Value json = json_util::fromString(message.body);
-  if (message.subject == nats_subject::kIdentityUserAction)
+  if (message.subject == nats_subject::kIdentityUserAction ||
+      message.subject == nats_subject::kAuthUserAction)
     co_return co_await sync_fan_out::handleActionPayload(
         {.json = json,
          .msgId = message.msgId,

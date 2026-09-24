@@ -72,31 +72,23 @@ bool constantTimeEquals(const std::string& a, const std::string& b)
 
 }
 
-IdentityRpcService::IdentityRpcService(std::shared_ptr<NatsBus> bus,
-                                       std::string fleetSecret)
-    : bus_(std::move(bus)), fleetSecret_(std::move(fleetSecret))
+IdentityRpcService::IdentityRpcService(Dependencies dependencies)
+    : dependencies_(std::move(dependencies))
 {
 }
 
 bool IdentityRpcService::fleetAuthorized(
     const grpc::CallbackServerContext* context) const
 {
-  if (fleetSecret_.empty())
+  if (dependencies_.fleetSecret.empty())
     return true;
   for (const auto& [key, value] : context->client_metadata()) {
     if (key == argus::client::kFleetSecretKey) {
       return constantTimeEquals(std::string(value.begin(), value.end()),
-                                fleetSecret_);
+                                dependencies_.fleetSecret);
     }
   }
   return false;
-}
-
-void IdentityRpcService::finishRejected(const TokenRejectionInput& input)
-{
-  input.response->set_valid(false);
-  input.response->set_reason(input.reason);
-  input.reactor->Finish(grpc::Status::OK);
 }
 
 grpc::ServerUnaryReactor* IdentityRpcService::UpdateUser(
@@ -139,6 +131,15 @@ grpc::ServerUnaryReactor* IdentityRpcService::UpdateUser(
         transaction =
             co_await db_transaction::begin(DbService::identityClient());
 
+        const auto before =
+            co_await userRepository_.findById(userId, transaction.get());
+        if (!before) {
+          db_transaction::rollback(transaction);
+          reactor->Finish(grpc::Status(grpc::StatusCode::NOT_FOUND,
+                                       "user not found"));
+          co_return;
+        }
+
         auto user = co_await userRepository_.update(
             userId,
             {.name = name,
@@ -153,14 +154,23 @@ grpc::ServerUnaryReactor* IdentityRpcService::UpdateUser(
           co_return;
         }
 
-        SocketEmitDto emit;
-        emit.operation = SyncOperation::Add;
-        emit.option = TableName::User;
-        emit.obj = user.toJson();
-        if (const auto* sink = identity_change::getSink())
-          co_await sink->emitModule({.table = TableName::User,
-                                     .body = emit,
-                                     .client = transaction.get()});
+        std::vector<int64_t> recipients{user.id};
+        for (const auto& recipient :
+             co_await userRepository_.findAll(transaction.get())) {
+          if (recipient.role == UserRole::Owner ||
+              recipient.role == UserRole::Guard)
+            recipients.push_back(recipient.id);
+        }
+        if (const auto* sink = identity_change::getSink()) {
+          co_await sink->publishUsersAudit({
+              .recordId = user.id,
+              .tableName = TableName::User,
+              .before = before->toJson(),
+              .after = user.toJson(),
+              .userIds = std::move(recipients),
+              .client = transaction.get(),
+          });
+        }
 
         if (!co_await db_transaction::Commit(std::move(transaction)))
           throw ResponseException(IdentityErrors::ChangeNotRecorded);
@@ -181,10 +191,38 @@ grpc::ServerUnaryReactor* IdentityRpcService::UpdateUser(
   return reactor;
 }
 
-grpc::ServerUnaryReactor* IdentityRpcService::ValidateToken(
+argus::identity::v1::RegisterUserOutcome
+registerUserOutcome(EnrollmentOutcome outcome)
+{
+  switch (outcome) {
+  case EnrollmentOutcome::Enrolled:
+    return argus::identity::v1::REGISTER_USER_ENROLLED;
+  case EnrollmentOutcome::AlreadyRegistered:
+    return argus::identity::v1::REGISTER_USER_ALREADY_REGISTERED;
+  case EnrollmentOutcome::NotPaired:
+    return argus::identity::v1::REGISTER_USER_NOT_PAIRED;
+  case EnrollmentOutcome::FaceExtractionFailed:
+    return argus::identity::v1::REGISTER_USER_FACE_EXTRACTION_FAILED;
+  case EnrollmentOutcome::FaceAlreadyRegistered:
+    return argus::identity::v1::REGISTER_USER_FACE_ALREADY_REGISTERED;
+  case EnrollmentOutcome::FaceNotRecognized:
+    return argus::identity::v1::REGISTER_USER_FACE_NOT_RECOGNIZED;
+  case EnrollmentOutcome::InvitationRequired:
+    return argus::identity::v1::REGISTER_USER_INVITATION_REQUIRED;
+  case EnrollmentOutcome::InvitationInvalid:
+    return argus::identity::v1::REGISTER_USER_INVITATION_INVALID;
+  case EnrollmentOutcome::OwnerAlreadyExists:
+    return argus::identity::v1::REGISTER_USER_OWNER_ALREADY_EXISTS;
+  case EnrollmentOutcome::FaceIndexFailed:
+    return argus::identity::v1::REGISTER_USER_FACE_INDEX_FAILED;
+  }
+  return argus::identity::v1::REGISTER_USER_OUTCOME_UNSPECIFIED;
+}
+
+grpc::ServerUnaryReactor* IdentityRpcService::RegisterUser(
     grpc::CallbackServerContext* context,
-    const argus::identity::v1::ValidateTokenRequest* request,
-    argus::identity::v1::ValidateTokenResponse* response)
+    const argus::identity::v1::RegisterUserRequest* request,
+    argus::identity::v1::RegisterUserResponse* response)
 {
   if (!fleetAuthorized(context)) {
     auto* reactor = context->DefaultReactor();
@@ -193,99 +231,44 @@ grpc::ServerUnaryReactor* IdentityRpcService::ValidateToken(
     return reactor;
   }
 
-  const std::string accessToken = request->access_token();
-  const bool hasDeviceContext = request->has_device_hash();
-  const std::string deviceHash =
-      hasDeviceContext ? request->device_hash() : "";
+  const std::string image = request->image();
+  if (image.empty()) {
+    auto* reactor = context->DefaultReactor();
+    reactor->Finish(grpc::Status(grpc::StatusCode::INVALID_ARGUMENT,
+                                 "image is required"));
+    return reactor;
+  }
+
+  EnrollmentInput input;
+  input.image = image;
+  input.name = request->name();
+  input.invitationToken = request->invitation_token();
+  input.lang = request->lang();
+
   auto* reactor = context->DefaultReactor();
   auto* responseWriter = response;
-  drogon::app().getLoop()->queueInLoop([this, reactor, accessToken, deviceHash,
-                                        hasDeviceContext, responseWriter]() {
-    drogon::async_run([this, reactor, accessToken, deviceHash,
-                       hasDeviceContext,
+  drogon::app().getLoop()->queueInLoop([this, reactor, input,
+                                        responseWriter]() {
+    drogon::async_run([this, reactor, input,
                        responseWriter]() -> drogon::Task<void> {
       try {
-        const auto claims = jwtService_.verifyAccess(accessToken);
-        if (claims.empty()) {
-          finishRejected({.reactor = reactor,
-                          .response = responseWriter,
-                          .reason = ""});
-          co_return;
+        const auto result = co_await enrollmentService_.registerUser(input);
+        responseWriter->set_outcome(registerUserOutcome(result.outcome));
+        if (result.userId > 0) {
+          auto* user = responseWriter->mutable_user();
+          user->set_user_id(result.userId);
+          user->set_name(result.name);
+          user->set_lang(result.lang);
+          user->set_last_name(result.lastName);
+          user->set_role(userRoleToString(result.role));
+          user->set_is_active(true);
         }
-
-        const auto subIt = claims.find("sub");
-        int64_t userId = 0;
-        if (subIt != claims.end()) {
-          try {
-            userId = std::stoll(subIt->second);
-          }
-          catch (const std::exception&) {
-          }
-        }
-        if (userId <= 0) {
-          finishRejected({.reactor = reactor,
-                          .response = responseWriter,
-                          .reason = ""});
-          co_return;
-        }
-
-        const auto user = co_await userRepository_.findById(userId);
-        if (!user) {
-          finishRejected({.reactor = reactor,
-                          .response = responseWriter,
-                          .reason = ""});
-          co_return;
-        }
-
-        if (!user->isActive) {
-          finishRejected({.reactor = reactor,
-                          .response = responseWriter,
-                          .reason = "User account is disabled"});
-          co_return;
-        }
-
-        int64_t expiresAt = 0;
-        if (hasDeviceContext) {
-          const auto rt =
-              co_await refreshTokenRepository_.findByAccessToken(userId,
-                                                                 accessToken);
-          if (!rt) {
-            finishRejected({.reactor = reactor,
-                            .response = responseWriter,
-                            .reason = ""});
-            co_return;
-          }
-
-          expiresAt = rt->expiresAt;
-          if (rt->expiresAt <= std::time(nullptr)) {
-            LOG_WARN << "Refresh token expired for user " << userId;
-            finishRejected({.reactor = reactor,
-                            .response = responseWriter,
-                            .reason = "Token expired"});
-            co_return;
-          }
-          if (rt->deviceHash != deviceHash) {
-            LOG_WARN << "Device hash mismatch for user " << userId;
-            finishRejected({.reactor = reactor,
-                            .response = responseWriter,
-                            .reason = "Device mismatch"});
-            co_return;
-          }
-        }
-
-        auto* payload = responseWriter->mutable_user();
-        payload->set_user_id(user->id);
-        payload->set_name(user->name);
-        payload->set_lang(user->lang);
-        payload->set_last_name(user->lastName);
-        payload->set_role(userRoleToString(user->role));
-        payload->set_is_active(user->isActive);
-        responseWriter->set_expires_at(expiresAt);
-        responseWriter->set_valid(true);
+        if (result.personId > 0)
+          responseWriter->set_person_id(result.personId);
         reactor->Finish(grpc::Status::OK);
       }
       catch (const std::exception& e) {
-        LOG_WARN << "Identity RPC: ValidateToken failed: " << e.what();
+        LOG_WARN << "Identity RPC: RegisterUser failed: " << e.what();
         reactor->Finish(grpc::Status(grpc::StatusCode::INTERNAL, e.what()));
       }
       co_return;
@@ -381,42 +364,6 @@ grpc::ServerUnaryReactor* IdentityRpcService::ListPersons(
   return reactor;
 }
 
-grpc::ServerUnaryReactor* IdentityRpcService::CheckDeviceCredential(
-    grpc::CallbackServerContext* context,
-    const argus::identity::v1::CheckDeviceCredentialRequest* request,
-    argus::identity::v1::CheckDeviceCredentialResponse* response)
-{
-  if (!fleetAuthorized(context)) {
-    auto* reactor = context->DefaultReactor();
-    reactor->Finish(grpc::Status(grpc::StatusCode::UNAUTHENTICATED,
-                                 "Fleet secret missing or invalid"));
-    return reactor;
-  }
-
-  const std::string secretHash = request->secret_hash();
-  auto* reactor = context->DefaultReactor();
-  auto* responseWriter = response;
-  drogon::app().getLoop()->queueInLoop([this, reactor, secretHash,
-                                        responseWriter]() {
-    drogon::async_run([this, reactor, secretHash,
-                       responseWriter]() -> drogon::Task<void> {
-      try {
-        const auto active =
-            co_await deviceCredentialRepository_.findActiveBySecretHash(
-                secretHash);
-        responseWriter->set_active(active.has_value());
-        reactor->Finish(grpc::Status::OK);
-      }
-      catch (const std::exception& e) {
-        LOG_WARN << "Identity RPC: CheckDeviceCredential failed: " << e.what();
-        reactor->Finish(grpc::Status(grpc::StatusCode::INTERNAL, e.what()));
-      }
-      co_return;
-    });
-  });
-  return reactor;
-}
-
 namespace
 {
 std::optional<std::pair<int64_t, float>> searchFace(
@@ -478,6 +425,7 @@ grpc::ServerUnaryReactor* IdentityRpcService::IdentifyPerson(
             responseWriter->set_user_id(user->id);
             responseWriter->set_role(userRoleToString(user->role));
             responseWriter->set_name(user->name);
+            responseWriter->set_last_name(user->lastName);
           }
         }
         reactor->Finish(grpc::Status::OK);
@@ -899,37 +847,29 @@ grpc::ServerUnaryReactor* IdentityRpcService::PromotePerson(
           bool promoted = false;
           std::shared_ptr<drogon::orm::Transaction> transaction;
           try {
-            std::map<std::string, std::string> claims;
-            try {
-              claims = jwtService_.verifyAccess(token);
+            const auto auth = dependencies_.auth;
+            if (!auth) {
+              reactor->Finish(grpc::Status(grpc::StatusCode::UNAUTHENTICATED,
+                                           "auth verdict unavailable"));
+              co_return;
             }
-            catch (const std::exception&) {
+            const auto verdict = co_await BlockingTask<
+                std::optional<argus::auth::v1::ValidateTokenResponse>>(
+                [auth, token, device]() {
+                  return auth->validateToken({.accessToken = token,
+                                              .deviceHash = device,
+                                              .hasDeviceContext =
+                                                  !device.empty()});
+                });
+            if (!verdict || !verdict->valid()) {
               reactor->Finish(grpc::Status(grpc::StatusCode::UNAUTHENTICATED,
                                            "invalid access token"));
               co_return;
             }
-            int64_t actorId = 0;
-            try {
-              actorId = std::stoll(claims["sub"]);
-            }
-            catch (const std::exception&) {
-              reactor->Finish(grpc::Status(grpc::StatusCode::UNAUTHENTICATED,
-                                           "invalid token subject"));
-              co_return;
-            }
-            const auto actorUser =
-                co_await userRepository_.findById(actorId);
-            if (!actorUser || !actorUser->isActive ||
-                actorUser->role != UserRole::Owner) {
+            const int64_t actorId = verdict->user().user_id();
+            if (userRoleFromString(verdict->user().role()) != UserRole::Owner) {
               reactor->Finish(grpc::Status(grpc::StatusCode::PERMISSION_DENIED,
                                            "owner role required"));
-              co_return;
-            }
-            if (!co_await refreshTokenRepository_.hasActiveSession(actorId,
-                                                                  device)) {
-              reactor->Finish(
-                  grpc::Status(grpc::StatusCode::PERMISSION_DENIED,
-                               "no active session for this owner"));
               co_return;
             }
 

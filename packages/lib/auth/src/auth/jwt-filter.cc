@@ -1,10 +1,10 @@
 #include "jwt-filter.hxx"
 
 #include <auth/auth-errors.hxx>
+#include <auth/auth-client.hxx>
 #include <errors/response-exception.hxx>
 #include <auth/device-filter.hxx>
-#include <auth/details/identity-access.hxx>
-#include <identity/identity-client.hxx>
+#include <auth/auth-access.hxx>
 #include <auth/request-context.hxx>
 #include <runtime/blocking-task.hxx>
 #include <trantor/utils/Logger.h>
@@ -47,14 +47,14 @@ JwtFilter::doFilter(const drogon::HttpRequestPtr& req)
                      .deviceHash;
   }
 
-  const auto client = filterIdentityClient();
-  const auto verdict =
-      co_await BlockingTask<
-          std::optional<argus::identity::v1::ValidateTokenResponse>>(
-          [client, token, deviceHash, hasDeviceContext]() {
-            return client->validateToken({token, deviceHash,
-                                          hasDeviceContext});
-          });
+  const auto client = filterAuthClient();
+  const auto verdict = co_await BlockingTask<
+      std::optional<argus::auth::v1::ValidateTokenResponse>>(
+      [client, token, deviceHash, hasDeviceContext]() {
+        return client->validateToken({.accessToken = token,
+                                      .deviceHash = deviceHash,
+                                      .hasDeviceContext = hasDeviceContext});
+      });
 
   if (!verdict || !verdict->valid()) {
     if (verdict && !verdict->reason().empty()) {

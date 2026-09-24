@@ -17,10 +17,6 @@ inline constexpr ErrorDefinition RemoteNotAllowed{
     .code = ErrorCode::RemoteNotAllowed,
     .status = 403,
     .message = "Remote requests are not allowed"};
-inline constexpr ErrorDefinition TooManyRemoteAttempts{
-    .code = ErrorCode::TooManyRequests,
-    .status = 429,
-    .message = "Too many requests"};
 inline constexpr ErrorDefinition RouteUnreachable{
     .code = ErrorCode::InternalError,
     .status = 500,

@@ -43,6 +43,21 @@ CREATE TABLE IF NOT EXISTS device_credential (
     created_at    INTEGER NOT NULL  DEFAULT (strftime('%s', 'now'))
 );
 
+CREATE TABLE IF NOT EXISTS change_outbox (
+    id          INTEGER NOT NULL  PRIMARY KEY AUTOINCREMENT,
+    subject     TEXT    NOT NULL,
+    fingerprint TEXT    NOT NULL  DEFAULT '',
+    payload     TEXT    NOT NULL,
+    status      TEXT    NOT NULL  DEFAULT 'pending'
+                        CHECK (status IN ('pending', 'sent')),
+    attempts    INTEGER NOT NULL  DEFAULT 0,
+    created_at  INTEGER NOT NULL  DEFAULT 0,
+    sent_at     INTEGER NOT NULL  DEFAULT 0
+);
+
 CREATE INDEX IF NOT EXISTS idx_refresh_token_user_id ON refresh_token (user_id);
 CREATE INDEX IF NOT EXISTS idx_refresh_token_access  ON refresh_token (access_token);
 CREATE INDEX IF NOT EXISTS idx_refresh_token_refresh ON refresh_token (refresh_token);
+
+CREATE INDEX IF NOT EXISTS idx_change_outbox_status
+    ON change_outbox (status, id);

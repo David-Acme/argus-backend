@@ -188,7 +188,7 @@ Json::Value cameraEmit()
 TEST_CASE("every producer stream carries the durable the change feed holds")
 {
   const auto& feeds = change_feed::defaults();
-  REQUIRE(feeds.size() == 5);
+  REQUIRE(feeds.size() == 6);
 
   CHECK(feeds[0].stream == std::string(nats_subject::kCameraStream));
   CHECK(feeds[0].subject == std::string(nats_subject::kCameraChange));
@@ -215,6 +215,11 @@ TEST_CASE("every producer stream carries the durable the change feed holds")
   CHECK(feeds[4].subject == std::string(nats_subject::kIdentityUserAction));
   CHECK(feeds[4].durable == "argus-sync-identity-action");
   CHECK(feeds[4].maxAckPending == NatsBus::kDefaultMaxAckPending);
+
+  CHECK(feeds[5].stream == std::string(nats_subject::kAuthChangeStream));
+  CHECK(feeds[5].subject == std::string(nats_subject::kAuthUserAction));
+  CHECK(feeds[5].durable == "argus-sync-auth-action");
+  CHECK(feeds[5].maxAckPending == NatsBus::kDefaultMaxAckPending);
 
   std::unordered_set<std::string> durables;
   for (const auto& feed : feeds) {
@@ -332,12 +337,21 @@ TEST_CASE("the change feed applies, routes and settles every change subject")
         "identity-action:2");
 
   CHECK(drogon::sync_wait(consumer.handle(
+            {.subject = nats_subject::kAuthUserAction,
+             .msgId = "auth-action:1",
+             .body = json_util::toString(actionJournal(7))})) ==
+        DurableDisposition::Ack);
+  CHECK(scalar("SELECT COUNT(*) FROM user_action_log") == "3");
+  CHECK(scalar("SELECT msg_id FROM user_action_log WHERE record_id = 7") ==
+        "auth-action:1");
+
+  CHECK(drogon::sync_wait(consumer.handle(
             {.subject = nats_subject::kIdentityUserAction,
              .msgId = "identity-action:3",
              .body = json_util::toString(
                  moduleAudit(7, TableName::Camera))})) ==
         DurableDisposition::Term);
-  CHECK(scalar("SELECT COUNT(*) FROM user_action_log") == "2");
+  CHECK(scalar("SELECT COUNT(*) FROM user_action_log") == "3");
 
   CHECK(drogon::sync_wait(consumer.handle(
             {.subject = nats_subject::kNotificationChange,

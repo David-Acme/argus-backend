@@ -48,6 +48,11 @@ refresh_ttl_days = 30
 fingerprint_secret = ""
 identity_mode = "ip"
 
+[auth]
+proxy_url = "https://127.0.0.1:7042"
+target = "127.0.0.1:7043"
+rpc_secret = ""
+
 [identity]
 db = "database/identity.db"
 schema = "packages/identity/database/schema.sql"
@@ -107,13 +112,6 @@ fallback_retention_days = 90
 tunnel_port = 0
 enabled = false
 hostname = ""
-
-[rate_limit]
-enabled = false
-window_seconds = 60
-max_requests = 10
-lockout_threshold = 5
-lockout_seconds = 300
 
 [guard]
 proxy_url = "http://127.0.0.1:7039"

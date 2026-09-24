@@ -130,6 +130,7 @@ with `scripts/setup.sh` / `scripts/setup.sh camera` on the host.
 | Service | Image | Notes |
 |---|---|---|
 | gateway | `argus-gateway:local` | TLS 7024, `/health` healthcheck; mounts only identity.db |
+| argus-auth | `argus-auth:local` | internal network (alias `argus-auth`), loopback 7042 + 7043 publishes; owns auth.db; runs the refresh limiter and mints the device credentials and the sessions every other service validates; `/health` healthcheck |
 | argus-camera | `argus-camera:local` | internal network, loopback 7026 + 7036 (sync gRPC) publishes; owns camera.db; `/health` healthcheck; `/dev/dri` |
 | argus-productivity | `argus-productivity:local` | internal network, loopback 7027 + 7037 (sync gRPC) publishes; owns productivity.db; `/health` healthcheck |
 | argus-notification | `argus-notification:local` | internal network, loopback 7028 + 7038 (RPC) publishes; owns notification.db; `/health` healthcheck |
@@ -394,7 +395,8 @@ the matching `*-init` profile is the only migration path onto a volume.
 
 ## Configuration and secrets (Ruling Q)
 
-- `config.gateway.toml.example` / `config.sync.toml.example` /
+- `config.gateway.toml.example` / `config.auth.toml.example` /
+  `config.sync.toml.example` /
   `config.camera.toml.example` /
   `config.productivity.toml.example` /
   `config.notification.toml.example` / `config.tts.toml.example` /
@@ -404,6 +406,7 @@ the matching `*-init` profile is the only migration path onto a volume.
   cutover keys (`config.memory.toml.example` is deleted since f8-b3: the
   memory package's keys ride the host's config.llm.toml from f8-b4); copy
   to `config.gateway.toml` /
+  `config.auth.toml` /
   `config.sync.toml` /
   `config.camera.toml` / `config.productivity.toml` /
   `config.notification.toml` / `config.tts.toml` / `config.stt.toml` /
@@ -413,15 +416,27 @@ the matching `*-init` profile is the only migration path onto a volume.
   (gitignored, mode 0600 — the instance files carry real HMAC/JWT keys, so
   copy with `install -m 600` or `chmod 600` after copying) and fill:
   `[jwt] secret/refresh_secret` and
-  `[device] fingerprint_secret` (identical in the minting/verifying set — the
-  gateway mints, argus-camera and the two Fase 3 services verify, and the
-  device hash must match across the proxy), the `[tunnel] secret` (identical
+  `[device] fingerprint_secret` (identical in the minting/verifying set —
+  argus-auth mints, the gateway, argus-camera, argus-guard,
+  argus-productivity, argus-notification and argus-sync verify, and the
+  device hash must match across the proxy), the `[auth] target`
+  (`argus-auth:7043`) and `[auth] rpc_secret` each of those verifiers
+  carries — the fleet gate on the session verdict, so an absent or
+  mismatched key makes the authority refuse every call and leaves all their
+  authenticated routes answering 401 — the `[tunnel] secret` (identical
   in the two tunnel templates — the HMAC home-link key; empty keeps the pair
   from booting, and it is never baked into any layer or template), and the
   `device.trusted_proxy_ips` of every
-  bridge-networked service (argus-camera, argus-productivity,
-  argus-notification — the internal network's gateway IP, see the network
-  section). The owning services' `[productivity] db` / `[notifications] db`
+  bridge-networked service (argus-auth, argus-camera, argus-productivity,
+  argus-notification, argus-guard, argus-sync — the internal network's
+  gateway IP, see the network section), each of which also needs
+  `device.trust_forwarded_for = true` because the gateway is the only peer
+  it sees: the device hash and the refresh limiter's key both include the
+  client IP, and only a trusted peer's `X-Forwarded-For` is honoured.
+  `scripts/lib/common.sh` adopts the wiring keys a config lacks from its own
+  template and fills the shared ones from the first non-placeholder value
+  the deploy directory holds, so an existing installation repairs itself on
+  the next provisioning run. The owning services' `[productivity] db` / `[notifications] db`
   (`config.productivity.toml`, `config.notification.toml`) name
   `productivity/productivity.db` and `notification/notification.db` inside
   their bind-mounted data dirs; the gateway holds no `db` key for either —
@@ -436,8 +451,8 @@ the matching `*-init` profile is the only migration path onto a volume.
 - No docker secrets: nothing is baked into images and instance secrets live
   only in the gitignored config files.
 - Fase 5 (Rulings CG/CJ): the gateway template gains `[remote]`
-  (`tunnel_port`, default 0 = disabled) and `[rate_limit]` (`enabled`,
-  default false) — both default-off so the shipped default is
+  (`tunnel_port`, default 0 = disabled) — default-off so the shipped default
+  is
   behavior-identical. `tunnel_port` opens the SECOND gateway listener that
   the argus-tunnel client (Fase 5) will forward to; requests landing on it
   are classified remote (by local-port match, `remote_ctx` request
@@ -454,13 +469,21 @@ the matching `*-init` profile is the only migration path onto a volume.
   `cert.rotation_threshold_days` of expiry, so with a young leaf the SAN
   waits for the periodic rotation loop (or a forced rotation via
   `rotateServerCertificate()`), and once the leaf is re-signed the
-  running gateway hot reloads it. `[rate_limit]` is the gateway's
+  running gateway hot reloads it. The limiter that Ruling CG put beside that
+  gate moved with the surface it guards: `[rate_limit]` now lives in
+  `config.auth.toml` and is argus-auth's
   in-memory limiter + lockout for
-  `PATCH /auth/refresh-token` (429 frozen envelope before any DB access);
-  all limiter state is process-local and a restart clears it. The gateway
-  template must keep `device.trust_forwarded_for` off: the limiter key
-  includes the client IP, so enabling it there would let a remote client
-  spoof the IP half of its own key.
+  `PATCH /auth/refresh-token` (429 envelope, CORS applied, before any DB
+  access), a pre-routing advice of that service; the gateway template no
+  longer carries the key. All limiter state is process-local and a restart
+  clears it. The gateway
+  template must keep `device.trust_forwarded_for` off: it is host-networked
+  and sees the client itself, so honouring a forwarded header there would let
+  a remote client
+  spoof the IP half of the device hash and of the limiter key; argus-auth is
+  the opposite case and must keep it on, because the gateway's
+  `X-Forwarded-For` is its only view of the client address and only a trusted
+  peer's header is honoured.
 - The gateway links no go2rtc code, so it neither mounts nor spawns go2rtc.
 - argus-camera spawns go2rtc itself (Go2rtcManager fork/exec, Ruling AH) from
   the bind-mounted `third_party/go2rtc` binary and writes its own
@@ -481,6 +504,8 @@ the matching `*-init` profile is the only migration path onto a volume.
 | Port | Bind | Owner |
 |---|---|---|
 | 7024 TLS | 0.0.0.0 | gateway (public) |
+| 7042 TLS | 127.0.0.1 (compose publish) | argus-auth HTTP surface — the gateway's `[auth] proxy_url` upstream for `/auth`; never published on a LAN interface, so the gateway's LAN gate stays the only way in |
+| 7043 gRPC | 127.0.0.1 (compose publish) | argus-auth session verdict — the auth filters' `[auth] target` upstream, gated by `[auth] rpc_secret` |
 | 7026 plain | 127.0.0.1 (compose publish) | argus-camera (internal, gateway upstream) |
 | 7027 plain | 127.0.0.1 (compose publish) | argus-productivity (internal, gateway upstream) |
 | 7028 plain | 127.0.0.1 (compose publish) | argus-notification (internal, gateway upstream) |

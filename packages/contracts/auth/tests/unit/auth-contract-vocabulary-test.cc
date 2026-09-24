@@ -1,6 +1,7 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
 
+#include <auth/device-login-status.hxx>
 #include <auth/user-role.hxx>
 
 #include <cstddef>
@@ -44,4 +45,19 @@ TEST_CASE("user role strings round-trip")
 TEST_CASE("unknown strings fall back to documented defaults")
 {
     CHECK(userRoleFromString("bogus") == UserRole::Guest);
+}
+
+TEST_CASE("device login status strings round-trip")
+{
+    checkRoundTrip(CheckRoundTripInput{
+        .values = {DeviceLoginStatus::Pending, DeviceLoginStatus::Approved,
+                   DeviceLoginStatus::Expired},
+        .names = {"pending", "approved", "expired"},
+        .toString = deviceLoginStatusToString,
+        .fromString = deviceLoginStatusFromString});
+}
+
+TEST_CASE("unknown device login status strings fall back to pending")
+{
+    CHECK(deviceLoginStatusFromString("bogus") == DeviceLoginStatus::Pending);
 }

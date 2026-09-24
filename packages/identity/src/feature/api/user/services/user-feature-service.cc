@@ -105,11 +105,6 @@ UserFeatureService::update(const UserManagementUpdateInput& input) const
         .client = transaction.get(),
     });
 
-    if (deactivated) {
-      co_await refreshTokenRepository_.invalidateAllUser(updated.id,
-                                                         transaction.get());
-    }
-
     if (!co_await db_transaction::Commit(std::move(transaction)))
       throw ResponseException(IdentityErrors::ChangeNotRecorded);
   }

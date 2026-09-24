@@ -24,6 +24,21 @@ struct AuthIdentityConfig
   std::string secret;
 };
 
+struct AuthRateLimitConfig
+{
+  bool enabled{false};
+  int windowSeconds{60};
+  int maxRequests{10};
+  int lockoutThreshold{5};
+  int lockoutSeconds{300};
+};
+
+struct AuthSyncControlConfig
+{
+  std::string target;
+  std::string secret;
+};
+
 class AuthConfig
 {
 public:
@@ -34,6 +49,10 @@ public:
   [[nodiscard]] static AuthRpcConfig resolveRpc();
 
   [[nodiscard]] static AuthIdentityConfig resolveIdentity();
+
+  [[nodiscard]] static AuthRateLimitConfig resolveRateLimit();
+
+  [[nodiscard]] static AuthSyncControlConfig resolveSyncControl();
 
   [[nodiscard]] static int64_t resolveContextCacheSeconds();
 };

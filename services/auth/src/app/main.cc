@@ -1,9 +1,16 @@
 #include <app/rpc/auth-rpc-service.hxx>
+#include <auth/device-filter.hxx>
+#include <auth/jwt-filter.hxx>
+#include <auth/role-filter.hxx>
+#include <auth/valid-json-filter.hxx>
 #include <config/auth-config.hxx>
 #include <config/config-service.hxx>
 #include <drogon/drogon.h>
+#include <feature/auth/controllers/auth-controller.hxx>
+#include <feature/auth/infra/refresh-rate-gate.hxx>
 #include <feature/device/repositories/device-credential/device-credential-repository.hxx>
 #include <feature/session/repositories/refresh-token/refresh-token-repository.hxx>
+#include <feature/session/services/auth-action-sink.hxx>
 #include <feature/session/services/identity-change-consumer.hxx>
 #include <feature/session/services/session-service.hxx>
 #include <grpcpp/grpcpp.h>
@@ -19,10 +26,15 @@
 #include <runtime/shutdown-signal.hxx>
 #include <sqlite/db-service.hxx>
 #include <string>
+#include <sync/auth-change-sink.hxx>
+#include <sync/sync-client.hxx>
+#include <sync/sync-control-sink.hxx>
 #include <unistd.h>
 
 namespace
 {
+
+constexpr int kActionRetryMs = 500;
 
 Json::Value drogonConfig(const AuthDbConfig& authDb,
                          const ListenerConfig& listener)
@@ -59,6 +71,7 @@ int main()
   const ListenerConfig listener = AuthConfig::resolveListener();
   const AuthRpcConfig rpc = AuthConfig::resolveRpc();
   const AuthIdentityConfig identity = AuthConfig::resolveIdentity();
+  const AuthSyncControlConfig syncControl = AuthConfig::resolveSyncControl();
 
   std::unique_ptr<IdentityClient> identityClient;
   if (!identity.target.empty())
@@ -73,7 +86,39 @@ int main()
                                   AuthConfig::resolveContextCacheSeconds()});
   DeviceCredentialRepository deviceCredentials;
 
+  std::shared_ptr<SyncClient> controlClient;
+  if (syncControl.target.empty()) {
+    LOG_INFO << "Sync control leg unconfigured; the imperative leg stays "
+                "uninstalled";
+  }
+  else {
+    controlClient = std::make_shared<SyncClient>(SyncClientConfig{
+        .target = syncControl.target, .fleetSecret = syncControl.secret});
+    sync_control::setSink(controlClient.get());
+    LOG_INFO << "Sync control leg -> gRPC " << syncControl.target;
+  }
+
   drogon::app().loadConfigJson(drogonConfig(authDb, listener));
+
+  drogon::app().registerFilter(std::make_shared<DeviceFilter>());
+  drogon::app().registerFilter(std::make_shared<ValidJsonFilter>());
+  drogon::app().registerFilter(std::make_shared<JwtFilter>());
+  drogon::app().registerFilter(std::make_shared<RoleFilter>());
+  drogon::app().registerController(
+      std::make_shared<AuthController>(identityClient.get()));
+
+  RefreshRateGate rateGate(AuthConfig::resolveRateLimit());
+
+  drogon::app().registerPreRoutingAdvice(
+      [&rateGate](const drogon::HttpRequestPtr& req,
+                  drogon::AdviceCallback&& cb,
+                  drogon::AdviceChainCallback&& chain) {
+        if (auto resp = rateGate.check(req)) {
+          cb(resp);
+          return;
+        }
+        chain();
+      });
 
   drogon::app().registerPreRoutingAdvice(
       [](const drogon::HttpRequestPtr& req, drogon::AdviceCallback&& cb,
@@ -88,6 +133,11 @@ int main()
       [](const drogon::HttpRequestPtr&, const drogon::HttpResponsePtr& resp) {
         Cors::apply(resp);
       });
+  drogon::app().registerPostHandlingAdvice(
+      [&rateGate](const drogon::HttpRequestPtr& req,
+                  const drogon::HttpResponsePtr& resp) {
+        rateGate.recordOutcome(req, resp);
+      });
 
   drogon::app().setExceptionHandler(ErrorHandler::handleException);
 
@@ -99,6 +149,7 @@ int main()
   const std::string natsUrl = ConfigService::getString("nats.url");
   std::shared_ptr<NatsBus> natsBus;
   std::shared_ptr<IdentityChangeConsumer> identityConsumer;
+  std::shared_ptr<AuthActionSink> actionSink;
   if (natsUrl.empty()) {
     LOG_INFO << "NATS not configured; the identity change feed is disabled";
   }
@@ -115,6 +166,18 @@ int main()
             .maxDeliver = 10});
     shutdown_signal::onStop(
         shutdown_signal::drainOf(*identityConsumer, "auth-identity"));
+
+    actionSink = std::make_shared<AuthActionSink>(
+        natsBus, AuthActionSink::Config{.retryMs = kActionRetryMs,
+                                        .actionSubject =
+                                            nats_subject::kAuthUserAction,
+                                        .streamName =
+                                            nats_subject::kAuthChangeStream});
+    auth_change::setSink(actionSink.get());
+    shutdown_signal::onStop(
+        shutdown_signal::drainOf(*actionSink, "auth-action"));
+    LOG_INFO << "Auth action journal -> " << nats_subject::kAuthUserAction;
+
     if (connected)
       LOG_INFO << "NATS event bus connected to " << natsBus->options().url;
     else
@@ -175,13 +238,16 @@ int main()
                                        : "gRPC " + identity.target);
 
   drogon::app().registerBeginningAdvice(
-      [&authDb, &identityConsumer]() {
+      [&authDb, &identityConsumer, &actionSink]() {
         if (!DbService::runScriptFile(authDb.schemaPath)) {
           LOG_FATAL << "Auth database schema failed to apply — aborting startup";
           _exit(1);
         }
 
         DbService::applyPragmas();
+
+        if (actionSink)
+          actionSink->reconcile();
 
         if (identityConsumer)
           identityConsumer->start();

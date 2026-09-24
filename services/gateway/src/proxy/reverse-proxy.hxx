@@ -20,6 +20,7 @@ class SimpleReverseProxy : public drogon::Plugin<SimpleReverseProxy>
         std::vector<std::string> prefixes;
         size_t maxSegments{0};
         std::string backend;
+        bool validateCert{true};
     };
 
     static bool segmentPrefixMatch(const std::string &path,

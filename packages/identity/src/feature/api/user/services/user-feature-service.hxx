@@ -3,7 +3,6 @@
 #include <drogon/orm/DbClient.h>
 #include <drogon/utils/coroutine.h>
 #include <feature/api/user/dtos/update-user-dto.hxx>
-#include <shared/repositories/refresh-token/refresh-token-repository.hxx>
 #include <shared/repositories/user/user-repository.hxx>
 #include <sync/user-action.hxx>
 #include <vector>
@@ -38,5 +37,4 @@ private:
   drogon::Task<void> recordChange(const UserChangeLogInput& input) const;
 
   UserRepository repository_;
-  RefreshTokenRepository refreshTokenRepository_;
 };

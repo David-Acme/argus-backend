@@ -1,7 +1,7 @@
 # argus_contracts_gateway
 
-The gateway's own refusals: the two camera-stream answers, the remote gate,
-the rate limiter and the unreachable route.
+The gateway's own refusals: the two camera-stream answers, the remote gate
+and the unreachable route.
 
 ## What this is
 
@@ -17,16 +17,19 @@ wire is the envelope it forwards, not a message it defines.
 
 ## Layout
 
-- `src/gateway/gateway-errors.hxx` — the five definitions in `GatewayErrors`:
-  the two camera-stream answers (503 each), the two gates (`RemoteNotAllowed`
-  403, `TooManyRemoteAttempts` 429) and `RouteUnreachable` (500). 3 files
+- `src/gateway/gateway-errors.hxx` — the four definitions in `GatewayErrors`:
+  the two camera-stream answers (503 each), the gate (`RemoteNotAllowed`
+  403) and `RouteUnreachable` (500). 3 files
   include it.
 
 ## Rules
 
-- The two gates carry their own code, not `Forbidden`/`TooManyRequests` alone:
+- The gate carries its own code, not `Forbidden` alone:
   a client distinguishes "this path is LAN-only" from "you are not allowed" by
-  the code, and the app switches on it.
+  the code, and the app switches on it. The 429 that answered a rate-limited
+  remote attempt left with the limiter itself (Phase 3b-2 moved it into
+  `argus-auth`, whose `TooManyAttempts` refuses), so this catalog holds no
+  throttling vocabulary.
 - `ServiceUnavailable` answers 503 here, as it does in every other catalog in
   the tree. That pairing is the convention a reviewer checks first.
 - Rule 25: the folder IS the module. One `argus_contracts(NAME gateway ...)`
@@ -34,6 +37,6 @@ wire is the envelope it forwards, not a message it defines.
 
 ## Tests
 
-- `tests/unit/gateway-contract-catalog-test.cc` — the five refusals as a
+- `tests/unit/gateway-contract-catalog-test.cc` — the four refusals as a
   pinned table, each entry's wire legality, and that no two say the same
   thing.

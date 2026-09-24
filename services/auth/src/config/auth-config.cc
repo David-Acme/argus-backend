@@ -8,6 +8,15 @@ constexpr int64_t kDefaultContextCacheSeconds = 30;
 constexpr int kDefaultIdentityPort = 7040;
 constexpr uint16_t kDefaultAuthPort = 7042;
 constexpr uint16_t kDefaultRpcPort = 7043;
+constexpr int kDefaultRateLimitWindowSeconds = 60;
+constexpr int kDefaultRateLimitMaxRequests = 10;
+constexpr int kDefaultRateLimitLockoutThreshold = 5;
+constexpr int kDefaultRateLimitLockoutSeconds = 300;
+
+int positiveOr(int value, int fallback)
+{
+  return value > 0 ? value : fallback;
+}
 }
 
 AuthDbConfig AuthConfig::resolveDb()
@@ -71,6 +80,33 @@ AuthIdentityConfig AuthConfig::resolveIdentity()
         std::to_string(port > 0 ? port : kDefaultIdentityPort);
   }
   config.secret = ConfigService::getString("identity.rpc_secret");
+  return config;
+}
+
+AuthRateLimitConfig AuthConfig::resolveRateLimit()
+{
+  AuthRateLimitConfig config;
+  config.enabled = ConfigService::getBool("rate_limit.enabled");
+  config.windowSeconds =
+      positiveOr(ConfigService::getInt("rate_limit.window_seconds"),
+                 kDefaultRateLimitWindowSeconds);
+  config.maxRequests =
+      positiveOr(ConfigService::getInt("rate_limit.max_requests"),
+                 kDefaultRateLimitMaxRequests);
+  config.lockoutThreshold =
+      positiveOr(ConfigService::getInt("rate_limit.lockout_threshold"),
+                 kDefaultRateLimitLockoutThreshold);
+  config.lockoutSeconds =
+      positiveOr(ConfigService::getInt("rate_limit.lockout_seconds"),
+                 kDefaultRateLimitLockoutSeconds);
+  return config;
+}
+
+AuthSyncControlConfig AuthConfig::resolveSyncControl()
+{
+  AuthSyncControlConfig config;
+  config.target = ConfigService::getString("sync.control_target");
+  config.secret = ConfigService::getString("sync.control_secret");
   return config;
 }
 

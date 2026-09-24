@@ -180,10 +180,10 @@ build_project() {
 
 ensure_local_config() {
   need_cmd openssl
-  local dir
+  local configs=() dir
   for dir in \
-      services/gateway \
       services/auth \
+      services/gateway \
       services/sync \
       services/camera \
       services/guard \
@@ -197,7 +197,9 @@ ensure_local_config() {
       services/tunnel \
       packages/memory; do
     ensure_project_config "$ROOT/$dir" || exit 1
+    configs+=("$ROOT/$dir/config.toml")
   done
+  ensure_shared_configs "${configs[@]}"
   log "Per-project configs are ready."
 }
 

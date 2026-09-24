@@ -322,7 +322,7 @@ table. The app keeps working without any update.
   monolith kept its whole notification/productivity code with the routes
   unreachable through the gateway; the build set died in F6-4.
 
-## Remote listener + LAN-only bootstrap + refresh-token limiter (F5-1)
+## Remote listener + LAN-only bootstrap (F5-1; the limiter left in 3b-2)
 
 - **Remote classification (Ruling CG)**: `[remote] tunnel_port` (default 0 =
   disabled = the single-listener shape, zero behavior change) adds a SECOND
@@ -351,44 +351,46 @@ table. The app keeps working without any update.
   byte-identical to LAN behavior. Short-circuit responses bypass the
   post-handling advice, so the gate applies CORS itself to keep the
   response headers identical to every other gateway response.
-- **Refresh-token rate limiting (Ruling CJ)**: the same gate rate-limits
-  `PATCH /auth/refresh-token` — the scope Ruling CJ bound the limiter to,
-  not the whole remote pre-auth surface (`/pairing` is bootstrap and 409s
-  after pairing and `/auth/register` is LAN-only gated above, but
+- **Refresh-token rate limiting (Ruling CJ; moved to `argus-auth` in Phase
+  3b-2)**: the limiter left this process with the `/auth` surface it guards.
+  It is `RefreshRateGate`
+  (`services/auth/src/feature/auth/infra/refresh-rate-gate.cc`), wired in
+  `services/auth/src/app/main.cc` as a pre-routing `check` plus a
+  post-handling `recordOutcome`, and fed by auth's own `[rate_limit]`
+  section. The scope is unchanged: exactly `PATCH /auth/refresh-token` — not
+  the whole remote pre-auth surface (`/pairing` is bootstrap and 409s after
+  pairing and `/auth/register` is LAN-only gated above, but
   `POST /auth/login`, `POST /auth/device-login` + its challenge poll and
-  `POST /invitation/resolve` stay remote-reachable pre-auth routes that
-  mint sessions with no limiter — still ledgered (F5-2 kept its scope to
-  the device credential identity and left the limiter surface untouched).
-  `RefreshRateLimiter`
-  (`services/gateway/src/server/refresh-rate-limiter.cc`) keeps a
-  sliding-window counter (at most `max_requests` admissions per
-  `window_seconds`) and locks a key out for `lockout_seconds` after
-  `lockout_threshold` consecutive 4xx handler outcomes; the outcome is fed
-  back by a second post-handling advice (`RemoteGate::recordOutcome`).
-  429 uses the frozen envelope (`GatewayErrors::TooManyRemoteAttempts`,
-  code `TOO_MANY_REQUESTS`) and is emitted in pre-routing — BEFORE routing,
-  filters and any database access. `[rate_limit] enabled = false` (default)
-  never rejects.
+  `POST /invitation/resolve` stay remote-reachable pre-auth routes that mint
+  sessions with no limiter — still ledgered). 429 uses the frozen envelope
+  (`AuthErrors::TooManyAttempts`, code `TOO_MANY_REQUESTS`) and is emitted in
+  pre-routing — BEFORE routing, filters and any database access.
+  `[rate_limit] enabled = false` (default) never rejects.
 - **Key and honest limits**: the limiter key is the device fingerprint hash
   (`DeviceFilter::deviceKey` = HMAC(UA|IP) with the fingerprint secret) —
-  the same key DeviceFilter stores for the request — falling back to the
-  peer IP if the fingerprint secret is unconfigured. The gateway must keep
-  `device.trust_forwarded_for` off: with it enabled the IP half of the key
-  comes from the client-supplied `X-Forwarded-For` header, so a remote
-  attacker controls the key (unlimited fresh keys, lockout defeat). Behind
-  the tunnel all remote clients share the relay's local hop, so per-key
-  collapses to per (User-Agent, relay-observed peer); UA rotation mints
-  fresh keys. This is defense-in-depth for the bootstrap route, not an
-  internet-grade WAF — the device credential identity (F5-2, Ruling CH)
-  landed but the limiter key deliberately stays fingerprint-based: a
-  client-presented credential would be an attacker-controlled key and the
-  limiter evaluates pre-DB. All state is in-memory per
-  gateway process: a restart clears every counter and lockout, and the
-  tracked-key set is bounded (4096) so rotated fingerprints cannot grow it
-  forever; once 4096 live keys are tracked, a new-key insert first evicts
-  expired entries and, while the map stays full, rejects every further new
-  key — attacker-rotated or a legitimate first-seen device — with 429
-  until tracked entries expire (self-healing within `window_seconds`).
+  the same key `DeviceFilter` stores for the request — falling back to the
+  peer IP if the fingerprint secret is unconfigured. argus-auth sees the
+  gateway hop as its peer, so the IP half of the key is the hop's address
+  unless argus-auth trusts `X-Forwarded-For`; with
+  `device.trust_forwarded_for = true` and the gateway in
+  `device.trusted_proxy_ips` — the shipped deploy and native shapes — it is
+  the client address the gateway observed, and never a client-supplied one:
+  `reverse-proxy.cc` REMOVES the
+  incoming header and writes the observed peer into it, because a
+  client-supplied `X-Forwarded-For` would let a remote attacker rotate keys
+  at will (unlimited fresh keys, lockout defeat). Behind the tunnel all
+  remote clients share the relay's local hop, so per-key collapses to per
+  (User-Agent, observed peer); UA rotation mints fresh keys. This is
+  defense-in-depth for the bootstrap surface, not an internet-grade WAF —
+  the key deliberately stays fingerprint-based: a client-presented credential
+  would be an attacker-controlled key and the limiter evaluates pre-DB. All
+  state is in-memory per argus-auth process: a restart clears every counter
+  and lockout, and the tracked-key set is bounded (4096) so rotated
+  fingerprints cannot grow it forever; once 4096 live keys are tracked, a
+  new-key insert first evicts expired entries and, while the map stays full,
+  rejects every further new key — attacker-rotated or a legitimate first-seen
+  device — with 429 until tracked entries expire (self-healing within
+  `window_seconds`).
 
 ## Leaf SAN for the public relay hostname (F5-3, Ruling CI)
 
@@ -554,3 +556,29 @@ table. The app keeps working without any update.
   credentials (`[notifications] credential` in `services/sync/config.toml` for
   the notification edge); authority comes from the matched fleet secret,
   never from declared metadata.
+
+## The `/auth` surface leaves the gateway (Phase 3b-2)
+
+- **The gateway owns no auth route**: `AuthController` and the
+  `RefreshRateLimiter` are gone, the identity registrar builds four
+  controllers and four filters, and `/auth` proxies to `argus-auth` through
+  `[auth] proxy_url` (`https://127.0.0.1:7042` in both templates, TLS to the
+  loopback listener with `validate_cert = false` on the route). The auth
+  route is appended FIRST in the proxy route table, with
+  `max_segments = 4` — the depth `/auth/device-login/{id}/approve` needs.
+- **The LAN gate still wins over the proxy**: `RemoteGate`'s pre-routing
+  advice is registered BEFORE `drogon::app().loadConfigJson(...)`, which is
+  where the reverse-proxy plugin registers its own advice. Pre-routing
+  advices run in registration order, so a remote `POST /auth/register` is
+  refused 403 by the gate and never reaches the proxy. Registering the gate
+  after the config load would silently forward the bootstrap route.
+- **The filter chain and the composition root share one auth client**:
+  `filterAuthClient()` (`packages/lib/auth/src/auth/auth-access.hxx`, the
+  same instance the filters call) resolves `[auth] target` (7043) plus
+  `[auth] rpc_secret`, so the gateway's RPC leg and every request's verdict
+  ride one cached connection instead of two. The gateway's own
+  `device.identity_mode`/`fingerprint_secret` stay in its config: the device
+  context is computed here, the credential lookup is asked of argus-auth.
+- **`/auth/has-admin` is still absent**: the frontend calls it
+  (`src/app/index.tsx`, `src/login/index.tsx`) and no backend route has ever
+  answered it, here or in argus-auth. Ledgered, not silently fixed.

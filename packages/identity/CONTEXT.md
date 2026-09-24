@@ -7,9 +7,10 @@ microservices; `src/` disappears entirely over that migration and every
 repo-root folder becomes a service or a package. argus-identity (step
 f7-2d) is the identity service's folder: what `src/identity/CMakeLists.txt`
 compiled as `argus_identity` beyond the cross-domain modules — the
-auth/invitation/pairing/user features, the identity repositories and
-schemas, faces and the private-portrait storage — moved here unchanged,
-relative paths preserved.
+auth/invitation/pairing/user features (the `auth` one became `enrollment` in
+Phase 3b-2, when the session surface moved to `argus-auth`), the identity
+repositories and schemas, faces and the private-portrait storage — moved here
+unchanged, relative paths preserved.
 
 ## Compiled into the gateway, on purpose
 
@@ -41,13 +42,15 @@ triplets, 10 schema pairs,
 `src/shared/services/face/{face-service,face-db}.{hxx,cc}`,
 `src/shared/services/storage/private-portrait-service.{hxx,cc}`),
 `database/schema.sql` (the DDL
-truth for every identity table), and the two identity unit suites
-(`identity-migration-test`, `device-credential-test`).
+truth for every identity table), and the identity unit suite
+(`identity-migration-test`).
 
 Not moved, on purpose:
 
-- The auth filter package (`src/filter/`) — `argus-auth` extraction is a
-  later step, and it must land after the auth RPC.
+- The auth filter package (`src/filter/`) — `argus-auth` landed as its own
+  service in Phase 3b-1 and Phase 3b-2 moved the `/auth` surface, the three
+  session tables and the rate limiter onto it; what stays here is the
+  `enrollment` feature that answers `RegisterUser`.
 - The audit / sqlite / cert / socket / mdns / room modules — cross-domain
   or gateway-owned; they dissolve into their owner services later. `socket`,
   `room` and `audit` did, into `services/sync` in Phase 3a-1c; `sqlite`, `cert`
@@ -87,40 +90,48 @@ publishes onto the feed instead of writing the audit tables.
 
 `argus::lib::auth`'s filters used to read this service's repositories (device
 credential by secret hash; user and refresh-token by the JWT chain), which
-made the dependency mutual — this service's AuthService calls JwtService
-and DeviceFilter statics in the other direction. f7-3 deleted the reading
-half: the filters now call `argus.identity.v1` (ValidateToken,
-CheckDeviceCredential) through `argus::clients::identity`, so `argus::lib::auth`
-depends on the identity wire — contract and client — never on this folder. What remains is one
-direction only — argus_identity → argus::lib::auth — and no consumer's link
+made the dependency mutual — this service's controllers declare those same
+filters. f7-3 deleted the reading half: the filters called
+`argus.identity.v1` (ValidateToken, CheckDeviceCredential) through
+`argus::clients::identity` instead. Phase 3b-3 moved that call a second time,
+onto the verdict argus-auth serves (`argus.auth.v1`, through
+`argus::clients::auth`), so nothing in the filter path names this service at
+all. What remains is one
+direction only — argus_identity → argus::lib::auth, the filter declarations
+its own controllers carry — and no consumer's link
 order matters anymore.
 
 ## The RPC surface
 
 `src/feature/rpc/identity-rpc.cc` serves `argus.identity.v1`: UpdateUser
-(the F6-3 spoken-name write) plus the f7-3 pair ValidateToken and
-CheckDeviceCredential. It lives here because the surface belongs to this
+(the F6-3 spoken-name write), RegisterUser (the `enrollment` feature), GetUser
+and the person/face calls (ListPersons, IdentifyPerson, EnrollPerson,
+TouchPerson, TagPerson, ListNotifiableUsers, GetPersonTags). It lives here
+because the surface belongs to this
 service; the gateway only HOSTS the listener (it constructs the service
 and binds `identity.rpc_host:rpc_port`), which is what makes it move with
 the folder at the standalone extraction instead of being rewritten.
 
-ValidateToken is the single authoritative validation: it verifies the JWT
-signature, reads the live user row (status always fresh — no cached
-verdicts) and, when the caller's device filter ran, the refresh-token row
-with its expiry and device binding. It answers OK with `valid=false` and
+The f7-3 pair ValidateToken and CheckDeviceCredential left with the session
+surface in Phase 3b-1/3b-2: argus-auth serves them now, and it is the single
+authoritative validation — JWT signature, the live user row (status always
+fresh, no cached verdicts) and, when the caller's device filter ran, the
+refresh-token row with its expiry and device binding. It answers OK with
+`valid=false` and
 the caller's 401 body rather than a gRPC error, so a rejected token and a
-broken service stay distinguishable — an unreachable service makes the
+broken service stay distinguishable — an unreachable authority makes the
 filter fail closed.
 
 ## The unit suites
 
 `identity-migration-test` (schema apply + the argus.db → identity.db row
-by row verification), `device-credential-test` (the DeviceFilter gate,
-the credential repository, the auth-service issuance flow),
+by row verification),
 `identity-change-outbox-test` (the outbox's own key rules and
 dispositions) and `identity-change-outbox-sink-test` (every leg of the
 sink, plus the live round trip when `ARGUS_NATS_URL` names a broker)
-register in the package's standalone CTest graph. No e2e suite exists yet;
+register in the package's standalone CTest graph. `device-credential-test`
+left with the credential flow it drives (Phase 3b-2), where it is
+`services/auth`'s `device-login-test`. No e2e suite exists yet;
 the folder gains `tests/e2e/` when the package has one.
 
 ## The change feed's durable outbox (3a-2e)

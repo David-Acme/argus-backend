@@ -21,8 +21,6 @@ const std::vector<std::string> kIdentityTables = {
     "face_embedding",
     "person_tag",
     "person_snapshot",
-    "refresh_token",
-    "device_login_challenge",
     "user_invitation",
     "invitation_redemption",
 };

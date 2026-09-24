@@ -23,28 +23,34 @@ message UpdateUserResponse
   UserIdentity user = 1;
 }
 
-message ValidateTokenRequest
+message RegisterUserRequest
 {
-  string access_token = 1;
-  optional string device_hash = 2;
+  bytes image = 1;
+  optional string name = 2;
+  optional string invitation_token = 3;
+  optional string lang = 4;
 }
 
-message ValidateTokenResponse
+enum RegisterUserOutcome
 {
-  bool valid = 1;
-  string reason = 2;
-  UserIdentity user = 3;
-  int64 expires_at = 4;
+  REGISTER_USER_OUTCOME_UNSPECIFIED = 0;
+  REGISTER_USER_ENROLLED = 1;
+  REGISTER_USER_ALREADY_REGISTERED = 2;
+  REGISTER_USER_NOT_PAIRED = 3;
+  REGISTER_USER_FACE_EXTRACTION_FAILED = 4;
+  REGISTER_USER_FACE_ALREADY_REGISTERED = 5;
+  REGISTER_USER_FACE_NOT_RECOGNIZED = 6;
+  REGISTER_USER_INVITATION_REQUIRED = 7;
+  REGISTER_USER_INVITATION_INVALID = 8;
+  REGISTER_USER_OWNER_ALREADY_EXISTS = 9;
+  REGISTER_USER_FACE_INDEX_FAILED = 10;
 }
 
-message CheckDeviceCredentialRequest
+message RegisterUserResponse
 {
-  string secret_hash = 1;
-}
-
-message CheckDeviceCredentialResponse
-{
-  bool active = 1;
+  RegisterUserOutcome outcome = 1;
+  UserIdentity user = 2;
+  optional int64 person_id = 3;
 }
 
 message GetUserRequest
@@ -88,6 +94,7 @@ message IdentifyPersonResponse
   optional string role = 5;
   optional string name = 6;
   bool trusted = 7;
+  optional string last_name = 8;
 }
 
 message EnrollPersonRequest
@@ -183,6 +190,8 @@ service IdentityService
 {
   rpc UpdateUser(UpdateUserRequest) returns (UpdateUserResponse) {}
 
+  rpc RegisterUser(RegisterUserRequest) returns (RegisterUserResponse) {}
+
   rpc GetUser(GetUserRequest) returns (GetUserResponse) {}
 
   rpc ListPersons(ListPersonsRequest) returns (ListPersonsResponse) {}
@@ -203,9 +212,4 @@ service IdentityService
 
   rpc ListNotifiableUsers(ListNotifiableUsersRequest)
       returns (ListNotifiableUsersResponse) {}
-
-  rpc ValidateToken(ValidateTokenRequest) returns (ValidateTokenResponse) {}
-
-  rpc CheckDeviceCredential(CheckDeviceCredentialRequest)
-      returns (CheckDeviceCredentialResponse) {}
 }

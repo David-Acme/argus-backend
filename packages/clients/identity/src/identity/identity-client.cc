@@ -34,21 +34,28 @@ IdentityClient::updateUserName(const UpdateUserNameInput& input) const
   return response.user();
 }
 
-std::optional<argus::identity::v1::ValidateTokenResponse>
-IdentityClient::validateToken(const ValidateTokenInput& input) const
+std::optional<argus::identity::v1::RegisterUserResponse>
+IdentityClient::registerUser(const RegisterUserInput& input) const
 {
+  if (input.image.empty())
+    return std::nullopt;
+
   grpc::ClientContext context;
   argus::client::setDeadline(context, kCallTimeoutMs);
   argus::client::addFleetSecret(context, fleetSecret_);
 
-  argus::identity::v1::ValidateTokenRequest request;
-  request.set_access_token(input.accessToken);
-  if (input.hasDeviceContext)
-    request.set_device_hash(input.deviceHash);
+  argus::identity::v1::RegisterUserRequest request;
+  request.set_image(input.image);
+  if (!input.name.empty())
+    request.set_name(input.name);
+  if (!input.invitationToken.empty())
+    request.set_invitation_token(input.invitationToken);
+  if (!input.lang.empty())
+    request.set_lang(input.lang);
 
-  argus::identity::v1::ValidateTokenResponse response;
+  argus::identity::v1::RegisterUserResponse response;
   if (const grpc::Status status =
-          stub_->ValidateToken(&context, request, &response);
+          stub_->RegisterUser(&context, request, &response);
       !status.ok())
     return std::nullopt;
   return response;
@@ -89,23 +96,6 @@ IdentityClient::listPersons() const
       !status.ok())
     return std::nullopt;
   return response;
-}
-
-bool IdentityClient::checkDeviceCredential(const std::string& secretHash) const
-{
-  grpc::ClientContext context;
-  argus::client::setDeadline(context, kCallTimeoutMs);
-  argus::client::addFleetSecret(context, fleetSecret_);
-
-  argus::identity::v1::CheckDeviceCredentialRequest request;
-  request.set_secret_hash(secretHash);
-
-  argus::identity::v1::CheckDeviceCredentialResponse response;
-  if (const grpc::Status status =
-          stub_->CheckDeviceCredential(&context, request, &response);
-      !status.ok())
-    return false;
-  return response.active();
 }
 
 std::optional<argus::identity::v1::IdentifyPersonResponse>

@@ -61,8 +61,13 @@ refresh_ttl_days = 30
 
 [device]
 fingerprint_secret = ""
+identity_mode = "ip"
 trust_forwarded_for = true
 trusted_proxy_ips = ""
+
+[auth]
+target = "argus-auth:7043"
+rpc_secret = "CHANGE_ME_SAME_IN_EVERY_SERVICE"
 
 [nats]
 url = "nats://nats:4222"

@@ -28,6 +28,11 @@ if(NOT TARGET argus::clients::identity)
                      ${CMAKE_BINARY_DIR}/clients/identity EXCLUDE_FROM_ALL)
 endif()
 
+if(NOT TARGET argus::clients::auth)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../clients/auth
+                     ${CMAKE_BINARY_DIR}/clients/auth EXCLUDE_FROM_ALL)
+endif()
+
 find_package(Drogon CONFIG REQUIRED)
 find_package(jwt-cpp REQUIRED)
 find_package(nlohmann_json REQUIRED)
@@ -35,6 +40,7 @@ find_package(OpenSSL REQUIRED)
 
 argus_lib(NAME auth
     SOURCES
+        src/auth/auth-access.cc
         src/auth/device-filter.cc
         src/auth/details/identity-access.cc
         src/auth/jwt-filter.cc
@@ -49,6 +55,7 @@ argus_lib(NAME auth
     DEPENDS
         argus::contracts::auth argus::contracts::sync argus::lib::config argus::lib::runtime argus::lib::errors
         argus::clients::identity
+        argus::clients::auth
         Drogon::Drogon
         jwt-cpp::jwt-cpp
         nlohmann_json::nlohmann_json

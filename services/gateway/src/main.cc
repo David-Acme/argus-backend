@@ -3,6 +3,7 @@
 #include <http/error-handler.hxx>
 #include <http/health-controller.hxx>
 #include <http/listener-config.hxx>
+#include <auth/auth-access.hxx>
 #include <identity/identity-config.hxx>
 #include <identity/identity-registrar.hxx>
 #include <feature/rpc/identity-rpc.hxx>
@@ -10,7 +11,6 @@
 #include <proxy/reverse-proxy.hxx>
 #include <server/remote-config.hxx>
 #include <server/remote-gate.hxx>
-#include <server/refresh-rate-limiter.hxx>
 #include <json/value.h>
 #include <mdns/mdns-service.hxx>
 #include <memory>
@@ -78,7 +78,8 @@ Json::Value drogonConfig(const DrogonConfigInput& input)
       {.listeners = listeners, .remote = remote, .base = listener});
   config["listeners"] = listeners;
 
-  if (!proxy.cameraProxyUrl.empty() || !proxy.productivityProxyUrl.empty()
+  if (!proxy.authProxyUrl.empty() || !proxy.cameraProxyUrl.empty()
+      || !proxy.productivityProxyUrl.empty()
       || !proxy.notificationProxyUrl.empty() ||
       !proxy.guardProxyUrl.empty()) {
     Json::Value plugins(Json::arrayValue);
@@ -92,6 +93,16 @@ Json::Value drogonConfig(const DrogonConfigInput& input)
     proxyConfig["exclusions"] = exclusions;
     {
       Json::Value routes(Json::arrayValue);
+      if (!proxy.authProxyUrl.empty()) {
+        Json::Value authRoute(Json::objectValue);
+        Json::Value prefixes(Json::arrayValue);
+        prefixes.append("/auth");
+        authRoute["prefixes"] = prefixes;
+        authRoute["max_segments"] = 4;
+        authRoute["backend"] = proxy.authProxyUrl;
+        authRoute["validate_cert"] = false;
+        routes.append(authRoute);
+      }
       if (!proxy.cameraProxyUrl.empty()) {
         Json::Value cameraRoute(Json::objectValue);
         Json::Value prefixes(Json::arrayValue);
@@ -180,7 +191,7 @@ void logRouting(const LogRoutingInput& input)
              << remote.tunnelPort << " (pairing/register "
              << (remote.enabled ? "allowed" : "LAN-only") << ")";
   if (proxy.cameraProxyUrl.empty() && proxy.productivityProxyUrl.empty()
-      && proxy.notificationProxyUrl.empty()) {
+      && proxy.notificationProxyUrl.empty() && proxy.authProxyUrl.empty()) {
     LOG_INFO << "Reverse proxy disabled: the gateway serves its routes only";
     return;
   }
@@ -249,16 +260,7 @@ int main()
   requireExclusionCoverage(proxy);
   logRouting({.proxy = proxy, .listener = listener, .remote = remote});
 
-  drogon::app().loadConfigJson(
-      drogonConfig({.identityDb = identityDb,
-                    .gatewayDbPath = gatewayDbPath,
-                    .listener = listener,
-                    .remote = remote,
-                    .proxy = proxy}));
-
-  RemoteGate remoteGate(remote,
-                        std::make_shared<RefreshRateLimiter>(
-                            RateLimitConfig::resolve()));
+  RemoteGate remoteGate(remote);
   drogon::app().registerPreRoutingAdvice(
       [&remoteGate, &remote](const drogon::HttpRequestPtr& req,
                              drogon::AdviceCallback&& cb,
@@ -269,6 +271,13 @@ int main()
         }
         chain();
       });
+
+  drogon::app().loadConfigJson(
+      drogonConfig({.identityDb = identityDb,
+                    .gatewayDbPath = gatewayDbPath,
+                    .listener = listener,
+                    .remote = remote,
+                    .proxy = proxy}));
 
   drogon::app().registerPreRoutingAdvice(
       [&proxy](const drogon::HttpRequestPtr& req,
@@ -285,12 +294,6 @@ int main()
   drogon::app().registerPostHandlingAdvice(
       [](const drogon::HttpRequestPtr&, const drogon::HttpResponsePtr& resp) {
         Cors::apply(resp);
-      });
-
-  drogon::app().registerPostHandlingAdvice(
-      [&remoteGate](const drogon::HttpRequestPtr& req,
-                    const drogon::HttpResponsePtr& resp) {
-        remoteGate.recordOutcome(req, resp);
       });
 
   drogon::app().setExceptionHandler(ErrorHandler::handleException);
@@ -370,7 +373,9 @@ int main()
     _exit(1);
   }
 
-  IdentityRpcService identityRpc(natsBus, identityRpcConfig.secret);
+  IdentityRpcService identityRpc({.bus = natsBus,
+                                  .fleetSecret = identityRpcConfig.secret,
+                                  .auth = filterAuthClient()});
   grpc::ServerBuilder identityBuilder;
   identityBuilder.AddListeningPort(
       identityRpcConfig.host + ":" + std::to_string(identityRpcConfig.port),

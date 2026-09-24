@@ -1,23 +1,29 @@
 #pragma once
 
 #include <argus/identity/v1/identity.grpc.pb.h>
+#include <auth/auth-client.hxx>
 #include <grpcpp/grpcpp.h>
 #include <memory>
-#include <shared/repositories/device-credential/device-credential-repository.hxx>
+#include <nats/nats-bus.hxx>
 #include <shared/repositories/face-embedding/face-embedding-repository.hxx>
 #include <shared/repositories/person-snapshot/person-snapshot-repository.hxx>
 #include <shared/repositories/person-tag/person-tag-repository.hxx>
 #include <shared/repositories/person/person-repository.hxx>
-#include <shared/repositories/refresh-token/refresh-token-repository.hxx>
 #include <shared/repositories/user/user-repository.hxx>
-#include <auth/jwt-service.hxx>
-#include <nats/nats-bus.hxx>
+#include <feature/api/enrollment/services/enrollment-feature-service.hxx>
 
 class IdentityRpcService final
     : public argus::identity::v1::IdentityService::CallbackService
 {
 public:
-  IdentityRpcService(std::shared_ptr<NatsBus> bus, std::string fleetSecret);
+  struct Dependencies
+  {
+    std::shared_ptr<NatsBus> bus;
+    std::string fleetSecret;
+    std::shared_ptr<const AuthClient> auth;
+  };
+
+  explicit IdentityRpcService(Dependencies dependencies);
 
   grpc::ServerUnaryReactor*
   UpdateUser(grpc::CallbackServerContext* context,
@@ -25,9 +31,9 @@ public:
              argus::identity::v1::UpdateUserResponse* response) override;
 
   grpc::ServerUnaryReactor*
-  ValidateToken(grpc::CallbackServerContext* context,
-                const argus::identity::v1::ValidateTokenRequest* request,
-                argus::identity::v1::ValidateTokenResponse* response) override;
+  RegisterUser(grpc::CallbackServerContext* context,
+               const argus::identity::v1::RegisterUserRequest* request,
+               argus::identity::v1::RegisterUserResponse* response) override;
 
   grpc::ServerUnaryReactor*
   GetUser(grpc::CallbackServerContext* context,
@@ -38,12 +44,6 @@ public:
   ListPersons(grpc::CallbackServerContext* context,
               const argus::identity::v1::ListPersonsRequest* request,
               argus::identity::v1::ListPersonsResponse* response) override;
-
-  grpc::ServerUnaryReactor*
-  CheckDeviceCredential(
-      grpc::CallbackServerContext* context,
-      const argus::identity::v1::CheckDeviceCredentialRequest* request,
-      argus::identity::v1::CheckDeviceCredentialResponse* response) override;
 
   grpc::ServerUnaryReactor*
   IdentifyPerson(grpc::CallbackServerContext* context,
@@ -87,25 +87,13 @@ public:
       argus::identity::v1::ListNotifiableUsersResponse* response) override;
 
 private:
-  struct TokenRejectionInput
-  {
-    grpc::ServerUnaryReactor* reactor;
-    argus::identity::v1::ValidateTokenResponse* response;
-    const std::string& reason;
-  };
-
-  static void finishRejected(const TokenRejectionInput& input);
-
   bool fleetAuthorized(const grpc::CallbackServerContext* context) const;
 
-  JwtService jwtService_;
+  Dependencies dependencies_;
+  EnrollmentFeatureService enrollmentService_;
   UserRepository userRepository_;
   PersonRepository personRepository_;
   FaceEmbeddingRepository faceEmbeddingRepository_;
   PersonTagRepository personTagRepository_;
   PersonSnapshotRepository personSnapshotRepository_;
-  RefreshTokenRepository refreshTokenRepository_;
-  DeviceCredentialRepository deviceCredentialRepository_;
-  std::shared_ptr<NatsBus> bus_;
-  std::string fleetSecret_;
 };

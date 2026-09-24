@@ -50,6 +50,23 @@ refresh_secret = ""
 access_ttl_minutes = 15
 refresh_ttl_days = 30
 
+[device]
+fingerprint_secret = ""
+identity_mode = "ip"
+trust_forwarded_for = true
+trusted_proxy_ips = ""
+
+[sync]
+control_target = "127.0.0.1:7041"
+control_secret = ""
+
+[rate_limit]
+enabled = false
+window_seconds = 60
+max_requests = 10
+lockout_threshold = 5
+lockout_seconds = 300
+
 [nats]
 url = "nats://127.0.0.1:4222"
 reconnect_wait_ms = 2000

@@ -84,7 +84,7 @@ services:
         aliases:
           - argus-auth
     ports:
-      - "${AUTH_PORT:-7042}:7042"
+      - "127.0.0.1:${AUTH_PORT:-7042}:7042"
       - "127.0.0.1:${AUTH_RPC_PORT:-7043}:7043"
     entrypoint: ["/opt/argus/argus-auth"]
     volumes:

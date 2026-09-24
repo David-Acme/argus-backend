@@ -95,13 +95,17 @@ if(NOT TARGET argus::clients::sync)
                      ${CMAKE_BINARY_DIR}/clients/sync EXCLUDE_FROM_ALL)
 endif()
 
+if(NOT TARGET argus::clients::auth)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../clients/auth
+                     ${CMAKE_BINARY_DIR}/clients/auth EXCLUDE_FROM_ALL)
+endif()
+
 if(NOT TARGET argus::contracts::identity)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../contracts/identity
                      ${CMAKE_BINARY_DIR}/contracts/identity)
 endif()
 
 find_package(Drogon CONFIG REQUIRED)
-find_package(jwt-cpp REQUIRED)
 find_package(nlohmann_json REQUIRED)
 find_package(OpenCV CONFIG REQUIRED)
 find_package(OpenSSL REQUIRED)
@@ -115,16 +119,8 @@ add_subdirectory(src/shared/repositories/change-outbox)
 
 argus_module(NAME identity
     SOURCES
-        src/feature/api/auth/controllers/auth-controller.cc
-        src/feature/api/auth/dtos/create-device-login-dto.cc
-        src/feature/api/auth/dtos/device-login-status-dto.cc
-        src/feature/api/auth/dtos/login-dto.cc
-        src/feature/api/auth/dtos/refresh-token-dto.cc
-        src/feature/api/auth/dtos/register-dto.cc
-        src/feature/api/auth/dtos/response-login-dto.cc
-        src/feature/api/auth/dtos/response-refresh-token-dto.cc
-        src/feature/api/auth/dtos/update-me-dto.cc
-        src/feature/api/auth/services/auth-service.cc
+        src/feature/api/enrollment/repositories/enrollment/enrollment-repository.cc
+        src/feature/api/enrollment/services/enrollment-feature-service.cc
         src/feature/api/invitation/controllers/invitation-controller.cc
         src/feature/api/invitation/dtos/create-invitation-dto.cc
         src/feature/api/invitation/dtos/resolve-invitation-dto.cc
@@ -143,24 +139,18 @@ argus_module(NAME identity
         src/feature/api/user/services/nats-identity-change-sink.cc
         src/feature/api/user/services/portrait-preview-service.cc
         src/feature/api/user/services/user-feature-service.cc
-        src/shared/repositories/device-credential/device-credential-repository.cc
-        src/shared/repositories/device-login-challenge/device-login-challenge-repository.cc
         src/shared/repositories/face-embedding/face-embedding-repository.cc
         src/shared/repositories/person/person-repository.cc
         src/shared/repositories/person-snapshot/person-snapshot-repository.cc
         src/shared/repositories/person-tag/person-tag-repository.cc
         src/shared/repositories/portrait-preview-capability/portrait-preview-capability-repository.cc
-        src/shared/repositories/refresh-token/refresh-token-repository.cc
         src/shared/repositories/stored-file/stored-file-repository.cc
         src/shared/repositories/user-invitation/user-invitation-repository.cc
         src/shared/repositories/user-portrait/user-portrait-repository.cc
         src/shared/repositories/user/user-repository.cc
-        src/shared/schemas/device-credential/device-credential-schema.cc
-        src/shared/schemas/device-login-challenge/device-login-challenge-schema.cc
         src/shared/schemas/face-embedding/face-embedding-schema.cc
         src/shared/schemas/person/person-schema.cc
         src/shared/schemas/portrait-preview-capability/portrait-preview-capability-schema.cc
-        src/shared/schemas/refresh-token/refresh-token-schema.cc
         src/shared/schemas/stored-file/stored-file-schema.cc
         src/shared/schemas/user-invitation/user-invitation-schema.cc
         src/shared/schemas/user-portrait/user-portrait-schema.cc
@@ -188,11 +178,11 @@ argus_module(NAME identity
         argus::lib::auth
         argus::clients::identity
         argus::clients::sync
+        argus::clients::auth
         argus::lib::sqlite
         argus::lib::cert
         argus::hardware-profile-gpu
         Drogon::Drogon
-        jwt-cpp::jwt-cpp
         nlohmann_json::nlohmann_json
         opencv::opencv
         OpenSSL::SSL
@@ -217,15 +207,6 @@ target_link_libraries(identity-migration-test PRIVATE identity-migration
 target_compile_options(identity-migration-test PRIVATE -Wall -Wextra)
 
 add_test(NAME identity-migration-test COMMAND identity-migration-test)
-
-add_executable(device-credential-test tests/unit/device-credential-test.cc)
-
-target_link_libraries(device-credential-test PRIVATE argus_identity
-    doctest::doctest)
-
-target_compile_options(device-credential-test PRIVATE -Wall -Wextra)
-
-add_test(NAME device-credential-test COMMAND device-credential-test)
 
 add_executable(identity-change-outbox-test
     tests/unit/identity-change-outbox-test.cc)

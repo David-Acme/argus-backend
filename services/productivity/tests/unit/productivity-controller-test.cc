@@ -93,7 +93,8 @@ void seedIdentityDb(const std::string& path)
 class IdentityRpcHarness
 {
 public:
-  IdentityRpcHarness() : service_(nullptr, "")
+  IdentityRpcHarness()
+      : service_({.bus = nullptr, .fleetSecret = "", .auth = nullptr})
   {
     int port = 0;
     grpc::ServerBuilder builder;

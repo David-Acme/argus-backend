@@ -22,8 +22,6 @@ const std::vector<CatalogEntry> kCatalog{
      ErrorCode::ServiceUnavailable, 503, "Camera stream queue overflow"},
     {"RemoteNotAllowed", &GatewayErrors::RemoteNotAllowed,
      ErrorCode::RemoteNotAllowed, 403, "Remote requests are not allowed"},
-    {"TooManyRemoteAttempts", &GatewayErrors::TooManyRemoteAttempts,
-     ErrorCode::TooManyRequests, 429, "Too many requests"},
     {"RouteUnreachable", &GatewayErrors::RouteUnreachable,
      ErrorCode::InternalError, 500, "Route backend is unreachable"},
 };
@@ -40,7 +38,7 @@ TEST_CASE("the gateway catalog matches the table pinned here")
     CHECK(entry.definition->status == entry.status);
     CHECK(std::string(entry.definition->message) == entry.message);
   }
-  CHECK(kCatalog.size() == 5);
+  CHECK(kCatalog.size() == 4);
 }
 
 TEST_CASE("every gateway entry is legal on the wire")

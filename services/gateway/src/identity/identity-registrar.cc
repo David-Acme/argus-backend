@@ -2,7 +2,6 @@
 
 #include <drogon/DrClassMap.h>
 #include <drogon/drogon.h>
-#include <feature/api/auth/controllers/auth-controller.hxx>
 #include <feature/api/invitation/controllers/invitation-controller.hxx>
 #include <feature/api/pairing/controllers/pairing-controller.hxx>
 #include <feature/api/user/controllers/portrait-preview-controller.hxx>
@@ -53,7 +52,6 @@ IdentityRegistrationStats registerIdentitySurface()
   drogon::app().registerFilter(std::make_shared<JwtFilter>());
   drogon::app().registerFilter(std::make_shared<RoleFilter>());
 
-  drogon::app().registerController(std::make_shared<AuthController>());
   drogon::app().registerController(std::make_shared<InvitationController>());
   drogon::app().registerController(std::make_shared<PairingController>());
   drogon::app().registerController(std::make_shared<UserController>());
@@ -69,11 +67,10 @@ IdentityRegistrationStats registerIdentitySurface()
   requireFilter<JwtFilter>();
   requireFilter<RoleFilter>();
 
-  requireController<AuthController>(handlerDescriptions);
   requireController<InvitationController>(handlerDescriptions);
   requireController<PairingController>(handlerDescriptions);
   requireController<UserController>(handlerDescriptions);
   requireController<PortraitPreviewController>(handlerDescriptions);
 
-  return {.controllers = 5, .filters = 4};
+  return {.controllers = 4, .filters = 4};
 }

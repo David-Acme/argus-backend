@@ -98,7 +98,11 @@ which is what lets the peer containers the secret exists for reach
 `argus-auth:7043` — and the compose publishes 7043 on `127.0.0.1` only.
 
 **Ports.** 7042 is this service's HTTP subroute (TLS with the instance
-certificate), 7043 its RPC listener.
+certificate), 7043 its RPC listener. The compose publishes both on
+`127.0.0.1` only: the gateway's proxy dials `https://127.0.0.1:7042` for
+`/auth`, the fleet dials `argus-auth:7043` over the bridge, and a LAN
+publish of 7042 would hand a reachable host the enrollment path with no
+`RemoteGate` in front of it.
 
 ## The verdict order
 

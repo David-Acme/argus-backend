@@ -30,7 +30,7 @@ auth-service code; when in doubt, the root file wins.
    listener is bound to loopback, which is the native default; `main.cc`
    refuses to start when the listener is reachable beyond loopback without
    one. The deploy template binds `0.0.0.0` behind that secret, which is what
-   lets the peer containers reach `argus-auth:7043`; only the published port is
+   lets the peer containers reach `argus-auth:7043`; both published ports stay
    loopback-only.
 6. **Never serialize an invitation, portrait or credential secret** — a device
    credential is looked up by the SHA-256 the caller already holds
@@ -75,18 +75,27 @@ argus-auth/
     infra/              ordered-delivery: the one durable handler shape this
                         service's consumers are built from
   src/feature/device/
-    repositories/       device_credential lookup by secret hash
-    schemas/            device_credential row mapping
+    repositories/       device_credential lookup by secret hash, and the
+                        device_login_challenge compare-and-set
+    schemas/            device_credential and device_login_challenge mapping
+  src/feature/auth/
+    controllers/        the nine /auth routes
+    dtos/               the request and response DTOs of that surface
+    services/           AuthFeatureService: sessions, credentials, challenges
+    infra/              refresh-rate-gate: the [rate_limit] pre-routing gate
   database/schema.sql   this owner's three tables and their three indexes
   config.toml.example   auth keys + the identity target; no AI keys
-  tests/unit/           the session-verdict suite and its live NATS leg
+  tests/unit/           the session-verdict, device-login, refresh-gate and
+                        migration suites (the first has a live NATS leg)
   CONTEXT.md            purpose, ownership, wiring decisions
 ```
 
-Two features, not four: `session` owns what a validated token means (the
+Three features, not four: `session` owns what a validated token means (the
 verdict, its context cache and the identity change feed that invalidates it);
-`device` owns the device credential lookup. Both are feature-local — rule 23's
-2+ rule has not been earned by either repository yet, so nothing sits in
+`device` owns the credential lookup and the login challenge's one-use
+compare-and-set; `auth` owns the HTTP surface, its DTOs and the refresh
+limiter that guards it. All three are feature-local — rule 23's
+2+ rule has not been earned by any repository yet, so nothing sits in
 `src/shared/`.
 
 The top-level CMake auto-discovers feature folders and links
@@ -97,8 +106,10 @@ also what compiles `argus/auth/v1/auth.proto`.
 ## Endpoint and ports
 
 The HTTP surface terminates TLS on `7042` and the RPC listener answers on
-`7043`. The compose publishes 7042 on every interface and 7043 on
-`127.0.0.1` only.
+`7043`. The compose publishes both on `127.0.0.1` only: the session verdict is
+a fleet-internal answer gated by `[auth] rpc_secret`, and the HTTP surface is
+reached by the gateway's loopback proxy, so nothing outside the host may dial
+either port past the gateway's LAN gate.
 
 ## Build commands
 

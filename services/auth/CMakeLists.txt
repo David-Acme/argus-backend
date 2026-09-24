@@ -43,9 +43,17 @@ if(PROJECT_IS_TOP_LEVEL)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/auth
                          ${CMAKE_BINARY_DIR}/auth)
     endif()
+    if(NOT TARGET argus::lib::validation)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/validation
+                         ${CMAKE_BINARY_DIR}/validation)
+    endif()
     if(NOT TARGET argus::contracts::sync)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/contracts/sync
                          ${CMAKE_BINARY_DIR}/contracts/sync)
+    endif()
+    if(NOT TARGET argus::contracts::auth)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/contracts/auth
+                         ${CMAKE_BINARY_DIR}/contracts/auth)
     endif()
 endif()
 
@@ -57,6 +65,11 @@ endif()
 if(NOT TARGET argus::clients::identity)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/identity
                      ${CMAKE_BINARY_DIR}/clients/identity)
+endif()
+
+if(NOT TARGET argus::clients::sync)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/sync
+                     ${CMAKE_BINARY_DIR}/clients/sync)
 endif()
 
 find_package(doctest REQUIRED)
@@ -74,13 +87,16 @@ add_subdirectory(src/app/rpc)
 argus_service(NAME argus-auth
     MAIN ${AUTH_SRC_ROOT}/app/main.cc
     MODULES argus::auth-config
+            argus::auth-auth
             argus::auth-session
             argus::auth-device
             argus::auth-rpc
     DEPENDS argus::lib::http
             argus::lib::auth
             argus::lib::nats
+            argus::contracts::auth
             argus::clients::identity
+            argus::clients::sync
             Drogon::Drogon
     PORTS 7042 7043)
 
@@ -91,4 +107,5 @@ if(DOCTEST_INCLUDE_DIRS)
         INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${DOCTEST_INCLUDE_DIRS}")
 endif()
 
+add_subdirectory(tools/migrate-auth)
 add_subdirectory(tests)

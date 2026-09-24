@@ -1,0 +1,592 @@
+#define DOCTEST_CONFIG_IMPLEMENT
+#include <doctest/doctest.h>
+
+#include <app/rpc/auth-rpc-service.hxx>
+#include <auth/device-filter.hxx>
+#include <auth/device-login-status.hxx>
+#include <auth/jwt-filter.hxx>
+#include <auth/jwt-service.hxx>
+#include <auth/request-context.hxx>
+#include <config/config-service.hxx>
+#include <drogon/drogon.h>
+#include <errors/response-exception.hxx>
+#include <feature/auth/services/auth-feature-service.hxx>
+#include <feature/device/repositories/device-credential/device-credential-repository.hxx>
+#include <feature/device/repositories/device-login-challenge/device-login-challenge-repository.hxx>
+#include <feature/session/repositories/refresh-token/refresh-token-repository.hxx>
+#include <feature/session/services/session-service.hxx>
+#include <grpcpp/grpcpp.h>
+#include <identity/identity-client.hxx>
+#include <sqlite/db-service.hxx>
+
+#include <atomic>
+#include <chrono>
+#include <cstdio>
+#include <ctime>
+#include <functional>
+#include <memory>
+#include <optional>
+#include <string>
+#include <thread>
+#include <unistd.h>
+
+#ifndef ARGUS_AUTH_SCHEMA_PATH
+#error "ARGUS_AUTH_SCHEMA_PATH must point at the auth schema.sql"
+#endif
+
+namespace
+{
+
+constexpr const char* kJwtSecret =
+    "f5-2-device-credential-test-jwt-secret-0123456789";
+constexpr const char* kFingerprintSecret = "f5-2-test-secret";
+constexpr const char* kUa = "argus-ua/1.0";
+constexpr const char* kDesktopUa = "argus-desktop/1.0";
+constexpr const char* kSecret = "00112233445566778899aabbccddeeff"
+                                "00112233445566778899aabbccddeeff";
+constexpr const char* kFleetSecret = "f7-r-fleet-secret-0123456789abcdef";
+constexpr const char* kIpFingerprint =
+    "1975e81a234fd02f4ae788a8fdb0911b1a1f15dd6d5d6d21d311fe4bbe130ceb";
+constexpr int64_t kUserId = 1;
+
+struct Refusal
+{
+  int status;
+  std::string code;
+  std::string message;
+};
+
+template <typename T>
+[[nodiscard]] std::optional<Refusal> refusalOf(drogon::Task<T> task)
+{
+  try {
+    drogon::sync_wait(std::move(task));
+  }
+  catch (const ResponseException& error) {
+    return Refusal{.status = error.statusCode(),
+                   .code = error.errorCode(),
+                   .message = std::string(error.what())};
+  }
+  return std::nullopt;
+}
+
+[[nodiscard]] int tempCounter()
+{
+  static std::atomic<int> counter{0};
+  return counter.fetch_add(1);
+}
+
+class TempDb
+{
+public:
+  explicit TempDb(const char* stem)
+      : path_(std::string(stem) + "-" + std::to_string(::getpid()) + "-" +
+              std::to_string(tempCounter()) + ".db")
+  {
+  }
+
+  ~TempDb()
+  {
+    std::remove(path_.c_str());
+    std::remove((path_ + "-wal").c_str());
+    std::remove((path_ + "-shm").c_str());
+  }
+
+  TempDb(const TempDb&) = delete;
+  TempDb& operator=(const TempDb&) = delete;
+
+  [[nodiscard]] const std::string& path() const { return path_; }
+
+private:
+  std::string path_;
+};
+
+void setConfig()
+{
+  ConfigService::setRuntimeString("jwt.secret", kJwtSecret);
+  ConfigService::setRuntimeString("jwt.refresh_secret", kJwtSecret);
+  ConfigService::setRuntimeString("jwt.access_ttl_minutes", "60");
+  ConfigService::setRuntimeString("jwt.refresh_ttl_days", "7");
+  ConfigService::setRuntimeString("device.fingerprint_secret",
+                                  kFingerprintSecret);
+  ConfigService::setRuntimeString("device.trust_forwarded_for", "true");
+  ConfigService::setRuntimeString(
+      "device.trusted_proxy_ips",
+      drogon::HttpRequest::newHttpRequest()->getPeerAddr().toIp());
+}
+
+void setSourceIp(const drogon::HttpRequestPtr& req, const std::string& ip)
+{
+  req->addHeader("X-Forwarded-For", ip);
+}
+
+[[nodiscard]] const DeviceContext& deviceCtx(const drogon::HttpRequestPtr& req)
+{
+  return req->getAttributes()->get<DeviceContext>(AuthContext::kDeviceKey);
+}
+
+[[nodiscard]] const JwtContext& jwtCtx(const drogon::HttpRequestPtr& req)
+{
+  return req->getAttributes()->get<JwtContext>(AuthContext::kJwtKey);
+}
+
+[[nodiscard]] bool hexShape(const std::string& value, std::size_t length)
+{
+  if (value.size() != length)
+    return false;
+  for (const char c : value) {
+    const bool hex = (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f');
+    if (!hex)
+      return false;
+  }
+  return true;
+}
+
+class ScriptedIdentityClient : public IdentityClient
+{
+public:
+  ScriptedIdentityClient() : IdentityClient("127.0.0.1:1") {}
+
+  [[nodiscard]] std::optional<argus::identity::v1::GetUserResponse>
+  getUser(int64_t userId) const override
+  {
+    if (beforeGetUser) {
+      auto hook = std::move(beforeGetUser);
+      beforeGetUser = nullptr;
+      hook();
+    }
+    if (!reachable)
+      return std::nullopt;
+
+    argus::identity::v1::GetUserResponse response;
+    auto* user = response.mutable_user();
+    user->set_user_id(userId);
+    user->set_name(name);
+    user->set_last_name(lastName);
+    user->set_lang(lang);
+    user->set_role(role);
+    user->set_is_active(isActive);
+    return response;
+  }
+
+  bool reachable{true};
+  bool isActive{true};
+  mutable std::function<void()> beforeGetUser;
+  std::string name{"Ada"};
+  std::string lastName{"Rico"};
+  std::string lang{"es"};
+  std::string role{"owner"};
+};
+
+class Fixture
+{
+public:
+  Fixture() = default;
+
+  ~Fixture()
+  {
+    if (!runner_.joinable())
+      return;
+    for (int i = 0; i < 3000 && !drogon::app().getLoop()->isRunning(); ++i)
+      std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    if (drogon::app().getLoop()->isRunning()) {
+      drogon::app().quit();
+      runner_.join();
+      return;
+    }
+    runner_.detach();
+  }
+
+  Fixture(const Fixture&) = delete;
+  Fixture& operator=(const Fixture&) = delete;
+
+  [[nodiscard]] bool start()
+  {
+    if (started_)
+      return ready_;
+    started_ = true;
+    setConfig();
+    drogon::app().setLogLevel(trantor::Logger::kWarn);
+    drogon::app().addDbClient(
+        drogon::orm::Sqlite3Config{.connectionNumber = 1,
+                                   .filename = db_.path(),
+                                   .name = "default",
+                                   .timeout = -1});
+    runner_ = std::thread([] { drogon::app().run(); });
+    if (!waitForBoot())
+      return false;
+    ready_ = DbService::runScriptFile(ARGUS_AUTH_SCHEMA_PATH);
+    return ready_;
+  }
+
+  [[nodiscard]] ScriptedIdentityClient& identity() { return identity_; }
+
+private:
+  [[nodiscard]] static bool waitForBoot()
+  {
+    const auto deadline =
+        std::chrono::steady_clock::now() + std::chrono::seconds(30);
+    while (std::chrono::steady_clock::now() < deadline) {
+      if (drogon::app().isRunning())
+        return true;
+      std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    return drogon::app().isRunning();
+  }
+
+  TempDb db_{"auth-device-login-test"};
+  ScriptedIdentityClient identity_;
+  std::thread runner_;
+  bool started_{false};
+  bool ready_{false};
+};
+
+[[nodiscard]] std::unique_ptr<Fixture>& fixtureStorage()
+{
+  static std::unique_ptr<Fixture> booted;
+  return booted;
+}
+
+[[nodiscard]] Fixture& fixture()
+{
+  auto& booted = fixtureStorage();
+  if (!booted)
+    booted = std::make_unique<Fixture>();
+  return *booted;
+}
+
+void stopFixture()
+{
+  fixtureStorage().reset();
+}
+
+void seedCredential(const std::string& secretHash)
+{
+  DbService::client()->execSqlSync(
+      "INSERT INTO device_credential (user_id, device_hash, secret_hash, "
+      "is_active) VALUES (?, '', ?, 1)",
+      kUserId, secretHash);
+}
+
+struct AuthRpcHarnessInput
+{
+  SessionService* sessions{nullptr};
+  DeviceCredentialRepository* credentials{nullptr};
+  std::string fleetSecret;
+};
+
+class AuthRpcHarness
+{
+public:
+  explicit AuthRpcHarness(AuthRpcHarnessInput input)
+      : service_({.sessions = input.sessions,
+                  .deviceCredentials = input.credentials},
+                 std::move(input.fleetSecret))
+  {
+    int port = 0;
+    grpc::ServerBuilder builder;
+    builder.AddListeningPort("127.0.0.1:0", grpc::InsecureServerCredentials(),
+                             &port);
+    builder.RegisterService(&service_);
+    server_ = builder.BuildAndStart();
+    target_ = "127.0.0.1:" + std::to_string(port);
+  }
+
+  ~AuthRpcHarness()
+  {
+    if (server_)
+      server_->Shutdown();
+  }
+
+  AuthRpcHarness(const AuthRpcHarness&) = delete;
+  AuthRpcHarness& operator=(const AuthRpcHarness&) = delete;
+
+  [[nodiscard]] bool listening() const { return server_ != nullptr; }
+
+  [[nodiscard]] const std::string& target() const { return target_; }
+
+private:
+  AuthRpcService service_;
+  std::unique_ptr<grpc::Server> server_;
+  std::string target_;
+};
+
+}
+
+TEST_CASE("device credential fingerprints are pinned and IP-free")
+{
+  setConfig();
+
+  const auto secretHash = DeviceFilter::sha256Hex(kSecret);
+  CHECK(secretHash ==
+        "2a8abfa8cb9906290437854193ca6bca41d4d4e26d1d454bd66a35158095e737");
+  CHECK(DeviceFilter::credentialFingerprint(kUa, secretHash) ==
+        "5b7ed91198d33d7982e10c5bcba905637d88022b5f2c5b85dd9f97b75fbacaaf");
+
+  DeviceFilter ipFilter;
+  auto lan = drogon::HttpRequest::newHttpRequest();
+  lan->addHeader("User-Agent", kUa);
+  setSourceIp(lan, "10.0.0.1");
+  lan->addHeader("X-Argus-Device-Credential", kSecret);
+  drogon::sync_wait(ipFilter.doFilter(lan));
+  CHECK(deviceCtx(lan).deviceHash == kIpFingerprint);
+
+  auto other = drogon::HttpRequest::newHttpRequest();
+  other->addHeader("User-Agent", kUa);
+  setSourceIp(other, "10.0.0.2");
+  other->addHeader("X-Argus-Device-Credential", kSecret);
+  drogon::sync_wait(ipFilter.doFilter(other));
+  CHECK(deviceCtx(other).deviceHash ==
+        "df791307570263b5c3e0d2890a8836027b975be9296209519d2fc8ba341ac4ab");
+}
+
+TEST_CASE("credential identity mode issues, binds and authenticates devices")
+{
+  Fixture& app = fixture();
+  REQUIRE(app.start());
+
+  SessionService sessions({.jwtService = JwtService{},
+                           .refreshTokenRepository = RefreshTokenRepository{},
+                           .identity = &app.identity()},
+                          SessionService::Config{.contextCacheSeconds = 0});
+  DeviceCredentialRepository credentials;
+  AuthRpcHarness rpc({.sessions = &sessions,
+                      .credentials = &credentials,
+                      .fleetSecret = ""});
+  REQUIRE(rpc.listening());
+  ConfigService::setRuntimeString("auth.target", rpc.target());
+
+  seedCredential(DeviceFilter::sha256Hex(kSecret));
+
+  AuthFeatureService authService(
+      {.jwtService = JwtService{},
+       .refreshTokenRepository = RefreshTokenRepository{},
+       .deviceCredentialRepository = DeviceCredentialRepository{},
+       .challengeRepository = DeviceLoginChallengeRepository{},
+       .identity = &app.identity()});
+
+  JwtFilter jwtFilter;
+  DeviceFilter deviceFilter;
+  const int64_t now = std::time(nullptr);
+
+  ConfigService::setRuntimeString("device.identity_mode", "credential");
+
+  auto first = drogon::HttpRequest::newHttpRequest();
+  first->addHeader("User-Agent", kUa);
+  setSourceIp(first, "10.0.0.1");
+  first->addHeader("X-Argus-Device-Credential", kSecret);
+  drogon::sync_wait(deviceFilter.doFilter(first));
+  CHECK(deviceCtx(first).deviceHash ==
+        "5b7ed91198d33d7982e10c5bcba905637d88022b5f2c5b85dd9f97b75fbacaaf");
+
+  auto second = drogon::HttpRequest::newHttpRequest();
+  second->addHeader("User-Agent", kUa);
+  setSourceIp(second, "10.0.0.2");
+  second->addHeader("X-Argus-Device-Credential", kSecret);
+  drogon::sync_wait(deviceFilter.doFilter(second));
+  CHECK(deviceCtx(second).deviceHash == deviceCtx(first).deviceHash);
+
+  auto unknown = drogon::HttpRequest::newHttpRequest();
+  unknown->addHeader("User-Agent", kUa);
+  unknown->addHeader("X-Argus-Device-Credential", "ff00ff00ff00ff00");
+  drogon::sync_wait(deviceFilter.doFilter(unknown));
+  CHECK(deviceCtx(unknown).deviceHash.empty());
+
+  auto missing = drogon::HttpRequest::newHttpRequest();
+  missing->addHeader("User-Agent", kUa);
+  drogon::sync_wait(deviceFilter.doFilter(missing));
+  CHECK(deviceCtx(missing).deviceHash.empty());
+
+  auto oversized = drogon::HttpRequest::newHttpRequest();
+  oversized->addHeader("User-Agent", kUa);
+  oversized->addHeader("X-Argus-Device-Credential", std::string(512, 'a'));
+  drogon::sync_wait(deviceFilter.doFilter(oversized));
+  CHECK(deviceCtx(oversized).deviceHash.empty());
+
+  const auto seededToken = JwtService().generateAccess({{"sub", "1"}});
+  auto client = DbService::client();
+  client->execSqlSync(
+      "INSERT INTO refresh_token (user_id, access_token, refresh_token, "
+      "device_hash, user_agent, expires_at) VALUES (1, ?, 'seed-refresh', ?, ?, "
+      "?)",
+      seededToken, kIpFingerprint, kUa, now + 3600);
+  auto rejected = drogon::HttpRequest::newHttpRequest();
+  rejected->addHeader("User-Agent", kUa);
+  rejected->addHeader("Authorization", "Bearer " + seededToken);
+  drogon::sync_wait(deviceFilter.doFilter(rejected));
+  CHECK(deviceCtx(rejected).deviceHash.empty());
+  const auto mismatch = refusalOf(jwtFilter.doFilter(rejected));
+  if (!mismatch.has_value()) {
+    FAIL("the session bound to another fingerprint was not refused");
+    return;
+  }
+  CHECK(mismatch->status == 401);
+  CHECK(mismatch->code == "UNAUTHORIZED");
+  CHECK(mismatch->message == "Device mismatch");
+
+  auto boundToEmpty = drogon::HttpRequest::newHttpRequest();
+  boundToEmpty->addHeader("User-Agent", kUa);
+  boundToEmpty->addHeader("Authorization", "Bearer " + seededToken);
+  boundToEmpty->addHeader("X-Argus-Device-Credential", kSecret);
+  drogon::sync_wait(deviceFilter.doFilter(boundToEmpty));
+  CHECK_FALSE(deviceCtx(boundToEmpty).deviceHash.empty());
+  const auto stillMismatch = refusalOf(jwtFilter.doFilter(boundToEmpty));
+  if (!stillMismatch.has_value()) {
+    FAIL("the credential did not mismatch the IP-bound session");
+    return;
+  }
+  CHECK(stillMismatch->status == 401);
+  CHECK(stillMismatch->message == "Device mismatch");
+  client->execSqlSync("DELETE FROM refresh_token");
+
+  client->execSqlSync(
+      "INSERT INTO refresh_token (user_id, access_token, refresh_token, "
+      "device_hash, user_agent, expires_at) "
+      "VALUES (1, ?, 'seed-refresh-unbound', '', ?, ?)",
+      seededToken, kUa, now + 3600);
+  auto unboundSession = drogon::HttpRequest::newHttpRequest();
+  unboundSession->addHeader("User-Agent", kUa);
+  unboundSession->addHeader("Authorization", "Bearer " + seededToken);
+  drogon::sync_wait(deviceFilter.doFilter(unboundSession));
+  CHECK(deviceCtx(unboundSession).deviceHash.empty());
+  const auto admitted = drogon::sync_wait(jwtFilter.doFilter(unboundSession));
+  CHECK_FALSE(admitted);
+  client->execSqlSync("DELETE FROM refresh_token");
+
+  const auto created = drogon::sync_wait(
+      authService.createDeviceLogin({.deviceHash = "", .userAgent = kDesktopUa}));
+  REQUIRE(hexShape(created.challengeId, 64));
+  REQUIRE_NOTHROW(
+      drogon::sync_wait(authService.approveDeviceLogin(created.challengeId, 1)));
+
+  const auto polled =
+      drogon::sync_wait(authService.pollDeviceLogin(created.challengeId));
+  CHECK(polled.status == DeviceLoginStatus::Approved);
+  CHECK(polled.userId == kUserId);
+  CHECK(polled.name == "Ada Rico");
+  CHECK(polled.role == UserRole::Owner);
+  CHECK(hexShape(polled.deviceSecret, 64));
+
+  auto desktop = drogon::HttpRequest::newHttpRequest();
+  desktop->addHeader("User-Agent", kDesktopUa);
+  desktop->addHeader("X-Argus-Device-Credential", polled.deviceSecret);
+  drogon::sync_wait(deviceFilter.doFilter(desktop));
+  const auto expectedHash = DeviceFilter::credentialFingerprint(
+      kDesktopUa, DeviceFilter::sha256Hex(polled.deviceSecret));
+  CHECK(deviceCtx(desktop).deviceHash == expectedHash);
+
+  desktop->addHeader("Authorization", "Bearer " + polled.accessToken);
+  const auto authenticated = drogon::sync_wait(jwtFilter.doFilter(desktop));
+  CHECK_FALSE(authenticated);
+  CHECK(jwtCtx(desktop).sub == kUserId);
+  CHECK(jwtCtx(desktop).name == "Ada Rico");
+  CHECK(jwtCtx(desktop).role == UserRole::Owner);
+  CHECK(jwtCtx(desktop).isActive);
+  CHECK(jwtCtx(desktop).deviceHash == expectedHash);
+
+  const auto contended = drogon::sync_wait(authService.createDeviceLogin(
+      {.deviceHash = "", .userAgent = kDesktopUa}));
+  REQUIRE(hexShape(contended.challengeId, 64));
+  app.identity().beforeGetUser = [&client, &contended] {
+    client->execSqlSync(
+        "UPDATE device_login_challenge SET status = ? WHERE challenge_id = ?",
+        deviceLoginStatusToString(DeviceLoginStatus::Approved),
+        contended.challengeId);
+  };
+  const auto lost =
+      refusalOf(authService.approveDeviceLogin(contended.challengeId, 1));
+  if (!lost.has_value()) {
+    FAIL("the approve that lost the challenge race was not refused");
+    return;
+  }
+  CHECK(lost->status == 404);
+  CHECK(lost->code == "NOT_FOUND");
+  CHECK(lost->message == "Challenge not found");
+
+  const auto replayed =
+      drogon::sync_wait(authService.pollDeviceLogin(created.challengeId));
+  CHECK(replayed.status == DeviceLoginStatus::Expired);
+  CHECK(replayed.deviceSecret.empty());
+
+  ConfigService::setRuntimeString("device.identity_mode", "");
+  const auto ipChallenge = drogon::sync_wait(authService.createDeviceLogin(
+      {.deviceHash = kIpFingerprint, .userAgent = kDesktopUa}));
+  REQUIRE_NOTHROW(drogon::sync_wait(
+      authService.approveDeviceLogin(ipChallenge.challengeId, 1)));
+  const auto ipPolled =
+      drogon::sync_wait(authService.pollDeviceLogin(ipChallenge.challengeId));
+  CHECK(ipPolled.status == DeviceLoginStatus::Approved);
+  CHECK(ipPolled.deviceSecret.empty());
+  CHECK_FALSE(ipPolled.toJson().isMember("device_secret"));
+
+  const auto liveRows = client->execSqlSync(
+      "SELECT device_hash FROM refresh_token ORDER BY id");
+  REQUIRE(liveRows.size() == 2);
+  CHECK(liveRows.front()["device_hash"].as<std::string>() == expectedHash);
+  CHECK(liveRows.back()["device_hash"].as<std::string>() == kIpFingerprint);
+
+  const auto bound = drogon::sync_wait(
+      RefreshTokenRepository().findByAccessToken(kUserId, polled.accessToken));
+  if (!bound.has_value()) {
+    FAIL("the approved session row was not persisted");
+    return;
+  }
+  CHECK(bound->deviceHash == jwtCtx(desktop).deviceHash);
+
+  ConfigService::setRuntimeString("auth.target", "127.0.0.1:1");
+  auto unreachable = drogon::HttpRequest::newHttpRequest();
+  unreachable->addHeader("User-Agent", kDesktopUa);
+  unreachable->addHeader("Authorization", "Bearer " + polled.accessToken);
+  const auto refused = refusalOf(jwtFilter.doFilter(unreachable));
+  if (!refused.has_value()) {
+    FAIL("an unreachable auth RPC did not refuse the verdict");
+    return;
+  }
+  CHECK(refused->status == 401);
+  CHECK(refused->message == "Authentication required");
+
+  {
+    AuthRpcHarness guarded({.sessions = &sessions,
+                            .credentials = &credentials,
+                            .fleetSecret = kFleetSecret});
+    REQUIRE(guarded.listening());
+    ConfigService::setRuntimeString("auth.target", guarded.target());
+    ConfigService::setRuntimeString("device.identity_mode", "credential");
+
+    ConfigService::setRuntimeString("auth.rpc_secret", "");
+    auto noSecret = drogon::HttpRequest::newHttpRequest();
+    noSecret->addHeader("User-Agent", kDesktopUa);
+    noSecret->addHeader("X-Argus-Device-Credential", polled.deviceSecret);
+    noSecret->addHeader("Authorization", "Bearer " + polled.accessToken);
+    drogon::sync_wait(deviceFilter.doFilter(noSecret));
+    CHECK(deviceCtx(noSecret).deviceHash.empty());
+    const auto rejectedCall = refusalOf(jwtFilter.doFilter(noSecret));
+    if (!rejectedCall.has_value()) {
+      FAIL("the fleet-secret gate did not refuse an unqualified caller");
+      return;
+    }
+    CHECK(rejectedCall->status == 401);
+    CHECK(rejectedCall->message == "Authentication required");
+
+    ConfigService::setRuntimeString("auth.rpc_secret", kFleetSecret);
+    auto withSecret = drogon::HttpRequest::newHttpRequest();
+    withSecret->addHeader("User-Agent", kDesktopUa);
+    withSecret->addHeader("X-Argus-Device-Credential", polled.deviceSecret);
+    withSecret->addHeader("Authorization", "Bearer " + polled.accessToken);
+    drogon::sync_wait(deviceFilter.doFilter(withSecret));
+    CHECK(deviceCtx(withSecret).deviceHash == expectedHash);
+    const auto admittedCall = drogon::sync_wait(jwtFilter.doFilter(withSecret));
+    CHECK_FALSE(admittedCall);
+    CHECK(jwtCtx(withSecret).sub == kUserId);
+    ConfigService::setRuntimeString("auth.rpc_secret", "");
+    ConfigService::setRuntimeString("device.identity_mode", "");
+  }
+}
+
+int main(int argc, char** argv)
+{
+  doctest::Context context(argc, argv);
+  const int result = context.run();
+  stopFixture();
+  return result;
+}

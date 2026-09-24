@@ -1,7 +1,7 @@
 #include "device-filter.hxx"
 
-#include <auth/details/identity-access.hxx>
-#include <identity/identity-client.hxx>
+#include <auth/auth-client.hxx>
+#include <auth/auth-access.hxx>
 #include <openssl/evp.h>
 #include <openssl/hmac.h>
 #include <openssl/sha.h>
@@ -59,7 +59,7 @@ DeviceFilter::doFilter(const drogon::HttpRequestPtr& req)
     std::string deviceHash;
     if (!credential.empty() && credential.size() <= kMaxCredentialLength) {
       const auto secretHash = sha256Hex(credential);
-      const auto client = filterIdentityClient();
+      const auto client = filterAuthClient();
       const auto active = co_await BlockingTask<bool>(
           [client, secretHash]() {
             return client->checkDeviceCredential(secretHash);

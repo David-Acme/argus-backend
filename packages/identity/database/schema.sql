@@ -59,42 +59,6 @@ CREATE TABLE IF NOT EXISTS person_snapshot (
     created_at INTEGER NOT NULL  DEFAULT (strftime('%s', 'now'))
 );
 
-CREATE TABLE IF NOT EXISTS refresh_token (
-    id            INTEGER NOT NULL  PRIMARY KEY AUTOINCREMENT,
-    user_id       INTEGER NOT NULL  REFERENCES user(id) ON DELETE CASCADE,
-    access_token  TEXT    NOT NULL,
-    refresh_token TEXT    NOT NULL,
-    device_hash   TEXT    NOT NULL,
-    user_agent    TEXT    NOT NULL  DEFAULT '',
-    is_valid      INTEGER NOT NULL  DEFAULT 1  CHECK (is_valid IN (0, 1)),
-    is_used       INTEGER NOT NULL  DEFAULT 0  CHECK (is_used  IN (0, 1)),
-    expires_at    INTEGER NOT NULL,
-    created_at    INTEGER NOT NULL  DEFAULT (strftime('%s', 'now'))
-);
-
-CREATE TABLE IF NOT EXISTS device_login_challenge (
-    id            INTEGER NOT NULL  PRIMARY KEY AUTOINCREMENT,
-    challenge_id  TEXT    NOT NULL  UNIQUE,
-    device_hash   TEXT    NOT NULL,
-    user_agent    TEXT    NOT NULL  DEFAULT '',
-    status        TEXT    NOT NULL  DEFAULT 'pending'
-                            CHECK (status IN ('pending', 'approved', 'expired')),
-    user_id       INTEGER,
-    access_token  TEXT,
-    refresh_token TEXT,
-    expires_at    INTEGER NOT NULL,
-    created_at    INTEGER NOT NULL  DEFAULT (strftime('%s', 'now'))
-);
-
-CREATE TABLE IF NOT EXISTS device_credential (
-    id            INTEGER NOT NULL  PRIMARY KEY AUTOINCREMENT,
-    user_id       INTEGER NOT NULL  REFERENCES user(id) ON DELETE CASCADE,
-    device_hash   TEXT    NOT NULL,
-    secret_hash   TEXT    NOT NULL  UNIQUE,
-    is_active     INTEGER NOT NULL  DEFAULT 1  CHECK (is_active IN (0, 1)),
-    created_at    INTEGER NOT NULL  DEFAULT (strftime('%s', 'now'))
-);
-
 CREATE TABLE IF NOT EXISTS user_invitation (
     id                INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
     token_hash        TEXT    NOT NULL UNIQUE,
@@ -167,10 +131,6 @@ CREATE INDEX IF NOT EXISTS idx_person_tag_person ON person_tag (person_id);
 
 CREATE INDEX IF NOT EXISTS idx_user_created_at  ON user (created_at);
 CREATE INDEX IF NOT EXISTS idx_user_deleted_at  ON user (deleted_at);
-
-CREATE INDEX IF NOT EXISTS idx_refresh_token_user_id   ON refresh_token (user_id);
-CREATE INDEX IF NOT EXISTS idx_refresh_token_access    ON refresh_token (access_token);
-CREATE INDEX IF NOT EXISTS idx_refresh_token_refresh   ON refresh_token (refresh_token);
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_user_invitation_token_hash
     ON user_invitation (token_hash);

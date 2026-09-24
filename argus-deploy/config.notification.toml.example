@@ -51,6 +51,10 @@ fingerprint_secret = ""
 trust_forwarded_for = true
 trusted_proxy_ips = ""
 
+[auth]
+target = "argus-auth:7043"
+rpc_secret = "CHANGE_ME_SAME_IN_EVERY_SERVICE"
+
 [identity]
 target = "172.19.0.1:7040"
 rpc_secret = "CHANGE_ME_SAME_IN_EVERY_SERVICE"

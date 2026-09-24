@@ -50,6 +50,19 @@ refresh_secret = ""
 access_ttl_minutes = 15
 refresh_ttl_days = 30
 
+[device]
+fingerprint_secret = ""
+identity_mode = "ip"
+trust_forwarded_for = true
+trusted_proxy_ips = ""
+
+[rate_limit]
+enabled = false
+window_seconds = 60
+max_requests = 10
+lockout_threshold = 5
+lockout_seconds = 300
+
 [nats]
 url = "nats://nats:4222"
 reconnect_wait_ms = 2000

@@ -1,33 +1,46 @@
 # argus_contracts_auth
 
 The auth boundary's vocabulary: the four roles, the two request-context keys
-every authenticated handler reads, and the four refusals the gates throw.
+every authenticated handler reads, the cross-device login challenge's status,
+and the auth catalog the gates and the `/auth` surface throw from.
 
 ## What this is
 
 A CONTRACT, not a service and not a library: one `argus_contracts`
 declaration, an INTERFACE target with no translation unit. The include root is
 `src/`, so a consumer writes `<auth/user-role.hxx>` and links
-`argus::contracts::auth`. Thirteen CMakeLists link it — eight packages
-(clients/llm, clients/voice, identity, lib/auth, memory, room, socket, sync) and
-five services (camera, gateway, llm, notification, productivity) — because the
+`argus::contracts::auth`. Eighteen CMakeLists link it — packages
+`contracts/sync`, `identity`, `lib/auth` and `memory`, plus the services that
+serve or read a role (`auth` across four module files, `camera`, `gateway`,
+`llm`, `notification`, `productivity` and `sync` across five); `clients/voice`
+only guards against the contract standing alone — because the
 role is the one value a JWT, a DTO and a role gate all have to spell the same
 way, and the gate that enforces it lives in a different package from the
 handlers that read it.
 
 No `.proto` answers to this domain: the roles travel as JWT claims and as
-Drogon attributes, not as a protobuf message.
+Drogon attributes, not as a protobuf message, and the auth refusals travel as
+the `{status, info, errors}` envelope's `errors.code`.
 
 ## Layout
 
 - `src/auth/user-role.hxx` — `UserRole` (`Owner`, `Resident`, `Guard`,
-  `Guest`) with `userRoleToString`/`userRoleFromString`; 26 files include it.
+  `Guest`) with `userRoleToString`/`userRoleFromString`; 34 files include it.
 - `src/auth/request-context.hxx` — `AuthContext::kJwtKey` (`"jwt_ctx"`) and
   `AuthContext::kDeviceKey` (`"device_ctx"`): the attribute keys the filters
   write and every authenticated handler reads; 21 files include it.
-- `src/auth/auth-errors.hxx` — the four refusals (`MissingToken`,
-  `AuthenticationRequired`, `AccessDenied`, `InvalidJsonBody`), thrown by the
-  three gates that answer with them; 5 files include it.
+- `src/auth/device-login-status.hxx` — `DeviceLoginStatus` (`Pending`,
+  `Approved`, `Expired`) with
+  `deviceLoginStatusToString`/`deviceLoginStatusFromString`: the QR pairing
+  challenge's `status` column, which is both a `CHECK` constraint in
+  `argus-auth`'s schema and the `status` string the polling device reads.
+- `src/auth/auth-errors.hxx` — the auth catalog, twenty-three definitions: the
+  four the gate filters throw (`MissingToken`, `AuthenticationRequired`,
+  `AccessDenied`, `InvalidJsonBody`), the refresh-limiter refusal
+  (`TooManyAttempts`), the `/auth` surface's own (multipart shape, challenge,
+  device credential, refresh token, user, `ChangeNotRecorded`) and the
+  enrollment outcomes `argus-identity` reports through `AuthFeatureService`;
+  9 files include it.
 
 ## Rules
 
@@ -37,8 +50,8 @@ Drogon attributes, not as a protobuf message.
 - The types stored under the context keys (`JwtContext`, `DeviceContext`)
   belong to `packages/lib/auth`; only the keys travel through here, so a
   consumer can read them without taking Drogon.
-- A gate has no status code to pick: it throws one of the four definitions and
-  the shared advice formats it. A string literal for a code is the duplication
+- A gate has no status code to pick: it throws a catalog definition and the
+  shared advice formats it. A string literal for a code is the duplication
   that breaks the wire the first time the two copies disagree.
 - Rule 25: the folder IS the module. One `argus_contracts(NAME auth ...)` with
   an explicit source list, never `file(GLOB)`.
@@ -47,5 +60,5 @@ Drogon attributes, not as a protobuf message.
 
 - `tests/unit/auth-contract-vocabulary-test.cc` — the role round-trip and the
   documented fallback for an unknown string.
-- `tests/unit/auth-contract-catalog-test.cc` — the four refusals as a pinned
-  table, each entry's wire legality, and that no two say the same thing.
+- `tests/unit/auth-contract-catalog-test.cc` — every refusal as a pinned
+  table row, each entry's wire legality, and that no two say the same thing.

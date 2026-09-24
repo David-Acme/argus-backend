@@ -116,7 +116,6 @@ add_library(gateway-core STATIC
     ${GATEWAY_SRC_ROOT}/identity/identity-registrar.cc
     ${GATEWAY_SRC_ROOT}/proxy/proxy-config.cc
     ${GATEWAY_SRC_ROOT}/proxy/reverse-proxy.cc
-    ${GATEWAY_SRC_ROOT}/server/refresh-rate-limiter.cc
     ${GATEWAY_SRC_ROOT}/server/remote-config.cc
     ${GATEWAY_SRC_ROOT}/server/remote-gate.cc
     ${GATEWAY_SRC_ROOT}/sync/camera-notifier.cc
@@ -128,8 +127,9 @@ add_library(gateway-core STATIC
 target_include_directories(gateway-core PUBLIC ${GATEWAY_SRC_ROOT})
 
 target_link_libraries(gateway-core PUBLIC argus_identity
-    argus::lib::cert argus::lib::mdns argus::lib::http
-    argus::clients::identity argus::contracts::auth argus::contracts::sync
+    argus::lib::auth argus::lib::cert argus::lib::mdns argus::lib::http
+    argus::clients::identity argus::clients::auth
+    argus::contracts::auth argus::contracts::sync
     argus::clients::notification argus::clients::sync)
 target_link_libraries(gateway-core PRIVATE argus::contracts::gateway argus::contracts::auth argus::contracts::sync)
 

@@ -5,9 +5,9 @@
 
 ## Project Identity
 
-- **argus-identity** — the identity service: authentication features
-  (login, register, refresh, device login), users, persons, invitations,
-  pairing, device credentials, refresh tokens, face embeddings and the
+- **argus-identity** — the identity service: the enrollment path
+  (`RegisterUser`), users, persons, invitations,
+  pairing, face embeddings and the
   portrait/private-portrait storage. Declared as the `argus_identity`
   module (`argus::identity` alias).
 - A package folder of the Argus monorepo (rooted at `backend/`), not an
@@ -15,9 +15,12 @@
   serves its RPC surface) and into `argus-sync` (whose engine pages its user
   and person tables), and also configures standalone for validation, against
   the root graph.
-- Authentication IDENTIFIES here; it does not authorize. Role-based
-  authorization is the `argus-auth` filter package declared on routes by
-  name. Biometrics (faces, embeddings) stay in this service.
+- Identity data IDENTIFIES here; sessions and authorization do not.
+  `argus-auth` (the service) owns the sessions, the device credentials, the
+  refresh tokens and the limiter, and `packages/lib/auth` holds the filters
+  the routes declare by name (`DeviceFilter`, `JwtFilter`, `RoleFilter`,
+  `ValidJsonFilter`, `JwtService`). Biometrics (faces, embeddings) stay in
+  this service.
 - English only: file contents, commit messages.
 
 ## Layout
@@ -26,12 +29,12 @@
 argus-identity/
   CMakeLists.txt          argus_module(NAME identity ...) + unit suites
   database/schema.sql     the DDL truth for every identity table
-  src/feature/api/{auth,invitation,pairing,user}/   moved files, relative
+  src/feature/api/{enrollment,invitation,pairing,user}/   moved files, relative
   src/shared/{repositories,schemas,services}/...    paths preserved
   src/shared/repositories/change-outbox/            the identity feed's durable
                                                     outbox (its own module)
-  tests/unit/             identity migration, device credential, change outbox
-                          and change sink suites
+  tests/unit/             identity migration, change outbox, change
+                          transaction and change sink suites
   tools/migrate-identity/ identity migration CLI and library
 ```
 
@@ -83,8 +86,9 @@ one project".
 
 ## What does NOT live here
 
-- `argus-auth` — the sibling filter package (`DeviceFilter`, `JwtFilter`,
-  `RoleFilter`, `ValidJsonFilter`, `JwtService`).
+- `argus-auth` — the sibling service that owns the session surface, the
+  device credentials, the refresh tokens and the refresh limiter; the filter
+  package itself is `packages/lib/auth`.
 - Audit, socket, cert, sqlite and room — sibling cross-domain packages.
 - The `identity.db` file — live data, opened from `database/` at runtime;
   only the schema (`database/schema.sql` here) is code.

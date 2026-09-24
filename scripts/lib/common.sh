@@ -107,27 +107,38 @@ replace_toml_value() {
   mv "$temp" "$config"
 }
 
-ensure_toml_value() {
-  local table="$1"
-  local key="$2"
-  local value="$3"
+adopt_template_key() {
+  local template="$1"
+  local table="$2"
+  local key="$3"
   local config="$4"
-  local min_length="${5:-1}"
-  local max_length="${6:-0}"
 
-  if ! grep -Eq "^[[:space:]]*\\[$table\\][[:space:]]*$" "$config"; then
-    printf '\n[%s]\n%s = "%s"\n' "$table" "$key" "$value" >> "$config"
-    return
-  fi
+  toml_key_exists "$template" "$table" "$key" || return 0
+  toml_key_exists "$config" "$table" "$key" && return 0
+  replace_toml_value "$table" "$key" "$(toml_value "$template" "$table" "$key")" "$config"
+}
 
-  local existing
-  existing="$(toml_value "$config" "$table" "$key")"
-  if [ "${#existing}" -ge "$min_length" ] &&
-     { [ "$max_length" -eq 0 ] || [ "${#existing}" -le "$max_length" ]; }; then
-    return
-  fi
+adopt_wiring_keys() {
+  local template="$1"
+  local config="$2"
+  local table key
 
-  replace_toml_value "$table" "$key" "$value" "$config"
+  while read -r table key; do
+    adopt_template_key "$template" "$table" "$key" "$config"
+  done <<'EOF'
+device fingerprint_secret
+device identity_mode
+device trust_forwarded_for
+device trusted_proxy_ips
+auth target
+auth rpc_host
+auth rpc_port
+auth rpc_secret
+identity target
+identity rpc_host
+identity rpc_port
+identity rpc_secret
+EOF
 }
 
 ensure_project_config() {
@@ -141,19 +152,49 @@ ensure_project_config() {
     umask 077
     cp "$template" "$config"
   fi
+  adopt_wiring_keys "$template" "$config"
   chmod 600 "$config"
+}
 
-  local table key bytes value
-  while read -r table key bytes; do
-    toml_key_exists "$template" "$table" "$key" || continue
-    value="$(openssl rand -hex "$bytes")"
-    ensure_toml_value "$table" "$key" "$value" "$config"
-  done <<'EOF'
-jwt secret 48
-jwt refresh_secret 48
-device fingerprint_secret 48
-identity rpc_secret 32
-EOF
+shared_config_value() {
+  local table="$1"
+  local key="$2"
+  local bytes="$3"
+  shift 3
+
+  local config value
+  for config in "$@"; do
+    toml_key_exists "$config" "$table" "$key" || continue
+    value="$(toml_value "$config" "$table" "$key")"
+    if [ -n "$value" ]; then
+      printf '%s' "$value"
+      return 0
+    fi
+  done
+  openssl rand -hex "$bytes"
+}
+
+share_config_value() {
+  local table="$1"
+  local key="$2"
+  local bytes="$3"
+  shift 3
+
+  local value config
+  value="$(shared_config_value "$table" "$key" "$bytes" "$@")"
+  for config in "$@"; do
+    toml_key_exists "$config" "$table" "$key" || continue
+    replace_toml_value "$table" "$key" "$value" "$config"
+  done
+}
+
+ensure_shared_configs() {
+  local configs=("$@")
+
+  share_config_value jwt secret 48 "${configs[@]}"
+  share_config_value jwt refresh_secret 48 "${configs[@]}"
+  share_config_value device fingerprint_secret 48 "${configs[@]}"
+  share_config_value identity rpc_secret 32 "${configs[@]}"
 }
 
 shared_deploy_secret() {
@@ -224,6 +265,7 @@ ensure_deploy_configs() {
       umask 077
       cp "$template" "$config"
     fi
+    adopt_wiring_keys "$template" "$config"
     chmod 600 "$config"
   done
 
