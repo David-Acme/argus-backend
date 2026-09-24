@@ -782,11 +782,18 @@ package: it is the executable `argus-<name>`.
 The target-name half of that rule is structural: `argus_lib`,
 `argus_contracts` and `argus_clients` build the group into the name, so a
 package cannot declare itself into the wrong tier (rule 25's own names are in
-`cmake/argus-module.cmake`). The dependency half is still prose — 21 grouped
-packages' helper calls name a dependency's `argus::` alias by hand in their own
-`DEPENDS` (nine contracts, the `response` and `tts` wire modules among them,
-six clients, six libs), and the two ungrouped packages that do the same add two
-more (`identity`, `intent`).
+`cmake/argus-module.cmake`). The dependency half is still prose — 21 packages
+name a first-party `argus::` alias by hand inside the dependency list of one of
+the group helpers: nine of the eleven contracts (all but `routes` and `voice`,
+which name only their own test target; the `response`, `stt` and `tts` wire
+modules among the nine), six of the twelve clients (`llm`, `stt`, `sync`, `tts`,
+`vlm`, `voice`) and six of the fifteen libs (`auth`, `http`, `mdns`, `nats`,
+`storage`, `validation`). Two packages sit outside the group helpers — neither
+is in a group, so neither has one to be declared by. `intent` declares itself
+through `argus_module` and names `argus::lib::text` and `argus::lib::phrase` in
+that DEPENDS; `memory` is the one that declares itself with literal
+`add_library` calls, so `memory`'s eleven aliases sit in a hand-written
+`target_link_libraries` instead.
 Nothing checks those spellings yet; the edge checker of Phase 2 step 5 is where
 they become checked edges.
 
@@ -794,14 +801,16 @@ The three groups sit where they belong — `packages/lib/<name>`,
 `packages/contracts/<domain>`, `packages/clients/<domain>`, each declared by
 its group's helper: `argus_lib_<name>` / `argus::lib::<name>`,
 `argus_contracts_<domain>` / `argus::contracts::<domain>`,
-`argus_clients_<domain>` / `argus::clients::<domain>`. Nine of the twelve
+`argus_clients_<domain>` / `argus::clients::<domain>`. Ten of the twelve
 clients wrap a generated gRPC stub — eight of them pass `PROTO` to
-`argus_clients`, and `tts` reaches the same stub through
-`argus::contracts::tts` instead; the three wire clients (`llm`, `stt`, `vlm`)
-speak HTTP and take the helper's plain-module branch, which `tts` also takes
-because it carries an HTTP transport beside the stub. Three wire modules are
+`argus_clients`, and `tts` and `stt` reach the same stub through
+`argus::contracts::tts` and `argus::contracts::stt` instead; the two wire
+clients (`llm`, `vlm`)
+speak HTTP and take the helper's plain-module branch, which `tts` and `stt`
+also take because each carries an HTTP transport beside the stub. Four wire
+modules are
 not a domain SDK and call `argus_client_module` with the group they live in:
-`lib/grpc`'s health stubs (`GROUP lib`) and the `response` and `tts` wire
+`lib/grpc`'s health stubs (`GROUP lib`) and the `response`, `stt` and `tts` wire
 contracts, which live in `packages/contracts/` and are aliased
 `argus::contracts::…`.
 
@@ -828,9 +837,9 @@ data (D18):
   source.
 - Interface dependencies (types in public headers) are `PUBLIC`;
   implementation-only dependencies are `PRIVATE`.
-- Header-only where nothing is compiled: nine of the ten contracts go through
+- Header-only where nothing is compiled: ten of the eleven contracts go through
   `argus_contracts`, which is `INTERFACE` by construction (`auth`, `camera`,
-  `identity`, `notification`, `productivity`, `routes`, `sync`,
+  `identity`, `notification`, `productivity`, `routes`, `stt`, `sync`,
   `tts`, `voice`), and `validation` declares `HEADER_ONLY` to `argus_lib` for
   the same result. `response` is the exception under `packages/contracts/`: it
   carries no vocabulary but the response wire, declared

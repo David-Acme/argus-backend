@@ -10,8 +10,9 @@ that apply to stt-service code; when in doubt, the root file wins.
    nothing else (no face/llm/vlm/tts/vad code or symbols; verified with
    `nm -C`). The engine is THE capacity of this service (F4-3, Ruling BK).
 2. **Internal wire only** — the service serves the legacy adapters over
-   loopback plain HTTP (`/stt/v1/*`); no JWT, no CORS, no public routing or
-   announcement. Never expose it publicly.
+   loopback plain HTTP (`/stt/v1/*`) and the internal gRPC leg
+   (`argus.stt.v1`) when `rpc.address` is set; no JWT, no CORS, no public
+   routing or announcement. Never expose either publicly.
 3. **Frozen envelope** — every JSON response uses the
    `{status, info, errors}` envelope (`ApiResponse`); the transcribe body is
    binary `audio/x-argus-pcm-s16` (16 kHz mono).
@@ -43,21 +44,47 @@ that apply to stt-service code; when in doubt, the root file wins.
 ```
 argus-stt/
   CMakeLists.txt        standalone buildable: module graph + test targets
-  src/app/main.cc       config load, engine boot gate, app run
+  src/app/main.cc       config load, engine boot gate, rpc leg, app run
+  src/app/rpc/          argus::stt-rpc — the internal gRPC face (the
+                          argus.stt.v1 Transcription service), dormant
+                          unless [rpc] address and [rpc.callers] are set
   src/feature/stt/      argus::stt — the whole vertical slice:
                           controllers/ (the frozen /stt/v1/* wire),
                           services/ (the sherpa-onnx engine facade)
-  config.toml.example   [stt] engine keys + [server] only; no other domains
+  config.toml.example   [stt] engine keys + [server] + [rpc] only; no other domains
   CONTEXT.md            purpose, ownership, wiring decisions
 ```
 
-There is one feature and one module: `argus::stt` compiles the engine facade
-and the HTTP surface together, and `app/main.cc` registers the controller
-explicitly (a Drogon `HttpController<SttController, false>`), so no route
-depends on static-init registration. The folder IS the module (root rule 25) —
-a consumer links `argus::stt` and never lists `.cc` files. `src/shared/` does
-not exist: rule 23's 2+ rule earns it, so code moves there only when a second
-feature of this service reads it.
+There is one feature and two modules: `argus::stt` compiles the engine facade
+and the HTTP surface together, `argus::stt-rpc` compiles the gRPC server and
+links `argus::clients::stt` and `argus::contracts::stt-wire` PUBLIC so the
+executable reaches both, and `app/main.cc` registers the controller explicitly
+(a Drogon `HttpController<SttController, false>`), so no route depends on
+static-init registration. The folder IS the module (root rule 25) — a consumer
+links `argus::stt` and never lists `.cc` files. `src/shared/` does not exist:
+rule 23's 2+ rule earns it, so code moves there only when a second feature of
+this service reads it.
+
+The gRPC leg is composed in `main.cc` and nowhere else, only when `rpc.address`
+and at least one non-empty `[rpc.callers]` pair are set — the RPC server answers
+`argus.stt.v1` with the same engine the HTTP controller drives, refuses an
+unlisted caller with 401 and sanitizes anything that is not a
+`ResponseException` into 500. Both keys are empty in
+`config.toml.example`, no deploy config sets them, and nothing in the tree sets
+`stt.grpc_target`, so a default install answers the HTTP wire alone while the
+gRPC face stays reachable for the cutover.
+
+Two properties of the face are the composition's, not the engine's. The caller
+must present the credential header exactly once — zero or two entries are 401,
+compared in constant time over the pairs — and the language gate is the
+service's own `isSupportedLanguage`, injected as `acceptsLanguage` rather than
+read out of a `Capabilities` snapshot, so a request costs no per-call
+`Capabilities` copy and an empty language still resolves server-side. On the
+request side, `Transcribe` refuses an empty sample vector, a rate outside
+8000..192000 and a language the engine does not accept with 400, and refuses a
+caller-declared deadline more than two minutes out with the same 400; a caller
+that sends no deadline at all is served, because the ceiling is a bound on what
+the caller asks for and not a requirement that it ask.
 
 ## Build commands
 

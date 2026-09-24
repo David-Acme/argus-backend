@@ -9,6 +9,8 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 include(${CMAKE_CURRENT_SOURCE_DIR}/../../cmake/argus-module.cmake)
 
+argus_contracts_substrate()
+
 set(STT_SRC_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
 if(PROJECT_IS_TOP_LEVEL)
@@ -69,9 +71,12 @@ foreach(module IN LISTS STT_FEATURE_MODULES)
     add_subdirectory("${module_dir}")
 endforeach()
 
+add_subdirectory(src/app/rpc)
+
 argus_service(NAME argus-stt
     MAIN ${STT_SRC_ROOT}/app/main.cc
     MODULES
+        argus::stt-rpc
         argus::stt
         argus::lib::config
         argus::lib::runtime
@@ -93,6 +98,9 @@ add_custom_command(TARGET argus-stt POST_BUILD
 
 add_executable(stt-wire-test tests/unit/stt-wire-test.cc)
 
+target_include_directories(stt-wire-test PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/tests/support)
+
 target_compile_definitions(stt-wire-test PRIVATE
     ARGUS_TEST_STT_MODELS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../../models/stt")
 
@@ -103,3 +111,19 @@ target_compile_options(stt-wire-test PRIVATE -Wall -Wextra)
 set_target_properties(stt-wire-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
 add_test(NAME stt-wire-test COMMAND stt-wire-test)
+
+add_executable(stt-rpc-test tests/unit/stt-rpc-test.cc)
+
+target_include_directories(stt-rpc-test PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/tests/support)
+
+target_link_libraries(stt-rpc-test PRIVATE argus::stt-rpc doctest::doctest)
+target_compile_definitions(stt-rpc-test PRIVATE
+    ARGUS_TEST_STT_MODELS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../../models/stt")
+argus_runtime_rpath(stt-rpc-test)
+
+target_compile_options(stt-rpc-test PRIVATE -Wall -Wextra)
+
+set_target_properties(stt-rpc-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+
+add_test(NAME stt-rpc-test COMMAND stt-rpc-test)

@@ -1,6 +1,7 @@
 #include "stt-remote.hxx"
 
 #include <config/config-service.hxx>
+#include <stt/stt-client.hxx>
 
 #include <json/json.h>
 
@@ -277,4 +278,46 @@ std::string SttHttpClient::transcribe(const std::vector<float>& audioSamples,
       !json["info"].isMember("text"))
     throw std::runtime_error("argus-stt transcribe response unreadable");
   return json["info"]["text"].asString();
+}
+
+std::shared_ptr<argus::stt::Client> SttClient::rpcClient() const
+{
+  const auto target = ConfigService::getString("stt.grpc_target");
+  if (target.empty())
+    return {};
+  auto cached = rpcCache_.load();
+  while (!cached || cached->target != target) {
+    auto built = std::make_shared<RpcCache>(RpcCache{
+        .target = target,
+        .client = std::make_shared<argus::stt::Client>(argus::stt::ClientConfig{
+            .target = target,
+            .credential = ConfigService::getString("stt.grpc_credential"),
+            .timeout = std::chrono::milliseconds(
+                SttRemoteConfig::resolve().timeoutMs)})});
+    if (rpcCache_.compare_exchange_weak(cached, built))
+      return built->client;
+  }
+  return cached->client;
+}
+
+std::string SttClient::transcribe(const std::vector<float>& audioSamples,
+                                  const std::string& lang) const
+{
+  if (const auto client = rpcClient()) {
+    argus::stt::TranscribeInput input;
+    input.samples = audioSamples;
+    input.sampleRate = kWireSampleRate;
+    input.language = lang;
+    return client->transcribe(input);
+  }
+  const auto config = SttRemoteConfig::resolve();
+  if (!config.enabled())
+    throw std::runtime_error("stt.remote_url is not configured");
+  return SttHttpClient(config.url, config.timeoutMs).transcribe(audioSamples, lang);
+}
+
+bool SttClient::remote() const
+{
+  return !ConfigService::getString("stt.grpc_target").empty() ||
+         SttRemoteConfig::resolve().enabled();
 }

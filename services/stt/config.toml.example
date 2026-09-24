@@ -2,6 +2,13 @@
 host = "127.0.0.1"
 port = 7030
 
+[rpc]
+address = ""
+
+[rpc.callers]
+voice = ""
+camera = ""
+
 [stt]
 engine = "nemo_transducer"
 language = "es"

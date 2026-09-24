@@ -1,9 +1,12 @@
 #pragma once
 
+#include <atomic>
 #include <cstdint>
 #include <memory>
 #include <string>
 #include <vector>
+
+namespace argus::stt { class Client; }
 
 inline constexpr int32_t kWireSampleRate = 16000;
 inline constexpr float kPcmScale = 32768.0F;
@@ -44,4 +47,21 @@ private:
 
   std::string baseUrl_;
   int timeoutMs_;
+};
+
+class SttClient
+{
+public:
+  std::string transcribe(const std::vector<float>& audioSamples,
+                         const std::string& lang) const;
+  bool remote() const;
+
+private:
+  struct RpcCache
+  {
+    std::string target;
+    std::shared_ptr<argus::stt::Client> client;
+  };
+  std::shared_ptr<argus::stt::Client> rpcClient() const;
+  mutable std::atomic<std::shared_ptr<RpcCache>> rpcCache_;
 };

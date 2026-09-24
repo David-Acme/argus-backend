@@ -5,9 +5,9 @@ with and the two functions that turn it into a `grpc::Status` and back.
 
 ## What this is
 
-A CONTRACT and the one contract here that is not header-only: it owns both the
-schema (`response.proto`, at the package root rather than under the group's
-shared `proto/` root) and the translation unit that fills it
+A CONTRACT and the first of the three contracts here that are not header-only:
+it owns both the schema (`response.proto`, at the package root rather than under
+the group's shared `proto/` root) and the translation unit that fills it
 (`src/response/response-rpc.cc`). `argus_response_rpc_contract()` builds them
 into `argus::contracts::response-wire`, and this package now calls it itself
 rather than leaving the first consumer to do it. It declares no

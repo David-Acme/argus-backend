@@ -18,11 +18,11 @@ enum class SttEngine
   Omnilingual
 };
 
-struct TranscribeInput
+struct TranscribeRequest
 {
-  const std::vector<float>& audioSamples;
+  std::vector<float> samples;
   int32_t sampleRate{16000};
-  const std::string& lang;
+  std::string lang;
 };
 
 class SttService
@@ -40,21 +40,24 @@ public:
 
   static bool isSupportedLanguage(const std::string& lang);
 
+  static const std::vector<std::string>& supportedLanguages();
+
   void init();
   void shutdown();
 
-  std::string transcribe(const std::vector<float>& audioSamples,
-                         int32_t sampleRate = 16000);
+  std::string transcribe(const TranscribeRequest& request);
 
   bool setLanguage(const std::string& lang);
 
   std::string language() const;
 
-  drogon::Task<std::string> transcribeAsync(const TranscribeInput& input);
+  drogon::Task<std::string> transcribeAsync(TranscribeRequest request);
 
   bool isLoaded() const;
 
 private:
+  std::string decode(const std::vector<float>& samples, int32_t sampleRate);
+
   std::unique_ptr<const SherpaOnnxOfflineRecognizer,
                   void (*)(const SherpaOnnxOfflineRecognizer*)>
       recognizer_;

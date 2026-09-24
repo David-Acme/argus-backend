@@ -38,10 +38,35 @@ pattern (F4-2) one engine later.
     responses).
   - Trust model: no auth, loopback bind by default — internal-network only,
     never announced or published.
+- **The internal gRPC face (Phase 4 step 6, D16)** — `src/app/rpc/` compiles
+  `argus::stt-rpc`, the server side of `argus.stt.v1`: a unary
+  `Capabilities` (rate, loaded, current and default language, the languages
+  the engine accepts) and a unary `Transcribe` (float samples + rate +
+  language in, the transcript out). It answers the same `SttService` the HTTP
+  controller drives, through one `SttRpcInput` the composition root fills — a
+  live `Capabilities` callback, not a boot snapshot, so `loaded` and
+  `language` stay true as the engine changes, and the language gate beside it
+  as a `std::function<bool(const std::string&)>` bound to the service's own
+  `isSupportedLanguage`, so a request is validated without copying the
+  `Capabilities` list and an empty language still resolves server-side.
+  Composition is opt-in: the leg
+  exists only when `rpc.address` and at least one non-empty `[rpc.callers]`
+  pair are set, and it refuses an unlisted caller with 401 before any engine
+  work — the credential header must arrive exactly once, zero or two entries
+  are the same 401 — refuses empty samples / a rate outside 8000..192000 / a
+  language the engine does not accept with 400, and refuses a caller-declared
+  deadline more than two minutes out with that same 400 while serving a caller
+  that declares none. It answers 429 when the inference slots are
+  exhausted and maps every `ResponseException` to its wire status (anything
+  else becomes a 500 with no leaked detail). The wire's rates are the
+  client's: the samples are float in [-1, 1] at `kWireSampleRate`, the same
+  form the voice session works in.
 - **Config**: `[stt]` (engine knobs, mirroring the legacy block) +
-  `[server]` (loopback listener, default 7030) only. No database, no NATS,
-  no JWT/device keys (Ruling BN): the dead `voice_session`/`voice_message`
-  tables were dropped in F6-1 and nothing here persists anything.
+  `[server]` (loopback listener, default 7030) + `[rpc]`
+  (`address`/`callers`, both empty in the template) only. No database, no
+  NATS, no JWT/device keys (Ruling BN): the dead `voice_session`/
+  `voice_message` tables were dropped in F6-1 and nothing here persists
+  anything.
 
 ## What it did NOT change
 

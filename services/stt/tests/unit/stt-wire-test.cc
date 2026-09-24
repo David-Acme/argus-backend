@@ -7,6 +7,7 @@
 #include <feature/stt/services/stt-service.hxx>
 #include <http/error-handler.hxx>
 #include <http/health-controller.hxx>
+#include "wav-fixture.hxx"
 
 #include <arpa/inet.h>
 #include <netinet/in.h>
@@ -142,38 +143,6 @@ Json::Value envelope(const HttpReply& reply)
   return json;
 }
 
-std::vector<float> wavSamples(const std::string& path)
-{
-  std::ifstream in(path, std::ios::binary);
-  REQUIRE(in);
-  std::string data((std::istreambuf_iterator<char>(in)),
-                   std::istreambuf_iterator<char>());
-  REQUIRE(data.size() > 44);
-  const auto chunkAt = [&](const char* wanted)
-      -> std::pair<std::string::size_type, uint32_t> {
-    std::string::size_type cursor = 12;
-    while (cursor + 8 <= data.size()) {
-      const std::string id(data.data() + cursor, 4);
-      const uint32_t size = *reinterpret_cast<const uint32_t*>(
-          data.data() + cursor + 4);
-      if (id == wanted)
-        return {cursor + 8, size};
-      cursor += 8 + size + (size & 1);
-    }
-    return {std::string::npos, 0};
-  };
-  const auto [dataStart, dataSize] = chunkAt("data");
-  REQUIRE(dataStart != std::string::npos);
-  std::vector<float> samples(dataSize / sizeof(int16_t));
-  for (size_t i = 0; i < samples.size(); ++i) {
-    int16_t raw = 0;
-    std::memcpy(&raw, data.data() + dataStart + i * sizeof(int16_t),
-                sizeof(raw));
-    samples[i] = static_cast<float>(raw) / 32768.0F;
-  }
-  return samples;
-}
-
 std::string pcmBytes(const std::vector<float>& samples)
 {
   std::string bytes(samples.size() * sizeof(int16_t), '\0');
@@ -240,7 +209,8 @@ TEST_CASE("the argus-stt internal wire serves the legacy voice session")
   SttService::instance().init();
   REQUIRE_MESSAGE(SttService::instance().isLoaded(),
                   "STT engine failed to load from " ARGUS_TEST_STT_MODELS_DIR
-                  " — run scripts/setup.sh stt first");
+                  " — this case reads models/stt/zipformer-en/test_wavs/0.wav, "
+                  "which no provisioning script fetches");
 
   drogon::app().setLogLevel(trantor::Logger::kWarn);
   drogon::app().setClientMaxBodySize(64 * 1024 * 1024);
@@ -306,8 +276,8 @@ TEST_CASE("the argus-stt internal wire serves the legacy voice session")
   CHECK(transcribeJson["info"].isMember("text"));
   CHECK(ms < 30000);
 
-  const std::string inProcess =
-      SttService::instance().transcribe(samples, 16000);
+  const std::string inProcess = SttService::instance().transcribe(
+      {.samples = samples, .sampleRate = 16000, .lang = "es"});
   CHECK(transcribeJson["info"]["text"].asString() == inProcess);
 
   const auto emptyLang = request({.port = port,

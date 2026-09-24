@@ -1,7 +1,6 @@
 #include "stt-transcriber.hxx"
 
 #include <stt/stt-remote.hxx>
-#include <utility>
 
 namespace
 {
@@ -11,15 +10,17 @@ public:
   std::string transcribe(const std::vector<int16_t>& samples,
                          const std::string& lang) const override
   {
-    const SttRemoteConfig config = SttRemoteConfig::resolve();
-    if (!config.enabled())
+    if (!client_.remote())
       return {};
     std::vector<float> floats;
     floats.reserve(samples.size());
     for (const int16_t sample : samples)
       floats.push_back(static_cast<float>(sample) / kPcmScale);
-    return SttHttpClient(config.url, config.timeoutMs).transcribe(floats, lang);
+    return client_.transcribe(floats, lang);
   }
+
+private:
+  SttClient client_;
 };
 }
 

@@ -1,0 +1,28 @@
+syntax = "proto3";
+
+package argus.stt.v1;
+
+service Transcription {
+  rpc Capabilities(CapabilitiesRequest) returns (CapabilitiesResponse);
+  rpc Transcribe(TranscribeRequest) returns (TranscribeResponse);
+}
+
+message CapabilitiesRequest {}
+
+message CapabilitiesResponse {
+  uint32 sample_rate = 1;
+  bool loaded = 2;
+  string language = 3;
+  string default_language = 4;
+  repeated string languages = 5;
+}
+
+message TranscribeRequest {
+  repeated float samples = 1;
+  uint32 sample_rate = 2;
+  string language = 3;
+}
+
+message TranscribeResponse {
+  string text = 1;
+}

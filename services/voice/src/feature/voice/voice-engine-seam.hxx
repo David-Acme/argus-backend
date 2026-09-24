@@ -106,13 +106,8 @@ public:
   bool setLanguage(const std::string& lang) override;
 
 private:
-  std::shared_ptr<const SttHttpClient>
-  clientFor(const SttRemoteConfig& config);
-
+  SttClient client_;
   mutable std::mutex mutex_;
-  std::string cachedUrl_;
-  int cachedTimeoutMs_{0};
-  std::shared_ptr<const SttHttpClient> client_;
   std::string lang_;
 };
 

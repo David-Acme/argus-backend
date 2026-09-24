@@ -1,13 +1,20 @@
+#include <app/rpc/stt-rpc-server.hxx>
 #include <drogon/drogon.h>
 #include <feature/stt/controllers/stt-controller.hxx>
 #include <feature/stt/services/stt-service.hxx>
 #include <http/error-handler.hxx>
 #include <http/health-controller.hxx>
 #include <http/listener-config.hxx>
+#include <runtime/thread-budget.hxx>
+#include <stt/stt-remote.hxx>
 #include <config/config-service.hxx>
 
 #include <json/value.h>
+#include <algorithm>
+#include <memory>
 #include <string>
+#include <utility>
+#include <vector>
 
 namespace
 {
@@ -46,6 +53,38 @@ int main()
     return 1;
   }
 
+  std::unique_ptr<SttRpcServer> rpc;
+  const auto rpcAddress = ConfigService::getString("rpc.address");
+  auto credentials = ConfigService::getStringPairs("rpc.callers");
+  std::erase_if(credentials, [](const auto& credential) {
+    return credential.first.empty() || credential.second.empty();
+  });
+  if (!rpcAddress.empty() && !credentials.empty()) {
+    auto& stt = SttService::instance();
+    rpc = std::make_unique<SttRpcServer>(SttRpcInput{
+        .address = rpcAddress,
+        .credentials = std::move(credentials),
+        .capabilities = [] {
+          auto& service = SttService::instance();
+          return argus::stt::Capabilities{
+              .sampleRate = kWireSampleRate,
+              .loaded = service.isLoaded(),
+              .language = service.language(),
+              .defaultLanguage = SttService::configLanguage(),
+              .languages = SttService::supportedLanguages()};
+        },
+        .acceptsLanguage = [](const std::string& language) {
+          return SttService::instance().isSupportedLanguage(language);
+        },
+        .transcribe = [&stt](const TranscribeRequest& request) {
+          return stt.transcribe(request);
+        },
+        .slots = ThreadBudget::inferenceSlots()});
+  }
+
+  if (rpc)
+    LOG_INFO << "argus-stt gRPC transcription listening on " << rpcAddress;
+
   LOG_INFO << "argus-stt listening on " << listener.host << ":"
            << listener.port;
 
@@ -53,6 +92,8 @@ int main()
       .setThreadNum(0)
       .run();
 
+  if (rpc)
+    rpc->shutdown();
   SttService::instance().shutdown();
   return 0;
 }

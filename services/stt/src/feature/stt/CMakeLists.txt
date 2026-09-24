@@ -9,6 +9,7 @@ argus_module(NAME stt
         argus::lib::runtime
         argus::lib::http
         argus::clients::stt
+        argus::contracts::stt
         Drogon::Drogon
         onnxruntime::onnxruntime
         nlohmann_json::nlohmann_json

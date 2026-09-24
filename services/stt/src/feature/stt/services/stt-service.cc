@@ -2,10 +2,14 @@
 
 #include <drogon/drogon.h>
 #include <config/config-service.hxx>
+#include <errors/response-exception.hxx>
 #include <runtime/blocking-task.hxx>
 #include <runtime/thread-budget.hxx>
 #include <sherpa-onnx/c-api/c-api.h>
+#include <stt/stt-errors.hxx>
+#include <algorithm>
 #include <thread>
+#include <utility>
 
 namespace
 {
@@ -124,7 +128,14 @@ std::string SttService::configLanguage()
 
 bool SttService::isSupportedLanguage(const std::string& lang)
 {
-  return lang == "es" || lang == "en" || lang == "auto";
+  const auto& languages = supportedLanguages();
+  return std::ranges::find(languages, lang) != languages.end();
+}
+
+const std::vector<std::string>& SttService::supportedLanguages()
+{
+  static const std::vector<std::string> languages{"es", "en", "auto"};
+  return languages;
 }
 
 void SttService::init()
@@ -203,29 +214,35 @@ bool SttService::isLoaded() const
   return loaded_;
 }
 
-std::string SttService::transcribe(const std::vector<float>& audioSamples,
-                                   int32_t sampleRate)
+std::string SttService::transcribe(const TranscribeRequest& request)
+{
+  const std::string effective =
+      request.lang.empty() ? configLanguage() : request.lang;
+  if (effective != language() && !setLanguage(effective))
+    LOG_WARN << "STT language switch to " << effective
+             << " failed; transcribing with the current recognizer";
+  return decode(request.samples, request.sampleRate);
+}
+
+std::string SttService::decode(const std::vector<float>& samples,
+                               int32_t sampleRate)
 {
   std::lock_guard<std::mutex> lock(mutex_);
 
   auto* recognizer = recognizer_.get();
-  if (!recognizer) {
-    LOG_WARN << "STT: no recognizer loaded";
-    return "";
-  }
+  if (!recognizer)
+    throw ResponseException(SttErrors::SpeechEngineNotLoaded);
 
   std::unique_ptr<const SherpaOnnxOfflineStream,
                   void (*)(const SherpaOnnxOfflineStream*)>
       stream{SherpaOnnxCreateOfflineStream(recognizer),
              SherpaOnnxDestroyOfflineStream};
 
-  if (!stream) {
-    LOG_WARN << "STT: failed to create stream";
-    return "";
-  }
+  if (!stream)
+    throw ResponseException(SttErrors::InternalError);
 
-  SherpaOnnxAcceptWaveformOffline(stream.get(), sampleRate, audioSamples.data(),
-                                  static_cast<int32_t>(audioSamples.size()));
+  SherpaOnnxAcceptWaveformOffline(stream.get(), sampleRate, samples.data(),
+                                  static_cast<int32_t>(samples.size()));
 
   SherpaOnnxDecodeOfflineStream(recognizer, stream.get());
 
@@ -240,18 +257,8 @@ std::string SttService::transcribe(const std::vector<float>& audioSamples,
   return result;
 }
 
-drogon::Task<std::string> SttService::transcribeAsync(const TranscribeInput& input)
+drogon::Task<std::string> SttService::transcribeAsync(TranscribeRequest request)
 {
-  const std::vector<float>& audioSamples = input.audioSamples;
-  const int32_t sampleRate = input.sampleRate;
-  const std::string& lang = input.lang;
-
   co_return co_await BlockingTask<std::string>(
-      [this, audioSamples, sampleRate, lang]() {
-        const std::string effective = lang.empty() ? configLanguage() : lang;
-        if (effective != language() && !setLanguage(effective))
-          LOG_WARN << "STT language switch to " << effective
-                   << " failed; transcribing with the current recognizer";
-        return transcribe(audioSamples, sampleRate);
-      });
+      [this, request = std::move(request)]() { return transcribe(request); });
 }

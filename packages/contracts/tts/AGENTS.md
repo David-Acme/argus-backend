@@ -5,7 +5,7 @@ both sides of the wire are generated from.
 
 ## What this is
 
-A CONTRACT, and the second of the two here that is not header-only: alongside
+A CONTRACT, and the second of the three here that is not header-only: alongside
 the header-only `argus::contracts::tts` vocabulary target it owns
 `argus_tts_rpc_contract()`, the CMake **function** that declares
 `argus::contracts::tts-wire` from the `tts.proto` beside it. A consumer does

@@ -51,35 +51,20 @@ GrpcVoiceIdentity::clientFor(const std::string& target)
   return client_;
 }
 
-std::shared_ptr<const SttHttpClient>
-RemoteVoiceStt::clientFor(const SttRemoteConfig& config)
-{
-  if (!client_ || config.url != cachedUrl_ ||
-      config.timeoutMs != cachedTimeoutMs_) {
-    cachedUrl_ = config.url;
-    cachedTimeoutMs_ = config.timeoutMs;
-    client_ = std::make_shared<SttHttpClient>(config.url, config.timeoutMs);
-  }
-  return client_;
-}
-
 std::string RemoteVoiceStt::transcribe(const std::vector<float>& audioSamples,
                                        int32_t sampleRate)
 {
-  const SttRemoteConfig config = SttRemoteConfig::resolve();
-  if (!config.enabled())
+  if (!client_.remote())
     throw std::runtime_error("stt.remote_url is not configured");
   if (sampleRate != kWireSampleRate)
     throw std::runtime_error("argus-stt wire requires 16 kHz mono PCM");
 
-  std::shared_ptr<const SttHttpClient> client;
   std::string lang;
   {
     std::lock_guard<std::mutex> lock(mutex_);
-    client = clientFor(config);
     lang = lang_;
   }
-  return client->transcribe(audioSamples, lang);
+  return client_.transcribe(audioSamples, lang);
 }
 
 bool RemoteVoiceStt::setLanguage(const std::string& lang)
@@ -90,7 +75,6 @@ bool RemoteVoiceStt::setLanguage(const std::string& lang)
   lang_ = lang;
   return true;
 }
-
 std::shared_ptr<const LlmHttpClient>
 RemoteVoiceLlm::clientFor(const LlmRemoteConfig& config)
 {

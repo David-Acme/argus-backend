@@ -5,17 +5,36 @@ if(NOT TARGET argus::lib::config)
                      ${CMAKE_CURRENT_BINARY_DIR}/config)
 endif()
 
+if(NOT TARGET argus::lib::errors)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../lib/errors
+                     ${CMAKE_CURRENT_BINARY_DIR}/errors)
+endif()
+
 find_package(Drogon CONFIG REQUIRED)
+
+set(CMAKE_FIND_PACKAGE_TARGETS_GLOBAL TRUE)
+argus_contracts_substrate()
+if(NOT ARGUS_SYSTEM_PROTOBUF AND NOT TARGET gRPC::grpc++)
+    find_package(gRPC CONFIG REQUIRED)
+endif()
+if(NOT TARGET argus::contracts::stt)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../contracts/stt
+                     ${CMAKE_BINARY_DIR}/contracts/stt)
+endif()
+argus_stt_rpc_contract()
 
 argus_clients(NAME stt
     SOURCES
+        src/stt/stt-client.cc
         src/stt/stt-remote.cc
     INCLUDES
         src
     DEPENDS
-        argus::lib::config
+        argus::lib::config argus::lib::errors
+        argus::contracts::stt
         Drogon::Drogon)
 
+target_link_libraries(argus_clients_stt PRIVATE argus::contracts::stt-wire)
 target_compile_options(argus_clients_stt PRIVATE -Wall -Wextra)
 
 enable_testing()

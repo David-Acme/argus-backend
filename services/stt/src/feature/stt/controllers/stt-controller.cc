@@ -1,10 +1,9 @@
 #include "stt-controller.hxx"
 
-#include "stt-errors.hxx"
-
 #include <errors/response-exception.hxx>
 #include <feature/stt/services/stt-service.hxx>
 #include <http/api-response.hxx>
+#include <stt/stt-errors.hxx>
 #include <stt/stt-remote.hxx>
 
 #include <chrono>
@@ -69,7 +68,7 @@ SttController::transcribe(drogon::HttpRequestPtr req)
   const std::vector<float> samples = pcmFromBytes(body);
   const auto t0 = std::chrono::steady_clock::now();
   std::string text = co_await stt.transcribeAsync(
-      {.audioSamples = samples, .sampleRate = kWireSampleRate, .lang = lang});
+      {.samples = samples, .sampleRate = kWireSampleRate, .lang = lang});
   const double ms =
       std::chrono::duration<double, std::milli>(
           std::chrono::steady_clock::now() - t0)
