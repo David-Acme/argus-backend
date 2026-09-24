@@ -1,13 +1,13 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
 
-#include <vocabulary/decision-suppression.hxx>
-#include <vocabulary/encounter-state.hxx>
-#include <vocabulary/guard-action-kind.hxx>
-#include <vocabulary/guard-danger.hxx>
-#include <vocabulary/guard-intent-status.hxx>
-#include <vocabulary/guard-mode.hxx>
-#include <vocabulary/observation-status.hxx>
+#include <feature/guard/vocabulary/decision-suppression.hxx>
+#include <feature/guard/vocabulary/encounter-state.hxx>
+#include <feature/guard/vocabulary/guard-action-kind.hxx>
+#include <feature/guard/vocabulary/guard-danger.hxx>
+#include <feature/guard/vocabulary/guard-intent-status.hxx>
+#include <feature/guard/vocabulary/guard-mode.hxx>
+#include <feature/guard/vocabulary/observation-status.hxx>
 
 #include <cstddef>
 #include <string>

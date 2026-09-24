@@ -671,13 +671,14 @@ Every service follows the same layout inside its own folder:
 
 **Today, against that target** (Phase 4 of
 `docs/history/plans/architecture-plan.md` lands it): `services/auth`,
-`services/camera`, `services/identity`, `services/notification`,
-`services/tts` and `services/sync` are the services with `src/app/`;
-`productivity` and `guard` already have the `{controllers,services,dtos}`
-interior, one level deeper under `feature/api/<resource>/`, which Phase 4
-step 4 flattens. The other seven services keep a single `main.cc` at their
-`src/` root — except `tunnel`, exempt by design (D19), which has two entry
-points there, `main-client.cc` and `main-relay.cc`.
+`services/camera`, `services/guard`, `services/identity`,
+`services/notification`, `services/productivity`, `services/sync` and
+`services/tts` are the services with `src/app/`, and the
+`feature/api/<resource>/` spelling is gone from the tree — Phase 4 step 4
+flattened the last two owners that had it. Four services keep a single
+`main.cc` at their `src/` root — `llm`, `stt`, `vlm` and `voice` — except
+`tunnel`, exempt by design (D19), which has two entry points there,
+`main-client.cc` and `main-relay.cc`.
 
 Four services have no `feature/` at all today — `llm`, `stt`,
 `tunnel` and `vlm` — and keep their code at `src/` level instead:
@@ -686,8 +687,8 @@ Four services have no `feature/` at all today — `llm`, `stt`,
 still keep code beside it: `camera` (`src/camera/`), `notification`
 (`src/notification/`), `productivity` (`src/productivity/`) and `voice`
 (`src/test-support/`). `auth`, `guard`, `identity`, `tts` and `sync` keep
-everything inside `feature/` (plus `app/` in `auth`, `identity`, `tts` and
-`sync`).
+everything inside `feature/` (plus `app/` in `auth`, `guard`, `identity`, `tts`
+and `sync`).
 
 `services/auth`, `services/identity` and `services/sync` have `src/config/`;
 the per-service typed config that step 9 moves there still lives elsewhere

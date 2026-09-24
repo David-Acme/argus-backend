@@ -19,14 +19,14 @@ with its `auth-auth` (`src/feature/auth:19`) and `auth-session`
 (`tests:15,34`), the argus-notification tree (`services/notification:389`, its
 `camera-notifier-test`) with its `notification-camera-notification` module
 (`src/feature/camera-notification:12`), the `argus-guard`
-executable (`services/guard:103`) with its `guard` (`src/feature/guard:21`) and
-`guard-api` (`src/feature/api/guard:19`) modules, `argus-llm`
+executable (`services/guard:108`) with its `guard` module
+(`src/feature/guard:25`), `argus-llm`
 (`services/llm:183`), `argus_identity-rpc`
 (`services/identity/src/app/rpc/CMakeLists.txt:18`) with its
 `identity-sync-rpc-test` suite (`services/identity/tests:53`), `sync-transport`
 (`services/sync/src/feature/transport:20`) and `voice-core`
 (`services/voice:88`) — plus `services/productivity`, which links it only from
-its `productivity-controller-test` target (`services/productivity:231`). Nine
+its `productivity-controller-test` target (`services/productivity:196`). Nine
 of those trees also add the package to their standalone build by path (the
 eight services above and `packages/lib/auth`). The auth library is the one that
 spreads it furthest: two of its files include the header

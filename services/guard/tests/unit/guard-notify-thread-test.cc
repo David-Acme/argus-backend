@@ -7,10 +7,10 @@
 #include <doctest/doctest.h>
 #include <drogon/drogon.h>
 #include <functional>
-#include <feature/api/guard/services/guard-feature-service.hxx>
-#include <guard-repository.hxx>
-#include <guard-schema.hxx>
-#include <guard-service.hxx>
+#include <feature/guard/services/guard-feature-service.hxx>
+#include <feature/guard/guard-repository.hxx>
+#include <feature/guard/guard-schema.hxx>
+#include <feature/guard/guard-service.hxx>
 #include <identity/identity-client.hxx>
 #include <memory>
 #include <notification/notification-client.hxx>

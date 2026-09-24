@@ -43,19 +43,24 @@ that apply to productivity-service code; when in doubt, the root file wins.
 
 ```
 argus-productivity/
-  CMakeLists.txt        add_subdirectory-compatible AND standalone buildable
-  src/main.cc           config load, productivity.db wiring, app run
-  src/productivity/     productivity-domain config resolution
-  src/controllers/      HTTP controllers (health today; CRUD since this task)
-  src/server/           internal listener resolution
+  CMakeLists.txt        standalone buildable: module graph + test targets
+  src/app/main.cc       config load, productivity.db wiring, app run
+  src/app/rpc/          the gRPC listener (argus::productivity-rpc-server)
+  src/productivity/     argus::productivity-core — config + NATS change sink
+  src/feature/<feature>/  one vertical slice per resource: controllers/,
+                        dtos/, services/ — the folder IS the module
+  src/feature/sync/     argus::productivity-sync — sync RPC + reminder rows
+  src/shared/repositories/{,change-outbox}/  rows 2+ features read
   config.toml.example   productivity-domain keys only ([server],
                         [productivity], [jwt], [device], [identity]; no AI keys)
   CONTEXT.md            purpose, ownership, wiring decisions
 ```
 
-The write-side feature sources (controllers, services, DTOs) compile from the
-shared tree into this executable only; the repositories and schemas are
-`productivity-core`'s, which this service owns.
+Each feature and shared folder declares its own module through
+`argus_module`; consumers link by name (`argus::productivity-<feature>`) and
+never list `.cc` files. `main.cc` registers every controller explicitly — each
+is a Drogon `HttpController<T, false>`, so no route depends on static-init
+registration.
 
 ## Build commands
 

@@ -10,7 +10,7 @@ modernize-avoid-c-arrays 80
 bugprone-implicit-widening-of-multiplication-result 72
 bugprone-narrowing-conversions 63
 modernize-use-ranges 61
-modernize-use-auto 54
+modernize-use-auto 53
 bugprone-easily-swappable-parameters 51
 modernize-return-braced-init-list 49
 performance-unnecessary-value-param 49

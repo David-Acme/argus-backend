@@ -88,25 +88,29 @@ endif()
 
 find_package(doctest REQUIRED)
 
-add_subdirectory(src/feature/guard)
-add_subdirectory(src/feature/api/guard)
+file(GLOB GUARD_FEATURE_MODULES CONFIGURE_DEPENDS
+    "${GUARD_SRC_ROOT}/feature/*/CMakeLists.txt")
+foreach(module IN LISTS GUARD_FEATURE_MODULES)
+    get_filename_component(module_dir "${module}" DIRECTORY)
+    add_subdirectory("${module_dir}")
+endforeach()
 
-add_executable(argus-guard ${GUARD_SRC_ROOT}/main.cc)
-target_include_directories(argus-guard PRIVATE ${GUARD_SRC_ROOT})
-target_link_libraries(argus-guard PRIVATE
-    argus::guard
-    argus::guard-api
-    argus::lib::auth
-    argus::lib::config
-    argus::lib::nats
-    argus::lib::sqlite
-    argus::clients::identity
-    argus::clients::notification
-    argus::clients::camera-actions
-    argus::clients::llm
-    argus::clients::vlm
-    ${ARGUS_SQLITE_VEC_TARGET})
-target_compile_options(argus-guard PRIVATE -Wall -Wextra)
+argus_service(NAME argus-guard
+    MAIN ${GUARD_SRC_ROOT}/app/main.cc
+    MODULES
+        argus::guard
+        argus::lib::auth
+        argus::lib::config
+        argus::lib::http
+        argus::lib::nats
+        argus::lib::sqlite
+        argus::lib::text
+        argus::clients::identity
+        argus::clients::notification
+        argus::clients::camera-actions
+        argus::clients::llm
+        argus::clients::vlm
+    PORTS 7039)
 
 get_target_property(DOCTEST_INCLUDE_DIRS doctest::doctest
                     INTERFACE_INCLUDE_DIRECTORIES)
@@ -131,10 +135,6 @@ foreach(TEST_NAME IN ITEMS guard-policy-test guard-assessment-test
     target_include_directories(${TEST_NAME} PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/support)
     target_compile_options(${TEST_NAME} PRIVATE -Wall -Wextra)
-    if(TEST_NAME STREQUAL "guard-decision-journal-test"
-       OR TEST_NAME STREQUAL "guard-notify-thread-test")
-        target_link_libraries(${TEST_NAME} PRIVATE argus::guard-api)
-    endif()
     if(TEST_NAME STREQUAL "guard-schema-test"
        OR TEST_NAME STREQUAL "guard-migration-test"
        OR TEST_NAME STREQUAL "guard-saga-test"

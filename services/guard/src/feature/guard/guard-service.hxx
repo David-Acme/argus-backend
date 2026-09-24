@@ -127,9 +127,9 @@ private:
   struct QueueEntry
   {
     std::string payload;
-    std::function<void()> ack;
-    std::function<void()> nak;
-    std::function<void()> term;
+    std::function<void()> ack{};
+    std::function<void()> nak{};
+    std::function<void()> term{};
     int delivered{0};
     bool leased{false};
   };
@@ -179,14 +179,14 @@ private:
     bool greetingEnabled{false};
     bool replyRequested{false};
     int64_t cameraId{0};
-    std::string cameraName;
-    std::string rule;
+    std::string cameraName{};
+    std::string rule{};
     int64_t incidentId{0};
     int64_t encounterId{0};
     int64_t personId{0};
     int64_t now{0};
-    std::string text;
-    std::string lang;
+    std::string text{};
+    std::string lang{};
     int seconds{0};
     std::string correlationId;
     int sequence{0};

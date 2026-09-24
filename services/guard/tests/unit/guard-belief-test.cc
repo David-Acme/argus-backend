@@ -1,8 +1,8 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
 
-#include <guard-belief.hxx>
-#include <guard-policy.hxx>
+#include <feature/guard/guard-belief.hxx>
+#include <feature/guard/guard-policy.hxx>
 #include <config/config-service.hxx>
 
 #include <atomic>

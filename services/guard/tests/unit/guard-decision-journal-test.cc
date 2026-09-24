@@ -6,13 +6,13 @@
 #include <doctest/doctest.h>
 #include <drogon/drogon.h>
 #include <errors/validation-exception.hxx>
-#include <feature/api/guard/dtos/feedback-decision-dto.hxx>
-#include <feature/api/guard/dtos/summary-decisions-dto.hxx>
-#include <feature/api/guard/services/guard-feature-service.hxx>
+#include <feature/guard/dtos/feedback-decision-dto.hxx>
+#include <feature/guard/dtos/summary-decisions-dto.hxx>
+#include <feature/guard/services/guard-feature-service.hxx>
 #include <functional>
-#include <guard-repository.hxx>
-#include <guard-schema.hxx>
-#include <guard-service.hxx>
+#include <feature/guard/guard-repository.hxx>
+#include <feature/guard/guard-schema.hxx>
+#include <feature/guard/guard-service.hxx>
 #include <identity/identity-client.hxx>
 #include <memory>
 #include <notification/notification-client.hxx>
@@ -24,8 +24,8 @@
 #include <thread>
 #include <unistd.h>
 #include <vector>
-#include <vocabulary/decision-suppression.hxx>
-#include <vocabulary/guard-mode.hxx>
+#include <feature/guard/vocabulary/decision-suppression.hxx>
+#include <feature/guard/vocabulary/guard-mode.hxx>
 
 #include "temp-db.hxx"
 #include "wait-for-boot.hxx"

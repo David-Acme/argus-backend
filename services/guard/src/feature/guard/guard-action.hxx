@@ -1,7 +1,7 @@
 #pragma once
 
-#include <vocabulary/guard-action-kind.hxx>
-#include <vocabulary/guard-danger.hxx>
+#include <feature/guard/vocabulary/guard-action-kind.hxx>
+#include <feature/guard/vocabulary/guard-danger.hxx>
 
 #include <string>
 

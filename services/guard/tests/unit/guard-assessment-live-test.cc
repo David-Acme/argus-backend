@@ -3,7 +3,7 @@
 
 #include <argus/camera/v1/actions.grpc.pb.h>
 #include <camera/camera-action-client.hxx>
-#include <guard-assessment.hxx>
+#include <feature/guard/guard-assessment.hxx>
 #include <llm/details/llm-remote.hxx>
 #include <vlm/vlm-client.hxx>
 

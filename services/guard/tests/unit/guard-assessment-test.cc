@@ -1,7 +1,7 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
 
-#include <guard-assessment.hxx>
+#include <feature/guard/guard-assessment.hxx>
 
 TEST_CASE("a vision tool call asks for a specific question")
 {

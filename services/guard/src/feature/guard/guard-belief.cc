@@ -1,4 +1,4 @@
-#include <guard-belief.hxx>
+#include "guard-belief.hxx"
 
 #include <config/config-service.hxx>
 

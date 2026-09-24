@@ -15,7 +15,7 @@ vocabulary (`src/camera`, `feature/{camera,camera-control,media,operator,sync,
 zone}` and `src/shared/repositories`, whose link is at
 `src/shared/repositories/CMakeLists.txt:8`) — plus
 `services/guard`'s guard module
-(`src/feature/guard/CMakeLists.txt:13`), and `argus-sync`'s `sync-transport`
+(`src/feature/guard/CMakeLists.txt:29`), and `argus-sync`'s `sync-transport`
 module (`services/sync/src/feature/transport/CMakeLists.txt:24`, where a zone
 or an event crosses the sync leg as the same four enums).
 

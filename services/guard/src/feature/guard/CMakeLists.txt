@@ -9,19 +9,34 @@ argus_module(NAME guard
         guard-risk.cc
         guard-schema.cc
         guard-service.cc
+        controllers/guard-controller.cc
+        dtos/create-expected-guest-dto.cc
+        dtos/feedback-decision-dto.cc
+        dtos/list-decisions-dto.cc
+        dtos/list-incidents-dto.cc
+        dtos/remove-expected-guest-dto.cc
+        dtos/summary-decisions-dto.cc
+        dtos/update-guard-mode-dto.cc
+        services/guard-feature-service.cc
+    INCLUDES
+        ../..
     DEPENDS
+        argus::clients::camera-actions
+        argus::clients::identity
+        argus::clients::llm
+        argus::clients::notification
+        argus::clients::vlm
         argus::contracts::camera
         argus::contracts::sync
+        argus::lib::auth
         argus::lib::config
-        argus::lib::text
+        argus::lib::http
         argus::lib::nats
-        argus::lib::storage
         argus::lib::runtime
         argus::lib::sqlite
-        argus::clients::identity
-        argus::clients::notification
-        argus::clients::camera-actions
-        argus::clients::llm
-        argus::clients::vlm
-    INCLUDES
-        ${CMAKE_CURRENT_SOURCE_DIR})
+        argus::lib::storage
+        argus::lib::text
+        argus::lib::validation
+        Drogon::Drogon)
+
+target_compile_options(argus_guard PRIVATE -Wall -Wextra)

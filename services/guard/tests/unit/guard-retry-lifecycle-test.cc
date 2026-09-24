@@ -7,9 +7,9 @@
 #include <doctest/doctest.h>
 #include <drogon/drogon.h>
 #include <functional>
-#include <guard-repository.hxx>
-#include <guard-schema.hxx>
-#include <guard-service.hxx>
+#include <feature/guard/guard-repository.hxx>
+#include <feature/guard/guard-schema.hxx>
+#include <feature/guard/guard-service.hxx>
 #include <identity/identity-client.hxx>
 #include <json/value.h>
 #include <mutex>

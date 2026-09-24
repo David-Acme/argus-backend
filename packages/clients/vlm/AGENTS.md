@@ -14,10 +14,10 @@ carries no configuration of its own: the endpoint arrives as a constructor
 argument.
 
 argus-guard is its only consumer, through four link lines in two CMakeLists —
-`argus-guard` PRIVATE (`services/guard/CMakeLists.txt:136`), the `guard`
-feature module that calls it (`src/feature/guard/CMakeLists.txt:23`), and two
-live suites (`vlm-client-live-test`, `guard-assessment-live-test`, :225 and
-:249). `services/guard/CMakeLists.txt:112` also adds the package by path
+`argus-guard` PRIVATE (`services/guard/CMakeLists.txt:112`), the `guard`
+feature module that calls it (`src/feature/guard/CMakeLists.txt:28`), and two
+live suites (`vlm-client-live-test`, `guard-assessment-live-test`, :199 and
+:222). `services/guard/CMakeLists.txt:83` also adds the package by path
 (`if(NOT TARGET argus::clients::vlm)`) so guard builds standalone. The
 assessment calls it in two places, `guard-assessment.cc:298` and `:363`, to
 describe a person crop before an optional LLM classification.
@@ -71,7 +71,7 @@ describe a person crop before an optional LLM classification.
   (declared once, `argus-deploy/config.guard.toml:131`,
   `http://172.19.0.31:7031`, inside the `[guard.assess]` block at :128) and
   hands the client that URL with `guard.assess.timeout_ms / 1000.0` — default
-  8000 ms, so 8.0 s (`services/guard/src/main.cc:158-164`). An empty URL means
+  8000 ms, so 8.0 s (`services/guard/src/app/main.cc:158-164`). An empty URL means
   guard builds no client at all.
 - Flagged deviations from §2.3, neither hidden: there is no `details/` folder
   — the channel and the envelope parsing live in the single `vlm-client.cc`;

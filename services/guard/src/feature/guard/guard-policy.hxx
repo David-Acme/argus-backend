@@ -1,8 +1,8 @@
 #pragma once
 
 #include <camera/identity-state.hxx>
-#include <vocabulary/guard-danger.hxx>
-#include <vocabulary/guard-mode.hxx>
+#include <feature/guard/vocabulary/guard-danger.hxx>
+#include <feature/guard/vocabulary/guard-mode.hxx>
 
 #include <cstdint>
 #include <json/value.h>

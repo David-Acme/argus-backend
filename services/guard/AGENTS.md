@@ -29,6 +29,26 @@ this service. The MUST-FOLLOW rules below restate the ones that apply.
 13. **Build gate** — 0 errors AND 0 warnings (`-Wall -Wextra`) in Argus's own
     code; third-party includes are SYSTEM.
 
+## Layout
+
+```
+argus-guard/
+  CMakeLists.txt        standalone buildable: module graph + test targets
+  src/app/main.cc       config load, guard.db wiring, app run
+  src/feature/guard/    argus::guard — the whole vertical slice:
+                          the domain (assessment, belief, policy, risk,
+                          dialogue, action, repository, schema, service),
+                          vocabulary/, controllers/, dtos/, services/
+  config.toml.example   guard-domain keys only
+  CONTEXT.md            purpose, ownership, wiring decisions
+```
+
+There is one feature and one module: `argus::guard` compiles the domain and
+the HTTP surface together, and `main.cc` registers the controller explicitly
+(a Drogon `HttpController<GuardController, false>`), so no route depends on
+static-init registration. The folder IS the module (root rule 25) — a
+consumer links `argus::guard` and never lists `.cc` files.
+
 ## Build
 
 ```bash

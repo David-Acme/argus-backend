@@ -2084,8 +2084,6 @@ GuardService::runDialogue(const DialogueInput& input)
     co_return result;
   const bool canSpeakAgain = turns < std::max(1, config_.maxDialogueTurns);
 
-  int sequence = 0;
-
   if ((goal.empty() || goal == kGoalVerify) && !canSpeakAgain)
     co_return result;
 
@@ -2470,7 +2468,6 @@ GuardService::performEffect(const EffectInput& input)
     co_return result;
   }
 
-  const int64_t now = static_cast<int64_t>(std::time(nullptr));
   const int64_t nowMs = nowMillis();
   if ((intent->status == GuardIntentStatus::InFlight ||
        intent->status == GuardIntentStatus::RetryableFailed) &&

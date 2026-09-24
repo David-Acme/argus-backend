@@ -1,7 +1,7 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
 
-#include <guard-policy.hxx>
+#include <feature/guard/guard-policy.hxx>
 #include <text/base64.hxx>
 
 #include <array>

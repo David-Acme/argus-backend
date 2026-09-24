@@ -10,8 +10,8 @@ library whose include root is `src/`, so a consumer writes
 `<notification/notification-client.hxx>` and links
 `argus::clients::notification`. 128 lines of source (`notification-client.hxx`
 60, `.cc` 68) behind a 30-line CMakeLists. Six link lines in four CMakeLists:
-`argus-guard` (PRIVATE, `services/guard/CMakeLists.txt:104`), `argus::guard`
-(`services/guard/src/feature/guard/CMakeLists.txt:22`), `sync-transport`
+`argus-guard` (PRIVATE, `services/guard/CMakeLists.txt:109`), `argus::guard`
+(`services/guard/src/feature/guard/CMakeLists.txt:27`), `sync-transport`
 (`services/sync/src/feature/transport/CMakeLists.txt:21`, the `/sync` pull leg)
 and three in `services/notification` — `argus-notification`,
 `notification-rpc-test` and `notification-no-nats-test`
@@ -67,7 +67,7 @@ CMakeLists of the tree.
   all rather than an empty one, and the receiver reads absence as refusal.
 - The endpoint and the credential are runtime config, not constants:
   `notifications.grpc_target` and `notifications.credential`, read by
-  `services/guard/src/main.cc` (`:131`, `:137`),
+  `services/guard/src/app/main.cc` (`:131`, `:137`),
   `services/sync/src/config/sync-config.cc:41` and
   `services/sync/src/feature/transport/infra/notification-sync-gateway.cc:63`.
   `argus-deploy/config.guard.toml.example:118-120`

@@ -3,8 +3,8 @@
 
 #include <sqlite/schema-runner.hxx>
 #include <sqlite3.h>
-#include <vocabulary/encounter-state.hxx>
-#include <vocabulary/guard-action-kind.hxx>
+#include <feature/guard/vocabulary/encounter-state.hxx>
+#include <feature/guard/vocabulary/guard-action-kind.hxx>
 
 #include <array>
 #include <string>

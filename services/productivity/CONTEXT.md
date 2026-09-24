@@ -27,18 +27,17 @@ own `productivity.db`.
   enforcement is replaced by code — share/member targets are validated
   through the identity client (Ruling AM) and the JWT context provides the
   actor.
-- **Write-side feature surface, registered in THIS binary only**: the
-  calendar-event, calendar-event-share, project, project-member and
-  project-task controllers + feature services + DTOs compile from the shared
-  tree into the `argus-productivity` executable, and their repositories and
-  schemas into `productivity-core`. The controllers are Drogon `AutoCreation`
-  controllers: their routes register during static init, exactly like the
-  legacy binary registers them, and they cannot be registered explicitly
-  (Drogon static-asserts against it), so the executable-target compilation is
-  what guarantees the routes exist. The legacy keeps its own registration
-  until F3-2 — this task changes NO legacy build input and NO legacy
-  behavior. Until the F3-2 cutover, `productivity.db` is a migrate-tool copy,
-  NOT the authoritative store: the gateway did not route here yet, so the
+- **Write-side feature surface, one module per feature**: the calendar-event,
+  calendar-event-share, project, project-member and project-task trees are
+  each a module (`argus::productivity-<feature>`) under
+  `src/feature/<feature>/`; their repositories and schemas are
+  `argus::productivity-repositories`' under `src/shared/`. Every controller is
+  a Drogon `HttpController<T, false>` and `main.cc` registers it explicitly, so
+  the executable links the five feature modules plainly — no static-init route
+  registration, and therefore no whole-archive link. The legacy keeps its own
+  registration until F3-2 — this task changes NO legacy build input and NO
+  legacy behavior. Until the F3-2 cutover, `productivity.db` is a migrate-tool
+  copy, NOT the authoritative store: the gateway did not route here yet, so the
   registered routes were out-of-contract before the cutover (same reasoning as
   argus-camera F2-1, which shipped without routes because its brief
   constrained it — this brief instead directs the port to land now).
@@ -90,8 +89,8 @@ own `productivity.db`.
   `{status: 200 (int), info: {service: argus-productivity, uptimeSeconds},
   errors: null}`; never depends on any downstream service.
 - **What stays away**: no reminder/reminder_detail write path anywhere
-  (sync-read-only, Ruling AL — the repositories/schemas compile into
-  `productivity-core` and nothing more), no context_note table, no /sync socket
+  (sync-read-only, Ruling AL — the repositories and schemas are read here by
+  the sync feature and their own modules alone), no context_note table, no /sync socket
   (reads ride `argus-sync`'s `/sync` pull over this service's gRPC leg), no
   identity.db, no AI symbols (verified with `nm -C`), no alarm-triggering code.
 
@@ -199,13 +198,37 @@ productivity tables themselves.
 The five write-side feature trees (calendar-event, calendar-event-share,
 project, project-member, project-task), the productivity schema and the
 three unit suites moved out of the shared `src/` tree into this folder,
-prefixes preserved, so no include line changed. The feature source list
-is now a single `PRODUCTIVITY_FEATURE_SOURCES` variable that both the
-executable and the controller suite consume, instead of the two
-hand-kept copies (one here, one in the root test tree) that could drift.
+prefixes preserved, so no include line changed.
 
 The suites register in the service's standalone CTest graph.
 
 What did NOT move: the productivity repositories and schemas, which
-`productivity-core` compiles here since sub-step 3a-1b — `argus-sync`'s `/sync`
-still reads the same rows, through the productivity sync RPC.
+`productivity-core` compiled here since sub-step 3a-1b — `argus-sync`'s `/sync`
+still reads the same rows, through the productivity sync RPC. Phase 4 step 4
+later split that archive: the five families 2+ features read declare
+`argus::productivity-repositories` today, and the reminder pair compiles inside
+`argus::productivity-sync`, its only reader.
+
+## The reference shape (Phase 4 step 4)
+
+The pre-migration spellings are gone: `src/main.cc` is `src/app/main.cc`, the
+`src/feature/api/<resource>/` level is flattened so each feature folder *is*
+its module, and the hand-listed `productivity-core` / `PRODUCTIVITY_FEATURE_SOURCES`
+sources are replaced by declarations that live beside the code they compile
+(root rule 25):
+
+| Module | Compiles |
+|---|---|
+| `argus::productivity-core` | `src/productivity/` — config resolution + the NATS change sink |
+| `argus::productivity-repositories` | the five repositories + their schemas |
+| `argus::productivity-change-outbox` | the durable outbox |
+| `argus::productivity-<feature>` (×5) | one feature's controllers, DTOs and feature service |
+| `argus::productivity-sync` | the sync RPC service, plus the reminder repositories and schemas only it reads |
+| `argus::productivity-rpc-server` | `src/app/rpc/` — the gRPC listener |
+
+The 2+ rule decided the repositories: calendar-event, calendar-event-share,
+project, project-member and project-task rows are each read by 2+ features and
+stay in `src/shared/repositories`; the reminder rows are read by the sync
+feature alone and moved into `src/feature/sync`. The executable is built by
+`argus_service`, which is the only helper that applies `-Wall -Wextra`, the
+`$ORIGIN` rpath and the `ARGUS_PORTS` property (7027 HTTP, 7037 gRPC).

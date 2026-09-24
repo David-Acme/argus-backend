@@ -78,74 +78,40 @@ if(NOT TARGET argus::clients::productivity)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/productivity
                      ${CMAKE_BINARY_DIR}/clients/productivity EXCLUDE_FROM_ALL)
 endif()
+if(NOT TARGET argus::lib::grpc-health)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/grpc
+                     ${CMAKE_BINARY_DIR}/grpc EXCLUDE_FROM_ALL)
+endif()
 
+add_subdirectory(src/productivity)
+add_subdirectory(src/shared/repositories)
 add_subdirectory(src/shared/repositories/change-outbox)
 
-add_library(productivity-core STATIC
-    ${PRODUCTIVITY_SRC_ROOT}/productivity/nats-productivity-change-sink.cc
-    ${PRODUCTIVITY_SRC_ROOT}/productivity/productivity-config.cc
-    ${PRODUCTIVITY_SRC_ROOT}/shared/repositories/calendar-event/calendar-event-repository.cc
-    ${PRODUCTIVITY_SRC_ROOT}/shared/repositories/calendar-event-share/calendar-event-share-repository.cc
-    ${PRODUCTIVITY_SRC_ROOT}/shared/repositories/project/project-repository.cc
-    ${PRODUCTIVITY_SRC_ROOT}/shared/repositories/project-member/project-member-repository.cc
-    ${PRODUCTIVITY_SRC_ROOT}/shared/repositories/project-task/project-task-repository.cc
-    ${PRODUCTIVITY_SRC_ROOT}/shared/repositories/reminder/reminder-repository.cc
-    ${PRODUCTIVITY_SRC_ROOT}/shared/repositories/reminder-detail/reminder-detail-repository.cc
-    ${PRODUCTIVITY_SRC_ROOT}/shared/schemas/calendar-event/calendar-event-schema.cc
-    ${PRODUCTIVITY_SRC_ROOT}/shared/schemas/calendar-event-share/calendar-event-share-schema.cc
-    ${PRODUCTIVITY_SRC_ROOT}/shared/schemas/project/project-schema.cc
-    ${PRODUCTIVITY_SRC_ROOT}/shared/schemas/project-member/project-member-schema.cc
-    ${PRODUCTIVITY_SRC_ROOT}/shared/schemas/project-task/project-task-schema.cc
-    ${PRODUCTIVITY_SRC_ROOT}/shared/schemas/reminder/reminder-schema.cc
-    ${PRODUCTIVITY_SRC_ROOT}/shared/schemas/reminder-detail/reminder-detail-schema.cc
-)
+file(GLOB PRODUCTIVITY_FEATURE_MODULES CONFIGURE_DEPENDS
+    "${PRODUCTIVITY_SRC_ROOT}/feature/*/CMakeLists.txt")
+foreach(module IN LISTS PRODUCTIVITY_FEATURE_MODULES)
+    get_filename_component(module_dir "${module}" DIRECTORY)
+    add_subdirectory("${module_dir}")
+endforeach()
 
-target_include_directories(productivity-core PUBLIC
-    ${PRODUCTIVITY_SRC_ROOT})
+add_subdirectory(src/app/rpc)
 
-target_link_libraries(productivity-core PUBLIC
-    argus::contracts::productivity
-    argus::contracts::sync
-    argus::lib::nats
-    argus::lib::text
-    argus::lib::sqlite
-    argus::productivity-change-outbox
-    ${ARGUS_SQLITE_VEC_TARGET})
-
-target_compile_options(productivity-core PRIVATE -Wall -Wextra)
-
-set(PRODUCTIVITY_FEATURE_SOURCES
-    ${PRODUCTIVITY_SRC_ROOT}/feature/api/calendar-event/controllers/calendar-event-controller.cc
-    ${PRODUCTIVITY_SRC_ROOT}/feature/api/calendar-event/dtos/create-calendar-event-dto.cc
-    ${PRODUCTIVITY_SRC_ROOT}/feature/api/calendar-event/dtos/update-calendar-event-dto.cc
-    ${PRODUCTIVITY_SRC_ROOT}/feature/api/calendar-event/services/calendar-event-feature-service.cc
-    ${PRODUCTIVITY_SRC_ROOT}/feature/api/calendar-event-share/controllers/calendar-event-share-controller.cc
-    ${PRODUCTIVITY_SRC_ROOT}/feature/api/calendar-event-share/dtos/create-calendar-event-share-dto.cc
-    ${PRODUCTIVITY_SRC_ROOT}/feature/api/calendar-event-share/dtos/update-calendar-event-share-dto.cc
-    ${PRODUCTIVITY_SRC_ROOT}/feature/api/calendar-event-share/services/calendar-event-share-feature-service.cc
-    ${PRODUCTIVITY_SRC_ROOT}/feature/api/project/controllers/project-controller.cc
-    ${PRODUCTIVITY_SRC_ROOT}/feature/api/project/dtos/create-project-dto.cc
-    ${PRODUCTIVITY_SRC_ROOT}/feature/api/project/dtos/update-project-dto.cc
-    ${PRODUCTIVITY_SRC_ROOT}/feature/api/project/services/project-feature-service.cc
-    ${PRODUCTIVITY_SRC_ROOT}/feature/api/project-member/controllers/project-member-controller.cc
-    ${PRODUCTIVITY_SRC_ROOT}/feature/api/project-member/dtos/create-project-member-dto.cc
-    ${PRODUCTIVITY_SRC_ROOT}/feature/api/project-member/dtos/update-project-member-dto.cc
-    ${PRODUCTIVITY_SRC_ROOT}/feature/api/project-member/services/project-member-feature-service.cc
-    ${PRODUCTIVITY_SRC_ROOT}/feature/api/project-task/controllers/project-task-controller.cc
-    ${PRODUCTIVITY_SRC_ROOT}/feature/api/project-task/dtos/create-project-task-dto.cc
-    ${PRODUCTIVITY_SRC_ROOT}/feature/api/project-task/dtos/update-project-task-dto.cc
-    ${PRODUCTIVITY_SRC_ROOT}/feature/api/project-task/services/project-task-feature-service.cc
-)
-
-add_executable(argus-productivity
-    ${PRODUCTIVITY_SRC_ROOT}/main.cc
-    ${PRODUCTIVITY_SRC_ROOT}/feature/sync/productivity-sync-rpc-service.cc
-    ${PRODUCTIVITY_FEATURE_SOURCES})
-
-target_link_libraries(argus-productivity PRIVATE productivity-core argus::contracts::productivity argus::contracts::sync
-    argus::lib::auth argus::lib::validation argus::lib::http argus::clients::productivity)
-
-target_compile_options(argus-productivity PRIVATE -Wall -Wextra)
+argus_service(NAME argus-productivity
+    MAIN ${PRODUCTIVITY_SRC_ROOT}/app/main.cc
+    MODULES
+        argus::productivity-core
+        argus::productivity-calendar-event
+        argus::productivity-calendar-event-share
+        argus::productivity-project
+        argus::productivity-project-member
+        argus::productivity-project-task
+        argus::productivity-sync
+        argus::productivity-rpc-server
+        argus::lib::auth
+        argus::lib::http
+        argus::lib::validation
+        argus::clients::productivity
+    PORTS 7027 7037)
 
 get_target_property(DOCTEST_INCLUDE_DIRS doctest::doctest
                     INTERFACE_INCLUDE_DIRECTORIES)
@@ -157,8 +123,6 @@ endif()
 if(PROJECT_IS_TOP_LEVEL AND NOT TARGET productivity-migration)
     add_subdirectory(tools/migrate-productivity)
 endif()
-
-find_package(doctest REQUIRED)
 
 foreach(TEST_NAME IN ITEMS productivity-schema-test productivity-migration-test)
     add_executable(${TEST_NAME} tests/unit/${TEST_NAME}.cc)
@@ -203,7 +167,7 @@ set_target_properties(productivity-change-outbox-sink-test PROPERTIES
     EXCLUDE_FROM_ALL FALSE)
 
 target_link_libraries(productivity-change-outbox-sink-test PRIVATE
-    productivity-core
+    argus::productivity-core
     argus::lib::nats
     doctest::doctest)
 
@@ -217,17 +181,18 @@ add_test(NAME productivity-change-outbox-sink-test
          COMMAND productivity-change-outbox-sink-test)
 
 add_executable(productivity-controller-test
-    tests/unit/productivity-controller-test.cc
-    ${PRODUCTIVITY_FEATURE_SOURCES})
+    tests/unit/productivity-controller-test.cc)
 
 set_target_properties(productivity-controller-test PROPERTIES
     EXCLUDE_FROM_ALL FALSE)
 
-target_include_directories(productivity-controller-test PRIVATE
-    ${PRODUCTIVITY_SRC_ROOT})
-
 target_link_libraries(productivity-controller-test PRIVATE
-    productivity-core
+    argus::productivity-calendar-event
+    argus::productivity-calendar-event-share
+    argus::productivity-project
+    argus::productivity-project-member
+    argus::productivity-project-task
+    argus::productivity-core
     argus::clients::identity
     argus::lib::auth
     argus::contracts::auth
@@ -246,20 +211,21 @@ add_test(NAME productivity-controller-test
          COMMAND productivity-controller-test)
 
 add_executable(productivity-change-transaction-test
-    tests/unit/productivity-change-transaction-test.cc
-    ${PRODUCTIVITY_FEATURE_SOURCES})
+    tests/unit/productivity-change-transaction-test.cc)
 
 set_target_properties(productivity-change-transaction-test PROPERTIES
     EXCLUDE_FROM_ALL FALSE)
-
-target_include_directories(productivity-change-transaction-test PRIVATE
-    ${PRODUCTIVITY_SRC_ROOT})
 
 target_compile_definitions(productivity-change-transaction-test PRIVATE
     ARGUS_PRODUCTIVITY_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql")
 
 target_link_libraries(productivity-change-transaction-test PRIVATE
-    productivity-core
+    argus::productivity-calendar-event
+    argus::productivity-calendar-event-share
+    argus::productivity-project
+    argus::productivity-project-member
+    argus::productivity-project-task
+    argus::productivity-core
     argus::lib::auth
     argus::contracts::auth
     argus::contracts::productivity
@@ -279,20 +245,16 @@ add_test(NAME productivity-change-transaction-test
          COMMAND productivity-change-transaction-test)
 
 add_executable(productivity-sync-rpc-test
-    tests/unit/productivity-sync-rpc-test.cc
-    ${PRODUCTIVITY_SRC_ROOT}/feature/sync/productivity-sync-rpc-service.cc)
+    tests/unit/productivity-sync-rpc-test.cc)
 
 set_target_properties(productivity-sync-rpc-test PROPERTIES
     EXCLUDE_FROM_ALL FALSE)
-
-target_include_directories(productivity-sync-rpc-test PRIVATE
-    ${PRODUCTIVITY_SRC_ROOT})
 
 target_compile_definitions(productivity-sync-rpc-test PRIVATE
     ARGUS_PRODUCTIVITY_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql")
 
 target_link_libraries(productivity-sync-rpc-test PRIVATE
-    productivity-core
+    argus::productivity-sync
     argus::clients::productivity
     argus::lib::sqlite
     argus::contracts::sync

@@ -1,8 +1,8 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
 
-#include <guard-assessment.hxx>
-#include <guard-risk.hxx>
+#include <feature/guard/guard-assessment.hxx>
+#include <feature/guard/guard-risk.hxx>
 
 TEST_CASE("physical tool requests from the model are impossible")
 {

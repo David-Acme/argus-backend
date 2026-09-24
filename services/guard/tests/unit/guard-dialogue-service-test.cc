@@ -5,8 +5,8 @@
 #include <cstdio>
 #include <doctest/doctest.h>
 #include <drogon/drogon.h>
-#include <guard-schema.hxx>
-#include <guard-service.hxx>
+#include <feature/guard/guard-schema.hxx>
+#include <feature/guard/guard-service.hxx>
 #include <identity/identity-client.hxx>
 #include <map>
 #include <memory>

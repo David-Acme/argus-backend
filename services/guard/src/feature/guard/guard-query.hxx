@@ -7,9 +7,9 @@
 #include <string>
 #include <string_view>
 #include <vector>
-#include <vocabulary/decision-suppression.hxx>
-#include <vocabulary/encounter-state.hxx>
-#include <vocabulary/guard-intent-status.hxx>
+#include <feature/guard/vocabulary/decision-suppression.hxx>
+#include <feature/guard/vocabulary/encounter-state.hxx>
+#include <feature/guard/vocabulary/guard-intent-status.hxx>
 
 namespace guard_query
 {

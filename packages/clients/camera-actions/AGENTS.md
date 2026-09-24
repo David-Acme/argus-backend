@@ -13,9 +13,9 @@ library whose include root is `src/`, so a consumer writes
 (`src/camera/camera-action-client.cc`) — measured deviation: the source
 directory is `src/camera/`, not `src/camera-actions/`, while the target and the
 include prefix follow the package name. Five link lines in four CMakeLists
-take it: `argus-guard` (`services/guard/CMakeLists.txt:105`) and
-`guard-assessment-live-test` (:223), `argus_guard`
-(`services/guard/src/feature/guard/CMakeLists.txt:23`, the feature module's
+take it: `argus-guard` (`services/guard/CMakeLists.txt:110`) and
+`guard-assessment-live-test` (:223), `guard`
+(`services/guard/src/feature/guard/CMakeLists.txt:24`, the feature module's
 `DEPENDS`), `argus::camera-actions`
 (`services/camera/src/feature/actions/CMakeLists.txt:14`, the feature module's
 `DEPENDS`) and `camera-action-rpc-test` (`services/camera/CMakeLists.txt:271`).
@@ -73,7 +73,7 @@ action-rpc suite, and eleven guard files (`main.cc`, `guard-service.cc`,
   `constexpr` in the `.cc`. The channel is plaintext (`makeChannel` is
   `InsecureChannelCredentials`).
 - Config: `camera.actions_target` and `camera.actions_credential`
-  (`services/guard/src/main.cc:149-156` is the only reader, and it skips the
+  (`services/guard/src/app/main.cc:149-156` is the only reader, and it skips the
   client entirely when the target is empty). One file declares the target:
   `argus-deploy/config.guard.toml:137` (`argus-camera:7036`). No file declares
   the credential — measured, no `.toml` in the tree carries the key — so on that

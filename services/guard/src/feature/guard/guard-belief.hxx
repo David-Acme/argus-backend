@@ -1,8 +1,8 @@
 #pragma once
 
-#include <guard-policy.hxx>
-#include <vocabulary/guard-action-kind.hxx>
-#include <vocabulary/guard-danger.hxx>
+#include "guard-policy.hxx"
+#include <feature/guard/vocabulary/guard-action-kind.hxx>
+#include <feature/guard/vocabulary/guard-danger.hxx>
 
 #include <optional>
 #include <string>

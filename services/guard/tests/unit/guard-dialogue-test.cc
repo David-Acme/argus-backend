@@ -1,7 +1,7 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
 
-#include <guard-dialogue.hxx>
+#include <feature/guard/guard-dialogue.hxx>
 
 #include <string>
 #include <utility>
