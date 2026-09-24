@@ -1,14 +1,14 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
 
-#include <feature/synthesis/api/http/controller/tts-controller.hxx>
+#include <feature/synthesis/controllers/tts-controller.hxx>
 #include <drogon/drogon.h>
 #include <auth/valid-json-filter.hxx>
 #include <http/api-response.hxx>
 #include <http/error-handler.hxx>
 #include <http/health-controller.hxx>
 #include <config/config-service.hxx>
-#include <feature/synthesis/domain/tts-service.hxx>
+#include <feature/synthesis/services/tts-service.hxx>
 #include <runtime/hardware-profile.hxx>
 
 #include <arpa/inet.h>

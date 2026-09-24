@@ -985,7 +985,7 @@ for two different reasons, and says which when it does.
 | `services/auth/src/feature/session/services/session-service.{hxx,cc}` | The session verdict: token order, the identity-backed user context and the device binding (Phase 3b-1); `SessionContextCache` + `IdentityChangeConsumer` beside it |
 | `services/vlm/src/shared/services/vision/` | VLM inference: LFM2.5-VL-450M via llama.cpp + libmtmd (arbitrary prompts, caption cache) |
 | `services/stt/src/shared/services/stt/` | Speech-to-text via sherpa-onnx (default `nemo_transducer` FastConformer RNN-T, es/en; whisper/canary/nemo_ctc/omnilingual selectable) |
-| `services/tts/src/feature/synthesis/` | `TtsService` (`domain/` → `services/` in Phase 4 step 1) + the Supertonic engine set (`infra/supertonic/`: `TtsEngine`, `Style`, `UnicodeProcessor`, onnx loading) — Supertonic 3 text-to-speech |
+| `services/tts/src/feature/synthesis/` | `TtsService` (`services/`) + the Supertonic engine set (`infra/supertonic/`: `TtsEngine`, `Style`, `UnicodeProcessor`, onnx loading) — Supertonic 3 text-to-speech |
 | `services/voice/src/shared/services/vad/` | `VadService` — Silero VAD v5 as an **instance** class (per-stream LSTM, shared ONNX session), with the turn-quality gate |
 | `services/voice/src/shared/wrapper/audio/` | `SampleRing` — the fixed-capacity float ring the voice paths carry samples in across calls |
 | `services/voice/src/shared/services/reaction/` | `ReactionEngine` — per-turn reactions by signal priority → `voice:event` (meaning, never expression names) |

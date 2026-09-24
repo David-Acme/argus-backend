@@ -3,11 +3,11 @@
 #include <http/health-controller.hxx>
 #include <http/listener-config.hxx>
 #include <runtime/thread-budget.hxx>
-#include <feature/synthesis/api/http/controller/tts-controller.hxx>
+#include <feature/synthesis/controllers/tts-controller.hxx>
 #include <drogon/drogon.h>
 #include <auth/valid-json-filter.hxx>
 #include <config/config-service.hxx>
-#include <feature/synthesis/domain/tts-service.hxx>
+#include <feature/synthesis/services/tts-service.hxx>
 
 #include <json/value.h>
 #include <cstdlib>

@@ -48,23 +48,23 @@ argus-tts/
   src/app/rpc/          argus.tts.v1 Synthesis gRPC listener (TtsRpcServer)
   src/feature/synthesis/
     CMakeLists.txt      owns each production source once
-    api/http/
-      controller/       transitional /tts/v1/* HTTP controller
-      dto/              internal HTTP request DTO
-    domain/             TtsService facade, lifecycle, cache, async synthesis
+    controllers/        transitional /tts/v1/* HTTP controller
+    dtos/               internal HTTP request DTO
+    services/           TtsService facade, lifecycle, cache, async synthesis
     infra/supertonic/   ONNX engine, model/style loading, Unicode processing
   config.toml.example   [tts] engine keys, [rpc] gRPC gate, [server]; no other domains
   CONTEXT.md            purpose, ownership, wiring decisions
 ```
 
 This is the canonical internal-layout pilot; the repository's `services/`
-root is not renamed. `src/shared/` is reserved for genuinely cross-feature
-service-local code and currently has no files. Health, listener resolution,
+root is not renamed. `src/shared/` does not exist yet — rule 23's 2+ rule
+earns it, so a repository, schema or service moves there only when a second
+feature of this service reads it. Health, listener resolution,
 configuration and validation still come from the existing shared packages.
 
 The top-level CMake auto-discovers feature folders and links
 `argus::tts-rpc` + `argus::tts-synthesis-http` by name. The synthesis feature
-declares each production source once: `argus::tts-synthesis` owns the domain
+declares each production source once: `argus::tts-synthesis` owns the service
 facade and Supertonic infrastructure; `argus::tts-synthesis-http` owns the
 controller and DTO and links the synthesis target. `argus::tts-rpc`
 (`src/app/rpc/`) owns the `argus.tts.v1.Synthesis` gRPC listener and links the
@@ -80,7 +80,7 @@ claim the HTTP fallback removed). The service still consumes
 exported include path. `TtsClient` (that package) now delegates to
 `argus::tts::Client` over gRPC whenever `tts.grpc_target` is set, and falls
 back to the original HTTP wire otherwise — both wire shapes are live.
-Service-local consumers use `<feature/synthesis/domain/tts-service.hxx>`;
+Service-local consumers use `<feature/synthesis/services/tts-service.hxx>`;
 there is no duplicate implementation or old-path forwarding header.
 The gRPC transport (typed unary `Capabilities` + server-streaming
 `Synthesize`, credential-gated, float32 at the engine's own rate) is served

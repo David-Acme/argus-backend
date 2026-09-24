@@ -794,7 +794,7 @@ say.
 | 3b — `auth` | 2 | **done** — step 1 in three parts, 3b-1 landed (`services/auth`, `argus.auth.v1`, `clients/auth`, the verdict RPC, its cache and the identity change consumer — `f3-3b-1-auth-service.md`) and 3b-2 with it (the `/auth` HTTP surface, the LAN gate, the refresh-token rate limiter, the row copy off `identity.db`); step 2 = **3b-3** (`packages/lib/auth`'s filters onto `argus::clients::auth`) landed in the same unit — `f3-3b-2-auth-surface.md` |
 | 3c — `identity` | 2 | step 1 **done** — `services/identity` is the people domain as its own owner project, taking the slot the package held in the gate (the project count is unchanged, eighteen before and after): the package's people domain becomes the service (TLS HTTP on 7044 beside the `argus.identity.v1` gRPC listener on 7040), the gateway keeps the edge and proxies its four former native paths, and the sync engine's in-process read of `user`/`user_invitation`/`person` becomes a fourth gRPC pull leg whose server side owns the rule-7b scope (`f3-3c-1-identity-service.md`); step 2 **done** — `argus-sync` owns `database/sync.db`, the five tables split out of identity's file |
 | 3d — the edge comes down | 5 | steps 1, 2, 3 and 4 **done** — step 1 in three parts (1a the notification policy, 1b per-service TLS and the per-route mDNS announcements, 1c the gateway's deletion), and 1c discharged steps 2, 3 and 4 with it (`f3-3d-1a`, `f3-3d-1b-per-service-tls-mdns.md`, `f3-3d-1c-gateway-deletion.md`); step 5 is the frontend's coordination, open |
-| 4 — service layouts | 9 | **not started** |
+| 4 — service layouts | 9 | step 1 **done** — `services/tts` carries the reference interior; steps 2–9 open |
 | 5 — verification | 6 | **not started** |
 
 The tree today, measured: 17 projects, **467 tests, 0 failures, 0 compiler
@@ -998,7 +998,7 @@ touches, and all three are recorded in `docs/history/reports/f3-3b-1-auth-servic
 
 | Step | Action |
 |---|---|
-| 1 | Flatten `services/tts`'s feature shape to the reference: `feature/synthesis/api/http/{controller,dto}` → `{controllers,dtos}`, `domain/` → `services/`, `infra/supertonic/` stays, empty `src/shared/services/` goes |
+| 1 | **Done** — `services/tts`'s feature folder is the reference interior now (`controllers/`, `dtos/`, `services/`, `infra/supertonic/`), the six files moved as git renames with twelve include lines, three CMake source paths and two documents updated with them; the row's "empty `src/shared/services/` goes" was already vacuous, since `services/tts/src` holds only `app/` and `feature/` and nothing under `src/shared` was ever tracked (report `docs/history/reports/f4-4-1-tts-layout.md`) |
 | 2 | Migrate `notification` (`feature/rpc/` → `app/rpc/`, `feature/api/<resource>/` → `feature/<resource>/`) |
 | 3 | Migrate `camera` (domain code in `src/operator`, `src/objects`, `src/monitor` → features; residual `src/controllers/` → features; gRPC out of `main.cc` into `app/rpc/`) |
 | 4 | Migrate `productivity` and `guard` to the same shape |

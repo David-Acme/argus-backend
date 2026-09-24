@@ -1,7 +1,7 @@
 #pragma once
 
 #include <json/value.h>
-#include <feature/synthesis/domain/tts-service.hxx>
+#include <feature/synthesis/services/tts-service.hxx>
 #include <validation/validation_dsl.hxx>
 #include <string>
 

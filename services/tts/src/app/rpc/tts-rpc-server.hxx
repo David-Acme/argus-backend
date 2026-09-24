@@ -1,7 +1,7 @@
 #pragma once
 
 #include <tts/tts-client.hxx>
-#include <feature/synthesis/domain/tts-service.hxx>
+#include <feature/synthesis/services/tts-service.hxx>
 #include <tts/tts-wire.hxx>
 #include <functional>
 #include <memory>

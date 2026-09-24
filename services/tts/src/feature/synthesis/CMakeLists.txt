@@ -1,6 +1,6 @@
 argus_module(NAME tts-synthesis
     SOURCES
-        domain/tts-service.cc
+        services/tts-service.cc
         infra/supertonic/tts-engine.cc
         infra/supertonic/onnx-utils.cc
         infra/supertonic/style.cc
@@ -18,8 +18,8 @@ target_compile_options(argus_tts-synthesis PRIVATE -Wall -Wextra)
 
 argus_module(NAME tts-synthesis-http
     SOURCES
-        api/http/controller/tts-controller.cc
-        api/http/dto/synthesize-dto.cc
+        controllers/tts-controller.cc
+        dtos/synthesize-dto.cc
     INCLUDES ../..
     DEPENDS
         argus::tts-synthesis

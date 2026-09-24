@@ -1,11 +1,11 @@
 #include "tts-controller.hxx"
 
 #include <errors/response-exception.hxx>
-#include <feature/synthesis/api/http/dto/synthesize-dto.hxx>
+#include <feature/synthesis/dtos/synthesize-dto.hxx>
 #include <http/api-response.hxx>
 #include <tts/tts-errors.hxx>
 
-#include <feature/synthesis/domain/tts-service.hxx>
+#include <feature/synthesis/services/tts-service.hxx>
 
 #include <chrono>
 #include <cstring>

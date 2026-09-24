@@ -9,7 +9,7 @@
 #include <response.pb.h>
 #include <tts/tts-remote.hxx>
 #include <config/config-service.hxx>
-#include <feature/synthesis/domain/tts-service.hxx>
+#include <feature/synthesis/services/tts-service.hxx>
 
 #include <atomic>
 #include <chrono>
