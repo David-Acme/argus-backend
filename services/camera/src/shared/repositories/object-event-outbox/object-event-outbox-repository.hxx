@@ -3,8 +3,8 @@
 #include "object-event-outbox-query.hxx"
 
 #include <cstdint>
-#include <optional>
 #include <string>
+#include <vector>
 
 class ObjectEventOutboxRepository
 {
@@ -15,7 +15,7 @@ public:
   ObjectEventEnqueueOutcome enqueue(
       const ObjectEventEnqueueInput& input) const;
 
-  std::optional<ObjectEventRow> nextPending() const;
+  [[nodiscard]] std::vector<ObjectEventRow> pendingBatch(int limit) const;
 
   bool markSent(const std::string& eventId, int64_t at) const;
 

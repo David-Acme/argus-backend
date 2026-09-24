@@ -135,18 +135,24 @@ ObjectEventOutboxRepository::enqueue(const ObjectEventEnqueueInput& input) const
   return outcome;
 }
 
-std::optional<ObjectEventRow> ObjectEventOutboxRepository::nextPending() const
+std::vector<ObjectEventRow>
+ObjectEventOutboxRepository::pendingBatch(int limit) const
 {
+  if (limit <= 0)
+    return {};
   auto client = DbService::client();
   if (!client)
-    return std::nullopt;
+    return {};
   const auto rows = client->execSqlSync(
-      NEXT_PENDING.data(), objectEventStatusToString(ObjectEventStatus::Pending));
-  if (rows.empty())
-    return std::nullopt;
-  return ObjectEventRow{.eventId = rows.front()["event_id"].as<std::string>(),
-                        .payload = rows.front()["payload"].as<std::string>(),
-                        .attempts = rows.front()["attempts"].as<int>()};
+      PENDING_BATCH.data(),
+      objectEventStatusToString(ObjectEventStatus::Pending), limit);
+  std::vector<ObjectEventRow> pending;
+  pending.reserve(rows.size());
+  for (const auto& row : rows)
+    pending.push_back({.eventId = row["event_id"].as<std::string>(),
+                       .payload = row["payload"].as<std::string>(),
+                       .attempts = row["attempts"].as<int>()});
+  return pending;
 }
 
 bool ObjectEventOutboxRepository::markSent(const std::string& eventId,

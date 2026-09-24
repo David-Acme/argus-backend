@@ -6,6 +6,7 @@
 #include <sqlite/db-service.hxx>
 
 #include <chrono>
+#include <cstddef>
 #include <cstdio>
 #include <string>
 #include <thread>
@@ -94,12 +95,17 @@ TEST_CASE("the object event outbox commits, dedups and survives restarts")
                             .maxPending = 10}).result ==
         ObjectEventEnqueueResult::Recorded);
 
-  const auto pending = repository.nextPending();
-  REQUIRE(pending.has_value());
-  CHECK(pending->eventId == "cam:1");
+  const auto pending = repository.pendingBatch(1);
+  REQUIRE(pending.size() == 1);
+  CHECK(pending.front().eventId == "cam:1");
   CHECK(repository.markSent("cam:1", 50000));
   CHECK_FALSE(repository.markSent("cam:1", 50001));
   CHECK(repository.recordAttempt("cam:3"));
+
+  const auto rest = repository.pendingBatch(8);
+  REQUIRE(rest.size() == 1);
+  CHECK(rest.front().eventId == "cam:3");
+  CHECK(rest.front().attempts == 1);
 
   const ObjectEventOutboxStats stats = repository.stats();
   CHECK(stats.sent == 1);
@@ -194,6 +200,29 @@ TEST_CASE("the object event outbox commits, dedups and survives restarts")
   CHECK(settled.sent == 0);
   CHECK(settled.overflowDropped == 0);
   CHECK(settled.pending == 5);
+
+  const int64_t pendingBeforeTies = repository.stats().pending;
+  CHECK(repository.enqueue({.eventId = "tie:1",
+                            .payload = "{}",
+                            .cameraId = 9,
+                            .cooldownClasses = {},
+                            .nowMs = 200000,
+                            .cooldownMs = 0,
+                            .maxPending = 100})
+            .result == ObjectEventEnqueueResult::Recorded);
+  CHECK(repository.enqueue({.eventId = "tie:2",
+                            .payload = "{}",
+                            .cameraId = 9,
+                            .cooldownClasses = {},
+                            .nowMs = 200000,
+                            .cooldownMs = 0,
+                            .maxPending = 100})
+            .result == ObjectEventEnqueueResult::Recorded);
+  const auto ordered = repository.pendingBatch(100);
+  CHECK(ordered.size() == static_cast<std::size_t>(pendingBeforeTies + 2));
+  REQUIRE(ordered.size() >= 2);
+  CHECK(ordered[ordered.size() - 2].eventId == "tie:1");
+  CHECK(ordered.back().eventId == "tie:2");
 
   std::remove(kOutboxDb);
   std::remove((std::string(kOutboxDb) + "-wal").c_str());

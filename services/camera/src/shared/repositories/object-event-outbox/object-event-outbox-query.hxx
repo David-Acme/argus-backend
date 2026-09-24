@@ -32,9 +32,9 @@ inline constexpr std::string_view MARK_OVERFLOW =
     "UPDATE object_event_outbox SET status = ?, sent_at = ? "
     "WHERE event_id = ?";
 
-inline constexpr std::string_view NEXT_PENDING =
+inline constexpr std::string_view PENDING_BATCH =
     "SELECT event_id, payload, attempts FROM object_event_outbox "
-    "WHERE status = ? ORDER BY created_at ASC LIMIT 1";
+    "WHERE status = ? ORDER BY created_at ASC, rowid ASC LIMIT ?";
 
 inline constexpr std::string_view MARK_SENT =
     "UPDATE object_event_outbox SET status = ?, sent_at = ?, "

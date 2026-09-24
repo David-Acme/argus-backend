@@ -215,15 +215,17 @@ TEST_CASE("the sink health counters equal the durable outbox state")
     liveConfig.streamName = "ARGUS_SINK_TEST";
     liveConfig.publishSubject = "argus.test.sink.flush";
     NatsObjectEventSink liveSink(liveBus, liveConfig);
-    liveSink.reconcile();
 
     const ObjectEventOutboxStats rowsBeforeBurst = outbox.stats();
+    const auto started = std::chrono::steady_clock::now();
     Worker producer([&liveSink]() {
-      for (int index = 0; index < 40; ++index)
+      for (int index = 0; index < 100; ++index)
         liveSink.publish(personEvent("flush:" + std::to_string(index)));
     });
     producer.join();
+    CHECK(outbox.stats().pending == rowsBeforeBurst.pending + 100);
 
+    liveSink.reconcile();
     for (int attempt = 0; attempt < 200; ++attempt) {
       if (outbox.stats().pending == 0)
         break;
@@ -232,8 +234,10 @@ TEST_CASE("the sink health counters equal the durable outbox state")
     const ObjectEventOutboxStats rowsAfterBurst = outbox.stats();
     CHECK(rowsAfterBurst.pending == 0);
     CHECK(rowsAfterBurst.pending + rowsAfterBurst.sent ==
-          rowsBeforeBurst.pending + rowsBeforeBurst.sent + 40);
+          rowsBeforeBurst.pending + rowsBeforeBurst.sent + 100);
     CHECK(countersMatch(liveSink.health(), outbox.stats()));
+    CHECK(std::chrono::steady_clock::now() - started <
+          std::chrono::seconds(3));
 
     {
       NatsObjectEventSink restarted(liveBus, liveConfig);

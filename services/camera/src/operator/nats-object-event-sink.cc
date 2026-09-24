@@ -20,6 +20,9 @@ int64_t nowMs()
              std::chrono::system_clock::now().time_since_epoch())
       .count();
 }
+
+constexpr int kDrainBatch = 64;
+constexpr int kProgressMs = 50;
 }
 
 namespace
@@ -39,6 +42,9 @@ NatsObjectEventSink::NatsObjectEventSink(std::shared_ptr<NatsBus> bus,
                                          Config config)
     : bus_(std::move(bus)),
       config_(config),
+      subject_(config_.publishSubject.empty()
+                   ? std::string(nats_subject::kCameraObjectDetected)
+                   : config_.publishSubject),
       sessionTag_(config_.sessionTag.empty() ? makeSessionTag()
                                              : config_.sessionTag)
 {
@@ -142,40 +148,30 @@ Json::Value NatsObjectEventSink::health() const
   return status;
 }
 
-bool NatsObjectEventSink::flushOnce()
+bool NatsObjectEventSink::flush(const ObjectEventRow& row)
 {
-  if (!streamReady_.load(std::memory_order_acquire) && bus_->isConnected())
+  if (!bus_ || !bus_->isConnected())
+    return false;
+  if (!streamReady_.load(std::memory_order_acquire))
     streamReady_.store(camera_event_stream::ensure(
                            bus_, {.streamName = config_.streamName,
                                   .changeSubject = {},
                                   .objectSubject = config_.publishSubject}),
                        std::memory_order_release);
 
-  const auto row = outbox_.nextPending();
-  if (!row)
-    return false;
-  if (!bus_->isConnected())
-    return false;
-
-  const std::string subject =
-      config_.publishSubject.empty()
-          ? std::string(nats_subject::kCameraObjectDetected)
-          : config_.publishSubject;
-  if (bus_->publishWithMsgId({.subject = subject,
-                              .payload = row->payload,
-                              .msgId = row->eventId})) {
-    if (!outbox_.markSent(row->eventId, nowMs())) {
-      LOG_WARN << "Camera object outbox: " << row->eventId
-               << " was stored but could not be marked sent; it stays pending";
+  if (bus_->publishWithMsgId(
+          {.subject = subject_, .payload = row.payload, .msgId = row.eventId})) {
+    if (!outbox_.markSent(row.eventId, nowMs())) {
+      LOG_WARN << "Camera object outbox: " << row.eventId
+               << " was stored but not marked sent; it is no longer pending";
       return false;
     }
     if (syncHook)
       syncHook("flush_post_mark_sent");
-    refreshCounters();
     return true;
   }
   streamReady_.store(false, std::memory_order_relaxed);
-  outbox_.recordAttempt(row->eventId);
+  outbox_.recordAttempt(row.eventId);
   return false;
 }
 
@@ -184,11 +180,24 @@ void NatsObjectEventSink::flushLoop()
   while (!stopping_.load(std::memory_order_acquire)) {
     bool progressed = false;
     try {
-      progressed = flushOnce();
+      for (const auto& row : outbox_.pendingBatch(kDrainBatch)) {
+        if (stopping_.load(std::memory_order_acquire) || !flush(row))
+          break;
+        progressed = true;
+      }
     }
     catch (const std::exception& e) {
       LOG_WARN << "Camera outbox: flush failed (" << e.what()
                << "); retrying";
+    }
+    if (progressed) {
+      try {
+        refreshCounters();
+      }
+      catch (const std::exception& e) {
+        LOG_WARN << "Camera object outbox: counter refresh failed ("
+                 << e.what() << "); health stays behind until the next refresh";
+      }
     }
     const int64_t now = nowMs();
     if (now >= nextPurgeMs_) {
@@ -208,7 +217,8 @@ void NatsObjectEventSink::flushLoop()
     }
     std::unique_lock lock(wakeMutex_);
     wake_.wait_for(lock,
-                   std::chrono::milliseconds(progressed ? 50 : config_.retryMs));
+                   std::chrono::milliseconds(progressed ? kProgressMs
+                                                        : config_.retryMs));
   }
   exited_.store(true, std::memory_order_release);
 }

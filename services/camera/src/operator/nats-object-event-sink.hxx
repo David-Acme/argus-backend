@@ -46,12 +46,13 @@ public:
 
 private:
   void flushLoop();
-  bool flushOnce();
+  bool flush(const ObjectEventRow& row);
   void refreshCounters();
 
   std::shared_ptr<NatsBus> bus_;
   ObjectEventOutboxRepository outbox_;
   const Config config_;
+  const std::string subject_;
   const std::string sessionTag_;
   int64_t nextPurgeMs_{0};
   std::atomic<bool> stopping_{false};
