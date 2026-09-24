@@ -672,23 +672,23 @@ Every service follows the same layout inside its own folder:
 **Today, against that target** (Phase 4 of
 `docs/history/plans/architecture-plan.md` lands it): `services/auth`,
 `services/camera`, `services/guard`, `services/identity`,
-`services/notification`, `services/productivity`, `services/sync` and
-`services/tts` are the services with `src/app/`, and the
+`services/notification`, `services/productivity`, `services/stt`,
+`services/sync` and `services/tts` are the services with `src/app/`, and the
 `feature/api/<resource>/` spelling is gone from the tree — Phase 4 step 4
-flattened the last two owners that had it. Four services keep a single
-`main.cc` at their `src/` root — `llm`, `stt`, `vlm` and `voice` — except
+flattened the last two owners that had it. Three services keep a single
+`main.cc` at their `src/` root — `llm`, `vlm` and `voice` — except
 `tunnel`, exempt by design (D19), which has two entry points there,
 `main-client.cc` and `main-relay.cc`.
 
-Four services have no `feature/` at all today — `llm`, `stt`,
-`tunnel` and `vlm` — and keep their code at `src/` level instead:
-`src/controllers/` in `llm`, `stt` and `vlm`, and a `src/llm/` and a
-`src/vlm/` beside it. Of the nine services that do have a `feature/`, four
+Three services have no `feature/` at all today — `llm`, `tunnel` and `vlm` —
+and keep their code at `src/` level instead:
+`src/controllers/` in `llm` and `vlm`, and a `src/llm/` and a
+`src/vlm/` beside it. Of the ten services that do have a `feature/`, four
 still keep code beside it: `camera` (`src/camera/`), `notification`
 (`src/notification/`), `productivity` (`src/productivity/`) and `voice`
-(`src/test-support/`). `auth`, `guard`, `identity`, `tts` and `sync` keep
-everything inside `feature/` (plus `app/` in `auth`, `guard`, `identity`, `tts`
-and `sync`).
+(`src/test-support/`). `auth`, `guard`, `identity`, `stt`, `tts` and `sync`
+keep everything inside `feature/` (plus `app/` in `auth`, `guard`, `identity`,
+`stt`, `tts` and `sync`).
 
 `services/auth`, `services/identity` and `services/sync` have `src/config/`;
 the per-service typed config that step 9 moves there still lives elsewhere
@@ -982,7 +982,7 @@ for two different reasons, and says which when it does.
 | `services/identity/src/shared/repositories/{user-invitation,portrait-*,device-login-challenge}/` | People domain: invitations (hash-only), portrait capabilities, cross-device login challenges |
 | `services/auth/src/feature/session/services/session-service.{hxx,cc}` | The session verdict: token order, the identity-backed user context and the device binding (Phase 3b-1); `SessionContextCache` + `IdentityChangeConsumer` beside it |
 | `services/vlm/src/shared/services/vision/` | VLM inference: LFM2.5-VL-450M via llama.cpp + libmtmd (arbitrary prompts, caption cache) |
-| `services/stt/src/shared/services/stt/` | Speech-to-text via sherpa-onnx (default `nemo_transducer` FastConformer RNN-T, es/en; whisper/canary/nemo_ctc/omnilingual selectable) |
+| `services/stt/src/feature/stt/` | Speech-to-text via sherpa-onnx (default `nemo_transducer` FastConformer RNN-T, es/en; whisper/canary/nemo_ctc/omnilingual selectable) |
 | `services/tts/src/feature/synthesis/` | `TtsService` (`services/`) + the Supertonic engine set (`infra/supertonic/`: `TtsEngine`, `Style`, `UnicodeProcessor`, onnx loading) — Supertonic 3 text-to-speech |
 | `services/voice/src/shared/services/vad/` | `VadService` — Silero VAD v5 as an **instance** class (per-stream LSTM, shared ONNX session), with the turn-quality gate |
 | `services/voice/src/shared/wrapper/audio/` | `SampleRing` — the fixed-capacity float ring the voice paths carry samples in across calls |

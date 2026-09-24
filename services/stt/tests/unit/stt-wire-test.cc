@@ -1,12 +1,12 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
 
-#include <controllers/stt-controller.hxx>
+#include <config/config-service.hxx>
 #include <drogon/drogon.h>
+#include <feature/stt/controllers/stt-controller.hxx>
+#include <feature/stt/services/stt-service.hxx>
 #include <http/error-handler.hxx>
 #include <http/health-controller.hxx>
-#include <config/config-service.hxx>
-#include <shared/services/stt/stt-service.hxx>
 
 #include <arpa/inet.h>
 #include <netinet/in.h>

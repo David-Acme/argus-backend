@@ -3,9 +3,9 @@
 #include "stt-errors.hxx"
 
 #include <errors/response-exception.hxx>
+#include <feature/stt/services/stt-service.hxx>
 #include <http/api-response.hxx>
 #include <stt/stt-remote.hxx>
-#include <shared/services/stt/stt-service.hxx>
 
 #include <chrono>
 #include <cstring>

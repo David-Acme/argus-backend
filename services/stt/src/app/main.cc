@@ -1,10 +1,10 @@
-#include <controllers/stt-controller.hxx>
 #include <drogon/drogon.h>
+#include <feature/stt/controllers/stt-controller.hxx>
+#include <feature/stt/services/stt-service.hxx>
 #include <http/error-handler.hxx>
 #include <http/health-controller.hxx>
 #include <http/listener-config.hxx>
 #include <config/config-service.hxx>
-#include <shared/services/stt/stt-service.hxx>
 
 #include <json/value.h>
 #include <string>

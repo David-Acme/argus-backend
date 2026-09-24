@@ -7,11 +7,12 @@ transcript out.
 
 A module, not a service: one `argus_clients(NAME stt ...)`, a STATIC library
 whose include root is `src/`, so a consumer writes `<stt/stt-remote.hxx>` and
-links `argus::clients::stt`. Three packages link it — `services/stt`
-(`stt-core`, `stt-wire-test`), `services/voice` (`argus::voice-core`) and
-`services/camera` (`argus::camera-actions`, the module that owns the listen
-path): four link lines in three CMakeLists, each of which also adds the package
-to its own standalone tree by path. The header IS the contract and both sides
+links `argus::clients::stt`. Three services link it — `services/stt`
+(`argus-stt` and its `argus::stt` module, one line in each of the service's two
+CMakeLists), `services/voice` (`argus::voice-core`) and `services/camera`
+(`argus::camera-actions`, the module that owns the listen path): four link
+lines in four CMakeLists, three of which also add the package to their own
+standalone tree by path. The header IS the contract and both sides
 include it: argus-voice
 transcribes every turn through it once `stt.remote_url` is set, argus-camera's
 listen path transcribes through it, and argus-stt's own controller includes it
@@ -80,6 +81,5 @@ for the constants. No engine lives here — recognition is `services/stt`'s
   defaults and the non-positive-timeout fallback.
 - The fake server has four includers: this suite and three consumer suites —
   `services/voice`'s two remote suites and `services/camera`'s action-rpc
-  suite. Three CMakeLists put `packages/clients/stt/tests/support` on an
-  include path: those two services, and `services/stt`, whose `stt-wire-test`
-  carries the path but includes nothing from it.
+  suite. Two CMakeLists put `packages/clients/stt/tests/support` on an
+  include path: those two services.

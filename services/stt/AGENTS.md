@@ -42,13 +42,22 @@ that apply to stt-service code; when in doubt, the root file wins.
 
 ```
 argus-stt/
-  CMakeLists.txt        add_subdirectory-compatible AND standalone buildable
-  src/main.cc           config load, engine boot gate, app run
-  src/controllers/      HTTP controllers (health + /stt/v1/* wire)
-  src/server/           internal listener resolution
+  CMakeLists.txt        standalone buildable: module graph + test targets
+  src/app/main.cc       config load, engine boot gate, app run
+  src/feature/stt/      argus::stt — the whole vertical slice:
+                          controllers/ (the frozen /stt/v1/* wire),
+                          services/ (the sherpa-onnx engine facade)
   config.toml.example   [stt] engine keys + [server] only; no other domains
   CONTEXT.md            purpose, ownership, wiring decisions
 ```
+
+There is one feature and one module: `argus::stt` compiles the engine facade
+and the HTTP surface together, and `app/main.cc` registers the controller
+explicitly (a Drogon `HttpController<SttController, false>`), so no route
+depends on static-init registration. The folder IS the module (root rule 25) —
+a consumer links `argus::stt` and never lists `.cc` files. `src/shared/` does
+not exist: rule 23's 2+ rule earns it, so code moves there only when a second
+feature of this service reads it.
 
 ## Build commands
 

@@ -11,10 +11,10 @@ pattern (F4-2) one engine later.
 
 ## What it owns
 
-- **The sherpa-onnx STT engine** (shared-tree `SttService`, compiled into
-  this binary via the PORTED pattern), loaded at boot from the shared
-  `models/stt` tree (`stt.models_dir`; the build symlinks `../models` next
-  to the binary). Boot aborts if the engine fails to load — the service is
+- **The sherpa-onnx STT engine** (`SttService`, the stt feature's own facade
+  compiled into this binary through `argus::stt`), loaded at boot from the
+  shared `models/stt` tree (`stt.models_dir`; the build symlinks `../models`
+  next to the binary). Boot aborts if the engine fails to load — the service is
   useless without its capacity. One global recognizer per Ruling BE: the
   engine knob `stt.language` is the boot default and the "" param resolves
   to it.
