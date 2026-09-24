@@ -1,8 +1,8 @@
 #pragma once
 
 #include <drogon/utils/coroutine.h>
-#include <shared/repositories/notification-token/notification-token-query.hxx>
-#include <shared/repositories/notification-token/notification-token-repository.hxx>
+#include <feature/notification/repositories/notification-token/notification-token-query.hxx>
+#include <feature/notification/repositories/notification-token/notification-token-repository.hxx>
 
 class NotificationTokenService
 {

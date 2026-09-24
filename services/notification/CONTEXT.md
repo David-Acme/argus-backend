@@ -57,7 +57,7 @@ binary, own CMake preset, own `notification.db`.
   opens it (rule 27). The legacy keeps its own markAsRead/token routes
   registered but nothing routes to them any more (Ruling AS — quiet,
   not stripped).
-- **RPC owner (rule 27)**: `feature/rpc/notification-rpc-service.cc` serves
+- **RPC owner (rule 27)**: `app/rpc/notification-rpc-service.cc` serves
   `argus.notification.v1.NotificationService` on `server.grpc_port` (7038):
   `CreateNotifications` fans one row per user id and reuses the shared
   create+emit path (the whole fan-out is one multi-row INSERT with
@@ -94,6 +94,19 @@ binary, own CMake preset, own `notification.db`.
 - The canonical build is the service's standalone graph. From the repository
   root use `scripts/build-all.sh dev --only notification`; direct builds
   rerun Conan before the matching preset and CTest.
+- **The feature module links whole-archive into the executable.** Both HTTP
+  controllers are Drogon `AutoCreation` controllers: their routes register
+  from a static initializer (`methodRegistrator`), so their object files have
+  to reach the executable, and Drogon `static_assert`s against registering
+  them by hand — which is why the tts reference's explicit `registerController`
+  is not an option here (`services/tts` declares `HttpController<TtsController,
+  false>`). A plain static-library link drops every route without a word:
+  measured after the Phase 4 step 2 conversion, `nm -C` on the linked binary
+  held zero `NotificationController` symbols while all 41 suites stayed green,
+  because a suite that instantiates the controllers pulls their objects
+  itself. The executable therefore links
+  `$<LINK_LIBRARY:WHOLE_ARCHIVE,argus::notification-feature>`, and the
+  controller test needs no such link.
 - The standalone build compiles no AI code: the `third_party/ncnn` block and
   the unused `find_package(OpenCV)` belonged to the `argus_identity` package's
   face services. Phase 3c-1 made identity a service of its own, reached
@@ -111,21 +124,26 @@ resurrected over it. Nothing is deleted from `argus.db`. Its
 `foreign_key_check` ignores user references by design (the user parent rows
 live in identity.db) and fails on any other violation.
 
-## The folder owns its domain (f7-7c)
+## The folder owns its domain (f7-7c, a rule-25 module since Phase 4 step 2)
 
 The notification feature tree, the notification-token repository, schema
 and service, the notification schema file and the three unit suites moved
-out of the shared `src/` tree into this folder, prefixes preserved. The
-write-side source list is one `NOTIFICATION_FEATURE_SOURCES` variable
-shared by the executable and the controller suite, replacing the two
-hand-kept copies.
+out of the shared `src/` tree into this folder, prefixes preserved. Since
+Phase 4 step 2 the feature is a module of its own
+(`src/feature/notification/CMakeLists.txt` → `argus::notification-feature`)
+and so is the RPC owner (`src/app/rpc/` → `argus::notification-rpc`); the
+root CMakeLists discovers every `feature/*/CMakeLists.txt` and the
+executable and its suites name those modules instead of listing their
+sources. The notification-token trio moved once more, from `src/shared/`
+into the feature that is its only reader.
 
-What did NOT move: the `notification` table's own repository, schema and
-delivery service, which `notification-core` compiles here since sub-step
-3a-1b. Since rule 27 this service is the only writer and reader of those rows:
-the camera-notifier below creates in-process and `argus-sync`'s `/sync` page
-pulls through `argus.notification.v1`. Both sides of the table are
-exclusively this service's, the notification-token side as before.
+What stays in `notification-core`: the `notification` table's own
+repository, schema and delivery service, which it compiles here since
+sub-step 3a-1b and which both features reach. Since rule 27 this service is
+the only writer and reader of those rows: the camera-notifier below creates
+in-process and `argus-sync`'s `/sync` page pulls through
+`argus.notification.v1`. Both sides of the table are exclusively this
+service's, the notification-token side as before.
 
 ## Camera notification policy (Phase 3d step 1)
 

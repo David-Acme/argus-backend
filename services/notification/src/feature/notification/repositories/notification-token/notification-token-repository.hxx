@@ -2,7 +2,7 @@
 #include "notification-token-query.hxx"
 
 #include <drogon/utils/coroutine.h>
-#include <shared/schemas/notification-token/notification-token-schema.hxx>
+#include <feature/notification/schemas/notification-token/notification-token-schema.hxx>
 
 class NotificationTokenRepository
 {

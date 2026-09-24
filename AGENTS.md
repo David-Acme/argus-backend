@@ -671,14 +671,13 @@ Every service follows the same layout inside its own folder:
 
 **Today, against that target** (Phase 4 of
 `docs/history/plans/architecture-plan.md` lands it): `services/auth`,
-`services/identity`, `services/tts` and `services/sync` are the only services
-with `src/app/`; `notification`,
-`productivity` and `guard`
+`services/identity`, `services/notification`, `services/tts` and
+`services/sync` are the services with `src/app/`; `productivity` and `guard`
 already have the `{controllers,services,dtos}` interior, one level deeper
-under `feature/api/<resource>/` (`notification` also carries `feature/rpc/`,
-which Phase 4 step 2 moves to `app/rpc/`). The other nine services keep a
-single `main.cc` at their `src/` root; `tunnel`, exempt by design (D19),
-instead has two entry points there, `main-client.cc` and `main-relay.cc`.
+under `feature/api/<resource>/`, which Phase 4 step 4 flattens. The other
+eight services keep a single `main.cc` at their `src/` root — except
+`tunnel`, exempt by design (D19), which has two entry points there,
+`main-client.cc` and `main-relay.cc`.
 
 Four services have no `feature/` at all today — `llm`, `stt`,
 `tunnel` and `vlm` — and keep their code at `src/` level instead:
@@ -991,7 +990,7 @@ for two different reasons, and says which when it does.
 | `services/voice/src/shared/services/reaction/` | `ReactionEngine` — per-turn reactions by signal priority → `voice:event` (meaning, never expression names) |
 | `services/camera/src/shared/services/stream/` | go2rtc manager, `StreamHub` (fMP4 over `/sync`, per-connection credit window, lock order `hubMutex_ → Upstream::mtx`), `Fmp4Reader` (encoding from headers, whole fragments) |
 | `services/camera/src/shared/services/tapo/` | Tapo camera local protocols: control (`stok` + `securePassthrough`, legacy fallback) and the 8800 talk channel (Digest + MPEG-TS PCMA) |
-| `services/notification/src/shared/services/notification-token/` | Push tokens per session |
+| `services/notification/src/feature/notification/services/notification-token/` | Push tokens per session (the feature that is their only reader, since Phase 4 step 2) |
 | `services/sync/src/feature/transport/` | `SyncSocket` (formerly `SocketService`) + `SyncService` + `SynchronizedService` + the `synchronized-dto.hxx` sync DTOs: the `/sync` engine, over `argus::contracts::sync`'s `SyncForwarder` vocabulary |
 | `services/notification/src/shared/services/notification/` | Per-user notifications: `Add` on create and granular user-audit on mark-as-read; this service's own code since sub-step 3a-1b |
 | `services/sync/src/feature/transport/infra/` | The pull-source ports (`{camera,notification,productivity}-sync-source.hxx`, held by `SynchronizedService` and the socket the registrar wires), their adapters (`{camera,notification,productivity}-sync-gateway.{hxx,cc}`, which reach the owner services through `argus::clients::…`), the socket registrar and the voice gRPC relay |

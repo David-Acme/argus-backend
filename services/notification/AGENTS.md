@@ -52,13 +52,20 @@ that apply to notification-service code; when in doubt, the root file wins.
 ```
 argus-notification/
   CMakeLists.txt        add_subdirectory-compatible AND standalone buildable
-  src/main.cc           config load, notification.db wiring, gRPC server, app run
-  src/notification/     notification-domain config resolution
-  src/feature/rpc/      argus.notification.v1 owner (create + pull)
-  src/feature/api/      HTTP controllers (health; write-side feature surface)
+  src/app/main.cc       config load, notification.db wiring, gRPC server, app run
+  src/app/rpc/          argus.notification.v1 owner (create + pull) —
+                        module argus::notification-rpc
+  src/notification/     notification-domain config resolution and the NATS sinks
+  src/feature/notification/
+                        controllers/, dtos/, repositories/, schemas/, services/
+                        — the HTTP write-side surface, the delivery-proof
+                        surface and the token family; module
+                        argus::notification-feature
   src/feature/camera-notification/
-                        camera object policy + notifier and the fallback log
-  src/server/           internal listener resolution
+                        camera object policy + notifier and the fallback log;
+                        module argus::notification-camera-notification
+  src/shared/           the notification repository, schema and service both
+                        features read, plus the change outbox module
   config.toml.example   notification-domain keys only ([server],
                         [notifications], [jwt], [device], [identity] — the
                         roster the camera notifier resolves recipients from;
@@ -66,10 +73,20 @@ argus-notification/
   CONTEXT.md            purpose, ownership, wiring decisions
 ```
 
-The write-side feature sources (controllers, services, DTOs) compile from the
-shared tree into this executable only; the notification repository, schema and
-delivery service, and the notification-token repository/service, are
-`notification-core`'s.
+Every feature and the `app/rpc/` owner is a rule-25 module: the folder holds
+its own `CMakeLists.txt` declaring its sources and dependencies once, the
+root file discovers them (`feature/*/CMakeLists.txt`) and the executable
+links `argus::notification-feature`, `argus::notification-rpc` and
+`argus::notification-camera-notification` by name. The feature module goes in
+**whole-archive** (`$<LINK_LIBRARY:WHOLE_ARCHIVE,argus::notification-feature>`)
+because its two HTTP controllers are Drogon `AutoCreation` controllers: their
+routes come from a static initializer, so a plain archive link would drop
+them silently (Drogon refuses explicit registration of such controllers, so
+the tts pattern of registering them by hand is not available). The
+notification-token repository, schema and service live inside
+`src/feature/notification/`, the only feature that reads them;
+`notification-core` compiles the notification table's own repository, schema
+and delivery service, which both features reach.
 
 ## Build commands
 

@@ -1,6 +1,6 @@
 #include <drogon/drogon.h>
 #include <feature/camera-notification/services/camera-object-notifier.hxx>
-#include <feature/rpc/notification-rpc-service.hxx>
+#include <app/rpc/notification-rpc-service.hxx>
 #include <auth/device-filter.hxx>
 #include <auth/jwt-filter.hxx>
 #include <auth/role-filter.hxx>

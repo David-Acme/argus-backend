@@ -100,7 +100,7 @@ header: the in-package suite, two in `packages/lib/auth`, five in
   `127.0.0.1:7040` — no template spells those two keys any more. The other
   callers read neither: argus-notification takes `identity.target` straight
   from its config and warns instead of dialling when it is empty
-  (`services/notification/src/main.cc:148`).
+  (`services/notification/src/app/main.cc:148`).
 - The service builds and links its own client (`services/identity/CMakeLists.txt:103`
   adds the folder by path; its `argus_identity-rpc` module links it at
   `src/app/rpc/CMakeLists.txt:18`): the wire vocabulary is shared between the

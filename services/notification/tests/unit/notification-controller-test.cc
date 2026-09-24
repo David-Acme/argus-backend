@@ -3,15 +3,15 @@
 
 #include <drogon/drogon.h>
 #include <errors/validation-exception.hxx>
-#include <feature/api/notification/controllers/notification-controller.hxx>
-#include <feature/api/notification/controllers/notification-token-controller.hxx>
-#include <feature/api/notification/dtos/notification-read-dto.hxx>
-#include <feature/api/notification/dtos/notification-ack-dto.hxx>
-#include <feature/api/notification/dtos/register-notification-token-dto.hxx>
+#include <feature/notification/controllers/notification-controller.hxx>
+#include <feature/notification/controllers/notification-token-controller.hxx>
+#include <feature/notification/dtos/notification-read-dto.hxx>
+#include <feature/notification/dtos/notification-ack-dto.hxx>
+#include <feature/notification/dtos/register-notification-token-dto.hxx>
 #include <auth/device-filter.hxx>
 #include <auth/jwt-filter.hxx>
 #include <sync/user-change-sink.hxx>
-#include <shared/repositories/notification-token/notification-token-repository.hxx>
+#include <feature/notification/repositories/notification-token/notification-token-repository.hxx>
 #include <text/json-util.hxx>
 #include <validation/validator.hxx>
 

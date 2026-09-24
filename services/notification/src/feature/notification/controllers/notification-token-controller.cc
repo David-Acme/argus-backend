@@ -1,11 +1,11 @@
 #include "notification-token-controller.hxx"
 
-#include <feature/api/notification/dtos/register-notification-token-dto.hxx>
+#include <feature/notification/dtos/register-notification-token-dto.hxx>
 #include <auth/device-filter.hxx>
 #include <auth/jwt-filter.hxx>
 #include <http/api-response.hxx>
 #include <auth/request-context.hxx>
-#include <shared/repositories/notification-token/notification-token-query.hxx>
+#include <feature/notification/repositories/notification-token/notification-token-query.hxx>
 
 drogon::Task<drogon::HttpResponsePtr>
 NotificationTokenController::registerToken(drogon::HttpRequestPtr req)

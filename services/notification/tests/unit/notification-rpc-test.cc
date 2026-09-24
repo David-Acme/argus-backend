@@ -5,7 +5,7 @@
 #include <cstdio>
 #include <doctest/doctest.h>
 #include <drogon/drogon.h>
-#include <feature/rpc/notification-rpc-service.hxx>
+#include <app/rpc/notification-rpc-service.hxx>
 #include <fstream>
 #include <grpcpp/grpcpp.h>
 #include <memory>

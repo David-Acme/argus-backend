@@ -111,28 +111,21 @@ target_link_libraries(notification-core PUBLIC
 
 target_compile_options(notification-core PRIVATE -Wall -Wextra)
 
-add_subdirectory(src/feature/camera-notification)
+file(GLOB NOTIFICATION_FEATURE_MODULES CONFIGURE_DEPENDS
+    "${NOTIFICATION_SRC_ROOT}/feature/*/CMakeLists.txt")
+foreach(module IN LISTS NOTIFICATION_FEATURE_MODULES)
+    get_filename_component(module_dir "${module}" DIRECTORY)
+    add_subdirectory("${module_dir}")
+endforeach()
 
-set(NOTIFICATION_FEATURE_SOURCES
-    ${NOTIFICATION_SRC_ROOT}/feature/api/notification/controllers/notification-controller.cc
-    ${NOTIFICATION_SRC_ROOT}/feature/api/notification/controllers/notification-token-controller.cc
-    ${NOTIFICATION_SRC_ROOT}/feature/api/notification/dtos/notification-read-dto.cc
-    ${NOTIFICATION_SRC_ROOT}/feature/api/notification/dtos/notification-ack-dto.cc
-    ${NOTIFICATION_SRC_ROOT}/feature/api/notification/dtos/delivery-summary-dto.cc
-    ${NOTIFICATION_SRC_ROOT}/feature/api/notification/dtos/register-notification-token-dto.cc
-    ${NOTIFICATION_SRC_ROOT}/feature/api/notification/services/notification-feature-service.cc
-    ${NOTIFICATION_SRC_ROOT}/feature/api/notification/services/notification-token-feature-service.cc
-    ${NOTIFICATION_SRC_ROOT}/shared/repositories/notification-token/notification-token-repository.cc
-    ${NOTIFICATION_SRC_ROOT}/shared/schemas/notification-token/notification-token-schema.cc
-    ${NOTIFICATION_SRC_ROOT}/shared/services/notification-token/notification-token-service.cc
-)
+add_subdirectory(src/app/rpc)
 
 add_executable(argus-notification
-    ${NOTIFICATION_SRC_ROOT}/main.cc
-    ${NOTIFICATION_SRC_ROOT}/feature/rpc/notification-rpc-service.cc
-    ${NOTIFICATION_FEATURE_SOURCES})
+    ${NOTIFICATION_SRC_ROOT}/app/main.cc)
 
 target_link_libraries(argus-notification PRIVATE notification-core
+    $<LINK_LIBRARY:WHOLE_ARCHIVE,argus::notification-feature>
+    argus::notification-rpc
     argus::notification-camera-notification
     argus::lib::auth argus::lib::validation argus::lib::http
     argus::clients::notification)
@@ -170,25 +163,14 @@ foreach(TEST_NAME IN ITEMS notification-schema-test notification-migration-test)
 endforeach()
 
 add_executable(notification-controller-test
-    tests/unit/notification-controller-test.cc
-    ${NOTIFICATION_FEATURE_SOURCES})
+    tests/unit/notification-controller-test.cc)
 
 set_target_properties(notification-controller-test PROPERTIES
     EXCLUDE_FROM_ALL FALSE)
 
-target_include_directories(notification-controller-test PRIVATE
-    ${NOTIFICATION_SRC_ROOT})
-
 target_link_libraries(notification-controller-test PRIVATE
     notification-core
-    argus::lib::auth
-    argus::lib::config
-    argus::lib::text
-    argus::lib::sqlite
-    argus::lib::validation
-    argus::lib::http
-    argus::contracts::auth
-    argus::contracts::sync
+    argus::notification-feature
     doctest::doctest)
 
 target_compile_options(notification-controller-test PRIVATE -Wall -Wextra)
@@ -197,25 +179,17 @@ add_test(NAME notification-controller-test
          COMMAND notification-controller-test)
 
 add_executable(notification-rpc-test
-    tests/unit/notification-rpc-test.cc
-    ${NOTIFICATION_SRC_ROOT}/feature/rpc/notification-rpc-service.cc)
+    tests/unit/notification-rpc-test.cc)
 
 set_target_properties(notification-rpc-test PROPERTIES
     EXCLUDE_FROM_ALL FALSE)
-
-target_include_directories(notification-rpc-test PRIVATE
-    ${NOTIFICATION_SRC_ROOT})
 
 target_compile_definitions(notification-rpc-test PRIVATE
     ARGUS_NOTIFICATION_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql")
 
 target_link_libraries(notification-rpc-test PRIVATE
     notification-core
-    argus::clients::notification
-    argus::lib::config
-    argus::lib::text
-    argus::lib::nats
-    argus::lib::sqlite
+    argus::notification-rpc
     doctest::doctest)
 
 target_compile_options(notification-rpc-test PRIVATE -Wall -Wextra)
@@ -223,25 +197,17 @@ target_compile_options(notification-rpc-test PRIVATE -Wall -Wextra)
 add_test(NAME notification-rpc-test COMMAND notification-rpc-test)
 
 add_executable(notification-no-nats-test
-    tests/unit/notification-no-nats-test.cc
-    ${NOTIFICATION_SRC_ROOT}/feature/rpc/notification-rpc-service.cc)
+    tests/unit/notification-no-nats-test.cc)
 
 set_target_properties(notification-no-nats-test PROPERTIES
     EXCLUDE_FROM_ALL FALSE)
-
-target_include_directories(notification-no-nats-test PRIVATE
-    ${NOTIFICATION_SRC_ROOT})
 
 target_compile_definitions(notification-no-nats-test PRIVATE
     ARGUS_NOTIFICATION_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql")
 
 target_link_libraries(notification-no-nats-test PRIVATE
     notification-core
-    argus::clients::notification
-    argus::lib::config
-    argus::lib::text
-    argus::lib::nats
-    argus::lib::sqlite
+    argus::notification-rpc
     doctest::doctest)
 
 target_compile_options(notification-no-nats-test PRIVATE -Wall -Wextra)

@@ -13,3 +13,6 @@ argus_module(NAME notification-camera-notification
         notification-core
     INCLUDES
         ${CMAKE_CURRENT_SOURCE_DIR}/../..)
+
+target_compile_options(argus_notification-camera-notification
+                       PRIVATE -Wall -Wextra)

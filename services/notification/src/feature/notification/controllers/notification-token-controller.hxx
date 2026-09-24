@@ -4,7 +4,7 @@
 #include <drogon/HttpRequest.h>
 #include <drogon/HttpResponse.h>
 #include <drogon/utils/coroutine.h>
-#include <feature/api/notification/services/notification-token-feature-service.hxx>
+#include <feature/notification/services/notification-token-feature-service.hxx>
 
 class NotificationTokenController
     : public drogon::HttpController<NotificationTokenController>
