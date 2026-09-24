@@ -17,23 +17,7 @@ SyncDbConfig SyncConfig::resolveDb()
 
 ListenerConfig SyncConfig::resolveListener()
 {
-  ListenerConfig config;
-  config.host = ConfigService::getString("sync.host");
-  if (config.host.empty())
-    config.host = "0.0.0.0";
-  const int port = ConfigService::getInt("sync.port");
-  config.port = port > 0 ? static_cast<uint16_t>(port) : 7025;
-  config.tls = !ConfigService::getBool("sync.plain");
-  config.certPath = ConfigService::getString("cert.server_cert");
-  if (config.certPath.empty())
-    config.certPath = "certs/server.pem";
-  config.keyPath = ConfigService::getString("cert.server_key");
-  if (config.keyPath.empty())
-    config.keyPath = "certs/server.key";
-  config.minTlsProtocol = ConfigService::getString("sync.min_protocol");
-  if (config.minTlsProtocol.empty())
-    config.minTlsProtocol = "TLSv1.2";
-  return config;
+  return ListenerConfig::resolveServiceTls("sync", 7025);
 }
 
 SyncControlConfig SyncConfig::resolveControl()

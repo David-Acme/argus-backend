@@ -822,15 +822,15 @@ data (D18):
   source.
 - Interface dependencies (types in public headers) are `PUBLIC`;
   implementation-only dependencies are `PRIVATE`.
-- Header-only where nothing is compiled: nine of the ten contracts go through
+- Header-only where nothing is compiled: ten of the eleven contracts go through
   `argus_contracts`, which is `INTERFACE` by construction (`auth`, `camera`,
-  `gateway`, `identity`, `notification`, `productivity`, `sync`, `tts`,
-  `voice`), and `validation` declares `HEADER_ONLY` to `argus_lib` for the same
-  result. `response` is the exception under `packages/contracts/`: it carries
-  no vocabulary but the response wire, declared `argus_client_module(NAME
-  response-wire GROUP contracts …)` and compiling `response-rpc.cc`. `cert` is
-  a `STATIC` `argus_lib` over one `.cc`; `text` and `phrase` compile real
-  sources and are not candidates for it.
+  `gateway`, `identity`, `notification`, `productivity`, `routes`, `sync`,
+  `tts`, `voice`), and `validation` declares `HEADER_ONLY` to `argus_lib` for
+  the same result. `response` is the exception under `packages/contracts/`: it
+  carries no vocabulary but the response wire, declared
+  `argus_client_module(NAME response-wire GROUP contracts …)` and compiling
+  `response-rpc.cc`. `cert` is a `STATIC` `argus_lib` over one `.cc`; `text`
+  and `phrase` compile real sources and are not candidates for it.
 - **Enums live where they are used.** A service declares its domain enums
   inside the feature that uses them; the vocabulary that crosses the wire
   (`UserRole`, `SyncOperation`, `TableName`, priorities) is declared once in
@@ -929,7 +929,8 @@ for two different reasons, and says which when it does.
 |------|---------|
 | `packages/lib/validation/src/validation/` | Validation DSL (rules, macros, validator) |
 | `packages/lib/errors/src/errors/` | `ErrorCode`, `ErrorDefinition`, `ResponseException` — the refusals every boundary throws |
-| `packages/lib/http/src/http/` | The `{status, info, errors}` envelope (`ApiResponse`), the one advice (`ErrorHandler`), CORS, health, listener |
+| `packages/lib/http/src/http/` | The `{status, info, errors}` envelope (`ApiResponse`), the one advice (`ErrorHandler`), CORS, health, listener resolution (`resolveServiceTls` for the app-facing TLS listener, `resolve` for the internal plain one) and the discovery join (`logicalRoutes`, `routeAnnouncements`) |
+| `packages/lib/mdns/src/mdns/` | `MdnsService` — the multi-instance LAN responder (one record set per `MdnsInstance`), driven by `mdns.enabled`/`mdns.name`; every app-facing service announces its logical routes through it |
 | `packages/lib/audio/src/audio/` | `AudioResampler` (stateful sinc) + `EndpointDetector` — every block-processed audio path MUST use these, never a custom conversion |
 | `packages/lib/phrase/src/phrase/details/` | Static per-language memory vocabulary (es/en): `PhraseSeed`/`LexiconSeed` constants — no DB tables |
 | `packages/lib/phrase/src/phrase/` | `RuleParser` + `PhraseCatalog` — the vocabulary's parser and catalog, read by `packages/memory`, `packages/intent`, `services/llm` and `services/voice` |
@@ -950,6 +951,7 @@ for two different reasons, and says which when it does.
 |------|---------|
 | `packages/contracts/{auth,camera,productivity,sync}/src/<domain>/` | Each domain's wire enums, each with its own lowerCamelCase `<enum>ToString`/`<enum>FromString` pair (`packages/contracts/camera/src/camera/zone-type.hxx`). The enums that mirror a `CHECK` constraint are not all here — `notification` and `services/identity/src/shared/vocabulary/` each carry their own |
 | `packages/contracts/sync/src/sync/` | `Syncable`, `SyncFilter` base classes + `sync-operation.hxx` + `sync-forwarder.hxx` (the `{conn, message, raw}` frame vocabulary and `SyncForwarder`, which `services/camera` and `services/gateway` implement) |
+| `packages/contracts/routes/src/routes/` | The LAN discovery spellings: service type `_argus-route._tcp` and TXT keys `path`/`https`. A service announces one instance per logical route; the app resolves the type and reads the SRV port |
 
 **Tier 3 — `clients/`**
 

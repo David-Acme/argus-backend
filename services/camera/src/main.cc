@@ -19,6 +19,8 @@
 #include <http/error-handler.hxx>
 #include <http/health-controller.hxx>
 #include <http/listener-config.hxx>
+#include <http/route-announcements.hxx>
+#include <mdns/mdns-service.hxx>
 #include <monitor/camera-health-monitor.hxx>
 #include <monitor/nats-health-event-sink.hxx>
 #include <shared/services/event-stream/event-stream.hxx>
@@ -87,7 +89,7 @@ int main()
   ConfigService::load("config.toml");
 
   const CameraDbConfig cameraDb = CameraConfig::resolveDb();
-  const ListenerConfig listener = ListenerConfig::resolve(7026);
+  const ListenerConfig listener = ListenerConfig::resolveServiceTls("camera", 7026);
   const GrpcListenerConfig grpcListener = GrpcListenerConfig::resolve(7036);
 
   CameraSyncRpcService cameraSyncRpc;
@@ -138,7 +140,8 @@ int main()
       });
 
   LOG_INFO << "Listening on " << listener.host << ":" << listener.port
-           << " (plain); camera database " << cameraDb.dbPath
+           << (listener.tls ? " (TLS" : " (plain") << ", cert "
+           << listener.certPath << "); camera database " << cameraDb.dbPath
            << "; gRPC SyncService on " << grpcAddress;
 
   std::shared_ptr<NatsCameraChangeSink> changeSink;
@@ -332,6 +335,13 @@ int main()
     shutdown_signal::onStop(
         shutdown_signal::drainOf(*healthMonitor, "camera-health"));
   }
+
+  std::unique_ptr<MdnsService> mdnsService;
+  drogon::app().registerBeginningAdvice([&mdnsService, &listener]() {
+    mdnsService = std::make_unique<MdnsService>(
+        routeAnnouncements({.port = listener.port, .tls = listener.tls}));
+    mdnsService->initialize();
+  });
 
   drogon::app()
       .setThreadNum(0)

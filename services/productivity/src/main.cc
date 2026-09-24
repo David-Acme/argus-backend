@@ -9,6 +9,8 @@
 #include <http/error-handler.hxx>
 #include <http/health-controller.hxx>
 #include <http/listener-config.hxx>
+#include <http/route-announcements.hxx>
+#include <mdns/mdns-service.hxx>
 #include <productivity/productivity-config.hxx>
 #include <productivity/nats-productivity-change-sink.hxx>
 #include <nats/nats-bus.hxx>
@@ -56,7 +58,8 @@ int main()
   ConfigService::load("config.toml");
 
   const ProductivityDbConfig productivityDb = ProductivityConfig::resolveDb();
-  const ListenerConfig listener = ListenerConfig::resolve(7027);
+  const ListenerConfig listener =
+      ListenerConfig::resolveServiceTls("productivity", 7027);
   const GrpcListenerConfig grpcListener = GrpcListenerConfig::resolve(7037);
 
   ProductivitySyncRpcService productivitySyncRpc;
@@ -103,8 +106,9 @@ int main()
       });
 
   LOG_INFO << "Listening on " << listener.host << ":" << listener.port
-           << " (plain); productivity database " << productivityDb.dbPath
-           << "; gRPC SyncService on " << grpcAddress;
+           << (listener.tls ? " (TLS" : " (plain") << ", cert "
+           << listener.certPath << "); productivity database "
+           << productivityDb.dbPath << "; gRPC SyncService on " << grpcAddress;
 
   std::shared_ptr<NatsProductivityChangeSink> changeSink;
   std::shared_ptr<NatsBus> natsBus;
@@ -146,6 +150,13 @@ int main()
     shutdown_signal::onStop(
         shutdown_signal::drainOf(*changeSink, "productivity-change"));
   }
+
+  std::unique_ptr<MdnsService> mdnsService;
+  drogon::app().registerBeginningAdvice([&mdnsService, &listener]() {
+    mdnsService = std::make_unique<MdnsService>(
+        routeAnnouncements({.port = listener.port, .tls = listener.tls}));
+    mdnsService->initialize();
+  });
 
   drogon::app()
       .setThreadNum(0)

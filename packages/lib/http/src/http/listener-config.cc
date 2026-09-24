@@ -5,13 +5,19 @@
 namespace
 {
 
-std::string configString(const char* key, const char* fallback)
+constexpr std::string_view kDefaultHost = "127.0.0.1";
+constexpr std::string_view kDefaultServiceHost = "0.0.0.0";
+constexpr std::string_view kDefaultCertPath = "certs/server.pem";
+constexpr std::string_view kDefaultKeyPath = "certs/server.key";
+constexpr std::string_view kDefaultMinTlsProtocol = "TLSv1.2";
+
+std::string configString(const std::string& key, std::string_view fallback)
 {
   auto value = ConfigService::getString(key);
-  return value.empty() ? fallback : value;
+  return value.empty() ? std::string(fallback) : value;
 }
 
-uint16_t resolvePort(const char* key, uint16_t fallback)
+uint16_t resolvePort(const std::string& key, uint16_t fallback)
 {
   const int port = ConfigService::getInt(key);
   return port > 0 ? static_cast<uint16_t>(port) : fallback;
@@ -20,32 +26,35 @@ uint16_t resolvePort(const char* key, uint16_t fallback)
 }
 
 ListenerConfig ListenerConfig::resolve(uint16_t defaultPort,
-                                       const char* portKey)
+                                       std::string_view portKey)
 {
   ListenerConfig config;
-  config.host = configString("server.host", "127.0.0.1");
-  config.port = resolvePort(portKey, defaultPort);
+  config.host = configString("server.host", kDefaultHost);
+  config.port = resolvePort(std::string(portKey), defaultPort);
   return config;
 }
 
-ListenerConfig ListenerConfig::resolveTls(uint16_t defaultPort)
+ListenerConfig ListenerConfig::resolveServiceTls(std::string_view section,
+                                                 uint16_t defaultPort)
 {
+  const std::string prefix = std::string(section) + '.';
   ListenerConfig config;
-  config.host = configString("gateway.host", "0.0.0.0");
-  config.port = resolvePort("gateway.port", defaultPort);
-  config.tls = !ConfigService::getBool("gateway.plain");
-  config.certPath = configString("cert.server_cert", "certs/server.pem");
-  config.keyPath = configString("cert.server_key", "certs/server.key");
-  config.minTlsProtocol = configString("gateway.min_protocol", "TLSv1.2");
+  config.host = configString(prefix + "host", kDefaultServiceHost);
+  config.port = resolvePort(prefix + "port", defaultPort);
+  config.tls = !ConfigService::getBool(prefix + "plain");
+  config.certPath = configString("cert.server_cert", kDefaultCertPath);
+  config.keyPath = configString("cert.server_key", kDefaultKeyPath);
+  config.minTlsProtocol =
+      configString(prefix + "min_protocol", kDefaultMinTlsProtocol);
   return config;
 }
 
 GrpcListenerConfig GrpcListenerConfig::resolve(uint16_t defaultPort,
-                                               const char* portKey)
+                                               std::string_view portKey)
 {
   GrpcListenerConfig config;
-  config.host = configString("server.host", "127.0.0.1");
-  config.port = resolvePort(portKey, defaultPort);
+  config.host = configString("server.host", kDefaultHost);
+  config.port = resolvePort(std::string(portKey), defaultPort);
   return config;
 }
 

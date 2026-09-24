@@ -1,23 +1,39 @@
 # argus-mdns
 
 The announcement that makes the appliance findable on the LAN: one mDNS
-responder over the vendored `mdns.h`, driven by the `mdns.*` config keys.
+responder over the vendored `mdns.h`, driven by the `mdns.*` config keys and by
+the instances the caller hands it.
 
 ## What this is
 
 A PACKAGE, not a service: no routes, no `main`, no database, nothing on the
-wire except multicast UDP. It has exactly one consumer today — the gateway,
-which advertises on boot and shuts the responder down on exit. Extracting it
-from `services/gateway` changed no behaviour: the announcement was already
-gateway-only (`argus::lib::mdns` is a source module, not a service's private code),
-so the move is what makes that fact visible in the build graph.
+wire except multicast UDP. It answers for a list of `MdnsInstance` values, one
+record set each (PTR/SRV/TXT plus the host's A/AAAA), so a consumer announces
+as many names and ports as it serves.
+
+Its consumers are every app-facing service, and they reach it through
+`packages/lib/http`'s `routeAnnouncements()`, not directly: that helper walks
+the routes the service registered and builds one `_argus-route._tcp` instance
+per logical route (TXT `path=<segment>`, `https="true"` when the listener
+terminates TLS). The gateway additionally keeps a single legacy `_argus._tcp`
+record until Phase 3d step 1c deletes it, so the deployed app's first-match
+discovery keeps working through the transition.
+
+The tier rules are why the join lives in `lib/http`: this package is tier 1 and
+the route vocabulary is `packages/contracts/routes` (tier 2), so `MdnsService`
+takes the service type, the path and the TXT pairs as parameters and never
+learns where they came from.
 
 The keys are a contract with two other services, not private tuning:
 
 - `mdns.name` is the hostname advertised, and `packages/lib/cert` puts it in the
-  instance certificate's SAN, so a rename without reissuing breaks TLS;
+  instance certificate's SAN (with `argus.local`, which is the name the app
+  dials), so a rename without reissuing breaks TLS;
 - `mdns.port` is what `identity` answers pairing and invitation requests with,
-  so the announcement and the pairing port must agree.
+  so the announcement and the pairing port must agree. No other service reads
+  it: a per-route announcement carries its own SRV port.
+- `mdns.enabled` gates advertising only. `initialize()` is called either way and
+  answers `true` when it is off.
 
 ## Layout
 
@@ -37,6 +53,23 @@ The keys are a contract with two other services, not private tuning:
   advertising is disabled, when no interface resolves and when no socket opens,
   because a home appliance must boot and serve even when the network is not
   there to be announced on. Only a caller that must know asks
-  `isAdvertising()`.
-- The responder owns its sockets and its thread; `shutdown()` is the only way
-  they are released, and it is idempotent.
+  `isAdvertising()`, and what it reports is liveness — the sockets open and the
+  responder thread running — never delivery: the announce and the goodbye are
+  multicast without a checked result, so nothing here can say the LAN saw them.
+- The instance label is composed, not configured: `<name>-<path>` for a route
+  and the bare name for an instance with no path, where `<name>` is
+  `mdns.name` with dots folded to dashes. A DNS label is 63 octets, so the
+  path suffix is kept whole and the name is truncated to fit it — otherwise a
+  long name would truncate the route away and two routes of the same service
+  would collide on the LAN.
+- The responder owns its sockets and its thread; `shutdown()` joins the thread,
+  sends the goodbye packet and closes the sockets, and it is idempotent. The
+  destructor calls it, so a service that never calls it still leaves the LAN
+  cleanly.
+- The config is read once, in the constructor: `mdns.enabled` and `mdns.name`.
+  Nothing re-reads it later, so a runtime `setBool("mdns.enabled", ...)` does
+  not start or stop advertising.
+- The service type is the caller's, and an instance that carries none is not
+  advertisable: it is skipped rather than defaulted, and a list with nothing
+  advertisable leaves advertising off while `initialize()` still answers
+  `true`.

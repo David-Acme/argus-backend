@@ -31,7 +31,7 @@ sudo_if_needed() {
   fi
 }
 
-toml_value() {
+toml_literal() {
   local file="$1"
   local table="$2"
   local key="$3"
@@ -44,13 +44,19 @@ toml_value() {
       sub("^[[:space:]]*" key "[[:space:]]*=[[:space:]]*", "", value)
       sub("[[:space:]]+#.*$", "", value)
       gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
-      if (value ~ /^".*"$/) {
-        sub(/^"/, "", value)
-        sub(/"$/, "", value)
-      }
       print value
       exit
     }' "$file"
+}
+
+toml_value() {
+  local value
+  value="$(toml_literal "$1" "$2" "$3")"
+  if [[ "$value" == \"*\" ]]; then
+    value="${value#\"}"
+    value="${value%\"}"
+  fi
+  printf '%s\n' "$value"
 }
 
 toml_key_exists() {
@@ -73,18 +79,26 @@ replace_toml_value() {
   local key="$2"
   local value="$3"
   local config="$4"
+  local mode="${5:-quoted}"
+  local rendered
+
+  if [ "$mode" = literal ]; then
+    rendered="$value"
+  else
+    rendered="\"$value\""
+  fi
 
   if ! grep -Eq "^[[:space:]]*\\[$table\\][[:space:]]*$" "$config"; then
-    printf '\n[%s]\n%s = "%s"\n' "$table" "$key" "$value" >> "$config"
+    printf '\n[%s]\n%s = %s\n' "$table" "$key" "$rendered" >> "$config"
     return
   fi
 
   local temp
   temp="$(mktemp "${config}.tmp.XXXXXX")"
-  awk -v table="$table" -v key="$key" -v value="$value" '
+  awk -v table="$table" -v key="$key" -v rendered="$rendered" '
     function emit() {
       if (in_table && !found) {
-        print key " = \"" value "\""
+        print key " = " rendered
         found = 1
       }
     }
@@ -96,7 +110,7 @@ replace_toml_value() {
       next
     }
     in_table && $0 ~ "^[[:space:]]*" key "[[:space:]]*=" {
-      print key " = \"" value "\""
+      print key " = " rendered
       found = 1
       next
     }
@@ -114,8 +128,15 @@ adopt_template_key() {
   local config="$4"
 
   toml_key_exists "$template" "$table" "$key" || return 0
-  toml_key_exists "$config" "$table" "$key" && return 0
-  replace_toml_value "$table" "$key" "$(toml_value "$template" "$table" "$key")" "$config"
+
+  local literal
+  literal="$(toml_literal "$template" "$table" "$key")"
+
+  if toml_key_exists "$config" "$table" "$key"; then
+    [ "$(toml_literal "$config" "$table" "$key")" = "\"$literal\"" ] || return 0
+  fi
+
+  replace_toml_value "$table" "$key" "$literal" "$config" literal
 }
 
 adopt_wiring_keys() {
@@ -139,6 +160,7 @@ identity proxy_url
 identity rpc_host
 identity rpc_port
 identity rpc_secret
+mdns enabled
 EOF
 }
 

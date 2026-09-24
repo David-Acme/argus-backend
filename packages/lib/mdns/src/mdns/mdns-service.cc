@@ -1,5 +1,6 @@
 #include "mdns-service.hxx"
 
+#include <algorithm>
 #include <arpa/inet.h>
 #include <array>
 #include <atomic>
@@ -24,14 +25,11 @@
 namespace
 {
 
-struct MdnsConfig
-{
-  bool enabled = false;
-  std::string name = "Argus";
-  std::string serviceType = "_argus._tcp";
-  uint16_t port = 7024;
-  std::vector<std::pair<std::string, std::string>> txt;
-};
+constexpr std::string_view kDefaultName = "Argus";
+constexpr std::string_view kLocalSuffix = ".local";
+constexpr std::string_view kDnsSdMeta = "_services._dns-sd._udp.local.";
+constexpr size_t kPacketCapacity = 2048;
+constexpr size_t kMaxLabelOctets = 63;
 
 class MdnsSocket
 {
@@ -72,18 +70,20 @@ struct AlignedBufferDeleter
 
 using BufferPtr = std::unique_ptr<std::byte, AlignedBufferDeleter>;
 
-constexpr size_t kPacketCapacity = 2048;
-
 std::string normalizeServiceType(const std::string& raw)
 {
-  std::string type = raw.empty() ? "_argus._tcp" : raw;
+  if (raw.empty())
+    return {};
+
+  std::string type = raw;
   if (type.front() != '_')
     type.insert(type.begin(), '_');
-  static constexpr std::string_view kLocalSuffix = ".local";
   if (type.size() >= kLocalSuffix.size() &&
       type.compare(type.size() - kLocalSuffix.size(), kLocalSuffix.size(),
                    kLocalSuffix) == 0)
     type.resize(type.size() - kLocalSuffix.size());
+  if (type.empty())
+    return {};
   if (type.back() != '.')
     type.push_back('.');
   type += "local.";
@@ -96,24 +96,56 @@ std::string sanitizeInstanceName(const std::string& raw)
   out.reserve(raw.size());
   for (const char c : raw)
     out.push_back(c == '.' ? '-' : c);
-  return out.empty() ? "Argus" : out;
+  return out.empty() ? std::string(kDefaultName) : out;
 }
 
-MdnsConfig loadMdnsConfig()
+std::string clampLabel(std::string label)
 {
-  MdnsConfig config;
-  config.enabled = ConfigService::getBool("mdns.enabled");
-  const std::string name = ConfigService::getString("mdns.name");
-  if (!name.empty())
-    config.name = name;
-  const std::string type = ConfigService::getString("mdns.service_type");
-  if (!type.empty())
-    config.serviceType = type;
-  const int port = ConfigService::getInt("mdns.port");
-  if (port > 0 && port <= 65535)
-    config.port = static_cast<uint16_t>(port);
-  config.txt = ConfigService::getStringPairs("mdns.txt");
-  return config;
+  if (label.size() > kMaxLabelOctets)
+    label.resize(kMaxLabelOctets);
+  return label;
+}
+
+std::string hostnameFor(const std::string& configuredName)
+{
+  return clampLabel(sanitizeInstanceName(configuredName));
+}
+
+struct InstanceLabelInput
+{
+  const std::string& hostname;
+  const std::string& path;
+};
+
+std::string instanceLabel(const InstanceLabelInput& input)
+{
+  if (input.path.empty())
+    return clampLabel(input.hostname);
+
+  const std::string suffix = "-" + sanitizeInstanceName(input.path);
+  std::string base = input.hostname;
+  const size_t room =
+      suffix.size() < kMaxLabelOctets ? kMaxLabelOctets - suffix.size() : 0;
+  if (base.size() > room)
+    base.resize(room);
+  return clampLabel(base + suffix);
+}
+
+struct InstanceNameInput
+{
+  const std::string& hostname;
+  const std::string& serviceType;
+  const std::string& path;
+};
+
+std::string instanceNameFor(const InstanceNameInput& input)
+{
+  const std::string type = normalizeServiceType(input.serviceType);
+  if (type.empty())
+    return {};
+  const std::string label =
+      instanceLabel({.hostname = input.hostname, .path = input.path});
+  return label + "." + type;
 }
 
 bool isUsableInterface(const struct ifaddrs* ifa)
@@ -140,36 +172,60 @@ bool nameEquals(const NameEqualsInput& input)
          strncasecmp(input.name.str, input.expected, input.name.length) == 0;
 }
 
+bool nameEqualsString(const mdns_string_t& name, const std::string& expected)
+{
+  return nameEquals({.name = name,
+                     .expected = expected.data(),
+                     .expectedLength = expected.size()});
+}
+
+struct AdvertisedInstance
+{
+  std::string serviceType;
+  std::string instanceName;
+  uint16_t port{0};
+  std::vector<std::pair<std::string, std::string>> txt;
+  mdns_record_t ptr{};
+  mdns_record_t srv{};
+  std::vector<mdns_record_t> txtRecords;
+};
+
 }
 
 struct MdnsService::Impl
 {
-  MdnsConfig config;
+  struct Config
+  {
+    bool enabled{false};
+    std::string name{kDefaultName};
+  };
+
+  Config config;
+  std::vector<MdnsInstance> requested;
   std::atomic<bool> running{false};
   std::thread thread;
   std::vector<MdnsSocket> sockets;
   BufferPtr buffer;
   size_t bufferCapacity = 0;
 
-  std::string service;
-  std::string serviceInstance;
   std::string hostname;
   std::string hostnameQualified;
+  std::vector<AdvertisedInstance> advertised;
+  std::vector<std::string> serviceTypes;
 
   struct sockaddr_in addressIpv4{};
   struct sockaddr_in6 addressIpv6{};
   bool hasIpv4 = false;
   bool hasIpv6 = false;
-
-  mdns_record_t recordPtr{};
-  mdns_record_t recordSrv{};
   mdns_record_t recordA{};
   mdns_record_t recordAaaa{};
-  std::vector<mdns_record_t> txtRecords;
 
   bool resolveAddresses();
   void buildRecords();
-  std::vector<mdns_record_t> buildAdditionalRecords() const;
+  [[nodiscard]] std::vector<mdns_record_t>
+  serviceRecords(const AdvertisedInstance& instance) const;
+  [[nodiscard]] std::vector<mdns_record_t>
+  hostRecords(const AdvertisedInstance& instance) const;
 
   void runLoop();
 
@@ -248,70 +304,100 @@ bool MdnsService::Impl::resolveAddresses()
 
 void MdnsService::Impl::buildRecords()
 {
-  hostname = sanitizeInstanceName(config.name);
-  service = normalizeServiceType(config.serviceType);
-  serviceInstance = hostname + "." + service;
+  hostname = hostnameFor(config.name);
   hostnameQualified = hostname + ".local.";
 
-  const mdns_string_t serviceStr{service.data(), service.size()};
-  const mdns_string_t serviceInstanceStr{serviceInstance.data(),
-                                         serviceInstance.size()};
   const mdns_string_t hostnameQualifiedStr{hostnameQualified.data(),
                                            hostnameQualified.size()};
 
-  recordPtr = {};
-  recordPtr.name = serviceStr;
-  recordPtr.type = MDNS_RECORDTYPE_PTR;
-  recordPtr.data.ptr.name = serviceInstanceStr;
+  recordA = {};
+  recordA.name = hostnameQualifiedStr;
+  recordA.type = MDNS_RECORDTYPE_A;
+  recordA.data.a.addr = addressIpv4;
+  recordA.data.a.addr.sin_port = 0;
 
-  recordSrv = {};
-  recordSrv.name = serviceInstanceStr;
-  recordSrv.type = MDNS_RECORDTYPE_SRV;
-  recordSrv.data.srv.name = hostnameQualifiedStr;
-  recordSrv.data.srv.port = config.port;
-  recordSrv.data.srv.priority = 0;
-  recordSrv.data.srv.weight = 0;
+  recordAaaa = {};
+  recordAaaa.name = hostnameQualifiedStr;
+  recordAaaa.type = MDNS_RECORDTYPE_AAAA;
+  recordAaaa.data.aaaa.addr = addressIpv6;
+  recordAaaa.data.aaaa.addr.sin6_port = 0;
 
-  if (hasIpv4) {
-    recordA = {};
-    recordA.name = hostnameQualifiedStr;
-    recordA.type = MDNS_RECORDTYPE_A;
-    recordA.data.a.addr = addressIpv4;
-    recordA.data.a.addr.sin_port = 0;
+  advertised.clear();
+  advertised.reserve(requested.size());
+  serviceTypes.clear();
+  serviceTypes.reserve(requested.size());
+
+  for (const auto& instance : requested) {
+    const std::string serviceType = normalizeServiceType(instance.serviceType);
+    if (serviceType.empty())
+      continue;
+
+    AdvertisedInstance entry;
+    entry.serviceType = serviceType;
+    entry.instanceName = instanceNameFor({.hostname = hostname,
+                                          .serviceType = serviceType,
+                                          .path = instance.path});
+    entry.port = instance.port;
+    entry.txt = instance.txt;
+    advertised.push_back(std::move(entry));
+
+    if (std::ranges::find(serviceTypes, serviceType) == serviceTypes.end())
+      serviceTypes.push_back(serviceType);
   }
 
-  if (hasIpv6) {
-    recordAaaa = {};
-    recordAaaa.name = hostnameQualifiedStr;
-    recordAaaa.type = MDNS_RECORDTYPE_AAAA;
-    recordAaaa.data.aaaa.addr = addressIpv6;
-    recordAaaa.data.aaaa.addr.sin6_port = 0;
-  }
+  for (auto& entry : advertised) {
+    const mdns_string_t serviceStr{.str = entry.serviceType.data(),
+                                   .length = entry.serviceType.size()};
+    const mdns_string_t instanceStr{.str = entry.instanceName.data(),
+                                    .length = entry.instanceName.size()};
 
-  txtRecords.clear();
-  txtRecords.reserve(config.txt.size());
-  for (const auto& [key, value] : config.txt) {
-    mdns_record_t txt{};
-    txt.name = serviceInstanceStr;
-    txt.type = MDNS_RECORDTYPE_TXT;
-    txt.data.txt.key = mdns_string_t{key.data(), key.size()};
-    txt.data.txt.value = mdns_string_t{value.data(), value.size()};
-    txtRecords.push_back(txt);
+    entry.ptr = {};
+    entry.ptr.name = serviceStr;
+    entry.ptr.type = MDNS_RECORDTYPE_PTR;
+    entry.ptr.data.ptr.name = instanceStr;
+
+    entry.srv = {};
+    entry.srv.name = instanceStr;
+    entry.srv.type = MDNS_RECORDTYPE_SRV;
+    entry.srv.data.srv.name = hostnameQualifiedStr;
+    entry.srv.data.srv.port = entry.port;
+    entry.srv.data.srv.priority = 0;
+    entry.srv.data.srv.weight = 0;
+
+    entry.txtRecords.clear();
+    entry.txtRecords.reserve(entry.txt.size());
+    for (const auto& [key, value] : entry.txt) {
+      mdns_record_t txt{};
+      txt.name = instanceStr;
+      txt.type = MDNS_RECORDTYPE_TXT;
+      txt.data.txt.key = mdns_string_t{.str = key.data(), .length = key.size()};
+      txt.data.txt.value =
+          mdns_string_t{.str = value.data(), .length = value.size()};
+      entry.txtRecords.push_back(txt);
+    }
   }
 }
 
-std::vector<mdns_record_t> MdnsService::Impl::buildAdditionalRecords() const
+std::vector<mdns_record_t> MdnsService::Impl::hostRecords(
+    const AdvertisedInstance& instance) const
 {
-  std::vector<mdns_record_t> additional;
-  additional.reserve(txtRecords.size() + 3);
-  additional.push_back(recordSrv);
+  std::vector<mdns_record_t> records;
+  records.reserve(instance.txtRecords.size() + 2);
   if (hasIpv4)
-    additional.push_back(recordA);
+    records.push_back(recordA);
   if (hasIpv6)
-    additional.push_back(recordAaaa);
-  for (const auto& txt : txtRecords)
-    additional.push_back(txt);
-  return additional;
+    records.push_back(recordAaaa);
+  for (const auto& txt : instance.txtRecords)
+    records.push_back(txt);
+  return records;
+}
+
+std::vector<mdns_record_t> MdnsService::Impl::serviceRecords(
+    const AdvertisedInstance& instance) const
+{
+  std::vector<mdns_record_t> records = hostRecords(instance);
+  records.insert(records.begin(), instance.srv);
+  return records;
 }
 
 void MdnsService::Impl::sendAnswer(const SendAnswerInput& input) const
@@ -340,8 +426,6 @@ void MdnsService::Impl::sendAnswer(const SendAnswerInput& input) const
 
 int MdnsService::Impl::handleQuestion(const HandleQuestionInput& input) const
 {
-  static constexpr std::string_view kDnsSd = "_services._dns-sd._udp.local.";
-
   const int sock = input.sock;
   const struct sockaddr* from = input.from;
   const size_t addrlen = input.addrlen;
@@ -361,12 +445,8 @@ int MdnsService::Impl::handleQuestion(const HandleQuestionInput& input) const
   if (name.length == 0)
     return 0;
 
-  if (nameEquals(
-          {.name = name, .expected = kDnsSd.data(), .expectedLength = kDnsSd.size()})) {
-    if (rtype != MDNS_RECORDTYPE_PTR && rtype != MDNS_RECORDTYPE_ANY)
-      return 0;
-    mdns_record_t answer = recordPtr;
-    answer.name = name;
+  const auto answerWith = [&](const mdns_record_t& answer,
+                              const std::vector<mdns_record_t>& additional) {
     sendAnswer({.sock = sock,
                 .from = from,
                 .addrlen = addrlen,
@@ -375,56 +455,43 @@ int MdnsService::Impl::handleQuestion(const HandleQuestionInput& input) const
                 .rclass = rclass,
                 .queryName = name,
                 .answer = answer,
-                .additional = {}});
-    return 0;
-  }
+                .additional = additional});
+  };
 
   if (nameEquals({.name = name,
-                  .expected = service.data(),
-                  .expectedLength = service.size()})) {
+                  .expected = kDnsSdMeta.data(),
+                  .expectedLength = kDnsSdMeta.size()})) {
     if (rtype != MDNS_RECORDTYPE_PTR && rtype != MDNS_RECORDTYPE_ANY)
       return 0;
-    const std::vector<mdns_record_t> additional = buildAdditionalRecords();
-    sendAnswer({.sock = sock,
-                .from = from,
-                .addrlen = addrlen,
-                .queryId = queryId,
-                .rtype = rtype,
-                .rclass = rclass,
-                .queryName = name,
-                .answer = recordPtr,
-                .additional = additional});
+    for (const std::string& serviceType : serviceTypes) {
+      mdns_record_t answer = advertised.front().ptr;
+      answer.name = name;
+      answer.data.ptr.name = mdns_string_t{serviceType.data(),
+                                           serviceType.size()};
+      answerWith(answer, {});
+    }
     return 0;
   }
 
-  if (nameEquals({.name = name,
-                  .expected = serviceInstance.data(),
-                  .expectedLength = serviceInstance.size()})) {
-    if (rtype != MDNS_RECORDTYPE_SRV && rtype != MDNS_RECORDTYPE_ANY)
+  for (const AdvertisedInstance& instance : advertised) {
+    if (nameEqualsString(name, instance.serviceType)) {
+      if (rtype != MDNS_RECORDTYPE_PTR && rtype != MDNS_RECORDTYPE_ANY)
+        return 0;
+      answerWith(instance.ptr, serviceRecords(instance));
       return 0;
-    std::vector<mdns_record_t> additional;
-    additional.reserve(txtRecords.size() + 2);
-    if (hasIpv4)
-      additional.push_back(recordA);
-    if (hasIpv6)
-      additional.push_back(recordAaaa);
-    for (const auto& txt : txtRecords)
-      additional.push_back(txt);
-    sendAnswer({.sock = sock,
-                .from = from,
-                .addrlen = addrlen,
-                .queryId = queryId,
-                .rtype = rtype,
-                .rclass = rclass,
-                .queryName = name,
-                .answer = recordSrv,
-                .additional = additional});
-    return 0;
+    }
   }
 
-  if (nameEquals({.name = name,
-                  .expected = hostnameQualified.data(),
-                  .expectedLength = hostnameQualified.size()})) {
+  for (const AdvertisedInstance& instance : advertised) {
+    if (nameEqualsString(name, instance.instanceName)) {
+      if (rtype != MDNS_RECORDTYPE_SRV && rtype != MDNS_RECORDTYPE_ANY)
+        return 0;
+      answerWith(instance.srv, hostRecords(instance));
+      return 0;
+    }
+  }
+
+  if (nameEqualsString(name, hostnameQualified)) {
     const bool answerA =
         (rtype == MDNS_RECORDTYPE_A || rtype == MDNS_RECORDTYPE_ANY) && hasIpv4;
     const bool answerAaaa =
@@ -433,41 +500,12 @@ int MdnsService::Impl::handleQuestion(const HandleQuestionInput& input) const
     if (!answerA && !answerAaaa)
       return 0;
 
-    if (answerA) {
-      std::vector<mdns_record_t> additional;
-      additional.reserve(txtRecords.size() + 1);
-      if (answerAaaa)
-        additional.push_back(recordAaaa);
-      for (const auto& txt : txtRecords)
-        additional.push_back(txt);
-      sendAnswer({.sock = sock,
-                  .from = from,
-                  .addrlen = addrlen,
-                  .queryId = queryId,
-                  .rtype = rtype,
-                  .rclass = rclass,
-                  .queryName = name,
-                  .answer = recordA,
-                  .additional = additional});
-    }
-
-    if (answerAaaa) {
-      std::vector<mdns_record_t> additional;
-      additional.reserve(txtRecords.size() + 1);
-      if (answerA)
-        additional.push_back(recordA);
-      for (const auto& txt : txtRecords)
-        additional.push_back(txt);
-      sendAnswer({.sock = sock,
-                  .from = from,
-                  .addrlen = addrlen,
-                  .queryId = queryId,
-                  .rtype = rtype,
-                  .rclass = rclass,
-                  .queryName = name,
-                  .answer = recordAaaa,
-                  .additional = additional});
-    }
+    if (answerA)
+      answerWith(recordA, answerAaaa ? std::vector<mdns_record_t>{recordAaaa}
+                                     : std::vector<mdns_record_t>{});
+    if (answerAaaa)
+      answerWith(recordAaaa, answerA ? std::vector<mdns_record_t>{recordA}
+                                     : std::vector<mdns_record_t>{});
     return 0;
   }
 
@@ -529,23 +567,34 @@ int MdnsService::Impl::callbackBridge(int sock, const struct sockaddr* from,
 
 void MdnsService::Impl::announce()
 {
-  const std::vector<mdns_record_t> additional = buildAdditionalRecords();
-  for (const auto& sock : sockets)
-    mdns_announce_multicast(sock.get(), buffer.get(), bufferCapacity, recordPtr, 0,
-                            0, additional.data(), additional.size());
+  for (const AdvertisedInstance& instance : advertised) {
+    const std::vector<mdns_record_t> additional = serviceRecords(instance);
+    for (const auto& sock : sockets)
+      mdns_announce_multicast(sock.get(), buffer.get(), bufferCapacity,
+                              instance.ptr, 0, 0, additional.data(),
+                              additional.size());
+  }
 }
 
 void MdnsService::Impl::goodbye()
 {
-  const std::vector<mdns_record_t> additional = buildAdditionalRecords();
-  for (const auto& sock : sockets)
-    mdns_goodbye_multicast(sock.get(), buffer.get(), bufferCapacity, recordPtr, 0, 0,
-                           additional.data(), additional.size());
+  for (const AdvertisedInstance& instance : advertised) {
+    const std::vector<mdns_record_t> additional = serviceRecords(instance);
+    for (const auto& sock : sockets)
+      mdns_goodbye_multicast(sock.get(), buffer.get(), bufferCapacity,
+                             instance.ptr, 0, 0, additional.data(),
+                             additional.size());
+  }
 }
 
-MdnsService::MdnsService() : impl_(std::make_unique<Impl>())
+MdnsService::MdnsService(std::vector<MdnsInstance> instances)
+    : impl_(std::make_unique<Impl>())
 {
-  impl_->config = loadMdnsConfig();
+  impl_->requested = std::move(instances);
+  impl_->config.enabled = ConfigService::getBool("mdns.enabled");
+  const std::string name = ConfigService::getString("mdns.name");
+  if (!name.empty())
+    impl_->config.name = name;
 }
 
 MdnsService::~MdnsService()
@@ -564,6 +613,11 @@ bool MdnsService::initialize()
     LOG_WARN << "mDNS: no usable network interface found";
 
   impl_->buildRecords();
+
+  if (impl_->advertised.empty()) {
+    LOG_INFO << "mDNS: nothing to advertise";
+    return true;
+  }
 
   struct sockaddr_in v4{};
   v4.sin_family = AF_INET;
@@ -607,8 +661,10 @@ bool MdnsService::initialize()
   impl_->running.store(true, std::memory_order_relaxed);
   impl_->thread = std::thread(&Impl::runLoop, impl_.get());
 
-  LOG_INFO << "mDNS advertising \"" << impl_->hostname << "\" as "
-           << impl_->serviceInstance << " port " << impl_->config.port;
+  for (const auto& instance : impl_->advertised) {
+    LOG_INFO << "mDNS advertising \"" << impl_->hostname << "\" as "
+             << instance.instanceName << " port " << instance.port;
+  }
   return true;
 }
 
@@ -640,7 +696,26 @@ Json::Value MdnsService::health() const
   Json::Value value(Json::objectValue);
   value["advertising"] = isAdvertising();
   value["name"] = impl_->config.name;
-  value["serviceType"] = impl_->config.serviceType;
-  value["port"] = impl_->config.port;
+
+  const std::string hostname = hostnameFor(impl_->config.name);
+  Json::Value instances(Json::arrayValue);
+  for (const MdnsInstance& instance : impl_->requested) {
+    Json::Value entry(Json::objectValue);
+    entry["serviceType"] = instance.serviceType;
+    entry["path"] = instance.path;
+    entry["port"] = instance.port;
+    const std::string composed =
+        instanceNameFor({.hostname = hostname,
+                         .serviceType = instance.serviceType,
+                         .path = instance.path});
+    if (!composed.empty())
+      entry["instance"] = composed;
+    Json::Value txt(Json::objectValue);
+    for (const auto& [key, txtValue] : instance.txt)
+      txt[key] = txtValue;
+    entry["txt"] = txt;
+    instances.append(entry);
+  }
+  value["instances"] = instances;
   return value;
 }

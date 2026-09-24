@@ -50,6 +50,10 @@ review blocker:
   `SYNC_LIMIT = 200`) as a C++ vocabulary under `sync/src/sync/`. The golden
   /sync fixtures live with the engine that replays them,
   `services/sync/tests/fixtures/sync/`.
+- `routes/` — the LAN discovery spellings (`_argus-route._tcp` and the TXT keys
+  `path`/`https`) as a C++ vocabulary under `routes/src/routes/`. Every
+  app-facing service announces itself through them and the app discovers by
+  them, so both sides read these constants instead of a literal.
 - `buf.yaml` (lint STANDARD, breaking FILE) and `buf.gen.yaml` (C++ codegen).
 
 ## Conventions

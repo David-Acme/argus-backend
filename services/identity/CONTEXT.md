@@ -49,9 +49,13 @@ service's own config carries the same key and value. The number is the
 installation's public port, not this service's — the app pairs against it,
 stores it as the paired instance's port and puts it in every later invitation
 QR, and it rejects an answer whose port is not positive or does not match the
-port mDNS advertised. Identity runs no advertiser; the key is here because the
-answer must equal what the gateway advertises, and Phase 3d's discovery step is
-where that changes.
+port mDNS advertised. Phase 3d step 1b made identity an advertiser in its own
+right: it announces one `_argus-route._tcp` instance per logical route it
+registers (`invitation`, `pairing`, `portrait-preview`, `user`) at its own
+listener port. The pairing answer still names the installation's public port
+rather than any of those, because the app compares it against the instance it
+paired through — the gateway's legacy `_argus._tcp` record until Phase 3d step
+1c moves the pairing surface onto this service's listener.
 
 ## What moved and what didn't
 
@@ -73,8 +77,10 @@ Not moved, on purpose:
   gateway-owned; they dissolve into their owner services later. `socket`,
   `room` and `audit` did, into `services/sync` in Phase 3a-1c; `sqlite` and
   `cert` are the `lib` packages this service still links. `mdns` is not one of
-  them: this service runs no advertiser, and the only mdns surface it has is
-  the `mdns.port` key its pairing and invitation answers publish (below).
+  them either: it is the `lib/mdns` package this service reaches through
+  `lib/http`, which announces one `_argus-route._tcp` instance per logical
+  route at this service's listener, beside the `mdns.port` key its pairing and
+  invitation answers publish (below).
 - `src/auth/identity-change-sink.hxx` and the other sink contracts — consumed
   through the module links' include roots. The contracts now live in
   `argus::contracts::sync` and the identity sink is this service's own

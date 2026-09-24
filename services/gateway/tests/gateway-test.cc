@@ -229,7 +229,7 @@ TEST_CASE("listener config resolves the cutover TLS listener by default")
   }
 
   ConfigService::load(path);
-  const ListenerConfig config = ListenerConfig::resolveTls(7024);
+  const ListenerConfig config = ListenerConfig::resolveServiceTls("gateway", 7024);
   const Json::Value listeners = listenerJson(config);
 
   CHECK(config.host == "0.0.0.0");
@@ -263,7 +263,7 @@ TEST_CASE("plain listener option serves local tests without TLS")
   }
 
   ConfigService::load(path);
-  const ListenerConfig config = ListenerConfig::resolveTls(7024);
+  const ListenerConfig config = ListenerConfig::resolveServiceTls("gateway", 7024);
   const Json::Value listeners = listenerJson(config);
 
   CHECK_FALSE(config.tls);
@@ -665,7 +665,7 @@ TEST_CASE("remote listener appends the tunnel listener only when configured")
   }
 
   ConfigService::load(path);
-  const ListenerConfig base = ListenerConfig::resolveTls(7024);
+  const ListenerConfig base = ListenerConfig::resolveServiceTls("gateway", 7024);
   const RemoteConfig disabled;
 
   Json::Value listeners = listenerJson(base);
@@ -696,7 +696,7 @@ TEST_CASE("remote listener appends the tunnel listener only when configured")
   }
 
   ConfigService::load(plain);
-  const ListenerConfig plainBase = ListenerConfig::resolveTls(7024);
+  const ListenerConfig plainBase = ListenerConfig::resolveServiceTls("gateway", 7024);
   Json::Value plainListeners = listenerJson(plainBase);
   appendRemoteListener({.listeners = plainListeners, .remote = enabled, .base = plainBase});
   REQUIRE(plainListeners.size() == 2);

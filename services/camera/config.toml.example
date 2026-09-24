@@ -1,6 +1,5 @@
 [server]
 host = "127.0.0.1"
-port = 7026
 grpc_port = 7036
 
 [drogon.app]
@@ -28,8 +27,16 @@ handle_sig_term = true
 relaunch_on_error = false
 
 [camera]
+host = "0.0.0.0"
+port = 7026
+plain = false
+min_protocol = "TLSv1.2"
 db = "database/camera.db"
 schema = "services/camera/database/schema.sql"
+
+[cert]
+server_cert = "certs/server.pem"
+server_key = "certs/server.key"
 
 [tapo]
 control_port = 443
@@ -53,7 +60,6 @@ hub_grace_ms = 2000
 hub_max_subs_per_client = 8
 max_viewers_per_camera = 4
 max_total_viewers = 8
-relay_chunk_bytes = 32768
 
 [tts]
 remote_url = "127.0.0.1:7029"
@@ -121,3 +127,7 @@ scene_diff = 0.35
 remote_url = "127.0.0.1:7030"
 remote_timeout_ms = 30000
 language = "es"
+
+[mdns]
+enabled = true
+name = "Argus"

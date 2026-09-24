@@ -280,8 +280,8 @@ main() {
   need_cmd openssl
   ensure_data_tree
   write_env
-  ensure_instance_certs "$ROOT" "$CERTS_DIR" "$DEPLOY_DIR/config.gateway.toml"
   ensure_deploy_configs "$DEPLOY_DIR"
+  ensure_instance_certs "$ROOT" "$CERTS_DIR" "$DEPLOY_DIR/config.gateway.toml"
   if [ "$WITH_S3" -eq 1 ]; then
     ensure_object_store
   fi

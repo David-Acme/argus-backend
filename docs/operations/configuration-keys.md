@@ -11,10 +11,12 @@ argus-deploy argus-camera configuration. Copy to config.camera.toml (gitignored)
 
 | Key | Notes |
 |---|---|
+| `camera.host` / `camera.port` / `camera.plain` / `camera.min_protocol` | The app-facing listener (`0.0.0.0:7026`), TLS unless `plain = true`; `[cert] server_cert` / `server_key` are the instance certificate it serves, and the compose healthcheck asks it over `https`. |
+| `mdns.enabled` / `mdns.name` | The LAN announcement: one `_argus-route._tcp` instance per logical route this service registers (`path=camera`, `path=media`, `path=zone`), each carrying its own SRV port and an `https="true"` TXT key. |
 | `identity.target` | argus-identity's fleet-secret RPC listener (`argus-identity:7040`); the camera guard's face recognition and enrollment ride it. |
 | `identity.rpc_secret` | Must match argus-identity's [identity] rpc_secret, or every identity call fails. |
 | `grpc.caller_guard` | Capability credential for the guard -> camera edge (paired with guard's camera.actions_credential). |
-| `grpc.identify` | Camera guard recognition; enroll/capture stay off until you enable them. |
+| `identity.identify` | Camera guard recognition; enroll/capture stay off until you enable them. `auto_enroll`, `capture_clear_faces`, `min_face_box_px`, `identify_interval_ms`, `enroll_cooldown_ms`, `best_shot_ms` and `improve_margin` ride the same table. |
 | `operator.zones_from_db` | Enabled zones live in camera.db (the app editor); false uses the JSON below only. |
 | `actions.enabled` | Audible/device actions from argus-guard; off until you enable them. |
 | `health.enabled` | Occlusion/blur/moved detection from periodic image stats. |
@@ -36,6 +38,7 @@ argus-deploy gateway configuration. Copy to config.gateway.toml (gitignored) nex
 | Key | Notes |
 |---|---|
 | `identity.proxy_url` | The identity HTTP surface the gateway proxies its identity prefixes to (`https://127.0.0.1:7044`: loopback, because this container is host-networked). |
+| `mdns.enabled` / `mdns.name` | The announcement: the legacy `_argus._tcp` record on the public port, kept so the deployed app's first-match discovery keeps working until Phase 3d step 1c deletes the gateway, plus one `_argus-route._tcp` instance per gateway-native route. `mdns.service_type`, `mdns.port` and `[mdns.txt]` are no longer read. |
 | `sync.control_target` | The sync service's control plane (unary gRPC); empty disables the imperative leg, leaving role changes and disconnects undelivered. |
 | `sync.control_secret` | Required whenever the control target is set; same value in every service. |
 | `notifications.credential` | Dead since Phase 3d step 1: the camera notifier that presented it now lives in argus-notification, and the gateway reaches this domain only through `notifications.proxy_url`. provision-host.sh still mints argus-notification's `[grpc] caller_gateway` from this key; Phase 3d step 1c repoints that pair at config.sync.toml and removes this key. |
@@ -51,6 +54,7 @@ argus-deploy argus-auth configuration. Copy to config.auth.toml (gitignored) nex
 | `auth.context_cache_seconds` | How long a resolved user context may be reused before identity is asked again (0 disables the cache). A change on the identity feed drops the entry immediately, so this is a load valve, not the invalidation mechanism. |
 | `identity.target` | The identity call behind a session verdict; `argus-identity:7040`, the fleet-secret RPC leg. |
 | `identity.rpc_secret` | Must match argus-identity's [identity] rpc_secret, or every validation of a live session fails. |
+| `mdns.enabled` / `mdns.name` | The LAN announcement: one `_argus-route._tcp` instance per logical route this service registers, each carrying its own SRV port and an `https="true"` TXT key. |
 
 ## `argus-deploy/config.identity.toml.example`
 
@@ -67,7 +71,8 @@ argus-deploy argus-identity configuration. Copy to config.identity.toml (gitigno
 | `auth.target` | argus-auth's fleet-secret RPC listener: the session-verdict leg the shared `JwtFilter` asks before it trusts a token. |
 | `sync.control_target` | The sync service's control plane; a role update rides `replaceRoleRooms` before the `AuthContextChanged` emit. |
 | `jwt.secret` / `jwt.refresh_secret` | The same instance secrets as every other service. The shared `JwtService` constructor reads both and refuses to start on a missing, short or default-value one, and this service's routes verify the access token with `jwt.secret`; `argus-auth` remains the only minter and rotator. |
-| `mdns.port` | The installation's public port (`7024`) that the pairing and invitation answers publish. The mobile app requires it to equal the port its discovery reports, so it must match the port the gateway advertises. |
+| `mdns.enabled` / `mdns.name` | The LAN announcement: one `_argus-route._tcp` instance per logical route, so the app discovers this service's port directly. |
+| `mdns.port` | The installation's public port (`7024`) that the pairing and invitation answers publish — the port the app dials next and writes into every later invitation QR. It must equal the port discovery reported for the instance it paired against, which is the gateway's legacy `_argus._tcp` record until Phase 3d step 1c moves the pairing surface onto this service's own listener. |
 
 Optional keys the template does not set:
 
@@ -88,6 +93,8 @@ argus-guard deploy configuration. Copy to config.guard.toml (gitignored).
 
 | Key | Notes |
 |---|---|
+| `guard.host` / `guard.port` / `guard.plain` / `guard.min_protocol` | The app-facing listener (`0.0.0.0:7039`), TLS unless `plain = true`; `[cert] server_cert` / `server_key` are the instance certificate it serves. This service has no gRPC listener, so there is no `[server]` block. |
+| `mdns.enabled` / `mdns.name` | The LAN announcement: one `_argus-route._tcp` instance per logical route this service registers, each carrying its own SRV port and an `https="true"` TXT key. |
 | `guard.decision_mode` | Belief-gate mode: "shadow" journals the verdict without enforcing it, "enforce" lets the belief gate suppress effects. Unknown values fall back to shadow. decision_mode governs the belief gate only; per-encounter notification threading applies in both modes. |
 | `guard.tamper_sustained_s` | Sustained-tamper escalation window in seconds; a tamper-ish camera health state (moved, covered, blurred) held this long raises its own high-danger notification through the durable intent path. |
 | `storage.mode` | Private object storage (RustFS) for incident evidence records. provision-host.sh fills the endpoint and credentials. |
@@ -118,6 +125,8 @@ argus-deploy argus-notification configuration. Copy to config.notification.toml 
 
 | Key | Notes |
 |---|---|
+| `notification.host` / `notification.port` / `notification.plain` / `notification.min_protocol` | The app-facing listener (`0.0.0.0:7028`), TLS unless `plain = true`. It is the singular table: `[notifications]` below is the camera object policy and has no listener keys. `[cert] server_cert` / `server_key` are the certificate served. |
+| `mdns.enabled` / `mdns.name` | The LAN announcement: one `_argus-route._tcp` instance per logical route this service registers, each carrying its own SRV port and an `https="true"` TXT key. |
 | `grpc.caller_guard` | Capability credential for the guard -> notification edge (`CreateNotifications`), paired with guard's `notifications.credential`. |
 | `grpc.caller_gateway` | Capability credential for `PullNotifications`; provision-host.sh mints it from the gateway's `notifications.credential`, and no `fill_deploy_pair` writes argus-sync's `notifications.credential`, so on a provisioned installation that side keeps the published placeholder and the pull is refused `UNAUTHENTICATED`. Phase 3d step 1c adds the sync pair. |
 | `notifications.budget_per_hour` and the `silent_*` / `guard_heartbeat_timeout_s` / `fallback_*` keys | The camera object policy (Phase 3d step 1), as documented for `services/notification/config.toml.example` below. |
@@ -130,6 +139,8 @@ argus-deploy argus-productivity configuration. Copy to config.productivity.toml 
 
 | Key | Notes |
 |---|---|
+| `productivity.host` / `productivity.port` / `productivity.plain` / `productivity.min_protocol` | The app-facing listener (`0.0.0.0:7027`), TLS unless `plain = true`; `[cert] server_cert` / `server_key` are the instance certificate it serves. |
+| `mdns.enabled` / `mdns.name` | The LAN announcement: one `_argus-route._tcp` instance per logical route this service registers, each carrying its own SRV port and an `https="true"` TXT key. |
 | `identity.target` | argus-identity's fleet-secret RPC listener; the sync socket reads the people rows the projections need. |
 | `identity.rpc_secret` | Must match argus-identity's [identity] rpc_secret, or every identity call fails. |
 
@@ -156,6 +167,7 @@ argus-deploy argus-sync configuration. Copy to config.sync.toml (gitignored) nex
 | `voice.target` | The voice service the /sync forwarder relays voice:* frames and PCM to. |
 | `identity.target` | argus-identity's fleet-secret RPC listener (`argus-identity:7040`): the user directory the socket resolves names through and the identity pull source beside it. |
 | `identity.rpc_secret` | Must match argus-identity's [identity] rpc_secret, or the directory and the identity pull both fail. |
+| `mdns.enabled` / `mdns.name` | The LAN announcement: one `_argus-route._tcp` instance per logical route this service registers, each carrying its own SRV port and an `https="true"` TXT key. |
 | `notifications.credential` | Caller capability credential for the sync -> notification pull edge; must match argus-notification's [grpc] caller_gateway. Unprovisioned: no `fill_deploy_pair` writes this key, so an installation keeps the published placeholder while the notification side is minted from the gateway's key, and the pull is refused `UNAUTHENTICATED`. Phase 3d step 1c adds the pair. |
 
 ## `argus-deploy/config.tts.toml.example`
@@ -221,7 +233,8 @@ argus-identity configuration. Copy to config.toml (gitignored) to run.
 | `pairing.paired` | The QR pairing state the frontend's onboarding reads; `ConfigService::setBool` persists it, so this file must stay writable. |
 | `nats.url` | The broker the change feed publishes to; empty disables the publish. |
 | `jwt.secret` / `jwt.refresh_secret` | The shared `JwtService` constructor reads both and refuses to start on a missing, short or default-value one; the routes verify the access token with `jwt.secret`, and `argus-auth` stays the only minter. |
-| `mdns.port` | The installation's public port (`7024`) that the pairing and invitation answers publish; it must match the port the gateway advertises, because the app compares the two. |
+| `mdns.enabled` / `mdns.name` | The LAN announcement: one `_argus-route._tcp` instance per logical route, so the app discovers this service's port directly. |
+| `mdns.port` | The installation's public port (`7024`) that the pairing and invitation answers publish — the port the app dials next and writes into every later invitation QR. It must equal the port discovery reported for the instance it paired against, which is the gateway's legacy `_argus._tcp` record until Phase 3d step 1c moves the pairing surface onto this service's own listener. |
 
 Optional keys the template does not set:
 
@@ -237,6 +250,7 @@ Optional keys the template does not set:
 argus-camera configuration. Copy to config.toml (gitignored) to run.
 
 - **`[drogon.app]`** — The listener and db_clients are built by the service itself.
+- **`[camera]`** — The app-facing TLS listener (`host`, `port`, `plain`, `min_protocol`); `[cert]` carries the instance certificate it serves and `[mdns]` (`enabled`, `name`) the per-route announcement.
 - **`[tts]`** — With remote_url empty every /camera/{id}/talk call answers 502 CAMERA_UNREACHABLE.
 - **`[nats]`** — Empty disables the change funnel (events drop with a warning).
 - **`[identity]`** (optional, not in the template) — argus-identity's fleet-secret RPC listener: the guard matcher identifies and enrolls a person through it, and camera.db is the only database this service opens.
@@ -274,6 +288,7 @@ argus-gateway configuration. Copy to config.toml (gitignored) to run. The gatewa
 | Key | Notes |
 |---|---|
 | `identity.proxy_url` | The identity HTTP surface the gateway proxies its identity prefixes to. |
+| `mdns.enabled` / `mdns.name` | The announcement: the legacy `_argus._tcp` record on the public port plus one `_argus-route._tcp` instance per gateway-native route, so the app finds the gateway the way it always has while it is still there. |
 | `sync.control_target` | The sync service's control plane (unary gRPC); empty disables the imperative leg, leaving role changes and disconnects undelivered. |
 | `sync.control_secret` | Fleet secret every control call carries; same value in every service. |
 
@@ -287,6 +302,7 @@ argus-guard configuration. Copy to config.toml (gitignored) to run.
 
 | Key | Notes |
 |---|---|
+| `guard.host` / `guard.port` / `guard.plain` / `guard.min_protocol` | The app-facing TLS listener (`0.0.0.0:7039`); `[cert]` carries the certificate served and `[mdns]` (`enabled`, `name`) the per-route announcement. This service has no gRPC listener. |
 | `guard.max_dialogue_turns` | Bounded dialogue turns and poison-message handling. |
 | `guard.decision_mode` | Belief-gate mode: "shadow" journals the verdict without enforcing it, "enforce" lets the belief gate suppress effects. Unknown values fall back to shadow. |
 | `guard.health_stale_s` | Freshness window for camera health readings used by the belief gate. |
@@ -317,6 +333,7 @@ argus-notification configuration. Copy to config.toml (gitignored) to run.
 
 | Key | Notes |
 |---|---|
+| `notification.host` / `notification.port` / `notification.plain` / `notification.min_protocol` | The app-facing TLS listener (`0.0.0.0:7028`); `[cert]` carries the certificate served and `[mdns]` (`enabled`, `name`) the per-route announcement. The singular table is the listener: `[notifications]` below it is the policy. |
 | `notifications.ack_window_s` | Display-confirmation window in seconds; sent deliveries older than this without an ack surface as unacknowledged-old in the delivery summary. |
 | `notifications.selftest_interval_s` | Synthetic delivery-probe period in seconds; <= 0 disables the probe. Each probe creates one user-0 row, publishes it and records the settle outcome. |
 | `notifications.budget_per_hour` | Camera notification budget per camera per rolling hour; the digest reports what the budget held back. |
@@ -339,14 +356,17 @@ argus-auth configuration. Copy to config.toml (gitignored) to run.
 | Key | Notes |
 |---|---|
 | `auth.db` | The session database this service alone opens. |
-| `auth.host` | The HTTP listener's bind address; the `/auth` surface serves on it. |
+| `auth.host` | The HTTP listener's bind address; the `/auth` surface serves on it. `auth.port`, `auth.plain` and `auth.min_protocol` complete the listener and `[cert]` carries the instance certificate it serves — TLS unless `plain = true`. |
 | `auth.rpc_secret` | Fleet secret for the session-verdict RPC. Required whenever its listener is reachable beyond loopback: an unauthenticated caller could read any session's verdict. Empty means loopback-only and ungated. |
 | `auth.context_cache_seconds` | How long a resolved user context may be reused before identity is asked again (0 disables the cache); a change on the identity feed drops the entry immediately. |
+| `mdns.enabled` / `mdns.name` | The LAN announcement: one `_argus-route._tcp` instance per logical route this service registers, each carrying its own SRV port and an `https="true"` TXT key. |
 | `identity.target` | The identity RPC behind a session verdict. An empty value falls back to `identity.rpc_host` / `identity.rpc_port`, which default to `127.0.0.1:7040`, so the leg is always dialled. |
 
 ## `services/productivity/config.toml.example`
 
 argus-productivity configuration. Copy to config.toml (gitignored) to run.
+
+- **`[productivity]`** — The app-facing TLS listener (`host`, `port`, `plain`, `min_protocol`); `[cert]` carries the instance certificate it serves and `[mdns]` (`enabled`, `name`) the per-route announcement.
 
 ## `services/stt/config.toml.example`
 
@@ -365,6 +385,7 @@ argus-sync configuration. Copy to config.toml (gitignored) to run.
 | `sync.control_secret` | Fleet secret for the control RPC. Required whenever its listener is reachable beyond loopback: an unauthenticated caller injects frames into any user's room. |
 | `voice.target` | The voice service the /sync forwarder relays voice:* frames and PCM to. |
 | `notifications.credential` | Caller capability credential for the sync -> notification pull edge. |
+| `mdns.enabled` / `mdns.name` | The LAN announcement: one `_argus-route._tcp` instance per logical route this service registers, each carrying its own SRV port and an `https="true"` TXT key. |
 
 ## `services/tts/config.toml.example`
 

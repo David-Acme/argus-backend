@@ -6,6 +6,7 @@
 #include <http/error-handler.hxx>
 #include <http/health-controller.hxx>
 #include <http/listener-config.hxx>
+#include <http/route-announcements.hxx>
 #include <proxy/proxy-config.hxx>
 #include <proxy/reverse-proxy.hxx>
 #include <server/remote-config.hxx>
@@ -22,9 +23,22 @@
 
 #include <stdexcept>
 #include <string>
+#include <string_view>
+#include <utility>
+#include <vector>
 
 namespace
 {
+
+constexpr std::string_view kLegacyAppDiscoveryType = "_argus._tcp";
+
+MdnsInstance legacyAppDiscovery(uint16_t port)
+{
+  return MdnsInstance{.serviceType = std::string(kLegacyAppDiscoveryType),
+                      .path = {},
+                      .port = port,
+                      .txt = {{"path", "/"}, {"https", "true"}, {"wss", "true"}}};
+}
 
 template <typename T>
 void requireFilter()
@@ -114,6 +128,7 @@ Json::Value drogonConfig(const DrogonConfigInput& input)
         cameraRoute["prefixes"] = prefixes;
         cameraRoute["max_segments"] = 8;
         cameraRoute["backend"] = proxy.cameraProxyUrl;
+        cameraRoute["validate_cert"] = false;
         routes.append(cameraRoute);
       }
       if (!proxy.productivityProxyUrl.empty()) {
@@ -127,6 +142,7 @@ Json::Value drogonConfig(const DrogonConfigInput& input)
         productivityRoute["prefixes"] = prefixes;
         productivityRoute["max_segments"] = 8;
         productivityRoute["backend"] = proxy.productivityProxyUrl;
+        productivityRoute["validate_cert"] = false;
         routes.append(productivityRoute);
       }
       if (!proxy.guardProxyUrl.empty()) {
@@ -136,6 +152,7 @@ Json::Value drogonConfig(const DrogonConfigInput& input)
         guardRoute["prefixes"] = prefixes;
         guardRoute["max_segments"] = 5;
         guardRoute["backend"] = proxy.guardProxyUrl;
+        guardRoute["validate_cert"] = false;
         routes.append(guardRoute);
       }
       if (!proxy.notificationProxyUrl.empty()) {
@@ -146,6 +163,7 @@ Json::Value drogonConfig(const DrogonConfigInput& input)
         notificationRoute["prefixes"] = prefixes;
         notificationRoute["max_segments"] = 2;
         notificationRoute["backend"] = proxy.notificationProxyUrl;
+        notificationRoute["validate_cert"] = false;
         routes.append(notificationRoute);
       }
       proxyConfig["routes"] = routes;
@@ -240,7 +258,7 @@ int main()
     LOG_INFO << "Camera stream socket disabled";
   }
 
-  const ListenerConfig listener = ListenerConfig::resolveTls(7024);
+  const ListenerConfig listener = ListenerConfig::resolveServiceTls("gateway", 7024);
   const RemoteConfig remote = RemoteConfig::resolve();
   const ProxyConfig proxy = ProxyConfig::resolve();
   requireDistinctTunnelPort(listener, remote);
@@ -290,13 +308,16 @@ int main()
       HealthStatus{.serviceName = "argus-gateway", .extras = {}}));
 
   std::unique_ptr<MdnsService> mdnsService;
-  drogon::app().registerBeginningAdvice([&mdnsService]() {
+  drogon::app().registerBeginningAdvice([&mdnsService, &listener]() {
     if (!CertService::init())
       LOG_WARN << "PKI not loaded — pairing disabled";
 
-    mdnsService = std::make_unique<MdnsService>();
-    if (!mdnsService->initialize())
-      LOG_WARN << "mDNS advertising failed";
+    std::vector<MdnsInstance> announcements =
+        routeAnnouncements({.port = listener.port, .tls = listener.tls});
+    announcements.insert(announcements.begin(),
+                         legacyAppDiscovery(listener.port));
+    mdnsService = std::make_unique<MdnsService>(std::move(announcements));
+    mdnsService->initialize();
   });
 
   drogon::app()

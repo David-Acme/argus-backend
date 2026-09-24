@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <json/value.h>
 #include <string>
+#include <string_view>
 
 struct ListenerConfig
 {
@@ -14,9 +15,10 @@ struct ListenerConfig
   std::string minTlsProtocol;
 
   static ListenerConfig resolve(uint16_t defaultPort,
-                                const char* portKey = "server.port");
+                                std::string_view portKey = "server.port");
 
-  static ListenerConfig resolveTls(uint16_t defaultPort);
+  static ListenerConfig resolveServiceTls(std::string_view section,
+                                          uint16_t defaultPort);
 };
 
 struct GrpcListenerConfig
@@ -24,8 +26,8 @@ struct GrpcListenerConfig
   std::string host;
   uint16_t port{0};
 
-  static GrpcListenerConfig resolve(uint16_t defaultPort,
-                                    const char* portKey = "server.grpc_port");
+  static GrpcListenerConfig resolve(
+      uint16_t defaultPort, std::string_view portKey = "server.grpc_port");
 };
 
 Json::Value listenerJson(const ListenerConfig& config);

@@ -30,6 +30,11 @@ single source of truth.
   0-23, `SYNC_LIMIT = 200`) extracted verbatim from the backend, as a C++
   vocabulary under `sync/src/sync/`. The golden /sync fixtures live with the
   engine that replays them, `services/sync/tests/fixtures/sync/`.
+- `routes/` — the LAN discovery contract: the service type `_argus-route._tcp`
+  and the TXT keys `path` and `https`, one file under `routes/src/routes/`. A
+  service announces one instance per logical route through `lib/http`'s
+  `routeAnnouncements()`; the app resolves the type and reads the SRV port, so
+  the spellings are the one thing both sides must agree on.
 
 ## Invariants the migration depends on
 

@@ -471,10 +471,10 @@ table. The app keeps working without any update.
   fallback table exists at all, why its drops are counted and logged but never
   written to guard's `guard_decision_journal`, and why the gate fails open —
   moved to `services/notification/CONTEXT.md`.
-- **`/guard` proxy**: `[guard] proxy_url` (default `http://127.0.0.1:7039`)
-  routes `/guard` (up to 5 segments) to argus-guard's owner-only
-  administrative API (mode, incidents, decisions, expected guests, person
-  promotion).
+- **`/guard` proxy**: `[guard] proxy_url` (default `https://127.0.0.1:7039`,
+  `validate_cert = false`) routes `/guard` (up to 5 segments) to argus-guard's
+  owner-only administrative API (mode, incidents, decisions, expected guests,
+  person promotion).
   Rule 9 holds: the gateway never calls camera action RPCs itself; audible
   intervention belongs to guard.
 - **Durable delivery consumer (moved to `argus-sync` in sub-step 3a-1c)**:

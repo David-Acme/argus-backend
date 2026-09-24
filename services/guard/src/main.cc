@@ -11,7 +11,10 @@
 #include <auth/jwt-filter.hxx>
 #include <auth/role-filter.hxx>
 #include <auth/valid-json-filter.hxx>
+#include <http/listener-config.hxx>
+#include <http/route-announcements.hxx>
 #include <identity/identity-client.hxx>
+#include <mdns/mdns-service.hxx>
 #include <notification/notification-client.hxx>
 #include <config/config-service.hxx>
 #include <llm/details/llm-remote.hxx>
@@ -33,8 +36,7 @@ namespace
 struct GuardDrogonConfig
 {
   std::string dbPath;
-  std::string host;
-  int port{0};
+  ListenerConfig listener;
 };
 
 Json::Value drogonConfig(const GuardDrogonConfig& input)
@@ -54,13 +56,7 @@ Json::Value drogonConfig(const GuardDrogonConfig& input)
   clients.append(client);
   config["db_clients"] = clients;
 
-  Json::Value listener(Json::objectValue);
-  listener["address"] = input.host;
-  listener["port"] = input.port;
-  listener["https"] = false;
-  Json::Value listeners(Json::arrayValue);
-  listeners.append(listener);
-  config["listeners"] = listeners;
+  config["listeners"] = listenerJson(input.listener);
   return config;
 }
 
@@ -129,8 +125,7 @@ int main()
   const std::string dbPath = configOr("database.db", "database/guard.db");
   const std::string schemaPath =
       configOr("database.schema", "services/guard/database/schema.sql");
-  const std::string host = configOr("server.host", "127.0.0.1");
-  const int port = configIntOr("server.port", 7039);
+  const ListenerConfig listener = ListenerConfig::resolveServiceTls("guard", 7039);
 
   const std::string notificationsTarget =
       ConfigService::getString("notifications.grpc_target");
@@ -320,7 +315,7 @@ int main()
       std::make_shared<GuardController>(identity.get()));
 
   drogon::app().loadConfigJson(
-      drogonConfig({.dbPath = dbPath, .host = host, .port = port}));
+      drogonConfig({.dbPath = dbPath, .listener = listener}));
 
   drogon::app().registerBeginningAdvice([&schemaPath]() {
     if (!guard_schema::migrate(schemaPath)) {
@@ -334,8 +329,9 @@ int main()
     DbService::applyPragmas();
   });
 
-  LOG_INFO << "Listening on " << host << ":" << port << " (plain); guard database "
-           << dbPath;
+  LOG_INFO << "Listening on " << listener.host << ":" << listener.port
+           << (listener.tls ? " (TLS" : " (plain") << ", cert "
+           << listener.certPath << "); guard database " << dbPath;
 
   drogon::app().registerBeginningAdvice([&guardService]() {
     guardService.start();
@@ -343,6 +339,13 @@ int main()
 
   shutdown_signal::onQuit([dbPath] { DbService::freezeClient(dbPath); });
   shutdown_signal::onStop(shutdown_signal::drainOf(guardService, "guard"));
+
+  std::unique_ptr<MdnsService> mdnsService;
+  drogon::app().registerBeginningAdvice([&mdnsService, &listener]() {
+    mdnsService = std::make_unique<MdnsService>(
+        routeAnnouncements({.port = listener.port, .tls = listener.tls}));
+    mdnsService->initialize();
+  });
 
   drogon::app().setThreadNum(0).run();
   return 0;

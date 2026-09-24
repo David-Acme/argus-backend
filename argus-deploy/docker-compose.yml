@@ -182,6 +182,12 @@ services:
         read_only: true
         bind:
           create_host_path: false
+      - type: bind
+        source: ${ARGUS_CERTS_DIR:-../certs}
+        target: /opt/argus/certs
+        read_only: true
+        bind:
+          create_host_path: false
       - ${ARGUS_DATA_DIR:-./data}/camera:/opt/argus/camera
       - camera-stream:/opt/argus/stream
       - type: bind
@@ -208,7 +214,7 @@ services:
       rustfs-init:
         condition: service_completed_successfully
     healthcheck:
-      test: ["CMD-SHELL", "curl -fs http://127.0.0.1:7026/health >/dev/null"]
+      test: ["CMD-SHELL", "curl -kfs https://127.0.0.1:7026/health >/dev/null"]
       interval: 10s
       timeout: 5s
       retries: 12
@@ -244,6 +250,12 @@ services:
         bind:
           create_host_path: false
       - type: bind
+        source: ${ARGUS_CERTS_DIR:-../certs}
+        target: /opt/argus/certs
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
         source: ../services/productivity/database/schema.sql
         target: /opt/argus/database/schema.sql
         read_only: true
@@ -254,7 +266,7 @@ services:
       nats:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "curl -fs http://127.0.0.1:7027/health >/dev/null"]
+      test: ["CMD-SHELL", "curl -kfs https://127.0.0.1:7027/health >/dev/null"]
       interval: 10s
       timeout: 5s
       retries: 12
@@ -290,6 +302,12 @@ services:
         bind:
           create_host_path: false
       - type: bind
+        source: ${ARGUS_CERTS_DIR:-../certs}
+        target: /opt/argus/certs
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
         source: ../services/notification/database/schema.sql
         target: /opt/argus/database/schema.sql
         read_only: true
@@ -300,7 +318,7 @@ services:
       nats:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "curl -fs http://127.0.0.1:7028/health >/dev/null"]
+      test: ["CMD-SHELL", "curl -kfs https://127.0.0.1:7028/health >/dev/null"]
       interval: 10s
       timeout: 5s
       retries: 12
@@ -391,6 +409,12 @@ services:
         bind:
           create_host_path: false
       - type: bind
+        source: ${ARGUS_CERTS_DIR:-../certs}
+        target: /opt/argus/certs
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
         source: ../services/guard/database/schema.sql
         target: /opt/argus/database/schema.sql
         read_only: true
@@ -405,7 +429,7 @@ services:
       rustfs-init:
         condition: service_completed_successfully
     healthcheck:
-      test: ["CMD-SHELL", "curl -fs http://127.0.0.1:7039/health >/dev/null"]
+      test: ["CMD-SHELL", "curl -kfs https://127.0.0.1:7039/health >/dev/null"]
       interval: 10s
       timeout: 5s
       retries: 12

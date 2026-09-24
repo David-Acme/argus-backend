@@ -18,8 +18,11 @@ preset, own `camera.db`.
   `services/identity/database/schema.sql`) and
   is applied at boot through `DbService::runScriptFile` — abort on failure.
   `argus.db` is never touched here.
-- **Wiring**: Drogon boot with the camera domain only — `[server]`
-  internal plain listener (loopback 7026 default), `DbService` default
+- **Wiring**: Drogon boot with the camera domain only — an app-facing TLS
+  listener (`[camera] host/port`, 7026, the instance certificate from
+  `[cert]`) announced per logical route over mDNS, a plain gRPC listener
+  (`[server] grpc_port`, 7036) for the sync pulls and the guard's action
+  surface, `DbService` default
   client on `[camera] db` (default `database/camera.db`), `[drogon.app]`
   mirror, CORS/exception/404/405 plumbing identical to the gateway so
   envelopes are byte-shape-identical. Caller validation rides the identity

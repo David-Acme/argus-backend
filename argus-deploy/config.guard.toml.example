@@ -1,6 +1,6 @@
-[server]
-host = "0.0.0.0"
-port = 7039
+[cert]
+server_cert = "certs/server.pem"
+server_key = "certs/server.key"
 
 [drogon.app]
 number_of_threads = 0
@@ -24,6 +24,10 @@ db = "guard/guard.db"
 schema = "database/schema.sql"
 
 [guard]
+host = "0.0.0.0"
+port = 7039
+plain = false
+min_protocol = "TLSv1.2"
 enabled = false
 profile = "home"
 default_mode = "home"
@@ -147,3 +151,7 @@ region = "us-east-1"
 bucket = ""
 access_key = ""
 secret_key = ""
+
+[mdns]
+enabled = true
+name = "Argus"

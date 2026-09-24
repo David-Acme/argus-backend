@@ -33,23 +33,7 @@ AuthDbConfig AuthConfig::resolveDb()
 
 ListenerConfig AuthConfig::resolveListener()
 {
-  ListenerConfig config;
-  config.host = ConfigService::getString("auth.host");
-  if (config.host.empty())
-    config.host = "0.0.0.0";
-  const int port = ConfigService::getInt("auth.port");
-  config.port = port > 0 ? static_cast<uint16_t>(port) : kDefaultAuthPort;
-  config.tls = !ConfigService::getBool("auth.plain");
-  config.certPath = ConfigService::getString("cert.server_cert");
-  if (config.certPath.empty())
-    config.certPath = "certs/server.pem";
-  config.keyPath = ConfigService::getString("cert.server_key");
-  if (config.keyPath.empty())
-    config.keyPath = "certs/server.key";
-  config.minTlsProtocol = ConfigService::getString("auth.min_protocol");
-  if (config.minTlsProtocol.empty())
-    config.minTlsProtocol = "TLSv1.2";
-  return config;
+  return ListenerConfig::resolveServiceTls("auth", kDefaultAuthPort);
 }
 
 AuthRpcConfig AuthConfig::resolveRpc()

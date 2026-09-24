@@ -47,15 +47,15 @@ rpc_secret = "CHANGE_ME_SAME_IN_EVERY_SERVICE"
 proxy_url = "https://127.0.0.1:7044"
 
 [camera]
-stream_url = "ws://127.0.0.1:7026/media"
-proxy_url = "http://127.0.0.1:7026"
+stream_url = "wss://127.0.0.1:7026/media"
+proxy_url = "https://127.0.0.1:7026"
 
 [sync]
 control_target = "127.0.0.1:7041"
 control_secret = "CHANGE_ME_SAME_IN_EVERY_SERVICE"
 
 [productivity]
-proxy_url = "http://127.0.0.1:7027"
+proxy_url = "https://127.0.0.1:7027"
 
 [cert]
 dir = "certs"
@@ -70,16 +70,9 @@ rotate_check_hours = 24
 [mdns]
 enabled = true
 name = "Argus"
-service_type = "_argus._tcp"
-port = 7024
-
-[mdns.txt]
-path = "/"
-https = "true"
-wss = "true"
 
 [notifications]
-proxy_url = "http://127.0.0.1:7028"
+proxy_url = "https://127.0.0.1:7028"
 credential = "CHANGE_ME_GATEWAY_NOTIFICATION"
 
 [remote]
@@ -88,4 +81,4 @@ enabled = false
 hostname = ""
 
 [guard]
-proxy_url = "http://127.0.0.1:7039"
+proxy_url = "https://127.0.0.1:7039"

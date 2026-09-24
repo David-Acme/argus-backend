@@ -1,7 +1,3 @@
-[server]
-host = "127.0.0.1"
-port = 7039
-
 [drogon.app]
 number_of_threads = 0
 enable_session = false
@@ -23,7 +19,15 @@ relaunch_on_error = false
 db = "database/guard.db"
 schema = "services/guard/database/schema.sql"
 
+[cert]
+server_cert = "certs/server.pem"
+server_key = "certs/server.key"
+
 [guard]
+host = "0.0.0.0"
+port = 7039
+plain = false
+min_protocol = "TLSv1.2"
 enabled = false
 profile = "home"
 default_mode = "home"
@@ -137,3 +141,7 @@ rpc_secret = ""
 
 [nats]
 url = "nats://127.0.0.1:4222"
+
+[mdns]
+enabled = true
+name = "Argus"

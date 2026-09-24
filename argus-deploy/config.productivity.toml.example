@@ -1,6 +1,6 @@
 [server]
 host = "0.0.0.0"
-port = 7027
+grpc_port = 7037
 
 [drogon.app]
 number_of_threads = 0
@@ -27,8 +27,16 @@ handle_sig_term = true
 relaunch_on_error = false
 
 [productivity]
+host = "0.0.0.0"
+port = 7027
+plain = false
+min_protocol = "TLSv1.2"
 db = "productivity/productivity.db"
 schema = "database/schema.sql"
+
+[cert]
+server_cert = "certs/server.pem"
+server_key = "certs/server.key"
 
 [nats]
 url = "nats://nats:4222"
@@ -53,3 +61,7 @@ rpc_secret = "CHANGE_ME_SAME_IN_EVERY_SERVICE"
 [identity]
 target = "argus-identity:7040"
 rpc_secret = "CHANGE_ME_SAME_IN_EVERY_SERVICE"
+
+[mdns]
+enabled = true
+name = "Argus"

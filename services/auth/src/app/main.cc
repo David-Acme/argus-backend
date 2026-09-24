@@ -19,8 +19,10 @@
 #include <http/error-handler.hxx>
 #include <http/health-controller.hxx>
 #include <http/listener-config.hxx>
+#include <http/route-announcements.hxx>
 #include <identity/identity-client.hxx>
 #include <json/value.h>
+#include <mdns/mdns-service.hxx>
 #include <memory>
 #include <nats/nats-bus.hxx>
 #include <nats/nats-subject.hxx>
@@ -258,6 +260,13 @@ int main()
 
   shutdown_signal::onQuit(
       [dbPath = authDb.dbPath] { DbService::freezeClient(dbPath); });
+
+  std::unique_ptr<MdnsService> mdnsService;
+  drogon::app().registerBeginningAdvice([&mdnsService, &listener]() {
+    mdnsService = std::make_unique<MdnsService>(
+        routeAnnouncements({.port = listener.port, .tls = listener.tls}));
+    mdnsService->initialize();
+  });
 
   drogon::app().setThreadNum(0).run();
 

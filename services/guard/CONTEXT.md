@@ -142,8 +142,11 @@ and every spoken line (configured or generated) passes the code-side gate in
 fingerprint to argus-identity).
 Every `/guard` route runs the full `DeviceFilter → ValidJsonFilter → JwtFilter
 → RoleFilter` chain; `/guard` is outside the sync table map, so the role checks
-admit Owner and deny every other role. The gateway proxies `/guard` to this
-listener (`[guard] proxy_url`). Expected guests accept `cameraId`, `personId`,
+admit Owner and deny every other role. The listener terminates TLS with the
+instance certificate and announces one `_argus-route._tcp` instance per logical
+route; the gateway proxies `/guard` to it (`[guard] proxy_url` over `https`,
+with `validate_cert = false` because the certificate's name is the instance's,
+not the loopback address). Expected guests accept `cameraId`, `personId`,
 `hostUserId`, `oneTime` and an explicit window; one-time windows are consumed
 atomically on first match.
 

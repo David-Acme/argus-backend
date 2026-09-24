@@ -16,6 +16,16 @@ if(NOT TARGET argus::lib::config)
                      ${CMAKE_BINARY_DIR}/config)
 endif()
 
+if(NOT TARGET argus::lib::mdns)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../mdns
+                     ${CMAKE_BINARY_DIR}/mdns)
+endif()
+
+if(NOT TARGET argus::contracts::routes)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../contracts/routes
+                     ${CMAKE_BINARY_DIR}/contracts-routes)
+endif()
+
 argus_lib(NAME http
     SOURCES
         src/http/api-response.cc
@@ -23,16 +33,22 @@ argus_lib(NAME http
         src/http/error-handler.cc
         src/http/health-controller.cc
         src/http/listener-config.cc
+        src/http/logical-routes.cc
+        src/http/route-announcements.cc
         src/http/api-response.hxx
         src/http/cors.hxx
         src/http/error-handler.hxx
         src/http/health-controller.hxx
         src/http/details/http-errors.hxx
         src/http/listener-config.hxx
+        src/http/logical-routes.hxx
+        src/http/route-announcements.hxx
     INCLUDES src
     DEPENDS
         argus::lib::errors
         argus::lib::config
+        argus::lib::mdns
+        argus::contracts::routes
         Drogon::Drogon)
 
 target_compile_options(argus_lib_http PRIVATE -Wall -Wextra)
@@ -52,3 +68,9 @@ target_link_libraries(api-response-test PRIVATE argus::lib::http doctest::doctes
 target_compile_options(api-response-test PRIVATE -Wall -Wextra)
 
 add_test(NAME api-response-test COMMAND api-response-test)
+
+add_executable(logical-routes-test tests/unit/logical-routes-test.cc)
+target_link_libraries(logical-routes-test PRIVATE argus::lib::http doctest::doctest)
+target_compile_options(logical-routes-test PRIVATE -Wall -Wextra)
+
+add_test(NAME logical-routes-test COMMAND logical-routes-test)

@@ -17,7 +17,8 @@ App ── wss /camera-stream ──> gateway ── wss://argus-camera:7026/syn
   `X-Forwarded-For` (the peer IP the gateway saw; client-supplied forwarded
   headers are never trusted).
 - The upstream leg is `[camera] stream_url` in `config.gateway.toml`
-  (`ws://argus-camera:7026/media` in the deploy stack). Empty disables the
+  (`wss://127.0.0.1:7026/media` in the deploy stack, where the gateway shares
+  the host network and argus-camera terminates TLS). Empty disables the
   endpoint at boot.
 - Only `camera:*` text frames are accepted on the client socket. Anything
   else is dropped (the error envelope below is only used for gateway-side

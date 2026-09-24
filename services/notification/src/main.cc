@@ -10,7 +10,9 @@
 #include <http/error-handler.hxx>
 #include <http/health-controller.hxx>
 #include <http/listener-config.hxx>
+#include <http/route-announcements.hxx>
 #include <identity/identity-client.hxx>
+#include <mdns/mdns-service.hxx>
 #include <notification/nats-notification-change-sink.hxx>
 #include <notification/nats-notification-delivery-sink.hxx>
 #include <nats/nats-bus.hxx>
@@ -61,7 +63,8 @@ int main()
   ConfigService::load("config.toml");
 
   const NotificationDbConfig notificationDb = NotificationConfig::resolveDb();
-  const ListenerConfig listener = ListenerConfig::resolve(7028);
+  const ListenerConfig listener =
+      ListenerConfig::resolveServiceTls("notification", 7028);
   const GrpcListenerConfig grpcListener = GrpcListenerConfig::resolve(7038);
 
   drogon::app().registerFilter(std::make_shared<DeviceFilter>());
@@ -93,9 +96,10 @@ int main()
       });
 
   LOG_INFO << "Listening on " << listener.host << ":" << listener.port
-            << " (plain); notification database " << notificationDb.dbPath
-            << "; gRPC NotificationService on " << grpcListener.host << ":"
-            << grpcListener.port;
+           << (listener.tls ? " (TLS" : " (plain") << ", cert "
+           << listener.certPath << "); notification database "
+           << notificationDb.dbPath << "; gRPC NotificationService on "
+           << grpcListener.host << ":" << grpcListener.port;
 
   std::shared_ptr<NatsNotificationChangeSink> changeSink;
   std::shared_ptr<NatsNotificationDeliverySink> deliverySink;
@@ -269,6 +273,13 @@ int main()
     shutdown_signal::onStop(
         shutdown_signal::drainOf(*changeSink, "notification-change"));
   }
+
+  std::unique_ptr<MdnsService> mdnsService;
+  drogon::app().registerBeginningAdvice([&mdnsService, &listener]() {
+    mdnsService = std::make_unique<MdnsService>(
+        routeAnnouncements({.port = listener.port, .tls = listener.tls}));
+    mdnsService->initialize();
+  });
 
   drogon::app()
       .setThreadNum(0)

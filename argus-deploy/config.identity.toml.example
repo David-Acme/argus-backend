@@ -89,4 +89,6 @@ secret_key = ""
 paired = false
 
 [mdns]
+enabled = true
+name = "Argus"
 port = 7024

@@ -23,23 +23,7 @@ IdentityDbConfig IdentityConfig::resolveDb()
 
 ListenerConfig IdentityConfig::resolveListener()
 {
-  ListenerConfig config;
-  config.host = ConfigService::getString("identity.host");
-  if (config.host.empty())
-    config.host = "0.0.0.0";
-  const int port = ConfigService::getInt("identity.port");
-  config.port = port > 0 ? static_cast<uint16_t>(port) : kDefaultIdentityPort;
-  config.tls = !ConfigService::getBool("identity.plain");
-  config.certPath = ConfigService::getString("cert.server_cert");
-  if (config.certPath.empty())
-    config.certPath = "certs/server.pem";
-  config.keyPath = ConfigService::getString("cert.server_key");
-  if (config.keyPath.empty())
-    config.keyPath = "certs/server.key";
-  config.minTlsProtocol = ConfigService::getString("identity.min_protocol");
-  if (config.minTlsProtocol.empty())
-    config.minTlsProtocol = "TLSv1.2";
-  return config;
+  return ListenerConfig::resolveServiceTls("identity", kDefaultIdentityPort);
 }
 
 IdentityRpcConfig IdentityConfig::resolveRpc()

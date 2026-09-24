@@ -84,7 +84,10 @@ with `scripts/setup.sh` / `scripts/setup.sh camera` on the host.
 ## Network shape (Ruling O, transitional exception)
 
 - **gateway** — `network_mode: host`. The public surface: TLS 0.0.0.0:7024,
-  mDNS advertised here only.
+  the port the app's `_argus._tcp` discovery resolves to. Since Phase 3d step
+  1b every app-facing service announces its own `_argus-route._tcp` instances,
+  so this record is the transitional one that Phase 3d step 1c removes along
+  with the gateway itself.
 - The gateway is host-networked because every other service publishes its
   listener on HOST loopback (127.0.0.1) — a bridge-networked gateway cannot
   reach a host loopback bind. That is why there is no `edge` bridge network in
@@ -103,13 +106,18 @@ with `scripts/setup.sh` / `scripts/setup.sh camera` on the host.
   `nats://nats:4222`. The camera domain is wholly served by this service: the
   gateway routes `/camera` and `/zone` at every segment depth here and relays
   `/camera-stream` media (`camera:*` frames and fMP4) to the service's `/media`
-  socket (`[camera] stream_url = ws://127.0.0.1:7026/media`). Talk synthesis
+  socket (`[camera] stream_url = wss://127.0.0.1:7026/media`). Talk synthesis
   reaches argus-tts via the camera config's `[tts] remote_url` (host-networked
   loopback 7029).
 - **argus-productivity / argus-notification** (Fase 3, compose v3) live on
   the same `internal` bridge network with only their 7027/7028 listeners
   loopback-published for the host-networked gateway; their `[nats] url`
-  points at the internal alias as well.
+  points at the internal alias as well. Since Phase 3d step 1b those two
+  listeners, argus-camera's and argus-guard's terminate TLS with the single
+  instance certificate (bind-mounted from `${ARGUS_CERTS_DIR}`) and announce
+  themselves over mDNS, one `_argus-route._tcp` instance per logical route per
+  service; the app's direct dialing of the discovered routes is Phase 3d
+  step 5.
 - **The four AI engine services** (Fase 4, compose v4) live on the same
   `internal` bridge network, which now pins `172.19.0.0/24` so they carry
   static addresses (argus-tts .29, argus-stt .30, argus-vlm .31, argus-llm
@@ -137,6 +145,7 @@ with `scripts/setup.sh` / `scripts/setup.sh camera` on the host.
 | argus-camera | `argus-camera:local` | internal network, loopback 7026 + 7036 (sync gRPC) publishes; owns camera.db; `/health` healthcheck; `/dev/dri` |
 | argus-productivity | `argus-productivity:local` | internal network, loopback 7027 + 7037 (sync gRPC) publishes; owns productivity.db; `/health` healthcheck |
 | argus-notification | `argus-notification:local` | internal network, loopback 7028 + 7038 (RPC) publishes; owns notification.db; `/health` healthcheck |
+| argus-guard | `argus-guard:local` | internal network, loopback 7039 publish; owns guard.db; no gRPC listener; `/health` healthcheck |
 | argus-tts | `argus-tts:local` | internal network (172.19.0.29), loopback 7029 publish; models/tts subpath ro; `/health` healthcheck |
 | argus-stt | `argus-stt:local` | internal network (172.19.0.30), loopback 7030 publish; models/stt subpath ro; `/health` healthcheck |
 | argus-vlm | `argus-vlm:local` | internal network (172.19.0.31), loopback 7031 publish; models/vision subpath ro; `/dev/dri`; `/health` healthcheck |
@@ -360,9 +369,10 @@ secrets are read at runtime, never printed; the refresh token lands in a
 ## Healthchecks
 
 - gateway: `curl -kfs https://127.0.0.1:7024/health` (envelope 200).
-- argus-camera: `curl -fs http://127.0.0.1:7026/health` (envelope 200).
-- argus-productivity: `curl -fs http://127.0.0.1:7027/health` (envelope 200).
-- argus-notification: `curl -fs http://127.0.0.1:7028/health` (envelope 200).
+- argus-camera: `curl -kfs https://127.0.0.1:7026/health` (envelope 200).
+- argus-productivity: `curl -kfs https://127.0.0.1:7027/health` (envelope 200).
+- argus-notification: `curl -kfs https://127.0.0.1:7028/health` (envelope 200).
+- argus-guard: `curl -kfs https://127.0.0.1:7039/health` (envelope 200).
 - argus-voice: `curl -fs http://127.0.0.1:7035/health` (envelope 200).
 - argus-tts / argus-stt / argus-vlm / argus-llm:
   `curl -fs http://127.0.0.1:7029..7032/health` (envelope 200, container-local).
@@ -514,11 +524,14 @@ the matching `*-init` profile is the only migration path onto a volume.
 | Port | Bind | Owner |
 |---|---|---|
 | 7024 TLS | 0.0.0.0 | gateway (public) |
+| 7025 TLS | 0.0.0.0 (compose publish) | argus-sync `/sync` WebSocket — the app-facing sync transport, on all interfaces since Phase 3a |
 | 7042 TLS | 127.0.0.1 (compose publish) | argus-auth HTTP surface — the gateway's `[auth] proxy_url` upstream for `/auth`; never published on a LAN interface, so the gateway's LAN gate stays the only way in |
 | 7043 gRPC | 127.0.0.1 (compose publish) | argus-auth session verdict — the auth filters' `[auth] target` upstream, gated by `[auth] rpc_secret` |
-| 7026 plain | 127.0.0.1 (compose publish) | argus-camera (internal, gateway upstream) |
-| 7027 plain | 127.0.0.1 (compose publish) | argus-productivity (internal, gateway upstream) |
-| 7028 plain | 127.0.0.1 (compose publish) | argus-notification (internal, gateway upstream) |
+| 7044 TLS | 127.0.0.1 (compose publish) | argus-identity HTTP surface — the gateway's `[identity] proxy_url` upstream |
+| 7026 TLS | 127.0.0.1 (compose publish) | argus-camera (internal, gateway upstream) |
+| 7027 TLS | 127.0.0.1 (compose publish) | argus-productivity (internal, gateway upstream) |
+| 7028 TLS | 127.0.0.1 (compose publish) | argus-notification (internal, gateway upstream) |
+| 7039 TLS | 127.0.0.1 (compose publish) | argus-guard (internal, gateway upstream) |
 | 7029 plain | 127.0.0.1 (compose publish) | argus-tts (internal, argus-camera `[tts]` gate upstream — never proxied by the gateway) |
 | 7030 plain | 127.0.0.1 (compose publish) | argus-stt (internal, argus-voice `[stt]` gate upstream) |
 | 7031 plain | 127.0.0.1 (compose publish) | argus-vlm (internal) |
@@ -534,3 +547,11 @@ the matching `*-init` profile is the only migration path onto a volume.
 | 7034 gRPC + 7035 plain | 127.0.0.1 (compose publish) | argus-voice voice wire + `/health` (F6-3) |
 | 7036 gRPC | 127.0.0.1 (compose publish) | argus-camera camera-domain sync wire (F6-5) |
 | `[remote] tunnel_port` TLS | gateway host/container port | gateway remote listener (default 0 = disabled; the instance sets a port when the tunnel profile is on — the listener is config-file-driven, not env-driven, see the tunnel section) |
+
+Since Phase 3d step 1b every app-facing service terminates TLS with the
+instance certificate and announces one `_argus-route._tcp` instance per logical
+route. The rows above still describe the bind: six of them publish on host
+loopback, so the address the announcement carries (the container's bridge IP)
+is not reachable from the LAN, and the app keeps following the gateway's
+`_argus._tcp` record. Phase 3d step 1c flips those publishes and settles the
+advertised address; Phase 5 step 6 verifies discovery against a real client.

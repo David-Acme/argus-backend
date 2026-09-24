@@ -1,6 +1,5 @@
 [server]
 host = "0.0.0.0"
-port = 7026
 grpc_port = 7036
 
 [drogon.app]
@@ -28,8 +27,16 @@ handle_sig_term = true
 relaunch_on_error = false
 
 [camera]
+host = "0.0.0.0"
+port = 7026
+plain = false
+min_protocol = "TLSv1.2"
 db = "camera/camera.db"
 schema = "database/schema.sql"
+
+[cert]
+server_cert = "certs/server.pem"
+server_key = "certs/server.key"
 
 [tapo]
 control_port = 443
@@ -53,7 +60,6 @@ hub_grace_ms = 2000
 hub_max_subs_per_client = 8
 max_viewers_per_camera = 4
 max_total_viewers = 8
-relay_chunk_bytes = 32768
 
 [tts]
 remote_url = "argus-tts:7029"
@@ -82,9 +88,6 @@ rpc_secret = "CHANGE_ME_SAME_IN_EVERY_SERVICE"
 [identity]
 target = "argus-identity:7040"
 rpc_secret = "CHANGE_ME_SAME_IN_EVERY_SERVICE"
-
-[grpc]
-caller_guard = "CHANGE_ME_GUARD_CAMERA"
 identify = false
 auto_enroll = false
 capture_clear_faces = true
@@ -93,6 +96,9 @@ identify_interval_ms = 2000
 enroll_cooldown_ms = 600000
 best_shot_ms = 10000
 improve_margin = 0.15
+
+[grpc]
+caller_guard = "CHANGE_ME_GUARD_CAMERA"
 
 [objects]
 enabled = false
@@ -149,3 +155,7 @@ region = "us-east-1"
 bucket = ""
 access_key = ""
 secret_key = ""
+
+[mdns]
+enabled = true
+name = "Argus"

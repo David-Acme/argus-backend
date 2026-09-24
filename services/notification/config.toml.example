@@ -1,6 +1,6 @@
 [server]
 host = "127.0.0.1"
-port = 7028
+grpc_port = 7038
 
 [drogon.app]
 number_of_threads = 0
@@ -25,6 +25,16 @@ enabled_compressed_request = false
 enable_request_stream = false
 handle_sig_term = true
 relaunch_on_error = false
+
+[notification]
+host = "0.0.0.0"
+port = 7028
+plain = false
+min_protocol = "TLSv1.2"
+
+[cert]
+server_cert = "certs/server.pem"
+server_key = "certs/server.key"
 
 [notifications]
 db = "database/notification.db"
@@ -64,3 +74,7 @@ url = "nats://127.0.0.1:4222"
 
 [push]
 enabled = false
+
+[mdns]
+enabled = true
+name = "Argus"
