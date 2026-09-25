@@ -199,6 +199,12 @@ ensure_local_config() {
     configs+=("$ROOT/$dir/config.toml")
   done
   ensure_shared_configs "${configs[@]}"
+  fill_config_pair "$ROOT/services/sync/config.toml" notifications credential \
+    "$ROOT/services/notification/config.toml" grpc caller_sync 32
+  fill_config_pair "$ROOT/services/guard/config.toml" camera actions_credential \
+    "$ROOT/services/camera/config.toml" grpc caller_guard 32
+  fill_config_pair "$ROOT/services/guard/config.toml" notifications credential \
+    "$ROOT/services/notification/config.toml" grpc caller_guard 32
   log "Per-project configs are ready."
 }
 

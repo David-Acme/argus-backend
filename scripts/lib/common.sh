@@ -160,6 +160,10 @@ identity proxy_url
 identity rpc_host
 identity rpc_port
 identity rpc_secret
+camera actions_credential
+notifications credential
+grpc caller_guard
+grpc caller_sync
 mdns enabled
 EOF
 }
@@ -239,7 +243,7 @@ shared_deploy_secret() {
   openssl rand -hex "$bytes"
 }
 
-fill_deploy_pair() {
+fill_config_pair() {
   local a_config="$1"
   local a_table="$2"
   local a_key="$3"
@@ -249,6 +253,8 @@ fill_deploy_pair() {
   local bytes="$7"
 
   [ -f "$a_config" ] && [ -f "$b_config" ] || return 0
+  toml_key_exists "$a_config" "$a_table" "$a_key" || return 0
+  toml_key_exists "$b_config" "$b_table" "$b_key" || return 0
   local value="" candidate
   candidate="$(toml_value "$a_config" "$a_table" "$a_key")"
   case "$candidate" in ""|*CHANGE_ME*) ;; *) value="$candidate" ;; esac
@@ -309,11 +315,11 @@ ensure_deploy_configs() {
     fill_deploy_placeholder "$config" device trusted_proxy_ips "172.19.0.1"
   done
 
-  fill_deploy_pair "$deploy_dir/config.guard.toml" camera actions_credential \
+  fill_config_pair "$deploy_dir/config.guard.toml" camera actions_credential \
     "$deploy_dir/config.camera.toml" grpc caller_guard 32
-  fill_deploy_pair "$deploy_dir/config.guard.toml" notifications credential \
+  fill_config_pair "$deploy_dir/config.guard.toml" notifications credential \
     "$deploy_dir/config.notification.toml" grpc caller_guard 32
-  fill_deploy_pair "$deploy_dir/config.sync.toml" notifications credential \
+  fill_config_pair "$deploy_dir/config.sync.toml" notifications credential \
     "$deploy_dir/config.notification.toml" grpc caller_sync 32
 
   log "Deploy configs ready in $deploy_dir"

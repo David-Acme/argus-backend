@@ -1,4 +1,14 @@
 {
+  "acceptedAdditions" :
+  [
+    {
+      "commit" : "f58167d7",
+      "path" : "sync-bootstrap.frames[0].json.info.person.created[0].status",
+      "reason" : "PersonStatus landed 2026-09-14, after this recording",
+      "since" : "2026-09-14",
+      "value" : "known"
+    }
+  ],
   "baseUrl" : "https://127.0.0.1:7024",
   "frames" : 
   [
@@ -157,8 +167,9 @@
     }
   ],
   "generator" : "golden-sync-test",
-  "normalization" : 
+  "normalization" :
   {
+    "acceptedAdditions" : "wire fields that landed after the recording, each declared with its exact value, its landing commit and its date; the replay passes only when every difference from the fixture is a declared addition, and fails on anything else",
     "binaryFrames" : "normalized files record kind only; raw files record byteLength, sha256 and the first 256 bytes hex; the first 64 KiB of a binary frame is also stored as .bin",
     "cameraClosedFrames" : "camera:closed is emitted by the go2rtc relay on its own retry schedule, so its arrival is timing-dependent; it is kept in the raw fixtures but excluded from the normalized comparison",
     "description" : "Fixtures compare structurally: per-boot-varying values are masked in the normalized .json files; the .raw.json files keep the session as received.",

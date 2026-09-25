@@ -1,0 +1,312 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "$ROOT/scripts/lib/common.sh"
+
+STACK_DIR="${ARGUS_STACK_DIR:-$ROOT/build/native-stack}"
+PROFILE="${ARGUS_STACK_PROFILE:-dev}"
+SERVICES=(identity auth camera productivity notification sync)
+declare -A SECTION=(
+  [identity]=identity
+  [auth]=auth
+  [camera]=camera
+  [productivity]=productivity
+  [notification]=notifications
+  [sync]=sync
+)
+
+usage() {
+  cat <<'USAGE'
+Argus backend - native stack runner.
+
+Boots the six request-serving services (identity, auth, camera,
+productivity, notification, sync) natively, each with its own database
+under ARGUS_STACK_DIR, so a golden replay can run against a real fleet
+without touching the developer's own databases.
+
+The sandbox claims the standard ports (7025-7044). Stop any other native
+run of these services before `up`; the docker compose stack may stay up
+for nats, rustfs, voice, stt, tts and vlm.
+
+Usage:
+  native-stack.sh up                prepare configs, start, gate on /health
+  native-stack.sh down              stop the stack and its go2rtc
+  native-stack.sh restart <service> stop and start one service
+  native-stack.sh kill <service>    stop one service (durability drills)
+  native-stack.sh status            show what is running
+  native-stack.sh logs <service> [n]  tail one service's log
+  native-stack.sh prepare           write the sandbox configs only
+  native-stack.sh env               mint a session and print the harness
+                                    environment, for eval "$(native-stack.sh
+                                    env)" before a golden replay
+
+Environment:
+  ARGUS_STACK_DIR      sandbox directory (default build/native-stack)
+  ARGUS_STACK_PROFILE  dev or prod (default dev)
+USAGE
+}
+
+binary_of() {
+  printf '%s/services/%s/build/%s/argus-%s' "$ROOT" "$1" "$PROFILE" "$1"
+}
+
+config_of() {
+  printf '%s/%s/config.toml' "$STACK_DIR" "$1"
+}
+
+token_file() {
+  printf '%s/refresh-token' "$STACK_DIR"
+}
+
+replace_top_key() {
+  local key="$1"
+  local value="$2"
+  local config="$3"
+  local temp
+
+  temp="$(mktemp "${config}.tmp.XXXXXX")"
+  awk -v key="$key" -v value="$value" '
+    !done && $0 ~ "^" key "[[:space:]]*=" {
+      print key " = \"" value "\""
+      done = 1
+      next
+    }
+    { print }
+    END { if (!done) print key " = \"" value "\"" }
+  ' "$config" > "$temp"
+  chmod 600 "$temp"
+  mv "$temp" "$config"
+}
+
+service_port() {
+  awk -F'[ =]+' '$1 == "port" && $2 ~ /^[0-9]+$/ { print $2; exit }' "$1"
+}
+
+prepare_service() {
+  local svc="$1"
+  local template="$ROOT/services/$svc/config.toml.example"
+  local source_config="$ROOT/services/$svc/config.toml"
+  local config
+  config="$(config_of "$svc")"
+
+  [ -f "$source_config" ] || {
+    err "missing $source_config; run scripts/setup.sh first"
+    return 1
+  }
+
+  mkdir -p "$STACK_DIR/$svc/database" "$STACK_DIR/logs" "$STACK_DIR/pids"
+  install -m 600 "$source_config" "$config"
+  adopt_wiring_keys "$template" "$config"
+
+  local db schema
+  db="$(toml_value "$config" "${SECTION[$svc]}" db)"
+  case "$db" in
+    /*)
+      err "$source_config uses the absolute db path $db; a sandbox needs a relative one"
+      return 1
+      ;;
+  esac
+  replace_top_key db "$STACK_DIR/$svc/$db" "$config"
+
+  schema="$(toml_value "$config" "${SECTION[$svc]}" schema)"
+  case "$schema" in
+    /*) ;;
+    *) replace_top_key schema "$ROOT/$schema" "$config" ;;
+  esac
+
+  replace_toml_value mdns enabled false "$config" literal
+  ln -sfn "$ROOT/certs" "$STACK_DIR/$svc/certs"
+
+  if [ "$svc" = camera ]; then
+    replace_top_key go2rtc_bin "$ROOT/third_party/go2rtc/go2rtc" "$config"
+    replace_top_key go2rtc_config "$STACK_DIR/camera/go2rtc.yaml" "$config"
+    : > "$STACK_DIR/camera/go2rtc.yaml"
+  fi
+
+  log "prepared $config"
+}
+
+prepare() {
+  local svc
+  for svc in "${SERVICES[@]}"; do
+    prepare_service "$svc" || return 1
+  done
+
+  fill_config_pair "$STACK_DIR/sync/config.toml" notifications credential \
+    "$STACK_DIR/notification/config.toml" grpc caller_sync 32
+  log "sandbox configs ready in $STACK_DIR"
+}
+
+running_pid() {
+  pgrep -f "^$(binary_of "$1")\$" || true
+}
+
+wait_health() {
+  local svc="$1"
+  local port="$2"
+  local attempt
+
+  for attempt in $(seq 1 45); do
+    if curl -sk -m 2 -o /dev/null "https://127.0.0.1:$port/health"; then
+      log "$svc healthy on $port"
+      return 0
+    fi
+    if [ -z "$(running_pid "$svc")" ]; then
+      err "$svc exited before becoming healthy; see $STACK_DIR/logs/$svc.log"
+      return 1
+    fi
+    sleep 1
+  done
+  err "$svc did not become healthy on $port"
+  return 1
+}
+
+port_busy() {
+  (exec 3<>"/dev/tcp/127.0.0.1/$1") 2>/dev/null && exec 3>&- && return 0
+  return 1
+}
+
+start_service() {
+  local svc="$1"
+  local bin
+  bin="$(binary_of "$svc")"
+  local port
+  port="$(service_port "$(config_of "$svc")")"
+
+  [ -x "$bin" ] || {
+    err "missing $bin; run scripts/build-all.sh $PROFILE"
+    return 1
+  }
+  if [ -n "$(running_pid "$svc")" ]; then
+    log "$svc already running"
+    return 0
+  fi
+  if port_busy "$port"; then
+    err "port $port is busy and is not this sandbox's $svc"
+    return 1
+  fi
+
+  (
+    cd "$STACK_DIR/$svc" || exit 1
+    exec setsid --fork "$bin" >> "$STACK_DIR/logs/$svc.log" 2>&1 < /dev/null
+  ) &
+  local attempt
+  for attempt in $(seq 1 40); do
+    [ -n "$(running_pid "$svc")" ] && break
+    sleep 0.5
+  done
+  local pid
+  pid="$(running_pid "$svc")"
+  [ -n "$pid" ] || {
+    err "$svc did not start; see $STACK_DIR/logs/$svc.log"
+    return 1
+  }
+  printf '%s\n' "$pid" > "$STACK_DIR/pids/$svc.pid"
+  log "$svc started pid=$pid port=$port"
+}
+
+up() {
+  prepare || return 1
+
+  local svc
+  for svc in "${SERVICES[@]}"; do
+    start_service "$svc" || return 1
+  done
+
+  for svc in "${SERVICES[@]}"; do
+    wait_health "$svc" "$(service_port "$(config_of "$svc")")" || return 1
+  done
+  log "native stack up under $STACK_DIR"
+}
+
+stop_service() {
+  local svc="$1"
+  local bin
+  bin="$(binary_of "$svc")"
+
+  if pkill -f "^${bin}\$"; then
+    local attempt
+    for attempt in $(seq 1 20); do
+      [ -z "$(running_pid "$svc")" ] && break
+      sleep 0.5
+    done
+    if [ -n "$(running_pid "$svc")" ]; then
+      err "$svc ignored SIGTERM and is still running"
+      return 1
+    fi
+    log "$svc stopped"
+  else
+    log "$svc was not running"
+  fi
+  rm -f "$STACK_DIR/pids/$svc.pid"
+}
+
+down() {
+  local svc result=0
+  for svc in "${SERVICES[@]}"; do
+    stop_service "$svc" || result=1
+  done
+  pkill -f "^$ROOT/third_party/go2rtc/go2rtc" 2>/dev/null \
+    && log "go2rtc stopped" || true
+  return "$result"
+}
+
+status() {
+  local svc
+  for svc in "${SERVICES[@]}"; do
+    local pid
+    pid="$(running_pid "$svc")"
+    if [ -n "$pid" ]; then
+      printf '  %-14s RUNNING %s\n' "$svc" "$(printf '%s' "$pid" | tr '\n' ' ')"
+    else
+      printf '  %-14s stopped\n' "$svc"
+    fi
+  done
+}
+
+harness_env() {
+  local sync_config auth_config camera_config
+  sync_config="$(config_of sync)"
+  auth_config="$(config_of auth)"
+  camera_config="$(config_of camera)"
+  [ -f "$sync_config" ] || sync_config="$ROOT/services/sync/config.toml"
+  [ -f "$auth_config" ] || auth_config="$ROOT/services/auth/config.toml"
+  [ -f "$camera_config" ] || camera_config="$ROOT/services/camera/config.toml"
+
+  python3 "$ROOT/scripts/seed-golden.py" --stack-dir "$STACK_DIR" \
+    --token-only >&2
+
+  printf 'export ARGUS_TEST_BASE_URL=https://127.0.0.1:%s\n' \
+    "$(service_port "$sync_config")"
+  printf 'export ARGUS_TEST_AUTH_BASE_URL=https://127.0.0.1:%s\n' \
+    "$(service_port "$auth_config")"
+  printf 'export ARGUS_TEST_MEDIA_BASE_URL=https://127.0.0.1:%s\n' \
+    "$(service_port "$camera_config")"
+  printf 'export ARGUS_TEST_FIXTURES_DIR=%s/services/sync/tests/fixtures/sync\n' \
+    "$ROOT"
+  printf 'export ARGUS_TEST_REFRESH_TOKEN=%s\n' "$(cat "$(token_file)")"
+}
+
+require_service() {
+  local svc="${1:-}"
+  [ -n "$svc" ] || { usage; exit 2; }
+  local known
+  for known in "${SERVICES[@]}"; do
+    [ "$known" = "$svc" ] && return 0
+  done
+  err "unknown service '$svc'"
+  exit 2
+}
+
+case "${1:-}" in
+  up) up ;;
+  down) down ;;
+  restart) require_service "${2:-}"; stop_service "$2" && start_service "$2" ;;
+  kill) require_service "${2:-}"; stop_service "$2" ;;
+  status) status ;;
+  logs) require_service "${2:-}"; tail -n "${3:-40}" "$STACK_DIR/logs/$2.log" ;;
+  prepare) prepare ;;
+  env) harness_env ;;
+  *) usage; exit 2 ;;
+esac

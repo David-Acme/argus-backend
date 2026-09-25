@@ -72,6 +72,30 @@ std::string jsonToString(const Json::Value& json)
   return Json::writeString(builder, json);
 }
 
+Json::Value canonicalized(const Json::Value& node)
+{
+  if (node.isArray()) {
+    Json::Value out(Json::arrayValue);
+    for (const auto& item : node)
+      out.append(canonicalized(item));
+    return out;
+  }
+  if (node.isObject()) {
+    Json::Value out(Json::objectValue);
+    for (const auto& key : node.getMemberNames())
+      out[key] = canonicalized(node[key]);
+    return out;
+  }
+  return node;
+}
+
+std::string canonicalJson(const Json::Value& json)
+{
+  Json::StreamWriterBuilder builder;
+  builder["indentation"] = "";
+  return Json::writeString(builder, canonicalized(json));
+}
+
 std::optional<Json::Value> parseJson(const std::string& text)
 {
   Json::Value json;
@@ -95,6 +119,12 @@ std::string sha256Hex(const unsigned char* data, size_t len)
     out.push_back(hex[digest[i] & 0x0f]);
   }
   return out;
+}
+
+std::string sha256OfText(const std::string& text)
+{
+  return sha256Hex(reinterpret_cast<const unsigned char*>(text.data()),
+                   text.size());
 }
 
 std::string hexPreview(const unsigned char* data, size_t len)
@@ -377,41 +407,302 @@ void writeTextFile(const std::string& path, const std::string& content)
   out << content;
 }
 
-struct ReportMismatchInput
+struct Difference
 {
-  const Scenario& scenario;
-  std::string expected;
-  std::string actual;
+  std::string path;
+  Json::Value expected;
+  Json::Value actual;
+  bool expectedAbsent{false};
+  bool actualAbsent{false};
 };
 
-void reportMismatch(const ReportMismatchInput& input)
+void diffJson(const Json::Value& expected, const Json::Value& actual,
+              const std::string& path, std::vector<Difference>& out)
 {
-  std::cout << "  MISMATCH " << input.scenario.name << ": normalized session "
-            << "differs from the committed fixture\n";
-  std::cout << "    expected: " << input.expected << "\n";
-  std::cout << "    actual:   " << input.actual << "\n";
+  if (expected.isObject() && actual.isObject()) {
+    std::set<std::string> keys;
+    for (const auto& key : expected.getMemberNames())
+      keys.insert(key);
+    for (const auto& key : actual.getMemberNames())
+      keys.insert(key);
+    for (const auto& key : keys) {
+      const std::string child = path + "." + key;
+      if (!expected.isMember(key)) {
+        out.push_back({.path = child,
+                       .expected = Json::Value(),
+                       .actual = actual[key],
+                       .expectedAbsent = true,
+                       .actualAbsent = false});
+      }
+      else if (!actual.isMember(key)) {
+        out.push_back({.path = child,
+                       .expected = expected[key],
+                       .actual = Json::Value(),
+                       .expectedAbsent = false,
+                       .actualAbsent = true});
+      }
+      else {
+        diffJson(expected[key], actual[key], child, out);
+      }
+    }
+    return;
+  }
+  if (expected.isArray() && actual.isArray()) {
+    if (expected.size() != actual.size()) {
+      out.push_back(
+          {.path = path + "[length]",
+           .expected = Json::Value(static_cast<Json::UInt64>(expected.size())),
+           .actual = Json::Value(static_cast<Json::UInt64>(actual.size())),
+           .expectedAbsent = false,
+           .actualAbsent = false});
+    }
+    const auto shared = std::min(expected.size(), actual.size());
+    for (Json::ArrayIndex index = 0; index < shared; ++index) {
+      diffJson(expected[index], actual[index],
+               path + "[" + std::to_string(index) + "]", out);
+    }
+    return;
+  }
+  if (expected != actual) {
+    out.push_back({.path = path,
+                   .expected = expected,
+                   .actual = actual,
+                   .expectedAbsent = false,
+                   .actualAbsent = false});
+  }
 }
 
-bool verifyScenario(const std::string& fixturesDir, const Scenario& scenario)
+struct AcceptedAddition
+{
+  std::string path;
+  Json::Value value;
+};
+
+std::vector<AcceptedAddition> acceptedAdditions(const Json::Value& manifest)
+{
+  std::vector<AcceptedAddition> additions;
+  if (!manifest.isObject() || !manifest["acceptedAdditions"].isArray())
+    return additions;
+  for (const auto& entry : manifest["acceptedAdditions"]) {
+    if (!entry.isObject() || !entry["path"].isString())
+      continue;
+    additions.push_back(
+        {.path = entry["path"].asString(), .value = entry["value"]});
+  }
+  return additions;
+}
+
+bool isAcceptedAddition(const Difference& difference,
+                        const std::vector<AcceptedAddition>& additions)
+{
+  if (!difference.expectedAbsent)
+    return false;
+  return std::any_of(additions.begin(), additions.end(),
+                     [&difference](const AcceptedAddition& addition) {
+                       return addition.path == difference.path &&
+                              addition.value == difference.actual;
+                     });
+}
+
+void reportDifferences(const Scenario& scenario,
+                       const std::vector<Difference>& differences)
+{
+  constexpr size_t kMaxReported = 20;
+  std::cout << "  MISMATCH " << scenario.name << ": " << differences.size()
+            << " difference(s) against the committed fixture\n";
+  const size_t reported = std::min(differences.size(), kMaxReported);
+  for (size_t index = 0; index < reported; ++index) {
+    const auto& difference = differences[index];
+    std::cout << "    " << difference.path << "\n";
+    std::cout << "      expected "
+              << (difference.expectedAbsent
+                      ? "<absent>"
+                      : canonicalJson(difference.expected))
+              << "\n";
+    std::cout << "      actual   "
+              << (difference.actualAbsent ? "<absent>"
+                                          : canonicalJson(difference.actual))
+              << "\n";
+  }
+  if (differences.size() > reported)
+    std::cout << "    ... " << differences.size() - reported << " more\n";
+}
+
+struct VerifyInput
+{
+  const std::string& fixturesDir;
+  const Scenario& scenario;
+  const Json::Value& manifest;
+};
+
+std::vector<const Json::Value*> outgoingPins(const Json::Value& manifest,
+                                             const std::string& fixture)
+{
+  std::vector<const Json::Value*> pins;
+  if (!manifest.isObject() || !manifest["frames"].isArray())
+    return pins;
+  for (const auto& entry : manifest["frames"]) {
+    if (!entry.isObject())
+      continue;
+    if (entry.get("direction", "").asString() != "out")
+      continue;
+    if (entry.get("fixture", "").asString() != fixture)
+      continue;
+    pins.push_back(&entry);
+  }
+  return pins;
+}
+
+bool verifyRequestBytes(const VerifyInput& input)
+{
+  const auto pins = outgoingPins(input.manifest, input.scenario.name + ".json");
+  if (pins.empty())
+    return input.scenario.request.empty();
+  if (input.scenario.request.empty()) {
+    std::cout << "  MISMATCH " << input.scenario.name
+              << ": the committed session sent a request this replay does not\n";
+    return false;
+  }
+  const Frame outgoing = makeTextFrame(input.scenario.request);
+  const Json::Value& pin = *pins.front();
+  const std::string pinnedSha = pin.get("sha256", "").asString();
+  const auto pinnedLength = pin.get("byteLength", 0).asUInt64();
+  if (pinnedSha != outgoing.sha256 ||
+      pinnedLength != static_cast<Json::UInt64>(outgoing.byteLength)) {
+    std::cout << "  MISMATCH " << input.scenario.name
+              << ": request bytes drifted from the committed frame\n";
+    std::cout << "    expected: " << pinnedLength << " bytes sha256 "
+              << pinnedSha << "\n";
+    std::cout << "    actual:   " << outgoing.byteLength << " bytes sha256 "
+              << outgoing.sha256 << "\n";
+    return false;
+  }
+  return true;
+}
+
+std::string acceptedSuffix(size_t additions)
+{
+  if (additions == 0)
+    return {};
+  return ", " + std::to_string(additions) + " accepted addition(s)";
+}
+
+bool verifyScenario(const VerifyInput& input)
 {
   const Json::Value expected =
-      readJsonFile(fixturesDir + "/" + scenario.name + ".json");
+      readJsonFile(input.fixturesDir + "/" + input.scenario.name + ".json");
   if (expected.isNull() || !expected.isObject()) {
-    reportMismatch({.scenario = scenario,
-                    .expected = "<fixture file>",
-                    .actual = "<missing>"});
+    std::cout << "  MISMATCH " << input.scenario.name
+              << ": cannot read the committed fixture\n";
     return false;
   }
-  const Json::Value actual = scenarioNormalized(scenario);
-  if (expected != actual) {
-    reportMismatch({.scenario = scenario,
-                    .expected = jsonToString(expected),
-                    .actual = jsonToString(actual)});
+  const Json::Value actual = scenarioNormalized(input.scenario);
+
+  std::vector<Difference> differences;
+  diffJson(expected, actual, input.scenario.name, differences);
+  const auto additions = acceptedAdditions(input.manifest);
+  std::vector<Difference> unexplained;
+  size_t explained = 0;
+  for (const auto& difference : differences) {
+    if (isAcceptedAddition(difference, additions))
+      ++explained;
+    else
+      unexplained.push_back(difference);
+  }
+  if (!unexplained.empty()) {
+    reportDifferences(input.scenario, unexplained);
     return false;
   }
-  std::cout << "  OK " << scenario.name << " (" << scenario.frames.size()
-            << " frame(s))\n";
+
+  const std::string expectedBytes = canonicalJson(expected);
+  const std::string actualBytes = canonicalJson(actual);
+  if (explained == 0 && expectedBytes != actualBytes) {
+    std::cout << "  MISMATCH " << input.scenario.name
+              << ": canonical bytes differ without a reported field\n";
+    return false;
+  }
+  if (!verifyRequestBytes(input))
+    return false;
+
+  std::cout << "  OK " << input.scenario.name << " ("
+            << input.scenario.frames.size() << " frame(s), "
+            << actualBytes.size() << " normalized bytes, sha256 "
+            << sha256OfText(actualBytes) << acceptedSuffix(explained) << ")\n";
   return true;
+}
+
+struct SocketSession
+{
+  std::string label;
+  drogon::WebSocketClientPtr client;
+  drogon::WebSocketConnectionPtr connection;
+  FrameCollector collector;
+  std::mutex closedMutex;
+  std::condition_variable closedCv;
+  bool closed{false};
+};
+
+struct OpenSocketInput
+{
+  const UrlParts& parts;
+  const std::string& path;
+  const std::string& token;
+};
+
+bool openSocket(SocketSession& session, const OpenSocketInput& input,
+                trantor::EventLoopThread& loop)
+{
+  session.client = drogon::WebSocketClient::newWebSocketClient(
+      std::string(input.parts.ssl ? "wss://" : "ws://") + input.parts.host +
+          ":" + std::to_string(input.parts.port),
+      loop.getLoop(), false, false);
+  session.client->setMessageHandler(
+      [&session](std::string&& message, const drogon::WebSocketClientPtr&,
+                 const drogon::WebSocketMessageType& type) {
+        const auto* data =
+            reinterpret_cast<const unsigned char*>(message.data());
+        if (type == drogon::WebSocketMessageType::Binary)
+          session.collector.push(makeBinaryFrame(data, message.size()));
+        else if (type == drogon::WebSocketMessageType::Text)
+          session.collector.push(makeTextFrame(message));
+      });
+  session.client->setConnectionClosedHandler(
+      [&session](const drogon::WebSocketClientPtr&) {
+        {
+          std::lock_guard<std::mutex> lock(session.closedMutex);
+          session.closed = true;
+        }
+        session.closedCv.notify_all();
+      });
+
+  auto request = drogon::HttpRequest::newHttpRequest();
+  request->setPath(input.path);
+  request->setParameter("token", input.token);
+  request->addHeader("User-Agent", kRecorderUserAgent);
+
+  WaitFlag connected;
+  session.client->connectToServer(
+      request,
+      [&connected](drogon::ReqResult result, const drogon::HttpResponsePtr&,
+                   const drogon::WebSocketClientPtr& client) {
+        connected.set(result == drogon::ReqResult::Ok &&
+                      client->getConnection() != nullptr);
+      });
+  const auto outcome =
+      connected.waitFor(std::chrono::seconds(kConnectTimeoutSeconds + 2));
+  if (!outcome || !*outcome)
+    return false;
+  session.connection = session.client->getConnection();
+  return true;
+}
+
+void closeSocket(SocketSession& session)
+{
+  if (session.connection)
+    session.connection->shutdown();
+  std::unique_lock<std::mutex> lock(session.closedMutex);
+  session.closedCv.wait_for(lock, std::chrono::seconds(3),
+                            [&session] { return session.closed; });
 }
 
 }
@@ -433,9 +724,26 @@ int main(int argc, char* argv[])
     return 0;
   }
 
+  const std::string authBaseUrl =
+      envValue("ARGUS_TEST_AUTH_BASE_URL", baseUrl);
+  const std::string mediaBaseUrl =
+      envValue("ARGUS_TEST_MEDIA_BASE_URL", "https://127.0.0.1:7026");
+
   const auto url = parseUrl(baseUrl);
   if (!url) {
     std::cout << "SKIP: invalid ARGUS_TEST_BASE_URL '" << baseUrl << "'\n";
+    return 0;
+  }
+  const auto authUrl = parseUrl(authBaseUrl);
+  if (!authUrl) {
+    std::cout << "SKIP: invalid ARGUS_TEST_AUTH_BASE_URL '" << authBaseUrl
+              << "'\n";
+    return 0;
+  }
+  const auto mediaUrl = parseUrl(mediaBaseUrl);
+  if (!mediaUrl) {
+    std::cout << "SKIP: invalid ARGUS_TEST_MEDIA_BASE_URL '" << mediaBaseUrl
+              << "'\n";
     return 0;
   }
 
@@ -443,8 +751,8 @@ int main(int argc, char* argv[])
   loopThread.run();
 
   const std::string httpHost =
-      std::string(url->ssl ? "https://" : "http://") + url->host + ":" +
-      std::to_string(url->port);
+      std::string(authUrl->ssl ? "https://" : "http://") + authUrl->host + ":" +
+      std::to_string(authUrl->port);
   auto httpClient =
       drogon::HttpClient::newHttpClient(httpHost, loopThread.getLoop(), false,
                                         false);
@@ -497,7 +805,7 @@ int main(int argc, char* argv[])
     const auto outcome =
         done.waitFor(std::chrono::seconds(kConnectTimeoutSeconds + 2));
     if (!outcome) {
-      std::cout << "SKIP: backend not reachable at " << baseUrl << "\n";
+      std::cout << "SKIP: backend not reachable at " << authBaseUrl << "\n";
       return 0;
     }
     if (!*outcome) {
@@ -520,74 +828,41 @@ int main(int argc, char* argv[])
   trantor::EventLoopThread wsLoopThread;
   wsLoopThread.run();
 
-  const std::string wsHost =
-      std::string(url->ssl ? "wss://" : "ws://") + url->host + ":" +
-      std::to_string(url->port);
-  auto wsClient = drogon::WebSocketClient::newWebSocketClient(
-      wsHost, wsLoopThread.getLoop(), false, false);
-
-  FrameCollector collector;
-  std::mutex closedMutex;
-  std::condition_variable closedCv;
-  bool serverClosed = false;
-
-  wsClient->setMessageHandler(
-      [&collector](std::string&& message,
-                   const drogon::WebSocketClientPtr&,
-                   const drogon::WebSocketMessageType& type) {
-        const auto* data = reinterpret_cast<const unsigned char*>(message.data());
-        if (type == drogon::WebSocketMessageType::Binary)
-          collector.push(makeBinaryFrame(data, message.size()));
-        else if (type == drogon::WebSocketMessageType::Text)
-          collector.push(makeTextFrame(message));
-      });
-
-  wsClient->setConnectionClosedHandler(
-      [&serverClosed, &closedMutex, &closedCv](
-          const drogon::WebSocketClientPtr&) {
-        std::lock_guard<std::mutex> lock(closedMutex);
-        serverClosed = true;
-        closedCv.notify_all();
-      });
-
-  auto connectReq = drogon::HttpRequest::newHttpRequest();
-  connectReq->setPath("/sync");
-  connectReq->setParameter("token", accessToken);
-  connectReq->addHeader("User-Agent", kRecorderUserAgent);
-
-  {
-    WaitFlag connected;
-    wsClient->connectToServer(
-        connectReq,
-        [&connected](drogon::ReqResult result,
-                     const drogon::HttpResponsePtr&,
-                     const drogon::WebSocketClientPtr& client) {
-          connected.set(result == drogon::ReqResult::Ok &&
-                        client->getConnection() != nullptr);
-        });
-
-    const auto outcome =
-        connected.waitFor(std::chrono::seconds(kConnectTimeoutSeconds + 2));
-    if (!outcome || !*outcome) {
-      std::cout << "SKIP: could not open /sync WebSocket at " << baseUrl
-                << "\n";
-      return 0;
-    }
+  SocketSession syncSocket;
+  syncSocket.label = "sync";
+  if (!openSocket(syncSocket,
+                  {.parts = *url, .path = "/sync", .token = accessToken},
+                  wsLoopThread)) {
+    std::cout << "SKIP: could not open /sync WebSocket at " << baseUrl << "\n";
+    return 0;
   }
-  const drogon::WebSocketConnectionPtr connection = wsClient->getConnection();
   std::cout << "ws connected: " << baseUrl << "/sync\n";
 
+  SocketSession mediaSocket;
+  mediaSocket.label = "media";
+  if (!openSocket(mediaSocket,
+                  {.parts = *mediaUrl,
+                   .path = "/media",
+                   .token = accessToken},
+                  wsLoopThread)) {
+    std::cout << "SKIP: could not open /media WebSocket at " << mediaBaseUrl
+              << "\n";
+    return 0;
+  }
+  std::cout << "ws connected: " << mediaBaseUrl << "/media\n";
+
   std::vector<Scenario> scenarios;
-  const auto runScenario = [&](Scenario scenario,
+  const auto runScenario = [&](SocketSession& session, Scenario scenario,
                                const std::function<bool(const Frame&)>& more) {
-    if (!scenario.request.empty() && connection) {
-      connection->send(scenario.request);
+    if (!scenario.request.empty() && session.connection) {
+      session.connection->send(scenario.request);
       std::cout << "  > " << messageTypeOf(makeTextFrame(scenario.request))
                 << "\n";
     }
     bool accepted = false;
     while (true) {
-      auto frame = collector.take(std::chrono::seconds(kFrameTimeoutSeconds));
+      auto frame =
+          session.collector.take(std::chrono::seconds(kFrameTimeoutSeconds));
       if (!frame) {
         std::cout << "  TIMEOUT waiting for a frame in " << scenario.name
                   << "\n";
@@ -608,7 +883,7 @@ int main(int argc, char* argv[])
 
   Scenario initialInfo;
   initialInfo.name = "initial-info";
-  runScenario(std::move(initialInfo), stopOnFirst);
+  runScenario(syncSocket, std::move(initialInfo), stopOnFirst);
 
   const std::string fullBody = R"({"requiredCreate":true,"findLastCreated":true,)"
                                R"("requiredDeleted":true,"findLastDeleted":true})";
@@ -626,7 +901,7 @@ int main(int argc, char* argv[])
     Scenario bootstrap;
     bootstrap.name = "sync-bootstrap";
     bootstrap.request = "{\"type\":\"sync\",\"payload\":" + syncPayload + "}";
-    runScenario(std::move(bootstrap), stopOnFirst);
+    runScenario(syncSocket, std::move(bootstrap), stopOnFirst);
   }
 
   const auto watermarkOf = [&scenarios]() -> std::optional<int64_t> {
@@ -646,13 +921,13 @@ int main(int argc, char* argv[])
     watermark.name = "sync-audit-log-watermark";
     watermark.request =
         "{\"type\":\"sync_audit_log\",\"payload\":{\"findLast\":true}}";
-    runScenario(std::move(watermark), stopOnFirst);
+    runScenario(syncSocket, std::move(watermark), stopOnFirst);
     if (const auto wm = watermarkOf()) {
       Scenario page;
       page.name = "sync-audit-log-page";
       page.request = "{\"type\":\"sync_audit_log\",\"payload\":{\"afterId\":0,"
                      "\"endId\":" + std::to_string(*wm) + "}}";
-      runScenario(std::move(page), stopOnFirst);
+      runScenario(syncSocket, std::move(page), stopOnFirst);
     }
   }
 
@@ -661,14 +936,14 @@ int main(int argc, char* argv[])
     watermark.name = "sync-user-audit-log-watermark";
     watermark.request =
         "{\"type\":\"sync_user_audit_log\",\"payload\":{\"findLast\":true}}";
-    runScenario(std::move(watermark), stopOnFirst);
+    runScenario(syncSocket, std::move(watermark), stopOnFirst);
     if (const auto wm = watermarkOf()) {
       Scenario page;
       page.name = "sync-user-audit-log-page";
       page.request = "{\"type\":\"sync_user_audit_log\",\"payload\":"
                      "{\"afterId\":0,\"endId\":" +
                      std::to_string(*wm) + "}}";
-      runScenario(std::move(page), stopOnFirst);
+      runScenario(syncSocket, std::move(page), stopOnFirst);
     }
   }
 
@@ -677,15 +952,17 @@ int main(int argc, char* argv[])
     subscribe.name = "camera-subscribe";
     subscribe.request = "{\"type\":\"camera:subscribe\",\"payload\":"
                         "{\"cameraId\":1,\"quality\":\"main\"}}";
-    runScenario(std::move(subscribe), drainBinary);
+    runScenario(mediaSocket, std::move(subscribe), drainBinary);
     if (!scenarios.empty() && !scenarios.back().frames.empty()) {
       const auto json = parseJson(scenarios.back().frames.front().text);
-      if (json && (*json)["type"] == "camera:ready" && connection) {
+      if (json && (*json)["type"] == "camera:ready" &&
+          mediaSocket.connection) {
         const int subId = (*json)["payload"].get("subId", 0).asInt();
-        connection->send("{\"type\":\"camera:unsubscribe\",\"payload\":"
-                         "{\"subId\":" + std::to_string(subId) + "}}");
-        while (auto frame =
-                   collector.take(std::chrono::seconds(kClosedGraceSeconds))) {
+        mediaSocket.connection->send(
+            "{\"type\":\"camera:unsubscribe\",\"payload\":"
+            "{\"subId\":" + std::to_string(subId) + "}}");
+        while (auto frame = mediaSocket.collector.take(
+                   std::chrono::seconds(kClosedGraceSeconds))) {
           scenarios.back().frames.push_back(*frame);
           std::cout << "  < " << messageTypeOf(*frame) << "\n";
           if (messageTypeOf(*frame) == "camera:closed")
@@ -699,29 +976,29 @@ int main(int argc, char* argv[])
     Scenario unknown;
     unknown.name = "unknown-type-error";
     unknown.request = "{\"type\":\"__golden_probe__\",\"payload\":{}}";
-    runScenario(std::move(unknown), stopOnFirst);
+    runScenario(syncSocket, std::move(unknown), stopOnFirst);
   }
 
   {
     Scenario voice;
     voice.name = "voice-start-stop";
-    if (connection) {
-      connection->send("{\"type\":\"voice:start\",\"payload\":{}}");
+    if (syncSocket.connection) {
+      syncSocket.connection->send("{\"type\":\"voice:start\",\"payload\":{}}");
       std::cout << "  > voice:start\n";
     }
     bool greeted = false;
-    while (auto frame = collector.take(std::chrono::seconds(
+    while (auto frame = syncSocket.collector.take(std::chrono::seconds(
                greeted ? kVoiceQuietSeconds : kFrameTimeoutSeconds))) {
       voice.frames.push_back(*frame);
       greeted = true;
       std::cout << "  < " << messageTypeOf(*frame) << "\n";
     }
-    if (!voice.frames.empty() && connection) {
-      connection->send("{\"type\":\"voice:stop\",\"payload\":{}}");
+    if (!voice.frames.empty() && syncSocket.connection) {
+      syncSocket.connection->send("{\"type\":\"voice:stop\",\"payload\":{}}");
       std::cout << "  > voice:stop\n";
     }
-    while (auto frame =
-               collector.take(std::chrono::seconds(kFrameTimeoutSeconds))) {
+    while (auto frame = syncSocket.collector.take(
+               std::chrono::seconds(kFrameTimeoutSeconds))) {
       voice.frames.push_back(*frame);
       std::cout << "  < " << messageTypeOf(*frame) << "\n";
       if (messageTypeOf(*frame) == "voice:done")
@@ -733,12 +1010,8 @@ int main(int argc, char* argv[])
       std::cout << "  voice-start-stop captured no frames\n";
   }
 
-  if (connection)
-    connection->shutdown();
-  {
-    std::unique_lock<std::mutex> closedLock(closedMutex);
-    closedCv.wait_for(closedLock, std::chrono::seconds(3));
-  }
+  closeSocket(syncSocket);
+  closeSocket(mediaSocket);
 
   std::filesystem::create_directories(fixturesDir);
   const std::string manifestPath = fixturesDir + "/manifest.json";
@@ -771,7 +1044,10 @@ int main(int argc, char* argv[])
     for (const auto& scenario : scenarios) {
       if (!committed.count(scenario.name + ".json"))
         continue;
-      ok = verifyScenario(fixturesDir, scenario) && ok;
+      ok = verifyScenario({.fixturesDir = fixturesDir,
+                           .scenario = scenario,
+                           .manifest = manifest}) &&
+           ok;
     }
     for (const auto& fixture : committed) {
       if (!endsWith(fixture, ".json"))
@@ -808,6 +1084,8 @@ int main(int argc, char* argv[])
     manifest["recordedAtUtc"] = now.data();
   }
   manifest["baseUrl"] = baseUrl;
+  manifest["authBaseUrl"] = authBaseUrl;
+  manifest["mediaBaseUrl"] = mediaBaseUrl;
   manifest["userAgent"] = kRecorderUserAgent;
 
   Json::Value rules(Json::objectValue);
