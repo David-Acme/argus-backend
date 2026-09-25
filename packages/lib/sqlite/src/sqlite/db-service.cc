@@ -182,7 +182,11 @@ drogon::orm::DbClientPtr DbService::productivityClient()
 
 void DbService::enableUriFilenames()
 {
-  sqlite3_config(SQLITE_CONFIG_URI, 1);
+  const int rc = sqlite3_config(SQLITE_CONFIG_URI, 1);
+  if (rc != SQLITE_OK) {
+    LOG_WARN << "sqlite: URI filenames were not enabled rc=" << rc
+             << " (SQLite is already initialized)";
+  }
 }
 
 void DbService::installExtensions()

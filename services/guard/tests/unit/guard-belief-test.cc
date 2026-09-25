@@ -277,6 +277,16 @@ TEST_CASE("per-camera overrides win over the global defaults")
   CHECK(fromFile.thresholdHigh == 4);
   const BeliefConfig other = GuardConfig::resolveBelief(8);
   CHECK(other.thresholdMedium == 9);
+
+  ConfigService::setRuntimeString(
+      "guard.belief.threshold_medium",
+      std::to_string(BeliefConfig{}.thresholdMedium));
+  ConfigService::setRuntimeString(
+      "guard.belief.camera.7.threshold_high",
+      std::to_string(BeliefConfig{}.thresholdHigh));
+  ConfigService::setRuntimeString(
+      "guard.belief.camera.7.threshold_medium",
+      std::to_string(BeliefConfig{}.thresholdMedium));
 }
 
 TEST_CASE("belief keys are honoured whatever their sign")

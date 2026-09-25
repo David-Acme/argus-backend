@@ -287,6 +287,8 @@ TEST_CASE("a legacy change outbox widens under the guard and keeps its rows")
   REQUIRE(pending.size() == 2);
   CHECK(pending.front().eventId.empty());
   CHECK(pending.back().eventId == minted);
+
+  DbService::client()->execSqlSync("DELETE FROM change_outbox");
 }
 
 int main(int argc, char** argv)

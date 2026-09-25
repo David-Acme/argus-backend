@@ -1,4 +1,4 @@
-#define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
+#define DOCTEST_CONFIG_IMPLEMENT
 #include <doctest/doctest.h>
 
 #include <drogon/drogon.h>
@@ -140,7 +140,6 @@ TEST_CASE("installed identity client serves its own database")
   const char* dbPath = "identity-client-test.db";
   std::remove(dbPath);
 
-  DbService::enableUriFilenames();
   seedDb(dbPath);
 
   auto readOnly = drogon::orm::DbClient::newSqlite3Client(
@@ -225,4 +224,11 @@ TEST_CASE("the frozen client serves a statement after the app's clients are rese
   std::remove(dbPath.c_str());
   std::remove((dbPath + "-wal").c_str());
   std::remove((dbPath + "-shm").c_str());
+}
+
+int main(int argc, char** argv)
+{
+  DbService::enableUriFilenames();
+  doctest::Context context(argc, argv);
+  return context.run();
 }

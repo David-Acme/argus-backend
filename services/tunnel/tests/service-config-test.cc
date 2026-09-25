@@ -5,6 +5,7 @@
 #include <doctest/doctest.h>
 
 #include <chrono>
+#include <string>
 
 using namespace tunnel;
 
@@ -19,4 +20,8 @@ TEST_CASE("an explicit stream_idle_seconds overrides the default")
   ConfigService::setRuntimeString("tunnel.stream_idle_seconds", "5");
   const ClientConfig config = ClientConfig::resolve();
   CHECK(config.tunnel.limits.idleTimeout == std::chrono::seconds(5));
+
+  ConfigService::setRuntimeString(
+      "tunnel.stream_idle_seconds",
+      std::to_string(TunnelMux::Limits{}.idleTimeout.count()));
 }

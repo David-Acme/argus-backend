@@ -41,6 +41,7 @@ TEST_CASE("advertising disabled answers true and advertises nothing")
 TEST_CASE("every announced instance is reported with its own records")
 {
   ConfigService::setRuntimeString("mdns.enabled", "false");
+  ConfigService::setRuntimeString("mdns.name", "Argus");
   MdnsService service({routeInstance("camera", 7026, true),
                        MdnsInstance{.serviceType = "_argus._tcp",
                                     .path = {},
