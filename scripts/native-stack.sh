@@ -39,6 +39,11 @@ Usage:
   native-stack.sh down              stop the stack and its go2rtc
   native-stack.sh restart <service> stop and start one service
   native-stack.sh kill <service>    stop one service (durability drills)
+  native-stack.sh sigkill <service> kill one service outright, no drain: the
+                                    process dies where it stands, mid-write
+  native-stack.sh freeze <service>  hold one service with SIGSTOP, sockets
+                                    open and state frozen; release it with
+                                    sigkill
   native-stack.sh status            show what is running
   native-stack.sh logs <service> [n]  tail one service's log
   native-stack.sh prepare           write the sandbox configs only
@@ -256,6 +261,45 @@ stop_service() {
   rm -f "$STACK_DIR/pids/$svc.pid"
 }
 
+hard_kill_service() {
+  local svc="$1"
+  local pids
+  pids="$(running_pid "$svc")"
+
+  if [ -z "$pids" ]; then
+    log "$svc was not running"
+  else
+    local pid
+    for pid in $pids; do
+      kill -9 "$pid" 2>/dev/null || true
+    done
+    local attempt
+    for attempt in $(seq 1 20); do
+      [ -z "$(running_pid "$svc")" ] && break
+      sleep 0.5
+    done
+    if [ -n "$(running_pid "$svc")" ]; then
+      err "$svc survived SIGKILL"
+      return 1
+    fi
+    log "$svc killed without a drain pid=$(printf '%s' "$pids" | tr '\n' ' ')"
+  fi
+  rm -f "$STACK_DIR/pids/$svc.pid"
+}
+
+freeze_service() {
+  local svc="$1"
+  local pids
+  pids="$(running_pid "$svc")"
+
+  [ -n "$pids" ] || { err "$svc is not running"; return 1; }
+  local pid
+  for pid in $pids; do
+    kill -STOP "$pid" || return 1
+  done
+  log "$svc frozen pid=$(printf '%s' "$pids" | tr '\n' ' ')"
+}
+
 down() {
   local svc result=0
   for svc in "${SERVICES[@]}"; do
@@ -318,6 +362,8 @@ case "${1:-}" in
   down) down ;;
   restart) require_service "${2:-}"; stop_service "$2" && start_service "$2" ;;
   kill) require_service "${2:-}"; stop_service "$2" ;;
+  sigkill) require_service "${2:-}"; hard_kill_service "$2" ;;
+  freeze) require_service "${2:-}"; freeze_service "$2" ;;
   status) status ;;
   logs) require_service "${2:-}"; tail -n "${3:-40}" "$STACK_DIR/logs/$2.log" ;;
   prepare) prepare ;;
