@@ -779,7 +779,7 @@ a copied wire enum          a hand-rolled gRPC client outside packages/clients
 Ordering rule: finish what is mechanical before starting what is structural. Phases 1–2
 do not move a single domain; phases 3–5 do, and each one is independently revertible.
 
-**Where the execution stands (2026-09-22).** A row annotated **Done** is committed, and
+**Where the execution stands (2026-09-25).** A row annotated **Done** is committed, and
 carries its report under `docs/history/reports/` (`f<phase>-<step>-*.md`); a row
 annotated **Done, except …** is committed with a named remainder; a row with no
 annotation has not started. The one deviation from the row order is that 3a ran its
@@ -794,14 +794,20 @@ say.
 | 3b — `auth` | 2 | **done** — step 1 in three parts, 3b-1 landed (`services/auth`, `argus.auth.v1`, `clients/auth`, the verdict RPC, its cache and the identity change consumer — `f3-3b-1-auth-service.md`) and 3b-2 with it (the `/auth` HTTP surface, the LAN gate, the refresh-token rate limiter, the row copy off `identity.db`); step 2 = **3b-3** (`packages/lib/auth`'s filters onto `argus::clients::auth`) landed in the same unit — `f3-3b-2-auth-surface.md` |
 | 3c — `identity` | 2 | step 1 **done** — `services/identity` is the people domain as its own owner project, taking the slot the package held in the gate (the project count is unchanged, eighteen before and after): the package's people domain becomes the service (TLS HTTP on 7044 beside the `argus.identity.v1` gRPC listener on 7040), the gateway keeps the edge and proxies its four former native paths, and the sync engine's in-process read of `user`/`user_invitation`/`person` becomes a fourth gRPC pull leg whose server side owns the rule-7b scope (`f3-3c-1-identity-service.md`); step 2 **done** — `argus-sync` owns `database/sync.db`, the five tables split out of identity's file |
 | 3d — the edge comes down | 5 | steps 1, 2, 3 and 4 **done** — step 1 in three parts (1a the notification policy, 1b per-service TLS and the per-route mDNS announcements, 1c the gateway's deletion), and 1c discharged steps 2, 3 and 4 with it (`f3-3d-1a`, `f3-3d-1b-per-service-tls-mdns.md`, `f3-3d-1c-gateway-deletion.md`); step 5 is the frontend's coordination, open |
-| 4 — service layouts | 9 | steps 1–2 **done** — `services/tts` and `services/notification` carry the reference interior; steps 3–9 open |
-| 5 — verification | 6 | **not started** |
+| 4 — service layouts | 9 | **done** (1–9, one report each: `tts` and then `notification` as the reference interior, `camera`, `productivity` and `guard`, the three AI services in 5a–5c and 6a–6c, `packages/memory` and `packages/intent` folded into `services/llm`, every unit doc re-read as an inventory, and every service's typed config a `src/config/` module) |
+| 5 — verification | 6 | **done** (1–6, one report each — `f5-1-per-service-verification.md`, `f5-2-frozen-sync-golden-frames.md`, `f5-3-golden-http-contracts.md`, `f5-4-durability-drills.md`, `f5-5-isolation-drill.md`, `f5-6-discovery-client.md`) |
 
-The tree today, measured: 17 projects, **467 tests, 0 failures, 0 compiler
-warnings**; `check-tidy` 537 TUs / 2902 findings against a 2902 baseline
-(re-recorded in Phase 3d step 1c, from 543 TUs / 2932); `check-comments` 1328
-files, 0 comments; `check-deps` 79 declarations, 670 edges, 0 forbidden,
-0 cycles, 23 deferred to phase 3.
+The tree today, measured: 15 projects, **467 ctest cases, 0 failures, 0 compiler
+warnings**; `check-tidy` 554 TUs / 2875 findings against a 2901 baseline;
+`check-comments` 1420 files, 0 comments; `check-deps` 135 declarations, 911
+edges, 0 forbidden, 0 cycles, 0 unresolved, 0 deferred.
+
+Two rows remain open, both named rather than implied: 3d step 5 is the
+frontend's coordination — the app's own discovery still browses the legacy
+`_argus._tcp.local.` (`frontend/src-tauri/src/net/discover.rs:7`) while every
+announce site in this tree is given `routes::kServiceType`, a disagreement
+whose two halves Phase 5 step 6 measured — and the tunnel's
+`server.gateway_host`/`gateway_port` still name no live listener (D19).
 
 ### Phase 0 — already executed (context, not work)
 
