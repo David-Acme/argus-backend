@@ -53,8 +53,7 @@ argus-tunnel/
   src/core/             home-link stream multiplexer (TunnelMux)
   src/client/           home-side client with reconnect (TunnelClient)
   src/relay/            US-side relay (TunnelRelay)
-  src/server/           per-binary config resolution
-  src/controllers/      /health controller
+  src/server/           per-binary config resolution + the /health extras
   src/main-client.cc    argus-tunnel-client entrypoint
   src/main-relay.cc     argus-relay entrypoint
   tests/                framing units + loopback harness + integration tests

@@ -2,15 +2,23 @@
 
 The HTTP substrate: the `{status, info, errors}` envelope, the one advice that
 turns a refusal into it, the CORS headers, the `/health` controller every
-service serves and the listener resolution every service boots from.
+service serves but guard — which registers its own hand-rolled answer
+(`services/guard/src/app/main.cc:103-115`) — and the listener resolution every
+service boots from.
 
 ## What this is
 
 A PACKAGE, not a service: no database, no domain logic, no `main`, no routes of
-its own beyond `/health`. It is the framework boundary of the monorepo — the
-only package allowed to know that the wire is Drogon. A service links
-`argus-http` and registers the advice in one line; a domain contract never links
-it, because contracts declare errors and this package formats them.
+its own beyond `/health`. It is the framework boundary of the monorepo and the
+one package that owns the HTTP wire: the envelope, the advice and the CORS
+headers are declared here, and no other package builds a response directly —
+`lib/auth`'s filters answer through the envelope. The three that do build one
+are services (tts's and llm's streaming controllers, guard's hand-rolled
+`/health`) and, in a package, only `clients/vlm`'s test fake; other packages do
+name Drogon's types (its ORM client in `lib/sqlite`, its JSON in `lib/nats`),
+but none of them shapes an answer. A service links `argus-http` and registers
+the advice in one line; a domain contract never links it, because contracts
+declare errors and this package formats them.
 
 ## Layout
 
@@ -48,9 +56,11 @@ it, because contracts declare errors and this package formats them.
 - The advice is registered once per service and never subclassed; a service
   that needs a different answer changes the definition, not the advice.
 - A refusal is thrown, not built: `throw ResponseException(SomeErrors::X)`.
-  The only responses built by hand here are the three the framework asks for
-  directly — an unmatched route's 404, its 405 and the OPTIONS answer — because
-  there is no exception to carry them (architecture plan section 4.7).
+  The three the framework asks for directly are the only answers no exception
+  carries — an unmatched route's 404 and its 405, which `ErrorHandler` builds
+  through the same envelope factory, and the OPTIONS answer, the one response
+  constructed directly (`cors.cc`) — because there is no handler of ours to
+  throw from (architecture plan section 4.7).
 - Codes come from `argus-errors`; this package declares only the ones no domain
   owns (`http-errors.hxx`). Never a magic status code in a call site.
 - The announced set is derived, never listed: a service calls

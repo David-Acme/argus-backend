@@ -28,6 +28,8 @@ const std::vector<CatalogEntry> kCatalog{
      ErrorCode::ServiceUnavailable, 503, "Camera sync unavailable"},
     {"ProductivitySyncUnavailable", &SyncErrors::ProductivitySyncUnavailable,
      ErrorCode::ServiceUnavailable, 503, "Productivity sync unavailable"},
+    {"IdentitySyncUnavailable", &SyncErrors::IdentitySyncUnavailable,
+     ErrorCode::ServiceUnavailable, 503, "Identity sync unavailable"},
     {"VoiceUnavailable", &SyncErrors::VoiceUnavailable,
      ErrorCode::ServiceUnavailable, 503, "Voice unavailable"},
     {.name = "ReplicaTooOld",
@@ -49,7 +51,7 @@ TEST_CASE("the sync catalog matches the table pinned here")
     CHECK(entry.definition->status == entry.status);
     CHECK(std::string(entry.definition->message) == entry.message);
   }
-  CHECK(kCatalog.size() == 8);
+  CHECK(kCatalog.size() == 9);
 }
 
 TEST_CASE("every sync entry is legal on the wire")

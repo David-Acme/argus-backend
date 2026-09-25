@@ -12,14 +12,16 @@ binary, own CMake preset, own `notification.db`.
 ## What it owns (F3-1)
 
 - **notification.db**: the `notification` and `notification_token` tables
-  (Ruling AN — single-owner), DDL copied verbatim from
-  `database/schema.sql:428-450`, plus `camera_fallback_event` since Phase 3d
-  step 1. The schema lands as
-  `database/schema.sql` and is applied at boot through
-  `DbService::runScriptFile` — abort on failure. `argus.db` is never
-  touched. No indexes exist on the two legacy tables, so the schema file
-  carries none for them; `camera_fallback_event` carries one on `created_at`
-  for its retention sweep and the per-outage queries.
+  (Ruling AN — single-owner), plus `notification_command` (the create
+  idempotency row), `notification_delivery` (one intent per recipient),
+  `notification_selftest`, `change_outbox` and `camera_fallback_event` since
+  Phase 3d step 1. The schema lands as `database/schema.sql` and is applied at
+  boot through `DbService::runScriptFile` — abort on failure. `argus.db` is
+  never touched. The two legacy tables carry their own indexes —
+  `services/notification/database/schema.sql:22`, the token pair's unique
+  index at `:36-37` and `idx_notification_token_user` at `:72` — and
+  `camera_fallback_event` carries one on `created_at` (`:100-101`) for its
+  retention sweep and the per-outage queries.
 - **Foreign keys stay off** (schema file pragma + re-applied after
   `applyPragmas`, which would otherwise turn them on per connection): the
   tables reference `user(id)`, and the user rows live in identity.db, not

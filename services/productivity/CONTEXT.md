@@ -13,10 +13,10 @@ own `productivity.db`.
 
 - **productivity.db**: the 7 productivity tables (`reminder`, `project`,
   `project_task`, `calendar_event`, `project_member`,
-  `calendar_event_share`, `reminder_detail`) plus their 6 indexes, DDL
-  copied verbatim from `database/schema.sql:159-280`. The schema lands as
-  `services/productivity/database/schema.sql` and is applied at boot through
-  `DbService::runScriptFile` — abort on failure. `argus.db` is never
+  `calendar_event_share`, `reminder_detail`) plus their 13 indexes, DDL at
+  `services/productivity/database/schema.sql:10-131`, where the schema lands
+  and is applied at boot through `DbService::runScriptFile` — abort on
+  failure. `argus.db` is never
   touched. `context_note` is NOT recreated (Ruling AK): it was an orphan
   table with no controller and no sync pull, and the frozen argus.db copy
   was dropped from `database/schema.sql` in F6-1.

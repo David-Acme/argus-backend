@@ -85,9 +85,11 @@ argus-identity/
   src/config/           this service's typed config (db, listener, RPC, sync
                         control and face); config.toml.example also carries the
                         sections its features and the shared packages read
-                        ([stt], [jwt], [device], [cert], [auth], [nats],
-                        [storage], [pairing], [mdns] — the announcement's name
-                        and the address it binds)
+                        ([server], [drogon.app], [identity], [cert], [stt],
+                        [jwt], [device], [auth], [sync], [nats], [face],
+                        [storage] and [storage.s3], [pairing], [remote],
+                        [mdns] — the announcement's name and the address it
+                        binds)
   src/feature/enrollment/
     repositories/       the enrollment row reads
     services/           EnrollmentFeatureService: RegisterUser's write path

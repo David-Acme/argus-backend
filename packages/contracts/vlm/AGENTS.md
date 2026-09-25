@@ -5,7 +5,7 @@ sides of the wire are generated from.
 
 ## What this is
 
-A CONTRACT, and the fourth of the four here that is not header-only: alongside
+A CONTRACT, and the fourth of the five here that is not header-only: alongside
 the header-only `argus::contracts::vlm` vocabulary target it owns
 `argus_vlm_rpc_contract()`, the CMake **function** that declares
 `argus::contracts::vlm-wire` from the `vlm.proto` beside it. A consumer does

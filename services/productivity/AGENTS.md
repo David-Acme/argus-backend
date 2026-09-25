@@ -51,8 +51,9 @@ argus-productivity/
                         dtos/, services/ — the folder IS the module
   src/feature/sync/     argus::productivity-sync — sync RPC + reminder rows
   src/shared/repositories/{,change-outbox}/  rows 2+ features read
-  config.toml.example   productivity-domain keys only ([server],
-                        [productivity], [jwt], [device], [identity]; no AI keys)
+  config.toml.example   the productivity roster ([server], [drogon.app],
+                        [productivity], [cert], [jwt], [device], [identity],
+                        [nats], [mdns]; no AI keys)
   CONTEXT.md            purpose, ownership, wiring decisions
 ```
 

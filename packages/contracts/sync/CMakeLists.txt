@@ -49,6 +49,7 @@ argus_contracts(NAME sync
         src/sync/user-audit-event.hxx
         src/sync/module-audit-event.hxx
         src/sync/user-action-event.hxx
+        src/sync/auth-change-sink.hxx
         src/sync/identity-change-sink.hxx
         src/sync/sync-control-sink.hxx
         src/sync/sync-forwarder.hxx

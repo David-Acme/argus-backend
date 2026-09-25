@@ -12,13 +12,13 @@ compiles one proto (`argus/camera/v1/sync.proto`) and one source
 (`src/camera/camera-sync-client.cc`), so the generated `SyncService` stubs
 belong to this package and no consumer reaches
 `argus.camera.v1.SyncService` without them. Three CMakeLists name it:
-`argus-llm` (`services/llm/CMakeLists.txt:183`) and `services/camera`'s
+`argus-llm` (`services/llm/CMakeLists.txt:168`) and `services/camera`'s
 `argus::camera-sync` module (`services/camera/src/feature/sync/CMakeLists.txt:10`,
 which links it for the generated stub although no source of that service
 includes the client header) link it, and `argus-sync`'s `sync-transport` module
 does too (`services/sync/src/feature/transport/CMakeLists.txt:19`) — the leg
 that pages this domain over `/sync` since sub-step 3a-1c. All three also add
-the package to their own standalone tree by path (llm `:124`, camera `:107`,
+the package to their own standalone tree by path (llm `:101`, camera `:107`,
 sync `:79`). The
 two readers that really use this client are argus-sync's `CameraSyncGateway`
 and argus-llm's catalog seed (`fetchCatalogSnapshot`); the sync repositories
@@ -61,13 +61,14 @@ themselves are argus-camera's since sub-step 3a-1b.
   the sync client calls `setDeadline` and `addCallerIdentity` only.
 - Config: the endpoint is runtime config, never a constant —
   `camera.grpc_target`, read by argus-sync
-  (`services/sync/src/config/sync-config.cc:54`, resolved once into
+  (`services/sync/src/config/sync-config.cc:39`, resolved once into
   `SyncUpstreams`; the source is constructed either way and an empty target
   fails the dial, which the pull turns into the 503
   `SyncErrors::CameraSyncUnavailable`) and by argus-llm
-  (`services/llm/src/app/main.cc:65`, the read then `if (!cameraTarget.empty())`).
-  Three files declare it: `services/sync/config.toml.example:42-43`,
-  `argus-deploy/config.sync.toml.example:42-43` and
+  (`services/llm/src/app/main.cc:70-71`, the read then
+  `if (!cameraTarget.empty())`).
+  Three files declare it: `services/sync/config.toml.example:43-44`,
+  `argus-deploy/config.sync.toml.example:43-44` and
   `argus-deploy/config.llm.toml.example:74-75` (both `argus-camera:7036`).
 - The channel is plaintext: `argus::client::makeChannel` is
   `InsecureChannelCredentials`, so what protects this edge is the network, not
@@ -86,6 +87,6 @@ themselves are argus-camera's since sub-step 3a-1b.
 - The CMakeLists registers one target per suite, both with
   `EXCLUDE_FROM_ALL FALSE` because the folder is pulled in
   `EXCLUDE_FROM_ALL`: the pre-existing `client-caller-identity-test` (lines
-  21-35, `add_test` at 35) and `camera-sync-client-test`. Because this folder
+  21-32, `add_test` at 32) and `camera-sync-client-test`. Because this folder
   is added by three of the gate's projects, ctest collects each suite three
   times — once per project that pulls the package in.

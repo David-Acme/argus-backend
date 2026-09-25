@@ -8,12 +8,13 @@ per call, its rows and tombstones back.
 A module, not a service: one `argus_clients(NAME productivity ...)`, a STATIC
 library whose include root is `src/`, so a consumer writes
 `<productivity/productivity-sync-client.hxx>` and links
-`argus::clients::productivity`. 59 lines of source (`.hxx` 29, `.cc` 30)
-behind a 33-line CMakeLists. Three link lines in two CMakeLists:
+`argus::clients::productivity`. 57 lines of source (`.hxx` 27, `.cc` 30)
+behind a 30-line CMakeLists. Four link lines in three CMakeLists:
 `argus-sync`'s `sync-transport` module
-(`services/sync/src/feature/transport/CMakeLists.txt:21`), and
-`argus-productivity` with its `productivity-sync-rpc-test` in
-`services/productivity` (`:190`, `:278`). argus-sync is the caller; the
+(`services/sync/src/feature/transport/CMakeLists.txt:22`), and three in
+`services/productivity` — the `argus-productivity` executable (`:113`), its
+`productivity-sync-rpc-test` (`:258`) and its `productivity-sync` module
+(`src/feature/sync:12`). argus-sync is the caller; the
 service that owns the contract links the package for its own server side, so
 `argus/productivity/v1/sync.proto` is compiled here and in no other
 CMakeLists of the tree.
@@ -65,9 +66,9 @@ RPC test above and this package's own suite.
   field and never sends `x-argus-credential`, and the receiver never asks for
   one.
 - The endpoint is runtime config: `productivity.grpc_target`, read at
-  `services/sync/src/config/sync-config.cc:55` into `SyncUpstreams`. Two files
-  declare it — `services/sync/config.toml.example:45-46` and
-  `argus-deploy/config.sync.toml.example:45-46` (`argus-productivity:7037`) —
+  `services/sync/src/config/sync-config.cc:40` into `SyncUpstreams`. Two files
+  declare it — `services/sync/config.toml.example:50-51` and
+  `argus-deploy/config.sync.toml.example:50-51` (`argus-productivity:7037`) —
   and a sync service whose key is empty logs
   "productivity leg -> unconfigured source (503)": the source is constructed
   either way and the empty target fails the dial rather than pointing

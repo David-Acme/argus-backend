@@ -7,9 +7,11 @@ validation exception.
 ## What this is
 
 A PACKAGE, not a service, and the one lib that is genuinely header-only: the
-target is INTERFACE and there is no `.cc` anywhere in it. Ten units outside
-`packages/lib` link it — identity, memory, sync and seven services — each of
-them validating the DTOs it accepts on the wire.
+target is INTERFACE and the library ships no `.cc` at all — the only one in
+the package is its suite under `tests/`. Ten units outside
+`packages/lib` link it, all of them services — auth, camera, guard, identity,
+llm, notification, productivity, sync, tts and vlm — each of them validating
+the DTOs it accepts on the wire.
 
 A refusal is a `ValidationException` carrying a per-field error map, never a
 message: the controller does not format the answer, `argus::lib::http` does.

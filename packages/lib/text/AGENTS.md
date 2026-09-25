@@ -6,10 +6,11 @@ serialize, flat object diffs) and the hashing and encoding the fleet shares
 
 ## What this is
 
-A PACKAGE, not a service: no I/O, no state, no config, no `main`. Fourteen
-units outside `packages/lib` link it — audit, the clients, contracts,
-identity, intent, memory, socket, sync and six services — which is what a
-utility package looks like when it is the fleet's only one: what is here is
+A PACKAGE, not a service: no I/O, no state, no config, no `main`. Eleven
+units outside `packages/lib` link it — the `sync` and `vlm` clients,
+`contracts/sync` and eight services (auth, camera, guard, identity, llm,
+notification, productivity, sync) — which is what a utility package looks like
+when it is the fleet's only one: what is here is
 here because more than one owner needs it, not because it is generic.
 
 It absorbed the `json` and `hash` packages; `json-diff.cc`, `base64.cc` and

@@ -31,6 +31,11 @@ const std::vector<CatalogEntry> kCatalog{
      .code = ErrorCode::Forbidden,
      .status = 403,
      .message = "Access denied"},
+    {.name = "RemoteNotAllowed",
+     .definition = &AuthErrors::RemoteNotAllowed,
+     .code = ErrorCode::RemoteNotAllowed,
+     .status = 403,
+     .message = "Remote requests are not allowed"},
     {.name = "InvalidJsonBody",
      .definition = &AuthErrors::InvalidJsonBody,
      .code = ErrorCode::BadRequest,
@@ -145,7 +150,7 @@ TEST_CASE("the auth catalog matches the table pinned here")
     CHECK(entry.definition->status == entry.status);
     CHECK(std::string(entry.definition->message) == entry.message);
   }
-  CHECK(kCatalog.size() == 23);
+  CHECK(kCatalog.size() == 24);
 }
 
 TEST_CASE("every auth entry is legal on the wire")

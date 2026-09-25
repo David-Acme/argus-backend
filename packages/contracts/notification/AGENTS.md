@@ -11,8 +11,10 @@ declaration, an INTERFACE target with no translation unit. The include root is
 `src/`, so a consumer writes
 `<notification/notification-delivery-status.hxx>` and links
 `argus::contracts::notification`. Its consumers are the notification service
-(the repository, the delivery service and the NATS sink), the gateway (the
-delivery consumer, its inbox and two suites) and this package's own suite. The
+(the repository, which reads the status vocabulary, and the service, its RPC
+service and its two NATS sinks, which carry the sink interface), argus-sync's
+`fanout` module (the delivery consumer, its inbox and two suites) and this
+package's own two suites. The
 delivery sink moved here in sub-step 3a-1b from the engine package, which was
 the wrong owner: it carries the notification domain's wire and no sync type at
 all.

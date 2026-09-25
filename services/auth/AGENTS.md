@@ -66,7 +66,8 @@ argus-auth/
   CMakeLists.txt        add_subdirectory-compatible AND standalone buildable
   src/app/main.cc       config load, listeners, NATS bus, app run
   src/app/rpc/          argus.auth.v1.AuthService (fleet-secret gated)
-  src/config/           this service's typed config ([auth], [cert], [identity])
+  src/config/           this service's typed config ([auth], [identity],
+                        [rate_limit], [sync] and the certificate pair)
   src/feature/session/
     repositories/       refresh_token queries and the row mapping
     schemas/            refresh_token row mapping
@@ -83,7 +84,8 @@ argus-auth/
     dtos/               the request and response DTOs of that surface
     services/           AuthFeatureService: sessions, credentials, challenges
     infra/              refresh-rate-gate: the [rate_limit] pre-routing gate
-  database/schema.sql   this owner's three tables and their three indexes
+  database/schema.sql   this owner's four tables — the three session tables
+                        and the change outbox — with their five indexes
   config.toml.example   auth keys + the identity target; no AI keys
   tests/unit/           the session-verdict, device-login, refresh-gate and
                         migration suites (the first has a live NATS leg)
@@ -99,9 +101,10 @@ limiter that guards it. All three are feature-local — rule 23's
 `src/shared/`.
 
 The top-level CMake auto-discovers feature folders and links
-`argus::auth-session`, `argus::auth-device`, `argus::auth-config` and
-`argus::auth-rpc` by name. The wire arrives as `argus::clients::auth`, which is
-also what compiles `argus/auth/v1/auth.proto`.
+`argus::auth-config`, `argus::auth-auth`, `argus::auth-session`,
+`argus::auth-device` and `argus::auth-rpc` by name. The wire arrives as
+`argus::clients::auth`, which is also what compiles
+`argus/auth/v1/auth.proto`.
 
 ## Endpoint and ports
 

@@ -46,7 +46,9 @@ service type, an instance-label spelling and two TXT keys — nothing else.
   with an explicit source list, never `file(GLOB)`.
 - Tier 2: this package depends on nothing, and nothing in tier 1 may consume
   it — `packages/lib/mdns` takes the service type as a parameter for exactly
-  that reason, so the constant is read by services, which are tier 5.
+  that reason. The one reader is `packages/lib/http`, itself tier 2, in
+  `src/http/route-announcements.cc:17-21`; the services call that function and
+  never spell a constant of this package.
 
 ## Tests
 

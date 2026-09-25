@@ -7,8 +7,9 @@ services size their pools and offload from.
 
 ## What this is
 
-A PACKAGE, not a service: no routes, no `main`, no database. Nine units
-outside `packages/lib` link it — identity, memory and seven services. Two of
+A PACKAGE, not a service: no routes, no `main`, no database. Eleven units
+outside `packages/lib` link it — the `vlm` client and ten services (auth,
+camera, guard, identity, llm, notification, stt, sync, tts, vlm). Two of
 its targets are the reason the profile lives in a package rather than in
 service-private code: it is compiled twice, once ncnn-free for the services
 that must not drag an inference runtime in and once with the Vulkan probe, and

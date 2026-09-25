@@ -79,14 +79,14 @@ the gRPC one to serve the same protocol.
   `TtsClient::remote()` is true when either URL is set, and every entry point
   throws `std::runtime_error("tts.remote_url is not configured")` when neither
   is.
-- The four tomls that declare the HTTP pair all do it in an `[tts]` block,
-  scheme-less: `services/voice/config.toml:20-21` and
-  `services/camera/config.toml:63-64` (`127.0.0.1:7029`, 30000),
-  `argus-deploy/config.voice.toml:16-17` and
-  `argus-deploy/config.camera.toml:119-120` (`172.19.0.29:7029`, 30000). The
-  gRPC pair is declared in no toml at all — only runtime overrides in
-  `services/tts/tests/unit/tts-rpc-test.cc` set it — so nothing ships the gRPC
-  path enabled.
+- The four templates that declare the HTTP pair all do it in an `[tts]`
+  block, scheme-less: `services/voice/config.toml.example:15-16` and
+  `services/camera/config.toml.example:65-66` (`127.0.0.1:7029`, 30000),
+  `argus-deploy/config.voice.toml.example:16-17` (`172.19.0.29:7029`, 30000)
+  and `argus-deploy/config.camera.toml.example:65-66` (`argus-tts:7029`,
+  30000). The gRPC pair is declared in no toml at all — only runtime
+  overrides in `services/tts/tests/unit/tts-rpc-test.cc` set it — so nothing
+  ships the gRPC path enabled.
 - Failure vocabulary: the gRPC path throws `ResponseException`, one of the
   nine contract refusals; the transitional path throws `std::runtime_error`
   with a frozen message ("argus-tts remote_url has no host" from

@@ -15,6 +15,13 @@ cluster lives here rather than in either service.
 - `src/phrase/phrase-catalog.{cc,hxx}` — the catalog that
   loads the vocabulary into the automaton.
 - `src/phrase/rule-parser.{cc,hxx}` — the rule syntax.
+- `src/phrase/vocabulary.hxx` — `vocabulary`: the four spans over the seed
+  data (`spanishPhrases`, `englishPhrases`, `spanishLexicon`,
+  `englishLexicon`).
+- `src/phrase/lexicon-kind.hxx` — `LexiconKind` (`Predicate = 0`,
+  `Kinship`, `FirstPerson`, `Stopword`) with its round-trip pair.
+- `src/phrase/memory-type.hxx` — `MemoryType` (`Persona = 0`, `Episodic`,
+  `Instruction`, `System`) with its round-trip pair.
 - `src/phrase/details/` — the seed data the vocabulary loads:
   `vocabulary-{en,es}.hxx`, `vocabulary-types.hxx`, `phrase-kind.hxx`.
 

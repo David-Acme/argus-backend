@@ -71,8 +71,10 @@ device-credential suite caught it; the contract now carries presence
 user row over the same cached client: `findById` calls
 `argus.identity.v1.GetUser` and returns the DB-free `DirectoryUser`
 (`auth/user-directory.hxx` in this package). Consumers install
-it where they own a seam — argus-camera injects it into the sync socket,
-argus-productivity holds it as a private member — so no service opens
+it where they own a seam — argus-sync builds one at boot
+(`services/sync/src/app/main.cc:82`) and hands it to its socket and to the
+voice relay, while argus-productivity holds it as a private member in its two
+share-carrying feature services — so no service opens
 another domain's database for a user row.
 
 ## What does NOT live here

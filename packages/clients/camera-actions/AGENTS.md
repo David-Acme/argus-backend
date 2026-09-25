@@ -20,7 +20,7 @@ take it: `argus-guard` (`services/guard/CMakeLists.txt:110`) and
 (`services/camera/src/feature/actions/CMakeLists.txt:14`, the feature module's
 `DEPENDS`) and `camera-action-rpc-test` (`services/camera/CMakeLists.txt:271`).
 The two service CMakeLists also add the package to their own tree by path
-(`services/guard:72`, `services/camera:114`).
+(`services/guard:72`, `services/camera:115`).
 13 C++ files include the header: the in-package suite, `services/camera`'s
 action-rpc suite, and eleven guard files (`main.cc`, `guard-service.cc`,
 `guard-assessment.cc` and the eight guard unit suites).
@@ -73,11 +73,13 @@ action-rpc suite, and eleven guard files (`main.cc`, `guard-service.cc`,
   `constexpr` in the `.cc`. The channel is plaintext (`makeChannel` is
   `InsecureChannelCredentials`).
 - Config: `camera.actions_target` and `camera.actions_credential`
-  (`services/guard/src/app/main.cc:149-156` is the only reader, and it skips the
-  client entirely when the target is empty). One file declares the target:
-  `argus-deploy/config.guard.toml:137` (`argus-camera:7036`). No file declares
-  the credential — measured, no `.toml` in the tree carries the key — so on that
-  tree the credential is empty and no `x-argus-credential` header is sent.
+  (`services/guard/src/app/main.cc:145-152` is the only reader, and it skips
+  the client entirely when the target is empty). Both templates in the tree
+  declare the pair — `argus-deploy/config.guard.toml.example:115-116`
+  (`argus-camera:7036` plus a `CHANGE_ME_GUARD_CAMERA` placeholder) and
+  `services/guard/config.toml.example:119-120` (a loopback target with an
+  empty credential) — and `scripts/lib/common.sh:312` mints the deploy pair's
+  real secret, so the header travels wherever provisioning filled it.
 
 ## Tests
 

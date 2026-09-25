@@ -9,15 +9,18 @@ A CONTRACT, not a service and not a library: one `argus_contracts`
 declaration, an INTERFACE target with no translation unit. The include root is
 `src/`, so a consumer writes `<camera/zone-type.hxx>` and links
 `argus::contracts::camera`. Eleven CMakeLists link it — nine in
-`services/camera`: the executable's own `MODULES` list (`CMakeLists.txt:217`),
-two suites, and the eight modules that page the camera tables or speak the
-vocabulary (`src/camera`, `feature/{camera,camera-control,media,operator,sync,
-zone}` and `src/shared/repositories`, whose link is at
+`services/camera`: its own `CMakeLists.txt`, whose three suites link it
+(`:217`, `:251`, `:273`; the executable's `MODULES` list does not, it reaches
+the contract through its modules), and the eight modules that page the camera
+tables or speak the vocabulary (`src/camera`,
+`feature/{camera,camera-control,media,operator,sync,zone}` and
+`src/shared/repositories`, whose link is at
 `src/shared/repositories/CMakeLists.txt:8`) — plus
 `services/guard`'s guard module
 (`src/feature/guard/CMakeLists.txt:29`), and `argus-sync`'s `sync-transport`
-module (`services/sync/src/feature/transport/CMakeLists.txt:24`, where a zone
-or an event crosses the sync leg as the same four enums).
+module (`services/sync/src/feature/transport/CMakeLists.txt:25`, where a zone
+or an event crosses the sync leg as the same five enums this package
+declares).
 
 ## Layout
 
@@ -36,17 +39,17 @@ or an event crosses the sync leg as the same four enums).
   `identityState` field of every track-bound person object, camera's matcher
   writes the spelling and guard's policy reads it back, so the enum is named by
   two services -- and until Phase 2 step 4 each of them carried a private copy,
-  which is the drift section 2.4 rule 6 exists to stop. 2 files.
+  which is the drift section 2.4 rule 6 exists to stop. 3 files.
 - `src/camera/zone-type.hxx` — `ZoneType` (`Monitor`, `Alert`, `Exclude`); 3
   files.
 - `src/camera/camera-errors.hxx` — the nine refusals (`Forbidden`,
   `InvalidCameraId`, `CameraNotFound`, `TooManyCameraSubscriptions`,
   `TooManyViewers`, `SubscribeFailed`, `ZoneNotFound`, `CameraUnreachable`,
-  and the answer a change that could not be recorded gives); 6 files.
+  and the answer a change that could not be recorded gives); 8 files.
 
 ## Rules
 
-- The four enums are wire values: `<enum>ToString` is what the app sends and
+- The five enums are wire values: `<enum>ToString` is what the app sends and
   what the database stores. Each is `uint8_t` with an explicit first
   enumerator, and each has a `<enum>ToString`/`<enum>FromString` pair whose
   strings are frozen — `"tapo"`, `"events"`, `"info"`, `"monitor"`.

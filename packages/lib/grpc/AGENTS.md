@@ -48,12 +48,18 @@ per client.
   secret compared equal in constant time, and answers nothing when the
   presented value is empty. `callerUserId` refuses unless all three legs
   (`x-argus-user`, `x-argus-role`, `x-argus-device`) are present.
-- `grpc-health` is the one wire module that belongs to no domain: every
-  service that answers health probes implements
-  `grpc::health::v1::Health::CallbackService` over it and nothing calls it, so
-  it is the runtime's rather than a generated SDK. It is `EXCLUDE_FROM_ALL`,
-  because a unit that pulls this package in for the runtime alone must not
-  build it.
+- `grpc-health` is the one wire module that belongs to no domain. Two units
+  implement its service — camera's and voice's `feature/health/`, each
+  overriding `grpc::health::v1::Health::CallbackService` — and nothing calls
+  it: no first-party code builds a health stub, and every deployed probe is
+  `/health` over HTTP (`argus-deploy/docker-compose.yml`). The five `app/rpc`
+  modules that link it (auth, camera, identity, productivity, sync) reference
+  no health symbol either: it is what hands a module the `grpcpp/` runtime
+  with no domain stub, and for camera's and productivity's it is the only
+  such edge, while a module that links a client already has one, the way
+  notification's `app/rpc` does. So it is the runtime's rather than a
+  generated SDK, and `EXCLUDE_FROM_ALL`, because a unit that pulls this
+  package in for the runtime alone must not build it.
 
 ## Tests
 

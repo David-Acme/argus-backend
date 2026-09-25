@@ -5,7 +5,7 @@ stored user profile each name.
 
 ## What this is
 
-A CONTRACT, and the smallest of the ten: one header, one enum, no
+A CONTRACT, and one of the smallest of the twelve: one header, one enum, no
 dependencies. The include root is `src/`, so a consumer writes
 `<voice/voice-lang.hxx>` and links `argus::contracts::voice`. Two CMakeLists do
 — `services/identity`, because a user profile stores the language, and

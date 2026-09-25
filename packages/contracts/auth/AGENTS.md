@@ -9,9 +9,12 @@ and the auth catalog the gates and the `/auth` surface throw from.
 A CONTRACT, not a service and not a library: one `argus_contracts`
 declaration, an INTERFACE target with no translation unit. The include root is
 `src/`, so a consumer writes `<auth/user-role.hxx>` and links
-`argus::contracts::auth`. Twenty-five CMakeLists link it — packages
-`contracts/sync`, `lib/auth` and `clients/voice` (which only guards against
-the contract standing alone), plus the services that serve or read a role:
+`argus::contracts::auth`. Twenty-five CMakeLists name it — 24 that link it
+plus `services/notification/CMakeLists.txt`, which adds the package to its
+standalone tree by path and links nothing from it — across the packages
+`contracts/sync`, `lib/auth` and `clients/voice` (which links it for the
+`<auth/user-role.hxx>` its header includes), plus the services that serve or
+read a role:
 `auth` across five files, `identity` across six, `sync` across five, `llm`
 across two (its own file and the `argus::llm` feature module), and `camera`,
 `notification` and
@@ -27,7 +30,7 @@ the `{status, info, errors}` envelope's `errors.code`.
 ## Layout
 
 - `src/auth/user-role.hxx` — `UserRole` (`Owner`, `Resident`, `Guard`,
-  `Guest`) with `userRoleToString`/`userRoleFromString`; 34 files include it.
+  `Guest`) with `userRoleToString`/`userRoleFromString`; 36 files include it.
 - `src/auth/request-context.hxx` — `AuthContext::kJwtKey` (`"jwt_ctx"`) and
   `AuthContext::kDeviceKey` (`"device_ctx"`): the attribute keys the filters
   write and every authenticated handler reads; 21 files include it.
@@ -36,19 +39,20 @@ the `{status, info, errors}` envelope's `errors.code`.
   `deviceLoginStatusToString`/`deviceLoginStatusFromString`: the QR pairing
   challenge's `status` column, which is both a `CHECK` constraint in
   `argus-auth`'s schema and the `status` string the polling device reads.
-- `src/auth/auth-errors.hxx` — the auth catalog, twenty-three definitions: the
-  four the gate filters throw (`MissingToken`, `AuthenticationRequired`,
-  `AccessDenied`, `InvalidJsonBody`), the refresh-limiter refusal
+- `src/auth/auth-errors.hxx` — the auth catalog, twenty-four definitions: the
+  five the gate filters and the remote gate answer with (`MissingToken`,
+  `AuthenticationRequired`, `AccessDenied`, `RemoteNotAllowed`,
+  `InvalidJsonBody`), the refresh-limiter refusal
   (`TooManyAttempts`), the `/auth` surface's own (multipart shape, challenge,
   device credential, refresh token, user, `ChangeNotRecorded`) and the
   enrollment outcomes `argus-identity` reports through `AuthFeatureService`;
-  9 files include it.
+  10 files include it.
 
 ## Rules
 
 - The four role strings and the two context keys are wire values. `"owner"` is
-  what a JWT carries and `jwt_ctx` is what forty handlers look up; renaming
-  either is a contract break, not a refactor.
+  what a JWT carries and `jwt_ctx` is what thirty-two handlers across the tree
+  look up; renaming either is a contract break, not a refactor.
 - The types stored under the context keys (`JwtContext`, `DeviceContext`)
   belong to `packages/lib/auth`; only the keys travel through here, so a
   consumer can read them without taking Drogon.

@@ -20,17 +20,20 @@ portrait handlers inside that service.
   the pairing and invitation answers, the challenge and refresh-token answers,
   the portrait answers, the five the controllers refuse before any service
   sees the request, and the answer a change that could not be recorded gives.
-  10 files include it.
+  11 files include it.
 
 ## Rules
 
 - A definition declares its status with its code, so a call site cannot
   disagree with itself. Two entries answer 500 while their code says
   `SERVICE_UNAVAILABLE` (`LoginChallengeGenerationFailed`,
-  `DeviceCredentialIssuanceFailed`), because both call sites pass 500
-  explicitly; every other `SERVICE_UNAVAILABLE` in the tree answers 503. The
-  catalog suite names those two so a third cannot arrive unnoticed, and the
-  pair is flagged rather than fixed.
+  `DeviceCredentialIssuanceFailed`), against 503 for every other
+  `SERVICE_UNAVAILABLE` in the tree. Both are the pair the auth catalog also
+  declares, which is where today's only two call sites throw them
+  (`services/auth/src/feature/auth/services/auth-feature-service.cc:253` and
+  `:546`); no source of this service throws either. The catalog suite names
+  them so a third cannot arrive unnoticed, and the pair is flagged rather than
+  fixed.
 - The wire schema is `argus/identity/v1/identity.proto` under
   `packages/contracts/proto/`, compiled by `packages/clients/identity`. This
   package is the C++ half: the refusal list the Drogon handlers throw.

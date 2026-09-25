@@ -50,11 +50,12 @@ that apply to voice-service code; when in doubt, the root file wins.
 ```
 argus-voice/
   CMakeLists.txt        argus_module(voice-core) + argus_service(argus-voice)
-  src/main.cc           config load, gRPC server + minimal /health boot
+  src/main.cc           config load, listeners + minimal /health boot
   src/feature/voice/    voice session, remote-only engine seam, VoiceService RPC
   src/feature/health/   grpc.health.v1 service
-  src/controllers/      /health HTTP controller
-  src/server/           listener resolution (grpc_port / health_port)
+  src/shared/services/  vad, noise suppression and the reaction engine
+  src/shared/wrapper/   the ring the voice paths carry samples in
+  src/test-support/     the fake voice sink the suites drive
   config.toml.example   [server], [identity], [stt], [tts], [llm], [vad]
   CONTEXT.md            purpose, ownership, wiring decisions
 ```

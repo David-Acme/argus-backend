@@ -34,6 +34,7 @@ argus.<domain>.v1.<event>
 | `argus.notification.v1.delivery` | argus-notification | argus-sync (durable JetStream, F3-1c) | one event per pending delivery intent (`deliveryId`, `notificationId`, `userId`, row fields); published with `Nats-Msg-Id = notification-delivery:<deliveryId>` on the notification-owned stream `ARGUS_NOTIFICATION` (7 days, file storage, 2-minute duplicate window); an intent settles only on PubAck; argus-sync receipts each delivery in `notification_delivery_inbox` and drops receipted redeliveries. Delivery guarantee is at-least-once, not exactly-once: a crash between socket dispatch and inbox settlement replays the dispatch on redelivery (one receipt row, possibly two socket emits). Same delivery id plus same canonical payload fingerprint is a replay and dispatches at most once per receipt; same id plus a different fingerprint is a conflict that is never dispatched; persistently failing dispatches dead-letter after a bounded attempt count with a broker Term. |
 | `argus.identity.v1.change` | identity domain (F4-6; its sink moved into the identity owner in F3-1c) | argus-llm (durable `argus-llm-catalog-identity`), argus-sync (durable `argus-sync-identity`), argus-auth (durable `argus-auth-identity`) | the memory catalog replica feed: person/user rows written by the identity surface; argus-sync's durable receives the same events and drops the catalog kind, because the identity surface's `/sync` frames arrive on the change vocabulary its sinks publish, never on this catalog feed; argus-auth's durable drops the cache entry behind a session verdict and revokes every session of a user that arrives disabled (Phase 3b-1) |
 | `argus.identity.v1.user-action` | identity domain (F3-1c) | argus-sync (durable `argus-sync-identity-action`) | the action journal: one actor doing one thing to one record, whether or not the record changed; argus-sync inserts it verbatim into `user_action_log`, keyed by its `Nats-Msg-Id` — `identity-action:` plus 32 hex the producer mints at enqueue — so a redelivery is ignored and the key is unique without borrowing the journal row's id |
+| `argus.auth.v1.user-action` | argus-auth | argus-sync (durable `argus-sync-auth-action`) | the auth action journal: the session acts one actor performs — the sign-in that writes a `User` session row and the sign-out that deletes it — published on the auth-owned stream `ARGUS_AUTH_CHANGE` and inserted verbatim into `user_action_log` beside the identity journal's rows, keyed by its `Nats-Msg-Id` — `auth-action:` plus 32 hex the producer mints at enqueue — so a redelivery is ignored |
 | `argus.notification.v1.push_intent` | argus-notification (F5-5) | argus-relay | a notification push intent carried to the home client through the tunnel transport (not a persisted change; never re-emitted to `/sync`) |
 
 In F3-1c the gateway's sync fan-out moved to `argus-sync` — the F3-1c tags
@@ -44,7 +45,8 @@ consumer of a change subject is a durable JetStream consumer: `argus-sync`
 holds one per
 change stream (`ARGUS_CAMERA`, `ARGUS_NOTIFICATION_CHANGE`,
 `ARGUS_PRODUCTIVITY_CHANGE`, and `ARGUS_IDENTITY_CHANGE` twice — the change
-subject and the action journal), argus-auth holds one on
+subject and the action journal — plus `ARGUS_AUTH_CHANGE` for the auth
+journal), argus-auth holds one on
 `ARGUS_IDENTITY_CHANGE` (`argus-auth-identity`) and argus-llm holds one per
 catalog stream (`ARGUS_CAMERA`, `ARGUS_IDENTITY_CHANGE`). A durable filter names
 exactly one

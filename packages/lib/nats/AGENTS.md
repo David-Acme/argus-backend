@@ -6,15 +6,17 @@ install at boot.
 
 ## What this is
 
-A PACKAGE, not a service: no route, no `main`, no database. Eleven units
-outside `packages/lib` link it — `contracts/sync`, `identity`, `memory` and
-eight services (camera, gateway, guard, llm, notification, productivity, sync,
-tunnel) — because the change stream is how a domain tells the others that a
-row moved.
+A PACKAGE, not a service: no route, no `main`, no database. Ten units
+outside `packages/lib` link it — `contracts/sync` and the nine services that
+publish or consume the change stream (auth, camera, guard, identity, llm,
+notification, productivity, sync, tunnel) — because the change stream is how a
+domain tells the others that a row moved.
 
 `docs/architecture/wire-nats-subjects.md` is the contract this package
-implements: every subject constant here appears there, and a subject that is
-not in that document is a subject nobody consumes.
+implements: every published subject and stream constant here appears there,
+and a subject that is not in that document is a subject nobody consumes. The
+one constant with no row is `kGuardSubjectFilter` — a `>` subscription filter
+argus-guard binds its own feed with, not a spelling anything publishes on.
 
 ## Layout
 

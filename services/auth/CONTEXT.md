@@ -28,19 +28,21 @@ the user row behind a session comes from identity through
   context the moment its `user` row changes, and revokes every session of a
   user that arrives disabled.
 - `GET /health` reports the NATS leg when the bus is configured. The `/auth`
-  HTTP surface (login, pairing, QR, refresh, logout) lands in Phase 3b-2 on
-  port 7042; this unit ships the RPC authority underneath it.
+  HTTP surface (login, pairing, QR, refresh, logout) is this service's own
+  subroute on port 7042 since Phase 3b-2, served over the RPC authority
+  underneath it.
 
-## Ownership and the two features
+## Ownership and the three features
 
 `session` owns everything about what a validated token means: the
 `refresh_token` repository and mapping, `SessionService`, the context cache and
 the identity change consumer. `device` owns the device credential — its
 repository and mapping — because the lookup is a different question with a
-different table, and nothing in `session` needs the other's tables.
+different table, and nothing in `session` needs the other's tables. `auth`
+owns the HTTP surface, its DTOs and the refresh limiter that guards it.
 
-Neither repository is read by the other feature, so rule 23's 2+ rule puts both
-in their own feature and keeps `src/shared/` empty.
+No feature reads another's repository, so rule 23's 2+ rule puts each of the
+three in its own feature and keeps `src/shared/` empty.
 
 ## Wiring decisions
 
@@ -157,7 +159,8 @@ it creates is not reclaimed: `maxAge` bounds the messages, not the stream.
 
 ## Open items
 
-- Phase 3b-2 brings the `/auth` surface (login, pairing, rate limiting) and the
-  row migration off `identity.db`; Phase 3b-3 points `packages/lib/auth`'s
-  filters at `argus::clients::auth`, and the `device_login_challenge` handlers
-  are this service's `device` feature.
+None. Phase 3b-2 brought the `/auth` surface and the row migration off
+`identity.db` — the three session tables are this service's schema now — and
+Phase 3b-3 landed the filter leg: `JwtFilter` asks the verdict through
+`argus::clients::auth` (`packages/lib/auth/src/auth/jwt-filter.cc:50-54`), so
+no other unit opens `auth.db`.

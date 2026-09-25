@@ -12,6 +12,9 @@ engine seam) both resample audio, and neither may reach into the other's
 ## Layout
 
 - `src/audio/audio-resampler.{cc,hxx}` — the resampler.
+- `src/audio/endpoint-detector.{cc,hxx}` — `EndpointDetector`, the streaming
+  endpointer camera's talk capture runs: an `EndpointConfig` of floors, frame
+  counts and windows, and the `EndpointStatus` each frame returns.
 
 ## Rules
 

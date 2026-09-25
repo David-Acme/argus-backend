@@ -10,9 +10,10 @@ A PACKAGE, not a service: no database, no listener, no process, no `main`, and
 no HTTP framework. It is a leaf — the foundation everything else may link — so
 nothing here may depend on anything but the standard library. The envelope that
 formats these errors into `{status, info, errors}` is `argus-http`; this package
-only declares them. That separation is the whole reason it exists: the eight
-contracts, `audit`, `memory`, `sync`, the `tts` client and five other libs link
-this package directly rather than take `argus-http` and Drogon with it.
+only declares them. That separation is the whole reason it exists: the eleven
+contracts, the four wire clients and four other libs (`auth`, `http`,
+`storage`, `validation`) link this package directly rather than take
+`argus-http` and Drogon with it.
 
 ## Layout
 

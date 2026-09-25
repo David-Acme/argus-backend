@@ -33,9 +33,9 @@ and instead call it over the internal wire.
     (422 validation, 503 `TTS_NOT_LOADED`).
   - Trust model: no auth, loopback bind by default — internal-network only,
     never announced or published.
-- **Config**: `[tts]` (engine knobs, mirroring the legacy block) +
-  `[server]` (loopback listener, default 7029) only. No database, no NATS,
-  no JWT/device keys.
+- **Config**: `[tts]` (engine knobs, mirroring the legacy block), `[server]`
+  (loopback listener, default 7029), the `[rpc]` / `[rpc.callers]` gRPC gate
+  and `[drogon.app]` — no database, no NATS, no JWT/device keys.
 
 ## Synthesis cache
 

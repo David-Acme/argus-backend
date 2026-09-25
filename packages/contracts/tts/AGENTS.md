@@ -5,7 +5,7 @@ both sides of the wire are generated from.
 
 ## What this is
 
-A CONTRACT, and the second of the four here that is not header-only: alongside
+A CONTRACT, and the second of the five here that is not header-only: alongside
 the header-only `argus::contracts::tts` vocabulary target it owns
 `argus_tts_rpc_contract()`, the CMake **function** that declares
 `argus::contracts::tts-wire` from the `tts.proto` beside it. A consumer does
@@ -44,8 +44,9 @@ own name — and the vocabulary for the synthesis feature. `services/camera` and
   client has to read back.
 - `TtsNotLoaded` is the catalog's one domain-specific code — the other eight
   are shared `ErrorCode` spellings. The pairing with 503 is the convention a
-  reviewer checks first, and `ServiceUnavailable` in every other catalog in the
-  tree answers 503 too.
+  reviewer checks first, and it holds here: the only entries in the tree that
+  pair `ServiceUnavailable` with another status are the login-challenge and
+  device-credential pair, which the auth and identity catalogs declare at 500.
 - The proto is the contract for the samples as well: a change to
   `SampleFormat`, `Quality` or the `AudioChunk` fields is a wire break for the
   camera talk path and the voice service at once.

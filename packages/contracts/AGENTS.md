@@ -25,9 +25,12 @@ review blocker:
   `NOT_FOUND`, `METHOD_NOT_ALLOWED`, `CONFLICT`, `SERVICE_UNAVAILABLE`,
   `TOO_MANY_REQUESTS`, `INTERNAL_ERROR`, `CAMERA_UNREACHABLE`
   (`proto/argus/common/v1/base.proto`).
-- `SyncOperation` 0-7, `TableName` 0-23 and `SYNC_LIMIT = 200`
-  (`proto/argus/sync/v1/contracts.proto`, `docs/architecture/wire-sync-tables.md`). New sync
-  operations may only use numbers >= 8.
+- `SyncOperation` 0-7 and `TableName` 0-23, both frozen in
+  `proto/argus/sync/v1/contracts.proto`, and `SYNC_LIMIT = 200`, which is
+  `SyncLimits::kMaxRows` in
+  `packages/contracts/sync/src/sync/sync-limits.hxx` and cited by
+  `docs/architecture/wire-sync-tables.md`. New sync operations may only use
+  numbers >= 8.
 - Versioning: packages `argus.<domain>.v1`; additive changes only inside v1.
   A retired field gets `reserved` + a new field. Breaking changes go to a new
   `/v2/...` route or package, which may run in parallel with v1 during the
@@ -36,8 +39,8 @@ review blocker:
 ## Layout
 
 - `proto/argus/{domain}/v1/*.proto` — the shared proto root, one package per
-  domain still served from it (`auth`, `common`, `camera`, `productivity`,
-  `notification`, `memory`, `sync`, `identity`, `voice`, plus vendored
+  domain still served from it (`auth`, `camera`, `common`, `identity`,
+  `notification`, `productivity`, `sync`, `voice` — eight — plus vendored
   `grpc/health/v1`). No orphan skeleton is left: the five domains whose gRPC
   boundary this work introduced (`response`, `stt`, `tts`, `vlm`, `llm`) each
   moved their schema out to their own package folder, and Phase 4 step 6c took

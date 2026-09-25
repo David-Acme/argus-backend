@@ -66,10 +66,11 @@ argus-notification/
                         module argus::notification-camera-notification
   src/shared/           the notification repository, schema and service both
                         features read, plus the change outbox module
-  config.toml.example   notification-domain keys only ([server],
-                        [notifications], [jwt], [device], [identity] — the
-                        roster the camera notifier resolves recipients from;
-                        no AI keys)
+  config.toml.example   the notification roster ([server], [drogon.app],
+                        [notification], [notifications], [cert], [jwt],
+                        [device], [identity], [grpc], [nats], [push], [mdns]
+                        — the camera notifier resolves recipients from
+                        [notifications]; no AI keys)
   CONTEXT.md            purpose, ownership, wiring decisions
 ```
 

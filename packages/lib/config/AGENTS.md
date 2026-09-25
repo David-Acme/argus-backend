@@ -11,9 +11,9 @@ of its own — which is why it depends on neither `argus::lib::http` nor
 used to live here moved to `argus::lib::http`; what is left is boot-time
 configuration and nothing else.
 
-Its reach is the widest of any lib — sixteen units outside `packages/lib` read
-their keys from it: `identity`, `memory`, the `llm`, `stt` and `tts` clients, and
-all eleven services — so the resolution order below is a fleet-wide contract,
+Its reach is the widest of any lib — seventeen units outside `packages/lib`
+read their keys from it: the `llm`, `stt`, `tts` and `vlm` clients and all
+thirteen services — so the resolution order below is a fleet-wide contract,
 not a local choice.
 
 ## Layout

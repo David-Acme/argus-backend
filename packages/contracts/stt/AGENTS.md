@@ -5,7 +5,7 @@ both sides of the wire are generated from.
 
 ## What this is
 
-A CONTRACT, and the third of the four here that is not header-only: alongside
+A CONTRACT, and the third of the five here that is not header-only: alongside
 the header-only `argus::contracts::stt` vocabulary target it owns
 `argus_stt_rpc_contract()`, the CMake **function** that declares
 `argus::contracts::stt-wire` from the `stt.proto` beside it. A consumer does
@@ -45,8 +45,10 @@ and the vocabulary for the engine and the controller.
   statuses the client reads back.
 - `SpeechEngineNotLoaded` is the catalog's one domain-specific code — the other
   ten are shared `ErrorCode` spellings. The pairing with 503 is the convention
-  a reviewer checks first, and `ServiceUnavailable` in every other catalog in
-  the tree answers 503 too. `BodyNotPcmS16` and `PcmBodyMisaligned` belong to
+  a reviewer checks first, and it holds here: the only entries in the tree
+  that pair `ServiceUnavailable` with another status are the login-challenge
+  and device-credential pair, which the auth and identity catalogs declare at
+  500. `BodyNotPcmS16` and `PcmBodyMisaligned` belong to
   the HTTP leg alone (the gRPC leg carries `repeated float`, so there is no
   content type and no alignment to refuse), and `Unavailable` is exported with
   no in-tree reader exactly as the `tts` catalog's is.

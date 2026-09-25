@@ -38,17 +38,18 @@ single source of truth.
 
 ## Invariants the migration depends on
 
-- The gateway routes by path prefix identical to the current HTTP paths, so
+- The HTTP paths are the frozen surface every deployed client already speaks:
   paths, the `{status, info, errors}` envelope, its error codes and
-  `SyncOperation` 0-7 cannot change without breaking every deployed client
-  (the mobile app paints persisted local data first, then reacts to live sync).
+  `SyncOperation` 0-7 cannot change without breaking them (the mobile app
+  paints persisted local data first, then reacts to live sync).
 - Proto evolution inside v1 is additive only: `reserved` for retired fields,
   never renumbering, never reassigning enum numbers 0-7 or table ids 0-23.
 
 ## Codegen substrate (F6-3)
 
-`CMakeLists.txt` exposes `argus_contracts_substrate()` for every standalone
-consumer to resolve Protobuf + gRPC. The tree has one `conanfile.txt`, at the
+`cmake/argus-module.cmake` exposes `argus_contracts_substrate()` for every
+standalone consumer's contracts module to resolve Protobuf + gRPC through. The
+tree has one `conanfile.txt`, at the
 repository root, and one Conan graph: `scripts/build-all.sh` resolves it once
 and every project configures against the toolchain that install produced. When
 that graph carries a Conan abseil — it does, through onnxruntime's protobuf —
@@ -62,7 +63,7 @@ identically-named implementation inside `libgrpc`, whose callbacks would land
 back on the entry and recurse — measured on `socket`'s suite before the flavor
 count was recorded — so the bridge exists only when the substrate has measured
 two. The gRPC toolchain on the development host is vendored under
-`~/.local/argus-thirdparty/grpc` (Arch grpc 1.83.1 shared libraries); the
+`~/.local/argus-thirdparty/grpc` (Arch grpc 1.82.1 shared libraries); the
 CMake fallback appends that prefix and records the library directory so
 `argus_runtime_rpath()` can add it to every gRPC-linked binary. The service
 images instead use Debian trixie's grpc 1.51 packages — the code avoids APIs
@@ -132,9 +133,10 @@ the contract group twice still defines whichever SDK targets are missing.
 ## Caller credentials and the camera action surface (camera guard)
 
 Service-to-service authority no longer rides declared metadata.
-`packages/lib/grpc/src/grpc/grpc-client-base` attaches `x-argus-credential`
-(`addCallerCredential`); `packages/lib/grpc/src/grpc/grpc-server-identity.hxx` matches it
-against the receiver's configured `CallerCredential{service, secret}` set
+`packages/lib/grpc/src/grpc/grpc-client-base.hxx` attaches
+`x-argus-credential` (`addCallerCredential`);
+`packages/lib/grpc/src/grpc/grpc-server-identity.hxx` matches
+it against the receiver's configured `CallerCredential{service, secret}` set
 (`authorizeCaller`, constant-time compare) and the matched secret is the
 authority — a forged `x-argus-user`/`x-argus-role` pair without the secret
 authenticates as nobody. Each RPC declares its own accepted caller set.

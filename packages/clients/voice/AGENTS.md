@@ -7,10 +7,12 @@ client frames up and server frames down.
 
 A module, not a service: one `argus_clients(NAME voice ...)`, a STATIC library
 whose include root is `src/`, so a consumer writes `<voice/voice-client.hxx>`
-and links `argus::clients::voice`. 370 lines of source (`voice-client.hxx` 59,
-`voice-client.cc` 221, `reaction-contracts.hxx` 90) behind a 40-line
-CMakeLists. Two link lines in two CMakeLists: `argus-sync`'s `sync-transport`
-module (`services/sync/src/feature/transport/CMakeLists.txt:14`) and
+and links `argus::clients::voice`. 351 lines of source (`voice-client.hxx` 51,
+`voice-client.cc` 214, `reaction-contracts.hxx` 86) behind a 37-line
+CMakeLists. Three link lines in three CMakeLists: `argus-sync`'s
+`sync-transport` module
+(`services/sync/src/feature/transport/CMakeLists.txt:23`), argus-sync's own
+`voice-leg-test` suite (`services/sync/tests/CMakeLists.txt:83`) and
 `argus::voice-core` (`services/voice/CMakeLists.txt:86`). argus-sync is the
 caller — it relays one app WebSocket onto one gRPC stream — and argus-voice is
 the receiver, which links the package for the frames it serves.
@@ -23,8 +25,8 @@ Three files include `voice-client.hxx`: argus-sync's
 `reaction-contracts.hxx` and all three are outside the package: the same two
 services, plus `reaction-engine.hxx`.
 
-This is the one client package with a `DEPENDS` edge of its own:
-`argus::contracts::auth` (`CMakeLists.txt:21-22`), for the
+This is the only client package that links `argus::contracts::auth`
+(`CMakeLists.txt:21-22`), for the
 `<auth/user-role.hxx>` include in `voice-client.hxx:8`.
 
 ## Layout
@@ -57,13 +59,14 @@ This is the one client package with a `DEPENDS` edge of its own:
   `packages/lib/grpc/src/grpc/grpc-client-base.cc:10-12`) carries a
   `ClientBidiReactor` with **one write in flight** and a queue of at most 1024
   frames; a full queue drops the new frame silently rather than blocking the
-  caller (`voice-client.cc:11`, `:140-142`). `finish()` is writes-done, not a
+  caller (`voice-client.cc:11`, `:138-139`). `finish()` is writes-done, not a
   frame, and `sendPcm` puts bytes on the wire verbatim — no framing, no
   resampling, an embedded NUL and all.
 - The identity the stream is gated on is the one passed to `connect`, not the
   one passed to `start`: `connect` sets `x-argus-user` and `x-argus-role`
-  (`voice-client.cc:113-117`), `start` puts its own identity inside the first
-  frame, and the two may differ. No device and no credential are ever sent —
+  (`voice-client.cc:119-121`, inside `begin()`), `start` puts its own identity
+  inside the first frame, and the two may differ. No device and no credential
+  are ever sent —
   there is no field for either — and the receiver asks for exactly the two
   headers the client attaches and checks only that both are present, the roles
   having been validated at the /sync edge (`authorized()`,
@@ -79,9 +82,9 @@ This is the one client package with a `DEPENDS` edge of its own:
 - The endpoint is runtime config: `voice.target`, read by
   `VoiceGrpcConfig::resolve` at
   `services/sync/src/feature/transport/infra/voice-grpc-relay.cc:55`.
-  `argus-deploy/config.sync.toml.example:48-49` declares it
+  `argus-deploy/config.sync.toml.example:53-54` declares it
   (`argus-voice:7034`, the `grpc_port` argus-voice listens on), as does
-  `services/sync/config.toml.example:48-49` for the native tree; an empty
+  `services/sync/config.toml.example:53-54` for the native tree; an empty
   target leaves the leg logging "voice leg -> unconfigured (503)".
 - §2.3 gives a client `AGENTS.md`, `CMakeLists.txt`,
   `src/<name>/<name>-*-client.{hxx,cc}`, a `details/` and a unit suite. This

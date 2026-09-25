@@ -8,8 +8,9 @@ RAII, literal escaping).
 
 A PACKAGE, not a service: it opens no database of its own and applies no
 schema of its own — the owning service's `database/schema.sql` is what runs
-through it (rule 26). Ten units outside `packages/lib` link it — audit,
-identity, memory, sync and six services.
+through it (rule 26). Eight units outside `packages/lib` link it, all of
+them services — auth, camera, guard, identity, llm, notification, productivity
+and sync.
 
 It is one of the two libs declared as a standalone project
 (`project(argus-sqlite)`), because the vendored `sqlite-vec` extension and
@@ -28,6 +29,9 @@ own.
   database plus the mutex that serialises it.
 - `src/sqlite/schema-runner.{cc,hxx}` — `runSchemaFile`: executes every
   statement of a schema file, logging and skipping the ones that fail.
+- `src/sqlite/transaction.{cc,hxx}` — `db_transaction`: `begin` over a
+  `DbClient`, the `Commit` awaiter a unit of work co_awaits (it resumes with
+  whether the commit landed) and `rollback`.
 - `src/sqlite/sqlite-stmt.hxx` — `SqliteStmt`: move-only RAII over
   `sqlite3_stmt` (always finalized) and the blob binding it needs.
 - `src/sqlite/sql-escape.hxx` — `sql_util::escapeLiteral`.

@@ -80,7 +80,8 @@ protocol could not regress by accident in the commit that changed the endpoint.
   (`change_feed::defaults()`: `argus-sync-camera` on `ARGUS_CAMERA`,
   `argus-sync-notification`, `argus-sync-productivity`, `argus-sync-identity`
   and `argus-sync-identity-action`, the last two both on
-  `ARGUS_IDENTITY_CHANGE`), plus the delivery consumer. Each attaches with
+  `ARGUS_IDENTITY_CHANGE`, and `argus-sync-auth-action` on
+  `ARGUS_AUTH_CHANGE`), plus the delivery consumer. Each attaches with
   `deliverAll = false` — deliver-new, so the first boot after this landed
   cannot replay a week of already-recorded changes into duplicate audit rows —
   settles `durable_delivery`'s three dispositions (ack, nak on a throw, term on
@@ -187,10 +188,10 @@ nak'd, whose ack never arrived or whose ack window expired is therefore
 redelivered before anything after it — measured on the dev broker, a nak'd `a`
 of `a b c` is applied `a a b c`, where 256 in flight gives `a b c a` — and the
 audit merge can no longer fold an older diff into a row that already holds a
-newer value. The action journal is the fifth feed and keeps 256 in flight: it
-is keyed by `msg_id` and inserted verbatim, so order buys it nothing, the same
-reason the delivery consumer keeps 256. The serial queue above stays: those
-two rely on it.
+newer value. The two action journals are the fifth and sixth feeds and keep
+256 in flight: they are keyed by `msg_id` and inserted verbatim, so order buys
+them nothing, the same reason the delivery consumer keeps 256. The serial
+queue above stays: the journals and the delivery consumer rely on it.
 
 Three costs come with it, each chosen over a wrong value on a client:
 

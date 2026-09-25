@@ -137,6 +137,8 @@ and every spoken line (configured or generated) passes the code-side gate in
 `GET /health` (unfiltered) and the owner-only administrative API:
 `GET|POST /guard/mode`, `GET /guard/incidents?limit=N`,
 `GET /guard/decisions?limit=N` (read-only decision journal),
+`GET /guard/decisions/summary?from=&to=&nearMissMargin=`,
+`POST /guard/decisions/{eventId}/feedback`,
 `GET|POST /guard/expected-guests`, `DELETE /guard/expected-guests?id=N` and
 `POST /guard/person/{id}/promote` (forwards the owner bearer token and device
 fingerprint to argus-identity).

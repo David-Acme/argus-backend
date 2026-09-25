@@ -9,14 +9,14 @@ A module, not a service: one `argus_clients(NAME notification ...)`, a STATIC
 library whose include root is `src/`, so a consumer writes
 `<notification/notification-client.hxx>` and links
 `argus::clients::notification`. 128 lines of source (`notification-client.hxx`
-60, `.cc` 68) behind a 30-line CMakeLists. Six link lines in four CMakeLists:
+60, `.cc` 68) behind a 30-line CMakeLists. Five link lines in five CMakeLists:
 `argus-guard` (PRIVATE, `services/guard/CMakeLists.txt:109`), `argus::guard`
 (`services/guard/src/feature/guard/CMakeLists.txt:27`), `sync-transport`
 (`services/sync/src/feature/transport/CMakeLists.txt:21`, the `/sync` pull leg)
-and three in `services/notification` — `argus-notification`,
-`notification-rpc-test` and `notification-no-nats-test`
-(`services/notification/CMakeLists.txt:138`, `:214`, `:240`). The first three
-are the callers; the last three are the service that owns the contract, which
+and two in `services/notification` — `argus-notification`
+(`services/notification/CMakeLists.txt:131`) and its `notification-rpc` module
+(`services/notification/src/app/rpc/CMakeLists.txt:7`). The first three
+are the callers; the last two are the service that owns the contract, which
 builds the generated code through this package for its own server side too, so
 the package that serves an RPC links the package that calls it.
 `argus/notification/v1/notification.proto` is compiled here and in no other

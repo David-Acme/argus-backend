@@ -8,10 +8,12 @@ access level, the membership refusal enum and the nine service refusals.
 A CONTRACT, not a service and not a library: one `argus_contracts`
 declaration, an INTERFACE target with no translation unit. The include root is
 `src/`, so a consumer writes `<productivity/share-access.hxx>` and links
-`argus::contracts::productivity`. One CMakeLists links it —
-`services/productivity`, which owns the boundary; the repositories that carried
-this vocabulary on the sync leg moved into the owning services in sub-step
-3a-1b, and the sync leg's adapter in `services/sync` reads it since.
+`argus::contracts::productivity`. Nine CMakeLists in `services/productivity`
+link it — the executable and its suites, the six feature modules, the domain
+module and the shared repositories — because that service owns the boundary,
+and `services/sync` adds the package to its standalone tree by path although
+no source of the sync leg includes it: the repositories that carried this
+vocabulary on the sync leg moved into the owning services in sub-step 3a-1b.
 
 ## Layout
 
@@ -19,7 +21,7 @@ this vocabulary on the sync leg moved into the owning services in sub-step
   (`ProjectNotFound`, `TaskNotFound`, `CalendarEventNotFound` and the rest,
   including the answer a change that could not be recorded gives), answered by
   the service instead of a message string so code, status and text cannot
-  drift apart; 6 files include it.
+  drift apart; 12 files include it.
 - `src/productivity/reminder-detail-status.hxx` — `ReminderDetailStatus`
   (`Pending`, `InProgress`, `Done`, `Blocked`) with its round-trip pair
   (`"pending"`, `"in_progress"`, `"done"`, `"blocked"`); 3 files.

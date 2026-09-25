@@ -12,31 +12,32 @@ library whose include root is `src/`, so a consumer writes
 compiles two protos (`argus/identity/v1/identity.proto` and
 `argus/identity/v1/sync.proto`) and two sources
 (`src/identity/identity-client.cc`, `src/identity/identity-sync-client.cc`).
-Nine owner trees link it — `argus_lib_auth`
+Ten owner trees link it — `argus_lib_auth`
 (`packages/lib/auth/CMakeLists.txt:65`), `argus-auth` (`services/auth:98`)
 with its `auth-auth` (`src/feature/auth:19`) and `auth-session`
 (`src/feature/session:20`) modules and its two client-reaching suites
-(`tests:15,34`), the argus-notification tree (`services/notification:389`, its
+(`tests:15,34`), the argus-notification tree (`services/notification:355`, its
 `camera-notifier-test`) with its `notification-camera-notification` module
 (`src/feature/camera-notification:12`), the `argus-guard`
 executable (`services/guard:108`) with its `guard` module
 (`src/feature/guard:25`), `argus-llm`
-(`services/llm:183`), `argus_identity-rpc`
+(`services/llm:167`), `argus_identity-rpc`
 (`services/identity/src/app/rpc/CMakeLists.txt:18`) with its
 `identity-sync-rpc-test` suite (`services/identity/tests:53`), `sync-transport`
 (`services/sync/src/feature/transport:20`) and `voice-core`
-(`services/voice:88`) — plus `services/productivity`, which links it only from
-its `productivity-controller-test` target (`services/productivity:196`). Nine
-of those trees also add the package to their standalone build by path (the
-eight services above and `packages/lib/auth`). The auth library is the one that
+(`services/voice:88`) — plus `argus-camera`, whose `operator` module links it
+for the known-person matcher (`src/feature/operator:21`), and
+`services/productivity`, which links it only from
+its `productivity-controller-test` target (`services/productivity:196`). All
+ten of those trees also add the package to their standalone build by path (the
+nine services above and `packages/lib/auth`). The auth library is the one that
 spreads it furthest: two of its files include the header
 (`details/identity-access.cc`, `user-directory-identity.cc`; the matching
 `.hxx` forward-declares `IdentityClient` only), so a service that links
-`argus::lib::auth` — argus-camera among them — reaches
-the identity RPC through this package without a link line of its own (measured:
-camera's CMakeLists names no `argus::clients::identity`; argus-notification,
-which also links `argus::lib::auth`, names the package itself, in its own tree
-and in its `camera-notification` module). 27 C++ files include the
+`argus::lib::auth` reaches the identity RPC through this package without a
+link line of its own (argus-notification is one: it links the library and
+names the package itself, in its own tree and in its `camera-notification`
+module). 27 C++ files include the
 header: the in-package suite, two in `packages/lib/auth`, five in
 `services/auth`, two in `services/camera`, eleven in `services/guard`, one in
 `services/llm`, three in `services/notification` and two in `services/voice`.
@@ -51,8 +52,10 @@ header: the in-package suite, two in `packages/lib/auth`, five in
   `promotePerson`, `tagPerson`, `personTags`, `getPerson`,
   `listNotifiableUsers`); 27 files include it.
 - `src/identity/identity-sync-client.hxx` — `IdentitySyncClient`, the second
-  stub (`argus.identity.v1.SyncService`), one method `pullTable`. Its one
-  consumer is `services/sync`'s `identity-sync-gateway`.
+  stub (`argus.identity.v1.SyncService`), one method `pullTable`. Its
+  production consumer is `services/sync`'s `identity-sync-gateway`,
+  constructed at `services/sync/src/app/main.cc:80`; identity's own
+  `identity-sync-rpc-test.cc` drives it directly against the served method.
 - Nothing else: the folder is CMakeLists.txt, the four sources, the suite and
   this file. No `details/` directory: the channel, deadline, fleet secret and
   metadata ride inline in the `.cc` files.

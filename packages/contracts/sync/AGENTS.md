@@ -1,18 +1,18 @@
 # argus_contracts_sync
 
 The sync boundary's frozen wire values: the message types, the table names, the
-two audit enums, the filter that pages them, the eight refusals, and the
+two audit enums, the filter that pages them, the nine refusals, and the
 change-payload vocabulary the producers and the transport share.
 
 ## What this is
 
-A CONTRACT, not a service and not a library, and the largest fan-in of the ten:
-30 CMakeLists name `argus::contracts::sync` — 29 consumers plus this package's
-own test links, and seven of the 29 are argus-sync's (its six modules and its
-test tree) since sub-step 3a-1d (the newest of the others is
-`packages/clients/sync`, which links it as
-the home of the frame its control leg carries). Most of it is headers only, but this
-is the one contract whose headers are not free of dependencies — `syncable.hxx`
+A CONTRACT, not a service and not a library, and the largest fan-in of the
+contract packages: 46 CMakeLists name `argus::contracts::sync` — 45 consumers
+plus this package's own test links, and seven of the 45 are argus-sync's (its
+six modules and its test tree) since sub-step 3a-1d (the newest of the others
+is `packages/clients/sync`, which links it as the home of the frame its
+control leg carries). Most of it is headers only, but this is the one contract
+whose headers are not free of dependencies — `syncable.hxx`
 declares virtuals returning `drogon::Task` and `Json::Value`, and the two change
 sinks add `publishAudit` returning `drogon::Task<void>`, which is why the package
 depends on Drogon. `sync-errors.hxx` is what pulls in `lib/errors`. The
@@ -22,15 +22,16 @@ the two audit-event headers include `<text/json-diff.hxx>`. The include root is
 `src/`, so a consumer writes `<sync/sync-operation.hxx>`.
 
 The consumers are argus-sync — the engine's home since sub-step 3a-1d, the
-package it used to live in having been deleted — the identity and `lib/auth`
-packages, `clients/llm` and `clients/sync`, and the auth, camera, guard,
+package it used to live in having been deleted — `lib/auth` (whose role table
+is built on `RolePermission` and `TableName`), `clients/llm` and
+`clients/sync`, and the auth, camera, guard,
 identity, llm (its `memory` feature among its features), notification,
 productivity and sync services. A table named here is a table
-some repository syncs. The change vocabulary's consumers are the producers that
-hold a sink — camera, productivity, notification and identity — the memory
-feature, and argus-sync's fan-out that reads the payloads back; sub-step
-3a-1a1 moved it here out of `packages/socket`, whose transport is now
-`services/sync`'s `SyncSocket`.
+some repository syncs. The change vocabulary's consumers are the producers
+that hold a sink — camera, productivity, notification, identity and auth —
+the memory feature, and argus-sync's fan-out that reads the payloads back;
+sub-step 3a-1a1 moved it here out of `packages/socket`, whose transport is
+now `services/sync`'s `SyncSocket`.
 
 ## Layout
 
@@ -38,11 +39,12 @@ feature, and argus-sync's fan-out that reads the payloads back; sub-step
   `AuthContextChanged = 7`, with `syncOperationToString`/`FromString` over the
   eight spellings (`"initial_info"`, `"sync"`, `"sync_audit_log"`,
   `"sync_user_audit_log"`, `"add"`, `"delete"`, `"log"`,
-  `"auth_context_changed"`). 14 files include it.
+  `"auth_context_changed"`). 16 files include it.
 - `src/sync/table-name.hxx` — `TableName`, 24 enumerators `User = 0` through
   `Memory = 23`, with its round-trip helpers, `kLastTableName` for the sweeps
-  that must not miss a new table, and a lookup map; 27 files, the
-  second-most-included header of the ten after `<auth/user-role.hxx>`'s 31.
+  that must not miss a new table, and a lookup map; 35 files, the
+  second-most-included header of the contract packages after
+  `<auth/user-role.hxx>`'s 36.
 - `src/sync/role-permission.hxx` — `RolePermission` (`Read = 0`, `Create`,
   `Update`, `Delete`), the third element of the gate's `(role, table,
   permission)` triple and the requirement a tool descriptor declares. No
@@ -52,35 +54,41 @@ feature, and argus-sync's fan-out that reads the payloads back; sub-step
   declares tool descriptors, and `sync`, `camera` and `productivity` each gate
   a route by hand (Phase 2 step 4 moved it out of `lib/auth`).
 - `src/sync/user-action.hxx` — `UserAction` (`Create = 0`, `Read`, `Update`,
-  `Delete`) with `"create"`, `"read"`, `"update"`, `"delete"`; 6 files.
+  `Delete`) with `"create"`, `"read"`, `"update"`, `"delete"`; 7 files.
 - `src/sync/audit-log-priority.hxx` — `AuditLogPriority` (`Low = 0`, `Medium`,
   `High`), the one vocabulary here with no helpers to round-trip; 7 files.
 - `src/sync/sync-filter.hxx` — `SyncFilter` (the range pair `startTime`/
   `startId`, an optional `endTime`, and `userId` for the user-scoped tables)
   and `sync_query::buildSyncQuery`, which picks one of the five query shapes a
   repository passes in and fills its arguments, plus `sync_query::withUser` for
-  the ownership predicate's placeholders; 7 files.
+  the ownership predicate's placeholders; 9 files.
 - `src/sync/sync-limits.hxx` — `SyncLimits::kMaxRows{"200"}`, the page size
-  every bounded sync and audit query ends with; 3 files.
+  every bounded sync and audit query ends with; 4 files.
 - `src/sync/syncable.hxx` — `Syncable`, the four virtuals (`find`,
   `findDeleted`, `findLast`, `findLastDeleted`) every synced repository
-  implements; 18 files.
+  implements; 19 files.
 - `src/sync/audit-retention.hxx` — `audit_retention::kDefaultDays` (90), the
   window the audit tables are compacted at and the one value the app's
   "replica too old" path is derived from: a cursor older than what `sync` has
   compacted is refused with `ReplicaTooOld`, and `afterId = 0` stays the legal
   empty baseline. `sync` reads the window from `[sync] audit_retention_days`
   and falls back to this constant; 3 files.
-- `src/sync/sync-errors.hxx` — the eight refusals: `UserAccountDisabled` 401,
+- `src/sync/stream-retention.hxx` — `stream_retention`: the feed window the
+  NATS change sinks and their readers build their JetStream config from —
+  seven days in milliseconds, seconds and nanoseconds, the two-minute
+  duplicate window, and the interval and retry cadence a settled-row purge
+  runs at; 10 files.
+- `src/sync/sync-errors.hxx` — the nine refusals: `UserAccountDisabled` 401,
   `MissingMessageType` and `UnknownMessageType` 400,
-  `ReplicaTooOld` 409, and the four `*Unavailable` answers at 503
+  `ReplicaTooOld` 409, and the five `*Unavailable` answers at 503
   (`NotificationSyncUnavailable`, `CameraSyncUnavailable`,
-  `ProductivitySyncUnavailable`, `VoiceUnavailable`); 8 files.
+  `ProductivitySyncUnavailable`, `IdentitySyncUnavailable`,
+  `VoiceUnavailable`); 9 files.
 - `src/sync/socket-emit-dto.hxx` — `SocketEmitDto`, the triple the transport
   sends: the `SyncOperation`, the `TableName` it is scoped to, and the row as
   `Json`, with the `toJson()` that was a `.cc` in `packages/socket` until
   sub-step 3a-1a1. It is inline here because a contract is an interface target
-  and compiles no source of its own; 17 files include it.
+  and compiles no source of its own; 19 files include it.
 - `src/sync/sync-change.hxx` — the `argus.<domain>.v1.change` payload contract:
   the `kind` triple every payload carries (`kind`, `audit`, `identity`), the
   four catalog-row envelope keys the catalog consumers read a row out of
@@ -106,28 +114,33 @@ feature, and argus-sync's fan-out that reads the payloads back; sub-step
 - `src/sync/camera-change-sink.hxx` — the camera domain's pair: `CameraChangeSink`
   (`emitModule`, `publishAudit`), `ModuleAuditInput`, and the single
   `camera_change` slot `argus-camera` installs; 4 files.
+- `src/sync/auth-change-sink.hxx` — the auth domain's sink: `AuthChangeSink`
+  (`publishAction`) with `AuthActionPublishInput` (a `UserActionEvent` plus
+  the borrowed `DbClient*` of the unit of work the action must be recorded
+  in), and the one `auth_change` slot `argus-auth` installs through its
+  `AuthActionSink`; 3 files.
 - `src/sync/identity-change-sink.hxx` — the identity domain's five-call sink:
   `IdentityChangeSink` (`publishCatalog`, `emitModule`, `publishModuleAudit`,
   `publishUsersAudit`, `publishAction`) with `IdentityCatalogInput` and
   `ActionPublishInput`, and the one `identity_change` slot `argus-identity`
-  installs; 7 files.
+  installs; 8 files.
 - `src/sync/user-audit-event.hxx` — `UserAuditEvent`, the row a user-scoped
   producer puts on the wire: record id, table, the `ChangesDiff`, the priority,
   the recipients and the timestamp, with `toJson`/`fromJson` over the
-  `kind: "audit"` envelope; 5 files.
+  `kind: "audit"` envelope; 7 files.
 - `src/sync/module-audit-event.hxx` — the same shape for the module-scoped
   event (camera and identity produce it today), carrying one optional
   `create_user_id` where the user-scoped event carries a recipient list;
-  9 files.
+  11 files.
 - `src/sync/user-action-event.hxx` — `UserActionEvent`, the action-journal row:
   the acting user, the record, the table, the `UserAction`, the before/after
   data and the request's ip address, with the snake_case `toJson`/`fromJson`
-  the action subject carries (identity publishes them, the audit fan-out reads
-  them back); 2 files.
+  the action subject carries (the identity and auth sinks publish them, the
+  audit fan-out reads them back); 4 files.
 - `src/sync/sync-control-sink.hxx` — `SyncControlSink`, the three synchronous
   room operations a service performs on the socket another service holds
   (`replaceRoleRooms`, `disconnectUser`, `emitToUser`), and the one
-  `sync_control` slot `argus-sync` installs; 3 files.
+  `sync_control` slot `argus-sync` installs; 5 files.
 - `src/sync/sync-forwarder.hxx` — `SyncFrameInput` (`conn`, `message`, `raw`),
   the `SocketFrameError` refusal the transport sends back, the
   `sendSocketFrameError` helper (inline, because a contract compiles no source)
@@ -185,14 +198,18 @@ feature, and argus-sync's fan-out that reads the payloads back; sub-step
   round-trips (the two the old enums-test covered; `SyncOperation` has helpers
   but never had a round-trip case, and `AuditLogPriority` has none to make) and
   the documented fallbacks.
-- `tests/unit/sync-contract-catalog-test.cc` — the eight refusals as a pinned
+- `tests/unit/sync-contract-catalog-test.cc` — the nine refusals as a pinned
   table, each entry's wire legality, and that no two say the same thing.
 - `tests/unit/audit-retention-test.cc` — the window's default and the refusal
   the app re-bootstraps on: 90 days, and `ReplicaTooOld` carrying the frozen
   `CONFLICT` wire code at 409.
+- `tests/unit/stream-retention-test.cc` — the feed window pinned in every unit
+  it is spelled in, the three spellings agreeing with each other, and the
+  duplicate window and purge cadences holding their order; 2 cases,
+  10 assertions.
 - `tests/unit/sync-change-test.cc` — the change vocabulary, moved here from
   `packages/socket` with sub-step 3a-1a1: the emit triple's three keys and the
   absence of routing metadata on the module-wide form, the user-scoped variant
   with and without recipients, the two control actions on their frames, the
   round trip back to a `SocketEmitDto`, and the `argus.*.v1.change` subject the
-  payloads travel on. 5 cases, 25 assertions.
+  payloads travel on. 5 cases, 24 assertions.
