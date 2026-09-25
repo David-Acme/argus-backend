@@ -212,7 +212,7 @@ bool LlmService::isBusy()
 
 LlmPrefillStats LlmService::lastPrefillStats()
 {
-  return lastStats_;
+  return lastStats_.load();
 }
 
 std::vector<int32_t> LlmService::tokenize(const std::string& text,
@@ -257,9 +257,10 @@ bool LlmService::prefill(const std::vector<int32_t>& promptTokens,
   if (reuse == 0 && mem)
     llama_memory_clear(mem, true);
 
-  lastStats_.promptTokens = static_cast<int32_t>(promptTokens.size());
-  lastStats_.reusedTokens = static_cast<int32_t>(reuse);
-  lastStats_.decodedTokens = static_cast<int32_t>(promptTokens.size() - reuse);
+  lastStats_.store({.promptTokens = static_cast<int32_t>(promptTokens.size()),
+                    .reusedTokens = static_cast<int32_t>(reuse),
+                    .decodedTokens =
+                        static_cast<int32_t>(promptTokens.size() - reuse)});
 
   auto& batch = *promptBatch_;
   const size_t total = promptTokens.size();

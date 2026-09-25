@@ -10,9 +10,11 @@ that apply to llm-service code; when in doubt, the root file wins.
    tool-calling loop and the in-process memory package. It must not absorb
    camera, face, VLM, STT, TTS or voice-session responsibilities.
 2. **Internal wire only** — the service serves the legacy voice session over
-   loopback plain HTTP (`/llm/v1/*`); no JWT, no CORS, no public routing or
-   announcement. Never expose it publicly. No auth: the loopback bind is the
-   trust boundary.
+   loopback plain HTTP (`/llm/v1/*`) and the internal gRPC leg (`argus.llm.v1`)
+   when `rpc.address` is set; no JWT, no CORS, no public routing or
+   announcement. Never expose either publicly. The HTTP face has no auth — the
+   loopback bind is its trust boundary; the gRPC face lists its callers in
+   `[rpc.callers]` and answers an unlisted credential with 401.
 3. **Frozen envelope** — every JSON response uses the
    `{status, info, errors}` envelope (`ApiResponse`); the chat body is JSON
    `{messages, max_tokens?, temperature?, reset_context?}`.
@@ -50,6 +52,9 @@ that apply to llm-service code; when in doubt, the root file wins.
 argus-llm/
   CMakeLists.txt        standalone buildable: module graph + test targets
   src/app/main.cc       config load, llama_backend_init/free, engine boot gate
+  src/app/rpc/          argus::llm-rpc — the internal gRPC face (the
+                          argus.llm.v1 Chat service), dormant unless [rpc]
+                          address and [rpc.callers] are set
   src/feature/llm/      argus::llm — the brain:
                           controllers/ (the frozen /llm/v1/* wire),
                           dtos/ (the chat DTO, validation DSL),
@@ -60,19 +65,60 @@ argus-llm/
                         argus::encounter-closed — the camera guard feed's
                           durable JetStream consumer, writing the memory
                           graph through the injected capture
-  config.toml.example   listener, LLM and intent defaults
+  config.toml.example   listener, LLM, intent and [rpc] defaults
   CONTEXT.md            purpose, ownership, wiring decisions
 ```
-
-There are two features and two modules: `argus::llm` compiles the engine
-facade, the DTOs, the tool runtime and the HTTP surface together, and
+There are two features and three modules: `argus::llm` compiles the engine
+facade, the DTOs, the tool runtime and the HTTP surface together,
 `argus::encounter-closed` the consumer `app/main.cc` starts on the beginning
-advice and stops before `memory.shutdown()`. `app/main.cc` registers its
+advice and stops before `memory.shutdown()`, and `argus::llm-rpc` the gRPC
+server under `src/app/rpc/`. `app/main.cc` registers its
 controllers explicitly (Drogon `HttpController<…, false>`), so no route
 depends on static-init registration. The folder IS the module (root rule 25) —
-a consumer links `argus::llm` or `argus::encounter-closed` and never lists
-`.cc` files. `src/shared/` does not exist: rule 23's 2+ rule earns it, so code
-moves there only when a second feature of this service reads it.
+a consumer links `argus::llm`, `argus::encounter-closed` or `argus::llm-rpc`
+and never lists `.cc` files. `src/shared/` does not exist: rule 23's 2+ rule
+earns it, so code moves there only when a second feature of this service reads
+it.
+
+The gRPC leg is composed in `main.cc` and nowhere else, only when `rpc.address`
+and at least one non-empty `[rpc.callers]` pair are set — the RPC server answers
+`argus.llm.v1` through the same controller the HTTP route drives, tool loop
+included, refuses an unlisted caller with 401 and sanitizes anything that is not
+a `ResponseException` into 500. Both keys are empty in `config.toml.example`, no
+deploy config sets them, and nothing in the tree sets `llm.grpc_target`, so a
+default install answers the HTTP wire alone while the gRPC face stays reachable
+for the cutover.
+
+Three properties of the face are the composition's, not the engine's. The caller
+must present the credential header exactly once — zero or two entries are 401,
+compared in constant time over the pairs. `Chat` calls the engine
+synchronously on the gRPC server's own thread — never on the Drogon event
+loop — and the whole RPC sits behind a `std::counting_semaphore` sized
+`ThreadBudget::inferenceSlots()`, so a caller arriving while every slot is
+taken gets 429 `Busy` instead of queueing behind a generation. And the request
+bounds are enforced twice on purpose — the client refuses a request its own wire
+should never carry, and the server re-checks it, because the wire is a boundary
+and not every caller is the client: no messages or 65 of them, an empty role or
+one over 32 bytes, empty content or over 32 KiB, `max_tokens` outside `0..4096`,
+a declared temperature outside `-1..2`, a grammar over 8 KiB and a negative
+`user_id` are 400. A caller-declared deadline more than a second past
+`kMaxTimeout` is the same 400 — the ceiling is a bound on what the caller asks
+for, not a requirement that it ask.
+
+`ChatStream` is where this leg differs most from the HTTP one: the engine's
+token callback fires on a `std::jthread` producer into a 64-token bounded queue
+that polls its condition variable rather than blocking forever, the consumer
+thread writes each token as its ordinal in `sequence` plus `text`, and the
+stream ends with a `done` token carrying the token count and the three prefill
+counters. That last token is the client's exact end-of-stream marker, the same
+role the HTTP sentinel line plays; a stream that ends without one is 502 at the
+client. `temperature` and `tools` are proto3 `optional`, so a caller that
+declares neither gets the engine's default and the tool loop exactly as an HTTP
+caller that omits both keys does. The
+two legs do not share an error type: the gRPC leg throws `ResponseException`, so
+a caller sees the shared vocabulary, while the HTTP leg keeps its older
+`std::runtime_error` spelling, which is why every in-tree caller catches
+`std::exception`.
 
 ## Build commands
 

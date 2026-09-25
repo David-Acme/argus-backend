@@ -17,7 +17,7 @@
 #include <mdns/mdns-service.hxx>
 #include <notification/notification-client.hxx>
 #include <config/config-service.hxx>
-#include <llm/details/llm-remote.hxx>
+#include <llm/llm-remote.hxx>
 #include <sqlite/db-service.hxx>
 #include <vlm/vlm-remote.hxx>
 #include <nats/nats-bus.hxx>
@@ -158,10 +158,11 @@ int main()
     vlm = std::make_unique<VlmClient>(
         vlmUrl, static_cast<double>(assessTimeoutMs) / 1000.0);
 
-  std::unique_ptr<LlmHttpClient> llm;
+  std::unique_ptr<LlmClient> llm;
   const std::string llmUrl = ConfigService::getString("guard.assess.llm_url");
-  if (!llmUrl.empty())
-    llm = std::make_unique<LlmHttpClient>(llmUrl, assessTimeoutMs);
+  if (!llmUrl.empty() ||
+      !ConfigService::getString("llm.grpc_target").empty())
+    llm = std::make_unique<LlmClient>(llmUrl, assessTimeoutMs);
 
   GuardAssessment::Config assessConfig;
   assessConfig.enabled = ConfigService::getBool("guard.assess.enabled");

@@ -9,7 +9,7 @@
 #include <drogon/utils/coroutine.h>
 
 class CameraActionClient;
-class LlmHttpClient;
+class LlmClient;
 class VlmClient;
 
 struct GuardAssessmentInput
@@ -103,7 +103,7 @@ public:
   {
     CameraActionClient* camera{nullptr};
     VlmClient* vlm{nullptr};
-    LlmHttpClient* llm{nullptr};
+    LlmClient* llm{nullptr};
   };
 
   struct Config

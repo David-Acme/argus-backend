@@ -33,13 +33,26 @@ scaffolds.
   alternating different prompts reuse 0 tokens each time. The
   `GET /llm/v1/config` leg exposes the last prefill stats so the thrash is
   observable.
+- **The last-prefill counters have a provenance limit.** `lastStats_` is the
+  engine's MOST RECENT prefill (`std::atomic`, one store per `prefill()`), so
+  while one generation runs every other reader sees its numbers, and the tool
+  loop's non-streamed terminal emit happens after the engine releases its
+  mutex — a second generation in flight can therefore report the first one's
+  counters. Both legs read the same member at the same point (the HTTP
+  sentinel line and the gRPC closing frame), the suites all run one inference
+  slot while `main.cc` sizes `ThreadBudget::inferenceSlots()`, and the full
+  fix — carrying the stats in the generation's own outcome — would change
+  `LlmService`'s callback contract, shared by four consumers (Phase 4 step 6c
+  review, recorded there).
 - **The internal wire (Ruling BT)**:
   - `POST /llm/v1/chat` — JSON `{messages, max_tokens?, temperature?,
     reset_context?, tools?}` → frozen app-envelope with `info.text` = the full
     completion. Inference runs off the event loop (`chatAsync`). `tools:false`
     keeps the request on the direct engine path even when the process has
-    tools registered; raw JSON callers (argus-guard) use it to avoid the
-    memory-tool preamble (~400 tokens of prefill on every call).
+    tools registered — the DTO carries it into `ChatRequest`, and the gRPC
+    leg resolves an absent `tools` to true, so both legs honour it; raw JSON
+    callers (argus-guard) use it to avoid the memory-tool preamble (~400
+    tokens of prefill on every call).
   - `POST /llm/v1/chat-stream` — same body; `Transfer-Encoding: chunked`
     text stream: every token callback flushed AS PRODUCED (arrival order
     preserved — the voice session's sentence chunker depends on it),
@@ -56,10 +69,55 @@ scaffolds.
     max_tokens/temperature — `fields` keyed by the C++ member names, the
     documented DSL quirk), 503 `LLM_NOT_LOADED`, frozen 404/405. Latency
     logged per request.
+- **The gRPC leg (Phase 4 step 6c, Ruling BT's typed face)** —
+  `argus.llm.v1`'s `Chat` service, served by `src/app/rpc/llm-rpc-server.cc`
+  (`argus::llm-rpc`) on `[rpc] address`, dormant unless that address and at
+  least one non-empty `[rpc.callers]` pair are set (both are empty in
+  `config.toml.example`, no deploy config sets them). Three RPCs: unary
+  `Capabilities` (loaded, the engine's defaults, the context size, the three
+  last-prefill counters), unary `Chat` (the full completion in
+  `ChatResponse.text`) and server-streaming `ChatStream`, whose token frames
+  carry each token's ordinal in `sequence` and whose final frame is the `done`
+  token carrying the token count and the three counters — the client's
+  end-of-stream marker, the role the HTTP sentinel line plays.
+  Requests carry the same fields as the HTTP body (`messages`, `max_tokens`,
+  `temperature`, `reset_context`, `tools`, `user_id`, `grammar`,
+  `grammar_required`), with `temperature` and `tools` declared proto3
+  `optional` so an undeclared one takes the engine's default exactly as an
+  omitted HTTP key does; the server re-checks every bound the client checks
+  (the wire is a boundary, not everyone is the client) and refuses a
+  caller-declared deadline more than a second past
+  `argus::llm::kMaxTimeout` — gRPC rounds the relative `grpc-timeout` header,
+  so the flat two-minute ceiling the tts and stt servers carry would refuse
+  the client's own maximum. A caller arriving while every
+  `ThreadBudget::inferenceSlots()` slot is held gets 429 `Busy`; the engine
+  call is synchronous on the gRPC server's own thread, never on the Drogon
+  loop. `ChatStream` runs the engine on a `std::jthread` producer into a
+  64-token bounded queue (the TTS stream pattern, polling its condition
+  variable so a cancelled or expired call is noticed while the queue is
+  full).
+- **The two legs do not share an error type**, deliberately: the gRPC leg
+  throws `ResponseException` (the contract's ten refusals, or what
+  `argus::response::fromRpcStatus` makes of a bare transport status), while
+  the HTTP leg keeps its older `std::runtime_error` spelling
+  (`argus-llm <code>: <message>`), which is why every in-tree caller catches
+  `std::exception`. `packages/clients/llm/src/llm/llm-remote.{hxx,cc}` holds
+  both: `LlmHttpClient` and the façade `LlmClient`, which picks the leg per
+  call — `llm.grpc_target` set means gRPC, empty means HTTP, and the knobs
+  are `llm.grpc_target`/`llm.grpc_credential` beside the HTTP
+  `llm.remote_url`/`llm.remote_timeout_ms`. The façade caches its gRPC client
+  in a `std::atomic<std::shared_ptr<RpcCache>>` whose entry carries both the
+  target and the credential it was built for, so a runtime change of either
+  rebuilds before the next call. The gRPC client's timeout is the configured
+  budget clamped to `argus::llm::kMaxTimeout`, and a non-positive budget takes
+  that ceiling — the HTTP leg accepts a budget the typed leg's own gate would
+  refuse, so the façade clamps instead of failing every call.
 - **Config**: `[llm]` (engine knobs, mirroring the legacy block) +
-  `[server]` (loopback listener, default 7032) only. The `[server]`
+  `[server]` (loopback listener, default 7032) + `[rpc]`/`[rpc.callers]`
+  (the dormant gRPC face). The `[server]`
   listener is internal-network only: the wire is never announced or
-  published. No database, no NATS,
+  published; so is the gRPC one, which is plaintext and gated by the caller
+  credential alone. No database, no NATS,
   no JWT/device keys — nothing here persists anything.
 
 ## Tier note (the F4-2 lesson, applied)
@@ -108,12 +166,13 @@ GGUF relative to the `[llm]` config keys.
 
 - The chat DTO carries `tools` (default true), `grammar` (GBNF source, max 8
   KiB) and `grammar_required`. `tools:false` keeps the request on the direct
-  engine path even when tools are registered; raw JSON callers (argus-guard)
-  use it to avoid the memory-tool preamble (~400 tokens of prefill on every
-  call). A `grammar` installs a `llama_sampler_init_grammar` sampler rooted
-  at `root`; when the grammar fails to compile, `grammar_required` aborts the
-  generation instead of sampling free. Off-turn memory workers
-  (`processCompact`/`processProfile`) pass an empty grammar explicitly.
+  engine path even when tools are registered, on either leg; raw JSON callers
+  (argus-guard) use it to avoid the memory-tool preamble (~400 tokens of
+  prefill on every call). A `grammar` installs a `llama_sampler_init_grammar`
+  sampler rooted at `root`; when the grammar fails to compile,
+  `grammar_required` aborts the generation instead of sampling free. Off-turn
+  memory workers (`processCompact`/`processProfile`) pass an empty grammar
+  explicitly.
 - `user_id` (D4) scopes tool execution to the authenticated caller.
 
 ## Encounter-closed consumer (camera guard feed)

@@ -2,6 +2,7 @@
 #include <doctest/doctest.h>
 
 #include <feature/llm/controllers/llm-controller.hxx>
+#include <feature/llm/dtos/chat-dto.hxx>
 #include <drogon/drogon.h>
 #include <http/error-handler.hxx>
 #include <http/health-controller.hxx>
@@ -504,4 +505,39 @@ TEST_CASE("the argus-llm internal wire serves the chat capacity")
   llm->shutdownEngine();
   llama_backend_free();
   std::remove(kScratchConfig);
+}
+
+TEST_CASE("the chat body reaches the engine with every field it carried")
+{
+  Json::Reader reader;
+  Json::Value body;
+  REQUIRE(reader.parse(
+      R"({"messages":[{"role":"user","content":"Di hola"}],"max_tokens":32,)"
+      R"("temperature":0.5,"reset_context":true,"tools":false,"user_id":7,)"
+      R"("grammar":"root ::= \"ok\"","grammar_required":true})",
+      body));
+  const ChatRequest request = ChatCompletionDto::fromJson(body).request();
+  REQUIRE(request.messages.size() == 1);
+  CHECK(request.messages.front().role == "user");
+  CHECK(request.messages.front().content == "Di hola");
+  CHECK(request.maxTokens == 32);
+  CHECK(request.temperature == 0.5F);
+  CHECK(request.resetContext);
+  CHECK_FALSE(request.toolsEnabled);
+  CHECK(request.userId == 7);
+  CHECK(request.grammar == "root ::= \"ok\"");
+  CHECK(request.grammarRequired);
+
+  Json::Value minimal;
+  REQUIRE(reader.parse(R"({"messages":[{"role":"user","content":"Di hola"}]})",
+                       minimal));
+  const ChatRequest absent = ChatCompletionDto::fromJson(minimal).request();
+  CHECK(absent.messages.size() == 1);
+  CHECK(absent.maxTokens == 0);
+  CHECK(absent.temperature == -1.0F);
+  CHECK_FALSE(absent.resetContext);
+  CHECK(absent.toolsEnabled);
+  CHECK(absent.userId == 0);
+  CHECK(absent.grammar.empty());
+  CHECK_FALSE(absent.grammarRequired);
 }

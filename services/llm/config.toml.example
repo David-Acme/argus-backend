@@ -2,6 +2,14 @@
 host = "127.0.0.1"
 port = 7032
 
+[rpc]
+address = ""
+
+[rpc.callers]
+guard = ""
+voice = ""
+memory = ""
+
 [llm]
 model_path = "models/llm/LFM2.5-1.2B-Instruct-QAD-Q4_0.gguf"
 context_size = 32768

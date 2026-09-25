@@ -111,8 +111,8 @@ TEST_CASE("RemoteVoiceLlm serves the IVoiceLlm seam over the argus-llm wire")
     joined += token;
   CHECK(joined.find("done") == std::string::npos);
 
-  LlmHttpClient client("http://127.0.0.1:" + std::to_string(server.port()),
-                       120000);
+  LlmClient client("http://127.0.0.1:" + std::to_string(server.port()),
+                   120000);
   CHECK(client.chat(greetingRequest()) == joined);
 
   LlmPrefillStats stats;

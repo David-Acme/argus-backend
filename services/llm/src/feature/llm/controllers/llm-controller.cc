@@ -1,9 +1,8 @@
 #include "llm-controller.hxx"
 
-#include "llm-errors.hxx"
-
 #include <errors/response-exception.hxx>
 #include <http/api-response.hxx>
+#include <llm/llm-errors.hxx>
 #include <feature/llm/dtos/chat-dto.hxx>
 #include <feature/llm/services/lfm-adapter.hxx>
 #include <feature/llm/services/tools/tool-registry.hxx>
@@ -12,9 +11,11 @@
 #include <drogon/drogon.h>
 
 #include <chrono>
+#include <exception>
 #include <memory>
 #include <string>
 #include <thread>
+#include <utility>
 #include <vector>
 
 namespace
@@ -44,41 +45,36 @@ std::vector<const tools::ToolDescriptor*> registeredTools()
   return out;
 }
 
-std::vector<ChatMessage> toChatMessages(const ChatCompletionDto& body)
+std::vector<const tools::ToolDescriptor*> requestTools(const ChatRequest& request)
 {
-  std::vector<ChatMessage> messages;
-  messages.reserve(body.messages.size());
-  for (const auto& message : body.messages)
-    messages.push_back({.role = message.role, .content = message.content});
-  return messages;
+  if (!request.toolsEnabled)
+    return {};
+  return registeredTools();
 }
 
 struct ToolLoopInputArgs
 {
-  const ChatCompletionDto& body;
   const std::vector<const tools::ToolDescriptor*>& tools;
+  ChatRequest request;
   int32_t defaultMaxTokens{0};
 };
 
 ToolChatInput toolLoopInput(const ToolLoopInputArgs& args)
 {
-  const ChatCompletionDto& body = args.body;
-  const std::vector<const tools::ToolDescriptor*>& tools = args.tools;
-
   ToolChatInput input;
   input.systemPrompt = kToolPolicy;
-  input.tools = tools;
+  input.tools = args.tools;
   input.role = UserRole::Resident;
-  input.context = tools::ToolContext{.userId = body.userId.value_or(0),
+  input.context = tools::ToolContext{.userId = args.request.userId,
                                      .lang = "es",
                                      .sessionId = {},
                                      .channel = "tool_result",
                                      .utterance = {}};
   input.maxHops = 3;
-  input.temperature = body.temperature ? *body.temperature : -1.0F;
-  input.resetContext = body.resetContext;
-  input.answerMaxTokens =
-      body.maxTokens ? *body.maxTokens : args.defaultMaxTokens;
+  input.temperature = args.request.temperature;
+  input.resetContext = args.request.resetContext;
+  input.answerMaxTokens = args.request.maxTokens > 0 ? args.request.maxTokens
+                                                     : args.defaultMaxTokens;
   return input;
 }
 
@@ -86,9 +82,8 @@ struct ChatStreamJob
 {
   LlmController* owner{nullptr};
   ChatRequest request;
-  ToolChatInput loop;
-  std::vector<ChatMessage> history;
   std::unique_ptr<drogon::ResponseStream> stream;
+  LlmPrefillStats stats;
   size_t tokenCount{0};
   size_t charCount{0};
 };
@@ -108,9 +103,7 @@ std::string sentinelLine(const LlmPrefillStats& stats)
 void runStreamJob(const std::shared_ptr<ChatStreamJob>& job)
 {
   const auto t0 = std::chrono::steady_clock::now();
-  auto& service = job->owner->service();
-  const TokenCallback send = [&job,
-                              &service](const std::string& token, bool done) {
+  const TokenCallback send = [&job](const std::string& token, bool done) {
     if (!job->stream)
       return;
     if (!done) {
@@ -122,23 +115,13 @@ void runStreamJob(const std::shared_ptr<ChatStreamJob>& job)
       job->charCount += token.size();
       return;
     }
-    const std::string line = "\n" + sentinelLine(service.lastPrefillStats());
+    const std::string line = "\n" + sentinelLine(job->stats);
     if (!job->stream->send(line))
       job->stream.reset();
   };
   try {
-    if (job->loop.tools.empty()) {
-      service.chatStream(job->request, send);
-    }
-    else {
-      const ToolChatOutput output =
-          job->owner->adapter().chatWithToolsStream(
-              {.input = job->loop, .history = job->history, .onToken = send});
-      LOG_INFO << "LLM stream loop: hops=" << output.hops
-               << " tools=" << output.executed.size()
-               << " gen_ms=" << output.generateMs
-               << " tool_ms=" << output.toolMs;
-    }
+    job->owner->chatStreamSync(
+        {.request = job->request, .onToken = send, .stats = &job->stats});
   }
   catch (const std::exception& e) {
     LOG_ERROR << "LLM stream generation failed: " << e.what();
@@ -157,6 +140,53 @@ void runStreamJob(const std::shared_ptr<ChatStreamJob>& job)
 
 }
 
+LlmChatOutcome LlmController::chatSync(const ChatRequest& request)
+{
+  LlmChatOutcome outcome;
+  const auto tools = requestTools(request);
+  if (tools.empty()) {
+    outcome.text = service_.chat(request);
+    return outcome;
+  }
+  const ToolChatInput loop = toolLoopInput(
+      {.tools = tools, .request = request, .defaultMaxTokens = service_.defaultMaxTokens()});
+  std::vector<ChatMessage> history = request.messages;
+  const ToolChatOutput output = adapter_.chatWithTools(loop, history);
+  outcome.text = output.reply;
+  outcome.hops = output.hops;
+  outcome.toolCalls = output.executed.size();
+  outcome.generateMs = output.generateMs;
+  outcome.toolMs = output.toolMs;
+  return outcome;
+}
+
+void LlmController::chatStreamSync(const LlmStreamInput& input)
+{
+  LlmPrefillStats* stats = input.stats;
+  const TokenCallback emit = [this, stats,
+                              forward = input.onToken](const std::string& token,
+                                                       bool done) {
+    if (done && stats)
+      *stats = service_.lastPrefillStats();
+    forward(token, done);
+  };
+  const auto tools = requestTools(input.request);
+  if (tools.empty()) {
+    service_.chatStream(input.request, emit);
+    return;
+  }
+  const ToolChatInput loop = toolLoopInput({.tools = tools,
+                                            .request = input.request,
+                                            .defaultMaxTokens =
+                                                service_.defaultMaxTokens()});
+  std::vector<ChatMessage> history = input.request.messages;
+  const ToolChatOutput output = adapter_.chatWithToolsStream(
+      {.input = loop, .history = history, .onToken = emit});
+  LOG_INFO << "LLM stream loop: hops=" << output.hops
+           << " tools=" << output.executed.size()
+           << " gen_ms=" << output.generateMs << " tool_ms=" << output.toolMs;
+}
+
 drogon::Task<drogon::HttpResponsePtr>
 LlmController::chat(drogon::HttpRequestPtr req)
 {
@@ -168,48 +198,27 @@ LlmController::chat(drogon::HttpRequestPtr req)
   const auto body = ChatCompletionDto::fromJson(*req->getJsonObject());
 
   const auto t0 = std::chrono::steady_clock::now();
-  std::string text;
-  int hops = 0;
-  size_t toolCalls = 0;
-  int64_t generateMs = 0;
-  int64_t toolMs = 0;
-  const auto tools =
-      body.toolsEnabled ? registeredTools()
-                        : std::vector<const tools::ToolDescriptor*>{};
-  if (tools.empty()) {
-    text = co_await service_.chatAsync(body.request());
-  }
-  else {
-    const ToolLoopInputArgs loopArgs{
-        .body = body,
-        .tools = tools,
-        .defaultMaxTokens = service_.defaultMaxTokens()};
-    const auto output = co_await BlockingTask<ToolChatOutput>(
-        [this, input = toolLoopInput(loopArgs),
-         history = toChatMessages(body)]() mutable {
-          return adapter_.chatWithTools(input, history);
-        });
-    text = output.reply;
-    hops = output.hops;
-    toolCalls = output.executed.size();
-    generateMs = output.generateMs;
-    toolMs = output.toolMs;
-  }
+  auto outcome = co_await BlockingTask<LlmChatOutcome>(
+      [this, request = body.request()] { return chatSync(request); });
   const double ms =
       std::chrono::duration<double, std::milli>(
           std::chrono::steady_clock::now() - t0)
           .count();
-  if (hops == 0)
+  if (outcome.hops == 0)
     LOG_INFO << "LLM chat: messages=" << body.messages.size()
-             << " chars=" << text.size() << " ms=" << static_cast<int>(ms);
+             << " chars=" << outcome.text.size()
+             << " ms=" << static_cast<int>(ms);
   else
-    LOG_INFO << "LLM chat loop: hops=" << hops << " tools=" << toolCalls
-             << " gen_ms=" << generateMs << " tool_ms=" << toolMs
+    LOG_INFO << "LLM chat loop: hops=" << outcome.hops
+             << " tools=" << outcome.toolCalls
+             << " gen_ms=" << outcome.generateMs
+             << " tool_ms=" << outcome.toolMs
              << " messages=" << body.messages.size()
-             << " chars=" << text.size() << " ms=" << static_cast<int>(ms);
+             << " chars=" << outcome.text.size()
+             << " ms=" << static_cast<int>(ms);
 
   Json::Value info(Json::objectValue);
-  info["text"] = std::move(text);
+  info["text"] = std::move(outcome.text);
   co_return ApiResponse::ok(info);
 }
 
@@ -225,17 +234,7 @@ LlmController::chatStream(drogon::HttpRequestPtr req)
 
   auto job = std::make_shared<ChatStreamJob>();
   job->owner = this;
-  const auto tools =
-      body.toolsEnabled ? registeredTools()
-                        : std::vector<const tools::ToolDescriptor*>{};
-  if (tools.empty())
-    job->request = body.request();
-  else {
-    job->loop = toolLoopInput({.body = body,
-                               .tools = tools,
-                               .defaultMaxTokens = service_.defaultMaxTokens()});
-    job->history = toChatMessages(body);
-  }
+  job->request = body.request();
 
   auto resp = drogon::HttpResponse::newAsyncStreamResponse(
       [job](drogon::ResponseStreamPtr stream) {

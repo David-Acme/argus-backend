@@ -1,10 +1,14 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include "fake-llm-server.hxx"
 
+#include <chrono>
 #include <config/config-service.hxx>
 #include <doctest/doctest.h>
+#include <errors/response-exception.hxx>
 #include <exception>
-#include <llm/details/llm-remote.hxx>
+#include <llm/llm-client.hxx>
+#include <llm/llm-errors.hxx>
+#include <llm/llm-remote.hxx>
 #include <llm/llm-service.hxx>
 #include <string>
 #include <vector>
@@ -13,11 +17,41 @@ namespace
 {
 
 constexpr const char* kDefaultTimeoutMs = "120000";
+constexpr const char* kSecret = "rpc-secret";
 
 void pointAt(const std::string& url)
 {
   ConfigService::setRuntimeString("llm.remote_url", url);
   ConfigService::setRuntimeString("llm.remote_timeout_ms", kDefaultTimeoutMs);
+}
+
+void pointRpcAt(const std::string& target, const std::string& credential)
+{
+  ConfigService::setRuntimeString("llm.grpc_target", target);
+  ConfigService::setRuntimeString("llm.grpc_credential", credential);
+}
+
+struct Refusal
+{
+  int status{0};
+  std::string code;
+  std::string message;
+
+  bool operator==(const Refusal&) const = default;
+};
+
+template <typename Call>
+Refusal refusalBy(Call call)
+{
+  try {
+    call();
+  }
+  catch (const ResponseException& error) {
+    return {.status = error.statusCode(),
+            .code = error.errorCode(),
+            .message = error.what()};
+  }
+  return {};
 }
 
 template <typename Call>
@@ -35,7 +69,7 @@ std::string thrownBy(Call call)
 ChatRequest greeting()
 {
   ChatRequest request;
-  request.messages = {{"user", "Di hola"}};
+  request.messages = {{.role = "user", .content = "Di hola"}};
   request.maxTokens = 16;
   return request;
 }
@@ -53,9 +87,18 @@ void streamOnce(const LlmHttpClient& client)
   client.chatStream(input);
 }
 
+argus::llm::ClientConfig clientConfig(std::string target,
+                                      std::string credential,
+                                      std::chrono::milliseconds timeout)
+{
+  return {.target = std::move(target),
+          .credential = std::move(credential),
+          .timeout = timeout};
 }
 
-TEST_CASE("The llm client chats and streams over the argus-llm wire")
+}
+
+TEST_CASE("The llm http client chats and streams over the argus-llm wire")
 {
   const std::vector<std::string> tokens = greetingTokens();
   FakeLlmServer server({.tokens = tokens});
@@ -113,7 +156,7 @@ TEST_CASE("The llm client chats and streams over the argus-llm wire")
   pointAt("");
 }
 
-TEST_CASE("The llm client maps a refusal and a truncated stream into errors")
+TEST_CASE("The llm http client maps a refusal and a truncated stream into errors")
 {
   FakeLlmServer down({.tokens = greetingTokens(), .status = 503});
   const std::string downUrl = "http://127.0.0.1:" + std::to_string(down.port());
@@ -132,7 +175,7 @@ TEST_CASE("The llm client maps a refusal and a truncated stream into errors")
   CHECK(cut.requests().at("POST /llm/v1/chat-stream") == 1);
 }
 
-TEST_CASE("The llm client refuses a hostless url and an unreachable one")
+TEST_CASE("The llm http client refuses a hostless url and an unreachable one")
 {
   CHECK(thrownBy([&] { (void)LlmHttpClient("", 1000); }) ==
         "argus-llm remote_url has no host");
@@ -166,4 +209,108 @@ TEST_CASE("The llm remote config reads its knobs and keeps its defaults")
 
   pointAt("");
   CHECK_FALSE(LlmRemoteConfig::resolve().enabled());
+}
+
+TEST_CASE("The gRPC client validates its configuration before it dials")
+{
+  const Refusal invalid{.status = 400,
+                        .code = "BAD_REQUEST",
+                        .message = "Invalid chat request"};
+  const Refusal band{.status = 400,
+                     .code = "BAD_REQUEST",
+                     .message = "timeout must be within 1 and 120000 ms"};
+  const auto refused = [](auto&& build) { return refusalBy(build); };
+
+  CHECK(refused([&] {
+          (void)argus::llm::Client(
+              clientConfig("", kSecret, std::chrono::seconds(5)));
+        }) == invalid);
+  CHECK(refused([&] {
+          (void)argus::llm::Client(
+              clientConfig("127.0.0.1:7032", "", std::chrono::seconds(5)));
+        }) == invalid);
+  CHECK(refused([&] {
+          (void)argus::llm::Client(
+              clientConfig("127.0.0.1:7032", kSecret, std::chrono::seconds(0)));
+        }) == band);
+  CHECK(refused([&] {
+          (void)argus::llm::Client(
+              clientConfig("127.0.0.1:7032", kSecret, std::chrono::seconds(121)));
+        }) == band);
+
+  const argus::llm::Client accepted(
+      clientConfig("127.0.0.1:7032", kSecret, std::chrono::seconds(120)));
+
+  ChatRequest empty = greeting();
+  empty.messages.clear();
+  CHECK(refusalBy([&] { (void)accepted.chat(empty); }) == invalid);
+
+  ChatRequest blank = greeting();
+  blank.messages = {{.role = "user", .content = ""}};
+  CHECK(refusalBy([&] { (void)accepted.chat(blank); }) == invalid);
+
+  ChatRequest roleless = greeting();
+  roleless.messages = {{.role = "", .content = "Di hola"}};
+  CHECK(refusalBy([&] { (void)accepted.chat(roleless); }) == invalid);
+
+  ChatRequest longRole = greeting();
+  longRole.messages = {{.role = std::string(33, 'r'), .content = "Di hola"}};
+  CHECK(refusalBy([&] { (void)accepted.chat(longRole); }) == invalid);
+
+  ChatRequest huge = greeting();
+  huge.messages = {{.role = "user", .content = std::string(32 * 1024 + 1, 'c')}};
+  CHECK(refusalBy([&] { (void)accepted.chat(huge); }) == invalid);
+
+  ChatRequest negativeUser = greeting();
+  negativeUser.userId = -1;
+  CHECK(refusalBy([&] { (void)accepted.chat(negativeUser); }) == invalid);
+
+  CHECK(refusalBy([&] {
+          accepted.chatStream({.request = empty,
+                               .onToken = [](const std::string&, bool) {},
+                               .stats = nullptr});
+        }) == invalid);
+}
+
+TEST_CASE("The facade takes the gRPC leg when the knob is set")
+{
+  FakeLlmServer server({.tokens = greetingTokens()});
+  const std::string url = "http://127.0.0.1:" + std::to_string(server.port());
+  pointAt(url);
+  pointRpcAt("", "");
+
+  const LlmClient httpLeg(url, 120000);
+  CHECK(httpLeg.remote());
+  CHECK(httpLeg.chat(greeting()) == "Hola de nuevo. Otra frase.");
+  CHECK(server.requests().at("POST /llm/v1/chat") == 1);
+
+  const LlmClient unconfigured("", 120000);
+  CHECK_FALSE(unconfigured.remote());
+  CHECK(thrownBy([&] { (void)unconfigured.chat(greeting()); }) ==
+        "argus-llm remote_url has no host");
+
+  pointRpcAt("127.0.0.1:1", kSecret);
+  CHECK(httpLeg.remote());
+  const Refusal unreachable = refusalBy([&] { (void)httpLeg.chat(greeting()); });
+  CHECK(unreachable.status == 503);
+  CHECK(unreachable.code == "SERVICE_UNAVAILABLE");
+  CHECK(server.requests().at("POST /llm/v1/chat") == 1);
+  const Refusal streamUnreachable = refusalBy([&] {
+    httpLeg.chatStream({.request = greeting(),
+                        .onToken = [](const std::string&, bool) {},
+                        .stats = nullptr});
+  });
+  CHECK(streamUnreachable.status == 503);
+  CHECK(streamUnreachable.code == "SERVICE_UNAVAILABLE");
+  CHECK(server.requests().count("POST /llm/v1/chat-stream") == 0);
+
+  pointRpcAt("127.0.0.1:1", "");
+  CHECK(refusalBy([&] { (void)httpLeg.chat(greeting()); }).status == 400);
+  CHECK(server.requests().at("POST /llm/v1/chat") == 1);
+
+  pointRpcAt("", "");
+  CHECK(httpLeg.chat(greeting()) == "Hola de nuevo. Otra frase.");
+  CHECK(server.requests().at("POST /llm/v1/chat") == 2);
+
+  pointAt("");
 }

@@ -9,6 +9,8 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 include(${CMAKE_CURRENT_SOURCE_DIR}/../../cmake/argus-module.cmake)
 
+argus_contracts_substrate()
+
 set(LLM_SRC_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
 if(PROJECT_IS_TOP_LEVEL)
@@ -129,9 +131,12 @@ foreach(module IN LISTS LLM_FEATURE_MODULES)
     add_subdirectory("${module_dir}")
 endforeach()
 
+add_subdirectory(src/app/rpc)
+
 argus_service(NAME argus-llm
     MAIN ${LLM_SRC_ROOT}/app/main.cc
     MODULES
+        argus::llm-rpc
         argus::llm
         argus::encounter-closed
         argus::lib::config
@@ -140,6 +145,7 @@ argus_service(NAME argus-llm
         argus::lib::nats
         argus::lib::sqlite
         argus::lib::http
+        argus::clients::llm
         argus::clients::identity
         argus::clients::camera
         memory-core
@@ -183,6 +189,20 @@ target_compile_options(llm-wire-test PRIVATE -Wall -Wextra)
 set_target_properties(llm-wire-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
 add_test(NAME llm-wire-test COMMAND llm-wire-test)
+
+add_executable(llm-rpc-test tests/unit/llm-rpc-test.cc)
+
+target_compile_definitions(llm-rpc-test PRIVATE
+    ARGUS_TEST_LLM_MODELS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../../models/llm")
+
+target_link_libraries(llm-rpc-test PRIVATE argus::llm-rpc argus::llm
+    doctest::doctest)
+
+target_compile_options(llm-rpc-test PRIVATE -Wall -Wextra)
+
+set_target_properties(llm-rpc-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+
+add_test(NAME llm-rpc-test COMMAND llm-rpc-test)
 
 add_executable(llm-tool-parse-test tests/unit/llm-tool-parse-test.cc)
 

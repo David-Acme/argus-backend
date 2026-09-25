@@ -1,3 +1,4 @@
+#include <app/rpc/llm-rpc-server.hxx>
 #include <camera/camera-sync-client.hxx>
 #include <feature/llm/controllers/llm-controller.hxx>
 #include <drogon/drogon.h>
@@ -5,10 +6,12 @@
 #include <http/health-controller.hxx>
 #include <http/listener-config.hxx>
 #include <identity/identity-client.hxx>
+#include <llm/llm-client.hxx>
 #include <memory/catalog-replica.hxx>
 #include <shared/repositories/memory-graph/memory-graph-repository.hxx>
 #include <config/config-service.hxx>
 #include <feature/encounter-closed/services/encounter-closed-consumer.hxx>
+#include <runtime/thread-budget.hxx>
 #include <shared/services/memory/in-process-memory-chat.hxx>
 #include <shared/services/memory/memory-service.hxx>
 #include <shared/services/memory/sqlite-graph.hxx>
@@ -19,6 +22,7 @@
 #include <nats/nats-bus.hxx>
 #include <nats/nats-subject.hxx>
 
+#include <algorithm>
 #include <chrono>
 #include <ctime>
 #include <json/value.h>
@@ -28,6 +32,7 @@
 #include <mutex>
 #include <string>
 #include <thread>
+#include <utility>
 #include <vector>
 
 namespace
@@ -166,6 +171,37 @@ int main()
   for (auto& descriptor : memory.toolDescriptors())
     ToolRegistry::instance().registerTool(std::move(descriptor));
 
+  std::unique_ptr<LlmRpcServer> rpc;
+  const auto rpcAddress = ConfigService::getString("rpc.address");
+  auto credentials = ConfigService::getStringPairs("rpc.callers");
+  std::erase_if(credentials, [](const auto& credential) {
+    return credential.first.empty() || credential.second.empty();
+  });
+  if (!rpcAddress.empty() && !credentials.empty()) {
+    rpc = std::make_unique<LlmRpcServer>(LlmRpcInput{
+        .address = rpcAddress,
+        .credentials = std::move(credentials),
+        .capabilities = [&llm] {
+          const LlmPrefillStats stats = llm->service().lastPrefillStats();
+          return argus::llm::Capabilities{
+              .loaded = llm->service().isLoaded(),
+              .defaultMaxTokens = llm->service().defaultMaxTokens(),
+              .defaultTemperature = llm->service().defaultTemperature(),
+              .contextSize = llm->service().contextSize(),
+              .lastPromptTokens = stats.promptTokens,
+              .lastReusedTokens = stats.reusedTokens,
+              .lastDecodedTokens = stats.decodedTokens};
+        },
+        .chat = [&llm](const ChatRequest& request) {
+          return llm->chatSync(request);
+        },
+        .chatStream = [&llm](const LlmStreamInput& input) {
+          llm->chatStreamSync(input);
+        },
+        .slots = ThreadBudget::inferenceSlots()});
+    LOG_INFO << "argus-llm gRPC chat listening on " << rpcAddress;
+  }
+
   std::unique_ptr<NatsBus> bus;
   std::unique_ptr<CatalogReplica> replica;
   if (!ConfigService::getString("nats.url").empty()) {
@@ -281,6 +317,8 @@ int main()
       .setThreadNum(0)
       .run();
 
+  if (rpc)
+    rpc->shutdown();
   if (replica)
     replica->stop();
   if (encounterConsumer)

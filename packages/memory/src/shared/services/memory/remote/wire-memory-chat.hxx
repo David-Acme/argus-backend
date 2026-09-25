@@ -1,7 +1,7 @@
 #pragma once
 
 #include <llm/llm-service.hxx>
-#include <llm/details/llm-remote.hxx>
+#include <llm/llm-remote.hxx>
 #include <shared/services/memory/memory-chat.hxx>
 #include <string>
 #include <utility>
@@ -22,5 +22,5 @@ public:
   }
 
 private:
-  LlmHttpClient client_;
+  LlmClient client_;
 };

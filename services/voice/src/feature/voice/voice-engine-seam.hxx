@@ -5,7 +5,7 @@
 #include <memory>
 #include <mutex>
 #include <llm/llm-service.hxx>
-#include <llm/details/llm-remote.hxx>
+#include <llm/llm-remote.hxx>
 #include <stt/stt-remote.hxx>
 #include <tts/tts-remote.hxx>
 #include <stop_token>
@@ -117,13 +117,13 @@ public:
   void chatStream(const ChatRequest& req, TokenCallback onToken) override;
 
 private:
-  std::shared_ptr<const LlmHttpClient>
+  std::shared_ptr<const LlmClient>
   clientFor(const LlmRemoteConfig& config);
 
   mutable std::mutex mutex_;
   std::string cachedUrl_;
   int cachedTimeoutMs_{0};
-  std::shared_ptr<const LlmHttpClient> client_;
+  std::shared_ptr<const LlmClient> client_;
 };
 
 IVoiceStt& voiceStt();

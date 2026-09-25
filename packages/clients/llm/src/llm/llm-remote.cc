@@ -12,6 +12,7 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
+#include <algorithm>
 #include <cerrno>
 #include <chrono>
 #include <cstring>
@@ -264,6 +265,15 @@ bool parseSentinel(const std::string& line, LlmPrefillStats* stats)
   return true;
 }
 
+std::chrono::milliseconds rpcTimeout(int timeoutMs)
+{
+  const auto ceiling = std::chrono::duration_cast<std::chrono::milliseconds>(
+      argus::llm::kMaxTimeout);
+  if (timeoutMs <= 0)
+    return ceiling;
+  return std::min(std::chrono::milliseconds(timeoutMs), ceiling);
+}
+
 }
 
 LlmRemoteConfig LlmRemoteConfig::resolve()
@@ -449,4 +459,54 @@ void LlmHttpClient::chatStream(const LlmStreamInput& input) const
     }
     cursor = dataStart + size + 2;
   }
+}
+
+LlmClient::LlmClient(std::string baseUrl, int timeoutMs)
+    : baseUrl_(std::move(baseUrl)), timeoutMs_(timeoutMs)
+{
+}
+
+std::shared_ptr<argus::llm::Client> LlmClient::rpcClient() const
+{
+  const auto target = ConfigService::getString("llm.grpc_target");
+  if (target.empty())
+    return {};
+  const auto credential = ConfigService::getString("llm.grpc_credential");
+  auto cached = rpcCache_.load();
+  while (!cached || cached->target != target ||
+         cached->credential != credential) {
+    auto built = std::make_shared<RpcCache>(
+        RpcCache{.target = target,
+                 .credential = credential,
+                 .client = std::make_shared<argus::llm::Client>(
+                     argus::llm::ClientConfig{
+                         .target = target,
+                         .credential = credential,
+                         .timeout = rpcTimeout(timeoutMs_)})});
+    if (rpcCache_.compare_exchange_weak(cached, built))
+      return built->client;
+  }
+  return cached->client;
+}
+
+std::string LlmClient::chat(const ChatRequest& request) const
+{
+  if (const auto client = rpcClient())
+    return client->chat(request);
+  return LlmHttpClient(baseUrl_, timeoutMs_).chat(request);
+}
+
+void LlmClient::chatStream(const LlmStreamInput& input) const
+{
+  if (const auto client = rpcClient()) {
+    client->chatStream(input);
+    return;
+  }
+  LlmHttpClient(baseUrl_, timeoutMs_).chatStream(input);
+}
+
+bool LlmClient::remote() const
+{
+  return !ConfigService::getString("llm.grpc_target").empty() ||
+         !baseUrl_.empty();
 }

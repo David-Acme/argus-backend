@@ -7,6 +7,18 @@
 #include <feature/llm/services/intent-gate.hxx>
 #include <feature/llm/services/lfm-adapter.hxx>
 #include <llm/llm-service.hxx>
+#include <cstddef>
+#include <cstdint>
+#include <string>
+
+struct LlmChatOutcome
+{
+  std::string text;
+  int hops{0};
+  size_t toolCalls{0};
+  int64_t generateMs{0};
+  int64_t toolMs{0};
+};
 
 class LlmController : public drogon::HttpController<LlmController, false>
 {
@@ -28,6 +40,9 @@ public:
   LfmAdapter& adapter() { return adapter_; }
 
   const IntentRouter& router() const { return intentGate_.router(); }
+
+  LlmChatOutcome chatSync(const ChatRequest& request);
+  void chatStreamSync(const LlmStreamInput& input);
 
   drogon::Task<drogon::HttpResponsePtr> chat(drogon::HttpRequestPtr req);
   drogon::Task<drogon::HttpResponsePtr> chatStream(drogon::HttpRequestPtr req);

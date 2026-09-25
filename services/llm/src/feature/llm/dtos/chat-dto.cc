@@ -90,6 +90,8 @@ ChatRequest ChatCompletionDto::request() const
   req.maxTokens = maxTokens.value_or(0);
   req.temperature = temperature.value_or(-1.0F);
   req.resetContext = resetContext;
+  req.toolsEnabled = toolsEnabled;
+  req.userId = userId.value_or(0);
   req.grammar = grammar;
   req.grammarRequired = grammarRequired;
   return req;

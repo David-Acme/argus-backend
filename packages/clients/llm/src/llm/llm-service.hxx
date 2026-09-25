@@ -29,6 +29,7 @@ struct ChatRequest
   std::vector<std::string> stop;
   std::string grammar;
   bool grammarRequired{false};
+  int64_t userId{0};
 };
 
 using TokenCallback = std::function<void(const std::string& token, bool done)>;
@@ -38,6 +39,13 @@ struct LlmPrefillStats
   int32_t promptTokens{0};
   int32_t reusedTokens{0};
   int32_t decodedTokens{0};
+};
+
+struct LlmStreamInput
+{
+  ChatRequest request;
+  TokenCallback onToken;
+  LlmPrefillStats* stats{nullptr};
 };
 
 struct GenerateInput
@@ -108,7 +116,7 @@ private:
   float penaltyFreq_ = 0.0F;
   float penaltyPresent_ = 0.0F;
   uint32_t seed_ = 0;
-  LlmPrefillStats lastStats_;
+  std::atomic<LlmPrefillStats> lastStats_;
   bool loaded_ = false;
   std::mutex mutex_;
   std::atomic<bool> busy_{false};

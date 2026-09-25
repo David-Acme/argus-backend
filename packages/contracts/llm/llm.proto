@@ -1,0 +1,50 @@
+syntax = "proto3";
+
+package argus.llm.v1;
+
+service Chat {
+  rpc Capabilities(CapabilitiesRequest) returns (CapabilitiesResponse);
+  rpc Chat(ChatRequest) returns (ChatResponse);
+  rpc ChatStream(ChatRequest) returns (stream ChatToken);
+}
+
+message CapabilitiesRequest {}
+
+message CapabilitiesResponse {
+  bool loaded = 1;
+  int32 default_max_tokens = 2;
+  float default_temperature = 3;
+  int64 context_size = 4;
+  int32 last_prompt_tokens = 5;
+  int32 last_reused_tokens = 6;
+  int32 last_decoded_tokens = 7;
+}
+
+message ChatMessage {
+  string role = 1;
+  string content = 2;
+}
+
+message ChatRequest {
+  repeated ChatMessage messages = 1;
+  int32 max_tokens = 2;
+  optional float temperature = 3;
+  bool reset_context = 4;
+  optional bool tools = 5;
+  int64 user_id = 6;
+  string grammar = 7;
+  bool grammar_required = 8;
+}
+
+message ChatResponse {
+  string text = 1;
+}
+
+message ChatToken {
+  uint32 sequence = 1;
+  string text = 2;
+  bool done = 3;
+  int32 prompt_tokens = 4;
+  int32 reused_tokens = 5;
+  int32 decoded_tokens = 6;
+}

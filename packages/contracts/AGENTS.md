@@ -36,16 +36,18 @@ review blocker:
 ## Layout
 
 - `proto/argus/{domain}/v1/*.proto` — the shared proto root, one package per
-  domain still served from it (`common`, `camera`, `productivity`,
+  domain still served from it (`auth`, `common`, `camera`, `productivity`,
   `notification`, `memory`, `sync`, `identity`, `voice`, plus vendored
-  `grpc/health/v1`). The `ai` domain is down to `llm.proto`, an orphan no
-  source imports: the four domains whose gRPC boundary this work introduced
-  (`response`, `stt`, `tts`, `vlm`) each moved their schema out to their own
-  package folder, and Phase 4 step 6c replaces `llm` the same way and empties
-  the domain.
-- `response/`, `stt/`, `tts/`, `vlm/` — the four packages whose `.proto` sits at
+  `grpc/health/v1`). No orphan skeleton is left: the five domains whose gRPC
+  boundary this work introduced (`response`, `stt`, `tts`, `vlm`, `llm`) each
+  moved their schema out to their own package folder, and Phase 4 step 6c took
+  the last one — `ai/v1/llm.proto`, unimported by any source — so the `ai`
+  domain is gone.
+- `response/`, `stt/`, `tts/`, `vlm/`, `llm/` — the five packages whose `.proto`
+  sits at
   the folder root (`argus.response.v1`, `argus.stt.v1`, `argus.tts.v1`,
-  `argus.vlm.v1`, all self-contained). `stt`, `tts` and `vlm` carry
+  `argus.vlm.v1`, `argus.llm.v1`, all self-contained). `stt`, `tts`, `vlm` and
+  `llm` carry
   `src/<domain>/<domain>-errors.hxx`, the refusal catalog its server throws, and
   their own `argus_<domain>_rpc_contract()`, which calls
   `argus_response_rpc_contract()`, ensures `lib/grpc` and declares
@@ -84,8 +86,8 @@ review blocker:
 - Validation before commit: `buf lint && buf breaking` when buf is available,
   else `protoc --descriptor_set_out=/dev/null -I proto $(git ls-files
   'proto/*.proto')`. Both forms span the `proto/` tree only — buf is absent
-  from this machine and its module declares `path: proto`, so the four
-  boundary contracts are validated with `for d in response stt tts vlm; do
+  from this machine and its module declares `path: proto`, so the five
+  boundary contracts are validated with `for d in response stt tts vlm llm; do
   protoc --descriptor_set_out=/dev/null -I $d $d/$d.proto; done`.
 
 ## Code style for generated consumers (backend services)

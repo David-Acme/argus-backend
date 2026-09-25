@@ -4,7 +4,7 @@
 #include <argus/camera/v1/actions.grpc.pb.h>
 #include <camera/camera-action-client.hxx>
 #include <feature/guard/guard-assessment.hxx>
-#include <llm/details/llm-remote.hxx>
+#include <llm/llm-remote.hxx>
 #include <vlm/vlm-remote.hxx>
 
 #include <arpa/inet.h>
@@ -163,7 +163,7 @@ TEST_CASE("guard assessment describes the fetched crop with the live VLM")
       {.target = "127.0.0.1:" + std::to_string(port),
        .credential = "guard-camera"});
   VlmClient vlm(vlmUrl, 60.0);
-  LlmHttpClient llm("127.0.0.1:7032", 30000);
+  LlmClient llm("127.0.0.1:7032", 30000);
   GuardAssessment assessment(
       {.camera = &cameraClient, .vlm = &vlm, .llm = &llm},
       {.enabled = true,

@@ -75,14 +75,14 @@ bool RemoteVoiceStt::setLanguage(const std::string& lang)
   lang_ = lang;
   return true;
 }
-std::shared_ptr<const LlmHttpClient>
+std::shared_ptr<const LlmClient>
 RemoteVoiceLlm::clientFor(const LlmRemoteConfig& config)
 {
   if (!client_ || config.url != cachedUrl_ ||
       config.timeoutMs != cachedTimeoutMs_) {
     cachedUrl_ = config.url;
     cachedTimeoutMs_ = config.timeoutMs;
-    client_ = std::make_shared<LlmHttpClient>(config.url, config.timeoutMs);
+    client_ = std::make_shared<LlmClient>(config.url, config.timeoutMs);
   }
   return client_;
 }
@@ -90,14 +90,14 @@ RemoteVoiceLlm::clientFor(const LlmRemoteConfig& config)
 void RemoteVoiceLlm::chatStream(const ChatRequest& req, TokenCallback onToken)
 {
   const LlmRemoteConfig config = LlmRemoteConfig::resolve();
-  if (!config.enabled())
-    throw std::runtime_error("llm.remote_url is not configured");
 
-  std::shared_ptr<const LlmHttpClient> client;
+  std::shared_ptr<const LlmClient> client;
   {
     std::lock_guard<std::mutex> lock(mutex_);
     client = clientFor(config);
   }
+  if (!client->remote())
+    throw std::runtime_error("llm.remote_url is not configured");
   LlmStreamInput input;
   input.request = req;
   input.onToken = std::move(onToken);
