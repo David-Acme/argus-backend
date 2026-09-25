@@ -147,11 +147,13 @@ foreach(module IN LISTS LLM_FEATURE_MODULES)
 endforeach()
 
 add_subdirectory(src/shared)
+add_subdirectory(src/config)
 add_subdirectory(src/app/rpc)
 
 argus_service(NAME argus-llm
     MAIN ${LLM_SRC_ROOT}/app/main.cc
     MODULES
+        argus::llm-config
         argus::llm-rpc
         argus::llm
         argus::llm-shared

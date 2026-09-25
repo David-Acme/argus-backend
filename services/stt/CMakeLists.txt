@@ -71,11 +71,13 @@ foreach(module IN LISTS STT_FEATURE_MODULES)
     add_subdirectory("${module_dir}")
 endforeach()
 
+add_subdirectory(src/config)
 add_subdirectory(src/app/rpc)
 
 argus_service(NAME argus-stt
     MAIN ${STT_SRC_ROOT}/app/main.cc
     MODULES
+        argus::stt-config
         argus::stt-rpc
         argus::stt
         argus::lib::config

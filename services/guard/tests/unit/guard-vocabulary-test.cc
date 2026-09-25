@@ -6,7 +6,7 @@
 #include <feature/guard/vocabulary/guard-action-kind.hxx>
 #include <feature/guard/vocabulary/guard-danger.hxx>
 #include <feature/guard/vocabulary/guard-intent-status.hxx>
-#include <feature/guard/vocabulary/guard-mode.hxx>
+#include <shared/vocabulary/guard-mode.hxx>
 #include <feature/guard/vocabulary/observation-status.hxx>
 
 #include <cstddef>

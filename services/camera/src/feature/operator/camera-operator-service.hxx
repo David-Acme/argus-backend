@@ -4,7 +4,7 @@
 #include <feature/operator/event-intelligence.hxx>
 #include <feature/operator/frame-source.hxx>
 #include <feature/operator/object-event-sink.hxx>
-#include <feature/operator/operator-config.hxx>
+#include <config/operator-config.hxx>
 #include <feature/operator/zone-source.hxx>
 #include <shared/utils/in-flight/in-flight.hxx>
 

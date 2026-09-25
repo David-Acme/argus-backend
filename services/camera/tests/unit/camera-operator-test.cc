@@ -7,7 +7,7 @@
 #include <feature/operator/known-person-matcher.hxx>
 #include <feature/operator/object-event-sink.hxx>
 #include <feature/operator/object-event.hxx>
-#include <feature/operator/operator-config.hxx>
+#include <config/operator-config.hxx>
 #include <feature/operator/zone-source.hxx>
 
 #include <atomic>

@@ -2,7 +2,7 @@
 #include <doctest/doctest.h>
 
 #include <drogon/drogon.h>
-#include <notification/nats-notification-delivery-sink.hxx>
+#include <shared/services/delivery-sink/nats-notification-delivery-sink.hxx>
 #include <shared/services/notification/notification-service.hxx>
 #include <sqlite/db-service.hxx>
 #include <nats/nats-bus.hxx>

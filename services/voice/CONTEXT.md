@@ -86,3 +86,12 @@ exact JSON/binary the app expects is argus-sync's
 - The canonical build is the service's standalone graph. From the repository
   root use `scripts/build-all.sh dev --only voice`; its CTest graph
   compiles the voice suites with `argus::voice-core`.
+
+## Phase 4 step 9: config resolution into `src/config/` (D20)
+
+The two listeners `main.cc` resolved inline are
+`src/config/voice-config.{hxx,cc}` (`argus::voice-config`):
+`VoiceConfig::resolveHealthListener()` (`ListenerConfig::resolve(7035,
+"server.health_port")`) and `VoiceConfig::resolveGrpcListener()`
+(`GrpcListenerConfig::resolve(7034)`). `main.cc` keeps `config.toml` loading
+and `drogonConfig`; this service never reads `nats.url`.

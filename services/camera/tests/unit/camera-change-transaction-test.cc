@@ -1,7 +1,7 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
 
-#include <camera/nats-camera-change-sink.hxx>
+#include <shared/services/change-sink/nats-camera-change-sink.hxx>
 #include <drogon/drogon.h>
 #include <feature/camera/services/camera-feature-service.hxx>
 #include <shared/repositories/change-outbox/change-outbox-repository.hxx>

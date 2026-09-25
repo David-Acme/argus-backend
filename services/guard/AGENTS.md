@@ -35,6 +35,12 @@ this service. The MUST-FOLLOW rules below restate the ones that apply.
 argus-guard/
   CMakeLists.txt        standalone buildable: module graph + test targets
   src/app/main.cc       config load, guard.db wiring, app run
+  src/config/           argus::guard-config — db, listener, notifications,
+                          identity, actions, assessment, service and belief
+                          resolution
+  src/shared/vocabulary/
+                        guard-mode, belief-gate-scope and belief-config —
+                        the types the config module and the feature both read
   src/feature/guard/    argus::guard — the whole vertical slice:
                           the domain (assessment, belief, policy, risk,
                           dialogue, action, repository, schema, service),
@@ -43,8 +49,12 @@ argus-guard/
   CONTEXT.md            purpose, ownership, wiring decisions
 ```
 
-There is one feature and one module: `argus::guard` compiles the domain and
-the HTTP surface together, and `main.cc` registers the controller explicitly
+There is one feature and two modules: `argus::guard` compiles the domain and
+the HTTP surface together, and `argus::guard-config` (`src/config/`) resolves
+what `main.cc` boots with, so `main.cc` holds composition and reads no key a
+config module owns — its one `ConfigService::getString("nats.url")` is the
+gate on the optional bus, a key `NatsBus::connect()` resolves again itself.
+`main.cc` registers the controller explicitly
 (a Drogon `HttpController<GuardController, false>`), so no route depends on
 static-init registration. The folder IS the module (root rule 25) — a
 consumer links `argus::guard` and never lists `.cc` files.

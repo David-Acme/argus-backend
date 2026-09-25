@@ -2,7 +2,7 @@
 #include <doctest/doctest.h>
 
 #include <drogon/drogon.h>
-#include <notification/nats-notification-change-sink.hxx>
+#include <shared/services/change-sink/nats-notification-change-sink.hxx>
 #include <shared/repositories/change-outbox/change-outbox-repository.hxx>
 #include <shared/services/notification/notification-service.hxx>
 #include <sqlite/db-service.hxx>

@@ -8,18 +8,12 @@
 #include <string>
 #include <vector>
 
+#include <config/camera-config.hxx>
 #include <drogon/utils/coroutine.h>
 #include <feature/monitor/health-event.hxx>
 #include <shared/utils/in-flight/in-flight.hxx>
 
 class IFrameSource;
-
-struct CameraHealthConfig
-{
-  bool enabled{true};
-  int64_t intervalMs{60000};
-  HealthThresholds thresholds;
-};
 
 class CameraHealthMonitor
 {

@@ -58,11 +58,12 @@ foreach(module IN LISTS TTS_FEATURE_MODULES)
     add_subdirectory("${module_dir}")
 endforeach()
 
+add_subdirectory(src/config)
 add_subdirectory(src/app/rpc)
 
 argus_service(NAME argus-tts
     MAIN ${TTS_SRC_ROOT}/app/main.cc
-    MODULES argus::tts-rpc argus::tts-synthesis-http)
+    MODULES argus::tts-config argus::tts-rpc argus::tts-synthesis-http)
 
 get_target_property(DOCTEST_INCLUDE_DIRS doctest::doctest
                     INTERFACE_INCLUDE_DIRECTORIES)

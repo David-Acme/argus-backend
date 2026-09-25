@@ -1,4 +1,5 @@
 #include <app/rpc/stt-rpc-server.hxx>
+#include <config/stt-config.hxx>
 #include <drogon/drogon.h>
 #include <feature/stt/controllers/stt-controller.hxx>
 #include <feature/stt/services/stt-service.hxx>
@@ -10,10 +11,8 @@
 #include <config/config-service.hxx>
 
 #include <json/value.h>
-#include <algorithm>
 #include <memory>
 #include <string>
-#include <utility>
 #include <vector>
 
 namespace
@@ -33,7 +32,7 @@ int main()
 {
   ConfigService::load("config.toml");
 
-  const ListenerConfig listener = ListenerConfig::resolve(7030);
+  const ListenerConfig listener = SttConfig::resolveListener();
 
   drogon::app().registerController(std::make_shared<HealthController>(HealthStatus{.serviceName = "argus-stt", .extras = {}}));
   drogon::app().registerController(std::make_shared<SttController>());
@@ -54,16 +53,12 @@ int main()
   }
 
   std::unique_ptr<SttRpcServer> rpc;
-  const auto rpcAddress = ConfigService::getString("rpc.address");
-  auto credentials = ConfigService::getStringPairs("rpc.callers");
-  std::erase_if(credentials, [](const auto& credential) {
-    return credential.first.empty() || credential.second.empty();
-  });
-  if (!rpcAddress.empty() && !credentials.empty()) {
+  const SttRpcConfig rpcConfig = SttConfig::resolveRpc();
+  if (!rpcConfig.address.empty() && !rpcConfig.credentials.empty()) {
     auto& stt = SttService::instance();
     rpc = std::make_unique<SttRpcServer>(SttRpcInput{
-        .address = rpcAddress,
-        .credentials = std::move(credentials),
+        .address = rpcConfig.address,
+        .credentials = rpcConfig.credentials,
         .capabilities = [] {
           auto& service = SttService::instance();
           return argus::stt::Capabilities{
@@ -83,7 +78,8 @@ int main()
   }
 
   if (rpc)
-    LOG_INFO << "argus-stt gRPC transcription listening on " << rpcAddress;
+    LOG_INFO << "argus-stt gRPC transcription listening on "
+             << rpcConfig.address;
 
   LOG_INFO << "argus-stt listening on " << listener.host << ":"
            << listener.port;

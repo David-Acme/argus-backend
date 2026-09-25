@@ -50,6 +50,8 @@ argus-vlm/
   src/app/rpc/          argus::vlm-rpc — the internal gRPC face (the
                           argus.vlm.v1 Vision service), dormant unless
                           [rpc] address and [rpc.callers] are set
+  src/config/           argus::vlm-config — the listener and the optional
+                          gRPC leg's address and callers
   src/feature/vlm/      argus::vlm — the whole vertical slice:
                           controllers/ (the frozen /vlm/v1/* wire),
                           dtos/ (the describe DTO, validation DSL),

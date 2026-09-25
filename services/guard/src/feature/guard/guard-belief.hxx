@@ -3,6 +3,8 @@
 #include "guard-policy.hxx"
 #include <feature/guard/vocabulary/guard-action-kind.hxx>
 #include <feature/guard/vocabulary/guard-danger.hxx>
+#include <shared/vocabulary/belief-config.hxx>
+#include <shared/vocabulary/belief-gate-scope.hxx>
 
 #include <optional>
 #include <string>
@@ -52,35 +54,6 @@ inline std::string beliefSignalToString(BeliefSignal signal)
   return "camera_health_degraded";
 }
 
-struct BeliefConfig
-{
-  int weightDetectorStrong{2};
-  int weightDetectorWeak{-2};
-  int weightPersistenceMet{2};
-  int weightPersistenceShort{-2};
-  int weightTrackStable{1};
-  int weightTrackJitter{-2};
-  int weightIdentityUnrecognized{2};
-  int weightIdentityUnobservable{-2};
-  int weightIdentityUnavailable{0};
-  int weightIdentityKnown{-3};
-  int weightCameraHealthDegraded{-2};
-  double detectorStrong{0.75};
-  double detectorWeak{0.35};
-  int minScoreSamples{1};
-  int persistenceWindows{2};
-  double persistenceDwellFraction{0.5};
-  int64_t zoneDwellAlertMs{3000};
-  int64_t zoneDwellMonitorMs{12000};
-  int64_t trackStableAgeMs{4000};
-  int64_t trackJitterDwellMs{1500};
-  double areaSpreadRatio{2.0};
-  int thresholdCritical{1};
-  int thresholdHigh{3};
-  int thresholdMedium{5};
-  int thresholdLow{7};
-};
-
 struct BeliefInput
 {
   double scoreMedian{0.0};
@@ -102,38 +75,6 @@ struct BeliefResult
   int score{0};
   std::vector<BeliefSignal> signals;
 };
-
-enum class BeliefGateScope
-{
-  Notify,
-  Communication,
-  All,
-};
-
-inline std::optional<BeliefGateScope>
-beliefGateScopeFromString(const std::string& value)
-{
-  if (value == "notify")
-    return BeliefGateScope::Notify;
-  if (value == "communication")
-    return BeliefGateScope::Communication;
-  if (value == "all")
-    return BeliefGateScope::All;
-  return std::nullopt;
-}
-
-inline std::string beliefGateScopeToString(BeliefGateScope scope)
-{
-  switch (scope) {
-  case BeliefGateScope::Notify:
-    return "notify";
-  case BeliefGateScope::Communication:
-    return "communication";
-  case BeliefGateScope::All:
-    return "all";
-  }
-  return "notify";
-}
 
 struct GateScopeInput
 {
@@ -172,8 +113,6 @@ namespace guard_belief
 BeliefResult evaluateBelief(const BeliefInput& input);
 
 int beliefThreshold(GuardDanger severity, const BeliefConfig& config);
-
-BeliefConfig resolveBeliefConfig(int64_t cameraId);
 
 bool beliefSuppressesKind(const GateScopeInput& input);
 }

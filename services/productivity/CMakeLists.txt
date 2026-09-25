@@ -83,7 +83,8 @@ if(NOT TARGET argus::lib::grpc-health)
                      ${CMAKE_BINARY_DIR}/grpc EXCLUDE_FROM_ALL)
 endif()
 
-add_subdirectory(src/productivity)
+add_subdirectory(src/config)
+add_subdirectory(src/shared/services/change-sink)
 add_subdirectory(src/shared/repositories)
 add_subdirectory(src/shared/repositories/change-outbox)
 
@@ -99,7 +100,8 @@ add_subdirectory(src/app/rpc)
 argus_service(NAME argus-productivity
     MAIN ${PRODUCTIVITY_SRC_ROOT}/app/main.cc
     MODULES
-        argus::productivity-core
+        argus::productivity-config
+        argus::productivity-change-sink
         argus::productivity-calendar-event
         argus::productivity-calendar-event-share
         argus::productivity-project
@@ -167,7 +169,7 @@ set_target_properties(productivity-change-outbox-sink-test PROPERTIES
     EXCLUDE_FROM_ALL FALSE)
 
 target_link_libraries(productivity-change-outbox-sink-test PRIVATE
-    argus::productivity-core
+    argus::productivity-change-sink
     argus::lib::nats
     doctest::doctest)
 
@@ -192,7 +194,6 @@ target_link_libraries(productivity-controller-test PRIVATE
     argus::productivity-project
     argus::productivity-project-member
     argus::productivity-project-task
-    argus::productivity-core
     argus::clients::identity
     argus::lib::auth
     argus::contracts::auth
@@ -225,7 +226,7 @@ target_link_libraries(productivity-change-transaction-test PRIVATE
     argus::productivity-project
     argus::productivity-project-member
     argus::productivity-project-task
-    argus::productivity-core
+    argus::productivity-change-sink
     argus::lib::auth
     argus::contracts::auth
     argus::contracts::productivity

@@ -679,7 +679,7 @@ BeliefConfig GuardService::beliefConfig(int64_t cameraId) const
         now - found->second.resolvedAt < config_.beliefRefreshS * 1000)
       return found->second.config;
   }
-  BeliefConfig resolved = guard_belief::resolveBeliefConfig(cameraId);
+  BeliefConfig resolved = GuardConfig::resolveBelief(cameraId);
   {
     std::scoped_lock lock(beliefMutex_);
     beliefCache_[cameraId] = {.config = resolved, .resolvedAt = nowMillis()};

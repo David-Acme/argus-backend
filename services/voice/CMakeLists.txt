@@ -115,9 +115,11 @@ endif()
 
 target_compile_options(argus_voice-core PRIVATE -Wall -Wextra)
 
+add_subdirectory(src/config)
+
 argus_service(NAME argus-voice
     MAIN src/main.cc
-    MODULES argus_voice-core
+    MODULES argus::voice-config argus::voice-core
     PORTS 7034 7035)
 
 get_target_property(DOCTEST_INCLUDE_DIRS doctest::doctest

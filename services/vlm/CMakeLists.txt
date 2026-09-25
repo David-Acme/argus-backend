@@ -84,11 +84,13 @@ foreach(module IN LISTS VLM_FEATURE_MODULES)
     add_subdirectory("${module_dir}")
 endforeach()
 
+add_subdirectory(src/config)
 add_subdirectory(src/app/rpc)
 
 argus_service(NAME argus-vlm
     MAIN ${VLM_SRC_ROOT}/app/main.cc
     MODULES
+        argus::vlm-config
         argus::vlm-rpc
         argus::vlm
         argus::lib::config

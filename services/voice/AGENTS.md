@@ -49,8 +49,12 @@ that apply to voice-service code; when in doubt, the root file wins.
 
 ```
 argus-voice/
-  CMakeLists.txt        argus_module(voice-core) + argus_service(argus-voice)
-  src/main.cc           config load, listeners + minimal /health boot
+  CMakeLists.txt        argus_module(voice-core) + argus_service(argus-voice),
+                        the latter naming argus::voice-config and
+                        argus::voice-core
+  src/main.cc           config load, listener boot, minimal /health, app run
+  src/config/           argus::voice-config — the health (7035) and gRPC
+                        (7034) listeners
   src/feature/voice/    voice session, remote-only engine seam, VoiceService RPC
   src/feature/health/   grpc.health.v1 service
   src/shared/services/  vad, noise suppression and the reaction engine

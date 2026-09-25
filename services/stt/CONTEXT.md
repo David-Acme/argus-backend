@@ -84,3 +84,12 @@ pattern (F4-2) one engine later.
 The docker compose must mount the shared `models/` tree (at least
 `models/stt`) into this service's working directory — the engine reads
 `models/stt/*.onnx` relative to `stt.models_dir`.
+
+## Phase 4 step 9: config resolution into `src/config/` (D20)
+
+The listener and the optional gRPC leg are resolved by
+`src/config/stt-config.{hxx,cc}` (`argus::stt-config`):
+`SttConfig::resolveListener()` (`ListenerConfig::resolve(7030)`) and
+`SttConfig::resolveRpc()` (`rpc.address` plus the `rpc.callers` credential
+pairs, empty ones dropped). `main.cc` keeps `config.toml` loading,
+`drogonConfig` and the boot gate on the resolved address and credentials.

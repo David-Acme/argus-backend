@@ -5,6 +5,7 @@ argus_module(NAME camera-monitor
     INCLUDES
         ../..
     DEPENDS
+        argus::camera-config
         argus::camera-operator
         argus::lib::nats
         argus::lib::runtime

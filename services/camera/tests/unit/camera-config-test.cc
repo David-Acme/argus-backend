@@ -1,7 +1,7 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
 
-#include <camera/camera-config.hxx>
+#include <config/camera-config.hxx>
 #include <http/health-controller.hxx>
 #include <http/listener-config.hxx>
 #include <config/config-service.hxx>
@@ -21,8 +21,7 @@ TEST_CASE("camera config resolves database and listener with defaults")
 
   ConfigService::load(path);
   const CameraDbConfig config = CameraConfig::resolveDb();
-  const ListenerConfig listener =
-      ListenerConfig::resolveServiceTls("camera", 7026);
+  const ListenerConfig listener = CameraConfig::resolveListener();
 
   CHECK(config.dbPath == "database/camera.db");
   CHECK(config.schemaPath == "services/camera/database/schema.sql");
@@ -55,8 +54,7 @@ TEST_CASE("camera config honors the camera and cert section overrides")
 
   ConfigService::load(path);
   const CameraDbConfig config = CameraConfig::resolveDb();
-  const ListenerConfig listener =
-      ListenerConfig::resolveServiceTls("camera", 7026);
+  const ListenerConfig listener = CameraConfig::resolveListener();
 
   CHECK(config.dbPath == "/tmp/argus-test/camera.db");
   CHECK(config.schemaPath == "/tmp/argus-test/camera-schema.sql");

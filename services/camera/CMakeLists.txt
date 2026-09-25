@@ -122,9 +122,10 @@ endif()
 
 set(NCNN_SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../third_party/ncnn/src)
 
-add_subdirectory(src/camera)
+add_subdirectory(src/config)
 add_subdirectory(src/shared/repositories)
 add_subdirectory(src/shared/repositories/change-outbox)
+add_subdirectory(src/shared/services/change-sink)
 add_subdirectory(src/shared/services/tapo)
 add_subdirectory(src/shared/services/camera-driver)
 add_subdirectory(src/shared/services/stream)
@@ -142,7 +143,8 @@ add_subdirectory(src/app/rpc)
 argus_service(NAME argus-camera
     MAIN ${CAMERA_SRC_ROOT}/app/main.cc
     MODULES
-        argus::camera-core
+        argus::camera-config
+        argus::camera-change-sink
         argus::camera-actions
         argus::camera-feature
         argus::camera-control
@@ -202,7 +204,7 @@ target_link_libraries(camera-schema-test PRIVATE camera-migration)
 target_link_libraries(camera-migration-test PRIVATE camera-migration)
 
 target_link_libraries(camera-config-test PRIVATE
-    argus::camera-core
+    argus::camera-config
     argus::lib::http)
 
 target_link_libraries(camera-controller-test PRIVATE
@@ -231,7 +233,7 @@ target_link_libraries(camera-source-registrar-test PRIVATE
     argus::camera-stream)
 
 target_link_libraries(camera-change-transaction-test PRIVATE
-    argus::camera-core
+    argus::camera-change-sink
     argus::camera-feature
     argus::camera-change-outbox)
 
@@ -330,7 +332,7 @@ add_test(NAME change-outbox-test COMMAND change-outbox-test)
 add_executable(change-outbox-sink-test
     tests/unit/change-outbox-sink-test.cc)
 target_link_libraries(change-outbox-sink-test PRIVATE
-    argus::camera-core
+    argus::camera-change-sink
     argus::camera-change-outbox
     doctest::doctest)
 target_compile_definitions(change-outbox-sink-test PRIVATE

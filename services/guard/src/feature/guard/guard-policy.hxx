@@ -2,7 +2,7 @@
 
 #include <camera/identity-state.hxx>
 #include <feature/guard/vocabulary/guard-danger.hxx>
-#include <feature/guard/vocabulary/guard-mode.hxx>
+#include <shared/vocabulary/guard-mode.hxx>
 
 #include <cstdint>
 #include <json/value.h>

@@ -2,6 +2,7 @@
 
 #include "guard-policy.hxx"
 
+#include <config/guard-config.hxx>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -106,15 +107,7 @@ public:
     LlmClient* llm{nullptr};
   };
 
-  struct Config
-  {
-    bool enabled{false};
-    std::string mode{"agent"};
-    std::string vetoScope{"soft_only"};
-    int maxToolRounds{3};
-    int maxAnnounceWords{12};
-    std::string lang{"es"};
-  };
+  using Config = GuardAssessmentConfig;
 
   GuardAssessment(Dependencies dependencies, Config config);
 

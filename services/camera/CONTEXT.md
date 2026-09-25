@@ -108,8 +108,10 @@ sibling service: own binary, own CMake preset, own `camera.db`.
   reusing a transport the camera has already closed.
 - **Driver stack**: `camera-driver` (registry + Tapo driver) and the tapo
   transport stack are the `src/shared/services/{camera-driver,tapo}` modules
-  since Phase 4 step 3 gave each its own declaration (OpenSSL linked);
-  `camera-core` is this service's typed config and its camera_change sink.
+  since Phase 4 step 3 gave each its own declaration (OpenSSL linked); the
+  typed config is `argus::camera-config` (`src/config/`) and the camera_change
+  sink is `argus::camera-change-sink` (`src/shared/services/change-sink/`)
+  since Phase 4 step 9.
   `[tapo]` config keys are read here, mirroring the legacy block.
 - **Legacy slimming**: the legacy binary no longer compiles the camera/
   zone features, the camera-driver/tapo/stream stack, nor `camera.db`
@@ -462,6 +464,27 @@ repository, schema or service — rule 23's 2+ rule names those three, and
 The change sink's reader count is the reason `shared/repositories/change-outbox`
 stayed: no feature includes it, because both publishing features reach it
 through `camera_change::getSink()` in `contracts/sync`, whose concrete
-implementation is `src/camera/nats-camera-change-sink.cc` and whose install
+implementation is `nats-camera-change-sink.cc` — `src/camera/` at this step,
+`src/shared/services/change-sink/` since step 9 — and whose install
 is `main.cc`. That is the same indirect-2 shape the notification service
 documented for its own outbox.
+
+## Phase 4 step 9: config resolution into `src/config/` (D20)
+
+`src/camera/` is gone. The two config files the folder held are `src/config/`
+now — `camera-config.{hxx,cc}` and `operator-config.{hxx,cc}`, compiled once
+by `argus::camera-config` — and the NATS change sink that shared the folder is
+`src/shared/services/change-sink/` (`argus::camera-change-sink`). Two types
+that only a feature declared are `src/shared/vocabulary/` now, because the
+config module names them too: `HealthThresholds` (out of
+`feature/monitor/health-event.hxx`) and `OperatorZone` (out of
+`feature/operator/event-intelligence.hxx`). `main.cc`
+calls the resolvers and wires what they return —
+`CameraConfig::resolveDb`, `resolveListener`, `resolveHealth`,
+`resolveGuardCallerSecret`, and `operator_config::resolveObjects`,
+`resolveOperator`, `resolveIdentity`. What it keeps of its own is
+`config.toml` loading (`ConfigService::load`, `ConfigService::drogonConfig`),
+the `nats.url` gate on the optional bus — a key `lib/nats` resolves for itself
+when `NatsBus` is constructed, so the gate only decides whether the bus is
+built — and the two `operator.*` knobs spliced into
+`NatsObjectEventSink::Config` at the point that optional sink is built.

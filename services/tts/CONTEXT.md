@@ -60,3 +60,12 @@ announcements feel immediate.
 The docker compose must mount the shared `models/` tree (at least
 `models/tts`) into this service's working directory — the engine reads
 `models/tts/onnx` and `models/tts/voice_styles` relative to `tts.models_dir`.
+
+## Phase 4 step 9: config resolution into `src/config/` (D20)
+
+The listener and the optional gRPC leg are resolved by
+`src/config/tts-config.{hxx,cc}` (`argus::tts-config`):
+`TtsConfig::resolveListener()` (`ListenerConfig::resolve(7029)`) and
+`TtsConfig::resolveRpc()` (`rpc.address` plus the `rpc.callers` credential
+pairs, empty ones dropped). `main.cc` keeps `config.toml` loading,
+`drogonConfig` and the boot gate on the resolved address and credentials.

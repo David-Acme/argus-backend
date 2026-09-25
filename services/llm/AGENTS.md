@@ -55,6 +55,9 @@ argus-llm/
   src/app/rpc/          argus::llm-rpc — the internal gRPC face (the
                           argus.llm.v1 Chat service), dormant unless [rpc]
                           address and [rpc.callers] are set
+  src/config/           argus::llm-config — the listener, the optional gRPC
+                          leg, the identity target/secret, the camera target
+                          and the memory gate
   src/feature/llm/      argus::llm — the brain:
                           controllers/ (the frozen /llm/v1/* wire),
                           dtos/ (the chat DTO, validation DSL),

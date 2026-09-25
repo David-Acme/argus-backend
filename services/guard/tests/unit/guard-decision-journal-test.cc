@@ -25,7 +25,7 @@
 #include <unistd.h>
 #include <vector>
 #include <feature/guard/vocabulary/decision-suppression.hxx>
-#include <feature/guard/vocabulary/guard-mode.hxx>
+#include <shared/vocabulary/guard-mode.hxx>
 
 #include "temp-db.hxx"
 #include "wait-for-boot.hxx"

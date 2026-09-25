@@ -2,20 +2,13 @@
 
 #include <feature/objects/object-detector.hxx>
 #include <feature/operator/known-person-matcher.hxx>
+#include <shared/vocabulary/operator-zone.hxx>
 
 #include <camera/event-severity.hxx>
 
 #include <optional>
 #include <string>
 #include <vector>
-
-struct OperatorZone
-{
-  int64_t cameraId{0};
-  std::string name;
-  std::string kind;
-  std::vector<std::pair<double, double>> points;
-};
 
 struct OperatorState
 {

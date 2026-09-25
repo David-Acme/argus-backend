@@ -1,4 +1,5 @@
 #include <app/rpc/tts-rpc-server.hxx>
+#include <config/tts-config.hxx>
 #include <http/error-handler.hxx>
 #include <http/health-controller.hxx>
 #include <http/listener-config.hxx>
@@ -30,7 +31,7 @@ int main()
 {
   ConfigService::load("config.toml");
 
-  const ListenerConfig listener = ListenerConfig::resolve(7029);
+  const ListenerConfig listener = TtsConfig::resolveListener();
 
   drogon::app().registerController(std::make_shared<HealthController>(HealthStatus{.serviceName = "argus-tts", .extras = {}}));
   drogon::app().registerController(std::make_shared<TtsController>());
@@ -52,16 +53,12 @@ int main()
   }
 
   std::unique_ptr<TtsRpcServer> rpc;
-  const auto rpcAddress = ConfigService::getString("rpc.address");
-  auto credentials = ConfigService::getStringPairs("rpc.callers");
-  std::erase_if(credentials, [](const auto& credential) {
-    return credential.first.empty() || credential.second.empty();
-  });
-  if (!rpcAddress.empty() && !credentials.empty()) {
+  const TtsRpcConfig rpcConfig = TtsConfig::resolveRpc();
+  if (!rpcConfig.address.empty() && !rpcConfig.credentials.empty()) {
     auto& synthesis = TtsService::instance();
     rpc = std::make_unique<TtsRpcServer>(TtsRpcInput{
-        .address = rpcAddress,
-        .credentials = std::move(credentials),
+        .address = rpcConfig.address,
+        .credentials = rpcConfig.credentials,
         .capabilities = {.sampleRate = synthesis.sampleRate(),
                          .channels = 1,
                          .defaultSpeed = synthesis.defaultSpeed(),
@@ -74,7 +71,7 @@ int main()
   }
 
   if (rpc)
-    LOG_INFO << "argus-tts gRPC synthesis listening on " << rpcAddress;
+    LOG_INFO << "argus-tts gRPC synthesis listening on " << rpcConfig.address;
 
   LOG_INFO << "argus-tts listening on " << listener.host << ":"
            << listener.port;

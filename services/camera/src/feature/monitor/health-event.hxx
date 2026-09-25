@@ -1,5 +1,7 @@
 #pragma once
 
+#include <shared/vocabulary/health-thresholds.hxx>
+
 #include <cstdint>
 #include <string>
 
@@ -19,14 +21,6 @@ enum class CameraHealthState
   Moved,
   Unreachable,
   Covered,
-};
-
-struct HealthThresholds
-{
-  double dark{25.0};
-  double bright{235.0};
-  double blur{18.0};
-  double sceneDiff{0.35};
 };
 
 struct CameraHealthEvent

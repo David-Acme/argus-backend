@@ -55,7 +55,8 @@ argus-notification/
   src/app/main.cc       config load, notification.db wiring, gRPC server, app run
   src/app/rpc/          argus.notification.v1 owner (create + pull) —
                         module argus::notification-rpc
-  src/notification/     notification-domain config resolution and the NATS sinks
+  src/config/           argus::notification-config — notification.db, the TLS
+                        listener, the gRPC listener and the identity pair
   src/feature/notification/
                         controllers/, dtos/, repositories/, schemas/, services/
                         — the HTTP write-side surface, the delivery-proof
@@ -64,8 +65,10 @@ argus-notification/
   src/feature/camera-notification/
                         camera object policy + notifier and the fallback log;
                         module argus::notification-camera-notification
-  src/shared/           the notification repository, schema and service both
-                        features read, plus the change outbox module
+  src/shared/           argus::notification-shared — the notification
+                        repository, schema and delivery service both features
+                        read — plus the change outbox and the change and
+                        delivery sinks
   config.toml.example   the notification roster ([server], [drogon.app],
                         [notification], [notifications], [cert], [jwt],
                         [device], [identity], [grpc], [nats], [push], [mdns]
@@ -86,8 +89,8 @@ them silently (Drogon refuses explicit registration of such controllers, so
 the tts pattern of registering them by hand is not available). The
 notification-token repository, schema and service live inside
 `src/feature/notification/`, the only feature that reads them;
-`notification-core` compiles the notification table's own repository, schema
-and delivery service, which both features reach.
+`argus::notification-shared` compiles the notification table's own repository,
+schema and delivery service, which both features reach.
 
 ## Build commands
 

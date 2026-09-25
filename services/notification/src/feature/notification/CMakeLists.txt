@@ -13,7 +13,7 @@ argus_module(NAME notification-feature
         services/notification-token/notification-token-service.cc
     INCLUDES ../..
     DEPENDS
-        notification-core
+        argus::notification-shared
         argus::lib::auth
         argus::lib::config
         argus::lib::errors

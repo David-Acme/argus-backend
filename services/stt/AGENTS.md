@@ -48,6 +48,8 @@ argus-stt/
   src/app/rpc/          argus::stt-rpc — the internal gRPC face (the
                           argus.stt.v1 Transcription service), dormant
                           unless [rpc] address and [rpc.callers] are set
+  src/config/           argus::stt-config — the listener and the optional
+                          gRPC leg's address and callers
   src/feature/stt/      argus::stt — the whole vertical slice:
                           controllers/ (the frozen /stt/v1/* wire),
                           services/ (the sherpa-onnx engine facade)

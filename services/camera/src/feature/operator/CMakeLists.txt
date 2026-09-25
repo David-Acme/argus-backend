@@ -6,7 +6,6 @@ argus_module(NAME camera-operator
         identity-known-person-matcher.cc
         nats-object-event-sink.cc
         object-event.cc
-        operator-config.cc
         zone-provider.cc
         zone-source.cc
         repositories/object-event-outbox/object-event-outbox-repository.cc
@@ -14,6 +13,7 @@ argus_module(NAME camera-operator
     INCLUDES
         ../..
     DEPENDS
+        argus::camera-config
         argus::camera-event-stream
         argus::camera-objects
         argus::camera-repositories

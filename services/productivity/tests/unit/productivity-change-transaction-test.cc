@@ -7,7 +7,7 @@
 #include <feature/project-member/services/project-member-feature-service.hxx>
 #include <feature/project-task/services/project-task-feature-service.hxx>
 #include <feature/project/services/project-feature-service.hxx>
-#include <productivity/nats-productivity-change-sink.hxx>
+#include <shared/services/change-sink/nats-productivity-change-sink.hxx>
 #include <shared/repositories/change-outbox/change-outbox-repository.hxx>
 #include <sqlite/db-service.hxx>
 #include <sync/user-change-sink.hxx>

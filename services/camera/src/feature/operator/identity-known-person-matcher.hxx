@@ -1,7 +1,7 @@
 #pragma once
 
 #include <feature/operator/known-person-matcher.hxx>
-#include <feature/operator/operator-config.hxx>
+#include <config/operator-config.hxx>
 
 #include <cstdint>
 #include <map>

@@ -3,7 +3,7 @@
 
 #include <drogon/drogon.h>
 #include <errors/response-exception.hxx>
-#include <notification/nats-notification-change-sink.hxx>
+#include <shared/services/change-sink/nats-notification-change-sink.hxx>
 #include <shared/repositories/change-outbox/change-outbox-key.hxx>
 #include <shared/repositories/change-outbox/change-outbox-repository.hxx>
 #include <shared/repositories/change-outbox/change-outbox-status.hxx>

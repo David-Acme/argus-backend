@@ -384,3 +384,14 @@ eval fixtures cross over. `fasttext` is built from the `third_party/fastText`
 submodule (inference only, static lib) by this service's project file, the way
 it bootstraps llama.cpp and sqlite-vec.
 
+
+## Phase 4 step 9: config resolution into `src/config/` (D20)
+
+The five things `main.cc` resolved inline are `src/config/llm-config.{hxx,cc}`
+(`argus::llm-config`): `resolveListener()` (`ListenerConfig::resolve(7032)`),
+`resolveRpc()` (`rpc.address` plus the `rpc.callers` pairs),
+`resolveIdentity()` (`identity.target`/`identity.rpc_secret`, read by the
+catalog-snapshot fill and by the encounter consumer),
+`resolveCameraTarget()` (`camera.grpc_target`) and `resolveMemory()`
+(`memory.observe_camera_events`). `main.cc` keeps `config.toml` loading,
+`drogonConfig` and the `nats.url` gate on the optional bus.

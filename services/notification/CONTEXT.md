@@ -32,7 +32,8 @@ binary, own CMake preset, own `notification.db`.
   (markAsRead, registerToken) and DTOs compile from the shared tree into the
   `argus-notification` executable; the notification schema/repository, the
   delivery service and the notification-token repository/service compile into
-  `notification-core`. The controllers are
+  `notification-core` (`argus::notification-shared` since Phase 4 step 9).
+  The controllers are
   Drogon `AutoCreation` controllers: their routes register during static
   init, exactly like the legacy binary registers them, and they cannot be
   registered explicitly (Drogon static-asserts against it), so the
@@ -139,7 +140,8 @@ executable and its suites name those modules instead of listing their
 sources. The notification-token trio moved once more, from `src/shared/`
 into the feature that is its only reader.
 
-What stays in `notification-core`: the `notification` table's own
+What stays in `notification-core` (`argus::notification-shared` since Phase 4
+step 9): the `notification` table's own
 repository, schema and delivery service, which it compiles here since
 sub-step 3a-1b and which both features reach. Since rule 27 this service is
 the only writer and reader of those rows: the camera-notifier below creates
@@ -330,3 +332,15 @@ error. Three layers hold that contract:
 stream, subject, durable name and temporary database. A default run passing
 means nothing about the wire — every live-test claim must state the variable
 that was set. Never point it at deployment streams.
+
+## Phase 4 step 9: config resolution into `src/config/` (D20)
+
+`src/notification/` is gone. Its typed config is `src/config/
+notification-config.{hxx,cc}` (`argus::notification-config`: db path, schema
+path, the TLS listener, the gRPC listener and the identity target/secret), and
+its two NATS sinks are `src/shared/services/change-sink/` and
+`src/shared/services/delivery-sink/` (`argus::notification-change-sink`,
+`argus::notification-delivery-sink`). `main.cc` resolves nothing of its own
+but `config.toml` loading and the `nats.url` gate on the optional bus; the
+push gate it consults is `push_intent::enabledFromConfig()`, read where push
+is wired, not a config-module resolver.

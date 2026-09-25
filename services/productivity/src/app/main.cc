@@ -17,8 +17,8 @@
 #include <http/listener-config.hxx>
 #include <http/route-announcements.hxx>
 #include <mdns/mdns-service.hxx>
-#include <productivity/productivity-config.hxx>
-#include <productivity/nats-productivity-change-sink.hxx>
+#include <config/productivity-config.hxx>
+#include <shared/services/change-sink/nats-productivity-change-sink.hxx>
 #include <nats/nats-bus.hxx>
 #include <runtime/shutdown-signal.hxx>
 #include <sync/user-change-sink.hxx>
@@ -64,8 +64,7 @@ int main()
   ConfigService::load("config.toml");
 
   const ProductivityDbConfig productivityDb = ProductivityConfig::resolveDb();
-  const ListenerConfig listener =
-      ListenerConfig::resolveServiceTls("productivity", 7027);
+  const ListenerConfig listener = ProductivityConfig::resolveListener();
 
   ProductivitySyncRpcService productivitySyncRpc;
 

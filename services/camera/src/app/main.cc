@@ -1,6 +1,5 @@
 #include <app/rpc/camera-rpc-server.hxx>
-#include <camera/camera-config.hxx>
-#include <camera/nats-camera-change-sink.hxx>
+#include <config/camera-config.hxx>
 #include <feature/media/camera-media-socket.hxx>
 #include <drogon/drogon.h>
 #include <drogon/utils/coroutine.h>
@@ -30,10 +29,11 @@
 #include <feature/operator/identity-known-person-matcher.hxx>
 #include <feature/operator/known-person-matcher.hxx>
 #include <feature/operator/nats-object-event-sink.hxx>
-#include <feature/operator/operator-config.hxx>
+#include <config/operator-config.hxx>
 #include <feature/operator/zone-provider.hxx>
 #include <shared/repositories/camera/camera-repository.hxx>
 #include <config/config-service.hxx>
+#include <shared/services/change-sink/nats-camera-change-sink.hxx>
 #include <sqlite/db-service.hxx>
 #include <shared/services/stream/go2rtc-manager.hxx>
 #include <shared/services/stream/camera-source-registrar.hxx>
@@ -88,13 +88,13 @@ int main()
   ConfigService::load("config.toml");
 
   const CameraDbConfig cameraDb = CameraConfig::resolveDb();
-  const ListenerConfig listener = ListenerConfig::resolveServiceTls("camera", 7026);
+  const ListenerConfig listener = CameraConfig::resolveListener();
 
   CameraSyncRpcService cameraSyncRpc;
   CameraActionRpcService cameraActionRpc(
       {.callers = {argus::client::CallerCredential{
            .service = "argus-guard",
-           .secret = ConfigService::getString("grpc.caller_guard")}},
+           .secret = CameraConfig::resolveGuardCallerSecret()}},
        .transcriber = makeHttpSttTranscriber()});
   HealthRpcService healthRpc;
 
@@ -217,22 +217,8 @@ int main()
     LOG_INFO << "Object detection disabled by configuration";
   }
 
-  const bool healthEnabled = !ConfigService::hasKey("health.enabled") ||
-                             ConfigService::getBool("health.enabled");
-  if (healthEnabled) {
-    CameraHealthConfig healthConfig;
-    healthConfig.intervalMs = ConfigService::getInt("health.interval_ms");
-    if (healthConfig.intervalMs <= 0)
-      healthConfig.intervalMs = 60000;
-    const auto threshold = [](const std::string& key, double fallback) {
-      const double value = ConfigService::getDouble(key);
-      return value > 0 ? value : fallback;
-    };
-    healthConfig.thresholds.dark = threshold("health.dark_threshold", 25.0);
-    healthConfig.thresholds.bright = threshold("health.bright_threshold", 235.0);
-    healthConfig.thresholds.blur = threshold("health.blur_threshold", 18.0);
-    healthConfig.thresholds.sceneDiff =
-        threshold("health.scene_diff", 0.35);
+  const CameraHealthConfig healthConfig = CameraConfig::resolveHealth();
+  if (healthConfig.enabled) {
     if (natsBus)
       healthSink = std::make_unique<NatsHealthEventSink>(natsBus);
     healthMonitor = std::make_unique<CameraHealthMonitor>(

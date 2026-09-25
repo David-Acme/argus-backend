@@ -116,3 +116,12 @@ legacy reads.
 The docker compose must mount the shared `models/` tree (at least
 `models/vision/lfm2vl-25`) into this service's working directory — the
 engine reads the GGUF pair relative to the `[vision]` config keys.
+
+## Phase 4 step 9: config resolution into `src/config/` (D20)
+
+The listener and the optional gRPC leg are resolved by
+`src/config/vlm-config.{hxx,cc}` (`argus::vlm-config`):
+`VlmConfig::resolveListener()` (`ListenerConfig::resolve(7031)`) and
+`VlmConfig::resolveRpc()` (`rpc.address` plus the `rpc.callers` credential
+pairs, empty ones dropped). `main.cc` keeps `config.toml` loading,
+`drogonConfig` and the boot gate on the resolved address and credentials.

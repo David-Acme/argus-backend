@@ -46,6 +46,8 @@ argus-tts/
   CMakeLists.txt        add_subdirectory-compatible AND standalone buildable
   src/app/main.cc       config load, engine boot gate, HTTP + gRPC composition, app run
   src/app/rpc/          argus.tts.v1 Synthesis gRPC listener (TtsRpcServer)
+  src/config/           argus::tts-config — the listener and the optional
+                        gRPC leg's address and callers
   src/feature/synthesis/
     CMakeLists.txt      owns each production source once
     controllers/        transitional /tts/v1/* HTTP controller

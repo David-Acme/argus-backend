@@ -288,3 +288,40 @@ run passing means nothing about the wire:
 - `ARGUS_VLM_TEST_URL` plus `ARGUS_VLM_TEST_IMAGE` arm
   `vlm-client-live-test` and `guard-assessment-live-test` against a real VLM
   listener and a real image file.
+
+## Phase 4 step 9: `src/config/` and the shared vocabulary (D20)
+
+The block that filled `GuardService::Config` field by field in `main.cc`, and
+`guard_belief`'s belief weights with it, is `src/config/guard-config.{hxx,cc}`
+(`argus::guard-config`), nine resolvers wide: `resolveDb`, `resolveListener`,
+`resolveNotifications`, `resolveIdentity`, `resolveActions`,
+`resolveAssessEndpoints`, `resolveAssessment`, `resolveService` and
+`resolveBelief(cameraId)`. Three types a feature and the config module both
+name moved to `src/shared/vocabulary/`: `guard-mode.hxx` (from
+`feature/guard/vocabulary/`, the 2+ rule now that two units read it),
+`belief-gate-scope.hxx` and `belief-config.hxx` (extracted from
+`guard-belief.hxx` byte for byte). Every public spelling survives —
+`GuardService::Config` and `GuardAssessment::Config` are in-class aliases of
+the config module's structs, and `BeliefConfig`/`BeliefGateScope` keep their
+global names — so no consumer of a moved type changed an expression. The step
+also gave `main.cc` the two lines every other service already had,
+`setExceptionHandler(ErrorHandler::handleException)` and
+`setCustomErrorHandler(ErrorHandler::unmatchedRoute)`: a refusal thrown in a
+guard handler is the shared envelope now, and guard was the one service
+missing that registration. Its hand-rolled `/health` stays — the deviation is
+recorded in `packages/lib/http/AGENTS.md`, and no compose healthcheck polls
+guard.
+
+The service config and the belief config did not share a guard, and the merge
+had to keep both. `main.cc`'s `configIntOr` was positivity-based
+(`value > 0 ? value : fallback`), because every key it read is a count or a
+window that only makes sense positive; `guard-belief.cc` read its weights with
+a presence test (`hasKey`), because a belief weight is negative by design —
+`weight_identity_known` ships as `-3`. One module now carries both policies:
+`configIntOr`/`configInt64Or`/`configDoubleOr`/`configBoolOr` serve the
+service resolvers, and `beliefIntOr`/`beliefInt64Or`/`beliefDoubleOr` serve
+`resolveBelief` alone, so a weight set to a negative number or to `0` is
+honoured rather than silently replaced by the struct default. The distinction
+is pinned by a case in `tests/unit/guard-belief-test.cc` ("belief keys are
+honoured whatever their sign"), which sets a negative per-camera weight, a
+zero weight and a negative global weight.

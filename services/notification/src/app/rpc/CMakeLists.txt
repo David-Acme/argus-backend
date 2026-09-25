@@ -3,7 +3,7 @@ argus_module(NAME notification-rpc
         notification-rpc-service.cc
     INCLUDES ../..
     DEPENDS
-        notification-core
+        argus::notification-shared
         argus::clients::notification
         argus::lib::config
         argus::lib::nats

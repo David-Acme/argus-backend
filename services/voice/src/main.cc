@@ -1,3 +1,4 @@
+#include <config/voice-config.hxx>
 #include <feature/health/health-rpc-service.hxx>
 #include <feature/voice/voice-rpc-service.hxx>
 #include <grpcpp/grpcpp.h>
@@ -35,8 +36,8 @@ int main()
 {
   ConfigService::load("config.toml");
 
-  const ListenerConfig healthListener = ListenerConfig::resolve(7035, "server.health_port");
-  const GrpcListenerConfig grpcListener = GrpcListenerConfig::resolve(7034);
+  const ListenerConfig healthListener = VoiceConfig::resolveHealthListener();
+  const GrpcListenerConfig grpcListener = VoiceConfig::resolveGrpcListener();
 
   VoiceRpcService voiceRpc;
   HealthRpcService healthRpc;

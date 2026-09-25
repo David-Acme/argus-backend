@@ -13,3 +13,8 @@ ProductivityDbConfig ProductivityConfig::resolveDb()
     config.schemaPath = "services/productivity/database/schema.sql";
   return config;
 }
+
+ListenerConfig ProductivityConfig::resolveListener()
+{
+  return ListenerConfig::resolveServiceTls("productivity", 7027);
+}

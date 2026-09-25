@@ -1,4 +1,5 @@
 #include <app/rpc/vlm-rpc-server.hxx>
+#include <config/vlm-config.hxx>
 #include <feature/vlm/controllers/vlm-controller.hxx>
 #include <drogon/drogon.h>
 #include <http/error-handler.hxx>
@@ -12,7 +13,6 @@
 #include <llama.h>
 #include <memory>
 #include <string>
-#include <utility>
 #include <vector>
 
 namespace
@@ -32,7 +32,7 @@ int main()
 {
   ConfigService::load("config.toml");
 
-  const ListenerConfig listener = ListenerConfig::resolve(7031);
+  const ListenerConfig listener = VlmConfig::resolveListener();
 
   drogon::app().registerController(std::make_shared<HealthController>(HealthStatus{.serviceName = "argus-vlm", .extras = {}}));
   const auto vlm = std::make_shared<VlmController>();
@@ -59,15 +59,11 @@ int main()
   }
 
   std::unique_ptr<VlmRpcServer> rpc;
-  const auto rpcAddress = ConfigService::getString("rpc.address");
-  auto credentials = ConfigService::getStringPairs("rpc.callers");
-  std::erase_if(credentials, [](const auto& credential) {
-    return credential.first.empty() || credential.second.empty();
-  });
-  if (!rpcAddress.empty() && !credentials.empty()) {
+  const VlmRpcConfig rpcConfig = VlmConfig::resolveRpc();
+  if (!rpcConfig.address.empty() && !rpcConfig.credentials.empty()) {
     rpc = std::make_unique<VlmRpcServer>(VlmRpcInput{
-        .address = rpcAddress,
-        .credentials = std::move(credentials),
+        .address = rpcConfig.address,
+        .credentials = rpcConfig.credentials,
         .capabilities = [&vlm] {
           return argus::vlm::Capabilities{
               .loaded = vlm->isEngineLoaded(),
@@ -81,7 +77,7 @@ int main()
   }
 
   if (rpc)
-    LOG_INFO << "argus-vlm gRPC vision listening on " << rpcAddress;
+    LOG_INFO << "argus-vlm gRPC vision listening on " << rpcConfig.address;
 
   LOG_INFO << "argus-vlm listening on " << listener.host << ":"
            << listener.port;

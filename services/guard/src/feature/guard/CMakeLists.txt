@@ -28,6 +28,7 @@ argus_module(NAME guard
         argus::clients::vlm
         argus::contracts::camera
         argus::contracts::sync
+        argus::guard-config
         argus::lib::auth
         argus::lib::config
         argus::lib::http

@@ -52,8 +52,9 @@ argus-camera/
   src/app/main.cc       config load, camera.db wiring, app run
   src/app/rpc/          the gRPC listener — bind, register, shutdown; module
                         argus::camera-rpc-server
-  src/camera/           camera-domain config resolution and the nats-camera
-                        change sink; module argus::camera-core
+  src/config/           camera-domain config resolution — argus::camera-config
+                        (camera.db, listener, health thresholds, guard caller
+                        secret and the objects/operator/identity resolvers)
   src/feature/actions/  argus.camera.v1 CameraActionService (guard-gated),
                         audio capture, STT transcriber and their
                         action-command repository
@@ -70,10 +71,14 @@ argus-camera/
                         camera_stream repository and schema
   src/feature/zone/     /zone* HTTP surface
   src/shared/           the camera, zone and change-outbox repositories and
-                        schemas plus the stream, camera-driver and in-flight
-                        utils modules 2+ features read (tapo is camera-driver's
-                        own protocol stack, event-stream's one reader is
-                        operator, and geometry is header-only)
+                        schemas plus the stream, camera-driver, change-sink
+                        and in-flight utils modules 2+ features read and the
+                        vocabulary the config module and a feature share
+                        (health thresholds, operator zones; tapo is
+                        camera-driver's own protocol stack, event-stream's one
+                        reader is operator, the change sink's readers are
+                        composition and the outbox suites, and geometry is
+                        header-only)
   config.toml.example   camera, streaming, YOLO object and operator settings
   CONTEXT.md            purpose, ownership, wiring decisions
 ```
@@ -81,9 +86,10 @@ argus-camera/
 Every feature and the `app/rpc/` listener is a rule-25 module: the folder
 holds its own `CMakeLists.txt` declaring its sources and dependencies once,
 the root file discovers them (`feature/*/CMakeLists.txt`) and `argus-camera`
-links `argus::camera-{core,actions,feature,camera-control,zone,media,health,
-sync,rpc-server,monitor,operator}` by name (`camera-objects` arrives through
-`camera-operator`, its only reader, and is deliberately not repeated). The
+links `argus::camera-{config,change-sink,actions,feature,camera-control,zone,
+media,health,sync,rpc-server,monitor,operator}` by name (`camera-objects`
+arrives through `camera-operator`, its only reader, and is deliberately not
+repeated). The
 executable links the feature modules
 plainly, not whole-archive: every camera controller declares
 `HttpController<…, false>` and `src/app/main.cc` registers it by hand, so no

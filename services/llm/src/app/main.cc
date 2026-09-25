@@ -1,4 +1,5 @@
 #include <app/rpc/llm-rpc-server.hxx>
+#include <config/llm-config.hxx>
 #include <camera/camera-sync-client.hxx>
 #include <feature/llm/controllers/llm-controller.hxx>
 #include <drogon/drogon.h>
@@ -22,7 +23,6 @@
 #include <nats/nats-bus.hxx>
 #include <nats/nats-subject.hxx>
 
-#include <algorithm>
 #include <chrono>
 #include <ctime>
 #include <json/value.h>
@@ -50,10 +50,10 @@ CatalogReplica::Snapshot fetchCatalogSnapshot()
 {
   CatalogReplica::Snapshot snapshot;
 
-  const auto identityTarget = ConfigService::getString("identity.target");
-  if (!identityTarget.empty()) {
+  const LlmIdentityConfig identityConfig = LlmConfig::resolveIdentity();
+  if (!identityConfig.target.empty()) {
     const IdentityClient client(
-        identityTarget, ConfigService::getString("identity.rpc_secret"));
+        identityConfig.target, identityConfig.rpcSecret);
     if (const auto persons = client.listPersons()) {
       for (const auto& person : persons->persons())
         snapshot.persons.push_back({.id = person.id(),
@@ -63,11 +63,11 @@ CatalogReplica::Snapshot fetchCatalogSnapshot()
     }
     else {
       LOG_WARN << "argus-llm: identity snapshot read failed at "
-               << identityTarget;
+               << identityConfig.target;
     }
   }
 
-  const auto cameraTarget = ConfigService::getString("camera.grpc_target");
+  const std::string cameraTarget = LlmConfig::resolveCameraTarget();
   if (!cameraTarget.empty()) {
     const CameraSyncClient client(cameraTarget);
     const SyncIdentity identity{
@@ -132,7 +132,7 @@ int main()
 {
   ConfigService::load("config.toml");
 
-  const ListenerConfig listener = ListenerConfig::resolve(7032);
+  const ListenerConfig listener = LlmConfig::resolveListener();
 
   drogon::app().registerController(std::make_shared<HealthController>(HealthStatus{.serviceName = "argus-llm", .extras = {}}));
   const auto llm = std::make_shared<LlmController>();
@@ -171,16 +171,12 @@ int main()
   for (auto& descriptor : memory.toolDescriptors())
     ToolRegistry::instance().registerTool(std::move(descriptor));
 
+  const LlmRpcConfig rpcConfig = LlmConfig::resolveRpc();
   std::unique_ptr<LlmRpcServer> rpc;
-  const auto rpcAddress = ConfigService::getString("rpc.address");
-  auto credentials = ConfigService::getStringPairs("rpc.callers");
-  std::erase_if(credentials, [](const auto& credential) {
-    return credential.first.empty() || credential.second.empty();
-  });
-  if (!rpcAddress.empty() && !credentials.empty()) {
+  if (!rpcConfig.address.empty() && !rpcConfig.credentials.empty()) {
     rpc = std::make_unique<LlmRpcServer>(LlmRpcInput{
-        .address = rpcAddress,
-        .credentials = std::move(credentials),
+        .address = rpcConfig.address,
+        .credentials = rpcConfig.credentials,
         .capabilities = [&llm] {
           const LlmPrefillStats stats = llm->service().lastPrefillStats();
           return argus::llm::Capabilities{
@@ -199,7 +195,7 @@ int main()
           llm->chatStreamSync(input);
         },
         .slots = ThreadBudget::inferenceSlots()});
-    LOG_INFO << "argus-llm gRPC chat listening on " << rpcAddress;
+    LOG_INFO << "argus-llm gRPC chat listening on " << rpcConfig.address;
   }
 
   std::unique_ptr<NatsBus> bus;
@@ -217,16 +213,16 @@ int main()
 
   std::unique_ptr<EncounterClosedConsumer> encounterConsumer;
   MemoryGraphRepository encounterRepository;
-  if (bus && memory.isLoaded() &&
-      ConfigService::getBool("memory.observe_camera_events")) {
-    const std::string identityTarget = ConfigService::getString("identity.target");
-    if (identityTarget.empty()) {
+  const LlmMemoryConfig memoryConfig = LlmConfig::resolveMemory();
+  if (bus && memory.isLoaded() && memoryConfig.observeCameraEvents) {
+    const LlmIdentityConfig identityConfig = LlmConfig::resolveIdentity();
+    if (identityConfig.target.empty()) {
       LOG_WARN << "argus-llm: camera memory enabled but [identity].target is "
                   "empty";
     }
     else {
-      const IdentityClient identity(identityTarget,
-                                    ConfigService::getString("identity.rpc_secret"));
+      const IdentityClient identity(identityConfig.target,
+                                    identityConfig.rpcSecret);
       int64_t ownerUserId = 0;
       std::string ownerLang = "es";
       if (const auto ids = identity.listNotifiableUsers();

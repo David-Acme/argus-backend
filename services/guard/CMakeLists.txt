@@ -88,6 +88,8 @@ endif()
 
 find_package(doctest REQUIRED)
 
+add_subdirectory(${GUARD_SRC_ROOT}/config)
+
 file(GLOB GUARD_FEATURE_MODULES CONFIGURE_DEPENDS
     "${GUARD_SRC_ROOT}/feature/*/CMakeLists.txt")
 foreach(module IN LISTS GUARD_FEATURE_MODULES)
@@ -99,6 +101,7 @@ argus_service(NAME argus-guard
     MAIN ${GUARD_SRC_ROOT}/app/main.cc
     MODULES
         argus::guard
+        argus::guard-config
         argus::lib::auth
         argus::lib::config
         argus::lib::http

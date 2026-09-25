@@ -13,13 +13,13 @@
 #include <http/route-announcements.hxx>
 #include <identity/identity-client.hxx>
 #include <mdns/mdns-service.hxx>
-#include <notification/nats-notification-change-sink.hxx>
-#include <notification/nats-notification-delivery-sink.hxx>
+#include <shared/services/change-sink/nats-notification-change-sink.hxx>
+#include <shared/services/delivery-sink/nats-notification-delivery-sink.hxx>
 #include <nats/nats-bus.hxx>
 #include <nats/nats-push-intent-sink.hxx>
 #include <nats/nats-subject.hxx>
 #include <runtime/shutdown-signal.hxx>
-#include <notification/notification-config.hxx>
+#include <config/notification-config.hxx>
 #include <sync/user-change-sink.hxx>
 #include <config/config-service.hxx>
 #include <sqlite/db-service.hxx>
@@ -63,9 +63,9 @@ int main()
   ConfigService::load("config.toml");
 
   const NotificationDbConfig notificationDb = NotificationConfig::resolveDb();
-  const ListenerConfig listener =
-      ListenerConfig::resolveServiceTls("notification", 7028);
-  const GrpcListenerConfig grpcListener = GrpcListenerConfig::resolve(7038);
+  const ListenerConfig listener = NotificationConfig::resolveListener();
+  const GrpcListenerConfig grpcListener =
+      NotificationConfig::resolveRpcListener();
 
   drogon::app().registerFilter(std::make_shared<DeviceFilter>());
   drogon::app().registerFilter(std::make_shared<ValidJsonFilter>());
@@ -144,18 +144,18 @@ int main()
       .pushSink = pushIntentSink,
       .pushRequired = push_intent::enabledFromConfig()};
 
-  const std::string identityTarget =
-      ConfigService::getString("identity.target");
+  const NotificationIdentityConfig identityConfig =
+      NotificationConfig::resolveIdentity();
   std::shared_ptr<CameraObjectNotifier> cameraNotifier;
   if (natsBus) {
     std::shared_ptr<IdentityClient> identityClient;
-    if (identityTarget.empty()) {
+    if (identityConfig.target.empty()) {
       LOG_WARN << "Identity target unconfigured; camera notifications keep "
                   "their fallback record but reach no recipient";
     }
     else {
       identityClient = std::make_shared<IdentityClient>(
-          identityTarget, ConfigService::getString("identity.rpc_secret"));
+          identityConfig.target, identityConfig.rpcSecret);
     }
     cameraNotifier = std::make_shared<CameraObjectNotifier>(
         camera_notifier::resolveConfig(),

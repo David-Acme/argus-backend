@@ -1,4 +1,4 @@
-#include <feature/operator/operator-config.hxx>
+#include "operator-config.hxx"
 
 #include <config/config-service.hxx>
 #include <text/json-util.hxx>

@@ -1,5 +1,7 @@
 #pragma once
 
+#include <http/listener-config.hxx>
+
 #include <string>
 
 struct ProductivityDbConfig
@@ -12,4 +14,5 @@ class ProductivityConfig
 {
 public:
   static ProductivityDbConfig resolveDb();
+  static ListenerConfig resolveListener();
 };

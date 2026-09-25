@@ -1,9 +1,10 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
 
+#include <config/config-service.hxx>
+#include <config/guard-config.hxx>
 #include <feature/guard/guard-belief.hxx>
 #include <feature/guard/guard-policy.hxx>
-#include <config/config-service.hxx>
 
 #include <atomic>
 #include <cstdio>
@@ -218,7 +219,7 @@ TEST_CASE("custom weights reshape the score")
 
 TEST_CASE("unresolved config matches the member defaults exactly")
 {
-  const BeliefConfig resolved = guard_belief::resolveBeliefConfig(99);
+  const BeliefConfig resolved = GuardConfig::resolveBelief(99);
   const BeliefConfig defaults;
   CHECK(resolved.weightDetectorStrong == defaults.weightDetectorStrong);
   CHECK(resolved.weightDetectorWeak == defaults.weightDetectorWeak);
@@ -256,9 +257,9 @@ TEST_CASE("per-camera overrides win over the global defaults")
 {
   ConfigService::setRuntimeString("guard.belief.camera.7.threshold_medium",
                                   "6");
-  const BeliefConfig overridden = guard_belief::resolveBeliefConfig(7);
+  const BeliefConfig overridden = GuardConfig::resolveBelief(7);
   CHECK(overridden.thresholdMedium == 6);
-  const BeliefConfig plain = guard_belief::resolveBeliefConfig(8);
+  const BeliefConfig plain = GuardConfig::resolveBelief(8);
   CHECK(plain.thresholdMedium == 5);
   CHECK(plain.thresholdCritical == 1);
 
@@ -272,10 +273,32 @@ TEST_CASE("per-camera overrides win over the global defaults")
   }
   ConfigService::load(path);
   std::remove(path.c_str());
-  const BeliefConfig fromFile = guard_belief::resolveBeliefConfig(7);
+  const BeliefConfig fromFile = GuardConfig::resolveBelief(7);
   CHECK(fromFile.thresholdHigh == 4);
-  const BeliefConfig other = guard_belief::resolveBeliefConfig(8);
+  const BeliefConfig other = GuardConfig::resolveBelief(8);
   CHECK(other.thresholdMedium == 9);
+}
+
+TEST_CASE("belief keys are honoured whatever their sign")
+{
+  ConfigService::setRuntimeString(
+      "guard.belief.camera.11.weight_identity_known", "-5");
+  ConfigService::setRuntimeString(
+      "guard.belief.camera.11.weight_detector_strong", "0");
+  ConfigService::setRuntimeString("guard.belief.weight_track_jitter", "-1");
+
+  const BeliefConfig tuned = GuardConfig::resolveBelief(11);
+  CHECK(tuned.weightIdentityKnown == -5);
+  CHECK(tuned.weightDetectorStrong == 0);
+  CHECK(tuned.weightTrackJitter == -1);
+
+  const BeliefConfig plain = GuardConfig::resolveBelief(12);
+  CHECK(plain.weightIdentityKnown == BeliefConfig{}.weightIdentityKnown);
+  CHECK(plain.weightTrackJitter == -1);
+
+  ConfigService::setRuntimeString(
+      "guard.belief.weight_track_jitter",
+      std::to_string(BeliefConfig{}.weightTrackJitter));
 }
 
 TEST_CASE("gate scope parsing round-trips and rejects unknown values")

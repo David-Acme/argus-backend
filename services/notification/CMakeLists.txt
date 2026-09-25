@@ -88,28 +88,10 @@ endif()
 
 add_subdirectory(src/shared/repositories/change-outbox)
 
-add_library(notification-core STATIC
-    ${NOTIFICATION_SRC_ROOT}/notification/nats-notification-change-sink.cc
-    ${NOTIFICATION_SRC_ROOT}/notification/nats-notification-delivery-sink.cc
-    ${NOTIFICATION_SRC_ROOT}/notification/notification-config.cc
-    ${NOTIFICATION_SRC_ROOT}/shared/repositories/notification/notification-repository.cc
-    ${NOTIFICATION_SRC_ROOT}/shared/schemas/notification/notification-schema.cc
-    ${NOTIFICATION_SRC_ROOT}/shared/services/notification/notification-service.cc
-)
-
-target_include_directories(notification-core PUBLIC
-    ${NOTIFICATION_SRC_ROOT})
-
-target_link_libraries(notification-core PUBLIC
-    argus::contracts::notification
-    argus::contracts::sync
-    argus::lib::nats
-    argus::lib::text
-    argus::lib::sqlite
-    argus::notification-change-outbox
-    ${ARGUS_SQLITE_VEC_TARGET})
-
-target_compile_options(notification-core PRIVATE -Wall -Wextra)
+add_subdirectory(src/config)
+add_subdirectory(src/shared)
+add_subdirectory(src/shared/services/change-sink)
+add_subdirectory(src/shared/services/delivery-sink)
 
 file(GLOB NOTIFICATION_FEATURE_MODULES CONFIGURE_DEPENDS
     "${NOTIFICATION_SRC_ROOT}/feature/*/CMakeLists.txt")
@@ -123,7 +105,11 @@ add_subdirectory(src/app/rpc)
 add_executable(argus-notification
     ${NOTIFICATION_SRC_ROOT}/app/main.cc)
 
-target_link_libraries(argus-notification PRIVATE notification-core
+target_link_libraries(argus-notification PRIVATE
+    argus::notification-config
+    argus::notification-change-sink
+    argus::notification-delivery-sink
+    argus::notification-shared
     $<LINK_LIBRARY:WHOLE_ARCHIVE,argus::notification-feature>
     argus::notification-rpc
     argus::notification-camera-notification
@@ -169,7 +155,7 @@ set_target_properties(notification-controller-test PROPERTIES
     EXCLUDE_FROM_ALL FALSE)
 
 target_link_libraries(notification-controller-test PRIVATE
-    notification-core
+    argus::notification-shared
     argus::notification-feature
     doctest::doctest)
 
@@ -188,7 +174,7 @@ target_compile_definitions(notification-rpc-test PRIVATE
     ARGUS_NOTIFICATION_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql")
 
 target_link_libraries(notification-rpc-test PRIVATE
-    notification-core
+    argus::notification-shared
     argus::notification-rpc
     doctest::doctest)
 
@@ -206,7 +192,7 @@ target_compile_definitions(notification-no-nats-test PRIVATE
     ARGUS_NOTIFICATION_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql")
 
 target_link_libraries(notification-no-nats-test PRIVATE
-    notification-core
+    argus::notification-shared
     argus::notification-rpc
     doctest::doctest)
 
@@ -221,7 +207,7 @@ set_target_properties(notification-delivery-test PROPERTIES
     EXCLUDE_FROM_ALL FALSE)
 
 target_link_libraries(notification-delivery-test PRIVATE
-    notification-core
+    argus::notification-shared
     argus::lib::sqlite
     doctest::doctest)
 
@@ -254,7 +240,7 @@ set_target_properties(notification-change-outbox-sink-test PROPERTIES
     EXCLUDE_FROM_ALL FALSE)
 
 target_link_libraries(notification-change-outbox-sink-test PRIVATE
-    notification-core
+    argus::notification-change-sink
     argus::lib::nats
     doctest::doctest)
 
@@ -277,7 +263,8 @@ target_compile_definitions(notification-change-transaction-test PRIVATE
     ARGUS_NOTIFICATION_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql")
 
 target_link_libraries(notification-change-transaction-test PRIVATE
-    notification-core
+    argus::notification-change-sink
+    argus::notification-shared
     argus::lib::nats
     argus::lib::sqlite
     doctest::doctest)
@@ -294,7 +281,7 @@ set_target_properties(notification-ack-test PROPERTIES
     EXCLUDE_FROM_ALL FALSE)
 
 target_link_libraries(notification-ack-test PRIVATE
-    notification-core
+    argus::notification-shared
     argus::lib::sqlite
     doctest::doctest)
 
@@ -315,7 +302,8 @@ target_compile_definitions(notification-delivery-live-test PRIVATE
     ARGUS_NOTIFICATION_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql")
 
 target_link_libraries(notification-delivery-live-test PRIVATE
-    notification-core
+    argus::notification-delivery-sink
+    argus::notification-shared
     argus::lib::nats
     argus::lib::sqlite
     doctest::doctest)
@@ -329,7 +317,7 @@ add_executable(push-intent-test tests/unit/push-intent-test.cc)
 set_target_properties(push-intent-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
 target_link_libraries(push-intent-test PRIVATE
-    notification-core
+    argus::notification-shared
     argus::lib::nats
     argus::lib::sqlite
     doctest::doctest)

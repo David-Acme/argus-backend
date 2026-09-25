@@ -46,11 +46,14 @@ argus-productivity/
   CMakeLists.txt        standalone buildable: module graph + test targets
   src/app/main.cc       config load, productivity.db wiring, app run
   src/app/rpc/          the gRPC listener (argus::productivity-rpc-server)
-  src/productivity/     argus::productivity-core — config + NATS change sink
+  src/config/           argus::productivity-config — productivity.db and the
+                        listener
   src/feature/<feature>/  one vertical slice per resource: controllers/,
                         dtos/, services/ — the folder IS the module
   src/feature/sync/     argus::productivity-sync — sync RPC + reminder rows
   src/shared/repositories/{,change-outbox}/  rows 2+ features read
+  src/shared/services/change-sink/  argus::productivity-change-sink — the
+                        NATS change sink the outbox flushes through
   config.toml.example   the productivity roster ([server], [drogon.app],
                         [productivity], [cert], [jwt], [device], [identity],
                         [nats], [mdns]; no AI keys)

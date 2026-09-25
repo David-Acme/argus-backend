@@ -1,46 +1,7 @@
 #include "guard-belief.hxx"
 
-#include <config/config-service.hxx>
-
 #include <algorithm>
 #include <limits>
-
-namespace
-{
-int configIntOr(const std::string& key, int fallback)
-{
-  if (!ConfigService::hasKey(key))
-    return fallback;
-  return ConfigService::getInt(key);
-}
-
-int64_t configInt64Or(const std::string& key, int64_t fallback)
-{
-  if (!ConfigService::hasKey(key))
-    return fallback;
-  return static_cast<int64_t>(ConfigService::getInt(key));
-}
-
-double configDoubleOr(const std::string& key, double fallback)
-{
-  if (!ConfigService::hasKey(key))
-    return fallback;
-  return ConfigService::getDouble(key);
-}
-
-std::string cameraLeafKey(int64_t cameraId, const std::string& leaf)
-{
-  return "guard.belief.camera." + std::to_string(cameraId) + "." + leaf;
-}
-
-std::string beliefLeafKey(int64_t cameraId, const std::string& leaf)
-{
-  const std::string overrideKey = cameraLeafKey(cameraId, leaf);
-  if (ConfigService::hasKey(overrideKey))
-    return overrideKey;
-  return "guard.belief." + leaf;
-}
-}
 
 namespace guard_belief
 {
@@ -129,80 +90,5 @@ bool beliefSuppressesKind(const GateScopeInput& input)
   default:
     return false;
   }
-}
-
-BeliefConfig resolveBeliefConfig(int64_t cameraId)
-{
-  const BeliefConfig defaults;
-  BeliefConfig config;
-  config.weightDetectorStrong = configIntOr(
-      beliefLeafKey(cameraId, "weight_detector_strong"),
-      defaults.weightDetectorStrong);
-  config.weightDetectorWeak = configIntOr(
-      beliefLeafKey(cameraId, "weight_detector_weak"),
-      defaults.weightDetectorWeak);
-  config.weightPersistenceMet = configIntOr(
-      beliefLeafKey(cameraId, "weight_persistence_met"),
-      defaults.weightPersistenceMet);
-  config.weightPersistenceShort = configIntOr(
-      beliefLeafKey(cameraId, "weight_persistence_short"),
-      defaults.weightPersistenceShort);
-  config.weightTrackStable = configIntOr(
-      beliefLeafKey(cameraId, "weight_track_stable"),
-      defaults.weightTrackStable);
-  config.weightTrackJitter = configIntOr(
-      beliefLeafKey(cameraId, "weight_track_jitter"),
-      defaults.weightTrackJitter);
-  config.weightIdentityUnrecognized = configIntOr(
-      beliefLeafKey(cameraId, "weight_identity_unrecognized"),
-      defaults.weightIdentityUnrecognized);
-  config.weightIdentityUnobservable = configIntOr(
-      beliefLeafKey(cameraId, "weight_identity_unobservable"),
-      defaults.weightIdentityUnobservable);
-  config.weightIdentityUnavailable = configIntOr(
-      beliefLeafKey(cameraId, "weight_identity_unavailable"),
-      defaults.weightIdentityUnavailable);
-  config.weightIdentityKnown = configIntOr(
-      beliefLeafKey(cameraId, "weight_identity_known"),
-      defaults.weightIdentityKnown);
-  config.weightCameraHealthDegraded = configIntOr(
-      beliefLeafKey(cameraId, "weight_camera_health_degraded"),
-      defaults.weightCameraHealthDegraded);
-  config.detectorStrong = configDoubleOr(
-      beliefLeafKey(cameraId, "detector_strong"), defaults.detectorStrong);
-  config.detectorWeak = configDoubleOr(
-      beliefLeafKey(cameraId, "detector_weak"), defaults.detectorWeak);
-  config.minScoreSamples = configIntOr(
-      beliefLeafKey(cameraId, "min_score_samples"), defaults.minScoreSamples);
-  config.persistenceWindows = configIntOr(
-      beliefLeafKey(cameraId, "persistence_windows"),
-      defaults.persistenceWindows);
-  config.persistenceDwellFraction = configDoubleOr(
-      beliefLeafKey(cameraId, "persistence_dwell_fraction"),
-      defaults.persistenceDwellFraction);
-  config.zoneDwellAlertMs = configInt64Or(
-      beliefLeafKey(cameraId, "zone_dwell_alert_ms"),
-      defaults.zoneDwellAlertMs);
-  config.zoneDwellMonitorMs = configInt64Or(
-      beliefLeafKey(cameraId, "zone_dwell_monitor_ms"),
-      defaults.zoneDwellMonitorMs);
-  config.trackStableAgeMs = configInt64Or(
-      beliefLeafKey(cameraId, "track_stable_age_ms"),
-      defaults.trackStableAgeMs);
-  config.trackJitterDwellMs = configInt64Or(
-      beliefLeafKey(cameraId, "track_jitter_dwell_ms"),
-      defaults.trackJitterDwellMs);
-  config.areaSpreadRatio = configDoubleOr(
-      beliefLeafKey(cameraId, "area_spread_ratio"), defaults.areaSpreadRatio);
-  config.thresholdCritical = configIntOr(
-      beliefLeafKey(cameraId, "threshold_critical"),
-      defaults.thresholdCritical);
-  config.thresholdHigh = configIntOr(
-      beliefLeafKey(cameraId, "threshold_high"), defaults.thresholdHigh);
-  config.thresholdMedium = configIntOr(
-      beliefLeafKey(cameraId, "threshold_medium"), defaults.thresholdMedium);
-  config.thresholdLow = configIntOr(
-      beliefLeafKey(cameraId, "threshold_low"), defaults.thresholdLow);
-  return config;
 }
 }

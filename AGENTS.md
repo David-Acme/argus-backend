@@ -689,17 +689,22 @@ has two entry points there, `main-client.cc` and `main-relay.cc`.
 One service has no `feature/` at all today — `tunnel` — and keeps its code at
 `src/` level instead (`client/`, `core/`, `net/`, `protocol/`, `relay/`,
 `server/` and the two entry points). Of the twelve
-services that do have a `feature/`, four
-still keep code beside it: `camera` (`src/camera/`), `notification`
-(`src/notification/`), `productivity` (`src/productivity/`) and `voice`
-(`src/test-support/`). `guard`, `stt`, `tts` and `vlm` keep nothing at
-`src/` level but `app/` and `feature/`; seven keep a `src/shared/` beside them —
-`camera`, `identity`, `llm`, `notification`, `productivity`, `sync` and `voice`.
+services that do have a `feature/`, one
+still keeps code beside it — `voice` (`src/test-support/`) — because step 9
+moved the last three strays into the home the rules give them: `camera`'s
+`src/camera/`, `notification`'s `src/notification/` and `productivity`'s
+`src/productivity/` are gone. `auth`, `stt`, `tts` and `vlm` keep nothing at
+`src/` level but `app/`, `config/` and `feature/`; seven keep a `src/shared/`
+beside them — `camera`, `guard`, `identity`, `llm`, `notification`,
+`productivity` and `sync` — and `voice` carries `shared/` and
+`test-support/` without an `app/`.
 
-`services/auth`, `services/identity` and `services/sync` have `src/config/`;
-the per-service typed config that step 9 moves there still lives elsewhere
-(`camera/src/camera/`, `notification/src/notification/`,
-`productivity-config.{hxx,cc}`, `operator-config.{hxx,cc}`). `services/sync`
+Every service with a source tree has `src/config/` since Phase 4 step 9,
+`tunnel` excepted by D19 (it keeps `src/server/service-config.{hxx,cc}`):
+`main.cc` resolves nothing a config module can own, and the typed config that
+used to sit in `main.cc`, `camera/src/camera/`,
+`notification/src/notification/` or `productivity/src/productivity/` is a
+rule-25 module there. `services/sync`
 is the one service with `tests/e2e/`, the tree's only first-party one — the
 frozen-frame suite that moved with the surface it pins. `gateway` was deleted
 in Phase 3d step 1c, together with its proxy and `contracts/gateway`: every

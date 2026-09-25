@@ -219,7 +219,8 @@ sources are replaced by declarations that live beside the code they compile
 
 | Module | Compiles |
 |---|---|
-| `argus::productivity-core` | `src/productivity/` — config resolution + the NATS change sink |
+| `argus::productivity-config` | `src/config/` — db path, schema path, listener |
+| `argus::productivity-change-sink` | `src/shared/services/change-sink/` — the NATS change sink |
 | `argus::productivity-repositories` | the five repositories + their schemas |
 | `argus::productivity-change-outbox` | the durable outbox |
 | `argus::productivity-<feature>` (×5) | one feature's controllers, DTOs and feature service |
@@ -232,3 +233,12 @@ stay in `src/shared/repositories`; the reminder rows are read by the sync
 feature alone and moved into `src/feature/sync`. The executable is built by
 `argus_service`, which is the only helper that applies `-Wall -Wextra`, the
 `$ORIGIN` rpath and the `ARGUS_PORTS` property (7027 HTTP, 7037 gRPC).
+
+## Phase 4 step 9: config resolution into `src/config/` (D20)
+
+`src/productivity/` is gone. Its typed config is `src/config/
+productivity-config.{hxx,cc}` (`argus::productivity-config`: db path, schema
+path and the TLS listener) and its NATS change sink is
+`src/shared/services/change-sink/` (`argus::productivity-change-sink`).
+`main.cc` keeps `config.toml` loading, `drogonConfig` and the `nats.url` gate
+on the optional bus.

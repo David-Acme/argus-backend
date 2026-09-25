@@ -1,6 +1,6 @@
 #pragma once
 
-#include <feature/operator/event-intelligence.hxx>
+#include <shared/vocabulary/operator-zone.hxx>
 
 #include <cstdint>
 #include <string>
