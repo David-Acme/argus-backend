@@ -110,7 +110,6 @@ void SyncService::handleDisconnect(
   if (forwarder_)
     forwarder_->onClose(conn);
   roomManager_.leaveAll(conn);
-  conn->clearContext();
 }
 
 void SyncService::setForwarder(std::shared_ptr<SyncForwarder> forwarder)

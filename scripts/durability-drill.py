@@ -230,10 +230,15 @@ def describe(row):
             f"{row['event_id'].startswith('auth-action:')}")
 
 
+def first_try_ack(row):
+    return (row["status"] == "sent" and row["attempts"] == 1
+            and row["event_id"].startswith("auth-action:"))
+
+
 def assert_one_row(stack, results, row, label="the action"):
     arrived = wait_for(lambda: action_rows(stack, row["event_id"]), 90)
-    check(results, f"{label} reached the audit log after the restart",
-          bool(arrived), f"{len(arrived)} row(s) for {row['event_id']}")
+    check(results, f"{label} reached the audit log",
+          bool(arrived), f"{len(arrived or [])} row(s) for {row['event_id']}")
     if not arrived:
         return None
     entry = arrived[0]
@@ -288,7 +293,7 @@ def drill_outage(stack, monitor, profile, results):
     row = logout_action(stack, base_auth, before_outbox[-1]["id"] if
                         before_outbox else 0)
     check(results, "the producer acknowledged the action while sync was down",
-          row["status"] == "sent", describe(row))
+          first_try_ack(row), describe(row))
     check(results, "the action was queued on the producer's own subject",
           row["subject"] == SUBJECT, row["subject"])
     after_actions = action_rows(stack)
@@ -336,7 +341,7 @@ def drill_frozen(stack, monitor, profile, results):
     row = logout_action(stack, base_auth, before_outbox[-1]["id"] if
                         before_outbox else 0)
     check(results, "the producer acknowledged the action while sync was "
-          "frozen", row["status"] == "sent", describe(row))
+          "frozen", first_try_ack(row), describe(row))
     inflight = wait_for(lambda: (consumer_state(monitor, DURABLE) or {}).get(
         "num_ack_pending", 0) >= 1, 20)
     held = consumer_state(monitor, DURABLE) or {}
