@@ -9,8 +9,8 @@ and the mobile app (`frontend/` React Native) coordinate against this folder.
 ## Layout
 
 ```
-proto/argus/{common,camera,ai,identity,voice,productivity,notification,
-             memory,sync}/v1/*.proto
+proto/argus/{auth,camera,common,identity,notification,productivity,sync,
+             voice}/v1/*.proto
 manifests/package.schema.json   typed capability package manifest
 manifests/plugin.schema.json    ed25519-signed plugin manifest
 ../../services/sync/tests/fixtures/sync/ golden /sync frames

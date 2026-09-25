@@ -15,7 +15,8 @@ envelope every gRPC answer here carries), then `lib/grpc`, then the proto. The
 include root is `src/`, so a consumer writes `<llm/llm-errors.hxx>`.
 
 `packages/clients/llm` is where the module is established, for the gRPC client
-and the HTTP face argus-guard, argus-voice and `packages/memory` still run on;
+and the HTTP face argus-guard, argus-voice and `services/llm`'s memory feature
+still run on;
 `services/llm`'s `argus::llm-rpc` module names `argus::contracts::llm-wire`
 itself for the server side — the client links the wire PRIVATE, so the wire
 reaches a server by its own name — and the vocabulary for the engine and the

@@ -2,8 +2,8 @@
 
 #include <auth/user-role.hxx>
 #include <cstdint>
-#include <llm/tool-contracts.hxx>
-#include <shared/services/intent/intent-router.hxx>
+#include <shared/vocabulary/tool-contracts.hxx>
+#include <feature/intent/services/intent-router.hxx>
 #include <llm/llm-service.hxx>
 #include <feature/llm/services/tools/tool-executor.hxx>
 #include <string>

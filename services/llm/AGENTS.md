@@ -7,7 +7,7 @@ that apply to llm-service code; when in doubt, the root file wins.
 ## MUST-FOLLOW Rules
 
 1. **Brain process** — this service runs LFM2.5 chat, intent routing, the
-   tool-calling loop and the in-process memory package. It must not absorb
+   tool-calling loop and the memory stack. It must not absorb
    camera, face, VLM, STT, TTS or voice-session responsibilities.
 2. **Internal wire only** — the service serves the legacy voice session over
    loopback plain HTTP (`/llm/v1/*`) and the internal gRPC leg (`argus.llm.v1`)
@@ -37,7 +37,7 @@ that apply to llm-service code; when in doubt, the root file wins.
     `LOG_ERROR`, `LOG_FATAL`); no spdlog.
 12. **No std::future** — plain `std::thread` for the stream producer, as the
     TTS controller does.
-13. **Memory database only** — the hosted memory package owns `memory.db`.
+13. **Memory database only** — the memory feature owns `memory.db`.
     Identity/camera catalog snapshots arrive over the SDK clients
     (`argus::clients::identity`, `argus::clients::camera`); this service opens no
     other domain database.
@@ -61,24 +61,40 @@ argus-llm/
                           services/ (the LFM2.5 engine facade, the fast
                                      intent gate, and the tool runtime
                                      under its own tools/)
+  src/feature/memory/   argus::memory — the memory stack:
+                          services/memory (MemoryService, SqliteGraph,
+                            GraphRecall, MemoryFormation, EntityResolver,
+                            ToolParser, MemoryChat), services/embedding,
+                          services/extract, repositories/memory-graph,
+                          vocabulary/, infra/catalog-replica
+  src/feature/intent/   argus::intent — the fast tier of the router:
+                          services/ (fastText classifier + intent router),
+                          models/ (the artifact pin and its NOTICE)
   src/feature/encounter-closed/
                         argus::encounter-closed — the camera guard feed's
                           durable JetStream consumer, writing the memory
                           graph through the injected capture
-  config.toml.example   listener, LLM, intent and [rpc] defaults
+  src/shared/           argus::llm-shared — vocabulary 2+ features read
+                          (vocabulary/tool-contracts.hxx)
+  database/schema.sql   memory.db: graph tables, memory_vec partitions,
+                          catalog replicas, encounter_closed_inbox
+  config.toml.example   listener, LLM, intent, [rpc], memory/extract/nats
   CONTEXT.md            purpose, ownership, wiring decisions
 ```
-There are two features and three modules: `argus::llm` compiles the engine
+There are four features and six modules: `argus::llm` compiles the engine
 facade, the DTOs, the tool runtime and the HTTP surface together,
+`argus::memory` the memory stack the tool loop calls in process,
+`argus::intent` the fastText router tier `argus::llm`'s gate drives,
 `argus::encounter-closed` the consumer `app/main.cc` starts on the beginning
-advice and stops before `memory.shutdown()`, and `argus::llm-rpc` the gRPC
-server under `src/app/rpc/`. `app/main.cc` registers its
+advice and stops before `memory.shutdown()`, `argus::llm-rpc` the gRPC
+server under `src/app/rpc/`, and `argus::llm-shared` the vocabulary two
+features read (`vocabulary/tool-contracts.hxx`). `app/main.cc` registers its
 controllers explicitly (Drogon `HttpController<…, false>`), so no route
 depends on static-init registration. The folder IS the module (root rule 25) —
-a consumer links `argus::llm`, `argus::encounter-closed` or `argus::llm-rpc`
-and never lists `.cc` files. `src/shared/` does not exist: rule 23's 2+ rule
-earns it, so code moves there only when a second feature of this service reads
-it.
+a consumer links `argus::llm`, `argus::memory`, `argus::intent`,
+`argus::encounter-closed`, `argus::llm-rpc` or `argus::llm-shared`
+and never lists `.cc` files. `src/shared/` holds what 2+ features of this
+service read and nothing else (root rule 23).
 
 The gRPC leg is composed in `main.cc` and nowhere else, only when `rpc.address`
 and at least one non-empty `[rpc.callers]` pair are set — the RPC server answers

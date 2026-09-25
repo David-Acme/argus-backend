@@ -1,8 +1,9 @@
 # Tool-calling evaluation set
 
 Labelled utterances, rescued from `labs/intent-data/` when `labs/` was deleted
-(f8-a2). They were fastText training data; with the classifier retired they are
-the accuracy harness for the LLM's own tool calling. The files live in
+(f8-a2). They were fastText training data; they are also the accuracy harness
+for the LLM's own tool calling, beside the classifier that now runs inside
+argus-llm. The files live in
 `services/llm/tests/fixtures/tools/`.
 
 - `check.tsv` — the evaluation set: 103 cases, `label<TAB>utterance`

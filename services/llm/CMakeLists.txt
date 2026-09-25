@@ -17,6 +17,8 @@ if(PROJECT_IS_TOP_LEVEL)
     find_package(Drogon CONFIG REQUIRED)
     find_package(tomlplusplus REQUIRED)
     find_package(nlohmann_json REQUIRED)
+    find_package(onnxruntime CONFIG REQUIRED)
+    find_package(cnats CONFIG REQUIRED)
     if(NOT TARGET argus::contracts::auth)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/contracts/auth
                          ${CMAKE_BINARY_DIR}/contracts/auth)
@@ -70,13 +72,26 @@ if(PROJECT_IS_TOP_LEVEL)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/sqlite
                          ${CMAKE_BINARY_DIR}/sqlite)
     endif()
-    if(NOT TARGET memory-core)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/memory
-                         ${CMAKE_BINARY_DIR}/memory)
-    endif()
-    if(NOT TARGET argus::intent)
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/intent
-                         ${CMAKE_BINARY_DIR}/intent)
+    if(NOT TARGET fasttext)
+        set(FASTTEXT_SRC ${CMAKE_CURRENT_SOURCE_DIR}/../../third_party/fastText/src)
+        add_library(fasttext STATIC
+            ${FASTTEXT_SRC}/args.cc
+            ${FASTTEXT_SRC}/autotune.cc
+            ${FASTTEXT_SRC}/densematrix.cc
+            ${FASTTEXT_SRC}/dictionary.cc
+            ${FASTTEXT_SRC}/fasttext.cc
+            ${FASTTEXT_SRC}/loss.cc
+            ${FASTTEXT_SRC}/matrix.cc
+            ${FASTTEXT_SRC}/meter.cc
+            ${FASTTEXT_SRC}/model.cc
+            ${FASTTEXT_SRC}/productquantizer.cc
+            ${FASTTEXT_SRC}/quantmatrix.cc
+            ${FASTTEXT_SRC}/utils.cc
+            ${FASTTEXT_SRC}/vector.cc)
+        target_include_directories(fasttext SYSTEM PUBLIC ${FASTTEXT_SRC})
+        find_package(Threads REQUIRED)
+        target_link_libraries(fasttext PUBLIC Threads::Threads)
+        target_compile_options(fasttext PRIVATE -w)
     endif()
     if(NOT TARGET argus::clients::identity)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/identity
@@ -131,6 +146,7 @@ foreach(module IN LISTS LLM_FEATURE_MODULES)
     add_subdirectory("${module_dir}")
 endforeach()
 
+add_subdirectory(src/shared)
 add_subdirectory(src/app/rpc)
 
 argus_service(NAME argus-llm
@@ -138,7 +154,9 @@ argus_service(NAME argus-llm
     MODULES
         argus::llm-rpc
         argus::llm
+        argus::llm-shared
         argus::encounter-closed
+        argus::memory
         argus::lib::config
         argus::lib::runtime
         argus::lib::text
@@ -148,8 +166,6 @@ argus_service(NAME argus-llm
         argus::clients::llm
         argus::clients::identity
         argus::clients::camera
-        memory-core
-        memory-catalog
         Drogon::Drogon
     PORTS 7032)
 
@@ -230,10 +246,10 @@ add_executable(encounter-closed-consumer-test
     tests/unit/encounter-closed-consumer-test.cc)
 
 target_link_libraries(encounter-closed-consumer-test PRIVATE
-    argus::encounter-closed memory-core doctest::doctest)
+    argus::encounter-closed argus::memory doctest::doctest)
 
 target_compile_definitions(encounter-closed-consumer-test PRIVATE
-    ARGUS_TEST_MEMORY_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/../../packages/memory/database/schema.sql")
+    ARGUS_TEST_MEMORY_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql")
 
 target_compile_options(encounter-closed-consumer-test PRIVATE -Wall -Wextra)
 
@@ -247,10 +263,10 @@ add_executable(encounter-closed-live-test
     tests/unit/encounter-closed-live-test.cc)
 
 target_link_libraries(encounter-closed-live-test PRIVATE
-    argus::encounter-closed memory-core doctest::doctest)
+    argus::encounter-closed argus::memory doctest::doctest)
 
 target_compile_definitions(encounter-closed-live-test PRIVATE
-    ARGUS_TEST_MEMORY_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/../../packages/memory/database/schema.sql")
+    ARGUS_TEST_MEMORY_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql")
 
 target_compile_options(encounter-closed-live-test PRIVATE -Wall -Wextra)
 
@@ -258,3 +274,86 @@ set_target_properties(encounter-closed-live-test PROPERTIES
     EXCLUDE_FROM_ALL FALSE)
 
 add_test(NAME encounter-closed-live-test COMMAND encounter-closed-live-test)
+
+add_executable(memory-replica-test tests/unit/memory-replica-test.cc)
+
+target_link_libraries(memory-replica-test PRIVATE argus::memory
+    doctest::doctest)
+
+target_compile_definitions(memory-replica-test PRIVATE
+    ARGUS_TEST_MEMORY_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql")
+
+target_compile_options(memory-replica-test PRIVATE -Wall -Wextra)
+
+set_target_properties(memory-replica-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+
+add_test(NAME memory-replica-test COMMAND memory-replica-test)
+
+add_executable(memory-backpressure-test tests/unit/memory-backpressure-test.cc)
+
+target_link_libraries(memory-backpressure-test PRIVATE argus::memory
+    doctest::doctest)
+
+target_compile_definitions(memory-backpressure-test PRIVATE
+    ARGUS_TEST_MEMORY_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql"
+    ARGUS_TEST_MEMORY_MODELS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../../models/memory")
+
+target_compile_options(memory-backpressure-test PRIVATE -Wall -Wextra)
+
+set_target_properties(memory-backpressure-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+
+add_test(NAME memory-backpressure-test COMMAND memory-backpressure-test)
+
+add_executable(memory-reminder-test tests/unit/memory-reminder-test.cc)
+
+target_link_libraries(memory-reminder-test PRIVATE argus::memory
+    argus::contracts::auth doctest::doctest)
+
+target_compile_definitions(memory-reminder-test PRIVATE
+    ARGUS_TEST_MEMORY_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql"
+    ARGUS_TEST_MEMORY_MODELS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../../models/memory")
+
+target_compile_options(memory-reminder-test PRIVATE -Wall -Wextra)
+
+set_target_properties(memory-reminder-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+
+add_test(NAME memory-reminder-test COMMAND memory-reminder-test)
+
+add_executable(encounter-inbox-test tests/unit/encounter-inbox-test.cc)
+
+target_link_libraries(encounter-inbox-test PRIVATE argus::memory
+    doctest::doctest)
+
+target_compile_definitions(encounter-inbox-test PRIVATE
+    ARGUS_TEST_MEMORY_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql")
+
+target_compile_options(encounter-inbox-test PRIVATE -Wall -Wextra)
+
+set_target_properties(encounter-inbox-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+
+add_test(NAME encounter-inbox-test COMMAND encounter-inbox-test)
+
+add_executable(extract-tier-split-test tests/unit/extract-tier-split-test.cc)
+
+target_link_libraries(extract-tier-split-test PRIVATE argus::memory
+    doctest::doctest)
+
+target_compile_definitions(extract-tier-split-test PRIVATE
+    ARGUS_TEST_MEMORY_FIXTURES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/memory")
+
+target_compile_options(extract-tier-split-test PRIVATE -Wall -Wextra)
+
+set_target_properties(extract-tier-split-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+
+add_test(NAME extract-tier-split-test COMMAND extract-tier-split-test)
+
+foreach(TEST_NAME IN ITEMS intent-router-test intent-accuracy-test)
+    add_executable(${TEST_NAME} tests/unit/${TEST_NAME}.cc)
+    target_compile_definitions(${TEST_NAME} PRIVATE
+        ARGUS_TEST_INTENT_MODELS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../../models/intent"
+        ARGUS_TEST_INTENT_FIXTURES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/intent")
+    target_link_libraries(${TEST_NAME} PRIVATE argus::intent doctest::doctest)
+    target_compile_options(${TEST_NAME} PRIVATE -Wall -Wextra)
+    set_target_properties(${TEST_NAME} PROPERTIES EXCLUDE_FROM_ALL FALSE)
+    add_test(NAME ${TEST_NAME} COMMAND ${TEST_NAME})
+endforeach()

@@ -190,17 +190,6 @@ argus-deploy argus-voice configuration. Copy to config.voice.toml (gitignored) n
 | `identity.target` | The identity RPC behind the spoken-name lookup (`argus-identity:7040`). |
 | `identity.rpc_secret` | Must match argus-identity's [identity] rpc_secret, or the spoken-name persist fails. |
 
-## `packages/memory/config.toml.example`
-
-argus-memory package keys (f8-b3). The package has no process and no listener: the host service (argus-llm, the brain) carries these blocks in its own config.toml. Copy the block, not the file.
-
-| Key | Notes |
-|---|---|
-| `memory.catalog_person_table` | Catalog replicas fed by the change subjects. |
-| `memory.create_face_vec` | The face recognition index belongs to the face service. |
-
-The catalog boot fill is fed by the host's own `[identity]` and `[camera] grpc_target` clients, never by a database path: the replica owns no other owner's file (rule 27).
-
 ## `services/identity/config.toml.example`
 
 argus-identity configuration. Copy to config.toml (gitignored) to run.
@@ -301,6 +290,12 @@ argus-llm configuration. Copy to config.toml (gitignored) to run.
 |---|---|
 | `intent.model_file` | An absent file makes the router abstain; every turn stays on tool calling. |
 | `memory.observe_camera_events` | Camera events become system episodes for the owner. |
+| `memory.catalog_person_table` | Catalog replicas fed by the change subjects. |
+| `memory.create_face_vec` | The face recognition index belongs to the face service. |
+| `memory.schema_file` | The memory graph schema this service applies (`database/schema.sql`). |
+| `extract.model_path` | The off-turn extractor artifact; absent leaves the lexicon tier alone. |
+
+The catalog boot fill is fed by the `[identity] target`/`rpc_secret` and `[camera] grpc_target` clients the deploy config carries, never by a database path: the replica owns no other owner's file (rule 27).
 
 ## `services/notification/config.toml.example`
 

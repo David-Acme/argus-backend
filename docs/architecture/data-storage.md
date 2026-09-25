@@ -12,7 +12,7 @@ is no shared monolith database: `argus.db` is retired and must not appear.
 | `camera.db` | `argus-camera` | `services/camera/database/schema.sql` | `database/camera.db` |
 | `productivity.db` | `argus-productivity` | `services/productivity/database/schema.sql` | `database/productivity.db` |
 | `notification.db` | `argus-notification` | `services/notification/database/schema.sql` | `database/notification.db` |
-| `memory.db` | `argus-llm` (`packages/memory`) | `packages/memory/database/schema.sql` | `database/memory.db` |
+| `memory.db` | `argus-llm` | `services/llm/database/schema.sql` | `database/memory.db` |
 | `guard.db` | `argus-guard` | `services/guard/database/schema.sql` | `database/guard.db` |
 | `sync.db` | `argus-sync` | `services/sync/database/schema.sql` | `database/sync.db` |
 

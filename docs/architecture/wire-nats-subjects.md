@@ -25,14 +25,14 @@ argus.<domain>.v1.<event>
 | Subject                | Publisher            | Consumer | Purpose                                      |
 |------------------------|----------------------|----------|----------------------------------------------|
 | `argus.sync.v1.change` | — (superseded) | — (none owed) | the pre-3a generic change subject: every domain publishes on its own `argus.<domain>.v1.change` now, so nothing publishes or consumes this one. The constant stays frozen in `nats-subject.hxx`, and the payload shape below is the shape every domain subject carries |
-| `argus.camera.v1.change` | argus-camera (F2-2) | argus-sync (durable `argus-sync-camera`), argus-memory (durable `argus-llm-catalog-camera`) | a camera-domain persisted change (same payload as `argus.sync.v1.change`, plus the module emits); retained on the camera stream `ARGUS_CAMERA` (7 days, file storage, 2-minute duplicate window), which both durables drain |
+| `argus.camera.v1.change` | argus-camera (F2-2) | argus-sync (durable `argus-sync-camera`), argus-llm (durable `argus-llm-catalog-camera`) | a camera-domain persisted change (same payload as `argus.sync.v1.change`, plus the module emits); retained on the camera stream `ARGUS_CAMERA` (7 days, file storage, 2-minute duplicate window), which both durables drain |
 | `argus.camera.v1.object_detected` | argus-camera (F2-3) | argus-guard (durable JetStream), argus-notification (degraded fallback) | an immutable per-object observation (schemaVersion 3: track/observation ids, identity tri-state, score history, evidence binding); never re-emitted to `/sync` |
 | `argus.guard.v1.heartbeat` | argus-guard | argus-notification | readiness heartbeat; while fresh argus-notification's raw camera notifier yields to guard |
 | `argus.guard.v1.encounter_closed` | argus-guard | argus-llm (durable JetStream) | finalized, redacted encounter summary; the only camera feed long-term memory reads. Published with `Nats-Msg-Id = <eventId>` on the guard-owned stream `ARGUS_GUARD` (7 days, file storage, 2-minute duplicate window); argus-llm receipts each event in `encounter_closed_inbox` and captures exactly one memory episode per receipt |
 | `argus.productivity.v1.change` | argus-productivity (F3-2) | argus-sync (durable `argus-sync-productivity`) | a productivity-domain change: the user-scoped row emits (`SocketEmitDto` + `users`) plus the `kind: audit` user_audit_log diffs argus-sync persists before fanning the rows out. Both legs land in the productivity-owned `change_outbox` first and are published with `Nats-Msg-Id = productivity-change:<32 hex>`, a row settling only on PubAck; the subject is retained on the productivity change stream `ARGUS_PRODUCTIVITY_CHANGE` (7 days, file storage, 2-minute duplicate window), which is the sink's own stream — a stream carries one subject set |
 | `argus.notification.v1.change` | argus-notification (F3-2) | argus-sync (durable `argus-sync-notification`) | a notification-domain change: the `kind: audit` markAsRead rows (same payload contract as the productivity subject) and nothing else — the domain's rows reach their users on the delivery subject below, so this sink is the audit-only `AuditSink`. The diffs land in the notification-owned `change_outbox` first and are published with `Nats-Msg-Id = notification-change:<32 hex>`, a row settling only on PubAck; the subject is retained on the notification change stream `ARGUS_NOTIFICATION_CHANGE` (7 days, file storage, 2-minute duplicate window), which is the sink's own stream and not the delivery one — a stream carries one subject set |
 | `argus.notification.v1.delivery` | argus-notification | argus-sync (durable JetStream, F3-1c) | one event per pending delivery intent (`deliveryId`, `notificationId`, `userId`, row fields); published with `Nats-Msg-Id = notification-delivery:<deliveryId>` on the notification-owned stream `ARGUS_NOTIFICATION` (7 days, file storage, 2-minute duplicate window); an intent settles only on PubAck; argus-sync receipts each delivery in `notification_delivery_inbox` and drops receipted redeliveries. Delivery guarantee is at-least-once, not exactly-once: a crash between socket dispatch and inbox settlement replays the dispatch on redelivery (one receipt row, possibly two socket emits). Same delivery id plus same canonical payload fingerprint is a replay and dispatches at most once per receipt; same id plus a different fingerprint is a conflict that is never dispatched; persistently failing dispatches dead-letter after a bounded attempt count with a broker Term. |
-| `argus.identity.v1.change` | identity domain (F4-6; its sink moved into the identity owner in F3-1c) | argus-memory (durable `argus-llm-catalog-identity`), argus-sync (durable `argus-sync-identity`), argus-auth (durable `argus-auth-identity`) | the memory catalog replica feed: person/user rows written by the identity surface; argus-sync's durable receives the same events and drops the catalog kind, because the identity surface's `/sync` frames arrive on the change vocabulary its sinks publish, never on this catalog feed; argus-auth's durable drops the cache entry behind a session verdict and revokes every session of a user that arrives disabled (Phase 3b-1) |
+| `argus.identity.v1.change` | identity domain (F4-6; its sink moved into the identity owner in F3-1c) | argus-llm (durable `argus-llm-catalog-identity`), argus-sync (durable `argus-sync-identity`), argus-auth (durable `argus-auth-identity`) | the memory catalog replica feed: person/user rows written by the identity surface; argus-sync's durable receives the same events and drops the catalog kind, because the identity surface's `/sync` frames arrive on the change vocabulary its sinks publish, never on this catalog feed; argus-auth's durable drops the cache entry behind a session verdict and revokes every session of a user that arrives disabled (Phase 3b-1) |
 | `argus.identity.v1.user-action` | identity domain (F3-1c) | argus-sync (durable `argus-sync-identity-action`) | the action journal: one actor doing one thing to one record, whether or not the record changed; argus-sync inserts it verbatim into `user_action_log`, keyed by its `Nats-Msg-Id` — `identity-action:` plus 32 hex the producer mints at enqueue — so a redelivery is ignored and the key is unique without borrowing the journal row's id |
 | `argus.notification.v1.push_intent` | argus-notification (F5-5) | argus-relay | a notification push intent carried to the home client through the tunnel transport (not a persisted change; never re-emitted to `/sync`) |
 
@@ -45,16 +45,16 @@ holds one per
 change stream (`ARGUS_CAMERA`, `ARGUS_NOTIFICATION_CHANGE`,
 `ARGUS_PRODUCTIVITY_CHANGE`, and `ARGUS_IDENTITY_CHANGE` twice — the change
 subject and the action journal), argus-auth holds one on
-`ARGUS_IDENTITY_CHANGE` (`argus-auth-identity`) and argus-memory holds one per
+`ARGUS_IDENTITY_CHANGE` (`argus-auth-identity`) and argus-llm holds one per
 catalog stream (`ARGUS_CAMERA`, `ARGUS_IDENTITY_CHANGE`). A durable filter names
 exactly one
 subject inside one stream, so the wildcard `argus.*.v1.change` subscription —
 which used to make a new domain's subject free for the sync service — has no
 durable form and is gone. Adding a `argus.<domain>.v1.change` subject now adds
 a feed to `services/sync`'s `change_feed::defaults()` and, when the catalog
-reads it, to `packages/memory`'s `catalog_feed::defaults()`; the feed tables
+reads it, to `services/llm`'s `catalog_feed::defaults()`; the feed tables
 are pinned by `services/sync/tests/unit/change-feed-consumer-test.cc` and
-`packages/memory/tests/unit/memory-replica-test.cc`, and
+`services/llm/tests/unit/memory-replica-test.cc`, and
 `packages/lib/nats/tests/unit/nats-wrapper-test.cc` pins the stream name each
 subject is retained on. What that buys is what the wildcard
 could not give: a consumer that was down drains the backlog the producer's
@@ -292,8 +292,8 @@ The memory catalog replica feed (Ruling BX): the identity domain publishes its
 writes through the `identity_change` sink (`NatsIdentityChangeSink`, its own
 file since F3-1c:
 `services/identity/src/feature/user/services/nats-identity-change-sink.cc`)
-so argus-memory's `CatalogReplica` can keep `catalog_person` current. The
-payload's catalog kind is argus-memory's alone — argus-sync's durable on the
+so argus-llm's `CatalogReplica` can keep `catalog_person` current. The
+payload's catalog kind is argus-llm's alone — argus-sync's durable on the
 same subject receives it and explicitly drops it
 (`services/sync/src/feature/fanout/services/sync-fan-out.cc`), never
 re-emitting it to `/sync`.
@@ -308,13 +308,13 @@ re-emitting it to `/sync`.
 }
 ```
 
-- `kind` — always `"identity"` (argus-memory ignores events without it).
+- `kind` — always `"identity"` (argus-llm ignores events without it).
 - `table` — the identity-domain row written: `"person"` (face-enrollment
   rows, `services/identity/src/feature/enrollment/services/enrollment-feature-service.cc`)
   or `"user"` (profile writes,
   `services/identity/src/feature/user/services/user-feature-service.cc`).
   The replica consumes only `person` rows today; `user` rows are published
-  for a future consumer and are intentionally ignored by argus-memory — a
+  for a future consumer and are intentionally ignored by argus-llm — a
   rename reaches the catalog only through the person row's own `name`.
   Other values are ignored by the replica.
 - `id` — the row id; `deleted` marks a soft delete (the replica tombstones

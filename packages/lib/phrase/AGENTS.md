@@ -5,8 +5,8 @@ plus the static per-language vocabulary they read.
 
 ## What this is
 
-A module, not a service. argus-memory (formation and recall) and
-argus-voice (reaction rules) both match phrases and parse rules, so the
+A module, not a service. `services/llm`'s memory feature (formation and
+recall) and argus-voice (reaction rules) both match phrases and parse rules, so the
 cluster lives here rather than in either service.
 
 ## Layout
@@ -24,6 +24,6 @@ cluster lives here rather than in either service.
 - Include prefixes are load-bearing.
 - Stay domain-neutral. The vocabulary headers deliberately do NOT know
   about extraction: the lexicon built from these seeds lives with the
-  extractor that consumes it (`argus-memory`'s
-  `extract/vocabulary-lexicon.hxx`). Re-introducing that include would
-  make this module depend on a service.
+  extractor that consumes it (`services/llm`'s
+  `feature/memory/services/extract/vocabulary-lexicon.hxx`). Re-introducing
+  that include would make this module depend on a service.

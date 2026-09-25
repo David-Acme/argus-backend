@@ -3,7 +3,7 @@
 ## Orchestrator
 
 ```bash
-./scripts/build-all.sh dev                 # Debug + ctest for all 18 projects
+./scripts/build-all.sh dev                 # Debug + ctest for all 15 projects
 ./scripts/build-all.sh prod                # Release + ctest
 ./scripts/build-all.sh prod --no-tests     # Release only (image build)
 ./scripts/build-all.sh dev --only camera
@@ -64,5 +64,5 @@ code says.
 
 ## Current scale
 
-18 projects in `dev`. Per-suite test and assertion counts move with the
+15 projects in `dev`. Per-suite test and assertion counts move with the
 suites — read them from `ctest -N` inside each project.

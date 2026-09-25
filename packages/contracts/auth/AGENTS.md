@@ -9,11 +9,13 @@ and the auth catalog the gates and the `/auth` surface throw from.
 A CONTRACT, not a service and not a library: one `argus_contracts`
 declaration, an INTERFACE target with no translation unit. The include root is
 `src/`, so a consumer writes `<auth/user-role.hxx>` and links
-`argus::contracts::auth`. Eighteen CMakeLists link it — packages
-`contracts/sync`, `identity`, `lib/auth` and `memory`, plus the services that
-serve or read a role (`auth` across four module files, `camera`, `gateway`,
-`llm`, `notification`, `productivity` and `sync` across five); `clients/voice`
-only guards against the contract standing alone — because the
+`argus::contracts::auth`. Twenty-five CMakeLists link it — packages
+`contracts/sync`, `lib/auth` and `clients/voice` (which only guards against
+the contract standing alone), plus the services that serve or read a role:
+`auth` across five files, `identity` across six, `sync` across five, `llm`
+across two (its own file and the `argus::llm` feature module), and `camera`,
+`notification` and
+`productivity` — because the
 role is the one value a JWT, a DTO and a role gate all have to spell the same
 way, and the gate that enforces it lives in a different package from the
 handlers that read it.

@@ -227,7 +227,6 @@ provision_models() {
   local owner script
   for owner in \
       services/identity \
-      packages/memory \
       services/tts \
       services/llm \
       services/vlm \

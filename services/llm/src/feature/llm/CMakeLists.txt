@@ -11,6 +11,7 @@ argus_module(NAME llm
     INCLUDES
         ../..
     DEPENDS
+        argus::llm-shared
         argus::lib::config
         argus::lib::auth
         argus::hardware-profile
@@ -20,7 +21,7 @@ argus_module(NAME llm
         argus::lib::http
         argus::clients::llm
         argus::intent
-        memory-core
+        argus::memory
         Drogon::Drogon
         nlohmann_json::nlohmann_json
         argus::contracts::auth

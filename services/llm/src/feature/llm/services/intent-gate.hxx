@@ -1,7 +1,7 @@
 #pragma once
 
-#include <shared/services/intent/fasttext-classifier.hxx>
-#include <shared/services/intent/intent-router.hxx>
+#include <feature/intent/services/fasttext-classifier.hxx>
+#include <feature/intent/services/intent-router.hxx>
 #include <phrase/phrase-catalog.hxx>
 
 #include <string>

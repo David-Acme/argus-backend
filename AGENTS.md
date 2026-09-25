@@ -423,7 +423,7 @@ shared file-static behind a mutex.
   Drogon's first connection — see docs/history/project-log.md ordering note). FTS5 (bm25,
   unicode61, trigram) is enabled via the conan option
   `sqlite3/*:enable_fts5=True` (Drogon rebuilt once).
-- **MemoryService** (`packages/memory/src/shared/services/memory/`, a package compiled into its host argus-llm) — long-term memory over a
+- **MemoryService** (`services/llm/src/feature/memory/services/memory/`, a feature of argus-llm since Phase 4 step 7) — long-term memory over a
   SQLite semantic graph (NOT the legacy `memory_l1`): `memory_entity`/alias
   (person frames), `memory_fact` (upsert closes the previous open fact via
   `supersedes`), `memory_edge`, `memory_episode` (compaction/system-event
@@ -441,7 +441,7 @@ shared file-static behind a mutex.
   (mutex-serialized, prepared statements are RAII `SqliteStmt`). Embeddings:
   `multilingual-e5-small` int8 ONNX, loaded lazily. Full details in docs/history/project-log.md.
 - **fastText as a submodule** (`third_party/fastText`, `1142dc4`) — inference
-  only, built as a static lib by `packages/intent`. It backs the fast
+  only, built as a static lib by `services/llm`'s project file. It backs the fast
   tier of the intent router: rules (`argus::lib::phrase`) decide explicit triggers,
   fastText classifies the rest into six classes (`memory_save`,
   `memory_recall`, `reminder_set`, `memory_forget`, `camera`, `none`), and the
@@ -451,7 +451,7 @@ shared file-static behind a mutex.
   costs one LLM round trip, a false tool call writes a fact nobody stated.
   The model is a published artifact carried in-repo
   (`models/intent/intent.bin`, 12.6 MB) with a configure-time SHA256 pin in
-  `packages/intent/models/`; training lives OUTSIDE this repo, in the
+  `services/llm/src/feature/intent/models/`; training lives OUTSIDE this repo, in the
   sibling `intent-training/` project, and only the artifact, its card and the
   frozen eval fixtures cross over. **Degradation is a contract**: no model on
   disk, or a sub-threshold score, and the router abstains so tool calling runs
@@ -692,9 +692,9 @@ One service has no `feature/` at all today — `tunnel` — and keeps its code a
 services that do have a `feature/`, four
 still keep code beside it: `camera` (`src/camera/`), `notification`
 (`src/notification/`), `productivity` (`src/productivity/`) and `voice`
-(`src/test-support/`). `guard`, `llm`, `stt`, `tts` and `vlm` keep nothing at
-`src/` level but `app/` and `feature/`; six keep a `src/shared/` beside them —
-`camera`, `identity`, `notification`, `productivity`, `sync` and `voice`.
+(`src/test-support/`). `guard`, `stt`, `tts` and `vlm` keep nothing at
+`src/` level but `app/` and `feature/`; seven keep a `src/shared/` beside them —
+`camera`, `identity`, `llm`, `notification`, `productivity`, `sync` and `voice`.
 
 `services/auth`, `services/identity` and `services/sync` have `src/config/`;
 the per-service typed config that step 9 moves there still lives elsewhere
@@ -782,18 +782,17 @@ package: it is the executable `argus-<name>`.
 The target-name half of that rule is structural: `argus_lib`,
 `argus_contracts` and `argus_clients` build the group into the name, so a
 package cannot declare itself into the wrong tier (rule 25's own names are in
-`cmake/argus-module.cmake`). The dependency half is still prose — 21 packages
+`cmake/argus-module.cmake`). The dependency half is still prose — 23 packages
 name a first-party `argus::` alias by hand inside the dependency list of one of
-the group helpers: nine of the eleven contracts (all but `routes` and `voice`,
-which name only their own test target; the `response`, `stt` and `tts` wire
-modules among the nine), six of the twelve clients (`llm`, `stt`, `sync`, `tts`,
-`vlm`, `voice`) and six of the fifteen libs (`auth`, `http`, `mdns`, `nats`,
-`storage`, `validation`). Two packages sit outside the group helpers — neither
-is in a group, so neither has one to be declared by. `intent` declares itself
-through `argus_module` and names `argus::lib::text` and `argus::lib::phrase` in
-that DEPENDS; `memory` is the one that declares itself with literal
-`add_library` calls, so `memory`'s eleven aliases sit in a hand-written
-`target_link_libraries` instead.
+the group helpers: eleven of the thirteen contracts (all but `routes` and
+`voice`, which name only their own test target; the `response`, `stt`, `tts`,
+`llm` and `vlm` wire modules among the eleven), six of the twelve clients
+(`llm`, `stt`, `sync`, `tts`, `vlm`, `voice`) and six of the fifteen libs
+(`auth`, `http`, `mdns`, `nats`, `storage`, `validation`). Every package is in
+a group since Phase 4 step 7: `packages/memory` and `packages/intent` were the
+two that sat outside the helpers — declaring themselves with literal
+`add_library` calls and an `argus_module` — and both are features of
+`services/llm` now.
 Nothing checks those spellings yet; the edge checker of Phase 2 step 5 is where
 they become checked edges.
 
@@ -801,16 +800,16 @@ The three groups sit where they belong — `packages/lib/<name>`,
 `packages/contracts/<domain>`, `packages/clients/<domain>`, each declared by
 its group's helper: `argus_lib_<name>` / `argus::lib::<name>`,
 `argus_contracts_<domain>` / `argus::contracts::<domain>`,
-`argus_clients_<domain>` / `argus::clients::<domain>`. Ten of the twelve
-clients wrap a generated gRPC stub — eight of them pass `PROTO` to
-`argus_clients`, and `tts` and `stt` reach the same stub through
-`argus::contracts::tts` and `argus::contracts::stt` instead; the two wire
-clients (`llm`, `vlm`)
-speak HTTP and take the helper's plain-module branch, which `tts` and `stt`
-also take because each carries an HTTP transport beside the stub. Four wire
+`argus_clients_<domain>` / `argus::clients::<domain>`. Every one of the twelve
+clients wraps a generated gRPC stub — eight of them pass `PROTO` to
+`argus_clients`, and the four wire clients (`llm`, `stt`, `tts`, `vlm`)
+speak HTTP beside the stub and reach it through a wire contract module
+(`argus::contracts::{llm,stt,tts,vlm}-wire`) instead of passing `PROTO`
+themselves, each carrying an HTTP transport next to it. Six wire
 modules are
 not a domain SDK and call `argus_client_module` with the group they live in:
-`lib/grpc`'s health stubs (`GROUP lib`) and the `response`, `stt` and `tts` wire
+`lib/grpc`'s health stubs (`GROUP lib`) and the `response`, `stt`, `tts`, `llm`
+and `vlm` wire
 contracts, which live in `packages/contracts/` and are aliased
 `argus::contracts::…`.
 
@@ -837,10 +836,12 @@ data (D18):
   source.
 - Interface dependencies (types in public headers) are `PUBLIC`;
   implementation-only dependencies are `PRIVATE`.
-- Header-only where nothing is compiled: ten of the eleven contracts go through
+- Header-only where nothing is compiled: twelve of the thirteen contracts go
+  through
   `argus_contracts`, which is `INTERFACE` by construction (`auth`, `camera`,
-  `identity`, `notification`, `productivity`, `routes`, `stt`, `sync`,
-  `tts`, `voice`), and `validation` declares `HEADER_ONLY` to `argus_lib` for
+  `identity`, `llm`, `notification`, `productivity`, `routes`, `stt`, `sync`,
+  `tts`, `vlm`, `voice`), and `validation` declares `HEADER_ONLY` to `argus_lib`
+  for
   the same result. `response` is the exception under `packages/contracts/`: it
   carries no vocabulary but the response wire, declared
   `argus_client_module(NAME response-wire GROUP contracts …)` and compiling
@@ -865,17 +866,15 @@ data (D18):
 ### 26. One schema per microservice: `database/schema.sql`
 
 Every owner keeps exactly one schema file named `database/schema.sql` inside
-its own project — `services/<name>/database/schema.sql`, or
-`packages/<owner>/database/schema.sql` while the owner is still a package
-(`memory` is the last one, and it moves in Phase 4 step 7). Never introduce
+its own project — `services/<name>/database/schema.sql`. Never introduce
 `<domain>-schema.sql` aliases. The deploy stack bind-mounts each owner's file
 at `database/schema.sql` in its container and every config points at
 `database/schema.sql`; a unit applies only its own schema, never the schema of
 another. The gateway's 23-line file was its `gateway.db` degraded-fallback
 record — it held no table of another domain and said so — and it went away in
 Phase 3d step 1 with the camera notifier that wrote to it. Eight units carry
-one today: `auth`, `camera`, `guard`, `identity`, `notification` and
-`productivity`, plus `packages/memory` and
+one today: `auth`, `camera`, `guard`, `identity`, `llm`, `notification` and
+`productivity`, plus
 `services/sync` (`sync.db`, split out of identity's file by `argus-migrate-sync`
 in Phase 3c-2).
 
@@ -907,7 +906,7 @@ Before any commit, verify the affected standalone project with
 `./scripts/build-all.sh dev --only <project>` and **0 errors, 0 warnings**.
 Run the full orchestrator when changing shared build infrastructure.
 
-The orchestrator runs three gates of its own, beyond the seventeen projects:
+The orchestrator runs three gates of its own, beyond the fifteen projects:
 `scripts/check-comments.sh` (rule 20) and `scripts/check-deps.sh` (§2.4's
 tiers) before anything is built, and, at the end of a full run only,
 `scripts/check-tidy.sh` (rules 16 and 19). `--only`,
@@ -948,7 +947,7 @@ for two different reasons, and says which when it does.
 | `packages/lib/mdns/src/mdns/` | `MdnsService` — the multi-instance LAN responder (one record set per `MdnsInstance`), driven by `mdns.enabled`/`mdns.name`; every app-facing service announces its logical routes through it |
 | `packages/lib/audio/src/audio/` | `AudioResampler` (stateful sinc) + `EndpointDetector` — every block-processed audio path MUST use these, never a custom conversion |
 | `packages/lib/phrase/src/phrase/details/` | Static per-language memory vocabulary (es/en): `PhraseSeed`/`LexiconSeed` constants — no DB tables |
-| `packages/lib/phrase/src/phrase/` | `RuleParser` + `PhraseCatalog` — the vocabulary's parser and catalog, read by `packages/memory`, `packages/intent`, `services/llm` and `services/voice` |
+| `packages/lib/phrase/src/phrase/` | `RuleParser` + `PhraseCatalog` — the vocabulary's parser and catalog, read by `services/llm` and `services/voice` |
 | `packages/lib/sqlite/src/sqlite/` | DB client access (`DbService::client()`, extensions) + `VecDb` (vec0 connection); `freezeClient(dbPath)` arms the private client the work arriving after the app's clients are reset goes to, because `quit()` resets Drogon's manager under `client()` — the flag and that dereference share a reader/writer lock, so the arming cannot land between them |
 | `packages/lib/storage/src/storage/` | `S3StorageService` (RustFS S3, SigV4 in `details/s3-signing.hxx`) — private objects, read back through a one-use capability |
 | `packages/lib/config/src/config/` | `ConfigService` read + runtime writes (`setBool/...` persist to `config.toml`, comments preserved) |
@@ -991,8 +990,9 @@ for two different reasons, and says which when it does.
 |------|---------|
 | `services/llm/src/feature/llm/services/` | LLM inference (llama.cpp) + the tool runtime under its own `tools/` |
 | `services/llm/src/feature/encounter-closed/` | The camera guard feed's durable JetStream consumer: receipts in `encounter_closed_inbox`, captured once into the memory graph |
-| `packages/memory/src/shared/services/embedding/` | `EmbeddingService` (multilingual-e5-small int8 ONNX) + `UnigramTokenizer`; becomes a feature of `services/llm` (Phase 4 step 7) |
-| `packages/memory/src/shared/services/memory/` | `MemoryService`/`SemanticGraph`(`SqliteGraph`)/`GraphRecall`/`MemoryFormation`/`EntityResolver`/`ToolParser`/`MemoryChat` — semantic-graph long-term memory (async worker, episode recall, L3 profile); a package hosted by argus-llm, and a feature of it after Phase 4 step 7 |
+| `services/llm/src/feature/memory/services/{memory,embedding,extract}/` | `MemoryService`/`SemanticGraph`(`SqliteGraph`)/`GraphRecall`/`MemoryFormation`/`EntityResolver`/`ToolParser`/`MemoryChat` — semantic-graph long-term memory (async worker, episode recall, L3 profile) — and the artifacts it drives: `EmbeddingService` (multilingual-e5-small int8 ONNX) + `UnigramTokenizer`, and the NuExtract/lexicon/tiered extractors |
+| `services/llm/src/feature/intent/` | `argus::intent` — the fast tier of the router: the fastText classifier + the intent router, with the model pin and NOTICE beside them |
+| `services/llm/src/shared/vocabulary/tool-contracts.hxx` | `tools::ToolContext`/`ToolDescriptor`/`ToolCall` — the vocabulary the tool runtime and the memory feature both read, in the service's `src/shared/` because 2+ features read it (root rule 23) |
 | `services/identity/src/shared/services/face/` | Face detection + recognition (ncnn) — FaceDB = vec0 index (sqlite-vec) |
 | `services/identity/src/shared/services/storage/` | `PrivatePortraitService` — a user's private portrait bytes (`store`/`has`/`read` by `userId`), served onward by the `user` feature's portrait-preview capability |
 | `services/identity/src/shared/repositories/{user-invitation,portrait-*,device-login-challenge}/` | People domain: invitations (hash-only), portrait capabilities, cross-device login challenges |

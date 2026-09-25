@@ -7,8 +7,6 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
 PROJECTS=(
   packages/lib/cert
   packages/lib/sqlite
-  packages/memory
-  packages/intent
   services/auth
   services/identity
   services/sync

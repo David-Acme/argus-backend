@@ -565,7 +565,7 @@ services:
           create_host_path: false
       - ${ARGUS_DATA_DIR:-./data}/memory:/opt/argus/memory
       - type: bind
-        source: ../packages/memory/database/schema.sql
+        source: ../services/llm/database/schema.sql
         target: /opt/argus/database/schema.sql
         read_only: true
         bind:

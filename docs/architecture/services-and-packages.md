@@ -47,21 +47,21 @@ These own a Conan/CMake graph and build on their own:
 |---|---|
 | `argus-cert` | Instance CA and certificate issuance/rotation |
 | `argus-sqlite` | Database client access and vec0 (`DbService`, `VecDb`) |
-| `argus-memory` | Semantic-graph memory (hosted by `argus-llm`) |
-| `argus-intent` | fastText intent router (hosted by `argus-llm`) |
 
-Four, and the claim is a build fact: each of them carries a `CMakeLists.txt`
+Two, and the claim is a build fact: each of them carries a `CMakeLists.txt`
 that declares its own project name, so it configures on its own as well as
 under a consumer. `packages/contracts/` is **not** one of them — the folder has no
-`CMakeLists.txt` of its own, and its twelve domain subfolders are
-direct-import packages like the rest.
+`CMakeLists.txt` of its own, and its thirteen domain subfolders are
+direct-import packages like the rest. `argus-memory` and `argus-intent` were
+standalone packages too until Phase 4 step 7 turned them into features of
+`services/llm`; nothing outside that service linked them.
 
 ## Direct-import packages
 
 The remainder of `packages/`: `argus-audio`, `argus-auth`,
 `argus-config`, `argus-errors`, `argus-grpc`, `argus-http`, `argus-mdns`,
 `argus-nats`, `argus-phrase`, `argus-runtime`, `argus-storage`,
-`argus-text`, `argus-validation`, the twelve contract packages under
+`argus-text`, `argus-validation`, the thirteen contract packages under
 `packages/contracts/` and the twelve SDK clients under `packages/clients/`.
 These are not standalone projects: the service that links them provides the
 build context. They are declared once in their folder and linked by target

@@ -194,8 +194,7 @@ ensure_local_config() {
       services/vlm \
       services/llm \
       services/voice \
-      services/tunnel \
-      packages/memory; do
+      services/tunnel; do
     ensure_project_config "$ROOT/$dir" || exit 1
     configs+=("$ROOT/$dir/config.toml")
   done
@@ -232,7 +231,6 @@ main() {
   "$ROOT/services/stt/scripts/provision.sh"
   "$ROOT/services/identity/scripts/provision.sh"
   "$ROOT/services/voice/scripts/provision.sh"
-  "$ROOT/packages/memory/scripts/provision.sh"
   "$ROOT/services/camera/scripts/provision.sh"
   build_project
   log "All setup tasks completed (profile: $PROFILE)."

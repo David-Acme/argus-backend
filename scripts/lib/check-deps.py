@@ -7,7 +7,6 @@ import subprocess
 import sys
 from collections import defaultdict
 
-IN_TRANSIT = ("packages/intent", "packages/memory")
 
 ALLOWED = {1: {1}, 2: {1, 2}, 3: {1, 2}, 4: {1, 2, 3}, 5: {1, 2, 3, 4}}
 
@@ -45,10 +44,6 @@ def unit_of(pkg):
     if pkg.startswith("services/"):
         return "/".join(pkg.split("/")[:2])
     return pkg
-
-
-def is_in_transit(pkg):
-    return any(pkg == name or pkg.startswith(name + "/") for name in IN_TRANSIT)
 
 
 def same_unit(one, other):
@@ -271,8 +266,7 @@ def main():
 
     unclassified = sorted({os.path.dirname(name) for name in files
                            if name.startswith("packages/") and
-                           tier_of_package(os.path.dirname(name)) is None and
-                           not is_in_transit(os.path.dirname(name))})
+                           tier_of_package(os.path.dirname(name)) is None})
 
     for package, item, dependency, linker_tier, dependency_tier in sorted(
             forbidden, key=lambda e: (e[3], e[0], e[1])):
@@ -294,7 +288,7 @@ def main():
           f"({sum(foreign.values())} third-party mentions over "
           f"{len(foreign)} roots)")
     if unclassified:
-        print("check-deps: packages with no tier yet: "
+        print("check-deps: packages outside the three groups: "
               + ", ".join(unclassified))
     if args.list_deferred:
         grouped = defaultdict(list)

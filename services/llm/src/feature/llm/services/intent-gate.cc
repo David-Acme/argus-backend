@@ -1,8 +1,8 @@
 #include "intent-gate.hxx"
 
 #include <config/config-service.hxx>
-#include <shared/services/extract/extract-contracts.hxx>
-#include <shared/services/extract/temporal-resolver.hxx>
+#include <feature/memory/services/extract/extract-contracts.hxx>
+#include <feature/memory/services/extract/temporal-resolver.hxx>
 
 #include <drogon/drogon.h>
 

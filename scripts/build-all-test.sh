@@ -335,11 +335,11 @@ printf 'argus_lib(NAME z\n    DEPENDS\n        argus::lib::y)\n' \
 expect_rejected "a cycle between two packages" "forbidden: cycle"
 
 write_fixture
-mkdir -p "$FIXTURE/packages/memory"
-printf 'argus_lib(NAME y\n    DEPENDS\n        argus::lib::memory)\n' \
+mkdir -p "$FIXTURE/packages/stray"
+printf 'argus_lib(NAME y\n    DEPENDS\n        argus::lib::stray)\n' \
   > "$FIXTURE/packages/lib/y/CMakeLists.txt"
-printf 'argus_lib(NAME memory\n    DEPENDS\n        argus::lib::y)\n' \
-  > "$FIXTURE/packages/memory/CMakeLists.txt"
+printf 'argus_lib(NAME stray\n    DEPENDS\n        argus::lib::y)\n' \
+  > "$FIXTURE/packages/stray/CMakeLists.txt"
 expect_rejected "a cycle through a package with no tier" "forbidden: cycle"
 
 write_fixture

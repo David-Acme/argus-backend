@@ -548,7 +548,7 @@ argus-vlm / argus-stt / argus-llm / argus-tts
 argus-notification
   Owns: persisted delivery; receives one incident-centric command from guard
 
-argus-memory
+argus-llm, its memory feature
   Receives: finalized and redacted system encounter summaries only
 ```
 

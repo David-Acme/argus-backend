@@ -1,24 +1,23 @@
 # argus_clients_llm
 
-The argus-llm wire seen from the caller's side: the chat contract, the tool
-vocabulary a descriptor is written in, and the two transports that speak it —
-the gRPC client `argus::llm::Client` and the HTTP client the loopback face
-still runs on.
+The argus-llm wire seen from the caller's side: the chat contract and the two
+transports that speak it — the gRPC client `argus::llm::Client` and the HTTP
+client the loopback face still runs on.
 
 ## What this is
 
 A module, not a service: one `argus_clients(NAME llm ...)`, a STATIC library
 whose include root is `src/`, so a consumer writes `<llm/llm-service.hxx>` and
-links `argus::clients::llm`. Four packages link it — `services/llm` three times
-(the `argus-llm` executable's module list, the `argus::llm` feature module and,
-since Phase 4 step 6c, `argus::llm-rpc`), `packages/memory` (`memory-core`),
+links `argus::clients::llm`. Three units link it — `services/llm` four times
+(the `argus-llm` executable's module list, the `argus::llm` feature module,
+its `argus::memory` feature and, since Phase 4 step 6c, `argus::llm-rpc`),
 `services/voice` (`argus::voice-core`) and `services/guard` (`argus-guard` and
 its `guard` feature module): seven link lines in seven CMakeLists, plus the
-package's own test target, and four of those packages also add the package to
+package's own test target, and three of those units also add the package to
 their own standalone tree by path. It carries no
 engine — `llm-service.cc` (llama.cpp) belongs to `services/llm`, and nothing
-in this package may link llama. `packages/memory` (memory formation and chat,
-compiled into argus-llm since f8-b3), argus-voice
+in this package may link llama. `services/llm` (memory formation and chat
+among its features, compiled into the brain since f8-b3), argus-voice
 (session streaming) and argus-guard (assessment) all reach argus-llm through
 the client here.
 
@@ -37,9 +36,6 @@ the `Chat` service `packages/contracts/llm/llm.proto` declares.
   `LlmStreamInput`,
   `GenerateInput`, and the `LlmService` in-process engine's own declaration;
   16 files include it.
-- `src/llm/tool-contracts.hxx` — `tools::ToolContext`, `tools::ToolCall`,
-  `tools::ToolResult`, `tools::ToolArgumentSpec` and `tools::ToolDescriptor`;
-  9 files include it.
 - `src/llm/llm-client.{hxx,cc}` (46 + 187) — `argus::llm::kMaxTimeout` (two
   minutes), `ClientConfig` (target, credential, timeout), `Capabilities`
   (loaded, the engine's default token cap and temperature, the context size and
@@ -57,7 +53,7 @@ the `Chat` service `packages/contracts/llm/llm.proto` declares.
 - Rule 25: the folder IS the module. One `argus_clients(NAME llm ...)` with an
   explicit source list, never `file(GLOB)`.
 - Include prefixes are load-bearing: `<llm/llm-service.hxx>`,
-  `<llm/tool-contracts.hxx>`, `<llm/llm-client.hxx>`, `<llm/llm-remote.hxx>`.
+  `<llm/llm-client.hxx>`, `<llm/llm-remote.hxx>`.
   No `details/` level survives in this package: the `-client` name §2.3
   reserves is the gRPC client's, and the HTTP transport keeps the `-remote`
   name beside it, the spelling `stt`, `tts` and `vlm` use.
@@ -124,10 +120,11 @@ the `Chat` service `packages/contracts/llm/llm.proto` declares.
   deadline and `Connection: close` on the HTTP unary leg, one channel per
   cached client with one deadline on the gRPC one.
 - No engine here, and no tool machinery either: the registry, validator and
-  executor are argus-llm's (D16). `tool-contracts.hxx` is the vocabulary
-  `packages/memory` declares its descriptors in and `services/llm` runs them
-  over — a measured deviation from §2.3, deliberate and recorded (§9.3,
-  Phase 4 step 7), because a package may not include a service's source.
+  executor are argus-llm's (D16). `tool-contracts.hxx` left this package at
+  Phase 4 step 7 for `services/llm/src/shared/vocabulary/` (§9.3): the
+  vocabulary `services/llm`'s memory feature declares its descriptors in and
+  its tool runtime executes, which a tier-3 client could no longer hold once
+  its two consumers were features of one service.
 - `llm-service.hxx` carries both the wire DTOs and `LlmService`'s class
   declaration, so `services/llm` links a package named "client" to get its own
   contract. Splitting the DTOs out, the shape `tts-wire.hxx` has, is open.

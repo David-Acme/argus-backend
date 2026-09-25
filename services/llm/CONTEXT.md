@@ -113,12 +113,15 @@ scaffolds.
   that ceiling — the HTTP leg accepts a budget the typed leg's own gate would
   refuse, so the façade clamps instead of failing every call.
 - **Config**: `[llm]` (engine knobs, mirroring the legacy block) +
+  `[intent]` (the router's model path and operating point) +
   `[server]` (loopback listener, default 7032) + `[rpc]`/`[rpc.callers]`
-  (the dormant gRPC face). The `[server]`
+  (the gRPC face). The `[server]`
   listener is internal-network only: the wire is never announced or
   published; so is the gRPC one, which is plaintext and gated by the caller
-  credential alone. No database, no NATS,
-  no JWT/device keys — nothing here persists anything.
+  credential alone. The database is `[memory]` (`db_file =
+  "database/memory.db"`, `schema_file = "database/schema.sql"`) with the
+  extractor's `[extract]` beside it, and `[nats]` is the bus the catalog
+  replica and the guard feed read; no JWT/device key lives here.
 
 ## Tier note (the F4-2 lesson, applied)
 
@@ -194,3 +197,190 @@ for the summary line). The consumer stops before `memory.shutdown()` in the
 teardown order, waiting in-flight handlers out. This is the only camera feed
 long-term memory reads; the raw `object_detected` subscription stays an
 episodic throttle beside it.
+
+## The memory stack (Phase 4 step 7)
+
+`packages/memory` and `packages/intent` became features of this service:
+`src/feature/memory/` (`argus::memory`) and `src/feature/intent/`
+(`argus::intent`), with the schema at `database/schema.sql` and the
+provisioning in this service's `scripts/provision.sh`. Nothing links them
+from outside — the memory stack's only caller is the tool loop beside it and
+the intent router's only caller is this feature's gate — so the two
+`add_library` targets (`memory-core`, `memory-catalog`) and the standalone
+project behind them bought a build graph nobody read. The history that made
+them packages is below and stands: the stack is in process, and the reason
+has not changed.
+
+What the merge retired besides the folders: `memory-catalog` as a separate
+target. Its justification was that linking memory would drag cnats into a
+consumer that did not want it; the consumer is now the same binary that
+already links `argus::lib::nats` for the encounter feed and the catalog
+replica, so the split separated nothing. `src/memory/memory-dto.{hxx,cc}`
+(the retired `/memory/v1` request bodies) went with it: zero includers
+since f8-b3, and the only user of `lib/validation` and `lib/errors` in the
+stack — both left the module's dependency list with it.
+`tool-contracts.hxx` left `packages/clients/llm` for
+`src/shared/vocabulary/` (§9.3 of the architecture plan): the tool runtime
+and the memory feature both read it, which is what `src/shared/` is for.
+
+- **The memory stack** (`MemoryService`, owned BY VALUE by the host — no
+  singleton): `VecDb` (sqlite-vec), `SqliteGraph` (memory.db graph tables),
+  `EntityResolver`, `GraphRecall`, `MemoryFormation`, extraction (NuExtract
+  gguf + lexicon/tiered/temporal) and embeddings (onnxruntime + unigram
+  tokenizer). The stack is THE capacity of the brain: the boot gate fails
+  loudly rather than running without memory. Feed handlers marshal onto the
+  Drogon loop — cnats dispatcher threads must not block.
+- **`memory.db`** with the memory tables VERBATIM from `database/schema.sql`,
+  its `memory_vec` partitions (boot-applied, idempotent) and the four catalog
+  replicas (`catalog_person`/`catalog_camera`/`catalog_zone`/
+  `catalog_stream`). The schema file is configurable (`[memory] schema_file`,
+  defaulting to this service's `database/schema.sql`) so the shared queries
+  and `VecDb` apply the same DDL the service ships.
+- **The catalog replica feed (Ruling BX)**: `argus.identity.v1.change`
+  (`kind == "identity"` person rows, published through the `identity_change`
+  sink) plus `argus.camera.v1.change` replay camera/person changes into the
+  replicas. Since closure item 5 the replica holds one **durable JetStream
+  consumer per stream** (`catalog_feed::defaults()`: `argus-llm-catalog-camera`
+  on `ARGUS_CAMERA`, `argus-llm-catalog-identity` on `ARGUS_IDENTITY_CHANGE`).
+  Both are ordered — one unacknowledged message at a time, 10 deliveries — so
+  a redelivered row can never land after a newer one and regress the replica,
+  and both use `deliverAll = true`, which decides where a consumer's cursor
+  starts and so applies only when that consumer is first created — the broker
+  refuses to change an existing consumer's policy, so a changed policy takes a
+  new durable name; the cursor itself survives a restart because the bus
+  creates the durable and then binds to it. The applies are idempotent upserts
+  and deletes, and a failed statement throws, so the message is nak'd for
+  redelivery instead of acked. The durables attach only after the snapshot
+  fill below has run, from the same beginning advice (and whether the fill
+  succeeded or not): the fill skips any table that already holds a row, so a
+  replay landing first would leave a fresh replica with the few rows the
+  retained window happened to carry instead of the whole catalog. Attached
+  after it, the from-scratch replay is applied on top of the snapshot, and an
+  idempotent upsert of an older row followed by its newer one converges on the
+  snapshot's value. The plain wildcard subscription is gone: it existed for
+  `camera_stream` rows, which nothing publishes today, and a future change to
+  that table is camera's own, on the camera subject the replica already holds.
+  Every apply runs marshalled onto IOLoop 0 so the arrival order is the stream
+  order, and the host builds the replica whenever `nats.url` is set (not only
+  when `connect()` succeeds) so a bus that comes up later still attaches. On
+  boot, replica tables still empty get ONE snapshot fill from the typed rows
+  the host fetched over `argus.identity.v1.ListPersons` and
+  `argus.camera.v1.ListCatalog`; populated tables are never re-seeded. The fill
+  runs even when the change feed never connects (`CatalogReplica::seedSnapshot`
+  static entry — main.cc calls it when NATS is absent or failed), because
+  otherwise a no-NATS boot would serve an empty catalog forever. Feed handlers
+  accept two event shapes: the camera audit diff (`kind == "audit"`,
+  field-level changes for one row) and the plain SocketEmitDto change shape
+  (`{operation, option, info}`). Person and camera deletes tombstone (the
+  source tables' `deleted_at` predicate); zone and stream rows are physical
+  deletes, since their gazetteer query has no `deleted_at` filter.
+- **The face index stays in the legacy**: `[memory] create_face_vec = false`
+  skips `face_vec` creation (`ConfigService::hasKey` + a dual-shape read,
+  since `getString` cannot surface TOML booleans); the key absent keeps the
+  pre-cutover legacy behavior (create it).
+- **The sqlite3_config ordering (Ruling BW)**: the read-only
+  `[identity]`/`[camera]` snapshot clients must install BEFORE
+  `loadConfigJson` — Drogon's first sqlite3 client creation performs
+  `sqlite3_config(SQLITE_CONFIG_MULTITHREAD)` — while the memory stack's
+  raw connections open only after the loop begins (the `deferStore`
+  pattern). `main.cc`'s wiring preserves this ordering.
+- **The chat port (Ruling BZ)**: the production chat leg is
+  `InProcessMemoryChat` — the `IMemoryChat` port over the in-process
+  `LlmService`, no wire hop. `WireMemoryChat` survives header-only because
+  the back-pressure suite exercises the port over the wire shape.
+  Back-pressure is the bounded work queue (`[memory] queue_bound`, default
+  64): at the bound, non-extract jobs drop with a WARN and an extract job
+  evicts the oldest non-extract job.
+- **Models stay in the shared `models/memory/` and `models/extract/` trees** —
+  never copied — and arrive through this service's `scripts/provision.sh`,
+  beside the LLM and intent artifacts.
+- **No migrations**: `database/schema.sql` is additive and applied
+  idempotently at boot; `argus.db` is never touched, and `memoryDbFile()`
+  refuses it outright.
+- **The mobile app never talks to the memory stack**; no gateway routing, no
+  app-facing contract. Identity change events are only the catalog-replica
+  feed.
+
+### Why the memory capacity exists
+
+F4-6 of the `migracion-microservicios` plan extracted the memory stack out of
+the legacy monolith (Rulings BW-CA). `argus-memory` was a capacity-only
+sibling service (like argus-vlm): the voice session never talked to it; the
+CONSUMERS are the background workers (memory formation, compaction, profiling,
+procedures) and, since f8-b3, the LLM's own tool loop.
+
+### f8-b3: the service becomes a package (2026-09-08)
+
+The user's ruling: the LLM's memory should not be a wire hop away — the
+tool-calling loop needs the memory tools in process, and the memory worker
+gets LlmService as a direct call. What died with the process: `src/main.cc`,
+the `/memory/v1/*` HTTP surface and its controller, port 7033 with its compose
+service and config template, and the remote wire adapter (`memory-remote` /
+`RemoteMemoryServiceAdapter`) that existed for the retired legacy's Ruling BY
+cutover gate. The database key inverted in the same move: memory no longer
+rides the host's `[database] file`; it owns `[memory] db_file` (fallback
+`[database] file`, final default `database/memory.db`).
+
+Step 7 carries that ruling to its end — the package is a feature now, and the
+`memory-catalog` target it introduced to keep cnats out of an unwilling
+consumer is gone, because this binary is the only consumer and it wants the
+bus.
+
+### The mounts
+
+The compose mounts the shared `models/` subpaths (`models/memory` +
+`models/extract`) and the memory database into this service's working
+directory — the ONNX/GGUF artifacts and `memory.db` are read relative to the
+config keys.
+
+### Stranger isolation (camera guard)
+
+The memory stack serves authenticated users. A person the camera sees is
+foreign to the system: their speech, intents and recall requests must never
+become facts, preferences, reminders or episodes. `captureExplicit`,
+`captureImplicit`, `observeSystemEvent` and every tool handler reject
+`userId <= 0`; camera events are written only as episodes through
+`observeSystemEvent` with the owner's scope and never pass through the rule
+parser, so a stranger can never teach the assistant anything. See
+`docs/history/plans/camera-guard-automation-plan.md` (6b).
+
+### Camera event episodes
+
+With `[memory] observe_camera_events` argus-llm subscribes
+`argus.camera.v1.object_detected` and records one episode per camera+rule (120 s
+throttle) through `observeSystemEvent`, scoped to the first notifiable user and
+carrying the person ids as entities. Episodes only: no rule parsing, no facts,
+and never anything a camera-only person said (see stranger isolation).
+
+### Encounter-closed inbox (camera guard feed)
+
+`encounter_closed_inbox` receipts the durable `argus.guard.v1.encounter_closed`
+feed in `memory.db` (`MemoryGraphRepository::claimEncounterClosed` and
+settles): `received` replays, `dispatched` drops redeliveries, `conflict`
+(same id, different canonical fingerprint) never captures, `dead_lettered`
+parks poison, and an unknown persisted status fails closed to `dead_lettered`.
+The inbox DDL is additive and `SqliteGraph::open` now always applies the
+schema file, so existing stores gain the table without losing a row. Each
+receipt captures exactly one owner-scoped episode through `observeSystemEvent`
+— this is the only camera feed that survives as long-term memory.
+
+## The intent router (Phase 4 step 7)
+
+`packages/intent` became `src/feature/intent/` (`argus::intent`), the fast tier
+of the router `argus::llm`'s gate drives: rules (`argus::lib::phrase`) decide
+explicit triggers, fastText classifies the rest into six classes
+(`memory_save`, `memory_recall`, `reminder_set`, `memory_forget`, `camera`,
+`none`), and the LLM's own tool calling keeps every turn the router is not
+confident about. The classifier picks the tool; the model only writes its
+arguments and the prose. Operating point 0.90 / 0.10, precision-gated — a
+gated false `none` costs one LLM round trip, a false tool call writes a fact
+nobody stated. **Degradation is a contract**: no model on disk, or a
+sub-threshold score, and the router abstains so tool calling runs byte for
+byte as it did before. The model is a published artifact carried in-repo
+(`models/intent/intent.bin`, 12.6 MB) with a configure-time SHA256 pin in
+`src/feature/intent/models/`; training lives OUTSIDE this repo, in the sibling
+`intent-training/` project, and only the artifact, its card and the frozen
+eval fixtures cross over. `fasttext` is built from the `third_party/fastText`
+submodule (inference only, static lib) by this service's project file, the way
+it bootstraps llama.cpp and sqlite-vec.
+

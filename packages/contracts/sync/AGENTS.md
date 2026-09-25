@@ -22,12 +22,13 @@ the two audit-event headers include `<text/json-diff.hxx>`. The include root is
 `src/`, so a consumer writes `<sync/sync-operation.hxx>`.
 
 The consumers are argus-sync — the engine's home since sub-step 3a-1d, the
-package it used to live in having been deleted — the identity, memory and
-`lib/auth` packages, `clients/llm` and `clients/sync`, and the auth, camera,
-guard, identity, llm, notification, productivity and sync services. A table named here is a table
+package it used to live in having been deleted — the identity and `lib/auth`
+packages, `clients/llm` and `clients/sync`, and the auth, camera, guard,
+identity, llm (its `memory` feature among its features), notification,
+productivity and sync services. A table named here is a table
 some repository syncs. The change vocabulary's consumers are the producers that
 hold a sink — camera, productivity, notification and identity — the memory
-package, and argus-sync's fan-out that reads the payloads back; sub-step
+feature, and argus-sync's fan-out that reads the payloads back; sub-step
 3a-1a1 moved it here out of `packages/socket`, whose transport is now
 `services/sync`'s `SyncSocket`.
 

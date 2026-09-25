@@ -7,7 +7,7 @@ camera-init), the Fase 3 argus-productivity + argus-notification services
 AI engine services argus-tts/argus-stt/argus-vlm/argus-llm (models
 subpaths; the single-owner memory.db volume stays declared unmounted since
 f8-b3, when argus-memory stopped being a process and became a package
-hosted by argus-llm), the Fase 5 tunnel
+hosted by argus-llm — one of its features since Phase 4 step 7), the Fase 5 tunnel
 transport pair — argus-relay + argus-tunnel-client — behind the opt-in
 `tunnel` profile and the F6-3 argus-voice pure-gRPC service. The Fase 1
 legacy service and the root local compose's RustFS pair are retired (F6-4).
@@ -29,8 +29,9 @@ argus-sync image carries `argus-migrate-sync` (the Phase 3c-2 split of the five
 sync tables out of identity's file); argus-camera
 carries `argus-migrate-camera` and `argus-vulkan-probe`; productivity and
 notification carry their migration tools; the argus-tunnel image carries the
-client and the relay. The argus-memory binary is gone since f8-b3: the
-package compiles into argus-llm.
+client and the relay. The argus-memory binary is gone since f8-b3, and its
+package dissolved into argus-llm at Phase 4 step 7: the whole stack is one of
+its features now.
 
 Build all images from the repository root, sequentially:
 
@@ -160,7 +161,7 @@ against a real client.
 | argus-tts | `argus-tts:local` | internal network (172.19.0.29), loopback 7029 publish; models/tts subpath ro; `/health` healthcheck |
 | argus-stt | `argus-stt:local` | internal network (172.19.0.30), loopback 7030 publish; models/stt subpath ro; `/health` healthcheck |
 | argus-vlm | `argus-vlm:local` | internal network (172.19.0.31), loopback 7031 publish; models/vision subpath ro; `/dev/dri`; `/health` healthcheck |
-| argus-llm | `argus-llm:local` | internal network (172.19.0.32), loopback 7032 publish; models/llm subpath ro; links the memory package since f8-b3 (its stack hosting lands at f8-b4); `/health` healthcheck |
+| argus-llm | `argus-llm:local` | internal network (172.19.0.32), loopback 7032 publish; models/llm subpath ro; carries the memory stack as a feature since Phase 4 step 7 (its stack hosting landed at f8-b4); `/health` healthcheck |
 | argus-voice | `argus-voice:local` | internal network (172.19.0.34), loopback 7034 (gRPC) + 7035 (`/health`) publishes; no database; models/vad ro; gated on nats; `/health` healthcheck |
 | argus-relay | `argus-tunnel:local` | `profiles: [tunnel]`; internal network, loopback 7100/7101/7103 publishes; no database (Ruling CL); `/health` healthcheck |
 | argus-tunnel-client | `argus-tunnel:local` | `profiles: [tunnel]`; host-networked (it dials the remote listener a home service opens and the relay's loopback home publish on 127.0.0.1); no database (Ruling CL); `/health` healthcheck |
@@ -245,9 +246,9 @@ Fase 4 (Rulings CB/CC/CD/CE, compose v4) adds the four AI engine services:
   consumes the bus (the guard encounter-closed stream, durable
   `argus-llm-encounters`) and hosts the memory stack: memory.db under its
   `${ARGUS_DATA_DIR:-./data}/memory` mount, plus the
-  `packages/memory/database/schema.sql`, `models/memory` and `models/extract`
+  `services/llm/database/schema.sql`, `models/memory` and `models/extract`
   binds. argus-memory (7033) is retired since f8-b3: the memory capacity is
-  a package compiled into argus-llm and the worker chat is an in-process
+  a feature of argus-llm and the worker chat is an in-process
   call. None of them is
   reachable from the LAN — the AI wire is internal-only and loopback-published.
   The in-process engine topology is retired
@@ -447,7 +448,7 @@ the matching `*-init` profile is the only migration path onto a volume.
   `config.tunnel.toml.example` / `config.relay.toml.example` encode the
   cutover keys (`config.gateway.toml.example` died with its service in
   Phase 3d step 1c, and `config.memory.toml.example` is deleted since f8-b3:
-  the memory package's keys ride the host's config.llm.toml from f8-b4); copy
+  the memory feature's keys ride the host's config.llm.toml from f8-b4); copy
   to `config.auth.toml` /
   `config.identity.toml` / `config.guard.toml` /
   `config.sync.toml` /
@@ -493,7 +494,7 @@ the matching `*-init` profile is the only migration path onto a volume.
   in config.voice.toml — the compose-shape static internal literals — plus
   `[tts] remote_url` in config.camera.toml, the loopback publish), the GPU
   pins, and (from f8-b4) the `[memory]`/`[extract]` blocks config.llm.toml
-  gains with the hosted memory package.
+  gains with the hosted memory feature.
 - No docker secrets: nothing is baked into images and instance secrets live
   only in the gitignored config files.
 - Fase 5 (Rulings CG/CJ): `[remote]` (`tunnel_port`, default 0 = disabled;

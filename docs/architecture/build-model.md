@@ -3,24 +3,18 @@
 ## Standalone projects
 
 The repository root has no CMake project; its `conanfile.txt` is the tree's
-single dependency manifest. Seventeen owner projects build independently, each
+single dependency manifest. Fifteen owner projects build independently, each
 with its own `CMakeLists.txt` and binary directory, all configuring against the
 one Conan graph `scripts/build-all.sh` resolves before the first of them:
 
 ```
-packages/lib/cert          packages/memory           services/auth
-packages/lib/sqlite        packages/intent           services/identity
-                                                     services/sync
-                                                     services/camera
-                                                     services/productivity
-                                                     services/notification
-                                                     services/guard
-                                                     services/tts
-                                                     services/stt
-                                                     services/vlm
-                                                     services/llm
-                                                     services/voice
-                                                     services/tunnel
+packages/lib/cert          services/auth              services/guard
+packages/lib/sqlite        services/identity          services/tts
+                           services/sync              services/stt
+                           services/camera            services/vlm
+                           services/productivity      services/llm
+                           services/notification      services/voice
+                                                      services/tunnel
 ```
 
 Each project configures against the root graph's toolchain (Ninja, Debug under
@@ -39,11 +33,11 @@ at build time. Pins come from `.gitmodules` and `git submodule status`.
 
 | Dependency | Type | Pin | Compiled by |
 |---|---|---|---|
-| `sqlite-vec` | vendored | v0.1.10-alpha.4 | auth, camera, productivity, notification, guard, sync, identity, memory, sqlite, llm |
+| `sqlite-vec` | vendored | v0.1.10-alpha.4 | auth, camera, productivity, notification, guard, sync, identity, sqlite, llm |
 | `ncnn` | submodule | `4c1110c9` | camera, identity |
-| `llama.cpp` | submodule | `31558dbb` | memory, llm, vlm |
+| `llama.cpp` | submodule | `31558dbb` | llm, vlm |
 | `sherpa-onnx` | submodule | `dc130227` | stt |
-| `fastText` | submodule | `1142dc4` | intent |
+| `fastText` | submodule | `1142dc4` | llm |
 | `stb` | vendored | `stb_image.h` | identity |
 | `go2rtc` | downloaded binary | release artifact | camera provisioning |
 

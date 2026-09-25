@@ -4,8 +4,8 @@
 #include <condition_variable>
 #include <ctime>
 #include <drogon/drogon.h>
-#include <shared/repositories/memory-graph/memory-graph-repository.hxx>
-#include <shared/services/memory/sqlite-graph.hxx>
+#include <feature/memory/repositories/memory-graph/memory-graph-repository.hxx>
+#include <feature/memory/services/memory/sqlite-graph.hxx>
 #include <text/json-util.hxx>
 #include <text/sha256.hxx>
 #include <nats/nats-bus.hxx>
