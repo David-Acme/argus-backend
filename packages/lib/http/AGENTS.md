@@ -3,7 +3,7 @@
 The HTTP substrate: the `{status, info, errors}` envelope, the one advice that
 turns a refusal into it, the CORS headers, the `/health` controller every
 service serves but guard — which registers its own hand-rolled answer
-(`services/guard/src/app/main.cc:103-115`) — and the listener resolution every
+(`services/guard/src/app/main.cc:60-72`) — and the listener resolution every
 service boots from.
 
 ## What this is

@@ -13,6 +13,8 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 RECORDER_UA = "argus-golden-recorder/1.0"
+ROLE_USERS = (("resident", 2), ("guest", 3))
+ROLES = (("owner", 1),) + ROLE_USERS
 
 SERVICE_DB = {
     "auth": "auth",
@@ -22,6 +24,34 @@ SERVICE_DB = {
     "notification": "notifications",
     "sync": "sync",
 }
+
+ID_QUERIES = (
+    ("identity", "ownerUser",
+     "SELECT id FROM user WHERE role = 'owner' ORDER BY id LIMIT 1"),
+    ("identity", "residentUser",
+     "SELECT id FROM user WHERE role = 'resident' ORDER BY id LIMIT 1"),
+    ("identity", "guestUser",
+     "SELECT id FROM user WHERE role = 'guest' ORDER BY id LIMIT 1"),
+    ("camera", "camera",
+     "SELECT id FROM camera WHERE name = 'Golden Cam' ORDER BY id LIMIT 1"),
+    ("camera", "zone",
+     "SELECT id FROM zone WHERE name = 'Golden Zone' ORDER BY id LIMIT 1"),
+    ("productivity", "calendarEvent",
+     "SELECT id FROM calendar_event WHERE title = 'Golden event' "
+     "ORDER BY id LIMIT 1"),
+    ("productivity", "project",
+     "SELECT id FROM project WHERE name = 'Golden project' "
+     "ORDER BY id LIMIT 1"),
+    ("productivity", "projectMember",
+     "SELECT id FROM project_member WHERE project_id = 1 "
+     "ORDER BY id LIMIT 1"),
+    ("productivity", "projectTask",
+     "SELECT id FROM project_task WHERE title = 'Golden task' "
+     "ORDER BY id LIMIT 1"),
+    ("productivity", "reminder",
+     "SELECT id FROM reminder WHERE title = 'Golden reminder' "
+     "ORDER BY id LIMIT 1"),
+)
 
 
 def b64u(raw: bytes) -> str:
@@ -61,30 +91,88 @@ def apply_schemas(stack: Path) -> None:
     print("schemas applied under", stack)
 
 
-def mint_session(auth: sqlite3.Connection, auth_config: dict, now: int,
-                 device_ip: str, token_out: Path) -> None:
+def collect_ids(stack: Path) -> dict:
+    ids = {}
+    connections = {}
+    for service, slot, query in ID_QUERIES:
+        if service not in connections:
+            connections[service] = connect(stack, service)[0]
+        row = connections[service].execute(query).fetchone()
+        ids[slot] = row[0] if row else 0
+    for connection in connections.values():
+        connection.close()
+    return ids
+
+
+def add_role_users(stack: Path) -> None:
+    identity, _ = connect(stack, "identity")
+    now = int(time.time())
+    for role, user_id in ROLE_USERS:
+        row = identity.execute("SELECT id FROM user WHERE id = ?",
+                               (user_id,)).fetchone()
+        if row:
+            continue
+        identity.execute(
+            "INSERT INTO user(id,name,last_name,role,lang,is_active,"
+            "created_at) VALUES(?,'Golden',?,?,'en',1,?)",
+            (user_id, role.capitalize(), role, now))
+    identity.commit()
+    identity.close()
+    print("probe role users in place:", ", ".join(
+        f"{role}={user_id}" for role, user_id in ROLE_USERS))
+
+
+def clear_role_users(stack: Path) -> None:
+    identity, _ = connect(stack, "identity")
+    auth, _ = connect(stack, "auth")
+    ids = tuple(user_id for _, user_id in ROLE_USERS)
+    marks = ",".join("?" for _ in ids)
+    auth.execute(f"DELETE FROM refresh_token WHERE user_id IN ({marks})", ids)
+    identity.execute(f"DELETE FROM user WHERE id IN ({marks})", ids)
+    auth.commit()
+    identity.commit()
+    auth.close()
+    identity.close()
+    print("probe role users removed; the frozen roster is intact again")
+
+
+def mint_sessions(auth: sqlite3.Connection, auth_config: dict, ids: dict,
+                  roles: tuple, now: int, device_ip: str, token_out: Path,
+                  session_out: Path) -> None:
     device_hash = hmac.new(
         auth_config["device"]["fingerprint_secret"].encode(),
         f"{RECORDER_UA}|{device_ip}".encode(),
         hashlib.sha256).hexdigest()
-    access = mint({"iss": "argus", "sub": "1", "iat": now, "exp": now + 900},
-                  auth_config["jwt"]["secret"])
-    refresh = mint({"iss": "argus", "sub": "1", "iat": now, "exp": now + 864000},
-                   auth_config["jwt"]["refresh_secret"])
-    auth.execute("DELETE FROM refresh_token")
-    auth.execute(
-        "INSERT INTO refresh_token(user_id,access_token,refresh_token,"
-        "device_hash,user_agent,is_valid,is_used,expires_at,created_at)"
-        " VALUES(1,?,?,?,?,1,0,?,?)",
-        (access, refresh, device_hash, RECORDER_UA, now + 86400, now))
+    sessions = {}
+    for role, user_id in ROLES:
+        if role not in roles:
+            continue
+        access = mint({"iss": "argus", "sub": str(user_id), "iat": now,
+                       "exp": now + 900}, auth_config["jwt"]["secret"])
+        refresh = mint({"iss": "argus", "sub": str(user_id), "iat": now,
+                        "exp": now + 864000},
+                       auth_config["jwt"]["refresh_secret"])
+        auth.execute("DELETE FROM refresh_token WHERE user_id = ?", (user_id,))
+        auth.execute(
+            "INSERT INTO refresh_token(user_id,access_token,refresh_token,"
+            "device_hash,user_agent,is_valid,is_used,expires_at,created_at)"
+            " VALUES(?,?,?,?,?,1,0,?,?)",
+            (user_id, access, refresh, device_hash, RECORDER_UA, now + 86400,
+             now))
+        sessions[role] = refresh
     auth.commit()
+
     token_out.parent.mkdir(parents=True, exist_ok=True)
-    token_out.write_text(refresh + "\n")
+    token_out.write_text(sessions["owner"] + "\n")
     os.chmod(token_out, 0o600)
-    print("recorder refresh token written (0600):", token_out)
+    session_out.write_text(json.dumps({"ids": ids, "sessions": sessions},
+                                      indent=2, sort_keys=True) + "\n")
+    os.chmod(session_out, 0o600)
+    print("recorder sessions written (0600):", token_out, session_out)
 
 
-def seed(stack: Path, device_ip: str, token_out: Path) -> None:
+def seed(stack: Path, device_ip: str, token_out: Path,
+         session_out: Path) -> None:
     now = int(time.time())
     auth, auth_config = connect(stack, "auth")
     identity, _ = connect(stack, "identity")
@@ -159,7 +247,11 @@ def seed(stack: Path, device_ip: str, token_out: Path) -> None:
          json.dumps({"title": {"current": "Golden reminder",
                                "previous": "Old reminder"}}), now, now))
 
-    mint_session(auth, auth_config, now, device_ip, token_out)
+    for connection in (identity, camera, productivity, notification, sync):
+        connection.commit()
+    ids = collect_ids(stack)
+    mint_sessions(auth, auth_config, ids, ("owner",), now, device_ip,
+                  token_out, session_out)
 
     counts = {}
     for service, connection, tables in (
@@ -195,6 +287,15 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
                         help="address the recorder session is bound to")
     parser.add_argument("--token-out", default=None,
                         help="where to write the refresh token (0600)")
+    parser.add_argument("--session-out", default=None,
+                        help="where to write the ids and every role's "
+                             "session (0600, default <stack>/seed.json)")
+    parser.add_argument("--roles", action="store_true",
+                        help="add the resident and guest probe users and mint "
+                             "a session for each role, without touching the "
+                             "frozen owner roster")
+    parser.add_argument("--roles-clear", action="store_true",
+                        help="remove the probe users and their sessions")
     parser.add_argument("--schemas-only", action="store_true",
                         help="apply every owner's schema and stop")
     parser.add_argument("--token-only", action="store_true",
@@ -207,16 +308,23 @@ def main(argv: list[str]) -> int:
     stack = Path(args.stack_dir)
     token_out = Path(args.token_out) if args.token_out \
         else stack / "refresh-token"
+    session_out = Path(args.session_out) if args.session_out \
+        else stack / "seed.json"
 
-    if args.schemas_only:
+    if args.roles_clear:
+        clear_role_users(stack)
+    elif args.schemas_only:
         apply_schemas(stack)
-    elif args.token_only:
+    elif args.token_only or args.roles:
+        if args.roles:
+            add_role_users(stack)
         auth, auth_config = connect(stack, "auth")
-        mint_session(auth, auth_config, int(time.time()), args.device_ip,
-                     token_out)
+        roles = tuple(role for role, _ in ROLES) if args.roles else ("owner",)
+        mint_sessions(auth, auth_config, collect_ids(stack), roles,
+                      int(time.time()), args.device_ip, token_out, session_out)
         auth.close()
     else:
-        seed(stack, args.device_ip, token_out)
+        seed(stack, args.device_ip, token_out, session_out)
     return 0
 
 

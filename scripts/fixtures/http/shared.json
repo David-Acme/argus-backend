@@ -1,0 +1,193 @@
+{
+  "probes": [
+    {
+      "method": "GET",
+      "path": "/health",
+      "probe": "plain-auth",
+      "request": {
+        "auth": "none",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": null,
+          "info": {
+            "nats": {
+              "connected": true,
+              "enabled": true
+            },
+            "service": "argus-auth",
+            "uptimeSeconds": "<masked>"
+          },
+          "status": 200
+        },
+        "pretty": true,
+        "status": 200
+      },
+      "route": "/health",
+      "unit": "shared"
+    },
+    {
+      "method": "GET",
+      "path": "/health",
+      "probe": "plain-camera",
+      "request": {
+        "auth": "none",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": null,
+          "info": {
+            "objectEvents": {
+              "oldestPendingAgeS": 0,
+              "overflowDropped": 0,
+              "pending": 0,
+              "sent": 0
+            },
+            "service": "argus-camera",
+            "uptimeSeconds": "<masked>"
+          },
+          "status": 200
+        },
+        "pretty": true,
+        "status": 200
+      },
+      "route": "/health",
+      "unit": "shared"
+    },
+    {
+      "method": "GET",
+      "path": "/health",
+      "probe": "plain-identity",
+      "request": {
+        "auth": "none",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": null,
+          "info": {
+            "face": {
+              "loaded": true
+            },
+            "nats": {
+              "connected": true,
+              "enabled": true
+            },
+            "service": "argus-identity",
+            "uptimeSeconds": "<masked>"
+          },
+          "status": 200
+        },
+        "pretty": true,
+        "status": 200
+      },
+      "route": "/health",
+      "unit": "shared"
+    },
+    {
+      "method": "GET",
+      "path": "/health",
+      "probe": "plain-notification",
+      "request": {
+        "auth": "none",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": null,
+          "info": {
+            "nats": {
+              "connected": true,
+              "enabled": true
+            },
+            "notifications_fallback": {
+              "dropped_known": 0,
+              "dropped_short_dwell": 0,
+              "dropped_weak_score": 0,
+              "passed": 0,
+              "subscribed": true
+            },
+            "service": "argus-notification",
+            "uptimeSeconds": "<masked>"
+          },
+          "status": 200
+        },
+        "pretty": true,
+        "status": 200
+      },
+      "route": "/health",
+      "unit": "shared"
+    },
+    {
+      "method": "GET",
+      "path": "/health",
+      "probe": "plain-productivity",
+      "request": {
+        "auth": "none",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": null,
+          "info": {
+            "service": "argus-productivity",
+            "uptimeSeconds": "<masked>"
+          },
+          "status": 200
+        },
+        "pretty": true,
+        "status": 200
+      },
+      "route": "/health",
+      "unit": "shared"
+    },
+    {
+      "method": "GET",
+      "path": "/health",
+      "probe": "plain-sync",
+      "request": {
+        "auth": "none",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": null,
+          "info": {
+            "nats": {
+              "connected": true,
+              "enabled": true
+            },
+            "service": "argus-sync",
+            "uptimeSeconds": "<masked>"
+          },
+          "status": 200
+        },
+        "pretty": true,
+        "status": 200
+      },
+      "route": "/health",
+      "unit": "shared"
+    }
+  ],
+  "unit": "shared"
+}

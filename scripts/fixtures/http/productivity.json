@@ -1,0 +1,2450 @@
+{
+  "probes": [
+    {
+      "method": "POST",
+      "path": "/calendar-event",
+      "probe": "no-token",
+      "request": {
+        "auth": "none",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Missing authorization token"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/calendar-event",
+      "unit": "productivity"
+    },
+    {
+      "method": "POST",
+      "path": "/calendar-event",
+      "probe": "bad-json",
+      "request": {
+        "auth": "none",
+        "body": "not-json",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "BAD_REQUEST",
+            "message": "Invalid JSON body"
+          },
+          "info": null,
+          "status": 400
+        },
+        "pretty": true,
+        "status": 400
+      },
+      "route": "/calendar-event",
+      "unit": "productivity"
+    },
+    {
+      "method": "POST",
+      "path": "/calendar-event",
+      "probe": "other-device",
+      "request": {
+        "auth": "owner",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "other"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Device mismatch"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/calendar-event",
+      "unit": "productivity"
+    },
+    {
+      "method": "POST",
+      "path": "/calendar-event",
+      "probe": "role-resident",
+      "request": {
+        "auth": "resident",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "VALIDATION_ERROR",
+            "fields": {
+              "startsAt": [
+                "startsAt must be a positive timestamp"
+              ],
+              "title": [
+                "title must not be empty"
+              ]
+            },
+            "message": "Validation failed"
+          },
+          "info": null,
+          "status": 422
+        },
+        "pretty": true,
+        "status": 422
+      },
+      "route": "/calendar-event",
+      "unit": "productivity"
+    },
+    {
+      "method": "POST",
+      "path": "/calendar-event",
+      "probe": "role-guest",
+      "request": {
+        "auth": "guest",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "FORBIDDEN",
+            "message": "Access denied"
+          },
+          "info": null,
+          "status": 403
+        },
+        "pretty": true,
+        "status": 403
+      },
+      "route": "/calendar-event",
+      "unit": "productivity"
+    },
+    {
+      "method": "POST",
+      "path": "/calendar-event",
+      "probe": "owner",
+      "request": {
+        "auth": "owner",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "VALIDATION_ERROR",
+            "fields": {
+              "startsAt": [
+                "startsAt must be a positive timestamp"
+              ],
+              "title": [
+                "title must not be empty"
+              ]
+            },
+            "message": "Validation failed"
+          },
+          "info": null,
+          "status": 422
+        },
+        "pretty": true,
+        "status": 422
+      },
+      "route": "/calendar-event",
+      "unit": "productivity"
+    },
+    {
+      "method": "POST",
+      "path": "/calendar-event-share",
+      "probe": "no-token",
+      "request": {
+        "auth": "none",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Missing authorization token"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/calendar-event-share",
+      "unit": "productivity"
+    },
+    {
+      "method": "POST",
+      "path": "/calendar-event-share",
+      "probe": "bad-json",
+      "request": {
+        "auth": "none",
+        "body": "not-json",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "BAD_REQUEST",
+            "message": "Invalid JSON body"
+          },
+          "info": null,
+          "status": 400
+        },
+        "pretty": true,
+        "status": 400
+      },
+      "route": "/calendar-event-share",
+      "unit": "productivity"
+    },
+    {
+      "method": "POST",
+      "path": "/calendar-event-share",
+      "probe": "other-device",
+      "request": {
+        "auth": "owner",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "other"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Device mismatch"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/calendar-event-share",
+      "unit": "productivity"
+    },
+    {
+      "method": "POST",
+      "path": "/calendar-event-share",
+      "probe": "role-resident",
+      "request": {
+        "auth": "resident",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "VALIDATION_ERROR",
+            "fields": {
+              "calendarEventId": [
+                "calendarEventId must be positive"
+              ],
+              "userId": [
+                "userId must be positive"
+              ]
+            },
+            "message": "Validation failed"
+          },
+          "info": null,
+          "status": 422
+        },
+        "pretty": true,
+        "status": 422
+      },
+      "route": "/calendar-event-share",
+      "unit": "productivity"
+    },
+    {
+      "method": "POST",
+      "path": "/calendar-event-share",
+      "probe": "role-guest",
+      "request": {
+        "auth": "guest",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "FORBIDDEN",
+            "message": "Access denied"
+          },
+          "info": null,
+          "status": 403
+        },
+        "pretty": true,
+        "status": 403
+      },
+      "route": "/calendar-event-share",
+      "unit": "productivity"
+    },
+    {
+      "method": "POST",
+      "path": "/calendar-event-share",
+      "probe": "owner",
+      "request": {
+        "auth": "owner",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "VALIDATION_ERROR",
+            "fields": {
+              "calendarEventId": [
+                "calendarEventId must be positive"
+              ],
+              "userId": [
+                "userId must be positive"
+              ]
+            },
+            "message": "Validation failed"
+          },
+          "info": null,
+          "status": 422
+        },
+        "pretty": true,
+        "status": 422
+      },
+      "route": "/calendar-event-share",
+      "unit": "productivity"
+    },
+    {
+      "method": "DELETE",
+      "path": "/calendar-event-share/999999",
+      "probe": "no-token",
+      "request": {
+        "auth": "none",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Missing authorization token"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/calendar-event-share/{1}",
+      "unit": "productivity"
+    },
+    {
+      "method": "DELETE",
+      "path": "/calendar-event-share/999999",
+      "probe": "other-device",
+      "request": {
+        "auth": "owner",
+        "body": null,
+        "contentType": null,
+        "userAgent": "other"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Device mismatch"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/calendar-event-share/{1}",
+      "unit": "productivity"
+    },
+    {
+      "method": "DELETE",
+      "path": "/calendar-event-share/999999",
+      "probe": "role-resident",
+      "request": {
+        "auth": "resident",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "NOT_FOUND",
+            "message": "Share not found"
+          },
+          "info": null,
+          "status": 404
+        },
+        "pretty": true,
+        "status": 404
+      },
+      "route": "/calendar-event-share/{1}",
+      "unit": "productivity"
+    },
+    {
+      "method": "DELETE",
+      "path": "/calendar-event-share/999999",
+      "probe": "role-guest",
+      "request": {
+        "auth": "guest",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "FORBIDDEN",
+            "message": "Access denied"
+          },
+          "info": null,
+          "status": 403
+        },
+        "pretty": true,
+        "status": 403
+      },
+      "route": "/calendar-event-share/{1}",
+      "unit": "productivity"
+    },
+    {
+      "method": "DELETE",
+      "path": "/calendar-event-share/999999",
+      "probe": "owner",
+      "request": {
+        "auth": "owner",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "NOT_FOUND",
+            "message": "Share not found"
+          },
+          "info": null,
+          "status": 404
+        },
+        "pretty": true,
+        "status": 404
+      },
+      "route": "/calendar-event-share/{1}",
+      "unit": "productivity"
+    },
+    {
+      "method": "PATCH",
+      "path": "/calendar-event-share/999999",
+      "probe": "no-token",
+      "request": {
+        "auth": "none",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Missing authorization token"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/calendar-event-share/{1}",
+      "unit": "productivity"
+    },
+    {
+      "method": "PATCH",
+      "path": "/calendar-event-share/999999",
+      "probe": "bad-json",
+      "request": {
+        "auth": "none",
+        "body": "not-json",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "BAD_REQUEST",
+            "message": "Invalid JSON body"
+          },
+          "info": null,
+          "status": 400
+        },
+        "pretty": true,
+        "status": 400
+      },
+      "route": "/calendar-event-share/{1}",
+      "unit": "productivity"
+    },
+    {
+      "method": "PATCH",
+      "path": "/calendar-event-share/999999",
+      "probe": "other-device",
+      "request": {
+        "auth": "owner",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "other"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Device mismatch"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/calendar-event-share/{1}",
+      "unit": "productivity"
+    },
+    {
+      "method": "PATCH",
+      "path": "/calendar-event-share/999999",
+      "probe": "role-resident",
+      "request": {
+        "auth": "resident",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "VALIDATION_ERROR",
+            "fields": {
+              "access": [
+                "access must be one of the allowed values"
+              ]
+            },
+            "message": "Validation failed"
+          },
+          "info": null,
+          "status": 422
+        },
+        "pretty": true,
+        "status": 422
+      },
+      "route": "/calendar-event-share/{1}",
+      "unit": "productivity"
+    },
+    {
+      "method": "PATCH",
+      "path": "/calendar-event-share/999999",
+      "probe": "role-guest",
+      "request": {
+        "auth": "guest",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "FORBIDDEN",
+            "message": "Access denied"
+          },
+          "info": null,
+          "status": 403
+        },
+        "pretty": true,
+        "status": 403
+      },
+      "route": "/calendar-event-share/{1}",
+      "unit": "productivity"
+    },
+    {
+      "method": "PATCH",
+      "path": "/calendar-event-share/999999",
+      "probe": "owner",
+      "request": {
+        "auth": "owner",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "VALIDATION_ERROR",
+            "fields": {
+              "access": [
+                "access must be one of the allowed values"
+              ]
+            },
+            "message": "Validation failed"
+          },
+          "info": null,
+          "status": 422
+        },
+        "pretty": true,
+        "status": 422
+      },
+      "route": "/calendar-event-share/{1}",
+      "unit": "productivity"
+    },
+    {
+      "method": "DELETE",
+      "path": "/calendar-event/999999",
+      "probe": "no-token",
+      "request": {
+        "auth": "none",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Missing authorization token"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/calendar-event/{1}",
+      "unit": "productivity"
+    },
+    {
+      "method": "DELETE",
+      "path": "/calendar-event/999999",
+      "probe": "other-device",
+      "request": {
+        "auth": "owner",
+        "body": null,
+        "contentType": null,
+        "userAgent": "other"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Device mismatch"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/calendar-event/{1}",
+      "unit": "productivity"
+    },
+    {
+      "method": "DELETE",
+      "path": "/calendar-event/999999",
+      "probe": "role-resident",
+      "request": {
+        "auth": "resident",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "NOT_FOUND",
+            "message": "Calendar event not found"
+          },
+          "info": null,
+          "status": 404
+        },
+        "pretty": true,
+        "status": 404
+      },
+      "route": "/calendar-event/{1}",
+      "unit": "productivity"
+    },
+    {
+      "method": "DELETE",
+      "path": "/calendar-event/999999",
+      "probe": "role-guest",
+      "request": {
+        "auth": "guest",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "FORBIDDEN",
+            "message": "Access denied"
+          },
+          "info": null,
+          "status": 403
+        },
+        "pretty": true,
+        "status": 403
+      },
+      "route": "/calendar-event/{1}",
+      "unit": "productivity"
+    },
+    {
+      "method": "DELETE",
+      "path": "/calendar-event/999999",
+      "probe": "owner",
+      "request": {
+        "auth": "owner",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "NOT_FOUND",
+            "message": "Calendar event not found"
+          },
+          "info": null,
+          "status": 404
+        },
+        "pretty": true,
+        "status": 404
+      },
+      "route": "/calendar-event/{1}",
+      "unit": "productivity"
+    },
+    {
+      "method": "PATCH",
+      "path": "/calendar-event/1",
+      "probe": "no-token",
+      "request": {
+        "auth": "none",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Missing authorization token"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/calendar-event/{1}",
+      "unit": "productivity"
+    },
+    {
+      "method": "PATCH",
+      "path": "/calendar-event/1",
+      "probe": "bad-json",
+      "request": {
+        "auth": "none",
+        "body": "not-json",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "BAD_REQUEST",
+            "message": "Invalid JSON body"
+          },
+          "info": null,
+          "status": 400
+        },
+        "pretty": true,
+        "status": 400
+      },
+      "route": "/calendar-event/{1}",
+      "unit": "productivity"
+    },
+    {
+      "method": "PATCH",
+      "path": "/calendar-event/1",
+      "probe": "other-device",
+      "request": {
+        "auth": "owner",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "other"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Device mismatch"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/calendar-event/{1}",
+      "unit": "productivity"
+    },
+    {
+      "method": "PATCH",
+      "path": "/calendar-event/1",
+      "probe": "role-resident",
+      "request": {
+        "auth": "resident",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "NOT_FOUND",
+            "message": "Calendar event not found"
+          },
+          "info": null,
+          "status": 404
+        },
+        "pretty": true,
+        "status": 404
+      },
+      "route": "/calendar-event/{1}",
+      "unit": "productivity"
+    },
+    {
+      "method": "PATCH",
+      "path": "/calendar-event/1",
+      "probe": "role-guest",
+      "request": {
+        "auth": "guest",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "FORBIDDEN",
+            "message": "Access denied"
+          },
+          "info": null,
+          "status": 403
+        },
+        "pretty": true,
+        "status": 403
+      },
+      "route": "/calendar-event/{1}",
+      "unit": "productivity"
+    },
+    {
+      "method": "PATCH",
+      "path": "/calendar-event/1",
+      "probe": "owner",
+      "request": {
+        "auth": "owner",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": null,
+          "info": {
+            "color": "",
+            "createdAt": "<masked>",
+            "createdBy": 1,
+            "deletedAt": "<masked>",
+            "description": "Fixture row",
+            "endsAt": "<masked>",
+            "id": 1,
+            "isAllDay": false,
+            "location": "",
+            "ownerId": 1,
+            "projectId": null,
+            "recurrenceRule": null,
+            "startsAt": "<masked>",
+            "title": "Golden event",
+            "updatedAt": "<masked>"
+          },
+          "status": 200
+        },
+        "pretty": true,
+        "status": 200
+      },
+      "route": "/calendar-event/{1}",
+      "unit": "productivity"
+    },
+    {
+      "method": "PATCH",
+      "path": "/calendar-event/999999",
+      "probe": "owner-missing",
+      "request": {
+        "auth": "owner",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "NOT_FOUND",
+            "message": "Calendar event not found"
+          },
+          "info": null,
+          "status": 404
+        },
+        "pretty": true,
+        "status": 404
+      },
+      "route": "/calendar-event/{1}",
+      "unit": "productivity"
+    },
+    {
+      "method": "POST",
+      "path": "/project",
+      "probe": "no-token",
+      "request": {
+        "auth": "none",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Missing authorization token"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/project",
+      "unit": "productivity"
+    },
+    {
+      "method": "POST",
+      "path": "/project",
+      "probe": "bad-json",
+      "request": {
+        "auth": "none",
+        "body": "not-json",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "BAD_REQUEST",
+            "message": "Invalid JSON body"
+          },
+          "info": null,
+          "status": 400
+        },
+        "pretty": true,
+        "status": 400
+      },
+      "route": "/project",
+      "unit": "productivity"
+    },
+    {
+      "method": "POST",
+      "path": "/project",
+      "probe": "other-device",
+      "request": {
+        "auth": "owner",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "other"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Device mismatch"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/project",
+      "unit": "productivity"
+    },
+    {
+      "method": "POST",
+      "path": "/project",
+      "probe": "role-resident",
+      "request": {
+        "auth": "resident",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "VALIDATION_ERROR",
+            "fields": {
+              "name": [
+                "name must not be empty"
+              ]
+            },
+            "message": "Validation failed"
+          },
+          "info": null,
+          "status": 422
+        },
+        "pretty": true,
+        "status": 422
+      },
+      "route": "/project",
+      "unit": "productivity"
+    },
+    {
+      "method": "POST",
+      "path": "/project",
+      "probe": "role-guest",
+      "request": {
+        "auth": "guest",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "FORBIDDEN",
+            "message": "Access denied"
+          },
+          "info": null,
+          "status": 403
+        },
+        "pretty": true,
+        "status": 403
+      },
+      "route": "/project",
+      "unit": "productivity"
+    },
+    {
+      "method": "POST",
+      "path": "/project",
+      "probe": "owner",
+      "request": {
+        "auth": "owner",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "VALIDATION_ERROR",
+            "fields": {
+              "name": [
+                "name must not be empty"
+              ]
+            },
+            "message": "Validation failed"
+          },
+          "info": null,
+          "status": 422
+        },
+        "pretty": true,
+        "status": 422
+      },
+      "route": "/project",
+      "unit": "productivity"
+    },
+    {
+      "method": "POST",
+      "path": "/project-member",
+      "probe": "no-token",
+      "request": {
+        "auth": "none",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Missing authorization token"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/project-member",
+      "unit": "productivity"
+    },
+    {
+      "method": "POST",
+      "path": "/project-member",
+      "probe": "bad-json",
+      "request": {
+        "auth": "none",
+        "body": "not-json",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "BAD_REQUEST",
+            "message": "Invalid JSON body"
+          },
+          "info": null,
+          "status": 400
+        },
+        "pretty": true,
+        "status": 400
+      },
+      "route": "/project-member",
+      "unit": "productivity"
+    },
+    {
+      "method": "POST",
+      "path": "/project-member",
+      "probe": "other-device",
+      "request": {
+        "auth": "owner",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "other"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Device mismatch"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/project-member",
+      "unit": "productivity"
+    },
+    {
+      "method": "POST",
+      "path": "/project-member",
+      "probe": "role-resident",
+      "request": {
+        "auth": "resident",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "VALIDATION_ERROR",
+            "fields": {
+              "projectId": [
+                "projectId must be positive"
+              ],
+              "userId": [
+                "userId must be positive"
+              ]
+            },
+            "message": "Validation failed"
+          },
+          "info": null,
+          "status": 422
+        },
+        "pretty": true,
+        "status": 422
+      },
+      "route": "/project-member",
+      "unit": "productivity"
+    },
+    {
+      "method": "POST",
+      "path": "/project-member",
+      "probe": "role-guest",
+      "request": {
+        "auth": "guest",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "FORBIDDEN",
+            "message": "Access denied"
+          },
+          "info": null,
+          "status": 403
+        },
+        "pretty": true,
+        "status": 403
+      },
+      "route": "/project-member",
+      "unit": "productivity"
+    },
+    {
+      "method": "POST",
+      "path": "/project-member",
+      "probe": "owner",
+      "request": {
+        "auth": "owner",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "VALIDATION_ERROR",
+            "fields": {
+              "projectId": [
+                "projectId must be positive"
+              ],
+              "userId": [
+                "userId must be positive"
+              ]
+            },
+            "message": "Validation failed"
+          },
+          "info": null,
+          "status": 422
+        },
+        "pretty": true,
+        "status": 422
+      },
+      "route": "/project-member",
+      "unit": "productivity"
+    },
+    {
+      "method": "DELETE",
+      "path": "/project-member/999999",
+      "probe": "no-token",
+      "request": {
+        "auth": "none",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Missing authorization token"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/project-member/{1}",
+      "unit": "productivity"
+    },
+    {
+      "method": "DELETE",
+      "path": "/project-member/999999",
+      "probe": "other-device",
+      "request": {
+        "auth": "owner",
+        "body": null,
+        "contentType": null,
+        "userAgent": "other"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Device mismatch"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/project-member/{1}",
+      "unit": "productivity"
+    },
+    {
+      "method": "DELETE",
+      "path": "/project-member/999999",
+      "probe": "role-resident",
+      "request": {
+        "auth": "resident",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "NOT_FOUND",
+            "message": "Share not found"
+          },
+          "info": null,
+          "status": 404
+        },
+        "pretty": true,
+        "status": 404
+      },
+      "route": "/project-member/{1}",
+      "unit": "productivity"
+    },
+    {
+      "method": "DELETE",
+      "path": "/project-member/999999",
+      "probe": "role-guest",
+      "request": {
+        "auth": "guest",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "FORBIDDEN",
+            "message": "Access denied"
+          },
+          "info": null,
+          "status": 403
+        },
+        "pretty": true,
+        "status": 403
+      },
+      "route": "/project-member/{1}",
+      "unit": "productivity"
+    },
+    {
+      "method": "DELETE",
+      "path": "/project-member/999999",
+      "probe": "owner",
+      "request": {
+        "auth": "owner",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "NOT_FOUND",
+            "message": "Share not found"
+          },
+          "info": null,
+          "status": 404
+        },
+        "pretty": true,
+        "status": 404
+      },
+      "route": "/project-member/{1}",
+      "unit": "productivity"
+    },
+    {
+      "method": "PATCH",
+      "path": "/project-member/1",
+      "probe": "no-token",
+      "request": {
+        "auth": "none",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Missing authorization token"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/project-member/{1}",
+      "unit": "productivity"
+    },
+    {
+      "method": "PATCH",
+      "path": "/project-member/1",
+      "probe": "bad-json",
+      "request": {
+        "auth": "none",
+        "body": "not-json",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "BAD_REQUEST",
+            "message": "Invalid JSON body"
+          },
+          "info": null,
+          "status": 400
+        },
+        "pretty": true,
+        "status": 400
+      },
+      "route": "/project-member/{1}",
+      "unit": "productivity"
+    },
+    {
+      "method": "PATCH",
+      "path": "/project-member/1",
+      "probe": "other-device",
+      "request": {
+        "auth": "owner",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "other"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Device mismatch"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/project-member/{1}",
+      "unit": "productivity"
+    },
+    {
+      "method": "PATCH",
+      "path": "/project-member/1",
+      "probe": "role-resident",
+      "request": {
+        "auth": "resident",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "VALIDATION_ERROR",
+            "fields": {
+              "access": [
+                "access must be one of the allowed values"
+              ]
+            },
+            "message": "Validation failed"
+          },
+          "info": null,
+          "status": 422
+        },
+        "pretty": true,
+        "status": 422
+      },
+      "route": "/project-member/{1}",
+      "unit": "productivity"
+    },
+    {
+      "method": "PATCH",
+      "path": "/project-member/1",
+      "probe": "role-guest",
+      "request": {
+        "auth": "guest",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "FORBIDDEN",
+            "message": "Access denied"
+          },
+          "info": null,
+          "status": 403
+        },
+        "pretty": true,
+        "status": 403
+      },
+      "route": "/project-member/{1}",
+      "unit": "productivity"
+    },
+    {
+      "method": "PATCH",
+      "path": "/project-member/1",
+      "probe": "owner",
+      "request": {
+        "auth": "owner",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "VALIDATION_ERROR",
+            "fields": {
+              "access": [
+                "access must be one of the allowed values"
+              ]
+            },
+            "message": "Validation failed"
+          },
+          "info": null,
+          "status": 422
+        },
+        "pretty": true,
+        "status": 422
+      },
+      "route": "/project-member/{1}",
+      "unit": "productivity"
+    },
+    {
+      "method": "PATCH",
+      "path": "/project-member/999999",
+      "probe": "owner-missing",
+      "request": {
+        "auth": "owner",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "VALIDATION_ERROR",
+            "fields": {
+              "access": [
+                "access must be one of the allowed values"
+              ]
+            },
+            "message": "Validation failed"
+          },
+          "info": null,
+          "status": 422
+        },
+        "pretty": true,
+        "status": 422
+      },
+      "route": "/project-member/{1}",
+      "unit": "productivity"
+    },
+    {
+      "method": "POST",
+      "path": "/project-task",
+      "probe": "no-token",
+      "request": {
+        "auth": "none",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Missing authorization token"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/project-task",
+      "unit": "productivity"
+    },
+    {
+      "method": "POST",
+      "path": "/project-task",
+      "probe": "bad-json",
+      "request": {
+        "auth": "none",
+        "body": "not-json",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "BAD_REQUEST",
+            "message": "Invalid JSON body"
+          },
+          "info": null,
+          "status": 400
+        },
+        "pretty": true,
+        "status": 400
+      },
+      "route": "/project-task",
+      "unit": "productivity"
+    },
+    {
+      "method": "POST",
+      "path": "/project-task",
+      "probe": "other-device",
+      "request": {
+        "auth": "owner",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "other"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Device mismatch"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/project-task",
+      "unit": "productivity"
+    },
+    {
+      "method": "POST",
+      "path": "/project-task",
+      "probe": "role-resident",
+      "request": {
+        "auth": "resident",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "VALIDATION_ERROR",
+            "fields": {
+              "projectId": [
+                "projectId must be positive"
+              ],
+              "title": [
+                "title must not be empty"
+              ]
+            },
+            "message": "Validation failed"
+          },
+          "info": null,
+          "status": 422
+        },
+        "pretty": true,
+        "status": 422
+      },
+      "route": "/project-task",
+      "unit": "productivity"
+    },
+    {
+      "method": "POST",
+      "path": "/project-task",
+      "probe": "role-guest",
+      "request": {
+        "auth": "guest",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "FORBIDDEN",
+            "message": "Access denied"
+          },
+          "info": null,
+          "status": 403
+        },
+        "pretty": true,
+        "status": 403
+      },
+      "route": "/project-task",
+      "unit": "productivity"
+    },
+    {
+      "method": "POST",
+      "path": "/project-task",
+      "probe": "owner",
+      "request": {
+        "auth": "owner",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "VALIDATION_ERROR",
+            "fields": {
+              "projectId": [
+                "projectId must be positive"
+              ],
+              "title": [
+                "title must not be empty"
+              ]
+            },
+            "message": "Validation failed"
+          },
+          "info": null,
+          "status": 422
+        },
+        "pretty": true,
+        "status": 422
+      },
+      "route": "/project-task",
+      "unit": "productivity"
+    },
+    {
+      "method": "DELETE",
+      "path": "/project-task/999999",
+      "probe": "no-token",
+      "request": {
+        "auth": "none",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Missing authorization token"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/project-task/{1}",
+      "unit": "productivity"
+    },
+    {
+      "method": "DELETE",
+      "path": "/project-task/999999",
+      "probe": "other-device",
+      "request": {
+        "auth": "owner",
+        "body": null,
+        "contentType": null,
+        "userAgent": "other"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Device mismatch"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/project-task/{1}",
+      "unit": "productivity"
+    },
+    {
+      "method": "DELETE",
+      "path": "/project-task/999999",
+      "probe": "role-resident",
+      "request": {
+        "auth": "resident",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "NOT_FOUND",
+            "message": "Task not found"
+          },
+          "info": null,
+          "status": 404
+        },
+        "pretty": true,
+        "status": 404
+      },
+      "route": "/project-task/{1}",
+      "unit": "productivity"
+    },
+    {
+      "method": "DELETE",
+      "path": "/project-task/999999",
+      "probe": "role-guest",
+      "request": {
+        "auth": "guest",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "FORBIDDEN",
+            "message": "Access denied"
+          },
+          "info": null,
+          "status": 403
+        },
+        "pretty": true,
+        "status": 403
+      },
+      "route": "/project-task/{1}",
+      "unit": "productivity"
+    },
+    {
+      "method": "DELETE",
+      "path": "/project-task/999999",
+      "probe": "owner",
+      "request": {
+        "auth": "owner",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "NOT_FOUND",
+            "message": "Task not found"
+          },
+          "info": null,
+          "status": 404
+        },
+        "pretty": true,
+        "status": 404
+      },
+      "route": "/project-task/{1}",
+      "unit": "productivity"
+    },
+    {
+      "method": "PATCH",
+      "path": "/project-task/1",
+      "probe": "no-token",
+      "request": {
+        "auth": "none",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Missing authorization token"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/project-task/{1}",
+      "unit": "productivity"
+    },
+    {
+      "method": "PATCH",
+      "path": "/project-task/1",
+      "probe": "bad-json",
+      "request": {
+        "auth": "none",
+        "body": "not-json",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "BAD_REQUEST",
+            "message": "Invalid JSON body"
+          },
+          "info": null,
+          "status": 400
+        },
+        "pretty": true,
+        "status": 400
+      },
+      "route": "/project-task/{1}",
+      "unit": "productivity"
+    },
+    {
+      "method": "PATCH",
+      "path": "/project-task/1",
+      "probe": "other-device",
+      "request": {
+        "auth": "owner",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "other"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Device mismatch"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/project-task/{1}",
+      "unit": "productivity"
+    },
+    {
+      "method": "PATCH",
+      "path": "/project-task/1",
+      "probe": "role-resident",
+      "request": {
+        "auth": "resident",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "NOT_FOUND",
+            "message": "Task not found"
+          },
+          "info": null,
+          "status": 404
+        },
+        "pretty": true,
+        "status": 404
+      },
+      "route": "/project-task/{1}",
+      "unit": "productivity"
+    },
+    {
+      "method": "PATCH",
+      "path": "/project-task/1",
+      "probe": "role-guest",
+      "request": {
+        "auth": "guest",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "FORBIDDEN",
+            "message": "Access denied"
+          },
+          "info": null,
+          "status": 403
+        },
+        "pretty": true,
+        "status": 403
+      },
+      "route": "/project-task/{1}",
+      "unit": "productivity"
+    },
+    {
+      "method": "PATCH",
+      "path": "/project-task/1",
+      "probe": "owner",
+      "request": {
+        "auth": "owner",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": null,
+          "info": {
+            "assigneeId": 1,
+            "createdAt": "<masked>",
+            "createdBy": 1,
+            "deletedAt": "<masked>",
+            "dueAt": "<masked>",
+            "id": 1,
+            "priority": "low",
+            "projectId": 1,
+            "sortOrder": 0.0,
+            "status": "todo",
+            "title": "Golden task",
+            "updatedAt": "<masked>"
+          },
+          "status": 200
+        },
+        "pretty": true,
+        "status": 200
+      },
+      "route": "/project-task/{1}",
+      "unit": "productivity"
+    },
+    {
+      "method": "PATCH",
+      "path": "/project-task/999999",
+      "probe": "owner-missing",
+      "request": {
+        "auth": "owner",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "NOT_FOUND",
+            "message": "Task not found"
+          },
+          "info": null,
+          "status": 404
+        },
+        "pretty": true,
+        "status": 404
+      },
+      "route": "/project-task/{1}",
+      "unit": "productivity"
+    },
+    {
+      "method": "DELETE",
+      "path": "/project/999999",
+      "probe": "no-token",
+      "request": {
+        "auth": "none",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Missing authorization token"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/project/{1}",
+      "unit": "productivity"
+    },
+    {
+      "method": "DELETE",
+      "path": "/project/999999",
+      "probe": "other-device",
+      "request": {
+        "auth": "owner",
+        "body": null,
+        "contentType": null,
+        "userAgent": "other"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Device mismatch"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/project/{1}",
+      "unit": "productivity"
+    },
+    {
+      "method": "DELETE",
+      "path": "/project/999999",
+      "probe": "role-resident",
+      "request": {
+        "auth": "resident",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "NOT_FOUND",
+            "message": "Project not found"
+          },
+          "info": null,
+          "status": 404
+        },
+        "pretty": true,
+        "status": 404
+      },
+      "route": "/project/{1}",
+      "unit": "productivity"
+    },
+    {
+      "method": "DELETE",
+      "path": "/project/999999",
+      "probe": "role-guest",
+      "request": {
+        "auth": "guest",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "FORBIDDEN",
+            "message": "Access denied"
+          },
+          "info": null,
+          "status": 403
+        },
+        "pretty": true,
+        "status": 403
+      },
+      "route": "/project/{1}",
+      "unit": "productivity"
+    },
+    {
+      "method": "DELETE",
+      "path": "/project/999999",
+      "probe": "owner",
+      "request": {
+        "auth": "owner",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "NOT_FOUND",
+            "message": "Project not found"
+          },
+          "info": null,
+          "status": 404
+        },
+        "pretty": true,
+        "status": 404
+      },
+      "route": "/project/{1}",
+      "unit": "productivity"
+    },
+    {
+      "method": "PATCH",
+      "path": "/project/1",
+      "probe": "no-token",
+      "request": {
+        "auth": "none",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Missing authorization token"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/project/{1}",
+      "unit": "productivity"
+    },
+    {
+      "method": "PATCH",
+      "path": "/project/1",
+      "probe": "bad-json",
+      "request": {
+        "auth": "none",
+        "body": "not-json",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "BAD_REQUEST",
+            "message": "Invalid JSON body"
+          },
+          "info": null,
+          "status": 400
+        },
+        "pretty": true,
+        "status": 400
+      },
+      "route": "/project/{1}",
+      "unit": "productivity"
+    },
+    {
+      "method": "PATCH",
+      "path": "/project/1",
+      "probe": "other-device",
+      "request": {
+        "auth": "owner",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "other"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Device mismatch"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/project/{1}",
+      "unit": "productivity"
+    },
+    {
+      "method": "PATCH",
+      "path": "/project/1",
+      "probe": "role-resident",
+      "request": {
+        "auth": "resident",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "NOT_FOUND",
+            "message": "Project not found"
+          },
+          "info": null,
+          "status": 404
+        },
+        "pretty": true,
+        "status": 404
+      },
+      "route": "/project/{1}",
+      "unit": "productivity"
+    },
+    {
+      "method": "PATCH",
+      "path": "/project/1",
+      "probe": "role-guest",
+      "request": {
+        "auth": "guest",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "FORBIDDEN",
+            "message": "Access denied"
+          },
+          "info": null,
+          "status": 403
+        },
+        "pretty": true,
+        "status": 403
+      },
+      "route": "/project/{1}",
+      "unit": "productivity"
+    },
+    {
+      "method": "PATCH",
+      "path": "/project/1",
+      "probe": "owner",
+      "request": {
+        "auth": "owner",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": null,
+          "info": {
+            "color": "",
+            "createdAt": "<masked>",
+            "deletedAt": "<masked>",
+            "description": "Fixture row",
+            "id": 1,
+            "name": "Golden project",
+            "ownerId": 1,
+            "startsAt": "<masked>",
+            "status": "active",
+            "targetAt": "<masked>",
+            "updatedAt": "<masked>"
+          },
+          "status": 200
+        },
+        "pretty": true,
+        "status": 200
+      },
+      "route": "/project/{1}",
+      "unit": "productivity"
+    },
+    {
+      "method": "PATCH",
+      "path": "/project/999999",
+      "probe": "owner-missing",
+      "request": {
+        "auth": "owner",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "NOT_FOUND",
+            "message": "Project not found"
+          },
+          "info": null,
+          "status": 404
+        },
+        "pretty": true,
+        "status": 404
+      },
+      "route": "/project/{1}",
+      "unit": "productivity"
+    }
+  ],
+  "unit": "productivity"
+}

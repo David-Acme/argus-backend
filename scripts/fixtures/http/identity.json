@@ -1,0 +1,1326 @@
+{
+  "probes": [
+    {
+      "method": "GET",
+      "path": "/invitation",
+      "probe": "no-token",
+      "request": {
+        "auth": "none",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Missing authorization token"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/invitation",
+      "unit": "identity"
+    },
+    {
+      "method": "GET",
+      "path": "/invitation",
+      "probe": "other-device",
+      "request": {
+        "auth": "owner",
+        "body": null,
+        "contentType": null,
+        "userAgent": "other"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Device mismatch"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/invitation",
+      "unit": "identity"
+    },
+    {
+      "method": "GET",
+      "path": "/invitation",
+      "probe": "role-resident",
+      "request": {
+        "auth": "resident",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "FORBIDDEN",
+            "message": "Access denied"
+          },
+          "info": null,
+          "status": 403
+        },
+        "pretty": true,
+        "status": 403
+      },
+      "route": "/invitation",
+      "unit": "identity"
+    },
+    {
+      "method": "GET",
+      "path": "/invitation",
+      "probe": "role-guest",
+      "request": {
+        "auth": "guest",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "FORBIDDEN",
+            "message": "Access denied"
+          },
+          "info": null,
+          "status": 403
+        },
+        "pretty": true,
+        "status": 403
+      },
+      "route": "/invitation",
+      "unit": "identity"
+    },
+    {
+      "method": "GET",
+      "path": "/invitation",
+      "probe": "owner",
+      "request": {
+        "auth": "owner",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": null,
+          "info": [],
+          "status": 200
+        },
+        "pretty": true,
+        "status": 200
+      },
+      "route": "/invitation",
+      "unit": "identity"
+    },
+    {
+      "method": "POST",
+      "path": "/invitation",
+      "probe": "no-token",
+      "request": {
+        "auth": "none",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Missing authorization token"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/invitation",
+      "unit": "identity"
+    },
+    {
+      "method": "POST",
+      "path": "/invitation",
+      "probe": "bad-json",
+      "request": {
+        "auth": "none",
+        "body": "not-json",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "BAD_REQUEST",
+            "message": "Invalid JSON body"
+          },
+          "info": null,
+          "status": 400
+        },
+        "pretty": true,
+        "status": 400
+      },
+      "route": "/invitation",
+      "unit": "identity"
+    },
+    {
+      "method": "POST",
+      "path": "/invitation",
+      "probe": "other-device",
+      "request": {
+        "auth": "owner",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "other"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Device mismatch"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/invitation",
+      "unit": "identity"
+    },
+    {
+      "method": "POST",
+      "path": "/invitation",
+      "probe": "role-resident",
+      "request": {
+        "auth": "resident",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "FORBIDDEN",
+            "message": "Access denied"
+          },
+          "info": null,
+          "status": 403
+        },
+        "pretty": true,
+        "status": 403
+      },
+      "route": "/invitation",
+      "unit": "identity"
+    },
+    {
+      "method": "POST",
+      "path": "/invitation",
+      "probe": "role-guest",
+      "request": {
+        "auth": "guest",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "FORBIDDEN",
+            "message": "Access denied"
+          },
+          "info": null,
+          "status": 403
+        },
+        "pretty": true,
+        "status": 403
+      },
+      "route": "/invitation",
+      "unit": "identity"
+    },
+    {
+      "method": "POST",
+      "path": "/invitation",
+      "probe": "owner",
+      "request": {
+        "auth": "owner",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "VALIDATION_ERROR",
+            "fields": {
+              "expiresAt": [
+                "expiresAt must be in the future"
+              ]
+            },
+            "message": "Validation failed"
+          },
+          "info": null,
+          "status": 422
+        },
+        "pretty": true,
+        "status": 422
+      },
+      "route": "/invitation",
+      "unit": "identity"
+    },
+    {
+      "method": "POST",
+      "path": "/invitation/resolve",
+      "probe": "bad-json",
+      "request": {
+        "auth": "none",
+        "body": "not-json",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "BAD_REQUEST",
+            "message": "Invalid JSON body"
+          },
+          "info": null,
+          "status": 400
+        },
+        "pretty": true,
+        "status": 400
+      },
+      "route": "/invitation/resolve",
+      "unit": "identity"
+    },
+    {
+      "method": "POST",
+      "path": "/invitation/resolve",
+      "probe": "plain",
+      "request": {
+        "auth": "none",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "VALIDATION_ERROR",
+            "fields": {
+              "token": [
+                "token must not be empty",
+                "token must be at least 32 characters"
+              ]
+            },
+            "message": "Validation failed"
+          },
+          "info": null,
+          "status": 422
+        },
+        "pretty": true,
+        "status": 422
+      },
+      "route": "/invitation/resolve",
+      "unit": "identity"
+    },
+    {
+      "method": "DELETE",
+      "path": "/invitation/999999",
+      "probe": "no-token",
+      "request": {
+        "auth": "none",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Missing authorization token"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/invitation/{1}",
+      "unit": "identity"
+    },
+    {
+      "method": "DELETE",
+      "path": "/invitation/999999",
+      "probe": "other-device",
+      "request": {
+        "auth": "owner",
+        "body": null,
+        "contentType": null,
+        "userAgent": "other"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Device mismatch"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/invitation/{1}",
+      "unit": "identity"
+    },
+    {
+      "method": "DELETE",
+      "path": "/invitation/999999",
+      "probe": "role-resident",
+      "request": {
+        "auth": "resident",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "FORBIDDEN",
+            "message": "Access denied"
+          },
+          "info": null,
+          "status": 403
+        },
+        "pretty": true,
+        "status": 403
+      },
+      "route": "/invitation/{1}",
+      "unit": "identity"
+    },
+    {
+      "method": "DELETE",
+      "path": "/invitation/999999",
+      "probe": "role-guest",
+      "request": {
+        "auth": "guest",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "FORBIDDEN",
+            "message": "Access denied"
+          },
+          "info": null,
+          "status": 403
+        },
+        "pretty": true,
+        "status": 403
+      },
+      "route": "/invitation/{1}",
+      "unit": "identity"
+    },
+    {
+      "method": "DELETE",
+      "path": "/invitation/999999",
+      "probe": "owner",
+      "request": {
+        "auth": "owner",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "NOT_FOUND",
+            "message": "Invitation not found"
+          },
+          "info": null,
+          "status": 404
+        },
+        "pretty": true,
+        "status": 404
+      },
+      "route": "/invitation/{1}",
+      "unit": "identity"
+    },
+    {
+      "method": "POST",
+      "path": "/pairing",
+      "probe": "bad-json",
+      "request": {
+        "auth": "none",
+        "body": "not-json",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "BAD_REQUEST",
+            "message": "Invalid JSON body"
+          },
+          "info": null,
+          "status": 400
+        },
+        "pretty": true,
+        "status": 400
+      },
+      "route": "/pairing",
+      "unit": "identity"
+    },
+    {
+      "method": "POST",
+      "path": "/pairing",
+      "probe": "plain",
+      "request": {
+        "auth": "none",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "VALIDATION_ERROR",
+            "fields": {
+              "code": [
+                "code must not be empty",
+                "code must be at least 6 characters"
+              ]
+            },
+            "message": "Validation failed"
+          },
+          "info": null,
+          "status": 422
+        },
+        "pretty": true,
+        "status": 422
+      },
+      "route": "/pairing",
+      "unit": "identity"
+    },
+    {
+      "method": "GET",
+      "path": "/portrait-preview/1",
+      "probe": "no-token",
+      "request": {
+        "auth": "none",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Missing authorization token"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/portrait-preview/{1}",
+      "unit": "identity"
+    },
+    {
+      "method": "GET",
+      "path": "/portrait-preview/1",
+      "probe": "other-device",
+      "request": {
+        "auth": "owner",
+        "body": null,
+        "contentType": null,
+        "userAgent": "other"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Device mismatch"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/portrait-preview/{1}",
+      "unit": "identity"
+    },
+    {
+      "method": "GET",
+      "path": "/portrait-preview/1",
+      "probe": "role-resident",
+      "request": {
+        "auth": "resident",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "FORBIDDEN",
+            "message": "Portrait verification is not available"
+          },
+          "info": null,
+          "status": 403
+        },
+        "pretty": true,
+        "status": 403
+      },
+      "route": "/portrait-preview/{1}",
+      "unit": "identity"
+    },
+    {
+      "method": "GET",
+      "path": "/portrait-preview/1",
+      "probe": "role-guest",
+      "request": {
+        "auth": "guest",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "FORBIDDEN",
+            "message": "Portrait verification is not available"
+          },
+          "info": null,
+          "status": 403
+        },
+        "pretty": true,
+        "status": 403
+      },
+      "route": "/portrait-preview/{1}",
+      "unit": "identity"
+    },
+    {
+      "method": "GET",
+      "path": "/portrait-preview/1",
+      "probe": "owner",
+      "request": {
+        "auth": "owner",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "NOT_FOUND",
+            "message": "Portrait is unavailable"
+          },
+          "info": null,
+          "status": 404
+        },
+        "pretty": true,
+        "status": 404
+      },
+      "route": "/portrait-preview/{1}",
+      "unit": "identity"
+    },
+    {
+      "method": "GET",
+      "path": "/portrait-preview/999999",
+      "probe": "owner-missing",
+      "request": {
+        "auth": "owner",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "NOT_FOUND",
+            "message": "User not found"
+          },
+          "info": null,
+          "status": 404
+        },
+        "pretty": true,
+        "status": 404
+      },
+      "route": "/portrait-preview/{1}",
+      "unit": "identity"
+    },
+    {
+      "method": "GET",
+      "path": "/portrait-preview/argus-golden-missing-capability/content",
+      "probe": "no-token",
+      "request": {
+        "auth": "none",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Missing authorization token"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/portrait-preview/{1}/content",
+      "unit": "identity"
+    },
+    {
+      "method": "GET",
+      "path": "/portrait-preview/argus-golden-missing-capability/content",
+      "probe": "other-device",
+      "request": {
+        "auth": "owner",
+        "body": null,
+        "contentType": null,
+        "userAgent": "other"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Device mismatch"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/portrait-preview/{1}/content",
+      "unit": "identity"
+    },
+    {
+      "method": "GET",
+      "path": "/portrait-preview/argus-golden-missing-capability/content",
+      "probe": "role-resident",
+      "request": {
+        "auth": "resident",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "FORBIDDEN",
+            "message": "Portrait verification is not available"
+          },
+          "info": null,
+          "status": 403
+        },
+        "pretty": true,
+        "status": 403
+      },
+      "route": "/portrait-preview/{1}/content",
+      "unit": "identity"
+    },
+    {
+      "method": "GET",
+      "path": "/portrait-preview/argus-golden-missing-capability/content",
+      "probe": "role-guest",
+      "request": {
+        "auth": "guest",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "FORBIDDEN",
+            "message": "Portrait verification is not available"
+          },
+          "info": null,
+          "status": 403
+        },
+        "pretty": true,
+        "status": 403
+      },
+      "route": "/portrait-preview/{1}/content",
+      "unit": "identity"
+    },
+    {
+      "method": "GET",
+      "path": "/portrait-preview/argus-golden-missing-capability/content",
+      "probe": "owner",
+      "request": {
+        "auth": "owner",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "NOT_FOUND",
+            "message": "Portrait preview is unavailable"
+          },
+          "info": null,
+          "status": 404
+        },
+        "pretty": true,
+        "status": 404
+      },
+      "route": "/portrait-preview/{1}/content",
+      "unit": "identity"
+    },
+    {
+      "method": "GET",
+      "path": "/portrait-preview/999999/content",
+      "probe": "owner-missing",
+      "request": {
+        "auth": "owner",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "NOT_FOUND",
+            "message": "Portrait preview is unavailable"
+          },
+          "info": null,
+          "status": 404
+        },
+        "pretty": true,
+        "status": 404
+      },
+      "route": "/portrait-preview/{1}/content",
+      "unit": "identity"
+    },
+    {
+      "method": "GET",
+      "path": "/user",
+      "probe": "no-token",
+      "request": {
+        "auth": "none",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Missing authorization token"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/user",
+      "unit": "identity"
+    },
+    {
+      "method": "GET",
+      "path": "/user",
+      "probe": "other-device",
+      "request": {
+        "auth": "owner",
+        "body": null,
+        "contentType": null,
+        "userAgent": "other"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Device mismatch"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/user",
+      "unit": "identity"
+    },
+    {
+      "method": "GET",
+      "path": "/user",
+      "probe": "role-resident",
+      "request": {
+        "auth": "resident",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": null,
+          "info": [
+            {
+              "createdAt": "<masked>",
+              "deletedAt": "<masked>",
+              "id": 2,
+              "isActive": true,
+              "lang": "en",
+              "lastName": "Resident",
+              "name": "Golden",
+              "role": "resident",
+              "syncAt": "<masked>",
+              "updatedAt": "<masked>"
+            }
+          ],
+          "status": 200
+        },
+        "pretty": true,
+        "status": 200
+      },
+      "route": "/user",
+      "unit": "identity"
+    },
+    {
+      "method": "GET",
+      "path": "/user",
+      "probe": "role-guest",
+      "request": {
+        "auth": "guest",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": null,
+          "info": [
+            {
+              "createdAt": "<masked>",
+              "deletedAt": "<masked>",
+              "id": 3,
+              "isActive": true,
+              "lang": "en",
+              "lastName": "Guest",
+              "name": "Golden",
+              "role": "guest",
+              "syncAt": "<masked>",
+              "updatedAt": "<masked>"
+            }
+          ],
+          "status": 200
+        },
+        "pretty": true,
+        "status": 200
+      },
+      "route": "/user",
+      "unit": "identity"
+    },
+    {
+      "method": "GET",
+      "path": "/user",
+      "probe": "owner",
+      "request": {
+        "auth": "owner",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": null,
+          "info": [
+            {
+              "createdAt": "<masked>",
+              "deletedAt": "<masked>",
+              "id": 1,
+              "isActive": true,
+              "lang": "en",
+              "lastName": "Recorder",
+              "name": "Golden",
+              "role": "owner",
+              "syncAt": "<masked>",
+              "updatedAt": "<masked>"
+            },
+            {
+              "createdAt": "<masked>",
+              "deletedAt": "<masked>",
+              "id": 2,
+              "isActive": true,
+              "lang": "en",
+              "lastName": "Resident",
+              "name": "Golden",
+              "role": "resident",
+              "syncAt": "<masked>",
+              "updatedAt": "<masked>"
+            },
+            {
+              "createdAt": "<masked>",
+              "deletedAt": "<masked>",
+              "id": 3,
+              "isActive": true,
+              "lang": "en",
+              "lastName": "Guest",
+              "name": "Golden",
+              "role": "guest",
+              "syncAt": "<masked>",
+              "updatedAt": "<masked>"
+            }
+          ],
+          "status": 200
+        },
+        "pretty": true,
+        "status": 200
+      },
+      "route": "/user",
+      "unit": "identity"
+    },
+    {
+      "method": "DELETE",
+      "path": "/user/999999",
+      "probe": "no-token",
+      "request": {
+        "auth": "none",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Missing authorization token"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/user/{1}",
+      "unit": "identity"
+    },
+    {
+      "method": "DELETE",
+      "path": "/user/999999",
+      "probe": "other-device",
+      "request": {
+        "auth": "owner",
+        "body": null,
+        "contentType": null,
+        "userAgent": "other"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Device mismatch"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/user/{1}",
+      "unit": "identity"
+    },
+    {
+      "method": "DELETE",
+      "path": "/user/999999",
+      "probe": "role-resident",
+      "request": {
+        "auth": "resident",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "FORBIDDEN",
+            "message": "Access denied"
+          },
+          "info": null,
+          "status": 403
+        },
+        "pretty": true,
+        "status": 403
+      },
+      "route": "/user/{1}",
+      "unit": "identity"
+    },
+    {
+      "method": "DELETE",
+      "path": "/user/999999",
+      "probe": "role-guest",
+      "request": {
+        "auth": "guest",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "FORBIDDEN",
+            "message": "Access denied"
+          },
+          "info": null,
+          "status": 403
+        },
+        "pretty": true,
+        "status": 403
+      },
+      "route": "/user/{1}",
+      "unit": "identity"
+    },
+    {
+      "method": "DELETE",
+      "path": "/user/999999",
+      "probe": "owner",
+      "request": {
+        "auth": "owner",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "NOT_FOUND",
+            "message": "User not found"
+          },
+          "info": null,
+          "status": 404
+        },
+        "pretty": true,
+        "status": 404
+      },
+      "route": "/user/{1}",
+      "unit": "identity"
+    },
+    {
+      "method": "PATCH",
+      "path": "/user/999999",
+      "probe": "no-token",
+      "request": {
+        "auth": "none",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Missing authorization token"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/user/{1}",
+      "unit": "identity"
+    },
+    {
+      "method": "PATCH",
+      "path": "/user/999999",
+      "probe": "bad-json",
+      "request": {
+        "auth": "none",
+        "body": "not-json",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "BAD_REQUEST",
+            "message": "Invalid JSON body"
+          },
+          "info": null,
+          "status": 400
+        },
+        "pretty": true,
+        "status": 400
+      },
+      "route": "/user/{1}",
+      "unit": "identity"
+    },
+    {
+      "method": "PATCH",
+      "path": "/user/999999",
+      "probe": "other-device",
+      "request": {
+        "auth": "owner",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "other"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Device mismatch"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/user/{1}",
+      "unit": "identity"
+    },
+    {
+      "method": "PATCH",
+      "path": "/user/999999",
+      "probe": "role-resident",
+      "request": {
+        "auth": "resident",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "FORBIDDEN",
+            "message": "Access denied"
+          },
+          "info": null,
+          "status": 403
+        },
+        "pretty": true,
+        "status": 403
+      },
+      "route": "/user/{1}",
+      "unit": "identity"
+    },
+    {
+      "method": "PATCH",
+      "path": "/user/999999",
+      "probe": "role-guest",
+      "request": {
+        "auth": "guest",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "FORBIDDEN",
+            "message": "Access denied"
+          },
+          "info": null,
+          "status": 403
+        },
+        "pretty": true,
+        "status": 403
+      },
+      "route": "/user/{1}",
+      "unit": "identity"
+    },
+    {
+      "method": "PATCH",
+      "path": "/user/999999",
+      "probe": "owner",
+      "request": {
+        "auth": "owner",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "VALIDATION_ERROR",
+            "fields": {
+              "body": [
+                "at least one editable field is required"
+              ]
+            },
+            "message": "Validation failed"
+          },
+          "info": null,
+          "status": 422
+        },
+        "pretty": true,
+        "status": 422
+      },
+      "route": "/user/{1}",
+      "unit": "identity"
+    }
+  ],
+  "unit": "identity"
+}

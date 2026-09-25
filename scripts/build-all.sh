@@ -82,6 +82,9 @@ fi
 log "=== dependencies (section 2.4) ==="
 "$ROOT/scripts/check-deps.sh"
 
+log "=== routes ==="
+"$ROOT/scripts/check-routes.sh"
+
 CONAN_OUT="$ROOT/build/$PROFILE"
 GENERATORS="$CONAN_OUT/build/$BUILD_TYPE/generators"
 

@@ -30,7 +30,8 @@ FIRST_PARTY_UNDER_EXCLUDED = {"third_party/.gitignore", "third_party/sqlite-vec/
 EXCLUDED_PARTS = ("/tests/fixtures/",)
 NOT_CODE_SUFFIXES = {".md", ".tsv", ".bin", ".sha256", ".png", ".jpg"}
 NOT_CODE_NAMES = {"LICENSE", "NOTICE"}
-HASH_NAMES = {".gitignore", ".dockerignore", "conanfile.txt", "tidy-baseline.txt"}
+HASH_NAMES = {".gitignore", ".dockerignore", "conanfile.txt",
+              "tidy-baseline.txt", "route-baseline.txt"}
 
 OPENERS = {
     "cpp": ("{", "(", "["),

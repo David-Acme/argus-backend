@@ -5,8 +5,12 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$ROOT/scripts/lib/common.sh"
 
 STACK_DIR="${ARGUS_STACK_DIR:-$ROOT/build/native-stack}"
+case "$STACK_DIR" in
+  /*) ;;
+  *) STACK_DIR="$ROOT/$STACK_DIR" ;;
+esac
 PROFILE="${ARGUS_STACK_PROFILE:-dev}"
-SERVICES=(identity auth camera productivity notification sync)
+SERVICES=(identity auth camera productivity notification sync guard)
 declare -A SECTION=(
   [identity]=identity
   [auth]=auth
@@ -14,16 +18,17 @@ declare -A SECTION=(
   [productivity]=productivity
   [notification]=notifications
   [sync]=sync
+  [guard]=database
 )
 
 usage() {
   cat <<'USAGE'
 Argus backend - native stack runner.
 
-Boots the six request-serving services (identity, auth, camera,
-productivity, notification, sync) natively, each with its own database
-under ARGUS_STACK_DIR, so a golden replay can run against a real fleet
-without touching the developer's own databases.
+Boots the seven request-serving services (identity, auth, camera,
+productivity, notification, sync, guard) natively, each with its own
+database under ARGUS_STACK_DIR, so a golden replay can run against a real
+fleet without touching the developer's own databases.
 
 The sandbox claims the standard ports (7025-7044). Stop any other native
 run of these services before `up`; the docker compose stack may stay up
@@ -44,6 +49,11 @@ Usage:
 Environment:
   ARGUS_STACK_DIR      sandbox directory (default build/native-stack)
   ARGUS_STACK_PROFILE  dev or prod (default dev)
+
+A service started here outlives the command that started it, and with it any
+descriptor it inherited. Wrap a stack run in a lock with `flock -o FILE ...`:
+plain `flock FILE native-stack.sh up` leaves the lock held by the services,
+and it is released only when the last of them stops.
 USAGE
 }
 
@@ -117,6 +127,10 @@ prepare_service() {
 
   replace_toml_value mdns enabled false "$config" literal
   ln -sfn "$ROOT/certs" "$STACK_DIR/$svc/certs"
+
+  if [ "$svc" = identity ]; then
+    ln -sfn "$ROOT/models" "$STACK_DIR/identity/models"
+  fi
 
   if [ "$svc" = camera ]; then
     replace_top_key go2rtc_bin "$ROOT/third_party/go2rtc/go2rtc" "$config"

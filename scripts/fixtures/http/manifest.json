@@ -1,0 +1,71 @@
+{
+  "declaredDeviations": [
+    {
+      "method": "GET",
+      "reason": "guard serves /health from its own handler in services/guard/src/app/main.cc ({\"status\":\"ok\",\"service\":\"argus-guard\"}) and never registers the shared HealthController, so the body is not the envelope; the compose healthcheck for guard polls the status code only (curl -kfs), and every other unit answers the shared envelope",
+      "route": "/health",
+      "unit": "guard"
+    }
+  ],
+  "expectations": {
+    "bad-json": 400,
+    "no-token": 401,
+    "other-device": 401
+  },
+  "fixtures": "scripts/fixtures/http",
+  "harness": "scripts/golden-http.py",
+  "invariants": [
+    "no probe may answer 5xx except the camera-control 502, which must carry CAMERA_UNREACHABLE",
+    "a probe with no token must answer 401, and so must a probe whose token belongs to another device",
+    "a malformed JSON body on a ValidJsonFilter route must answer 400",
+    "a multipart body must never be answered 400",
+    "a JSON answer must carry exactly the {status, info, errors} envelope",
+    "a 204 answer must carry an empty body"
+  ],
+  "normalization": {
+    "maskedHex64": "any 64-character hexadecimal value",
+    "maskedKeys": [
+      "accessToken",
+      "refreshToken",
+      "token",
+      "capability",
+      "expiresAt",
+      "expiresIn",
+      "uptimeSeconds",
+      "serverTime"
+    ],
+    "maskedShape": "a masked key keeps the shape of what it held, so an object under it is still compared field by field",
+    "maskedSuffix": "*At",
+    "maskedTokens": "any value shaped like a three-part JWT",
+    "unmaskedUnder": [
+      "errors"
+    ]
+  },
+  "probes": 326,
+  "sessions": "scripts/seed-golden.py --roles (owner, resident, guest)",
+  "sources": "scripts/lib/route-baseline.txt (the route census)",
+  "units": [
+    "auth",
+    "camera",
+    "guard",
+    "identity",
+    "notification",
+    "productivity",
+    "shared",
+    "sync"
+  ],
+  "volatileFields": [
+    {
+      "keys": [
+        "latencyMsMax",
+        "latencyMsP50",
+        "latencyMsP95",
+        "probeMs",
+        "probeOk"
+      ],
+      "reason": "the push channel's self-test runs on its own schedule, so these fields report the last probe's outcome rather than a contract; the counters beside them stay pinned",
+      "route": "/notification/delivery-summary",
+      "unit": "notification"
+    }
+  ]
+}

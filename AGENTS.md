@@ -133,6 +133,15 @@ Never skip a filter in protected routes.
 **Exception:** Multipart endpoints (`/auth/login`) skip `ValidJsonFilter` since
 `req->getJsonObject()` returns `nullptr` for `multipart/form-data`.
 
+Rule 5 is measured, not reviewed: `scripts/lib/route_scan.py` reads every
+controller's macro into `scripts/lib/route-baseline.txt` (the declaration, its
+filters, its multipart flag, its file) and `scripts/check-routes.sh` fails on a
+filter out of order, a `RoleFilter` without a `JwtFilter`, a multipart route
+that declares `ValidJsonFilter`, an unknown filter name, a duplicate row, or a
+baseline the tree disagrees with in either direction. The recorded answers
+live beside it in `scripts/fixtures/http/`, replayed by
+`scripts/golden-http.py`.
+
 ### 6. Responses and refusals
 
 Every refusal is **thrown, never built**. The vocabulary lives in
@@ -911,10 +920,11 @@ Before any commit, verify the affected standalone project with
 `./scripts/build-all.sh dev --only <project>` and **0 errors, 0 warnings**.
 Run the full orchestrator when changing shared build infrastructure.
 
-The orchestrator runs three gates of its own, beyond the fifteen projects:
-`scripts/check-comments.sh` (rule 20) and `scripts/check-deps.sh` (§2.4's
-tiers) before anything is built, and, at the end of a full run only,
-`scripts/check-tidy.sh` (rules 16 and 19). `--only`,
+The orchestrator runs four gates of its own, beyond the fifteen projects:
+`scripts/check-comments.sh` (rule 20), `scripts/check-deps.sh` (§2.4's tiers)
+and `scripts/check-routes.sh` (rule 5's filter chain, route by route, against
+`scripts/lib/route-baseline.txt`) before anything is built, and, at the end of
+a full run only, `scripts/check-tidy.sh` (rules 16 and 19). `--only`,
 `--no-tests` and `--install-only` skip the clang-tidy scan deliberately: it
 needs every project's compile database, and a per-project run has to stay
 quick.

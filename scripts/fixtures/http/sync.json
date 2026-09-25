@@ -1,0 +1,25 @@
+{
+  "probes": [
+    {
+      "method": "WS",
+      "path": "/sync",
+      "probe": "ws-plain-get",
+      "request": {
+        "auth": "none",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "",
+        "json": null,
+        "pretty": false,
+        "status": 405,
+        "text": ""
+      },
+      "route": "/sync",
+      "unit": "sync"
+    }
+  ],
+  "unit": "sync"
+}
