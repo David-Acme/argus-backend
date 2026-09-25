@@ -9,11 +9,13 @@
 #include <mtmd.h>
 #include <opencv2/imgproc.hpp>
 #include <config/config-service.hxx>
+#include <errors/response-exception.hxx>
 #include <feature/vlm/services/vision-hash.hxx>
 #include <runtime/ai-init.hxx>
 #include <runtime/blocking-task.hxx>
 #include <runtime/hardware-profile.hxx>
 #include <runtime/thread-budget.hxx>
+#include <vlm/vlm-errors.hxx>
 
 namespace
 {
@@ -219,10 +221,8 @@ cv::Mat VisionService::fitToBudget(const cv::Mat& src, bool srcIsBgr)
 std::string VisionService::run(const VisionRunInput& input)
 {
   const cv::Mat& src = input.src;
-  if (!loaded_) {
-    LOG_WARN << "Vision: service not loaded";
-    return "";
-  }
+  if (!loaded_)
+    throw ResponseException(VlmErrors::VisionEngineNotLoaded);
   if (src.empty())
     return "";
 

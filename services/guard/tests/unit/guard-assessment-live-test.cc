@@ -5,7 +5,7 @@
 #include <camera/camera-action-client.hxx>
 #include <feature/guard/guard-assessment.hxx>
 #include <llm/details/llm-remote.hxx>
-#include <vlm/vlm-client.hxx>
+#include <vlm/vlm-remote.hxx>
 
 #include <arpa/inet.h>
 #include <chrono>

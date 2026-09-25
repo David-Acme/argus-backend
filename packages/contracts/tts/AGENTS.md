@@ -5,7 +5,7 @@ both sides of the wire are generated from.
 
 ## What this is
 
-A CONTRACT, and the second of the three here that is not header-only: alongside
+A CONTRACT, and the second of the four here that is not header-only: alongside
 the header-only `argus::contracts::tts` vocabulary target it owns
 `argus_tts_rpc_contract()`, the CMake **function** that declares
 `argus::contracts::tts-wire` from the `tts.proto` beside it. A consumer does
@@ -15,9 +15,10 @@ envelope every gRPC answer here carries), then `lib/grpc`, then the proto. The
 include root is `src/`, so a consumer writes `<tts/tts-errors.hxx>`.
 
 `packages/clients/tts` is where the module is established, for the modern
-client and the transitional HTTP fallback both; `services/tts` links
-`argus::contracts::tts-wire` through `argus::clients::tts` for the server side
-and the vocabulary for the synthesis feature. `services/camera` and
+client and the transitional HTTP fallback both; `services/tts`'s
+`argus::tts-rpc` module names `argus::contracts::tts-wire` itself for the server
+side — the client links the wire PRIVATE, so the wire reaches a server by its
+own name — and the vocabulary for the synthesis feature. `services/camera` and
 `services/voice` synthesize through the client rather than the wire.
 
 ## Layout

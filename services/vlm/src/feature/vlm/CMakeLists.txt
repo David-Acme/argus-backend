@@ -2,12 +2,11 @@ argus_module(NAME vlm
     SOURCES
         controllers/vlm-controller.cc
         dtos/describe-dto.cc
-        services/remote/remote-vision-adapter.cc
-        services/remote/vlm-remote.cc
         services/vision-service.cc
     INCLUDES
         ../..
     DEPENDS
+        argus::contracts::vlm
         argus::lib::config
         argus::hardware-profile
         argus::lib::runtime
@@ -15,7 +14,6 @@ argus_module(NAME vlm
         argus::lib::http
         Drogon::Drogon
         opencv::opencv
-        nlohmann_json::nlohmann_json
         llama
         mtmd)
 

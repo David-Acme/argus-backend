@@ -35,9 +35,25 @@ review blocker:
 
 ## Layout
 
-- `proto/argus/{domain}/v1/*.proto` — one package per domain
-  (`common`, `camera`, `ai`, `productivity`, `notification`, `memory`, `sync`,
-  `identity`, `voice`, plus vendored `grpc/health/v1`).
+- `proto/argus/{domain}/v1/*.proto` — the shared proto root, one package per
+  domain still served from it (`common`, `camera`, `productivity`,
+  `notification`, `memory`, `sync`, `identity`, `voice`, plus vendored
+  `grpc/health/v1`). The `ai` domain is down to `llm.proto`, an orphan no
+  source imports: the four domains whose gRPC boundary this work introduced
+  (`response`, `stt`, `tts`, `vlm`) each moved their schema out to their own
+  package folder, and Phase 4 step 6c replaces `llm` the same way and empties
+  the domain.
+- `response/`, `stt/`, `tts/`, `vlm/` — the four packages whose `.proto` sits at
+  the folder root (`argus.response.v1`, `argus.stt.v1`, `argus.tts.v1`,
+  `argus.vlm.v1`, all self-contained). `stt`, `tts` and `vlm` carry
+  `src/<domain>/<domain>-errors.hxx`, the refusal catalog its server throws, and
+  their own `argus_<domain>_rpc_contract()`, which calls
+  `argus_response_rpc_contract()`, ensures `lib/grpc` and declares
+  `argus::contracts::<domain>-wire`, so a client package or a service links the
+  wire module and never generates a stub itself. `response` is where
+  `argus_response_rpc_contract()` is **defined**, and the message and the two
+  mapping functions of `src/response/response-rpc.{hxx,cc}` are its whole
+  surface: no `argus_contracts` vocabulary and no refusal catalog of its own.
 - `CMakeLists.txt` — `argus_contracts(NAME <domain> ...)` turns each domain's
   headers into the `argus::contracts::<domain>` vocabulary, an INTERFACE
   target. The generated stubs and the typed wrapper are a *client* package's
@@ -66,7 +82,11 @@ review blocker:
   message.
 - Generated code (`gen/`) is never committed.
 - Validation before commit: `buf lint && buf breaking` when buf is available,
-  else `protoc --descriptor_set_out=/dev/null -I proto $(git ls-files 'proto/*.proto')`.
+  else `protoc --descriptor_set_out=/dev/null -I proto $(git ls-files
+  'proto/*.proto')`. Both forms span the `proto/` tree only — buf is absent
+  from this machine and its module declares `path: proto`, so the four
+  boundary contracts are validated with `for d in response stt tts vlm; do
+  protoc --descriptor_set_out=/dev/null -I $d $d/$d.proto; done`.
 
 ## Code style for generated consumers (backend services)
 

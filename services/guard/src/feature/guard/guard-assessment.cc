@@ -8,7 +8,7 @@
 #include <json/value.h>
 #include <llm/llm-service.hxx>
 #include <llm/details/llm-remote.hxx>
-#include <vlm/vlm-client.hxx>
+#include <vlm/vlm-remote.hxx>
 #include <runtime/blocking-task.hxx>
 #include <trantor/utils/Logger.h>
 

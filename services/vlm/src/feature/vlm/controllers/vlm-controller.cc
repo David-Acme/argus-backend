@@ -1,10 +1,9 @@
 #include "vlm-controller.hxx"
 
-#include "vlm-errors.hxx"
-
 #include <errors/response-exception.hxx>
 #include <http/api-response.hxx>
 #include <feature/vlm/dtos/describe-dto.hxx>
+#include <vlm/vlm-errors.hxx>
 
 #include <drogon/drogon.h>
 #include <opencv2/imgcodecs.hpp>

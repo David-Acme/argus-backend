@@ -1,15 +1,21 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <chrono>
+#include <config/config-service.hxx>
+#include <cstdint>
 #include <doctest/doctest.h>
 #include <drogon/drogon.h>
+#include <errors/response-exception.hxx>
 #include <filesystem>
 #include <functional>
 #include <json/json.h>
 #include <mutex>
 #include <string>
 #include <thread>
+#include <utility>
 #include <vector>
 #include <vlm/vlm-client.hxx>
+#include <vlm/vlm-errors.hxx>
+#include <vlm/vlm-remote.hxx>
 
 namespace
 {
@@ -119,6 +125,29 @@ bool parseBody(const std::string& text, Json::Value& body)
   return reader.parse(text, body);
 }
 
+struct Refusal
+{
+  int status{0};
+  std::string code;
+  std::string message;
+
+  bool operator==(const Refusal&) const = default;
+};
+
+template <typename Call>
+Refusal refusalBy(Call call)
+{
+  try {
+    call();
+  }
+  catch (const ResponseException& error) {
+    return {.status = error.statusCode(),
+            .code = error.errorCode(),
+            .message = error.what()};
+  }
+  return {};
+}
+
 }
 
 TEST_CASE("the describe request carries the JPEG as base64 on the wire")
@@ -129,8 +158,7 @@ TEST_CASE("the describe request carries the JPEG as base64 on the wire")
 
   const VlmClient client(service.url());
   const auto result = drogon::sync_wait(client.describe(kAsk));
-  REQUIRE(result.has_value());
-  CHECK(result->caption == "canned caption");
+  CHECK(result.value_or(VlmDescribeResult{}).caption == "canned caption");
 
   const auto seen = service.seen();
   CHECK(seen.method == "POST");
@@ -195,4 +223,94 @@ TEST_CASE("describe stops before the wire, and raises when the wire is dead")
 
   CHECK_THROWS_AS(drogon::sync_wait(client.describe(kAsk)),
                   drogon::HttpException);
+}
+
+TEST_CASE("the gRPC client validates its configuration before it dials")
+{
+  const auto config = [](std::string target, std::string credential,
+                         std::chrono::milliseconds timeout) {
+    return argus::vlm::ClientConfig{.target = std::move(target),
+                                    .credential = std::move(credential),
+                                    .timeout = timeout};
+  };
+  const auto refusal = [](auto&& build) { return refusalBy(build); };
+  const Refusal invalid{.status = 400,
+                        .code = "BAD_REQUEST",
+                        .message = "Invalid vision request"};
+  const Refusal band{.status = 400,
+                     .code = "BAD_REQUEST",
+                     .message = "timeout must be within 1 and 120000 ms"};
+  CHECK(refusal([&] {
+          (void)argus::vlm::Client(
+              config("", "rpc-secret", std::chrono::seconds(5)));
+        }) == invalid);
+  CHECK(refusal([&] {
+          (void)argus::vlm::Client(
+              config("127.0.0.1:7031", "", std::chrono::seconds(5)));
+        }) == invalid);
+  CHECK(refusal([&] {
+          (void)argus::vlm::Client(
+              config("127.0.0.1:7031", "rpc-secret", std::chrono::seconds(0)));
+        }) == band);
+  CHECK(refusal([&] {
+          (void)argus::vlm::Client(
+              config("127.0.0.1:7031", "rpc-secret", std::chrono::seconds(121)));
+        }) == band);
+
+  const argus::vlm::Client accepted(
+      config("127.0.0.1:7031", "rpc-secret", std::chrono::seconds(120)));
+  const auto refused = [&accepted](argus::vlm::DescribeInput input) {
+    return refusalBy([&accepted, &input] { (void)accepted.describe(input); });
+  };
+  CHECK(refused({}) == invalid);
+  CHECK(refused(
+            {.jpeg = "argus", .prompt = "", .cameraId = "", .maxTokens = -1}) ==
+        invalid);
+}
+
+TEST_CASE("the guard facade selects its transport from the runtime knobs")
+{
+  REQUIRE(fakeVlmService().ready());
+  const VlmClient facade("");
+
+  ConfigService::setRuntimeString("vlm.grpc_target", "");
+  ConfigService::setRuntimeString("vlm.grpc_credential", "");
+  CHECK_FALSE(facade.remote());
+  CHECK_FALSE(drogon::sync_wait(facade.describe(kAsk)).has_value());
+
+  ConfigService::setRuntimeString("vlm.grpc_target", "127.0.0.1:1");
+  ConfigService::setRuntimeString("vlm.grpc_credential", "rpc-secret");
+  CHECK(facade.remote());
+  CHECK_FALSE(drogon::sync_wait(facade.describe(kAsk)).has_value());
+
+  ConfigService::setRuntimeString("vlm.grpc_target", "");
+  ConfigService::setRuntimeString("vlm.grpc_credential", "");
+  CHECK_FALSE(facade.remote());
+  CHECK_FALSE(drogon::sync_wait(facade.describe(kAsk)).has_value());
+
+  const VlmClient http(fakeVlmService().url());
+  fakeVlmService().answer(drogon::k200OK, kCaptionBody);
+  CHECK(http.remote());
+  const auto described = drogon::sync_wait(http.describe(kAsk));
+  CHECK(described.value_or(VlmDescribeResult{}).caption == "canned caption");
+}
+
+TEST_CASE("a misconfigured gRPC leg answers no caption instead of throwing")
+{
+  REQUIRE(fakeVlmService().ready());
+  fakeVlmService().answer(drogon::k200OK, kCaptionBody);
+  const VlmClient facade(fakeVlmService().url());
+
+  ConfigService::setRuntimeString("vlm.grpc_target", "127.0.0.1:7031");
+  ConfigService::setRuntimeString("vlm.grpc_credential", "");
+  CHECK(facade.remote());
+  CHECK_FALSE(drogon::sync_wait(facade.describe(kAsk)).has_value());
+
+  ConfigService::setRuntimeString("vlm.grpc_credential", "rpc-secret");
+  const VlmClient impatient(fakeVlmService().url(), 130.0);
+  CHECK(impatient.remote());
+  CHECK_FALSE(drogon::sync_wait(impatient.describe(kAsk)).has_value());
+
+  ConfigService::setRuntimeString("vlm.grpc_target", "");
+  ConfigService::setRuntimeString("vlm.grpc_credential", "");
 }

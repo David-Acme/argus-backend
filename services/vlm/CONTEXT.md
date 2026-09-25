@@ -4,7 +4,7 @@
 
 F4-4 of the `migracion-microservicios` plan extracts the vision engine out
 of the legacy monolith (Rulings BO-BR). `argus-vlm` is a sibling service
-with its own binary, own CMake preset and zero HTTP exposure. The VLM is a
+with its own binary, own CMake preset and no public exposure. The VLM is a
 CAPACITY move: it is registered and loaded at legacy boot but called by
 nothing in production, so extracting it removes a llama.cpp+mtmd model from
 the legacy's RAM/VRAM with zero functional risk. It mirrors the argus-tts
@@ -49,8 +49,43 @@ the legacy's RAM/VRAM with zero functional risk. It mirrors the argus-tts
   FNV of the scaled pixels + prompt — an extraction WIN: the legacy lost it
   anyway on restart).
 - **Config**: `[vision]` (engine knobs, mirroring the legacy block) +
-  `[server]` (loopback listener, default 7031) only. No database, no NATS,
-  no JWT/device keys — nothing here persists anything.
+  `[server]` (loopback listener, default 7031) + `[rpc]` (address and caller
+  pairs, both empty by default when Phase 4 step 6b added the gRPC leg). No
+  database, no NATS, no JWT/device keys — nothing here persists anything.
+
+## The gRPC leg (Phase 4 step 6b)
+
+The service answers `argus.vlm.v1` (`packages/contracts/vlm`: the `Vision`
+service, a unary `Capabilities` and a unary `Describe`) beside its HTTP wire,
+through `argus::vlm-rpc` (`src/app/rpc/`). It follows the tts and stt
+precedents field by field and adds nothing the domain does not force: the
+server holds the same `VisionService` the controller drives, reached through
+two callbacks — a live `capabilities` read and a `describe` that takes the
+decoded `cv::Mat` — so the caption a gRPC caller receives is the caption the
+HTTP route would answer, caption cache included, and a shut-down engine
+reports `loaded: false` truthfully instead of a boot snapshot. It is composed
+in `main.cc` only when `rpc.address` and a non-empty `[rpc.callers]` pair are
+set, and nothing in the tree sets either key, or `vlm.grpc_target` on the
+caller side: the leg is live and dormant, and the cutover is a later decision.
+
+The engine's inference slots are the face's backpressure: one acquisition from
+`ThreadBudget::inferenceSlots()`, `try_acquire` rather than a blocking wait
+(rule 13's counting semaphore, never a global mutex), an RAII guard for the
+release, and 429 `Busy` for the caller that loses the race.
+
+The deadline ceiling needed one measurement the precedents did not. gRPC
+carries a deadline as a relative `grpc-timeout` header and rounds it, so a
+server that refuses anything beyond the client's own two-minute ceiling
+refuses the client's own maximum at the boundary — measured on the wire, not
+inferred: the raw stub's 120 s call was refused while 5 s passed. The ceiling
+is therefore `argus::vlm::kMaxTimeout` plus one second, named as the rounding
+it is, and a caller that declares no deadline is served.
+
+The service's own copies of the remote vision adapter and its HTTP client
+(`feature/vlm/services/remote/`) went with this step: a service does not host
+a client of itself, so the caller side is one package — `argus::clients::vlm`,
+which now carries both transports behind the `VlmClient` façade the guard
+assessment already holds.
 
 ## Tier note (the F4-2 lesson, applied)
 
@@ -71,9 +106,10 @@ legacy reads.
 - The legacy `VisionService` stays linked in the legacy binary: only the
   boot registration is gated behind `vision.remote_url` (Ruling BQ), so the
   symbol proof for the legacy is unchanged by this task.
-- The IKnownPersonMatcher wiring stays deferred (Ruling BA note) — the
-  remote adapter exists so Fase 5's camera matcher can consume either the
-  local or the remote adapter through the same registry name.
+- The IKnownPersonMatcher wiring stays deferred (Ruling BA note). The service
+  no longer carries a remote adapter of its own — Fase 5's camera matcher
+  reaches the wire through `argus::clients::vlm`'s façade, the same one
+  `argus-guard` calls, rather than through a service-local registry name.
 
 ## Compose volume
 

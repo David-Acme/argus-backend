@@ -19,7 +19,7 @@
 #include <config/config-service.hxx>
 #include <llm/details/llm-remote.hxx>
 #include <sqlite/db-service.hxx>
-#include <vlm/vlm-client.hxx>
+#include <vlm/vlm-remote.hxx>
 #include <nats/nats-bus.hxx>
 #include <runtime/shutdown-signal.hxx>
 #include <unistd.h>

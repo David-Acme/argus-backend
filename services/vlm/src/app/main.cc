@@ -1,13 +1,19 @@
+#include <app/rpc/vlm-rpc-server.hxx>
 #include <feature/vlm/controllers/vlm-controller.hxx>
 #include <drogon/drogon.h>
 #include <http/error-handler.hxx>
 #include <http/health-controller.hxx>
 #include <http/listener-config.hxx>
+#include <runtime/thread-budget.hxx>
+#include <vlm/vlm-client.hxx>
 #include <config/config-service.hxx>
 
 #include <json/value.h>
 #include <llama.h>
+#include <memory>
 #include <string>
+#include <utility>
+#include <vector>
 
 namespace
 {
@@ -52,6 +58,31 @@ int main()
     return 1;
   }
 
+  std::unique_ptr<VlmRpcServer> rpc;
+  const auto rpcAddress = ConfigService::getString("rpc.address");
+  auto credentials = ConfigService::getStringPairs("rpc.callers");
+  std::erase_if(credentials, [](const auto& credential) {
+    return credential.first.empty() || credential.second.empty();
+  });
+  if (!rpcAddress.empty() && !credentials.empty()) {
+    rpc = std::make_unique<VlmRpcServer>(VlmRpcInput{
+        .address = rpcAddress,
+        .credentials = std::move(credentials),
+        .capabilities = [&vlm] {
+          return argus::vlm::Capabilities{
+              .loaded = vlm->isEngineLoaded(),
+              .maxInputPx = vlm->service().maxInputPx(),
+              .defaultMaxTokens = vlm->service().defaultMaxTokens()};
+        },
+        .describe = [&vlm](const VisionDescribeMatInput& input) {
+          return vlm->service().describeMat(input);
+        },
+        .slots = ThreadBudget::inferenceSlots()});
+  }
+
+  if (rpc)
+    LOG_INFO << "argus-vlm gRPC vision listening on " << rpcAddress;
+
   LOG_INFO << "argus-vlm listening on " << listener.host << ":"
            << listener.port;
 
@@ -59,6 +90,8 @@ int main()
       .setThreadNum(0)
       .run();
 
+  if (rpc)
+    rpc->shutdown();
   vlm->shutdownEngine();
   llama_backend_free();
   return 0;

@@ -53,7 +53,7 @@ These own a Conan/CMake graph and build on their own:
 Four, and the claim is a build fact: each of them carries a `CMakeLists.txt`
 that declares its own project name, so it configures on its own as well as
 under a consumer. `packages/contracts/` is **not** one of them — the folder has no
-`CMakeLists.txt` of its own, and its ten domain subfolders are
+`CMakeLists.txt` of its own, and its twelve domain subfolders are
 direct-import packages like the rest.
 
 ## Direct-import packages
@@ -61,12 +61,15 @@ direct-import packages like the rest.
 The remainder of `packages/`: `argus-audio`, `argus-auth`,
 `argus-config`, `argus-errors`, `argus-grpc`, `argus-http`, `argus-mdns`,
 `argus-nats`, `argus-phrase`, `argus-runtime`, `argus-storage`,
-`argus-text`, `argus-validation`, the ten contract packages under
+`argus-text`, `argus-validation`, the twelve contract packages under
 `packages/contracts/` and the twelve SDK clients under `packages/clients/`.
 These are not standalone projects: the service that links them provides the
 build context. They are declared once in their folder and linked by target
-name. `argus::clients::vlm` is the thin HTTP client for the internal
-`/vlm/v1/describe` wire, linked today only by `argus-guard`.
+name. `argus::clients::vlm` carries both transports for the internal vision
+wire — the gRPC client for `argus.vlm.v1` and the transitional HTTP client for
+`/vlm/v1/describe`, behind one façade — and is linked by `argus-guard`, its
+only caller, and by `argus-vlm` itself for the RPC server that answers that
+protocol.
 
 Three packages left this list in the sync extraction: `argus-socket`'s payload
 vocabulary had already moved to `contracts/sync`, its transport and fan-out

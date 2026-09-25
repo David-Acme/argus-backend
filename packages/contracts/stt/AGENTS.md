@@ -5,7 +5,7 @@ both sides of the wire are generated from.
 
 ## What this is
 
-A CONTRACT, and the third of the three here that is not header-only: alongside
+A CONTRACT, and the third of the four here that is not header-only: alongside
 the header-only `argus::contracts::stt` vocabulary target it owns
 `argus_stt_rpc_contract()`, the CMake **function** that declares
 `argus::contracts::stt-wire` from the `stt.proto` beside it. A consumer does
@@ -15,8 +15,9 @@ envelope every gRPC answer here carries), then `lib/grpc`, then the proto. The
 include root is `src/`, so a consumer writes `<stt/stt-errors.hxx>`.
 
 `packages/clients/stt` is where the module is established, for the gRPC client
-and the transitional HTTP fallback both; `services/stt` links
-`argus::contracts::stt-wire` through `argus::clients::stt` for the server side
+and the transitional HTTP fallback both; `services/stt`'s `argus::stt-rpc`
+module names `argus::contracts::stt-wire` itself for the server side — the
+client links the wire PRIVATE, so the wire reaches a server by its own name —
 and the vocabulary for the engine and the controller.
 
 ## Layout

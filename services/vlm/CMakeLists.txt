@@ -9,6 +9,8 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 include(${CMAKE_CURRENT_SOURCE_DIR}/../../cmake/argus-module.cmake)
 
+argus_contracts_substrate()
+
 set(VLM_SRC_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
 if(PROJECT_IS_TOP_LEVEL)
@@ -31,6 +33,10 @@ if(PROJECT_IS_TOP_LEVEL)
     if(NOT TARGET argus::lib::http)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/http
                          ${CMAKE_BINARY_DIR}/http)
+    endif()
+    if(NOT TARGET argus::clients::vlm)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/vlm
+                         ${CMAKE_BINARY_DIR}/clients/vlm)
     endif()
 
     if(NOT TARGET llama)
@@ -78,15 +84,19 @@ foreach(module IN LISTS VLM_FEATURE_MODULES)
     add_subdirectory("${module_dir}")
 endforeach()
 
+add_subdirectory(src/app/rpc)
+
 argus_service(NAME argus-vlm
     MAIN ${VLM_SRC_ROOT}/app/main.cc
     MODULES
+        argus::vlm-rpc
         argus::vlm
         argus::lib::config
         argus::hardware-profile
         argus::lib::runtime
         argus::lib::validation
         argus::lib::http
+        argus::clients::vlm
         Drogon::Drogon
     PORTS 7031)
 
@@ -118,19 +128,18 @@ target_compile_options(vlm-wire-test PRIVATE -Wall -Wextra)
 
 add_test(NAME vlm-wire-test COMMAND vlm-wire-test)
 
-add_executable(vision-remote-adapter-test
-    tests/unit/vision-remote-adapter-test.cc)
+add_executable(vlm-rpc-test tests/unit/vlm-rpc-test.cc)
 
-set_target_properties(vision-remote-adapter-test PROPERTIES
-    EXCLUDE_FROM_ALL FALSE)
-
-target_include_directories(vision-remote-adapter-test PRIVATE
+target_include_directories(vlm-rpc-test PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/support)
 
-target_link_libraries(vision-remote-adapter-test PRIVATE
-    argus::vlm
-    doctest::doctest)
+target_link_libraries(vlm-rpc-test PRIVATE argus::vlm-rpc doctest::doctest)
+target_compile_definitions(vlm-rpc-test PRIVATE
+    ARGUS_TEST_VLM_MODELS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../../models/vision/lfm2vl-25")
+argus_runtime_rpath(vlm-rpc-test)
 
-target_compile_options(vision-remote-adapter-test PRIVATE -Wall -Wextra)
+target_compile_options(vlm-rpc-test PRIVATE -Wall -Wextra)
 
-add_test(NAME vision-remote-adapter-test COMMAND vision-remote-adapter-test)
+set_target_properties(vlm-rpc-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+
+add_test(NAME vlm-rpc-test COMMAND vlm-rpc-test)

@@ -39,7 +39,10 @@ the durable delivery legs (`object_detected` to guard, `encounter_closed` to
 the LLM host, notification `delivery` to the sync service) run as JetStream
 streams with PubAck settlement and inbox receipts — see
 [wire-nats-subjects.md](wire-nats-subjects.md). Typed gRPC contracts cover
-health, sync, voice, camera actions and identity operations. Fleet-secret
+health, sync, voice, camera actions, identity operations, and the three AI
+boundaries — synthesis (`argus.tts.v1`), transcription (`argus.stt.v1`) and
+vision (`argus.vlm.v1`) — whose gRPC legs are composed only when a config sets
+`[rpc] address` and a caller pair, so no deployment binds them yet. Fleet-secret
 caller credentials (`x-argus-credential`) authorize the service-to-service
 edges; authority comes from the matched secret, never from declared metadata.
 

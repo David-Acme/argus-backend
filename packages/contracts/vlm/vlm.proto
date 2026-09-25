@@ -1,0 +1,27 @@
+syntax = "proto3";
+
+package argus.vlm.v1;
+
+service Vision {
+  rpc Capabilities(CapabilitiesRequest) returns (CapabilitiesResponse);
+  rpc Describe(DescribeRequest) returns (DescribeResponse);
+}
+
+message CapabilitiesRequest {}
+
+message CapabilitiesResponse {
+  bool loaded = 1;
+  int32 max_input_px = 2;
+  int32 default_max_tokens = 3;
+}
+
+message DescribeRequest {
+  bytes image_jpeg = 1;
+  string prompt = 2;
+  string camera_id = 3;
+  int32 max_tokens = 4;
+}
+
+message DescribeResponse {
+  string caption = 1;
+}
