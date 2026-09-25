@@ -85,6 +85,11 @@ target_link_libraries(remote-gate-test PRIVATE argus::lib::auth doctest::doctest
 target_compile_options(remote-gate-test PRIVATE -Wall -Wextra)
 add_test(NAME remote-gate-test COMMAND remote-gate-test)
 
+add_executable(jwt-service-test tests/unit/jwt-service-test.cc)
+target_link_libraries(jwt-service-test PRIVATE argus::lib::auth doctest::doctest)
+target_compile_options(jwt-service-test PRIVATE -Wall -Wextra)
+add_test(NAME jwt-service-test COMMAND jwt-service-test)
+
 get_target_property(DOCTEST_INCLUDE_DIRS doctest::doctest
                     INTERFACE_INCLUDE_DIRECTORIES)
 if(DOCTEST_INCLUDE_DIRS)

@@ -86,6 +86,11 @@ const std::vector<CatalogEntry> kCatalog{
      .code = ErrorCode::ServiceUnavailable,
      .status = 500,
      .message = "Failed to issue device credential"},
+    {.name = "TokenIssuanceFailed",
+     .definition = &AuthErrors::TokenIssuanceFailed,
+     .code = ErrorCode::ServiceUnavailable,
+     .status = 500,
+     .message = "Failed to issue token"},
     {.name = "ChangeNotRecorded",
      .definition = &AuthErrors::ChangeNotRecorded,
      .code = ErrorCode::InternalError,
@@ -150,7 +155,7 @@ TEST_CASE("the auth catalog matches the table pinned here")
     CHECK(entry.definition->status == entry.status);
     CHECK(std::string(entry.definition->message) == entry.message);
   }
-  CHECK(kCatalog.size() == 24);
+  CHECK(kCatalog.size() == 25);
 }
 
 TEST_CASE("every auth entry is legal on the wire")

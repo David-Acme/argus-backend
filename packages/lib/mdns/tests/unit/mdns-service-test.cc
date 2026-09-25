@@ -76,6 +76,26 @@ TEST_CASE("a plain instance carries no https key in its txt")
   CHECK_FALSE(txt.isMember("https"));
 }
 
+TEST_CASE("every spelling of a service type keeps one local suffix")
+{
+  ConfigService::setRuntimeString("mdns.enabled", "false");
+  ConfigService::setRuntimeString("mdns.name", "Argus");
+  const std::vector<std::string> spellings{"_argus-route._tcp",
+                                           "_argus-route._tcp.",
+                                           "_argus-route._tcp.local",
+                                           "_argus-route._tcp.local."};
+  for (const std::string& spelling : spellings) {
+    MdnsService service({MdnsInstance{.serviceType = spelling,
+                                      .path = "camera",
+                                      .port = 7026,
+                                      .txt = {}}});
+    const Json::Value instances = service.health()["instances"];
+    REQUIRE(instances.size() == 1);
+    CHECK(instances[0]["instance"].asString() ==
+          "Argus-camera._argus-route._tcp.local.");
+  }
+}
+
 TEST_CASE("a configured address is the one advertised instead of the host's")
 {
   ConfigService::setRuntimeString("mdns.enabled", "true");

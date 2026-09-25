@@ -78,6 +78,8 @@ std::string normalizeServiceType(const std::string& raw)
   std::string type = raw;
   if (type.front() != '_')
     type.insert(type.begin(), '_');
+  while (!type.empty() && type.back() == '.')
+    type.pop_back();
   if (type.size() >= kLocalSuffix.size() &&
       type.compare(type.size() - kLocalSuffix.size(), kLocalSuffix.size(),
                    kLocalSuffix) == 0)
@@ -224,6 +226,8 @@ struct MdnsService::Impl
   std::vector<MdnsSocket> sockets;
   BufferPtr buffer;
   size_t bufferCapacity = 0;
+  BufferPtr answerBuffer;
+  size_t answerCapacity = 0;
 
   std::string hostname;
   std::string hostnameQualified;
@@ -461,14 +465,16 @@ void MdnsService::Impl::sendAnswer(const SendAnswerInput& input) const
   const std::vector<mdns_record_t>& additional = input.additional;
 
   if ((rclass & MDNS_UNICAST_RESPONSE) != 0) {
-    mdns_query_answer_unicast(sock, from, addrlen, buffer.get(), bufferCapacity,
-                              queryId, static_cast<mdns_record_type_t>(rtype),
+    mdns_query_answer_unicast(sock, from, addrlen, answerBuffer.get(),
+                              answerCapacity, queryId,
+                              static_cast<mdns_record_type_t>(rtype),
                               queryName.str, queryName.length, answer, 0, 0,
                               additional.data(), additional.size());
   }
   else {
-    mdns_query_answer_multicast(sock, buffer.get(), bufferCapacity, answer, 0,
-                                0, additional.data(), additional.size());
+    mdns_query_answer_multicast(sock, answerBuffer.get(), answerCapacity,
+                                answer, 0, 0, additional.data(),
+                                additional.size());
   }
 }
 
@@ -521,14 +527,17 @@ int MdnsService::Impl::handleQuestion(const HandleQuestionInput& input) const
     return 0;
   }
 
+  bool answered = false;
   for (const AdvertisedInstance& instance : advertised) {
-    if (nameEqualsString(name, instance.serviceType)) {
-      if (rtype != MDNS_RECORDTYPE_PTR && rtype != MDNS_RECORDTYPE_ANY)
-        return 0;
-      answerWith(instance.ptr, serviceRecords(instance));
+    if (!nameEqualsString(name, instance.serviceType))
+      continue;
+    if (rtype != MDNS_RECORDTYPE_PTR && rtype != MDNS_RECORDTYPE_ANY)
       return 0;
-    }
+    answerWith(instance.ptr, serviceRecords(instance));
+    answered = true;
   }
+  if (answered)
+    return 0;
 
   for (const AdvertisedInstance& instance : advertised) {
     if (nameEqualsString(name, instance.instanceName)) {
@@ -699,12 +708,17 @@ bool MdnsService::initialize()
 
   impl_->buffer = BufferPtr(
       static_cast<std::byte*>(std::aligned_alloc(64, kPacketCapacity)));
-  if (!impl_->buffer) {
+  impl_->answerBuffer = BufferPtr(
+      static_cast<std::byte*>(std::aligned_alloc(64, kPacketCapacity)));
+  if (!impl_->buffer || !impl_->answerBuffer) {
     LOG_ERROR << "mDNS: failed to allocate packet buffer";
+    impl_->buffer.reset();
+    impl_->answerBuffer.reset();
     impl_->sockets.clear();
     return true;
   }
   impl_->bufferCapacity = kPacketCapacity;
+  impl_->answerCapacity = kPacketCapacity;
 
   impl_->announce();
   impl_->running.store(true, std::memory_order_relaxed);
@@ -738,6 +752,8 @@ void MdnsService::shutdown()
   }
   impl_->buffer.reset();
   impl_->bufferCapacity = 0;
+  impl_->answerBuffer.reset();
+  impl_->answerCapacity = 0;
 }
 
 Json::Value MdnsService::health() const

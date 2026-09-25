@@ -1,9 +1,14 @@
 #include "jwt-service.hxx"
 
+#include <array>
+#include <auth/auth-errors.hxx>
 #include <chrono>
 #include <drogon/drogon.h>
+#include <errors/response-exception.hxx>
 #include <jwt-cpp/traits/nlohmann-json/defaults.h>
+#include <openssl/rand.h>
 #include <stdexcept>
+#include <string_view>
 #include <config/config-service.hxx>
 
 namespace
@@ -12,6 +17,22 @@ bool isWeakSecret(const std::string& secret)
 {
   return secret.size() < 32 || secret == "secret" ||
          secret == "refresh_secret" || secret == "change-me";
+}
+
+std::string randomTokenId()
+{
+  std::array<unsigned char, 16> buffer{};
+  if (RAND_bytes(buffer.data(), static_cast<int>(buffer.size())) != 1)
+    throw ResponseException(AuthErrors::TokenIssuanceFailed);
+
+  constexpr std::string_view kHexDigits = "0123456789abcdef";
+  std::string id;
+  id.reserve(buffer.size() * 2);
+  for (const unsigned char byte : buffer) {
+    id.push_back(kHexDigits[byte >> 4]);
+    id.push_back(kHexDigits[byte & 0x0f]);
+  }
+  return id;
 }
 }
 
@@ -34,6 +55,7 @@ std::string JwtService::generate(const JwtGenerateInput& input) const
 
   auto builder = jwt::create()
                      .set_issuer("argus")
+                     .set_id(randomTokenId())
                      .set_issued_at(std::chrono::system_clock::now())
                      .set_expires_at(std::chrono::system_clock::now() +
                                      std::chrono::seconds{expiresInSeconds});

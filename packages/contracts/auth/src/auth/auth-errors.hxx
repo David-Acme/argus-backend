@@ -61,6 +61,10 @@ inline constexpr ErrorDefinition DeviceCredentialIssuanceFailed{
     .code = ErrorCode::ServiceUnavailable,
     .status = 500,
     .message = "Failed to issue device credential"};
+inline constexpr ErrorDefinition TokenIssuanceFailed{
+    .code = ErrorCode::ServiceUnavailable,
+    .status = 500,
+    .message = "Failed to issue token"};
 inline constexpr ErrorDefinition ChangeNotRecorded{
     .code = ErrorCode::InternalError,
     .status = 500,

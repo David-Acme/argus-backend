@@ -11,6 +11,10 @@ case "$STACK_DIR" in
 esac
 PROFILE="${ARGUS_STACK_PROFILE:-dev}"
 SERVICES=(identity auth camera productivity notification sync guard)
+MDNS_ENABLED=false
+case "${ARGUS_STACK_MDNS:-0}" in
+  1 | true | on | yes) MDNS_ENABLED=true ;;
+esac
 declare -A SECTION=(
   [identity]=identity
   [auth]=auth
@@ -54,6 +58,9 @@ Usage:
 Environment:
   ARGUS_STACK_DIR      sandbox directory (default build/native-stack)
   ARGUS_STACK_PROFILE  dev or prod (default dev)
+  ARGUS_STACK_MDNS     1 makes every service advertise its routes over mDNS
+                       (mdns.enabled=true, mdns.address emptied so each
+                       responder enumerates this host's interfaces)
 
 A service started here outlives the command that started it, and with it any
 descriptor it inherited. Wrap a stack run in a lock with `flock -o FILE ...`:
@@ -130,7 +137,10 @@ prepare_service() {
     *) replace_top_key schema "$ROOT/$schema" "$config" ;;
   esac
 
-  replace_toml_value mdns enabled false "$config" literal
+  replace_toml_value mdns enabled "$MDNS_ENABLED" "$config" literal
+  if [ "$MDNS_ENABLED" = true ]; then
+    replace_toml_value mdns address "" "$config"
+  fi
   ln -sfn "$ROOT/certs" "$STACK_DIR/$svc/certs"
 
   if [ "$svc" = identity ]; then

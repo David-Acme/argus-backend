@@ -151,7 +151,7 @@ def host_port(base):
 
 
 class SyncSocket:
-    def __init__(self, base, headers, timeout):
+    def __init__(self, base, headers, timeout, path="/sync"):
         self.socket_timeout = timeout
         self.buffer = b""
         host, port = host_port(base)
@@ -160,11 +160,11 @@ class SyncSocket:
         context.check_hostname = False
         context.verify_mode = ssl.CERT_NONE
         self.socket = context.wrap_socket(raw, server_hostname=host)
-        self._upgrade(host, port, headers)
+        self._upgrade(host, port, headers, path)
 
-    def _upgrade(self, host, port, headers):
+    def _upgrade(self, host, port, headers, path):
         key = base64.b64encode(os.urandom(16)).decode()
-        lines = ["GET /sync HTTP/1.1", f"Host: {host}:{port}",
+        lines = [f"GET {path} HTTP/1.1", f"Host: {host}:{port}",
                  "Upgrade: websocket", "Connection: Upgrade",
                  f"Sec-WebSocket-Key: {key}", "Sec-WebSocket-Version: 13"]
         lines += [f"{name}: {value}" for name, value in headers.items()]
@@ -209,6 +209,9 @@ class SyncSocket:
 
     def send_text(self, payload):
         self._send(0x1, payload.encode())
+
+    def send_binary(self, payload):
+        self._send(0x2, payload)
 
     def _take(self, count, deadline):
         while len(self.buffer) < count:
