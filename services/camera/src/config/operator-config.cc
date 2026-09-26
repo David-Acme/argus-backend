@@ -125,7 +125,7 @@ OperatorConfig operator_config::resolveOperator()
     config.staticBoxFrames = 8;
   config.dwellAlertMs = ConfigService::getInt("operator.dwell_alert_ms");
   if (config.dwellAlertMs < 0)
-    config.dwellAlertMs = 3000;
+    config.dwellAlertMs = 400;
   if (ConfigService::hasKey("operator.dwell_monitor_ms")) {
     const int value = ConfigService::getInt("operator.dwell_monitor_ms");
     config.dwellMonitorMs = value >= 0 ? value : 12000;

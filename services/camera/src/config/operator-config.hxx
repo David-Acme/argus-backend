@@ -36,9 +36,9 @@ struct OperatorConfig
   double motionMinRatio{0.002};
   bool ignoreStaticPersons{false};
   int staticBoxFrames{8};
-  int64_t dwellAlertMs{3000};
+  int64_t dwellAlertMs{400};
   int64_t dwellMonitorMs{12000};
-  int64_t dwellNightMs{8000};
+  int64_t dwellNightMs{800};
   int64_t personRecheckMs{30000};
   int64_t trackTtlMs{3000};
   double trackIouMin{0.3};

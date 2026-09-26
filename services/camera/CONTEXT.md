@@ -581,3 +581,20 @@ it instead of appending it themselves), and the app's live view is untouched
 — it already picked `sub` by default. Measured: `frame.jpeg?src=cam1-sub`
 answers 1280×720 where `cam1` answers 2688×1520.
 
+## Reaction latency belongs to the dwell, not to the dialogue
+
+The installation's owner asked for a greet that lands as the person arrives,
+in Home mode, and for an away-mode announcement that does the same. The
+chain was measured end to end: the guard greets on the first observation of
+an encounter and the away announce speaks the templated `announce_text` — no
+model round trip in either path — so the only real delay was the operator's
+zone dwell before an event is published at all. `dwell_alert_ms` is 400 and
+`dwell_night_ms` 800 now (was 3000/8000, the night figure kept higher
+because night noise is what it damps), in the code default, both example
+configs and the operator's own config, which puts the first
+`person_in_alert_zone` event within an inference tick of a person appearing.
+Everything downstream — greeting, announcement, the assessment that follows
+— is unchanged; `dwell_monitor_ms` still delays monitor-zone events only.
+The assessment's VLM and LLM runs stay where they were: they shape the
+decision and the spoken line's grounding, never the first reaction.
+

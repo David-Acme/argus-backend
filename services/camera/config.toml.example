@@ -92,9 +92,9 @@ use_vulkan = true
 
 [operator]
 aggregation_window_ms = 1000
-dwell_alert_ms = 3000
+dwell_alert_ms = 400
 dwell_monitor_ms = 12000
-dwell_night_ms = 8000
+dwell_night_ms = 800
 cooldown_ms = 30000
 night_start = 22
 night_end = 6
