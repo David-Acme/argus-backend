@@ -208,6 +208,36 @@ ensure_local_config() {
   log "Per-project configs are ready."
 }
 
+sync_storage_credentials() {
+  local data_dir="${ARGUS_DATA_DIR:-$ROOT/argus-deploy/data}"
+  local secrets="$data_dir/rustfs/secrets"
+  [ -r "$secrets/argus_s3_access_key" ] || return 0
+  [ -r "$secrets/argus_s3_secret_key" ] || return 0
+  [ -r "$secrets/rustfs-bucket" ] || return 0
+
+  local bucket access secret
+  bucket="$(tr -d '\r\n' < "$secrets/rustfs-bucket")"
+  access="$(tr -d '\r\n' < "$secrets/argus_s3_access_key")"
+  secret="$(tr -d '\r\n' < "$secrets/argus_s3_secret_key")"
+  if [ -z "$bucket" ] || [ -z "$access" ] || [ -z "$secret" ]; then
+    warn "RustFS secrets are incomplete; storage configs left untouched."
+    return 0
+  fi
+
+  local config synced=0
+  for config in "$ROOT"/argus-deploy/config.*.toml \
+                "$ROOT"/argus-deploy/data/native/*/config.toml \
+                "$ROOT"/services/*/config.toml; do
+    [ -f "$config" ] || continue
+    toml_key_exists "$config" "storage.s3" "bucket" || continue
+    replace_toml_value storage.s3 bucket "$bucket" "$config"
+    replace_toml_value storage.s3 access_key "$access" "$config"
+    replace_toml_value storage.s3 secret_key "$secret" "$config"
+    synced=$((synced + 1))
+  done
+  log "Object storage credentials synced into $synced config(s) from ${secrets#"$ROOT"/}."
+}
+
 main() {
   if [ "$CAMERA_ONLY" -eq 1 ]; then
     "$ROOT/services/camera/scripts/provision.sh"
@@ -215,6 +245,7 @@ main() {
   fi
 
   ensure_local_config
+  sync_storage_credentials
 
   if [ -x "$(dirname "$0")/detect-hardware.sh" ]; then
     "$(dirname "$0")/detect-hardware.sh" ${ASSUME_YES:+-y} || \
