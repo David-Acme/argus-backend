@@ -19,6 +19,15 @@
 namespace
 {
 
+constexpr const char* kCloudPassword = "cloud-secret";
+
+std::string lower(std::string value)
+{
+  for (auto& c : value)
+    c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+  return value;
+}
+
 class FakeConnection
 {
 public:
@@ -105,6 +114,24 @@ std::string headerValueOf(const std::string& head, const std::string& name)
                          : end - begin - needle.size());
 }
 
+std::string digestFieldOf(const std::string& authorization,
+                          const std::string& name)
+{
+  const std::string needle = name + "=";
+  const size_t begin = authorization.find(needle);
+  if (begin == std::string::npos)
+    return {};
+  size_t start = begin + needle.size();
+  const bool quoted =
+      start < authorization.size() && authorization[start] == '"';
+  if (quoted)
+    ++start;
+  const size_t end = quoted ? authorization.find('"', start)
+                            : authorization.find(',', start);
+  return authorization.substr(
+      start, end == std::string::npos ? std::string::npos : end - start);
+}
+
 size_t contentLengthOf(const std::string& head)
 {
   const std::string length = headerValueOf(head, "Content-Length");
@@ -139,7 +166,8 @@ public:
     Authless
   };
 
-  explicit FakeTalkChannel(Mode mode) : mode_(mode)
+  explicit FakeTalkChannel(Mode mode, std::string encryptType = "3")
+      : mode_(mode), encryptType_(std::move(encryptType))
   {
     listen_ = ::socket(AF_INET, SOCK_STREAM, 0);
     sockaddr_in addr{};
@@ -201,13 +229,15 @@ public:
   }
 
 private:
-  static std::string digestChallenge(const std::string& nonce)
+  std::string digestChallenge(const std::string& nonce) const
   {
     return "HTTP/1.0 401 Unauthorized\r\n"
            "Server: Streamd\r\n"
            "Content-Length: 0\r\n"
            "WWW-Authenticate: Digest realm=\"TP-Link IP-Camera\","
-           "algorithm=\"MD5\",encrypt_type=\"3\",qop=\"auth\","
+           "algorithm=\"MD5\",encrypt_type=\"" +
+           encryptType_ +
+           "\",qop=\"auth\","
            "nonce=\"" +
            nonce +
            "\",opaque=\"64943214654649846565646421\"\r\n"
@@ -227,7 +257,9 @@ private:
            "Key-Exchange: version=\"1\", algorithm=\"aes-128-cbc\", "
            "username=\"admin\", nonce=\"" +
            nonce +
-           "\", encrypt_type=\"3\"\r\n"
+           "\", encrypt_type=\"" +
+           encryptType_ +
+           "\"\r\n"
            "Connection: keep-alive\r\n\r\n";
   }
 
@@ -244,8 +276,32 @@ private:
            "Key-Exchange: version=\"1\", algorithm=\"aes-128-cbc\", "
            "username=\"none\", nonce=\"" +
            nonce +
-           "\", encrypt_type=\"3\"\r\n"
+           "\", encrypt_type=\"" +
+           encryptType_ +
+           "\"\r\n"
            "Connection: keep-alive\r\n\r\n";
+  }
+
+  bool digestMatches(const std::string& authorization) const
+  {
+    const std::string username = digestFieldOf(authorization, "username");
+    const std::string realm = digestFieldOf(authorization, "realm");
+    const std::string nonce = digestFieldOf(authorization, "nonce");
+    const std::string uri = digestFieldOf(authorization, "uri");
+    const std::string nc = digestFieldOf(authorization, "nc");
+    const std::string cnonce = digestFieldOf(authorization, "cnonce");
+    const std::string qop = digestFieldOf(authorization, "qop");
+    const std::string response = digestFieldOf(authorization, "response");
+    const std::string password =
+        encryptType_ == "3" ? tapo_crypto::sha256Hex(kCloudPassword)
+                            : tapo_crypto::md5Hex(kCloudPassword);
+    const std::string ha1 =
+        tapo_crypto::md5Hex(username + ":" + realm + ":" + password);
+    const std::string ha2 = tapo_crypto::md5Hex("POST:" + uri);
+    const std::string expected =
+        tapo_crypto::md5Hex(ha1 + ":" + nonce + ":" + nc + ":" + cnonce + ":" +
+                            qop + ":" + ha2);
+    return lower(expected) == lower(response);
   }
 
   std::string nextChallenge()
@@ -296,7 +352,8 @@ private:
           !issuedNonce.empty() &&
           authorization.find("nonce=\"" + issuedNonce + "\"") !=
               std::string::npos;
-      if (mode_ == Mode::RejectAll || !answersThisConnection) {
+      if (mode_ == Mode::RejectAll || !answersThisConnection ||
+          !digestMatches(authorization)) {
         if (!connection.write(nextChallenge()))
           return;
         continue;
@@ -348,6 +405,7 @@ private:
   int listen_{-1};
   int port_{0};
   Mode mode_;
+  std::string encryptType_;
   int connections_{0};
   std::string answeredAuthorization_;
   std::string challengeNonce_;
@@ -364,7 +422,7 @@ TapoTalkConfig clientConfig(int port)
   config.host = "127.0.0.1";
   config.port = port;
   config.username = "admin";
-  config.cloudPassword = "cloud-secret";
+  config.cloudPassword = kCloudPassword;
   config.connectTimeoutMs = 2000;
   config.ioTimeoutMs = 2000;
   config.pace = false;
@@ -397,14 +455,27 @@ TEST_CASE("the talk channel answers the digest challenge on the same connection"
   CHECK_FALSE(client.isOpen());
 }
 
-TEST_CASE("the talk channel reports every rejected password variant")
+TEST_CASE("the talk channel uses the md5 digest when the camera does not ask for sha256")
+{
+  FakeTalkChannel channel(FakeTalkChannel::Mode::AcceptReference, "0");
+  TapoTalkClient client(clientConfig(channel.port()));
+  const auto opened = client.open();
+  REQUIRE(opened.ok);
+  CHECK(channel.connections() == 1);
+  CHECK(client.state()["passwordVariant"].asString() == "md5");
+  CHECK(client.state()["sessionId"].asString() == "31415");
+  client.close();
+}
+
+TEST_CASE("the talk channel spends one connection on a rejected digest")
 {
   FakeTalkChannel channel(FakeTalkChannel::Mode::RejectAll);
   TapoTalkClient client(clientConfig(channel.port()));
   const auto opened = client.open();
   REQUIRE_FALSE(opened.ok);
   CHECK(opened.error.find("digest rejected") != std::string::npos);
-  CHECK(channel.connections() == 3);
+  CHECK(opened.error.find("sha256") != std::string::npos);
+  CHECK(channel.connections() == 1);
   CHECK_FALSE(client.isOpen());
 }
 

@@ -489,57 +489,60 @@ when `NatsBus` is constructed, so the gate only decides whether the bus is
 built — and the two `operator.*` knobs spliced into
 `NatsObjectEventSink::Config` at the point that optional sink is built.
 
-## The talk channel's authentication, and the C225 401 that is device-side
+## The talk channel: reference shape, the two-step gate, and the media slots
 
 The speaker path is the Tapo local media API on port 8800: a `POST /stream`
 multipart request whose HTTP Digest challenge
 (`realm="TP-Link IP-Camera"`, `algorithm="MD5"`, `encrypt_type="3"`, `qop="auth"`)
-is answered with `admin` as the username and the **uppercase** hex of the cloud
-password (go2rtc's documented working form). The client computes every digest
-hash in uppercase: the lowercase hex it used before is a defect of ours, as is
-sending the cloud *username* where the reference sends `admin`. Both are fixed
-here and pinned by `tests/unit/tapo-crypto-test.cc`.
+is answered with `admin` as the username and the **uppercase** hex of the
+cloud password — SHA-256 when the challenge says `encrypt_type="3"`, MD5
+otherwise, exactly go2rtc's rule. The `plain`/`md5` derivation ladder this
+client used to try is gone: every extra attempt is another connection to a
+camera that counts them (below), and one derivation per challenge is what
+the references do. The challenge is answered **on the same TCP connection
+that issued it** — pytapo's `HttpMediaSession` re-sends the request head on
+its one socket and go2rtc's `req.Write(conn)` retry does the same — and
+`tests/unit/tapo-talk-client-test.cc` pins both the shape and the
+derivation with a fake Streamd that recomputes the digest and only accepts
+an Authorization naming the nonce it issued on that connection.
 
-The auth flow itself is now the reference shape, byte for byte: the challenge
-is answered **on the same TCP connection that issued it**, and every password
-variant that is retried gets a fresh connection and a fresh nonce. Both
-references work that way — pytapo's `HttpMediaSession` re-sends the request
-head on its one socket, and go2rtc's `req.Write(conn)` retry does the same —
-while the old client captured the nonce on one connection and answered it from
-another. `tests/unit/tapo-talk-client-test.cc` pins the shape with a fake
-Streamd that only accepts an Authorization naming the nonce it issued on that
-same socket, so the cross-connection form can never come back unnoticed.
+**The 401 that read as unexplainable was a provisioning gate.** Measured on
+2026-09-26 against the live C225 (firmware 1.3.1 Build 260514): with the
+correct credential and digest shape every attempt answered 401 for hours —
+pytapo's own `HttpMediaSession` and go2rtc 1.9.14 included — while the
+control channel (443) accepted both stored credential sets and RTSP kept
+streaming. After the TP-Link account's **two-step verification was disabled**
+and the camera was rebooted, the very same digest was accepted: five
+consecutive opens returned `200 OK` with a `Key-Exchange` header. That
+matches the community's record of TP-Link's server-side provisioning
+locking local media authorisation (go2rtc #781/#849/#1494,
+HomeAssistant-Tapo-Control) and PR #1832's finding that account 2FA breaks
+the local `tapo://` auth. The camera can be re-provisioned again whenever it
+calls home, so a 401 with a credential that used to work is a provisioning
+question first, not a code question — the probe is the arbiter, and the
+device-side ladder is: 2FA off, Third-Party Compatibility re-toggled with
+the camera online, firmware 1.3.2 Build 260811, re-add the camera, factory
+reset.
 
-**The C225 in this house still answers 401, and the 401 is not ours.**
-Measured on 2026-09-26 against the live device: the control channel (443)
-accepts both stored credential sets — the camera account and the cloud
-account — so the stored cloud password is valid on the camera's control plane
-today, which kills the stale-account-password hypothesis. The media port
-(8800) rejects every variant anyway: 36 combinations across three usernames,
-three password derivations, both digest algorithms and both hex cases, each
-with a fresh nonce (`argus-tapo-probe`, `accepted=0`), and eleven
-same-connection variants besides. pytapo's own `HttpMediaSession` — the
-implementation Home Assistant's Tapo Control ships to thousands of users —
-opens its session against this camera and receives the same 401, as does
-go2rtc 1.9.14 with its documented forms, while RTSP (H264 + PCMA on both
-streams) and ONVIF keep working. Three independent clients failing
-identically means the camera's media authorisation no longer accepts any
-derivation of a credential the camera itself still considers valid.
+**The media service counts sessions, and leaks them.** The camera serves a
+small number of media sessions — the operator's model is two, one for the
+Tapo app and one for an external client, which is why every stream consumer
+is fed through go2rtc instead of from the camera directly. A burst of
+session attempts (~50 probes in two minutes) left the 8800 service
+answering 401 to a correct digest for over fifteen minutes of idleness; only
+a camera restart cleared it, matching go2rtc #1836 ("Line is Busy" until a
+restart). The client is built around that: one connection per open, one
+authenticated attempt per connection, a rejected digest closes the socket
+and reports instead of trying more derivations, and `TapoDriver::speak`
+serialises talk per camera with its own mutex so two utterances can never
+take two slots. One `speak` costs one session, held for the utterance and
+closed at scope end. The probe is the exception that takes many connections
+by design — run it when the line is quiet, never in a loop.
 
-That failure mode is TP-Link's, and it is documented: their 2024 security
-waves re-provision local authorisation server-side and broke the
-`tapo://` media session on many models — the C225 among them — across go2rtc
-issues (#781, #849, #1494) and HomeAssistant-Tapo-Control. The reported
-remedies are, in order: the Tapo app's Third-Party Compatibility toggle
-(already enabled on this camera), the newer firmware (1.3.2 Build 260811
-exists; this camera runs 1.3.1 Build 260514), re-adding the camera in the
-Tapo app, and a factory reset as the last resort. Cameras can be re-provisioned
-again whenever they call home, so the probe stays the arbiter: `accepted=0`
-means the device is still locked, whatever the client does. The Streamd
-advertises `X-Preconn: 1` and `X-Hb: 5` in its 401 — no reference client
-implements that handshake, and nothing suggests the camera requires it. ONVIF
-is not an alternative backchannel: this model exposes Profile S only, with no
-`media2` service and no audio output.
+The Streamd advertises `X-Preconn: 1` and `X-Hb: 5` in its 401; no reference
+client implements that handshake and nothing suggests the camera requires
+it. ONVIF is not an alternative backchannel: this model exposes Profile S
+only, with no `media2` service and no audio output.
 
 ## The camera microphone in the fMP4 the app plays
 

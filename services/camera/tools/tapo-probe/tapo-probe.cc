@@ -162,7 +162,11 @@ void usage()
                "[--cloud-user <user>]\n"
                "Probes the Tapo talk channel with a matrix of authentication "
                "variants and prints one line per attempt (labels only; the "
-               "password is never printed).\n";
+               "password is never printed).\n"
+               "Each variant costs connections to a camera that counts media "
+               "sessions and leaks them: run it against a quiet line, never "
+               "in a loop, and restart the camera if a correct credential "
+               "answers 401 afterwards.\n";
 }
 
 }
@@ -210,7 +214,7 @@ int main(int argc, char** argv)
     if (username.empty())
       continue;
     for (const auto& [passwordLabel, value] : passwords) {
-      for (const std::string& algorithm : {"MD5", "SHA-256"}) {
+      for (const char* algorithm : {"MD5", "SHA-256"}) {
         for (const bool lowercase : {false, true}) {
           variants.push_back({.userLabel = userLabel,
                               .username = username,

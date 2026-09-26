@@ -3320,31 +3320,41 @@ run against the device.
   The backend's own ear — `audio-capture.cc` shelling to ffmpeg over go2rtc's
   RTSP restream — passes `pcm_alaw` through untranscoded and was never
   affected (measured with ffprobe against the restream).
-- **Talk is reference-shaped now, and the remaining 401 is the device's.**
-  `TapoTalkClient` answers the digest challenge on the same TCP connection
-  that issued it and takes a fresh connection + fresh nonce per retried
-  password variant — the byte shape of pytapo and go2rtc, where the old
-  client captured a nonce on one socket and answered from another. The new
-  `tests/unit/tapo-talk-client-test.cc` pins this with a fake Streamd that
-  only accepts an Authorization naming its own connection's nonce (red before
-  the fix: the old client could not authenticate at all against it).
-  Against the live camera: control 443 accepts both stored credential sets
-  (the cloud password is valid on the device today — the stale-password
-  hypothesis is dead), while 8800 answers 401 to all 36 fresh-nonce matrix
-  variants (`argus-tapo-probe`, `accepted=0`) and to eleven same-connection
-  variants; pytapo's own `HttpMediaSession` and go2rtc 1.9.14 receive the
-  same 401. That is TP-Link's 2024 server-side provisioning breaking local
-  media authorisation across Tapo models (go2rtc #781/#849/#1494,
-  HomeAssistant-Tapo-Control); Third-Party Compatibility is already enabled
-  here, so the ladder that remains is firmware 1.3.2 Build 260811 → re-add
-  the camera in the Tapo app → factory reset, with the probe as arbiter. The
-  probe also no longer reuses one challenge across its whole matrix: every
-  variant requests a fresh nonce, matching how the camera tracks them.
+- **Talk: reference shape, and the 401 was a two-step gate.** `TapoTalkClient`
+  answers the digest challenge on the same TCP connection that issued it —
+  the byte shape of pytapo and go2rtc, where the old client captured a nonce
+  on one socket and answered from another — and derives exactly one password
+  per challenge (`encrypt_type="3"` → uppercase SHA-256 of the cloud
+  password, else MD5, go2rtc's rule). The derivation ladder is gone: with the
+  camera counting media sessions, every extra attempt was another connection.
+  The talk suite pins the shape and the digest itself — its fake Streamd
+  recomputes the response and only accepts an Authorization naming its own
+  connection's nonce. Measured against the live C225: with the credential
+  proven on the control channel (443 accepted both stored sets) and the
+  digest correct, the 8800 service answered 401 for hours — pytapo's own
+  `HttpMediaSession` and go2rtc 1.9.14 included — until the TP-Link
+  account's two-step verification was disabled and the camera rebooted; the
+  same digest then returned `200 OK` with a `Key-Exchange` header on five
+  consecutive opens. That is TP-Link's server-side provisioning gate (go2rtc
+  #781/#849/#1494, HomeAssistant-Tapo-Control, PR #1832 on 2FA), and the
+  device-side ladder stays as the answer for the next time it closes:
+  firmware 1.3.2 Build 260811, re-add the camera, factory reset. A first
+  draft of this entry claimed eleven same-connection variants were rejected;
+  that harness sent its Authorization after the header terminator, so those
+  attempts were unauthenticated and the claim is withdrawn.
+- **One talk session at a time.** The camera serves few media sessions — the
+  operator's model is two, one for the Tapo app and one external, the reason
+  every stream consumer is fed through go2rtc — and it leaks them: ~50 probe
+  attempts left 8800 answering 401 to a correct digest for over fifteen
+  minutes of idleness, and only a camera restart cleared it (go2rtc #1836's
+  "Line is Busy" until a restart). `TapoDriver::speak` serialises talk per
+  camera behind its own mutex, a rejected digest costs exactly one
+  connection, and the probe's usage text warns that it is a burst.
 - The Streamd's `X-Preconn: 1` / `X-Hb: 5` advertisement in its 401 is
   recorded in the camera CONTEXT; no reference client implements that
   handshake.
 
 Verified: `build-all.sh dev --only camera` — 56/56 ctest cases including the
-new talk suites, 0 errors 0 warnings; check-comments 1424 files / 0 comments;
-check-deps 915 edges / 0 forbidden; check-routes 75 declarations, 0 added,
-0 removed.
+talk suite (4 cases, 25 assertions), 0 errors 0 warnings; check-comments
+1424 files / 0 comments; check-deps 915 edges / 0 forbidden; check-routes 75
+declarations, 0 added, 0 removed.

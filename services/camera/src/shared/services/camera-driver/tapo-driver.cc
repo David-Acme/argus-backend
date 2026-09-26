@@ -144,6 +144,8 @@ DriverResult TapoDriver::speak(const DriverSpeakInput& input)
   if (input.samples.empty())
     return DriverResult::failure("Nothing to say");
 
+  std::lock_guard<std::mutex> lock(talkMutex_);
+
   TapoTalkConfig config;
   config.host = camera_.ip;
   config.port = static_cast<int>(ConfigService::getInt("tapo.media_port"));

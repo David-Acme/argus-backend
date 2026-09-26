@@ -110,16 +110,19 @@ std::vector<int16_t> equalizeForSpeaker(const std::vector<int16_t>& samples)
   return out;
 }
 
-std::vector<std::pair<std::string, std::string>> passwordCandidates(
-    const std::string& encryptType, const std::string& cloudPassword)
+struct TalkPassword
+{
+  std::string variant;
+  std::string value;
+};
+
+TalkPassword talkPassword(const std::string& encryptType,
+                          const std::string& cloudPassword)
 {
   if (encryptType == "3")
-    return {{"sha256", tapo_crypto::sha256Hex(cloudPassword)},
-            {"plain", cloudPassword},
-            {"md5", tapo_crypto::md5Hex(cloudPassword)}};
-  return {{"plain", cloudPassword},
-          {"md5", tapo_crypto::md5Hex(cloudPassword)},
-          {"sha256", tapo_crypto::sha256Hex(cloudPassword)}};
+    return {.variant = "sha256",
+            .value = tapo_crypto::sha256Hex(cloudPassword)};
+  return {.variant = "md5", .value = tapo_crypto::md5Hex(cloudPassword)};
 }
 
 }
@@ -252,78 +255,45 @@ TapoResult TapoTalkClient::authenticate()
     return TapoResult::failure("unexpected talk status " +
                                std::to_string(probe.status));
 
-  auto challenge =
+  const auto challenge =
       tapo_crypto::parseDigestChallenge(probe.header("WWW-Authenticate"));
   if (challenge.nonce.empty())
     return TapoResult::failure("talk channel did not send a digest challenge");
 
-  const auto candidates = passwordCandidates(challenge.encryptType,
-                                              config_.cloudPassword);
-  std::string lastError = "digest authentication rejected";
-  for (size_t index = 0; index < candidates.size(); ++index) {
-    const auto& [variant, password] = candidates[index];
-    if (index > 0) {
-      if (!openConnection()) {
-        lastError = connection_->error();
-        continue;
-      }
-      TapoHttpResponse fresh;
-      if (!converse({}, fresh)) {
-        lastError = fresh.error.empty() ? "no response from talk channel"
-                                        : fresh.error;
-        continue;
-      }
-      if (fresh.status == 200) {
-        passwordVariant_ = "none";
-        keyExchangeNonce_ = between({.text = fresh.header("Key-Exchange"),
-                                     .open = "nonce=\"",
-                                     .close = "\""});
-        return TapoResult::success(Json::Value());
-      }
-      if (fresh.status != 401) {
-        lastError = "unexpected talk status " + std::to_string(fresh.status);
-        continue;
-      }
-      challenge =
-          tapo_crypto::parseDigestChallenge(fresh.header("WWW-Authenticate"));
-      if (challenge.nonce.empty()) {
-        lastError = "talk channel did not send a digest challenge";
-        continue;
-      }
-    }
-
-    const tapo_crypto::DigestInput input{.username = config_.username,
-                                         .password = password,
-                                         .realm = challenge.realm,
-                                         .nonce = challenge.nonce,
-                                         .qop = challenge.qop,
-                                         .opaque = challenge.opaque,
-                                         .algorithm = challenge.algorithm,
-                                         .method = "POST",
-                                         .uri = "/stream",
-                                         .cnonce = tapo_crypto::randomHex(16),
-                                         .nonceCount = 1};
-    TapoHttpResponse response;
-    if (!converse(tapo_crypto::buildDigestHeader(input), response)) {
-      lastError = response.error.empty() ? "no answer from talk channel"
-                                         : response.error;
-      connection_.reset();
-      continue;
-    }
-    if (response.status == 200) {
-      passwordVariant_ = variant;
-      keyExchangeNonce_ = between({.text = response.header("Key-Exchange"),
-                                   .open = "nonce=\"",
-                                   .close = "\""});
-      LOG_INFO << "tapo talk: authenticated with password variant '" << variant
-               << "'";
-      return TapoResult::success(Json::Value());
-    }
-    lastError = "digest rejected (status " + std::to_string(response.status) +
-                ", variant " + variant + ")";
+  const TalkPassword candidate =
+      talkPassword(challenge.encryptType, config_.cloudPassword);
+  const tapo_crypto::DigestInput input{.username = config_.username,
+                                       .password = candidate.value,
+                                       .realm = challenge.realm,
+                                       .nonce = challenge.nonce,
+                                       .qop = challenge.qop,
+                                       .opaque = challenge.opaque,
+                                       .algorithm = challenge.algorithm,
+                                       .method = "POST",
+                                       .uri = "/stream",
+                                       .cnonce = tapo_crypto::randomHex(16),
+                                       .nonceCount = 1};
+  TapoHttpResponse response;
+  if (!converse(tapo_crypto::buildDigestHeader(input), response)) {
+    const std::string error = response.error.empty()
+                                  ? "no answer from talk channel"
+                                  : response.error;
+    connection_.reset();
+    return TapoResult::failure(error);
   }
-  connection_.reset();
-  return TapoResult::failure(lastError);
+  if (response.status != 200) {
+    connection_.reset();
+    return TapoResult::failure("digest rejected (status " +
+                               std::to_string(response.status) + ", variant " +
+                               candidate.variant + ")");
+  }
+  passwordVariant_ = candidate.variant;
+  keyExchangeNonce_ = between({.text = response.header("Key-Exchange"),
+                               .open = "nonce=\"",
+                               .close = "\""});
+  LOG_INFO << "tapo talk: authenticated with password variant '"
+           << candidate.variant << "'";
+  return TapoResult::success(Json::Value());
 }
 
 bool TapoTalkClient::writePart(const std::vector<TapoHttpHeader>& headers,

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <memory>
+#include <mutex>
 #include <shared/services/camera-driver/camera-driver.hxx>
 #include <shared/services/tapo/tapo-api.hxx>
 
@@ -24,4 +25,5 @@ private:
 
   CameraSchema camera_;
   std::unique_ptr<TapoApi> api_;
+  std::mutex talkMutex_;
 };
