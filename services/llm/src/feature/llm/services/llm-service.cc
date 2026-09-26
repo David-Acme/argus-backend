@@ -458,7 +458,8 @@ void LlmService::generateStream(const GenerateInput& input,
   for (int32_t i = 0; i < maxTokens; ++i) {
     const llama_token newToken = llama_sampler_sample(smpl.get(), ctx, -1);
 
-    if (newToken == eosToken || newToken == eotToken)
+    if (newToken == eosToken || newToken == eotToken ||
+        llama_vocab_is_eog(vocab, newToken))
       break;
 
     std::array<char, 256> buf{};
@@ -481,7 +482,6 @@ void LlmService::generateStream(const GenerateInput& input,
       }
     }
 
-    llama_sampler_accept(smpl.get(), newToken);
     cachedTokens_.push_back(newToken);
 
     batch.token[0] = newToken;
