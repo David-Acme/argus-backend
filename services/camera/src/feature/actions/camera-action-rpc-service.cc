@@ -847,7 +847,7 @@ CameraActionRpcService::Listen(grpc::CallbackServerContext* context,
       std::string failure;
       try {
         const std::string url = Go2rtcManager::instance().rtspBase() + "/" +
-                                Go2rtcManager::streamName(cameraId);
+                                Go2rtcManager::subStreamName(cameraId);
         dispatched = true;
         const auto captured =
             co_await BlockingTask<AudioCaptureResult>([url, seconds]() {
