@@ -275,6 +275,8 @@ target_compile_options(tapo-crypto-test PRIVATE -Wall -Wextra)
 
 add_test(NAME tapo-crypto-test COMMAND tapo-crypto-test)
 
+add_subdirectory(tools/tapo-probe)
+
 add_executable(camera-action-rpc-test
     tests/unit/camera-action-rpc-test.cc)
 
