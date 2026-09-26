@@ -568,6 +568,29 @@ RTSP restream (`rtsp://127.0.0.1:8554/camN`), which passes `pcm_alaw` through
 untranscoded — measured with `ffprobe` against the restream — so the voice
 loop's microphone capture keeps working exactly as before.
 
+## The camera's connection budget is the thing to protect
+
+TP-Link's FAQ 2742 puts the local limit at three concurrent live viewers and
+says it plainly: each ONVIF or RTSP connection counts toward it. What the FAQ
+does not document is the failure mode, and the community's answer is the
+symptom this tree spent a day chasing — overload surfaces as 401 or "Invalid
+authentication data" on the *new* connection, indistinguishable from a wrong
+credential (go2rtc #1801's maintainer: "your camera just overload"). Every
+contradiction measured here resolves under that reading: the talk session
+that spoke was the only client connected at the time, and the sessions that
+authenticated (200) but played nothing were arriving while go2rtc's pulls,
+the app and the probes already filled the budget. A media session is
+therefore not a resource to open per utterance — it is a slot to hold.
+
+The service's discipline, measured with `ss` against the live camera: **one**
+camera-facing RTSP connection by default (the operator's frame source and the
+voice capture both read `camN-sub`, so go2rtc multiplexes one stream for
+everything) plus the talk channel's single persistent session — two of three,
+leaving the app its own viewer. A viewer that asks for `main` quality adds a
+second pull on demand and only while it watches. The 720p frames the
+operator uses are the same pull as the app's default view, not a third
+connection.
+
 ## Detector and health frames come from the sub stream
 
 `Go2rtcFrameSource` — the one frame source the operator and the health
