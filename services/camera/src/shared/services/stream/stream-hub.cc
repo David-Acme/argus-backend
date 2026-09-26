@@ -18,8 +18,8 @@ constexpr int64_t kDefaultGraceMs = 2000;
 
 std::string upstreamName(int64_t cameraId, const std::string& quality)
 {
-  const std::string base = Go2rtcManager::streamName(cameraId);
-  return quality == "sub" ? base + "-sub" : base;
+  return quality == "sub" ? Go2rtcManager::subStreamName(cameraId)
+                          : Go2rtcManager::streamName(cameraId);
 }
 }
 

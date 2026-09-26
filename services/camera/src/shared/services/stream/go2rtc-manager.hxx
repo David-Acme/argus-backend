@@ -44,6 +44,7 @@ public:
   std::string apiBase();
   std::string rtspBase();
   static std::string streamName(int64_t cameraId);
+  static std::string subStreamName(int64_t cameraId);
 
   static bool isSafeName(const std::string& name);
   static bool isSafeUrl(const std::string& url);

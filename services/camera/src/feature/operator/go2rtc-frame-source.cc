@@ -15,7 +15,8 @@ Go2rtcFrameSource::grab(const FrameGrabRequest& request)
 
   auto request2 = drogon::HttpRequest::newHttpRequest();
   request2->setMethod(drogon::Get);
-  request2->setPath("/api/frame.jpeg?src=" + Go2rtcManager::streamName(request.cameraId));
+  request2->setPath("/api/frame.jpeg?src=" +
+                    Go2rtcManager::subStreamName(request.cameraId));
 
   const auto client = drogon::HttpClient::newHttpClient(
       Go2rtcManager::instance().apiBase());

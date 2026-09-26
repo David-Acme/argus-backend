@@ -28,10 +28,8 @@ std::string encodeUserInfo(const std::string& value)
 
 std::string sourceName(int64_t cameraId, bool sub)
 {
-  std::string name = Go2rtcManager::streamName(cameraId);
-  if (sub)
-    name += "-sub";
-  return name;
+  return sub ? Go2rtcManager::subStreamName(cameraId)
+             : Go2rtcManager::streamName(cameraId);
 }
 
 class Go2rtcSourceSink : public ICameraSourceSink

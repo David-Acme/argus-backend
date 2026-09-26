@@ -117,6 +117,11 @@ std::string Go2rtcManager::streamName(int64_t cameraId)
   return "cam" + std::to_string(cameraId);
 }
 
+std::string Go2rtcManager::subStreamName(int64_t cameraId)
+{
+  return streamName(cameraId) + "-sub";
+}
+
 bool Go2rtcManager::writeConfig()
 {
   std::ofstream out(configPath_, std::ios::trunc);

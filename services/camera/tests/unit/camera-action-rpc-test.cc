@@ -425,6 +425,13 @@ TEST_CASE("the camera action RPC drives the driver behind the fleet gate")
                     .expiresAt = 0})
             .rejected());
 
+  audio_capture::setCaptureFunctionForTest([](const AudioCaptureInput&) {
+    AudioCaptureResult result;
+    result.status = AudioCaptureStatus::Timeout;
+    result.error = "capture timeout";
+    return result;
+  });
+
   const auto listen = client.listen({.cameraId = 1,
                                      .seconds = 1,
                                      .lang = "es",

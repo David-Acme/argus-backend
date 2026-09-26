@@ -568,3 +568,16 @@ RTSP restream (`rtsp://127.0.0.1:8554/camN`), which passes `pcm_alaw` through
 untranscoded — measured with `ffprobe` against the restream — so the voice
 loop's microphone capture keeps working exactly as before.
 
+## Detector and health frames come from the sub stream
+
+`Go2rtcFrameSource` — the one frame source the operator and the health
+monitor share — asks go2rtc for `camN-sub`, the 1280×720 substream, where it
+used to pull `camN` and decode 2688×1520. The detector's input is 640 px and
+the VLM downscales to `[vision] max_input_px`, so the 2K frame bought no
+signal and cost a decode plus a resize on every tick; the crops the guard
+assesses are lighter for it too. `Go2rtcManager::subStreamName` now carries
+the one spelling of the `-sub` suffix (the registrar and the stream hub read
+it instead of appending it themselves), and the app's live view is untouched
+— it already picked `sub` by default. Measured: `frame.jpeg?src=cam1-sub`
+answers 1280×720 where `cam1` answers 2688×1520.
+
