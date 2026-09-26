@@ -488,3 +488,30 @@ the `nats.url` gate on the optional bus — a key `lib/nats` resolves for itself
 when `NatsBus` is constructed, so the gate only decides whether the bus is
 built — and the two `operator.*` knobs spliced into
 `NatsObjectEventSink::Config` at the point that optional sink is built.
+
+## The talk channel's authentication, and the C225 401 that is still unexplained
+
+The speaker path is the Tapo local media API on port 8800: a `POST /stream`
+multipart request whose HTTP Digest challenge
+(`realm="TP-Link IP-Camera"`, `algorithm="MD5"`, `encrypt_type="3"`, `qop="auth"`)
+is answered with `admin` as the username and the **uppercase** hex of the cloud
+password (go2rtc's documented working form). The client now computes every digest
+hash in uppercase: the lowercase hex it used before is a defect of ours, as is
+sending the cloud *username* where the reference sends `admin`. Both are fixed
+here and pinned by `tests/unit/tapo-crypto-test.cc`.
+
+**Neither fix makes the C225 in this house answer.** Measured against it: every
+request shape (paths, methods, headers, user agents, `Content-Length: -1`,
+chunked, multipart bodies, `X-Preconn`/`X-Hb`, Basic, four usernames, five
+password derivations, both digest algorithms, both hex cases, with and without
+`qop`) returns 401, and so does go2rtc 1.9.14 with its own documented forms -
+while RTSP and ONVIF keep working and the cloud account validates against
+TP-Link. The 401 is therefore **not** explained by our client's code, and two
+hypotheses remain: the camera verifies a locally stored secret that no longer
+matches the current account password, or the firmware (1.3.1 Build 260514;
+1.3.2 Build 260811 exists) changed the local authorisation. The hardware
+sequence to settle it, in order: reboot the camera and probe before opening the
+Tapo app; update to 1.3.2; re-link the camera; only then consider a factory
+reset. ONVIF is not an alternative: this model exposes Profile S only, with no
+`media2` service and no audio output, so there is no backchannel to use.
+

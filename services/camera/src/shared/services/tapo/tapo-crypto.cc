@@ -249,8 +249,8 @@ std::string buildDigestHeader(const DigestInput& input)
   const bool useSha256 = algorithm.find("SHA-256") != std::string::npos ||
                          algorithm.find("SHA256") != std::string::npos;
   const auto hash = [useSha256](const std::string& value) {
-    return useSha256 ? toHex(sha256Raw(value), false)
-                     : toHex(md5Raw(value), false);
+    return useSha256 ? toHex(sha256Raw(value), true)
+                     : toHex(md5Raw(value), true);
   };
 
   const std::string ha1 =

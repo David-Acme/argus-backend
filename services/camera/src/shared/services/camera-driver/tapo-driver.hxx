@@ -4,6 +4,8 @@
 #include <shared/services/camera-driver/camera-driver.hxx>
 #include <shared/services/tapo/tapo-api.hxx>
 
+std::string tapoTalkUsername();
+
 class TapoDriver final : public ICameraDriver
 {
 public:

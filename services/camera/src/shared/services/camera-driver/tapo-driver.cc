@@ -132,6 +132,11 @@ DriverResult TapoDriver::settings(const DriverSettingsInput& input)
   return last;
 }
 
+std::string tapoTalkUsername()
+{
+  return "admin";
+}
+
 DriverResult TapoDriver::speak(const DriverSpeakInput& input)
 {
   if (camera_.cloudPassword.empty())
@@ -142,7 +147,7 @@ DriverResult TapoDriver::speak(const DriverSpeakInput& input)
   TapoTalkConfig config;
   config.host = camera_.ip;
   config.port = static_cast<int>(ConfigService::getInt("tapo.media_port"));
-  config.username = camera_.cloudUsername.empty() ? "admin" : camera_.cloudUsername;
+  config.username = tapoTalkUsername();
   config.cloudPassword = camera_.cloudPassword;
   config.mode = ConfigService::getString("tapo.talk_mode");
   config.framing = tapoTalkFramingFromString(ConfigService::getString("tapo.talk_framing"));

@@ -260,6 +260,21 @@ target_compile_options(camera-talk-cutover-test PRIVATE -Wall -Wextra)
 
 add_test(NAME camera-talk-cutover-test COMMAND camera-talk-cutover-test)
 
+add_executable(tapo-crypto-test
+    tests/unit/tapo-crypto-test.cc)
+
+target_link_libraries(tapo-crypto-test PRIVATE
+    argus::camera-tapo
+    argus::camera-driver
+    doctest::doctest)
+
+set_target_properties(tapo-crypto-test PROPERTIES
+    EXCLUDE_FROM_ALL FALSE)
+
+target_compile_options(tapo-crypto-test PRIVATE -Wall -Wextra)
+
+add_test(NAME tapo-crypto-test COMMAND tapo-crypto-test)
+
 add_executable(camera-action-rpc-test
     tests/unit/camera-action-rpc-test.cc)
 
