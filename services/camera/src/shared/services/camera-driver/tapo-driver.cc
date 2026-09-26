@@ -132,6 +132,8 @@ DriverResult TapoDriver::settings(const DriverSettingsInput& input)
   return last;
 }
 
+TapoDriver::~TapoDriver() = default;
+
 std::string tapoTalkUsername()
 {
   return "admin";
@@ -146,24 +148,28 @@ DriverResult TapoDriver::speak(const DriverSpeakInput& input)
 
   std::lock_guard<std::mutex> lock(talkMutex_);
 
-  TapoTalkConfig config;
-  config.host = camera_.ip;
-  config.port = static_cast<int>(ConfigService::getInt("tapo.media_port"));
-  config.username = tapoTalkUsername();
-  config.cloudPassword = camera_.cloudPassword;
-  config.mode = ConfigService::getString("tapo.talk_mode");
-  config.framing = tapoTalkFramingFromString(ConfigService::getString("tapo.talk_framing"));
-  config.connectTimeoutMs = static_cast<int>(ConfigService::getInt("tapo.connect_timeout_ms"));
-  config.ioTimeoutMs = static_cast<int>(ConfigService::getInt("tapo.request_timeout_ms"));
+  if (!talkClient_) {
+    TapoTalkConfig config;
+    config.host = camera_.ip;
+    config.port = static_cast<int>(ConfigService::getInt("tapo.media_port"));
+    config.username = tapoTalkUsername();
+    config.cloudPassword = camera_.cloudPassword;
+    config.mode = ConfigService::getString("tapo.talk_mode");
+    config.framing = tapoTalkFramingFromString(ConfigService::getString("tapo.talk_framing"));
+    config.connectTimeoutMs = static_cast<int>(ConfigService::getInt("tapo.connect_timeout_ms"));
+    config.ioTimeoutMs = static_cast<int>(ConfigService::getInt("tapo.request_timeout_ms"));
+    talkClient_ = std::make_unique<TapoTalkClient>(config);
+  }
 
-  TapoTalkClient client(config);
   CancellationToken token;
-  const auto sent = client.sendChunk(
-      {.samples = input.samples, .sampleRate = input.sampleRate, .reopenOnFailure = true},
+  const auto sent = talkClient_->sendChunk(
+      {.samples = input.samples, .sampleRate = input.sampleRate, .reopenOnFailure = false},
       token);
-  if (!sent.ok)
+  if (!sent.ok) {
+    talkClient_.reset();
     return DriverResult::failure(sent.error.empty() ? "The camera refused the audio"
                                                     : sent.error);
+  }
 
   Json::Value data;
   data["spokenSamples"] = static_cast<Json::Int64>(input.samples.size());

@@ -5,12 +5,15 @@
 #include <shared/services/camera-driver/camera-driver.hxx>
 #include <shared/services/tapo/tapo-api.hxx>
 
+class TapoTalkClient;
+
 std::string tapoTalkUsername();
 
 class TapoDriver final : public ICameraDriver
 {
 public:
   explicit TapoDriver(const CameraSchema& camera);
+  ~TapoDriver() override;
 
   Json::Value capabilities() const override;
   DriverResult status() override;
@@ -25,5 +28,6 @@ private:
 
   CameraSchema camera_;
   std::unique_ptr<TapoApi> api_;
+  std::unique_ptr<TapoTalkClient> talkClient_;
   std::mutex talkMutex_;
 };

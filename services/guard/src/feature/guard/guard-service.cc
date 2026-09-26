@@ -1114,6 +1114,7 @@ GuardService::checkpointToJson(const ObservationCheckpoint& checkpoint)
   Json::Value json(Json::objectValue);
   json["encounterChecks"] = checkpoint.encounterChecks;
   json["visitCount"] = checkpoint.visitCount;
+  json["signatureVisits"] = checkpoint.signatureVisits;
   json["expectedGuest"] = checkpoint.expectedGuest;
   json["guestId"] = Json::Int64(checkpoint.guestId);
   json["guestOneTime"] = checkpoint.guestOneTime;
@@ -1172,6 +1173,7 @@ GuardService::checkpointFromJson(const Json::Value& json)
     return checkpoint;
   checkpoint.encounterChecks = json.get("encounterChecks", 0).asInt();
   checkpoint.visitCount = json.get("visitCount", 0).asInt();
+  checkpoint.signatureVisits = json.get("signatureVisits", 0).asInt();
   checkpoint.expectedGuest = json.get("expectedGuest", false).asBool();
   checkpoint.guestId = json.get("guestId", 0).asInt64();
   checkpoint.guestOneTime = json.get("guestOneTime", false).asBool();
@@ -1269,7 +1271,23 @@ GuardService::applyObservation(const ObservationInput& input)
         signals.zoneKind == "alert" || signals.rule == "person_in_alert_zone";
     context.atNight =
         signals.rule == "person_night" || signals.rule == "vehicle_night";
-    context.escalated = signals.escalated;
+    context.escalated =
+        signals.escalated || signals.rule == "presence_escalating";
+    context.signatureVisits = checkpoint.signatureVisits;
+    context.unknownCount = signals.unknownCount;
+    context.knownCount = signals.knownCount;
+    if (signals.hasUnknown && signals.knownPersonId > 0 &&
+        dependencies_.identity) {
+      const auto known = co_await BlockingTask<std::optional<PersonProfile>>(
+          [this, personId = signals.knownPersonId]() {
+            return dependencies_.identity->getPerson(personId);
+          });
+      const bool resident =
+          known && known->userId.has_value() &&
+          (known->role == "owner" || known->role == "resident");
+      context.accompaniedByResident = resident;
+      context.accompaniedByGuest = known.has_value() && !resident;
+    }
     if (signals.personId > 0)
       context.visitCount =
           co_await repository_.repeatCount(signals.personId,
@@ -1295,6 +1313,19 @@ GuardService::applyObservation(const ObservationInput& input)
                            guard_policy::dangerRank(GuardDanger::High);
     hardFloor = checkpoint.hardFloor;
     danger = policyDanger;
+    if (signals.personId > 0 && dependencies_.identity &&
+        (context.accompaniedByResident || context.accompaniedByGuest)) {
+      const std::string source =
+          context.accompaniedByResident ? "resident" : "guest";
+      co_await BlockingTask<bool>([this, personId = signals.personId,
+                                   source]() {
+        return dependencies_.identity->tagPerson(
+            {.personId = personId,
+             .tags = {"companion"},
+             .source = "guard",
+             .observation = "accompanied by " + source});
+      });
+    }
   }
   else {
     danger = guard_policy::dangerFromString(checkpoint.policyDanger);
@@ -1886,6 +1917,7 @@ GuardService::applyObservation(const ObservationInput& input)
            .signature = signals.signature,
            .hasUnknown = signals.hasUnknown,
            .now = now});
+      checkpoint.signatureVisits = collected.repeatVisits;
       const HoldResult holds = co_await computeHolds(
           {.danger = danger, .legacyWouldNotify = legacyWould, .now = now});
       journalFresh = co_await journalDecision(
@@ -2150,6 +2182,9 @@ GuardService::runDialogue(const DialogueInput& input)
           !greet.authorized ? "denied" : (greet.accepted ? "sent" : "failed");
       result.greetingDetail = greet.detail;
       result.greeted = greet.accepted;
+      if (!greet.accepted)
+        LOG_WARN << "Guard dialogue: greet " << result.greetingStatus << ": "
+                 << greet.detail;
       if (greet.resumable) {
         result.resumable = true;
         result.retryAt = greet.retryAt;
