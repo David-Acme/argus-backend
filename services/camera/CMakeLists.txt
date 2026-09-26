@@ -275,6 +275,20 @@ target_compile_options(tapo-crypto-test PRIVATE -Wall -Wextra)
 
 add_test(NAME tapo-crypto-test COMMAND tapo-crypto-test)
 
+add_executable(tapo-talk-client-test
+    tests/unit/tapo-talk-client-test.cc)
+
+target_link_libraries(tapo-talk-client-test PRIVATE
+    argus::camera-tapo
+    doctest::doctest)
+
+set_target_properties(tapo-talk-client-test PROPERTIES
+    EXCLUDE_FROM_ALL FALSE)
+
+target_compile_options(tapo-talk-client-test PRIVATE -Wall -Wextra)
+
+add_test(NAME tapo-talk-client-test COMMAND tapo-talk-client-test)
+
 add_subdirectory(tools/tapo-probe)
 
 add_executable(camera-action-rpc-test

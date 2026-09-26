@@ -104,8 +104,10 @@ public:
 
 private:
   std::string requestHead(const std::string& authorization) const;
-  TapoResult handshake(const std::string& authorization,
-                       TapoHttpResponse& response);
+  TapoEndpoint endpoint() const;
+  bool openConnection();
+  bool converse(const std::string& authorization,
+                TapoHttpResponse& response);
   TapoResult authenticate();
   TapoResult startSession();
   bool writePart(const std::vector<TapoHttpHeader>& headers,

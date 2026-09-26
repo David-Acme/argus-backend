@@ -225,8 +225,19 @@ int main(int argc, char** argv)
 
   int accepted = 0;
   for (const auto& variant : variants) {
+    const std::string fresh = exchange(args, {});
+    const auto freshHeader = headerValue(fresh, "WWW-Authenticate");
+    if (!freshHeader) {
+      std::cout << "user=" << variant.userLabel
+                << " pass=" << variant.passwordLabel
+                << " -> no fresh challenge ("
+                << fresh.substr(0, fresh.find("\r\n")) << ")\n";
+      continue;
+    }
+    const tapo_crypto::DigestChallenge freshChallenge =
+        tapo_crypto::parseDigestChallenge(*freshHeader);
     const std::string answer =
-        exchange(args, buildAuthorization(challenge, variant));
+        exchange(args, buildAuthorization(freshChallenge, variant));
     const std::string status =
         answer.substr(0, answer.find("\r\n"));
     const bool ok = status.find(" 200 ") != std::string::npos;

@@ -3300,3 +3300,51 @@ duplicating effects.
   DLQ, camera outbox) pass against a real broker across outage, restart,
   duplicate, crash-before-commit and max-deliver scenarios. Landed as small
   commits on `round5/reliability` and merged to `master`.
+
+## Camera audio: the microphone reaches the app, the talk channel is reference-shaped (2026-09-26)
+
+Both halves of camera audio were driven to root cause against the live C225
+(192.168.18.213, firmware 1.3.1 Build 260514) with the community references
+read line by line (pytapo `media_stream/session.py`, go2rtc `pkg/tapo`) and
+run against the device.
+
+- **Listening was our bug, and it is fixed.** The camera publishes
+  `pcm_alaw` 8 kHz mono on both RTSP streams, but `StreamHub` pulled
+  `/api/stream.mp4` bare and go2rtc's MP4 consumer with no media filter
+  negotiates H264/H265 + AAC only, so the audio was silently dropped and the
+  app received a video-only init. The upstream now asks `&mp4=flac`; go2rtc
+  adds PCMA/PCMU/PCM/PCML to its audio offer and transcodes them to FLAC
+  inside the fMP4 with no external process. Measured: the bare URL yields one
+  `vide`/`avc1` track, the `mp4=flac` URL yields `avc1` + `fLaC` 8000 Hz mono
+  in the same capture, readable by `ffprobe`. The WS framing is untouched.
+  The backend's own ear — `audio-capture.cc` shelling to ffmpeg over go2rtc's
+  RTSP restream — passes `pcm_alaw` through untranscoded and was never
+  affected (measured with ffprobe against the restream).
+- **Talk is reference-shaped now, and the remaining 401 is the device's.**
+  `TapoTalkClient` answers the digest challenge on the same TCP connection
+  that issued it and takes a fresh connection + fresh nonce per retried
+  password variant — the byte shape of pytapo and go2rtc, where the old
+  client captured a nonce on one socket and answered from another. The new
+  `tests/unit/tapo-talk-client-test.cc` pins this with a fake Streamd that
+  only accepts an Authorization naming its own connection's nonce (red before
+  the fix: the old client could not authenticate at all against it).
+  Against the live camera: control 443 accepts both stored credential sets
+  (the cloud password is valid on the device today — the stale-password
+  hypothesis is dead), while 8800 answers 401 to all 36 fresh-nonce matrix
+  variants (`argus-tapo-probe`, `accepted=0`) and to eleven same-connection
+  variants; pytapo's own `HttpMediaSession` and go2rtc 1.9.14 receive the
+  same 401. That is TP-Link's 2024 server-side provisioning breaking local
+  media authorisation across Tapo models (go2rtc #781/#849/#1494,
+  HomeAssistant-Tapo-Control); Third-Party Compatibility is already enabled
+  here, so the ladder that remains is firmware 1.3.2 Build 260811 → re-add
+  the camera in the Tapo app → factory reset, with the probe as arbiter. The
+  probe also no longer reuses one challenge across its whole matrix: every
+  variant requests a fresh nonce, matching how the camera tracks them.
+- The Streamd's `X-Preconn: 1` / `X-Hb: 5` advertisement in its 401 is
+  recorded in the camera CONTEXT; no reference client implements that
+  handshake.
+
+Verified: `build-all.sh dev --only camera` — 56/56 ctest cases including the
+new talk suites, 0 errors 0 warnings; check-comments 1424 files / 0 comments;
+check-deps 915 edges / 0 forbidden; check-routes 75 declarations, 0 added,
+0 removed.

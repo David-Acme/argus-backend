@@ -489,29 +489,79 @@ when `NatsBus` is constructed, so the gate only decides whether the bus is
 built — and the two `operator.*` knobs spliced into
 `NatsObjectEventSink::Config` at the point that optional sink is built.
 
-## The talk channel's authentication, and the C225 401 that is still unexplained
+## The talk channel's authentication, and the C225 401 that is device-side
 
 The speaker path is the Tapo local media API on port 8800: a `POST /stream`
 multipart request whose HTTP Digest challenge
 (`realm="TP-Link IP-Camera"`, `algorithm="MD5"`, `encrypt_type="3"`, `qop="auth"`)
 is answered with `admin` as the username and the **uppercase** hex of the cloud
-password (go2rtc's documented working form). The client now computes every digest
+password (go2rtc's documented working form). The client computes every digest
 hash in uppercase: the lowercase hex it used before is a defect of ours, as is
 sending the cloud *username* where the reference sends `admin`. Both are fixed
 here and pinned by `tests/unit/tapo-crypto-test.cc`.
 
-**Neither fix makes the C225 in this house answer.** Measured against it: every
-request shape (paths, methods, headers, user agents, `Content-Length: -1`,
-chunked, multipart bodies, `X-Preconn`/`X-Hb`, Basic, four usernames, five
-password derivations, both digest algorithms, both hex cases, with and without
-`qop`) returns 401, and so does go2rtc 1.9.14 with its own documented forms -
-while RTSP and ONVIF keep working and the cloud account validates against
-TP-Link. The 401 is therefore **not** explained by our client's code, and two
-hypotheses remain: the camera verifies a locally stored secret that no longer
-matches the current account password, or the firmware (1.3.1 Build 260514;
-1.3.2 Build 260811 exists) changed the local authorisation. The hardware
-sequence to settle it, in order: reboot the camera and probe before opening the
-Tapo app; update to 1.3.2; re-link the camera; only then consider a factory
-reset. ONVIF is not an alternative: this model exposes Profile S only, with no
-`media2` service and no audio output, so there is no backchannel to use.
+The auth flow itself is now the reference shape, byte for byte: the challenge
+is answered **on the same TCP connection that issued it**, and every password
+variant that is retried gets a fresh connection and a fresh nonce. Both
+references work that way — pytapo's `HttpMediaSession` re-sends the request
+head on its one socket, and go2rtc's `req.Write(conn)` retry does the same —
+while the old client captured the nonce on one connection and answered it from
+another. `tests/unit/tapo-talk-client-test.cc` pins the shape with a fake
+Streamd that only accepts an Authorization naming the nonce it issued on that
+same socket, so the cross-connection form can never come back unnoticed.
+
+**The C225 in this house still answers 401, and the 401 is not ours.**
+Measured on 2026-09-26 against the live device: the control channel (443)
+accepts both stored credential sets — the camera account and the cloud
+account — so the stored cloud password is valid on the camera's control plane
+today, which kills the stale-account-password hypothesis. The media port
+(8800) rejects every variant anyway: 36 combinations across three usernames,
+three password derivations, both digest algorithms and both hex cases, each
+with a fresh nonce (`argus-tapo-probe`, `accepted=0`), and eleven
+same-connection variants besides. pytapo's own `HttpMediaSession` — the
+implementation Home Assistant's Tapo Control ships to thousands of users —
+opens its session against this camera and receives the same 401, as does
+go2rtc 1.9.14 with its documented forms, while RTSP (H264 + PCMA on both
+streams) and ONVIF keep working. Three independent clients failing
+identically means the camera's media authorisation no longer accepts any
+derivation of a credential the camera itself still considers valid.
+
+That failure mode is TP-Link's, and it is documented: their 2024 security
+waves re-provision local authorisation server-side and broke the
+`tapo://` media session on many models — the C225 among them — across go2rtc
+issues (#781, #849, #1494) and HomeAssistant-Tapo-Control. The reported
+remedies are, in order: the Tapo app's Third-Party Compatibility toggle
+(already enabled on this camera), the newer firmware (1.3.2 Build 260811
+exists; this camera runs 1.3.1 Build 260514), re-adding the camera in the
+Tapo app, and a factory reset as the last resort. Cameras can be re-provisioned
+again whenever they call home, so the probe stays the arbiter: `accepted=0`
+means the device is still locked, whatever the client does. The Streamd
+advertises `X-Preconn: 1` and `X-Hb: 5` in its 401 — no reference client
+implements that handshake, and nothing suggests the camera requires it. ONVIF
+is not an alternative backchannel: this model exposes Profile S only, with no
+`media2` service and no audio output.
+
+## The camera microphone in the fMP4 the app plays
+
+The camera publishes its microphone on RTSP — `pcm_alaw`, 8 kHz mono, on both
+`stream1` and `stream2` — but the app used to receive a silent stream, and the
+loss was ours: `StreamHub` pulled `/api/stream.mp4?src=camN` bare, and
+go2rtc's MP4 consumer with no media filter negotiates H264/H265 video and
+**AAC audio only**, so a source whose audio is PCMA is muxed video-only. The
+upstream now asks `&mp4=flac`: go2rtc's `ParseQuery` adds PCMA/PCMU/PCM/PCML
+to the offered audio codecs, and its MP4 consumer transcodes them to FLAC
+inside the fMP4 (`pcm.FLACEncoder`, no external process). Measured against
+the live C225: the bare URL produced an init with a single `vide`/`avc1`
+track; with `mp4=flac` the same URL produces `vide`/`avc1` +
+`soun`/`fLaC` at 8000 Hz mono, and `ffprobe` reads both tracks from the
+captured bytes. The WS framing is untouched — init and media boxes are
+opaque to `ws-frame`, so the app's player just gains a track it can decode
+(Android's MediaCodec plays FLAC in MP4). A camera with no audio track
+changes nothing: the offer is per-codec, not per-stream.
+
+The backend's own listening ear is a different path and was never affected:
+`feature/actions/audio-capture.cc` shells out to `ffmpeg` against go2rtc's
+RTSP restream (`rtsp://127.0.0.1:8554/camN`), which passes `pcm_alaw` through
+untranscoded — measured with `ffprobe` against the restream — so the voice
+loop's microphone capture keeps working exactly as before.
 
