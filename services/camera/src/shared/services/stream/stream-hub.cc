@@ -115,7 +115,7 @@ void StreamHub::runUpstream(std::shared_ptr<Upstream> up)
 {
   const auto [host, port] = upstream_http::splitHostPort(
       Go2rtcManager::instance().apiBase().substr(7));
-  const std::string path = "/api/stream.mp4?src=" + up->name;
+  const std::string path = "/api/stream.mp4?src=" + up->name + "&mp4=flac";
 
   upstream_http::Upstream conn =
       upstream_http::open({.host = host, .port = port, .path = path,
