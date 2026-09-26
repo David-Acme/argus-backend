@@ -132,7 +132,7 @@ drogon::Task<std::string> send(const SendInput& input)
   request->addHeader("x-amz-date", timestamp);
   request->addHeader("Authorization", signedRequest.authorization);
   if (!contentType.empty())
-    request->addHeader("Content-Type", contentType);
+    request->setContentTypeString(contentType);
   if (method == "PUT")
     request->setBody(body);
 
