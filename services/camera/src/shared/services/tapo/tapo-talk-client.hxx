@@ -47,7 +47,7 @@ struct TapoTalkConfig
   std::string mode{"aec"};
   int connectTimeoutMs{3000};
   int ioTimeoutMs{5000};
-  int packetMs{20};
+  int packetMs{120};
   bool pace{true};
   TapoTalkFraming framing{TapoTalkFraming::None};
   TapoTsConfig ts;
@@ -110,6 +110,10 @@ private:
                 TapoHttpResponse& response);
   TapoResult authenticate();
   TapoResult startSession();
+  void applyKeyExchange(const std::string& header);
+  void stopSession();
+  void deriveCipherKeys();
+  std::string encryptPart(const std::string& body) const;
   bool writePart(const std::vector<TapoHttpHeader>& headers,
                  const std::string& body);
   bool readPart(TapoTalkPart& part);
@@ -118,8 +122,12 @@ private:
   std::unique_ptr<TapoConnection> connection_;
   TapoTsMuxer muxer_;
   std::string passwordVariant_;
+  std::string passwordHash_;
   std::string sessionId_;
   std::string keyExchangeNonce_;
+  std::string keyExchangeUser_;
+  std::vector<uint8_t> cipherKey_;
+  std::vector<uint8_t> cipherIv_;
   int64_t seq_{1};
   int64_t pts90k_{0};
   int64_t sentSamples_{0};

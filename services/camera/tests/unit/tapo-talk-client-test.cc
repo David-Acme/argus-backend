@@ -216,6 +216,28 @@ public:
     return sessionBody_;
   }
 
+  bool stopEncrypted() const
+  {
+    std::lock_guard lock(mutex_);
+    return stopEncrypted_;
+  }
+
+  std::string stopPlaintext() const
+  {
+    std::lock_guard lock(mutex_);
+    if (!stopEncrypted_)
+      return stopBody_;
+    const std::string nonce = keyExchangeNonce_;
+    const auto key = tapo_crypto::md5Raw(
+        nonce + ":" + tapo_crypto::sha256Hex(kCloudPassword));
+    const auto iv = tapo_crypto::md5Raw(std::string("admin") + ":" + nonce);
+    const auto plain = tapo_crypto::aes128CbcDecrypt(
+        {.data = std::vector<uint8_t>(stopBody_.begin(), stopBody_.end()),
+         .key = key,
+         .iv = iv});
+    return {plain.begin(), plain.end()};
+  }
+
   void stop()
   {
     if (listen_ < 0)
@@ -384,7 +406,22 @@ private:
       std::lock_guard lock(mutex_);
       sessionBody_ = payload;
     }
-    return connection.write(sessionAnswer());
+    if (!connection.write(sessionAnswer()))
+      return false;
+
+    const std::string stop = connection.readHead();
+    if (stop.empty())
+      return true;
+    const size_t stopBody = contentLengthOf(stop);
+    std::string stopPayload;
+    if (stopBody > 0)
+      stopPayload = connection.readBody(stopBody);
+    {
+      std::lock_guard lock(mutex_);
+      stopBody_ = stopPayload;
+      stopEncrypted_ = headerValueOf(stop, "X-If-Encrypt") == "1";
+    }
+    return true;
   }
 
   void serve()
@@ -411,6 +448,8 @@ private:
   std::string challengeNonce_;
   std::string keyExchangeNonce_;
   std::string sessionBody_;
+  std::string stopBody_;
+  bool stopEncrypted_{false};
   mutable std::mutex mutex_;
   std::atomic<bool> stopping_{false};
   std::thread thread_;
@@ -453,6 +492,13 @@ TEST_CASE("the talk channel answers the digest challenge on the same connection"
   CHECK(client.isOpen());
   client.close();
   CHECK_FALSE(client.isOpen());
+  for (int i = 0; i < 400 && channel.stopPlaintext().empty(); ++i)
+    std::this_thread::sleep_for(std::chrono::milliseconds(5));
+  CHECK(channel.stopEncrypted());
+  const std::string stop = channel.stopPlaintext();
+  CHECK(stop.find("\"stop\":\"null\"") != std::string::npos);
+  CHECK(stop.find("\"method\":\"do\"") != std::string::npos);
+  CHECK(stop.find("\"type\":\"request\"") != std::string::npos);
 }
 
 TEST_CASE("the talk channel uses the md5 digest when the camera does not ask for sha256")
@@ -467,15 +513,15 @@ TEST_CASE("the talk channel uses the md5 digest when the camera does not ask for
   client.close();
 }
 
-TEST_CASE("the talk channel spends one connection on a rejected digest")
+TEST_CASE("the talk channel retries the other derivation before giving up")
 {
   FakeTalkChannel channel(FakeTalkChannel::Mode::RejectAll);
   TapoTalkClient client(clientConfig(channel.port()));
   const auto opened = client.open();
   REQUIRE_FALSE(opened.ok);
   CHECK(opened.error.find("digest rejected") != std::string::npos);
-  CHECK(opened.error.find("sha256") != std::string::npos);
-  CHECK(channel.connections() == 1);
+  CHECK(opened.error.find("md5") != std::string::npos);
+  CHECK(channel.connections() == 2);
   CHECK_FALSE(client.isOpen());
 }
 
