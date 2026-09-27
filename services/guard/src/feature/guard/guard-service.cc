@@ -2106,7 +2106,7 @@ drogon::Task<GuardService::DialogueResult>
 GuardService::runDialogue(const DialogueInput& input)
 {
   DialogueResult result;
-  if (!dependencies_.actions || input.encounterId <= 0)
+  if (!dependencies_.actions)
     co_return result;
 
   const auto encounter = co_await repository_.findEncounter(input.encounterId);
@@ -2192,24 +2192,27 @@ GuardService::runDialogue(const DialogueInput& input)
       }
       if (!greet.accepted)
         co_return result;
-      co_await repository_.transitionEncounter(
-          {.encounterId = input.encounterId,
-           .toState = EncounterState::Challenging,
-           .reason = "challenge",
-           .grade = guard_policy::dangerToString(input.danger),
-           .at = input.now});
-      co_await repository_.setDialogueGoal({.encounterId = input.encounterId,
-                                            .goal = std::string(kGoalVerify),
-                                            .listeningUntil = 0,
-                                            .lastLine = greeting,
-                                            .lastHeard = {}});
+      if (input.encounterId > 0) {
+        co_await repository_.transitionEncounter(
+            {.encounterId = input.encounterId,
+             .toState = EncounterState::Challenging,
+             .reason = "challenge",
+             .grade = guard_policy::dangerToString(input.danger),
+             .at = input.now});
+        co_await repository_.setDialogueGoal(
+            {.encounterId = input.encounterId,
+             .goal = std::string(kGoalVerify),
+             .listeningUntil = 0,
+             .lastLine = greeting,
+             .lastHeard = {}});
+      }
     }
     else {
       result.greeted = true;
       result.greetingText = greeting;
     }
 
-    if (config_.greetListenSeconds > 0) {
+    if (config_.greetListenSeconds > 0 && input.encounterId > 0) {
       if (goal.empty())
         co_await repository_.transitionEncounter(
             {.encounterId = input.encounterId,
