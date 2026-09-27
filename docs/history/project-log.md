@@ -3358,3 +3358,54 @@ Verified: `build-all.sh dev --only camera` — 56/56 ctest cases including the
 talk suite (4 cases, 25 assertions), 0 errors 0 warnings; check-comments
 1424 files / 0 comments; check-deps 915 edges / 0 forbidden; check-routes 75
 declarations, 0 added, 0 removed.
+
+## The camera integration, researched and rebuilt natively (2026-09-27)
+
+A full research pass over TP-Link's own documentation, ONVIF's profile specs
+and every maintained reverse-engineering reference (pytapo's media session,
+go2rtc's tapo package, Scrypted's first-party plugin, nphil/scrypted-intercom,
+cam-to-sip, the archived vendor-app protocol capture, the decompiled TapoTalk)
+settled what a day of probing could not, and the integration was rebuilt on
+it.
+
+- **The 401s were two documented behaviours, not a mystery.** FAQ 2742 states
+  the local limit (three concurrent viewers; RTSP/ONVIF connections counted
+  in) and the community's answer explains the failure mode: overload
+  surfaces as 401 on the *new* connection (go2rtc #1801: "your camera just
+  overload"). The session that spoke was the only client connected; the ones
+  that authenticated and played silence arrived while the budget was full.
+- **Only an explicit stop releases the 8800 line.** The vendor's release is
+  `{"type":"request","params":{"stop":"null","method":"do"}}`, AES-128-CBC
+  encrypted under the Key-Exchange material, sent on the same connection
+  before the socket closes. The client derives that material on every
+  authentication and sends it from `close()`, so sessions no longer leave the
+  line busy — the state that read as a 401 lock.
+- **The uplink now matches the app's measured cadence**: 1504-byte parts every
+  120 ms (PAT + PMT + six TS packets, 960 A-law bytes, PTS steps of 10800),
+  `stream_type 0x90` / PES `0xC0`, never front-loaded. The password fallback
+  (one retry with the other derivation, bounded at two connections) is
+  mandatory: the dialect is per-device, not per-model.
+- **The same session is a call**: `receive()` reads the camera's own
+  microphone from `video/mp2t` parts, decrypts them and demuxes to PCM
+  through a new `TapoDownlink` (PAT → PMT → PES; 0x90 A-law 8 kHz, 0x91 u-law
+  16 kHz). The camera ducks its mic while speaking, so the conversation is
+  half duplex. Video stays on RTSP, the documented path.
+- **One camera-facing connection by default**: the operator's frames and the
+  voice capture both read `camN-sub` now (the capture used to pull `main`),
+  so go2rtc multiplexes a single stream for every internal consumer.
+- **A real flow bug found on the way**: a *known* visitor's greeting is dead
+  code. The guard's encounter phase closes (never creates) an encounter for
+  a known person, the dialogue stage then sees `encounterId == 0` and
+  `runDialogue` returns empty — so "Hola {name}" can never be spoken while
+  the unrecognised path greets fine. Fixing it is the next flow step.
+- References that carry weight for future work: ONVIF is Profile S only here
+  (no audio output; two-way audio is Profile T) and TP-Link documents no
+  third-party speaker path at all, so the whole talk channel is
+  reverse-engineered and firmware-volatile — the probe stays the arbiter and
+  the device-side ladder (2FA, Third-Party Compatibility, firmware 1.3.2,
+  re-add, factory reset) is recorded in the camera CONTEXT.
+
+Verified: `build-all.sh dev --only camera` — 56/56 ctest cases including the
+talk suite (5 cases, 36 assertions), 0 errors 0 warnings. The live camera was
+offline by the end of the pass; the two-cycle audible test (speak, stop,
+speak again with no reboot) is pending it coming back.

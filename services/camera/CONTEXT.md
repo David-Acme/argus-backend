@@ -489,60 +489,74 @@ when `NatsBus` is constructed, so the gate only decides whether the bus is
 built — and the two `operator.*` knobs spliced into
 `NatsObjectEventSink::Config` at the point that optional sink is built.
 
-## The talk channel: reference shape, the two-step gate, and the media slots
+## The talk channel: the vendor app's shape, the line's budget, and the call
 
 The speaker path is the Tapo local media API on port 8800: a `POST /stream`
 multipart request whose HTTP Digest challenge
 (`realm="TP-Link IP-Camera"`, `algorithm="MD5"`, `encrypt_type="3"`, `qop="auth"`)
 is answered with `admin` as the username and the **uppercase** hex of the
 cloud password — SHA-256 when the challenge says `encrypt_type="3"`, MD5
-otherwise, exactly go2rtc's rule. The `plain`/`md5` derivation ladder this
-client used to try is gone: every extra attempt is another connection to a
-camera that counts them (below), and one derivation per challenge is what
-the references do. The challenge is answered **on the same TCP connection
-that issued it** — pytapo's `HttpMediaSession` re-sends the request head on
-its one socket and go2rtc's `req.Write(conn)` retry does the same — and
-`tests/unit/tapo-talk-client-test.cc` pins both the shape and the
-derivation with a fake Streamd that recomputes the digest and only accepts
-an Authorization naming the nonce it issued on that connection.
+otherwise. The dialect is per-device and not predictable from model or
+firmware (a C120 on 1.4.3 accepts only the MD5 derivation while advertising
+`encrypt_type="3"`), so a rejected digest retries the other derivation
+exactly once, bounded at two connections per open. The challenge is answered
+**on the same TCP connection that issued it** and never reused: the nonce is
+single-use.
 
-**The 401 that read as unexplainable was a provisioning gate.** Measured on
-2026-09-26 against the live C225 (firmware 1.3.1 Build 260514): with the
-correct credential and digest shape every attempt answered 401 for hours —
-pytapo's own `HttpMediaSession` and go2rtc 1.9.14 included — while the
-control channel (443) accepted both stored credential sets and RTSP kept
-streaming. After the TP-Link account's **two-step verification was disabled**
-and the camera was rebooted, the very same digest was accepted: five
-consecutive opens returned `200 OK` with a `Key-Exchange` header. That
-matches the community's record of TP-Link's server-side provisioning
-locking local media authorisation (go2rtc #781/#849/#1494,
-HomeAssistant-Tapo-Control) and PR #1832's finding that account 2FA breaks
-the local `tapo://` auth. The camera can be re-provisioned again whenever it
-calls home, so a 401 with a credential that used to work is a provisioning
-question first, not a code question — the probe is the arbiter, and the
-device-side ladder is: 2FA off, Third-Party Compatibility re-toggled with
-the camera online, firmware 1.3.2 Build 260811, re-add the camera, factory
-reset.
+**The uplink is the app's own cadence.** Measured from the vendor app's
+captured stream and the decompiled client: 1504-byte parts every 120 ms —
+PAT, PMT and six MPEG-TS packets carrying exactly 960 A-law bytes with PTS
+deltas of 10800 ticks — under `stream_type 0x90` and PES `stream_id 0xC0`,
+with standard PCMA `0x06` rejected as silence. The client sends that shape,
+never front-loads (these cameras discard excess) and keeps the average period
+rather than resetting the clock on lateness. The framing itself has the
+`plain` mode of old firmware only as history; the parts go out plaintext with
+`X-If-Encrypt: 0` exactly as go2rtc's backchannel and the app's own muxer do.
 
-**The media service counts sessions, and leaks them.** The camera serves a
-small number of media sessions — the operator's model is two, one for the
-Tapo app and one for an external client, which is why every stream consumer
-is fed through go2rtc instead of from the camera directly. A burst of
-session attempts (~50 probes in two minutes) left the 8800 service
-answering 401 to a correct digest for over fifteen minutes of idleness; only
-a camera restart cleared it, matching go2rtc #1836 ("Line is Busy" until a
-restart). The client is built around that: one connection per open, one
-authenticated attempt per connection, a rejected digest closes the socket
-and reports instead of trying more derivations, and `TapoDriver::speak`
-serialises talk per camera with its own mutex so two utterances can never
-take two slots. One `speak` costs one session, held for the utterance and
-closed at scope end. The probe is the exception that takes many connections
-by design — run it when the line is quiet, never in a loop.
+**The line is held, and only an explicit stop releases it.** No reference
+implements a keepalive; a session that is not stopped keeps the 8800 line
+busy, so the next client authenticates, receives no session id and plays
+silence — the 401-shaped state this tree chased for a day, cleared only by
+the camera's own timeout or a restart. The release is the vendor's request,
+sent as an AES-128-CBC JSON part on the same connection before the socket
+closes: `{"type":"request","params":{"stop":"null","method":"do"}}`. The
+client derives the cipher material from the Key-Exchange header on every
+authentication (key = MD5(nonce:hashedPassword), iv = MD5(username:nonce),
+`username="none"` meaning media encryption is off) and sends that stop from
+`close()`, so every session this service opens is released on the way out.
+
+**The same session is a call.** The camera pushes its own microphone as
+`video/mp2t` parts on the connection the uplink uses, encrypted per part with
+the same material and the IV reset; `receive()` skips the JSON
+notifications, decrypts and demuxes to PCM through `TapoDownlink` (PAT, PMT,
+PES; `0x90` A-law at 8 kHz or `0x91` u-law at 16 kHz). The camera ducks its
+microphone while it speaks — the same behaviour is visible in the vendor app
+— so a conversation on this port is half duplex: speak, stop, listen, never
+both at once. Video does not come from here: RTSP is the documented,
+maintained path and one pull through go2rtc serves every viewer, where the
+8800 preview would spend the connection budget on a second source of the
+same picture.
+
+**Two budgets bound every consumer.** FAQ 2742 states the local limit: three
+concurrent live viewers, RTSP and ONVIF connections counted in. Overload
+surfaces as 401 or "Invalid authentication data" on the *new* connection
+(go2rtc #1801: "your camera just overload"), which is why this service holds
+exactly one camera-facing RTSP pull — the sub stream, shared by the
+operator's frames and the voice capture — plus the talk session's single
+persistent connection, and why a viewer that asks for `main` quality is the
+only consumer allowed to add a pull, on demand and only while it watches. A
+burst of probes also fills the budget; the probe is a diagnostic, run when
+the line is quiet and never in a loop.
 
 The Streamd advertises `X-Preconn: 1` and `X-Hb: 5` in its 401; no reference
-client implements that handshake and nothing suggests the camera requires
-it. ONVIF is not an alternative backchannel: this model exposes Profile S
-only, with no `media2` service and no audio output.
+client implements that handshake. ONVIF is not an alternative backchannel:
+TP-Link's own FAQ puts this model at Profile S, and Profile S has no audio
+output — two-way audio is Profile T, which the C225 does not implement.
+TP-Link documents no third-party path to the speaker at all, so everything
+above is reverse-engineered, unsupported and firmware-volatile: the probe
+remains the arbiter, and the device-side ladder for a 401 that used to work
+is 2FA off, Third-Party Compatibility re-toggled with the camera online,
+firmware 1.3.2 Build 260811, re-add the camera, factory reset.
 
 ## The camera microphone in the fMP4 the app plays
 
@@ -567,29 +581,6 @@ The backend's own listening ear is a different path and was never affected:
 RTSP restream (`rtsp://127.0.0.1:8554/camN`), which passes `pcm_alaw` through
 untranscoded — measured with `ffprobe` against the restream — so the voice
 loop's microphone capture keeps working exactly as before.
-
-## The camera's connection budget is the thing to protect
-
-TP-Link's FAQ 2742 puts the local limit at three concurrent live viewers and
-says it plainly: each ONVIF or RTSP connection counts toward it. What the FAQ
-does not document is the failure mode, and the community's answer is the
-symptom this tree spent a day chasing — overload surfaces as 401 or "Invalid
-authentication data" on the *new* connection, indistinguishable from a wrong
-credential (go2rtc #1801's maintainer: "your camera just overload"). Every
-contradiction measured here resolves under that reading: the talk session
-that spoke was the only client connected at the time, and the sessions that
-authenticated (200) but played nothing were arriving while go2rtc's pulls,
-the app and the probes already filled the budget. A media session is
-therefore not a resource to open per utterance — it is a slot to hold.
-
-The service's discipline, measured with `ss` against the live camera: **one**
-camera-facing RTSP connection by default (the operator's frame source and the
-voice capture both read `camN-sub`, so go2rtc multiplexes one stream for
-everything) plus the talk channel's single persistent session — two of three,
-leaving the app its own viewer. A viewer that asks for `main` quality adds a
-second pull on demand and only while it watches. The 720p frames the
-operator uses are the same pull as the app's default view, not a third
-connection.
 
 ## Detector and health frames come from the sub stream
 
