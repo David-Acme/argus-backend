@@ -496,12 +496,22 @@ multipart request whose HTTP Digest challenge
 (`realm="TP-Link IP-Camera"`, `algorithm="MD5"`, `encrypt_type="3"`, `qop="auth"`)
 is answered with `admin` as the username and the **uppercase** hex of the
 cloud password — SHA-256 when the challenge says `encrypt_type="3"`, MD5
-otherwise. The dialect is per-device and not predictable from model or
-firmware (a C120 on 1.4.3 accepts only the MD5 derivation while advertising
-`encrypt_type="3"`), so a rejected digest retries the other derivation
-exactly once, bounded at two connections per open. The challenge is answered
-**on the same TCP connection that issued it** and never reused: the nonce is
-single-use.
+otherwise. The two hex cases in that sentence are not interchangeable and
+mixing them costs a day: the **derived password** is uppercase hex (go2rtc's
+`%32X`, pytapo's `pwd_digest`), while the **digest itself** — HA1, HA2 and
+the response — is computed and compared in **lowercase** (pytapo's
+`.hexdigest()`, RFC 2617's canonical form). Uppercasing HA1/HA2 changes the
+MD5 input, so the response comes out as a different value entirely, not the
+same value in another case; the camera then answers 401 on a correct
+credential, indistinguishable from a busy line. Commit `a17ef9be` made that
+mistake, `18f51d71` undid it, and both `tapo-crypto-test` (the exact
+response for fixed inputs) and the talk suite's fake (a verifier in the
+camera's canonical form) now pin it. The dialect is per-device and not
+predictable from model or firmware (a C120 on 1.4.3 accepts only the MD5
+derivation while advertising `encrypt_type="3"`), so a rejected digest
+retries the other derivation exactly once, bounded at two connections per
+open. The challenge is answered **on the same TCP connection that issued
+it** and never reused: the nonce is single-use.
 
 **The uplink is the app's own cadence.** Measured from the vendor app's
 captured stream and the decompiled client: 1504-byte parts every 120 ms —
