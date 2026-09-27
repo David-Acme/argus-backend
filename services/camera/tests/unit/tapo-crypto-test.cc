@@ -38,11 +38,11 @@ tapo_crypto::DigestInput digestInput(const std::string& password,
 }
 }
 
-TEST_CASE("the talk digest is computed in uppercase hex")
+TEST_CASE("the talk digest is computed in lowercase hex")
 {
   const std::string header =
       tapo_crypto::buildDigestHeader(digestInput("secret", "MD5"));
-  CHECK(digestField(header, "response") == "E17231B8332FB26F463E8E0CB9655364");
+  CHECK(digestField(header, "response") == "421fc6e14bbc0d952066e3825dd19391");
   CHECK(header.find("username=\"admin\"") != std::string::npos);
   CHECK(header.find("algorithm=MD5") != std::string::npos);
 }

@@ -320,13 +320,12 @@ private:
     const std::string password =
         encryptType_ == "3" ? tapo_crypto::sha256Hex(kCloudPassword)
                             : tapo_crypto::md5Hex(kCloudPassword);
-    const std::string ha1 =
-        tapo_crypto::md5Hex(username + ":" + realm + ":" + password);
-    const std::string ha2 = tapo_crypto::md5Hex("POST:" + uri);
-    const std::string expected =
-        tapo_crypto::md5Hex(ha1 + ":" + nonce + ":" + nc + ":" + cnonce + ":" +
-                            qop + ":" + ha2);
-    return lower(expected) == lower(response);
+    const std::string ha1 = lower(
+        tapo_crypto::md5Hex(username + ":" + realm + ":" + password));
+    const std::string ha2 = lower(tapo_crypto::md5Hex("POST:" + uri));
+    const std::string expected = lower(tapo_crypto::md5Hex(
+        ha1 + ":" + nonce + ":" + nc + ":" + cnonce + ":" + qop + ":" + ha2));
+    return expected == lower(response);
   }
 
   std::string nextChallenge()
