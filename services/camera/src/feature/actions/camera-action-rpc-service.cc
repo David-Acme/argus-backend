@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cstdint>
 #include <ctime>
+#include <audio/endpoint-detector.hxx>
 #include <drogon/drogon.h>
 #include <feature/actions/audio-capture.hxx>
 #include <feature/camera-control/dtos/camera-talk-dto.hxx>
@@ -24,6 +25,7 @@ namespace
 {
 
 constexpr int64_t kCommandLeaseSeconds = 120;
+constexpr int kCaptureSampleRate = 16000;
 
 int64_t nowSeconds()
 {
@@ -846,17 +848,46 @@ CameraActionRpcService::Listen(grpc::CallbackServerContext* context,
       bool failed = false;
       std::string failure;
       try {
-        const std::string url = Go2rtcManager::instance().rtspBase() + "/" +
-                                Go2rtcManager::subStreamName(cameraId);
-        dispatched = true;
-        const auto captured =
-            co_await BlockingTask<AudioCaptureResult>([url, seconds]() {
-              return audio_capture::capture(
-                  {.url = url, .seconds = seconds, .endpoint = true});
-            });
+        const auto camera = co_await cameraRepository_.findById(cameraId);
+        const auto driver =
+            camera ? CameraDriverRegistry::instance().driverFor(*camera)
+                   : nullptr;
+        DriverCaptureResult captured;
+        if (driver)
+          captured = co_await BlockingTask<DriverCaptureResult>(
+              [driver, seconds]() {
+                return driver->capture(
+                    {.seconds = seconds, .sampleRate = kCaptureSampleRate});
+              });
+
+        bool speechDetected = false;
+        bool endpointed = false;
+        if (captured.ok) {
+          dispatched = true;
+          EndpointDetector detector(audio_endpoint::cameraListenDefaults());
+          const EndpointStatus status =
+              detector.process(captured.samples.data(), captured.samples.size());
+          speechDetected = detector.speechDetected();
+          endpointed = status.endpointed;
+        }
+        else {
+          const std::string url = Go2rtcManager::instance().rtspBase() + "/" +
+                                  Go2rtcManager::subStreamName(cameraId);
+          dispatched = true;
+          const auto fallback =
+              co_await BlockingTask<AudioCaptureResult>([url, seconds]() {
+                return audio_capture::capture(
+                    {.url = url, .seconds = seconds, .endpoint = true});
+              });
+          captured.ok = fallback.ok;
+          captured.samples = fallback.samples;
+          captured.error = fallback.error;
+          speechDetected = fallback.speechDetected;
+          endpointed = fallback.endpointed;
+        }
         responseWriter->set_captured(captured.ok);
-        responseWriter->set_speech_detected(captured.speechDetected);
-        responseWriter->set_endpointed(captured.endpointed);
+        responseWriter->set_speech_detected(speechDetected);
+        responseWriter->set_endpointed(endpointed);
         responseWriter->set_duplicate(false);
 
         std::string text;
@@ -870,8 +901,8 @@ CameraActionRpcService::Listen(grpc::CallbackServerContext* context,
 
         Json::Value stored(Json::objectValue);
         stored["captured"] = captured.ok;
-        stored["speechDetected"] = captured.speechDetected;
-        stored["endpointed"] = captured.endpointed;
+        stored["speechDetected"] = speechDetected;
+        stored["endpointed"] = endpointed;
         stored["text"] = text;
         const CameraCommandOutcome intended =
             captured.ok ? CameraCommandOutcome::SUCCEEDED

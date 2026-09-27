@@ -1,5 +1,7 @@
 #include "tapo-driver.hxx"
 
+#include <audio/audio-resampler.hxx>
+#include <chrono>
 #include <config/config-service.hxx>
 #include <shared/services/tapo/tapo-talk-client.hxx>
 #include <runtime/cancellation-token.hxx>
@@ -139,6 +141,23 @@ std::string tapoTalkUsername()
   return "admin";
 }
 
+TapoTalkConfig talkConfigOf(const CameraSchema& camera)
+{
+  TapoTalkConfig config;
+  config.host = camera.ip;
+  config.port = static_cast<int>(ConfigService::getInt("tapo.media_port"));
+  config.username = tapoTalkUsername();
+  config.cloudPassword = camera.cloudPassword;
+  config.mode = ConfigService::getString("tapo.talk_mode");
+  config.framing =
+      tapoTalkFramingFromString(ConfigService::getString("tapo.talk_framing"));
+  config.connectTimeoutMs =
+      static_cast<int>(ConfigService::getInt("tapo.connect_timeout_ms"));
+  config.ioTimeoutMs =
+      static_cast<int>(ConfigService::getInt("tapo.request_timeout_ms"));
+  return config;
+}
+
 DriverResult TapoDriver::speak(const DriverSpeakInput& input)
 {
   if (camera_.cloudPassword.empty())
@@ -148,18 +167,8 @@ DriverResult TapoDriver::speak(const DriverSpeakInput& input)
 
   std::lock_guard<std::mutex> lock(talkMutex_);
 
-  if (!talkClient_) {
-    TapoTalkConfig config;
-    config.host = camera_.ip;
-    config.port = static_cast<int>(ConfigService::getInt("tapo.media_port"));
-    config.username = tapoTalkUsername();
-    config.cloudPassword = camera_.cloudPassword;
-    config.mode = ConfigService::getString("tapo.talk_mode");
-    config.framing = tapoTalkFramingFromString(ConfigService::getString("tapo.talk_framing"));
-    config.connectTimeoutMs = static_cast<int>(ConfigService::getInt("tapo.connect_timeout_ms"));
-    config.ioTimeoutMs = static_cast<int>(ConfigService::getInt("tapo.request_timeout_ms"));
-    talkClient_ = std::make_unique<TapoTalkClient>(config);
-  }
+  if (!talkClient_)
+    talkClient_ = std::make_unique<TapoTalkClient>(talkConfigOf(camera_));
 
   CancellationToken token;
   const auto sent = talkClient_->sendChunk(
@@ -174,4 +183,65 @@ DriverResult TapoDriver::speak(const DriverSpeakInput& input)
   Json::Value data;
   data["spokenSamples"] = static_cast<Json::Int64>(input.samples.size());
   return {.ok = true, .error = {}, .data = data};
+}
+
+DriverCaptureResult TapoDriver::capture(const DriverCaptureInput& input)
+{
+  if (camera_.cloudPassword.empty())
+    return {.ok = false,
+            .error = "The call channel needs the vendor cloud password",
+            .samples = {},
+            .sampleRate = input.sampleRate};
+  if (input.seconds <= 0 || input.sampleRate <= 0)
+    return {.ok = false,
+            .error = "The call needs a positive duration and sample rate",
+            .samples = {},
+            .sampleRate = input.sampleRate};
+
+  std::lock_guard<std::mutex> lock(talkMutex_);
+
+  if (!talkClient_)
+    talkClient_ = std::make_unique<TapoTalkClient>(talkConfigOf(camera_));
+
+  if (!talkClient_->isOpen()) {
+    const auto opened = talkClient_->open();
+    if (!opened.ok) {
+      talkClient_.reset();
+      return {.ok = false,
+              .error = opened.error.empty() ? "The camera refused the call"
+                                            : opened.error,
+              .samples = {},
+              .sampleRate = input.sampleRate};
+    }
+  }
+
+  const auto deadline = std::chrono::steady_clock::now() +
+                        std::chrono::seconds(input.seconds);
+  std::vector<int16_t> collected;
+  int sourceRate = 0;
+  while (std::chrono::steady_clock::now() < deadline) {
+    TapoDownlinkChunk chunk;
+    const auto received = talkClient_->receive(chunk);
+    if (!received.ok) {
+      talkClient_.reset();
+      break;
+    }
+    sourceRate = chunk.sampleRate;
+    collected.insert(collected.end(), chunk.samples.begin(), chunk.samples.end());
+  }
+  if (collected.empty())
+    return {.ok = false,
+            .error = "The camera sent no microphone audio",
+            .samples = {},
+            .sampleRate = input.sampleRate};
+
+  if (sourceRate > 0 && sourceRate != input.sampleRate) {
+    AudioResampler resampler(
+        {.sourceRate = sourceRate, .targetRate = input.sampleRate});
+    collected = resampler.process(collected.data(), collected.size());
+  }
+  return {.ok = true,
+          .error = {},
+          .samples = std::move(collected),
+          .sampleRate = input.sampleRate};
 }
