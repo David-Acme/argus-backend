@@ -1,8 +1,11 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
 
+#include <shared/services/tapo/tapo-audio.hxx>
 #include <shared/services/tapo/tapo-crypto.hxx>
+#include <shared/services/tapo/tapo-downlink.hxx>
 #include <shared/services/tapo/tapo-talk-client.hxx>
+#include <shared/services/tapo/tapo-ts-muxer.hxx>
 
 #include <arpa/inet.h>
 #include <netinet/in.h>
@@ -408,6 +411,8 @@ private:
     }
     if (!connection.write(sessionAnswer()))
       return false;
+    if (!connection.write(microphonePart()))
+      return false;
 
     const std::string stop = connection.readHead();
     if (stop.empty())
@@ -422,6 +427,29 @@ private:
       stopEncrypted_ = headerValueOf(stop, "X-If-Encrypt") == "1";
     }
     return true;
+  }
+
+  std::string microphonePart() const
+  {
+    TapoTsMuxer muxer({});
+    const std::vector<uint8_t> alaw(160, 0x2A);
+    const std::string stream =
+        muxer.tables() + muxer.frame({.payload = alaw, .pts90k = 0});
+    const std::string nonce = keyExchangeNonce();
+    const auto key = tapo_crypto::md5Raw(
+        nonce + ":" + tapo_crypto::sha256Hex(kCloudPassword));
+    const auto iv = tapo_crypto::md5Raw(std::string("admin") + ":" + nonce);
+    const auto cipher = tapo_crypto::aes128CbcEncrypt(
+        {.data = std::vector<uint8_t>(stream.begin(), stream.end()),
+         .key = key,
+         .iv = iv});
+    const std::string body(cipher.begin(), cipher.end());
+    return "----device-stream-boundary--\r\n"
+           "Content-Type: video/mp2t\r\n"
+           "X-If-Encrypt: 1\r\n"
+           "X-Session-Id: 31415\r\n"
+           "Content-Length: " +
+           std::to_string(body.size()) + "\r\n\r\n" + body + "\r\n";
   }
 
   void serve()
@@ -499,6 +527,23 @@ TEST_CASE("the talk channel answers the digest challenge on the same connection"
   CHECK(stop.find("\"stop\":\"null\"") != std::string::npos);
   CHECK(stop.find("\"method\":\"do\"") != std::string::npos);
   CHECK(stop.find("\"type\":\"request\"") != std::string::npos);
+}
+
+TEST_CASE("the talk channel receives the camera microphone")
+{
+  FakeTalkChannel channel(FakeTalkChannel::Mode::AcceptReference);
+  TapoTalkClient client(clientConfig(channel.port()));
+  REQUIRE(client.open().ok);
+  TapoDownlinkChunk chunk;
+  const auto received = client.receive(chunk);
+  REQUIRE(received.ok);
+  CHECK(chunk.codec == TapoDownlinkCodec::ALaw);
+  CHECK(chunk.sampleRate == 8000);
+  const auto expected = tapo_audio::decodeALaw(std::vector<uint8_t>(160, 0x2A));
+  REQUIRE(chunk.samples.size() == expected.size());
+  CHECK(chunk.samples.front() == expected.front());
+  CHECK(chunk.samples.back() == expected.back());
+  client.close();
 }
 
 TEST_CASE("the talk channel uses the md5 digest when the camera does not ask for sha256")
