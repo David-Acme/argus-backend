@@ -98,6 +98,12 @@ itself with `shutdown_signal::onStop` and reports drained when no handler body
 is in flight, so the database freeze that follows cannot run underneath a
 revocation.
 
+The action sink's drain wakes at the commit: `enqueue` runs inside the
+caller's transaction, so its `db_transaction::CommitObserver` wakes the drain
+when the commit lands, and its `WakeSignal` keeps a wake that arrives
+mid-pass, instead of a wake before the commit that found nothing and left the
+row waiting the retry period.
+
 **The RPC listener is a fleet secret, not a route.** `[auth] rpc_secret` must
 be the same value in every service's config. An empty value is legal only
 while the listener is bound to loopback, which is the native development

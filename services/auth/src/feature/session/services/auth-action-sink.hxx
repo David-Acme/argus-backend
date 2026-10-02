@@ -7,12 +7,12 @@
 #include <sync/auth-change-sink.hxx>
 
 #include <atomic>
-#include <condition_variable>
 #include <cstddef>
 #include <memory>
-#include <mutex>
 #include <string>
 #include <thread>
+#include <runtime/wake-signal.hxx>
+#include <sqlite/transaction.hxx>
 
 class NatsBus;
 
@@ -57,7 +57,7 @@ private:
   std::atomic<bool> stopping_{false};
   std::atomic<bool> workerStarted_{false};
   std::atomic<bool> exited_{false};
-  std::mutex wakeMutex_;
-  mutable std::condition_variable wake_;
+  mutable WakeSignal wake_;
+  db_transaction::CommitObserver commitObserver_{[this] { wake_.notify(); }};
   std::thread worker_;
 };
