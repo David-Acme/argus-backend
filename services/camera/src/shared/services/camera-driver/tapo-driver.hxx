@@ -22,7 +22,6 @@ public:
   DriverResult preset(const DriverPresetInput& input) override;
   DriverResult settings(const DriverSettingsInput& input) override;
   DriverResult speak(const DriverSpeakInput& input) override;
-  DriverCaptureResult capture(const DriverCaptureInput& input) override;
 
 private:
   DriverResult ensureConnected();

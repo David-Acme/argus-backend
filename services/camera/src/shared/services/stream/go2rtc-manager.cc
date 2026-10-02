@@ -26,6 +26,12 @@ constexpr const char* kDefaultBin = "third_party/go2rtc/go2rtc";
 constexpr const char* kDefaultConfig = "go2rtc.yaml";
 constexpr const char* kDefaultApi = "127.0.0.1:1984";
 constexpr const char* kDefaultRtsp = "127.0.0.1:8554";
+constexpr const char* kSubStreamSuffix = "-sub";
+
+bool isSubStreamName(const std::string& name)
+{
+  return name.ends_with(kSubStreamSuffix);
+}
 
 bool isPrivateHost(const std::string& host)
 {
@@ -119,7 +125,7 @@ std::string Go2rtcManager::streamName(int64_t cameraId)
 
 std::string Go2rtcManager::subStreamName(int64_t cameraId)
 {
-  return streamName(cameraId) + "-sub";
+  return streamName(cameraId) + kSubStreamSuffix;
 }
 
 bool Go2rtcManager::writeConfig()
@@ -143,6 +149,16 @@ bool Go2rtcManager::writeConfig()
     if (!isSafeName(s.name) || !isSafeUrl(s.url))
       continue;
     out << "  " << s.name << ": " << s.url << "\n";
+  }
+  const auto isWarmStream = [](const Go2rtcSource& s) {
+    return isSafeName(s.name) && isSafeUrl(s.url) && isSubStreamName(s.name);
+  };
+  if (std::ranges::any_of(sources_, isWarmStream)) {
+    out << "preload:\n";
+    for (const auto& s : sources_) {
+      if (isWarmStream(s))
+        out << "  " << s.name << ":\n";
+    }
   }
   out.close();
 

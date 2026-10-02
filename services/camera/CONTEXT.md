@@ -113,6 +113,15 @@ sibling service: own binary, own CMake preset, own `camera.db`.
   sink is `argus::camera-change-sink` (`src/shared/services/change-sink/`)
   since Phase 4 step 9.
   `[tapo]` config keys are read here, mirroring the legacy block.
+- **PTZ is one route and two protocol calls**: `/camera/{id}/ptz` takes
+  `angle` (a relative step, 0-359, the protocol's own direction) or `x`
+  with `y` (an absolute move) and never both; the driver maps the first to
+  `relativeMove`'s `motor.movestep.direction` and the second to
+  `motorMove`'s `motor.move.x_coord`/`y_coord`, both as strings — byte for
+  byte the shape the vendor app and pytapo send. Measured against the
+  device (2026-09-27): a pan already at the end of its travel answers
+  `-64304` `MOTOR_LOCKED_ROTOR`, and the driver returns the device's own
+  words instead of a silent success, so the app sees the refusal.
 - **Legacy slimming**: the legacy binary no longer compiles the camera/
   zone features, the camera-driver/tapo/stream stack, nor `camera.db`
   access; `SocketCameraChangeSink` and `CameraAudioSource` were deleted.
@@ -535,17 +544,20 @@ authentication (key = MD5(nonce:hashedPassword), iv = MD5(username:nonce),
 `username="none"` meaning media encryption is off) and sends that stop from
 `close()`, so every session this service opens is released on the way out.
 
-**The same session is a call.** The camera pushes its own microphone as
-`video/mp2t` parts on the connection the uplink uses, encrypted per part with
-the same material and the IV reset; `receive()` skips the JSON
-notifications, decrypts and demuxes to PCM through `TapoDownlink` (PAT, PMT,
-PES; `0x90` A-law at 8 kHz or `0x91` u-law at 16 kHz). The camera ducks its
-microphone while it speaks — the same behaviour is visible in the vendor app
-— so a conversation on this port is half duplex: speak, stop, listen, never
-both at once. Video does not come from here: RTSP is the documented,
-maintained path and one pull through go2rtc serves every viewer, where the
-8800 preview would spend the connection budget on a second source of the
-same picture.
+**The talk connection carries the speaker, never the microphone.** The
+uplink is all this port does: go2rtc's own Tapo backchannel opens the talk
+request on a connection of its own and reads the camera's audio from the
+media stream, and the device agrees — a session opened here and left silent
+receives nothing at all (measured 2026-09-27: zero parts in six seconds, with
+and without a silent uplink priming the session). The camera's microphone is
+the sub stream's `pcm_alaw` at 8 kHz, which this service already holds warm
+for the operator's frames, so `Listen` captures it as 16 kHz mono through
+go2rtc's RTSP listener: one transport for the voice in, one for the voice
+out, and no second connection for either. The camera ducks its microphone
+while it speaks — the same behaviour is visible in the vendor app — so a
+conversation is half duplex: speak, stop, listen, never both at once. Video
+does not come from here either: RTSP is the documented, maintained path and
+one pull through go2rtc serves every viewer.
 
 **Two budgets bound every consumer.** FAQ 2742 states the local limit: three
 concurrent live viewers, RTSP and ONVIF connections counted in. Overload
@@ -554,7 +566,19 @@ surfaces as 401 or "Invalid authentication data" on the *new* connection
 exactly one camera-facing RTSP pull — the sub stream, shared by the
 operator's frames and the voice capture — plus the talk session's single
 persistent connection, and why a viewer that asks for `main` quality is the
-only consumer allowed to add a pull, on demand and only while it watches. A
+only consumer allowed to add a pull, on demand and only while it watches.
+The sub stream is preloaded (`preload:` in the generated config), so that one
+pull stays open while the operator polls frames: go2rtc dials the camera once
+and every frame grab, every voice capture and every viewer rides the same
+producer. Measured on the live line (2026-09-27), the same twelve seconds at
+an idle 2 Hz detection cadence held 17 fresh RTSP sessions before that line
+and one after it.
+Measured on the live line (2026-09-27): with a `main` viewer watching
+beside the sub pull and the persistent talk session the camera sat at
+three connections, its whole local budget, and a talk cycle still
+authenticated and opened a new session; when the viewer stopped, the
+`main` pull went away on go2rtc's own idle timeout and the camera was left
+holding the talk session alone. A
 burst of probes also fills the budget; the probe is a diagnostic, run when
 the line is quiet and never in a loop.
 

@@ -441,7 +441,6 @@ TapoResult TapoTalkClient::open()
   }
 
   muxer_.reset();
-  downlink_.reset();
   pts90k_ = 0;
   sentSamples_ = 0;
   open_ = true;
@@ -576,41 +575,6 @@ std::string TapoTalkClient::encryptPart(const std::string& body) const
   return {encrypted.begin(), encrypted.end()};
 }
 
-std::string TapoTalkClient::decryptPart(const std::string& body) const
-{
-  const auto plain = tapo_crypto::aes128CbcDecrypt(
-      {.data = std::vector<uint8_t>(body.begin(), body.end()),
-       .key = cipherKey_,
-       .iv = cipherIv_});
-  return {plain.begin(), plain.end()};
-}
-
-TapoResult TapoTalkClient::receive(TapoDownlinkChunk& chunk)
-{
-  if (!open_ || !connection_)
-    return TapoResult::failure("talk channel not open");
-  for (;;) {
-    TapoTalkPart part;
-    if (!readPart(part))
-      return TapoResult::failure(connection_ ? connection_->error()
-                                             : "talk channel closed");
-    if (lower(part.header("Content-Type")).find("video/mp2t") ==
-        std::string::npos)
-      continue;
-    std::string body = part.body;
-    if (part.header("X-If-Encrypt") == "1") {
-      if (cipherKey_.empty())
-        continue;
-      body = decryptPart(body);
-      if (body.empty())
-        continue;
-    }
-    downlink_.feed({body.begin(), body.end()});
-    if (downlink_.take(chunk))
-      return TapoResult::success(Json::Value());
-  }
-}
-
 void TapoTalkClient::stopSession()
 {
   if (!open_ || sessionId_.empty() || !connection_)
@@ -641,5 +605,4 @@ void TapoTalkClient::close()
   keyExchangeUser_.clear();
   cipherKey_.clear();
   cipherIv_.clear();
-  downlink_.reset();
 }

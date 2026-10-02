@@ -52,20 +52,6 @@ struct DriverSpeakInput
   int sampleRate{16000};
 };
 
-struct DriverCaptureInput
-{
-  int seconds{1};
-  int sampleRate{16000};
-};
-
-struct DriverCaptureResult
-{
-  bool ok{false};
-  std::string error;
-  std::vector<int16_t> samples;
-  int sampleRate{16000};
-};
-
 class ICameraDriver
 {
 public:
@@ -79,14 +65,6 @@ public:
   virtual DriverResult preset(const DriverPresetInput& input) = 0;
   virtual DriverResult settings(const DriverSettingsInput& input) = 0;
   virtual DriverResult speak(const DriverSpeakInput& input) = 0;
-
-  virtual DriverCaptureResult capture(const DriverCaptureInput& input)
-  {
-    return {.ok = false,
-            .error = "This camera driver cannot capture audio",
-            .samples = {},
-            .sampleRate = input.sampleRate};
-  }
 };
 
 class CameraDriverRegistry

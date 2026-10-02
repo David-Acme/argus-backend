@@ -2,7 +2,6 @@
 
 #include <cstdint>
 #include <memory>
-#include <shared/services/tapo/tapo-downlink.hxx>
 #include <shared/services/tapo/tapo-http.hxx>
 #include <shared/services/tapo/tapo-transport.hxx>
 #include <shared/services/tapo/tapo-ts-muxer.hxx>
@@ -97,7 +96,6 @@ public:
   TapoResult send(const TapoTalkAudio& audio, const CancellationToken& token);
   TapoResult sendChunk(const TapoTalkSendInput& input,
                        const CancellationToken& token);
-  TapoResult receive(TapoDownlinkChunk& chunk);
   void close();
 
   bool isOpen() const;
@@ -116,7 +114,6 @@ private:
   void stopSession();
   void deriveCipherKeys();
   std::string encryptPart(const std::string& body) const;
-  std::string decryptPart(const std::string& body) const;
   bool writePart(const std::vector<TapoHttpHeader>& headers,
                  const std::string& body);
   bool readPart(TapoTalkPart& part);
@@ -124,7 +121,6 @@ private:
   TapoTalkConfig config_;
   std::unique_ptr<TapoConnection> connection_;
   TapoTsMuxer muxer_;
-  TapoDownlink downlink_;
   std::string passwordVariant_;
   std::string passwordHash_;
   std::string sessionId_;
