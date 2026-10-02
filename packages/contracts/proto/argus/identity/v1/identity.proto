@@ -95,6 +95,7 @@ message IdentifyPersonResponse
   optional string name = 6;
   bool trusted = 7;
   optional string last_name = 8;
+  optional bool face_found = 9;
 }
 
 message EnrollPersonRequest

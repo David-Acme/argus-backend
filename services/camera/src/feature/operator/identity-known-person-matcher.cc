@@ -43,7 +43,7 @@ struct ObservedAsInput
 {
   std::optional<PersonMatch> verdict;
   int scans{0};
-  bool everScanned{false};
+  bool faceSeen{false};
 };
 
 PersonMatch observedAs(const ObservedAsInput& input)
@@ -57,8 +57,8 @@ PersonMatch observedAs(const ObservedAsInput& input)
     return match;
   }
   return {.identity = PersonIdentity::Unknown,
-          .state = input.everScanned ? IdentityState::Unrecognized
-                                     : IdentityState::Unobservable,
+          .state = input.faceSeen ? IdentityState::Unrecognized
+                                  : IdentityState::Unobservable,
           .personId = 0,
           .confidence = 0.0F,
           .identifyAttempts = input.scans};
@@ -90,10 +90,10 @@ std::optional<PersonMatch> IdentityKnownPersonMatcher::match(
     const auto found = cache_.find(key);
     if (found == cache_.end())
       return observedAs(
-          {.verdict = std::nullopt, .scans = 0, .everScanned = false});
+          {.verdict = std::nullopt, .scans = 0, .faceSeen = false});
     return observedAs({.verdict = found->second.result,
                        .scans = found->second.scans,
-                       .everScanned = found->second.scanned});
+                       .faceSeen = found->second.faceSeen});
   }
 
   const int64_t stamp = nowMs();
@@ -117,14 +117,14 @@ std::optional<PersonMatch> IdentityKnownPersonMatcher::match(
       const CacheEntry& entry = found->second;
       if (entry.result && entry.result->identity == PersonIdentity::Known)
         return observedAs(
-            {.verdict = entry.result, .scans = entry.scans, .everScanned = true});
+            {.verdict = entry.result, .scans = entry.scans, .faceSeen = true});
       const bool improved = entry.score <= 0.0 ||
                             score > entry.score * (1.0 + config_.improveMargin);
       if (!improved && (entry.scanned ||
                         stamp - entry.lastScanMs < config_.identifyIntervalMs))
         return observedAs({.verdict = entry.result,
                            .scans = entry.scans,
-                           .everScanned = entry.scanned});
+                           .faceSeen = entry.faceSeen});
     }
   }
 
@@ -133,6 +133,7 @@ std::optional<PersonMatch> IdentityKnownPersonMatcher::match(
     SnapshotStore::instance().putPersonCrop(crop.cameraId, crop.trackId, image,
                                             stamp);
   std::optional<PersonMatch> result;
+  bool faceSeen = false;
   int scans = 0;
   {
     std::lock_guard<std::mutex> lock(mutex_);
@@ -143,6 +144,8 @@ std::optional<PersonMatch> IdentityKnownPersonMatcher::match(
   if (!image.empty()) {
     ++scans;
     const auto identified = client_->identifyPerson(image);
+    faceSeen = identified && (!identified->has_face_found() ||
+                              identified->face_found());
     if (identified && identified->matched() && identified->person_id() > 0) {
       result = PersonMatch{.identity = identified->trusted()
                                             ? PersonIdentity::Known
@@ -152,7 +155,7 @@ std::optional<PersonMatch> IdentityKnownPersonMatcher::match(
                            .confidence = identified->confidence(),
                            .identifyAttempts = 0};
     }
-    else if (config_.autoEnroll && canEnroll(crop.cameraId, stamp)) {
+    else if (faceSeen && config_.autoEnroll && canEnroll(crop.cameraId, stamp)) {
       const auto enrolled = client_->enrollPerson(
           {.image = image,
            .cameraId = crop.cameraId,
@@ -185,8 +188,9 @@ std::optional<PersonMatch> IdentityKnownPersonMatcher::match(
     entry.lastScanMs = stamp;
     if (!image.empty())
       entry.scanned = true;
+    entry.faceSeen = entry.faceSeen || faceSeen;
     return observedAs(
-        {.verdict = result, .scans = entry.scans, .everScanned = entry.scanned});
+        {.verdict = result, .scans = entry.scans, .faceSeen = entry.faceSeen});
   }
 }
 

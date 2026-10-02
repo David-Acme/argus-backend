@@ -1091,3 +1091,50 @@ TEST_CASE("the operator drain reports drained only while no frame is in flight")
   CHECK_FALSE(service.running());
   CHECK(service.drained());
 }
+
+TEST_CASE("a crop with no face is unobservable, an unmatched face is unrecognized")
+{
+  static std::vector<uint8_t> rgb(64 * 48 * 3, 100);
+  class FaceReporter final : public IdentityClient
+  {
+  public:
+    explicit FaceReporter(std::optional<bool> found)
+        : IdentityClient("localhost:1"), found_(found)
+    {
+    }
+
+    std::optional<argus::identity::v1::IdentifyPersonResponse>
+    identifyPerson(const std::string&) const override
+    {
+      argus::identity::v1::IdentifyPersonResponse response;
+      if (found_)
+        response.set_face_found(*found_);
+      return response;
+    }
+
+  private:
+    std::optional<bool> found_;
+  };
+  const PersonCrop crop{.cameraId = 1,
+                        .trackId = 11,
+                        .firstSeenMs = 0,
+                        .rgb = const_cast<uint8_t*>(rgb.data()),
+                        .width = 64,
+                        .height = 48,
+                        .x = 8.0F,
+                        .y = 8.0F,
+                        .w = 20.0F,
+                        .h = 24.0F};
+  const auto stateFor = [&crop](std::optional<bool> found) {
+    IdentityKnownPersonMatcher matcher(matchConfig(),
+                                       std::make_unique<FaceReporter>(found));
+    const auto match = matcher.match(crop);
+    REQUIRE(match.has_value());
+    CHECK(match->identity == PersonIdentity::Unknown);
+    return match->state;
+  };
+
+  CHECK(stateFor(false) == IdentityState::Unobservable);
+  CHECK(stateFor(true) == IdentityState::Unrecognized);
+  CHECK(stateFor(std::nullopt) == IdentityState::Unrecognized);
+}

@@ -152,6 +152,11 @@ recognition is known to be off, a call answers before taking a slot or
 decoding the image; during boot it still waits, so a login that races the
 model load is not refused as an unrecognized face.
 
+`IdentifyPerson` sets `face_found` (an optional field added to the frozen
+contract, so older callers ignore it): whether the detector found a face
+in the crop at all. Without it a crop of someone's back and an unmatched
+face were the same answer, and guard counted both as strangers.
+
 PromotePerson answers `UNAVAILABLE` when argus-auth gives no verdict and
 `UNAUTHENTICATED` only for a verdict that says invalid, the same split
 `JwtFilter` makes.

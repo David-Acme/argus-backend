@@ -395,6 +395,7 @@ grpc::ServerUnaryReactor* IdentityRpcService::IdentifyPerson(
       try {
         const auto face =
             co_await FaceService::instance().extractImageAsync(image);
+        responseWriter->set_face_found(face.has_value());
         const auto match = co_await BlockingTask<
             std::optional<std::pair<int64_t, float>>>(
             [&face]() { return searchFace(face); });

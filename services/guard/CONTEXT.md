@@ -23,9 +23,9 @@ deterministic danger level and raises only policy-authorized actions. It owns
   identity verdict at all (camera identity off), is unknown but not a
   stranger, so two residents walking away from the camera do not reach the
   two-strangers floor. An incident is `known` only when every person in it is.
-  Open: the identity RPC does not say whether it found a face, so a scanned
-  crop with no visible face still comes back `Unrecognized`; telling the two
-  apart needs a field on `argus.identity.v1`'s `IdentifyPersonResponse`.
+  The camera reports a scanned crop in which identity found no face as
+  `Unobservable` (`IdentifyPersonResponse.face_found`), so a person seen
+  from behind is never a stranger.
 - `repeatVisits` (the unknown-signature counter) stays a calibration input
   and is not a floor: it counts observations, not visits, and grows for as
   long as the signature lives.

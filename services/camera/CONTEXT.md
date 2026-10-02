@@ -559,6 +559,13 @@ conversation is half duplex: speak, stop, listen, never both at once. Video
 does not come from here either: RTSP is the documented, maintained path and
 one pull through go2rtc serves every viewer.
 
+**No face is not a stranger.** The known-person matcher maps identity's
+`face_found = false` to `Unobservable`: the person was scanned but no face
+was visible, so guard does not count them as a stranger, and auto-enrolment
+is skipped for a crop that has no face to enrol. A response without the
+field (an older identity) keeps the previous meaning, `Unrecognized`, and a
+failed identify call counts as no verdict.
+
 **A capture that endpoints keeps what it heard.** The ffmpeg pull reads a
 live stream, so it never ends on its own before `-t`; when the endpoint
 detector closes the turn, the reader stops and ffmpeg is terminated, and

@@ -30,6 +30,7 @@ private:
     int64_t lastScanMs{0};
     double score{0.0};
     bool scanned{false};
+    bool faceSeen{false};
     int scans{0};
     std::optional<PersonMatch> result;
   };
