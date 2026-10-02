@@ -110,8 +110,11 @@ public:
   using Config = GuardAssessmentConfig;
 
   GuardAssessment(Dependencies dependencies, Config config);
+  GuardAssessment(const GuardAssessment&) = delete;
+  GuardAssessment& operator=(const GuardAssessment&) = delete;
+  virtual ~GuardAssessment() = default;
 
-  drogon::Task<GuardAssessmentResult> assess(
+  virtual drogon::Task<GuardAssessmentResult> assess(
       const GuardAssessmentInput& input) const;
 
 private:

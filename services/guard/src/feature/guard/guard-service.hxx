@@ -216,6 +216,8 @@ private:
     bool effectsDenied{false};
     bool effectsStarted{false};
     bool weapon{false};
+    bool lateAssessed{false};
+    bool lateRaised{false};
     std::string policyDanger;
     std::string danger;
     std::string greetingStatus;
@@ -223,6 +225,49 @@ private:
     DialogueResult dialogue;
     GuardAssessmentResult assessment;
   };
+
+  struct AssessIntoInput
+  {
+    const GuardEventSignals& signals;
+    ObservationCheckpoint& checkpoint;
+    GuardDanger danger{GuardDanger::None};
+    bool hardFloor{false};
+    int& assessMs;
+  };
+
+  drogon::Task<GuardDanger> assessInto(const AssessIntoInput& input);
+
+  struct RecordAssessmentInput
+  {
+    const GuardEventSignals& signals;
+    const ObservationCheckpoint& checkpoint;
+    int64_t incidentId{0};
+    int64_t encounterId{0};
+    std::string eventId;
+    int64_t now{0};
+  };
+
+  drogon::Task<void> recordAssessment(const RecordAssessmentInput& input);
+
+  struct EscalateInput
+  {
+    const GuardEventSignals& signals;
+    const ObservationCheckpoint& checkpoint;
+    const GuardPosture& posture;
+    GuardDanger danger{GuardDanger::None};
+    int64_t incidentId{0};
+    int64_t encounterId{0};
+    std::string eventId;
+    int64_t now{0};
+  };
+
+  struct EscalationResult
+  {
+    bool resumable{false};
+    int64_t retryAt{0};
+  };
+
+  drogon::Task<EscalationResult> escalate(const EscalateInput& input);
 
   static Json::Value checkpointToJson(const ObservationCheckpoint& checkpoint);
   static ObservationCheckpoint checkpointFromJson(const Json::Value& json);

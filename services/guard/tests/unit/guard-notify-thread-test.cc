@@ -315,6 +315,7 @@ struct ThreadHarness
   std::shared_ptr<std::string> failTarget =
       std::make_shared<std::string>();
   GuardService::Config config = threadConfig();
+  GuardAssessment* assessment{nullptr};
 
   std::unique_ptr<GuardService> makeService()
   {
@@ -328,9 +329,41 @@ struct ThreadHarness
                                    .identity = &identity,
                                    .notifications = &notifications,
                                    .actions = &camera,
-                                   .assessment = nullptr},
+                                   .assessment = assessment},
         serviceConfig);
   }
+};
+
+class ScriptedAssessment final : public GuardAssessment
+{
+public:
+  ScriptedAssessment(const CapturingNotifications& notifications,
+                     std::vector<std::string> tags)
+      : GuardAssessment({.camera = nullptr, .vlm = nullptr, .llm = nullptr},
+                        GuardAssessmentConfig{}),
+        notifications_(notifications), tags_(std::move(tags))
+  {
+  }
+
+  drogon::Task<GuardAssessmentResult>
+  assess(const GuardAssessmentInput&) const override
+  {
+    notificationsBefore = notifications_.calls;
+    ++calls;
+    GuardAssessmentResult result;
+    result.performed = true;
+    result.valid = true;
+    result.threat = "high";
+    result.tags = tags_;
+    co_return result;
+  }
+
+  mutable int calls{0};
+  mutable int notificationsBefore{-1};
+
+private:
+  const CapturingNotifications& notifications_;
+  std::vector<std::string> tags_;
 };
 
 std::string threadField(int64_t cameraId, const std::string& column)
@@ -1212,4 +1245,53 @@ TEST_CASE("only effects that left count against the hourly caps")
   record("6", "succeeded");
   record("7", "in_flight");
   CHECK(drogon::sync_wait(repository.effectsSince(77, now - 3600)) == 2);
+}
+
+TEST_CASE("a hard floor notifies before the assessment and a weapon escalates it")
+{
+  SharedBoot& boot = sharedBoot();
+  (void)boot;
+  ThreadHarness harness;
+  harness.config.announceLevel = 3;
+  harness.config.alarmLevel = 4;
+  ScriptedAssessment assessment(harness.notifications, {"knife"});
+  harness.assessment = &assessment;
+  auto service = harness.makeService();
+
+  REQUIRE(drogon::sync_wait(service->handle(
+      threadObservation({.eventId = "fast:1",
+                         .cameraId = 52,
+                         .trackId = 1,
+                         .rule = "person_night",
+                         .severity = "warning",
+                         .zoneKind = "", .signature = {}}),
+      1)));
+  CHECK(assessment.calls == 1);
+  CHECK(assessment.notificationsBefore == 1);
+  CHECK(harness.notifications.calls == 2);
+  CHECK(harness.camera.alarmCalls == 0);
+  CHECK(harness.camera.announceCalls == 1);
+  CHECK(scalar("SELECT danger FROM guard_incident WHERE event_id = 'fast:1'") ==
+        "critical");
+}
+
+TEST_CASE("a soft case is still assessed before any effect")
+{
+  SharedBoot& boot = sharedBoot();
+  (void)boot;
+  ThreadHarness harness;
+  ScriptedAssessment assessment(harness.notifications, {"visitor"});
+  harness.assessment = &assessment;
+  auto service = harness.makeService();
+
+  REQUIRE(drogon::sync_wait(service->handle(
+      threadObservation({.eventId = "soft:1",
+                         .cameraId = 53,
+                         .trackId = 1,
+                         .rule = "person_day",
+                         .severity = "info",
+                         .zoneKind = "monitor", .signature = {}}),
+      1)));
+  CHECK(assessment.calls == 1);
+  CHECK(assessment.notificationsBefore == 0);
 }

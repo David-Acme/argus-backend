@@ -1132,6 +1132,8 @@ GuardService::checkpointToJson(const ObservationCheckpoint& checkpoint)
   json["effectsDenied"] = checkpoint.effectsDenied;
   json["effectsStarted"] = checkpoint.effectsStarted;
   json["weapon"] = checkpoint.weapon;
+  json["lateAssessed"] = checkpoint.lateAssessed;
+  json["lateRaised"] = checkpoint.lateRaised;
   json["policyDanger"] = checkpoint.policyDanger;
   json["danger"] = checkpoint.danger;
   json["greetingStatus"] = checkpoint.greetingStatus;
@@ -1191,6 +1193,8 @@ GuardService::checkpointFromJson(const Json::Value& json)
   checkpoint.effectsDenied = json.get("effectsDenied", false).asBool();
   checkpoint.effectsStarted = json.get("effectsStarted", false).asBool();
   checkpoint.weapon = json.get("weapon", false).asBool();
+  checkpoint.lateAssessed = json.get("lateAssessed", false).asBool();
+  checkpoint.lateRaised = json.get("lateRaised", false).asBool();
   checkpoint.policyDanger = json.get("policyDanger", "").asString();
   checkpoint.danger = json.get("danger", "").asString();
   checkpoint.greetingStatus = json.get("greetingStatus", "").asString();
@@ -1482,68 +1486,12 @@ GuardService::applyObservation(const ObservationInput& input)
   }
 
   if (state.stage < kStageAssessment) {
-    if (dependencies_.assessment && signals.hasUnknown) {
-      bool personHasUser = false;
-      std::string personName;
-      std::string personRole;
-      std::string personObservation;
-      std::vector<std::string> knownTags;
-      if (signals.personId > 0 && dependencies_.identity) {
-        const auto person = co_await BlockingTask<std::optional<PersonProfile>>(
-            [this, personId = signals.personId]() {
-              return dependencies_.identity->getPerson(personId);
-            });
-        if (person) {
-          personHasUser = person->userId.has_value();
-          personName = person->name;
-          personRole = person->role;
-          personObservation = person->observation;
-          knownTags = person->tags;
-        }
-      }
-      const auto assessStart = std::chrono::steady_clock::now();
-      checkpoint.assessment = co_await dependencies_.assessment->assess(
-          {.cameraId = signals.cameraId,
-           .trackId = signals.trackId,
-           .firstSeenMs = signals.firstSeenMs,
-           .publishedAtMs = signals.publishedAtMs,
-           .rule = signals.rule,
-           .profile = config_.profile,
-           .visitCount = checkpoint.visitCount,
-           .checks = checkpoint.encounterChecks,
-           .expectedGuest = checkpoint.expectedGuest,
-           .danger = danger,
-           .personHasUser = personHasUser,
-           .personName = personName,
-           .personRole = personRole,
-           .personObservation = personObservation,
-           .knownTags = knownTags,
-           .greeted = checkpoint.dialogue.greeted,
-           .greetingText = checkpoint.dialogue.greetingText,
-           .personReply = checkpoint.dialogue.heardText,
-           .replied = checkpoint.dialogue.replied,
-           .replyText = checkpoint.dialogue.replyText,
-            .dialogueTurns = checkpoint.dialogue.turns});
-      assessMs = static_cast<int>(
-          std::chrono::duration_cast<std::chrono::milliseconds>(
-              std::chrono::steady_clock::now() - assessStart)
-              .count());
-      const bool soft = guard_policy::dangerRank(danger) <
-                        guard_policy::dangerRank(GuardDanger::High);
-      if (checkpoint.assessment.performed && checkpoint.assessment.veto &&
-          config_.vetoScope == "soft_only" && soft)
-        danger = GuardDanger::Low;
-      if (checkpoint.assessment.performed) {
-        const GuardRiskResult risk =
-            guard_risk::mergeEvidence({.floor = danger,
-                                       .threat = checkpoint.assessment.threat,
-                                       .tags = checkpoint.assessment.tags,
-                                       .hardFloor = hardFloor});
-        danger = risk.danger;
-        checkpoint.weapon = risk.weapon;
-        checkpoint.assessment.tags = risk.appliedTags;
-      }
-    }
+    if (dependencies_.assessment && signals.hasUnknown && !hardFloor)
+      danger = co_await assessInto({.signals = signals,
+                                    .checkpoint = checkpoint,
+                                    .danger = danger,
+                                    .hardFloor = hardFloor,
+                                    .assessMs = assessMs});
     checkpoint.danger = guard_policy::dangerToString(danger);
     state.stage = kStageAssessment;
     failAt("after_assessment");
@@ -1618,43 +1566,12 @@ GuardService::applyObservation(const ObservationInput& input)
            .at = now});
     }
 
-    if (checkpoint.assessment.performed) {
-      co_await repository_.insertAssessment(
-          {.incidentId = state.incidentId,
-           .cameraId = signals.cameraId,
-           .eventId = eventId,
-           .mode = checkpoint.assessment.mode,
-           .caption = checkpoint.assessment.caption,
-           .threat = checkpoint.assessment.threat,
-           .veto = checkpoint.assessment.veto,
-           .tags = tagsToJson(checkpoint.assessment.tags),
-           .summary = checkpoint.assessment.summary,
-           .createdAt = now});
-      if (!checkpoint.assessment.tags.empty() && signals.personId > 0 &&
-          dependencies_.identity) {
-        co_await BlockingTask<bool>([this, personId = signals.personId,
-                                     tags = checkpoint.assessment.tags]() {
-          return dependencies_.identity->tagPerson({.personId = personId,
-                                                    .tags = tags,
-                                                    .source = "llm",
-                                                    .observation = {}});
-        });
-      }
-      int logIndex = 0;
-      for (const auto& log : checkpoint.assessment.toolLogs) {
-        co_await repository_.insertAction(
-            {.incidentId = state.incidentId,
-             .encounterId = state.encounterId,
-             .cameraId = signals.cameraId,
-             .personId = signals.personId,
-             .commandId = eventId + ":agent:" + log.kind + ":" +
-                          std::to_string(logIndex++),
-             .kind = "agent_" + log.kind,
-             .status = log.status,
-             .detail = {},
-             .createdAt = now});
-      }
-    }
+    co_await recordAssessment({.signals = signals,
+                               .checkpoint = checkpoint,
+                               .incidentId = state.incidentId,
+                               .encounterId = state.encounterId,
+                               .eventId = eventId,
+                               .now = now});
 
     if (!hardFloor && checkpoint.dialogue.greeted &&
         !checkpoint.dialogue.replied && config_.greetReplyEnabled &&
@@ -2107,6 +2024,52 @@ GuardService::applyObservation(const ObservationInput& input)
                                  .at = now});
   }
 
+  if (state.stage < kStageEvidence && hardFloor && signals.hasUnknown &&
+      dependencies_.assessment) {
+    if (!checkpoint.lateAssessed) {
+      const GuardDanger before = danger;
+      danger = co_await assessInto({.signals = signals,
+                                    .checkpoint = checkpoint,
+                                    .danger = danger,
+                                    .hardFloor = true,
+                                    .assessMs = assessMs});
+      co_await recordAssessment({.signals = signals,
+                                 .checkpoint = checkpoint,
+                                 .incidentId = state.incidentId,
+                                 .encounterId = state.encounterId,
+                                 .eventId = eventId,
+                                 .now = now});
+      checkpoint.lateAssessed = true;
+      checkpoint.lateRaised =
+          guard_policy::dangerRank(danger) > guard_policy::dangerRank(before);
+      checkpoint.danger = guard_policy::dangerToString(danger);
+      if (checkpoint.lateRaised)
+        co_await repository_.updateIncidentDanger(state.incidentId,
+                                                   checkpoint.danger);
+      co_await advanceObservation({.eventId = eventId,
+                                   .stage = state.stage,
+                                   .incidentId = state.incidentId,
+                                   .encounterId = state.encounterId,
+                                   .checkpoint = checkpoint,
+                                   .at = now});
+    }
+    danger = guard_policy::dangerFromString(checkpoint.danger);
+    if (checkpoint.lateRaised) {
+      const EscalationResult escalation = co_await escalate(
+          {.signals = signals,
+           .checkpoint = checkpoint,
+           .posture = posture,
+           .danger = danger,
+           .incidentId = state.incidentId,
+           .encounterId = state.encounterId,
+           .eventId = eventId,
+           .now = now});
+      if (escalation.resumable)
+        co_return ObservationResult{.completed = false,
+                                    .retryAt = escalation.retryAt};
+    }
+  }
+
   if (state.stage < kStageEvidence) {
     co_await uploadEvidence({.event = event,
                              .incidentId = state.incidentId,
@@ -2126,6 +2089,216 @@ GuardService::applyObservation(const ObservationInput& input)
                                  .at = now});
   }
   co_return ObservationResult{};
+}
+
+drogon::Task<GuardDanger>
+GuardService::assessInto(const AssessIntoInput& input)
+{
+  const GuardEventSignals& signals = input.signals;
+  ObservationCheckpoint& checkpoint = input.checkpoint;
+  GuardDanger danger = input.danger;
+  const bool hardFloor = input.hardFloor;
+  int& assessMs = input.assessMs;
+  bool personHasUser = false;
+  std::string personName;
+  std::string personRole;
+  std::string personObservation;
+  std::vector<std::string> knownTags;
+  if (signals.personId > 0 && dependencies_.identity) {
+    const auto person = co_await BlockingTask<std::optional<PersonProfile>>(
+        [this, personId = signals.personId]() {
+          return dependencies_.identity->getPerson(personId);
+        });
+    if (person) {
+      personHasUser = person->userId.has_value();
+      personName = person->name;
+      personRole = person->role;
+      personObservation = person->observation;
+      knownTags = person->tags;
+    }
+  }
+  const auto assessStart = std::chrono::steady_clock::now();
+  checkpoint.assessment = co_await dependencies_.assessment->assess(
+      {.cameraId = signals.cameraId,
+       .trackId = signals.trackId,
+       .firstSeenMs = signals.firstSeenMs,
+       .publishedAtMs = signals.publishedAtMs,
+       .rule = signals.rule,
+       .profile = config_.profile,
+       .visitCount = checkpoint.visitCount,
+       .checks = checkpoint.encounterChecks,
+       .expectedGuest = checkpoint.expectedGuest,
+       .danger = danger,
+       .personHasUser = personHasUser,
+       .personName = personName,
+       .personRole = personRole,
+       .personObservation = personObservation,
+       .knownTags = knownTags,
+       .greeted = checkpoint.dialogue.greeted,
+       .greetingText = checkpoint.dialogue.greetingText,
+       .personReply = checkpoint.dialogue.heardText,
+       .replied = checkpoint.dialogue.replied,
+       .replyText = checkpoint.dialogue.replyText,
+        .dialogueTurns = checkpoint.dialogue.turns});
+  assessMs = static_cast<int>(
+      std::chrono::duration_cast<std::chrono::milliseconds>(
+          std::chrono::steady_clock::now() - assessStart)
+          .count());
+  const bool soft = guard_policy::dangerRank(danger) <
+                    guard_policy::dangerRank(GuardDanger::High);
+  if (checkpoint.assessment.performed && checkpoint.assessment.veto &&
+      config_.vetoScope == "soft_only" && soft)
+    danger = GuardDanger::Low;
+  if (checkpoint.assessment.performed) {
+    const GuardRiskResult risk =
+        guard_risk::mergeEvidence({.floor = danger,
+                                   .threat = checkpoint.assessment.threat,
+                                   .tags = checkpoint.assessment.tags,
+                                   .hardFloor = hardFloor});
+    danger = risk.danger;
+    checkpoint.weapon = risk.weapon;
+    checkpoint.assessment.tags = risk.appliedTags;
+  }
+  co_return danger;
+}
+
+drogon::Task<void>
+GuardService::recordAssessment(const RecordAssessmentInput& input)
+{
+  const GuardEventSignals& signals = input.signals;
+  const ObservationCheckpoint& checkpoint = input.checkpoint;
+  if (checkpoint.assessment.performed) {
+    co_await repository_.insertAssessment(
+        {.incidentId = input.incidentId,
+         .cameraId = signals.cameraId,
+         .eventId = input.eventId,
+         .mode = checkpoint.assessment.mode,
+         .caption = checkpoint.assessment.caption,
+         .threat = checkpoint.assessment.threat,
+         .veto = checkpoint.assessment.veto,
+         .tags = tagsToJson(checkpoint.assessment.tags),
+         .summary = checkpoint.assessment.summary,
+         .createdAt = input.now});
+    if (!checkpoint.assessment.tags.empty() && signals.personId > 0 &&
+        dependencies_.identity) {
+      co_await BlockingTask<bool>([this, personId = signals.personId,
+                                   tags = checkpoint.assessment.tags]() {
+        return dependencies_.identity->tagPerson({.personId = personId,
+                                                  .tags = tags,
+                                                  .source = "llm",
+                                                  .observation = {}});
+      });
+    }
+    int logIndex = 0;
+    for (const auto& log : checkpoint.assessment.toolLogs) {
+      co_await repository_.insertAction(
+          {.incidentId = input.incidentId,
+           .encounterId = input.encounterId,
+           .cameraId = signals.cameraId,
+           .personId = signals.personId,
+           .commandId = input.eventId + ":agent:" + log.kind + ":" +
+                        std::to_string(logIndex++),
+           .kind = "agent_" + log.kind,
+           .status = log.status,
+           .detail = {},
+           .createdAt = input.now});
+    }
+  }
+}
+
+drogon::Task<GuardService::EscalationResult>
+GuardService::escalate(const EscalateInput& input)
+{
+  const GuardEventSignals& signals = input.signals;
+  EscalationResult result;
+  const auto note = [&result](const EffectResult& effect) {
+    if (!effect.resumable)
+      return;
+    result.resumable = true;
+    result.retryAt = result.retryAt == 0
+                         ? effect.retryAt
+                         : std::min(result.retryAt, effect.retryAt);
+  };
+  const std::string correlation = input.eventId + ":escalation";
+  const int rank = guard_policy::dangerRank(input.danger);
+  const GuardDeterrence deterrent = guard_policy::deterrence(
+      {.mode = input.posture.mode,
+       .danger = input.danger,
+       .publicPresent = input.posture.publicPresent,
+       .staffOnly = input.posture.staffOnly,
+       .weapon = input.checkpoint.weapon,
+       .inAlertZone = signals.zoneKind == "alert" ||
+                      signals.rule == "person_in_alert_zone",
+       .encounterChecks = input.checkpoint.encounterChecks});
+
+  if (rank >= config_.notifyLevel) {
+    const NotifyBody content = buildNotifyBody(
+        {.cameraName = signals.cameraName,
+         .rule = signals.rule,
+         .danger = input.danger,
+         .cameraId = signals.cameraId,
+         .incidentId = input.incidentId,
+         .encounterId = input.encounterId,
+         .zoneKind = signals.zoneKind,
+         .dwellMs = signals.dwellMs,
+         .identity = signals.identityState,
+         .beliefSignals = {}});
+    note(co_await performEffect(
+        {.kind = GuardActionKind::Notify,
+         .danger = input.danger,
+         .cameraId = signals.cameraId,
+         .cameraName = signals.cameraName,
+         .rule = signals.rule,
+         .incidentId = input.incidentId,
+         .encounterId = input.encounterId,
+         .personId = signals.personId,
+         .now = input.now,
+         .correlationId = correlation,
+         .sequence = 1,
+         .notifyContent = {.title = content.title,
+                           .body = content.body,
+                           .data = content.data}}));
+  }
+  if (rank >= config_.alarmLevel && deterrent.alarm) {
+    note(co_await performEffect({.kind = GuardActionKind::Alarm,
+                                 .danger = input.danger,
+                                 .cameraId = signals.cameraId,
+                                 .incidentId = input.incidentId,
+                                 .encounterId = input.encounterId,
+                                 .personId = signals.personId,
+                                 .now = input.now,
+                                 .seconds = config_.alarmSeconds,
+                                 .correlationId = correlation,
+                                 .sequence = 3,
+                                 .notifyContent = {}}));
+    note(co_await performEffect({.kind = GuardActionKind::SirenArm,
+                                 .danger = input.danger,
+                                 .cameraId = signals.cameraId,
+                                 .incidentId = input.incidentId,
+                                 .encounterId = input.encounterId,
+                                 .personId = signals.personId,
+                                 .now = input.now,
+                                 .correlationId = correlation,
+                                 .sequence = 4,
+                                 .notifyContent = {}}));
+  }
+  if (rank >= config_.announceLevel && deterrent.voice) {
+    const std::string text = sanitizeSpoken(config_.announceText);
+    if (!text.empty())
+      note(co_await performEffect({.kind = GuardActionKind::Announce,
+                                   .danger = input.danger,
+                                   .cameraId = signals.cameraId,
+                                   .incidentId = input.incidentId,
+                                   .encounterId = input.encounterId,
+                                   .personId = signals.personId,
+                                   .now = input.now,
+                                   .text = text,
+                                   .lang = config_.announceLang,
+                                   .correlationId = correlation,
+                                   .sequence = 2,
+                                   .notifyContent = {}}));
+  }
+  co_return result;
 }
 
 drogon::Task<GuardService::DialogueResult>

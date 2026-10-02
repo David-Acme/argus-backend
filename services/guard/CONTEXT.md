@@ -107,6 +107,18 @@ When the siren runs it runs before the voice line, and the default line is
 a deterrent ("Atención: está en una propiedad privada. El propietario ya
 ha sido avisado."), not the greeting.
 
+**Fast lane for hard floors.** A hard floor (`High` or above from the
+policy) runs its effects before the assessment: the assessment can never
+lower a floor, so waiting 5-10 s (up to ~50 s worst case) for the VLM and
+the LLM only delayed the notification and the siren. The assessment runs
+after the effects (the late assessment, `lateAssessed` in the checkpoint)
+for the record and to escalate: when it raises the danger (a corroborated
+weapon makes it `Critical`), `escalate` sends the tier-increase
+notification and whatever the deterrence ladder now allows, under its own
+correlation (`<eventId>:escalation`) so the outbox never mistakes it for
+the first pass's intents. Soft cases are still assessed before any effect,
+because there the assessment may veto or raise.
+
 The research behind this (alarm fatigue, TMA AVS-01 levels, OSHA's silent
 robbery guidance, the EDPB position on face recognition of customers) is
 in the 2026-10 audit report; the per-profile defaults it suggests are the
