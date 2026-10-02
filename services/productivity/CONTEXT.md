@@ -170,6 +170,12 @@ own `productivity.db`.
   behind it is overtaken; a row the broker stored but the service could not
   mark `sent` also stays at the head rather than being republished on every
   tick.
+- **The drain wakes at the commit.** `enqueue` runs inside the feature's
+  transaction, so the row is invisible until the commit; the sink's
+  `db_transaction::CommitObserver` wakes the drain when a commit lands, and
+  its `WakeSignal` keeps a wake that arrives mid-pass. A wake before the
+  commit used to find nothing and leave every live change waiting the 500 ms
+  retry period.
 
 ## Build wiring (decisions)
 

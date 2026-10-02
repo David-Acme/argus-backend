@@ -117,7 +117,7 @@ NatsProductivityChangeSink::enqueue(ChangeOutboxEnqueueInput input) const
   input.fingerprint = change_outbox_key::fingerprintJson(input.payload);
   input.at = nowMs();
   co_await outbox_.enqueue(input);
-  wake_.notify_all();
+  wake_.notify();
 }
 
 void NatsProductivityChangeSink::reconcile()
@@ -129,7 +129,7 @@ void NatsProductivityChangeSink::reconcile()
 void NatsProductivityChangeSink::requestStop()
 {
   stopping_.store(true, std::memory_order_release);
-  wake_.notify_all();
+  wake_.notify();
 }
 
 bool NatsProductivityChangeSink::drained() const
@@ -206,10 +206,8 @@ void NatsProductivityChangeSink::flushLoop()
                  << "); the settled rows stay and the purge is retried";
       }
     }
-    std::unique_lock lock(wakeMutex_);
-    wake_.wait_for(lock,
-                   std::chrono::milliseconds(progressed ? kProgressMs
-                                                        : config_.retryMs));
+    wake_.waitFor(std::chrono::milliseconds(progressed ? kProgressMs
+                                                     : config_.retryMs));
   }
   exited_.store(true, std::memory_order_release);
 }

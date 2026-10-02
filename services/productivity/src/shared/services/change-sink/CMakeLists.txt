@@ -9,6 +9,8 @@ argus_module(NAME productivity-change-sink
         argus::contracts::sync
         argus::lib::errors
         argus::lib::nats
+        argus::lib::runtime
+        argus::lib::sqlite
         argus::lib::text
         Drogon::Drogon)
 
