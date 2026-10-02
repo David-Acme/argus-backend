@@ -301,6 +301,14 @@ Reaction VoiceSessionService::emitReaction(Session& session,
 void VoiceSessionService::start(VoiceSessionSink& sink,
                                 const argus::voice::v1::VoiceIdentity& identity)
 {
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (sessions_.contains(&sink)) {
+      LOG_WARN << "Voice: a second start on a live session is ignored";
+      return;
+    }
+  }
+
   VoiceLang lang = voiceLangFromProto(identity.language());
   if (lang == VoiceLang::System)
     lang = voiceSystemLang();

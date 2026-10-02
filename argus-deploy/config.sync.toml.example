@@ -53,6 +53,7 @@ credential = "CHANGE_ME_SYNC_PRODUCTIVITY"
 
 [voice]
 target = "argus-voice:7034"
+credential = "CHANGE_ME_SYNC_VOICE"
 
 [notifications]
 grpc_target = "argus-notification:7038"

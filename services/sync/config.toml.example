@@ -53,6 +53,7 @@ credential = ""
 
 [voice]
 target = "127.0.0.1:7034"
+credential = ""
 
 [notifications]
 grpc_target = "127.0.0.1:7038"

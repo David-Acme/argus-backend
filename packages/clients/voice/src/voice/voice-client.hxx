@@ -28,10 +28,16 @@ public:
   virtual void finish() = 0;
 };
 
+struct VoiceClientConfig
+{
+  std::string target;
+  std::string credential;
+};
+
 class VoiceClient
 {
 public:
-  explicit VoiceClient(std::string target);
+  explicit VoiceClient(VoiceClientConfig config);
 
   VoiceClient(const VoiceClient&) = delete;
   VoiceClient& operator=(const VoiceClient&) = delete;
@@ -46,6 +52,7 @@ public:
 private:
   std::shared_ptr<grpc::Channel> channel_;
   std::unique_ptr<argus::voice::v1::VoiceService::StubInterface> stub_;
+  std::string credential_;
 };
 
 std::string voiceRoleToString(argus::voice::v1::VoiceRole role);

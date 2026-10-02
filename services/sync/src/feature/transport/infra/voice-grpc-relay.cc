@@ -53,6 +53,7 @@ VoiceGrpcConfig VoiceGrpcConfig::resolve()
 {
   VoiceGrpcConfig config;
   config.target = ConfigService::getString("voice.target");
+  config.credential = ConfigService::getString("voice.credential");
   return config;
 }
 
@@ -137,7 +138,9 @@ private:
 
 VoiceGrpcRelay::VoiceGrpcRelay(
     VoiceGrpcConfig config, std::shared_ptr<const IUserDirectory> directory)
-    : client_(std::make_shared<VoiceClient>(std::move(config.target))),
+    : client_(std::make_shared<VoiceClient>(
+          VoiceClientConfig{.target = std::move(config.target),
+                            .credential = std::move(config.credential)})),
       userDirectory_(std::move(directory))
 {
 }

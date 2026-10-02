@@ -142,6 +142,19 @@ set_target_properties(voice-session-seam-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
 add_test(NAME voice-session-seam-test COMMAND voice-session-seam-test)
 
+add_executable(voice-rpc-auth-test tests/unit/voice-rpc-auth-test.cc)
+
+target_link_libraries(voice-rpc-auth-test PRIVATE argus::voice-core
+    doctest::doctest)
+
+target_compile_options(voice-rpc-auth-test PRIVATE -Wall -Wextra)
+
+argus_runtime_rpath(voice-rpc-auth-test)
+
+set_target_properties(voice-rpc-auth-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+
+add_test(NAME voice-rpc-auth-test COMMAND voice-rpc-auth-test)
+
 add_executable(voice-tts-remote-test tests/unit/voice-tts-remote-test.cc)
 
 target_include_directories(voice-tts-remote-test PRIVATE

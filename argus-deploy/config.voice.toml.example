@@ -3,6 +3,9 @@ host = "0.0.0.0"
 grpc_port = 7034
 health_port = 7035
 
+[grpc]
+caller_sync = "CHANGE_ME_SYNC_VOICE"
+
 [identity]
 target = "argus-identity:7040"
 rpc_secret = "CHANGE_ME_SAME_IN_EVERY_SERVICE"

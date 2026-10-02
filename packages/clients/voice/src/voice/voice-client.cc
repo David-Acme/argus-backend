@@ -172,9 +172,10 @@ private:
 
 }
 
-VoiceClient::VoiceClient(std::string target)
-    : channel_(argus::client::makeStreamingChannel(target)),
-      stub_(argus::voice::v1::VoiceService::NewStub(channel_))
+VoiceClient::VoiceClient(VoiceClientConfig config)
+    : channel_(argus::client::makeStreamingChannel(config.target)),
+      stub_(argus::voice::v1::VoiceService::NewStub(channel_)),
+      credential_(std::move(config.credential))
 {
 }
 
@@ -183,6 +184,7 @@ std::shared_ptr<VoiceStream> VoiceClient::connect(
     std::shared_ptr<VoiceStreamObserver> observer)
 {
   auto context = std::make_unique<grpc::ClientContext>();
+  argus::client::addCallerCredential(*context, credential_);
   auto stream = std::shared_ptr<VoiceStreamImpl>(new VoiceStreamImpl(
       {.stub = stub_.get(),
        .context = std::move(context),

@@ -16,6 +16,7 @@
 struct VoiceGrpcConfig
 {
   std::string target;
+  std::string credential;
 
   static VoiceGrpcConfig resolve();
 };

@@ -75,6 +75,18 @@ exact JSON/binary the app expects is argus-sync's
 
 ## Stream lifecycle decisions
 
+- `Connect` requires argus-sync's caller credential before anything else.
+  The identity in the metadata and in `VoiceStart` is taken as sent, so a
+  caller that only had to name a user - the tunnel's example target was
+  this listener, reachable from the internet - could hold a voice session as
+  the Owner, read and write their memories through the LLM tools and rename
+  them. A refused stream marks itself finishing before `Finish`, and
+  `OnDone` stops the session and deletes the reactor without calling
+  `Finish` again: a second `Finish` aborted the process, and the reactor
+  was never freed.
+- A second `VoiceStart` on a live stream is ignored; it used to replace the
+  session and orphan the first one's worker thread for good.
+
 - Identity metadata `x-argus-user` / `x-argus-role` must be present at
   `Connect` (UNAUTHENTICATED otherwise). Role validation happened ONCE on the
   `/sync` edge (the gateway's before sub-step 3a-1c, argus-sync's filter chain

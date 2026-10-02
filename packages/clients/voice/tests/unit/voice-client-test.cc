@@ -135,7 +135,8 @@ TEST_CASE("one stream carries the connect identity and the frames in order")
   int port = 0;
   auto server = startServer(service, port);
   REQUIRE(server);
-  VoiceClient client("127.0.0.1:" + std::to_string(port));
+  VoiceClient client(
+      {.target = "127.0.0.1:" + std::to_string(port), .credential = ""});
   CHECK(client.waitConnected(5000));
   CallCleanup cleanup{service, *server};
 

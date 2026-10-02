@@ -39,7 +39,7 @@ int main()
   const ListenerConfig healthListener = VoiceConfig::resolveHealthListener();
   const GrpcListenerConfig grpcListener = VoiceConfig::resolveGrpcListener();
 
-  VoiceRpcService voiceRpc;
+  VoiceRpcService voiceRpc(VoiceConfig::resolveSyncCallerSecret());
   HealthRpcService healthRpc;
 
   grpc::ServerBuilder builder;

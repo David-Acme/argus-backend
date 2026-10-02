@@ -14,16 +14,21 @@ class VoiceSessionStream final
 {
 public:
   VoiceSessionStream(VoiceSessionService& sessions,
-                     grpc::CallbackServerContext* context)
-      : sessions_(sessions), context_(context)
+                     grpc::CallbackServerContext* context,
+                     const std::vector<argus::client::CallerCredential>& callers)
+      : sessions_(sessions), context_(context), callers_(callers)
   {
   }
 
   void begin()
   {
     if (!authorized()) {
+      {
+        std::lock_guard<std::mutex> lock(writeMutex_);
+        finishing_ = true;
+      }
       Finish(grpc::Status(grpc::StatusCode::UNAUTHENTICATED,
-                          "identity metadata missing"));
+                          "argus-sync caller credential required"));
       return;
     }
     StartRead(&read_);
@@ -54,7 +59,11 @@ public:
     drainCv_.notify_all();
   }
 
-  void OnDone() override { endSession(); }
+  void OnDone() override
+  {
+    sessions_.stop(*this);
+    delete this;
+  }
 
   bool connected() const override
   {
@@ -77,6 +86,8 @@ public:
 private:
   bool authorized() const
   {
+    if (!argus::client::authorizeCaller(context_, callers_).has_value())
+      return false;
     bool user = false;
     bool role = false;
     for (const auto& [key, value] : context_->client_metadata()) {
@@ -142,6 +153,7 @@ private:
 
   VoiceSessionService& sessions_;
   grpc::CallbackServerContext* context_;
+  const std::vector<argus::client::CallerCredential>& callers_;
   std::mutex writeMutex_;
   std::condition_variable drainCv_;
   std::deque<argus::voice::v1::ServerFrame> queue_;
@@ -153,11 +165,17 @@ private:
 
 }
 
+VoiceRpcService::VoiceRpcService(std::string syncCallerSecret)
+    : callers_({argus::client::CallerCredential{
+          .service = "argus-sync", .secret = std::move(syncCallerSecret)}})
+{
+}
+
 grpc::ServerBidiReactor<argus::voice::v1::ClientFrame,
                         argus::voice::v1::ServerFrame>*
 VoiceRpcService::Connect(grpc::CallbackServerContext* context)
 {
-  auto* reactor = new VoiceSessionStream(sessions_, context);
+  auto* reactor = new VoiceSessionStream(sessions_, context, callers_);
   reactor->begin();
   return reactor;
 }

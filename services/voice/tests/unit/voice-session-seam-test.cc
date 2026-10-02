@@ -410,3 +410,27 @@ TEST_CASE("The history trims in whole turns and keeps the system prompt")
 
   session.stop(sink);
 }
+
+TEST_CASE("A second start on a live session keeps the first one")
+{
+  FakeStt stt;
+  FakeTts tts;
+  FakeLlm llm;
+  FakeIdentity identity;
+  VoiceSessionService session({.stt = stt, .tts = tts, .llm = llm, .identity = identity});
+
+  FakeVoiceSink sink;
+  argus::voice::v1::VoiceIdentity voiceIdentity;
+  voiceIdentity.set_user_id(7);
+  voiceIdentity.set_role(argus::voice::v1::VOICE_ROLE_RESIDENT);
+  voiceIdentity.set_language(argus::voice::v1::VOICE_LANGUAGE_ES);
+  voiceIdentity.set_name("Ana");
+  session.start(sink, voiceIdentity);
+  const auto first = VoiceSessionTestAccess::sessionOf(session, sink);
+
+  session.start(sink, voiceIdentity);
+  CHECK(VoiceSessionTestAccess::sessionOf(session, sink) == first);
+  CHECK(stt.setLanguageCalls == 1);
+
+  session.stop(sink);
+}
