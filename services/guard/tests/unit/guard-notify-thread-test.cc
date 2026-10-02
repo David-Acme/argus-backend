@@ -338,10 +338,10 @@ class ScriptedAssessment final : public GuardAssessment
 {
 public:
   ScriptedAssessment(const CapturingNotifications& notifications,
-                     std::vector<std::string> tags)
+                     std::vector<std::string> tags, bool veto = false)
       : GuardAssessment({.camera = nullptr, .vlm = nullptr, .llm = nullptr},
                         GuardAssessmentConfig{}),
-        notifications_(notifications), tags_(std::move(tags))
+        notifications_(notifications), tags_(std::move(tags)), veto_(veto)
   {
   }
 
@@ -353,7 +353,8 @@ public:
     GuardAssessmentResult result;
     result.performed = true;
     result.valid = true;
-    result.threat = "high";
+    result.threat = veto_ ? "none" : "high";
+    result.veto = veto_;
     result.tags = tags_;
     co_return result;
   }
@@ -364,6 +365,7 @@ public:
 private:
   const CapturingNotifications& notifications_;
   std::vector<std::string> tags_;
+  bool veto_{false};
 };
 
 std::string threadField(int64_t cameraId, const std::string& column)
@@ -1294,4 +1296,68 @@ TEST_CASE("a soft case is still assessed before any effect")
       1)));
   CHECK(assessment.calls == 1);
   CHECK(assessment.notificationsBefore == 0);
+}
+
+TEST_CASE("a vetoed visit that lingers is never promoted")
+{
+  SharedBoot& boot = sharedBoot();
+  (void)boot;
+  ThreadHarness harness;
+  harness.config.stagingEnabled = true;
+  harness.config.loiterChecks = 2;
+  ScriptedAssessment assessment(harness.notifications, {"carrying_box"}, true);
+  harness.assessment = &assessment;
+  auto service = harness.makeService();
+
+  for (int check = 1; check <= 3; ++check) {
+    REQUIRE(drogon::sync_wait(service->handle(
+        threadObservation({.eventId = "veto:" + std::to_string(check),
+                           .cameraId = 54,
+                           .trackId = 1,
+                           .rule = "person_day",
+                           .severity = "info",
+                           .zoneKind = "monitor", .signature = {}}),
+        1)));
+  }
+  CHECK(assessment.calls == 3);
+  CHECK(harness.notifications.calls == 0);
+}
+
+TEST_CASE("a higher tier inside the cooldown still acts")
+{
+  SharedBoot& boot = sharedBoot();
+  (void)boot;
+  ThreadHarness harness;
+  harness.config.actionCooldownS = 600;
+  auto service = harness.makeService();
+
+  REQUIRE(drogon::sync_wait(service->handle(
+      threadObservation({.eventId = "tier:1",
+                         .cameraId = 55,
+                         .trackId = 1,
+                         .rule = "person_day",
+                         .severity = "info",
+                         .zoneKind = "monitor", .signature = {}}),
+      1)));
+  CHECK(harness.notifications.calls == 1);
+
+  REQUIRE(drogon::sync_wait(service->handle(
+      threadObservation({.eventId = "tier:2",
+                         .cameraId = 55,
+                         .trackId = 1,
+                         .rule = "person_day",
+                         .severity = "info",
+                         .zoneKind = "monitor", .signature = {}}),
+      1)));
+  CHECK(harness.notifications.calls == 1);
+
+  REQUIRE(drogon::sync_wait(service->handle(
+      threadObservation({.eventId = "tier:3",
+                         .cameraId = 55,
+                         .trackId = 1,
+                         .rule = "person_in_alert_zone",
+                         .severity = "critical",
+                         .zoneKind = "alert", .signature = {}}),
+      1)));
+  CHECK(harness.notifications.calls == 2);
 }

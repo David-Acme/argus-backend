@@ -1441,8 +1441,17 @@ GuardRepository::canActEncounter(const GuardEncounterActionInput& input) const
         count.front()["total"].as<int64_t>() >= input.maxPerHour)
       co_return false;
   }
+  co_return true;
+}
+
+drogon::Task<bool> GuardRepository::markEncounterAction(int64_t encounterId,
+                                                         int64_t at) const
+{
+  if (encounterId <= 0)
+    co_return false;
+  auto client = DbService::client();
   const auto marked = co_await client->execSqlCoro(MARK_ENCOUNTER_ACTION.data(),
-                                                   input.now, input.id);
+                                                   at, encounterId);
   co_return marked.affectedRows() > 0;
 }
 

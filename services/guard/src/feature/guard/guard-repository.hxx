@@ -156,6 +156,8 @@ public:
   drogon::Task<bool>
   canActEncounter(const GuardEncounterActionInput& input) const;
 
+  drogon::Task<bool> markEncounterAction(int64_t encounterId, int64_t at) const;
+
   drogon::Task<bool>
   setDecisionFeedback(const DecisionFeedbackInput& input) const;
 

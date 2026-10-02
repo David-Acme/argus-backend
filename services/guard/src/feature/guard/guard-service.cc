@@ -1508,12 +1508,17 @@ GuardService::applyObservation(const ObservationInput& input)
 
   if (state.stage < kStageResolve) {
     bool observedOnly = false;
+    const bool vetoed = checkpoint.assessment.performed &&
+                        checkpoint.assessment.veto;
     if (config_.stagingEnabled && signals.hasUnknown && !hardFloor &&
         guard_policy::dangerRank(danger) <
             guard_policy::dangerRank(GuardDanger::High)) {
       observedOnly = checkpoint.encounterChecks < config_.loiterChecks;
-      if (!observedOnly)
-        danger = GuardDanger::High;
+      if (!observedOnly && !vetoed)
+        danger = guard_policy::dangerRank(danger) <
+                         guard_policy::dangerRank(GuardDanger::Medium)
+                     ? GuardDanger::Medium
+                     : GuardDanger::High;
     }
     checkpoint.observedOnly = observedOnly;
     checkpoint.danger = guard_policy::dangerToString(danger);
@@ -1719,11 +1724,20 @@ GuardService::applyObservation(const ObservationInput& input)
         {config_.notifyLevel, config_.announceLevel, config_.alarmLevel});
     const bool effectsRequested = rank >= lowestLevel;
     if (effectsRequested) {
+      bool escalating = false;
+      if (state.encounterId > 0) {
+        const auto encounter =
+            co_await repository_.findEncounter(state.encounterId);
+        escalating = encounter.has_value() && encounter->notifyCount > 0 &&
+                     rank > encounter->notifyHighestRank;
+      }
       const bool allowed = state.encounterId > 0
                                ? co_await repository_.canActEncounter(
                                      {.id = state.encounterId,
                                       .now = now,
-                                      .cooldownS = config_.actionCooldownS,
+                                      .cooldownS = escalating
+                                                       ? 0
+                                                       : config_.actionCooldownS,
                                       .maxPerHour = config_.maxActionsPerHour})
                                : co_await repository_.canAct(
                                      {.cameraId = signals.cameraId,
@@ -1920,8 +1934,11 @@ GuardService::applyObservation(const ObservationInput& input)
   if (state.stage < kStageEffects && !checkpoint.effectsDenied) {
     const int rank = guard_policy::dangerRank(danger);
     bool resumable = false;
+    bool anyAccepted = false;
     int64_t retryAt = 0;
-    const auto note = [&resumable, &retryAt](const EffectResult& effect) {
+    const auto note = [&resumable, &retryAt,
+                       &anyAccepted](const EffectResult& effect) {
+      anyAccepted = anyAccepted || effect.accepted || effect.pending;
       if (!effect.resumable)
         return;
       resumable = true;
@@ -2011,6 +2028,8 @@ GuardService::applyObservation(const ObservationInput& input)
                                    .notifyContent = {}}));
     }
 
+    if (anyAccepted && state.encounterId > 0)
+      co_await repository_.markEncounterAction(state.encounterId, now);
     if (resumable) {
       co_return ObservationResult{.completed = false, .retryAt = retryAt};
     }

@@ -119,6 +119,20 @@ correlation (`<eventId>:escalation`) so the outbox never mistakes it for
 the first pass's intents. Soft cases are still assessed before any effect,
 because there the assessment may veto or raise.
 
+**Cooldown, staging and continuity.**
+- The encounter cooldown is stamped only when an effect actually left
+  (accepted or pending), not when the budget check passed: an event whose
+  every effect was suppressed used to start a 120 s window that silently
+  swallowed the next, higher-tier event. A strict tier increase over the
+  encounter's highest notified rank skips the cooldown (never the hourly
+  cap), so `Medium` → `Critical` inside two minutes still acts.
+- Staging promotes by one tier when a visit lingers (`Low` → `Medium`,
+  `Medium` → `High`) and never promotes a visit the assessment vetoed: a
+  courier who waited was being announced at as an intruder.
+- `continuity_window_s` defaults to 45 s: the camera re-emits a live track
+  about every 30-35 s, so a 20 s window split one visit into several
+  encounters, re-greeted the visitor and reset the staging count.
+
 The research behind this (alarm fatigue, TMA AVS-01 levels, OSHA's silent
 robbery guidance, the EDPB position on face recognition of customers) is
 in the 2026-10 audit report; the per-profile defaults it suggests are the

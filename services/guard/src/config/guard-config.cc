@@ -200,7 +200,7 @@ GuardServiceConfig GuardConfig::resolveService()
   config.maxActionsPerHour = configInt64Or("guard.max_actions_per_hour", 4);
   config.expectedGuestsEnabled = configBoolOr("guard.expected_guests", true);
   config.crossCameraWindowS = configInt64Or("guard.cross_camera_window_s", 60);
-  config.continuityWindowS = configInt64Or("guard.continuity_window_s", 20);
+  config.continuityWindowS = configInt64Or("guard.continuity_window_s", 45);
   config.signatureMinSimilarity =
       configDoubleOr("guard.signature_min_similarity", 0.82);
   config.loiterChecks = configIntOr("guard.loiter_checks", 3);

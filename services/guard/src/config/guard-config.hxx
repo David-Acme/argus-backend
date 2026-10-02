@@ -82,7 +82,7 @@ struct GuardServiceConfig
   int64_t maxActionsPerHour{4};
   bool expectedGuestsEnabled{true};
   int64_t crossCameraWindowS{60};
-  int64_t continuityWindowS{20};
+  int64_t continuityWindowS{45};
   double signatureMinSimilarity{0.82};
   int loiterChecks{3};
   bool stagingEnabled{true};
