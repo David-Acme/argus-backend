@@ -14,9 +14,10 @@
 #include <feature/guard/dtos/remove-expected-guest-dto.hxx>
 #include <feature/guard/dtos/update-guard-mode-dto.hxx>
 #include <auth/request-context.hxx>
+#include <utility>
 
-GuardController::GuardController(IdentityClient* identity)
-    : service_(identity)
+GuardController::GuardController(GuardFeatureDependencies dependencies)
+    : service_(std::move(dependencies))
 {
 }
 
@@ -50,9 +51,7 @@ drogon::Task<drogon::HttpResponsePtr> GuardController::promotePerson(
 drogon::Task<drogon::HttpResponsePtr> GuardController::mode(
     drogon::HttpRequestPtr)
 {
-  Json::Value response;
-  response["mode"] = co_await service_.mode();
-  co_return ApiResponse::ok(response);
+  co_return ApiResponse::ok(co_await service_.mode());
 }
 
 drogon::Task<drogon::HttpResponsePtr> GuardController::setMode(

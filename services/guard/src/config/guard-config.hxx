@@ -41,11 +41,21 @@ struct GuardAssessmentConfig
   std::string lang{"es"};
 };
 
+struct GuardScheduleConfig
+{
+  bool enabled{false};
+  std::string asleep;
+  std::string open;
+  std::string staffed;
+  std::string closedMode{"away"};
+};
+
 struct GuardServiceConfig
 {
   bool enabled{false};
   std::string profile{"home"};
   GuardMode defaultMode{GuardMode::Home};
+  GuardScheduleConfig schedule;
   int notifyLevel{2};
   int announceLevel{3};
   int alarmLevel{4};

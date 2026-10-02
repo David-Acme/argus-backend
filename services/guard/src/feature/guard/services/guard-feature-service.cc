@@ -8,8 +8,9 @@
 #include <runtime/blocking-task.hxx>
 #include <feature/guard/vocabulary/feedback-label.hxx>
 
-GuardFeatureService::GuardFeatureService(IdentityClient* identity)
-    : identity_(identity)
+GuardFeatureService::GuardFeatureService(GuardFeatureDependencies dependencies)
+    : identity_(dependencies.identity), defaultMode_(dependencies.defaultMode),
+      schedule_(guard_schedule::parse(dependencies.schedule))
 {
 }
 
@@ -28,9 +29,23 @@ drogon::Task<bool> GuardFeatureService::promotePerson(
       });
 }
 
-drogon::Task<std::string> GuardFeatureService::mode() const
+drogon::Task<Json::Value> GuardFeatureService::mode() const
 {
-  co_return co_await repository_.state("mode", "home");
+  const std::string manual =
+      co_await repository_.state("mode", guardModeToString(defaultMode_));
+  const auto now = std::time(nullptr);
+  std::tm local{};
+  localtime_r(&now, &local);
+  const GuardPosture posture = guard_schedule::resolve(
+      {.schedule = schedule_, .manual = guardModeFromString(manual),
+       .local = local});
+  Json::Value response(Json::objectValue);
+  response["mode"] = manual;
+  response["effectiveMode"] = guardModeToString(posture.mode);
+  response["occupancy"] = posture.occupancy;
+  response["publicPresent"] = posture.publicPresent;
+  response["staffOnly"] = posture.staffOnly;
+  co_return response;
 }
 
 drogon::Task<std::string> GuardFeatureService::setMode(

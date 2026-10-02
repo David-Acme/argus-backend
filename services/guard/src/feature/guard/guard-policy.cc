@@ -32,8 +32,10 @@ GuardDanger hardFloor(const GuardContext& context)
   if (context.mode == GuardMode::Away || context.mode == GuardMode::Armed)
     floor = GuardDanger::Critical;
   if (context.inAlertZone)
-    floor = GuardDanger::Critical;
-  if (context.atNight || context.escalated)
+    floor = context.staffOnly ? GuardDanger::High : GuardDanger::Critical;
+  if (context.mode == GuardMode::Night)
+    floor = std::max(floor, GuardDanger::High);
+  if ((context.atNight && !context.staffOnly) || context.escalated)
     floor = std::max(floor, GuardDanger::High);
   if (context.strangerCount >= 2)
     floor = std::max(floor, GuardDanger::High);
@@ -52,6 +54,9 @@ GuardDanger evaluate(const GuardContext& context)
     return GuardDanger::Low;
   }
 
+  if (context.publicPresent)
+    return context.inAlertZone ? GuardDanger::Medium : GuardDanger::Low;
+
   GuardDanger soft =
       context.expectedGuest ? GuardDanger::Low : GuardDanger::Medium;
   const GuardDanger companion = companionRelaxation(context);
@@ -65,7 +70,38 @@ GuardDanger evaluate(const GuardContext& context)
   else if (context.severity == "warning")
     danger = std::max(danger, GuardDanger::Medium);
 
+  if (context.expectedGuest)
+    danger = std::min(danger, GuardDanger::Medium);
   return danger;
+}
+
+GuardDeterrence deterrence(const GuardDeterrenceInput& input)
+{
+  const bool peoplePresent = input.publicPresent || input.staffOnly ||
+                             input.mode == GuardMode::Home ||
+                             input.mode == GuardMode::Night;
+  if (input.publicPresent || input.staffOnly ||
+      (input.weapon && peoplePresent))
+    return {.voice = false, .alarm = false};
+
+  const bool critical = input.danger == GuardDanger::Critical;
+  GuardDeterrence result{.voice = dangerRank(input.danger) >=
+                                  dangerRank(GuardDanger::High),
+                         .alarm = false};
+  switch (input.mode) {
+    case GuardMode::Home:
+      result.alarm = false;
+      break;
+    case GuardMode::Night:
+    case GuardMode::Armed:
+      result.alarm = critical;
+      break;
+    case GuardMode::Away:
+      result.alarm = critical && (input.weapon || input.inAlertZone ||
+                                  input.encounterChecks >= 2);
+      break;
+  }
+  return result;
 }
 
 namespace
@@ -209,6 +245,7 @@ GuardEventSignals parseObjectEvent(const Json::Value& event)
   signals.publishedAtMs = event.get("publishedAt", 0).asInt64();
   if (signals.firstSeenMs == 0)
     signals.firstSeenMs = event.get("capturedAt", 0).asInt64();
+  signals.night = event.get("night", false).asBool();
   if (signals.rule.rfind("person", 0) == 0)
     personPresent = true;
   if (signals.persons.empty())

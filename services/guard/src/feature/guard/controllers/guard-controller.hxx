@@ -9,7 +9,7 @@
 class GuardController : public drogon::HttpController<GuardController, false>
 {
 public:
-  explicit GuardController(IdentityClient* identity);
+  explicit GuardController(GuardFeatureDependencies dependencies);
 
   METHOD_LIST_BEGIN
   ADD_METHOD_TO(GuardController::mode, "/guard/mode", drogon::Get,

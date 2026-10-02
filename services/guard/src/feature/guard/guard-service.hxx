@@ -5,6 +5,7 @@
 #include "guard-belief.hxx"
 #include "guard-policy.hxx"
 #include "guard-repository.hxx"
+#include "guard-schedule.hxx"
 
 #include <atomic>
 #include <config/guard-config.hxx>
@@ -214,6 +215,7 @@ private:
     bool observedOnly{false};
     bool effectsDenied{false};
     bool effectsStarted{false};
+    bool weapon{false};
     std::string policyDanger;
     std::string danger;
     std::string greetingStatus;
@@ -352,11 +354,14 @@ private:
 
   void publishHeartbeat();
 
+  GuardPosture postureAt(GuardMode manual, int64_t now) const;
+
   void trackTimer(uint64_t id);
   void stopTimers();
 
   Dependencies dependencies_;
   Config config_;
+  GuardSchedule schedule_;
   GuardRepository repository_;
   GuardActionAuthorizer authorizer_;
   S3StorageService storage_;

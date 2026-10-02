@@ -5,10 +5,18 @@
 #include <feature/guard/dtos/create-expected-guest-dto.hxx>
 #include <feature/guard/dtos/list-decisions-dto.hxx>
 #include <feature/guard/guard-repository.hxx>
+#include <feature/guard/guard-schedule.hxx>
 #include <json/value.h>
 #include <string>
 
 class IdentityClient;
+
+struct GuardFeatureDependencies
+{
+  IdentityClient* identity{nullptr};
+  GuardMode defaultMode{GuardMode::Home};
+  GuardScheduleConfig schedule;
+};
 
 class GuardFeatureService
 {
@@ -20,11 +28,11 @@ public:
     std::string deviceHash;
   };
 
-  explicit GuardFeatureService(IdentityClient* identity);
+  explicit GuardFeatureService(GuardFeatureDependencies dependencies);
 
   drogon::Task<bool> promotePerson(const PromotePersonInput& input) const;
 
-  drogon::Task<std::string> mode() const;
+  drogon::Task<Json::Value> mode() const;
 
   drogon::Task<std::string> setMode(const std::string& mode) const;
 
@@ -47,5 +55,7 @@ public:
 
 private:
   IdentityClient* identity_{nullptr};
+  GuardMode defaultMode_{GuardMode::Home};
+  GuardSchedule schedule_;
   GuardRepository repository_;
 };

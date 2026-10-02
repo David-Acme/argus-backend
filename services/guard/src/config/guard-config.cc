@@ -160,11 +160,19 @@ GuardServiceConfig GuardConfig::resolveService()
   config.profile = configOr("guard.profile", "home");
   config.defaultMode =
       guardModeFromString(configOr("guard.default_mode", "home"));
+  config.schedule = {.enabled = configBoolOr("guard.schedule.enabled", false),
+                     .asleep = configOr("guard.schedule.asleep", ""),
+                     .open = configOr("guard.schedule.open", ""),
+                     .staffed = configOr("guard.schedule.staffed", ""),
+                     .closedMode =
+                         configOr("guard.schedule.closed_mode", "away")};
   config.notifyLevel = configIntOr("guard.notify_level", 2);
   config.announceLevel = configIntOr("guard.announce_level", 3);
   config.alarmLevel = configIntOr("guard.alarm_level", 4);
   config.announceText =
-      configOr("guard.announce_text", "Hola, ¿necesitas algo?");
+      configOr("guard.announce_text",
+               "Atención: está en una propiedad privada. El propietario ya ha "
+               "sido avisado.");
   config.announceLang = configOr("guard.announce_lang", "es");
   config.greetEnabled = configBoolOr("guard.greet_enabled", true);
   config.greetKnown = configBoolOr("guard.greet_known", false);

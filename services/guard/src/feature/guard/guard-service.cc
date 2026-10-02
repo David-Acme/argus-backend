@@ -263,6 +263,7 @@ private:
 
 GuardService::GuardService(Dependencies dependencies, Config config)
     : dependencies_(dependencies), config_(std::move(config)),
+      schedule_(guard_schedule::parse(config_.schedule)),
       authorizer_({.notifyLevel = config_.notifyLevel,
                    .announceLevel = config_.announceLevel,
                    .alarmLevel = config_.alarmLevel,
@@ -271,6 +272,15 @@ GuardService::GuardService(Dependencies dependencies, Config config)
       lifecycle_(std::make_shared<GuardLifecycle>())
 {
   retryPump_ = std::make_shared<ObservationRetryPump>();
+}
+
+GuardPosture GuardService::postureAt(GuardMode manual, int64_t now) const
+{
+  const auto at = static_cast<std::time_t>(now);
+  std::tm local{};
+  localtime_r(&at, &local);
+  return guard_schedule::resolve(
+      {.schedule = schedule_, .manual = manual, .local = local});
 }
 
 GuardService::~GuardService()
@@ -1121,6 +1131,7 @@ GuardService::checkpointToJson(const ObservationCheckpoint& checkpoint)
   json["observedOnly"] = checkpoint.observedOnly;
   json["effectsDenied"] = checkpoint.effectsDenied;
   json["effectsStarted"] = checkpoint.effectsStarted;
+  json["weapon"] = checkpoint.weapon;
   json["policyDanger"] = checkpoint.policyDanger;
   json["danger"] = checkpoint.danger;
   json["greetingStatus"] = checkpoint.greetingStatus;
@@ -1179,6 +1190,7 @@ GuardService::checkpointFromJson(const Json::Value& json)
   checkpoint.observedOnly = json.get("observedOnly", false).asBool();
   checkpoint.effectsDenied = json.get("effectsDenied", false).asBool();
   checkpoint.effectsStarted = json.get("effectsStarted", false).asBool();
+  checkpoint.weapon = json.get("weapon", false).asBool();
   checkpoint.policyDanger = json.get("policyDanger", "").asString();
   checkpoint.danger = json.get("danger", "").asString();
   checkpoint.greetingStatus = json.get("greetingStatus", "").asString();
@@ -1251,9 +1263,11 @@ GuardService::applyObservation(const ObservationInput& input)
   ObservationCheckpoint checkpoint =
       checkpointFromJson(json_util::fromString(state.checkpoint));
 
-  const GuardMode mode = guard_policy::modeFromString(
-      co_await repository_.state("mode", guard_policy::modeToString(
-                                             config_.defaultMode)));
+  const GuardPosture posture = postureAt(
+      guard_policy::modeFromString(co_await repository_.state(
+          "mode", guard_policy::modeToString(config_.defaultMode))),
+      now);
+  const GuardMode mode = posture.mode;
 
   GuardDanger danger = GuardDanger::None;
   bool hardFloor = checkpoint.hardFloor;
@@ -1267,8 +1281,10 @@ GuardService::applyObservation(const ObservationInput& input)
     context.hasUnknown = signals.hasUnknown;
     context.inAlertZone =
         signals.zoneKind == "alert" || signals.rule == "person_in_alert_zone";
-    context.atNight =
-        signals.rule == "person_night" || signals.rule == "vehicle_night";
+    context.atNight = signals.night || signals.rule == "person_night" ||
+                      signals.rule == "vehicle_night";
+    context.publicPresent = posture.publicPresent;
+    context.staffOnly = posture.staffOnly;
     context.escalated =
         signals.escalated || signals.rule == "presence_escalating";
     context.strangerCount = signals.strangerCount;
@@ -1437,6 +1453,7 @@ GuardService::applyObservation(const ObservationInput& input)
                           encounter->dialogueGoal != "done";
     }
     if (config_.greetEnabled && mode == GuardMode::Home &&
+        !posture.publicPresent && !posture.staffOnly &&
         (knownVisit || unknownVisit || continuesDialogue) && !hardFloor) {
       checkpoint.dialogue =
           co_await runDialogue({.signals = signals,
@@ -1523,6 +1540,7 @@ GuardService::applyObservation(const ObservationInput& input)
                                        .tags = checkpoint.assessment.tags,
                                        .hardFloor = hardFloor});
         danger = risk.danger;
+        checkpoint.weapon = risk.weapon;
         checkpoint.assessment.tags = risk.appliedTags;
       }
     }
@@ -1830,6 +1848,15 @@ GuardService::applyObservation(const ObservationInput& input)
   DecisionSuppression suppression = DecisionSuppression::LegacySilent;
   std::vector<std::string> beliefSignalNames;
   std::vector<std::string> suppressedKinds;
+  const GuardDeterrence deterrent = guard_policy::deterrence(
+      {.mode = mode,
+       .danger = danger,
+       .publicPresent = posture.publicPresent,
+       .staffOnly = posture.staffOnly,
+       .weapon = checkpoint.weapon,
+       .inAlertZone = signals.zoneKind == "alert" ||
+                      signals.rule == "person_in_alert_zone",
+       .encounterChecks = checkpoint.encounterChecks});
   bool notifySuppressed = false;
   bool announceSuppressed = false;
   bool alarmSuppressed = false;
@@ -1863,8 +1890,9 @@ GuardService::applyObservation(const ObservationInput& input)
                      rank <= encounter->notifyHighestRank;
     }
     const bool notifyRequested = rank >= config_.notifyLevel;
-    const bool announceRequested = rank >= config_.announceLevel;
-    const bool alarmRequested = rank >= config_.alarmLevel;
+    const bool announceRequested =
+        rank >= config_.announceLevel && deterrent.voice;
+    const bool alarmRequested = rank >= config_.alarmLevel && deterrent.alarm;
     const bool beliefBlocks = enforce && !beliefWould;
     const auto scopeCovers = [this, hardFloor = checkpoint.hardFloor](
                                  GuardActionKind kind) {
@@ -2012,7 +2040,31 @@ GuardService::applyObservation(const ObservationInput& input)
                              .data = content.data}}));
     }
 
-    if (rank >= config_.announceLevel && !announceSuppressed) {
+    if (rank >= config_.alarmLevel && deterrent.alarm && !alarmSuppressed) {
+      note(co_await performEffect({.kind = GuardActionKind::Alarm,
+                                   .danger = danger,
+                                   .cameraId = signals.cameraId,
+                                   .incidentId = state.incidentId,
+                                   .encounterId = state.encounterId,
+                                   .personId = signals.personId,
+                                   .now = now,
+                                   .seconds = config_.alarmSeconds,
+                                   .correlationId = eventId,
+                                   .sequence = 3,
+                                   .notifyContent = {}}));
+      note(co_await performEffect({.kind = GuardActionKind::SirenArm,
+                                   .danger = danger,
+                                   .cameraId = signals.cameraId,
+                                   .incidentId = state.incidentId,
+                                   .encounterId = state.encounterId,
+                                   .personId = signals.personId,
+                                   .now = now,
+                                   .correlationId = eventId,
+                                   .sequence = 4,
+                                   .notifyContent = {}}));
+    }
+    if (rank >= config_.announceLevel && deterrent.voice &&
+        !announceSuppressed) {
       const std::string text = sanitizeSpoken(
           config_.announceText.empty() ? std::string{"Atencion: zona vigilada."}
                                        : config_.announceText);
@@ -2042,29 +2094,6 @@ GuardService::applyObservation(const ObservationInput& input)
                                    .notifyContent = {}}));
     }
 
-    if (rank >= config_.alarmLevel && !alarmSuppressed) {
-      note(co_await performEffect({.kind = GuardActionKind::Alarm,
-                                   .danger = danger,
-                                   .cameraId = signals.cameraId,
-                                   .incidentId = state.incidentId,
-                                   .encounterId = state.encounterId,
-                                   .personId = signals.personId,
-                                   .now = now,
-                                   .seconds = config_.alarmSeconds,
-                                   .correlationId = eventId,
-                                   .sequence = 3,
-                                   .notifyContent = {}}));
-      note(co_await performEffect({.kind = GuardActionKind::SirenArm,
-                                   .danger = danger,
-                                   .cameraId = signals.cameraId,
-                                   .incidentId = state.incidentId,
-                                   .encounterId = state.encounterId,
-                                   .personId = signals.personId,
-                                   .now = now,
-                                   .correlationId = eventId,
-                                   .sequence = 4,
-                                   .notifyContent = {}}));
-    }
     if (resumable) {
       co_return ObservationResult{.completed = false, .retryAt = retryAt};
     }

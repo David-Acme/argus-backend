@@ -34,7 +34,7 @@ default_mode = "home"
 notify_level = 2
 announce_level = 3
 alarm_level = 4
-announce_text = "Hola, ¿necesitas algo?"
+announce_text = "Atención: está en una propiedad privada. El propietario ya ha sido avisado."
 announce_lang = "es"
 greet_enabled = true
 greet_known = true
@@ -72,6 +72,13 @@ health_stale_s = 300
 belief_refresh_s = 300
 journal_retention_days = 90
 tamper_sustained_s = 300
+
+[guard.schedule]
+enabled = false
+asleep = "23:00-07:00"
+open = ""
+staffed = ""
+closed_mode = "away"
 
 [guard.quiet_hours]
 enabled = false

@@ -52,6 +52,66 @@ deterministic danger level and raises only policy-authorized actions. It owns
 - Uploads incident evidence with a retention manifest (`guard_evidence`) and a
   daily deletion worker covering SQLite and the private object store.
 
+## Posture, deterrence and weapons (2026-10)
+
+The deterministic matrix answers two questions, and they are separate:
+how bad is it (`guard_policy::evaluate`, the danger) and what may the
+camera do about it out loud (`guard_policy::deterrence`). Notifying never
+depends on who is present; voice and siren always do.
+
+**Posture.** `[guard.schedule]` (off by default) derives the effective
+mode from the local time, the manual mode stored by `POST /guard/mode`
+and the property's hours; `guard_schedule::resolve` is the one place that
+does it, and `GET /guard/mode` reports both (`mode` stays the manual one,
+`effectiveMode`, `occupancy`, `publicPresent` and `staffOnly` are added).
+A manual `armed` always wins. Inside `open` windows (a restaurant or shop
+serving) the public is present; inside `staffed` windows only staff is;
+outside both, a commercial schedule is closed and takes `closed_mode`
+(`away` or `armed`). A home schedule with only `asleep` turns a manual
+`home` into `night` while the residents sleep. Window syntax:
+`"tue-sun 12:00-16:00, 20:00-24:00"`, days optional, a range may cross
+midnight.
+
+**Danger by posture.**
+- Public present: an unknown person is a customer, so `Low` (journaled,
+  not notified); an unknown in an alert zone (cash office, back door,
+  kitchen) is `Medium`. No stranger, night or mode floor applies.
+- Staff only: the alert zone floor is `High`, not `Critical`, and the
+  night flag is ignored (prep and cleaning run at night).
+- `night` mode: any unknown is at least `High`, inside a zone too. The
+  camera's `night` flag on the event feeds the same night floor in the
+  other modes, so a monitor-zone intruder at 03:00 is no longer daytime.
+- An expected guest caps the result at `Medium` (one notification) in
+  every mode. A weapon is the exception, below.
+
+**Weapons.** The assessment's tags are a closed vocabulary (the grammar
+enumerates them) and `weapon` (also `knife`, `gun`, `firearm`,
+`weapon_like`) is new. Corroborated by the model's own threat of at least
+`medium`, a weapon makes the event `Critical` above any floor and past an
+expected guest: a guest who carries a knife is not a guest. `carrying_box`
+no longer raises anything; a delivery is not a threat.
+
+**Deterrence ladder.** Voice needs `High`; the siren needs `Critical`.
+- Public present or staff only: silent always - never talk to or sound a
+  siren at customers or staff.
+- A weapon while people are present (`home`, `night`, open, staffed):
+  silent. A siren in front of an armed person escalates the risk to the
+  people inside; the owner is notified immediately instead.
+- `home`: voice, never the siren (the residents are there).
+- `night`: voice; the siren at `Critical` (an entry or a weapon outside a
+  sleeping house).
+- `away`: voice first; the siren only when the visit persists (second
+  check of the encounter), in an alert zone, or with a weapon.
+- `armed`: the siren at `Critical`, immediately.
+When the siren runs it runs before the voice line, and the default line is
+a deterrent ("Atención: está en una propiedad privada. El propietario ya
+ha sido avisado."), not the greeting.
+
+The research behind this (alarm fatigue, TMA AVS-01 levels, OSHA's silent
+robbery guidance, the EDPB position on face recognition of customers) is
+in the 2026-10 audit report; the per-profile defaults it suggests are the
+starting point for `[guard.schedule]`.
+
 ## Why the identity hop
 
 Rule 27: the guard cannot read `identity.db`. Recipients and person data come

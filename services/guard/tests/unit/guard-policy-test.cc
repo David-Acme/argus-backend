@@ -740,3 +740,105 @@ TEST_CASE("a simulated week keeps novelty informative")
     CHECK(rare < neverSeen);
   }
 }
+
+TEST_CASE("night mode floors any unknown to high, even inside a zone")
+{
+  auto context = unknownPerson();
+  context.mode = GuardMode::Night;
+  context.rule = "person_in_monitor_zone";
+  CHECK(guard_policy::evaluate(context) == GuardDanger::High);
+}
+
+TEST_CASE("an expected guest is capped at a notification in every mode")
+{
+  for (const auto mode : {GuardMode::Away, GuardMode::Armed, GuardMode::Night}) {
+    auto context = unknownPerson();
+    context.mode = mode;
+    context.expectedGuest = true;
+    context.atNight = true;
+    CHECK(guard_policy::evaluate(context) == GuardDanger::Medium);
+  }
+}
+
+TEST_CASE("open business hours treat the public as normal")
+{
+  auto customer = unknownPerson();
+  customer.publicPresent = true;
+  customer.atNight = true;
+  customer.strangerCount = 3;
+  CHECK(guard_policy::evaluate(customer) == GuardDanger::Low);
+
+  auto backOffice = unknownPerson();
+  backOffice.publicPresent = true;
+  backOffice.inAlertZone = true;
+  CHECK(guard_policy::evaluate(backOffice) == GuardDanger::Medium);
+}
+
+TEST_CASE("staff-only hours notify an intruder without the public floors")
+{
+  auto context = unknownPerson();
+  context.staffOnly = true;
+  context.inAlertZone = true;
+  context.atNight = true;
+  CHECK(guard_policy::evaluate(context) == GuardDanger::High);
+}
+
+TEST_CASE("the deterrence ladder depends on who is present")
+{
+  const auto ladder = [](GuardDeterrenceInput input) {
+    return guard_policy::deterrence(input);
+  };
+  const GuardDeterrenceInput critical{.mode = GuardMode::Home,
+                                      .danger = GuardDanger::Critical,
+                                      .publicPresent = false,
+                                      .staffOnly = false,
+                                      .weapon = false,
+                                      .inAlertZone = false,
+                                      .encounterChecks = 1};
+
+  auto home = critical;
+  CHECK(ladder(home).voice);
+  CHECK_FALSE(ladder(home).alarm);
+
+  auto night = critical;
+  night.mode = GuardMode::Night;
+  CHECK(ladder(night).alarm);
+
+  auto armed = critical;
+  armed.mode = GuardMode::Armed;
+  CHECK(ladder(armed).alarm);
+
+  auto awayFirst = critical;
+  awayFirst.mode = GuardMode::Away;
+  CHECK(ladder(awayFirst).voice);
+  CHECK_FALSE(ladder(awayFirst).alarm);
+  auto awayPersisting = awayFirst;
+  awayPersisting.encounterChecks = 2;
+  CHECK(ladder(awayPersisting).alarm);
+
+  auto open = critical;
+  open.publicPresent = true;
+  CHECK_FALSE(ladder(open).voice);
+  CHECK_FALSE(ladder(open).alarm);
+
+  auto armedHome = critical;
+  armedHome.weapon = true;
+  CHECK_FALSE(ladder(armedHome).voice);
+  CHECK_FALSE(ladder(armedHome).alarm);
+
+  auto weaponAway = awayFirst;
+  weaponAway.weapon = true;
+  CHECK(ladder(weaponAway).alarm);
+
+  auto medium = critical;
+  medium.danger = GuardDanger::Medium;
+  CHECK_FALSE(ladder(medium).voice);
+}
+
+TEST_CASE("the event's night flag reaches the signals")
+{
+  Json::Value event(Json::objectValue);
+  event["rule"] = "person_in_monitor_zone";
+  event["night"] = true;
+  CHECK(guard_policy::parseObjectEvent(event).night);
+}

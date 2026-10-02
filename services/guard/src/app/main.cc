@@ -145,8 +145,10 @@ int main()
   drogon::app().registerFilter(std::make_shared<ValidJsonFilter>());
   drogon::app().registerFilter(std::make_shared<JwtFilter>());
   drogon::app().registerFilter(std::make_shared<RoleFilter>());
-  drogon::app().registerController(
-      std::make_shared<GuardController>(identity.get()));
+  drogon::app().registerController(std::make_shared<GuardController>(
+      GuardFeatureDependencies{.identity = identity.get(),
+                               .defaultMode = guardConfig.defaultMode,
+                               .schedule = guardConfig.schedule}));
 
   drogon::app().setExceptionHandler(ErrorHandler::handleException);
 

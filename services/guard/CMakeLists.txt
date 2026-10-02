@@ -129,7 +129,7 @@ foreach(TEST_NAME IN ITEMS guard-policy-test guard-assessment-test
         guard-retry-lifecycle-test guard-belief-test
         guard-decision-journal-test guard-notify-thread-test
         guard-belief-scope-test guard-outbox-adopt-test
-        guard-vocabulary-test)
+        guard-vocabulary-test guard-schedule-test)
     add_executable(${TEST_NAME} tests/unit/${TEST_NAME}.cc)
 
     set_target_properties(${TEST_NAME} PROPERTIES EXCLUDE_FROM_ALL FALSE)

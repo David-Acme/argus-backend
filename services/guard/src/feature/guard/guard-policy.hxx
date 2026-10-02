@@ -47,6 +47,25 @@ struct GuardContext
   bool atNight{false};
   bool escalated{false};
   int visitCount{0};
+  bool publicPresent{false};
+  bool staffOnly{false};
+};
+
+struct GuardDeterrenceInput
+{
+  GuardMode mode{GuardMode::Home};
+  GuardDanger danger{GuardDanger::None};
+  bool publicPresent{false};
+  bool staffOnly{false};
+  bool weapon{false};
+  bool inAlertZone{false};
+  int encounterChecks{0};
+};
+
+struct GuardDeterrence
+{
+  bool voice{false};
+  bool alarm{false};
 };
 
 struct GuardEventSignals
@@ -56,6 +75,7 @@ struct GuardEventSignals
   std::string rule;
   std::string severity;
   bool escalated{false};
+  bool night{false};
   bool hasKnown{false};
   bool hasUnknown{false};
   int unknownCount{0};
@@ -108,6 +128,8 @@ namespace guard_policy
 {
 
 GuardDanger evaluate(const GuardContext& context);
+
+GuardDeterrence deterrence(const GuardDeterrenceInput& input);
 
 GuardEventSignals parseObjectEvent(const Json::Value& event);
 

@@ -560,6 +560,7 @@ TEST_CASE("a thread-suppressed pass still runs announce and alarm")
   ThreadHarness harness;
   harness.config.announceLevel = 3;
   harness.config.alarmLevel = 4;
+  harness.config.defaultMode = GuardMode::Armed;
   auto service = harness.makeService();
 
   REQUIRE(drogon::sync_wait(service->handle(
@@ -763,7 +764,7 @@ TEST_CASE("notification body and journal summary share one phrase set")
   REQUIRE(harness.notifications.calls == 1);
   REQUIRE(harness.notifications.sent.size() == 1);
   const std::string body = harness.notifications.sent.front().body;
-  GuardFeatureService feature(nullptr);
+  GuardFeatureService feature({.identity = nullptr, .defaultMode = GuardMode::Home, .schedule = {}});
   const Json::Value decisions = drogon::sync_wait(feature.decisions(
       {.limit = 200,
        .from = 0,

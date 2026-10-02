@@ -7,6 +7,7 @@ argus_module(NAME guard
         guard-policy.cc
         guard-repository.cc
         guard-risk.cc
+        guard-schedule.cc
         guard-schema.cc
         guard-service.cc
         controllers/guard-controller.cc

@@ -15,7 +15,8 @@ enum class RiskEvidence
   CarryingBox,
   Loitering,
   CalmDeliveryReply,
-  UnintelligibleReply
+  UnintelligibleReply,
+  Weapon
 };
 
 namespace guard_risk
@@ -43,6 +44,7 @@ struct GuardRiskResult
 {
   GuardDanger danger{GuardDanger::None};
   int evidenceScore{0};
+  bool weapon{false};
   std::vector<std::string> appliedTags;
 };
 

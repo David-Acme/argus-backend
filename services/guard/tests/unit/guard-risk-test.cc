@@ -29,7 +29,7 @@ TEST_CASE("bounded evidence raises a soft case")
        .tags = {"attempting_door", "carrying_box"},
        .hardFloor = false});
   CHECK(door.danger == GuardDanger::High);
-  CHECK(door.evidenceScore == 4);
+  CHECK(door.evidenceScore == 3);
 }
 
 TEST_CASE("evidence never lowers and never passes a hard floor")
@@ -55,4 +55,42 @@ TEST_CASE("evidence never lowers and never passes a hard floor")
        .hardFloor = false});
   CHECK(unknown.danger == GuardDanger::Medium);
   CHECK(unknown.appliedTags.empty());
+}
+
+TEST_CASE("a corroborated weapon is critical, even above a hard floor")
+{
+  const GuardRiskResult floored = guard_risk::mergeEvidence(
+      {.floor = GuardDanger::High,
+       .threat = "high",
+       .tags = {"knife"},
+       .hardFloor = true});
+  CHECK(floored.danger == GuardDanger::Critical);
+  CHECK(floored.weapon);
+  CHECK(floored.appliedTags == std::vector<std::string>{"weapon"});
+
+  const GuardRiskResult guest = guard_risk::mergeEvidence(
+      {.floor = GuardDanger::Low,
+       .threat = "medium",
+       .tags = {"weapon"},
+       .hardFloor = false});
+  CHECK(guest.danger == GuardDanger::Critical);
+
+  const GuardRiskResult uncorroborated = guard_risk::mergeEvidence(
+      {.floor = GuardDanger::Medium,
+       .threat = "low",
+       .tags = {"weapon"},
+       .hardFloor = false});
+  CHECK(uncorroborated.danger == GuardDanger::Medium);
+  CHECK_FALSE(uncorroborated.weapon);
+}
+
+TEST_CASE("a delivery never raises the danger")
+{
+  const GuardRiskResult delivery = guard_risk::mergeEvidence(
+      {.floor = GuardDanger::Low,
+       .threat = "medium",
+       .tags = {"carrying_box"},
+       .hardFloor = false});
+  CHECK(delivery.danger == GuardDanger::Low);
+  CHECK(delivery.evidenceScore == 0);
 }

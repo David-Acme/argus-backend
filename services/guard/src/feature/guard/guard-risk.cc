@@ -18,7 +18,12 @@ bool guard_risk::evidenceFromTag(const std::string& tag, RiskEvidence& evidence)
     evidence = RiskEvidence::AttemptingDoor;
     return true;
   }
-  if (tag == "raised_object" || tag == "weapon_like") {
+  if (tag == "weapon" || tag == "weapon_like" || tag == "knife" ||
+      tag == "gun" || tag == "firearm") {
+    evidence = RiskEvidence::Weapon;
+    return true;
+  }
+  if (tag == "raised_object") {
     evidence = RiskEvidence::RaisedObject;
     return true;
   }
@@ -57,9 +62,10 @@ bool guard_risk::isRaisingEvidence(RiskEvidence evidence)
     case RiskEvidence::RaisedObject:
     case RiskEvidence::Aggressive:
     case RiskEvidence::FollowingResident:
-    case RiskEvidence::CarryingBox:
     case RiskEvidence::Loitering:
+    case RiskEvidence::Weapon:
       return true;
+    case RiskEvidence::CarryingBox:
     case RiskEvidence::CalmDeliveryReply:
     case RiskEvidence::UnintelligibleReply:
       return false;
@@ -70,6 +76,8 @@ bool guard_risk::isRaisingEvidence(RiskEvidence evidence)
 int guard_risk::evidenceScore(RiskEvidence evidence)
 {
   switch (evidence) {
+    case RiskEvidence::Weapon:
+      return 4;
     case RiskEvidence::AttemptingDoor:
     case RiskEvidence::RaisedObject:
       return 3;
@@ -77,9 +85,9 @@ int guard_risk::evidenceScore(RiskEvidence evidence)
     case RiskEvidence::Aggressive:
     case RiskEvidence::FollowingResident:
       return 2;
-    case RiskEvidence::CarryingBox:
     case RiskEvidence::Loitering:
       return 1;
+    case RiskEvidence::CarryingBox:
     case RiskEvidence::CalmDeliveryReply:
     case RiskEvidence::UnintelligibleReply:
       return 0;
@@ -108,6 +116,8 @@ std::string guard_risk::evidenceToString(RiskEvidence evidence)
       return "calm_delivery_reply";
     case RiskEvidence::UnintelligibleReply:
       return "unintelligible_reply";
+    case RiskEvidence::Weapon:
+      return "weapon";
   }
   return "loitering";
 }
@@ -124,15 +134,19 @@ GuardRiskResult guard_risk::mergeEvidence(const GuardRiskInput& input)
       continue;
     result.appliedTags.push_back(evidenceToString(evidence));
     result.evidenceScore += evidenceScore(evidence);
+    result.weapon = result.weapon || evidence == RiskEvidence::Weapon;
   }
-
-  if (input.hardFloor || result.evidenceScore <= 0)
-    return result;
 
   const bool sustainedThreat =
       input.threat == "medium" || input.threat == "high" ||
       input.threat == "critical";
-  if (!sustainedThreat)
+  if (result.weapon && sustainedThreat) {
+    result.danger = GuardDanger::Critical;
+    return result;
+  }
+  result.weapon = false;
+
+  if (input.hardFloor || result.evidenceScore <= 0 || !sustainedThreat)
     return result;
 
   const int rank = guardDangerRank(result.danger);

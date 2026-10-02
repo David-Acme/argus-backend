@@ -379,6 +379,9 @@ TEST_CASE("every saga failpoint converges on redelivery without duplicates")
     ++cameraId;
   }
 
+  GuardRepository modeStore;
+  REQUIRE(drogon::sync_wait(modeStore.setState(
+      {.key = "mode", .value = "armed", .updatedAt = 1})));
   const std::vector<std::string> effectFailpoints = {"after_effects",
                                                      "after_intent",
                                                      "after_effect_rpc",
@@ -419,6 +422,8 @@ TEST_CASE("every saga failpoint converges on redelivery without duplicates")
                  eventId + ":%'") == "4");
     ++cameraId;
   }
+  REQUIRE(drogon::sync_wait(modeStore.setState(
+      {.key = "mode", .value = "home", .updatedAt = 2})));
 
   {
     CountingNotifications notifications;

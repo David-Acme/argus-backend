@@ -22,7 +22,8 @@ namespace
 {
 
 constexpr const char* kDefaultVisionPrompt =
-    "Describe the person in one short paragraph: clothing, what they carry, "
+    "Describe the person in one short paragraph: clothing, what they carry "
+    "in their hands (say clearly if it is a knife, a gun or another weapon), "
     "posture and whether they look aggressive, masked or suspicious.";
 
 constexpr const char* kGuardGrammar = R"GBNF(root ::= final | vision | listen
@@ -36,7 +37,8 @@ veto ::= "\"veto\":" ws boolean
 boolean ::= "true" | "false"
 tags ::= "\"tags\":" ws "[" ws tag-list? ws "]"
 tag-list ::= tag (ws "," ws tag)*
-tag ::= "\"" [a-z_]+ "\""
+tag ::= "\"" tag-value "\""
+tag-value ::= "weapon" | "raised_object" | "concealed_face" | "attempting_door" | "aggressive" | "following_resident" | "carrying_box" | "loitering" | "calm_delivery_reply" | "unintelligible_reply" | "visitor"
 prompt ::= "\"prompt\":" ws string
 seconds ::= "\"seconds\":" ws integer
 integer ::= [0-9]+
@@ -122,7 +124,10 @@ std::string systemPrompt(const std::string& lang)
          "outside the model. Speak only through announce_text: everyday words, "
          "max 12 words, one question, never mention cameras, recording, "
          "surveillance, monitoring, safety, danger, alerts, analysis or "
-         "systems. If replied=yes, they already heard an answer: do not "
+         "systems. Tags come only from: weapon (a knife, gun or other weapon is "
+         "visible), raised_object, concealed_face, attempting_door, aggressive, "
+         "following_resident, carrying_box, loitering, calm_delivery_reply, "
+         "unintelligible_reply, visitor. If replied=yes, they already heard an answer: do not "
          "propose another line unless there is real danger. A calm person can "
          "still be an intruder: never veto a hard signal. Write announce_text "
          "in language " + lang + ".";

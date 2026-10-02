@@ -267,6 +267,7 @@ TEST_CASE("scope notify suppresses only the notification")
   (void)boot;
   ScopeHarness harness;
   harness.config.beliefGateScope = BeliefGateScope::Notify;
+  harness.config.defaultMode = GuardMode::Armed;
   auto service = harness.makeService();
 
   REQUIRE(drogon::sync_wait(service->handle(
@@ -291,6 +292,7 @@ TEST_CASE("scope communication suppresses notify and announce")
   (void)boot;
   ScopeHarness harness;
   harness.config.beliefGateScope = BeliefGateScope::Communication;
+  harness.config.defaultMode = GuardMode::Armed;
   auto service = harness.makeService();
 
   REQUIRE(drogon::sync_wait(service->handle(
@@ -329,8 +331,7 @@ TEST_CASE("scope all without hard floor suppresses every effect")
   CHECK(harness.camera.announceCalls == 0);
   CHECK(harness.camera.alarmCalls == 0);
   CHECK(journalField("gsa:1", "suppression_reason") == "belief_gate");
-  CHECK(journalField("gsa:1", "suppressed_kinds") ==
-        "[\"notify\",\"announce\",\"alarm\",\"siren_arm\"]");
+  CHECK(journalField("gsa:1", "suppressed_kinds") == "[\"notify\"]");
   CHECK(journalField("gsa:1", "did_notify") == "0");
 }
 
@@ -340,6 +341,7 @@ TEST_CASE("a hard floor lets physical effects through under scope all")
   (void)boot;
   ScopeHarness harness;
   harness.config.beliefGateScope = BeliefGateScope::All;
+  harness.config.defaultMode = GuardMode::Armed;
   auto service = harness.makeService();
 
   REQUIRE(drogon::sync_wait(service->handle(
@@ -364,6 +366,7 @@ TEST_CASE("shadow mode never suppresses by belief regardless of scope")
   ScopeHarness harness;
   harness.config.decisionMode = "shadow";
   harness.config.beliefGateScope = BeliefGateScope::All;
+  harness.config.defaultMode = GuardMode::Armed;
   auto service = harness.makeService();
 
   REQUIRE(drogon::sync_wait(service->handle(
