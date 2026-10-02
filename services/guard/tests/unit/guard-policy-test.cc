@@ -147,6 +147,12 @@ TEST_CASE("only a seen, unmatched face counts as a stranger")
   const auto faces = guard_policy::parseObjectEvent(event);
   CHECK(faces.unknownCount == 2);
   CHECK(faces.strangerCount == 2);
+
+  event["objects"][0].removeMember("identityState");
+  event["objects"][1].removeMember("identityState");
+  const auto unverified = guard_policy::parseObjectEvent(event);
+  CHECK(unverified.unknownCount == 2);
+  CHECK(unverified.strangerCount == 0);
 }
 
 TEST_CASE("an expected guest is low")

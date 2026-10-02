@@ -18,10 +18,14 @@ deterministic danger level and raises only policy-authorized actions. It owns
   any other known companion to Medium - and never below a floor.
 - Every person in an event is counted, not only the primary track: a known
   companion no longer hides a stranger, and the stranger is the event's
-  subject. A *stranger* is a face that was seen and not matched
-  (`Unrecognized`); a person whose face was never visible is unknown but not
-  a stranger, so two residents walking away from the camera do not reach the
+  subject. A *stranger* is a person the camera scanned and reported
+  `Unrecognized`; a person reported `Unobservable`, or carried with no
+  identity verdict at all (camera identity off), is unknown but not a
+  stranger, so two residents walking away from the camera do not reach the
   two-strangers floor. An incident is `known` only when every person in it is.
+  Open: the identity RPC does not say whether it found a face, so a scanned
+  crop with no visible face still comes back `Unrecognized`; telling the two
+  apart needs a field on `argus.identity.v1`'s `IdentifyPersonResponse`.
 - `repeatVisits` (the unknown-signature counter) stays a calibration input
   and is not a floor: it counts observations, not visits, and grows for as
   long as the signature lives.

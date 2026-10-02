@@ -151,7 +151,8 @@ GuardEventSignals parseObjectEvent(const Json::Value& event)
       ++signals.knownCount;
     else
       ++signals.unknownCount;
-    if (!person.known && person.identityState == IdentityState::Unrecognized)
+    if (!person.known && person.identityAvailable &&
+        person.identityState == IdentityState::Unrecognized)
       ++signals.strangerCount;
     signals.viewScore = std::max(signals.viewScore, person.area);
   }
