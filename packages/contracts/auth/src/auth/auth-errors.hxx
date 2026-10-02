@@ -69,6 +69,10 @@ inline constexpr ErrorDefinition ChangeNotRecorded{
     .code = ErrorCode::InternalError,
     .status = 500,
     .message = "The change could not be recorded"};
+inline constexpr ErrorDefinition AuthUnavailable{
+    .code = ErrorCode::ServiceUnavailable,
+    .status = 503,
+    .message = "The auth service is unavailable"};
 inline constexpr ErrorDefinition IdentityUnavailable{
     .code = ErrorCode::ServiceUnavailable,
     .status = 503,

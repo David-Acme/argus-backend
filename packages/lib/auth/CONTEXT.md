@@ -36,9 +36,14 @@ Two consequences worth keeping in mind:
 
 - The package carries no AI or database closure. `argus-tts` links it and
   stays ncnn-free; that is a standing gate (`nm -C | grep -c 'ncnn::'`).
-- An unreachable `argus-auth` means every authenticated request 401s. That is
-  deliberate — failing closed — and it is why the client resolves a target
-  rather than silently falling back to a local database.
+- An unreachable `argus-auth` fails closed: no authenticated request is
+  admitted, and the client resolves a target rather than silently falling
+  back to a local database. The refusal is 503 `AuthUnavailable`, not 401: a
+  401 tells the app its token is bad, and the app answers it by refreshing
+  and then clearing the session and its local projection, so restarting the
+  auth container used to sign every user out. Only a verdict that says
+  invalid is a 401. A missing verdict covers every RPC failure, a wrong fleet
+  secret included, because none of them is the user's fault.
 
 ## The two targets
 

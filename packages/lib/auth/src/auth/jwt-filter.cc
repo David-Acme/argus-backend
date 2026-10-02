@@ -56,8 +56,10 @@ JwtFilter::doFilter(const drogon::HttpRequestPtr& req)
                                       .hasDeviceContext = hasDeviceContext});
       });
 
-  if (!verdict || !verdict->valid()) {
-    if (verdict && !verdict->reason().empty()) {
+  if (!verdict)
+    throw ResponseException(AuthErrors::AuthUnavailable);
+  if (!verdict->valid()) {
+    if (!verdict->reason().empty()) {
       throw ResponseException(AuthErrors::AuthenticationRequired
                                   .withMessage(verdict->reason()));
     }

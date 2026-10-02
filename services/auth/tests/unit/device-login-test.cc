@@ -542,8 +542,8 @@ TEST_CASE("credential identity mode issues, binds and authenticates devices")
     FAIL("an unreachable auth RPC did not refuse the verdict");
     return;
   }
-  CHECK(refused->status == 401);
-  CHECK(refused->message == "Authentication required");
+  CHECK(refused->status == 503);
+  CHECK(refused->message == "The auth service is unavailable");
 
   {
     AuthRpcHarness guarded({.sessions = &sessions,
@@ -565,8 +565,8 @@ TEST_CASE("credential identity mode issues, binds and authenticates devices")
       FAIL("the fleet-secret gate did not refuse an unqualified caller");
       return;
     }
-    CHECK(rejectedCall->status == 401);
-    CHECK(rejectedCall->message == "Authentication required");
+    CHECK(rejectedCall->status == 503);
+    CHECK(rejectedCall->message == "The auth service is unavailable");
 
     ConfigService::setRuntimeString("auth.rpc_secret", kFleetSecret);
     auto withSecret = drogon::HttpRequest::newHttpRequest();
