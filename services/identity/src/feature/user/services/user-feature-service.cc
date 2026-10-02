@@ -75,8 +75,8 @@ UserFeatureService::update(const UserManagementUpdateInput& input) const
     auto recipients = co_await repository_.findAll(transaction.get());
     std::vector<int64_t> recipientIds{updated.id};
     for (const auto& recipient : recipients) {
-      if (recipient.role == UserRole::Owner ||
-          recipient.role == UserRole::Guard)
+      if (recipient.id != updated.id &&
+          role_access::readsUserDirectory(recipient.role))
         recipientIds.push_back(recipient.id);
     }
     if (const auto* sink = identity_change::getSink()) {

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <cstdint>
 #include <drogon/utils/coroutine.h>
 #include <memory>
@@ -87,6 +88,7 @@ public:
 
 private:
   std::counting_semaphore<8> concurrency_{0};
+  std::atomic<bool> disabled_{false};
   mutable std::mutex implMutex_;
 
   struct Impl

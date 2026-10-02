@@ -147,7 +147,14 @@ start closed and a call that arrives during boot waits for the models.
 Either way the slots open: `init()` opens them whether the models loaded or
 not, and `disable()` opens them when `[face] enabled` is false. A call then
 answers `nullopt` instead of parking a thread forever, which is what the
-camera's matcher used to hit on every crop while recognition was off.
+camera's matcher used to hit on every crop while recognition was off. Once
+recognition is known to be off, a call answers before taking a slot or
+decoding the image; during boot it still waits, so a login that races the
+model load is not refused as an unrecognized face.
+
+PromotePerson answers `UNAVAILABLE` when argus-auth gives no verdict and
+`UNAUTHENTICATED` only for a verdict that says invalid, the same split
+`JwtFilter` makes.
 
 The f7-3 pair ValidateToken and CheckDeviceCredential left with the session
 surface in Phase 3b-1/3b-2: argus-auth serves them now, and it is the single

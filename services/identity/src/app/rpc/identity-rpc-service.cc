@@ -852,7 +852,12 @@ grpc::ServerUnaryReactor* IdentityRpcService::PromotePerson(
                                               .hasDeviceContext =
                                                   !device.empty()});
                 });
-            if (!verdict || !verdict->valid()) {
+            if (!verdict) {
+              reactor->Finish(grpc::Status(grpc::StatusCode::UNAVAILABLE,
+                                           "auth verdict unavailable"));
+              co_return;
+            }
+            if (!verdict->valid()) {
               reactor->Finish(grpc::Status(grpc::StatusCode::UNAUTHENTICATED,
                                            "invalid access token"));
               co_return;

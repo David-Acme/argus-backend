@@ -120,6 +120,7 @@ void FaceService::init()
 
 void FaceService::disable()
 {
+  disabled_.store(true);
   concurrency_.release(ThreadBudget::inferenceSlots());
 }
 
@@ -479,6 +480,8 @@ DecodedImage decodeToRgb(const std::string& imageBytes)
 
 std::optional<int64_t> FaceService::identify(std::string imageBytes)
 {
+  if (disabled_.load())
+    return std::nullopt;
   concurrency_.acquire();
   struct SlotGuard
   {
@@ -518,6 +521,8 @@ FaceService::identifyAsync(std::string imageBytes)
 std::optional<FaceService::FaceResult>
 FaceService::extractImage(std::string imageBytes)
 {
+  if (disabled_.load())
+    return std::nullopt;
   concurrency_.acquire();
   struct SlotGuard
   {
