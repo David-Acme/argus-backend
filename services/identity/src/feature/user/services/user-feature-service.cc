@@ -1,5 +1,6 @@
 #include "user-feature-service.hxx"
 
+#include <auth/role-access.hxx>
 #include <auth/user-role.hxx>
 #include <errors/response-exception.hxx>
 #include <identity/identity-errors.hxx>
@@ -27,7 +28,7 @@ bool removesLastActiveOwner(const UserSchema& before,
 drogon::Task<std::vector<UserSchema>>
 UserFeatureService::list(int64_t actorId, UserRole actorRole) const
 {
-  if (actorRole == UserRole::Owner || actorRole == UserRole::Guard)
+  if (role_access::readsUserDirectory(actorRole))
     co_return co_await repository_.findAll();
 
   const auto user = co_await repository_.findById(actorId);

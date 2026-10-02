@@ -203,8 +203,7 @@ grpc::ServerUnaryReactor* IdentitySyncRpcService::PullTable(
   }
 
   SyncFilter scope;
-  if (*table == TableName::User && role != UserRole::Owner &&
-      role != UserRole::Guard)
+  if (*table == TableName::User && !role_access::readsUserDirectory(role))
     scope.userId = caller;
 
   const argus::identity::v1::PullTableRequest pull = *request;
