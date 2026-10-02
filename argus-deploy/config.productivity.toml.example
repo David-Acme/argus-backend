@@ -62,6 +62,9 @@ rpc_secret = "CHANGE_ME_SAME_IN_EVERY_SERVICE"
 target = "argus-identity:7040"
 rpc_secret = "CHANGE_ME_SAME_IN_EVERY_SERVICE"
 
+[grpc]
+caller_sync = "CHANGE_ME_SYNC_PRODUCTIVITY"
+
 [mdns]
 enabled = true
 name = "Argus"

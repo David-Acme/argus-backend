@@ -1,4 +1,5 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
+#include <config/config-service.hxx>
 #include <doctest/doctest.h>
 
 #include <argus/productivity/v1/sync.grpc.pb.h>
@@ -21,6 +22,7 @@
 namespace
 {
 constexpr const char* kProductivityDb = "productivity-sync-rpc-test.db";
+constexpr const char* kSyncCredential = "productivity-sync-rpc-test-credential";
 
 class AppRunner
 {
@@ -166,9 +168,20 @@ TEST_CASE("productivity sync RPC scopes pulls by caller and serves tombstones")
       "INSERT INTO calendar_event_share (id, calendar_event_id, user_id, "
       "access, created_at) VALUES (1, 1, 7, 'view', 1000)");
 
+  ConfigService::setRuntimeString("grpc.caller_sync", kSyncCredential);
   RpcHarness harness;
   REQUIRE(harness.listening());
-  ProductivitySyncClient sdk(harness.target());
+  ProductivitySyncClient sdk(
+      {.target = harness.target(), .credential = kSyncCredential});
+
+  {
+    ProductivitySyncClient stranger(
+        {.target = harness.target(), .credential = "not-the-sync-secret"});
+    CHECK_FALSE(stranger.pullTable(projectPull(), identityFor(42)));
+    ProductivitySyncClient anonymous(
+        {.target = harness.target(), .credential = ""});
+    CHECK_FALSE(anonymous.pullTable(projectPull(), identityFor(42)));
+  }
 
   {
     const auto owner = sdk.pullTable(projectPull(), identityFor(42));

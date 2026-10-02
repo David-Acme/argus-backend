@@ -64,7 +64,7 @@ TEST_CASE("a pull sends the requested branch and the identity untouched")
   int port = 0;
   auto server = startServer(service, port);
   REQUIRE(server);
-  const ProductivitySyncClient client(loopback(port));
+  const ProductivitySyncClient client({.target = loopback(port), .credential = ""});
 
   auto* task = service.rows.mutable_project_task();
   task->add_created()->set_title("Ship the release");
@@ -108,7 +108,7 @@ TEST_CASE("a refusal and an unreachable receiver both answer no rows")
   int port = 0;
   auto server = startServer(service, port);
   REQUIRE(server);
-  const ProductivitySyncClient client(loopback(port));
+  const ProductivitySyncClient client({.target = loopback(port), .credential = ""});
   service.rows.mutable_reminder()->add_created()->set_id(3);
 
   v1::PullTableRequest request;
@@ -126,7 +126,7 @@ TEST_CASE("a refusal and an unreachable receiver both answer no rows")
   REQUIRE(rows.has_value());
   CHECK(rows->reminder().created(0).id() == 3);
 
-  const ProductivitySyncClient dead("127.0.0.1:1");
+  const ProductivitySyncClient dead({.target = "127.0.0.1:1", .credential = ""});
   CHECK_FALSE(dead.pullTable(request, identityFor(7)).has_value());
 
   server->Shutdown();

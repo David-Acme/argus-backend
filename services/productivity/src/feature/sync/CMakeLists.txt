@@ -12,6 +12,7 @@ argus_module(NAME productivity-sync
         argus::clients::productivity
         argus::contracts::productivity
         argus::contracts::sync
+        argus::lib::config
         argus::lib::sqlite
         Drogon::Drogon)
 

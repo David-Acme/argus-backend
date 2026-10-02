@@ -1,5 +1,6 @@
 #include "productivity-sync-rpc-service.hxx"
 
+#include <config/config-service.hxx>
 #include <drogon/drogon.h>
 #include <grpc/grpc-server-identity.hxx>
 #include <sync/sync-filter.hxx>
@@ -210,11 +211,24 @@ drogon::Task<void> fill(const FillInput<TableRows, Repo>& input)
 
 }
 
+ProductivitySyncRpcService::ProductivitySyncRpcService()
+    : syncCallers_({argus::client::CallerCredential{
+          .service = "argus-sync",
+          .secret = ConfigService::getString("grpc.caller_sync")}})
+{
+}
+
 grpc::ServerUnaryReactor* ProductivitySyncRpcService::PullTable(
     grpc::CallbackServerContext* context,
     const argus::productivity::v1::PullTableRequest* request,
     argus::productivity::v1::PullTableResponse* response)
 {
+  if (!argus::client::authorizeCaller(context, syncCallers_).has_value()) {
+    auto* reactor = context->DefaultReactor();
+    reactor->Finish(grpc::Status(grpc::StatusCode::UNAUTHENTICATED,
+                                 "argus-sync caller credential required"));
+    return reactor;
+  }
   const auto userId = argus::client::callerUserId(context);
   if (!userId) {
     auto* reactor = context->DefaultReactor();

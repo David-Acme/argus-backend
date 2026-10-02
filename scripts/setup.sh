@@ -201,6 +201,8 @@ ensure_local_config() {
   ensure_shared_configs "${configs[@]}"
   fill_config_pair "$ROOT/services/sync/config.toml" notifications credential \
     "$ROOT/services/notification/config.toml" grpc caller_sync 32
+  fill_config_pair "$ROOT/services/sync/config.toml" productivity credential \
+    "$ROOT/services/productivity/config.toml" grpc caller_sync 32
   fill_config_pair "$ROOT/services/guard/config.toml" camera actions_credential \
     "$ROOT/services/camera/config.toml" grpc caller_guard 32
   fill_config_pair "$ROOT/services/guard/config.toml" notifications credential \

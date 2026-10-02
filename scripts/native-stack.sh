@@ -164,6 +164,8 @@ prepare() {
 
   fill_config_pair "$STACK_DIR/sync/config.toml" notifications credential \
     "$STACK_DIR/notification/config.toml" grpc caller_sync 32
+  fill_config_pair "$STACK_DIR/sync/config.toml" productivity credential \
+    "$STACK_DIR/productivity/config.toml" grpc caller_sync 32
   log "sandbox configs ready in $STACK_DIR"
 }
 

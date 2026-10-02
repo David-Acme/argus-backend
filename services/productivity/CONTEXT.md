@@ -80,6 +80,12 @@ own `productivity.db`.
   project_task) by owner-or-membership, while reminder/reminder_detail stay
   unscoped exactly as the legacy sync pull did. `argus-sync` consumes it
   through `argus::clients::productivity`; no other service opens productivity.db.
+  The identity metadata is plain text anyone on the network can send, so
+  `PullTable` first requires argus-sync's caller credential
+  (`[grpc] caller_sync`, paired with sync's `[productivity] credential` by
+  `setup.sh` and `provision-host.sh`), as notification's pull already did.
+  Without it any container could pull any user's projects, tasks and
+  events by naming them in `x-argus-user`.
 - **CORS**: the legacy answered every preflight in pre-routing, so this
   surface keeps answering OPTIONS itself (`Cors::handleOptions`).
 - **Audit recipients**: `publishAudit` keeps the same recipient set the

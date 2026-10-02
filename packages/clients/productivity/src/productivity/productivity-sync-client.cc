@@ -1,15 +1,18 @@
 #include "productivity-sync-client.hxx"
 
 #include <grpc/grpc-client-base.hxx>
+#include <utility>
 
 namespace
 {
 constexpr int kPullTimeoutMs = 5000;
 }
 
-ProductivitySyncClient::ProductivitySyncClient(std::string target)
-    : channel_(argus::client::makeChannel(target)),
-      stub_(argus::productivity::v1::SyncService::NewStub(channel_))
+ProductivitySyncClient::ProductivitySyncClient(
+    ProductivitySyncClientConfig config)
+    : channel_(argus::client::makeChannel(config.target)),
+      stub_(argus::productivity::v1::SyncService::NewStub(channel_)),
+      credential_(std::move(config.credential))
 {
 }
 
@@ -21,6 +24,7 @@ ProductivitySyncClient::pullTable(
   grpc::ClientContext context;
   argus::client::setDeadline(context, kPullTimeoutMs);
   argus::client::addCallerIdentity(context, identity);
+  argus::client::addCallerCredential(context, credential_);
 
   argus::productivity::v1::PullTableResponse response;
   if (const grpc::Status status = stub_->PullTable(&context, request, &response);

@@ -49,6 +49,7 @@ rpc_secret = ""
 
 [productivity]
 grpc_target = "127.0.0.1:7037"
+credential = ""
 
 [voice]
 target = "127.0.0.1:7034"

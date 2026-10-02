@@ -1,5 +1,6 @@
 #include "productivity-sync-gateway.hxx"
 
+#include <config/config-service.hxx>
 #include <errors/response-exception.hxx>
 #include <sync/sync-errors.hxx>
 #include <json/value.h>
@@ -474,7 +475,9 @@ private:
 };
 
 ProductivitySyncGateway::ProductivitySyncGateway(std::string target)
-    : client_(std::make_shared<ProductivitySyncClient>(std::move(target)))
+    : client_(std::make_shared<ProductivitySyncClient>(ProductivitySyncClientConfig{
+          .target = std::move(target),
+          .credential = ConfigService::getString("productivity.credential")}))
 {
 }
 

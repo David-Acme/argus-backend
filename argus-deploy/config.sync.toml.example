@@ -49,6 +49,7 @@ rpc_secret = "CHANGE_ME_SAME_IN_EVERY_SERVICE"
 
 [productivity]
 grpc_target = "argus-productivity:7037"
+credential = "CHANGE_ME_SYNC_PRODUCTIVITY"
 
 [voice]
 target = "argus-voice:7034"

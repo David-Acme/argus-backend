@@ -162,6 +162,7 @@ identity rpc_port
 identity rpc_secret
 camera actions_credential
 notifications credential
+productivity credential
 grpc caller_guard
 grpc caller_sync
 mdns enabled
@@ -321,6 +322,8 @@ ensure_deploy_configs() {
     "$deploy_dir/config.notification.toml" grpc caller_guard 32
   fill_config_pair "$deploy_dir/config.sync.toml" notifications credential \
     "$deploy_dir/config.notification.toml" grpc caller_sync 32
+  fill_config_pair "$deploy_dir/config.sync.toml" productivity credential \
+    "$deploy_dir/config.productivity.toml" grpc caller_sync 32
 
   log "Deploy configs ready in $deploy_dir"
 }

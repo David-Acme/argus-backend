@@ -8,10 +8,16 @@
 #include <optional>
 #include <string>
 
+struct ProductivitySyncClientConfig
+{
+  std::string target;
+  std::string credential;
+};
+
 class ProductivitySyncClient
 {
 public:
-  explicit ProductivitySyncClient(std::string target);
+  explicit ProductivitySyncClient(ProductivitySyncClientConfig config);
 
   ProductivitySyncClient(const ProductivitySyncClient&) = delete;
   ProductivitySyncClient& operator=(const ProductivitySyncClient&) = delete;
@@ -24,4 +30,5 @@ public:
 private:
   std::shared_ptr<grpc::Channel> channel_;
   std::unique_ptr<argus::productivity::v1::SyncService::StubInterface> stub_;
+  std::string credential_;
 };
