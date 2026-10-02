@@ -215,6 +215,12 @@ would run Drogon's default quit with no drain wait — and therefore before the
 `reconcile()` that starts the worker, because a drain registered after the stop
 was requested is only stopped at once, never waited for.
 
+The drain wakes at the commit. `enqueue` runs inside the feature's
+transaction, so the row is invisible until it commits; the sink's
+`db_transaction::CommitObserver` wakes the drain when a commit lands and its
+`WakeSignal` keeps a wake that arrives mid-pass. A wake before the commit
+used to find nothing and leave the change waiting the 500 ms retry period.
+
 `identity.db` used to be the one database two owners wrote — this service and
 `services/sync`, which applied its five tables into the same file between Phase
 3c-1 and 3c-2. Both were free to call their table `change_outbox`, and
