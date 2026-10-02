@@ -1,7 +1,7 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
-#include <unordered_map>
 #include <vector>
 
 struct AudioResamplerInput
@@ -23,17 +23,19 @@ public:
 
 private:
   static constexpr int kSincHalf = 32;
+  static constexpr int kTaps = 2 * kSincHalf + 1;
+  static constexpr int64_t kMaxPhases = 1024;
 
-  double tap(double t) const;
-  int16_t sampleAt(double pos);
+  int16_t sampleAt(size_t whole, int64_t phase) const;
 
   int sourceRate_;
   int targetRate_;
-  double ratio_;
-  double cutoff_;
-  double pos_{0.0};
+  int64_t stepWhole_{0};
+  int64_t stepFraction_{0};
+  int64_t denominator_{1};
+  int64_t phases_{1};
+  size_t posWhole_{0};
+  int64_t posFraction_{0};
   std::vector<int16_t> history_;
-  std::vector<double> window_;
-
-  mutable std::unordered_map<int64_t, std::vector<double>> tapCache_;
+  std::vector<double> taps_;
 };
