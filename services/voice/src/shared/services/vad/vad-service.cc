@@ -123,8 +123,7 @@ std::optional<VadTurn> VadService::process(const VadProcessInput& input)
   while (pending_.size() >= static_cast<size_t>(kWindowSize)) {
     std::copy(context_.begin(), context_.end(), window_.begin());
     pending_.pop(window_.data() + kContextSize, kWindowSize);
-    std::copy(window_.begin() + kWindowSize - kContextSize,
-              window_.begin() + kWindowSize, context_.begin());
+    std::copy(window_.end() - kContextSize, window_.end(), context_.begin());
 
     float prob = 0.0F;
     runModel(prob);

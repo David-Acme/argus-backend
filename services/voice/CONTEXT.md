@@ -53,8 +53,23 @@ exact JSON/binary the app expects is argus-sync's
   later ones need `kMinSentenceChars`; `, ; :` split only past
   `kClauseMinChars` with a look-ahead tail; run-on text is cut at the last
   space past `kHardMaxChars`.
-- The reaction tone note rides the tail of the request copy, never the
-  system prompt (prefix must stay constant for KV reuse) nor stored history.
+- The history is append-only so argus-llm can reuse its KV cache: its prefix
+  cache only hits when the next prompt extends every token already decoded.
+  That is why the reaction tone note is appended to the stored user message
+  (a note sent once but not stored diverged the next prompt at that very
+  message), why the stored reply is the raw generated text (`full`, not the
+  spoken, prefix-stripped text), and why the history trims in one block —
+  past 21 messages it keeps the system prompt and the last 10 (five whole
+  turns) — instead of dropping a pair every turn, which re-prefilled the
+  whole prompt on every turn once the conversation was long.
+- A turn the LLM cannot answer is rolled back (the user message leaves the
+  history, so roles keep alternating) and a short localized line is spoken:
+  silence after speaking was indistinguishable from a broken session.
+- Every turn carries the session's `userId`; without it the memory tools of
+  argus-llm refuse, and a routed memory turn fell into the tool loop and
+  cost several extra generations before any audio.
+- Silero v5 takes `[64 context | 512 new]`; the context of the next window
+  is the tail of the current one (`window_.end() - 64`).
 - After a turn the VAD is reset but the PCM queue is NOT cleared: audio
   captured while the LLM was thinking may hold a real interjection.
 

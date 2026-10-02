@@ -62,6 +62,22 @@ std::string greetingFor(VoiceLang lang, const std::string& name)
   return text;
 }
 
+std::string unansweredLine(VoiceLang lang)
+{
+  return lang == VoiceLang::En ? "Sorry, I couldn't answer that right now."
+                               : "Perdona, ahora mismo no he podido responder.";
+}
+
+constexpr size_t kHistoryLimit = 21;
+constexpr size_t kHistoryKeep = 10;
+
+void trimHistory(std::vector<ChatMessage>& history)
+{
+  if (history.size() <= kHistoryLimit)
+    return;
+  history.erase(history.begin() + 1, history.end() - kHistoryKeep);
+}
+
 std::string langDisplayName(VoiceLang lang)
 {
   switch (lang) {
@@ -505,12 +521,12 @@ void VoiceSessionService::processTurn(Session& session,
                              .sttFailed = false,
                              .systemAlert = false});
 
+  session.history.back().content += ReactionEngine::toneNote(
+      reaction, session.lang == VoiceLang::En ? "en" : "es");
+
   ChatRequest req;
   req.messages = session.history;
-  const std::string tone = ReactionEngine::toneNote(
-      reaction, session.lang == VoiceLang::En ? "en" : "es");
-  if (!tone.empty() && !req.messages.empty())
-    req.messages.back().content += tone;
+  req.userId = session.userId;
 
   std::string full;
   std::string pending;
@@ -556,11 +572,14 @@ void VoiceSessionService::processTurn(Session& session,
   if (!pending.empty() && !session.interrupt.load())
     speak(session, pending);
 
-  if (!full.empty())
-    session.history.push_back({"assistant", stripPrefix(full)});
-  if (session.history.size() > 21) {
-    session.history.erase(session.history.begin() + 1,
-                          session.history.begin() + 3);
+  if (full.empty()) {
+    session.history.pop_back();
+    if (!session.interrupt.load())
+      speak(session, unansweredLine(session.lang));
+  }
+  else {
+    session.history.push_back({"assistant", full});
+    trimHistory(session.history);
   }
   session.speaking = false;
 

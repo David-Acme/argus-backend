@@ -268,8 +268,12 @@ TEST_CASE("An unreachable argus-llm degrades the turn, not the session")
   auto sess = VoiceSessionTestAccess::sessionOf(session, sink);
   VoiceSessionTestAccess::runTurn({.service = session, .session = *sess, .samples = samples});
 
-  CHECK(assistantFrames(sink).size() == assistantBefore);
-  CHECK(sink.of(true).size() == chunksBefore);
+  const auto degraded = assistantFrames(sink);
+  REQUIRE(degraded.size() == assistantBefore + 1);
+  CHECK(degraded.back().assistant().text() ==
+        "Perdona, ahora mismo no he podido responder.");
+  CHECK(sink.of(true).size() > chunksBefore);
+  CHECK(sess->history.back().role == "assistant");
 
   FakeLlmServer llmServer({.tokens = {"Recuperado", "."}});
   pointLlmAt("http://127.0.0.1:" + std::to_string(llmServer.port()));

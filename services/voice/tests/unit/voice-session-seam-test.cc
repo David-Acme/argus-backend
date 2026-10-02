@@ -100,13 +100,23 @@ struct FakeLlm final : IVoiceLlm
 {
   int chatStreamCalls{0};
   size_t lastPromptMessages{0};
+  int64_t lastUserId{0};
 
   void chatStream(const ChatRequest& req, TokenCallback onToken) override
   {
     ++chatStreamCalls;
     lastPromptMessages = req.messages.size();
+    lastUserId = req.userId;
     onToken("Hola de nuevo.", false);
     onToken("", true);
+  }
+};
+
+struct FailingLlm final : IVoiceLlm
+{
+  void chatStream(const ChatRequest&, TokenCallback) override
+  {
+    throw std::runtime_error("llm busy");
   }
 };
 
@@ -236,6 +246,7 @@ TEST_CASE("A turn runs STT, LLM and TTS against the injected fakes")
 
   CHECK(llm.chatStreamCalls == 1);
   CHECK(llm.lastPromptMessages == 3);
+  CHECK(llm.lastUserId == 7);
 
   CHECK(tts.synthesizeCalls == 2);
   CHECK(tts.lastText == "Hola de nuevo.");
@@ -334,6 +345,68 @@ TEST_CASE("The spoken name is written once through the identity seam")
 
   VoiceSessionTestAccess::runTurn({.service = session, .session = *sess, .samples = samples});
   CHECK(identity.writes.size() == 1);
+
+  session.stop(sink);
+}
+
+TEST_CASE("A failed answer rolls the user turn back and says so")
+{
+  FakeStt stt;
+  FakeTts tts;
+  FailingLlm llm;
+  FakeIdentity identity;
+  VoiceSessionService session({.stt = stt, .tts = tts, .llm = llm, .identity = identity});
+
+  FakeVoiceSink sink;
+  argus::voice::v1::VoiceIdentity voiceIdentity;
+  voiceIdentity.set_user_id(7);
+  voiceIdentity.set_role(argus::voice::v1::VOICE_ROLE_RESIDENT);
+  voiceIdentity.set_language(argus::voice::v1::VOICE_LANGUAGE_ES);
+  voiceIdentity.set_name("Ana");
+  session.start(sink, voiceIdentity);
+  auto sess = VoiceSessionTestAccess::sessionOf(session, sink);
+  CHECK(waitFor([&] { return tts.synthesizeCalls > 0 && !sess->speaking.load(); }));
+
+  const std::vector<float> samples(1600, 0.1F);
+  VoiceSessionTestAccess::runTurn({.service = session, .session = *sess, .samples = samples});
+
+  CHECK(sess->history.size() == 2);
+  CHECK(sess->history.back().role == "assistant");
+  CHECK(tts.synthesizeCalls == 2);
+  CHECK(tts.lastText == "Perdona, ahora mismo no he podido responder.");
+
+  session.stop(sink);
+}
+
+TEST_CASE("The history trims in whole turns and keeps the system prompt")
+{
+  FakeStt stt;
+  FakeTts tts;
+  FakeLlm llm;
+  FakeIdentity identity;
+  VoiceSessionService session({.stt = stt, .tts = tts, .llm = llm, .identity = identity});
+
+  FakeVoiceSink sink;
+  argus::voice::v1::VoiceIdentity voiceIdentity;
+  voiceIdentity.set_user_id(7);
+  voiceIdentity.set_role(argus::voice::v1::VOICE_ROLE_RESIDENT);
+  voiceIdentity.set_language(argus::voice::v1::VOICE_LANGUAGE_ES);
+  voiceIdentity.set_name("Ana");
+  session.start(sink, voiceIdentity);
+  auto sess = VoiceSessionTestAccess::sessionOf(session, sink);
+  CHECK(waitFor([&] { return tts.synthesizeCalls > 0 && !sess->speaking.load(); }));
+
+  const std::vector<float> samples(1600, 0.1F);
+  for (int turn = 0; turn < 9; ++turn)
+    VoiceSessionTestAccess::runTurn({.service = session, .session = *sess, .samples = samples});
+  CHECK(sess->history.size() == 20);
+
+  for (int turn = 0; turn < 3; ++turn)
+    VoiceSessionTestAccess::runTurn({.service = session, .session = *sess, .samples = samples});
+  CHECK(sess->history.size() == 15);
+  CHECK(sess->history[0].role == "system");
+  CHECK(sess->history[1].role == "user");
+  CHECK(sess->history.back().role == "assistant");
 
   session.stop(sink);
 }
